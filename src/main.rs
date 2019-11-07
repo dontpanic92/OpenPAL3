@@ -1,7 +1,5 @@
-mod backend;
-
-use backend::Backend;
+mod rendering;
 
 fn main() {
-    let backend = backend::vulkan::VulkanBackend::new();
+    let engine = rendering::create();
 }
