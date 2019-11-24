@@ -5,4 +5,7 @@ authors = ["dontpanic <lishengqiu.hit@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-vulkano = "0.16.0"
+ash = "0.29.0"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi"] }

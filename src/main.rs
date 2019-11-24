@@ -1,5 +1,9 @@
+mod application;
 mod rendering;
+mod constants;
 
 fn main() {
-    let engine = rendering::create();
+   let application = application::Application::new();
+   application.initialize();
+   application.run();
 }
