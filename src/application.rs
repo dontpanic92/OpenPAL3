@@ -17,9 +17,11 @@ pub struct Application {
 
 impl Application {
     pub fn new() -> Self {
+        let platform = Platform::new();
+        let window = rendering::Window { hwnd: platform.hwnd() };
         Self { 
-            rendering_engine: rendering::create_engine().unwrap_or_fail_fast(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
-            platform: Platform::new(),
+            rendering_engine: rendering::create(&window).unwrap_or_fail_fast(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
+            platform: platform,
         }
     }
 
@@ -27,12 +29,14 @@ impl Application {
         self.platform.initialize();
     }
 
-    pub fn run(&self) {
+    pub fn run(&mut self) {
         loop {
             if !self.platform.process_message()
             {
                 break;
             }
+
+            self.rendering_engine.render();
         }
     }
 }

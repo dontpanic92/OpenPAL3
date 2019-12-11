@@ -1,7 +1,5 @@
 use crate::constants;
-
-#[cfg(target_os = "windows")]
-use super::windows::show_error_dialog;
+use super::Platform;
 
 pub trait ResultExtensions<T, E: std::fmt::Debug> {
     fn unwrap_or_fail_fast(self, msg: &str) -> T;
@@ -34,6 +32,6 @@ impl<T> OptionExtensions<T> for Option<T> {
 }
 
 pub fn fail_fast(msg: &str) -> ! {
-    show_error_dialog(constants::STR_SORRY_DIALOG_TITLE, msg);
+    Platform::show_error_dialog(constants::STR_SORRY_DIALOG_TITLE, msg);
     panic!("Fatal error: {}", msg)
 }

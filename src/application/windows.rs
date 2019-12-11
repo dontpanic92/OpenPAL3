@@ -6,14 +6,10 @@ use winapi::um::errhandlingapi;
 use winapi::shared::windef::{HWND, POINT};
 use winapi::shared::minwindef::{HINSTANCE, WPARAM, LPARAM, LRESULT};
 
-pub fn show_error_dialog(title: &str, msg: &str) {
-    unsafe {
-        winuser::MessageBoxW(
-            null_mut(), 
-            to_utf16_ptr(msg), 
-            to_utf16_ptr(title), 
-            winuser::MB_OK | winuser::MB_ICONERROR);
-    }
+macro_rules! utf16_ptr {
+    ( $x:expr ) => {
+        append_zero($x).encode_utf16().collect::<Vec<u16>>().as_ptr()
+    };
 }
 
 pub struct Platform {
@@ -31,6 +27,16 @@ impl Platform {
         Self { instance, hwnd }
     }
 
+    pub fn show_error_dialog(title: &str, msg: &str) {
+        unsafe {
+            winuser::MessageBoxW(
+                null_mut(), 
+                utf16_ptr!(msg), 
+                utf16_ptr!(title), 
+                winuser::MB_OK | winuser::MB_ICONERROR);
+        }
+    }
+
     pub fn initialize(&self) {
         unsafe { winuser::ShowWindow(self.hwnd, winuser::SW_SHOW) };
     }
@@ -44,20 +50,22 @@ impl Platform {
                 return true;
             }
 
-            let ret = match msg.message
-            {
-                winuser::WM_QUIT => { false },
-                _ => true,
-            };
-
             if msg.message != winuser::WM_SYSKEYDOWN
             {
                 winuser::TranslateMessage(&msg);
                 winuser::DispatchMessageW(&msg);
             }
 
-            return ret;
+            match msg.message
+            {
+                winuser::WM_QUIT => { false },
+                _ => true,
+            }
         }
+    }
+
+    pub fn hwnd(&self) -> HWND {
+        self.hwnd
     }
 
     fn create_window(instance: HINSTANCE, title: &str) -> HWND {
@@ -72,14 +80,14 @@ impl Platform {
                 hCursor: winuser::LoadCursorW(null_mut(), winuser::IDC_ARROW),
                 hbrBackground: null_mut(),
                 lpszMenuName: null_mut(),
-                lpszClassName: to_utf16_ptr(WINDOW_CLASS_NAME),
+                lpszClassName: utf16_ptr!(WINDOW_CLASS_NAME),
             };
     
             winuser::RegisterClassW(&wnd_class);
             winuser::CreateWindowExW(
                 winuser::WS_EX_OVERLAPPEDWINDOW,
-                to_utf16_ptr(WINDOW_CLASS_NAME),
-                to_utf16_ptr(title),
+                utf16_ptr!(WINDOW_CLASS_NAME),
+                utf16_ptr!(title),
                 winuser::WS_OVERLAPPEDWINDOW,
                 winuser::CW_USEDEFAULT,
                 winuser::CW_USEDEFAULT,
@@ -109,9 +117,9 @@ impl Platform {
 
 const WINDOW_CLASS_NAME: &str = "RADIANCE_WINDOW";
 
-fn to_utf16_ptr<T: Into<String>>(s: T) -> * const u16 {
+/*fn utf16_ptr!<T: Into<String>>(s: T) -> * const u16 {
     append_zero(s).encode_utf16().collect::<Vec<u16>>().as_ptr()
-}
+}*/
 
 fn append_zero<T: Into<String>>(s: T) -> String {
     format!("{}\0", s.into())

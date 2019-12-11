@@ -1,13 +1,20 @@
-mod engine_impl;
+mod engine;
 mod backend;
+mod entity;
+mod scene;
 
-use engine_impl::EngineImpl;
+use engine::RuntimeEngine;
 
 pub trait Engine {
     fn render(&mut self);
 }
 
-pub fn create_engine() -> Result<Box<dyn Engine>, Box<dyn std::error::Error>>
+pub fn create(window: &Window) -> Result<Box<dyn Engine>, Box<dyn std::error::Error>>
 {
-    Ok(Box::new(EngineImpl::new()?))
+    Ok(Box::new(RuntimeEngine::new(window)?))
+}
+
+#[cfg(target_os = "windows")]
+pub struct Window {
+    pub hwnd: winapi::shared::windef::HWND,
 }
