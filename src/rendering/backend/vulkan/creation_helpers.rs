@@ -4,11 +4,24 @@ use super::platform;
 use super::error::VulkanBackendError;
 use std::error::Error;
 use std::ffi::CString;
-use ash::{vk, Entry, Instance, InstanceError, Device};
+use ash::{ vk, Entry, Instance, InstanceError, Device };
 use ash::prelude::VkResult;
-use ash::vk::{PhysicalDevice, SurfaceKHR, SurfaceFormatKHR, PresentModeKHR, SwapchainKHR, SurfaceCapabilitiesKHR, Image, ImageView, Pipeline, ShaderStageFlags, Extent2D, Offset2D, RenderPassCreateInfo};
-use ash::version::{EntryV1_0, InstanceV1_0, DeviceV1_0};
-use ash::extensions::khr::{Surface, Swapchain};
+use ash::vk::{
+    PhysicalDevice,
+    SurfaceKHR,
+    SurfaceFormatKHR,
+    PresentModeKHR,
+    SwapchainKHR,
+    SurfaceCapabilitiesKHR,
+    Image,
+    ImageView,
+    Pipeline,
+    ShaderStageFlags,
+    Extent2D,
+    Offset2D
+};
+use ash::version::{ EntryV1_0, InstanceV1_0, DeviceV1_0 };
+use ash::extensions::khr::{ Surface, Swapchain };
 
 pub fn create_instance(entry: &Entry) -> Result<Instance, InstanceError> {
     let app_info = vk::ApplicationInfo::builder()
@@ -93,7 +106,7 @@ pub fn get_present_mode(physical_device: PhysicalDevice, surface_entry: &Surface
     };
 
     if present_modes.len() == 0 {
-        return Err(VulkanBackendError::NoSUrfacePresentModeSupported)?
+        return Err(VulkanBackendError::NoSurfacePresentModeSupported)?
     }
     
     Ok(present_modes.into_iter().find(|f| f == &vk::PresentModeKHR::MAILBOX)
@@ -195,11 +208,11 @@ pub fn create_render_pass(device: &Device, format: SurfaceFormatKHR) -> VkResult
     unsafe { device.create_render_pass(&render_pass_create_info, None) }
 }
 
-pub fn create_pipeline(device: &Device, render_pass: vk::RenderPass, layout: vk::PipelineLayout, extent: &Extent2D) -> Result<Vec<Pipeline>, (Vec<Pipeline>, Box<dyn Error>)> {
-    let vert_shader = create_shader_module(device, "../resources/shaders/simple_triangle.vert.spv")
-        .map_err(|e| (vec![], e))?;
-    let frag_shader = create_shader_module(device, "../resources/shaders/simple_triangle.frag.spv")
-        .map_err(|e| (vec![], e))?;
+pub fn create_pipeline(device: &Device, render_pass: vk::RenderPass, layout: vk::PipelineLayout, extent: &Extent2D) -> Result<Vec<Pipeline>, Box<dyn Error>> {
+    let current_exe = std::env::current_exe()?;
+    let exe_folder = current_exe.parent().unwrap();
+    let vert_shader = create_shader_module(device, exe_folder.join("../resources/shaders/simple_triangle.vert.spv").to_str().unwrap())?;
+    let frag_shader = create_shader_module(device, exe_folder.join("../resources/shaders/simple_triangle.frag.spv").to_str().unwrap())?;
 
     let entry_point = &CString::new("main").unwrap();
     let vert_shader_stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
@@ -213,10 +226,14 @@ pub fn create_pipeline(device: &Device, render_pass: vk::RenderPass, layout: vk:
         .module(frag_shader)
         .build();
 
-    let pipeline_vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo::builder()
-        .vertex_attribute_descriptions(&[])
-        .vertex_binding_descriptions(&[])
-        .build();
+    let pipeline_vertex_input_create_info = {
+        let binding_descriptions = [super::vertex_helper::get_binding_description()];
+        let attribute_desctiprions = super::vertex_helper::get_attribute_descriptions();
+        vk::PipelineVertexInputStateCreateInfo::builder()
+            .vertex_attribute_descriptions(&attribute_desctiprions)
+            .vertex_binding_descriptions(&binding_descriptions)
+            .build()
+    };
 
     let pipeline_input_assembly_create_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
         .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
@@ -280,13 +297,22 @@ pub fn create_pipeline(device: &Device, render_pass: vk::RenderPass, layout: vk:
         .subpass(0)
         .build();
 
-    let pipelines = unsafe { device.create_graphics_pipelines(vk::PipelineCache::default(), &[create_info], None) }
-        .map_err(|(p, r)| (p, Box::new(r) as Box<dyn Error>));
+    let pipelines = match unsafe { device.create_graphics_pipelines(vk::PipelineCache::default(), &[create_info], None) } {
+        Ok(p) => Ok(p),
+        Err((p, e)) => {
+            for x in p.into_iter() {
+               unsafe { device.destroy_pipeline(x, None) };
+            }
+
+            Err(Box::new(e) as Box<dyn Error>)
+        },
+    };
 
     unsafe {
         device.destroy_shader_module(vert_shader, None);
         device.destroy_shader_module(frag_shader, None);
     }
+
     return pipelines;
 }
 

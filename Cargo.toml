@@ -6,6 +6,8 @@ edition = "2018"
 
 [dependencies]
 ash = "0.29.0"
+memoffset = "0.5.3"
+lazy_static = "1.2.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi"] }

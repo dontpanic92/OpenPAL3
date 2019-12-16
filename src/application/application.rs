@@ -1,14 +1,8 @@
-mod extensions;
-
-#[cfg(target_os = "windows")]
-mod windows;
-
-#[cfg(target_os = "windows")]
-use windows::Platform;
+use super::extensions::ResultExtensions;
+use super::Platform;
 
 use crate::constants;
 use crate::rendering;
-use extensions::ResultExtensions;
 
 pub struct Application {
     rendering_engine: Box<dyn rendering::Engine>,

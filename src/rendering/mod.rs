@@ -2,7 +2,9 @@ mod engine;
 mod backend;
 mod entity;
 mod scene;
+mod vertex;
 
+pub use vertex::*;
 use engine::RuntimeEngine;
 
 pub trait Engine {

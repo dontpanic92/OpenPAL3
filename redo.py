@@ -11,6 +11,7 @@ def cargo_build():
 
 @do(".spv")
 def glslc(target_name, target_base_name, output_file):
+    redo_ifchange(shader_source(target_base_name))
     cmd("glslc {} -o {}".format(shader_source(target_base_name), output_file))
 
 @do("__debug")

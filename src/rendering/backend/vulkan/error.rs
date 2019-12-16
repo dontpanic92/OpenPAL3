@@ -6,7 +6,8 @@ pub enum VulkanBackendError {
     NoVulkanDeviceFound,
     NoGraphicQueueFound,
     NoSurfaceFormatSupported,
-    NoSUrfacePresentModeSupported,
+    NoSurfacePresentModeSupported,
+    NoSuitableMemoryFound,
 }
 
 impl fmt::Display for VulkanBackendError {
@@ -15,7 +16,8 @@ impl fmt::Display for VulkanBackendError {
             VulkanBackendError::NoVulkanDeviceFound => write!(f, "{}", constants::STR_ZERO_VULKAN_PHYSICAL_DEVICE),
             VulkanBackendError::NoGraphicQueueFound => write!(f, "{}", constants::STR_ZERO_VULKAN_GRAPHICS_QUEUE),
             VulkanBackendError::NoSurfaceFormatSupported => write!(f, "{}", constants::STR_ZERO_VULKAN_SURFACE_FORMAT),
-            VulkanBackendError::NoSUrfacePresentModeSupported => write!(f, "{}", constants::STR_ZERO_VULKAN_SURFACE_PRESENT_MODE),
+            VulkanBackendError::NoSurfacePresentModeSupported => write!(f, "{}", constants::STR_ZERO_VULKAN_SURFACE_PRESENT_MODE),
+            VulkanBackendError::NoSuitableMemoryFound => write!(f, "{}", constants::STR_NO_SUITABLE_MEMORY_TYPE),
         }
     }
 }
