@@ -2,7 +2,7 @@ use crate::rendering::Window;
 use crate::rendering::Vertex;
 use crate::rendering::backend::Backend;
 use super::creation_helpers;
-use super::vertex_buffer::VertexBuffer;
+use super::buffer::Buffer;
 use std::error::Error;
 use std::rc::{ Rc, Weak };
 use std::ops::Deref;
@@ -13,6 +13,7 @@ use ash::version::{ InstanceV1_0, DeviceV1_0 };
 use crate::rendering::engine::vertices;
 
 pub struct VulkanBackend {
+    entry: Entry,
     instance: Instance,
     physical_device: vk::PhysicalDevice,
     device: Rc<Device>,
@@ -22,7 +23,7 @@ pub struct VulkanBackend {
     queue: vk::Queue,
     swapchain: Option<SwapChain>,
     command_pool: CommandPool,
-    vertex_buffer: Option<VertexBuffer>,
+    vertex_buffer: Option<Buffer>,
 
     surface_entry: ash::extensions::khr::Surface,
 
@@ -33,10 +34,8 @@ pub struct VulkanBackend {
 impl Backend for VulkanBackend {
     fn test(&mut self, v: &Vec<Vertex>) -> Result<(), Box<dyn Error>> {
         let swapchain = self.swapchain.as_ref().unwrap();
-
         unsafe {
             let (image_index, _) = swapchain.entry.acquire_next_image(swapchain.handle, u64::max_value(), self.image_available_semaphore, vk::Fence::default())?;
-
             let submit_info = vk::SubmitInfo::builder()
                 .wait_semaphores(&[self.image_available_semaphore])
                 .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
@@ -93,7 +92,14 @@ impl VulkanBackend {
             unsafe { device.create_command_pool(&create_info, None)? }
         };
         
-        let vertex_buffer = VertexBuffer::new(&instance, Rc::downgrade(&device), physical_device, &vertices)?;
+        let vertex_buffer = Buffer::new_vertex_buffer(
+            &instance,
+            &device,
+            physical_device,
+            &vertices,
+            command_pool,
+            queue,
+        )?;
         let swapchain = SwapChain::new(&instance, Rc::downgrade(&device), surface, capabilities, format, present_mode, command_pool)?;
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
@@ -105,6 +111,7 @@ impl VulkanBackend {
         };
 
         let mut vulkan = Self {
+            entry,
             instance,
             physical_device,
             device,
@@ -130,7 +137,6 @@ impl VulkanBackend {
         }
 
         drop(self.swapchain.take());
-
         self.swapchain = Some(SwapChain::new(
             &self.instance,
             Rc::downgrade(&self.device),
@@ -140,6 +146,7 @@ impl VulkanBackend {
             self.present_mode,
             self.command_pool,
         )?);
+
         self.record_command_buffers()?;
 
         Ok(())
@@ -230,12 +237,13 @@ impl SwapChain {
         command_pool: vk::CommandPool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let rc_device = device.upgrade().unwrap();
+
         let entry = ash::extensions::khr::Swapchain::new(instance, rc_device.deref());
 
         let handle = creation_helpers::create_swapchain(&entry, surface, capabilities, format, present_mode)?;
         let images = unsafe { entry.get_swapchain_images(handle)? };
         let image_views = creation_helpers::create_image_views(&rc_device, &images, format)?;
-        
+
         let render_pass = creation_helpers::create_render_pass(&rc_device, format)?;
         let pipeline_layout = creation_helpers::create_pipeline_layout(&rc_device)?;
         let pipeline = creation_helpers::create_pipeline(&rc_device, render_pass, pipeline_layout, &capabilities.current_extent)?[0];

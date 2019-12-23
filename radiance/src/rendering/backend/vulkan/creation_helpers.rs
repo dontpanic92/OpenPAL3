@@ -28,9 +28,11 @@ pub fn create_instance(entry: &Entry) -> Result<Instance, InstanceError> {
     .engine_name(&CString::new(constants::STR_ENGINE_NAME).unwrap())
     .build();
     let extension_names = platform::instance_extension_names();
+    let layer_names = enabled_layer_names(entry);
     let create_info = vk::InstanceCreateInfo::builder()
         .application_info(&app_info)
         .enabled_extension_names(&extension_names)
+        .enabled_layer_names(&layer_names)
         .build();
     unsafe { entry.create_instance(&create_info, None) }
 }
@@ -208,11 +210,17 @@ pub fn create_render_pass(device: &Device, format: SurfaceFormatKHR) -> VkResult
     unsafe { device.create_render_pass(&render_pass_create_info, None) }
 }
 
+
+static SIMPLE_TRIANGLE_VERT: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.vert.spv"));
+static SIMPLE_TRIANGLE_FRAG: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.frag.spv"));
+
 pub fn create_pipeline(device: &Device, render_pass: vk::RenderPass, layout: vk::PipelineLayout, extent: &Extent2D) -> Result<Vec<Pipeline>, Box<dyn Error>> {
     let current_exe = std::env::current_exe()?;
     let exe_folder = current_exe.parent().unwrap();
-    let vert_shader = create_shader_module(device, exe_folder.join("../resources/shaders/simple_triangle.vert.spv").to_str().unwrap())?;
-    let frag_shader = create_shader_module(device, exe_folder.join("../resources/shaders/simple_triangle.frag.spv").to_str().unwrap())?;
+    let vert_shader = create_shader_module_from_array(device, SIMPLE_TRIANGLE_VERT)?;
+    let frag_shader = create_shader_module_from_array(device, SIMPLE_TRIANGLE_FRAG)?;
+    //let vert_shader = create_shader_module(device, exe_folder.join("../resources/shaders/simple_triangle.vert.spv").to_str().unwrap())?;
+    //let frag_shader = create_shader_module(device, exe_folder.join("../resources/shaders/simple_triangle.frag.spv").to_str().unwrap())?;
 
     let entry_point = &CString::new("main").unwrap();
     let vert_shader_stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
@@ -325,6 +333,14 @@ pub fn create_shader_module(device: &Device, shader_path: &str) -> Result<vk::Sh
     unsafe { Ok(device.create_shader_module(&create_info, None)?) }
 }
 
+fn create_shader_module_from_array(device: &Device, code: &[u8]) -> Result<vk::ShaderModule, Box<dyn Error>> {
+    let code_u32 = unsafe { std::slice::from_raw_parts::<u32>(code.as_ptr().cast(), code.len() / 4) };
+    let create_info = vk::ShaderModuleCreateInfo::builder()
+        .code(code_u32)
+        .build();
+    unsafe { Ok(device.create_shader_module(&create_info, None)?) }
+}
+
 pub fn create_framebuffers(device: &Device, image_views: &Vec<ImageView>, extent: &Extent2D, render_pass: vk::RenderPass) -> VkResult<Vec<vk::Framebuffer>>{
     image_views.iter().map(| view | {
         let create_info = vk::FramebufferCreateInfo::builder()
@@ -336,4 +352,9 @@ pub fn create_framebuffers(device: &Device, image_views: &Vec<ImageView>, extent
             .build();
         unsafe { device.create_framebuffer(&create_info, None) }
     }).collect()
+}
+
+fn enabled_layer_names(entry: &Entry) -> Vec<*const i8> {
+
+    vec!["VK_LAYER_LUNARG_standard_validation".as_ptr() as *const i8]
 }

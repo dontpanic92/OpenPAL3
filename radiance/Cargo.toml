@@ -3,6 +3,7 @@ name = "radiance"
 version = "0.1.0"
 authors = ["dontpanic <lishengqiu.hit@gmail.com>"]
 edition = "2018"
+build = "build.rs"
 
 [dependencies]
 ash = "0.29.0"
