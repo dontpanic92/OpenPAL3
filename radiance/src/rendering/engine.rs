@@ -12,10 +12,15 @@ pub struct RuntimeEngine
 lazy_static! { 
     pub static ref vertices: Vec<Vertex> = {
         vec![
-            Vertex::new(Vec2::new(0f32, -0.5f32), Vec3::new(1f32, 1f32, 0f32)),
-            Vertex::new(Vec2::new(0.5f32, 0.5f32), Vec3::new(0f32, 1f32, 0f32)),
-            Vertex::new(Vec2::new(-0.5f32, 0.5f32), Vec3::new(0f32, 0f32, 1f32)),
+            Vertex::new(Vec2::new(-0.5f32, -0.5f32), Vec3::new(1f32, 0f32, 0f32)),
+            Vertex::new(Vec2::new(0.5f32, -0.5f32), Vec3::new(0f32, 1f32, 0f32)),
+            Vertex::new(Vec2::new(0.5f32, 0.5f32), Vec3::new(0f32, 0f32, 1f32)),
+            Vertex::new(Vec2::new(-0.5f32, 0.5f32), Vec3::new(1f32, 1f32, 1f32)),
         ]
+    };
+
+    pub static ref indices: Vec<u32> = {
+        vec![0, 1, 2, 2, 3, 0]
     };
 }
 

@@ -10,7 +10,7 @@ use ash::{ vk, Entry, Instance, Device };
 use ash::vk::CommandPool;
 use ash::version::{ InstanceV1_0, DeviceV1_0 };
 
-use crate::rendering::engine::vertices;
+use crate::rendering::engine::{ vertices, indices };
 
 pub struct VulkanBackend {
     entry: Entry,
@@ -24,6 +24,7 @@ pub struct VulkanBackend {
     swapchain: Option<SwapChain>,
     command_pool: CommandPool,
     vertex_buffer: Option<Buffer>,
+    index_buffer: Option<Buffer>,
 
     surface_entry: ash::extensions::khr::Surface,
 
@@ -100,6 +101,15 @@ impl VulkanBackend {
             command_pool,
             queue,
         )?;
+        let index_buffer = Buffer::new_index_buffer(
+            &instance,
+            &device,
+            physical_device,
+            &indices,
+            command_pool,
+            queue,
+        )?;
+
         let swapchain = SwapChain::new(&instance, Rc::downgrade(&device), surface, capabilities, format, present_mode, command_pool)?;
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
@@ -121,6 +131,7 @@ impl VulkanBackend {
             queue,
             command_pool,
             vertex_buffer: Some(vertex_buffer),
+            index_buffer: Some(index_buffer),
             swapchain: Some(swapchain),
             surface_entry,
             image_available_semaphore,
@@ -177,7 +188,8 @@ impl VulkanBackend {
                 self.device.cmd_begin_render_pass(*command_buffer, &render_pass_begin_info, vk::SubpassContents::INLINE );
                 self.device.cmd_bind_pipeline(*command_buffer, vk::PipelineBindPoint::GRAPHICS, swapchain.pipeline);
                 self.device.cmd_bind_vertex_buffers(*command_buffer, 0, &[self.vertex_buffer.as_ref().unwrap().buffer()], &[0]);
-                self.device.cmd_draw(*command_buffer, 3, 1, 0, 0);
+                self.device.cmd_bind_index_buffer(*command_buffer,self.index_buffer.as_ref().unwrap().buffer(), 0, vk::IndexType::UINT32);
+                self.device.cmd_draw_indexed(*command_buffer, indices.len() as u32, 1, 0, 0, 0);
                 self.device.cmd_end_render_pass(*command_buffer);
                 self.device.end_command_buffer(*command_buffer)?;
             }
@@ -198,6 +210,7 @@ impl Drop for VulkanBackend {
         unsafe {
             let _ = self.device.device_wait_idle();
             drop(self.vertex_buffer.take());
+            drop(self.index_buffer.take());
             drop(self.swapchain.take());
             self.device.destroy_command_pool(self.command_pool, None);
 

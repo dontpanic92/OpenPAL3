@@ -7,6 +7,11 @@ use ash::{ vk, Instance, Device };
 use ash::vk::{ PhysicalDevice, DeviceMemory };
 use ash::version::{ InstanceV1_0, DeviceV1_0 };
 
+pub enum BufferType {
+    Index = 0,
+    Vertex = 1,
+}
+
 pub struct Buffer {
     device: Weak<Device>,
     buffer: vk::Buffer,
@@ -23,23 +28,54 @@ impl Buffer {
         command_pool: vk::CommandPool,
         queue: vk::Queue,
     ) -> Result<Self, Box<dyn Error>> {
+        Buffer::new_buffer_with_data(instance, device, physical_device, vertices, BufferType::Vertex, command_pool, queue)
+    }
+
+    pub fn new_index_buffer(
+        instance: &Instance,
+        device: &Rc<Device>,
+        physical_device: PhysicalDevice,
+        indices: &Vec<u32>,
+        command_pool: vk::CommandPool,
+        queue: vk::Queue,
+    ) -> Result<Self, Box<dyn Error>> {
+        Buffer::new_buffer_with_data(instance, device, physical_device, indices, BufferType::Index, command_pool, queue)
+    }
+
+    pub fn buffer(&self) -> vk::Buffer {
+        self.buffer
+    }
+
+    fn new_buffer_with_data<T>(
+        instance: &Instance,
+        device: &Rc<Device>,
+        physical_device: PhysicalDevice,
+        data: &Vec<T>,
+        buffer_type: BufferType,
+        command_pool: vk::CommandPool,
+        queue: vk::Queue,
+    ) -> Result<Self, Box<dyn Error>> {
         let mut staging_buffer = Buffer::new_buffer(
             instance,
             Rc::downgrade(&device),
             physical_device,
-            vertices,
+            data,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
 
-        staging_buffer.copy_memory_from(vertices)?;
+        staging_buffer.copy_memory_from(data)?;
+        let flags = match buffer_type {
+            BufferType::Index => vk::BufferUsageFlags::INDEX_BUFFER,
+            BufferType::Vertex => vk::BufferUsageFlags::VERTEX_BUFFER,
+        };
 
         let mut buffer = Buffer::new_buffer(
             instance,
             Rc::downgrade(&device),
             physical_device,
-            vertices,
-            vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+            data,
+            flags | vk::BufferUsageFlags::TRANSFER_DST,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         )?;
 
@@ -47,20 +83,16 @@ impl Buffer {
         Ok(buffer)
     }
 
-    pub fn buffer(&self) -> vk::Buffer {
-        self.buffer
-    }
-
-    fn new_buffer(
+    fn new_buffer<T>(
         instance: &Instance,
         device: Weak<Device>,
         physical_device: PhysicalDevice,
-        vertices: &Vec<Vertex>,
+        data: &Vec<T>,
         buffer_usage_flags: vk::BufferUsageFlags,
         memory_prop_flags: vk::MemoryPropertyFlags,
     ) -> Result<Self, Box<dyn Error>> {
         let rc_device = device.upgrade().unwrap();
-        let buffer_size = (size_of::<Vertex>() * vertices.len()) as u64;
+        let buffer_size = (size_of::<T>() * data.len()) as u64;
         let buffer = {
             let create_info = vk::BufferCreateInfo::builder()
                 .sharing_mode(vk::SharingMode::EXCLUSIVE)
@@ -140,11 +172,11 @@ impl Buffer {
         Ok(())
     }
 
-    fn copy_memory_from(&mut self, vertices: &Vec<Vertex>) -> ash::prelude::VkResult<()> {
+    fn copy_memory_from<T>(&mut self, data: &Vec<T>) -> ash::prelude::VkResult<()> {
         let rc_device = self.device.upgrade().unwrap();
         unsafe {
             let dst =  rc_device.map_memory(self.memory, 0, self.buffer_size, vk::MemoryMapFlags::default())?;
-            std::ptr::copy(vertices.as_ptr() as *const std::ffi::c_void, dst, self.buffer_size as usize);
+            std::ptr::copy(data.as_ptr() as *const std::ffi::c_void, dst, self.buffer_size as usize);
             rc_device.unmap_memory(self.memory);
         }
 
