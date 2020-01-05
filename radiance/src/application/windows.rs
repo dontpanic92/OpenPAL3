@@ -1,14 +1,17 @@
 extern crate winapi;
 use std::ptr::null_mut;
-use winapi::um::winuser;
-use winapi::um::libloaderapi;
-use winapi::um::errhandlingapi;
+use winapi::shared::minwindef::{HINSTANCE, LPARAM, LRESULT, WPARAM};
 use winapi::shared::windef::{HWND, POINT};
-use winapi::shared::minwindef::{HINSTANCE, WPARAM, LPARAM, LRESULT};
+use winapi::um::errhandlingapi;
+use winapi::um::libloaderapi;
+use winapi::um::winuser;
 
 macro_rules! utf16_ptr {
     ( $x:expr ) => {
-        append_zero($x).encode_utf16().collect::<Vec<u16>>().as_ptr()
+        append_zero($x)
+            .encode_utf16()
+            .collect::<Vec<u16>>()
+            .as_ptr()
     };
 }
 
@@ -31,10 +34,11 @@ impl Platform {
     pub fn show_error_dialog(title: &str, msg: &str) {
         unsafe {
             winuser::MessageBoxW(
-                null_mut(), 
-                utf16_ptr!(msg), 
-                utf16_ptr!(title), 
-                winuser::MB_OK | winuser::MB_ICONERROR);
+                null_mut(),
+                utf16_ptr!(msg),
+                utf16_ptr!(title),
+                winuser::MB_OK | winuser::MB_ICONERROR,
+            );
         }
     }
 
@@ -44,22 +48,26 @@ impl Platform {
 
     pub fn process_message(&self) -> bool {
         unsafe {
-            let mut msg = winuser::MSG { hwnd: null_mut(), message: 0, wParam: 0, lParam: 0, time: 0, pt: POINT { x: 0, y: 0 } };
+            let mut msg = winuser::MSG {
+                hwnd: null_mut(),
+                message: 0,
+                wParam: 0,
+                lParam: 0,
+                time: 0,
+                pt: POINT { x: 0, y: 0 },
+            };
             let has_msg = winuser::PeekMessageW(&mut msg, null_mut(), 0, 0, winuser::PM_REMOVE) > 0;
-            if !has_msg
-            {
+            if !has_msg {
                 return true;
             }
 
-            if msg.message != winuser::WM_SYSKEYDOWN
-            {
+            if msg.message != winuser::WM_SYSKEYDOWN {
                 winuser::TranslateMessage(&msg);
                 winuser::DispatchMessageW(&msg);
             }
 
-            match msg.message
-            {
-                winuser::WM_QUIT => { false },
+            match msg.message {
+                winuser::WM_QUIT => false,
                 _ => true,
             }
         }
@@ -72,7 +80,7 @@ impl Platform {
     fn create_window(instance: HINSTANCE, title: &str) -> HWND {
         unsafe {
             let wnd_class = winuser::WNDCLASSW {
-                style: winuser::CS_HREDRAW | winuser:: CS_VREDRAW,
+                style: winuser::CS_HREDRAW | winuser::CS_VREDRAW,
                 lpfnWndProc: Some(Platform::window_proc),
                 cbClsExtra: 0,
                 cbWndExtra: 0,
@@ -83,7 +91,7 @@ impl Platform {
                 lpszMenuName: null_mut(),
                 lpszClassName: utf16_ptr!(WINDOW_CLASS_NAME),
             };
-    
+
             winuser::RegisterClassW(&wnd_class);
             winuser::CreateWindowExW(
                 winuser::WS_EX_OVERLAPPEDWINDOW,
@@ -101,16 +109,19 @@ impl Platform {
             )
         }
     }
-    
+
     extern "system" fn window_proc(
         hwnd: HWND,
         message: u32,
         wparam: WPARAM,
-        lparam: LPARAM)
-    -> LRESULT {
+        lparam: LPARAM,
+    ) -> LRESULT {
         match message {
             winuser::WM_ERASEBKGND => 1,
-            winuser::WM_DESTROY =>  { unsafe { winuser::PostQuitMessage(0) }; 0 },
+            winuser::WM_DESTROY => {
+                unsafe { winuser::PostQuitMessage(0) };
+                0
+            }
             _ => unsafe { winuser::DefWindowProcW(hwnd, message, wparam, lparam) },
         }
     }

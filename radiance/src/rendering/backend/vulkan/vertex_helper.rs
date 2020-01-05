@@ -1,6 +1,6 @@
 use crate::rendering::Vertex;
-use std::mem::size_of;
 use ash::vk;
+use std::mem::size_of;
 
 pub fn get_binding_description() -> vk::VertexInputBindingDescription {
     vk::VertexInputBindingDescription::builder()
@@ -18,7 +18,7 @@ pub fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 2] 
         .format(vk::Format::R32G32_SFLOAT)
         .build();
 
-    let color_attr =  vk::VertexInputAttributeDescription::builder()
+    let color_attr = vk::VertexInputAttributeDescription::builder()
         .offset(Vertex::color_offset() as u32)
         .binding(0)
         .location(1)

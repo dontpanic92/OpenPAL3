@@ -22,4 +22,3 @@ impl Vec3 {
         Vec3 { x, y, z }
     }
 }
-

@@ -1,32 +1,22 @@
+use super::error::VulkanBackendError;
+use super::platform;
 use crate::constants;
 use crate::rendering::Window;
-use super::platform;
-use super::error::VulkanBackendError;
+use ash::extensions::khr::{Surface, Swapchain};
+use ash::prelude::VkResult;
+use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
+use ash::vk::{
+    Extent2D, Image, ImageView, Offset2D, PhysicalDevice, Pipeline, PresentModeKHR,
+    ShaderStageFlags, SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainKHR,
+};
+use ash::{vk, Device, Entry, Instance, InstanceError};
 use std::error::Error;
 use std::ffi::CString;
-use ash::{ vk, Entry, Instance, InstanceError, Device };
-use ash::prelude::VkResult;
-use ash::vk::{
-    PhysicalDevice,
-    SurfaceKHR,
-    SurfaceFormatKHR,
-    PresentModeKHR,
-    SwapchainKHR,
-    SurfaceCapabilitiesKHR,
-    Image,
-    ImageView,
-    Pipeline,
-    ShaderStageFlags,
-    Extent2D,
-    Offset2D
-};
-use ash::version::{ EntryV1_0, InstanceV1_0, DeviceV1_0 };
-use ash::extensions::khr::{ Surface, Swapchain };
 
 pub fn create_instance(entry: &Entry) -> Result<Instance, InstanceError> {
     let app_info = vk::ApplicationInfo::builder()
-    .engine_name(&CString::new(constants::STR_ENGINE_NAME).unwrap())
-    .build();
+        .engine_name(&CString::new(constants::STR_ENGINE_NAME).unwrap())
+        .build();
     let extension_names = platform::instance_extension_names();
     let layer_names = enabled_layer_names();
     let create_info = vk::InstanceCreateInfo::builder()
@@ -49,7 +39,7 @@ pub fn get_physical_device(instance: &Instance) -> Result<PhysicalDevice, Box<dy
 pub fn create_surface(
     entry: &Entry,
     instance: &Instance,
-    window: &Window
+    window: &Window,
 ) -> VkResult<vk::SurfaceKHR> {
     let win32surface_entry = ash::extensions::khr::Win32Surface::new(entry, instance);
     let instance = unsafe { winapi::um::libloaderapi::GetModuleHandleW(std::ptr::null_mut()) };
@@ -64,17 +54,32 @@ pub fn get_graphics_queue_family_index(
     instance: &Instance,
     physical_device: PhysicalDevice,
     surface_entry: &Surface,
-    surface: SurfaceKHR
+    surface: SurfaceKHR,
 ) -> Result<u32, VulkanBackendError> {
-    let queue_properties = unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
-    queue_properties.iter().enumerate()
-        .position(|(i, &x)| x.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                    && unsafe { surface_entry.get_physical_device_surface_support(physical_device, i as u32, surface) })
+    let queue_properties =
+        unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
+    queue_properties
+        .iter()
+        .enumerate()
+        .position(|(i, &x)| {
+            x.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                && unsafe {
+                    surface_entry.get_physical_device_surface_support(
+                        physical_device,
+                        i as u32,
+                        surface,
+                    )
+                }
+        })
         .map(|f| f as u32)
         .ok_or(VulkanBackendError::NoGraphicQueueFound)
 }
 
-pub fn create_device(instance: &Instance, physical_device: PhysicalDevice, graphic_queue_family_index: u32) -> VkResult<Device> {
+pub fn create_device(
+    instance: &Instance,
+    physical_device: PhysicalDevice,
+    graphic_queue_family_index: u32,
+) -> VkResult<Device> {
     let queue_create_info = vk::DeviceQueueCreateInfo::builder()
         .queue_family_index(graphic_queue_family_index)
         .queue_priorities(&[0.5 as f32])
@@ -87,31 +92,44 @@ pub fn create_device(instance: &Instance, physical_device: PhysicalDevice, graph
     unsafe { instance.create_device(physical_device, &create_info, None) }
 }
 
-pub fn get_surface_format(physical_device: PhysicalDevice, surface_entry: &Surface, surface: SurfaceKHR)
--> Result<SurfaceFormatKHR, Box<dyn Error>> {
-    let formats = unsafe {
-        surface_entry.get_physical_device_surface_formats(physical_device, surface)?
-    };
+pub fn get_surface_format(
+    physical_device: PhysicalDevice,
+    surface_entry: &Surface,
+    surface: SurfaceKHR,
+) -> Result<SurfaceFormatKHR, Box<dyn Error>> {
+    let formats =
+        unsafe { surface_entry.get_physical_device_surface_formats(physical_device, surface)? };
 
     if formats.len() == 0 {
-        return Err(VulkanBackendError::NoSurfaceFormatSupported)?
+        return Err(VulkanBackendError::NoSurfaceFormatSupported)?;
     }
 
     let default = formats[0];
-    Ok(formats.into_iter().find(|f| f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
-        && f.format == vk::Format::R8G8B8A8_UNORM).unwrap_or(default))
+    Ok(formats
+        .into_iter()
+        .find(|f| {
+            f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
+                && f.format == vk::Format::R8G8B8A8_UNORM
+        })
+        .unwrap_or(default))
 }
 
-pub fn get_present_mode(physical_device: PhysicalDevice, surface_entry: &Surface, surface: SurfaceKHR) -> Result<PresentModeKHR, Box<dyn Error>> {
+pub fn get_present_mode(
+    physical_device: PhysicalDevice,
+    surface_entry: &Surface,
+    surface: SurfaceKHR,
+) -> Result<PresentModeKHR, Box<dyn Error>> {
     let present_modes = unsafe {
         surface_entry.get_physical_device_surface_present_modes(physical_device, surface)?
     };
 
     if present_modes.len() == 0 {
-        return Err(VulkanBackendError::NoSurfacePresentModeSupported)?
+        return Err(VulkanBackendError::NoSurfacePresentModeSupported)?;
     }
-    
-    Ok(present_modes.into_iter().find(|f| f == &vk::PresentModeKHR::MAILBOX)
+
+    Ok(present_modes
+        .into_iter()
+        .find(|f| f == &vk::PresentModeKHR::MAILBOX)
         .unwrap_or(vk::PresentModeKHR::FIFO))
 }
 
@@ -120,7 +138,7 @@ pub fn create_swapchain(
     surface: SurfaceKHR,
     capabilities: SurfaceCapabilitiesKHR,
     format: SurfaceFormatKHR,
-    present_mode: PresentModeKHR
+    present_mode: PresentModeKHR,
 ) -> VkResult<SwapchainKHR> {
     let create_info = vk::SwapchainCreateInfoKHR::builder()
         .surface(surface)
@@ -140,7 +158,11 @@ pub fn create_swapchain(
     unsafe { swapchain_entry.create_swapchain(&create_info, None) }
 }
 
-pub fn create_image_views(device: &Device, images: &Vec<Image>, format: SurfaceFormatKHR) -> VkResult<Vec<ImageView>> {
+pub fn create_image_views(
+    device: &Device,
+    images: &Vec<Image>,
+    format: SurfaceFormatKHR,
+) -> VkResult<Vec<ImageView>> {
     let component_mapping = vk::ComponentMapping::builder()
         .a(vk::ComponentSwizzle::IDENTITY)
         .r(vk::ComponentSwizzle::IDENTITY)
@@ -154,20 +176,22 @@ pub fn create_image_views(device: &Device, images: &Vec<Image>, format: SurfaceF
         .base_mip_level(0)
         .level_count(1)
         .build();
-    images.iter().map(|f| {
-        let create_info = vk::ImageViewCreateInfo::builder()
-            .format(format.format)
-            .image(*f)
-            .components(component_mapping)
-            .subresource_range(subres_range)
-            .build();
-        unsafe { device.create_image_view(&create_info, None) }
-    }).collect()
+    images
+        .iter()
+        .map(|f| {
+            let create_info = vk::ImageViewCreateInfo::builder()
+                .format(format.format)
+                .image(*f)
+                .components(component_mapping)
+                .subresource_range(subres_range)
+                .build();
+            unsafe { device.create_image_view(&create_info, None) }
+        })
+        .collect()
 }
 
 pub fn create_pipeline_layout(device: &Device) -> VkResult<vk::PipelineLayout> {
-    let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-        .build();
+    let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder().build();
     unsafe { device.create_pipeline_layout(&pipeline_layout_create_info, None) }
 }
 
@@ -198,7 +222,9 @@ pub fn create_render_pass(device: &Device, format: SurfaceFormatKHR) -> VkResult
         .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
         .src_access_mask(vk::AccessFlags::default())
         .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-        .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+        .dst_access_mask(
+            vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+        )
         .build();
 
     let render_pass_create_info = vk::RenderPassCreateInfo::builder()
@@ -210,11 +236,17 @@ pub fn create_render_pass(device: &Device, format: SurfaceFormatKHR) -> VkResult
     unsafe { device.create_render_pass(&render_pass_create_info, None) }
 }
 
+static SIMPLE_TRIANGLE_VERT: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.vert.spv"));
+static SIMPLE_TRIANGLE_FRAG: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.frag.spv"));
 
-static SIMPLE_TRIANGLE_VERT: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.vert.spv"));
-static SIMPLE_TRIANGLE_FRAG: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.frag.spv"));
-
-pub fn create_pipeline(device: &Device, render_pass: vk::RenderPass, layout: vk::PipelineLayout, extent: &Extent2D) -> Result<Vec<Pipeline>, Box<dyn Error>> {
+pub fn create_pipeline(
+    device: &Device,
+    render_pass: vk::RenderPass,
+    layout: vk::PipelineLayout,
+    extent: &Extent2D,
+) -> Result<Vec<Pipeline>, Box<dyn Error>> {
     let _current_exe = std::env::current_exe()?;
     let vert_shader = create_shader_module_from_array(device, SIMPLE_TRIANGLE_VERT)?;
     let frag_shader = create_shader_module_from_array(device, SIMPLE_TRIANGLE_FRAG)?;
@@ -264,15 +296,16 @@ pub fn create_pipeline(device: &Device, render_pass: vk::RenderPass, layout: vk:
         .scissors(&[scissor])
         .build();
 
-    let pipeline_rasterization_state_create_info = vk::PipelineRasterizationStateCreateInfo::builder()
-        .depth_clamp_enable(false)
-        .rasterizer_discard_enable(false)
-        .polygon_mode(vk::PolygonMode::FILL)
-        .line_width(1f32)
-        .cull_mode(vk::CullModeFlags::BACK)
-        .front_face(vk::FrontFace::CLOCKWISE)
-        .depth_bias_enable(false)
-        .build();
+    let pipeline_rasterization_state_create_info =
+        vk::PipelineRasterizationStateCreateInfo::builder()
+            .depth_clamp_enable(false)
+            .rasterizer_discard_enable(false)
+            .polygon_mode(vk::PolygonMode::FILL)
+            .line_width(1f32)
+            .cull_mode(vk::CullModeFlags::BACK)
+            .front_face(vk::FrontFace::CLOCKWISE)
+            .depth_bias_enable(false)
+            .build();
 
     let pipeline_multisamle_state_create_info = vk::PipelineMultisampleStateCreateInfo::builder()
         .sample_shading_enable(false)
@@ -280,14 +313,20 @@ pub fn create_pipeline(device: &Device, render_pass: vk::RenderPass, layout: vk:
         .build();
 
     let pipeline_color_blend_attachment_state = vk::PipelineColorBlendAttachmentState::builder()
-        .color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A)
+        .color_write_mask(
+            vk::ColorComponentFlags::R
+                | vk::ColorComponentFlags::G
+                | vk::ColorComponentFlags::B
+                | vk::ColorComponentFlags::A,
+        )
         .blend_enable(false)
         .build();
 
-    let pipeline_color_blending_state_create_info = vk::PipelineColorBlendStateCreateInfo::builder()
-        .logic_op_enable(false)
-        .attachments(&[pipeline_color_blend_attachment_state])
-        .build();
+    let pipeline_color_blending_state_create_info =
+        vk::PipelineColorBlendStateCreateInfo::builder()
+            .logic_op_enable(false)
+            .attachments(&[pipeline_color_blend_attachment_state])
+            .build();
 
     let create_info = vk::GraphicsPipelineCreateInfo::builder()
         .stages(&[vert_shader_stage_create_info, frag_shader_stage_create_info])
@@ -302,15 +341,17 @@ pub fn create_pipeline(device: &Device, render_pass: vk::RenderPass, layout: vk:
         .subpass(0)
         .build();
 
-    let pipelines = match unsafe { device.create_graphics_pipelines(vk::PipelineCache::default(), &[create_info], None) } {
+    let pipelines = match unsafe {
+        device.create_graphics_pipelines(vk::PipelineCache::default(), &[create_info], None)
+    } {
         Ok(p) => Ok(p),
         Err((p, e)) => {
             for x in p.into_iter() {
-               unsafe { device.destroy_pipeline(x, None) };
+                unsafe { device.destroy_pipeline(x, None) };
             }
 
             Err(Box::new(e) as Box<dyn Error>)
-        },
+        }
     };
 
     unsafe {
@@ -321,34 +362,46 @@ pub fn create_pipeline(device: &Device, render_pass: vk::RenderPass, layout: vk:
     return pipelines;
 }
 
-pub fn create_shader_module(device: &Device, shader_path: &str) -> Result<vk::ShaderModule, Box<dyn Error>> {
+pub fn create_shader_module(
+    device: &Device,
+    shader_path: &str,
+) -> Result<vk::ShaderModule, Box<dyn Error>> {
     let code = std::fs::read(shader_path)?;
-    let code_u32 = unsafe { std::slice::from_raw_parts::<u32>(code.as_ptr().cast(), code.len() / 4) };
-    let create_info = vk::ShaderModuleCreateInfo::builder()
-        .code(code_u32)
-        .build();
+    let code_u32 =
+        unsafe { std::slice::from_raw_parts::<u32>(code.as_ptr().cast(), code.len() / 4) };
+    let create_info = vk::ShaderModuleCreateInfo::builder().code(code_u32).build();
     unsafe { Ok(device.create_shader_module(&create_info, None)?) }
 }
 
-fn create_shader_module_from_array(device: &Device, code: &[u8]) -> Result<vk::ShaderModule, Box<dyn Error>> {
-    let code_u32 = unsafe { std::slice::from_raw_parts::<u32>(code.as_ptr().cast(), code.len() / 4) };
-    let create_info = vk::ShaderModuleCreateInfo::builder()
-        .code(code_u32)
-        .build();
+fn create_shader_module_from_array(
+    device: &Device,
+    code: &[u8],
+) -> Result<vk::ShaderModule, Box<dyn Error>> {
+    let code_u32 =
+        unsafe { std::slice::from_raw_parts::<u32>(code.as_ptr().cast(), code.len() / 4) };
+    let create_info = vk::ShaderModuleCreateInfo::builder().code(code_u32).build();
     unsafe { Ok(device.create_shader_module(&create_info, None)?) }
 }
 
-pub fn create_framebuffers(device: &Device, image_views: &Vec<ImageView>, extent: &Extent2D, render_pass: vk::RenderPass) -> VkResult<Vec<vk::Framebuffer>>{
-    image_views.iter().map(| view | {
-        let create_info = vk::FramebufferCreateInfo::builder()
-            .render_pass(render_pass)
-            .attachments(&[*view])
-            .layers(1)
-            .width(extent.width)
-            .height(extent.height)
-            .build();
-        unsafe { device.create_framebuffer(&create_info, None) }
-    }).collect()
+pub fn create_framebuffers(
+    device: &Device,
+    image_views: &Vec<ImageView>,
+    extent: &Extent2D,
+    render_pass: vk::RenderPass,
+) -> VkResult<Vec<vk::Framebuffer>> {
+    image_views
+        .iter()
+        .map(|view| {
+            let create_info = vk::FramebufferCreateInfo::builder()
+                .render_pass(render_pass)
+                .attachments(&[*view])
+                .layers(1)
+                .width(extent.width)
+                .height(extent.height)
+                .build();
+            unsafe { device.create_framebuffer(&create_info, None) }
+        })
+        .collect()
 }
 
 fn enabled_layer_names() -> Vec<*const i8> {

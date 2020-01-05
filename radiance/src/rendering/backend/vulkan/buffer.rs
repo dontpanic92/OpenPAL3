@@ -1,11 +1,11 @@
-use crate::rendering::Vertex;
 use super::error::VulkanBackendError;
-use std::mem::size_of;
+use crate::rendering::Vertex;
+use ash::version::{DeviceV1_0, InstanceV1_0};
+use ash::vk::{DeviceMemory, PhysicalDevice};
+use ash::{vk, Device, Instance};
 use std::error::Error;
-use std::rc::{ Rc, Weak };
-use ash::{ vk, Instance, Device };
-use ash::vk::{ PhysicalDevice, DeviceMemory };
-use ash::version::{ InstanceV1_0, DeviceV1_0 };
+use std::mem::size_of;
+use std::rc::{Rc, Weak};
 
 pub enum BufferType {
     Index = 0,
@@ -28,7 +28,15 @@ impl Buffer {
         command_pool: vk::CommandPool,
         queue: vk::Queue,
     ) -> Result<Self, Box<dyn Error>> {
-        Buffer::new_buffer_with_data(instance, device, physical_device, vertices, BufferType::Vertex, command_pool, queue)
+        Buffer::new_buffer_with_data(
+            instance,
+            device,
+            physical_device,
+            vertices,
+            BufferType::Vertex,
+            command_pool,
+            queue,
+        )
     }
 
     pub fn new_index_buffer(
@@ -39,7 +47,15 @@ impl Buffer {
         command_pool: vk::CommandPool,
         queue: vk::Queue,
     ) -> Result<Self, Box<dyn Error>> {
-        Buffer::new_buffer_with_data(instance, device, physical_device, indices, BufferType::Index, command_pool, queue)
+        Buffer::new_buffer_with_data(
+            instance,
+            device,
+            physical_device,
+            indices,
+            BufferType::Index,
+            command_pool,
+            queue,
+        )
     }
 
     pub fn buffer(&self) -> vk::Buffer {
@@ -104,7 +120,8 @@ impl Buffer {
 
         let memory = {
             let requirements = unsafe { rc_device.get_buffer_memory_requirements(buffer) };
-            let properties = unsafe { instance.get_physical_device_memory_properties(physical_device) };
+            let properties =
+                unsafe { instance.get_physical_device_memory_properties(physical_device) };
             let index = Buffer::get_memory_type_index(
                 properties,
                 requirements.memory_type_bits,
@@ -115,12 +132,12 @@ impl Buffer {
                 .allocation_size(requirements.size)
                 .memory_type_index(index as u32)
                 .build();
-            
+
             unsafe { rc_device.allocate_memory(&create_info, None)? }
         };
-        
+
         unsafe { rc_device.bind_buffer_memory(buffer, memory, 0)? };
-        
+
         Ok(Self {
             device,
             buffer,
@@ -137,11 +154,11 @@ impl Buffer {
     ) -> ash::prelude::VkResult<()> {
         let rc_device = self.device.upgrade().unwrap();
         let command_buffer = {
-          let allocation_info = vk::CommandBufferAllocateInfo::builder()
-              .command_pool(command_pool)
-              .level(vk::CommandBufferLevel::PRIMARY)
-              .command_buffer_count(1)
-              .build();
+            let allocation_info = vk::CommandBufferAllocateInfo::builder()
+                .command_pool(command_pool)
+                .level(vk::CommandBufferLevel::PRIMARY)
+                .command_buffer_count(1)
+                .build();
             unsafe { rc_device.allocate_command_buffers(&allocation_info)? }
         };
 
@@ -157,7 +174,8 @@ impl Buffer {
                 command_buffer[0],
                 src_buffer.buffer,
                 self.buffer,
-                &[copy_region]);
+                &[copy_region],
+            );
             rc_device.end_command_buffer(command_buffer[0])?;
 
             let submit_info = vk::SubmitInfo::builder()
@@ -175,8 +193,17 @@ impl Buffer {
     fn copy_memory_from<T>(&mut self, data: &Vec<T>) -> ash::prelude::VkResult<()> {
         let rc_device = self.device.upgrade().unwrap();
         unsafe {
-            let dst =  rc_device.map_memory(self.memory, 0, self.buffer_size, vk::MemoryMapFlags::default())?;
-            std::ptr::copy(data.as_ptr() as *const std::ffi::c_void, dst, self.buffer_size as usize);
+            let dst = rc_device.map_memory(
+                self.memory,
+                0,
+                self.buffer_size,
+                vk::MemoryMapFlags::default(),
+            )?;
+            std::ptr::copy(
+                data.as_ptr() as *const std::ffi::c_void,
+                dst,
+                self.buffer_size as usize,
+            );
             rc_device.unmap_memory(self.memory);
         }
 
@@ -186,19 +213,22 @@ impl Buffer {
     fn get_memory_type_index(
         properties: vk::PhysicalDeviceMemoryProperties,
         candidates: u32,
-        required_properties: vk::MemoryPropertyFlags
+        required_properties: vk::MemoryPropertyFlags,
     ) -> Result<usize, VulkanBackendError> {
-        let index = properties.memory_types.iter()
+        let index = properties
+            .memory_types
+            .iter()
             .take(properties.memory_type_count as usize)
             .enumerate()
-            .filter_map(| (i, t) |
+            .filter_map(|(i, t)| {
                 if (candidates & (1 << i as u32) != 0)
-                    && (t.property_flags & required_properties == required_properties) { 
-                    Some(i) 
+                    && (t.property_flags & required_properties == required_properties)
+                {
+                    Some(i)
                 } else {
                     None
                 }
-            )
+            })
             .take(1)
             .collect::<Vec<usize>>();
 

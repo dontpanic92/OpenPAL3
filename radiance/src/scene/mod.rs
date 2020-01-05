@@ -1,5 +1,5 @@
-mod scene;
 mod entity;
+mod scene;
 
-pub use scene::Scene;
 pub use entity::Entity;
+pub use scene::Scene;

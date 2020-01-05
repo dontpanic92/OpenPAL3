@@ -1,15 +1,15 @@
-use crate::rendering::Window;
-use crate::rendering::backend::RenderingBackend;
-use super::creation_helpers;
 use super::buffer::Buffer;
-use std::error::Error;
-use std::rc::{ Rc, Weak };
-use std::ops::Deref;
-use ash::{ vk, Entry, Instance, Device };
+use super::creation_helpers;
+use crate::rendering::backend::RenderingBackend;
+use crate::rendering::Window;
+use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::vk::CommandPool;
-use ash::version::{ InstanceV1_0, DeviceV1_0 };
+use ash::{vk, Device, Entry, Instance};
+use std::error::Error;
+use std::ops::Deref;
+use std::rc::{Rc, Weak};
 
-use crate::rendering::core_engine::{ vertices, indices };
+use crate::rendering::core_engine::{indices, vertices};
 
 pub struct VulkanRenderingBackend {
     entry: Entry,
@@ -40,11 +40,22 @@ impl RenderingBackend for VulkanRenderingBackend {
         let surface_entry = ash::extensions::khr::Surface::new(&entry, &instance);
         let surface = creation_helpers::create_surface(&entry, &instance, &window)?;
 
-        let graphics_queue_family_index = creation_helpers::get_graphics_queue_family_index(&instance, physical_device, &surface_entry, surface)?;
+        let graphics_queue_family_index = creation_helpers::get_graphics_queue_family_index(
+            &instance,
+            physical_device,
+            &surface_entry,
+            surface,
+        )?;
 
-        let device = Rc::new(creation_helpers::create_device(&instance, physical_device, graphics_queue_family_index)?);
-        let format = creation_helpers::get_surface_format(physical_device, &surface_entry, surface)?;
-        let present_mode = creation_helpers::get_present_mode(physical_device, &surface_entry, surface)?;
+        let device = Rc::new(creation_helpers::create_device(
+            &instance,
+            physical_device,
+            graphics_queue_family_index,
+        )?);
+        let format =
+            creation_helpers::get_surface_format(physical_device, &surface_entry, surface)?;
+        let present_mode =
+            creation_helpers::get_present_mode(physical_device, &surface_entry, surface)?;
         let capabilities = unsafe {
             surface_entry.get_physical_device_surface_capabilities(physical_device, surface)?
         };
@@ -52,12 +63,15 @@ impl RenderingBackend for VulkanRenderingBackend {
         let queue = unsafe { device.get_device_queue(graphics_queue_family_index, 0) };
         let command_pool = {
             let create_info = vk::CommandPoolCreateInfo::builder()
-                .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER | vk::CommandPoolCreateFlags::TRANSIENT)
+                .flags(
+                    vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER
+                        | vk::CommandPoolCreateFlags::TRANSIENT,
+                )
                 .queue_family_index(graphics_queue_family_index)
                 .build();
             unsafe { device.create_command_pool(&create_info, None)? }
         };
-        
+
         let vertex_buffer = Buffer::new_vertex_buffer(
             &instance,
             &device,
@@ -75,15 +89,21 @@ impl RenderingBackend for VulkanRenderingBackend {
             queue,
         )?;
 
-        let swapchain = SwapChain::new(&instance, Rc::downgrade(&device), surface, capabilities, format, present_mode, command_pool)?;
+        let swapchain = SwapChain::new(
+            &instance,
+            Rc::downgrade(&device),
+            surface,
+            capabilities,
+            format,
+            present_mode,
+            command_pool,
+        )?;
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
-        let image_available_semaphore = unsafe {
-            device.create_semaphore(&semaphore_create_info, None)?
-        };
-        let render_finished_semaphore = unsafe {
-            device.create_semaphore(&semaphore_create_info, None)?
-        };
+        let image_available_semaphore =
+            unsafe { device.create_semaphore(&semaphore_create_info, None)? };
+        let render_finished_semaphore =
+            unsafe { device.create_semaphore(&semaphore_create_info, None)? };
 
         let mut vulkan = Self {
             entry,
@@ -100,17 +120,22 @@ impl RenderingBackend for VulkanRenderingBackend {
             swapchain: Some(swapchain),
             surface_entry,
             image_available_semaphore,
-            render_finished_semaphore
+            render_finished_semaphore,
         };
 
         vulkan.record_command_buffers()?;
-        return Ok(vulkan)
+        return Ok(vulkan);
     }
 
     fn test(&mut self) -> Result<(), Box<dyn Error>> {
         let swapchain = self.swapchain.as_ref().unwrap();
         unsafe {
-            let (image_index, _) = swapchain.entry.acquire_next_image(swapchain.handle, u64::max_value(), self.image_available_semaphore, vk::Fence::default())?;
+            let (image_index, _) = swapchain.entry.acquire_next_image(
+                swapchain.handle,
+                u64::max_value(),
+                self.image_available_semaphore,
+                vk::Fence::default(),
+            )?;
             let submit_info = vk::SubmitInfo::builder()
                 .wait_semaphores(&[self.image_available_semaphore])
                 .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
@@ -118,7 +143,8 @@ impl RenderingBackend for VulkanRenderingBackend {
                 .signal_semaphores(&[self.render_finished_semaphore])
                 .build();
 
-            self.device.queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
+            self.device
+                .queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
 
             let present_info = vk::PresentInfoKHR::builder()
                 .wait_semaphores(&[self.render_finished_semaphore])
@@ -164,12 +190,16 @@ impl VulkanRenderingBackend {
 
     fn record_command_buffers(&mut self) -> Result<(), vk::Result> {
         let swapchain = self.swapchain.as_ref().unwrap();
-        for (command_buffer, framebuffer) in (&swapchain.command_buffers).into_iter().zip(&swapchain.framebuffers) {
+        for (command_buffer, framebuffer) in (&swapchain.command_buffers)
+            .into_iter()
+            .zip(&swapchain.framebuffers)
+        {
             let begin_info = vk::CommandBufferBeginInfo::builder()
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
                 .build();
             unsafe {
-                self.device.begin_command_buffer(*command_buffer, &begin_info)?;
+                self.device
+                    .begin_command_buffer(*command_buffer, &begin_info)?;
             }
 
             let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
@@ -179,16 +209,40 @@ impl VulkanRenderingBackend {
                     vk::Rect2D::builder()
                         .offset(vk::Offset2D::builder().x(0).y(0).build())
                         .extent(self.get_capabilities()?.current_extent)
-                        .build())
-                .clear_values(&[vk::ClearValue { color: vk::ClearColorValue { float32: [0f32, 0f32, 0f32, 1f32] } }])
+                        .build(),
+                )
+                .clear_values(&[vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0f32, 0f32, 0f32, 1f32],
+                    },
+                }])
                 .build();
 
             unsafe {
-                self.device.cmd_begin_render_pass(*command_buffer, &render_pass_begin_info, vk::SubpassContents::INLINE );
-                self.device.cmd_bind_pipeline(*command_buffer, vk::PipelineBindPoint::GRAPHICS, swapchain.pipeline);
-                self.device.cmd_bind_vertex_buffers(*command_buffer, 0, &[self.vertex_buffer.as_ref().unwrap().buffer()], &[0]);
-                self.device.cmd_bind_index_buffer(*command_buffer,self.index_buffer.as_ref().unwrap().buffer(), 0, vk::IndexType::UINT32);
-                self.device.cmd_draw_indexed(*command_buffer, indices.len() as u32, 1, 0, 0, 0);
+                self.device.cmd_begin_render_pass(
+                    *command_buffer,
+                    &render_pass_begin_info,
+                    vk::SubpassContents::INLINE,
+                );
+                self.device.cmd_bind_pipeline(
+                    *command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    swapchain.pipeline,
+                );
+                self.device.cmd_bind_vertex_buffers(
+                    *command_buffer,
+                    0,
+                    &[self.vertex_buffer.as_ref().unwrap().buffer()],
+                    &[0],
+                );
+                self.device.cmd_bind_index_buffer(
+                    *command_buffer,
+                    self.index_buffer.as_ref().unwrap().buffer(),
+                    0,
+                    vk::IndexType::UINT32,
+                );
+                self.device
+                    .cmd_draw_indexed(*command_buffer, indices.len() as u32, 1, 0, 0, 0);
                 self.device.cmd_end_render_pass(*command_buffer);
                 self.device.end_command_buffer(*command_buffer)?;
             }
@@ -199,7 +253,8 @@ impl VulkanRenderingBackend {
 
     fn get_capabilities(&self) -> ash::prelude::VkResult<vk::SurfaceCapabilitiesKHR> {
         unsafe {
-            self.surface_entry.get_physical_device_surface_capabilities(self.physical_device, self.surface)
+            self.surface_entry
+                .get_physical_device_surface_capabilities(self.physical_device, self.surface)
         }
     }
 }
@@ -213,8 +268,10 @@ impl Drop for VulkanRenderingBackend {
             drop(self.swapchain.take());
             self.device.destroy_command_pool(self.command_pool, None);
 
-            self.device.destroy_semaphore(self.image_available_semaphore, None);
-            self.device.destroy_semaphore(self.render_finished_semaphore, None);
+            self.device
+                .destroy_semaphore(self.image_available_semaphore, None);
+            self.device
+                .destroy_semaphore(self.render_finished_semaphore, None);
 
             self.surface_entry.destroy_surface(self.surface, None);
             self.instance.destroy_instance(None);
@@ -252,15 +309,31 @@ impl SwapChain {
 
         let entry = ash::extensions::khr::Swapchain::new(instance, rc_device.deref());
 
-        let handle = creation_helpers::create_swapchain(&entry, surface, capabilities, format, present_mode)?;
+        let handle = creation_helpers::create_swapchain(
+            &entry,
+            surface,
+            capabilities,
+            format,
+            present_mode,
+        )?;
         let images = unsafe { entry.get_swapchain_images(handle)? };
         let image_views = creation_helpers::create_image_views(&rc_device, &images, format)?;
 
         let render_pass = creation_helpers::create_render_pass(&rc_device, format)?;
         let pipeline_layout = creation_helpers::create_pipeline_layout(&rc_device)?;
-        let pipeline = creation_helpers::create_pipeline(&rc_device, render_pass, pipeline_layout, &capabilities.current_extent)?[0];
+        let pipeline = creation_helpers::create_pipeline(
+            &rc_device,
+            render_pass,
+            pipeline_layout,
+            &capabilities.current_extent,
+        )?[0];
 
-        let framebuffers = creation_helpers::create_framebuffers(&rc_device, &image_views, &capabilities.current_extent, render_pass)?;
+        let framebuffers = creation_helpers::create_framebuffers(
+            &rc_device,
+            &image_views,
+            &capabilities.current_extent,
+            render_pass,
+        )?;
 
         let command_buffers = {
             let create_info = vk::CommandBufferAllocateInfo::builder()

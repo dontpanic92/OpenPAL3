@@ -1,8 +1,8 @@
-mod platform;
-mod error;
 mod buffer;
 mod creation_helpers;
-mod vulkan_backend;
+mod error;
+mod platform;
 mod vertex_helper;
+mod vulkan_backend;
 
 pub use vulkan_backend::VulkanRenderingBackend;

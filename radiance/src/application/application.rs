@@ -2,10 +2,10 @@ use super::extensions::ResultExtensions;
 use super::Platform;
 
 use crate::constants;
-use crate::rendering;
 use crate::radiance;
-use crate::radiance::RadianceEngine;
 use crate::radiance::DefaultRadianceEngine;
+use crate::radiance::RadianceEngine;
+use crate::rendering;
 use crate::rendering::backend::VulkanRenderingBackend;
 
 pub struct Application {
@@ -16,9 +16,14 @@ pub struct Application {
 impl Application {
     pub fn new() -> Self {
         let platform = Platform::new();
-        let window = rendering::Window { hwnd: platform.hwnd() };
+        let window = rendering::Window {
+            hwnd: platform.hwnd(),
+        };
         Self {
-            radiance_engine: radiance::create_default_radiance_engine::<VulkanRenderingBackend>(&window).unwrap_or_fail_fast(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
+            radiance_engine: radiance::create_default_radiance_engine::<VulkanRenderingBackend>(
+                &window,
+            )
+            .unwrap_or_fail_fast(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
             platform: platform,
         }
     }
@@ -29,8 +34,7 @@ impl Application {
 
     pub fn run(&mut self) {
         loop {
-            if !self.platform.process_message()
-            {
+            if !self.platform.process_message() {
                 break;
             }
 
