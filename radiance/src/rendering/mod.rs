@@ -1,19 +1,19 @@
-mod engine;
-mod backend;
-mod entity;
-mod scene;
+pub mod core_engine;
+pub mod backend;
 mod vertex;
 
-pub use vertex::*;
-use engine::RuntimeEngine;
+pub use vertex::Vertex;
+pub use core_engine::CoreRenderingEngine;
 
-pub trait Engine {
+pub trait RenderingEngine {
     fn render(&mut self);
 }
 
-pub fn create(window: &Window) -> Result<Box<dyn Engine>, Box<dyn std::error::Error>>
+pub fn create_core_rendering_engine<TBackend: backend::RenderingBackend>(
+    window: &Window
+) -> Result<CoreRenderingEngine<TBackend>, Box<dyn std::error::Error>>
 {
-    Ok(Box::new(RuntimeEngine::new(window)?))
+    Ok(CoreRenderingEngine::<TBackend>::new(window)?)
 }
 
 #[cfg(target_os = "windows")]

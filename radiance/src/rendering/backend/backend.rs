@@ -1,5 +1,7 @@
-use crate::rendering::Vertex;
+use crate::rendering;
 
-pub trait Backend {
-    fn test(&mut self, vertices: &Vec<Vertex>) -> Result<(), Box<dyn std::error::Error>>;
+pub trait RenderingBackend {
+    fn new(window: &rendering::Window) -> Result<Self, Box<dyn std::error::Error>>
+        where Self: std::marker::Sized;
+    fn test(&mut self) -> Result<(), Box<dyn std::error::Error>>;
 }

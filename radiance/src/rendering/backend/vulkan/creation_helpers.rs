@@ -28,7 +28,7 @@ pub fn create_instance(entry: &Entry) -> Result<Instance, InstanceError> {
     .engine_name(&CString::new(constants::STR_ENGINE_NAME).unwrap())
     .build();
     let extension_names = platform::instance_extension_names();
-    let layer_names = enabled_layer_names(entry);
+    let layer_names = enabled_layer_names();
     let create_info = vk::InstanceCreateInfo::builder()
         .application_info(&app_info)
         .enabled_extension_names(&extension_names)
@@ -215,12 +215,9 @@ static SIMPLE_TRIANGLE_VERT: &'static [u8] = include_bytes!(concat!(env!("OUT_DI
 static SIMPLE_TRIANGLE_FRAG: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.frag.spv"));
 
 pub fn create_pipeline(device: &Device, render_pass: vk::RenderPass, layout: vk::PipelineLayout, extent: &Extent2D) -> Result<Vec<Pipeline>, Box<dyn Error>> {
-    let current_exe = std::env::current_exe()?;
-    let exe_folder = current_exe.parent().unwrap();
+    let _current_exe = std::env::current_exe()?;
     let vert_shader = create_shader_module_from_array(device, SIMPLE_TRIANGLE_VERT)?;
     let frag_shader = create_shader_module_from_array(device, SIMPLE_TRIANGLE_FRAG)?;
-    //let vert_shader = create_shader_module(device, exe_folder.join("../resources/shaders/simple_triangle.vert.spv").to_str().unwrap())?;
-    //let frag_shader = create_shader_module(device, exe_folder.join("../resources/shaders/simple_triangle.frag.spv").to_str().unwrap())?;
 
     let entry_point = &CString::new("main").unwrap();
     let vert_shader_stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
@@ -354,7 +351,6 @@ pub fn create_framebuffers(device: &Device, image_views: &Vec<ImageView>, extent
     }).collect()
 }
 
-fn enabled_layer_names(entry: &Entry) -> Vec<*const i8> {
-
+fn enabled_layer_names() -> Vec<*const i8> {
     vec!["VK_LAYER_LUNARG_standard_validation".as_ptr() as *const i8]
 }

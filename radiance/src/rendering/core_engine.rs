@@ -1,12 +1,11 @@
 use crate::rendering::Vertex;
 use crate::math::*;
-use super::Engine;
-use super::backend::Backend;
-use super::backend::vulkan::VulkanBackend;
+use super::RenderingEngine;
+use super::backend::RenderingBackend;
 
-pub struct RuntimeEngine
+pub struct CoreRenderingEngine<TBackend: RenderingBackend>
 {
-    backend: Box<dyn Backend>,
+    backend: TBackend,
 }
 
 lazy_static! { 
@@ -24,15 +23,16 @@ lazy_static! {
     };
 }
 
-impl Engine for RuntimeEngine {
-    fn render(&mut self) {        
-        let _ = self.backend.test(&vertices);
+impl<TBackend: RenderingBackend> RenderingEngine for CoreRenderingEngine<TBackend> {
+    fn render(&mut self) { 
+        let _ = self.backend.test();
     }
 }
 
-impl RuntimeEngine {
-    pub fn new(window: &super::Window) -> Result<RuntimeEngine, Box<dyn std::error::Error>> {
-        let vulkan = VulkanBackend::new(window)?;
-        Ok(Self { backend: Box::new(vulkan) })
+impl<TBackend: RenderingBackend> CoreRenderingEngine<TBackend> {
+    pub fn new(window: &super::Window) -> Result<CoreRenderingEngine<TBackend>
+, Box<dyn std::error::Error>> {
+        let vulkan = TBackend::new(window)?;
+        Ok(Self { backend: vulkan })
     }
 }

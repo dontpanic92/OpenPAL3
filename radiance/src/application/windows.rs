@@ -24,6 +24,7 @@ impl Platform {
         if hwnd.is_null() {
             println!("{}", unsafe { errhandlingapi::GetLastError() });
         }
+
         Self { instance, hwnd }
     }
 

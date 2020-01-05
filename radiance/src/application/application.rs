@@ -3,9 +3,13 @@ use super::Platform;
 
 use crate::constants;
 use crate::rendering;
+use crate::radiance;
+use crate::radiance::RadianceEngine;
+use crate::radiance::DefaultRadianceEngine;
+use crate::rendering::backend::VulkanRenderingBackend;
 
 pub struct Application {
-    rendering_engine: Box<dyn rendering::Engine>,
+    radiance_engine: DefaultRadianceEngine<VulkanRenderingBackend>,
     platform: Platform,
 }
 
@@ -13,8 +17,8 @@ impl Application {
     pub fn new() -> Self {
         let platform = Platform::new();
         let window = rendering::Window { hwnd: platform.hwnd() };
-        Self { 
-            rendering_engine: rendering::create(&window).unwrap_or_fail_fast(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
+        Self {
+            radiance_engine: radiance::create_default_radiance_engine::<VulkanRenderingBackend>(&window).unwrap_or_fail_fast(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
             platform: platform,
         }
     }
@@ -30,7 +34,7 @@ impl Application {
                 break;
             }
 
-            self.rendering_engine.render();
+            self.radiance_engine.update();
         }
     }
 }

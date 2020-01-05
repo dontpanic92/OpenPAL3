@@ -1,6 +1,5 @@
 use crate::rendering::Window;
-use crate::rendering::Vertex;
-use crate::rendering::backend::Backend;
+use crate::rendering::backend::RenderingBackend;
 use super::creation_helpers;
 use super::buffer::Buffer;
 use std::error::Error;
@@ -10,9 +9,9 @@ use ash::{ vk, Entry, Instance, Device };
 use ash::vk::CommandPool;
 use ash::version::{ InstanceV1_0, DeviceV1_0 };
 
-use crate::rendering::engine::{ vertices, indices };
+use crate::rendering::core_engine::{ vertices, indices };
 
-pub struct VulkanBackend {
+pub struct VulkanRenderingBackend {
     entry: Entry,
     instance: Instance,
     physical_device: vk::PhysicalDevice,
@@ -32,42 +31,8 @@ pub struct VulkanBackend {
     render_finished_semaphore: vk::Semaphore,
 }
 
-impl Backend for VulkanBackend {
-    fn test(&mut self, v: &Vec<Vertex>) -> Result<(), Box<dyn Error>> {
-        let swapchain = self.swapchain.as_ref().unwrap();
-        unsafe {
-            let (image_index, _) = swapchain.entry.acquire_next_image(swapchain.handle, u64::max_value(), self.image_available_semaphore, vk::Fence::default())?;
-            let submit_info = vk::SubmitInfo::builder()
-                .wait_semaphores(&[self.image_available_semaphore])
-                .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-                .command_buffers(&[swapchain.command_buffers[image_index as usize]])
-                .signal_semaphores(&[self.render_finished_semaphore])
-                .build();
-
-            self.device.queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
-
-            let present_info = vk::PresentInfoKHR::builder()
-                .wait_semaphores(&[self.render_finished_semaphore])
-                .swapchains(&[swapchain.handle])
-                .image_indices(&[image_index])
-                .build();
-
-            match swapchain.entry.queue_present(self.queue, &present_info) {
-                Ok(true) => (),
-                Ok(false) => self.recreate_swapchain()?,
-                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.recreate_swapchain()?,
-                Err(x) => return Err(Box::new(x) as Box<dyn Error>),
-            };
-
-            // Not an optimized way
-            let _ = self.device.device_wait_idle();
-        }
-        Ok(())
-    }
-}
-
-impl VulkanBackend {
-    pub fn new(window: &Window) -> Result<Self, Box<dyn std::error::Error>> {
+impl RenderingBackend for VulkanRenderingBackend {
+    fn new(window: &Window) -> Result<Self, Box<dyn std::error::Error>> {
         let entry = Entry::new()?;
         let instance = creation_helpers::create_instance(&entry)?;
         let physical_device = creation_helpers::get_physical_device(&instance)?;
@@ -142,6 +107,40 @@ impl VulkanBackend {
         return Ok(vulkan)
     }
 
+    fn test(&mut self) -> Result<(), Box<dyn Error>> {
+        let swapchain = self.swapchain.as_ref().unwrap();
+        unsafe {
+            let (image_index, _) = swapchain.entry.acquire_next_image(swapchain.handle, u64::max_value(), self.image_available_semaphore, vk::Fence::default())?;
+            let submit_info = vk::SubmitInfo::builder()
+                .wait_semaphores(&[self.image_available_semaphore])
+                .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
+                .command_buffers(&[swapchain.command_buffers[image_index as usize]])
+                .signal_semaphores(&[self.render_finished_semaphore])
+                .build();
+
+            self.device.queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
+
+            let present_info = vk::PresentInfoKHR::builder()
+                .wait_semaphores(&[self.render_finished_semaphore])
+                .swapchains(&[swapchain.handle])
+                .image_indices(&[image_index])
+                .build();
+
+            match swapchain.entry.queue_present(self.queue, &present_info) {
+                Ok(true) => (),
+                Ok(false) => self.recreate_swapchain()?,
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.recreate_swapchain()?,
+                Err(x) => return Err(Box::new(x) as Box<dyn Error>),
+            };
+
+            // Not an optimized way
+            let _ = self.device.device_wait_idle();
+        }
+        Ok(())
+    }
+}
+
+impl VulkanRenderingBackend {
     fn recreate_swapchain(&mut self) -> Result<(), Box<dyn Error>> {
         unsafe {
             let _ = self.device.device_wait_idle();
@@ -205,7 +204,7 @@ impl VulkanBackend {
     }
 }
 
-impl Drop for VulkanBackend {
+impl Drop for VulkanRenderingBackend {
     fn drop(&mut self) {
         unsafe {
             let _ = self.device.device_wait_idle();

@@ -1,6 +1,8 @@
 pub mod application;
 pub mod rendering;
 pub mod math;
+pub mod radiance;
+pub mod scene;
 
 mod constants;
 
