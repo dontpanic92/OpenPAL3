@@ -61,15 +61,16 @@ impl Platform {
                 return true;
             }
 
+            if msg.message == winuser::WM_QUIT {
+                return false;
+            }
+
             if msg.message != winuser::WM_SYSKEYDOWN {
                 winuser::TranslateMessage(&msg);
                 winuser::DispatchMessageW(&msg);
             }
 
-            match msg.message {
-                winuser::WM_QUIT => false,
-                _ => true,
-            }
+            return true;
         }
     }
 
@@ -120,7 +121,7 @@ impl Platform {
             winuser::WM_ERASEBKGND => 1,
             winuser::WM_DESTROY => {
                 unsafe { winuser::PostQuitMessage(0) };
-                0
+                1
             }
             _ => unsafe { winuser::DefWindowProcW(hwnd, message, wparam, lparam) },
         }

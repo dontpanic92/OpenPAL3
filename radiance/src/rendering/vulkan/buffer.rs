@@ -1,5 +1,4 @@
 use super::error::VulkanBackendError;
-use crate::rendering::Vertex;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::vk::{DeviceMemory, PhysicalDevice};
 use ash::{vk, Device, Instance};
@@ -17,58 +16,17 @@ pub struct Buffer {
     buffer: vk::Buffer,
     memory: DeviceMemory,
     buffer_size: u64,
+    element_count: u32,
 }
 
 impl Buffer {
-    pub fn new_vertex_buffer(
-        instance: &Instance,
-        device: &Rc<Device>,
-        physical_device: PhysicalDevice,
-        vertices: &Vec<Vertex>,
-        command_pool: vk::CommandPool,
-        queue: vk::Queue,
-    ) -> Result<Self, Box<dyn Error>> {
-        Buffer::new_buffer_with_data(
-            instance,
-            device,
-            physical_device,
-            vertices,
-            BufferType::Vertex,
-            command_pool,
-            queue,
-        )
-    }
-
-    pub fn new_index_buffer(
-        instance: &Instance,
-        device: &Rc<Device>,
-        physical_device: PhysicalDevice,
-        indices: &Vec<u32>,
-        command_pool: vk::CommandPool,
-        queue: vk::Queue,
-    ) -> Result<Self, Box<dyn Error>> {
-        Buffer::new_buffer_with_data(
-            instance,
-            device,
-            physical_device,
-            indices,
-            BufferType::Index,
-            command_pool,
-            queue,
-        )
-    }
-
-    pub fn buffer(&self) -> vk::Buffer {
-        self.buffer
-    }
-
-    fn new_buffer_with_data<T>(
+    pub fn new_buffer_with_data<T>(
         instance: &Instance,
         device: &Rc<Device>,
         physical_device: PhysicalDevice,
         data: &Vec<T>,
         buffer_type: BufferType,
-        command_pool: vk::CommandPool,
+        command_pool: &vk::CommandPool,
         queue: vk::Queue,
     ) -> Result<Self, Box<dyn Error>> {
         let mut staging_buffer = Buffer::new_buffer(
@@ -97,6 +55,14 @@ impl Buffer {
 
         buffer.copy_buffer_from(&staging_buffer, command_pool, queue)?;
         Ok(buffer)
+    }
+
+    pub fn buffer(&self) -> vk::Buffer {
+        self.buffer
+    }
+
+    pub fn element_count(&self) -> u32 {
+        self.element_count
     }
 
     fn new_buffer<T>(
@@ -143,19 +109,20 @@ impl Buffer {
             buffer,
             memory,
             buffer_size,
+            element_count: data.len() as u32,
         })
     }
 
     fn copy_buffer_from(
         &mut self,
         src_buffer: &Buffer,
-        command_pool: vk::CommandPool,
+        command_pool: &vk::CommandPool,
         queue: vk::Queue,
     ) -> ash::prelude::VkResult<()> {
         let rc_device = self.device.upgrade().unwrap();
         let command_buffer = {
             let allocation_info = vk::CommandBufferAllocateInfo::builder()
-                .command_pool(command_pool)
+                .command_pool(*command_pool)
                 .level(vk::CommandBufferLevel::PRIMARY)
                 .command_buffer_count(1)
                 .build();
@@ -184,7 +151,7 @@ impl Buffer {
             rc_device.queue_submit(queue, &[submit_info], vk::Fence::default())?;
             rc_device.queue_wait_idle(queue)?;
 
-            rc_device.free_command_buffers(command_pool, &command_buffer);
+            rc_device.free_command_buffers(*command_pool, &command_buffer);
         }
 
         Ok(())

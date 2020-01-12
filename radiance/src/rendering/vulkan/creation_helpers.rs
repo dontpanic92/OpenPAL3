@@ -1,5 +1,5 @@
 use super::error::VulkanBackendError;
-use super::platform;
+use super::helpers;
 use crate::constants;
 use crate::rendering::Window;
 use ash::extensions::khr::{Surface, Swapchain};
@@ -17,7 +17,7 @@ pub fn create_instance(entry: &Entry) -> Result<Instance, InstanceError> {
     let app_info = vk::ApplicationInfo::builder()
         .engine_name(&CString::new(constants::STR_ENGINE_NAME).unwrap())
         .build();
-    let extension_names = platform::instance_extension_names();
+    let extension_names = helpers::instance_extension_names();
     let layer_names = enabled_layer_names();
     let create_info = vk::InstanceCreateInfo::builder()
         .application_info(&app_info)
@@ -84,7 +84,7 @@ pub fn create_device(
         .queue_family_index(graphic_queue_family_index)
         .queue_priorities(&[0.5 as f32])
         .build();
-    let extension_names = platform::device_extension_names();
+    let extension_names = helpers::device_extension_names();
     let create_info = vk::DeviceCreateInfo::builder()
         .queue_create_infos(&[queue_create_info])
         .enabled_extension_names(&extension_names)
@@ -405,5 +405,10 @@ pub fn create_framebuffers(
 }
 
 fn enabled_layer_names() -> Vec<*const i8> {
-    vec!["VK_LAYER_LUNARG_standard_validation".as_ptr() as *const i8]
+    unsafe {
+        vec![
+            std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_standard_validation\0")
+                .as_ptr() as *const i8,
+        ]
+    }
 }

@@ -1,17 +1,20 @@
-use super::buffer::Buffer;
+use super::buffer::{Buffer, BufferType};
 use super::creation_helpers;
-use crate::rendering::backend::RenderingBackend;
-use crate::rendering::Window;
+use super::helpers;
+use super::render_object::VulkanRenderObject;
+use crate::rendering::RenderObject;
+use crate::rendering::{RenderingEngine, Window};
+use crate::scene::Scene;
+use ash::extensions::ext::DebugReport;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::vk::CommandPool;
 use ash::{vk, Device, Entry, Instance};
+use core::borrow::Borrow;
 use std::error::Error;
 use std::ops::Deref;
 use std::rc::{Rc, Weak};
 
-use crate::rendering::core_engine::{indices, vertices};
-
-pub struct VulkanRenderingBackend {
+pub struct VulkanRenderingEngine {
     entry: Entry,
     instance: Instance,
     physical_device: vk::PhysicalDevice,
@@ -21,17 +24,17 @@ pub struct VulkanRenderingBackend {
     present_mode: vk::PresentModeKHR,
     queue: vk::Queue,
     swapchain: Option<SwapChain>,
-    command_pool: CommandPool,
-    vertex_buffer: Option<Buffer>,
-    index_buffer: Option<Buffer>,
+    command_pool: Rc<CommandPool>,
+    debug_callback: vk::DebugReportCallbackEXT,
 
     surface_entry: ash::extensions::khr::Surface,
+    debug_entry: ash::extensions::ext::DebugReport,
 
     image_available_semaphore: vk::Semaphore,
     render_finished_semaphore: vk::Semaphore,
 }
 
-impl RenderingBackend for VulkanRenderingBackend {
+impl RenderingEngine for VulkanRenderingEngine {
     fn new(window: &Window) -> Result<Self, Box<dyn std::error::Error>> {
         let entry = Entry::new()?;
         let instance = creation_helpers::create_instance(&entry)?;
@@ -69,25 +72,8 @@ impl RenderingBackend for VulkanRenderingBackend {
                 )
                 .queue_family_index(graphics_queue_family_index)
                 .build();
-            unsafe { device.create_command_pool(&create_info, None)? }
+            Rc::new(unsafe { device.create_command_pool(&create_info, None)? })
         };
-
-        let vertex_buffer = Buffer::new_vertex_buffer(
-            &instance,
-            &device,
-            physical_device,
-            &vertices,
-            command_pool,
-            queue,
-        )?;
-        let index_buffer = Buffer::new_index_buffer(
-            &instance,
-            &device,
-            physical_device,
-            &indices,
-            command_pool,
-            queue,
-        )?;
 
         let swapchain = SwapChain::new(
             &instance,
@@ -96,7 +82,6 @@ impl RenderingBackend for VulkanRenderingBackend {
             capabilities,
             format,
             present_mode,
-            command_pool,
         )?;
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
@@ -105,7 +90,20 @@ impl RenderingBackend for VulkanRenderingBackend {
         let render_finished_semaphore =
             unsafe { device.create_semaphore(&semaphore_create_info, None)? };
 
-        let mut vulkan = Self {
+        // DEBUG INFO
+        let debug_entry = DebugReport::new(&entry, &instance);
+        let debug_callback = {
+            let create_info = vk::DebugReportCallbackCreateInfoEXT::builder()
+                .flags(
+                    vk::DebugReportFlagsEXT::ERROR
+                        | vk::DebugReportFlagsEXT::WARNING
+                        | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING,
+                )
+                .pfn_callback(Some(helpers::debug_callback));
+            unsafe { debug_entry.create_debug_report_callback(&create_info, None)? }
+        };
+
+        let vulkan = Self {
             entry,
             instance,
             physical_device,
@@ -115,64 +113,68 @@ impl RenderingBackend for VulkanRenderingBackend {
             present_mode,
             queue,
             command_pool,
-            vertex_buffer: Some(vertex_buffer),
-            index_buffer: Some(index_buffer),
             swapchain: Some(swapchain),
+            debug_callback,
             surface_entry,
+            debug_entry,
             image_available_semaphore,
             render_finished_semaphore,
         };
 
-        vulkan.record_command_buffers()?;
         return Ok(vulkan);
     }
 
-    fn test(&mut self) -> Result<(), Box<dyn Error>> {
-        let swapchain = self.swapchain.as_ref().unwrap();
-        unsafe {
-            let (image_index, _) = swapchain.entry.acquire_next_image(
-                swapchain.handle,
-                u64::max_value(),
-                self.image_available_semaphore,
-                vk::Fence::default(),
-            )?;
-            let submit_info = vk::SubmitInfo::builder()
-                .wait_semaphores(&[self.image_available_semaphore])
-                .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-                .command_buffers(&[swapchain.command_buffers[image_index as usize]])
-                .signal_semaphores(&[self.render_finished_semaphore])
-                .build();
-
-            self.device
-                .queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
-
-            let present_info = vk::PresentInfoKHR::builder()
-                .wait_semaphores(&[self.render_finished_semaphore])
-                .swapchains(&[swapchain.handle])
-                .image_indices(&[image_index])
-                .build();
-
-            match swapchain.entry.queue_present(self.queue, &present_info) {
-                Ok(true) => (),
-                Ok(false) => self.recreate_swapchain()?,
-                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.recreate_swapchain()?,
-                Err(x) => return Err(Box::new(x) as Box<dyn Error>),
-            };
-
-            // Not an optimized way
-            let _ = self.device.device_wait_idle();
+    fn render(&mut self, scene: &mut Scene) {
+        if self.swapchain.is_none() {
+            self.recreate_swapchain().unwrap();
+            scene
+                .entities_mut()
+                .iter_mut()
+                .filter_map(|e| e.get_component_mut::<VulkanRenderObject>())
+                .for_each(|obj| obj.recreate_command_buffers(&self).unwrap());
         }
-        Ok(())
+
+        for e in scene.entities() {
+            match e.get_component::<VulkanRenderObject>() {
+                None => continue,
+                Some(render_object) => {
+                    match self.render_object(render_object.command_buffers()) {
+                        Ok(()) => (),
+                        Err(err) => println!("{}", err),
+                    }
+                }
+            }
+        }
+    }
+
+    fn scene_loaded(&mut self, scene: &mut Scene) {
+        for e in scene.entities_mut() {
+            match e.get_component::<RenderObject>() {
+                None => continue,
+                Some(render_object) => {
+                    let object = VulkanRenderObject::new(self, render_object).unwrap();
+                    e.add_component::<VulkanRenderObject>(object);
+                }
+            }
+        }
     }
 }
 
-impl VulkanRenderingBackend {
+impl VulkanRenderingEngine {
+    pub fn device(&self) -> Weak<Device> {
+        Rc::downgrade(&self.device)
+    }
+
+    pub fn command_pool(&self) -> Weak<CommandPool> {
+        Rc::downgrade(&self.command_pool)
+    }
+
     fn recreate_swapchain(&mut self) -> Result<(), Box<dyn Error>> {
         unsafe {
             let _ = self.device.device_wait_idle();
         }
 
-        drop(self.swapchain.take());
+        self.swapchain = None;
         self.swapchain = Some(SwapChain::new(
             &self.instance,
             Rc::downgrade(&self.device),
@@ -180,19 +182,44 @@ impl VulkanRenderingBackend {
             self.get_capabilities()?,
             self.format,
             self.present_mode,
-            self.command_pool,
         )?);
-
-        self.record_command_buffers()?;
 
         Ok(())
     }
 
-    fn record_command_buffers(&mut self) -> Result<(), vk::Result> {
+    pub fn create_buffer<T>(
+        &self,
+        buffer_type: BufferType,
+        data: &Vec<T>,
+    ) -> Result<Buffer, Box<dyn Error>> {
+        Buffer::new_buffer_with_data::<T>(
+            &self.instance,
+            &self.device,
+            self.physical_device,
+            data,
+            buffer_type,
+            self.command_pool.borrow(),
+            self.queue,
+        )
+    }
+
+    pub fn create_command_buffers(
+        &self,
+        vertex_buffer: &Buffer,
+        index_buffer: &Buffer,
+    ) -> Result<Vec<vk::CommandBuffer>, vk::Result> {
         let swapchain = self.swapchain.as_ref().unwrap();
-        for (command_buffer, framebuffer) in (&swapchain.command_buffers)
-            .into_iter()
-            .zip(&swapchain.framebuffers)
+        let command_buffers = {
+            let create_info = vk::CommandBufferAllocateInfo::builder()
+                .command_pool(*self.command_pool)
+                .command_buffer_count(swapchain.framebuffers.len() as u32)
+                .level(vk::CommandBufferLevel::PRIMARY)
+                .build();
+            unsafe { self.device.allocate_command_buffers(&create_info)? }
+        };
+
+        for (command_buffer, framebuffer) in
+            (&command_buffers).into_iter().zip(&swapchain.framebuffers)
         {
             let begin_info = vk::CommandBufferBeginInfo::builder()
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
@@ -232,22 +259,73 @@ impl VulkanRenderingBackend {
                 self.device.cmd_bind_vertex_buffers(
                     *command_buffer,
                     0,
-                    &[self.vertex_buffer.as_ref().unwrap().buffer()],
+                    &[vertex_buffer.buffer()],
                     &[0],
                 );
                 self.device.cmd_bind_index_buffer(
                     *command_buffer,
-                    self.index_buffer.as_ref().unwrap().buffer(),
+                    index_buffer.buffer(),
                     0,
                     vk::IndexType::UINT32,
                 );
-                self.device
-                    .cmd_draw_indexed(*command_buffer, indices.len() as u32, 1, 0, 0, 0);
+                self.device.cmd_draw_indexed(
+                    *command_buffer,
+                    index_buffer.element_count(),
+                    1,
+                    0,
+                    0,
+                    0,
+                );
                 self.device.cmd_end_render_pass(*command_buffer);
                 self.device.end_command_buffer(*command_buffer)?;
             }
         }
 
+        Ok(command_buffers)
+    }
+
+    fn render_object(
+        &mut self,
+        command_buffers: &Vec<vk::CommandBuffer>,
+    ) -> Result<(), Box<dyn Error>> {
+        let swapchain = self.swapchain.as_ref().unwrap();
+        unsafe {
+            let (image_index, _) = swapchain
+                .entry
+                .acquire_next_image(
+                    swapchain.handle,
+                    u64::max_value(),
+                    self.image_available_semaphore,
+                    vk::Fence::default(),
+                )
+                .unwrap();
+            let submit_info = vk::SubmitInfo::builder()
+                .wait_semaphores(&[self.image_available_semaphore])
+                .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
+                .command_buffers(&[command_buffers[image_index as usize]])
+                .signal_semaphores(&[self.render_finished_semaphore])
+                .build();
+
+            self.device
+                .queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
+
+            let present_info = vk::PresentInfoKHR::builder()
+                .wait_semaphores(&[self.render_finished_semaphore])
+                .swapchains(&[swapchain.handle])
+                .image_indices(&[image_index])
+                .build();
+
+            let ret = swapchain.entry.queue_present(self.queue, &present_info);
+            match ret {
+                Ok(false) => (),
+                Ok(true) => self.swapchain = None,
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.swapchain = None,
+                Err(x) => return Err(Box::new(x) as Box<dyn Error>),
+            };
+
+            // Not an optimized way
+            let _ = self.device.device_wait_idle();
+        }
         Ok(())
     }
 
@@ -259,14 +337,14 @@ impl VulkanRenderingBackend {
     }
 }
 
-impl Drop for VulkanRenderingBackend {
+impl Drop for VulkanRenderingEngine {
     fn drop(&mut self) {
         unsafe {
             let _ = self.device.device_wait_idle();
-            drop(self.vertex_buffer.take());
-            drop(self.index_buffer.take());
             drop(self.swapchain.take());
-            self.device.destroy_command_pool(self.command_pool, None);
+            self.debug_entry
+                .destroy_debug_report_callback(self.debug_callback, None);
+            self.device.destroy_command_pool(*self.command_pool, None);
 
             self.device
                 .destroy_semaphore(self.image_available_semaphore, None);
@@ -281,12 +359,9 @@ impl Drop for VulkanRenderingBackend {
 
 struct SwapChain {
     device: Weak<Device>,
-    command_pool: vk::CommandPool,
-
     handle: vk::SwapchainKHR,
     images: Vec<vk::Image>,
     image_views: Vec<vk::ImageView>,
-    command_buffers: Vec<vk::CommandBuffer>,
     render_pass: vk::RenderPass,
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
@@ -303,7 +378,6 @@ impl SwapChain {
         capabilities: vk::SurfaceCapabilitiesKHR,
         format: vk::SurfaceFormatKHR,
         present_mode: vk::PresentModeKHR,
-        command_pool: vk::CommandPool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let rc_device = device.upgrade().unwrap();
 
@@ -316,6 +390,7 @@ impl SwapChain {
             format,
             present_mode,
         )?;
+
         let images = unsafe { entry.get_swapchain_images(handle)? };
         let image_views = creation_helpers::create_image_views(&rc_device, &images, format)?;
 
@@ -335,22 +410,11 @@ impl SwapChain {
             render_pass,
         )?;
 
-        let command_buffers = {
-            let create_info = vk::CommandBufferAllocateInfo::builder()
-                .command_pool(command_pool)
-                .command_buffer_count(framebuffers.len() as u32)
-                .level(vk::CommandBufferLevel::PRIMARY)
-                .build();
-            unsafe { rc_device.allocate_command_buffers(&create_info)? }
-        };
-
         Ok(Self {
             device,
-            command_pool,
             handle,
             images,
             image_views,
-            command_buffers,
             render_pass,
             pipeline_layout,
             pipeline,
@@ -368,7 +432,6 @@ impl Drop for SwapChain {
                 rc_device.destroy_framebuffer(*buffer, None);
             }
 
-            rc_device.free_command_buffers(self.command_pool, &self.command_buffers);
             rc_device.destroy_pipeline_layout(self.pipeline_layout, None);
             rc_device.destroy_render_pass(self.render_pass, None);
             rc_device.destroy_pipeline(self.pipeline, None);

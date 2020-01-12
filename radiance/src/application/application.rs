@@ -1,15 +1,14 @@
 use super::extensions::ResultExtensions;
 use super::Platform;
-
 use crate::constants;
 use crate::radiance;
-use crate::radiance::DefaultRadianceEngine;
+use crate::radiance::CoreRadianceEngine;
 use crate::radiance::RadianceEngine;
 use crate::rendering;
-use crate::rendering::backend::VulkanRenderingBackend;
+use crate::rendering::VulkanRenderingEngine;
 
 pub struct Application {
-    radiance_engine: DefaultRadianceEngine<VulkanRenderingBackend>,
+    radiance_engine: CoreRadianceEngine<VulkanRenderingEngine>,
     platform: Platform,
 }
 
@@ -20,10 +19,8 @@ impl Application {
             hwnd: platform.hwnd(),
         };
         Self {
-            radiance_engine: radiance::create_default_radiance_engine::<VulkanRenderingBackend>(
-                &window,
-            )
-            .unwrap_or_fail_fast(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
+            radiance_engine: radiance::create_radiance_engine::<VulkanRenderingEngine>(&window)
+                .unwrap_or_fail_fast(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
             platform: platform,
         }
     }
@@ -33,6 +30,8 @@ impl Application {
     }
 
     pub fn run(&mut self) {
+        self.radiance_engine.load_scene();
+
         loop {
             if !self.platform.process_message() {
                 break;
@@ -40,5 +39,7 @@ impl Application {
 
             self.radiance_engine.update();
         }
+
+        self.radiance_engine.unload_scene();
     }
 }
