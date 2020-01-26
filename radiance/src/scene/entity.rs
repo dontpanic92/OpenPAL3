@@ -1,20 +1,27 @@
-use crate::rendering::RenderObject;
+use crate::math::Transform;
 use core::borrow::{Borrow, BorrowMut};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 
 pub struct Entity {
+    transform: Transform,
     components: HashMap<TypeId, Vec<Box<dyn Any>>>,
 }
 
 impl Entity {
     pub fn new() -> Self {
-        let mut entity = Self {
+        Self {
+            transform: Transform::new(),
             components: HashMap::new(),
-        };
+        }
+    }
 
-        entity.add_component(RenderObject::new());
-        entity
+    pub fn transform(&self) -> &Transform {
+        &self.transform
+    }
+
+    pub fn transform_mut(&mut self) -> &mut Transform {
+        &mut self.transform
     }
 
     pub fn add_component<T>(&mut self, component: T)

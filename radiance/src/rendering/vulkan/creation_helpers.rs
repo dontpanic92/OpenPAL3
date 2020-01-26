@@ -1,5 +1,7 @@
+use super::buffer::Buffer;
 use super::error::VulkanBackendError;
 use super::helpers;
+use super::uniform_buffer_mvp::UniformBufferMvp;
 use crate::constants;
 use crate::rendering::Window;
 use ash::extensions::khr::{Surface, Swapchain};
@@ -80,13 +82,15 @@ pub fn create_device(
     physical_device: PhysicalDevice,
     graphic_queue_family_index: u32,
 ) -> VkResult<Device> {
+    let priorities = [0.5 as f32];
     let queue_create_info = vk::DeviceQueueCreateInfo::builder()
         .queue_family_index(graphic_queue_family_index)
-        .queue_priorities(&[0.5 as f32])
+        .queue_priorities(&priorities)
         .build();
     let extension_names = helpers::device_extension_names();
+    let queue_create_info = [queue_create_info];
     let create_info = vk::DeviceCreateInfo::builder()
-        .queue_create_infos(&[queue_create_info])
+        .queue_create_infos(&queue_create_info)
         .enabled_extension_names(&extension_names)
         .build();
     unsafe { instance.create_device(physical_device, &create_info, None) }
@@ -184,14 +188,21 @@ pub fn create_image_views(
                 .image(*f)
                 .components(component_mapping)
                 .subresource_range(subres_range)
+                .view_type(vk::ImageViewType::TYPE_2D)
                 .build();
             unsafe { device.create_image_view(&create_info, None) }
         })
         .collect()
 }
 
-pub fn create_pipeline_layout(device: &Device) -> VkResult<vk::PipelineLayout> {
-    let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder().build();
+pub fn create_pipeline_layout(
+    device: &Device,
+    descriptor_set_layout: vk::DescriptorSetLayout,
+) -> VkResult<vk::PipelineLayout> {
+    let layouts = [descriptor_set_layout];
+    let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+        .set_layouts(&layouts)
+        .build();
     unsafe { device.create_pipeline_layout(&pipeline_layout_create_info, None) }
 }
 
@@ -209,11 +220,13 @@ pub fn create_render_pass(device: &Device, format: SurfaceFormatKHR) -> VkResult
 
     let attachment_reference = vk::AttachmentReference::builder()
         .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+        .attachment(0)
         .build();
 
+    let color_attachemnts = [attachment_reference];
     let subpass_description = vk::SubpassDescription::builder()
         .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-        .color_attachments(&[attachment_reference])
+        .color_attachments(&color_attachemnts)
         .build();
 
     let subpass_dependency = vk::SubpassDependency::builder()
@@ -227,13 +240,79 @@ pub fn create_render_pass(device: &Device, format: SurfaceFormatKHR) -> VkResult
         )
         .build();
 
+    let attachments = [attachment_description];
+    let subpasses = [subpass_description];
+    let dependencies = [subpass_dependency];
     let render_pass_create_info = vk::RenderPassCreateInfo::builder()
-        .attachments(&[attachment_description])
-        .subpasses(&[subpass_description])
-        .dependencies(&[subpass_dependency])
+        .attachments(&attachments)
+        .subpasses(&subpasses)
+        .dependencies(&dependencies)
         .build();
 
     unsafe { device.create_render_pass(&render_pass_create_info, None) }
+}
+
+pub fn create_descriptor_set_layout(device: &Device) -> VkResult<vk::DescriptorSetLayout> {
+    let layout_binding = vk::DescriptorSetLayoutBinding::builder()
+        .binding(0)
+        .descriptor_count(1)
+        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+        .stage_flags(vk::ShaderStageFlags::VERTEX)
+        .build();
+
+    let bindings = [layout_binding];
+    let create_info = vk::DescriptorSetLayoutCreateInfo::builder()
+        .bindings(&bindings)
+        .build();
+
+    unsafe { device.create_descriptor_set_layout(&create_info, None) }
+}
+
+pub fn create_descriptor_pool(device: &Device, image_count: u32) -> VkResult<vk::DescriptorPool> {
+    let pool_size = vk::DescriptorPoolSize::builder()
+        .descriptor_count(image_count)
+        .ty(vk::DescriptorType::UNIFORM_BUFFER)
+        .build();
+    let pool_sizes = [pool_size];
+    let create_info = vk::DescriptorPoolCreateInfo::builder()
+        .pool_sizes(&pool_sizes)
+        .max_sets(image_count)
+        .build();
+
+    unsafe { device.create_descriptor_pool(&create_info, None) }
+}
+
+pub fn allocate_descriptor_sets(
+    device: &Device,
+    image_count: u32,
+    descriptor_pool: vk::DescriptorPool,
+    descriptor_set_layouts: &[vk::DescriptorSetLayout],
+    uniform_buffers: &[Buffer],
+) -> VkResult<Vec<vk::DescriptorSet>> {
+    let create_info = vk::DescriptorSetAllocateInfo::builder()
+        .descriptor_pool(descriptor_pool)
+        .set_layouts(descriptor_set_layouts)
+        .build();
+    let descriptor_sets = unsafe { device.allocate_descriptor_sets(&create_info) }?;
+    for i in 0..image_count as usize {
+        let buffer_info = vk::DescriptorBufferInfo::builder()
+            .buffer(uniform_buffers[i].buffer())
+            .offset(0)
+            .range(std::mem::size_of::<UniformBufferMvp>() as u64)
+            .build();
+        let buffer_info_ref = [buffer_info];
+        let write_descriptor_set = vk::WriteDescriptorSet::builder()
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+            .dst_set(descriptor_sets[i])
+            .dst_binding(0)
+            .dst_array_element(0)
+            .buffer_info(&buffer_info_ref)
+            .build();
+        let write_descriptor_sets = [write_descriptor_set];
+        unsafe { device.update_descriptor_sets(&write_descriptor_sets, &[]) };
+    }
+
+    Ok(descriptor_sets)
 }
 
 static SIMPLE_TRIANGLE_VERT: &'static [u8] =
@@ -251,26 +330,24 @@ pub fn create_pipeline(
     let vert_shader = create_shader_module_from_array(device, SIMPLE_TRIANGLE_VERT)?;
     let frag_shader = create_shader_module_from_array(device, SIMPLE_TRIANGLE_FRAG)?;
 
-    let entry_point = &CString::new("main").unwrap();
+    let entry_point = CString::new("main").unwrap();
     let vert_shader_stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
-        .name(entry_point)
+        .name(&entry_point)
         .stage(ShaderStageFlags::VERTEX)
         .module(vert_shader)
         .build();
     let frag_shader_stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
-        .name(entry_point)
+        .name(&entry_point)
         .stage(ShaderStageFlags::FRAGMENT)
         .module(frag_shader)
         .build();
 
-    let pipeline_vertex_input_create_info = {
-        let binding_descriptions = [super::vertex_helper::get_binding_description()];
-        let attribute_desctiprions = super::vertex_helper::get_attribute_descriptions();
-        vk::PipelineVertexInputStateCreateInfo::builder()
-            .vertex_attribute_descriptions(&attribute_desctiprions)
-            .vertex_binding_descriptions(&binding_descriptions)
-            .build()
-    };
+    let binding_descriptions = [super::vertex_helper::get_binding_description()];
+    let attribute_descriptions = super::vertex_helper::get_attribute_descriptions();
+    let pipeline_vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo::builder()
+        .vertex_attribute_descriptions(&attribute_descriptions)
+        .vertex_binding_descriptions(&binding_descriptions)
+        .build();
 
     let pipeline_input_assembly_create_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
         .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
@@ -291,9 +368,11 @@ pub fn create_pipeline(
         .offset(Offset2D::builder().x(0).y(0).build())
         .build();
 
+    let viewports = [viewport];
+    let scissors = [scissor];
     let pipeline_viewport_state_create_info = vk::PipelineViewportStateCreateInfo::builder()
-        .viewports(&[viewport])
-        .scissors(&[scissor])
+        .viewports(&viewports)
+        .scissors(&scissors)
         .build();
 
     let pipeline_rasterization_state_create_info =
@@ -303,11 +382,11 @@ pub fn create_pipeline(
             .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1f32)
             .cull_mode(vk::CullModeFlags::BACK)
-            .front_face(vk::FrontFace::CLOCKWISE)
+            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(false)
             .build();
 
-    let pipeline_multisamle_state_create_info = vk::PipelineMultisampleStateCreateInfo::builder()
+    let pipeline_multisample_state_create_info = vk::PipelineMultisampleStateCreateInfo::builder()
         .sample_shading_enable(false)
         .rasterization_samples(vk::SampleCountFlags::TYPE_1)
         .build();
@@ -322,19 +401,21 @@ pub fn create_pipeline(
         .blend_enable(false)
         .build();
 
+    let attachments = [pipeline_color_blend_attachment_state];
     let pipeline_color_blending_state_create_info =
         vk::PipelineColorBlendStateCreateInfo::builder()
             .logic_op_enable(false)
-            .attachments(&[pipeline_color_blend_attachment_state])
+            .attachments(&attachments)
             .build();
 
+    let stages = [vert_shader_stage_create_info, frag_shader_stage_create_info];
     let create_info = vk::GraphicsPipelineCreateInfo::builder()
-        .stages(&[vert_shader_stage_create_info, frag_shader_stage_create_info])
+        .stages(&stages)
         .vertex_input_state(&pipeline_vertex_input_create_info)
         .input_assembly_state(&pipeline_input_assembly_create_info)
         .viewport_state(&pipeline_viewport_state_create_info)
         .rasterization_state(&pipeline_rasterization_state_create_info)
-        .multisample_state(&pipeline_multisamle_state_create_info)
+        .multisample_state(&pipeline_multisample_state_create_info)
         .color_blend_state(&pipeline_color_blending_state_create_info)
         .layout(layout)
         .render_pass(render_pass)
@@ -392,9 +473,10 @@ pub fn create_framebuffers(
     image_views
         .iter()
         .map(|view| {
+            let attachments = [*view];
             let create_info = vk::FramebufferCreateInfo::builder()
                 .render_pass(render_pass)
-                .attachments(&[*view])
+                .attachments(&attachments)
                 .layers(1)
                 .width(extent.width)
                 .height(extent.height)
@@ -407,7 +489,7 @@ pub fn create_framebuffers(
 fn enabled_layer_names() -> Vec<*const i8> {
     unsafe {
         vec![
-            std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_standard_validation\0")
+            std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_core_validation\0")
                 .as_ptr() as *const i8,
         ]
     }

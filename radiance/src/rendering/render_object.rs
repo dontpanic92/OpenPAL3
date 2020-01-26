@@ -1,23 +1,28 @@
 use super::Vertex;
 use crate::math::*;
 
-pub struct RenderObject {}
+pub struct RenderObject {
+    vertices: Vec<Vertex>,
+    indices: Vec<u32>,
+}
 
 impl RenderObject {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            vertices: vec![],
+            indices: vec![],
+        }
     }
 
-    pub fn vertices(&self) -> Vec<Vertex> {
-        vec![
-            Vertex::new(Vec2::new(-0.5f32, -0.5f32), Vec3::new(1f32, 0f32, 0f32)),
-            Vertex::new(Vec2::new(0.5f32, -0.5f32), Vec3::new(0f32, 1f32, 0f32)),
-            Vertex::new(Vec2::new(0.5f32, 0.5f32), Vec3::new(0f32, 0f32, 1f32)),
-            Vertex::new(Vec2::new(-0.5f32, 0.5f32), Vec3::new(1f32, 1f32, 1f32)),
-        ]
+    pub fn new_with_data(vertices: Vec<Vertex>, indices: Vec<u32>) -> Self {
+        Self { vertices, indices }
     }
 
-    pub fn indices(&self) -> Vec<u32> {
-        vec![0, 1, 2, 2, 3, 0]
+    pub fn vertices(&self) -> &Vec<Vertex> {
+        &self.vertices
+    }
+
+    pub fn indices(&self) -> &Vec<u32> {
+        &self.indices
     }
 }

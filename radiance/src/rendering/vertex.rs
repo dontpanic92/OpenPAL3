@@ -1,16 +1,16 @@
 use crate::math::*;
 
 pub struct Vertex {
-    position: Vec2,
+    position: Vec3,
     color: Vec3,
 }
 
 impl Vertex {
-    pub fn new(position: Vec2, color: Vec3) -> Self {
+    pub fn new(position: Vec3, color: Vec3) -> Self {
         Vertex { position, color }
     }
 
-    pub fn position(&self) -> Vec2 {
+    pub fn position(&self) -> Vec3 {
         self.position
     }
 

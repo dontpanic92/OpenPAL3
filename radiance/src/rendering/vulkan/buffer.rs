@@ -9,6 +9,7 @@ use std::rc::{Rc, Weak};
 pub enum BufferType {
     Index = 0,
     Vertex = 1,
+    Uniform = 2,
 }
 
 pub struct Buffer {
@@ -20,7 +21,25 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn new_buffer_with_data<T>(
+    pub fn new_uniform_buffer(
+        instance: &Instance,
+        device: &Rc<Device>,
+        physical_device: PhysicalDevice,
+        element_size: usize,
+        element_count: usize,
+    ) -> Result<Self, Box<dyn Error>> {
+        Buffer::new_buffer(
+            instance,
+            Rc::downgrade(&device),
+            physical_device,
+            element_size,
+            element_count,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        )
+    }
+
+    pub fn new_device_buffer_with_data<T>(
         instance: &Instance,
         device: &Rc<Device>,
         physical_device: PhysicalDevice,
@@ -33,7 +52,8 @@ impl Buffer {
             instance,
             Rc::downgrade(&device),
             physical_device,
-            data,
+            size_of::<T>(),
+            data.len(),
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
@@ -42,19 +62,41 @@ impl Buffer {
         let flags = match buffer_type {
             BufferType::Index => vk::BufferUsageFlags::INDEX_BUFFER,
             BufferType::Vertex => vk::BufferUsageFlags::VERTEX_BUFFER,
+            BufferType::Uniform => vk::BufferUsageFlags::UNIFORM_BUFFER,
         };
 
         let mut buffer = Buffer::new_buffer(
             instance,
             Rc::downgrade(&device),
             physical_device,
-            data,
+            size_of::<T>(),
+            data.len(),
             flags | vk::BufferUsageFlags::TRANSFER_DST,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         )?;
 
         buffer.copy_buffer_from(&staging_buffer, command_pool, queue)?;
         Ok(buffer)
+    }
+
+    pub fn copy_memory_from<T>(&mut self, data: &[T]) -> ash::prelude::VkResult<()> {
+        let rc_device = self.device.upgrade().unwrap();
+        unsafe {
+            let dst = rc_device.map_memory(
+                self.memory,
+                0,
+                self.buffer_size,
+                vk::MemoryMapFlags::default(),
+            )?;
+            std::ptr::copy(
+                data.as_ptr() as *const std::ffi::c_void,
+                dst,
+                self.buffer_size as usize,
+            );
+            rc_device.unmap_memory(self.memory);
+        }
+
+        Ok(())
     }
 
     pub fn buffer(&self) -> vk::Buffer {
@@ -65,16 +107,17 @@ impl Buffer {
         self.element_count
     }
 
-    fn new_buffer<T>(
+    fn new_buffer(
         instance: &Instance,
         device: Weak<Device>,
         physical_device: PhysicalDevice,
-        data: &Vec<T>,
+        element_size: usize,
+        element_count: usize,
         buffer_usage_flags: vk::BufferUsageFlags,
         memory_prop_flags: vk::MemoryPropertyFlags,
     ) -> Result<Self, Box<dyn Error>> {
         let rc_device = device.upgrade().unwrap();
-        let buffer_size = (size_of::<T>() * data.len()) as u64;
+        let buffer_size = element_count as u64 * element_size as u64; // (size_of::<T>() * data.len()) as u64;
         let buffer = {
             let create_info = vk::BufferCreateInfo::builder()
                 .sharing_mode(vk::SharingMode::EXCLUSIVE)
@@ -109,7 +152,7 @@ impl Buffer {
             buffer,
             memory,
             buffer_size,
-            element_count: data.len() as u32,
+            element_count: element_count as u32,
         })
     }
 
@@ -152,26 +195,6 @@ impl Buffer {
             rc_device.queue_wait_idle(queue)?;
 
             rc_device.free_command_buffers(*command_pool, &command_buffer);
-        }
-
-        Ok(())
-    }
-
-    fn copy_memory_from<T>(&mut self, data: &Vec<T>) -> ash::prelude::VkResult<()> {
-        let rc_device = self.device.upgrade().unwrap();
-        unsafe {
-            let dst = rc_device.map_memory(
-                self.memory,
-                0,
-                self.buffer_size,
-                vk::MemoryMapFlags::default(),
-            )?;
-            std::ptr::copy(
-                data.as_ptr() as *const std::ffi::c_void,
-                dst,
-                self.buffer_size as usize,
-            );
-            rc_device.unmap_memory(self.memory);
         }
 
         Ok(())

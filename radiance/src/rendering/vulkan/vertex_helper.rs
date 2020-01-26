@@ -15,7 +15,7 @@ pub fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 2] 
         .offset(Vertex::position_offset() as u32)
         .binding(0)
         .location(0)
-        .format(vk::Format::R32G32_SFLOAT)
+        .format(vk::Format::R32G32B32_SFLOAT)
         .build();
 
     let color_attr = vk::VertexInputAttributeDescription::builder()
