@@ -1,3 +1,4 @@
+use super::adhoc_command_runner::AdhocCommandRunner;
 use super::buffer::{Buffer, BufferType};
 use super::creation_helpers;
 use super::descriptor_manager::DescriptorManager;
@@ -12,13 +13,12 @@ use crate::rendering::RenderObject;
 use crate::rendering::{RenderingEngine, Window};
 use crate::scene::{Camera, Entity, Scene};
 use ash::extensions::ext::DebugReport;
-use ash::prelude::VkResult;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Entry, Instance};
 use std::error::Error;
 use std::f32::consts::PI;
 use std::iter::Iterator;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 pub struct VulkanRenderingEngine {
     entry: Entry,
@@ -30,10 +30,11 @@ pub struct VulkanRenderingEngine {
     present_mode: vk::PresentModeKHR,
     queue: vk::Queue,
     swapchain: Option<SwapChain>,
-    command_pool: Rc<vk::CommandPool>,
+    command_pool: vk::CommandPool,
     debug_callback: vk::DebugReportCallbackEXT,
 
     descriptor_manager: Option<DescriptorManager>,
+    adhoc_command_runner: AdhocCommandRunner,
 
     surface_entry: ash::extensions::khr::Surface,
     debug_entry: ash::extensions::ext::DebugReport,
@@ -80,20 +81,22 @@ impl RenderingEngine for VulkanRenderingEngine {
                 )
                 .queue_family_index(graphics_queue_family_index)
                 .build();
-            Rc::new(unsafe { device.create_command_pool(&create_info, None)? })
+            unsafe { device.create_command_pool(&create_info, None)? }
         };
 
         let mut descriptor_manager = DescriptorManager::new(&device)?;
+        let adhoc_command_runner = AdhocCommandRunner::new(&device, command_pool, queue);
         let swapchain = SwapChain::new(
             &instance,
             &device,
-            &command_pool,
+            command_pool,
             physical_device,
             surface,
             capabilities,
             format,
             present_mode,
             &mut descriptor_manager,
+            &adhoc_command_runner,
         )?;
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
@@ -128,6 +131,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             swapchain: Some(swapchain),
             debug_callback,
             descriptor_manager: Some(descriptor_manager),
+            adhoc_command_runner,
             surface_entry,
             debug_entry,
             image_available_semaphore,
@@ -154,7 +158,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             match e.get_component::<RenderObject>() {
                 None => continue,
                 Some(render_object) => {
-                    let object = VulkanRenderObject::new(self, render_object).unwrap();
+                    let object = VulkanRenderObject::new(render_object, self).unwrap();
                     e.add_component::<VulkanRenderObject>(object);
                 }
             }
@@ -171,8 +175,36 @@ impl VulkanRenderingEngine {
         &self.device
     }
 
+    pub fn adhoc_command_runner(&self) -> &AdhocCommandRunner {
+        &self.adhoc_command_runner
+    }
+
     pub fn descriptor_manager_mut(&mut self) -> &mut DescriptorManager {
         (&mut self.descriptor_manager).as_mut().unwrap()
+    }
+
+    pub fn create_device_buffer_with_data<T>(
+        &self,
+        buffer_type: BufferType,
+        data: &Vec<T>,
+    ) -> Result<Buffer, Box<dyn Error>> {
+        Buffer::new_device_buffer_with_data::<T>(
+            &self.instance,
+            &self.device,
+            self.physical_device,
+            data,
+            buffer_type,
+            &self.adhoc_command_runner,
+        )
+    }
+
+    pub fn create_staging_buffer_with_data<T>(&self, data: &[T]) -> Result<Buffer, Box<dyn Error>> {
+        Buffer::new_staging_buffer_with_data::<T>(
+            &self.instance,
+            &self.device,
+            self.physical_device,
+            data,
+        )
     }
 
     fn record_command_buffers(&mut self, scene: &mut Scene) {
@@ -197,89 +229,27 @@ impl VulkanRenderingEngine {
         self.swapchain = Some(SwapChain::new(
             &self.instance,
             &self.device,
-            &self.command_pool,
+            self.command_pool,
             self.physical_device,
             self.surface,
             capabilities,
             self.format,
             self.present_mode,
             descriptor_manager,
+            &self.adhoc_command_runner,
         )?);
 
         Ok(())
     }
 
-    pub fn create_device_buffer_with_data<T>(
-        &self,
-        buffer_type: BufferType,
-        data: &Vec<T>,
-    ) -> Result<Buffer, Box<dyn Error>> {
-        Buffer::new_device_buffer_with_data::<T>(
-            &self.instance,
-            &self.device,
-            self.physical_device,
-            data,
-            buffer_type,
-            self,
-        )
-    }
-
-    pub fn create_staging_buffer_with_data<T>(&self, data: &[T]) -> Result<Buffer, Box<dyn Error>> {
-        Buffer::new_staging_buffer_with_data::<T>(
-            &self.instance,
-            &self.device,
-            self.physical_device,
-            data,
-        )
-    }
-
     pub fn create_image(&self, width: u32, height: u32) -> Result<Image, Box<dyn Error>> {
-        Image::new(
+        Image::new_color_image(
             &self.instance,
             &self.device,
             self.physical_device,
             width,
             height,
         )
-    }
-
-    pub fn run_commands_one_shot<F: FnOnce(&Rc<Device>, &vk::CommandBuffer)>(
-        &self,
-        record_command: F,
-    ) -> VkResult<()> {
-        let command_buffers = {
-            let allocation_info = vk::CommandBufferAllocateInfo::builder()
-                .command_pool(*self.command_pool.as_ref())
-                .level(vk::CommandBufferLevel::PRIMARY)
-                .command_buffer_count(1)
-                .build();
-            unsafe { self.device.allocate_command_buffers(&allocation_info)? }
-        };
-
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
-            .build();
-        unsafe {
-            self.device
-                .begin_command_buffer(command_buffers[0], &begin_info)?
-        };
-
-        record_command(&self.device, &command_buffers[0]);
-
-        unsafe {
-            self.device.end_command_buffer(command_buffers[0])?;
-
-            let submit_info = vk::SubmitInfo::builder()
-                .command_buffers(&command_buffers)
-                .build();
-            self.device
-                .queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
-            self.device.queue_wait_idle(self.queue)?;
-            self.device
-                .free_command_buffers(*self.command_pool.as_ref(), &command_buffers);
-        }
-
-        Ok(())
     }
 
     fn render_objects(&mut self, entities: &Vec<Entity>) -> Result<(), Box<dyn Error>> {
@@ -367,7 +337,7 @@ impl Drop for VulkanRenderingEngine {
             self.descriptor_manager = None;
             self.debug_entry
                 .destroy_debug_report_callback(self.debug_callback, None);
-            self.device.destroy_command_pool(*self.command_pool, None);
+            self.device.destroy_command_pool(self.command_pool, None);
 
             self.device
                 .destroy_semaphore(self.image_available_semaphore, None);

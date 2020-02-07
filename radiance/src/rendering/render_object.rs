@@ -1,6 +1,5 @@
 use super::Vertex;
 use std::path::PathBuf;
-use std::string::String;
 
 pub struct RenderObject {
     vertices: Vec<Vertex>,

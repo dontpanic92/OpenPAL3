@@ -1,3 +1,4 @@
+mod adhoc_command_runner;
 mod buffer;
 mod creation_helpers;
 mod descriptor_manager;

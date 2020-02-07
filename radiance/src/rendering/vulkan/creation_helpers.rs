@@ -173,7 +173,7 @@ pub fn create_image_views(
 ) -> VkResult<Vec<ImageView>> {
     images
         .iter()
-        .map(|image| ImageView::new(device, *image, format.format))
+        .map(|image| ImageView::new_color_image_view(device, *image, format.format))
         .collect()
 }
 
@@ -188,9 +188,13 @@ pub fn create_pipeline_layout(
     unsafe { device.create_pipeline_layout(&pipeline_layout_create_info, None) }
 }
 
-pub fn create_render_pass(device: &Device, format: SurfaceFormatKHR) -> VkResult<vk::RenderPass> {
-    let attachment_description = vk::AttachmentDescription::builder()
-        .format(format.format)
+pub fn create_render_pass(
+    device: &Device,
+    color_format: vk::Format,
+    depth_format: vk::Format,
+) -> VkResult<vk::RenderPass> {
+    let color_attachment = vk::AttachmentDescription::builder()
+        .format(color_format)
         .samples(vk::SampleCountFlags::TYPE_1)
         .load_op(vk::AttachmentLoadOp::CLEAR)
         .store_op(vk::AttachmentStoreOp::STORE)
@@ -200,15 +204,31 @@ pub fn create_render_pass(device: &Device, format: SurfaceFormatKHR) -> VkResult
         .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
         .build();
 
-    let attachment_reference = vk::AttachmentReference::builder()
+    let depth_attachment = vk::AttachmentDescription::builder()
+        .format(depth_format)
+        .samples(vk::SampleCountFlags::TYPE_1)
+        .load_op(vk::AttachmentLoadOp::CLEAR)
+        .store_op(vk::AttachmentStoreOp::DONT_CARE)
+        .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+        .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+        .initial_layout(vk::ImageLayout::UNDEFINED)
+        .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+        .build();
+
+    let color_attachment_reference = vk::AttachmentReference::builder()
         .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
         .attachment(0)
         .build();
+    let depth_attachment_reference = vk::AttachmentReference::builder()
+        .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+        .attachment(1)
+        .build();
 
-    let color_attachemnts = [attachment_reference];
+    let color_attachments = [color_attachment_reference];
     let subpass_description = vk::SubpassDescription::builder()
         .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-        .color_attachments(&color_attachemnts)
+        .color_attachments(&color_attachments)
+        .depth_stencil_attachment(&depth_attachment_reference)
         .build();
 
     let subpass_dependency = vk::SubpassDependency::builder()
@@ -222,7 +242,7 @@ pub fn create_render_pass(device: &Device, format: SurfaceFormatKHR) -> VkResult
         )
         .build();
 
-    let attachments = [attachment_description];
+    let attachments = [color_attachment, depth_attachment];
     let subpasses = [subpass_description];
     let dependencies = [subpass_dependency];
     let render_pass_create_info = vk::RenderPassCreateInfo::builder()
@@ -233,88 +253,6 @@ pub fn create_render_pass(device: &Device, format: SurfaceFormatKHR) -> VkResult
 
     unsafe { device.create_render_pass(&render_pass_create_info, None) }
 }
-/*
-pub fn create_descriptor_set_layout(device: &Device) -> VkResult<vk::DescriptorSetLayout> {
-    let uniform_layout_binding = vk::DescriptorSetLayoutBinding::builder()
-        .binding(0)
-        .descriptor_count(1)
-        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-        .stage_flags(vk::ShaderStageFlags::VERTEX)
-        .build();
-    let sampler_layout_binding = vk::DescriptorSetLayoutBinding::builder()
-        .binding(1)
-        .descriptor_count(1)
-        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-        .build();
-
-    let bindings = [uniform_layout_binding, sampler_layout_binding];
-    let create_info = vk::DescriptorSetLayoutCreateInfo::builder()
-        .bindings(&bindings)
-        .build();
-
-    unsafe { device.create_descriptor_set_layout(&create_info, None) }
-}
-
-pub fn create_descriptor_pool(device: &Device, image_count: u32) -> VkResult<vk::DescriptorPool> {
-    let uniform_pool_size = vk::DescriptorPoolSize::builder()
-        .descriptor_count(image_count)
-        .ty(vk::DescriptorType::UNIFORM_BUFFER)
-        .build();
-    let sampler_pool_size = vk::DescriptorPoolSize::builder()
-        .descriptor_count(image_count)
-        .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .build();
-
-    let pool_sizes = [uniform_pool_size, sampler_pool_size];
-    let create_info = vk::DescriptorPoolCreateInfo::builder()
-        .pool_sizes(&pool_sizes)
-        .max_sets(image_count)
-        .build();
-
-    unsafe { device.create_descriptor_pool(&create_info, None) }
-}
-
-pub fn allocate_descriptor_sets(
-    device: &Device,
-    image_count: u32,
-    descriptor_pool: vk::DescriptorPool,
-    descriptor_set_layouts: &[vk::DescriptorSetLayout],
-    uniform_buffers: &[Buffer],
-    image_view: &ImageView,
-    sampler: &Sampler,
-) -> VkResult<Vec<vk::DescriptorSet>> {
-    let create_info = vk::DescriptorSetAllocateInfo::builder()
-        .descriptor_pool(descriptor_pool)
-        .set_layouts(descriptor_set_layouts)
-        .build();
-    let descriptor_sets = unsafe { device.allocate_descriptor_sets(&create_info) }?;
-    for i in 0..image_count as usize {
-        let uniform_buffer_info = vk::DescriptorBufferInfo::builder()
-            .buffer(uniform_buffers[i].vk_buffer())
-            .offset(0)
-            .range(std::mem::size_of::<UniformBufferMvp>() as u64)
-            .build();
-        let sampler_info = vk::DescriptorImageInfo::builder()
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(image_view.vk_image_view())
-            .sampler(sampler.vk_sampler())
-            .build();
-
-        let buffer_info = [uniform_buffer_info];
-        let write_descriptor_set = vk::WriteDescriptorSet::builder()
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .dst_set(descriptor_sets[i])
-            .dst_binding(0)
-            .dst_array_element(0)
-            .buffer_info(&buffer_info)
-            .build();
-        let write_descriptor_sets = [write_descriptor_set];
-        unsafe { device.update_descriptor_sets(&write_descriptor_sets, &[]) };
-    }
-
-    Ok(descriptor_sets)
-}*/
 
 static SIMPLE_TRIANGLE_VERT: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.vert.spv"));
@@ -409,6 +347,14 @@ pub fn create_pipeline(
             .attachments(&attachments)
             .build();
 
+    let depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo::builder()
+        .depth_test_enable(true)
+        .depth_write_enable(true)
+        .depth_compare_op(vk::CompareOp::LESS)
+        .depth_bounds_test_enable(false)
+        .stencil_test_enable(false)
+        .build();
+
     let stages = [vert_shader_stage_create_info, frag_shader_stage_create_info];
     let create_info = vk::GraphicsPipelineCreateInfo::builder()
         .stages(&stages)
@@ -421,6 +367,7 @@ pub fn create_pipeline(
         .layout(layout)
         .render_pass(render_pass)
         .subpass(0)
+        .depth_stencil_state(&depth_stencil_state_create_info)
         .build();
 
     let pipelines = match unsafe {
@@ -468,13 +415,14 @@ fn create_shader_module_from_array(
 pub fn create_framebuffers(
     device: &Device,
     image_views: &Vec<ImageView>,
+    depth_image_view: &ImageView,
     extent: &Extent2D,
     render_pass: vk::RenderPass,
 ) -> VkResult<Vec<vk::Framebuffer>> {
     image_views
         .iter()
         .map(|view| {
-            let attachments = [view.vk_image_view()];
+            let attachments = [view.vk_image_view(), depth_image_view.vk_image_view()];
             let create_info = vk::FramebufferCreateInfo::builder()
                 .render_pass(render_pass)
                 .attachments(&attachments)

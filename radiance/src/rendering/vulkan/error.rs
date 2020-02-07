@@ -8,6 +8,7 @@ pub enum VulkanBackendError {
     NoSurfaceFormatSupported,
     NoSurfacePresentModeSupported,
     NoSuitableMemoryFound,
+    NoSuitableFormatFound,
 }
 
 impl fmt::Display for VulkanBackendError {
@@ -27,6 +28,9 @@ impl fmt::Display for VulkanBackendError {
             }
             VulkanBackendError::NoSuitableMemoryFound => {
                 write!(f, "{}", constants::STR_NO_SUITABLE_MEMORY_TYPE)
+            }
+            VulkanBackendError::NoSuitableFormatFound => {
+                write!(f, "{}", constants::STR_NO_SUITABLE_FORMAT)
             }
         }
     }

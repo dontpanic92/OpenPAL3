@@ -1,5 +1,5 @@
+use super::adhoc_command_runner::AdhocCommandRunner;
 use super::memory::Memory;
-use super::VulkanRenderingEngine;
 use ash::prelude::VkResult;
 use ash::version::DeviceV1_0;
 use ash::{vk, Device, Instance};
@@ -84,7 +84,7 @@ impl Buffer {
         physical_device: vk::PhysicalDevice,
         data: &Vec<T>,
         buffer_type: BufferType,
-        engine: &VulkanRenderingEngine,
+        command_runner: &AdhocCommandRunner,
     ) -> Result<Self, Box<dyn Error>> {
         let mut staging_buffer = Buffer::new_buffer(
             instance,
@@ -113,7 +113,7 @@ impl Buffer {
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         )?;
 
-        buffer.copy_from(&staging_buffer, engine)?;
+        buffer.copy_from(&staging_buffer, command_runner)?;
         Ok(buffer)
     }
 
@@ -167,8 +167,12 @@ impl Buffer {
         &mut self.memory
     }
 
-    fn copy_from(&mut self, src_buffer: &Buffer, engine: &VulkanRenderingEngine) -> VkResult<()> {
-        engine.run_commands_one_shot(|device, &command_buffer| {
+    fn copy_from(
+        &mut self,
+        src_buffer: &Buffer,
+        command_runner: &AdhocCommandRunner,
+    ) -> VkResult<()> {
+        command_runner.run_commands_one_shot(|device, &command_buffer| {
             let copy_region = vk::BufferCopy::builder()
                 .size(src_buffer.buffer_size)
                 .build();

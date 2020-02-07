@@ -1,23 +1,30 @@
+use super::adhoc_command_runner::AdhocCommandRunner;
 use super::buffer::Buffer;
 use super::creation_helpers;
 use super::descriptor_manager::DescriptorManager;
 use super::descriptor_sets::DescriptorSets;
+use super::error::VulkanBackendError;
+use super::image::Image;
 use super::image_view::ImageView;
 use super::render_object::VulkanRenderObject;
 use super::uniform_buffer_mvp::UniformBufferMvp;
 use ash::prelude::VkResult;
-use ash::version::DeviceV1_0;
+use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Instance};
-use std::borrow::Borrow;
 use std::ops::Deref;
-use std::rc::{Rc, Weak};
+use std::{
+    error::Error,
+    rc::{Rc, Weak},
+};
 
 pub struct SwapChain {
     device: Weak<Device>,
-    command_pool: Weak<vk::CommandPool>,
+    command_pool: vk::CommandPool,
     handle: vk::SwapchainKHR,
     images: Vec<vk::Image>,
     image_views: Vec<ImageView>,
+    depth_image: Image,
+    depth_image_view: ImageView,
     uniform_buffers: Vec<Buffer>,
     render_pass: vk::RenderPass,
     pipeline_layout: vk::PipelineLayout,
@@ -34,13 +41,14 @@ impl SwapChain {
     pub fn new(
         instance: &Instance,
         device: &Rc<Device>,
-        command_pool: &Rc<vk::CommandPool>,
+        command_pool: vk::CommandPool,
         physical_device: vk::PhysicalDevice,
         surface: vk::SurfaceKHR,
         capabilities: vk::SurfaceCapabilitiesKHR,
         format: vk::SurfaceFormatKHR,
         present_mode: vk::PresentModeKHR,
         descriptor_manager: &mut DescriptorManager,
+        command_runner: &AdhocCommandRunner,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let entry = ash::extensions::khr::Swapchain::new(instance, device.deref());
         let handle = creation_helpers::create_swapchain(
@@ -66,7 +74,26 @@ impl SwapChain {
             })
             .collect();
 
-        let render_pass = creation_helpers::create_render_pass(&device, format)?;
+        let mut depth_image = Image::new_depth_image(
+            instance,
+            device,
+            physical_device,
+            capabilities.current_extent.width,
+            capabilities.current_extent.height,
+        )?;
+        depth_image.transit_layout(
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            command_runner,
+        )?;
+        let depth_image_view = ImageView::new_depth_image_view(
+            device,
+            depth_image.vk_image(),
+            depth_image.vk_format(),
+        )?;
+
+        let render_pass =
+            creation_helpers::create_render_pass(&device, format.format, depth_image.vk_format())?;
         let per_frame_descriptor_sets =
             descriptor_manager.allocate_per_frame_descriptor_sets(uniform_buffers.as_slice())?;
 
@@ -81,13 +108,14 @@ impl SwapChain {
         let framebuffers = creation_helpers::create_framebuffers(
             &device,
             &image_views,
+            &depth_image_view,
             &capabilities.current_extent,
             render_pass,
         )?;
 
         let command_buffers = {
             let create_info = vk::CommandBufferAllocateInfo::builder()
-                .command_pool(*command_pool.borrow())
+                .command_pool(command_pool)
                 .command_buffer_count(framebuffers.len() as u32)
                 .level(vk::CommandBufferLevel::PRIMARY)
                 .build();
@@ -96,10 +124,12 @@ impl SwapChain {
 
         Ok(Self {
             device: Rc::downgrade(device),
-            command_pool: Rc::downgrade(command_pool),
+            command_pool,
             handle,
             images,
             image_views,
+            depth_image,
+            depth_image_view,
             uniform_buffers,
             render_pass,
             pipeline_layout,
@@ -172,11 +202,19 @@ impl SwapChain {
                 device.begin_command_buffer(*command_buffer, &begin_info)?;
             }
 
-            let clear_values = [vk::ClearValue {
-                color: vk::ClearColorValue {
-                    float32: [0f32, 0f32, 0f32, 1f32],
+            let clear_values = [
+                vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0f32, 0f32, 0f32, 1f32],
+                    },
                 },
-            }];
+                vk::ClearValue {
+                    depth_stencil: vk::ClearDepthStencilValue {
+                        depth: 1.,
+                        stencil: 0,
+                    },
+                },
+            ];
             let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
                 .render_pass(self.render_pass)
                 .framebuffer(*framebuffer)
@@ -245,13 +283,12 @@ impl SwapChain {
 impl Drop for SwapChain {
     fn drop(&mut self) {
         let device = self.device.upgrade().unwrap();
-        let command_pool = self.command_pool.upgrade().unwrap();
         unsafe {
             for buffer in &self.framebuffers {
                 device.destroy_framebuffer(*buffer, None);
             }
 
-            device.free_command_buffers(*command_pool, &self.command_buffers);
+            device.free_command_buffers(self.command_pool, &self.command_buffers);
             device.destroy_pipeline_layout(self.pipeline_layout, None);
             device.destroy_render_pass(self.render_pass, None);
             device.destroy_pipeline(self.pipeline, None);

@@ -13,3 +13,5 @@ pub const STR_ZERO_VULKAN_SURFACE_PRESENT_MODE: &str =
     "There is no device with proper Vulkan Surface present mode support on your machine.";
 pub const STR_NO_SUITABLE_MEMORY_TYPE: &str =
     "There is no suitable memory type found on your machine.";
+pub const STR_NO_SUITABLE_FORMAT: &str =
+    "There is no suitable format supported by your graphic card.";

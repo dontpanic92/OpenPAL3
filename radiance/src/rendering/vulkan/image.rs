@@ -1,8 +1,9 @@
+use super::adhoc_command_runner::AdhocCommandRunner;
 use super::buffer::Buffer;
+use super::error::VulkanBackendError;
 use super::memory::Memory;
-use super::VulkanRenderingEngine;
 use ash::prelude::VkResult;
-use ash::version::DeviceV1_0;
+use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Instance};
 use std::error::Error;
 use std::rc::{Rc, Weak};
@@ -10,69 +11,91 @@ use std::rc::{Rc, Weak};
 pub struct Image {
     device: Weak<Device>,
     image: vk::Image,
+    format: vk::Format,
     memory: Memory,
     width: u32,
     height: u32,
 }
 
 impl Image {
-    pub fn new(
+    pub fn new_color_image(
         instance: &Instance,
         device: &Rc<Device>,
         physical_device: vk::PhysicalDevice,
         tex_width: u32,
         tex_height: u32,
     ) -> Result<Self, Box<dyn Error>> {
-        let create_info = vk::ImageCreateInfo::builder()
-            .image_type(vk::ImageType::TYPE_2D)
-            .extent(
-                vk::Extent3D::builder()
-                    .width(tex_width)
-                    .height(tex_height)
-                    .depth(1)
-                    .build(),
-            )
-            .mip_levels(1)
-            .array_layers(1)
-            .format(vk::Format::R8G8B8A8_UNORM)
-            .tiling(vk::ImageTiling::OPTIMAL)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
-            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .build();
-
-        let image = unsafe { device.create_image(&create_info, None)? };
-        let memory = Memory::new_for_image(
+        Image::new(
             instance,
             device,
             physical_device,
-            image,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            tex_width,
+            tex_height,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+        )
+    }
+
+    pub fn new_depth_image(
+        instance: &Instance,
+        device: &Rc<Device>,
+        physical_device: vk::PhysicalDevice,
+        tex_width: u32,
+        tex_height: u32,
+    ) -> Result<Self, Box<dyn Error>> {
+        let format = Image::find_supported_format(
+            instance,
+            physical_device,
+            &vec![
+                vk::Format::D32_SFLOAT,
+                vk::Format::D32_SFLOAT_S8_UINT,
+                vk::Format::D24_UNORM_S8_UINT,
+            ],
+            vk::ImageTiling::OPTIMAL,
+            vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
         )?;
-
-        unsafe { device.bind_image_memory(image, memory.vk_device_memory(), 0)? };
-
-        Ok(Self {
-            device: Rc::downgrade(device),
-            image,
-            memory,
-            width: tex_width,
-            height: tex_height,
-        })
+        Image::new(
+            instance,
+            device,
+            physical_device,
+            tex_width,
+            tex_height,
+            format,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        )
     }
 
     pub fn vk_image(&self) -> vk::Image {
         self.image
     }
 
+    pub fn vk_format(&self) -> vk::Format {
+        self.format
+    }
+
     pub fn transit_layout(
         &mut self,
         old_layout: vk::ImageLayout,
         new_layout: vk::ImageLayout,
-        engine: &VulkanRenderingEngine,
+        command_runner: &AdhocCommandRunner,
     ) -> VkResult<()> {
-        engine.run_commands_one_shot(|device, command_buffer| {
+        command_runner.run_commands_one_shot(|device, command_buffer| {
+            let aspect_mask = {
+                match new_layout {
+                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL => {
+                        let mut aspect_mask = vk::ImageAspectFlags::DEPTH;
+                        if self.format == vk::Format::D32_SFLOAT_S8_UINT
+                            || self.format == vk::Format::D24_UNORM_S8_UINT
+                        {
+                            aspect_mask |= vk::ImageAspectFlags::STENCIL;
+                        }
+
+                        aspect_mask
+                    }
+                    _ => vk::ImageAspectFlags::COLOR,
+                }
+            };
+
             let (src_access_mask, src_stage) = {
                 match old_layout {
                     vk::ImageLayout::UNDEFINED => (
@@ -97,6 +120,11 @@ impl Image {
                         vk::AccessFlags::SHADER_READ,
                         vk::PipelineStageFlags::FRAGMENT_SHADER,
                     ),
+                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL => (
+                        vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                            | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                        vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+                    ),
                     _ => panic!("unsupported transfer source layout: {:?}", new_layout),
                 }
             };
@@ -109,7 +137,7 @@ impl Image {
                 .image(self.image)
                 .subresource_range(
                     vk::ImageSubresourceRange::builder()
-                        .aspect_mask(vk::ImageAspectFlags::COLOR)
+                        .aspect_mask(aspect_mask)
                         .level_count(1)
                         .base_mip_level(0)
                         .base_array_layer(0)
@@ -133,8 +161,12 @@ impl Image {
         })
     }
 
-    pub fn copy_from(&mut self, buffer: &Buffer, engine: &VulkanRenderingEngine) -> VkResult<()> {
-        engine.run_commands_one_shot(|device, command_buffer| {
+    pub fn copy_from(
+        &mut self,
+        buffer: &Buffer,
+        command_runner: &AdhocCommandRunner,
+    ) -> VkResult<()> {
+        command_runner.run_commands_one_shot(|device, command_buffer| {
             let region = vk::BufferImageCopy::builder()
                 .image_extent(
                     vk::Extent3D::builder()
@@ -166,6 +198,79 @@ impl Image {
                 )
             }
         })
+    }
+
+    fn new(
+        instance: &Instance,
+        device: &Rc<Device>,
+        physical_device: vk::PhysicalDevice,
+        tex_width: u32,
+        tex_height: u32,
+        format: vk::Format,
+        usage: vk::ImageUsageFlags,
+    ) -> Result<Self, Box<dyn Error>> {
+        let create_info = vk::ImageCreateInfo::builder()
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(
+                vk::Extent3D::builder()
+                    .width(tex_width)
+                    .height(tex_height)
+                    .depth(1)
+                    .build(),
+            )
+            .mip_levels(1)
+            .array_layers(1)
+            .format(format)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(usage)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .build();
+
+        let image = unsafe { device.create_image(&create_info, None)? };
+        let memory = Memory::new_for_image(
+            instance,
+            device,
+            physical_device,
+            image,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        )?;
+
+        unsafe { device.bind_image_memory(image, memory.vk_device_memory(), 0)? };
+
+        Ok(Self {
+            device: Rc::downgrade(device),
+            image,
+            memory,
+            format,
+            width: tex_width,
+            height: tex_height,
+        })
+    }
+
+    fn find_supported_format(
+        instance: &Instance,
+        physical_device: vk::PhysicalDevice,
+        candidates: &Vec<vk::Format>,
+        tiling: vk::ImageTiling,
+        features: vk::FormatFeatureFlags,
+    ) -> Result<vk::Format, Box<dyn Error>> {
+        for format in candidates {
+            let properties =
+                unsafe { instance.get_physical_device_format_properties(physical_device, *format) };
+            if tiling == vk::ImageTiling::LINEAR
+                && (properties.linear_tiling_features & features) == features
+            {
+                return Ok(*format);
+            } else if tiling == vk::ImageTiling::OPTIMAL
+                && (properties.optimal_tiling_features & features) == features
+            {
+                return Ok(*format);
+            }
+        }
+
+        return Err(VulkanBackendError::NoSuitableFormatFound)?;
     }
 }
 

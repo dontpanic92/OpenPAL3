@@ -9,7 +9,32 @@ pub struct ImageView {
 }
 
 impl ImageView {
-    pub fn new(device: &Rc<Device>, image: vk::Image, format: vk::Format) -> VkResult<Self> {
+    pub fn new_color_image_view(
+        device: &Rc<Device>,
+        image: vk::Image,
+        format: vk::Format,
+    ) -> VkResult<Self> {
+        ImageView::new(device, image, format, vk::ImageAspectFlags::COLOR)
+    }
+
+    pub fn new_depth_image_view(
+        device: &Rc<Device>,
+        image: vk::Image,
+        format: vk::Format,
+    ) -> VkResult<Self> {
+        ImageView::new(device, image, format, vk::ImageAspectFlags::DEPTH)
+    }
+
+    pub fn vk_image_view(&self) -> vk::ImageView {
+        self.image_view
+    }
+
+    fn new(
+        device: &Rc<Device>,
+        image: vk::Image,
+        format: vk::Format,
+        aspect_mask: vk::ImageAspectFlags,
+    ) -> VkResult<Self> {
         let component_mapping = vk::ComponentMapping::builder()
             .a(vk::ComponentSwizzle::IDENTITY)
             .r(vk::ComponentSwizzle::IDENTITY)
@@ -17,7 +42,7 @@ impl ImageView {
             .b(vk::ComponentSwizzle::IDENTITY)
             .build();
         let subres_range = vk::ImageSubresourceRange::builder()
-            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .aspect_mask(aspect_mask)
             .base_array_layer(0)
             .layer_count(1)
             .base_mip_level(0)
@@ -35,10 +60,6 @@ impl ImageView {
             device: Rc::downgrade(device),
             image_view: view,
         })
-    }
-
-    pub fn vk_image_view(&self) -> vk::ImageView {
-        self.image_view
     }
 }
 
