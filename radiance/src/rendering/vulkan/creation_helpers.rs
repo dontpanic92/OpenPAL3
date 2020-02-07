@@ -1,6 +1,9 @@
 use super::buffer::Buffer;
+use super::descriptor_manager::DescriptorManager;
 use super::error::VulkanBackendError;
 use super::helpers;
+use super::image_view::ImageView;
+use super::sampler::Sampler;
 use super::uniform_buffer_mvp::UniformBufferMvp;
 use crate::constants;
 use crate::rendering::Window;
@@ -8,12 +11,13 @@ use ash::extensions::khr::{Surface, Swapchain};
 use ash::prelude::VkResult;
 use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::vk::{
-    Extent2D, Image, ImageView, Offset2D, PhysicalDevice, Pipeline, PresentModeKHR,
-    ShaderStageFlags, SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainKHR,
+    Extent2D, Offset2D, PhysicalDevice, Pipeline, PresentModeKHR, ShaderStageFlags,
+    SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainKHR,
 };
 use ash::{vk, Device, Entry, Instance, InstanceError};
 use std::error::Error;
 use std::ffi::CString;
+use std::rc::Rc;
 
 pub fn create_instance(entry: &Entry) -> Result<Instance, InstanceError> {
     let app_info = vk::ApplicationInfo::builder()
@@ -163,43 +167,21 @@ pub fn create_swapchain(
 }
 
 pub fn create_image_views(
-    device: &Device,
-    images: &Vec<Image>,
+    device: &Rc<Device>,
+    images: &Vec<vk::Image>,
     format: SurfaceFormatKHR,
 ) -> VkResult<Vec<ImageView>> {
-    let component_mapping = vk::ComponentMapping::builder()
-        .a(vk::ComponentSwizzle::IDENTITY)
-        .r(vk::ComponentSwizzle::IDENTITY)
-        .g(vk::ComponentSwizzle::IDENTITY)
-        .b(vk::ComponentSwizzle::IDENTITY)
-        .build();
-    let subres_range = vk::ImageSubresourceRange::builder()
-        .aspect_mask(vk::ImageAspectFlags::COLOR)
-        .base_array_layer(0)
-        .layer_count(1)
-        .base_mip_level(0)
-        .level_count(1)
-        .build();
     images
         .iter()
-        .map(|f| {
-            let create_info = vk::ImageViewCreateInfo::builder()
-                .format(format.format)
-                .image(*f)
-                .components(component_mapping)
-                .subresource_range(subres_range)
-                .view_type(vk::ImageViewType::TYPE_2D)
-                .build();
-            unsafe { device.create_image_view(&create_info, None) }
-        })
+        .map(|image| ImageView::new(device, *image, format.format))
         .collect()
 }
 
 pub fn create_pipeline_layout(
     device: &Device,
-    descriptor_set_layout: vk::DescriptorSetLayout,
+    descriptor_manager: &DescriptorManager,
 ) -> VkResult<vk::PipelineLayout> {
-    let layouts = [descriptor_set_layout];
+    let layouts = descriptor_manager.vk_descriptor_set_layouts();
     let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
         .set_layouts(&layouts)
         .build();
@@ -251,16 +233,22 @@ pub fn create_render_pass(device: &Device, format: SurfaceFormatKHR) -> VkResult
 
     unsafe { device.create_render_pass(&render_pass_create_info, None) }
 }
-
+/*
 pub fn create_descriptor_set_layout(device: &Device) -> VkResult<vk::DescriptorSetLayout> {
-    let layout_binding = vk::DescriptorSetLayoutBinding::builder()
+    let uniform_layout_binding = vk::DescriptorSetLayoutBinding::builder()
         .binding(0)
         .descriptor_count(1)
         .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
         .stage_flags(vk::ShaderStageFlags::VERTEX)
         .build();
+    let sampler_layout_binding = vk::DescriptorSetLayoutBinding::builder()
+        .binding(1)
+        .descriptor_count(1)
+        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+        .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+        .build();
 
-    let bindings = [layout_binding];
+    let bindings = [uniform_layout_binding, sampler_layout_binding];
     let create_info = vk::DescriptorSetLayoutCreateInfo::builder()
         .bindings(&bindings)
         .build();
@@ -269,11 +257,16 @@ pub fn create_descriptor_set_layout(device: &Device) -> VkResult<vk::DescriptorS
 }
 
 pub fn create_descriptor_pool(device: &Device, image_count: u32) -> VkResult<vk::DescriptorPool> {
-    let pool_size = vk::DescriptorPoolSize::builder()
+    let uniform_pool_size = vk::DescriptorPoolSize::builder()
         .descriptor_count(image_count)
         .ty(vk::DescriptorType::UNIFORM_BUFFER)
         .build();
-    let pool_sizes = [pool_size];
+    let sampler_pool_size = vk::DescriptorPoolSize::builder()
+        .descriptor_count(image_count)
+        .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+        .build();
+
+    let pool_sizes = [uniform_pool_size, sampler_pool_size];
     let create_info = vk::DescriptorPoolCreateInfo::builder()
         .pool_sizes(&pool_sizes)
         .max_sets(image_count)
@@ -288,6 +281,8 @@ pub fn allocate_descriptor_sets(
     descriptor_pool: vk::DescriptorPool,
     descriptor_set_layouts: &[vk::DescriptorSetLayout],
     uniform_buffers: &[Buffer],
+    image_view: &ImageView,
+    sampler: &Sampler,
 ) -> VkResult<Vec<vk::DescriptorSet>> {
     let create_info = vk::DescriptorSetAllocateInfo::builder()
         .descriptor_pool(descriptor_pool)
@@ -295,25 +290,31 @@ pub fn allocate_descriptor_sets(
         .build();
     let descriptor_sets = unsafe { device.allocate_descriptor_sets(&create_info) }?;
     for i in 0..image_count as usize {
-        let buffer_info = vk::DescriptorBufferInfo::builder()
-            .buffer(uniform_buffers[i].buffer())
+        let uniform_buffer_info = vk::DescriptorBufferInfo::builder()
+            .buffer(uniform_buffers[i].vk_buffer())
             .offset(0)
             .range(std::mem::size_of::<UniformBufferMvp>() as u64)
             .build();
-        let buffer_info_ref = [buffer_info];
+        let sampler_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(image_view.vk_image_view())
+            .sampler(sampler.vk_sampler())
+            .build();
+
+        let buffer_info = [uniform_buffer_info];
         let write_descriptor_set = vk::WriteDescriptorSet::builder()
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .dst_set(descriptor_sets[i])
             .dst_binding(0)
             .dst_array_element(0)
-            .buffer_info(&buffer_info_ref)
+            .buffer_info(&buffer_info)
             .build();
         let write_descriptor_sets = [write_descriptor_set];
         unsafe { device.update_descriptor_sets(&write_descriptor_sets, &[]) };
     }
 
     Ok(descriptor_sets)
-}
+}*/
 
 static SIMPLE_TRIANGLE_VERT: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.vert.spv"));
@@ -473,7 +474,7 @@ pub fn create_framebuffers(
     image_views
         .iter()
         .map(|view| {
-            let attachments = [*view];
+            let attachments = [view.vk_image_view()];
             let create_info = vk::FramebufferCreateInfo::builder()
                 .render_pass(render_pass)
                 .attachments(&attachments)

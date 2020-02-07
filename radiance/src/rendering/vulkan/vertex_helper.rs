@@ -10,7 +10,7 @@ pub fn get_binding_description() -> vk::VertexInputBindingDescription {
         .build()
 }
 
-pub fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 2] {
+pub fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 3] {
     let pos_attr = vk::VertexInputAttributeDescription::builder()
         .offset(Vertex::position_offset() as u32)
         .binding(0)
@@ -25,5 +25,12 @@ pub fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 2] 
         .format(vk::Format::R32G32B32_SFLOAT)
         .build();
 
-    [pos_attr, color_attr]
+    let tex_attr = vk::VertexInputAttributeDescription::builder()
+        .offset(Vertex::tex_coord_offset() as u32)
+        .binding(0)
+        .location(2)
+        .format(vk::Format::R32G32_SFLOAT)
+        .build();
+
+    [pos_attr, color_attr, tex_attr]
 }

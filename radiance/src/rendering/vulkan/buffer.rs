@@ -1,6 +1,7 @@
-use super::error::VulkanBackendError;
-use ash::version::{DeviceV1_0, InstanceV1_0};
-use ash::vk::{DeviceMemory, PhysicalDevice};
+use super::memory::Memory;
+use super::VulkanRenderingEngine;
+use ash::prelude::VkResult;
+use ash::version::DeviceV1_0;
 use ash::{vk, Device, Instance};
 use std::error::Error;
 use std::mem::size_of;
@@ -15,16 +16,54 @@ pub enum BufferType {
 pub struct Buffer {
     device: Weak<Device>,
     buffer: vk::Buffer,
-    memory: DeviceMemory,
+    memory: Memory,
     buffer_size: u64,
     element_count: u32,
 }
 
 impl Buffer {
+    pub fn new_staging_buffer(
+        instance: &Instance,
+        device: &Rc<Device>,
+        physical_device: vk::PhysicalDevice,
+        element_size: usize,
+        element_count: usize,
+    ) -> Result<Self, Box<dyn Error>> {
+        Buffer::new_buffer(
+            instance,
+            Rc::downgrade(&device),
+            physical_device,
+            element_size,
+            element_count,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        )
+    }
+
+    pub fn new_staging_buffer_with_data<T>(
+        instance: &Instance,
+        device: &Rc<Device>,
+        physical_device: vk::PhysicalDevice,
+        data: &[T],
+    ) -> Result<Self, Box<dyn Error>> {
+        let mut staging_buffer = Buffer::new_buffer(
+            instance,
+            Rc::downgrade(&device),
+            physical_device,
+            size_of::<T>(),
+            data.len(),
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        )?;
+
+        staging_buffer.memory.copy_from(data)?;
+        Ok(staging_buffer)
+    }
+
     pub fn new_uniform_buffer(
         instance: &Instance,
         device: &Rc<Device>,
-        physical_device: PhysicalDevice,
+        physical_device: vk::PhysicalDevice,
         element_size: usize,
         element_count: usize,
     ) -> Result<Self, Box<dyn Error>> {
@@ -42,11 +81,10 @@ impl Buffer {
     pub fn new_device_buffer_with_data<T>(
         instance: &Instance,
         device: &Rc<Device>,
-        physical_device: PhysicalDevice,
+        physical_device: vk::PhysicalDevice,
         data: &Vec<T>,
         buffer_type: BufferType,
-        command_pool: &vk::CommandPool,
-        queue: vk::Queue,
+        engine: &VulkanRenderingEngine,
     ) -> Result<Self, Box<dyn Error>> {
         let mut staging_buffer = Buffer::new_buffer(
             instance,
@@ -58,7 +96,7 @@ impl Buffer {
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
 
-        staging_buffer.copy_memory_from(data)?;
+        staging_buffer.memory.copy_from(data)?;
         let flags = match buffer_type {
             BufferType::Index => vk::BufferUsageFlags::INDEX_BUFFER,
             BufferType::Vertex => vk::BufferUsageFlags::VERTEX_BUFFER,
@@ -75,31 +113,11 @@ impl Buffer {
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         )?;
 
-        buffer.copy_buffer_from(&staging_buffer, command_pool, queue)?;
+        buffer.copy_from(&staging_buffer, engine)?;
         Ok(buffer)
     }
 
-    pub fn copy_memory_from<T>(&mut self, data: &[T]) -> ash::prelude::VkResult<()> {
-        let rc_device = self.device.upgrade().unwrap();
-        unsafe {
-            let dst = rc_device.map_memory(
-                self.memory,
-                0,
-                self.buffer_size,
-                vk::MemoryMapFlags::default(),
-            )?;
-            std::ptr::copy(
-                data.as_ptr() as *const std::ffi::c_void,
-                dst,
-                self.buffer_size as usize,
-            );
-            rc_device.unmap_memory(self.memory);
-        }
-
-        Ok(())
-    }
-
-    pub fn buffer(&self) -> vk::Buffer {
+    pub fn vk_buffer(&self) -> vk::Buffer {
         self.buffer
     }
 
@@ -110,7 +128,7 @@ impl Buffer {
     fn new_buffer(
         instance: &Instance,
         device: Weak<Device>,
-        physical_device: PhysicalDevice,
+        physical_device: vk::PhysicalDevice,
         element_size: usize,
         element_count: usize,
         buffer_usage_flags: vk::BufferUsageFlags,
@@ -127,25 +145,14 @@ impl Buffer {
             unsafe { rc_device.create_buffer(&create_info, None)? }
         };
 
-        let memory = {
-            let requirements = unsafe { rc_device.get_buffer_memory_requirements(buffer) };
-            let properties =
-                unsafe { instance.get_physical_device_memory_properties(physical_device) };
-            let index = Buffer::get_memory_type_index(
-                properties,
-                requirements.memory_type_bits,
-                memory_prop_flags,
-            )?;
-
-            let create_info = vk::MemoryAllocateInfo::builder()
-                .allocation_size(requirements.size)
-                .memory_type_index(index as u32)
-                .build();
-
-            unsafe { rc_device.allocate_memory(&create_info, None)? }
-        };
-
-        unsafe { rc_device.bind_buffer_memory(buffer, memory, 0)? };
+        let memory = Memory::new_for_buffer(
+            instance,
+            &rc_device,
+            physical_device,
+            buffer,
+            memory_prop_flags,
+        )?;
+        unsafe { rc_device.bind_buffer_memory(buffer, memory.vk_device_memory(), 0)? };
 
         Ok(Self {
             device,
@@ -156,77 +163,24 @@ impl Buffer {
         })
     }
 
-    fn copy_buffer_from(
-        &mut self,
-        src_buffer: &Buffer,
-        command_pool: &vk::CommandPool,
-        queue: vk::Queue,
-    ) -> ash::prelude::VkResult<()> {
-        let rc_device = self.device.upgrade().unwrap();
-        let command_buffer = {
-            let allocation_info = vk::CommandBufferAllocateInfo::builder()
-                .command_pool(*command_pool)
-                .level(vk::CommandBufferLevel::PRIMARY)
-                .command_buffer_count(1)
-                .build();
-            unsafe { rc_device.allocate_command_buffers(&allocation_info)? }
-        };
+    pub fn memory_mut(&mut self) -> &mut Memory {
+        &mut self.memory
+    }
 
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
-            .build();
-        unsafe {
-            rc_device.begin_command_buffer(command_buffer[0], &begin_info)?;
+    fn copy_from(&mut self, src_buffer: &Buffer, engine: &VulkanRenderingEngine) -> VkResult<()> {
+        engine.run_commands_one_shot(|device, &command_buffer| {
             let copy_region = vk::BufferCopy::builder()
                 .size(src_buffer.buffer_size)
                 .build();
-            rc_device.cmd_copy_buffer(
-                command_buffer[0],
-                src_buffer.buffer,
-                self.buffer,
-                &[copy_region],
-            );
-            rc_device.end_command_buffer(command_buffer[0])?;
-
-            let submit_info = vk::SubmitInfo::builder()
-                .command_buffers(&command_buffer)
-                .build();
-            rc_device.queue_submit(queue, &[submit_info], vk::Fence::default())?;
-            rc_device.queue_wait_idle(queue)?;
-
-            rc_device.free_command_buffers(*command_pool, &command_buffer);
-        }
-
-        Ok(())
-    }
-
-    fn get_memory_type_index(
-        properties: vk::PhysicalDeviceMemoryProperties,
-        candidates: u32,
-        required_properties: vk::MemoryPropertyFlags,
-    ) -> Result<usize, VulkanBackendError> {
-        let index = properties
-            .memory_types
-            .iter()
-            .take(properties.memory_type_count as usize)
-            .enumerate()
-            .filter_map(|(i, t)| {
-                if (candidates & (1 << i as u32) != 0)
-                    && (t.property_flags & required_properties == required_properties)
-                {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
-            .take(1)
-            .collect::<Vec<usize>>();
-
-        if index.is_empty() {
-            Err(VulkanBackendError::NoSuitableMemoryFound)
-        } else {
-            Ok(index[0])
-        }
+            unsafe {
+                device.cmd_copy_buffer(
+                    command_buffer,
+                    src_buffer.buffer,
+                    self.buffer,
+                    &[copy_region],
+                );
+            }
+        })
     }
 }
 
@@ -235,7 +189,6 @@ impl Drop for Buffer {
         let rc_device = self.device.upgrade().unwrap();
         unsafe {
             rc_device.destroy_buffer(self.buffer, None);
-            rc_device.free_memory(self.memory, None);
         }
     }
 }

@@ -9,6 +9,7 @@ build = "build.rs"
 ash = "0.29.0"
 memoffset = "0.5.3"
 lazy_static = "1.2.0"
+image = "0.22.4"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi"] }
