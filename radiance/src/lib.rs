@@ -1,3 +1,6 @@
+#[macro_use]
+mod macros;
+
 pub mod application;
 pub mod math;
 pub mod radiance;

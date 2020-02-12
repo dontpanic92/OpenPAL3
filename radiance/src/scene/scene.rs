@@ -14,22 +14,22 @@ impl Scene {
                 Vertex::new(
                     Vec3::new(-0.5, -0.5, 0.),
                     Vec3::new(1., 0., 0.),
-                    Vec2::new(1., 0.),
+                    Vec2::new(0., 1.),
                 ),
                 Vertex::new(
                     Vec3::new(0.5, -0.5, 0.),
                     Vec3::new(0., 1., 0.),
-                    Vec2::new(0., 0.),
+                    Vec2::new(1., 1.),
                 ),
                 Vertex::new(
                     Vec3::new(0.5, 0.5, 0.),
                     Vec3::new(0., 0., 1.),
-                    Vec2::new(0., 1.),
+                    Vec2::new(1., 0.),
                 ),
                 Vertex::new(
                     Vec3::new(-0.5, 0.5, 0.),
                     Vec3::new(1., 1., 1.),
-                    Vec2::new(1., 1.),
+                    Vec2::new(0., 0.),
                 ),
             ],
             vec![0, 1, 2, 2, 3, 0],
@@ -41,22 +41,22 @@ impl Scene {
                 Vertex::new(
                     Vec3::new(-0.5, -0.5, -1.),
                     Vec3::new(1., 0., 0.),
-                    Vec2::new(1., 0.),
+                    Vec2::new(0., 1.),
                 ),
                 Vertex::new(
                     Vec3::new(0.5, -0.5, -1.),
                     Vec3::new(0., 1., 0.),
-                    Vec2::new(0., 0.),
+                    Vec2::new(1., 1.),
                 ),
                 Vertex::new(
                     Vec3::new(0.5, 0.5, -1.),
                     Vec3::new(0., 0., 1.),
-                    Vec2::new(0., 1.),
+                    Vec2::new(1., 0.),
                 ),
                 Vertex::new(
                     Vec3::new(-0.5, 0.5, -1.),
                     Vec3::new(1., 1., 1.),
-                    Vec2::new(1., 1.),
+                    Vec2::new(0., 0.),
                 ),
             ],
             vec![0, 1, 2, 2, 3, 0],

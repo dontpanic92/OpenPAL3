@@ -3,19 +3,15 @@ use super::buffer::Buffer;
 use super::creation_helpers;
 use super::descriptor_manager::DescriptorManager;
 use super::descriptor_sets::DescriptorSets;
-use super::error::VulkanBackendError;
 use super::image::Image;
 use super::image_view::ImageView;
 use super::render_object::VulkanRenderObject;
 use super::uniform_buffer_mvp::UniformBufferMvp;
 use ash::prelude::VkResult;
-use ash::version::{DeviceV1_0, InstanceV1_0};
+use ash::version::{DeviceV1_0};
 use ash::{vk, Device, Instance};
 use std::ops::Deref;
-use std::{
-    error::Error,
-    rc::{Rc, Weak},
-};
+use std::rc::{Rc, Weak};
 
 pub struct SwapChain {
     device: Weak<Device>,

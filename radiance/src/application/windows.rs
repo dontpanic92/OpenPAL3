@@ -78,6 +78,12 @@ impl Platform {
         self.hwnd
     }
 
+    pub fn set_title(&mut self, title: &str) {
+        unsafe {
+            winuser::SetWindowTextW(self.hwnd, utf16_ptr!(title));
+        }
+    }
+
     fn create_window(instance: HINSTANCE, title: &str) -> HWND {
         unsafe {
             let wnd_class = winuser::WNDCLASSW {
@@ -129,10 +135,6 @@ impl Platform {
 }
 
 const WINDOW_CLASS_NAME: &str = "RADIANCE_WINDOW";
-
-/*fn utf16_ptr!<T: Into<String>>(s: T) -> * const u16 {
-    append_zero(s).encode_utf16().collect::<Vec<u16>>().as_ptr()
-}*/
 
 fn append_zero<T: Into<String>>(s: T) -> String {
     format!("{}\0", s.into())

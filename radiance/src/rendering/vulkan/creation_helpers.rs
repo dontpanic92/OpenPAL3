@@ -438,7 +438,7 @@ pub fn create_framebuffers(
 fn enabled_layer_names() -> Vec<*const i8> {
     unsafe {
         vec![
-            std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_core_validation\0")
+            std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_standard_validation\0")
                 .as_ptr() as *const i8,
         ]
     }
