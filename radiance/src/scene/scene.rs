@@ -1,83 +1,62 @@
 use super::Entity;
 use crate::math::{Vec2, Vec3};
 use crate::rendering::{RenderObject, Vertex};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-pub struct Scene {
-    entities: Vec<Entity>,
+pub trait Scene {
+    fn load(&mut self);
+    fn update(&mut self);
+    fn unload(&mut self);
+    fn entities(&self) -> &Vec<Entity>;
+    fn entities_mut(&mut self) -> &mut Vec<Entity>;
 }
 
-impl Scene {
-    pub fn new() -> Self {
-        let mut entity1 = Entity::new();
-        entity1.add_component(RenderObject::new_with_data(
-            vec![
-                Vertex::new(
-                    Vec3::new(-0.5, -0.5, 0.),
-                    Vec3::new(1., 0., 0.),
-                    Vec2::new(0., 1.),
-                ),
-                Vertex::new(
-                    Vec3::new(0.5, -0.5, 0.),
-                    Vec3::new(0., 1., 0.),
-                    Vec2::new(1., 1.),
-                ),
-                Vertex::new(
-                    Vec3::new(0.5, 0.5, 0.),
-                    Vec3::new(0., 0., 1.),
-                    Vec2::new(1., 0.),
-                ),
-                Vertex::new(
-                    Vec3::new(-0.5, 0.5, 0.),
-                    Vec3::new(1., 1., 1.),
-                    Vec2::new(0., 0.),
-                ),
-            ],
-            vec![0, 1, 2, 2, 3, 0],
-        ));
+pub trait SceneCallbacks {
+    define_callback_fn!(on_loading, CoreScene, SceneCallbacks);
+    define_callback_fn!(on_loaded, CoreScene, SceneCallbacks);
+}
 
-        let mut entity2 = Entity::new();
-        entity2.add_component(RenderObject::new_with_data(
-            vec![
-                Vertex::new(
-                    Vec3::new(-0.5, -0.5, -1.),
-                    Vec3::new(1., 0., 0.),
-                    Vec2::new(0., 1.),
-                ),
-                Vertex::new(
-                    Vec3::new(0.5, -0.5, -1.),
-                    Vec3::new(0., 1., 0.),
-                    Vec2::new(1., 1.),
-                ),
-                Vertex::new(
-                    Vec3::new(0.5, 0.5, -1.),
-                    Vec3::new(0., 0., 1.),
-                    Vec2::new(1., 0.),
-                ),
-                Vertex::new(
-                    Vec3::new(-0.5, 0.5, -1.),
-                    Vec3::new(1., 1., 1.),
-                    Vec2::new(0., 0.),
-                ),
-            ],
-            vec![0, 1, 2, 2, 3, 0],
-        ));
+mod private {
+    pub struct DefaultCallbacks {}
+    impl super::SceneCallbacks for DefaultCallbacks {}
+}
 
+pub type DefaultScene = CoreScene<private::DefaultCallbacks>;
+
+pub struct CoreScene<TCallbacks: SceneCallbacks> {
+    entities: Vec<Entity>,
+    callbacks: Rc<RefCell<TCallbacks>>,
+}
+
+impl<TCallbacks: SceneCallbacks> CoreScene<TCallbacks> {
+    pub fn new(callbacks: RefCell<TCallbacks>) -> Self {
         Self {
-            entities: vec![entity1, entity2],
+            entities: vec![],
+            callbacks: Rc::new(callbacks),
         }
     }
 
-    pub fn load(&mut self) {}
+    pub fn add_entity(&mut self, entity: Entity) {
+        self.entities.push(entity);
+    }
+}
 
-    pub fn update(&mut self) {}
+impl<TCallbacks: SceneCallbacks> Scene for CoreScene<TCallbacks> {
+    fn load(&mut self) {
+        callback!(self, on_loading);
+        callback!(self, on_loaded);
+    }
 
-    pub fn unload(&mut self) {}
+    fn update(&mut self) {}
 
-    pub fn entities(&self) -> &Vec<Entity> {
+    fn unload(&mut self) {}
+
+    fn entities(&self) -> &Vec<Entity> {
         &self.entities
     }
 
-    pub fn entities_mut(&mut self) -> &mut Vec<Entity> {
+    fn entities_mut(&mut self) -> &mut Vec<Entity> {
         &mut self.entities
     }
 }

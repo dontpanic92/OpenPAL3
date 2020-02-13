@@ -3,7 +3,6 @@ use super::Platform;
 use crate::constants;
 use crate::radiance;
 use crate::radiance::CoreRadianceEngine;
-use crate::radiance::RadianceEngine;
 use crate::rendering;
 use crate::rendering::VulkanRenderingEngine;
 use std::rc::Rc;
@@ -41,6 +40,10 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
         }
     }
 
+    pub fn engine_mut(&mut self) -> &mut CoreRadianceEngine<VulkanRenderingEngine> {
+        &mut self.radiance_engine
+    }
+
     pub fn callbacks_mut(&self) -> RefMut<TCallbacks> {
         self.callbacks.borrow_mut()
     }
@@ -55,7 +58,6 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
     }
 
     pub fn run(&mut self) {
-        self.radiance_engine.load_scene();
         let mut frame_start_time = Instant::now();
         loop {
             if !self.platform.process_message() {

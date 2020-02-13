@@ -1,8 +1,10 @@
 macro_rules! callback {
     ($self: ident, $x: ident $(, $params: expr)*) => {
-        let callbacks = $self.callbacks.clone();
-        let mut ref_mut = callbacks.borrow_mut();
-        ref_mut.$x($self $(, $params)*);
+        {
+            let callbacks = $self.callbacks.clone();
+            let mut ref_mut = callbacks.borrow_mut();
+            ref_mut.$x($self $(, $params)*);
+        }
     };
 }
 

@@ -1,4 +1,7 @@
+mod scene;
+
 use radiance::application;
+use radiance::scene::CoreScene;
 use std::rc::Rc;
 use std::cell::RefCell;
 
@@ -6,7 +9,7 @@ struct ApplicationCallbacks {}
 
 impl application::ApplicationCallbacks for ApplicationCallbacks {
     fn on_initialized<T: application::ApplicationCallbacks>(&mut self, app: &mut application::Application<T>) {
-        println!("on_initialize");
+        app.engine_mut().load_scene(CoreScene::new(RefCell::new(scene::ModelViewerScene{})));
     }
 
     fn on_updated<T: application::ApplicationCallbacks>(&mut self, app: &mut application::Application<T>, delta_sec: f32) {

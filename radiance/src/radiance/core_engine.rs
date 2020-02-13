@@ -1,26 +1,9 @@
-use super::RadianceEngine;
 use crate::rendering::RenderingEngine;
 use crate::scene::Scene;
 
 pub struct CoreRadianceEngine<TRenderingEngine: RenderingEngine> {
     rendering_engine: TRenderingEngine,
-    scene: Option<Scene>,
-}
-
-impl<TRenderingEngine: RenderingEngine> RadianceEngine for CoreRadianceEngine<TRenderingEngine> {
-    fn load_scene(&mut self) {
-        self.scene = Some(Scene::new());
-        self.rendering_engine
-            .scene_loaded(self.scene.as_mut().unwrap());
-    }
-
-    fn unload_scene(&mut self) {
-        self.scene = None;
-    }
-
-    fn update(&mut self) {
-        self.rendering_engine.render(self.scene.as_mut().unwrap());
-    }
+    scene: Option<Box<dyn Scene>>,
 }
 
 impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
@@ -30,6 +13,28 @@ impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
             scene: None,
         }
     }
+
+    pub fn load_scene<TScene: 'static + Scene>(&mut self, scene: TScene) {
+        self.unload_scene();
+        self.scene = Some(Box::new(scene));
+        let scene_mut = self.scene.as_mut().unwrap().as_mut();
+        scene_mut.load();
+        self.rendering_engine.scene_loaded(scene_mut);
+    }
+
+    pub fn unload_scene(&mut self) {
+        match self.scene.as_mut() {
+            Some(s) => s.unload(),
+            None => (),
+        }
+
+        self.scene = None;
+    }
+
+    pub fn update(&mut self) {
+        self.rendering_engine.render(self.scene.as_mut().unwrap().as_mut());
+    }
+
 }
 
 impl<TRenderingEngine: RenderingEngine> Drop for CoreRadianceEngine<TRenderingEngine> {
