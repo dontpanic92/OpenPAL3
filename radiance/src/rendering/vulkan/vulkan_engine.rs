@@ -7,11 +7,10 @@ use super::image::Image;
 use super::render_object::VulkanRenderObject;
 use super::swapchain::SwapChain;
 use super::uniform_buffer_mvp::UniformBufferMvp;
-use crate::math::Transform;
-use crate::math::{Mat44, Vec3};
+use crate::math::{Transform, Mat44, Vec3};
 use crate::rendering::RenderObject;
 use crate::rendering::{RenderingEngine, Window};
-use crate::scene::{Camera, Entity, Scene};
+use crate::scene::{Camera, Entity, Scene, entity_get_component, entity_get_component_mut};
 use ash::extensions::ext::DebugReport;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Entry, Instance};
@@ -141,7 +140,7 @@ impl RenderingEngine for VulkanRenderingEngine {
         return Ok(vulkan);
     }
 
-    fn render(&mut self, scene: &mut Scene) {
+    fn render(&mut self, scene: &mut dyn Scene) {
         if self.swapchain.is_none() {
             self.recreate_swapchain().unwrap();
             self.record_command_buffers(scene);
@@ -153,13 +152,13 @@ impl RenderingEngine for VulkanRenderingEngine {
         }
     }
 
-    fn scene_loaded(&mut self, scene: &mut Scene) {
+    fn scene_loaded(&mut self, scene: &mut dyn Scene) {
         for e in scene.entities_mut() {
-            match e.get_component::<RenderObject>() {
+            match entity_get_component::<RenderObject>(e.as_ref()) {
                 None => continue,
                 Some(render_object) => {
                     let object = VulkanRenderObject::new(render_object, self).unwrap();
-                    e.add_component::<VulkanRenderObject>(object);
+                    e.add_component(Box::new(object));
                 }
             }
         }
@@ -167,8 +166,6 @@ impl RenderingEngine for VulkanRenderingEngine {
         self.record_command_buffers(scene);
     }
 }
-
-static mut Z: f32 = 0.;
 
 impl VulkanRenderingEngine {
     pub fn device(&self) -> &Rc<Device> {
@@ -207,12 +204,13 @@ impl VulkanRenderingEngine {
         )
     }
 
-    fn record_command_buffers(&mut self, scene: &mut Scene) {
+    fn record_command_buffers(&mut self, scene: &mut dyn Scene) {
         let swapchain = self.swapchain.as_mut().unwrap();
+
         let objects: Vec<&mut VulkanRenderObject> = scene
             .entities_mut()
             .iter_mut()
-            .filter_map(|e| e.get_component_mut::<VulkanRenderObject>())
+            .filter_map(|e| entity_get_component_mut::<VulkanRenderObject>(e.as_mut()))
             .collect();
 
         swapchain.record_command_buffers(&objects).unwrap();
@@ -252,7 +250,7 @@ impl VulkanRenderingEngine {
         )
     }
 
-    fn render_objects(&mut self, entities: &Vec<Entity>) -> Result<(), Box<dyn Error>> {
+    fn render_objects(&mut self, entities: &Vec<Box<dyn Entity>>) -> Result<(), Box<dyn Error>> {
         let swapchain = self.swapchain.as_mut().unwrap();
         unsafe {
             let (image_index, _) = swapchain
@@ -267,18 +265,13 @@ impl VulkanRenderingEngine {
             // Update Uniform Buffers
             {
                 let ubo = {
-                    let model = Mat44::new_identity();
+                    let model = entities[0].transform().matrix();
                     let mut transform = Transform::new();
-                    transform.rotate_local(&Vec3::new(0., 1., 0.), Z);
                     transform.translate_local(&Vec3::new(0., 0., 2.));
-                    Z += 0.001;
-                    if Z > 6.828 {
-                        Z = 0.;
-                    }
-                    let view = Mat44::inversed(transform.matrix());
                     let cam = Camera::new(90. * PI / 180., 800. / 600., 0.1, 100.);
+                    let view = Mat44::inversed(transform.matrix());
                     let proj = cam.projection_matrix();
-                    UniformBufferMvp::new(&model, &view, proj)
+                    UniformBufferMvp::new(model, &view, proj)
                 };
 
                 swapchain.update_ubo(image_index as usize, &[ubo])?;

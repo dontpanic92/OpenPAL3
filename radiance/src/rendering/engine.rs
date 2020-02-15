@@ -6,6 +6,6 @@ pub trait RenderingEngine {
     where
         Self: std::marker::Sized;
 
-    fn render(&mut self, scene: &mut Scene);
-    fn scene_loaded(&mut self, scene: &mut Scene);
+    fn render(&mut self, scene: &mut dyn Scene);
+    fn scene_loaded(&mut self, scene: &mut dyn Scene);
 }

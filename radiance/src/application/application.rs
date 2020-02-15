@@ -59,15 +59,16 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
 
     pub fn run(&mut self) {
         let mut frame_start_time = Instant::now();
+        let mut elapsed = 0.;
         loop {
             if !self.platform.process_message() {
                 break;
             }
 
-            self.radiance_engine.update();
+            self.radiance_engine.update(elapsed);
 
             let frame_end_time = Instant::now();
-            let elapsed = frame_end_time.duration_since(frame_start_time).as_secs_f32();
+            elapsed = frame_end_time.duration_since(frame_start_time).as_secs_f32();
             frame_start_time = frame_end_time;
             callback!(self, on_updated, elapsed);
         }

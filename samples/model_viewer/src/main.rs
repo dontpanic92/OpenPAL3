@@ -9,7 +9,7 @@ struct ApplicationCallbacks {}
 
 impl application::ApplicationCallbacks for ApplicationCallbacks {
     fn on_initialized<T: application::ApplicationCallbacks>(&mut self, app: &mut application::Application<T>) {
-        app.engine_mut().load_scene(CoreScene::new(RefCell::new(scene::ModelViewerScene{})));
+        app.engine_mut().load_scene(CoreScene::new(scene::ModelViewerScene{}));
     }
 
     fn on_updated<T: application::ApplicationCallbacks>(&mut self, app: &mut application::Application<T>, delta_sec: f32) {
