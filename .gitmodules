@@ -1,0 +1,3 @@
+[submodule "radiance"]
+	path = radiance
+	url = https://github.com/dontpanic92/radiance
