@@ -188,7 +188,7 @@ impl SwapChain {
             .zip(self.per_frame_descriptor_sets.vk_descriptor_set())
         {
             let begin_info = vk::CommandBufferBeginInfo::builder()
-                .flags(vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE)
+                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
                 .build();
             unsafe {
                 device.reset_command_buffer(

@@ -70,14 +70,19 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
                 break;
             }
 
-            self.radiance_engine.update(elapsed);
-
             let frame_end_time = Instant::now();
             elapsed = frame_end_time
                 .duration_since(frame_start_time)
                 .as_secs_f32();
+            
+            if elapsed < 1./120. {
+                continue;
+            }
+
             frame_start_time = frame_end_time;
             callback!(self, on_updated, elapsed);
+
+            self.radiance_engine.update(elapsed);
         }
 
         self.radiance_engine.unload_scene();

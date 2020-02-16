@@ -3,7 +3,6 @@ mod scene;
 use radiance::application;
 use radiance::scene::CoreScene;
 use std::cell::RefCell;
-use std::rc::Rc;
 
 struct ApplicationCallbacks {}
 

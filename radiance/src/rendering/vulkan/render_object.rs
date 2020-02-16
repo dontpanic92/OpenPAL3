@@ -10,12 +10,13 @@ use image::GenericImageView;
 use std::error::Error;
 
 pub struct VulkanRenderObject {
-    vertex_buffer: Buffer,
+    vertex_buffers: Vec<Buffer>,
     index_buffer: Buffer,
     texture: Image,
     image_view: ImageView,
     sampler: Sampler,
     per_object_descriptor_sets: DescriptorSets,
+    anim_frame_index: usize,
 }
 
 impl VulkanRenderObject {
@@ -23,8 +24,11 @@ impl VulkanRenderObject {
         object: &RenderObject,
         engine: &mut VulkanRenderingEngine,
     ) -> Result<Self, Box<dyn Error>> {
-        let vertex_buffer =
-            engine.create_device_buffer_with_data(BufferType::Vertex, &object.vertices())?;
+        let mut vertex_buffers = vec![];
+        for vertices in object.vertices() {
+            vertex_buffers.push(engine.create_device_buffer_with_data(BufferType::Vertex, vertices)?);
+        }
+
         let index_buffer =
             engine.create_device_buffer_with_data(BufferType::Index, &object.indices())?;
 
@@ -53,18 +57,25 @@ impl VulkanRenderObject {
             .descriptor_manager_mut()
             .allocate_per_object_descriptor_set(&image_view, &sampler)?;
 
+        let anim_frame_index = object.anim_frame_index();
+
         Ok(Self {
-            vertex_buffer,
+            vertex_buffers,
             index_buffer,
             texture,
             image_view,
             sampler,
             per_object_descriptor_sets,
+            anim_frame_index,
         })
     }
 
+    pub fn update(&mut self, object: &RenderObject) {
+        self.anim_frame_index = object.anim_frame_index();
+    }
+
     pub fn vertex_buffer(&self) -> &Buffer {
-        &self.vertex_buffer
+        &self.vertex_buffers[self.anim_frame_index]
     }
 
     pub fn index_buffer(&self) -> &Buffer {

@@ -143,9 +143,9 @@ impl RenderingEngine for VulkanRenderingEngine {
     fn render(&mut self, scene: &mut dyn Scene) {
         if self.swapchain.is_none() {
             self.recreate_swapchain().unwrap();
-            self.record_command_buffers(scene);
         }
 
+        self.record_command_buffers(scene);
         match self.render_objects(scene.entities()) {
             Ok(()) => (),
             Err(err) => println!("{}", err),
@@ -162,8 +162,6 @@ impl RenderingEngine for VulkanRenderingEngine {
                 }
             }
         }
-
-        self.record_command_buffers(scene);
     }
 }
 
@@ -210,7 +208,13 @@ impl VulkanRenderingEngine {
         let objects: Vec<&mut VulkanRenderObject> = scene
             .entities_mut()
             .iter_mut()
-            .filter_map(|e| entity_get_component_mut::<VulkanRenderObject>(e.as_mut()))
+            .filter_map(|e| {
+                unsafe {
+                    let er = e.as_mut() as *mut _ ;
+                    let ro = entity_get_component::<RenderObject>(&*er)?;
+                    entity_get_component_mut::<VulkanRenderObject>(&mut *er).and_then(|vro| { vro.update(ro); Some(vro) })
+                }
+            })
             .collect();
 
         swapchain.record_command_buffers(&objects).unwrap();
