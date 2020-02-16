@@ -21,7 +21,7 @@ pub fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 2] 
     let tex_attr = vk::VertexInputAttributeDescription::builder()
         .offset(Vertex::tex_coord_offset() as u32)
         .binding(0)
-        .location(2)
+        .location(1)
         .format(vk::Format::R32G32_SFLOAT)
         .build();
 
