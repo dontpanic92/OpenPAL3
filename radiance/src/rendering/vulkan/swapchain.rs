@@ -8,7 +8,7 @@ use super::image_view::ImageView;
 use super::render_object::VulkanRenderObject;
 use super::uniform_buffer_mvp::UniformBufferMvp;
 use ash::prelude::VkResult;
-use ash::version::{DeviceV1_0};
+use ash::version::DeviceV1_0;
 use ash::{vk, Device, Instance};
 use std::ops::Deref;
 use std::rc::{Rc, Weak};

@@ -33,9 +33,9 @@ impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
 
     pub fn update(&mut self, delta_sec: f32) {
         self.scene.as_mut().unwrap().update(delta_sec);
-        self.rendering_engine.render(self.scene.as_mut().unwrap().as_mut());
+        self.rendering_engine
+            .render(self.scene.as_mut().unwrap().as_mut());
     }
-
 }
 
 impl<TRenderingEngine: RenderingEngine> Drop for CoreRadianceEngine<TRenderingEngine> {

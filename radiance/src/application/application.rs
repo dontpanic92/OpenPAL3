@@ -5,19 +5,24 @@ use crate::radiance;
 use crate::radiance::CoreRadianceEngine;
 use crate::rendering;
 use crate::rendering::VulkanRenderingEngine;
+use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 use std::time::Instant;
-use std::cell::{RefMut, RefCell};
 
 pub trait ApplicationCallbacks {
     define_callback_fn!(on_initialized, Application, ApplicationCallbacks);
-    define_callback_fn!(on_updated, Application, ApplicationCallbacks, _delta_sec: f32);
+    define_callback_fn!(
+        on_updated,
+        Application,
+        ApplicationCallbacks,
+        _delta_sec: f32
+    );
 }
 
 mod private {
     pub struct EmptyCallbacks {}
     impl super::ApplicationCallbacks for EmptyCallbacks {}
-} 
+}
 pub type DefaultApplication = Application<private::EmptyCallbacks>;
 
 pub struct Application<TCallbacks: ApplicationCallbacks> {
@@ -68,7 +73,9 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
             self.radiance_engine.update(elapsed);
 
             let frame_end_time = Instant::now();
-            elapsed = frame_end_time.duration_since(frame_start_time).as_secs_f32();
+            elapsed = frame_end_time
+                .duration_since(frame_start_time)
+                .as_secs_f32();
             frame_start_time = frame_end_time;
             callback!(self, on_updated, elapsed);
         }

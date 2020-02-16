@@ -7,10 +7,10 @@ use super::image::Image;
 use super::render_object::VulkanRenderObject;
 use super::swapchain::SwapChain;
 use super::uniform_buffer_mvp::UniformBufferMvp;
-use crate::math::{Transform, Mat44, Vec3};
+use crate::math::{Mat44, Transform, Vec3};
 use crate::rendering::RenderObject;
 use crate::rendering::{RenderingEngine, Window};
-use crate::scene::{Camera, Entity, Scene, entity_get_component, entity_get_component_mut};
+use crate::scene::{entity_get_component, entity_get_component_mut, Camera, Entity, Scene};
 use ash::extensions::ext::DebugReport;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Entry, Instance};
@@ -268,7 +268,7 @@ impl VulkanRenderingEngine {
                     let model = entities[0].transform().matrix();
                     let mut transform = Transform::new();
                     transform.translate_local(&Vec3::new(0., 0., 2.));
-                    let cam = Camera::new(90. * PI / 180., 800. / 600., 0.1, 100.);
+                    let cam = Camera::new(90. * PI / 180., 800. / 600., 0.1, 1000.);
                     let view = Mat44::inversed(transform.matrix());
                     let proj = cam.projection_matrix();
                     UniformBufferMvp::new(model, &view, proj)

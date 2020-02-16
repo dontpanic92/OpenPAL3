@@ -1,4 +1,4 @@
-use super::entity::{Entity, EntityCallbacks, CoreEntity};
+use super::entity::{CoreEntity, Entity, EntityCallbacks};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -43,6 +43,10 @@ pub type DefaultScene = CoreScene<private::DefaultCallbacks>;
 impl<TCallbacks: SceneCallbacks> Scene for CoreScene<TCallbacks> {
     fn load(&mut self) {
         callback!(self, on_loading);
+        for entity in &mut self.entities {
+            entity.load();
+        }
+
         callback!(self, on_loaded);
     }
 

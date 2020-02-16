@@ -13,4 +13,3 @@ macro_rules! define_callback_fn {
         fn $name<T: $callback_trait>(&mut self, _app: &mut $struct<T> $(, $var_name: $var_type)*) {}
     };
 }
-

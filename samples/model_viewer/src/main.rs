@@ -2,18 +2,26 @@ mod scene;
 
 use radiance::application;
 use radiance::scene::CoreScene;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 struct ApplicationCallbacks {}
 
 impl application::ApplicationCallbacks for ApplicationCallbacks {
-    fn on_initialized<T: application::ApplicationCallbacks>(&mut self, app: &mut application::Application<T>) {
-        app.engine_mut().load_scene(CoreScene::new(scene::ModelViewerScene{}));
+    fn on_initialized<T: application::ApplicationCallbacks>(
+        &mut self,
+        app: &mut application::Application<T>,
+    ) {
+        app.engine_mut()
+            .load_scene(CoreScene::new(scene::ModelViewerScene {}));
     }
 
-    fn on_updated<T: application::ApplicationCallbacks>(&mut self, app: &mut application::Application<T>, delta_sec: f32) {
-        let title = format!("Radiance - FPS: {}", 1./delta_sec);
+    fn on_updated<T: application::ApplicationCallbacks>(
+        &mut self,
+        app: &mut application::Application<T>,
+        delta_sec: f32,
+    ) {
+        let title = format!("Radiance - FPS: {}", 1. / delta_sec);
         app.set_title(&title);
     }
 }

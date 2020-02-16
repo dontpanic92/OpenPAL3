@@ -3,5 +3,8 @@ mod entity;
 mod scene;
 
 pub use camera::Camera;
-pub use scene::{Scene, SceneCallbacks, DefaultScene, CoreScene};
-pub use entity::{Entity, CoreEntity, EntityCallbacks, entity_add_component, entity_get_component, entity_get_component_mut};
+pub use entity::{
+    entity_add_component, entity_get_component, entity_get_component_mut, CoreEntity, Entity,
+    EntityCallbacks,
+};
+pub use scene::{CoreScene, DefaultScene, Scene, SceneCallbacks};

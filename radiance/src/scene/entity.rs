@@ -1,8 +1,8 @@
 use crate::math::Transform;
 use std::any::{Any, TypeId};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 pub trait Entity {
     fn load(&mut self);
