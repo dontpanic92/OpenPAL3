@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 use std::ptr::swap;
 
 /// Row major 4x4 matrix
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Mat44([[f32; 4]; 4]);
 
@@ -62,6 +62,10 @@ impl Mat44 {
         }
 
         new_mat
+    }
+
+    pub fn floats_mut(&mut self) -> &mut [[f32; 4]; 4] {
+        &mut self.0
     }
 }
 
