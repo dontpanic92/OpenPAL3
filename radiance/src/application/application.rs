@@ -32,7 +32,7 @@ pub struct Application<TCallbacks: ApplicationCallbacks> {
 }
 
 impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
-    pub fn new(callbacks: RefCell<TCallbacks>) -> Self {
+    pub fn new(callbacks: TCallbacks) -> Self {
         let platform = Platform::new();
         let window = rendering::Window {
             hwnd: platform.hwnd(),
@@ -41,7 +41,7 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
             radiance_engine: radiance::create_radiance_engine::<VulkanRenderingEngine>(&window)
                 .unwrap_or_fail_fast(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
             platform,
-            callbacks: Rc::new(callbacks),
+            callbacks: Rc::new(RefCell::new(callbacks)),
         }
     }
 
@@ -75,9 +75,9 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
                 .duration_since(frame_start_time)
                 .as_secs_f32();
             
-            if elapsed < 1./120. {
+            /*if elapsed < 1./120. {
                 continue;
-            }
+            }*/
 
             frame_start_time = frame_end_time;
             callback!(self, on_updated, elapsed);

@@ -4,19 +4,22 @@ use super::image::Image;
 use super::image_view::ImageView;
 use super::sampler::Sampler;
 use super::VulkanRenderingEngine;
+use super::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::RenderObject;
 use ash::vk;
 use image::GenericImageView;
 use std::error::Error;
+use std::rc::{Rc, Weak};
 
 pub struct VulkanRenderObject {
-    vertex_buffers: Vec<Buffer>,
+    vertex_staging_buffer: Buffer,
+    vertex_buffer: Buffer,
     index_buffer: Buffer,
     texture: Image,
     image_view: ImageView,
     sampler: Sampler,
     per_object_descriptor_sets: DescriptorSets,
-    anim_frame_index: usize,
+    command_runner: Weak<AdhocCommandRunner>,
 }
 
 impl VulkanRenderObject {
@@ -24,13 +27,12 @@ impl VulkanRenderObject {
         object: &RenderObject,
         engine: &mut VulkanRenderingEngine,
     ) -> Result<Self, Box<dyn Error>> {
-        let mut vertex_buffers = vec![];
-        for vertices in object.vertices() {
-            vertex_buffers.push(engine.create_device_buffer_with_data(BufferType::Vertex, vertices)?);
-        }
-
+        let vertex_staging_buffer = 
+            engine.create_staging_buffer_with_data(object.vertices())?;
+        let vertex_buffer = 
+            engine.create_device_buffer_with_data(BufferType::Vertex,  object.vertices())?;
         let index_buffer =
-            engine.create_device_buffer_with_data(BufferType::Index, &object.indices())?;
+            engine.create_device_buffer_with_data(BufferType::Index, object.indices())?;
 
         let command_runner = engine.adhoc_command_runner();
         let texture_image = image::open(object.texture_path()).unwrap();
@@ -41,41 +43,45 @@ impl VulkanRenderObject {
         texture.transit_layout(
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            command_runner,
+            command_runner.as_ref(),
         )?;
-        texture.copy_from(&buffer, command_runner)?;
+        texture.copy_from(&buffer, command_runner.as_ref())?;
         texture.transit_layout(
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            command_runner,
+            command_runner.as_ref(),
         )?;
 
         let image_view =
-            ImageView::new_color_image_view(engine.device(), texture.vk_image(), format)?;
-        let sampler = Sampler::new(engine.device())?;
+            ImageView::new_color_image_view(&engine.device(), texture.vk_image(), format)?;
+        let sampler = Sampler::new(&engine.device())?;
         let per_object_descriptor_sets = engine
             .descriptor_manager_mut()
             .allocate_per_object_descriptor_set(&image_view, &sampler)?;
 
-        let anim_frame_index = object.anim_frame_index();
-
         Ok(Self {
-            vertex_buffers,
+            vertex_staging_buffer,
+            vertex_buffer,
             index_buffer,
             texture,
             image_view,
             sampler,
             per_object_descriptor_sets,
-            anim_frame_index,
+            command_runner: Rc::downgrade(&command_runner),
         })
     }
 
-    pub fn update(&mut self, object: &RenderObject) {
-        self.anim_frame_index = object.anim_frame_index();
+    pub fn update(&mut self, object: &mut RenderObject) {
+        if let Some(command_runner) = self.command_runner.upgrade() {
+            let _ = self.vertex_staging_buffer.memory_mut().copy_from(object.vertices());
+            let _ = self.vertex_buffer.copy_from(&self.vertex_staging_buffer, command_runner.as_ref());
+
+            object.is_dirty = false;
+        }
     }
 
     pub fn vertex_buffer(&self) -> &Buffer {
-        &self.vertex_buffers[self.anim_frame_index]
+        &self.vertex_buffer
     }
 
     pub fn index_buffer(&self) -> &Buffer {

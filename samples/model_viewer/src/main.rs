@@ -2,7 +2,6 @@ mod scene;
 
 use radiance::application;
 use radiance::scene::CoreScene;
-use std::cell::RefCell;
 
 struct ApplicationCallbacks {}
 
@@ -26,7 +25,7 @@ impl application::ApplicationCallbacks for ApplicationCallbacks {
 }
 
 fn main() {
-    let mut application = application::Application::new(RefCell::new(ApplicationCallbacks {}));
+    let mut application = application::Application::new(ApplicationCallbacks {});
     application.initialize();
     application.run();
 }

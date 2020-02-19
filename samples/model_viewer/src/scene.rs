@@ -1,6 +1,6 @@
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{RenderObject, Vertex};
-use radiance::scene::{CoreEntity, CoreScene, Entity, EntityCallbacks, Scene, SceneCallbacks};
+use radiance::scene::{CoreEntity, CoreScene, EntityCallbacks, SceneCallbacks};
 
 pub struct ModelEntity {}
 

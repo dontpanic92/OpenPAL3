@@ -167,7 +167,7 @@ impl Buffer {
         &mut self.memory
     }
 
-    fn copy_from(
+    pub fn copy_from(
         &mut self,
         src_buffer: &Buffer,
         command_runner: &AdhocCommandRunner,

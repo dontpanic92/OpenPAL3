@@ -1,10 +1,7 @@
-use super::buffer::Buffer;
 use super::descriptor_manager::DescriptorManager;
 use super::error::VulkanBackendError;
 use super::helpers;
 use super::image_view::ImageView;
-use super::sampler::Sampler;
-use super::uniform_buffer_mvp::UniformBufferMvp;
 use crate::constants;
 use crate::rendering::Window;
 use ash::extensions::khr::{Surface, Swapchain};

@@ -10,7 +10,7 @@ use super::uniform_buffer_mvp::UniformBufferMvp;
 use crate::math::{Mat44, Transform, Vec3};
 use crate::rendering::RenderObject;
 use crate::rendering::{RenderingEngine, Window};
-use crate::scene::{entity_get_component, entity_get_component_mut, Camera, Entity, Scene};
+use crate::scene::{entity_get_component, Camera, Entity, Scene};
 use ash::extensions::ext::DebugReport;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Entry, Instance};
@@ -18,6 +18,7 @@ use std::error::Error;
 use std::f32::consts::PI;
 use std::iter::Iterator;
 use std::rc::Rc;
+use std::any::TypeId;
 
 pub struct VulkanRenderingEngine {
     entry: Entry,
@@ -33,7 +34,7 @@ pub struct VulkanRenderingEngine {
     debug_callback: vk::DebugReportCallbackEXT,
 
     descriptor_manager: Option<DescriptorManager>,
-    adhoc_command_runner: AdhocCommandRunner,
+    adhoc_command_runner: Rc<AdhocCommandRunner>,
 
     surface_entry: ash::extensions::khr::Surface,
     debug_entry: ash::extensions::ext::DebugReport,
@@ -84,7 +85,7 @@ impl RenderingEngine for VulkanRenderingEngine {
         };
 
         let mut descriptor_manager = DescriptorManager::new(&device)?;
-        let adhoc_command_runner = AdhocCommandRunner::new(&device, command_pool, queue);
+        let adhoc_command_runner = Rc::new(AdhocCommandRunner::new(&device, command_pool, queue));
         let swapchain = SwapChain::new(
             &instance,
             &device,
@@ -145,6 +146,17 @@ impl RenderingEngine for VulkanRenderingEngine {
             self.recreate_swapchain().unwrap();
         }
 
+        for entity in scene.entities_mut() {
+            entity.component_do2(TypeId::of::<RenderObject>(), TypeId::of::<VulkanRenderObject>(), &|ro_any, vro_any| {
+                let ro = ro_any.downcast_mut::<RenderObject>().unwrap();
+                let vro = vro_any.downcast_mut::<VulkanRenderObject>().unwrap();
+
+                if ro.is_dirty {
+                    vro.update(ro);
+                }
+            });
+        }
+
         self.record_command_buffers(scene);
         match self.render_objects(scene.entities()) {
             Ok(()) => (),
@@ -166,12 +178,12 @@ impl RenderingEngine for VulkanRenderingEngine {
 }
 
 impl VulkanRenderingEngine {
-    pub fn device(&self) -> &Rc<Device> {
-        &self.device
+    pub fn device(&self) -> Rc<Device> {
+        self.device.clone()
     }
 
-    pub fn adhoc_command_runner(&self) -> &AdhocCommandRunner {
-        &self.adhoc_command_runner
+    pub fn adhoc_command_runner(&self) -> Rc<AdhocCommandRunner> {
+        self.adhoc_command_runner.clone()
     }
 
     pub fn descriptor_manager_mut(&mut self) -> &mut DescriptorManager {
@@ -205,15 +217,11 @@ impl VulkanRenderingEngine {
     fn record_command_buffers(&mut self, scene: &mut dyn Scene) {
         let swapchain = self.swapchain.as_mut().unwrap();
 
-        let objects: Vec<&mut VulkanRenderObject> = scene
+        let objects: Vec<&VulkanRenderObject> = scene
             .entities_mut()
             .iter_mut()
             .filter_map(|e| {
-                unsafe {
-                    let er = e.as_mut() as *mut _ ;
-                    let ro = entity_get_component::<RenderObject>(&*er)?;
-                    entity_get_component_mut::<VulkanRenderObject>(&mut *er).and_then(|vro| { vro.update(ro); Some(vro) })
-                }
+                entity_get_component::<VulkanRenderObject>(e.as_mut())
             })
             .collect();
 

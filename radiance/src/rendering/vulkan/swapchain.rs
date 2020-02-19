@@ -44,7 +44,7 @@ impl SwapChain {
         format: vk::SurfaceFormatKHR,
         present_mode: vk::PresentModeKHR,
         descriptor_manager: &mut DescriptorManager,
-        command_runner: &AdhocCommandRunner,
+        command_runner: &Rc<AdhocCommandRunner>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let entry = ash::extensions::khr::Swapchain::new(instance, device.deref());
         let handle = creation_helpers::create_swapchain(
@@ -179,7 +179,7 @@ impl SwapChain {
 
     pub fn record_command_buffers(
         &self,
-        objects: &[&mut VulkanRenderObject],
+        objects: &[&VulkanRenderObject],
     ) -> Result<(), vk::Result> {
         let device = self.device.upgrade().unwrap();
         for ((command_buffer, framebuffer), per_frame_descriptor_set) in (&self.command_buffers)

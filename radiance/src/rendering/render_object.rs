@@ -1,11 +1,11 @@
 use super::Vertex;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct RenderObject {
-    vertices: Vec<Vec<Vertex>>,
+    vertices: Vec<Vertex>,
     indices: Vec<u32>,
     texture_path: PathBuf,
-    anim_frame_index: usize,
+    pub is_dirty: bool,
 }
 
 impl RenderObject {
@@ -17,32 +17,25 @@ impl RenderObject {
             vertices: vec![],
             indices: vec![],
             texture_path: path,
-            anim_frame_index: 0,
+            is_dirty: false,
         }
     }
 
-    pub fn new_with_data(vertices: Vec<Vec<Vertex>>, indices: Vec<u32>) -> Self {
-        let mut path = std::env::current_exe().unwrap();
-        path.pop();
-        path.push("data/test.jpg");
+    pub fn new_with_data(vertices: Vec<Vertex>, indices: Vec<u32>, texture_path: &PathBuf) -> Self {
         Self {
             vertices,
             indices,
-            texture_path: path,
-            anim_frame_index: 0,
+            texture_path: texture_path.clone(),
+            is_dirty: false,
         }
     }
 
-    pub fn anim_frame_index(&self) -> usize {
-        self.anim_frame_index
+    pub fn update_vertices(&mut self, callback: &dyn Fn(&mut Vec<Vertex>)) {
+        callback(&mut self.vertices);
+        self.is_dirty = true;
     }
 
-    pub fn set_anim_frame_index(&mut self, anim_frame_index: usize) -> usize {
-        self.anim_frame_index = anim_frame_index % self.vertices.len();
-        self.anim_frame_index
-    }
-
-    pub fn vertices(&self) -> &Vec<Vec<Vertex>> {
+    pub fn vertices(&self) -> &Vec<Vertex> {
         &self.vertices
     }
 
