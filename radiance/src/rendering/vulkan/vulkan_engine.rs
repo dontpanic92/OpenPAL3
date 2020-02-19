@@ -45,7 +45,7 @@ pub struct VulkanRenderingEngine {
 
 impl RenderingEngine for VulkanRenderingEngine {
     fn new(window: &Window) -> Result<Self, Box<dyn std::error::Error>> {
-        let entry = Entry::new()?;
+        let entry = Entry::new().unwrap();
         let instance = creation_helpers::create_instance(&entry)?;
         let physical_device = creation_helpers::get_physical_device(&instance)?;
 

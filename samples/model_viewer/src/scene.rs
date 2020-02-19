@@ -1,6 +1,6 @@
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{RenderObject, Vertex};
-use radiance::scene::{CoreEntity, CoreScene, EntityCallbacks, SceneCallbacks};
+use radiance::scene::{CoreEntity, CoreScene, Entity, EntityCallbacks, SceneCallbacks};
 
 pub struct ModelEntity {}
 
@@ -18,6 +18,10 @@ pub struct ModelViewerScene {}
 
 impl SceneCallbacks for ModelViewerScene {
     fn on_loading<T: SceneCallbacks>(&mut self, scene: &mut CoreScene<T>) {
+        let mut texture_path = std::env::current_exe().unwrap();
+        texture_path.pop();
+        texture_path.push("data/test.jpg");
+
         let mut entity1 = CoreEntity::new(ModelEntity {});
         entity1.add_component(RenderObject::new_with_data(
             vec![
@@ -27,6 +31,7 @@ impl SceneCallbacks for ModelViewerScene {
                 Vertex::new(Vec3::new(-0.5, 0.5, 0.), Vec2::new(0., 0.)),
             ],
             vec![0, 1, 2, 2, 3, 0],
+            &texture_path,
         ));
 
         let mut entity2 = CoreEntity::new(ModelEntity {});
@@ -38,6 +43,7 @@ impl SceneCallbacks for ModelViewerScene {
                 Vertex::new(Vec3::new(-0.5, 0.5, -1.), Vec2::new(0., 0.)),
             ],
             vec![0, 1, 2, 2, 3, 0],
+            &texture_path,
         ));
 
         scene.add_entity(entity1);

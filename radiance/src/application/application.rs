@@ -1,4 +1,3 @@
-use super::extensions::ResultExtensions;
 use super::Platform;
 use crate::constants;
 use crate::radiance;
@@ -33,13 +32,14 @@ pub struct Application<TCallbacks: ApplicationCallbacks> {
 
 impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
     pub fn new(callbacks: TCallbacks) -> Self {
+        set_panic_hook();
         let platform = Platform::new();
         let window = rendering::Window {
             hwnd: platform.hwnd(),
         };
         Self {
             radiance_engine: radiance::create_radiance_engine::<VulkanRenderingEngine>(&window)
-                .unwrap_or_fail_fast(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
+                .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
             platform,
             callbacks: Rc::new(RefCell::new(callbacks)),
         }
@@ -87,4 +87,12 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
 
         self.radiance_engine.unload_scene();
     }
+}
+
+fn set_panic_hook() {
+    std::panic::set_hook(Box::new(|panic_info| {
+        let backtrace = backtrace::Backtrace::new();
+        let msg = format!("Radiance {}\n{:?}", panic_info, backtrace);
+        Platform::show_error_dialog(crate::constants::STR_SORRY_DIALOG_TITLE, &msg);
+    }));
 }

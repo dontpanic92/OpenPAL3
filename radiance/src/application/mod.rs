@@ -1,5 +1,4 @@
 mod application;
-mod extensions;
 
 #[cfg(target_os = "windows")]
 mod windows;
