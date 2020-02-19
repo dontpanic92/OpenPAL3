@@ -1,4 +1,6 @@
 mod scene;
+mod mv3entity;
+mod polentity;
 
 use radiance::application;
 use radiance::scene::CoreScene;
@@ -14,13 +16,13 @@ impl application::ApplicationCallbacks for ApplicationCallbacks {
     }
 
     fn on_updated<T: application::ApplicationCallbacks>(&mut self, app: &mut application::Application<T>, delta_sec: f32) {
-        let title = format!("MV3 Animation Viewer - OpenPAL3 Tools - FPS: {}", 1./delta_sec);
+        let title = format!("Model Viewer - OpenPAL3 Tools - FPS: {}", 1./delta_sec);
         app.set_title(&title);
     }
 }
 
 fn main() {
-    let result = nfd::open_file_dialog(None, None).unwrap_or_else(|e| {
+    let result = nfd::open_file_dialog(Some("mv3,pol"), None).unwrap_or_else(|e| {
         panic!(e);
     });
   

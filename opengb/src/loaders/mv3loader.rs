@@ -3,6 +3,7 @@ use std::path::Path;
 use std::error::Error;
 use std::io::{Read, BufReader};
 use byteorder::{LittleEndian, ReadBytesExt};
+use super::read_vec;
 
 #[derive(Debug)]
 pub struct Mv3Texture {
@@ -88,7 +89,7 @@ pub fn mv3_load_from_file<P: AsRef<Path>>(path: P) -> Result<Mv3File, Box<dyn Er
 
     match magic {
         [0x4d, 0x56, 0x33, 0x00] => (), // "MV3\0"
-        _ => panic!("Not a mv3 file"),
+        _ => panic!("Not a valid mv3 file"),
     }
 
     let unknown_dw = reader.read_u32::<LittleEndian>()?;
@@ -245,10 +246,4 @@ fn read_mv3_mesh(reader: &mut dyn Read) -> Result<Mv3Mesh, Box<dyn Error>> {
         unknown_data_count,
         unknown_data,
     })
-}
-
-fn read_vec(reader: &mut dyn Read, size: usize) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut buf = vec![0u8; size];
-    reader.read_exact(&mut buf.as_mut_slice())?;
-    Ok(buf)
 }

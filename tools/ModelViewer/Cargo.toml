@@ -1,5 +1,5 @@
 [package]
-name = "mv3viewer"
+name = "ModelViewer"
 version = "0.1.0"
 authors = ["Li Shengqiu <lishengqiu.hit@gmail.com>"]
 edition = "2018"

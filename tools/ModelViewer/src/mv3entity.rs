@@ -1,11 +1,11 @@
 use opengb::loaders::mv3loader::*;
-use radiance::scene::{CoreScene, SceneCallbacks, Entity, CoreEntity, EntityCallbacks};
+use radiance::scene::{Entity, CoreEntity, EntityCallbacks};
 use radiance::rendering::{RenderObject, Vertex};
 use radiance::math::{Vec2, Vec3};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-pub struct ModelEntity {
+pub struct Mv3ModelEntity {
     texture_path: PathBuf,
     vertices: Vec<Vec<Vertex>>,
     indices: Vec<u32>,
@@ -14,7 +14,7 @@ pub struct ModelEntity {
     mv3: Mv3File,
 }
 
-impl ModelEntity {
+impl Mv3ModelEntity {
     pub fn new(path: &String) -> Self {
         let mv3file = mv3_load_from_file(&path).unwrap();
         let model: &Mv3Model = &mv3file.models[0];
@@ -68,7 +68,7 @@ impl ModelEntity {
 
         let anim_timestamps = model.frames.iter().map(|f| f.timestamp).collect();
 
-        ModelEntity {
+        Mv3ModelEntity {
             texture_path,
             anim_timestamps,
             last_anim_time: 0,
@@ -79,7 +79,7 @@ impl ModelEntity {
     }
 }
 
-impl EntityCallbacks for ModelEntity {
+impl EntityCallbacks for Mv3ModelEntity {
     fn on_loading<T: EntityCallbacks>(&mut self, entity: &mut CoreEntity<T>) {
         entity.add_component(RenderObject::new_with_data(self.vertices[0].clone(), self.indices.clone(), &self.texture_path));
     }
@@ -108,17 +108,5 @@ impl EntityCallbacks for ModelEntity {
         });
 
         self.last_anim_time = anim_time;
-    }
-}
-
-pub struct ModelViewerScene {
-    pub path: String,
-}
-
-impl SceneCallbacks for ModelViewerScene {
-    fn on_loading<T: SceneCallbacks>(&mut self, scene: &mut CoreScene<T>) {
-        let mut entity = CoreEntity::new(ModelEntity::new(&self.path));
-        entity.transform_mut().translate(&Vec3::new(0., -40., -100.));
-        scene.add_entity(entity);
     }
 }
