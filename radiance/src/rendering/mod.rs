@@ -7,6 +7,6 @@ mod vulkan;
 
 pub use engine::RenderingEngine;
 pub use platform::Window;
-pub use render_object::RenderObject;
+pub use render_object::{RenderObject, TEXTURE_MISSING_TEXTURE_FILE};
 pub use vertex::Vertex;
 pub use vulkan::VulkanRenderingEngine;

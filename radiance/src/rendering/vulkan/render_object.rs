@@ -35,7 +35,11 @@ impl VulkanRenderObject {
             engine.create_device_buffer_with_data(BufferType::Index, object.indices())?;
 
         let command_runner = engine.adhoc_command_runner();
-        let texture_image = image::open(object.texture_path()).unwrap();
+        let texture_image = match image::open(object.texture_path()) {
+            Ok(img) =>  img,
+            Err(_) => image::load_from_memory(&super::super::TEXTURE_MISSING_TEXTURE_FILE).unwrap(),
+        };
+
         let data = texture_image.to_rgba();
         let buffer = engine.create_staging_buffer_with_data(data.as_ref())?;
         let format = vk::Format::R8G8B8A8_UNORM;

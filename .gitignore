@@ -4,3 +4,4 @@ target
 radiance/Cargo.lock
 .redo
 generated
+assets_ignore/
