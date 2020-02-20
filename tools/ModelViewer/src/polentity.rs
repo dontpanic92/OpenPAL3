@@ -17,9 +17,11 @@ impl PolModelEntity {
         let pol = pol_load_from_file(&path).unwrap();
         let mesh: &PolMesh = &pol.meshes[0];
 
+        let texture_name: &str = &pol.meshes[0].material_info[0].texture_names[0];
+        let dds_name = texture_name.split_terminator('.').next().unwrap().to_owned() + ".dds";
         let mut texture_path = PathBuf::from(path);
         texture_path.pop();
-        texture_path.push("d011.dds");
+        texture_path.push(dds_name);
 
         let mut vertices = vec![];
         for vert in &mesh.vertices {

@@ -5,6 +5,8 @@ use std::io::{Read, BufReader};
 use radiance::math::Mat44;
 use byteorder::{LittleEndian, ReadBytesExt};
 use super::read_vec;
+use encoding::{Encoding, DecoderTrap};
+use encoding::all::GBK;
 
 #[derive(Debug)]
 pub struct VertexComponent(u32);
@@ -55,8 +57,8 @@ pub struct PolMaterialInfo {
     pub unknown_dw0: u32,
     pub unknown_68: Vec<u8>,
     pub unknown_float: f32,
-    pub light_map_count: u32,
-    pub light_map_names: Vec<String>,
+    pub texture_count: u32,
+    pub texture_names: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -270,20 +272,20 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
         let unknown_dw0 = reader.read_u32::<LittleEndian>()?;
         let unknown_68 = read_vec(reader, 64)?;
         let unknown_float = reader.read_f32::<LittleEndian>()?.min(128.).max(0.);
-        let light_map_count = reader.read_u32::<LittleEndian>()?;
-        let mut light_map_names = vec![];
-        for j in 0..light_map_count {
+        let texture_count = reader.read_u32::<LittleEndian>()?;
+        let mut texture_names = vec![];
+        for j in 0..texture_count {
             let name = read_vec(reader, 64)?;
-            let name_s = String::from_utf8(name.into_iter().take_while(|&c| c != 0).collect()).unwrap();
-            light_map_names.push(name_s);
+            let name_s = encoding::all::GBK.decode(&name.into_iter().take_while(|&c| c != 0).collect::<Vec<u8>>(), DecoderTrap::Ignore).unwrap();
+            texture_names.push(name_s);
         }
 
         material_info.push(PolMaterialInfo {
             unknown_dw0,
             unknown_68,
             unknown_float,
-            light_map_count,
-            light_map_names,
+            texture_count,
+            texture_names,
         });
     }
 
