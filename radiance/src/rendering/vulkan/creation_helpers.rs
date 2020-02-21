@@ -90,9 +90,13 @@ pub fn create_device(
         .build();
     let extension_names = helpers::device_extension_names();
     let queue_create_info = [queue_create_info];
+    let physical_device_features = vk::PhysicalDeviceFeatures::builder()
+        .sampler_anisotropy(true)
+        .build();
     let create_info = vk::DeviceCreateInfo::builder()
         .queue_create_infos(&queue_create_info)
         .enabled_extension_names(&extension_names)
+        .enabled_features(&physical_device_features)
         .build();
     unsafe { instance.create_device(physical_device, &create_info, None) }
 }

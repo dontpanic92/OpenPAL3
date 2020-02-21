@@ -38,8 +38,8 @@ impl Camera {
         let mut mat = Mat44::new_zero();
         let fti = 1. / (fov / 2.).tan();
 
-        mat[0][0] = fti / aspect;
-        mat[1][1] = fti;
+        mat[0][0] = if aspect < 1. { fti / aspect } else { fti };
+        mat[1][1] = if aspect < 1. { fti } else { fti * aspect };
         mat[2][2] = -(far_clip + near_clip) / (far_clip - near_clip);
         mat[2][3] = -2. * near_clip * far_clip / (far_clip - near_clip);
         mat[3][2] = -1.;

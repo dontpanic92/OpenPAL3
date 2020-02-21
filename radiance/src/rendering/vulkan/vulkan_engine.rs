@@ -263,16 +263,19 @@ impl VulkanRenderingEngine {
     }
 
     fn render_objects(&mut self, entities: &Vec<Box<dyn Entity>>) -> Result<(), Box<dyn Error>> {
-        let swapchain = self.swapchain.as_mut().unwrap();
+        macro_rules! swapchain {
+            ( ) => { self.swapchain.as_mut().unwrap() }
+        }
+
         unsafe {
-            let (image_index, _) = swapchain
+            let (image_index, _) = swapchain!()
                 .acquire_next_image(
                     u64::max_value(),
                     self.image_available_semaphore,
                     vk::Fence::default(),
                 )
                 .unwrap();
-            let command_buffer = swapchain.command_buffers()[image_index as usize];
+            let command_buffer = swapchain!().command_buffers()[image_index as usize];
 
             // Update Uniform Buffers
             {
@@ -280,13 +283,15 @@ impl VulkanRenderingEngine {
                     let model = entities[0].transform().matrix();
                     let mut transform = Transform::new();
                     transform.translate_local(&Vec3::new(0., 0., 2.));
-                    let cam = Camera::new(90. * PI / 180., 800. / 600., 0.1, 1000.);
+
+                    let extent = self.get_capabilities().unwrap().current_extent;
+                    let cam = Camera::new(90. * PI / 180., extent.width as f32 / extent.height as f32, 0.1, 100000.);
                     let view = Mat44::inversed(transform.matrix());
                     let proj = cam.projection_matrix();
                     UniformBufferMvp::new(model, &view, proj)
                 };
 
-                swapchain.update_ubo(image_index as usize, &[ubo])?;
+                swapchain!().update_ubo(image_index as usize, &[ubo])?;
             }
 
             // Submit commands
@@ -309,12 +314,12 @@ impl VulkanRenderingEngine {
             // Present
             {
                 let wait_semaphores = [self.render_finished_semaphore];
-                let ret = swapchain.present(image_index, self.queue, &wait_semaphores);
+                let ret = swapchain!().present(image_index, self.queue, &wait_semaphores);
 
                 match ret {
                     Ok(false) => (),
-                    Ok(true) => self.swapchain = None,
-                    Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.swapchain = None,
+                    Ok(true) => self.drop_swapchain(),
+                    Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.drop_swapchain(),
                     Err(x) => return Err(Box::new(x) as Box<dyn Error>),
                 };
             }
@@ -324,6 +329,11 @@ impl VulkanRenderingEngine {
         }
 
         Ok(())
+    }
+
+    fn drop_swapchain(&mut self) {
+        let _ = unsafe { self.device.device_wait_idle() };
+        self.swapchain = None;
     }
 
     fn get_capabilities(&self) -> ash::prelude::VkResult<vk::SurfaceCapabilitiesKHR> {
@@ -350,6 +360,8 @@ impl Drop for VulkanRenderingEngine {
                 .destroy_semaphore(self.render_finished_semaphore, None);
 
             self.surface_entry.destroy_surface(self.surface, None);
+            self.device.destroy_device(None);
+            drop(&self.device);
             self.instance.destroy_instance(None);
         }
     }

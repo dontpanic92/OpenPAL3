@@ -90,6 +90,8 @@ impl SwapChain {
 
         let render_pass =
             creation_helpers::create_render_pass(&device, format.format, depth_image.vk_format())?;
+
+        descriptor_manager.reset_per_frame_descriptor_pool();
         let per_frame_descriptor_sets =
             descriptor_manager.allocate_per_frame_descriptor_sets(uniform_buffers.as_slice())?;
 

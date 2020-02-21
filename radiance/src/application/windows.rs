@@ -15,6 +15,8 @@ macro_rules! utf16_ptr {
     };
 }
 
+const WM_CLOSE_WINDOW: u32 = winuser::WM_USER + 1;
+
 pub struct Platform {
     instance: HINSTANCE,
     hwnd: HWND,
@@ -61,7 +63,7 @@ impl Platform {
                 return true;
             }
 
-            if msg.message == winuser::WM_QUIT {
+            if msg.message == WM_CLOSE_WINDOW {
                 return false;
             }
 
@@ -125,8 +127,8 @@ impl Platform {
     ) -> LRESULT {
         match message {
             winuser::WM_ERASEBKGND => 1,
-            winuser::WM_DESTROY => {
-                unsafe { winuser::PostQuitMessage(0) };
+            winuser::WM_CLOSE => {
+                unsafe { winuser::PostMessageW(hwnd, WM_CLOSE_WINDOW, 0, 0) };
                 1
             }
             _ => unsafe { winuser::DefWindowProcW(hwnd, message, wparam, lparam) },
