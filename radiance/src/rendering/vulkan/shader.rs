@@ -2,10 +2,9 @@ use std::rc::{Rc, Weak};
 use std::error::Error;
 use ash::Device;
 use ash::version::DeviceV1_0;
-use crate::rendering::{Vertex, Shader};
-use crate::rendering::vertex::VertexMetadata;
+use crate::rendering::Shader;
+use crate::rendering::vertex::{VertexMetadata, VertexComponents};
 use ash::vk;
-use std::mem::size_of;
 
 pub struct VulkanShader {
     device: Weak<Device>,
@@ -38,22 +37,33 @@ impl VulkanShader {
             .build()
     }
     
-    pub fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 2] {
-        let pos_attr = vk::VertexInputAttributeDescription::builder()
-            .offset(Vertex::position_offset() as u32)
-            .binding(0)
-            .location(0)
-            .format(vk::Format::R32G32B32_SFLOAT)
-            .build();
-    
-        let tex_attr = vk::VertexInputAttributeDescription::builder()
-            .offset(Vertex::tex_coord_offset() as u32)
-            .binding(0)
-            .location(1)
-            .format(vk::Format::R32G32_SFLOAT)
-            .build();
-    
-        [pos_attr, tex_attr]
+    // A better way: reflect the shader code to get the desciprtions automatically
+    pub fn get_attribute_descriptions(&self) -> Vec<vk::VertexInputAttributeDescription> {
+        let mut descs = vec![];
+
+        if let Some(&position_offset) = self.vertex_metadata.offsets.get(&VertexComponents::POSITION) {
+            let pos_attr = vk::VertexInputAttributeDescription::builder()
+                .offset(position_offset as u32)
+                .binding(0)
+                .location(0)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .build();
+            
+            descs.push(pos_attr);
+        }
+
+        if let Some(&texcoord_offset) = self.vertex_metadata.offsets.get(&VertexComponents::TEXCOORD) {
+            let tex_attr = vk::VertexInputAttributeDescription::builder()
+                .offset(texcoord_offset as u32)
+                .binding(0)
+                .location(1)
+                .format(vk::Format::R32G32_SFLOAT)
+                .build();
+
+            descs.push(tex_attr);
+        }
+
+        descs
     }
 
     fn create_shader_module_from_memory(

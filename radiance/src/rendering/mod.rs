@@ -4,6 +4,7 @@ mod render_object;
 mod utilities;
 mod vertex;
 mod material;
+mod texture;
 mod shader;
 mod vulkan;
 

@@ -1,20 +1,23 @@
+use crate::rendering::texture::Texture;
 use std::path::PathBuf;
 use super::{Shader, SimpleShader};
 
 pub trait Material {
     fn name(&self) -> &str;
     fn shader(&self) -> &dyn Shader;
+    fn textures(&self) -> &Vec<Texture>;
 }
 
 pub struct SimpleMaterial {
-    texture_path: PathBuf,
+    textures: Vec<Texture>,
     shader: SimpleShader,
 }
 
 impl SimpleMaterial {
     pub fn new(texture_path: PathBuf) -> Self {
+        let texture = Texture::new(texture_path);
         SimpleMaterial {
-            texture_path,
+            textures: vec![texture],
             shader: SimpleShader {},
         }
     }
@@ -27,5 +30,9 @@ impl Material for SimpleMaterial {
 
     fn shader(&self) -> &dyn Shader {
         &self.shader
+    }
+
+    fn textures(&self) -> &Vec<Texture> {
+        &self.textures
     }
 }
