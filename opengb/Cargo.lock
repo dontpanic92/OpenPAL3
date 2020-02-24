@@ -389,6 +389,7 @@ version = "0.1.0"
 dependencies = [
  "ash",
  "backtrace",
+ "bitflags",
  "image",
  "lazy_static",
  "memoffset",

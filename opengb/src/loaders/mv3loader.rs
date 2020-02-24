@@ -106,7 +106,7 @@ pub fn mv3_load_from_file<P: AsRef<Path>>(path: P) -> Result<Mv3File, Box<dyn Er
         action_desc.push(buf);
     }
 
-    let mut unknown_data = vec![];
+    let unknown_data = vec![];
     println!("unknown_data_count {}", unknown_data_count);
     for _i in 0..unknown_data_count {
         let _buf = read_vec(&mut reader, 64)?;
@@ -191,7 +191,7 @@ fn read_mv3_model(reader: &mut dyn Read) -> Result<Mv3Model, Box<dyn Error>> {
     let texcoord_count = reader.read_u32::<LittleEndian>()?;
     let mut texcoords = vec![];
     
-    for i in 0..texcoord_count {
+    for _i in 0..texcoord_count {
         let u = reader.read_f32::<LittleEndian>()?;
         let v = reader.read_f32::<LittleEndian>()?;
         texcoords.push(Mv3TexCoord { u, v });
