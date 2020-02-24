@@ -255,11 +255,6 @@ pub fn create_render_pass(
     unsafe { device.create_render_pass(&render_pass_create_info, None) }
 }
 
-static SIMPLE_TRIANGLE_VERT: &'static [u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.vert.spv"));
-static SIMPLE_TRIANGLE_FRAG: &'static [u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.frag.spv"));
-
 pub fn create_pipeline(
     device: &Device,
     render_pass: vk::RenderPass,
@@ -403,16 +398,6 @@ pub fn create_shader_module(
     unsafe { Ok(device.create_shader_module(&create_info, None)?) }
 }
 
-fn create_shader_module_from_array(
-    device: &Device,
-    code: &[u8],
-) -> Result<vk::ShaderModule, Box<dyn Error>> {
-    let code_u32 =
-        unsafe { std::slice::from_raw_parts::<u32>(code.as_ptr().cast(), code.len() / 4) };
-    let create_info = vk::ShaderModuleCreateInfo::builder().code(code_u32).build();
-    unsafe { Ok(device.create_shader_module(&create_info, None)?) }
-}
-
 pub fn create_framebuffers(
     device: &Device,
     image_views: &Vec<ImageView>,
@@ -439,8 +424,11 @@ pub fn create_framebuffers(
 fn enabled_layer_names() -> Vec<*const i8> {
     unsafe {
         vec![
-            std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_standard_validation\0")
-                .as_ptr() as *const i8,
+            // Use $env:VK_INSTANCE_LAYERS="VK_LAYER_LUNARG_standard_validation" to enable the validation layer
+            // instead of doing so here.
+            // 
+            // std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_standard_validation\0")
+            //    .as_ptr() as *const i8,
         ]
     }
 }

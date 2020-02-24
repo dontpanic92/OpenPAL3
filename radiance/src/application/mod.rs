@@ -1,4 +1,5 @@
 mod application;
+pub mod utils;
 
 #[cfg(target_os = "windows")]
 mod windows;

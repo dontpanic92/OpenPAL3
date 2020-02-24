@@ -7,7 +7,7 @@ use ash::version::DeviceV1_0;
 use ash::{vk, Device};
 use std::rc::{Rc, Weak};
 
-const MAX_DESCRIPTOR_SET_COUNT: u32 = 1024;
+const MAX_DESCRIPTOR_SET_COUNT: u32 = 40960;
 const MAX_DESCRIPTOR_COUNT: u32 = 4096;
 const MAX_SWAPCHAIN_IMAGE_COUNT: u32 = 4;
 

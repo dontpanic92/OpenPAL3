@@ -47,9 +47,9 @@ impl Image {
             instance,
             physical_device,
             &vec![
+                vk::Format::D24_UNORM_S8_UINT,
                 vk::Format::D32_SFLOAT,
                 vk::Format::D32_SFLOAT_S8_UINT,
-                vk::Format::D24_UNORM_S8_UINT,
             ],
             vk::ImageTiling::OPTIMAL,
             vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,

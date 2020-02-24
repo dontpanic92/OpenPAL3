@@ -10,4 +10,7 @@ pub mod scene;
 mod constants;
 
 #[macro_use]
-extern crate memoffset;
+extern crate lazy_static;
+
+#[macro_use]
+extern crate bitflags;

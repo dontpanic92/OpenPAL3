@@ -157,7 +157,6 @@ impl RenderingEngine for VulkanRenderingEngine {
             });
         }
 
-        self.record_command_buffers(scene);
         match self.render_objects(scene.entities()) {
             Ok(()) => (),
             Err(err) => println!("{}", err),
@@ -214,20 +213,6 @@ impl VulkanRenderingEngine {
         )
     }
 
-    fn record_command_buffers(&mut self, scene: &mut dyn Scene) {
-        let swapchain = self.swapchain.as_mut().unwrap();
-
-        let objects: Vec<&VulkanRenderObject> = scene
-            .entities_mut()
-            .iter_mut()
-            .filter_map(|e| {
-                entity_get_component::<VulkanRenderObject>(e.as_mut())
-            })
-            .collect();
-
-        swapchain.record_command_buffers(&objects).unwrap();
-    }
-
     fn recreate_swapchain(&mut self) -> Result<(), Box<dyn Error>> {
         unsafe {
             let _ = self.device.device_wait_idle();
@@ -275,7 +260,14 @@ impl VulkanRenderingEngine {
                     vk::Fence::default(),
                 )
                 .unwrap();
-            let command_buffer = swapchain!().command_buffers()[image_index as usize];
+
+            let objects: Vec<&VulkanRenderObject> = entities
+                .iter()
+                .filter_map(|e| {
+                    entity_get_component::<VulkanRenderObject>(e.as_ref())
+                })
+                .collect();
+            let command_buffer = swapchain!().record_command_buffers(image_index as usize, &objects).unwrap();
 
             // Update Uniform Buffers
             {

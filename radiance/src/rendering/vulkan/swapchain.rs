@@ -181,100 +181,100 @@ impl SwapChain {
 
     pub fn record_command_buffers(
         &self,
+        image_index: usize,
         objects: &[&VulkanRenderObject],
-    ) -> Result<(), vk::Result> {
+    ) -> Result<vk::CommandBuffer, vk::Result> {
         let device = self.device.upgrade().unwrap();
-        for ((command_buffer, framebuffer), per_frame_descriptor_set) in (&self.command_buffers)
-            .into_iter()
-            .zip(&self.framebuffers)
-            .zip(self.per_frame_descriptor_sets.vk_descriptor_set())
-        {
-            let begin_info = vk::CommandBufferBeginInfo::builder()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
-                .build();
-            unsafe {
-                device.reset_command_buffer(
-                    *command_buffer,
-                    vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-                )?;
-                device.begin_command_buffer(*command_buffer, &begin_info)?;
-            }
+        let command_buffer = self.command_buffers[image_index];
+        let framebuffer = self.framebuffers[image_index];
+        let per_frame_descriptor_set = self.per_frame_descriptor_sets.vk_descriptor_set()[image_index];
 
-            let clear_values = [
-                vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        float32: [0f32, 0f32, 0f32, 1f32],
-                    },
-                },
-                vk::ClearValue {
-                    depth_stencil: vk::ClearDepthStencilValue {
-                        depth: 1.,
-                        stencil: 0,
-                    },
-                },
-            ];
-            let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-                .render_pass(self.render_pass)
-                .framebuffer(*framebuffer)
-                .render_area(
-                    vk::Rect2D::builder()
-                        .offset(vk::Offset2D::builder().x(0).y(0).build())
-                        .extent(self.capabilities.current_extent)
-                        .build(),
-                )
-                .clear_values(&clear_values)
-                .build();
-
-            unsafe {
-                device.cmd_begin_render_pass(
-                    *command_buffer,
-                    &render_pass_begin_info,
-                    vk::SubpassContents::INLINE,
-                );
-                device.cmd_bind_pipeline(
-                    *command_buffer,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.pipeline,
-                );
-
-                for obj in objects {
-                    let vertex_buffer = obj.vertex_buffer();
-                    let index_buffer = obj.index_buffer();
-                    device.cmd_bind_vertex_buffers(
-                        *command_buffer,
-                        0,
-                        &[vertex_buffer.vk_buffer()],
-                        &[0],
-                    );
-                    device.cmd_bind_index_buffer(
-                        *command_buffer,
-                        index_buffer.vk_buffer(),
-                        0,
-                        vk::IndexType::UINT32,
-                    );
-                    device.cmd_bind_descriptor_sets(
-                        *command_buffer,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        self.pipeline_layout,
-                        0,
-                        &[*per_frame_descriptor_set, obj.vk_descriptor_set()],
-                        &[],
-                    );
-                    device.cmd_draw_indexed(
-                        *command_buffer,
-                        index_buffer.element_count(),
-                        1,
-                        0,
-                        0,
-                        0,
-                    );
-                }
-
-                device.cmd_end_render_pass(*command_buffer);
-                device.end_command_buffer(*command_buffer)?;
-            }
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+            .build();
+        unsafe {
+            device.reset_command_buffer(
+                command_buffer,
+                vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+            )?;
+            device.begin_command_buffer(command_buffer, &begin_info)?;
         }
-        Ok(())
+
+        let clear_values = [
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0f32, 0f32, 0f32, 1f32],
+                },
+            },
+            vk::ClearValue {
+                depth_stencil: vk::ClearDepthStencilValue {
+                    depth: 1.,
+                    stencil: 0,
+                },
+            },
+        ];
+        let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+            .render_pass(self.render_pass)
+            .framebuffer(framebuffer)
+            .render_area(
+                vk::Rect2D::builder()
+                    .offset(vk::Offset2D::builder().x(0).y(0).build())
+                    .extent(self.capabilities.current_extent)
+                    .build(),
+            )
+            .clear_values(&clear_values)
+            .build();
+
+        unsafe {
+            device.cmd_begin_render_pass(
+                command_buffer,
+                &render_pass_begin_info,
+                vk::SubpassContents::INLINE,
+            );
+            device.cmd_bind_pipeline(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline,
+            );
+
+            for obj in objects {
+                let vertex_buffer = obj.vertex_buffer();
+                let index_buffer = obj.index_buffer();
+                device.cmd_bind_vertex_buffers(
+                    command_buffer,
+                    0,
+                    &[vertex_buffer.vk_buffer()],
+                    &[0],
+                );
+                device.cmd_bind_index_buffer(
+                    command_buffer,
+                    index_buffer.vk_buffer(),
+                    0,
+                    vk::IndexType::UINT32,
+                );
+                device.cmd_bind_descriptor_sets(
+                    command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    self.pipeline_layout,
+                    0,
+                    &[per_frame_descriptor_set, obj.vk_descriptor_set()],
+                    &[],
+                );
+                device.cmd_draw_indexed(
+                    command_buffer,
+                    index_buffer.element_count(),
+                    1,
+                    0,
+                    0,
+                    0,
+                );
+            }
+
+            device.cmd_end_render_pass(command_buffer);
+            device.end_command_buffer(command_buffer)?;
+        }
+        
+        Ok(command_buffer)
     }
 }
 

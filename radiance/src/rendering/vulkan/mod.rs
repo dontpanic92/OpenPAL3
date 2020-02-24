@@ -12,7 +12,8 @@ mod render_object;
 mod sampler;
 mod swapchain;
 mod uniform_buffer_mvp;
-mod vertex_helper;
+mod shader;
+mod shader_manager;
 mod vulkan_engine;
 
 pub use vulkan_engine::VulkanRenderingEngine;
