@@ -74,7 +74,7 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
             elapsed = frame_end_time
                 .duration_since(frame_start_time)
                 .as_secs_f32();
-            
+
             /*if elapsed < 1./120. {
                 continue;
             }*/

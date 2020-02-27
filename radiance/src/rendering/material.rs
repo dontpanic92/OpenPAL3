@@ -1,6 +1,6 @@
+use super::{Shader, SimpleShader};
 use crate::rendering::texture::Texture;
 use std::path::PathBuf;
-use super::{Shader, SimpleShader};
 
 pub trait Material {
     fn name(&self) -> &str;
@@ -14,7 +14,7 @@ pub struct SimpleMaterial {
 }
 
 impl SimpleMaterial {
-    pub fn new(texture_path: PathBuf) -> Self {
+    pub fn new(texture_path: &PathBuf) -> Self {
         let texture = Texture::new(texture_path);
         SimpleMaterial {
             textures: vec![texture],

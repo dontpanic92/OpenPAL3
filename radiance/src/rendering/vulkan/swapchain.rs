@@ -5,11 +5,13 @@ use super::descriptor_manager::DescriptorManager;
 use super::descriptor_sets::DescriptorSets;
 use super::image::Image;
 use super::image_view::ImageView;
+use super::pipeline_manager::PipelineManager;
 use super::render_object::VulkanRenderObject;
 use super::uniform_buffer_mvp::UniformBufferMvp;
 use ash::prelude::VkResult;
 use ash::version::DeviceV1_0;
 use ash::{vk, Device, Instance};
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::rc::{Rc, Weak};
 
@@ -22,13 +24,11 @@ pub struct SwapChain {
     depth_image: Image,
     depth_image_view: ImageView,
     uniform_buffers: Vec<Buffer>,
-    render_pass: vk::RenderPass,
-    pipeline_layout: vk::PipelineLayout,
     per_frame_descriptor_sets: DescriptorSets,
-    pipeline: vk::Pipeline,
     framebuffers: Vec<vk::Framebuffer>,
     command_buffers: Vec<vk::CommandBuffer>,
     capabilities: vk::SurfaceCapabilitiesKHR,
+    pipeline_manager: PipelineManager,
 
     entry: ash::extensions::khr::Swapchain,
 }
@@ -43,7 +43,7 @@ impl SwapChain {
         capabilities: vk::SurfaceCapabilitiesKHR,
         format: vk::SurfaceFormatKHR,
         present_mode: vk::PresentModeKHR,
-        descriptor_manager: &mut DescriptorManager,
+        descriptor_manager: &Rc<DescriptorManager>,
         command_runner: &Rc<AdhocCommandRunner>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let entry = ash::extensions::khr::Swapchain::new(instance, device.deref());
@@ -88,27 +88,24 @@ impl SwapChain {
             depth_image.vk_format(),
         )?;
 
-        let render_pass =
-            creation_helpers::create_render_pass(&device, format.format, depth_image.vk_format())?;
-
         descriptor_manager.reset_per_frame_descriptor_pool();
+        let pipeline_manager = PipelineManager::new(
+            &device,
+            &descriptor_manager,
+            format.format,
+            depth_image.vk_format(),
+            capabilities.current_extent,
+        );
+
         let per_frame_descriptor_sets =
             descriptor_manager.allocate_per_frame_descriptor_sets(uniform_buffers.as_slice())?;
 
-        let pipeline_layout =
-            creation_helpers::create_pipeline_layout(&device, descriptor_manager)?;
-        let pipeline = creation_helpers::create_pipeline(
-            &device,
-            render_pass,
-            pipeline_layout,
-            &capabilities.current_extent,
-        )?[0];
         let framebuffers = creation_helpers::create_framebuffers(
             &device,
             &image_views,
             &depth_image_view,
             &capabilities.current_extent,
-            render_pass,
+            pipeline_manager.render_pass().vk_render_pass(),
         )?;
 
         let command_buffers = {
@@ -129,13 +126,11 @@ impl SwapChain {
             depth_image,
             depth_image_view,
             uniform_buffers,
-            render_pass,
-            pipeline_layout,
             per_frame_descriptor_sets,
-            pipeline,
             framebuffers,
             command_buffers,
             capabilities,
+            pipeline_manager,
             entry,
         })
     }
@@ -180,14 +175,15 @@ impl SwapChain {
     }
 
     pub fn record_command_buffers(
-        &self,
+        &mut self,
         image_index: usize,
         objects: &[&VulkanRenderObject],
     ) -> Result<vk::CommandBuffer, vk::Result> {
         let device = self.device.upgrade().unwrap();
         let command_buffer = self.command_buffers[image_index];
         let framebuffer = self.framebuffers[image_index];
-        let per_frame_descriptor_set = self.per_frame_descriptor_sets.vk_descriptor_set()[image_index];
+        let per_frame_descriptor_set =
+            self.per_frame_descriptor_sets.vk_descriptor_set()[image_index];
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
@@ -214,7 +210,7 @@ impl SwapChain {
             },
         ];
         let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-            .render_pass(self.render_pass)
+            .render_pass(self.pipeline_manager.render_pass().vk_render_pass())
             .framebuffer(framebuffer)
             .render_area(
                 vk::Rect2D::builder()
@@ -231,49 +227,71 @@ impl SwapChain {
                 &render_pass_begin_info,
                 vk::SubpassContents::INLINE,
             );
-            device.cmd_bind_pipeline(
-                command_buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline,
-            );
+        }
 
-            for obj in objects {
-                let vertex_buffer = obj.vertex_buffer();
-                let index_buffer = obj.index_buffer();
-                device.cmd_bind_vertex_buffers(
-                    command_buffer,
-                    0,
-                    &[vertex_buffer.vk_buffer()],
-                    &[0],
-                );
-                device.cmd_bind_index_buffer(
-                    command_buffer,
-                    index_buffer.vk_buffer(),
-                    0,
-                    vk::IndexType::UINT32,
-                );
-                device.cmd_bind_descriptor_sets(
-                    command_buffer,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.pipeline_layout,
-                    0,
-                    &[per_frame_descriptor_set, obj.vk_descriptor_set()],
-                    &[],
-                );
-                device.cmd_draw_indexed(
-                    command_buffer,
-                    index_buffer.element_count(),
-                    1,
-                    0,
-                    0,
-                    0,
-                );
+        let mut objects_by_shader = HashMap::new();
+
+        for &obj in objects {
+            let shader = obj.material().shader();
+            let key = shader.name();
+            if !objects_by_shader.contains_key(key) {
+                objects_by_shader.insert(key.clone(), vec![]);
             }
 
+            self.pipeline_manager.create_pipeline_if_not_exist(shader);
+            objects_by_shader.get_mut(key).unwrap().push(obj);
+        }
+
+        for (shader_name, object_group) in &objects_by_shader {
+            let pipeline = self.pipeline_manager.get_pipeline(shader_name);
+
+            unsafe {
+                device.cmd_bind_pipeline(
+                    command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    pipeline.vk_pipeline(),
+                );
+
+                for obj in object_group {
+                    let vertex_buffer = obj.vertex_buffer();
+                    let index_buffer = obj.index_buffer();
+                    device.cmd_bind_vertex_buffers(
+                        command_buffer,
+                        0,
+                        &[vertex_buffer.vk_buffer()],
+                        &[0],
+                    );
+                    device.cmd_bind_index_buffer(
+                        command_buffer,
+                        index_buffer.vk_buffer(),
+                        0,
+                        vk::IndexType::UINT32,
+                    );
+                    device.cmd_bind_descriptor_sets(
+                        command_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        self.pipeline_manager.pipeline_layout().vk_pipeline_layout(),
+                        0,
+                        &[per_frame_descriptor_set, obj.vk_descriptor_set()],
+                        &[],
+                    );
+                    device.cmd_draw_indexed(
+                        command_buffer,
+                        index_buffer.element_count(),
+                        1,
+                        0,
+                        0,
+                        0,
+                    );
+                }
+            }
+        }
+
+        unsafe {
             device.cmd_end_render_pass(command_buffer);
             device.end_command_buffer(command_buffer)?;
         }
-        
+
         Ok(command_buffer)
     }
 }
@@ -287,10 +305,6 @@ impl Drop for SwapChain {
             }
 
             device.free_command_buffers(self.command_pool, &self.command_buffers);
-            device.destroy_pipeline_layout(self.pipeline_layout, None);
-            device.destroy_render_pass(self.render_pass, None);
-            device.destroy_pipeline(self.pipeline, None);
-
             self.entry.destroy_swapchain(self.handle, None);
         }
     }

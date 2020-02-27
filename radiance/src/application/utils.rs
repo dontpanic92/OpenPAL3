@@ -1,4 +1,3 @@
-
 pub struct FpsCounter {
     frame_time_history: [f32; 60],
     index: usize,

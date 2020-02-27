@@ -14,17 +14,17 @@ use crate::scene::{entity_get_component, Camera, Entity, Scene};
 use ash::extensions::ext::DebugReport;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Entry, Instance};
+use std::any::TypeId;
 use std::error::Error;
 use std::f32::consts::PI;
 use std::iter::Iterator;
 use std::rc::Rc;
-use std::any::TypeId;
 
 pub struct VulkanRenderingEngine {
     entry: Entry,
     instance: Instance,
     physical_device: vk::PhysicalDevice,
-    device: Rc<Device>,
+    device: Option<Rc<Device>>,
     surface: vk::SurfaceKHR,
     format: vk::SurfaceFormatKHR,
     present_mode: vk::PresentModeKHR,
@@ -33,7 +33,7 @@ pub struct VulkanRenderingEngine {
     command_pool: vk::CommandPool,
     debug_callback: vk::DebugReportCallbackEXT,
 
-    descriptor_manager: Option<DescriptorManager>,
+    descriptor_manager: Option<Rc<DescriptorManager>>,
     adhoc_command_runner: Rc<AdhocCommandRunner>,
 
     surface_entry: ash::extensions::khr::Surface,
@@ -84,7 +84,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             unsafe { device.create_command_pool(&create_info, None)? }
         };
 
-        let mut descriptor_manager = DescriptorManager::new(&device)?;
+        let descriptor_manager = Rc::new(DescriptorManager::new(&device).unwrap());
         let adhoc_command_runner = Rc::new(AdhocCommandRunner::new(&device, command_pool, queue));
         let swapchain = SwapChain::new(
             &instance,
@@ -95,9 +95,10 @@ impl RenderingEngine for VulkanRenderingEngine {
             capabilities,
             format,
             present_mode,
-            &mut descriptor_manager,
+            &descriptor_manager,
             &adhoc_command_runner,
-        )?;
+        )
+        .unwrap();
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
         let image_available_semaphore =
@@ -122,7 +123,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             entry,
             instance,
             physical_device,
-            device,
+            device: Some(device),
             surface,
             format,
             present_mode,
@@ -147,14 +148,18 @@ impl RenderingEngine for VulkanRenderingEngine {
         }
 
         for entity in scene.entities_mut() {
-            entity.component_do2(TypeId::of::<RenderObject>(), TypeId::of::<VulkanRenderObject>(), &|ro_any, vro_any| {
-                let ro = ro_any.downcast_mut::<RenderObject>().unwrap();
-                let vro = vro_any.downcast_mut::<VulkanRenderObject>().unwrap();
+            entity.component_do2(
+                TypeId::of::<RenderObject>(),
+                TypeId::of::<VulkanRenderObject>(),
+                &|ro_any, vro_any| {
+                    let ro = ro_any.downcast_mut::<RenderObject>().unwrap();
+                    let vro = vro_any.downcast_mut::<VulkanRenderObject>().unwrap();
 
-                if ro.is_dirty {
-                    vro.update(ro);
-                }
-            });
+                    if ro.is_dirty {
+                        vro.update(ro);
+                    }
+                },
+            );
         }
 
         match self.render_objects(scene.entities()) {
@@ -177,16 +182,16 @@ impl RenderingEngine for VulkanRenderingEngine {
 }
 
 impl VulkanRenderingEngine {
-    pub fn device(&self) -> Rc<Device> {
-        self.device.clone()
+    pub fn device(&self) -> &Rc<Device> {
+        self.device.as_ref().unwrap()
     }
 
-    pub fn adhoc_command_runner(&self) -> Rc<AdhocCommandRunner> {
-        self.adhoc_command_runner.clone()
+    pub fn adhoc_command_runner(&self) -> &Rc<AdhocCommandRunner> {
+        &self.adhoc_command_runner
     }
 
-    pub fn descriptor_manager_mut(&mut self) -> &mut DescriptorManager {
-        (&mut self.descriptor_manager).as_mut().unwrap()
+    pub fn descriptor_manager(&self) -> &Rc<DescriptorManager> {
+        &self.descriptor_manager.as_ref().unwrap()
     }
 
     pub fn create_device_buffer_with_data<T>(
@@ -196,7 +201,7 @@ impl VulkanRenderingEngine {
     ) -> Result<Buffer, Box<dyn Error>> {
         Buffer::new_device_buffer_with_data::<T>(
             &self.instance,
-            &self.device,
+            &self.device(),
             self.physical_device,
             data,
             buffer_type,
@@ -207,7 +212,7 @@ impl VulkanRenderingEngine {
     pub fn create_staging_buffer_with_data<T>(&self, data: &[T]) -> Result<Buffer, Box<dyn Error>> {
         Buffer::new_staging_buffer_with_data::<T>(
             &self.instance,
-            &self.device,
+            &self.device(),
             self.physical_device,
             data,
         )
@@ -215,22 +220,21 @@ impl VulkanRenderingEngine {
 
     fn recreate_swapchain(&mut self) -> Result<(), Box<dyn Error>> {
         unsafe {
-            let _ = self.device.device_wait_idle();
+            let _ = self.device().device_wait_idle();
         }
 
         self.swapchain = None;
         let capabilities = self.get_capabilities()?;
-        let descriptor_manager = (&mut self.descriptor_manager).as_mut().unwrap();
         self.swapchain = Some(SwapChain::new(
             &self.instance,
-            &self.device,
+            self.device(),
             self.command_pool,
             self.physical_device,
             self.surface,
             capabilities,
             self.format,
             self.present_mode,
-            descriptor_manager,
+            self.descriptor_manager(),
             &self.adhoc_command_runner,
         )?);
 
@@ -240,7 +244,7 @@ impl VulkanRenderingEngine {
     pub fn create_image(&self, width: u32, height: u32) -> Result<Image, Box<dyn Error>> {
         Image::new_color_image(
             &self.instance,
-            &self.device,
+            self.device(),
             self.physical_device,
             width,
             height,
@@ -249,7 +253,9 @@ impl VulkanRenderingEngine {
 
     fn render_objects(&mut self, entities: &Vec<Box<dyn Entity>>) -> Result<(), Box<dyn Error>> {
         macro_rules! swapchain {
-            ( ) => { self.swapchain.as_mut().unwrap() }
+            ( ) => {
+                self.swapchain.as_mut().unwrap()
+            };
         }
 
         unsafe {
@@ -263,11 +269,11 @@ impl VulkanRenderingEngine {
 
             let objects: Vec<&VulkanRenderObject> = entities
                 .iter()
-                .filter_map(|e| {
-                    entity_get_component::<VulkanRenderObject>(e.as_ref())
-                })
+                .filter_map(|e| entity_get_component::<VulkanRenderObject>(e.as_ref()))
                 .collect();
-            let command_buffer = swapchain!().record_command_buffers(image_index as usize, &objects).unwrap();
+            let command_buffer = swapchain!()
+                .record_command_buffers(image_index as usize, &objects)
+                .unwrap();
 
             // Update Uniform Buffers
             {
@@ -277,7 +283,12 @@ impl VulkanRenderingEngine {
                     transform.translate_local(&Vec3::new(0., 0., 2.));
 
                     let extent = self.get_capabilities().unwrap().current_extent;
-                    let cam = Camera::new(90. * PI / 180., extent.width as f32 / extent.height as f32, 0.1, 100000.);
+                    let cam = Camera::new(
+                        90. * PI / 180.,
+                        extent.width as f32 / extent.height as f32,
+                        0.1,
+                        100000.,
+                    );
                     let view = Mat44::inversed(transform.matrix());
                     let proj = cam.projection_matrix();
                     UniformBufferMvp::new(model, &view, proj)
@@ -299,7 +310,7 @@ impl VulkanRenderingEngine {
                     .signal_semaphores(&signal_semaphores)
                     .build();
 
-                self.device
+                self.device()
                     .queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
             }
 
@@ -317,14 +328,14 @@ impl VulkanRenderingEngine {
             }
 
             // Not an optimized way
-            let _ = self.device.device_wait_idle();
+            let _ = self.device().device_wait_idle();
         }
 
         Ok(())
     }
 
     fn drop_swapchain(&mut self) {
-        let _ = unsafe { self.device.device_wait_idle() };
+        let _ = unsafe { self.device().device_wait_idle() };
         self.swapchain = None;
     }
 
@@ -339,21 +350,22 @@ impl VulkanRenderingEngine {
 impl Drop for VulkanRenderingEngine {
     fn drop(&mut self) {
         unsafe {
-            let _ = self.device.device_wait_idle();
+            let _ = self.device().device_wait_idle();
             self.swapchain = None;
             self.descriptor_manager = None;
             self.debug_entry
                 .destroy_debug_report_callback(self.debug_callback, None);
-            self.device.destroy_command_pool(self.command_pool, None);
+            self.device().destroy_command_pool(self.command_pool, None);
 
-            self.device
+            self.device()
                 .destroy_semaphore(self.image_available_semaphore, None);
-            self.device
+            self.device()
                 .destroy_semaphore(self.render_finished_semaphore, None);
 
             self.surface_entry.destroy_surface(self.surface, None);
-            self.device.destroy_device(None);
-            drop(&self.device);
+            self.device().destroy_device(None);
+
+            self.device = None;
             self.instance.destroy_instance(None);
         }
     }

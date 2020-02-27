@@ -21,14 +21,14 @@ pub struct DescriptorManager {
 
 impl DescriptorManager {
     pub fn new(device: &Rc<Device>) -> VkResult<Self> {
-        let per_frame_pool = DescriptorManager::create_per_frame_descriptor_pool(device)?;
-        let per_object_pool = DescriptorManager::create_per_object_descriptor_pool(device)?;
-        let per_frame_layout = DescriptorManager::create_descriptor_set_layout(
+        let per_frame_pool = Self::create_per_frame_descriptor_pool(device)?;
+        let per_object_pool = Self::create_per_object_descriptor_pool(device)?;
+        let per_frame_layout = Self::create_descriptor_set_layout(
             device,
             vk::DescriptorType::UNIFORM_BUFFER,
             vk::ShaderStageFlags::VERTEX,
         )?;
-        let per_object_layout = DescriptorManager::create_descriptor_set_layout(
+        let per_object_layout = Self::create_descriptor_set_layout(
             device,
             vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
             vk::ShaderStageFlags::FRAGMENT,
@@ -44,7 +44,7 @@ impl DescriptorManager {
     }
 
     pub fn allocate_per_object_descriptor_set(
-        &mut self,
+        &self,
         image_view: &ImageView,
         sampler: &Sampler,
     ) -> VkResult<DescriptorSets> {
@@ -59,7 +59,7 @@ impl DescriptorManager {
     }
 
     pub fn allocate_per_frame_descriptor_sets(
-        &mut self,
+        &self,
         uniform_buffers: &[Buffer],
     ) -> VkResult<DescriptorSets> {
         let device = self.device.upgrade().unwrap();
@@ -71,9 +71,11 @@ impl DescriptorManager {
         )
     }
 
-    pub fn reset_per_frame_descriptor_pool(&mut self) {
+    pub fn reset_per_frame_descriptor_pool(&self) {
         let device = self.device.upgrade().unwrap();
-        let _ = unsafe { device.reset_descriptor_pool(self.per_frame_pool, vk::DescriptorPoolResetFlags::empty()) };
+        let _ = unsafe {
+            device.reset_descriptor_pool(self.per_frame_pool, vk::DescriptorPoolResetFlags::empty())
+        };
     }
 
     pub fn vk_descriptor_set_layouts(&self) -> [vk::DescriptorSetLayout; 2] {

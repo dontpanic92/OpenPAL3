@@ -18,7 +18,7 @@ impl Memory {
         memory_prop_flags: vk::MemoryPropertyFlags,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
-        Memory::new(
+        Self::new(
             instance,
             device,
             physical_device,
@@ -35,7 +35,7 @@ impl Memory {
         memory_prop_flags: vk::MemoryPropertyFlags,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let requirements = unsafe { device.get_image_memory_requirements(image) };
-        Memory::new(
+        Self::new(
             instance,
             device,
             physical_device,

@@ -14,7 +14,7 @@ impl ImageView {
         image: vk::Image,
         format: vk::Format,
     ) -> VkResult<Self> {
-        ImageView::new(device, image, format, vk::ImageAspectFlags::COLOR)
+        Self::new(device, image, format, vk::ImageAspectFlags::COLOR)
     }
 
     pub fn new_depth_image_view(
@@ -22,7 +22,7 @@ impl ImageView {
         image: vk::Image,
         format: vk::Format,
     ) -> VkResult<Self> {
-        ImageView::new(device, image, format, vk::ImageAspectFlags::DEPTH)
+        Self::new(device, image, format, vk::ImageAspectFlags::DEPTH)
     }
 
     pub fn vk_image_view(&self) -> vk::ImageView {

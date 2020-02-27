@@ -1,32 +1,38 @@
-use std::rc::{Rc, Weak};
-use std::error::Error;
-use ash::Device;
-use ash::version::DeviceV1_0;
+use crate::rendering::vertex::{VertexComponents, VertexMetadata};
 use crate::rendering::Shader;
-use crate::rendering::vertex::{VertexMetadata, VertexComponents};
+use ash::version::DeviceV1_0;
 use ash::vk;
+use ash::Device;
+use std::error::Error;
+use std::rc::{Rc, Weak};
+use std::sync::Arc;
 
 pub struct VulkanShader {
     device: Weak<Device>,
-    vertex_metadata: &'static VertexMetadata,
+    vertex_metadata: Arc<VertexMetadata>,
     vert_shader: vk::ShaderModule,
     frag_shader: vk::ShaderModule,
+    name: String,
 }
 
 impl VulkanShader {
-    pub fn new(
-        device: Rc<Device>,
-        shader: &dyn Shader,
-    ) -> Result<Self, Box<dyn Error>> {
-        let vert_shader = VulkanShader::create_shader_module_from_memory(&device, shader.vert_src()).unwrap();
-        let frag_shader = VulkanShader::create_shader_module_from_memory(&device, shader.frag_src()).unwrap();
+    pub fn new(device: &Rc<Device>, shader: &dyn Shader) -> Result<Self, Box<dyn Error>> {
+        let vert_shader =
+            Self::create_shader_module_from_memory(&device, shader.vert_src()).unwrap();
+        let frag_shader =
+            Self::create_shader_module_from_memory(&device, shader.frag_src()).unwrap();
 
         Ok(Self {
             device: Rc::downgrade(&device),
             vertex_metadata: VertexMetadata::get(shader.vertex_components()),
             vert_shader,
             frag_shader,
+            name: shader.name().to_owned(),
         })
+    }
+
+    pub fn name(&self) -> &String {
+        &self.name
     }
 
     pub fn get_binding_description(&self) -> vk::VertexInputBindingDescription {
@@ -36,23 +42,31 @@ impl VulkanShader {
             .input_rate(vk::VertexInputRate::VERTEX)
             .build()
     }
-    
+
     // A better way: reflect the shader code to get the desciprtions automatically
     pub fn get_attribute_descriptions(&self) -> Vec<vk::VertexInputAttributeDescription> {
         let mut descs = vec![];
 
-        if let Some(&position_offset) = self.vertex_metadata.offsets.get(&VertexComponents::POSITION) {
+        if let Some(&position_offset) = self
+            .vertex_metadata
+            .offsets
+            .get(&VertexComponents::POSITION)
+        {
             let pos_attr = vk::VertexInputAttributeDescription::builder()
                 .offset(position_offset as u32)
                 .binding(0)
                 .location(0)
                 .format(vk::Format::R32G32B32_SFLOAT)
                 .build();
-            
+
             descs.push(pos_attr);
         }
 
-        if let Some(&texcoord_offset) = self.vertex_metadata.offsets.get(&VertexComponents::TEXCOORD) {
+        if let Some(&texcoord_offset) = self
+            .vertex_metadata
+            .offsets
+            .get(&VertexComponents::TEXCOORD)
+        {
             let tex_attr = vk::VertexInputAttributeDescription::builder()
                 .offset(texcoord_offset as u32)
                 .binding(0)
@@ -64,6 +78,14 @@ impl VulkanShader {
         }
 
         descs
+    }
+
+    pub fn vk_vert_shader_module(&self) -> vk::ShaderModule {
+        self.vert_shader
+    }
+
+    pub fn vk_frag_shader_module(&self) -> vk::ShaderModule {
+        self.frag_shader
     }
 
     fn create_shader_module_from_memory(

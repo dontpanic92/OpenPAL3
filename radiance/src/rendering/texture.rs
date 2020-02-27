@@ -1,4 +1,3 @@
-
 use crate::rendering::render_object::TEXTURE_MISSING_TEXTURE_FILE;
 use image::RgbaImage;
 use std::path::PathBuf;
@@ -9,14 +8,15 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new(path: &PathBuf) -> Self {
         let image = match image::open(path) {
-            Ok(img) =>  img,
+            Ok(img) => img,
             Err(_) => image::load_from_memory(&TEXTURE_MISSING_TEXTURE_FILE).unwrap(),
-        }.to_rgba();
+        }
+        .to_rgba();
 
         Self {
-            path,
+            path: path.clone(),
             image,
         }
     }

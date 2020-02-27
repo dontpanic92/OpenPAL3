@@ -1,8 +1,10 @@
-use super::Vertex;
 use super::Material;
+use super::Vertex;
 
-pub static TEXTURE_MISSING_TEXTURE_FILE: &'static [u8] =
-include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/embed/textures/texture_missing.png"));
+pub static TEXTURE_MISSING_TEXTURE_FILE: &'static [u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/embed/textures/texture_missing.png"
+));
 
 pub struct RenderObject {
     vertices: Vec<Vertex>,
@@ -12,7 +14,11 @@ pub struct RenderObject {
 }
 
 impl RenderObject {
-    pub fn new_with_data(vertices: Vec<Vertex>, indices: Vec<u32>, material: Box<dyn Material>) -> Self {
+    pub fn new_with_data(
+        vertices: Vec<Vertex>,
+        indices: Vec<u32>,
+        material: Box<dyn Material>,
+    ) -> Self {
         Self {
             vertices,
             indices,

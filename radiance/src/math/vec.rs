@@ -10,6 +10,12 @@ impl Vec2 {
     pub fn new(x: f32, y: f32) -> Self {
         Vec2 { x, y }
     }
+
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(self as *const _ as *const u8, std::mem::size_of::<Self>())
+        }
+    }
 }
 
 /// 3d column vector
@@ -37,6 +43,12 @@ impl Vec3 {
             *vec
         } else {
             Vec3::new(vec.x / norm, vec.y / norm, vec.z / norm)
+        }
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(self as *const _ as *const u8, std::mem::size_of::<Self>())
         }
     }
 }

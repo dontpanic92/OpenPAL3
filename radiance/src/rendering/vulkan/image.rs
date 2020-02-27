@@ -25,7 +25,7 @@ impl Image {
         tex_width: u32,
         tex_height: u32,
     ) -> Result<Self, Box<dyn Error>> {
-        Image::new(
+        Self::new(
             instance,
             device,
             physical_device,
@@ -54,7 +54,7 @@ impl Image {
             vk::ImageTiling::OPTIMAL,
             vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
         )?;
-        Image::new(
+        Self::new(
             instance,
             device,
             physical_device,

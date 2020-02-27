@@ -7,9 +7,7 @@ pub trait Shader {
     fn vertex_components(&self) -> VertexComponents;
 }
 
-pub struct SimpleShader {
-
-}
+pub struct SimpleShader {}
 
 static SIMPLE_TRIANGLE_VERT: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.vert.spv"));
@@ -30,6 +28,6 @@ impl Shader for SimpleShader {
     }
 
     fn frag_src(&self) -> &[u8] {
-        SIMPLE_TRIANGLE_VERT
+        SIMPLE_TRIANGLE_FRAG
     }
 }

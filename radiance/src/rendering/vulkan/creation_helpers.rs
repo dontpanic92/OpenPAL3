@@ -1,4 +1,3 @@
-use super::descriptor_manager::DescriptorManager;
 use super::error::VulkanBackendError;
 use super::helpers;
 use super::image_view::ImageView;
@@ -8,8 +7,7 @@ use ash::extensions::khr::{Surface, Swapchain};
 use ash::prelude::VkResult;
 use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::vk::{
-    Extent2D, Offset2D, PhysicalDevice, Pipeline, PresentModeKHR, ShaderStageFlags,
-    SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainKHR,
+    Extent2D, PhysicalDevice, PresentModeKHR, SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR, SwapchainKHR,
 };
 use ash::{vk, Device, Entry, Instance, InstanceError};
 use std::error::Error;
@@ -178,85 +176,6 @@ pub fn create_image_views(
         .collect()
 }
 
-pub fn create_pipeline_layout(
-    device: &Device,
-    descriptor_manager: &DescriptorManager,
-) -> VkResult<vk::PipelineLayout> {
-    let layouts = descriptor_manager.vk_descriptor_set_layouts();
-    let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-        .set_layouts(&layouts)
-        .build();
-    unsafe { device.create_pipeline_layout(&pipeline_layout_create_info, None) }
-}
-
-pub fn create_render_pass(
-    device: &Device,
-    color_format: vk::Format,
-    depth_format: vk::Format,
-) -> VkResult<vk::RenderPass> {
-    let color_attachment = vk::AttachmentDescription::builder()
-        .format(color_format)
-        .samples(vk::SampleCountFlags::TYPE_1)
-        .load_op(vk::AttachmentLoadOp::CLEAR)
-        .store_op(vk::AttachmentStoreOp::STORE)
-        .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-        .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-        .initial_layout(vk::ImageLayout::UNDEFINED)
-        .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-        .build();
-
-    let depth_attachment = vk::AttachmentDescription::builder()
-        .format(depth_format)
-        .samples(vk::SampleCountFlags::TYPE_1)
-        .load_op(vk::AttachmentLoadOp::CLEAR)
-        .store_op(vk::AttachmentStoreOp::DONT_CARE)
-        .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-        .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-        .initial_layout(vk::ImageLayout::UNDEFINED)
-        .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-        .build();
-
-    let color_attachment_reference = vk::AttachmentReference::builder()
-        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-        .attachment(0)
-        .build();
-    let depth_attachment_reference = vk::AttachmentReference::builder()
-        .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-        .attachment(1)
-        .build();
-
-    let color_attachments = [color_attachment_reference];
-    let subpass_description = vk::SubpassDescription::builder()
-        .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-        .color_attachments(&color_attachments)
-        .depth_stencil_attachment(&depth_attachment_reference)
-        .build();
-
-    let subpass_dependency = vk::SubpassDependency::builder()
-        .src_subpass(vk::SUBPASS_EXTERNAL)
-        .dst_subpass(0)
-        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-        .src_access_mask(vk::AccessFlags::default())
-        .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-        .dst_access_mask(
-            vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-        )
-        .build();
-
-    let attachments = [color_attachment, depth_attachment];
-    let subpasses = [subpass_description];
-    let dependencies = [subpass_dependency];
-    let render_pass_create_info = vk::RenderPassCreateInfo::builder()
-        .attachments(&attachments)
-        .subpasses(&subpasses)
-        .dependencies(&dependencies)
-        .build();
-
-    unsafe { device.create_render_pass(&render_pass_create_info, None) }
-}
-
-
-
 pub fn create_shader_module(
     device: &Device,
     shader_path: &str,
@@ -296,9 +215,9 @@ fn enabled_layer_names() -> Vec<*const i8> {
         vec![
             // Use $env:VK_INSTANCE_LAYERS="VK_LAYER_LUNARG_standard_validation" to enable the validation layer
             // instead of doing so here.
-            // 
-            // std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_standard_validation\0")
-            //    .as_ptr() as *const i8,
+            //
+            std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_standard_validation\0")
+                .as_ptr() as *const i8,
         ]
     }
 }

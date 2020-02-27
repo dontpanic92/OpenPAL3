@@ -29,7 +29,7 @@ impl Buffer {
         element_size: usize,
         element_count: usize,
     ) -> Result<Self, Box<dyn Error>> {
-        Buffer::new_buffer(
+        Self::new_buffer(
             instance,
             Rc::downgrade(&device),
             physical_device,
@@ -67,7 +67,7 @@ impl Buffer {
         element_size: usize,
         element_count: usize,
     ) -> Result<Self, Box<dyn Error>> {
-        Buffer::new_buffer(
+        Self::new_buffer(
             instance,
             Rc::downgrade(&device),
             physical_device,

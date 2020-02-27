@@ -12,7 +12,12 @@ pub trait Entity {
     fn add_component(&mut self, component: Box<dyn Any>);
     fn get_component(&self, type_id: TypeId) -> Option<&dyn Any>;
     fn get_component_mut(&mut self, type_id: TypeId) -> Option<&mut dyn Any>;
-    fn component_do2(&mut self, type_id1: TypeId, type_id2: TypeId, action: &dyn Fn(&mut dyn Any, &mut dyn Any)) -> Option<()>;
+    fn component_do2(
+        &mut self,
+        type_id1: TypeId,
+        type_id2: TypeId,
+        action: &dyn Fn(&mut dyn Any, &mut dyn Any),
+    ) -> Option<()>;
 }
 
 pub trait EntityCallbacks {
@@ -113,7 +118,8 @@ impl<TCallbacks: EntityCallbacks> Entity for CoreEntity<TCallbacks> {
             return None;
         }
 
-        self.components.get(&type_id)
+        self.components
+            .get(&type_id)
             .filter(|v| !v.is_empty())
             .and_then(|v| Some(v[0].as_ref()))
     }
@@ -123,19 +129,21 @@ impl<TCallbacks: EntityCallbacks> Entity for CoreEntity<TCallbacks> {
             return None;
         }
 
-        self.components.get_mut(&type_id)
+        self.components
+            .get_mut(&type_id)
             .filter(|v| !v.is_empty())
             .and_then(|v| Some(v[0].as_mut()))
     }
 
-    fn component_do2(&mut self, type_id1: TypeId, type_id2: TypeId, action: &dyn Fn(&mut dyn Any, &mut dyn Any)) -> Option<()> {
-        let component1 = unsafe {
-            &mut *(Entity::get_component_mut(self, type_id1)? as *mut _)
-        };
+    fn component_do2(
+        &mut self,
+        type_id1: TypeId,
+        type_id2: TypeId,
+        action: &dyn Fn(&mut dyn Any, &mut dyn Any),
+    ) -> Option<()> {
+        let component1 = unsafe { &mut *(Entity::get_component_mut(self, type_id1)? as *mut _) };
 
-        let component2 = unsafe {
-            &mut *(Entity::get_component_mut(self, type_id2)? as *mut _)
-        };
+        let component2 = unsafe { &mut *(Entity::get_component_mut(self, type_id2)? as *mut _) };
 
         action(component1, component2);
         Some(())
