@@ -8,7 +8,7 @@ layout(binding = 0) uniform UniformBufferObject {
 } mvp;
 
 layout(location = 0) in vec3 position;
-layout(location = 1) in vec2 inTexCoord;
+layout(location = 2) in vec2 inTexCoord;
 
 layout(location = 0) out vec2 fragTexCoord;
 

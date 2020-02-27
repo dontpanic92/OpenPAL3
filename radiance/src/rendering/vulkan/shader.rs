@@ -62,6 +62,17 @@ impl VulkanShader {
             descs.push(pos_attr);
         }
 
+        if let Some(&normal_offset) = self.vertex_metadata.offsets.get(&VertexComponents::NORMAL) {
+            let normal_attr = vk::VertexInputAttributeDescription::builder()
+                .offset(normal_offset as u32)
+                .binding(0)
+                .location(1)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .build();
+
+            descs.push(normal_attr);
+        }
+
         if let Some(&texcoord_offset) = self
             .vertex_metadata
             .offsets
@@ -70,11 +81,26 @@ impl VulkanShader {
             let tex_attr = vk::VertexInputAttributeDescription::builder()
                 .offset(texcoord_offset as u32)
                 .binding(0)
-                .location(1)
+                .location(2)
                 .format(vk::Format::R32G32_SFLOAT)
                 .build();
 
             descs.push(tex_attr);
+        }
+
+        if let Some(&texcoord2_offset) = self
+            .vertex_metadata
+            .offsets
+            .get(&VertexComponents::TEXCOORD2)
+        {
+            let texcoord2_attr = vk::VertexInputAttributeDescription::builder()
+                .offset(texcoord2_offset as u32)
+                .binding(0)
+                .location(3)
+                .format(vk::Format::R32G32_SFLOAT)
+                .build();
+
+            descs.push(texcoord2_attr);
         }
 
         descs
