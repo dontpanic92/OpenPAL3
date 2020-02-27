@@ -5,7 +5,7 @@ use std::path::PathBuf;
 pub trait Material {
     fn name(&self) -> &str;
     fn shader(&self) -> &dyn Shader;
-    fn textures(&self) -> &Vec<Texture>;
+    fn textures(&self) -> &[Texture];
 }
 
 pub struct SimpleMaterial {
@@ -32,7 +32,7 @@ impl Material for SimpleMaterial {
         &self.shader
     }
 
-    fn textures(&self) -> &Vec<Texture> {
+    fn textures(&self) -> &[Texture] {
         &self.textures
     }
 }

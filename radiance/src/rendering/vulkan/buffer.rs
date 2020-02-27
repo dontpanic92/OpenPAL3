@@ -82,7 +82,7 @@ impl Buffer {
         instance: &Instance,
         device: &Rc<Device>,
         physical_device: vk::PhysicalDevice,
-        data: &Vec<T>,
+        data: &[T],
         buffer_type: BufferType,
         command_runner: &AdhocCommandRunner,
     ) -> Result<Self, Box<dyn Error>> {

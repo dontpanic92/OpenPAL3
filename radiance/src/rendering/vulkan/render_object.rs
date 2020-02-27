@@ -22,9 +22,10 @@ impl VulkanRenderObject {
         object: &RenderObject,
         engine: &mut VulkanRenderingEngine,
     ) -> Result<Self, Box<dyn Error>> {
-        let vertex_staging_buffer = engine.create_staging_buffer_with_data(object.vertices())?;
+        let vertex_staging_buffer =
+            engine.create_staging_buffer_with_data(object.vertices().data())?;
         let vertex_buffer =
-            engine.create_device_buffer_with_data(BufferType::Vertex, object.vertices())?;
+            engine.create_device_buffer_with_data(BufferType::Vertex, object.vertices().data())?;
         let index_buffer =
             engine.create_device_buffer_with_data(BufferType::Index, object.indices())?;
 
@@ -49,7 +50,7 @@ impl VulkanRenderObject {
             let _ = self
                 .vertex_staging_buffer
                 .memory_mut()
-                .copy_from(object.vertices());
+                .copy_from(object.vertices().data());
             let _ = self
                 .vertex_buffer
                 .copy_from(&self.vertex_staging_buffer, command_runner.as_ref());

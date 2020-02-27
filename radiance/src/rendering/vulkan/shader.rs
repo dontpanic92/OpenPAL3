@@ -1,4 +1,4 @@
-use crate::rendering::vertex::{VertexComponents, VertexMetadata};
+use crate::rendering::vertex_buffer::{VertexComponents, VertexMetadata};
 use crate::rendering::Shader;
 use ash::version::DeviceV1_0;
 use ash::vk;

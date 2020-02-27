@@ -1,4 +1,4 @@
-use super::vertex::VertexComponents;
+use super::VertexComponents;
 
 pub trait Shader {
     fn name(&self) -> &str;

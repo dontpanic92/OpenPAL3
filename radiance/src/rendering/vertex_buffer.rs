@@ -1,5 +1,4 @@
 use crate::math::*;
-use std::cmp::Eq;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::Arc;
@@ -72,34 +71,46 @@ impl VertexMetadata {
     }
 }
 
-#[derive(Clone)]
-pub struct Vertex {
+#[derive(Debug, Clone)]
+pub struct VertexBuffer {
     components: VertexComponents,
     data: Vec<u8>,
+    count: usize,
 }
 
-impl Vertex {
-    pub fn new(components: VertexComponents) -> Self {
+impl VertexBuffer {
+    pub fn new(components: VertexComponents, count: usize) -> Self {
         let size = VertexMetadata::get(components).size;
-        let data = vec![0u8; size];
-        Self { components, data }
+        let data = vec![0u8; size * count];
+        Self {
+            components,
+            data,
+            count,
+        }
     }
 
     pub fn new_with_data_blob(components: VertexComponents, data: Vec<u8>) -> Self {
         let size = VertexMetadata::get(components).size;
-        if size != data.len() {
+        let len = data.len();
+        if len % size != 0 {
             panic!("Vertex len mismatch when creating vertex with data");
         }
 
-        Self { components, data }
+        Self {
+            components,
+            data,
+            count: len / size,
+        }
     }
 
-    pub fn new_with_data(
+    pub fn set_data(
+        &mut self,
+        index: usize,
         position: Option<&Vec3>,
         normal: Option<&Vec3>,
         tex_coord: Option<&Vec2>,
         tex_coord2: Option<&Vec2>,
-    ) -> Self {
+    ) {
         let mut data: Vec<u8> = vec![];
         let mut components = VertexComponents::empty();
         if let Some(p) = position {
@@ -122,51 +133,98 @@ impl Vertex {
             components |= VertexComponents::TEXCOORD2;
         }
 
-        Self::new_with_data_blob(components, data)
+        if components != self.components {
+            panic!("Vertex component mismatch when setting vertex data");
+        }
+
+        self.set_vertex_blob(index, |v: &mut [u8]| {
+            v.copy_from_slice(&data);
+        });
     }
 
-    pub fn position(&self) -> Option<&Vec3> {
-        self.get_component(VertexComponents::POSITION)
+    pub fn position(&self, index: usize) -> Option<&Vec3> {
+        self.get_component(index, VertexComponents::POSITION)
     }
 
-    pub fn tex_coord(&self) -> Option<&Vec2> {
-        self.get_component(VertexComponents::TEXCOORD)
+    pub fn tex_coord(&self, index: usize) -> Option<&Vec2> {
+        self.get_component(index, VertexComponents::TEXCOORD)
     }
 
-    pub fn get_component<TData>(&self, component: VertexComponents) -> Option<&TData> {
-        let size = VertexMetadata::get(component).size;
-        if size != std::mem::size_of::<TData>() {
+    pub fn get_component<TData>(
+        &self,
+        index: usize,
+        component: VertexComponents,
+    ) -> Option<&TData> {
+        let component_size = VertexMetadata::get(component).size;
+        if component_size != std::mem::size_of::<TData>() {
             panic!("Wrong size when get vertex data");
         }
 
         let metadata = self.metadata();
+        let vertex_size = metadata.size;
         match metadata.offsets.get(&component) {
             None => None,
-            Some(&offset) => {
-                Some(unsafe { &*(self.data.as_ptr().offset(offset as isize) as *const TData) })
-            }
+            Some(&offset) => Some(unsafe {
+                &*(self
+                    .data
+                    .as_ptr()
+                    .offset((index * vertex_size + offset) as isize)
+                    as *const TData)
+            }),
         }
     }
 
     pub fn set_component<TData, F: Fn(&mut TData)>(
         &mut self,
+        index: usize,
         component: VertexComponents,
         update: F,
     ) {
-        let size = VertexMetadata::get(component).size;
-        if size != std::mem::size_of::<TData>() {
+        let component_size = VertexMetadata::get(component).size;
+        if component_size != std::mem::size_of::<TData>() {
             panic!(
-                "Wrong size when set vertex data: metadata.size {}, TData.size {}",
-                size,
+                "Wrong size when set vertex data: component size {}, TData.size {}",
+                component_size,
                 std::mem::size_of::<TData>()
             );
         }
 
+        if index >= self.count {
+            panic!("Index out of range: {}", index);
+        }
+
         let metadata = self.metadata();
         let offset = *metadata.offsets.get(&component).unwrap();
-        let data: &mut TData =
-            unsafe { &mut *(self.data.as_mut_ptr().offset(offset as isize) as *mut TData) };
+        let vertex_size = metadata.size;
+        let data: &mut TData = unsafe {
+            &mut *(self
+                .data
+                .as_mut_ptr()
+                .offset((index * vertex_size + offset) as isize) as *mut TData)
+        };
         update(data);
+    }
+
+    pub fn set_vertex_blob<F: Fn(&mut [u8])>(&mut self, index: usize, update: F) {
+        let metadata = self.metadata();
+        let vertex_size = metadata.size;
+        let data: &mut [u8] = unsafe {
+            std::slice::from_raw_parts_mut(
+                self.data
+                    .as_mut_ptr()
+                    .offset((index * vertex_size) as isize) as *mut u8,
+                vertex_size,
+            )
+        };
+        update(data);
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn count(&self) -> usize {
+        self.count
     }
 
     pub fn components(&self) -> VertexComponents {

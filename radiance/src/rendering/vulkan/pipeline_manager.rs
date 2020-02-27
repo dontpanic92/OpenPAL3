@@ -48,7 +48,6 @@ impl PipelineManager {
         let name = shader.name();
         let device = self.device.upgrade().unwrap();
         if !self.pipelines.contains_key(name) {
-            println!("not exist: {}", name);
             self.pipelines.insert(
                 name.clone(),
                 Pipeline::new(

@@ -197,7 +197,7 @@ impl VulkanRenderingEngine {
     pub fn create_device_buffer_with_data<T>(
         &self,
         buffer_type: BufferType,
-        data: &Vec<T>,
+        data: &[T],
     ) -> Result<Buffer, Box<dyn Error>> {
         Buffer::new_device_buffer_with_data::<T>(
             &self.instance,
