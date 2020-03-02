@@ -16,6 +16,7 @@ mod render_object;
 mod render_pass;
 mod sampler;
 mod shader;
+mod texture;
 mod swapchain;
 mod uniform_buffer_mvp;
 mod vulkan_engine;

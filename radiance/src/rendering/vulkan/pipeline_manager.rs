@@ -17,7 +17,6 @@ pub struct PipelineManager {
     depth_format: vk::Format,
     extent: vk::Extent2D,
     render_pass: RenderPass,
-    pipeline_layout: PipelineLayout,
     pipelines: HashMap<String, Pipeline>,
 }
 
@@ -30,7 +29,6 @@ impl PipelineManager {
         extent: vk::Extent2D,
     ) -> Self {
         let render_pass = RenderPass::new(device, color_format, depth_format);
-        let pipeline_layout = PipelineLayout::new(device, descriptor_manager);
 
         Self {
             device: Rc::downgrade(device),
@@ -39,22 +37,22 @@ impl PipelineManager {
             depth_format,
             extent,
             render_pass,
-            pipeline_layout,
             pipelines: HashMap::new(),
         }
     }
 
-    pub fn create_pipeline_if_not_exist(&mut self, shader: &VulkanShader) -> &Pipeline {
-        let name = shader.name();
+    pub fn create_pipeline_if_not_exist(&mut self, material: &VulkanMaterial) -> &Pipeline {
+        let name = material.name();
         let device = self.device.upgrade().unwrap();
+        let descriptor_manager = self.descriptor_manager.upgrade().unwrap();
         if !self.pipelines.contains_key(name) {
             self.pipelines.insert(
-                name.clone(),
+                name.to_owned(),
                 Pipeline::new(
                     &device,
-                    &self.pipeline_layout,
+                    &descriptor_manager,
                     &self.render_pass,
-                    shader,
+                    material,
                     self.extent,
                 ),
             );
@@ -63,15 +61,11 @@ impl PipelineManager {
         self.pipelines.get(name).unwrap()
     }
 
-    pub fn get_pipeline(&mut self, shader_name: &String) -> &Pipeline {
-        self.pipelines.get(shader_name).unwrap()
+    pub fn get_pipeline(&mut self, material_name: &str) -> &Pipeline {
+        self.pipelines.get(material_name).unwrap()
     }
 
     pub fn render_pass(&self) -> &RenderPass {
         &self.render_pass
-    }
-
-    pub fn pipeline_layout(&self) -> &PipelineLayout {
-        &self.pipeline_layout
     }
 }

@@ -33,7 +33,7 @@ impl VulkanRenderObject {
         let material = VulkanMaterial::new(object.material(), engine)?;
         let per_object_descriptor_sets = engine
             .descriptor_manager()
-            .allocate_per_object_descriptor_set(material.image_view(), material.sampler())?;
+            .allocate_per_object_descriptor_set(&material)?;
 
         Ok(Self {
             vertex_staging_buffer,

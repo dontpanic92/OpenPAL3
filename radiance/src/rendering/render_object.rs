@@ -1,11 +1,6 @@
 use super::Material;
 use super::VertexBuffer;
 
-pub static TEXTURE_MISSING_TEXTURE_FILE: &'static [u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/embed/textures/texture_missing.png"
-));
-
 pub struct RenderObject {
     vertices: VertexBuffer,
     indices: Vec<u32>,

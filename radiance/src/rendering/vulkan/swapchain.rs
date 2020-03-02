@@ -229,21 +229,20 @@ impl SwapChain {
             );
         }
 
-        let mut objects_by_shader = HashMap::new();
+        let mut objects_by_material = HashMap::new();
 
         for &obj in objects {
-            let shader = obj.material().shader();
-            let key = shader.name();
-            if !objects_by_shader.contains_key(key) {
-                objects_by_shader.insert(key.clone(), vec![]);
+            let key = obj.material().name();
+            if !objects_by_material.contains_key(key) {
+                objects_by_material.insert(key.clone(), vec![]);
             }
 
-            self.pipeline_manager.create_pipeline_if_not_exist(shader);
-            objects_by_shader.get_mut(key).unwrap().push(obj);
+            self.pipeline_manager.create_pipeline_if_not_exist(obj.material());
+            objects_by_material.get_mut(key).unwrap().push(obj);
         }
 
-        for (shader_name, object_group) in &objects_by_shader {
-            let pipeline = self.pipeline_manager.get_pipeline(shader_name);
+        for (material_name, object_group) in &objects_by_material {
+            let pipeline = self.pipeline_manager.get_pipeline(material_name);
 
             unsafe {
                 device.cmd_bind_pipeline(
@@ -270,7 +269,7 @@ impl SwapChain {
                     device.cmd_bind_descriptor_sets(
                         command_buffer,
                         vk::PipelineBindPoint::GRAPHICS,
-                        self.pipeline_manager.pipeline_layout().vk_pipeline_layout(),
+                        pipeline.pipeline_layout().vk_pipeline_layout(),
                         0,
                         &[per_frame_descriptor_set, obj.vk_descriptor_set()],
                         &[],

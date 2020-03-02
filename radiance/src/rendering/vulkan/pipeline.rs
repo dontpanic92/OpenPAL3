@@ -1,3 +1,5 @@
+use crate::rendering::vulkan::descriptor_manager::DescriptorManager;
+use crate::rendering::vulkan::material::VulkanMaterial;
 use super::{pipeline_layout::PipelineLayout, render_pass::RenderPass, shader::VulkanShader};
 use ash::version::DeviceV1_0;
 use ash::{vk, Device};
@@ -9,29 +11,37 @@ use std::rc::Weak;
 pub struct Pipeline {
     device: Weak<Device>,
     pipeline: vk::Pipeline,
+    pipeline_layout: PipelineLayout,
 }
 
 impl Pipeline {
     pub fn new(
         device: &Rc<Device>,
-        pipeline_layout: &PipelineLayout,
+        descriptor_manager: &DescriptorManager,
         render_pass: &RenderPass,
-        shader: &VulkanShader,
+        material: &VulkanMaterial,
         extent: vk::Extent2D,
     ) -> Self {
+        let descriptor_set_layouts = descriptor_manager.get_vk_descriptor_set_layouts(material);
+        let pipeline_layout = PipelineLayout::new(device, &descriptor_set_layouts);
         let pipeline = Self::create_pipeline(
             &device,
             render_pass.vk_render_pass(),
             pipeline_layout.vk_pipeline_layout(),
             &extent,
-            shader,
+            material.shader(),
         )
         .unwrap()[0];
 
         Self {
             device: Rc::downgrade(&device),
             pipeline,
+            pipeline_layout,
         }
+    }
+
+    pub fn pipeline_layout(&self) -> &PipelineLayout {
+        &self.pipeline_layout
     }
 
     pub fn vk_pipeline(&self) -> vk::Pipeline {

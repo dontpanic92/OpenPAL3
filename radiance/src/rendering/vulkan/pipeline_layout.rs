@@ -10,8 +10,8 @@ pub struct PipelineLayout {
 }
 
 impl PipelineLayout {
-    pub fn new(device: &Rc<Device>, descriptor_manager: &DescriptorManager) -> Self {
-        let pipeline_layout = Self::create_pipeline_layout(device, descriptor_manager).unwrap();
+    pub fn new(device: &Rc<Device>, descriptor_set_layouts: &[vk::DescriptorSetLayout]) -> Self {
+        let pipeline_layout = Self::create_pipeline_layout(device, descriptor_set_layouts).unwrap();
 
         Self {
             device: Rc::downgrade(device),
@@ -25,11 +25,10 @@ impl PipelineLayout {
 
     fn create_pipeline_layout(
         device: &Rc<Device>,
-        descriptor_manager: &DescriptorManager,
+        descriptor_set_layouts: &[vk::DescriptorSetLayout],
     ) -> VkResult<vk::PipelineLayout> {
-        let layouts = descriptor_manager.vk_descriptor_set_layouts();
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&layouts)
+            .set_layouts(descriptor_set_layouts)
             .build();
         unsafe { device.create_pipeline_layout(&pipeline_layout_create_info, None) }
     }

@@ -1,3 +1,4 @@
+use crate::rendering::vulkan::texture::VulkanTexture;
 use super::buffer::Buffer;
 use super::image_view::ImageView;
 use super::sampler::Sampler;
@@ -57,8 +58,7 @@ impl DescriptorSets {
         device: &Rc<Device>,
         descriptor_pool: vk::DescriptorPool,
         layout: vk::DescriptorSetLayout,
-        image_view: &ImageView,
-        sampler: &Sampler,
+        textures: &[VulkanTexture],
     ) -> VkResult<Self> {
         let layouts = [layout];
         let create_info = vk::DescriptorSetAllocateInfo::builder()
@@ -67,18 +67,20 @@ impl DescriptorSets {
             .build();
         let descriptor_sets = unsafe { device.allocate_descriptor_sets(&create_info) }?;
 
-        let image_info = vk::DescriptorImageInfo::builder()
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(image_view.vk_image_view())
-            .sampler(sampler.vk_sampler())
-            .build();
-        let image_info_array = [image_info];
+        let image_info: Vec<vk::DescriptorImageInfo> = textures.iter().map(|t| {
+            vk::DescriptorImageInfo::builder()
+                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image_view(t.image_view().vk_image_view())
+                .sampler(t.sampler().vk_sampler())
+                .build()
+        }).collect();
+
         let write_descriptor_set = vk::WriteDescriptorSet::builder()
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .dst_set(descriptor_sets[0])
             .dst_binding(0)
             .dst_array_element(0)
-            .image_info(&image_info_array)
+            .image_info(&image_info)
             .build();
         let write_descriptor_sets = [write_descriptor_set];
         unsafe { device.update_descriptor_sets(&write_descriptor_sets, &[]) };

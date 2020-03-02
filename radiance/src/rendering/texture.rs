@@ -1,9 +1,12 @@
-use crate::rendering::render_object::TEXTURE_MISSING_TEXTURE_FILE;
 use image::RgbaImage;
 use std::path::PathBuf;
 
+pub static TEXTURE_MISSING_TEXTURE_FILE: &'static [u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/embed/textures/texture_missing.png"
+));
+
 pub struct Texture {
-    path: PathBuf,
     image: RgbaImage,
 }
 
@@ -16,7 +19,12 @@ impl Texture {
         .to_rgba();
 
         Self {
-            path: path.clone(),
+            image,
+        }
+    }
+
+    pub fn new_with_iamge(image: RgbaImage) -> Self {
+        Self {
             image,
         }
     }

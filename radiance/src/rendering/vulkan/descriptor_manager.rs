@@ -1,7 +1,9 @@
+use std::sync::Mutex;
+use std::sync::Arc;
+use crate::rendering::vulkan::material::VulkanMaterial;
+use std::collections::HashMap;
 use super::buffer::Buffer;
 use super::descriptor_sets::DescriptorSets;
-use super::image_view::ImageView;
-use super::sampler::Sampler;
 use ash::prelude::VkResult;
 use ash::version::DeviceV1_0;
 use ash::{vk, Device};
@@ -16,7 +18,7 @@ pub struct DescriptorManager {
     per_frame_pool: vk::DescriptorPool,
     per_object_pool: vk::DescriptorPool,
     per_frame_layout: vk::DescriptorSetLayout,
-    per_object_layout: vk::DescriptorSetLayout,
+    per_material_layouts: Arc<Mutex<HashMap<String, vk::DescriptorSetLayout>>>,
 }
 
 impl DescriptorManager {
@@ -27,11 +29,7 @@ impl DescriptorManager {
             device,
             vk::DescriptorType::UNIFORM_BUFFER,
             vk::ShaderStageFlags::VERTEX,
-        )?;
-        let per_object_layout = Self::create_descriptor_set_layout(
-            device,
-            vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            vk::ShaderStageFlags::FRAGMENT,
+            1,
         )?;
 
         Ok(Self {
@@ -39,22 +37,22 @@ impl DescriptorManager {
             per_frame_pool,
             per_object_pool,
             per_frame_layout,
-            per_object_layout,
+            per_material_layouts: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
     pub fn allocate_per_object_descriptor_set(
         &self,
-        image_view: &ImageView,
-        sampler: &Sampler,
+        material: &VulkanMaterial,
     ) -> VkResult<DescriptorSets> {
         let device = self.device.upgrade().unwrap();
+        let layout = self.get_per_material_descriptor_layout(material);
+
         DescriptorSets::new_per_object(
             &device,
             self.per_object_pool,
-            self.per_object_layout,
-            image_view,
-            sampler,
+            layout,
+            material.textures(),
         )
     }
 
@@ -78,8 +76,9 @@ impl DescriptorManager {
         };
     }
 
-    pub fn vk_descriptor_set_layouts(&self) -> [vk::DescriptorSetLayout; 2] {
-        [self.per_frame_layout, self.per_object_layout]
+    pub fn get_vk_descriptor_set_layouts(&self, material: &VulkanMaterial) -> [vk::DescriptorSetLayout; 2] {
+        let per_material_layout = self.get_per_material_descriptor_layout(material);
+        [self.per_frame_layout, per_material_layout]
     }
 
     fn create_per_frame_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
@@ -116,10 +115,11 @@ impl DescriptorManager {
         device: &Device,
         descriptor_type: vk::DescriptorType,
         stage_flags: vk::ShaderStageFlags,
+        descriptor_count: u32,
     ) -> VkResult<vk::DescriptorSetLayout> {
         let layout_binding = vk::DescriptorSetLayoutBinding::builder()
             .binding(0)
-            .descriptor_count(1)
+            .descriptor_count(descriptor_count)
             .descriptor_type(descriptor_type)
             .stage_flags(stage_flags)
             .build();
@@ -131,6 +131,22 @@ impl DescriptorManager {
 
         unsafe { device.create_descriptor_set_layout(&create_info, None) }
     }
+
+    fn get_per_material_descriptor_layout(&self, material: &VulkanMaterial) -> vk::DescriptorSetLayout {
+        let device = self.device.upgrade().unwrap();
+        let mut per_material_layouts = self.per_material_layouts.lock().unwrap();
+        if !per_material_layouts.contains_key(material.name()) {
+            let layout = Self::create_descriptor_set_layout(
+                &device,
+                vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                vk::ShaderStageFlags::FRAGMENT,
+                material.textures().len() as u32,
+            ).unwrap();
+            per_material_layouts.insert(material.name().to_owned(), layout);
+        }
+
+        *per_material_layouts.get(material.name()).unwrap()
+    }
 }
 
 impl Drop for DescriptorManager {
@@ -138,7 +154,9 @@ impl Drop for DescriptorManager {
         let device = self.device.upgrade().unwrap();
         unsafe {
             device.destroy_descriptor_set_layout(self.per_frame_layout, None);
-            device.destroy_descriptor_set_layout(self.per_object_layout, None);
+            for layout in self.per_material_layouts.lock().unwrap().values() {
+                device.destroy_descriptor_set_layout(*layout, None);
+            }
             device.destroy_descriptor_pool(self.per_frame_pool, None);
             device.destroy_descriptor_pool(self.per_object_pool, None);
         }
