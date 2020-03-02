@@ -45,7 +45,7 @@ pub struct PolVertex {
     pub unknown4: Option<[f32; 1]>,
     pub unknown8: Option<[f32; 1]>,
     pub tex_coord: PolVertexTexCoord,
-    pub tex_coord2: Option<[f32; 2]>,
+    pub tex_coord2: Option<PolVertexTexCoord>,
     pub unknown40: Option<[f32; 2]>,
     pub unknown80: Option<[f32; 2]>,
     pub unknown100: Option<[f32; 4]>,
@@ -221,9 +221,10 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
         };
 
         let tex_coord2 = if vertex_type.has(PolVertexComponents::TEXCOORD2) {
-            let mut arr = [0.; 2];
-            reader.read_f32_into::<LittleEndian>(&mut arr)?;
-            Some(arr)
+            Some(PolVertexTexCoord {
+                u: reader.read_f32::<LittleEndian>()?,
+                v: reader.read_f32::<LittleEndian>()?,
+            })
         } else {
             None
         };

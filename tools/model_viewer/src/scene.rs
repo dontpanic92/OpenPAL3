@@ -19,11 +19,13 @@ impl SceneCallbacks for ModelViewerScene {
         } else if self.path.to_lowercase().ends_with(".pol") {
             let pol = pol_load_from_file(&self.path).unwrap();
             for mesh in &pol.meshes {
-                let mut entity = CoreEntity::new(PolModelEntity::new(mesh, &self.path));
-                entity
-                    .transform_mut()
-                    .translate(&Vec3::new(0., -400., -1000.));
-                scene.add_entity(entity)
+                for material in &mesh.material_info {
+                    let mut entity = CoreEntity::new(PolModelEntity::new(&mesh.vertices, material, &self.path));
+                    entity
+                        .transform_mut()
+                        .translate(&Vec3::new(0., -400., -1000.));
+                    scene.add_entity(entity)
+                }
             }
         } else {
             panic!("Not supported file format");

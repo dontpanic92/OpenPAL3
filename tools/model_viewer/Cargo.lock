@@ -391,6 +391,7 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "encoding",
+ "image",
  "radiance",
 ]
 
