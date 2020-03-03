@@ -3,7 +3,6 @@ use super::buffer::{Buffer, BufferType};
 use super::creation_helpers;
 use super::descriptor_manager::DescriptorManager;
 use super::helpers;
-use super::image::Image;
 use super::render_object::VulkanRenderObject;
 use super::swapchain::SwapChain;
 use super::uniform_buffer_mvp::UniformBufferMvp;
@@ -25,6 +24,7 @@ pub struct VulkanRenderingEngine {
     instance: Instance,
     physical_device: vk::PhysicalDevice,
     device: Option<Rc<Device>>,
+    allocator: Option<Rc<vk_mem::Allocator>>,
     surface: vk::SurfaceKHR,
     format: vk::SurfaceFormatKHR,
     present_mode: vk::PresentModeKHR,
@@ -64,6 +64,18 @@ impl RenderingEngine for VulkanRenderingEngine {
             physical_device,
             graphics_queue_family_index,
         )?);
+
+        let allocator = Rc::new({
+            let create_info = vk_mem::AllocatorCreateInfo {
+                physical_device,
+                device: (*device).clone(),
+                instance: instance.clone(),
+                ..Default::default()
+            };
+
+            vk_mem::Allocator::new(&create_info).unwrap()
+        });
+
         let format =
             creation_helpers::get_surface_format(physical_device, &surface_entry, surface)?;
         let present_mode =
@@ -89,6 +101,7 @@ impl RenderingEngine for VulkanRenderingEngine {
         let swapchain = SwapChain::new(
             &instance,
             &device,
+            &allocator,
             command_pool,
             physical_device,
             surface,
@@ -124,6 +137,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             instance,
             physical_device,
             device: Some(device),
+            allocator: Some(allocator),
             surface,
             format,
             present_mode,
@@ -186,6 +200,10 @@ impl VulkanRenderingEngine {
         self.device.as_ref().unwrap()
     }
 
+    pub fn allocator(&self) -> &Rc<vk_mem::Allocator> {
+        self.allocator.as_ref().unwrap()
+    }
+
     pub fn adhoc_command_runner(&self) -> &Rc<AdhocCommandRunner> {
         &self.adhoc_command_runner
     }
@@ -200,9 +218,7 @@ impl VulkanRenderingEngine {
         data: &[T],
     ) -> Result<Buffer, Box<dyn Error>> {
         Buffer::new_device_buffer_with_data::<T>(
-            &self.instance,
-            &self.device(),
-            self.physical_device,
+            &self.allocator(),
             data,
             buffer_type,
             &self.adhoc_command_runner,
@@ -210,12 +226,7 @@ impl VulkanRenderingEngine {
     }
 
     pub fn create_staging_buffer_with_data<T>(&self, data: &[T]) -> Result<Buffer, Box<dyn Error>> {
-        Buffer::new_staging_buffer_with_data::<T>(
-            &self.instance,
-            &self.device(),
-            self.physical_device,
-            data,
-        )
+        Buffer::new_staging_buffer_with_data::<T>(&self.allocator(), data)
     }
 
     fn recreate_swapchain(&mut self) -> Result<(), Box<dyn Error>> {
@@ -228,6 +239,7 @@ impl VulkanRenderingEngine {
         self.swapchain = Some(SwapChain::new(
             &self.instance,
             self.device(),
+            self.allocator(),
             self.command_pool,
             self.physical_device,
             self.surface,
@@ -239,16 +251,6 @@ impl VulkanRenderingEngine {
         )?);
 
         Ok(())
-    }
-
-    pub fn create_image(&self, width: u32, height: u32) -> Result<Image, Box<dyn Error>> {
-        Image::new_color_image(
-            &self.instance,
-            self.device(),
-            self.physical_device,
-            width,
-            height,
-        )
     }
 
     fn render_objects(&mut self, entities: &Vec<Box<dyn Entity>>) -> Result<(), Box<dyn Error>> {
@@ -294,7 +296,7 @@ impl VulkanRenderingEngine {
                     UniformBufferMvp::new(model, &view, proj)
                 };
 
-                swapchain!().update_ubo(image_index as usize, &[ubo])?;
+                swapchain!().update_ubo(image_index as usize, &[ubo]);
             }
 
             // Submit commands
@@ -353,6 +355,7 @@ impl Drop for VulkanRenderingEngine {
             let _ = self.device().device_wait_idle();
             self.swapchain = None;
             self.descriptor_manager = None;
+            self.allocator = None;
             self.debug_entry
                 .destroy_debug_report_callback(self.debug_callback, None);
             self.device().destroy_command_pool(self.command_pool, None);

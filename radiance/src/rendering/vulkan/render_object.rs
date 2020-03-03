@@ -49,8 +49,7 @@ impl VulkanRenderObject {
         if let Some(command_runner) = self.command_runner.upgrade() {
             let _ = self
                 .vertex_staging_buffer
-                .memory_mut()
-                .copy_from(object.vertices().data());
+                .copy_memory_from(object.vertices().data());
             let _ = self
                 .vertex_buffer
                 .copy_from(&self.vertex_staging_buffer, command_runner.as_ref());

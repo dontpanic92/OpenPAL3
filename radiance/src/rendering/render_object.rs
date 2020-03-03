@@ -31,7 +31,7 @@ impl RenderObject {
         &self.vertices
     }
 
-    pub fn indices(&self) -> &Vec<u32> {
+    pub fn indices(&self) -> &[u32] {
         &self.indices
     }
 

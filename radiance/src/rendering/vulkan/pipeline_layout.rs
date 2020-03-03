@@ -1,4 +1,3 @@
-use super::descriptor_manager::DescriptorManager;
 use ash::version::DeviceV1_0;
 use ash::{prelude::VkResult, vk, Device};
 use std::rc::Rc;

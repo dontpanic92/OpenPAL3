@@ -37,6 +37,7 @@ impl SwapChain {
     pub fn new(
         instance: &Instance,
         device: &Rc<Device>,
+        allocator: &Rc<vk_mem::Allocator>,
         command_pool: vk::CommandPool,
         physical_device: vk::PhysicalDevice,
         surface: vk::SurfaceKHR,
@@ -59,24 +60,19 @@ impl SwapChain {
         let image_views = creation_helpers::create_image_views(&device, &images, format)?;
         let uniform_buffers: Vec<Buffer> = (0..images.len())
             .map(|_| {
-                Buffer::new_uniform_buffer(
-                    &instance,
-                    &device,
-                    physical_device,
-                    std::mem::size_of::<UniformBufferMvp>(),
-                    1,
-                )
-                .unwrap()
+                Buffer::new_uniform_buffer(allocator, std::mem::size_of::<UniformBufferMvp>(), 1)
+                    .unwrap()
             })
             .collect();
 
         let mut depth_image = Image::new_depth_image(
             instance,
-            device,
             physical_device,
+            &allocator,
             capabilities.current_extent.width,
             capabilities.current_extent.height,
         )?;
+
         depth_image.transit_layout(
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
@@ -151,10 +147,8 @@ impl SwapChain {
         }
     }
 
-    pub fn update_ubo<T>(&mut self, image_index: usize, data: &[T]) -> VkResult<()> {
-        self.uniform_buffers[image_index]
-            .memory_mut()
-            .copy_from(data)
+    pub fn update_ubo<T>(&mut self, image_index: usize, data: &[T]) {
+        self.uniform_buffers[image_index].copy_memory_from(data);
     }
 
     pub fn present(
@@ -237,7 +231,8 @@ impl SwapChain {
                 objects_by_material.insert(key.clone(), vec![]);
             }
 
-            self.pipeline_manager.create_pipeline_if_not_exist(obj.material());
+            self.pipeline_manager
+                .create_pipeline_if_not_exist(obj.material());
             objects_by_material.get_mut(key).unwrap().push(obj);
         }
 

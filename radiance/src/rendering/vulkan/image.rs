@@ -1,34 +1,30 @@
 use super::adhoc_command_runner::AdhocCommandRunner;
 use super::buffer::Buffer;
 use super::error::VulkanBackendError;
-use super::memory::Memory;
 use ash::prelude::VkResult;
 use ash::version::{DeviceV1_0, InstanceV1_0};
-use ash::{vk, Device, Instance};
+use ash::{vk, Instance};
 use std::error::Error;
 use std::rc::{Rc, Weak};
 
 pub struct Image {
-    device: Weak<Device>,
+    allocator: Weak<vk_mem::Allocator>,
     image: vk::Image,
+    allocation: vk_mem::Allocation,
+    allocation_info: vk_mem::AllocationInfo,
     format: vk::Format,
-    memory: Memory,
     width: u32,
     height: u32,
 }
 
 impl Image {
     pub fn new_color_image(
-        instance: &Instance,
-        device: &Rc<Device>,
-        physical_device: vk::PhysicalDevice,
+        allocator: &Rc<vk_mem::Allocator>,
         tex_width: u32,
         tex_height: u32,
     ) -> Result<Self, Box<dyn Error>> {
         Self::new(
-            instance,
-            device,
-            physical_device,
+            allocator,
             tex_width,
             tex_height,
             vk::Format::R8G8B8A8_UNORM,
@@ -38,8 +34,8 @@ impl Image {
 
     pub fn new_depth_image(
         instance: &Instance,
-        device: &Rc<Device>,
         physical_device: vk::PhysicalDevice,
+        allocator: &Rc<vk_mem::Allocator>,
         tex_width: u32,
         tex_height: u32,
     ) -> Result<Self, Box<dyn Error>> {
@@ -54,10 +50,9 @@ impl Image {
             vk::ImageTiling::OPTIMAL,
             vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
         )?;
+
         Self::new(
-            instance,
-            device,
-            physical_device,
+            allocator,
             tex_width,
             tex_height,
             format,
@@ -201,9 +196,7 @@ impl Image {
     }
 
     fn new(
-        instance: &Instance,
-        device: &Rc<Device>,
-        physical_device: vk::PhysicalDevice,
+        allocator: &Rc<vk_mem::Allocator>,
         tex_width: u32,
         tex_height: u32,
         format: vk::Format,
@@ -228,21 +221,19 @@ impl Image {
             .samples(vk::SampleCountFlags::TYPE_1)
             .build();
 
-        let image = unsafe { device.create_image(&create_info, None)? };
-        let memory = Memory::new_for_image(
-            instance,
-            device,
-            physical_device,
-            image,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        )?;
-
-        unsafe { device.bind_image_memory(image, memory.vk_device_memory(), 0)? };
+        let allcation_create_info = vk_mem::AllocationCreateInfo {
+            usage: vk_mem::MemoryUsage::GpuOnly,
+            ..Default::default()
+        };
+        let (image, allocation, allocation_info) = allocator
+            .create_image(&create_info, &allcation_create_info)
+            .unwrap();
 
         Ok(Self {
-            device: Rc::downgrade(device),
+            allocator: Rc::downgrade(allocator),
             image,
-            memory,
+            allocation,
+            allocation_info,
             format,
             width: tex_width,
             height: tex_height,
@@ -276,9 +267,7 @@ impl Image {
 
 impl Drop for Image {
     fn drop(&mut self) {
-        let device = self.device.upgrade().unwrap();
-        unsafe {
-            device.destroy_image(self.image, None);
-        }
+        let allocator = self.allocator.upgrade().unwrap();
+        allocator.destroy_image(self.image, &self.allocation).unwrap();
     }
 }

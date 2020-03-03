@@ -18,15 +18,11 @@ impl Texture {
         }
         .to_rgba();
 
-        Self {
-            image,
-        }
+        Self { image }
     }
 
     pub fn new_with_iamge(image: RgbaImage) -> Self {
-        Self {
-            image,
-        }
+        Self { image }
     }
 
     pub fn data(&self) -> &[u8] {

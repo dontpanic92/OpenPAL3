@@ -8,7 +8,6 @@ mod helpers;
 mod image;
 mod image_view;
 mod material;
-mod memory;
 mod pipeline;
 mod pipeline_layout;
 mod pipeline_manager;
@@ -16,8 +15,8 @@ mod render_object;
 mod render_pass;
 mod sampler;
 mod shader;
-mod texture;
 mod swapchain;
+mod texture;
 mod uniform_buffer_mvp;
 mod vulkan_engine;
 

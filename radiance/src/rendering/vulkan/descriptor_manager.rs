@@ -1,13 +1,13 @@
-use std::sync::Mutex;
-use std::sync::Arc;
-use crate::rendering::vulkan::material::VulkanMaterial;
-use std::collections::HashMap;
 use super::buffer::Buffer;
 use super::descriptor_sets::DescriptorSets;
+use crate::rendering::vulkan::material::VulkanMaterial;
 use ash::prelude::VkResult;
 use ash::version::DeviceV1_0;
 use ash::{vk, Device};
+use std::collections::HashMap;
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 const MAX_DESCRIPTOR_SET_COUNT: u32 = 40960;
 const MAX_DESCRIPTOR_COUNT: u32 = 4096;
@@ -48,12 +48,7 @@ impl DescriptorManager {
         let device = self.device.upgrade().unwrap();
         let layout = self.get_per_material_descriptor_layout(material);
 
-        DescriptorSets::new_per_object(
-            &device,
-            self.per_object_pool,
-            layout,
-            material.textures(),
-        )
+        DescriptorSets::new_per_object(&device, self.per_object_pool, layout, material.textures())
     }
 
     pub fn allocate_per_frame_descriptor_sets(
@@ -76,7 +71,10 @@ impl DescriptorManager {
         };
     }
 
-    pub fn get_vk_descriptor_set_layouts(&self, material: &VulkanMaterial) -> [vk::DescriptorSetLayout; 2] {
+    pub fn get_vk_descriptor_set_layouts(
+        &self,
+        material: &VulkanMaterial,
+    ) -> [vk::DescriptorSetLayout; 2] {
         let per_material_layout = self.get_per_material_descriptor_layout(material);
         [self.per_frame_layout, per_material_layout]
     }
@@ -132,7 +130,10 @@ impl DescriptorManager {
         unsafe { device.create_descriptor_set_layout(&create_info, None) }
     }
 
-    fn get_per_material_descriptor_layout(&self, material: &VulkanMaterial) -> vk::DescriptorSetLayout {
+    fn get_per_material_descriptor_layout(
+        &self,
+        material: &VulkanMaterial,
+    ) -> vk::DescriptorSetLayout {
         let device = self.device.upgrade().unwrap();
         let mut per_material_layouts = self.per_material_layouts.lock().unwrap();
         if !per_material_layouts.contains_key(material.name()) {
@@ -141,7 +142,8 @@ impl DescriptorManager {
                 vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                 vk::ShaderStageFlags::FRAGMENT,
                 material.textures().len() as u32,
-            ).unwrap();
+            )
+            .unwrap();
             per_material_layouts.insert(material.name().to_owned(), layout);
         }
 

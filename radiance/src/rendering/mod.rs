@@ -9,9 +9,9 @@ mod vulkan;
 
 pub use engine::RenderingEngine;
 pub use material::{Material, SimpleMaterial};
-pub use texture::Texture;
 pub use platform::Window;
-pub use render_object::{RenderObject};
+pub use render_object::RenderObject;
 pub use shader::{Shader, SimpleShader};
+pub use texture::Texture;
 pub use vertex_buffer::{VertexBuffer, VertexComponents};
 pub use vulkan::VulkanRenderingEngine;

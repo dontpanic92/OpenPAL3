@@ -1,8 +1,5 @@
 use super::material::VulkanMaterial;
-use super::{
-    pipeline::Pipeline, pipeline_layout::PipelineLayout, render_pass::RenderPass,
-    shader::VulkanShader,
-};
+use super::{pipeline::Pipeline, render_pass::RenderPass};
 use crate::rendering::vulkan::descriptor_manager::DescriptorManager;
 use ash::vk;
 use ash::Device;

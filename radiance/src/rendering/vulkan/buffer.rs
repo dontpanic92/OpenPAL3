@@ -1,11 +1,11 @@
 use super::adhoc_command_runner::AdhocCommandRunner;
-use super::memory::Memory;
 use ash::prelude::VkResult;
 use ash::version::DeviceV1_0;
-use ash::{vk, Device, Instance};
+use ash::vk;
 use std::error::Error;
 use std::mem::size_of;
 use std::rc::{Rc, Weak};
+use vk_mem;
 
 pub enum BufferType {
     Index = 0,
@@ -14,89 +14,67 @@ pub enum BufferType {
 }
 
 pub struct Buffer {
-    device: Weak<Device>,
+    allocator: Weak<vk_mem::Allocator>,
     buffer: vk::Buffer,
-    memory: Memory,
+    allocation: vk_mem::Allocation,
+    allocation_info: vk_mem::AllocationInfo,
     buffer_size: u64,
     element_count: u32,
 }
 
 impl Buffer {
     pub fn new_staging_buffer(
-        instance: &Instance,
-        device: &Rc<Device>,
-        physical_device: vk::PhysicalDevice,
+        allocator: &Rc<vk_mem::Allocator>,
         element_size: usize,
         element_count: usize,
     ) -> Result<Self, Box<dyn Error>> {
         Self::new_buffer(
-            instance,
-            Rc::downgrade(&device),
-            physical_device,
+            allocator,
             element_size,
             element_count,
             vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk_mem::MemoryUsage::CpuOnly,
         )
     }
 
     pub fn new_staging_buffer_with_data<T>(
-        instance: &Instance,
-        device: &Rc<Device>,
-        physical_device: vk::PhysicalDevice,
+        allocator: &Rc<vk_mem::Allocator>,
         data: &[T],
     ) -> Result<Self, Box<dyn Error>> {
-        let mut staging_buffer = Buffer::new_buffer(
-            instance,
-            Rc::downgrade(&device),
-            physical_device,
+        let staging_buffer = Buffer::new_buffer(
+            allocator,
             size_of::<T>(),
             data.len(),
             vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk_mem::MemoryUsage::CpuOnly,
         )?;
 
-        staging_buffer.memory.copy_from(data)?;
+        staging_buffer.copy_memory_from(data);
         Ok(staging_buffer)
     }
 
     pub fn new_uniform_buffer(
-        instance: &Instance,
-        device: &Rc<Device>,
-        physical_device: vk::PhysicalDevice,
+        allocator: &Rc<vk_mem::Allocator>,
         element_size: usize,
         element_count: usize,
     ) -> Result<Self, Box<dyn Error>> {
         Self::new_buffer(
-            instance,
-            Rc::downgrade(&device),
-            physical_device,
+            allocator,
             element_size,
             element_count,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk_mem::MemoryUsage::CpuOnly,
         )
     }
 
     pub fn new_device_buffer_with_data<T>(
-        instance: &Instance,
-        device: &Rc<Device>,
-        physical_device: vk::PhysicalDevice,
+        allocator: &Rc<vk_mem::Allocator>,
         data: &[T],
         buffer_type: BufferType,
         command_runner: &AdhocCommandRunner,
     ) -> Result<Self, Box<dyn Error>> {
-        let mut staging_buffer = Buffer::new_buffer(
-            instance,
-            Rc::downgrade(&device),
-            physical_device,
-            size_of::<T>(),
-            data.len(),
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        )?;
+        let staging_buffer = Buffer::new_staging_buffer_with_data(allocator, data)?;
 
-        staging_buffer.memory.copy_from(data)?;
         let flags = match buffer_type {
             BufferType::Index => vk::BufferUsageFlags::INDEX_BUFFER,
             BufferType::Vertex => vk::BufferUsageFlags::VERTEX_BUFFER,
@@ -104,13 +82,11 @@ impl Buffer {
         };
 
         let mut buffer = Buffer::new_buffer(
-            instance,
-            Rc::downgrade(&device),
-            physical_device,
+            allocator,
             size_of::<T>(),
             data.len(),
             flags | vk::BufferUsageFlags::TRANSFER_DST,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk_mem::MemoryUsage::GpuOnly,
         )?;
 
         buffer.copy_from(&staging_buffer, command_runner)?;
@@ -126,45 +102,42 @@ impl Buffer {
     }
 
     fn new_buffer(
-        instance: &Instance,
-        device: Weak<Device>,
-        physical_device: vk::PhysicalDevice,
+        allocator: &Rc<vk_mem::Allocator>,
         element_size: usize,
         element_count: usize,
-        buffer_usage_flags: vk::BufferUsageFlags,
-        memory_prop_flags: vk::MemoryPropertyFlags,
+        buffer_usage: vk::BufferUsageFlags,
+        memory_usage: vk_mem::MemoryUsage,
     ) -> Result<Self, Box<dyn Error>> {
-        let rc_device = device.upgrade().unwrap();
-        let buffer_size = element_count as u64 * element_size as u64; // (size_of::<T>() * data.len()) as u64;
-        let buffer = {
-            let create_info = vk::BufferCreateInfo::builder()
+        let buffer_size = element_count as u64 * element_size as u64;
+        let (buffer, allocation, allocation_info) = {
+            let allcation_create_info = vk_mem::AllocationCreateInfo {
+                usage: memory_usage,
+                flags: if memory_usage == vk_mem::MemoryUsage::CpuOnly {
+                    vk_mem::AllocationCreateFlags::MAPPED
+                } else {
+                    vk_mem::AllocationCreateFlags::NONE
+                },
+                ..Default::default()
+            };
+
+            let buffer_create_info = vk::BufferCreateInfo::builder()
                 .sharing_mode(vk::SharingMode::EXCLUSIVE)
-                .usage(buffer_usage_flags)
+                .usage(buffer_usage)
                 .size(buffer_size)
                 .build();
-            unsafe { rc_device.create_buffer(&create_info, None)? }
+            allocator
+                .create_buffer(&buffer_create_info, &allcation_create_info)
+                .unwrap()
         };
 
-        let memory = Memory::new_for_buffer(
-            instance,
-            &rc_device,
-            physical_device,
-            buffer,
-            memory_prop_flags,
-        )?;
-        unsafe { rc_device.bind_buffer_memory(buffer, memory.vk_device_memory(), 0)? };
-
         Ok(Self {
-            device,
+            allocator: Rc::downgrade(allocator),
             buffer,
-            memory,
+            allocation,
+            allocation_info,
             buffer_size,
             element_count: element_count as u32,
         })
-    }
-
-    pub fn memory_mut(&mut self) -> &mut Memory {
-        &mut self.memory
     }
 
     pub fn copy_from(
@@ -186,13 +159,32 @@ impl Buffer {
             }
         })
     }
+
+    pub fn copy_memory_from<T>(&self, data: &[T]) {
+        let allocator = self.allocator.upgrade().unwrap();
+        allocator.map_memory(&self.allocation).unwrap();
+        let dst = self.allocation_info.get_mapped_data();
+        if dst == std::ptr::null_mut() {
+            panic!("Unable to map the dest memory");
+        }
+
+        unsafe {
+            std::ptr::copy(
+                data.as_ptr() as *const u8,
+                dst,
+                data.len() * std::mem::size_of::<T>(),
+            )
+        };
+
+        allocator.unmap_memory(&self.allocation).unwrap();
+    }
 }
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        let rc_device = self.device.upgrade().unwrap();
-        unsafe {
-            rc_device.destroy_buffer(self.buffer, None);
-        }
+        let allocator = self.allocator.upgrade().unwrap();
+        allocator
+            .destroy_buffer(self.buffer, &self.allocation)
+            .unwrap();
     }
 }

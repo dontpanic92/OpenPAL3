@@ -1,9 +1,5 @@
-use super::{
-    image_view::ImageView, sampler::Sampler, shader::VulkanShader,
-    VulkanRenderingEngine, texture::VulkanTexture,
-};
+use super::{shader::VulkanShader, texture::VulkanTexture, VulkanRenderingEngine};
 use crate::rendering::Material;
-use ash::vk;
 use std::error::Error;
 
 pub struct VulkanMaterial {
@@ -19,7 +15,11 @@ impl VulkanMaterial {
     ) -> Result<Self, Box<dyn Error>> {
         let device = engine.device();
         let shader = VulkanShader::new(device, material.shader())?;
-        let textures = material.textures().iter().map(|t| VulkanTexture::new(t, engine).unwrap()).collect();
+        let textures = material
+            .textures()
+            .iter()
+            .map(|t| VulkanTexture::new(t, engine).unwrap())
+            .collect();
 
         Ok(Self {
             shader,

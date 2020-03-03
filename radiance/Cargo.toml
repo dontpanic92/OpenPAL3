@@ -7,6 +7,7 @@ build = "build.rs"
 
 [dependencies]
 ash = "0.29.0"
+vk-mem = { git = "https://github.com/gwihlidal/vk-mem-rs" }
 memoffset = "0.5.3"
 lazy_static = "1.2.0"
 image = "0.23.0"

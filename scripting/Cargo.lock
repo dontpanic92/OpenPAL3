@@ -500,6 +500,7 @@ dependencies = [
  "image",
  "lazy_static",
  "memoffset",
+ "vk-mem",
  "winapi",
 ]
 
@@ -631,6 +632,17 @@ name = "vcpkg"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fc439f2794e98976c88a2a2dafce96b930fe8010b0a256b3c2199a773933168"
+
+[[package]]
+name = "vk-mem"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bba6e7b37b41ede986748e92327fcab70dfafb6b790a342dbd55c18e3926bb56"
+dependencies = [
+ "ash",
+ "bitflags",
+ "cc",
+]
 
 [[package]]
 name = "winapi"
