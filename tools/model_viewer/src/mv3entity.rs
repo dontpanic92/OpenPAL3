@@ -11,7 +11,6 @@ pub struct Mv3ModelEntity {
     indices: Vec<u32>,
     anim_timestamps: Vec<u32>,
     last_anim_time: u32,
-    mv3: Mv3File,
 }
 
 impl Mv3ModelEntity {
@@ -89,14 +88,13 @@ impl Mv3ModelEntity {
             last_anim_time: 0,
             vertices,
             indices,
-            mv3: mv3file,
         }
     }
 }
 
 impl EntityCallbacks for Mv3ModelEntity {
     fn on_loading<T: EntityCallbacks>(&mut self, entity: &mut CoreEntity<T>) {
-        entity.add_component(RenderObject::new_with_data(
+        entity.add_component(RenderObject::new_host_dynamic_with_data(
             self.vertices[0].clone(),
             self.indices.clone(),
             Box::new(SimpleMaterial::new(&self.texture_path)),

@@ -368,6 +368,7 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "encoding",
+ "image",
  "radiance",
 ]
 
@@ -393,6 +394,7 @@ dependencies = [
  "image",
  "lazy_static",
  "memoffset",
+ "vk-mem",
  "winapi",
 ]
 
@@ -481,6 +483,17 @@ dependencies = [
  "byteorder",
  "lzw",
  "miniz_oxide",
+]
+
+[[package]]
+name = "vk-mem"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bba6e7b37b41ede986748e92327fcab70dfafb6b790a342dbd55c18e3926bb56"
+dependencies = [
+ "ash",
+ "bitflags",
+ "cc",
 ]
 
 [[package]]

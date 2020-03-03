@@ -20,7 +20,8 @@ impl SceneCallbacks for ModelViewerScene {
             let pol = pol_load_from_file(&self.path).unwrap();
             for mesh in &pol.meshes {
                 for material in &mesh.material_info {
-                    let mut entity = CoreEntity::new(PolModelEntity::new(&mesh.vertices, material, &self.path));
+                    let mut entity =
+                        CoreEntity::new(PolModelEntity::new(&mesh.vertices, material, &self.path));
                     entity
                         .transform_mut()
                         .translate(&Vec3::new(0., -400., -1000.));

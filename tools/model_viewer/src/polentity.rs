@@ -14,25 +14,29 @@ pub struct PolModelEntity {
 
 impl PolModelEntity {
     pub fn new(all_vertices: &Vec<PolVertex>, material: &PolMaterialInfo, path: &str) -> Self {
-        let texture_paths: Vec<PathBuf> = material.texture_names.iter().map(|name| {
-            name.split_terminator('.')
-                .next()
-                .and_then(|n| Some(n.to_owned() + ".dds"))
-                .and_then(|dds_name| {
-                    let mut texture_path = PathBuf::from(path);
-                    texture_path.pop();
-                    texture_path.push(dds_name);
-                    if !texture_path.exists() {
+        let texture_paths: Vec<PathBuf> = material
+            .texture_names
+            .iter()
+            .map(|name| {
+                name.split_terminator('.')
+                    .next()
+                    .and_then(|n| Some(n.to_owned() + ".dds"))
+                    .and_then(|dds_name| {
+                        let mut texture_path = PathBuf::from(path);
                         texture_path.pop();
-                        texture_path.push(name);
-                    }
+                        texture_path.push(dds_name);
+                        if !texture_path.exists() {
+                            texture_path.pop();
+                            texture_path.push(name);
+                        }
 
-                    Some(texture_path)
-                })
-                .or(Some(PathBuf::from(name)))
-                .unwrap()
-        }).collect();
-        
+                        Some(texture_path)
+                    })
+                    .or(Some(PathBuf::from(name)))
+                    .unwrap()
+            })
+            .collect();
+
         let components = if texture_paths.len() == 1 {
             VertexComponents::POSITION | VertexComponents::TEXCOORD
         } else {
@@ -59,10 +63,7 @@ impl PolModelEntity {
             indices.push(get_new_index(t.indices[2]));
         }
 
-        let mut vertices = VertexBuffer::new(
-            components,
-            reversed_index.len(),
-        );
+        let mut vertices = VertexBuffer::new(components, reversed_index.len());
 
         for i in 0..reversed_index.len() {
             let vert = &all_vertices[reversed_index[i]];
@@ -75,7 +76,10 @@ impl PolModelEntity {
                 )),
                 None,
                 Some(&Vec2::new(vert.tex_coord.u, vert.tex_coord.v)),
-                vert.tex_coord2.as_ref().and_then(|tex_coord2| Some(Vec2::new(tex_coord2.u, tex_coord2.v))).as_ref(),
+                vert.tex_coord2
+                    .as_ref()
+                    .and_then(|tex_coord2| Some(Vec2::new(tex_coord2.u, tex_coord2.v)))
+                    .as_ref(),
             );
         }
 
@@ -92,7 +96,11 @@ impl EntityCallbacks for PolModelEntity {
         entity.add_component(RenderObject::new_with_data(
             self.vertices.clone(),
             self.indices.clone(),
-            if self.texture_paths.len() == 1 { Box::new(SimpleMaterial::new(&self.texture_paths[0])) } else { Box::new(LightMapMaterial::new(&self.texture_paths)) },
+            if self.texture_paths.len() == 1 {
+                Box::new(SimpleMaterial::new(&self.texture_paths[0]))
+            } else {
+                Box::new(LightMapMaterial::new(&self.texture_paths))
+            },
         ));
     }
 
