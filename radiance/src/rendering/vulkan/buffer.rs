@@ -23,25 +23,11 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn new_staging_buffer(
-        allocator: &Rc<vk_mem::Allocator>,
-        element_size: usize,
-        element_count: usize,
-    ) -> Result<Self, Box<dyn Error>> {
-        Self::new_buffer(
-            allocator,
-            element_size,
-            element_count,
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            vk_mem::MemoryUsage::CpuOnly,
-        )
-    }
-
     pub fn new_staging_buffer_with_data<T>(
         allocator: &Rc<vk_mem::Allocator>,
         data: &[T],
     ) -> Result<Self, Box<dyn Error>> {
-        let staging_buffer = Buffer::new_buffer(
+        let mut staging_buffer = Buffer::new_buffer(
             allocator,
             size_of::<T>(),
             data.len(),
@@ -51,6 +37,29 @@ impl Buffer {
 
         staging_buffer.copy_memory_from(data);
         Ok(staging_buffer)
+    }
+
+    pub fn new_dynamic_buffer_with_data<T>(
+        allocator: &Rc<vk_mem::Allocator>,
+        buffer_type: BufferType,
+        data: &[T],
+    ) -> Result<Self, Box<dyn Error>> {
+        let flags = match buffer_type {
+            BufferType::Index => vk::BufferUsageFlags::INDEX_BUFFER,
+            BufferType::Vertex => vk::BufferUsageFlags::VERTEX_BUFFER,
+            BufferType::Uniform => vk::BufferUsageFlags::UNIFORM_BUFFER,
+        };
+
+        let mut dynamic_buffer = Buffer::new_buffer(
+            allocator,
+            size_of::<T>(),
+            data.len(),
+            flags,
+            vk_mem::MemoryUsage::CpuToGpu,
+        )?;
+
+        dynamic_buffer.copy_memory_from(data);
+        Ok(dynamic_buffer)
     }
 
     pub fn new_uniform_buffer(
@@ -63,14 +72,14 @@ impl Buffer {
             element_size,
             element_count,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            vk_mem::MemoryUsage::CpuOnly,
+            vk_mem::MemoryUsage::CpuToGpu,
         )
     }
 
     pub fn new_device_buffer_with_data<T>(
         allocator: &Rc<vk_mem::Allocator>,
-        data: &[T],
         buffer_type: BufferType,
+        data: &[T],
         command_runner: &AdhocCommandRunner,
     ) -> Result<Self, Box<dyn Error>> {
         let staging_buffer = Buffer::new_staging_buffer_with_data(allocator, data)?;
@@ -112,7 +121,9 @@ impl Buffer {
         let (buffer, allocation, allocation_info) = {
             let allcation_create_info = vk_mem::AllocationCreateInfo {
                 usage: memory_usage,
-                flags: if memory_usage == vk_mem::MemoryUsage::CpuOnly {
+                flags: if memory_usage == vk_mem::MemoryUsage::CpuOnly
+                    || memory_usage == vk_mem::MemoryUsage::CpuToGpu
+                {
                     vk_mem::AllocationCreateFlags::MAPPED
                 } else {
                     vk_mem::AllocationCreateFlags::NONE
@@ -160,7 +171,7 @@ impl Buffer {
         })
     }
 
-    pub fn copy_memory_from<T>(&self, data: &[T]) {
+    pub fn copy_memory_from<T>(&mut self, data: &[T]) {
         let allocator = self.allocator.upgrade().unwrap();
         allocator.map_memory(&self.allocation).unwrap();
         let dst = self.allocation_info.get_mapped_data();

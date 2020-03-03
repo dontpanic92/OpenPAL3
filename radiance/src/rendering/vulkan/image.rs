@@ -268,6 +268,8 @@ impl Image {
 impl Drop for Image {
     fn drop(&mut self) {
         let allocator = self.allocator.upgrade().unwrap();
-        allocator.destroy_image(self.image, &self.allocation).unwrap();
+        allocator
+            .destroy_image(self.image, &self.allocation)
+            .unwrap();
     }
 }

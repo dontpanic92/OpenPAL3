@@ -219,8 +219,8 @@ impl VulkanRenderingEngine {
     ) -> Result<Buffer, Box<dyn Error>> {
         Buffer::new_device_buffer_with_data::<T>(
             &self.allocator(),
-            data,
             buffer_type,
+            data,
             &self.adhoc_command_runner,
         )
     }
