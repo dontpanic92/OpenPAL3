@@ -1,5 +1,6 @@
 mod mv3entity;
 mod polentity;
+mod cvdentity;
 mod scene;
 
 use nfd::Response;
@@ -44,7 +45,7 @@ impl ApplicationCallbacks {
 }
 
 fn main() {
-    let result = nfd::open_file_dialog(Some("mv3,pol"), None).unwrap_or_else(|e| {
+    let result = nfd::open_file_dialog(Some("mv3,pol,cvd"), None).unwrap_or_else(|e| {
         panic!(e);
     });
 

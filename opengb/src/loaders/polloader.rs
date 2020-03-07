@@ -174,7 +174,7 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
     reader.read_f32_into::<LittleEndian>(&mut aabb_max)?;
     let vertex_type = PolVertexComponents { 0: reader.read_i32::<LittleEndian>()? as u32 };
     let vertex_count = reader.read_u32::<LittleEndian>()?;
-    let _size = calc_vertex_size(vertex_type.0 as i32);
+    let _size = super::calc_vertex_size(vertex_type.0 as i32);
     let mut vertices = vec![];
     for _i in 0..vertex_count {
         if !vertex_type.has(PolVertexComponents::POSITION) {
@@ -320,48 +320,3 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
     })
 }
 
-fn calc_vertex_size(t: i32) -> usize {
-    if t < 0 {
-        return (t & 0x7FFFFFFF) as usize;
-    }
-
-    let mut size = 0;
-
-    if t & 1 != 0 {
-        size += 12;
-    }
-
-    if t & 2 != 0 {
-        size += 12;
-    }
-
-    if t & 4 != 0 {
-        size += 4;
-    }
-    
-    if t & 8 != 0 {
-        size += 4;
-    }
-    
-    if t & 0x10 != 0 {
-        size += 8;
-    }
-    
-    if t & 0x20 != 0 {
-        size += 8;
-    }
-    
-    if t & 0x40 != 0 {
-        size += 8;
-    }
-    
-    if t & 0x80 != 0 {
-        size += 8;
-    }
-    
-    if t & 0x100 != 0 {
-        size += 16;
-    }
-
-    return size;
-}
