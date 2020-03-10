@@ -1,6 +1,6 @@
 use super::{
-    adhoc_command_runner::AdhocCommandRunner, buffer::Buffer,
-    image::Image, image_view::ImageView, sampler::Sampler,
+    adhoc_command_runner::AdhocCommandRunner, buffer::Buffer, image::Image, image_view::ImageView,
+    sampler::Sampler,
 };
 use crate::rendering::texture::Texture;
 use ash::vk;

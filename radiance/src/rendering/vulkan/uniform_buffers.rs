@@ -2,7 +2,7 @@ use super::buffer::{Buffer, BufferType};
 use crate::math::Mat44;
 use crate::rendering::vulkan::descriptor_managers::DynamicUniformBufferDescriptorManager;
 use ash::{vk, Device};
-use std::{sync::Mutex, rc::Rc};
+use std::{rc::Rc, sync::Mutex};
 
 #[derive(Clone)]
 #[repr(C)]
@@ -24,7 +24,12 @@ pub struct DynamicUniformBufferManager {
 }
 
 impl DynamicUniformBufferManager {
-    pub fn new(device: &Rc<Device>, allocator: &Rc<vk_mem::Allocator>, descriptor_manager: &DynamicUniformBufferDescriptorManager, min_alignment: u64) -> Self {
+    pub fn new(
+        device: &Rc<Device>,
+        allocator: &Rc<vk_mem::Allocator>,
+        descriptor_manager: &DynamicUniformBufferDescriptorManager,
+        min_alignment: u64,
+    ) -> Self {
         let (alignment, buffer) = Self::allocate_dynamic_buffer(allocator, min_alignment, 10240);
         let descriptor_set = descriptor_manager.allocate_descriptor_sets(&buffer);
 
@@ -56,7 +61,8 @@ impl DynamicUniformBufferManager {
         self.buffer.map_memory_do(|dst| {
             let updater = |id: usize, model: &Mat44| {
                 let uniform_buffer: &mut PerInstanceUniformBuffer = unsafe {
-                    &mut *(dst.offset(self.get_offset(id) as isize) as *mut _ as *mut PerInstanceUniformBuffer)
+                    &mut *(dst.offset(self.get_offset(id) as isize) as *mut _
+                        as *mut PerInstanceUniformBuffer)
                 };
 
                 uniform_buffer.model = model.clone();

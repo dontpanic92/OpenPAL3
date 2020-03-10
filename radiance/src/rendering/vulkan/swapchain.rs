@@ -271,7 +271,11 @@ impl SwapChain {
                         vk::PipelineBindPoint::GRAPHICS,
                         pipeline.pipeline_layout().vk_pipeline_layout(),
                         0,
-                        &[per_frame_descriptor_set, dub_manager.descriptor_set(), obj.vk_descriptor_set()],
+                        &[
+                            per_frame_descriptor_set,
+                            dub_manager.descriptor_set(),
+                            obj.vk_descriptor_set(),
+                        ],
                         &[dub_manager.get_offset(obj.dub_index()) as u32],
                     );
                     device.cmd_draw_indexed(

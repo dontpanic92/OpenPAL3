@@ -135,7 +135,11 @@ impl DescriptorManager {
         material: &VulkanMaterial,
     ) -> [vk::DescriptorSetLayout; 3] {
         let per_material_layout = self.get_per_material_descriptor_layout(material);
-        [self.per_frame_layout, self.dub_descriptor_manager.layout().vk_layout(), per_material_layout]
+        [
+            self.per_frame_layout,
+            self.dub_descriptor_manager.layout().vk_layout(),
+            per_material_layout,
+        ]
     }
 
     fn create_per_frame_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {

@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use super::adhoc_command_runner::AdhocCommandRunner;
 use super::creation_helpers;
 use super::descriptor_managers::DescriptorManager;
@@ -18,6 +17,7 @@ use std::error::Error;
 use std::f32::consts::PI;
 use std::iter::Iterator;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub struct VulkanRenderingEngine {
     entry: Entry,
@@ -104,8 +104,12 @@ impl RenderingEngine for VulkanRenderingEngine {
                 .limits
                 .min_uniform_buffer_offset_alignment
         };
-        let dub_manager =
-            Arc::new(DynamicUniformBufferManager::new(&device, &allocator, descriptor_manager.dub_descriptor_manager(), min_uniform_buffer_alignment));
+        let dub_manager = Arc::new(DynamicUniformBufferManager::new(
+            &device,
+            &allocator,
+            descriptor_manager.dub_descriptor_manager(),
+            min_uniform_buffer_alignment,
+        ));
 
         let adhoc_command_runner = Rc::new(AdhocCommandRunner::new(&device, command_pool, queue));
         let swapchain = SwapChain::new(
@@ -195,10 +199,17 @@ impl RenderingEngine for VulkanRenderingEngine {
             }
         });
 
-        match self.render_objects(scene.entities()) {
+        match self.render_objects(scene) {
             Ok(()) => (),
             Err(err) => println!("{}", err),
         }
+    }
+
+    fn view_extent(&self) -> (u32, u32) {
+        (
+            self.get_capabilities().unwrap().current_extent.width,
+            self.get_capabilities().unwrap().current_extent.height,
+        )
     }
 
     fn scene_loaded(&mut self, scene: &mut dyn Scene) {
@@ -267,7 +278,7 @@ impl VulkanRenderingEngine {
         Ok(())
     }
 
-    fn render_objects(&mut self, entities: &Vec<Box<dyn Entity>>) -> Result<(), Box<dyn Error>> {
+    fn render_objects(&mut self, scene: &dyn Scene) -> Result<(), Box<dyn Error>> {
         macro_rules! swapchain {
             ( ) => {
                 self.swapchain.as_mut().unwrap()
@@ -284,7 +295,7 @@ impl VulkanRenderingEngine {
                 )
                 .unwrap();
 
-            let objects: Vec<&VulkanRenderObject> = entities
+            let objects: Vec<&VulkanRenderObject> = scene.entities()
                 .iter()
                 .filter_map(|e| entity_get_component::<VulkanRenderObject>(e.as_ref()))
                 .collect();
@@ -295,18 +306,9 @@ impl VulkanRenderingEngine {
             // Update Per-frame Uniform Buffers
             {
                 let ubo = {
-                    let mut transform = Transform::new();
-                    transform.translate_local(&Vec3::new(0., 0., 2.));
-
-                    let extent = self.get_capabilities().unwrap().current_extent;
-                    let cam = Camera::new(
-                        90. * PI / 180.,
-                        extent.width as f32 / extent.height as f32,
-                        0.1,
-                        100000.,
-                    );
-                    let view = Mat44::inversed(transform.matrix());
-                    let proj = cam.projection_matrix();
+                    let camera = scene.camera();
+                    let view = Mat44::inversed(camera.transform().matrix());
+                    let proj = camera.projection_matrix();
                     PerFrameUniformBuffer::new(&view, proj)
                 };
 

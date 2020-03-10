@@ -1,8 +1,6 @@
-use std::sync::Arc;
-use std::sync::Weak;
 use super::buffer::{Buffer, BufferType};
 use super::material::VulkanMaterial;
-use super::{uniform_buffers::DynamicUniformBufferManager};
+use super::uniform_buffers::DynamicUniformBufferManager;
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
 use crate::rendering::RenderObject;
@@ -10,6 +8,8 @@ use ash::vk;
 use ash::Device;
 use std::error::Error;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Weak;
 
 pub struct VulkanRenderObject {
     dub_manager: Weak<DynamicUniformBufferManager>,
