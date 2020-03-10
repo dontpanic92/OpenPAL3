@@ -102,11 +102,6 @@ impl EntityCallbacks for Mv3ModelEntity {
     }
 
     fn on_updating<T: EntityCallbacks>(&mut self, entity: &mut CoreEntity<T>, delta_sec: f32) {
-        entity.transform_mut().rotate_local(
-            &Vec3::new(0., 1., 0.),
-            -0.2 * delta_sec * std::f32::consts::PI,
-        );
-
         let anim_time = ((delta_sec * 4580.) as u32 + self.last_anim_time)
             % self.anim_timestamps.last().unwrap();
 

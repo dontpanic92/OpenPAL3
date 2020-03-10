@@ -83,13 +83,4 @@ impl EntityCallbacks for CvdModelEntity {
         println!("id {}", self.id);
         println!("transform {}", entity.transform().matrix());
     }
-
-    fn on_updating<T: EntityCallbacks>(&mut self, entity: &mut CoreEntity<T>, delta_sec: f32) {
-        // println!("id {}", self.id);
-        // println!("transform {}", entity.transform().matrix());
-        entity.transform_mut().rotate_local(
-            &Vec3::new(0., 1., 0.),
-            -0.2 * delta_sec * std::f32::consts::PI,
-        );
-    }
 }

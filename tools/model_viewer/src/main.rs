@@ -19,9 +19,9 @@ impl application::ApplicationCallbacks for ApplicationCallbacks {
         app: &mut application::Application<T>,
     ) {
         app.engine_mut()
-            .load_scene(CoreScene::new(scene::ModelViewerScene {
+            .load_scene2(scene::ModelViewerScene {
                 path: self.path.clone(),
-            }));
+            });
     }
 
     fn on_updated<T: application::ApplicationCallbacks>(

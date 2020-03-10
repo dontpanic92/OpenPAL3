@@ -306,7 +306,7 @@ fn read_unknown_vec(reader: &mut Read, dword_count_in_struct: usize) {
     let unknown_byte = reader.read_u8().unwrap();
     for _i in 0..count {
         let mut data = vec![0.; dword_count_in_struct];
-        reader.read_f32_into::<LittleEndian>(data.as_mut_slice());
+        reader.read_f32_into::<LittleEndian>(data.as_mut_slice()).unwrap();
         println!("    data: {:?}", data);
     }
 }
