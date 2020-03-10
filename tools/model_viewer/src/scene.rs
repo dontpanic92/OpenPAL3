@@ -28,7 +28,6 @@ impl SceneCallbacks for ModelViewerScene {
             }
         } else if self.path.to_lowercase().ends_with(".cvd") {
             let cvd = cvd_load_from_file(&self.path).unwrap();
-            println!("cvd model count {}", cvd.model_count);
             for (i, model) in cvd.models.iter().enumerate() {
                 cvd_add_model_entity(&model, scene, &self.path, i as u32);
             }
@@ -47,11 +46,13 @@ impl SceneCallbacks for ModelViewerScene {
 }
 
 fn cvd_add_model_entity<T: SceneCallbacks>(model: &CvdModel, scene: &mut CoreScene<T>, path: &str, id: u32) {
-    println!("frame count {}", model.mesh.frame_count);
     for material in &model.mesh.materials {
+        if material.triangles.is_none() {
+            continue;
+        }
+
         let mut entity =
             CoreEntity::new(CvdModelEntity::new(&model.mesh.frames[0], material, path, id));
-        println!("position0: {:?}", &model.position_keyframes[0].position);
         entity
             .transform_mut()
             .translate_local(&model.position_keyframes[0].position);
@@ -59,7 +60,6 @@ fn cvd_add_model_entity<T: SceneCallbacks>(model: &CvdModel, scene: &mut CoreSce
     }
 
     if let Some(children) = &model.children {
-        println!("cvd children count: {}", children.len());
         for child in children {
             cvd_add_model_entity(child, scene, path, id);
         }

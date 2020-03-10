@@ -41,7 +41,7 @@ impl CvdModelEntity {
         };
 
         let mut indices: Vec<u32> = vec![];
-        for t in &material.triangles {
+        for t in material.triangles.as_ref().unwrap() {
             indices.push(get_new_index(t.indices[0]));
             indices.push(get_new_index(t.indices[1]));
             indices.push(get_new_index(t.indices[2]));
@@ -63,7 +63,6 @@ impl CvdModelEntity {
             );
         }
 
-        println!("indices: {:?}", indices);
         CvdModelEntity {
             texture_path,
             vertices,
@@ -80,7 +79,5 @@ impl EntityCallbacks for CvdModelEntity {
             self.indices.clone(),
             Box::new(SimpleMaterial::new(&self.texture_path))
         ));
-        println!("id {}", self.id);
-        println!("transform {}", entity.transform().matrix());
     }
 }

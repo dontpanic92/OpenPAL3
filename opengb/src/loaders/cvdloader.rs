@@ -28,7 +28,7 @@ pub struct CvdMaterial {
     pub color4: u32,
     pub texture_name: String,
     pub triangle_count: u32,
-    pub triangles: Vec<CvdTriangle>,
+    pub triangles: Option<Vec<CvdTriangle>>,
 }
 
 #[derive(Debug)]
@@ -100,7 +100,6 @@ pub fn cvd_load_from_file<P: AsRef<Path>>(path: P) -> Result<CvdFile, Box<dyn Er
     
     let model_count = reader.read_u32::<LittleEndian>().unwrap();
 
-    println!("model_count: {}", model_count);
     let mut models = vec![];
     for _i in 0..model_count {
         let model = cvd_load_model(&mut reader, unknown_float).unwrap().unwrap();
@@ -116,7 +115,6 @@ pub fn cvd_load_from_file<P: AsRef<Path>>(path: P) -> Result<CvdFile, Box<dyn Er
 
 pub fn cvd_load_model(reader: &mut dyn Read, unknown_float: f32) -> Result<Option<CvdModel>, Box<dyn Error>> {
     let unknown_byte = reader.read_u8().unwrap();
-    println!("unknown_byte {}", unknown_byte);
     if unknown_byte == 0 {
         return Ok(None);
     }
@@ -126,14 +124,12 @@ pub fn cvd_load_model(reader: &mut dyn Read, unknown_float: f32) -> Result<Optio
     read_unknown_vec(reader, 15);
 
     let unknown_dword = reader.read_f32::<LittleEndian>().unwrap();
-    println!("unknown_dword in model {}", unknown_dword);
     let mesh = cvd_load_mesh(reader, unknown_float).unwrap();
 
     let mut mat = Mat44::new_zero();
     reader.read_f32_into::<LittleEndian>(unsafe {
         std::mem::transmute::<&mut [[f32; 4]; 4], &mut [f32; 16]>(mat.floats_mut())
     }).unwrap();
-    println!("mat in model {}", mat);
 
     let children_count = reader.read_u32::<LittleEndian>().unwrap();
     let mut models = None;
@@ -158,7 +154,6 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
     let frame_count = reader.read_u32::<LittleEndian>().unwrap();
     let vertex_count = reader.read_u32::<LittleEndian>().unwrap();
     let vertex_size = calc_vertex_size(19);
-    println!("frame_count: {} vertex_count: {}", frame_count, vertex_count);
     let mut frames = vec![];
     for _i in 0..frame_count {
         let mut vertices = vec![];
@@ -184,11 +179,7 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
     let mut unknown_data = vec![0f32; frame_count as usize];
     reader.read_f32_into::<LittleEndian>(unknown_data.as_mut_slice()).unwrap();
 
-    println!("unknown_data: {:?}", unknown_data);
-
     let material_count = reader.read_u32::<LittleEndian>().unwrap();
-    println!("material_count: {}", material_count);
-
     let mut materials = vec![];
     for _i in 0..material_count {
         let unknown_byte = reader.read_u8().unwrap();
@@ -200,30 +191,22 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
         let name = read_vec(reader, 64).unwrap();
         let texture_name = encoding::all::GBK.decode(&name.into_iter().take_while(|&c| c != 0).collect::<Vec<u8>>(), DecoderTrap::Ignore).unwrap();
 
-        println!("texture_name: {}", texture_name);
         let triangle_count = reader.read_u32::<LittleEndian>().unwrap();
-        if triangle_count == 0 {
-            panic!("0 index count is not supported yet");
+        let mut triangles = None;
+        if triangle_count > 0 {
+            triangles = Some(vec![]);
+            for _j in 0..triangle_count {
+                let index1 = reader.read_u16::<LittleEndian>().unwrap();
+                let index2 = reader.read_u16::<LittleEndian>().unwrap();
+                let index3 = reader.read_u16::<LittleEndian>().unwrap();
+                triangles.as_mut().unwrap().push(CvdTriangle {
+                    indices: [index1, index2, index3],
+                })
+            }
         }
 
-        println!("triangle_count: {}", triangle_count);
-
-        let mut triangles = vec![];
-        for _j in 0..triangle_count {
-            let index1 = reader.read_u16::<LittleEndian>().unwrap();
-            let index2 = reader.read_u16::<LittleEndian>().unwrap();
-            let index3 = reader.read_u16::<LittleEndian>().unwrap();
-            triangles.push(CvdTriangle {
-                indices: [index1, index2, index3],
-            })
-        }
-
-        println!("triangles: {:?}", triangles);
-        println!("unknown_float {}", unknown_float);
         if unknown_float >= 0.5 {
             let unknown_data2_count = reader.read_u32::<LittleEndian>().unwrap();
-
-            println!("unknown_data2_count {}", unknown_data2_count);
             if unknown_data2_count > 0 {
                 for _k in 0..unknown_data2_count {
                     let _ = reader.read_u32::<LittleEndian>().unwrap();
@@ -259,7 +242,7 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
 
 fn read_position_keyframes(reader: &mut Read,) -> Vec<CvdPositionKeyFrame> {
     let count = reader.read_u32::<LittleEndian>().unwrap();
-    println!("unknown_vec count: {}", count);
+    
     if count == 0 {
         return vec![];
     }
@@ -298,7 +281,7 @@ fn read_position_keyframes(reader: &mut Read,) -> Vec<CvdPositionKeyFrame> {
 
 fn read_unknown_vec(reader: &mut Read, dword_count_in_struct: usize) {
     let count = reader.read_u32::<LittleEndian>().unwrap();
-    println!("unknown_vec count: {}", count);
+    
     if count == 0 {
         return;
     }
@@ -307,6 +290,5 @@ fn read_unknown_vec(reader: &mut Read, dword_count_in_struct: usize) {
     for _i in 0..count {
         let mut data = vec![0.; dword_count_in_struct];
         reader.read_f32_into::<LittleEndian>(data.as_mut_slice()).unwrap();
-        println!("    data: {:?}", data);
     }
 }
