@@ -1,11 +1,14 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(binding = 0) uniform UniformBufferObject {
-    mat4 model;
+layout(set = 0, binding = 0) uniform PerFrameUbo {
     mat4 view;
     mat4 proj;
-} mvp;
+} perFrameUbo;
+
+layout(set = 1, binding = 0) uniform PerInstanceUbo {
+    mat4 model;
+} perInstanceUbo;
 
 layout(location = 0) in vec3 position;
 layout(location = 2) in vec2 inTexCoord;
@@ -18,7 +21,6 @@ mat4 clip = mat4(vec4(1.0, 0.0, 0.0, 0.0),
                  vec4(0.0, 0.0, 0, 1.0));
 
 void main() {
-    gl_Position = vec4(position, 1.0) * mvp.model * mvp.view * mvp.proj * clip;
-
+    gl_Position = vec4(position, 1.0) * perInstanceUbo.model * perFrameUbo.view * perFrameUbo.proj * clip;
     fragTexCoord = inTexCoord;
 }

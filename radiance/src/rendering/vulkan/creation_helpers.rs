@@ -218,7 +218,7 @@ fn enabled_layer_names() -> Vec<*const i8> {
             // instead of doing so here.
             //
             // std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_standard_validation\0")
-            //     .as_ptr() as *const i8,
+            //    .as_ptr() as *const i8,
         ]
     }
 }

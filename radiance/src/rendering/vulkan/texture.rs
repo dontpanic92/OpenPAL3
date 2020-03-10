@@ -1,9 +1,12 @@
 use super::{
-    buffer::Buffer, image::Image, image_view::ImageView, sampler::Sampler, VulkanRenderingEngine,
+    adhoc_command_runner::AdhocCommandRunner, buffer::Buffer,
+    image::Image, image_view::ImageView, sampler::Sampler,
 };
 use crate::rendering::texture::Texture;
 use ash::vk;
+use ash::Device;
 use std::error::Error;
+use std::rc::Rc;
 
 pub struct VulkanTexture {
     image: Image,
@@ -14,14 +17,13 @@ pub struct VulkanTexture {
 impl VulkanTexture {
     pub fn new(
         texture: &Texture,
-        engine: &mut VulkanRenderingEngine,
+        device: &Rc<Device>,
+        allocator: &Rc<vk_mem::Allocator>,
+        command_runner: &Rc<AdhocCommandRunner>,
     ) -> Result<Self, Box<dyn Error>> {
-        let device = engine.device();
-        let command_runner = engine.adhoc_command_runner();
-        let buffer = Buffer::new_staging_buffer_with_data(engine.allocator(), texture.data())?;
+        let buffer = Buffer::new_staging_buffer_with_data(allocator, texture.data())?;
         let format = vk::Format::R8G8B8A8_UNORM;
-        let mut image =
-            Image::new_color_image(engine.allocator(), texture.width(), texture.height())?;
+        let mut image = Image::new_color_image(allocator, texture.width(), texture.height())?;
         image.transit_layout(
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,

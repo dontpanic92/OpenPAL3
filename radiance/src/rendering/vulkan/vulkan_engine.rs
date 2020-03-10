@@ -1,11 +1,11 @@
+use std::sync::Arc;
 use super::adhoc_command_runner::AdhocCommandRunner;
-use super::buffer::{Buffer, BufferType};
 use super::creation_helpers;
-use super::descriptor_manager::DescriptorManager;
+use super::descriptor_managers::DescriptorManager;
 use super::helpers;
 use super::render_object::VulkanRenderObject;
 use super::swapchain::SwapChain;
-use super::uniform_buffer_mvp::UniformBufferMvp;
+use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
 use crate::math::{Mat44, Transform, Vec3};
 use crate::rendering::RenderObject;
 use crate::rendering::{RenderingEngine, Window};
@@ -34,6 +34,7 @@ pub struct VulkanRenderingEngine {
     debug_callback: vk::DebugReportCallbackEXT,
 
     descriptor_manager: Option<Rc<DescriptorManager>>,
+    dub_manager: Option<Arc<DynamicUniformBufferManager>>,
     adhoc_command_runner: Rc<AdhocCommandRunner>,
 
     surface_entry: ash::extensions::khr::Surface,
@@ -97,6 +98,15 @@ impl RenderingEngine for VulkanRenderingEngine {
         };
 
         let descriptor_manager = Rc::new(DescriptorManager::new(&device).unwrap());
+        let min_uniform_buffer_alignment = unsafe {
+            instance
+                .get_physical_device_properties(physical_device)
+                .limits
+                .min_uniform_buffer_offset_alignment
+        };
+        let dub_manager =
+            Arc::new(DynamicUniformBufferManager::new(&device, &allocator, descriptor_manager.dub_descriptor_manager(), min_uniform_buffer_alignment));
+
         let adhoc_command_runner = Rc::new(AdhocCommandRunner::new(&device, command_pool, queue));
         let swapchain = SwapChain::new(
             &instance,
@@ -146,6 +156,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             swapchain: Some(swapchain),
             debug_callback,
             descriptor_manager: Some(descriptor_manager),
+            dub_manager: Some(dub_manager),
             adhoc_command_runner,
             surface_entry,
             debug_entry,
@@ -176,6 +187,14 @@ impl RenderingEngine for VulkanRenderingEngine {
             );
         }
 
+        self.dub_manager().update_do(|updater| {
+            for entity in scene.entities() {
+                if let Some(vro) = entity_get_component::<VulkanRenderObject>(entity.as_ref()) {
+                    updater(vro.dub_index(), entity.transform().matrix());
+                }
+            }
+        });
+
         match self.render_objects(scene.entities()) {
             Ok(()) => (),
             Err(err) => println!("{}", err),
@@ -187,7 +206,15 @@ impl RenderingEngine for VulkanRenderingEngine {
             match entity_get_component::<RenderObject>(e.as_ref()) {
                 None => continue,
                 Some(render_object) => {
-                    let object = VulkanRenderObject::new(render_object, self).unwrap();
+                    let object = VulkanRenderObject::new(
+                        render_object,
+                        self.device(),
+                        self.allocator(),
+                        self.command_runner(),
+                        self.dub_manager(),
+                        self.descriptor_manager(),
+                    )
+                    .unwrap();
                     e.add_component(Box::new(object));
                 }
             }
@@ -204,29 +231,16 @@ impl VulkanRenderingEngine {
         self.allocator.as_ref().unwrap()
     }
 
-    pub fn adhoc_command_runner(&self) -> &Rc<AdhocCommandRunner> {
+    pub fn dub_manager(&self) -> &Arc<DynamicUniformBufferManager> {
+        self.dub_manager.as_ref().unwrap()
+    }
+
+    pub fn command_runner(&self) -> &Rc<AdhocCommandRunner> {
         &self.adhoc_command_runner
     }
 
     pub fn descriptor_manager(&self) -> &Rc<DescriptorManager> {
         &self.descriptor_manager.as_ref().unwrap()
-    }
-
-    pub fn create_device_buffer_with_data<T>(
-        &self,
-        buffer_type: BufferType,
-        data: &[T],
-    ) -> Result<Buffer, Box<dyn Error>> {
-        Buffer::new_device_buffer_with_data::<T>(
-            &self.allocator(),
-            buffer_type,
-            data,
-            &self.adhoc_command_runner,
-        )
-    }
-
-    pub fn create_staging_buffer_with_data<T>(&self, data: &[T]) -> Result<Buffer, Box<dyn Error>> {
-        Buffer::new_staging_buffer_with_data::<T>(&self.allocator(), data)
     }
 
     fn recreate_swapchain(&mut self) -> Result<(), Box<dyn Error>> {
@@ -260,6 +274,7 @@ impl VulkanRenderingEngine {
             };
         }
 
+        let dub_manager = self.dub_manager().clone();
         unsafe {
             let (image_index, _) = swapchain!()
                 .acquire_next_image(
@@ -274,13 +289,12 @@ impl VulkanRenderingEngine {
                 .filter_map(|e| entity_get_component::<VulkanRenderObject>(e.as_ref()))
                 .collect();
             let command_buffer = swapchain!()
-                .record_command_buffers(image_index as usize, &objects)
+                .record_command_buffers(image_index as usize, &objects, &dub_manager)
                 .unwrap();
 
-            // Update Uniform Buffers
+            // Update Per-frame Uniform Buffers
             {
                 let ubo = {
-                    let model = entities[0].transform().matrix();
                     let mut transform = Transform::new();
                     transform.translate_local(&Vec3::new(0., 0., 2.));
 
@@ -293,7 +307,7 @@ impl VulkanRenderingEngine {
                     );
                     let view = Mat44::inversed(transform.matrix());
                     let proj = cam.projection_matrix();
-                    UniformBufferMvp::new(model, &view, proj)
+                    PerFrameUniformBuffer::new(&view, proj)
                 };
 
                 swapchain!().update_ubo(image_index as usize, &[ubo]);
@@ -355,6 +369,7 @@ impl Drop for VulkanRenderingEngine {
             let _ = self.device().device_wait_idle();
             self.swapchain = None;
             self.descriptor_manager = None;
+            self.dub_manager = None;
             self.allocator = None;
             self.debug_entry
                 .destroy_debug_report_callback(self.debug_callback, None);

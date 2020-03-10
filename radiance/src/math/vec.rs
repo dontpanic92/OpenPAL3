@@ -1,5 +1,5 @@
 /// 2d column vector
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Vec2 {
     pub x: f32,
@@ -19,7 +19,7 @@ impl Vec2 {
 }
 
 /// 3d column vector
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Vec3 {
     pub x: f32,

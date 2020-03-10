@@ -1,6 +1,6 @@
 use super::material::VulkanMaterial;
 use super::{pipeline::Pipeline, render_pass::RenderPass};
-use crate::rendering::vulkan::descriptor_manager::DescriptorManager;
+use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
 use ash::vk;
 use ash::Device;
 use std::collections::HashMap;

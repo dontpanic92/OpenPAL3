@@ -1,13 +1,12 @@
 use super::adhoc_command_runner::AdhocCommandRunner;
-use super::buffer::Buffer;
+use super::buffer::{Buffer, BufferType};
 use super::creation_helpers;
-use super::descriptor_manager::DescriptorManager;
-use super::descriptor_sets::DescriptorSets;
+use super::descriptor_managers::DescriptorManager;
 use super::image::Image;
 use super::image_view::ImageView;
 use super::pipeline_manager::PipelineManager;
 use super::render_object::VulkanRenderObject;
-use super::uniform_buffer_mvp::UniformBufferMvp;
+use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
 use ash::prelude::VkResult;
 use ash::version::DeviceV1_0;
 use ash::{vk, Device, Instance};
@@ -24,7 +23,7 @@ pub struct SwapChain {
     depth_image: Image,
     depth_image_view: ImageView,
     uniform_buffers: Vec<Buffer>,
-    per_frame_descriptor_sets: DescriptorSets,
+    per_frame_descriptor_sets: Vec<vk::DescriptorSet>,
     framebuffers: Vec<vk::Framebuffer>,
     command_buffers: Vec<vk::CommandBuffer>,
     capabilities: vk::SurfaceCapabilitiesKHR,
@@ -60,8 +59,13 @@ impl SwapChain {
         let image_views = creation_helpers::create_image_views(&device, &images, format)?;
         let uniform_buffers: Vec<Buffer> = (0..images.len())
             .map(|_| {
-                Buffer::new_uniform_buffer(allocator, std::mem::size_of::<UniformBufferMvp>(), 1)
-                    .unwrap()
+                Buffer::new_dynamic_buffer(
+                    allocator,
+                    BufferType::Uniform,
+                    std::mem::size_of::<PerFrameUniformBuffer>(),
+                    1,
+                )
+                .unwrap()
             })
             .collect();
 
@@ -172,12 +176,12 @@ impl SwapChain {
         &mut self,
         image_index: usize,
         objects: &[&VulkanRenderObject],
+        dub_manager: &DynamicUniformBufferManager,
     ) -> Result<vk::CommandBuffer, vk::Result> {
         let device = self.device.upgrade().unwrap();
         let command_buffer = self.command_buffers[image_index];
         let framebuffer = self.framebuffers[image_index];
-        let per_frame_descriptor_set =
-            self.per_frame_descriptor_sets.vk_descriptor_set()[image_index];
+        let per_frame_descriptor_set = self.per_frame_descriptor_sets[image_index];
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
@@ -261,13 +265,14 @@ impl SwapChain {
                         0,
                         vk::IndexType::UINT32,
                     );
+
                     device.cmd_bind_descriptor_sets(
                         command_buffer,
                         vk::PipelineBindPoint::GRAPHICS,
                         pipeline.pipeline_layout().vk_pipeline_layout(),
                         0,
-                        &[per_frame_descriptor_set, obj.vk_descriptor_set()],
-                        &[],
+                        &[per_frame_descriptor_set, dub_manager.descriptor_set(), obj.vk_descriptor_set()],
+                        &[dub_manager.get_offset(obj.dub_index()) as u32],
                     );
                     device.cmd_draw_indexed(
                         command_buffer,

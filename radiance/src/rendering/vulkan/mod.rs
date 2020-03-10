@@ -1,8 +1,9 @@
 mod adhoc_command_runner;
 mod buffer;
 mod creation_helpers;
-mod descriptor_manager;
-mod descriptor_sets;
+mod descriptor_managers;
+mod descriptor_pool;
+mod descriptor_set_layout;
 mod error;
 mod helpers;
 mod image;
@@ -17,7 +18,7 @@ mod sampler;
 mod shader;
 mod swapchain;
 mod texture;
-mod uniform_buffer_mvp;
+mod uniform_buffers;
 mod vulkan_engine;
 
 pub use vulkan_engine::VulkanRenderingEngine;

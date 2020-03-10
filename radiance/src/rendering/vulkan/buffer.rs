@@ -13,12 +13,23 @@ pub enum BufferType {
     Uniform = 2,
 }
 
+impl BufferType {
+    pub fn to_buffer_usage(&self) -> vk::BufferUsageFlags {
+        match self {
+            BufferType::Index => vk::BufferUsageFlags::INDEX_BUFFER,
+            BufferType::Vertex => vk::BufferUsageFlags::VERTEX_BUFFER,
+            BufferType::Uniform => vk::BufferUsageFlags::UNIFORM_BUFFER,
+        }
+    }
+}
+
 pub struct Buffer {
     allocator: Weak<vk_mem::Allocator>,
     buffer: vk::Buffer,
     allocation: vk_mem::Allocation,
     allocation_info: vk_mem::AllocationInfo,
     buffer_size: u64,
+    element_size: usize,
     element_count: u32,
 }
 
@@ -27,7 +38,7 @@ impl Buffer {
         allocator: &Rc<vk_mem::Allocator>,
         data: &[T],
     ) -> Result<Self, Box<dyn Error>> {
-        let mut staging_buffer = Buffer::new_buffer(
+        let staging_buffer = Buffer::new_buffer(
             allocator,
             size_of::<T>(),
             data.len(),
@@ -44,17 +55,11 @@ impl Buffer {
         buffer_type: BufferType,
         data: &[T],
     ) -> Result<Self, Box<dyn Error>> {
-        let flags = match buffer_type {
-            BufferType::Index => vk::BufferUsageFlags::INDEX_BUFFER,
-            BufferType::Vertex => vk::BufferUsageFlags::VERTEX_BUFFER,
-            BufferType::Uniform => vk::BufferUsageFlags::UNIFORM_BUFFER,
-        };
-
-        let mut dynamic_buffer = Buffer::new_buffer(
+        let dynamic_buffer = Buffer::new_buffer(
             allocator,
             size_of::<T>(),
             data.len(),
-            flags,
+            buffer_type.to_buffer_usage(),
             vk_mem::MemoryUsage::CpuToGpu,
         )?;
 
@@ -62,8 +67,9 @@ impl Buffer {
         Ok(dynamic_buffer)
     }
 
-    pub fn new_uniform_buffer(
+    pub fn new_dynamic_buffer(
         allocator: &Rc<vk_mem::Allocator>,
+        buffer_type: BufferType,
         element_size: usize,
         element_count: usize,
     ) -> Result<Self, Box<dyn Error>> {
@@ -71,7 +77,7 @@ impl Buffer {
             allocator,
             element_size,
             element_count,
-            vk::BufferUsageFlags::UNIFORM_BUFFER,
+            buffer_type.to_buffer_usage(),
             vk_mem::MemoryUsage::CpuToGpu,
         )
     }
@@ -108,6 +114,14 @@ impl Buffer {
 
     pub fn element_count(&self) -> u32 {
         self.element_count
+    }
+
+    pub fn element_size(&self) -> usize {
+        self.element_size
+    }
+
+    pub fn size(&self) -> u64 {
+        self.buffer_size
     }
 
     fn new_buffer(
@@ -147,6 +161,7 @@ impl Buffer {
             allocation,
             allocation_info,
             buffer_size,
+            element_size,
             element_count: element_count as u32,
         })
     }
@@ -171,7 +186,19 @@ impl Buffer {
         })
     }
 
-    pub fn copy_memory_from<T>(&mut self, data: &[T]) {
+    pub fn copy_memory_from<T>(&self, data: &[T]) {
+        self.map_memory_do(|dst| {
+            unsafe {
+                std::ptr::copy(
+                    data.as_ptr() as *const u8,
+                    dst,
+                    data.len() * std::mem::size_of::<T>(),
+                )
+            };
+        });
+    }
+
+    pub fn map_memory_do<F: Fn(*mut u8)>(&self, action: F) {
         let allocator = self.allocator.upgrade().unwrap();
         allocator.map_memory(&self.allocation).unwrap();
         let dst = self.allocation_info.get_mapped_data();
@@ -179,14 +206,7 @@ impl Buffer {
             panic!("Unable to map the dest memory");
         }
 
-        unsafe {
-            std::ptr::copy(
-                data.as_ptr() as *const u8,
-                dst,
-                data.len() * std::mem::size_of::<T>(),
-            )
-        };
-
+        action(dst);
         allocator.unmap_memory(&self.allocation).unwrap();
     }
 }

@@ -1,6 +1,9 @@
-use super::{shader::VulkanShader, texture::VulkanTexture, VulkanRenderingEngine};
+use super::{shader::VulkanShader, texture::VulkanTexture};
+use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::Material;
+use ash::Device;
 use std::error::Error;
+use std::rc::Rc;
 
 pub struct VulkanMaterial {
     shader: VulkanShader,
@@ -11,14 +14,15 @@ pub struct VulkanMaterial {
 impl VulkanMaterial {
     pub fn new(
         material: &dyn Material,
-        engine: &mut VulkanRenderingEngine,
+        device: &Rc<Device>,
+        allocator: &Rc<vk_mem::Allocator>,
+        command_runner: &Rc<AdhocCommandRunner>,
     ) -> Result<Self, Box<dyn Error>> {
-        let device = engine.device();
         let shader = VulkanShader::new(device, material.shader())?;
         let textures = material
             .textures()
             .iter()
-            .map(|t| VulkanTexture::new(t, engine).unwrap())
+            .map(|t| VulkanTexture::new(t, device, allocator, command_runner).unwrap())
             .collect();
 
         Ok(Self {
