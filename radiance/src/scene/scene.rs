@@ -33,12 +33,7 @@ impl<TCallbacks: SceneCallbacks> CoreScene<TCallbacks> {
         Self {
             entities: vec![],
             callbacks: Rc::new(RefCell::new(callbacks)),
-            camera: Camera::new(
-                90. * PI / 180.,
-                camera_aspect,
-                0.1,
-                100000.,
-            ),
+            camera: Camera::new(90. * PI / 180., camera_aspect, 0.1, 100000.),
         }
     }
 
@@ -69,7 +64,7 @@ impl<TCallbacks: SceneCallbacks> Scene for CoreScene<TCallbacks> {
         for e in &mut self.entities {
             e.update(delta_sec);
         }
-        
+
         callback!(self, on_updated, delta_sec);
     }
 
@@ -82,7 +77,7 @@ impl<TCallbacks: SceneCallbacks> Scene for CoreScene<TCallbacks> {
     fn entities_mut(&mut self) -> &mut Vec<Box<dyn Entity>> {
         &mut self.entities
     }
-    
+
     fn camera(&self) -> &Camera {
         &self.camera
     }

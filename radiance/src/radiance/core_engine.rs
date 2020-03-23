@@ -25,7 +25,10 @@ impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
     pub fn load_scene2<TSceneCallback: 'static + SceneCallbacks>(&mut self, scene: TSceneCallback) {
         self.unload_scene();
         let extent = self.rendering_engine.view_extent();
-        self.scene = Some(Box::new(CoreScene::new(scene, extent.0 as f32 / extent.1 as f32)));
+        self.scene = Some(Box::new(CoreScene::new(
+            scene,
+            extent.0 as f32 / extent.1 as f32,
+        )));
         let scene_mut = self.scene.as_mut().unwrap().as_mut();
         scene_mut.load();
         self.rendering_engine.scene_loaded(scene_mut);

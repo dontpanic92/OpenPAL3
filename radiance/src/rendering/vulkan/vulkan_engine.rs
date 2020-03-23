@@ -295,7 +295,8 @@ impl VulkanRenderingEngine {
                 )
                 .unwrap();
 
-            let objects: Vec<&VulkanRenderObject> = scene.entities()
+            let objects: Vec<&VulkanRenderObject> = scene
+                .entities()
                 .iter()
                 .filter_map(|e| entity_get_component::<VulkanRenderObject>(e.as_ref()))
                 .collect();

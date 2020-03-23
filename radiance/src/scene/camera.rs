@@ -29,7 +29,7 @@ impl Camera {
     pub fn transform_mut(&mut self) -> &mut Transform {
         &mut self.transform
     }
-    
+
     pub fn projection_matrix(&self) -> &Mat44 {
         &self.projection
     }

@@ -66,11 +66,9 @@ pub fn get_graphics_queue_family_index(
         .position(|(i, &x)| {
             x.queue_flags.contains(vk::QueueFlags::GRAPHICS)
                 && unsafe {
-                    surface_entry.get_physical_device_surface_support(
-                        physical_device,
-                        i as u32,
-                        surface,
-                    )
+                    surface_entry
+                        .get_physical_device_surface_support(physical_device, i as u32, surface)
+                        .unwrap()
                 }
         })
         .map(|f| f as u32)
