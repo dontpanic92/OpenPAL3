@@ -14,9 +14,8 @@ impl application::ApplicationCallbacks for ApplicationCallbacks {
         &mut self,
         app: &mut application::Application<T>,
     ) {
-        app.engine_mut().load_scene2(scene::ModelViewerScene {
-            path: self.path.clone(),
-        });
+        app.engine_mut()
+            .load_scene2(scene::ScnScene::new(self.path.clone()));
     }
 
     fn on_updated<T: application::ApplicationCallbacks>(
@@ -25,7 +24,7 @@ impl application::ApplicationCallbacks for ApplicationCallbacks {
         delta_sec: f32,
     ) {
         let fps = self.fps_counter.update_fps(delta_sec);
-        let title = format!("Model Viewer - OpenPAL3 Tools - FPS: {}", fps);
+        let title = format!("Scene Viewer - OpenPAL3 Tools - FPS: {}", fps);
         app.set_title(&title);
     }
 }
@@ -40,7 +39,7 @@ impl ApplicationCallbacks {
 }
 
 fn main() {
-    let result = nfd::open_file_dialog(Some("mv3,pol,cvd"), None).unwrap_or_else(|e| {
+    let result = nfd::open_file_dialog(Some("scn"), None).unwrap_or_else(|e| {
         panic!(e);
     });
 

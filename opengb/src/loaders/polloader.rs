@@ -1,11 +1,11 @@
-use std::fs;
-use std::path::Path;
-use std::error::Error;
-use std::io::{Read, BufReader};
-use radiance::math::Mat44;
-use byteorder::{LittleEndian, ReadBytesExt};
 use super::read_vec;
-use encoding::{Encoding, DecoderTrap};
+use byteorder::{LittleEndian, ReadBytesExt};
+use encoding::{DecoderTrap, Encoding};
+use radiance::math::Mat44;
+use std::error::Error;
+use std::fs;
+use std::io::{BufReader, Read};
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct PolVertexComponents(u32);
@@ -121,9 +121,7 @@ pub fn pol_load_from_file<P: AsRef<Path>>(path: P) -> Result<PolFile, Box<dyn Er
     let mut geom_node_descs = vec![];
     for _i in 0..mesh_count {
         let unknown = read_vec(&mut reader, 52)?;
-        geom_node_descs.push(GeomNodeDesc {
-            unknown,
-        });
+        geom_node_descs.push(GeomNodeDesc { unknown });
     }
 
     let mut unknown_count = 0;
@@ -148,7 +146,7 @@ pub fn pol_load_from_file<P: AsRef<Path>>(path: P) -> Result<PolFile, Box<dyn Er
                     str_len,
                 })
             }
-        } 
+        }
     }
 
     let mut meshes = vec![];
@@ -172,7 +170,9 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
     let mut aabb_max = [0f32; 3];
     reader.read_f32_into::<LittleEndian>(&mut aabb_min)?;
     reader.read_f32_into::<LittleEndian>(&mut aabb_max)?;
-    let vertex_type = PolVertexComponents { 0: reader.read_i32::<LittleEndian>()? as u32 };
+    let vertex_type = PolVertexComponents {
+        0: reader.read_i32::<LittleEndian>()? as u32,
+    };
     let vertex_count = reader.read_u32::<LittleEndian>()?;
     let _size = super::calc_vertex_size(vertex_type.0 as i32);
     let mut vertices = vec![];
@@ -182,7 +182,9 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
         }
 
         if !vertex_type.has(PolVertexComponents::TEXCOORD) {
-            panic!("This POL file doesn't have texture coord info, which doesn't support currently.");
+            panic!(
+                "This POL file doesn't have texture coord info, which doesn't support currently."
+            );
         }
 
         let position = PolVertexPosition {
@@ -206,7 +208,7 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
         } else {
             None
         };
-        
+
         let unknown8 = if vertex_type.has(PolVertexComponents::UNKNOWN8) {
             let mut arr = [0.; 1];
             reader.read_f32_into::<LittleEndian>(&mut arr)?;
@@ -244,7 +246,7 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
         } else {
             None
         };
-        
+
         let unknown100 = if vertex_type.has(PolVertexComponents::UNKNOWN100) {
             let mut arr = [0.; 4];
             reader.read_f32_into::<LittleEndian>(&mut arr)?;
@@ -276,22 +278,27 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
         let mut texture_names = vec![];
         for _j in 0..texture_count {
             let name = read_vec(reader, 64).unwrap();
-            let name_s = encoding::all::GBK.decode(&name.into_iter().take_while(|&c| c != 0).collect::<Vec<u8>>(), DecoderTrap::Ignore).unwrap();
+            let name_s = encoding::all::GBK
+                .decode(
+                    &name
+                        .into_iter()
+                        .take_while(|&c| c != 0)
+                        .collect::<Vec<u8>>(),
+                    DecoderTrap::Ignore,
+                )
+                .unwrap();
             texture_names.push(name_s);
         }
-        
+
         let unknown2 = reader.read_u32::<LittleEndian>()?;
         let unknown3 = reader.read_u32::<LittleEndian>()?;
         let unknown4 = reader.read_u32::<LittleEndian>()?;
         let triangle_count = reader.read_u32::<LittleEndian>()?;
         let mut triangles = vec![];
-        for _i in 0..triangle_count
-        {
+        for _i in 0..triangle_count {
             let mut indices = [0u16; 3];
             reader.read_u16_into::<LittleEndian>(&mut indices)?;
-            triangles.push(PolTriangle {
-                indices,
-            })
+            triangles.push(PolTriangle { indices })
         }
 
         material_info.push(PolMaterialInfo {
@@ -306,8 +313,7 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
             triangle_count,
             triangles,
         });
-    };
-    
+    }
 
     Ok(PolMesh {
         aabb_min,
@@ -319,4 +325,3 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
         material_info,
     })
 }
-

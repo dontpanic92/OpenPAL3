@@ -1,11 +1,11 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::error::Error;
-use std::io::{Read, BufReader};
-use radiance::math::{ Mat44, Vec3, Vec2, Quaternion };
-use byteorder::{LittleEndian, ReadBytesExt};
 use super::{calc_vertex_size, read_vec};
-use encoding::{Encoding, DecoderTrap};
+use byteorder::{LittleEndian, ReadBytesExt};
+use encoding::{DecoderTrap, Encoding};
+use radiance::math::{Mat44, Quaternion, Vec2, Vec3};
+use std::error::Error;
+use std::fs;
+use std::io::{BufReader, Read};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct CvdVertex {
@@ -58,11 +58,15 @@ pub struct CvdPositionKeyFrame {
 pub struct CvdRotationKeyFrame {
     pub timestamp: f32,
     pub unknown1: f32,
-    pub quaternion: Quaternion,
+    pub rotation1: f32,
+    pub rotation2: f32,
+    pub rotation3: f32,
+    pub rotation4: f32,
     pub unknown2: f32,
     pub unknown3: f32,
     pub unknown4: f32,
     pub unknown5: f32,
+    pub unknown6: f32,
 }
 
 #[derive(Debug)]
@@ -71,14 +75,19 @@ pub struct CvdModel {
     pub unknown_dword: f32,
     pub position_keyframes: Vec<CvdPositionKeyFrame>,
     pub mesh: CvdMesh,
-    pub children: Option<Vec<CvdModel>>,
+}
+
+#[derive(Debug)]
+pub struct CvdModelNode {
+    pub model: Option<CvdModel>,
+    pub children: Option<Vec<CvdModelNode>>,
 }
 
 #[derive(Debug)]
 pub struct CvdFile {
     pub magic: [u8; 4],
     pub model_count: u32,
-    pub models: Vec<CvdModel>,
+    pub models: Vec<CvdModelNode>,
 }
 
 pub fn cvd_load_from_file<P: AsRef<Path>>(path: P) -> Result<CvdFile, Box<dyn Error>> {
@@ -97,13 +106,15 @@ pub fn cvd_load_from_file<P: AsRef<Path>>(path: P) -> Result<CvdFile, Box<dyn Er
     if ani_path.exists() {
         println!("Found ani file {:?} which isn't supported yet", ani_path);
     }
-    
+
     let model_count = reader.read_u32::<LittleEndian>().unwrap();
 
     let mut models = vec![];
     for _i in 0..model_count {
-        let model = cvd_load_model(&mut reader, unknown_float).unwrap().unwrap();
-        models.push(model);
+        let model = cvd_load_model(&mut reader, unknown_float).unwrap();
+        if model.is_some() {
+            models.push(model.unwrap());
+        }
     }
 
     Ok(CvdFile {
@@ -113,23 +124,35 @@ pub fn cvd_load_from_file<P: AsRef<Path>>(path: P) -> Result<CvdFile, Box<dyn Er
     })
 }
 
-pub fn cvd_load_model(reader: &mut dyn Read, unknown_float: f32) -> Result<Option<CvdModel>, Box<dyn Error>> {
+pub fn cvd_load_model(
+    reader: &mut dyn Read,
+    unknown_float: f32,
+) -> Result<Option<CvdModelNode>, Box<dyn Error>> {
     let unknown_byte = reader.read_u8().unwrap();
-    if unknown_byte == 0 {
-        return Ok(None);
+
+    let mut model = None;
+    if unknown_byte > 0 {
+        let position_keyframes = read_position_keyframes(reader);
+        read_unknown_vec(reader, 11);
+        read_unknown_vec(reader, 15);
+
+        let unknown_dword = reader.read_f32::<LittleEndian>().unwrap();
+        let mesh = cvd_load_mesh(reader, unknown_float).unwrap();
+
+        let mut mat = Mat44::new_zero();
+        reader
+            .read_f32_into::<LittleEndian>(unsafe {
+                std::mem::transmute::<&mut [[f32; 4]; 4], &mut [f32; 16]>(mat.floats_mut())
+            })
+            .unwrap();
+
+        model = Some(CvdModel {
+            unknown_byte,
+            unknown_dword,
+            position_keyframes,
+            mesh,
+        });
     }
-
-    let position_keyframes = read_position_keyframes(reader);
-    read_unknown_vec(reader, 11);
-    read_unknown_vec(reader, 15);
-
-    let unknown_dword = reader.read_f32::<LittleEndian>().unwrap();
-    let mesh = cvd_load_mesh(reader, unknown_float).unwrap();
-
-    let mut mat = Mat44::new_zero();
-    reader.read_f32_into::<LittleEndian>(unsafe {
-        std::mem::transmute::<&mut [[f32; 4]; 4], &mut [f32; 16]>(mat.floats_mut())
-    }).unwrap();
 
     let children_count = reader.read_u32::<LittleEndian>().unwrap();
     let mut models = None;
@@ -141,11 +164,8 @@ pub fn cvd_load_model(reader: &mut dyn Read, unknown_float: f32) -> Result<Optio
         }
     }
 
-    Ok(Some(CvdModel {
-        unknown_byte,
-        unknown_dword,
-        position_keyframes,
-        mesh,
+    Ok(Some(CvdModelNode {
+        model,
         children: models,
     }))
 }
@@ -167,7 +187,7 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
             let py = reader.read_f32::<LittleEndian>().unwrap();
             let pz = reader.read_f32::<LittleEndian>().unwrap();
             vertices.push(CvdVertex {
-                position: Vec3::new(px, py, px),
+                position: Vec3::new(px, pz, py),
                 normal: Vec3::new(nx, ny, nz),
                 tex_coord: Vec2::new(tx, ty),
             })
@@ -177,7 +197,9 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
     }
 
     let mut unknown_data = vec![0f32; frame_count as usize];
-    reader.read_f32_into::<LittleEndian>(unknown_data.as_mut_slice()).unwrap();
+    reader
+        .read_f32_into::<LittleEndian>(unknown_data.as_mut_slice())
+        .unwrap();
 
     let material_count = reader.read_u32::<LittleEndian>().unwrap();
     let mut materials = vec![];
@@ -189,7 +211,15 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
         let color4 = reader.read_u32::<LittleEndian>().unwrap();
         let unknown_float2 = reader.read_f32::<LittleEndian>().unwrap();
         let name = read_vec(reader, 64).unwrap();
-        let texture_name = encoding::all::GBK.decode(&name.into_iter().take_while(|&c| c != 0).collect::<Vec<u8>>(), DecoderTrap::Ignore).unwrap();
+        let texture_name = encoding::all::GBK
+            .decode(
+                &name
+                    .into_iter()
+                    .take_while(|&c| c != 0)
+                    .collect::<Vec<u8>>(),
+                DecoderTrap::Ignore,
+            )
+            .unwrap();
 
         let triangle_count = reader.read_u32::<LittleEndian>().unwrap();
         let mut triangles = None;
@@ -240,10 +270,9 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
     })
 }
 
-fn read_position_keyframes(reader: &mut Read,) -> Vec<CvdPositionKeyFrame> {
-    let count = reader.read_u32::<LittleEndian>().unwrap();
-    
-    if count == 0 {
+fn read_position_keyframes(reader: &mut dyn Read) -> Vec<CvdPositionKeyFrame> {
+    let count = reader.read_i32::<LittleEndian>().unwrap();
+    if count <= 0 {
         return vec![];
     }
 
@@ -265,7 +294,7 @@ fn read_position_keyframes(reader: &mut Read,) -> Vec<CvdPositionKeyFrame> {
         keyframes.push(CvdPositionKeyFrame {
             timestamp,
             unknown1,
-            position: Vec3::new(position_y, position_z, position_x),
+            position: Vec3::new(position_x, position_z, position_y),
             unknown2,
             unknown3,
             unknown4,
@@ -278,17 +307,56 @@ fn read_position_keyframes(reader: &mut Read,) -> Vec<CvdPositionKeyFrame> {
     keyframes
 }
 
+fn read_rotation_keyframes(reader: &mut dyn Read) -> Vec<CvdRotationKeyFrame> {
+    let count = reader.read_i32::<LittleEndian>().unwrap();
+    if count <= 0 {
+        return vec![];
+    }
 
-fn read_unknown_vec(reader: &mut Read, dword_count_in_struct: usize) {
-    let count = reader.read_u32::<LittleEndian>().unwrap();
-    
-    if count == 0 {
+    let unknown_byte = reader.read_u8().unwrap();
+    let mut keyframes = vec![];
+    for _i in 0..count {
+        let timestamp = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown1 = reader.read_f32::<LittleEndian>().unwrap();
+        let rotation1 = reader.read_f32::<LittleEndian>().unwrap();
+        let rotation2 = reader.read_f32::<LittleEndian>().unwrap();
+        let rotation3 = reader.read_f32::<LittleEndian>().unwrap();
+        let rotation4 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown2 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown3 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown4 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown5 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown6 = reader.read_f32::<LittleEndian>().unwrap();
+
+        keyframes.push(CvdRotationKeyFrame {
+            timestamp,
+            unknown1,
+            rotation1,
+            rotation2,
+            rotation3,
+            rotation4,
+            unknown2,
+            unknown3,
+            unknown4,
+            unknown5,
+            unknown6,
+        })
+    }
+
+    keyframes
+}
+
+fn read_unknown_vec(reader: &mut dyn Read, dword_count_in_struct: usize) {
+    let count = reader.read_i32::<LittleEndian>().unwrap();
+    if count <= 0 {
         return;
     }
 
     let unknown_byte = reader.read_u8().unwrap();
     for _i in 0..count {
         let mut data = vec![0.; dword_count_in_struct];
-        reader.read_f32_into::<LittleEndian>(data.as_mut_slice()).unwrap();
+        reader
+            .read_f32_into::<LittleEndian>(data.as_mut_slice())
+            .unwrap();
     }
 }

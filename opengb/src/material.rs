@@ -1,6 +1,5 @@
-use radiance::rendering::{Shader, Material, VertexComponents, Texture};
+use radiance::rendering::{Material, Shader, Texture, VertexComponents};
 use std::path::PathBuf;
-
 
 static LIGHTMAP_TEXTURE_VERT: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/lightmap_texture.vert.spv"));
@@ -10,7 +9,6 @@ pub static WHITE_TEXTURE_FILE: &'static [u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/embed/textures/white.png"
 ));
-
 
 pub struct LightMapShader {}
 
@@ -31,7 +29,6 @@ impl Shader for LightMapShader {
         LIGHTMAP_TEXTURE_FRAG
     }
 }
-    
 
 pub struct LightMapMaterial {
     textures: Vec<Texture>,
@@ -40,13 +37,20 @@ pub struct LightMapMaterial {
 
 impl LightMapMaterial {
     pub fn new(texture_paths: &[PathBuf]) -> Self {
-        let textures: Vec<Texture> = texture_paths.iter().map(|p| {
-            if p.file_stem() == None {
-                Texture::new_with_iamge(image::load_from_memory(&WHITE_TEXTURE_FILE).unwrap().to_rgba())
-            } else {
-                Texture::new(p)
-            }
-        }).collect();
+        let textures: Vec<Texture> = texture_paths
+            .iter()
+            .map(|p| {
+                if p.file_stem() == None {
+                    Texture::new_with_iamge(
+                        image::load_from_memory(&WHITE_TEXTURE_FILE)
+                            .unwrap()
+                            .to_rgba(),
+                    )
+                } else {
+                    Texture::new(p)
+                }
+            })
+            .collect();
         LightMapMaterial {
             textures,
             shader: LightMapShader {},
@@ -56,7 +60,7 @@ impl LightMapMaterial {
 
 impl Material for LightMapMaterial {
     fn name(&self) -> &str {
-        "simple_material"
+        "lightmap_material"
     }
 
     fn shader(&self) -> &dyn Shader {

@@ -1,8 +1,8 @@
-use opengb::loaders::polloader::*;
-use opengb::material::LightMapMaterial;
+use crate::loaders::polloader::*;
+use crate::material::LightMapMaterial;
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{RenderObject, SimpleMaterial, VertexBuffer, VertexComponents};
-use radiance::scene::{CoreEntity, Entity, EntityCallbacks};
+use radiance::scene::{CoreEntity, EntityCallbacks};
 use std::path::PathBuf;
 
 pub struct PolModelEntity {

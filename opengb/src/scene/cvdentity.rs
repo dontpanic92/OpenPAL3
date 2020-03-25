@@ -1,7 +1,7 @@
-use opengb::loaders::cvdloader::*;
+use crate::loaders::cvdloader::*;
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{RenderObject, SimpleMaterial, VertexBuffer, VertexComponents};
-use radiance::scene::{CoreEntity, Entity, EntityCallbacks};
+use radiance::scene::{CoreEntity, EntityCallbacks};
 use std::path::PathBuf;
 
 pub struct CvdModelEntity {
@@ -13,10 +13,13 @@ pub struct CvdModelEntity {
 
 impl CvdModelEntity {
     pub fn new(all_vertices: &Vec<CvdVertex>, material: &CvdMaterial, path: &str, id: u32) -> Self {
-        let dds_name = material.texture_name.split_terminator('.')
-                .next()
-                .unwrap()
-                .to_owned() + ".dds";
+        let dds_name = material
+            .texture_name
+            .split_terminator('.')
+            .next()
+            .unwrap()
+            .to_owned()
+            + ".dds";
         let mut texture_path = PathBuf::from(path);
         texture_path.pop();
         texture_path.push(&dds_name);
@@ -25,7 +28,8 @@ impl CvdModelEntity {
             texture_path.push(&material.texture_name);
         }
 
-        let components = VertexComponents::POSITION /*| VertexComponents::NORMAL*/ | VertexComponents::TEXCOORD;
+        let components =
+            VertexComponents::POSITION /*| VertexComponents::NORMAL*/ | VertexComponents::TEXCOORD;
 
         let mut index_map = std::collections::HashMap::new();
         let mut reversed_index = vec![];
@@ -77,7 +81,7 @@ impl EntityCallbacks for CvdModelEntity {
         entity.add_component(RenderObject::new_with_data(
             self.vertices.clone(),
             self.indices.clone(),
-            Box::new(SimpleMaterial::new(&self.texture_path))
+            Box::new(SimpleMaterial::new(&self.texture_path)),
         ));
     }
 }

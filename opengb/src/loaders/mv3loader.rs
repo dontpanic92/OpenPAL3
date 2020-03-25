@@ -1,9 +1,9 @@
-use std::fs;
-use std::path::Path;
-use std::error::Error;
-use std::io::{Read, BufReader};
-use byteorder::{LittleEndian, ReadBytesExt};
 use super::read_vec;
+use byteorder::{LittleEndian, ReadBytesExt};
+use std::error::Error;
+use std::fs;
+use std::io::{BufReader, Read};
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct Mv3Texture {
@@ -125,7 +125,7 @@ pub fn mv3_load_from_file<P: AsRef<Path>>(path: P) -> Result<Mv3File, Box<dyn Er
 
             for _j in 0..4 {
                 let name_length = reader.read_u32::<LittleEndian>()?;
-                
+
                 let name = if name_length > 0 {
                     read_vec(&mut reader, name_length as usize)?
                 } else {
@@ -183,14 +183,23 @@ fn read_mv3_model(reader: &mut dyn Read) -> Result<Mv3Model, Box<dyn Error>> {
             let z = reader.read_i16::<LittleEndian>()?;
             let normal_phi = reader.read_i8()?;
             let normal_theta = reader.read_u8()?;
-            vertices.push(Mv3Vertex { x, y, z, normal_phi, normal_theta });
+            vertices.push(Mv3Vertex {
+                x,
+                y,
+                z,
+                normal_phi,
+                normal_theta,
+            });
         }
-        frames.push(Mv3Frame { timestamp, vertices});
+        frames.push(Mv3Frame {
+            timestamp,
+            vertices,
+        });
     }
 
     let texcoord_count = reader.read_u32::<LittleEndian>()?;
     let mut texcoords = vec![];
-    
+
     for _i in 0..texcoord_count {
         let u = reader.read_f32::<LittleEndian>()?;
         let v = reader.read_f32::<LittleEndian>()?;
@@ -202,7 +211,6 @@ fn read_mv3_model(reader: &mut dyn Read) -> Result<Mv3Model, Box<dyn Error>> {
     for _i in 0..mesh_count {
         meshes.push(read_mv3_mesh(reader)?);
     }
-
 
     Ok(Mv3Model {
         unknown,
@@ -228,7 +236,10 @@ fn read_mv3_mesh(reader: &mut dyn Read) -> Result<Mv3Mesh, Box<dyn Error>> {
         reader.read_u16_into::<LittleEndian>(&mut indices)?;
         reader.read_u16_into::<LittleEndian>(&mut texcoord_indices)?;
 
-        triangles.push(Mv3Triangle { indices, texcoord_indices })
+        triangles.push(Mv3Triangle {
+            indices,
+            texcoord_indices,
+        })
     }
 
     let unknown_data_count = reader.read_u32::<LittleEndian>()?;

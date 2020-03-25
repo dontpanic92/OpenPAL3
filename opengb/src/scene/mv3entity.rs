@@ -1,7 +1,7 @@
-use opengb::loaders::mv3loader::*;
+use crate::loaders::mv3loader::*;
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{RenderObject, SimpleMaterial, VertexBuffer, VertexComponents};
-use radiance::scene::{CoreEntity, Entity, EntityCallbacks};
+use radiance::scene::{CoreEntity, EntityCallbacks};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -14,7 +14,7 @@ pub struct Mv3ModelEntity {
 }
 
 impl Mv3ModelEntity {
-    pub fn new(path: &String) -> Self {
+    pub fn new(path: &str) -> Self {
         let mv3file = mv3_load_from_file(&path).unwrap();
         let model: &Mv3Model = &mv3file.models[0];
         let mesh: &Mv3Mesh = &model.meshes[0];
