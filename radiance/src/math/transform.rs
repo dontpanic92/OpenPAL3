@@ -1,5 +1,5 @@
 use super::mat::Mat44;
-use super::vec::Vec3;
+use super::{Quaternion, vec::Vec3};
 
 pub struct Transform {
     mat: Mat44,
@@ -31,12 +31,28 @@ impl Transform {
         self.translate_impl(vec, false)
     }
 
-    pub fn rotate_local(&mut self, axis: &Vec3, radian: f32) -> &mut Self {
-        self.rotate_impl(axis, radian, true)
+    pub fn rotate_axis_angle_local(&mut self, axis: &Vec3, radian: f32) -> &mut Self {
+        self.rotate_axis_angle_impl(axis, radian, true)
     }
 
-    pub fn rotate(&mut self, axis: &Vec3, radian: f32) -> &mut Self {
-        self.rotate_impl(axis, radian, false)
+    pub fn rotate_axis_angle(&mut self, axis: &Vec3, radian: f32) -> &mut Self {
+        self.rotate_axis_angle_impl(axis, radian, false)
+    }
+
+    pub fn rotate_quaternion_local(&mut self, quaternion: &Quaternion) -> &mut Self {
+        self.rotate_quaternion_impl(quaternion, true)
+    }
+
+    pub fn rotate_quaternion(&mut self, quaternion: &Quaternion) -> &mut Self {
+        self.rotate_quaternion_impl(quaternion, false)
+    }
+
+    pub fn scale_local(&mut self, scale: &Vec3) -> &mut Self {
+        self.scale_impl(scale, true)
+    }
+
+    pub fn scale(&mut self, scale: &Vec3) -> &mut Self {
+        self.scale_impl(scale, false)
     }
 
     fn translate_impl(&mut self, vec: &Vec3, local: bool) -> &mut Self {
@@ -48,7 +64,7 @@ impl Transform {
         self.apply(&tm, local)
     }
 
-    fn rotate_impl(&mut self, axis: &Vec3, radian: f32, local: bool) -> &mut Self {
+    fn rotate_axis_angle_impl(&mut self, axis: &Vec3, radian: f32, local: bool) -> &mut Self {
         /*
          *	http://en.wikipedia.org/wiki/Rotation_matrix
          *
@@ -82,6 +98,19 @@ impl Transform {
         rm[2][2] = c + cp * z * z;
 
         self.apply(&rm, local)
+    }
+
+    fn rotate_quaternion_impl(&mut self, quaternion: &Quaternion, local: bool) -> &mut Self {
+        self.apply(&quaternion.to_rotate_matrix(), local)
+    }
+
+    fn scale_impl(&mut self, scale: &Vec3, local: bool) -> &mut Self {
+        let mut mat = Mat44::new_identity();
+        mat[0][0] = scale.x;
+        mat[1][1] = scale.y;
+        mat[2][2] = scale.z;
+
+        self.apply(&mat, local)
     }
 
     fn apply(&mut self, mat: &Mat44, local: bool) -> &mut Self {

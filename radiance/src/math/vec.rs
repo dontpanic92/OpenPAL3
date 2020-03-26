@@ -32,6 +32,10 @@ impl Vec3 {
         Vec3 { x, y, z }
     }
 
+    pub fn new_zeros() -> Self {
+        Vec3 { x: 0., y: 0., z: 0. }
+    }
+
     pub fn normalize(&mut self) -> &mut Self {
         *self = Vec3::normalized(self);
         self

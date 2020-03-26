@@ -1,28 +1,54 @@
-use super::Mat44;
+use super::{Vec3, Mat44};
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
-pub struct Quaternion([f32; 4]);
+pub struct Quaternion {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub w: f32,
+}
 
 impl Quaternion {
-    pub fn new() -> Self {
-        Self { 0: [0.; 4] }
+    pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
+        Self { x, y, z, w }
     }
 
-    pub fn new_with(x: f32, y: f32, z: f32, w: f32) -> Self {
-        Self { 0: [x, y, z, w] }
+    pub fn new_zeros() -> Self {
+        Self { x: 0., y: 0., z: 0., w: 0. }
+    }
+
+    pub fn from_axis_angle(axis: &Vec3, angle: f32) -> Self {
+        let half = angle / 2.;
+        let sin_half = half.sin();
+        let cos_half = half.cos();
+
+        Self {
+            x: axis.x * sin_half,
+            y: axis.y * sin_half,
+            z: axis.z * sin_half,
+            w: cos_half,
+        }
+    }
+
+    pub fn inverse(&mut self) -> &mut Self {
+        self.x = -self.x;
+        self.y = -self.y;
+        self.z = -self.z;
+
+        self
     }
 
     pub fn to_rotate_matrix(&self) -> Mat44 {
-        let x2 = self.0[0] * self.0[0];
-        let y2 = self.0[1] * self.0[1];
-        let z2 = self.0[2] * self.0[2];
-        let xy = self.0[0] * self.0[1];
-        let xz = self.0[0] * self.0[2];
-        let yz = self.0[1] * self.0[2];
-        let wx = self.0[3] * self.0[0];
-        let wy = self.0[3] * self.0[1];
-        let wz = self.0[3] * self.0[2];
+        let x2 = self.x * self.x;
+        let y2 = self.y * self.y;
+        let z2 = self.z * self.z;
+        let xy = self.x * self.y;
+        let xz = self.x * self.z;
+        let yz = self.y * self.z;
+        let wx = self.w * self.x;
+        let wy = self.w * self.y;
+        let wz = self.w * self.z;
 
         let mut matrix = Mat44::new_identity();
 
