@@ -66,7 +66,7 @@ impl SceneCallbacks for ScnScene {
     }
 
     fn on_updating<T: SceneCallbacks>(&mut self, scene: &mut CoreScene<T>, delta_sec: f32) {
-        scene.camera_mut().transform_mut().rotate(
+        scene.camera_mut().transform_mut().rotate_axis_angle(
             &Vec3::new(0., 1., 0.),
             0.2 * delta_sec * std::f32::consts::PI,
         );
@@ -123,12 +123,54 @@ fn cvd_add_model_entity<T: SceneCallbacks>(
             println!("frame {}", model.mesh.frames.len());
             for v in &model.mesh.frames {
                 let mut entity = CoreEntity::new(CvdModelEntity::new(v, material, path, id));
-                entity
-                    .transform_mut()
-                    .set_position(position)
-                    .translate_local(&model.position_keyframes[0].position);
+                let mut transform = entity.transform_mut().set_position(position);
+
+                if let Some(p) = model
+                    .position_keyframes
+                    .as_ref()
+                    .and_then(|frame| frame.frames.get(0))
+                    .and_then(|f| Some(&f.position))
+                {
+                    transform.translate_local(p);
+                }
+
+                transform.scale_local(&Vec3::new(
+                    model.scale_factor,
+                    model.scale_factor,
+                    model.scale_factor,
+                ));
+
+                if let Some(q) = model
+                    .rotation_keyframes
+                    .as_ref()
+                    .and_then(|frame| frame.frames.get(0))
+                    .and_then(|f| Some(&f.quaternion))
+                {
+                    let mut q2 = *q;
+                    // q2.w = -q2.w;
+                    transform.rotate_quaternion_local(q);
+                }
+
+                if let Some(s) = model
+                    .scale_keyframes
+                    .as_ref()
+                    .and_then(|frame| frame.frames.get(0))
+                {
+                    let mut q2 = s.quaternion;
+                    // q2.w = -q2.w;
+
+                    let mut q3 = q2;
+                    q3.inverse();
+
+                    transform
+                        .rotate_quaternion_local(&q2)
+                        .scale_local(&s.scale)
+                        .rotate_quaternion_local(&q3);
+                }
+
                 scene.add_entity(entity);
 
+                println!("keyframes {:?}", model.position_keyframes);
                 break;
             }
         }

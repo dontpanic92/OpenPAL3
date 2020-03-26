@@ -44,36 +44,69 @@ pub struct CvdMesh {
 #[derive(Debug)]
 pub struct CvdPositionKeyFrame {
     pub timestamp: f32,
-    pub unknown1: f32,
     pub position: Vec3,
+    pub unknown1: f32,
     pub unknown2: f32,
     pub unknown3: f32,
     pub unknown4: f32,
     pub unknown5: f32,
     pub unknown6: f32,
     pub unknown7: f32,
+    pub unknown8: f32,
+    pub unknown9: f32,
+    pub unknown10: f32,
+}
+
+#[derive(Debug)]
+pub struct CvdPositionKeyFrames {
+    pub version: u8,
+    pub frames: Vec<CvdPositionKeyFrame>,
 }
 
 #[derive(Debug)]
 pub struct CvdRotationKeyFrame {
     pub timestamp: f32,
+    pub quaternion: Quaternion,
     pub unknown1: f32,
-    pub rotation1: f32,
-    pub rotation2: f32,
-    pub rotation3: f32,
-    pub rotation4: f32,
     pub unknown2: f32,
     pub unknown3: f32,
     pub unknown4: f32,
     pub unknown5: f32,
     pub unknown6: f32,
+    pub unknown7: f32,
+    pub unknown8: f32,
+    pub unknown9: f32,
+    pub unknown10: f32,
 }
+
+#[derive(Debug)]
+pub struct CvdRotationKeyFrames {
+    pub version: u8,
+    pub frames: Vec<CvdRotationKeyFrame>,
+}
+
+#[derive(Debug)]
+pub struct CvdScaleKeyFrame {
+    pub timestamp: f32,
+    pub quaternion: Quaternion,
+    pub scale: Vec3,
+    pub unknown: [f32; 14],
+}
+
+#[derive(Debug)]
+pub struct CvdScaleKeyFrames {
+    pub version: u8,
+    pub frames: Vec<CvdScaleKeyFrame>,
+}
+
 
 #[derive(Debug)]
 pub struct CvdModel {
     pub unknown_byte: u8,
-    pub unknown_dword: f32,
-    pub position_keyframes: Vec<CvdPositionKeyFrame>,
+    pub scale_factor: f32,
+    pub position_keyframes: Option<CvdPositionKeyFrames>,
+    pub rotation_keyframes: Option<CvdRotationKeyFrames>,
+    pub scale_keyframes: Option<CvdScaleKeyFrames>,
     pub mesh: CvdMesh,
 }
 
@@ -133,10 +166,10 @@ pub fn cvd_load_model(
     let mut model = None;
     if unknown_byte > 0 {
         let position_keyframes = read_position_keyframes(reader);
-        read_unknown_vec(reader, 11);
-        read_unknown_vec(reader, 15);
+        let rotation_keyframes = read_rotation_keyframes(reader);
+        let scale_keyframes = read_scale_keyframes(reader);
 
-        let unknown_dword = reader.read_f32::<LittleEndian>().unwrap();
+        let scale_factor = reader.read_f32::<LittleEndian>().unwrap();
         let mesh = cvd_load_mesh(reader, unknown_float).unwrap();
 
         let mut mat = Mat44::new_zero();
@@ -148,8 +181,10 @@ pub fn cvd_load_model(
 
         model = Some(CvdModel {
             unknown_byte,
-            unknown_dword,
+            scale_factor,
             position_keyframes,
+            rotation_keyframes,
+            scale_keyframes,
             mesh,
         });
     }
@@ -187,7 +222,7 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
             let py = reader.read_f32::<LittleEndian>().unwrap();
             let pz = reader.read_f32::<LittleEndian>().unwrap();
             vertices.push(CvdVertex {
-                position: Vec3::new(px, pz, py),
+                position: Vec3::new(py,pz, px),
                 normal: Vec3::new(nx, ny, nz),
                 tex_coord: Vec2::new(tx, ty),
             })
@@ -270,93 +305,161 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
     })
 }
 
-fn read_position_keyframes(reader: &mut dyn Read) -> Vec<CvdPositionKeyFrame> {
+fn read_position_keyframes(reader: &mut dyn Read) -> Option<CvdPositionKeyFrames> {
     let count = reader.read_i32::<LittleEndian>().unwrap();
     if count <= 0 {
-        return vec![];
+        return None;
     }
 
-    let unknown_byte = reader.read_u8().unwrap();
-    let mut keyframes = vec![];
+    let version = reader.read_u8().unwrap();
+    let mut frames = vec![];
     for _i in 0..count {
         let timestamp = reader.read_f32::<LittleEndian>().unwrap();
         let unknown1 = reader.read_f32::<LittleEndian>().unwrap();
-        let position_x = reader.read_f32::<LittleEndian>().unwrap();
-        let position_y = reader.read_f32::<LittleEndian>().unwrap();
-        let position_z = reader.read_f32::<LittleEndian>().unwrap();
         let unknown2 = reader.read_f32::<LittleEndian>().unwrap();
         let unknown3 = reader.read_f32::<LittleEndian>().unwrap();
         let unknown4 = reader.read_f32::<LittleEndian>().unwrap();
         let unknown5 = reader.read_f32::<LittleEndian>().unwrap();
         let unknown6 = reader.read_f32::<LittleEndian>().unwrap();
         let unknown7 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown8 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown9 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown10 = reader.read_f32::<LittleEndian>().unwrap();
 
-        keyframes.push(CvdPositionKeyFrame {
+        let mut position;
+        match version {
+            1 => position = Vec3::new(unknown7, unknown8, unknown9),
+            2 => position = Vec3::new(unknown8, unknown9, unknown10),
+            3 => position = Vec3::new(unknown2, unknown3, unknown4),
+            _ => panic!("Unsupported position key frames version: {}", version),
+        }
+
+        std::mem::swap(&mut position.y, &mut position.z);
+        std::mem::swap(&mut position.x, &mut position.z);
+
+        frames.push(CvdPositionKeyFrame {
             timestamp,
+            position,
             unknown1,
-            position: Vec3::new(position_x, position_z, position_y),
             unknown2,
             unknown3,
             unknown4,
             unknown5,
             unknown6,
             unknown7,
+            unknown8,
+            unknown9,
+            unknown10,
         })
     }
 
-    keyframes
+    Some(CvdPositionKeyFrames {
+        version,
+        frames,
+    })
 }
 
-fn read_rotation_keyframes(reader: &mut dyn Read) -> Vec<CvdRotationKeyFrame> {
+fn read_rotation_keyframes(reader: &mut dyn Read) -> Option<CvdRotationKeyFrames> {
     let count = reader.read_i32::<LittleEndian>().unwrap();
     if count <= 0 {
-        return vec![];
+        return None;
     }
 
-    let unknown_byte = reader.read_u8().unwrap();
-    let mut keyframes = vec![];
+    let version = reader.read_u8().unwrap();
+    let mut frames = vec![];
     for _i in 0..count {
         let timestamp = reader.read_f32::<LittleEndian>().unwrap();
         let unknown1 = reader.read_f32::<LittleEndian>().unwrap();
-        let rotation1 = reader.read_f32::<LittleEndian>().unwrap();
-        let rotation2 = reader.read_f32::<LittleEndian>().unwrap();
-        let rotation3 = reader.read_f32::<LittleEndian>().unwrap();
-        let rotation4 = reader.read_f32::<LittleEndian>().unwrap();
         let unknown2 = reader.read_f32::<LittleEndian>().unwrap();
         let unknown3 = reader.read_f32::<LittleEndian>().unwrap();
         let unknown4 = reader.read_f32::<LittleEndian>().unwrap();
         let unknown5 = reader.read_f32::<LittleEndian>().unwrap();
         let unknown6 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown7 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown8 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown9 = reader.read_f32::<LittleEndian>().unwrap();
+        let unknown10 = reader.read_f32::<LittleEndian>().unwrap();
 
-        keyframes.push(CvdRotationKeyFrame {
+        let mut quaternion;
+        match version {
+            1 => quaternion = Quaternion::from_axis_angle(&Vec3::new(unknown7, unknown8, unknown9), unknown10),
+            2 | 3 => quaternion = Quaternion::new(unknown2, unknown3, unknown4, unknown5),
+            _ => panic!("Unsupported position key frames version: {}", version),
+        }
+
+        std::mem::swap(&mut quaternion.y, &mut quaternion.z);
+        std::mem::swap(&mut quaternion.x, &mut quaternion.z);
+
+        frames.push(CvdRotationKeyFrame {
             timestamp,
+            quaternion,
             unknown1,
-            rotation1,
-            rotation2,
-            rotation3,
-            rotation4,
             unknown2,
             unknown3,
             unknown4,
             unknown5,
             unknown6,
+            unknown7,
+            unknown8,
+            unknown9,
+            unknown10,
         })
     }
 
-    keyframes
+    Some(CvdRotationKeyFrames {
+        version,
+        frames,
+    })
 }
 
-fn read_unknown_vec(reader: &mut dyn Read, dword_count_in_struct: usize) {
+fn read_scale_keyframes(reader: &mut dyn Read) -> Option<CvdScaleKeyFrames> {
     let count = reader.read_i32::<LittleEndian>().unwrap();
     if count <= 0 {
-        return;
+        return None;
     }
 
-    let unknown_byte = reader.read_u8().unwrap();
+    let version = reader.read_u8().unwrap();
+    let mut frames = vec![];
     for _i in 0..count {
-        let mut data = vec![0.; dword_count_in_struct];
+        let timestamp = reader.read_f32::<LittleEndian>().unwrap();
+        let mut unknown = [0f32; 14];
         reader
-            .read_f32_into::<LittleEndian>(data.as_mut_slice())
+            .read_f32_into::<LittleEndian>(&mut unknown)
             .unwrap();
+        
+        let mut quaternion;
+        let mut scale;
+        match version {
+            1 => {
+                quaternion = Quaternion::new(unknown[9], unknown[10], unknown[11], unknown[12]);
+                scale = Vec3::new(unknown[6], unknown[7], unknown[8]);
+            }
+            2 => {
+                quaternion = Quaternion::new(unknown[10], unknown[11], unknown[12], unknown[13]);
+                scale = Vec3::new(unknown[7], unknown[8], unknown[9]);
+            }
+            3 => {
+                quaternion = Quaternion::new(unknown[4], unknown[5], unknown[6], unknown[7]);
+                scale = Vec3::new(unknown[1], unknown[2], unknown[3]);
+            }
+            _ => panic!("Unsupported position key frames version: {}", version),
+        }
+
+        std::mem::swap(&mut quaternion.y, &mut quaternion.z);
+        std::mem::swap(&mut quaternion.x, &mut quaternion.z);
+        std::mem::swap(&mut scale.y, &mut scale.z);
+        std::mem::swap(&mut scale.x, &mut scale.z);
+
+        frames.push(CvdScaleKeyFrame {
+            timestamp,
+            quaternion,
+            scale,
+            unknown,
+        })
     }
+
+    Some(CvdScaleKeyFrames {
+        version,
+        frames,
+    })
 }
