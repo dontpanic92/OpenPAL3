@@ -12,7 +12,7 @@ pub struct ScnNode {
     pub name: String,
     pub dw24: u32,
     pub position: Vec3,
-    pub f34: f32,
+    pub rotation: f32,
     pub dw38: Vec<u32>,
     pub node_type: u8,
     pub b49: Vec<u8>,
@@ -90,7 +90,7 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
     let position_x = reader.read_f32::<LittleEndian>().unwrap();
     let position_y = reader.read_f32::<LittleEndian>().unwrap();
     let position_z = reader.read_f32::<LittleEndian>().unwrap();
-    let f34 = reader.read_f32::<LittleEndian>().unwrap();
+    let rotation = reader.read_f32::<LittleEndian>().unwrap();
     let dw38 = read_dw_vec(reader, 4).unwrap();
     let node_type = reader.read_u8().unwrap();
     let b49 = read_vec(reader, 29).unwrap();
@@ -114,7 +114,7 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
         name,
         dw24,
         position: Vec3::new(position_x, position_y, position_z),
-        f34,
+        rotation,
         dw38,
         node_type,
         b49,

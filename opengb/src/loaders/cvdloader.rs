@@ -99,7 +99,6 @@ pub struct CvdScaleKeyFrames {
     pub frames: Vec<CvdScaleKeyFrame>,
 }
 
-
 #[derive(Debug)]
 pub struct CvdModel {
     pub unknown_byte: u8,
@@ -222,7 +221,7 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
             let py = reader.read_f32::<LittleEndian>().unwrap();
             let pz = reader.read_f32::<LittleEndian>().unwrap();
             vertices.push(CvdVertex {
-                position: Vec3::new(py,pz, px),
+                position: Vec3::new(px, pz, py),
                 normal: Vec3::new(nx, ny, nz),
                 tex_coord: Vec2::new(tx, ty),
             })
@@ -335,7 +334,7 @@ fn read_position_keyframes(reader: &mut dyn Read) -> Option<CvdPositionKeyFrames
         }
 
         std::mem::swap(&mut position.y, &mut position.z);
-        std::mem::swap(&mut position.x, &mut position.z);
+        // position.z = -position.z;
 
         frames.push(CvdPositionKeyFrame {
             timestamp,
@@ -353,10 +352,7 @@ fn read_position_keyframes(reader: &mut dyn Read) -> Option<CvdPositionKeyFrames
         })
     }
 
-    Some(CvdPositionKeyFrames {
-        version,
-        frames,
-    })
+    Some(CvdPositionKeyFrames { version, frames })
 }
 
 fn read_rotation_keyframes(reader: &mut dyn Read) -> Option<CvdRotationKeyFrames> {
@@ -382,13 +378,16 @@ fn read_rotation_keyframes(reader: &mut dyn Read) -> Option<CvdRotationKeyFrames
 
         let mut quaternion;
         match version {
-            1 => quaternion = Quaternion::from_axis_angle(&Vec3::new(unknown7, unknown8, unknown9), unknown10),
+            1 => {
+                quaternion =
+                    Quaternion::from_axis_angle(&Vec3::new(unknown7, unknown8, unknown9), unknown10)
+            }
             2 | 3 => quaternion = Quaternion::new(unknown2, unknown3, unknown4, unknown5),
             _ => panic!("Unsupported position key frames version: {}", version),
         }
 
         std::mem::swap(&mut quaternion.y, &mut quaternion.z);
-        std::mem::swap(&mut quaternion.x, &mut quaternion.z);
+        // quaternion.z = -quaternion.z;
 
         frames.push(CvdRotationKeyFrame {
             timestamp,
@@ -406,10 +405,7 @@ fn read_rotation_keyframes(reader: &mut dyn Read) -> Option<CvdRotationKeyFrames
         })
     }
 
-    Some(CvdRotationKeyFrames {
-        version,
-        frames,
-    })
+    Some(CvdRotationKeyFrames { version, frames })
 }
 
 fn read_scale_keyframes(reader: &mut dyn Read) -> Option<CvdScaleKeyFrames> {
@@ -423,10 +419,8 @@ fn read_scale_keyframes(reader: &mut dyn Read) -> Option<CvdScaleKeyFrames> {
     for _i in 0..count {
         let timestamp = reader.read_f32::<LittleEndian>().unwrap();
         let mut unknown = [0f32; 14];
-        reader
-            .read_f32_into::<LittleEndian>(&mut unknown)
-            .unwrap();
-        
+        reader.read_f32_into::<LittleEndian>(&mut unknown).unwrap();
+
         let mut quaternion;
         let mut scale;
         match version {
@@ -446,9 +440,9 @@ fn read_scale_keyframes(reader: &mut dyn Read) -> Option<CvdScaleKeyFrames> {
         }
 
         std::mem::swap(&mut quaternion.y, &mut quaternion.z);
-        std::mem::swap(&mut quaternion.x, &mut quaternion.z);
+        // quaternion.z = -quaternion.z;
         std::mem::swap(&mut scale.y, &mut scale.z);
-        std::mem::swap(&mut scale.x, &mut scale.z);
+        // scale.z = -scale.z;
 
         frames.push(CvdScaleKeyFrame {
             timestamp,
@@ -458,8 +452,5 @@ fn read_scale_keyframes(reader: &mut dyn Read) -> Option<CvdScaleKeyFrames> {
         })
     }
 
-    Some(CvdScaleKeyFrames {
-        version,
-        frames,
-    })
+    Some(CvdScaleKeyFrames { version, frames })
 }

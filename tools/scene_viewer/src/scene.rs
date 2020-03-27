@@ -43,7 +43,12 @@ impl SceneCallbacks for ScnScene {
         let pol_name = self.scn_file.scn_name.clone() + ".pol";
         let pol_path = scn_private_folder.join(pol_name);
         println!("{:?}", pol_path);
-        ScnScene::load_model(pol_path.to_str().unwrap(), scene, &Vec3::new(0., 0., 0.));
+        ScnScene::load_model(
+            pol_path.to_str().unwrap(),
+            scene,
+            &Vec3::new(0., 0., 0.),
+            0.,
+        );
 
         for obj in &self.scn_file.nodes {
             if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
@@ -60,7 +65,12 @@ impl SceneCallbacks for ScnScene {
                     obj_path = item_path.join(&obj.name).join(obj.name.to_owned() + ".pol");
                 }
 
-                ScnScene::load_model(obj_path.to_str().unwrap(), scene, &obj.position);
+                ScnScene::load_model(
+                    obj_path.to_str().unwrap(),
+                    scene,
+                    &obj.position,
+                    obj.rotation.to_radians(),
+                );
             }
         }
     }
@@ -80,11 +90,19 @@ impl ScnScene {
         Self { path, scn_file }
     }
 
-    fn load_model<T: SceneCallbacks>(model_path: &str, scene: &mut CoreScene<T>, position: &Vec3) {
+    fn load_model<T: SceneCallbacks>(
+        model_path: &str,
+        scene: &mut CoreScene<T>,
+        position: &Vec3,
+        rotation: f32,
+    ) {
         println!("{}", model_path);
         if model_path.to_lowercase().ends_with(".mv3") {
             let mut entity = CoreEntity::new(Mv3ModelEntity::new(&model_path));
-            entity.transform_mut().set_position(position);
+            entity
+                .transform_mut()
+                .set_position(position)
+                .rotate_axis_angle_local(&Vec3::UP, rotation);
             scene.add_entity(entity);
         } else if model_path.to_lowercase().ends_with(".pol") {
             let pol = pol_load_from_file(&model_path).unwrap();
@@ -92,14 +110,17 @@ impl ScnScene {
                 for material in &mesh.material_info {
                     let mut entity =
                         CoreEntity::new(PolModelEntity::new(&mesh.vertices, material, &model_path));
-                    entity.transform_mut().set_position(position);
-                    scene.add_entity(entity)
+                    entity
+                        .transform_mut()
+                        .set_position(position)
+                        .rotate_axis_angle_local(&Vec3::UP, rotation);
+                    scene.add_entity(entity);
                 }
             }
         } else if model_path.to_lowercase().ends_with(".cvd") {
             let cvd = cvd_load_from_file(&model_path).unwrap();
             for (i, model) in cvd.models.iter().enumerate() {
-                cvd_add_model_entity(&model, scene, &model_path, i as u32, position);
+                cvd_add_model_entity(&model, scene, &model_path, i as u32, position, rotation);
             }
         } else {
             panic!("Not supported file format");
@@ -113,6 +134,7 @@ fn cvd_add_model_entity<T: SceneCallbacks>(
     path: &str,
     id: u32,
     position: &Vec3,
+    rotation: f32,
 ) {
     if let Some(model) = &model_node.model {
         for material in &model.mesh.materials {
@@ -120,10 +142,12 @@ fn cvd_add_model_entity<T: SceneCallbacks>(
                 continue;
             }
 
-            println!("frame {}", model.mesh.frames.len());
             for v in &model.mesh.frames {
                 let mut entity = CoreEntity::new(CvdModelEntity::new(v, material, path, id));
-                let mut transform = entity.transform_mut().set_position(position);
+                let mut transform = entity
+                    .transform_mut()
+                    .set_position(position)
+                    .rotate_axis_angle_local(&Vec3::UP, rotation);
 
                 if let Some(p) = model
                     .position_keyframes
@@ -147,8 +171,8 @@ fn cvd_add_model_entity<T: SceneCallbacks>(
                     .and_then(|f| Some(&f.quaternion))
                 {
                     let mut q2 = *q;
-                    // q2.w = -q2.w;
-                    transform.rotate_quaternion_local(q);
+                    q2.w = -q2.w;
+                    transform.rotate_quaternion_local(&q2);
                 }
 
                 if let Some(s) = model
@@ -157,7 +181,7 @@ fn cvd_add_model_entity<T: SceneCallbacks>(
                     .and_then(|frame| frame.frames.get(0))
                 {
                     let mut q2 = s.quaternion;
-                    // q2.w = -q2.w;
+                    q2.w = -q2.w;
 
                     let mut q3 = q2;
                     q3.inverse();
@@ -169,8 +193,6 @@ fn cvd_add_model_entity<T: SceneCallbacks>(
                 }
 
                 scene.add_entity(entity);
-
-                println!("keyframes {:?}", model.position_keyframes);
                 break;
             }
         }
@@ -178,7 +200,7 @@ fn cvd_add_model_entity<T: SceneCallbacks>(
 
     if let Some(children) = &model_node.children {
         for child in children {
-            cvd_add_model_entity(child, scene, path, id, &Vec3::new_zeros());
+            cvd_add_model_entity(child, scene, path, id, &Vec3::new_zeros(), rotation);
         }
     }
 }
