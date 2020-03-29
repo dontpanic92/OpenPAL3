@@ -6,6 +6,8 @@ pub struct Transform {
 }
 
 impl Transform {
+    const EPS: f32 = 0.0001;
+
     pub fn new() -> Self {
         Self {
             mat: Mat44::new_identity(),
@@ -53,6 +55,32 @@ impl Transform {
 
     pub fn scale(&mut self, scale: &Vec3) -> &mut Self {
         self.scale_impl(scale, false)
+    }
+
+    pub fn look_at(&mut self, target: &Vec3) -> &mut Self {
+        let position = Vec3::new(self.mat[0][3], self.mat[1][3], self.mat[2][3]);
+        let forward = Vec3::normalized(&Vec3::sub(&position, target));
+        let right = if (forward.y - 1.).abs() <= Self::EPS && forward.x.abs() <= Self::EPS && forward.z.abs() <= Self::EPS {
+            Vec3::new(1., 0., 0.)
+        } else {
+            Vec3::cross(&Vec3::UP, &forward)
+        };
+
+        let up = Vec3::cross(&forward, &right);
+
+        self.mat[0][0] = right.x;
+        self.mat[0][1] = up.x;
+        self.mat[0][2] = forward.x;
+
+        self.mat[1][0] = right.y;
+        self.mat[1][1] = up.y;
+        self.mat[1][2] = forward.y;
+
+        self.mat[2][0] = right.z;
+        self.mat[2][1] = up.z;
+        self.mat[2][2] = forward.z;
+
+        self
     }
 
     fn translate_impl(&mut self, vec: &Vec3, local: bool) -> &mut Self {

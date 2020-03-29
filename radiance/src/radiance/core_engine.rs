@@ -1,5 +1,5 @@
 use crate::rendering::RenderingEngine;
-use crate::scene::{CoreScene, Scene, SceneCallbacks};
+use crate::scene::{CoreScene, Scene, SceneExtension};
 
 pub struct CoreRadianceEngine<TRenderingEngine: RenderingEngine> {
     rendering_engine: TRenderingEngine,
@@ -22,7 +22,7 @@ impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
         self.rendering_engine.scene_loaded(scene_mut);
     }
 
-    pub fn load_scene2<TSceneCallback: 'static + SceneCallbacks>(&mut self, scene: TSceneCallback) {
+    pub fn load_scene2<TSceneExtension: 'static + SceneExtension<TSceneExtension>>(&mut self, scene: TSceneExtension) {
         self.unload_scene();
         let extent = self.rendering_engine.view_extent();
         self.scene = Some(Box::new(CoreScene::new(

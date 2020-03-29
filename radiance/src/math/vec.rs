@@ -28,6 +28,8 @@ pub struct Vec3 {
 }
 
 impl Vec3 {
+    pub const UP: Self = Vec3 { x: 0., y: 1., z: 0. };
+
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Vec3 { x, y, z }
     }
@@ -39,6 +41,14 @@ impl Vec3 {
     pub fn normalize(&mut self) -> &mut Self {
         *self = Vec3::normalized(self);
         self
+    }
+
+    pub fn sub(lhs: &Vec3, rhs: &Vec3) -> Self {
+        Vec3::new(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z)
+    }
+
+    pub fn cross(lhs: &Vec3, rhs: &Vec3) -> Self {
+        Vec3::new(lhs.y * rhs.z - lhs.z * rhs.y, lhs.z * rhs.x - lhs.x * rhs.z, lhs.x * rhs.y - lhs.y * rhs.x)
     }
 
     pub fn normalized(vec: &Vec3) -> Self {

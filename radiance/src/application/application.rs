@@ -8,30 +8,30 @@ use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 use std::time::Instant;
 
-pub trait ApplicationCallbacks {
-    define_callback_fn!(on_initialized, Application, ApplicationCallbacks);
-    define_callback_fn!(
+pub trait ApplicationExtension<TImpl: ApplicationExtension<TImpl>> {
+    define_ext_fn!(on_initialized, Application, TImpl);
+    define_ext_fn!(
         on_updated,
         Application,
-        ApplicationCallbacks,
+        TImpl,
         _delta_sec: f32
     );
 }
 
 mod private {
     pub struct EmptyCallbacks {}
-    impl super::ApplicationCallbacks for EmptyCallbacks {}
+    impl super::ApplicationExtension<EmptyCallbacks> for EmptyCallbacks {}
 }
 pub type DefaultApplication = Application<private::EmptyCallbacks>;
 
-pub struct Application<TCallbacks: ApplicationCallbacks> {
+pub struct Application<TExtension: ApplicationExtension<TExtension>> {
     radiance_engine: CoreRadianceEngine<VulkanRenderingEngine>,
     platform: Platform,
-    callbacks: Rc<RefCell<TCallbacks>>,
+    extension: Rc<RefCell<TExtension>>,
 }
 
-impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
-    pub fn new(callbacks: TCallbacks) -> Self {
+impl<TExtension: ApplicationExtension<TExtension>> Application<TExtension> {
+    pub fn new(extension: TExtension) -> Self {
         set_panic_hook();
         let platform = Platform::new();
         let window = rendering::Window {
@@ -41,7 +41,7 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
             radiance_engine: radiance::create_radiance_engine::<VulkanRenderingEngine>(&window)
                 .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
             platform,
-            callbacks: Rc::new(RefCell::new(callbacks)),
+            extension: Rc::new(RefCell::new(extension)),
         }
     }
 
@@ -49,13 +49,13 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
         &mut self.radiance_engine
     }
 
-    pub fn callbacks_mut(&self) -> RefMut<TCallbacks> {
-        self.callbacks.borrow_mut()
+    pub fn callbacks_mut(&self) -> RefMut<TExtension> {
+        self.extension.borrow_mut()
     }
 
     pub fn initialize(&mut self) {
         self.platform.initialize();
-        callback!(self, on_initialized);
+        ext_call!(self, on_initialized);
     }
 
     pub fn set_title(&mut self, title: &str) {
@@ -80,7 +80,7 @@ impl<TCallbacks: ApplicationCallbacks> Application<TCallbacks> {
             }*/
 
             frame_start_time = frame_end_time;
-            callback!(self, on_updated, elapsed);
+            ext_call!(self, on_updated, elapsed);
 
             self.radiance_engine.update(elapsed);
         }

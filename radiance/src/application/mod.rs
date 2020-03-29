@@ -7,4 +7,4 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows::Platform;
 
-pub use application::{Application, ApplicationCallbacks, DefaultApplication};
+pub use application::{Application, ApplicationExtension, DefaultApplication};

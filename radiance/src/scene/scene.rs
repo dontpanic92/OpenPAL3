@@ -15,25 +15,25 @@ pub trait Scene {
     fn camera_mut(&mut self) -> &mut Camera;
 }
 
-pub trait SceneCallbacks {
-    define_callback_fn!(on_loading, CoreScene, SceneCallbacks);
-    define_callback_fn!(on_loaded, CoreScene, SceneCallbacks);
-    define_callback_fn!(on_updating, CoreScene, SceneCallbacks, _delta_sec: f32);
-    define_callback_fn!(on_updated, CoreScene, SceneCallbacks, _delta_sec: f32);
+pub trait SceneExtension<TImpl: SceneExtension<TImpl>> {
+    define_ext_fn!(on_loading, CoreScene, TImpl);
+    define_ext_fn!(on_loaded, CoreScene, TImpl);
+    define_ext_fn!(on_updating, CoreScene, TImpl, _delta_sec: f32);
+    define_ext_fn!(on_updated, CoreScene, TImpl, _delta_sec: f32);
 }
 
-pub struct CoreScene<TCallbacks: SceneCallbacks> {
+pub struct CoreScene<TExtension: SceneExtension<TExtension>> {
     entities: Vec<Box<dyn Entity>>,
-    callbacks: Rc<RefCell<TCallbacks>>,
+    extension: Rc<RefCell<TExtension>>,
     camera: Camera,
 }
 
-impl<TCallbacks: SceneCallbacks> CoreScene<TCallbacks> {
-    pub fn new(callbacks: TCallbacks, camera_aspect: f32) -> Self {
+impl<TExtension: SceneExtension<TExtension>> CoreScene<TExtension> {
+    pub fn new(ext_calls: TExtension, camera_aspect: f32) -> Self {
         Self {
             entities: vec![],
-            callbacks: Rc::new(RefCell::new(callbacks)),
-            camera: Camera::new(90. * PI / 180., camera_aspect, 0.1, 100000.),
+            extension: Rc::new(RefCell::new(ext_calls)),
+            camera: Camera::new(30. * PI / 180., camera_aspect, 0.1, 100000.),
         }
     }
 
@@ -43,29 +43,29 @@ impl<TCallbacks: SceneCallbacks> CoreScene<TCallbacks> {
 }
 
 mod private {
-    pub struct DefaultCallbacks {}
-    impl super::SceneCallbacks for DefaultCallbacks {}
+    pub struct DefaultExtension {}
+    impl super::SceneExtension<DefaultExtension> for DefaultExtension {}
 }
 
-pub type DefaultScene = CoreScene<private::DefaultCallbacks>;
+pub type DefaultScene = CoreScene<private::DefaultExtension>;
 
-impl<TCallbacks: SceneCallbacks> Scene for CoreScene<TCallbacks> {
+impl<TExtension: SceneExtension<TExtension>> Scene for CoreScene<TExtension> {
     fn load(&mut self) {
-        callback!(self, on_loading);
+        ext_call!(self, on_loading);
         for entity in &mut self.entities {
             entity.load();
         }
 
-        callback!(self, on_loaded);
+        ext_call!(self, on_loaded);
     }
 
     fn update(&mut self, delta_sec: f32) {
-        callback!(self, on_updating, delta_sec);
+        ext_call!(self, on_updating, delta_sec);
         for e in &mut self.entities {
             e.update(delta_sec);
         }
 
-        callback!(self, on_updated, delta_sec);
+        ext_call!(self, on_updated, delta_sec);
     }
 
     fn unload(&mut self) {}
