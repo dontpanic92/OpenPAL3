@@ -177,18 +177,45 @@ impl RenderingEngine for VulkanRenderingEngine {
         }
 
         for entity in scene.entities_mut() {
-            entity.component_do2(
-                TypeId::of::<RenderObject>(),
-                TypeId::of::<VulkanRenderObject>(),
-                &|ro_any, vro_any| {
-                    let ro = ro_any.downcast_mut::<RenderObject>().unwrap();
-                    let vro = vro_any.downcast_mut::<VulkanRenderObject>().unwrap();
+            unsafe {
+                entity.component_do2(
+                    TypeId::of::<RenderObject>(),
+                    TypeId::of::<VulkanRenderObject>(),
+                    &|ro_any, vro_any, ent| {
+                        if ro_any.is_none() {
+                            return;
+                        }
+                        let ro = ro_any.unwrap().downcast_mut::<RenderObject>().unwrap();
 
-                    if ro.is_dirty {
-                        vro.update(ro);
-                    }
-                },
-            );
+                        let vro = if vro_any.is_none() {
+                            let object = VulkanRenderObject::new(
+                                ro,
+                                self.device(),
+                                self.allocator(),
+                                self.command_runner(),
+                                self.dub_manager(),
+                                self.descriptor_manager(),
+                            )
+                            .unwrap();
+
+                            ent.add_component(Box::new(object));
+                            ent.get_component_mut(TypeId::of::<VulkanRenderObject>())
+                                .unwrap()
+                                .downcast_mut::<VulkanRenderObject>()
+                                .unwrap()
+                        } else {
+                            vro_any
+                                .unwrap()
+                                .downcast_mut::<VulkanRenderObject>()
+                                .unwrap()
+                        };
+
+                        if ro.is_dirty {
+                            vro.update(ro);
+                        }
+                    },
+                );
+            }
         }
 
         self.dub_manager().update_do(|updater| {

@@ -1,5 +1,5 @@
 use super::mat::Mat44;
-use super::{Quaternion, vec::Vec3};
+use super::{vec::Vec3, Quaternion};
 
 pub struct Transform {
     mat: Mat44,
@@ -60,7 +60,10 @@ impl Transform {
     pub fn look_at(&mut self, target: &Vec3) -> &mut Self {
         let position = Vec3::new(self.mat[0][3], self.mat[1][3], self.mat[2][3]);
         let forward = Vec3::normalized(&Vec3::sub(&position, target));
-        let right = if (forward.y - 1.).abs() <= Self::EPS && forward.x.abs() <= Self::EPS && forward.z.abs() <= Self::EPS {
+        let right = if (forward.y - 1.).abs() <= Self::EPS
+            && forward.x.abs() <= Self::EPS
+            && forward.z.abs() <= Self::EPS
+        {
             Vec3::new(1., 0., 0.)
         } else {
             Vec3::cross(&Vec3::UP, &forward)

@@ -22,12 +22,17 @@ impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
         self.rendering_engine.scene_loaded(scene_mut);
     }
 
-    pub fn load_scene2<TSceneExtension: 'static + SceneExtension<TSceneExtension>>(&mut self, scene: TSceneExtension) {
+    pub fn load_scene2<TSceneExtension: 'static + SceneExtension<TSceneExtension>>(
+        &mut self,
+        scene: TSceneExtension,
+        fov: f32,
+    ) {
         self.unload_scene();
         let extent = self.rendering_engine.view_extent();
         self.scene = Some(Box::new(CoreScene::new(
             scene,
             extent.0 as f32 / extent.1 as f32,
+            fov,
         )));
         let scene_mut = self.scene.as_mut().unwrap().as_mut();
         scene_mut.load();
@@ -41,6 +46,10 @@ impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
         }
 
         self.scene = None;
+    }
+
+    pub fn current_scene_mut(&mut self) -> Option<&mut Box<dyn Scene>> {
+        self.scene.as_mut()
     }
 
     pub fn update(&mut self, delta_sec: f32) {

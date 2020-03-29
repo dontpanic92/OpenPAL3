@@ -10,12 +10,7 @@ use std::time::Instant;
 
 pub trait ApplicationExtension<TImpl: ApplicationExtension<TImpl>> {
     define_ext_fn!(on_initialized, Application, TImpl);
-    define_ext_fn!(
-        on_updated,
-        Application,
-        TImpl,
-        _delta_sec: f32
-    );
+    define_ext_fn!(on_updating, Application, TImpl, _delta_sec: f32);
 }
 
 mod private {
@@ -80,7 +75,7 @@ impl<TExtension: ApplicationExtension<TExtension>> Application<TExtension> {
             }*/
 
             frame_start_time = frame_end_time;
-            ext_call!(self, on_updated, elapsed);
+            ext_call!(self, on_updating, elapsed);
 
             self.radiance_engine.update(elapsed);
         }

@@ -1,4 +1,4 @@
-use super::{Vec3, Mat44};
+use super::{Mat44, Vec3};
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -15,7 +15,12 @@ impl Quaternion {
     }
 
     pub fn new_zeros() -> Self {
-        Self { x: 0., y: 0., z: 0., w: 0. }
+        Self {
+            x: 0.,
+            y: 0.,
+            z: 0.,
+            w: 0.,
+        }
     }
 
     pub fn from_axis_angle(axis: &Vec3, angle: f32) -> Self {

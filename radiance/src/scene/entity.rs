@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub trait Entity {
+    fn name(&self) -> &str;
+    fn set_name(&mut self, name: &str);
     fn load(&mut self);
     fn update(&mut self, delta_sec: f32);
     fn transform(&self) -> &Transform;
@@ -12,11 +14,11 @@ pub trait Entity {
     fn add_component(&mut self, component: Box<dyn Any>);
     fn get_component(&self, type_id: TypeId) -> Option<&dyn Any>;
     fn get_component_mut(&mut self, type_id: TypeId) -> Option<&mut dyn Any>;
-    fn component_do2(
+    unsafe fn component_do2(
         &mut self,
         type_id1: TypeId,
         type_id2: TypeId,
-        action: &dyn Fn(&mut dyn Any, &mut dyn Any),
+        action: &dyn Fn(Option<&mut dyn Any>, Option<&mut dyn Any>, &mut dyn Entity),
     ) -> Option<()>;
 }
 
@@ -26,14 +28,16 @@ pub trait EntityCallbacks {
 }
 
 pub struct CoreEntity<TCallbacks: EntityCallbacks> {
+    name: String,
     transform: Transform,
     components: HashMap<TypeId, Vec<Box<dyn Any>>>,
     callbacks: Rc<RefCell<TCallbacks>>,
 }
 
 impl<TCallbacks: EntityCallbacks> CoreEntity<TCallbacks> {
-    pub fn new(callbacks: TCallbacks) -> Self {
+    pub fn new(callbacks: TCallbacks, name: &str) -> Self {
         Self {
+            name: name.to_owned(),
             transform: Transform::new(),
             components: HashMap::new(),
             callbacks: Rc::new(RefCell::new(callbacks)),
@@ -80,13 +84,20 @@ where
     T: 'static,
 {
     let type_id = TypeId::of::<T>();
-    let component = entity.get_component(type_id);
-    let a = component.unwrap();
-    let x = a.downcast_ref::<T>().unwrap();
-    Some(x)
+    entity
+        .get_component(type_id)
+        .and_then(|component| component.downcast_ref::<T>())
 }
 
 impl<TCallbacks: EntityCallbacks> Entity for CoreEntity<TCallbacks> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn set_name(&mut self, name: &str) {
+        self.name = name.to_owned();
+    }
+
     fn load(&mut self) {
         callback!(self, on_loading);
     }
@@ -135,17 +146,18 @@ impl<TCallbacks: EntityCallbacks> Entity for CoreEntity<TCallbacks> {
             .and_then(|v| Some(v[0].as_mut()))
     }
 
-    fn component_do2(
+    unsafe fn component_do2(
         &mut self,
         type_id1: TypeId,
         type_id2: TypeId,
-        action: &dyn Fn(&mut dyn Any, &mut dyn Any),
+        action: &dyn Fn(Option<&mut dyn Any>, Option<&mut dyn Any>, &mut dyn Entity),
     ) -> Option<()> {
-        let component1 = unsafe { &mut *(Entity::get_component_mut(self, type_id1)? as *mut _) };
+        let component1 =
+            Entity::get_component_mut(self, type_id1).and_then(|c| Some(&mut *(c as *mut _)));
+        let component2 =
+            Entity::get_component_mut(self, type_id2).and_then(|c| Some(&mut *(c as *mut _)));
 
-        let component2 = unsafe { &mut *(Entity::get_component_mut(self, type_id2)? as *mut _) };
-
-        action(component1, component2);
+        action(component1, component2, self);
         Some(())
     }
 }
