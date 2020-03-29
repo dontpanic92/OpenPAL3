@@ -1,6 +1,6 @@
+pub mod application;
+pub mod director;
 pub mod loaders;
 pub mod material;
-pub mod scene;
-pub mod director;
-pub mod application;
 pub mod resource_manager;
+pub mod scene;

@@ -4,14 +4,14 @@ use opengb::scene::PolModelEntity;
 use opengb::loaders::cvdloader::*;
 use opengb::loaders::polloader::*;
 use radiance::math::Vec3;
-use radiance::scene::{CoreEntity, CoreScene, Entity, Scene, SceneCallbacks};
+use radiance::scene::{CoreEntity, CoreScene, Entity, Scene, SceneExtension};
 
 pub struct ModelViewerScene {
     pub path: String,
 }
 
-impl SceneCallbacks for ModelViewerScene {
-    fn on_loading<T: SceneCallbacks>(&mut self, scene: &mut CoreScene<T>) {
+impl SceneExtension<ModelViewerScene> for ModelViewerScene {
+    fn on_loading(&mut self, scene: &mut CoreScene<ModelViewerScene>) {
         scene
             .camera_mut()
             .transform_mut()
@@ -39,7 +39,7 @@ impl SceneCallbacks for ModelViewerScene {
         }
     }
 
-    fn on_updating<T: SceneCallbacks>(&mut self, scene: &mut CoreScene<T>, delta_sec: f32) {
+    fn on_updating(&mut self, scene: &mut CoreScene<ModelViewerScene>, delta_sec: f32) {
         scene.camera_mut().transform_mut().rotate_axis_angle(
             &Vec3::new(0., 1., 0.),
             0.2 * delta_sec * std::f32::consts::PI,
@@ -47,9 +47,9 @@ impl SceneCallbacks for ModelViewerScene {
     }
 }
 
-fn cvd_add_model_entity<T: SceneCallbacks>(
+fn cvd_add_model_entity(
     model_node: &CvdModelNode,
-    scene: &mut CoreScene<T>,
+    scene: &mut CoreScene<ModelViewerScene>,
     path: &str,
     id: u32,
 ) {

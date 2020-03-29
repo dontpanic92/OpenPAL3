@@ -14,7 +14,7 @@ pub struct Mv3ModelEntity {
 }
 
 impl Mv3ModelEntity {
-    pub fn new(path: &str) -> Self {
+    pub fn new_from_file(path: &str) -> Self {
         let mv3file = mv3_load_from_file(&path).unwrap();
         let model: &Mv3Model = &mv3file.models[0];
         let mesh: &Mv3Mesh = &model.meshes[0];

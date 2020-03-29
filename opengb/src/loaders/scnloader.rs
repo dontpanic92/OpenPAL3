@@ -8,9 +8,11 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct ScnNode {
-    pub d0: u32,
+    pub w0: u16,
+    pub w2: u16,
     pub name: String,
-    pub dw24: u32,
+    pub w24: u16,
+    pub w26: u16,
     pub position: Vec3,
     pub rotation: f32,
     pub dw38: Vec<u32>,
@@ -29,11 +31,37 @@ pub struct ScnNode {
 }
 
 #[derive(Debug)]
+pub struct ScnRole {
+    index: u8,
+    b1: u8,
+    name: String,
+    w42: u16,
+    dw44: u32,
+    dw48: u32,
+    f4c: f32,
+    f50: f32,
+    dw54: u32,
+    dw58: u32,
+    dw5c: u32,
+    dw60: u32,
+    action_name: String,
+    dw74: u32,
+    dw78: u32,
+    dw7c: u32,
+    b80: Vec<u8>,
+    dw84: Vec<u32>,
+    dw148: u32,
+    dw14c: u32,
+    dw150: u32,
+    dw154: Vec<u32>,
+}
+
+#[derive(Debug)]
 pub struct ScnFile {
     pub cpk_name: String,
     pub scn_name: String,
     pub scn_base_name: String,
-    pub unknown_data: Vec<Vec<u8>>,
+    pub roles: Vec<ScnRole>,
     pub nodes: Vec<ScnNode>,
 }
 
@@ -52,8 +80,8 @@ pub fn scn_load_from_file<P: AsRef<Path>>(path: P) -> ScnFile {
         panic!("Not a valid scn file");
     }
 
-    let unknown_data_num = reader.read_u16::<LittleEndian>().unwrap();
-    let unknown_data_offset = reader.read_u32::<LittleEndian>().unwrap();
+    let role_num = reader.read_u16::<LittleEndian>().unwrap();
+    let role_offset = reader.read_u32::<LittleEndian>().unwrap();
     let node_num = reader.read_u16::<LittleEndian>().unwrap();
     let node_offset = reader.read_u32::<LittleEndian>().unwrap();
 
@@ -61,13 +89,11 @@ pub fn scn_load_from_file<P: AsRef<Path>>(path: P) -> ScnFile {
     let scn_name = read_string(&mut reader, 32).unwrap();
     let scn_base_name = read_string(&mut reader, 32).unwrap();
 
-    let mut unknown_data = vec![];
-    reader
-        .seek(SeekFrom::Start(unknown_data_offset as u64))
-        .unwrap();
-    for _i in 0..unknown_data_num {
-        let v = read_vec(&mut reader, 456).unwrap();
-        unknown_data.push(v);
+    let mut roles = vec![];
+    reader.seek(SeekFrom::Start(role_offset as u64)).unwrap();
+    for _i in 0..role_num {
+        let v = read_scn_role(&mut reader);
+        roles.push(v);
     }
 
     let mut nodes = vec![];
@@ -81,15 +107,66 @@ pub fn scn_load_from_file<P: AsRef<Path>>(path: P) -> ScnFile {
         cpk_name,
         scn_name,
         scn_base_name,
-        unknown_data,
+        roles,
         nodes,
+    }
+}
+fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
+    let index = reader.read_u8().unwrap();
+    let b1 = reader.read_u8().unwrap();
+    let name = read_string(reader, 64).unwrap();
+    let w42 = reader.read_u16::<LittleEndian>().unwrap();
+    let dw44 = reader.read_u32::<LittleEndian>().unwrap();
+    let dw48 = reader.read_u32::<LittleEndian>().unwrap();
+    let f4c = reader.read_f32::<LittleEndian>().unwrap();
+    let f50 = reader.read_f32::<LittleEndian>().unwrap();
+    let dw54 = reader.read_u32::<LittleEndian>().unwrap();
+    let dw58 = reader.read_u32::<LittleEndian>().unwrap();
+    let dw5c = reader.read_u32::<LittleEndian>().unwrap();
+    let dw60 = reader.read_u32::<LittleEndian>().unwrap();
+    let action_name = read_string(reader, 16).unwrap();
+    let dw74 = reader.read_u32::<LittleEndian>().unwrap();
+    let dw78 = reader.read_u32::<LittleEndian>().unwrap();
+    let dw7c = reader.read_u32::<LittleEndian>().unwrap();
+    let b80 = read_vec(reader, 4).unwrap();
+    let dw84 = read_dw_vec(reader, 49).unwrap();
+    let dw148 = reader.read_u32::<LittleEndian>().unwrap();
+    let dw14c = reader.read_u32::<LittleEndian>().unwrap();
+    let dw150 = reader.read_u32::<LittleEndian>().unwrap();
+    let dw154 = read_dw_vec(reader, 29).unwrap();
+
+    ScnRole {
+        index,
+        b1,
+        name,
+        w42,
+        dw44,
+        dw48,
+        f4c,
+        f50,
+        dw54,
+        dw58,
+        dw5c,
+        dw60,
+        action_name,
+        dw74,
+        dw78,
+        dw7c,
+        b80,
+        dw84,
+        dw148,
+        dw14c,
+        dw150,
+        dw154,
     }
 }
 
 fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
-    let d0 = reader.read_u32::<LittleEndian>().unwrap();
+    let w0 = reader.read_u16::<LittleEndian>().unwrap();
+    let w2 = reader.read_u16::<LittleEndian>().unwrap();
     let name = read_string(reader, 32).unwrap();
-    let dw24 = reader.read_u32::<LittleEndian>().unwrap();
+    let w24 = reader.read_u16::<LittleEndian>().unwrap();
+    let w26 = reader.read_u16::<LittleEndian>().unwrap();
     let position_x = reader.read_f32::<LittleEndian>().unwrap();
     let position_y = reader.read_f32::<LittleEndian>().unwrap();
     let position_z = reader.read_f32::<LittleEndian>().unwrap();
@@ -113,9 +190,11 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
     let b = read_vec(reader, 208).unwrap();
 
     ScnNode {
-        d0,
+        w0,
+        w2,
         name,
-        dw24,
+        w24,
+        w26,
         position: Vec3::new(position_x, position_y, position_z),
         rotation,
         dw38,

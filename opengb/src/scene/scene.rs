@@ -18,25 +18,33 @@ impl SceneExtension<ScnScene> for ScnScene {
         scene
             .camera_mut()
             .transform_mut()
-            .set_position(&Vec3::new(308.31,229.44,468.61))
-            .rotate_axis_angle_local(&Vec3::UP,33.24_f32.to_radians())
+            .set_position(&Vec3::new(308.31, 229.44, 468.61))
+            .rotate_axis_angle_local(&Vec3::UP, 33.24_f32.to_radians())
             .rotate_axis_angle_local(&Vec3::new(1., 0., 0.), -19.48_f32.to_radians());
-        
-        load_scene(scene, &self.path, &self.scn_file);
+
+        load_scene(scene, &self.path, &self.scn_file, false);
     }
 
-    fn on_updating(&mut self, scene: &mut CoreScene<ScnScene>, delta_sec: f32) {
-    }
+    fn on_updating(&mut self, scene: &mut CoreScene<ScnScene>, delta_sec: f32) {}
 }
 
 impl ScnScene {
     pub fn new(path: &Path) -> Self {
         let scn_file = scn_load_from_file(path);
-        Self { path: path.to_str().unwrap().to_owned(), scn_file }
+        println!("{:?}", scn_file);
+        Self {
+            path: path.to_str().unwrap().to_owned(),
+            scn_file,
+        }
     }
 }
 
-pub fn load_scene<T: SceneExtension<T>>(scene: &mut CoreScene<T>, path: &str, scn_file: &ScnFile) {
+pub fn load_scene<T: SceneExtension<T>>(
+    scene: &mut CoreScene<T>,
+    path: &str,
+    scn_file: &ScnFile,
+    load_objects: bool,
+) {
     let scn_path = PathBuf::from(&path);
     let scn_private_folder = scn_path.parent().unwrap().join(&scn_file.scn_base_name);
     let object_path = scn_path
@@ -62,11 +70,17 @@ pub fn load_scene<T: SceneExtension<T>>(scene: &mut CoreScene<T>, path: &str, sc
     println!("{:?}", pol_path);
     load_model(
         pol_path.to_str().unwrap(),
+        "_ground",
         scene,
         &Vec3::new(0., 0., 0.),
         0.,
     );
 
+    if !load_objects {
+        return;
+    }
+
+    let mut i = 0;
     for obj in &scn_file.nodes {
         if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
             println!("nodetype {} name {}", obj.node_type, &obj.name);
@@ -84,23 +98,27 @@ pub fn load_scene<T: SceneExtension<T>>(scene: &mut CoreScene<T>, path: &str, sc
 
             load_model(
                 obj_path.to_str().unwrap(),
+                &format!("object_{}", i),
                 scene,
                 &obj.position,
                 obj.rotation.to_radians(),
             );
+
+            i += 1;
         }
     }
 }
 
 fn load_model<T: SceneExtension<T>>(
     model_path: &str,
+    name: &str,
     scene: &mut CoreScene<T>,
     position: &Vec3,
     rotation: f32,
 ) {
     println!("{}", model_path);
     if model_path.to_lowercase().ends_with(".mv3") {
-        let mut entity = CoreEntity::new(Mv3ModelEntity::new(&model_path));
+        let mut entity = CoreEntity::new(Mv3ModelEntity::new_from_file(&model_path), name);
         entity
             .transform_mut()
             .set_position(position)
@@ -108,21 +126,34 @@ fn load_model<T: SceneExtension<T>>(
         scene.add_entity(entity);
     } else if model_path.to_lowercase().ends_with(".pol") {
         let pol = pol_load_from_file(&model_path).unwrap();
+        let mut i = 0;
         for mesh in &pol.meshes {
             for material in &mesh.material_info {
-                let mut entity =
-                    CoreEntity::new(PolModelEntity::new(&mesh.vertices, material, &model_path));
+                let mut entity = CoreEntity::new(
+                    PolModelEntity::new(&mesh.vertices, material, &model_path),
+                    &format!("{}_{}", name, i),
+                );
                 entity
                     .transform_mut()
                     .set_position(position)
                     .rotate_axis_angle_local(&Vec3::UP, rotation);
                 scene.add_entity(entity);
+
+                i += 1;
             }
         }
     } else if model_path.to_lowercase().ends_with(".cvd") {
         let cvd = cvd_load_from_file(&model_path).unwrap();
         for (i, model) in cvd.models.iter().enumerate() {
-            cvd_add_model_entity(&model, scene, &model_path, i as u32, position, rotation);
+            cvd_add_model_entity(
+                &model,
+                name,
+                scene,
+                &model_path,
+                i as u32,
+                position,
+                rotation,
+            );
         }
     } else {
         panic!("Not supported file format");
@@ -131,6 +162,7 @@ fn load_model<T: SceneExtension<T>>(
 
 fn cvd_add_model_entity<T: SceneExtension<T>>(
     model_node: &CvdModelNode,
+    name: &str,
     scene: &mut CoreScene<T>,
     path: &str,
     id: u32,
@@ -144,7 +176,10 @@ fn cvd_add_model_entity<T: SceneExtension<T>>(
             }
 
             for v in &model.mesh.frames {
-                let mut entity = CoreEntity::new(CvdModelEntity::new(v, material, path, id));
+                let mut entity = CoreEntity::new(
+                    CvdModelEntity::new(v, material, path, id),
+                    &format!("{}_{}", name, id),
+                );
                 let mut transform = entity
                     .transform_mut()
                     .set_position(position)
@@ -201,7 +236,7 @@ fn cvd_add_model_entity<T: SceneExtension<T>>(
 
     if let Some(children) = &model_node.children {
         for child in children {
-            cvd_add_model_entity(child, scene, path, id, &Vec3::new_zeros(), rotation);
+            cvd_add_model_entity(child, name, scene, path, id, &Vec3::new_zeros(), rotation);
         }
     }
 }

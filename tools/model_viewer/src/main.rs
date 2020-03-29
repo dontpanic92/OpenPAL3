@@ -1,7 +1,7 @@
 mod scene;
 
 use nfd::Response;
-use radiance::application;
+use radiance::application::{Application, ApplicationExtension};
 use radiance::application::utils::FpsCounter;
 
 struct ApplicationCallbacks {
@@ -9,19 +9,19 @@ struct ApplicationCallbacks {
     fps_counter: FpsCounter,
 }
 
-impl application::ApplicationCallbacks for ApplicationCallbacks {
-    fn on_initialized<T: application::ApplicationCallbacks>(
+impl ApplicationExtension<ApplicationCallbacks> for ApplicationCallbacks {
+    fn on_initialized(
         &mut self,
-        app: &mut application::Application<T>,
+        app: &mut Application<ApplicationCallbacks>,
     ) {
         app.engine_mut().load_scene2(scene::ModelViewerScene {
             path: self.path.clone(),
-        });
+        }, 90.);
     }
 
-    fn on_updated<T: application::ApplicationCallbacks>(
+    fn on_updated(
         &mut self,
-        app: &mut application::Application<T>,
+        app: &mut Application<ApplicationCallbacks>,
         delta_sec: f32,
     ) {
         let fps = self.fps_counter.update_fps(delta_sec);
@@ -50,7 +50,7 @@ fn main() {
         Response::Cancel => std::process::exit(0),
     };
 
-    let mut application = application::Application::new(ApplicationCallbacks::new(path));
+    let mut application = Application::new(ApplicationCallbacks::new(path));
     application.initialize();
     application.run();
 }

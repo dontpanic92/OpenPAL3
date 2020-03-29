@@ -1,7 +1,7 @@
-use crate::scene::ScnScene;
+use crate::loaders::cvdloader::*;
 use crate::loaders::mv3loader::*;
 use crate::loaders::polloader::*;
-use crate::loaders::cvdloader::*;
+use crate::scene::ScnScene;
 use std::path::{Path, PathBuf};
 
 pub struct ResourceManager {
@@ -24,16 +24,40 @@ impl ResourceManager {
     }
 
     pub fn load_scn(&self, cpk_name: &str, scn_name: &str) -> ScnScene {
-        ScnScene::new(&self.scene_path.join(cpk_name).join(String::from(scn_name) + ".scn"))
+        ScnScene::new(
+            &self
+                .scene_path
+                .join(cpk_name)
+                .join(String::from(scn_name) + ".scn"),
+        )
     }
 
     // TODO: Return an entity
     pub fn load_mv3(&self, role_name: &str, action_name: &str) -> Mv3File {
-        mv3_load_from_file(self.basedata_path.join("ROLE").join(role_name).join(String::from(action_name) + ".mv3")).unwrap()
+        mv3_load_from_file(
+            self.basedata_path
+                .join("ROLE")
+                .join(role_name)
+                .join(String::from(action_name) + ".mv3"),
+        )
+        .unwrap()
+    }
+
+    pub fn mv3_path(&self, role_name: &str, action_name: &str) -> PathBuf {
+        self.basedata_path
+            .join("ROLE")
+            .join(role_name)
+            .join(String::from(action_name) + ".mv3")
     }
 
     pub fn load_scn_pol(&self, cpk_name: &str, scn_name: &str, pol_name: &str) -> PolFile {
-        pol_load_from_file(self.scene_path.join(cpk_name).join(scn_name).join(String::from(pol_name) + ".pol")).unwrap()
+        pol_load_from_file(
+            self.scene_path
+                .join(cpk_name)
+                .join(scn_name)
+                .join(String::from(pol_name) + ".pol"),
+        )
+        .unwrap()
     }
 
     pub fn load_object_item_pol(&self, obj_name: &str) -> PolFile {
@@ -48,7 +72,10 @@ impl ResourceManager {
         if obj_name.contains('.') {
             self.basedata_path.join("object").join(&obj_name)
         } else {
-            self.basedata_path.join("item").join(&obj_name).join(obj_name.to_owned() + ".pol")
+            self.basedata_path
+                .join("item")
+                .join(&obj_name)
+                .join(obj_name.to_owned() + ".pol")
         }
     }
 }
