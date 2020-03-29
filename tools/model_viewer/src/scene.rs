@@ -40,7 +40,7 @@ impl SceneCallbacks for ModelViewerScene {
     }
 
     fn on_updating<T: SceneCallbacks>(&mut self, scene: &mut CoreScene<T>, delta_sec: f32) {
-        scene.camera_mut().transform_mut().rotate(
+        scene.camera_mut().transform_mut().rotate_axis_angle(
             &Vec3::new(0., 1., 0.),
             0.2 * delta_sec * std::f32::consts::PI,
         );
@@ -69,7 +69,7 @@ fn cvd_add_model_entity<T: SceneCallbacks>(
                 ));
                 entity
                     .transform_mut()
-                    .translate_local(&model.position_keyframes[0].position);
+                    .translate_local(&model.position_keyframes.as_ref().unwrap().frames[0].position);
                 scene.add_entity(entity);
 
                 break;

@@ -6,3 +6,4 @@ mod scene;
 pub use cvdentity::CvdModelEntity;
 pub use mv3entity::Mv3ModelEntity;
 pub use polentity::PolModelEntity;
+pub use scene::{load_scene, ScnScene};

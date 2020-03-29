@@ -32,6 +32,7 @@ pub struct ScnNode {
 pub struct ScnFile {
     pub cpk_name: String,
     pub scn_name: String,
+    pub scn_base_name: String,
     pub unknown_data: Vec<Vec<u8>>,
     pub nodes: Vec<ScnNode>,
 }
@@ -57,7 +58,8 @@ pub fn scn_load_from_file<P: AsRef<Path>>(path: P) -> ScnFile {
     let node_offset = reader.read_u32::<LittleEndian>().unwrap();
 
     let cpk_name = read_string(&mut reader, 32).unwrap();
-    let scn_name = read_string(&mut reader, 64).unwrap();
+    let scn_name = read_string(&mut reader, 32).unwrap();
+    let scn_base_name = read_string(&mut reader, 32).unwrap();
 
     let mut unknown_data = vec![];
     reader
@@ -78,6 +80,7 @@ pub fn scn_load_from_file<P: AsRef<Path>>(path: P) -> ScnFile {
     ScnFile {
         cpk_name,
         scn_name,
+        scn_base_name,
         unknown_data,
         nodes,
     }
