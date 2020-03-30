@@ -1,10 +1,9 @@
 use super::{read_dw_vec, read_f32_vec, read_string, read_vec, read_w_vec};
 use byteorder::{LittleEndian, ReadBytesExt};
 use radiance::math::Vec3;
-use std::error::Error;
 use std::fs;
 use std::io::{BufReader, Read, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct ScnNode {

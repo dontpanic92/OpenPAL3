@@ -2,8 +2,8 @@ use crate::loaders::cvdloader::*;
 use crate::loaders::polloader::*;
 use crate::loaders::scnloader::*;
 use crate::scene::CvdModelEntity;
-use crate::scene::Mv3ModelEntity;
 use crate::scene::PolModelEntity;
+use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity};
 use radiance::math::Vec3;
 use radiance::scene::{CoreEntity, CoreScene, Entity, Scene, SceneExtension};
 use std::path::{Path, PathBuf};
@@ -15,13 +15,6 @@ pub struct ScnScene {
 
 impl SceneExtension<ScnScene> for ScnScene {
     fn on_loading(&mut self, scene: &mut CoreScene<ScnScene>) {
-        scene
-            .camera_mut()
-            .transform_mut()
-            .set_position(&Vec3::new(308.31, 229.44, 468.61))
-            .rotate_axis_angle_local(&Vec3::UP, 33.24_f32.to_radians())
-            .rotate_axis_angle_local(&Vec3::new(1., 0., 0.), -19.48_f32.to_radians());
-
         load_scene(scene, &self.path, &self.scn_file, false);
     }
 
@@ -118,7 +111,10 @@ fn load_model<T: SceneExtension<T>>(
 ) {
     println!("{}", model_path);
     if model_path.to_lowercase().ends_with(".mv3") {
-        let mut entity = CoreEntity::new(Mv3ModelEntity::new_from_file(&model_path), name);
+        let mut entity = CoreEntity::new(
+            Mv3ModelEntity::new_from_file(&model_path, Mv3AnimRepeatMode::REPEAT),
+            name,
+        );
         entity
             .transform_mut()
             .set_position(position)

@@ -1,4 +1,4 @@
-use crate::{director::SceDirector, resource_manager::ResourceManager, scene::ScnScene};
+use crate::{director::SceDirector, resource_manager::ResourceManager};
 use radiance::application::utils::FpsCounter;
 use radiance::application::{Application, ApplicationExtension};
 use std::path::{Path, PathBuf};
@@ -24,7 +24,7 @@ impl ApplicationExtension<OpenGbApplication> for OpenGbApplication {
         let fps = self.fps_counter.update_fps(delta_sec);
 
         self.sce_director
-            .update(app.engine_mut().current_scene_mut().unwrap());
+            .update(app.engine_mut().current_scene_mut().unwrap(), delta_sec);
     }
 }
 

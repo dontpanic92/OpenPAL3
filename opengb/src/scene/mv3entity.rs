@@ -5,16 +5,23 @@ use radiance::scene::{CoreEntity, EntityCallbacks};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+#[derive(PartialEq)]
+pub enum Mv3AnimRepeatMode {
+    NO_REPEAT,
+    REPEAT,
+}
+
 pub struct Mv3ModelEntity {
     texture_path: PathBuf,
     vertices: Vec<VertexBuffer>,
     indices: Vec<u32>,
     anim_timestamps: Vec<u32>,
     last_anim_time: u32,
+    repeat_mode: Mv3AnimRepeatMode,
 }
 
 impl Mv3ModelEntity {
-    pub fn new_from_file(path: &str) -> Self {
+    pub fn new_from_file(path: &str, anim_repeat_mode: Mv3AnimRepeatMode) -> Self {
         let mv3file = mv3_load_from_file(&path).unwrap();
         let model: &Mv3Model = &mv3file.models[0];
         let mesh: &Mv3Mesh = &model.meshes[0];
@@ -88,6 +95,7 @@ impl Mv3ModelEntity {
             last_anim_time: 0,
             vertices,
             indices,
+            repeat_mode: anim_repeat_mode,
         }
     }
 }
@@ -102,9 +110,14 @@ impl EntityCallbacks for Mv3ModelEntity {
     }
 
     fn on_updating<T: EntityCallbacks>(&mut self, entity: &mut CoreEntity<T>, delta_sec: f32) {
-        let anim_time = ((delta_sec * 4580.) as u32 + self.last_anim_time)
-            % self.anim_timestamps.last().unwrap();
+        let mut anim_time = ((delta_sec * 4580.) as u32 + self.last_anim_time);
+        let total_anim_length = *self.anim_timestamps.last().unwrap();
 
+        if anim_time >= total_anim_length && self.repeat_mode == Mv3AnimRepeatMode::NO_REPEAT {
+            return;
+        }
+
+        anim_time %= total_anim_length;
         let frame_index = self
             .anim_timestamps
             .iter()

@@ -146,6 +146,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dyn-clone"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3ec9c7fb9a2ce708751c98e31ccbae74b6ab194f5c8e30cfb7ed62e38b70866"
+
+[[package]]
 name = "either"
 version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -379,6 +385,7 @@ name = "opengb"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "dyn-clone",
  "encoding",
  "image",
  "radiance",
