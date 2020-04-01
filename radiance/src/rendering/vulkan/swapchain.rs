@@ -7,6 +7,7 @@ use super::image_view::ImageView;
 use super::pipeline_manager::PipelineManager;
 use super::render_object::VulkanRenderObject;
 use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
+use crate::rendering::imgui::{vulkan::ImguiVulkanContext, ImguiContext, ImguiFrame};
 use ash::prelude::VkResult;
 use ash::version::DeviceV1_0;
 use ash::{vk, Device, Instance};
@@ -28,25 +29,28 @@ pub struct SwapChain {
     command_buffers: Vec<vk::CommandBuffer>,
     capabilities: vk::SurfaceCapabilitiesKHR,
     pipeline_manager: PipelineManager,
+    imgui: ImguiVulkanContext,
 
     entry: ash::extensions::khr::Swapchain,
 }
 
 impl SwapChain {
     pub fn new(
-        instance: &Instance,
+        instance: &Rc<Instance>,
         device: &Rc<Device>,
         allocator: &Rc<vk_mem::Allocator>,
         command_pool: vk::CommandPool,
         physical_device: vk::PhysicalDevice,
+        queue: vk::Queue,
         surface: vk::SurfaceKHR,
         capabilities: vk::SurfaceCapabilitiesKHR,
         format: vk::SurfaceFormatKHR,
         present_mode: vk::PresentModeKHR,
         descriptor_manager: &Rc<DescriptorManager>,
         command_runner: &Rc<AdhocCommandRunner>,
+        gui_context: &ImguiContext,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let entry = ash::extensions::khr::Swapchain::new(instance, device.deref());
+        let entry = ash::extensions::khr::Swapchain::new(instance.as_ref(), device.deref());
         let handle = creation_helpers::create_swapchain(
             &entry,
             surface,
@@ -117,6 +121,17 @@ impl SwapChain {
             unsafe { device.allocate_command_buffers(&create_info)? }
         };
 
+        let imgui = ImguiVulkanContext::new(
+            instance,
+            physical_device,
+            device,
+            queue,
+            command_pool,
+            pipeline_manager.render_pass().vk_render_pass(),
+            images.len(),
+            gui_context,
+        );
+
         Ok(Self {
             device: Rc::downgrade(device),
             command_pool,
@@ -131,12 +146,17 @@ impl SwapChain {
             command_buffers,
             capabilities,
             pipeline_manager,
+            imgui,
             entry,
         })
     }
 
     pub fn command_buffers(&self) -> &Vec<vk::CommandBuffer> {
         &self.command_buffers
+    }
+
+    pub fn imgui_mut(&mut self) -> &mut ImguiVulkanContext {
+        &mut self.imgui
     }
 
     pub fn acquire_next_image(
@@ -177,6 +197,7 @@ impl SwapChain {
         image_index: usize,
         objects: &[&VulkanRenderObject],
         dub_manager: &DynamicUniformBufferManager,
+        ui_frame: ImguiFrame,
     ) -> Result<vk::CommandBuffer, vk::Result> {
         let device = self.device.upgrade().unwrap();
         let command_buffer = self.command_buffers[image_index];
@@ -289,6 +310,8 @@ impl SwapChain {
                 }
             }
         }
+
+        self.imgui.record_command_buffer(ui_frame, command_buffer);
 
         unsafe {
             device.cmd_end_render_pass(command_buffer);

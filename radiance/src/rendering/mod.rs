@@ -1,4 +1,5 @@
 mod engine;
+mod imgui;
 mod material;
 mod platform;
 mod render_object;
@@ -7,6 +8,7 @@ mod texture;
 mod vertex_buffer;
 mod vulkan;
 
+pub use self::imgui::{ImguiContext, ImguiFrame};
 pub use engine::RenderingEngine;
 pub use material::{Material, SimpleMaterial};
 pub use platform::Window;

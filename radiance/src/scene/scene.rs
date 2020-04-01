@@ -8,6 +8,7 @@ use std::{f32::consts::PI, rc::Rc};
 pub trait Scene {
     fn load(&mut self);
     fn update(&mut self, delta_sec: f32);
+    fn draw_ui(&mut self, ui: &mut imgui::Ui);
     fn unload(&mut self);
     fn entities(&self) -> &Vec<Box<dyn Entity>>;
     fn entities_mut(&mut self) -> &mut Vec<Box<dyn Entity>>;
@@ -20,6 +21,7 @@ pub trait SceneExtension<TImpl: SceneExtension<TImpl>> {
     define_ext_fn!(on_loaded, CoreScene, TImpl);
     define_ext_fn!(on_updating, CoreScene, TImpl, _delta_sec: f32);
     define_ext_fn!(on_updated, CoreScene, TImpl, _delta_sec: f32);
+    define_ext_fn!(on_ui_drawing, CoreScene, TImpl);
 }
 
 pub struct CoreScene<TExtension: SceneExtension<TExtension>> {
@@ -66,6 +68,10 @@ impl<TExtension: SceneExtension<TExtension>> Scene for CoreScene<TExtension> {
         }
 
         ext_call!(self, on_updated, delta_sec);
+    }
+
+    fn draw_ui(&mut self, ui: &mut imgui::Ui) {
+        ext_call!(self, on_ui_drawing);
     }
 
     fn unload(&mut self) {}

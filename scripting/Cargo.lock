@@ -8,15 +8,6 @@ checksum = "5d2e7343e7fc9de883d1b0341e0b13970f764c14101234857d2ddafa1cb1cac2"
 
 [[package]]
 name = "ash"
-version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "003d1fb2eb12eb06d4a03dbe02eea67a9fac910fa97932ab9e3a75b96a1ea5e5"
-dependencies = [
- "shared_library",
-]
-
-[[package]]
-name = "ash"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69daec0742947f33a85931fa3cb0ce5f07929159dcbd1f0cbb5b2912e2978509"
@@ -87,6 +78,15 @@ name = "cfg-if"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
+
+[[package]]
+name = "cloudabi"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
+dependencies = [
+ "bitflags",
+]
 
 [[package]]
 name = "color_quant"
@@ -335,6 +335,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "imgui"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a2d28cee2982d4dab4dd954c23be339ab1f98be4ff5a13ecd8fbfb47cdfa23a"
+dependencies = [
+ "bitflags",
+ "imgui-sys",
+ "lazy_static",
+ "parking_lot",
+]
+
+[[package]]
+name = "imgui-rs-vulkan-renderer"
+version = "0.3.1"
+dependencies = [
+ "ash",
+ "imgui",
+ "log",
+ "ultraviolet",
+]
+
+[[package]]
+name = "imgui-sys"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21a8693e0f66ecd2ec10e2f0ed4dc4519071495f350e6d8ddaf3e70351229257"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "inflate"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -373,6 +404,24 @@ checksum = "f2b111a074963af1d37a139918ac6d49ad1d0d5e47f72fd55388619691a7d753"
 dependencies = [
  "cc",
  "winapi",
+]
+
+[[package]]
+name = "lock_api"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79b2de95ecb4691949fea4716ca53cdbcfccb2c612e19644a8bad05edcf9f47b"
+dependencies = [
+ "scopeguard",
+]
+
+[[package]]
+name = "log"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14b6052be84e6b71ab17edffc2eeabf5c2c3ae1fdb464aae35ac50c67a44e1f7"
+dependencies = [
+ "cfg-if",
 ]
 
 [[package]]
@@ -451,6 +500,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "parking_lot"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92e98c49ab0b7ce5b222f2cc9193fc4efe11c6d0bd4f648e374684a6857b1cfc"
+dependencies = [
+ "lock_api",
+ "parking_lot_core",
+]
+
+[[package]]
+name = "parking_lot_core"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7582838484df45743c8434fbff785e8edf260c28748353d44bc0da32e0ceabf1"
+dependencies = [
+ "cfg-if",
+ "cloudabi",
+ "libc",
+ "redox_syscall",
+ "smallvec",
+ "winapi",
+]
+
+[[package]]
 name = "pin-utils"
 version = "0.1.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -513,12 +586,15 @@ dependencies = [
 name = "radiance"
 version = "0.1.0"
 dependencies = [
- "ash 0.30.0",
+ "ash",
  "backtrace",
  "bitflags",
  "image",
+ "imgui",
+ "imgui-rs-vulkan-renderer",
  "lazy_static",
  "memoffset",
+ "radiance_assets",
  "vk-mem",
  "winapi",
 ]
@@ -535,6 +611,10 @@ dependencies = [
  "radiance",
  "vcpkg",
 ]
+
+[[package]]
+name = "radiance_assets"
+version = "0.1.0"
 
 [[package]]
 name = "rayon"
@@ -559,6 +639,12 @@ dependencies = [
  "lazy_static",
  "num_cpus",
 ]
+
+[[package]]
+name = "redox_syscall"
+version = "0.1.56"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2439c63f3f6139d1b57529d16bc3b8bb855230c8efcc5d3a896c8bea7c3b1e84"
 
 [[package]]
 name = "rustc-demangle"
@@ -603,20 +689,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
-name = "shared_library"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a9e7e0f2bfae24d8a5b5a66c5b257a83c7412304311512a0c054cd5e619da11"
-dependencies = [
- "lazy_static",
- "libc",
-]
-
-[[package]]
 name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
+
+[[package]]
+name = "smallvec"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c2fb2ec9bcd216a5b0d0ccf31ab17b5ed1d627960edff65bbe95d3ce221cefc"
 
 [[package]]
 name = "syn"
@@ -641,6 +723,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultraviolet"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae513d44058e41a4669dc336b13a017ea96ad6984bac3797a3d49744e3ffa0ba"
+dependencies = [
+ "wide",
+]
+
+[[package]]
 name = "unicode-xid"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -657,9 +748,18 @@ name = "vk-mem"
 version = "0.2.0"
 source = "git+https://github.com/gwihlidal/vk-mem-rs#3e4939e7a9817a8a20466631efbd073c019f48ad"
 dependencies = [
- "ash 0.29.0",
+ "ash",
  "bitflags",
  "cc",
+]
+
+[[package]]
+name = "wide"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "528f4316973b7d116d4d87634a4360c97de5d8664352104a130403c32e4b48e8"
+dependencies = [
+ "bytemuck",
 ]
 
 [[package]]

@@ -5,23 +5,25 @@ use super::helpers;
 use super::render_object::VulkanRenderObject;
 use super::swapchain::SwapChain;
 use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
-use crate::math::{Mat44, Transform, Vec3};
+use crate::math::Mat44;
 use crate::rendering::RenderObject;
-use crate::rendering::{RenderingEngine, Window};
-use crate::scene::{entity_get_component, Camera, Entity, Scene};
+use crate::rendering::{
+    imgui::{ImguiContext, ImguiFrame},
+    RenderingEngine, Window,
+};
+use crate::scene::{entity_get_component, Scene};
 use ash::extensions::ext::DebugReport;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Entry, Instance};
 use std::any::TypeId;
 use std::error::Error;
-use std::f32::consts::PI;
 use std::iter::Iterator;
 use std::rc::Rc;
 use std::sync::Arc;
 
 pub struct VulkanRenderingEngine {
     entry: Entry,
-    instance: Instance,
+    instance: Rc<Instance>,
     physical_device: vk::PhysicalDevice,
     device: Option<Rc<Device>>,
     allocator: Option<Rc<vk_mem::Allocator>>,
@@ -42,15 +44,17 @@ pub struct VulkanRenderingEngine {
 
     image_available_semaphore: vk::Semaphore,
     render_finished_semaphore: vk::Semaphore,
+
+    imgui: ImguiContext,
 }
 
 impl RenderingEngine for VulkanRenderingEngine {
     fn new(window: &Window) -> Result<Self, Box<dyn std::error::Error>> {
         let entry = Entry::new().unwrap();
-        let instance = creation_helpers::create_instance(&entry)?;
+        let instance = Rc::new(creation_helpers::create_instance(&entry)?);
         let physical_device = creation_helpers::get_physical_device(&instance)?;
 
-        let surface_entry = ash::extensions::khr::Surface::new(&entry, &instance);
+        let surface_entry = ash::extensions::khr::Surface::new(&entry, instance.as_ref());
         let surface = creation_helpers::create_surface(&entry, &instance, &window)?;
 
         let graphics_queue_family_index = creation_helpers::get_graphics_queue_family_index(
@@ -70,7 +74,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             let create_info = vk_mem::AllocatorCreateInfo {
                 physical_device,
                 device: (*device).clone(),
-                instance: instance.clone(),
+                instance: instance.as_ref().clone(),
                 ..Default::default()
             };
 
@@ -112,18 +116,24 @@ impl RenderingEngine for VulkanRenderingEngine {
         ));
 
         let adhoc_command_runner = Rc::new(AdhocCommandRunner::new(&device, command_pool, queue));
+        let mut imgui = ImguiContext::new(
+            capabilities.current_extent.width as f32,
+            capabilities.current_extent.height as f32,
+        );
         let swapchain = SwapChain::new(
             &instance,
             &device,
             &allocator,
             command_pool,
             physical_device,
+            queue,
             surface,
             capabilities,
             format,
             present_mode,
             &descriptor_manager,
             &adhoc_command_runner,
+            &mut imgui,
         )
         .unwrap();
 
@@ -134,7 +144,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             unsafe { device.create_semaphore(&semaphore_create_info, None)? };
 
         // DEBUG INFO
-        let debug_entry = DebugReport::new(&entry, &instance);
+        let debug_entry = DebugReport::new(&entry, instance.as_ref());
         let debug_callback = {
             let create_info = vk::DebugReportCallbackCreateInfoEXT::builder()
                 .flags(
@@ -166,12 +176,13 @@ impl RenderingEngine for VulkanRenderingEngine {
             debug_entry,
             image_available_semaphore,
             render_finished_semaphore,
+            imgui,
         };
 
         return Ok(vulkan);
     }
 
-    fn render(&mut self, scene: &mut dyn Scene) {
+    fn render(&mut self, scene: &mut dyn Scene, ui_frame: ImguiFrame) {
         if self.swapchain.is_none() {
             self.recreate_swapchain().unwrap();
         }
@@ -226,10 +237,14 @@ impl RenderingEngine for VulkanRenderingEngine {
             }
         });
 
-        match self.render_objects(scene) {
+        match self.render_objects(scene, ui_frame) {
             Ok(()) => (),
             Err(err) => println!("{}", err),
         }
+    }
+
+    fn gui_context_mut(&mut self) -> &mut ImguiContext {
+        &mut self.imgui
     }
 
     fn view_extent(&self) -> (u32, u32) {
@@ -281,6 +296,22 @@ impl VulkanRenderingEngine {
         &self.descriptor_manager.as_ref().unwrap()
     }
 
+    pub fn instance(&self) -> &Instance {
+        &self.instance
+    }
+
+    pub fn vk_physical_device(&self) -> vk::PhysicalDevice {
+        self.physical_device
+    }
+
+    pub fn vk_queue(&self) -> vk::Queue {
+        self.queue
+    }
+
+    pub fn vk_command_pool(&self) -> vk::CommandPool {
+        self.command_pool
+    }
+
     fn recreate_swapchain(&mut self) -> Result<(), Box<dyn Error>> {
         unsafe {
             let _ = self.device().device_wait_idle();
@@ -288,24 +319,31 @@ impl VulkanRenderingEngine {
 
         self.swapchain = None;
         let capabilities = self.get_capabilities()?;
+        let imgui = &self.imgui;
         self.swapchain = Some(SwapChain::new(
             &self.instance,
             self.device(),
             self.allocator(),
             self.command_pool,
             self.physical_device,
+            self.queue,
             self.surface,
             capabilities,
             self.format,
             self.present_mode,
             self.descriptor_manager(),
             &self.adhoc_command_runner,
+            &self.imgui,
         )?);
 
         Ok(())
     }
 
-    fn render_objects(&mut self, scene: &dyn Scene) -> Result<(), Box<dyn Error>> {
+    fn render_objects(
+        &mut self,
+        scene: &mut dyn Scene,
+        ui_frame: ImguiFrame,
+    ) -> Result<(), Box<dyn Error>> {
         macro_rules! swapchain {
             ( ) => {
                 self.swapchain.as_mut().unwrap()
@@ -321,14 +359,14 @@ impl VulkanRenderingEngine {
                     vk::Fence::default(),
                 )
                 .unwrap();
-
+            let x = &|ui| scene.draw_ui(ui);
             let objects: Vec<&VulkanRenderObject> = scene
                 .entities()
                 .iter()
                 .filter_map(|e| entity_get_component::<VulkanRenderObject>(e.as_ref()))
                 .collect();
             let command_buffer = swapchain!()
-                .record_command_buffers(image_index as usize, &objects, &dub_manager)
+                .record_command_buffers(image_index as usize, &objects, &dub_manager, ui_frame)
                 .unwrap();
 
             // Update Per-frame Uniform Buffers

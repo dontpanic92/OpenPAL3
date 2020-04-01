@@ -1,9 +1,10 @@
-use crate::rendering::RenderingEngine;
-use crate::scene::{CoreScene, Scene, SceneExtension};
+use crate::rendering::{ImguiFrame, RenderingEngine};
+use crate::scene::{CoreScene, Director, Scene, SceneExtension};
 
 pub struct CoreRadianceEngine<TRenderingEngine: RenderingEngine> {
     rendering_engine: TRenderingEngine,
     scene: Option<Box<dyn Scene>>,
+    director: Option<Box<dyn Director>>,
 }
 
 impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
@@ -11,7 +12,12 @@ impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
         Self {
             rendering_engine,
             scene: None,
+            director: None,
         }
+    }
+
+    pub fn set_director(&mut self, director: Box<dyn Director>) {
+        self.director = Some(director);
     }
 
     pub fn load_scene<TScene: 'static + Scene>(&mut self, scene: TScene) {
@@ -53,9 +59,18 @@ impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
     }
 
     pub fn update(&mut self, delta_sec: f32) {
-        self.scene.as_mut().unwrap().update(delta_sec);
-        self.rendering_engine
-            .render(self.scene.as_mut().unwrap().as_mut());
+        let scene = self.scene.as_mut().unwrap();
+
+        let ui_frame = if let Some(d) = &mut self.director {
+            self.rendering_engine.gui_context_mut().draw_ui(|ui| {
+                d.update(scene, ui, delta_sec);
+            })
+        } else {
+            ImguiFrame::default()
+        };
+
+        scene.update(delta_sec);
+        self.rendering_engine.render(scene.as_mut(), ui_frame);
     }
 }
 
