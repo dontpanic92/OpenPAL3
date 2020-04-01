@@ -2,6 +2,10 @@ mod camera_set;
 mod dlg;
 mod idle;
 mod role_active;
+mod role_face_role;
+mod role_path_to;
+mod role_set_face;
+mod role_set_pos;
 mod role_show_action;
 mod run_script_mode;
 
@@ -9,5 +13,98 @@ pub use camera_set::SceCommandCameraSet;
 pub use dlg::SceCommandDlg;
 pub use idle::SceCommandIdle;
 pub use role_active::SceCommandRoleActive;
+pub use role_face_role::SceCommandRoleFaceRole;
+pub use role_path_to::SceCommandRolePathTo;
+pub use role_set_face::SceCommandRoleSetFace;
+pub use role_set_pos::SceCommandRoleSetPos;
 pub use role_show_action::SceCommandRoleShowAction;
 pub use run_script_mode::SceCommandRunScriptMode;
+
+use crate::scene::Mv3ModelEntity;
+use radiance::{
+    math::Vec3,
+    scene::{CoreEntity, Scene},
+};
+use std::any::Any;
+use std::collections::HashMap;
+
+struct RoleProperties;
+impl RoleProperties {
+    pub fn position(state: &mut HashMap<String, Box<dyn Any>>, role_id: &str) -> Vec3 {
+        let key = RolePropertyNames::position(role_id);
+        if !state.contains_key(&key) {
+            state.insert(key.clone(), Box::new(Vec3::new(0., 0., 0.)));
+        }
+
+        *state
+            .get(&key)
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<Vec3>()
+            .unwrap()
+    }
+
+    pub fn set_position(state: &mut HashMap<String, Box<dyn Any>>, role_id: &str, position: &Vec3) {
+        let key = RolePropertyNames::position(role_id);
+        state.insert(key, Box::new(*position));
+    }
+
+    pub fn face_to(state: &mut HashMap<String, Box<dyn Any>>, role_id: &str) -> Vec3 {
+        let key = RolePropertyNames::face_to(role_id);
+        if !state.contains_key(&key) {
+            state.insert(key.clone(), Box::new(Vec3::new(0., 0., -1.)));
+        }
+
+        *state
+            .get(&key)
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<Vec3>()
+            .unwrap()
+    }
+
+    pub fn set_face_to(state: &mut HashMap<String, Box<dyn Any>>, role_id: &str, face_to: &Vec3) {
+        let key = RolePropertyNames::face_to(role_id);
+        state.insert(key, Box::new(*face_to));
+    }
+}
+
+struct RolePropertyNames;
+impl RolePropertyNames {
+    pub fn name(role_id: &str) -> String {
+        format!("ROLE_{}", role_id)
+    }
+
+    pub fn position(role_id: &str) -> String {
+        format!("ROLE_{}_POSITION", role_id)
+    }
+
+    pub fn face_to(role_id: &str) -> String {
+        format!("ROLE_{}_FACE_TO", role_id)
+    }
+}
+
+trait SceneMv3Extensions {
+    fn get_mv3_entity(&mut self, name: &str) -> &mut CoreEntity<Mv3ModelEntity>;
+}
+
+impl SceneMv3Extensions for Box<dyn Scene> {
+    fn get_mv3_entity(&mut self, name: &str) -> &mut CoreEntity<Mv3ModelEntity> {
+        /*self.entities_mut().iter_mut().find(|e| e.name() == name)
+        .as_mut()
+        .unwrap()
+        .downcast_mut::<CoreEntity<Mv3ModelEntity>>()
+        .unwrap()*/
+        let pos = self
+            .entities_mut()
+            .iter()
+            .position(|e| e.name() == name)
+            .unwrap();
+        self.entities_mut()
+            .get_mut(pos)
+            .unwrap()
+            .as_mut()
+            .downcast_mut::<CoreEntity<Mv3ModelEntity>>()
+            .unwrap()
+    }
+}

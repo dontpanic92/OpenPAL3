@@ -14,3 +14,4 @@ dyn-clone = "1.0.1"
 radiance = { path = "../../radiance/radiance" }
 encoding = "0.2.33"
 imgui = "0.3.0"
+downcast-rs = "1.1.1"

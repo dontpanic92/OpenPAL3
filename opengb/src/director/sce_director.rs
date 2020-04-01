@@ -28,6 +28,7 @@ impl Director for SceDirector {
             loop {
                 match self.commands.get_next() {
                     Some(mut cmd) => {
+                        cmd.initialize(scene, &mut self.state);
                         if !cmd.update(scene, ui, &mut self.state, delta_sec) {
                             self.active_commands.push(cmd);
                         }
@@ -82,7 +83,11 @@ impl SceCommands {
             init: false,
             res_man: res_man.clone(),
             commands: vec![
-                Box::new(SceCommandRoleActive::new(res_man)),
+                Box::new(SceCommandRoleActive::new(
+                    res_man,
+                    101,
+                    Vec3::new(-71.1, 0., -71.15),
+                )),
                 Box::new(SceCommandRunScriptMode::new(1)),
                 Box::new(SceCommandCameraSet::new(
                     33.24_f32.to_radians(),
@@ -90,9 +95,54 @@ impl SceCommands {
                     Vec3::new(308.31, 229.44, 468.61),
                 )),
                 Box::new(SceCommandIdle::new(10.)),
-                Box::new(SceCommandRoleShowAction::new(res_man, 11, "j04", -2)),
-                Box::new(SceCommandRoleShowAction::new(res_man, 11, "j04", -2)),
-                Box::new(SceCommandDlg::new()),
+                Box::new(SceCommandRoleSetFace::new(
+                    res_man,
+                    101,
+                    Vec3::new(0., 0., 1.),
+                )),
+                Box::new(SceCommandRoleShowAction::new(res_man, 101, "j04", -2)),
+                Box::new(SceCommandDlg::new("景天：\n什么声音？……有贼？！")),
+                Box::new(SceCommandRoleSetFace::new(
+                    res_man,
+                    101,
+                    Vec3::new(1., 0., 0.),
+                )),
+                Box::new(SceCommandRoleSetPos::new(
+                    res_man,
+                    101,
+                    Vec3::new(-40.1, 0., -61.15),
+                )),
+                Box::new(SceCommandRoleShowAction::new(res_man, 101, "z19", -2)),
+                Box::new(SceCommandRoleShowAction::new(res_man, 101, "j01", -2)),
+                Box::new(SceCommandDlg::new("景天：\n咦？！是我听错了？")),
+                Box::new(SceCommandRoleSetPos::new(
+                    res_man,
+                    104,
+                    Vec3::new(140.1, 0., 61.15),
+                )),
+                Box::new(SceCommandRoleSetFace::new(
+                    res_man,
+                    101,
+                    Vec3::new(1., 0., 0.),
+                )),
+                Box::new(SceCommandRolePathTo::new(
+                    res_man,
+                    104,
+                    Vec3::new(140.1, 0., 61.15),
+                    Vec3::new(100.1, 0., 61.15),
+                )),
+                Box::new(SceCommandRunScriptMode::new(2)),
+                Box::new(SceCommandRoleShowAction::new(res_man, 104, "c01", -2)),
+                Box::new(SceCommandRoleFaceRole::new(res_man, 101, 104)),
+                Box::new(SceCommandRoleFaceRole::new(res_man, 104, 101)),
+                Box::new(SceCommandIdle::new(1.)),
+                Box::new(SceCommandRunScriptMode::new(1)),
+                Box::new(SceCommandRoleShowAction::new(res_man, 101, "j02", -2)),
+                Box::new(SceCommandDlg::new("少女：\n呀！有人！")),
+                Box::new(SceCommandRunScriptMode::new(2)),
+                Box::new(SceCommandRoleShowAction::new(res_man, 101, "j05", -2)),
+                Box::new(SceCommandDlg::new("景天：\n小贼！站住！")),
+                Box::new(SceCommandRunScriptMode::new(1)),
             ],
             pc: 0,
         }
@@ -110,6 +160,13 @@ impl SceCommands {
 }
 
 pub trait SceCommand: dyn_clone::DynClone {
+    fn initialize(
+        &mut self,
+        scene: &mut Box<dyn Scene>,
+        state: &mut HashMap<String, Box<dyn Any>>,
+    ) {
+    }
+
     fn update(
         &mut self,
         scene: &mut Box<dyn Scene>,

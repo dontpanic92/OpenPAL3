@@ -12,6 +12,7 @@ use std::rc::Rc;
 pub struct SceCommandDlg {
     dlg_sec: f32,
     cur_sec: f32,
+    text: String,
 }
 
 impl SceCommand for SceCommandDlg {
@@ -25,11 +26,14 @@ impl SceCommand for SceCommandDlg {
         self.cur_sec += delta_sec;
         let completed = self.cur_sec > self.dlg_sec;
         if !completed {
-            let w = Window::new(im_str!("Example 1: Basics"))
-                .size([700.0, 300.0], Condition::Appearing)
-                .position([150.0, 450.0], Condition::Appearing);
+            let w = Window::new(im_str!(" "))
+                .collapsible(false)
+                .title_bar(false)
+                .resizable(false)
+                .size([700.0, 250.0], Condition::Appearing)
+                .position([280.0, 600.0], Condition::Appearing);
             w.build(ui, || {
-                ui.text(im_str!("景天：\n 什么声音？ …… 有贼？！"));
+                ui.text(im_str!("{}", self.text));
             });
         }
 
@@ -38,10 +42,11 @@ impl SceCommand for SceCommandDlg {
 }
 
 impl SceCommandDlg {
-    pub fn new() -> Self {
+    pub fn new(text: &str) -> Self {
         Self {
             dlg_sec: 5.,
             cur_sec: 0.,
+            text: text.to_owned(),
         }
     }
 }

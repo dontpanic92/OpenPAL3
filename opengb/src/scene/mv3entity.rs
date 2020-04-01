@@ -18,6 +18,7 @@ pub struct Mv3ModelEntity {
     anim_timestamps: Vec<u32>,
     last_anim_time: u32,
     repeat_mode: Mv3AnimRepeatMode,
+    anim_finished: bool,
 }
 
 impl Mv3ModelEntity {
@@ -96,7 +97,12 @@ impl Mv3ModelEntity {
             vertices,
             indices,
             repeat_mode: anim_repeat_mode,
+            anim_finished: false,
         }
+    }
+
+    pub fn anim_finished(&self) -> bool {
+        self.anim_finished
     }
 }
 
@@ -114,6 +120,7 @@ impl EntityCallbacks for Mv3ModelEntity {
         let total_anim_length = *self.anim_timestamps.last().unwrap();
 
         if anim_time >= total_anim_length && self.repeat_mode == Mv3AnimRepeatMode::NO_REPEAT {
+            self.anim_finished = true;
             return;
         }
 

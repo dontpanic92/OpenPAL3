@@ -11,14 +11,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Clone)]
-pub struct SceCommandRoleShowAction {
+pub struct SceCommandRolePathTo {
     res_man: Rc<ResourceManager>,
     role_id: String,
-    action_name: String,
-    repeat_mode: i32,
+    from: Vec3,
+    to: Vec3,
 }
 
-impl SceCommand for SceCommandRoleShowAction {
+impl SceCommand for SceCommandRolePathTo {
     fn initialize(
         &mut self,
         scene: &mut Box<dyn Scene>,
@@ -30,10 +30,10 @@ impl SceCommand for SceCommandRoleShowAction {
             Mv3ModelEntity::new_from_file(
                 &self
                     .res_man
-                    .mv3_path(&self.role_id, &self.action_name)
+                    .mv3_path(&self.role_id, "c02")
                     .to_str()
                     .unwrap(),
-                Mv3AnimRepeatMode::NO_REPEAT,
+                Mv3AnimRepeatMode::REPEAT,
             ),
             &name,
         );
@@ -44,8 +44,7 @@ impl SceCommand for SceCommandRoleShowAction {
         entity
             .transform_mut()
             .set_position(&position)
-            .look_at(&Vec3::add(&position, &face_to))
-            .rotate_axis_angle_local(&Vec3::UP, 180_f32.to_radians());
+            .look_at(&Vec3::add(&position, &face_to));
 
         scene.entities_mut().push(Box::new(entity));
     }
@@ -57,26 +56,38 @@ impl SceCommand for SceCommandRoleShowAction {
         state: &mut HashMap<String, Box<dyn Any>>,
         delta_sec: f32,
     ) -> bool {
-        scene
-            .get_mv3_entity(&RolePropertyNames::name(&self.role_id))
-            .extension()
-            .borrow()
-            .anim_finished()
+        const SPEED: f32 = 50.;
+
+        let position = RoleProperties::position(state, &self.role_id);
+        let step = SPEED * delta_sec;
+        let remain = Vec3::sub(&self.to, &position);
+        let completed = remain.norm() < step;
+        let new_position = if completed {
+            self.to
+        } else {
+            Vec3::add(&position, &Vec3::dot(step, &Vec3::normalized(&remain)))
+        };
+
+        let entity = scene.get_mv3_entity(&RolePropertyNames::name(&self.role_id));
+        entity
+            .transform_mut()
+            .look_at(&self.to)
+            .rotate_axis_angle_local(&Vec3::UP, 180_f32.to_radians())
+            .set_position(&new_position);
+        RoleProperties::set_position(state, &self.role_id, &new_position);
+        RoleProperties::set_face_to(state, &self.role_id, &Vec3::sub(&new_position, &position));
+
+        completed
     }
 }
 
-impl SceCommandRoleShowAction {
-    pub fn new(
-        res_man: &Rc<ResourceManager>,
-        role_id: i32,
-        action_name: &str,
-        repeat_mode: i32,
-    ) -> Self {
+impl SceCommandRolePathTo {
+    pub fn new(res_man: &Rc<ResourceManager>, role_id: i32, from: Vec3, to: Vec3) -> Self {
         Self {
             res_man: res_man.clone(),
             role_id: format!("{}", role_id),
-            action_name: action_name.to_owned(),
-            repeat_mode,
+            from,
+            to,
         }
     }
 }
