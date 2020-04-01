@@ -1,10 +1,10 @@
 use opengb::loaders::cvdloader::*;
 use opengb::loaders::polloader::*;
 use opengb::loaders::scnloader::*;
+use opengb::scene::load_scene;
 use opengb::scene::CvdModelEntity;
 use opengb::scene::Mv3ModelEntity;
 use opengb::scene::PolModelEntity;
-use opengb::scene::load_scene;
 use radiance::math::Vec3;
 use radiance::scene::{CoreEntity, CoreScene, Entity, Scene, SceneExtension};
 use std::path::PathBuf;
@@ -20,8 +20,8 @@ impl SceneExtension<ScnScene> for ScnScene {
             .camera_mut()
             .transform_mut()
             .translate_local(&Vec3::new(0., 400., 1000.));
-        
-        load_scene(scene, &self.path, &self.scn_file);
+
+        load_scene(scene, &self.path, &self.scn_file, true);
     }
 
     fn on_updating(&mut self, scene: &mut CoreScene<ScnScene>, delta_sec: f32) {

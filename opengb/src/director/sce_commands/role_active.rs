@@ -1,6 +1,7 @@
 use crate::director::sce_director::SceCommand;
 use crate::resource_manager::ResourceManager;
 use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity};
+use imgui::Ui;
 use radiance::math::Vec3;
 use radiance::scene::{CoreEntity, Entity, Scene};
 use std::any::Any;
@@ -16,6 +17,7 @@ impl SceCommand for SceCommandRoleActive {
     fn update(
         &mut self,
         scene: &mut Box<dyn Scene>,
+        ui: &mut Ui,
         state: &mut HashMap<String, Box<dyn Any>>,
         delta_sec: f32,
     ) -> bool {

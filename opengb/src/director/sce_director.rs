@@ -1,8 +1,9 @@
-use super::director::Director;
 use super::sce_commands::*;
 use crate::resource_manager::ResourceManager;
 use crate::scene::Mv3ModelEntity;
+use imgui::*;
 use radiance::math::Vec3;
+use radiance::scene::Director;
 use radiance::scene::{CoreEntity, Entity, Scene};
 use std::any::Any;
 use std::collections::HashMap;
@@ -21,26 +22,13 @@ impl WellKnownVariables {
     pub const RUN_MODE: &'static str = "run_mode";
 }
 
-impl SceDirector {
-    pub fn new(res_man: &Rc<ResourceManager>) -> Self {
-        let mut state = HashMap::<String, Box<dyn Any>>::new();
-        state.insert(WellKnownVariables::RUN_MODE.to_owned(), Box::new(1));
-
-        Self {
-            res_man: res_man.clone(),
-            commands: SceCommands::new(res_man),
-            state,
-            init: false,
-            active_commands: vec![],
-        }
-    }
-
-    pub fn update(&mut self, scene: &mut Box<dyn Scene>, delta_sec: f32) {
+impl Director for SceDirector {
+    fn update(&mut self, scene: &mut Box<dyn Scene>, ui: &mut Ui, delta_sec: f32) {
         if self.active_commands.len() == 0 {
             loop {
                 match self.commands.get_next() {
                     Some(mut cmd) => {
-                        if !cmd.update(scene, &mut self.state, delta_sec) {
+                        if !cmd.update(scene, ui, &mut self.state, delta_sec) {
                             self.active_commands.push(cmd);
                         }
                     }
@@ -61,7 +49,22 @@ impl SceDirector {
         } else {
             let state = &mut self.state;
             self.active_commands
-                .drain_filter(|cmd| cmd.update(scene, state, delta_sec));
+                .drain_filter(|cmd| cmd.update(scene, ui, state, delta_sec));
+        }
+    }
+}
+
+impl SceDirector {
+    pub fn new(res_man: &Rc<ResourceManager>) -> Self {
+        let mut state = HashMap::<String, Box<dyn Any>>::new();
+        state.insert(WellKnownVariables::RUN_MODE.to_owned(), Box::new(1));
+
+        Self {
+            res_man: res_man.clone(),
+            commands: SceCommands::new(res_man),
+            state,
+            init: false,
+            active_commands: vec![],
         }
     }
 }
@@ -88,6 +91,8 @@ impl SceCommands {
                 )),
                 Box::new(SceCommandIdle::new(10.)),
                 Box::new(SceCommandRoleShowAction::new(res_man, 11, "j04", -2)),
+                Box::new(SceCommandRoleShowAction::new(res_man, 11, "j04", -2)),
+                Box::new(SceCommandDlg::new()),
             ],
             pc: 0,
         }
@@ -108,6 +113,7 @@ pub trait SceCommand: dyn_clone::DynClone {
     fn update(
         &mut self,
         scene: &mut Box<dyn Scene>,
+        ui: &mut Ui,
         state: &mut HashMap<String, Box<dyn Any>>,
         delta_sec: f32,
     ) -> bool;

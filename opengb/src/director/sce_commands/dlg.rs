@@ -1,7 +1,7 @@
 use crate::director::sce_director::SceCommand;
 use crate::resource_manager::ResourceManager;
 use crate::scene::Mv3ModelEntity;
-use imgui::Ui;
+use imgui::*;
 use radiance::math::Vec3;
 use radiance::scene::{CoreEntity, Entity, Scene};
 use std::any::Any;
@@ -9,12 +9,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Clone)]
-pub struct SceCommandIdle {
-    idle_sec: f32,
+pub struct SceCommandDlg {
+    dlg_sec: f32,
     cur_sec: f32,
 }
 
-impl SceCommand for SceCommandIdle {
+impl SceCommand for SceCommandDlg {
     fn update(
         &mut self,
         scene: &mut Box<dyn Scene>,
@@ -23,14 +23,24 @@ impl SceCommand for SceCommandIdle {
         delta_sec: f32,
     ) -> bool {
         self.cur_sec += delta_sec;
-        self.cur_sec > self.idle_sec
+        let completed = self.cur_sec > self.dlg_sec;
+        if !completed {
+            let w = Window::new(im_str!("Example 1: Basics"))
+                .size([700.0, 300.0], Condition::Appearing)
+                .position([150.0, 450.0], Condition::Appearing);
+            w.build(ui, || {
+                ui.text(im_str!("景天：\n 什么声音？ …… 有贼？！"));
+            });
+        }
+
+        completed
     }
 }
 
-impl SceCommandIdle {
-    pub fn new(idle_sec: f32) -> Self {
+impl SceCommandDlg {
+    pub fn new() -> Self {
         Self {
-            idle_sec,
+            dlg_sec: 5.,
             cur_sec: 0.,
         }
     }
