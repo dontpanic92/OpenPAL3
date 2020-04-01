@@ -14,6 +14,7 @@ image = "0.23.0"
 backtrace = "0.3.44"
 bitflags = "1.2.1"
 imgui = "0.3.0"
+downcast-rs = "1.1.1"
 imgui-rs-vulkan-renderer = { path = "../../imgui-rs-vulkan-renderer" }
 radiance_assets = { path = "../../radiance_assets" }
 

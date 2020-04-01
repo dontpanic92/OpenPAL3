@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub trait Entity {
+pub trait Entity: downcast_rs::Downcast {
     fn name(&self) -> &str;
     fn set_name(&mut self, name: &str);
     fn load(&mut self);
@@ -22,19 +22,21 @@ pub trait Entity {
     ) -> Option<()>;
 }
 
+downcast_rs::impl_downcast!(Entity);
+
 pub trait EntityCallbacks {
     define_callback_fn!(on_loading, CoreEntity, EntityCallbacks);
     define_callback_fn!(on_updating, CoreEntity, EntityCallbacks, _delta_sec: f32);
 }
 
-pub struct CoreEntity<TCallbacks: EntityCallbacks> {
+pub struct CoreEntity<TCallbacks: 'static + EntityCallbacks> {
     name: String,
     transform: Transform,
     components: HashMap<TypeId, Vec<Box<dyn Any>>>,
     callbacks: Rc<RefCell<TCallbacks>>,
 }
 
-impl<TCallbacks: EntityCallbacks> CoreEntity<TCallbacks> {
+impl<TCallbacks: 'static + EntityCallbacks> CoreEntity<TCallbacks> {
     pub fn new(callbacks: TCallbacks, name: &str) -> Self {
         Self {
             name: name.to_owned(),
@@ -68,6 +70,10 @@ impl<TCallbacks: EntityCallbacks> CoreEntity<TCallbacks> {
         let component = Entity::get_component_mut(self, type_id);
         component.and_then(|c| c.downcast_mut())
     }
+
+    pub fn extension(&self) -> &Rc<RefCell<TCallbacks>> {
+        &self.callbacks
+    }
 }
 
 #[inline]
@@ -89,7 +95,7 @@ where
         .and_then(|component| component.downcast_ref::<T>())
 }
 
-impl<TCallbacks: EntityCallbacks> Entity for CoreEntity<TCallbacks> {
+impl<TCallbacks: 'static + EntityCallbacks> Entity for CoreEntity<TCallbacks> {
     fn name(&self) -> &str {
         &self.name
     }

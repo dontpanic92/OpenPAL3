@@ -9,7 +9,9 @@ impl Texture {
     pub fn new(path: &PathBuf) -> Self {
         let image = match image::open(path) {
             Ok(img) => img,
-            Err(_) => image::load_from_memory(radiance_assets::TEXTURE_MISSING_TEXTURE_FILE).unwrap(),
+            Err(_) => {
+                image::load_from_memory(radiance_assets::TEXTURE_MISSING_TEXTURE_FILE).unwrap()
+            }
         }
         .to_rgba();
 

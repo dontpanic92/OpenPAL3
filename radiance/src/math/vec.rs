@@ -51,8 +51,27 @@ impl Vec3 {
         self
     }
 
+    pub fn neg(&mut self) -> &mut Self {
+        self.x = -self.x;
+        self.y = -self.y;
+        self.z = -self.z;
+        self
+    }
+
+    pub fn norm(&self) -> f32 {
+        (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
+    }
+
+    pub fn add(lhs: &Vec3, rhs: &Vec3) -> Self {
+        Vec3::new(lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z)
+    }
+
     pub fn sub(lhs: &Vec3, rhs: &Vec3) -> Self {
         Vec3::new(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z)
+    }
+
+    pub fn dot(lhs: f32, rhs: &Vec3) -> Self {
+        Vec3::new(lhs * rhs.x, lhs * rhs.y, lhs * rhs.z)
     }
 
     pub fn cross(lhs: &Vec3, rhs: &Vec3) -> Self {
