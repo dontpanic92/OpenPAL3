@@ -1,0 +1,3 @@
+[submodule "radiance-assets"]
+	path = radiance-assets
+	url = https://github.com/dontpanic92/radiance-assets

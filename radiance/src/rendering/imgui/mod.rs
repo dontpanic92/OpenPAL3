@@ -16,7 +16,7 @@ impl ImguiContext {
         let font_size = 36.;
         context.set_ini_filename(None);
         context.fonts().add_font(&[FontSource::TtfData {
-            data: radiance_assets::FONT_SOURCE_HAN_SANS,
+            data: radiance_assets::FONT_SOURCE_HAN_SERIF,
             size_pixels: font_size,
             config: Some(FontConfig {
                 rasterizer_multiply: 1.75,

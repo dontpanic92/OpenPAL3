@@ -15,8 +15,8 @@ backtrace = "0.3.44"
 bitflags = "1.2.1"
 imgui = "0.3.0"
 downcast-rs = "1.1.1"
-imgui-rs-vulkan-renderer = { path = "../../imgui-rs-vulkan-renderer" }
-radiance_assets = { path = "../../radiance_assets" }
+imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer" }
+radiance-assets = { path = "../radiance-assets" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi"] }
