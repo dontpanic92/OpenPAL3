@@ -20,7 +20,7 @@ mod private {
 pub type DefaultApplication = Application<private::EmptyCallbacks>;
 
 pub struct Application<TExtension: ApplicationExtension<TExtension>> {
-    radiance_engine: CoreRadianceEngine<VulkanRenderingEngine>,
+    radiance_engine: CoreRadianceEngine,
     platform: Platform,
     extension: Rc<RefCell<TExtension>>,
 }
@@ -33,14 +33,14 @@ impl<TExtension: ApplicationExtension<TExtension>> Application<TExtension> {
             hwnd: platform.hwnd(),
         };
         Self {
-            radiance_engine: radiance::create_radiance_engine::<VulkanRenderingEngine>(&window)
+            radiance_engine: radiance::create_radiance_engine(&window)
                 .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
             platform,
             extension: Rc::new(RefCell::new(extension)),
         }
     }
 
-    pub fn engine_mut(&mut self) -> &mut CoreRadianceEngine<VulkanRenderingEngine> {
+    pub fn engine_mut(&mut self) -> &mut CoreRadianceEngine {
         &mut self.radiance_engine
     }
 

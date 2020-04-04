@@ -6,17 +6,27 @@ edition = "2018"
 build = "build.rs"
 
 [dependencies]
-ash = "0.30.0"
-vk-mem = { git = "https://github.com/gwihlidal/vk-mem-rs" }
-memoffset = "0.5.3"
-lazy_static = "1.2.0"
-image = "0.23.0"
+
+# General
 backtrace = "0.3.44"
 bitflags = "1.2.1"
-imgui = "0.3.0"
 downcast-rs = "1.1.1"
-imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer" }
+lazy_static = "1.2.0"
+memoffset = "0.5.3"
 radiance-assets = { path = "../radiance-assets" }
+
+# Rendering
+ash = "0.30.0"
+image = "0.23.0"
+imgui = "0.3.0"
+imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer" }
+vk-mem = { git = "https://github.com/gwihlidal/vk-mem-rs" }
+
+# Audio
+alto = "3.0.4"
+hound = "3.4.0"
+lewton = "0.10.1"
+minimp3 = "0.3.5"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi"] }

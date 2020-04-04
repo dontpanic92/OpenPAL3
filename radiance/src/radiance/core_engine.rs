@@ -1,16 +1,24 @@
 use crate::rendering::{ImguiFrame, RenderingEngine};
-use crate::scene::{CoreScene, Director, Scene, SceneExtension};
+use crate::{
+    audio::AudioEngine,
+    scene::{CoreScene, Director, Scene, SceneExtension},
+};
 
-pub struct CoreRadianceEngine<TRenderingEngine: RenderingEngine> {
-    rendering_engine: TRenderingEngine,
+pub struct CoreRadianceEngine {
+    rendering_engine: Box<dyn RenderingEngine>,
+    audio_engine: Box<dyn AudioEngine>,
     scene: Option<Box<dyn Scene>>,
     director: Option<Box<dyn Director>>,
 }
 
-impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
-    pub fn new(rendering_engine: TRenderingEngine) -> Self {
+impl CoreRadianceEngine {
+    pub fn new(
+        rendering_engine: Box<dyn RenderingEngine>,
+        audio_engine: Box<dyn AudioEngine>,
+    ) -> Self {
         Self {
             rendering_engine,
+            audio_engine,
             scene: None,
             director: None,
         }
@@ -58,6 +66,10 @@ impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
         self.scene.as_mut()
     }
 
+    pub fn audio_engine_mut(&mut self) -> &mut dyn AudioEngine {
+        self.audio_engine.as_mut()
+    }
+
     pub fn update(&mut self, delta_sec: f32) {
         let scene = self.scene.as_mut().unwrap();
 
@@ -74,7 +86,7 @@ impl<TRenderingEngine: RenderingEngine> CoreRadianceEngine<TRenderingEngine> {
     }
 }
 
-impl<TRenderingEngine: RenderingEngine> Drop for CoreRadianceEngine<TRenderingEngine> {
+impl Drop for CoreRadianceEngine {
     fn drop(&mut self) {
         self.unload_scene();
     }

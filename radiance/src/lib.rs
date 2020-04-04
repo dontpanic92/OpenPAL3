@@ -2,6 +2,7 @@
 mod macros;
 
 pub mod application;
+pub mod audio;
 pub mod math;
 pub mod radiance;
 pub mod rendering;
