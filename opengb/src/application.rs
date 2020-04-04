@@ -1,6 +1,7 @@
 use crate::{director::SceDirector, resource_manager::ResourceManager};
 use radiance::application::utils::FpsCounter;
 use radiance::application::{Application, ApplicationExtension};
+use std::iter::Iterator;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -15,7 +16,10 @@ impl ApplicationExtension<OpenGbApplication> for OpenGbApplication {
     fn on_initialized(&mut self, app: &mut Application<OpenGbApplication>) {
         app.set_title(&self.app_name);
 
-        let sce_director = Box::new(SceDirector::new(&self.res_man));
+        let sce_director = Box::new(SceDirector::new(
+            app.engine_mut().audio_engine_mut(),
+            &self.res_man,
+        ));
         app.engine_mut().set_director(sce_director);
 
         let scn = self.res_man.load_scn("Q01", "yn09a");

@@ -1,12 +1,7 @@
 use crate::director::sce_director::SceCommand;
-use crate::resource_manager::ResourceManager;
-use crate::scene::Mv3ModelEntity;
+use crate::director::sce_state::SceState;
 use imgui::Ui;
-use radiance::math::Vec3;
-use radiance::scene::{CoreEntity, Entity, Scene};
-use std::any::Any;
-use std::collections::HashMap;
-use std::rc::Rc;
+use radiance::scene::Scene;
 
 #[derive(Clone)]
 pub struct SceCommandIdle {
@@ -19,7 +14,7 @@ impl SceCommand for SceCommandIdle {
         &mut self,
         scene: &mut Box<dyn Scene>,
         ui: &mut Ui,
-        state: &mut HashMap<String, Box<dyn Any>>,
+        state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
         self.cur_sec += delta_sec;

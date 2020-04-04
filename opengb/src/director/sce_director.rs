@@ -1,29 +1,31 @@
 use super::sce_commands::*;
+use crate::director::sce_state::SceState;
 use crate::resource_manager::ResourceManager;
-use crate::scene::Mv3ModelEntity;
 use imgui::*;
+use radiance::audio::{AudioEngine, AudioSourceState};
 use radiance::math::Vec3;
 use radiance::scene::Director;
-use radiance::scene::{CoreEntity, Entity, Scene};
-use std::any::Any;
-use std::collections::HashMap;
+use radiance::scene::Scene;
 use std::rc::Rc;
 
 pub struct SceDirector {
     res_man: Rc<ResourceManager>,
     commands: SceCommands,
-    state: HashMap<String, Box<dyn Any>>,
+    state: SceState,
     active_commands: Vec<Box<dyn SceCommand>>,
     init: bool,
 }
 
-pub struct WellKnownVariables;
-impl WellKnownVariables {
-    pub const RUN_MODE: &'static str = "run_mode";
-}
-
 impl Director for SceDirector {
     fn update(&mut self, scene: &mut Box<dyn Scene>, ui: &mut Ui, delta_sec: f32) {
+        if self.state.bgm_source().state() == AudioSourceState::Playing {
+            self.state.bgm_source().update();
+        }
+
+        if self.state.sound_source().state() == AudioSourceState::Playing {
+            self.state.sound_source().update();
+        }
+
         if self.active_commands.len() == 0 {
             loop {
                 match self.commands.get_next() {
@@ -36,14 +38,7 @@ impl Director for SceDirector {
                     None => (),
                 };
 
-                if *self
-                    .state
-                    .get(WellKnownVariables::RUN_MODE)
-                    .unwrap()
-                    .downcast_ref::<i32>()
-                    .unwrap()
-                    == 1
-                {
+                if self.state.run_mode() == 1 {
                     break;
                 }
             }
@@ -56,16 +51,15 @@ impl Director for SceDirector {
 }
 
 impl SceDirector {
-    pub fn new(res_man: &Rc<ResourceManager>) -> Self {
-        let mut state = HashMap::<String, Box<dyn Any>>::new();
-        state.insert(WellKnownVariables::RUN_MODE.to_owned(), Box::new(1));
+    pub fn new(audio_engine: &dyn AudioEngine, res_man: &Rc<ResourceManager>) -> Self {
+        let state = SceState::new(audio_engine);
 
         Self {
             res_man: res_man.clone(),
             commands: SceCommands::new(res_man),
             state,
-            init: false,
             active_commands: vec![],
+            init: false,
         }
     }
 }
@@ -94,13 +88,20 @@ impl SceCommands {
                     -19.48_f32.to_radians(),
                     Vec3::new(308.31, 229.44, 468.61),
                 )),
+                Box::new(SceCommandRunScriptMode::new(2)),
+                Box::new(SceCommandPlaySound::new(res_man, "we046", 6)),
                 Box::new(SceCommandIdle::new(10.)),
+                Box::new(SceCommandRunScriptMode::new(1)),
+                Box::new(SceCommandPlaySound::new(res_man, "wb001", 1)),
+                Box::new(SceCommandPlaySound::new(res_man, "wb001", 1)),
+                Box::new(SceCommandIdle::new(1.5)),
                 Box::new(SceCommandRoleSetFace::new(
                     res_man,
                     101,
                     Vec3::new(0., 0., 1.),
                 )),
                 Box::new(SceCommandRoleShowAction::new(res_man, 101, "j04", -2)),
+                Box::new(SceCommandPlaySound::new(res_man, "wb001", 1)),
                 Box::new(SceCommandDlg::new("景天：\n什么声音？……有贼？！")),
                 Box::new(SceCommandRoleSetFace::new(
                     res_man,
@@ -125,6 +126,7 @@ impl SceCommands {
                     101,
                     Vec3::new(1., 0., 0.),
                 )),
+                Box::new(SceCommandMusic::new(res_man, "PI27")),
                 Box::new(SceCommandRolePathTo::new(
                     res_man,
                     104,
@@ -160,18 +162,13 @@ impl SceCommands {
 }
 
 pub trait SceCommand: dyn_clone::DynClone {
-    fn initialize(
-        &mut self,
-        scene: &mut Box<dyn Scene>,
-        state: &mut HashMap<String, Box<dyn Any>>,
-    ) {
-    }
+    fn initialize(&mut self, scene: &mut Box<dyn Scene>, state: &mut SceState) {}
 
     fn update(
         &mut self,
         scene: &mut Box<dyn Scene>,
         ui: &mut Ui,
-        state: &mut HashMap<String, Box<dyn Any>>,
+        state: &mut SceState,
         delta_sec: f32,
     ) -> bool;
 }

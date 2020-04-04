@@ -1,13 +1,11 @@
 use super::{RoleProperties, RolePropertyNames, SceneMv3Extensions};
 use crate::director::sce_director::SceCommand;
+use crate::director::sce_state::SceState;
 use crate::resource_manager::ResourceManager;
 use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity};
-use downcast_rs::Downcast;
 use imgui::Ui;
 use radiance::math::Vec3;
 use radiance::scene::{CoreEntity, Entity, Scene};
-use std::any::Any;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -19,11 +17,7 @@ pub struct SceCommandRolePathTo {
 }
 
 impl SceCommand for SceCommandRolePathTo {
-    fn initialize(
-        &mut self,
-        scene: &mut Box<dyn Scene>,
-        state: &mut HashMap<String, Box<dyn Any>>,
-    ) {
+    fn initialize(&mut self, scene: &mut Box<dyn Scene>, state: &mut SceState) {
         let name = RolePropertyNames::name(&self.role_id);
         scene.entities_mut().retain(|e| e.name() != name);
         let mut entity = CoreEntity::new(
@@ -33,7 +27,7 @@ impl SceCommand for SceCommandRolePathTo {
                     .mv3_path(&self.role_id, "c02")
                     .to_str()
                     .unwrap(),
-                Mv3AnimRepeatMode::REPEAT,
+                Mv3AnimRepeatMode::Repeat,
             ),
             &name,
         );
@@ -53,7 +47,7 @@ impl SceCommand for SceCommandRolePathTo {
         &mut self,
         scene: &mut Box<dyn Scene>,
         ui: &mut Ui,
-        state: &mut HashMap<String, Box<dyn Any>>,
+        state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
         const SPEED: f32 = 50.;

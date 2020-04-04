@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 pub struct ResourceManager {
     root_path: PathBuf,
     scene_path: PathBuf,
+    music_path: PathBuf,
+    snd_path: PathBuf,
     basedata_path: PathBuf,
 }
 
@@ -15,11 +17,15 @@ impl ResourceManager {
         let root_path = path.as_ref().to_owned();
         let basedata_path = root_path.join("basedata");
         let scene_path = root_path.join("scene");
+        let music_path = root_path.join("music");
+        let snd_path = root_path.join("snd");
 
         Self {
             root_path,
             basedata_path,
             scene_path,
+            music_path,
+            snd_path,
         }
     }
 
@@ -28,7 +34,8 @@ impl ResourceManager {
             &self
                 .scene_path
                 .join(cpk_name)
-                .join(String::from(scn_name) + ".scn"),
+                .join(scn_name)
+                .with_extension("scn"),
         )
     }
 
@@ -38,7 +45,8 @@ impl ResourceManager {
             self.basedata_path
                 .join("ROLE")
                 .join(role_name)
-                .join(String::from(action_name) + ".mv3"),
+                .join(action_name)
+                .with_extension("mv3"),
         )
         .unwrap()
     }
@@ -47,7 +55,8 @@ impl ResourceManager {
         self.basedata_path
             .join("ROLE")
             .join(role_name)
-            .join(String::from(action_name) + ".mv3")
+            .join(action_name)
+            .with_extension("mv3")
     }
 
     pub fn load_scn_pol(&self, cpk_name: &str, scn_name: &str, pol_name: &str) -> PolFile {
@@ -55,7 +64,8 @@ impl ResourceManager {
             self.scene_path
                 .join(cpk_name)
                 .join(scn_name)
-                .join(String::from(pol_name) + ".pol"),
+                .join(pol_name)
+                .with_extension("pol"),
         )
         .unwrap()
     }
@@ -68,6 +78,16 @@ impl ResourceManager {
         cvd_load_from_file(self.get_object_item_path(obj_name)).unwrap()
     }
 
+    pub fn load_music_data(&self, music_name: &str) -> Vec<u8> {
+        let path = self.music_path.join(music_name).with_extension("mp3");
+        std::fs::read(path).unwrap()
+    }
+
+    pub fn load_snd_data(&self, snd_name: &str) -> Vec<u8> {
+        let path = self.snd_path.join(snd_name).with_extension("wav");
+        std::fs::read(path).unwrap()
+    }
+
     fn get_object_item_path(&self, obj_name: &str) -> PathBuf {
         if obj_name.contains('.') {
             self.basedata_path.join("object").join(&obj_name)
@@ -75,7 +95,8 @@ impl ResourceManager {
             self.basedata_path
                 .join("item")
                 .join(&obj_name)
-                .join(obj_name.to_owned() + ".pol")
+                .join(&obj_name)
+                .with_extension("pol")
         }
     }
 }

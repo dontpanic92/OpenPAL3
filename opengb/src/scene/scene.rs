@@ -5,7 +5,7 @@ use crate::scene::CvdModelEntity;
 use crate::scene::PolModelEntity;
 use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity};
 use radiance::math::Vec3;
-use radiance::scene::{CoreEntity, CoreScene, Entity, Scene, SceneExtension};
+use radiance::scene::{CoreEntity, CoreScene, Entity, SceneExtension};
 use std::path::{Path, PathBuf};
 
 pub struct ScnScene {
@@ -112,7 +112,7 @@ fn load_model<T: SceneExtension<T>>(
     println!("{}", model_path);
     if model_path.to_lowercase().ends_with(".mv3") {
         let mut entity = CoreEntity::new(
-            Mv3ModelEntity::new_from_file(&model_path, Mv3AnimRepeatMode::REPEAT),
+            Mv3ModelEntity::new_from_file(&model_path, Mv3AnimRepeatMode::Repeat),
             name,
         );
         entity

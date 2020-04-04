@@ -7,8 +7,8 @@ use std::path::PathBuf;
 
 #[derive(PartialEq)]
 pub enum Mv3AnimRepeatMode {
-    NO_REPEAT,
-    REPEAT,
+    NoRepeat,
+    Repeat,
 }
 
 pub struct Mv3ModelEntity {
@@ -116,10 +116,10 @@ impl EntityCallbacks for Mv3ModelEntity {
     }
 
     fn on_updating<T: EntityCallbacks>(&mut self, entity: &mut CoreEntity<T>, delta_sec: f32) {
-        let mut anim_time = ((delta_sec * 4580.) as u32 + self.last_anim_time);
+        let mut anim_time = (delta_sec * 4580.) as u32 + self.last_anim_time;
         let total_anim_length = *self.anim_timestamps.last().unwrap();
 
-        if anim_time >= total_anim_length && self.repeat_mode == Mv3AnimRepeatMode::NO_REPEAT {
+        if anim_time >= total_anim_length && self.repeat_mode == Mv3AnimRepeatMode::NoRepeat {
             self.anim_finished = true;
             return;
         }

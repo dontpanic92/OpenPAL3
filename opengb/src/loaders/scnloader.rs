@@ -1,4 +1,4 @@
-use super::{read_dw_vec, read_f32_vec, read_string, read_vec, read_w_vec};
+use super::{read_dw_vec, read_string, read_vec, read_w_vec};
 use byteorder::{LittleEndian, ReadBytesExt};
 use radiance::math::Vec3;
 use std::fs;
