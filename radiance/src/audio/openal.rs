@@ -109,6 +109,16 @@ impl AudioSource for OpenAlAudioSource {
         self.state = AudioSourceState::Playing;
     }
 
+    fn restart(&mut self) {
+        if self.decoder.is_none() {
+            return;
+        }
+        
+        self.decoder.as_mut().unwrap().reset();
+        self.streaming_source.play();
+        self.state = AudioSourceState::Playing;
+    }
+
     fn stop(&mut self) {
         self.state = AudioSourceState::Stopped;
         self.streaming_source.stop();
