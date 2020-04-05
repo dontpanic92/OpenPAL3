@@ -31,7 +31,7 @@ steps:
   displayName: 'Build'
   inputs:
     targetType: 'inline'
-    script: cd openpal3 && cargo build --release --verbose
+    script: cd openpal3; cargo build --release --verbose
 
 - task: PowerShell@2
   inputs:
