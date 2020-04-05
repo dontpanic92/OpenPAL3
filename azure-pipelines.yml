@@ -29,3 +29,9 @@ steps:
 
 - script: cd openpal3 && cargo build --release
   displayName: 'Build'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'openpal3/target/release/openpal3.exe'
+    ArtifactName: 'openpal3'
+    publishLocation: 'Container'
