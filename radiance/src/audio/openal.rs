@@ -113,7 +113,7 @@ impl AudioSource for OpenAlAudioSource {
         if self.decoder.is_none() {
             return;
         }
-        
+
         self.decoder.as_mut().unwrap().reset();
         self.streaming_source.play();
         self.state = AudioSourceState::Playing;
