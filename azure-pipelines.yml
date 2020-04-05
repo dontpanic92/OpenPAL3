@@ -36,7 +36,7 @@ steps:
 - task: PowerShell@2
   inputs:
     targetType: 'inline'
-    script: 'tree C:\Users\VssAdministrator\.cargo\git\checkouts'
+    script: 'tree C:\Rust\.cargo\git\checkouts'
   condition: always()
 
 - task: PublishBuildArtifacts@1
