@@ -7,8 +7,9 @@ fn main() {
 
 fn build_shader(shader_name: &str) {
     let out_dir = std::env::var("OUT_DIR").unwrap();
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     println!("{}", out_dir);
-    let path = format!("src/shaders/{}", shader_name);
+    let path = format!("{}/src/shaders/{}", manifest_dir, shader_name);
     println!("cargo:rerun-if-changed={}", path);
     let shader_out_dir = format!("{}/{}.spv", out_dir, shader_name);
     let output = Command::new("glslc")
