@@ -7,8 +7,10 @@ fn main() {
 
 fn build_shader(shader_name: &str) {
     let out_dir = std::env::var("OUT_DIR").unwrap();
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let path = std::fs::canonicalize(
-        std::path::PathBuf::from("src")
+        std::path::PathBuf::from(manifest_dir)
+            .join("src")
             .join("shaders")
             .join(shader_name),
     )
