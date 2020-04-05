@@ -14,13 +14,19 @@ pool:
   vmImage: 'windows-latest'
 
 steps:
-- script: Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+- task: PowerShell@2
   displayName: 'Install choco'
+  inputs:
+    targetType: 'inline'
+    script: 'Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString(''https://chocolatey.org/install.ps1''))'
 
-- script: |
-    choco install vulkan-sdk
-    choco install rust-ms
+- task: PowerShell@2
   displayName: 'Install dependencies'
+  inputs:
+    targetType: 'inline'
+    script: |
+      choco install vulkan-sdk
+      choco install rust-ms
 
 - script: cd openpal3 && cargo build --release
   displayName: 'Build'
