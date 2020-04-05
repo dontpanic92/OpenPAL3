@@ -1,6 +1,6 @@
 target
 **/*.rs.bk
 .idea
-radiance/Cargo.lock
+opengb/Cargo.lock
 .redo
 generated
