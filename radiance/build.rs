@@ -12,6 +12,10 @@ fn build_shader(shader_name: &str) {
     let path = format!("{}/src/shaders/{}", manifest_dir, shader_name);
     println!("cargo:rerun-if-changed={}", path);
     let shader_out_dir = format!("{}/{}.spv", out_dir, shader_name);
+
+    let pb = std::path::PathBuf::from(&path);
+    println!("shader input: {:?}", std::fs::canonicalize(&pb));
+
     let output = Command::new("glslc")
         .args(&[path, "-o".to_string(), shader_out_dir])
         .output()
