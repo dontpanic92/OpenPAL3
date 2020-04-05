@@ -1,0 +1,26 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+  - master
+  - wip/azure-pipelines
+
+pr:
+  - master
+
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+- script: Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+  displayName: 'Install choco'
+
+- script: |
+    choco install vulkan-sdk
+    choco install rust-ms
+  displayName: 'Install dependencies'
+
+- script: cd openpal3 && cargo build --release
+  displayName: 'Build'
