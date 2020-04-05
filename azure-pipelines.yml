@@ -27,8 +27,18 @@ steps:
       choco install vulkan-sdk
       choco install rust-ms
 
-- script: cd openpal3 && cargo build --release
+- task: PowerShell@2
   displayName: 'Build'
+  inputs:
+    targetType: 'inline'
+    script: cd openpal3 && cargo build --release
+    errorActionPreference: 'continue'
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: 'tree C:\Users\VssAdministrator\.cargo\git\checkouts'
+    errorActionPreference: 'continue'
 
 - task: PublishBuildArtifacts@1
   inputs:
