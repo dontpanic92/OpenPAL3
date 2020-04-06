@@ -32,7 +32,7 @@ steps:
     targetType: 'inline'
     script: |
       Invoke-WebRequest https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe -OutFile $(Agent.TempDirectory)/rustup-init.exe
-      $(Agent.TempDirectory)/rustup-init.exe -y --default-toolchain x86_64-pc-windows-msvc
+      $(Agent.TempDirectory)/rustup-init.exe -y --default-toolchain nightly-x86_64-pc-windows-msvc
       rustup toolchain default nightly-x86_64-pc-windows-msvc
 
 - task: PowerShell@2
