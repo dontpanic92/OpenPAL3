@@ -19,8 +19,8 @@ steps:
     targetType: 'inline'
     script: |
       Invoke-WebRequest https://sdk.lunarg.com/sdk/download/1.2.131.2/windows/VulkanSDK-1.2.131.2-Installer.exe -OutFile $(Agent.TempDirectory)/VulkanSDK.exe
-      $(Agent.TempDirectory)/VulkanSDK.exe /S /D=$(Agent.TempDirectory)/VulkanSDK/
-      [Environment]::SetEnvironmentVariable("Path", $env:Path + ";$(Agent.TempDirectory)/VulkanSDK/bin", "User")
+      $(Agent.TempDirectory)/VulkanSDK.exe /S /D=$(Agent.TempDirectory)\VulkanSDK
+      [Environment]::SetEnvironmentVariable("Path", $env:Path + ";$(Agent.TempDirectory)\VulkanSDK\bin", "Machine")
       tree /f $(Agent.TempDirectory)
 
 - task: PowerShell@2
