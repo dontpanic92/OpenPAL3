@@ -21,12 +21,14 @@ steps:
       Invoke-WebRequest https://sdk.lunarg.com/sdk/download/1.2.131.2/windows/VulkanSDK-1.2.131.2-Installer.exe -OutFile $(Agent.TempDirectory)/VulkanSDK.exe
       $(Agent.TempDirectory)/VulkanSDK.exe /S /D=$(Agent.TempDirectory)/VulkanSDK/
       [Environment]::SetEnvironmentVariable("Path", $env:Path + ";$(Agent.TempDirectory)/VulkanSDK/bin", "User")
+      tree /f $(Agent.TempDirectory)
 
 - task: PowerShell@2
   displayName: 'Install rust'
   inputs:
     targetType: 'inline'
     script: |
+      echo $env:Path
       Invoke-WebRequest https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe -OutFile $(Agent.TempDirectory)/rustup-init.exe
       $(Agent.TempDirectory)/rustup-init.exe -y --default-toolchain nightly-x86_64-pc-windows-msvc
 
@@ -34,12 +36,12 @@ steps:
   displayName: 'Build'
   inputs:
     targetType: 'inline'
-    script: cd openpal3; cargo build --release --verbose
+    script: echo $env:Path;cd openpal3; cargo build --release --verbose
 
 - task: PowerShell@2
   inputs:
     targetType: 'inline'
-    script: 'tree C:\Rust\.cargo\git\checkouts'
+    script: 'tree /f C:\Rust\.cargo\git\checkouts'
   condition: always()
 
 - task: PublishBuildArtifacts@1
