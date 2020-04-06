@@ -38,7 +38,11 @@ steps:
   displayName: 'Build'
   inputs:
     targetType: 'inline'
-    script: $env:Path += ";C:\VulkanSDK\Bin"; cd openpal3; cargo build --release --verbose
+    script: |
+      $vulkanVersion = (choco list dub  -lr | Select -Index 1).Split("|") | Select -Index 1
+      $env:Path += ";C:\Vulkan\${version}\Bin"
+      cd openpal3
+      cargo build --release --verbose
 
 - task: PowerShell@2
   inputs:
