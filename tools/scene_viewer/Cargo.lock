@@ -566,7 +566,7 @@ dependencies = [
  "encoding",
  "image",
  "imgui",
- "radiance",
+ "radiance 0.1.0 (git+https://github.com/dontpanic92/radiance/)",
 ]
 
 [[package]]
@@ -657,6 +657,7 @@ dependencies = [
 [[package]]
 name = "radiance"
 version = "0.1.0"
+source = "git+https://github.com/dontpanic92/radiance/#acf553f7e8e3873add2cf8fa4542614a77ac1d8c"
 dependencies = [
  "alto",
  "ash",
@@ -671,10 +672,37 @@ dependencies = [
  "lewton",
  "memoffset",
  "minimp3",
- "radiance-assets",
+ "radiance-assets 0.1.0 (git+https://github.com/dontpanic92/radiance/)",
  "vk-mem",
  "winapi",
 ]
+
+[[package]]
+name = "radiance"
+version = "0.1.0"
+dependencies = [
+ "alto",
+ "ash",
+ "backtrace",
+ "bitflags",
+ "downcast-rs",
+ "hound",
+ "image",
+ "imgui",
+ "imgui-rs-vulkan-renderer",
+ "lazy_static 1.4.0",
+ "lewton",
+ "memoffset",
+ "minimp3",
+ "radiance-assets 0.1.0",
+ "vk-mem",
+ "winapi",
+]
+
+[[package]]
+name = "radiance-assets"
+version = "0.1.0"
+source = "git+https://github.com/dontpanic92/radiance/#acf553f7e8e3873add2cf8fa4542614a77ac1d8c"
 
 [[package]]
 name = "radiance-assets"
@@ -780,7 +808,7 @@ version = "0.1.0"
 dependencies = [
  "nfd",
  "opengb",
- "radiance",
+ "radiance 0.1.0",
 ]
 
 [[package]]
