@@ -42,7 +42,6 @@ steps:
     script: |
       $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
-      echo $env:Path
       cd openpal3
       & cargo build --release 2>&1 | %{ "$_" }
 
