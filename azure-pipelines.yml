@@ -25,23 +25,12 @@ steps:
     targetType: 'inline'
     script: |
       choco install vulkan-sdk
-      tree /f C:\VulkanSDK
-
-#- task: PowerShell@2
-#  displayName: 'Install Vulkan SDK'
-#  inputs:
-#    targetType: 'inline'
-#    script: |
-#      Invoke-WebRequest https://sdk.lunarg.com/sdk/download/1.2.131.2/windows/VulkanSDK-1.2.131.2-Installer.exe -OutFile $(Agent.TempDirectory)\VulkanSDK-Installer.exe
-#      $(Agent.TempDirectory)\VulkanSDK-Installer.exe /S
 
 - task: PowerShell@2
   displayName: 'Install rust'
   inputs:
     targetType: 'inline'
     script: |
-      echo $env:Path
-      glslc
       Invoke-WebRequest https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe -OutFile $(Agent.TempDirectory)/rustup-init.exe
       $(Agent.TempDirectory)/rustup-init.exe -y --default-toolchain nightly-x86_64-pc-windows-msvc
 
@@ -49,7 +38,7 @@ steps:
   displayName: 'Build'
   inputs:
     targetType: 'inline'
-    script: echo $env:Path;cd openpal3; cargo build --release --verbose
+    script: $env:Path += ";C:\VulkanSDK\Bin"; cd openpal3; cargo build --release --verbose
 
 - task: PowerShell@2
   inputs:
