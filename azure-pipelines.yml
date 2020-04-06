@@ -30,7 +30,6 @@ steps:
   displayName: 'Install rust'
   inputs:
     targetType: 'inline'
-    errorActionPreference: 'continue'
     script: |
       Invoke-WebRequest https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe -OutFile $(Agent.TempDirectory)/rustup-init.exe
       $(Agent.TempDirectory)/rustup-init.exe -y --default-toolchain nightly-x86_64-pc-windows-msvc
@@ -40,13 +39,12 @@ steps:
   displayName: 'Build'
   inputs:
     targetType: 'inline'
-    errorActionPreference: 'continue'
     script: |
       $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
       echo $env:Path
       cd openpal3
-      cargo build --release
+      cargo build --release 2>&1 | %{ "$_" }
 
 - task: PublishBuildArtifacts@1
   inputs:
