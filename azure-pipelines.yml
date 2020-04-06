@@ -40,7 +40,7 @@ steps:
     targetType: 'inline'
     script: |
       $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
-      $env:Path += ";C:\Vulkan\${vulkanSdkVersion}\Bin"
+      $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
       cd openpal3
       cargo build --release --verbose
 

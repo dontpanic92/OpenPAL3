@@ -1,5 +1,7 @@
 # 仙三开源版
 
+[![Build Status](https://dontpanic92.visualstudio.com/OpenPAL3/_apis/build/status/dontpanic92.OpenPAL3?branchName=master)](https://dontpanic92.visualstudio.com/OpenPAL3/_build/latest?definitionId=5&branchName=master)
+
 （刚刚开工的）《仙剑奇侠传三》开源实现。
 
 ## 📢 声明
@@ -9,7 +11,7 @@
 
 ## 📌 项目状态
 
-仙三开源版仍处于早期开发阶段，由于目前尚无可体验的游戏内容。v0.1 版本的游戏展示可以参看 [知乎文章](https://zhuanlan.zhihu.com/p/122532099) 中附带的视频。
+仙三开源版仍处于早期开发阶段，目前尚无可体验的游戏内容。v0.1 版本的游戏展示可以参看 [知乎文章](https://zhuanlan.zhihu.com/p/122532099) 中附带的视频。
 
 Azure Pipelines Artifacts 上可以获得每日构建的预编译程序，但仍需要一定的手工操作才可以运行，并极有可能遇到 Bug，因此不推荐普通用户下载尝试。
 
