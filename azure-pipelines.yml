@@ -39,13 +39,12 @@ steps:
   inputs:
     targetType: 'inline'
     script: |
-      choco list vulkan-sdk -lr
-      $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
-      echo $vulkanSdkVersion
-      $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
+      #choco list vulkan-sdk -lr
+      #$vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
+      #echo $vulkanSdkVersion
+      $env:Path += ";C:\VulkanSDK\1.1.126.0\Bin"
       echo $env:Path
-      cd openpal3
-      glslc
+      cd openpal3; cargo build --release
 
 - task: PowerShell@2
   inputs:
