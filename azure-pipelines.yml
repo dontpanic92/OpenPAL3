@@ -39,11 +39,13 @@ steps:
   inputs:
     targetType: 'inline'
     script: |
-      choco list vulkan-sdk  -lr
+      choco list vulkan-sdk -lr
       $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
       echo $vulkanSdkVersion
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
-      cd openpal3;cargo build --release --verbose
+      echo $env:Path
+      cd openpal3
+      cargo build --release --verbose
 
 - task: PowerShell@2
   inputs:
