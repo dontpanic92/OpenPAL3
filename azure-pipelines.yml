@@ -42,7 +42,7 @@ steps:
       $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
       cd openpal3
-      cargo build --release --verbose
+      cargo build --release --verbose 2>&1 | %{ "$_" }
 
 - task: PowerShell@2
   inputs:
