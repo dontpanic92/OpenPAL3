@@ -18,10 +18,11 @@ steps:
   inputs:
     targetType: 'inline'
     script: |
-      Invoke-WebRequest https://sdk.lunarg.com/sdk/download/1.2.131.2/windows/VulkanSDK-1.2.131.2-Installer.exe -OutFile $(Agent.TempDirectory)\VulkanSDK.exe
-      $(Agent.TempDirectory)\VulkanSDK.exe /S /D=$(Agent.TempDirectory)\VulkanSDK
-      [Environment]::SetEnvironmentVariable("Path", $env:Path + ";$(Agent.TempDirectory)\VulkanSDK\bin", "Machine")
-      tree /f D:\A
+      Invoke-WebRequest https://sdk.lunarg.com/sdk/download/1.2.131.2/windows/VulkanSDK-1.2.131.2-Installer.exe -OutFile $(Agent.TempDirectory)\VulkanSDK-Installer.exe
+      $(Agent.TempDirectory)\VulkanSDK-Installer.exe /S /D=D:\VulkanSDK
+      $env:Path += ";D:\VulkanSDK\bin"
+      [Environment]::SetEnvironmentVariable("Path", $env:Path, [System.EnvironmentVariableTarget]::Machine)
+      tree /f D:\
 
 - task: PowerShell@2
   displayName: 'Install rust'
