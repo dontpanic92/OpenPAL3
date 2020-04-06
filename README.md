@@ -13,7 +13,7 @@
 
 仙三开源版仍处于早期开发阶段，目前尚无可体验的游戏内容。v0.1 版本的游戏展示可以参看 [知乎文章](https://zhuanlan.zhihu.com/p/122532099) 中附带的视频。
 
-Azure Pipelines Artifacts 上可以获得每日构建的预编译程序，但仍需要一定的手工操作才可以运行，并极有可能遇到 Bug，因此不推荐普通用户下载尝试。
+[Azure Pipelines](https://dontpanic92.visualstudio.com/OpenPAL3/_build?definitionId=5&_a=summary&repositoryFilter=5&branchFilter=9) 上可以获得预编译程序，但仍需要一定的手工操作才可以运行，并极有可能遇到 Bug，因此不推荐普通用户下载尝试。
 
 ## 🏡 社区
 
