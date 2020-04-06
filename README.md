@@ -27,7 +27,7 @@ Azure Pipelines Artifacts 上可以获得每日构建的预编译程序，但仍
 
 在构建 OpenPAL3 前，请确认已安装以下工具链与依赖库：
 
-- Rust toolchain
+- Rust nightly toolchain
   - 理论上 MSVC ABI 工具链与 GNU ABI 工具链均可编译
 - [最新的 Vulkan SDK](https://www.lunarg.com/vulkan-sdk/)
 
