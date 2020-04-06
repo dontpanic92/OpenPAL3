@@ -8,10 +8,13 @@ fn main() {
 fn build_shader(shader_name: &str) {
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let path = std::path::PathBuf::from(manifest_dir)
+    let path = std::fs::canonicalize(
+        std::path::PathBuf::from(manifest_dir)
             .join("src")
             .join("shaders")
-            .join(shader_name);
+            .join(shader_name),
+    )
+    .unwrap();
     println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
     let shader_out_dir = format!("{}/{}.spv", out_dir, shader_name);
 
