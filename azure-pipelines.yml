@@ -45,7 +45,7 @@ steps:
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
       echo $env:Path
       cd openpal3
-      cargo build --release --verbose
+      glslc
 
 - task: PowerShell@2
   inputs:
