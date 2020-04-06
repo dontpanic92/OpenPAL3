@@ -14,18 +14,21 @@ pool:
 
 steps:
 - task: PowerShell@2
-  displayName: 'Install choco'
-  inputs:
-    targetType: 'inline'
-    script: 'Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString(''https://chocolatey.org/install.ps1''))'
-
-- task: PowerShell@2
-  displayName: 'Install dependencies'
+  displayName: 'Install Vulkan SDK'
   inputs:
     targetType: 'inline'
     script: |
-      choco install vulkan-sdk
-      choco install rust-ms
+      Invoke-WebRequest https://vulkan.lunarg.com/sdk/home#sdk/downloadConfirm/1.2.131.2/windows/VulkanSDK-1.2.131.2-Installer.exe -OutFile $(Agent.TempDirectory)/VulkanSDK.exe
+      $(Agent.TempDirectory)/VulkanSDK.exe /S /D=$(Agent.TempDirectory)/VulkanSDK/
+      [Environment]::SetEnvironmentVariable("Path", $env:Path + ";$(Agent.TempDirectory)/VulkanSDK/bin", "User")
+
+- task: PowerShell@2
+  displayName: 'Install rust'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Invoke-WebRequest https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe -OutFile $(Agent.TempDirectory)/rustup-init.exe
+      $(Agent.TempDirectory)/rustup-init.exe -q --default-toolchain nightly-x86_64-pc-windows-msvc
 
 - task: PowerShell@2
   displayName: 'Build'
