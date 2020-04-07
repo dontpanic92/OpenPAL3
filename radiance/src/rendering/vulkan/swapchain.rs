@@ -248,17 +248,15 @@ impl SwapChain {
             );
         }
 
-        let mut objects_by_material = HashMap::new();
-
-        for &obj in objects {
+        // Render order matters when we need alpha blending
+        // TODO: support sorting by material
+        let mut objects_by_material = vec![];
+        for obj in objects {
             let key = obj.material().name();
-            if !objects_by_material.contains_key(key) {
-                objects_by_material.insert(key.clone(), vec![]);
-            }
 
             self.pipeline_manager
                 .create_pipeline_if_not_exist(obj.material());
-            objects_by_material.get_mut(key).unwrap().push(obj);
+            objects_by_material.push((key, vec![obj]));
         }
 
         for (material_name, object_group) in &objects_by_material {
