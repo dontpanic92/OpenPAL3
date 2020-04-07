@@ -24,7 +24,6 @@ impl SceneExtension<ScnScene> for ScnScene {
 impl ScnScene {
     pub fn new(path: &Path) -> Self {
         let scn_file = scn_load_from_file(path);
-        println!("{:?}", scn_file);
         Self {
             path: path.to_str().unwrap().to_owned(),
             scn_file,
@@ -123,6 +122,7 @@ fn load_model<T: SceneExtension<T>>(
     } else if model_path.to_lowercase().ends_with(".pol") {
         let pol = pol_load_from_file(&model_path).unwrap();
         let mut i = 0;
+        let mut entities = vec![];
         for mesh in &pol.meshes {
             for material in &mesh.material_info {
                 let mut entity = CoreEntity::new(
@@ -133,10 +133,15 @@ fn load_model<T: SceneExtension<T>>(
                     .transform_mut()
                     .set_position(position)
                     .rotate_axis_angle_local(&Vec3::UP, rotation);
-                scene.add_entity(entity);
-
+                
+                entities.push(entity);
                 i += 1;
             }
+        }
+
+        entities.sort_by_key(|e| e.extension().borrow().alpha_blending_needed());
+        for entity in entities {
+            scene.add_entity(entity);
         }
     } else if model_path.to_lowercase().ends_with(".cvd") {
         let cvd = cvd_load_from_file(&model_path).unwrap();

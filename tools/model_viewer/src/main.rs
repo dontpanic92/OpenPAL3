@@ -19,7 +19,7 @@ impl ApplicationExtension<ApplicationCallbacks> for ApplicationCallbacks {
         }, 90.);
     }
 
-    fn on_updated(
+    fn on_updating(
         &mut self,
         app: &mut Application<ApplicationCallbacks>,
         delta_sec: f32,

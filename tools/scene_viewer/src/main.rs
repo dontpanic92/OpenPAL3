@@ -15,7 +15,7 @@ impl ApplicationExtension<ApplicationCallbacks> for ApplicationCallbacks {
             .load_scene2(scene::ScnScene::new(self.path.clone()), 90.);
     }
 
-    fn on_updated(&mut self, app: &mut Application<ApplicationCallbacks>, delta_sec: f32) {
+    fn on_updating(&mut self, app: &mut Application<ApplicationCallbacks>, delta_sec: f32) {
         let fps = self.fps_counter.update_fps(delta_sec);
         let title = format!("Scene Viewer - OpenPAL3 Tools - FPS: {}", fps);
         app.set_title(&title);

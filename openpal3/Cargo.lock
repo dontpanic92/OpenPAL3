@@ -274,12 +274,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a06f77d526c1a601b7c4cdd98f54b5eaabffc14d5f2f0296febdc7f357c6d3ba"
 
 [[package]]
-name = "gcc"
-version = "0.3.55"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
-
-[[package]]
 name = "gif"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -489,23 +483,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "model_viewer"
-version = "0.1.0"
-dependencies = [
- "nfd",
- "opengb",
- "radiance",
-]
-
-[[package]]
-name = "nfd"
-version = "0.0.4"
-source = "git+https://github.com/saurvs/nfd-rs.git#07578c5fea4d7b1f35fbf128f04b6264c3bf3c5a"
-dependencies = [
- "gcc",
-]
-
-[[package]]
 name = "num-integer"
 version = "0.1.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -576,6 +553,13 @@ dependencies = [
  "image",
  "imgui",
  "radiance",
+]
+
+[[package]]
+name = "openpal3"
+version = "0.1.0"
+dependencies = [
+ "opengb",
 ]
 
 [[package]]

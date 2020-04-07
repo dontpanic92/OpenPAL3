@@ -45,9 +45,9 @@ checksum = "f8aac770f1885fd7e387acedd76065302551364496e46b3dd00860b2f8359b9d"
 
 [[package]]
 name = "backtrace"
-version = "0.3.45"
+version = "0.3.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad235dabf00f36301792cfe82499880ba54c6486be094d1047b02bacb67c14e8"
+checksum = "b1e692897359247cc6bb902933361652380af0f1b7651ae5c5013407f30e109e"
 dependencies = [
  "backtrace-sys",
  "cfg-if",
@@ -57,9 +57,9 @@ dependencies = [
 
 [[package]]
 name = "backtrace-sys"
-version = "0.1.34"
+version = "0.1.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca797db0057bae1a7aa2eef3283a874695455cecf08a43bfb8507ee0ebc1ed69"
+checksum = "7de8aba10a69c8e8d7622c5710229485ec32e9d55fdad160ea559c086fdcd118"
 dependencies = [
  "cc",
  "libc",
@@ -177,9 +177,9 @@ dependencies = [
 
 [[package]]
 name = "deflate"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "050ef6de42a33903b30a7497b76b40d3d58691d4d3eec355348c122444a388f0"
+checksum = "e7e5d2a2273fed52a7f947ee55b092c4057025d7a3e04e5ecdbd25d6c3fb1bd7"
 dependencies = [
  "adler32",
  "byteorder",
@@ -291,9 +291,9 @@ dependencies = [
 
 [[package]]
 name = "hermit-abi"
-version = "0.1.8"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1010591b26bbfe835e9faeabeb11866061cc7dcebffd56ad7d0942d0e61aefd8"
+checksum = "725cf19794cf90aa94e65050cb4191ff5d8fa87a498383774c47b332e3af952e"
 dependencies = [
  "libc",
 ]
@@ -306,9 +306,9 @@ checksum = "8a164bb2ceaeff4f42542bdb847c41517c78a60f5649671b2a07312b6e117549"
 
 [[package]]
 name = "image"
-version = "0.23.2"
+version = "0.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9062b90712d25bc6bb165d110aa59c6b47c849246e341e7b86a98daff9d49f60"
+checksum = "bfc5483f8d5afd3653b38a196c52294dcb239c3e1a5bade1990353ea13bcf387"
 dependencies = [
  "bytemuck",
  "byteorder",
@@ -566,7 +566,7 @@ dependencies = [
  "encoding",
  "image",
  "imgui",
- "radiance 0.1.0 (git+https://github.com/dontpanic92/radiance/)",
+ "radiance",
 ]
 
 [[package]]
@@ -626,9 +626,9 @@ dependencies = [
 
 [[package]]
 name = "png"
-version = "0.16.1"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46060468187c21c00ffa2a920690b29997d7fd543f5a4d400461e4a7d4fccde8"
+checksum = "910f09135b1ed14bb16be445a8c23ddf0777eca485fbfc7cee00d81fecab158a"
 dependencies = [
  "bitflags",
  "crc32fast",
@@ -657,7 +657,7 @@ dependencies = [
 [[package]]
 name = "radiance"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#acf553f7e8e3873add2cf8fa4542614a77ac1d8c"
+source = "git+https://github.com/dontpanic92/radiance/#7badad74e588af9ef42a1f550cebd7c777728529"
 dependencies = [
  "alto",
  "ash",
@@ -672,29 +672,7 @@ dependencies = [
  "lewton",
  "memoffset",
  "minimp3",
- "radiance-assets 0.1.0 (git+https://github.com/dontpanic92/radiance/)",
- "vk-mem",
- "winapi",
-]
-
-[[package]]
-name = "radiance"
-version = "0.1.0"
-dependencies = [
- "alto",
- "ash",
- "backtrace",
- "bitflags",
- "downcast-rs",
- "hound",
- "image",
- "imgui",
- "imgui-rs-vulkan-renderer",
- "lazy_static 1.4.0",
- "lewton",
- "memoffset",
- "minimp3",
- "radiance-assets 0.1.0",
+ "radiance-assets",
  "vk-mem",
  "winapi",
 ]
@@ -702,11 +680,7 @@ dependencies = [
 [[package]]
 name = "radiance-assets"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#acf553f7e8e3873add2cf8fa4542614a77ac1d8c"
-
-[[package]]
-name = "radiance-assets"
-version = "0.1.0"
+source = "git+https://github.com/dontpanic92/radiance/#7badad74e588af9ef42a1f550cebd7c777728529"
 
 [[package]]
 name = "rand"
@@ -808,7 +782,7 @@ version = "0.1.0"
 dependencies = [
  "nfd",
  "opengb",
- "radiance 0.1.0",
+ "radiance",
 ]
 
 [[package]]
@@ -900,8 +874,8 @@ checksum = "826e7639553986605ec5979c7dd957c7895e93eabed50ab2ffa7f6128a75097c"
 
 [[package]]
 name = "vk-mem"
-version = "0.2.0"
-source = "git+https://github.com/gwihlidal/vk-mem-rs#3e4939e7a9817a8a20466631efbd073c019f48ad"
+version = "0.2.2"
+source = "git+https://github.com/gwihlidal/vk-mem-rs#f93c12de0f65a67d68b2a9a3116e4a6302c67de8"
 dependencies = [
  "ash",
  "bitflags",

@@ -1,5 +1,5 @@
 use opengb::scene::CvdModelEntity;
-use opengb::scene::Mv3ModelEntity;
+use opengb::scene::{Mv3ModelEntity, Mv3AnimRepeatMode};
 use opengb::scene::PolModelEntity;
 use opengb::loaders::cvdloader::*;
 use opengb::loaders::polloader::*;
@@ -18,16 +18,22 @@ impl SceneExtension<ModelViewerScene> for ModelViewerScene {
             .translate_local(&Vec3::new(0., 200., 400.));
 
         if self.path.to_lowercase().ends_with(".mv3") {
-            let entity = CoreEntity::new(Mv3ModelEntity::new(&self.path));
+            let entity = CoreEntity::new(Mv3ModelEntity::new_from_file(&self.path, Mv3AnimRepeatMode::Repeat), "obj");
             scene.add_entity(entity);
         } else if self.path.to_lowercase().ends_with(".pol") {
             let pol = pol_load_from_file(&self.path).unwrap();
-            for mesh in &pol.meshes {
+            let mut entities = vec![];
+            for (i, mesh) in pol.meshes.iter().enumerate() {
                 for material in &mesh.material_info {
                     let entity =
-                        CoreEntity::new(PolModelEntity::new(&mesh.vertices, material, &self.path));
-                    scene.add_entity(entity)
+                        CoreEntity::new(PolModelEntity::new(&mesh.vertices, material, &self.path), "obj");
+                    entities.push(entity)
                 }
+            }
+
+            entities.sort_by_key(|e| e.extension().borrow().alpha_blending_needed());
+            for entity in entities {
+                scene.add_entity(entity);
             }
         } else if self.path.to_lowercase().ends_with(".cvd") {
             let cvd = cvd_load_from_file(&self.path).unwrap();
@@ -66,7 +72,8 @@ fn cvd_add_model_entity(
                     material,
                     path,
                     id,
-                ));
+                ),
+                &format!("obj_{}", id));
                 entity
                     .transform_mut()
                     .translate_local(&model.position_keyframes.as_ref().unwrap().frames[0].position);

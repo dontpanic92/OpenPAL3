@@ -9,6 +9,7 @@ pub struct PolModelEntity {
     texture_paths: Vec<PathBuf>,
     vertices: VertexBuffer,
     indices: Vec<u32>,
+    alpha_blending_needed: u32,
     // pol: PolFile,
 }
 
@@ -87,7 +88,12 @@ impl PolModelEntity {
             texture_paths,
             vertices,
             indices,
+            alpha_blending_needed: material.has_alpha as u32,
         }
+    }
+
+    pub fn alpha_blending_needed(&self) -> u32 {
+        self.alpha_blending_needed
     }
 }
 

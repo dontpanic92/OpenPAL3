@@ -1,4 +1,4 @@
-use super::read_vec;
+use super::{read_w_vec, read_vec, read_f32_vec};
 use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{DecoderTrap, Encoding};
 use radiance::math::Mat44;
@@ -53,8 +53,8 @@ pub struct PolVertex {
 
 #[derive(Debug)]
 pub struct PolMaterialInfo {
-    pub unknown_dw0: u32,
-    pub unknown_68: Vec<u8>,
+    pub has_alpha: u32,
+    pub unknown_68: Vec<f32>,
     pub unknown_float: f32,
     pub texture_count: u32,
     pub texture_names: Vec<String>,
@@ -92,7 +92,7 @@ pub struct UnknownData {
 
 #[derive(Debug)]
 pub struct GeomNodeDesc {
-    pub unknown: Vec<u8>, // size: 52
+    pub unknown: Vec<u16>, // size: 52
 }
 
 #[derive(Debug)]
@@ -120,7 +120,8 @@ pub fn pol_load_from_file<P: AsRef<Path>>(path: P) -> Result<PolFile, Box<dyn Er
     let mesh_count = reader.read_u32::<LittleEndian>()?;
     let mut geom_node_descs = vec![];
     for _i in 0..mesh_count {
-        let unknown = read_vec(&mut reader, 52)?;
+        let unknown = read_w_vec(&mut reader, 26)?;
+        println!("geom node desc {:?}", &unknown);
         geom_node_descs.push(GeomNodeDesc { unknown });
     }
 
@@ -271,8 +272,8 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
     let material_info_count = reader.read_u32::<LittleEndian>()?;
     let mut material_info = vec![];
     for _i in 0..material_info_count {
-        let unknown_dw0 = reader.read_u32::<LittleEndian>()?;
-        let unknown_68 = read_vec(reader, 64)?;
+        let has_alpha = reader.read_u32::<LittleEndian>()?;
+        let unknown_68 = read_f32_vec(reader, 16)?;
         let unknown_float = reader.read_f32::<LittleEndian>()?.min(128.).max(0.);
         let texture_count = reader.read_u32::<LittleEndian>()?;
         let mut texture_names = vec![];
@@ -301,8 +302,10 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
             triangles.push(PolTriangle { indices })
         }
 
+        println!("unknown_dw0 {} unknown_68 {:?} unknown_float {} unknown2 {} unknown3 {} unknown4 {}", has_alpha, unknown_68, unknown_float, unknown2, unknown3, unknown4);
+
         material_info.push(PolMaterialInfo {
-            unknown_dw0,
+            has_alpha,
             unknown_68,
             unknown_float,
             texture_count,
