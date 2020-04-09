@@ -24,25 +24,25 @@ pub trait Entity: downcast_rs::Downcast {
 
 downcast_rs::impl_downcast!(Entity);
 
-pub trait EntityCallbacks {
-    define_callback_fn!(on_loading, CoreEntity, EntityCallbacks);
-    define_callback_fn!(on_updating, CoreEntity, EntityCallbacks, _delta_sec: f32);
+pub trait EntityExtension<TImpl: EntityExtension<TImpl>> {
+    define_ext_fn!(on_loading, CoreEntity, TImpl);
+    define_ext_fn!(on_updating, CoreEntity, TImpl, _delta_sec: f32);
 }
 
-pub struct CoreEntity<TCallbacks: 'static + EntityCallbacks> {
+pub struct CoreEntity<TExtension: EntityExtension<TExtension>> {
     name: String,
     transform: Transform,
     components: HashMap<TypeId, Vec<Box<dyn Any>>>,
-    callbacks: Rc<RefCell<TCallbacks>>,
+    extension: Rc<RefCell<TExtension>>,
 }
 
-impl<TCallbacks: 'static + EntityCallbacks> CoreEntity<TCallbacks> {
-    pub fn new(callbacks: TCallbacks, name: &str) -> Self {
+impl<TExtension: 'static + EntityExtension<TExtension>> CoreEntity<TExtension> {
+    pub fn new(extension: TExtension, name: &str) -> Self {
         Self {
             name: name.to_owned(),
             transform: Transform::new(),
             components: HashMap::new(),
-            callbacks: Rc::new(RefCell::new(callbacks)),
+            extension: Rc::new(RefCell::new(extension)),
         }
     }
 
@@ -71,8 +71,8 @@ impl<TCallbacks: 'static + EntityCallbacks> CoreEntity<TCallbacks> {
         component.and_then(|c| c.downcast_mut())
     }
 
-    pub fn extension(&self) -> &Rc<RefCell<TCallbacks>> {
-        &self.callbacks
+    pub fn extension(&self) -> &Rc<RefCell<TExtension>> {
+        &self.extension
     }
 }
 
@@ -95,7 +95,7 @@ where
         .and_then(|component| component.downcast_ref::<T>())
 }
 
-impl<TCallbacks: 'static + EntityCallbacks> Entity for CoreEntity<TCallbacks> {
+impl<TExtension: 'static + EntityExtension<TExtension>> Entity for CoreEntity<TExtension> {
     fn name(&self) -> &str {
         &self.name
     }
@@ -105,11 +105,11 @@ impl<TCallbacks: 'static + EntityCallbacks> Entity for CoreEntity<TCallbacks> {
     }
 
     fn load(&mut self) {
-        callback!(self, on_loading);
+        ext_call!(self, on_loading);
     }
 
     fn update(&mut self, delta_sec: f32) {
-        callback!(self, on_updating, delta_sec);
+        ext_call!(self, on_updating, delta_sec);
     }
 
     fn transform(&self) -> &Transform {

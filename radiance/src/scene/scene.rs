@@ -1,11 +1,11 @@
 use super::{
-    entity::{CoreEntity, Entity, EntityCallbacks},
+    entity::{CoreEntity, Entity, EntityExtension},
     Camera,
 };
 use std::cell::RefCell;
 use std::{f32::consts::PI, rc::Rc};
 
-pub trait Scene {
+pub trait Scene: downcast_rs::Downcast {
     fn load(&mut self);
     fn update(&mut self, delta_sec: f32);
     fn draw_ui(&mut self, ui: &mut imgui::Ui);
@@ -15,6 +15,8 @@ pub trait Scene {
     fn camera(&self) -> &Camera;
     fn camera_mut(&mut self) -> &mut Camera;
 }
+
+downcast_rs::impl_downcast!(Scene);
 
 pub trait SceneExtension<TImpl: SceneExtension<TImpl>> {
     define_ext_fn!(on_loading, CoreScene, TImpl);
@@ -39,8 +41,12 @@ impl<TExtension: SceneExtension<TExtension>> CoreScene<TExtension> {
         }
     }
 
-    pub fn add_entity<T: EntityCallbacks + 'static>(&mut self, entity: CoreEntity<T>) {
+    pub fn add_entity<T: EntityExtension<T> + 'static>(&mut self, entity: CoreEntity<T>) {
         self.entities.push(Box::new(entity));
+    }
+
+    pub fn extension(&self) -> &Rc<RefCell<TExtension>> {
+        &self.extension
     }
 }
 
@@ -51,7 +57,7 @@ mod private {
 
 pub type DefaultScene = CoreScene<private::DefaultExtension>;
 
-impl<TExtension: SceneExtension<TExtension>> Scene for CoreScene<TExtension> {
+impl<TExtension:'static + SceneExtension<TExtension>> Scene for CoreScene<TExtension> {
     fn load(&mut self) {
         ext_call!(self, on_loading);
         for entity in &mut self.entities {
