@@ -1,4 +1,4 @@
-use super::{read_w_vec, read_vec, read_f32_vec};
+use super::{read_f32_vec, read_vec, read_w_vec};
 use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{DecoderTrap, Encoding};
 use radiance::math::Mat44;
@@ -302,7 +302,11 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
             triangles.push(PolTriangle { indices })
         }
 
-        println!("unknown_dw0 {} unknown_68 {:?} unknown_float {} unknown2 {} unknown3 {} unknown4 {}", has_alpha, unknown_68, unknown_float, unknown2, unknown3, unknown4);
+        println!(
+            "unknown_dw0 {} unknown_68 {:?} unknown_float {} unknown2 {} unknown3 {} unknown4 {}",
+            has_alpha, unknown_68, unknown_float, unknown2, unknown3, unknown4
+        );
+        println!("aabb min {:?}", aabb_min);
 
         material_info.push(PolMaterialInfo {
             has_alpha,

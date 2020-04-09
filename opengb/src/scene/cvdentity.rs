@@ -1,7 +1,7 @@
 use crate::loaders::cvdloader::*;
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{RenderObject, SimpleMaterial, VertexBuffer, VertexComponents};
-use radiance::scene::{CoreEntity, EntityCallbacks};
+use radiance::scene::{CoreEntity, EntityExtension};
 use std::path::PathBuf;
 
 pub struct CvdModelEntity {
@@ -76,8 +76,8 @@ impl CvdModelEntity {
     }
 }
 
-impl EntityCallbacks for CvdModelEntity {
-    fn on_loading<T: EntityCallbacks>(&mut self, entity: &mut CoreEntity<T>) {
+impl EntityExtension<CvdModelEntity> for CvdModelEntity {
+    fn on_loading(&mut self, entity: &mut CoreEntity<CvdModelEntity>) {
         entity.add_component(RenderObject::new_with_data(
             self.vertices.clone(),
             self.indices.clone(),

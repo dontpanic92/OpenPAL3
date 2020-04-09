@@ -1,6 +1,10 @@
 use crate::loaders::cvdloader::*;
 use crate::loaders::mv3loader::*;
-use crate::loaders::polloader::*;
+use crate::loaders::{
+    nav_loader::{nav_load_from_file, NavFile},
+    polloader::*,
+    scnloader::scn_load_from_file,
+};
 use crate::scene::ScnScene;
 use std::path::{Path, PathBuf};
 
@@ -30,12 +34,23 @@ impl ResourceManager {
     }
 
     pub fn load_scn(&self, cpk_name: &str, scn_name: &str) -> ScnScene {
-        ScnScene::new(
+        let scene_base = self.scene_path.join(cpk_name).join(scn_name);
+        let scene_path = scene_base.with_extension("scn");
+
+        let scn_file = scn_load_from_file(&scene_path);
+        let nav_file = self.load_nav(&scn_file.cpk_name, &scn_file.scn_base_name);
+
+        ScnScene::new(scene_path, scn_file, nav_file)
+    }
+
+    pub fn load_nav(&self, cpk_name: &str, scn_name: &str) -> NavFile {
+        nav_load_from_file(
             &self
                 .scene_path
                 .join(cpk_name)
                 .join(scn_name)
-                .with_extension("scn"),
+                .join(scn_name)
+                .with_extension("nav"),
         )
     }
 

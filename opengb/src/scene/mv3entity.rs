@@ -1,7 +1,7 @@
 use crate::loaders::mv3loader::*;
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{RenderObject, SimpleMaterial, VertexBuffer, VertexComponents};
-use radiance::scene::{CoreEntity, EntityCallbacks};
+use radiance::scene::{CoreEntity, EntityExtension};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -106,8 +106,8 @@ impl Mv3ModelEntity {
     }
 }
 
-impl EntityCallbacks for Mv3ModelEntity {
-    fn on_loading<T: EntityCallbacks>(&mut self, entity: &mut CoreEntity<T>) {
+impl EntityExtension<Mv3ModelEntity> for Mv3ModelEntity {
+    fn on_loading(&mut self, entity: &mut CoreEntity<Mv3ModelEntity>) {
         entity.add_component(RenderObject::new_host_dynamic_with_data(
             self.vertices[0].clone(),
             self.indices.clone(),
@@ -115,7 +115,7 @@ impl EntityCallbacks for Mv3ModelEntity {
         ));
     }
 
-    fn on_updating<T: EntityCallbacks>(&mut self, entity: &mut CoreEntity<T>, delta_sec: f32) {
+    fn on_updating(&mut self, entity: &mut CoreEntity<Mv3ModelEntity>, delta_sec: f32) {
         let mut anim_time = (delta_sec * 4580.) as u32 + self.last_anim_time;
         let total_anim_length = *self.anim_timestamps.last().unwrap();
 

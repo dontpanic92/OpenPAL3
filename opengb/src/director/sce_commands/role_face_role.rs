@@ -2,10 +2,11 @@ use super::RolePropertyNames;
 use super::{RoleProperties, SceneMv3Extensions};
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
+use crate::scene::ScnScene;
 use crate::resource_manager::ResourceManager;
 use imgui::Ui;
 use radiance::math::Vec3;
-use radiance::scene::{Entity, Scene};
+use radiance::scene::{Entity, CoreScene};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -17,7 +18,7 @@ pub struct SceCommandRoleFaceRole {
 impl SceCommand for SceCommandRoleFaceRole {
     fn update(
         &mut self,
-        scene: &mut Box<dyn Scene>,
+        scene: &mut CoreScene<ScnScene>,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,

@@ -1,5 +1,6 @@
 pub mod cvdloader;
 pub mod mv3loader;
+pub mod nav_loader;
 pub mod polloader;
 pub mod scnloader;
 

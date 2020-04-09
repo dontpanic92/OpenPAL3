@@ -1,11 +1,10 @@
 use super::sce_commands::*;
 use crate::director::sce_state::SceState;
-use crate::resource_manager::ResourceManager;
+use crate::{resource_manager::ResourceManager, scene::ScnScene};
 use imgui::*;
 use radiance::audio::{AudioEngine, AudioSourceState};
 use radiance::math::Vec3;
-use radiance::scene::Director;
-use radiance::scene::Scene;
+use radiance::scene::{CoreScene, Director, Scene};
 use std::rc::Rc;
 
 pub struct SceDirector {
@@ -18,6 +17,8 @@ pub struct SceDirector {
 
 impl Director for SceDirector {
     fn update(&mut self, scene: &mut Box<dyn Scene>, ui: &mut Ui, delta_sec: f32) {
+        let gb_scene = scene.as_mut().downcast_mut::<CoreScene<ScnScene>>().unwrap();
+
         if self.state.bgm_source().state() == AudioSourceState::Playing {
             self.state.bgm_source().update();
         }
@@ -30,8 +31,8 @@ impl Director for SceDirector {
             loop {
                 match self.commands.get_next() {
                     Some(mut cmd) => {
-                        cmd.initialize(scene, &mut self.state);
-                        if !cmd.update(scene, ui, &mut self.state, delta_sec) {
+                        cmd.initialize(gb_scene, &mut self.state);
+                        if !cmd.update(gb_scene, ui, &mut self.state, delta_sec) {
                             self.active_commands.push(cmd);
                         }
                     }
@@ -45,7 +46,7 @@ impl Director for SceDirector {
         } else {
             let state = &mut self.state;
             self.active_commands
-                .drain_filter(|cmd| cmd.update(scene, ui, state, delta_sec));
+                .drain_filter(|cmd| cmd.update(gb_scene, ui, state, delta_sec));
         }
     }
 }
@@ -108,10 +109,15 @@ impl SceCommands {
                     101,
                     Vec3::new(1., 0., 0.),
                 )),
+                /*Box::new(SceCommandRoleSetPos::new(
+                    res_man,
+                    101,
+                    Vec3::new(-40.1, 0., -31.490524),
+                )),*/
                 Box::new(SceCommandRoleSetPos::new(
                     res_man,
                     101,
-                    Vec3::new(-40.1, 0., -61.15),
+                    Vec3::new(6., 0., 7.),
                 )),
                 Box::new(SceCommandRoleShowAction::new(res_man, 101, "z19", -2)),
                 Box::new(SceCommandRoleShowAction::new(res_man, 101, "j01", -2)),
@@ -119,7 +125,7 @@ impl SceCommands {
                 Box::new(SceCommandRoleSetPos::new(
                     res_man,
                     104,
-                    Vec3::new(140.1, 0., 61.15),
+                    Vec3::new(16., 0., 12.),
                 )),
                 Box::new(SceCommandRoleSetFace::new(
                     res_man,
@@ -130,8 +136,8 @@ impl SceCommands {
                 Box::new(SceCommandRolePathTo::new(
                     res_man,
                     104,
-                    Vec3::new(140.1, 0., 61.15),
-                    Vec3::new(100.1, 0., 61.15),
+                    Vec3::new(16., 0., 12.),
+                    Vec3::new(14., 0., 12.),
                 )),
                 Box::new(SceCommandRunScriptMode::new(2)),
                 Box::new(SceCommandRoleShowAction::new(res_man, 104, "c01", -2)),
@@ -162,11 +168,11 @@ impl SceCommands {
 }
 
 pub trait SceCommand: dyn_clone::DynClone {
-    fn initialize(&mut self, scene: &mut Box<dyn Scene>, state: &mut SceState) {}
+    fn initialize(&mut self, scene: &mut CoreScene<ScnScene>, state: &mut SceState) {}
 
     fn update(
         &mut self,
-        scene: &mut Box<dyn Scene>,
+        scene: &mut CoreScene<ScnScene>,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,

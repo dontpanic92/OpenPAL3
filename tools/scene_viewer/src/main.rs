@@ -3,6 +3,7 @@ mod scene;
 use nfd::Response;
 use radiance::application::utils::FpsCounter;
 use radiance::application::{Application, ApplicationExtension};
+use opengb::loaders::nav_loader::nav_load_from_file;
 
 struct ApplicationCallbacks {
     path: String,

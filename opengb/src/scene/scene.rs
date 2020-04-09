@@ -1,6 +1,6 @@
 use crate::loaders::cvdloader::*;
 use crate::loaders::polloader::*;
-use crate::loaders::scnloader::*;
+use crate::loaders::{nav_loader::NavFile, scnloader::*};
 use crate::scene::CvdModelEntity;
 use crate::scene::PolModelEntity;
 use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity};
@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 pub struct ScnScene {
     path: String,
     scn_file: ScnFile,
+    nav_file: NavFile,
 }
 
 impl SceneExtension<ScnScene> for ScnScene {
@@ -22,12 +23,16 @@ impl SceneExtension<ScnScene> for ScnScene {
 }
 
 impl ScnScene {
-    pub fn new(path: &Path) -> Self {
-        let scn_file = scn_load_from_file(path);
+    pub fn new(scn_path: PathBuf, scn_file: ScnFile, nav_file: NavFile) -> Self {
         Self {
-            path: path.to_str().unwrap().to_owned(),
+            path: scn_path.to_str().unwrap().to_owned(),
             scn_file,
+            nav_file,
         }
+    }
+
+    pub fn nav_origin(&self) -> &Vec3 {
+        &self.nav_file.unknown1[0].origin
     }
 }
 
@@ -133,7 +138,7 @@ fn load_model<T: SceneExtension<T>>(
                     .transform_mut()
                     .set_position(position)
                     .rotate_axis_angle_local(&Vec3::UP, rotation);
-                
+
                 entities.push(entity);
                 i += 1;
             }

@@ -2,7 +2,7 @@ use crate::loaders::polloader::*;
 use crate::material::LightMapMaterial;
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{RenderObject, SimpleMaterial, VertexBuffer, VertexComponents};
-use radiance::scene::{CoreEntity, EntityCallbacks};
+use radiance::scene::{CoreEntity, EntityExtension};
 use std::path::PathBuf;
 
 pub struct PolModelEntity {
@@ -97,8 +97,8 @@ impl PolModelEntity {
     }
 }
 
-impl EntityCallbacks for PolModelEntity {
-    fn on_loading<T: EntityCallbacks>(&mut self, entity: &mut CoreEntity<T>) {
+impl EntityExtension<PolModelEntity> for PolModelEntity {
+    fn on_loading(&mut self, entity: &mut CoreEntity<PolModelEntity>) {
         entity.add_component(RenderObject::new_with_data(
             self.vertices.clone(),
             self.indices.clone(),

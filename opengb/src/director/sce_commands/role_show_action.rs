@@ -2,10 +2,10 @@ use super::{RoleProperties, RolePropertyNames, SceneMv3Extensions};
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
 use crate::resource_manager::ResourceManager;
-use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity};
+use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity, ScnScene};
 use imgui::Ui;
 use radiance::math::Vec3;
-use radiance::scene::{CoreEntity, Entity, Scene};
+use radiance::scene::{CoreEntity, CoreScene, Entity, Scene};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -17,7 +17,7 @@ pub struct SceCommandRoleShowAction {
 }
 
 impl SceCommand for SceCommandRoleShowAction {
-    fn initialize(&mut self, scene: &mut Box<dyn Scene>, state: &mut SceState) {
+    fn initialize(&mut self, scene: &mut CoreScene<ScnScene>, state: &mut SceState) {
         let name = RolePropertyNames::name(&self.role_id);
         scene.entities_mut().retain(|e| e.name() != name);
         let mut entity = CoreEntity::new(
@@ -46,7 +46,7 @@ impl SceCommand for SceCommandRoleShowAction {
 
     fn update(
         &mut self,
-        scene: &mut Box<dyn Scene>,
+        scene: &mut CoreScene<ScnScene>,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,

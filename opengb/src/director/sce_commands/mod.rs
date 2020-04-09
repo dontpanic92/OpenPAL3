@@ -25,10 +25,10 @@ pub use role_show_action::SceCommandRoleShowAction;
 pub use run_script_mode::SceCommandRunScriptMode;
 
 use super::sce_state::SceState;
-use crate::scene::Mv3ModelEntity;
+use crate::scene::{Mv3ModelEntity, ScnScene};
 use radiance::{
     math::Vec3,
-    scene::{CoreEntity, Scene},
+    scene::{CoreEntity, Scene, CoreScene},
 };
 
 struct RoleProperties;
@@ -93,11 +93,22 @@ impl RolePropertyNames {
     }
 }
 
+const BLOCK_SIZE: f32 = 12.5;
+pub fn nav_coord_to_scene_coord(scene: &CoreScene<ScnScene>, nav_position: &Vec3) -> Vec3 {
+    let ext = scene.extension().borrow();
+    let origin = ext.nav_origin();
+    Vec3::new(
+        nav_position.x * BLOCK_SIZE + origin.x,
+        nav_position.y + origin.y,
+        nav_position.z * BLOCK_SIZE + origin.z,
+    )
+}
+
 trait SceneMv3Extensions {
     fn get_mv3_entity(&mut self, name: &str) -> &mut CoreEntity<Mv3ModelEntity>;
 }
 
-impl SceneMv3Extensions for Box<dyn Scene> {
+impl SceneMv3Extensions for CoreScene<ScnScene> {
     fn get_mv3_entity(&mut self, name: &str) -> &mut CoreEntity<Mv3ModelEntity> {
         let pos = self
             .entities_mut()

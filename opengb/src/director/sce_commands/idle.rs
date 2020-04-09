@@ -1,7 +1,8 @@
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
+use crate::scene::ScnScene;
 use imgui::Ui;
-use radiance::scene::Scene;
+use radiance::scene::CoreScene;
 
 #[derive(Clone)]
 pub struct SceCommandIdle {
@@ -12,7 +13,7 @@ pub struct SceCommandIdle {
 impl SceCommand for SceCommandIdle {
     fn update(
         &mut self,
-        scene: &mut Box<dyn Scene>,
+        scene: &mut CoreScene<ScnScene>,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,
