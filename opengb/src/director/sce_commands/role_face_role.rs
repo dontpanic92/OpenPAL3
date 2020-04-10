@@ -2,11 +2,11 @@ use super::RolePropertyNames;
 use super::{RoleProperties, SceneMv3Extensions};
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
-use crate::scene::ScnScene;
 use crate::resource_manager::ResourceManager;
+use crate::scene::ScnScene;
 use imgui::Ui;
 use radiance::math::Vec3;
-use radiance::scene::{Entity, CoreScene};
+use radiance::scene::{CoreScene, Entity};
 use std::rc::Rc;
 
 #[derive(Clone)]

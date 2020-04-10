@@ -28,7 +28,7 @@ use super::sce_state::SceState;
 use crate::scene::{Mv3ModelEntity, ScnScene};
 use radiance::{
     math::Vec3,
-    scene::{CoreEntity, Scene, CoreScene},
+    scene::{CoreEntity, CoreScene, Scene},
 };
 
 struct RoleProperties;

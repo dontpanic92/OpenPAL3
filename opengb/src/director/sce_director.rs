@@ -17,7 +17,10 @@ pub struct SceDirector {
 
 impl Director for SceDirector {
     fn update(&mut self, scene: &mut Box<dyn Scene>, ui: &mut Ui, delta_sec: f32) {
-        let gb_scene = scene.as_mut().downcast_mut::<CoreScene<ScnScene>>().unwrap();
+        let gb_scene = scene
+            .as_mut()
+            .downcast_mut::<CoreScene<ScnScene>>()
+            .unwrap();
 
         if self.state.bgm_source().state() == AudioSourceState::Playing {
             self.state.bgm_source().update();

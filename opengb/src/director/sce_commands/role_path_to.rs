@@ -1,11 +1,11 @@
-use super::{RoleProperties, RolePropertyNames, SceneMv3Extensions, nav_coord_to_scene_coord};
+use super::{nav_coord_to_scene_coord, RoleProperties, RolePropertyNames, SceneMv3Extensions};
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
 use crate::resource_manager::ResourceManager;
 use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity, ScnScene};
 use imgui::Ui;
 use radiance::math::Vec3;
-use radiance::scene::{CoreEntity, Entity, Scene, CoreScene};
+use radiance::scene::{CoreEntity, CoreScene, Entity, Scene};
 use std::rc::Rc;
 
 #[derive(Clone)]

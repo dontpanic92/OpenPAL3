@@ -1,6 +1,7 @@
 #![feature(drain_filter)]
 
 pub mod application;
+pub mod config;
 pub mod director;
 pub mod loaders;
 pub mod material;

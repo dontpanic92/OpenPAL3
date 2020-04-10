@@ -3,7 +3,7 @@ use crate::director::sce_state::SceState;
 use crate::scene::ScnScene;
 use imgui::Ui;
 use radiance::math::Vec3;
-use radiance::scene::{Scene, CoreScene};
+use radiance::scene::{CoreScene, Scene};
 
 #[derive(Clone)]
 pub struct SceCommandCameraSet {
