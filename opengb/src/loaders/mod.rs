@@ -1,8 +1,8 @@
-pub mod cvdloader;
-pub mod mv3loader;
+pub mod cvd_loader;
+pub mod mv3_loader;
 pub mod nav_loader;
-pub mod polloader;
-pub mod scnloader;
+pub mod pol_loader;
+pub mod scn_loader;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{DecoderTrap, Encoding};

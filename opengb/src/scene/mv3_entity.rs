@@ -1,4 +1,4 @@
-use crate::loaders::mv3loader::*;
+use crate::loaders::mv3_loader::*;
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{RenderObject, SimpleMaterial, VertexBuffer, VertexComponents};
 use radiance::scene::{CoreEntity, EntityExtension};

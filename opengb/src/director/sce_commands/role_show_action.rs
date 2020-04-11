@@ -38,8 +38,7 @@ impl SceCommand for SceCommandRoleShowAction {
         entity
             .transform_mut()
             .set_position(&position)
-            .look_at(&Vec3::add(&position, &face_to))
-            .rotate_axis_angle_local(&Vec3::UP, 180_f32.to_radians());
+            .look_at(&Vec3::add(&position, &face_to));
 
         scene.entities_mut().push(Box::new(entity));
     }

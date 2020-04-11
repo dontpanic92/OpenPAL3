@@ -1,4 +1,4 @@
-use crate::loaders::polloader::*;
+use crate::loaders::pol_loader::*;
 use crate::material::LightMapMaterial;
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{RenderObject, SimpleMaterial, VertexBuffer, VertexComponents};

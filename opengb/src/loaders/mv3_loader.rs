@@ -184,9 +184,9 @@ fn read_mv3_model(reader: &mut dyn Read) -> Result<Mv3Model, Box<dyn Error>> {
             let normal_phi = reader.read_i8()?;
             let normal_theta = reader.read_u8()?;
             vertices.push(Mv3Vertex {
-                x,
+                x: -x,
                 y,
-                z,
+                z: -z,
                 normal_phi,
                 normal_theta,
             });

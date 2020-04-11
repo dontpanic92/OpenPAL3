@@ -221,7 +221,7 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
             let py = reader.read_f32::<LittleEndian>().unwrap();
             let pz = reader.read_f32::<LittleEndian>().unwrap();
             vertices.push(CvdVertex {
-                position: Vec3::new(px, pz, py),
+                position: Vec3::new(px, pz, -py),
                 normal: Vec3::new(nx, ny, nz),
                 tex_coord: Vec2::new(tx, ty),
             })
@@ -334,7 +334,7 @@ fn read_position_keyframes(reader: &mut dyn Read) -> Option<CvdPositionKeyFrames
         }
 
         std::mem::swap(&mut position.y, &mut position.z);
-        // position.z = -position.z;
+        position.z = -position.z;
 
         frames.push(CvdPositionKeyFrame {
             timestamp,
@@ -387,7 +387,7 @@ fn read_rotation_keyframes(reader: &mut dyn Read) -> Option<CvdRotationKeyFrames
         }
 
         std::mem::swap(&mut quaternion.y, &mut quaternion.z);
-        // quaternion.z = -quaternion.z;
+        quaternion.z = -quaternion.z;
 
         frames.push(CvdRotationKeyFrame {
             timestamp,
@@ -440,7 +440,7 @@ fn read_scale_keyframes(reader: &mut dyn Read) -> Option<CvdScaleKeyFrames> {
         }
 
         std::mem::swap(&mut quaternion.y, &mut quaternion.z);
-        // quaternion.z = -quaternion.z;
+        quaternion.z = -quaternion.z;
         std::mem::swap(&mut scale.y, &mut scale.z);
         // scale.z = -scale.z;
 

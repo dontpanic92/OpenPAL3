@@ -1,5 +1,5 @@
 use super::RoleProperties;
-use super::RolePropertyNames;
+use super::{Direction, RolePropertyNames};
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
 use crate::resource_manager::ResourceManager;
@@ -23,6 +23,7 @@ impl SceCommand for SceCommandRoleActive {
             .retain(|e| e.name() != RolePropertyNames::name(&self.role_id));
 
         RoleProperties::set_position(state, &self.role_id, &self.position);
+        RoleProperties::set_face_to(state, &self.role_id, &Direction::SOUTH);
     }
 
     fn update(
@@ -40,7 +41,10 @@ impl SceCommand for SceCommandRoleActive {
             &RolePropertyNames::name(&self.role_id),
         );
         entity.load();
-        entity.transform_mut().set_position(&self.position);
+        entity
+            .transform_mut()
+            .set_position(&self.position)
+            .look_at(&Vec3::add(&self.position, &Direction::SOUTH));
 
         scene.entities_mut().push(Box::new(entity));
 

@@ -1,8 +1,8 @@
 use opengb::scene::CvdModelEntity;
 use opengb::scene::{Mv3ModelEntity, Mv3AnimRepeatMode};
 use opengb::scene::PolModelEntity;
-use opengb::loaders::cvdloader::*;
-use opengb::loaders::polloader::*;
+use opengb::loaders::cvd_loader::*;
+use opengb::loaders::pol_loader::*;
 use radiance::math::Vec3;
 use radiance::scene::{CoreEntity, CoreScene, Entity, Scene, SceneExtension};
 

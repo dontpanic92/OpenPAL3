@@ -67,7 +67,6 @@ impl SceCommand for SceCommandRolePathTo {
         entity
             .transform_mut()
             .look_at(&to)
-            .rotate_axis_angle_local(&Vec3::UP, 180_f32.to_radians())
             .set_position(&new_position);
         RoleProperties::set_position(state, &self.role_id, &new_position);
         RoleProperties::set_face_to(state, &self.role_id, &Vec3::sub(&new_position, &position));

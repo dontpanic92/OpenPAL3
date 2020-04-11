@@ -99,11 +99,6 @@ impl SceCommands {
                 Box::new(SceCommandPlaySound::new(res_man, "wb001", 1)),
                 Box::new(SceCommandPlaySound::new(res_man, "wb001", 1)),
                 Box::new(SceCommandIdle::new(1.5)),
-                Box::new(SceCommandRoleSetFace::new(
-                    res_man,
-                    101,
-                    Vec3::new(0., 0., 1.),
-                )),
                 Box::new(SceCommandRoleShowAction::new(res_man, 101, "j04", -2)),
                 Box::new(SceCommandPlaySound::new(res_man, "wb001", 1)),
                 Box::new(SceCommandDlg::new("景天：\n什么声音？……有贼？！")),

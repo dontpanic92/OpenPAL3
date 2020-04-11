@@ -93,6 +93,30 @@ impl RolePropertyNames {
     }
 }
 
+struct Direction;
+impl Direction {
+    const NORTH: Vec3 = Vec3 {
+        x: 0.,
+        y: 0.,
+        z: -1.,
+    };
+    const SOUTH: Vec3 = Vec3 {
+        x: 0.,
+        y: 0.,
+        z: 1.,
+    };
+    const EAST: Vec3 = Vec3 {
+        x: 1.,
+        y: 0.,
+        z: 0.,
+    };
+    const WEST: Vec3 = Vec3 {
+        x: -1.,
+        y: 0.,
+        z: 0.,
+    };
+}
+
 const BLOCK_SIZE: f32 = 12.5;
 pub fn nav_coord_to_scene_coord(scene: &CoreScene<ScnScene>, nav_position: &Vec3) -> Vec3 {
     let ext = scene.extension().borrow();

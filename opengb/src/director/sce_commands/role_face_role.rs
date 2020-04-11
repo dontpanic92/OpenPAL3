@@ -27,10 +27,7 @@ impl SceCommand for SceCommandRoleFaceRole {
         RoleProperties::set_face_to(state, &self.role_id, &position);
 
         let entity = scene.get_mv3_entity(&RolePropertyNames::name(&self.role_id));
-        entity
-            .transform_mut()
-            .look_at(&position)
-            .rotate_axis_angle_local(&Vec3::UP, 180_f32.to_radians());
+        entity.transform_mut().look_at(&position);
         return true;
     }
 }

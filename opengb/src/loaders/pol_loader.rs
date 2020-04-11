@@ -121,7 +121,6 @@ pub fn pol_load_from_file<P: AsRef<Path>>(path: P) -> Result<PolFile, Box<dyn Er
     let mut geom_node_descs = vec![];
     for _i in 0..mesh_count {
         let unknown = read_w_vec(&mut reader, 26)?;
-        println!("geom node desc {:?}", &unknown);
         geom_node_descs.push(GeomNodeDesc { unknown });
     }
 
@@ -301,12 +300,6 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
             reader.read_u16_into::<LittleEndian>(&mut indices)?;
             triangles.push(PolTriangle { indices })
         }
-
-        println!(
-            "unknown_dw0 {} unknown_68 {:?} unknown_float {} unknown2 {} unknown3 {} unknown4 {}",
-            has_alpha, unknown_68, unknown_float, unknown2, unknown3, unknown4
-        );
-        println!("aabb min {:?}", aabb_min);
 
         material_info.push(PolMaterialInfo {
             has_alpha,

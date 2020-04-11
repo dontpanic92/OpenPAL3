@@ -1,9 +1,9 @@
-use crate::loaders::cvdloader::*;
-use crate::loaders::mv3loader::*;
 use crate::loaders::{
+    cvd_loader::*,
+    mv3_loader::*,
     nav_loader::{nav_load_from_file, NavFile},
-    polloader::*,
-    scnloader::scn_load_from_file,
+    pol_loader::*,
+    scn_loader::scn_load_from_file,
 };
 use crate::scene::ScnScene;
 use std::path::{Path, PathBuf};

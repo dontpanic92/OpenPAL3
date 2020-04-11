@@ -1,6 +1,4 @@
-use crate::loaders::cvdloader::*;
-use crate::loaders::polloader::*;
-use crate::loaders::{nav_loader::NavFile, scnloader::*};
+use crate::loaders::{cvd_loader::*, nav_loader::NavFile, pol_loader::*, scn_loader::*};
 use crate::scene::CvdModelEntity;
 use crate::scene::PolModelEntity;
 use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity};
@@ -212,9 +210,7 @@ fn cvd_add_model_entity<T: SceneExtension<T>>(
                     .and_then(|frame| frame.frames.get(0))
                     .and_then(|f| Some(&f.quaternion))
                 {
-                    let mut q2 = *q;
-                    q2.w = -q2.w;
-                    transform.rotate_quaternion_local(&q2);
+                    transform.rotate_quaternion_local(q);
                 }
 
                 if let Some(s) = model
@@ -223,8 +219,6 @@ fn cvd_add_model_entity<T: SceneExtension<T>>(
                     .and_then(|frame| frame.frames.get(0))
                 {
                     let mut q2 = s.quaternion;
-                    q2.w = -q2.w;
-
                     let mut q3 = q2;
                     q3.inverse();
 

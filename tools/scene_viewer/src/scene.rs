@@ -1,6 +1,6 @@
-use opengb::loaders::cvdloader::*;
-use opengb::loaders::polloader::*;
-use opengb::loaders::scnloader::*;
+use opengb::loaders::cvd_loader::*;
+use opengb::loaders::pol_loader::*;
+use opengb::loaders::scn_loader::*;
 use opengb::scene::load_scene;
 use opengb::scene::CvdModelEntity;
 use opengb::scene::Mv3ModelEntity;
