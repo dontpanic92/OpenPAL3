@@ -24,6 +24,7 @@ pub struct Platform {
 
 impl Platform {
     pub fn new() -> Self {
+        Self::set_dpi_awareness();
         let instance = unsafe { libloaderapi::GetModuleHandleW(std::ptr::null_mut()) };
         let hwnd = Platform::create_window(instance, "Radiance");
         if hwnd.is_null() {
@@ -83,6 +84,12 @@ impl Platform {
     pub fn set_title(&mut self, title: &str) {
         unsafe {
             winuser::SetWindowTextW(self.hwnd, utf16_ptr!(title));
+        }
+    }
+
+    fn set_dpi_awareness() {
+        unsafe {
+            winuser::SetProcessDpiAwarenessContext(winapi::shared::windef::DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
         }
     }
 

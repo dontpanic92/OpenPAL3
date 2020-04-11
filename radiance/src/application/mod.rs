@@ -5,6 +5,6 @@ pub mod utils;
 mod windows;
 
 #[cfg(target_os = "windows")]
-use windows::Platform;
+pub use windows::Platform;
 
 pub use application::{Application, ApplicationExtension, DefaultApplication};
