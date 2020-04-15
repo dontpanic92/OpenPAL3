@@ -4,3 +4,6 @@ target
 opengb/Cargo.lock
 .redo
 generated
+.vs
+out
+CMakeSettings.json
