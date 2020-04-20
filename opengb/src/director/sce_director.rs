@@ -107,11 +107,6 @@ impl SceCommands {
                     101,
                     Vec3::new(1., 0., 0.),
                 )),
-                /*Box::new(SceCommandRoleSetPos::new(
-                    res_man,
-                    101,
-                    Vec3::new(-40.1, 0., -31.490524),
-                )),*/
                 Box::new(SceCommandRoleSetPos::new(
                     res_man,
                     101,

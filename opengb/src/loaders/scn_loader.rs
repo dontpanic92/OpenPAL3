@@ -110,6 +110,7 @@ pub fn scn_load_from_file<P: AsRef<Path>>(path: P) -> ScnFile {
         nodes,
     }
 }
+
 fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
     let index = reader.read_u8().unwrap();
     let b1 = reader.read_u8().unwrap();

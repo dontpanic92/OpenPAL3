@@ -2,6 +2,7 @@ pub mod cvd_loader;
 pub mod mv3_loader;
 pub mod nav_loader;
 pub mod pol_loader;
+pub mod sce_loader;
 pub mod scn_loader;
 
 use byteorder::{LittleEndian, ReadBytesExt};

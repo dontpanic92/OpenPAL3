@@ -3,6 +3,7 @@ use crate::loaders::{
     mv3_loader::*,
     nav_loader::{nav_load_from_file, NavFile},
     pol_loader::*,
+    sce_loader::{sce_load_from_file, SceFile},
     scn_loader::scn_load_from_file,
 };
 use crate::scene::ScnScene;
@@ -41,6 +42,12 @@ impl ResourceManager {
         let nav_file = self.load_nav(&scn_file.cpk_name, &scn_file.scn_base_name);
 
         ScnScene::new(scene_path, scn_file, nav_file)
+    }
+
+    pub fn load_sce(&self, cpk_name: &str, scn_name: &str) -> SceFile {
+        let scene_base = self.scene_path.join(cpk_name).join(scn_name);
+        let sce_path = scene_base.with_extension("sce");
+        sce_load_from_file(&sce_path)
     }
 
     pub fn load_nav(&self, cpk_name: &str, scn_name: &str) -> NavFile {
