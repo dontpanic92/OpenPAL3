@@ -15,6 +15,13 @@ pool:
 steps:
 
 - task: DotNetCoreCLI@2
+  displayName: 'Build openpal3'
+  inputs:
+    command: 'build'
+    projects: 'openpal3'
+    arguments: '-c Release'
+    
+- task: DotNetCoreCLI@2
   inputs:
     command: 'publish'
     publishWebProjects: false
