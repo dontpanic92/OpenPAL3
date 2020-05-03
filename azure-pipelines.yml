@@ -59,6 +59,7 @@ steps:
   inputs:
     command: 'custom'
     custom: 'publish'
+    publishWebProjects: false
     arguments: '.\openpal3\OpenPAL3\OpenPAL3.csproj -c Release -r win-x64 --self-contained'
 
 - task: CopyFiles@2
