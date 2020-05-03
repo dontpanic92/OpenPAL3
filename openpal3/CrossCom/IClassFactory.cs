@@ -1,6 +1,7 @@
 ﻿using CrossCom.Attributes;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace CrossCom
@@ -9,7 +10,7 @@ namespace CrossCom
     public interface IClassFactory : IUnknown
     {
         [CrossComMethod]
-        delegate long _CreateInstance(IntPtr self, IntPtr outer, Guid guid, out IntPtr retval);
+        delegate long _CreateInstance(IntPtr self, IntPtr outer, [MarshalAs(UnmanagedType.LPStruct)] Guid guid, out IntPtr retval);
 
         [CrossComMethod]
         delegate long _LockServer(IntPtr self);

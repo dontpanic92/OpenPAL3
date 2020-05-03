@@ -15,7 +15,7 @@
     <Compile Include="$(GeneratedSourceFolder)\*" />
   </ItemGroup>
 
-  <Target Name="CodeGen" BeforeTargets="BeforeBuild">
+  <Target Name="CodeGen" BeforeTargets="Build">
     <PropertyGroup>
       <IdlJson>Config\opengb.json</IdlJson>
       <CrossComConfig>Config\CrossCom.config.json</CrossComConfig>

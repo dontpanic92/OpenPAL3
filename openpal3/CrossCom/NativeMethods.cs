@@ -7,7 +7,7 @@ namespace CrossCom
 {
     class NativeMethods
     {
-        [DllImport("opengb.dll")]
-        public static extern long DllGetClassObject(Guid rclsid, Guid riid, out IntPtr pointer);
+        [DllImport("opengb")]
+        public static extern long DllGetClassObject([MarshalAs(UnmanagedType.LPStruct)] Guid rclsid, [MarshalAs(UnmanagedType.LPStruct)] Guid riid, out IntPtr pointer);
     }
 }
