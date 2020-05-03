@@ -37,7 +37,7 @@ steps:
       & rustup default nightly-x86_64-pc-windows-msvc 2>&1 | %{ "$_" }
 
 - task: PowerShell@2
-  displayName: 'Build'
+  displayName: 'Build opengb'
   inputs:
     targetType: 'inline'
     errorActionPreference: continue
@@ -47,12 +47,21 @@ steps:
       cd opengb
       & cargo build --release 2>&1 | %{ "$_" }
 
+    
 - task: DotNetCoreCLI@2
+  displayName: 'Build openpal3'
   inputs:
-    command: 'publish'
-    publishWebProjects: false
+    command: 'build'
+    projects: 'openpal3'
+    arguments: '-c Release'
+
+- task: DotNetCoreCLI@2
+  displayName: 'dotnet publish'
+  inputs:
+    command: 'custom'
     projects: 'openpal3/OpenPAL3'
-    zipAfterPublish: false
+    custom: 'publish'
+    arguments: '-c Release -r win-x64 --self-contained'
 
 - task: CopyFiles@2
   inputs:
