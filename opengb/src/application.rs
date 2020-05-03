@@ -1,6 +1,8 @@
+pub use radiance::application::Application;
+
 use crate::{config::OpenGbConfig, director::SceDirector, resource_manager::ResourceManager};
 use radiance::application::utils::FpsCounter;
-use radiance::application::{Application, ApplicationExtension};
+use radiance::application::ApplicationExtension;
 use std::iter::Iterator;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -32,12 +34,12 @@ impl ApplicationExtension<OpenGbApplication> for OpenGbApplication {
 }
 
 impl OpenGbApplication {
-    pub fn create(config: OpenGbConfig, app_name: &str) -> Application<OpenGbApplication> {
+    pub fn create(config: &OpenGbConfig, app_name: &str) -> Application<OpenGbApplication> {
         Application::new(Self::new(config, app_name))
     }
 
-    fn new(config: OpenGbConfig, app_name: &str) -> Self {
-        let root_path = PathBuf::from(config.asset_path);
+    fn new(config: &OpenGbConfig, app_name: &str) -> Self {
+        let root_path = PathBuf::from(&config.asset_path);
         let res_man = Rc::new(ResourceManager::new(&root_path));
 
         OpenGbApplication {

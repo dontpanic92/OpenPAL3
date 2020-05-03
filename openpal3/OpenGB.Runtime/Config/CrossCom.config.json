@@ -1,4 +1,4 @@
 ﻿{
   "namespace": "OpenGB.Runtime",
-  "ignoreInterface": [ "IFactory" ]
+  "ignoreInterface": [ "IErrorStore" ]
 }

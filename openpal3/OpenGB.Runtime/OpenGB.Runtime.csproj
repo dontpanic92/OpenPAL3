@@ -10,17 +10,19 @@
   <ItemGroup>
     <ProjectReference Include="..\CrossCom\CrossCom.csproj" />
   </ItemGroup>
-  
   <ItemGroup>
-    <Compile Include="$(GeneratedSourceFolder)\*" />
+    <IdlJson Include ="Config\opengb.json"/>
   </ItemGroup>
-
-  <Target Name="CodeGen" BeforeTargets="Build">
+  
+  <Target Name="CodeGen" BeforeTargets="CoreCompile" Inputs="@(IdlJson)" Outputs="$(GeneratedSourceFolder)\Source.cs">
     <PropertyGroup>
-      <IdlJson>Config\opengb.json</IdlJson>
       <CrossComConfig>Config\CrossCom.config.json</CrossComConfig>
     </PropertyGroup>
 
-    <Exec Command="dotnet $(SolutionDir)CrossCom.CodeGen/bin/$(Configuration)/netcoreapp3.0/CrossCom.CodeGen.dll $(MSBuildProjectDirectory) $(IdlJson) $(GeneratedSourceFolder) $(CrossComConfig)" />
+    <Exec Command="dotnet $(SolutionDir)CrossCom.CodeGen/bin/$(Configuration)/netcoreapp3.0/CrossCom.CodeGen.dll $(MSBuildProjectDirectory) %(IdlJson.Identity) $(GeneratedSourceFolder) $(CrossComConfig)" />
+
+    <ItemGroup>
+      <Compile Include="$(GeneratedSourceFolder)\*" />
+    </ItemGroup>
   </Target>
 </Project>

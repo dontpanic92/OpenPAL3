@@ -12,8 +12,14 @@ namespace OpenPAL3
             var value = factory.Echo(10);
             Console.WriteLine($"Hello World! {value}");
 
-            var ptr = factory.LoadOpengbConfig("openpal3", "OpenPAL3");
-            Console.WriteLine($"Ptr: {ptr}");
+            var result = factory.LoadOpengbConfig("openpal3", "OpenPAL3", out var config);
+            Console.WriteLine($"Result: {result}");
+
+            var result2 = factory.CreateApplication(config, "OpenPAL3", out var app);
+            Console.WriteLine($"Result2: {result2}");
+
+            app.Initialize();
+            app.Run();
         }
     }
 }

@@ -5,12 +5,16 @@
     using System.IO;
     using System.Linq;
     using System.Reflection;
+    using System.Runtime.InteropServices;
     using HandlebarsDotNet;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;
 
     public class CodeGenerator
     {
+        public const string AutomationSuffix = "_Automation";
+        public const string RawSuffix = "_Raw";
+
         private readonly IdlLib idlLib;
         private readonly Config config;
         private readonly string outputPath;
@@ -24,7 +28,7 @@
             this.idlLib.Namespace = config.Namespace;
             this.idlLib.Interfaces = this.idlLib.Interfaces
                 .Where(t => !this.config.IgnoreInterface.Contains(t.Name))
-                .Where(t => !t.OriginalName.EndsWith("_Raw"))
+                .Where(t => !t.OriginalName.EndsWith(RawSuffix))
                 .ToList();
             this.idlLib.CoClasses = this.idlLib.CoClasses
                 .Where(t => !this.config.IgnoreClass.Contains(t.Name))
@@ -78,15 +82,15 @@
                 this.OriginalName = name;
                 this.Base = @base;
                 this.InterfaceId = iid;
-                this.Methods = methods;
+                this.Methods = methods.OrderBy(m => m.Index).ToList();
 
-                if (name.EndsWith("_Raw"))
+                if (name.EndsWith(RawSuffix))
                 {
-                    name = name.Substring(0, name.Length - 4);
+                    name = name[0..^RawSuffix.Length];
                 }
-                else if (name.EndsWith("_Automation"))
+                else if (name.EndsWith(AutomationSuffix))
                 {
-                    name = name.Substring(0, name.Length - 11);
+                    name = name[0..^AutomationSuffix.Length];
                 }
 
                 this.Name = name;
@@ -105,34 +109,60 @@
 
         private class Method
         {
-            public Method(string name, int idx, string retType, IList<Arg> args)
+            public Method(string name, int idx, string ret_type, IList<Arg> args)
             {
                 this.Name = name;
                 this.Index = idx;
-                this.ReturnType = retType;
+                this.OriginalReturnType = ret_type;
                 this.Arguments = args;
+
+                var type = new WrappedType(ret_type, string.Empty);
+                this.RawReturnType = type.GetRawTypeString(false);
+                this.ManagedReturnType = type.GetManagedTypeString();
+                this.MarshalReturnType = type.MarshalAs != null;
+                this.MarshalReturnTypeAs = type.MarshalAs != null ? type.MarshalAs.ToString() : string.Empty;
+                this.ReturnVoid = (this.RawReturnType == "void");
             }
 
             public string Name { get; }
 
             public int Index { get; }
 
-            public string ReturnType { get; }
+            public string OriginalReturnType { get; }
+
+            public string RawReturnType { get; }
+
+            public string ManagedReturnType { get; }
+
+            public bool MarshalReturnType { get; }
+
+            public string MarshalReturnTypeAs { get; }
+
+            public bool ReturnVoid { get; }
 
             public IList<Arg> Arguments { get; }
         }
 
         private class Arg
         {
-            public Arg(string name, string argType, string attributes)
+            public Arg(string name, string arg_type, string attributes)
             {
                 this.Name = name;
-                this.Type = argType;
+                this.OriginalType = arg_type;
+                this.WrappedType = new WrappedType(arg_type, attributes);
+                this.RawTypeWithDecorator = this.WrappedType.GetRawTypeString(true);
+                this.ManagedTypeWithDecorator = this.WrappedType.GetManagedTypeString();
             }
+
+            public string OriginalType { get; }
 
             public string Name { get; }
 
-            public string Type { get; }
+            public string RawTypeWithDecorator { get; }
+
+            public string ManagedTypeWithDecorator { get; }
+
+            public WrappedType WrappedType { get; }
         }
 
         private class CoClass
