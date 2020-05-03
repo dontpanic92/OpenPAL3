@@ -56,12 +56,10 @@ steps:
     arguments: '-c Release'
 
 - task: DotNetCoreCLI@2
-  displayName: 'dotnet publish'
   inputs:
     command: 'custom'
-    projects: 'openpal3/OpenPAL3'
     custom: 'publish'
-    arguments: '-c Release -r win-x64 --self-contained'
+    arguments: '.\openpal3\OpenPAL3\OpenPAL3.csproj -c Release -r win-x64 --self-contained'
 
 - task: CopyFiles@2
   inputs:
