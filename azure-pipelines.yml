@@ -56,6 +56,7 @@ steps:
     arguments: '-c Release'
 
 - task: DotNetCoreCLI@2
+  displayName: 'Publish'
   inputs:
     command: 'custom'
     custom: 'publish'
