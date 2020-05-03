@@ -21,6 +21,6 @@
       <CrossComConfig>Config\CrossCom.config.json</CrossComConfig>
     </PropertyGroup>
 
-    <Exec Command="dotnet $(SolutionDir)CrossCom.CodeGen\bin\$(Configuration)\netcoreapp3.0\CrossCom.CodeGen.dll $(MSBuildProjectDirectory) $(IdlJson) $(GeneratedSourceFolder) $(CrossComConfig)" />
+    <Exec Command="dotnet $(SolutionDir)CrossCom.CodeGen/bin/$(Configuration)/netcoreapp3.0/CrossCom.CodeGen.dll $(MSBuildProjectDirectory) $(IdlJson) $(GeneratedSourceFolder) $(CrossComConfig)" />
   </Target>
 </Project>
