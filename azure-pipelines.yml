@@ -37,18 +37,42 @@ steps:
       & rustup default nightly-x86_64-pc-windows-msvc 2>&1 | %{ "$_" }
 
 - task: PowerShell@2
-  displayName: 'Build'
+  displayName: 'Build opengb'
   inputs:
     targetType: 'inline'
     errorActionPreference: continue
     script: |
       $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
-      cd openpal3
+      cd opengb
       & cargo build --release 2>&1 | %{ "$_" }
+
+    
+- task: DotNetCoreCLI@2
+  displayName: 'Build openpal3'
+  inputs:
+    command: 'build'
+    projects: 'openpal3'
+    arguments: '-c Release'
+    
+- task: DotNetCoreCLI@2
+  displayName: 'Publish'
+  inputs:
+    command: 'publish'
+    publishWebProjects: false
+    projects: 'openpal3/OpenPAL3'
+    arguments: '-c Release -r win-x64 --self-contained'
+    zipAfterPublish: false
+    modifyOutputPath: false
+
+- task: CopyFiles@2
+  inputs:
+    SourceFolder: 'opengb/target/release/'
+    Contents: 'opengb.dll'
+    TargetFolder: 'openpal3/OpenPAL3/bin/Release/netcoreapp3.1/win-x64/publish/'
 
 - task: PublishBuildArtifacts@1
   inputs:
-    PathtoPublish: 'openpal3/target/release/openpal3.exe'
+    PathtoPublish: 'openpal3/OpenPAL3/bin/Release/netcoreapp3.1/win-x64/publish/'
     ArtifactName: 'openpal3'
     publishLocation: 'Container'
