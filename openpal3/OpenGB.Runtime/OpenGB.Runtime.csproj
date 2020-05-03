@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <UsingTask TaskName="CrossComGen" AssemblyFile="$(SolutionDir)CrossCom.CodeG\bin\$(Configuration)\$(TargetFramework)\CrossCom.dll" />
+  
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <GeneratedSourceFolder>obj\$(Configuration)\$(Framework)\Generated\CrossCom</GeneratedSourceFolder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CrossCom\CrossCom.csproj" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Compile Include="$(GeneratedSourceFolder)\*" />
+  </ItemGroup>
+
+  <Target Name="CodeGen" BeforeTargets="BeforeBuild">
+    <PropertyGroup>
+      <IdlJson>Config\opengb.json</IdlJson>
+      <CrossComConfig>Config\CrossCom.config.json</CrossComConfig>
+    </PropertyGroup>
+
+    <Exec Command="$(SolutionDir)CrossCom.CodeGen\bin\$(Configuration)\netcoreapp3.0\CrossCom.CodeGen.exe $(MSBuildProjectDirectory) $(IdlJson) $(GeneratedSourceFolder) $(CrossComConfig)" />
+  </Target>
+</Project>
