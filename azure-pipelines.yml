@@ -13,23 +13,6 @@ pool:
   vmImage: 'windows-latest'
 
 steps:
-
-- task: DotNetCoreCLI@2
-  displayName: 'Build openpal3'
-  inputs:
-    command: 'build'
-    projects: 'openpal3'
-    arguments: '-c Release'
-    
-- task: DotNetCoreCLI@2
-  inputs:
-    command: 'publish'
-    publishWebProjects: false
-    projects: 'openpal3/OpenPAL3'
-    arguments: '-c Release -r win-x64 --self-contained'
-    zipAfterPublish: false
-    modifyOutputPath: false
-
 - task: PowerShell@2
   displayName: 'Install choco'
   inputs:
@@ -71,15 +54,16 @@ steps:
     command: 'build'
     projects: 'openpal3'
     arguments: '-c Release'
-
-
+    
 - task: DotNetCoreCLI@2
   displayName: 'Publish'
   inputs:
-    command: 'custom'
-    custom: 'publish'
+    command: 'publish'
     publishWebProjects: false
-    arguments: '.\openpal3\OpenPAL3\OpenPAL3.csproj -c Release -r win-x64 --self-contained'
+    projects: 'openpal3/OpenPAL3'
+    arguments: '-c Release -r win-x64 --self-contained'
+    zipAfterPublish: false
+    modifyOutputPath: false
 
 - task: CopyFiles@2
   inputs:
