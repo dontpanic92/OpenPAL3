@@ -1,8 +1,7 @@
-pub use radiance::application::Application;
+pub use radiance::application::{Application, ApplicationExtension};
 
 use crate::{config::OpenGbConfig, director::SceDirector, resource_manager::ResourceManager};
 use radiance::application::utils::FpsCounter;
-use radiance::application::ApplicationExtension;
 use std::iter::Iterator;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;

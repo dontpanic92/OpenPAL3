@@ -8,7 +8,7 @@ namespace {{Namespace}}
     using CrossCom.Attributes;
 
 {{#each Interfaces}}
-    [CrossComInterfaceImport("{{InterfaceId}}", typeof(Internal.{{Name}}Object))]
+    [CrossComInterfaceImport("{{InterfaceId}}", typeof(Internal.{{Name}}ImportedObject))]
     public interface {{Name}} : {{Base}}
     {
     {{#each Methods}}
@@ -32,9 +32,9 @@ namespace {{Namespace}}
     namespace Internal
     {
     {{#each Interfaces}}
-        internal class {{Name}}Object : {{Base}}Object, {{Name}}
+        internal class {{Name}}ImportedObject : {{Base}}ImportedObject, {{Name}}
         {
-            public {{Name}}Object(IntPtr ptr) : base(ptr) {}
+            public {{Name}}ImportedObject(IntPtr ptr) : base(ptr) {}
 
             
         {{#each Methods}}
@@ -43,9 +43,9 @@ namespace {{Namespace}}
             {{#unless ReturnVoid}}
                 var retVal =
             {{/unless}}
-                    this.GetMethod<{{../Name}}._{{Name}}>()(this.GetComPtr(){{#each Arguments}}, {{#if WrappedType.IsOut}}out var __{{Name}}{{else}}{{#if WrappedType.IsComObject}}({{Name}} as ImportedObject).GetComPtr(){{else}}{{Name}}{{/if}}{{/if}}{{/each}});
+                    this.GetMethod<{{../Name}}._{{Name}}>()(this.GetComPtr(){{#each Arguments}}, {{#if WrappedType.IsOut}}out var __{{Name}}{{else}}{{#if WrappedType.IsComObject}}{{Name}}.GetComPtr(){{else}}{{Name}}{{/if}}{{/if}}{{/each}});
             {{#each Arguments}}{{#if WrappedType.IsOut}}{{#if WrappedType.IsComObject}}
-                {{Name}} = new {{WrappedType.ManagedType}}Object(__{{Name}});
+                {{Name}} = new {{WrappedType.ManagedType}}ImportedObject(__{{Name}});
             {{else}}
                 {{Name}} = __{{Name}};
             {{/if}}{{/if}}{{/each}}
@@ -58,5 +58,4 @@ namespace {{Namespace}}
         }
     {{/each}}
     }
-
 }

@@ -7,9 +7,9 @@ using System.Text;
 
 namespace CrossCom
 {
-    public class IUnknownObject : ImportedObject, IUnknown
+    public class IUnknownImportedObject : ImportedObject, IUnknown
     {
-        public IUnknownObject(IntPtr ptr)
+        public IUnknownImportedObject(IntPtr ptr)
             : base(ptr)
         {
         }

@@ -17,7 +17,7 @@ namespace CrossCom
         public static IClassFactory Factory { get; }
     }
 
-    internal class ClassFactory : IUnknownObject, IClassFactory
+    internal class ClassFactory : IUnknownImportedObject, IClassFactory
     {
         public ClassFactory(IntPtr ptr)
             : base(ptr)

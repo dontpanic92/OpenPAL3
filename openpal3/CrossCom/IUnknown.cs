@@ -5,7 +5,7 @@ using System.Text;
 
 namespace CrossCom
 {
-    [CrossComInterfaceImport("00000001-0000-0000-C000-000000000046", typeof(IUnknownObject))]
+    [CrossComInterfaceImport("00000001-0000-0000-C000-000000000046", typeof(IUnknownImportedObject))]
     public interface IUnknown : IDisposable
     {
         [CrossComMethod]
@@ -19,5 +19,7 @@ namespace CrossCom
 
         TInterface QueryInterface<TInterface>()
             where TInterface : class, IUnknown;
+
+        IntPtr GetComPtr();
     }
 }
