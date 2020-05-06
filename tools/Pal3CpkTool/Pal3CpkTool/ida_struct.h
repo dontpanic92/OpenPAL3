@@ -32,7 +32,7 @@ struct CPKFile {
     LPVOID lpMapFileBase;           //0x120
     void* pSrc;                     //0x124
     DWORD srcOffset;                   //0x128
-    bool bFlag;                     //0x12C
+    bool isCompressed;                     //0x12C
     void* pDest;                    //0x130
     DWORD originalSize;             //0x134
     DWORD fileOffset;                   //0x138

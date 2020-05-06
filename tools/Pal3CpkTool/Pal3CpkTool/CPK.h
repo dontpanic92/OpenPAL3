@@ -1,6 +1,8 @@
 #pragma once
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <vector>
+#include <map>
 
 
 enum CpkFileAttrib {
@@ -36,18 +38,18 @@ struct CpkFileEntry {
 };
 
 struct CPKFile {
-    bool bOpened;                     //0x110
-    DWORD vCRC;                      //0x114
-    DWORD vParentCRC;                //0x118
-    DWORD fileIndex;                //0x11C
-    LPVOID lpMapFileBase;           //0x120
-    void* pSrc;                     //0x124
-    DWORD srcOffset;                //0x128
-    bool bFlag;                     //0x12C
-    void* pDest;                    //0x130
-    DWORD originalSize;             //0x134
-    DWORD fileOffset;               //0x138
-    CpkFileEntry* pRecordEntry;     //0x13C
+    bool bOpened;                   //0x110     是否打开
+    DWORD vCRC;                     //0x114     本节点CRC
+    DWORD vParentCRC;               //0x118     父节点CRC
+    DWORD fileIndex;                //0x11C     文件数组下标
+    LPVOID lpMapFileBase;           //0x120     文件映射基址
+    void* pSrc;                     //0x124     文件原始缓冲
+    DWORD srcOffset;                //0x128     对齐字节
+    bool isCompressed;              //0x12C     是否是压缩文件
+    void* pDest;                    //0x130     解压缓冲区
+    DWORD originalSize;             //0x134     原始文件大小
+    DWORD fileOffset;               //0x138     文件偏移
+    CpkFileEntry* pRecordEntry;     //0x13C     文件结构指针
 };
 
 //0x140
@@ -55,7 +57,7 @@ struct gbVFile {
     DWORD unknown1;                 //0x0
     DWORD unknown2;                 //0x4
     DWORD unknown3;                 //0x8
-    char fileName[MAX_PATH];        //0xC
+    char fileName[MAX_PATH];        //0xC       文件名
     CPKFile cpkFile;                //0x110
 };
 
@@ -95,6 +97,26 @@ enum ECPKSeekFileType {
     ECPKSeekFileType_Sub,
 };
 
+class CPKDirectoryEntry {
+
+public:
+    CPKDirectoryEntry()
+        :vCRC(0), vParentCRC(0), lpszName{ 0 }, iAttrib(0)
+    {
+    }
+    ~CPKDirectoryEntry()
+    {
+        for (int i = 0; i < childs.size(); i++)
+            delete childs[i];
+        childs.clear();
+    }
+    DWORD vCRC;
+    DWORD vParentCRC;
+    DWORD iAttrib;
+    CHAR lpszName[MAX_PATH];
+    std::vector<CPKDirectoryEntry*> childs;
+};
+
 class CPK {
 public:
     CPK();
@@ -121,6 +143,9 @@ public:
     void Rewind(CPKFile *pCpkFile);
     void SetOpenMode(ECPKMode openMode);
 
+    bool buildDirectoryTree(CPKDirectoryEntry& entry);
+    bool buildParent(CpkFileEntry& currEntry, std::map<DWORD, CPKDirectoryEntry*>& handledEntries);
+
 private:
     int executeZipUnZip(CpkZipUnzipParam *param);
     int processCompress(unsigned __int8 *src, unsigned int decompressSize, unsigned char *dest, DWORD *bResult, int encryptTable);
@@ -134,6 +159,7 @@ private:
     static void InitCrcTable(void);
     DWORD GetAllocationGranularity(void);
     void Reset();
+    bool ReadFileEntryName(const CpkFileEntry* pFileEntry, char* lpBuffer, DWORD bufferLen);
 
 
 

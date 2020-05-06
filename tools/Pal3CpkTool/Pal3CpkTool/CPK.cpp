@@ -10,6 +10,7 @@ static int encryptTable[256] = { 0 };
 
 
 
+
 CPK::CPK()
 {
     memset(this, 0, sizeof(CPK));
@@ -123,14 +124,14 @@ bool CPK::Close(CPKFile * pCpkFile)
             pCpkFile->bOpened = false;
             return 0;
         }
-        if (pCpkFile->bFlag && pCpkFile->originalSize) {
+        if (pCpkFile->isCompressed && pCpkFile->originalSize) {
             /*if (!(byte_10167011 & 1)) {
                 byte_10167011 |= 1u;
                 sub_1002DCF0(bufferHandle, 2, 1);
                 atexit(unknown_libname_2);
             }*/
             //sub_1002E090((HANDLE *)bufferHandle, pCpkFile->pDest, pCpkFile->originalSize);
-            
+
             //直接释放内存
             delete[] pCpkFile->pDest;
             pCpkFile->pDest = nullptr;
@@ -295,11 +296,115 @@ void CPK::Reset()
     }
 }
 
+bool CPK::ReadFileEntryName(const CpkFileEntry* pCpkFileEntry, char* lpBuffer, DWORD bufferLen)
+{
+    if (!isLoaded)
+        return false;
+    if (dwOpenMode != ECPKMode_Mapped)
+        return false;
+
+    DWORD validOffset = pCpkFileEntry->Offset + pCpkFileEntry->CompressedSize;
+    //DWORD dwFileOffsetLow = pCpkFileEntry->Offset + pCpkFileEntry->CompressedSize;
+    DWORD alignOffset = validOffset % dwAllocationGranularity;
+
+    if (dwOpenMode == ECPKMode_Mapped) {
+        validOffset -= alignOffset;
+        //dwFileOffsetLow = alignedOffset;
+    }
+
+    LPVOID pInfoRecordBuf = MapViewOfFile(fileMappingHandle, FILE_MAP_READ, 0, validOffset, pCpkFileEntry->InfoRecordSize + alignOffset);
+    if (!pInfoRecordBuf) {
+        DWORD dwLastErr = GetLastError();
+        return false;
+    }
+    int unalignedLen = pCpkFileEntry->Offset + pCpkFileEntry->CompressedSize - validOffset;
+    strcpy_s(lpBuffer, bufferLen, &((char*)pInfoRecordBuf)[alignOffset]);
+    lpBuffer[pCpkFileEntry->InfoRecordSize - 1] = '\0';
+    UnmapViewOfFile(pInfoRecordBuf);
+    return true;
+}
+
 void CPK::SetOpenMode(ECPKMode openMode)
 {
     if (!isLoaded) {
         dwOpenMode = openMode;
     }
+}
+
+bool CPK::buildDirectoryTree(CPKDirectoryEntry& entry)
+{
+    if (!isLoaded)
+        return false;
+
+    //set up root directory info
+    entry.vCRC = 0;
+    entry.vParentCRC = 0;
+    entry.iAttrib = 0;
+    strcpy_s(entry.lpszName, sizeof(entry.lpszName), fileName);
+    //用来记录所有已经处理过的节点，避免重复处理
+    std::map<DWORD, CPKDirectoryEntry*> handledEntries;
+    handledEntries.emplace(0, &entry);
+    //遍历所有的节点，构造树状结构
+    for (int i = 0; i < ARRAYSIZE(entries); i++) {
+        //skip deleted files
+        CpkFileEntry& currFileEntry = entries[i];
+
+        if (currFileEntry.Attrib & CpkFileAttrib_IsDeleted)
+            continue;
+        if (handledEntries.find(currFileEntry.vCRC) != handledEntries.end()) {
+            continue;
+        }
+
+        //find self parent
+        if (!buildParent(currFileEntry, handledEntries)) {
+            assert(false);
+        }
+    }
+}
+
+bool CPK::buildParent(CpkFileEntry& currFileEntry, std::map<DWORD, CPKDirectoryEntry*>& handledEntries)
+{
+    //当前节点已处理过，反回成功
+    if (handledEntries.find(currFileEntry.vCRC) != handledEntries.end())
+        return true;
+    //构造节点
+    CPKDirectoryEntry* child = new CPKDirectoryEntry();
+    child->iAttrib = currFileEntry.Attrib;
+    child->vCRC = currFileEntry.vCRC;
+    child->vParentCRC = currFileEntry.vParentCRC;
+    ReadFileEntryName(&currFileEntry, child->lpszName, sizeof(child->lpszName));
+    //如果当前节点的parent存在，则添加节点，退出递归
+    if (handledEntries.find(child->vParentCRC) != handledEntries.end()) {
+        //update child file name
+        if (child->vParentCRC) {
+            CHAR newName[MAX_PATH] = { 0 };
+            sprintf_s(newName, "%s\\%s", handledEntries[child->vParentCRC]->lpszName, child->lpszName);
+            strcpy_s(child->lpszName, sizeof(child->lpszName), newName);
+        }
+        handledEntries[child->vParentCRC]->childs.push_back(child);
+        handledEntries[child->vCRC] = child;
+        return true;
+    }
+    //get parent node
+    int iIndex = GetTableIndexFromCRC(child->vParentCRC);
+    if (iIndex == -1) {
+        return false;
+    }
+    //build the parent recurvusly
+    if (buildParent(entries[iIndex], handledEntries)) {
+        if (handledEntries.find(child->vParentCRC) != handledEntries.end()) {
+            //update child file name
+            if (child->vParentCRC) {
+                CHAR newName[MAX_PATH] = { 0 };
+                sprintf_s(newName, "%s\\%s", handledEntries[child->vParentCRC]->lpszName, child->lpszName);
+                strcpy_s(child->lpszName, sizeof(child->lpszName), newName);
+            }
+            handledEntries[child->vParentCRC]->childs.push_back(child);
+            handledEntries[child->vCRC] = child;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool CPK::Load(const char *lpFileName)
@@ -312,7 +417,7 @@ bool CPK::Load(const char *lpFileName)
         CloseHandle(fileHandle);
         Reset();
     }
-    fileHandle = CreateFileA(lpFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0x10000080u, NULL);
+    fileHandle = CreateFileA(lpFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_SUPPORTS_OPEN_BY_FILE_ID | FILE_ATTRIBUTE_NORMAL, NULL);
     if (fileHandle == (HANDLE)-1) {
         /*showMsgBox(0x10u, aErrorCeCannotO, aDProjectGbengi, 175);
         showMessageBox(aCouldnTOpenPac, lpFileName);*/
@@ -463,7 +568,7 @@ CPKFile* CPK::Open(const char *lpString2)
         dwFileOffsetLow = alignedOffset;
     }
     int unalignedLen = pFileEntry->Offset - alignedOffset;
-    size_t mappedSize = unalignedLen + pFileEntry->CompressedSize + pFileEntry->OriginalSize;
+    size_t mappedSize = unalignedLen + pFileEntry->CompressedSize;
     int iIndex = 0;
     for (; iIndex < ARRAYSIZE(vFiles); iIndex++) {
         if (!vFiles[iIndex]->cpkFile.bOpened)
@@ -484,6 +589,10 @@ CPKFile* CPK::Open(const char *lpString2)
     pCpkFile->lpMapFileBase = 0;
     if (dwOpenMode == ECPKMode_Mapped) {
         void* lpMapped = MapViewOfFile(fileMappingHandle, 4u, 0, dwFileOffsetLow, mappedSize);// 把文件的一部分map过去
+        if (!lpMapped) {
+            DWORD dwErr = GetLastError();
+            OutputDebugStringA("error");
+        }
         pCpkFile->lpMapFileBase = lpMapped;
         if (!lpMapped) {
             pCpkFile->bOpened = 0;
@@ -496,12 +605,12 @@ CPKFile* CPK::Open(const char *lpString2)
     pCpkFile->pRecordEntry = pFileEntry;// 记录entry结构指针
     pCpkFile->pSrc = &(((char *)pCpkFile->lpMapFileBase)[unalignedLen]);
 
-    pCpkFile->bFlag = (pFileEntry->Attrib & 0xFFFF0000) != 0x10000;
+    pCpkFile->isCompressed = (pFileEntry->Attrib & 0xFFFF0000) != 0x10000;
     DWORD originalSize = pFileEntry->OriginalSize;
     pCpkFile->srcOffset = unalignedLen;
     pCpkFile->originalSize = originalSize;
     pCpkFile->fileOffset = 0;
-    if (pCpkFile->bFlag == 1 && originalSize) {
+    if (pCpkFile->isCompressed && originalSize) {
         if (dwOpenMode != ECPKMode_Mapped) {
             pCpkFile->bOpened = 0;
             return nullptr;
