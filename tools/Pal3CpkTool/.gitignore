@@ -1,0 +1,7 @@
+.vs/
+*.sln
+Debug/
+Release/
+*.obj
+*.tlog
+*.log
