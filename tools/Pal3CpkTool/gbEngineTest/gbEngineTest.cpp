@@ -34,18 +34,19 @@ struct CpkFileEntry {
 };
 
 class CPKFile {
-    bool bUsed;                     //0x110
-    DWORD vID;                      //0x114
-    DWORD parentVID;                //0x118
-    DWORD fileIndex;                //0x11C
-    LPVOID lpMapFileBase;           //0x120
-    void* pSrc;                     //0x124
-    DWORD offset;                   //0x128
-    bool bFlag;                     //0x12C
-    void* pDest;                    //0x130
-    DWORD originalSize;             //0x134
-    DWORD dwFlag;                   //0x138
-    CpkFileEntry* pRecordEntry;     //0x13C
+public:
+    bool bOpened;                   //0x110     是否打开
+    DWORD vCRC;                     //0x114     本节点CRC
+    DWORD vParentCRC;               //0x118     父节点CRC
+    DWORD fileIndex;                //0x11C     文件数组下标
+    LPVOID lpMapFileBase;           //0x120     文件映射基址
+    void* pSrc;                     //0x124     文件原始缓冲
+    DWORD srcOffset;                //0x128     对齐字节
+    bool isCompressed;              //0x12C     是否是压缩文件
+    void* pDest;                    //0x130     解压缓冲区
+    DWORD originalSize;             //0x134     原始文件大小
+    DWORD fileOffset;               //0x138     文件偏移
+    CpkFileEntry* pRecordEntry;     //0x13C     文件结构指针
 };
 
 //0x140
@@ -109,25 +110,25 @@ private:
 public:
     CPK(void);
     ~CPK(void);
-    bool Close(class CPKFile *);
+    bool Close(CPKFile *);
     bool IsFileExist(char const *);
     bool IsLoaded(void);
     bool IsValidCPK(char const *);
     bool Load(char const *);
-    bool Read(void *, unsigned long, class CPKFile *);
+    bool Read(void *, unsigned long, CPKFile *);
     bool Unload(void);
-    char * ReadLine(char *, int, class CPKFile *);
+    char * ReadLine(char *, int, CPKFile *);
     class CPK & operator=(class CPK const &);
-    class CPKFile * Open(char const *);
-    int ReadChar(class CPKFile *);
+    CPKFile * Open(char const *);
+    int ReadChar(CPKFile *);
     unsigned long Compress(void *, void *, unsigned long);
     unsigned long DeCompress(void *, void *, unsigned long);
     unsigned long GetCPKHandle(void);
-    unsigned long GetSize(class CPKFile *);
+    unsigned long GetSize(CPKFile *);
     unsigned long LoadFile(void *, char const *);
-    unsigned long Seek(class CPKFile *, int, unsigned long);
-    unsigned long Tell(class CPKFile *);
-    void Rewind(class CPKFile *);
+    unsigned long Seek(CPKFile *, int, unsigned long);
+    unsigned long Tell(CPKFile *);
+    void Rewind(CPKFile *);
     void SetOpenMode(enum ECPKMode);
 };
 
@@ -139,12 +140,9 @@ int main()
     bool bOk = cpk.Load("E:\\PAL3\\basedata\\basedata.cpk");
     if (!bOk)
         return -1;
-    bOk = cpk.Open("gfxscript\\white.tga");
-    if (!bOk)
+    CPKFile* pFile = cpk.Open("ui\\UILib\\8.tga");
+    if (!pFile)
         return -1;
-    HMODULE hGbEngine = LoadLibraryA("E:\\PAL3\\gbengine.dll");
-    typedef unsigned long (*PFnCrc)(char const *);
-    PFnCrc Crc = (PFnCrc)GetProcAddress(hGbEngine, "?Crc@CPK@@CAKPBD@Z");
-    DWORD dwCrc = Crc("gfxscript\\white.tga");
+    pFile->bOpened;
     return 0;
 }
