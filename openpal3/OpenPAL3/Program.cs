@@ -10,45 +10,98 @@ namespace OpenPAL3
 
 
         [StructLayout(LayoutKind.Sequential)]
-        struct ApplicationExtensionVirtualTable
+        struct ApplicationExtensionExportedVirtualTable
         {
-            public IntPtr OnInitialized;
-            public IntPtr OnUpdating;
+            public readonly IntPtr OnInitialized;
+            public readonly IntPtr OnUpdating;
+
+            private readonly IApplicationExtension impl;
+            public ApplicationExtensionExportedVirtualTable(IApplicationExtension impl)
+            {
+                this.impl = impl;
+                this.OnInitialized = IntPtr.Zero;
+                this.OnUpdating = IntPtr.Zero;
+
+                this.OnInitialized = Marshal.GetFunctionPointerForDelegate<IApplicationExtension._OnInitialized>(this.OnInitializedStub);
+                this.OnUpdating = Marshal.GetFunctionPointerForDelegate<IApplicationExtension._OnUpdating>(this.OnUpdatingStub);
+            }
+
+            private void OnInitializedStub(IntPtr ptr, IntPtr app)
+            {
+                impl.OnInitialized(null);
+            }
+
+            private void OnUpdatingStub(IntPtr ptr, IntPtr app, float deltaSec)
+            {
+                impl.OnUpdating(null, deltaSec);
+            }
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        public struct ApplicationExtensionExportedRawObject
+        public struct ExportedRawObject
         {
             public IntPtr VirtualTable;
         }
 
-        public class ApplicationExtensionExportedObject
+        class ApplicationExtensionExportedObject
         {
             private GCHandle rawObject;
             private GCHandle table;
-            private IApplicationExtension implementation;
 
-            public ApplicationExtensionExportedObject(IApplicationExtension implementation)
+            public ApplicationExtensionExportedObject(IApplicationExtension impl)
             {
-                var rawObject = new ApplicationExtensionExportedRawObject();
-                var table = new ApplicationExtensionVirtualTable();
-                table.OnInitialized = Marshal.GetFunctionPointerForDelegate<IApplicationExtension._OnInitialized>(this.OnInitializedStub);
-
+                var table = new ApplicationExtensionExportedVirtualTable(impl);
                 this.table = GCHandle.Alloc(table, GCHandleType.Pinned);
 
-                rawObject.VirtualTable = this.table.AddrOfPinnedObject();
+                var rawObject = new ExportedRawObject
+                {
+                    VirtualTable = this.table.AddrOfPinnedObject(),
+                };
                 this.rawObject = GCHandle.Alloc(rawObject, GCHandleType.Pinned);
             }
-
-            public void OnInitializedStub(IntPtr ptr, IntPtr app)
-            {
-                Console.WriteLine("InOninitialzedStub!");
-                this.implementation.OnInitialized(null);
-            }
-
         }
 
         public class ApplicationExtension : IApplicationExtension
+        {
+            private IApplicationExtension implementation;
+
+            public ApplicationExtension()
+            {
+            }
+
+            public long AddRef()
+            {
+                throw new NotImplementedException();
+            }
+
+            public IntPtr GetComPtr()
+            {
+                throw new NotImplementedException();
+            }
+
+            public void OnInitialized(ComObject<IApplication> app)
+            {
+                throw new NotImplementedException();
+            }
+
+
+            public void OnUpdating(ComObject<IApplication> app, float delta_sec)
+            {
+                throw new NotImplementedException();
+            }
+
+            public long Release()
+            {
+                throw new NotImplementedException();
+            }
+
+            ComObject<TInterface> IUnknown.QueryInterface<TInterface>()
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        /*public class ApplicationExtension : IApplicationExtension
         {
             
 
@@ -71,19 +124,19 @@ namespace OpenPAL3
             {
                 throw new NotImplementedException();
             }
-        }
+        }*/
 
         static void Main(string[] args)
         {
             using var factory = ClassFactory<Factory>.Factory.CreateInstance<IFactory>();
-            var value = factory.Echo(10);
+            var value = factory.Get().Echo(10);
             Console.WriteLine($"Echo: {value}");
 
-            var result = factory.LoadOpengbConfig("openpal3", "OpenPAL3", out var config);
-            var result2 = factory.CreateDefaultApplication(config, "OpenPAL3", out var app);
+            var result = factory.Get().LoadOpengbConfig("openpal3", "OpenPAL3", out var config);
+            var result2 = factory.Get().CreateDefaultApplication(config, "OpenPAL3", out var app);
 
-            app.Initialize();
-            app.Run();
+            app.Get().Initialize();
+            app.Get().Run();
         }
     }
 }

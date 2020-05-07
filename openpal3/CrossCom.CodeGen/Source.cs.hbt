@@ -14,11 +14,11 @@ namespace {{Namespace}}
     {{#each Methods}}
         {{#if MarshalReturnType}}[return: MarshalAs(UnmanagedType.{{MarshalReturnTypeAs}})]{{/if}}
         [CrossComMethod]
-        delegate {{RawReturnType}} _{{Name}}(IntPtr self{{#each Arguments}}, {{RawTypeWithDecorator}} {{Name}}{{/each}});
+        public delegate {{RawReturnType}} _{{Name}}(IntPtr self{{#each Arguments}}, {{RawTypeWithDecorator}} {{Name}}{{/each}});
     {{/each}}
 
     {{#each Methods}}
-        {{ManagedReturnType}} {{Name}}({{#each Arguments}}{{ManagedTypeWithDecorator}} {{Name}}{{#unless @last}}, {{/unless}}{{/each}});
+        {{ManagedReturnType}} {{Name}}({{#each Arguments}}{{{ManagedTypeWithDecorator}}} {{Name}}{{#unless @last}}, {{/unless}}{{/each}});
     {{/each}}
     }
 {{/each}}
@@ -38,14 +38,16 @@ namespace {{Namespace}}
 
             
         {{#each Methods}}
-            public {{ManagedReturnType}} {{Name}}({{#each Arguments}}{{ManagedTypeWithDecorator}} {{Name}}{{#unless @last}}, {{/unless}}{{/each}})
+            public 
+            {{#if ReturnType.IsComObject}}ComObject<{{ManagedReturnType}}>{{else}}{{ManagedReturnType}}{{/if}}
+            {{Name}}({{#each Arguments}}{{{ManagedTypeWithDecorator}}} {{Name}}{{#unless @last}}, {{/unless}}{{/each}})
             {
             {{#unless ReturnVoid}}
                 var retVal =
             {{/unless}}
-                    this.GetMethod<{{../Name}}._{{Name}}>()(this.GetComPtr(){{#each Arguments}}, {{#if WrappedType.IsOut}}out var __{{Name}}{{else}}{{#if WrappedType.IsComObject}}{{Name}}.GetComPtr(){{else}}{{Name}}{{/if}}{{/if}}{{/each}});
-            {{#each Arguments}}{{#if WrappedType.IsOut}}{{#if WrappedType.IsComObject}}
-                {{Name}} = new {{WrappedType.ManagedType}}ImportedObject(__{{Name}});
+                    this.GetMethod<{{../Name}}._{{Name}}>()(this.GetComPtr(){{#each Arguments}}, {{#if ArgType.IsOut}}out var __{{Name}}{{else}}{{#if ArgType.IsComObject}}{{Name}}.GetComPtr(){{else}}{{Name}}{{/if}}{{/if}}{{/each}});
+            {{#each Arguments}}{{#if ArgType.IsOut}}{{#if ArgType.IsComObject}}
+                {{Name}} = new ComObject<{{ArgType.ManagedType}}>(new {{ArgType.ManagedType}}ImportedObject(__{{Name}}));
             {{else}}
                 {{Name}} = __{{Name}};
             {{/if}}{{/if}}{{/each}}

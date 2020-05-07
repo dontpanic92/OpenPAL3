@@ -12,9 +12,15 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OpenGB.Runtime", "OpenGB.Ru
 		{2CACB546-4D60-4067-A0C1-EA17A2772F86} = {2CACB546-4D60-4067-A0C1-EA17A2772F86}
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CrossCom.CodeGen", "CrossCom.CodeGen\CrossCom.CodeGen.csproj", "{2CACB546-4D60-4067-A0C1-EA17A2772F86}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CrossCom.CodeGen", "CrossCom.CodeGen\CrossCom.CodeGen.csproj", "{2CACB546-4D60-4067-A0C1-EA17A2772F86}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "Common", "Common\Common.shproj", "{566D9B20-37A9-4E95-8924-872F8D6DE09A}"
 EndProject
 Global
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		Common\Common.projitems*{566d9b20-37a9-4e95-8924-872f8d6de09a}*SharedItemsImports = 13
+		Common\Common.projitems*{dcd7197a-a4b5-4ff3-9efe-1076eb037560}*SharedItemsImports = 5
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU

@@ -14,7 +14,7 @@
     <IdlJson Include ="Config\opengb.json"/>
   </ItemGroup>
   
-  <Target Name="CodeGen" BeforeTargets="CoreCompile" Inputs="@(IdlJson)" Outputs="$(GeneratedSourceFolder)\Source.cs">
+  <Target Name="CodeGen" BeforeTargets="CoreCompile">
     <PropertyGroup>
       <CrossComConfig>Config\CrossCom.config.json</CrossComConfig>
     </PropertyGroup>

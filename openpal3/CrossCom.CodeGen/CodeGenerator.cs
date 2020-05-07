@@ -116,11 +116,11 @@
                 this.OriginalReturnType = ret_type;
                 this.Arguments = args;
 
-                var type = new WrappedType(ret_type, string.Empty);
-                this.RawReturnType = type.GetRawTypeString(false);
-                this.ManagedReturnType = type.GetManagedTypeString();
-                this.MarshalReturnType = type.MarshalAs != null;
-                this.MarshalReturnTypeAs = type.MarshalAs != null ? type.MarshalAs.ToString() : string.Empty;
+                this.ReturnType = new WrappedType(ret_type, string.Empty);
+                this.RawReturnType = this.ReturnType.GetRawTypeString(false);
+                this.ManagedReturnType = this.ReturnType.GetManagedTypeString();
+                this.MarshalReturnType = this.ReturnType.MarshalAs != null;
+                this.MarshalReturnTypeAs = this.ReturnType.MarshalAs != null ? this.ReturnType.MarshalAs.ToString() : string.Empty;
                 this.ReturnVoid = (this.RawReturnType == "void");
             }
 
@@ -129,6 +129,8 @@
             public int Index { get; }
 
             public string OriginalReturnType { get; }
+
+            public WrappedType ReturnType { get; }
 
             public string RawReturnType { get; }
 
@@ -149,9 +151,9 @@
             {
                 this.Name = name;
                 this.OriginalType = arg_type;
-                this.WrappedType = new WrappedType(arg_type, attributes);
-                this.RawTypeWithDecorator = this.WrappedType.GetRawTypeString(true);
-                this.ManagedTypeWithDecorator = this.WrappedType.GetManagedTypeString();
+                this.ArgType = new WrappedType(arg_type, attributes);
+                this.RawTypeWithDecorator = this.ArgType.GetRawTypeString(true);
+                this.ManagedTypeWithDecorator = this.ArgType.GetManagedTypeString();
             }
 
             public string OriginalType { get; }
@@ -162,7 +164,7 @@
 
             public string ManagedTypeWithDecorator { get; }
 
-            public WrappedType WrappedType { get; }
+            public WrappedType ArgType { get; }
         }
 
         private class CoClass

@@ -73,22 +73,23 @@ namespace CrossCom.CodeGen
         public string GetRawTypeString(bool withMarshalAsAttr)
         {
             var marshalAsString = ((this.MarshalAs == null) || (!withMarshalAsAttr)) ? string.Empty : $"[MarshalAs(UnmanagedType.{this.MarshalAs})]";
-            var type = this.GetTypeString(this.RawType);
+            var type = this.GetTypeString(this.RawType, false);
             var finalType = $"{marshalAsString} {type}".Trim();
             return finalType;
         }
 
         public string GetManagedTypeString()
         {
-            return this.GetTypeString(this.ManagedType);
+            return this.GetTypeString(this.ManagedType, true);
         }
 
-        private string GetTypeString(string type)
+        private string GetTypeString(string type, bool wrapComObject)
         {
             var outString = this.IsOut ? "out" : string.Empty;
             var refString = this.IsRef ? "ref" : string.Empty;
             var arrayString = this.IsArray ? "[]" : string.Empty;
-            var finalType = $"{outString}{refString} {type}{arrayString}".Trim();
+            var objType = (wrapComObject && this.IsComObject) ? $"ComObject<{type}>" : type;
+            var finalType = $"{outString}{refString} {objType}{arrayString}".Trim();
             return finalType;
         }
 
