@@ -53,7 +53,7 @@ bool decompress(CPK* cpk, const char* rootPath, CPKDirectoryEntry* pDirectoryEnt
             sprintf_s(pDirectoryEntry->lpszName, sizeof(pDirectoryEntry->lpszName), "deleted_%d", g_deletedCount++);
     }*/
     sprintf_s(absPath, sizeof(absPath), "%s\\%s", rootPath, pDirectoryEntry->lpszName);
-    if (pDirectoryEntry->iAttrib & CpkFileAttrib_IsDir) {
+    if (pDirectoryEntry->iAttrib & CPKTableFlag_IsDir) {
         createDirectory(absPath);
         for (int i = 0; i < pDirectoryEntry->childs.size(); i++) {
             decompress(cpk, rootPath, pDirectoryEntry->childs[i]);
@@ -72,8 +72,8 @@ bool decompress(CPK* cpk, const char* rootPath, CPKDirectoryEntry* pDirectoryEnt
             assert(false);
         }
         DWORD dwBytesWritten;
-        BOOL bOk = WriteFile(hFile, pFile->pDest, pFile->originalSize, &dwBytesWritten, NULL);
-        assert(bOk && dwBytesWritten == pFile->originalSize);
+        BOOL bOk = WriteFile(hFile, pFile->lpMem, pFile->dwFileSize, &dwBytesWritten, NULL);
+        assert(bOk && dwBytesWritten == pFile->dwFileSize);
         CloseHandle(hFile);
         cpk->Close(pFile);
     }
@@ -125,9 +125,7 @@ int main(int argc, char** argv)
     saveRootPath.append("\\").append(fileBaseName);
     CPKDirectoryEntry entry;
     printf("正在解析cpk文件结构\n");
-    DWORD dwVal;
-    memcpy(&dwVal, "init", 4);
-    cpk.buildDirectoryTree(entry);
+    cpk.BuildDirectoryTree(entry);
     printf("=================================\n");
     printf("开始解压...\n");
     printf("=================================\n");
@@ -142,12 +140,12 @@ int main(int argc, char** argv)
     if (!pFile)
         return -1;
 
-    char* compressBuf = new char[pFile->pRecordEntry->CompressedSize];
-    char* deCompressedBuf = new char[pFile->pRecordEntry->OriginalSize];
-    DWORD dwResultSize = cpk.Compress(compressBuf, pFile->pDest, pFile->originalSize);
-    assert(dwResultSize == pFile->pRecordEntry->CompressedSize);
+    char* compressBuf = new char[pFile->pRecordEntry->dwPackedSize];
+    char* deCompressedBuf = new char[pFile->pRecordEntry->dwOriginSize];
+    DWORD dwResultSize = cpk.Compress(compressBuf, pFile->lpMem, pFile->dwFileSize);
+    assert(dwResultSize == pFile->pRecordEntry->dwPackedSize);
     //压缩后应该和原始文件内容一致
-    if (!memcmp(pFile->pSrc, compressBuf, dwResultSize))
+    if (!memcmp(pFile->lpStartAddress, compressBuf, dwResultSize))
         printf("压缩测试通过！\n");
     else {
         printf("压缩测试通过！\n");
