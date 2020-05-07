@@ -99,7 +99,7 @@ class CPKDirectoryEntry {
 
 public:
     CPKDirectoryEntry()
-        :vCRC(0), vParentCRC(0), lpszName{ 0 }, iAttrib(CPKTableFlag_None)
+        :dwCRC(0), dwFatherCRC(0), lpszName{ 0 }, dwFlag(CPKTableFlag_None)
     {
     }
     ~CPKDirectoryEntry()
@@ -108,9 +108,9 @@ public:
             delete childs[i];
         childs.clear();
     }
-    DWORD vCRC;
-    DWORD vParentCRC;
-    CPKTableFlag iAttrib;
+    DWORD dwCRC;
+    DWORD dwFatherCRC;
+    CPKTableFlag dwFlag;
     CHAR lpszName[MAX_PATH];
     std::vector<CPKDirectoryEntry*> childs;
 };
@@ -143,7 +143,6 @@ public:
     void SetOpenMode(ECPKMode openMode);
 
     bool BuildDirectoryTree(CPKDirectoryEntry& entry);
-    bool buildParent(CPKTable& currEntry, std::map<DWORD, CPKDirectoryEntry*>& handledEntries);
 
 private:
     int executeZipUnZip(CpkZipUnzipParam *param);
@@ -159,6 +158,8 @@ private:
     DWORD GetAllocationGranularity(void);
     void Reset();
     bool ReadFileEntryName(const CPKTable* pFileEntry, char* lpBuffer, DWORD bufferLen);
+    void sortCPKDirectory(CPKDirectoryEntry* pEntry);
+    bool buildParent(CPKTable& currEntry, std::map<DWORD, CPKDirectoryEntry*>& handledEntries);
 
 
 

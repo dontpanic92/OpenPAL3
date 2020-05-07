@@ -53,7 +53,7 @@ bool decompress(CPK* cpk, const char* rootPath, CPKDirectoryEntry* pDirectoryEnt
             sprintf_s(pDirectoryEntry->lpszName, sizeof(pDirectoryEntry->lpszName), "deleted_%d", g_deletedCount++);
     }*/
     sprintf_s(absPath, sizeof(absPath), "%s\\%s", rootPath, pDirectoryEntry->lpszName);
-    if (pDirectoryEntry->iAttrib & CPKTableFlag_IsDir) {
+    if (pDirectoryEntry->dwFlag & CPKTableFlag_IsDir) {
         createDirectory(absPath);
         for (int i = 0; i < pDirectoryEntry->childs.size(); i++) {
             decompress(cpk, rootPath, pDirectoryEntry->childs[i]);
@@ -62,7 +62,7 @@ bool decompress(CPK* cpk, const char* rootPath, CPKDirectoryEntry* pDirectoryEnt
         //open file and decompress it
         if (!strlen(pDirectoryEntry->lpszName))
             return true;
-        CPKFile* pFile = cpk->Open(pDirectoryEntry->vCRC, pDirectoryEntry->lpszName);
+        CPKFile* pFile = cpk->Open(pDirectoryEntry->dwCRC, pDirectoryEntry->lpszName);
         if (!pFile)
             return false;
         assert(pFile);
