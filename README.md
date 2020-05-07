@@ -27,15 +27,25 @@
 
 在构建 OpenPAL3 前，请确认已安装以下工具链与依赖库：
 
-- Rust nightly toolchain
+- [Rust](https://www.rust-lang.org/) nightly toolchain
   - 理论上 MSVC ABI 工具链与 GNU ABI 工具链均可编译
+- [.NET Core SDK 3](https://dotnet.microsoft.com/download) 或 [Visual Studio](https://visualstudio.microsoft.com/zh-hans/)
+- [OpenAL](https://www.openal.org)
 - [最新的 Vulkan SDK](https://www.lunarg.com/vulkan-sdk/)
 
 ### 构建步骤
 
-```
-cd openpal3 && cargo build --release
-```
+1. 构建 OpenGB
+    ```
+    cd opengb && cargo build --release
+    ```
+
+1. 构建 OpenPAL3
+   ```
+   cd openpal3
+   dotnet build -c Release
+   dotnet publish -c Release
+   ```
 
 ### 运行
 
