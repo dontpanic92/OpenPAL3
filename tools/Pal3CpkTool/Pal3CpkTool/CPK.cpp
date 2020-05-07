@@ -138,8 +138,8 @@ bool CPK::Close(CPKFile * pCpkFile)
             pCpkFile->originalSize = 0;
         }
     }
-    pCpkFile->bOpened = 0;
-    --dwVFileOpened;
+    pCpkFile->bOpened = false;
+    --dwVFileOpenedCount;
     return 1;
 }
 
@@ -225,7 +225,7 @@ DWORD CPK::LoadFile(void *lpBuffer, const char *lpString2)
     int unalignedLen = pFileEntry->Offset - alignedOffset;
     size_t mappedSize = unalignedLen + pFileEntry->CompressedSize + pFileEntry->OriginalSize;
     void* lpMapped;
-    lpMapped = MapViewOfFile(fileMappingHandle, 4u, 0, dwFileOffsetLow, mappedSize);// 把文件的一部分map过去
+    lpMapped = MapViewOfFile(fileMappingHandle, FILE_MAP_READ, 0, dwFileOffsetLow, mappedSize);// 把文件的一部分map过去
     if (!lpMapped) {
         return 0;
     }
@@ -289,7 +289,7 @@ void CPK::Reset()
     this->fileMappingHandle = (HANDLE)-1;
     this->isLoaded = 0;
     memset(this->fileName, 0, sizeof(this->fileName));
-    this->dwVFileOpened = 0;
+    this->dwVFileOpenedCount = 0;
     for (int i = 0; i < ARRAYSIZE(vFiles); i++) {
         delete vFiles[i];
         vFiles[i] = nullptr;
@@ -319,7 +319,6 @@ bool CPK::ReadFileEntryName(const CpkFileEntry* pCpkFileEntry, char* lpBuffer, D
     }
     int unalignedLen = pCpkFileEntry->Offset + pCpkFileEntry->CompressedSize - validOffset;
     strcpy_s(lpBuffer, bufferLen, &((char*)pInfoRecordBuf)[alignOffset]);
-    lpBuffer[pCpkFileEntry->InfoRecordSize - 1] = '\0';
     UnmapViewOfFile(pInfoRecordBuf);
     return true;
 }
@@ -390,7 +389,7 @@ bool CPK::buildParent(CpkFileEntry& currFileEntry, std::map<DWORD, CPKDirectoryE
     if (iIndex == -1) {
         return false;
     }
-    //build the parent recurvusly
+    //build the parent
     if (buildParent(entries[iIndex], handledEntries)) {
         if (handledEntries.find(child->vParentCRC) != handledEntries.end()) {
             //update child file name
@@ -453,7 +452,7 @@ bool CPK::Load(const char *lpFileName)
         return 0;
     }
     if (GetLastError() != ERROR_ALREADY_EXISTS) {
-        isLoaded = 1;
+        isLoaded = true;
         return true;
     } else {
         //showMsgBox(0x10u, aErrorCeMapping, aDProjectGbengi, 225);
@@ -487,11 +486,11 @@ bool CPK::Unload()
     CloseHandle(fileHandle);
     memset(&cpkHeader, 0, sizeof(cpkHeader));
     memset(entries, 0, sizeof(entries));
-    fileHandle = (HANDLE)-1;
-    fileMappingHandle = (HANDLE)-1;
-    isLoaded = 0;
+    fileHandle = INVALID_HANDLE_VALUE;
+    fileMappingHandle = INVALID_HANDLE_VALUE;
+    isLoaded = false;
     memset(fileName, 0, sizeof(fileName));
-    dwVFileOpened = 0;
+    dwVFileOpenedCount = 0;
     for (int i = 0; i < ARRAYSIZE(vFiles); i++) {
         vFiles[i]->cpkFile.bOpened = false;
     }
@@ -553,7 +552,7 @@ CPKFile* CPK::Open(const char *lpString2)
 {
     if (!isLoaded)
         return nullptr;
-    if ((signed int)dwVFileOpened >= ARRAYSIZE(vFiles) - 1) {
+    if ((signed int)dwVFileOpenedCount >= ARRAYSIZE(vFiles) - 1) {
         //showMsgBox(0x10u, aErrorCeCannotO_0, aDProjectGbengi, 361);
         return nullptr;
     }
@@ -658,7 +657,7 @@ CPKFile* CPK::Open(const char *lpString2)
     }
     if (dwOpenMode != ECPKMode_Mapped)
         SetFilePointer(fileHandle, pCpkFile->pRecordEntry->Offset, 0, 0);
-    ++dwVFileOpened;
+    ++dwVFileOpenedCount;
     return &pVFile->cpkFile;
 }
 

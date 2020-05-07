@@ -84,5 +84,5 @@ struct CPK {
     HANDLE fileHandle;                          //0xE0090
     HANDLE fileMappingHandle;                   //0xE0094
     char fileName[MAX_PATH];                    //0xE0098
-    DWORD dwVFileOpened;                        //0xE009C
+    DWORD dwVFileOpenedCount;                        //0xE009C
 };
