@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="minilzo">
+      <UniqueIdentifier>{39702096-6e68-4aea-a056-2753ee83aa98}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -21,6 +24,9 @@
     <ClCompile Include="CPK.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="minilzo\minilzo.c">
+      <Filter>minilzo</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CPK.h">
@@ -28,6 +34,12 @@
     </ClInclude>
     <ClInclude Include="ida_struct.h">
       <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="minilzo\minilzo.h">
+      <Filter>minilzo</Filter>
+    </ClInclude>
+    <ClInclude Include="minilzo\lzoconf.h">
+      <Filter>minilzo</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

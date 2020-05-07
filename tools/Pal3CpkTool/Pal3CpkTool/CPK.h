@@ -91,7 +91,7 @@ class CPKDirectoryEntry {
 
 public:
     CPKDirectoryEntry()
-        :vCRC(0), vParentCRC(0), lpszName{ 0 }, iAttrib(0)
+        :vCRC(0), vParentCRC(0), lpszName{ 0 }, iAttrib(CpkFileAttrib_None)
     {
     }
     ~CPKDirectoryEntry()
@@ -102,7 +102,7 @@ public:
     }
     DWORD vCRC;
     DWORD vParentCRC;
-    DWORD iAttrib;
+    CpkFileAttrib iAttrib;
     CHAR lpszName[MAX_PATH];
     std::vector<CPKDirectoryEntry*> childs;
 };
@@ -122,6 +122,7 @@ public:
     bool Unload(void);
     char * ReadLine(char *lpBuffer, int ReadSize, CPKFile *pCpkFile);
     CPKFile* Open(const char *lpString2);
+    CPKFile* Open(DWORD vCRC, const char* saveFileName);
     char ReadChar(CPKFile * pCpkFile);
     DWORD Compress(void *dest, void *src, unsigned int size);
     DWORD DeCompress(void *dest, void *src, DWORD compressedSize);
@@ -138,8 +139,8 @@ public:
 
 private:
     int executeZipUnZip(CpkZipUnzipParam *param);
-    int processCompress(unsigned __int8 *src, unsigned int decompressSize, unsigned char *dest, DWORD *bResult, int encryptTable);
-    int processDeCompress(unsigned __int8 *src, int decompressSize, unsigned char *dest, DWORD *resultSize);
+    gbVFile* OpenTableIndex(int iFileIndex);
+
 
     bool GetFileSize(DWORD &CompressedSize, DWORD &OriginalSize, DWORD targetCRC);
     bool IsDir(DWORD dwTargetCRC);
@@ -168,5 +169,6 @@ private:
 
 private:
     static DWORD *CrcTable[256];
+    static void* lzo_wrkmem;
 };
 

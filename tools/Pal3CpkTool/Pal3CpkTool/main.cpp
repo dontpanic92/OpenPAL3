@@ -45,9 +45,13 @@ int32_t createDirectory(const std::string &directoryPath)
     return 0;
 }
 
-
+//static int g_deletedCount = 0;
 bool decompress(CPK* cpk, const char* rootPath, CPKDirectoryEntry* pDirectoryEntry) {
     char absPath[MAX_PATH] = { 0 };
+    /*if (pDirectoryEntry->iAttrib & CpkFileAttrib_IsDeleted) {
+        if (strlen(pDirectoryEntry->lpszName) < 2)
+            sprintf_s(pDirectoryEntry->lpszName, sizeof(pDirectoryEntry->lpszName), "deleted_%d", g_deletedCount++);
+    }*/
     sprintf_s(absPath, sizeof(absPath), "%s\\%s", rootPath, pDirectoryEntry->lpszName);
     if (pDirectoryEntry->iAttrib & CpkFileAttrib_IsDir) {
         createDirectory(absPath);
@@ -58,7 +62,7 @@ bool decompress(CPK* cpk, const char* rootPath, CPKDirectoryEntry* pDirectoryEnt
         //open file and decompress it
         if (!strlen(pDirectoryEntry->lpszName))
             return true;
-        CPKFile* pFile = cpk->Open(pDirectoryEntry->lpszName);
+        CPKFile* pFile = cpk->Open(pDirectoryEntry->vCRC, pDirectoryEntry->lpszName);
         if (!pFile)
             return false;
         assert(pFile);
@@ -111,6 +115,8 @@ int main(int argc, char** argv)
     if (!bOk)
         return -1;
 
+#if 1
+    //解压缩功能
     std::string fileBaseName = getBaseFileName(cpkFilePath);
     if (!fileBaseName.length())
         return -1;
@@ -118,10 +124,37 @@ int main(int argc, char** argv)
     //为输出目录拼接cpk baseName
     saveRootPath.append("\\").append(fileBaseName);
     CPKDirectoryEntry entry;
+    printf("正在解析cpk文件结构\n");
+    DWORD dwVal;
+    memcpy(&dwVal, "init", 4);
     cpk.buildDirectoryTree(entry);
+    printf("=================================\n");
+    printf("开始解压...\n");
+    printf("=================================\n");
     for (int i = 0; i < entry.childs.size(); i++) {
         CPKDirectoryEntry* pChild = entry.childs[i];
+        printf("正在处理: %s => %s\\%s\n", pChild->lpszName, saveRootPath.c_str(), pChild->lpszName);
         decompress(&cpk, saveRootPath.c_str(), pChild);
     }
+#else
+    //测试zol库的压缩加压缩功能，验证压缩后解压，得到的结果是否完全一致
+    CPKFile* pFile = cpk.Open("cbdata\\memoryLogFile.log");
+    if (!pFile)
+        return -1;
+
+    char* compressBuf = new char[pFile->pRecordEntry->CompressedSize];
+    char* deCompressedBuf = new char[pFile->pRecordEntry->OriginalSize];
+    DWORD dwResultSize = cpk.Compress(compressBuf, pFile->pDest, pFile->originalSize);
+    assert(dwResultSize == pFile->pRecordEntry->CompressedSize);
+    //压缩后应该和原始文件内容一致
+    if (!memcmp(pFile->pSrc, compressBuf, dwResultSize))
+        printf("压缩测试通过！\n");
+    else {
+        printf("压缩测试通过！\n");
+    }
+    cpk.DeCompress(deCompressedBuf, compressBuf, dwResultSize);
+    printf("解压结果：\n%s\n", deCompressedBuf);
+    cpk.Close(pFile);
+#endif
     return 0;
 }

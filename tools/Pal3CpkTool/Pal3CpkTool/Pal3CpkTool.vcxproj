@@ -153,10 +153,13 @@
   <ItemGroup>
     <ClCompile Include="CPK.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="minilzo\minilzo.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CPK.h" />
     <ClInclude Include="ida_struct.h" />
+    <ClInclude Include="minilzo\lzoconf.h" />
+    <ClInclude Include="minilzo\minilzo.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
