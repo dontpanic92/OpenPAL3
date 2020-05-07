@@ -44,8 +44,9 @@
    ```
    cd openpal3
    dotnet build -c Release
-   dotnet publish -c Release
+   dotnet publish OpenPAL3/OpenPAL3.csproj -c Release -r win-x64 --self-contained
    ```
+   或在 Visual Studio 中构建解决方案。
 
 ### 运行
 
