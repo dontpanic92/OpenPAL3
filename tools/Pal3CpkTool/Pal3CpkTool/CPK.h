@@ -43,9 +43,9 @@ public:
 };
 
 //0x140
-struct gbVFile : CPKFile {
+struct gbVFile {
     DWORD OpenMode;                 //0x0
-    DWORD EntryAddr;                 //0x4
+    DWORD EntryAddr;                //0x4
     DWORD FileSize;                 //0x8
     char fileName[MAX_PATH];        //0xC       ÎÄ¼þÃû
     CPKFile cpkFile;
