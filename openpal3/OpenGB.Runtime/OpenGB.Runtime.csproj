@@ -1,6 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <UsingTask TaskName="CrossComGen" AssemblyFile="$(SolutionDir)CrossCom.CodeG\bin\$(Configuration)\$(TargetFramework)\CrossCom.dll" />
   
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
@@ -14,7 +12,7 @@
     <IdlJson Include ="Config\opengb.json"/>
   </ItemGroup>
   
-  <Target Name="CodeGen" BeforeTargets="CoreCompile" Inputs="@(IdlJson)" Outputs="$(GeneratedSourceFolder)\Source.cs">
+  <Target Name="CodeGen" BeforeTargets="CoreCompile">
     <PropertyGroup>
       <CrossComConfig>Config\CrossCom.config.json</CrossComConfig>
     </PropertyGroup>
@@ -25,4 +23,5 @@
       <Compile Include="$(GeneratedSourceFolder)\*" />
     </ItemGroup>
   </Target>
+  
 </Project>

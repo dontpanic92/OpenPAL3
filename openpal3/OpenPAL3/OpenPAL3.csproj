@@ -3,6 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,4 +16,9 @@
     </None>
   </ItemGroup>
 
+  <Target Name="CopyNative" AfterTargets="Build">
+    <Message Importance="high" Text="Copying opengb dll..." />
+    <Copy DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" SourceFiles="../../opengb/target/$(Configuration.ToLower)/opengb.dll" />
+  </Target>
+  
 </Project>

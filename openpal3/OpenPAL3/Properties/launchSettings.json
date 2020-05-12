@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "OpenPAL3": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}

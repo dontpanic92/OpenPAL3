@@ -431,7 +431,7 @@ dependencies = [
 [[package]]
 name = "intercom"
 version = "0.3.0"
-source = "git+https://github.com/Rantanen/intercom#f6728c2c6add9f9c42b084359d637e2b4fda407e"
+source = "git+https://github.com/dontpanic92/intercom/#6ca703fbbdd32bcd78d57f2ff694402028b1c5e4"
 dependencies = [
  "failure",
  "intercom-attributes",
@@ -442,7 +442,7 @@ dependencies = [
 [[package]]
 name = "intercom-attributes"
 version = "0.3.0"
-source = "git+https://github.com/Rantanen/intercom#f6728c2c6add9f9c42b084359d637e2b4fda407e"
+source = "git+https://github.com/dontpanic92/intercom/#6ca703fbbdd32bcd78d57f2ff694402028b1c5e4"
 dependencies = [
  "intercom-common",
  "quote",
@@ -452,7 +452,7 @@ dependencies = [
 [[package]]
 name = "intercom-common"
 version = "0.3.0"
-source = "git+https://github.com/Rantanen/intercom#f6728c2c6add9f9c42b084359d637e2b4fda407e"
+source = "git+https://github.com/dontpanic92/intercom/#6ca703fbbdd32bcd78d57f2ff694402028b1c5e4"
 dependencies = [
  "failure",
  "indexmap",
