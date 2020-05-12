@@ -13,7 +13,8 @@ namespace CrossCom
     /// <summary>
     /// Represents a factory to create instances of a class.
     /// </summary>
-    [CrossComInterfaceImport("00000001-0000-0000-C000-000000000046", typeof(ClassFactory))]
+    [Guid("00000001-0000-0000-C000-000000000046")]
+    [CrossComInterface(typeof(ClassFactory), typeof(ClassFactory))]
     [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1300:ElementMustBeginWithUpperCaseLetter", Justification = "Delegates represent the raw COM types.")]
     [SuppressMessage("StyleCop.CSharp.DocumentationRules", "SA1600:ElementsMustBeDocumented", Justification = "Delegates represent the raw COM types.")]
     public interface IClassFactory : IUnknown
@@ -29,7 +30,7 @@ namespace CrossCom
         /// </summary>
         /// <typeparam name="TInterface">The interface.</typeparam>
         /// <returns>The created instance.</returns>
-        ComObject<TInterface> CreateInstance<TInterface>()
+        TInterface CreateInstance<TInterface>()
             where TInterface : class, IUnknown;
     }
 }

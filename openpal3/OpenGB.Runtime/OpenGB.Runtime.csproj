@@ -1,6 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <UsingTask TaskName="CrossComGen" AssemblyFile="$(SolutionDir)CrossCom.CodeG\bin\$(Configuration)\$(TargetFramework)\CrossCom.dll" />
   
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
@@ -25,4 +23,5 @@
       <Compile Include="$(GeneratedSourceFolder)\*" />
     </ItemGroup>
   </Target>
+  
 </Project>

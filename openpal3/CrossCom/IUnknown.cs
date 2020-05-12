@@ -7,15 +7,17 @@ namespace CrossCom
 {
     using System;
     using System.Diagnostics.CodeAnalysis;
+    using System.Runtime.InteropServices;
     using CrossCom.Attributes;
 
     /// <summary>
     /// Represents an unknown COM object.
     /// </summary>
-    [CrossComInterfaceImport("00000001-0000-0000-C000-000000000046", typeof(IUnknownImportedObject))]
+    [Guid("00000001-0000-0000-C000-000000000046")]
+    [CrossComInterface(typeof(IUnknownRcw), typeof(IUnknownCcw))]
     [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1300:ElementMustBeginWithUpperCaseLetter", Justification = "Delegates represent the raw COM types.")]
     [SuppressMessage("StyleCop.CSharp.DocumentationRules", "SA1600:ElementsMustBeDocumented", Justification = "Delegates represent the raw COM types.")]
-    public interface IUnknown
+    public interface IUnknown : IDisposable
     {
         [CrossComMethod]
         public delegate long _QueryInterface(IntPtr self, Guid guid, out IntPtr retval);
@@ -31,25 +33,25 @@ namespace CrossCom
         /// </summary>
         /// <typeparam name="TInterface">The dest interface.</typeparam>
         /// <returns>Casted object.</returns>
-        ComObject<TInterface>? QueryInterface<TInterface>()
+        TInterface? QueryInterface<TInterface>()
             where TInterface : class, IUnknown;
+    }
 
+    /// <summary>
+    /// Internal interface for IUnknown.
+    /// </summary>
+    internal interface IUnknownInternal
+    {
         /// <summary>
         /// Increase reference count.
         /// </summary>
-        /// <returns>Informational reference count.</returns>
+        /// <returns>The incremented count.</returns>
         long AddRef();
 
         /// <summary>
         /// Decrease reference count.
         /// </summary>
-        /// <returns>Informational reference count. When it returns 0, the object should be destroyed.</returns>
+        /// <returns>The decremented count.</returns>
         long Release();
-
-        /// <summary>
-        /// Get the raw COM ptr.
-        /// </summary>
-        /// <returns>Raw COM ptr.</returns>
-        IntPtr GetComPtr();
     }
 }

@@ -1,4 +1,4 @@
-﻿// <copyright file="ImportedInterfaceMetadata.cs">
+﻿// <copyright file="InterfaceMetadata.cs">
 // Copyright (c) Shengqiu Li and OpenPAL3 Developers. All rights reserved.
 // Licensed under the GPLv3 license. See LICENSE file in the project root for full license information.
 // </copyright>
@@ -15,25 +15,25 @@ namespace CrossCom.Metadata
     /// <summary>
     /// The metadata for imported interfaces.
     /// </summary>
-    internal class ImportedInterfaceMetadata
+    internal class InterfaceMetadata
     {
-        private static readonly ConcurrentDictionary<Type, ImportedInterfaceMetadata> Cache = new ConcurrentDictionary<Type, ImportedInterfaceMetadata>();
+        private static readonly ConcurrentDictionary<Type, InterfaceMetadata> Cache = new ConcurrentDictionary<Type, InterfaceMetadata>();
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ImportedInterfaceMetadata"/> class.
+        /// Initializes a new instance of the <see cref="InterfaceMetadata"/> class.
         /// </summary>
         /// <param name="type">The interface type.</param>
-        public ImportedInterfaceMetadata(Type type)
+        public InterfaceMetadata(Type type)
         {
-            var attribute = type.GetCustomAttribute(typeof(CrossComInterfaceImport), false) as CrossComInterfaceImport
-                ?? throw new InvalidOperationException($"Type {type} doesn't have {nameof(CrossComInterfaceImport)} attribute.");
+            var attribute = type.GetCustomAttribute(typeof(CrossComInterface), false) as CrossComInterface
+                ?? throw new InvalidOperationException($"Type {type} doesn't have {nameof(CrossComInterface)} attribute.");
 
-            this.Guid = Guid.Parse(attribute.Guid);
-            this.Implementation = attribute.Implementation;
+            this.RcwType = attribute.RcwType;
+            this.CcwType = attribute.CcwType;
 
             var parent = type.GetInterfaces().OrderBy(t => t.GetInterfaces().Length).LastOrDefault();
             var parentVirtualTableSize = 0;
-            if (type != typeof(IUnknown) && parent != null)
+            if (type != typeof(IUnknown) && parent != null && typeof(IUnknown).IsAssignableFrom(parent))
             {
                 parentVirtualTableSize = GetValue(parent).VirtualTableSize;
             }
@@ -53,14 +53,14 @@ namespace CrossCom.Metadata
         }
 
         /// <summary>
-        /// Gets the interface id.
+        /// Gets the corresponding rcw type.
         /// </summary>
-        public Guid Guid { get; }
+        public Type RcwType { get; }
 
         /// <summary>
-        /// Gets the corresponding implemenation type.
+        /// Gets the corresponding ccw type.
         /// </summary>
-        public Type Implementation { get; }
+        public Type CcwType { get; }
 
         /// <summary>
         /// Gets the virtual table size of this interface.
@@ -72,14 +72,14 @@ namespace CrossCom.Metadata
         /// </summary>
         /// <param name="type">The interface type.</param>
         /// <returns>Its metadata.</returns>
-        public static ImportedInterfaceMetadata GetValue(Type type)
+        public static InterfaceMetadata GetValue(Type type)
         {
             if (Cache.TryGetValue(type, out var value))
             {
                 return value;
             }
 
-            value = new ImportedInterfaceMetadata(type);
+            value = new InterfaceMetadata(type);
             Cache.TryAdd(type, value);
             return value;
         }
@@ -90,16 +90,16 @@ namespace CrossCom.Metadata
     /// </summary>
     /// <typeparam name="T">The interface type.</typeparam>
     [SuppressMessage("StyleCop.CSharp.MaintainabilityRules", "SA1402:FileMayOnlyContainASingleType", Justification = "This is the generic version.")]
-    internal class ImportedInterfaceMetadata<T>
+    internal class InterfaceMetadata<T>
     {
-        static ImportedInterfaceMetadata()
+        static InterfaceMetadata()
         {
-            Value = ImportedInterfaceMetadata.GetValue(typeof(T));
+            Value = InterfaceMetadata.GetValue(typeof(T));
         }
 
         /// <summary>
         /// Gets the cached value.
         /// </summary>
-        public static ImportedInterfaceMetadata Value { get; }
+        public static InterfaceMetadata Value { get; }
     }
 }

@@ -30,6 +30,21 @@
                 .Where(t => !this.config.IgnoreInterface.Contains(t.Name))
                 .Where(t => !t.OriginalName.EndsWith(RawSuffix))
                 .ToList();
+
+            var interfaceMap = this.idlLib.Interfaces.ToDictionary(itf => itf.Name);
+            foreach (var itf in this.idlLib.Interfaces)
+            {
+                var ancestors = new List<Interface>();
+                var pivot = itf;
+                while (pivot.Base != "IUnknown")
+                {
+                    ancestors.Add(interfaceMap[pivot.Base]);
+                }
+
+                ancestors.Reverse();
+                itf.Ancestors = ancestors;
+            }
+
             this.idlLib.CoClasses = this.idlLib.CoClasses
                 .Where(t => !this.config.IgnoreClass.Contains(t.Name))
                 .ToList();
@@ -105,6 +120,8 @@
             public IList<Method> Methods { get; }
 
             public string Name { get; }
+
+            public IList<Interface> Ancestors { get; set; }
         }
 
         private class Method

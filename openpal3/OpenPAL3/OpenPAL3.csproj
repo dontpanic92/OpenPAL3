@@ -16,4 +16,9 @@
     </None>
   </ItemGroup>
 
+  <Target Name="CopyNative" AfterTargets="Build">
+    <Message Importance="high" Text="Copying opengb dll..." />
+    <Copy DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" SourceFiles="../../opengb/target/$(Configuration.ToLower)/opengb.dll" />
+  </Target>
+  
 </Project>

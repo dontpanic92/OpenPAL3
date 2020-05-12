@@ -7,6 +7,7 @@ namespace CrossCom
 {
     using System;
     using System.Diagnostics.CodeAnalysis;
+    using CrossCom.Activators;
     using CrossCom.Metadata;
 
     /// <summary>
@@ -18,7 +19,7 @@ namespace CrossCom
     {
         static ClassFactory()
         {
-            NativeMethods.DllGetClassObject(ImportedObjectMetadata<TClass>.Value.Guid, ImportedInterfaceMetadata<IClassFactory>.Value.Guid, out var ptr);
+            NativeMethods.DllGetClassObject(typeof(TClass).GUID, typeof(IClassFactory).GUID, out var ptr);
             Factory = new ClassFactory(ptr);
         }
 
@@ -31,7 +32,7 @@ namespace CrossCom
     /// <summary>
     /// The class factory for creating COM objects.
     /// </summary>
-    internal class ClassFactory : IUnknownImportedObject, IClassFactory
+    internal class ClassFactory : IUnknownRcw, IClassFactory
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="ClassFactory"/> class.
@@ -47,11 +48,11 @@ namespace CrossCom
         /// </summary>
         /// <typeparam name="TInterface">The object's interface.</typeparam>
         /// <returns>The created instance.</returns>
-        public ComObject<TInterface> CreateInstance<TInterface>()
+        public TInterface CreateInstance<TInterface>()
             where TInterface : class, IUnknown
         {
-            this.GetMethod<IClassFactory._CreateInstance>()(this.GetComPtr(), IntPtr.Zero, ImportedInterfaceMetadata<TInterface>.Value.Guid, out var ptr);
-            return new ComObject<TInterface>(ObjectActivator<TInterface>.CreateInstance(ptr));
+            this.GetMethod<IClassFactory._CreateInstance>()(this.GetComPtr(typeof(TInterface)), IntPtr.Zero, typeof(TInterface).GUID, out var ptr);
+            return RcwActivator<TInterface>.CreateInstance(ptr);
         }
     }
 }

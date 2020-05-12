@@ -6,72 +6,102 @@
 namespace CrossCom
 {
     using System;
+    using System.Collections.Concurrent;
+    using System.Runtime.InteropServices;
     using System.Threading;
+    using CrossCom.Activators;
 
     /// <summary>
-    /// The base for exported COM classes.
+    /// The base for all the exported COM classes.
     /// </summary>
-    public abstract class Unknown : IUnknown, IDisposable
+    public class Unknown : IUnknown, IUnknownInternal, IComObject
     {
+        private readonly ConcurrentDictionary<Type, IUnknownCcw> wrappers = new ConcurrentDictionary<Type, IUnknownCcw>();
         private long referenceCount = 0;
+        private GCHandle? selfHandle;
+        private bool disposedValue = false;
+
+        /// <summary>
+        /// Gets the object cache.
+        /// </summary>
+        public static ConcurrentDictionary<IntPtr, Unknown> ObjectCache { get; } = new ConcurrentDictionary<IntPtr, Unknown>();
 
         /// <inheritdoc/>
-        public long AddRef()
-        {
-            return Interlocked.Increment(ref this.referenceCount);
-        }
-
-        /// <inheritdoc/>
-        public abstract IntPtr GetComPtr();
-
-        /// <inheritdoc/>
-        public long Release()
-        {
-            return Interlocked.Decrement(ref this.referenceCount);
-        }
-
-        /// <inheritdoc/>
-        ComObject<TInterface>? IUnknown.QueryInterface<TInterface>()
-        {
-            if (this is TInterface obj)
-            {
-                return new ComObject<TInterface>(obj);
-            }
-
-            return null;
-        }
-
-        private bool disposedValue = false; // To detect redundant calls
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    // TODO: dispose managed state (managed objects).
-                }
-
-                // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
-                // TODO: set large fields to null.
-                this.
-                disposedValue = true;
-            }
-        }
-
-        // TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
-        ~Unknown()
-        {
-            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
-            Dispose(false);
-        }
-
-        // This code added to correctly implement the disposable pattern.
         public void Dispose()
         {
-            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
-            Dispose(true);
-            GC.SuppressFinalize(this);
+            if (!this.disposedValue)
+            {
+                if (this.referenceCount == 0)
+                {
+                    this.DisposeInternal();
+                }
+
+                this.disposedValue = true;
+            }
+        }
+
+        /// <inheritdoc/>
+        public TInterface? QueryInterface<TInterface>()
+            where TInterface : class, IUnknown
+        {
+            return this as TInterface;
+        }
+
+        /// <inheritdoc/>
+        public IntPtr GetComPtr(Type interfaceType)
+        {
+            var wrapper = this.wrappers.GetOrAdd(interfaceType, (ty) =>
+            {
+                return CcwActivator.CreateInstance(interfaceType);
+            });
+
+            this.AddRef();
+            var ptr = wrapper.GetComPtr();
+            _ = ObjectCache.TryAdd(ptr, this);
+
+            return ptr;
+        }
+
+        /// <summary>
+        /// Increase the reference count. Should be only called from COM.
+        /// </summary>
+        /// <returns>The incremented count.</returns>
+        public long AddRef()
+        {
+            long count = Interlocked.Increment(ref this.referenceCount);
+            if (count == 1)
+            {
+                this.selfHandle = GCHandle.Alloc(this);
+            }
+
+            return count;
+        }
+
+        /// <summary>
+        /// Decrease the reference count. Should be only called from COM.
+        /// </summary>
+        /// <returns>The decreased count.</returns>
+        public long Release()
+        {
+            long count = Interlocked.Decrement(ref this.referenceCount);
+            if (count == 0)
+            {
+                this.selfHandle!.Value.Free();
+            }
+
+            return count;
+        }
+
+        /// <summary>
+        /// Dispose all the resources allocated.
+        /// </summary>
+        protected virtual void DisposeInternal()
+        {
+            foreach (var wrapper in this.wrappers.Values)
+            {
+                _ = ObjectCache.TryRemove(wrapper.GetComPtr(), out var _);
+                wrapper.Dispose();
+            }
         }
     }
 }

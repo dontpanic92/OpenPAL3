@@ -37,7 +37,7 @@ impl Factory {
     }
 
     pub fn create_application(&self, ext: ComRc<dyn IApplicationExtension>) -> ComResult<ComRc<dyn IApplication>> {
-        Ok(ComRc::from(&ComBox::new(ComCustomApplication::new(ext))))
+        Ok(ComCustomApplication::create(ext))
     }
 
     pub fn echo(&mut self, value: i32) -> i32 {
@@ -104,16 +104,16 @@ pub struct ComCustomApplication {
 
 #[com_interface]
 impl ComCustomApplication {
-    pub fn new(ext: ComRc<dyn IApplicationExtension>) -> Self { 
+    fn new(ext: ComRc<dyn IApplicationExtension>) -> Self { 
         Self {
             app: crate::application::Application::new(ComApplicationExtension { ext, app: None })
         }
     }
 
-    pub fn create(ext: ComRc<dyn IApplicationExtension>) -> ComRc<ComCustomApplication> {
+    pub fn create(ext: ComRc<dyn IApplicationExtension>) -> ComRc<dyn IApplication> {
         let app : ComRc<ComCustomApplication> = ComRc::from(&ComBox::new(Self::new(ext)));
         app.as_ref().deref().app.callbacks_mut().app = ComItf::ptr(app.as_ref());
-        return app;
+        return ComItf::query_interface::<dyn IApplication>(&app).unwrap();
     }
 }
 
