@@ -20,4 +20,4 @@ imgui = "0.3.0"
 downcast-rs = "1.1.1"
 config = "0.10.1"
 serde = { version = "1.0.106", features = ["derive"] }
-intercom = {path = "../../intercom/intercom"} #{ git = "https://github.com/dontpanic92/intercom/" }
+intercom = { git = "https://github.com/dontpanic92/intercom/" }

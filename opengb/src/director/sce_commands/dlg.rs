@@ -39,11 +39,11 @@ impl SceCommand for SceCommandDlg {
 }
 
 impl SceCommandDlg {
-    pub fn new(text: &str) -> Self {
+    pub fn new(text: String) -> Self {
         Self {
             dlg_sec: 5.,
             cur_sec: 0.,
-            text: text.to_owned(),
+            text,
         }
     }
 }

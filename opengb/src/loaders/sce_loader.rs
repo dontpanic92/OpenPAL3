@@ -8,30 +8,30 @@ use std::path::Path;
 
 #[derive(Debug)]
 pub struct SceLocalVar {
-    unknown: u8,
-    unknown_vec: Vec<u8>,
+    pub unknown: u8,
+    pub unknown_vec: Vec<u8>,
 }
 
 #[derive(Debug)]
 pub struct SceProc {
-    id: u32,
-    name: String,
-    local_vars: Vec<SceLocalVar>,
-    inst: Vec<u8>,
+    pub id: u32,
+    pub name: String,
+    pub local_vars: Vec<SceLocalVar>,
+    pub inst: Vec<u8>,
 }
 
 #[derive(Debug)]
 pub struct SceProcHeader {
-    id: u32,
-    offset: u32,
-    name: String,
+    pub id: u32,
+    pub offset: u32,
+    pub name: String,
 }
 
 #[derive(Debug)]
 pub struct SceFile {
-    proc_num: u16,
-    proc_headers: Vec<SceProcHeader>,
-    procs: HashMap<u32, SceProc>,
+    pub proc_num: u16,
+    pub proc_headers: Vec<SceProcHeader>,
+    pub procs: HashMap<u32, SceProc>,
 }
 
 pub fn sce_load_from_file<P: AsRef<Path>>(path: P) -> SceFile {

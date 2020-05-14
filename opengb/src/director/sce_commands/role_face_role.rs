@@ -1,8 +1,8 @@
 use super::RolePropertyNames;
 use super::{RoleProperties, SceneMv3Extensions};
+use crate::asset_manager::AssetManager;
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
-use crate::resource_manager::ResourceManager;
 use crate::scene::ScnScene;
 use imgui::Ui;
 use radiance::math::Vec3;
@@ -33,7 +33,7 @@ impl SceCommand for SceCommandRoleFaceRole {
 }
 
 impl SceCommandRoleFaceRole {
-    pub fn new(res_man: &Rc<ResourceManager>, role_id: i32, role_id2: i32) -> Self {
+    pub fn new(role_id: i32, role_id2: i32) -> Self {
         Self {
             role_id: format!("{}", role_id),
             role_id2: format!("{}", role_id2),

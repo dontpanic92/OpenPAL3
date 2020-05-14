@@ -1,7 +1,7 @@
 use super::{nav_coord_to_scene_coord, RoleProperties};
+use crate::asset_manager::AssetManager;
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
-use crate::resource_manager::ResourceManager;
 use crate::scene::ScnScene;
 use imgui::Ui;
 use radiance::math::Vec3;
@@ -29,10 +29,10 @@ impl SceCommand for SceCommandRoleSetPos {
 }
 
 impl SceCommandRoleSetPos {
-    pub fn new(res_man: &Rc<ResourceManager>, role_id: i32, position: Vec3) -> Self {
+    pub fn new(role_id: i32, x: i32, y: i32) -> Self {
         Self {
             role_id: format!("{}", role_id),
-            position,
+            position: Vec3::new(x as f32, 0., y as f32),
         }
     }
 }

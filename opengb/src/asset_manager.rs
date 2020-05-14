@@ -9,7 +9,7 @@ use crate::loaders::{
 use crate::scene::ScnScene;
 use std::path::{Path, PathBuf};
 
-pub struct ResourceManager {
+pub struct AssetManager {
     root_path: PathBuf,
     scene_path: PathBuf,
     music_path: PathBuf,
@@ -17,7 +17,7 @@ pub struct ResourceManager {
     basedata_path: PathBuf,
 }
 
-impl ResourceManager {
+impl AssetManager {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         let root_path = path.as_ref().to_owned();
         let basedata_path = root_path.join("basedata");
@@ -44,8 +44,8 @@ impl ResourceManager {
         ScnScene::new(scene_path, scn_file, nav_file)
     }
 
-    pub fn load_sce(&self, cpk_name: &str, scn_name: &str) -> SceFile {
-        let scene_base = self.scene_path.join(cpk_name).join(scn_name);
+    pub fn load_sce(&self, cpk_name: &str) -> SceFile {
+        let scene_base = self.scene_path.join(cpk_name).join(cpk_name);
         let sce_path = scene_base.with_extension("sce");
         sce_load_from_file(&sce_path)
     }

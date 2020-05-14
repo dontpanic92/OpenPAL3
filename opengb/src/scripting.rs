@@ -1,7 +1,7 @@
 use super::application::OpenGbApplication;
 use super::config::OpenGbConfig;
-use std::ops::Deref;
 use intercom::*;
+use std::ops::Deref;
 
 com_library! {
     class Factory,
@@ -15,9 +15,9 @@ pub struct Config(OpenGbConfig);
 
 #[com_interface]
 impl Config {
-    pub fn new(config_name: &str, env_prefix: &str) -> Self { 
+    pub fn new(config_name: &str, env_prefix: &str) -> Self {
         Self {
-            0: OpenGbConfig::load(config_name, env_prefix)
+            0: OpenGbConfig::load(config_name, env_prefix),
         }
     }
 }
@@ -32,11 +32,20 @@ impl Factory {
         Ok(ComRc::from(&ComBox::new(Config::new(name, env_prefix))))
     }
 
-    pub fn create_default_application(&self, config: ComRc<Config>, app_name: &str) -> ComResult<ComRc<dyn IApplication>> {
-        Ok(ComRc::from(&ComBox::new(ComApplication::new(config, app_name))))
+    pub fn create_default_application(
+        &self,
+        config: ComRc<Config>,
+        app_name: &str,
+    ) -> ComResult<ComRc<dyn IApplication>> {
+        Ok(ComRc::from(&ComBox::new(ComApplication::new(
+            config, app_name,
+        ))))
     }
 
-    pub fn create_application(&self, ext: ComRc<dyn IApplicationExtension>) -> ComResult<ComRc<dyn IApplication>> {
+    pub fn create_application(
+        &self,
+        ext: ComRc<dyn IApplicationExtension>,
+    ) -> ComResult<ComRc<dyn IApplication>> {
         Ok(ComCustomApplication::create(ext))
     }
 
@@ -57,9 +66,9 @@ pub struct ComApplication {
 }
 
 impl ComApplication {
-    pub fn new(config: ComRc<Config>, app_name: &str) -> Self { 
+    pub fn new(config: ComRc<Config>, app_name: &str) -> Self {
         Self {
-            app: OpenGbApplication::create(&config.as_ref().0, app_name)
+            app: OpenGbApplication::create(&config.as_ref().0, app_name),
         }
     }
 }
@@ -68,12 +77,11 @@ impl IApplication for ComApplication {
     fn initialize(&mut self) {
         self.app.initialize();
     }
-    
+
     fn run(&mut self) {
         self.app.run();
     }
 }
-
 
 #[com_interface]
 pub trait IApplicationExtension {
@@ -87,13 +95,20 @@ pub struct ComApplicationExtension {
 }
 
 impl crate::application::ApplicationExtension<ComApplicationExtension> for ComApplicationExtension {
-    fn on_initialized(&mut self, app: &mut crate::application::Application<ComApplicationExtension>) {
+    fn on_initialized(
+        &mut self,
+        app: &mut crate::application::Application<ComApplicationExtension>,
+    ) {
         let itf = ComItf::maybe_new(self.app, None).unwrap();
         let o = ComItf::query_interface::<dyn IApplication>(&itf).unwrap();
         self.ext.on_initialized(Some(&o));
     }
 
-    fn on_updating(&mut self, app: &mut crate::application::Application<ComApplicationExtension>, delta_sec: f32) {
+    fn on_updating(
+        &mut self,
+        app: &mut crate::application::Application<ComApplicationExtension>,
+        delta_sec: f32,
+    ) {
     }
 }
 
@@ -104,14 +119,14 @@ pub struct ComCustomApplication {
 
 #[com_interface]
 impl ComCustomApplication {
-    fn new(ext: ComRc<dyn IApplicationExtension>) -> Self { 
+    fn new(ext: ComRc<dyn IApplicationExtension>) -> Self {
         Self {
-            app: crate::application::Application::new(ComApplicationExtension { ext, app: None })
+            app: crate::application::Application::new(ComApplicationExtension { ext, app: None }),
         }
     }
 
     pub fn create(ext: ComRc<dyn IApplicationExtension>) -> ComRc<dyn IApplication> {
-        let app : ComRc<ComCustomApplication> = ComRc::from(&ComBox::new(Self::new(ext)));
+        let app: ComRc<ComCustomApplication> = ComRc::from(&ComBox::new(Self::new(ext)));
         app.as_ref().deref().app.callbacks_mut().app = ComItf::ptr(app.as_ref());
         return ComItf::query_interface::<dyn IApplication>(&app).unwrap();
     }
@@ -121,7 +136,7 @@ impl IApplication for ComCustomApplication {
     fn initialize(&mut self) {
         self.app.initialize();
     }
-    
+
     fn run(&mut self) {
         self.app.run();
     }

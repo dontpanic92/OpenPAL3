@@ -1,6 +1,6 @@
+use crate::asset_manager::AssetManager;
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
-use crate::resource_manager::ResourceManager;
 use crate::scene::ScnScene;
 use imgui::Ui;
 use radiance::audio::Codec;
@@ -9,8 +9,7 @@ use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct SceCommandMusic {
-    res_man: Rc<ResourceManager>,
-    data: Option<Vec<u8>>,
+    name: String,
 }
 
 impl SceCommand for SceCommandMusic {
@@ -21,18 +20,16 @@ impl SceCommand for SceCommandMusic {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        let data = self.data.take().unwrap();
+        let data = state.asset_mgr().load_music_data(&self.name);
         state.bgm_source().play(data, Codec::Mp3, true);
-
         true
     }
 }
 
 impl SceCommandMusic {
-    pub fn new(res_man: &Rc<ResourceManager>, name: &str) -> Self {
+    pub fn new(name: &str) -> Self {
         Self {
-            res_man: res_man.clone(),
-            data: Some(res_man.load_music_data(name)),
+            name: name.to_string(),
         }
     }
 }

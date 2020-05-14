@@ -1,22 +1,19 @@
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
-use crate::resource_manager::ResourceManager;
 use crate::scene::ScnScene;
 use imgui::Ui;
 use radiance::audio::{AudioSourceState, Codec};
 use radiance::scene::CoreScene;
-use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct SceCommandPlaySound {
-    res_man: Rc<ResourceManager>,
+    name: String,
     times: i32,
-    data: Option<Vec<u8>>,
 }
 
 impl SceCommand for SceCommandPlaySound {
     fn initialize(&mut self, scene: &mut CoreScene<ScnScene>, state: &mut SceState) {
-        let data = self.data.take().unwrap();
+        let data = state.asset_mgr().load_snd_data(&self.name);
         state.sound_source().play(data, Codec::Wav, false);
     }
 
@@ -42,11 +39,8 @@ impl SceCommand for SceCommandPlaySound {
 }
 
 impl SceCommandPlaySound {
-    pub fn new(res_man: &Rc<ResourceManager>, name: &str, times: i32) -> Self {
-        Self {
-            res_man: res_man.clone(),
-            times,
-            data: Some(res_man.load_snd_data(name)),
-        }
+    pub fn new(name: String, times: i32) -> Self {
+        println!("new PlaySound {} {}", name, times);
+        Self { name, times }
     }
 }

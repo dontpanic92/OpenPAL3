@@ -1,16 +1,16 @@
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
-use crate::scene::Mv3ModelEntity;
-use crate::scene::ScnScene;
+use crate::{asset_manager::AssetManager, scene::ScnScene};
 use imgui::Ui;
 use radiance::scene::CoreScene;
+use std::rc::Rc;
 
 #[derive(Clone)]
-pub struct SceCommandRunScriptMode {
+pub struct SceCommandScriptRunMode {
     mode: i32,
 }
 
-impl SceCommand for SceCommandRunScriptMode {
+impl SceCommand for SceCommandScriptRunMode {
     fn update(
         &mut self,
         scene: &mut CoreScene<ScnScene>,
@@ -23,8 +23,9 @@ impl SceCommand for SceCommandRunScriptMode {
     }
 }
 
-impl SceCommandRunScriptMode {
+impl SceCommandScriptRunMode {
     pub fn new(mode: i32) -> Self {
+        println!("new runscriptmode {}", mode);
         Self { mode }
     }
 }

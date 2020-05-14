@@ -49,7 +49,6 @@ fn read_string(
     size: usize,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let name = read_vec(reader, size).unwrap();
-    println!("name {:?}", name);
 
     let name_s = encoding::all::GBK
         .decode(

@@ -1,6 +1,6 @@
 pub use radiance::application::{Application, ApplicationExtension};
 
-use crate::{config::OpenGbConfig, director::SceDirector, resource_manager::ResourceManager};
+use crate::{asset_manager::AssetManager, config::OpenGbConfig, director::SceDirector};
 use radiance::application::utils::FpsCounter;
 use std::iter::Iterator;
 use std::path::{Path, PathBuf};
@@ -10,7 +10,7 @@ pub struct OpenGbApplication {
     root_path: PathBuf,
     app_name: String,
     fps_counter: FpsCounter,
-    res_man: Rc<ResourceManager>,
+    asset_mgr: Rc<AssetManager>,
 }
 
 impl ApplicationExtension<OpenGbApplication> for OpenGbApplication {
@@ -19,11 +19,13 @@ impl ApplicationExtension<OpenGbApplication> for OpenGbApplication {
 
         let sce_director = Box::new(SceDirector::new(
             app.engine_mut().audio_engine_mut(),
-            &self.res_man,
+            self.asset_mgr.load_sce("Q01"),
+            1001,
+            &self.asset_mgr,
         ));
         app.engine_mut().set_director(sce_director);
 
-        let scn = self.res_man.load_scn("Q01", "yn09a");
+        let scn = self.asset_mgr.load_scn("Q01", "yn09a");
         app.engine_mut().load_scene2(scn, 30.);
     }
 
@@ -39,13 +41,13 @@ impl OpenGbApplication {
 
     fn new(config: &OpenGbConfig, app_name: &str) -> Self {
         let root_path = PathBuf::from(&config.asset_path);
-        let res_man = Rc::new(ResourceManager::new(&root_path));
+        let asset_mgr = Rc::new(AssetManager::new(&root_path));
 
         OpenGbApplication {
             root_path,
             app_name: app_name.to_owned(),
             fps_counter: FpsCounter::new(),
-            res_man,
+            asset_mgr,
         }
     }
 }

@@ -107,7 +107,6 @@ pub fn mv3_load_from_file<P: AsRef<Path>>(path: P) -> Result<Mv3File, Box<dyn Er
     }
 
     let unknown_data = vec![];
-    println!("unknown_data_count {}", unknown_data_count);
     for _i in 0..unknown_data_count {
         let _buf = read_vec(&mut reader, 64)?;
         reader.read_u32::<LittleEndian>()?;

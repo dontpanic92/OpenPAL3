@@ -1,7 +1,7 @@
 use super::{nav_coord_to_scene_coord, RoleProperties, RolePropertyNames, SceneMv3Extensions};
+use crate::asset_manager::AssetManager;
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
-use crate::resource_manager::ResourceManager;
 use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity, ScnScene};
 use imgui::Ui;
 use radiance::math::Vec3;
@@ -10,7 +10,6 @@ use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct SceCommandRolePathTo {
-    res_man: Rc<ResourceManager>,
     role_id: String,
     from: Vec3,
     to: Vec3,
@@ -22,8 +21,8 @@ impl SceCommand for SceCommandRolePathTo {
         scene.entities_mut().retain(|e| e.name() != name);
         let mut entity = CoreEntity::new(
             Mv3ModelEntity::new_from_file(
-                &self
-                    .res_man
+                state
+                    .asset_mgr()
                     .mv3_path(&self.role_id, "c02")
                     .to_str()
                     .unwrap(),
@@ -76,9 +75,8 @@ impl SceCommand for SceCommandRolePathTo {
 }
 
 impl SceCommandRolePathTo {
-    pub fn new(res_man: &Rc<ResourceManager>, role_id: i32, from: Vec3, to: Vec3) -> Self {
+    pub fn new(role_id: i32, from: Vec3, to: Vec3) -> Self {
         Self {
-            res_man: res_man.clone(),
             role_id: format!("{}", role_id),
             from,
             to,

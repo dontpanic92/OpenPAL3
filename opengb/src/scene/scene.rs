@@ -32,6 +32,10 @@ impl ScnScene {
     pub fn nav_origin(&self) -> &Vec3 {
         &self.nav_file.unknown1[0].origin
     }
+
+    pub fn roles(&self) -> &[ScnRole] {
+        &self.scn_file.roles
+    }
 }
 
 pub fn load_scene<T: SceneExtension<T>>(

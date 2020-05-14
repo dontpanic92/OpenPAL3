@@ -1,12 +1,10 @@
 use super::RoleProperties;
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
-use crate::resource_manager::ResourceManager;
 use crate::scene::ScnScene;
 use imgui::Ui;
 use radiance::math::Vec3;
 use radiance::scene::CoreScene;
-use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct SceCommandRoleSetFace {
@@ -28,7 +26,14 @@ impl SceCommand for SceCommandRoleSetFace {
 }
 
 impl SceCommandRoleSetFace {
-    pub fn new(res_man: &Rc<ResourceManager>, role_id: i32, face_to: Vec3) -> Self {
+    pub fn new(role_id: i32, direction: i32) -> Self {
+        let face_to = match direction {
+            0 => super::Direction::EAST,
+            1 => super::Direction::WEST,
+            2 => super::Direction::NORTH,
+            3 => super::Direction::SOUTH,
+            _ => unreachable!(),
+        };
         Self {
             role_id: format!("{}", role_id),
             face_to,

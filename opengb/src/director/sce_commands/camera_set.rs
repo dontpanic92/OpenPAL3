@@ -32,11 +32,19 @@ impl SceCommand for SceCommandCameraSet {
 }
 
 impl SceCommandCameraSet {
-    pub fn new(y_rot: f32, x_rot: f32, position: Vec3) -> Self {
+    pub fn new(
+        y_rot: f32,
+        x_rot: f32,
+        unknown: f32,
+        position_x: f32,
+        position_y: f32,
+        position_z: f32,
+    ) -> Self {
+        println!("new SceCommandCameraSet {} {}", y_rot, position_z);
         Self {
-            y_rot,
-            x_rot,
-            position,
+            y_rot: -y_rot.to_radians(),
+            x_rot: x_rot.to_radians(),
+            position: Vec3::new(position_x, position_y, position_z),
         }
     }
 }
