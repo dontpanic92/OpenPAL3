@@ -16,11 +16,11 @@ memoffset = "0.5.3"
 radiance-assets = { path = "../radiance-assets" }
 
 # Rendering
-ash = "0.30.0"
+ash = "0.31.0"
 image = "0.23.0"
 imgui = "0.3.0"
 imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer" }
-vk-mem = { git = "https://github.com/gwihlidal/vk-mem-rs" }
+vk-mem = "0.2.2"
 
 # Audio
 alto = "3.0.4"
