@@ -21,3 +21,4 @@ downcast-rs = "1.1.1"
 config = "0.10.1"
 serde = { version = "1.0.106", features = ["derive"] }
 intercom = { git = "https://github.com/dontpanic92/intercom/" }
+winapi = "0.3.8"

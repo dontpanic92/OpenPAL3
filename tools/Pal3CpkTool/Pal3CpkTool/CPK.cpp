@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <io.h>
+#include <algorithm>
 #include "minilzo/minilzo.h"
 
 
@@ -333,15 +334,44 @@ void CPK::SetOpenMode(ECPKMode openMode)
     }
 }
 
+//用来给目录结构排序，名字升序，文件夹优先
+void CPK::sortCPKDirectory(CPKDirectoryEntry* pEntry)
+{
+    if (pEntry->dwFlag & CPKTableFlag_IsDir) {
+        std::vector<CPKDirectoryEntry*> dirs;
+        std::vector<CPKDirectoryEntry*> files;
+        for (int i = 0; i < pEntry->childs.size(); i++) {
+            if (pEntry->childs[i]->dwFlag & CPKTableFlag_IsDir) {
+                dirs.push_back(pEntry->childs[i]);
+            } else if (pEntry->childs[i]->dwFlag & CPKTableFlag_IsFile) {
+                files.push_back(pEntry->childs[i]);
+            } else {
+                //what's this?
+                assert(false);
+            }
+            sortCPKDirectory(pEntry->childs[i]);
+        }
+        std::sort(dirs.begin(), dirs.end(), [](const auto& first, const auto& second)->bool {
+            return strcmp(first->lpszName, second->lpszName) <= 0;
+        });
+        std::sort(files.begin(), files.end(), [](const auto& first, const auto& second)->bool {
+            return strcmp(first->lpszName, second->lpszName) <= 0;
+        });
+        pEntry->childs.clear();
+        pEntry->childs.insert(pEntry->childs.end(), dirs.begin(), dirs.end());
+        pEntry->childs.insert(pEntry->childs.end(), files.begin(), files.end());
+    }
+}
+
 bool CPK::BuildDirectoryTree(CPKDirectoryEntry& entry)
 {
     if (!m_bLoaded)
         return false;
 
     //set up root directory info
-    entry.vCRC = 0;
-    entry.vParentCRC = 0;
-    entry.iAttrib = CPKTableFlag_None;
+    entry.dwCRC = 0;
+    entry.dwFatherCRC = 0;
+    entry.dwFlag = CPKTableFlag_IsDir;
     strcpy_s(entry.lpszName, sizeof(entry.lpszName), fileName);
     //用来记录所有已经处理过的节点，避免重复处理
     std::map<DWORD, CPKDirectoryEntry*> handledEntries;
@@ -362,6 +392,9 @@ bool CPK::BuildDirectoryTree(CPKDirectoryEntry& entry)
             assert(false);
         }
     }
+
+    //sort dir first
+    sortCPKDirectory(&entry);
     return true;
 }
 
@@ -372,38 +405,38 @@ bool CPK::buildParent(CPKTable& currFileEntry, std::map<DWORD, CPKDirectoryEntry
         return true;
     //构造节点
     CPKDirectoryEntry* child = new CPKDirectoryEntry();
-    child->iAttrib = currFileEntry.dwFlag;
-    child->vCRC = currFileEntry.dwCRC;
-    child->vParentCRC = currFileEntry.dwFatherCRC;
+    child->dwFlag = currFileEntry.dwFlag;
+    child->dwCRC = currFileEntry.dwCRC;
+    child->dwFatherCRC = currFileEntry.dwFatherCRC;
     ReadFileEntryName(&currFileEntry, child->lpszName, sizeof(child->lpszName));
     //如果当前节点的parent存在，则添加节点，退出递归
-    if (handledEntries.find(child->vParentCRC) != handledEntries.end()) {
+    if (handledEntries.find(child->dwFatherCRC) != handledEntries.end()) {
         //update child file name
-        if (child->vParentCRC) {
+        if (child->dwFatherCRC) {
             CHAR newName[MAX_PATH] = { 0 };
-            sprintf_s(newName, "%s\\%s", handledEntries[child->vParentCRC]->lpszName, child->lpszName);
+            sprintf_s(newName, "%s\\%s", handledEntries[child->dwFatherCRC]->lpszName, child->lpszName);
             strcpy_s(child->lpszName, sizeof(child->lpszName), newName);
         }
-        handledEntries[child->vParentCRC]->childs.push_back(child);
-        handledEntries[child->vCRC] = child;
+        handledEntries[child->dwFatherCRC]->childs.push_back(child);
+        handledEntries[child->dwCRC] = child;
         return true;
     }
     //get parent node
-    int iIndex = GetTableIndexFromCRC(child->vParentCRC);
+    int iIndex = GetTableIndexFromCRC(child->dwFatherCRC);
     if (iIndex == -1) {
         return false;
     }
     //build the parent
     if (buildParent(entries[iIndex], handledEntries)) {
-        if (handledEntries.find(child->vParentCRC) != handledEntries.end()) {
+        if (handledEntries.find(child->dwFatherCRC) != handledEntries.end()) {
             //update child file name
-            if (child->vParentCRC) {
+            if (child->dwFatherCRC) {
                 CHAR newName[MAX_PATH] = { 0 };
-                sprintf_s(newName, "%s\\%s", handledEntries[child->vParentCRC]->lpszName, child->lpszName);
+                sprintf_s(newName, "%s\\%s", handledEntries[child->dwFatherCRC]->lpszName, child->lpszName);
                 strcpy_s(child->lpszName, sizeof(child->lpszName), newName);
             }
-            handledEntries[child->vParentCRC]->childs.push_back(child);
-            handledEntries[child->vCRC] = child;
+            handledEntries[child->dwFatherCRC]->childs.push_back(child);
+            handledEntries[child->dwCRC] = child;
             return true;
         }
     }
