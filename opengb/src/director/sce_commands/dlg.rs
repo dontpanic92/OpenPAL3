@@ -3,7 +3,6 @@ use crate::director::sce_state::SceState;
 use crate::scene::ScnScene;
 use imgui::*;
 use radiance::scene::CoreScene;
-use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct SceCommandDlg {
@@ -43,7 +42,7 @@ impl SceCommandDlg {
         Self {
             dlg_sec: 5.,
             cur_sec: 0.,
-            text,
+            text: text.replace("\\n", "\n"),
         }
     }
 }

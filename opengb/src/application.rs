@@ -2,8 +2,7 @@ pub use radiance::application::{Application, ApplicationExtension};
 
 use crate::{asset_manager::AssetManager, config::OpenGbConfig, director::SceDirector};
 use radiance::application::utils::FpsCounter;
-use std::iter::Iterator;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 
 pub struct OpenGbApplication {
@@ -15,6 +14,7 @@ pub struct OpenGbApplication {
 
 impl ApplicationExtension<OpenGbApplication> for OpenGbApplication {
     fn on_initialized(&mut self, app: &mut Application<OpenGbApplication>) {
+        simple_logger::init().unwrap();
         app.set_title(&self.app_name);
 
         let sce_director = Box::new(SceDirector::new(

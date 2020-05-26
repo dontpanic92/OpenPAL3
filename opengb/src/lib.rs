@@ -1,5 +1,5 @@
 #![feature(drain_filter)]
-#![feature(concat_idents)]
+#![feature(arbitrary_self_types)]
 
 pub mod application;
 pub mod asset_manager;

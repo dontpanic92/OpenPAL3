@@ -3,7 +3,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use std::error::Error;
 use std::fs;
 use std::io::{BufReader, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Mv3Texture {
@@ -69,6 +69,7 @@ pub struct Mv3Model {
 
 #[derive(Debug)]
 pub struct Mv3File {
+    pub path: PathBuf,
     pub magic: [u8; 4],
     pub unknown_dw: u32,
     pub unknown_dw2: u32,
@@ -83,7 +84,7 @@ pub struct Mv3File {
 }
 
 pub fn mv3_load_from_file<P: AsRef<Path>>(path: P) -> Result<Mv3File, Box<dyn Error>> {
-    let mut reader = BufReader::new(fs::File::open(path)?);
+    let mut reader = BufReader::new(fs::File::open(&path)?);
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic)?;
 
@@ -150,6 +151,7 @@ pub fn mv3_load_from_file<P: AsRef<Path>>(path: P) -> Result<Mv3File, Box<dyn Er
     }
 
     Ok(Mv3File {
+        path: path.as_ref().to_owned(),
         magic,
         unknown_dw,
         unknown_dw2,

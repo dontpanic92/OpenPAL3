@@ -40,7 +40,6 @@ impl SceCommand for SceCommandPlaySound {
 
 impl SceCommandPlaySound {
     pub fn new(name: String, times: i32) -> Self {
-        println!("new PlaySound {} {}", name, times);
         Self { name, times }
     }
 }

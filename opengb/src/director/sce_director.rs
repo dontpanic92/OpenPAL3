@@ -1,11 +1,10 @@
 use super::sce_commands::*;
 use crate::director::sce_state::SceState;
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile, scene::ScnScene};
-use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
+use log::debug;
 use radiance::audio::{AudioEngine, AudioSourceState};
-use radiance::math::Vec3;
 use radiance::scene::{CoreScene, Director, Scene};
 use std::rc::Rc;
 
@@ -41,7 +40,7 @@ impl Director for SceDirector {
                             self.active_commands.push(cmd);
                         }
                     }
-                    None => (),
+                    None => break,
                 };
 
                 if self.state.run_mode() == 1 {
@@ -63,7 +62,6 @@ impl SceDirector {
         entry_point: u32,
         asset_mgr: &Rc<AssetManager>,
     ) -> Self {
-        println!("new SceDirector");
         let state = SceState::new(audio_engine, asset_mgr);
 
         Self {
@@ -92,6 +90,7 @@ macro_rules! command {
     (@inner $self: ident, $cmd_name: ident $(, $param_names: ident : $param_types: ident)* [$(, $evaluated: ident)*] [$(, $asc_param_names :ident)*]) => {
         {
             $(let $param_names = data_read::$param_types($self);)*
+            debug!(concat!("{} ", $(concat!("{", stringify!($asc_param_names), "} "), )*), stringify!($cmd_name), $($asc_param_names=$asc_param_names, )*);
             Some(Box::new($cmd_name::new($($asc_param_names),*)))
         }
     };
@@ -132,7 +131,7 @@ impl SceVmContext {
             .find(|h| h.id == entry_point)
             .unwrap()
             .id;
-        println!("{:?}", sce.procs.get(&proc_id));
+
         Self {
             sce,
             proc_id,
@@ -149,6 +148,17 @@ impl SceVmContext {
             2 => {
                 // ScriptRunMode
                 command!(self, SceCommandScriptRunMode, mode: i32)
+            }
+            20 => {
+                // RolePathTo
+                command!(
+                    self,
+                    SceCommandRolePathTo,
+                    role_id: i32,
+                    x: i32,
+                    y: i32,
+                    unknown: i32
+                )
             }
             21 => {
                 // RoleSetPos
@@ -209,16 +219,29 @@ impl SceVmContext {
                 // ObjectActive
                 nop_command!(self, i32, i32)
             }
+            88 => {
+                // HY_Mode
+                nop_command!(self, i32)
+            }
+            133 => {
+                // Music
+                command!(self, SceCommandMusic, name: string, unknown: i32)
+            }
             207 => {
-                /// RoleActAutoStand
-                nop_command!(self, i32, i32)
+                // RoleActAutoStand
+                command!(
+                    self,
+                    SceCommandRoleActAutoStand,
+                    role_id: i32,
+                    auto_play_idle: i32
+                )
             }
             250 => {
                 // CameraFree
                 nop_command!(self, i32)
             }
             default => {
-                // println!("Unsupported command: {}", default);
+                println!("Unsupported command: {}", default);
                 self.put(4);
                 None
             }
@@ -257,10 +280,6 @@ mod data_read {
         context.read(4).read_i32::<LittleEndian>().unwrap()
     }
 
-    pub(super) fn u8(context: &mut super::SceVmContext) -> u8 {
-        context.read(1).read_u8().unwrap()
-    }
-
     pub(super) fn f32(context: &mut super::SceVmContext) -> f32 {
         context.read(4).read_f32::<LittleEndian>().unwrap()
     }
@@ -270,73 +289,6 @@ mod data_read {
         context.read_string(len as usize)
     }
 }
-
-/*struct SceCommands {
-    init: bool,
-    commands: Vec<Box<dyn SceCommand>>,
-    pc: usize,
-}
-
-impl SceCommands {
-    pub fn new() -> Self {
-        Self {
-            init: false,
-            commands: vec![
-                Box::new(SceCommandRoleActive::new(11, 1)),
-                Box::new(SceCommandScriptRunMode::new(1)),
-                Box::new(SceCommandCameraSet::new(
-                    33.24_f32, -19.48_f32, 688.00, 308.31, 229.44, 468.61,
-                )),
-                Box::new(SceCommandScriptRunMode::new(2)),
-                Box::new(SceCommandPlaySound::new("we046", 6)),
-                Box::new(SceCommandIdle::new(10.)),
-                Box::new(SceCommandScriptRunMode::new(1)),
-                Box::new(SceCommandPlaySound::new("wb001", 1)),
-                Box::new(SceCommandPlaySound::new("wb001", 1)),
-                Box::new(SceCommandIdle::new(1.5)),
-                Box::new(SceCommandRoleShowAction::new(101, "j04", -2)),
-                Box::new(SceCommandPlaySound::new("wb001", 1)),
-                Box::new(SceCommandDlg::new("景天：\n什么声音？……有贼？！")),
-                Box::new(SceCommandRoleSetFace::new(101, Vec3::new(1., 0., 0.))),
-                Box::new(SceCommandRoleSetPos::new(101, Vec3::new(6., 0., 7.))),
-                Box::new(SceCommandRoleShowAction::new(101, "z19", -2)),
-                Box::new(SceCommandRoleShowAction::new(101, "j01", -2)),
-                Box::new(SceCommandDlg::new("景天：\n咦？！是我听错了？")),
-                Box::new(SceCommandRoleSetPos::new(104, Vec3::new(16., 0., 12.))),
-                Box::new(SceCommandRoleSetFace::new(101, Vec3::new(1., 0., 0.))),
-                Box::new(SceCommandMusic::new("PI27")),
-                Box::new(SceCommandRolePathTo::new(
-                    104,
-                    Vec3::new(16., 0., 12.),
-                    Vec3::new(14., 0., 12.),
-                )),
-                Box::new(SceCommandScriptRunMode::new(2)),
-                Box::new(SceCommandRoleShowAction::new(104, "c01", -2)),
-                Box::new(SceCommandRoleFaceRole::new(101, 104)),
-                Box::new(SceCommandRoleFaceRole::new(104, 101)),
-                Box::new(SceCommandIdle::new(1.)),
-                Box::new(SceCommandScriptRunMode::new(1)),
-                Box::new(SceCommandRoleShowAction::new(101, "j02", -2)),
-                Box::new(SceCommandDlg::new("少女：\n呀！有人！")),
-                Box::new(SceCommandScriptRunMode::new(2)),
-                Box::new(SceCommandRoleShowAction::new(101, "j05", -2)),
-                Box::new(SceCommandDlg::new("景天：\n小贼！站住！")),
-                Box::new(SceCommandScriptRunMode::new(1)),
-            ],
-            pc: 0,
-        }
-    }
-
-    pub fn get_next(&mut self) -> Option<Box<dyn SceCommand>> {
-        if self.pc < self.commands.len() {
-            let command = dyn_clone::clone_box(&*self.commands[self.pc]);
-            self.pc += 1;
-            Some(command)
-        } else {
-            None
-        }
-    }
-}*/
 
 pub trait SceCommand: dyn_clone::DynClone {
     fn initialize(&mut self, scene: &mut CoreScene<ScnScene>, state: &mut SceState) {}

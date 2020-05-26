@@ -1,6 +1,6 @@
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
-use crate::{asset_manager::AssetManager, scene::ScnScene};
+use crate::scene::ScnScene;
 use imgui::Ui;
 use radiance::scene::CoreScene;
 use std::rc::Rc;
@@ -25,7 +25,6 @@ impl SceCommand for SceCommandScriptRunMode {
 
 impl SceCommandScriptRunMode {
     pub fn new(mode: i32) -> Self {
-        println!("new runscriptmode {}", mode);
         Self { mode }
     }
 }

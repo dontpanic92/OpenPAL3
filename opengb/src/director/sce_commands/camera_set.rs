@@ -40,7 +40,6 @@ impl SceCommandCameraSet {
         position_y: f32,
         position_z: f32,
     ) -> Self {
-        println!("new SceCommandCameraSet {} {}", y_rot, position_z);
         Self {
             y_rot: -y_rot.to_radians(),
             x_rot: x_rot.to_radians(),

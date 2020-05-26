@@ -6,12 +6,12 @@ use imgui::Ui;
 use radiance::scene::CoreScene;
 
 #[derive(Clone)]
-pub struct SceCommandRoleActive {
+pub struct SceCommandRoleActAutoStand {
     role_id: String,
-    active: i32,
+    auto_play_idle: i32,
 }
 
-impl SceCommand for SceCommandRoleActive {
+impl SceCommand for SceCommandRoleActAutoStand {
     fn initialize(&mut self, scene: &mut CoreScene<ScnScene>, state: &mut SceState) {}
 
     fn update(
@@ -23,16 +23,16 @@ impl SceCommand for SceCommandRoleActive {
     ) -> bool {
         scene
             .get_role_entity(&self.role_id)
-            .set_active(self.active != 0);
+            .set_auto_play_idle(self.auto_play_idle == 1);
         true
     }
 }
 
-impl SceCommandRoleActive {
-    pub fn new(role_id: i32, active: i32) -> Self {
+impl SceCommandRoleActAutoStand {
+    pub fn new(role_id: i32, auto_play_idle: i32) -> Self {
         Self {
             role_id: map_role_id(role_id).to_string(),
-            active,
+            auto_play_idle,
         }
     }
 }

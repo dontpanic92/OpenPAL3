@@ -4,6 +4,7 @@ mod idle;
 mod music;
 mod nop;
 mod play_sound;
+mod role_act_auto_stand;
 mod role_active;
 mod role_face_role;
 mod role_path_to;
@@ -18,6 +19,7 @@ pub use idle::SceCommandIdle;
 pub use music::SceCommandMusic;
 pub use nop::SceCommandNop;
 pub use play_sound::SceCommandPlaySound;
+pub use role_act_auto_stand::SceCommandRoleActAutoStand;
 pub use role_active::SceCommandRoleActive;
 pub use role_face_role::SceCommandRoleFaceRole;
 pub use role_path_to::SceCommandRolePathTo;
@@ -27,73 +29,11 @@ pub use role_show_action::SceCommandRoleShowAction;
 pub use script_run_mode::SceCommandScriptRunMode;
 
 use super::sce_state::SceState;
-use crate::scene::{Mv3ModelEntity, ScnScene};
+use crate::scene::{RoleEntity, ScnScene};
 use radiance::{
     math::Vec3,
     scene::{CoreEntity, CoreScene, Scene},
 };
-
-struct RoleProperties;
-impl RoleProperties {
-    pub fn position(state: &mut SceState, role_id: &str) -> Vec3 {
-        let key = RolePropertyNames::position(role_id);
-        if !state.ext_mut().contains_key(&key) {
-            state
-                .ext_mut()
-                .insert(key.clone(), Box::new(Vec3::new(0., 0., 0.)));
-        }
-
-        *state
-            .ext_mut()
-            .get(&key)
-            .as_ref()
-            .unwrap()
-            .downcast_ref::<Vec3>()
-            .unwrap()
-    }
-
-    pub fn set_position(state: &mut SceState, role_id: &str, position: &Vec3) {
-        let key = RolePropertyNames::position(role_id);
-        state.ext_mut().insert(key, Box::new(*position));
-    }
-
-    pub fn face_to(state: &mut SceState, role_id: &str) -> Vec3 {
-        let key = RolePropertyNames::face_to(role_id);
-        if !state.ext_mut().contains_key(&key) {
-            state
-                .ext_mut()
-                .insert(key.clone(), Box::new(Vec3::new(0., 0., -1.)));
-        }
-
-        *state
-            .ext_mut()
-            .get(&key)
-            .as_ref()
-            .unwrap()
-            .downcast_ref::<Vec3>()
-            .unwrap()
-    }
-
-    pub fn set_face_to(state: &mut SceState, role_id: &str, face_to: &Vec3) {
-        let key = RolePropertyNames::face_to(role_id);
-        state.ext_mut().insert(key, Box::new(*face_to));
-    }
-}
-
-struct RolePropertyNames;
-impl RolePropertyNames {
-    pub fn name(role_id: &str) -> String {
-        format!("ROLE_{}", role_id)
-    }
-
-    pub fn position(role_id: &str) -> String {
-        format!("ROLE_{}_POSITION", role_id)
-    }
-
-    pub fn face_to(role_id: &str) -> String {
-        format!("ROLE_{}_FACE_TO", role_id)
-    }
-}
 
 struct Direction;
 impl Direction {
@@ -102,40 +42,68 @@ impl Direction {
         y: 0.,
         z: -1.,
     };
-    const SOUTH: Vec3 = Vec3 {
-        x: 0.,
+    const NORTHEAST: Vec3 = Vec3 {
+        x: 1.,
         y: 0.,
-        z: 1.,
+        z: -1.,
     };
     const EAST: Vec3 = Vec3 {
         x: 1.,
         y: 0.,
         z: 0.,
     };
+    const SOUTHEAST: Vec3 = Vec3 {
+        x: 1.,
+        y: 0.,
+        z: 1.,
+    };
+    const SOUTH: Vec3 = Vec3 {
+        x: 0.,
+        y: 0.,
+        z: 1.,
+    };
+    const SOUTHWEST: Vec3 = Vec3 {
+        x: -1.,
+        y: 0.,
+        z: 1.,
+    };
     const WEST: Vec3 = Vec3 {
         x: -1.,
         y: 0.,
         z: 0.,
     };
+    const NORTHWEST: Vec3 = Vec3 {
+        x: -1.,
+        y: 0.,
+        z: -1.,
+    };
+}
+
+pub fn map_role_id(role_id: i32) -> i32 {
+    match role_id {
+        -1 => 101,
+        1 => 104,
+        x => x,
+    }
 }
 
 const BLOCK_SIZE: f32 = 12.5;
-pub fn nav_coord_to_scene_coord(scene: &CoreScene<ScnScene>, nav_position: &Vec3) -> Vec3 {
+pub fn nav_coord_to_scene_coord(scene: &CoreScene<ScnScene>, nav_x: f32, nav_y: f32) -> Vec3 {
     let ext = scene.extension().borrow();
     let origin = ext.nav_origin();
     Vec3::new(
-        nav_position.x * BLOCK_SIZE + origin.x,
-        nav_position.y + origin.y,
-        nav_position.z * BLOCK_SIZE + origin.z,
+        nav_x * BLOCK_SIZE + origin.x,
+        origin.y,
+        nav_y * BLOCK_SIZE + origin.z,
     )
 }
 
-trait SceneMv3Extensions {
-    fn get_mv3_entity(&mut self, name: &str) -> &mut CoreEntity<Mv3ModelEntity>;
+trait SceneRoleExtensions {
+    fn get_role_entity(&mut self, name: &str) -> &mut CoreEntity<RoleEntity>;
 }
 
-impl SceneMv3Extensions for CoreScene<ScnScene> {
-    fn get_mv3_entity(&mut self, name: &str) -> &mut CoreEntity<Mv3ModelEntity> {
+impl SceneRoleExtensions for CoreScene<ScnScene> {
+    fn get_role_entity(&mut self, name: &str) -> &mut CoreEntity<RoleEntity> {
         let pos = self
             .entities_mut()
             .iter()
@@ -145,7 +113,7 @@ impl SceneMv3Extensions for CoreScene<ScnScene> {
             .get_mut(pos)
             .unwrap()
             .as_mut()
-            .downcast_mut::<CoreEntity<Mv3ModelEntity>>()
+            .downcast_mut::<CoreEntity<RoleEntity>>()
             .unwrap()
     }
 }

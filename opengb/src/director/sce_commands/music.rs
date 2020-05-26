@@ -1,11 +1,9 @@
-use crate::asset_manager::AssetManager;
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
 use crate::scene::ScnScene;
 use imgui::Ui;
 use radiance::audio::Codec;
 use radiance::scene::CoreScene;
-use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct SceCommandMusic {
@@ -27,9 +25,7 @@ impl SceCommand for SceCommandMusic {
 }
 
 impl SceCommandMusic {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-        }
+    pub fn new(name: String, unknown: i32) -> Self {
+        Self { name }
     }
 }

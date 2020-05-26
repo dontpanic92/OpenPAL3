@@ -1,9 +1,8 @@
-use super::{read_dw_vec, read_string, read_vec, read_w_vec};
+use super::{read_string, read_vec};
 use byteorder::{LittleEndian, ReadBytesExt};
-use radiance::math::Vec3;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read};
 use std::path::Path;
 
 #[derive(Debug)]

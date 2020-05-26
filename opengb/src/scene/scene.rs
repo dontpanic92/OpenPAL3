@@ -1,12 +1,15 @@
+use crate::asset_manager::AssetManager;
 use crate::loaders::{cvd_loader::*, nav_loader::NavFile, pol_loader::*, scn_loader::*};
 use crate::scene::CvdModelEntity;
 use crate::scene::PolModelEntity;
-use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity};
 use radiance::math::Vec3;
 use radiance::scene::{CoreEntity, CoreScene, Entity, SceneExtension};
-use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::rc::Rc;
 
 pub struct ScnScene {
+    asset_mgr: Rc<AssetManager>,
     path: String,
     scn_file: ScnFile,
     nav_file: NavFile,
@@ -15,14 +18,21 @@ pub struct ScnScene {
 impl SceneExtension<ScnScene> for ScnScene {
     fn on_loading(&mut self, scene: &mut CoreScene<ScnScene>) {
         load_scene(scene, &self.path, &self.scn_file, false);
+        self.load_roles(scene);
     }
 
     fn on_updating(&mut self, scene: &mut CoreScene<ScnScene>, delta_sec: f32) {}
 }
 
 impl ScnScene {
-    pub fn new(scn_path: PathBuf, scn_file: ScnFile, nav_file: NavFile) -> Self {
+    pub fn new(
+        asset_mgr: &Rc<AssetManager>,
+        scn_path: PathBuf,
+        scn_file: ScnFile,
+        nav_file: NavFile,
+    ) -> Self {
         Self {
+            asset_mgr: asset_mgr.clone(),
             path: scn_path.to_str().unwrap().to_owned(),
             scn_file,
             nav_file,
@@ -33,8 +43,29 @@ impl ScnScene {
         &self.nav_file.unknown1[0].origin
     }
 
-    pub fn roles(&self) -> &[ScnRole] {
-        &self.scn_file.roles
+    fn load_roles(&self, scene: &mut CoreScene<ScnScene>) {
+        for i in 101..111 {
+            let role_name = i.to_string();
+            let entity_name = i.to_string();
+            let role_entity = self.asset_mgr.load_role(&role_name, "C01");
+            let entity = CoreEntity::new(role_entity, &entity_name);
+            scene.add_entity(entity);
+        }
+
+        for role in &self.scn_file.roles {
+            let role_entity = self.asset_mgr.load_role(&role.name, &role.action_name);
+            let mut entity = CoreEntity::new(role_entity, &role.index.to_string());
+            entity
+                .transform_mut()
+                .set_position(&Vec3::new(
+                    role.position_x,
+                    role.position_y,
+                    role.position_z,
+                ))
+                // HACK
+                .rotate_axis_angle_local(&Vec3::UP, std::f32::consts::PI);
+            scene.add_entity(entity);
+        }
     }
 }
 
@@ -66,7 +97,6 @@ pub fn load_scene<T: SceneExtension<T>>(
         .join("item");
     let pol_name = scn_file.scn_base_name.clone() + ".pol";
     let pol_path = scn_private_folder.join(pol_name);
-    println!("{:?}", pol_path);
     load_model(
         pol_path.to_str().unwrap(),
         "_ground",
@@ -115,17 +145,17 @@ fn load_model<T: SceneExtension<T>>(
     position: &Vec3,
     rotation: f32,
 ) {
-    println!("{}", model_path);
     if model_path.to_lowercase().ends_with(".mv3") {
-        let mut entity = CoreEntity::new(
-            Mv3ModelEntity::new_from_file(&model_path, Mv3AnimRepeatMode::Repeat),
+        /*let mut entity = CoreEntity::new(
+            Mv3ModelEntity::new_from_file(&model_path, RoleAnimationRepeatMode::Repeat),
             name,
         );
         entity
             .transform_mut()
             .set_position(position)
             .rotate_axis_angle_local(&Vec3::UP, rotation);
-        scene.add_entity(entity);
+        scene.add_entity(entity);*/
+        panic!("????");
     } else if model_path.to_lowercase().ends_with(".pol") {
         let pol = pol_load_from_file(&model_path).unwrap();
         let mut i = 0;
@@ -188,7 +218,7 @@ fn cvd_add_model_entity<T: SceneExtension<T>>(
                     CvdModelEntity::new(v, material, path, id),
                     &format!("{}_{}", name, id),
                 );
-                let mut transform = entity
+                let transform = entity
                     .transform_mut()
                     .set_position(position)
                     .rotate_axis_angle_local(&Vec3::UP, rotation);
@@ -222,7 +252,7 @@ fn cvd_add_model_entity<T: SceneExtension<T>>(
                     .as_ref()
                     .and_then(|frame| frame.frames.get(0))
                 {
-                    let mut q2 = s.quaternion;
+                    let q2 = s.quaternion;
                     let mut q3 = q2;
                     q3.inverse();
 

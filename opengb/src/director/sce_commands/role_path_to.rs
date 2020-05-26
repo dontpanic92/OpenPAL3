@@ -1,45 +1,24 @@
-use super::{nav_coord_to_scene_coord, RoleProperties, RolePropertyNames, SceneMv3Extensions};
-use crate::asset_manager::AssetManager;
+use super::{map_role_id, nav_coord_to_scene_coord, SceneRoleExtensions};
 use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
-use crate::scene::{Mv3AnimRepeatMode, Mv3ModelEntity, ScnScene};
+use crate::scene::{RoleAnimationRepeatMode, ScnScene};
 use imgui::Ui;
 use radiance::math::Vec3;
-use radiance::scene::{CoreEntity, CoreScene, Entity, Scene};
-use std::rc::Rc;
+use radiance::scene::{CoreScene, Entity};
 
 #[derive(Clone)]
 pub struct SceCommandRolePathTo {
     role_id: String,
-    from: Vec3,
-    to: Vec3,
+    nav_x: f32,
+    nav_y: f32,
+    unknown: i32,
 }
 
 impl SceCommand for SceCommandRolePathTo {
     fn initialize(&mut self, scene: &mut CoreScene<ScnScene>, state: &mut SceState) {
-        let name = RolePropertyNames::name(&self.role_id);
-        scene.entities_mut().retain(|e| e.name() != name);
-        let mut entity = CoreEntity::new(
-            Mv3ModelEntity::new_from_file(
-                state
-                    .asset_mgr()
-                    .mv3_path(&self.role_id, "c02")
-                    .to_str()
-                    .unwrap(),
-                Mv3AnimRepeatMode::Repeat,
-            ),
-            &name,
-        );
-        entity.load();
-
-        let position = RoleProperties::position(state, &self.role_id);
-        let face_to = RoleProperties::face_to(state, &self.role_id);
-        entity
-            .transform_mut()
-            .set_position(&position)
-            .look_at(&Vec3::add(&position, &face_to));
-
-        scene.entities_mut().push(Box::new(entity));
+        scene
+            .get_role_entity(&self.role_id)
+            .play_anim("C02", RoleAnimationRepeatMode::Repeat);
     }
 
     fn update(
@@ -51,8 +30,8 @@ impl SceCommand for SceCommandRolePathTo {
     ) -> bool {
         const SPEED: f32 = 50.;
 
-        let to = nav_coord_to_scene_coord(scene, &self.to);
-        let position = RoleProperties::position(state, &self.role_id);
+        let to = nav_coord_to_scene_coord(scene, self.nav_x, self.nav_y);
+        let position = scene.get_role_entity(&self.role_id).transform().position();
         let step = SPEED * delta_sec;
         let remain = Vec3::sub(&to, &position);
         let completed = remain.norm() < step;
@@ -62,24 +41,28 @@ impl SceCommand for SceCommandRolePathTo {
             Vec3::add(&position, &Vec3::dot(step, &Vec3::normalized(&remain)))
         };
 
-        let entity = scene.get_mv3_entity(&RolePropertyNames::name(&self.role_id));
+        let entity = scene.get_role_entity(&self.role_id);
         entity
             .transform_mut()
             .look_at(&to)
             .set_position(&new_position);
-        RoleProperties::set_position(state, &self.role_id, &new_position);
-        RoleProperties::set_face_to(state, &self.role_id, &Vec3::sub(&new_position, &position));
 
+        if completed {
+            scene
+                .get_role_entity(&self.role_id)
+                .play_anim("C01", RoleAnimationRepeatMode::Repeat);
+        }
         completed
     }
 }
 
 impl SceCommandRolePathTo {
-    pub fn new(role_id: i32, from: Vec3, to: Vec3) -> Self {
+    pub fn new(role_id: i32, nav_x: i32, nav_y: i32, unknown: i32) -> Self {
         Self {
-            role_id: format!("{}", role_id),
-            from,
-            to,
+            role_id: map_role_id(role_id).to_string(),
+            nav_x: nav_x as f32,
+            nav_y: nav_y as f32,
+            unknown,
         }
     }
 }

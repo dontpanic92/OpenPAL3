@@ -1,5 +1,5 @@
 use opengb::scene::CvdModelEntity;
-use opengb::scene::{Mv3ModelEntity, Mv3AnimRepeatMode};
+use opengb::scene::{Mv3ModelEntity, RoleAnimationRepeatMode};
 use opengb::scene::PolModelEntity;
 use opengb::loaders::cvd_loader::*;
 use opengb::loaders::pol_loader::*;

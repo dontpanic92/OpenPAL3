@@ -127,7 +127,7 @@ pub fn cvd_load_from_file<P: AsRef<Path>>(path: P) -> Result<CvdFile, Box<dyn Er
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic).unwrap();
 
-    let mut unknown_float = match magic {
+    let unknown_float = match magic {
         [0x63, 0x76, 0x64, 0x73] => 0.5, // "cvds"
         [0x63, 0x76, 0x64, 0x66] => 0.4, // "cvdf"
         _ => panic!("Not a valid cvd file"),
