@@ -51,7 +51,12 @@ impl VulkanRenderObject {
             command_runner,
         )?;
 
-        let material = VulkanMaterial::new(&*object.material(), device, allocator, command_runner)?;
+        let material = VulkanMaterial::new(
+            object.material().as_ref(),
+            device,
+            allocator,
+            command_runner,
+        )?;
         let per_object_descriptor_sets =
             descriptor_manager.allocate_per_object_descriptor_set(&material)?;
         let dub_index = dub_manager.allocate_buffer();
@@ -64,6 +69,11 @@ impl VulkanRenderObject {
             per_object_descriptor_sets,
             dub_index,
         })
+    }
+
+    pub fn compatible_with(&self, object: &RenderObject) -> bool {
+        // Need a better way to associate vro with ro
+        self.index_buffer.element_count() as usize == object.indices().len()
     }
 
     pub fn update(&mut self, object: &mut RenderObject) {

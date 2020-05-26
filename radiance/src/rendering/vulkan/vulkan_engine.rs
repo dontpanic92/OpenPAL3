@@ -194,32 +194,41 @@ impl RenderingEngine for VulkanRenderingEngine {
                     TypeId::of::<VulkanRenderObject>(),
                     &|ro_any, vro_any, ent| {
                         if ro_any.is_none() {
+                            ent.remove_component(TypeId::of::<VulkanRenderObject>());
                             return;
                         }
                         let ro = ro_any.unwrap().downcast_mut::<RenderObject>().unwrap();
+                        let vro = vro_any
+                            .and_then(|v| {
+                                let vro = v.downcast_mut::<VulkanRenderObject>().unwrap();
+                                if !vro.compatible_with(&ro) {
+                                    println!("removed component");
+                                    ent.remove_component(TypeId::of::<VulkanRenderObject>());
+                                    None
+                                } else {
+                                    Some(vro)
+                                }
+                            })
+                            .or_else(|| {
+                                let object = VulkanRenderObject::new(
+                                    ro,
+                                    self.device(),
+                                    self.allocator(),
+                                    self.command_runner(),
+                                    self.dub_manager(),
+                                    self.descriptor_manager(),
+                                )
+                                .unwrap();
 
-                        let vro = if vro_any.is_none() {
-                            let object = VulkanRenderObject::new(
-                                ro,
-                                self.device(),
-                                self.allocator(),
-                                self.command_runner(),
-                                self.dub_manager(),
-                                self.descriptor_manager(),
-                            )
+                                ent.add_component(Box::new(object));
+                                Some(
+                                    ent.get_component_mut(TypeId::of::<VulkanRenderObject>())
+                                        .unwrap()
+                                        .downcast_mut::<VulkanRenderObject>()
+                                        .unwrap(),
+                                )
+                            })
                             .unwrap();
-
-                            ent.add_component(Box::new(object));
-                            ent.get_component_mut(TypeId::of::<VulkanRenderObject>())
-                                .unwrap()
-                                .downcast_mut::<VulkanRenderObject>()
-                                .unwrap()
-                        } else {
-                            vro_any
-                                .unwrap()
-                                .downcast_mut::<VulkanRenderObject>()
-                                .unwrap()
-                        };
 
                         if ro.is_dirty {
                             vro.update(ro);

@@ -5,21 +5,21 @@ use std::sync::{Arc, RwLock, RwLockReadGuard};
 pub struct RenderObject {
     vertices: Arc<RwLock<VertexBuffer>>,
     indices: Arc<RwLock<Vec<u32>>>,
-    material: Arc<RwLock<dyn Material>>,
+    material: Arc<RwLock<Box<dyn Material>>>,
     is_host_dynamic: bool,
     pub is_dirty: bool,
 }
 
 impl RenderObject {
     pub fn new_with_data(
-        vertices: &Arc<RwLock<VertexBuffer>>,
-        indices: &Arc<RwLock<Vec<u32>>>,
-        material: &Arc<RwLock<dyn Material>>,
+        vertices: VertexBuffer,
+        indices: Vec<u32>,
+        material: Box<dyn Material>,
     ) -> Self {
         Self {
-            vertices: vertices.clone(),
-            indices: indices.clone(),
-            material: material.clone(),
+            vertices: Arc::new(RwLock::new(vertices)),
+            indices: Arc::new(RwLock::new(indices)),
+            material: Arc::new(RwLock::new(material)),
             is_host_dynamic: false,
             is_dirty: false,
         }
@@ -28,7 +28,7 @@ impl RenderObject {
     pub fn new_host_dynamic_with_data(
         vertices: &Arc<RwLock<VertexBuffer>>,
         indices: &Arc<RwLock<Vec<u32>>>,
-        material: &Arc<RwLock<dyn Material>>,
+        material: &Arc<RwLock<Box<dyn Material>>>,
     ) -> Self {
         Self {
             vertices: vertices.clone(),
@@ -55,7 +55,7 @@ impl RenderObject {
         self.indices.read().unwrap()
     }
 
-    pub fn material(&self) -> RwLockReadGuard<dyn Material + 'static> {
+    pub fn material(&self) -> RwLockReadGuard<Box<dyn Material>> {
         self.material.read().unwrap()
     }
 }

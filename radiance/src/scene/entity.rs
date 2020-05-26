@@ -2,6 +2,7 @@ use crate::math::Transform;
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 pub trait Entity: downcast_rs::Downcast {
@@ -14,6 +15,7 @@ pub trait Entity: downcast_rs::Downcast {
     fn add_component(&mut self, component: Box<dyn Any>);
     fn get_component(&self, type_id: TypeId) -> Option<&dyn Any>;
     fn get_component_mut(&mut self, type_id: TypeId) -> Option<&mut dyn Any>;
+    fn remove_component(&mut self, type_id: TypeId);
     unsafe fn component_do2(
         &mut self,
         type_id1: TypeId,
@@ -71,28 +73,52 @@ impl<TExtension: 'static + EntityExtension<TExtension>> CoreEntity<TExtension> {
         component.and_then(|c| c.downcast_mut())
     }
 
+    pub fn remove_component<T>(&mut self)
+    where
+        T: 'static,
+    {
+        let type_id = TypeId::of::<T>();
+        Entity::remove_component(self, type_id);
+    }
+
     pub fn extension(&self) -> &Rc<RefCell<TExtension>> {
         &self.extension
     }
 }
 
+impl<TExtension: 'static + EntityExtension<TExtension>> Deref for CoreEntity<TExtension> {
+    type Target = TExtension;
+
+    #[inline(always)]
+    fn deref(&self) -> &TExtension {
+        unsafe { &*self.extension().as_ptr() }
+    }
+}
+
+impl<TExtension: 'static + EntityExtension<TExtension>> DerefMut for CoreEntity<TExtension> {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut TExtension {
+        unsafe { &mut *self.extension().as_ptr() }
+    }
+}
+
 #[inline]
-pub fn entity_add_component<T>(entity: &mut dyn Entity, component: T)
-where
-    T: 'static,
-{
+pub fn entity_add_component<T: 'static>(entity: &mut dyn Entity, component: T) {
     entity.add_component(Box::new(component));
 }
 
 #[inline]
-pub fn entity_get_component<T>(entity: &dyn Entity) -> Option<&T>
-where
-    T: 'static,
-{
+pub fn entity_get_component<T: 'static>(entity: &dyn Entity) -> Option<&T> {
     let type_id = TypeId::of::<T>();
     entity
         .get_component(type_id)
         .and_then(|component| component.downcast_ref::<T>())
+}
+
+#[inline]
+pub fn entity_remove_component<T: 'static>(entity: &mut dyn Entity) {
+    let type_id = TypeId::of::<T>();
+    entity.remove_component(type_id)
 }
 
 impl<TExtension: 'static + EntityExtension<TExtension>> Entity for CoreEntity<TExtension> {
@@ -150,6 +176,14 @@ impl<TExtension: 'static + EntityExtension<TExtension>> Entity for CoreEntity<TE
             .get_mut(&type_id)
             .filter(|v| !v.is_empty())
             .and_then(|v| Some(v[0].as_mut()))
+    }
+
+    fn remove_component(&mut self, type_id: TypeId) {
+        if !self.components.contains_key(&type_id) {
+            return;
+        }
+
+        self.components.remove(&type_id);
     }
 
     unsafe fn component_do2(

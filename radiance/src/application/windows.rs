@@ -89,7 +89,9 @@ impl Platform {
 
     fn set_dpi_awareness() {
         unsafe {
-            winuser::SetProcessDpiAwarenessContext(winapi::shared::windef::DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+            winuser::SetProcessDpiAwarenessContext(
+                winapi::shared::windef::DPI_AWARENESS_CONTEXT_SYSTEM_AWARE,
+            );
         }
     }
 

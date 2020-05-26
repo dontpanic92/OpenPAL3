@@ -57,7 +57,7 @@ mod private {
 
 pub type DefaultScene = CoreScene<private::DefaultExtension>;
 
-impl<TExtension:'static + SceneExtension<TExtension>> Scene for CoreScene<TExtension> {
+impl<TExtension: 'static + SceneExtension<TExtension>> Scene for CoreScene<TExtension> {
     fn load(&mut self) {
         ext_call!(self, on_loading);
         for entity in &mut self.entities {
