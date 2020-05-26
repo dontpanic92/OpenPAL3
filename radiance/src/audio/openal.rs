@@ -164,6 +164,5 @@ fn create_decoder(data: Vec<u8>, codec: Codec) -> Box<dyn Decoder> {
         Codec::Mp3 => Box::new(Mp3Decoder::new(data)),
         Codec::Ogg => Box::new(OggDecoder::new(data)),
         Codec::Wav => Box::new(WavDecoder::new(data)),
-        _ => unimplemented!(),
     }
 }

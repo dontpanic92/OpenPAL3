@@ -319,7 +319,6 @@ impl VulkanRenderingEngine {
 
         self.swapchain = None;
         let capabilities = self.get_capabilities()?;
-        let imgui = &self.imgui;
         self.swapchain = Some(SwapChain::new(
             &self.instance,
             self.device(),

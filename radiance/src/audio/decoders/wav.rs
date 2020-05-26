@@ -1,5 +1,5 @@
 use super::Decoder;
-use hound::{WavReader, WavSamples};
+use hound::WavReader;
 use std::io::Cursor;
 use std::iter::Iterator;
 

@@ -3,7 +3,6 @@ use crate::constants;
 use crate::radiance;
 use crate::radiance::CoreRadianceEngine;
 use crate::rendering;
-use crate::rendering::VulkanRenderingEngine;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 use std::time::Instant;

@@ -47,11 +47,11 @@ impl VulkanRenderObject {
         let index_buffer = Buffer::new_device_buffer_with_data(
             allocator,
             BufferType::Index,
-            object.indices(),
+            &object.indices(),
             command_runner,
         )?;
 
-        let material = VulkanMaterial::new(object.material(), device, allocator, command_runner)?;
+        let material = VulkanMaterial::new(&*object.material(), device, allocator, command_runner)?;
         let per_object_descriptor_sets =
             descriptor_manager.allocate_per_object_descriptor_set(&material)?;
         let dub_index = dub_manager.allocate_buffer();

@@ -11,7 +11,6 @@ use crate::rendering::imgui::{vulkan::ImguiVulkanContext, ImguiContext, ImguiFra
 use ash::prelude::VkResult;
 use ash::version::DeviceV1_0;
 use ash::{vk, Device, Instance};
-use std::collections::HashMap;
 use std::ops::Deref;
 use std::rc::{Rc, Weak};
 

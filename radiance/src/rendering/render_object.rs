@@ -1,38 +1,39 @@
 use super::Material;
 use super::VertexBuffer;
+use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 pub struct RenderObject {
-    vertices: VertexBuffer,
-    indices: Vec<u32>,
-    material: Box<dyn Material>,
+    vertices: Arc<RwLock<VertexBuffer>>,
+    indices: Arc<RwLock<Vec<u32>>>,
+    material: Arc<RwLock<dyn Material>>,
     is_host_dynamic: bool,
     pub is_dirty: bool,
 }
 
 impl RenderObject {
     pub fn new_with_data(
-        vertices: VertexBuffer,
-        indices: Vec<u32>,
-        material: Box<dyn Material>,
+        vertices: &Arc<RwLock<VertexBuffer>>,
+        indices: &Arc<RwLock<Vec<u32>>>,
+        material: &Arc<RwLock<dyn Material>>,
     ) -> Self {
         Self {
-            vertices,
-            indices,
-            material,
+            vertices: vertices.clone(),
+            indices: indices.clone(),
+            material: material.clone(),
             is_host_dynamic: false,
             is_dirty: false,
         }
     }
 
     pub fn new_host_dynamic_with_data(
-        vertices: VertexBuffer,
-        indices: Vec<u32>,
-        material: Box<dyn Material>,
+        vertices: &Arc<RwLock<VertexBuffer>>,
+        indices: &Arc<RwLock<Vec<u32>>>,
+        material: &Arc<RwLock<dyn Material>>,
     ) -> Self {
         Self {
-            vertices,
-            indices,
-            material,
+            vertices: vertices.clone(),
+            indices: indices.clone(),
+            material: material.clone(),
             is_host_dynamic: true,
             is_dirty: false,
         }
@@ -42,20 +43,19 @@ impl RenderObject {
         self.is_host_dynamic
     }
 
-    pub fn update_vertices(&mut self, callback: &dyn Fn(&mut VertexBuffer)) {
-        callback(&mut self.vertices);
+    pub fn make_dirty(&mut self) {
         self.is_dirty = true;
     }
 
-    pub fn vertices(&self) -> &VertexBuffer {
-        &self.vertices
+    pub fn vertices(&self) -> RwLockReadGuard<VertexBuffer> {
+        self.vertices.read().unwrap()
     }
 
-    pub fn indices(&self) -> &[u32] {
-        &self.indices
+    pub fn indices(&self) -> RwLockReadGuard<Vec<u32>> {
+        self.indices.read().unwrap()
     }
 
-    pub fn material(&self) -> &dyn Material {
-        self.material.as_ref()
+    pub fn material(&self) -> RwLockReadGuard<dyn Material + 'static> {
+        self.material.read().unwrap()
     }
 }
