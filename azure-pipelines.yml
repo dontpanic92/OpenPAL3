@@ -48,6 +48,7 @@ steps:
       & cargo build --release 2>&1 | %{ "$_" }
 
 - task: DotNetCoreCLI@2
+  displayName: 'dotnet restore'
   inputs:
     command: 'restore'
     projects: 'openpal3/OpenPAL3'
@@ -67,7 +68,7 @@ steps:
     command: 'publish'
     publishWebProjects: false
     projects: 'openpal3/OpenPAL3'
-    arguments: '-c Release -r win-x64 --self-contained'
+    arguments: '-c Release -r win-x64 --self-contained /p:SolutionDir="${Build.SourcesDirectory}/openpal3/OpenPAL3"'
     zipAfterPublish: false
     modifyOutputPath: false
 
