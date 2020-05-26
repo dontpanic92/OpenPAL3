@@ -63,12 +63,6 @@ steps:
     arguments: '-c Release'
 
 - task: DotNetCoreCLI@2
-  inputs:
-    command: 'publish'
-    publishWebProjects: true
-    arguments: '-c Release -r win-x64 --self-contained /p:SolutionDir="$(Build.SourcesDirectory)/openpal3/OpenPAL3"'
-
-- task: DotNetCoreCLI@2
   displayName: 'Publish'
   inputs:
     command: 'publish'
