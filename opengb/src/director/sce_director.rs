@@ -178,6 +178,10 @@ impl SceVmContext {
                 // RoleSetFace
                 command!(self, SceCommandRoleSetFace, role_id: i32, direction: i32)
             }
+            24 => {
+                // RoleTurnFace
+                command!(self, SceCommandRoleTurnFace, role_id: i32, degree: f32)
+            }
             27 => {
                 // RoleInput
                 nop_command!(self, i32)
@@ -211,6 +215,14 @@ impl SceVmContext {
                 // FadeIn
                 nop_command!(self)
             }
+            71 => {
+                // RoleStop
+                nop_command!(self, i32)
+            }
+            72 => {
+                // RoleEmote
+                nop_command!(self, i32, i32)
+            }
             79 => {
                 // PlaySound
                 command!(self, SceCommandPlaySound, name: string, repeat: i32)
@@ -235,6 +247,18 @@ impl SceVmContext {
                     role_id: i32,
                     auto_play_idle: i32
                 )
+            }
+            209 => {
+                // RoleFaceRole
+                command!(self, SceCommandRoleFaceRole, role_id: i32, role_id2: i32)
+            }
+            210 => {
+                // RoleTurnFaceA
+                command!(self, SceCommandRoleSetFace, role_id: i32, direction: i32)
+            }
+            221 => {
+                // RoleEndAction
+                nop_command!(self, i32)
             }
             250 => {
                 // CameraFree

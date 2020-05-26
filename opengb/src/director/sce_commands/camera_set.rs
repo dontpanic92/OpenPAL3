@@ -20,9 +20,14 @@ impl SceCommand for SceCommandCameraSet {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
+        let target = Vec3::add(
+            &scene.camera().transform().position(),
+            &Vec3::new(0., 0., -1.),
+        );
         scene
             .camera_mut()
             .transform_mut()
+            .look_at(&target)
             .set_position(&self.position)
             .rotate_axis_angle_local(&Vec3::UP, self.y_rot)
             .rotate_axis_angle_local(&Vec3::new(1., 0., 0.), self.x_rot);

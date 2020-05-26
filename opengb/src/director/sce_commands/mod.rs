@@ -11,6 +11,7 @@ mod role_path_to;
 mod role_set_face;
 mod role_set_pos;
 mod role_show_action;
+mod role_turn_face;
 mod script_run_mode;
 
 pub use camera_set::SceCommandCameraSet;
@@ -26,6 +27,7 @@ pub use role_path_to::SceCommandRolePathTo;
 pub use role_set_face::SceCommandRoleSetFace;
 pub use role_set_pos::SceCommandRoleSetPos;
 pub use role_show_action::SceCommandRoleShowAction;
+pub use role_turn_face::SceCommandRoleTurnFace;
 pub use script_run_mode::SceCommandScriptRunMode;
 
 use super::sce_state::SceState;
