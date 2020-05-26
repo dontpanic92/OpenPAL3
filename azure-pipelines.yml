@@ -47,7 +47,13 @@ steps:
       cd opengb
       & cargo build --release 2>&1 | %{ "$_" }
 
-    
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'restore'
+    projects: 'openpal3/OpenPAL3'
+    feedsToUse: 'select'
+    includeNuGetOrg: true
+
 - task: DotNetCoreCLI@2
   displayName: 'Build openpal3'
   inputs:
