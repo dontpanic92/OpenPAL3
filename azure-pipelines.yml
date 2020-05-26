@@ -61,14 +61,20 @@ steps:
     command: 'build'
     projects: 'openpal3'
     arguments: '-c Release'
-    
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'publish'
+    publishWebProjects: true
+    arguments: '-c Release -r win-x64 --self-contained /p:SolutionDir="$(Build.SourcesDirectory)/openpal3/OpenPAL3"'
+
 - task: DotNetCoreCLI@2
   displayName: 'Publish'
   inputs:
     command: 'publish'
     publishWebProjects: false
     projects: 'openpal3/OpenPAL3'
-    arguments: '-c Release -r win-x64 --self-contained /p:SolutionDir="${Build.SourcesDirectory}/openpal3/OpenPAL3"'
+    arguments: ' /p:SolutionDir="$(Build.SourcesDirectory)/openpal3" -c Release -r win-x64 --self-contained'
     zipAfterPublish: false
     modifyOutputPath: false
 
