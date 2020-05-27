@@ -88,6 +88,8 @@ impl AudioSource for OpenAlAudioSource {
     fn play(&mut self, data: Vec<u8>, codec: Codec, looping: bool) {
         let mut decoder = create_decoder(data, codec);
 
+        while self.streaming_source.unqueue_buffer().is_ok() {}
+
         for _ in 0..20 {
             let frame = decoder.fetch_samples();
             match frame {

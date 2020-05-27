@@ -202,7 +202,6 @@ impl RenderingEngine for VulkanRenderingEngine {
                             .and_then(|v| {
                                 let vro = v.downcast_mut::<VulkanRenderObject>().unwrap();
                                 if !vro.compatible_with(&ro) {
-                                    println!("removed component");
                                     ent.remove_component(TypeId::of::<VulkanRenderObject>());
                                     None
                                 } else {
