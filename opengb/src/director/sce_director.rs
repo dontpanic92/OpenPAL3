@@ -3,7 +3,7 @@ use crate::director::sce_state::SceState;
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile, scene::ScnScene};
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
-use log::debug;
+use log::{debug, error};
 use radiance::audio::{AudioEngine, AudioSourceState};
 use radiance::scene::{CoreScene, Director, Scene};
 use std::rc::Rc;
@@ -211,6 +211,10 @@ impl SceVmContext {
                 // DlgFace
                 nop_command!(self, i32, string, i32)
             }
+            69 => {
+                // FadeOut
+                nop_command!(self)
+            }
             70 => {
                 // FadeIn
                 nop_command!(self)
@@ -235,9 +239,28 @@ impl SceVmContext {
                 // HY_Mode
                 nop_command!(self, i32)
             }
+            115 => {
+                // Movie
+                nop_command!(self, string)
+            }
+            118 => {
+                // Quake
+                nop_command!(self, f32, f32)
+            }
             133 => {
                 // Music
                 command!(self, SceCommandMusic, name: string, unknown: i32)
+            }
+            201 => {
+                // RolePathOut
+                command!(
+                    self,
+                    SceCommandRolePathTo,
+                    role_id: i32,
+                    x: i32,
+                    y: i32,
+                    unknown: i32
+                )
             }
             207 => {
                 // RoleActAutoStand
@@ -265,7 +288,7 @@ impl SceVmContext {
                 nop_command!(self, i32)
             }
             default => {
-                println!("Unsupported command: {}", default);
+                error!("Unsupported command: {}", default);
                 self.put(4);
                 None
             }

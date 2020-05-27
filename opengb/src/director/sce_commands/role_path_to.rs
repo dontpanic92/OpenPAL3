@@ -28,7 +28,7 @@ impl SceCommand for SceCommandRolePathTo {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        const SPEED: f32 = 50.;
+        const SPEED: f32 = 100.;
 
         let to = nav_coord_to_scene_coord(scene, self.nav_x, self.nav_y);
         let position = scene.get_role_entity(&self.role_id).transform().position();
