@@ -41,7 +41,7 @@ impl<TExtension: SceneExtension<TExtension>> CoreScene<TExtension> {
         }
     }
 
-    pub fn add_entity<T: EntityExtension<T> + 'static>(&mut self, entity: CoreEntity<T>) {
+    pub fn add_entity<T: EntityExtension + 'static>(&mut self, entity: CoreEntity<T>) {
         self.entities.push(Box::new(entity));
     }
 

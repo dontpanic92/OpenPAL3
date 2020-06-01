@@ -26,79 +26,72 @@ pub trait Entity: downcast_rs::Downcast {
 
 downcast_rs::impl_downcast!(Entity);
 
-pub trait EntityExtension<TImpl: EntityExtension<TImpl>> {
-    define_ext_fn!(on_loading, CoreEntity, TImpl);
-    define_ext_fn!(on_updating, CoreEntity, TImpl, _delta_sec: f32);
+pub trait EntityExtension {
+    fn on_loading(self: &mut CoreEntity<Self>)
+    where
+        Self: Sized + 'static,
+    {
+    }
+
+    fn on_updating(self: &mut CoreEntity<Self>, _delta_sec: f32)
+    where
+        Self: Sized + 'static,
+    {
+    }
 }
 
-pub struct CoreEntity<TExtension: EntityExtension<TExtension>> {
+pub struct CoreEntity<TExtension: EntityExtension> {
     name: String,
     transform: Transform,
     components: HashMap<TypeId, Vec<Box<dyn Any>>>,
-    extension: Rc<RefCell<TExtension>>,
+    extension: TExtension,
 }
 
-impl<TExtension: 'static + EntityExtension<TExtension>> CoreEntity<TExtension> {
+impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
     pub fn new(extension: TExtension, name: &str) -> Self {
         Self {
             name: name.to_owned(),
             transform: Transform::new(),
             components: HashMap::new(),
-            extension: Rc::new(RefCell::new(extension)),
+            extension,
         }
     }
 
-    pub fn add_component<T>(&mut self, component: T)
-    where
-        T: 'static,
-    {
+    pub fn add_component<T: 'static>(&mut self, component: T) {
         <Self as Entity>::add_component(self, Box::new(component));
     }
 
-    pub fn get_component<T>(&self) -> Option<&T>
-    where
-        T: 'static,
-    {
+    pub fn get_component<T: 'static>(&self) -> Option<&T> {
         let type_id = TypeId::of::<T>();
         let component = Entity::get_component(self, type_id);
         component.and_then(|c| c.downcast_ref())
     }
 
-    pub fn get_component_mut<T>(&mut self) -> Option<&mut T>
-    where
-        T: 'static,
-    {
+    pub fn get_component_mut<T: 'static>(&mut self) -> Option<&mut T> {
         let type_id = TypeId::of::<T>();
         let component = Entity::get_component_mut(self, type_id);
         component.and_then(|c| c.downcast_mut())
     }
 
-    pub fn remove_component<T>(&mut self)
-    where
-        T: 'static,
-    {
+    pub fn remove_component<T: 'static>(&mut self) {
         let type_id = TypeId::of::<T>();
         Entity::remove_component(self, type_id);
     }
-
-    pub fn extension(&self) -> &Rc<RefCell<TExtension>> {
-        &self.extension
-    }
 }
 
-impl<TExtension: 'static + EntityExtension<TExtension>> Deref for CoreEntity<TExtension> {
+impl<TExtension: EntityExtension + 'static> Deref for CoreEntity<TExtension> {
     type Target = TExtension;
 
     #[inline(always)]
     fn deref(&self) -> &TExtension {
-        unsafe { &*self.extension().as_ptr() }
+        &self.extension
     }
 }
 
-impl<TExtension: 'static + EntityExtension<TExtension>> DerefMut for CoreEntity<TExtension> {
+impl<TExtension: EntityExtension + 'static> DerefMut for CoreEntity<TExtension> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut TExtension {
-        unsafe { &mut *self.extension().as_ptr() }
+        &mut self.extension
     }
 }
 
@@ -121,7 +114,7 @@ pub fn entity_remove_component<T: 'static>(entity: &mut dyn Entity) {
     entity.remove_component(type_id)
 }
 
-impl<TExtension: 'static + EntityExtension<TExtension>> Entity for CoreEntity<TExtension> {
+impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
     fn name(&self) -> &str {
         &self.name
     }
@@ -131,11 +124,11 @@ impl<TExtension: 'static + EntityExtension<TExtension>> Entity for CoreEntity<TE
     }
 
     fn load(&mut self) {
-        ext_call!(self, on_loading);
+        self.on_loading();
     }
 
     fn update(&mut self, delta_sec: f32) {
-        ext_call!(self, on_updating, delta_sec);
+        self.on_updating(delta_sec);
     }
 
     fn transform(&self) -> &Transform {
