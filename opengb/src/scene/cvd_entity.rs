@@ -76,9 +76,9 @@ impl CvdModelEntity {
     }
 }
 
-impl EntityExtension<CvdModelEntity> for CvdModelEntity {
-    fn on_loading(&mut self, entity: &mut CoreEntity<CvdModelEntity>) {
-        entity.add_component(RenderObject::new_with_data(
+impl EntityExtension for CvdModelEntity {
+    fn on_loading(self: &mut CoreEntity<Self>) {
+        self.add_component(RenderObject::new_with_data(
             self.vertices.clone(),
             self.indices.clone(),
             Box::new(SimpleMaterial::new(&self.texture_path)),

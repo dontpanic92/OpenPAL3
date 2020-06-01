@@ -176,7 +176,7 @@ fn load_model<T: SceneExtension<T>>(
             }
         }
 
-        entities.sort_by_key(|e| e.extension().borrow().alpha_blending_needed());
+        entities.sort_by_key(|e| e.alpha_blending_needed());
         for entity in entities {
             scene.add_entity(entity);
         }

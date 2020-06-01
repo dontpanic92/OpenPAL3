@@ -97,9 +97,9 @@ impl PolModelEntity {
     }
 }
 
-impl EntityExtension<PolModelEntity> for PolModelEntity {
-    fn on_loading(&mut self, entity: &mut CoreEntity<PolModelEntity>) {
-        entity.add_component(RenderObject::new_with_data(
+impl EntityExtension for PolModelEntity {
+    fn on_loading(self: &mut CoreEntity<Self>) {
+        self.add_component(RenderObject::new_with_data(
             self.vertices.clone(),
             self.indices.clone(),
             if self.texture_paths.len() == 1 {

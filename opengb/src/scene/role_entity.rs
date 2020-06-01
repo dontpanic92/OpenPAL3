@@ -103,18 +103,18 @@ impl RoleEntity {
     }
 }
 
-impl EntityExtension<RoleEntity> for RoleEntity {
-    fn on_loading(&mut self, entity: &mut CoreEntity<RoleEntity>) {
+impl EntityExtension for RoleEntity {
+    fn on_loading(self: &mut CoreEntity<Self>) {
         if !self.idle_anim_name.trim().is_empty() && self.is_active {
-            entity.play_anim(&self.idle_anim_name, RoleAnimationRepeatMode::Repeat);
+            let name = self.idle_anim_name.clone();
+            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
         }
     }
 
-    fn on_updating(&mut self, entity: &mut CoreEntity<RoleEntity>, delta_sec: f32) {
+    fn on_updating(self: &mut CoreEntity<Self>, delta_sec: f32) {
         if self.is_active {
             self.active_anim_mut().update(delta_sec);
-            entity
-                .get_component_mut::<RenderObject>()
+            self.get_component_mut::<RenderObject>()
                 .unwrap()
                 .make_dirty();
 
@@ -122,7 +122,7 @@ impl EntityExtension<RoleEntity> for RoleEntity {
                 self.state = RoleState::Idle;
 
                 if self.state == RoleState::Idle && self.auto_play_idle {
-                    entity.play_anim("c01", RoleAnimationRepeatMode::Repeat);
+                    self.play_anim("c01", RoleAnimationRepeatMode::Repeat);
                 }
             }
         }
