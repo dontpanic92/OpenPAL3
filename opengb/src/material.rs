@@ -1,4 +1,4 @@
-use radiance::rendering::{Material, Shader, Texture, VertexComponents};
+use radiance::rendering::{MaterialDef, ShaderDef, TextureDef, VertexComponents};
 use std::path::PathBuf;
 
 static LIGHTMAP_TEXTURE_VERT: &'static [u8] =
@@ -10,64 +10,36 @@ pub static WHITE_TEXTURE_FILE: &'static [u8] = include_bytes!(concat!(
     "/embed/textures/white.png"
 ));
 
-pub struct LightMapShader {}
-
-impl Shader for LightMapShader {
-    fn name(&self) -> &str {
-        "lightmap_texture"
-    }
-
-    fn vertex_components(&self) -> VertexComponents {
-        VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2
-    }
-
-    fn vert_src(&self) -> &[u8] {
-        LIGHTMAP_TEXTURE_VERT
-    }
-
-    fn frag_src(&self) -> &[u8] {
-        LIGHTMAP_TEXTURE_FRAG
+pub struct LightMapShaderDef;
+impl LightMapShaderDef {
+    pub fn create() -> ShaderDef {
+        ShaderDef::new(
+            "lightmap_texture",
+            VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2,
+            LIGHTMAP_TEXTURE_VERT,
+            LIGHTMAP_TEXTURE_FRAG,
+        )
     }
 }
 
-pub struct LightMapMaterial {
-    textures: Vec<Texture>,
-    shader: LightMapShader,
-}
-
+pub struct LightMapMaterial;
 impl LightMapMaterial {
-    pub fn new(texture_paths: &[PathBuf]) -> Self {
-        let textures: Vec<Texture> = texture_paths
+    pub fn create(texture_paths: &[PathBuf]) -> MaterialDef {
+        let textures: Vec<TextureDef> = texture_paths
             .iter()
             .map(|p| {
                 if p.file_stem() == None {
-                    Texture::new_with_iamge(
+                    TextureDef::ImageTextureDef(
                         image::load_from_memory(&WHITE_TEXTURE_FILE)
                             .unwrap()
                             .to_rgba(),
                     )
                 } else {
-                    Texture::new(p)
+                    TextureDef::PathTextureDef(p)
                 }
             })
             .collect();
-        LightMapMaterial {
-            textures,
-            shader: LightMapShader {},
-        }
-    }
-}
 
-impl Material for LightMapMaterial {
-    fn name(&self) -> &str {
-        "lightmap_material"
-    }
-
-    fn shader(&self) -> &dyn Shader {
-        &self.shader
-    }
-
-    fn textures(&self) -> &[Texture] {
-        &self.textures
+        MaterialDef::new("lightmap_material", LightMapShaderDef::create(), textures)
     }
 }

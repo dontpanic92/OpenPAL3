@@ -11,6 +11,11 @@ pub struct SceCommandDlg {
     text: String,
 }
 
+impl SceCommandDlg {
+    const DLG_HEIGHT_FACTOR: f32 = 0.2;
+    const DLG_Y_POSITION_FACTOR: f32 = 1. - SceCommandDlg::DLG_HEIGHT_FACTOR;
+}
+
 impl SceCommand for SceCommandDlg {
     fn update(
         &mut self,
@@ -22,14 +27,25 @@ impl SceCommand for SceCommandDlg {
         self.cur_sec += delta_sec;
         let completed = self.cur_sec > self.dlg_sec;
         if !completed {
+            let [window_width, window_height] = ui.io().display_size;
+
             let w = Window::new(im_str!(" "))
                 .collapsible(false)
                 .title_bar(false)
                 .resizable(false)
-                .size([700.0, 250.0], Condition::Appearing)
-                .position([280.0, 600.0], Condition::Appearing);
+                .size(
+                    [
+                        window_width,
+                        window_height * SceCommandDlg::DLG_HEIGHT_FACTOR,
+                    ],
+                    Condition::Appearing,
+                )
+                .position(
+                    [0., window_height * SceCommandDlg::DLG_Y_POSITION_FACTOR],
+                    Condition::Appearing,
+                );
             w.build(ui, || {
-                ui.text(im_str!("{}", self.text));
+                ui.text_wrapped(&im_str!("{}", self.text));
             });
         }
 
