@@ -1,38 +1,33 @@
-use super::{Shader, SimpleShader};
-use crate::rendering::texture::Texture;
-use std::path::PathBuf;
+use super::{texture::TextureDef, ShaderDef};
 
-pub trait Material {
-    fn name(&self) -> &str;
-    fn shader(&self) -> &dyn Shader;
-    fn textures(&self) -> &[Texture];
+pub trait Material: downcast_rs::Downcast + std::fmt::Debug {}
+
+downcast_rs::impl_downcast!(Material);
+
+pub struct MaterialDef {
+    name: String,
+    shader: ShaderDef,
+    textures: Vec<TextureDef>,
 }
 
-pub struct SimpleMaterial {
-    textures: Vec<Texture>,
-    shader: SimpleShader,
-}
-
-impl SimpleMaterial {
-    pub fn new(texture_path: &PathBuf) -> Self {
-        let texture = Texture::new(texture_path);
-        SimpleMaterial {
-            textures: vec![texture],
-            shader: SimpleShader {},
+impl MaterialDef {
+    pub fn new(name: &str, shader: ShaderDef, textures: Vec<TextureDef>) -> Self {
+        Self {
+            name: name.to_string(),
+            textures,
+            shader,
         }
     }
-}
 
-impl Material for SimpleMaterial {
-    fn name(&self) -> &str {
-        "simple_material"
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
-    fn shader(&self) -> &dyn Shader {
+    pub fn shader(&self) -> &ShaderDef {
         &self.shader
     }
 
-    fn textures(&self) -> &[Texture] {
+    pub fn textures(&self) -> &[TextureDef] {
         &self.textures
     }
 }

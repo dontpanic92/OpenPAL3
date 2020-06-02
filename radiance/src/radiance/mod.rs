@@ -1,10 +1,7 @@
 pub mod core_engine;
 pub use core_engine::CoreRadianceEngine;
 
-use crate::{
-    audio::OpenAlAudioEngine,
-    rendering::{RenderingEngine, VulkanRenderingEngine},
-};
+use crate::{audio::OpenAlAudioEngine, rendering::VulkanRenderingEngine};
 use std::error::Error;
 
 pub fn create_radiance_engine(

@@ -3,43 +3,48 @@ use super::material::VulkanMaterial;
 use super::uniform_buffers::DynamicUniformBufferManager;
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
-use crate::rendering::RenderObject;
+use crate::rendering::{Material, RenderObject, VertexBuffer};
 use ash::vk;
 use ash::Device;
 use std::error::Error;
 use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
 
 pub struct VulkanRenderObject {
+    vertices: VertexBuffer,
+    indices: Vec<u32>,
+    host_dynamic: bool,
+    dirty: bool,
+
     dub_manager: Weak<DynamicUniformBufferManager>,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
-    material: VulkanMaterial,
+    material: Box<VulkanMaterial>,
     per_object_descriptor_sets: vk::DescriptorSet,
     dub_index: usize,
 }
 
+impl RenderObject for VulkanRenderObject {}
+
 impl VulkanRenderObject {
     pub fn new(
-        object: &RenderObject,
+        vertices: VertexBuffer,
+        indices: Vec<u32>,
+        material: Box<dyn Material>,
+        host_dynamic: bool,
         device: &Rc<Device>,
         allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
         dub_manager: &Arc<DynamicUniformBufferManager>,
         descriptor_manager: &DescriptorManager,
     ) -> Result<Self, Box<dyn Error>> {
-        let vertex_buffer = if object.is_host_dynamic() {
-            Buffer::new_dynamic_buffer_with_data(
-                allocator,
-                BufferType::Vertex,
-                object.vertices().data(),
-            )?
+        let vertex_buffer = if host_dynamic {
+            Buffer::new_dynamic_buffer_with_data(allocator, BufferType::Vertex, vertices.data())?
         } else {
             Buffer::new_device_buffer_with_data(
                 allocator,
                 BufferType::Vertex,
-                object.vertices().data(),
+                vertices.data(),
                 command_runner,
             )?
         };
@@ -47,40 +52,32 @@ impl VulkanRenderObject {
         let index_buffer = Buffer::new_device_buffer_with_data(
             allocator,
             BufferType::Index,
-            &object.indices(),
+            &indices,
             command_runner,
         )?;
 
-        let material = VulkanMaterial::new(
-            object.material().as_ref(),
-            device,
-            allocator,
-            command_runner,
-        )?;
+        let material = material.downcast::<VulkanMaterial>().unwrap();
         let per_object_descriptor_sets =
             descriptor_manager.allocate_per_object_descriptor_set(&material)?;
         let dub_index = dub_manager.allocate_buffer();
 
         Ok(Self {
+            vertices: vertices.clone(),
+            indices: indices.clone(),
+            material,
+            host_dynamic,
+            dirty: false,
             dub_manager: Arc::downgrade(dub_manager),
             vertex_buffer,
             index_buffer,
-            material,
             per_object_descriptor_sets,
             dub_index,
         })
     }
 
-    pub fn compatible_with(&self, object: &RenderObject) -> bool {
-        // Need a better way to associate vro with ro
-        self.index_buffer.element_count() as usize == object.indices().len()
-    }
-
-    pub fn update(&mut self, object: &mut RenderObject) {
-        let _ = self
-            .vertex_buffer
-            .copy_memory_from(object.vertices().data());
-        object.is_dirty = false;
+    pub fn update_vertices<F: Fn(&mut VertexBuffer)>(&mut self, updater: F) {
+        updater(&mut self.vertices);
+        let _ = self.vertex_buffer.copy_memory_from(self.vertices.data());
     }
 
     pub fn vertex_buffer(&self) -> &Buffer {

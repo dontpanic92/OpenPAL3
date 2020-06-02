@@ -2,7 +2,7 @@ use super::{
     adhoc_command_runner::AdhocCommandRunner, buffer::Buffer, image::Image, image_view::ImageView,
     sampler::Sampler,
 };
-use crate::rendering::texture::Texture;
+use crate::rendering::texture::{Texture, TextureDef};
 use ash::vk;
 use ash::Device;
 use std::error::Error;
@@ -14,16 +14,37 @@ pub struct VulkanTexture {
     sampler: Sampler,
 }
 
+impl Texture for VulkanTexture {
+    fn width(&self) -> u32 {
+        self.image.width()
+    }
+
+    fn height(&self) -> u32 {
+        self.image.height()
+    }
+}
+
 impl VulkanTexture {
     pub fn new(
-        texture: &Texture,
+        def: &TextureDef,
         device: &Rc<Device>,
         allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
     ) -> Result<Self, Box<dyn Error>> {
-        let buffer = Buffer::new_staging_buffer_with_data(allocator, texture.data())?;
+        let rgba_image = match def {
+            TextureDef::PathTextureDef(path) => match image::open(path) {
+                Ok(img) => img,
+                Err(_) => {
+                    image::load_from_memory(radiance_assets::TEXTURE_MISSING_TEXTURE_FILE).unwrap()
+                }
+            }
+            .to_rgba(),
+            TextureDef::ImageTextureDef(image) => image.clone(),
+        };
+
+        let buffer = Buffer::new_staging_buffer_with_data(allocator, &rgba_image)?;
         let format = vk::Format::R8G8B8A8_UNORM;
-        let mut image = Image::new_color_image(allocator, texture.width(), texture.height())?;
+        let mut image = Image::new_color_image(allocator, rgba_image.width(), rgba_image.height())?;
         image.transit_layout(
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,

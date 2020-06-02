@@ -1,19 +1,19 @@
-use crate::rendering::{ImguiFrame, RenderingEngine};
+use crate::rendering::{ImguiFrame, RenderingEngine, RenderingEngineInternal};
 use crate::{
     audio::AudioEngine,
     scene::{CoreScene, Director, Scene, SceneExtension},
 };
 
 pub struct CoreRadianceEngine {
-    rendering_engine: Box<dyn RenderingEngine>,
+    rendering_engine: Box<dyn RenderingEngineInternal>,
     audio_engine: Box<dyn AudioEngine>,
     scene: Option<Box<dyn Scene>>,
     director: Option<Box<dyn Director>>,
 }
 
 impl CoreRadianceEngine {
-    pub fn new(
-        rendering_engine: Box<dyn RenderingEngine>,
+    pub(crate) fn new(
+        rendering_engine: Box<dyn RenderingEngineInternal>,
         audio_engine: Box<dyn AudioEngine>,
     ) -> Self {
         Self {
@@ -22,6 +22,14 @@ impl CoreRadianceEngine {
             scene: None,
             director: None,
         }
+    }
+
+    pub fn rendering_engine(&mut self) -> &mut dyn RenderingEngine {
+        self.rendering_engine.as_mut().as_rendering_engine()
+    }
+
+    pub(crate) fn rendering_engine_internal(&mut self) -> &mut dyn RenderingEngineInternal {
+        self.rendering_engine.as_mut()
     }
 
     pub fn set_director(&mut self, director: Box<dyn Director>) {

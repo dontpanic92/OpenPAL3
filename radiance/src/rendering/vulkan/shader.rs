@@ -1,5 +1,5 @@
 use crate::rendering::vertex_buffer::{VertexComponents, VertexMetadata};
-use crate::rendering::Shader;
+use crate::rendering::{Shader, ShaderDef};
 use ash::version::DeviceV1_0;
 use ash::vk;
 use ash::Device;
@@ -15,24 +15,26 @@ pub struct VulkanShader {
     name: String,
 }
 
+impl Shader for VulkanShader {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 impl VulkanShader {
-    pub fn new(device: &Rc<Device>, shader: &dyn Shader) -> Result<Self, Box<dyn Error>> {
+    pub fn new(shader_def: &ShaderDef, device: &Rc<Device>) -> Result<Self, Box<dyn Error>> {
         let vert_shader =
-            Self::create_shader_module_from_memory(&device, shader.vert_src()).unwrap();
+            Self::create_shader_module_from_memory(&device, shader_def.vert_src()).unwrap();
         let frag_shader =
-            Self::create_shader_module_from_memory(&device, shader.frag_src()).unwrap();
+            Self::create_shader_module_from_memory(&device, shader_def.frag_src()).unwrap();
 
         Ok(Self {
             device: Rc::downgrade(&device),
-            vertex_metadata: VertexMetadata::get(shader.vertex_components()),
+            vertex_metadata: VertexMetadata::get(shader_def.vertex_components()),
             vert_shader,
             frag_shader,
-            name: shader.name().to_owned(),
+            name: shader_def.name().to_owned(),
         })
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
     }
 
     pub fn get_binding_description(&self) -> vk::VertexInputBindingDescription {

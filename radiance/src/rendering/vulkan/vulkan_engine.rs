@@ -4,18 +4,21 @@ use super::descriptor_managers::DescriptorManager;
 use super::helpers;
 use super::render_object::VulkanRenderObject;
 use super::swapchain::SwapChain;
-use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
+use super::{
+    material::VulkanMaterial,
+    shader::VulkanShader,
+    texture::VulkanTexture,
+    uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
+};
 use crate::math::Mat44;
-use crate::rendering::RenderObject;
 use crate::rendering::{
     imgui::{ImguiContext, ImguiFrame},
-    RenderingEngine, Window,
+    Material, RenderObject, RenderingEngine, RenderingEngineInternal, VertexBuffer, Window,
 };
 use crate::scene::{entity_get_component, Scene};
 use ash::extensions::ext::DebugReport;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Entry, Instance};
-use std::any::TypeId;
 use std::error::Error;
 use std::iter::Iterator;
 use std::rc::Rc;
@@ -49,7 +52,104 @@ pub struct VulkanRenderingEngine {
 }
 
 impl RenderingEngine for VulkanRenderingEngine {
-    fn new(window: &Window) -> Result<Self, Box<dyn std::error::Error>> {
+    fn create_texture(
+        &self,
+        texture_def: &crate::rendering::texture::TextureDef,
+    ) -> Box<dyn crate::rendering::Texture> {
+        Box::new(
+            VulkanTexture::new(
+                texture_def,
+                self.device(),
+                self.allocator(),
+                self.command_runner(),
+            )
+            .unwrap(),
+        )
+    }
+
+    fn create_shader(
+        &self,
+        shader_def: &crate::rendering::ShaderDef,
+    ) -> Box<dyn crate::rendering::Shader> {
+        Box::new(VulkanShader::new(shader_def, self.device()).unwrap())
+    }
+
+    fn create_material(
+        &self,
+        material_def: &crate::rendering::MaterialDef,
+    ) -> Box<dyn crate::rendering::Material> {
+        Box::new(VulkanMaterial::new(
+            material_def,
+            self.device(),
+            self.allocator(),
+            self.command_runner(),
+        ))
+    }
+
+    fn create_render_object(
+        &self,
+        vertices: VertexBuffer,
+        indices: Vec<u32>,
+        material: Box<dyn Material>,
+        host_dynamic: bool,
+    ) -> Box<dyn RenderObject> {
+        Box::new(
+            VulkanRenderObject::new(
+                vertices,
+                indices,
+                material,
+                host_dynamic,
+                self.device(),
+                self.allocator(),
+                self.command_runner(),
+                self.dub_manager(),
+                self.descriptor_manager(),
+            )
+            .unwrap(),
+        )
+    }
+}
+
+impl RenderingEngineInternal for VulkanRenderingEngine {
+    fn as_rendering_engine(&mut self) -> &mut dyn RenderingEngine {
+        self
+    }
+
+    fn render(&mut self, scene: &mut dyn Scene, ui_frame: ImguiFrame) {
+        if self.swapchain.is_none() {
+            self.recreate_swapchain().unwrap();
+        }
+
+        self.dub_manager().update_do(|updater| {
+            for entity in scene.entities() {
+                if let Some(vro) = entity_get_component::<VulkanRenderObject>(entity.as_ref()) {
+                    updater(vro.dub_index(), entity.transform().matrix());
+                }
+            }
+        });
+
+        match self.render_objects(scene, ui_frame) {
+            Ok(()) => (),
+            Err(err) => println!("{}", err),
+        }
+    }
+
+    fn gui_context_mut(&mut self) -> &mut ImguiContext {
+        &mut self.imgui
+    }
+
+    fn view_extent(&self) -> (u32, u32) {
+        (
+            self.get_capabilities().unwrap().current_extent.width,
+            self.get_capabilities().unwrap().current_extent.height,
+        )
+    }
+
+    fn scene_loaded(&mut self, scene: &mut dyn Scene) {}
+}
+
+impl VulkanRenderingEngine {
+    pub fn new(window: &Window) -> Result<Self, Box<dyn std::error::Error>> {
         let entry = Entry::new().unwrap();
         let instance = Rc::new(creation_helpers::create_instance(&entry)?);
         let physical_device = creation_helpers::get_physical_device(&instance)?;
@@ -182,108 +282,6 @@ impl RenderingEngine for VulkanRenderingEngine {
         return Ok(vulkan);
     }
 
-    fn render(&mut self, scene: &mut dyn Scene, ui_frame: ImguiFrame) {
-        if self.swapchain.is_none() {
-            self.recreate_swapchain().unwrap();
-        }
-
-        for entity in scene.entities_mut() {
-            unsafe {
-                entity.component_do2(
-                    TypeId::of::<RenderObject>(),
-                    TypeId::of::<VulkanRenderObject>(),
-                    &|ro_any, vro_any, ent| {
-                        if ro_any.is_none() {
-                            ent.remove_component(TypeId::of::<VulkanRenderObject>());
-                            return;
-                        }
-                        let ro = ro_any.unwrap().downcast_mut::<RenderObject>().unwrap();
-                        let vro = vro_any
-                            .and_then(|v| {
-                                let vro = v.downcast_mut::<VulkanRenderObject>().unwrap();
-                                if !vro.compatible_with(&ro) {
-                                    ent.remove_component(TypeId::of::<VulkanRenderObject>());
-                                    None
-                                } else {
-                                    Some(vro)
-                                }
-                            })
-                            .or_else(|| {
-                                let object = VulkanRenderObject::new(
-                                    ro,
-                                    self.device(),
-                                    self.allocator(),
-                                    self.command_runner(),
-                                    self.dub_manager(),
-                                    self.descriptor_manager(),
-                                )
-                                .unwrap();
-
-                                ent.add_component(Box::new(object));
-                                Some(
-                                    ent.get_component_mut(TypeId::of::<VulkanRenderObject>())
-                                        .unwrap()
-                                        .downcast_mut::<VulkanRenderObject>()
-                                        .unwrap(),
-                                )
-                            })
-                            .unwrap();
-
-                        if ro.is_dirty {
-                            vro.update(ro);
-                        }
-                    },
-                );
-            }
-        }
-
-        self.dub_manager().update_do(|updater| {
-            for entity in scene.entities() {
-                if let Some(vro) = entity_get_component::<VulkanRenderObject>(entity.as_ref()) {
-                    updater(vro.dub_index(), entity.transform().matrix());
-                }
-            }
-        });
-
-        match self.render_objects(scene, ui_frame) {
-            Ok(()) => (),
-            Err(err) => println!("{}", err),
-        }
-    }
-
-    fn gui_context_mut(&mut self) -> &mut ImguiContext {
-        &mut self.imgui
-    }
-
-    fn view_extent(&self) -> (u32, u32) {
-        (
-            self.get_capabilities().unwrap().current_extent.width,
-            self.get_capabilities().unwrap().current_extent.height,
-        )
-    }
-
-    fn scene_loaded(&mut self, scene: &mut dyn Scene) {
-        for e in scene.entities_mut() {
-            match entity_get_component::<RenderObject>(e.as_ref()) {
-                None => continue,
-                Some(render_object) => {
-                    let object = VulkanRenderObject::new(
-                        render_object,
-                        self.device(),
-                        self.allocator(),
-                        self.command_runner(),
-                        self.dub_manager(),
-                        self.descriptor_manager(),
-                    )
-                    .unwrap();
-                    e.add_component(Box::new(object));
-                }
-            }
-        }
-    }
-}
-
-impl VulkanRenderingEngine {
     pub fn device(&self) -> &Rc<Device> {
         self.device.as_ref().unwrap()
     }

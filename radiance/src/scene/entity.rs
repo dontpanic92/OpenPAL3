@@ -1,9 +1,7 @@
 use crate::math::Transform;
 use std::any::{Any, TypeId};
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
-use std::rc::Rc;
 
 pub trait Entity: downcast_rs::Downcast {
     fn name(&self) -> &str;

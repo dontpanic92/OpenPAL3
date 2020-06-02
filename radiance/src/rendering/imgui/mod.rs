@@ -13,7 +13,7 @@ pub struct ImguiContext {
 impl ImguiContext {
     pub fn new(width: f32, height: f32) -> Self {
         let mut context = Context::create();
-        let font_size = 36.;
+        let font_size = 32.;
         context.set_ini_filename(None);
         context.fonts().add_font(&[FontSource::TtfData {
             data: radiance_assets::FONT_SOURCE_HAN_SERIF,

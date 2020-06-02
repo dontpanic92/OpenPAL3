@@ -255,7 +255,7 @@ impl SwapChain {
 
             self.pipeline_manager
                 .create_pipeline_if_not_exist(obj.material());
-            objects_by_material.push((key, vec![obj]));
+            objects_by_material.push((key.to_string(), vec![obj]));
         }
 
         for (material_name, object_group) in &objects_by_material {

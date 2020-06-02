@@ -1,35 +1,41 @@
 use super::{shader::VulkanShader, texture::VulkanTexture};
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
-use crate::rendering::Material;
+use crate::rendering::{Material, MaterialDef};
 use ash::Device;
-use std::error::Error;
 use std::rc::Rc;
 
 pub struct VulkanMaterial {
-    shader: VulkanShader,
     name: String,
+    shader: VulkanShader,
     textures: Vec<VulkanTexture>,
+}
+
+impl Material for VulkanMaterial {}
+
+impl std::fmt::Debug for VulkanMaterial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("VulkanMaterial: {}", &self.name))
+    }
 }
 
 impl VulkanMaterial {
     pub fn new(
-        material: &dyn Material,
+        def: &MaterialDef,
         device: &Rc<Device>,
         allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
-    ) -> Result<Self, Box<dyn Error>> {
-        let shader = VulkanShader::new(device, material.shader())?;
-        let textures = material
+    ) -> Self {
+        let shader = VulkanShader::new(def.shader(), device).unwrap();
+        let textures = def
             .textures()
             .iter()
             .map(|t| VulkanTexture::new(t, device, allocator, command_runner).unwrap())
             .collect();
-
-        Ok(Self {
+        Self {
+            name: def.name().to_string(),
             shader,
-            name: material.name().to_owned(),
             textures,
-        })
+        }
     }
 
     pub fn name(&self) -> &str {

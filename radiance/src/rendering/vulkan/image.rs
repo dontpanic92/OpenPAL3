@@ -60,6 +60,14 @@ impl Image {
         )
     }
 
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
     pub fn vk_image(&self) -> vk::Image {
         self.image
     }
