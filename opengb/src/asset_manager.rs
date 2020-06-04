@@ -6,11 +6,13 @@ use crate::loaders::{
     sce_loader::{sce_load_from_file, SceFile},
     scn_loader::scn_load_from_file,
 };
+use radiance::rendering::ComponentFactory;
 use crate::scene::{RoleAnimation, RoleAnimationRepeatMode, RoleEntity, ScnScene};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub struct AssetManager {
+    factory: Rc<dyn ComponentFactory>,
     root_path: PathBuf,
     scene_path: PathBuf,
     music_path: PathBuf,
@@ -19,7 +21,7 @@ pub struct AssetManager {
 }
 
 impl AssetManager {
-    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+    pub fn new<P: AsRef<Path>>(factory: Rc<dyn ComponentFactory>, path: P) -> Self {
         let root_path = path.as_ref().to_owned();
         let basedata_path = root_path.join("basedata");
         let scene_path = root_path.join("scene");
@@ -27,6 +29,7 @@ impl AssetManager {
         let snd_path = root_path.join("snd");
 
         Self {
+            factory,
             root_path,
             basedata_path,
             scene_path,
