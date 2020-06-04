@@ -1,11 +1,12 @@
-use crate::rendering::{ImguiFrame, RenderingEngine, RenderingEngineInternal};
+use crate::rendering::{self, ImguiFrame, RenderingEngine};
 use crate::{
     audio::AudioEngine,
     scene::{CoreScene, Director, Scene, SceneExtension},
 };
+use std::rc::Rc;
 
 pub struct CoreRadianceEngine {
-    rendering_engine: Box<dyn RenderingEngineInternal>,
+    rendering_engine: Box<dyn RenderingEngine>,
     audio_engine: Box<dyn AudioEngine>,
     scene: Option<Box<dyn Scene>>,
     director: Option<Box<dyn Director>>,
@@ -13,7 +14,7 @@ pub struct CoreRadianceEngine {
 
 impl CoreRadianceEngine {
     pub(crate) fn new(
-        rendering_engine: Box<dyn RenderingEngineInternal>,
+        rendering_engine: Box<dyn RenderingEngine>,
         audio_engine: Box<dyn AudioEngine>,
     ) -> Self {
         Self {
@@ -24,12 +25,8 @@ impl CoreRadianceEngine {
         }
     }
 
-    pub fn rendering_engine(&mut self) -> &mut dyn RenderingEngine {
-        self.rendering_engine.as_mut().as_rendering_engine()
-    }
-
-    pub(crate) fn rendering_engine_internal(&mut self) -> &mut dyn RenderingEngineInternal {
-        self.rendering_engine.as_mut()
+    pub fn rendering_component_factory(&self) -> Rc<dyn rendering::ComponentFactory> {
+        self.rendering_engine.component_factory()
     }
 
     pub fn set_director(&mut self, director: Box<dyn Director>) {
@@ -74,9 +71,9 @@ impl CoreRadianceEngine {
         self.scene.as_mut()
     }
 
-    pub fn audio_engine_mut(&mut self) -> &mut dyn AudioEngine {
+    /*pub fn audio_engine_mut(&mut self) -> &mut dyn AudioEngine {
         self.audio_engine.as_mut()
-    }
+    }*/
 
     pub fn update(&mut self, delta_sec: f32) {
         let scene = self.scene.as_mut().unwrap();

@@ -3,6 +3,7 @@ pub use core_engine::CoreRadianceEngine;
 
 use crate::{audio::OpenAlAudioEngine, rendering::VulkanRenderingEngine};
 use std::error::Error;
+use std::rc::Rc;
 
 pub fn create_radiance_engine(
     window: &crate::rendering::Window,

@@ -5,6 +5,7 @@ mod descriptor_managers;
 mod descriptor_pool;
 mod descriptor_set_layout;
 mod error;
+mod factory;
 mod helpers;
 mod image;
 mod image_view;

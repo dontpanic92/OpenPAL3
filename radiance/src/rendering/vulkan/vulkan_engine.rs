@@ -5,15 +5,13 @@ use super::helpers;
 use super::render_object::VulkanRenderObject;
 use super::swapchain::SwapChain;
 use super::{
-    material::VulkanMaterial,
-    shader::VulkanShader,
-    texture::VulkanTexture,
+    factory::VulkanComponentFactory,
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
 use crate::math::Mat44;
 use crate::rendering::{
     imgui::{ImguiContext, ImguiFrame},
-    Material, RenderObject, RenderingEngine, RenderingEngineInternal, VertexBuffer, Window,
+    ComponentFactory, RenderingEngine, Window,
 };
 use crate::scene::{entity_get_component, Scene};
 use ash::extensions::ext::DebugReport;
@@ -41,6 +39,7 @@ pub struct VulkanRenderingEngine {
     descriptor_manager: Option<Rc<DescriptorManager>>,
     dub_manager: Option<Arc<DynamicUniformBufferManager>>,
     adhoc_command_runner: Rc<AdhocCommandRunner>,
+    component_factory: Rc<VulkanComponentFactory>,
 
     surface_entry: ash::extensions::khr::Surface,
     debug_entry: ash::extensions::ext::DebugReport,
@@ -52,69 +51,6 @@ pub struct VulkanRenderingEngine {
 }
 
 impl RenderingEngine for VulkanRenderingEngine {
-    fn create_texture(
-        &self,
-        texture_def: &crate::rendering::texture::TextureDef,
-    ) -> Box<dyn crate::rendering::Texture> {
-        Box::new(
-            VulkanTexture::new(
-                texture_def,
-                self.device(),
-                self.allocator(),
-                self.command_runner(),
-            )
-            .unwrap(),
-        )
-    }
-
-    fn create_shader(
-        &self,
-        shader_def: &crate::rendering::ShaderDef,
-    ) -> Box<dyn crate::rendering::Shader> {
-        Box::new(VulkanShader::new(shader_def, self.device()).unwrap())
-    }
-
-    fn create_material(
-        &self,
-        material_def: &crate::rendering::MaterialDef,
-    ) -> Box<dyn crate::rendering::Material> {
-        Box::new(VulkanMaterial::new(
-            material_def,
-            self.device(),
-            self.allocator(),
-            self.command_runner(),
-        ))
-    }
-
-    fn create_render_object(
-        &self,
-        vertices: VertexBuffer,
-        indices: Vec<u32>,
-        material: Box<dyn Material>,
-        host_dynamic: bool,
-    ) -> Box<dyn RenderObject> {
-        Box::new(
-            VulkanRenderObject::new(
-                vertices,
-                indices,
-                material,
-                host_dynamic,
-                self.device(),
-                self.allocator(),
-                self.command_runner(),
-                self.dub_manager(),
-                self.descriptor_manager(),
-            )
-            .unwrap(),
-        )
-    }
-}
-
-impl RenderingEngineInternal for VulkanRenderingEngine {
-    fn as_rendering_engine(&mut self) -> &mut dyn RenderingEngine {
-        self
-    }
-
     fn render(&mut self, scene: &mut dyn Scene, ui_frame: ImguiFrame) {
         if self.swapchain.is_none() {
             self.recreate_swapchain().unwrap();
@@ -146,6 +82,10 @@ impl RenderingEngineInternal for VulkanRenderingEngine {
     }
 
     fn scene_loaded(&mut self, scene: &mut dyn Scene) {}
+
+    fn component_factory(&self) -> Rc<dyn ComponentFactory> {
+        self.component_factory.as_component_factory()
+    }
 }
 
 impl VulkanRenderingEngine {
@@ -243,6 +183,14 @@ impl VulkanRenderingEngine {
         let render_finished_semaphore =
             unsafe { device.create_semaphore(&semaphore_create_info, None)? };
 
+        let component_factory = Rc::new(VulkanComponentFactory::new(
+            &device,
+            &allocator,
+            &descriptor_manager,
+            &dub_manager,
+            &adhoc_command_runner,
+        ));
+
         // DEBUG INFO
         let debug_entry = DebugReport::new(&entry, instance.as_ref());
         let debug_callback = {
@@ -272,6 +220,7 @@ impl VulkanRenderingEngine {
             descriptor_manager: Some(descriptor_manager),
             dub_manager: Some(dub_manager),
             adhoc_command_runner,
+            component_factory,
             surface_entry,
             debug_entry,
             image_available_semaphore,

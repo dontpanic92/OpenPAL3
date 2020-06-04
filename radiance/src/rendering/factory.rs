@@ -1,0 +1,17 @@
+use super::{
+    texture::TextureDef, Material, MaterialDef, RenderObject, Shader, ShaderDef, Texture,
+    VertexBuffer,
+};
+
+pub trait ComponentFactory {
+    fn create_texture(&self, texture_def: &TextureDef) -> Box<dyn Texture>;
+    fn create_shader(&self, shader_def: &ShaderDef) -> Box<dyn Shader>;
+    fn create_material(&self, material_def: &MaterialDef) -> Box<dyn Material>;
+    fn create_render_object(
+        &self,
+        vertices: VertexBuffer,
+        indices: Vec<u32>,
+        material: Box<dyn Material>,
+        host_dynamic: bool,
+    ) -> Box<dyn RenderObject>;
+}
