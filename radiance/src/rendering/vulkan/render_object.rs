@@ -24,7 +24,12 @@ pub struct VulkanRenderObject {
     dub_index: usize,
 }
 
-impl RenderObject for VulkanRenderObject {}
+impl RenderObject for VulkanRenderObject {
+    fn update_vertices(&mut self, updater: &dyn Fn(&mut VertexBuffer)) {
+        updater(&mut self.vertices);
+        let _ = self.vertex_buffer.copy_memory_from(self.vertices.data());
+    }
+}
 
 impl VulkanRenderObject {
     pub fn new(
@@ -73,11 +78,6 @@ impl VulkanRenderObject {
             per_object_descriptor_sets,
             dub_index,
         })
-    }
-
-    pub fn update_vertices<F: Fn(&mut VertexBuffer)>(&mut self, updater: F) {
-        updater(&mut self.vertices);
-        let _ = self.vertex_buffer.copy_memory_from(self.vertices.data());
     }
 
     pub fn vertex_buffer(&self) -> &Buffer {

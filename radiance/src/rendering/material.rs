@@ -1,4 +1,5 @@
-use super::{texture::TextureDef, ShaderDef};
+use super::{texture::TextureDef, ShaderDef, SIMPLE_SHADER_DEF};
+use std::path::PathBuf;
 
 pub trait Material: downcast_rs::Downcast + std::fmt::Debug {}
 
@@ -29,5 +30,12 @@ impl MaterialDef {
 
     pub fn textures(&self) -> &[TextureDef] {
         &self.textures
+    }
+}
+
+pub struct SimpleMaterialDef;
+impl SimpleMaterialDef {
+    pub fn create(texture_path: &PathBuf) -> MaterialDef {
+        MaterialDef::new("simple_material", SIMPLE_SHADER_DEF.clone(), vec![TextureDef::PathTextureDef(texture_path.clone())])
     }
 }

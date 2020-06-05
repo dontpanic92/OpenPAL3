@@ -3,7 +3,7 @@ use super::{
     material::VulkanMaterial, render_object::VulkanRenderObject, shader::VulkanShader,
     texture::VulkanTexture, uniform_buffers::DynamicUniformBufferManager,
 };
-use crate::rendering::{factory::ComponentFactory, Material, RenderObject, VertexBuffer};
+use crate::rendering::{factory::ComponentFactory, Material, RenderObject, VertexBuffer, MaterialDef, texture::TextureDef, Texture, ShaderDef, Shader};
 use ash::Device;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -19,8 +19,8 @@ pub struct VulkanComponentFactory {
 impl ComponentFactory for VulkanComponentFactory {
     fn create_texture(
         &self,
-        texture_def: &crate::rendering::texture::TextureDef,
-    ) -> Box<dyn crate::rendering::Texture> {
+        texture_def: &TextureDef,
+    ) -> Box<dyn Texture> {
         Box::new(
             VulkanTexture::new(
                 texture_def,
@@ -34,15 +34,15 @@ impl ComponentFactory for VulkanComponentFactory {
 
     fn create_shader(
         &self,
-        shader_def: &crate::rendering::ShaderDef,
-    ) -> Box<dyn crate::rendering::Shader> {
+        shader_def: &ShaderDef,
+    ) -> Box<dyn Shader> {
         Box::new(VulkanShader::new(shader_def, &self.device).unwrap())
     }
 
     fn create_material(
         &self,
-        material_def: &crate::rendering::MaterialDef,
-    ) -> Box<dyn crate::rendering::Material> {
+        material_def: &MaterialDef,
+    ) -> Box<dyn Material> {
         Box::new(VulkanMaterial::new(
             material_def,
             &self.device,
@@ -55,9 +55,10 @@ impl ComponentFactory for VulkanComponentFactory {
         &self,
         vertices: VertexBuffer,
         indices: Vec<u32>,
-        material: Box<dyn Material>,
+        material_def: &MaterialDef,
         host_dynamic: bool,
     ) -> Box<dyn RenderObject> {
+        let material = self.create_material(material_def);
         Box::new(
             VulkanRenderObject::new(
                 vertices,

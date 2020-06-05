@@ -29,6 +29,10 @@ impl CoreRadianceEngine {
         self.rendering_engine.component_factory()
     }
 
+    pub fn audio_engine_mut(&mut self) -> &mut dyn AudioEngine {
+        self.audio_engine.as_mut()
+    }
+
     pub fn set_director(&mut self, director: Box<dyn Director>) {
         self.director = Some(director);
     }

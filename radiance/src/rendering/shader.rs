@@ -6,6 +6,7 @@ pub trait Shader: downcast_rs::Downcast {
 
 downcast_rs::impl_downcast!(Shader);
 
+#[derive(Clone)]
 pub struct ShaderDef {
     name: String,
     vertex_components: VertexComponents,
@@ -43,18 +44,18 @@ impl ShaderDef {
     }
 
     pub fn name(&self) -> &str {
-        "simple_triangle"
+        &self.name
     }
 
     pub fn vertex_components(&self) -> VertexComponents {
-        VertexComponents::POSITION | VertexComponents::TEXCOORD
+        self.vertex_components
     }
 
     pub fn vert_src(&self) -> &[u8] {
-        SIMPLE_TRIANGLE_VERT
+        &self.vert_src
     }
 
     pub fn frag_src(&self) -> &[u8] {
-        SIMPLE_TRIANGLE_FRAG
+        &self.frag_src
     }
 }

@@ -11,7 +11,7 @@ pub trait ComponentFactory {
         &self,
         vertices: VertexBuffer,
         indices: Vec<u32>,
-        material: Box<dyn Material>,
+        material_def: &MaterialDef,
         host_dynamic: bool,
     ) -> Box<dyn RenderObject>;
 }
