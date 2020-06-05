@@ -1,10 +1,12 @@
 use crate::loaders::cvd_loader::*;
 use radiance::math::{Vec2, Vec3};
-use radiance::rendering::{RenderObject, SimpleMaterial, VertexBuffer, VertexComponents};
+use radiance::rendering::{RenderObject, SimpleMaterialDef, VertexBuffer, VertexComponents, ComponentFactory};
 use radiance::scene::{CoreEntity, EntityExtension};
 use std::path::PathBuf;
+use std::rc::Rc;
 
 pub struct CvdModelEntity {
+    component_factory: Rc<dyn ComponentFactory>,
     texture_path: PathBuf,
     vertices: VertexBuffer,
     indices: Vec<u32>,
@@ -12,7 +14,7 @@ pub struct CvdModelEntity {
 }
 
 impl CvdModelEntity {
-    pub fn new(all_vertices: &Vec<CvdVertex>, material: &CvdMaterial, path: &str, id: u32) -> Self {
+    pub fn new(component_factory: &Rc<dyn ComponentFactory>, all_vertices: &Vec<CvdVertex>, material: &CvdMaterial, path: &str, id: u32) -> Self {
         let dds_name = material
             .texture_name
             .split_terminator('.')
@@ -68,6 +70,7 @@ impl CvdModelEntity {
         }
 
         CvdModelEntity {
+            component_factory: component_factory.clone(),
             texture_path,
             vertices,
             indices,
@@ -78,10 +81,11 @@ impl CvdModelEntity {
 
 impl EntityExtension for CvdModelEntity {
     fn on_loading(self: &mut CoreEntity<Self>) {
-        self.add_component(RenderObject::new_with_data(
+        self.add_component(self.component_factory.create_render_object(
             self.vertices.clone(),
             self.indices.clone(),
-            Box::new(SimpleMaterial::new(&self.texture_path)),
+            &SimpleMaterialDef::create(&self.texture_path),
+            false,
         ));
     }
 }

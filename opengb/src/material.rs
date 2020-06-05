@@ -22,8 +22,8 @@ impl LightMapShaderDef {
     }
 }
 
-pub struct LightMapMaterial;
-impl LightMapMaterial {
+pub struct LightMapMaterialDef;
+impl LightMapMaterialDef {
     pub fn create(texture_paths: &[PathBuf]) -> MaterialDef {
         let textures: Vec<TextureDef> = texture_paths
             .iter()
@@ -35,7 +35,7 @@ impl LightMapMaterial {
                             .to_rgba(),
                     )
                 } else {
-                    TextureDef::PathTextureDef(p)
+                    TextureDef::PathTextureDef(p.clone())
                 }
             })
             .collect();

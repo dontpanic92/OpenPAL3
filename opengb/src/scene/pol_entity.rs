@@ -1,20 +1,21 @@
 use crate::loaders::pol_loader::*;
-use crate::material::LightMapMaterial;
+use crate::material::LightMapMaterialDef;
 use radiance::math::{Vec2, Vec3};
-use radiance::rendering::{RenderObject, SimpleMaterial, VertexBuffer, VertexComponents};
+use radiance::rendering::{RenderObject, SimpleMaterialDef, VertexBuffer, VertexComponents, ComponentFactory};
 use radiance::scene::{CoreEntity, EntityExtension};
 use std::path::PathBuf;
+use std::rc::Rc;
 
 pub struct PolModelEntity {
+    component_factory: Rc<dyn ComponentFactory>,
     texture_paths: Vec<PathBuf>,
     vertices: VertexBuffer,
     indices: Vec<u32>,
-    alpha_blending_needed: u32,
-    // pol: PolFile,
+    has_alpha: u32,
 }
 
 impl PolModelEntity {
-    pub fn new(all_vertices: &Vec<PolVertex>, material: &PolMaterialInfo, path: &str) -> Self {
+    pub fn new(component_factory: &Rc<dyn ComponentFactory>, all_vertices: &Vec<PolVertex>, material: &PolMaterialInfo, path: &str) -> Self {
         let texture_paths: Vec<PathBuf> = material
             .texture_names
             .iter()
@@ -85,28 +86,30 @@ impl PolModelEntity {
         }
 
         PolModelEntity {
+            component_factory: component_factory.clone(),
             texture_paths,
             vertices,
             indices,
-            alpha_blending_needed: material.has_alpha as u32,
+            has_alpha: material.has_alpha as u32,
         }
     }
 
-    pub fn alpha_blending_needed(&self) -> u32 {
-        self.alpha_blending_needed
+    pub fn has_alpha(&self) -> u32 {
+        self.has_alpha
     }
 }
 
 impl EntityExtension for PolModelEntity {
     fn on_loading(self: &mut CoreEntity<Self>) {
-        self.add_component(RenderObject::new_with_data(
+        self.add_component(self.component_factory.create_render_object(
             self.vertices.clone(),
             self.indices.clone(),
             if self.texture_paths.len() == 1 {
-                Box::new(SimpleMaterial::new(&self.texture_paths[0]))
+                &SimpleMaterialDef::create(&self.texture_paths[0])
             } else {
-                Box::new(LightMapMaterial::new(&self.texture_paths))
+                &LightMapMaterialDef::create(&self.texture_paths)
             },
+            false,
         ));
     }
 }

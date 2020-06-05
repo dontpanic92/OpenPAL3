@@ -1,6 +1,6 @@
 use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
 use radiance::math::{Vec2, Vec3};
-use radiance::rendering::{Material, RenderObject, SimpleMaterial, VertexBuffer, VertexComponents};
+use radiance::rendering::{MaterialDef, RenderObject, SimpleMaterialDef, VertexBuffer, VertexComponents, ComponentFactory};
 use radiance::scene::{CoreEntity, EntityExtension};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -21,6 +21,7 @@ pub enum RoleState {
 pub struct RoleEntity {
     name: String,
     asset_mgr: Rc<AssetManager>,
+    component_factory: Rc<dyn ComponentFactory>,
     animations: HashMap<String, RoleAnimation>,
     active_anim_name: String,
     idle_anim_name: String,
@@ -31,7 +32,7 @@ pub struct RoleEntity {
 }
 
 impl RoleEntity {
-    pub fn new(asset_mgr: &Rc<AssetManager>, role_name: &str, idle_anim: &str) -> RoleEntity {
+    pub fn new(asset_mgr: &Rc<AssetManager>, component_factory: &Rc<dyn ComponentFactory>, role_name: &str, idle_anim: &str) -> RoleEntity {
         let mut animations = HashMap::new();
         if !idle_anim.trim().is_empty() {
             animations.insert(
@@ -43,6 +44,7 @@ impl RoleEntity {
         RoleEntity {
             name: role_name.to_string(),
             asset_mgr: asset_mgr.clone(),
+            component_factory: component_factory.clone(),
             animations,
             active_anim_name: idle_anim.to_string(),
             idle_anim_name: idle_anim.to_string(),
@@ -59,7 +61,7 @@ impl RoleEntity {
             let anim_name = self.active_anim_name.clone();
             self.play_anim(&anim_name, self.anim_repeat_mode);
         } else {
-            self.remove_component::<RenderObject>();
+            self.remove_component::<Box<dyn RenderObject>>();
         }
     }
 
@@ -82,7 +84,7 @@ impl RoleEntity {
         self.anim_repeat_mode = repeat_mode;
         self.active_anim_mut().reset(repeat_mode);
 
-        self.remove_component::<RenderObject>();
+        self.remove_component::<Box<dyn RenderObject>>();
         self.add_component(self.active_anim().render_object());
     }
 
@@ -113,10 +115,9 @@ impl EntityExtension for RoleEntity {
 
     fn on_updating(self: &mut CoreEntity<Self>, delta_sec: f32) {
         if self.is_active {
-            self.active_anim_mut().update(delta_sec);
-            self.get_component_mut::<RenderObject>()
+            self.get_component_mut::<Box<dyn RenderObject>>()
                 .unwrap()
-                .make_dirty();
+                .update_vertices(&|vb: &mut VertexBuffer| {self.active_anim_mut().update(delta_sec, vb)});
 
             if self.active_anim().anim_finished() {
                 self.state = RoleState::Idle;
@@ -130,18 +131,19 @@ impl EntityExtension for RoleEntity {
 }
 
 pub struct RoleAnimation {
+    component_factory: Rc<dyn ComponentFactory>,
     frames: Vec<VertexBuffer>,
     anim_timestamps: Vec<u32>,
     last_anim_time: u32,
     repeat_mode: RoleAnimationRepeatMode,
     anim_finished: bool,
-    vertices: Arc<RwLock<VertexBuffer>>,
-    indices: Arc<RwLock<Vec<u32>>>,
-    material: Arc<RwLock<Box<dyn Material>>>,
+    vertices: VertexBuffer,
+    indices: Vec<u32>,
+    material: MaterialDef,
 }
 
 impl RoleAnimation {
-    pub fn new(mv3file: &Mv3File, anim_repeat_mode: RoleAnimationRepeatMode) -> Self {
+    pub fn new(component_factory: &Rc<dyn ComponentFactory>, mv3file: &Mv3File, anim_repeat_mode: RoleAnimationRepeatMode) -> Self {
         let model: &Mv3Model = &mv3file.models[0];
         let mesh: &Mv3Mesh = &model.meshes[0];
 
@@ -207,17 +209,18 @@ impl RoleAnimation {
         }
 
         let anim_timestamps = model.frames.iter().map(|f| f.timestamp).collect();
-        let vertices = Arc::new(RwLock::new(frames[0].clone()));
+        let vertices = frames[0].clone();
 
         RoleAnimation {
+            component_factory: component_factory.clone(),
             frames,
             anim_timestamps,
             last_anim_time: 0,
             repeat_mode: anim_repeat_mode,
             anim_finished: false,
             vertices,
-            indices: Arc::new(RwLock::new(indices)),
-            material: Arc::new(RwLock::new(Box::new(SimpleMaterial::new(&texture_path)))),
+            indices,
+            material: SimpleMaterialDef::create(&texture_path),
         }
     }
 
@@ -225,11 +228,9 @@ impl RoleAnimation {
         self.anim_finished = false;
         self.last_anim_time = 0;
         self.repeat_mode = repeat_mode;
-        let mut vertices = self.vertices.write().unwrap();
-        *vertices = self.frames[0].clone()
     }
 
-    pub fn update(&mut self, delta_sec: f32) {
+    pub fn update(&mut self, delta_sec: f32, vertices: &mut VertexBuffer) {
         let mut anim_time = (delta_sec * 4580.) as u32 + self.last_anim_time;
         let total_anim_length = *self.anim_timestamps.last().unwrap();
 
@@ -252,7 +253,6 @@ impl RoleAnimation {
         let vertex_buffer = self.frames.get(frame_index).unwrap();
         let next_vertex_buffer = self.frames.get(next_frame_index).unwrap();
 
-        let mut vertices = self.vertices.write().unwrap();
         for i in 0..self.frames.get(frame_index).unwrap().count() {
             let position = vertex_buffer.position(i).unwrap();
             let next_position = next_vertex_buffer.position(i).unwrap();
@@ -276,7 +276,7 @@ impl RoleAnimation {
         self.anim_finished
     }
 
-    pub fn render_object(&self) -> RenderObject {
-        RenderObject::new_host_dynamic_with_data(&self.vertices, &self.indices, &self.material)
+    pub fn render_object(&self) -> Box<dyn RenderObject> {
+        self.component_factory.create_render_object(self.vertices.clone(), self.indices.clone(), &self.material, true)
     }
 }
