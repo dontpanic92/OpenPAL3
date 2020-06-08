@@ -1,10 +1,11 @@
 use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
 use radiance::math::{Vec2, Vec3};
-use radiance::rendering::{MaterialDef, RenderObject, SimpleMaterialDef, VertexBuffer, VertexComponents, ComponentFactory};
-use radiance::scene::{CoreEntity, EntityExtension};
+use radiance::rendering::{
+    ComponentFactory, MaterialDef, RenderObject, SimpleMaterialDef, VertexBuffer, VertexComponents,
+};
+use radiance::scene::{Entity, CoreEntity, EntityExtension};
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock};
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum RoleAnimationRepeatMode {
@@ -32,7 +33,12 @@ pub struct RoleEntity {
 }
 
 impl RoleEntity {
-    pub fn new(asset_mgr: &Rc<AssetManager>, component_factory: &Rc<dyn ComponentFactory>, role_name: &str, idle_anim: &str) -> RoleEntity {
+    pub fn new(
+        asset_mgr: &Rc<AssetManager>,
+        component_factory: &Rc<dyn ComponentFactory>,
+        role_name: &str,
+        idle_anim: &str,
+    ) -> RoleEntity {
         let mut animations = HashMap::new();
         if !idle_anim.trim().is_empty() {
             animations.insert(
@@ -115,9 +121,11 @@ impl EntityExtension for RoleEntity {
 
     fn on_updating(self: &mut CoreEntity<Self>, delta_sec: f32) {
         if self.is_active {
-            self.get_component_mut::<Box<dyn RenderObject>>()
-                .unwrap()
-                .update_vertices(&|vb: &mut VertexBuffer| {self.active_anim_mut().update(delta_sec, vb)});
+            // TODO: Consider to use Arc<Mutex<>>>
+            let ro = unsafe { &mut *(self.get_component_mut::<dyn RenderObject>().unwrap() as *mut dyn RenderObject) };
+            ro.update_vertices(&mut |vb: &mut VertexBuffer| {
+                self.active_anim_mut().update(delta_sec, vb)
+            });
 
             if self.active_anim().anim_finished() {
                 self.state = RoleState::Idle;
@@ -143,7 +151,11 @@ pub struct RoleAnimation {
 }
 
 impl RoleAnimation {
-    pub fn new(component_factory: &Rc<dyn ComponentFactory>, mv3file: &Mv3File, anim_repeat_mode: RoleAnimationRepeatMode) -> Self {
+    pub fn new(
+        component_factory: &Rc<dyn ComponentFactory>,
+        mv3file: &Mv3File,
+        anim_repeat_mode: RoleAnimationRepeatMode,
+    ) -> Self {
         let model: &Mv3Model = &mv3file.models[0];
         let mesh: &Mv3Mesh = &model.meshes[0];
 
@@ -277,6 +289,11 @@ impl RoleAnimation {
     }
 
     pub fn render_object(&self) -> Box<dyn RenderObject> {
-        self.component_factory.create_render_object(self.vertices.clone(), self.indices.clone(), &self.material, true)
+        self.component_factory.create_render_object(
+            self.vertices.clone(),
+            self.indices.clone(),
+            &self.material,
+            true,
+        )
     }
 }

@@ -3,7 +3,6 @@ use crate::director::sce_state::SceState;
 use crate::scene::ScnScene;
 use imgui::Ui;
 use radiance::scene::CoreScene;
-use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct SceCommandScriptRunMode {

@@ -6,8 +6,12 @@ use crate::loaders::{
     sce_loader::{sce_load_from_file, SceFile},
     scn_loader::scn_load_from_file,
 };
+use crate::scene::{
+    CvdModelEntity, PolModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity, ScnScene,
+};
+use radiance::math::Vec3;
 use radiance::rendering::ComponentFactory;
-use crate::scene::{RoleAnimation, RoleAnimationRepeatMode, RoleEntity, PolModelEntity, ScnScene, CvdModelEntity};
+use radiance::scene::{CoreEntity, Entity};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -45,7 +49,7 @@ impl AssetManager {
         let scn_file = scn_load_from_file(&scene_path);
         let nav_file = self.load_nav(&scn_file.cpk_name, &scn_file.scn_base_name);
 
-        ScnScene::new(&self, cpk_name, sn_name, scn_file, nav_file)
+        ScnScene::new(&self, cpk_name, scn_name, scn_file, nav_file)
     }
 
     pub fn load_sce(&self, cpk_name: &str) -> SceFile {
@@ -103,36 +107,50 @@ impl AssetManager {
             .with_extension("mv3")
     }
 
-    pub fn load_scn_pol(&self, cpk_name: &str, scn_name: &str, pol_name: &str) -> Vec<CoreEntity<PolModelEntity>> {
-        let pol_file = pol_load_from_file(
-            self.scene_path
-                .join(cpk_name)
-                .join(scn_name)
-                .join(pol_name)
-                .with_extension("pol"),
-        )
-        .unwrap();
-        self.load_pol_entities(&pol_file)
+    pub fn load_scn_pol(
+        &self,
+        cpk_name: &str,
+        scn_name: &str,
+        pol_name: &str,
+    ) -> Vec<CoreEntity<PolModelEntity>> {
+        let path = self
+            .scene_path
+            .join(cpk_name)
+            .join(scn_name)
+            .join(pol_name)
+            .with_extension("pol");
+        println!("{:?}", &path);
+        let pol_file = pol_load_from_file(&path).unwrap();
+        self.load_pol_entities(&pol_file, path.to_str().unwrap())
     }
 
+    // TODO: Return only one entity
     pub fn load_object_item_pol(&self, obj_name: &str) -> Vec<CoreEntity<PolModelEntity>> {
-        let pol_file = pol_load_from_file(self.get_object_item_path(obj_name)).unwrap();
-        self.load_pol_entities(&pol_file)
+        let path = self.get_object_item_path(obj_name);
+        let pol_file = pol_load_from_file(&path).unwrap();
+        self.load_pol_entities(&pol_file, path.to_str().unwrap())
     }
 
-    pub fn load_object_item_cvd(&self, obj_name: &str, position: &Vec3, rotation: f32) -> Vec<CoreEntity<CvdModelEntity>> {
-        let cvd_file = cvd_load_from_file(self.get_object_item_path(obj_name)).unwrap();
+    // TODO: Return only one entity
+    pub fn load_object_item_cvd(
+        &self,
+        obj_name: &str,
+        position: &Vec3,
+        rotation: f32,
+    ) -> Vec<CoreEntity<CvdModelEntity>> {
+        let path = self.get_object_item_path(obj_name);
+        let mut entities = vec![];
+        let cvd_file = cvd_load_from_file(&path).unwrap();
         for (i, model) in cvd_file.models.iter().enumerate() {
-            cvd_add_model_entity(
+            entities.append(&mut self.load_cvd_entities(
                 &model,
-                name,
-                scene,
-                &model_path,
-                i as u32,
                 position,
                 rotation,
-            );
+                path.to_str().unwrap(),
+            ));
         }
+
+        entities
     }
 
     pub fn load_music_data(&self, music_name: &str) -> Vec<u8> {
@@ -145,13 +163,17 @@ impl AssetManager {
         std::fs::read(path).unwrap()
     }
 
-    fn load_pol_entities(&self, pol: &PolFile, position: &Vec3, rotation: f32) -> Vec<CoreEntity<PolModelEntity>> {
+    fn load_pol_entities(
+        &self,
+        pol: &PolFile,
+        model_path: &str,
+    ) -> Vec<CoreEntity<PolModelEntity>> {
         let mut entities = vec![];
         for mesh in &pol.meshes {
             let material = &mesh.material_info[0];
-            let mut entity = CoreEntity::new(
-                PolModelEntity::new(self.factory, &mesh.vertices, material, &model_path),
-                &format!("{}_{}", name, i),
+            let entity = CoreEntity::new(
+                PolModelEntity::new(&self.factory, &mesh.vertices, material, &model_path),
+                "pol_obj",
             );
 
             entities.push(entity);
@@ -160,24 +182,30 @@ impl AssetManager {
         entities
     }
 
-    fn load_cvd_entities(&self, model_node: &CvdModelNode, position: &Vec3, rotation: f32) -> Vec<CoreEntity<CvdModelEntity>> {
-        let entities = vec![];
+    fn load_cvd_entities(
+        &self,
+        model_node: &CvdModelNode,
+        position: &Vec3,
+        rotation: f32,
+        model_path: &str,
+    ) -> Vec<CoreEntity<CvdModelEntity>> {
+        let mut entities = vec![];
         if let Some(model) = &model_node.model {
             for material in &model.mesh.materials {
                 if material.triangles.is_none() {
                     continue;
                 }
-    
+
                 for v in &model.mesh.frames {
                     let mut entity = CoreEntity::new(
-                        CvdModelEntity::new(self.factory, v, material, path, id),
-                        &format!("{}_{}", name, id),
+                        CvdModelEntity::new(&self.factory, v, material, model_path),
+                        "cvd_obj",
                     );
                     let transform = entity
                         .transform_mut()
                         .set_position(position)
                         .rotate_axis_angle_local(&Vec3::UP, rotation);
-    
+
                     if let Some(p) = model
                         .position_keyframes
                         .as_ref()
@@ -186,13 +214,13 @@ impl AssetManager {
                     {
                         transform.translate_local(p);
                     }
-    
+
                     transform.scale_local(&Vec3::new(
                         model.scale_factor,
                         model.scale_factor,
                         model.scale_factor,
                     ));
-    
+
                     if let Some(q) = model
                         .rotation_keyframes
                         .as_ref()
@@ -201,7 +229,7 @@ impl AssetManager {
                     {
                         transform.rotate_quaternion_local(q);
                     }
-    
+
                     if let Some(s) = model
                         .scale_keyframes
                         .as_ref()
@@ -210,24 +238,26 @@ impl AssetManager {
                         let q2 = s.quaternion;
                         let mut q3 = q2;
                         q3.inverse();
-    
+
                         transform
                             .rotate_quaternion_local(&q2)
                             .scale_local(&s.scale)
                             .rotate_quaternion_local(&q3);
                     }
-    
-                    entities.add_entity(entity);
+
+                    entities.push(entity);
                     break;
                 }
             }
         }
-    
+
         if let Some(children) = &model_node.children {
             for child in children {
-                entities.append(self.load_cvd_entities(child));
+                entities.append(&mut self.load_cvd_entities(child, position, rotation, model_path));
             }
         }
+
+        entities
     }
 
     fn get_object_item_path(&self, obj_name: &str) -> PathBuf {

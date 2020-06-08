@@ -16,17 +16,20 @@ impl ApplicationExtension<OpenGbApplication> for OpenGbApplication {
     fn on_initialized(&mut self, app: &mut Application<OpenGbApplication>) {
         simple_logger::init().unwrap();
         app.set_title(&self.app_name);
-        self.asset_mgr = Some(Rc::new(AssetManager::new(app.engine_mut().rendering_component_factory(), &self.root_path)));
+        self.asset_mgr = Some(Rc::new(AssetManager::new(
+            app.engine_mut().rendering_component_factory(),
+            &self.root_path,
+        )));
 
         let sce_director = Box::new(SceDirector::new(
             app.engine_mut().audio_engine_mut(),
-            self.asset_mgr.unwrap().load_sce("Q01"),
+            self.asset_mgr.as_ref().unwrap().load_sce("Q01"),
             1001,
             self.asset_mgr.as_ref().unwrap(),
         ));
         app.engine_mut().set_director(sce_director);
 
-        let scn = self.asset_mgr.unwrap().load_scn("Q01", "yn09a");
+        let scn = self.asset_mgr.as_ref().unwrap().load_scn("Q01", "yn09a");
         app.engine_mut().load_scene2(scn, 30.);
     }
 

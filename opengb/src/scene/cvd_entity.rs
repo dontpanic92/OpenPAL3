@@ -1,6 +1,6 @@
 use crate::loaders::cvd_loader::*;
 use radiance::math::{Vec2, Vec3};
-use radiance::rendering::{RenderObject, SimpleMaterialDef, VertexBuffer, VertexComponents, ComponentFactory};
+use radiance::rendering::{ComponentFactory, SimpleMaterialDef, VertexBuffer, VertexComponents};
 use radiance::scene::{CoreEntity, EntityExtension};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -10,11 +10,15 @@ pub struct CvdModelEntity {
     texture_path: PathBuf,
     vertices: VertexBuffer,
     indices: Vec<u32>,
-    id: u32,
 }
 
 impl CvdModelEntity {
-    pub fn new(component_factory: &Rc<dyn ComponentFactory>, all_vertices: &Vec<CvdVertex>, material: &CvdMaterial, path: &str, id: u32) -> Self {
+    pub fn new(
+        component_factory: &Rc<dyn ComponentFactory>,
+        all_vertices: &Vec<CvdVertex>,
+        material: &CvdMaterial,
+        path: &str,
+    ) -> Self {
         let dds_name = material
             .texture_name
             .split_terminator('.')
@@ -74,7 +78,6 @@ impl CvdModelEntity {
             texture_path,
             vertices,
             indices,
-            id,
         }
     }
 }

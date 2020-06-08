@@ -1,7 +1,7 @@
 use crate::loaders::pol_loader::*;
 use crate::material::LightMapMaterialDef;
 use radiance::math::{Vec2, Vec3};
-use radiance::rendering::{RenderObject, SimpleMaterialDef, VertexBuffer, VertexComponents, ComponentFactory};
+use radiance::rendering::{ComponentFactory, SimpleMaterialDef, VertexBuffer, VertexComponents};
 use radiance::scene::{CoreEntity, EntityExtension};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -15,7 +15,12 @@ pub struct PolModelEntity {
 }
 
 impl PolModelEntity {
-    pub fn new(component_factory: &Rc<dyn ComponentFactory>, all_vertices: &Vec<PolVertex>, material: &PolMaterialInfo, path: &str) -> Self {
+    pub fn new(
+        component_factory: &Rc<dyn ComponentFactory>,
+        all_vertices: &Vec<PolVertex>,
+        material: &PolMaterialInfo,
+        path: &str,
+    ) -> Self {
         let texture_paths: Vec<PathBuf> = material
             .texture_names
             .iter()
@@ -101,14 +106,16 @@ impl PolModelEntity {
 
 impl EntityExtension for PolModelEntity {
     fn on_loading(self: &mut CoreEntity<Self>) {
+        let material_def = if self.texture_paths.len() == 1 {
+            SimpleMaterialDef::create(&self.texture_paths[0])
+        } else {
+            LightMapMaterialDef::create(&self.texture_paths)
+        };
+
         self.add_component(self.component_factory.create_render_object(
             self.vertices.clone(),
             self.indices.clone(),
-            if self.texture_paths.len() == 1 {
-                &SimpleMaterialDef::create(&self.texture_paths[0])
-            } else {
-                &LightMapMaterialDef::create(&self.texture_paths)
-            },
+            &material_def,
             false,
         ));
     }

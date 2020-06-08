@@ -3,7 +3,6 @@ use crate::director::sce_director::SceCommand;
 use crate::director::sce_state::SceState;
 use crate::scene::ScnScene;
 use imgui::Ui;
-use radiance::math::Vec3;
 use radiance::scene::{CoreScene, Entity};
 
 #[derive(Clone)]
