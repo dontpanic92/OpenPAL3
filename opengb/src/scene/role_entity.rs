@@ -122,7 +122,7 @@ impl EntityExtension for RoleEntity {
     fn on_updating(self: &mut CoreEntity<Self>, delta_sec: f32) {
         if self.is_active {
             // TODO: Consider to use Arc<Mutex<>>>
-            let ro = unsafe { &mut *(self.get_component_mut::<dyn RenderObject>().unwrap() as *mut dyn RenderObject) };
+            let ro = unsafe { &mut *(self.get_component_mut::<dyn RenderObject>().unwrap() as *mut Box<dyn RenderObject>) };
             ro.update_vertices(&mut |vb: &mut VertexBuffer| {
                 self.active_anim_mut().update(delta_sec, vb)
             });
