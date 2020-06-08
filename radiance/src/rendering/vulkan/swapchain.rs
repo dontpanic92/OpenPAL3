@@ -194,7 +194,7 @@ impl SwapChain {
     pub fn record_command_buffers(
         &mut self,
         image_index: usize,
-        objects: &[&VulkanRenderObject],
+        objects: &[&Box<VulkanRenderObject>],
         dub_manager: &DynamicUniformBufferManager,
         ui_frame: ImguiFrame,
     ) -> Result<vk::CommandBuffer, vk::Result> {

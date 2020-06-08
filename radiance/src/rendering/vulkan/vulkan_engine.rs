@@ -314,7 +314,7 @@ impl VulkanRenderingEngine {
                 )
                 .unwrap();
             let x = &|ui| scene.draw_ui(ui);
-            let objects: Vec<&VulkanRenderObject> = scene
+            let objects: Vec<&Box<VulkanRenderObject>> = scene
                 .entities()
                 .iter()
                 .filter_map(|e| entity_get_component::<VulkanRenderObject>(e.as_ref()))

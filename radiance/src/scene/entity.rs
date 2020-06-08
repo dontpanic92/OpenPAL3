@@ -11,15 +11,9 @@ pub trait Entity: downcast_rs::Downcast {
     fn transform(&self) -> &Transform;
     fn transform_mut(&mut self) -> &mut Transform;
     fn add_component(&mut self, component: Box<dyn Any>);
-    fn get_component(&self, type_id: TypeId) -> Option<&dyn Any>;
-    fn get_component_mut(&mut self, type_id: TypeId) -> Option<&mut dyn Any>;
+    fn get_component(&self, type_id: TypeId) -> Option<&Box<dyn Any>>;
+    fn get_component_mut(&mut self, type_id: TypeId) -> Option<&mut Box<dyn Any>>;
     fn remove_component(&mut self, type_id: TypeId);
-    unsafe fn component_do2(
-        &mut self,
-        type_id1: TypeId,
-        type_id2: TypeId,
-        action: &dyn Fn(Option<&mut dyn Any>, Option<&mut dyn Any>, &mut dyn Entity),
-    ) -> Option<()>;
 }
 
 downcast_rs::impl_downcast!(Entity);
@@ -59,13 +53,13 @@ impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
         <Self as Entity>::add_component(self, Box::new(component));
     }
 
-    pub fn get_component<T: ?Sized + 'static>(&self) -> Option<&T> {
+    pub fn get_component<T: ?Sized + 'static>(&self) -> Option<&Box<T>> {
         let type_id = TypeId::of::<T>();
         let component = Entity::get_component(self, type_id);
         component.and_then(|c| c.downcast_ref())
     }
 
-    pub fn get_component_mut<T: ?Sized + 'static>(&mut self) -> Option<&mut T> {
+    pub fn get_component_mut<T: ?Sized + 'static>(&mut self) -> Option<&mut Box<T>> {
         let type_id = TypeId::of::<T>();
         let component = Entity::get_component_mut(self, type_id);
         component.and_then(|c| c.downcast_mut())
@@ -99,11 +93,11 @@ pub fn entity_add_component<T: 'static>(entity: &mut dyn Entity, component: T) {
 }
 
 #[inline]
-pub fn entity_get_component<T: 'static>(entity: &dyn Entity) -> Option<&T> {
+pub fn entity_get_component<T: ?Sized + 'static>(entity: &dyn Entity) -> Option<&Box<T>> {
     let type_id = TypeId::of::<T>();
     entity
         .get_component(type_id)
-        .and_then(|component| component.downcast_ref::<T>())
+        .and_then(|component| component.downcast_ref())
 }
 
 #[inline]
@@ -148,7 +142,7 @@ impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
         v.push(component);
     }
 
-    fn get_component(&self, type_id: TypeId) -> Option<&dyn Any> {
+    fn get_component(&self, type_id: TypeId) -> Option<&Box<dyn Any>> {
         if !self.components.contains_key(&type_id) {
             return None;
         }
@@ -156,10 +150,10 @@ impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
         self.components
             .get(&type_id)
             .filter(|v| !v.is_empty())
-            .and_then(|v| Some(v[0].as_ref()))
+            .and_then(|v| Some(&v[0]))
     }
 
-    fn get_component_mut(&mut self, type_id: TypeId) -> Option<&mut dyn Any> {
+    fn get_component_mut(&mut self, type_id: TypeId) -> Option<&mut Box<dyn Any>> {
         if !self.components.contains_key(&type_id) {
             return None;
         }
@@ -167,7 +161,7 @@ impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
         self.components
             .get_mut(&type_id)
             .filter(|v| !v.is_empty())
-            .and_then(|v| Some(v[0].as_mut()))
+            .and_then(|v| Some(&mut v[0]))
     }
 
     fn remove_component(&mut self, type_id: TypeId) {
@@ -176,20 +170,5 @@ impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
         }
 
         self.components.remove(&type_id);
-    }
-
-    unsafe fn component_do2(
-        &mut self,
-        type_id1: TypeId,
-        type_id2: TypeId,
-        action: &dyn Fn(Option<&mut dyn Any>, Option<&mut dyn Any>, &mut dyn Entity),
-    ) -> Option<()> {
-        let component1 =
-            Entity::get_component_mut(self, type_id1).and_then(|c| Some(&mut *(c as *mut _)));
-        let component2 =
-            Entity::get_component_mut(self, type_id2).and_then(|c| Some(&mut *(c as *mut _)));
-
-        action(component1, component2, self);
-        Some(())
     }
 }
