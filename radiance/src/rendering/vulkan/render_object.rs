@@ -25,7 +25,7 @@ pub struct VulkanRenderObject {
 }
 
 impl RenderObject for VulkanRenderObject {
-    fn update_vertices(&mut self, updater: &dyn Fn(&mut VertexBuffer)) {
+    fn update_vertices(&mut self, updater: &mut dyn FnMut(&mut VertexBuffer)) {
         updater(&mut self.vertices);
         let _ = self.vertex_buffer.copy_memory_from(self.vertices.data());
     }

@@ -1,4 +1,4 @@
-use crate::math::Transform;
+use crate::{rendering::RenderObject, math::Transform};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -55,23 +55,23 @@ impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
         }
     }
 
-    pub fn add_component<T: 'static>(&mut self, component: T) {
+    pub fn add_component<T: ?Sized + 'static>(&mut self, component: Box<T>) {
         <Self as Entity>::add_component(self, Box::new(component));
     }
 
-    pub fn get_component<T: 'static>(&self) -> Option<&T> {
+    pub fn get_component<T: ?Sized + 'static>(&self) -> Option<&T> {
         let type_id = TypeId::of::<T>();
         let component = Entity::get_component(self, type_id);
         component.and_then(|c| c.downcast_ref())
     }
 
-    pub fn get_component_mut<T: 'static>(&mut self) -> Option<&mut T> {
+    pub fn get_component_mut<T: ?Sized + 'static>(&mut self) -> Option<&mut T> {
         let type_id = TypeId::of::<T>();
         let component = Entity::get_component_mut(self, type_id);
         component.and_then(|c| c.downcast_mut())
     }
 
-    pub fn remove_component<T: 'static>(&mut self) {
+    pub fn remove_component<T: ?Sized + 'static>(&mut self) {
         let type_id = TypeId::of::<T>();
         Entity::remove_component(self, type_id);
     }
@@ -138,7 +138,8 @@ impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
     }
 
     fn add_component(&mut self, component: Box<dyn Any>) {
-        let type_id = component.as_ref().type_id();
+        let type_id = (&component).type_id();
+        println!("add component {:?} render_object {:?}", type_id, TypeId::of::<Box<dyn RenderObject>>());
         if !self.components.contains_key(&type_id) {
             self.components.insert(type_id, vec![]);
         }
