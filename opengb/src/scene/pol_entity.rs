@@ -1,10 +1,13 @@
 use crate::loaders::pol_loader::*;
 use crate::material::LightMapMaterialDef;
-use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{ComponentFactory, SimpleMaterialDef, VertexBuffer, VertexComponents};
 use radiance::scene::{CoreEntity, EntityExtension};
+use radiance::{
+    math::{Vec2, Vec3},
+    rendering::RenderObject,
+};
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::{any::Any, rc::Rc};
 
 pub struct PolModelEntity {
     component_factory: Rc<dyn ComponentFactory>,
@@ -112,11 +115,13 @@ impl EntityExtension for PolModelEntity {
             LightMapMaterialDef::create(&self.texture_paths)
         };
 
-        self.add_component(self.component_factory.create_render_object(
+        let ro = self.component_factory.create_render_object(
             self.vertices.clone(),
             self.indices.clone(),
             &material_def,
             false,
-        ));
+        );
+
+        self.add_component::<Box<dyn RenderObject>>(Box::new(ro));
     }
 }

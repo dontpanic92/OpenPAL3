@@ -46,9 +46,11 @@ impl ScnScene {
     fn load_objects(&self, scene: &mut CoreScene<ScnScene>) {
         let ground_pol_name = self.scn_file.scn_base_name.clone() + ".pol";
         let mut cvd_objects = vec![];
-        let mut pol_objects =
-            self.asset_mgr
-                .load_scn_pol(&self.cpk_name, &self.scn_file.scn_base_name, &ground_pol_name);
+        let mut pol_objects = self.asset_mgr.load_scn_pol(
+            &self.cpk_name,
+            &self.scn_file.scn_base_name,
+            &ground_pol_name,
+        );
 
         for obj in &self.scn_file.nodes {
             let mut pol = vec![];

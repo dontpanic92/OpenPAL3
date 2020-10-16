@@ -1,7 +1,10 @@
 use crate::loaders::cvd_loader::*;
-use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{ComponentFactory, SimpleMaterialDef, VertexBuffer, VertexComponents};
 use radiance::scene::{CoreEntity, EntityExtension};
+use radiance::{
+    math::{Vec2, Vec3},
+    rendering::RenderObject,
+};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -84,11 +87,12 @@ impl CvdModelEntity {
 
 impl EntityExtension for CvdModelEntity {
     fn on_loading(self: &mut CoreEntity<Self>) {
-        self.add_component(self.component_factory.create_render_object(
+        let ro = self.component_factory.create_render_object(
             self.vertices.clone(),
             self.indices.clone(),
             &SimpleMaterialDef::create(&self.texture_path),
             false,
-        ));
+        );
+        self.add_component::<Box<dyn RenderObject>>(Box::new(ro));
     }
 }

@@ -3,9 +3,9 @@ use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{
     ComponentFactory, MaterialDef, RenderObject, SimpleMaterialDef, VertexBuffer, VertexComponents,
 };
-use radiance::scene::{Entity, CoreEntity, EntityExtension};
+use radiance::scene::{CoreEntity, Entity, EntityExtension};
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::{any::Any, rc::Rc};
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum RoleAnimationRepeatMode {
@@ -91,7 +91,8 @@ impl RoleEntity {
         self.active_anim_mut().reset(repeat_mode);
 
         self.remove_component::<Box<dyn RenderObject>>();
-        self.add_component(self.active_anim().render_object());
+        let ro = self.active_anim().render_object();
+        self.add_component::<Box<dyn RenderObject>>(Box::new(ro));
     }
 
     pub fn set_auto_play_idle(&mut self, auto_play_idle: bool) {
@@ -122,7 +123,10 @@ impl EntityExtension for RoleEntity {
     fn on_updating(self: &mut CoreEntity<Self>, delta_sec: f32) {
         if self.is_active {
             // TODO: Consider to use Arc<Mutex<>>>
-            let ro = unsafe { &mut *(self.get_component_mut::<dyn RenderObject>().unwrap() as *mut Box<dyn RenderObject>) };
+            let ro = unsafe {
+                &mut *(self.get_component_mut::<Box<dyn RenderObject>>().unwrap()
+                    as *mut Box<dyn RenderObject>)
+            };
             ro.update_vertices(&mut |vb: &mut VertexBuffer| {
                 self.active_anim_mut().update(delta_sec, vb)
             });
