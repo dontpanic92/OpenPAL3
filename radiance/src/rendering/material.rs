@@ -36,6 +36,10 @@ impl MaterialDef {
 pub struct SimpleMaterialDef;
 impl SimpleMaterialDef {
     pub fn create(texture_path: &PathBuf) -> MaterialDef {
-        MaterialDef::new("simple_material", SIMPLE_SHADER_DEF.clone(), vec![TextureDef::PathTextureDef(texture_path.clone())])
+        MaterialDef::new(
+            "simple_material",
+            SIMPLE_SHADER_DEF.clone(),
+            vec![TextureDef::PathTextureDef(texture_path.clone())],
+        )
     }
 }

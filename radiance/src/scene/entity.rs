@@ -1,7 +1,13 @@
-use crate::{rendering::RenderObject, math::Transform};
+use crate::math::Transform;
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
+
+/*pub trait Component: downcast_rs::Downcast {
+    fn into_component(self: Box<Self>) -> Box<dyn Component>;
+}
+
+downcast_rs::impl_downcast!(Component);*/
 
 pub trait Entity: downcast_rs::Downcast {
     fn name(&self) -> &str;
@@ -10,7 +16,7 @@ pub trait Entity: downcast_rs::Downcast {
     fn update(&mut self, delta_sec: f32);
     fn transform(&self) -> &Transform;
     fn transform_mut(&mut self) -> &mut Transform;
-    fn add_component(&mut self, component: Box<dyn Any>);
+    fn add_component(&mut self, type_id: TypeId, component: Box<dyn Any>);
     fn get_component(&self, type_id: TypeId) -> Option<&Box<dyn Any>>;
     fn get_component_mut(&mut self, type_id: TypeId) -> Option<&mut Box<dyn Any>>;
     fn remove_component(&mut self, type_id: TypeId);
@@ -49,23 +55,27 @@ impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
         }
     }
 
-    pub fn add_component<T: ?Sized + 'static>(&mut self, component: Box<T>) {
-        <Self as Entity>::add_component(self, Box::new(component));
+    pub fn add_component<T: 'static>(&mut self, component: Box<T>) {
+        <Self as Entity>::add_component(self, TypeId::of::<T>(), component);
     }
 
-    pub fn get_component<T: ?Sized + 'static>(&self) -> Option<&Box<T>> {
-        let type_id = TypeId::of::<T>();
+    /*pub fn add_component_as<TKey: 'static + ?Sized>(&mut self, component: Box<dyn Component>) {
+        <Self as Entity>::add_component(self, TypeId::of::<TKey>(), component);
+    }*/
+
+    pub fn get_component<TKey: 'static>(&self) -> Option<&TKey> {
+        let type_id = TypeId::of::<TKey>();
         let component = Entity::get_component(self, type_id);
         component.and_then(|c| c.downcast_ref())
     }
 
-    pub fn get_component_mut<T: ?Sized + 'static>(&mut self) -> Option<&mut Box<T>> {
-        let type_id = TypeId::of::<T>();
+    pub fn get_component_mut<TKey: 'static>(&mut self) -> Option<&mut TKey> {
+        let type_id = TypeId::of::<TKey>();
         let component = Entity::get_component_mut(self, type_id);
         component.and_then(|c| c.downcast_mut())
     }
 
-    pub fn remove_component<T: ?Sized + 'static>(&mut self) {
+    pub fn remove_component<T: 'static + ?Sized>(&mut self) {
         let type_id = TypeId::of::<T>();
         Entity::remove_component(self, type_id);
     }
@@ -89,11 +99,16 @@ impl<TExtension: EntityExtension + 'static> DerefMut for CoreEntity<TExtension> 
 
 #[inline]
 pub fn entity_add_component<T: 'static>(entity: &mut dyn Entity, component: T) {
-    entity.add_component(Box::new(component));
+    entity.add_component(TypeId::of::<T>(), Box::new(component));
 }
 
 #[inline]
-pub fn entity_get_component<T: ?Sized + 'static>(entity: &dyn Entity) -> Option<&Box<T>> {
+pub fn entity_add_component_as<TKey: 'static, T: 'static>(entity: &mut dyn Entity, component: T) {
+    entity.add_component(TypeId::of::<TKey>(), Box::new(component));
+}
+
+#[inline]
+pub fn entity_get_component<T: 'static>(entity: &dyn Entity) -> Option<&T> {
     let type_id = TypeId::of::<T>();
     entity
         .get_component(type_id)
@@ -131,9 +146,7 @@ impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
         &mut self.transform
     }
 
-    fn add_component(&mut self, component: Box<dyn Any>) {
-        let type_id = (&component).type_id();
-        println!("add component {:?} render_object {:?}", type_id, TypeId::of::<Box<dyn RenderObject>>());
+    fn add_component(&mut self, type_id: TypeId, component: Box<dyn Any>) {
         if !self.components.contains_key(&type_id) {
             self.components.insert(type_id, vec![]);
         }

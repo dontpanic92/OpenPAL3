@@ -194,7 +194,7 @@ impl SwapChain {
     pub fn record_command_buffers(
         &mut self,
         image_index: usize,
-        objects: &[&Box<VulkanRenderObject>],
+        objects: &[&VulkanRenderObject],
         dub_manager: &DynamicUniformBufferManager,
         ui_frame: ImguiFrame,
     ) -> Result<vk::CommandBuffer, vk::Result> {
@@ -252,7 +252,6 @@ impl SwapChain {
         let mut objects_by_material = vec![];
         for obj in objects {
             let key = obj.material().name();
-
             self.pipeline_manager
                 .create_pipeline_if_not_exist(obj.material());
             objects_by_material.push((key.to_string(), vec![obj]));

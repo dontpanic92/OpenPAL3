@@ -10,7 +10,7 @@ build = "build.rs"
 # General
 backtrace = "0.3.44"
 bitflags = "1.2.1"
-downcast-rs = "1.1.1"
+downcast-rs = "1.2.0"
 lazy_static = "1.2.0"
 memoffset = "0.5.3"
 radiance-assets = { path = "../radiance-assets" }

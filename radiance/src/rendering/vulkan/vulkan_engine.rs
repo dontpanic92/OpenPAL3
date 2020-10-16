@@ -8,12 +8,12 @@ use super::{
     factory::VulkanComponentFactory,
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
-use crate::math::Mat44;
 use crate::rendering::{
     imgui::{ImguiContext, ImguiFrame},
     ComponentFactory, RenderingEngine, Window,
 };
 use crate::scene::{entity_get_component, Scene};
+use crate::{math::Mat44, rendering::RenderObject};
 use ash::extensions::ext::DebugReport;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Entry, Instance};
@@ -314,11 +314,15 @@ impl VulkanRenderingEngine {
                 )
                 .unwrap();
             let x = &|ui| scene.draw_ui(ui);
-            let objects: Vec<&Box<VulkanRenderObject>> = scene
+            let objects: Vec<&VulkanRenderObject> = scene
                 .entities()
                 .iter()
-                .filter_map(|e| entity_get_component::<VulkanRenderObject>(e.as_ref()))
+                .filter_map(|e| {
+                    entity_get_component::<Box<dyn RenderObject>>(e.as_ref())
+                        .and_then(|c| c.downcast_ref())
+                })
                 .collect();
+            println!("vro num: {}", objects.len());
             let command_buffer = swapchain!()
                 .record_command_buffers(image_index as usize, &objects, &dub_manager, ui_frame)
                 .unwrap();
