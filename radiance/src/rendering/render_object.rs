@@ -1,4 +1,3 @@
-// use crate::scene::Component;
 use super::VertexBuffer;
 
 pub trait RenderObject: downcast_rs::Downcast {

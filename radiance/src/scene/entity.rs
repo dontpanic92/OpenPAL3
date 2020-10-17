@@ -3,12 +3,6 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
-/*pub trait Component: downcast_rs::Downcast {
-    fn into_component(self: Box<Self>) -> Box<dyn Component>;
-}
-
-downcast_rs::impl_downcast!(Component);*/
-
 pub trait Entity: downcast_rs::Downcast {
     fn name(&self) -> &str;
     fn set_name(&mut self, name: &str);
@@ -59,10 +53,6 @@ impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
         <Self as Entity>::add_component(self, TypeId::of::<T>(), component);
     }
 
-    /*pub fn add_component_as<TKey: 'static + ?Sized>(&mut self, component: Box<dyn Component>) {
-        <Self as Entity>::add_component(self, TypeId::of::<TKey>(), component);
-    }*/
-
     pub fn get_component<TKey: 'static>(&self) -> Option<&TKey> {
         let type_id = TypeId::of::<TKey>();
         let component = Entity::get_component(self, type_id);
@@ -75,7 +65,7 @@ impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
         component.and_then(|c| c.downcast_mut())
     }
 
-    pub fn remove_component<T: 'static + ?Sized>(&mut self) {
+    pub fn remove_component<T: 'static>(&mut self) {
         let type_id = TypeId::of::<T>();
         Entity::remove_component(self, type_id);
     }

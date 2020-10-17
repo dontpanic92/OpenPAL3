@@ -58,8 +58,10 @@ impl RenderingEngine for VulkanRenderingEngine {
 
         self.dub_manager().update_do(|updater| {
             for entity in scene.entities() {
-                if let Some(vro) = entity_get_component::<VulkanRenderObject>(entity.as_ref()) {
-                    updater(vro.dub_index(), entity.transform().matrix());
+                if let Some(ro) = entity_get_component::<Box<dyn RenderObject>>(entity.as_ref()) {
+                    if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
+                        updater(vro.dub_index(), entity.transform().matrix());
+                    }
                 }
             }
         });
@@ -322,7 +324,7 @@ impl VulkanRenderingEngine {
                         .and_then(|c| c.downcast_ref())
                 })
                 .collect();
-            println!("vro num: {}", objects.len());
+
             let command_buffer = swapchain!()
                 .record_command_buffers(image_index as usize, &objects, &dub_manager, ui_frame)
                 .unwrap();
