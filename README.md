@@ -29,24 +29,15 @@
 
 - [Rust](https://www.rust-lang.org/) nightly toolchain
   - 理论上 MSVC ABI 工具链与 GNU ABI 工具链均可编译
-- [.NET Core SDK 3](https://dotnet.microsoft.com/download) 或 [Visual Studio](https://visualstudio.microsoft.com/zh-hans/)
 - [OpenAL](https://www.openal.org)
 - [最新的 Vulkan SDK](https://www.lunarg.com/vulkan-sdk/)
 
 ### 构建步骤
 
-1. 构建 OpenGB
-    ```
-    cd opengb && cargo build --release
-    ```
-
-1. 构建 OpenPAL3
-   ```
-   cd openpal3
-   dotnet build -c Release
-   dotnet publish OpenPAL3/OpenPAL3.csproj -c Release -r win-x64 --self-contained
-   ```
-   或在 Visual Studio 中构建解决方案。
+```
+cd openpal3
+cargo build --release
+```
 
 ### 运行
 

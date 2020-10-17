@@ -37,49 +37,30 @@ steps:
       & rustup default nightly-x86_64-pc-windows-msvc 2>&1 | %{ "$_" }
 
 - task: PowerShell@2
-  displayName: 'Build opengb'
+  displayName: 'Build openpal3'
   inputs:
     targetType: 'inline'
     errorActionPreference: continue
     script: |
       $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
-      cd opengb
+      cd openpal3
       & cargo build --release 2>&1 | %{ "$_" }
-
-- task: DotNetCoreCLI@2
-  displayName: 'dotnet restore'
-  inputs:
-    command: 'restore'
-    projects: 'openpal3/OpenPAL3'
-    feedsToUse: 'select'
-    includeNuGetOrg: true
-
-- task: DotNetCoreCLI@2
-  displayName: 'Build openpal3'
-  inputs:
-    command: 'build'
-    projects: 'openpal3'
-    arguments: '-c Release'
-
-- task: DotNetCoreCLI@2
-  displayName: 'Publish'
-  inputs:
-    command: 'publish'
-    publishWebProjects: false
-    projects: 'openpal3/OpenPAL3'
-    arguments: ' /p:SolutionDir="$(Build.SourcesDirectory)/openpal3/" -c Release -r win-x64 --self-contained'
-    zipAfterPublish: false
-    modifyOutputPath: false
 
 - task: CopyFiles@2
   inputs:
-    SourceFolder: 'opengb/target/release/'
-    Contents: 'opengb.dll'
-    TargetFolder: 'openpal3/OpenPAL3/bin/Release/netcoreapp3.1/win-x64/publish/'
+    SourceFolder: 'openpal3'
+    Contents: 'openpal3.toml'
+    TargetFolder: '$(Build.ArtifactStagingDirectory)'
+  
+- task: CopyFiles@2
+  inputs:
+    SourceFolder: 'openpal3/target/release'
+    Contents: 'openpal3.exe'
+    TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
 - task: PublishBuildArtifacts@1
   inputs:
-    PathtoPublish: 'openpal3/OpenPAL3/bin/Release/netcoreapp3.1/win-x64/publish/'
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
     ArtifactName: 'openpal3'
     publishLocation: 'Container'
