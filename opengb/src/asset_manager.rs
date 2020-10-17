@@ -119,7 +119,6 @@ impl AssetManager {
             .join(scn_name)
             .join(pol_name)
             .with_extension("pol");
-        println!("{:?}", &path);
         let pol_file = pol_load_from_file(&path).unwrap();
         self.load_pol_entities(&pol_file, path.to_str().unwrap())
     }
