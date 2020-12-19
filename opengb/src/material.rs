@@ -1,5 +1,8 @@
+use crate::utilities::StoreExt2;
+use image::RgbaImage;
+use mini_fs::MiniFs;
 use radiance::rendering::{MaterialDef, ShaderDef, TextureDef, VertexComponents};
-use std::path::PathBuf;
+use std::{io::Read, path::PathBuf};
 
 static LIGHTMAP_TEXTURE_VERT: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/lightmap_texture.vert.spv"));
@@ -24,19 +27,20 @@ impl LightMapShaderDef {
 
 pub struct LightMapMaterialDef;
 impl LightMapMaterialDef {
-    pub fn create(texture_paths: &[PathBuf]) -> MaterialDef {
-        let textures: Vec<TextureDef> = texture_paths
-            .iter()
-            .map(|p| {
-                if p.file_stem() == None {
-                    TextureDef::ImageTextureDef(
-                        image::load_from_memory(&WHITE_TEXTURE_FILE)
-                            .unwrap()
-                            .to_rgba(),
-                    )
-                } else {
-                    TextureDef::PathTextureDef(p.clone())
-                }
+    pub fn create<R: Read>(readers: &mut [Option<R>]) -> MaterialDef {
+        let textures: Vec<TextureDef> = readers
+            .iter_mut()
+            .map(|r| {
+                let mut buf = Vec::new();
+                let b = match r {
+                    None => WHITE_TEXTURE_FILE,
+                    Some(reader) => {
+                        reader.read_to_end(&mut buf).unwrap();
+                        &buf
+                    }
+                };
+
+                TextureDef::ImageTextureDef(Some(image::load_from_memory(b).unwrap().to_rgba()))
             })
             .collect();
 

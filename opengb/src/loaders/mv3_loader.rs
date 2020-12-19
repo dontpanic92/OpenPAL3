@@ -1,7 +1,8 @@
 use super::read_vec;
 use byteorder::{LittleEndian, ReadBytesExt};
+use mini_fs::{MiniFs, StoreExt};
 use std::error::Error;
-use std::fs;
+use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
@@ -83,8 +84,11 @@ pub struct Mv3File {
     pub models: Vec<Mv3Model>,
 }
 
-pub fn mv3_load_from_file<P: AsRef<Path>>(path: P) -> Result<Mv3File, Box<dyn Error>> {
-    let mut reader = BufReader::new(fs::File::open(&path)?);
+pub fn mv3_load_from_file<P: AsRef<Path>>(
+    vfs: &MiniFs,
+    path: P,
+) -> Result<Mv3File, Box<dyn Error>> {
+    let mut reader = BufReader::new(vfs.open(&path).unwrap());
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic)?;
 

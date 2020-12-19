@@ -158,14 +158,12 @@ impl RoleAnimation {
     pub fn new(
         component_factory: &Rc<dyn ComponentFactory>,
         mv3file: &Mv3File,
+        material: MaterialDef,
         anim_repeat_mode: RoleAnimationRepeatMode,
     ) -> Self {
         let model: &Mv3Model = &mv3file.models[0];
         let mesh: &Mv3Mesh = &model.meshes[0];
 
-        let mut texture_path = mv3file.path.clone();
-        texture_path.pop();
-        texture_path.push(std::str::from_utf8(&mv3file.textures[0].names[0]).unwrap());
 
         let hash =
             |index, texcoord_index| index as u32 * model.texcoord_count + texcoord_index as u32;
@@ -236,7 +234,7 @@ impl RoleAnimation {
             anim_finished: false,
             vertices,
             indices,
-            material: SimpleMaterialDef::create(&texture_path),
+            material,
         }
     }
 
