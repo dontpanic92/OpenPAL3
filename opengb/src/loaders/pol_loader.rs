@@ -1,9 +1,10 @@
 use super::{read_f32_vec, read_vec, read_w_vec};
 use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{DecoderTrap, Encoding};
+use mini_fs::{MiniFs, StoreExt};
 use radiance::math::Mat44;
 use std::error::Error;
-use std::fs;
+use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
 
@@ -106,8 +107,11 @@ pub struct PolFile {
     pub meshes: Vec<PolMesh>,
 }
 
-pub fn pol_load_from_file<P: AsRef<Path>>(path: P) -> Result<PolFile, Box<dyn Error>> {
-    let mut reader = BufReader::new(fs::File::open(path)?);
+pub fn pol_load_from_file<P: AsRef<Path>>(
+    vfs: &MiniFs,
+    path: P,
+) -> Result<PolFile, Box<dyn Error>> {
+    let mut reader = BufReader::new(vfs.open(path).unwrap());
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic)?;
 

@@ -1,9 +1,10 @@
 use super::{calc_vertex_size, read_vec};
 use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{DecoderTrap, Encoding};
+use mini_fs::{MiniFs, StoreExt};
 use radiance::math::{Mat44, Quaternion, Vec2, Vec3};
 use std::error::Error;
-use std::fs;
+use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
@@ -122,8 +123,11 @@ pub struct CvdFile {
     pub models: Vec<CvdModelNode>,
 }
 
-pub fn cvd_load_from_file<P: AsRef<Path>>(path: P) -> Result<CvdFile, Box<dyn Error>> {
-    let mut reader = BufReader::new(fs::File::open(&path).unwrap());
+pub fn cvd_load_from_file<P: AsRef<Path>>(
+    vfs: &MiniFs,
+    path: P,
+) -> Result<CvdFile, Box<dyn Error>> {
+    let mut reader = BufReader::new(vfs.open(&path).unwrap());
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic).unwrap();
 

@@ -1,16 +1,18 @@
 use crate::loaders::cvd_loader::*;
-use radiance::rendering::{ComponentFactory, SimpleMaterialDef, VertexBuffer, VertexComponents};
+use image::RgbaImage;
+use radiance::rendering::{
+    ComponentFactory, MaterialDef, SimpleMaterialDef, VertexBuffer, VertexComponents,
+};
 use radiance::scene::{CoreEntity, EntityExtension};
 use radiance::{
     math::{Vec2, Vec3},
     rendering::RenderObject,
 };
-use std::path::PathBuf;
 use std::rc::Rc;
 
 pub struct CvdModelEntity {
     component_factory: Rc<dyn ComponentFactory>,
-    texture_path: PathBuf,
+    material: MaterialDef,
     vertices: VertexBuffer,
     indices: Vec<u32>,
 }
@@ -19,24 +21,9 @@ impl CvdModelEntity {
     pub fn new(
         component_factory: &Rc<dyn ComponentFactory>,
         all_vertices: &Vec<CvdVertex>,
-        material: &CvdMaterial,
-        path: &str,
+        cvd_material: &CvdMaterial,
+        material: MaterialDef,
     ) -> Self {
-        let dds_name = material
-            .texture_name
-            .split_terminator('.')
-            .next()
-            .unwrap()
-            .to_owned()
-            + ".dds";
-        let mut texture_path = PathBuf::from(path);
-        texture_path.pop();
-        texture_path.push(&dds_name);
-        if !texture_path.exists() {
-            texture_path.pop();
-            texture_path.push(&material.texture_name);
-        }
-
         let components =
             VertexComponents::POSITION /*| VertexComponents::NORMAL*/ | VertexComponents::TEXCOORD;
 
@@ -54,7 +41,7 @@ impl CvdModelEntity {
         };
 
         let mut indices: Vec<u32> = vec![];
-        for t in material.triangles.as_ref().unwrap() {
+        for t in cvd_material.triangles.as_ref().unwrap() {
             indices.push(get_new_index(t.indices[0]));
             indices.push(get_new_index(t.indices[1]));
             indices.push(get_new_index(t.indices[2]));
@@ -78,7 +65,7 @@ impl CvdModelEntity {
 
         CvdModelEntity {
             component_factory: component_factory.clone(),
-            texture_path,
+            material,
             vertices,
             indices,
         }
@@ -90,7 +77,7 @@ impl EntityExtension for CvdModelEntity {
         let ro = self.component_factory.create_render_object(
             self.vertices.clone(),
             self.indices.clone(),
-            &SimpleMaterialDef::create(&self.texture_path),
+            &self.material,
             false,
         );
         self.add_component::<Box<dyn RenderObject>>(Box::new(ro));

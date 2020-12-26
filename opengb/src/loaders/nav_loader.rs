@@ -1,7 +1,8 @@
 use super::read_dw_vec;
 use byteorder::{LittleEndian, ReadBytesExt};
+use mini_fs::{MiniFs, StoreExt};
 use radiance::math::Vec3;
-use std::fs;
+use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
@@ -41,8 +42,8 @@ pub struct NavFile {
     pub unknown2: Vec<NavUnknown2>,
 }
 
-pub fn nav_load_from_file<P: AsRef<Path>>(path: P) -> NavFile {
-    let mut reader = BufReader::new(fs::File::open(&path).unwrap());
+pub fn nav_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> NavFile {
+    let mut reader = BufReader::new(vfs.open(path).unwrap());
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic).unwrap();
 

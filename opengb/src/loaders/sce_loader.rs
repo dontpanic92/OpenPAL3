@@ -1,7 +1,8 @@
 use super::{read_string, read_vec};
 use byteorder::{LittleEndian, ReadBytesExt};
+use mini_fs::{MiniFs, StoreExt};
 use std::collections::HashMap;
-use std::fs;
+use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
 
@@ -33,8 +34,8 @@ pub struct SceFile {
     pub procs: HashMap<u32, SceProc>,
 }
 
-pub fn sce_load_from_file<P: AsRef<Path>>(path: P) -> SceFile {
-    let mut reader = BufReader::new(fs::File::open(path).unwrap());
+pub fn sce_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> SceFile {
+    let mut reader = BufReader::new(vfs.open(path).unwrap());
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic).unwrap();
 
