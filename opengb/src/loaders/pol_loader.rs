@@ -1,10 +1,9 @@
-use super::{read_f32_vec, read_vec, read_w_vec};
+use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{DecoderTrap, Encoding};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::math::Mat44;
 use std::error::Error;
-use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
 
@@ -124,7 +123,7 @@ pub fn pol_load_from_file<P: AsRef<Path>>(
     let mesh_count = reader.read_u32::<LittleEndian>()?;
     let mut geom_node_descs = vec![];
     for _i in 0..mesh_count {
-        let unknown = read_w_vec(&mut reader, 26)?;
+        let unknown = reader.read_w_vec(26)?;
         geom_node_descs.push(GeomNodeDesc { unknown });
     }
 
@@ -134,14 +133,14 @@ pub fn pol_load_from_file<P: AsRef<Path>>(
         unknown_count = reader.read_u32::<LittleEndian>()?;
         if unknown_count > 0 {
             for _i in 0..unknown_count {
-                let u = read_vec(&mut reader, 32)?;
+                let u = reader.read_u8_vec(32)?;
                 let mut mat = Mat44::new_zero();
                 reader.read_f32_into::<LittleEndian>(unsafe {
                     std::mem::transmute::<&mut [[f32; 4]; 4], &mut [f32; 16]>(mat.floats_mut())
                 })?;
                 let u2 = reader.read_u32::<LittleEndian>()?;
                 let str_len = reader.read_u32::<LittleEndian>()?;
-                let ddd_str = read_vec(&mut reader, str_len as usize)?;
+                let ddd_str = reader.read_u8_vec(str_len as usize)?;
                 unknown_data.push(UnknownData {
                     unknown: u,
                     matrix: mat,
@@ -276,12 +275,12 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
     let mut material_info = vec![];
     for _i in 0..material_info_count {
         let has_alpha = reader.read_u32::<LittleEndian>()?;
-        let unknown_68 = read_f32_vec(reader, 16)?;
+        let unknown_68 = reader.read_f32_vec(16)?;
         let unknown_float = reader.read_f32::<LittleEndian>()?.min(128.).max(0.);
         let texture_count = reader.read_u32::<LittleEndian>()?;
         let mut texture_names = vec![];
         for _j in 0..texture_count {
-            let name = read_vec(reader, 64).unwrap();
+            let name = reader.read_u8_vec(64).unwrap();
             let name_s = encoding::all::GBK
                 .decode(
                     &name

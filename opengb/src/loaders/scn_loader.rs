@@ -1,4 +1,4 @@
-use super::{read_dw_vec, read_string, read_vec, read_w_vec};
+use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::math::Vec3;
@@ -86,9 +86,9 @@ pub fn scn_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> ScnFile {
     let node_num = reader.read_u16::<LittleEndian>().unwrap();
     let node_offset = reader.read_u32::<LittleEndian>().unwrap();
 
-    let cpk_name = read_string(&mut reader, 32).unwrap();
-    let scn_name = read_string(&mut reader, 32).unwrap();
-    let scn_base_name = read_string(&mut reader, 32).unwrap();
+    let cpk_name = reader.read_string(32).unwrap();
+    let scn_name = reader.read_string(32).unwrap();
+    let scn_base_name = reader.read_string(32).unwrap();
 
     let mut roles = vec![];
     reader.seek(SeekFrom::Start(role_offset as u64)).unwrap();
@@ -116,7 +116,7 @@ pub fn scn_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> ScnFile {
 fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
     let index = reader.read_u8().unwrap();
     let b1 = reader.read_u8().unwrap();
-    let name = read_string(reader, 64).unwrap();
+    let name = reader.read_string(64).unwrap();
     let w42 = reader.read_u16::<LittleEndian>().unwrap();
     let dw44 = reader.read_u32::<LittleEndian>().unwrap();
     let dw48 = reader.read_u32::<LittleEndian>().unwrap();
@@ -126,16 +126,16 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
     let dw58 = reader.read_u32::<LittleEndian>().unwrap();
     let dw5c = reader.read_u32::<LittleEndian>().unwrap();
     let dw60 = reader.read_u32::<LittleEndian>().unwrap();
-    let action_name = read_string(reader, 16).unwrap();
+    let action_name = reader.read_string(16).unwrap();
     let dw74 = reader.read_u32::<LittleEndian>().unwrap();
     let dw78 = reader.read_u32::<LittleEndian>().unwrap();
     let dw7c = reader.read_u32::<LittleEndian>().unwrap();
-    let b80 = read_vec(reader, 4).unwrap();
-    let dw84 = read_dw_vec(reader, 49).unwrap();
+    let b80 = reader.read_u8_vec(4).unwrap();
+    let dw84 = reader.read_dw_vec(49).unwrap();
     let dw148 = reader.read_u32::<LittleEndian>().unwrap();
     let dw14c = reader.read_u32::<LittleEndian>().unwrap();
     let dw150 = reader.read_u32::<LittleEndian>().unwrap();
-    let dw154 = read_dw_vec(reader, 29).unwrap();
+    let dw154 = reader.read_dw_vec(29).unwrap();
 
     ScnRole {
         index,
@@ -166,30 +166,30 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
 fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
     let w0 = reader.read_u16::<LittleEndian>().unwrap();
     let w2 = reader.read_u16::<LittleEndian>().unwrap();
-    let name = read_string(reader, 32).unwrap();
+    let name = reader.read_string(32).unwrap();
     let w24 = reader.read_u16::<LittleEndian>().unwrap();
     let w26 = reader.read_u16::<LittleEndian>().unwrap();
     let position_x = reader.read_f32::<LittleEndian>().unwrap();
     let position_y = reader.read_f32::<LittleEndian>().unwrap();
     let position_z = reader.read_f32::<LittleEndian>().unwrap();
     let rotation = reader.read_f32::<LittleEndian>().unwrap();
-    let dw38 = read_dw_vec(reader, 4).unwrap();
+    let dw38 = reader.read_dw_vec(4).unwrap();
     let node_type = reader.read_u8().unwrap();
-    let b49 = read_vec(reader, 29).unwrap();
-    let w66 = read_w_vec(reader, 4).unwrap();
-    let b6e = read_vec(reader, 18).unwrap();
-    let d80 = read_dw_vec(reader, 2).unwrap();
-    let b88 = read_vec(reader, 192).unwrap();
+    let b49 = reader.read_u8_vec(29).unwrap();
+    let w66 = reader.read_w_vec(4).unwrap();
+    let b6e = reader.read_u8_vec(18).unwrap();
+    let d80 = reader.read_dw_vec(2).unwrap();
+    let b88 = reader.read_u8_vec(192).unwrap();
     let w148 = reader.read_u16::<LittleEndian>().unwrap();
-    let b14a = read_vec(reader, 34).unwrap();
+    let b14a = reader.read_u8_vec(34).unwrap();
     let vec1_x = reader.read_f32::<LittleEndian>().unwrap();
     let vec1_y = reader.read_f32::<LittleEndian>().unwrap();
     let vec1_z = reader.read_f32::<LittleEndian>().unwrap();
     let vec2_x = reader.read_f32::<LittleEndian>().unwrap();
     let vec2_y = reader.read_f32::<LittleEndian>().unwrap();
     let vec2_z = reader.read_f32::<LittleEndian>().unwrap();
-    let dw184 = read_dw_vec(reader, 6).unwrap();
-    let b = read_vec(reader, 208).unwrap();
+    let dw184 = reader.read_dw_vec(6).unwrap();
+    let b = reader.read_u8_vec(208).unwrap();
 
     ScnNode {
         w0,

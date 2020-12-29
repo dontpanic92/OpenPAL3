@@ -164,7 +164,6 @@ impl RoleAnimation {
         let model: &Mv3Model = &mv3file.models[0];
         let mesh: &Mv3Mesh = &model.meshes[0];
 
-
         let hash =
             |index, texcoord_index| index as u32 * model.texcoord_count + texcoord_index as u32;
 

@@ -135,7 +135,7 @@ bool CPK::Close(CPKFile * pCpkFile)
             }*/
             //sub_1002E090((HANDLE *)bufferHandle, pCpkFile->pDest, pCpkFile->originalSize);
 
-            //Ö±½ÓÊÍ·ÅÄÚ´æ
+            //ç›´æ¥é‡Šæ”¾å†…å­˜
             delete[] pCpkFile->lpMem;
             pCpkFile->lpMem = nullptr;
             pCpkFile->dwFileSize = 0;
@@ -228,7 +228,7 @@ DWORD CPK::LoadFile(void *lpBuffer, const char *lpString2)
     int unalignedLen = pFileEntry->dwStartPos - alignedOffset;
     size_t mappedSize = unalignedLen + pFileEntry->dwPackedSize + pFileEntry->dwOriginSize;
     void* lpMapped;
-    lpMapped = MapViewOfFile(m_dwCPKMappingHandle, FILE_MAP_READ, 0, dwFileOffsetLow, mappedSize);// °ÑÎÄ¼şµÄÒ»²¿·Ömap¹ıÈ¥
+    lpMapped = MapViewOfFile(m_dwCPKMappingHandle, FILE_MAP_READ, 0, dwFileOffsetLow, mappedSize);// æŠŠæ–‡ä»¶çš„ä¸€éƒ¨åˆ†mapè¿‡å»
     if (!lpMapped) {
         return 0;
     }
@@ -343,10 +343,10 @@ bool CPK::BuildDirectoryTree(CPKDirectoryEntry& entry)
     entry.vParentCRC = 0;
     entry.iAttrib = CPKTableFlag_None;
     strcpy_s(entry.lpszName, sizeof(entry.lpszName), fileName);
-    //ÓÃÀ´¼ÇÂ¼ËùÓĞÒÑ¾­´¦Àí¹ıµÄ½Úµã£¬±ÜÃâÖØ¸´´¦Àí
+    //ç”¨æ¥è®°å½•æ‰€æœ‰å·²ç»å¤„ç†è¿‡çš„èŠ‚ç‚¹ï¼Œé¿å…é‡å¤å¤„ç†
     std::map<DWORD, CPKDirectoryEntry*> handledEntries;
     handledEntries.emplace(0, &entry);
-    //±éÀúËùÓĞµÄ½Úµã£¬¹¹ÔìÊ÷×´½á¹¹
+    //éå†æ‰€æœ‰çš„èŠ‚ç‚¹ï¼Œæ„é€ æ ‘çŠ¶ç»“æ„
     for (int i = 0; i < ARRAYSIZE(entries); i++) {
         //skip deleted files
         CPKTable& currFileEntry = entries[i];
@@ -367,16 +367,16 @@ bool CPK::BuildDirectoryTree(CPKDirectoryEntry& entry)
 
 bool CPK::buildParent(CPKTable& currFileEntry, std::map<DWORD, CPKDirectoryEntry*>& handledEntries)
 {
-    //µ±Ç°½ÚµãÒÑ´¦Àí¹ı£¬·´»Ø³É¹¦
+    //å½“å‰èŠ‚ç‚¹å·²å¤„ç†è¿‡ï¼Œåå›æˆåŠŸ
     if (handledEntries.find(currFileEntry.dwCRC) != handledEntries.end())
         return true;
-    //¹¹Ôì½Úµã
+    //æ„é€ èŠ‚ç‚¹
     CPKDirectoryEntry* child = new CPKDirectoryEntry();
     child->iAttrib = currFileEntry.dwFlag;
     child->vCRC = currFileEntry.dwCRC;
     child->vParentCRC = currFileEntry.dwFatherCRC;
     ReadFileEntryName(&currFileEntry, child->lpszName, sizeof(child->lpszName));
-    //Èç¹ûµ±Ç°½ÚµãµÄparent´æÔÚ£¬ÔòÌí¼Ó½Úµã£¬ÍË³öµİ¹é
+    //å¦‚æœå½“å‰èŠ‚ç‚¹çš„parentå­˜åœ¨ï¼Œåˆ™æ·»åŠ èŠ‚ç‚¹ï¼Œé€€å‡ºé€’å½’
     if (handledEntries.find(child->vParentCRC) != handledEntries.end()) {
         //update child file name
         if (child->vParentCRC) {
@@ -428,8 +428,8 @@ bool CPK::Load(const char *lpFileName)
         return 0;
     }
     DWORD NumberOfBytesRead;
-    ReadFile(m_dwCPKHandle, &cpkHeader, sizeof(CPKHeader), &NumberOfBytesRead, 0);// ¶ÁÎÄ¼şÍ·
-    if (cpkHeader.dwLable != 0x1A545352)// ÑéÖ¤ÎÄ¼şÍ·Ç©Ãû
+    ReadFile(m_dwCPKHandle, &cpkHeader, sizeof(CPKHeader), &NumberOfBytesRead, 0);// è¯»æ–‡ä»¶å¤´
+    if (cpkHeader.dwLable != 0x1A545352)// éªŒè¯æ–‡ä»¶å¤´ç­¾å
     {
         //showMsgBox(0x10u, aErrorCeUnknowC, aDProjectGbengi, 185);
         //showMessageBox(aUnknowFileForm, lpFileName);
@@ -698,7 +698,7 @@ gbVFile* CPK::OpenTableIndex(int iFileTableIndex)
     //strcpy_s(pVFile->fileName, sizeof(pVFile->fileName), lpString2);
     pCpkFile->lpMapAddress = 0;
     if (m_eMode == CPKM_FileMapping) {
-        void* lpMapped = MapViewOfFile(m_dwCPKMappingHandle, 4u, 0, dwFileOffsetLow, mappedSize);// °ÑÎÄ¼şµÄÒ»²¿·Ömap¹ıÈ¥
+        void* lpMapped = MapViewOfFile(m_dwCPKMappingHandle, 4u, 0, dwFileOffsetLow, mappedSize);// æŠŠæ–‡ä»¶çš„ä¸€éƒ¨åˆ†mapè¿‡å»
         if (!lpMapped) {
             DWORD dwErr = GetLastError();
             OutputDebugStringA("error");
@@ -712,7 +712,7 @@ gbVFile* CPK::OpenTableIndex(int iFileTableIndex)
     pCpkFile->dwCRC = pFileEntry->dwCRC;
     pCpkFile->nTableIndex = iFileTableIndex;
     pCpkFile->dwFatherCRC = pFileEntry->dwFatherCRC;
-    pCpkFile->pRecordEntry = pFileEntry;// ¼ÇÂ¼entry½á¹¹Ö¸Õë
+    pCpkFile->pRecordEntry = pFileEntry;// è®°å½•entryç»“æ„æŒ‡é’ˆ
     pCpkFile->lpStartAddress = &(((char *)pCpkFile->lpMapAddress)[unalignedLen]);
 
     pCpkFile->bCompressed = (pFileEntry->dwFlag & 0xFFFF0000) != 0x10000;

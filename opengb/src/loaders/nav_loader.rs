@@ -1,8 +1,7 @@
-use super::read_dw_vec;
+use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::math::Vec3;
-use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
@@ -87,7 +86,7 @@ pub fn nav_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> NavFile {
 fn nav_read_unknown1(reader: &mut dyn Read, version: u8) -> NavUnknown1 {
     let mut unknown = None;
     if version == 2 {
-        unknown = Some(read_dw_vec(reader, 32).unwrap());
+        unknown = Some(reader.read_dw_vec(32).unwrap());
     }
 
     let vec1_x = reader.read_f32::<LittleEndian>().unwrap();

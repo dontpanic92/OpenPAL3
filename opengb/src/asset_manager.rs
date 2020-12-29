@@ -1,7 +1,11 @@
-use crate::scene::{
-    CvdModelEntity, PolModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity, ScnScene,
-};
 use crate::utilities::StoreExt2;
+use crate::{
+    cpk::CpkFs,
+    scene::{
+        CvdModelEntity, PolModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity,
+        ScnScene,
+    },
+};
 use crate::{
     loaders::{
         cvd_loader::*,
@@ -13,13 +17,17 @@ use crate::{
     },
     material::LightMapMaterialDef,
 };
+use log::debug;
 use mini_fs::prelude::*;
-use mini_fs::{LocalFs, MiniFs, CaselessFs};
+use mini_fs::{CaselessFs, LocalFs, MiniFs};
 use radiance::rendering::{ComponentFactory, MaterialDef};
 use radiance::scene::{CoreEntity, Entity};
 use radiance::{math::Vec3, rendering::SimpleMaterialDef};
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 pub struct AssetManager {
     factory: Rc<dyn ComponentFactory>,
@@ -32,14 +40,14 @@ pub struct AssetManager {
 
 impl AssetManager {
     pub fn new<P: AsRef<Path>>(factory: Rc<dyn ComponentFactory>, path: P) -> Self {
-        let local = CaselessFs::new(LocalFs::new(path.as_ref()));
-        let vfs = MiniFs::new().mount("/", local);
-
+        let local = LocalFs::new(path.as_ref());
+        let vfs = MiniFs::new_case_insensitive().mount("/", local);
+        let vfs = Self::mount_cpk_recursive(vfs, path.as_ref(), &PathBuf::from("./"));
         Self {
             factory,
-            basedata_path: PathBuf::from("/basedata"),
+            basedata_path: PathBuf::from("/basedata/basedata"),
             scene_path: PathBuf::from("/scene"),
-            music_path: PathBuf::from("/music"),
+            music_path: PathBuf::from("/music/music/music"),
             snd_path: PathBuf::from("/snd"),
             vfs,
         }
@@ -163,6 +171,30 @@ impl AssetManager {
         self.vfs.read_to_end(path).unwrap()
     }
 
+    fn mount_cpk_recursive(mut vfs: MiniFs, asset_path: &Path, relative_path: &Path) -> MiniFs {
+        let path = asset_path.join(relative_path);
+        if path.is_dir() {
+            for entry in fs::read_dir(path).unwrap() {
+                let entry = entry.unwrap();
+                let new_path = relative_path.join(entry.file_name());
+                vfs = Self::mount_cpk_recursive(vfs, asset_path, &new_path);
+            }
+        } else {
+            if Some(true)
+                == path
+                    .extension()
+                    .and_then(|ext| Some(ext.to_str() == Some("cpk")))
+            {
+                let vfs_path = PathBuf::from("/").join(relative_path.with_extension(""));
+
+                debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
+                vfs = vfs.mount(vfs_path, CpkFs::new(path).unwrap())
+            }
+        }
+
+        vfs
+    }
+
     fn load_pol_entities(
         &self,
         pol: &PolFile,
@@ -177,7 +209,7 @@ impl AssetManager {
                     &mesh.vertices,
                     &material.triangles,
                     self.load_pol_material(&material, model_path),
-                    material.has_alpha
+                    material.has_alpha,
                 ),
                 "pol_obj",
             );
@@ -286,7 +318,7 @@ impl AssetManager {
             texture_path.pop();
             texture_path.push(&material.texture_name);
         }
-        
+
         SimpleMaterialDef::create(&mut self.vfs.open(texture_path).unwrap())
     }
 
@@ -317,11 +349,9 @@ impl AssetManager {
         if texture_paths.len() == 1 {
             SimpleMaterialDef::create(&mut self.vfs.open(&texture_paths[0]).unwrap())
         } else {
-            println!("pol lightmap texture path {:?}", &texture_paths);
             let mut readers: Vec<_> = texture_paths
                 .iter()
-                .map(|p| p.file_stem().and_then(
-                    |_| Some(self.vfs.open(p).unwrap())))
+                .map(|p| p.file_stem().and_then(|_| Some(self.vfs.open(p).unwrap())))
                 .collect();
             LightMapMaterialDef::create(&mut readers)
         }

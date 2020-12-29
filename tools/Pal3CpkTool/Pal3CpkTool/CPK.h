@@ -7,39 +7,39 @@
 
 enum CPKTableFlag {
     CPKTableFlag_None = 0x0,
-    CPKTableFlag_IsFile = 0x1,         //ÊÇ·ñÊÇºÏ·¨ÎÄ¼ş£¿
-    CPKTableFlag_IsDir = 0x2,          //ÊÇ·ñÊÇÄ¿Â¼
+    CPKTableFlag_IsFile = 0x1,         //æ˜¯å¦æ˜¯åˆæ³•æ–‡ä»¶ï¼Ÿ
+    CPKTableFlag_IsDir = 0x2,          //æ˜¯å¦æ˜¯ç›®å½•
     CPKTableFlag_Unknown2 = 0x4,
     CPKTableFlag_Unknown3 = 0x8,
-    CPKTableFlag_IsDeleted = 0x10,     //ÊÇ·ñÒÑÉ¾³ı
+    CPKTableFlag_IsDeleted = 0x10,     //æ˜¯å¦å·²åˆ é™¤
 
 };
 
 
 struct CPKTable {
-    DWORD dwCRC;                    //0x00  µ±Ç°½ÚµãCRC
-    CPKTableFlag dwFlag;            //0x04  ÎÄ¼şÊôĞÔĞÅÏ¢
-    DWORD dwFatherCRC;              //0x08  ¸¸½ÚµãCRC£¬¸ù½ÚµãÎª0
-    DWORD dwStartPos;               //0x0C  Ñ¹ËõºóµÄÊı¾İÔÚCPKÖĞµÄÆ«ÒÆÁ¿¡£
-    DWORD dwPackedSize;             //0x10  Ñ¹ËõºóÊı¾İµÄ´óĞ¡¡£¶ÔÓÚÄ¿Â¼£¬Õâ¸öÖµÎª0¡£
-    DWORD dwOriginSize;             //0x14  Ô­Ê¼ÎÄ¼şµÄ´óĞ¡£¬·½±ãÄã½âÑ¹Ê±¿ª»º³åÇø¡£
-    DWORD dwExtraInfoSize;          //0x18  ÎÄ¼şÃûĞÅÏ¢Æ«ÒÆ ĞÅÏ¢½ô¸ú×ÅÑ¹ËõÊı¾İÖ®ºó£¬ËùÒÔ´ÓOffset + CompressedSize¶ÁÈ¡InfoRecordSize£¬×î¿ªÍ·¾ÍÊÇÎÄ¼şÃû
+    DWORD dwCRC;                    //0x00  å½“å‰èŠ‚ç‚¹CRC
+    CPKTableFlag dwFlag;            //0x04  æ–‡ä»¶å±æ€§ä¿¡æ¯
+    DWORD dwFatherCRC;              //0x08  çˆ¶èŠ‚ç‚¹CRCï¼Œæ ¹èŠ‚ç‚¹ä¸º0
+    DWORD dwStartPos;               //0x0C  å‹ç¼©åçš„æ•°æ®åœ¨CPKä¸­çš„åç§»é‡ã€‚
+    DWORD dwPackedSize;             //0x10  å‹ç¼©åæ•°æ®çš„å¤§å°ã€‚å¯¹äºç›®å½•ï¼Œè¿™ä¸ªå€¼ä¸º0ã€‚
+    DWORD dwOriginSize;             //0x14  åŸå§‹æ–‡ä»¶çš„å¤§å°ï¼Œæ–¹ä¾¿ä½ è§£å‹æ—¶å¼€ç¼“å†²åŒºã€‚
+    DWORD dwExtraInfoSize;          //0x18  æ–‡ä»¶åä¿¡æ¯åç§» ä¿¡æ¯ç´§è·Ÿç€å‹ç¼©æ•°æ®ä¹‹åï¼Œæ‰€ä»¥ä»Offset + CompressedSizeè¯»å–InfoRecordSizeï¼Œæœ€å¼€å¤´å°±æ˜¯æ–‡ä»¶å
 };
 
 class CPKFile {
 public:
-    bool bValid;                    //0x110 ÊÇ·ñÓĞĞ§
-    DWORD dwCRC;                    //0x114 
-    DWORD dwFatherCRC;              //0x118 ¸¸½ÚµãCRC
-    DWORD nTableIndex;              //0x11C ÎÄ¼şÊı×éÏÂ±ê
-    LPVOID lpMapAddress;            //0x120 ÎÄ¼şÓ³Éä»ùÖ·
-    void* lpStartAddress;           //0x124 ÎÄ¼şÔ­Ê¼»º³å
-    DWORD dwOffset;                 //0x128 ¶ÔÆëÆ«ÒÆÁ¿
-    bool bCompressed;               //0x12C ÊÇ·ñÊÇÑ¹ËõÎÄ¼ş
-    void* lpMem;                    //0x130 Ò»°ã´æ·Å½âÑ¹ËõÄÚÈİ
-    DWORD dwFileSize;               //0x134 Ô­Ê¼ÎÄ¼ş´óĞ¡
-    DWORD dwPointer;                //0x138 ÎÄ¼şÖ¸Õë
-    CPKTable* pRecordEntry;         //0x13C ÎÄ¼ş½á¹¹Ö¸Õë
+    bool bValid;                    //0x110 æ˜¯å¦æœ‰æ•ˆ
+    DWORD dwCRC;                    //0x114
+    DWORD dwFatherCRC;              //0x118 çˆ¶èŠ‚ç‚¹CRC
+    DWORD nTableIndex;              //0x11C æ–‡ä»¶æ•°ç»„ä¸‹æ ‡
+    LPVOID lpMapAddress;            //0x120 æ–‡ä»¶æ˜ å°„åŸºå€
+    void* lpStartAddress;           //0x124 æ–‡ä»¶åŸå§‹ç¼“å†²
+    DWORD dwOffset;                 //0x128 å¯¹é½åç§»é‡
+    bool bCompressed;               //0x12C æ˜¯å¦æ˜¯å‹ç¼©æ–‡ä»¶
+    void* lpMem;                    //0x130 ä¸€èˆ¬å­˜æ”¾è§£å‹ç¼©å†…å®¹
+    DWORD dwFileSize;               //0x134 åŸå§‹æ–‡ä»¶å¤§å°
+    DWORD dwPointer;                //0x138 æ–‡ä»¶æŒ‡é’ˆ
+    CPKTable* pRecordEntry;         //0x13C æ–‡ä»¶ç»“æ„æŒ‡é’ˆ
 };
 
 //0x140
@@ -47,34 +47,34 @@ struct gbVFile : CPKFile {
     DWORD OpenMode;                 //0x0
     DWORD EntryAddr;                 //0x4
     DWORD FileSize;                 //0x8
-    char fileName[MAX_PATH];        //0xC       ÎÄ¼şÃû
+    char fileName[MAX_PATH];        //0xC       æ–‡ä»¶å
     CPKFile cpkFile;
 };
 
 
 struct CpkZipUnzipParam {
-    int flag;                       //0x00  Ò»°ãÎª2£¬´ÓCpkFileEntry::AttribµÄHIWORD¸´ÖÆ
-    bool bCompress;                 //0x04  ÊÇ·ñÆôÓÃÑ¹Ëõ
-    void* src;                      //0x08  ÎÄ¼şÔ´Êı¾İÖ¸Õë
-    void* dest;                     //0x0C  ÎÄ¼şÄ¿±êÊı¾İÖ¸Õë
-    DWORD srcSizeUnused;            //0x10  ÔİÊ±Î´·¢ÏÖÓĞÊ¹ÓÃ
-    DWORD destSize;                 //0x14  Ä¿±êÊı¾İ´óĞ¡
-    DWORD srcSize;                  //0x18  Ô´Êı¾İ´óĞ¡
-    DWORD destResultSize;           //0x1C  Êµ¼ÊµÃµ½µÄÊı¾İ´óĞ¡
-    bool bResult;                   //0x20  ²Ù×÷ÊÇ·ñ³É¹¦
+    int flag;                       //0x00  ä¸€èˆ¬ä¸º2ï¼Œä»CpkFileEntry::Attribçš„HIWORDå¤åˆ¶
+    bool bCompress;                 //0x04  æ˜¯å¦å¯ç”¨å‹ç¼©
+    void* src;                      //0x08  æ–‡ä»¶æºæ•°æ®æŒ‡é’ˆ
+    void* dest;                     //0x0C  æ–‡ä»¶ç›®æ ‡æ•°æ®æŒ‡é’ˆ
+    DWORD srcSizeUnused;            //0x10  æš‚æ—¶æœªå‘ç°æœ‰ä½¿ç”¨
+    DWORD destSize;                 //0x14  ç›®æ ‡æ•°æ®å¤§å°
+    DWORD srcSize;                  //0x18  æºæ•°æ®å¤§å°
+    DWORD destResultSize;           //0x1C  å®é™…å¾—åˆ°çš„æ•°æ®å¤§å°
+    bool bResult;                   //0x20  æ“ä½œæ˜¯å¦æˆåŠŸ
 };
 
 //0x80
 struct CPKHeader {
     DWORD dwLable;           //0x0
-    DWORD dwVersion;         //0x4   °æ±¾ ±ØĞëÎª1
+    DWORD dwVersion;         //0x4   ç‰ˆæœ¬ å¿…é¡»ä¸º1
     DWORD dwTableStart;      //0x08
     DWORD dwDataStart;       //0x0C
-    DWORD dwMaxFileNum;      //0x10  ×î´óÎÄ¼şÊıÁ¿
-    DWORD dwFileNum;         //0x14  ÎÄ¼şÊıÁ¿
+    DWORD dwMaxFileNum;      //0x10  æœ€å¤§æ–‡ä»¶æ•°é‡
+    DWORD dwFileNum;         //0x14  æ–‡ä»¶æ•°é‡
     DWORD dwIsFormatted;     //0x18
     DWORD dwSizeOfHeader;    //0x1C
-    DWORD dwValidTableNum;   //0x20  CpkFileEntryÊı×éÊıÁ¿
+    DWORD dwValidTableNum;   //0x20  CpkFileEntryæ•°ç»„æ•°é‡
     DWORD dwMaxTableNum;     //0x24
     DWORD dwFragmentNum;     //0x28
     DWORD dwPackageSize;     //0x2C
@@ -145,7 +145,7 @@ public:
     bool BuildDirectoryTree(CPKDirectoryEntry& entry);
     bool buildParent(CPKTable& currEntry, std::map<DWORD, CPKDirectoryEntry*>& handledEntries);
 
-private:
+public:
     int executeZipUnZip(CpkZipUnzipParam *param);
     gbVFile* OpenTableIndex(int iFileIndex);
 
@@ -164,18 +164,18 @@ private:
 
 
 private:
-    DWORD dwAllocationGranularity;                  //0x0           ¿é¶ÔÆë³¤¶È£¬×öÎÄ¼şÓ³ÉäÊ±ĞèÒª¶ÔÆëµ½¸Ã³¤¶È£¬·ñÔòÓ³ÉäÊ§°Ü
-    ECPKMode m_eMode;                               //0x4           ´ò¿ªÄ£Ê½ µ±Ç°ÎªECPKMode_Mapped
-    CPKHeader cpkHeader;                            //0x8           ÎÄ¼şÍ·ĞÅÏ¢
-    CPKTable entries[32768];                    //0x88          ÎÄ¼ş½ÚµãĞÅÏ¢Êı×é£¬Í¨¹ı¹şÏ£´æ´¢
-    gbVFile* m_pgbVFile[0x8];                       //0xE0088       ÎÄ¼şÊı×é
-    bool m_bLoaded;                                 //0xE00A8       ÊÇ·ñÒÑ¼ÓÔØ
-    HANDLE m_dwCPKHandle;                           //0xE0090       ÎÄ¼ş¾ä±ú
-    HANDLE m_dwCPKMappingHandle;                    //0xE0094       ÎÄ¼şÓ³Éä¾ä±ú
-    char fileName[MAX_PATH];                        //0xE0098       CPKÎÄ¼şÃû
-    DWORD m_nOpenedFileNum;                         //0xE009C       µ±Ç°´ò¿ªµÄgbVFileÎÄ¼şÊıÁ¿
+    DWORD dwAllocationGranularity;                  //0x0           å—å¯¹é½é•¿åº¦ï¼Œåšæ–‡ä»¶æ˜ å°„æ—¶éœ€è¦å¯¹é½åˆ°è¯¥é•¿åº¦ï¼Œå¦åˆ™æ˜ å°„å¤±è´¥
+    ECPKMode m_eMode;                               //0x4           æ‰“å¼€æ¨¡å¼ å½“å‰ä¸ºECPKMode_Mapped
+    CPKHeader cpkHeader;                            //0x8           æ–‡ä»¶å¤´ä¿¡æ¯
+    CPKTable entries[32768];                    //0x88          æ–‡ä»¶èŠ‚ç‚¹ä¿¡æ¯æ•°ç»„ï¼Œé€šè¿‡å“ˆå¸Œå­˜å‚¨
+    gbVFile* m_pgbVFile[0x8];                       //0xE0088       æ–‡ä»¶æ•°ç»„
+    bool m_bLoaded;                                 //0xE00A8       æ˜¯å¦å·²åŠ è½½
+    HANDLE m_dwCPKHandle;                           //0xE0090       æ–‡ä»¶å¥æŸ„
+    HANDLE m_dwCPKMappingHandle;                    //0xE0094       æ–‡ä»¶æ˜ å°„å¥æŸ„
+    char fileName[MAX_PATH];                        //0xE0098       CPKæ–‡ä»¶å
+    DWORD m_nOpenedFileNum;                         //0xE009C       å½“å‰æ‰“å¼€çš„gbVFileæ–‡ä»¶æ•°é‡
 
-private:
+public:
     static DWORD *CrcTable[256];
     static void* lzo_wrkmem;
 };

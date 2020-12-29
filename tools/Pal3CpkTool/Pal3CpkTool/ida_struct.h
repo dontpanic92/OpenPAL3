@@ -1,27 +1,27 @@
 #pragma once
 /************************************************************************/
-/* ��IDA��ȡ��ͷ�ļ�                                                    */
+/* 供IDA读取的头文件                                                    */
 /************************************************************************/
 
 struct CPKTable {
-    unsigned int dwCRC;              //���Ҳ²�Ӧ���Ǹ����ļ���Hash����һ����ֵ�����ɸ�Index�ṹ��CPK�ļ��о��ǰ������ֵ�������еġ�
-                                    //�����ĺô���ֻҪ�����Ҫ�����ļ���CRC���Ϳ������ö��ֲ����ڶ���ʱ���ڶ�λ���ļ���Index��������ȡ���ݡ�
+    unsigned int dwCRC;              //据我猜测应该是根据文件名Hash出的一个数值，若干个Index结构在CPK文件中就是按这个数值升序排列的。
+                                    //这样的好处是只要计算出要访问文件的CRC，就可以利用二分查找在对数时间内定位该文件的Index，进而读取数据。
 
-    unsigned int dwFlag;            //0002,0001�����ļ�, ��������ò����һ����ѹ��һ����δѹ��. ��0011����ɾ�����ļ�, 0003��Ŀ¼. ����Ҳ����0013��ʾ��ɾ����Ŀ¼
+    unsigned int dwFlag;            //0002,0001都是文件, 区别忘了貌似是一个是压缩一个是未压缩. 而0011是已删除的文件, 0003是目录. 或许也会有0013表示已删除的目录
 
-    unsigned int dwFatherCRC;        //һ��CRCֵ���������ĸ�Ŀ¼��CRC��CPK�ļ�֧����Ŀ¼�����㶨λ��һ���ļ���index��ͨ�����ָ�뷴�����ϲ������
-                                    //�Ϳ���ȡ�����������Ĵ洢·�����ڸ�Ŀ¼�µ��ļ���Index�д�ֵΪ0��
+    unsigned int dwFatherCRC;        //一个CRC值，等于它的父目录的CRC。CPK文件支持子目录，当你定位好一个文件的index后，通过这个指针反复向上层遍历，
+                                    //就可以取得它的完整的存储路径。在根目录下的文件的Index中此值为0。
 
-    unsigned int dwStartPos;            //ѹ�����������CPK�е�ƫ������
+    unsigned int dwStartPos;            //压缩后的数据在CPK中的偏移量。
 
-    unsigned int dwPackedSize;    //ѹ�������ݵĴ�С������Ŀ¼�����ֵΪ0��
+    unsigned int dwPackedSize;    //压缩后数据的大小。对于目录，这个值为0。
 
-    unsigned int dwOriginSize;      //ԭʼ�ļ��Ĵ�С���������ѹʱ����������
+    unsigned int dwOriginSize;      //原始文件的大小，方便你解压时开缓冲区。
 
-    unsigned int dwExtraInfoSize;    /*��ֵĲ���������ÿһ��Index���������ļ���ѹ�����������CPK�д�index.Offset��ʼ�洢��ռ��index.CompressedSize�Ŀռ䣬
-                                      ����������һ����СΪInfoRecordSize����ּ�¼����ֻ֪�������¼��һ��ͷ�����ļ�������#0�����������Ķ������������Ȥ�Ŀ����о�һ�¡�
-                                      ��Ҫע����ǣ�ֻҪInfoRecordSizeΪ0�������Index����Ŀ¼����CompressedSizeΪ0�����Index�ͺ������壬���账����
-                                      ����Ϊ���������������Ϊ�˵��������о�CPK��ʽ�����ļ������кö���������ЧIndex�ˡ�*/
+    unsigned int dwExtraInfoSize;    /*奇怪的参数。对于每一个Index所代表的文件，压缩后的数据在CPK中从index.Offset起开始存储，占用index.CompressedSize的空间，
+                                      接下来就是一个大小为InfoRecordSize的奇怪记录，我只知道这个记录的一开头就是文件名，以#0结束，其他的都不清楚，有兴趣的可以研究一下。
+                                      需要注意的是，只要InfoRecordSize为0，或这个Index不是目录，但CompressedSize为0，这个Index就毫无疑义，不需处理。
+                                      我因为多次运行升级程序（为了调试它来研究CPK格式），文件中已有好多这样的无效Index了。*/
 };
 
 struct CPKFile {
@@ -65,7 +65,7 @@ struct CpkZipUnzipParam {
 //0x80
 struct CPKHeader {
     unsigned int dwLable; //0x0
-    DWORD dwVersion;      //0x4  �Ϸ���CPK�ļ��˴�ֵ����Ϊ1
+    DWORD dwVersion;      //0x4  合法的CPK文件此处值必须为1
     DWORD unknown[0x2];     //0x08
     DWORD dwMaxFileNum;    //0x10
     DWORD unknown2[0x3];    //0x14

@@ -1,10 +1,10 @@
-use super::{calc_vertex_size, read_vec};
+use super::calc_vertex_size;
+use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{DecoderTrap, Encoding};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::math::{Mat44, Quaternion, Vec2, Vec3};
 use std::error::Error;
-use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
@@ -248,7 +248,7 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
         let color3 = reader.read_u32::<LittleEndian>().unwrap();
         let color4 = reader.read_u32::<LittleEndian>().unwrap();
         let unknown_float2 = reader.read_f32::<LittleEndian>().unwrap();
-        let name = read_vec(reader, 64).unwrap();
+        let name = reader.read_u8_vec(64).unwrap();
         let texture_name = encoding::all::GBK
             .decode(
                 &name
@@ -281,7 +281,7 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
                 }
 
                 for _k in 0..unknown_data2_count {
-                    let _ = read_vec(reader, 20);
+                    let _ = reader.read_u8_vec(20);
                 }
             }
         }

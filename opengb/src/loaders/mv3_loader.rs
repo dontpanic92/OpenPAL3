@@ -1,8 +1,7 @@
-use super::read_vec;
+use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
 use std::error::Error;
-use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
@@ -113,25 +112,25 @@ pub fn mv3_load_from_file<P: AsRef<Path>>(
 
     let unknown_data = vec![];
     for _i in 0..unknown_data_count {
-        let _buf = read_vec(&mut reader, 64)?;
+        let _buf = reader.read_u8_vec(64)?;
         reader.read_u32::<LittleEndian>()?;
         let count = reader.read_u32::<LittleEndian>()?;
         for _j in 0..count {
-            read_vec(&mut reader, 68)?;
+            reader.read_u8_vec(68)?;
         }
     }
 
     let mut textures = vec![];
     for _i in 0..texture_count {
         let texture = {
-            let buf = read_vec(&mut reader, 68)?;
+            let buf = reader.read_u8_vec(68)?;
             let mut names = vec![];
 
             for _j in 0..4 {
                 let name_length = reader.read_u32::<LittleEndian>()?;
 
                 let name = if name_length > 0 {
-                    read_vec(&mut reader, name_length as usize)?
+                    reader.read_u8_vec(name_length as usize)?
                 } else {
                     vec![]
                 };
@@ -171,7 +170,7 @@ pub fn mv3_load_from_file<P: AsRef<Path>>(
 }
 
 fn read_mv3_model(reader: &mut dyn Read) -> Result<Mv3Model, Box<dyn Error>> {
-    let unknown = read_vec(reader, 64)?;
+    let unknown = reader.read_u8_vec(64)?;
     let vertex_per_frame = reader.read_u32::<LittleEndian>()?;
     let mut aabb_min = [0f32; 3];
     let mut aabb_max = [0f32; 3];

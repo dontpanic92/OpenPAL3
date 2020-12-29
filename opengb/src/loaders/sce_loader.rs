@@ -1,8 +1,7 @@
-use super::{read_string, read_vec};
+use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
 use std::collections::HashMap;
-use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
 
@@ -72,7 +71,7 @@ pub fn sce_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> SceFile {
 fn read_sce_proc_header(reader: &mut dyn Read) -> SceProcHeader {
     let id = reader.read_u32::<LittleEndian>().unwrap();
     let offset = reader.read_u32::<LittleEndian>().unwrap();
-    let name = read_string(reader, 64).unwrap();
+    let name = reader.read_string(64).unwrap();
 
     SceProcHeader { id, offset, name }
 }
@@ -80,14 +79,14 @@ fn read_sce_proc_header(reader: &mut dyn Read) -> SceProcHeader {
 fn read_sce_proc(reader: &mut dyn Read) -> SceProc {
     let id = reader.read_u32::<LittleEndian>().unwrap();
     let name_len = reader.read_u16::<LittleEndian>().unwrap();
-    let name = read_string(reader, name_len as usize).unwrap();
+    let name = reader.read_string(name_len as usize).unwrap();
     let local_var_num = reader.read_u16::<LittleEndian>().unwrap();
 
     let mut local_vars = vec![];
     for _ in 0..local_var_num {
         let u = reader.read_u8().unwrap();
         let size = reader.read_u16::<LittleEndian>().unwrap();
-        let unknown_vec = read_vec(reader, size as usize).unwrap();
+        let unknown_vec = reader.read_u8_vec(size as usize).unwrap();
         local_vars.push(SceLocalVar {
             unknown: u,
             unknown_vec,
@@ -95,7 +94,7 @@ fn read_sce_proc(reader: &mut dyn Read) -> SceProc {
     }
 
     let inst_size = reader.read_u32::<LittleEndian>().unwrap();
-    let inst = read_vec(reader, inst_size as usize).unwrap();
+    let inst = reader.read_u8_vec(inst_size as usize).unwrap();
 
     SceProc {
         id,
