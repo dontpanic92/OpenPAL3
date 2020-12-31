@@ -41,8 +41,9 @@ impl SimpleMaterialDef {
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).unwrap();
         let data = image::load_from_memory(&buf)
-                .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
-                .and_then(|img| Ok(img.to_rgba())).ok();
+            .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
+            .and_then(|img| Ok(img.to_rgba()))
+            .ok();
 
         MaterialDef::new(
             "simple_material",

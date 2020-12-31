@@ -27,12 +27,9 @@ pub struct Application<TExtension: ApplicationExtension<TExtension>> {
 impl<TExtension: ApplicationExtension<TExtension>> Application<TExtension> {
     pub fn new(extension: TExtension) -> Self {
         set_panic_hook();
-        let platform = Platform::new();
-        let window = rendering::Window {
-            hwnd: platform.hwnd(),
-        };
+        let mut platform = Platform::new();
         Self {
-            radiance_engine: radiance::create_radiance_engine(&window)
+            radiance_engine: radiance::create_radiance_engine(&mut platform)
                 .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
             platform,
             extension: Rc::new(RefCell::new(extension)),

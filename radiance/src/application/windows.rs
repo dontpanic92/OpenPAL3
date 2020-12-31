@@ -16,10 +16,12 @@ macro_rules! utf16_ptr {
 }
 
 const WM_CLOSE_WINDOW: u32 = winuser::WM_USER + 1;
+pub type MessageCallback = Box<dyn Fn(&winuser::MSG)>;
 
 pub struct Platform {
     instance: HINSTANCE,
     hwnd: HWND,
+    msg_callbacks: Vec<MessageCallback>,
 }
 
 impl Platform {
@@ -31,7 +33,11 @@ impl Platform {
             println!("{}", unsafe { errhandlingapi::GetLastError() });
         }
 
-        Self { instance, hwnd }
+        Self {
+            instance,
+            hwnd,
+            msg_callbacks: vec![],
+        }
     }
 
     pub fn show_error_dialog(title: &str, msg: &str) {
@@ -47,6 +53,10 @@ impl Platform {
 
     pub fn initialize(&self) {
         unsafe { winuser::ShowWindow(self.hwnd, winuser::SW_SHOW) };
+    }
+
+    pub fn add_message_callback(&mut self, callback: MessageCallback) {
+        self.msg_callbacks.push(callback);
     }
 
     pub fn process_message(&self) -> bool {
@@ -66,6 +76,10 @@ impl Platform {
 
             if msg.message == WM_CLOSE_WINDOW {
                 return false;
+            }
+
+            for cb in &self.msg_callbacks {
+                cb(&msg);
             }
 
             if msg.message != winuser::WM_SYSKEYDOWN {

@@ -12,6 +12,7 @@ backtrace = "0.3.44"
 bitflags = "1.2.1"
 downcast-rs = "1.2.0"
 lazy_static = "1.2.0"
+log = { version = "0.4.8", features = ["max_level_debug", "release_max_level_warn"]}
 memoffset = "0.5.3"
 radiance-assets = { path = "../radiance-assets" }
 

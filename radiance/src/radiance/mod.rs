@@ -1,15 +1,28 @@
 pub mod core_engine;
 pub use core_engine::CoreRadianceEngine;
 
-use crate::{audio::OpenAlAudioEngine, rendering::VulkanRenderingEngine};
+use crate::{
+    application::Platform,
+    audio::OpenAlAudioEngine,
+    input::WindowsInputEngine,
+    rendering::{VulkanRenderingEngine, Window},
+};
 use std::error::Error;
-use std::rc::Rc;
 
 pub fn create_radiance_engine(
-    window: &crate::rendering::Window,
+    platform: &mut Platform,
 ) -> Result<CoreRadianceEngine, Box<dyn Error>> {
-    let rendering_engine = Box::new(VulkanRenderingEngine::new(window)?);
-    let audio_engine = Box::new(OpenAlAudioEngine::new());
+    let window = Window {
+        hwnd: platform.hwnd(),
+    };
 
-    Ok(CoreRadianceEngine::new(rendering_engine, audio_engine))
+    let rendering_engine = Box::new(VulkanRenderingEngine::new(&window)?);
+    let audio_engine = Box::new(OpenAlAudioEngine::new());
+    let input_engine = WindowsInputEngine::new(platform);
+
+    Ok(CoreRadianceEngine::new(
+        rendering_engine,
+        audio_engine,
+        input_engine,
+    ))
 }

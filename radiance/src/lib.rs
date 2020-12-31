@@ -5,6 +5,7 @@ mod macros;
 
 pub mod application;
 pub mod audio;
+pub mod input;
 pub mod math;
 pub mod radiance;
 pub mod rendering;
