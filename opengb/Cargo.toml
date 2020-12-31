@@ -21,7 +21,6 @@ downcast-rs = "1.2.0"
 config = "0.10.1"
 serde = { version = "1.0.106", features = ["derive"] }
 log = { version = "0.4.8", features = ["max_level_debug", "release_max_level_warn"]}
-simple_logger = "1.6.0"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 memmap = "0.7.0"
 minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }

@@ -7,4 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+log = { version = "0.4.8", features = ["max_level_debug", "release_max_level_warn"]}
 opengb = { path = "../opengb" }
+radiance = { git = "https://github.com/dontpanic92/radiance/" }
+simple_logger = "1.6.0"

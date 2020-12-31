@@ -4,8 +4,11 @@ use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile, scene::Sc
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
 use log::{debug, error};
-use radiance::audio::{AudioEngine, AudioSourceState};
 use radiance::scene::{CoreScene, Director, Scene};
+use radiance::{
+    audio::{AudioEngine, AudioSourceState},
+    input::InputEngine,
+};
 use std::rc::Rc;
 
 pub struct SceDirector {
@@ -58,14 +61,15 @@ impl Director for SceDirector {
 impl SceDirector {
     pub fn new(
         audio_engine: &dyn AudioEngine,
+        input_engine: Rc<dyn InputEngine>,
         sce: SceFile,
         entry_point: u32,
-        asset_mgr: &Rc<AssetManager>,
+        asset_mgr: Rc<AssetManager>,
     ) -> Self {
-        let state = SceState::new(audio_engine, asset_mgr);
+        let state = SceState::new(audio_engine, input_engine, asset_mgr.clone());
 
         Self {
-            asset_mgr: asset_mgr.clone(),
+            asset_mgr,
             vm_context: SceVmContext::new(sce, entry_point),
             state,
             active_commands: vec![],

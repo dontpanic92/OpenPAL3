@@ -804,14 +804,16 @@ dependencies = [
  "minilzo-rs",
  "radiance",
  "serde 1.0.118",
- "simple_logger",
 ]
 
 [[package]]
 name = "openpal3"
 version = "0.1.0"
 dependencies = [
+ "log",
  "opengb",
+ "radiance",
+ "simple_logger",
 ]
 
 [[package]]
@@ -908,7 +910,6 @@ dependencies = [
 [[package]]
 name = "radiance"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#0c45ae2addc3e7a9118391f0de355966b4669109"
 dependencies = [
  "alto",
  "ash",
@@ -921,6 +922,7 @@ dependencies = [
  "imgui-rs-vulkan-renderer",
  "lazy_static 1.4.0",
  "lewton",
+ "log",
  "memoffset 0.5.6",
  "minimp3",
  "radiance-assets",
@@ -931,7 +933,6 @@ dependencies = [
 [[package]]
 name = "radiance-assets"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#0c45ae2addc3e7a9118391f0de355966b4669109"
 
 [[package]]
 name = "rand"

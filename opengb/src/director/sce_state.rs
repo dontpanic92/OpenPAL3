@@ -1,5 +1,8 @@
 use crate::asset_manager::AssetManager;
-use radiance::audio::{AudioEngine, AudioSource};
+use radiance::{
+    audio::{AudioEngine, AudioSource},
+    input::InputEngine,
+};
 use std::any::Any;
 use std::{collections::HashMap, rc::Rc};
 
@@ -9,10 +12,15 @@ pub struct SceState {
     sound_source: Box<dyn AudioSource>,
     run_mode: i32,
     ext: HashMap<String, Box<dyn Any>>,
+    input: Rc<dyn InputEngine>,
 }
 
 impl SceState {
-    pub fn new(audio_engine: &dyn AudioEngine, asset_mgr: &Rc<AssetManager>) -> Self {
+    pub fn new(
+        audio_engine: &dyn AudioEngine,
+        input: Rc<dyn InputEngine>,
+        asset_mgr: Rc<AssetManager>,
+    ) -> Self {
         let bgm_source = audio_engine.create_source();
         let sound_source = audio_engine.create_source();
         let ext = HashMap::<String, Box<dyn Any>>::new();
@@ -23,6 +31,7 @@ impl SceState {
             sound_source,
             run_mode: 1,
             ext,
+            input,
         }
     }
 
@@ -32,6 +41,10 @@ impl SceState {
 
     pub fn sound_source(&mut self) -> &mut dyn AudioSource {
         self.sound_source.as_mut()
+    }
+
+    pub fn input(&self) -> &dyn InputEngine {
+        self.input.as_ref()
     }
 
     pub fn run_mode(&self) -> i32 {
