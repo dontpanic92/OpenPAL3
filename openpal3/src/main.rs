@@ -47,11 +47,6 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
 
     fn on_updating(&mut self, app: &mut Application<OpenPal3Application>, delta_sec: f32) {
         let fps = self.fps_counter.update_fps(delta_sec);
-        let state = app.engine_mut().input_engine().get_key_state(Key::Down);
-
-        if state.pressed() {
-            debug!("Pressed! {}", state.pressed());
-        }
     }
 }
 

@@ -6,7 +6,7 @@ edition = "2018"
 build = "build.rs"
 
 [lib]
-crate-type = [ "cdylib", "rlib" ]
+crate-type = [ "rlib" ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

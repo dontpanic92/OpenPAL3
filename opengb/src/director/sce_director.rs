@@ -129,21 +129,30 @@ struct SceVmContext {
 
 impl SceVmContext {
     pub fn new(sce: SceFile, entry_point: u32) -> Self {
-        let proc_id = sce
+        let proc = sce
             .proc_headers
             .iter()
             .find(|h| h.id == entry_point)
-            .unwrap()
-            .id;
+            .unwrap();
 
+        debug!(
+            "Start executing SceProc {} Id {} Offset {}",
+            proc.name, proc.id, proc.offset
+        );
+        let proc_id = proc.id;
         Self {
             sce,
-            proc_id,
+            proc_id: proc_id,
             program_counter: 0,
         }
     }
 
     pub fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
+        if self.proc_completed() {
+            debug!("Sce proc {} completed", self.proc_id);
+            return None;
+        }
+
         match data_read::i32(self) {
             1 => {
                 // Idle
@@ -152,6 +161,9 @@ impl SceVmContext {
             2 => {
                 // ScriptRunMode
                 command!(self, SceCommandScriptRunMode, mode: i32)
+            }
+            65549 /* 13 */ => {
+                command!(self, SceCommandLet, var: i16, value: i32)
             }
             20 => {
                 // RolePathTo
@@ -194,6 +206,10 @@ impl SceVmContext {
                 // RoleActive
                 command!(self, SceCommandRoleActive, role: i32, active: i32)
             }
+            33 => {
+                // CameraRotate
+                nop_command!(self, f32, f32, f32, i32)
+            }
             36 => {
                 // CameraSet
                 command!(
@@ -206,6 +222,10 @@ impl SceVmContext {
                     y: f32,
                     z: f32,
                 )
+            }
+            37 => {
+                // CameraDefault
+                command!(self, SceCommandCameraDefault, unknown: i32)
             }
             62 => {
                 // Dlg
@@ -266,6 +286,10 @@ impl SceVmContext {
                     unknown: i32
                 )
             }
+            204 => {
+                // RoleCtrl
+                nop_command!(self, i32)
+            }
             207 => {
                 // RoleActAutoStand
                 command!(
@@ -294,6 +318,7 @@ impl SceVmContext {
             default => {
                 error!("Unsupported command: {}", default);
                 self.put(4);
+                panic!();
                 None
             }
         }
@@ -322,10 +347,19 @@ impl SceVmContext {
         self.program_counter += count;
         ret
     }
+
+    fn proc_completed(&self) -> bool {
+        let proc = self.sce.procs.get(&self.proc_id).unwrap();
+        self.program_counter >= proc.inst.len()
+    }
 }
 
 mod data_read {
     use byteorder::{LittleEndian, ReadBytesExt};
+
+    pub(super) fn i16(context: &mut super::SceVmContext) -> i16 {
+        context.read(2).read_i16::<LittleEndian>().unwrap()
+    }
 
     pub(super) fn i32(context: &mut super::SceVmContext) -> i32 {
         context.read(4).read_i32::<LittleEndian>().unwrap()

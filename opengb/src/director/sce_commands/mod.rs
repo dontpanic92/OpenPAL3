@@ -1,3 +1,5 @@
+mod _let;
+mod camera_default;
 mod camera_set;
 mod dlg;
 mod idle;
@@ -14,6 +16,8 @@ mod role_show_action;
 mod role_turn_face;
 mod script_run_mode;
 
+pub use _let::SceCommandLet;
+pub use camera_default::SceCommandCameraDefault;
 pub use camera_set::SceCommandCameraSet;
 pub use dlg::SceCommandDlg;
 pub use idle::SceCommandIdle;
