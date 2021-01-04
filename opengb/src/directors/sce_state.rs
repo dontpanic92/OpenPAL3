@@ -6,6 +6,7 @@ use radiance::{
 use std::{
     any::Any,
     cell::{Ref, RefCell},
+    ops::Deref,
 };
 use std::{collections::HashMap, rc::Rc};
 
@@ -46,8 +47,8 @@ impl SceState {
         self.sound_source.as_mut()
     }
 
-    pub fn input(&self) -> &dyn InputEngine {
-        &*self.input_engine.borrow()
+    pub fn input(&self) -> Ref<dyn InputEngine> {
+        self.input_engine.borrow()
     }
 
     pub fn run_mode(&self) -> i32 {

@@ -1,11 +1,11 @@
 use log::debug;
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig, directors::SceDirector};
-use radiance::application::utils::FpsCounter;
+use radiance::{application::utils::FpsCounter, scene::CoreScene};
 use radiance::{
     application::{Application, ApplicationExtension},
     input::Key,
 };
-use std::path::PathBuf;
+use std::{cell::RefCell, path::PathBuf};
 use std::rc::Rc;
 
 fn main() {
@@ -33,17 +33,17 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
             &self.root_path,
         )));
 
-        let sce_director = Box::new(SceDirector::new(
+        let sce_director = Rc::new(RefCell::new(SceDirector::new(
             app.engine_mut().audio_engine(),
             input_engine,
             self.asset_mgr.as_ref().unwrap().load_sce("Q01"),
             1001,
             self.asset_mgr.as_ref().unwrap().clone(),
-        ));
-        app.engine_mut().set_director(sce_director);
+        )));
+        app.engine_mut().scene_manager().set_director(sce_director);
 
         let scn = self.asset_mgr.as_ref().unwrap().load_scn("Q01", "yn09a");
-        app.engine_mut().load_scene2(scn, 30.);
+        app.engine_mut().scene_manager().push_scene(Box::new(CoreScene::new(scn)));
     }
 
     fn on_updating(&mut self, app: &mut Application<OpenPal3Application>, delta_sec: f32) {
