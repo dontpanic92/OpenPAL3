@@ -9,5 +9,5 @@ edition = "2018"
 [dependencies]
 log = { version = "0.4.8", features = ["max_level_debug", "release_max_level_warn"]}
 opengb = { path = "../opengb" }
-radiance = { path = "../../radiance/radiance" } #{ git = "https://github.com/dontpanic92/radiance/" }
+radiance = { git = "https://github.com/dontpanic92/radiance/" }
 simple_logger = "1.6.0"
