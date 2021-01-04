@@ -763,7 +763,7 @@ dependencies = [
  "memmap",
  "mini-fs",
  "minilzo-rs",
- "radiance 0.1.0",
+ "radiance",
  "serde 1.0.106",
 ]
 
@@ -861,29 +861,6 @@ dependencies = [
 [[package]]
 name = "radiance"
 version = "0.1.0"
-dependencies = [
- "alto",
- "ash 0.31.0",
- "backtrace",
- "bitflags",
- "downcast-rs",
- "hound",
- "image",
- "imgui",
- "imgui-rs-vulkan-renderer",
- "lazy_static 1.4.0",
- "lewton",
- "log",
- "memoffset",
- "minimp3",
- "radiance-assets 0.1.0",
- "vk-mem 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi",
-]
-
-[[package]]
-name = "radiance"
-version = "0.1.0"
 source = "git+https://github.com/dontpanic92/radiance/#b348b41ea7d837af0a56d9ff92dfc1e2a0c1ea29"
 dependencies = [
  "alto",
@@ -899,14 +876,10 @@ dependencies = [
  "lewton",
  "memoffset",
  "minimp3",
- "radiance-assets 0.1.0 (git+https://github.com/dontpanic92/radiance/)",
- "vk-mem 0.2.2 (git+https://github.com/gwihlidal/vk-mem-rs)",
+ "radiance-assets",
+ "vk-mem",
  "winapi",
 ]
-
-[[package]]
-name = "radiance-assets"
-version = "0.1.0"
 
 [[package]]
 name = "radiance-assets"
@@ -1052,7 +1025,7 @@ version = "0.1.0"
 dependencies = [
  "nfd",
  "opengb",
- "radiance 0.1.0 (git+https://github.com/dontpanic92/radiance/)",
+ "radiance",
 ]
 
 [[package]]
@@ -1287,17 +1260,6 @@ name = "version_check"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "078775d0255232fb988e6fccf26ddc9d1ac274299aaedcedce21c6f72cc533ce"
-
-[[package]]
-name = "vk-mem"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c89db58563ea4fb34bd0394eb977c9c7ff7d16bf605f4eb945db7cab8c0c16f"
-dependencies = [
- "ash 0.31.0",
- "bitflags",
- "cc",
-]
 
 [[package]]
 name = "vk-mem"

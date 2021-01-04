@@ -33,14 +33,14 @@ impl SceCommand for SceCommandRoleSetFace {
 impl SceCommandRoleSetFace {
     pub fn new(role_id: i32, direction: i32) -> Self {
         let face_to = match direction {
-            0 => super::Direction::NORTH,
-            1 => super::Direction::NORTHEAST,
+            0 => super::Direction::SOUTH,
+            1 => super::Direction::SOUTHEAST,
             2 => super::Direction::EAST,
-            3 => super::Direction::SOUTHEAST,
-            4 => super::Direction::SOUTH,
-            5 => super::Direction::SOUTHWEST,
+            3 => super::Direction::NORTHEAST,
+            4 => super::Direction::NORTH,
+            5 => super::Direction::NORTHWEST,
             6 => super::Direction::WEST,
-            7 => super::Direction::NORTHWEST,
+            7 => super::Direction::SOUTHWEST,
             _ => unreachable!(),
         };
 

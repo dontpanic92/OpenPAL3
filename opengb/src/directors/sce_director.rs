@@ -1,10 +1,10 @@
 use super::sce_commands::*;
 use crate::directors::sce_state::SceState;
-use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile, scene::ScnScene};
+use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
 use log::{debug, error};
-use radiance::scene::{CoreScene, Director, Scene, SceneManager};
+use radiance::scene::{Director, SceneManager};
 use radiance::{
     audio::{AudioEngine, AudioSourceState},
     input::InputEngine,
@@ -16,7 +16,6 @@ pub struct SceDirector {
     vm_context: SceVmContext,
     state: SceState,
     active_commands: Vec<Box<dyn SceCommand>>,
-    init: bool,
 }
 
 impl Director for SceDirector {
@@ -75,7 +74,6 @@ impl SceDirector {
             vm_context: SceVmContext::new(sce, entry_point),
             state,
             active_commands: vec![],
-            init: false,
         }
     }
 }

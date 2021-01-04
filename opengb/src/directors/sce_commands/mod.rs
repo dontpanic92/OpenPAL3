@@ -31,7 +31,7 @@ pub use role_path_to::SceCommandRolePathTo;
 pub use role_set_face::SceCommandRoleSetFace;
 pub use role_set_pos::SceCommandRoleSetPos;
 pub use role_show_action::SceCommandRoleShowAction;
-pub use role_turn_face::SceCommandRoleTurnFace;
+pub use role_turn_face::{SceCommandRoleTurnFace, SceCommandRoleTurnFaceA};
 pub use script_run_mode::SceCommandScriptRunMode;
 
 use crate::scene::{RoleEntity, ScnScene};

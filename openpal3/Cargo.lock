@@ -910,6 +910,7 @@ dependencies = [
 [[package]]
 name = "radiance"
 version = "0.1.0"
+source = "git+https://github.com/dontpanic92/radiance/#622e9922eb39073a43401b8386b209442017c92f"
 dependencies = [
  "alto",
  "ash",
@@ -933,6 +934,7 @@ dependencies = [
 [[package]]
 name = "radiance-assets"
 version = "0.1.0"
+source = "git+https://github.com/dontpanic92/radiance/#622e9922eb39073a43401b8386b209442017c92f"
 
 [[package]]
 name = "rand"
