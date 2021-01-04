@@ -1,4 +1,4 @@
-use super::sce_commands::*;
+use super::{exp_director::ExplorationDirector, sce_commands::*};
 use crate::directors::sce_state::SceState;
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
@@ -9,16 +9,20 @@ use radiance::{
     audio::{AudioEngine, AudioSourceState},
     input::InputEngine,
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::{Rc, Weak}};
 
 pub struct SceDirector {
-    asset_mgr: Rc<AssetManager>,
+    shared_self: Weak<RefCell<Self>>,
     vm_context: SceVmContext,
     state: SceState,
     active_commands: Vec<Box<dyn SceCommand>>,
 }
 
 impl Director for SceDirector {
+    fn activate(&mut self, scene_manager: &mut dyn SceneManager) {
+        debug!("SceDirector activated");
+    }
+
     fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
@@ -42,7 +46,9 @@ impl Director for SceDirector {
                             self.active_commands.push(cmd);
                         }
                     }
-                    None => break,
+                    None => {
+                        return Some(Rc::new(RefCell::new(ExplorationDirector::new(self.shared_self.upgrade().unwrap()))))
+                    },
                 };
 
                 if self.state.run_mode() == 1 {
@@ -66,15 +72,18 @@ impl SceDirector {
         sce: SceFile,
         entry_point: u32,
         asset_mgr: Rc<AssetManager>,
-    ) -> Self {
+    ) -> Rc<RefCell<Self>> {
         let state = SceState::new(audio_engine, input_engine, asset_mgr.clone());
 
-        Self {
-            asset_mgr,
+        let director = Rc::new(RefCell::new(Self {
+            shared_self: Weak::new(),
             vm_context: SceVmContext::new(sce, entry_point),
             state,
             active_commands: vec![],
-        }
+        }));
+
+        director.borrow_mut().shared_self = Rc::downgrade(&director);
+        director
     }
 }
 

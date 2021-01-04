@@ -2,7 +2,6 @@ use crate::asset_manager::AssetManager;
 use crate::loaders::{nav_loader::NavFile, scn_loader::*};
 use radiance::math::Vec3;
 use radiance::scene::{CoreEntity, CoreScene, Entity, SceneExtension};
-use std::path::PathBuf;
 use std::rc::Rc;
 
 pub struct ScnScene {

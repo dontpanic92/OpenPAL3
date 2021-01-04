@@ -33,13 +33,13 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
             &self.root_path,
         )));
 
-        let sce_director = Rc::new(RefCell::new(SceDirector::new(
+        let sce_director = SceDirector::new(
             app.engine_mut().audio_engine(),
             input_engine,
             self.asset_mgr.as_ref().unwrap().load_sce("Q01"),
             1001,
             self.asset_mgr.as_ref().unwrap().clone(),
-        )));
+        );
         app.engine_mut().scene_manager().set_director(sce_director);
 
         let scn = self.asset_mgr.as_ref().unwrap().load_scn("Q01", "yn09a");

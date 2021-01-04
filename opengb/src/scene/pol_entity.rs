@@ -1,14 +1,12 @@
 use crate::loaders::pol_loader::*;
-use crate::material::LightMapMaterialDef;
 use radiance::rendering::{
-    ComponentFactory, MaterialDef, SimpleMaterialDef, VertexBuffer, VertexComponents,
+    ComponentFactory, MaterialDef, VertexBuffer, VertexComponents,
 };
 use radiance::scene::{CoreEntity, EntityExtension};
 use radiance::{
     math::{Vec2, Vec3},
     rendering::RenderObject,
 };
-use std::path::PathBuf;
 use std::rc::Rc;
 
 pub struct PolModelEntity {

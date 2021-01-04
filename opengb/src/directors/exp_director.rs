@@ -1,5 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
+use log::debug;
 use radiance::scene::{Director, SceneManager};
 
 use super::SceDirector;
@@ -15,6 +16,10 @@ impl ExplorationDirector {
 }
 
 impl Director for ExplorationDirector {
+    fn activate(&mut self, scene_manager: &mut dyn SceneManager) {
+        debug!("ExplorationDirector activated");
+    }
+
     fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
