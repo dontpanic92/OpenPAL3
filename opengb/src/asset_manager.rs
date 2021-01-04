@@ -19,7 +19,7 @@ use crate::{
 };
 use log::debug;
 use mini_fs::prelude::*;
-use mini_fs::{CaselessFs, LocalFs, MiniFs};
+use mini_fs::{LocalFs, MiniFs};
 use radiance::rendering::{ComponentFactory, MaterialDef};
 use radiance::scene::{CoreEntity, Entity};
 use radiance::{math::Vec3, rendering::SimpleMaterialDef};
@@ -80,7 +80,12 @@ impl AssetManager {
     }
 
     pub fn load_role(self: &Rc<Self>, role_name: &str, default_action: &str) -> RoleEntity {
-        RoleEntity::new(&self, &self.factory, role_name, default_action)
+        RoleEntity::new(
+            self.clone(),
+            self.factory.clone(),
+            role_name,
+            default_action,
+        )
     }
 
     pub fn load_role_anim(&self, role_name: &str, action_name: &str) -> RoleAnimation {

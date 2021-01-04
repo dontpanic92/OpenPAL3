@@ -1,9 +1,9 @@
-use crate::director::sce_director::SceCommand;
-use crate::director::sce_state::SceState;
-use crate::scene::ScnScene;
+use super::SceneManagerExtensions;
+use crate::directors::sce_director::SceCommand;
+use crate::directors::sce_state::SceState;
 use imgui::Ui;
-use radiance::math::Vec3;
-use radiance::scene::{CoreScene, Scene};
+use radiance::scene::Scene;
+use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Clone)]
 pub struct SceCommandCameraDefault {}
@@ -11,13 +11,14 @@ pub struct SceCommandCameraDefault {}
 impl SceCommand for SceCommandCameraDefault {
     fn update(
         &mut self,
-        scene: &mut CoreScene<ScnScene>,
+        scene_manager: &mut dyn SceneManager,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
         let target = Vec3::new(0., 0., 0.);
-        scene
+        scene_manager
+            .scene_mut_or_fail()
             .camera_mut()
             .transform_mut()
             .set_position(&Vec3::new(300., 300., 300.))

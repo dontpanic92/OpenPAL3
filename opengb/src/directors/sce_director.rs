@@ -1,15 +1,15 @@
 use super::sce_commands::*;
-use crate::director::sce_state::SceState;
+use crate::directors::sce_state::SceState;
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile, scene::ScnScene};
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
 use log::{debug, error};
-use radiance::scene::{CoreScene, Director, Scene};
+use radiance::scene::{CoreScene, Director, Scene, SceneManager};
 use radiance::{
     audio::{AudioEngine, AudioSourceState},
     input::InputEngine,
 };
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 pub struct SceDirector {
     asset_mgr: Rc<AssetManager>,
@@ -20,12 +20,12 @@ pub struct SceDirector {
 }
 
 impl Director for SceDirector {
-    fn update(&mut self, scene: &mut Box<dyn Scene>, ui: &mut Ui, delta_sec: f32) {
-        let gb_scene = scene
-            .as_mut()
-            .downcast_mut::<CoreScene<ScnScene>>()
-            .unwrap();
-
+    fn update(
+        &mut self,
+        scene_manager: &mut dyn SceneManager,
+        ui: &mut Ui,
+        delta_sec: f32,
+    ) -> Option<Rc<RefCell<dyn Director>>> {
         if self.state.bgm_source().state() == AudioSourceState::Playing {
             self.state.bgm_source().update();
         }
@@ -38,8 +38,8 @@ impl Director for SceDirector {
             loop {
                 match self.vm_context.get_next_cmd() {
                     Some(mut cmd) => {
-                        cmd.initialize(gb_scene, &mut self.state);
-                        if !cmd.update(gb_scene, ui, &mut self.state, delta_sec) {
+                        cmd.initialize(scene_manager, &mut self.state);
+                        if !cmd.update(scene_manager, ui, &mut self.state, delta_sec) {
                             self.active_commands.push(cmd);
                         }
                     }
@@ -53,15 +53,17 @@ impl Director for SceDirector {
         } else {
             let state = &mut self.state;
             self.active_commands
-                .drain_filter(|cmd| cmd.update(gb_scene, ui, state, delta_sec));
+                .drain_filter(|cmd| cmd.update(scene_manager, ui, state, delta_sec));
         }
+
+        None
     }
 }
 
 impl SceDirector {
     pub fn new(
         audio_engine: &dyn AudioEngine,
-        input_engine: Rc<dyn InputEngine>,
+        input_engine: Rc<RefCell<dyn InputEngine>>,
         sce: SceFile,
         entry_point: u32,
         asset_mgr: Rc<AssetManager>,
@@ -319,7 +321,6 @@ impl SceVmContext {
                 error!("Unsupported command: {}", default);
                 self.put(4);
                 panic!();
-                None
             }
         }
     }
@@ -376,11 +377,11 @@ mod data_read {
 }
 
 pub trait SceCommand: dyn_clone::DynClone {
-    fn initialize(&mut self, scene: &mut CoreScene<ScnScene>, state: &mut SceState) {}
+    fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {}
 
     fn update(
         &mut self,
-        scene: &mut CoreScene<ScnScene>,
+        scene_manager: &mut dyn SceneManager,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,

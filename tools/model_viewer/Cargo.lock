@@ -65,17 +65,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "atty"
-version = "0.2.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
-dependencies = [
- "hermit-abi",
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -155,17 +144,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
 
 [[package]]
-name = "chrono"
-version = "0.4.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80094f509cf8b5ae86a4966a39b3ff66cd7e2a3e594accec3743ff3fabeab5b2"
-dependencies = [
- "num-integer",
- "num-traits 0.2.11",
- "time",
-]
-
-[[package]]
 name = "cloudabi"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -188,17 +166,6 @@ name = "color_quant"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0dbbb57365263e881e805dc77d94697c9118fd94d8da011240555aa7b23445bd"
-
-[[package]]
-name = "colored"
-version = "1.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4ffc801dacf156c5854b9df4f425a626539c3a6ef7893cc0c5084a23f0b6c59"
-dependencies = [
- "atty",
- "lazy_static 1.4.0",
- "winapi",
-]
 
 [[package]]
 name = "config"
@@ -623,6 +590,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3728d817d99e5ac407411fa471ff9800a778d88a24685968b36824eaf4bee400"
 
 [[package]]
+name = "memmap"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6585fd95e7bb50d6cc31e20d4cf9afb4e2ba16c5846fc76793f11218da9c475b"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "memoffset"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -634,12 +611,19 @@ dependencies = [
 [[package]]
 name = "mini-fs"
 version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "def96ec7be825058f3ac8a9232441a20052ec8d182341c4dfe7a6c169f0e7b3a"
+source = "git+https://github.com/dontpanic92/mini-fs/#aa9398d68c25eca15dbec707db63dea6eece90dd"
 dependencies = [
  "flate2",
  "tar",
  "zip",
+]
+
+[[package]]
+name = "minilzo-rs"
+version = "0.5.0"
+source = "git+https://github.com/dontpanic92/minilzo-rs/#d0fd799902ff1d7cb33a9297236fff8672c2d0bc"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -785,10 +769,11 @@ dependencies = [
  "image",
  "imgui",
  "log",
+ "memmap",
  "mini-fs",
+ "minilzo-rs",
  "radiance 0.1.0",
  "serde 1.0.106",
- "simple_logger",
 ]
 
 [[package]]
@@ -897,6 +882,7 @@ dependencies = [
  "imgui-rs-vulkan-renderer",
  "lazy_static 1.4.0",
  "lewton",
+ "log",
  "memoffset",
  "minimp3",
  "radiance-assets 0.1.0",
@@ -1153,19 +1139,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "110b3dbdf8607ec493c22d5d947753282f3bae73c0f56d322af1e8c78e4c23d5"
 dependencies = [
  "serde 0.8.23",
-]
-
-[[package]]
-name = "simple_logger"
-version = "1.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fea0c4611f32f4c2bac73754f22dca1f57e6c1945e0590dae4e5f2a077b92367"
-dependencies = [
- "atty",
- "chrono",
- "colored",
- "log",
- "winapi",
 ]
 
 [[package]]
