@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 pub trait InputEngine {
     fn get_key_state(&self, key: Key) -> KeyState;
@@ -65,7 +65,6 @@ impl KeyState {
 }
 
 pub(crate) trait InputEngineInternal: InputEngine {
-    fn update(&self, delta_sec: f32);
-
-    fn to_input_engine(self: Rc<Self>) -> Rc<dyn InputEngine>;
+    fn update(&mut self, delta_sec: f32);
+    fn as_input_engine(&self) -> Rc<RefCell<dyn InputEngine>>;
 }

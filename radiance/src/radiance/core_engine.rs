@@ -1,31 +1,33 @@
-use crate::rendering::{self, ImguiFrame, RenderingEngine};
 use crate::{
     audio::AudioEngine,
     input::{InputEngine, InputEngineInternal},
     scene::{CoreScene, Director, Scene, SceneExtension},
 };
-use std::rc::Rc;
+use crate::{
+    rendering::{self, ImguiFrame, RenderingEngine},
+    scene::SceneManager,
+};
+use std::{cell::RefCell, rc::Rc};
 
 pub struct CoreRadianceEngine {
     rendering_engine: Box<dyn RenderingEngine>,
     audio_engine: Box<dyn AudioEngine>,
-    input_engine: Rc<dyn InputEngineInternal>,
-    scene: Option<Box<dyn Scene>>,
-    director: Option<Box<dyn Director>>,
+    input_engine: Rc<RefCell<dyn InputEngineInternal>>,
+    scene_manager: Box<dyn SceneManager>,
 }
 
 impl CoreRadianceEngine {
     pub(crate) fn new(
         rendering_engine: Box<dyn RenderingEngine>,
         audio_engine: Box<dyn AudioEngine>,
-        input_engine: Rc<dyn InputEngineInternal>,
+        input_engine: Rc<RefCell<dyn InputEngineInternal>>,
+        scene_manager: Box<dyn SceneManager>,
     ) -> Self {
         Self {
             rendering_engine,
             audio_engine,
             input_engine,
-            scene: None,
-            director: None,
+            scene_manager,
         }
     }
 
@@ -37,71 +39,27 @@ impl CoreRadianceEngine {
         self.audio_engine.as_mut()
     }
 
-    pub fn input_engine(&self) -> Rc<dyn InputEngine> {
-        self.input_engine.clone().to_input_engine()
+    pub fn input_engine(&self) -> Rc<RefCell<dyn InputEngine>> {
+        self.input_engine.borrow().as_input_engine()
     }
 
-    pub fn set_director(&mut self, director: Box<dyn Director>) {
-        self.director = Some(director);
-    }
-
-    pub fn load_scene<TScene: 'static + Scene>(&mut self, scene: TScene) {
-        self.unload_scene();
-        self.scene = Some(Box::new(scene));
-        let scene_mut = self.scene.as_mut().unwrap().as_mut();
-        scene_mut.load();
-        self.rendering_engine.scene_loaded(scene_mut);
-    }
-
-    pub fn load_scene2<TSceneExtension: 'static + SceneExtension<TSceneExtension>>(
-        &mut self,
-        scene: TSceneExtension,
-        fov: f32,
-    ) {
-        self.unload_scene();
-        let extent = self.rendering_engine.view_extent();
-        self.scene = Some(Box::new(CoreScene::new(
-            scene,
-            extent.0 as f32 / extent.1 as f32,
-            fov,
-        )));
-        let scene_mut = self.scene.as_mut().unwrap().as_mut();
-        scene_mut.load();
-        self.rendering_engine.scene_loaded(scene_mut);
-    }
-
-    pub fn unload_scene(&mut self) {
-        match self.scene.as_mut() {
-            Some(s) => s.unload(),
-            None => (),
-        }
-
-        self.scene = None;
-    }
-
-    pub fn current_scene_mut(&mut self) -> Option<&mut Box<dyn Scene>> {
-        self.scene.as_mut()
+    pub fn scene_manager(&mut self) -> &mut dyn SceneManager {
+        self.scene_manager.as_mut()
     }
 
     pub fn update(&mut self, delta_sec: f32) {
-        self.input_engine.update(delta_sec);
-        let scene = self.scene.as_mut().unwrap();
+        self.input_engine.borrow_mut().update(delta_sec);
 
-        let ui_frame = if let Some(d) = &mut self.director {
-            self.rendering_engine.gui_context_mut().draw_ui(|ui| {
-                d.update(scene, ui, delta_sec);
-            })
-        } else {
-            ImguiFrame::default()
-        };
+        let scene_manager = &mut self.scene_manager;
+        let ui_frame = self.rendering_engine.gui_context_mut().draw_ui(|ui| {
+            scene_manager.update(ui, delta_sec);
+        });
 
-        scene.update(delta_sec);
-        self.rendering_engine.render(scene.as_mut(), ui_frame);
-    }
-}
-
-impl Drop for CoreRadianceEngine {
-    fn drop(&mut self) {
-        self.unload_scene();
+        let scene = self.scene_manager.scene_mut();
+        if let Some(s) = scene {
+            let extent = self.rendering_engine.view_extent();
+            s.camera_mut().set_aspect(extent.0 as f32 / extent.1 as f32);
+            self.rendering_engine.render(s, ui_frame);
+        }
     }
 }

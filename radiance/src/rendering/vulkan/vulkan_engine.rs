@@ -83,8 +83,6 @@ impl RenderingEngine for VulkanRenderingEngine {
         )
     }
 
-    fn scene_loaded(&mut self, scene: &mut dyn Scene) {}
-
     fn component_factory(&self) -> Rc<dyn ComponentFactory> {
         self.component_factory.as_component_factory()
     }

@@ -7,10 +7,7 @@ use std::rc::Rc;
 
 pub trait RenderingEngine {
     fn render(&mut self, scene: &mut dyn Scene, ui_frame: ImguiFrame);
-    fn scene_loaded(&mut self, scene: &mut dyn Scene);
-
     fn view_extent(&self) -> (u32, u32);
     fn gui_context_mut(&mut self) -> &mut ImguiContext;
-
     fn component_factory(&self) -> Rc<dyn ComponentFactory>;
 }

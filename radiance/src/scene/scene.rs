@@ -33,11 +33,11 @@ pub struct CoreScene<TExtension: SceneExtension<TExtension>> {
 }
 
 impl<TExtension: SceneExtension<TExtension>> CoreScene<TExtension> {
-    pub fn new(ext_calls: TExtension, camera_aspect: f32, camera_fov_degree: f32) -> Self {
+    pub fn new(ext_calls: TExtension) -> Self {
         Self {
             entities: vec![],
             extension: Rc::new(RefCell::new(ext_calls)),
-            camera: Camera::new(camera_fov_degree * PI / 180., camera_aspect, 0.1, 100000.),
+            camera: Camera::new(),
         }
     }
 
