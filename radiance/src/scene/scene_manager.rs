@@ -39,7 +39,11 @@ impl SceneManager for DefaultSceneManager {
     fn update(&mut self, ui: &mut Ui, delta_sec: f32) {
         if let Some(d) = self.director.as_ref() {
             let director = d.clone();
-            director.borrow_mut().update(self, ui, delta_sec);
+            let new_director = director.borrow_mut().update(self, ui, delta_sec);
+            if let Some(d) = new_director {
+                d.borrow_mut().activate(self);
+                self.director = Some(d);
+            }
         }
 
         if let Some(s) = scene!(self) {
@@ -56,6 +60,7 @@ impl SceneManager for DefaultSceneManager {
     }
 
     fn set_director(&mut self, director: Rc<RefCell<dyn Director>>) {
+        director.borrow_mut().activate(self);
         self.director = Some(director);
     }
 
