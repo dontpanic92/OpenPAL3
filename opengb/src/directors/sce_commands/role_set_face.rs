@@ -1,10 +1,10 @@
+use super::SceneManagerExtensions;
 use super::{map_role_id, SceneRoleExtensions};
-use crate::director::sce_director::SceCommand;
-use crate::director::sce_state::SceState;
-use crate::scene::ScnScene;
+use crate::directors::sce_director::SceCommand;
+use crate::directors::sce_state::SceState;
 use imgui::Ui;
-use radiance::math::Vec3;
-use radiance::scene::{CoreScene, Entity};
+use radiance::scene::Entity;
+use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Clone)]
 pub struct SceCommandRoleSetFace {
@@ -15,11 +15,12 @@ pub struct SceCommandRoleSetFace {
 impl SceCommand for SceCommandRoleSetFace {
     fn update(
         &mut self,
-        scene: &mut CoreScene<ScnScene>,
+        scene_manager: &mut dyn SceneManager,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
+        let scene = scene_manager.scene_mut_or_fail();
         let entity = scene.get_role_entity(&self.role_id);
         let position = entity.transform().position();
         let target = Vec3::add(&position, &self.face_to);

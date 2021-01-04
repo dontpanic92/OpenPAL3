@@ -1,5 +1,5 @@
 use log::debug;
-use opengb::{asset_manager::AssetManager, config::OpenGbConfig, director::SceDirector};
+use opengb::{asset_manager::AssetManager, config::OpenGbConfig, directors::SceDirector};
 use radiance::application::utils::FpsCounter;
 use radiance::{
     application::{Application, ApplicationExtension},
@@ -26,15 +26,16 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
     fn on_initialized(&mut self, app: &mut Application<OpenPal3Application>) {
         simple_logger::init().unwrap();
         app.set_title(&self.app_name);
+
+        let input_engine = app.engine_mut().input_engine();
         self.asset_mgr = Some(Rc::new(AssetManager::new(
             app.engine_mut().rendering_component_factory(),
             &self.root_path,
         )));
 
-        let input = app.engine_mut().input_engine();
         let sce_director = Box::new(SceDirector::new(
             app.engine_mut().audio_engine(),
-            input,
+            input_engine,
             self.asset_mgr.as_ref().unwrap().load_sce("Q01"),
             1001,
             self.asset_mgr.as_ref().unwrap().clone(),

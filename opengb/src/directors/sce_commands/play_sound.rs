@@ -1,9 +1,10 @@
-use crate::director::sce_director::SceCommand;
-use crate::director::sce_state::SceState;
-use crate::scene::ScnScene;
+use crate::directors::sce_director::SceCommand;
+use crate::directors::sce_state::SceState;
 use imgui::Ui;
-use radiance::audio::{AudioSourceState, Codec};
-use radiance::scene::CoreScene;
+use radiance::{
+    audio::{AudioSourceState, Codec},
+    scene::SceneManager,
+};
 
 #[derive(Clone)]
 pub struct SceCommandPlaySound {
@@ -12,14 +13,14 @@ pub struct SceCommandPlaySound {
 }
 
 impl SceCommand for SceCommandPlaySound {
-    fn initialize(&mut self, scene: &mut CoreScene<ScnScene>, state: &mut SceState) {
+    fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
         let data = state.asset_mgr().load_snd_data(&self.name);
         state.sound_source().play(data, Codec::Wav, false);
     }
 
     fn update(
         &mut self,
-        scene: &mut CoreScene<ScnScene>,
+        scene_manager: &mut dyn SceneManager,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,

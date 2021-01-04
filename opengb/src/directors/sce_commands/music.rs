@@ -1,9 +1,7 @@
-use crate::director::sce_director::SceCommand;
-use crate::director::sce_state::SceState;
-use crate::scene::ScnScene;
+use crate::directors::sce_director::SceCommand;
+use crate::directors::sce_state::SceState;
 use imgui::Ui;
-use radiance::audio::Codec;
-use radiance::scene::CoreScene;
+use radiance::{audio::Codec, scene::SceneManager};
 
 #[derive(Clone)]
 pub struct SceCommandMusic {
@@ -13,7 +11,7 @@ pub struct SceCommandMusic {
 impl SceCommand for SceCommandMusic {
     fn update(
         &mut self,
-        scene: &mut CoreScene<ScnScene>,
+        scene_manager: &mut dyn SceneManager,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,

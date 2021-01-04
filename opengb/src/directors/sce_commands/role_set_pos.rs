@@ -1,9 +1,9 @@
+use super::SceneManagerExtensions;
 use super::{map_role_id, nav_coord_to_scene_coord, SceneRoleExtensions};
-use crate::director::sce_director::SceCommand;
-use crate::director::sce_state::SceState;
-use crate::scene::ScnScene;
+use crate::directors::sce_director::SceCommand;
+use crate::directors::sce_state::SceState;
 use imgui::Ui;
-use radiance::scene::{CoreScene, Entity};
+use radiance::scene::{Entity, SceneManager};
 
 #[derive(Clone)]
 pub struct SceCommandRoleSetPos {
@@ -15,11 +15,12 @@ pub struct SceCommandRoleSetPos {
 impl SceCommand for SceCommandRoleSetPos {
     fn update(
         &mut self,
-        scene: &mut CoreScene<ScnScene>,
+        scene_manager: &mut dyn SceneManager,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
+        let scene = scene_manager.scene_mut_or_fail();
         let position = nav_coord_to_scene_coord(scene, self.nav_x, self.nav_y);
         scene
             .get_role_entity(&self.role_id)

@@ -1,10 +1,10 @@
+use super::SceneManagerExtensions;
 use super::{map_role_id, SceneRoleExtensions};
-use crate::director::sce_director::SceCommand;
-use crate::director::sce_state::SceState;
-use crate::scene::ScnScene;
+use crate::directors::sce_director::SceCommand;
+use crate::directors::sce_state::SceState;
 use imgui::Ui;
-use radiance::math::Vec3;
-use radiance::scene::{CoreScene, Entity};
+use radiance::scene::Entity;
+use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Clone)]
 pub struct SceCommandRoleTurnFace {
@@ -13,16 +13,15 @@ pub struct SceCommandRoleTurnFace {
 }
 
 impl SceCommand for SceCommandRoleTurnFace {
-    fn initialize(&mut self, scene: &mut CoreScene<ScnScene>, state: &mut SceState) {}
-
     fn update(
         &mut self,
-        scene: &mut CoreScene<ScnScene>,
+        scene_manager: &mut dyn SceneManager,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        scene
+        scene_manager
+            .scene_mut_or_fail()
             .get_role_entity(&self.role_id)
             .transform_mut()
             .rotate_axis_angle_local(&Vec3::UP, -self.degree.to_radians());

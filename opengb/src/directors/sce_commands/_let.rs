@@ -1,9 +1,6 @@
-use crate::{
-    director::{sce_director::SceCommand, sce_state::SceState},
-    scene::ScnScene,
-};
+use crate::directors::{sce_director::SceCommand, sce_state::SceState};
 use imgui::Ui;
-use radiance::scene::CoreScene;
+use radiance::scene::SceneManager;
 
 #[derive(Clone)]
 pub struct SceCommandLet {
@@ -14,7 +11,7 @@ pub struct SceCommandLet {
 impl SceCommand for SceCommandLet {
     fn update(
         &mut self,
-        scene: &mut CoreScene<ScnScene>,
+        scene_manager: &mut dyn SceneManager,
         ui: &mut Ui,
         state: &mut SceState,
         delta_sec: f32,

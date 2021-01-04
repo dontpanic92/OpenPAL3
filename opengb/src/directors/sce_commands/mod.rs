@@ -34,11 +34,10 @@ pub use role_show_action::SceCommandRoleShowAction;
 pub use role_turn_face::SceCommandRoleTurnFace;
 pub use script_run_mode::SceCommandScriptRunMode;
 
-use super::sce_state::SceState;
 use crate::scene::{RoleEntity, ScnScene};
 use radiance::{
     math::Vec3,
-    scene::{CoreEntity, CoreScene, Scene},
+    scene::{CoreEntity, CoreScene, Scene, SceneManager},
 };
 
 struct Direction;
@@ -123,3 +122,14 @@ impl SceneRoleExtensions for CoreScene<ScnScene> {
             .unwrap()
     }
 }
+
+pub trait SceneManagerExtensions: SceneManager {
+    fn scene_mut_or_fail(&mut self) -> &mut CoreScene<ScnScene> {
+        self.scene_mut()
+            .expect("No scene loaded. Probably a bug in Sce procedures.")
+            .downcast_mut::<CoreScene<ScnScene>>()
+            .unwrap()
+    }
+}
+
+impl<T: SceneManager + ?Sized> SceneManagerExtensions for T {}

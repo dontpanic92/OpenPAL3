@@ -1,11 +1,14 @@
 use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
-use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{
-    ComponentFactory, MaterialDef, RenderObject, SimpleMaterialDef, VertexBuffer, VertexComponents,
+    ComponentFactory, MaterialDef, RenderObject, VertexBuffer, VertexComponents,
 };
-use radiance::scene::{CoreEntity, Entity, EntityExtension};
-use std::collections::HashMap;
-use std::{any::Any, rc::Rc};
+use radiance::scene::{CoreEntity, EntityExtension};
+use radiance::{
+    input::{InputEngine, Key},
+    math::{Vec2, Vec3},
+};
+use std::rc::Rc;
+use std::{cell::RefCell, collections::HashMap};
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum RoleAnimationRepeatMode {
@@ -34,8 +37,8 @@ pub struct RoleEntity {
 
 impl RoleEntity {
     pub fn new(
-        asset_mgr: &Rc<AssetManager>,
-        component_factory: &Rc<dyn ComponentFactory>,
+        asset_mgr: Rc<AssetManager>,
+        component_factory: Rc<dyn ComponentFactory>,
         role_name: &str,
         idle_anim: &str,
     ) -> RoleEntity {
@@ -47,10 +50,10 @@ impl RoleEntity {
             );
         }
 
-        RoleEntity {
+        Self {
             name: role_name.to_string(),
-            asset_mgr: asset_mgr.clone(),
-            component_factory: component_factory.clone(),
+            asset_mgr,
+            component_factory,
             animations,
             active_anim_name: idle_anim.to_string(),
             idle_anim_name: idle_anim.to_string(),
@@ -224,7 +227,7 @@ impl RoleAnimation {
         let anim_timestamps = model.frames.iter().map(|f| f.timestamp).collect();
         let vertices = frames[0].clone();
 
-        RoleAnimation {
+        Self {
             component_factory: component_factory.clone(),
             frames,
             anim_timestamps,
