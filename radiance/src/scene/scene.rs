@@ -3,7 +3,8 @@ use super::{
     Camera,
 };
 use std::cell::{Ref, RefCell, RefMut};
-use std::{f32::consts::PI, rc::Rc};
+use std::ops::{Deref, DerefMut};
+use std::rc::Rc;
 
 pub trait Scene: downcast_rs::Downcast {
     fn load(&mut self);
@@ -18,25 +19,49 @@ pub trait Scene: downcast_rs::Downcast {
 
 downcast_rs::impl_downcast!(Scene);
 
-pub trait SceneExtension<TImpl: SceneExtension<TImpl>> {
-    define_ext_fn!(on_loading, CoreScene, TImpl);
-    define_ext_fn!(on_loaded, CoreScene, TImpl);
-    define_ext_fn!(on_updating, CoreScene, TImpl, _delta_sec: f32);
-    define_ext_fn!(on_updated, CoreScene, TImpl, _delta_sec: f32);
-    define_ext_fn!(on_ui_drawing, CoreScene, TImpl);
+pub trait SceneExtension {
+    fn on_loading(self: &mut CoreScene<Self>)
+    where
+        Self: Sized + 'static,
+    {
+    }
+
+    fn on_loaded(self: &mut CoreScene<Self>)
+    where
+        Self: Sized + 'static,
+    {
+    }
+
+    fn on_updating(self: &mut CoreScene<Self>, _delta_sec: f32)
+    where
+        Self: Sized + 'static,
+    {
+    }
+
+    fn on_updated(self: &mut CoreScene<Self>, _delta_sec: f32)
+    where
+        Self: Sized + 'static,
+    {
+    }
+
+    fn on_ui_drawing(self: &mut CoreScene<Self>)
+    where
+        Self: Sized + 'static,
+    {
+    }
 }
 
-pub struct CoreScene<TExtension: SceneExtension<TExtension>> {
+pub struct CoreScene<TExtension: SceneExtension> {
     entities: Vec<Box<dyn Entity>>,
-    extension: Rc<RefCell<TExtension>>,
+    extension: TExtension,
     camera: Camera,
 }
 
-impl<TExtension: SceneExtension<TExtension>> CoreScene<TExtension> {
+impl<TExtension: SceneExtension> CoreScene<TExtension> {
     pub fn new(ext_calls: TExtension) -> Self {
         Self {
             entities: vec![],
-            extension: Rc::new(RefCell::new(ext_calls)),
+            extension: ext_calls,
             camera: Camera::new(),
         }
     }
@@ -45,43 +70,59 @@ impl<TExtension: SceneExtension<TExtension>> CoreScene<TExtension> {
         self.entities.push(Box::new(entity));
     }
 
-    pub fn extension(&self) -> Ref<TExtension> {
-        self.extension.borrow()
+    pub fn extension(&self) -> &TExtension {
+        &self.extension
     }
 
-    pub fn extension_mut(&self) -> RefMut<TExtension> {
-        self.extension.borrow_mut()
+    pub fn extension_mut(&mut self) -> &mut TExtension {
+        &mut self.extension
+    }
+}
+
+impl<TExtension: SceneExtension + 'static> Deref for CoreScene<TExtension> {
+    type Target = TExtension;
+
+    #[inline(always)]
+    fn deref(&self) -> &TExtension {
+        &self.extension
+    }
+}
+
+impl<TExtension: SceneExtension + 'static> DerefMut for CoreScene<TExtension> {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut TExtension {
+        &mut self.extension
     }
 }
 
 mod private {
     pub struct DefaultExtension {}
-    impl super::SceneExtension<DefaultExtension> for DefaultExtension {}
+    impl super::SceneExtension for DefaultExtension {}
 }
 
 pub type DefaultScene = CoreScene<private::DefaultExtension>;
 
-impl<TExtension: 'static + SceneExtension<TExtension>> Scene for CoreScene<TExtension> {
+impl<TExtension: 'static + SceneExtension> Scene for CoreScene<TExtension> {
     fn load(&mut self) {
-        ext_call!(self, on_loading);
+        self.on_loading();
         for entity in &mut self.entities {
             entity.load();
         }
 
-        ext_call!(self, on_loaded);
+        self.on_loaded();
     }
 
     fn update(&mut self, delta_sec: f32) {
-        ext_call!(self, on_updating, delta_sec);
+        self.on_updating(delta_sec);
         for e in &mut self.entities {
             e.update(delta_sec);
         }
 
-        ext_call!(self, on_updated, delta_sec);
+        self.on_updated(delta_sec);
     }
 
     fn draw_ui(&mut self, ui: &mut imgui::Ui) {
-        ext_call!(self, on_ui_drawing);
+        self.on_ui_drawing();
     }
 
     fn unload(&mut self) {}
