@@ -2,7 +2,7 @@ use super::{
     entity::{CoreEntity, Entity, EntityExtension},
     Camera,
 };
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell, RefMut};
 use std::{f32::consts::PI, rc::Rc};
 
 pub trait Scene: downcast_rs::Downcast {
@@ -45,8 +45,12 @@ impl<TExtension: SceneExtension<TExtension>> CoreScene<TExtension> {
         self.entities.push(Box::new(entity));
     }
 
-    pub fn extension(&self) -> &Rc<RefCell<TExtension>> {
-        &self.extension
+    pub fn extension(&self) -> Ref<TExtension> {
+        self.extension.borrow()
+    }
+
+    pub fn extension_mut(&self) -> RefMut<TExtension> {
+        self.extension.borrow_mut()
     }
 }
 
