@@ -9,10 +9,14 @@ use radiance::{
     audio::{AudioEngine, AudioSourceState},
     input::InputEngine,
 };
-use std::{cell::RefCell, rc::{Rc, Weak}};
+use std::{
+    cell::RefCell,
+    rc::{Rc, Weak},
+};
 
 pub struct SceDirector {
     shared_self: Weak<RefCell<Self>>,
+    input_engine: Rc<RefCell<dyn InputEngine>>,
     vm_context: SceVmContext,
     state: SceState,
     active_commands: Vec<Box<dyn SceCommand>>,
@@ -47,8 +51,11 @@ impl Director for SceDirector {
                         }
                     }
                     None => {
-                        return Some(Rc::new(RefCell::new(ExplorationDirector::new(self.shared_self.upgrade().unwrap()))))
-                    },
+                        return Some(Rc::new(RefCell::new(ExplorationDirector::new(
+                            self.shared_self.upgrade().unwrap(),
+                            self.input_engine.clone(),
+                        ))))
+                    }
                 };
 
                 if self.state.run_mode() == 1 {
@@ -73,10 +80,11 @@ impl SceDirector {
         entry_point: u32,
         asset_mgr: Rc<AssetManager>,
     ) -> Rc<RefCell<Self>> {
-        let state = SceState::new(audio_engine, input_engine, asset_mgr.clone());
+        let state = SceState::new(audio_engine, input_engine.clone(), asset_mgr.clone());
 
         let director = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
+            input_engine,
             vm_context: SceVmContext::new(sce, entry_point),
             state,
             active_commands: vec![],

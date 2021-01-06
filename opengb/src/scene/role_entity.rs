@@ -20,6 +20,7 @@ pub enum RoleAnimationRepeatMode {
 pub enum RoleState {
     PlayingAnimation,
     Idle,
+    Running,
 }
 
 pub struct RoleEntity {
@@ -81,6 +82,7 @@ impl RoleEntity {
     ) {
         self.state = match anim_name.to_lowercase().as_ref() {
             "c01" => RoleState::Idle,
+            "c03" => RoleState::Running,
             _ => RoleState::PlayingAnimation,
         };
 
@@ -96,6 +98,18 @@ impl RoleEntity {
         self.remove_component::<Box<dyn RenderObject>>();
         let ro = self.active_anim().render_object();
         self.add_component::<Box<dyn RenderObject>>(Box::new(ro));
+    }
+
+    pub fn run(self: &mut CoreEntity<Self>) {
+        if self.state != RoleState::Running {
+            self.play_anim("c03", RoleAnimationRepeatMode::Repeat);
+        }
+    }
+
+    pub fn idle(self: &mut CoreEntity<Self>) {
+        if self.state != RoleState::Idle {
+            self.play_anim("c01", RoleAnimationRepeatMode::Repeat);
+        }
     }
 
     pub fn set_auto_play_idle(&mut self, auto_play_idle: bool) {

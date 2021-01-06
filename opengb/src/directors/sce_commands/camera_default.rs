@@ -1,9 +1,11 @@
-use super::SceneManagerExtensions;
 use crate::directors::sce_director::SceCommand;
 use crate::directors::sce_state::SceState;
+use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
-use radiance::scene::Scene;
-use radiance::{math::Vec3, scene::SceneManager};
+use radiance::{
+    math::Vec3,
+    scene::{Scene, SceneManager},
+};
 
 #[derive(Clone)]
 pub struct SceCommandCameraDefault {}

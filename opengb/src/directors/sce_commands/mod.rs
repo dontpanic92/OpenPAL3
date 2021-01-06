@@ -94,7 +94,7 @@ pub fn map_role_id(role_id: i32) -> i32 {
 
 const BLOCK_SIZE: f32 = 12.5;
 pub fn nav_coord_to_scene_coord(scene: &CoreScene<ScnScene>, nav_x: f32, nav_y: f32) -> Vec3 {
-    let ext = scene.extension().borrow();
+    let ext = scene.extension();
     let origin = ext.nav_origin();
     Vec3::new(
         nav_x * BLOCK_SIZE + origin.x,
@@ -102,34 +102,3 @@ pub fn nav_coord_to_scene_coord(scene: &CoreScene<ScnScene>, nav_x: f32, nav_y: 
         nav_y * BLOCK_SIZE + origin.z,
     )
 }
-
-trait SceneRoleExtensions {
-    fn get_role_entity(&mut self, name: &str) -> &mut CoreEntity<RoleEntity>;
-}
-
-impl SceneRoleExtensions for CoreScene<ScnScene> {
-    fn get_role_entity(&mut self, name: &str) -> &mut CoreEntity<RoleEntity> {
-        let pos = self
-            .entities_mut()
-            .iter()
-            .position(|e| e.name() == name)
-            .unwrap();
-        self.entities_mut()
-            .get_mut(pos)
-            .unwrap()
-            .as_mut()
-            .downcast_mut::<CoreEntity<RoleEntity>>()
-            .unwrap()
-    }
-}
-
-pub trait SceneManagerExtensions: SceneManager {
-    fn scene_mut_or_fail(&mut self) -> &mut CoreScene<ScnScene> {
-        self.scene_mut()
-            .expect("No scene loaded. Probably a bug in Sce procedures.")
-            .downcast_mut::<CoreScene<ScnScene>>()
-            .unwrap()
-    }
-}
-
-impl<T: SceneManager + ?Sized> SceneManagerExtensions for T {}

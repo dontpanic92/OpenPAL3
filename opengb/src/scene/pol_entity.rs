@@ -1,7 +1,5 @@
 use crate::loaders::pol_loader::*;
-use radiance::rendering::{
-    ComponentFactory, MaterialDef, VertexBuffer, VertexComponents,
-};
+use radiance::rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents};
 use radiance::scene::{CoreEntity, EntityExtension};
 use radiance::{
     math::{Vec2, Vec3},

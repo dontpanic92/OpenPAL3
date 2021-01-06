@@ -1,7 +1,7 @@
-use super::SceneManagerExtensions;
-use super::{map_role_id, SceneRoleExtensions};
+use super::map_role_id;
 use crate::directors::sce_director::SceCommand;
 use crate::directors::sce_state::SceState;
+use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
 use radiance::scene::Entity;
 use radiance::{math::Vec3, scene::SceneManager};
