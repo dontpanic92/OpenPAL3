@@ -62,18 +62,21 @@ impl Director for ExplorationDirector {
         }
 
         direction.normalize();
-        debug!("Direction: {:?}", &direction);
 
-        let entity = scene_manager.scene_mut_or_fail().get_role_entity("101");
-        if direction.norm() > 0.5 {
+        let scene = scene_manager.scene_mut_or_fail();
+        let position = scene.get_role_entity("101").transform().position();
+
+        let speed = 175.;
+        let target_position = Vec3::add(&position, &Vec3::dot(speed * delta_sec, &direction));
+        let distance_to_border = scene.get_distance_to_border_by_scene_coord(&target_position);
+
+        let entity = scene.get_role_entity_mut("101");
+        if direction.norm() > 0.5 && distance_to_border > std::f32::EPSILON {
             entity.run();
-
-            let speed = 150.;
-            let position = entity.transform().position();
             entity
                 .transform_mut()
-                .look_at(&Vec3::add(&position, &direction))
-                .translate(&Vec3::dot(speed * delta_sec, &direction));
+                .look_at(&target_position)
+                .set_position(&target_position);
         } else {
             entity.idle();
         }

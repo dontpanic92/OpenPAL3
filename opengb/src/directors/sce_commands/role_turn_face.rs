@@ -22,7 +22,7 @@ impl SceCommand for SceCommandRoleTurnFace {
     ) -> bool {
         scene_manager
             .scene_mut_or_fail()
-            .get_role_entity(&self.role_id)
+            .get_role_entity_mut(&self.role_id)
             .transform_mut()
             .rotate_axis_angle_local(&Vec3::UP, -self.degree.to_radians());
         true

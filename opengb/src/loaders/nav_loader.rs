@@ -6,9 +6,9 @@ use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
 #[derive(Debug)]
-pub struct NavUnknown11 {
-    pub f: f32,
-    pub dw: u32,
+pub struct NavMapPoint {
+    pub height: f32,
+    pub distance_to_border: u32,
 }
 
 #[derive(Debug)]
@@ -19,13 +19,13 @@ pub struct NavUnknown22 {
 }
 
 #[derive(Debug)]
-pub struct NavUnknown1 {
+pub struct NavMap {
     pub unknown: Option<Vec<u32>>, // count: 32
-    pub unknown_vec: Vec3,
-    pub origin: Vec3,
+    pub max_coord: Vec3,
+    pub min_coord: Vec3,
     pub width: u32,
     pub height: u32,
-    pub unknown1: Vec<Vec<NavUnknown11>>,
+    pub map: Vec<Vec<NavMapPoint>>,
 }
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ pub struct NavUnknown2 {
 #[derive(Debug)]
 pub struct NavFile {
     pub version: u32,
-    pub unknown1: Vec<NavUnknown1>,
+    pub maps: Vec<NavMap>,
     pub unknown2: Vec<NavUnknown2>,
 }
 
@@ -63,9 +63,9 @@ pub fn nav_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> NavFile {
     reader
         .seek(SeekFrom::Start(unknown1_offset as u64))
         .unwrap();
-    let mut unknown1 = vec![];
+    let mut maps = vec![];
     for _ in 0..count {
-        unknown1.push(nav_read_unknown1(&mut reader, version));
+        maps.push(nav_read_unknown1(&mut reader, version));
     }
 
     reader
@@ -78,44 +78,47 @@ pub fn nav_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> NavFile {
 
     NavFile {
         version: version as u32,
-        unknown1,
+        maps,
         unknown2,
     }
 }
 
-fn nav_read_unknown1(reader: &mut dyn Read, version: u8) -> NavUnknown1 {
+fn nav_read_unknown1(reader: &mut dyn Read, version: u8) -> NavMap {
     let mut unknown = None;
     if version == 2 {
         unknown = Some(reader.read_dw_vec(32).unwrap());
     }
 
-    let vec1_x = reader.read_f32::<LittleEndian>().unwrap();
-    let vec1_y = reader.read_f32::<LittleEndian>().unwrap();
-    let vec1_z = reader.read_f32::<LittleEndian>().unwrap();
-    let vec2_x = reader.read_f32::<LittleEndian>().unwrap();
-    let vec2_y = reader.read_f32::<LittleEndian>().unwrap();
-    let vec2_z = reader.read_f32::<LittleEndian>().unwrap();
+    let max_coord_x = reader.read_f32::<LittleEndian>().unwrap();
+    let max_coord_y = reader.read_f32::<LittleEndian>().unwrap();
+    let max_coord_z = reader.read_f32::<LittleEndian>().unwrap();
+    let min_coord_x = reader.read_f32::<LittleEndian>().unwrap();
+    let min_coord_y = reader.read_f32::<LittleEndian>().unwrap();
+    let min_coord_z = reader.read_f32::<LittleEndian>().unwrap();
     let width = reader.read_u32::<LittleEndian>().unwrap();
     let height = reader.read_u32::<LittleEndian>().unwrap();
-    let mut unknown1 = vec![];
-    for _ in 0..width {
+    let mut map = vec![];
+    for _ in 0..height {
         let mut tmp = vec![];
-        for _ in 0..height {
-            let f = reader.read_f32::<LittleEndian>().unwrap();
-            let dw = reader.read_u32::<LittleEndian>().unwrap();
-            tmp.push(NavUnknown11 { f, dw })
+        for _ in 0..width {
+            let height = reader.read_f32::<LittleEndian>().unwrap();
+            let distance_to_border = reader.read_u32::<LittleEndian>().unwrap();
+            tmp.push(NavMapPoint {
+                height,
+                distance_to_border,
+            })
         }
 
-        unknown1.push(tmp);
+        map.push(tmp);
     }
 
-    NavUnknown1 {
+    NavMap {
         unknown,
-        unknown_vec: Vec3::new(vec1_x, vec1_y, vec1_z),
-        origin: Vec3::new(vec2_x, vec2_y, vec2_z),
+        max_coord: Vec3::new(max_coord_x, max_coord_y, max_coord_z),
+        min_coord: Vec3::new(min_coord_x, min_coord_y, min_coord_z),
         width,
         height,
-        unknown1,
+        map,
     }
 }
 

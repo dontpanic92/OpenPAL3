@@ -11,7 +11,7 @@ pub struct ScnScene {
     cpk_name: String,
     scn_name: String,
     scn_file: ScnFile,
-    nav_file: NavFile,
+    nav: Nav,
 }
 
 impl SceneExtension for ScnScene {
@@ -36,15 +36,73 @@ impl ScnScene {
             cpk_name: cpk_name.to_string(),
             scn_name: scn_name.to_string(),
             scn_file,
-            nav_file,
+            nav: Nav::new(nav_file),
         }
     }
 
-    pub fn nav_origin(&self) -> &Vec3 {
-        &self.nav_file.unknown1[0].origin
+    pub fn nav_min_coord(&self) -> Vec3 {
+        self.nav.nav_file.maps[0].min_coord
+    }
+
+    pub fn nav_block_size(&self) -> (f32, f32) {
+        (self.nav.block_size_x, self.nav.block_size_z)
+    }
+
+    pub fn get_distance_to_border_by_scene_coord(&self, coord: &Vec3) -> f32 {
+        let nav_coord = self.scene_coord_to_nav_coord(coord);
+        let nav_coord_floor = (
+            (nav_coord.0.floor() as usize).clamp(0, self.nav.nav_file.maps[0].width as usize - 1),
+            (nav_coord.1.floor() as usize).clamp(0, self.nav.nav_file.maps[0].height as usize - 1),
+        );
+
+        let nav_coord_ceil = (
+            (nav_coord.0.ceil() as usize).clamp(0, self.nav.nav_file.maps[0].width as usize - 1),
+            (nav_coord.1.ceil() as usize).clamp(0, self.nav.nav_file.maps[0].height as usize - 1),
+        );
+        let distance_floor = &self.nav.nav_file.maps[0].map[nav_coord_floor.1][nav_coord_floor.0];
+        let distance_ceil = &self.nav.nav_file.maps[0].map[nav_coord_ceil.1][nav_coord_ceil.0];
+        std::cmp::min(
+            distance_floor.distance_to_border,
+            distance_ceil.distance_to_border,
+        ) as f32
+    }
+
+    pub fn scene_coord_to_nav_coord(&self, coord: &Vec3) -> (f32, f32) {
+        let min_coord = self.nav_min_coord();
+        (
+            (coord.x - min_coord.x) / self.nav.block_size_x,
+            (coord.z - min_coord.z) / self.nav.block_size_z,
+        )
+    }
+
+    pub fn nav_coord_to_scene_coord(&self, nav_x: f32, nav_z: f32) -> Vec3 {
+        let min_coord = self.nav_min_coord();
+        let block_size = self.nav_block_size();
+        Vec3::new(
+            nav_x * block_size.0 + min_coord.x,
+            min_coord.y,
+            nav_z * block_size.1 + min_coord.z,
+        )
     }
 
     pub fn get_role_entity<'a>(
+        self: &'a mut CoreScene<Self>,
+        name: &str,
+    ) -> &'a CoreEntity<RoleEntity> {
+        let pos = self
+            .entities()
+            .iter()
+            .position(|e| e.name() == name)
+            .unwrap();
+        self.entities()
+            .get(pos)
+            .unwrap()
+            .as_ref()
+            .downcast_ref::<CoreEntity<RoleEntity>>()
+            .unwrap()
+    }
+
+    pub fn get_role_entity_mut<'a>(
         self: &'a mut CoreScene<Self>,
         name: &str,
     ) -> &'a mut CoreEntity<RoleEntity> {
@@ -147,6 +205,25 @@ impl ScnScene {
 
         for e in entities {
             self.add_entity(e);
+        }
+    }
+}
+
+pub struct Nav {
+    nav_file: NavFile,
+    block_size_x: f32,
+    block_size_z: f32,
+}
+
+impl Nav {
+    pub fn new(nav_file: NavFile) -> Self {
+        let area = Vec3::sub(&nav_file.maps[0].max_coord, &nav_file.maps[0].min_coord);
+        let width = nav_file.maps[0].width;
+        let height = nav_file.maps[0].height;
+        Self {
+            nav_file,
+            block_size_x: area.x / width as f32,
+            block_size_z: area.z / height as f32,
         }
     }
 }

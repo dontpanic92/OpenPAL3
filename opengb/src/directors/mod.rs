@@ -4,7 +4,11 @@ mod sce_director;
 mod sce_state;
 
 use crate::scene::ScnScene;
-use radiance::scene::{CoreScene, SceneManager};
+pub use exp_director::ExplorationDirector;
+use radiance::{
+    math::Vec3,
+    scene::{CoreScene, SceneManager},
+};
 pub use sce_director::SceDirector;
 
 pub trait SceneManagerExtensions: SceneManager {

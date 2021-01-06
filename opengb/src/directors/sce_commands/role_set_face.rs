@@ -21,7 +21,7 @@ impl SceCommand for SceCommandRoleSetFace {
         delta_sec: f32,
     ) -> bool {
         let scene = scene_manager.scene_mut_or_fail();
-        let entity = scene.get_role_entity(&self.role_id);
+        let entity = scene.get_role_entity_mut(&self.role_id);
         let position = entity.transform().position();
         let target = Vec3::add(&position, &self.face_to);
 

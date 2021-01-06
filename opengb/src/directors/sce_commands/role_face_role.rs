@@ -22,7 +22,7 @@ impl SceCommand for SceCommandRoleFaceRole {
         let scene = scene_manager.scene_mut_or_fail();
         let position = scene.get_role_entity(&self.role_id2).transform().position();
         scene
-            .get_role_entity(&self.role_id)
+            .get_role_entity_mut(&self.role_id)
             .transform_mut()
             .look_at(&position);
         return true;

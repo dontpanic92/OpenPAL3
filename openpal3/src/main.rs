@@ -1,12 +1,21 @@
 use log::debug;
-use opengb::{asset_manager::AssetManager, config::OpenGbConfig, directors::SceDirector};
-use radiance::{application::utils::FpsCounter, scene::CoreScene};
+use opengb::directors::SceneManagerExtensions;
+use opengb::{
+    asset_manager::AssetManager,
+    config::OpenGbConfig,
+    directors::{ExplorationDirector, SceDirector},
+};
+use radiance::{
+    application::utils::FpsCounter,
+    math::Vec3,
+    scene::{CoreScene, Scene},
+};
 use radiance::{
     application::{Application, ApplicationExtension},
     input::Key,
 };
-use std::{cell::RefCell, path::PathBuf};
 use std::rc::Rc;
+use std::{cell::RefCell, path::PathBuf};
 
 fn main() {
     let config = OpenGbConfig::load("openpal3", "OPENPAL3");
@@ -33,17 +42,31 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
             &self.root_path,
         )));
 
+        let mut scene = Box::new(CoreScene::new(
+            self.asset_mgr.as_ref().unwrap().load_scn("Q01", "yn09a"),
+        ));
+        scene
+            .camera_mut()
+            .transform_mut()
+            .set_position(&Vec3::new(300., 300., 300.))
+            .look_at(&Vec3::new(0., 0., 0.));
+        app.engine_mut().scene_manager().push_scene(scene);
+
         let sce_director = SceDirector::new(
             app.engine_mut().audio_engine(),
-            input_engine,
+            input_engine.clone(),
             self.asset_mgr.as_ref().unwrap().load_sce("Q01"),
             1001,
             self.asset_mgr.as_ref().unwrap().clone(),
         );
-        app.engine_mut().scene_manager().set_director(sce_director);
+        app.engine_mut()
+            .scene_manager()
+            .scene_mut_or_fail()
+            .get_role_entity_mut("101")
+            .set_active(true);
 
-        let scn = self.asset_mgr.as_ref().unwrap().load_scn("Q01", "yn09a");
-        app.engine_mut().scene_manager().push_scene(Box::new(CoreScene::new(scn)));
+        // let exp_director = ExplorationDirector::new(sce_director, input_engine.clone());
+        app.engine_mut().scene_manager().set_director(sce_director);
     }
 
     fn on_updating(&mut self, app: &mut Application<OpenPal3Application>, delta_sec: f32) {

@@ -91,14 +91,3 @@ pub fn map_role_id(role_id: i32) -> i32 {
         x => x,
     }
 }
-
-const BLOCK_SIZE: f32 = 12.5;
-pub fn nav_coord_to_scene_coord(scene: &CoreScene<ScnScene>, nav_x: f32, nav_y: f32) -> Vec3 {
-    let ext = scene.extension();
-    let origin = ext.nav_origin();
-    Vec3::new(
-        nav_x * BLOCK_SIZE + origin.x,
-        origin.y,
-        nav_y * BLOCK_SIZE + origin.z,
-    )
-}
