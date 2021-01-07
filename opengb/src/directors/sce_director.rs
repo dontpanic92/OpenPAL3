@@ -1,4 +1,6 @@
-use super::{exp_director::ExplorationDirector, sce_commands::*, shared_state::SharedState};
+use super::{
+    exp_director::ExplorationDirector, sce_commands::*, shared_state::SharedState, PersistenceState,
+};
 use crate::directors::sce_state::SceState;
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
@@ -21,6 +23,7 @@ pub struct SceDirector {
     vm_contexts: Vec<SceVmContext>,
     state: SceState,
     shared_state: Rc<RefCell<SharedState>>,
+    persistence_state: Rc<RefCell<PersistenceState>>,
     active_commands: Vec<Box<dyn SceCommand>>,
 }
 
@@ -80,13 +83,14 @@ impl SceDirector {
         sce: SceFile,
         entry_point: u32,
         asset_mgr: Rc<AssetManager>,
+        persistence_state: Rc<RefCell<PersistenceState>>,
     ) -> Rc<RefCell<Self>> {
         let shared_state = Rc::new(RefCell::new(SharedState::new(audio_engine)));
         let state = SceState::new(
-            audio_engine,
             input_engine.clone(),
             asset_mgr.clone(),
             shared_state.clone(),
+            persistence_state.clone(),
         );
         let sce = Rc::new(sce);
         let director = Rc::new(RefCell::new(Self {
@@ -96,6 +100,7 @@ impl SceDirector {
             vm_contexts: vec![SceVmContext::new(sce, entry_point)],
             state,
             shared_state,
+            persistence_state,
             active_commands: vec![],
         }));
 
@@ -193,7 +198,44 @@ impl SceVmContext {
                 // ScriptRunMode
                 command!(self, SceCommandScriptRunMode, mode: i32)
             }
-            65549 /* 13 */ => {
+            3 => {
+                // Goto
+                nop_command!(self, i32)
+            }
+            5 => {
+                // FOP
+                nop_command!(self, i32)
+            }
+            6 | 65542 => {
+                // GT
+                nop_command!(self, i32, i16)
+            }
+            7 | 65543 => {
+                // LS
+                nop_command!(self, i32, i16)
+            }
+            8 | 65544 => {
+                // EQ
+                nop_command!(self, i32, i16)
+            }
+            9 | 65545 => {
+                // NEQ
+                nop_command!(self, i32, i16)
+            }
+            10 | 65546 => {
+                // GEQ
+                nop_command!(self, i32, i16)
+            }
+            11 | 65547 => {
+                // LEQ
+                nop_command!(self, i32, i16)
+            }
+            12 => {
+                // TestGoto
+                nop_command!(self, i32)
+            }
+            13 | 65549 => {
+                // Let
                 command!(self, SceCommandLet, var: i16, value: i32)
             }
             20 => {
@@ -262,9 +304,17 @@ impl SceVmContext {
                 // Dlg
                 command!(self, SceCommandDlg, text: string)
             }
+            63 => {
+                // LoadScene
+                nop_command!(self, string, string)
+            }
             67 => {
                 // DlgFace
                 nop_command!(self, i32, string, i32)
+            }
+            68 => {
+                // Note
+                nop_command!(self, string)
             }
             69 => {
                 // FadeOut

@@ -1,20 +1,17 @@
 use crate::asset_manager::AssetManager;
-use radiance::{
-    audio::{AudioEngine, AudioSource},
-    input::InputEngine,
-};
+use radiance::input::InputEngine;
 use std::{
     any::Any,
     cell::{Ref, RefCell, RefMut},
-    ops::Deref,
 };
 use std::{collections::HashMap, rc::Rc};
 
-use super::shared_state::SharedState;
+use super::{shared_state::SharedState, PersistenceState};
 
 pub struct SceState {
     asset_mgr: Rc<AssetManager>,
     shared_state: Rc<RefCell<SharedState>>,
+    persistence_state: Rc<RefCell<PersistenceState>>,
     run_mode: i32,
     ext: HashMap<String, Box<dyn Any>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
@@ -22,16 +19,17 @@ pub struct SceState {
 
 impl SceState {
     pub fn new(
-        audio_engine: &dyn AudioEngine,
         input_engine: Rc<RefCell<dyn InputEngine>>,
         asset_mgr: Rc<AssetManager>,
         shared_state: Rc<RefCell<SharedState>>,
+        persistence_state: Rc<RefCell<PersistenceState>>,
     ) -> Self {
         let ext = HashMap::<String, Box<dyn Any>>::new();
 
         Self {
             asset_mgr: asset_mgr.clone(),
             shared_state,
+            persistence_state,
             run_mode: 1,
             ext,
             input_engine,
@@ -40,6 +38,10 @@ impl SceState {
 
     pub fn shared_state_mut(&mut self) -> RefMut<SharedState> {
         self.shared_state.borrow_mut()
+    }
+
+    pub fn persistence_state_mut(&mut self) -> RefMut<PersistenceState> {
+        self.persistence_state.borrow_mut()
     }
 
     pub fn input(&self) -> Ref<dyn InputEngine> {

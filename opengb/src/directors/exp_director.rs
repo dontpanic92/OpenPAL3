@@ -47,22 +47,18 @@ impl Director for ExplorationDirector {
         let mut direction = Vec3::new(0., 0., 0.);
 
         if input.get_key_state(Key::Up).is_down() {
-            debug!("Key up is down");
             direction = Vec3::add(&direction, &Vec3::new(0., 0., -1.));
         }
 
         if input.get_key_state(Key::Down).is_down() {
-            debug!("Key down is down");
             direction = Vec3::add(&direction, &Vec3::new(0., 0., 1.));
         }
 
         if input.get_key_state(Key::Left).is_down() {
-            debug!("Key left is down");
             direction = Vec3::add(&direction, &Vec3::new(-1., 0., 0.));
         }
 
         if input.get_key_state(Key::Right).is_down() {
-            debug!("Key right is down");
             direction = Vec3::add(&direction, &Vec3::new(1., 0., 0.));
         }
 

@@ -1,9 +1,9 @@
 use log::debug;
-use opengb::directors::SceneManagerExtensions;
+use opengb::directors::{PersistenceState, SceneManagerExtensions};
 use opengb::{
     asset_manager::AssetManager,
     config::OpenGbConfig,
-    directors::{ExplorationDirector, SceDirector},
+    directors::{ExplorationDirector, SceDirector, SharedState},
 };
 use radiance::{
     application::utils::FpsCounter,
@@ -48,16 +48,18 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
         scene
             .camera_mut()
             .transform_mut()
-            .set_position(&Vec3::new(300., 300., 300.))
+            .set_position(&Vec3::new(300., 200., 300.))
             .look_at(&Vec3::new(0., 0., 0.));
         app.engine_mut().scene_manager().push_scene(scene);
 
+        let p_state = Rc::new(RefCell::new(PersistenceState::new()));
         let sce_director = SceDirector::new(
             app.engine_mut().audio_engine(),
             input_engine.clone(),
             self.asset_mgr.as_ref().unwrap().load_sce("Q01"),
             1001,
             self.asset_mgr.as_ref().unwrap().clone(),
+            p_state,
         );
         app.engine_mut()
             .scene_manager()
@@ -65,7 +67,7 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
             .get_role_entity_mut("101")
             .set_active(true);
 
-        // let exp_director = ExplorationDirector::new(sce_director, input_engine.clone());
+        // let exp_director = Rc::new(RefCell::new(ExplorationDirector::new(sce_director, input_engine.clone(), Rc::new(RefCell::new(SharedState::new(app.engine_mut().audio_engine()))))));
         app.engine_mut().scene_manager().set_director(sce_director);
     }
 

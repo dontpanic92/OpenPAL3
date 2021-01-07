@@ -17,8 +17,8 @@ impl SceCommand for SceCommandLet {
         delta_sec: f32,
     ) -> bool {
         state
-            .ext_mut()
-            .insert(self.var.to_string(), Box::new(self.value));
+            .persistence_state_mut()
+            .set_global(self.var, self.value);
         true
     }
 }

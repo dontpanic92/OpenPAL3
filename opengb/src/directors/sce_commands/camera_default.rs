@@ -23,7 +23,7 @@ impl SceCommand for SceCommandCameraDefault {
             .scene_mut_or_fail()
             .camera_mut()
             .transform_mut()
-            .set_position(&Vec3::new(300., 300., 300.))
+            .set_position(&Vec3::new(300., 200., 300.))
             .look_at(&target);
         return true;
     }
