@@ -12,6 +12,7 @@ pub struct ScnScene {
     scn_name: String,
     scn_file: ScnFile,
     nav: Nav,
+    nav_triggers: Vec<SceNavTrigger>,
 }
 
 impl SceneExtension for ScnScene {
@@ -37,6 +38,7 @@ impl ScnScene {
             scn_name: scn_name.to_string(),
             scn_file,
             nav: Nav::new(nav_file),
+            nav_triggers: vec![],
         }
     }
 
@@ -65,6 +67,21 @@ impl ScnScene {
             distance_floor.distance_to_border,
             distance_ceil.distance_to_border,
         ) as f32
+    }
+
+    pub fn try_trigger_sce_proc(&self, coord: &Vec3) -> Option<u32> {
+        let nav_coord = self.scene_coord_to_nav_coord(coord);
+        for trigger in &self.nav_triggers {
+            if nav_coord.0 >= trigger.nav_coord_min.0 as f32
+                && nav_coord.1 >= trigger.nav_coord_min.1 as f32
+                && nav_coord.0 <= trigger.nav_coord_max.0 as f32
+                && nav_coord.1 <= trigger.nav_coord_max.1 as f32
+            {
+                return Some(trigger.sce_proc_id);
+            }
+        }
+
+        None
     }
 
     pub fn scene_coord_to_nav_coord(&self, coord: &Vec3) -> (f32, f32) {
@@ -128,20 +145,27 @@ impl ScnScene {
             &ground_pol_name,
         );
 
-        for obj in &self.scn_file.nodes {
+        let _self = self.extension_mut();
+        for obj in &_self.scn_file.nodes {
             let mut pol = vec![];
             let mut cvd = vec![];
-            if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
+            if obj.node_type == 0 {
+                _self.nav_triggers.push(SceNavTrigger {
+                    nav_coord_max: obj.nav_coord_max,
+                    nav_coord_min: obj.nav_coord_min,
+                    sce_proc_id: obj.sce_proc_id,
+                });
+            } else if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
                 if obj.name.as_bytes()[0] as char == '_' {
-                    pol.append(&mut self.asset_mgr.load_scn_pol(
-                        &self.cpk_name,
-                        &self.scn_name,
+                    pol.append(&mut _self.asset_mgr.load_scn_pol(
+                        &_self.cpk_name,
+                        &_self.scn_name,
                         &obj.name,
                     ));
                 } else if obj.name.ends_with(".pol") {
-                    pol.append(&mut self.asset_mgr.load_object_item_pol(&obj.name));
+                    pol.append(&mut _self.asset_mgr.load_object_item_pol(&obj.name));
                 } else if obj.name.ends_with(".cvd") {
-                    cvd.append(&mut self.asset_mgr.load_object_item_cvd(
+                    cvd.append(&mut _self.asset_mgr.load_object_item_cvd(
                         &obj.name,
                         &obj.position,
                         obj.rotation.to_radians(),
@@ -150,7 +174,7 @@ impl ScnScene {
                     // Unknown
                     continue;
                 } else {
-                    pol.append(&mut self.asset_mgr.load_object_item_pol(&obj.name));
+                    pol.append(&mut _self.asset_mgr.load_object_item_pol(&obj.name));
                 }
             }
 
@@ -226,4 +250,10 @@ impl Nav {
             block_size_z: area.z / height as f32,
         }
     }
+}
+
+pub struct SceNavTrigger {
+    nav_coord_min: (u32, u32),
+    nav_coord_max: (u32, u32),
+    sce_proc_id: u32,
 }

@@ -1,4 +1,4 @@
-use super::{exp_director::ExplorationDirector, sce_commands::*};
+use super::{exp_director::ExplorationDirector, sce_commands::*, shared_state::SharedState};
 use crate::directors::sce_state::SceState;
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
@@ -16,9 +16,11 @@ use std::{
 
 pub struct SceDirector {
     shared_self: Weak<RefCell<Self>>,
+    sce: Rc<SceFile>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
-    vm_context: SceVmContext,
+    vm_contexts: Vec<SceVmContext>,
     state: SceState,
+    shared_state: Rc<RefCell<SharedState>>,
     active_commands: Vec<Box<dyn SceCommand>>,
 }
 
@@ -33,34 +35,33 @@ impl Director for SceDirector {
         ui: &mut Ui,
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
-        if self.state.bgm_source().state() == AudioSourceState::Playing {
-            self.state.bgm_source().update();
-        }
-
-        if self.state.sound_source().state() == AudioSourceState::Playing {
-            self.state.sound_source().update();
-        }
+        self.shared_state.borrow_mut().update(delta_sec);
 
         if self.active_commands.len() == 0 {
-            loop {
-                match self.vm_context.get_next_cmd() {
-                    Some(mut cmd) => {
-                        cmd.initialize(scene_manager, &mut self.state);
-                        if !cmd.update(scene_manager, ui, &mut self.state, delta_sec) {
-                            self.active_commands.push(cmd);
+            if !self.vm_contexts.is_empty() {
+                loop {
+                    match self.vm_contexts.last_mut().unwrap().get_next_cmd() {
+                        Some(mut cmd) => {
+                            cmd.initialize(scene_manager, &mut self.state);
+                            if !cmd.update(scene_manager, ui, &mut self.state, delta_sec) {
+                                self.active_commands.push(cmd);
+                            }
                         }
-                    }
-                    None => {
-                        return Some(Rc::new(RefCell::new(ExplorationDirector::new(
-                            self.shared_self.upgrade().unwrap(),
-                            self.input_engine.clone(),
-                        ))))
-                    }
-                };
+                        None => {
+                            self.vm_contexts.pop();
+                        }
+                    };
 
-                if self.state.run_mode() == 1 {
-                    break;
+                    if self.state.run_mode() == 1 {
+                        break;
+                    }
                 }
+            } else {
+                return Some(Rc::new(RefCell::new(ExplorationDirector::new(
+                    self.shared_self.upgrade().unwrap(),
+                    self.input_engine.clone(),
+                    self.shared_state.clone(),
+                ))));
             }
         } else {
             let state = &mut self.state;
@@ -80,18 +81,31 @@ impl SceDirector {
         entry_point: u32,
         asset_mgr: Rc<AssetManager>,
     ) -> Rc<RefCell<Self>> {
-        let state = SceState::new(audio_engine, input_engine.clone(), asset_mgr.clone());
-
+        let shared_state = Rc::new(RefCell::new(SharedState::new(audio_engine)));
+        let state = SceState::new(
+            audio_engine,
+            input_engine.clone(),
+            asset_mgr.clone(),
+            shared_state.clone(),
+        );
+        let sce = Rc::new(sce);
         let director = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
+            sce: sce.clone(),
             input_engine,
-            vm_context: SceVmContext::new(sce, entry_point),
+            vm_contexts: vec![SceVmContext::new(sce, entry_point)],
             state,
+            shared_state,
             active_commands: vec![],
         }));
 
         director.borrow_mut().shared_self = Rc::downgrade(&director);
         director
+    }
+
+    pub fn call_proc(&mut self, proc_id: u32) {
+        self.vm_contexts
+            .push(SceVmContext::new(self.sce.clone(), proc_id));
     }
 }
 
@@ -139,27 +153,27 @@ macro_rules! nop_command {
 }
 
 struct SceVmContext {
-    sce: SceFile,
+    sce: Rc<SceFile>,
     proc_id: u32,
     program_counter: usize,
 }
 
 impl SceVmContext {
-    pub fn new(sce: SceFile, entry_point: u32) -> Self {
+    pub fn new(sce: Rc<SceFile>, entry_point: u32) -> Self {
         let proc = sce
             .proc_headers
             .iter()
             .find(|h| h.id == entry_point)
             .unwrap();
+        let proc_id = proc.id;
 
         debug!(
             "Start executing SceProc {} Id {} Offset {}",
             proc.name, proc.id, proc.offset
         );
-        let proc_id = proc.id;
         Self {
             sce,
-            proc_id: proc_id,
+            proc_id,
             program_counter: 0,
         }
     }

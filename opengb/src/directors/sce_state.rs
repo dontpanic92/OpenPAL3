@@ -5,15 +5,16 @@ use radiance::{
 };
 use std::{
     any::Any,
-    cell::{Ref, RefCell},
+    cell::{Ref, RefCell, RefMut},
     ops::Deref,
 };
 use std::{collections::HashMap, rc::Rc};
 
+use super::shared_state::SharedState;
+
 pub struct SceState {
     asset_mgr: Rc<AssetManager>,
-    bgm_source: Box<dyn AudioSource>,
-    sound_source: Box<dyn AudioSource>,
+    shared_state: Rc<RefCell<SharedState>>,
     run_mode: i32,
     ext: HashMap<String, Box<dyn Any>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
@@ -24,27 +25,21 @@ impl SceState {
         audio_engine: &dyn AudioEngine,
         input_engine: Rc<RefCell<dyn InputEngine>>,
         asset_mgr: Rc<AssetManager>,
+        shared_state: Rc<RefCell<SharedState>>,
     ) -> Self {
-        let bgm_source = audio_engine.create_source();
-        let sound_source = audio_engine.create_source();
         let ext = HashMap::<String, Box<dyn Any>>::new();
 
         Self {
             asset_mgr: asset_mgr.clone(),
-            bgm_source,
-            sound_source,
+            shared_state,
             run_mode: 1,
             ext,
             input_engine,
         }
     }
 
-    pub fn bgm_source(&mut self) -> &mut dyn AudioSource {
-        self.bgm_source.as_mut()
-    }
-
-    pub fn sound_source(&mut self) -> &mut dyn AudioSource {
-        self.sound_source.as_mut()
+    pub fn shared_state_mut(&mut self) -> RefMut<SharedState> {
+        self.shared_state.borrow_mut()
     }
 
     pub fn input(&self) -> Ref<dyn InputEngine> {

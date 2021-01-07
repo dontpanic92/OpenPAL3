@@ -2,6 +2,7 @@ mod exp_director;
 mod sce_commands;
 mod sce_director;
 mod sce_state;
+mod shared_state;
 
 use crate::scene::ScnScene;
 pub use exp_director::ExplorationDirector;

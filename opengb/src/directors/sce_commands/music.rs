@@ -17,7 +17,10 @@ impl SceCommand for SceCommandMusic {
         delta_sec: f32,
     ) -> bool {
         let data = state.asset_mgr().load_music_data(&self.name);
-        state.bgm_source().play(data, Codec::Mp3, true);
+        state
+            .shared_state_mut()
+            .bgm_source()
+            .play(data, Codec::Mp3, true);
         true
     }
 }

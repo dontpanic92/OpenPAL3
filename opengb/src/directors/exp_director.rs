@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use super::SceneManagerExtensions;
+use super::{shared_state::SharedState, SceneManagerExtensions};
 use log::debug;
 use radiance::{
     input::{InputEngine, Key},
@@ -13,16 +13,19 @@ use super::SceDirector;
 pub struct ExplorationDirector {
     sce_director: Rc<RefCell<SceDirector>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
+    shared_state: Rc<RefCell<SharedState>>,
 }
 
 impl ExplorationDirector {
     pub fn new(
         sce_director: Rc<RefCell<SceDirector>>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
+        shared_state: Rc<RefCell<SharedState>>,
     ) -> Self {
         Self {
             sce_director,
             input_engine,
+            shared_state,
         }
     }
 }
@@ -38,6 +41,8 @@ impl Director for ExplorationDirector {
         ui: &mut imgui::Ui,
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
+        self.shared_state.borrow_mut().update(delta_sec);
+
         let input = self.input_engine.borrow_mut();
         let mut direction = Vec3::new(0., 0., 0.);
 
@@ -69,6 +74,12 @@ impl Director for ExplorationDirector {
         let speed = 175.;
         let target_position = Vec3::add(&position, &Vec3::dot(speed * delta_sec, &direction));
         let distance_to_border = scene.get_distance_to_border_by_scene_coord(&target_position);
+
+        if let Some(proc_id) = scene.try_trigger_sce_proc(&target_position) {
+            debug!("New proc triggerd: {}", proc_id);
+            self.sce_director.borrow_mut().call_proc(proc_id);
+            return Some(self.sce_director.clone());
+        }
 
         let entity = scene.get_role_entity_mut("101");
         if direction.norm() > 0.5 && distance_to_border > std::f32::EPSILON {

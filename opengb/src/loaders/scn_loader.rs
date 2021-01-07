@@ -16,12 +16,14 @@ pub struct ScnNode {
     pub w26: u16,
     pub position: Vec3,
     pub rotation: f32,
-    pub dw38: Vec<u32>,
+    pub nav_coord_min: (u32, u32),
+    pub nav_coord_max: (u32, u32),
     pub node_type: u8,
     pub b49: Vec<u8>,
     pub w66: Vec<u16>,
     pub b6e: Vec<u8>,
-    pub d80: Vec<u32>,
+    pub sce_proc_id: u32,
+    pub d84: u32,
     pub b88: Vec<u8>,
     pub w148: u16,
     pub b14a: Vec<u8>,
@@ -173,12 +175,16 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
     let position_y = reader.read_f32::<LittleEndian>().unwrap();
     let position_z = reader.read_f32::<LittleEndian>().unwrap();
     let rotation = reader.read_f32::<LittleEndian>().unwrap();
-    let dw38 = reader.read_dw_vec(4).unwrap();
+    let nav_coord_min_x = reader.read_u32::<LittleEndian>().unwrap();
+    let nav_coord_min_z = reader.read_u32::<LittleEndian>().unwrap();
+    let nav_coord_max_x = reader.read_u32::<LittleEndian>().unwrap();
+    let nav_coord_max_z = reader.read_u32::<LittleEndian>().unwrap();
     let node_type = reader.read_u8().unwrap();
     let b49 = reader.read_u8_vec(29).unwrap();
     let w66 = reader.read_w_vec(4).unwrap();
     let b6e = reader.read_u8_vec(18).unwrap();
-    let d80 = reader.read_dw_vec(2).unwrap();
+    let sce_proc_id = reader.read_u32::<LittleEndian>().unwrap();
+    let d84 = reader.read_u32::<LittleEndian>().unwrap();
     let b88 = reader.read_u8_vec(192).unwrap();
     let w148 = reader.read_u16::<LittleEndian>().unwrap();
     let b14a = reader.read_u8_vec(34).unwrap();
@@ -199,12 +205,14 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
         w26,
         position: Vec3::new(position_x, position_y, position_z),
         rotation,
-        dw38,
+        nav_coord_min: (nav_coord_min_x, nav_coord_min_z),
+        nav_coord_max: (nav_coord_max_x, nav_coord_max_z),
         node_type,
         b49,
         w66,
         b6e,
-        d80,
+        sce_proc_id,
+        d84,
         b88,
         w148,
         b14a,
