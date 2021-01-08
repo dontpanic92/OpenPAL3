@@ -1,5 +1,5 @@
-use crate::directors::sce_director::SceCommand;
-use crate::directors::sce_state::SceState;
+use crate::directors::sce_director::{SceCommand, SceState};
+
 use imgui::Ui;
 use radiance::{audio::Codec, scene::SceneManager};
 

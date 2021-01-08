@@ -57,10 +57,11 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
             app.engine_mut().audio_engine(),
             input_engine.clone(),
             self.asset_mgr.as_ref().unwrap().load_sce("Q01"),
-            1001,
             self.asset_mgr.as_ref().unwrap().clone(),
             p_state,
         );
+        // sce_director.borrow_mut().call_proc(1001);
+
         app.engine_mut()
             .scene_manager()
             .scene_mut_or_fail()

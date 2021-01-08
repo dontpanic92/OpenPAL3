@@ -1,26 +1,22 @@
 use super::{
     exp_director::ExplorationDirector, sce_commands::*, shared_state::SharedState, PersistenceState,
 };
-use crate::directors::sce_state::SceState;
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
 use log::{debug, error};
 use radiance::scene::{Director, SceneManager};
-use radiance::{
-    audio::{AudioEngine, AudioSourceState},
-    input::InputEngine,
-};
+use radiance::{audio::AudioEngine, input::InputEngine};
 use std::{
-    cell::RefCell,
+    any::Any,
+    cell::{Ref, RefCell, RefMut},
+    collections::HashMap,
     rc::{Rc, Weak},
 };
 
 pub struct SceDirector {
     shared_self: Weak<RefCell<Self>>,
-    sce: Rc<SceFile>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
-    vm_contexts: Vec<SceVmContext>,
     state: SceState,
     shared_state: Rc<RefCell<SharedState>>,
     persistence_state: Rc<RefCell<PersistenceState>>,
@@ -41,30 +37,26 @@ impl Director for SceDirector {
         self.shared_state.borrow_mut().update(delta_sec);
 
         if self.active_commands.len() == 0 {
-            if !self.vm_contexts.is_empty() {
-                loop {
-                    match self.vm_contexts.last_mut().unwrap().get_next_cmd() {
-                        Some(mut cmd) => {
-                            cmd.initialize(scene_manager, &mut self.state);
-                            if !cmd.update(scene_manager, ui, &mut self.state, delta_sec) {
-                                self.active_commands.push(cmd);
-                            }
+            loop {
+                match self.state.vm_context.get_next_cmd() {
+                    Some(mut cmd) => {
+                        cmd.initialize(scene_manager, &mut self.state);
+                        if !cmd.update(scene_manager, ui, &mut self.state, delta_sec) {
+                            self.active_commands.push(cmd);
                         }
-                        None => {
-                            self.vm_contexts.pop();
-                        }
-                    };
-
-                    if self.state.run_mode() == 1 {
-                        break;
                     }
+                    None => {
+                        return Some(Rc::new(RefCell::new(ExplorationDirector::new(
+                            self.shared_self.upgrade().unwrap(),
+                            self.input_engine.clone(),
+                            self.shared_state.clone(),
+                        ))));
+                    }
+                };
+
+                if self.state.run_mode() == 1 {
+                    break;
                 }
-            } else {
-                return Some(Rc::new(RefCell::new(ExplorationDirector::new(
-                    self.shared_self.upgrade().unwrap(),
-                    self.input_engine.clone(),
-                    self.shared_state.clone(),
-                ))));
             }
         } else {
             let state = &mut self.state;
@@ -81,7 +73,6 @@ impl SceDirector {
         audio_engine: &dyn AudioEngine,
         input_engine: Rc<RefCell<dyn InputEngine>>,
         sce: SceFile,
-        entry_point: u32,
         asset_mgr: Rc<AssetManager>,
         persistence_state: Rc<RefCell<PersistenceState>>,
     ) -> Rc<RefCell<Self>> {
@@ -89,15 +80,13 @@ impl SceDirector {
         let state = SceState::new(
             input_engine.clone(),
             asset_mgr.clone(),
+            Rc::new(sce),
             shared_state.clone(),
             persistence_state.clone(),
         );
-        let sce = Rc::new(sce);
         let director = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
-            sce: sce.clone(),
             input_engine,
-            vm_contexts: vec![SceVmContext::new(sce, entry_point)],
             state,
             shared_state,
             persistence_state,
@@ -109,8 +98,7 @@ impl SceDirector {
     }
 
     pub fn call_proc(&mut self, proc_id: u32) {
-        self.vm_contexts
-            .push(SceVmContext::new(self.sce.clone(), proc_id));
+        self.state.vm_context.call_proc(proc_id)
     }
 }
 
@@ -157,19 +145,15 @@ macro_rules! nop_command {
     };
 }
 
-struct SceVmContext {
+struct SceProcContext {
     sce: Rc<SceFile>,
     proc_id: u32,
     program_counter: usize,
 }
 
-impl SceVmContext {
-    pub fn new(sce: Rc<SceFile>, entry_point: u32) -> Self {
-        let proc = sce
-            .proc_headers
-            .iter()
-            .find(|h| h.id == entry_point)
-            .unwrap();
+impl SceProcContext {
+    pub fn new(sce: Rc<SceFile>, proc_id: u32) -> Self {
+        let proc = sce.proc_headers.iter().find(|h| h.id == proc_id).unwrap();
         let proc_id = proc.id;
 
         debug!(
@@ -185,7 +169,6 @@ impl SceVmContext {
 
     pub fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
         if self.proc_completed() {
-            debug!("Sce proc {} completed", self.proc_id);
             return None;
         }
 
@@ -200,7 +183,7 @@ impl SceVmContext {
             }
             3 => {
                 // Goto
-                nop_command!(self, i32)
+                command!(self, SceCommandGoto, offset: i32)
             }
             5 => {
                 // FOP
@@ -404,6 +387,14 @@ impl SceVmContext {
         }
     }
 
+    pub fn jump(&mut self, offset: i32) {
+        if offset.is_negative() {
+            self.program_counter -= offset.abs() as usize;
+        } else {
+            self.program_counter += offset as usize;
+        }
+    }
+
     fn put(&mut self, count: usize) {
         self.program_counter -= count;
     }
@@ -437,21 +428,125 @@ impl SceVmContext {
 mod data_read {
     use byteorder::{LittleEndian, ReadBytesExt};
 
-    pub(super) fn i16(context: &mut super::SceVmContext) -> i16 {
+    pub(super) fn i16(context: &mut super::SceProcContext) -> i16 {
         context.read(2).read_i16::<LittleEndian>().unwrap()
     }
 
-    pub(super) fn i32(context: &mut super::SceVmContext) -> i32 {
+    pub(super) fn i32(context: &mut super::SceProcContext) -> i32 {
         context.read(4).read_i32::<LittleEndian>().unwrap()
     }
 
-    pub(super) fn f32(context: &mut super::SceVmContext) -> f32 {
+    pub(super) fn f32(context: &mut super::SceProcContext) -> f32 {
         context.read(4).read_f32::<LittleEndian>().unwrap()
     }
 
-    pub(super) fn string(context: &mut super::SceVmContext) -> String {
+    pub(super) fn string(context: &mut super::SceProcContext) -> String {
         let len = context.read(2).read_u16::<LittleEndian>().unwrap();
         context.read_string(len as usize)
+    }
+}
+
+pub struct SceVmContext {
+    sce: Rc<SceFile>,
+    proc_stack: Vec<SceProcContext>,
+}
+
+impl SceVmContext {
+    pub fn new(sce: Rc<SceFile>) -> Self {
+        Self {
+            sce,
+            proc_stack: vec![],
+        }
+    }
+
+    pub fn set_sce(&mut self, sce: Rc<SceFile>) {
+        self.sce = sce;
+    }
+
+    pub fn call_proc(&mut self, proc_id: u32) {
+        self.proc_stack
+            .push(SceProcContext::new(self.sce.clone(), proc_id))
+    }
+
+    pub fn jump(&mut self, offset: i32) {
+        self.proc_stack.last_mut().unwrap().jump(offset);
+    }
+
+    pub fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
+        while let Some(p) = self.proc_stack.last() {
+            if p.proc_completed() {
+                debug!("Sce proc {} completed", p.proc_id);
+                self.proc_stack.pop();
+            } else {
+                break;
+            }
+        }
+
+        self.proc_stack.last_mut().and_then(|p| p.get_next_cmd())
+    }
+}
+
+pub struct SceState {
+    asset_mgr: Rc<AssetManager>,
+    shared_state: Rc<RefCell<SharedState>>,
+    persistence_state: Rc<RefCell<PersistenceState>>,
+    vm_context: SceVmContext,
+    run_mode: i32,
+    ext: HashMap<String, Box<dyn Any>>,
+    input_engine: Rc<RefCell<dyn InputEngine>>,
+}
+
+impl SceState {
+    pub fn new(
+        input_engine: Rc<RefCell<dyn InputEngine>>,
+        asset_mgr: Rc<AssetManager>,
+        sce: Rc<SceFile>,
+        shared_state: Rc<RefCell<SharedState>>,
+        persistence_state: Rc<RefCell<PersistenceState>>,
+    ) -> Self {
+        let ext = HashMap::<String, Box<dyn Any>>::new();
+
+        Self {
+            asset_mgr: asset_mgr.clone(),
+            shared_state,
+            persistence_state,
+            vm_context: SceVmContext::new(sce),
+            run_mode: 1,
+            ext,
+            input_engine,
+        }
+    }
+
+    pub fn shared_state_mut(&mut self) -> RefMut<SharedState> {
+        self.shared_state.borrow_mut()
+    }
+
+    pub fn persistence_state_mut(&mut self) -> RefMut<PersistenceState> {
+        self.persistence_state.borrow_mut()
+    }
+
+    pub fn vm_context_mut(&mut self) -> &mut SceVmContext {
+        &mut self.vm_context
+    }
+
+    pub fn input(&self) -> Ref<dyn InputEngine> {
+        self.input_engine.borrow()
+    }
+
+    pub fn run_mode(&self) -> i32 {
+        self.run_mode
+    }
+
+    pub fn set_run_mode(&mut self, run_mode: i32) {
+        self.run_mode = run_mode;
+    }
+
+    pub fn ext_mut(&mut self) -> &mut HashMap<String, Box<dyn Any>> {
+        &mut self.ext
+    }
+
+    pub fn asset_mgr(&self) -> &Rc<AssetManager> {
+        &self.asset_mgr
     }
 }
 

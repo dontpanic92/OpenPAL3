@@ -1,14 +1,13 @@
 use crate::directors::sce_director::{SceCommand, SceState};
-
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
 #[derive(Clone)]
-pub struct SceCommandScriptRunMode {
-    mode: i32,
+pub struct SceCommandGoto {
+    offset: i32,
 }
 
-impl SceCommand for SceCommandScriptRunMode {
+impl SceCommand for SceCommandGoto {
     fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
@@ -16,13 +15,13 @@ impl SceCommand for SceCommandScriptRunMode {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        state.set_run_mode(self.mode);
-        return true;
+        state.vm_context_mut().jump(self.offset);
+        true
     }
 }
 
-impl SceCommandScriptRunMode {
-    pub fn new(mode: i32) -> Self {
-        Self { mode }
+impl SceCommandGoto {
+    pub fn new(offset: i32) -> Self {
+        Self { offset }
     }
 }

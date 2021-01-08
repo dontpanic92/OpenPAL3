@@ -1,4 +1,4 @@
-use crate::directors::{sce_director::SceCommand, sce_state::SceState};
+use crate::directors::sce_director::{SceCommand, SceState};
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
