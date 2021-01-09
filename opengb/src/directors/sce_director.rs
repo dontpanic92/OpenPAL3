@@ -187,31 +187,31 @@ impl SceProcContext {
             }
             5 => {
                 // FOP
-                nop_command!(self, i32)
+                command!(self, SceCommandFop, op: i32)
             }
             6 | 65542 => {
                 // GT
-                nop_command!(self, i32, i16)
+                command!(self, SceCommandGt, var: i16, value: i32)
             }
             7 | 65543 => {
                 // LS
-                nop_command!(self, i32, i16)
+                command!(self, SceCommandLs, var: i16, value: i32)
             }
             8 | 65544 => {
                 // EQ
-                nop_command!(self, i32, i16)
+                command!(self, SceCommandEq, var: i16, value: i32)
             }
             9 | 65545 => {
                 // NEQ
-                nop_command!(self, i32, i16)
+                command!(self, SceCommandNeq, var: i16, value: i32)
             }
             10 | 65546 => {
                 // GEQ
-                nop_command!(self, i32, i16)
+                command!(self, SceCommandGeq, var: i16, value: i32)
             }
             11 | 65547 => {
                 // LEQ
-                nop_command!(self, i32, i16)
+                command!(self, SceCommandLeq, var: i16, value: i32)
             }
             12 => {
                 // TestGoto
@@ -490,6 +490,7 @@ pub struct SceState {
     asset_mgr: Rc<AssetManager>,
     shared_state: Rc<RefCell<SharedState>>,
     persistence_state: Rc<RefCell<PersistenceState>>,
+    fop_state: FopState,
     vm_context: SceVmContext,
     run_mode: i32,
     ext: HashMap<String, Box<dyn Any>>,
@@ -510,6 +511,7 @@ impl SceState {
             asset_mgr: asset_mgr.clone(),
             shared_state,
             persistence_state,
+            fop_state: FopState::new(),
             vm_context: SceVmContext::new(sce),
             run_mode: 1,
             ext,
@@ -523,6 +525,10 @@ impl SceState {
 
     pub fn persistence_state_mut(&mut self) -> RefMut<PersistenceState> {
         self.persistence_state.borrow_mut()
+    }
+
+    pub fn fop_state_mut(&mut self) -> &mut FopState {
+        &mut self.fop_state
     }
 
     pub fn vm_context_mut(&mut self) -> &mut SceVmContext {
@@ -547,6 +553,43 @@ impl SceState {
 
     pub fn asset_mgr(&self) -> &Rc<AssetManager> {
         &self.asset_mgr
+    }
+}
+
+pub enum Fop {
+    And,
+    Or,
+}
+
+pub struct FopState {
+    lhs: Option<bool>,
+    op: Option<Fop>,
+}
+
+impl FopState {
+    pub fn new() -> Self {
+        Self {
+            lhs: None,
+            op: None,
+        }
+    }
+
+    pub fn push_value(&mut self, value: bool) {
+        self.lhs = match (&self.lhs, &self.op) {
+            (Some(lhs), Some(Fop::And)) => Some(*lhs && value),
+            (Some(lhs), Some(Fop::Or)) => Some(*lhs || value),
+            (None, _) => Some(value),
+            _ => panic!("Fop State error - might be a bug in Sce"),
+        }
+    }
+
+    pub fn set_op(&mut self, op: Fop) {
+        self.op = Some(op);
+    }
+
+    pub fn reset(&mut self) {
+        self.lhs = None;
+        self.op = None;
     }
 }
 

@@ -1,7 +1,9 @@
 mod _let;
 mod camera_default;
 mod camera_set;
+mod cmp;
 mod dlg;
+mod fop;
 mod goto;
 mod idle;
 mod music;
@@ -20,7 +22,11 @@ mod script_run_mode;
 pub use _let::SceCommandLet;
 pub use camera_default::SceCommandCameraDefault;
 pub use camera_set::SceCommandCameraSet;
+pub use cmp::{
+    SceCommandEq, SceCommandGeq, SceCommandGt, SceCommandLeq, SceCommandLs, SceCommandNeq,
+};
 pub use dlg::SceCommandDlg;
+pub use fop::SceCommandFop;
 pub use goto::SceCommandGoto;
 pub use idle::SceCommandIdle;
 pub use music::SceCommandMusic;
