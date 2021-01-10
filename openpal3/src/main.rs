@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 use log::debug;
 use opengb::directors::{PersistenceState, SceneManagerExtensions};
 use opengb::{

@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use crate::directors::sce_director::{SceCommand, SceState};
 use imgui::Ui;
 use radiance::scene::SceneManager;

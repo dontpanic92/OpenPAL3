@@ -183,7 +183,7 @@ impl SceProcContext {
             }
             3 => {
                 // Goto
-                command!(self, SceCommandGoto, offset: i32)
+                command!(self, SceCommandGoto, offset: u32)
             }
             5 => {
                 // FOP
@@ -215,7 +215,7 @@ impl SceProcContext {
             }
             12 => {
                 // TestGoto
-                nop_command!(self, i32)
+                command!(self, SceCommandTestGoto, offset: u32)
             }
             13 | 65549 => {
                 // Let
@@ -387,12 +387,8 @@ impl SceProcContext {
         }
     }
 
-    pub fn jump(&mut self, offset: i32) {
-        if offset.is_negative() {
-            self.program_counter -= offset.abs() as usize;
-        } else {
-            self.program_counter += offset as usize;
-        }
+    pub fn jump_to(&mut self, addr: u32) {
+        self.program_counter = addr as usize;
     }
 
     fn put(&mut self, count: usize) {
@@ -436,6 +432,10 @@ mod data_read {
         context.read(4).read_i32::<LittleEndian>().unwrap()
     }
 
+    pub(super) fn u32(context: &mut super::SceProcContext) -> u32 {
+        context.read(4).read_u32::<LittleEndian>().unwrap()
+    }
+
     pub(super) fn f32(context: &mut super::SceProcContext) -> f32 {
         context.read(4).read_f32::<LittleEndian>().unwrap()
     }
@@ -468,8 +468,8 @@ impl SceVmContext {
             .push(SceProcContext::new(self.sce.clone(), proc_id))
     }
 
-    pub fn jump(&mut self, offset: i32) {
-        self.proc_stack.last_mut().unwrap().jump(offset);
+    pub fn jump_to(&mut self, addr: u32) {
+        self.proc_stack.last_mut().unwrap().jump_to(addr);
     }
 
     pub fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
@@ -590,6 +590,10 @@ impl FopState {
     pub fn reset(&mut self) {
         self.lhs = None;
         self.op = None;
+    }
+
+    pub fn value(&self) -> Option<bool> {
+        self.lhs
     }
 }
 

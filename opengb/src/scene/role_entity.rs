@@ -1,14 +1,11 @@
 use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
+use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{
     ComponentFactory, MaterialDef, RenderObject, VertexBuffer, VertexComponents,
 };
 use radiance::scene::{CoreEntity, EntityExtension};
-use radiance::{
-    input::{InputEngine, Key},
-    math::{Vec2, Vec3},
-};
+use std::collections::HashMap;
 use std::rc::Rc;
-use std::{cell::RefCell, collections::HashMap};
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum RoleAnimationRepeatMode {

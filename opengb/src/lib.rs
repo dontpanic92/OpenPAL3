@@ -1,5 +1,6 @@
 #![feature(drain_filter)]
 #![feature(arbitrary_self_types)]
+#![allow(unused_variables)]
 
 pub mod asset_manager;
 pub mod config;

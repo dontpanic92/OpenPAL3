@@ -1,8 +1,5 @@
-use crate::utilities::StoreExt2;
-use image::RgbaImage;
-use mini_fs::MiniFs;
 use radiance::rendering::{MaterialDef, ShaderDef, TextureDef, VertexComponents};
-use std::{io::Read, path::PathBuf};
+use std::io::Read;
 
 static LIGHTMAP_TEXTURE_VERT: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/lightmap_texture.vert.spv"));
@@ -40,7 +37,7 @@ impl LightMapMaterialDef {
                     }
                 };
 
-                TextureDef::ImageTextureDef(Some(image::load_from_memory(b).unwrap().to_rgba()))
+                TextureDef::ImageTextureDef(Some(image::load_from_memory(b).unwrap().to_rgba8()))
             })
             .collect();
 

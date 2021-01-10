@@ -18,6 +18,7 @@ mod role_set_pos;
 mod role_show_action;
 mod role_turn_face;
 mod script_run_mode;
+mod testgoto;
 
 pub use _let::SceCommandLet;
 pub use camera_default::SceCommandCameraDefault;
@@ -41,12 +42,9 @@ pub use role_set_pos::SceCommandRoleSetPos;
 pub use role_show_action::SceCommandRoleShowAction;
 pub use role_turn_face::SceCommandRoleTurnFace;
 pub use script_run_mode::SceCommandScriptRunMode;
+pub use testgoto::SceCommandTestGoto;
 
-use crate::scene::{RoleEntity, ScnScene};
-use radiance::{
-    math::Vec3,
-    scene::{CoreEntity, CoreScene, Scene, SceneManager},
-};
+use radiance::math::Vec3;
 
 struct Direction;
 impl Direction {
@@ -95,6 +93,7 @@ impl Direction {
 pub fn map_role_id(role_id: i32) -> i32 {
     match role_id {
         -1 => 101,
+        0 => 101,
         1 => 104,
         x => x,
     }

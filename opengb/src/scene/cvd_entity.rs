@@ -1,7 +1,6 @@
 use crate::loaders::cvd_loader::*;
-use image::RgbaImage;
 use radiance::rendering::{
-    ComponentFactory, MaterialDef, SimpleMaterialDef, VertexBuffer, VertexComponents,
+    ComponentFactory, MaterialDef, VertexBuffer, VertexComponents,
 };
 use radiance::scene::{CoreEntity, EntityExtension};
 use radiance::{
