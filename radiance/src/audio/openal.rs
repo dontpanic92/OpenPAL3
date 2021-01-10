@@ -62,7 +62,8 @@ impl AudioSource for OpenAlAudioSource {
 
             let mut buffer = self.streaming_source.unqueue_buffer().unwrap();
             match frame {
-                Ok(Some(samples)) => match samples.channels {
+                Ok(Some(samples)) => {
+                    match samples.channels {
                     1 => buffer
                         .set_data::<Mono<i16>, _>(samples.data, samples.sample_rate)
                         .unwrap(),
@@ -70,12 +71,14 @@ impl AudioSource for OpenAlAudioSource {
                         .set_data::<Stereo<i16>, _>(samples.data, samples.sample_rate)
                         .unwrap(),
                     _ => {}
+                    }
+                    
+                    self.streaming_source.queue_buffer(buffer).unwrap();
                 },
                 Ok(None) => self.state = AudioSourceState::Stopped,
                 Err(e) => println!("Error: {}", e),
             }
 
-            self.streaming_source.queue_buffer(buffer).unwrap();
             processed -= 1;
         }
 

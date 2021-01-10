@@ -1,4 +1,5 @@
 #![feature(arbitrary_self_types)]
+#![allow(unused_variables)]
 
 #[macro_use]
 mod macros;
