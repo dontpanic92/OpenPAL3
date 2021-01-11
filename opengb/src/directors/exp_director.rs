@@ -4,7 +4,7 @@ use super::{shared_state::SharedState, SceneManagerExtensions};
 use log::debug;
 use radiance::{
     input::{InputEngine, Key},
-    math::Vec3,
+    math::{Mat44, Vec3},
     scene::{Director, Entity, SceneManager},
 };
 
@@ -64,6 +64,18 @@ impl Director for ExplorationDirector {
             direction = Vec3::add(&direction, &Vec3::new(1., 0., 0.));
         }
 
+        let camera_mat = &scene_manager
+            .scene_mut()
+            .unwrap()
+            .camera_mut()
+            .transform()
+            .matrix();
+        let mut direction_mat = Mat44::new_zero();
+        direction_mat[0][3] = direction.x;
+        direction_mat[1][3] = direction.y;
+        direction_mat[2][3] = direction.z;
+        let direction_mat = Mat44::multiplied(&camera_mat, &direction_mat);
+        let mut direction = Vec3::new(direction_mat[0][3], 0., direction_mat[2][3]);
         direction.normalize();
 
         const CAMERA_ROTATE_SPEED: f32 = 1.5;
