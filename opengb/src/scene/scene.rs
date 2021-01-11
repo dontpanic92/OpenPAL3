@@ -130,6 +130,12 @@ impl ScnScene {
         None
     }
 
+    pub fn get_height(&self, nav_coord: (f32, f32)) -> f32 {
+        let x = (nav_coord.0.ceil() as usize).clamp(0, self.nav.nav_file.maps[0].width as usize - 1);
+        let y = (nav_coord.1.ceil() as usize).clamp(0, self.nav.nav_file.maps[0].height as usize - 1);
+        self.nav.nav_file.maps[0].map[y][x].height
+    }
+
     pub fn scene_coord_to_nav_coord(&self, coord: &Vec3) -> (f32, f32) {
         let min_coord = self.nav_min_coord();
         (
@@ -225,8 +231,10 @@ impl ScnScene {
             )
             .unwrap();
 
+        println!("pol_obj size: {}", pol_objects.len());
         let _self = self.extension_mut();
         for obj in &_self.scn_file.nodes {
+            println!("obj node_type: {} name: {}", obj.node_type, obj.name);
             let mut pol = vec![];
             let mut cvd = vec![];
             if obj.node_type == 0 {
@@ -255,6 +263,7 @@ impl ScnScene {
                             .asset_mgr
                             .load_scn_pol(&_self.cpk_name, &_self.scn_name, &obj.name)
                     {
+                        println!("loaded pol: {} {}", obj.name, p.len());
                         pol.append(&mut p);
                     } else if let Some(mut c) = _self.asset_mgr.load_scn_cvd(
                         &_self.cpk_name,
@@ -263,6 +272,7 @@ impl ScnScene {
                         &obj.position,
                         obj.rotation.to_radians(),
                     ) {
+                        println!("loaded cvd: {} {}", obj.name, c.len());
                         cvd.append(&mut c);
                     } else {
                         log::error!("Cannot load object: {}", obj.name);

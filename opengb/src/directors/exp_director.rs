@@ -108,7 +108,10 @@ impl Director for ExplorationDirector {
 
         let scene = scene_manager.core_scene_mut_or_fail();
         let speed = 175.;
-        let target_position = Vec3::add(&position, &Vec3::dot(speed * delta_sec, &direction));
+        let mut target_position = Vec3::add(&position, &Vec3::dot(speed * delta_sec, &direction));
+        let target_nav_coord = scene.scene_coord_to_nav_coord(&target_position);
+        let height = scene.get_height(target_nav_coord);
+        target_position.y = height;
         let distance_to_border = scene.get_distance_to_border_by_scene_coord(&target_position);
 
         if let Some(proc_id) = scene.test_nav_trigger(&target_position) {
