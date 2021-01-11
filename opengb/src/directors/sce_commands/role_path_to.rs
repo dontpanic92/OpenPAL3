@@ -1,4 +1,4 @@
-use super::map_role_id;
+
 use crate::directors::sce_director::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
@@ -65,7 +65,7 @@ impl SceCommand for SceCommandRolePathTo {
 impl SceCommandRolePathTo {
     pub fn new(role_id: i32, nav_x: i32, nav_z: i32, unknown: i32) -> Self {
         Self {
-            role_id: map_role_id(role_id).to_string(),
+            role_id: role_id.to_string(),
             nav_x: nav_x as f32,
             nav_z: nav_z as f32,
             unknown,

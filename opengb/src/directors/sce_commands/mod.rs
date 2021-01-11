@@ -91,12 +91,3 @@ impl Direction {
         z: -1.,
     };
 }
-
-pub fn map_role_id(role_id: i32) -> i32 {
-    match role_id {
-        -1 => 101,
-        0 => 101,
-        1 => 104,
-        x => x,
-    }
-}

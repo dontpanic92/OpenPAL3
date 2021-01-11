@@ -1,4 +1,4 @@
-use super::map_role_id;
+
 use crate::directors::sce_director::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
@@ -45,7 +45,7 @@ impl SceCommandRoleSetFace {
         };
 
         Self {
-            role_id: map_role_id(role_id).to_string(),
+            role_id: role_id.to_string(),
             face_to,
         }
     }

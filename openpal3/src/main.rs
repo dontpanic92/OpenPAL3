@@ -42,7 +42,7 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
         )));
 
         let mut scene = Box::new(CoreScene::new(
-            self.asset_mgr.as_ref().unwrap().load_scn("Q01", "yn09a"),
+            self.asset_mgr.as_ref().unwrap().load_scn("Q01", "yn09"),
         ));
         scene
             .camera_mut()
@@ -60,13 +60,7 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
             self.asset_mgr.as_ref().unwrap().clone(),
             p_state,
         );
-        sce_director.borrow_mut().call_proc(1001);
-
-        app.engine_mut()
-            .scene_manager()
-            .core_scene_mut_or_fail()
-            .get_role_entity_mut("101")
-            .set_active(true);
+        // sce_director.borrow_mut().call_proc(1001);
 
         app.engine_mut().scene_manager().set_director(sce_director);
     }

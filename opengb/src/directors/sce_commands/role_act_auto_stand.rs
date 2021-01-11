@@ -1,4 +1,4 @@
-use super::map_role_id;
+
 use crate::directors::sce_director::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
@@ -30,7 +30,7 @@ impl SceCommand for SceCommandRoleActAutoStand {
 impl SceCommandRoleActAutoStand {
     pub fn new(role_id: i32, auto_play_idle: i32) -> Self {
         Self {
-            role_id: map_role_id(role_id).to_string(),
+            role_id: role_id.to_string(),
             auto_play_idle,
         }
     }

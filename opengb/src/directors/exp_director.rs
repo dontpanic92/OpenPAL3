@@ -35,6 +35,7 @@ impl ExplorationDirector {
 impl Director for ExplorationDirector {
     fn activate(&mut self, scene_manager: &mut dyn SceneManager) {
         debug!("ExplorationDirector activated");
+        scene_manager.core_scene_mut_or_fail().get_role_entity_mut("-1").set_active(true);
     }
 
     fn update(
@@ -80,14 +81,14 @@ impl Director for ExplorationDirector {
 
         const CAMERA_ROTATE_SPEED: f32 = 1.5;
         if input.get_key_state(Key::A).is_down() {
-            self.camera_rotation += CAMERA_ROTATE_SPEED * delta_sec;
+            self.camera_rotation -= CAMERA_ROTATE_SPEED * delta_sec;
             if self.camera_rotation < 0. {
                 self.camera_rotation += std::f32::consts::PI * 2.;
             }
         }
 
         if input.get_key_state(Key::D).is_down() {
-            self.camera_rotation -= CAMERA_ROTATE_SPEED * delta_sec;
+            self.camera_rotation += CAMERA_ROTATE_SPEED * delta_sec;
 
             if self.camera_rotation > std::f32::consts::PI * 2. {
                 self.camera_rotation -= std::f32::consts::PI * 2.;
@@ -95,7 +96,7 @@ impl Director for ExplorationDirector {
         }
 
         let scene = scene_manager.core_scene_mut_or_fail();
-        let position = scene.get_role_entity("101").transform().position();
+        let position = scene.get_role_entity("-1").transform().position();
         scene_manager
             .scene_mut()
             .unwrap()
@@ -131,7 +132,7 @@ impl Director for ExplorationDirector {
             }
         }
 
-        let entity = scene.get_role_entity_mut("101");
+        let entity = scene.get_role_entity_mut("-1");
         if direction.norm() > 0.5 && distance_to_border > std::f32::EPSILON {
             entity.run();
             entity

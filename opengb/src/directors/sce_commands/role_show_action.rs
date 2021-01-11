@@ -1,4 +1,4 @@
-use super::map_role_id;
+
 use crate::directors::sce_director::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
@@ -45,7 +45,7 @@ impl SceCommand for SceCommandRoleShowAction {
 impl SceCommandRoleShowAction {
     pub fn new(role_id: i32, action_name: String, repeat_mode: i32) -> Self {
         Self {
-            role_id: map_role_id(role_id).to_string(),
+            role_id: role_id.to_string(),
             action_name,
             repeat_mode,
         }

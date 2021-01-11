@@ -21,7 +21,7 @@ pub enum RoleState {
 }
 
 pub struct RoleEntity {
-    name: String,
+    model_name: String,
     asset_mgr: Rc<AssetManager>,
     component_factory: Rc<dyn ComponentFactory>,
     animations: HashMap<String, RoleAnimation>,
@@ -49,7 +49,7 @@ impl RoleEntity {
         }
 
         Self {
-            name: role_name.to_string(),
+            model_name: role_name.to_string(),
             asset_mgr,
             component_factory,
             animations,
@@ -84,7 +84,7 @@ impl RoleEntity {
         };
 
         if self.animations.get(anim_name).is_none() {
-            let anim = self.asset_mgr.load_role_anim(&self.name, anim_name);
+            let anim = self.asset_mgr.load_role_anim(&self.model_name, anim_name);
             self.animations.insert(anim_name.to_string(), anim);
         }
 
@@ -260,7 +260,6 @@ impl RoleAnimation {
     pub fn update(&mut self, delta_sec: f32, vertices: &mut VertexBuffer) {
         let mut anim_time = (delta_sec * 4580.) as u32 + self.last_anim_time;
         let total_anim_length = *self.anim_timestamps.last().unwrap();
-
         if anim_time >= total_anim_length && self.repeat_mode == RoleAnimationRepeatMode::NoRepeat {
             self.anim_finished = true;
             return;
