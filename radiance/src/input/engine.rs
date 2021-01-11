@@ -6,6 +6,7 @@ pub trait InputEngine {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Key {
+    Space = 0,
     A,
     B,
     C,
@@ -32,7 +33,6 @@ pub enum Key {
     X,
     Y,
     Z,
-    Space = 0,
     Left,
     Up,
     Right,
