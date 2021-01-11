@@ -126,22 +126,52 @@ impl AssetManager {
         cpk_name: &str,
         scn_name: &str,
         pol_name: &str,
-    ) -> Vec<CoreEntity<PolModelEntity>> {
+    ) -> Option<Vec<CoreEntity<PolModelEntity>>> {
         let path = self
             .scene_path
             .join(cpk_name)
             .join(scn_name)
             .join(pol_name)
             .with_extension("pol");
-        let pol_file = pol_load_from_file(&self.vfs, &path).unwrap();
-        self.load_pol_entities(&pol_file, path.to_str().unwrap())
+        if self.vfs.open(&path).is_ok() {
+            let pol_file = pol_load_from_file(&self.vfs, &path).unwrap();
+            Some(self.load_pol_entities(&pol_file, path.to_str().unwrap()))
+        } else {
+            None
+        }
+    }
+
+    pub fn load_scn_cvd(
+        &self,
+        cpk_name: &str,
+        scn_name: &str,
+        pol_name: &str,
+        position: &Vec3,
+        rotation: f32,
+    ) -> Option<Vec<CoreEntity<CvdModelEntity>>> {
+        let path = self
+            .scene_path
+            .join(cpk_name)
+            .join(scn_name)
+            .join(pol_name)
+            .with_extension("cvd");
+        let cvd_file = cvd_load_from_file(&self.vfs, &path).unwrap();
+        if self.vfs.open(&path).is_ok() {
+            Some(self.load_cvd_entities(&cvd_file, path.to_str().unwrap(), position, rotation))
+        } else {
+            None
+        }
     }
 
     // TODO: Return only one entity
-    pub fn load_object_item_pol(&self, obj_name: &str) -> Vec<CoreEntity<PolModelEntity>> {
+    pub fn load_object_item_pol(&self, obj_name: &str) -> Option<Vec<CoreEntity<PolModelEntity>>> {
         let path = self.get_object_item_path(obj_name);
-        let pol_file = pol_load_from_file(&self.vfs, &path).unwrap();
-        self.load_pol_entities(&pol_file, path.to_str().unwrap())
+        if self.vfs.open(&path).is_ok() {
+            let pol_file = pol_load_from_file(&self.vfs, &path).unwrap();
+            Some(self.load_pol_entities(&pol_file, path.to_str().unwrap()))
+        } else {
+            None
+        }
     }
 
     // TODO: Return only one entity
@@ -150,20 +180,14 @@ impl AssetManager {
         obj_name: &str,
         position: &Vec3,
         rotation: f32,
-    ) -> Vec<CoreEntity<CvdModelEntity>> {
+    ) -> Option<Vec<CoreEntity<CvdModelEntity>>> {
         let path = self.get_object_item_path(obj_name);
-        let mut entities = vec![];
-        let cvd_file = cvd_load_from_file(&self.vfs, &path).unwrap();
-        for (i, model) in cvd_file.models.iter().enumerate() {
-            entities.append(&mut self.load_cvd_entities(
-                &model,
-                position,
-                rotation,
-                path.to_str().unwrap(),
-            ));
+        if self.vfs.open(&path).is_ok() {
+            let cvd_file = cvd_load_from_file(&self.vfs, &path).unwrap();
+            Some(self.load_cvd_entities(&cvd_file, path.to_str().unwrap(), position, rotation))
+        } else {
+            None
         }
-
-        entities
     }
 
     pub fn load_music_data(&self, music_name: &str) -> Vec<u8> {
@@ -225,7 +249,24 @@ impl AssetManager {
         entities
     }
 
-    fn load_cvd_entities(
+    pub fn load_cvd_entities(
+        &self,
+        cvd: &CvdFile,
+        model_path: &str,
+        position: &Vec3,
+        rotation: f32,
+    ) -> Vec<CoreEntity<CvdModelEntity>> {
+        let mut entities = vec![];
+        for (i, model) in cvd.models.iter().enumerate() {
+            entities.append(
+                &mut self.load_cvd_entities_internal(&model, position, rotation, model_path),
+            );
+        }
+
+        entities
+    }
+
+    fn load_cvd_entities_internal(
         &self,
         model_node: &CvdModelNode,
         position: &Vec3,
@@ -301,7 +342,7 @@ impl AssetManager {
 
         if let Some(children) = &model_node.children {
             for child in children {
-                entities.append(&mut self.load_cvd_entities(child, position, rotation, model_path));
+                entities.append(&mut self.load_cvd_entities_internal(child, position, rotation, model_path));
             }
         }
 

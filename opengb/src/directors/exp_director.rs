@@ -78,8 +78,11 @@ impl Director for ExplorationDirector {
         }
 
         if input.get_key_state(Key::F).pressed() {
-            if let Some(proc_id) = scene.test_aabb_trigger(&position) {
-                debug!("New proc triggerd by aabb: {}", proc_id);
+            if let Some(proc_id) = scene
+                .test_aabb_trigger(&position)
+                .or_else(|| scene.test_item_trigger(&position))
+            {
+                debug!("New proc triggerd: {}", proc_id);
                 self.sce_director.borrow_mut().call_proc(proc_id);
                 return Some(self.sce_director.clone());
             }

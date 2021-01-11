@@ -14,6 +14,7 @@ pub struct ScnScene {
     nav: Nav,
     nav_triggers: Vec<SceNavTrigger>,
     aabb_triggers: Vec<SceAabbTrigger>,
+    item_triggers: Vec<SceItemTrigger>,
 }
 
 impl SceneExtension for ScnScene {
@@ -41,6 +42,7 @@ impl ScnScene {
             nav: Nav::new(nav_file),
             nav_triggers: vec![],
             aabb_triggers: vec![],
+            item_triggers: vec![],
         }
     }
 
@@ -104,6 +106,23 @@ impl ScnScene {
                 &coord
             );
             if Self::test_sphere_aabb(coord, R, &trigger.aabb_coord1, &trigger.aabb_coord2) {
+                return Some(trigger.sce_proc_id);
+            }
+        }
+
+        None
+    }
+
+    pub fn test_item_trigger(&self, coord: &Vec3) -> Option<u32> {
+        const D: f32 = 100.;
+        for trigger in &self.item_triggers {
+            log::debug!(
+                "Testing item trigger {:?} {:?} {}",
+                &trigger.coord,
+                &coord,
+                Vec3::sub(coord, &trigger.coord).norm2(),
+            );
+            if Vec3::sub(coord, &trigger.coord).norm2() < D * D {
                 return Some(trigger.sce_proc_id);
             }
         }
@@ -190,11 +209,18 @@ impl ScnScene {
     fn load_objects(self: &mut CoreScene<ScnScene>) {
         let ground_pol_name = self.scn_file.scn_base_name.clone() + ".pol";
         let mut cvd_objects = vec![];
+
+        log::debug!(
+            "Loading cpk {} scn {} pol {}",
+            &self.cpk_name,
+            &self.scn_file.scn_base_name,
+            &ground_pol_name
+        );
         let mut pol_objects = self.asset_mgr.load_scn_pol(
             &self.cpk_name,
             &self.scn_file.scn_base_name,
             &ground_pol_name,
-        );
+        ).unwrap();
 
         let _self = self.extension_mut();
         for obj in &_self.scn_file.nodes {
@@ -206,32 +232,69 @@ impl ScnScene {
                     nav_coord_min: obj.nav_trigger_coord_min,
                     sce_proc_id: obj.sce_proc_id,
                 });
+            } else if obj.node_type == 16 {
+                _self.item_triggers.push(SceItemTrigger {
+                    coord: obj.position,
+                    sce_proc_id: obj.sce_proc_id,
+                });
             } else if obj.node_type == 20 {
                 _self.aabb_triggers.push(SceAabbTrigger {
                     aabb_coord2: obj.aabb_trigger_coord2,
                     aabb_coord1: obj.aabb_trigger_coord1,
                     sce_proc_id: obj.sce_proc_id,
                 });
-            } else if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
+            }
+            
+            if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
                 if obj.name.as_bytes()[0] as char == '_' {
-                    pol.append(&mut _self.asset_mgr.load_scn_pol(
+                    if let Some(mut p) =
+                        _self
+                            .asset_mgr
+                            .load_scn_pol(&_self.cpk_name, &_self.scn_name, &obj.name)
+                    {
+                        pol.append(&mut p);
+                    } else if let Some(mut c) = _self.asset_mgr.load_scn_cvd(
                         &_self.cpk_name,
                         &_self.scn_name,
                         &obj.name,
-                    ));
-                } else if obj.name.ends_with(".pol") {
-                    pol.append(&mut _self.asset_mgr.load_object_item_pol(&obj.name));
-                } else if obj.name.ends_with(".cvd") {
-                    cvd.append(&mut _self.asset_mgr.load_object_item_cvd(
-                        &obj.name,
                         &obj.position,
                         obj.rotation.to_radians(),
-                    ));
+                    ) {
+                        cvd.append(&mut c);
+                    } else {
+                        log::error!("Cannot load object: {}", obj.name);
+                    }
+                } else if obj.name.ends_with(".pol") {
+                    pol.append(
+                        _self
+                            .asset_mgr
+                            .load_object_item_pol(&obj.name)
+                            .as_mut()
+                            .unwrap(),
+                    );
+                } else if obj.name.ends_with(".cvd") {
+                    cvd.append(
+                        _self
+                            .asset_mgr
+                            .load_object_item_cvd(
+                                &obj.name,
+                                &obj.position,
+                                obj.rotation.to_radians(),
+                            )
+                            .as_mut()
+                            .unwrap(),
+                    );
                 } else if obj.name.as_bytes()[0] as char == '+' {
                     // Unknown
                     continue;
                 } else {
-                    pol.append(&mut _self.asset_mgr.load_object_item_pol(&obj.name));
+                    pol.append(
+                        &mut _self
+                            .asset_mgr
+                            .load_object_item_pol(&obj.name)
+                            .as_mut()
+                            .unwrap(),
+                    );
                 }
             }
 
@@ -318,5 +381,10 @@ pub struct SceNavTrigger {
 pub struct SceAabbTrigger {
     aabb_coord1: Vec3,
     aabb_coord2: Vec3,
+    sce_proc_id: u32,
+}
+
+pub struct SceItemTrigger {
+    coord: Vec3,
     sce_proc_id: u32,
 }

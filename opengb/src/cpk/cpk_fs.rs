@@ -1,4 +1,5 @@
 use super::{cpk_archive::CpkFile, CpkArchive};
+use encoding::{EncoderTrap, Encoding};
 use log::debug;
 use memmap::{Mmap, MmapOptions};
 use mini_fs::Store;
@@ -29,6 +30,10 @@ impl Store for CpkFs {
 
     fn open_path(&self, path: &Path) -> std::io::Result<Self::File> {
         debug!("Opening {:?}", &path);
-        self.cpk_archive.borrow_mut().open(path.to_str().unwrap())
+        self.cpk_archive.borrow_mut().open(
+            &encoding::all::GBK
+                .encode(&path.to_str().unwrap().to_lowercase(), EncoderTrap::Ignore)
+                .unwrap(),
+        )
     }
 }

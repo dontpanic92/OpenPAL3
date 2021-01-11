@@ -62,7 +62,7 @@ impl RoleEntity {
         }
     }
 
-    pub fn  set_active(self: &mut CoreEntity<Self>, active: bool) {
+    pub fn set_active(self: &mut CoreEntity<Self>, active: bool) {
         self.is_active = active;
         if active {
             let anim_name = self.active_anim_name.clone();

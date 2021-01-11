@@ -287,6 +287,10 @@ impl SceProcContext {
                 // CameraDefault
                 command!(self, SceCommandCameraDefault, unknown: i32)
             }
+            46 => {
+                // AddItem
+                nop_command!(self, i32, i32)
+            }
             62 => {
                 // Dlg
                 command!(self, SceCommandDlg, text: string)

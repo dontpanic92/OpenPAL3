@@ -44,8 +44,8 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
         })
     }
 
-    pub fn open(&mut self, file_name: &str) -> IoResult<CpkFile> {
-        let hash = super::crc_checksum(file_name.to_lowercase().as_bytes());
+    pub fn open(&mut self, file_name: &[u8]) -> IoResult<CpkFile> {
+        let hash = super::crc_checksum(file_name);
         let entry = self
             .get_entry_by_crc(hash)
             .ok_or(IoError::from(IoErrorKind::NotFound))?;
@@ -61,6 +61,10 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
                 .or_else(|e| Err(IoError::new(IoErrorKind::InvalidData, e)))?;
             Ok(CpkFile::new(Cursor::new(decompressed_content)))
         }
+    }
+
+    pub fn open_str(&mut self, file_name: &str) -> IoResult<CpkFile> {
+        self.open(file_name.to_lowercase().as_bytes())
     }
 
     pub fn build_directory(&self) -> CpkEntry {
