@@ -231,10 +231,12 @@ impl ScnScene {
             )
             .unwrap();
 
-        println!("pol_obj size: {}", pol_objects.len());
+        pol_objects.iter_mut().for_each(|e| {
+            Self::apply_position_rotation(e, &Vec3::new(0., 0., 0.), 0.)
+        });
+
         let _self = self.extension_mut();
         for obj in &_self.scn_file.nodes {
-            println!("obj node_type: {} name: {}", obj.node_type, obj.name);
             let mut pol = vec![];
             let mut cvd = vec![];
             if obj.node_type == 0 {
@@ -263,7 +265,6 @@ impl ScnScene {
                             .asset_mgr
                             .load_scn_pol(&_self.cpk_name, &_self.scn_name, &obj.name)
                     {
-                        println!("loaded pol: {} {}", obj.name, p.len());
                         pol.append(&mut p);
                     } else if let Some(mut c) = _self.asset_mgr.load_scn_cvd(
                         &_self.cpk_name,
@@ -272,12 +273,11 @@ impl ScnScene {
                         &obj.position,
                         obj.rotation.to_radians(),
                     ) {
-                        println!("loaded cvd: {} {}", obj.name, c.len());
                         cvd.append(&mut c);
                     } else {
                         log::error!("Cannot load object: {}", obj.name);
                     }
-                } else if obj.name.ends_with(".pol") {
+                } else if obj.name.to_lowercase().ends_with(".pol") {
                     pol.append(
                         _self
                             .asset_mgr
@@ -285,7 +285,7 @@ impl ScnScene {
                             .as_mut()
                             .unwrap(),
                     );
-                } else if obj.name.ends_with(".cvd") {
+                } else if obj.name.to_lowercase().ends_with(".cvd") {
                     cvd.append(
                         _self
                             .asset_mgr

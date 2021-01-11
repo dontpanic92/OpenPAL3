@@ -231,19 +231,20 @@ impl AssetManager {
     ) -> Vec<CoreEntity<PolModelEntity>> {
         let mut entities = vec![];
         for mesh in &pol.meshes {
-            let material = &mesh.material_info[0];
-            let entity = CoreEntity::new(
-                PolModelEntity::new(
-                    &self.factory,
-                    &mesh.vertices,
-                    &material.triangles,
-                    self.load_pol_material(&material, model_path),
-                    material.has_alpha,
-                ),
-                "pol_obj",
-            );
+            for material in &mesh.material_info {
+                let entity = CoreEntity::new(
+                    PolModelEntity::new(
+                        &self.factory,
+                        &mesh.vertices,
+                        &material.triangles,
+                        self.load_pol_material(&material, model_path),
+                        material.has_alpha,
+                    ),
+                    "pol_obj",
+                );
 
-            entities.push(entity);
+                entities.push(entity);
+            }
         }
 
         entities

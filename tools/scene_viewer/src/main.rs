@@ -1,9 +1,9 @@
+#![feature(arbitrary_self_types)]
 mod scene;
 
 use nfd::Response;
-use radiance::application::utils::FpsCounter;
+use radiance::{application::utils::FpsCounter, scene::CoreScene};
 use radiance::application::{Application, ApplicationExtension};
-use opengb::loaders::nav_loader::nav_load_from_file;
 
 struct ApplicationCallbacks {
     path: String,
@@ -12,8 +12,9 @@ struct ApplicationCallbacks {
 
 impl ApplicationExtension<ApplicationCallbacks> for ApplicationCallbacks {
     fn on_initialized(&mut self, app: &mut Application<ApplicationCallbacks>) {
+        let factory = app.engine_mut().rendering_component_factory();
         app.engine_mut()
-            .load_scene2(scene::ScnScene::new(self.path.clone()), 90.);
+            .scene_manager().push_scene(Box::new(CoreScene::new(scene::ScnScene::new(self.path.clone(), factory))));
     }
 
     fn on_updating(&mut self, app: &mut Application<ApplicationCallbacks>, delta_sec: f32) {
@@ -33,17 +34,7 @@ impl ApplicationCallbacks {
 }
 
 fn main() {
-    let result = nfd::open_file_dialog(Some("scn"), None).unwrap_or_else(|e| {
-        panic!(e);
-    });
-
-    let path = match result {
-        Response::Okay(file_path) => file_path,
-        Response::OkayMultiple(files) => String::from(&files[0]),
-        Response::Cancel => std::process::exit(0),
-    };
-
-    let mut application = Application::new(ApplicationCallbacks::new(path));
+    let mut application = Application::new(ApplicationCallbacks::new("/scene/Q01/y.scn".to_owned()));
     application.initialize();
     application.run();
 }
