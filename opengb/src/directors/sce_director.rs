@@ -262,6 +262,10 @@ impl SceProcContext {
                 // RoleActive
                 command!(self, SceCommandRoleActive, role: i32, active: i32)
             }
+            32 => {
+                // CameraPush
+                nop_command!(self, f32, f32, i32)
+            }
             33 => {
                 // CameraRotate
                 nop_command!(self, f32, f32, f32, i32)
@@ -289,7 +293,7 @@ impl SceProcContext {
             }
             63 => {
                 // LoadScene
-                nop_command!(self, string, string)
+                command!(self, SceCommandLoadScene, name: string, sub_name: string)
             }
             67 => {
                 // DlgFace
@@ -322,6 +326,10 @@ impl SceProcContext {
             85 => {
                 // ObjectActive
                 nop_command!(self, i32, i32)
+            }
+            86 => {
+                // Caption
+                nop_command!(self, string, i32)
             }
             88 => {
                 // HY_Mode

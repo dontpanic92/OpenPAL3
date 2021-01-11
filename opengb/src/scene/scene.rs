@@ -13,6 +13,7 @@ pub struct ScnScene {
     scn_file: ScnFile,
     nav: Nav,
     nav_triggers: Vec<SceNavTrigger>,
+    aabb_triggers: Vec<SceAabbTrigger>,
 }
 
 impl SceneExtension for ScnScene {
@@ -39,7 +40,16 @@ impl ScnScene {
             scn_file,
             nav: Nav::new(nav_file),
             nav_triggers: vec![],
+            aabb_triggers: vec![],
         }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.cpk_name
+    }
+
+    pub fn sub_name(&self) -> &str {
+        &self.scn_name
     }
 
     pub fn nav_min_coord(&self) -> Vec3 {
@@ -69,7 +79,7 @@ impl ScnScene {
         ) as f32
     }
 
-    pub fn try_trigger_sce_proc(&self, coord: &Vec3) -> Option<u32> {
+    pub fn test_nav_trigger(&self, coord: &Vec3) -> Option<u32> {
         let nav_coord = self.scene_coord_to_nav_coord(coord);
         for trigger in &self.nav_triggers {
             if nav_coord.0 >= trigger.nav_coord_min.0 as f32
@@ -77,6 +87,23 @@ impl ScnScene {
                 && nav_coord.0 <= trigger.nav_coord_max.0 as f32
                 && nav_coord.1 <= trigger.nav_coord_max.1 as f32
             {
+                return Some(trigger.sce_proc_id);
+            }
+        }
+
+        None
+    }
+
+    pub fn test_aabb_trigger(&self, coord: &Vec3) -> Option<u32> {
+        const R: f32 = 50.;
+        for trigger in &self.aabb_triggers {
+            log::debug!(
+                "Testing Aabb {:?} {:?} {:?}",
+                &trigger.aabb_coord2,
+                &trigger.aabb_coord1,
+                &coord
+            );
+            if Self::test_sphere_aabb(coord, R, &trigger.aabb_coord1, &trigger.aabb_coord2) {
                 return Some(trigger.sce_proc_id);
             }
         }
@@ -136,6 +163,30 @@ impl ScnScene {
             .unwrap()
     }
 
+    fn test_sphere_aabb(s: &Vec3, r: f32, aabb1: &Vec3, aabb2: &Vec3) -> bool {
+        macro_rules! dist_sqr {
+            ($s: expr, $min: expr, $max: expr) => {
+                if $s < $min {
+                    ($min - $s) * ($min - $s)
+                } else if $s > $max {
+                    ($s - $max) * ($s - $max)
+                } else {
+                    0.
+                }
+            };
+        }
+
+        let x = vec![aabb1.x.min(aabb2.x), aabb1.x.max(aabb2.x)];
+        let y = vec![aabb1.y.min(aabb2.y), aabb1.y.max(aabb2.y)];
+        let z = vec![aabb1.z.min(aabb2.z), aabb1.z.max(aabb2.z)];
+
+        let dist =
+            dist_sqr!(s.x, x[0], x[1]) + dist_sqr!(s.y, y[0], y[1]) + dist_sqr!(s.z, z[0], z[1]);
+
+        log::debug!("Testing Aabb {} {}", dist, r * r);
+        dist < r * r
+    }
+
     fn load_objects(self: &mut CoreScene<ScnScene>) {
         let ground_pol_name = self.scn_file.scn_base_name.clone() + ".pol";
         let mut cvd_objects = vec![];
@@ -151,8 +202,14 @@ impl ScnScene {
             let mut cvd = vec![];
             if obj.node_type == 0 {
                 _self.nav_triggers.push(SceNavTrigger {
-                    nav_coord_max: obj.nav_coord_max,
-                    nav_coord_min: obj.nav_coord_min,
+                    nav_coord_max: obj.nav_trigger_coord_max,
+                    nav_coord_min: obj.nav_trigger_coord_min,
+                    sce_proc_id: obj.sce_proc_id,
+                });
+            } else if obj.node_type == 20 {
+                _self.aabb_triggers.push(SceAabbTrigger {
+                    aabb_coord2: obj.aabb_trigger_coord2,
+                    aabb_coord1: obj.aabb_trigger_coord1,
                     sce_proc_id: obj.sce_proc_id,
                 });
             } else if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
@@ -255,5 +312,11 @@ impl Nav {
 pub struct SceNavTrigger {
     nav_coord_min: (u32, u32),
     nav_coord_max: (u32, u32),
+    sce_proc_id: u32,
+}
+
+pub struct SceAabbTrigger {
+    aabb_coord1: Vec3,
+    aabb_coord2: Vec3,
     sce_proc_id: u32,
 }

@@ -20,7 +20,7 @@ impl SceCommand for SceCommandRoleActAutoStand {
         delta_sec: f32,
     ) -> bool {
         scene_manager
-            .scene_mut_or_fail()
+            .core_scene_mut_or_fail()
             .get_role_entity_mut(&self.role_id)
             .set_auto_play_idle(self.auto_play_idle == 1);
         true

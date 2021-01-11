@@ -64,17 +64,25 @@ impl Director for ExplorationDirector {
 
         direction.normalize();
 
-        let scene = scene_manager.scene_mut_or_fail();
+        let scene = scene_manager.core_scene_mut_or_fail();
         let position = scene.get_role_entity("101").transform().position();
 
         let speed = 175.;
         let target_position = Vec3::add(&position, &Vec3::dot(speed * delta_sec, &direction));
         let distance_to_border = scene.get_distance_to_border_by_scene_coord(&target_position);
 
-        if let Some(proc_id) = scene.try_trigger_sce_proc(&target_position) {
-            debug!("New proc triggerd: {}", proc_id);
+        if let Some(proc_id) = scene.test_nav_trigger(&target_position) {
+            debug!("New proc triggerd by nav: {}", proc_id);
             self.sce_director.borrow_mut().call_proc(proc_id);
             return Some(self.sce_director.clone());
+        }
+
+        if input.get_key_state(Key::F).pressed() {
+            if let Some(proc_id) = scene.test_aabb_trigger(&position) {
+                debug!("New proc triggerd by aabb: {}", proc_id);
+                self.sce_director.borrow_mut().call_proc(proc_id);
+                return Some(self.sce_director.clone());
+            }
         }
 
         let entity = scene.get_role_entity_mut("101");

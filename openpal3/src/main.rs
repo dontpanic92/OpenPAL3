@@ -1,5 +1,4 @@
 #![allow(unused_variables)]
-use log::debug;
 use opengb::directors::{PersistenceState, SceneManagerExtensions};
 use opengb::{
     asset_manager::AssetManager,
@@ -33,7 +32,7 @@ pub struct OpenPal3Application {
 
 impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
     fn on_initialized(&mut self, app: &mut Application<OpenPal3Application>) {
-        simple_logger::init().unwrap();
+        simple_logger::SimpleLogger::new().init().unwrap();
         app.set_title(&self.app_name);
 
         let input_engine = app.engine_mut().input_engine();
@@ -53,6 +52,7 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
         app.engine_mut().scene_manager().push_scene(scene);
 
         let p_state = Rc::new(RefCell::new(PersistenceState::new()));
+        // p_state.borrow_mut().set_global(-32768, 10200);
         let sce_director = SceDirector::new(
             app.engine_mut().audio_engine(),
             input_engine.clone(),
@@ -64,7 +64,7 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
 
         app.engine_mut()
             .scene_manager()
-            .scene_mut_or_fail()
+            .core_scene_mut_or_fail()
             .get_role_entity_mut("101")
             .set_active(true);
 

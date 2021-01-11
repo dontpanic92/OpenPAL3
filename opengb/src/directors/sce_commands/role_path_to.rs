@@ -18,7 +18,7 @@ pub struct SceCommandRolePathTo {
 impl SceCommand for SceCommandRolePathTo {
     fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
         scene_manager
-            .scene_mut_or_fail()
+            .core_scene_mut_or_fail()
             .get_role_entity_mut(&self.role_id)
             .play_anim("C02", RoleAnimationRepeatMode::Repeat);
     }
@@ -32,7 +32,7 @@ impl SceCommand for SceCommandRolePathTo {
     ) -> bool {
         const SPEED: f32 = 100.;
 
-        let scene = scene_manager.scene_mut_or_fail();
+        let scene = scene_manager.core_scene_mut_or_fail();
         let to = scene.nav_coord_to_scene_coord(self.nav_x, self.nav_z);
         let position = scene
             .get_role_entity_mut(&self.role_id)

@@ -22,7 +22,7 @@ impl SceCommand for SceCommandRoleShowAction {
         };
 
         scene_manager
-            .scene_mut_or_fail()
+            .core_scene_mut_or_fail()
             .get_role_entity_mut(&self.role_id)
             .play_anim(&self.action_name, repeat);
     }
@@ -35,7 +35,7 @@ impl SceCommand for SceCommandRoleShowAction {
         delta_sec: f32,
     ) -> bool {
         scene_manager
-            .scene_mut_or_fail()
+            .core_scene_mut_or_fail()
             .get_role_entity(&self.role_id)
             .state()
             == RoleState::Idle

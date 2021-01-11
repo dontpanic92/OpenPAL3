@@ -19,7 +19,7 @@ impl SceCommand for SceCommandCameraDefault {
     ) -> bool {
         let target = Vec3::new(0., 0., 0.);
         scene_manager
-            .scene_mut_or_fail()
+            .core_scene_mut_or_fail()
             .camera_mut()
             .transform_mut()
             .set_position(&Vec3::new(300., 200., 300.))

@@ -19,7 +19,7 @@ impl SceCommand for SceCommandRoleFaceRole {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        let scene = scene_manager.scene_mut_or_fail();
+        let scene = scene_manager.core_scene_mut_or_fail();
         let position = scene.get_role_entity(&self.role_id2).transform().position();
         scene
             .get_role_entity_mut(&self.role_id)

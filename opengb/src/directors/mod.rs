@@ -12,11 +12,14 @@ pub use sce_director::SceDirector;
 pub use shared_state::SharedState;
 
 pub trait SceneManagerExtensions: SceneManager {
-    fn scene_mut_or_fail(&mut self) -> &mut CoreScene<ScnScene> {
+    fn core_scene_mut(&mut self) -> Option<&mut CoreScene<ScnScene>> {
         self.scene_mut()
             .expect("No scene loaded. Probably a bug in Sce procedures.")
             .downcast_mut::<CoreScene<ScnScene>>()
-            .unwrap()
+    }
+
+    fn core_scene_mut_or_fail(&mut self) -> &mut CoreScene<ScnScene> {
+        self.core_scene_mut().unwrap()
     }
 }
 
