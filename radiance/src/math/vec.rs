@@ -59,7 +59,11 @@ impl Vec3 {
     }
 
     pub fn norm(&self) -> f32 {
-        (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
+        self.norm2().sqrt()
+    }
+
+    pub fn norm2(&self) -> f32 {
+        self.x * self.x + self.y * self.y + self.z * self.z
     }
 
     pub fn add(lhs: &Vec3, rhs: &Vec3) -> Self {
