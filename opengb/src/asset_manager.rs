@@ -342,7 +342,9 @@ impl AssetManager {
 
         if let Some(children) = &model_node.children {
             for child in children {
-                entities.append(&mut self.load_cvd_entities_internal(child, position, rotation, model_path));
+                entities.append(
+                    &mut self.load_cvd_entities_internal(child, position, rotation, model_path),
+                );
             }
         }
 

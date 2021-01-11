@@ -14,6 +14,7 @@ pub struct ExplorationDirector {
     sce_director: Rc<RefCell<SceDirector>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
     shared_state: Rc<RefCell<SharedState>>,
+    camera_rotation: f32,
 }
 
 impl ExplorationDirector {
@@ -26,6 +27,7 @@ impl ExplorationDirector {
             sce_director,
             input_engine,
             shared_state,
+            camera_rotation: 0.,
         }
     }
 }
@@ -64,9 +66,35 @@ impl Director for ExplorationDirector {
 
         direction.normalize();
 
+        const CAMERA_ROTATE_SPEED: f32 = 1.5;
+        if input.get_key_state(Key::A).is_down() {
+            self.camera_rotation += CAMERA_ROTATE_SPEED * delta_sec;
+            if self.camera_rotation < 0. {
+                self.camera_rotation += std::f32::consts::PI * 2.;
+            }
+        }
+
+        if input.get_key_state(Key::D).is_down() {
+            self.camera_rotation -= CAMERA_ROTATE_SPEED * delta_sec;
+
+            if self.camera_rotation > std::f32::consts::PI * 2. {
+                self.camera_rotation -= std::f32::consts::PI * 2.;
+            }
+        }
+
         let scene = scene_manager.core_scene_mut_or_fail();
         let position = scene.get_role_entity("101").transform().position();
+        scene_manager
+            .scene_mut()
+            .unwrap()
+            .camera_mut()
+            .transform_mut()
+            .set_position(&Vec3::new(400., 400., 400.))
+            .rotate_axis_angle(&Vec3::UP, self.camera_rotation)
+            .translate(&position)
+            .look_at(&position);
 
+        let scene = scene_manager.core_scene_mut_or_fail();
         let speed = 175.;
         let target_position = Vec3::add(&position, &Vec3::dot(speed * delta_sec, &direction));
         let distance_to_border = scene.get_distance_to_border_by_scene_coord(&target_position);

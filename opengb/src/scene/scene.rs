@@ -216,11 +216,14 @@ impl ScnScene {
             &self.scn_file.scn_base_name,
             &ground_pol_name
         );
-        let mut pol_objects = self.asset_mgr.load_scn_pol(
-            &self.cpk_name,
-            &self.scn_file.scn_base_name,
-            &ground_pol_name,
-        ).unwrap();
+        let mut pol_objects = self
+            .asset_mgr
+            .load_scn_pol(
+                &self.cpk_name,
+                &self.scn_file.scn_base_name,
+                &ground_pol_name,
+            )
+            .unwrap();
 
         let _self = self.extension_mut();
         for obj in &_self.scn_file.nodes {
@@ -244,7 +247,7 @@ impl ScnScene {
                     sce_proc_id: obj.sce_proc_id,
                 });
             }
-            
+
             if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
                 if obj.name.as_bytes()[0] as char == '_' {
                     if let Some(mut p) =
