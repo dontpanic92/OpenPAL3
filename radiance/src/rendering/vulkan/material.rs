@@ -8,6 +8,7 @@ pub struct VulkanMaterial {
     name: String,
     shader: VulkanShader,
     textures: Vec<VulkanTexture>,
+    use_alpha: bool,
 }
 
 impl Material for VulkanMaterial {}
@@ -35,6 +36,7 @@ impl VulkanMaterial {
             name: def.name().to_string(),
             shader,
             textures,
+            use_alpha: def.use_alpha(),
         }
     }
 
@@ -48,5 +50,9 @@ impl VulkanMaterial {
 
     pub fn textures(&self) -> &[VulkanTexture] {
         &self.textures
+    }
+
+    pub fn use_alpha(&self) -> bool {
+        self.use_alpha
     }
 }

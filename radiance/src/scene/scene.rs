@@ -1,3 +1,5 @@
+use crate::math::Transform;
+
 use super::{
     entity::{CoreEntity, Entity, EntityExtension},
     Camera,
@@ -9,8 +11,9 @@ pub trait Scene: downcast_rs::Downcast {
     fn update(&mut self, delta_sec: f32);
     fn draw_ui(&mut self, ui: &mut imgui::Ui);
     fn unload(&mut self);
-    fn entities(&self) -> &Vec<Box<dyn Entity>>;
-    fn entities_mut(&mut self) -> &mut Vec<Box<dyn Entity>>;
+    fn entities(&self) -> Vec<&dyn Entity>;
+    fn root_entities(&self) -> &Vec<Box<dyn Entity>>;
+    fn root_entities_mut(&mut self) -> &mut Vec<Box<dyn Entity>>;
     fn camera(&self) -> &Camera;
     fn camera_mut(&mut self) -> &mut Camera;
 }
@@ -64,8 +67,8 @@ impl<TExtension: SceneExtension> CoreScene<TExtension> {
         }
     }
 
-    pub fn add_entity<T: EntityExtension + 'static>(&mut self, entity: CoreEntity<T>) {
-        self.entities.push(Box::new(entity));
+    pub fn add_entity(&mut self, entity: Box<dyn Entity>) {
+        self.entities.push(entity);
     }
 
     pub fn extension(&self) -> &TExtension {
@@ -74,6 +77,16 @@ impl<TExtension: SceneExtension> CoreScene<TExtension> {
 
     pub fn extension_mut(&mut self) -> &mut TExtension {
         &mut self.extension
+    }
+
+    fn collect_entities(entity: &dyn Entity) -> Vec<&dyn Entity> {
+        let mut entities = vec![];
+        entities.push(entity);
+        for e in entity.children() {
+            entities.append(&mut Self::collect_entities(e));
+        }
+
+        entities
     }
 }
 
@@ -116,6 +129,10 @@ impl<TExtension: 'static + SceneExtension> Scene for CoreScene<TExtension> {
             e.update(delta_sec);
         }
 
+        for e in &mut self.entities {
+            e.update_world_transform(&Transform::new());
+        }
+
         self.on_updated(delta_sec);
     }
 
@@ -125,12 +142,21 @@ impl<TExtension: 'static + SceneExtension> Scene for CoreScene<TExtension> {
 
     fn unload(&mut self) {}
 
-    fn entities(&self) -> &Vec<Box<dyn Entity>> {
+    fn root_entities(&self) -> &Vec<Box<dyn Entity>> {
         &self.entities
     }
 
-    fn entities_mut(&mut self) -> &mut Vec<Box<dyn Entity>> {
+    fn root_entities_mut(&mut self) -> &mut Vec<Box<dyn Entity>> {
         &mut self.entities
+    }
+
+    fn entities(&self) -> Vec<&dyn Entity> {
+        let mut entities = vec![];
+        for e in &self.entities {
+            entities.append(&mut Self::collect_entities(e.as_ref()));
+        }
+
+        entities
     }
 
     fn camera(&self) -> &Camera {

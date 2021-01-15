@@ -22,6 +22,11 @@ impl Transform {
         Vec3::new(self.mat[0][3], self.mat[1][3], self.mat[2][3])
     }
 
+    pub fn set_matrix(&mut self, mat: Mat44) -> &mut Self {
+        self.mat = mat;
+        self
+    }
+
     pub fn set_position(&mut self, pos: &Vec3) -> &mut Self {
         self.mat[0][3] = pos.x;
         self.mat[1][3] = pos.y;

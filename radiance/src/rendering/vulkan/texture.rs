@@ -34,7 +34,7 @@ impl VulkanTexture {
         let texture_missing =
             image::load_from_memory(radiance_assets::TEXTURE_MISSING_TEXTURE_FILE)
                 .unwrap()
-                .to_rgba();
+                .to_rgba8();
         let rgba_image = match def {
             TextureDef::ImageTextureDef(image) => {
                 image.as_ref().unwrap_or_else(|| &texture_missing)

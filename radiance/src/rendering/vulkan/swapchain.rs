@@ -11,8 +11,8 @@ use crate::rendering::imgui::{vulkan::ImguiVulkanContext, ImguiContext, ImguiFra
 use ash::prelude::VkResult;
 use ash::version::DeviceV1_0;
 use ash::{vk, Device, Instance};
-use std::ops::Deref;
 use std::rc::{Rc, Weak};
+use std::{cmp::Ordering, ops::Deref};
 
 pub struct SwapChain {
     device: Weak<Device>,
@@ -247,18 +247,26 @@ impl SwapChain {
             );
         }
 
-        // Render order matters when we need alpha blending
-        // TODO: support sorting by material
         let mut objects_by_material = vec![];
         for obj in objects {
             let key = obj.material().name();
             self.pipeline_manager
                 .create_pipeline_if_not_exist(obj.material());
-            objects_by_material.push((key.to_string(), vec![obj]));
+            objects_by_material.push((obj.material(), vec![obj]));
         }
 
-        for (material_name, object_group) in &objects_by_material {
-            let pipeline = self.pipeline_manager.get_pipeline(material_name);
+        objects_by_material.sort_by(|a, b| {
+            if a.0.use_alpha() && !b.0.use_alpha() {
+                Ordering::Greater
+            } else if !a.0.use_alpha() && b.0.use_alpha() {
+                Ordering::Less
+            } else {
+                Ordering::Equal
+            }
+        });
+
+        for (material, object_group) in &objects_by_material {
+            let pipeline = self.pipeline_manager.get_pipeline(material.name());
 
             unsafe {
                 device.cmd_bind_pipeline(
