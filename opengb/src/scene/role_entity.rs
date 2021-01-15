@@ -71,7 +71,7 @@ impl RoleEntity {
             let anim_name = self.active_anim_name.clone();
             self.play_anim(&anim_name, self.anim_repeat_mode);
         } else {
-            self.remove_component::<Box<dyn RenderObject>>();
+            self.remove_component::<RenderingComponent>();
         }
     }
 

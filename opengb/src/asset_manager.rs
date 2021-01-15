@@ -15,7 +15,6 @@ use crate::{
         sce_loader::{sce_load_from_file, SceFile},
         scn_loader::scn_load_from_file,
     },
-    material::LightMapMaterialDef,
 };
 use log::debug;
 use mini_fs::prelude::*;
@@ -166,7 +165,6 @@ impl AssetManager {
         }
     }
 
-    // TODO: Return only one entity
     pub fn load_object_item_pol(&self, obj_name: &str) -> Option<CoreEntity<PolModelEntity>> {
         let path = self.get_object_item_path(obj_name);
         if self.vfs.open(&path).is_ok() {
