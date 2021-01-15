@@ -13,7 +13,6 @@ use std::{
 pub struct PolModelEntity {
     component_factory: Rc<dyn ComponentFactory>,
     meshes: Vec<PolMesh>,
-    has_alpha: bool,
 }
 
 impl PolModelEntity {
@@ -24,25 +23,22 @@ impl PolModelEntity {
     ) -> Self {
         let pol = pol_load_from_file(vfs, path.as_ref()).unwrap();
         let mut meshes = vec![];
-        let mut has_alpha = false;
         for mesh in &pol.meshes {
             for material in &mesh.material_info {
                 let mesh = PolMesh::new(
                     &mesh.vertices,
                     &material.triangles,
                     Self::load_material(&material, vfs, path.as_ref()),
-                    material.has_alpha,
+                    material.use_alpha,
                 );
 
                 meshes.push(mesh);
-                has_alpha |= material.has_alpha != 0;
             }
         }
 
         PolModelEntity {
             component_factory: component_factory.clone(),
             meshes,
-            has_alpha,
         }
     }
 
@@ -75,21 +71,16 @@ impl PolModelEntity {
             .collect();
 
         if texture_paths.len() == 1 {
-            SimpleMaterialDef::create(&mut vfs.open(&texture_paths[0]).unwrap())
+            SimpleMaterialDef::create(
+                &mut vfs.open(&texture_paths[0]).unwrap(),
+                material.use_alpha != 0,
+            )
         } else {
             let mut readers: Vec<_> = texture_paths
                 .iter()
                 .map(|p| p.file_stem().and_then(|_| Some(vfs.open(p).unwrap())))
                 .collect();
-            LightMapMaterialDef::create(&mut readers)
-        }
-    }
-
-    pub fn has_alpha(&self) -> u32 {
-        if self.has_alpha {
-            1
-        } else {
-            0
+            LightMapMaterialDef::create(&mut readers, material.use_alpha != 0)
         }
     }
 }
@@ -117,7 +108,6 @@ struct PolMesh {
     material: MaterialDef,
     vertices: VertexBuffer,
     indices: Vec<u32>,
-    has_alpha: u32,
 }
 
 impl PolMesh {
@@ -177,11 +167,6 @@ impl PolMesh {
             material,
             vertices,
             indices,
-            has_alpha,
         }
-    }
-
-    pub fn has_alpha(&self) -> u32 {
-        self.has_alpha
     }
 }

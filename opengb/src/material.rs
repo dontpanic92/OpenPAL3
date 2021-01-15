@@ -24,7 +24,7 @@ impl LightMapShaderDef {
 
 pub struct LightMapMaterialDef;
 impl LightMapMaterialDef {
-    pub fn create<R: Read>(readers: &mut [Option<R>]) -> MaterialDef {
+    pub fn create<R: Read>(readers: &mut [Option<R>], use_alpha: bool) -> MaterialDef {
         let textures: Vec<TextureDef> = readers
             .iter_mut()
             .map(|r| {
@@ -41,6 +41,11 @@ impl LightMapMaterialDef {
             })
             .collect();
 
-        MaterialDef::new("lightmap_material", LightMapShaderDef::create(), textures)
+        MaterialDef::new(
+            "lightmap_material",
+            LightMapShaderDef::create(),
+            textures,
+            use_alpha,
+        )
     }
 }

@@ -1,5 +1,5 @@
 use super::{
-    exp_director::ExplorationDirector, sce_commands::*, shared_state::SharedState, PersistenceState,
+    exp_director::ExplorationDirector, sce_commands::*, shared_state::SharedState, PersistentState,
 };
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
@@ -19,7 +19,7 @@ pub struct SceDirector {
     input_engine: Rc<RefCell<dyn InputEngine>>,
     state: SceState,
     shared_state: Rc<RefCell<SharedState>>,
-    persistence_state: Rc<RefCell<PersistenceState>>,
+    persistent_state: Rc<RefCell<PersistentState>>,
     active_commands: Vec<Box<dyn SceCommand>>,
 }
 
@@ -74,7 +74,7 @@ impl SceDirector {
         input_engine: Rc<RefCell<dyn InputEngine>>,
         sce: SceFile,
         asset_mgr: Rc<AssetManager>,
-        persistence_state: Rc<RefCell<PersistenceState>>,
+        persistent_state: Rc<RefCell<PersistentState>>,
     ) -> Rc<RefCell<Self>> {
         let shared_state = Rc::new(RefCell::new(SharedState::new(audio_engine)));
         let state = SceState::new(
@@ -82,14 +82,14 @@ impl SceDirector {
             asset_mgr.clone(),
             Rc::new(sce),
             shared_state.clone(),
-            persistence_state.clone(),
+            persistent_state.clone(),
         );
         let director = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
             input_engine,
             state,
             shared_state,
-            persistence_state,
+            persistent_state: persistent_state,
             active_commands: vec![],
         }));
 
@@ -501,7 +501,7 @@ impl SceVmContext {
 pub struct SceState {
     asset_mgr: Rc<AssetManager>,
     shared_state: Rc<RefCell<SharedState>>,
-    persistence_state: Rc<RefCell<PersistenceState>>,
+    persistent_state: Rc<RefCell<PersistentState>>,
     fop_state: FopState,
     vm_context: SceVmContext,
     run_mode: i32,
@@ -515,14 +515,14 @@ impl SceState {
         asset_mgr: Rc<AssetManager>,
         sce: Rc<SceFile>,
         shared_state: Rc<RefCell<SharedState>>,
-        persistence_state: Rc<RefCell<PersistenceState>>,
+        persistent_state: Rc<RefCell<PersistentState>>,
     ) -> Self {
         let ext = HashMap::<String, Box<dyn Any>>::new();
 
         Self {
             asset_mgr: asset_mgr.clone(),
             shared_state,
-            persistence_state,
+            persistent_state,
             fop_state: FopState::new(),
             vm_context: SceVmContext::new(sce),
             run_mode: 1,
@@ -535,8 +535,8 @@ impl SceState {
         self.shared_state.borrow_mut()
     }
 
-    pub fn persistence_state_mut(&mut self) -> RefMut<PersistenceState> {
-        self.persistence_state.borrow_mut()
+    pub fn persistent_state_mut(&mut self) -> RefMut<PersistentState> {
+        self.persistent_state.borrow_mut()
     }
 
     pub fn fop_state_mut(&mut self) -> &mut FopState {

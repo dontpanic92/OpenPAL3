@@ -168,7 +168,6 @@ impl ScnScene {
         self.entities()
             .get(pos)
             .unwrap()
-            .as_ref()
             .downcast_ref::<CoreEntity<RoleEntity>>()
             .unwrap()
     }
@@ -178,11 +177,11 @@ impl ScnScene {
         name: &str,
     ) -> &'a mut CoreEntity<RoleEntity> {
         let pos = self
-            .entities_mut()
+            .root_entities_mut()
             .iter()
             .position(|e| e.name() == name)
             .unwrap();
-        self.entities_mut()
+        self.root_entities_mut()
             .get_mut(pos)
             .unwrap()
             .as_mut()
@@ -216,15 +215,8 @@ impl ScnScene {
 
     fn load_objects(self: &mut CoreScene<ScnScene>) {
         let ground_pol_name = self.scn_file.scn_base_name.clone() + ".pol";
-        let mut cvd_objects = vec![];
+        let mut entities: Vec<Box<dyn Entity>> = vec![];
 
-        log::debug!(
-            "Loading cpk {} scn {} pol {}",
-            &self.cpk_name,
-            &self.scn_file.scn_base_name,
-            &ground_pol_name
-        );
-        let mut pol_objects = vec![];
         let mut scn_object = self
             .asset_mgr
             .load_scn_pol(
@@ -234,12 +226,11 @@ impl ScnScene {
             )
             .unwrap();
         Self::apply_position_rotation(&mut scn_object, &Vec3::new(0., 0., 0.), 0.);
-        pol_objects.push(scn_object);
+        entities.push(Box::new(scn_object));
 
         let _self = self.extension_mut();
         for obj in &_self.scn_file.nodes {
-            let mut entity = None;
-            let mut cvd = vec![];
+            let mut entity: Option<Box<dyn Entity>> = None;
             if obj.node_type == 0 {
                 _self.nav_triggers.push(SceNavTrigger {
                     nav_coord_max: obj.nav_trigger_coord_max,
@@ -266,53 +257,41 @@ impl ScnScene {
                             .asset_mgr
                             .load_scn_pol(&_self.cpk_name, &_self.scn_name, &obj.name)
                     {
-                        entity = Some(p);
-                    } else if let Some(mut c) = _self.asset_mgr.load_scn_cvd(
-                        &_self.cpk_name,
-                        &_self.scn_name,
-                        &obj.name,
-                        &obj.position,
-                        obj.rotation.to_radians(),
-                    ) {
-                        cvd.append(&mut c);
+                        entity = Some(Box::new(p));
+                    } else if let Some(c) =
+                        _self
+                            .asset_mgr
+                            .load_scn_cvd(&_self.cpk_name, &_self.scn_name, &obj.name)
+                    {
+                        entity = Some(Box::new(c));
                     } else {
                         log::error!("Cannot load object: {}", obj.name);
                     }
                 } else if obj.name.to_lowercase().ends_with(".pol") {
-                    entity = Some(_self.asset_mgr.load_object_item_pol(&obj.name).unwrap());
+                    entity = Some(Box::new(
+                        _self.asset_mgr.load_object_item_pol(&obj.name).unwrap(),
+                    ));
                 } else if obj.name.to_lowercase().ends_with(".cvd") {
-                    cvd.append(
-                        _self
-                            .asset_mgr
-                            .load_object_item_cvd(
-                                &obj.name,
-                                &obj.position,
-                                obj.rotation.to_radians(),
-                            )
-                            .as_mut()
-                            .unwrap(),
-                    );
+                    entity = Some(Box::new(
+                        _self.asset_mgr.load_object_item_cvd(&obj.name).unwrap(),
+                    ));
                 } else if obj.name.as_bytes()[0] as char == '+' {
                     // Unknown
                     continue;
                 } else {
-                    entity = Some(_self.asset_mgr.load_object_item_pol(&obj.name).unwrap());
+                    entity = Some(Box::new(
+                        _self.asset_mgr.load_object_item_pol(&obj.name).unwrap(),
+                    ));
                 }
             }
 
             if let Some(mut p) = entity {
-                Self::apply_position_rotation(&mut p, &obj.position, obj.rotation.to_radians());
-                pol_objects.push(p);
+                Self::apply_position_rotation(p.as_mut(), &obj.position, obj.rotation.to_radians());
+                entities.push(p);
             }
-            cvd_objects.append(&mut cvd);
         }
 
-        pol_objects.sort_by_key(|e| e.has_alpha());
-        for entity in pol_objects {
-            self.add_entity(entity);
-        }
-
-        for entity in cvd_objects {
+        for entity in entities {
             self.add_entity(entity);
         }
     }
@@ -339,7 +318,7 @@ impl ScnScene {
             let model_name = Self::map_role_id(i).to_string();
             let role_entity = self.asset_mgr.load_role(&model_name, "C01");
             let entity = CoreEntity::new(role_entity, &entity_name);
-            self.add_entity(entity);
+            self.add_entity(Box::new(entity));
         }
 
         let mut entities = vec![];
@@ -359,7 +338,7 @@ impl ScnScene {
         }
 
         for e in entities {
-            self.add_entity(e);
+            self.add_entity(Box::new(e));
         }
     }
 }

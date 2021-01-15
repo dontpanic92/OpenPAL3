@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-pub struct PersistenceState {
+pub struct PersistentState {
     global_vars: HashMap<i16, i32>,
 }
 
-impl PersistenceState {
+impl PersistentState {
     pub fn new() -> Self {
         Self {
             global_vars: HashMap::new(),

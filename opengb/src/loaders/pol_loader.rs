@@ -53,7 +53,7 @@ pub struct PolVertex {
 
 #[derive(Debug)]
 pub struct PolMaterialInfo {
-    pub has_alpha: u32,
+    pub use_alpha: u32,
     pub unknown_68: Vec<f32>,
     pub unknown_float: f32,
     pub texture_count: u32,
@@ -305,7 +305,7 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
         }
 
         material_info.push(PolMaterialInfo {
-            has_alpha,
+            use_alpha: has_alpha,
             unknown_68,
             unknown_float,
             texture_count,

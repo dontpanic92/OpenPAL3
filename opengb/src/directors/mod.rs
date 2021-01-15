@@ -1,12 +1,12 @@
 mod exp_director;
-mod persistence_state;
+mod persistent_state;
 mod sce_commands;
 mod sce_director;
 mod shared_state;
 
 use crate::scene::ScnScene;
 pub use exp_director::ExplorationDirector;
-pub use persistence_state::PersistenceState;
+pub use persistent_state::PersistentState;
 use radiance::scene::{CoreScene, SceneManager};
 pub use sce_director::SceDirector;
 pub use shared_state::SharedState;

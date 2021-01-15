@@ -1,3 +1,9 @@
+use crate::loaders::{
+    mv3_loader::*,
+    nav_loader::{nav_load_from_file, NavFile},
+    sce_loader::{sce_load_from_file, SceFile},
+    scn_loader::scn_load_from_file,
+};
 use crate::utilities::StoreExt2;
 use crate::{
     cpk::CpkFs,
@@ -6,22 +12,12 @@ use crate::{
         ScnScene,
     },
 };
-use crate::{
-    loaders::{
-        cvd_loader::*,
-        mv3_loader::*,
-        nav_loader::{nav_load_from_file, NavFile},
-        pol_loader::*,
-        sce_loader::{sce_load_from_file, SceFile},
-        scn_loader::scn_load_from_file,
-    },
-};
 use log::debug;
 use mini_fs::prelude::*;
 use mini_fs::{LocalFs, MiniFs};
+use radiance::rendering::SimpleMaterialDef;
 use radiance::rendering::{ComponentFactory, MaterialDef};
-use radiance::scene::{CoreEntity, Entity};
-use radiance::{math::Vec3, rendering::SimpleMaterialDef};
+use radiance::scene::CoreEntity;
 use std::rc::Rc;
 use std::{
     fs,
@@ -109,7 +105,7 @@ impl AssetManager {
         texture_path.pop();
         texture_path.push(std::str::from_utf8(&mv3file.textures[0].names[0]).unwrap());
 
-        SimpleMaterialDef::create(&mut self.vfs.open(texture_path).unwrap())
+        SimpleMaterialDef::create(&mut self.vfs.open(texture_path).unwrap(), false)
     }
 
     pub fn mv3_path(&self, role_name: &str, action_name: &str) -> PathBuf {
@@ -133,7 +129,6 @@ impl AssetManager {
             .join(pol_name)
             .with_extension("pol");
         if self.vfs.open(&path).is_ok() {
-            let pol_file = pol_load_from_file(&self.vfs, &path).unwrap();
             Some(CoreEntity::new(
                 PolModelEntity::new(&self.factory, &self.vfs, &path),
                 "pol_obj",
@@ -148,18 +143,19 @@ impl AssetManager {
         cpk_name: &str,
         scn_name: &str,
         pol_name: &str,
-        position: &Vec3,
-        rotation: f32,
-    ) -> Option<Vec<CoreEntity<CvdModelEntity>>> {
+    ) -> Option<CoreEntity<CvdModelEntity>> {
         let path = self
             .scene_path
             .join(cpk_name)
             .join(scn_name)
             .join(pol_name)
             .with_extension("cvd");
-        let cvd_file = cvd_load_from_file(&self.vfs, &path).unwrap();
         if self.vfs.open(&path).is_ok() {
-            Some(self.load_cvd_entities(&cvd_file, path.to_str().unwrap(), position, rotation))
+            Some(CvdModelEntity::create(
+                self.factory.clone(),
+                &self.vfs,
+                &path,
+            ))
         } else {
             None
         }
@@ -177,17 +173,14 @@ impl AssetManager {
         }
     }
 
-    // TODO: Return only one entity
-    pub fn load_object_item_cvd(
-        &self,
-        obj_name: &str,
-        position: &Vec3,
-        rotation: f32,
-    ) -> Option<Vec<CoreEntity<CvdModelEntity>>> {
+    pub fn load_object_item_cvd(&self, obj_name: &str) -> Option<CoreEntity<CvdModelEntity>> {
         let path = self.get_object_item_path(obj_name);
         if self.vfs.open(&path).is_ok() {
-            let cvd_file = cvd_load_from_file(&self.vfs, &path).unwrap();
-            Some(self.load_cvd_entities(&cvd_file, path.to_str().unwrap(), position, rotation))
+            Some(CvdModelEntity::create(
+                self.factory.clone(),
+                &self.vfs,
+                &path,
+            ))
         } else {
             None
         }
@@ -225,127 +218,6 @@ impl AssetManager {
         }
 
         vfs
-    }
-
-    pub fn load_cvd_entities(
-        &self,
-        cvd: &CvdFile,
-        model_path: &str,
-        position: &Vec3,
-        rotation: f32,
-    ) -> Vec<CoreEntity<CvdModelEntity>> {
-        let mut entities = vec![];
-        for (i, model) in cvd.models.iter().enumerate() {
-            entities.append(
-                &mut self.load_cvd_entities_internal(&model, position, rotation, model_path),
-            );
-        }
-
-        entities
-    }
-
-    fn load_cvd_entities_internal(
-        &self,
-        model_node: &CvdModelNode,
-        position: &Vec3,
-        rotation: f32,
-        model_path: &str,
-    ) -> Vec<CoreEntity<CvdModelEntity>> {
-        let mut entities = vec![];
-        if let Some(model) = &model_node.model {
-            for material in &model.mesh.materials {
-                if material.triangles.is_none() {
-                    continue;
-                }
-
-                for v in &model.mesh.frames {
-                    let mut entity = CoreEntity::new(
-                        CvdModelEntity::new(
-                            &self.factory,
-                            v,
-                            material,
-                            self.load_cvd_texture(material, model_path),
-                        ),
-                        "cvd_obj",
-                    );
-                    let transform = entity
-                        .transform_mut()
-                        .set_position(position)
-                        .rotate_axis_angle_local(&Vec3::UP, rotation);
-
-                    if let Some(p) = model
-                        .position_keyframes
-                        .as_ref()
-                        .and_then(|frame| frame.frames.get(0))
-                        .and_then(|f| Some(&f.position))
-                    {
-                        transform.translate_local(p);
-                    }
-
-                    transform.scale_local(&Vec3::new(
-                        model.scale_factor,
-                        model.scale_factor,
-                        model.scale_factor,
-                    ));
-
-                    if let Some(q) = model
-                        .rotation_keyframes
-                        .as_ref()
-                        .and_then(|frame| frame.frames.get(0))
-                        .and_then(|f| Some(&f.quaternion))
-                    {
-                        transform.rotate_quaternion_local(q);
-                    }
-
-                    if let Some(s) = model
-                        .scale_keyframes
-                        .as_ref()
-                        .and_then(|frame| frame.frames.get(0))
-                    {
-                        let q2 = s.quaternion;
-                        let mut q3 = q2;
-                        q3.inverse();
-
-                        transform
-                            .rotate_quaternion_local(&q2)
-                            .scale_local(&s.scale)
-                            .rotate_quaternion_local(&q3);
-                    }
-
-                    entities.push(entity);
-                    break;
-                }
-            }
-        }
-
-        if let Some(children) = &model_node.children {
-            for child in children {
-                entities.append(
-                    &mut self.load_cvd_entities_internal(child, position, rotation, model_path),
-                );
-            }
-        }
-
-        entities
-    }
-
-    fn load_cvd_texture(&self, material: &CvdMaterial, model_path: &str) -> MaterialDef {
-        let dds_name = material
-            .texture_name
-            .split_terminator('.')
-            .next()
-            .unwrap()
-            .to_owned()
-            + ".dds";
-        let mut texture_path = PathBuf::from(model_path);
-        texture_path.pop();
-        texture_path.push(&dds_name);
-        if !self.vfs.open(&texture_path).is_ok() {
-            texture_path.pop();
-            texture_path.push(&material.texture_name);
-        }
-
-        SimpleMaterialDef::create(&mut self.vfs.open(texture_path).unwrap())
     }
 
     fn get_object_item_path(&self, obj_name: &str) -> PathBuf {

@@ -1,5 +1,5 @@
 #![allow(unused_variables)]
-use opengb::directors::{PersistenceState, SceneManagerExtensions};
+use opengb::directors::PersistentState;
 use opengb::{
     asset_manager::AssetManager,
     config::OpenGbConfig,
@@ -51,7 +51,7 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
             .look_at(&Vec3::new(0., 0., 0.));
         app.engine_mut().scene_manager().push_scene(scene);
 
-        let p_state = Rc::new(RefCell::new(PersistenceState::new()));
+        let p_state = Rc::new(RefCell::new(PersistentState::new()));
         // p_state.borrow_mut().set_global(-32768, 10200);
         let sce_director = SceDirector::new(
             app.engine_mut().audio_engine(),

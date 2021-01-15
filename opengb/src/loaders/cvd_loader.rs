@@ -42,7 +42,7 @@ pub struct CvdMesh {
     pub materials: Vec<CvdMaterial>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CvdPositionKeyFrame {
     pub timestamp: f32,
     pub position: Vec3,
@@ -58,13 +58,13 @@ pub struct CvdPositionKeyFrame {
     pub unknown10: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CvdPositionKeyFrames {
     pub version: u8,
     pub frames: Vec<CvdPositionKeyFrame>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CvdRotationKeyFrame {
     pub timestamp: f32,
     pub quaternion: Quaternion,
@@ -80,13 +80,13 @@ pub struct CvdRotationKeyFrame {
     pub unknown10: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CvdRotationKeyFrames {
     pub version: u8,
     pub frames: Vec<CvdRotationKeyFrame>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CvdScaleKeyFrame {
     pub timestamp: f32,
     pub quaternion: Quaternion,
@@ -94,7 +94,7 @@ pub struct CvdScaleKeyFrame {
     pub unknown: [f32; 14],
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CvdScaleKeyFrames {
     pub version: u8,
     pub frames: Vec<CvdScaleKeyFrame>,

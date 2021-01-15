@@ -17,7 +17,7 @@ impl SceCommand for SceCommandLet {
         delta_sec: f32,
     ) -> bool {
         state
-            .persistence_state_mut()
+            .persistent_state_mut()
             .set_global(self.var, self.value);
         true
     }
