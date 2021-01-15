@@ -8,7 +8,7 @@ use crate::{
     rendering::{VulkanRenderingEngine, Window},
     scene::DefaultSceneManager,
 };
-use std::error::Error;
+use std::{error::Error, rc::Rc};
 
 pub fn create_radiance_engine(
     platform: &mut Platform,
@@ -18,7 +18,7 @@ pub fn create_radiance_engine(
     };
 
     let rendering_engine = Box::new(VulkanRenderingEngine::new(&window)?);
-    let audio_engine = Box::new(OpenAlAudioEngine::new());
+    let audio_engine = Rc::new(OpenAlAudioEngine::new());
     let input_engine = WindowsInputEngine::new(platform);
     let scene_manager = Box::new(DefaultSceneManager::new());
 

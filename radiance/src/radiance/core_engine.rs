@@ -10,7 +10,7 @@ use std::{cell::RefCell, rc::Rc};
 
 pub struct CoreRadianceEngine {
     rendering_engine: Box<dyn RenderingEngine>,
-    audio_engine: Box<dyn AudioEngine>,
+    audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngineInternal>>,
     scene_manager: Box<dyn SceneManager>,
 }
@@ -18,7 +18,7 @@ pub struct CoreRadianceEngine {
 impl CoreRadianceEngine {
     pub(crate) fn new(
         rendering_engine: Box<dyn RenderingEngine>,
-        audio_engine: Box<dyn AudioEngine>,
+        audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngineInternal>>,
         scene_manager: Box<dyn SceneManager>,
     ) -> Self {
@@ -34,8 +34,8 @@ impl CoreRadianceEngine {
         self.rendering_engine.component_factory()
     }
 
-    pub fn audio_engine(&mut self) -> &mut dyn AudioEngine {
-        self.audio_engine.as_mut()
+    pub fn audio_engine(&mut self) -> Rc<dyn AudioEngine> {
+        self.audio_engine.clone()
     }
 
     pub fn input_engine(&self) -> Rc<RefCell<dyn InputEngine>> {
