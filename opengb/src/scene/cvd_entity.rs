@@ -77,6 +77,8 @@ impl EntityExtension for CvdModelEntity {
             &self.material,
             false,
         );
-        self.add_component::<Box<dyn RenderObject>>(Box::new(ro));
+        
+        let component = self.component_factory.create_rendering_component(vec![ro]);
+        self.add_component(Box::new(component));
     }
 }

@@ -1,5 +1,5 @@
 use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
-use radiance::math::{Vec2, Vec3};
+use radiance::{math::{Vec2, Vec3}, rendering::RenderingComponent};
 use radiance::rendering::{
     ComponentFactory, MaterialDef, RenderObject, VertexBuffer, VertexComponents,
 };
@@ -92,9 +92,9 @@ impl RoleEntity {
         self.anim_repeat_mode = repeat_mode;
         self.active_anim_mut().reset(repeat_mode);
 
-        self.remove_component::<Box<dyn RenderObject>>();
-        let ro = self.active_anim().render_object();
-        self.add_component::<Box<dyn RenderObject>>(Box::new(ro));
+        self.remove_component::<RenderingComponent>();
+        let rc = self.active_anim().create_rendering_component();
+        self.add_component(Box::new(rc));
     }
 
     pub fn run(self: &mut CoreEntity<Self>) {
@@ -137,10 +137,12 @@ impl EntityExtension for RoleEntity {
     fn on_updating(self: &mut CoreEntity<Self>, delta_sec: f32) {
         if self.is_active {
             // TODO: Consider to use Arc<Mutex<>>>
-            let ro = unsafe {
-                &mut *(self.get_component_mut::<Box<dyn RenderObject>>().unwrap()
-                    as *mut Box<dyn RenderObject>)
+            let rc = unsafe {
+                &mut *(self.get_component_mut::<RenderingComponent>().unwrap()
+                    as *mut RenderingComponent)
             };
+            let ro = rc.render_objects_mut().first_mut().unwrap();
+
             ro.update_vertices(&mut |vb: &mut VertexBuffer| {
                 self.active_anim_mut().update(delta_sec, vb)
             });
@@ -302,12 +304,14 @@ impl RoleAnimation {
         self.anim_finished
     }
 
-    pub fn render_object(&self) -> Box<dyn RenderObject> {
-        self.component_factory.create_render_object(
+    pub fn create_rendering_component(&self) -> RenderingComponent {
+        let ro = self.component_factory.create_render_object(
             self.vertices.clone(),
             self.indices.clone(),
             &self.material,
             true,
-        )
+        );
+
+        self.component_factory.create_rendering_component(vec![ro])
     }
 }
