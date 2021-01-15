@@ -4,8 +4,8 @@ use super::{
     texture::VulkanTexture, uniform_buffers::DynamicUniformBufferManager,
 };
 use crate::rendering::{
-    factory::ComponentFactory, texture::TextureDef, Material, MaterialDef, RenderObject, Shader,
-    ShaderDef, Texture, VertexBuffer,
+    factory::ComponentFactory, texture::TextureDef, Material, MaterialDef, RenderObject,
+    RenderingComponent, Shader, ShaderDef, Texture, VertexBuffer,
 };
 use ash::Device;
 use std::rc::Rc;
@@ -67,6 +67,18 @@ impl ComponentFactory for VulkanComponentFactory {
             )
             .unwrap(),
         )
+    }
+
+    fn create_rendering_component(
+        &self,
+        objects: Vec<Box<dyn RenderObject>>,
+    ) -> RenderingComponent {
+        let mut component = RenderingComponent::new();
+        for o in objects {
+            component.push_render_object(o);
+        }
+
+        component
     }
 }
 

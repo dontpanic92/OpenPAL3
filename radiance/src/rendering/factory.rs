@@ -1,6 +1,6 @@
 use super::{
-    texture::TextureDef, Material, MaterialDef, RenderObject, Shader, ShaderDef, Texture,
-    VertexBuffer,
+    texture::TextureDef, Material, MaterialDef, RenderObject, RenderingComponent, Shader,
+    ShaderDef, Texture, VertexBuffer,
 };
 
 pub trait ComponentFactory {
@@ -14,4 +14,6 @@ pub trait ComponentFactory {
         material_def: &MaterialDef,
         host_dynamic: bool,
     ) -> Box<dyn RenderObject>;
+    fn create_rendering_component(&self, objects: Vec<Box<dyn RenderObject>>)
+        -> RenderingComponent;
 }

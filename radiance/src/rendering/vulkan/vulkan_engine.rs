@@ -8,12 +8,12 @@ use super::{
     factory::VulkanComponentFactory,
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
+use crate::math::Mat44;
 use crate::rendering::{
     imgui::{ImguiContext, ImguiFrame},
-    ComponentFactory, RenderingEngine, Window,
+    ComponentFactory, RenderingComponent, RenderingEngine, Window,
 };
 use crate::scene::{entity_get_component, Scene};
-use crate::{math::Mat44, rendering::RenderObject};
 use ash::extensions::ext::DebugReport;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Entry, Instance};
@@ -58,9 +58,11 @@ impl RenderingEngine for VulkanRenderingEngine {
 
         self.dub_manager().update_do(|updater| {
             for entity in scene.entities() {
-                if let Some(ro) = entity_get_component::<Box<dyn RenderObject>>(entity.as_ref()) {
-                    if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
-                        updater(vro.dub_index(), entity.transform().matrix());
+                if let Some(rc) = entity_get_component::<RenderingComponent>(entity.as_ref()) {
+                    for ro in rc.render_objects() {
+                        if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
+                            updater(vro.dub_index(), entity.transform().matrix());
+                        }
                     }
                 }
             }
@@ -321,9 +323,11 @@ impl VulkanRenderingEngine {
                 .entities()
                 .iter()
                 .filter_map(|e| {
-                    entity_get_component::<Box<dyn RenderObject>>(e.as_ref())
-                        .and_then(|c| c.downcast_ref())
+                    entity_get_component::<RenderingComponent>(e.as_ref())
+                        .and_then(|c| Some(c.render_objects()))
                 })
+                .flatten()
+                .filter_map(|o| o.downcast_ref())
                 .collect();
 
             let command_buffer = swapchain!()

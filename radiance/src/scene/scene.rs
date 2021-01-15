@@ -2,9 +2,7 @@ use super::{
     entity::{CoreEntity, Entity, EntityExtension},
     Camera,
 };
-use std::cell::{Ref, RefCell, RefMut};
 use std::ops::{Deref, DerefMut};
-use std::rc::Rc;
 
 pub trait Scene: downcast_rs::Downcast {
     fn load(&mut self);

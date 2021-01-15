@@ -64,17 +64,17 @@ impl AudioSource for OpenAlAudioSource {
             match frame {
                 Ok(Some(samples)) => {
                     match samples.channels {
-                    1 => buffer
-                        .set_data::<Mono<i16>, _>(samples.data, samples.sample_rate)
-                        .unwrap(),
-                    2 => buffer
-                        .set_data::<Stereo<i16>, _>(samples.data, samples.sample_rate)
-                        .unwrap(),
-                    _ => {}
+                        1 => buffer
+                            .set_data::<Mono<i16>, _>(samples.data, samples.sample_rate)
+                            .unwrap(),
+                        2 => buffer
+                            .set_data::<Stereo<i16>, _>(samples.data, samples.sample_rate)
+                            .unwrap(),
+                        _ => {}
                     }
-                    
+
                     self.streaming_source.queue_buffer(buffer).unwrap();
-                },
+                }
                 Ok(None) => self.state = AudioSourceState::Stopped,
                 Err(e) => println!("Error: {}", e),
             }
