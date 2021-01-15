@@ -1,9 +1,12 @@
 use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
-use radiance::{math::{Vec2, Vec3}, rendering::RenderingComponent};
 use radiance::rendering::{
     ComponentFactory, MaterialDef, RenderObject, VertexBuffer, VertexComponents,
 };
 use radiance::scene::{CoreEntity, EntityExtension};
+use radiance::{
+    math::{Vec2, Vec3},
+    rendering::RenderingComponent,
+};
 use std::collections::HashMap;
 use std::rc::Rc;
 

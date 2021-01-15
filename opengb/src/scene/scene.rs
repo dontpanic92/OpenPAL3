@@ -131,8 +131,10 @@ impl ScnScene {
     }
 
     pub fn get_height(&self, nav_coord: (f32, f32)) -> f32 {
-        let x = (nav_coord.0.ceil() as usize).clamp(0, self.nav.nav_file.maps[0].width as usize - 1);
-        let y = (nav_coord.1.ceil() as usize).clamp(0, self.nav.nav_file.maps[0].height as usize - 1);
+        let x =
+            (nav_coord.0.ceil() as usize).clamp(0, self.nav.nav_file.maps[0].width as usize - 1);
+        let y =
+            (nav_coord.1.ceil() as usize).clamp(0, self.nav.nav_file.maps[0].height as usize - 1);
         self.nav.nav_file.maps[0].map[y][x].height
     }
 
@@ -222,7 +224,8 @@ impl ScnScene {
             &self.scn_file.scn_base_name,
             &ground_pol_name
         );
-        let mut pol_objects = self
+        let mut pol_objects = vec![];
+        let mut scn_object = self
             .asset_mgr
             .load_scn_pol(
                 &self.cpk_name,
@@ -230,14 +233,12 @@ impl ScnScene {
                 &ground_pol_name,
             )
             .unwrap();
-
-        pol_objects.iter_mut().for_each(|e| {
-            Self::apply_position_rotation(e, &Vec3::new(0., 0., 0.), 0.)
-        });
+        Self::apply_position_rotation(&mut scn_object, &Vec3::new(0., 0., 0.), 0.);
+        pol_objects.push(scn_object);
 
         let _self = self.extension_mut();
         for obj in &_self.scn_file.nodes {
-            let mut pol = vec![];
+            let mut entity = None;
             let mut cvd = vec![];
             if obj.node_type == 0 {
                 _self.nav_triggers.push(SceNavTrigger {
@@ -260,12 +261,12 @@ impl ScnScene {
 
             if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
                 if obj.name.as_bytes()[0] as char == '_' {
-                    if let Some(mut p) =
+                    if let Some(p) =
                         _self
                             .asset_mgr
                             .load_scn_pol(&_self.cpk_name, &_self.scn_name, &obj.name)
                     {
-                        pol.append(&mut p);
+                        entity = Some(p);
                     } else if let Some(mut c) = _self.asset_mgr.load_scn_cvd(
                         &_self.cpk_name,
                         &_self.scn_name,
@@ -278,13 +279,7 @@ impl ScnScene {
                         log::error!("Cannot load object: {}", obj.name);
                     }
                 } else if obj.name.to_lowercase().ends_with(".pol") {
-                    pol.append(
-                        _self
-                            .asset_mgr
-                            .load_object_item_pol(&obj.name)
-                            .as_mut()
-                            .unwrap(),
-                    );
+                    entity = Some(_self.asset_mgr.load_object_item_pol(&obj.name).unwrap());
                 } else if obj.name.to_lowercase().ends_with(".cvd") {
                     cvd.append(
                         _self
@@ -301,20 +296,14 @@ impl ScnScene {
                     // Unknown
                     continue;
                 } else {
-                    pol.append(
-                        &mut _self
-                            .asset_mgr
-                            .load_object_item_pol(&obj.name)
-                            .as_mut()
-                            .unwrap(),
-                    );
+                    entity = Some(_self.asset_mgr.load_object_item_pol(&obj.name).unwrap());
                 }
             }
 
-            pol.iter_mut().for_each(|e| {
-                Self::apply_position_rotation(e, &obj.position, obj.rotation.to_radians())
-            });
-            pol_objects.append(&mut pol);
+            if let Some(mut p) = entity {
+                Self::apply_position_rotation(&mut p, &obj.position, obj.rotation.to_radians());
+                pol_objects.push(p);
+            }
             cvd_objects.append(&mut cvd);
         }
 

@@ -1,23 +1,127 @@
-use crate::loaders::pol_loader::*;
-use radiance::rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents};
-use radiance::scene::{CoreEntity, EntityExtension};
-use radiance::{
-    math::{Vec2, Vec3},
-    rendering::RenderObject,
+use crate::{loaders::pol_loader::*, material::LightMapMaterialDef};
+use mini_fs::{MiniFs, StoreExt};
+use radiance::math::{Vec2, Vec3};
+use radiance::rendering::{
+    ComponentFactory, MaterialDef, SimpleMaterialDef, VertexBuffer, VertexComponents,
 };
-use std::rc::Rc;
+use radiance::scene::{CoreEntity, EntityExtension};
+use std::{
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 pub struct PolModelEntity {
     component_factory: Rc<dyn ComponentFactory>,
+    meshes: Vec<PolMesh>,
+    has_alpha: bool,
+}
+
+impl PolModelEntity {
+    pub fn new<P: AsRef<Path>>(
+        component_factory: &Rc<dyn ComponentFactory>,
+        vfs: &MiniFs,
+        path: P,
+    ) -> Self {
+        let pol = pol_load_from_file(vfs, path.as_ref()).unwrap();
+        let mut meshes = vec![];
+        let mut has_alpha = false;
+        for mesh in &pol.meshes {
+            for material in &mesh.material_info {
+                let mesh = PolMesh::new(
+                    &mesh.vertices,
+                    &material.triangles,
+                    Self::load_material(&material, vfs, path.as_ref()),
+                    material.has_alpha,
+                );
+
+                meshes.push(mesh);
+                has_alpha |= material.has_alpha != 0;
+            }
+        }
+
+        PolModelEntity {
+            component_factory: component_factory.clone(),
+            meshes,
+            has_alpha,
+        }
+    }
+
+    fn load_material<P: AsRef<Path>>(
+        material: &PolMaterialInfo,
+        vfs: &MiniFs,
+        path: P,
+    ) -> MaterialDef {
+        let texture_paths: Vec<PathBuf> = material
+            .texture_names
+            .iter()
+            .map(|name| {
+                name.split_terminator('.')
+                    .next()
+                    .and_then(|n| Some(n.to_owned() + ".dds"))
+                    .and_then(|dds_name| {
+                        let mut texture_path = path.as_ref().to_owned();
+                        texture_path.pop();
+                        texture_path.push(dds_name);
+                        if !vfs.open(&texture_path).is_ok() {
+                            texture_path.pop();
+                            texture_path.push(name);
+                        }
+
+                        Some(texture_path)
+                    })
+                    .or(Some(PathBuf::from(name)))
+                    .unwrap()
+            })
+            .collect();
+
+        if texture_paths.len() == 1 {
+            SimpleMaterialDef::create(&mut vfs.open(&texture_paths[0]).unwrap())
+        } else {
+            let mut readers: Vec<_> = texture_paths
+                .iter()
+                .map(|p| p.file_stem().and_then(|_| Some(vfs.open(p).unwrap())))
+                .collect();
+            LightMapMaterialDef::create(&mut readers)
+        }
+    }
+
+    pub fn has_alpha(&self) -> u32 {
+        if self.has_alpha {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+impl EntityExtension for PolModelEntity {
+    fn on_loading(self: &mut CoreEntity<Self>) {
+        let mut objects = vec![];
+        for mesh in &self.meshes {
+            let ro = self.component_factory.create_render_object(
+                mesh.vertices.clone(),
+                mesh.indices.clone(),
+                &mesh.material,
+                false,
+            );
+
+            objects.push(ro);
+        }
+
+        let component = self.component_factory.create_rendering_component(objects);
+        self.add_component(Box::new(component));
+    }
+}
+
+struct PolMesh {
     material: MaterialDef,
     vertices: VertexBuffer,
     indices: Vec<u32>,
     has_alpha: u32,
 }
 
-impl PolModelEntity {
+impl PolMesh {
     pub fn new(
-        component_factory: &Rc<dyn ComponentFactory>,
         all_vertices: &Vec<PolVertex>,
         triangles: &[PolTriangle],
         material: MaterialDef,
@@ -69,8 +173,7 @@ impl PolModelEntity {
             );
         }
 
-        PolModelEntity {
-            component_factory: component_factory.clone(),
+        Self {
             material,
             vertices,
             indices,
@@ -80,19 +183,5 @@ impl PolModelEntity {
 
     pub fn has_alpha(&self) -> u32 {
         self.has_alpha
-    }
-}
-
-impl EntityExtension for PolModelEntity {
-    fn on_loading(self: &mut CoreEntity<Self>) {
-        let ro = self.component_factory.create_render_object(
-            self.vertices.clone(),
-            self.indices.clone(),
-            &self.material,
-            false,
-        );
-
-        let component = self.component_factory.create_rendering_component(vec![ro]);
-        self.add_component(Box::new(component));
     }
 }

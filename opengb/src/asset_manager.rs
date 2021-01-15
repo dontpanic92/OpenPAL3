@@ -126,7 +126,7 @@ impl AssetManager {
         cpk_name: &str,
         scn_name: &str,
         pol_name: &str,
-    ) -> Option<Vec<CoreEntity<PolModelEntity>>> {
+    ) -> Option<CoreEntity<PolModelEntity>> {
         let path = self
             .scene_path
             .join(cpk_name)
@@ -135,7 +135,10 @@ impl AssetManager {
             .with_extension("pol");
         if self.vfs.open(&path).is_ok() {
             let pol_file = pol_load_from_file(&self.vfs, &path).unwrap();
-            Some(self.load_pol_entities(&pol_file, path.to_str().unwrap()))
+            Some(CoreEntity::new(
+                PolModelEntity::new(&self.factory, &self.vfs, &path),
+                "pol_obj",
+            ))
         } else {
             None
         }
@@ -164,11 +167,13 @@ impl AssetManager {
     }
 
     // TODO: Return only one entity
-    pub fn load_object_item_pol(&self, obj_name: &str) -> Option<Vec<CoreEntity<PolModelEntity>>> {
+    pub fn load_object_item_pol(&self, obj_name: &str) -> Option<CoreEntity<PolModelEntity>> {
         let path = self.get_object_item_path(obj_name);
         if self.vfs.open(&path).is_ok() {
-            let pol_file = pol_load_from_file(&self.vfs, &path).unwrap();
-            Some(self.load_pol_entities(&pol_file, path.to_str().unwrap()))
+            Some(CoreEntity::new(
+                PolModelEntity::new(&self.factory, &self.vfs, &path),
+                "pol_obj",
+            ))
         } else {
             None
         }
@@ -222,32 +227,6 @@ impl AssetManager {
         }
 
         vfs
-    }
-
-    fn load_pol_entities(
-        &self,
-        pol: &PolFile,
-        model_path: &str,
-    ) -> Vec<CoreEntity<PolModelEntity>> {
-        let mut entities = vec![];
-        for mesh in &pol.meshes {
-            for material in &mesh.material_info {
-                let entity = CoreEntity::new(
-                    PolModelEntity::new(
-                        &self.factory,
-                        &mesh.vertices,
-                        &material.triangles,
-                        self.load_pol_material(&material, model_path),
-                        material.has_alpha,
-                    ),
-                    "pol_obj",
-                );
-
-                entities.push(entity);
-            }
-        }
-
-        entities
     }
 
     pub fn load_cvd_entities(
@@ -369,41 +348,6 @@ impl AssetManager {
         }
 
         SimpleMaterialDef::create(&mut self.vfs.open(texture_path).unwrap())
-    }
-
-    fn load_pol_material(&self, material: &PolMaterialInfo, path: &str) -> MaterialDef {
-        let texture_paths: Vec<PathBuf> = material
-            .texture_names
-            .iter()
-            .map(|name| {
-                name.split_terminator('.')
-                    .next()
-                    .and_then(|n| Some(n.to_owned() + ".dds"))
-                    .and_then(|dds_name| {
-                        let mut texture_path = PathBuf::from(path);
-                        texture_path.pop();
-                        texture_path.push(dds_name);
-                        if !self.vfs.open(&texture_path).is_ok() {
-                            texture_path.pop();
-                            texture_path.push(name);
-                        }
-
-                        Some(texture_path)
-                    })
-                    .or(Some(PathBuf::from(name)))
-                    .unwrap()
-            })
-            .collect();
-
-        if texture_paths.len() == 1 {
-            SimpleMaterialDef::create(&mut self.vfs.open(&texture_paths[0]).unwrap())
-        } else {
-            let mut readers: Vec<_> = texture_paths
-                .iter()
-                .map(|p| p.file_stem().and_then(|_| Some(self.vfs.open(p).unwrap())))
-                .collect();
-            LightMapMaterialDef::create(&mut readers)
-        }
     }
 
     fn get_object_item_path(&self, obj_name: &str) -> PathBuf {

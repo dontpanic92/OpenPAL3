@@ -35,7 +35,10 @@ impl ExplorationDirector {
 impl Director for ExplorationDirector {
     fn activate(&mut self, scene_manager: &mut dyn SceneManager) {
         debug!("ExplorationDirector activated");
-        scene_manager.core_scene_mut_or_fail().get_role_entity_mut("-1").set_active(true);
+        scene_manager
+            .core_scene_mut_or_fail()
+            .get_role_entity_mut("-1")
+            .set_active(true);
     }
 
     fn update(
