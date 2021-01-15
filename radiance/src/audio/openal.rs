@@ -46,6 +46,10 @@ impl AudioSource for OpenAlAudioSource {
             return;
         }
 
+        if self.streaming_source.buffers_queued() == 0 {
+            self.state = AudioSourceState::Stopped;
+        }
+
         if self.state == AudioSourceState::Stopped || self.state == AudioSourceState::Paused {
             return;
         }
@@ -60,23 +64,24 @@ impl AudioSource for OpenAlAudioSource {
                 }
             }
 
-            let mut buffer = self.streaming_source.unqueue_buffer().unwrap();
-            match frame {
-                Ok(Some(samples)) => {
-                    match samples.channels {
-                        1 => buffer
-                            .set_data::<Mono<i16>, _>(samples.data, samples.sample_rate)
-                            .unwrap(),
-                        2 => buffer
-                            .set_data::<Stereo<i16>, _>(samples.data, samples.sample_rate)
-                            .unwrap(),
-                        _ => {}
-                    }
+            if let Ok(mut buffer) = self.streaming_source.unqueue_buffer() {
+                match frame {
+                    Ok(Some(samples)) => {
+                        match samples.channels {
+                            1 => buffer
+                                .set_data::<Mono<i16>, _>(samples.data, samples.sample_rate)
+                                .unwrap(),
+                            2 => buffer
+                                .set_data::<Stereo<i16>, _>(samples.data, samples.sample_rate)
+                                .unwrap(),
+                            _ => {}
+                        }
 
-                    self.streaming_source.queue_buffer(buffer).unwrap();
+                        self.streaming_source.queue_buffer(buffer).unwrap();
+                    }
+                    Ok(None) => {},
+                    Err(e) => println!("Error: {}", e),
                 }
-                Ok(None) => self.state = AudioSourceState::Stopped,
-                Err(e) => println!("Error: {}", e),
             }
 
             processed -= 1;
@@ -89,29 +94,9 @@ impl AudioSource for OpenAlAudioSource {
     }
 
     fn play(&mut self, data: Vec<u8>, codec: Codec, looping: bool) {
-        let mut decoder = create_decoder(data, codec);
-
-        while self.streaming_source.unqueue_buffer().is_ok() {}
-
-        for _ in 0..20 {
-            let frame = decoder.fetch_samples();
-            match frame {
-                Ok(Some(samples)) => {
-                    let buffer = create_buffer_from_samples(samples, self.context.as_ref());
-                    if buffer.is_none() {
-                        continue;
-                    }
-
-                    self.streaming_source.queue_buffer(buffer.unwrap()).unwrap();
-                }
-                _ => break,
-            }
-        }
-
-        self.decoder = Some(decoder);
+        self.decoder = Some(create_decoder(data, codec));
         self.looping = looping;
-        self.streaming_source.play();
-        self.state = AudioSourceState::Playing;
+        self.play_internal();
     }
 
     fn restart(&mut self) {
@@ -120,8 +105,7 @@ impl AudioSource for OpenAlAudioSource {
         }
 
         self.decoder.as_mut().unwrap().reset();
-        self.streaming_source.play();
-        self.state = AudioSourceState::Playing;
+        self.play_internal();
     }
 
     fn stop(&mut self) {
@@ -145,6 +129,28 @@ impl OpenAlAudioSource {
             state: AudioSourceState::Stopped,
             looping: false,
         }
+    }
+
+    fn play_internal(&mut self) {
+        while self.streaming_source.unqueue_buffer().is_ok() {}
+
+        for _ in 0..20 {
+            let frame = self.decoder.as_mut().unwrap().fetch_samples();
+            match frame {
+                Ok(Some(samples)) => {
+                    let buffer = create_buffer_from_samples(samples, self.context.as_ref());
+                    if buffer.is_none() {
+                        continue;
+                    }
+
+                    self.streaming_source.queue_buffer(buffer.unwrap()).unwrap();
+                }
+                _ => break,
+            }
+        }
+
+        self.streaming_source.play();
+        self.state = AudioSourceState::Playing;
     }
 }
 
