@@ -29,7 +29,7 @@ impl SceCommand for SceCommandRolePathTo {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        const SPEED: f32 = 100.;
+        const SPEED: f32 = 80.;
 
         let scene = scene_manager.core_scene_mut_or_fail();
         let to = scene.nav_coord_to_scene_coord(self.nav_x, self.nav_z);

@@ -70,15 +70,16 @@ impl Director for SceDirector {
 
 impl SceDirector {
     pub fn new(
-        audio_engine: &dyn AudioEngine,
+        audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
         sce: SceFile,
         asset_mgr: Rc<AssetManager>,
         persistent_state: Rc<RefCell<PersistentState>>,
     ) -> Rc<RefCell<Self>> {
-        let shared_state = Rc::new(RefCell::new(SharedState::new(audio_engine)));
+        let shared_state = Rc::new(RefCell::new(SharedState::new(&audio_engine)));
         let state = SceState::new(
             input_engine.clone(),
+            audio_engine.clone(),
             asset_mgr.clone(),
             Rc::new(sce),
             shared_state.clone(),
@@ -507,11 +508,13 @@ pub struct SceState {
     run_mode: i32,
     ext: HashMap<String, Box<dyn Any>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
+    audio_engine: Rc<dyn AudioEngine>,
 }
 
 impl SceState {
     pub fn new(
         input_engine: Rc<RefCell<dyn InputEngine>>,
+        audio_engine: Rc<dyn AudioEngine>,
         asset_mgr: Rc<AssetManager>,
         sce: Rc<SceFile>,
         shared_state: Rc<RefCell<SharedState>>,
@@ -528,6 +531,7 @@ impl SceState {
             run_mode: 1,
             ext,
             input_engine,
+            audio_engine,
         }
     }
 
@@ -549,6 +553,10 @@ impl SceState {
 
     pub fn input(&self) -> Ref<dyn InputEngine> {
         self.input_engine.borrow()
+    }
+
+    pub fn audio(&self) -> &Rc<dyn AudioEngine> {
+        &self.audio_engine
     }
 
     pub fn run_mode(&self) -> i32 {
