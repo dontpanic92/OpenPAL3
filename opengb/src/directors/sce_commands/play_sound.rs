@@ -39,7 +39,6 @@ impl SceCommand for SceCommandPlaySound {
         }
 
         if self.source.as_mut().unwrap().borrow_mut().state() == AudioSourceState::Stopped {
-            println!("in cmd: stopped");
             self.times -= 1;
             self.source.as_mut().unwrap().borrow_mut().restart();
         }

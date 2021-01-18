@@ -289,4 +289,8 @@ impl CpkEntry {
     pub fn children(&self) -> &[Rc<RefCell<CpkEntry>>] {
         self.children.as_slice()
     }
+
+    pub fn is_dir(&self) -> bool {
+        (self.raw_entry.flag & CpkTableFlag::IsDir as u32) != 0
+    }
 }

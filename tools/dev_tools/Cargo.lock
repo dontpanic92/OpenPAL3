@@ -68,17 +68,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "atty"
-version = "0.2.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
-dependencies = [
- "hermit-abi",
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -156,28 +145,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "chrono"
-version = "0.4.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
-dependencies = [
- "libc",
- "num-integer",
- "num-traits 0.2.14",
- "time",
- "winapi",
-]
-
-[[package]]
-name = "cloudabi"
-version = "0.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
-dependencies = [
- "bitflags",
-]
-
-[[package]]
 name = "cmake"
 version = "0.1.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -191,17 +158,6 @@ name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
-
-[[package]]
-name = "colored"
-version = "1.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4ffc801dacf156c5854b9df4f425a626539c3a6ef7893cc0c5084a23f0b6c59"
-dependencies = [
- "atty",
- "lazy_static 1.4.0",
- "winapi",
-]
 
 [[package]]
 name = "config"
@@ -288,6 +244,16 @@ checksum = "73770f8e1fe7d64df17ca66ad28994a0a623ea497fa69486e14984e715c5d174"
 dependencies = [
  "adler32",
  "byteorder",
+]
+
+[[package]]
+name = "dev_tools"
+version = "0.1.0"
+dependencies = [
+ "imgui",
+ "mini-fs",
+ "opengb",
+ "radiance 0.1.0",
 ]
 
 [[package]]
@@ -454,45 +420,24 @@ dependencies = [
 
 [[package]]
 name = "imgui"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a2d28cee2982d4dab4dd954c23be339ab1f98be4ff5a13ecd8fbfb47cdfa23a"
-dependencies = [
- "bitflags",
- "imgui-sys 0.3.0",
- "lazy_static 1.4.0",
- "parking_lot 0.10.2",
-]
-
-[[package]]
-name = "imgui"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92a0077d3bb882960467aed0bc6eaf5d4033cb9b61bfdbb99c32d1288380032f"
 dependencies = [
  "bitflags",
- "imgui-sys 0.6.0",
+ "imgui-sys",
  "parking_lot 0.11.1",
 ]
 
 [[package]]
 name = "imgui-rs-vulkan-renderer"
 version = "0.3.1"
-source = "git+https://github.com/dontpanic92/imgui-rs-vulkan-renderer#52286125fc5d6fa57045b08df69b8e579f19365d"
+source = "git+https://github.com/dontpanic92/imgui-rs-vulkan-renderer#d8ec04c8f0c58900f6f6881810b85edfadcb4a07"
 dependencies = [
  "ash",
- "imgui 0.3.0",
+ "imgui",
  "log",
  "ultraviolet",
-]
-
-[[package]]
-name = "imgui-sys"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21a8693e0f66ecd2ec10e2f0ed4dc4519071495f350e6d8ddaf3e70351229257"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -606,15 +551,6 @@ name = "linked-hash-map"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fb9b38af92608140b86b693604b9ffcc5824240a484d1ecd4795bacb2fe88f3"
-
-[[package]]
-name = "lock_api"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4da24a77a3d8a6d4862d95f72e6fdb9c09a643ecdb402d754004a557f2bec75"
-dependencies = [
- "scopeguard",
-]
 
 [[package]]
 name = "lock_api"
@@ -835,23 +771,13 @@ dependencies = [
  "dyn-clone",
  "encoding",
  "image",
- "imgui 0.6.1",
+ "imgui",
  "log",
  "memmap",
  "mini-fs",
  "minilzo-rs",
- "radiance",
+ "radiance 0.1.0 (git+https://github.com/dontpanic92/radiance/)",
  "serde 1.0.119",
-]
-
-[[package]]
-name = "openpal3"
-version = "0.1.0"
-dependencies = [
- "log",
- "opengb",
- "radiance",
- "simple_logger",
 ]
 
 [[package]]
@@ -875,22 +801,12 @@ dependencies = [
 
 [[package]]
 name = "parking_lot"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3a704eb390aafdc107b0e392f56a82b668e3a71366993b5340f5833fd62505e"
-dependencies = [
- "lock_api 0.3.4",
- "parking_lot_core 0.7.2",
-]
-
-[[package]]
-name = "parking_lot"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d7744ac029df22dca6284efe4e898991d28e3085c706c972bcd7da4a27a15eb"
 dependencies = [
  "instant",
- "lock_api 0.4.2",
+ "lock_api",
  "parking_lot_core 0.8.2",
 ]
 
@@ -903,20 +819,6 @@ dependencies = [
  "libc",
  "rand",
  "smallvec 0.6.14",
- "winapi",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d58c7c768d4ba344e3e8d72518ac13e259d7c7ade24167003b8488e10b6740a3"
-dependencies = [
- "cfg-if 0.1.10",
- "cloudabi",
- "libc",
- "redox_syscall",
- "smallvec 1.6.1",
  "winapi",
 ]
 
@@ -973,7 +875,6 @@ dependencies = [
 [[package]]
 name = "radiance"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#b271f51c8384d8ce3695045b139f2af33b6a43fb"
 dependencies = [
  "alto",
  "ash",
@@ -982,14 +883,38 @@ dependencies = [
  "downcast-rs",
  "hound",
  "image",
- "imgui 0.3.0",
+ "imgui",
  "imgui-rs-vulkan-renderer",
  "lazy_static 1.4.0",
  "lewton",
  "log",
  "memoffset 0.5.6",
  "minimp3",
- "radiance-assets",
+ "radiance-assets 0.1.0",
+ "vk-mem",
+ "winapi",
+]
+
+[[package]]
+name = "radiance"
+version = "0.1.0"
+source = "git+https://github.com/dontpanic92/radiance/#d2e8d99912eb982ba8519718c7454a278d4284e6"
+dependencies = [
+ "alto",
+ "ash",
+ "backtrace",
+ "bitflags",
+ "downcast-rs",
+ "hound",
+ "image",
+ "imgui",
+ "imgui-rs-vulkan-renderer",
+ "lazy_static 1.4.0",
+ "lewton",
+ "log",
+ "memoffset 0.5.6",
+ "minimp3",
+ "radiance-assets 0.1.0 (git+https://github.com/dontpanic92/radiance/)",
  "vk-mem",
  "winapi",
 ]
@@ -997,7 +922,11 @@ dependencies = [
 [[package]]
 name = "radiance-assets"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#b271f51c8384d8ce3695045b139f2af33b6a43fb"
+
+[[package]]
+name = "radiance-assets"
+version = "0.1.0"
+source = "git+https://github.com/dontpanic92/radiance/#d2e8d99912eb982ba8519718c7454a278d4284e6"
 
 [[package]]
 name = "rand"
@@ -1193,19 +1122,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "110b3dbdf8607ec493c22d5d947753282f3bae73c0f56d322af1e8c78e4c23d5"
 dependencies = [
  "serde 0.8.23",
-]
-
-[[package]]
-name = "simple_logger"
-version = "1.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd57f17c093ead1d4a1499dc9acaafdd71240908d64775465543b8d9a9f1d198"
-dependencies = [
- "atty",
- "chrono",
- "colored",
- "log",
- "winapi",
 ]
 
 [[package]]

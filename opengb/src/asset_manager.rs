@@ -48,6 +48,10 @@ impl AssetManager {
         }
     }
 
+    pub fn vfs(&self) -> &MiniFs {
+        &self.vfs
+    }
+
     pub fn load_scn(self: &Rc<Self>, cpk_name: &str, scn_name: &str) -> ScnScene {
         let scene_base = self.scene_path.join(cpk_name).join(scn_name);
         let scene_path = scene_base.with_extension("scn");

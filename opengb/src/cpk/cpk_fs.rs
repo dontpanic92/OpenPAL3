@@ -1,27 +1,31 @@
-use super::{cpk_archive::CpkFile, CpkArchive};
+use super::{cpk_archive::CpkFile, CpkArchive, CpkEntry};
 use encoding::{EncoderTrap, Encoding};
 use log::debug;
 use memmap::{Mmap, MmapOptions};
-use mini_fs::Store;
+use mini_fs::{Entries, Entry, EntryKind, Store};
 use std::{
-    cell::RefCell,
+    cell::{Ref, RefCell},
+    ffi::OsString,
     fs::File,
-    io::{Cursor, Result},
-    path::Path,
+    io::{self, Cursor, Result},
+    path::{Path, PathBuf},
+    rc::Rc,
 };
 
 pub struct CpkFs {
     cpk_archive: RefCell<CpkArchive<Mmap>>,
+    entry: CpkEntry,
 }
 
 impl CpkFs {
     pub fn new<P: AsRef<Path>>(cpk_path: P) -> Result<CpkFs> {
-        let file = File::open(cpk_path)?;
+        let file = File::open(cpk_path.as_ref())?;
         let mem = unsafe { MmapOptions::new().map(&file)? };
         let cursor = Cursor::new(mem);
         let cpk_archive = RefCell::new(CpkArchive::load(cursor)?);
+        let entry = cpk_archive.borrow().build_directory();
 
-        Ok(CpkFs { cpk_archive })
+        Ok(CpkFs { cpk_archive, entry })
     }
 }
 
@@ -35,5 +39,40 @@ impl Store for CpkFs {
                 .encode(&path.to_str().unwrap().to_lowercase(), EncoderTrap::Ignore)
                 .unwrap(),
         )
+    }
+
+    fn entries_path(&self, p: &Path) -> io::Result<Entries> {
+        Ok(Entries::new(CpkEntryIter::new(&self.entry, p)))
+    }
+}
+
+pub struct CpkEntryIter<'a> {
+    parent: PathBuf,
+    entries: Box<dyn Iterator<Item = Ref<'a, CpkEntry>> + 'a>,
+}
+
+impl<'a> CpkEntryIter<'a> {
+    pub fn new<P: AsRef<Path>>(entry: &'a CpkEntry, parent: P) -> Self {
+        Self {
+            parent: parent.as_ref().to_owned(),
+            entries: Box::new(entry.children().iter().map(|e| e.borrow())),
+        }
+    }
+}
+
+impl<'a> Iterator for CpkEntryIter<'a> {
+    type Item = io::Result<Entry>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.entries.next().and_then(|e| {
+            Some(Ok(Entry {
+                name: OsString::from(self.parent.join(e.name())),
+                kind: if e.is_dir() {
+                    EntryKind::Dir
+                } else {
+                    EntryKind::File
+                },
+            }))
+        })
     }
 }
