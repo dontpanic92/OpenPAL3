@@ -9,6 +9,7 @@ mod factory;
 mod helpers;
 mod image;
 mod image_view;
+mod imgui;
 mod material;
 mod pipeline;
 mod pipeline_layout;

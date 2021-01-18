@@ -1,5 +1,6 @@
 use crate::{
     audio::AudioEngine,
+    imgui::ImguiContext,
     input::{InputEngine, InputEngineInternal},
 };
 use crate::{
@@ -12,6 +13,7 @@ pub struct CoreRadianceEngine {
     rendering_engine: Box<dyn RenderingEngine>,
     audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngineInternal>>,
+    imgui_context: Rc<RefCell<ImguiContext>>,
     scene_manager: Box<dyn SceneManager>,
 }
 
@@ -20,12 +22,14 @@ impl CoreRadianceEngine {
         rendering_engine: Box<dyn RenderingEngine>,
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngineInternal>>,
+        imgui_context: Rc<RefCell<ImguiContext>>,
         scene_manager: Box<dyn SceneManager>,
     ) -> Self {
         Self {
             rendering_engine,
             audio_engine,
             input_engine,
+            imgui_context,
             scene_manager,
         }
     }
@@ -50,7 +54,7 @@ impl CoreRadianceEngine {
         self.input_engine.borrow_mut().update(delta_sec);
 
         let scene_manager = &mut self.scene_manager;
-        let ui_frame = self.rendering_engine.gui_context_mut().draw_ui(|ui| {
+        let ui_frame = self.imgui_context.borrow_mut().draw_ui(delta_sec, |ui| {
             scene_manager.update(ui, delta_sec);
         });
 

@@ -69,26 +69,31 @@ impl Platform {
                 time: 0,
                 pt: POINT { x: 0, y: 0 },
             };
-            let has_msg = winuser::PeekMessageW(&mut msg, null_mut(), 0, 0, winuser::PM_REMOVE) > 0;
-            if !has_msg {
-                return true;
-            }
+            loop {
+                let has_msg =
+                    winuser::PeekMessageW(&mut msg, null_mut(), 0, 0, winuser::PM_REMOVE) > 0;
+                if !has_msg {
+                    return true;
+                }
 
-            if msg.message == WM_CLOSE_WINDOW {
-                return false;
-            }
+                if msg.message == WM_CLOSE_WINDOW {
+                    return false;
+                }
 
-            for cb in &self.msg_callbacks {
-                cb(&msg);
-            }
+                for cb in &self.msg_callbacks {
+                    cb(&msg);
+                }
 
-            if msg.message != winuser::WM_SYSKEYDOWN {
-                winuser::TranslateMessage(&msg);
-                winuser::DispatchMessageW(&msg);
+                if msg.message != winuser::WM_SYSKEYDOWN {
+                    winuser::TranslateMessage(&msg);
+                    winuser::DispatchMessageW(&msg);
+                }
             }
-
-            return true;
         }
+    }
+
+    pub fn hinstance(&self) -> HINSTANCE {
+        self.instance
     }
 
     pub fn hwnd(&self) -> HWND {

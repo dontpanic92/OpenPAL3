@@ -1,8 +1,9 @@
-use super::{ImguiContext, ImguiFrame};
 use ash::{vk, Device, Instance};
 use imgui::*;
 use imgui_rs_vulkan_renderer::*;
 use std::rc::Rc;
+
+use crate::imgui::{ImguiContext, ImguiFrame};
 
 pub struct ImguiVulkanContext {
     renderer: Renderer,
@@ -18,7 +19,7 @@ impl ImguiVulkanContext {
         command_pool: vk::CommandPool,
         render_pass: vk::RenderPass,
         in_flight_frames: usize,
-        context: &ImguiContext,
+        context: &mut ImguiContext,
     ) -> Self {
         let vk_context = VkContext {
             instance: instance.clone(),
@@ -32,7 +33,7 @@ impl ImguiVulkanContext {
             &vk_context,
             in_flight_frames,
             render_pass,
-            &mut context.context.borrow_mut(),
+            &mut context.context_mut(),
         )
         .unwrap();
 

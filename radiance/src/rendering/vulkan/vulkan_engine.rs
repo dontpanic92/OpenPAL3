@@ -8,19 +8,19 @@ use super::{
     factory::VulkanComponentFactory,
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
-use crate::rendering::{
-    imgui::{ImguiContext, ImguiFrame},
-    ComponentFactory, RenderingComponent, RenderingEngine, Window,
-};
 use crate::scene::{entity_get_component, Scene};
+use crate::{
+    imgui::{ImguiContext, ImguiFrame},
+    rendering::{ComponentFactory, RenderingComponent, RenderingEngine, Window},
+};
 use crate::{math::Mat44, scene::Entity};
 use ash::extensions::ext::DebugReport;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use ash::{vk, Device, Entry, Instance};
-use std::error::Error;
 use std::iter::Iterator;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::{cell::RefCell, error::Error};
 
 pub struct VulkanRenderingEngine {
     entry: Entry,
@@ -47,7 +47,7 @@ pub struct VulkanRenderingEngine {
     image_available_semaphore: vk::Semaphore,
     render_finished_semaphore: vk::Semaphore,
 
-    imgui: ImguiContext,
+    imgui_context: Rc<RefCell<ImguiContext>>,
 }
 
 impl RenderingEngine for VulkanRenderingEngine {
@@ -74,10 +74,6 @@ impl RenderingEngine for VulkanRenderingEngine {
         }
     }
 
-    fn gui_context_mut(&mut self) -> &mut ImguiContext {
-        &mut self.imgui
-    }
-
     fn view_extent(&self) -> (u32, u32) {
         (
             self.get_capabilities().unwrap().current_extent.width,
@@ -91,7 +87,10 @@ impl RenderingEngine for VulkanRenderingEngine {
 }
 
 impl VulkanRenderingEngine {
-    pub fn new(window: &Window) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        window: &Window,
+        imgui_context: Rc<RefCell<ImguiContext>>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let entry = Entry::new().unwrap();
         let instance = Rc::new(creation_helpers::create_instance(&entry)?);
         let physical_device = creation_helpers::get_physical_device(&instance)?;
@@ -161,10 +160,6 @@ impl VulkanRenderingEngine {
         ));
 
         let adhoc_command_runner = Rc::new(AdhocCommandRunner::new(&device, command_pool, queue));
-        let mut imgui = ImguiContext::new(
-            capabilities.current_extent.width as f32,
-            capabilities.current_extent.height as f32,
-        );
         let swapchain = SwapChain::new(
             &instance,
             &device,
@@ -178,7 +173,7 @@ impl VulkanRenderingEngine {
             present_mode,
             &descriptor_manager,
             &adhoc_command_runner,
-            &mut imgui,
+            &mut imgui_context.borrow_mut(),
         )
         .unwrap();
 
@@ -230,7 +225,7 @@ impl VulkanRenderingEngine {
             debug_entry,
             image_available_semaphore,
             render_finished_semaphore,
-            imgui,
+            imgui_context,
         };
 
         return Ok(vulkan);
@@ -292,7 +287,7 @@ impl VulkanRenderingEngine {
             self.present_mode,
             self.descriptor_manager(),
             &self.adhoc_command_runner,
-            &self.imgui,
+            &mut self.imgui_context.borrow_mut(),
         )?);
 
         Ok(())

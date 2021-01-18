@@ -7,7 +7,10 @@ use super::image_view::ImageView;
 use super::pipeline_manager::PipelineManager;
 use super::render_object::VulkanRenderObject;
 use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
-use crate::rendering::imgui::{vulkan::ImguiVulkanContext, ImguiContext, ImguiFrame};
+use crate::{
+    imgui::{ImguiContext, ImguiFrame},
+    rendering::vulkan::imgui::ImguiVulkanContext,
+};
 use ash::prelude::VkResult;
 use ash::version::DeviceV1_0;
 use ash::{vk, Device, Instance};
@@ -47,7 +50,7 @@ impl SwapChain {
         present_mode: vk::PresentModeKHR,
         descriptor_manager: &Rc<DescriptorManager>,
         command_runner: &Rc<AdhocCommandRunner>,
-        gui_context: &ImguiContext,
+        gui_context: &mut ImguiContext,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let entry = ash::extensions::khr::Swapchain::new(instance.as_ref(), device.deref());
         let handle = creation_helpers::create_swapchain(

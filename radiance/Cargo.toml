@@ -19,7 +19,7 @@ radiance-assets = { path = "../radiance-assets" }
 # Rendering
 ash = "0.31.0"
 image = "0.23.0"
-imgui = "0.3.0"
+imgui = "0.6.1"
 imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer" }
 vk-mem = "0.2.2"
 
@@ -30,4 +30,4 @@ lewton = "0.10.1"
 minimp3 = "0.3.5"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi"] }
+winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef"] }
