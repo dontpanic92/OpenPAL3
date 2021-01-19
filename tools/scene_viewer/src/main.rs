@@ -1,4 +1,4 @@
-#![feature(arbitrary_self_types)]
+// #![feature(arbitrary_self_types)]
 mod scene;
 
 use nfd::Response;

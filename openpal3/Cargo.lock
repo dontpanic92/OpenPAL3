@@ -169,15 +169,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cloudabi"
-version = "0.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
-dependencies = [
- "bitflags",
-]
-
-[[package]]
 name = "cmake"
 version = "0.1.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -212,7 +203,7 @@ dependencies = [
  "lazy_static 1.4.0",
  "nom",
  "rust-ini",
- "serde 1.0.119",
+ "serde 1.0.120",
  "serde-hjson",
  "serde_json",
  "toml",
@@ -420,9 +411,9 @@ checksum = "f6503fe142514ca4799d4c26297c4248239fe8838d827db6bd6065c6ed29a6ce"
 
 [[package]]
 name = "hermit-abi"
-version = "0.1.17"
+version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aca5565f760fb5b220e499d72710ed156fdb74e631659e99377d9ebfbd13ae8"
+checksum = "322f4de77956e22ed0e5032c359a0f1273f1f7f0d79bfa3b8ffbc730d7fbcc5c"
 dependencies = [
  "libc",
 ]
@@ -454,45 +445,24 @@ dependencies = [
 
 [[package]]
 name = "imgui"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a2d28cee2982d4dab4dd954c23be339ab1f98be4ff5a13ecd8fbfb47cdfa23a"
-dependencies = [
- "bitflags",
- "imgui-sys 0.3.0",
- "lazy_static 1.4.0",
- "parking_lot 0.10.2",
-]
-
-[[package]]
-name = "imgui"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92a0077d3bb882960467aed0bc6eaf5d4033cb9b61bfdbb99c32d1288380032f"
 dependencies = [
  "bitflags",
- "imgui-sys 0.6.0",
+ "imgui-sys",
  "parking_lot 0.11.1",
 ]
 
 [[package]]
 name = "imgui-rs-vulkan-renderer"
 version = "0.3.1"
-source = "git+https://github.com/dontpanic92/imgui-rs-vulkan-renderer#52286125fc5d6fa57045b08df69b8e579f19365d"
+source = "git+https://github.com/dontpanic92/imgui-rs-vulkan-renderer#d8ec04c8f0c58900f6f6881810b85edfadcb4a07"
 dependencies = [
  "ash",
- "imgui 0.3.0",
+ "imgui",
  "log",
  "ultraviolet",
-]
-
-[[package]]
-name = "imgui-sys"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21a8693e0f66ecd2ec10e2f0ed4dc4519071495f350e6d8ddaf3e70351229257"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -609,15 +579,6 @@ checksum = "7fb9b38af92608140b86b693604b9ffcc5824240a484d1ecd4795bacb2fe88f3"
 
 [[package]]
 name = "lock_api"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4da24a77a3d8a6d4862d95f72e6fdb9c09a643ecdb402d754004a557f2bec75"
-dependencies = [
- "scopeguard",
-]
-
-[[package]]
-name = "lock_api"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd96ffd135b2fd7b973ac026d28085defbe8983df057ced3eb4f2130b0831312"
@@ -686,7 +647,7 @@ dependencies = [
 [[package]]
 name = "mini-fs"
 version = "0.2.2"
-source = "git+https://github.com/dontpanic92/mini-fs/#aa9398d68c25eca15dbec707db63dea6eece90dd"
+source = "git+https://github.com/dontpanic92/mini-fs/#931b4f9be78077bfd4e0ca30931aaa27920c46ab"
 dependencies = [
  "flate2",
  "tar",
@@ -835,13 +796,13 @@ dependencies = [
  "dyn-clone",
  "encoding",
  "image",
- "imgui 0.6.1",
+ "imgui",
  "log",
  "memmap",
  "mini-fs",
  "minilzo-rs",
  "radiance",
- "serde 1.0.119",
+ "serde 1.0.120",
 ]
 
 [[package]]
@@ -875,22 +836,12 @@ dependencies = [
 
 [[package]]
 name = "parking_lot"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3a704eb390aafdc107b0e392f56a82b668e3a71366993b5340f5833fd62505e"
-dependencies = [
- "lock_api 0.3.4",
- "parking_lot_core 0.7.2",
-]
-
-[[package]]
-name = "parking_lot"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d7744ac029df22dca6284efe4e898991d28e3085c706c972bcd7da4a27a15eb"
 dependencies = [
  "instant",
- "lock_api 0.4.2",
+ "lock_api",
  "parking_lot_core 0.8.2",
 ]
 
@@ -903,20 +854,6 @@ dependencies = [
  "libc",
  "rand",
  "smallvec 0.6.14",
- "winapi",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d58c7c768d4ba344e3e8d72518ac13e259d7c7ade24167003b8488e10b6740a3"
-dependencies = [
- "cfg-if 0.1.10",
- "cloudabi",
- "libc",
- "redox_syscall",
- "smallvec 1.6.1",
  "winapi",
 ]
 
@@ -973,7 +910,7 @@ dependencies = [
 [[package]]
 name = "radiance"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#b271f51c8384d8ce3695045b139f2af33b6a43fb"
+source = "git+https://github.com/dontpanic92/radiance/#d2e8d99912eb982ba8519718c7454a278d4284e6"
 dependencies = [
  "alto",
  "ash",
@@ -982,7 +919,7 @@ dependencies = [
  "downcast-rs",
  "hound",
  "image",
- "imgui 0.3.0",
+ "imgui",
  "imgui-rs-vulkan-renderer",
  "lazy_static 1.4.0",
  "lewton",
@@ -997,7 +934,7 @@ dependencies = [
 [[package]]
 name = "radiance-assets"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#b271f51c8384d8ce3695045b139f2af33b6a43fb"
+source = "git+https://github.com/dontpanic92/radiance/#d2e8d99912eb982ba8519718c7454a278d4284e6"
 
 [[package]]
 name = "rand"
@@ -1144,9 +1081,9 @@ checksum = "9dad3f759919b92c3068c696c15c3d17238234498bbdcc80f2c469606f948ac8"
 
 [[package]]
 name = "serde"
-version = "1.0.119"
+version = "1.0.120"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9bdd36f49e35b61d49efd8aa7fc068fd295961fd2286d0b2ee9a4c7a14e99cc3"
+checksum = "166b2349061381baf54a58e4b13c89369feb0ef2eaa57198899e2312aac30aab"
 dependencies = [
  "serde_derive",
 ]
@@ -1166,9 +1103,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.119"
+version = "1.0.120"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "552954ce79a059ddd5fd68c271592374bd15cab2274970380c000118aeffe1cd"
+checksum = "0ca2a8cb5805ce9e3b95435e3765b7b553cecc762d938d409434338386cb5775"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1183,7 +1120,7 @@ checksum = "4fceb2595057b6891a4ee808f70054bd2d12f0e97f1cbb78689b59f676df325a"
 dependencies = [
  "itoa",
  "ryu",
- "serde 1.0.119",
+ "serde 1.0.120",
 ]
 
 [[package]]
@@ -1332,7 +1269,7 @@ version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a31142970826733df8241ef35dc040ef98c679ab14d7c3e54d827099b3acecaa"
 dependencies = [
- "serde 1.0.119",
+ "serde 1.0.120",
 ]
 
 [[package]]

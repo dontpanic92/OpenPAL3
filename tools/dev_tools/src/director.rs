@@ -47,6 +47,10 @@ impl DevToolsDirector {
         let entries = self.get_entries(path.as_ref());
         for e in entries {
             let e_path = PathBuf::from(&e.name);
+            if e_path.file_name().is_none() {
+                continue;
+            }
+
             let e_filename = &im_str!("{}", e_path.file_name().unwrap().to_str().unwrap());
             let treenode = TreeNode::new(e_filename);
 

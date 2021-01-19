@@ -1,13 +1,13 @@
 use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::UserFile;
-use std::clone::Clone;
 use std::{
-    cell::RefCell,
+    cell::{Ref, RefCell},
     collections::HashMap,
     io::{Cursor, Read, Seek},
     rc::Rc,
 };
+use std::{clone::Clone, path::Path};
 
 type IoResult<T> = std::io::Result<T>;
 type IoError = std::io::Error;
@@ -292,5 +292,24 @@ impl CpkEntry {
 
     pub fn is_dir(&self) -> bool {
         (self.raw_entry.flag & CpkTableFlag::IsDir as u32) != 0
+    }
+
+    pub fn ls<P: AsRef<Path>>(&self, path: P) -> std::io::Result<Vec<Rc<RefCell<CpkEntry>>>> {
+        let mut components = path.as_ref().components();
+        let first = components.next();
+        match first {
+            Some(component) => {
+                let rest = components.as_path();
+                let child = self
+                    .children
+                    .iter()
+                    .find(|e| e.borrow().name == component.as_os_str().to_str().unwrap());
+                match child {
+                    Some(c) => c.borrow().ls(rest),
+                    None => Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+                }
+            }
+            None => Ok(self.children.clone()),
+        }
     }
 }

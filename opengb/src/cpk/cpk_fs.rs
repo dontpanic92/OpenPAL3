@@ -8,7 +8,7 @@ use std::{
     ffi::OsString,
     fs::File,
     io::{self, Cursor, Result},
-    path::{Path, PathBuf},
+    path::Path,
     rc::Rc,
 };
 
@@ -42,21 +42,20 @@ impl Store for CpkFs {
     }
 
     fn entries_path(&self, p: &Path) -> io::Result<Entries> {
-        Ok(Entries::new(CpkEntryIter::new(&self.entry, p)))
+        let entries = self.entry.ls(p)?;
+        Ok(Entries::new(CpkEntryIter::new(Box::new(
+            entries.into_iter(),
+        ))))
     }
 }
 
 pub struct CpkEntryIter<'a> {
-    parent: PathBuf,
-    entries: Box<dyn Iterator<Item = Ref<'a, CpkEntry>> + 'a>,
+    entries: Box<dyn Iterator<Item = Rc<RefCell<CpkEntry>>> + 'a>,
 }
 
 impl<'a> CpkEntryIter<'a> {
-    pub fn new<P: AsRef<Path>>(entry: &'a CpkEntry, parent: P) -> Self {
-        Self {
-            parent: parent.as_ref().to_owned(),
-            entries: Box::new(entry.children().iter().map(|e| e.borrow())),
-        }
+    pub fn new(entries: Box<dyn Iterator<Item = Rc<RefCell<CpkEntry>>> + 'a>) -> Self {
+        Self { entries }
     }
 }
 
@@ -66,8 +65,8 @@ impl<'a> Iterator for CpkEntryIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.entries.next().and_then(|e| {
             Some(Ok(Entry {
-                name: OsString::from(self.parent.join(e.name())),
-                kind: if e.is_dir() {
+                name: OsString::from(e.borrow().name()),
+                kind: if e.borrow().is_dir() {
                     EntryKind::Dir
                 } else {
                     EntryKind::File
