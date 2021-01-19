@@ -36,7 +36,7 @@ pub struct AssetManager {
 impl AssetManager {
     pub fn new<P: AsRef<Path>>(factory: Rc<dyn ComponentFactory>, path: P) -> Self {
         let local = LocalFs::new(path.as_ref());
-        let vfs = MiniFs::new_case_insensitive().mount("/", local);
+        let vfs = MiniFs::new(false).mount("/", local);
         let vfs = Self::mount_cpk_recursive(vfs, path.as_ref(), &PathBuf::from("./"));
         Self {
             factory,

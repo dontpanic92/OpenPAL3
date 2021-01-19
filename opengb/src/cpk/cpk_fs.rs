@@ -42,6 +42,7 @@ impl Store for CpkFs {
     }
 
     fn entries_path(&self, p: &Path) -> io::Result<Entries> {
+        println!("cpkfs {:?}", p);
         Ok(Entries::new(CpkEntryIter::new(&self.entry, p)))
     }
 }

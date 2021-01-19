@@ -10,4 +10,4 @@ edition = "2018"
 opengb = { path = "../../opengb" }
 radiance = { path = "../../../radiance/radiance" } #{ git = "https://github.com/dontpanic92/radiance/" }
 imgui = "0.6.1"
-mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+mini-fs = { path = "../../../mini-fs" } #{ git = "https://github.com/dontpanic92/mini-fs/" }
