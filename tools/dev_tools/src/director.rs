@@ -1,4 +1,4 @@
-use imgui::{im_str, Condition, ImString, TreeNode, Ui, Window};
+use imgui::{Condition, ImString, MouseButton, TabBar, TabBarFlags, TabItem, TabItemFlags, TreeNode, Ui, Window, im_str};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::asset_manager::AssetManager;
 use radiance::{
@@ -39,8 +39,18 @@ impl DevToolsDirector {
             .collapsible(false)
             .resizable(false)
             .size([window_width * 0.3, window_height], Condition::Appearing)
-            .position([0., 0.], Condition::Appearing);
+            .position([0., 0.], Condition::Appearing)
+            .movable(false);
         w.build(ui, || self.render_tree_nodes(ui, "/"));
+
+        let w2 = Window::new(im_str!("Content"))
+            .title_bar(false)
+            .collapsible(false)
+            .resizable(false)
+            .size([window_width * 0.7, window_height], Condition::Appearing)
+            .position([window_width * 0.3, 0.], Condition::Appearing)
+            .movable(false);
+        w2.build(ui, || self.render_content(ui));
     }
 
     fn render_tree_nodes<P: AsRef<Path>>(&mut self, ui: &Ui, path: P) {
@@ -59,9 +69,20 @@ impl DevToolsDirector {
                     self.render_tree_nodes(ui, path.as_ref().join(e_path.file_name().unwrap()));
                 })
             } else {
-                treenode.leaf(true).build(ui, || {});
+                treenode.leaf(true).build(ui, || {
+                    if ui.is_item_clicked(MouseButton::Left) {
+                    }
+                });
             }
         }
+    }
+
+    fn render_content(&mut self, ui: &Ui) {
+        TabBar::new(im_str!("TestTabBar")).flags(TabBarFlags::AUTO_SELECT_NEW_TABS | TabBarFlags::REORDERABLE | TabBarFlags::FITTING_POLICY_DEFAULT).build(ui, || {
+            TabItem::new(im_str!("TestTab")).build(ui, || {
+                ui.text(im_str!("Test Text"));
+            })
+        });
     }
 
     fn get_entries<P: AsRef<Path>>(&self, path: P) -> Vec<Entry> {
