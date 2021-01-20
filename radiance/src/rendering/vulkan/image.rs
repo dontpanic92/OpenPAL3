@@ -2,13 +2,13 @@ use super::adhoc_command_runner::AdhocCommandRunner;
 use super::buffer::Buffer;
 use super::error::VulkanBackendError;
 use ash::prelude::VkResult;
-use ash::version::{DeviceV1_0, InstanceV1_0};
+use ash::version::InstanceV1_0;
 use ash::{vk, Instance};
 use std::error::Error;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 pub struct Image {
-    allocator: Weak<vk_mem::Allocator>,
+    allocator: Rc<vk_mem::Allocator>,
     image: vk::Image,
     allocation: vk_mem::Allocation,
     allocation_info: vk_mem::AllocationInfo,
@@ -150,17 +150,15 @@ impl Image {
                 .src_access_mask(src_access_mask)
                 .dst_access_mask(dst_access_mask)
                 .build();
-            unsafe {
-                device.cmd_pipeline_barrier(
-                    *command_buffer,
-                    src_stage,
-                    dst_stage,
-                    vk::DependencyFlags::default(),
-                    &[],
-                    &[],
-                    &[barrier],
-                )
-            }
+            device.cmd_pipeline_barrier(
+                *command_buffer,
+                src_stage,
+                dst_stage,
+                vk::DependencyFlags::default(),
+                &[],
+                &[],
+                &[barrier],
+            )
         })
     }
 
@@ -191,15 +189,13 @@ impl Image {
                         .build(),
                 )
                 .build();
-            unsafe {
-                device.cmd_copy_buffer_to_image(
-                    *command_buffer,
-                    buffer.vk_buffer(),
-                    self.vk_image(),
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &[region],
-                )
-            }
+            device.cmd_copy_buffer_to_image(
+                *command_buffer,
+                buffer.vk_buffer(),
+                self.vk_image(),
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[region],
+            )
         })
     }
 
@@ -238,7 +234,7 @@ impl Image {
             .unwrap();
 
         Ok(Self {
-            allocator: Rc::downgrade(allocator),
+            allocator: allocator.clone(),
             image,
             allocation,
             allocation_info,
@@ -275,8 +271,7 @@ impl Image {
 
 impl Drop for Image {
     fn drop(&mut self) {
-        let allocator = self.allocator.upgrade().unwrap();
-        allocator
+        self.allocator
             .destroy_image(self.image, &self.allocation)
             .unwrap();
     }

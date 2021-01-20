@@ -1,10 +1,9 @@
 use super::adhoc_command_runner::AdhocCommandRunner;
 use ash::prelude::VkResult;
-use ash::version::DeviceV1_0;
 use ash::vk;
 use std::error::Error;
 use std::mem::size_of;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use vk_mem;
 
 pub enum BufferType {
@@ -24,7 +23,7 @@ impl BufferType {
 }
 
 pub struct Buffer {
-    allocator: Weak<vk_mem::Allocator>,
+    allocator: Rc<vk_mem::Allocator>,
     buffer: vk::Buffer,
     allocation: vk_mem::Allocation,
     allocation_info: vk_mem::AllocationInfo,
@@ -156,7 +155,7 @@ impl Buffer {
         };
 
         Ok(Self {
-            allocator: Rc::downgrade(allocator),
+            allocator: allocator.clone(),
             buffer,
             allocation,
             allocation_info,
@@ -175,14 +174,12 @@ impl Buffer {
             let copy_region = vk::BufferCopy::builder()
                 .size(src_buffer.buffer_size)
                 .build();
-            unsafe {
-                device.cmd_copy_buffer(
-                    command_buffer,
-                    src_buffer.buffer,
-                    self.buffer,
-                    &[copy_region],
-                );
-            }
+            device.cmd_copy_buffer(
+                command_buffer,
+                src_buffer.buffer,
+                self.buffer,
+                &[copy_region],
+            );
         })
     }
 
@@ -199,22 +196,20 @@ impl Buffer {
     }
 
     pub fn map_memory_do<F: Fn(*mut u8)>(&self, action: F) {
-        let allocator = self.allocator.upgrade().unwrap();
-        allocator.map_memory(&self.allocation).unwrap();
+        self.allocator.map_memory(&self.allocation).unwrap();
         let dst = self.allocation_info.get_mapped_data();
         if dst == std::ptr::null_mut() {
             panic!("Unable to map the dest memory");
         }
 
         action(dst);
-        allocator.unmap_memory(&self.allocation).unwrap();
+        self.allocator.unmap_memory(&self.allocation).unwrap();
     }
 }
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        let allocator = self.allocator.upgrade().unwrap();
-        allocator
+        self.allocator
             .destroy_buffer(self.buffer, &self.allocation)
             .unwrap();
     }

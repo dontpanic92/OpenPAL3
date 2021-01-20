@@ -1,9 +1,9 @@
-use ash::{vk, Device, Instance};
+use super::{device::Device, instance::Instance};
+use crate::imgui::{ImguiContext, ImguiFrame};
+use ash::vk;
 use imgui::*;
 use imgui_rs_vulkan_renderer::*;
 use std::rc::Rc;
-
-use crate::imgui::{ImguiContext, ImguiFrame};
 
 pub struct ImguiVulkanContext {
     renderer: Renderer,
@@ -12,9 +12,9 @@ pub struct ImguiVulkanContext {
 
 impl ImguiVulkanContext {
     pub fn new(
-        instance: &Rc<Instance>,
+        instance: Rc<Instance>,
         physical_device: vk::PhysicalDevice,
-        device: &Rc<Device>,
+        device: Rc<Device>,
         queue: vk::Queue,
         command_pool: vk::CommandPool,
         render_pass: vk::RenderPass,
@@ -22,8 +22,8 @@ impl ImguiVulkanContext {
         context: &mut ImguiContext,
     ) -> Self {
         let vk_context = VkContext {
-            instance: instance.clone(),
-            device: device.clone(),
+            instance,
+            device,
             physical_device,
             queue,
             command_pool,
@@ -80,16 +80,16 @@ struct VkContext {
 }
 
 impl RendererVkContext for VkContext {
-    fn instance(&self) -> &Instance {
-        self.instance.as_ref()
+    fn instance(&self) -> &ash::Instance {
+        self.instance.vk_instance()
     }
 
     fn physical_device(&self) -> vk::PhysicalDevice {
         self.physical_device
     }
 
-    fn device(&self) -> &Device {
-        self.device.as_ref()
+    fn device(&self) -> &ash::Device {
+        self.device.vk_device()
     }
 
     fn queue(&self) -> vk::Queue {

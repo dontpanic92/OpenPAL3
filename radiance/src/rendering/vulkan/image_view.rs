@@ -1,16 +1,17 @@
 use ash::prelude::VkResult;
-use ash::version::DeviceV1_0;
-use ash::{vk, Device};
-use std::rc::{Rc, Weak};
+use ash::vk;
+use std::rc::Rc;
+
+use super::device::Device;
 
 pub struct ImageView {
-    device: Weak<Device>,
+    device: Rc<Device>,
     image_view: vk::ImageView,
 }
 
 impl ImageView {
     pub fn new_color_image_view(
-        device: &Rc<Device>,
+        device: Rc<Device>,
         image: vk::Image,
         format: vk::Format,
     ) -> VkResult<Self> {
@@ -18,7 +19,7 @@ impl ImageView {
     }
 
     pub fn new_depth_image_view(
-        device: &Rc<Device>,
+        device: Rc<Device>,
         image: vk::Image,
         format: vk::Format,
     ) -> VkResult<Self> {
@@ -30,7 +31,7 @@ impl ImageView {
     }
 
     fn new(
-        device: &Rc<Device>,
+        device: Rc<Device>,
         image: vk::Image,
         format: vk::Format,
         aspect_mask: vk::ImageAspectFlags,
@@ -55,9 +56,9 @@ impl ImageView {
             .subresource_range(subres_range)
             .view_type(vk::ImageViewType::TYPE_2D)
             .build();
-        let view = unsafe { device.create_image_view(&create_info, None)? };
+        let view = device.create_image_view(&create_info)?;
         Ok(Self {
-            device: Rc::downgrade(device),
+            device,
             image_view: view,
         })
     }
@@ -65,9 +66,6 @@ impl ImageView {
 
 impl Drop for ImageView {
     fn drop(&mut self) {
-        let device = self.device.upgrade().unwrap();
-        unsafe {
-            device.destroy_image_view(self.image_view, None);
-        }
+        self.device.destroy_image_view(self.image_view);
     }
 }

@@ -11,6 +11,7 @@ pub trait SceneManager {
     fn push_scene(&mut self, scene: Box<dyn Scene>);
     fn pop_scene(&mut self) -> Option<Box<dyn Scene>>;
     fn unload_all_scenes(&mut self);
+    fn unset_director(&mut self);
 }
 
 pub struct DefaultSceneManager {
@@ -83,10 +84,15 @@ impl SceneManager for DefaultSceneManager {
     fn unload_all_scenes(&mut self) {
         while self.pop_scene().is_some() {}
     }
+
+    fn unset_director(&mut self) {
+        self.director = None;
+    }
 }
 
 impl Drop for DefaultSceneManager {
     fn drop(&mut self) {
         self.unload_all_scenes();
+        self.unset_director();
     }
 }

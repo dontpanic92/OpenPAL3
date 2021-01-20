@@ -165,13 +165,13 @@ pub fn create_swapchain(
 }
 
 pub fn create_image_views(
-    device: &Rc<Device>,
+    device: &Rc<super::device::Device>,
     images: &Vec<vk::Image>,
     format: SurfaceFormatKHR,
 ) -> VkResult<Vec<ImageView>> {
     images
         .iter()
-        .map(|image| ImageView::new_color_image_view(device, *image, format.format))
+        .map(|image| ImageView::new_color_image_view(device.clone(), *image, format.format))
         .collect()
 }
 
@@ -187,7 +187,7 @@ pub fn create_shader_module(
 }
 
 pub fn create_framebuffers(
-    device: &Device,
+    device: &super::device::Device,
     image_views: &Vec<ImageView>,
     depth_image_view: &ImageView,
     extent: &Extent2D,
@@ -204,7 +204,7 @@ pub fn create_framebuffers(
                 .width(extent.width)
                 .height(extent.height)
                 .build();
-            unsafe { device.create_framebuffer(&create_info, None) }
+            device.create_framebuffer(&create_info)
         })
         .collect()
 }
@@ -216,7 +216,7 @@ fn enabled_layer_names() -> Vec<*const i8> {
             // instead of doing so here.
             //
             // std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_standard_validation\0")
-            //    .as_ptr() as *const i8,
+            //     .as_ptr() as *const i8,
         ]
     }
 }

@@ -1,10 +1,9 @@
 use super::{
-    adhoc_command_runner::AdhocCommandRunner, buffer::Buffer, image::Image, image_view::ImageView,
-    sampler::Sampler,
+    adhoc_command_runner::AdhocCommandRunner, buffer::Buffer, device::Device, image::Image,
+    image_view::ImageView, sampler::Sampler,
 };
 use crate::rendering::texture::{Texture, TextureDef};
 use ash::vk;
-use ash::Device;
 use std::error::Error;
 use std::rc::Rc;
 
@@ -56,8 +55,8 @@ impl VulkanTexture {
             &command_runner,
         )?;
 
-        let image_view = ImageView::new_color_image_view(device, image.vk_image(), format)?;
-        let sampler = Sampler::new(device)?;
+        let image_view = ImageView::new_color_image_view(device.clone(), image.vk_image(), format)?;
+        let sampler = Sampler::new(device.clone())?;
 
         Ok(Self {
             image,

@@ -1,15 +1,13 @@
-use super::material::VulkanMaterial;
+use super::{device::Device, material::VulkanMaterial};
 use super::{pipeline::Pipeline, render_pass::RenderPass};
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
 use ash::vk;
-use ash::Device;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::rc::Weak;
 
 pub struct PipelineManager {
-    device: Weak<Device>,
-    descriptor_manager: Weak<DescriptorManager>,
+    device: Rc<Device>,
+    descriptor_manager: Rc<DescriptorManager>,
     color_format: vk::Format,
     depth_format: vk::Format,
     extent: vk::Extent2D,
@@ -19,17 +17,17 @@ pub struct PipelineManager {
 
 impl PipelineManager {
     pub fn new(
-        device: &Rc<Device>,
+        device: Rc<Device>,
         descriptor_manager: &Rc<DescriptorManager>,
         color_format: vk::Format,
         depth_format: vk::Format,
         extent: vk::Extent2D,
     ) -> Self {
-        let render_pass = RenderPass::new(device, color_format, depth_format);
+        let render_pass = RenderPass::new(device.clone(), color_format, depth_format);
 
         Self {
-            device: Rc::downgrade(device),
-            descriptor_manager: Rc::downgrade(descriptor_manager),
+            device,
+            descriptor_manager: descriptor_manager.clone(),
             color_format,
             depth_format,
             extent,
@@ -40,14 +38,12 @@ impl PipelineManager {
 
     pub fn create_pipeline_if_not_exist(&mut self, material: &VulkanMaterial) -> &Pipeline {
         let name = material.name();
-        let device = self.device.upgrade().unwrap();
-        let descriptor_manager = self.descriptor_manager.upgrade().unwrap();
         if !self.pipelines.contains_key(name) {
             self.pipelines.insert(
                 name.to_owned(),
                 Pipeline::new(
-                    &device,
-                    &descriptor_manager,
+                    self.device.clone(),
+                    &self.descriptor_manager,
                     &self.render_pass,
                     material,
                     self.extent,

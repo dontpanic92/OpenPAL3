@@ -1,29 +1,29 @@
-use super::{pipeline_layout::PipelineLayout, render_pass::RenderPass, shader::VulkanShader};
+use super::{
+    device::Device, pipeline_layout::PipelineLayout, render_pass::RenderPass, shader::VulkanShader,
+};
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
 use crate::rendering::vulkan::material::VulkanMaterial;
-use ash::version::DeviceV1_0;
-use ash::{vk, Device};
+use ash::vk;
 use std::error::Error;
 use std::ffi::CString;
 use std::rc::Rc;
-use std::rc::Weak;
 
 pub struct Pipeline {
-    device: Weak<Device>,
+    device: Rc<Device>,
     pipeline: vk::Pipeline,
     pipeline_layout: PipelineLayout,
 }
 
 impl Pipeline {
     pub fn new(
-        device: &Rc<Device>,
+        device: Rc<Device>,
         descriptor_manager: &DescriptorManager,
         render_pass: &RenderPass,
         material: &VulkanMaterial,
         extent: vk::Extent2D,
     ) -> Self {
         let descriptor_set_layouts = descriptor_manager.get_vk_descriptor_set_layouts(material);
-        let pipeline_layout = PipelineLayout::new(device, &descriptor_set_layouts);
+        let pipeline_layout = PipelineLayout::new(device.clone(), &descriptor_set_layouts);
         let pipeline = Self::create_pipeline(
             &device,
             render_pass.vk_render_pass(),
@@ -34,7 +34,7 @@ impl Pipeline {
         .unwrap()[0];
 
         Self {
-            device: Rc::downgrade(&device),
+            device,
             pipeline,
             pipeline_layout,
         }
@@ -165,13 +165,11 @@ impl Pipeline {
             .depth_stencil_state(&depth_stencil_state_create_info)
             .build();
 
-        let pipelines = match unsafe {
-            device.create_graphics_pipelines(vk::PipelineCache::default(), &[create_info], None)
-        } {
+        let pipelines = match device.create_graphics_pipelines(&[create_info]) {
             Ok(p) => Ok(p),
             Err((p, e)) => {
                 for x in p.into_iter() {
-                    unsafe { device.destroy_pipeline(x, None) };
+                    device.destroy_pipeline(x);
                 }
 
                 Err(Box::new(e) as Box<dyn Error>)
@@ -184,9 +182,6 @@ impl Pipeline {
 
 impl Drop for Pipeline {
     fn drop(&mut self) {
-        let device = self.device.upgrade().unwrap();
-        unsafe {
-            device.destroy_pipeline(self.pipeline, None);
-        }
+        self.device.destroy_pipeline(self.pipeline);
     }
 }

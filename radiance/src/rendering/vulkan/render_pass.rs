@@ -1,19 +1,19 @@
-use ash::version::DeviceV1_0;
-use ash::{prelude::VkResult, vk, Device};
+use ash::{prelude::VkResult, vk};
 use std::rc::Rc;
-use std::rc::Weak;
+
+use super::device::Device;
 
 pub struct RenderPass {
-    device: Weak<Device>,
+    device: Rc<Device>,
     render_pass: vk::RenderPass,
 }
 
 impl RenderPass {
-    pub fn new(device: &Rc<Device>, color_format: vk::Format, depth_format: vk::Format) -> Self {
-        let render_pass = Self::create_render_pass(device, color_format, depth_format).unwrap();
+    pub fn new(device: Rc<Device>, color_format: vk::Format, depth_format: vk::Format) -> Self {
+        let render_pass = Self::create_render_pass(&device, color_format, depth_format).unwrap();
 
         Self {
-            device: Rc::downgrade(device),
+            device,
             render_pass,
         }
     }
@@ -85,15 +85,12 @@ impl RenderPass {
             .dependencies(&dependencies)
             .build();
 
-        unsafe { device.create_render_pass(&render_pass_create_info, None) }
+        device.create_render_pass(&render_pass_create_info)
     }
 }
 
 impl Drop for RenderPass {
     fn drop(&mut self) {
-        let device = self.device.upgrade().unwrap();
-        unsafe {
-            device.destroy_render_pass(self.render_pass, None);
-        }
+        self.device.destroy_render_pass(self.render_pass);
     }
 }

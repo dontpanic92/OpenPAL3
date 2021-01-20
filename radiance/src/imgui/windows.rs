@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, ptr::null_mut, rc::Rc, time::Duration};
 
-use imgui::{BackendFlags, ConfigFlags, Context, ImString, Key, MouseCursor};
+use imgui::{BackendFlags, ConfigFlags, Context, ImString, Key};
 use winapi::{
     shared::{
         minwindef::{HINSTANCE, UINT},

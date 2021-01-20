@@ -1,32 +1,31 @@
-use super::adhoc_command_runner::AdhocCommandRunner;
-use super::creation_helpers;
 use super::descriptor_managers::DescriptorManager;
 use super::helpers;
 use super::render_object::VulkanRenderObject;
 use super::swapchain::SwapChain;
+use super::{adhoc_command_runner::AdhocCommandRunner, device::Device};
+use super::{creation_helpers, instance::Instance};
 use super::{
     factory::VulkanComponentFactory,
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
+use crate::math::Mat44;
 use crate::scene::{entity_get_component, Scene};
 use crate::{
     imgui::{ImguiContext, ImguiFrame},
     rendering::{ComponentFactory, RenderingComponent, RenderingEngine, Window},
 };
-use crate::{math::Mat44, scene::Entity};
 use ash::extensions::ext::DebugReport;
-use ash::version::{DeviceV1_0, InstanceV1_0};
-use ash::{vk, Device, Entry, Instance};
+use ash::{vk, Entry};
 use std::iter::Iterator;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::{cell::RefCell, error::Error};
 
 pub struct VulkanRenderingEngine {
-    entry: Entry,
+    entry: Rc<Entry>,
     instance: Rc<Instance>,
     physical_device: vk::PhysicalDevice,
-    device: Option<Rc<Device>>,
+    device: Rc<Device>,
     allocator: Option<Rc<vk_mem::Allocator>>,
     surface: vk::SurfaceKHR,
     format: vk::SurfaceFormatKHR,
@@ -91,31 +90,33 @@ impl VulkanRenderingEngine {
         window: &Window,
         imgui_context: Rc<RefCell<ImguiContext>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let entry = Entry::new().unwrap();
-        let instance = Rc::new(creation_helpers::create_instance(&entry)?);
-        let physical_device = creation_helpers::get_physical_device(&instance)?;
+        let entry = Rc::new(Entry::new().unwrap());
+        let instance = Rc::new(Instance::new(entry.clone()));
+        let physical_device = creation_helpers::get_physical_device(instance.vk_instance())?;
 
-        let surface_entry = ash::extensions::khr::Surface::new(&entry, instance.as_ref());
-        let surface = creation_helpers::create_surface(&entry, &instance, &window)?;
+        let surface_entry =
+            ash::extensions::khr::Surface::new(entry.as_ref(), instance.vk_instance());
+        let surface =
+            creation_helpers::create_surface(entry.as_ref(), instance.vk_instance(), &window)?;
 
         let graphics_queue_family_index = creation_helpers::get_graphics_queue_family_index(
-            &instance,
+            instance.vk_instance(),
             physical_device,
             &surface_entry,
             surface,
         )?;
 
-        let device = Rc::new(creation_helpers::create_device(
-            &instance,
+        let device = Rc::new(Device::new(
+            instance.clone(),
             physical_device,
             graphics_queue_family_index,
-        )?);
+        ));
 
         let allocator = Rc::new({
             let create_info = vk_mem::AllocatorCreateInfo {
                 physical_device,
-                device: (*device).clone(),
-                instance: instance.as_ref().clone(),
+                device: device.vk_device().clone(),
+                instance: instance.vk_instance().clone(),
                 flags: vk_mem::AllocatorCreateFlags::NONE,
                 preferred_large_heap_block_size: 0,
                 frame_in_use_count: 0,
@@ -133,7 +134,7 @@ impl VulkanRenderingEngine {
             surface_entry.get_physical_device_surface_capabilities(physical_device, surface)?
         };
 
-        let queue = unsafe { device.get_device_queue(graphics_queue_family_index, 0) };
+        let queue = device.get_device_queue(graphics_queue_family_index, 0);
         let command_pool = {
             let create_info = vk::CommandPoolCreateInfo::builder()
                 .flags(
@@ -142,27 +143,25 @@ impl VulkanRenderingEngine {
                 )
                 .queue_family_index(graphics_queue_family_index)
                 .build();
-            unsafe { device.create_command_pool(&create_info, None)? }
+            device.create_command_pool(&create_info)?
         };
 
-        let descriptor_manager = Rc::new(DescriptorManager::new(&device).unwrap());
-        let min_uniform_buffer_alignment = unsafe {
-            instance
-                .get_physical_device_properties(physical_device)
-                .limits
-                .min_uniform_buffer_offset_alignment
-        };
+        let descriptor_manager = Rc::new(DescriptorManager::new(device.clone()).unwrap());
+        let min_uniform_buffer_alignment = instance
+            .get_physical_device_properties(physical_device)
+            .limits
+            .min_uniform_buffer_offset_alignment;
         let dub_manager = Arc::new(DynamicUniformBufferManager::new(
-            &device,
             &allocator,
             descriptor_manager.dub_descriptor_manager(),
             min_uniform_buffer_alignment,
         ));
 
-        let adhoc_command_runner = Rc::new(AdhocCommandRunner::new(&device, command_pool, queue));
+        let adhoc_command_runner =
+            Rc::new(AdhocCommandRunner::new(device.clone(), command_pool, queue));
         let swapchain = SwapChain::new(
             &instance,
-            &device,
+            device.clone(),
             &allocator,
             command_pool,
             physical_device,
@@ -178,13 +177,11 @@ impl VulkanRenderingEngine {
         .unwrap();
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
-        let image_available_semaphore =
-            unsafe { device.create_semaphore(&semaphore_create_info, None)? };
-        let render_finished_semaphore =
-            unsafe { device.create_semaphore(&semaphore_create_info, None)? };
+        let image_available_semaphore = device.create_semaphore(&semaphore_create_info)?;
+        let render_finished_semaphore = device.create_semaphore(&semaphore_create_info)?;
 
         let component_factory = Rc::new(VulkanComponentFactory::new(
-            &device,
+            device.clone(),
             &allocator,
             &descriptor_manager,
             &dub_manager,
@@ -192,7 +189,7 @@ impl VulkanRenderingEngine {
         ));
 
         // DEBUG INFO
-        let debug_entry = DebugReport::new(&entry, instance.as_ref());
+        let debug_entry = DebugReport::new(entry.as_ref(), instance.vk_instance());
         let debug_callback = {
             let create_info = vk::DebugReportCallbackCreateInfoEXT::builder()
                 .flags(
@@ -208,7 +205,7 @@ impl VulkanRenderingEngine {
             entry,
             instance,
             physical_device,
-            device: Some(device),
+            device,
             allocator: Some(allocator),
             surface,
             format,
@@ -229,10 +226,6 @@ impl VulkanRenderingEngine {
         };
 
         return Ok(vulkan);
-    }
-
-    pub fn device(&self) -> &Rc<Device> {
-        self.device.as_ref().unwrap()
     }
 
     pub fn allocator(&self) -> &Rc<vk_mem::Allocator> {
@@ -268,15 +261,13 @@ impl VulkanRenderingEngine {
     }
 
     fn recreate_swapchain(&mut self) -> Result<(), Box<dyn Error>> {
-        unsafe {
-            let _ = self.device().device_wait_idle();
-        }
+        self.device.wait_idle();
 
         self.swapchain = None;
         let capabilities = self.get_capabilities()?;
         self.swapchain = Some(SwapChain::new(
             &self.instance,
-            self.device(),
+            self.device.clone(),
             self.allocator(),
             self.command_pool,
             self.physical_device,
@@ -305,81 +296,79 @@ impl VulkanRenderingEngine {
         }
 
         let dub_manager = self.dub_manager().clone();
-        unsafe {
-            let (image_index, _) = swapchain!()
-                .acquire_next_image(
-                    u64::max_value(),
-                    self.image_available_semaphore,
-                    vk::Fence::default(),
-                )
-                .unwrap();
-            let x = &|ui| scene.draw_ui(ui);
-            let objects: Vec<&VulkanRenderObject> = scene
-                .entities()
-                .iter()
-                .filter_map(|e| {
-                    entity_get_component::<RenderingComponent>(*e)
-                        .and_then(|c| Some(c.render_objects()))
-                })
-                .flatten()
-                .filter_map(|o| o.downcast_ref())
-                .collect();
+        let (image_index, _) = swapchain!()
+            .acquire_next_image(
+                u64::max_value(),
+                self.image_available_semaphore,
+                vk::Fence::default(),
+            )
+            .unwrap();
+        let x = &|ui| scene.draw_ui(ui);
+        let objects: Vec<&VulkanRenderObject> = scene
+            .entities()
+            .iter()
+            .filter_map(|e| {
+                entity_get_component::<RenderingComponent>(*e)
+                    .and_then(|c| Some(c.render_objects()))
+            })
+            .flatten()
+            .filter_map(|o| o.downcast_ref())
+            .collect();
 
-            let command_buffer = swapchain!()
-                .record_command_buffers(image_index as usize, &objects, &dub_manager, ui_frame)
-                .unwrap();
+        let command_buffer = swapchain!()
+            .record_command_buffers(image_index as usize, &objects, &dub_manager, ui_frame)
+            .unwrap();
 
-            // Update Per-frame Uniform Buffers
-            {
-                let ubo = {
-                    let camera = scene.camera();
-                    let view = Mat44::inversed(camera.transform().matrix());
-                    let proj = camera.projection_matrix();
-                    PerFrameUniformBuffer::new(&view, proj)
-                };
+        // Update Per-frame Uniform Buffers
+        {
+            let ubo = {
+                let camera = scene.camera();
+                let view = Mat44::inversed(camera.transform().matrix());
+                let proj = camera.projection_matrix();
+                PerFrameUniformBuffer::new(&view, proj)
+            };
 
-                swapchain!().update_ubo(image_index as usize, &[ubo]);
-            }
-
-            // Submit commands
-            {
-                let commands = [command_buffer];
-                let wait_semaphores = [self.image_available_semaphore];
-                let stage_mask = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-                let signal_semaphores = [self.render_finished_semaphore];
-                let submit_info = vk::SubmitInfo::builder()
-                    .wait_semaphores(&wait_semaphores)
-                    .wait_dst_stage_mask(&stage_mask)
-                    .command_buffers(&commands)
-                    .signal_semaphores(&signal_semaphores)
-                    .build();
-
-                self.device()
-                    .queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
-            }
-
-            // Present
-            {
-                let wait_semaphores = [self.render_finished_semaphore];
-                let ret = swapchain!().present(image_index, self.queue, &wait_semaphores);
-
-                match ret {
-                    Ok(false) => (),
-                    Ok(true) => self.drop_swapchain(),
-                    Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.drop_swapchain(),
-                    Err(x) => return Err(Box::new(x) as Box<dyn Error>),
-                };
-            }
-
-            // Not an optimized way
-            let _ = self.device().device_wait_idle();
+            swapchain!().update_ubo(image_index as usize, &[ubo]);
         }
+
+        // Submit commands
+        {
+            let commands = [command_buffer];
+            let wait_semaphores = [self.image_available_semaphore];
+            let stage_mask = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+            let signal_semaphores = [self.render_finished_semaphore];
+            let submit_info = vk::SubmitInfo::builder()
+                .wait_semaphores(&wait_semaphores)
+                .wait_dst_stage_mask(&stage_mask)
+                .command_buffers(&commands)
+                .signal_semaphores(&signal_semaphores)
+                .build();
+
+            self.device
+                .queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
+        }
+
+        // Present
+        {
+            let wait_semaphores = [self.render_finished_semaphore];
+            let ret = swapchain!().present(image_index, self.queue, &wait_semaphores);
+
+            match ret {
+                Ok(false) => (),
+                Ok(true) => self.drop_swapchain(),
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.drop_swapchain(),
+                Err(x) => return Err(Box::new(x) as Box<dyn Error>),
+            };
+        }
+
+        // Not an optimized way
+        self.device.wait_idle();
 
         Ok(())
     }
 
     fn drop_swapchain(&mut self) {
-        let _ = unsafe { self.device().device_wait_idle() };
+        self.device.wait_idle();
         self.swapchain = None;
     }
 
@@ -393,26 +382,23 @@ impl VulkanRenderingEngine {
 
 impl Drop for VulkanRenderingEngine {
     fn drop(&mut self) {
+        self.device.wait_idle();
+        self.swapchain = None;
+        self.descriptor_manager = None;
+        self.dub_manager = None;
+        self.allocator = None;
         unsafe {
-            let _ = self.device().device_wait_idle();
-            self.swapchain = None;
-            self.descriptor_manager = None;
-            self.dub_manager = None;
-            self.allocator = None;
             self.debug_entry
                 .destroy_debug_report_callback(self.debug_callback, None);
-            self.device().destroy_command_pool(self.command_pool, None);
+        }
+        self.device.destroy_command_pool(self.command_pool);
 
-            self.device()
-                .destroy_semaphore(self.image_available_semaphore, None);
-            self.device()
-                .destroy_semaphore(self.render_finished_semaphore, None);
-
+        self.device
+            .destroy_semaphore(self.image_available_semaphore);
+        self.device
+            .destroy_semaphore(self.render_finished_semaphore);
+        unsafe {
             self.surface_entry.destroy_surface(self.surface, None);
-            self.device().destroy_device(None);
-
-            self.device = None;
-            self.instance.destroy_instance(None);
         }
     }
 }

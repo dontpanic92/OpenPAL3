@@ -1,14 +1,13 @@
 use super::{
     buffer::Buffer, descriptor_pool::DescriptorPool, descriptor_pool::DescriptorPoolCreateInfo,
-    descriptor_set_layout::DescriptorSetLayout,
+    descriptor_set_layout::DescriptorSetLayout, device::Device,
 };
 use crate::rendering::vulkan::material::VulkanMaterial;
 use crate::rendering::vulkan::uniform_buffers::PerFrameUniformBuffer;
 use ash::prelude::VkResult;
-use ash::version::DeviceV1_0;
-use ash::{vk, Device};
+use ash::vk;
 use std::collections::HashMap;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -17,7 +16,7 @@ const MAX_DESCRIPTOR_COUNT: u32 = 40960;
 const MAX_SWAPCHAIN_IMAGE_COUNT: u32 = 4;
 
 pub struct DescriptorManager {
-    device: Weak<Device>,
+    device: Rc<Device>,
     per_frame_pool: vk::DescriptorPool,
     per_object_pool: vk::DescriptorPool,
     per_frame_layout: vk::DescriptorSetLayout,
@@ -26,19 +25,19 @@ pub struct DescriptorManager {
 }
 
 impl DescriptorManager {
-    pub fn new(device: &Rc<Device>) -> VkResult<Self> {
-        let per_frame_pool = Self::create_per_frame_descriptor_pool(device).unwrap();
-        let per_object_pool = Self::create_per_object_descriptor_pool(device).unwrap();
+    pub fn new(device: Rc<Device>) -> VkResult<Self> {
+        let per_frame_pool = Self::create_per_frame_descriptor_pool(&device).unwrap();
+        let per_object_pool = Self::create_per_object_descriptor_pool(&device).unwrap();
         let per_frame_layout = Self::create_descriptor_set_layout(
-            device,
+            &device,
             vk::DescriptorType::UNIFORM_BUFFER,
             vk::ShaderStageFlags::VERTEX,
             1,
         )?;
-        let dub_descriptor_manager = DynamicUniformBufferDescriptorManager::new(device);
+        let dub_descriptor_manager = DynamicUniformBufferDescriptorManager::new(device.clone());
 
         Ok(Self {
-            device: Rc::downgrade(device),
+            device,
             per_frame_pool,
             per_object_pool,
             per_frame_layout,
@@ -55,14 +54,13 @@ impl DescriptorManager {
         &self,
         material: &VulkanMaterial,
     ) -> VkResult<vk::DescriptorSet> {
-        let device = self.device.upgrade().unwrap();
         let layout = self.get_per_material_descriptor_layout(material);
         let layouts = [layout];
         let create_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(self.per_object_pool)
             .set_layouts(&layouts)
             .build();
-        let descriptor_sets = unsafe { device.allocate_descriptor_sets(&create_info) }?;
+        let descriptor_sets = self.device.allocate_descriptor_sets(&create_info)?;
 
         let image_info: Vec<vk::DescriptorImageInfo> = material
             .textures()
@@ -84,7 +82,8 @@ impl DescriptorManager {
             .image_info(&image_info)
             .build();
         let write_descriptor_sets = [write_descriptor_set];
-        unsafe { device.update_descriptor_sets(&write_descriptor_sets, &[]) };
+        self.device
+            .update_descriptor_sets(&write_descriptor_sets, &[]);
 
         Ok(descriptor_sets[0])
     }
@@ -93,13 +92,12 @@ impl DescriptorManager {
         &self,
         uniform_buffers: &[Buffer],
     ) -> VkResult<Vec<vk::DescriptorSet>> {
-        let device = self.device.upgrade().unwrap();
         let layouts = vec![self.per_frame_layout; uniform_buffers.len()];
         let create_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(self.per_frame_pool)
             .set_layouts(layouts.as_slice())
             .build();
-        let descriptor_sets = unsafe { device.allocate_descriptor_sets(&create_info) }?;
+        let descriptor_sets = self.device.allocate_descriptor_sets(&create_info)?;
 
         for i in 0..uniform_buffers.len() {
             let uniform_buffer_info = vk::DescriptorBufferInfo::builder()
@@ -117,17 +115,17 @@ impl DescriptorManager {
                 .buffer_info(&buffer_info_array)
                 .build();
             let write_descriptor_sets = [write_descriptor_set];
-            unsafe { device.update_descriptor_sets(&write_descriptor_sets, &[]) };
+            self.device
+                .update_descriptor_sets(&write_descriptor_sets, &[])
         }
 
         Ok(descriptor_sets)
     }
 
     pub fn reset_per_frame_descriptor_pool(&self) {
-        let device = self.device.upgrade().unwrap();
-        let _ = unsafe {
-            device.reset_descriptor_pool(self.per_frame_pool, vk::DescriptorPoolResetFlags::empty())
-        };
+        self.device
+            .reset_descriptor_pool(self.per_frame_pool)
+            .unwrap();
     }
 
     pub fn get_vk_descriptor_set_layouts(
@@ -154,7 +152,7 @@ impl DescriptorManager {
             .max_sets(MAX_DESCRIPTOR_SET_COUNT)
             .build();
 
-        unsafe { device.create_descriptor_pool(&create_info, None) }
+        device.create_descriptor_pool(&create_info)
     }
 
     fn create_per_object_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
@@ -169,7 +167,7 @@ impl DescriptorManager {
             .max_sets(MAX_DESCRIPTOR_SET_COUNT)
             .build();
 
-        unsafe { device.create_descriptor_pool(&create_info, None) }
+        device.create_descriptor_pool(&create_info)
     }
 
     fn create_descriptor_set_layout(
@@ -190,18 +188,17 @@ impl DescriptorManager {
             .bindings(&bindings)
             .build();
 
-        unsafe { device.create_descriptor_set_layout(&create_info, None) }
+        device.create_descriptor_set_layout(&create_info)
     }
 
     fn get_per_material_descriptor_layout(
         &self,
         material: &VulkanMaterial,
     ) -> vk::DescriptorSetLayout {
-        let device = self.device.upgrade().unwrap();
         let mut per_material_layouts = self.per_material_layouts.lock().unwrap();
         if !per_material_layouts.contains_key(material.name()) {
             let layout = Self::create_descriptor_set_layout(
-                &device,
+                &self.device,
                 vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                 vk::ShaderStageFlags::FRAGMENT,
                 material.textures().len() as u32,
@@ -216,42 +213,42 @@ impl DescriptorManager {
 
 impl Drop for DescriptorManager {
     fn drop(&mut self) {
-        let device = self.device.upgrade().unwrap();
-        unsafe {
-            device.destroy_descriptor_set_layout(self.per_frame_layout, None);
-            for layout in self.per_material_layouts.lock().unwrap().values() {
-                device.destroy_descriptor_set_layout(*layout, None);
-            }
-            device.destroy_descriptor_pool(self.per_frame_pool, None);
-            device.destroy_descriptor_pool(self.per_object_pool, None);
+        self.device
+            .destroy_descriptor_set_layout(self.per_frame_layout);
+
+        for layout in self.per_material_layouts.lock().unwrap().values() {
+            self.device.destroy_descriptor_set_layout(*layout);
         }
+
+        self.device.destroy_descriptor_pool(self.per_frame_pool);
+        self.device.destroy_descriptor_pool(self.per_object_pool);
     }
 }
 
 pub struct DynamicUniformBufferDescriptorManager {
-    device: Weak<Device>,
+    device: Rc<Device>,
     pool: DescriptorPool,
     layout: DescriptorSetLayout,
 }
 
 impl DynamicUniformBufferDescriptorManager {
-    pub fn new(device: &Rc<Device>) -> Self {
+    pub fn new(device: Rc<Device>) -> Self {
         let pool = DescriptorPool::new(
-            device,
+            device.clone(),
             &[DescriptorPoolCreateInfo {
                 ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
                 descriptor_count: 1,
             }],
         );
         let layout = DescriptorSetLayout::new(
-            device,
+            device.clone(),
             vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
             vk::ShaderStageFlags::VERTEX,
             1,
         );
 
         Self {
-            device: Rc::downgrade(device),
+            device,
             pool,
             layout,
         }
@@ -266,13 +263,12 @@ impl DynamicUniformBufferDescriptorManager {
     }
 
     pub fn allocate_descriptor_sets(&self, dynamic_uniform_buffer: &Buffer) -> vk::DescriptorSet {
-        let device = self.device.upgrade().unwrap();
         let layouts = [self.layout.vk_layout()];
         let create_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(self.pool.vk_pool())
             .set_layouts(&layouts)
             .build();
-        let descriptor_sets = unsafe { device.allocate_descriptor_sets(&create_info) }.unwrap();
+        let descriptor_sets = self.device.allocate_descriptor_sets(&create_info).unwrap();
 
         let buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(dynamic_uniform_buffer.vk_buffer())
@@ -289,7 +285,8 @@ impl DynamicUniformBufferDescriptorManager {
             .buffer_info(&buffer_info_array)
             .build();
         let write_descriptor_sets = [write_descriptor_set];
-        unsafe { device.update_descriptor_sets(&write_descriptor_sets, &[]) };
+        self.device
+            .update_descriptor_sets(&write_descriptor_sets, &[]);
 
         descriptor_sets[0]
     }

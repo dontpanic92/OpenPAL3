@@ -1,15 +1,15 @@
+use super::device::Device;
 use ash::prelude::VkResult;
-use ash::version::DeviceV1_0;
-use ash::{vk, Device};
-use std::rc::{Rc, Weak};
+use ash::vk;
+use std::rc::Rc;
 
 pub struct Sampler {
-    device: Weak<Device>,
+    device: Rc<Device>,
     sampler: vk::Sampler,
 }
 
 impl Sampler {
-    pub fn new(device: &Rc<Device>) -> VkResult<Self> {
+    pub fn new(device: Rc<Device>) -> VkResult<Self> {
         let sampler_info = vk::SamplerCreateInfo::builder()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)
@@ -27,9 +27,9 @@ impl Sampler {
             .min_lod(0.)
             .max_lod(0.)
             .build();
-        let sampler = unsafe { device.create_sampler(&sampler_info, None)? };
+        let sampler = device.create_sampler(&sampler_info)?;
         Ok(Self {
-            device: Rc::downgrade(device),
+            device: device.clone(),
             sampler,
         })
     }
@@ -41,9 +41,6 @@ impl Sampler {
 
 impl Drop for Sampler {
     fn drop(&mut self) {
-        let device = self.device.upgrade().unwrap();
-        unsafe {
-            device.destroy_sampler(self.sampler, None);
-        }
+        self.device.destroy_sampler(self.sampler);
     }
 }

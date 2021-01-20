@@ -1,13 +1,12 @@
 use super::{
     adhoc_command_runner::AdhocCommandRunner, descriptor_managers::DescriptorManager,
-    material::VulkanMaterial, render_object::VulkanRenderObject, shader::VulkanShader,
-    texture::VulkanTexture, uniform_buffers::DynamicUniformBufferManager,
+    device::Device, material::VulkanMaterial, render_object::VulkanRenderObject,
+    shader::VulkanShader, texture::VulkanTexture, uniform_buffers::DynamicUniformBufferManager,
 };
 use crate::rendering::{
     factory::ComponentFactory, texture::TextureDef, Material, MaterialDef, RenderObject,
     RenderingComponent, Shader, ShaderDef, Texture, VertexBuffer,
 };
-use ash::Device;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -33,7 +32,7 @@ impl ComponentFactory for VulkanComponentFactory {
     }
 
     fn create_shader(&self, shader_def: &ShaderDef) -> Box<dyn Shader> {
-        Box::new(VulkanShader::new(shader_def, &self.device).unwrap())
+        Box::new(VulkanShader::new(shader_def, self.device.clone()).unwrap())
     }
 
     fn create_material(&self, material_def: &MaterialDef) -> Box<dyn Material> {
@@ -59,7 +58,6 @@ impl ComponentFactory for VulkanComponentFactory {
                 indices,
                 material,
                 host_dynamic,
-                &self.device,
                 &self.allocator,
                 &self.command_runner,
                 &self.dub_manager,
@@ -84,14 +82,14 @@ impl ComponentFactory for VulkanComponentFactory {
 
 impl VulkanComponentFactory {
     pub fn new(
-        device: &Rc<Device>,
+        device: Rc<Device>,
         allocator: &Rc<vk_mem::Allocator>,
         descriptor_manager: &Rc<DescriptorManager>,
         dub_manager: &Arc<DynamicUniformBufferManager>,
         command_runner: &Rc<AdhocCommandRunner>,
     ) -> Self {
         Self {
-            device: device.clone(),
+            device,
             allocator: allocator.clone(),
             descriptor_manager: descriptor_manager.clone(),
             dub_manager: dub_manager.clone(),

@@ -74,8 +74,6 @@ impl<TExtension: ApplicationExtension<TExtension>> Application<TExtension> {
 
             self.radiance_engine.update(elapsed);
         }
-
-        self.radiance_engine.scene_manager().unload_all_scenes();
     }
 }
 

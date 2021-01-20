@@ -1,7 +1,7 @@
 use super::buffer::{Buffer, BufferType};
 use crate::math::Mat44;
 use crate::rendering::vulkan::descriptor_managers::DynamicUniformBufferDescriptorManager;
-use ash::{vk, Device};
+use ash::vk;
 use std::{rc::Rc, sync::Mutex};
 
 #[derive(Clone)]
@@ -25,7 +25,6 @@ pub struct DynamicUniformBufferManager {
 
 impl DynamicUniformBufferManager {
     pub fn new(
-        device: &Rc<Device>,
         allocator: &Rc<vk_mem::Allocator>,
         descriptor_manager: &DynamicUniformBufferDescriptorManager,
         min_alignment: u64,

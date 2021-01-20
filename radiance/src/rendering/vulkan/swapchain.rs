@@ -1,5 +1,3 @@
-use super::adhoc_command_runner::AdhocCommandRunner;
-use super::buffer::{Buffer, BufferType};
 use super::creation_helpers;
 use super::descriptor_managers::DescriptorManager;
 use super::image::Image;
@@ -7,18 +5,22 @@ use super::image_view::ImageView;
 use super::pipeline_manager::PipelineManager;
 use super::render_object::VulkanRenderObject;
 use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
+use super::{adhoc_command_runner::AdhocCommandRunner, device::Device};
+use super::{
+    buffer::{Buffer, BufferType},
+    instance::Instance,
+};
 use crate::{
     imgui::{ImguiContext, ImguiFrame},
     rendering::vulkan::imgui::ImguiVulkanContext,
 };
 use ash::prelude::VkResult;
-use ash::version::DeviceV1_0;
-use ash::{vk, Device, Instance};
-use std::rc::{Rc, Weak};
-use std::{cmp::Ordering, ops::Deref};
+use ash::vk;
+use std::cmp::Ordering;
+use std::rc::Rc;
 
 pub struct SwapChain {
-    device: Weak<Device>,
+    device: Rc<Device>,
     command_pool: vk::CommandPool,
     handle: vk::SwapchainKHR,
     images: Vec<vk::Image>,
@@ -39,7 +41,7 @@ pub struct SwapChain {
 impl SwapChain {
     pub fn new(
         instance: &Rc<Instance>,
-        device: &Rc<Device>,
+        device: Rc<Device>,
         allocator: &Rc<vk_mem::Allocator>,
         command_pool: vk::CommandPool,
         physical_device: vk::PhysicalDevice,
@@ -52,7 +54,8 @@ impl SwapChain {
         command_runner: &Rc<AdhocCommandRunner>,
         gui_context: &mut ImguiContext,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let entry = ash::extensions::khr::Swapchain::new(instance.as_ref(), device.deref());
+        let entry =
+            ash::extensions::khr::Swapchain::new(instance.vk_instance(), device.vk_device());
         let handle = creation_helpers::create_swapchain(
             &entry,
             surface,
@@ -76,7 +79,7 @@ impl SwapChain {
             .collect();
 
         let mut depth_image = Image::new_depth_image(
-            instance,
+            instance.vk_instance(),
             physical_device,
             &allocator,
             capabilities.current_extent.width,
@@ -89,14 +92,14 @@ impl SwapChain {
             command_runner,
         )?;
         let depth_image_view = ImageView::new_depth_image_view(
-            device,
+            device.clone(),
             depth_image.vk_image(),
             depth_image.vk_format(),
         )?;
 
         descriptor_manager.reset_per_frame_descriptor_pool();
         let pipeline_manager = PipelineManager::new(
-            &device,
+            device.clone(),
             &descriptor_manager,
             format.format,
             depth_image.vk_format(),
@@ -120,13 +123,13 @@ impl SwapChain {
                 .command_buffer_count(framebuffers.len() as u32)
                 .level(vk::CommandBufferLevel::PRIMARY)
                 .build();
-            unsafe { device.allocate_command_buffers(&create_info)? }
+            device.allocate_command_buffers(&create_info)?
         };
 
         let imgui = ImguiVulkanContext::new(
-            instance,
+            instance.clone(),
             physical_device,
-            device,
+            device.clone(),
             queue,
             command_pool,
             pipeline_manager.render_pass().vk_render_pass(),
@@ -135,7 +138,7 @@ impl SwapChain {
         );
 
         Ok(Self {
-            device: Rc::downgrade(device),
+            device,
             command_pool,
             handle,
             images,
@@ -201,7 +204,6 @@ impl SwapChain {
         dub_manager: &DynamicUniformBufferManager,
         ui_frame: ImguiFrame,
     ) -> Result<vk::CommandBuffer, vk::Result> {
-        let device = self.device.upgrade().unwrap();
         let command_buffer = self.command_buffers[image_index];
         let framebuffer = self.framebuffers[image_index];
         let per_frame_descriptor_set = self.per_frame_descriptor_sets[image_index];
@@ -209,13 +211,12 @@ impl SwapChain {
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
             .build();
-        unsafe {
-            device.reset_command_buffer(
-                command_buffer,
-                vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-            )?;
-            device.begin_command_buffer(command_buffer, &begin_info)?;
-        }
+        self.device.reset_command_buffer(
+            command_buffer,
+            vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+        )?;
+        self.device
+            .begin_command_buffer(command_buffer, &begin_info)?;
 
         let clear_values = [
             vk::ClearValue {
@@ -242,13 +243,11 @@ impl SwapChain {
             .clear_values(&clear_values)
             .build();
 
-        unsafe {
-            device.cmd_begin_render_pass(
-                command_buffer,
-                &render_pass_begin_info,
-                vk::SubpassContents::INLINE,
-            );
-        }
+        self.device.cmd_begin_render_pass(
+            command_buffer,
+            &render_pass_begin_info,
+            vk::SubpassContents::INLINE,
+        );
 
         let mut objects_by_material = vec![];
         for obj in objects {
@@ -271,59 +270,55 @@ impl SwapChain {
         for (material, object_group) in &objects_by_material {
             let pipeline = self.pipeline_manager.get_pipeline(material.name());
 
-            unsafe {
-                device.cmd_bind_pipeline(
+            self.device.cmd_bind_pipeline(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                pipeline.vk_pipeline(),
+            );
+
+            for obj in object_group {
+                let vertex_buffer = obj.vertex_buffer();
+                let index_buffer = obj.index_buffer();
+                self.device.cmd_bind_vertex_buffers(
                     command_buffer,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    pipeline.vk_pipeline(),
+                    0,
+                    &[vertex_buffer.vk_buffer()],
+                    &[0],
+                );
+                self.device.cmd_bind_index_buffer(
+                    command_buffer,
+                    index_buffer.vk_buffer(),
+                    0,
+                    vk::IndexType::UINT32,
                 );
 
-                for obj in object_group {
-                    let vertex_buffer = obj.vertex_buffer();
-                    let index_buffer = obj.index_buffer();
-                    device.cmd_bind_vertex_buffers(
-                        command_buffer,
-                        0,
-                        &[vertex_buffer.vk_buffer()],
-                        &[0],
-                    );
-                    device.cmd_bind_index_buffer(
-                        command_buffer,
-                        index_buffer.vk_buffer(),
-                        0,
-                        vk::IndexType::UINT32,
-                    );
-
-                    device.cmd_bind_descriptor_sets(
-                        command_buffer,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        pipeline.pipeline_layout().vk_pipeline_layout(),
-                        0,
-                        &[
-                            per_frame_descriptor_set,
-                            dub_manager.descriptor_set(),
-                            obj.vk_descriptor_set(),
-                        ],
-                        &[dub_manager.get_offset(obj.dub_index()) as u32],
-                    );
-                    device.cmd_draw_indexed(
-                        command_buffer,
-                        index_buffer.element_count(),
-                        1,
-                        0,
-                        0,
-                        0,
-                    );
-                }
+                self.device.cmd_bind_descriptor_sets(
+                    command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    pipeline.pipeline_layout().vk_pipeline_layout(),
+                    0,
+                    &[
+                        per_frame_descriptor_set,
+                        dub_manager.descriptor_set(),
+                        obj.vk_descriptor_set(),
+                    ],
+                    &[dub_manager.get_offset(obj.dub_index()) as u32],
+                );
+                self.device.cmd_draw_indexed(
+                    command_buffer,
+                    index_buffer.element_count(),
+                    1,
+                    0,
+                    0,
+                    0,
+                );
             }
         }
 
         self.imgui.record_command_buffer(ui_frame, command_buffer);
 
-        unsafe {
-            device.cmd_end_render_pass(command_buffer);
-            device.end_command_buffer(command_buffer)?;
-        }
+        self.device.cmd_end_render_pass(command_buffer);
+        self.device.end_command_buffer(command_buffer)?;
 
         Ok(command_buffer)
     }
@@ -331,13 +326,13 @@ impl SwapChain {
 
 impl Drop for SwapChain {
     fn drop(&mut self) {
-        let device = self.device.upgrade().unwrap();
-        unsafe {
-            for buffer in &self.framebuffers {
-                device.destroy_framebuffer(*buffer, None);
-            }
+        for buffer in &self.framebuffers {
+            self.device.destroy_framebuffer(*buffer);
+        }
 
-            device.free_command_buffers(self.command_pool, &self.command_buffers);
+        self.device
+            .free_command_buffers(self.command_pool, &self.command_buffers);
+        unsafe {
             self.entry.destroy_swapchain(self.handle, None);
         }
     }

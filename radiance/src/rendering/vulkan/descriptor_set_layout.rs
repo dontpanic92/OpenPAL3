@@ -1,16 +1,16 @@
-use ash::version::DeviceV1_0;
-use ash::{vk, Device};
+use ash::vk;
 use std::rc::Rc;
-use std::rc::Weak;
+
+use super::device::Device;
 
 pub struct DescriptorSetLayout {
-    device: Weak<Device>,
+    device: Rc<Device>,
     layout: vk::DescriptorSetLayout,
 }
 
 impl DescriptorSetLayout {
     pub fn new(
-        device: &Rc<Device>,
+        device: Rc<Device>,
         descriptor_type: vk::DescriptorType,
         stage_flags: vk::ShaderStageFlags,
         descriptor_count: u32,
@@ -27,11 +27,8 @@ impl DescriptorSetLayout {
             .bindings(&bindings)
             .build();
 
-        let layout = unsafe { device.create_descriptor_set_layout(&create_info, None) }.unwrap();
-        Self {
-            device: Rc::downgrade(device),
-            layout,
-        }
+        let layout = device.create_descriptor_set_layout(&create_info).unwrap();
+        Self { device, layout }
     }
 
     pub fn vk_layout(&self) -> vk::DescriptorSetLayout {
@@ -41,9 +38,6 @@ impl DescriptorSetLayout {
 
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
-        let device = self.device.upgrade().unwrap();
-        unsafe {
-            device.destroy_descriptor_set_layout(self.layout, None);
-        }
+        self.device.destroy_descriptor_set_layout(self.layout);
     }
 }

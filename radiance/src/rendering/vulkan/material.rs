@@ -1,7 +1,6 @@
-use super::{shader::VulkanShader, texture::VulkanTexture};
+use super::{device::Device, shader::VulkanShader, texture::VulkanTexture};
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::{Material, MaterialDef};
-use ash::Device;
 use std::rc::Rc;
 
 pub struct VulkanMaterial {
@@ -26,7 +25,7 @@ impl VulkanMaterial {
         allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
     ) -> Self {
-        let shader = VulkanShader::new(def.shader(), device).unwrap();
+        let shader = VulkanShader::new(def.shader(), device.clone()).unwrap();
         let textures = def
             .textures()
             .iter()

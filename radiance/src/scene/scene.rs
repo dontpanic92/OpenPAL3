@@ -1,9 +1,6 @@
 use crate::math::Transform;
 
-use super::{
-    entity::{CoreEntity, Entity, EntityExtension},
-    Camera,
-};
+use super::{entity::Entity, Camera};
 use std::ops::{Deref, DerefMut};
 
 pub trait Scene: downcast_rs::Downcast {
