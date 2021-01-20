@@ -38,8 +38,8 @@ impl DevToolsDirector {
         let w = Window::new(im_str!("Files"))
             .collapsible(false)
             .resizable(false)
-            .size([window_width * 0.3, window_height], Condition::Appearing)
-            .position([0., 0.], Condition::Appearing)
+            .size([window_width * 0.3, window_height], Condition::Always)
+            .position([0., 0.], Condition::Always)
             .movable(false);
         w.build(ui, || self.render_tree_nodes(ui, "/"));
 
@@ -47,8 +47,8 @@ impl DevToolsDirector {
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
-            .size([window_width * 0.7, window_height], Condition::Appearing)
-            .position([window_width * 0.3, 0.], Condition::Appearing)
+            .size([window_width * 0.7, window_height], Condition::Always)
+            .position([window_width * 0.3, 0.], Condition::Always)
             .movable(false);
         w2.build(ui, || self.render_content(ui));
     }
@@ -78,8 +78,9 @@ impl DevToolsDirector {
     }
 
     fn render_content(&mut self, ui: &Ui) {
-        TabBar::new(im_str!("TestTabBar")).flags(TabBarFlags::AUTO_SELECT_NEW_TABS | TabBarFlags::REORDERABLE | TabBarFlags::FITTING_POLICY_DEFAULT).build(ui, || {
-            TabItem::new(im_str!("TestTab")).build(ui, || {
+        TabBar::new(im_str!("TestTabBar")).flags(TabBarFlags::REORDERABLE | TabBarFlags::FITTING_POLICY_DEFAULT).build(ui, || {
+            let mut opened = true;
+            TabItem::new(im_str!("TestTab")).opened(&mut opened).build(ui, || {
                 ui.text(im_str!("Test Text"));
             })
         });

@@ -622,7 +622,7 @@ dependencies = [
 [[package]]
 name = "mini-fs"
 version = "0.2.2"
-source = "git+https://github.com/dontpanic92/mini-fs/#b588861c55b174f927e38378c1cb484607f8234c"
+source = "git+https://github.com/dontpanic92/mini-fs/#931b4f9be78077bfd4e0ca30931aaa27920c46ab"
 dependencies = [
  "flate2",
  "tar",
@@ -875,7 +875,6 @@ dependencies = [
 [[package]]
 name = "radiance"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#d2e8d99912eb982ba8519718c7454a278d4284e6"
 dependencies = [
  "alto",
  "ash",
@@ -899,7 +898,6 @@ dependencies = [
 [[package]]
 name = "radiance-assets"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#d2e8d99912eb982ba8519718c7454a278d4284e6"
 
 [[package]]
 name = "rand"
