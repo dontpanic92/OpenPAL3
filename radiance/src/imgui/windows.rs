@@ -179,11 +179,11 @@ impl ImguiPlatform {
             }
             winuser::WM_MOUSEWHEEL => {
                 io.mouse_wheel += winuser::GET_WHEEL_DELTA_WPARAM(msg.wParam) as f32
-                    * winuser::WHEEL_DELTA as f32;
+                    / winuser::WHEEL_DELTA as f32;
             }
             winuser::WM_MOUSEHWHEEL => {
                 io.mouse_wheel_h += winuser::GET_WHEEL_DELTA_WPARAM(msg.wParam) as f32
-                    * winuser::WHEEL_DELTA as f32;
+                    / winuser::WHEEL_DELTA as f32;
             }
             winuser::WM_KEYDOWN | winuser::WM_SYSKEYDOWN => {
                 if msg.wParam < 256 {
