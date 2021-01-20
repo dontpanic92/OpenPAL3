@@ -664,12 +664,13 @@ dependencies = [
 
 [[package]]
 name = "minimp3"
-version = "0.3.5"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dce0cff6a0bfd3f8b6b2350819bbddd63bc65cc45e53888bdd0ff49dde16d2d5"
+checksum = "985438f75febf74c392071a975a29641b420dd84431135a6e6db721de4b74372"
 dependencies = [
  "minimp3-sys",
  "slice-deque",
+ "thiserror",
 ]
 
 [[package]]
@@ -910,7 +911,7 @@ dependencies = [
 [[package]]
 name = "radiance"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#d2e8d99912eb982ba8519718c7454a278d4284e6"
+source = "git+https://github.com/dontpanic92/radiance/#3015e24fc920466c4d466073aedf2b8e73411022"
 dependencies = [
  "alto",
  "ash",
@@ -934,7 +935,7 @@ dependencies = [
 [[package]]
 name = "radiance-assets"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/radiance/#d2e8d99912eb982ba8519718c7454a278d4284e6"
+source = "git+https://github.com/dontpanic92/radiance/#3015e24fc920466c4d466073aedf2b8e73411022"
 
 [[package]]
 name = "rand"

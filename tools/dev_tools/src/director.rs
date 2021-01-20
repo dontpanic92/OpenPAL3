@@ -1,7 +1,9 @@
-use imgui::{im_str, Condition, ImString, TreeNode, Ui, Window};
+use crate::content::ContentTabs;
+use imgui::{im_str, Condition, MouseButton, TreeNode, Ui, Window};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::asset_manager::AssetManager;
 use radiance::{
+    audio::AudioEngine,
     input::InputEngine,
     scene::{Director, SceneManager},
 };
@@ -15,13 +17,19 @@ use std::{
 pub struct DevToolsDirector {
     input_engine: Rc<RefCell<dyn InputEngine>>,
     asset_mgr: Rc<AssetManager>,
+    content_tabs: ContentTabs,
 }
 
 impl DevToolsDirector {
-    pub fn new(input_engine: Rc<RefCell<dyn InputEngine>>, asset_mgr: Rc<AssetManager>) -> Self {
+    pub fn new(
+        input_engine: Rc<RefCell<dyn InputEngine>>,
+        audio_engine: Rc<dyn AudioEngine>,
+        asset_mgr: Rc<AssetManager>,
+    ) -> Self {
         Self {
             input_engine,
             asset_mgr,
+            content_tabs: ContentTabs::new(audio_engine),
         }
     }
 
@@ -38,9 +46,19 @@ impl DevToolsDirector {
         let w = Window::new(im_str!("Files"))
             .collapsible(false)
             .resizable(false)
-            .size([window_width * 0.3, window_height], Condition::Appearing)
-            .position([0., 0.], Condition::Appearing);
+            .size([window_width * 0.3, window_height], Condition::Always)
+            .position([0., 0.], Condition::Always)
+            .movable(false);
         w.build(ui, || self.render_tree_nodes(ui, "/"));
+
+        let w2 = Window::new(im_str!("Content"))
+            .title_bar(false)
+            .collapsible(false)
+            .resizable(false)
+            .size([window_width * 0.7, window_height], Condition::Always)
+            .position([window_width * 0.3, 0.], Condition::Always)
+            .movable(false);
+        w2.build(ui, || self.render_content(ui));
     }
 
     fn render_tree_nodes<P: AsRef<Path>>(&mut self, ui: &Ui, path: P) {
@@ -52,16 +70,25 @@ impl DevToolsDirector {
             }
 
             let e_filename = &im_str!("{}", e_path.file_name().unwrap().to_str().unwrap());
+            let e_fullname = path.as_ref().join(e_path.file_name().unwrap());
             let treenode = TreeNode::new(e_filename);
 
             if e.kind == EntryKind::Dir {
                 treenode.build(ui, || {
-                    self.render_tree_nodes(ui, path.as_ref().join(e_path.file_name().unwrap()));
+                    self.render_tree_nodes(ui, &e_fullname);
                 })
             } else {
-                treenode.leaf(true).build(ui, || {});
+                treenode.leaf(true).build(ui, || {
+                    if ui.is_item_clicked(MouseButton::Left) {
+                        self.content_tabs.open(self.asset_mgr.vfs(), &e_fullname);
+                    }
+                });
             }
         }
+    }
+
+    fn render_content(&mut self, ui: &Ui) {
+        self.content_tabs.render_tabs(ui);
     }
 
     fn get_entries<P: AsRef<Path>>(&self, path: P) -> Vec<Entry> {

@@ -1,4 +1,7 @@
 #![feature(arbitrary_self_types)]
+#![feature(drain_filter)]
+mod components;
+mod content;
 mod director;
 mod scene;
 
@@ -6,7 +9,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::{Application, ApplicationExtension};
-use radiance::{application::utils::FpsCounter, scene::CoreScene};
+use radiance::scene::CoreScene;
 use scene::DevToolsScene;
 
 struct ApplicationCallbacks {
@@ -19,6 +22,7 @@ impl ApplicationExtension<ApplicationCallbacks> for ApplicationCallbacks {
 
         let asset_mgr = AssetManager::new(factory, &self.config.asset_path);
         let input_engine = app.engine_mut().input_engine();
+        let audio_engine = app.engine_mut().audio_engine();
 
         app.engine_mut()
             .scene_manager()
@@ -27,6 +31,7 @@ impl ApplicationExtension<ApplicationCallbacks> for ApplicationCallbacks {
             .scene_manager()
             .set_director(Rc::new(RefCell::new(director::DevToolsDirector::new(
                 input_engine,
+                audio_engine,
                 Rc::new(asset_mgr),
             ))))
     }
