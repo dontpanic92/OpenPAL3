@@ -14,7 +14,7 @@ pub struct OpenAlAudioEngine {
 
 impl AudioEngine for OpenAlAudioEngine {
     fn create_source(&self) -> Box<dyn AudioSource> {
-        Box::new(OpenAlAudioSource::new(&self.context))
+        Box::new(OpenAlAudioSource::new(self.context.clone()))
     }
 }
 
@@ -38,6 +38,8 @@ pub struct OpenAlAudioSource {
     decoder: Option<Box<dyn Decoder>>,
     state: AudioSourceState,
     looping: bool,
+    data: Option<Vec<u8>>,
+    codec: Option<Codec>,
 }
 
 impl AudioSource for OpenAlAudioSource {
@@ -94,6 +96,9 @@ impl AudioSource for OpenAlAudioSource {
     }
 
     fn play(&mut self, data: Vec<u8>, codec: Codec, looping: bool) {
+        self.data = Some(data.clone());
+        self.codec = Some(codec);
+
         self.decoder = Some(create_decoder(data, codec));
         self.looping = looping;
         self.play_internal();
@@ -104,6 +109,7 @@ impl AudioSource for OpenAlAudioSource {
             return;
         }
 
+        self.stop();
         self.decoder.as_mut().unwrap().reset();
         self.play_internal();
     }
@@ -111,29 +117,42 @@ impl AudioSource for OpenAlAudioSource {
     fn stop(&mut self) {
         self.state = AudioSourceState::Stopped;
         self.streaming_source.stop();
+        while self.streaming_source.unqueue_buffer().is_ok() {}
     }
 
     fn state(&self) -> AudioSourceState {
         self.state
     }
+
+    fn pause(&mut self) {
+        self.state = AudioSourceState::Paused;
+        self.streaming_source.pause();
+    }
+
+    fn resume(&mut self) {
+        if self.state == AudioSourceState::Paused {
+            self.state = AudioSourceState::Playing;
+            self.streaming_source.play();
+        }
+    }
 }
 
 impl OpenAlAudioSource {
-    pub fn new(context: &Rc<Context>) -> Self {
+    pub fn new(context: Rc<Context>) -> Self {
         let streaming_source = context.new_streaming_source().unwrap();
 
         Self {
-            context: context.clone(),
+            context,
             streaming_source,
             decoder: None,
             state: AudioSourceState::Stopped,
             looping: false,
+            data: None,
+            codec: None,
         }
     }
 
     fn play_internal(&mut self) {
-        while self.streaming_source.unqueue_buffer().is_ok() {}
-
         for _ in 0..20 {
             let frame = self.decoder.as_mut().unwrap().fetch_samples();
             match frame {

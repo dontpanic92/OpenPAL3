@@ -1,8 +1,9 @@
 use minimp3::{Decoder, Error};
-use std::io::Cursor;
+use std::{io::Cursor, rc::Rc};
 
 pub struct Mp3Decoder {
-    decoder: Decoder<Cursor<Vec<u8>>>,
+    data: SharedDataBuffer,
+    decoder: Decoder<Cursor<SharedDataBuffer>>,
 }
 
 impl super::Decoder for Mp3Decoder {
@@ -23,15 +24,27 @@ impl super::Decoder for Mp3Decoder {
     }
 
     fn reset(&mut self) {
-        self.decoder.reader_mut().set_position(0);
+        self.decoder = Decoder::new(Cursor::new(self.data.clone()));
     }
 }
 
 impl Mp3Decoder {
     pub fn new(data: Vec<u8>) -> Self {
-        let cursor = Cursor::new(data);
-        Self {
-            decoder: Decoder::new(cursor),
-        }
+        let data = SharedDataBuffer {
+            buffer: Rc::new(data),
+        };
+        let decoder = Decoder::new(Cursor::new(data.clone()));
+        Self { data, decoder }
+    }
+}
+
+#[derive(Clone)]
+struct SharedDataBuffer {
+    pub buffer: Rc<Vec<u8>>,
+}
+
+impl AsRef<[u8]> for SharedDataBuffer {
+    fn as_ref(&self) -> &[u8] {
+        self.buffer.as_ref().as_ref()
     }
 }

@@ -27,7 +27,7 @@ vk-mem = "0.2.2"
 alto = "3.0.4"
 hound = "3.4.0"
 lewton = "0.10.1"
-minimp3 = "0.3.5"
+minimp3 = "0.5.1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef"] }

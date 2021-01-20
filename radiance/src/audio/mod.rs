@@ -2,6 +2,8 @@ mod decoders;
 mod openal;
 
 pub use openal::OpenAlAudioEngine;
+
+#[derive(Copy, Clone)]
 pub enum Codec {
     Wav,
     Mp3,
@@ -24,6 +26,8 @@ pub trait AudioSource {
 
     fn play(&mut self, data: Vec<u8>, codec: Codec, looping: bool);
     fn restart(&mut self);
+    fn pause(&mut self);
+    fn resume(&mut self);
 
     fn stop(&mut self);
     fn state(&self) -> AudioSourceState;
