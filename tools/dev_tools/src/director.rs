@@ -37,12 +37,6 @@ impl DevToolsDirector {
         let [window_width, window_height] = ui.io().display_size;
         let font = ui.push_font(ui.fonts().fonts()[1]);
 
-        self.file_list(ui, window_width, window_height);
-
-        font.pop(ui);
-    }
-
-    fn file_list(&mut self, ui: &mut Ui, window_width: f32, window_height: f32) {
         let w = Window::new(im_str!("Files"))
             .collapsible(false)
             .resizable(false)
@@ -59,6 +53,8 @@ impl DevToolsDirector {
             .position([window_width * 0.3, 0.], Condition::Always)
             .movable(false);
         w2.build(ui, || self.render_content(ui));
+
+        font.pop(ui);
     }
 
     fn render_tree_nodes<P: AsRef<Path>>(&mut self, ui: &Ui, path: P) {

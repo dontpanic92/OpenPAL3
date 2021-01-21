@@ -1,9 +1,8 @@
-use std::path::PathBuf;
-
 use super::ContentPane;
 use audio::{AudioSourceState, Codec};
 use imgui::im_str;
 use radiance::audio::{self, AudioEngine, AudioSource};
+use std::path::PathBuf;
 
 pub struct AudioPane {
     source: Option<Box<dyn AudioSource>>,
@@ -11,7 +10,12 @@ pub struct AudioPane {
 }
 
 impl AudioPane {
-    pub fn new(audio_engine: &dyn AudioEngine, data: Vec<u8>, codec: Option<Codec>, path: PathBuf) -> Self {
+    pub fn new(
+        audio_engine: &dyn AudioEngine,
+        data: Vec<u8>,
+        codec: Option<Codec>,
+        path: PathBuf,
+    ) -> Self {
         let source = codec.map(|c| {
             let mut source = audio_engine.create_source();
             source.play(data, c, true);

@@ -1,16 +1,16 @@
-use imgui::{im_str, TabBar, TabBarFlags, TabItem, Ui};
+use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui, im_str};
 use mini_fs::MiniFs;
-use opengb::utilities::StoreExt2;
+use opengb::{loaders::scn_loader::scn_load_from_file, utilities::StoreExt2};
 use radiance::audio::{AudioEngine, Codec};
 use std::{path::Path, rc::Rc};
 
-use crate::components::{AudioPane, ContentPane};
+use crate::components::{AudioPane, ContentPane, TextPane};
 
 pub struct ContentTabs {
     audio_engine: Rc<dyn AudioEngine>,
-
     tabs: Vec<ContentTab>,
     audio_tab: Option<ContentTab>,
+    selected_tab: Option<String>,
 }
 
 impl ContentTabs {
@@ -19,6 +19,7 @@ impl ContentTabs {
             audio_engine,
             tabs: vec![],
             audio_tab: None,
+            selected_tab: None,
         }
     }
 
@@ -30,6 +31,7 @@ impl ContentTabs {
 
         match extension.as_ref().map(|e| e.as_str()) {
             Some("mp3") | Some("wav") => self.open_audio(vfs, path, &extension.unwrap()),
+            Some("scn") => self.open_scn(vfs, path),
             _ => {}
         }
     }
@@ -44,9 +46,23 @@ impl ContentTabs {
         if let Ok(data) = vfs.read_to_end(&path) {
             self.audio_tab = Some(ContentTab::new(
                 "audio".to_string(),
-                Box::new(AudioPane::new(self.audio_engine.as_ref(), data, codec, path.as_ref().to_owned())),
+                Box::new(AudioPane::new(
+                    self.audio_engine.as_ref(),
+                    data,
+                    codec,
+                    path.as_ref().to_owned(),
+                )),
             ));
         }
+    }
+
+    pub fn open_scn<P: AsRef<Path>>(&mut self, vfs: &MiniFs, path: P) {
+        let scn_file = scn_load_from_file(vfs, path.as_ref());
+
+        let tab_name = path.as_ref().to_string_lossy().to_string();
+        self.show_or_add_tab(tab_name, || {
+            Box::new(TextPane::new(format!("{:?}", scn_file), path.as_ref().to_owned()))
+        });
     }
 
     pub fn render_tabs(&mut self, ui: &Ui) {
@@ -56,16 +72,29 @@ impl ContentTabs {
         }
 
         TabBar::new(im_str!("##content_tab_bar"))
-            .flags(TabBarFlags::REORDERABLE | TabBarFlags::FITTING_POLICY_DEFAULT)
+            .flags(TabBarFlags::REORDERABLE | TabBarFlags::FITTING_POLICY_DEFAULT | TabBarFlags::AUTO_SELECT_NEW_TABS)
             .build(ui, || {
                 if let Some(tab) = self.audio_tab.as_mut() {
-                    tab.render(ui);
+                    tab.render(ui, self.selected_tab.as_ref());
                 }
 
                 for tab in &mut self.tabs {
-                    tab.render(ui);
+                    tab.render(ui, self.selected_tab.as_ref());
                 }
+
+                self.selected_tab = None;
             });
+    }
+
+    fn show_or_add_tab<F: Fn() -> Box<dyn ContentPane>>(&mut self, tab_name: String, new_pane: F) {
+        let tab = self.tabs.iter().find(|t| t.name == tab_name);
+        match tab {
+            None => self.tabs.push(ContentTab::new(
+                tab_name.to_string(),
+                new_pane()),
+            ),
+            Some(_) => self.selected_tab = Some(tab_name),
+        }
     }
 }
 
@@ -84,10 +113,13 @@ impl ContentTab {
         }
     }
 
-    pub fn render(&mut self, ui: &Ui) {
+    pub fn render(&mut self, ui: &Ui, selected_tab: Option<&String>) {
+        let selected = selected_tab.map(|name| self.name == *name).unwrap_or(false);
+        let flags = if selected { TabItemFlags::SET_SELECTED } else { TabItemFlags::empty() };
         let mut opened = self.opened;
         TabItem::new(&im_str!("{}", &self.name))
             .opened(&mut opened)
+            .flags(flags)
             .build(ui, || {
                 self.pane.render(ui);
             });
