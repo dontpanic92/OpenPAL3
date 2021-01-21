@@ -1,6 +1,8 @@
 #[cfg(target_os = "windows")]
 mod windows;
 
+mod clipboard;
+
 #[cfg(target_os = "windows")]
 use windows::ImguiPlatform;
 
@@ -40,6 +42,12 @@ impl ImguiContext {
                 ..FontConfig::default()
             }),
         }]);
+
+        if let Some(backend) = clipboard::init() {
+            context.set_clipboard_backend(Box::new(backend));
+        } else {
+            log::error!("Failed to initialize clipboard support");
+        }
 
         let context = Rc::new(RefCell::new(context));
         let platform = ImguiPlatform::new(context.clone(), platform);

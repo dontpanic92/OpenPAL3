@@ -10,6 +10,7 @@ build = "build.rs"
 # General
 backtrace = "0.3.44"
 bitflags = "1.2.1"
+clipboard = "0.5.0"
 downcast-rs = "1.2.0"
 lazy_static = "1.2.0"
 log = { version = "0.4.8", features = ["max_level_debug", "release_max_level_warn"]}
