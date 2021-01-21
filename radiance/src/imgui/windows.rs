@@ -189,10 +189,30 @@ impl ImguiPlatform {
                 if msg.wParam < 256 {
                     io.keys_down[msg.wParam] = true;
                 }
+
+                match msg.wParam as i32 {
+                    winuser::VK_CONTROL => io.key_ctrl = true,
+                    winuser::VK_SHIFT => io.key_shift = true,
+                    winuser::VK_MENU => io.key_alt = true,
+                    _ => {}
+                }
             }
             winuser::WM_KEYUP | winuser::WM_SYSKEYUP => {
                 if msg.wParam < 256 {
                     io.keys_down[msg.wParam] = false;
+                }
+
+                match msg.wParam as i32 {
+                    winuser::VK_CONTROL => io.key_ctrl = false,
+                    winuser::VK_SHIFT => io.key_shift = false,
+                    winuser::VK_MENU => io.key_alt = false,
+                    _ => {}
+                }
+            }
+            winuser::WM_CHAR => {
+                let ch = std::char::from_u32(msg.wParam as u32);
+                if ch.is_some() {
+                    io.add_input_character(ch.unwrap());
                 }
             }
             _ => {}
