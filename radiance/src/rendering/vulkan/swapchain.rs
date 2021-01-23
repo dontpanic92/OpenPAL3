@@ -47,13 +47,18 @@ impl SwapChain {
         physical_device: vk::PhysicalDevice,
         queue: vk::Queue,
         surface: vk::SurfaceKHR,
-        capabilities: vk::SurfaceCapabilitiesKHR,
+        mut capabilities: vk::SurfaceCapabilitiesKHR,
         format: vk::SurfaceFormatKHR,
         present_mode: vk::PresentModeKHR,
         descriptor_manager: &Rc<DescriptorManager>,
         command_runner: &Rc<AdhocCommandRunner>,
         gui_context: &mut ImguiContext,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+
+        // Make it at least 1x1 pixel for images
+        capabilities.current_extent.width = capabilities.current_extent.width.max(1);
+        capabilities.current_extent.height = capabilities.current_extent.height.max(1);
+
         let entry =
             ash::extensions::khr::Swapchain::new(instance.vk_instance(), device.vk_device());
         let handle = creation_helpers::create_swapchain(

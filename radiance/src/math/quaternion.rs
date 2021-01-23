@@ -1,6 +1,7 @@
 use super::{Mat44, Vec3};
+use serde::Serialize;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize)]
 #[repr(C)]
 pub struct Quaternion {
     pub x: f32,

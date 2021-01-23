@@ -16,6 +16,7 @@ lazy_static = "1.2.0"
 log = { version = "0.4.8", features = ["max_level_debug", "release_max_level_warn"]}
 memoffset = "0.5.3"
 radiance-assets = { path = "../radiance-assets" }
+serde = { version = "1.0.106", features = ["derive"] }
 
 # Rendering
 ash = "0.31.0"
@@ -31,4 +32,4 @@ lewton = "0.10.1"
 minimp3 = "0.5.1"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef"] }
+winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef", "wingdi"] }

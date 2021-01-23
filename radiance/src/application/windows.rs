@@ -2,9 +2,7 @@ extern crate winapi;
 use std::ptr::null_mut;
 use winapi::shared::minwindef::{HINSTANCE, LPARAM, LRESULT, WPARAM};
 use winapi::shared::windef::{HWND, POINT};
-use winapi::um::errhandlingapi;
-use winapi::um::libloaderapi;
-use winapi::um::winuser;
+use winapi::um::{libloaderapi, errhandlingapi, winuser, wingdi};
 
 macro_rules! utf16_ptr {
     ( $x:expr ) => {
@@ -12,7 +10,7 @@ macro_rules! utf16_ptr {
             .encode_utf16()
             .collect::<Vec<u16>>()
             .as_ptr()
-    };
+   };
 }
 
 const WM_CLOSE_WINDOW: u32 = winuser::WM_USER + 1;
@@ -21,6 +19,7 @@ pub type MessageCallback = Box<dyn Fn(&winuser::MSG)>;
 pub struct Platform {
     instance: HINSTANCE,
     hwnd: HWND,
+    dpi_scale: f32,
     msg_callbacks: Vec<MessageCallback>,
 }
 
@@ -33,9 +32,11 @@ impl Platform {
             println!("{}", unsafe { errhandlingapi::GetLastError() });
         }
 
+        let dpi_scale = get_dpi(hwnd).0 as f32 / 96.;
         Self {
             instance,
             hwnd,
+            dpi_scale,
             msg_callbacks: vec![],
         }
     }
@@ -52,7 +53,9 @@ impl Platform {
     }
 
     pub fn initialize(&self) {
-        unsafe { winuser::ShowWindow(self.hwnd, winuser::SW_SHOW) };
+        unsafe {
+            winuser::ShowWindow(self.hwnd, winuser::SW_SHOW);
+        }
     }
 
     pub fn add_message_callback(&mut self, callback: MessageCallback) {
@@ -98,6 +101,10 @@ impl Platform {
 
     pub fn hwnd(&self) -> HWND {
         self.hwnd
+    }
+
+    pub fn dpi_scale(&self) -> f32 {
+        self.dpi_scale
     }
 
     pub fn set_title(&mut self, title: &str) {
@@ -169,3 +176,15 @@ const WINDOW_CLASS_NAME: &str = "RADIANCE_WINDOW";
 fn append_zero<T: Into<String>>(s: T) -> String {
     format!("{}\0", s.into())
 }
+
+fn get_dpi(hwnd: HWND) -> (i32, i32) {
+    unsafe {
+        let dc = winuser::GetDC(null_mut());
+        let x = wingdi::GetDeviceCaps(dc, wingdi::LOGPIXELSX);
+        let y = wingdi::GetDeviceCaps(dc, wingdi::LOGPIXELSY);
+        winuser::ReleaseDC(null_mut(), dc);
+
+        (x, y)
+    }
+}
+
