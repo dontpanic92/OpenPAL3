@@ -1,17 +1,18 @@
 use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{BufReader, Read};
 use std::path::Path;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct SceLocalVar {
     pub unknown: u8,
     pub unknown_vec: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct SceProc {
     pub id: u32,
     pub name: String,
@@ -19,14 +20,14 @@ pub struct SceProc {
     pub inst: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct SceProcHeader {
     pub id: u32,
     pub offset: u32,
     pub name: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct SceFile {
     pub proc_num: u16,
     pub proc_headers: Vec<SceProcHeader>,

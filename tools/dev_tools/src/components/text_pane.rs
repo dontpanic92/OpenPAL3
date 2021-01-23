@@ -18,8 +18,13 @@ impl TextPane {
 
 impl ContentPane for TextPane {
     fn render(&mut self, ui: &imgui::Ui) {
-        InputTextMultiline::new(ui, &im_str!("##text_pane_{:?}", self.path), &mut self.text, [-1., -1.])
-            // .read_only(true)
-            .build();
+        InputTextMultiline::new(
+            ui,
+            &im_str!("##text_pane_{:?}", self.path),
+            &mut self.text,
+            [-1., -1.],
+        )
+        .read_only(true)
+        .build();
     }
 }

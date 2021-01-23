@@ -1,17 +1,18 @@
 use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
+use serde::Serialize;
 use std::error::Error;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Mv3Texture {
     pub unknown: Vec<u8>, // size: 68
     pub names: Vec<Vec<u8>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Mv3Vertex {
     pub x: i16,
     pub y: i16,
@@ -20,25 +21,25 @@ pub struct Mv3Vertex {
     pub normal_theta: u8,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Mv3Frame {
     pub timestamp: u32,
     pub vertices: Vec<Mv3Vertex>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Mv3Triangle {
     pub indices: [u16; 3],
     pub texcoord_indices: [u16; 3],
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Mv3UnknownDataInMesh {
     pub u: u16,
     pub v: u16,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Mv3Mesh {
     pub unknown: u32,
     pub triangle_count: u32,
@@ -47,13 +48,13 @@ pub struct Mv3Mesh {
     pub unknown_data: Vec<Mv3UnknownDataInMesh>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Mv3TexCoord {
     pub u: f32,
     pub v: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Mv3Model {
     pub unknown: Vec<u8>, // size: 64
     pub vertex_per_frame: u32,
@@ -67,7 +68,7 @@ pub struct Mv3Model {
     pub meshes: Vec<Mv3Mesh>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Mv3File {
     pub path: PathBuf,
     pub magic: [u8; 4],

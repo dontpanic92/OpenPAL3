@@ -4,23 +4,24 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{DecoderTrap, Encoding};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::math::{Mat44, Quaternion, Vec2, Vec3};
+use serde::Serialize;
 use std::error::Error;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct CvdVertex {
     pub position: Vec3,
     pub normal: Vec3,
     pub tex_coord: Vec2,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct CvdTriangle {
     pub indices: [u16; 3],
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct CvdMaterial {
     pub unknown_byte: u8,
     pub color1: u32,
@@ -32,7 +33,7 @@ pub struct CvdMaterial {
     pub triangles: Option<Vec<CvdTriangle>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct CvdMesh {
     pub frame_count: u32,
     pub vertex_count: u32,
@@ -42,7 +43,7 @@ pub struct CvdMesh {
     pub materials: Vec<CvdMaterial>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CvdPositionKeyFrame {
     pub timestamp: f32,
     pub position: Vec3,
@@ -58,13 +59,13 @@ pub struct CvdPositionKeyFrame {
     pub unknown10: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CvdPositionKeyFrames {
     pub version: u8,
     pub frames: Vec<CvdPositionKeyFrame>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CvdRotationKeyFrame {
     pub timestamp: f32,
     pub quaternion: Quaternion,
@@ -80,13 +81,13 @@ pub struct CvdRotationKeyFrame {
     pub unknown10: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CvdRotationKeyFrames {
     pub version: u8,
     pub frames: Vec<CvdRotationKeyFrame>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CvdScaleKeyFrame {
     pub timestamp: f32,
     pub quaternion: Quaternion,
@@ -94,13 +95,13 @@ pub struct CvdScaleKeyFrame {
     pub unknown: [f32; 14],
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CvdScaleKeyFrames {
     pub version: u8,
     pub frames: Vec<CvdScaleKeyFrame>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct CvdModel {
     pub unknown_byte: u8,
     pub scale_factor: f32,
@@ -110,13 +111,13 @@ pub struct CvdModel {
     pub mesh: CvdMesh,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct CvdModelNode {
     pub model: Option<CvdModel>,
     pub children: Option<Vec<CvdModelNode>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct CvdFile {
     pub magic: [u8; 4],
     pub model_count: u32,

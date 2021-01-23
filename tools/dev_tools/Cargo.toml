@@ -7,7 +7,11 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chardet = "0.2.4"
 opengb = { path = "../../opengb" }
 radiance = { git = "https://github.com/dontpanic92/radiance/" }
 imgui = "0.6.1"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+serde = "1.0.106"
+serde_json = "1.0.61"
+encoding = "0.2.33"

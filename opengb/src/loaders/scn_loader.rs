@@ -2,12 +2,13 @@ use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::math::Vec3;
+use serde::Serialize;
 use std::{
     io::{BufReader, Read, Seek, SeekFrom},
     path::Path,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ScnNode {
     pub w0: u16,
     pub w2: u16,
@@ -33,7 +34,7 @@ pub struct ScnNode {
     pub b: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ScnRole {
     pub index: u8,
     pub b1: u8,
@@ -59,7 +60,7 @@ pub struct ScnRole {
     pub dw154: Vec<u32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ScnFile {
     pub cpk_name: String,
     pub scn_name: String,

@@ -2,23 +2,24 @@ use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::math::Vec3;
+use serde::Serialize;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct NavMapPoint {
     pub height: f32,
     pub distance_to_border: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct NavUnknown22 {
     pub unknown1: u16,
     pub unknown2: u16,
     pub unknown3: u16,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct NavMap {
     pub unknown: Option<Vec<u32>>, // count: 32
     pub max_coord: Vec3,
@@ -28,13 +29,13 @@ pub struct NavMap {
     pub map: Vec<Vec<NavMapPoint>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct NavUnknown2 {
     pub unknown21: Vec<Vec3>,
     pub unknown22: Vec<NavUnknown22>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct NavFile {
     pub version: u32,
     pub maps: Vec<NavMap>,

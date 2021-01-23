@@ -802,7 +802,7 @@ dependencies = [
  "memmap",
  "mini-fs",
  "minilzo-rs",
- "radiance 0.1.0",
+ "radiance",
  "serde 1.0.120",
 ]
 
@@ -812,7 +812,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "opengb",
- "radiance 0.1.0 (git+https://github.com/dontpanic92/radiance/)",
+ "radiance",
  "simple_logger",
 ]
 
@@ -911,29 +911,6 @@ dependencies = [
 [[package]]
 name = "radiance"
 version = "0.1.0"
-dependencies = [
- "alto",
- "ash",
- "backtrace",
- "bitflags",
- "downcast-rs",
- "hound",
- "image",
- "imgui",
- "imgui-rs-vulkan-renderer",
- "lazy_static 1.4.0",
- "lewton",
- "log",
- "memoffset 0.5.6",
- "minimp3",
- "radiance-assets 0.1.0",
- "vk-mem",
- "winapi",
-]
-
-[[package]]
-name = "radiance"
-version = "0.1.0"
 source = "git+https://github.com/dontpanic92/radiance/#3015e24fc920466c4d466073aedf2b8e73411022"
 dependencies = [
  "alto",
@@ -950,14 +927,10 @@ dependencies = [
  "log",
  "memoffset 0.5.6",
  "minimp3",
- "radiance-assets 0.1.0 (git+https://github.com/dontpanic92/radiance/)",
+ "radiance-assets",
  "vk-mem",
  "winapi",
 ]
-
-[[package]]
-name = "radiance-assets"
-version = "0.1.0"
 
 [[package]]
 name = "radiance-assets"

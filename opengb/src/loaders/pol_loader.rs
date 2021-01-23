@@ -3,11 +3,12 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{DecoderTrap, Encoding};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::math::Mat44;
+use serde::Serialize;
 use std::error::Error;
 use std::io::{BufReader, Read};
 use std::path::Path;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct PolVertexComponents(u32);
 impl PolVertexComponents {
     pub const POSITION: Self = PolVertexComponents(0b1);
@@ -25,20 +26,20 @@ impl PolVertexComponents {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct PolVertexPosition {
     pub x: f32,
     pub y: f32,
     pub z: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct PolVertexTexCoord {
     pub u: f32,
     pub v: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct PolVertex {
     pub position: PolVertexPosition,
     pub normal: Option<[f32; 3]>,
@@ -51,7 +52,7 @@ pub struct PolVertex {
     pub unknown100: Option<[f32; 4]>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct PolMaterialInfo {
     pub use_alpha: u32,
     pub unknown_68: Vec<f32>,
@@ -65,12 +66,12 @@ pub struct PolMaterialInfo {
     pub triangles: Vec<PolTriangle>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct PolTriangle {
     pub indices: [u16; 3],
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct PolMesh {
     pub aabb_min: [f32; 3],
     pub aabb_max: [f32; 3],
@@ -81,7 +82,7 @@ pub struct PolMesh {
     pub material_info: Vec<PolMaterialInfo>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct UnknownData {
     pub unknown: Vec<u8>, // size: 32
     pub matrix: Mat44,
@@ -90,12 +91,12 @@ pub struct UnknownData {
     pub ddd_str: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct GeomNodeDesc {
     pub unknown: Vec<u16>, // size: 52
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct PolFile {
     pub magic: [u8; 4],
     pub some_flag: u32,

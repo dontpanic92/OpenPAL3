@@ -1,7 +1,17 @@
-use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui, im_str};
+use encoding::{DecoderTrap, Encoding, label::encoding_from_whatwg_label};
+use chardet::{detect, charset2encoding};
+use imgui::{im_str, TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
 use mini_fs::MiniFs;
-use opengb::{loaders::scn_loader::scn_load_from_file, utilities::StoreExt2};
+use opengb::{
+    loaders::{
+        cvd_loader::cvd_load_from_file, mv3_loader::mv3_load_from_file,
+        pol_loader::pol_load_from_file, sce_loader::sce_load_from_file,
+        scn_loader::scn_load_from_file,
+    },
+    utilities::StoreExt2,
+};
 use radiance::audio::{AudioEngine, Codec};
+use serde::Serialize;
 use std::{path::Path, rc::Rc};
 
 use crate::components::{AudioPane, ContentPane, TextPane};
@@ -32,6 +42,21 @@ impl ContentTabs {
         match extension.as_ref().map(|e| e.as_str()) {
             Some("mp3") | Some("wav") => self.open_audio(vfs, path, &extension.unwrap()),
             Some("scn") => self.open_scn(vfs, path),
+            Some("sce") => self.open_json_from(path.as_ref(), || {
+                Some(sce_load_from_file(vfs, path.as_ref()))
+            }),
+            Some("mv3") => self.open_json_from(path.as_ref(), || {
+                mv3_load_from_file(vfs, path.as_ref()).ok()
+            }),
+            Some("cvd") => {
+                self.open_json_from(path.as_ref(), || cvd_load_from_file(vfs, path.as_ref()).ok())
+            }
+            Some("pol") => {
+                self.open_json_from(path.as_ref(), || pol_load_from_file(vfs, path.as_ref()).ok())
+            }
+            Some("h") | Some("asm") | Some("ini") | Some("txt") => {
+                self.open_plain_text(vfs, path.as_ref())
+            }
             _ => {}
         }
     }
@@ -61,7 +86,41 @@ impl ContentTabs {
 
         let tab_name = path.as_ref().to_string_lossy().to_string();
         self.show_or_add_tab(tab_name, || {
-            Box::new(TextPane::new(format!("{:?}", scn_file), path.as_ref().to_owned()))
+            let content = serde_json::to_string_pretty(&scn_file)
+                .unwrap_or("Cannot serialize as Json".to_string());
+            Box::new(TextPane::new(content, path.as_ref().to_owned()))
+        });
+    }
+
+    pub fn open_json_from<P: AsRef<Path>, O: Serialize, F: Fn() -> Option<O>>(
+        &mut self,
+        path: P,
+        loader: F,
+    ) {
+        self.open_text(path.as_ref(), || {
+            loader()
+                .map(|obj| serde_json::to_string_pretty(&obj).unwrap_or("Cannot serialize as Json".to_string()))
+                .unwrap_or("Cannot load this file".to_string())
+        });
+    }
+
+    pub fn open_plain_text<P: AsRef<Path>>(&mut self, vfs: &MiniFs, path: P) {
+        self.open_text(path.as_ref(), || {
+            vfs.read_to_end(path.as_ref())
+                .and_then(|v| {
+                    let result = detect(&v);
+                    let coder = encoding_from_whatwg_label(charset2encoding(&result.0)).unwrap_or(encoding::all::GBK);
+                    Ok(coder.decode(&v, DecoderTrap::Ignore).unwrap_or("Cannot read the file as GBK encoded text content".to_string()))
+                })
+                .unwrap_or("Cannot open this file".to_string())
+        });
+    }
+
+    pub fn open_text<P: AsRef<Path>, F: Fn() -> String>(&mut self, path: P, loader: F) {
+        let tab_name = path.as_ref().to_string_lossy().to_string();
+        self.show_or_add_tab(tab_name, || {
+            let content = loader();
+            Box::new(TextPane::new(content, path.as_ref().to_owned()))
         });
     }
 
@@ -72,7 +131,11 @@ impl ContentTabs {
         }
 
         TabBar::new(im_str!("##content_tab_bar"))
-            .flags(TabBarFlags::REORDERABLE | TabBarFlags::FITTING_POLICY_DEFAULT | TabBarFlags::AUTO_SELECT_NEW_TABS)
+            .flags(
+                TabBarFlags::REORDERABLE
+                    | TabBarFlags::FITTING_POLICY_DEFAULT
+                    | TabBarFlags::AUTO_SELECT_NEW_TABS,
+            )
             .build(ui, || {
                 if let Some(tab) = self.audio_tab.as_mut() {
                     tab.render(ui, self.selected_tab.as_ref());
@@ -89,10 +152,9 @@ impl ContentTabs {
     fn show_or_add_tab<F: Fn() -> Box<dyn ContentPane>>(&mut self, tab_name: String, new_pane: F) {
         let tab = self.tabs.iter().find(|t| t.name == tab_name);
         match tab {
-            None => self.tabs.push(ContentTab::new(
-                tab_name.to_string(),
-                new_pane()),
-            ),
+            None => self
+                .tabs
+                .push(ContentTab::new(tab_name.to_string(), new_pane())),
             Some(_) => self.selected_tab = Some(tab_name),
         }
     }
@@ -115,7 +177,11 @@ impl ContentTab {
 
     pub fn render(&mut self, ui: &Ui, selected_tab: Option<&String>) {
         let selected = selected_tab.map(|name| self.name == *name).unwrap_or(false);
-        let flags = if selected { TabItemFlags::SET_SELECTED } else { TabItemFlags::empty() };
+        let flags = if selected {
+            TabItemFlags::SET_SELECTED
+        } else {
+            TabItemFlags::empty()
+        };
         let mut opened = self.opened;
         TabItem::new(&im_str!("{}", &self.name))
             .opened(&mut opened)

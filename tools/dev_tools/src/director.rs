@@ -7,6 +7,7 @@ use radiance::{
     input::InputEngine,
     scene::{Director, SceneManager},
 };
+use serde::Serializer;
 use std::{
     cell::RefCell,
     cmp::Ordering,
