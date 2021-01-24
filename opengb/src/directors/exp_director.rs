@@ -128,6 +128,7 @@ impl Director for ExplorationDirector {
             if let Some(proc_id) = scene
                 .test_aabb_trigger(&position)
                 .or_else(|| scene.test_item_trigger(&position))
+                .or_else(|| scene.test_role_trigger(&position))
             {
                 debug!("New proc triggerd: {}", proc_id);
                 self.sce_director.borrow_mut().call_proc(proc_id);

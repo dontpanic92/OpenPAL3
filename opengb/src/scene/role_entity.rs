@@ -1,4 +1,4 @@
-use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
+use crate::{asset_manager::AssetManager, loaders::mv3_loader::*, utilities::StoreExt2};
 use radiance::rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents};
 use radiance::scene::{CoreEntity, EntityExtension};
 use radiance::{
@@ -41,6 +41,13 @@ impl RoleEntity {
         role_name: &str,
         idle_anim: &str,
     ) -> RoleEntity {
+        let mut idle_anim = idle_anim;
+        let mv3_config = asset_mgr.load_role_anim_config(role_name);
+        
+        if idle_anim.is_empty() {
+            idle_anim = mv3_config.section(Some("action_1")).unwrap().get("file").unwrap();
+        }
+
         let mut animations = HashMap::new();
         if !idle_anim.trim().is_empty() {
             animations.insert(
@@ -75,9 +82,14 @@ impl RoleEntity {
 
     pub fn play_anim(
         self: &mut CoreEntity<Self>,
-        anim_name: &str,
+        mut anim_name: &str,
         repeat_mode: RoleAnimationRepeatMode,
     ) {
+        println!("play anim {} {}", self.model_name, anim_name);
+        if anim_name.is_empty() {
+            anim_name = "c03";
+        }
+
         self.state = match anim_name.to_lowercase().as_ref() {
             "c01" => RoleState::Idle,
             "c03" => RoleState::Running,

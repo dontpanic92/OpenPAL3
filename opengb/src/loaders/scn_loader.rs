@@ -40,13 +40,13 @@ pub struct ScnRole {
     pub b1: u8,
     pub name: String,
     pub w42: u16,
-    pub dw44: u32,
+    pub dw44: f32,
     pub dw48: u32,
     pub position_x: f32,
     pub position_z: f32,
     pub position_y: f32,
     pub dw58: u32,
-    pub dw5c: u32,
+    pub sce_proc_id: u32,
     pub dw60: u32,
     pub action_name: String,
     pub dw74: u32,
@@ -121,13 +121,13 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
     let b1 = reader.read_u8().unwrap();
     let name = reader.read_string(64).unwrap();
     let w42 = reader.read_u16::<LittleEndian>().unwrap();
-    let dw44 = reader.read_u32::<LittleEndian>().unwrap();
+    let dw44 = reader.read_f32::<LittleEndian>().unwrap();
     let dw48 = reader.read_u32::<LittleEndian>().unwrap();
     let position_x = reader.read_f32::<LittleEndian>().unwrap();
     let position_z = reader.read_f32::<LittleEndian>().unwrap();
     let position_y = reader.read_f32::<LittleEndian>().unwrap();
     let dw58 = reader.read_u32::<LittleEndian>().unwrap();
-    let dw5c = reader.read_u32::<LittleEndian>().unwrap();
+    let sce_proc_id = reader.read_u32::<LittleEndian>().unwrap();
     let dw60 = reader.read_u32::<LittleEndian>().unwrap();
     let action_name = reader.read_string(16).unwrap();
     let dw74 = reader.read_u32::<LittleEndian>().unwrap();
@@ -151,7 +151,7 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
         position_z,
         position_y,
         dw58,
-        dw5c,
+        sce_proc_id,
         dw60,
         action_name,
         dw74,

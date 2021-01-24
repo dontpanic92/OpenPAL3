@@ -23,6 +23,8 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+use encoding::{types::Encoding, DecoderTrap};
+use ini::Ini;
 
 pub struct AssetManager {
     factory: Rc<dyn ComponentFactory>,
@@ -85,6 +87,18 @@ impl AssetManager {
             role_name,
             default_action,
         )
+    }
+
+    pub fn load_role_anim_config(&self, role_name: &str) -> Ini {
+        let path = self
+            .basedata_path
+            .join("ROLE")
+            .join(role_name)
+            .join(role_name)
+            .with_extension("ini");
+        
+        let mv3_ini = encoding::all::GBK.decode(&self.vfs.read_to_end(&path).unwrap(), DecoderTrap::Ignore).unwrap();
+        Ini::load_from_str(&mv3_ini).unwrap()
     }
 
     pub fn load_role_anim(&self, role_name: &str, action_name: &str) -> RoleAnimation {

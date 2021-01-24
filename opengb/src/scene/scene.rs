@@ -130,6 +130,24 @@ impl ScnScene {
         None
     }
 
+    pub fn test_role_trigger(&self, coord: &Vec3) -> Option<u32> {
+        const D: f32 = 100.;
+        for role in &self.scn_file.roles {
+            let role_position = Vec3::new(role.position_x, role.position_y, role.position_z);
+            log::debug!(
+                "Testing role trigger {:?} {:?} {}",
+                &role_position,
+                &coord,
+                Vec3::sub(coord, &role_position).norm2(),
+            );
+            if Vec3::sub(coord, &role_position).norm2() < D * D {
+                return Some(role.sce_proc_id);
+            }
+        }
+
+        None
+    }
+
     pub fn get_height(&self, nav_coord: (f32, f32)) -> f32 {
         let x =
             (nav_coord.0.ceil() as usize).clamp(0, self.nav.nav_file.maps[0].width as usize - 1);
@@ -334,6 +352,11 @@ impl ScnScene {
                 ))
                 // HACK
                 .rotate_axis_angle_local(&Vec3::UP, std::f32::consts::PI);
+            
+            if role.sce_proc_id != 0 {
+                entity.set_active(true);
+            }
+
             entities.push(entity);
         }
 

@@ -54,7 +54,7 @@ impl ContentTabs {
             Some("pol") => {
                 self.open_json_from(path.as_ref(), || pol_load_from_file(vfs, path.as_ref()).ok())
             }
-            Some("h") | Some("asm") | Some("ini") | Some("txt") => {
+            Some("h") | Some("asm") | Some("ini") | Some("txt") | Some("conf") => {
                 self.open_plain_text(vfs, path.as_ref())
             }
             _ => {}
