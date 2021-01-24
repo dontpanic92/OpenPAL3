@@ -90,7 +90,7 @@ pub fn mv3_load_from_file<P: AsRef<Path>>(
     vfs: &MiniFs,
     path: P,
 ) -> Result<Mv3File, Box<dyn Error>> {
-    let mut reader = BufReader::new(vfs.open(&path).unwrap());
+    let mut reader = BufReader::new(vfs.open(&path)?);
     mv3_load(&mut reader)
 }
 

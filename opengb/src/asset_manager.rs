@@ -102,7 +102,7 @@ impl AssetManager {
         Ini::load_from_str(&mv3_ini).unwrap()
     }
 
-    pub fn load_role_anim(&self, role_name: &str, action_name: &str) -> RoleAnimation {
+    pub fn load_role_anim(&self, role_name: &str, action_name: &str) -> Option<RoleAnimation> {
         let path = self
             .basedata_path
             .join("ROLE")
@@ -110,13 +110,16 @@ impl AssetManager {
             .join(action_name)
             .with_extension("mv3");
 
-        let mv3file = mv3_load_from_file(&self.vfs, &path).unwrap();
-        RoleAnimation::new(
-            &self.factory,
-            &mv3file,
-            self.load_mv3_material(&mv3file, &path),
-            RoleAnimationRepeatMode::NoRepeat,
-        )
+        mv3_load_from_file(&self.vfs, &path)
+            .map(|f| {
+                RoleAnimation::new(
+                    &self.factory,
+                    &f,
+                    self.load_mv3_material(&f, &path),
+                    RoleAnimationRepeatMode::NoRepeat,
+                )
+            })
+            .ok()
     }
 
     pub fn load_mv3_material(&self, mv3file: &Mv3File, mv3path: &Path) -> MaterialDef {

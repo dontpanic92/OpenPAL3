@@ -36,19 +36,13 @@ pub struct RoleEntity {
 
 impl RoleEntity {
     pub fn new(asset_mgr: Rc<AssetManager>, role_name: &str, idle_anim: &str) -> RoleEntity {
+        println!("new role {}", role_name);
         let mut idle_anim = idle_anim;
-        let mv3_config = asset_mgr.load_role_anim_config(role_name);
-
-        if idle_anim.is_empty() {
-            idle_anim = mv3_config
-                .section(Some("action_1"))
-                .unwrap()
-                .get("file")
-                .unwrap();
-        }
-
-        let anim = asset_mgr.load_role_anim(role_name, idle_anim);
-        Self::new_from_idle_animation(asset_mgr, role_name, idle_anim, anim)
+        let anim = asset_mgr
+            .load_role_anim(role_name, idle_anim)
+            .or_else(|| { idle_anim = "c01"; asset_mgr.load_role_anim(role_name, idle_anim) })
+            .or_else(|| { idle_anim = "z1"; asset_mgr.load_role_anim(role_name, idle_anim) });
+        Self::new_from_idle_animation(asset_mgr, role_name, idle_anim, anim.unwrap())
     }
 
     pub fn new_from_idle_animation(
@@ -88,12 +82,17 @@ impl RoleEntity {
 
     pub fn play_anim(
         self: &mut CoreEntity<Self>,
-        mut anim_name: &str,
+        anim_name: &str,
         repeat_mode: RoleAnimationRepeatMode,
     ) {
-        if anim_name.is_empty() {
-            anim_name = "c03";
-        }
+        let idle_anim_name = self.idle_anim_name.clone();
+        let anim_name = if anim_name.is_empty() {
+            idle_anim_name.as_str()
+        } else {
+            anim_name
+        };
+
+        println!("playing anim for {} {}", self.model_name, anim_name);
 
         self.state = match anim_name.to_lowercase().as_ref() {
             "c01" => RoleState::Idle,
@@ -102,7 +101,7 @@ impl RoleEntity {
         };
 
         if self.animations.get(anim_name).is_none() {
-            let anim = self.asset_mgr.load_role_anim(&self.model_name, anim_name);
+            let anim = self.asset_mgr.load_role_anim(&self.model_name, anim_name).unwrap();
             self.animations.insert(anim_name.to_string(), anim);
         }
 
