@@ -2,9 +2,12 @@ use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
 use serde::Serialize;
-use std::error::Error;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::{
+    error::Error,
+    io::{Cursor, Seek},
+};
 
 #[derive(Debug, Serialize)]
 pub struct Mv3Texture {
@@ -70,7 +73,6 @@ pub struct Mv3Model {
 
 #[derive(Debug, Serialize)]
 pub struct Mv3File {
-    pub path: PathBuf,
     pub magic: [u8; 4],
     pub unknown_dw: u32,
     pub unknown_dw2: u32,
@@ -89,6 +91,15 @@ pub fn mv3_load_from_file<P: AsRef<Path>>(
     path: P,
 ) -> Result<Mv3File, Box<dyn Error>> {
     let mut reader = BufReader::new(vfs.open(&path).unwrap());
+    mv3_load(&mut reader)
+}
+
+pub fn mv3_load_from_data(data: Vec<u8>) -> Result<Mv3File, Box<dyn Error>> {
+    let mut reader = BufReader::new(Cursor::new(data));
+    mv3_load(&mut reader)
+}
+
+pub fn mv3_load<T: Read>(reader: &mut BufReader<T>) -> Result<Mv3File, Box<dyn Error>> {
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic)?;
 
@@ -150,12 +161,11 @@ pub fn mv3_load_from_file<P: AsRef<Path>>(
 
     let mut models = vec![];
     for _i in 0..model_count {
-        let model = read_mv3_model(&mut reader)?;
+        let model = read_mv3_model(reader)?;
         models.push(model);
     }
 
     Ok(Mv3File {
-        path: path.as_ref().to_owned(),
         magic,
         unknown_dw,
         unknown_dw2,

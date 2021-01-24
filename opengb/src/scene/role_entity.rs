@@ -1,4 +1,4 @@
-use crate::{asset_manager::AssetManager, loaders::mv3_loader::*, utilities::StoreExt2};
+use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
 use radiance::rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents};
 use radiance::scene::{CoreEntity, EntityExtension};
 use radiance::{
@@ -35,31 +35,37 @@ pub struct RoleEntity {
 }
 
 impl RoleEntity {
-    pub fn new(
-        asset_mgr: Rc<AssetManager>,
-        component_factory: Rc<dyn ComponentFactory>,
-        role_name: &str,
-        idle_anim: &str,
-    ) -> RoleEntity {
+    pub fn new(asset_mgr: Rc<AssetManager>, role_name: &str, idle_anim: &str) -> RoleEntity {
         let mut idle_anim = idle_anim;
         let mv3_config = asset_mgr.load_role_anim_config(role_name);
-        
+
         if idle_anim.is_empty() {
-            idle_anim = mv3_config.section(Some("action_1")).unwrap().get("file").unwrap();
+            idle_anim = mv3_config
+                .section(Some("action_1"))
+                .unwrap()
+                .get("file")
+                .unwrap();
         }
 
+        let anim = asset_mgr.load_role_anim(role_name, idle_anim);
+        Self::new_from_idle_animation(asset_mgr, role_name, idle_anim, anim)
+    }
+
+    pub fn new_from_idle_animation(
+        asset_mgr: Rc<AssetManager>,
+        role_name: &str,
+        idle_anim: &str,
+        anim: RoleAnimation,
+    ) -> RoleEntity {
         let mut animations = HashMap::new();
         if !idle_anim.trim().is_empty() {
-            animations.insert(
-                idle_anim.to_string(),
-                asset_mgr.load_role_anim(role_name, idle_anim),
-            );
+            animations.insert(idle_anim.to_string(), anim);
         }
 
         Self {
             model_name: role_name.to_string(),
-            asset_mgr,
-            component_factory,
+            asset_mgr: asset_mgr.clone(),
+            component_factory: asset_mgr.component_factory().clone(),
             animations,
             active_anim_name: idle_anim.to_string(),
             idle_anim_name: idle_anim.to_string(),
@@ -85,7 +91,6 @@ impl RoleEntity {
         mut anim_name: &str,
         repeat_mode: RoleAnimationRepeatMode,
     ) {
-        println!("play anim {} {}", self.model_name, anim_name);
         if anim_name.is_empty() {
             anim_name = "c03";
         }

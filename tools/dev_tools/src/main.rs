@@ -1,11 +1,9 @@
 #![feature(arbitrary_self_types)]
 #![feature(drain_filter)]
-mod components;
-mod content;
-mod director;
+mod directors;
 mod scene;
 
-use std::{cell::RefCell, rc::Rc};
+use std::rc::Rc;
 
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::{Application, ApplicationExtension};
@@ -29,11 +27,11 @@ impl ApplicationExtension<ApplicationCallbacks> for ApplicationCallbacks {
             .push_scene(Box::new(CoreScene::new(DevToolsScene::new())));
         app.engine_mut()
             .scene_manager()
-            .set_director(Rc::new(RefCell::new(director::DevToolsDirector::new(
+            .set_director(directors::DevToolsDirector::new(
                 input_engine,
                 audio_engine,
                 Rc::new(asset_mgr),
-            ))))
+            ))
     }
 
     fn on_updating(&mut self, app: &mut Application<ApplicationCallbacks>, delta_sec: f32) {}

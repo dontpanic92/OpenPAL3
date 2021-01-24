@@ -1,10 +1,9 @@
 use super::{cpk_archive::CpkFile, CpkArchive, CpkEntry};
 use encoding::{EncoderTrap, Encoding};
-use log::debug;
 use memmap::{Mmap, MmapOptions};
 use mini_fs::{Entries, Entry, EntryKind, Store};
 use std::{
-    cell::{Ref, RefCell},
+    cell::RefCell,
     ffi::OsString,
     fs::File,
     io::{self, Cursor, Result},

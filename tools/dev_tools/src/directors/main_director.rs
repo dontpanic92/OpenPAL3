@@ -1,4 +1,4 @@
-use crate::content::ContentTabs;
+use super::{main_content::ContentTabs, DevToolsState, PreviewDirector};
 use imgui::{im_str, Condition, MouseButton, TreeNode, Ui, Window};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::asset_manager::AssetManager;
@@ -7,15 +7,15 @@ use radiance::{
     input::InputEngine,
     scene::{Director, SceneManager},
 };
-use serde::Serializer;
 use std::{
     cell::RefCell,
     cmp::Ordering,
     path::{Path, PathBuf},
-    rc::Rc,
+    rc::{Rc, Weak},
 };
 
 pub struct DevToolsDirector {
+    shared_self: Weak<RefCell<Self>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
     asset_mgr: Rc<AssetManager>,
     content_tabs: ContentTabs,
@@ -26,15 +26,19 @@ impl DevToolsDirector {
         input_engine: Rc<RefCell<dyn InputEngine>>,
         audio_engine: Rc<dyn AudioEngine>,
         asset_mgr: Rc<AssetManager>,
-    ) -> Self {
-        Self {
+    ) -> Rc<RefCell<Self>> {
+        let mut _self = Rc::new(RefCell::new(Self {
+            shared_self: Weak::new(),
             input_engine,
             asset_mgr,
             content_tabs: ContentTabs::new(audio_engine),
-        }
+        }));
+
+        _self.borrow_mut().shared_self = Rc::downgrade(&_self);
+        _self
     }
 
-    fn main_window(&mut self, ui: &mut Ui) {
+    fn main_window(&mut self, ui: &mut Ui) -> Option<DevToolsState> {
         let [window_width, window_height] = ui.io().display_size;
         let font = ui.push_font(ui.fonts().fonts()[1]);
 
@@ -46,6 +50,7 @@ impl DevToolsDirector {
             .movable(false);
         w.build(ui, || self.render_tree_nodes(ui, "/"));
 
+        let mut state = None;
         let w2 = Window::new(im_str!("Content"))
             .title_bar(false)
             .collapsible(false)
@@ -53,9 +58,11 @@ impl DevToolsDirector {
             .size([window_width * 0.7, window_height], Condition::Always)
             .position([window_width * 0.3, 0.], Condition::Always)
             .movable(false);
-        w2.build(ui, || self.render_content(ui));
+        w2.build(ui, || state = self.render_content(ui));
 
         font.pop(ui);
+
+        state
     }
 
     fn render_tree_nodes<P: AsRef<Path>>(&mut self, ui: &Ui, path: P) {
@@ -84,8 +91,8 @@ impl DevToolsDirector {
         }
     }
 
-    fn render_content(&mut self, ui: &Ui) {
-        self.content_tabs.render_tabs(ui);
+    fn render_content(&mut self, ui: &Ui) -> Option<DevToolsState> {
+        self.content_tabs.render_tabs(ui)
     }
 
     fn get_entries<P: AsRef<Path>>(&self, path: P) -> Vec<Entry> {
@@ -111,8 +118,14 @@ impl Director for DevToolsDirector {
         ui: &mut imgui::Ui,
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
-        self.main_window(ui);
-
-        None
+        if let Some(DevToolsState::Preview(path)) = self.main_window(ui) {
+            Some(PreviewDirector::new(
+                self.shared_self.upgrade().unwrap(),
+                self.asset_mgr.clone(),
+                path,
+            ))
+        } else {
+            None
+        }
     }
 }

@@ -1,3 +1,5 @@
+use crate::directors::DevToolsState;
+
 use super::ContentPane;
 use audio::{AudioSourceState, Codec};
 use imgui::im_str;
@@ -37,7 +39,7 @@ impl AudioPane {
 }
 
 impl ContentPane for AudioPane {
-    fn render(&mut self, ui: &imgui::Ui) {
+    fn render(&mut self, ui: &imgui::Ui) -> Option<DevToolsState> {
         if let Some(source) = &mut self.source {
             source.update();
 
@@ -54,5 +56,7 @@ impl ContentPane for AudioPane {
         } else {
             ui.text(im_str!("Audio format not supported"));
         }
+
+        None
     }
 }

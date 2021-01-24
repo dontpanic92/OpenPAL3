@@ -352,7 +352,7 @@ impl ScnScene {
                 ))
                 // HACK
                 .rotate_axis_angle_local(&Vec3::UP, std::f32::consts::PI);
-            
+
             if role.sce_proc_id != 0 {
                 entity.set_active(true);
             }

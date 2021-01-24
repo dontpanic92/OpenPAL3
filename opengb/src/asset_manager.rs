@@ -12,6 +12,8 @@ use crate::{
         ScnScene,
     },
 };
+use encoding::{types::Encoding, DecoderTrap};
+use ini::Ini;
 use log::debug;
 use mini_fs::prelude::*;
 use mini_fs::{LocalFs, MiniFs};
@@ -23,8 +25,6 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use encoding::{types::Encoding, DecoderTrap};
-use ini::Ini;
 
 pub struct AssetManager {
     factory: Rc<dyn ComponentFactory>,
@@ -54,6 +54,10 @@ impl AssetManager {
         &self.vfs
     }
 
+    pub fn component_factory(&self) -> Rc<dyn ComponentFactory> {
+        self.factory.clone()
+    }
+
     pub fn load_scn(self: &Rc<Self>, cpk_name: &str, scn_name: &str) -> ScnScene {
         let scene_base = self.scene_path.join(cpk_name).join(scn_name);
         let scene_path = scene_base.with_extension("scn");
@@ -81,12 +85,7 @@ impl AssetManager {
     }
 
     pub fn load_role(self: &Rc<Self>, role_name: &str, default_action: &str) -> RoleEntity {
-        RoleEntity::new(
-            self.clone(),
-            self.factory.clone(),
-            role_name,
-            default_action,
-        )
+        RoleEntity::new(self.clone(), role_name, default_action)
     }
 
     pub fn load_role_anim_config(&self, role_name: &str) -> Ini {
@@ -96,8 +95,10 @@ impl AssetManager {
             .join(role_name)
             .join(role_name)
             .with_extension("ini");
-        
-        let mv3_ini = encoding::all::GBK.decode(&self.vfs.read_to_end(&path).unwrap(), DecoderTrap::Ignore).unwrap();
+
+        let mv3_ini = encoding::all::GBK
+            .decode(&self.vfs.read_to_end(&path).unwrap(), DecoderTrap::Ignore)
+            .unwrap();
         Ini::load_from_str(&mv3_ini).unwrap()
     }
 
@@ -109,17 +110,17 @@ impl AssetManager {
             .join(action_name)
             .with_extension("mv3");
 
-        let mv3file = mv3_load_from_file(&self.vfs, path).unwrap();
+        let mv3file = mv3_load_from_file(&self.vfs, &path).unwrap();
         RoleAnimation::new(
             &self.factory,
             &mv3file,
-            self.load_mv3_material(&mv3file),
+            self.load_mv3_material(&mv3file, &path),
             RoleAnimationRepeatMode::NoRepeat,
         )
     }
 
-    fn load_mv3_material(&self, mv3file: &Mv3File) -> MaterialDef {
-        let mut texture_path = mv3file.path.clone();
+    pub fn load_mv3_material(&self, mv3file: &Mv3File, mv3path: &Path) -> MaterialDef {
+        let mut texture_path = mv3path.to_owned();
         texture_path.pop();
         texture_path.push(std::str::from_utf8(&mv3file.textures[0].names[0]).unwrap());
 
