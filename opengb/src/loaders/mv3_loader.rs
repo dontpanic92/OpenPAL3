@@ -3,10 +3,10 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
 use serde::Serialize;
 use std::io::{BufReader, Read};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::{
     error::Error,
-    io::{Cursor, Seek},
+    io::Cursor,
 };
 
 #[derive(Debug, Serialize)]

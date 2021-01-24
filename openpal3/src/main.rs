@@ -32,7 +32,7 @@ pub struct OpenPal3Application {
 
 impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
     fn on_initialized(&mut self, app: &mut Application<OpenPal3Application>) {
-        simple_logger::SimpleLogger::new().init().unwrap();
+        simple_logger::SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
         app.set_title(&self.app_name);
 
         let input_engine = app.engine_mut().input_engine();

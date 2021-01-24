@@ -36,7 +36,6 @@ pub struct RoleEntity {
 
 impl RoleEntity {
     pub fn new(asset_mgr: Rc<AssetManager>, role_name: &str, idle_anim: &str) -> RoleEntity {
-        println!("new role {}", role_name);
         let mut idle_anim = idle_anim;
         let anim = asset_mgr
             .load_role_anim(role_name, idle_anim)
@@ -91,8 +90,6 @@ impl RoleEntity {
         } else {
             anim_name
         };
-
-        println!("playing anim for {} {}", self.model_name, anim_name);
 
         self.state = match anim_name.to_lowercase().as_ref() {
             "c01" => RoleState::Idle,
