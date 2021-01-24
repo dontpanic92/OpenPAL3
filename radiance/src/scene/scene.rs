@@ -8,6 +8,7 @@ pub trait Scene: downcast_rs::Downcast {
     fn update(&mut self, delta_sec: f32);
     fn draw_ui(&mut self, ui: &mut imgui::Ui);
     fn unload(&mut self);
+    fn add_entity(&mut self, entity: Box<dyn Entity>);
     fn entities(&self) -> Vec<&dyn Entity>;
     fn root_entities(&self) -> &Vec<Box<dyn Entity>>;
     fn root_entities_mut(&mut self) -> &mut Vec<Box<dyn Entity>>;
@@ -62,10 +63,6 @@ impl<TExtension: SceneExtension> CoreScene<TExtension> {
             extension: ext_calls,
             camera: Camera::new(),
         }
-    }
-
-    pub fn add_entity(&mut self, entity: Box<dyn Entity>) {
-        self.entities.push(entity);
     }
 
     pub fn extension(&self) -> &TExtension {
@@ -138,6 +135,10 @@ impl<TExtension: 'static + SceneExtension> Scene for CoreScene<TExtension> {
     }
 
     fn unload(&mut self) {}
+
+    fn add_entity(&mut self, entity: Box<dyn Entity>) {
+        self.entities.push(entity);
+    }
 
     fn root_entities(&self) -> &Vec<Box<dyn Entity>> {
         &self.entities
