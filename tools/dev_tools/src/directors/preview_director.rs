@@ -1,10 +1,13 @@
 use imgui::im_str;
 use opengb::{
     asset_manager::AssetManager,
-    loaders::mv3_loader::mv3_load_from_file,
-    scene::{RoleAnimation, RoleAnimationRepeatMode, RoleEntity},
+    loaders::{mv3_loader::mv3_load_from_file, pol_loader::pol_load_from_file},
+    scene::{CvdModelEntity, PolModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity},
 };
-use radiance::{math::Vec3, scene::{CoreEntity, Director, Entity, SceneManager}};
+use radiance::{
+    math::Vec3,
+    scene::{CoreEntity, Director, Entity, SceneManager},
+};
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use super::main_director::DevToolsDirector;
@@ -50,7 +53,7 @@ impl Director for PreviewDirector {
                 });
 
                 anim.map(|a| {
-                    Box::new(CoreEntity::new(
+                    let mut e = Box::new(CoreEntity::new(
                         RoleEntity::new_from_idle_animation(
                             self.asset_mgr.clone(),
                             "preview",
@@ -58,24 +61,39 @@ impl Director for PreviewDirector {
                             a,
                         ),
                         "preview",
-                    ))
+                    ));
+                    e.set_active(true);
+                    e as Box<dyn Entity>
                 })
                 .ok()
             }
+            Some("pol") => Some(Box::new(CoreEntity::new(
+                PolModelEntity::new(
+                    &self.asset_mgr.component_factory(),
+                    &self.asset_mgr.vfs(),
+                    &self.path,
+                ),
+                "preview",
+            )) as Box<dyn Entity>),
+            Some("cvd") => Some(Box::new(CvdModelEntity::create(
+                self.asset_mgr.component_factory().clone(),
+                &self.asset_mgr.vfs(),
+                &self.path,
+            )) as Box<dyn Entity>),
             _ => None,
         };
 
         let scene = scene_manager.scene_mut().unwrap();
         if let Some(mut e) = entity {
-            e.set_active(true);
+            e.load();
             scene.add_entity(e)
         }
 
         scene
             .camera_mut()
             .transform_mut()
-            .translate_local(&Vec3::new(0., 100., 400.))
-            .look_at(&Vec3::new(0., 50., 0.));
+            .set_position(&Vec3::new(0., 200., 200.))
+            .look_at(&Vec3::new(0., 0., 0.));
     }
 
     fn update(
