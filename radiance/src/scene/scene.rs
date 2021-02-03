@@ -105,7 +105,12 @@ mod private {
     impl super::SceneExtension for DefaultExtension {}
 }
 
-pub type DefaultScene = CoreScene<private::DefaultExtension>;
+pub struct DefaultScene;
+impl DefaultScene {
+    pub fn create() -> CoreScene<private::DefaultExtension> {
+        CoreScene::<private::DefaultExtension>::new(private::DefaultExtension{})
+    }
+}
 
 impl<TExtension: 'static + SceneExtension> Scene for CoreScene<TExtension> {
     fn load(&mut self) {
