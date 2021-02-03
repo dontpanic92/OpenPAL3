@@ -1,8 +1,8 @@
 use super::mat::Mat44;
 use super::{vec::Vec3, Quaternion};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Transform {
     mat: Mat44,
 }

@@ -1,9 +1,9 @@
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use std::ops::{Index, IndexMut};
 use std::ptr::swap;
 
 /// Row major 4x4 matrix
-#[derive(Copy, Clone, Debug, Serialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[repr(C)]
 pub struct Mat44([[f32; 4]; 4]);
 

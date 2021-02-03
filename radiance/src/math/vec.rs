@@ -1,7 +1,7 @@
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 /// 2d column vector
-#[derive(Copy, Clone, Debug, Serialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[repr(C)]
 pub struct Vec2 {
     pub x: f32,
@@ -21,7 +21,7 @@ impl Vec2 {
 }
 
 /// 3d column vector
-#[derive(Copy, Clone, Debug, Serialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[repr(C)]
 pub struct Vec3 {
     pub x: f32,
