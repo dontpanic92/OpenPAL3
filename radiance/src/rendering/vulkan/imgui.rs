@@ -58,10 +58,6 @@ impl ImguiVulkanContext {
                 .cmd_draw(&self.vk_context, command_buffer, draw_data)
                 .unwrap();
         }
-
-        unsafe {
-            sys::igEndFrame();
-        }
     }
 }
 

@@ -80,3 +80,13 @@ impl Default for ImguiFrame {
         Self { frame_begun: false }
     }
 }
+
+impl Drop for ImguiFrame {
+    fn drop(&mut self) {
+        if self.frame_begun {
+            unsafe {
+                sys::igEndFrame();
+            }
+        }
+    }
+}
