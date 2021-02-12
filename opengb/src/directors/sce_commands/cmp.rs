@@ -19,6 +19,7 @@ impl<FCmp: Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> SceCommand for SceC
     ) -> bool {
         let value = (self.cmp)(
             &state
+                .shared_state_mut()
                 .persistent_state_mut()
                 .get_global(self.var)
                 .unwrap_or(0),

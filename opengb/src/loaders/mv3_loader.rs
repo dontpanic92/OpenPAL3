@@ -4,10 +4,7 @@ use mini_fs::{MiniFs, StoreExt};
 use serde::Serialize;
 use std::io::{BufReader, Read};
 use std::path::Path;
-use std::{
-    error::Error,
-    io::Cursor,
-};
+use std::{error::Error, io::Cursor};
 
 #[derive(Debug, Serialize)]
 pub struct Mv3Texture {

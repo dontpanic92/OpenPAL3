@@ -2,7 +2,7 @@ use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::UserFile;
 use std::{
-    cell::{Ref, RefCell},
+    cell::RefCell,
     collections::HashMap,
     io::{Cursor, Read, Seek},
     rc::Rc,

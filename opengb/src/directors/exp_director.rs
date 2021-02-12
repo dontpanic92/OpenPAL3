@@ -30,6 +30,25 @@ impl ExplorationDirector {
             camera_rotation: 0.,
         }
     }
+
+    pub fn test_save(&self) {
+        let input = self.input_engine.borrow_mut();
+        let save_slot = if input.get_key_state(Key::Q).pressed() {
+            0
+        } else if input.get_key_state(Key::W).pressed() {
+            1
+        } else if input.get_key_state(Key::E).pressed() {
+            2
+        } else if input.get_key_state(Key::R).pressed() {
+            3
+        } else {
+            -1
+        };
+
+        let mut shared_state = self.shared_state.borrow_mut();
+        let state = shared_state.persistent_state_mut();
+        state.save(save_slot);
+    }
 }
 
 impl Director for ExplorationDirector {
@@ -48,6 +67,7 @@ impl Director for ExplorationDirector {
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
         self.shared_state.borrow_mut().update(delta_sec);
+        self.test_save();
 
         let input = self.input_engine.borrow_mut();
         let mut direction = Vec3::new(0., 0., 0.);
@@ -143,6 +163,11 @@ impl Director for ExplorationDirector {
                 .transform_mut()
                 .look_at(&target_position)
                 .set_position(&target_position);
+
+            self.shared_state
+                .borrow_mut()
+                .persistent_state_mut()
+                .set_position(target_position);
         } else {
             entity.idle();
         }

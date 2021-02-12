@@ -16,7 +16,8 @@ impl SceCommand for SceCommandLet {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        state
+        let mut shared_state = state.shared_state_mut();
+        shared_state
             .persistent_state_mut()
             .set_global(self.var, self.value);
         true

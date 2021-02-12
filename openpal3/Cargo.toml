@@ -9,5 +9,6 @@ edition = "2018"
 [dependencies]
 log = { version = "0.4.13" }
 opengb = { path = "../opengb" }
+imgui = "0.6.1"
 radiance = { git = "https://github.com/dontpanic92/radiance/" }
 simple_logger = "1.11.0"

@@ -19,7 +19,6 @@ pub struct SceDirector {
     input_engine: Rc<RefCell<dyn InputEngine>>,
     state: SceState,
     shared_state: Rc<RefCell<SharedState>>,
-    persistent_state: Rc<RefCell<PersistentState>>,
     active_commands: Vec<Box<dyn SceCommand>>,
 }
 
@@ -74,23 +73,20 @@ impl SceDirector {
         input_engine: Rc<RefCell<dyn InputEngine>>,
         sce: SceFile,
         asset_mgr: Rc<AssetManager>,
-        persistent_state: Rc<RefCell<PersistentState>>,
+        shared_state: Rc<RefCell<SharedState>>,
     ) -> Rc<RefCell<Self>> {
-        let shared_state = Rc::new(RefCell::new(SharedState::new(&audio_engine)));
         let state = SceState::new(
             input_engine.clone(),
             audio_engine.clone(),
             asset_mgr.clone(),
             Rc::new(sce),
             shared_state.clone(),
-            persistent_state.clone(),
         );
         let director = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
             input_engine,
             state,
             shared_state,
-            persistent_state: persistent_state,
             active_commands: vec![],
         }));
 
@@ -502,7 +498,6 @@ impl SceVmContext {
 pub struct SceState {
     asset_mgr: Rc<AssetManager>,
     shared_state: Rc<RefCell<SharedState>>,
-    persistent_state: Rc<RefCell<PersistentState>>,
     fop_state: FopState,
     vm_context: SceVmContext,
     run_mode: i32,
@@ -518,14 +513,12 @@ impl SceState {
         asset_mgr: Rc<AssetManager>,
         sce: Rc<SceFile>,
         shared_state: Rc<RefCell<SharedState>>,
-        persistent_state: Rc<RefCell<PersistentState>>,
     ) -> Self {
         let ext = HashMap::<String, Box<dyn Any>>::new();
 
         Self {
             asset_mgr: asset_mgr.clone(),
             shared_state,
-            persistent_state,
             fop_state: FopState::new(),
             vm_context: SceVmContext::new(sce),
             run_mode: 1,
@@ -537,10 +530,6 @@ impl SceState {
 
     pub fn shared_state_mut(&mut self) -> RefMut<SharedState> {
         self.shared_state.borrow_mut()
-    }
-
-    pub fn persistent_state_mut(&mut self) -> RefMut<PersistentState> {
-        self.persistent_state.borrow_mut()
     }
 
     pub fn fop_state_mut(&mut self) -> &mut FopState {

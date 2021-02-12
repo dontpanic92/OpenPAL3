@@ -1,25 +1,39 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{RefCell, RefMut},
+    rc::Rc,
+};
 
 use radiance::audio::{AudioEngine, AudioSource, AudioSourceState};
+
+use super::PersistentState;
 
 pub struct SharedState {
     bgm_source: Box<dyn AudioSource>,
     sound_sources: Vec<Rc<RefCell<Box<dyn AudioSource>>>>,
+    persistent_state: Rc<RefCell<PersistentState>>,
 }
 
 impl SharedState {
-    pub fn new(audio_engine: &Rc<dyn AudioEngine>) -> Self {
+    pub fn new(
+        audio_engine: &Rc<dyn AudioEngine>,
+        persistent_state: Rc<RefCell<PersistentState>>,
+    ) -> Self {
         let bgm_source = audio_engine.create_source();
         let sound_sources = vec![];
 
         Self {
             bgm_source,
             sound_sources,
+            persistent_state,
         }
     }
 
     pub fn bgm_source(&mut self) -> &mut dyn AudioSource {
         self.bgm_source.as_mut()
+    }
+
+    pub fn persistent_state_mut(&mut self) -> RefMut<PersistentState> {
+        self.persistent_state.borrow_mut()
     }
 
     pub fn add_sound_source(&mut self, source: Rc<RefCell<Box<dyn AudioSource>>>) {

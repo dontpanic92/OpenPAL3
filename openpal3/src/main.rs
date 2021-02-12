@@ -1,18 +1,10 @@
 #![allow(unused_variables)]
-use opengb::directors::PersistentState;
-use opengb::{
-    asset_manager::AssetManager,
-    config::OpenGbConfig,
-    directors::SceDirector,
-};
-use radiance::{
-    application::utils::FpsCounter,
-    math::Vec3,
-    scene::{CoreScene, Scene},
-};
-use radiance::{
-    application::{Application, ApplicationExtension},
-};
+
+mod main_menu_director;
+
+use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
+use radiance::application::utils::FpsCounter;
+use radiance::application::{Application, ApplicationExtension};
 use std::rc::Rc;
 use std::{cell::RefCell, path::PathBuf};
 
@@ -32,37 +24,24 @@ pub struct OpenPal3Application {
 
 impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
     fn on_initialized(&mut self, app: &mut Application<OpenPal3Application>) {
-        simple_logger::SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
+        simple_logger::SimpleLogger::new().init().unwrap();
         app.set_title(&self.app_name);
 
         let input_engine = app.engine_mut().input_engine();
+        let audio_engine = app.engine_mut().audio_engine();
         self.asset_mgr = Some(Rc::new(AssetManager::new(
             app.engine_mut().rendering_component_factory(),
             &self.root_path,
         )));
 
-        let mut scene = Box::new(CoreScene::new(
-            self.asset_mgr.as_ref().unwrap().load_scn("Q01", "yn09a"),
-        ));
-        scene
-            .camera_mut()
-            .transform_mut()
-            .set_position(&Vec3::new(300., 150., 300.))
-            .look_at(&Vec3::new(0., 0., 0.));
-        app.engine_mut().scene_manager().push_scene(scene);
-
-        let p_state = Rc::new(RefCell::new(PersistentState::new()));
-        // p_state.borrow_mut().set_global(-32768, 10200);
-        let sce_director = SceDirector::new(
-            app.engine_mut().audio_engine(),
-            input_engine.clone(),
-            self.asset_mgr.as_ref().unwrap().load_sce("Q01"),
+        let director = main_menu_director::MainMenuDirector::new(
             self.asset_mgr.as_ref().unwrap().clone(),
-            p_state,
+            audio_engine,
+            input_engine,
         );
-        sce_director.borrow_mut().call_proc(1001);
-
-        app.engine_mut().scene_manager().set_director(sce_director);
+        app.engine_mut()
+            .scene_manager()
+            .set_director(Rc::new(RefCell::new(director)));
     }
 
     fn on_updating(&mut self, app: &mut Application<OpenPal3Application>, delta_sec: f32) {

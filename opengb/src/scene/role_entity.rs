@@ -39,8 +39,14 @@ impl RoleEntity {
         let mut idle_anim = idle_anim;
         let anim = asset_mgr
             .load_role_anim(role_name, idle_anim)
-            .or_else(|| { idle_anim = "c01"; asset_mgr.load_role_anim(role_name, idle_anim) })
-            .or_else(|| { idle_anim = "z1"; asset_mgr.load_role_anim(role_name, idle_anim) });
+            .or_else(|| {
+                idle_anim = "c01";
+                asset_mgr.load_role_anim(role_name, idle_anim)
+            })
+            .or_else(|| {
+                idle_anim = "z1";
+                asset_mgr.load_role_anim(role_name, idle_anim)
+            });
         Self::new_from_idle_animation(asset_mgr, role_name, idle_anim, anim.unwrap())
     }
 
@@ -98,7 +104,10 @@ impl RoleEntity {
         };
 
         if self.animations.get(anim_name).is_none() {
-            let anim = self.asset_mgr.load_role_anim(&self.model_name, anim_name).unwrap();
+            let anim = self
+                .asset_mgr
+                .load_role_anim(&self.model_name, anim_name)
+                .unwrap();
             self.animations.insert(anim_name.to_string(), anim);
         }
 
