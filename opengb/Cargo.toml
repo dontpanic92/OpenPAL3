@@ -15,7 +15,7 @@ byteorder = "1.3.4"
 dirs = "3.0.1"
 image = "0.23.0"
 dyn-clone = "1.0.1"
-radiance = { git = "https://github.com/dontpanic92/radiance/" }
+radiance = { path = "../radiance" }
 encoding = "0.2.33"
 imgui = "0.6.1"
 downcast-rs = "1.2.0"

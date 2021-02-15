@@ -8,6 +8,6 @@ edition = "2018"
 
 [dependencies]
 opengb = { path = "../../opengb" }
-radiance = { git = "https://github.com/dontpanic92/radiance/" }
+radiance = { path = "../../radiance" }
 nfd = { git = "https://github.com/saurvs/nfd-rs.git" }
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }

@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 chardet = "0.2.4"
 opengb = { path = "../../opengb" }
-radiance = { git = "https://github.com/dontpanic92/radiance/" }
+radiance = { path = "../../radiance" }
 imgui = "0.6.1"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 serde = "1.0.106"
