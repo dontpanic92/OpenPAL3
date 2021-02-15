@@ -1,0 +1,35 @@
+[package]
+name = "radiance"
+version = "0.1.0"
+authors = ["dontpanic <lishengqiu.hit@gmail.com>"]
+edition = "2018"
+build = "build.rs"
+
+[dependencies]
+
+# General
+backtrace = "0.3.44"
+bitflags = "1.2.1"
+clipboard = "0.5.0"
+downcast-rs = "1.2.0"
+lazy_static = "1.2.0"
+log = "0.4.13"
+memoffset = "0.5.3"
+radiance-assets = { path = "../radiance-assets" }
+serde = { version = "1.0.106", features = ["derive"] }
+
+# Rendering
+ash = "0.31.0"
+image = "0.23.0"
+imgui = "0.6.1"
+imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer" }
+vk-mem = "0.2.2"
+
+# Audio
+alto = "3.0.4"
+hound = "3.4.0"
+lewton = "0.10.1"
+minimp3 = "0.5.1"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef", "wingdi"] }
