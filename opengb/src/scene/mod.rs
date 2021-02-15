@@ -1,4 +1,5 @@
 mod cvd_entity;
+mod error;
 mod pol_entity;
 mod role_entity;
 mod scene;

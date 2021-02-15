@@ -8,6 +8,8 @@ use radiance::{
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use super::error::EntityError;
+
 #[derive(PartialEq, Copy, Clone)]
 pub enum RoleAnimationRepeatMode {
     NoRepeat,
@@ -35,7 +37,11 @@ pub struct RoleEntity {
 }
 
 impl RoleEntity {
-    pub fn new(asset_mgr: Rc<AssetManager>, role_name: &str, idle_anim: &str) -> RoleEntity {
+    pub fn new(
+        asset_mgr: Rc<AssetManager>,
+        role_name: &str,
+        idle_anim: &str,
+    ) -> Result<RoleEntity, EntityError> {
         let mut idle_anim = idle_anim;
         let anim = asset_mgr
             .load_role_anim(role_name, idle_anim)
@@ -46,8 +52,12 @@ impl RoleEntity {
             .or_else(|| {
                 idle_anim = "z1";
                 asset_mgr.load_role_anim(role_name, idle_anim)
-            });
-        Self::new_from_idle_animation(asset_mgr, role_name, idle_anim, anim.unwrap())
+            })
+            .ok_or(EntityError::EntityAnimationNotFound)?;
+
+        Ok(Self::new_from_idle_animation(
+            asset_mgr, role_name, idle_anim, anim,
+        ))
     }
 
     pub fn new_from_idle_animation(

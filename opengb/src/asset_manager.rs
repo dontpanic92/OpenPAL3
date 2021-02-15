@@ -84,8 +84,8 @@ impl AssetManager {
         nav_load_from_file(&self.vfs, nav_path)
     }
 
-    pub fn load_role(self: &Rc<Self>, role_name: &str, default_action: &str) -> RoleEntity {
-        RoleEntity::new(self.clone(), role_name, default_action)
+    pub fn load_role(self: &Rc<Self>, role_name: &str, default_action: &str) -> Option<RoleEntity> {
+        RoleEntity::new(self.clone(), role_name, default_action).ok()
     }
 
     pub fn load_role_anim_config(&self, role_name: &str) -> Ini {

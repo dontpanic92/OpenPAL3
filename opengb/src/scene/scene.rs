@@ -249,13 +249,19 @@ impl ScnScene {
         let _self = self.extension_mut();
         for obj in &_self.scn_file.nodes {
             let mut entity: Option<Box<dyn Entity>> = None;
-            if obj.node_type == 0 {
+            if obj.nav_trigger_coord_min.0 != 0
+                || obj.nav_trigger_coord_min.1 != 0
+                || obj.nav_trigger_coord_max.0 != 0
+                || obj.nav_trigger_coord_max.1 != 0
+            {
                 _self.nav_triggers.push(SceNavTrigger {
                     nav_coord_max: obj.nav_trigger_coord_max,
                     nav_coord_min: obj.nav_trigger_coord_min,
                     sce_proc_id: obj.sce_proc_id,
                 });
-            } else if obj.node_type == 16 {
+            }
+
+            if obj.node_type == 16 {
                 _self.item_triggers.push(SceItemTrigger {
                     coord: obj.position,
                     sce_proc_id: obj.sce_proc_id,
@@ -334,30 +340,31 @@ impl ScnScene {
         for i in -1..2 {
             let entity_name = i.to_string();
             let model_name = Self::map_role_id(i).to_string();
-            let role_entity = self.asset_mgr.load_role(&model_name, "C01");
+            let role_entity = self.asset_mgr.load_role(&model_name, "C01").unwrap();
             let entity = CoreEntity::new(role_entity, &entity_name);
             self.add_entity(Box::new(entity));
         }
 
         let mut entities = vec![];
         for role in &self.scn_file.roles {
-            let role_entity = self.asset_mgr.load_role(&role.name, &role.action_name);
-            let mut entity = CoreEntity::new(role_entity, &role.index.to_string());
-            entity
-                .transform_mut()
-                .set_position(&Vec3::new(
-                    role.position_x,
-                    role.position_y,
-                    role.position_z,
-                ))
-                // HACK
-                .rotate_axis_angle_local(&Vec3::UP, std::f32::consts::PI);
+            if let Some(role_entity) = self.asset_mgr.load_role(&role.name, &role.action_name) {
+                let mut entity = CoreEntity::new(role_entity, &role.index.to_string());
+                entity
+                    .transform_mut()
+                    .set_position(&Vec3::new(
+                        role.position_x,
+                        role.position_y,
+                        role.position_z,
+                    ))
+                    // HACK
+                    .rotate_axis_angle_local(&Vec3::UP, std::f32::consts::PI);
 
-            if role.sce_proc_id != 0 {
-                entity.set_active(true);
+                if role.sce_proc_id != 0 {
+                    entity.set_active(true);
+                }
+
+                entities.push(entity);
             }
-
-            entities.push(entity);
         }
 
         for e in entities {
