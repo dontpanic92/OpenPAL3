@@ -13,6 +13,9 @@ pool:
   vmImage: 'windows-latest'
 
 steps:
+- checkout: self
+  submodules: true
+
 - task: PowerShell@2
   displayName: 'Install choco'
   inputs:
