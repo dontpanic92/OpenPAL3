@@ -56,7 +56,7 @@ impl Director for ExplorationDirector {
         debug!("ExplorationDirector activated");
         scene_manager
             .core_scene_mut_or_fail()
-            .get_role_entity_mut("-1")
+            .get_role_entity_mut(-1)
             .set_active(true);
     }
 
@@ -119,7 +119,7 @@ impl Director for ExplorationDirector {
         }
 
         let scene = scene_manager.core_scene_mut_or_fail();
-        let position = scene.get_role_entity("-1").transform().position();
+        let position = scene.get_role_entity(-1).transform().position();
         scene_manager
             .scene_mut()
             .unwrap()
@@ -156,7 +156,7 @@ impl Director for ExplorationDirector {
             }
         }
 
-        let entity = scene.get_role_entity_mut("-1");
+        let entity = scene.get_role_entity_mut(-1);
         if direction.norm() > 0.5 && distance_to_border > std::f32::EPSILON {
             entity.run();
             entity

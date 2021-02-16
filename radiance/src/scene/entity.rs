@@ -18,6 +18,7 @@ pub trait Entity: downcast_rs::Downcast {
     fn remove_component(&mut self, type_id: TypeId);
     fn children(&self) -> Vec<&dyn Entity>;
     fn visible(&self) -> bool;
+    fn set_visible(&mut self, visible: bool);
 }
 
 downcast_rs::impl_downcast!(Entity);
@@ -47,9 +48,9 @@ pub struct CoreEntity<TExtension: EntityExtension> {
 }
 
 impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
-    pub fn new(extension: TExtension, name: &str) -> Self {
+    pub fn new(extension: TExtension, name: String) -> Self {
         Self {
-            name: name.to_owned(),
+            name,
             transform: Transform::new(),
             world_transform: Transform::new(),
             components: HashMap::new(),
@@ -221,6 +222,10 @@ impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
 
     fn visible(&self) -> bool {
         self.visible
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
     }
 
     fn children(&self) -> Vec<&dyn Entity> {

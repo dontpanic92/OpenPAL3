@@ -7,7 +7,7 @@ use radiance::scene::SceneManager;
 
 #[derive(Clone)]
 pub struct SceCommandRoleShowAction {
-    role_id: String,
+    role_id: i32,
     action_name: String,
     repeat_mode: i32,
 }
@@ -22,7 +22,7 @@ impl SceCommand for SceCommandRoleShowAction {
 
         let entity = scene_manager
             .core_scene_mut_or_fail()
-            .get_role_entity_mut(&self.role_id);
+            .get_role_entity_mut(self.role_id);
         entity.set_active(true);
         entity.play_anim(&self.action_name, repeat);
     }
@@ -36,7 +36,7 @@ impl SceCommand for SceCommandRoleShowAction {
     ) -> bool {
         let s = scene_manager
             .core_scene_mut_or_fail()
-            .get_role_entity(&self.role_id)
+            .get_role_entity(self.role_id)
             .state();
 
         s == RoleState::Idle
@@ -46,7 +46,7 @@ impl SceCommand for SceCommandRoleShowAction {
 impl SceCommandRoleShowAction {
     pub fn new(role_id: i32, action_name: String, repeat_mode: i32) -> Self {
         Self {
-            role_id: role_id.to_string(),
+            role_id,
             action_name,
             repeat_mode,
         }

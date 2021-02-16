@@ -59,6 +59,16 @@ impl WindowsInputEngine {
         }
 
         let key = match msg.wParam as i32 {
+            0x30 => Key::Num0,
+            0x31 => Key::Num1,
+            0x32 => Key::Num2,
+            0x33 => Key::Num3,
+            0x34 => Key::Num4,
+            0x35 => Key::Num5,
+            0x36 => Key::Num6,
+            0x37 => Key::Num7,
+            0x38 => Key::Num8,
+            0x39 => Key::Num9,
             0x41 => Key::A,
             0x42 => Key::B,
             0x43 => Key::C,

@@ -7,7 +7,7 @@ use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Clone)]
 pub struct SceCommandRoleSetFace {
-    role_id: String,
+    role_id: i32,
     face_to: Vec3,
 }
 
@@ -20,7 +20,7 @@ impl SceCommand for SceCommandRoleSetFace {
         delta_sec: f32,
     ) -> bool {
         let scene = scene_manager.core_scene_mut_or_fail();
-        let entity = scene.get_role_entity_mut(&self.role_id);
+        let entity = scene.get_role_entity_mut(self.role_id);
         let position = entity.transform().position();
         let target = Vec3::add(&position, &self.face_to);
 
@@ -43,9 +43,6 @@ impl SceCommandRoleSetFace {
             _ => unreachable!(),
         };
 
-        Self {
-            role_id: role_id.to_string(),
-            face_to,
-        }
+        Self { role_id, face_to }
     }
 }

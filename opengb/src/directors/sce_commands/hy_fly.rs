@@ -25,7 +25,7 @@ impl SceCommand for SceCommandHyFly {
     ) -> bool {
         let entity = scene_manager
             .core_scene_mut_or_fail()
-            .get_role_entity_mut("5");
+            .get_role_entity_mut(5);
         entity.transform_mut().set_position(&Vec3::new(
             self.position_x,
             self.position_y,

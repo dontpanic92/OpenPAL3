@@ -307,6 +307,7 @@ impl VulkanRenderingEngine {
         let objects: Vec<&VulkanRenderObject> = scene
             .entities()
             .iter()
+            .filter(|e| e.visible())
             .filter_map(|e| {
                 entity_get_component::<RenderingComponent>(*e)
                     .and_then(|c| Some(c.render_objects()))

@@ -150,8 +150,24 @@ struct SceProcContext {
 }
 
 impl SceProcContext {
-    pub fn new(sce: Rc<SceFile>, proc_id: u32) -> Self {
-        let proc = sce.proc_headers.iter().find(|h| h.id == proc_id).unwrap();
+    pub fn new_from_id(sce: Rc<SceFile>, proc_id: u32) -> Self {
+        let index = sce
+            .proc_headers
+            .iter()
+            .position(|h| h.id == proc_id)
+            .unwrap();
+        Self::new(sce, index)
+    }
+
+    pub fn new_from_name(sce: Rc<SceFile>, proc_name: &str) -> Option<Self> {
+        sce.proc_headers
+            .iter()
+            .position(|h| h.name == proc_name)
+            .and_then(|index| Some(Self::new(sce, index)))
+    }
+
+    fn new(sce: Rc<SceFile>, index: usize) -> Self {
+        let proc = &sce.proc_headers[index];
         let proc_id = proc.id;
 
         debug!(
@@ -356,7 +372,7 @@ impl SceProcContext {
             }
             85 => {
                 // ObjectActive
-                nop_command!(self, i32, i32)
+                command!(self, SceCommandObjectActive, object_id: i32, active: i32)
             }
             86 => {
                 // Caption
@@ -553,7 +569,14 @@ impl SceVmContext {
 
     pub fn call_proc(&mut self, proc_id: u32) {
         self.proc_stack
-            .push(SceProcContext::new(self.sce.clone(), proc_id))
+            .push(SceProcContext::new_from_id(self.sce.clone(), proc_id))
+    }
+
+    pub fn try_call_proc_by_name(&mut self, proc_name: &str) {
+        let context = SceProcContext::new_from_name(self.sce.clone(), proc_name);
+        if let Some(c) = context {
+            self.proc_stack.push(c)
+        }
     }
 
     pub fn jump_to(&mut self, addr: u32) {

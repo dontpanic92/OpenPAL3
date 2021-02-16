@@ -10,7 +10,7 @@ use std::{
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ScnNode {
-    pub w0: u16,
+    pub index: u16,
     pub w2: u16,
     pub name: String,
     pub w24: u16,
@@ -167,7 +167,7 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
 }
 
 fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
-    let w0 = reader.read_u16::<LittleEndian>().unwrap();
+    let index = reader.read_u16::<LittleEndian>().unwrap();
     let w2 = reader.read_u16::<LittleEndian>().unwrap();
     let name = reader.read_string(32).unwrap();
     let w24 = reader.read_u16::<LittleEndian>().unwrap();
@@ -199,7 +199,7 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
     let b = reader.read_u8_vec(208).unwrap();
 
     ScnNode {
-        w0,
+        index,
         w2,
         name,
         w24,

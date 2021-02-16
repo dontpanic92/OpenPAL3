@@ -6,7 +6,7 @@ use radiance::scene::SceneManager;
 
 #[derive(Clone)]
 pub struct SceCommandRoleActAutoStand {
-    role_id: String,
+    role_id: i32,
     auto_play_idle: i32,
 }
 
@@ -20,7 +20,7 @@ impl SceCommand for SceCommandRoleActAutoStand {
     ) -> bool {
         scene_manager
             .core_scene_mut_or_fail()
-            .get_role_entity_mut(&self.role_id)
+            .get_role_entity_mut(self.role_id)
             .set_auto_play_idle(self.auto_play_idle == 1);
         true
     }
@@ -29,7 +29,7 @@ impl SceCommand for SceCommandRoleActAutoStand {
 impl SceCommandRoleActAutoStand {
     pub fn new(role_id: i32, auto_play_idle: i32) -> Self {
         Self {
-            role_id: role_id.to_string(),
+            role_id,
             auto_play_idle,
         }
     }

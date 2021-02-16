@@ -45,8 +45,8 @@ impl Director for MainMenuDirector {
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
         if ui.button(im_str!("开始游戏"), [120., 40.]) {
-            let scene = Box::new(CoreScene::new(self.asset_mgr.load_scn("Q01", "yn09a")));
-            scene_manager.push_scene(scene);
+            // let scene = Box::new(CoreScene::new(self.asset_mgr.load_scn("Q01", "yn09a")));
+            // scene_manager.push_scene(scene);
 
             let p_state = Rc::new(RefCell::new(PersistentState::new("OpenPAL3".to_string())));
             let shared_state = Rc::new(RefCell::new(SharedState::new(
@@ -57,11 +57,11 @@ impl Director for MainMenuDirector {
             let sce_director = SceDirector::new(
                 self.audio_engine.clone(),
                 self.input_engine.clone(),
-                self.asset_mgr.load_sce("Q01"),
+                self.asset_mgr.load_init_sce(),
                 self.asset_mgr.clone(),
                 shared_state,
             );
-            sce_director.borrow_mut().call_proc(1001);
+            sce_director.borrow_mut().call_proc(51);
 
             Some(sce_director)
         } else {

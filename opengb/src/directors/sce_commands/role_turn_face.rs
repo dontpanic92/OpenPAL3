@@ -7,7 +7,7 @@ use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Clone)]
 pub struct SceCommandRoleTurnFace {
-    role_id: String,
+    role_id: i32,
     degree: f32,
 }
 
@@ -21,7 +21,7 @@ impl SceCommand for SceCommandRoleTurnFace {
     ) -> bool {
         scene_manager
             .core_scene_mut_or_fail()
-            .get_role_entity_mut(&self.role_id)
+            .get_role_entity_mut(self.role_id)
             .transform_mut()
             .rotate_axis_angle_local(&Vec3::UP, -self.degree.to_radians());
         true
@@ -30,9 +30,6 @@ impl SceCommand for SceCommandRoleTurnFace {
 
 impl SceCommandRoleTurnFace {
     pub fn new(role_id: i32, degree: f32) -> Self {
-        Self {
-            role_id: role_id.to_string(),
-            degree,
-        }
+        Self { role_id, degree }
     }
 }

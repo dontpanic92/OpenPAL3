@@ -35,9 +35,13 @@ impl SceCommand for SceCommandLoadScene {
             state.vm_context_mut().set_sce(sce);
         }
 
+        state
+            .vm_context_mut()
+            .try_call_proc_by_name(&format!("_{}_{}", self.name, self.sub_name));
         let mut shared_state = state.shared_state_mut();
         let mut p_state = shared_state.persistent_state_mut();
         p_state.set_scene_name(self.name.clone(), self.sub_name.clone());
+
         true
     }
 }

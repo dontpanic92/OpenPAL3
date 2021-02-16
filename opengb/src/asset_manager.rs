@@ -74,6 +74,11 @@ impl AssetManager {
         sce_load_from_file(&self.vfs, sce_path)
     }
 
+    pub fn load_init_sce(&self) -> SceFile {
+        let init_sce = self.basedata_path.join("init.sce");
+        sce_load_from_file(&self.vfs, init_sce)
+    }
+
     pub fn load_nav(&self, cpk_name: &str, scn_name: &str) -> NavFile {
         let nav_path = self
             .scene_path
@@ -158,6 +163,7 @@ impl AssetManager {
         cpk_name: &str,
         scn_name: &str,
         pol_name: &str,
+        index: u16,
     ) -> Option<CoreEntity<PolModelEntity>> {
         let path = self
             .scene_path
@@ -168,7 +174,7 @@ impl AssetManager {
         if self.vfs.open(&path).is_ok() {
             Some(CoreEntity::new(
                 PolModelEntity::new(&self.factory, &self.vfs, &path),
-                "pol_obj",
+                format!("OBJECT_{}", index),
             ))
         } else {
             None
@@ -180,6 +186,7 @@ impl AssetManager {
         cpk_name: &str,
         scn_name: &str,
         pol_name: &str,
+        index: u16,
     ) -> Option<CoreEntity<CvdModelEntity>> {
         let path = self
             .scene_path
@@ -192,31 +199,41 @@ impl AssetManager {
                 self.factory.clone(),
                 &self.vfs,
                 &path,
+                format!("OBJECT_{}", index),
             ))
         } else {
             None
         }
     }
 
-    pub fn load_object_item_pol(&self, obj_name: &str) -> Option<CoreEntity<PolModelEntity>> {
+    pub fn load_object_item_pol(
+        &self,
+        obj_name: &str,
+        index: u16,
+    ) -> Option<CoreEntity<PolModelEntity>> {
         let path = self.get_object_item_path(obj_name);
         if self.vfs.open(&path).is_ok() {
             Some(CoreEntity::new(
                 PolModelEntity::new(&self.factory, &self.vfs, &path),
-                "pol_obj",
+                format!("OBJECT_{}", index),
             ))
         } else {
             None
         }
     }
 
-    pub fn load_object_item_cvd(&self, obj_name: &str) -> Option<CoreEntity<CvdModelEntity>> {
+    pub fn load_object_item_cvd(
+        &self,
+        obj_name: &str,
+        index: u16,
+    ) -> Option<CoreEntity<CvdModelEntity>> {
         let path = self.get_object_item_path(obj_name);
         if self.vfs.open(&path).is_ok() {
             Some(CvdModelEntity::create(
                 self.factory.clone(),
                 &self.vfs,
                 &path,
+                format!("OBJECT_{}", index),
             ))
         } else {
             None

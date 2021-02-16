@@ -10,7 +10,7 @@ use radiance::{
 
 #[derive(Clone)]
 pub struct SceCommandRoleMoveBack {
-    role_id: String,
+    role_id: i32,
     speed: f32,
 }
 
@@ -24,7 +24,7 @@ impl SceCommand for SceCommandRoleMoveBack {
     ) -> bool {
         scene_manager
             .core_scene_mut_or_fail()
-            .get_role_entity_mut(&self.role_id)
+            .get_role_entity_mut(self.role_id)
             .transform_mut()
             .translate_local(&Vec3::new(0., 0., self.speed));
         true
@@ -33,9 +33,6 @@ impl SceCommand for SceCommandRoleMoveBack {
 
 impl SceCommandRoleMoveBack {
     pub fn new(role_id: i32, speed: f32) -> Self {
-        Self {
-            role_id: role_id.to_string(),
-            speed,
-        }
+        Self { role_id, speed }
     }
 }
