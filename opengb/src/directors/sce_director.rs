@@ -146,6 +146,7 @@ struct SceProcContext {
     sce: Rc<SceFile>,
     proc_id: u32,
     program_counter: usize,
+    local_vars: HashMap<i16, i32>,
 }
 
 impl SceProcContext {
@@ -161,7 +162,16 @@ impl SceProcContext {
             sce,
             proc_id,
             program_counter: 0,
+            local_vars: HashMap::new(),
         }
+    }
+
+    pub fn set_local(&mut self, var: i16, value: i32) {
+        self.local_vars.insert(var, value);
+    }
+
+    pub fn get_local(&mut self, var: i16) -> Option<i32> {
+        self.local_vars.get(&var).and_then(|v| Some(*v))
     }
 
     pub fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
@@ -217,6 +227,10 @@ impl SceProcContext {
             13 | 65549 => {
                 // Let
                 command!(self, SceCommandLet, var: i16, value: i32)
+            }
+            17 | 65553 => {
+                // Rnd
+                command!(self, SceCommandRnd, var: i16, value: i32)
             }
             20 => {
                 // RolePathTo
@@ -479,6 +493,14 @@ impl SceVmContext {
 
     pub fn jump_to(&mut self, addr: u32) {
         self.proc_stack.last_mut().unwrap().jump_to(addr);
+    }
+
+    pub fn set_local(&mut self, var: i16, value: i32) {
+        self.proc_stack.last_mut().unwrap().set_local(var, value);
+    }
+
+    pub fn get_local(&mut self, var: i16) -> Option<i32> {
+        self.proc_stack.last_mut().unwrap().get_local(var)
     }
 
     pub fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {

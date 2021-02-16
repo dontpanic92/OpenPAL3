@@ -17,14 +17,17 @@ impl<FCmp: Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> SceCommand for SceC
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        let value = (self.cmp)(
-            &state
+        let lhs = if self.var < 0 {
+            state
                 .shared_state_mut()
                 .persistent_state_mut()
                 .get_global(self.var)
-                .unwrap_or(0),
-            &self.value,
-        );
+                .unwrap_or(0)
+        } else {
+            state.vm_context_mut().get_local(self.var).unwrap_or(0)
+        };
+
+        let value = (self.cmp)(&lhs, &self.value);
         state.fop_state_mut().push_value(value);
 
         true
