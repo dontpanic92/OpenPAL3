@@ -72,7 +72,7 @@ impl PolModelEntity {
 
         if texture_paths.len() == 1 {
             SimpleMaterialDef::create(
-                &mut vfs.open(&texture_paths[0]).unwrap(),
+                vfs.open(&texture_paths[0]).as_mut().ok(),
                 material.use_alpha != 0,
             )
         } else {

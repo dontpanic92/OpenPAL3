@@ -33,14 +33,14 @@ impl ExplorationDirector {
 
     pub fn test_save(&self) {
         let input = self.input_engine.borrow_mut();
-        let save_slot = if input.get_key_state(Key::Q).pressed() {
-            0
-        } else if input.get_key_state(Key::W).pressed() {
+        let save_slot = if input.get_key_state(Key::Num1).pressed() {
             1
-        } else if input.get_key_state(Key::E).pressed() {
+        } else if input.get_key_state(Key::Num2).pressed() {
             2
-        } else if input.get_key_state(Key::R).pressed() {
+        } else if input.get_key_state(Key::Num3).pressed() {
             3
+        } else if input.get_key_state(Key::Num4).pressed() {
+            4
         } else {
             -1
         };

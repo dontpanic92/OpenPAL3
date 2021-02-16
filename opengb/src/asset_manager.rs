@@ -147,7 +147,7 @@ impl AssetManager {
         texture_path.pop();
         texture_path.push(std::str::from_utf8(&mv3file.textures[0].names[0]).unwrap());
 
-        SimpleMaterialDef::create(&mut self.vfs.open(texture_path).unwrap(), false)
+        SimpleMaterialDef::create(self.vfs.open(texture_path).as_mut().ok(), false)
     }
 
     pub fn mv3_path(&self, role_name: &str, action_name: &str) -> PathBuf {

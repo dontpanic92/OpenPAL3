@@ -65,7 +65,7 @@ impl Director for MainMenuDirector {
 
             Some(sce_director)
         } else {
-            for i in 0..10 {
+            for i in 1..5 {
                 if ui.button(&im_str!("存档 {}", i), [120., 40.]) {
                     let p_state = PersistentState::load("OpenPAL3", i);
                     let scene_name = p_state.scene_name();

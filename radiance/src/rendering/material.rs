@@ -43,13 +43,17 @@ impl MaterialDef {
 
 pub struct SimpleMaterialDef;
 impl SimpleMaterialDef {
-    pub fn create<R: Read>(reader: &mut R, use_alpha: bool) -> MaterialDef {
-        let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).unwrap();
-        let data = image::load_from_memory(&buf)
-            .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
-            .and_then(|img| Ok(img.to_rgba8()))
-            .ok();
+    pub fn create<R: Read>(reader: Option<&mut R>, use_alpha: bool) -> MaterialDef {
+        let data = if let Some(r) = reader {
+            let mut buf = Vec::new();
+            r.read_to_end(&mut buf).unwrap();
+            image::load_from_memory(&buf)
+                .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
+                .and_then(|img| Ok(img.to_rgba8()))
+                .ok()
+        } else {
+            None
+        };
 
         MaterialDef::new(
             "simple_material",

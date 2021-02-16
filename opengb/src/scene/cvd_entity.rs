@@ -170,7 +170,7 @@ impl CvdModelEntity {
             texture_path.push(&material.texture_name);
         }
 
-        SimpleMaterialDef::create(&mut vfs.open(texture_path).unwrap(), false)
+        SimpleMaterialDef::create(vfs.open(texture_path).as_mut().ok(), false)
     }
 }
 

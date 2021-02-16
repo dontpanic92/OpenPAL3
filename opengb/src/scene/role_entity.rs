@@ -1,5 +1,5 @@
 use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
-use radiance::rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents};
+use radiance::{rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents}, scene::Entity};
 use radiance::scene::{CoreEntity, EntityExtension};
 use radiance::{
     math::{Vec2, Vec3},
@@ -190,7 +190,7 @@ impl EntityExtension for RoleEntity {
             let ro = rc.render_objects_mut().first_mut().unwrap();
 
             ro.update_vertices(&mut |vb: &mut VertexBuffer| {
-                self.active_anim_mut().update(delta_sec, vb)
+                self.active_anim_mut().update(delta_sec, vb, false);
             });
 
             if self.active_anim().anim_finished() {
@@ -305,7 +305,7 @@ impl RoleAnimation {
         self.repeat_mode = repeat_mode;
     }
 
-    pub fn update(&mut self, delta_sec: f32, vertices: &mut VertexBuffer) {
+    pub fn update(&mut self, delta_sec: f32, vertices: &mut VertexBuffer, debug: bool) {
         let mut anim_time = (delta_sec * 4580.) as u32 + self.last_anim_time;
         let total_anim_length = *self.anim_timestamps.last().unwrap();
         if anim_time >= total_anim_length && self.repeat_mode == RoleAnimationRepeatMode::NoRepeat {
@@ -320,6 +320,9 @@ impl RoleAnimation {
             .position(|&t| t > anim_time)
             .unwrap_or(0)
             - 1;
+        if debug {
+            println!("frame_index {}", frame_index);
+        }
         let next_frame_index = (frame_index + 1) % self.anim_timestamps.len();
         let percentile = (anim_time - self.anim_timestamps[frame_index]) as f32
             / (self.anim_timestamps[next_frame_index] - self.anim_timestamps[frame_index]) as f32;
