@@ -102,6 +102,21 @@ impl AssetManager {
         Ini::load_from_str(&mv3_ini).unwrap()
     }
 
+    pub fn load_role_anim_first<'a>(
+        &self,
+        role_name: &str,
+        action_names: &[&'a str],
+    ) -> Option<(&'a str, RoleAnimation)> {
+        for action_name in action_names {
+            let anim = self.load_role_anim(role_name, action_name);
+            if anim.is_some() {
+                return Some((action_name, anim.unwrap()));
+            }
+        }
+
+        None
+    }
+
     pub fn load_role_anim(&self, role_name: &str, action_name: &str) -> Option<RoleAnimation> {
         let path = self
             .basedata_path

@@ -9,6 +9,7 @@ pub struct PersistentState {
     position: Vec3,
     scene: Option<String>,
     sub_scene: Option<String>,
+    bgm_name: Option<String>,
 }
 
 impl PersistentState {
@@ -19,6 +20,7 @@ impl PersistentState {
             position: Vec3::new(0., 0., 0.),
             scene: None,
             sub_scene: None,
+            bgm_name: None,
         }
     }
 
@@ -81,5 +83,13 @@ impl PersistentState {
 
     pub fn sub_scene_name(&self) -> Option<String> {
         self.sub_scene.clone()
+    }
+
+    pub fn bgm_name(&self) -> Option<String> {
+        self.bgm_name.clone()
+    }
+
+    pub fn set_bgm_name(&mut self, bgm_name: String) {
+        self.bgm_name = Some(bgm_name);
     }
 }

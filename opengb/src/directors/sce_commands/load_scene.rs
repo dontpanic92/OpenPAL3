@@ -21,7 +21,7 @@ impl SceCommand for SceCommandLoadScene {
     ) -> bool {
         let last_scene = scene_manager.core_scene_mut();
         let cpk_changed = last_scene
-            .and_then(|s| Some(s.name() == &self.name))
+            .and_then(|s| Some(s.name() != &self.name))
             .or(Some(true))
             .unwrap();
 

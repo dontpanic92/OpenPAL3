@@ -96,6 +96,8 @@ impl AudioSource for OpenAlAudioSource {
     }
 
     fn play(&mut self, data: Vec<u8>, codec: Codec, looping: bool) {
+        self.stop();
+
         self.data = Some(data.clone());
         self.codec = Some(codec);
 

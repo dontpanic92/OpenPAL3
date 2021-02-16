@@ -3,11 +3,14 @@ use std::{
     rc::Rc,
 };
 
-use radiance::audio::{AudioEngine, AudioSource, AudioSourceState};
+use radiance::audio::{AudioEngine, AudioSource, AudioSourceState, Codec};
+
+use crate::asset_manager::AssetManager;
 
 use super::PersistentState;
 
 pub struct SharedState {
+    asset_mgr: Rc<AssetManager>,
     bgm_source: Box<dyn AudioSource>,
     sound_sources: Vec<Rc<RefCell<Box<dyn AudioSource>>>>,
     persistent_state: Rc<RefCell<PersistentState>>,
@@ -15,6 +18,7 @@ pub struct SharedState {
 
 impl SharedState {
     pub fn new(
+        asset_mgr: Rc<AssetManager>,
         audio_engine: &Rc<dyn AudioEngine>,
         persistent_state: Rc<RefCell<PersistentState>>,
     ) -> Self {
@@ -22,10 +26,20 @@ impl SharedState {
         let sound_sources = vec![];
 
         Self {
+            asset_mgr,
             bgm_source,
             sound_sources,
             persistent_state,
         }
+    }
+
+    pub fn play_bgm(&mut self, name: &str) {
+        let data = self.asset_mgr.load_music_data(name);
+        self.bgm_source.play(data, Codec::Mp3, true);
+
+        self.persistent_state
+            .borrow_mut()
+            .set_bgm_name(name.to_string());
     }
 
     pub fn bgm_source(&mut self) -> &mut dyn AudioSource {

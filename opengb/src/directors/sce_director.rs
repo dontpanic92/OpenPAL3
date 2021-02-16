@@ -228,6 +228,10 @@ impl SceProcContext {
                 // Let
                 command!(self, SceCommandLet, var: i16, value: i32)
             }
+            16 => {
+                //Call
+                command!(self, SceCommandCall, proc_id: u32)
+            }
             17 | 65553 => {
                 // Rnd
                 command!(self, SceCommandRnd, var: i16, value: i32)
@@ -280,6 +284,18 @@ impl SceProcContext {
             33 => {
                 // CameraRotate
                 nop_command!(self, f32, f32, f32, i32)
+            }
+            34 => {
+                // CameraMove
+                command!(
+                    self,
+                    SceCommandCameraMove,
+                    position_x: f32,
+                    position_y: f32,
+                    position_z: f32,
+                    unknown_1: f32,
+                    unknown_2: f32
+                )
             }
             36 => {
                 // CameraSet
@@ -350,28 +366,62 @@ impl SceProcContext {
                 // HY_Mode
                 nop_command!(self, i32)
             }
+            89 => {
+                // HY_FLY
+                command!(
+                    self,
+                    SceCommandHyFly,
+                    position_x: f32,
+                    position_y: f32,
+                    position_z: f32
+                )
+            }
+            104 => {
+                // APPR Entry
+                nop_command!(self)
+            }
+            108 | 65644 => {
+                // Get Appr
+                command!(self, SceCommandGetAppr, var: i16)
+            }
             115 => {
                 // Movie
                 nop_command!(self, string)
+            }
+            116 => {
+                // SetRoleTexture
+                nop_command!(self, i32, string)
             }
             118 => {
                 // Quake
                 nop_command!(self, f32, f32)
             }
+            124 => {
+                // Trigger
+                nop_command!(self, i32)
+            }
             133 => {
                 // Music
                 command!(self, SceCommandMusic, name: string, unknown: i32)
+            }
+            134 => {
+                // StopMusic
+                command!(self, SceCommandStopMusic)
             }
             201 => {
                 // RolePathOut
                 command!(
                     self,
-                    SceCommandRolePathTo,
+                    SceCommandRolePathOut,
                     role_id: i32,
                     x: i32,
                     y: i32,
                     unknown: i32
                 )
+            }
+            202 => {
+                // InTeam
+                nop_command!(self, i32, i32)
             }
             204 => {
                 // RoleCtrl
@@ -386,6 +436,10 @@ impl SceProcContext {
                     auto_play_idle: i32
                 )
             }
+            208 => {
+                // RoleMoveBack
+                command!(self, SceCommandRoleMoveBack, role_id: i32, speed: f32)
+            }
             209 => {
                 // RoleFaceRole
                 command!(self, SceCommandRoleFaceRole, role_id: i32, role_id2: i32)
@@ -393,6 +447,17 @@ impl SceProcContext {
             210 => {
                 // RoleTurnFaceA
                 command!(self, SceCommandRoleSetFace, role_id: i32, direction: i32)
+            }
+            214 => {
+                // RoleMovTo
+                command!(
+                    self,
+                    SceCommandRoleMoveTo,
+                    role_id: i32,
+                    x: i32,
+                    y: i32,
+                    unknown: i32
+                )
             }
             221 => {
                 // RoleEndAction

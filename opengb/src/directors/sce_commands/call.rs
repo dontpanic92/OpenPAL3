@@ -1,14 +1,13 @@
 use crate::directors::sce_director::{SceCommand, SceState};
-
 use imgui::Ui;
-use radiance::{audio::Codec, scene::SceneManager};
+use radiance::scene::SceneManager;
 
 #[derive(Clone)]
-pub struct SceCommandMusic {
-    name: String,
+pub struct SceCommandCall {
+    proc_id: u32,
 }
 
-impl SceCommand for SceCommandMusic {
+impl SceCommand for SceCommandCall {
     fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
@@ -16,13 +15,13 @@ impl SceCommand for SceCommandMusic {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        state.shared_state_mut().play_bgm(&self.name);
+        state.vm_context_mut().call_proc(self.proc_id);
         true
     }
 }
 
-impl SceCommandMusic {
-    pub fn new(name: String, unknown: i32) -> Self {
-        Self { name }
+impl SceCommandCall {
+    pub fn new(proc_id: u32) -> Self {
+        Self { proc_id }
     }
 }

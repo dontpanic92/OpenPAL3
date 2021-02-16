@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, cell::RefCell, error, rc::Rc};
+use std::{borrow::Borrow, cell::RefCell, rc::Rc};
 
 use imgui::{im_str, Ui};
 use log::debug;
@@ -9,8 +9,7 @@ use opengb::{
 use radiance::{
     audio::AudioEngine,
     input::InputEngine,
-    math::Vec3,
-    scene::{CoreScene, DefaultScene, Director, Scene, SceneManager},
+    scene::{CoreScene, DefaultScene, Director, SceneManager},
 };
 
 pub struct MainMenuDirector {
@@ -51,6 +50,7 @@ impl Director for MainMenuDirector {
 
             let p_state = Rc::new(RefCell::new(PersistentState::new("OpenPAL3".to_string())));
             let shared_state = Rc::new(RefCell::new(SharedState::new(
+                self.asset_mgr.clone(),
                 self.audio_engine.borrow(),
                 p_state,
             )));
@@ -70,6 +70,7 @@ impl Director for MainMenuDirector {
                     let p_state = PersistentState::load("OpenPAL3", i);
                     let scene_name = p_state.scene_name();
                     let sub_scene_name = p_state.sub_scene_name();
+                    let bgm_name = p_state.bgm_name();
                     if scene_name.is_none() || sub_scene_name.is_none() {
                         log::error!("Cannot load save {}: scene or sub_scene is empty", i);
                         return None;
@@ -82,9 +83,15 @@ impl Director for MainMenuDirector {
                     scene_manager.push_scene(scene);
 
                     let shared_state = Rc::new(RefCell::new(SharedState::new(
+                        self.asset_mgr.clone(),
                         self.audio_engine.borrow(),
                         Rc::new(RefCell::new(p_state)),
                     )));
+
+                    if let Some(bgm) = bgm_name {
+                        shared_state.borrow_mut().play_bgm(&bgm);
+                    }
+
                     let sce_director = SceDirector::new(
                         self.audio_engine.clone(),
                         self.input_engine.clone(),

@@ -7,19 +7,19 @@ use radiance::scene::Entity;
 use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Clone)]
-pub struct SceCommandRolePathTo {
+pub struct SceCommandRoleMoveTo {
     role_id: String,
     nav_x: f32,
     nav_z: f32,
     unknown: i32,
 }
 
-impl SceCommand for SceCommandRolePathTo {
+impl SceCommand for SceCommandRoleMoveTo {
     fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
         scene_manager
             .core_scene_mut_or_fail()
             .get_role_entity_mut(&self.role_id)
-            .walk();
+            .run();
     }
 
     fn update(
@@ -29,7 +29,7 @@ impl SceCommand for SceCommandRolePathTo {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        const SPEED: f32 = 80.;
+        const SPEED: f32 = 175.;
 
         let scene = scene_manager.core_scene_mut_or_fail();
         let to = scene.nav_coord_to_scene_coord(self.nav_x, self.nav_z);
@@ -59,7 +59,7 @@ impl SceCommand for SceCommandRolePathTo {
     }
 }
 
-impl SceCommandRolePathTo {
+impl SceCommandRoleMoveTo {
     pub fn new(role_id: i32, nav_x: i32, nav_z: i32, unknown: i32) -> Self {
         Self {
             role_id: role_id.to_string(),
