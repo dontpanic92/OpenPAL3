@@ -161,7 +161,7 @@ impl Director for ExplorationDirector {
             entity.run();
             entity
                 .transform_mut()
-                .look_at(&target_position)
+                .look_at(&Vec3::new(target_position.x, position.y, target_position.z))
                 .set_position(&target_position);
 
             self.shared_state

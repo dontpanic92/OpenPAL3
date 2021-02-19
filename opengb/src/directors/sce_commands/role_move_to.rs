@@ -48,7 +48,7 @@ impl SceCommand for SceCommandRoleMoveTo {
         let entity = scene.get_role_entity_mut(self.role_id);
         entity
             .transform_mut()
-            .look_at(&to)
+            .look_at(&Vec3::new(to.x, position.y, to.z))
             .set_position(&new_position);
 
         if completed {

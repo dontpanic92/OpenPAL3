@@ -2,7 +2,7 @@ use crate::directors::sce_director::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
-use radiance::scene::{Entity, SceneManager};
+use radiance::{math::Vec3, scene::{Entity, SceneManager}};
 
 #[derive(Clone)]
 pub struct SceCommandRoleFaceRole {
@@ -19,11 +19,12 @@ impl SceCommand for SceCommandRoleFaceRole {
         delta_sec: f32,
     ) -> bool {
         let scene = scene_manager.core_scene_mut_or_fail();
-        let position = scene.get_role_entity(self.role_id2).transform().position();
+        let position = scene.get_role_entity(self.role_id).transform().position();
+        let target_position = scene.get_role_entity(self.role_id2).transform().position();
         scene
             .get_role_entity_mut(self.role_id)
             .transform_mut()
-            .look_at(&position);
+            .look_at(&Vec3::new(target_position.x, position.y, target_position.z));
         return true;
     }
 }
