@@ -1,9 +1,12 @@
 use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
-use radiance::{rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents}, scene::Entity};
 use radiance::scene::{CoreEntity, EntityExtension};
 use radiance::{
     math::{Vec2, Vec3},
     rendering::RenderingComponent,
+};
+use radiance::{
+    rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents},
+    scene::Entity,
 };
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -44,7 +47,7 @@ impl RoleEntity {
         role_name: &str,
         idle_anim: &str,
     ) -> Result<RoleEntity, EntityError> {
-        let mut idle_anim = idle_anim;
+        let idle_anim = idle_anim;
         let anim = asset_mgr
             .load_role_anim_first(role_name, &[idle_anim, "c01", "z1"])
             .ok_or(EntityError::EntityAnimationNotFound)?;

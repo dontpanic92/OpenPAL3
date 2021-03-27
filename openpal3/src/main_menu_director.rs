@@ -7,7 +7,7 @@ use opengb::{
     directors::{ExplorationDirector, PersistentState, SceDirector, SharedState},
 };
 use radiance::{
-    audio::AudioEngine,
+    audio::{AudioEngine, AudioSource, Codec},
     input::InputEngine,
     scene::{CoreScene, DefaultScene, Director, SceneManager},
 };
@@ -16,6 +16,7 @@ pub struct MainMenuDirector {
     asset_mgr: Rc<AssetManager>,
     audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
+    main_theme_source: Box<dyn AudioSource>,
 }
 
 impl MainMenuDirector {
@@ -24,10 +25,15 @@ impl MainMenuDirector {
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
     ) -> Self {
+        let data = asset_mgr.load_music_data("PI01");
+        let mut main_theme_source = audio_engine.create_source();
+        main_theme_source.play(data, Codec::Mp3, true);
+
         Self {
             asset_mgr,
             audio_engine,
             input_engine,
+            main_theme_source,
         }
     }
 }
@@ -36,6 +42,7 @@ impl Director for MainMenuDirector {
     fn activate(&mut self, scene_manager: &mut dyn SceneManager) {
         debug!("MainMenuDirector activated");
         scene_manager.push_scene(Box::new(DefaultScene::create()));
+        self.main_theme_source.restart();
     }
 
     fn update(
@@ -44,6 +51,8 @@ impl Director for MainMenuDirector {
         ui: &mut Ui,
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
+        self.main_theme_source.update();
+
         if ui.button(im_str!("开始游戏"), [120., 40.]) {
             // let scene = Box::new(CoreScene::new(self.asset_mgr.load_scn("Q01", "yn09a")));
             // scene_manager.push_scene(scene);
@@ -70,7 +79,6 @@ impl Director for MainMenuDirector {
                     let p_state = PersistentState::load("OpenPAL3", i);
                     let scene_name = p_state.scene_name();
                     let sub_scene_name = p_state.sub_scene_name();
-                    let bgm_name = p_state.bgm_name();
                     if scene_name.is_none() || sub_scene_name.is_none() {
                         log::error!("Cannot load save {}: scene or sub_scene is empty", i);
                         return None;
@@ -87,10 +95,6 @@ impl Director for MainMenuDirector {
                         self.audio_engine.borrow(),
                         Rc::new(RefCell::new(p_state)),
                     )));
-
-                    if let Some(bgm) = bgm_name {
-                        shared_state.borrow_mut().play_bgm(&bgm);
-                    }
 
                     let sce_director = SceDirector::new(
                         self.audio_engine.clone(),

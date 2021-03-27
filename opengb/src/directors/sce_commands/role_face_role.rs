@@ -2,7 +2,10 @@ use crate::directors::sce_director::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
-use radiance::{math::Vec3, scene::{Entity, SceneManager}};
+use radiance::{
+    math::Vec3,
+    scene::{Entity, SceneManager},
+};
 
 #[derive(Clone)]
 pub struct SceCommandRoleFaceRole {

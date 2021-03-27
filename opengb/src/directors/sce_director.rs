@@ -1,6 +1,4 @@
-use super::{
-    exp_director::ExplorationDirector, sce_commands::*, shared_state::SharedState,
-};
+use super::{exp_director::ExplorationDirector, sce_commands::*, shared_state::SharedState};
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;

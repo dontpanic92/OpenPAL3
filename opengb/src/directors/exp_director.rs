@@ -58,6 +58,7 @@ impl Director for ExplorationDirector {
             .core_scene_mut_or_fail()
             .get_role_entity_mut(-1)
             .set_active(true);
+        self.shared_state.borrow_mut().play_default_bgm();
     }
 
     fn update(
@@ -159,9 +160,10 @@ impl Director for ExplorationDirector {
         let entity = scene.get_role_entity_mut(-1);
         if direction.norm() > 0.5 && distance_to_border > std::f32::EPSILON {
             entity.run();
+            let look_at = Vec3::new(target_position.x, position.y, target_position.z);
             entity
                 .transform_mut()
-                .look_at(&Vec3::new(target_position.x, position.y, target_position.z))
+                .look_at(&look_at)
                 .set_position(&target_position);
 
             self.shared_state

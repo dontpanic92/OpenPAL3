@@ -112,9 +112,6 @@ impl CvdModelEntity {
     }
 
     pub fn setup_transform(self: &mut CoreEntity<Self>, scale_factor: f32) {
-        self.transform_mut()
-            .scale_local(&Vec3::new(scale_factor, scale_factor, scale_factor));
-
         if let Some(p) = self
             .position_keyframes
             .as_ref()
@@ -123,6 +120,9 @@ impl CvdModelEntity {
         {
             self.transform_mut().translate_local(&p);
         }
+
+        self.transform_mut()
+            .scale_local(&Vec3::new(scale_factor, scale_factor, scale_factor));
 
         if let Some(q) = self
             .rotation_keyframes
