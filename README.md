@@ -2,22 +2,40 @@
 
 [![Build Status](https://dontpanic92.visualstudio.com/OpenPAL3/_apis/build/status/dontpanic92.OpenPAL3?branchName=master)](https://dontpanic92.visualstudio.com/OpenPAL3/_build/latest?definitionId=5&branchName=master)
 
-（刚刚开工的）《仙剑奇侠传三》开源实现。
+（刚刚开工的）《仙剑奇侠传三》开源实现。仙三开源版仍处于早期开发阶段，存在很多未实现的功能及 Bug，暂无完善的游戏体验。
 
 ## 📢 声明
 
 - 仙三开源版不附带任何《仙剑奇侠传三》的游戏数据，因此您必须拥有《仙剑奇侠传三》的正版拷贝才可以正常运行仙三开源版。
 - 仙三开源版并非软星公司或大宇集团的官方作品。
 
-## 📌 项目状态
-
-仙三开源版仍处于早期开发阶段，目前尚无可体验的游戏内容。v0.1 版本的游戏展示可以参看 [知乎文章](https://zhuanlan.zhihu.com/p/122532099) 中附带的视频。
-
-[Azure Pipelines](https://dontpanic92.visualstudio.com/OpenPAL3/_build?definitionId=5&_a=summary&repositoryFilter=5&branchFilter=9) 上可以获得预编译程序，但仍需要一定的手工操作才可以运行，并极有可能遇到 Bug，因此不推荐普通用户下载尝试。
-
 ## 🏡 社区
 
-欢迎加入企鹅群 636662894🎉
+欢迎加入 QQ 群 636662894
+
+## 📌 下载
+
+v0.2 版本请前往 Releases 页面下载，[Azure Pipelines](https://dontpanic92.visualstudio.com/OpenPAL3/_build?definitionId=5&_a=summary&repositoryFilter=5&branchFilter=9) 上可以获得最新开发版本。
+
+### 运行
+
+**首次运行前请手动修改 `openpal3.toml`，将《仙剑奇侠传三》游戏目录填入：**  
+**（请注意反斜杠需要重复两次）**
+
+```
+# PAL3.exe 所在的目录
+# The folder where PAL3.exe is
+asset_path = "E:\\CubeLibrary\\apps\\1000039"
+```
+
+之后运行 `openpal3.exe` 即可。如果运行时提示 OpenAL 出错，[请下载并安装 OpenAL](http://www.openal.org/downloads/oalinst.zip)。
+
+### 操作
+
+- 空格键：对话框下一句
+- F键：互动
+- 方向键：跑
+- 1/2/3/4：存档至第1、2、3、4号存档位
 
 ## 🛠 本地构建
 
@@ -38,10 +56,6 @@
 cd openpal3
 cargo build --release
 ```
-
-### 运行
-
-目前 OpenPAL3 不支持直接读取 Cpk 文件，请使用 [RpgViewer](http://pigspy.ys168.com/) 将 Cpk 文件解压后再运行。
 
 ## 🙋‍♂️ 贡献
 
