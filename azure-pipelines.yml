@@ -49,6 +49,8 @@ steps:
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
       cd openpal3
       & cargo build --release 2>&1 | %{ "$_" }
+      cd ../tools/dev_tools
+      & cargo build --release 2>&1 | %{ "$_" }
 
 - task: CopyFiles@2
   inputs:
@@ -60,6 +62,12 @@ steps:
   inputs:
     SourceFolder: 'openpal3/target/release'
     Contents: 'openpal3.exe'
+    TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+- task: CopyFiles@2
+  inputs:
+    SourceFolder: 'tools/dev_tools/target/release'
+    Contents: 'dev_tools.exe'
     TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
 - task: PublishBuildArtifacts@1
