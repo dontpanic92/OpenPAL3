@@ -20,4 +20,4 @@ jobs:
         dst: gitee/dontpanic
         dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}
         dst_token: ${{ secrets.GITEE_TOKEN }}  
-        white_list: "OpenPAL3"
+        static_list: "OpenPAL3"
