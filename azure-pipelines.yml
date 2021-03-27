@@ -36,8 +36,8 @@ steps:
     errorActionPreference: continue
     script: |
       Invoke-WebRequest https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe -OutFile $(Agent.TempDirectory)/rustup-init.exe
-      $(Agent.TempDirectory)/rustup-init.exe -y --default-toolchain nightly-x86_64-pc-windows-msvc
-      & rustup default nightly-x86_64-pc-windows-msvc 2>&1 | %{ "$_" }
+      $(Agent.TempDirectory)/rustup-init.exe -y --default-toolchain nightly-2021-03-24-x86_64-pc-windows-msvc
+      & rustup default nightly-2021-03-24-x86_64-pc-windows-msvc 2>&1 | %{ "$_" }
 
 - task: PowerShell@2
   displayName: 'Build openpal3'

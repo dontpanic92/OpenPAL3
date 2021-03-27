@@ -4,7 +4,7 @@ use crate::math::Transform;
 pub struct Camera {
     transform: Transform,
     projection: Mat44,
-    fov: f32,
+    fov43: f32,
     aspect: f32,
     near_clip: f32,
     far_clip: f32,
@@ -15,20 +15,20 @@ impl Camera {
         Self::new_with_params(30. * std::f32::consts::PI / 180., 4. / 3., 0.1, 100000.)
     }
 
-    pub fn new_with_params(fov: f32, aspect: f32, near_clip: f32, far_clip: f32) -> Self {
+    pub fn new_with_params(fov43: f32, aspect: f32, near_clip: f32, far_clip: f32) -> Self {
         Self {
             transform: Transform::new(),
-            projection: Self::generate_projection_matrix(fov, aspect, near_clip, far_clip),
-            fov,
+            projection: Self::generate_projection_matrix(fov43, aspect, near_clip, far_clip),
+            fov43,
             aspect,
             near_clip,
             far_clip,
         }
     }
 
-    pub fn set_fov(&mut self, fov: f32) {
-        if (fov - self.fov).abs() > std::f32::EPSILON {
-            self.fov = fov;
+    pub fn set_fov43(&mut self, fov: f32) {
+        if (fov - self.fov43).abs() > std::f32::EPSILON {
+            self.fov43 = fov;
         }
 
         self.update_projection_matrix();
@@ -56,10 +56,11 @@ impl Camera {
 
     fn update_projection_matrix(&mut self) {
         self.projection =
-            Self::generate_projection_matrix(self.fov, self.aspect, self.near_clip, self.far_clip);
+            Self::generate_projection_matrix(self.fov43, self.aspect, self.near_clip, self.far_clip);
     }
 
-    fn generate_projection_matrix(fov: f32, aspect: f32, near_clip: f32, far_clip: f32) -> Mat44 {
+    fn generate_projection_matrix(fov43: f32, aspect: f32, near_clip: f32, far_clip: f32) -> Mat44 {
+        let fov = Self::calculate_fov(fov43, aspect);
         let mut mat = Mat44::new_zero();
         let fti = 1. / (fov / 2.).tan();
 
@@ -70,5 +71,13 @@ impl Camera {
         mat[3][2] = -1.;
 
         mat
+    }
+
+    fn calculate_fov(fov43: f32, aspect: f32) -> f32 {
+        if aspect > 1. {
+            fov43 / 4. * 3. * aspect
+        } else {
+            fov43
+        }
     }
 }
