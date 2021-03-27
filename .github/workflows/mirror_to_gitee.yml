@@ -1,4 +1,4 @@
-name: Rust
+name: MirrorToGitee
 
 on:
   push:
