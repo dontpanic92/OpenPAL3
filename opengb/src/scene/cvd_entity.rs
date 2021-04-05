@@ -119,7 +119,7 @@ impl CvdModelEntity {
             .and_then(|f| Some(f.position))
         {
             self.transform_mut().translate_local(&p);
-        } 
+        }
 
         self.transform_mut()
             .scale_local(&Vec3::new(scale_factor, scale_factor, scale_factor));

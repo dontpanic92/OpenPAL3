@@ -66,6 +66,10 @@ impl PersistentState {
         self.global_vars.get(&var).and_then(|v| Some(*v))
     }
 
+    pub fn position(&mut self) -> Vec3 {
+        self.position
+    }
+
     pub fn set_position(&mut self, position: Vec3) {
         self.position = position;
     }

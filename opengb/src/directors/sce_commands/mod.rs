@@ -5,8 +5,10 @@ mod camera_move;
 mod camera_set;
 mod cmp;
 mod dlg;
+mod dlg_sel;
 mod fop;
 mod get_appr;
+mod get_dlg_sel;
 mod goto;
 mod hy_fly;
 mod idle;
@@ -40,8 +42,10 @@ pub use cmp::{
     SceCommandEq, SceCommandGeq, SceCommandGt, SceCommandLeq, SceCommandLs, SceCommandNeq,
 };
 pub use dlg::SceCommandDlg;
+pub use dlg_sel::SceCommandDlgSel;
 pub use fop::SceCommandFop;
 pub use get_appr::SceCommandGetAppr;
+pub use get_dlg_sel::SceCommandGetDlgSel;
 pub use goto::SceCommandGoto;
 pub use hy_fly::SceCommandHyFly;
 pub use idle::SceCommandIdle;

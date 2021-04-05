@@ -1,4 +1,4 @@
-use super::{exp_director::ExplorationDirector, sce_commands::*, shared_state::SharedState};
+use super::{adv_director::AdventureDirector, sce_commands::*, shared_state::SharedState};
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
@@ -43,7 +43,7 @@ impl Director for SceDirector {
                         }
                     }
                     None => {
-                        return Some(Rc::new(RefCell::new(ExplorationDirector::new(
+                        return Some(Rc::new(RefCell::new(AdventureDirector::new(
                             self.shared_self.upgrade().unwrap(),
                             self.input_engine.clone(),
                             self.shared_state.clone(),
@@ -113,7 +113,7 @@ macro_rules! command {
     (@inner $self: ident, $cmd_name: ident $(, $param_names: ident : $param_types: ident)* [$(, $evaluated: ident)*] [$(, $asc_param_names :ident)*]) => {
         {
             $(let $param_names = data_read::$param_types($self);)*
-            debug!(concat!("{} ", $(concat!("{", stringify!($asc_param_names), "} "), )*), stringify!($cmd_name), $($asc_param_names=$asc_param_names, )*);
+            debug!(concat!("{} ", $(concat!("{", stringify!($asc_param_names), ":?} "), )*), stringify!($cmd_name), $($asc_param_names=$asc_param_names, )*);
             Some(Box::new($cmd_name::new($($asc_param_names),*)))
         }
     };
@@ -140,11 +140,12 @@ macro_rules! nop_command {
     };
 }
 
-struct SceProcContext {
+pub struct SceProcContext {
     sce: Rc<SceFile>,
     proc_id: u32,
     program_counter: usize,
     local_vars: HashMap<i16, i32>,
+    dlgsel: i32,
 }
 
 impl SceProcContext {
@@ -177,6 +178,7 @@ impl SceProcContext {
             proc_id,
             program_counter: 0,
             local_vars: HashMap::new(),
+            dlgsel: 0,
         }
     }
 
@@ -188,7 +190,15 @@ impl SceProcContext {
         self.local_vars.get(&var).and_then(|v| Some(*v))
     }
 
-    pub fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
+    pub fn set_dlgsel(&mut self, value: i32) {
+        self.dlgsel = value;
+    }
+
+    pub fn get_dlgsel(&self) -> i32 {
+        self.dlgsel
+    }
+
+    fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
         if self.proc_completed() {
             return None;
         }
@@ -311,6 +321,10 @@ impl SceProcContext {
                     unknown_2: f32
                 )
             }
+            35 => {
+                //CameraWag
+                nop_command!(self, f32, f32, f32, i32)
+            }
             36 => {
                 // CameraSet
                 command!(
@@ -339,6 +353,14 @@ impl SceProcContext {
             63 => {
                 // LoadScene
                 command!(self, SceCommandLoadScene, name: string, sub_name: string)
+            }
+            65 => {
+                // DlgSel
+                command!(self, SceCommandDlgSel, list: list)
+            }
+            66 | 65602 => {
+                // GetDlgSel
+                command!(self, SceCommandGetDlgSel, var: i16)
             }
             67 => {
                 // DlgFace
@@ -389,6 +411,10 @@ impl SceProcContext {
                     position_y: f32,
                     position_z: f32
                 )
+            }
+            90 => {
+                // ObjectMove
+                nop_command!(self, i32, f32, f32, f32, f32)
             }
             104 => {
                 // APPR Entry
@@ -489,7 +515,7 @@ impl SceProcContext {
         }
     }
 
-    pub fn jump_to(&mut self, addr: u32) {
+    fn jump_to(&mut self, addr: u32) {
         self.program_counter = addr as usize;
     }
 
@@ -546,6 +572,16 @@ mod data_read {
         let len = context.read(2).read_u16::<LittleEndian>().unwrap();
         context.read_string(len as usize)
     }
+
+    pub(super) fn list(context: &mut super::SceProcContext) -> Vec<String> {
+        let len = context.read(2).read_u16::<LittleEndian>().unwrap();
+        (0..len)
+            .map(|_| {
+                let _ = context.read(1);
+                string(context)
+            })
+            .collect()
+    }
 }
 
 pub struct SceVmContext {
@@ -589,7 +625,11 @@ impl SceVmContext {
         self.proc_stack.last_mut().unwrap().get_local(var)
     }
 
-    pub fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
+    pub fn current_proc_context_mut(&mut self) -> &mut SceProcContext {
+        self.proc_stack.last_mut().unwrap()
+    }
+
+    fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
         while let Some(p) = self.proc_stack.last() {
             if p.proc_completed() {
                 debug!("Sce proc {} completed", p.proc_id);

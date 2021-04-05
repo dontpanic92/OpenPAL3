@@ -25,6 +25,11 @@ impl SceCommand for SceCommandRoleSetPos {
             .get_role_entity_mut(self.role_id)
             .transform_mut()
             .set_position(&position);
+
+        state
+            .shared_state_mut()
+            .persistent_state_mut()
+            .set_position(position);
         return true;
     }
 }

@@ -951,6 +951,7 @@ dependencies = [
  "encoding",
  "image",
  "imgui",
+ "lazy_static 1.4.0",
  "log",
  "memmap",
  "mini-fs",

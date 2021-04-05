@@ -4,7 +4,7 @@ use imgui::{im_str, Ui};
 use log::debug;
 use opengb::{
     asset_manager::AssetManager,
-    directors::{ExplorationDirector, PersistentState, SceDirector, SharedState},
+    directors::{AdventureDirector, PersistentState, SceDirector, SharedState},
 };
 use radiance::{
     audio::{AudioEngine, AudioSource, Codec},
@@ -104,7 +104,7 @@ impl Director for MainMenuDirector {
                         shared_state.clone(),
                     );
 
-                    return Some(Rc::new(RefCell::new(ExplorationDirector::new(
+                    return Some(Rc::new(RefCell::new(AdventureDirector::new(
                         sce_director,
                         self.input_engine.clone(),
                         shared_state,

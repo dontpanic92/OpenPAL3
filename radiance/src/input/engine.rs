@@ -4,7 +4,7 @@ pub trait InputEngine {
     fn get_key_state(&self, key: Key) -> KeyState;
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Key {
     Space = 0,
     A,

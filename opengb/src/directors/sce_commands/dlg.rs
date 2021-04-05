@@ -43,7 +43,10 @@ impl SceCommand for SceCommandDlg {
                 Condition::Appearing,
             )
             .position(
-                [dialog_x, window_height * SceCommandDlg::DLG_Y_POSITION_FACTOR],
+                [
+                    dialog_x,
+                    window_height * SceCommandDlg::DLG_Y_POSITION_FACTOR,
+                ],
                 Condition::Appearing,
             );
         w.build(ui, || {

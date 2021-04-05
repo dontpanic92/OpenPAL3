@@ -169,7 +169,7 @@ impl ScnScene {
         let block_size = self.nav_block_size();
         Vec3::new(
             nav_x * block_size.0 + min_coord.x,
-            min_coord.y,
+            self.get_height((nav_x, nav_z)),
             nav_z * block_size.1 + min_coord.z,
         )
     }

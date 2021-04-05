@@ -18,13 +18,18 @@ pub struct SceCommandPlaySound {
 impl SceCommand for SceCommandPlaySound {
     fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
         let data = state.asset_mgr().load_snd_data(&self.name);
-        let mut source = state.audio().create_source();
-        source.play(data, Codec::Wav, false);
+        match data {
+            Ok(d) => {
+                let mut source = state.audio().create_source();
+                source.play(d, Codec::Wav, false);
 
-        let source = Rc::new(RefCell::new(source));
-        state.shared_state_mut().add_sound_source(source.clone());
+                let source = Rc::new(RefCell::new(source));
+                state.shared_state_mut().add_sound_source(source.clone());
 
-        self.source = Some(source);
+                self.source = Some(source);
+            }
+            Err(e) => log::error!("Cannot open sound {}: {:?}", &self.name, e),
+        }
     }
 
     fn update(
@@ -35,6 +40,10 @@ impl SceCommand for SceCommandPlaySound {
         delta_sec: f32,
     ) -> bool {
         if self.times <= 1 {
+            return true;
+        }
+
+        if self.source.is_none() {
             return true;
         }
 

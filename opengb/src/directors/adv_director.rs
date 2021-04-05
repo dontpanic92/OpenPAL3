@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{borrow::Borrow, cell::RefCell, rc::Rc};
 
 use super::{shared_state::SharedState, SceneManagerExtensions};
 use log::debug;
@@ -10,14 +10,14 @@ use radiance::{
 
 use super::SceDirector;
 
-pub struct ExplorationDirector {
+pub struct AdventureDirector {
     sce_director: Rc<RefCell<SceDirector>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
     shared_state: Rc<RefCell<SharedState>>,
     camera_rotation: f32,
 }
 
-impl ExplorationDirector {
+impl AdventureDirector {
     pub fn new(
         sce_director: Rc<RefCell<SceDirector>>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
@@ -51,14 +51,19 @@ impl ExplorationDirector {
     }
 }
 
-impl Director for ExplorationDirector {
+impl Director for AdventureDirector {
     fn activate(&mut self, scene_manager: &mut dyn SceneManager) {
-        debug!("ExplorationDirector activated");
-        scene_manager
+        debug!("AdventureDirector activated");
+
+        let mut shared_state = self.shared_state.borrow_mut();
+        let role = scene_manager
             .core_scene_mut_or_fail()
-            .get_role_entity_mut(-1)
-            .set_active(true);
-        self.shared_state.borrow_mut().play_default_bgm();
+            .get_role_entity_mut(-1);
+        role.set_active(true);
+        role.transform_mut()
+            .set_position(&shared_state.persistent_state_mut().position());
+
+        shared_state.play_default_bgm();
     }
 
     fn update(
@@ -121,6 +126,7 @@ impl Director for ExplorationDirector {
 
         let scene = scene_manager.core_scene_mut_or_fail();
         let position = scene.get_role_entity(-1).transform().position();
+
         scene_manager
             .scene_mut()
             .unwrap()

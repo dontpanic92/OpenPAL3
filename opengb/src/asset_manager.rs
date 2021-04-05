@@ -20,11 +20,11 @@ use mini_fs::{LocalFs, MiniFs};
 use radiance::rendering::SimpleMaterialDef;
 use radiance::rendering::{ComponentFactory, MaterialDef};
 use radiance::scene::CoreEntity;
-use std::rc::Rc;
 use std::{
     fs,
     path::{Path, PathBuf},
 };
+use std::{io, rc::Rc};
 
 pub struct AssetManager {
     factory: Rc<dyn ComponentFactory>,
@@ -245,9 +245,9 @@ impl AssetManager {
         self.vfs.read_to_end(path).unwrap()
     }
 
-    pub fn load_snd_data(&self, snd_name: &str) -> Vec<u8> {
+    pub fn load_snd_data(&self, snd_name: &str) -> io::Result<Vec<u8>> {
         let path = self.snd_path.join(snd_name).with_extension("wav");
-        self.vfs.read_to_end(path).unwrap()
+        self.vfs.read_to_end(path)
     }
 
     fn mount_cpk_recursive(mut vfs: MiniFs, asset_path: &Path, relative_path: &Path) -> MiniFs {

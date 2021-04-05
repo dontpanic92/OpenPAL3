@@ -29,3 +29,4 @@ mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 memmap = "0.7.0"
 minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
 regex = "1.4.5"
+lazy_static = "1.2.0"
