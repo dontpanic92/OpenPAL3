@@ -33,6 +33,7 @@ impl SceCommand for SceCommandLoadScene {
         if cpk_changed {
             let sce = Rc::new(state.asset_mgr().load_sce(&self.name));
             state.vm_context_mut().set_sce(sce);
+            state.shared_state_mut().bgm_source().stop();
         }
 
         state
