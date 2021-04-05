@@ -465,7 +465,7 @@ impl SceProcContext {
             }
             204 => {
                 // RoleCtrl
-                nop_command!(self, i32)
+                command!(self, SceCommandRoleCtrl, role_id: i32)
             }
             207 => {
                 // RoleActAutoStand
