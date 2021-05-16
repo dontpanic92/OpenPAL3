@@ -98,6 +98,7 @@ impl RoleEntity {
         } else {
             self.remove_component::<RenderingComponent>();
         }
+        self.set_visible(active);
     }
 
     pub fn play_anim(
