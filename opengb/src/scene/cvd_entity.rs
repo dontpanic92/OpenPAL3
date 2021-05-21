@@ -22,6 +22,7 @@ impl CvdModelEntity {
         vfs: &MiniFs,
         path: P,
         name: String,
+        visible: bool,
     ) -> CoreEntity<Self> {
         let cvd = cvd_load_from_file(vfs, path.as_ref()).unwrap();
         let mut entity = CoreEntity::new(
@@ -33,6 +34,7 @@ impl CvdModelEntity {
                 meshes: vec![],
             },
             name,
+            visible
         );
 
         for (i, node) in cvd.models.iter().enumerate() {
@@ -41,6 +43,7 @@ impl CvdModelEntity {
                 vfs,
                 path.as_ref(),
                 node,
+                visible
             )));
         }
 
@@ -52,6 +55,7 @@ impl CvdModelEntity {
         vfs: &MiniFs,
         path: P,
         node: &CvdModelNode,
+        visible: bool,
     ) -> CoreEntity<Self> {
         let mut scale_factor = 1.;
         let mut position_keyframes = None;
@@ -93,6 +97,7 @@ impl CvdModelEntity {
                 meshes,
             },
             "cvd_obj".to_string(),
+            true
         );
 
         entity.setup_transform(scale_factor);
@@ -104,6 +109,7 @@ impl CvdModelEntity {
                     vfs,
                     path.as_ref(),
                     &child,
+                    visible
                 )));
             }
         }
