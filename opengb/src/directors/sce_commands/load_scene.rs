@@ -1,9 +1,8 @@
-use std::rc::Rc;
-
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
 use radiance::scene::{CoreScene, SceneManager};
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct SceCommandLoadScene {
@@ -29,19 +28,23 @@ impl SceCommand for SceCommandLoadScene {
         scene_manager.push_scene(Box::new(CoreScene::new(
             state.asset_mgr().load_scn(&self.name, &self.sub_name),
         )));
+        scene_manager
+            .get_resolved_role_entity_mut(state, -1)
+            .set_active(true);
 
         if cpk_changed {
             let sce = Rc::new(state.asset_mgr().load_sce(&self.name));
-            state.vm_context_mut().set_sce(sce);
-            state.shared_state_mut().bgm_source().stop();
+            state.context_mut().set_sce(sce);
+            state.global_state_mut().bgm_source().stop();
         }
 
         state
-            .vm_context_mut()
+            .context_mut()
             .try_call_proc_by_name(&format!("_{}_{}", self.name, self.sub_name));
-        let mut shared_state = state.shared_state_mut();
-        let mut p_state = shared_state.persistent_state_mut();
-        p_state.set_scene_name(self.name.clone(), self.sub_name.clone());
+        state
+            .global_state_mut()
+            .persistent_state_mut()
+            .set_scene_name(self.name.clone(), self.sub_name.clone());
 
         true
     }

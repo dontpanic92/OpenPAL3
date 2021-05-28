@@ -1,4 +1,4 @@
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
@@ -15,8 +15,8 @@ impl SceCommand for SceCommandTestGoto {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        if !state.fop_state_mut().value().unwrap() {
-            state.vm_context_mut().jump_to(self.addr);
+        if !state.global_state_mut().fop_state_mut().value().unwrap() {
+            state.context_mut().jump_to(self.addr);
         }
         true
     }

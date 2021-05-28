@@ -1,7 +1,6 @@
-use crate::directors::sce_director::{SceCommand, SceState};
-use crate::directors::SceneManagerExtensions;
+use crate::directors::sce_vm::{SceCommand, SceState};
 use imgui::Ui;
-use radiance::scene::{Entity, SceneManager};
+use radiance::scene::SceneManager;
 
 #[derive(Clone)]
 pub struct SceCommandRoleCtrl {
@@ -16,18 +15,7 @@ impl SceCommand for SceCommandRoleCtrl {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        let scene = scene_manager.core_scene_mut_or_fail();
-
-        // HACK: -1 should represent the current controlled role, not an actual role.
-        let position = scene
-            .get_role_entity(self.role_id)
-            .transform()
-            .position();
-        state
-            .shared_state_mut()
-            .persistent_state_mut()
-            .set_position(position);
-
+        state.global_state_mut().set_role_controlled(self.role_id);
         true
     }
 }

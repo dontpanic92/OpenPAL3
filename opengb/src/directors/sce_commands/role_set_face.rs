@@ -1,4 +1,4 @@
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
@@ -19,8 +19,7 @@ impl SceCommand for SceCommandRoleSetFace {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        let scene = scene_manager.core_scene_mut_or_fail();
-        let entity = scene.get_role_entity_mut(self.role_id);
+        let entity = scene_manager.get_resolved_role_entity_mut(state, self.role_id);
         let position = entity.transform().position();
         let target = Vec3::add(&position, &self.face_to);
 

@@ -1,15 +1,12 @@
-use std::{borrow::Borrow, cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use imgui::{im_str, Ui};
 use log::debug;
-use opengb::{
-    asset_manager::AssetManager,
-    directors::{AdventureDirector, PersistentState, SceDirector, SharedState},
-};
+use opengb::{asset_manager::AssetManager, directors::AdventureDirector};
 use radiance::{
     audio::{AudioEngine, AudioSource, Codec},
     input::InputEngine,
-    scene::{CoreScene, DefaultScene, Director, SceneManager},
+    scene::{DefaultScene, Director, SceneManager},
 };
 
 pub struct MainMenuDirector {
@@ -54,61 +51,25 @@ impl Director for MainMenuDirector {
         self.main_theme_source.update();
 
         if ui.button(im_str!("开始游戏"), [120., 40.]) {
-            // let scene = Box::new(CoreScene::new(self.asset_mgr.load_scn("Q01", "yn09a")));
-            // scene_manager.push_scene(scene);
-
-            let p_state = Rc::new(RefCell::new(PersistentState::new("OpenPAL3".to_string())));
-            let shared_state = Rc::new(RefCell::new(SharedState::new(
+            return Some(Rc::new(RefCell::new(AdventureDirector::new(
+                "OpenPAL3",
                 self.asset_mgr.clone(),
-                self.audio_engine.borrow(),
-                p_state,
-            )));
-            let sce_director = SceDirector::new(
                 self.audio_engine.clone(),
                 self.input_engine.clone(),
-                self.asset_mgr.load_init_sce(),
-                self.asset_mgr.clone(),
-                shared_state,
-            );
-            sce_director.borrow_mut().call_proc(51);
-
-            Some(sce_director)
+            ))));
         } else {
             for i in 1..5 {
                 if ui.button(&im_str!("存档 {}", i), [120., 40.]) {
-                    let p_state = PersistentState::load("OpenPAL3", i);
-                    let scene_name = p_state.scene_name();
-                    let sub_scene_name = p_state.sub_scene_name();
-                    if scene_name.is_none() || sub_scene_name.is_none() {
-                        log::error!("Cannot load save {}: scene or sub_scene is empty", i);
-                        return None;
-                    }
-
-                    let scene = Box::new(CoreScene::new(self.asset_mgr.load_scn(
-                        scene_name.as_ref().unwrap(),
-                        sub_scene_name.as_ref().unwrap(),
-                    )));
-                    scene_manager.push_scene(scene);
-
-                    let shared_state = Rc::new(RefCell::new(SharedState::new(
+                    let director = AdventureDirector::load(
+                        "OpenPAL3",
                         self.asset_mgr.clone(),
-                        self.audio_engine.borrow(),
-                        Rc::new(RefCell::new(p_state)),
-                    )));
-
-                    let sce_director = SceDirector::new(
                         self.audio_engine.clone(),
                         self.input_engine.clone(),
-                        self.asset_mgr.load_sce(scene_name.as_ref().unwrap()),
-                        self.asset_mgr.clone(),
-                        shared_state.clone(),
+                        scene_manager,
+                        i,
                     );
 
-                    return Some(Rc::new(RefCell::new(AdventureDirector::new(
-                        sce_director,
-                        self.input_engine.clone(),
-                        shared_state,
-                    ))));
+                    return Some(Rc::new(RefCell::new(director.unwrap())));
                 }
             }
 

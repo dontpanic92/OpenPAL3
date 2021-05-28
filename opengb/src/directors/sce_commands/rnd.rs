@@ -1,4 +1,4 @@
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 use imgui::Ui;
 use radiance::scene::SceneManager;
 use rand::{rngs::ThreadRng, Rng};
@@ -21,11 +21,11 @@ impl SceCommand for SceCommandRnd {
         let value = self.rng.gen_range(0..self.max_value);
         if self.var < 0 {
             state
-                .shared_state_mut()
+                .global_state_mut()
                 .persistent_state_mut()
                 .set_global(self.var, value)
         } else {
-            state.vm_context_mut().set_local(self.var, value)
+            state.context_mut().set_local(self.var, value)
         }
 
         true

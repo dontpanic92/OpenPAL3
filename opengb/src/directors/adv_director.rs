@@ -1,37 +1,101 @@
-use std::{borrow::Borrow, cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
-use super::{shared_state::SharedState, SceneManagerExtensions};
+use crate::asset_manager::AssetManager;
+
+use super::{global_state::GlobalState, sce_vm::SceVm, PersistentState, SceneManagerExtensions};
 use log::debug;
 use radiance::{
+    audio::AudioEngine,
     input::{InputEngine, Key},
     math::{Mat44, Vec3},
-    scene::{Director, Entity, SceneManager},
+    scene::{CoreScene, Director, Entity, SceneManager},
 };
 
-use super::SceDirector;
-
 pub struct AdventureDirector {
-    sce_director: Rc<RefCell<SceDirector>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
-    shared_state: Rc<RefCell<SharedState>>,
+    sce_vm: SceVm,
     camera_rotation: f32,
 }
 
 impl AdventureDirector {
     pub fn new(
-        sce_director: Rc<RefCell<SceDirector>>,
+        app_name: &str,
+        asset_mgr: Rc<AssetManager>,
+        audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
-        shared_state: Rc<RefCell<SharedState>>,
     ) -> Self {
+        let p_state = Rc::new(RefCell::new(PersistentState::new(app_name.to_string())));
+        let global_state = GlobalState::new(asset_mgr.clone(), &audio_engine, p_state);
+        let mut sce_vm = SceVm::new(
+            audio_engine.clone(),
+            input_engine.clone(),
+            asset_mgr.load_init_sce(),
+            asset_mgr.clone(),
+            global_state,
+        );
+        sce_vm.call_proc(51);
+
         Self {
-            sce_director,
+            sce_vm,
             input_engine,
-            shared_state,
             camera_rotation: 0.,
         }
     }
 
-    pub fn test_save(&self) {
+    pub fn load(
+        app_name: &str,
+        asset_mgr: Rc<AssetManager>,
+        audio_engine: Rc<dyn AudioEngine>,
+        input_engine: Rc<RefCell<dyn InputEngine>>,
+        scene_manager: &mut dyn SceneManager,
+        slot: i32,
+    ) -> Option<Self> {
+        let p_state = PersistentState::load(app_name, slot);
+        let scene_name = p_state.scene_name();
+        let sub_scene_name = p_state.sub_scene_name();
+        if scene_name.is_none() || sub_scene_name.is_none() {
+            log::error!("Cannot load save {}: scene or sub_scene is empty", slot);
+            return None;
+        }
+
+        let scene = Box::new(CoreScene::new(asset_mgr.load_scn(
+            scene_name.as_ref().unwrap(),
+            sub_scene_name.as_ref().unwrap(),
+        )));
+        scene_manager.push_scene(scene);
+
+        let mut global_state = GlobalState::new(
+            asset_mgr.clone(),
+            &audio_engine,
+            Rc::new(RefCell::new(p_state)),
+        );
+
+        // The role id should be saved in persistant state
+        let role = scene_manager
+            .core_scene_mut_or_fail()
+            .get_role_entity_mut(0);
+        role.set_active(true);
+        role.transform_mut()
+            .set_position(&global_state.persistent_state_mut().position());
+
+        global_state.play_default_bgm();
+
+        let sce_vm = SceVm::new(
+            audio_engine.clone(),
+            input_engine.clone(),
+            asset_mgr.load_sce(scene_name.as_ref().unwrap()),
+            asset_mgr.clone(),
+            global_state,
+        );
+
+        Some(Self {
+            sce_vm,
+            input_engine,
+            camera_rotation: 0.,
+        })
+    }
+
+    fn test_save(&self) {
         let input = self.input_engine.borrow_mut();
         let save_slot = if input.get_key_state(Key::Num1).pressed() {
             1
@@ -45,25 +109,16 @@ impl AdventureDirector {
             -1
         };
 
-        let mut shared_state = self.shared_state.borrow_mut();
-        let state = shared_state.persistent_state_mut();
-        state.save(save_slot);
+        self.sce_vm
+            .global_state()
+            .persistent_state()
+            .save(save_slot);
     }
 }
 
 impl Director for AdventureDirector {
     fn activate(&mut self, scene_manager: &mut dyn SceneManager) {
         debug!("AdventureDirector activated");
-
-        let mut shared_state = self.shared_state.borrow_mut();
-        let role = scene_manager
-            .core_scene_mut_or_fail()
-            .get_role_entity_mut(-1);
-        role.set_active(true);
-        role.transform_mut()
-            .set_position(&shared_state.persistent_state_mut().position());
-
-        shared_state.play_default_bgm();
     }
 
     fn update(
@@ -72,9 +127,16 @@ impl Director for AdventureDirector {
         ui: &mut imgui::Ui,
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
-        self.shared_state.borrow_mut().update(delta_sec);
-        self.test_save();
+        self.sce_vm.update(scene_manager, ui, delta_sec);
+        if !self.sce_vm.global_state().input_enabled() {
+            return None;
+        }
 
+        if scene_manager.scene_mut().is_none() {
+            return None;
+        }
+
+        self.test_save();
         let input = self.input_engine.borrow_mut();
         let mut direction = Vec3::new(0., 0., 0.);
 
@@ -124,8 +186,10 @@ impl Director for AdventureDirector {
             }
         }
 
-        let scene = scene_manager.core_scene_mut_or_fail();
-        let position = scene.get_role_entity(-1).transform().position();
+        let position = scene_manager
+            .get_resolved_role_entity(self.sce_vm.state(), -1)
+            .transform()
+            .position();
 
         scene_manager
             .scene_mut()
@@ -147,8 +211,7 @@ impl Director for AdventureDirector {
 
         if let Some(proc_id) = scene.test_nav_trigger(&target_position) {
             debug!("New proc triggerd by nav: {}", proc_id);
-            self.sce_director.borrow_mut().call_proc(proc_id);
-            return Some(self.sce_director.clone());
+            self.sce_vm.call_proc(proc_id);
         }
 
         if input.get_key_state(Key::F).pressed() {
@@ -158,12 +221,11 @@ impl Director for AdventureDirector {
                 .or_else(|| scene.test_role_trigger(&position))
             {
                 debug!("New proc triggerd: {}", proc_id);
-                self.sce_director.borrow_mut().call_proc(proc_id);
-                return Some(self.sce_director.clone());
+                self.sce_vm.call_proc(proc_id);
             }
         }
 
-        let entity = scene.get_role_entity_mut(-1);
+        let entity = scene_manager.get_resolved_role_entity_mut(self.sce_vm.state(), -1);
         if direction.norm() > 0.5 && distance_to_border > std::f32::EPSILON {
             entity.run();
             let look_at = Vec3::new(target_position.x, position.y, target_position.z);
@@ -172,8 +234,8 @@ impl Director for AdventureDirector {
                 .look_at(&look_at)
                 .set_position(&target_position);
 
-            self.shared_state
-                .borrow_mut()
+            self.sce_vm
+                .global_state_mut()
                 .persistent_state_mut()
                 .set_position(target_position);
         } else {

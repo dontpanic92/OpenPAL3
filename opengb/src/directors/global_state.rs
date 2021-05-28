@@ -4,20 +4,24 @@ use crate::utilities::StoreExt2;
 use radiance::audio::{AudioEngine, AudioSource, AudioSourceState, Codec};
 use regex::Regex;
 use std::{
-    cell::{RefCell, RefMut},
+    cell::{Ref, RefCell, RefMut},
     collections::HashMap,
     rc::Rc,
 };
 
-pub struct SharedState {
+pub struct GlobalState {
+    persistent_state: Rc<RefCell<PersistentState>>,
+    fop_state: FopState,
+    input_enabled: bool,
+    role_controlled: i32,
+
     asset_mgr: Rc<AssetManager>,
     bgm_source: Box<dyn AudioSource>,
     sound_sources: Vec<Rc<RefCell<Box<dyn AudioSource>>>>,
-    persistent_state: Rc<RefCell<PersistentState>>,
     default_scene_bgm: HashMap<String, String>,
 }
 
-impl SharedState {
+impl GlobalState {
     pub fn new(
         asset_mgr: Rc<AssetManager>,
         audio_engine: &Rc<dyn AudioEngine>,
@@ -33,12 +37,31 @@ impl SharedState {
         );
 
         Self {
+            persistent_state,
+            fop_state: FopState::new(),
+            input_enabled: true,
+            role_controlled: 0,
             asset_mgr,
             bgm_source,
             sound_sources,
-            persistent_state,
             default_scene_bgm,
         }
+    }
+
+    pub fn input_enabled(&self) -> bool {
+        self.input_enabled
+    }
+
+    pub fn set_input_enabled(&mut self, input_enabled: bool) {
+        self.input_enabled = input_enabled
+    }
+
+    pub fn role_controlled(&self) -> i32 {
+        self.role_controlled
+    }
+
+    pub fn set_role_controlled(&mut self, role_controlled: i32) {
+        self.role_controlled = role_controlled
     }
 
     pub fn play_bgm(&mut self, name: &str) {
@@ -77,6 +100,10 @@ impl SharedState {
         self.bgm_source.as_mut()
     }
 
+    pub fn persistent_state(&self) -> Ref<PersistentState> {
+        self.persistent_state.borrow()
+    }
+
     pub fn persistent_state_mut(&mut self) -> RefMut<PersistentState> {
         self.persistent_state.borrow_mut()
     }
@@ -90,6 +117,10 @@ impl SharedState {
             .iter()
             .position(|s| Rc::ptr_eq(s, &source))
             .map(|p| self.sound_sources.remove(p));
+    }
+
+    pub fn fop_state_mut(&mut self) -> &mut FopState {
+        &mut self.fop_state
     }
 
     pub fn update(&mut self, delta_sec: f32) {
@@ -108,6 +139,47 @@ impl SharedState {
     fn remove_stopped_sound_sources(&mut self) {
         self.sound_sources
             .drain_filter(|s| s.borrow().state() == AudioSourceState::Stopped);
+    }
+}
+
+pub enum Fop {
+    And,
+    Or,
+}
+
+pub struct FopState {
+    lhs: Option<bool>,
+    op: Option<Fop>,
+}
+
+impl FopState {
+    pub fn new() -> Self {
+        Self {
+            lhs: None,
+            op: None,
+        }
+    }
+
+    pub fn push_value(&mut self, value: bool) {
+        self.lhs = match (&self.lhs, &self.op) {
+            (Some(lhs), Some(Fop::And)) => Some(*lhs && value),
+            (Some(lhs), Some(Fop::Or)) => Some(*lhs || value),
+            (None, _) => Some(value),
+            _ => panic!("Fop State error - might be a bug in Sce"),
+        }
+    }
+
+    pub fn set_op(&mut self, op: Fop) {
+        self.op = Some(op);
+    }
+
+    pub fn reset(&mut self) {
+        self.lhs = None;
+        self.op = None;
+    }
+
+    pub fn value(&self) -> Option<bool> {
+        self.lhs
     }
 }
 

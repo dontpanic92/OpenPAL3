@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 
 use imgui::Ui;
 use radiance::{
@@ -24,7 +24,7 @@ impl SceCommand for SceCommandPlaySound {
                 source.play(d, Codec::Wav, false);
 
                 let source = Rc::new(RefCell::new(source));
-                state.shared_state_mut().add_sound_source(source.clone());
+                state.global_state_mut().add_sound_source(source.clone());
 
                 self.source = Some(source);
             }

@@ -1,4 +1,4 @@
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
@@ -19,8 +19,7 @@ impl SceCommand for SceCommandRoleActAutoStand {
         delta_sec: f32,
     ) -> bool {
         scene_manager
-            .core_scene_mut_or_fail()
-            .get_role_entity_mut(self.role_id)
+            .get_resolved_role_entity_mut(state, self.role_id)
             .set_auto_play_idle(self.auto_play_idle == 1);
         true
     }

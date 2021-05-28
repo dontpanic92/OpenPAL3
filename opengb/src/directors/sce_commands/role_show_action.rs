@@ -1,4 +1,4 @@
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
 use crate::scene::{RoleAnimationRepeatMode, RoleState};
@@ -20,9 +20,7 @@ impl SceCommand for SceCommandRoleShowAction {
             _ => RoleAnimationRepeatMode::NoRepeat,
         };
 
-        let entity = scene_manager
-            .core_scene_mut_or_fail()
-            .get_role_entity_mut(self.role_id);
+        let entity = scene_manager.get_resolved_role_entity_mut(state, self.role_id);
         entity.set_active(true);
         entity.play_anim(&self.action_name, repeat);
     }
@@ -35,8 +33,7 @@ impl SceCommand for SceCommandRoleShowAction {
         delta_sec: f32,
     ) -> bool {
         let s = scene_manager
-            .core_scene_mut_or_fail()
-            .get_role_entity(self.role_id)
+            .get_resolved_role_entity(state, self.role_id)
             .state();
 
         s == RoleState::Idle

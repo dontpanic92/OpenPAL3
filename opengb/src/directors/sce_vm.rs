@@ -1,4 +1,4 @@
-use super::{adv_director::AdventureDirector, sce_commands::*, shared_state::SharedState};
+use super::{global_state::GlobalState, sce_commands::*};
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
@@ -7,35 +7,49 @@ use radiance::scene::{Director, SceneManager};
 use radiance::{audio::AudioEngine, input::InputEngine};
 use std::{
     any::Any,
-    cell::{Ref, RefCell, RefMut},
+    cell::{Ref, RefCell},
     collections::HashMap,
-    rc::{Rc, Weak},
+    rc::Rc,
 };
 
-pub struct SceDirector {
-    shared_self: Weak<RefCell<Self>>,
-    input_engine: Rc<RefCell<dyn InputEngine>>,
+pub struct SceVm {
     state: SceState,
-    shared_state: Rc<RefCell<SharedState>>,
     active_commands: Vec<Box<dyn SceCommand>>,
 }
 
-impl Director for SceDirector {
-    fn activate(&mut self, scene_manager: &mut dyn SceneManager) {
-        debug!("SceDirector activated");
+impl SceVm {
+    pub fn new(
+        audio_engine: Rc<dyn AudioEngine>,
+        input_engine: Rc<RefCell<dyn InputEngine>>,
+        sce: SceFile,
+        asset_mgr: Rc<AssetManager>,
+        global_state: GlobalState,
+    ) -> Self {
+        let state = SceState::new(
+            input_engine.clone(),
+            audio_engine.clone(),
+            asset_mgr.clone(),
+            Rc::new(sce),
+            global_state,
+        );
+
+        Self {
+            state,
+            active_commands: vec![],
+        }
     }
 
-    fn update(
+    pub fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
         ui: &mut Ui,
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
-        self.shared_state.borrow_mut().update(delta_sec);
+        self.state.global_state_mut().update(delta_sec);
 
         if self.active_commands.len() == 0 {
             loop {
-                match self.state.vm_context.get_next_cmd() {
+                match self.state.context.get_next_cmd() {
                     Some(mut cmd) => {
                         cmd.initialize(scene_manager, &mut self.state);
                         if !cmd.update(scene_manager, ui, &mut self.state, delta_sec) {
@@ -43,15 +57,11 @@ impl Director for SceDirector {
                         }
                     }
                     None => {
-                        return Some(Rc::new(RefCell::new(AdventureDirector::new(
-                            self.shared_self.upgrade().unwrap(),
-                            self.input_engine.clone(),
-                            self.shared_state.clone(),
-                        ))));
+                        return None;
                     }
                 };
 
-                if self.state.run_mode() == 1 {
+                if self.state.run_mode() == 1 && !self.active_commands.is_empty() {
                     break;
                 }
             }
@@ -63,37 +73,21 @@ impl Director for SceDirector {
 
         None
     }
-}
-
-impl SceDirector {
-    pub fn new(
-        audio_engine: Rc<dyn AudioEngine>,
-        input_engine: Rc<RefCell<dyn InputEngine>>,
-        sce: SceFile,
-        asset_mgr: Rc<AssetManager>,
-        shared_state: Rc<RefCell<SharedState>>,
-    ) -> Rc<RefCell<Self>> {
-        let state = SceState::new(
-            input_engine.clone(),
-            audio_engine.clone(),
-            asset_mgr.clone(),
-            Rc::new(sce),
-            shared_state.clone(),
-        );
-        let director = Rc::new(RefCell::new(Self {
-            shared_self: Weak::new(),
-            input_engine,
-            state,
-            shared_state,
-            active_commands: vec![],
-        }));
-
-        director.borrow_mut().shared_self = Rc::downgrade(&director);
-        director
-    }
 
     pub fn call_proc(&mut self, proc_id: u32) {
-        self.state.vm_context.call_proc(proc_id)
+        self.state.context.call_proc(proc_id)
+    }
+
+    pub fn state(&self) -> &SceState {
+        &self.state
+    }
+
+    pub fn global_state(&self) -> &GlobalState {
+        &self.state.global_state
+    }
+
+    pub fn global_state_mut(&mut self) -> &mut GlobalState {
+        &mut self.state.global_state
     }
 }
 
@@ -295,7 +289,7 @@ impl SceProcContext {
             }
             27 => {
                 // RoleInput
-                nop_command!(self, i32)
+                command!(self, SceCommandRoleInput, enable_input: i32)
             }
             28 => {
                 // RoleActive
@@ -584,12 +578,12 @@ mod data_read {
     }
 }
 
-pub struct SceVmContext {
+pub struct SceExecutionContext {
     sce: Rc<SceFile>,
     proc_stack: Vec<SceProcContext>,
 }
 
-impl SceVmContext {
+impl SceExecutionContext {
     pub fn new(sce: Rc<SceFile>) -> Self {
         Self {
             sce,
@@ -645,9 +639,8 @@ impl SceVmContext {
 
 pub struct SceState {
     asset_mgr: Rc<AssetManager>,
-    shared_state: Rc<RefCell<SharedState>>,
-    fop_state: FopState,
-    vm_context: SceVmContext,
+    global_state: GlobalState,
+    context: SceExecutionContext,
     run_mode: i32,
     ext: HashMap<String, Box<dyn Any>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
@@ -660,15 +653,14 @@ impl SceState {
         audio_engine: Rc<dyn AudioEngine>,
         asset_mgr: Rc<AssetManager>,
         sce: Rc<SceFile>,
-        shared_state: Rc<RefCell<SharedState>>,
+        global_state: GlobalState,
     ) -> Self {
         let ext = HashMap::<String, Box<dyn Any>>::new();
 
         Self {
             asset_mgr: asset_mgr.clone(),
-            shared_state,
-            fop_state: FopState::new(),
-            vm_context: SceVmContext::new(sce),
+            global_state,
+            context: SceExecutionContext::new(sce),
             run_mode: 1,
             ext,
             input_engine,
@@ -676,16 +668,16 @@ impl SceState {
         }
     }
 
-    pub fn shared_state_mut(&mut self) -> RefMut<SharedState> {
-        self.shared_state.borrow_mut()
+    pub fn global_state(&self) -> &GlobalState {
+        &self.global_state
     }
 
-    pub fn fop_state_mut(&mut self) -> &mut FopState {
-        &mut self.fop_state
+    pub fn global_state_mut(&mut self) -> &mut GlobalState {
+        &mut self.global_state
     }
 
-    pub fn vm_context_mut(&mut self) -> &mut SceVmContext {
-        &mut self.vm_context
+    pub fn context_mut(&mut self) -> &mut SceExecutionContext {
+        &mut self.context
     }
 
     pub fn input(&self) -> Ref<dyn InputEngine> {
@@ -710,47 +702,6 @@ impl SceState {
 
     pub fn asset_mgr(&self) -> &Rc<AssetManager> {
         &self.asset_mgr
-    }
-}
-
-pub enum Fop {
-    And,
-    Or,
-}
-
-pub struct FopState {
-    lhs: Option<bool>,
-    op: Option<Fop>,
-}
-
-impl FopState {
-    pub fn new() -> Self {
-        Self {
-            lhs: None,
-            op: None,
-        }
-    }
-
-    pub fn push_value(&mut self, value: bool) {
-        self.lhs = match (&self.lhs, &self.op) {
-            (Some(lhs), Some(Fop::And)) => Some(*lhs && value),
-            (Some(lhs), Some(Fop::Or)) => Some(*lhs || value),
-            (None, _) => Some(value),
-            _ => panic!("Fop State error - might be a bug in Sce"),
-        }
-    }
-
-    pub fn set_op(&mut self, op: Fop) {
-        self.op = Some(op);
-    }
-
-    pub fn reset(&mut self) {
-        self.lhs = None;
-        self.op = None;
-    }
-
-    pub fn value(&self) -> Option<bool> {
-        self.lhs
     }
 }
 

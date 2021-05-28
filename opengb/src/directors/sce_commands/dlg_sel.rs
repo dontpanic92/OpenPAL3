@@ -1,6 +1,6 @@
-use std::{borrow::Borrow, collections::HashMap};
+use std::collections::HashMap;
 
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 use imgui::{im_str, Condition, Ui, Window};
 use radiance::{input::Key, scene::SceneManager};
 
@@ -60,7 +60,7 @@ impl SceCommand for SceCommandDlgSel {
         if let Some(sel) = dlg_sel {
             if (sel as usize) < self.list.len() {
                 state
-                    .vm_context_mut()
+                    .context_mut()
                     .current_proc_context_mut()
                     .set_dlgsel(sel);
                 return true;

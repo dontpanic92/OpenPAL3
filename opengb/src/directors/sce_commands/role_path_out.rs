@@ -1,4 +1,4 @@
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
@@ -26,8 +26,7 @@ impl SceCommand for SceCommandRolePathOut {
     ) -> bool {
         if self.cmd_path_to.update(scene_manager, ui, state, delta_sec) {
             scene_manager
-                .core_scene_mut_or_fail()
-                .get_role_entity_mut(self.role_id)
+                .get_resolved_role_entity_mut(state, self.role_id)
                 .set_active(false);
             true
         } else {

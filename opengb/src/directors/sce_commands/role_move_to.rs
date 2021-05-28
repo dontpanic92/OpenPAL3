@@ -1,4 +1,4 @@
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
@@ -16,8 +16,7 @@ pub struct SceCommandRoleMoveTo {
 impl SceCommand for SceCommandRoleMoveTo {
     fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
         scene_manager
-            .core_scene_mut_or_fail()
-            .get_role_entity_mut(self.role_id)
+            .get_resolved_role_entity_mut(state, self.role_id)
             .run();
     }
 
@@ -32,10 +31,8 @@ impl SceCommand for SceCommandRoleMoveTo {
 
         let scene = scene_manager.core_scene_mut_or_fail();
         let to = scene.nav_coord_to_scene_coord(self.nav_x, self.nav_z);
-        let position = scene
-            .get_role_entity_mut(self.role_id)
-            .transform()
-            .position();
+        let entity = scene_manager.get_resolved_role_entity_mut(state, self.role_id);
+        let position = entity.transform().position();
         let step = SPEED * delta_sec;
         let remain = Vec3::sub(&to, &position);
         let completed = remain.norm() < step;
@@ -45,14 +42,13 @@ impl SceCommand for SceCommandRoleMoveTo {
             Vec3::add(&position, &Vec3::dot(step, &Vec3::normalized(&remain)))
         };
 
-        let entity = scene.get_role_entity_mut(self.role_id);
         entity
             .transform_mut()
             .look_at(&Vec3::new(to.x, position.y, to.z))
             .set_position(&new_position);
 
         if completed {
-            scene.get_role_entity_mut(self.role_id).idle();
+            entity.idle();
         }
         completed
     }

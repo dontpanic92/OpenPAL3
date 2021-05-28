@@ -3,11 +3,11 @@ use imgui::Ui;
 use radiance::scene::SceneManager;
 
 #[derive(Clone)]
-pub struct SceCommandCall {
-    proc_id: u32,
+pub struct SceCommandRoleInput {
+    enable_input: i32,
 }
 
-impl SceCommand for SceCommandCall {
+impl SceCommand for SceCommandRoleInput {
     fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
@@ -15,13 +15,15 @@ impl SceCommand for SceCommandCall {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        state.context_mut().call_proc(self.proc_id);
+        state
+            .global_state_mut()
+            .set_input_enabled(self.enable_input != 0);
         true
     }
 }
 
-impl SceCommandCall {
-    pub fn new(proc_id: u32) -> Self {
-        Self { proc_id }
+impl SceCommandRoleInput {
+    pub fn new(enable_input: i32) -> Self {
+        Self { enable_input }
     }
 }

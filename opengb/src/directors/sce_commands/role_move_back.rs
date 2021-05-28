@@ -1,5 +1,5 @@
 use crate::directors::{
-    sce_director::{SceCommand, SceState},
+    sce_vm::{SceCommand, SceState},
     SceneManagerExtensions,
 };
 use imgui::Ui;
@@ -23,8 +23,7 @@ impl SceCommand for SceCommandRoleMoveBack {
         delta_sec: f32,
     ) -> bool {
         scene_manager
-            .core_scene_mut_or_fail()
-            .get_role_entity_mut(self.role_id)
+            .get_resolved_role_entity_mut(state, self.role_id)
             .transform_mut()
             .translate_local(&Vec3::new(0., 0., self.speed));
         true

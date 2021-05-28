@@ -1,4 +1,4 @@
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
@@ -17,11 +17,11 @@ impl SceCommand for SceCommandGetAppr {
     ) -> bool {
         if self.var < 0 {
             state
-                .shared_state_mut()
+                .global_state_mut()
                 .persistent_state_mut()
                 .set_global(self.var, 1)
         } else {
-            state.vm_context_mut().set_local(self.var, 1)
+            state.context_mut().set_local(self.var, 1)
         }
 
         true

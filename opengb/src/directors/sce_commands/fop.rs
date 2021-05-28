@@ -1,4 +1,7 @@
-use crate::directors::sce_director::{Fop, SceCommand, SceState};
+use crate::directors::{
+    global_state::Fop,
+    sce_vm::{SceCommand, SceState},
+};
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
@@ -16,9 +19,9 @@ impl SceCommand for SceCommandFop {
         delta_sec: f32,
     ) -> bool {
         match self.op {
-            0 => state.fop_state_mut().reset(),
-            1 => state.fop_state_mut().set_op(Fop::And),
-            2 => state.fop_state_mut().set_op(Fop::Or),
+            0 => state.global_state_mut().fop_state_mut().reset(),
+            1 => state.global_state_mut().fop_state_mut().set_op(Fop::And),
+            2 => state.global_state_mut().fop_state_mut().set_op(Fop::Or),
             _ => panic!("Fop {} not supported", self.op),
         }
 

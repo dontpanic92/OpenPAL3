@@ -1,7 +1,7 @@
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 
 use imgui::Ui;
-use radiance::{audio::Codec, scene::SceneManager};
+use radiance::scene::SceneManager;
 
 #[derive(Clone)]
 pub struct SceCommandMusic {
@@ -16,7 +16,7 @@ impl SceCommand for SceCommandMusic {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        state.shared_state_mut().play_bgm(&self.name);
+        state.global_state_mut().play_bgm(&self.name);
         true
     }
 }

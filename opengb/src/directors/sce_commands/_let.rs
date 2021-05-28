@@ -1,4 +1,4 @@
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
@@ -16,8 +16,8 @@ impl SceCommand for SceCommandLet {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        let mut shared_state = state.shared_state_mut();
-        shared_state
+        state
+            .global_state_mut()
             .persistent_state_mut()
             .set_global(self.var, self.value);
         true

@@ -1,4 +1,4 @@
-use crate::directors::sce_director::{SceCommand, SceState};
+use crate::directors::sce_vm::{SceCommand, SceState};
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
@@ -13,7 +13,7 @@ impl SceCommand for SceCommandStopMusic {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        state.shared_state_mut().bgm_source().stop();
+        state.global_state_mut().bgm_source().stop();
         true
     }
 }

@@ -358,7 +358,6 @@ impl ScnScene {
 
     fn map_role_id(role_id: i32) -> i32 {
         match role_id {
-            -1 => 101,
             0 => 101,
             1 => 104,
             5 => 109,
@@ -367,7 +366,7 @@ impl ScnScene {
     }
 
     fn load_roles(self: &mut CoreScene<ScnScene>) {
-        for i in &[-1, 0, 1, 5] {
+        for i in &[0, 1, 5] {
             let entity_name = format!("ROLE_{}", i);
             let model_name = Self::map_role_id(*i).to_string();
             let role_entity = self.asset_mgr.load_role(&model_name, "C01").unwrap();
