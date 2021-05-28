@@ -175,6 +175,7 @@ impl AssetManager {
             Some(CoreEntity::new(
                 PolModelEntity::new(&self.factory, &self.vfs, &path),
                 format!("OBJECT_{}", index),
+                true
             ))
         } else {
             None
@@ -200,6 +201,7 @@ impl AssetManager {
                 &self.vfs,
                 &path,
                 format!("OBJECT_{}", index),
+                true
             ))
         } else {
             None
@@ -210,12 +212,14 @@ impl AssetManager {
         &self,
         obj_name: &str,
         index: u16,
+        visible: bool,
     ) -> Option<CoreEntity<PolModelEntity>> {
         let path = self.get_object_item_path(obj_name);
         if self.vfs.open(&path).is_ok() {
             Some(CoreEntity::new(
                 PolModelEntity::new(&self.factory, &self.vfs, &path),
                 format!("OBJECT_{}", index),
+                visible,
             ))
         } else {
             None
@@ -226,6 +230,7 @@ impl AssetManager {
         &self,
         obj_name: &str,
         index: u16,
+        visible: bool,
     ) -> Option<CoreEntity<CvdModelEntity>> {
         let path = self.get_object_item_path(obj_name);
         if self.vfs.open(&path).is_ok() {
@@ -234,6 +239,7 @@ impl AssetManager {
                 &self.vfs,
                 &path,
                 format!("OBJECT_{}", index),
+                visible
             ))
         } else {
             None

@@ -292,6 +292,7 @@ impl ScnScene {
                 });
             }
 
+            let visible = obj.node_type != 17 && obj.node_type != 25;
             if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
                 if obj.name.as_bytes()[0] as char == '_' {
                     if let Some(p) = _self.asset_mgr.load_scn_pol(
@@ -315,14 +316,14 @@ impl ScnScene {
                     entity = Some(Box::new(
                         _self
                             .asset_mgr
-                            .load_object_item_pol(&obj.name, obj.index)
+                            .load_object_item_pol(&obj.name, obj.index, visible)
                             .unwrap(),
                     ));
                 } else if obj.name.to_lowercase().ends_with(".cvd") {
                     entity = Some(Box::new(
                         _self
                             .asset_mgr
-                            .load_object_item_cvd(&obj.name, obj.index)
+                            .load_object_item_cvd(&obj.name, obj.index, visible)
                             .unwrap(),
                     ));
                 } else if obj.name.as_bytes()[0] as char == '+' {
@@ -332,7 +333,7 @@ impl ScnScene {
                     entity = Some(Box::new(
                         _self
                             .asset_mgr
-                            .load_object_item_pol(&obj.name, obj.index)
+                            .load_object_item_pol(&obj.name, obj.index, visible)
                             .unwrap(),
                     ));
                 }
@@ -370,14 +371,14 @@ impl ScnScene {
             let entity_name = format!("ROLE_{}", i);
             let model_name = Self::map_role_id(*i).to_string();
             let role_entity = self.asset_mgr.load_role(&model_name, "C01").unwrap();
-            let entity = CoreEntity::new(role_entity, entity_name);
+            let entity = CoreEntity::new(role_entity, entity_name, false);
             self.add_entity(Box::new(entity));
         }
 
         let mut entities = vec![];
         for role in &self.scn_file.roles {
             if let Some(role_entity) = self.asset_mgr.load_role(&role.name, &role.action_name) {
-                let mut entity = CoreEntity::new(role_entity, format!("ROLE_{}", role.index));
+                let mut entity = CoreEntity::new(role_entity, format!("ROLE_{}", role.index), false);
                 entity
                     .transform_mut()
                     .set_position(&Vec3::new(

@@ -48,14 +48,14 @@ pub struct CoreEntity<TExtension: EntityExtension> {
 }
 
 impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
-    pub fn new(extension: TExtension, name: String) -> Self {
+    pub fn new(extension: TExtension, name: String, visible: bool) -> Self {
         Self {
             name,
             transform: Transform::new(),
             world_transform: Transform::new(),
             components: HashMap::new(),
             children: vec![],
-            visible: true,
+            visible,
             extension,
         }
     }
