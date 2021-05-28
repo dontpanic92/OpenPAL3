@@ -35,6 +35,7 @@ pub struct RoleEntity {
     active_anim_name: String,
     idle_anim_name: String,
     walking_anim_name: String,
+    running_anim_name: String,
     anim_repeat_mode: RoleAnimationRepeatMode,
     is_active: bool,
     state: RoleState,
@@ -69,10 +70,16 @@ impl RoleEntity {
         }
 
         let walking_anim = asset_mgr.load_role_anim_first(role_name, &["c02", "z3"]);
+        let running_anim = asset_mgr.load_role_anim_first(role_name, &["c03", "c02", "z3"]);
 
         let walking_anim_name = walking_anim
             .map(|(name, _)| name)
             .unwrap_or(idle_anim_name)
+            .to_string();
+        
+        let running_anim_name = running_anim
+            .map(|(name, _)| name)
+            .unwrap_or(walking_anim_name.as_str())
             .to_string();
 
         Self {
@@ -83,6 +90,7 @@ impl RoleEntity {
             active_anim_name: idle_anim_name.to_string(),
             idle_anim_name: idle_anim_name.to_string(),
             walking_anim_name,
+            running_anim_name,
             anim_repeat_mode: RoleAnimationRepeatMode::Repeat,
             is_active: false,
             state: RoleState::Idle,
@@ -112,16 +120,6 @@ impl RoleEntity {
             anim_name.to_lowercase()
         };
 
-        self.state = if anim_name == self.idle_anim_name.to_lowercase() {
-            RoleState::Idle
-        } else if anim_name == self.walking_anim_name.to_lowercase() {
-            RoleState::Walking
-        } else if anim_name == "c03" {
-            RoleState::Running
-        } else {
-            RoleState::PlayingAnimation
-        };
-
         if self.animations.get(&anim_name).is_none() {
             let anim = self
                 .asset_mgr
@@ -141,7 +139,9 @@ impl RoleEntity {
 
     pub fn run(self: &mut CoreEntity<Self>) {
         if self.state != RoleState::Running {
-            self.play_anim("c03", RoleAnimationRepeatMode::Repeat);
+            let name = self.running_anim_name.clone();
+            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
+            self.state = RoleState::Running;
         }
     }
 
@@ -149,6 +149,7 @@ impl RoleEntity {
         if self.state != RoleState::Idle {
             let name = self.idle_anim_name.clone();
             self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
+            self.state = RoleState::Idle;
         }
     }
 
@@ -156,6 +157,7 @@ impl RoleEntity {
         if self.state != RoleState::Walking {
             let name = self.walking_anim_name.clone();
             self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
+            self.state = RoleState::Walking;
         }
     }
 
@@ -179,8 +181,7 @@ impl RoleEntity {
 impl EntityExtension for RoleEntity {
     fn on_loading(self: &mut CoreEntity<Self>) {
         if !self.idle_anim_name.trim().is_empty() && self.is_active {
-            let name = self.idle_anim_name.clone();
-            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
+            self.idle();
         }
     }
 
@@ -201,7 +202,7 @@ impl EntityExtension for RoleEntity {
                 self.state = RoleState::Idle;
 
                 if self.state == RoleState::Idle && self.auto_play_idle {
-                    self.play_anim("", RoleAnimationRepeatMode::Repeat);
+                    self.idle();
                 }
             }
         }

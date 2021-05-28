@@ -16,7 +16,12 @@ impl SceCommand for SceCommandMusic {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        state.global_state_mut().play_bgm(&self.name);
+        if self.name.to_uppercase() == "NONE" {
+            state.global_state_mut().bgm_source().stop();
+        } else {
+            state.global_state_mut().play_bgm(&self.name);
+        }
+
         true
     }
 }
