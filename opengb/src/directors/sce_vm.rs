@@ -395,6 +395,10 @@ impl SceProcContext {
                 // Caption
                 nop_command!(self, string, i32)
             }
+            87 => {
+                // OpenDoor
+                nop_command!(self, i32)
+            }
             88 => {
                 // HY_Mode
                 nop_command!(self, i32)
@@ -445,6 +449,22 @@ impl SceProcContext {
                 // StopMusic
                 command!(self, SceCommandStopMusic)
             }
+            142 => {
+                // CEft_Pos
+                nop_command!(self, f32, f32, f32)
+            }
+            143 => {
+                // CEft
+                nop_command!(self, i32)
+            }
+            148 => {
+                // CEft_Load
+                nop_command!(self, i32)
+            }
+            150 => {
+                // LoadAct
+                nop_command!(self, i32, string)
+            }
             201 => {
                 // RolePathOut
                 command!(
@@ -484,6 +504,14 @@ impl SceProcContext {
             210 => {
                 // RoleTurnFaceA
                 command!(self, SceCommandRoleSetFace, role_id: i32, direction: i32)
+            }
+            211 => {
+                // TeamOpenA
+                nop_command!(self)
+            }
+            212 => {
+                // TeamCloseA
+                nop_command!(self)
             }
             214 => {
                 // RoleMovTo
