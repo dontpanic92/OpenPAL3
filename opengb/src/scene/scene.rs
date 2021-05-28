@@ -423,8 +423,8 @@ impl Nav {
 }
 
 pub struct SceNavTrigger {
-    nav_coord_min: (u32, u32),
-    nav_coord_max: (u32, u32),
+    nav_coord_min: (i32, i32),
+    nav_coord_max: (i32, i32),
     sce_proc_id: u32,
 }
 

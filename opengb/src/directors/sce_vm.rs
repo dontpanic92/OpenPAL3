@@ -380,6 +380,9 @@ impl SceProcContext {
                 // RoleEmote
                 nop_command!(self, i32, i32)
             }
+            78 => {
+                command!(self, SceCommandHaveItem, item_id: i32)
+            }
             79 => {
                 // PlaySound
                 command!(self, SceCommandPlaySound, name: string, repeat: i32)
