@@ -22,10 +22,10 @@ impl SceCommand for SceCommandRoleMoveBack {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        scene_manager
-            .get_resolved_role_entity_mut(state, self.role_id)
-            .transform_mut()
-            .translate_local(&Vec3::new(0., 0., self.speed));
+        scene_manager.resolve_role_mut_do(state, self.role_id, |r| {
+            r.transform_mut()
+                .translate_local(&Vec3::new(0., 0., self.speed));
+        });
         true
     }
 }

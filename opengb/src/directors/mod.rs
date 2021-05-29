@@ -22,20 +22,20 @@ pub trait SceneManagerExtensions: SceneManager {
         self.core_scene_mut().unwrap()
     }
 
-    fn get_resolved_role_entity(
+    fn get_resolved_role(
         &mut self,
         state: &SceState,
         role_id: i32,
-    ) -> &CoreEntity<RoleEntity> {
+    ) -> Option<&CoreEntity<RoleEntity>> {
         self.core_scene_mut_or_fail()
             .get_role_entity(resolve_role_id(state, role_id))
     }
 
-    fn get_resolved_role_entity_mut(
+    fn get_resolved_role_mut(
         &mut self,
         state: &SceState,
         role_id: i32,
-    ) -> &mut CoreEntity<RoleEntity> {
+    ) -> Option<&mut CoreEntity<RoleEntity>> {
         let resolved_role_id = if role_id == -1 {
             state.global_state().role_controlled()
         } else {
@@ -43,6 +43,36 @@ pub trait SceneManagerExtensions: SceneManager {
         };
         self.core_scene_mut_or_fail()
             .get_role_entity_mut(resolve_role_id(state, role_id))
+    }
+
+    fn resolve_role_do<T, F: Fn(&CoreEntity<RoleEntity>) -> T>(
+        &mut self,
+        state: &SceState,
+        role_id: i32,
+        action: F,
+    ) -> Option<T> {
+        let role = self.get_resolved_role(state, role_id);
+        if let Some(r) = role {
+            Some(action(r))
+        } else {
+            log::error!("Cannot find role {}", role_id);
+            None
+        }
+    }
+
+    fn resolve_role_mut_do<T, F: Fn(&mut CoreEntity<RoleEntity>) -> T>(
+        &mut self,
+        state: &SceState,
+        role_id: i32,
+        action: F,
+    ) -> Option<T> {
+        let role = self.get_resolved_role_mut(state, role_id);
+        if let Some(r) = role {
+            Some(action(r))
+        } else {
+            log::error!("Cannot find role {}", role_id);
+            None
+        }
     }
 }
 

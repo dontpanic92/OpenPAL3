@@ -194,34 +194,40 @@ impl ScnScene {
     pub fn get_role_entity<'a>(
         self: &'a mut CoreScene<Self>,
         id: i32,
-    ) -> &'a CoreEntity<RoleEntity> {
+    ) -> Option<&'a CoreEntity<RoleEntity>> {
         let pos = self
             .entities()
             .iter()
-            .position(|e| e.name() == format!("ROLE_{}", id))
-            .unwrap();
-        self.entities()
-            .get(pos)
-            .unwrap()
-            .downcast_ref::<CoreEntity<RoleEntity>>()
-            .unwrap()
+            .position(|e| e.name() == format!("ROLE_{}", id));
+
+        if let Some(pos) = pos {
+            self.entities()
+                .get(pos)
+                .unwrap()
+                .downcast_ref::<CoreEntity<RoleEntity>>()
+        } else {
+            None
+        }
     }
 
     pub fn get_role_entity_mut<'a>(
         self: &'a mut CoreScene<Self>,
         id: i32,
-    ) -> &'a mut CoreEntity<RoleEntity> {
+    ) -> Option<&'a mut CoreEntity<RoleEntity>> {
         let pos = self
             .root_entities_mut()
             .iter()
-            .position(|e| e.name() == format!("ROLE_{}", id))
-            .unwrap();
-        self.root_entities_mut()
-            .get_mut(pos)
-            .unwrap()
-            .as_mut()
-            .downcast_mut::<CoreEntity<RoleEntity>>()
-            .unwrap()
+            .position(|e| e.name() == format!("ROLE_{}", id));
+
+        if let Some(pos) = pos {
+            self.root_entities_mut()
+                .get_mut(pos)
+                .unwrap()
+                .as_mut()
+                .downcast_mut::<CoreEntity<RoleEntity>>()
+        } else {
+            None
+        }
     }
 
     fn test_sphere_aabb(s: &Vec3, r: f32, aabb1: &Vec3, aabb2: &Vec3) -> bool {
@@ -378,7 +384,8 @@ impl ScnScene {
         let mut entities = vec![];
         for role in &self.scn_file.roles {
             if let Some(role_entity) = self.asset_mgr.load_role(&role.name, &role.action_name) {
-                let mut entity = CoreEntity::new(role_entity, format!("ROLE_{}", role.index), false);
+                let mut entity =
+                    CoreEntity::new(role_entity, format!("ROLE_{}", role.index), false);
                 entity
                     .transform_mut()
                     .set_position(&Vec3::new(

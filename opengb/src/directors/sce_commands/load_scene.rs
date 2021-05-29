@@ -29,7 +29,8 @@ impl SceCommand for SceCommandLoadScene {
             state.asset_mgr().load_scn(&self.name, &self.sub_name),
         )));
         scene_manager
-            .get_resolved_role_entity_mut(state, -1)
+            .get_resolved_role_mut(state, -1)
+            .unwrap()
             .set_active(true);
 
         state

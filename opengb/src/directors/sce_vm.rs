@@ -287,6 +287,14 @@ impl SceProcContext {
                 // RoleTurnFace
                 command!(self, SceCommandRoleTurnFace, role_id: i32, degree: f32)
             }
+            25 => {
+                // TeamOpen
+                nop_command!(self)
+            }
+            26 => {
+                // TeamClose
+                nop_command!(self)
+            }
             27 => {
                 // RoleInput
                 command!(self, SceCommandRoleInput, enable_input: i32)
@@ -294,6 +302,14 @@ impl SceProcContext {
             28 => {
                 // RoleActive
                 command!(self, SceCommandRoleActive, role: i32, active: i32)
+            }
+            30 => {
+                // CameraFocusRole
+                nop_command!(self, i32)
+            }
+            31 => {
+                // CameraFocusPoint
+                nop_command!(self, f32, f32, f32)
             }
             32 => {
                 // CameraPush
@@ -336,9 +352,25 @@ impl SceProcContext {
                 // CameraDefault
                 command!(self, SceCommandCameraDefault, unknown: i32)
             }
+            43 => {
+                // FavorAdd
+                nop_command!(self, i32, i32)
+            }
             46 => {
                 // AddItem
                 nop_command!(self, i32, i32)
+            }
+            47 => {
+                // RemoveItem
+                nop_command!(self, i32)
+            }
+            48 => {
+                // AddMoney
+                nop_command!(self, i32)
+            }
+            49 => {
+                // GetMoney
+                nop_command!(self, i32)
             }
             62 => {
                 // Dlg
@@ -456,6 +488,10 @@ impl SceProcContext {
             143 => {
                 // CEft
                 nop_command!(self, i32)
+            }
+            145 => {
+                // AverageLv
+                nop_command!(self, i32, i32)
             }
             148 => {
                 // CEft_Load

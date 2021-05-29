@@ -21,19 +21,29 @@ impl SceCommand for SceCommandRoleFaceRole {
         delta_sec: f32,
     ) -> bool {
         let position = scene_manager
-            .get_resolved_role_entity(state, self.role_id)
-            .transform()
-            .position();
+            .get_resolved_role(state, self.role_id)
+            .and_then(|r| Some(r.transform().position()));
         let target_position = scene_manager
-            .get_resolved_role_entity(state, self.role_id2)
-            .transform()
-            .position();
+            .get_resolved_role(state, self.role_id2)
+            .and_then(|r| Some(r.transform().position()));
+
+        if position.is_none() {
+            log::error!("Cannot find role {}", self.role_id);
+        }
+        if target_position.is_none() {
+            log::error!("Cannot find role {}", self.role_id2);
+        }
 
         scene_manager
-            .get_resolved_role_entity_mut(state, self.role_id)
+            .get_resolved_role_mut(state, self.role_id)
+            .unwrap()
             .transform_mut()
-            .look_at(&Vec3::new(target_position.x, position.y, target_position.z));
-        return true;
+            .look_at(&Vec3::new(
+                target_position.unwrap().x,
+                position.unwrap().y,
+                target_position.unwrap().z,
+            ));
+        true
     }
 }
 

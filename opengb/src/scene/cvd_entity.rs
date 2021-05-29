@@ -34,7 +34,7 @@ impl CvdModelEntity {
                 meshes: vec![],
             },
             name,
-            visible
+            visible,
         );
 
         for (i, node) in cvd.models.iter().enumerate() {
@@ -43,7 +43,7 @@ impl CvdModelEntity {
                 vfs,
                 path.as_ref(),
                 node,
-                visible
+                visible,
             )));
         }
 
@@ -97,7 +97,7 @@ impl CvdModelEntity {
                 meshes,
             },
             "cvd_obj".to_string(),
-            true
+            true,
         );
 
         entity.setup_transform(scale_factor);
@@ -109,7 +109,7 @@ impl CvdModelEntity {
                     vfs,
                     path.as_ref(),
                     &child,
-                    visible
+                    visible,
                 )));
             }
         }

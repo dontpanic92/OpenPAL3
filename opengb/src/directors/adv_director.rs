@@ -73,7 +73,8 @@ impl AdventureDirector {
         // The role id should be saved in persistant state
         let role = scene_manager
             .core_scene_mut_or_fail()
-            .get_role_entity_mut(0);
+            .get_role_entity_mut(0)
+            .unwrap();
         role.set_active(true);
         role.transform_mut()
             .set_position(&global_state.persistent_state_mut().position());
@@ -187,7 +188,8 @@ impl Director for AdventureDirector {
         }
 
         let position = scene_manager
-            .get_resolved_role_entity(self.sce_vm.state(), -1)
+            .get_resolved_role(self.sce_vm.state(), -1)
+            .unwrap()
             .transform()
             .position();
 
@@ -225,7 +227,9 @@ impl Director for AdventureDirector {
             }
         }
 
-        let entity = scene_manager.get_resolved_role_entity_mut(self.sce_vm.state(), -1);
+        let entity = scene_manager
+            .get_resolved_role_mut(self.sce_vm.state(), -1)
+            .unwrap();
         if direction.norm() > 0.5 && distance_to_border > std::f32::EPSILON {
             entity.run();
             let look_at = Vec3::new(target_position.x, position.y, target_position.z);

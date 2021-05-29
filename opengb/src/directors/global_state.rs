@@ -164,8 +164,7 @@ impl FopState {
         self.lhs = match (&self.lhs, &self.op) {
             (Some(lhs), Some(Fop::And)) => Some(*lhs && value),
             (Some(lhs), Some(Fop::Or)) => Some(*lhs || value),
-            (None, _) => Some(value),
-            _ => panic!("Fop State error - might be a bug in Sce"),
+            (_, _) => Some(value),
         }
     }
 

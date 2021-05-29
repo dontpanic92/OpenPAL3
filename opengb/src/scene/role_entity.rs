@@ -76,7 +76,7 @@ impl RoleEntity {
             .map(|(name, _)| name)
             .unwrap_or(idle_anim_name)
             .to_string();
-        
+
         let running_anim_name = running_anim
             .map(|(name, _)| name)
             .unwrap_or(walking_anim_name.as_str())

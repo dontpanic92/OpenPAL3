@@ -37,7 +37,15 @@ impl LightMapMaterialDef {
                     }
                 };
 
-                TextureDef::ImageTextureDef(Some(image::load_from_memory(b).unwrap().to_rgba8()))
+                TextureDef::ImageTextureDef(
+                    image::load_from_memory(b)
+                        .or_else(|err| {
+                            log::error!("Cannot load texture: {}", &err);
+                            Err(err)
+                        })
+                        .ok()
+                        .and_then(|img| Some(img.to_rgba8())),
+                )
             })
             .collect();
 

@@ -23,8 +23,6 @@ impl SceCommand for SceCommandHaveItem {
 
 impl SceCommandHaveItem {
     pub fn new(item_id: i32) -> Self {
-        Self {
-            item_id,
-        }
+        Self { item_id }
     }
 }

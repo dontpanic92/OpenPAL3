@@ -21,16 +21,15 @@ impl SceCommand for SceCommandRoleSetPos {
     ) -> bool {
         let scene = scene_manager.core_scene_mut_or_fail();
         let position = scene.nav_coord_to_scene_coord(self.nav_x, self.nav_z);
-        scene_manager
-            .get_resolved_role_entity_mut(state, self.role_id)
-            .transform_mut()
-            .set_position(&position);
+        scene_manager.resolve_role_mut_do(state, self.role_id, |r| {
+            r.transform_mut().set_position(&position);
+        });
 
         state
             .global_state_mut()
             .persistent_state_mut()
             .set_position(position);
-        return true;
+        true
     }
 }
 

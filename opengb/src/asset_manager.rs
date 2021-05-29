@@ -175,7 +175,7 @@ impl AssetManager {
             Some(CoreEntity::new(
                 PolModelEntity::new(&self.factory, &self.vfs, &path),
                 format!("OBJECT_{}", index),
-                true
+                true,
             ))
         } else {
             None
@@ -201,7 +201,7 @@ impl AssetManager {
                 &self.vfs,
                 &path,
                 format!("OBJECT_{}", index),
-                true
+                true,
             ))
         } else {
             None
@@ -239,7 +239,7 @@ impl AssetManager {
                 &self.vfs,
                 &path,
                 format!("OBJECT_{}", index),
-                visible
+                visible,
             ))
         } else {
             None
