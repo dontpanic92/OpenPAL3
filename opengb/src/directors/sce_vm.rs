@@ -2,7 +2,7 @@ use super::{global_state::GlobalState, sce_commands::*};
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
-use log::{debug, error};
+use log::{debug, error, warn};
 use radiance::scene::{Director, SceneManager};
 use radiance::{audio::AudioEngine, input::InputEngine};
 use std::{
@@ -114,21 +114,22 @@ macro_rules! command {
 }
 
 macro_rules! nop_command {
-    ($self: ident $(, $param_types: ident)* $(,)*) => {
-        nop_command! {@reverse_arg $self $(, $param_types)* []}
+    ($self: ident, $cmd_name: ident $(, $param_types: ident)* $(,)*) => {
+        nop_command! {@reverse_arg $self, $cmd_name $(, $param_types)* []}
     };
 
-    (@reverse_arg $self: ident, $param_type: ident $(, $param_types: ident)* [$(, $reversed_types: ident)*]) => {
-        nop_command! {@reverse_arg $self $(, $param_types)* [, $param_type $(, $reversed_types)*]}
+    (@reverse_arg $self: ident, $cmd_name: ident, $param_type: ident $(, $param_types: ident)* [$(, $reversed_types: ident)*]) => {
+        nop_command! {@reverse_arg $self, $cmd_name $(, $param_types)* [, $param_type $(, $reversed_types)*]}
     };
 
-    (@reverse_arg $self: ident [$(, $reversed_types: ident)*]) => {
-        nop_command! {@inner $self $(, $reversed_types)*}
+    (@reverse_arg $self: ident, $cmd_name: ident [$(, $reversed_types: ident)*]) => {
+        nop_command! {@inner $self, $cmd_name $(, $reversed_types)*}
     };
 
-    (@inner $self: ident $(, $param_types: ident)*) => {
+    (@inner $self: ident, $cmd_name: ident $(, $param_types: ident)*) => {
         {
             $(let _ = data_read::$param_types($self); )*
+            warn!("Unimplemented command: {}", stringify!($cmd_name));
             Some(Box::new(SceCommandNop::new()))
         }
     };
@@ -289,11 +290,11 @@ impl SceProcContext {
             }
             25 => {
                 // TeamOpen
-                nop_command!(self)
+                nop_command!(self, TeamOpen)
             }
             26 => {
                 // TeamClose
-                nop_command!(self)
+                nop_command!(self, TeamClose)
             }
             27 => {
                 // RoleInput
@@ -305,19 +306,19 @@ impl SceProcContext {
             }
             30 => {
                 // CameraFocusRole
-                nop_command!(self, i32)
+                nop_command!(self, CameraFocusRole, i32)
             }
             31 => {
                 // CameraFocusPoint
-                nop_command!(self, f32, f32, f32)
+                nop_command!(self, CameraFocusPoint, f32, f32, f32)
             }
             32 => {
                 // CameraPush
-                nop_command!(self, f32, f32, i32)
+                nop_command!(self, CameraPush, f32, f32, i32)
             }
             33 => {
                 // CameraRotate
-                nop_command!(self, f32, f32, f32, i32)
+                nop_command!(self, CameraRotate, f32, f32, f32, i32)
             }
             34 => {
                 // CameraMove
@@ -333,7 +334,7 @@ impl SceProcContext {
             }
             35 => {
                 //CameraWag
-                nop_command!(self, f32, f32, f32, i32)
+                nop_command!(self, CameraWag, f32, f32, f32, i32)
             }
             36 => {
                 // CameraSet
@@ -354,23 +355,23 @@ impl SceProcContext {
             }
             43 => {
                 // FavorAdd
-                nop_command!(self, i32, i32)
+                nop_command!(self, FavorAdd, i32, i32)
             }
             46 => {
                 // AddItem
-                nop_command!(self, i32, i32)
+                nop_command!(self, AddItem, i32, i32)
             }
             47 => {
                 // RemoveItem
-                nop_command!(self, i32)
+                nop_command!(self, RemoveItem, i32)
             }
             48 => {
                 // AddMoney
-                nop_command!(self, i32)
+                nop_command!(self, AddMoney, i32)
             }
             49 => {
                 // GetMoney
-                nop_command!(self, i32)
+                nop_command!(self, GetMoney, i32)
             }
             62 => {
                 // Dlg
@@ -390,27 +391,27 @@ impl SceProcContext {
             }
             67 => {
                 // DlgFace
-                nop_command!(self, i32, string, i32)
+                nop_command!(self, DlgFace, i32, string, i32)
             }
             68 => {
                 // Note
-                nop_command!(self, string)
+                nop_command!(self, Note, string)
             }
             69 => {
                 // FadeOut
-                nop_command!(self)
+                nop_command!(self, FadeOut)
             }
             70 => {
                 // FadeIn
-                nop_command!(self)
+                nop_command!(self, FadeIn)
             }
             71 => {
                 // RoleStop
-                nop_command!(self, i32)
+                nop_command!(self, RoleStop, i32)
             }
             72 => {
                 // RoleEmote
-                nop_command!(self, i32, i32)
+                nop_command!(self, RoleEmote, i32, i32)
             }
             78 => {
                 command!(self, SceCommandHaveItem, item_id: i32)
@@ -425,15 +426,15 @@ impl SceProcContext {
             }
             86 => {
                 // Caption
-                nop_command!(self, string, i32)
+                nop_command!(self, Caption, string, i32)
             }
             87 => {
                 // OpenDoor
-                nop_command!(self, i32)
+                nop_command!(self, OpenDoor, i32)
             }
             88 => {
                 // HY_Mode
-                nop_command!(self, i32)
+                nop_command!(self, HY_Mode, i32)
             }
             89 => {
                 // HY_FLY
@@ -447,11 +448,11 @@ impl SceProcContext {
             }
             90 => {
                 // ObjectMove
-                nop_command!(self, i32, f32, f32, f32, f32)
+                nop_command!(self, ObjectMove, i32, f32, f32, f32, f32)
             }
             104 => {
                 // APPR Entry
-                nop_command!(self)
+                nop_command!(self, APPREntry)
             }
             108 | 65644 => {
                 // Get Appr
@@ -459,19 +460,19 @@ impl SceProcContext {
             }
             115 => {
                 // Movie
-                nop_command!(self, string)
+                nop_command!(self, Movie, string)
             }
             116 => {
                 // SetRoleTexture
-                nop_command!(self, i32, string)
+                nop_command!(self, SetRoleTexture, i32, string)
             }
             118 => {
                 // Quake
-                nop_command!(self, f32, f32)
+                nop_command!(self, Quake, f32, f32)
             }
             124 => {
                 // Trigger
-                nop_command!(self, i32)
+                nop_command!(self, Trigger, i32)
             }
             133 => {
                 // Music
@@ -483,23 +484,23 @@ impl SceProcContext {
             }
             142 => {
                 // CEft_Pos
-                nop_command!(self, f32, f32, f32)
+                nop_command!(self, CEft_Pos, f32, f32, f32)
             }
             143 => {
                 // CEft
-                nop_command!(self, i32)
+                nop_command!(self, CEft, i32)
             }
             145 => {
                 // AverageLv
-                nop_command!(self, i32, i32)
+                nop_command!(self, AverageLv, i32, i32)
             }
             148 => {
                 // CEft_Load
-                nop_command!(self, i32)
+                nop_command!(self, CEft_Load, i32)
             }
             150 => {
                 // LoadAct
-                nop_command!(self, i32, string)
+                nop_command!(self, LoadAct, i32, string)
             }
             201 => {
                 // RolePathOut
@@ -514,7 +515,7 @@ impl SceProcContext {
             }
             202 => {
                 // InTeam
-                nop_command!(self, i32, i32)
+                nop_command!(self, InTeam, i32, i32)
             }
             204 => {
                 // RoleCtrl
@@ -543,11 +544,11 @@ impl SceProcContext {
             }
             211 => {
                 // TeamOpenA
-                nop_command!(self)
+                nop_command!(self, TeamOpenA)
             }
             212 => {
                 // TeamCloseA
-                nop_command!(self)
+                nop_command!(self, TeamCloseA)
             }
             214 => {
                 // RoleMovTo
@@ -562,11 +563,11 @@ impl SceProcContext {
             }
             221 => {
                 // RoleEndAction
-                nop_command!(self, i32)
+                nop_command!(self, RoleEndAction, i32)
             }
             250 => {
                 // CameraFree
-                nop_command!(self, i32)
+                nop_command!(self, CameraFree, i32)
             }
             default => {
                 error!("Unsupported command: {}", default);
