@@ -1,6 +1,7 @@
 #![allow(unused_variables)]
 
 mod main_menu_director;
+mod sce_proc_hooks;
 
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::utils::FpsCounter;

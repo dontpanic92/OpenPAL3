@@ -33,6 +33,7 @@ mod role_set_pos;
 mod role_show_action;
 mod role_turn_face;
 mod script_run_mode;
+mod show_chat_rest;
 mod stop_music;
 mod testgoto;
 
@@ -73,6 +74,7 @@ pub use role_set_pos::SceCommandRoleSetPos;
 pub use role_show_action::SceCommandRoleShowAction;
 pub use role_turn_face::SceCommandRoleTurnFace;
 pub use script_run_mode::SceCommandScriptRunMode;
+pub use show_chat_rest::SceCommandShowChatRest;
 pub use stop_music::SceCommandStopMusic;
 pub use testgoto::SceCommandTestGoto;
 

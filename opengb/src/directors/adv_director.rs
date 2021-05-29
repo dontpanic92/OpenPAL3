@@ -2,7 +2,11 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::asset_manager::AssetManager;
 
-use super::{global_state::GlobalState, sce_vm::SceVm, PersistentState, SceneManagerExtensions};
+use super::{
+    global_state::GlobalState,
+    sce_vm::{SceExecutionOptions, SceVm},
+    PersistentState, SceneManagerExtensions,
+};
 use log::debug;
 use radiance::{
     audio::AudioEngine,
@@ -23,6 +27,7 @@ impl AdventureDirector {
         asset_mgr: Rc<AssetManager>,
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
+        sce_vm_options: Option<SceExecutionOptions>,
     ) -> Self {
         let p_state = Rc::new(RefCell::new(PersistentState::new(app_name.to_string())));
         let global_state = GlobalState::new(asset_mgr.clone(), &audio_engine, p_state);
@@ -30,8 +35,10 @@ impl AdventureDirector {
             audio_engine.clone(),
             input_engine.clone(),
             asset_mgr.load_init_sce(),
+            "init".to_string(),
             asset_mgr.clone(),
             global_state,
+            sce_vm_options,
         );
         sce_vm.call_proc(51);
 
@@ -48,6 +55,7 @@ impl AdventureDirector {
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
         scene_manager: &mut dyn SceneManager,
+        sce_vm_options: Option<SceExecutionOptions>,
         slot: i32,
     ) -> Option<Self> {
         let p_state = PersistentState::load(app_name, slot);
@@ -85,8 +93,10 @@ impl AdventureDirector {
             audio_engine.clone(),
             input_engine.clone(),
             asset_mgr.load_sce(scene_name.as_ref().unwrap()),
+            scene_name.unwrap(),
             asset_mgr.clone(),
             global_state,
+            sce_vm_options,
         );
 
         Some(Self {

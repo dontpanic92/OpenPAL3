@@ -12,6 +12,15 @@ use std::{
     rc::Rc,
 };
 
+pub struct SceExecutionOptions {
+    pub proc_hooks: Vec<Box<dyn SceProcHooks>>,
+}
+
+pub trait SceProcHooks {
+    fn proc_begin(&self, sce_name: &str, proc_id: u32, global_state: &mut GlobalState);
+    fn proc_end(&self, sce_name: &str, proc_id: u32, global_state: &mut GlobalState);
+}
+
 pub struct SceVm {
     state: SceState,
     active_commands: Vec<Box<dyn SceCommand>>,
@@ -22,15 +31,19 @@ impl SceVm {
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
         sce: SceFile,
+        sce_name: String,
         asset_mgr: Rc<AssetManager>,
         global_state: GlobalState,
+        options: Option<SceExecutionOptions>,
     ) -> Self {
         let state = SceState::new(
             input_engine.clone(),
             audio_engine.clone(),
             asset_mgr.clone(),
             Rc::new(sce),
+            sce_name,
             global_state,
+            options,
         );
 
         Self {
@@ -49,7 +62,7 @@ impl SceVm {
 
         if self.active_commands.len() == 0 {
             loop {
-                match self.state.context.get_next_cmd() {
+                match self.state.get_next_cmd() {
                     Some(mut cmd) => {
                         cmd.initialize(scene_manager, &mut self.state);
                         if !cmd.update(scene_manager, ui, &mut self.state, delta_sec) {
@@ -75,7 +88,7 @@ impl SceVm {
     }
 
     pub fn call_proc(&mut self, proc_id: u32) {
-        self.state.context.call_proc(proc_id)
+        self.state.call_proc(proc_id)
     }
 
     pub fn state(&self) -> &SceState {
@@ -470,6 +483,17 @@ impl SceProcContext {
                 // Quake
                 nop_command!(self, Quake, f32, f32)
             }
+            119 => {
+                // ShowChatRest
+                command!(
+                    self,
+                    SceCommandShowChatRest,
+                    config_file: string,
+                    enough_money_proc: u32,
+                    not_enough_money_proc: u32,
+                    after_rest_proc: u32
+                )
+            }
             124 => {
                 // Trigger
                 nop_command!(self, Trigger, i32)
@@ -648,30 +672,37 @@ mod data_read {
 
 pub struct SceExecutionContext {
     sce: Rc<SceFile>,
+    sce_name: String,
     proc_stack: Vec<SceProcContext>,
+    options: Option<SceExecutionOptions>,
 }
 
 impl SceExecutionContext {
-    pub fn new(sce: Rc<SceFile>) -> Self {
+    pub fn new(sce: Rc<SceFile>, sce_name: String, options: Option<SceExecutionOptions>) -> Self {
         Self {
             sce,
+            sce_name,
             proc_stack: vec![],
+            options,
         }
     }
 
-    pub fn set_sce(&mut self, sce: Rc<SceFile>) {
+    pub fn set_sce(&mut self, sce: Rc<SceFile>, sce_name: String) {
         self.sce = sce;
+        self.sce_name = sce_name;
     }
 
-    pub fn call_proc(&mut self, proc_id: u32) {
+    pub fn call_proc(&mut self, proc_id: u32, global_state: &mut GlobalState) {
         self.proc_stack
-            .push(SceProcContext::new_from_id(self.sce.clone(), proc_id))
+            .push(SceProcContext::new_from_id(self.sce.clone(), proc_id));
+        self.proc_begin(proc_id, global_state);
     }
 
-    pub fn try_call_proc_by_name(&mut self, proc_name: &str) {
+    pub fn try_call_proc_by_name(&mut self, proc_name: &str, global_state: &mut GlobalState) {
         let context = SceProcContext::new_from_name(self.sce.clone(), proc_name);
         if let Some(c) = context {
-            self.proc_stack.push(c)
+            self.proc_begin(c.proc_id, global_state);
+            self.proc_stack.push(c);
         }
     }
 
@@ -691,10 +722,11 @@ impl SceExecutionContext {
         self.proc_stack.last_mut().unwrap()
     }
 
-    fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
+    fn get_next_cmd(&mut self, global_state: &mut GlobalState) -> Option<Box<dyn SceCommand>> {
         while let Some(p) = self.proc_stack.last() {
             if p.proc_completed() {
                 debug!("Sce proc {} completed", p.proc_id);
+                self.proc_end(p.proc_id, global_state);
                 self.proc_stack.pop();
             } else {
                 break;
@@ -702,6 +734,22 @@ impl SceExecutionContext {
         }
 
         self.proc_stack.last_mut().and_then(|p| p.get_next_cmd())
+    }
+
+    fn proc_begin(&self, proc_id: u32, global_state: &mut GlobalState) {
+        if let Some(options) = &self.options {
+            for hook in &options.proc_hooks {
+                hook.proc_begin(&self.sce_name, proc_id, global_state)
+            }
+        }
+    }
+
+    fn proc_end(&self, proc_id: u32, global_state: &mut GlobalState) {
+        if let Some(options) = &self.options {
+            for hook in &options.proc_hooks {
+                hook.proc_end(&self.sce_name, proc_id, global_state)
+            }
+        }
     }
 }
 
@@ -721,14 +769,16 @@ impl SceState {
         audio_engine: Rc<dyn AudioEngine>,
         asset_mgr: Rc<AssetManager>,
         sce: Rc<SceFile>,
+        sce_name: String,
         global_state: GlobalState,
+        options: Option<SceExecutionOptions>,
     ) -> Self {
         let ext = HashMap::<String, Box<dyn Any>>::new();
 
         Self {
             asset_mgr: asset_mgr.clone(),
             global_state,
-            context: SceExecutionContext::new(sce),
+            context: SceExecutionContext::new(sce, sce_name, options),
             run_mode: 1,
             ext,
             input_engine,
@@ -770,6 +820,19 @@ impl SceState {
 
     pub fn asset_mgr(&self) -> &Rc<AssetManager> {
         &self.asset_mgr
+    }
+
+    pub fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
+        self.context.get_next_cmd(&mut self.global_state)
+    }
+
+    pub fn call_proc(&mut self, proc_id: u32) {
+        self.context.call_proc(proc_id, &mut self.global_state);
+    }
+
+    pub fn try_call_proc_by_name(&mut self, proc_name: &str) {
+        self.context
+            .try_call_proc_by_name(proc_name, &mut self.global_state);
     }
 }
 

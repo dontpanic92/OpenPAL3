@@ -10,6 +10,7 @@ pub use adv_director::AdventureDirector;
 pub use global_state::GlobalState;
 pub use persistent_state::PersistentState;
 use radiance::scene::{CoreEntity, CoreScene, SceneManager};
+pub use sce_vm::{SceExecutionOptions, SceProcHooks};
 
 pub trait SceneManagerExtensions: SceneManager {
     fn core_scene_mut(&mut self) -> Option<&mut CoreScene<ScnScene>> {

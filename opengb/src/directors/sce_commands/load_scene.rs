@@ -39,14 +39,12 @@ impl SceCommand for SceCommandLoadScene {
             .set_scene_name(self.name.clone(), self.sub_name.clone());
         if cpk_changed {
             let sce = Rc::new(state.asset_mgr().load_sce(&self.name));
-            state.context_mut().set_sce(sce);
+            state.context_mut().set_sce(sce, self.name.clone());
             state.global_state_mut().bgm_source().stop();
             state.global_state_mut().play_default_bgm();
         }
 
-        state
-            .context_mut()
-            .try_call_proc_by_name(&format!("_{}_{}", self.name, self.sub_name));
+        state.try_call_proc_by_name(&format!("_{}_{}", self.name, self.sub_name));
 
         true
     }

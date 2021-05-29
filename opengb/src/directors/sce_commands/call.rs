@@ -15,7 +15,7 @@ impl SceCommand for SceCommandCall {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        state.context_mut().call_proc(self.proc_id);
+        state.call_proc(self.proc_id);
         true
     }
 }

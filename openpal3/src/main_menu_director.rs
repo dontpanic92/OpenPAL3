@@ -2,12 +2,17 @@ use std::{cell::RefCell, rc::Rc};
 
 use imgui::{im_str, Ui};
 use log::debug;
-use opengb::{asset_manager::AssetManager, directors::AdventureDirector};
+use opengb::{
+    asset_manager::AssetManager,
+    directors::{AdventureDirector, SceExecutionOptions},
+};
 use radiance::{
     audio::{AudioEngine, AudioSource, Codec},
     input::InputEngine,
     scene::{DefaultScene, Director, SceneManager},
 };
+
+use crate::sce_proc_hooks::SceRestHooks;
 
 pub struct MainMenuDirector {
     asset_mgr: Rc<AssetManager>,
@@ -50,12 +55,17 @@ impl Director for MainMenuDirector {
     ) -> Option<Rc<RefCell<dyn Director>>> {
         self.main_theme_source.update();
 
+        let sce_options = SceExecutionOptions {
+            proc_hooks: vec![Box::new(SceRestHooks::new())],
+        };
+
         if ui.button(im_str!("开始游戏"), [120., 40.]) {
             return Some(Rc::new(RefCell::new(AdventureDirector::new(
                 "OpenPAL3",
                 self.asset_mgr.clone(),
                 self.audio_engine.clone(),
                 self.input_engine.clone(),
+                Some(sce_options),
             ))));
         } else {
             for i in 1..5 {
@@ -66,6 +76,7 @@ impl Director for MainMenuDirector {
                         self.audio_engine.clone(),
                         self.input_engine.clone(),
                         scene_manager,
+                        Some(sce_options),
                         i,
                     );
 

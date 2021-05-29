@@ -62,7 +62,7 @@ impl PersistentState {
         self.global_vars.insert(var, value);
     }
 
-    pub fn get_global(&mut self, var: i16) -> Option<i32> {
+    pub fn get_global(&self, var: i16) -> Option<i32> {
         self.global_vars.get(&var).and_then(|v| Some(*v))
     }
 
