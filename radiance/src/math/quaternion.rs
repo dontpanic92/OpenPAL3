@@ -1,5 +1,5 @@
 use super::{Mat44, Vec3};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[repr(C)]

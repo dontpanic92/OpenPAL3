@@ -125,6 +125,10 @@ impl AdventureDirector {
             .persistent_state()
             .save(save_slot);
     }
+
+    pub fn sce_vm(&self) -> &SceVm {
+        &self.sce_vm
+    }
 }
 
 impl Director for AdventureDirector {

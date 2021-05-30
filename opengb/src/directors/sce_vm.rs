@@ -433,6 +433,10 @@ impl SceProcContext {
                 // PlaySound
                 command!(self, SceCommandPlaySound, name: string, repeat: i32)
             }
+            80 => {
+                // CombatBoss
+                nop_command!(self, CombatBoss, i32, i32, i32, i32, i32, i32)
+            }
             85 => {
                 // ObjectActive
                 command!(self, SceCommandObjectActive, object_id: i32, active: i32)
@@ -526,6 +530,10 @@ impl SceProcContext {
                 // LoadAct
                 nop_command!(self, LoadAct, i32, string)
             }
+            153 => {
+                // FullTeamAtt
+                nop_command!(self, FullTeamAtt)
+            }
             201 => {
                 // RolePathOut
                 command!(
@@ -540,6 +548,10 @@ impl SceProcContext {
             202 => {
                 // InTeam
                 nop_command!(self, InTeam, i32, i32)
+            }
+            203 => {
+                // RoleSetLayer
+                nop_command!(self, RoleSetLayer, i32, i32)
             }
             204 => {
                 // RoleCtrl

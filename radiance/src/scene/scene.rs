@@ -108,7 +108,7 @@ mod private {
 pub struct DefaultScene;
 impl DefaultScene {
     pub fn create() -> CoreScene<private::DefaultExtension> {
-        CoreScene::<private::DefaultExtension>::new(private::DefaultExtension{})
+        CoreScene::<private::DefaultExtension>::new(private::DefaultExtension {})
     }
 }
 

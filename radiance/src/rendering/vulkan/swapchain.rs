@@ -54,7 +54,6 @@ impl SwapChain {
         command_runner: &Rc<AdhocCommandRunner>,
         gui_context: &mut ImguiContext,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-
         // Make it at least 1x1 pixel for images
         capabilities.current_extent.width = capabilities.current_extent.width.max(1);
         capabilities.current_extent.height = capabilities.current_extent.height.max(1);

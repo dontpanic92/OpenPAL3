@@ -1,5 +1,7 @@
-pub mod core_engine;
+mod core_engine;
+mod debugging;
 pub use core_engine::CoreRadianceEngine;
+pub use debugging::DebugLayer;
 
 use crate::{
     application::Platform,

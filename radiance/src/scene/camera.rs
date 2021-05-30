@@ -55,8 +55,12 @@ impl Camera {
     }
 
     fn update_projection_matrix(&mut self) {
-        self.projection =
-            Self::generate_projection_matrix(self.fov43, self.aspect, self.near_clip, self.far_clip);
+        self.projection = Self::generate_projection_matrix(
+            self.fov43,
+            self.aspect,
+            self.near_clip,
+            self.far_clip,
+        );
     }
 
     fn generate_projection_matrix(fov43: f32, aspect: f32, near_clip: f32, far_clip: f32) -> Mat44 {

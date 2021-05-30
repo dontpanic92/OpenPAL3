@@ -57,6 +57,10 @@ impl ScnScene {
         &self.scn_name
     }
 
+    pub fn nav(&self) -> &Nav {
+        &self.nav
+    }
+
     pub fn nav_min_coord(&self) -> Vec3 {
         self.nav.nav_file.maps[0].min_coord
     }
@@ -479,15 +483,26 @@ impl Nav {
         (nav_coord_floor, nav_coord_ceil)
     }
 
-    pub fn get(&self, map_id: usize, nav_coord_x: i32, nav_coord_z: i32) -> Option<NavMapPoint> {
+    pub fn layer_count(&self) -> usize {
+        self.nav_file.maps.len()
+    }
+
+    pub fn get_map_size(&self) -> (usize, usize) {
+        (
+            self.nav_file.maps[0].width as usize,
+            self.nav_file.maps[0].height as usize,
+        )
+    }
+
+    pub fn get(&self, layer: usize, nav_coord_x: i32, nav_coord_z: i32) -> Option<NavMapPoint> {
         if nav_coord_x < 0
             || nav_coord_z < 0
-            || nav_coord_x as u32 >= self.nav_file.maps[map_id].width
-            || nav_coord_z as u32 >= self.nav_file.maps[map_id].height
+            || nav_coord_x as u32 >= self.nav_file.maps[layer].width
+            || nav_coord_z as u32 >= self.nav_file.maps[layer].height
         {
             None
         } else {
-            Some(self.nav_file.maps[map_id].map[nav_coord_z as usize][nav_coord_x as usize])
+            Some(self.nav_file.maps[layer].map[nav_coord_z as usize][nav_coord_x as usize])
         }
     }
 
@@ -497,6 +512,22 @@ impl Nav {
         nav_coord_dest: (i32, i32),
     ) -> bool {
         self.check_connectivity_internal(nav_coord_src, nav_coord_dest, 10)
+    }
+
+    pub fn print_map(&self) {
+        for layer in 0..self.nav_file.maps.len() {
+            for j in 0..self.nav_file.maps[layer].height {
+                for i in 0..self.nav_file.maps[layer].width {
+                    print!(
+                        "{} ",
+                        self.nav_file.maps[layer].map[j as usize][i as usize].distance_to_border
+                    );
+                }
+
+                println!();
+            }
+            println!("==========");
+        }
     }
 
     fn check_connectivity_internal(

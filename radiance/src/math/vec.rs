@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// 2d column vector
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]

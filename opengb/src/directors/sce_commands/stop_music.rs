@@ -14,6 +14,7 @@ impl SceCommand for SceCommandStopMusic {
         delta_sec: f32,
     ) -> bool {
         state.global_state_mut().bgm_source().stop();
+        state.global_state_mut().play_default_bgm();
         true
     }
 }

@@ -43,6 +43,7 @@ pub enum Key {
     Num8,
     Num9,
     Num0,
+    Tilde,
     Left,
     Up,
     Right,

@@ -1,8 +1,10 @@
 #![allow(unused_variables)]
 
+mod debug_layer;
 mod main_menu_director;
 mod sce_proc_hooks;
 
+use debug_layer::OpenPal3DebugLayer;
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::utils::FpsCounter;
 use radiance::application::{Application, ApplicationExtension};
@@ -19,7 +21,6 @@ fn main() {
 pub struct OpenPal3Application {
     root_path: PathBuf,
     app_name: String,
-    fps_counter: FpsCounter,
     asset_mgr: Option<Rc<AssetManager>>,
 }
 
@@ -35,6 +36,9 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
             &self.root_path,
         )));
 
+        let debug_layer = OpenPal3DebugLayer::new(input_engine.clone(), audio_engine.clone());
+        app.engine_mut().set_debug_layer(Box::new(debug_layer));
+
         let director = main_menu_director::MainMenuDirector::new(
             self.asset_mgr.as_ref().unwrap().clone(),
             audio_engine,
@@ -45,9 +49,7 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
             .set_director(Rc::new(RefCell::new(director)));
     }
 
-    fn on_updating(&mut self, app: &mut Application<OpenPal3Application>, delta_sec: f32) {
-        let fps = self.fps_counter.update_fps(delta_sec);
-    }
+    fn on_updating(&mut self, app: &mut Application<OpenPal3Application>, delta_sec: f32) {}
 }
 
 impl OpenPal3Application {
@@ -61,7 +63,6 @@ impl OpenPal3Application {
         OpenPal3Application {
             root_path,
             app_name: app_name.to_owned(),
-            fps_counter: FpsCounter::new(),
             asset_mgr: None,
         }
     }

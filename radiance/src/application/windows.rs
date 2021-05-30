@@ -2,7 +2,7 @@ extern crate winapi;
 use std::ptr::null_mut;
 use winapi::shared::minwindef::{HINSTANCE, LPARAM, LRESULT, WPARAM};
 use winapi::shared::windef::{HWND, POINT};
-use winapi::um::{libloaderapi, errhandlingapi, winuser, wingdi};
+use winapi::um::{errhandlingapi, libloaderapi, wingdi, winuser};
 
 macro_rules! utf16_ptr {
     ( $x:expr ) => {
@@ -10,7 +10,7 @@ macro_rules! utf16_ptr {
             .encode_utf16()
             .collect::<Vec<u16>>()
             .as_ptr()
-   };
+    };
 }
 
 const WM_CLOSE_WINDOW: u32 = winuser::WM_USER + 1;
@@ -187,4 +187,3 @@ fn get_dpi(hwnd: HWND) -> (i32, i32) {
         (x, y)
     }
 }
-

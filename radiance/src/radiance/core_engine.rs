@@ -1,3 +1,4 @@
+use super::DebugLayer;
 use crate::{
     audio::AudioEngine,
     imgui::ImguiContext,
@@ -15,6 +16,7 @@ pub struct CoreRadianceEngine {
     input_engine: Rc<RefCell<dyn InputEngineInternal>>,
     imgui_context: Rc<RefCell<ImguiContext>>,
     scene_manager: Option<Box<dyn SceneManager>>,
+    debug_layer: Option<Box<dyn DebugLayer>>,
 }
 
 impl CoreRadianceEngine {
@@ -31,6 +33,7 @@ impl CoreRadianceEngine {
             input_engine,
             imgui_context,
             scene_manager: Some(scene_manager),
+            debug_layer: None,
         }
     }
 
@@ -46,6 +49,10 @@ impl CoreRadianceEngine {
         self.input_engine.borrow().as_input_engine()
     }
 
+    pub fn set_debug_layer(&mut self, debug_layer: Box<dyn DebugLayer>) {
+        self.debug_layer = Some(debug_layer);
+    }
+
     pub fn scene_manager(&mut self) -> &mut dyn SceneManager {
         self.scene_manager.as_mut().unwrap().as_mut()
     }
@@ -54,8 +61,12 @@ impl CoreRadianceEngine {
         self.input_engine.borrow_mut().update(delta_sec);
 
         let scene_manager = self.scene_manager.as_mut().unwrap();
+        let debug_layer = self.debug_layer.as_mut();
         let ui_frame = self.imgui_context.borrow_mut().draw_ui(delta_sec, |ui| {
             scene_manager.update(ui, delta_sec);
+            if let Some(dl) = debug_layer {
+                dl.update(scene_manager.as_mut(), ui, delta_sec);
+            }
         });
 
         let scene = self.scene_manager.as_mut().unwrap().scene_mut();

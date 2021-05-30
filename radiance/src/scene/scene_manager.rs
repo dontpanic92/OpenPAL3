@@ -7,6 +7,7 @@ pub trait SceneManager {
     fn scene_mut(&mut self) -> Option<&mut dyn Scene>;
 
     fn set_view_extent(&mut self, extent: (u32, u32));
+    fn director(&self) -> Option<Rc<RefCell<dyn Director>>>;
     fn set_director(&mut self, director: Rc<RefCell<dyn Director>>);
     fn push_scene(&mut self, scene: Box<dyn Scene>);
     fn pop_scene(&mut self) -> Option<Box<dyn Scene>>;
@@ -58,6 +59,10 @@ impl SceneManager for DefaultSceneManager {
 
     fn set_view_extent(&mut self, extent: (u32, u32)) {
         self.view_extent = extent;
+    }
+
+    fn director(&self) -> Option<Rc<RefCell<dyn Director>>> {
+        Some(self.director.as_ref()?.clone())
     }
 
     fn set_director(&mut self, director: Rc<RefCell<dyn Director>>) {
