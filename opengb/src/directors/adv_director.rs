@@ -235,16 +235,24 @@ impl Director for AdventureDirector {
                 debug!("New proc triggerd: {}", proc_id);
                 self.sce_vm.call_proc(proc_id);
             }
+
+            if let Some(new_position) = scene.test_ladder(&position) {
+                debug!("Ladder detected, new position: {:?}", &new_position);
+                scene_manager
+                    .get_resolved_role_mut(self.sce_vm.state(), -1)
+                    .unwrap()
+                    .transform_mut()
+                    .set_position(&new_position);
+            }
         }
 
-        let entity = scene_manager
+        let role = scene_manager
             .get_resolved_role_mut(self.sce_vm.state(), -1)
             .unwrap();
         if direction.norm() > 0.5 && distance_to_border > std::f32::EPSILON {
-            entity.run();
+            role.run();
             let look_at = Vec3::new(target_position.x, position.y, target_position.z);
-            entity
-                .transform_mut()
+            role.transform_mut()
                 .look_at(&look_at)
                 .set_position(&target_position);
 
@@ -253,7 +261,7 @@ impl Director for AdventureDirector {
                 .persistent_state_mut()
                 .set_position(target_position);
         } else {
-            entity.idle();
+            role.idle();
         }
 
         None

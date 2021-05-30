@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Copy, Clone, Serialize)]
 pub struct NavMapPoint {
     pub height: f32,
     pub distance_to_border: u32,

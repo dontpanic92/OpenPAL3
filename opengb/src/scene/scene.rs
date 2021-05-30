@@ -1,4 +1,5 @@
 use crate::asset_manager::AssetManager;
+use crate::loaders::nav_loader::NavMapPoint;
 use crate::loaders::{nav_loader::NavFile, scn_loader::*};
 use radiance::scene::{CoreEntity, CoreScene, Entity, SceneExtension};
 use radiance::{math::Vec3, scene::Scene};
@@ -15,6 +16,7 @@ pub struct ScnScene {
     nav_triggers: Vec<SceNavTrigger>,
     aabb_triggers: Vec<SceAabbTrigger>,
     item_triggers: Vec<SceItemTrigger>,
+    ladder_triggers: Vec<LadderTrigger>,
 }
 
 impl SceneExtension for ScnScene {
@@ -43,6 +45,7 @@ impl ScnScene {
             nav_triggers: vec![],
             aabb_triggers: vec![],
             item_triggers: vec![],
+            ladder_triggers: vec![],
         }
     }
 
@@ -134,14 +137,33 @@ impl ScnScene {
         const D: f32 = 100.;
         for role in &self.scn_file.roles {
             let role_position = Vec3::new(role.position_x, role.position_y, role.position_z);
-            log::debug!(
-                "Testing role trigger {:?} {:?} {}",
-                &role_position,
-                &coord,
-                Vec3::sub(coord, &role_position).norm2(),
-            );
             if Vec3::sub(coord, &role_position).norm2() < D * D {
                 return Some(role.sce_proc_id);
+            }
+        }
+
+        None
+    }
+
+    pub fn test_ladder(&self, coord: &Vec3) -> Option<Vec3> {
+        let nav_coord = self
+            .nav
+            .round_nav_coord(self.scene_coord_to_nav_coord(coord));
+        for ladder in &self.ladder_triggers {
+            if self.nav.check_connectivity(nav_coord.0, ladder.nav_coord1)
+                || self.nav.check_connectivity(nav_coord.1, ladder.nav_coord1)
+            {
+                return Some(self.nav_coord_to_scene_coord(
+                    ladder.nav_coord2.0 as f32,
+                    ladder.nav_coord2.1 as f32,
+                ));
+            } else if self.nav.check_connectivity(nav_coord.0, ladder.nav_coord2)
+                || self.nav.check_connectivity(nav_coord.1, ladder.nav_coord2)
+            {
+                return Some(self.nav_coord_to_scene_coord(
+                    ladder.nav_coord1.0 as f32,
+                    ladder.nav_coord1.1 as f32,
+                ));
             }
         }
 
@@ -250,7 +272,6 @@ impl ScnScene {
         let dist =
             dist_sqr!(s.x, x[0], x[1]) + dist_sqr!(s.y, y[0], y[1]) + dist_sqr!(s.z, z[0], z[1]);
 
-        log::debug!("Testing Aabb {} {}", dist, r * r);
         dist < r * r
     }
 
@@ -285,17 +306,26 @@ impl ScnScene {
                 });
             }
 
-            if obj.node_type == 16 {
-                _self.item_triggers.push(SceItemTrigger {
-                    coord: obj.position,
-                    sce_proc_id: obj.sce_proc_id,
-                });
-            } else if obj.node_type == 20 {
-                _self.aabb_triggers.push(SceAabbTrigger {
-                    aabb_coord2: obj.aabb_trigger_coord2,
-                    aabb_coord1: obj.aabb_trigger_coord1,
-                    sce_proc_id: obj.sce_proc_id,
-                });
+            match obj.node_type {
+                ScnNodeTypes::LADDER => _self.ladder_triggers.push(LadderTrigger {
+                    position: obj.position,
+                    nav_coord1: obj.ladder_nav_coord1,
+                    nav_coord2: obj.ladder_nav_coord2,
+                }),
+                ScnNodeTypes::ITEM_TRIGGER => {
+                    _self.item_triggers.push(SceItemTrigger {
+                        coord: obj.position,
+                        sce_proc_id: obj.sce_proc_id,
+                    });
+                }
+                ScnNodeTypes::AABB_TRIGGER => {
+                    _self.aabb_triggers.push(SceAabbTrigger {
+                        aabb_coord2: obj.aabb_trigger_coord2,
+                        aabb_coord1: obj.aabb_trigger_coord1,
+                        sce_proc_id: obj.sce_proc_id,
+                    });
+                }
+                _ => {}
             }
 
             let visible = obj.node_type != 17 && obj.node_type != 25;
@@ -410,6 +440,13 @@ impl ScnScene {
     }
 }
 
+struct ScnNodeTypes;
+impl ScnNodeTypes {
+    pub const LADDER: u32 = 15;
+    pub const ITEM_TRIGGER: u32 = 16;
+    pub const AABB_TRIGGER: u32 = 20;
+}
+
 pub struct Nav {
     nav_file: NavFile,
     block_size_x: f32,
@@ -426,6 +463,74 @@ impl Nav {
             block_size_x: area.x / width as f32,
             block_size_z: area.z / height as f32,
         }
+    }
+
+    pub fn round_nav_coord(&self, nav_coord: (f32, f32)) -> ((i32, i32), (i32, i32)) {
+        let nav_coord_floor = (
+            (nav_coord.0.floor() as i32).clamp(0, self.nav_file.maps[0].width as i32 - 1),
+            (nav_coord.1.floor() as i32).clamp(0, self.nav_file.maps[0].height as i32 - 1),
+        );
+
+        let nav_coord_ceil = (
+            (nav_coord.0.ceil() as i32).clamp(0, self.nav_file.maps[0].width as i32 - 1),
+            (nav_coord.1.ceil() as i32).clamp(0, self.nav_file.maps[0].height as i32 - 1),
+        );
+
+        (nav_coord_floor, nav_coord_ceil)
+    }
+
+    pub fn get(&self, map_id: usize, nav_coord_x: i32, nav_coord_z: i32) -> Option<NavMapPoint> {
+        if nav_coord_x < 0
+            || nav_coord_z < 0
+            || nav_coord_x as u32 >= self.nav_file.maps[map_id].width
+            || nav_coord_z as u32 >= self.nav_file.maps[map_id].height
+        {
+            None
+        } else {
+            Some(self.nav_file.maps[map_id].map[nav_coord_z as usize][nav_coord_x as usize])
+        }
+    }
+
+    pub fn check_connectivity(
+        &self,
+        nav_coord_src: (i32, i32),
+        nav_coord_dest: (i32, i32),
+    ) -> bool {
+        self.check_connectivity_internal(nav_coord_src, nav_coord_dest, 10)
+    }
+
+    fn check_connectivity_internal(
+        &self,
+        nav_coord_src: (i32, i32),
+        nav_coord_dest: (i32, i32),
+        remaining_steps: i32,
+    ) -> bool {
+        if nav_coord_src == nav_coord_dest {
+            return true;
+        }
+
+        if remaining_steps < 0 {
+            return false;
+        }
+
+        // Obviously we can optimize this
+        let directions = [(1, 1), (-1, -1), (1, -1), (-1, 1)];
+        for d in &directions {
+            let target_coord = (nav_coord_src.0 + d.0, nav_coord_src.1 + d.1);
+            if let Some(point) = self.get(0, target_coord.0, target_coord.1) {
+                if point.distance_to_border != 0
+                    && self.check_connectivity_internal(
+                        target_coord,
+                        nav_coord_dest,
+                        remaining_steps - 1,
+                    )
+                {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 }
 
@@ -444,4 +549,10 @@ pub struct SceAabbTrigger {
 pub struct SceItemTrigger {
     coord: Vec3,
     sce_proc_id: u32,
+}
+
+pub struct LadderTrigger {
+    position: Vec3,
+    nav_coord1: (i32, i32),
+    nav_coord2: (i32, i32),
 }

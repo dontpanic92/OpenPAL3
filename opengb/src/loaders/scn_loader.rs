@@ -19,7 +19,9 @@ pub struct ScnNode {
     pub rotation: f32,
     pub nav_trigger_coord_min: (i32, i32),
     pub nav_trigger_coord_max: (i32, i32),
-    pub node_type: u8,
+    pub node_type: u32,
+    pub ladder_nav_coord1: (i32, i32),
+    pub ladder_nav_coord2: (i32, i32),
     pub b49: Vec<u8>,
     pub w66: Vec<u16>,
     pub b6e: Vec<u8>,
@@ -180,8 +182,12 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
     let nav_coord_min_z = reader.read_i32::<LittleEndian>().unwrap();
     let nav_coord_max_x = reader.read_i32::<LittleEndian>().unwrap();
     let nav_coord_max_z = reader.read_i32::<LittleEndian>().unwrap();
-    let node_type = reader.read_u8().unwrap();
-    let b49 = reader.read_u8_vec(29).unwrap();
+    let node_type = reader.read_u32::<LittleEndian>().unwrap();
+    let ladder_nav_coord1_x = reader.read_i32::<LittleEndian>().unwrap();
+    let ladder_nav_coord1_z = reader.read_i32::<LittleEndian>().unwrap();
+    let ladder_nav_coord2_x = reader.read_i32::<LittleEndian>().unwrap();
+    let ladder_nav_coord2_z = reader.read_i32::<LittleEndian>().unwrap();
+    let b49 = reader.read_u8_vec(10).unwrap();
     let w66 = reader.read_w_vec(4).unwrap();
     let b6e = reader.read_u8_vec(18).unwrap();
     let sce_proc_id = reader.read_u32::<LittleEndian>().unwrap();
@@ -209,6 +215,8 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
         nav_trigger_coord_min: (nav_coord_min_x, nav_coord_min_z),
         nav_trigger_coord_max: (nav_coord_max_x, nav_coord_max_z),
         node_type,
+        ladder_nav_coord1: (ladder_nav_coord1_x, ladder_nav_coord1_z),
+        ladder_nav_coord2: (ladder_nav_coord2_x, ladder_nav_coord2_z),
         b49,
         w66,
         b6e,
