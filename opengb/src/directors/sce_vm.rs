@@ -386,6 +386,10 @@ impl SceProcContext {
                 // GetMoney
                 nop_command!(self, GetMoney, i32)
             }
+            54 => {
+                // FullRoleAtt
+                nop_command!(self, FullRoleAtt, i32, i32)
+            }
             62 => {
                 // Dlg
                 command!(self, SceCommandDlg, text: string)
@@ -518,6 +522,10 @@ impl SceProcContext {
                 // CEft
                 nop_command!(self, CEft, i32)
             }
+            144 => {
+                // CEft_Role
+                nop_command!(self, CEft, i32)
+            }
             145 => {
                 // AverageLv
                 nop_command!(self, AverageLv, i32, i32)
@@ -551,7 +559,7 @@ impl SceProcContext {
             }
             203 => {
                 // RoleSetLayer
-                nop_command!(self, RoleSetLayer, i32, i32)
+                command!(self, SceCommandRoleSetLayer, role_id: i32, layer: i32)
             }
             204 => {
                 // RoleCtrl

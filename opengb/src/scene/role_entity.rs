@@ -40,6 +40,7 @@ pub struct RoleEntity {
     is_active: bool,
     state: RoleState,
     auto_play_idle: bool,
+    nav_layer: usize,
 }
 
 impl RoleEntity {
@@ -95,6 +96,7 @@ impl RoleEntity {
             is_active: false,
             state: RoleState::Idle,
             auto_play_idle: true,
+            nav_layer: 0,
         }
     }
 
@@ -167,6 +169,19 @@ impl RoleEntity {
 
     pub fn state(&self) -> RoleState {
         self.state
+    }
+
+    pub fn nav_layer(&self) -> usize {
+        self.nav_layer
+    }
+
+    pub fn switch_nav_layer(&mut self) -> usize {
+        self.nav_layer = (self.nav_layer + 1) % 2;
+        self.nav_layer
+    }
+
+    pub fn set_nav_layer(&mut self, layer: usize) {
+        self.nav_layer = layer;
     }
 
     fn active_anim(&self) -> &RoleAnimation {

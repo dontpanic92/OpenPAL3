@@ -33,88 +33,113 @@ impl OpenPal3DebugLayer {
             fps_counter: FpsCounter::new(),
         }
     }
+
+    fn render(&mut self, scene_manager: &mut dyn SceneManager, ui: &mut Ui, delta_sec: f32) {
+        let w = Window::new(im_str!("Debug"));
+        w.build(ui, || {
+            let fps = self.fps_counter.update_fps(delta_sec);
+            ui.text(im_str!("Fps: {}", fps));
+            let scene = scene_manager.core_scene();
+            if let Some(s) = scene {
+                ui.text(im_str!("Scene: {} {}", s.name(), s.sub_name()));
+            }
+            TabBar::new(im_str!("##debug_tab_bar")).build(ui, || {
+                TabItem::new(im_str!("Nav")).build(ui, || {
+                    TabBar::new(im_str!("##debug_tab_bar_nav_bar")).build(ui, || {
+                        if scene_manager.core_scene().is_none() {
+                            return;
+                        }
+                        let layer_count = scene_manager.core_scene().unwrap().nav().layer_count();
+                        for layer in 0..layer_count {
+                            TabItem::new(&im_str!("Layer {}", layer)).build(ui, || {
+                                let current_nav_coord = (|| {
+                                    let director = scene_manager.director();
+                                    if let Some(d) = director {
+                                        if let Some(adv) =
+                                            d.borrow().downcast_ref::<AdventureDirector>()
+                                        {
+                                            let coord = scene_manager
+                                                .get_resolved_role(adv.sce_vm().state(), -1)
+                                                .unwrap()
+                                                .transform()
+                                                .position();
+                                            return Some(
+                                                scene_manager
+                                                    .core_scene_mut()?
+                                                    .scene_coord_to_nav_coord(layer, &coord),
+                                            );
+                                        }
+                                    }
+
+                                    None
+                                })();
+
+                                let text = {
+                                    let s = scene_manager.core_scene().unwrap();
+                                    let size = s.nav().get_map_size(layer);
+                                    let mut text = "".to_string();
+                                    for j in 0..size.1 {
+                                        for i in 0..size.0 {
+                                            let ch = (|| {
+                                                if let Some(nav) = current_nav_coord {
+                                                    if nav.0 as usize == i && nav.1 as usize == j {
+                                                        return "x".to_string();
+                                                    }
+                                                }
+
+                                                return s
+                                                    .nav()
+                                                    .get(layer, i as i32, j as i32)
+                                                    .unwrap()
+                                                    .distance_to_border
+                                                    .to_string();
+                                            })(
+                                            );
+                                            text += ch.as_str();
+                                        }
+
+                                        text += "\n";
+                                    }
+
+                                    text
+                                };
+
+                                InputTextMultiline::new(
+                                    ui,
+                                    &im_str!("##debug_nav_text"),
+                                    &mut im_str!("{}", text),
+                                    [-1., -1.],
+                                )
+                                .read_only(true)
+                                .build();
+                            });
+                        }
+                    });
+                });
+            });
+        });
+    }
 }
 
 impl DebugLayer for OpenPal3DebugLayer {
     fn update(&mut self, scene_manager: &mut dyn SceneManager, ui: &mut Ui, delta_sec: f32) {
-        let fps = self.fps_counter.update_fps(delta_sec);
+        let font = ui.push_font(ui.fonts().fonts()[1]);
+        (|| {
+            if self
+                .input_engine
+                .borrow()
+                .get_key_state(Key::Tilde)
+                .pressed()
+            {
+                self.visible = !self.visible;
+            }
 
-        let input = self.input_engine.borrow();
-        if input.get_key_state(Key::Tilde).pressed() {
-            println!("backtick down");
-            self.visible = !self.visible;
-        }
+            if !self.visible {
+                return;
+            }
 
-        if !self.visible {
-            return;
-        }
-
-        let w = Window::new(im_str!("Debug"));
-        w.build(ui, || {
-            ui.text(im_str!("Fps: {}", fps));
-            TabBar::new(im_str!("##debug_tab_bar")).build(ui, || {
-                TabItem::new(im_str!("Nav")).build(ui, || {
-                    let current_nav_coord = (|| {
-                        let director = scene_manager.director();
-                        if let Some(d) = director {
-                            if let Some(adv) = d.borrow().downcast_ref::<AdventureDirector>() {
-                                let coord = scene_manager
-                                    .get_resolved_role(adv.sce_vm().state(), -1)
-                                    .unwrap()
-                                    .transform()
-                                    .position();
-                                return Some(
-                                    scene_manager
-                                        .core_scene_mut()?
-                                        .scene_coord_to_nav_coord(&coord),
-                                );
-                            }
-                        }
-
-                        None
-                    })();
-
-                    let scene = scene_manager.core_scene_mut();
-                    let text = if let Some(scene) = scene {
-                        let size = scene.nav().get_map_size();
-                        let mut text = "".to_string();
-                        for j in 0..size.1 {
-                            for i in 0..size.0 {
-                                let ch = (|| {
-                                    if let Some(nav) = current_nav_coord {
-                                        if nav.0 as usize == i && nav.1 as usize == j {
-                                            return "x".to_string();
-                                        }
-                                    }
-
-                                    return scene
-                                        .nav()
-                                        .get(0, i as i32, j as i32)
-                                        .unwrap()
-                                        .distance_to_border
-                                        .to_string();
-                                })();
-                                text += ch.as_str();
-                            }
-
-                            text += "\n";
-                        }
-
-                        text
-                    } else {
-                        "No CoreScene loaded".to_string()
-                    };
-
-                    InputTextMultiline::new(
-                        ui,
-                        &im_str!("##debug_nav_text"),
-                        &mut im_str!("{}", text),
-                        [-1., -1.],
-                    )
-                    .read_only(true)
-                    .build();
-                });
-            });
-        });
+            self.render(scene_manager, ui, delta_sec);
+        })();
+        font.pop(ui);
     }
 }

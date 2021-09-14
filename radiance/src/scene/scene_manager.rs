@@ -4,6 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 
 pub trait SceneManager {
     fn update(&mut self, ui: &mut Ui, delta_sec: f32);
+    fn scene(&self) -> Option<&dyn Scene>;
     fn scene_mut(&mut self) -> Option<&mut dyn Scene>;
 
     fn set_view_extent(&mut self, extent: (u32, u32));
@@ -31,7 +32,7 @@ impl DefaultSceneManager {
     }
 }
 
-macro_rules! scene {
+macro_rules! scene_mut {
     ($self: ident) => {
         $self.scenes.last_mut().and_then(|x| Some(&mut **x))
     };
@@ -48,13 +49,17 @@ impl SceneManager for DefaultSceneManager {
             }
         }
 
-        if let Some(s) = scene!(self) {
+        if let Some(s) = scene_mut!(self) {
             s.update(delta_sec);
         }
     }
 
+    fn scene(&self) -> Option<&dyn Scene> {
+        self.scenes.last().and_then(|x| Some(&**x))
+    }
+
     fn scene_mut(&mut self) -> Option<&mut dyn Scene> {
-        scene!(self)
+        scene_mut!(self)
     }
 
     fn set_view_extent(&mut self, extent: (u32, u32)) {

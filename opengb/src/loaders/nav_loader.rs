@@ -20,8 +20,14 @@ pub struct NavUnknown22 {
 }
 
 #[derive(Debug, Serialize)]
+pub struct NavLayerTrigger {
+    pub nav_coord_min: (i32, i32),
+    pub nav_coord_max: (i32, i32),
+}
+
+#[derive(Debug, Serialize)]
 pub struct NavMap {
-    pub unknown: Option<Vec<u32>>, // count: 32
+    pub layer_triggers: Option<Vec<NavLayerTrigger>>, // count: 8
     pub max_coord: Vec3,
     pub min_coord: Vec3,
     pub width: u32,
@@ -85,9 +91,20 @@ pub fn nav_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> NavFile {
 }
 
 fn nav_read_unknown1(reader: &mut dyn Read, version: u8) -> NavMap {
-    let mut unknown = None;
+    let mut layer_triggers = None;
     if version == 2 {
-        unknown = Some(reader.read_dw_vec(32).unwrap());
+        let mut v = vec![];
+        for i in 0..8 {
+            let min_x = reader.read_i32::<LittleEndian>().unwrap();
+            let min_y = reader.read_i32::<LittleEndian>().unwrap();
+            let max_x = reader.read_i32::<LittleEndian>().unwrap();
+            let max_y = reader.read_i32::<LittleEndian>().unwrap();
+            v.push(NavLayerTrigger {
+                nav_coord_min: (min_x, min_y),
+                nav_coord_max: (max_x, max_y),
+            });
+        }
+        layer_triggers = Some(v);
     }
 
     let max_coord_x = reader.read_f32::<LittleEndian>().unwrap();
@@ -114,7 +131,7 @@ fn nav_read_unknown1(reader: &mut dyn Read, version: u8) -> NavMap {
     }
 
     NavMap {
-        unknown,
+        layer_triggers,
         max_coord: Vec3::new(max_coord_x, max_coord_y, max_coord_z),
         min_coord: Vec3::new(min_coord_x, min_coord_y, min_coord_z),
         width,

@@ -6,7 +6,7 @@ use opengb::{
     loaders::{
         cvd_loader::cvd_load_from_file, mv3_loader::mv3_load_from_file,
         pol_loader::pol_load_from_file, sce_loader::sce_load_from_file,
-        scn_loader::scn_load_from_file,
+        scn_loader::scn_load_from_file, nav_loader::nav_load_from_file,
     },
     utilities::StoreExt2,
 };
@@ -45,6 +45,11 @@ impl ContentTabs {
         match extension.as_ref().map(|e| e.as_str()) {
             Some("mp3") | Some("wav") => self.open_audio(vfs, path, &extension.unwrap()),
             Some("scn") => self.open_scn(vfs, path),
+            Some("nav") => self.open_json_from(
+                path.as_ref(),
+                || Some(nav_load_from_file(vfs, path.as_ref())),
+                true,
+            ),
             Some("sce") => self.open_json_from(
                 path.as_ref(),
                 || Some(sce_load_from_file(vfs, path.as_ref())),

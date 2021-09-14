@@ -19,6 +19,7 @@ pub struct AdventureDirector {
     input_engine: Rc<RefCell<dyn InputEngine>>,
     sce_vm: SceVm,
     camera_rotation: f32,
+    layer_switch_triggered: bool,
 }
 
 impl AdventureDirector {
@@ -46,6 +47,7 @@ impl AdventureDirector {
             sce_vm,
             input_engine,
             camera_rotation: 0.,
+            layer_switch_triggered: false,
         }
     }
 
@@ -103,6 +105,7 @@ impl AdventureDirector {
             sce_vm,
             input_engine,
             camera_rotation: 0.,
+            layer_switch_triggered: false,
         })
     }
 
@@ -129,6 +132,94 @@ impl AdventureDirector {
     pub fn sce_vm(&self) -> &SceVm {
         &self.sce_vm
     }
+
+    fn move_role(
+        &mut self,
+        scene_manager: &mut dyn SceneManager,
+        ui: &mut imgui::Ui,
+        delta_sec: f32,
+        moving_direction: &Vec3,
+    ) {
+        let camera_mat = &scene_manager
+            .scene_mut()
+            .unwrap()
+            .camera_mut()
+            .transform()
+            .matrix();
+        let mut direction_mat = Mat44::new_zero();
+        direction_mat[0][3] = moving_direction.x;
+        direction_mat[1][3] = moving_direction.y;
+        direction_mat[2][3] = moving_direction.z;
+        let direction_mat = Mat44::multiplied(&camera_mat, &direction_mat);
+        let mut direction = Vec3::new(direction_mat[0][3], 0., direction_mat[2][3]);
+        direction.normalize();
+
+        let role = scene_manager
+            .get_resolved_role(self.sce_vm.state(), -1)
+            .unwrap();
+        let position = role.transform().position();
+
+        let scene = scene_manager.core_scene_or_fail();
+        let speed = 175.;
+        let mut target_position = Vec3::add(&position, &Vec3::dot(speed * delta_sec, &direction));
+        let target_nav_coord = scene.scene_coord_to_nav_coord(role.nav_layer(), &target_position);
+        let height = scene.get_height(role.nav_layer(), target_nav_coord);
+        target_position.y = height;
+        let distance_to_border =
+            scene.get_distance_to_border_by_scene_coord(role.nav_layer(), &target_position);
+
+        let role = scene_manager
+            .get_resolved_role_mut(self.sce_vm.state(), -1)
+            .unwrap();
+        if direction.norm() > 0.5 && distance_to_border > std::f32::EPSILON {
+            role.run();
+            let look_at = Vec3::new(target_position.x, position.y, target_position.z);
+            role.transform_mut()
+                .look_at(&look_at)
+                .set_position(&target_position);
+
+            self.sce_vm
+                .global_state_mut()
+                .persistent_state_mut()
+                .set_position(target_position);
+        } else {
+            role.idle();
+        }
+
+        scene_manager
+            .scene_mut()
+            .unwrap()
+            .camera_mut()
+            .transform_mut()
+            .set_position(&Vec3::new(400., 400., 400.))
+            .rotate_axis_angle(&Vec3::UP, self.camera_rotation)
+            .translate(&position)
+            .look_at(&position);
+    }
+
+    fn rotate_camera(
+        &mut self,
+        scene_manager: &mut dyn SceneManager,
+        ui: &mut imgui::Ui,
+        delta_sec: f32,
+    ) {
+        let input = self.input_engine.borrow();
+        const CAMERA_ROTATE_SPEED: f32 = 1.5;
+        if input.get_key_state(Key::A).is_down() {
+            self.camera_rotation -= CAMERA_ROTATE_SPEED * delta_sec;
+            if self.camera_rotation < 0. {
+                self.camera_rotation += std::f32::consts::PI * 2.;
+            }
+        }
+
+        if input.get_key_state(Key::D).is_down() {
+            self.camera_rotation += CAMERA_ROTATE_SPEED * delta_sec;
+
+            if self.camera_rotation > std::f32::consts::PI * 2. {
+                self.camera_rotation -= std::f32::consts::PI * 2.;
+            }
+        }
+    }
 }
 
 impl Director for AdventureDirector {
@@ -152,95 +243,105 @@ impl Director for AdventureDirector {
         }
 
         self.test_save();
-        let input = self.input_engine.borrow_mut();
-        let mut direction = Vec3::new(0., 0., 0.);
 
-        if input.get_key_state(Key::Up).is_down() {
-            direction = Vec3::add(&direction, &Vec3::new(0., 0., -1.));
-        }
+        let moving_direction = {
+            let input = self.input_engine.borrow_mut();
+            let mut direction = Vec3::new(0., 0., 0.);
 
-        if input.get_key_state(Key::Down).is_down() {
-            direction = Vec3::add(&direction, &Vec3::new(0., 0., 1.));
-        }
-
-        if input.get_key_state(Key::Left).is_down() {
-            direction = Vec3::add(&direction, &Vec3::new(-1., 0., 0.));
-        }
-
-        if input.get_key_state(Key::Right).is_down() {
-            direction = Vec3::add(&direction, &Vec3::new(1., 0., 0.));
-        }
-
-        let camera_mat = &scene_manager
-            .scene_mut()
-            .unwrap()
-            .camera_mut()
-            .transform()
-            .matrix();
-        let mut direction_mat = Mat44::new_zero();
-        direction_mat[0][3] = direction.x;
-        direction_mat[1][3] = direction.y;
-        direction_mat[2][3] = direction.z;
-        let direction_mat = Mat44::multiplied(&camera_mat, &direction_mat);
-        let mut direction = Vec3::new(direction_mat[0][3], 0., direction_mat[2][3]);
-        direction.normalize();
-
-        const CAMERA_ROTATE_SPEED: f32 = 1.5;
-        if input.get_key_state(Key::A).is_down() {
-            self.camera_rotation -= CAMERA_ROTATE_SPEED * delta_sec;
-            if self.camera_rotation < 0. {
-                self.camera_rotation += std::f32::consts::PI * 2.;
+            if input.get_key_state(Key::Up).is_down() {
+                direction = Vec3::add(&direction, &Vec3::new(0., 0., -1.));
             }
-        }
 
-        if input.get_key_state(Key::D).is_down() {
-            self.camera_rotation += CAMERA_ROTATE_SPEED * delta_sec;
-
-            if self.camera_rotation > std::f32::consts::PI * 2. {
-                self.camera_rotation -= std::f32::consts::PI * 2.;
+            if input.get_key_state(Key::Down).is_down() {
+                direction = Vec3::add(&direction, &Vec3::new(0., 0., 1.));
             }
+
+            if input.get_key_state(Key::Left).is_down() {
+                direction = Vec3::add(&direction, &Vec3::new(-1., 0., 0.));
+            }
+
+            if input.get_key_state(Key::Right).is_down() {
+                direction = Vec3::add(&direction, &Vec3::new(1., 0., 0.));
+            }
+
+            *direction.normalize()
+        };
+
+        self.move_role(scene_manager, ui, delta_sec, &moving_direction);
+        self.rotate_camera(scene_manager, ui, delta_sec);
+
+        let (position, nav_layer) = {
+            let role = scene_manager
+                .get_resolved_role(self.sce_vm.state(), -1)
+                .unwrap();
+            (role.transform().position(), role.nav_layer())
+        };
+
+        macro_rules! scene {
+            () => {
+                scene_manager.core_scene_or_fail();
+            };
         }
 
-        let position = scene_manager
-            .get_resolved_role(self.sce_vm.state(), -1)
-            .unwrap()
-            .transform()
-            .position();
-
-        scene_manager
-            .scene_mut()
-            .unwrap()
-            .camera_mut()
-            .transform_mut()
-            .set_position(&Vec3::new(400., 400., 400.))
-            .rotate_axis_angle(&Vec3::UP, self.camera_rotation)
-            .translate(&position)
-            .look_at(&position);
-
-        let scene = scene_manager.core_scene_mut_or_fail();
-        let speed = 175.;
-        let mut target_position = Vec3::add(&position, &Vec3::dot(speed * delta_sec, &direction));
-        let target_nav_coord = scene.scene_coord_to_nav_coord(&target_position);
-        let height = scene.get_height(target_nav_coord);
-        target_position.y = height;
-        let distance_to_border = scene.get_distance_to_border_by_scene_coord(&target_position);
-
-        if let Some(proc_id) = scene.test_nav_trigger(&target_position) {
+        if let Some(proc_id) = scene!().test_nav_trigger(nav_layer, &position) {
             debug!("New proc triggerd by nav: {}", proc_id);
             self.sce_vm.call_proc(proc_id);
         }
 
-        if input.get_key_state(Key::F).pressed() {
-            if let Some(proc_id) = scene
+        if scene!().test_nav_layer_trigger(nav_layer, &position) {
+            if !self.layer_switch_triggered {
+                let layer = scene_manager
+                    .get_resolved_role_mut(self.sce_vm.state(), -1)
+                    .unwrap()
+                    .nav_layer();
+                let new_layer = (layer + 1) % 2;
+
+                let mut test_coord = position;
+                let mut d = 0.0;
+                for i in 0..50 {
+                    d = scene_manager
+                        .core_scene_or_fail()
+                        .get_distance_to_border_by_scene_coord(new_layer, &test_coord);
+                    if d > 0.0 {
+                        break;
+                    }
+
+                    test_coord = Vec3::add(&test_coord, &moving_direction);
+                }
+
+                if d > 0.0 {
+                    scene_manager
+                        .get_resolved_role_mut(self.sce_vm.state(), -1)
+                        .unwrap()
+                        .switch_nav_layer();
+                    scene_manager
+                        .get_resolved_role_mut(self.sce_vm.state(), -1)
+                        .unwrap()
+                        .transform_mut()
+                        .set_position(&test_coord);
+                    self.layer_switch_triggered = true;
+                }
+            }
+        } else {
+            self.layer_switch_triggered = false;
+        }
+
+        if self
+            .input_engine
+            .borrow_mut()
+            .get_key_state(Key::F)
+            .pressed()
+        {
+            if let Some(proc_id) = scene!()
                 .test_aabb_trigger(&position)
-                .or_else(|| scene.test_item_trigger(&position))
-                .or_else(|| scene.test_role_trigger(&position))
+                .or_else(|| scene!().test_item_trigger(&position))
+                .or_else(|| scene!().test_role_trigger(&position))
             {
                 debug!("New proc triggerd: {}", proc_id);
                 self.sce_vm.call_proc(proc_id);
             }
 
-            if let Some(new_position) = scene.test_ladder(&position) {
+            if let Some(new_position) = scene!().test_ladder(nav_layer, &position) {
                 debug!("Ladder detected, new position: {:?}", &new_position);
                 scene_manager
                     .get_resolved_role_mut(self.sce_vm.state(), -1)
@@ -248,24 +349,6 @@ impl Director for AdventureDirector {
                     .transform_mut()
                     .set_position(&new_position);
             }
-        }
-
-        let role = scene_manager
-            .get_resolved_role_mut(self.sce_vm.state(), -1)
-            .unwrap();
-        if direction.norm() > 0.5 && distance_to_border > std::f32::EPSILON {
-            role.run();
-            let look_at = Vec3::new(target_position.x, position.y, target_position.z);
-            role.transform_mut()
-                .look_at(&look_at)
-                .set_position(&target_position);
-
-            self.sce_vm
-                .global_state_mut()
-                .persistent_state_mut()
-                .set_position(target_position);
-        } else {
-            role.idle();
         }
 
         None

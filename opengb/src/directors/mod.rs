@@ -13,22 +13,28 @@ use radiance::scene::{CoreEntity, CoreScene, SceneManager};
 pub use sce_vm::{SceExecutionOptions, SceProcHooks};
 
 pub trait SceneManagerExtensions: SceneManager {
+    fn core_scene(&self) -> Option<&CoreScene<ScnScene>> {
+        self.scene()
+            .expect("No scene loaded. Probably a bug in Sce procedures.")
+            .downcast_ref::<CoreScene<ScnScene>>()
+    }
+
     fn core_scene_mut(&mut self) -> Option<&mut CoreScene<ScnScene>> {
         self.scene_mut()
             .expect("No scene loaded. Probably a bug in Sce procedures.")
             .downcast_mut::<CoreScene<ScnScene>>()
     }
 
+    fn core_scene_or_fail(&self) -> &CoreScene<ScnScene> {
+        self.core_scene().unwrap()
+    }
+
     fn core_scene_mut_or_fail(&mut self) -> &mut CoreScene<ScnScene> {
         self.core_scene_mut().unwrap()
     }
 
-    fn get_resolved_role(
-        &mut self,
-        state: &SceState,
-        role_id: i32,
-    ) -> Option<&CoreEntity<RoleEntity>> {
-        self.core_scene_mut_or_fail()
+    fn get_resolved_role(&self, state: &SceState, role_id: i32) -> Option<&CoreEntity<RoleEntity>> {
+        self.core_scene_or_fail()
             .get_role_entity(resolve_role_id(state, role_id))
     }
 
