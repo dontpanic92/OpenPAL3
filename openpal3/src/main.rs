@@ -6,7 +6,6 @@ mod sce_proc_hooks;
 
 use debug_layer::OpenPal3DebugLayer;
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
-use radiance::application::utils::FpsCounter;
 use radiance::application::{Application, ApplicationExtension};
 use std::rc::Rc;
 use std::{cell::RefCell, path::PathBuf};

@@ -5,6 +5,8 @@ pub use engine::{InputEngine, Key, KeyState};
 pub use windows::WindowsInputEngine;
 
 mod engine;
+mod keyboard;
+mod gamepad;
 
 #[cfg(target_os = "windows")]
 mod windows;

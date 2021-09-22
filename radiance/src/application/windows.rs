@@ -74,7 +74,7 @@ impl Platform {
             };
             loop {
                 let has_msg =
-                    winuser::PeekMessageW(&mut msg, null_mut(), 0, 0, winuser::PM_REMOVE) > 0;
+                    winuser::PeekMessageW(&mut msg, null_mut(), 0, 0, winuser::PM_REMOVE) != 0;
                 if !has_msg {
                     return true;
                 }

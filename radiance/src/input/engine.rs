@@ -1,4 +1,5 @@
 use std::{cell::RefCell, rc::Rc};
+use gilrs::{Gilrs, Button, Event};
 
 pub trait InputEngine {
     fn get_key_state(&self, key: Key) -> KeyState;
@@ -48,6 +49,14 @@ pub enum Key {
     Up,
     Right,
     Down,
+    GamePadEast,
+    GamePadSouth,
+    GamePadWest,
+    GamePadNorth,
+    GamePadDPadUp,
+    GamePadDPadDown,
+    GamePadDPadLeft,
+    GamePadDPadRight,
     Unknown,
 }
 

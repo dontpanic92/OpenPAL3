@@ -12,7 +12,7 @@ use std::{
 pub struct GlobalState {
     persistent_state: Rc<RefCell<PersistentState>>,
     fop_state: FopState,
-    input_enabled: bool,
+    adv_input_enabled: bool,
     role_controlled: i32,
 
     asset_mgr: Rc<AssetManager>,
@@ -39,7 +39,7 @@ impl GlobalState {
         Self {
             persistent_state,
             fop_state: FopState::new(),
-            input_enabled: true,
+            adv_input_enabled: true,
             role_controlled: 0,
             asset_mgr,
             bgm_source,
@@ -48,12 +48,12 @@ impl GlobalState {
         }
     }
 
-    pub fn input_enabled(&self) -> bool {
-        self.input_enabled
+    pub fn adv_input_enabled(&self) -> bool {
+        self.adv_input_enabled
     }
 
-    pub fn set_input_enabled(&mut self, input_enabled: bool) {
-        self.input_enabled = input_enabled
+    pub fn set_adv_input_enabled(&mut self, adv_input_enabled: bool) {
+        self.adv_input_enabled = adv_input_enabled
     }
 
     pub fn role_controlled(&self) -> i32 {

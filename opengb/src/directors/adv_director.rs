@@ -234,7 +234,7 @@ impl Director for AdventureDirector {
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
         self.sce_vm.update(scene_manager, ui, delta_sec);
-        if !self.sce_vm.global_state().input_enabled() {
+        if !self.sce_vm.global_state().adv_input_enabled() {
             return None;
         }
 
@@ -248,19 +248,27 @@ impl Director for AdventureDirector {
             let input = self.input_engine.borrow_mut();
             let mut direction = Vec3::new(0., 0., 0.);
 
-            if input.get_key_state(Key::Up).is_down() {
+            if input.get_key_state(Key::Up).is_down()
+                || input.get_key_state(Key::GamePadDPadUp).is_down()
+            {
                 direction = Vec3::add(&direction, &Vec3::new(0., 0., -1.));
             }
 
-            if input.get_key_state(Key::Down).is_down() {
+            if input.get_key_state(Key::Down).is_down()
+                || input.get_key_state(Key::GamePadDPadDown).is_down()
+            {
                 direction = Vec3::add(&direction, &Vec3::new(0., 0., 1.));
             }
 
-            if input.get_key_state(Key::Left).is_down() {
+            if input.get_key_state(Key::Left).is_down()
+                || input.get_key_state(Key::GamePadDPadLeft).is_down()
+            {
                 direction = Vec3::add(&direction, &Vec3::new(-1., 0., 0.));
             }
 
-            if input.get_key_state(Key::Right).is_down() {
+            if input.get_key_state(Key::Right).is_down()
+                || input.get_key_state(Key::GamePadDPadRight).is_down()
+            {
                 direction = Vec3::add(&direction, &Vec3::new(1., 0., 0.));
             }
 
@@ -326,11 +334,8 @@ impl Director for AdventureDirector {
             self.layer_switch_triggered = false;
         }
 
-        if self
-            .input_engine
-            .borrow_mut()
-            .get_key_state(Key::F)
-            .pressed()
+        let input = self.input_engine.borrow_mut();
+        if input.get_key_state(Key::F).pressed() || input.get_key_state(Key::GamePadEast).pressed()
         {
             if let Some(proc_id) = scene!()
                 .test_aabb_trigger(&position)

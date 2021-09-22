@@ -17,7 +17,7 @@ impl SceCommand for SceCommandRoleInput {
     ) -> bool {
         state
             .global_state_mut()
-            .set_input_enabled(self.enable_input != 0);
+            .set_adv_input_enabled(self.enable_input != 0);
         true
     }
 }
