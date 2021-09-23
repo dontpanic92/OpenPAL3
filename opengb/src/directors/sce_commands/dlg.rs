@@ -6,6 +6,7 @@ use radiance::{input::Key, scene::SceneManager};
 pub struct SceCommandDlg {
     text: String,
     dlg_end: bool,
+    adv_input_enabled: bool,
 }
 
 impl SceCommandDlg {
@@ -15,6 +16,7 @@ impl SceCommandDlg {
 
 impl SceCommand for SceCommandDlg {
     fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
+        self.adv_input_enabled = state.global_state_mut().adv_input_enabled();
         state.global_state_mut().set_adv_input_enabled(false);
     }
 
@@ -26,7 +28,7 @@ impl SceCommand for SceCommandDlg {
         delta_sec: f32,
     ) -> bool {
         if self.dlg_end {
-            state.global_state_mut().set_adv_input_enabled(true);
+            state.global_state_mut().set_adv_input_enabled(self.adv_input_enabled);
             return true;
         }
 
@@ -77,6 +79,7 @@ impl SceCommandDlg {
         Self {
             text: text.replace("\\n", "\n"),
             dlg_end: false,
+            adv_input_enabled: false,
         }
     }
 }

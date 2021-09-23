@@ -14,4 +14,4 @@ simple_logger = "1.11.0"
 
 [dependencies.log]
 version = "0.4.14"
-# features = ["max_level_debug", "release_max_level_debug"]
+features = ["max_level_debug", "release_max_level_debug"]

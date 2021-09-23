@@ -1,5 +1,9 @@
-use super::{engine::{InputEngine, InputEngineInternal, Key, KeyState}, gamepad::GilrsInput, keyboard::WindowsKeyboardInput};
-use crate::application::Platform;
+use super::{
+    engine::{InputEngine, InputEngineInternal, Key, KeyState},
+    gamepad::GilrsInput,
+    keyboard::WindowsKeyboardInput,
+};
+use crate::{application::Platform, input::engine::{Axis, AxisState}};
 use std::{
     cell::RefCell,
     mem::swap,
@@ -11,6 +15,7 @@ pub struct WindowsInputEngine {
     input_engine: Weak<RefCell<WindowsInputEngine>>,
     last_key_states: Box<Vec<KeyState>>,
     key_states: Box<Vec<KeyState>>,
+    axis_states: Box<Vec<AxisState>>,
 
     keyboard: WindowsKeyboardInput,
     gamepad: GilrsInput,
@@ -26,8 +31,9 @@ impl WindowsInputEngine {
             ]),
             key_states: Box::new(vec![
                 KeyState::new(false, false, false);
-                Key::Unknown as usize
+                Key::Unknown as usize + 1
             ]),
+            axis_states: Box::new(vec![AxisState::new(); Axis::Unknown as usize + 1]),
             keyboard: WindowsKeyboardInput,
             gamepad: GilrsInput::new(),
         }));
@@ -44,7 +50,8 @@ impl WindowsInputEngine {
     }
 
     fn message_callback(&mut self, msg: &winuser::MSG) {
-        self.keyboard.process_message(&mut self.last_key_states, msg);
+        self.keyboard
+            .process_message(&mut self.last_key_states, msg);
     }
 }
 
@@ -52,11 +59,15 @@ impl InputEngine for WindowsInputEngine {
     fn get_key_state(&self, key: Key) -> KeyState {
         self.key_states[key as usize]
     }
+
+    fn get_axis_state(&self, axis: Axis) -> AxisState {
+        self.axis_states[axis as usize]
+    }
 }
 
 impl InputEngineInternal for WindowsInputEngine {
     fn update(&mut self, delta_sec: f32) {
-        self.gamepad.process_message(&mut self.last_key_states);
+        self.gamepad.process_message(&mut self.last_key_states, &mut self.axis_states);
 
         swap(&mut self.key_states, &mut self.last_key_states);
         for (next_state, cur_state) in self

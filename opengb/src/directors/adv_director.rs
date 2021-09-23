@@ -10,7 +10,7 @@ use super::{
 use log::debug;
 use radiance::{
     audio::AudioEngine,
-    input::{InputEngine, Key},
+    input::{Axis, InputEngine, Key},
     math::{Mat44, Vec3},
     scene::{CoreScene, Director, Entity, SceneManager},
 };
@@ -207,17 +207,21 @@ impl AdventureDirector {
         const CAMERA_ROTATE_SPEED: f32 = 1.5;
         if input.get_key_state(Key::A).is_down() {
             self.camera_rotation -= CAMERA_ROTATE_SPEED * delta_sec;
-            if self.camera_rotation < 0. {
-                self.camera_rotation += std::f32::consts::PI * 2.;
-            }
         }
 
         if input.get_key_state(Key::D).is_down() {
             self.camera_rotation += CAMERA_ROTATE_SPEED * delta_sec;
+        }
 
-            if self.camera_rotation > std::f32::consts::PI * 2. {
-                self.camera_rotation -= std::f32::consts::PI * 2.;
-            }
+        self.camera_rotation -=
+            CAMERA_ROTATE_SPEED * delta_sec * input.get_axis_state(Axis::RightStickX).value();
+
+        if self.camera_rotation < 0. {
+            self.camera_rotation += std::f32::consts::PI * 2.;
+        }
+
+        if self.camera_rotation > std::f32::consts::PI * 2. {
+            self.camera_rotation -= std::f32::consts::PI * 2.;
         }
     }
 }
@@ -260,6 +264,11 @@ impl Director for AdventureDirector {
                 direction = Vec3::add(&direction, &Vec3::new(0., 0., 1.));
             }
 
+            direction = Vec3::add(
+                &direction,
+                &Vec3::new(0., 0., -input.get_axis_state(Axis::LeftStickY).value()),
+            );
+
             if input.get_key_state(Key::Left).is_down()
                 || input.get_key_state(Key::GamePadDPadLeft).is_down()
             {
@@ -272,7 +281,11 @@ impl Director for AdventureDirector {
                 direction = Vec3::add(&direction, &Vec3::new(1., 0., 0.));
             }
 
-            *direction.normalize()
+            direction = Vec3::add(
+                &direction,
+                &Vec3::new(input.get_axis_state(Axis::LeftStickX).value(), 0., 0.),
+            );
+            Vec3::normalized(&direction)
         };
 
         self.move_role(scene_manager, ui, delta_sec, &moving_direction);

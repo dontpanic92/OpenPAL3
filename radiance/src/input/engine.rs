@@ -1,8 +1,17 @@
 use std::{cell::RefCell, rc::Rc};
-use gilrs::{Gilrs, Button, Event};
 
 pub trait InputEngine {
     fn get_key_state(&self, key: Key) -> KeyState;
+    fn get_axis_state(&self, axis: Axis) -> AxisState;
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum Axis {
+    LeftStickX = 0,
+    LeftStickY,
+    RightStickX,
+    RightStickY,
+    Unknown,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -58,6 +67,25 @@ pub enum Key {
     GamePadDPadLeft,
     GamePadDPadRight,
     Unknown,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct AxisState {
+    value: f32,
+}
+
+impl AxisState {
+    pub(crate) fn new() -> Self {
+        Self { value: 0. }
+    }
+
+    pub fn value(&self) -> f32 {
+        self.value
+    }
+
+    pub(crate) fn set_value(&mut self, value: f32) {
+        self.value = value;
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
