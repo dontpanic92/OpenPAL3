@@ -27,7 +27,7 @@ impl WindowsInputEngine {
             input_engine: Weak::new(),
             last_key_states: Box::new(vec![
                 KeyState::new(false, false, false);
-                Key::Unknown as usize
+                Key::Unknown as usize + 1
             ]),
             key_states: Box::new(vec![
                 KeyState::new(false, false, false);

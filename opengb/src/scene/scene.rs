@@ -94,19 +94,14 @@ impl ScnScene {
     }
 
     pub fn test_nav_trigger(&self, layer: usize, coord: &Vec3) -> Option<u32> {
-        let nav_coord = self
-            .nav
-            .round_nav_coord(layer, self.scene_coord_to_nav_coord(layer, coord));
+        let nav_coord = self.scene_coord_to_nav_coord(layer, coord);
+        let nav_coord = (nav_coord.0 as i32, nav_coord.1 as i32);
 
         for trigger in &self.nav_triggers {
-            if Self::test_coord_in_bound(
-                nav_coord.0,
-                (trigger.nav_coord_min, trigger.nav_coord_max),
-            ) || Self::test_coord_in_bound(
-                nav_coord.1,
-                (trigger.nav_coord_min, trigger.nav_coord_max),
-            ) {
-                if (trigger.node_type == 0 && layer == 0)
+            if Self::test_coord_in_bound(nav_coord, (trigger.nav_coord_min, trigger.nav_coord_max))
+            {
+                if trigger.node_type == 14
+                    || (trigger.node_type == 0 && layer == 0)
                     || (trigger.node_type == 65536 && layer == 1)
                 {
                     return Some(trigger.sce_proc_id);
@@ -179,12 +174,26 @@ impl ScnScene {
         None
     }
 
-    pub fn test_role_trigger(&self, coord: &Vec3) -> Option<u32> {
+    pub fn test_role_trigger(
+        self: &CoreScene<ScnScene>,
+        coord: &Vec3,
+        exclude_role: i32,
+    ) -> Option<u32> {
         const D: f32 = 100.;
-        for role in &self.scn_file.roles {
-            let role_position = Vec3::new(role.position_x, role.position_y, role.position_z);
-            if Vec3::sub(coord, &role_position).norm2() < D * D {
-                return Some(role.sce_proc_id);
+        for entity in self.entities() {
+            if let Some(role) = entity.downcast_ref::<CoreEntity<RoleEntity>>() {
+                if role.name() == format!("ROLE_{}", exclude_role) {
+                    continue;
+                }
+
+                if !role.visible() {
+                    continue;
+                }
+
+                let role_position = role.transform().position();
+                if Vec3::sub(coord, &role_position).norm2() < D * D {
+                    return Some(role.proc_id() as u32);
+                }
             }
         }
 
@@ -328,17 +337,17 @@ impl ScnScene {
         let ground_pol_name = self.scn_file.scn_base_name.clone() + ".pol";
         let mut entities: Vec<Box<dyn Entity>> = vec![];
 
-        let mut scn_object = self
-            .asset_mgr
-            .load_scn_pol(
-                &self.cpk_name,
-                &self.scn_file.scn_base_name,
-                &ground_pol_name,
-                std::u16::MAX,
-            )
-            .unwrap();
-        Self::apply_position_rotation(&mut scn_object, &Vec3::new(0., 0., 0.), 0.);
-        entities.push(Box::new(scn_object));
+        let scn_object = self.asset_mgr.load_scn_pol(
+            &self.cpk_name,
+            &self.scn_file.scn_base_name,
+            &ground_pol_name,
+            std::u16::MAX,
+        );
+
+        if let Some(mut scn_object) = scn_object {
+            Self::apply_position_rotation(&mut scn_object, &Vec3::new(0., 0., 0.), 0.);
+            entities.push(Box::new(scn_object));
+        }
 
         let _self = self.extension_mut();
         for obj in &_self.scn_file.nodes {
@@ -354,28 +363,6 @@ impl ScnScene {
                     node_type: obj.node_type,
                     sce_proc_id: obj.sce_proc_id,
                 });
-            }
-
-            match obj.node_type {
-                ScnNodeTypes::LADDER => _self.ladder_triggers.push(LadderTrigger {
-                    position: obj.position,
-                    nav_coord1: obj.ladder_nav_coord1,
-                    nav_coord2: obj.ladder_nav_coord2,
-                }),
-                ScnNodeTypes::ITEM_TRIGGER => {
-                    _self.item_triggers.push(SceItemTrigger {
-                        coord: obj.position,
-                        sce_proc_id: obj.sce_proc_id,
-                    });
-                }
-                ScnNodeTypes::AABB_TRIGGER => {
-                    _self.aabb_triggers.push(SceAabbTrigger {
-                        aabb_coord2: obj.aabb_trigger_coord2,
-                        aabb_coord1: obj.aabb_trigger_coord1,
-                        sce_proc_id: obj.sce_proc_id,
-                    });
-                }
-                _ => {}
             }
 
             let visible = obj.node_type != 17 && obj.node_type != 25;
@@ -425,6 +412,29 @@ impl ScnScene {
                 }
             }
 
+            match obj.node_type {
+                ScnNodeTypes::LADDER => _self.ladder_triggers.push(LadderTrigger {
+                    position: obj.position,
+                    nav_coord1: obj.ladder_nav_coord1,
+                    nav_coord2: obj.ladder_nav_coord2,
+                }),
+                ScnNodeTypes::ITEM_TRIGGER | ScnNodeTypes::TRIGGER_SOURCE => {
+                    _self.item_triggers.push(SceItemTrigger {
+                        coord: obj.position,
+                        sce_proc_id: obj.sce_proc_id,
+                    });
+                }
+                ScnNodeTypes::TRIGGER_TARGET => {}
+                ScnNodeTypes::AABB_TRIGGER => {
+                    _self.aabb_triggers.push(SceAabbTrigger {
+                        aabb_coord2: obj.aabb_trigger_coord2,
+                        aabb_coord1: obj.aabb_trigger_coord1,
+                        sce_proc_id: obj.sce_proc_id,
+                    });
+                }
+                _ => {}
+            }
+
             if let Some(mut p) = entity {
                 Self::apply_position_rotation(p.as_mut(), &obj.position, obj.rotation.to_radians());
                 entities.push(p);
@@ -447,15 +457,17 @@ impl ScnScene {
         match role_id {
             0 => 101,
             1 => 104,
+            2 => 105,
             3 => 107,
             4 => 102,
             5 => 109,
+            11 => 110,
             x => x,
         }
     }
 
     fn load_roles(self: &mut CoreScene<ScnScene>) {
-        for i in &[0, 1, 3, 4, 5] {
+        for i in &[0, 1, 2, 3, 4, 5, 11] {
             let entity_name = format!("ROLE_{}", i);
             let model_name = Self::map_role_id(*i).to_string();
             let role_entity = self.asset_mgr.load_role(&model_name, "C01").unwrap();
@@ -480,6 +492,7 @@ impl ScnScene {
 
                 if role.sce_proc_id != 0 {
                     entity.set_active(true);
+                    entity.set_proc_id(role.sce_proc_id as i32);
                 }
 
                 entities.push(entity);
@@ -497,6 +510,8 @@ impl ScnNodeTypes {
     pub const LADDER: u32 = 15;
     pub const ITEM_TRIGGER: u32 = 16;
     pub const AABB_TRIGGER: u32 = 20;
+    pub const TRIGGER_TARGET: u32 = 22;
+    pub const TRIGGER_SOURCE: u32 = 23;
 }
 
 pub struct Nav {
@@ -638,3 +653,5 @@ pub struct LadderTrigger {
     nav_coord1: (i32, i32),
     nav_coord2: (i32, i32),
 }
+
+pub struct TriggerTarget {}

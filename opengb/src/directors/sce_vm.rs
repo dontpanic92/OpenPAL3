@@ -70,6 +70,7 @@ impl SceVm {
                         }
                     }
                     None => {
+                        self.state.global_state_mut().set_adv_input_enabled(true);
                         return None;
                     }
                 };
@@ -169,7 +170,7 @@ impl SceProcContext {
     pub fn new_from_name(sce: Rc<SceFile>, proc_name: &str) -> Option<Self> {
         sce.proc_headers
             .iter()
-            .position(|h| h.name == proc_name)
+            .position(|h| h.name.to_lowercase() == proc_name.to_lowercase())
             .and_then(|index| Some(Self::new(sce, index)))
     }
 
@@ -268,6 +269,10 @@ impl SceProcContext {
                 // Rnd
                 command!(self, SceCommandRnd, var: i16, value: i32)
             }
+            19 | 65555 => {
+                // Between
+                command!(self, SceCommandBetween, var: i16, lb: i32, rh: i32)
+            }
             20 => {
                 // RolePathTo
                 command!(
@@ -317,6 +322,10 @@ impl SceProcContext {
                 // RoleActive
                 command!(self, SceCommandRoleActive, role: i32, active: i32)
             }
+            29 => {
+                // RoleScript
+                command!(self, SceCommandRoleScript, role: i32, proc_id: i32)
+            }
             30 => {
                 // CameraFocusRole
                 nop_command!(self, CameraFocusRole, i32)
@@ -365,6 +374,10 @@ impl SceProcContext {
             37 => {
                 // CameraDefault
                 command!(self, SceCommandCameraDefault, unknown: i32)
+            }
+            42 => {
+                // LK_Ghost
+                nop_command!(self, LK_Ghost, i32)
             }
             43 => {
                 // FavorAdd
@@ -430,6 +443,19 @@ impl SceProcContext {
                 // RoleEmote
                 nop_command!(self, RoleEmote, i32, i32)
             }
+            74 => {
+                // Climb
+                nop_command!(self, Climb, i32, i32)
+            }
+            76 => {
+                // DlgTime
+                command!(self, SceCommandDlgTime, text: string)
+            }
+            77 | 65613 => {
+                // GetTimeSel - temporarily use GetDlgSel
+                command!(self, SceCommandGetTimeSel, var: i16)
+
+            }
             78 => {
                 command!(self, SceCommandHaveItem, item_id: i32)
             }
@@ -479,6 +505,14 @@ impl SceProcContext {
                 // Get Appr
                 command!(self, SceCommandGetAppr, var: i16)
             }
+            111 => {
+                // Specify_Compos
+                nop_command!(self, Specify_Compos, i32)
+            }
+            113 => {
+                // Start_HideFight
+                command!(self, SceCommandStartHideFight)
+            }
             115 => {
                 // Movie
                 nop_command!(self, Movie, string)
@@ -506,6 +540,13 @@ impl SceProcContext {
                 // Trigger
                 nop_command!(self, Trigger, i32)
             }
+            126 | 262270 => {
+                // GetSwitch
+                nop_command!(self, GetSwitch, string, i32, i16)
+            }
+            127 => {
+                command!(self, SceCommandEntryRow, id: i32, proc_id: i32)
+            }
             133 => {
                 // Music
                 command!(self, SceCommandMusic, name: string, unknown: i32)
@@ -513,6 +554,18 @@ impl SceProcContext {
             134 => {
                 // StopMusic
                 command!(self, SceCommandStopMusic)
+            }
+            135 => {
+                // RoleFadeOut
+                nop_command!(self, RoleFadeOut, i32)
+            }
+            136 => {
+                // RoleFadeIn
+                nop_command!(self, RoleFadeIn, i32)
+            }
+            137 => {
+                // IfInTeam
+                command!(self, SceCommandIfInTeam, role_id: i32)
             }
             142 => {
                 // CEft_Pos
@@ -534,6 +587,10 @@ impl SceProcContext {
                 // CEft_Load
                 nop_command!(self, CEft_Load, i32)
             }
+            149 | 65685 => {
+                // GiveCloth
+                nop_command!(self, GiveCloth, i16)
+            }
             150 => {
                 // LoadAct
                 nop_command!(self, LoadAct, i32, string)
@@ -541,6 +598,10 @@ impl SceProcContext {
             153 => {
                 // FullTeamAtt
                 nop_command!(self, FullTeamAtt)
+            }
+            155 => {
+                // CameraYaw
+                nop_command!(self, CameraYaw, f32)
             }
             201 => {
                 // RolePathOut
@@ -564,6 +625,10 @@ impl SceProcContext {
             204 => {
                 // RoleCtrl
                 command!(self, SceCommandRoleCtrl, role_id: i32)
+            }
+            205 => {
+                // RoleOverlap
+                nop_command!(self, RoleOverlap, i32, i32)
             }
             207 => {
                 // RoleActAutoStand
@@ -612,6 +677,10 @@ impl SceProcContext {
             250 => {
                 // CameraFree
                 nop_command!(self, CameraFree, i32)
+            }
+            251 => {
+                // ObjectMove
+                nop_command!(self, ObjectMove, i32, f32, f32, f32, f32)
             }
             default => {
                 error!("Unsupported command: {}", default);

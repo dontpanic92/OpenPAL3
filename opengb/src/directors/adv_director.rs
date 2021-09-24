@@ -171,7 +171,7 @@ impl AdventureDirector {
         let role = scene_manager
             .get_resolved_role_mut(self.sce_vm.state(), -1)
             .unwrap();
-        if direction.norm() > 0.5 && distance_to_border > std::f32::EPSILON {
+        if direction.norm() > 0.5/* && distance_to_border > std::f32::EPSILON */{
             role.run();
             let look_at = Vec3::new(target_position.x, position.y, target_position.z);
             role.transform_mut()
@@ -353,7 +353,7 @@ impl Director for AdventureDirector {
             if let Some(proc_id) = scene!()
                 .test_aabb_trigger(&position)
                 .or_else(|| scene!().test_item_trigger(&position))
-                .or_else(|| scene!().test_role_trigger(&position))
+                .or_else(|| scene!().test_role_trigger(&position, self.sce_vm.global_state().role_controlled()))
             {
                 debug!("New proc triggerd: {}", proc_id);
                 self.sce_vm.call_proc(proc_id);

@@ -28,7 +28,7 @@ impl SceCommand for SceCommandDlg {
         delta_sec: f32,
     ) -> bool {
         if self.dlg_end {
-            state.global_state_mut().set_adv_input_enabled(self.adv_input_enabled);
+            // state.global_state_mut().set_adv_input_enabled(self.adv_input_enabled);
             return true;
         }
 
@@ -68,7 +68,8 @@ impl SceCommand for SceCommandDlg {
         // delay set_adv_input to the next frame so that the last kay pressed
         // won't trigger the sce proc again.
         self.dlg_end = state.input().get_key_state(Key::Space).pressed()
-            || state.input().get_key_state(Key::GamePadEast).pressed();
+            || state.input().get_key_state(Key::GamePadEast).pressed()
+            || state.input().get_key_state(Key::GamePadSouth).pressed();
 
         false
     }

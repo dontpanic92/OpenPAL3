@@ -43,6 +43,22 @@ impl OpenPal3DebugLayer {
             if let Some(s) = scene {
                 ui.text(im_str!("Scene: {} {}", s.name(), s.sub_name()));
             }
+
+            let coord = scene_manager.director().as_ref().and_then(|d| {
+                d.borrow()
+                    .downcast_ref::<AdventureDirector>()
+                    .and_then(|adv| {
+                        Some(
+                            scene_manager
+                                .get_resolved_role(adv.sce_vm().state(), -1)
+                                .unwrap()
+                                .transform()
+                                .position(),
+                        )
+                    })
+            });
+
+            ui.text(im_str!("Coord: {:?}", &coord));
             TabBar::new(im_str!("##debug_tab_bar")).build(ui, || {
                 TabItem::new(im_str!("Nav")).build(ui, || {
                     TabBar::new(im_str!("##debug_tab_bar_nav_bar")).build(ui, || {
@@ -52,28 +68,15 @@ impl OpenPal3DebugLayer {
                         let layer_count = scene_manager.core_scene().unwrap().nav().layer_count();
                         for layer in 0..layer_count {
                             TabItem::new(&im_str!("Layer {}", layer)).build(ui, || {
-                                let current_nav_coord = (|| {
-                                    let director = scene_manager.director();
-                                    if let Some(d) = director {
-                                        if let Some(adv) =
-                                            d.borrow().downcast_ref::<AdventureDirector>()
-                                        {
-                                            let coord = scene_manager
-                                                .get_resolved_role(adv.sce_vm().state(), -1)
-                                                .unwrap()
-                                                .transform()
-                                                .position();
-                                            return Some(
-                                                scene_manager
-                                                    .core_scene_mut()?
-                                                    .scene_coord_to_nav_coord(layer, &coord),
-                                            );
-                                        }
-                                    }
+                                let current_nav_coord = coord.as_ref().and_then(|c| {
+                                    Some(
+                                        scene_manager
+                                            .core_scene_mut()?
+                                            .scene_coord_to_nav_coord(layer, c),
+                                    )
+                                });
 
-                                    None
-                                })();
-
+                                ui.text(im_str!("Nav Coord: {:?}", &current_nav_coord));
                                 let text = {
                                     let s = scene_manager.core_scene().unwrap();
                                     let size = s.nav().get_map_size(layer);
@@ -87,12 +90,13 @@ impl OpenPal3DebugLayer {
                                                     }
                                                 }
 
-                                                return s
+                                                let distance = s
                                                     .nav()
                                                     .get(layer, i as i32, j as i32)
                                                     .unwrap()
-                                                    .distance_to_border
-                                                    .to_string();
+                                                    .distance_to_border;
+                                                
+                                                return if distance > 0 { "=".to_string() } else { "_".to_string() }
                                             })(
                                             );
                                             text += ch.as_str();

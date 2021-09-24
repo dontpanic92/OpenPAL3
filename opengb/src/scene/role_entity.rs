@@ -41,6 +41,7 @@ pub struct RoleEntity {
     state: RoleState,
     auto_play_idle: bool,
     nav_layer: usize,
+    proc_id: i32,
 }
 
 impl RoleEntity {
@@ -97,6 +98,7 @@ impl RoleEntity {
             state: RoleState::Idle,
             auto_play_idle: true,
             nav_layer: 0,
+            proc_id: 0,
         }
     }
 
@@ -108,7 +110,16 @@ impl RoleEntity {
         } else {
             self.remove_component::<RenderingComponent>();
         }
+
         self.set_visible(active);
+    }
+
+    pub fn proc_id(self: &CoreEntity<Self>) -> i32 {
+        self.proc_id
+    }
+
+    pub fn set_proc_id(self: &mut CoreEntity<Self>, proc_id: i32) {
+        self.proc_id = proc_id;
     }
 
     pub fn play_anim(
@@ -119,16 +130,18 @@ impl RoleEntity {
         let anim_name = if anim_name.is_empty() {
             self.idle_anim_name.to_lowercase()
         } else {
-            anim_name.to_lowercase()
-        };
+            let mut anim_name = anim_name.to_lowercase();
+            if self.animations.get(&anim_name).is_none() {
+                let anim = self.asset_mgr.load_role_anim(&self.model_name, &anim_name);
+                if let Some(anim) = anim {
+                    self.animations.insert(anim_name.to_string(), anim);
+                } else {
+                    anim_name = self.idle_anim_name.to_lowercase();
+                }
+            }
 
-        if self.animations.get(&anim_name).is_none() {
-            let anim = self
-                .asset_mgr
-                .load_role_anim(&self.model_name, &anim_name)
-                .unwrap();
-            self.animations.insert(anim_name.to_string(), anim);
-        }
+            anim_name
+        };
 
         self.active_anim_name = anim_name.to_string();
         self.anim_repeat_mode = repeat_mode;
