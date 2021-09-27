@@ -1,7 +1,14 @@
+use dashmap::DashMap;
 use image::ImageFormat;
 
+use crate::rendering::texture::TextureStore;
+
 use super::{texture::TextureDef, ShaderDef, SIMPLE_SHADER_DEF};
-use std::io::Read;
+use std::{
+    io::Read,
+    rc::Rc,
+    sync::{Arc, Weak},
+};
 
 pub trait Material: downcast_rs::Downcast + std::fmt::Debug {}
 
@@ -10,14 +17,19 @@ downcast_rs::impl_downcast!(Material);
 pub struct MaterialDef {
     name: String,
     shader: ShaderDef,
-    textures: Vec<TextureDef>,
+    textures: Vec<Arc<TextureDef>>,
     use_alpha: bool,
 }
 
 impl MaterialDef {
-    pub fn new(name: &str, shader: ShaderDef, textures: Vec<TextureDef>, use_alpha: bool) -> Self {
+    pub fn new(
+        name: String,
+        shader: ShaderDef,
+        textures: Vec<Arc<TextureDef>>,
+        use_alpha: bool,
+    ) -> Self {
         Self {
-            name: name.to_string(),
+            name,
             textures,
             shader,
             use_alpha,
@@ -32,7 +44,7 @@ impl MaterialDef {
         &self.shader
     }
 
-    pub fn textures(&self) -> &[TextureDef] {
+    pub fn textures(&self) -> &[Arc<TextureDef>] {
         &self.textures
     }
 
@@ -43,22 +55,32 @@ impl MaterialDef {
 
 pub struct SimpleMaterialDef;
 impl SimpleMaterialDef {
-    pub fn create<R: Read>(reader: Option<&mut R>, use_alpha: bool) -> MaterialDef {
-        let data = if let Some(r) = reader {
-            let mut buf = Vec::new();
-            r.read_to_end(&mut buf).unwrap();
-            image::load_from_memory(&buf)
-                .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
-                .and_then(|img| Ok(img.to_rgba8()))
-                .ok()
-        } else {
-            None
-        };
+    pub fn create<R: Read>(
+        texture_name: &str,
+        get_reader: impl FnOnce(&str) -> Option<R>,
+        use_alpha: bool,
+    ) -> MaterialDef {
+        let texture = TextureStore::get_or_update(texture_name, || {
+            if let Some(mut r) = get_reader(texture_name) {
+                let mut buf = Vec::new();
+                r.read_to_end(&mut buf).unwrap();
+                image::load_from_memory(&buf)
+                    .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
+                    .and_then(|img| Ok(img.to_rgba8()))
+                    .ok()
+            } else {
+                None
+            }
+        });
 
+        Self::create_internal(texture, use_alpha)
+    }
+
+    fn create_internal(texture_def: Arc<TextureDef>, use_alpha: bool) -> MaterialDef {
         MaterialDef::new(
-            "simple_material",
+            "simple_material".to_string(),
             SIMPLE_SHADER_DEF.clone(),
-            vec![TextureDef::ImageTextureDef(data)],
+            vec![texture_def],
             use_alpha,
         )
     }

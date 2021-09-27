@@ -1,3 +1,4 @@
+use super::texture::VulkanTextureStore;
 use super::{device::Device, shader::VulkanShader, texture::VulkanTexture};
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::{Material, MaterialDef};
@@ -6,7 +7,7 @@ use std::rc::Rc;
 pub struct VulkanMaterial {
     name: String,
     shader: VulkanShader,
-    textures: Vec<VulkanTexture>,
+    textures: Vec<Rc<VulkanTexture>>,
     use_alpha: bool,
 }
 
@@ -24,12 +25,13 @@ impl VulkanMaterial {
         device: &Rc<Device>,
         allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
+        texture_store: &mut VulkanTextureStore,
     ) -> Self {
         let shader = VulkanShader::new(def.shader(), device.clone()).unwrap();
         let textures = def
             .textures()
             .iter()
-            .map(|t| VulkanTexture::new(t, device, allocator, command_runner).unwrap())
+            .map(|t| texture_store.get_or_update(t.name(), || VulkanTexture::new(t, device, allocator, command_runner).unwrap()))
             .collect();
         Self {
             name: def.name().to_string(),
@@ -47,7 +49,7 @@ impl VulkanMaterial {
         &self.shader
     }
 
-    pub fn textures(&self) -> &[VulkanTexture] {
+    pub fn textures(&self) -> &[Rc<VulkanTexture>] {
         &self.textures
     }
 

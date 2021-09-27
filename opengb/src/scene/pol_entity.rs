@@ -72,15 +72,17 @@ impl PolModelEntity {
 
         if texture_paths.len() == 1 {
             SimpleMaterialDef::create(
-                vfs.open(&texture_paths[0]).as_mut().ok(),
+                texture_paths[0].to_str().unwrap(),
+                |name| vfs.open(name).ok(),
                 material.use_alpha != 0,
             )
         } else {
-            let mut readers: Vec<_> = texture_paths
-                .iter()
-                .map(|p| p.file_stem().and_then(|_| Some(vfs.open(p).unwrap())))
-                .collect();
-            LightMapMaterialDef::create(&mut readers, material.use_alpha != 0)
+            let textures: Vec<_> = texture_paths.iter().map(|p| p.to_str().unwrap()).collect();
+            LightMapMaterialDef::create(
+                textures,
+                |name| PathBuf::from(name).file_stem().and_then(|_| Some(vfs.open(name).unwrap())),
+                material.use_alpha != 0,
+            )
         }
     }
 }

@@ -65,8 +65,8 @@ impl VulkanRenderObject {
         let dub_index = dub_manager.allocate_buffer();
 
         Ok(Self {
-            vertices: vertices.clone(),
-            indices: indices.clone(),
+            vertices,
+            indices,
             material,
             host_dynamic,
             dirty: false,

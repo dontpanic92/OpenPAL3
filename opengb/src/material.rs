@@ -1,5 +1,5 @@
-use radiance::rendering::{MaterialDef, ShaderDef, TextureDef, VertexComponents};
-use std::io::Read;
+use radiance::rendering::{MaterialDef, ShaderDef, TextureDef, TextureStore, VertexComponents};
+use std::{io::Read, sync::Arc};
 
 static LIGHTMAP_TEXTURE_VERT: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/lightmap_texture.vert.spv"));
@@ -24,33 +24,37 @@ impl LightMapShaderDef {
 
 pub struct LightMapMaterialDef;
 impl LightMapMaterialDef {
-    pub fn create<R: Read>(readers: &mut [Option<R>], use_alpha: bool) -> MaterialDef {
-        let textures: Vec<TextureDef> = readers
-            .iter_mut()
-            .map(|r| {
-                let mut buf = Vec::new();
-                let b = match r {
-                    None => WHITE_TEXTURE_FILE,
-                    Some(reader) => {
-                        reader.read_to_end(&mut buf).unwrap();
-                        &buf
-                    }
-                };
+    pub fn create<R: Read>(
+        textures: Vec<&str>,
+        get_reader: impl Fn(&str) -> Option<R>,
+        use_alpha: bool,
+    ) -> MaterialDef {
+        let textures: Vec<Arc<TextureDef>> = textures
+            .into_iter()
+            .map(|name| {
+                TextureStore::get_or_update(name, || {
+                    let mut buf = Vec::new();
+                    let b = match get_reader(name) {
+                        None => WHITE_TEXTURE_FILE,
+                        Some(mut reader) => {
+                            reader.read_to_end(&mut buf).unwrap();
+                            &buf
+                        }
+                    };
 
-                TextureDef::ImageTextureDef(
                     image::load_from_memory(b)
                         .or_else(|err| {
                             log::error!("Cannot load texture: {}", &err);
                             Err(err)
                         })
                         .ok()
-                        .and_then(|img| Some(img.to_rgba8())),
-                )
+                        .and_then(|img| Some(img.to_rgba8()))
+                })
             })
             .collect();
 
         MaterialDef::new(
-            "lightmap_material",
+            "lightmap_material".to_string(),
             LightMapShaderDef::create(),
             textures,
             use_alpha,

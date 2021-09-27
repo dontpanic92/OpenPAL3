@@ -72,6 +72,7 @@ impl AdventureDirector {
             scene_name.as_ref().unwrap(),
             sub_scene_name.as_ref().unwrap(),
         )));
+
         scene_manager.push_scene(scene);
 
         let mut global_state = GlobalState::new(

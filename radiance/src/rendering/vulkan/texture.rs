@@ -4,6 +4,7 @@ use super::{
 };
 use crate::rendering::texture::{Texture, TextureDef};
 use ash::vk;
+use lru::LruCache;
 use std::error::Error;
 use std::rc::Rc;
 
@@ -34,11 +35,7 @@ impl VulkanTexture {
             image::load_from_memory(radiance_assets::TEXTURE_MISSING_TEXTURE_FILE)
                 .unwrap()
                 .to_rgba8();
-        let rgba_image = match def {
-            TextureDef::ImageTextureDef(image) => {
-                image.as_ref().unwrap_or_else(|| &texture_missing)
-            }
-        };
+        let rgba_image = def.image().unwrap_or_else(|| &texture_missing);
 
         let buffer = Buffer::new_staging_buffer_with_data(allocator, &rgba_image)?;
         let format = vk::Format::R8G8B8A8_UNORM;
@@ -75,5 +72,31 @@ impl VulkanTexture {
 
     pub fn sampler(&self) -> &Sampler {
         &self.sampler
+    }
+}
+
+pub struct VulkanTextureStore {
+    store: LruCache<String, Rc<VulkanTexture>>,
+}
+
+impl VulkanTextureStore {
+    pub fn new() -> Self {
+        Self {
+            store: LruCache::new(10000),
+        }
+    }
+
+    pub fn get_or_update(
+        &mut self,
+        name: &str,
+        update: impl FnOnce() -> VulkanTexture,
+    ) -> Rc<VulkanTexture> {
+        if let Some(t) = self.store.get(name) {
+            t.clone()
+        } else {
+            let t = Rc::new(update());
+            self.store.put(name.to_string(), t.clone());
+            t
+        }
     }
 }
