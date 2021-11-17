@@ -9,6 +9,7 @@ use radiance::{
     application::utils::FpsCounter,
     audio::AudioEngine,
     input::{InputEngine, Key},
+    math::Vec3,
     radiance::DebugLayer,
     scene::{Entity, SceneManager},
 };
@@ -60,67 +61,94 @@ impl OpenPal3DebugLayer {
 
             ui.text(im_str!("Coord: {:?}", &coord));
             TabBar::new(im_str!("##debug_tab_bar")).build(ui, || {
-                TabItem::new(im_str!("Nav")).build(ui, || {
-                    TabBar::new(im_str!("##debug_tab_bar_nav_bar")).build(ui, || {
-                        if scene_manager.core_scene().is_none() {
-                            return;
+                Self::build_nav_tab(scene_manager, ui, coord.as_ref());
+                Self::build_config_tab(scene_manager, ui);
+            });
+        });
+    }
+
+    fn build_nav_tab(scene_manager: &mut dyn SceneManager, ui: &Ui, coord: Option<&Vec3>) {
+        TabItem::new(im_str!("Nav")).build(ui, || {
+            TabBar::new(im_str!("##debug_tab_bar_nav_bar")).build(ui, || {
+                if scene_manager.core_scene().is_none() {
+                    return;
+                }
+                let layer_count = scene_manager.core_scene().unwrap().nav().layer_count();
+                for layer in 0..layer_count {
+                    TabItem::new(&im_str!("Layer {}", layer)).build(ui, || {
+                        let current_nav_coord = coord.as_ref().and_then(|c| {
+                            Some(
+                                scene_manager
+                                    .core_scene_mut()?
+                                    .scene_coord_to_nav_coord(layer, c),
+                            )
+                        });
+
+                        ui.text(im_str!("Nav Coord: {:?}", &current_nav_coord));
+
+                        if current_nav_coord.is_some() {
+                            let height = scene_manager
+                                .core_scene_or_fail()
+                                .get_height(layer, current_nav_coord.unwrap());
+                            ui.text(im_str!("Height: {:?}", &height));
                         }
-                        let layer_count = scene_manager.core_scene().unwrap().nav().layer_count();
-                        for layer in 0..layer_count {
-                            TabItem::new(&im_str!("Layer {}", layer)).build(ui, || {
-                                let current_nav_coord = coord.as_ref().and_then(|c| {
-                                    Some(
-                                        scene_manager
-                                            .core_scene_mut()?
-                                            .scene_coord_to_nav_coord(layer, c),
-                                    )
-                                });
 
-                                ui.text(im_str!("Nav Coord: {:?}", &current_nav_coord));
-                                let text = {
-                                    let s = scene_manager.core_scene().unwrap();
-                                    let size = s.nav().get_map_size(layer);
-                                    let mut text = "".to_string();
-                                    for j in 0..size.1 {
-                                        for i in 0..size.0 {
-                                            let ch = (|| {
-                                                if let Some(nav) = current_nav_coord {
-                                                    if nav.0 as usize == i && nav.1 as usize == j {
-                                                        return "x".to_string();
-                                                    }
-                                                }
-
-                                                let distance = s
-                                                    .nav()
-                                                    .get(layer, i as i32, j as i32)
-                                                    .unwrap()
-                                                    .distance_to_border;
-                                                
-                                                return if distance > 0 { "=".to_string() } else { "_".to_string() }
-                                            })(
-                                            );
-                                            text += ch.as_str();
+                        let text = {
+                            let s = scene_manager.core_scene().unwrap();
+                            let size = s.nav().get_map_size(layer);
+                            let mut text = "".to_string();
+                            for j in 0..size.1 {
+                                for i in 0..size.0 {
+                                    let ch = (|| {
+                                        if let Some(nav) = current_nav_coord {
+                                            if nav.0 as usize == i && nav.1 as usize == j {
+                                                return "x".to_string();
+                                            }
                                         }
 
-                                        text += "\n";
-                                    }
+                                        let distance = s
+                                            .nav()
+                                            .get(layer, i as i32, j as i32)
+                                            .unwrap()
+                                            .distance_to_border;
 
-                                    text
-                                };
+                                        return if distance > 0 {
+                                            "=".to_string()
+                                        } else {
+                                            "_".to_string()
+                                        };
+                                    })();
+                                    text += ch.as_str();
+                                }
 
-                                InputTextMultiline::new(
-                                    ui,
-                                    &im_str!("##debug_nav_text"),
-                                    &mut im_str!("{}", text),
-                                    [-1., -1.],
-                                )
-                                .read_only(true)
-                                .build();
-                            });
-                        }
+                                text += "\n";
+                            }
+
+                            text
+                        };
+
+                        InputTextMultiline::new(
+                            ui,
+                            &im_str!("##debug_nav_text"),
+                            &mut im_str!("{}", text),
+                            [-1., -1.],
+                        )
+                        .read_only(true)
+                        .build();
                     });
-                });
+                }
             });
+        });
+    }
+
+    fn build_config_tab(scene_manager: &mut dyn SceneManager, ui: &Ui) {
+        TabItem::new(im_str!("Config")).build(ui, || {
+            if let Some(d) = scene_manager.director().as_ref() {
+                if let Some(d) = d.borrow_mut().downcast_mut::<AdventureDirector>() {
+                    let pass_through = d.sce_vm_mut().global_state_mut().pass_through_wall_mut();
+                    ui.checkbox(im_str!("无视地形"), pass_through);
+                }
+            }
         });
     }
 }

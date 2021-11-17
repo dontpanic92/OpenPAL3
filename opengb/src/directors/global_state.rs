@@ -19,6 +19,8 @@ pub struct GlobalState {
     bgm_source: Box<dyn AudioSource>,
     sound_sources: Vec<Rc<RefCell<Box<dyn AudioSource>>>>,
     default_scene_bgm: HashMap<String, String>,
+
+    pass_through_wall: bool,
 }
 
 impl GlobalState {
@@ -45,6 +47,7 @@ impl GlobalState {
             bgm_source,
             sound_sources,
             default_scene_bgm,
+            pass_through_wall: false,
         }
     }
 
@@ -139,6 +142,14 @@ impl GlobalState {
     fn remove_stopped_sound_sources(&mut self) {
         self.sound_sources
             .drain_filter(|s| s.borrow().state() == AudioSourceState::Stopped);
+    }
+
+    pub fn pass_through_wall(&self) -> bool {
+        self.pass_through_wall
+    }
+
+    pub fn pass_through_wall_mut(&mut self) -> &mut bool {
+        &mut self.pass_through_wall
     }
 }
 

@@ -35,12 +35,15 @@ impl SceCommand for SceCommandRolePathTo {
         const RUN_SPEED: f32 = 175.;
 
         let speed = if self.run == 1 { RUN_SPEED } else { WALK_SPEED };
-        let role = scene_manager
-            .get_resolved_role(state, self.role_id)
-            .unwrap();
+        let role = scene_manager.get_resolved_role(state, self.role_id);
+
+        if role.is_none() {
+            return true;
+        }
+
         let to = {
             let scene = scene_manager.core_scene_or_fail();
-            scene.nav_coord_to_scene_coord(role.nav_layer(), self.nav_x, self.nav_z)
+            scene.nav_coord_to_scene_coord(role.unwrap().nav_layer(), self.nav_x, self.nav_z)
         };
 
         let role = scene_manager

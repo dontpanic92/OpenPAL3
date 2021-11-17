@@ -80,7 +80,11 @@ impl PolModelEntity {
             let textures: Vec<_> = texture_paths.iter().map(|p| p.to_str().unwrap()).collect();
             LightMapMaterialDef::create(
                 textures,
-                |name| PathBuf::from(name).file_stem().and_then(|_| Some(vfs.open(name).unwrap())),
+                |name| {
+                    PathBuf::from(name)
+                        .file_stem()
+                        .and_then(|_| Some(vfs.open(name).unwrap()))
+                },
                 material.use_alpha != 0,
             )
         }

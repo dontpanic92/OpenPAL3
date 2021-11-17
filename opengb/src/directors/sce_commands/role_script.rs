@@ -18,7 +18,10 @@ impl SceCommand for SceCommandRoleScript {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        scene_manager.get_resolved_role_mut(state, self.role_id).unwrap().set_proc_id(self.proc_id);
+        scene_manager
+            .get_resolved_role_mut(state, self.role_id)
+            .unwrap()
+            .set_proc_id(self.proc_id);
         true
     }
 }

@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::asset_manager::AssetManager;
+use crate::{asset_manager::AssetManager, scene::LadderTestResult};
 
 use super::{
     global_state::GlobalState,
@@ -134,6 +134,10 @@ impl AdventureDirector {
         &self.sce_vm
     }
 
+    pub fn sce_vm_mut(&mut self) -> &mut SceVm {
+        &mut self.sce_vm
+    }
+
     fn move_role(
         &mut self,
         scene_manager: &mut dyn SceneManager,
@@ -158,7 +162,7 @@ impl AdventureDirector {
         let role = scene_manager
             .get_resolved_role(self.sce_vm.state(), -1)
             .unwrap();
-        let position = role.transform().position();
+        let mut position = role.transform().position();
 
         let scene = scene_manager.core_scene_or_fail();
         let speed = 175.;
@@ -172,7 +176,10 @@ impl AdventureDirector {
         let role = scene_manager
             .get_resolved_role_mut(self.sce_vm.state(), -1)
             .unwrap();
-        if direction.norm() > 0.5/* && distance_to_border > std::f32::EPSILON */{
+        if direction.norm() > 0.5
+            && (self.sce_vm.global_state().pass_through_wall()
+                || distance_to_border > std::f32::EPSILON)
+        {
             role.run();
             let look_at = Vec3::new(target_position.x, position.y, target_position.z);
             role.transform_mut()
@@ -183,6 +190,8 @@ impl AdventureDirector {
                 .global_state_mut()
                 .persistent_state_mut()
                 .set_position(target_position);
+
+            position = target_position
         } else {
             role.idle();
         }
@@ -354,19 +363,41 @@ impl Director for AdventureDirector {
             if let Some(proc_id) = scene!()
                 .test_aabb_trigger(&position)
                 .or_else(|| scene!().test_item_trigger(&position))
-                .or_else(|| scene!().test_role_trigger(&position, self.sce_vm.global_state().role_controlled()))
+                .or_else(|| {
+                    scene!()
+                        .test_role_trigger(&position, self.sce_vm.global_state().role_controlled())
+                })
             {
                 debug!("New proc triggerd: {}", proc_id);
                 self.sce_vm.call_proc(proc_id);
             }
 
-            if let Some(new_position) = scene!().test_ladder(nav_layer, &position) {
-                debug!("Ladder detected, new position: {:?}", &new_position);
-                scene_manager
-                    .get_resolved_role_mut(self.sce_vm.state(), -1)
-                    .unwrap()
-                    .transform_mut()
-                    .set_position(&new_position);
+            let result = scene!().test_ladder(nav_layer, &position);
+            match result {
+                Some(LadderTestResult::NewPosition((new_layer, new_position))) => {
+                    debug!(
+                        "Ladder detected, new_layer: {:?} new position: {:?}",
+                        &new_layer, &new_position
+                    );
+
+                    if new_layer {
+                        scene_manager
+                            .get_resolved_role_mut(self.sce_vm.state(), -1)
+                            .unwrap()
+                            .switch_nav_layer();
+                    }
+
+                    scene_manager
+                        .get_resolved_role_mut(self.sce_vm.state(), -1)
+                        .unwrap()
+                        .transform_mut()
+                        .set_position(&new_position);
+                }
+                Some(LadderTestResult::SceProc(proc_id)) => {
+                    debug!("Ladder detected, proc_id {}", &proc_id);
+                    self.sce_vm.call_proc(proc_id);
+                }
+                None => {}
             }
         }
 

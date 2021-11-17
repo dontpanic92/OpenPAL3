@@ -22,6 +22,7 @@ pub struct ScnNode {
     pub node_type: u32,
     pub ladder_nav_coord1: (i32, i32),
     pub ladder_nav_coord2: (i32, i32),
+    pub ladder_switch_layer: i32,
     pub b49: Vec<u8>,
     pub w66: Vec<u16>,
     pub b6e: Vec<u8>,
@@ -187,7 +188,8 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
     let ladder_nav_coord1_z = reader.read_i32::<LittleEndian>().unwrap();
     let ladder_nav_coord2_x = reader.read_i32::<LittleEndian>().unwrap();
     let ladder_nav_coord2_z = reader.read_i32::<LittleEndian>().unwrap();
-    let b49 = reader.read_u8_vec(10).unwrap();
+    let ladder_switch_layer = reader.read_i32::<LittleEndian>().unwrap();
+    let b49 = reader.read_u8_vec(6).unwrap();
     let w66 = reader.read_w_vec(4).unwrap();
     let b6e = reader.read_u8_vec(18).unwrap();
     let sce_proc_id = reader.read_u32::<LittleEndian>().unwrap();
@@ -217,6 +219,7 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
         node_type,
         ladder_nav_coord1: (ladder_nav_coord1_x, ladder_nav_coord1_z),
         ladder_nav_coord2: (ladder_nav_coord2_x, ladder_nav_coord2_z),
+        ladder_switch_layer,
         b49,
         w66,
         b6e,

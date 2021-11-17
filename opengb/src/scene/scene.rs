@@ -71,6 +71,12 @@ impl ScnScene {
 
     pub fn get_distance_to_border_by_scene_coord(&self, layer: usize, coord: &Vec3) -> f32 {
         let nav_coord = self.scene_coord_to_nav_coord(layer, coord);
+        if nav_coord.0.floor() as u32 >= self.nav.nav_file.maps[layer].width
+            || nav_coord.1.floor() as u32 >= self.nav.nav_file.maps[layer].height
+        {
+            return 0.;
+        }
+
         let nav_coord_floor = (
             (nav_coord.0.floor() as usize)
                 .clamp(0, self.nav.nav_file.maps[layer].width as usize - 1),
@@ -87,10 +93,11 @@ impl ScnScene {
         let distance_floor =
             &self.nav.nav_file.maps[layer].map[nav_coord_floor.1][nav_coord_floor.0];
         let distance_ceil = &self.nav.nav_file.maps[layer].map[nav_coord_ceil.1][nav_coord_ceil.0];
-        std::cmp::min(
+        /*std::cmp::min(
             distance_floor.distance_to_border,
             distance_ceil.distance_to_border,
-        ) as f32
+        ) as f32*/
+        distance_floor.distance_to_border as f32
     }
 
     pub fn test_nav_trigger(&self, layer: usize, coord: &Vec3) -> Option<u32> {
@@ -126,12 +133,14 @@ impl ScnScene {
                 .round_nav_coord(layer, self.scene_coord_to_nav_coord(layer, coord));
             for trigger in layer_triggers {
                 if Self::test_coord_in_bound(
-                    nav_coord.0,
+                    nav_coord,
                     (trigger.nav_coord_min, trigger.nav_coord_max),
-                ) || Self::test_coord_in_bound(
+                )
+                /*|| Self::test_coord_in_bound(
                     nav_coord.1,
                     (trigger.nav_coord_min, trigger.nav_coord_max),
-                ) {
+                ) */
+                {
                     return true;
                 }
             }
@@ -200,27 +209,50 @@ impl ScnScene {
         None
     }
 
-    pub fn test_ladder(&self, layer: usize, coord: &Vec3) -> Option<Vec3> {
+    pub fn test_ladder(&self, layer: usize, coord: &Vec3) -> Option<LadderTestResult> {
+        const D: f32 = 100.;
         let nav_coord = self
             .nav
             .round_nav_coord(layer, self.scene_coord_to_nav_coord(layer, coord));
         for ladder in &self.ladder_triggers {
-            if self.nav.check_connectivity(nav_coord.0, ladder.nav_coord1)
-                || self.nav.check_connectivity(nav_coord.1, ladder.nav_coord1)
+            let layer = if ladder.switch_layer {
+                (layer + 1) % 2
+            } else {
+                layer
+            };
+
+            let mut ladder_position = ladder.position;
+            ladder_position.y = coord.y;
+            if ladder.sce_proc_id != 0 {
+                if Vec3::sub(coord, &ladder_position).norm2() < D * D {
+                    return Some(LadderTestResult::SceProc(ladder.sce_proc_id as u32));
+                }
+            }
+
+            if self
+                .nav
+                .check_connectivity(layer, nav_coord, ladder.nav_coord1)
             {
-                return Some(self.nav_coord_to_scene_coord(
-                    layer,
-                    ladder.nav_coord2.0 as f32,
-                    ladder.nav_coord2.1 as f32,
-                ));
-            } else if self.nav.check_connectivity(nav_coord.0, ladder.nav_coord2)
-                || self.nav.check_connectivity(nav_coord.1, ladder.nav_coord2)
+                return Some(LadderTestResult::NewPosition((
+                    ladder.switch_layer,
+                    self.nav_coord_to_scene_coord(
+                        layer,
+                        ladder.nav_coord2.0 as f32,
+                        ladder.nav_coord2.1 as f32,
+                    ),
+                )));
+            } else if self
+                .nav
+                .check_connectivity(layer, nav_coord, ladder.nav_coord2)
             {
-                return Some(self.nav_coord_to_scene_coord(
-                    layer,
-                    ladder.nav_coord1.0 as f32,
-                    ladder.nav_coord1.1 as f32,
-                ));
+                return Some(LadderTestResult::NewPosition((
+                    ladder.switch_layer,
+                    self.nav_coord_to_scene_coord(
+                        layer,
+                        ladder.nav_coord1.0 as f32,
+                        ladder.nav_coord1.1 as f32,
+                    ),
+                )));
             }
         }
 
@@ -228,9 +260,9 @@ impl ScnScene {
     }
 
     pub fn get_height(&self, layer: usize, nav_coord: (f32, f32)) -> f32 {
-        let x = (nav_coord.0.ceil() as usize)
+        let x = (nav_coord.0.floor() as usize)
             .clamp(0, self.nav.nav_file.maps[layer].width as usize - 1);
-        let y = (nav_coord.1.ceil() as usize)
+        let y = (nav_coord.1.floor() as usize)
             .clamp(0, self.nav.nav_file.maps[layer].height as usize - 1);
         self.nav.nav_file.maps[layer].map[y][x].height
     }
@@ -417,8 +449,12 @@ impl ScnScene {
                     position: obj.position,
                     nav_coord1: obj.ladder_nav_coord1,
                     nav_coord2: obj.ladder_nav_coord2,
+                    switch_layer: obj.ladder_switch_layer == 1,
+                    sce_proc_id: obj.sce_proc_id,
                 }),
-                ScnNodeTypes::ITEM_TRIGGER | ScnNodeTypes::TRIGGER_SOURCE => {
+                ScnNodeTypes::ITEM_TRIGGER
+                | ScnNodeTypes::ITEM_TRIGGER2
+                | ScnNodeTypes::TRIGGER_SOURCE => {
                     _self.item_triggers.push(SceItemTrigger {
                         coord: obj.position,
                         sce_proc_id: obj.sce_proc_id,
@@ -461,13 +497,13 @@ impl ScnScene {
             3 => 107,
             4 => 102,
             5 => 109,
-            11 => 110,
+            // 11 => 110,
             x => x,
         }
     }
 
     fn load_roles(self: &mut CoreScene<ScnScene>) {
-        for i in &[0, 1, 2, 3, 4, 5, 11] {
+        for i in &[0, 1, 2, 3, 4, 5] {
             let entity_name = format!("ROLE_{}", i);
             let model_name = Self::map_role_id(*i).to_string();
             let role_entity = self.asset_mgr.load_role(&model_name, "C01").unwrap();
@@ -480,13 +516,15 @@ impl ScnScene {
             if let Some(role_entity) = self.asset_mgr.load_role(&role.name, &role.action_name) {
                 let mut entity =
                     CoreEntity::new(role_entity, format!("ROLE_{}", role.index), false);
+
+                let nav_coord = self.scene_coord_to_nav_coord(
+                    0,
+                    &Vec3::new(role.position_x, role.position_y, role.position_z),
+                );
+                let height = self.get_height(0, nav_coord);
                 entity
                     .transform_mut()
-                    .set_position(&Vec3::new(
-                        role.position_x,
-                        role.position_y,
-                        role.position_z,
-                    ))
+                    .set_position(&Vec3::new(role.position_x, height, role.position_z))
                     // HACK
                     .rotate_axis_angle_local(&Vec3::UP, std::f32::consts::PI);
 
@@ -508,6 +546,7 @@ impl ScnScene {
 struct ScnNodeTypes;
 impl ScnNodeTypes {
     pub const LADDER: u32 = 15;
+    pub const ITEM_TRIGGER2: u32 = 11;
     pub const ITEM_TRIGGER: u32 = 16;
     pub const AABB_TRIGGER: u32 = 20;
     pub const TRIGGER_TARGET: u32 = 22;
@@ -524,8 +563,8 @@ impl Nav {
         let mut block_sizes = vec![];
         for i in 0..nav_file.maps.len() {
             let area = Vec3::sub(&nav_file.maps[i].max_coord, &nav_file.maps[i].min_coord);
-            let width = nav_file.maps[i].width;
-            let height = nav_file.maps[i].height;
+            let width = nav_file.maps[i].width + 1;
+            let height = nav_file.maps[i].height + 1;
             block_sizes.push((area.x / width as f32, area.z / height as f32))
         }
         Self {
@@ -534,18 +573,13 @@ impl Nav {
         }
     }
 
-    pub fn round_nav_coord(&self, layer: usize, nav_coord: (f32, f32)) -> ((i32, i32), (i32, i32)) {
+    pub fn round_nav_coord(&self, layer: usize, nav_coord: (f32, f32)) -> (i32, i32) {
         let nav_coord_floor = (
             (nav_coord.0.floor() as i32).clamp(0, self.nav_file.maps[layer].width as i32 - 1),
             (nav_coord.1.floor() as i32).clamp(0, self.nav_file.maps[layer].height as i32 - 1),
         );
 
-        let nav_coord_ceil = (
-            (nav_coord.0.ceil() as i32).clamp(0, self.nav_file.maps[layer].width as i32 - 1),
-            (nav_coord.1.ceil() as i32).clamp(0, self.nav_file.maps[layer].height as i32 - 1),
-        );
-
-        (nav_coord_floor, nav_coord_ceil)
+        nav_coord_floor
     }
 
     pub fn layer_count(&self) -> usize {
@@ -573,10 +607,11 @@ impl Nav {
 
     pub fn check_connectivity(
         &self,
+        layer: usize,
         nav_coord_src: (i32, i32),
         nav_coord_dest: (i32, i32),
     ) -> bool {
-        self.check_connectivity_internal(nav_coord_src, nav_coord_dest, 10)
+        self.check_connectivity_internal(layer, nav_coord_src, nav_coord_dest, 10)
     }
 
     pub fn print_map(&self) {
@@ -597,6 +632,7 @@ impl Nav {
 
     fn check_connectivity_internal(
         &self,
+        layer: usize,
         nav_coord_src: (i32, i32),
         nav_coord_dest: (i32, i32),
         remaining_steps: i32,
@@ -613,9 +649,10 @@ impl Nav {
         let directions = [(1, 1), (-1, -1), (1, -1), (-1, 1)];
         for d in &directions {
             let target_coord = (nav_coord_src.0 + d.0, nav_coord_src.1 + d.1);
-            if let Some(point) = self.get(0, target_coord.0, target_coord.1) {
+            if let Some(point) = self.get(layer, target_coord.0, target_coord.1) {
                 if point.distance_to_border != 0
                     && self.check_connectivity_internal(
+                        layer,
                         target_coord,
                         nav_coord_dest,
                         remaining_steps - 1,
@@ -652,6 +689,13 @@ pub struct LadderTrigger {
     position: Vec3,
     nav_coord1: (i32, i32),
     nav_coord2: (i32, i32),
+    switch_layer: bool,
+    sce_proc_id: u32,
 }
 
 pub struct TriggerTarget {}
+
+pub enum LadderTestResult {
+    SceProc(u32),
+    NewPosition((bool, Vec3)),
+}

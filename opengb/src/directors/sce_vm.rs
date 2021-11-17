@@ -454,7 +454,6 @@ impl SceProcContext {
             77 | 65613 => {
                 // GetTimeSel - temporarily use GetDlgSel
                 command!(self, SceCommandGetTimeSel, var: i16)
-
             }
             78 => {
                 command!(self, SceCommandHaveItem, item_id: i32)
@@ -504,6 +503,10 @@ impl SceProcContext {
             108 | 65644 => {
                 // Get Appr
                 command!(self, SceCommandGetAppr, var: i16)
+            }
+            109 => {
+                // Enable_Sword
+                nop_command!(self, Enable_Sword, i32)
             }
             111 => {
                 // Specify_Compos
