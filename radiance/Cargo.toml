@@ -25,7 +25,7 @@ ash = "0.31.0"
 image = "0.23.0"
 imgui = "0.6.1"
 imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer" }
-vk-mem = "0.2.2"
+vk-mem = { git = "https://github.com/dontpanic92/vk-mem-rs" }
 
 # Audio
 alto = "3.0.4"

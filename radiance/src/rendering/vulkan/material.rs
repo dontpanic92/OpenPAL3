@@ -31,7 +31,11 @@ impl VulkanMaterial {
         let textures = def
             .textures()
             .iter()
-            .map(|t| texture_store.get_or_update(t.name(), || VulkanTexture::new(t, device, allocator, command_runner).unwrap()))
+            .map(|t| {
+                texture_store.get_or_update(t.name(), || {
+                    VulkanTexture::new(t, device, allocator, command_runner).unwrap()
+                })
+            })
             .collect();
         Self {
             name: def.name().to_string(),

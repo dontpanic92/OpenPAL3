@@ -61,7 +61,7 @@ impl Director for PreviewDirector {
                             a,
                         ),
                         "preview".to_string(),
-                        true
+                        true,
                     ));
                     e.set_active(true);
                     e as Box<dyn Entity>
@@ -75,14 +75,14 @@ impl Director for PreviewDirector {
                     &self.path,
                 ),
                 "preview".to_string(),
-                true
+                true,
             )) as Box<dyn Entity>),
             Some("cvd") => Some(Box::new(CvdModelEntity::create(
                 self.asset_mgr.component_factory().clone(),
                 &self.asset_mgr.vfs(),
                 &self.path,
                 "preview".to_string(),
-                true
+                true,
             )) as Box<dyn Entity>),
             _ => None,
         };

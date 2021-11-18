@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "radiance",
+    "opengb",
+    "openpal3",
+    "tools/dev_tools",
+]

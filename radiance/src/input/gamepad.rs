@@ -1,6 +1,6 @@
 use gilrs::{Axis, Button, Event, EventType, Gilrs};
 
-use super::{Key, KeyState, engine::AxisState};
+use super::{engine::AxisState, Key, KeyState};
 
 pub struct GilrsInput {
     gilrs: Option<Gilrs>,

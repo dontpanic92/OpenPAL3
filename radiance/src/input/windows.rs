@@ -3,7 +3,10 @@ use super::{
     gamepad::GilrsInput,
     keyboard::WindowsKeyboardInput,
 };
-use crate::{application::Platform, input::engine::{Axis, AxisState}};
+use crate::{
+    application::Platform,
+    input::engine::{Axis, AxisState},
+};
 use std::{
     cell::RefCell,
     mem::swap,
@@ -67,7 +70,8 @@ impl InputEngine for WindowsInputEngine {
 
 impl InputEngineInternal for WindowsInputEngine {
     fn update(&mut self, delta_sec: f32) {
-        self.gamepad.process_message(&mut self.last_key_states, &mut self.axis_states);
+        self.gamepad
+            .process_message(&mut self.last_key_states, &mut self.axis_states);
 
         swap(&mut self.key_states, &mut self.last_key_states);
         for (next_state, cur_state) in self

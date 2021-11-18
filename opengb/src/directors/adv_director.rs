@@ -310,7 +310,7 @@ impl Director for AdventureDirector {
 
         macro_rules! scene {
             () => {
-                scene_manager.core_scene_or_fail();
+                scene_manager.core_scene_or_fail()
             };
         }
 

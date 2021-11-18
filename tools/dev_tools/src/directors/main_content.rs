@@ -5,8 +5,8 @@ use mini_fs::MiniFs;
 use opengb::{
     loaders::{
         cvd_loader::cvd_load_from_file, mv3_loader::mv3_load_from_file,
-        pol_loader::pol_load_from_file, sce_loader::sce_load_from_file,
-        scn_loader::scn_load_from_file, nav_loader::nav_load_from_file,
+        nav_loader::nav_load_from_file, pol_loader::pol_load_from_file,
+        sce_loader::sce_load_from_file, scn_loader::scn_load_from_file,
     },
     utilities::StoreExt2,
 };

@@ -203,14 +203,12 @@ impl Buffer {
         }
 
         action(dst);
-        self.allocator.unmap_memory(&self.allocation).unwrap();
+        self.allocator.unmap_memory(&self.allocation);
     }
 }
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        self.allocator
-            .destroy_buffer(self.buffer, &self.allocation)
-            .unwrap();
+        self.allocator.destroy_buffer(self.buffer, &self.allocation);
     }
 }

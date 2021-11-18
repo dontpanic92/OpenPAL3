@@ -271,8 +271,6 @@ impl Image {
 
 impl Drop for Image {
     fn drop(&mut self) {
-        self.allocator
-            .destroy_image(self.image, &self.allocation)
-            .unwrap();
+        self.allocator.destroy_image(self.image, &self.allocation);
     }
 }
