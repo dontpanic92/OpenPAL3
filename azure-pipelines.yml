@@ -60,13 +60,13 @@ steps:
   
 - task: CopyFiles@2
   inputs:
-    SourceFolder: 'openpal3/target/release'
+    SourceFolder: 'target/release'
     Contents: 'openpal3.exe'
     TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
 - task: CopyFiles@2
   inputs:
-    SourceFolder: 'tools/dev_tools/target/release'
+    SourceFolder: 'target/release'
     Contents: 'dev_tools.exe'
     TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
