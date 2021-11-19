@@ -92,15 +92,21 @@ impl AdventureDirector {
 
         global_state.play_default_bgm();
 
-        let sce_vm = SceVm::new(
+        let mut sce_vm = SceVm::new(
             audio_engine.clone(),
             input_engine.clone(),
             asset_mgr.load_sce(scene_name.as_ref().unwrap()),
-            scene_name.unwrap(),
+            scene_name.as_ref().unwrap().clone(),
             asset_mgr.clone(),
             global_state,
             sce_vm_options,
         );
+
+        sce_vm.state_mut().try_call_proc_by_name(&format!(
+            "_{}_{}",
+            scene_name.as_ref().unwrap(),
+            sub_scene_name.as_ref().unwrap()
+        ));
 
         Some(Self {
             sce_vm,

@@ -106,6 +106,10 @@ impl Device {
         }
     }
 
+    pub fn free_descriptor_sets(&self, pool: DescriptorPool, descriptor_sets: &[DescriptorSet]) {
+        unsafe { self.device.free_descriptor_sets(pool, descriptor_sets) }
+    }
+
     pub fn destroy_descriptor_set_layout(&self, descriptor_set_layout: DescriptorSetLayout) {
         unsafe {
             self.device

@@ -16,10 +16,11 @@ pub struct VulkanRenderObject {
     dirty: bool,
 
     dub_manager: Arc<DynamicUniformBufferManager>,
+    descriptor_manager: Rc<DescriptorManager>,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     material: Box<VulkanMaterial>,
-    per_object_descriptor_sets: vk::DescriptorSet,
+    per_object_descriptor_set: vk::DescriptorSet,
     dub_index: usize,
 }
 
@@ -39,7 +40,7 @@ impl VulkanRenderObject {
         allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
         dub_manager: &Arc<DynamicUniformBufferManager>,
-        descriptor_manager: &DescriptorManager,
+        descriptor_manager: &Rc<DescriptorManager>,
     ) -> Result<Self, Box<dyn Error>> {
         let vertex_buffer = if host_dynamic {
             Buffer::new_dynamic_buffer_with_data(allocator, BufferType::Vertex, vertices.data())?
@@ -60,7 +61,7 @@ impl VulkanRenderObject {
         )?;
 
         let material = material.downcast::<VulkanMaterial>().unwrap();
-        let per_object_descriptor_sets =
+        let per_object_descriptor_set =
             descriptor_manager.allocate_per_object_descriptor_set(&material)?;
         let dub_index = dub_manager.allocate_buffer();
 
@@ -73,8 +74,9 @@ impl VulkanRenderObject {
             dub_manager: dub_manager.clone(),
             vertex_buffer,
             index_buffer,
-            per_object_descriptor_sets,
+            per_object_descriptor_set,
             dub_index,
+            descriptor_manager: descriptor_manager.clone(),
         })
     }
 
@@ -95,12 +97,14 @@ impl VulkanRenderObject {
     }
 
     pub fn vk_descriptor_set(&self) -> vk::DescriptorSet {
-        self.per_object_descriptor_sets
+        self.per_object_descriptor_set
     }
 }
 
 impl Drop for VulkanRenderObject {
     fn drop(&mut self) {
+        self.descriptor_manager
+            .free_per_object_descriptor_set(self.per_object_descriptor_set);
         self.dub_manager.deallocate_buffer(self.dub_index);
     }
 }

@@ -96,6 +96,10 @@ impl SceVm {
         &self.state
     }
 
+    pub fn state_mut(&mut self) -> &mut SceState {
+        &mut self.state
+    }
+
     pub fn global_state(&self) -> &GlobalState {
         &self.state.global_state
     }
@@ -375,6 +379,14 @@ impl SceProcContext {
                 // CameraDefault
                 command!(self, SceCommandCameraDefault, unknown: i32)
             }
+            38 => {
+                // CameraPushState
+                nop_command!(self, CameraPushState)
+            }
+            39 => {
+                // CameraPopState
+                nop_command!(self, CameraPopState)
+            }
             42 => {
                 // LK_Ghost
                 nop_command!(self, LK_Ghost, i32)
@@ -398,6 +410,10 @@ impl SceProcContext {
             49 => {
                 // GetMoney
                 nop_command!(self, GetMoney, i32)
+            }
+            51 => {
+                // AddSkill
+                nop_command!(self, AddSkill, i32, i32)
             }
             54 => {
                 // FullRoleAtt
@@ -465,6 +481,18 @@ impl SceProcContext {
             80 => {
                 // CombatBoss
                 nop_command!(self, CombatBoss, i32, i32, i32, i32, i32, i32)
+            }
+            81 => {
+                // FadeWhite
+                nop_command!(self, FadeWhite)
+            }
+            82 => {
+                // CombatBoss
+                nop_command!(self, CombatMaxRound, i32)
+            }
+            83 => {
+                // CombatMustFail
+                nop_command!(self, CombatMustFail)
             }
             85 => {
                 // ObjectActive
@@ -550,6 +578,10 @@ impl SceProcContext {
             127 => {
                 command!(self, SceCommandEntryRow, id: i32, proc_id: i32)
             }
+            131 => {
+                // GetSwitch
+                nop_command!(self, CombatNotGameOver)
+            }
             133 => {
                 // Music
                 command!(self, SceCommandMusic, name: string, unknown: i32)
@@ -569,6 +601,10 @@ impl SceProcContext {
             137 => {
                 // IfInTeam
                 command!(self, SceCommandIfInTeam, role_id: i32)
+            }
+            141 => {
+                // ScrEft
+                nop_command!(self, ScrEft, i32)
             }
             142 => {
                 // CEft_Pos
@@ -606,6 +642,10 @@ impl SceProcContext {
                 // CameraYaw
                 nop_command!(self, CameraYaw, f32)
             }
+            158 => {
+                // ObjNotLoad
+                nop_command!(self, ObjNotLoad, i32)
+            }
             201 => {
                 // RolePathOut
                 command!(
@@ -632,6 +672,10 @@ impl SceProcContext {
             205 => {
                 // RoleOverlap
                 nop_command!(self, RoleOverlap, i32, i32)
+            }
+            206 => {
+                // RoleScale
+                nop_command!(self, RoleScale, i32, f32)
             }
             207 => {
                 // RoleActAutoStand

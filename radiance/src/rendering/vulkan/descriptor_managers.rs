@@ -88,6 +88,11 @@ impl DescriptorManager {
         Ok(descriptor_sets[0])
     }
 
+    pub fn free_per_object_descriptor_set(&self, descriptor_set: vk::DescriptorSet) {
+        self.device
+            .free_descriptor_sets(self.per_object_pool, &[descriptor_set]);
+    }
+
     pub fn allocate_per_frame_descriptor_sets(
         &self,
         uniform_buffers: &[Buffer],
@@ -120,6 +125,11 @@ impl DescriptorManager {
         }
 
         Ok(descriptor_sets)
+    }
+
+    pub fn free_per_frame_descriptor_sets(&self, descriptor_sets: &[vk::DescriptorSet]) {
+        self.device
+            .free_descriptor_sets(self.per_frame_pool, descriptor_sets);
     }
 
     pub fn reset_per_frame_descriptor_pool(&self) {

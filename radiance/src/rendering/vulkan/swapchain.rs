@@ -21,6 +21,7 @@ use std::rc::Rc;
 
 pub struct SwapChain {
     device: Rc<Device>,
+    descriptor_manager: Rc<DescriptorManager>,
     command_pool: vk::CommandPool,
     handle: vk::SwapchainKHR,
     images: Vec<vk::Image>,
@@ -143,6 +144,7 @@ impl SwapChain {
 
         Ok(Self {
             device,
+            descriptor_manager: descriptor_manager.clone(),
             command_pool,
             handle,
             images,
@@ -333,6 +335,9 @@ impl Drop for SwapChain {
         for buffer in &self.framebuffers {
             self.device.destroy_framebuffer(*buffer);
         }
+
+        self.descriptor_manager
+            .free_per_frame_descriptor_sets(&self.per_frame_descriptor_sets);
 
         self.device
             .free_command_buffers(self.command_pool, &self.command_buffers);

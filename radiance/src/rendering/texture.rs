@@ -26,7 +26,7 @@ impl TextureDef {
 }
 
 lazy_static::lazy_static! {
-    static ref TEXTURE_STORE: RwLock<LruCache<String, Arc<TextureDef>>> = RwLock::new(LruCache::new(10000));
+    static ref TEXTURE_STORE: RwLock<LruCache<String, Arc<TextureDef>>> = RwLock::new(LruCache::new(100));
 }
 
 pub struct TextureStore;

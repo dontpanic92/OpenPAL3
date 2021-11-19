@@ -108,8 +108,7 @@ impl ScnScene {
             if Self::test_coord_in_bound(nav_coord, (trigger.nav_coord_min, trigger.nav_coord_max))
             {
                 if trigger.node_type == 14
-                    || (trigger.node_type == 0 && layer == 0)
-                    || (trigger.node_type == 65536 && layer == 1)
+                    || (trigger.node_type == 0 && trigger.layer as usize == layer)
                 {
                     return Some(trigger.sce_proc_id);
                 }
@@ -393,6 +392,7 @@ impl ScnScene {
                     nav_coord_max: obj.nav_trigger_coord_max,
                     nav_coord_min: obj.nav_trigger_coord_min,
                     node_type: obj.node_type,
+                    layer: obj.nav_layer,
                     sce_proc_id: obj.sce_proc_id,
                 });
             }
@@ -545,12 +545,12 @@ impl ScnScene {
 
 struct ScnNodeTypes;
 impl ScnNodeTypes {
-    pub const LADDER: u32 = 15;
-    pub const ITEM_TRIGGER2: u32 = 11;
-    pub const ITEM_TRIGGER: u32 = 16;
-    pub const AABB_TRIGGER: u32 = 20;
-    pub const TRIGGER_TARGET: u32 = 22;
-    pub const TRIGGER_SOURCE: u32 = 23;
+    pub const LADDER: u16 = 15;
+    pub const ITEM_TRIGGER2: u16 = 11;
+    pub const ITEM_TRIGGER: u16 = 16;
+    pub const AABB_TRIGGER: u16 = 20;
+    pub const TRIGGER_TARGET: u16 = 22;
+    pub const TRIGGER_SOURCE: u16 = 23;
 }
 
 pub struct Nav {
@@ -670,7 +670,8 @@ impl Nav {
 pub struct SceNavTrigger {
     nav_coord_min: (i32, i32),
     nav_coord_max: (i32, i32),
-    node_type: u32,
+    node_type: u16,
+    layer: u16,
     sce_proc_id: u32,
 }
 

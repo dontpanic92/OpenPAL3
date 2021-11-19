@@ -147,6 +147,18 @@ impl OpenPal3DebugLayer {
                 if let Some(d) = d.borrow_mut().downcast_mut::<AdventureDirector>() {
                     let pass_through = d.sce_vm_mut().global_state_mut().pass_through_wall_mut();
                     ui.checkbox(im_str!("无视地形"), pass_through);
+
+                    if let Some(s) = scene_manager.core_scene_mut() {
+                        if ui.button(im_str!("切换地图层"), [80., 30.]) {
+                            if s.nav().layer_count() > 1 {
+                                if let Some(role) =
+                                    scene_manager.get_resolved_role_mut(d.sce_vm_mut().state(), -1)
+                                {
+                                    role.switch_nav_layer();
+                                }
+                            }
+                        }
+                    }
                 }
             }
         });

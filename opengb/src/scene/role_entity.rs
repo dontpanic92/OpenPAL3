@@ -280,10 +280,14 @@ impl RoleAnimation {
                                     frame.vertices[i as usize].y as f32 * 0.01562,
                                     frame.vertices[i as usize].z as f32 * 0.01562,
                                 ),
-                                Vec2::new(
-                                    model.texcoords[j as usize].u,
-                                    -model.texcoords[j as usize].v,
-                                ),
+                                if (j as u32) < model.texcoord_count {
+                                    Vec2::new(
+                                        model.texcoords[j as usize].u,
+                                        -model.texcoords[j as usize].v,
+                                    )
+                                } else {
+                                    Vec2::new(0., 0.)
+                                },
                             ));
                         }
                         index_map.insert(h, index as u32);

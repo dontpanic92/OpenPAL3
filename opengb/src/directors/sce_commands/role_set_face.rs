@@ -40,7 +40,10 @@ impl SceCommandRoleSetFace {
             5 => super::Direction::NORTHWEST,
             6 => super::Direction::WEST,
             7 => super::Direction::SOUTHWEST,
-            _ => unreachable!(),
+            i => {
+                log::warn!("Unrecognized face_to parameter: {}", i);
+                super::Direction::SOUTH
+            }
         };
 
         Self { role_id, face_to }

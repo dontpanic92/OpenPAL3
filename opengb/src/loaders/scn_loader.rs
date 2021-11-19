@@ -19,7 +19,8 @@ pub struct ScnNode {
     pub rotation: f32,
     pub nav_trigger_coord_min: (i32, i32),
     pub nav_trigger_coord_max: (i32, i32),
-    pub node_type: u32,
+    pub node_type: u16,
+    pub nav_layer: u16,
     pub ladder_nav_coord1: (i32, i32),
     pub ladder_nav_coord2: (i32, i32),
     pub ladder_switch_layer: i32,
@@ -183,7 +184,8 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
     let nav_coord_min_z = reader.read_i32::<LittleEndian>().unwrap();
     let nav_coord_max_x = reader.read_i32::<LittleEndian>().unwrap();
     let nav_coord_max_z = reader.read_i32::<LittleEndian>().unwrap();
-    let node_type = reader.read_u32::<LittleEndian>().unwrap();
+    let node_type = reader.read_u16::<LittleEndian>().unwrap();
+    let nav_layer = reader.read_u16::<LittleEndian>().unwrap();
     let ladder_nav_coord1_x = reader.read_i32::<LittleEndian>().unwrap();
     let ladder_nav_coord1_z = reader.read_i32::<LittleEndian>().unwrap();
     let ladder_nav_coord2_x = reader.read_i32::<LittleEndian>().unwrap();
@@ -217,6 +219,7 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
         nav_trigger_coord_min: (nav_coord_min_x, nav_coord_min_z),
         nav_trigger_coord_max: (nav_coord_max_x, nav_coord_max_z),
         node_type,
+        nav_layer,
         ladder_nav_coord1: (ladder_nav_coord1_x, ladder_nav_coord1_z),
         ladder_nav_coord2: (ladder_nav_coord2_x, ladder_nav_coord2_z),
         ladder_switch_layer,

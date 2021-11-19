@@ -49,6 +49,11 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
         let entry = self
             .get_entry_by_crc(hash)
             .ok_or(IoError::from(IoErrorKind::NotFound))?;
+
+        if entry.is_dir() {
+            return Err(IoError::from(IoErrorKind::IsADirectory));
+        }
+
         self.cursor.set_position(entry.start_pos as u64);
         let mut content = vec![0; entry.packed_size as usize];
         self.cursor.read(&mut content)?;
@@ -259,6 +264,14 @@ impl CpkTable {
 
     pub fn is_compressed(&self) -> bool {
         (self.flag & CpkTableFlag::IsNotCompressed as u32) == 0
+    }
+
+    pub fn is_file(&self) -> bool {
+        (self.flag & CpkTableFlag::IsFile as u32) != 0
+    }
+
+    pub fn is_dir(&self) -> bool {
+        (self.flag & CpkTableFlag::IsDir as u32) != 0
     }
 }
 
