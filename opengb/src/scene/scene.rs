@@ -3,6 +3,7 @@ use crate::loaders::nav_loader::NavMapPoint;
 use crate::loaders::{nav_loader::NavFile, scn_loader::*};
 use radiance::scene::{CoreEntity, CoreScene, Entity, SceneExtension};
 use radiance::{math::Vec3, scene::Scene};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use super::RoleEntity;
@@ -209,12 +210,13 @@ impl ScnScene {
     }
 
     pub fn test_ladder(&self, layer: usize, coord: &Vec3) -> Option<LadderTestResult> {
+        println!("testing ladder layer {} coord {:?}", layer, coord);
         const D: f32 = 100.;
         let nav_coord = self
             .nav
             .round_nav_coord(layer, self.scene_coord_to_nav_coord(layer, coord));
         for ladder in &self.ladder_triggers {
-            let layer = if ladder.switch_layer {
+            let new_layer = if ladder.switch_layer {
                 (layer + 1) % 2
             } else {
                 layer
@@ -235,7 +237,7 @@ impl ScnScene {
                 return Some(LadderTestResult::NewPosition((
                     ladder.switch_layer,
                     self.nav_coord_to_scene_coord(
-                        layer,
+                        new_layer,
                         ladder.nav_coord2.0 as f32,
                         ladder.nav_coord2.1 as f32,
                     ),
@@ -247,7 +249,7 @@ impl ScnScene {
                 return Some(LadderTestResult::NewPosition((
                     ladder.switch_layer,
                     self.nav_coord_to_scene_coord(
-                        layer,
+                        new_layer,
                         ladder.nav_coord1.0 as f32,
                         ladder.nav_coord1.1 as f32,
                     ),
@@ -445,15 +447,18 @@ impl ScnScene {
             }
 
             match obj.node_type {
-                ScnNodeTypes::LADDER => _self.ladder_triggers.push(LadderTrigger {
-                    position: obj.position,
-                    nav_coord1: obj.ladder_nav_coord1,
-                    nav_coord2: obj.ladder_nav_coord2,
-                    switch_layer: obj.ladder_switch_layer == 1,
-                    sce_proc_id: obj.sce_proc_id,
-                }),
+                ScnNodeTypes::LADDER | ScnNodeTypes::LADDER2 => {
+                    _self.ladder_triggers.push(LadderTrigger {
+                        position: obj.position,
+                        nav_coord1: obj.ladder_nav_coord1,
+                        nav_coord2: obj.ladder_nav_coord2,
+                        switch_layer: obj.ladder_switch_layer != obj.nav_layer as i32, // ?? should be obj.ladder_target_layer?
+                        sce_proc_id: obj.sce_proc_id,
+                    })
+                }
                 ScnNodeTypes::ITEM_TRIGGER
                 | ScnNodeTypes::ITEM_TRIGGER2
+                | ScnNodeTypes::ITEM_TRIGGER3
                 | ScnNodeTypes::TRIGGER_SOURCE => {
                     _self.item_triggers.push(SceItemTrigger {
                         coord: obj.position,
@@ -551,6 +556,10 @@ impl ScnNodeTypes {
     pub const AABB_TRIGGER: u16 = 20;
     pub const TRIGGER_TARGET: u16 = 22;
     pub const TRIGGER_SOURCE: u16 = 23;
+    pub const ITEM_TRIGGER3: u16 = 33;
+
+    // Elevators
+    pub const LADDER2: u16 = 40;
 }
 
 pub struct Nav {
@@ -611,7 +620,8 @@ impl Nav {
         nav_coord_src: (i32, i32),
         nav_coord_dest: (i32, i32),
     ) -> bool {
-        self.check_connectivity_internal(layer, nav_coord_src, nav_coord_dest, 10)
+        let mut visited = HashSet::new();
+        self.check_connectivity_internal(layer, nav_coord_src, nav_coord_dest, &mut visited, 6)
     }
 
     pub fn print_map(&self) {
@@ -635,6 +645,7 @@ impl Nav {
         layer: usize,
         nav_coord_src: (i32, i32),
         nav_coord_dest: (i32, i32),
+        visited: &mut HashSet<(i32, i32)>,
         remaining_steps: i32,
     ) -> bool {
         if nav_coord_src == nav_coord_dest {
@@ -645,16 +656,23 @@ impl Nav {
             return false;
         }
 
+        visited.insert(nav_coord_src);
+
         // Obviously we can optimize this
-        let directions = [(1, 1), (-1, -1), (1, -1), (-1, 1)];
+        let directions = [(1, 0), (-1, 0), (0, 1), (0, -1)];
         for d in &directions {
             let target_coord = (nav_coord_src.0 + d.0, nav_coord_src.1 + d.1);
+            if visited.contains(&target_coord) {
+                continue;
+            }
+
             if let Some(point) = self.get(layer, target_coord.0, target_coord.1) {
                 if point.distance_to_border != 0
                     && self.check_connectivity_internal(
                         layer,
                         target_coord,
                         nav_coord_dest,
+                        visited,
                         remaining_steps - 1,
                     )
                 {
@@ -663,6 +681,7 @@ impl Nav {
             }
         }
 
+        visited.remove(&nav_coord_src);
         false
     }
 }

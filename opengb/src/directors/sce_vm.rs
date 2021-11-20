@@ -528,6 +528,10 @@ impl SceProcContext {
                 // APPR Entry
                 nop_command!(self, APPREntry)
             }
+            106 => {
+                // ENCAMP_Entry
+                nop_command!(self, ENCAMP_Entry, i32)
+            }
             108 | 65644 => {
                 // Get Appr
                 command!(self, SceCommandGetAppr, var: i16)
@@ -551,6 +555,10 @@ impl SceProcContext {
             116 => {
                 // SetRoleTexture
                 nop_command!(self, SetRoleTexture, i32, string)
+            }
+            117 => {
+                // Rotate
+                nop_command!(self, Rotate, i32, i32, i32)
             }
             118 => {
                 // Quake
@@ -577,6 +585,9 @@ impl SceProcContext {
             }
             127 => {
                 command!(self, SceCommandEntryRow, id: i32, proc_id: i32)
+            }
+            128 => {
+                nop_command!(self, RotateInv, i32, i32, i32)
             }
             131 => {
                 // GetSwitch
