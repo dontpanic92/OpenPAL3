@@ -241,7 +241,9 @@ impl SceProcContext {
             return None;
         }
 
-        match data_read::i32(self) {
+        let cmd = data_read::i16(self);
+        let access_local_var = data_read::i16(self);
+        match cmd {
             1 => {
                 // Idle
                 command!(self, SceCommandIdle, length: f32)
@@ -258,27 +260,31 @@ impl SceProcContext {
                 // FOP
                 command!(self, SceCommandFop, op: i32)
             }
-            6 | 65542 => {
+            6 => {
                 // GT
                 command!(self, SceCommandGt, var: i16, value: i32)
             }
-            7 | 65543 => {
+            7 => {
                 // LS
                 command!(self, SceCommandLs, var: i16, value: i32)
             }
-            8 | 65544 => {
+            8 => {
                 // EQ
                 command!(self, SceCommandEq, var: i16, value: i32)
             }
-            9 | 65545 => {
+            9 => {
                 // NEQ
                 command!(self, SceCommandNeq, var: i16, value: i32)
             }
-            10 | 65546 => {
+            10 => {
                 // GEQ
-                command!(self, SceCommandGeq, var: i16, value: i32)
+                match access_local_var {
+                    1 => command!(self, SceCommandGeq, var: i16, value: i32),
+                    3 => command!(self, SceCommandGeq2, var: i16, var2: i16),
+                    _ => nop_command!(self, GeqNotSupported),
+                }
             }
-            11 | 65547 => {
+            11 => {
                 // LEQ
                 command!(self, SceCommandLeq, var: i16, value: i32)
             }
@@ -286,7 +292,7 @@ impl SceProcContext {
                 // TestGoto
                 command!(self, SceCommandTestGoto, offset: u32)
             }
-            13 | 65549 => {
+            13 => {
                 // Let
                 command!(self, SceCommandLet, var: i16, value: i32)
             }
@@ -294,11 +300,11 @@ impl SceProcContext {
                 //Call
                 command!(self, SceCommandCall, proc_id: u32)
             }
-            17 | 65553 => {
+            17 => {
                 // Rnd
                 command!(self, SceCommandRnd, var: i16, value: i32)
             }
-            19 | 65555 => {
+            19 => {
                 // Between
                 command!(self, SceCommandBetween, var: i16, lb: i32, rh: i32)
             }
@@ -436,6 +442,10 @@ impl SceProcContext {
                 // GetMoney
                 nop_command!(self, GetMoney, i32)
             }
+            50 => {
+                // GetFavor
+                nop_command!(self, GetFavor, i16, i32)
+            }
             51 => {
                 // AddSkill
                 nop_command!(self, AddSkill, i32, i32)
@@ -456,7 +466,7 @@ impl SceProcContext {
                 // DlgSel
                 command!(self, SceCommandDlgSel, list: list)
             }
-            66 | 65602 => {
+            66 => {
                 // GetDlgSel
                 command!(self, SceCommandGetDlgSel, var: i16)
             }
@@ -492,7 +502,7 @@ impl SceProcContext {
                 // DlgTime
                 command!(self, SceCommandDlgTime, text: string)
             }
-            77 | 65613 => {
+            77 => {
                 // GetTimeSel - temporarily use GetDlgSel
                 command!(self, SceCommandGetTimeSel, var: i16)
             }
@@ -557,7 +567,7 @@ impl SceProcContext {
                 // ENCAMP_Entry
                 nop_command!(self, ENCAMP_Entry, i32)
             }
-            108 | 65644 => {
+            108 => {
                 // Get Appr
                 command!(self, SceCommandGetAppr, var: i16)
             }
@@ -604,7 +614,7 @@ impl SceProcContext {
                 // Trigger
                 nop_command!(self, Trigger, i32)
             }
-            126 | 262270 => {
+            126 => {
                 // GetSwitch
                 nop_command!(self, GetSwitch, string, i32, i16)
             }
@@ -638,6 +648,10 @@ impl SceProcContext {
                 // IfInTeam
                 command!(self, SceCommandIfInTeam, role_id: i32)
             }
+            138 => {
+                // Enable_SwordSkill
+                nop_command!(self, Enable_SwordSkill, i32)
+            }
             141 => {
                 // ScrEft
                 nop_command!(self, ScrEft, i32)
@@ -662,7 +676,7 @@ impl SceProcContext {
                 // CEft_Load
                 nop_command!(self, CEft_Load, i32)
             }
-            149 | 65685 => {
+            149 => {
                 // GiveCloth
                 nop_command!(self, GiveCloth, i16)
             }
@@ -677,6 +691,10 @@ impl SceProcContext {
             155 => {
                 // CameraYaw
                 nop_command!(self, CameraYaw, f32)
+            }
+            156 => {
+                // XJ_Pic
+                nop_command!(self, XJ_Pic)
             }
             158 => {
                 // ObjNotLoad

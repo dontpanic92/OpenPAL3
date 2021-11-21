@@ -122,3 +122,16 @@ pub mod SceCommandGeq {
         SceCommandCmp::new(var, value, i32::ge)
     }
 }
+
+// TODO: Fix it
+#[allow(non_snake_case)]
+pub mod SceCommandGeq2 {
+    use super::SceCommandCmp;
+
+    pub fn new(
+        var: i16,
+        var2: i16,
+    ) -> SceCommandCmp<impl Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> {
+        SceCommandCmp::new(var, 0, i32::ge)
+    }
+}

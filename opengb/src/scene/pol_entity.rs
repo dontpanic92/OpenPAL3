@@ -83,7 +83,7 @@ impl PolModelEntity {
                 |name| {
                     PathBuf::from(name)
                         .file_stem()
-                        .and_then(|_| Some(vfs.open(name).unwrap()))
+                        .and_then(|_| vfs.open(name).ok())
                 },
                 material.use_alpha != 0,
             )

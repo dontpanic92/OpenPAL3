@@ -52,7 +52,8 @@ pub use camera_default::SceCommandCameraDefault;
 pub use camera_move::SceCommandCameraMove;
 pub use camera_set::SceCommandCameraSet;
 pub use cmp::{
-    SceCommandEq, SceCommandGeq, SceCommandGt, SceCommandLeq, SceCommandLs, SceCommandNeq,
+    SceCommandEq, SceCommandGeq, SceCommandGeq2, SceCommandGt, SceCommandLeq, SceCommandLs,
+    SceCommandNeq,
 };
 pub use dlg::SceCommandDlg;
 pub use dlg_sel::SceCommandDlgSel;

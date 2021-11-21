@@ -29,9 +29,11 @@ impl SceCommand for SceCommandRoleFaceRole {
 
         if position.is_none() {
             log::error!("Cannot find role {}", self.role_id);
+            return true;
         }
         if target_position.is_none() {
             log::error!("Cannot find role {}", self.role_id2);
+            return true;
         }
 
         scene_manager
