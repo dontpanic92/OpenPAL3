@@ -4,7 +4,7 @@ use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
 use radiance::scene::{Entity, SceneManager};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandRoleSetPos {
     role_id: i32,
     nav_x: f32,

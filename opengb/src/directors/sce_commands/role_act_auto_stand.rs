@@ -4,7 +4,7 @@ use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandRoleActAutoStand {
     role_id: i32,
     auto_play_idle: i32,

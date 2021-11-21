@@ -4,7 +4,7 @@ use imgui::Ui;
 use radiance::scene::{CoreScene, SceneManager};
 use std::rc::Rc;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandLoadScene {
     name: String,
     sub_name: String,

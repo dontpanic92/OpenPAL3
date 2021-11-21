@@ -1,6 +1,8 @@
 #![feature(drain_filter)]
 #![feature(arbitrary_self_types)]
 #![feature(io_error_more)]
+#![feature(trait_upcasting)]
+#![allow(incomplete_features)]
 #![allow(unused_variables)]
 
 pub mod asset_manager;

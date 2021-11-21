@@ -6,7 +6,7 @@ use radiance::{
     scene::{Entity, SceneManager},
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandRoleFaceRole {
     role_id: i32,
     role_id2: i32,

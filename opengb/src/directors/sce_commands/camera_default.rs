@@ -6,7 +6,7 @@ use radiance::{
     scene::{Scene, SceneManager},
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandCameraDefault {}
 
 impl SceCommand for SceCommandCameraDefault {

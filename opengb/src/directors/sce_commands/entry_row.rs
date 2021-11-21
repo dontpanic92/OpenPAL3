@@ -4,7 +4,7 @@ use radiance::scene::SceneManager;
 
 use super::SceCommandLoadScene;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandEntryRow {
     id: i32,
     proc_id: i32,

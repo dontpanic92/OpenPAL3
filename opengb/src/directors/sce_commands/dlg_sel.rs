@@ -8,7 +8,7 @@ lazy_static::lazy_static! {
     pub static ref KEY_NUM_MAP: HashMap<Key, i32> = create_key_num_hashmap();
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandDlgSel {
     list: Vec<String>,
 }

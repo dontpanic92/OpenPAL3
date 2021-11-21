@@ -3,7 +3,7 @@ use imgui::Ui;
 use radiance::scene::SceneManager;
 use rand::{rngs::ThreadRng, Rng};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandRnd {
     var: i16,
     max_value: i32,

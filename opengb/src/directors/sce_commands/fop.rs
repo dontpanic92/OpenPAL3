@@ -5,7 +5,7 @@ use crate::directors::{
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandFop {
     op: i32,
 }

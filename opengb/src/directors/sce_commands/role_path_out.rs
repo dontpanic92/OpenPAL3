@@ -6,7 +6,7 @@ use radiance::scene::SceneManager;
 
 use super::SceCommandRolePathTo;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandRolePathOut {
     role_id: i32,
     cmd_path_to: SceCommandRolePathTo,

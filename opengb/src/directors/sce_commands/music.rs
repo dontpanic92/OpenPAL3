@@ -3,7 +3,7 @@ use crate::directors::sce_vm::{SceCommand, SceState};
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandMusic {
     name: String,
 }

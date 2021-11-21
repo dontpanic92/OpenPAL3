@@ -5,6 +5,7 @@ use imgui::*;
 use log::{debug, error, warn};
 use radiance::scene::{Director, SceneManager};
 use radiance::{audio::AudioEngine, input::InputEngine};
+use std::fmt::Debug;
 use std::{
     any::Any,
     cell::{Ref, RefCell},
@@ -24,6 +25,8 @@ pub trait SceProcHooks {
 pub struct SceVm {
     state: SceState,
     active_commands: Vec<Box<dyn SceCommand>>,
+
+    debug_proc: ImString,
 }
 
 impl SceVm {
@@ -49,6 +52,7 @@ impl SceVm {
         Self {
             state,
             active_commands: vec![],
+            debug_proc: ImString::new(""),
         }
     }
 
@@ -86,6 +90,27 @@ impl SceVm {
         }
 
         None
+    }
+
+    pub fn render_debug(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui) {
+        ui.text(format!("Active commands: {}", self.active_commands.len()));
+
+        imgui::InputText::new(ui, &im_str!("Sce Proc Id",), &mut self.debug_proc).build();
+        if ui.button(&im_str!("Execute"), [80., 30.]) {
+            println!("{}", self.debug_proc.to_str());
+            if let Ok(id) = self.debug_proc.to_str().parse::<u32>() {
+                self.call_proc(id);
+            }
+        }
+
+        let commands = self
+            .active_commands
+            .iter()
+            .fold("".to_string(), |acc, next| {
+                let debug: &dyn SceCommandDebug = next.as_ref();
+                format!("{}\n{}", acc, debug.debug())
+            });
+        ui.text(format!("{}", commands));
     }
 
     pub fn call_proc(&mut self, proc_id: u32) {
@@ -657,6 +682,10 @@ impl SceProcContext {
                 // ObjNotLoad
                 nop_command!(self, ObjNotLoad, i32)
             }
+            159 => {
+                // InitFlower
+                nop_command!(self, InitFlower)
+            }
             201 => {
                 // RolePathOut
                 command!(
@@ -983,7 +1012,11 @@ impl SceState {
     }
 }
 
-pub trait SceCommand: dyn_clone::DynClone {
+pub trait SceCommandDebug {
+    fn debug(&self) -> String;
+}
+
+pub trait SceCommand: dyn_clone::DynClone + SceCommandDebug {
     fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {}
 
     fn update(
@@ -996,3 +1029,9 @@ pub trait SceCommand: dyn_clone::DynClone {
 }
 
 dyn_clone::clone_trait_object!(SceCommand);
+
+impl<T: SceCommand + Debug> SceCommandDebug for T {
+    fn debug(&self) -> String {
+        format!("{:?}", self)
+    }
+}

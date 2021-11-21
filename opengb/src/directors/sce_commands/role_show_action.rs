@@ -5,7 +5,7 @@ use crate::scene::{RoleAnimationRepeatMode, RoleState};
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandRoleShowAction {
     role_id: i32,
     action_name: String,

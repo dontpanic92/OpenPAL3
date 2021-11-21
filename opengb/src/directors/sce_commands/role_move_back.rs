@@ -8,7 +8,7 @@ use radiance::{
     scene::{Entity, SceneManager},
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandRoleMoveBack {
     role_id: i32,
     speed: f32,

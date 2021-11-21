@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, fmt::Debug, rc::Rc};
 
 use crate::directors::sce_vm::{SceCommand, SceState};
 
@@ -13,6 +13,15 @@ pub struct SceCommandPlaySound {
     name: String,
     times: i32,
     source: Option<Rc<RefCell<Box<dyn AudioSource>>>>,
+}
+
+impl Debug for SceCommandPlaySound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SceCommandPlaySound")
+            .field("name", &self.name)
+            .field("times", &self.times)
+            .finish()
+    }
 }
 
 impl SceCommand for SceCommandPlaySound {

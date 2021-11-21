@@ -5,7 +5,7 @@ use imgui::Ui;
 use radiance::scene::Entity;
 use radiance::{math::Vec3, scene::SceneManager};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandRolePathTo {
     role_id: i32,
     nav_x: f32,
@@ -50,6 +50,11 @@ impl SceCommand for SceCommandRolePathTo {
             .get_resolved_role_mut(state, self.role_id)
             .unwrap();
         let position = role.transform().position();
+
+        // TODO: WHY?
+        if position.x.is_nan() {
+            return true;
+        }
         let step = speed * delta_sec;
         let remain = Vec3::sub(&to, &position);
         let completed = remain.norm() < step;

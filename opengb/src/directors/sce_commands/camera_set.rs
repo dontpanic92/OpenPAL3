@@ -4,7 +4,7 @@ use imgui::Ui;
 use radiance::scene::Scene;
 use radiance::{math::Vec3, scene::SceneManager};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandCameraSet {
     y_rot: f32,
     x_rot: f32,

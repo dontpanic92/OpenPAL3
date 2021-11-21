@@ -2,7 +2,7 @@ use crate::directors::sce_vm::{SceCommand, SceState};
 use imgui::{im_str, Condition, Ui, Window};
 use radiance::{input::Key, scene::SceneManager};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandDlg {
     text: String,
     dlg_end: bool,

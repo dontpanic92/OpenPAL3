@@ -9,6 +9,17 @@ pub struct SceCommandCmp<FCmp: Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool>
     cmp: FCmp,
 }
 
+impl<FCmp: Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> std::fmt::Debug
+    for SceCommandCmp<FCmp>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SceCommandCmp")
+            .field("var", &self.var)
+            .field("value", &self.value)
+            .finish()
+    }
+}
+
 impl<FCmp: Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> SceCommand for SceCommandCmp<FCmp> {
     fn update(
         &mut self,

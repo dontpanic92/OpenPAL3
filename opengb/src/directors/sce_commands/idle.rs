@@ -2,7 +2,7 @@ use crate::directors::sce_vm::{SceCommand, SceState};
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandIdle {
     idle_sec: f32,
     cur_sec: f32,

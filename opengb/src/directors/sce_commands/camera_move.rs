@@ -4,7 +4,7 @@ use imgui::Ui;
 use radiance::scene::Scene;
 use radiance::{math::Vec3, scene::SceneManager};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandCameraMove {
     position: Vec3,
 }

@@ -5,7 +5,7 @@ use imgui::Ui;
 use radiance::scene::Entity;
 use radiance::{math::Vec3, scene::SceneManager};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandRoleSetFace {
     role_id: i32,
     face_to: Vec3,

@@ -4,7 +4,7 @@ use radiance::scene::SceneManager;
 
 use super::SceCommandDlgSel;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandDlgTime {
     dlg_sel: SceCommandDlgSel,
 }

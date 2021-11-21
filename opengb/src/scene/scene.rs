@@ -452,7 +452,8 @@ impl ScnScene {
                         position: obj.position,
                         nav_coord1: obj.ladder_nav_coord1,
                         nav_coord2: obj.ladder_nav_coord2,
-                        switch_layer: obj.ladder_switch_layer != obj.nav_layer as i32, // ?? should be obj.ladder_target_layer?
+                        switch_layer: obj.ladder_switch_layer != obj.nav_layer as i32
+                            || obj.node_type == ScnNodeTypes::LADDER2, // ?? should be obj.ladder_target_layer?
                         sce_proc_id: obj.sce_proc_id,
                     })
                 }

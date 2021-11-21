@@ -8,7 +8,7 @@ use radiance::{
     scene::{Entity, SceneManager},
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandHyFly {
     position_x: f32,
     position_y: f32,

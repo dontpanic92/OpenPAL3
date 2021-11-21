@@ -63,6 +63,7 @@ impl OpenPal3DebugLayer {
             TabBar::new(im_str!("##debug_tab_bar")).build(ui, || {
                 Self::build_nav_tab(scene_manager, ui, coord.as_ref());
                 Self::build_config_tab(scene_manager, ui);
+                Self::build_sce_tab(scene_manager, ui);
             });
         });
     }
@@ -142,7 +143,7 @@ impl OpenPal3DebugLayer {
     }
 
     fn build_config_tab(scene_manager: &mut dyn SceneManager, ui: &Ui) {
-        TabItem::new(im_str!("Config")).build(ui, || {
+        TabItem::new(im_str!("Settings")).build(ui, || {
             if let Some(d) = scene_manager.director().as_ref() {
                 if let Some(d) = d.borrow_mut().downcast_mut::<AdventureDirector>() {
                     let pass_through = d.sce_vm_mut().global_state_mut().pass_through_wall_mut();
@@ -159,6 +160,16 @@ impl OpenPal3DebugLayer {
                             }
                         }
                     }
+                }
+            }
+        });
+    }
+
+    fn build_sce_tab(scene_manager: &mut dyn SceneManager, ui: &Ui) {
+        TabItem::new(im_str!("Sce")).build(ui, || {
+            if let Some(d) = scene_manager.director().as_ref() {
+                if let Some(d) = d.borrow_mut().downcast_mut::<AdventureDirector>() {
+                    d.sce_vm_mut().render_debug(scene_manager, ui);
                 }
             }
         });

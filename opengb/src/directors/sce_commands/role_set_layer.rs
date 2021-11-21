@@ -4,7 +4,7 @@ use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SceCommandRoleSetLayer {
     role_id: i32,
     layer: i32,
