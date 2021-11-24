@@ -28,17 +28,15 @@ pub trait ReadExt: Read {
     }
 
     fn read_string(&mut self, size: usize) -> Result<String, Box<dyn std::error::Error>> {
-        let name = self.read_u8_vec(size).unwrap();
+        let name = self.read_u8_vec(size)?;
 
-        let name_s = encoding::all::GBK
-            .decode(
-                &name
-                    .into_iter()
-                    .take_while(|&c| c != 0)
-                    .collect::<Vec<u8>>(),
-                DecoderTrap::Ignore,
-            )
-            .unwrap();
+        let name_s = encoding::all::GBK.decode(
+            &name
+                .into_iter()
+                .take_while(|&c| c != 0)
+                .collect::<Vec<u8>>(),
+            DecoderTrap::Ignore,
+        )?;
 
         Ok(name_s)
     }

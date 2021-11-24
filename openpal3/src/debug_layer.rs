@@ -62,7 +62,6 @@ impl OpenPal3DebugLayer {
             ui.text(im_str!("Coord: {:?}", &coord));
             TabBar::new(im_str!("##debug_tab_bar")).build(ui, || {
                 Self::build_nav_tab(scene_manager, ui, coord.as_ref());
-                Self::build_config_tab(scene_manager, ui);
                 Self::build_sce_tab(scene_manager, ui);
             });
         });
@@ -70,6 +69,25 @@ impl OpenPal3DebugLayer {
 
     fn build_nav_tab(scene_manager: &mut dyn SceneManager, ui: &Ui, coord: Option<&Vec3>) {
         TabItem::new(im_str!("Nav")).build(ui, || {
+            if let Some(d) = scene_manager.director().as_ref() {
+                if let Some(d) = d.borrow_mut().downcast_mut::<AdventureDirector>() {
+                    let pass_through = d.sce_vm_mut().global_state_mut().pass_through_wall_mut();
+                    ui.checkbox(im_str!("无视地形"), pass_through);
+
+                    if let Some(s) = scene_manager.core_scene_mut() {
+                        if ui.button(im_str!("切换地图层"), [80., 30.]) {
+                            if s.nav().layer_count() > 1 {
+                                if let Some(role) =
+                                    scene_manager.get_resolved_role_mut(d.sce_vm_mut().state(), -1)
+                                {
+                                    role.switch_nav_layer();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             TabBar::new(im_str!("##debug_tab_bar_nav_bar")).build(ui, || {
                 if scene_manager.core_scene().is_none() {
                     return;
@@ -139,29 +157,6 @@ impl OpenPal3DebugLayer {
                     });
                 }
             });
-        });
-    }
-
-    fn build_config_tab(scene_manager: &mut dyn SceneManager, ui: &Ui) {
-        TabItem::new(im_str!("Settings")).build(ui, || {
-            if let Some(d) = scene_manager.director().as_ref() {
-                if let Some(d) = d.borrow_mut().downcast_mut::<AdventureDirector>() {
-                    let pass_through = d.sce_vm_mut().global_state_mut().pass_through_wall_mut();
-                    ui.checkbox(im_str!("无视地形"), pass_through);
-
-                    if let Some(s) = scene_manager.core_scene_mut() {
-                        if ui.button(im_str!("切换地图层"), [80., 30.]) {
-                            if s.nav().layer_count() > 1 {
-                                if let Some(role) =
-                                    scene_manager.get_resolved_role_mut(d.sce_vm_mut().state(), -1)
-                                {
-                                    role.switch_nav_layer();
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         });
     }
 

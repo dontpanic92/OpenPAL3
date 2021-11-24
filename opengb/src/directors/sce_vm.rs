@@ -27,6 +27,9 @@ pub struct SceVm {
     active_commands: Vec<Box<dyn SceCommand>>,
 
     debug_proc: ImString,
+    debug_scn_name: ImString,
+    debug_scn_subname: ImString,
+    debug_main_story: ImString,
 }
 
 impl SceVm {
@@ -53,6 +56,9 @@ impl SceVm {
             state,
             active_commands: vec![],
             debug_proc: ImString::new(""),
+            debug_scn_name: ImString::new(""),
+            debug_scn_subname: ImString::new(""),
+            debug_main_story: ImString::new(""),
         }
     }
 
@@ -100,6 +106,28 @@ impl SceVm {
             println!("{}", self.debug_proc.to_str());
             if let Ok(id) = self.debug_proc.to_str().parse::<u32>() {
                 self.call_proc(id);
+            }
+        }
+
+        imgui::InputText::new(ui, &im_str!("Target Scn Name",), &mut self.debug_scn_name).build();
+        imgui::InputText::new(
+            ui,
+            &im_str!("Target Scn SubName",),
+            &mut self.debug_scn_subname,
+        )
+        .build();
+        if ui.button(&im_str!("Load"), [80., 30.]) {
+            self.active_commands.push(Box::new(SceCommandLoadScene::new(
+                self.debug_scn_name.to_string(),
+                self.debug_scn_subname.to_string(),
+            )));
+        }
+
+        imgui::InputText::new(ui, &im_str!("Main Story",), &mut self.debug_main_story).build();
+        if ui.button(&im_str!("Set"), [80., 30.]) {
+            if let Ok(value) = self.debug_main_story.to_str().parse::<i32>() {
+                self.active_commands
+                    .push(Box::new(SceCommandLet::new(-32768, value)));
             }
         }
 
@@ -440,7 +468,7 @@ impl SceProcContext {
             }
             49 => {
                 // GetMoney
-                nop_command!(self, GetMoney, i32)
+                command!(self, SceCommandGetMoney, var: i16)
             }
             50 => {
                 // GetFavor
@@ -559,6 +587,14 @@ impl SceProcContext {
                 // ObjectMove
                 nop_command!(self, ObjectMove, i32, f32, f32, f32, f32)
             }
+            91 => {
+                // FadeNormal
+                nop_command!(self, FadeNormal)
+            }
+            102 => {
+                // SwitchRS
+                nop_command!(self, SwitchRS, i32)
+            }
             104 => {
                 // APPR Entry
                 nop_command!(self, APPREntry)
@@ -566,6 +602,10 @@ impl SceProcContext {
             106 => {
                 // ENCAMP_Entry
                 nop_command!(self, ENCAMP_Entry, i32)
+            }
+            107 => {
+                // SKEE_Entry
+                nop_command!(self, SKEE_Entry, i32)
             }
             108 => {
                 // Get Appr
@@ -614,6 +654,10 @@ impl SceProcContext {
                 // Trigger
                 nop_command!(self, Trigger, i32)
             }
+            125 => {
+                // SetBigMapElement
+                command!(self, SceCommandSetBigMapElement, id: i32, option: i32)
+            }
             126 => {
                 // GetSwitch
                 nop_command!(self, GetSwitch, string, i32, i16)
@@ -652,6 +696,10 @@ impl SceProcContext {
                 // Enable_SwordSkill
                 nop_command!(self, Enable_SwordSkill, i32)
             }
+            140 => {
+                // Snow
+                nop_command!(self, Snow, i32)
+            }
             141 => {
                 // ScrEft
                 nop_command!(self, ScrEft, i32)
@@ -683,6 +731,10 @@ impl SceProcContext {
             150 => {
                 // LoadAct
                 nop_command!(self, LoadAct, i32, string)
+            }
+            152 => {
+                // WaterMagic
+                nop_command!(self, WaterMagic, i32)
             }
             153 => {
                 // FullTeamAtt

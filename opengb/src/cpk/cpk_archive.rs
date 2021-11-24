@@ -89,8 +89,10 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
         let mut root = CpkEntry::new(root_table, "".to_string());
         let mut crc_to_cpk_entry = HashMap::new();
         for (i, entry) in entries.iter().enumerate() {
-            let cpk_entry = CpkEntry::new(*entry, file_names[i].clone());
-            crc_to_cpk_entry.insert(entry.crc, Rc::new(RefCell::new(cpk_entry)));
+            if i < file_names.len() {
+                let cpk_entry = CpkEntry::new(*entry, file_names[i].clone());
+                crc_to_cpk_entry.insert(entry.crc, Rc::new(RefCell::new(cpk_entry)));
+            }
         }
 
         for (_, cpk_entry) in &crc_to_cpk_entry {
@@ -131,8 +133,17 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
             cursor.set_position(offset as u64);
             let name = cursor
                 .read_string(length as usize)
-                .or(Err(IoError::from(IoErrorKind::InvalidData)))?;
-            names.push(name);
+                .or(Err(IoError::from(IoErrorKind::InvalidData)));
+
+            if let Ok(n) = name {
+                names.push(n);
+            } else {
+                log::error!(
+                    "Unable to read file name at offset {} length {}",
+                    offset,
+                    length
+                );
+            }
         }
 
         Ok(names)
