@@ -2,7 +2,7 @@
 
 [![Build Status](https://dontpanic92.visualstudio.com/OpenPAL3/_apis/build/status/dontpanic92.OpenPAL3?branchName=master)](https://dontpanic92.visualstudio.com/OpenPAL3/_build/latest?definitionId=5&branchName=master)
 
-（刚刚开工的）《仙剑奇侠传三》开源实现。仙三开源版仍处于早期开发阶段，存在很多未实现的功能及 Bug，暂无完善的游戏体验。
+《仙剑奇侠传三》开源实现。仙三开源版仍处于早期开发阶段，存在很多未实现的功能及 Bug，暂无完善的游戏体验。
 
 ## 📢 声明
 
@@ -19,7 +19,7 @@ v0.2 版本请前往 Releases 页面下载，[Azure Pipelines](https://dontpanic
 
 ### 运行
 
-**首次运行前请手动修改 `openpal3.toml`，将《仙剑奇侠传三》游戏目录填入：**
+**首次运行前请手动修改 `openpal3.toml`，将《仙剑奇侠传三》游戏目录填入：** 
 **（请注意反斜杠需要重复两次）**
 
 ```
@@ -46,7 +46,6 @@ asset_path = "E:\\CubeLibrary\\apps\\1000039"
 在构建 OpenPAL3 前，请确认已安装以下工具链与依赖库：
 
 - [Rust](https://www.rust-lang.org/) nightly toolchain
-  - 当前推荐的版本 rustc 1.53.0-nightly (07e0e2ec2 2021-03-24)
   - 理论上 MSVC ABI 工具链与 GNU ABI 工具链均可编译
 - [OpenAL](https://www.openal.org)
 - [最新的 Vulkan SDK](https://www.lunarg.com/vulkan-sdk/)
