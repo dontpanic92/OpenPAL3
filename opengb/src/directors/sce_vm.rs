@@ -478,6 +478,10 @@ impl SceProcContext {
                 // AddSkill
                 nop_command!(self, AddSkill, i32, i32)
             }
+            52 => {
+                // GetFavorite
+                nop_command!(self, GetFavorite, i16)
+            }
             54 => {
                 // FullRoleAtt
                 nop_command!(self, FullRoleAtt, i32, i32)
@@ -668,9 +672,17 @@ impl SceProcContext {
             128 => {
                 nop_command!(self, RotateInv, i32, i32, i32)
             }
+            130 => {
+                // Dist
+                nop_command!(self, Dist, i16, i16)
+            }
             131 => {
                 // GetSwitch
                 nop_command!(self, CombatNotGameOver)
+            }
+            132 => {
+                // GetCombat
+                command!(self, SceCommandGetCombat, var: i16)
             }
             133 => {
                 // Music
@@ -719,6 +731,10 @@ impl SceProcContext {
             145 => {
                 // AverageLv
                 nop_command!(self, AverageLv, i32, i32)
+            }
+            147 => {
+                // Switch2Menu
+                nop_command!(self, Switch2Menu)
             }
             148 => {
                 // CEft_Load

@@ -15,6 +15,7 @@ use radiance::scene::SceneManager;
  * q16 安溪
  * m23 海底城
  * m24 剑冢
+ * m25 新仙界
  */
 
 #[derive(Debug, Clone)]
