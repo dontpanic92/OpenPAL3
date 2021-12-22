@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, ptr::null_mut, rc::Rc, time::Duration};
 
-use imgui::{BackendFlags, ConfigFlags, Context, ImString, Key};
+use imgui::{BackendFlags, ConfigFlags, Context, Key};
 use winapi::{
     shared::{
         minwindef::{HINSTANCE, UINT},
@@ -48,7 +48,7 @@ impl ImguiPlatform {
     }
 
     fn setup_platform(context: &mut Context) {
-        context.set_platform_name(Some(ImString::from(format!(
+        context.set_platform_name(Some(String::from(format!(
             "radiance-imgui-windows {}",
             env!("CARGO_PKG_VERSION"),
         ))));

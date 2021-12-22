@@ -11,7 +11,6 @@ use imgui::*;
 use std::{
     cell::{RefCell, RefMut},
     rc::Rc,
-    time::Duration,
 };
 
 pub struct ImguiContext {
@@ -45,7 +44,7 @@ impl ImguiContext {
         }]);
 
         if let Some(backend) = clipboard::init() {
-            context.set_clipboard_backend(Box::new(backend));
+            context.set_clipboard_backend(backend);
         } else {
             log::error!("Failed to initialize clipboard support");
         }

@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use imgui::{im_str, Ui};
+use imgui::Ui;
 use log::debug;
 use opengb::{
     asset_manager::AssetManager,
@@ -59,7 +59,7 @@ impl Director for MainMenuDirector {
             proc_hooks: vec![Box::new(SceRestHooks::new())],
         };
 
-        if ui.button(im_str!("开始游戏"), [120., 40.]) {
+        if ui.button("开始游戏") {
             return Some(Rc::new(RefCell::new(AdventureDirector::new(
                 "OpenPAL3",
                 self.asset_mgr.clone(),
@@ -69,7 +69,7 @@ impl Director for MainMenuDirector {
             ))));
         } else {
             for i in 1..5 {
-                if ui.button(&im_str!("存档 {}", i), [120., 40.]) {
+                if ui.button(&format!("存档 {}", i)) {
                     let director = AdventureDirector::load(
                         "OpenPAL3",
                         self.asset_mgr.clone(),

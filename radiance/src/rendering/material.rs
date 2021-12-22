@@ -1,14 +1,9 @@
-use dashmap::DashMap;
 use image::ImageFormat;
 
 use crate::rendering::texture::TextureStore;
 
 use super::{texture::TextureDef, ShaderDef, SIMPLE_SHADER_DEF};
-use std::{
-    io::Read,
-    rc::Rc,
-    sync::{Arc, Weak},
-};
+use std::{io::Read, sync::Arc};
 
 pub trait Material: downcast_rs::Downcast + std::fmt::Debug {}
 

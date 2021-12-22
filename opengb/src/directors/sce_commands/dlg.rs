@@ -1,5 +1,5 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
-use imgui::{im_str, Condition, Ui, Window};
+use imgui::{Condition, Ui, Window};
 use radiance::{input::Key, scene::SceneManager};
 
 #[derive(Debug, Clone)]
@@ -43,7 +43,7 @@ impl SceCommand for SceCommandDlg {
             }
         };
 
-        let w = Window::new(im_str!(" "))
+        let w = Window::new(" ")
             .collapsible(false)
             .title_bar(false)
             .resizable(false)
@@ -62,7 +62,7 @@ impl SceCommand for SceCommandDlg {
                 Condition::Appearing,
             );
         w.build(ui, || {
-            ui.text_wrapped(&im_str!("{}", self.text));
+            ui.text_wrapped(&format!("{}", self.text));
         });
 
         // delay set_adv_input to the next frame so that the last kay pressed

@@ -21,9 +21,9 @@ radiance-assets = { path = "../radiance-assets" }
 serde = { version = "1.0.106", features = ["derive"] }
 
 # Rendering
-ash = "0.31.0"
+ash = "0.33.3"
 image = "0.23.0"
-imgui = "0.6.1"
+imgui = "0.8.0"
 imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer" }
 vk-mem = { git = "https://github.com/dontpanic92/vk-mem-rs" }
 

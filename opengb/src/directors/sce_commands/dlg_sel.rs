@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::directors::sce_vm::{SceCommand, SceState};
-use imgui::{im_str, Condition, Ui, Window};
+use imgui::{Condition, Ui, Window};
 use radiance::{input::Key, scene::SceneManager};
 
 lazy_static::lazy_static! {
@@ -32,7 +32,7 @@ impl SceCommand for SceCommandDlgSel {
             }
         };
 
-        let w = Window::new(im_str!("DlgSel"))
+        let w = Window::new("DlgSel")
             .collapsible(false)
             .title_bar(false)
             .resizable(false)
@@ -43,7 +43,7 @@ impl SceCommand for SceCommandDlgSel {
         w.build(ui, || {
             self.list
                 .iter()
-                .for_each(|text| ui.text(&im_str!("{}", text)));
+                .for_each(|text| ui.text(&format!("{}", text)));
         });
 
         let dlg_sel = KEY_NUM_MAP

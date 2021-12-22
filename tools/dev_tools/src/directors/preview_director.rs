@@ -1,7 +1,6 @@
-use imgui::im_str;
 use opengb::{
     asset_manager::AssetManager,
-    loaders::{mv3_loader::mv3_load_from_file, pol_loader::pol_load_from_file},
+    loaders::mv3_loader::mv3_load_from_file,
     scene::{CvdModelEntity, PolModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity},
 };
 use radiance::{
@@ -106,7 +105,7 @@ impl Director for PreviewDirector {
         ui: &mut imgui::Ui,
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
-        if ui.button(im_str!("Back"), [80., 32.]) {
+        if ui.button("Back") {
             scene_manager
                 .scene_mut()
                 .unwrap()

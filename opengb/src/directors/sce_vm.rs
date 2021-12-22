@@ -26,10 +26,10 @@ pub struct SceVm {
     state: SceState,
     active_commands: Vec<Box<dyn SceCommand>>,
 
-    debug_proc: ImString,
-    debug_scn_name: ImString,
-    debug_scn_subname: ImString,
-    debug_main_story: ImString,
+    debug_proc: String,
+    debug_scn_name: String,
+    debug_scn_subname: String,
+    debug_main_story: String,
 }
 
 impl SceVm {
@@ -55,10 +55,10 @@ impl SceVm {
         Self {
             state,
             active_commands: vec![],
-            debug_proc: ImString::new(""),
-            debug_scn_name: ImString::new(""),
-            debug_scn_subname: ImString::new(""),
-            debug_main_story: ImString::new(""),
+            debug_proc: String::from(""),
+            debug_scn_name: String::from(""),
+            debug_scn_subname: String::from(""),
+            debug_main_story: String::from(""),
         }
     }
 
@@ -101,31 +101,26 @@ impl SceVm {
     pub fn render_debug(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui) {
         ui.text(format!("Active commands: {}", self.active_commands.len()));
 
-        imgui::InputText::new(ui, &im_str!("Sce Proc Id",), &mut self.debug_proc).build();
-        if ui.button(&im_str!("Execute"), [80., 30.]) {
-            println!("{}", self.debug_proc.to_str());
-            if let Ok(id) = self.debug_proc.to_str().parse::<u32>() {
+        imgui::InputText::new(ui, "Sce Proc Id", &mut self.debug_proc).build();
+        if ui.button("Execute") {
+            println!("{}", self.debug_proc);
+            if let Ok(id) = self.debug_proc.parse::<u32>() {
                 self.call_proc(id);
             }
         }
 
-        imgui::InputText::new(ui, &im_str!("Target Scn Name",), &mut self.debug_scn_name).build();
-        imgui::InputText::new(
-            ui,
-            &im_str!("Target Scn SubName",),
-            &mut self.debug_scn_subname,
-        )
-        .build();
-        if ui.button(&im_str!("Load"), [80., 30.]) {
+        imgui::InputText::new(ui, "Target Scn Name", &mut self.debug_scn_name).build();
+        imgui::InputText::new(ui, "Target Scn SubName", &mut self.debug_scn_subname).build();
+        if ui.button("Load") {
             self.active_commands.push(Box::new(SceCommandLoadScene::new(
                 self.debug_scn_name.to_string(),
                 self.debug_scn_subname.to_string(),
             )));
         }
 
-        imgui::InputText::new(ui, &im_str!("Main Story",), &mut self.debug_main_story).build();
-        if ui.button(&im_str!("Set"), [80., 30.]) {
-            if let Ok(value) = self.debug_main_story.to_str().parse::<i32>() {
+        imgui::InputText::new(ui, "Main Story", &mut self.debug_main_story).build();
+        if ui.button("Set") {
+            if let Ok(value) = self.debug_main_story.parse::<i32>() {
                 self.active_commands
                     .push(Box::new(SceCommandLet::new(-32768, value)));
             }

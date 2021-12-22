@@ -1,5 +1,5 @@
 use super::{main_content::ContentTabs, DevToolsState, PreviewDirector};
-use imgui::{im_str, Condition, MouseButton, TreeNode, Ui, Window};
+use imgui::{Condition, TreeNode, Ui, Window};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::asset_manager::AssetManager;
 use radiance::{
@@ -42,7 +42,7 @@ impl DevToolsDirector {
         let [window_width, window_height] = ui.io().display_size;
         let font = ui.push_font(ui.fonts().fonts()[1]);
 
-        let w = Window::new(im_str!("Files"))
+        let w = Window::new("Files")
             .collapsible(false)
             .resizable(false)
             .size([window_width * 0.3, window_height], Condition::Always)
@@ -51,7 +51,7 @@ impl DevToolsDirector {
         w.build(ui, || self.render_tree_nodes(ui, "/"));
 
         let mut state = None;
-        let w2 = Window::new(im_str!("Content"))
+        let w2 = Window::new("Content")
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
@@ -60,7 +60,7 @@ impl DevToolsDirector {
             .movable(false);
         w2.build(ui, || state = self.render_content(ui));
 
-        font.pop(ui);
+        font.pop();
 
         state
     }
@@ -73,17 +73,17 @@ impl DevToolsDirector {
                 continue;
             }
 
-            let e_filename = &im_str!("{}", e_path.file_name().unwrap().to_str().unwrap());
+            let e_filename = &format!("{}", e_path.file_name().unwrap().to_str().unwrap());
             let e_fullname = path.as_ref().join(e_path.file_name().unwrap());
             let treenode = TreeNode::new(e_filename);
 
             if e.kind == EntryKind::Dir {
                 treenode.build(ui, || {
                     self.render_tree_nodes(ui, &e_fullname);
-                })
+                });
             } else {
                 treenode.leaf(true).build(ui, || {
-                    if ui.is_item_clicked(MouseButton::Left) {
+                    if ui.is_item_clicked() {
                         self.content_tabs.open(self.asset_mgr.vfs(), &e_fullname);
                     }
                 });

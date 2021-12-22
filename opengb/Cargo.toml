@@ -17,7 +17,7 @@ image = "0.23.0"
 dyn-clone = "1.0.1"
 radiance = { path = "../radiance" }
 encoding = "0.2.33"
-imgui = "0.6.1"
+imgui = "0.8.0"
 downcast-rs = "1.2.0"
 config = "0.11.0"
 rand = "0.8.3"

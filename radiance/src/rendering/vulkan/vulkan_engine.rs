@@ -90,7 +90,7 @@ impl VulkanRenderingEngine {
         window: &Window,
         imgui_context: Rc<RefCell<ImguiContext>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let entry = Rc::new(Entry::new().unwrap());
+        let entry = unsafe { Rc::new(Entry::new().unwrap()) };
         let instance = Rc::new(Instance::new(entry.clone()));
         let physical_device = creation_helpers::get_physical_device(instance.vk_instance())?;
 

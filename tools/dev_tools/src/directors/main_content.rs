@@ -1,6 +1,6 @@
 use chardet::{charset2encoding, detect};
 use encoding::{label::encoding_from_whatwg_label, DecoderTrap};
-use imgui::{im_str, TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
+use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
 use mini_fs::MiniFs;
 use opengb::{
     loaders::{
@@ -175,7 +175,7 @@ impl ContentTabs {
         }
 
         let mut state = None;
-        TabBar::new(im_str!("##content_tab_bar"))
+        TabBar::new("##content_tab_bar")
             .flags(
                 TabBarFlags::REORDERABLE
                     | TabBarFlags::FITTING_POLICY_DEFAULT
@@ -233,7 +233,7 @@ impl ContentTab {
         };
         let mut opened = self.opened;
         let mut state = None;
-        TabItem::new(&im_str!("{}", &self.name))
+        TabItem::new(&format!("{}", &self.name))
             .opened(&mut opened)
             .flags(flags)
             .build(ui, || {
