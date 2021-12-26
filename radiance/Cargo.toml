@@ -27,6 +27,12 @@ imgui = "0.8.0"
 imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer" }
 vk-mem = { git = "https://github.com/dontpanic92/vk-mem-rs" }
 
+# Window and event handling
+winit = "0.26.0"
+imgui-winit-support = { version = "0.8.1", default-features = false, features = ["winit-26"] }
+ash-window = "0.7.0"
+raw-window-handle = "0.4.2"
+
 # Audio
 alto = "3.0.4"
 hound = "3.4.0"

@@ -1,10 +1,10 @@
 use super::Platform;
 use crate::constants;
+use crate::imgui::ImguiContext;
 use crate::radiance;
 use crate::radiance::CoreRadianceEngine;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
-use std::time::Instant;
 
 pub trait ApplicationExtension<TImpl: ApplicationExtension<TImpl>> {
     define_ext_fn!(on_initialized, Application, TImpl);
@@ -52,7 +52,10 @@ impl<TExtension: ApplicationExtension<TExtension>> Application<TExtension> {
         self.platform.set_title(title);
     }
 
+    #[cfg(target_os = "windows")]
     pub fn run(&mut self) {
+        use std::time::Instant;
+
         let mut frame_start_time = Instant::now();
         let mut elapsed = 0.;
         loop {
@@ -74,6 +77,18 @@ impl<TExtension: ApplicationExtension<TExtension>> Application<TExtension> {
 
             self.radiance_engine.update(elapsed);
         }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn run(self) {
+        let Application {
+            mut radiance_engine,
+            platform,
+            ..
+        } = self;
+        platform.run_event_loop(move |window, elapsed| {
+            radiance_engine.update(window, elapsed);
+        });
     }
 }
 

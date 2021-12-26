@@ -1,12 +1,17 @@
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(not(target_os = "windows"))]
+mod winit;
 
 mod clipboard;
 
+#[cfg(not(target_os = "windows"))]
+pub use self::winit::ImguiPlatform;
 #[cfg(target_os = "windows")]
-use windows::ImguiPlatform;
+pub use windows::ImguiPlatform;
 
 use crate::application::Platform;
+use ::winit::window::Window;
 use imgui::*;
 use std::{
     cell::{RefCell, RefMut},
@@ -54,8 +59,26 @@ impl ImguiContext {
         Self { context, platform }
     }
 
+    #[cfg(target_os = "windows")]
     pub fn draw_ui<F: FnOnce(&mut Ui)>(&mut self, delta_sec: f32, draw: F) -> ImguiFrame {
         self.platform.borrow_mut().new_frame(delta_sec);
+
+        let mut context = self.context.borrow_mut();
+        let mut ui = context.frame();
+        draw(&mut ui);
+        std::mem::forget(ui);
+
+        ImguiFrame { frame_begun: true }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn draw_ui<F: FnOnce(&mut Ui)>(
+        &mut self,
+        window: &Window,
+        delta_sec: f32,
+        draw: F,
+    ) -> ImguiFrame {
+        self.platform.borrow().new_frame(window, delta_sec);
 
         let mut context = self.context.borrow_mut();
         let mut ui = context.frame();

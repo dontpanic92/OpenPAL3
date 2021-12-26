@@ -10,7 +10,7 @@ edition = "2018"
 imgui = "0.8.0"
 opengb = { path = "../opengb" }
 radiance = { path = "../radiance" }
-simple_logger = "1.11.0"
+simple_logger = "1.16.0"
 
 [dependencies.log]
 version = "0.4.14"

@@ -1,3 +1,5 @@
+use winit::window::Window;
+
 use super::DebugLayer;
 use crate::{
     audio::AudioEngine,
@@ -57,6 +59,7 @@ impl CoreRadianceEngine {
         self.scene_manager.as_mut().unwrap().as_mut()
     }
 
+    #[cfg(target_os = "windows")]
     pub fn update(&mut self, delta_sec: f32) {
         self.input_engine.borrow_mut().update(delta_sec);
 
@@ -68,6 +71,30 @@ impl CoreRadianceEngine {
                 dl.update(scene_manager.as_mut(), ui, delta_sec);
             }
         });
+
+        let scene = self.scene_manager.as_mut().unwrap().scene_mut();
+        if let Some(s) = scene {
+            let extent = self.rendering_engine.view_extent();
+            s.camera_mut().set_aspect(extent.0 as f32 / extent.1 as f32);
+            self.rendering_engine.render(s, ui_frame);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn update(&mut self, window: &Window, delta_sec: f32) {
+        self.input_engine.borrow_mut().update(delta_sec);
+
+        let scene_manager = self.scene_manager.as_mut().unwrap();
+        let debug_layer = self.debug_layer.as_mut();
+        let ui_frame = self
+            .imgui_context
+            .borrow_mut()
+            .draw_ui(window, delta_sec, |ui| {
+                scene_manager.update(ui, delta_sec);
+                if let Some(dl) = debug_layer {
+                    dl.update(scene_manager.as_mut(), ui, delta_sec);
+                }
+            });
 
         let scene = self.scene_manager.as_mut().unwrap().scene_mut();
         if let Some(s) = scene {
