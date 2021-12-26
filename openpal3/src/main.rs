@@ -25,7 +25,13 @@ pub struct OpenPal3Application {
 
 impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
     fn on_initialized(&mut self, app: &mut Application<OpenPal3Application>) {
-        simple_logger::SimpleLogger::new().init().unwrap();
+        let logger = simple_logger::SimpleLogger::new();
+        // workaround panic on Linux for 'Could not determine the UTC offset on this system'
+        // see: https://github.com/borntyping/rust-simple_logger/issues/47
+        #[cfg(target_os = "linux")]
+        let logger = logger.with_utc_timestamps();
+        logger.init().unwrap();
+
         app.set_title(&self.app_name);
 
         let input_engine = app.engine_mut().input_engine();

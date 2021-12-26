@@ -31,12 +31,12 @@ impl GlobalState {
     ) -> Self {
         let bgm_source = audio_engine.create_source();
         let sound_sources = vec![];
-        let default_scene_bgm = parse_music_mapping(
-            asset_mgr
-                .vfs()
-                .read_to_end_from_gbk("/basedata/basedata\\datascript\\music.txt")
-                .unwrap(),
-        );
+        #[cfg(target_os = "windows")]
+        let music_path = "/basedata/basedata\\datascript\\music.txt";
+        #[cfg(not(target_os = "windows"))]
+        let music_path = "/basedata/basedata/datascript/music.txt";
+        let default_scene_bgm =
+            parse_music_mapping(asset_mgr.vfs().read_to_end_from_gbk(music_path).unwrap());
 
         Self {
             persistent_state,
