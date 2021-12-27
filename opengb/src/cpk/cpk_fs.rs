@@ -32,11 +32,9 @@ impl Store for CpkFs {
     type File = CpkFile;
 
     fn open_path(&self, path: &Path) -> std::io::Result<Self::File> {
-        // need ad-hoc conversion to windows path if we are not in windows
+        // need ad-hoc conversion to windows path
         // since the crc hashed path was hard-coded with back-slash dir separator
-        #[cfg(not(target_os = "windows"))]
         let path = path.to_string_lossy().replace("/", r"\");
-        #[cfg(not(target_os = "windows"))]
         let path = Path::new(path.chars().as_str());
         self.cpk_archive.borrow_mut().open(
             &encoding::all::GBK
