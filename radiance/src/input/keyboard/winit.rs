@@ -1,5 +1,5 @@
 use crate::input::{Key, KeyState};
-use winit::event::{DeviceEvent, ElementState, Event, VirtualKeyCode};
+use winit::event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent};
 
 pub struct KeyboardInput;
 
@@ -30,6 +30,45 @@ impl KeyboardInput {
                         virtual_keycode: Some(key),
                         ..
                     }),
+                ..
+            } => {
+                virtual_key = key;
+                action = Box::new(|key| {
+                    states[key as usize].set_down(false);
+                    states[key as usize].set_released(true);
+                });
+            }
+            // on macOS keyboard input events are WindowEvents
+            Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            winit::event::KeyboardInput {
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(key),
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => {
+                virtual_key = key;
+                action = Box::new(move |key| {
+                    states[key as usize].set_down(true);
+                    states[key as usize].set_pressed(true);
+                });
+            }
+            Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            winit::event::KeyboardInput {
+                                state: ElementState::Released,
+                                virtual_keycode: Some(key),
+                                ..
+                            },
+                        ..
+                    },
                 ..
             } => {
                 virtual_key = key;

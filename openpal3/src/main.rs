@@ -28,7 +28,7 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
         let logger = simple_logger::SimpleLogger::new();
         // workaround panic on Linux for 'Could not determine the UTC offset on this system'
         // see: https://github.com/borntyping/rust-simple_logger/issues/47
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let logger = logger.with_utc_timestamps();
         logger.init().unwrap();
 

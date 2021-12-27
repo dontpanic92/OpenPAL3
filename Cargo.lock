@@ -872,7 +872,7 @@ dependencies = [
 [[package]]
 name = "imgui-rs-vulkan-renderer"
 version = "0.3.1"
-source = "git+https://github.com/chrox/imgui-rs-vulkan-renderer#8d27383d01b107103c7f1b64c0e76da9af03dd59"
+source = "git+https://github.com/dontpanic92/imgui-rs-vulkan-renderer#a3e798497573837a46d63f7f5b2895ac916cb2d2"
 dependencies = [
  "ash",
  "imgui",
@@ -2250,7 +2250,7 @@ checksum = "5fecdca9a5291cc2b8dcf7dc02453fee791a280f3743cb0905f8822ae463b3fe"
 [[package]]
 name = "vk-mem"
 version = "0.2.3"
-source = "git+https://github.com/chrox/vk-mem-rs#c055cc57c0de3b38f1193232ec50b82935497eef"
+source = "git+https://github.com/dontpanic92/vk-mem-rs#ab7889b9c58e9a727463b0a58be093958881cf93"
 dependencies = [
  "ash",
  "bitflags",
