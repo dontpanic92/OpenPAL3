@@ -38,7 +38,8 @@ impl KeyboardInput {
                     states[key as usize].set_released(true);
                 });
             }
-            // on macOS keyboard input events are WindowEvents
+            // on macOS keyboard input events are only in WindowEvent
+            #[cfg(target_os = "macos")]
             Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
@@ -58,6 +59,7 @@ impl KeyboardInput {
                     states[key as usize].set_pressed(true);
                 });
             }
+            #[cfg(target_os = "macos")]
             Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
@@ -117,6 +119,7 @@ impl KeyboardInput {
             VirtualKeyCode::X => Key::X,
             VirtualKeyCode::Y => Key::Y,
             VirtualKeyCode::Z => Key::Z,
+            VirtualKeyCode::Grave => Key::Tilde,
             VirtualKeyCode::Up => Key::Up,
             VirtualKeyCode::Down => Key::Down,
             VirtualKeyCode::Left => Key::Left,
