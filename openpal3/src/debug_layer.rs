@@ -32,7 +32,7 @@ impl OpenPal3DebugLayer {
         }
     }
 
-    fn render(&mut self, scene_manager: &mut dyn SceneManager, ui: &mut Ui, delta_sec: f32) {
+    fn render(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, delta_sec: f32) {
         let w = Window::new("Debug");
         w.build(ui, || {
             let fps = self.fps_counter.update_fps(delta_sec);
@@ -171,20 +171,22 @@ impl OpenPal3DebugLayer {
 impl DebugLayer for OpenPal3DebugLayer {
     fn update(&mut self, scene_manager: &mut dyn SceneManager, ui: &mut Ui, delta_sec: f32) {
         let font = ui.push_font(ui.fonts().fonts()[1]);
+        (|| {
+            if self
+                .input_engine
+                .borrow()
+                .get_key_state(Key::Tilde)
+                .pressed()
+            {
+                self.visible = !self.visible;
+            }
+
+            if !self.visible {
+                return;
+            }
+
+            self.render(scene_manager, ui, delta_sec);
+        })();
         font.pop();
-        if self
-            .input_engine
-            .borrow()
-            .get_key_state(Key::Tilde)
-            .pressed()
-        {
-            self.visible = !self.visible;
-        }
-
-        if !self.visible {
-            return;
-        }
-
-        self.render(scene_manager, ui, delta_sec);
     }
 }
