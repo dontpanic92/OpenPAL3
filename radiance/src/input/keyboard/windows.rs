@@ -1,9 +1,9 @@
 use crate::input::{Key, KeyState};
 use winapi::um::winuser;
 
-pub struct WindowsKeyboardInput;
+pub struct KeyboardInput;
 
-impl WindowsKeyboardInput {
+impl KeyboardInput {
     pub fn process_message(&mut self, states: &mut [KeyState], msg: &winuser::MSG) {
         let mut action: Box<dyn FnMut(Key)>;
         match msg.message {

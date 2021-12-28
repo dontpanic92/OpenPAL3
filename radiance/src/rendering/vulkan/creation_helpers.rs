@@ -5,7 +5,6 @@ use crate::constants;
 use crate::rendering::Window;
 use ash::extensions::khr::{Surface, Swapchain};
 use ash::prelude::VkResult;
-use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::vk::{
     Extent2D, PhysicalDevice, PresentModeKHR, SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR,
     SwapchainKHR,
@@ -38,6 +37,7 @@ pub fn get_physical_device(instance: &Instance) -> Result<PhysicalDevice, Box<dy
     Ok(physical_devices[0])
 }
 
+#[cfg(target_os = "windows")]
 pub fn create_surface(
     entry: &Entry,
     instance: &Instance,
@@ -50,6 +50,15 @@ pub fn create_surface(
         .hwnd(window.hwnd as *const std::ffi::c_void)
         .build();
     unsafe { win32surface_entry.create_win32_surface(&create_info, None) }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn create_surface(
+    entry: &Entry,
+    instance: &Instance,
+    window: &Window,
+) -> VkResult<vk::SurfaceKHR> {
+    unsafe { ash_window::create_surface(&entry, &instance, window, None) }
 }
 
 pub fn get_graphics_queue_family_index(

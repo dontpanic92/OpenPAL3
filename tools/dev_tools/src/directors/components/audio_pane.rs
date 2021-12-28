@@ -2,7 +2,6 @@ use crate::directors::DevToolsState;
 
 use super::ContentPane;
 use audio::{AudioSourceState, Codec};
-use imgui::im_str;
 use radiance::audio::{self, AudioEngine, AudioSource};
 use std::path::PathBuf;
 
@@ -43,18 +42,18 @@ impl ContentPane for AudioPane {
         if let Some(source) = &mut self.source {
             source.update();
 
-            ui.text(im_str!("Audio: {}", self.path.to_str().unwrap()));
+            ui.text(format!("Audio: {}", self.path.to_str().unwrap()));
             let label = if source.state() == AudioSourceState::Playing {
-                im_str!("Pause")
+                "Pause"
             } else {
-                im_str!("Play")
+                "Play"
             };
 
-            if ui.button(label, [80., 32.]) {
+            if ui.button(label) {
                 self.toggle_play_stop();
             }
         } else {
-            ui.text(im_str!("Audio format not supported"));
+            ui.text("Audio format not supported");
         }
 
         None

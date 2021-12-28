@@ -1,12 +1,9 @@
 pub(crate) use engine::InputEngineInternal;
 pub use engine::{Axis, InputEngine, Key, KeyState};
 
-#[cfg(target_os = "windows")]
-pub use windows::WindowsInputEngine;
-
+pub use generic::GenericInputEngine;
 mod engine;
 mod gamepad;
 mod keyboard;
 
-#[cfg(target_os = "windows")]
-mod windows;
+mod generic;

@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use ash::vk::{CommandBuffer, CommandBufferAllocateInfo, DescriptorPoolResetFlags};
 use ash::{
     prelude::VkResult,
     vk::{
@@ -14,10 +15,6 @@ use ash::{
         RenderPassCreateInfo, Sampler, SamplerCreateInfo, Semaphore, SemaphoreCreateInfo,
         ShaderModule, ShaderModuleCreateInfo, SubmitInfo, SubpassContents, WriteDescriptorSet,
     },
-};
-use ash::{
-    version::DeviceV1_0,
-    vk::{CommandBuffer, CommandBufferAllocateInfo, DescriptorPoolResetFlags},
 };
 
 use super::{creation_helpers, instance::Instance};
@@ -107,7 +104,9 @@ impl Device {
     }
 
     pub fn free_descriptor_sets(&self, pool: DescriptorPool, descriptor_sets: &[DescriptorSet]) {
-        unsafe { self.device.free_descriptor_sets(pool, descriptor_sets) }
+        unsafe {
+            let _ = self.device.free_descriptor_sets(pool, descriptor_sets);
+        }
     }
 
     pub fn destroy_descriptor_set_layout(&self, descriptor_set_layout: DescriptorSetLayout) {

@@ -1,6 +1,5 @@
 use super::creation_helpers;
 use ash::{
-    version::InstanceV1_0,
     vk::{PhysicalDevice, PhysicalDeviceProperties},
     Entry,
 };

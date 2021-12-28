@@ -1,7 +1,7 @@
+use super::keyboard::KeyboardInput;
 use super::{
     engine::{InputEngine, InputEngineInternal, Key, KeyState},
     gamepad::GilrsInput,
-    keyboard::WindowsKeyboardInput,
 };
 use crate::{
     application::Platform,
@@ -12,21 +12,26 @@ use std::{
     mem::swap,
     rc::{Rc, Weak},
 };
+
+#[cfg(target_os = "windows")]
 use winapi::um::winuser;
 
-pub struct WindowsInputEngine {
-    input_engine: Weak<RefCell<WindowsInputEngine>>,
+#[cfg(not(target_os = "windows"))]
+use winit::event::Event;
+
+pub struct GenericInputEngine {
+    input_engine: Weak<RefCell<GenericInputEngine>>,
     last_key_states: Box<Vec<KeyState>>,
     key_states: Box<Vec<KeyState>>,
     axis_states: Box<Vec<AxisState>>,
 
-    keyboard: WindowsKeyboardInput,
+    keyboard: KeyboardInput,
     gamepad: GilrsInput,
 }
 
-impl WindowsInputEngine {
-    pub fn new(platform: &mut Platform) -> Rc<RefCell<WindowsInputEngine>> {
-        let engine = Rc::new(RefCell::new(WindowsInputEngine {
+impl GenericInputEngine {
+    pub fn new(platform: &mut Platform) -> Rc<RefCell<GenericInputEngine>> {
+        let engine = Rc::new(RefCell::new(GenericInputEngine {
             input_engine: Weak::new(),
             last_key_states: Box::new(vec![
                 KeyState::new(false, false, false);
@@ -37,7 +42,7 @@ impl WindowsInputEngine {
                 Key::Unknown as usize + 1
             ]),
             axis_states: Box::new(vec![AxisState::new(); Axis::Unknown as usize + 1]),
-            keyboard: WindowsKeyboardInput,
+            keyboard: KeyboardInput,
             gamepad: GilrsInput::new(),
         }));
 
@@ -47,18 +52,30 @@ impl WindowsInputEngine {
     }
 
     fn append_message_callback_to(_self: Rc<RefCell<Self>>, platform: &mut Platform) {
+        #[cfg(target_os = "windows")]
         platform.add_message_callback(Box::new(move |msg| {
+            _self.borrow_mut().message_callback(msg)
+        }));
+        #[cfg(not(target_os = "windows"))]
+        platform.add_message_callback(Box::new(move |_, msg| {
             _self.borrow_mut().message_callback(msg)
         }));
     }
 
+    #[cfg(target_os = "windows")]
     fn message_callback(&mut self, msg: &winuser::MSG) {
+        self.keyboard
+            .process_message(&mut self.last_key_states, msg);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn message_callback(&mut self, msg: &Event<()>) {
         self.keyboard
             .process_message(&mut self.last_key_states, msg);
     }
 }
 
-impl InputEngine for WindowsInputEngine {
+impl InputEngine for GenericInputEngine {
     fn get_key_state(&self, key: Key) -> KeyState {
         self.key_states[key as usize]
     }
@@ -68,7 +85,7 @@ impl InputEngine for WindowsInputEngine {
     }
 }
 
-impl InputEngineInternal for WindowsInputEngine {
+impl InputEngineInternal for GenericInputEngine {
     fn update(&mut self, delta_sec: f32) {
         self.gamepad
             .process_message(&mut self.last_key_states, &mut self.axis_states);

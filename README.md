@@ -19,7 +19,7 @@ v0.2 版本请前往 Releases 页面下载，[Azure Pipelines](https://dontpanic
 
 ### 运行
 
-**首次运行前请手动修改 `openpal3.toml`，将《仙剑奇侠传三》游戏目录填入：** 
+**首次运行前请手动修改 `openpal3.toml`，将《仙剑奇侠传三》游戏目录填入：**
 **（请注意反斜杠需要重复两次）**
 
 ```
@@ -34,12 +34,13 @@ asset_path = "E:\\CubeLibrary\\apps\\1000039"
 
 - 空格键：对话框下一句
 - F键：互动
+- A/D键：调整视角
 - 方向键：跑
 - 1/2/3/4：存档至第1、2、3、4号存档位
 
 ## 🛠 本地构建
 
-目前 OpenPAL3 仅支持 Windows 作为目标平台，未来会对其他操作系统提供支持。
+目前 OpenPAL3 支持 Windows、Linux 和 macOS 作为目标平台。
 
 ### 工具链与依赖库
 
@@ -55,6 +56,14 @@ asset_path = "E:\\CubeLibrary\\apps\\1000039"
 ```
 cd openpal3
 cargo build --release
+```
+
+### 常见问题
+
+macOS 平台下由于 nightly 工具链的一个[bug](https://github.com/rust-lang/rust/issues/91372) 构建时可用下面命令规避链接错误的问题：
+
+```
+MACOSX_DEPLOYMENT_TARGET=11.0 cargo build --release
 ```
 
 ## 🙋‍♂️ 贡献

@@ -3,6 +3,24 @@ use ash::vk;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_void};
 
+#[cfg(target_os = "macos")]
+pub fn instance_extension_names() -> Vec<*const i8> {
+    vec![
+        ash::extensions::khr::Surface::name().as_ptr(),
+        ash::extensions::ext::MetalSurface::name().as_ptr(),
+        ash::extensions::ext::DebugReport::name().as_ptr(),
+        ash::extensions::ext::DebugUtils::name().as_ptr(),
+    ]
+}
+#[cfg(target_os = "linux")]
+pub fn instance_extension_names() -> Vec<*const i8> {
+    vec![
+        ash::extensions::khr::Surface::name().as_ptr(),
+        ash::extensions::khr::XlibSurface::name().as_ptr(),
+        ash::extensions::ext::DebugReport::name().as_ptr(),
+        ash::extensions::ext::DebugUtils::name().as_ptr(),
+    ]
+}
 #[cfg(target_os = "windows")]
 pub fn instance_extension_names() -> Vec<*const i8> {
     vec![
