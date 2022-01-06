@@ -1,6 +1,7 @@
 # 仙三开源版
 
 [![Build Status](https://dontpanic92.visualstudio.com/OpenPAL3/_apis/build/status/dontpanic92.OpenPAL3?branchName=master)](https://dontpanic92.visualstudio.com/OpenPAL3/_build/latest?definitionId=5&branchName=master)
+[![CI Build](https://github.com/dontpanic92/OpenPAL3/actions/workflows/ci.yml/badge.svg)](https://github.com/dontpanic92/OpenPAL3/actions/workflows/ci.yml)
 
 《仙剑奇侠传三》开源实现。仙三开源版仍处于早期开发阶段，存在很多未实现的功能及 Bug，暂无完善的游戏体验。
 
