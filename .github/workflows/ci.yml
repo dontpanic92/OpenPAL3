@@ -15,6 +15,10 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install Deps
-      run: sudo apt install vulkan-sdk
+      run: |
+        wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+        sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.2.198-focal.list https://packages.lunarg.com/vulkan/1.2.198/lunarg-vulkan-1.2.198-focal.list
+        sudo apt update
+        sudo apt install vulkan-sdk
     - name: Build
       run: cargo build --workspace --release --verbose
