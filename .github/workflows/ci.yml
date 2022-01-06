@@ -29,3 +29,20 @@ jobs:
         sudo apt install vulkan-sdk libudev-dev libxcb-shape0-dev libxcb-xfixes0-dev
     - name: Build
       run: cargo build --workspace --release --verbose
+      
+  macos-build:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Install latest nightly
+      uses: actions-rs/toolchain@v1
+      with:
+          toolchain: nightly
+          override: true
+    - name: Install Deps
+      run: |
+        # brew install molten-vk
+    - name: Build
+      run: cargo build --workspace --release --verbose
