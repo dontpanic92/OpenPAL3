@@ -16,6 +16,11 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: recursive
+    - name: Install latest nightly
+      uses: actions-rs/toolchain@v1
+      with:
+          toolchain: nightly
+          override: true
     - name: Install Deps
       run: |
         wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
