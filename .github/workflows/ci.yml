@@ -10,11 +10,11 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  ubunut-build:
+  ubuntu-build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
     - name: Install Deps
-      run: apt install vulkan-sdk
+      run: sudo apt install vulkan-sdk
     - name: Build
       run: cargo build --workspace --release --verbose
