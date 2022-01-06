@@ -43,6 +43,6 @@ jobs:
           override: true
     - name: Install Deps
       run: |
-        # brew install molten-vk
+        brew install molten-vk
     - name: Build
       run: cargo build --workspace --release --verbose
