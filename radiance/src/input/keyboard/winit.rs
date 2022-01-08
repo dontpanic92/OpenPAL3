@@ -1,5 +1,7 @@
 use crate::input::{Key, KeyState};
 use winit::event::{DeviceEvent, ElementState, Event, VirtualKeyCode};
+#[cfg(target_os = "macos")]
+use winit::event::WindowEvent;
 
 pub struct KeyboardInput;
 
