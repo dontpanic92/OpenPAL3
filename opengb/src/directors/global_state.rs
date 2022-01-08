@@ -1,7 +1,10 @@
 use super::PersistentState;
 use crate::asset_manager::AssetManager;
 use crate::utilities::StoreExt2;
-use radiance::audio::{AudioEngine, AudioSource, AudioSourceState, Codec};
+use radiance::{
+    audio::{AudioSource, AudioSourceState, Codec},
+    media::{MediaEngine, VideoSource},
+};
 use regex::Regex;
 use std::{
     cell::{Ref, RefCell, RefMut},
@@ -17,6 +20,7 @@ pub struct GlobalState {
 
     asset_mgr: Rc<AssetManager>,
     bgm_source: Box<dyn AudioSource>,
+    movie_source: Box<dyn VideoSource>,
     sound_sources: Vec<Rc<RefCell<Box<dyn AudioSource>>>>,
     default_scene_bgm: HashMap<String, String>,
 
@@ -26,10 +30,11 @@ pub struct GlobalState {
 impl GlobalState {
     pub fn new(
         asset_mgr: Rc<AssetManager>,
-        audio_engine: &Rc<dyn AudioEngine>,
+        media_engine: &Rc<dyn MediaEngine>,
         persistent_state: Rc<RefCell<PersistentState>>,
     ) -> Self {
-        let bgm_source = audio_engine.create_source();
+        let bgm_source = media_engine.create_audio_source();
+        let movie_source = media_engine.create_video_source(asset_mgr.component_factory());
         let sound_sources = vec![];
         let music_path = "/basedata/basedata/datascript/music.txt";
         let default_scene_bgm =
@@ -42,6 +47,7 @@ impl GlobalState {
             role_controlled: 0,
             asset_mgr,
             bgm_source,
+            movie_source,
             sound_sources,
             default_scene_bgm,
             pass_through_wall: false,
@@ -62,6 +68,11 @@ impl GlobalState {
 
     pub fn set_role_controlled(&mut self, role_controlled: i32) {
         self.role_controlled = role_controlled
+    }
+
+    pub fn play_movie(&mut self, name: &str) -> (u32, u32) {
+        let data = self.asset_mgr.load_movie_data(name);
+        self.movie_source.play(data, false)
     }
 
     pub fn play_bgm(&mut self, name: &str) {
@@ -98,6 +109,14 @@ impl GlobalState {
 
     pub fn bgm_source(&mut self) -> &mut dyn AudioSource {
         self.bgm_source.as_mut()
+    }
+
+    pub fn movie_source(&mut self) -> &mut dyn VideoSource {
+        self.movie_source.as_mut()
+    }
+
+    pub fn asset_mgr(&self) -> Rc<AssetManager> {
+        self.asset_mgr.clone()
     }
 
     pub fn persistent_state(&self) -> Ref<PersistentState> {

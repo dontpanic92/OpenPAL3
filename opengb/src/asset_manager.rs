@@ -30,6 +30,9 @@ pub struct AssetManager {
     factory: Rc<dyn ComponentFactory>,
     scene_path: PathBuf,
     music_path: PathBuf,
+    movie_path: PathBuf,
+    movie_end_path: PathBuf,
+    movie_effect_path: PathBuf,
     snd_path: PathBuf,
     basedata_path: PathBuf,
     vfs: MiniFs,
@@ -45,6 +48,9 @@ impl AssetManager {
             basedata_path: PathBuf::from("/basedata/basedata"),
             scene_path: PathBuf::from("/scene"),
             music_path: PathBuf::from("/music/music/music"),
+            movie_path: PathBuf::from("/movie/movie/movie"),
+            movie_end_path: PathBuf::from("/movie/movie_end/movie"),
+            movie_effect_path: PathBuf::from("/movie/movie/2deffect"),
             snd_path: PathBuf::from("/snd"),
             vfs,
         }
@@ -253,6 +259,20 @@ impl AssetManager {
     pub fn load_music_data(&self, music_name: &str) -> Vec<u8> {
         let path = self.music_path.join(music_name).with_extension("mp3");
         self.vfs.read_to_end(path).unwrap()
+    }
+
+    pub fn load_movie_data(&self, movie_name: &str) -> Vec<u8> {
+        let movie = self.movie_path.join(movie_name).with_extension("bik");
+        let end_movie = self.movie_end_path.join(movie_name).with_extension("bik");
+        let effect_movie = self
+            .movie_effect_path
+            .join(movie_name)
+            .with_extension("bik");
+        self.vfs.read_to_end(movie).unwrap_or_else(|_| {
+            self.vfs
+                .read_to_end(end_movie)
+                .unwrap_or_else(|_| self.vfs.read_to_end(effect_movie).unwrap())
+        })
     }
 
     pub fn load_snd_data(&self, snd_name: &str) -> io::Result<Vec<u8>> {
