@@ -1,6 +1,6 @@
 use super::{
     buffer::Buffer, descriptor_pool::DescriptorPool, descriptor_pool::DescriptorPoolCreateInfo,
-    descriptor_set_layout::DescriptorSetLayout, device::Device,
+    descriptor_set_layout::DescriptorSetLayout, device::Device, texture::VulkanTexture,
 };
 use crate::rendering::vulkan::material::VulkanMaterial;
 use crate::rendering::vulkan::uniform_buffers::PerFrameUniformBuffer;
@@ -48,6 +48,46 @@ impl DescriptorManager {
 
     pub fn dub_descriptor_manager(&self) -> &DynamicUniformBufferDescriptorManager {
         &self.dub_descriptor_manager
+    }
+
+    pub fn allocate_texture_descriptor_set(
+        &self,
+        texture: &VulkanTexture,
+    ) -> VkResult<vk::DescriptorSet> {
+        let layout = Self::create_descriptor_set_layout(
+            &self.device,
+            vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            vk::ShaderStageFlags::FRAGMENT,
+            1,
+        )
+        .unwrap();
+
+        let descriptor_pool = Self::create_descriptor_pool(&self.device).unwrap();
+
+        let set = {
+            let layouts = [layout];
+            let allocate_info = vk::DescriptorSetAllocateInfo::builder()
+                .descriptor_pool(descriptor_pool)
+                .set_layouts(&layouts);
+
+            self.device.allocate_descriptor_sets(&allocate_info)?[0]
+        };
+
+        let image_info = [vk::DescriptorImageInfo {
+            sampler: texture.sampler().vk_sampler(),
+            image_view: texture.image_view().vk_image_view(),
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        }];
+
+        let writes = [vk::WriteDescriptorSet::builder()
+            .dst_set(set)
+            .dst_binding(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(&image_info)
+            .build()];
+        self.device.update_descriptor_sets(&writes, &[]);
+
+        Ok(set)
     }
 
     pub fn allocate_per_object_descriptor_set(
@@ -148,6 +188,21 @@ impl DescriptorManager {
             self.dub_descriptor_manager.layout().vk_layout(),
             per_material_layout,
         ]
+    }
+
+    fn create_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
+        let sampler_pool_size = vk::DescriptorPoolSize::builder()
+            .descriptor_count(1)
+            .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .build();
+
+        let pool_sizes = [sampler_pool_size];
+        let create_info = vk::DescriptorPoolCreateInfo::builder()
+            .pool_sizes(&pool_sizes)
+            .max_sets(1)
+            .build();
+
+        device.create_descriptor_pool(&create_info)
     }
 
     fn create_per_frame_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {

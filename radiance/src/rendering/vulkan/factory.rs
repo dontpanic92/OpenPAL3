@@ -1,3 +1,6 @@
+use imgui::TextureId;
+
+use super::imgui::ImguiRenderer;
 use super::texture::VulkanTextureStore;
 use super::{
     adhoc_command_runner::AdhocCommandRunner, descriptor_managers::DescriptorManager,
@@ -19,6 +22,7 @@ pub struct VulkanComponentFactory {
     dub_manager: Arc<DynamicUniformBufferManager>,
     command_runner: Rc<AdhocCommandRunner>,
     texture_store: RefCell<VulkanTextureStore>,
+    imgui: Rc<RefCell<ImguiRenderer>>,
 }
 
 impl ComponentFactory for VulkanComponentFactory {
@@ -31,6 +35,35 @@ impl ComponentFactory for VulkanComponentFactory {
                 &self.command_runner,
             )
             .unwrap(),
+        )
+    }
+
+    fn create_imgui_texture(
+        &self,
+        buffer: &[u8],
+        row_length: u32,
+        width: u32,
+        height: u32,
+        id: Option<TextureId>,
+    ) -> (Box<dyn Texture>, TextureId) {
+        let texture = VulkanTexture::from_buffer(
+            buffer,
+            row_length,
+            width,
+            height,
+            &self.device,
+            &self.allocator,
+            &self.command_runner,
+        )
+        .unwrap();
+        let descriptor_set = self
+            .descriptor_manager
+            .allocate_texture_descriptor_set(&texture)
+            .unwrap();
+
+        (
+            Box::new(texture),
+            self.imgui.borrow_mut().upsert_texture(id, descriptor_set),
         )
     }
 
@@ -93,6 +126,7 @@ impl VulkanComponentFactory {
         descriptor_manager: &Rc<DescriptorManager>,
         dub_manager: &Arc<DynamicUniformBufferManager>,
         command_runner: &Rc<AdhocCommandRunner>,
+        imgui: Rc<RefCell<ImguiRenderer>>,
     ) -> Self {
         Self {
             device,
@@ -101,6 +135,7 @@ impl VulkanComponentFactory {
             dub_manager: dub_manager.clone(),
             command_runner: command_runner.clone(),
             texture_store: RefCell::new(VulkanTextureStore::new()),
+            imgui,
         }
     }
 
@@ -108,6 +143,7 @@ impl VulkanComponentFactory {
         self.clone()
     }
 
+    #[allow(dead_code)]
     pub fn create_vulkan_texture(&self, texture_def: &TextureDef) -> Rc<VulkanTexture> {
         self.texture_store
             .borrow_mut()

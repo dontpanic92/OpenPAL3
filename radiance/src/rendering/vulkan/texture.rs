@@ -45,7 +45,41 @@ impl VulkanTexture {
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             &command_runner,
         )?;
-        image.copy_from(&buffer, &command_runner)?;
+        image.copy_from(&buffer, 0, &command_runner)?;
+        image.transit_layout(
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            &command_runner,
+        )?;
+
+        let image_view = ImageView::new_color_image_view(device.clone(), image.vk_image(), format)?;
+        let sampler = Sampler::new(device.clone())?;
+
+        Ok(Self {
+            image,
+            image_view,
+            sampler,
+        })
+    }
+
+    pub fn from_buffer(
+        image_buffer: &[u8],
+        row_length: u32,
+        width: u32,
+        height: u32,
+        device: &Rc<Device>,
+        allocator: &Rc<vk_mem::Allocator>,
+        command_runner: &Rc<AdhocCommandRunner>,
+    ) -> Result<Self, Box<dyn Error>> {
+        let buffer = Buffer::new_staging_buffer_with_data(allocator, &image_buffer)?;
+        let format = vk::Format::R8G8B8A8_UNORM;
+        let mut image = Image::new_color_image(allocator, width, height)?;
+        image.transit_layout(
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            &command_runner,
+        )?;
+        image.copy_from(&buffer, row_length, &command_runner)?;
         image.transit_layout(
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,

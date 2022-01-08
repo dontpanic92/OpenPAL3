@@ -1,5 +1,6 @@
 use super::descriptor_managers::DescriptorManager;
 use super::helpers;
+use super::imgui::ImguiRenderer;
 use super::render_object::VulkanRenderObject;
 use super::swapchain::SwapChain;
 use super::{adhoc_command_runner::AdhocCommandRunner, device::Device};
@@ -14,14 +15,16 @@ use crate::{
     imgui::{ImguiContext, ImguiFrame},
     rendering::{ComponentFactory, RenderingComponent, RenderingEngine, Window},
 };
-use ash::extensions::ext::DebugReport;
+use ash::extensions::ext::DebugUtils;
 use ash::{vk, Entry};
 use std::iter::Iterator;
+use std::ptr;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::{cell::RefCell, error::Error};
 
 pub struct VulkanRenderingEngine {
+    #[allow(dead_code)]
     entry: Rc<Entry>,
     instance: Rc<Instance>,
     physical_device: vk::PhysicalDevice,
@@ -33,15 +36,16 @@ pub struct VulkanRenderingEngine {
     queue: vk::Queue,
     swapchain: Option<SwapChain>,
     command_pool: vk::CommandPool,
-    debug_callback: vk::DebugReportCallbackEXT,
+    debug_callback: vk::DebugUtilsMessengerEXT,
 
+    imgui: Rc<RefCell<ImguiRenderer>>,
+    component_factory: Rc<VulkanComponentFactory>,
     descriptor_manager: Option<Rc<DescriptorManager>>,
     dub_manager: Option<Arc<DynamicUniformBufferManager>>,
     adhoc_command_runner: Rc<AdhocCommandRunner>,
-    component_factory: Rc<VulkanComponentFactory>,
 
     surface_entry: ash::extensions::khr::Surface,
-    debug_entry: ash::extensions::ext::DebugReport,
+    debug_entry: ash::extensions::ext::DebugUtils,
 
     image_available_semaphore: vk::Semaphore,
     render_finished_semaphore: vk::Semaphore,
@@ -53,6 +57,7 @@ impl RenderingEngine for VulkanRenderingEngine {
     fn render(&mut self, scene: &mut dyn Scene, ui_frame: ImguiFrame) {
         if self.swapchain.is_none() {
             self.recreate_swapchain().unwrap();
+            return;
         }
 
         self.dub_manager().update_do(|updater| {
@@ -90,17 +95,17 @@ impl VulkanRenderingEngine {
         window: &Window,
         imgui_context: Rc<RefCell<ImguiContext>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let entry = unsafe { Rc::new(Entry::new().unwrap()) };
+        let entry = unsafe { Rc::new(Entry::load().unwrap()) };
         let instance = Rc::new(Instance::new(entry.clone()));
-        let physical_device = creation_helpers::get_physical_device(instance.vk_instance())?;
+        let physical_device = creation_helpers::get_physical_device(&instance.vk_instance())?;
 
         let surface_entry =
-            ash::extensions::khr::Surface::new(entry.as_ref(), instance.vk_instance());
+            ash::extensions::khr::Surface::new(entry.as_ref(), &instance.vk_instance());
         let surface =
-            creation_helpers::create_surface(entry.as_ref(), instance.vk_instance(), &window)?;
+            creation_helpers::create_surface(entry.as_ref(), &instance.vk_instance(), &window)?;
 
         let graphics_queue_family_index = creation_helpers::get_graphics_queue_family_index(
-            instance.vk_instance(),
+            &instance.vk_instance(),
             physical_device,
             &surface_entry,
             surface,
@@ -159,7 +164,7 @@ impl VulkanRenderingEngine {
 
         let adhoc_command_runner =
             Rc::new(AdhocCommandRunner::new(device.clone(), command_pool, queue));
-        let swapchain = SwapChain::new(
+        let mut swapchain = SwapChain::new(
             &instance,
             device.clone(),
             &allocator,
@@ -172,9 +177,22 @@ impl VulkanRenderingEngine {
             present_mode,
             &descriptor_manager,
             &adhoc_command_runner,
-            &mut imgui_context.borrow_mut(),
+            &mut imgui_context.as_ref().borrow_mut(),
         )
         .unwrap();
+
+        let imgui = Rc::new(RefCell::new(ImguiRenderer::new(
+            instance.clone(),
+            physical_device,
+            device.clone(),
+            queue,
+            command_pool,
+            swapchain.render_pass(),
+            swapchain.images_len(),
+            &mut imgui_context.as_ref().borrow_mut(),
+        )));
+
+        swapchain.set_imgui(imgui.clone());
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
         let image_available_semaphore = device.create_semaphore(&semaphore_create_info)?;
@@ -186,19 +204,26 @@ impl VulkanRenderingEngine {
             &descriptor_manager,
             &dub_manager,
             &adhoc_command_runner,
+            imgui.clone(),
         ));
 
         // DEBUG INFO
-        let debug_entry = DebugReport::new(entry.as_ref(), instance.vk_instance());
+        let debug_entry = DebugUtils::new(entry.as_ref(), &instance.vk_instance());
         let debug_callback = {
-            let create_info = vk::DebugReportCallbackCreateInfoEXT::builder()
-                .flags(
-                    vk::DebugReportFlagsEXT::ERROR
-                        | vk::DebugReportFlagsEXT::WARNING
-                        | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING,
-                )
-                .pfn_callback(Some(helpers::debug_callback));
-            unsafe { debug_entry.create_debug_report_callback(&create_info, None)? }
+            let create_info = vk::DebugUtilsMessengerCreateInfoEXT {
+                s_type: vk::StructureType::DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+                message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                message_type: vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                pfn_user_callback: Some(helpers::debug_callback),
+                flags: vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
+                p_user_data: ptr::null_mut(),
+                p_next: ptr::null(),
+            };
+            unsafe { debug_entry.create_debug_utils_messenger(&create_info, None)? }
         };
 
         let vulkan = Self {
@@ -223,6 +248,7 @@ impl VulkanRenderingEngine {
             image_available_semaphore,
             render_finished_semaphore,
             imgui_context,
+            imgui,
         };
 
         return Ok(vulkan);
@@ -265,7 +291,7 @@ impl VulkanRenderingEngine {
 
         self.swapchain = None;
         let capabilities = self.get_capabilities()?;
-        self.swapchain = Some(SwapChain::new(
+        let mut swapchain = SwapChain::new(
             &self.instance,
             self.device.clone(),
             self.allocator(),
@@ -278,8 +304,16 @@ impl VulkanRenderingEngine {
             self.present_mode,
             self.descriptor_manager(),
             &self.adhoc_command_runner,
-            &mut self.imgui_context.borrow_mut(),
-        )?);
+            &mut self.imgui_context.as_ref().borrow_mut(),
+        )?;
+        self.imgui
+            .as_ref()
+            .borrow_mut()
+            .set_render_pass(swapchain.render_pass())?;
+
+        swapchain.set_imgui(self.imgui.clone());
+
+        self.swapchain = Some(swapchain);
 
         Ok(())
     }
@@ -390,7 +424,7 @@ impl Drop for VulkanRenderingEngine {
         self.allocator = None;
         unsafe {
             self.debug_entry
-                .destroy_debug_report_callback(self.debug_callback, None);
+                .destroy_debug_utils_messenger(self.debug_callback, None);
         }
         self.device.destroy_command_pool(self.command_pool);
 
