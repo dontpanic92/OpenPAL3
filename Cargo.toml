@@ -5,3 +5,7 @@ members = [
     "openpal3",
     "tools/dev_tools",
 ]
+
+[patch.crates-io]
+ffmpeg-sys = { git = "https://github.com/meh/rust-ffmpeg-sys.git" }
+vk-mem = { git = "https://github.com/adrien-ben/vk-mem-rs", tag = "0.2.3-ash-0.35" }

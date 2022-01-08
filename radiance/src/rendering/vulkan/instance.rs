@@ -6,6 +6,7 @@ use ash::{
 use std::rc::Rc;
 
 pub struct Instance {
+    #[allow(dead_code)]
     entry: Rc<Entry>,
     instance: ash::Instance,
 }

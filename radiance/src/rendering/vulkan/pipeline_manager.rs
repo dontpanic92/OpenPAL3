@@ -5,6 +5,7 @@ use ash::vk;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[allow(dead_code)]
 pub struct PipelineManager {
     device: Rc<Device>,
     descriptor_manager: Rc<DescriptorManager>,

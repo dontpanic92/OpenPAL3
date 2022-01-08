@@ -10,7 +10,7 @@ pub struct Image {
     allocator: Rc<vk_mem::Allocator>,
     image: vk::Image,
     allocation: vk_mem::Allocation,
-    allocation_info: vk_mem::AllocationInfo,
+    _allocation_info: vk_mem::AllocationInfo,
     format: vk::Format,
     width: u32,
     height: u32,
@@ -164,6 +164,7 @@ impl Image {
     pub fn copy_from(
         &mut self,
         buffer: &Buffer,
+        row_length: u32,
         command_runner: &AdhocCommandRunner,
     ) -> VkResult<()> {
         command_runner.run_commands_one_shot(|device, command_buffer| {
@@ -177,7 +178,7 @@ impl Image {
                 )
                 .image_offset(vk::Offset3D::builder().x(0).y(0).z(0).build())
                 .buffer_offset(0)
-                .buffer_row_length(0)
+                .buffer_row_length(row_length)
                 .buffer_image_height(0)
                 .image_subresource(
                     vk::ImageSubresourceLayers::builder()
@@ -236,7 +237,7 @@ impl Image {
             allocator: allocator.clone(),
             image,
             allocation,
-            allocation_info,
+            _allocation_info: allocation_info,
             format,
             width: tex_width,
             height: tex_height,

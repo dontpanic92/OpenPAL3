@@ -9,6 +9,7 @@ use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
 
+#[allow(dead_code)]
 pub struct VulkanRenderObject {
     vertices: VertexBuffer,
     indices: Vec<u32>,

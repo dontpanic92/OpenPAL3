@@ -11,7 +11,7 @@ pub struct PerInstanceUniformBuffer {
 }
 
 impl PerInstanceUniformBuffer {
-    pub fn new(model: &Mat44) -> Self {
+    pub fn _new(model: &Mat44) -> Self {
         Self { model: *model }
     }
 }

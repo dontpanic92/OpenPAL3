@@ -10,6 +10,6 @@ pub use preview_director::PreviewDirector;
 
 #[derive(Debug, Clone)]
 pub enum DevToolsState {
-    MainWindow,
+    _MainWindow,
     Preview(PathBuf),
 }

@@ -119,7 +119,7 @@ pub fn entity_add_component<T: 'static>(entity: &mut dyn Entity, component: T) {
 }
 
 #[inline]
-pub fn entity_add_component_as<TKey: 'static, T: 'static>(entity: &mut dyn Entity, component: T) {
+pub fn _entity_add_component_as<TKey: 'static, T: 'static>(entity: &mut dyn Entity, component: T) {
     entity.add_component(TypeId::of::<TKey>(), Box::new(component));
 }
 
@@ -132,7 +132,7 @@ pub fn entity_get_component<T: 'static>(entity: &dyn Entity) -> Option<&T> {
 }
 
 #[inline]
-pub fn entity_remove_component<T: 'static>(entity: &mut dyn Entity) {
+pub fn _entity_remove_component<T: 'static>(entity: &mut dyn Entity) {
     let type_id = TypeId::of::<T>();
     entity.remove_component(type_id)
 }
