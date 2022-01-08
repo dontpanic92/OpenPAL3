@@ -3,8 +3,9 @@ use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
 use log::{debug, error, warn};
+use radiance::input::InputEngine;
+use radiance::media::MediaEngine;
 use radiance::scene::{Director, SceneManager};
-use radiance::{audio::AudioEngine, input::InputEngine};
 use std::fmt::Debug;
 use std::{
     any::Any,
@@ -34,7 +35,7 @@ pub struct SceVm {
 
 impl SceVm {
     pub fn new(
-        audio_engine: Rc<dyn AudioEngine>,
+        media_engine: Rc<dyn MediaEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
         sce: SceFile,
         sce_name: String,
@@ -44,7 +45,7 @@ impl SceVm {
     ) -> Self {
         let state = SceState::new(
             input_engine.clone(),
-            audio_engine.clone(),
+            media_engine.clone(),
             asset_mgr.clone(),
             Rc::new(sce),
             sce_name,
@@ -624,7 +625,7 @@ impl SceProcContext {
             }
             115 => {
                 // Movie
-                nop_command!(self, Movie, string)
+                command!(self, SceCommandMovie, name: string)
             }
             116 => {
                 // SetRoleTexture
@@ -1017,13 +1018,13 @@ pub struct SceState {
     run_mode: i32,
     ext: HashMap<String, Box<dyn Any>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
-    audio_engine: Rc<dyn AudioEngine>,
+    media_engine: Rc<dyn MediaEngine>,
 }
 
 impl SceState {
     pub fn new(
         input_engine: Rc<RefCell<dyn InputEngine>>,
-        audio_engine: Rc<dyn AudioEngine>,
+        media_engine: Rc<dyn MediaEngine>,
         asset_mgr: Rc<AssetManager>,
         sce: Rc<SceFile>,
         sce_name: String,
@@ -1039,7 +1040,7 @@ impl SceState {
             run_mode: 1,
             ext,
             input_engine,
-            audio_engine,
+            media_engine,
         }
     }
 
@@ -1059,8 +1060,8 @@ impl SceState {
         self.input_engine.borrow()
     }
 
-    pub fn audio(&self) -> &Rc<dyn AudioEngine> {
-        &self.audio_engine
+    pub fn media_engine(&self) -> &Rc<dyn MediaEngine> {
+        &self.media_engine
     }
 
     pub fn run_mode(&self) -> i32 {

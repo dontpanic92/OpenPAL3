@@ -2,6 +2,7 @@ use crate::directors::sce_vm::{SceCommand, SceState};
 use imgui::Ui;
 use radiance::scene::SceneManager;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SceCommandHaveItem {
     item_id: i32,

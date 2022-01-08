@@ -4,8 +4,8 @@ pub use core_engine::CoreRadianceEngine;
 pub use debugging::DebugLayer;
 
 use crate::{
-    application::Platform, audio::OpenAlAudioEngine, imgui::ImguiContext,
-    input::GenericInputEngine, rendering::VulkanRenderingEngine, scene::DefaultSceneManager,
+    application::Platform, imgui::ImguiContext, input::GenericInputEngine,
+    media::FFMpegMediaEngine, rendering::VulkanRenderingEngine, scene::DefaultSceneManager,
 };
 use std::{cell::RefCell, error::Error, rc::Rc};
 
@@ -20,13 +20,13 @@ pub fn create_radiance_engine(
     #[cfg(not(target_os = "windows"))]
     let window = platform.get_window();
     let rendering_engine = Box::new(VulkanRenderingEngine::new(window, imgui_context.clone())?);
-    let audio_engine = Rc::new(OpenAlAudioEngine::new());
+    let media_engine = Rc::new(FFMpegMediaEngine::new());
     let input_engine = GenericInputEngine::new(platform);
     let scene_manager = Box::new(DefaultSceneManager::new());
 
     Ok(CoreRadianceEngine::new(
         rendering_engine,
-        audio_engine,
+        media_engine,
         input_engine,
         imgui_context,
         scene_manager,

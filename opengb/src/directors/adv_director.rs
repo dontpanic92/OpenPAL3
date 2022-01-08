@@ -9,9 +9,9 @@ use super::{
 };
 use log::debug;
 use radiance::{
-    audio::AudioEngine,
     input::{Axis, InputEngine, Key},
     math::{Mat44, Vec3},
+    media::MediaEngine,
     scene::{CoreScene, Director, Entity, SceneManager},
 };
 
@@ -26,14 +26,14 @@ impl AdventureDirector {
     pub fn new(
         app_name: &str,
         asset_mgr: Rc<AssetManager>,
-        audio_engine: Rc<dyn AudioEngine>,
+        media_engine: Rc<dyn MediaEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
         sce_vm_options: Option<SceExecutionOptions>,
     ) -> Self {
         let p_state = Rc::new(RefCell::new(PersistentState::new(app_name.to_string())));
-        let global_state = GlobalState::new(asset_mgr.clone(), &audio_engine, p_state);
+        let global_state = GlobalState::new(asset_mgr.clone(), &media_engine, p_state);
         let mut sce_vm = SceVm::new(
-            audio_engine.clone(),
+            media_engine.clone(),
             input_engine.clone(),
             asset_mgr.load_init_sce(),
             "init".to_string(),
@@ -54,7 +54,7 @@ impl AdventureDirector {
     pub fn load(
         app_name: &str,
         asset_mgr: Rc<AssetManager>,
-        audio_engine: Rc<dyn AudioEngine>,
+        media_engine: Rc<dyn MediaEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
         scene_manager: &mut dyn SceneManager,
         sce_vm_options: Option<SceExecutionOptions>,
@@ -77,7 +77,7 @@ impl AdventureDirector {
 
         let mut global_state = GlobalState::new(
             asset_mgr.clone(),
-            &audio_engine,
+            &media_engine,
             Rc::new(RefCell::new(p_state)),
         );
 
@@ -93,7 +93,7 @@ impl AdventureDirector {
         global_state.play_default_bgm();
 
         let mut sce_vm = SceVm::new(
-            audio_engine.clone(),
+            media_engine.clone(),
             input_engine.clone(),
             asset_mgr.load_sce(scene_name.as_ref().unwrap()),
             scene_name.as_ref().unwrap().clone(),

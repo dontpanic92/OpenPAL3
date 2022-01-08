@@ -1,6 +1,5 @@
 use super::Platform;
 use crate::constants;
-use crate::imgui::ImguiContext;
 use crate::radiance;
 use crate::radiance::CoreRadianceEngine;
 use std::cell::{RefCell, RefMut};
@@ -57,7 +56,7 @@ impl<TExtension: ApplicationExtension<TExtension>> Application<TExtension> {
         use std::time::Instant;
 
         let mut frame_start_time = Instant::now();
-        let mut elapsed = 0.;
+        let mut elapsed;
         loop {
             if !self.platform.process_message() {
                 break;

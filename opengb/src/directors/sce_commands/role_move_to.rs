@@ -5,6 +5,7 @@ use imgui::Ui;
 use radiance::scene::Entity;
 use radiance::{math::Vec3, scene::SceneManager};
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SceCommandRoleMoveTo {
     role_id: i32,

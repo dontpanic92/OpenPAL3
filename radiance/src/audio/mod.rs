@@ -1,17 +1,13 @@
 mod decoders;
 mod openal;
 
-pub use openal::OpenAlAudioEngine;
+pub use openal::OpenAlAudioSource;
 
 #[derive(Copy, Clone)]
 pub enum Codec {
     Wav,
     Mp3,
     Ogg,
-}
-
-pub trait AudioEngine {
-    fn create_source(&self) -> Box<dyn AudioSource>;
 }
 
 #[derive(PartialEq, Copy, Clone, Debug)]

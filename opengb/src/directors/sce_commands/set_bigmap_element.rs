@@ -18,6 +18,7 @@ use radiance::scene::SceneManager;
  * m25 新仙界
  */
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SceCommandSetBigMapElement {
     id: i32,

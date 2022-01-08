@@ -11,6 +11,7 @@ pub use self::winit::ImguiPlatform;
 pub use windows::ImguiPlatform;
 
 use crate::application::Platform;
+#[cfg(not(target_os = "windows"))]
 use ::winit::window::Window;
 use imgui::*;
 use std::{

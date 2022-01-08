@@ -1,12 +1,9 @@
 use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
+use radiance::rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents};
 use radiance::scene::{CoreEntity, EntityExtension};
 use radiance::{
     math::{Vec2, Vec3},
     rendering::RenderingComponent,
-};
-use radiance::{
-    rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents},
-    scene::Entity,
 };
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -30,7 +27,7 @@ pub enum RoleState {
 pub struct RoleEntity {
     model_name: String,
     asset_mgr: Rc<AssetManager>,
-    component_factory: Rc<dyn ComponentFactory>,
+    _component_factory: Rc<dyn ComponentFactory>,
     animations: HashMap<String, RoleAnimation>,
     active_anim_name: String,
     idle_anim_name: String,
@@ -87,7 +84,7 @@ impl RoleEntity {
         Self {
             model_name: role_name.to_string(),
             asset_mgr: asset_mgr.clone(),
-            component_factory: asset_mgr.component_factory().clone(),
+            _component_factory: asset_mgr.component_factory().clone(),
             animations,
             active_anim_name: idle_anim_name.to_string(),
             idle_anim_name: idle_anim_name.to_string(),

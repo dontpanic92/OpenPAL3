@@ -29,7 +29,7 @@ impl SceCommand for SceCommandPlaySound {
         let data = state.asset_mgr().load_snd_data(&self.name);
         match data {
             Ok(d) => {
-                let mut source = state.audio().create_source();
+                let mut source = state.media_engine().create_audio_source();
                 source.play(d, Codec::Wav, false);
 
                 let source = Rc::new(RefCell::new(source));
