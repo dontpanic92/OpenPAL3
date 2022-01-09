@@ -41,7 +41,7 @@ minimp3 = "0.5.1"
 cpal = "0.13.4"
 
 # Video
-ffmpeg = { git = "https://github.com/meh/rust-ffmpeg", default-features = false, features = ["build", "codec", "filter", "format", "resampling", "software-scaling"] }
+ffmpeg = { git = "https://github.com/meh/rust-ffmpeg", default-features = false, features = ["codec", "filter", "format", "resampling", "software-scaling"] }
 
 # Input
 gilrs = "0.8.1"
