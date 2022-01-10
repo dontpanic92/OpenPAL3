@@ -3,8 +3,8 @@ use imgui::{Condition, TreeNode, Ui, Window};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::asset_manager::AssetManager;
 use radiance::{
+    audio::AudioEngine,
     input::InputEngine,
-    media::MediaEngine,
     scene::{Director, SceneManager},
 };
 use std::{
@@ -24,13 +24,13 @@ pub struct DevToolsDirector {
 impl DevToolsDirector {
     pub fn new(
         input_engine: Rc<RefCell<dyn InputEngine>>,
-        media_engine: Rc<dyn MediaEngine>,
+        audio_engine: Rc<dyn AudioEngine>,
         asset_mgr: Rc<AssetManager>,
     ) -> Rc<RefCell<Self>> {
         let mut _self = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
             _input_engine: input_engine,
-            content_tabs: ContentTabs::new(media_engine),
+            content_tabs: ContentTabs::new(audio_engine),
             asset_mgr,
         }));
 

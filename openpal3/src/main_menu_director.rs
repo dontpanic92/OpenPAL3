@@ -7,9 +7,8 @@ use opengb::{
     directors::{AdventureDirector, SceExecutionOptions},
 };
 use radiance::{
-    audio::{AudioSource, Codec},
+    audio::{AudioEngine, AudioSource, Codec},
     input::InputEngine,
-    media::MediaEngine,
     scene::{DefaultScene, Director, SceneManager},
 };
 
@@ -17,7 +16,7 @@ use crate::sce_proc_hooks::SceRestHooks;
 
 pub struct MainMenuDirector {
     asset_mgr: Rc<AssetManager>,
-    media_engine: Rc<dyn MediaEngine>,
+    audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
     main_theme_source: Box<dyn AudioSource>,
 }
@@ -25,16 +24,16 @@ pub struct MainMenuDirector {
 impl MainMenuDirector {
     pub fn new(
         asset_mgr: Rc<AssetManager>,
-        media_engine: Rc<dyn MediaEngine>,
+        audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
     ) -> Self {
         let data = asset_mgr.load_music_data("PI01");
-        let mut main_theme_source = media_engine.create_audio_source();
+        let mut main_theme_source = audio_engine.create_source();
         main_theme_source.play(data, Codec::Mp3, true);
 
         Self {
             asset_mgr,
-            media_engine,
+            audio_engine,
             input_engine,
             main_theme_source,
         }
@@ -64,7 +63,7 @@ impl Director for MainMenuDirector {
             return Some(Rc::new(RefCell::new(AdventureDirector::new(
                 "OpenPAL3",
                 self.asset_mgr.clone(),
-                self.media_engine.clone(),
+                self.audio_engine.clone(),
                 self.input_engine.clone(),
                 Some(sce_options),
             ))));
@@ -74,7 +73,7 @@ impl Director for MainMenuDirector {
                     let director = AdventureDirector::load(
                         "OpenPAL3",
                         self.asset_mgr.clone(),
-                        self.media_engine.clone(),
+                        self.audio_engine.clone(),
                         self.input_engine.clone(),
                         scene_manager,
                         Some(sce_options),

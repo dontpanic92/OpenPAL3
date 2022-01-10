@@ -4,9 +4,9 @@ use imgui::{InputTextMultiline, TabBar, TabItem, Ui, Window};
 use opengb::directors::{AdventureDirector, SceneManagerExtensions};
 use radiance::{
     application::utils::FpsCounter,
+    audio::AudioEngine,
     input::{InputEngine, Key},
     math::Vec3,
-    media::MediaEngine,
     radiance::DebugLayer,
     scene::{Entity, SceneManager},
 };
@@ -21,7 +21,7 @@ pub struct OpenPal3DebugLayer {
 impl OpenPal3DebugLayer {
     pub fn new(
         input_engine: Rc<RefCell<dyn InputEngine>>,
-        _media_engine: Rc<dyn MediaEngine>,
+        _audio_engine: Rc<dyn AudioEngine>,
     ) -> OpenPal3DebugLayer {
         OpenPal3DebugLayer {
             input_engine,

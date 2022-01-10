@@ -2,7 +2,7 @@ use imgui::TextureId;
 
 use super::{
     texture::TextureDef, Material, MaterialDef, RenderObject, RenderingComponent, Shader,
-    ShaderDef, Texture, VertexBuffer,
+    ShaderDef, Texture, VertexBuffer, VideoPlayer,
 };
 
 pub trait ComponentFactory {
@@ -26,4 +26,5 @@ pub trait ComponentFactory {
     ) -> Box<dyn RenderObject>;
     fn create_rendering_component(&self, objects: Vec<Box<dyn RenderObject>>)
         -> RenderingComponent;
+    fn create_video_player(&self) -> Box<VideoPlayer>;
 }

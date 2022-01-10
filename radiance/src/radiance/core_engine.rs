@@ -3,9 +3,9 @@ use winit::window::Window;
 
 use super::DebugLayer;
 use crate::{
+    audio::AudioEngine,
     imgui::ImguiContext,
     input::{InputEngine, InputEngineInternal},
-    media::MediaEngine,
 };
 use crate::{
     rendering::{self, RenderingEngine},
@@ -15,7 +15,7 @@ use std::{cell::RefCell, rc::Rc};
 
 pub struct CoreRadianceEngine {
     rendering_engine: Box<dyn RenderingEngine>,
-    media_engine: Rc<dyn MediaEngine>,
+    audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngineInternal>>,
     imgui_context: Rc<RefCell<ImguiContext>>,
     scene_manager: Option<Box<dyn SceneManager>>,
@@ -25,14 +25,14 @@ pub struct CoreRadianceEngine {
 impl CoreRadianceEngine {
     pub(crate) fn new(
         rendering_engine: Box<dyn RenderingEngine>,
-        media_engine: Rc<dyn MediaEngine>,
+        audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngineInternal>>,
         imgui_context: Rc<RefCell<ImguiContext>>,
         scene_manager: Box<dyn SceneManager>,
     ) -> Self {
         Self {
             rendering_engine,
-            media_engine,
+            audio_engine,
             input_engine,
             imgui_context,
             scene_manager: Some(scene_manager),
@@ -44,8 +44,8 @@ impl CoreRadianceEngine {
         self.rendering_engine.component_factory()
     }
 
-    pub fn media_engine(&mut self) -> Rc<dyn MediaEngine> {
-        self.media_engine.clone()
+    pub fn audio_engine(&mut self) -> Rc<dyn AudioEngine> {
+        self.audio_engine.clone()
     }
 
     pub fn input_engine(&self) -> Rc<RefCell<dyn InputEngine>> {

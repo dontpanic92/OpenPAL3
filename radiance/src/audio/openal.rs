@@ -2,9 +2,29 @@ use super::{
     decoders::{Decoder, Mp3Decoder, OggDecoder, Samples, WavDecoder},
     Codec,
 };
-use super::{AudioSource, AudioSourceState};
-use alto::{Context, Mono, Source, Stereo};
+use super::{AudioEngine, AudioSource, AudioSourceState};
+use alto::{Alto, Context, Mono, Source, Stereo};
 use std::rc::Rc;
+
+pub struct OpenAlAudioEngine {
+    context: Rc<Context>,
+}
+
+impl AudioEngine for OpenAlAudioEngine {
+    fn create_source(&self) -> Box<dyn AudioSource> {
+        Box::new(OpenAlAudioSource::new(self.context.clone()))
+    }
+}
+
+impl OpenAlAudioEngine {
+    pub fn new() -> Self {
+        let alto = Alto::load_default().unwrap();
+        let device = alto.open(None).unwrap();
+        let context = Rc::new(device.new_context(None).unwrap());
+
+        Self { context }
+    }
+}
 
 pub struct OpenAlAudioSource {
     context: Rc<Context>,

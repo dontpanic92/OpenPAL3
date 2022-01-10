@@ -24,7 +24,7 @@ impl ApplicationExtension<ApplicationCallbacks> for ApplicationCallbacks {
 
         let asset_mgr = AssetManager::new(factory, &self.config.asset_path);
         let input_engine = app.engine_mut().input_engine();
-        let media_engine = app.engine_mut().media_engine();
+        let audio_engine = app.engine_mut().audio_engine();
 
         app.engine_mut()
             .scene_manager()
@@ -33,7 +33,7 @@ impl ApplicationExtension<ApplicationCallbacks> for ApplicationCallbacks {
             .scene_manager()
             .set_director(directors::DevToolsDirector::new(
                 input_engine,
-                media_engine,
+                audio_engine,
                 Rc::new(asset_mgr),
             ))
     }

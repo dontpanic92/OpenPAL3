@@ -7,6 +7,7 @@ use super::{
     device::Device, material::VulkanMaterial, render_object::VulkanRenderObject,
     shader::VulkanShader, texture::VulkanTexture, uniform_buffers::DynamicUniformBufferManager,
 };
+use crate::rendering::VideoPlayer;
 use crate::rendering::{
     factory::ComponentFactory, texture::TextureDef, Material, MaterialDef, RenderObject,
     RenderingComponent, Shader, ShaderDef, Texture, VertexBuffer,
@@ -116,6 +117,10 @@ impl ComponentFactory for VulkanComponentFactory {
         }
 
         component
+    }
+
+    fn create_video_player(&self) -> Box<VideoPlayer> {
+        Box::new(VideoPlayer::new())
     }
 }
 

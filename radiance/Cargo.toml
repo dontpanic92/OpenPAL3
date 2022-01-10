@@ -40,11 +40,15 @@ lewton = "0.10.1"
 minimp3 = "0.5.1"
 cpal = "0.13.4"
 
-# Video
-ffmpeg = { git = "https://github.com/meh/rust-ffmpeg", default-features = false, features = ["codec", "filter", "format", "resampling", "software-scaling"] }
-
 # Input
 gilrs = "0.8.1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef", "wingdi"] }
+
+# Video
+[dependencies.ffmpeg]
+git = "https://github.com/meh/rust-ffmpeg"
+default-features = false
+features = ["codec", "filter", "format", "resampling", "software-scaling"]
+optional = true

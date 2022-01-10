@@ -35,18 +35,18 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
         app.set_title(&self.app_name);
 
         let input_engine = app.engine_mut().input_engine();
-        let media_engine = app.engine_mut().media_engine();
+        let audio_engine = app.engine_mut().audio_engine();
         self.asset_mgr = Some(Rc::new(AssetManager::new(
             app.engine_mut().rendering_component_factory(),
             &self.root_path,
         )));
 
-        let debug_layer = OpenPal3DebugLayer::new(input_engine.clone(), media_engine.clone());
+        let debug_layer = OpenPal3DebugLayer::new(input_engine.clone(), audio_engine.clone());
         app.engine_mut().set_debug_layer(Box::new(debug_layer));
 
         let director = main_menu_director::MainMenuDirector::new(
             self.asset_mgr.as_ref().unwrap().clone(),
-            media_engine,
+            audio_engine,
             input_engine,
         );
         app.engine_mut()

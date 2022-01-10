@@ -1,7 +1,8 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
 
 use imgui::{Condition, Image, TextureId, Ui, Window};
-use radiance::{input::Key, media::VideoSourceState, scene::SceneManager};
+use log::warn;
+use radiance::{input::Key, scene::SceneManager, video::VideoStreamState};
 
 #[derive(Debug, Clone)]
 pub struct SceCommandMovie {
@@ -25,9 +26,16 @@ impl SceCommand for SceCommandMovie {
         let (source_w, source_h) = if let Some(size) = self.source_size {
             size
         } else {
-            let source_size = state.global_state_mut().play_movie(&self.name);
-            self.source_size = Some(source_size);
-            source_size
+            match state.global_state_mut().play_movie(&self.name) {
+                Some(size) => {
+                    self.source_size = Some(size);
+                    size
+                }
+                None => {
+                    warn!("Skip movie '{}'", self.name);
+                    return true;
+                }
+            }
         };
 
         let window_size = ui.io().display_size;
@@ -49,8 +57,8 @@ impl SceCommand for SceCommandMovie {
         }
 
         window.build(ui, || {
-            let source = state.global_state_mut().movie_source();
-            if let Some(texture_id) = source.get_texture(self.texture_id) {
+            let video_player = state.global_state_mut().video_player();
+            if let Some(texture_id) = video_player.get_texture(self.texture_id) {
                 self.texture_id = Some(texture_id);
                 ui.set_cursor_pos([
                     (window_size[0] - target_size[0]) * 0.5,
@@ -60,15 +68,15 @@ impl SceCommand for SceCommandMovie {
             }
         });
 
-        // check state to stop video
+        // check state to stop movie
         let movie_skipped = state.input().get_key_state(Key::Escape).pressed();
         let global_state_mut = state.global_state_mut();
-        let source = global_state_mut.movie_source();
+        let video_player = global_state_mut.video_player();
         if movie_skipped {
-            source.stop();
+            video_player.stop();
             return true;
         }
-        if source.state() == VideoSourceState::Stopped {
+        if video_player.get_state() == VideoStreamState::Stopped {
             return true;
         }
 

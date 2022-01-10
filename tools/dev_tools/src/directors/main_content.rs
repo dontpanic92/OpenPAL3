@@ -10,7 +10,10 @@ use opengb::{
     },
     utilities::StoreExt2,
 };
-use radiance::{audio::Codec, media::MediaEngine, rendering::ComponentFactory};
+use radiance::{
+    audio::AudioEngine, audio::Codec as AudioCodec, rendering::ComponentFactory,
+    video::Codec as VideoCodec,
+};
 use serde::Serialize;
 use std::{path::Path, rc::Rc};
 
@@ -20,7 +23,7 @@ use super::{
 };
 
 pub struct ContentTabs {
-    media_engine: Rc<dyn MediaEngine>,
+    audio_engine: Rc<dyn AudioEngine>,
     tabs: Vec<ContentTab>,
     audio_tab: Option<ContentTab>,
     video_tab: Option<ContentTab>,
@@ -28,9 +31,9 @@ pub struct ContentTabs {
 }
 
 impl ContentTabs {
-    pub fn new(media_engine: Rc<dyn MediaEngine>) -> Self {
+    pub fn new(audio_engine: Rc<dyn AudioEngine>) -> Self {
         Self {
-            media_engine,
+            audio_engine,
             tabs: vec![],
             audio_tab: None,
             video_tab: None,
@@ -51,7 +54,7 @@ impl ContentTabs {
 
         match extension.as_ref().map(|e| e.as_str()) {
             Some("mp3") | Some("wav") => self.open_audio(vfs, path, &extension.unwrap()),
-            Some("bik") | Some("mp4") => self.open_video(factory, vfs, path),
+            Some("bik") | Some("mp4") => self.open_video(factory, vfs, path, &extension.unwrap()),
             Some("scn") => self.open_scn(vfs, path),
             Some("nav") => self.open_json_from(
                 path.as_ref(),
@@ -87,8 +90,8 @@ impl ContentTabs {
 
     pub fn open_audio<P: AsRef<Path>>(&mut self, vfs: &MiniFs, path: P, extension: &str) {
         let codec = match extension {
-            "mp3" => Some(Codec::Mp3),
-            "wav" => Some(Codec::Wav),
+            "mp3" => Some(AudioCodec::Mp3),
+            "wav" => Some(AudioCodec::Wav),
             _ => None,
         };
 
@@ -96,7 +99,7 @@ impl ContentTabs {
             self.audio_tab = Some(ContentTab::new(
                 "audio".to_string(),
                 Box::new(AudioPane::new(
-                    self.media_engine.as_ref(),
+                    self.audio_engine.as_ref(),
                     data,
                     codec,
                     path.as_ref().to_owned(),
@@ -110,14 +113,19 @@ impl ContentTabs {
         factory: Rc<dyn ComponentFactory>,
         vfs: &MiniFs,
         path: P,
+        extension: &str,
     ) {
+        let codec = match extension {
+            "bik" => Some(VideoCodec::Bik),
+            _ => None,
+        };
         if let Ok(data) = vfs.read_to_end(&path) {
             self.video_tab = Some(ContentTab::new(
                 "video".to_string(),
                 Box::new(VideoPane::new(
                     factory,
-                    self.media_engine.as_ref(),
                     data,
+                    codec,
                     path.as_ref().to_owned(),
                 )),
             ));
