@@ -1,13 +1,13 @@
 use crate::constants;
 use std::fmt;
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum VulkanBackendError {
     NoVulkanDeviceFound,
     NoGraphicQueueFound,
     NoSurfaceFormatSupported,
     NoSurfacePresentModeSupported,
+    #[allow(dead_code)]
     NoSuitableMemoryFound,
     NoSuitableFormatFound,
 }

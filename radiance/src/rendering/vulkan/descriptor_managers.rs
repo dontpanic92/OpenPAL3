@@ -17,8 +17,10 @@ const MAX_SWAPCHAIN_IMAGE_COUNT: u32 = 4;
 
 pub struct DescriptorManager {
     device: Rc<Device>,
+    texture_pool: vk::DescriptorPool,
     per_frame_pool: vk::DescriptorPool,
     per_object_pool: vk::DescriptorPool,
+    texture_layout: vk::DescriptorSetLayout,
     per_frame_layout: vk::DescriptorSetLayout,
     per_material_layouts: Arc<Mutex<HashMap<String, vk::DescriptorSetLayout>>>,
     dub_descriptor_manager: DynamicUniformBufferDescriptorManager,
@@ -26,8 +28,15 @@ pub struct DescriptorManager {
 
 impl DescriptorManager {
     pub fn new(device: Rc<Device>) -> VkResult<Self> {
+        let texture_pool = Self::create_descriptor_pool(&device).unwrap();
         let per_frame_pool = Self::create_per_frame_descriptor_pool(&device).unwrap();
         let per_object_pool = Self::create_per_object_descriptor_pool(&device).unwrap();
+        let texture_layout = Self::create_descriptor_set_layout(
+            &device,
+            vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            vk::ShaderStageFlags::FRAGMENT,
+            1,
+        )?;
         let per_frame_layout = Self::create_descriptor_set_layout(
             &device,
             vk::DescriptorType::UNIFORM_BUFFER,
@@ -38,8 +47,10 @@ impl DescriptorManager {
 
         Ok(Self {
             device,
+            texture_pool,
             per_frame_pool,
             per_object_pool,
+            texture_layout,
             per_frame_layout,
             per_material_layouts: Arc::new(Mutex::new(HashMap::new())),
             dub_descriptor_manager,
@@ -54,20 +65,10 @@ impl DescriptorManager {
         &self,
         texture: &VulkanTexture,
     ) -> VkResult<vk::DescriptorSet> {
-        let layout = Self::create_descriptor_set_layout(
-            &self.device,
-            vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            vk::ShaderStageFlags::FRAGMENT,
-            1,
-        )
-        .unwrap();
-
-        let descriptor_pool = Self::create_descriptor_pool(&self.device).unwrap();
-
         let set = {
-            let layouts = [layout];
+            let layouts = [self.texture_layout];
             let allocate_info = vk::DescriptorSetAllocateInfo::builder()
-                .descriptor_pool(descriptor_pool)
+                .descriptor_pool(self.texture_pool)
                 .set_layouts(&layouts);
 
             self.device.allocate_descriptor_sets(&allocate_info)?[0]
@@ -88,6 +89,11 @@ impl DescriptorManager {
         self.device.update_descriptor_sets(&writes, &[]);
 
         Ok(set)
+    }
+
+    pub fn free_texture_descriptor_set(&self, descriptor_set: vk::DescriptorSet) {
+        self.device
+            .free_descriptor_sets(self.texture_pool, &[descriptor_set]);
     }
 
     pub fn allocate_per_object_descriptor_set(
@@ -279,12 +285,15 @@ impl DescriptorManager {
 impl Drop for DescriptorManager {
     fn drop(&mut self) {
         self.device
+            .destroy_descriptor_set_layout(self.texture_layout);
+        self.device
             .destroy_descriptor_set_layout(self.per_frame_layout);
 
         for layout in self.per_material_layouts.lock().unwrap().values() {
             self.device.destroy_descriptor_set_layout(*layout);
         }
 
+        self.device.destroy_descriptor_pool(self.texture_pool);
         self.device.destroy_descriptor_pool(self.per_frame_pool);
         self.device.destroy_descriptor_pool(self.per_object_pool);
     }

@@ -20,8 +20,7 @@ use ash::{
 use super::{creation_helpers, instance::Instance};
 
 pub struct Device {
-    #[allow(dead_code)]
-    instance: Rc<Instance>,
+    _instance: Rc<Instance>,
     device: ash::Device,
 }
 
@@ -38,7 +37,10 @@ impl Device {
         )
         .unwrap();
 
-        Self { instance, device }
+        Self {
+            _instance: instance,
+            device,
+        }
     }
 
     pub fn vk_device(&self) -> &ash::Device {

@@ -24,8 +24,7 @@ use std::sync::Arc;
 use std::{cell::RefCell, error::Error};
 
 pub struct VulkanRenderingEngine {
-    #[allow(dead_code)]
-    entry: Rc<Entry>,
+    _entry: Rc<Entry>,
     instance: Rc<Instance>,
     physical_device: vk::PhysicalDevice,
     device: Rc<Device>,
@@ -227,7 +226,7 @@ impl VulkanRenderingEngine {
         };
 
         let vulkan = Self {
-            entry,
+            _entry: entry,
             instance,
             physical_device,
             device,

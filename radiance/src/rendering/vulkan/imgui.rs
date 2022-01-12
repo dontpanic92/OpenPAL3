@@ -45,15 +45,13 @@ impl ImguiRenderer {
             // a maximum size of 16384 (128x128) for texture dimension on M1 devices.
             // We are defining the max width to be the max image dimension size get from device
             // properties here to be safe.
-            if cfg!(target_os = "macos") {
-                let device_properties = unsafe {
-                    instance
-                        .vk_instance()
-                        .get_physical_device_properties(physical_device)
-                };
-                context.context_mut().fonts().tex_desired_width =
-                    device_properties.limits.max_image_dimension2_d as i32;
-            }
+            let device_properties = unsafe {
+                instance
+                    .vk_instance()
+                    .get_physical_device_properties(physical_device)
+            };
+            context.context_mut().fonts().tex_desired_width =
+                device_properties.limits.max_image_dimension2_d as i32;
 
             let options = Some(Options {
                 in_flight_frames: 1,

@@ -61,11 +61,11 @@ impl ComponentFactory for VulkanComponentFactory {
             .descriptor_manager
             .allocate_texture_descriptor_set(&texture)
             .unwrap();
+        let texture_id = self.imgui.borrow_mut().upsert_texture(id, descriptor_set);
+        self.descriptor_manager
+            .free_texture_descriptor_set(descriptor_set);
 
-        (
-            Box::new(texture),
-            self.imgui.borrow_mut().upsert_texture(id, descriptor_set),
-        )
+        (Box::new(texture), texture_id)
     }
 
     fn create_shader(&self, shader_def: &ShaderDef) -> Box<dyn Shader> {
@@ -148,8 +148,7 @@ impl VulkanComponentFactory {
         self.clone()
     }
 
-    #[allow(dead_code)]
-    pub fn create_vulkan_texture(&self, texture_def: &TextureDef) -> Rc<VulkanTexture> {
+    pub fn _create_vulkan_texture(&self, texture_def: &TextureDef) -> Rc<VulkanTexture> {
         self.texture_store
             .borrow_mut()
             .get_or_update(texture_def.name(), || {

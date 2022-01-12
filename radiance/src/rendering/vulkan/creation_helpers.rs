@@ -184,8 +184,7 @@ pub fn create_image_views(
         .collect()
 }
 
-#[allow(dead_code)]
-pub fn create_shader_module(
+pub fn _create_shader_module(
     device: &Device,
     shader_path: &str,
 ) -> Result<vk::ShaderModule, Box<dyn Error>> {

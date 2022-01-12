@@ -20,16 +20,15 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-#[allow(dead_code)]
 pub struct SwapChain {
     device: Rc<Device>,
     descriptor_manager: Rc<DescriptorManager>,
     command_pool: vk::CommandPool,
     handle: vk::SwapchainKHR,
     images: Vec<vk::Image>,
-    image_views: Vec<ImageView>,
-    depth_image: Image,
-    depth_image_view: ImageView,
+    _image_views: Vec<ImageView>,
+    _depth_image: Image,
+    _depth_image_view: ImageView,
     uniform_buffers: Vec<Buffer>,
     per_frame_descriptor_sets: Vec<vk::DescriptorSet>,
     framebuffers: Vec<vk::Framebuffer>,
@@ -141,9 +140,9 @@ impl SwapChain {
             command_pool,
             handle,
             images,
-            image_views,
-            depth_image,
-            depth_image_view,
+            _image_views: image_views,
+            _depth_image: depth_image,
+            _depth_image_view: depth_image_view,
             uniform_buffers,
             per_frame_descriptor_sets,
             framebuffers,

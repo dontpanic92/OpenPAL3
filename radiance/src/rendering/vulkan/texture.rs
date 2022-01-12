@@ -37,29 +37,15 @@ impl VulkanTexture {
                 .to_rgba8();
         let rgba_image = def.image().unwrap_or_else(|| &texture_missing);
 
-        let buffer = Buffer::new_staging_buffer_with_data(allocator, &rgba_image)?;
-        let format = vk::Format::R8G8B8A8_UNORM;
-        let mut image = Image::new_color_image(allocator, rgba_image.width(), rgba_image.height())?;
-        image.transit_layout(
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            &command_runner,
-        )?;
-        image.copy_from(&buffer, 0, &command_runner)?;
-        image.transit_layout(
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            &command_runner,
-        )?;
-
-        let image_view = ImageView::new_color_image_view(device.clone(), image.vk_image(), format)?;
-        let sampler = Sampler::new(device.clone())?;
-
-        Ok(Self {
-            image,
-            image_view,
-            sampler,
-        })
+        Self::from_buffer(
+            rgba_image.as_raw(),
+            0,
+            rgba_image.width(),
+            rgba_image.height(),
+            device,
+            allocator,
+            command_runner,
+        )
     }
 
     pub fn from_buffer(
