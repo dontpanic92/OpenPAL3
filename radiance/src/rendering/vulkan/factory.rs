@@ -45,7 +45,7 @@ impl ComponentFactory for VulkanComponentFactory {
         row_length: u32,
         width: u32,
         height: u32,
-        id: Option<TextureId>,
+        texture_id: Option<TextureId>,
     ) -> (Box<dyn Texture>, TextureId) {
         let texture = VulkanTexture::from_buffer(
             buffer,
@@ -57,13 +57,14 @@ impl ComponentFactory for VulkanComponentFactory {
             &self.command_runner,
         )
         .unwrap();
+        let id = texture_id.unwrap_or(TextureId::new(0)).id();
         let descriptor_set = self
             .descriptor_manager
-            .allocate_texture_descriptor_set(&texture)
-            .unwrap();
-        let texture_id = self.imgui.borrow_mut().upsert_texture(id, descriptor_set);
-        self.descriptor_manager
-            .free_texture_descriptor_set(descriptor_set);
+            .get_texture_descriptor_set(id, &texture);
+        let texture_id = self
+            .imgui
+            .borrow_mut()
+            .upsert_texture(texture_id, descriptor_set);
 
         (Box::new(texture), texture_id)
     }

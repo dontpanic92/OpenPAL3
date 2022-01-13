@@ -40,7 +40,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::rendering::ComponentFactory;
+use crate::rendering::{ComponentFactory, Texture};
 use imgui::TextureId;
 use lazy_static::lazy_static;
 use log::{debug, error, warn};
@@ -242,6 +242,7 @@ pub struct VideoStreamFFmpeg {
     video_state: Option<Arc<Mutex<VideoState>>>,
     threads: Vec<JoinHandle<()>>,
     time: Option<Arc<RwLock<TimeData>>>,
+    current_texture: Option<Box<dyn Texture>>,
 }
 
 impl VideoStream for VideoStreamFFmpeg {
@@ -292,7 +293,7 @@ impl VideoStream for VideoStreamFFmpeg {
         }
     }
 
-    fn get_texture(&self, texture_id: Option<TextureId>) -> Option<TextureId> {
+    fn get_texture(&mut self, texture_id: Option<TextureId>) -> Option<TextureId> {
         if let Some(video_state) = self.video_state.as_ref() {
             let video_state = video_state.lock().unwrap();
             let video = video_state.video.lock().unwrap();
@@ -300,13 +301,16 @@ impl VideoStream for VideoStreamFFmpeg {
                 let frame = &frame_data.0;
                 let (w, h) = (frame.width(), frame.height());
                 let buffer_width = (frame.stride(0) as u64 / 4) as u32;
-                let (_, texture_id) = self.factory.create_imgui_texture(
+                let (texture, texture_id) = self.factory.create_imgui_texture(
                     frame.data(0),
                     buffer_width,
                     w,
                     h,
                     texture_id,
                 );
+
+                // should keep current texture valid until
+                self.current_texture = Some(texture);
 
                 return Some(texture_id);
             }
@@ -336,6 +340,7 @@ impl VideoStreamFFmpeg {
             video_state: None,
             threads: Vec::new(),
             time: None,
+            current_texture: None,
         }
     }
 

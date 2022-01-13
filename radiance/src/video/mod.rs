@@ -28,6 +28,6 @@ pub trait VideoStream {
     fn pause(&mut self);
     fn resume(&mut self);
 
-    fn get_texture(&self, texture_id: Option<TextureId>) -> Option<TextureId>;
+    fn get_texture(&mut self, texture_id: Option<TextureId>) -> Option<TextureId>;
     fn get_state(&self) -> VideoStreamState;
 }

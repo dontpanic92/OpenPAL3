@@ -44,8 +44,8 @@ impl VideoPlayer {
         self.stream.as_mut().unwrap().stop()
     }
 
-    pub fn get_texture(&self, texture_id: Option<TextureId>) -> Option<TextureId> {
-        self.stream.as_ref().unwrap().get_texture(texture_id)
+    pub fn get_texture(&mut self, texture_id: Option<TextureId>) -> Option<TextureId> {
+        self.stream.as_mut().unwrap().get_texture(texture_id)
     }
 
     pub fn get_state(&self) -> VideoStreamState {

@@ -71,7 +71,7 @@ impl ContentPane for VideoPane {
 
             if let Some(texture_id) = self
                 .video_player
-                .as_ref()
+                .as_mut()
                 .unwrap()
                 .get_texture(self.texture_id)
             {

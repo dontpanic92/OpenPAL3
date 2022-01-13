@@ -22,13 +22,14 @@ pub struct DescriptorManager {
     per_object_pool: vk::DescriptorPool,
     texture_layout: vk::DescriptorSetLayout,
     per_frame_layout: vk::DescriptorSetLayout,
+    texture_descriptor_sets: Arc<Mutex<HashMap<usize, vk::DescriptorSet>>>,
     per_material_layouts: Arc<Mutex<HashMap<String, vk::DescriptorSetLayout>>>,
     dub_descriptor_manager: DynamicUniformBufferDescriptorManager,
 }
 
 impl DescriptorManager {
     pub fn new(device: Rc<Device>) -> VkResult<Self> {
-        let texture_pool = Self::create_descriptor_pool(&device).unwrap();
+        let texture_pool = Self::create_texture_descriptor_pool(&device).unwrap();
         let per_frame_pool = Self::create_per_frame_descriptor_pool(&device).unwrap();
         let per_object_pool = Self::create_per_object_descriptor_pool(&device).unwrap();
         let texture_layout = Self::create_descriptor_set_layout(
@@ -52,6 +53,7 @@ impl DescriptorManager {
             per_object_pool,
             texture_layout,
             per_frame_layout,
+            texture_descriptor_sets: Arc::new(Mutex::new(HashMap::new())),
             per_material_layouts: Arc::new(Mutex::new(HashMap::new())),
             dub_descriptor_manager,
         })
@@ -61,18 +63,18 @@ impl DescriptorManager {
         &self.dub_descriptor_manager
     }
 
-    pub fn allocate_texture_descriptor_set(
+    pub fn get_texture_descriptor_set(
         &self,
+        texture_id: usize,
         texture: &VulkanTexture,
-    ) -> VkResult<vk::DescriptorSet> {
-        let set = {
-            let layouts = [self.texture_layout];
-            let allocate_info = vk::DescriptorSetAllocateInfo::builder()
-                .descriptor_pool(self.texture_pool)
-                .set_layouts(&layouts);
+    ) -> vk::DescriptorSet {
+        let mut descriptor_sets = self.texture_descriptor_sets.lock().unwrap();
+        if !descriptor_sets.contains_key(&texture_id) {
+            let set = self.allocate_texture_descriptor_set().unwrap();
+            descriptor_sets.insert(texture_id, set);
+        }
 
-            self.device.allocate_descriptor_sets(&allocate_info)?[0]
-        };
+        let set = *descriptor_sets.get(&texture_id).unwrap();
 
         let image_info = [vk::DescriptorImageInfo {
             sampler: texture.sampler().vk_sampler(),
@@ -87,6 +89,19 @@ impl DescriptorManager {
             .image_info(&image_info)
             .build()];
         self.device.update_descriptor_sets(&writes, &[]);
+
+        set
+    }
+
+    pub fn allocate_texture_descriptor_set(&self) -> VkResult<vk::DescriptorSet> {
+        let set = {
+            let layouts = [self.texture_layout];
+            let allocate_info = vk::DescriptorSetAllocateInfo::builder()
+                .descriptor_pool(self.texture_pool)
+                .set_layouts(&layouts);
+
+            self.device.allocate_descriptor_sets(&allocate_info)?[0]
+        };
 
         Ok(set)
     }
@@ -196,7 +211,7 @@ impl DescriptorManager {
         ]
     }
 
-    fn create_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
+    fn create_texture_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
         let sampler_pool_size = vk::DescriptorPoolSize::builder()
             .descriptor_count(1)
             .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
@@ -204,8 +219,9 @@ impl DescriptorManager {
 
         let pool_sizes = [sampler_pool_size];
         let create_info = vk::DescriptorPoolCreateInfo::builder()
+            .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
             .pool_sizes(&pool_sizes)
-            .max_sets(1)
+            .max_sets(MAX_DESCRIPTOR_SET_COUNT)
             .build();
 
         device.create_descriptor_pool(&create_info)
@@ -219,6 +235,7 @@ impl DescriptorManager {
 
         let pool_sizes = [uniform_pool_size];
         let create_info = vk::DescriptorPoolCreateInfo::builder()
+            .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
             .pool_sizes(&pool_sizes)
             .max_sets(MAX_DESCRIPTOR_SET_COUNT)
             .build();
@@ -234,6 +251,7 @@ impl DescriptorManager {
 
         let pool_sizes = [sampler_pool_size];
         let create_info = vk::DescriptorPoolCreateInfo::builder()
+            .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
             .pool_sizes(&pool_sizes)
             .max_sets(MAX_DESCRIPTOR_SET_COUNT)
             .build();
@@ -291,6 +309,10 @@ impl Drop for DescriptorManager {
 
         for layout in self.per_material_layouts.lock().unwrap().values() {
             self.device.destroy_descriptor_set_layout(*layout);
+        }
+
+        for set in self.texture_descriptor_sets.lock().unwrap().values() {
+            self.free_texture_descriptor_set(*set);
         }
 
         self.device.destroy_descriptor_pool(self.texture_pool);
