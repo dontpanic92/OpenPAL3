@@ -11,9 +11,9 @@ use std::sync::Arc;
 
 pub struct VulkanRenderObject {
     vertices: VertexBuffer,
-    indices: Vec<u32>,
-    host_dynamic: bool,
-    dirty: bool,
+    _indices: Vec<u32>,
+    _host_dynamic: bool,
+    _dirty: bool,
 
     dub_manager: Arc<DynamicUniformBufferManager>,
     descriptor_manager: Rc<DescriptorManager>,
@@ -67,10 +67,10 @@ impl VulkanRenderObject {
 
         Ok(Self {
             vertices,
-            indices,
+            _indices: indices,
             material,
-            host_dynamic,
-            dirty: false,
+            _host_dynamic: host_dynamic,
+            _dirty: false,
             dub_manager: dub_manager.clone(),
             vertex_buffer,
             index_buffer,

@@ -20,7 +20,7 @@ use ash::{
 use super::{creation_helpers, instance::Instance};
 
 pub struct Device {
-    instance: Rc<Instance>,
+    _instance: Rc<Instance>,
     device: ash::Device,
 }
 
@@ -31,13 +31,16 @@ impl Device {
         graphics_queue_family_index: u32,
     ) -> Self {
         let device = creation_helpers::create_device(
-            instance.vk_instance(),
+            &instance.vk_instance(),
             physical_device,
             graphics_queue_family_index,
         )
         .unwrap();
 
-        Self { instance, device }
+        Self {
+            _instance: instance,
+            device,
+        }
     }
 
     pub fn vk_device(&self) -> &ash::Device {

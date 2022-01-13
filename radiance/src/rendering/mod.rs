@@ -7,6 +7,7 @@ mod rendering_component;
 mod shader;
 mod texture;
 mod vertex_buffer;
+mod video_player;
 mod vulkan;
 
 pub use engine::RenderingEngine;
@@ -18,4 +19,5 @@ pub use rendering_component::RenderingComponent;
 pub use shader::{Shader, ShaderDef, SIMPLE_SHADER_DEF};
 pub use texture::{Texture, TextureDef, TextureStore};
 pub use vertex_buffer::{VertexBuffer, VertexComponents};
+pub use video_player::VideoPlayer;
 pub use vulkan::VulkanRenderingEngine;

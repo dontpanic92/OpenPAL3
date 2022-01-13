@@ -16,7 +16,7 @@ use std::{
 
 pub struct DevToolsDirector {
     shared_self: Weak<RefCell<Self>>,
-    input_engine: Rc<RefCell<dyn InputEngine>>,
+    _input_engine: Rc<RefCell<dyn InputEngine>>,
     asset_mgr: Rc<AssetManager>,
     content_tabs: ContentTabs,
 }
@@ -29,9 +29,9 @@ impl DevToolsDirector {
     ) -> Rc<RefCell<Self>> {
         let mut _self = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
-            input_engine,
-            asset_mgr,
+            _input_engine: input_engine,
             content_tabs: ContentTabs::new(audio_engine),
+            asset_mgr,
         }));
 
         _self.borrow_mut().shared_self = Rc::downgrade(&_self);
@@ -84,7 +84,11 @@ impl DevToolsDirector {
             } else {
                 treenode.leaf(true).build(ui, || {
                     if ui.is_item_clicked() {
-                        self.content_tabs.open(self.asset_mgr.vfs(), &e_fullname);
+                        self.content_tabs.open(
+                            self.asset_mgr.component_factory(),
+                            self.asset_mgr.vfs(),
+                            &e_fullname,
+                        );
                     }
                 });
             }
@@ -110,13 +114,13 @@ impl DevToolsDirector {
 }
 
 impl Director for DevToolsDirector {
-    fn activate(&mut self, scene_manager: &mut dyn SceneManager) {}
+    fn activate(&mut self, _scene_manager: &mut dyn SceneManager) {}
 
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        _scene_manager: &mut dyn SceneManager,
         ui: &mut imgui::Ui,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
         if let Some(DevToolsState::Preview(path)) = self.main_window(ui) {
             Some(PreviewDirector::new(

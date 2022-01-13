@@ -13,7 +13,6 @@ use radiance::{
 
 pub struct OpenPal3DebugLayer {
     input_engine: Rc<RefCell<dyn InputEngine>>,
-    audio_engine: Rc<dyn AudioEngine>,
 
     visible: bool,
     fps_counter: FpsCounter,
@@ -22,11 +21,10 @@ pub struct OpenPal3DebugLayer {
 impl OpenPal3DebugLayer {
     pub fn new(
         input_engine: Rc<RefCell<dyn InputEngine>>,
-        audio_engine: Rc<dyn AudioEngine>,
+        _audio_engine: Rc<dyn AudioEngine>,
     ) -> OpenPal3DebugLayer {
         OpenPal3DebugLayer {
             input_engine,
-            audio_engine,
             visible: false,
             fps_counter: FpsCounter::new(),
         }

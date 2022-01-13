@@ -12,6 +12,7 @@ pub mod math;
 pub mod radiance;
 pub mod rendering;
 pub mod scene;
+pub mod video;
 
 mod constants;
 

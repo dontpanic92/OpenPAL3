@@ -1,5 +1,7 @@
 use crate::input::{Key, KeyState};
-use winit::event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent};
+use winit::event::{DeviceEvent, ElementState, Event, VirtualKeyCode};
+#[cfg(target_os = "macos")]
+use winit::event::WindowEvent;
 
 pub struct KeyboardInput;
 
@@ -120,6 +122,7 @@ impl KeyboardInput {
             VirtualKeyCode::Y => Key::Y,
             VirtualKeyCode::Z => Key::Z,
             VirtualKeyCode::Grave => Key::Tilde,
+            VirtualKeyCode::Escape => Key::Escape,
             VirtualKeyCode::Up => Key::Up,
             VirtualKeyCode::Down => Key::Down,
             VirtualKeyCode::Left => Key::Left,

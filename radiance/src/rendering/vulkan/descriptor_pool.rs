@@ -28,6 +28,7 @@ impl DescriptorPool {
             .collect();
 
         let create_info = vk::DescriptorPoolCreateInfo::builder()
+            .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
             .pool_sizes(&pool_sizes)
             .max_sets(MAX_DESCRIPTOR_SET_COUNT)
             .build();

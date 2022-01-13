@@ -19,28 +19,36 @@ lru = { version = "0.6.6", features=["nightly"] }
 memoffset = "0.5.3"
 radiance-assets = { path = "../radiance-assets" }
 serde = { version = "1.0.106", features = ["derive"] }
+failure = "0.1.8"
 
 # Rendering
-ash = "0.33.3"
+ash = { version = "0.35", default-features = false, features = ["loaded"] }
 image = "0.23.0"
-imgui = "0.8.0"
-imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer" }
-vk-mem = { git = "https://github.com/dontpanic92/vk-mem-rs" }
+imgui = "^0.8"
+imgui-rs-vulkan-renderer = { version = "1.1", features = ["vk-mem"] }
+vk-mem = "0.2"
 
 # Window and event handling
 winit = "0.26.0"
 imgui-winit-support = { version = "0.8.1", default-features = false, features = ["winit-26"] }
-ash-window = "0.7.0"
-raw-window-handle = "0.4.2"
+ash-window = "0.9"
 
 # Audio
 alto = "3.0.4"
 hound = "3.4.0"
 lewton = "0.10.1"
 minimp3 = "0.5.1"
+cpal = "0.13.4"
 
 # Input
 gilrs = "0.8.1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef", "wingdi"] }
+
+# Video
+[dependencies.ffmpeg]
+git = "https://github.com/meh/rust-ffmpeg"
+default-features = false
+features = ["codec", "filter", "format", "resampling", "software-scaling"]
+optional = true

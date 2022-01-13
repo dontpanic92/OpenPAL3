@@ -4,7 +4,7 @@ pub struct DevToolsScene {}
 
 impl SceneExtension for DevToolsScene {
     fn on_loading(self: &mut CoreScene<Self>) {}
-    fn on_updating(self: &mut CoreScene<Self>, delta_sec: f32) {}
+    fn on_updating(self: &mut CoreScene<Self>, _delta_sec: f32) {}
 }
 
 impl DevToolsScene {

@@ -12,10 +12,11 @@ use super::{
 };
 use crate::{
     imgui::{ImguiContext, ImguiFrame},
-    rendering::vulkan::imgui::ImguiVulkanContext,
+    rendering::vulkan::imgui::ImguiRenderer,
 };
 use ash::prelude::VkResult;
 use ash::vk;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::rc::Rc;
 
@@ -25,16 +26,17 @@ pub struct SwapChain {
     command_pool: vk::CommandPool,
     handle: vk::SwapchainKHR,
     images: Vec<vk::Image>,
-    image_views: Vec<ImageView>,
-    depth_image: Image,
-    depth_image_view: ImageView,
+    _image_views: Vec<ImageView>,
+    _depth_image: Image,
+    _depth_image_view: ImageView,
     uniform_buffers: Vec<Buffer>,
     per_frame_descriptor_sets: Vec<vk::DescriptorSet>,
     framebuffers: Vec<vk::Framebuffer>,
     command_buffers: Vec<vk::CommandBuffer>,
     capabilities: vk::SurfaceCapabilitiesKHR,
     pipeline_manager: PipelineManager,
-    imgui: ImguiVulkanContext,
+    render_pass: vk::RenderPass,
+    imgui: Option<Rc<RefCell<ImguiRenderer>>>,
 
     entry: ash::extensions::khr::Swapchain,
 }
@@ -60,7 +62,7 @@ impl SwapChain {
         capabilities.current_extent.height = capabilities.current_extent.height.max(1);
 
         let entry =
-            ash::extensions::khr::Swapchain::new(instance.vk_instance(), device.vk_device());
+            ash::extensions::khr::Swapchain::new(&instance.vk_instance(), &device.vk_device());
         let handle = creation_helpers::create_swapchain(
             &entry,
             surface,
@@ -84,7 +86,7 @@ impl SwapChain {
             .collect();
 
         let mut depth_image = Image::new_depth_image(
-            instance.vk_instance(),
+            &instance.vk_instance(),
             physical_device,
             &allocator,
             capabilities.current_extent.width,
@@ -110,6 +112,7 @@ impl SwapChain {
             depth_image.vk_format(),
             capabilities.current_extent,
         );
+        let render_pass = pipeline_manager.render_pass().vk_render_pass();
 
         let per_frame_descriptor_sets =
             descriptor_manager.allocate_per_frame_descriptor_sets(uniform_buffers.as_slice())?;
@@ -119,7 +122,7 @@ impl SwapChain {
             &image_views,
             &depth_image_view,
             &capabilities.current_extent,
-            pipeline_manager.render_pass().vk_render_pass(),
+            render_pass,
         )?;
 
         let command_buffers = {
@@ -131,43 +134,37 @@ impl SwapChain {
             device.allocate_command_buffers(&create_info)?
         };
 
-        let imgui = ImguiVulkanContext::new(
-            instance.clone(),
-            physical_device,
-            device.clone(),
-            queue,
-            command_pool,
-            pipeline_manager.render_pass().vk_render_pass(),
-            images.len(),
-            gui_context,
-        );
-
         Ok(Self {
             device,
             descriptor_manager: descriptor_manager.clone(),
             command_pool,
             handle,
             images,
-            image_views,
-            depth_image,
-            depth_image_view,
+            _image_views: image_views,
+            _depth_image: depth_image,
+            _depth_image_view: depth_image_view,
             uniform_buffers,
             per_frame_descriptor_sets,
             framebuffers,
             command_buffers,
             capabilities,
             pipeline_manager,
-            imgui,
+            render_pass,
+            imgui: None,
             entry,
         })
     }
 
-    pub fn command_buffers(&self) -> &Vec<vk::CommandBuffer> {
-        &self.command_buffers
+    pub fn render_pass(&self) -> vk::RenderPass {
+        self.render_pass
     }
 
-    pub fn imgui_mut(&mut self) -> &mut ImguiVulkanContext {
-        &mut self.imgui
+    pub fn set_imgui(&mut self, imgui: Rc<RefCell<ImguiRenderer>>) {
+        self.imgui = Some(imgui);
+    }
+
+    pub fn images_len(&self) -> usize {
+        self.images.len()
     }
 
     pub fn acquire_next_image(
@@ -321,7 +318,11 @@ impl SwapChain {
             }
         }
 
-        self.imgui.record_command_buffer(ui_frame, command_buffer);
+        self.imgui
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .record_command_buffer(ui_frame, command_buffer);
 
         self.device.cmd_end_render_pass(command_buffer);
         self.device.end_command_buffer(command_buffer)?;

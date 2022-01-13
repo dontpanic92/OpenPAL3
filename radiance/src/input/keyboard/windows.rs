@@ -62,6 +62,7 @@ impl KeyboardInput {
             0x59 => Key::Y,
             0x5A => Key::Z,
             winuser::VK_OEM_3 => Key::Tilde,
+            winuser::VK_ESCAPE => Key::Escape,
             winuser::VK_UP => Key::Up,
             winuser::VK_DOWN => Key::Down,
             winuser::VK_LEFT => Key::Left,

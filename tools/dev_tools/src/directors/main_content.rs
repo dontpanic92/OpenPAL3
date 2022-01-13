@@ -10,12 +10,15 @@ use opengb::{
     },
     utilities::StoreExt2,
 };
-use radiance::audio::{AudioEngine, Codec};
+use radiance::{
+    audio::AudioEngine, audio::Codec as AudioCodec, rendering::ComponentFactory,
+    video::Codec as VideoCodec,
+};
 use serde::Serialize;
 use std::{path::Path, rc::Rc};
 
 use super::{
-    components::{AudioPane, ContentPane, TextPane},
+    components::{AudioPane, ContentPane, TextPane, VideoPane},
     DevToolsState,
 };
 
@@ -23,6 +26,7 @@ pub struct ContentTabs {
     audio_engine: Rc<dyn AudioEngine>,
     tabs: Vec<ContentTab>,
     audio_tab: Option<ContentTab>,
+    video_tab: Option<ContentTab>,
     selected_tab: Option<String>,
 }
 
@@ -32,11 +36,17 @@ impl ContentTabs {
             audio_engine,
             tabs: vec![],
             audio_tab: None,
+            video_tab: None,
             selected_tab: None,
         }
     }
 
-    pub fn open<P: AsRef<Path>>(&mut self, vfs: &MiniFs, path: P) {
+    pub fn open<P: AsRef<Path>>(
+        &mut self,
+        factory: Rc<dyn ComponentFactory>,
+        vfs: &MiniFs,
+        path: P,
+    ) {
         let extension = path
             .as_ref()
             .extension()
@@ -44,6 +54,7 @@ impl ContentTabs {
 
         match extension.as_ref().map(|e| e.as_str()) {
             Some("mp3") | Some("wav") => self.open_audio(vfs, path, &extension.unwrap()),
+            Some("bik") | Some("mp4") => self.open_video(factory, vfs, path, &extension.unwrap()),
             Some("scn") => self.open_scn(vfs, path),
             Some("nav") => self.open_json_from(
                 path.as_ref(),
@@ -79,8 +90,8 @@ impl ContentTabs {
 
     pub fn open_audio<P: AsRef<Path>>(&mut self, vfs: &MiniFs, path: P, extension: &str) {
         let codec = match extension {
-            "mp3" => Some(Codec::Mp3),
-            "wav" => Some(Codec::Wav),
+            "mp3" => Some(AudioCodec::Mp3),
+            "wav" => Some(AudioCodec::Wav),
             _ => None,
         };
 
@@ -89,6 +100,30 @@ impl ContentTabs {
                 "audio".to_string(),
                 Box::new(AudioPane::new(
                     self.audio_engine.as_ref(),
+                    data,
+                    codec,
+                    path.as_ref().to_owned(),
+                )),
+            ));
+        }
+    }
+
+    pub fn open_video<P: AsRef<Path>>(
+        &mut self,
+        factory: Rc<dyn ComponentFactory>,
+        vfs: &MiniFs,
+        path: P,
+        extension: &str,
+    ) {
+        let codec = match extension {
+            "bik" => Some(VideoCodec::Bik),
+            _ => None,
+        };
+        if let Ok(data) = vfs.read_to_end(&path) {
+            self.video_tab = Some(ContentTab::new(
+                "video".to_string(),
+                Box::new(VideoPane::new(
+                    factory,
                     data,
                     codec,
                     path.as_ref().to_owned(),
@@ -174,6 +209,10 @@ impl ContentTabs {
             self.audio_tab = None;
         }
 
+        if Some(true) == self.video_tab.as_ref().map(|t| t.opened == false) {
+            self.video_tab = None;
+        }
+
         let mut state = None;
         TabBar::new("##content_tab_bar")
             .flags(
@@ -184,6 +223,10 @@ impl ContentTabs {
             .build(ui, || {
                 let mut tmp_state = None;
                 if let Some(tab) = self.audio_tab.as_mut() {
+                    tmp_state = tmp_state.or(tab.render(ui, self.selected_tab.as_ref()));
+                }
+
+                if let Some(tab) = self.video_tab.as_mut() {
                     tmp_state = tmp_state.or(tab.render(ui, self.selected_tab.as_ref()));
                 }
 

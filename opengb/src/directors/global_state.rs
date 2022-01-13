@@ -1,7 +1,11 @@
 use super::PersistentState;
 use crate::asset_manager::AssetManager;
 use crate::utilities::StoreExt2;
-use radiance::audio::{AudioEngine, AudioSource, AudioSourceState, Codec};
+use radiance::{
+    audio::{AudioEngine, AudioSource, AudioSourceState, Codec as AudioCodec},
+    rendering::VideoPlayer,
+    video::Codec as VideoCodec,
+};
 use regex::Regex;
 use std::{
     cell::{Ref, RefCell, RefMut},
@@ -19,6 +23,7 @@ pub struct GlobalState {
     bgm_source: Box<dyn AudioSource>,
     sound_sources: Vec<Rc<RefCell<Box<dyn AudioSource>>>>,
     default_scene_bgm: HashMap<String, String>,
+    video_player: Box<VideoPlayer>,
 
     pass_through_wall: bool,
 }
@@ -30,6 +35,7 @@ impl GlobalState {
         persistent_state: Rc<RefCell<PersistentState>>,
     ) -> Self {
         let bgm_source = audio_engine.create_source();
+        let video_player = asset_mgr.component_factory().create_video_player();
         let sound_sources = vec![];
         let music_path = "/basedata/basedata/datascript/music.txt";
         let default_scene_bgm =
@@ -44,6 +50,7 @@ impl GlobalState {
             bgm_source,
             sound_sources,
             default_scene_bgm,
+            video_player,
             pass_through_wall: false,
         }
     }
@@ -66,7 +73,7 @@ impl GlobalState {
 
     pub fn play_bgm(&mut self, name: &str) {
         let data = self.asset_mgr.load_music_data(name);
-        self.bgm_source.play(data, Codec::Mp3, true);
+        self.bgm_source.play(data, AudioCodec::Mp3, true);
     }
 
     pub fn play_default_bgm(&mut self) {
@@ -98,6 +105,21 @@ impl GlobalState {
 
     pub fn bgm_source(&mut self) -> &mut dyn AudioSource {
         self.bgm_source.as_mut()
+    }
+
+    pub fn video_player(&mut self) -> &mut VideoPlayer {
+        self.video_player.as_mut()
+    }
+
+    pub fn play_movie(&mut self, name: &str) -> Option<(u32, u32)> {
+        let data = self.asset_mgr.load_movie_data(name);
+        let factory = self.asset_mgr.component_factory();
+        self.video_player
+            .play(factory, data, VideoCodec::Bik, false)
+    }
+
+    pub fn asset_mgr(&self) -> Rc<AssetManager> {
+        self.asset_mgr.clone()
     }
 
     pub fn persistent_state(&self) -> Ref<PersistentState> {

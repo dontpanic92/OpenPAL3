@@ -1,14 +1,13 @@
 use ash;
 use ash::vk;
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_void};
+use std::os::raw::c_void;
 
 #[cfg(target_os = "macos")]
 pub fn instance_extension_names() -> Vec<*const i8> {
     vec![
         ash::extensions::khr::Surface::name().as_ptr(),
         ash::extensions::ext::MetalSurface::name().as_ptr(),
-        ash::extensions::ext::DebugReport::name().as_ptr(),
         ash::extensions::ext::DebugUtils::name().as_ptr(),
     ]
 }
@@ -17,7 +16,6 @@ pub fn instance_extension_names() -> Vec<*const i8> {
     vec![
         ash::extensions::khr::Surface::name().as_ptr(),
         ash::extensions::khr::XlibSurface::name().as_ptr(),
-        ash::extensions::ext::DebugReport::name().as_ptr(),
         ash::extensions::ext::DebugUtils::name().as_ptr(),
     ]
 }
@@ -26,7 +24,6 @@ pub fn instance_extension_names() -> Vec<*const i8> {
     vec![
         ash::extensions::khr::Surface::name().as_ptr(),
         ash::extensions::khr::Win32Surface::name().as_ptr(),
-        ash::extensions::ext::DebugReport::name().as_ptr(),
         ash::extensions::ext::DebugUtils::name().as_ptr(),
     ]
 }
@@ -36,15 +33,13 @@ pub fn device_extension_names() -> Vec<*const i8> {
 }
 
 pub unsafe extern "system" fn debug_callback(
-    _: vk::DebugReportFlagsEXT,
-    _: vk::DebugReportObjectTypeEXT,
-    _: u64,
-    _: usize,
-    _: i32,
-    _: *const c_char,
-    p_message: *const c_char,
-    _: *mut c_void,
-) -> u32 {
-    println!("{:?}", CStr::from_ptr(p_message));
+    _message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    _message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _p_user_data: *mut c_void,
+) -> vk::Bool32 {
+    let message = CStr::from_ptr((*p_callback_data).p_message);
+    println!("validation layer: {:?}", message);
+
     vk::FALSE
 }

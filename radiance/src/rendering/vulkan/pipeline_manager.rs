@@ -8,8 +8,8 @@ use std::rc::Rc;
 pub struct PipelineManager {
     device: Rc<Device>,
     descriptor_manager: Rc<DescriptorManager>,
-    color_format: vk::Format,
-    depth_format: vk::Format,
+    _color_format: vk::Format,
+    _depth_format: vk::Format,
     extent: vk::Extent2D,
     render_pass: RenderPass,
     pipelines: HashMap<String, Pipeline>,
@@ -28,8 +28,8 @@ impl PipelineManager {
         Self {
             device,
             descriptor_manager: descriptor_manager.clone(),
-            color_format,
-            depth_format,
+            _color_format: color_format,
+            _depth_format: depth_format,
             extent,
             render_pass,
             pipelines: HashMap::new(),

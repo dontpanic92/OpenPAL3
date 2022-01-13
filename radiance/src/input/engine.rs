@@ -54,6 +54,7 @@ pub enum Key {
     Num9,
     Num0,
     Tilde,
+    Escape,
     Left,
     Up,
     Right,

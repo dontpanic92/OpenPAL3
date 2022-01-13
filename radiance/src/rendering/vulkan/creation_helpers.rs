@@ -9,12 +9,12 @@ use ash::vk::{
     Extent2D, PhysicalDevice, PresentModeKHR, SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR,
     SwapchainKHR,
 };
-use ash::{vk, Device, Entry, Instance, InstanceError};
+use ash::{vk, Device, Entry, Instance};
 use std::error::Error;
 use std::ffi::CString;
 use std::rc::Rc;
 
-pub fn create_instance(entry: &Entry) -> Result<Instance, InstanceError> {
+pub fn create_instance(entry: &Entry) -> VkResult<Instance> {
     let app_info = vk::ApplicationInfo::builder()
         .engine_name(&CString::new(constants::STR_ENGINE_NAME).unwrap())
         .build();
@@ -184,7 +184,7 @@ pub fn create_image_views(
         .collect()
 }
 
-pub fn create_shader_module(
+pub fn _create_shader_module(
     device: &Device,
     shader_path: &str,
 ) -> Result<vk::ShaderModule, Box<dyn Error>> {
@@ -219,13 +219,11 @@ pub fn create_framebuffers(
 }
 
 fn enabled_layer_names() -> Vec<*const i8> {
-    unsafe {
-        vec![
-            // Use $env:VK_INSTANCE_LAYERS="VK_LAYER_LUNARG_standard_validation" to enable the validation layer
-            // instead of doing so here.
-            //
-            // std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_standard_validation\0")
-            //     .as_ptr() as *const i8,
-        ]
-    }
+    vec![
+        // Use $env:VK_INSTANCE_LAYERS="VK_LAYER_LUNARG_standard_validation" to enable the validation layer
+        // instead of doing so here.
+        //
+        // std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_LUNARG_standard_validation\0")
+        //     .as_ptr() as *const i8,
+    ]
 }

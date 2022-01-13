@@ -624,7 +624,7 @@ impl SceProcContext {
             }
             115 => {
                 // Movie
-                nop_command!(self, Movie, string)
+                command!(self, SceCommandMovie, name: string)
             }
             116 => {
                 // SetRoleTexture
@@ -1059,7 +1059,7 @@ impl SceState {
         self.input_engine.borrow()
     }
 
-    pub fn audio(&self) -> &Rc<dyn AudioEngine> {
+    pub fn audio_engine(&self) -> &Rc<dyn AudioEngine> {
         &self.audio_engine
     }
 

@@ -1,3 +1,4 @@
+#[cfg(not(target_os = "windows"))]
 use winit::window::Window;
 
 use super::DebugLayer;

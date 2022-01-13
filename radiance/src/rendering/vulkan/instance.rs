@@ -6,14 +6,17 @@ use ash::{
 use std::rc::Rc;
 
 pub struct Instance {
-    entry: Rc<Entry>,
+    _entry: Rc<Entry>,
     instance: ash::Instance,
 }
 
 impl Instance {
     pub fn new(entry: Rc<Entry>) -> Self {
         let instance = creation_helpers::create_instance(&entry).unwrap();
-        Self { entry, instance }
+        Self {
+            _entry: entry,
+            instance,
+        }
     }
 
     pub fn vk_instance(&self) -> &ash::Instance {

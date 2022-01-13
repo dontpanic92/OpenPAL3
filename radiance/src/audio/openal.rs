@@ -3,12 +3,10 @@ use super::{
     Codec,
 };
 use super::{AudioEngine, AudioSource, AudioSourceState};
-use alto::{Alto, Context, Mono, OutputDevice, Source, Stereo};
+use alto::{Alto, Context, Mono, Source, Stereo};
 use std::rc::Rc;
 
 pub struct OpenAlAudioEngine {
-    alto: Alto,
-    device: OutputDevice,
     context: Rc<Context>,
 }
 
@@ -24,11 +22,7 @@ impl OpenAlAudioEngine {
         let device = alto.open(None).unwrap();
         let context = Rc::new(device.new_context(None).unwrap());
 
-        Self {
-            alto,
-            device,
-            context,
-        }
+        Self { context }
     }
 }
 

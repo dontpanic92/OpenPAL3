@@ -7,6 +7,7 @@ pub enum VulkanBackendError {
     NoGraphicQueueFound,
     NoSurfaceFormatSupported,
     NoSurfacePresentModeSupported,
+    #[allow(dead_code)]
     NoSuitableMemoryFound,
     NoSuitableFormatFound,
 }

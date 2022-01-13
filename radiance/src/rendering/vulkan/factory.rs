@@ -1,9 +1,13 @@
+use imgui::TextureId;
+
+use super::imgui::ImguiRenderer;
 use super::texture::VulkanTextureStore;
 use super::{
     adhoc_command_runner::AdhocCommandRunner, descriptor_managers::DescriptorManager,
     device::Device, material::VulkanMaterial, render_object::VulkanRenderObject,
     shader::VulkanShader, texture::VulkanTexture, uniform_buffers::DynamicUniformBufferManager,
 };
+use crate::rendering::VideoPlayer;
 use crate::rendering::{
     factory::ComponentFactory, texture::TextureDef, Material, MaterialDef, RenderObject,
     RenderingComponent, Shader, ShaderDef, Texture, VertexBuffer,
@@ -19,6 +23,7 @@ pub struct VulkanComponentFactory {
     dub_manager: Arc<DynamicUniformBufferManager>,
     command_runner: Rc<AdhocCommandRunner>,
     texture_store: RefCell<VulkanTextureStore>,
+    imgui: Rc<RefCell<ImguiRenderer>>,
 }
 
 impl ComponentFactory for VulkanComponentFactory {
@@ -32,6 +37,36 @@ impl ComponentFactory for VulkanComponentFactory {
             )
             .unwrap(),
         )
+    }
+
+    fn create_imgui_texture(
+        &self,
+        buffer: &[u8],
+        row_length: u32,
+        width: u32,
+        height: u32,
+        texture_id: Option<TextureId>,
+    ) -> (Box<dyn Texture>, TextureId) {
+        let texture = VulkanTexture::from_buffer(
+            buffer,
+            row_length,
+            width,
+            height,
+            &self.device,
+            &self.allocator,
+            &self.command_runner,
+        )
+        .unwrap();
+        let id = texture_id.unwrap_or(TextureId::new(0)).id();
+        let descriptor_set = self
+            .descriptor_manager
+            .get_texture_descriptor_set(id, &texture);
+        let texture_id = self
+            .imgui
+            .borrow_mut()
+            .upsert_texture(texture_id, descriptor_set);
+
+        (Box::new(texture), texture_id)
     }
 
     fn create_shader(&self, shader_def: &ShaderDef) -> Box<dyn Shader> {
@@ -84,6 +119,10 @@ impl ComponentFactory for VulkanComponentFactory {
 
         component
     }
+
+    fn create_video_player(&self) -> Box<VideoPlayer> {
+        Box::new(VideoPlayer::new())
+    }
 }
 
 impl VulkanComponentFactory {
@@ -93,6 +132,7 @@ impl VulkanComponentFactory {
         descriptor_manager: &Rc<DescriptorManager>,
         dub_manager: &Arc<DynamicUniformBufferManager>,
         command_runner: &Rc<AdhocCommandRunner>,
+        imgui: Rc<RefCell<ImguiRenderer>>,
     ) -> Self {
         Self {
             device,
@@ -101,6 +141,7 @@ impl VulkanComponentFactory {
             dub_manager: dub_manager.clone(),
             command_runner: command_runner.clone(),
             texture_store: RefCell::new(VulkanTextureStore::new()),
+            imgui,
         }
     }
 
@@ -108,7 +149,7 @@ impl VulkanComponentFactory {
         self.clone()
     }
 
-    pub fn create_vulkan_texture(&self, texture_def: &TextureDef) -> Rc<VulkanTexture> {
+    pub fn _create_vulkan_texture(&self, texture_def: &TextureDef) -> Rc<VulkanTexture> {
         self.texture_store
             .borrow_mut()
             .get_or_update(texture_def.name(), || {

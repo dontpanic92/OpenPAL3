@@ -714,6 +714,7 @@ pub struct LadderTrigger {
     sce_proc_id: u32,
 }
 
+#[allow(dead_code)]
 pub struct TriggerTarget {}
 
 pub enum LadderTestResult {

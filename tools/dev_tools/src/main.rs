@@ -16,6 +16,10 @@ struct ApplicationCallbacks {
 
 impl ApplicationExtension<ApplicationCallbacks> for ApplicationCallbacks {
     fn on_initialized(&mut self, app: &mut Application<ApplicationCallbacks>) {
+        let logger = simple_logger::SimpleLogger::new();
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let logger = logger.with_utc_timestamps();
+        logger.init().unwrap();
         let factory = app.engine_mut().rendering_component_factory();
 
         let asset_mgr = AssetManager::new(factory, &self.config.asset_path);
@@ -34,7 +38,7 @@ impl ApplicationExtension<ApplicationCallbacks> for ApplicationCallbacks {
             ))
     }
 
-    fn on_updating(&mut self, app: &mut Application<ApplicationCallbacks>, delta_sec: f32) {}
+    fn on_updating(&mut self, _app: &mut Application<ApplicationCallbacks>, _delta_sec: f32) {}
 }
 
 impl ApplicationCallbacks {

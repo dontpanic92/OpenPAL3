@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-imgui = "0.8.0"
+imgui = "^0.8"
 opengb = { path = "../opengb" }
 radiance = { path = "../radiance" }
 simple_logger = "1.16.0"

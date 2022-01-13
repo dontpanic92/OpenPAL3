@@ -1,4 +1,3 @@
-use crate::utilities::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::math::Vec3;

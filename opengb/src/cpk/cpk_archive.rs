@@ -13,6 +13,7 @@ type IoResult<T> = std::io::Result<T>;
 type IoError = std::io::Error;
 type IoErrorKind = std::io::ErrorKind;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct CpkArchive<T: AsRef<[u8]>> {
     cursor: Cursor<T>,
@@ -174,6 +175,7 @@ impl Seek for CpkFile {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 struct CpkHeader {
     label: u32,
@@ -241,6 +243,7 @@ pub struct CpkTable {
     extra_info_size: u32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 enum CpkTableFlag {
     None = 0x0,
