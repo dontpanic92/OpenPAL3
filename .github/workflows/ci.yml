@@ -74,6 +74,8 @@ jobs:
           sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.2.198-focal.list https://packages.lunarg.com/vulkan/1.2.198/lunarg-vulkan-1.2.198-focal.list
           sudo apt update
           sudo apt install vulkan-sdk
+      - name: Set NDK_HOME env
+        run: echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
       - name: Install Android targets
         run: rustup target add aarch64-linux-android
       - name: Install Cargo APK
