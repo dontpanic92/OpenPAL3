@@ -75,9 +75,10 @@ impl CoreRadianceEngine {
 
         let scene = self.scene_manager.as_mut().unwrap().scene_mut();
         if let Some(s) = scene {
-            let extent = self.rendering_engine.view_extent();
+            let mut rendering_engine = self.rendering_engine.as_ref().borrow_mut();
+            let extent = rendering_engine.view_extent();
             s.camera_mut().set_aspect(extent.0 as f32 / extent.1 as f32);
-            self.rendering_engine.render(s, ui_frame);
+            rendering_engine.render(s, ui_frame);
         }
     }
 

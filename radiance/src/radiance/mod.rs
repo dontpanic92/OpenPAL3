@@ -4,8 +4,6 @@ mod debugging;
 pub use core_engine::CoreRadianceEngine;
 pub use debugging::DebugLayer;
 
-use winit::event::Event;
-
 use crate::{
     application::Platform, audio::OpenAlAudioEngine, imgui::ImguiContext,
     input::GenericInputEngine, rendering::VulkanRenderingEngine, scene::DefaultSceneManager,
@@ -26,7 +24,9 @@ pub fn create_radiance_engine(
         window,
         imgui_context.clone(),
     )?));
-    if cfg!(target_os = "android") {
+    #[cfg(target_os = "android")]
+    {
+        use winit::event::Event;
         let rendering_engine_clone = rendering_engine.clone();
         platform.add_message_callback(Box::new(move |window, event| {
             let mut rendering_engine = rendering_engine_clone.borrow_mut();
