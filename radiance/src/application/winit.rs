@@ -93,11 +93,10 @@ impl Platform {
                             active = true;
                         }
                         Event::WindowEvent {
-                            event: WindowEvent::Focused(false),
+                            event: WindowEvent::Focused(focused),
                             ..
                         } => {
-                            debug!("Unfocused");
-                            active = false;
+                            active = focused;
                         }
                         _ => (),
                     }
