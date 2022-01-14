@@ -12,6 +12,7 @@ use ash::vk::{
 use ash::{vk, Device, Entry, Instance};
 use std::error::Error;
 use std::ffi::CString;
+use std::os::raw::c_char;
 use std::rc::Rc;
 
 pub fn create_instance(entry: &Entry) -> VkResult<Instance> {
@@ -23,7 +24,7 @@ pub fn create_instance(entry: &Entry) -> VkResult<Instance> {
     let create_info = vk::InstanceCreateInfo::builder()
         .application_info(&app_info)
         .enabled_extension_names(&extension_names)
-        .enabled_layer_names(&layer_names)
+        .enabled_layer_names(&layer_names[..])
         .build();
     unsafe { entry.create_instance(&create_info, None) }
 }
@@ -218,7 +219,7 @@ pub fn create_framebuffers(
         .collect()
 }
 
-fn enabled_layer_names() -> Vec<*const i8> {
+fn enabled_layer_names() -> Vec<*const c_char> {
     vec![
         // Use $env:VK_INSTANCE_LAYERS="VK_LAYER_LUNARG_standard_validation" to enable the validation layer
         // instead of doing so here.

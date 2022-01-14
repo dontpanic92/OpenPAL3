@@ -1,3 +1,5 @@
+extern crate hound;
+
 use super::Decoder;
 use hound::WavReader;
 use std::io::Cursor;

@@ -29,12 +29,11 @@ imgui-rs-vulkan-renderer = { version = "1.1", features = ["vk-mem"] }
 vk-mem = "0.2"
 
 # Window and event handling
-winit = "0.26.0"
+winit = "0.26.1"
 imgui-winit-support = { version = "0.8.1", default-features = false, features = ["winit-26"] }
 ash-window = "0.9"
 
 # Audio
-alto = "3.0.4"
 hound = "3.4.0"
 lewton = "0.10.1"
 minimp3 = "0.5.1"
@@ -42,6 +41,11 @@ cpal = "0.13.4"
 
 # Input
 gilrs = "0.8.1"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+alto = { version = "3.0.4", features = ["dynamic"] }
+[target.'cfg(target_os = "android")'.dependencies]
+alto = { version = "3.0.4", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef", "wingdi"] }

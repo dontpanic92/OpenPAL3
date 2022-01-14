@@ -5,6 +5,7 @@ members = [
     "openpal3",
     "tools/dev_tools",
 ]
+resolver = "2"
 
 [patch.crates-io]
 ffmpeg-sys = { git = "https://github.com/meh/rust-ffmpeg-sys.git" }

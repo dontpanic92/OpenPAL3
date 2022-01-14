@@ -3,6 +3,7 @@ name = "openpal3"
 version = "0.1.0"
 authors = ["Li Shengqiu <lishengqiu.hit@gmail.com>"]
 edition = "2018"
+build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -15,3 +16,29 @@ simple_logger = "1.16.0"
 [dependencies.log]
 version = "0.4.14"
 features = ["max_level_debug", "release_max_level_debug"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk = "0.5.0"
+ndk-sys = "0.3.0"
+ndk-glue = "0.5.0"
+
+[lib]
+path = "src/android.rs"
+crate-type = ["lib", "cdylib"]
+
+[package.metadata.android]
+build_targets = [ "aarch64-linux-android" ]
+apk_name = "OpenPAL3"
+
+[[package.metadata.android.uses_feature]]
+name = "android.hardware.vulkan.level"
+required = true
+version = 1
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.READ_EXTERNAL_STORAGE"
+
+[package.metadata.android.application.activity]
+config_changes = "orientation"
+launch_mode = "singleTop"
+orientation = "portrait"

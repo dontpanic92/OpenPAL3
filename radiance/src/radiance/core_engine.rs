@@ -14,7 +14,7 @@ use crate::{
 use std::{cell::RefCell, rc::Rc};
 
 pub struct CoreRadianceEngine {
-    rendering_engine: Box<dyn RenderingEngine>,
+    rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
     audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngineInternal>>,
     imgui_context: Rc<RefCell<ImguiContext>>,
@@ -24,7 +24,7 @@ pub struct CoreRadianceEngine {
 
 impl CoreRadianceEngine {
     pub(crate) fn new(
-        rendering_engine: Box<dyn RenderingEngine>,
+        rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngineInternal>>,
         imgui_context: Rc<RefCell<ImguiContext>>,
@@ -41,7 +41,7 @@ impl CoreRadianceEngine {
     }
 
     pub fn rendering_component_factory(&self) -> Rc<dyn rendering::ComponentFactory> {
-        self.rendering_engine.component_factory()
+        self.rendering_engine.borrow().component_factory()
     }
 
     pub fn audio_engine(&mut self) -> Rc<dyn AudioEngine> {
@@ -75,9 +75,10 @@ impl CoreRadianceEngine {
 
         let scene = self.scene_manager.as_mut().unwrap().scene_mut();
         if let Some(s) = scene {
-            let extent = self.rendering_engine.view_extent();
+            let mut rendering_engine = self.rendering_engine.as_ref().borrow_mut();
+            let extent = rendering_engine.view_extent();
             s.camera_mut().set_aspect(extent.0 as f32 / extent.1 as f32);
-            self.rendering_engine.render(s, ui_frame);
+            rendering_engine.render(s, ui_frame);
         }
     }
 
@@ -99,9 +100,12 @@ impl CoreRadianceEngine {
 
         let scene = self.scene_manager.as_mut().unwrap().scene_mut();
         if let Some(s) = scene {
-            let extent = self.rendering_engine.view_extent();
+            let extent = self.rendering_engine.as_ref().borrow().view_extent();
             s.camera_mut().set_aspect(extent.0 as f32 / extent.1 as f32);
-            self.rendering_engine.render(s, ui_frame);
+            self.rendering_engine
+                .as_ref()
+                .borrow_mut()
+                .render(s, ui_frame);
         }
     }
 }

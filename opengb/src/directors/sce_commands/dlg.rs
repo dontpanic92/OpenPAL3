@@ -1,5 +1,5 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
-use imgui::{Condition, Ui, Window};
+use imgui::{Condition, MouseButton, Ui, Window};
 use radiance::{input::Key, scene::SceneManager};
 
 #[derive(Debug, Clone)]
@@ -69,7 +69,8 @@ impl SceCommand for SceCommandDlg {
         // won't trigger the sce proc again.
         self.dlg_end = state.input().get_key_state(Key::Space).pressed()
             || state.input().get_key_state(Key::GamePadEast).pressed()
-            || state.input().get_key_state(Key::GamePadSouth).pressed();
+            || state.input().get_key_state(Key::GamePadSouth).pressed()
+            || ui.is_mouse_released(MouseButton::Left);
 
         false
     }

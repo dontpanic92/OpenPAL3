@@ -1,3 +1,5 @@
+extern crate minimp3;
+
 use minimp3::{Decoder, Error};
 use std::{io::Cursor, rc::Rc};
 

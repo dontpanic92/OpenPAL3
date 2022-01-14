@@ -1,3 +1,4 @@
+use log::debug;
 use std::time::Instant;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
@@ -22,6 +23,7 @@ impl Platform {
             .with_resizable(true)
             .build(&event_loop)
             .unwrap();
+
         Self {
             event_loop,
             dpi_scale: window.scale_factor() as f32,
@@ -51,12 +53,13 @@ impl Platform {
             ..
         } = self;
         let mut start_time = Instant::now();
+        let mut active = true;
         self.event_loop.run(move |event, _, control_flow| {
             match event {
-                Event::NewEvents(_) => {
-                    // other application-specific logic
-                }
+                Event::RedrawRequested(_) => {}
+                Event::RedrawEventsCleared => {}
                 Event::MainEventsCleared => {
+                    // needed for imgui got notified to prepare frame
                     for cb in &msg_callbacks {
                         cb(&window, &event);
                     }
@@ -64,7 +67,9 @@ impl Platform {
                     let end_time = Instant::now();
                     let elapsed = end_time.duration_since(start_time).as_secs_f32();
                     start_time = end_time;
-                    update_engine(&window, elapsed);
+                    if active {
+                        update_engine(&window, elapsed);
+                    }
                 }
                 Event::WindowEvent {
                     event: WindowEvent::CloseRequested,
@@ -73,9 +78,27 @@ impl Platform {
                     *control_flow = ControlFlow::Exit;
                 }
                 event => {
-                    // other application-specific event handling
+                    // debug!("Event: {:?}", event);
                     for cb in &msg_callbacks {
                         cb(&window, &event);
+                    }
+                    // other application-specific event handling
+                    match event {
+                        Event::Suspended => {
+                            debug!("Suspended");
+                            active = false;
+                        }
+                        Event::Resumed => {
+                            debug!("Resumed");
+                            active = true;
+                        }
+                        Event::WindowEvent {
+                            event: WindowEvent::Focused(focused),
+                            ..
+                        } => {
+                            active = focused;
+                        }
+                        _ => (),
                     }
                 }
             }
