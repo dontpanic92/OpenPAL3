@@ -24,18 +24,18 @@ use std::sync::Arc;
 use std::{cell::RefCell, error::Error};
 
 pub struct VulkanRenderingEngine {
-    _entry: Rc<Entry>,
+    entry: Rc<Entry>,
     instance: Rc<Instance>,
     physical_device: vk::PhysicalDevice,
     device: Rc<Device>,
     allocator: Option<Rc<vk_mem::Allocator>>,
-    surface: vk::SurfaceKHR,
+    surface: Option<vk::SurfaceKHR>,
     format: vk::SurfaceFormatKHR,
     present_mode: vk::PresentModeKHR,
     queue: vk::Queue,
     swapchain: Option<SwapChain>,
     command_pool: vk::CommandPool,
-    debug_callback: vk::DebugUtilsMessengerEXT,
+    debug_callback: Option<vk::DebugUtilsMessengerEXT>,
 
     imgui: Rc<RefCell<ImguiRenderer>>,
     component_factory: Rc<VulkanComponentFactory>,
@@ -54,6 +54,9 @@ pub struct VulkanRenderingEngine {
 
 impl RenderingEngine for VulkanRenderingEngine {
     fn render(&mut self, scene: &mut dyn Scene, ui_frame: ImguiFrame) {
+        if self.surface.is_none() {
+            return;
+        }
         if self.swapchain.is_none() {
             self.recreate_swapchain().unwrap();
             return;
@@ -209,29 +212,33 @@ impl VulkanRenderingEngine {
         // DEBUG INFO
         let debug_entry = DebugUtils::new(entry.as_ref(), &instance.vk_instance());
         let debug_callback = {
-            let create_info = vk::DebugUtilsMessengerCreateInfoEXT {
-                s_type: vk::StructureType::DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-                message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                    | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-                message_type: vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-                pfn_user_callback: Some(helpers::debug_callback),
-                flags: vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
-                p_user_data: ptr::null_mut(),
-                p_next: ptr::null(),
-            };
-            unsafe { debug_entry.create_debug_utils_messenger(&create_info, None)? }
+            if !cfg!(target_os = "android") {
+                let create_info = vk::DebugUtilsMessengerCreateInfoEXT {
+                    s_type: vk::StructureType::DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+                    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                    message_type: vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                    pfn_user_callback: Some(helpers::debug_callback),
+                    flags: vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
+                    p_user_data: ptr::null_mut(),
+                    p_next: ptr::null(),
+                };
+                unsafe { Some(debug_entry.create_debug_utils_messenger(&create_info, None)?) }
+            } else {
+                None
+            }
         };
 
         let vulkan = Self {
-            _entry: entry,
+            entry,
             instance,
             physical_device,
             device,
             allocator: Some(allocator),
-            surface,
+            surface: Some(surface),
             format,
             present_mode,
             queue,
@@ -285,6 +292,27 @@ impl VulkanRenderingEngine {
         self.command_pool
     }
 
+    pub fn drop_surface(&mut self) {
+        self.surface = None;
+        self.drop_swapchain();
+    }
+
+    pub fn recreate_surface(&mut self, window: &Window) -> Result<(), Box<dyn Error>> {
+        self.device.wait_idle();
+        if self.surface.is_none() {
+            let surface = creation_helpers::create_surface(
+                self.entry.as_ref(),
+                &self.instance.vk_instance(),
+                &window,
+            )?;
+
+            self.surface = Some(surface);
+            self.recreate_swapchain().unwrap();
+        }
+
+        Ok(())
+    }
+
     fn recreate_swapchain(&mut self) -> Result<(), Box<dyn Error>> {
         self.device.wait_idle();
 
@@ -297,7 +325,7 @@ impl VulkanRenderingEngine {
             self.command_pool,
             self.physical_device,
             self.queue,
-            self.surface,
+            self.surface.unwrap(),
             capabilities,
             self.format,
             self.present_mode,
@@ -329,13 +357,18 @@ impl VulkanRenderingEngine {
         }
 
         let dub_manager = self.dub_manager().clone();
-        let (image_index, _) = swapchain!()
-            .acquire_next_image(
-                u64::max_value(),
-                self.image_available_semaphore,
-                vk::Fence::default(),
-            )
-            .unwrap();
+        let (image_index, _) = match swapchain!().acquire_next_image(
+            u64::max_value(),
+            self.image_available_semaphore,
+            vk::Fence::default(),
+        ) {
+            Ok(res) => res,
+            Err(vk::Result::ERROR_SURFACE_LOST_KHR) => {
+                self.drop_surface();
+                return Ok(());
+            }
+            Err(e) => panic!("Unable to acquire next image {:?}", e),
+        };
         let x = &|ui| scene.draw_ui(ui);
         let objects: Vec<&VulkanRenderObject> = scene
             .entities()
@@ -408,8 +441,10 @@ impl VulkanRenderingEngine {
 
     fn get_capabilities(&self) -> ash::prelude::VkResult<vk::SurfaceCapabilitiesKHR> {
         unsafe {
-            self.surface_entry
-                .get_physical_device_surface_capabilities(self.physical_device, self.surface)
+            self.surface_entry.get_physical_device_surface_capabilities(
+                self.physical_device,
+                self.surface.unwrap(),
+            )
         }
     }
 }
@@ -421,9 +456,11 @@ impl Drop for VulkanRenderingEngine {
         self.descriptor_manager = None;
         self.dub_manager = None;
         self.allocator = None;
-        unsafe {
-            self.debug_entry
-                .destroy_debug_utils_messenger(self.debug_callback, None);
+        if let Some(debug_callback) = self.debug_callback {
+            unsafe {
+                self.debug_entry
+                    .destroy_debug_utils_messenger(debug_callback, None);
+            }
         }
         self.device.destroy_command_pool(self.command_pool);
 
@@ -432,7 +469,8 @@ impl Drop for VulkanRenderingEngine {
         self.device
             .destroy_semaphore(self.render_finished_semaphore);
         unsafe {
-            self.surface_entry.destroy_surface(self.surface, None);
+            self.surface_entry
+                .destroy_surface(self.surface.unwrap(), None);
         }
     }
 }

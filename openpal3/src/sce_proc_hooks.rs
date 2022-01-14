@@ -18,7 +18,7 @@ impl SceRestHooks {
 }
 
 impl SceProcHooks for SceRestHooks {
-    fn proc_begin(&self, sce_name: &str, proc_id: u32, global_state: &mut GlobalState) {}
+    fn proc_begin(&self, _sce_name: &str, _proc_id: u32, _global_state: &mut GlobalState) {}
 
     fn proc_end(&self, sce_name: &str, proc_id: u32, global_state: &mut GlobalState) {
         if let Some(procs) = self.g_story_updates.get(&sce_name.to_uppercase()) {

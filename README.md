@@ -42,7 +42,7 @@ asset_path = "E:\\CubeLibrary\\apps\\1000039"
 
 ## 🛠 本地构建
 
-目前 OpenPAL3 支持 Windows、Linux 和 macOS 作为目标平台。
+目前 OpenPAL3 支持 Windows、Linux、 macOS 和 Android 作为目标平台。
 
 ### 工具链与依赖库
 
@@ -58,6 +58,12 @@ asset_path = "E:\\CubeLibrary\\apps\\1000039"
 ```
 cd openpal3
 cargo build --release
+```
+
+构建 Android 平台安装包需要先安装`cargo-apk`，并设置好 NDK 开发环境
+```
+cd openpal3 && cargo apk build --release --lib
+
 ```
 
 ### 常见问题

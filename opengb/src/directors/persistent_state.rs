@@ -1,6 +1,9 @@
+#[cfg(target_os = "android")]
+use ndk_glue;
 use radiance::math::Vec3;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize)]
 pub struct PersistentState {
@@ -22,10 +25,22 @@ impl PersistentState {
         }
     }
 
+    fn get_data_dir(app_name: &str) -> PathBuf {
+        #[cfg(target_os = "android")]
+        let path = PathBuf::from(
+            ndk_glue::native_activity()
+                .external_data_path()
+                .to_str()
+                .unwrap(),
+        );
+        #[cfg(not(target_os = "android"))]
+        let path = dirs::data_dir().unwrap().join(app_name);
+
+        path
+    }
+
     pub fn load(app_name: &str, slot: i32) -> Self {
-        let path = dirs::data_dir()
-            .unwrap()
-            .join(app_name)
+        let path = Self::get_data_dir(app_name)
             .join("Save")
             .join(format!("{}.json", slot));
         let content = std::fs::read_to_string(path).unwrap();
@@ -34,7 +49,7 @@ impl PersistentState {
 
     pub fn save(&self, slot: i32) {
         if slot >= 0 {
-            let path = dirs::data_dir().unwrap().join(&self.app_name).join("Save");
+            let path = Self::get_data_dir(&self.app_name).join("Save");
             if let Err(e) = std::fs::create_dir_all(&path) {
                 log::error!("Cannot create save dir: {}", e);
                 return;

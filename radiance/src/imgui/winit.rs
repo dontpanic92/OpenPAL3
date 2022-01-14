@@ -2,7 +2,10 @@ use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use imgui::{Context, Io};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
-use winit::event::Event;
+use winit::dpi::PhysicalPosition;
+use winit::event::{
+    DeviceId, ElementState, Event, ModifiersState, MouseButton, Touch, TouchPhase, WindowEvent,
+};
 use winit::window::Window;
 
 use crate::application::Platform;
@@ -59,6 +62,35 @@ impl ImguiPlatform {
                 self.prepare_frame(io, &window);
             }
             Event::RedrawRequested(_) => {}
+            // interprete touch events as mouse input
+            Event::WindowEvent {
+                event:
+                    WindowEvent::Touch(Touch {
+                        phase,
+                        location: PhysicalPosition { x, y },
+                        id: 0,
+                        ..
+                    }),
+                window_id,
+            } => {
+                io.mouse_pos = [*x as f32, *y as f32];
+                let state = match *phase {
+                    TouchPhase::Started => ElementState::Pressed,
+                    TouchPhase::Moved => ElementState::Pressed,
+                    TouchPhase::Ended => ElementState::Released,
+                    TouchPhase::Cancelled => ElementState::Released,
+                };
+                let mouse_input: Event<()> = Event::WindowEvent {
+                    event: WindowEvent::MouseInput {
+                        device_id: unsafe { DeviceId::dummy() },
+                        state,
+                        button: MouseButton::Left,
+                        modifiers: ModifiersState::empty(),
+                    },
+                    window_id: *window_id,
+                };
+                self.winit_platform.handle_event(io, window, &mouse_input);
+            }
             event => self.winit_platform.handle_event(io, window, event),
         }
     }

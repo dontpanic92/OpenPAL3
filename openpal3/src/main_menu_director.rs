@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use imgui::Ui;
+use imgui::{Condition, Ui, Window};
 use log::debug;
 use opengb::{
     asset_manager::AssetManager,
@@ -51,7 +51,7 @@ impl Director for MainMenuDirector {
         &mut self,
         scene_manager: &mut dyn SceneManager,
         ui: &mut Ui,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
         self.main_theme_source.update();
 
@@ -59,31 +59,43 @@ impl Director for MainMenuDirector {
             proc_hooks: vec![Box::new(SceRestHooks::new())],
         };
 
-        if ui.button("开始游戏") {
-            return Some(Rc::new(RefCell::new(AdventureDirector::new(
-                "OpenPAL3",
-                self.asset_mgr.clone(),
-                self.audio_engine.clone(),
-                self.input_engine.clone(),
-                Some(sce_options),
-            ))));
-        } else {
-            for i in 1..5 {
-                if ui.button(&format!("存档 {}", i)) {
-                    let director = AdventureDirector::load(
-                        "OpenPAL3",
-                        self.asset_mgr.clone(),
-                        self.audio_engine.clone(),
-                        self.input_engine.clone(),
-                        scene_manager,
-                        Some(sce_options),
-                        i,
-                    );
+        let window_size = ui.io().display_size;
+        let window = Window::new(" ")
+            .size(window_size, Condition::Always)
+            .position([0.0, 0.0], Condition::Always)
+            .collapsible(false)
+            .always_auto_resize(true);
 
-                    return Some(Rc::new(RefCell::new(director.unwrap())));
+        if let Some(Some(director)) = window.build(ui, || {
+            if ui.button("开始游戏") {
+                return Some(Rc::new(RefCell::new(AdventureDirector::new(
+                    "OpenPAL3",
+                    self.asset_mgr.clone(),
+                    self.audio_engine.clone(),
+                    self.input_engine.clone(),
+                    Some(sce_options),
+                ))));
+            } else {
+                for i in 1..5 {
+                    if ui.button(&format!("存档 {}", i)) {
+                        let director = AdventureDirector::load(
+                            "OpenPAL3",
+                            self.asset_mgr.clone(),
+                            self.audio_engine.clone(),
+                            self.input_engine.clone(),
+                            scene_manager,
+                            Some(sce_options),
+                            i,
+                        );
+
+                        return Some(Rc::new(RefCell::new(director.unwrap())));
+                    }
                 }
+                None
             }
-
+        }) {
+            Some(director)
+        } else {
             None
         }
     }

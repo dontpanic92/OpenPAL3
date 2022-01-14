@@ -1,3 +1,5 @@
+extern crate lewton;
+
 use super::Decoder;
 use lewton::inside_ogg::OggStreamReader;
 use std::io::Cursor;
