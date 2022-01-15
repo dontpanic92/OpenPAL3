@@ -1,3 +1,5 @@
+use std::borrow::BorrowMut;
+
 use crate::directors::sce_vm::{SceCommand, SceState};
 
 use imgui::{Condition, Image, TextureId, Ui, Window};
@@ -14,6 +16,7 @@ pub struct SceCommandMovie {
 impl SceCommand for SceCommandMovie {
     fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
         state.global_state_mut().set_adv_input_enabled(false);
+        state.global_state_mut().bgm_source().stop();
     }
 
     fn update(
@@ -37,6 +40,18 @@ impl SceCommand for SceCommandMovie {
                 }
             }
         };
+
+        // check state to stop movie
+        let movie_skipped = state.input().get_key_state(Key::Escape).pressed();
+        let global_state_mut = state.global_state_mut();
+        let video_player = global_state_mut.video_player();
+        if movie_skipped {
+            video_player.stop();
+            return true;
+        }
+        if video_player.get_state() == VideoStreamState::Stopped {
+            return true;
+        }
 
         let window_size = ui.io().display_size;
         let window = Window::new(" ")
@@ -67,18 +82,6 @@ impl SceCommand for SceCommandMovie {
                 Image::new(texture_id, target_size).build(ui);
             }
         });
-
-        // check state to stop movie
-        let movie_skipped = state.input().get_key_state(Key::Escape).pressed();
-        let global_state_mut = state.global_state_mut();
-        let video_player = global_state_mut.video_player();
-        if movie_skipped {
-            video_player.stop();
-            return true;
-        }
-        if video_player.get_state() == VideoStreamState::Stopped {
-            return true;
-        }
 
         false
     }
