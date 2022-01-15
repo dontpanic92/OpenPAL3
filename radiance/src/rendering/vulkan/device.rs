@@ -412,6 +412,7 @@ impl Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
+        log::debug!("Destroying Device");
         unsafe {
             self.device.destroy_device(None);
         }

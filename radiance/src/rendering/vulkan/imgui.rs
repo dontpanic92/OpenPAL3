@@ -11,6 +11,7 @@ use vk_mem::{Allocator, AllocatorCreateFlags, AllocatorCreateInfo};
 
 pub struct ImguiRenderer {
     renderer: Renderer,
+    _device: Rc<Device>,
 }
 
 impl ImguiRenderer {
@@ -71,7 +72,10 @@ impl ImguiRenderer {
             .unwrap()
         };
 
-        Self { renderer }
+        Self {
+            renderer,
+            _device: device.clone(),
+        }
     }
 
     pub fn upsert_texture(
