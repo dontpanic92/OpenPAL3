@@ -12,7 +12,7 @@ pub struct Camera {
 
 impl Camera {
     pub fn new() -> Self {
-        Self::new_with_params(30. * std::f32::consts::PI / 180., 4. / 3., 0.1, 100000.)
+        Self::new_with_params(30. * std::f32::consts::PI / 180., 4. / 3., 100., 10000.)
     }
 
     pub fn new_with_params(fov43: f32, aspect: f32, near_clip: f32, far_clip: f32) -> Self {
