@@ -1,14 +1,13 @@
 use super::device::Device;
-use crate::rendering::vertex_buffer::{VertexComponents, VertexMetadata};
+use crate::rendering::vertex_buffer::{VertexComponents, VertexComponentsLayout};
 use crate::rendering::{Shader, ShaderDef};
 use ash::vk;
 use std::error::Error;
 use std::rc::Rc;
-use std::sync::Arc;
 
 pub struct VulkanShader {
     device: Rc<Device>,
-    vertex_metadata: Arc<VertexMetadata>,
+    vertex_component_layout: VertexComponentsLayout,
     vert_shader: vk::ShaderModule,
     frag_shader: vk::ShaderModule,
     name: String,
@@ -29,7 +28,7 @@ impl VulkanShader {
 
         Ok(Self {
             device,
-            vertex_metadata: VertexMetadata::get(shader_def.vertex_components()),
+            vertex_component_layout: shader_def.vertex_components().layout(),
             vert_shader,
             frag_shader,
             name: shader_def.name().to_owned(),
@@ -39,17 +38,17 @@ impl VulkanShader {
     pub fn get_binding_description(&self) -> vk::VertexInputBindingDescription {
         vk::VertexInputBindingDescription::builder()
             .binding(0)
-            .stride(self.vertex_metadata.size as u32)
+            .stride(self.vertex_component_layout.size as u32)
             .input_rate(vk::VertexInputRate::VERTEX)
             .build()
     }
 
-    // A better way: reflect the shader code to get the desciprtions automatically
+    // A better way: reflect shader code to get the desciprtions automatically
     pub fn get_attribute_descriptions(&self) -> Vec<vk::VertexInputAttributeDescription> {
         let mut descs = vec![];
 
         if let Some(&position_offset) = self
-            .vertex_metadata
+            .vertex_component_layout
             .offsets
             .get(&VertexComponents::POSITION)
         {
@@ -63,7 +62,11 @@ impl VulkanShader {
             descs.push(pos_attr);
         }
 
-        if let Some(&normal_offset) = self.vertex_metadata.offsets.get(&VertexComponents::NORMAL) {
+        if let Some(&normal_offset) = self
+            .vertex_component_layout
+            .offsets
+            .get(&VertexComponents::NORMAL)
+        {
             let normal_attr = vk::VertexInputAttributeDescription::builder()
                 .offset(normal_offset as u32)
                 .binding(0)
@@ -75,7 +78,7 @@ impl VulkanShader {
         }
 
         if let Some(&texcoord_offset) = self
-            .vertex_metadata
+            .vertex_component_layout
             .offsets
             .get(&VertexComponents::TEXCOORD)
         {
@@ -90,7 +93,7 @@ impl VulkanShader {
         }
 
         if let Some(&texcoord2_offset) = self
-            .vertex_metadata
+            .vertex_component_layout
             .offsets
             .get(&VertexComponents::TEXCOORD2)
         {

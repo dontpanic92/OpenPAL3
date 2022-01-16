@@ -363,8 +363,8 @@ impl RoleAnimation {
 
         let vertex_buffer = self.frames.get(frame_index).unwrap();
         let next_vertex_buffer = self.frames.get(next_frame_index).unwrap();
-
-        for i in 0..self.frames.get(frame_index).unwrap().count() {
+        let vertex_count = vertex_buffer.count();
+        for i in 0..vertex_count {
             let position = vertex_buffer.position(i).unwrap();
             let next_position = next_vertex_buffer.position(i).unwrap();
             let tex_coord = vertex_buffer.tex_coord(i).unwrap();
