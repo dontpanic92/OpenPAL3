@@ -2,8 +2,6 @@ use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
 
 use crate::math::*;
-use std::collections::HashMap;
-use std::hash::Hash;
 
 bitflags! {
     pub struct VertexComponents: u32 {
@@ -15,7 +13,7 @@ bitflags! {
 }
 
 impl VertexComponents {
-    pub const NUM_OF_SUPPORTED_COMPONENTS: usize = 4;
+    const NUM_OF_SUPPORTED_COMPONENTS: usize = 4;
 
     pub fn data_size(&self) -> usize {
         match self {
@@ -23,12 +21,8 @@ impl VertexComponents {
             &VertexComponents::NORMAL => std::mem::size_of::<Vec3>(),
             &VertexComponents::TEXCOORD => std::mem::size_of::<Vec2>(),
             &VertexComponents::TEXCOORD2 => std::mem::size_of::<Vec2>(),
-            c => self.layout_ref().size,
+            c => VertexComponentsLayout::ref_from_components(*self).size,
         }
-    }
-
-    pub fn layout(&self) -> VertexComponentsLayout {
-        self.layout_ref().clone()
     }
 
     fn get_supported_components() -> [VertexComponents; 4] {
@@ -39,24 +33,58 @@ impl VertexComponents {
             VertexComponents::TEXCOORD2,
         ]
     }
+}
 
-    fn layout_ref(&self) -> Ref<VertexComponents, VertexComponentsLayout> {
+#[derive(Debug, Clone)]
+pub struct VertexComponentsLayout {
+    components: VertexComponents,
+    size: usize,
+    offsets: [usize; VertexComponents::NUM_OF_SUPPORTED_COMPONENTS],
+}
+
+impl VertexComponentsLayout {
+    pub fn from_components(components: VertexComponents) -> VertexComponentsLayout {
+        Self::ref_from_components(components).clone()
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn get_offset(&self, component: VertexComponents) -> Option<usize> {
+        self.components
+            .contains(component)
+            .then_some(self.offsets[Self::component_index(component)])
+    }
+
+    fn ref_from_components(components: VertexComponents) -> Ref<'static, VertexComponents, Self> {
         LAYOUT_CACHE
-            .entry(*self)
-            .or_insert_with(|| Self::calc_layout(*self))
+            .entry(components)
+            .or_insert_with(|| Self::calc_layout(components))
             .downgrade()
     }
 
-    fn calc_layout(components: VertexComponents) -> VertexComponentsLayout {
-        let mut layout = VertexComponentsLayout {
+    fn component_index(components: VertexComponents) -> usize {
+        match components {
+            VertexComponents::POSITION => 0,
+            VertexComponents::NORMAL => 1,
+            VertexComponents::TEXCOORD => 2,
+            VertexComponents::TEXCOORD2 => 3,
+            _ => unreachable!(),
+        }
+    }
+
+    fn calc_layout(components: VertexComponents) -> Self {
+        let mut layout = Self {
+            components,
             size: 0,
-            offsets: HashMap::new(),
+            offsets: [0usize; VertexComponents::NUM_OF_SUPPORTED_COMPONENTS],
         };
 
         let supported_components = VertexComponents::get_supported_components();
         for component in supported_components {
             if components.contains(component) {
-                layout.offsets.insert(component, layout.size);
+                layout.offsets[Self::component_index(component)] = layout.size;
                 layout.size += component.data_size();
             }
         }
@@ -65,39 +93,31 @@ impl VertexComponents {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct VertexComponentsLayout {
-    pub size: usize,
-    pub offsets: HashMap<VertexComponents, usize>,
-}
-
 lazy_static! {
     static ref LAYOUT_CACHE: DashMap<VertexComponents, VertexComponentsLayout> = DashMap::new();
 }
 
 #[derive(Debug, Clone)]
 pub struct VertexBuffer {
-    components: VertexComponents,
-    components_layout: VertexComponentsLayout,
+    layout: VertexComponentsLayout,
     data: Vec<u8>,
     count: usize,
 }
 
 impl VertexBuffer {
     pub fn new(components: VertexComponents, count: usize) -> Self {
-        let layout = components.layout();
+        let layout = VertexComponentsLayout::from_components(components);
         let size = layout.size;
         let data = vec![0u8; size * count];
         Self {
-            components,
-            components_layout: layout,
+            layout: layout,
             data,
             count,
         }
     }
 
     pub fn new_with_data_blob(components: VertexComponents, data: Vec<u8>) -> Self {
-        let layout = components.layout();
+        let layout = VertexComponentsLayout::from_components(components);
         let size = layout.size;
         let len = data.len();
         if len % size != 0 {
@@ -105,8 +125,7 @@ impl VertexBuffer {
         }
 
         Self {
-            components,
-            components_layout: layout,
+            layout,
             data,
             count: len / size,
         }
@@ -142,7 +161,7 @@ impl VertexBuffer {
             components |= VertexComponents::TEXCOORD2;
         }
 
-        if components != self.components {
+        if components != self.layout.components {
             panic!("Vertex component mismatch when setting vertex data");
         }
 
@@ -160,10 +179,10 @@ impl VertexBuffer {
     }
 
     fn get_component<TData>(&self, index: usize, component: VertexComponents) -> Option<&TData> {
-        let vertex_size = self.components_layout.size;
-        match self.components_layout.offsets.get(&component) {
+        let vertex_size = self.layout.size;
+        match self.layout.get_offset(component) {
             None => None,
-            Some(&offset) => Some(unsafe {
+            Some(offset) => Some(unsafe {
                 &*(self
                     .data
                     .as_ptr()
@@ -192,8 +211,8 @@ impl VertexBuffer {
             panic!("Index out of range: {}", index);
         }
 
-        let offset = *self.components_layout.offsets.get(&component).unwrap();
-        let vertex_size = self.components_layout.size;
+        let offset = self.layout.get_offset(component).unwrap();
+        let vertex_size = self.layout.size;
         let data: &mut TData = unsafe {
             &mut *(self
                 .data
@@ -204,7 +223,7 @@ impl VertexBuffer {
     }
 
     pub fn set_vertex_blob<F: Fn(&mut [u8])>(&mut self, index: usize, update: F) {
-        let vertex_size = self.components_layout.size;
+        let vertex_size = self.layout.size;
         let data: &mut [u8] = unsafe {
             std::slice::from_raw_parts_mut(
                 self.data
@@ -222,9 +241,5 @@ impl VertexBuffer {
 
     pub fn count(&self) -> usize {
         self.count
-    }
-
-    pub fn components(&self) -> VertexComponents {
-        self.components
     }
 }

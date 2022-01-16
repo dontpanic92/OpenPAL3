@@ -28,7 +28,9 @@ impl VulkanShader {
 
         Ok(Self {
             device,
-            vertex_component_layout: shader_def.vertex_components().layout(),
+            vertex_component_layout: VertexComponentsLayout::from_components(
+                shader_def.vertex_components(),
+            ),
             vert_shader,
             frag_shader,
             name: shader_def.name().to_owned(),
@@ -38,7 +40,7 @@ impl VulkanShader {
     pub fn get_binding_description(&self) -> vk::VertexInputBindingDescription {
         vk::VertexInputBindingDescription::builder()
             .binding(0)
-            .stride(self.vertex_component_layout.size as u32)
+            .stride(self.vertex_component_layout.size() as u32)
             .input_rate(vk::VertexInputRate::VERTEX)
             .build()
     }
@@ -47,10 +49,9 @@ impl VulkanShader {
     pub fn get_attribute_descriptions(&self) -> Vec<vk::VertexInputAttributeDescription> {
         let mut descs = vec![];
 
-        if let Some(&position_offset) = self
+        if let Some(position_offset) = self
             .vertex_component_layout
-            .offsets
-            .get(&VertexComponents::POSITION)
+            .get_offset(VertexComponents::POSITION)
         {
             let pos_attr = vk::VertexInputAttributeDescription::builder()
                 .offset(position_offset as u32)
@@ -62,10 +63,9 @@ impl VulkanShader {
             descs.push(pos_attr);
         }
 
-        if let Some(&normal_offset) = self
+        if let Some(normal_offset) = self
             .vertex_component_layout
-            .offsets
-            .get(&VertexComponents::NORMAL)
+            .get_offset(VertexComponents::NORMAL)
         {
             let normal_attr = vk::VertexInputAttributeDescription::builder()
                 .offset(normal_offset as u32)
@@ -77,10 +77,9 @@ impl VulkanShader {
             descs.push(normal_attr);
         }
 
-        if let Some(&texcoord_offset) = self
+        if let Some(texcoord_offset) = self
             .vertex_component_layout
-            .offsets
-            .get(&VertexComponents::TEXCOORD)
+            .get_offset(VertexComponents::TEXCOORD)
         {
             let tex_attr = vk::VertexInputAttributeDescription::builder()
                 .offset(texcoord_offset as u32)
@@ -92,10 +91,9 @@ impl VulkanShader {
             descs.push(tex_attr);
         }
 
-        if let Some(&texcoord2_offset) = self
+        if let Some(texcoord2_offset) = self
             .vertex_component_layout
-            .offsets
-            .get(&VertexComponents::TEXCOORD2)
+            .get_offset(VertexComponents::TEXCOORD2)
         {
             let texcoord2_attr = vk::VertexInputAttributeDescription::builder()
                 .offset(texcoord2_offset as u32)

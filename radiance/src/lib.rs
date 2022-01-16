@@ -1,4 +1,5 @@
 #![feature(arbitrary_self_types)]
+#![feature(bool_to_option)]
 #![allow(unused_variables)]
 
 #[macro_use]
