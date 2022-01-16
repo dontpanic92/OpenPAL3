@@ -1,5 +1,6 @@
 use chardet::{charset2encoding, detect};
 use encoding::{label::encoding_from_whatwg_label, DecoderTrap};
+use image::ImageFormat;
 use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
 use mini_fs::MiniFs;
 use opengb::{
@@ -18,7 +19,7 @@ use serde::Serialize;
 use std::{path::Path, rc::Rc};
 
 use super::{
-    components::{AudioPane, ContentPane, TextPane, VideoPane},
+    components::{AudioPane, ContentPane, ImagePane, TextPane, VideoPane},
     DevToolsState,
 };
 
@@ -53,8 +54,9 @@ impl ContentTabs {
             .map(|e| e.to_str().unwrap().to_ascii_lowercase());
 
         match extension.as_ref().map(|e| e.as_str()) {
-            Some("mp3") | Some("wav") => self.open_audio(vfs, path, &extension.unwrap()),
-            Some("bik") | Some("mp4") => self.open_video(factory, vfs, path, &extension.unwrap()),
+            Some("mp3" | "wav") => self.open_audio(vfs, path, &extension.unwrap()),
+            Some("bik" | "mp4") => self.open_video(factory, vfs, path, &extension.unwrap()),
+            Some("tga" | "png" | "dds") => self.open_image(factory, vfs, path),
             Some("scn") => self.open_scn(vfs, path),
             Some("nav") => self.open_json_from(
                 path.as_ref(),
@@ -81,9 +83,7 @@ impl ContentTabs {
                 || pol_load_from_file(vfs, path.as_ref()).ok(),
                 true,
             ),
-            Some("h") | Some("asm") | Some("ini") | Some("txt") | Some("conf") => {
-                self.open_plain_text(vfs, path.as_ref())
-            }
+            Some("h" | "asm" | "ini" | "txt" | "conf") => self.open_plain_text(vfs, path.as_ref()),
             _ => {}
         }
     }
@@ -130,6 +130,28 @@ impl ContentTabs {
                 )),
             ));
         }
+    }
+
+    pub fn open_image<P: AsRef<Path>>(
+        &mut self,
+        factory: Rc<dyn ComponentFactory>,
+        vfs: &MiniFs,
+        path: P,
+    ) {
+        let tab_name = path.as_ref().to_string_lossy().to_string();
+        self.show_or_add_tab(tab_name, || {
+            let image = vfs
+                .read_to_end(&path)
+                .ok()
+                .and_then(|b| {
+                    image::load_from_memory(&b)
+                        .or_else(|_| image::load_from_memory_with_format(&b, ImageFormat::Tga))
+                        .or_else(|err| Err(err))
+                        .ok()
+                })
+                .and_then(|img| Some(img.to_rgba8()));
+            Box::new(ImagePane::new(factory.clone(), image))
+        });
     }
 
     pub fn open_scn<P: AsRef<Path>>(&mut self, vfs: &MiniFs, path: P) {

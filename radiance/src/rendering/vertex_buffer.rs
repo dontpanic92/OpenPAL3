@@ -15,16 +15,6 @@ bitflags! {
 impl VertexComponents {
     const NUM_OF_SUPPORTED_COMPONENTS: usize = 4;
 
-    pub fn data_size(&self) -> usize {
-        match self {
-            &VertexComponents::POSITION => std::mem::size_of::<Vec3>(),
-            &VertexComponents::NORMAL => std::mem::size_of::<Vec3>(),
-            &VertexComponents::TEXCOORD => std::mem::size_of::<Vec2>(),
-            &VertexComponents::TEXCOORD2 => std::mem::size_of::<Vec2>(),
-            c => VertexComponentsLayout::ref_from_components(*self).size,
-        }
-    }
-
     fn get_supported_components() -> [VertexComponents; 4] {
         [
             VertexComponents::POSITION,
@@ -64,12 +54,22 @@ impl VertexComponentsLayout {
             .downgrade()
     }
 
-    fn component_index(components: VertexComponents) -> usize {
-        match components {
+    fn component_index(component: VertexComponents) -> usize {
+        match component {
             VertexComponents::POSITION => 0,
             VertexComponents::NORMAL => 1,
             VertexComponents::TEXCOORD => 2,
             VertexComponents::TEXCOORD2 => 3,
+            _ => unreachable!(),
+        }
+    }
+
+    fn component_size(component: VertexComponents) -> usize {
+        match component {
+            VertexComponents::POSITION => std::mem::size_of::<Vec3>(),
+            VertexComponents::NORMAL => std::mem::size_of::<Vec3>(),
+            VertexComponents::TEXCOORD => std::mem::size_of::<Vec2>(),
+            VertexComponents::TEXCOORD2 => std::mem::size_of::<Vec2>(),
             _ => unreachable!(),
         }
     }
@@ -85,7 +85,7 @@ impl VertexComponentsLayout {
         for component in supported_components {
             if components.contains(component) {
                 layout.offsets[Self::component_index(component)] = layout.size;
-                layout.size += component.data_size();
+                layout.size += Self::component_size(component);
             }
         }
 
@@ -198,7 +198,7 @@ impl VertexBuffer {
         component: VertexComponents,
         update: F,
     ) {
-        let component_size = component.data_size();
+        let component_size = VertexComponentsLayout::component_size(component);
         if component_size != std::mem::size_of::<TData>() {
             panic!(
                 "Wrong size when set vertex data: component size {}, TData.size {}",
