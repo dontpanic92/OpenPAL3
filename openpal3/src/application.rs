@@ -1,6 +1,7 @@
 use crate::debug_layer::OpenPal3DebugLayer;
 use crate::main_menu_director;
 
+use opengb::video::register_opengb_video_decoders;
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::{Application, ApplicationExtension};
 use std::rc::Rc;
@@ -22,6 +23,8 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
         logger.init().unwrap();
 
         app.set_title(&self.app_name);
+
+        register_opengb_video_decoders();
 
         let input_engine = app.engine_mut().input_engine();
         let audio_engine = app.engine_mut().audio_engine();

@@ -1,5 +1,3 @@
-extern crate ffmpeg;
-
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     Data, Data as CpalStreamData, Device, SampleFormat, SampleFormat as CpalSampleFormat,
@@ -40,12 +38,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::rendering::{ComponentFactory, Texture};
 use imgui::TextureId;
 use lazy_static::lazy_static;
 use log::{debug, error, warn};
+use radiance::rendering::{ComponentFactory, Texture};
 
-use super::{VideoStream, VideoStreamState};
+use radiance::video::{VideoStream, VideoStreamState};
 
 const OUTPUT_AUDIO_BUFFER_MAX: usize = 50_000;
 
@@ -342,6 +340,10 @@ impl VideoStreamFFmpeg {
             time: None,
             current_texture: None,
         }
+    }
+
+    pub fn ctor(factory: Rc<dyn ComponentFactory>) -> Box<dyn VideoStream> {
+        Box::new(Self::new(factory))
     }
 
     pub fn init_with_data(&mut self, data: Vec<u8>) -> InitResult {

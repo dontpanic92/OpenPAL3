@@ -2,9 +2,7 @@ use std::rc::Rc;
 
 use imgui::TextureId;
 
-#[cfg(feature = "ffmpeg")]
-use crate::video::VideoStreamFFmpeg;
-use crate::video::{Codec, VideoStream, VideoStreamState};
+use crate::video::{create_stream, Codec, VideoStream, VideoStreamState};
 
 use super::ComponentFactory;
 
@@ -50,27 +48,5 @@ impl VideoPlayer {
 
     pub fn get_state(&self) -> VideoStreamState {
         self.stream.as_ref().unwrap().get_state()
-    }
-}
-
-fn create_stream(
-    factory: Rc<dyn ComponentFactory>,
-    data: Vec<u8>,
-    codec: Codec,
-) -> Option<Box<dyn VideoStream>> {
-    {
-        #[cfg(feature = "ffmpeg")]
-        {
-            let mut video_stream = match codec {
-                Codec::Bik => Box::new(VideoStreamFFmpeg::new(factory)),
-                Codec::Webm => Box::new(VideoStreamFFmpeg::new(factory)),
-                Codec::Theora => Box::new(VideoStreamFFmpeg::new(factory)),
-            };
-            video_stream.set_data(data);
-            return Some(video_stream);
-        }
-
-        #[cfg(not(feature = "ffmpeg"))]
-        None
     }
 }

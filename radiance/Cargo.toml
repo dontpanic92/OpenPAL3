@@ -37,7 +37,6 @@ ash-window = "0.9"
 hound = "3.4.0"
 lewton = "0.10.1"
 minimp3 = "0.5.1"
-cpal = "0.13.4"
 
 # Input
 gilrs = "0.8.1"
@@ -51,8 +50,3 @@ alto = { version = "3.0.4", default-features = false }
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef", "wingdi"] }
 
 # Video
-[dependencies.ffmpeg]
-git = "https://github.com/meh/rust-ffmpeg"
-default-features = false
-features = ["codec", "filter", "format", "resampling", "software-scaling"]
-optional = true
