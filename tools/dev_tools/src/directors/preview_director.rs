@@ -4,6 +4,7 @@ use opengb::{
     scene::{CvdModelEntity, PolModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity},
 };
 use radiance::{
+    input::{InputEngine, Key},
     math::Vec3,
     scene::{CoreEntity, Director, Entity, SceneManager},
 };
@@ -14,6 +15,7 @@ use super::main_director::DevToolsDirector;
 pub struct PreviewDirector {
     main_director: Rc<RefCell<DevToolsDirector>>,
     asset_mgr: Rc<AssetManager>,
+    input: Rc<RefCell<dyn InputEngine>>,
     path: PathBuf,
 }
 
@@ -21,11 +23,13 @@ impl PreviewDirector {
     pub fn new(
         main_director: Rc<RefCell<DevToolsDirector>>,
         asset_mgr: Rc<AssetManager>,
+        input: Rc<RefCell<dyn InputEngine>>,
         path: PathBuf,
     ) -> Rc<RefCell<Self>> {
         Rc::new(RefCell::new(Self {
             main_director,
             asset_mgr,
+            input,
             path,
         }))
     }
@@ -112,6 +116,24 @@ impl Director for PreviewDirector {
                 .root_entities_mut()
                 .clear();
             return Some(self.main_director.clone());
+        }
+
+        let input = self.input.borrow();
+        let translate = if input.get_key_state(Key::S).is_down() {
+            Some(Vec3::new(0., 0., 1000. * delta_sec))
+        } else if input.get_key_state(Key::W).is_down() {
+            Some(Vec3::new(0., 0., -1000. * delta_sec))
+        } else {
+            None
+        };
+
+        if let Some(t) = translate {
+            scene_manager
+                .scene_mut()
+                .unwrap()
+                .camera_mut()
+                .transform_mut()
+                .translate_local(&t);
         }
 
         scene_manager

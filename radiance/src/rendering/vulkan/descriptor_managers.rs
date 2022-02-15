@@ -22,7 +22,6 @@ pub struct DescriptorManager {
     per_object_pool: vk::DescriptorPool,
     texture_layout: vk::DescriptorSetLayout,
     per_frame_layout: vk::DescriptorSetLayout,
-    texture_descriptor_sets: Arc<Mutex<HashMap<usize, vk::DescriptorSet>>>,
     per_material_layouts: Arc<Mutex<HashMap<String, vk::DescriptorSetLayout>>>,
     dub_descriptor_manager: DynamicUniformBufferDescriptorManager,
 }
@@ -53,7 +52,6 @@ impl DescriptorManager {
             per_object_pool,
             texture_layout,
             per_frame_layout,
-            texture_descriptor_sets: Arc::new(Mutex::new(HashMap::new())),
             per_material_layouts: Arc::new(Mutex::new(HashMap::new())),
             dub_descriptor_manager,
         })
@@ -63,19 +61,8 @@ impl DescriptorManager {
         &self.dub_descriptor_manager
     }
 
-    pub fn get_texture_descriptor_set(
-        &self,
-        texture_id: usize,
-        texture: &VulkanTexture,
-    ) -> vk::DescriptorSet {
-        let mut descriptor_sets = self.texture_descriptor_sets.lock().unwrap();
-        if !descriptor_sets.contains_key(&texture_id) {
-            let set = self.allocate_texture_descriptor_set().unwrap();
-            descriptor_sets.insert(texture_id, set);
-        }
-
-        let set = *descriptor_sets.get(&texture_id).unwrap();
-
+    pub fn create_texture_descriptor_set(&self, texture: &VulkanTexture) -> vk::DescriptorSet {
+        let set = self.allocate_texture_descriptor_set().unwrap();
         let image_info = [vk::DescriptorImageInfo {
             sampler: texture.sampler().vk_sampler(),
             image_view: texture.image_view().vk_image_view(),
@@ -85,7 +72,7 @@ impl DescriptorManager {
         let writes = [vk::WriteDescriptorSet::builder()
             .dst_set(set)
             .dst_binding(0)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
             .image_info(&image_info)
             .build()];
         self.device.update_descriptor_sets(&writes, &[]);
@@ -309,10 +296,6 @@ impl Drop for DescriptorManager {
 
         for layout in self.per_material_layouts.lock().unwrap().values() {
             self.device.destroy_descriptor_set_layout(*layout);
-        }
-
-        for set in self.texture_descriptor_sets.lock().unwrap().values() {
-            self.free_texture_descriptor_set(*set);
         }
 
         self.device.destroy_descriptor_pool(self.texture_pool);

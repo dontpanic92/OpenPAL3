@@ -190,6 +190,7 @@ impl VulkanRenderingEngine {
             queue,
             command_pool,
             swapchain.render_pass(),
+            descriptor_manager.clone(),
             swapchain.images_len(),
             &mut imgui_context.as_ref().borrow_mut(),
         )));

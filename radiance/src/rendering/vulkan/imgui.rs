@@ -1,9 +1,10 @@
-use super::{device::Device, instance::Instance};
+use super::{descriptor_managers::DescriptorManager, device::Device, instance::Instance};
 use crate::imgui::{ImguiContext, ImguiFrame};
 use ash::vk::{self, DescriptorSet};
 use imgui::*;
 use imgui_rs_vulkan_renderer::*;
 use std::{
+    collections::HashSet,
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -11,6 +12,8 @@ use vk_mem::{Allocator, AllocatorCreateFlags, AllocatorCreateInfo};
 
 pub struct ImguiRenderer {
     renderer: Renderer,
+    descriptor_manager: Rc<DescriptorManager>,
+    texture_id_set: HashSet<TextureId>,
     _device: Rc<Device>,
 }
 
@@ -22,6 +25,7 @@ impl ImguiRenderer {
         queue: vk::Queue,
         command_pool: vk::CommandPool,
         render_pass: vk::RenderPass,
+        descriptor_manager: Rc<DescriptorManager>,
         in_flight_frames: usize,
         context: &mut ImguiContext,
     ) -> Self {
@@ -74,6 +78,8 @@ impl ImguiRenderer {
 
         Self {
             renderer,
+            descriptor_manager,
+            texture_id_set: HashSet::new(),
             _device: device.clone(),
         }
     }
@@ -84,10 +90,14 @@ impl ImguiRenderer {
         descriptor_set: DescriptorSet,
     ) -> TextureId {
         if let Some(id) = id {
-            self.renderer.textures().replace(id, descriptor_set);
-            return id;
+            let descriptor_set = self.renderer.textures().replace(id, descriptor_set);
+            self.descriptor_manager
+                .free_texture_descriptor_set(descriptor_set.unwrap());
+            id
         } else {
-            self.renderer.textures().insert(descriptor_set)
+            let id = self.renderer.textures().insert(descriptor_set);
+            self.texture_id_set.insert(id);
+            id
         }
     }
 
@@ -107,6 +117,15 @@ impl ImguiRenderer {
 
         if draw_data.total_idx_count > 0 {
             self.renderer.cmd_draw(command_buffer, draw_data).unwrap();
+        }
+    }
+}
+
+impl Drop for ImguiRenderer {
+    fn drop(&mut self) {
+        for id in &self.texture_id_set {
+            let set = self.renderer.textures().get(*id).unwrap();
+            self.descriptor_manager.free_texture_descriptor_set(*set);
         }
     }
 }

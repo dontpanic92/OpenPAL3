@@ -57,15 +57,15 @@ impl ComponentFactory for VulkanComponentFactory {
             &self.command_runner,
         )
         .unwrap();
-        let id = texture_id.unwrap_or(TextureId::new(0)).id();
+
         let descriptor_set = self
             .descriptor_manager
-            .get_texture_descriptor_set(id, &texture);
+            .create_texture_descriptor_set(&texture);
+
         let texture_id = self
             .imgui
             .borrow_mut()
             .upsert_texture(texture_id, descriptor_set);
-
         (Box::new(texture), texture_id)
     }
 

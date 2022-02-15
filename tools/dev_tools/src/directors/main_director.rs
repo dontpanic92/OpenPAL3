@@ -16,7 +16,7 @@ use std::{
 
 pub struct DevToolsDirector {
     shared_self: Weak<RefCell<Self>>,
-    _input_engine: Rc<RefCell<dyn InputEngine>>,
+    input_engine: Rc<RefCell<dyn InputEngine>>,
     asset_mgr: Rc<AssetManager>,
     content_tabs: ContentTabs,
 }
@@ -29,7 +29,7 @@ impl DevToolsDirector {
     ) -> Rc<RefCell<Self>> {
         let mut _self = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
-            _input_engine: input_engine,
+            input_engine: input_engine,
             content_tabs: ContentTabs::new(audio_engine),
             asset_mgr,
         }));
@@ -126,6 +126,7 @@ impl Director for DevToolsDirector {
             Some(PreviewDirector::new(
                 self.shared_self.upgrade().unwrap(),
                 self.asset_mgr.clone(),
+                self.input_engine.clone(),
                 path,
             ))
         } else {

@@ -1,4 +1,5 @@
 use super::{global_state::GlobalState, sce_commands::*};
+use crate::ui::dlg_box::DialogBox;
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
@@ -1018,6 +1019,9 @@ pub struct SceState {
     ext: HashMap<String, Box<dyn Any>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
     audio_engine: Rc<dyn AudioEngine>,
+
+    // Temporarily put it here but we need a dedicated place for the UI stuff.
+    dlg_box: DialogBox,
 }
 
 impl SceState {
@@ -1040,6 +1044,7 @@ impl SceState {
             ext,
             input_engine,
             audio_engine,
+            dlg_box: DialogBox::new(asset_mgr),
         }
     }
 
@@ -1090,6 +1095,10 @@ impl SceState {
     pub fn try_call_proc_by_name(&mut self, proc_name: &str) {
         self.context
             .try_call_proc_by_name(proc_name, &mut self.global_state);
+    }
+
+    pub fn dialog_box(&mut self) -> &mut DialogBox {
+        &mut self.dlg_box
     }
 }
 
