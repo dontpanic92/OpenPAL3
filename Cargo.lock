@@ -52,7 +52,7 @@ dependencies = [
 [[package]]
 name = "al-sys"
 version = "0.6.0"
-source = "git+https://github.com/dontpanic92/alto#c29decf6785132fdb73c3faec265bc30a65846a4"
+source = "git+https://github.com/dontpanic92/alto#f604fe8d9d97794b3d83602c40ec33057c97c3a9"
 dependencies = [
  "cmake",
  "libloading 0.5.2",
@@ -84,7 +84,7 @@ dependencies = [
 [[package]]
 name = "alto"
 version = "3.0.3"
-source = "git+https://github.com/dontpanic92/alto#c29decf6785132fdb73c3faec265bc30a65846a4"
+source = "git+https://github.com/dontpanic92/alto#f604fe8d9d97794b3d83602c40ec33057c97c3a9"
 dependencies = [
  "al-sys",
  "lazy_static",
@@ -2187,7 +2187,7 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 [[package]]
 name = "rental"
 version = "0.5.6"
-source = "git+https://github.com/dontpanic92/alto#c29decf6785132fdb73c3faec265bc30a65846a4"
+source = "git+https://github.com/dontpanic92/alto#f604fe8d9d97794b3d83602c40ec33057c97c3a9"
 dependencies = [
  "rental-impl",
  "stable_deref_trait",
@@ -2196,7 +2196,7 @@ dependencies = [
 [[package]]
 name = "rental-impl"
 version = "0.5.5"
-source = "git+https://github.com/dontpanic92/alto#c29decf6785132fdb73c3faec265bc30a65846a4"
+source = "git+https://github.com/dontpanic92/alto#f604fe8d9d97794b3d83602c40ec33057c97c3a9"
 dependencies = [
  "proc-macro2",
  "quote",
