@@ -4,7 +4,7 @@ use super::{ComponentFactory, Texture};
 
 pub struct Sprite {
     image: image::RgbaImage,
-    texture: Box<dyn Texture>,
+    _texture: Box<dyn Texture>,
     texture_id: imgui::TextureId,
 }
 
@@ -15,7 +15,7 @@ impl Sprite {
 
         Self {
             image,
-            texture,
+            _texture: texture,
             texture_id,
         }
     }

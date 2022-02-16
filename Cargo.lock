@@ -51,9 +51,8 @@ dependencies = [
 
 [[package]]
 name = "al-sys"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff8d9b0f4d10264c060ee5614dedb6b7695f366e93be6549c48f58981da39023"
+version = "0.6.0"
+source = "git+https://github.com/dontpanic92/alto#c29decf6785132fdb73c3faec265bc30a65846a4"
 dependencies = [
  "cmake",
  "libloading 0.5.2",
@@ -84,12 +83,11 @@ dependencies = [
 
 [[package]]
 name = "alto"
-version = "3.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d75be812fc4f27ac66752f30715a2357c9f3ad619229fc21cf431b32606dfae5"
+version = "3.0.3"
+source = "git+https://github.com/dontpanic92/alto#c29decf6785132fdb73c3faec265bc30a65846a4"
 dependencies = [
  "al-sys",
- "lazy_static 0.2.11",
+ "lazy_static",
  "parking_lot 0.4.8",
 ]
 
@@ -175,7 +173,7 @@ dependencies = [
  "bitflags",
  "cexpr 0.4.0",
  "clang-sys",
- "lazy_static 1.4.0",
+ "lazy_static",
  "lazycell",
  "peeking_take_while",
  "proc-macro2",
@@ -196,7 +194,7 @@ dependencies = [
  "clang-sys",
  "clap",
  "env_logger",
- "lazy_static 1.4.0",
+ "lazy_static",
  "lazycell",
  "log",
  "peeking_take_while",
@@ -433,7 +431,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f4ffc801dacf156c5854b9df4f425a626539c3a6ef7893cc0c5084a23f0b6c59"
 dependencies = [
  "atty",
- "lazy_static 1.4.0",
+ "lazy_static",
  "winapi",
 ]
 
@@ -453,7 +451,7 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b1b9d958c2b1368a663f05538fc1b5975adce1e19f435acceae987aceeeb369"
 dependencies = [
- "lazy_static 1.4.0",
+ "lazy_static",
  "nom 5.1.2",
  "rust-ini 0.13.0",
  "serde 1.0.133",
@@ -591,7 +589,7 @@ dependencies = [
  "coreaudio-rs",
  "jni",
  "js-sys",
- "lazy_static 1.4.0",
+ "lazy_static",
  "libc",
  "mach 0.3.2",
  "ndk 0.3.0",
@@ -643,7 +641,7 @@ checksum = "4ec02e091aa634e2c3ada4a392989e7c3116673ef0ac5b72232439094d73b7fd"
 dependencies = [
  "cfg-if 1.0.0",
  "crossbeam-utils",
- "lazy_static 1.4.0",
+ "lazy_static",
  "memoffset 0.6.5",
  "scopeguard",
 ]
@@ -655,7 +653,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d82cfc11ce7f2c3faef78d8a684447b40d503d9681acebed6cb728d45940c4db"
 dependencies = [
  "cfg-if 1.0.0",
- "lazy_static 1.4.0",
+ "lazy_static",
 ]
 
 [[package]]
@@ -1271,12 +1269,6 @@ dependencies = [
 
 [[package]]
 name = "lazy_static"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76f033c7ad61445c5b347c7382dd1237847eb1bce590fe50365dcb33d546be73"
-
-[[package]]
-name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
@@ -1585,7 +1577,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5caf0c24d51ac1c905c27d4eda4fa0635bbe0de596b8f79235e0b17a4d29385"
 dependencies = [
- "lazy_static 1.4.0",
+ "lazy_static",
  "libc",
  "log",
  "ndk 0.3.0",
@@ -1599,7 +1591,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc291b8de2095cba8dab7cf381bf582ff4c17a09acf854c32e46545b08085d28"
 dependencies = [
- "lazy_static 1.4.0",
+ "lazy_static",
  "libc",
  "log",
  "ndk 0.5.0",
@@ -1613,7 +1605,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04c0d14b0858eb9962a5dac30b809b19f19da7e4547d64af2b0bb051d2e55d79"
 dependencies = [
- "lazy_static 1.4.0",
+ "lazy_static",
  "libc",
  "log",
  "ndk 0.6.0",
@@ -1914,7 +1906,7 @@ dependencies = [
  "ffmpeg",
  "image",
  "imgui",
- "lazy_static 1.4.0",
+ "lazy_static",
  "log",
  "memmap",
  "mini-fs",
@@ -2100,7 +2092,7 @@ dependencies = [
  "imgui",
  "imgui-rs-vulkan-renderer",
  "imgui-winit-support",
- "lazy_static 1.4.0",
+ "lazy_static",
  "lewton",
  "log",
  "lru",
@@ -2237,7 +2229,7 @@ dependencies = [
  "crossbeam-channel",
  "crossbeam-deque",
  "crossbeam-utils",
- "lazy_static 1.4.0",
+ "lazy_static",
  "num_cpus",
 ]
 
@@ -2289,8 +2281,7 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 [[package]]
 name = "rental"
 version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc89fe2acac36d212474d138aaf939c04a82df5b61d07011571ebce5aef81f2e"
+source = "git+https://github.com/dontpanic92/alto#c29decf6785132fdb73c3faec265bc30a65846a4"
 dependencies = [
  "rental-impl",
  "stable_deref_trait",
@@ -2299,8 +2290,7 @@ dependencies = [
 [[package]]
 name = "rental-impl"
 version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "475e68978dc5b743f2f40d8e0a8fdc83f1c5e78cbf4b8fa5e74e73beebc340de"
+source = "git+https://github.com/dontpanic92/alto#c29decf6785132fdb73c3faec265bc30a65846a4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2350,7 +2340,7 @@ version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2aa654bc32eb9ca14cce1a084abc9dfe43949a4547c35269a094c39272db3bb"
 dependencies = [
- "lazy_static 1.4.0",
+ "lazy_static",
  "log",
  "winapi",
 ]
@@ -2433,7 +2423,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a3a4e0ea8a88553209f6cc6cfe8724ecad22e1acf372793c27d995290fe74f8"
 dependencies = [
- "lazy_static 1.4.0",
+ "lazy_static",
  "num-traits 0.1.43",
  "regex",
  "serde 0.8.23",
@@ -2527,7 +2517,7 @@ dependencies = [
  "bitflags",
  "calloop",
  "dlib",
- "lazy_static 1.4.0",
+ "lazy_static",
  "log",
  "memmap2",
  "nix 0.22.0",
@@ -2857,7 +2847,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a317bf8f9fba2476b4b2c85ef4c4af8ff39c3c7f0cdfeed4f82c34a880aa837b"
 dependencies = [
  "bumpalo",
- "lazy_static 1.4.0",
+ "lazy_static",
  "log",
  "proc-macro2",
  "quote",
@@ -2963,7 +2953,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "beb0eb50984d3efb0642b58ee2f458a62d765563bebd94049b6f9f40979f12aa"
 dependencies = [
  "dlib",
- "lazy_static 1.4.0",
+ "lazy_static",
  "pkg-config",
 ]
 
@@ -2990,7 +2980,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea187a8ef279bc014ec368c27a920da2024d2a711109bfbe3440585d5cf27ad9"
 dependencies = [
  "either",
- "lazy_static 1.4.0",
+ "lazy_static",
  "libc",
 ]
 
@@ -3048,7 +3038,7 @@ dependencies = [
  "core-video-sys",
  "dispatch",
  "instant",
- "lazy_static 1.4.0",
+ "lazy_static",
  "libc",
  "log",
  "mio",
@@ -3083,7 +3073,7 @@ version = "2.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea26926b4ce81a6f5d9d0f3a0bc401e5a37c6ae14a1bfaa8ff6099ca80038c59"
 dependencies = [
- "lazy_static 1.4.0",
+ "lazy_static",
  "libc",
  "pkg-config",
 ]
