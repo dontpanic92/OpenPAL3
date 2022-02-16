@@ -30,6 +30,8 @@ jobs:
           sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.2.198-focal.list https://packages.lunarg.com/vulkan/1.2.198/lunarg-vulkan-1.2.198-focal.list
           sudo apt update
           sudo apt install vulkan-sdk libudev-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev libavcodec-dev libavformat-dev libavfilter-dev libswresample-dev libswscale-dev
+          sudo apt install libbs2b-dev liblilv-dev libsratom-dev libsord-dev libserd-dev librubberband-dev libmysofa-dev flite1-dev libfribidi-dev libass-dev libvidstab-dev libzmq-dev libgme-dev
+          sudo apt install libopenmpt-dev libchromaprint-dev libbluray-dev libgnutls-dev libssh-dev libvpx-dev libwebpmux-dev libzvbi-dev libsnappy-dev libaom-dev libcodec2-dev libgsm-dev libmp3lame-dev libopenjp2-dev libopus-dev libshine-dev libspeex-dev libtheoraenc-dev libtheoradec-dev libogg-dev libtwolame-dev libvorbis-dev libvorbisenc-dev libwavpack-dev libwebp-dev libx264-dev libx265-dev libxvidcore-dev libsoxr-dev libva-drm-dev libva-x11-dev libvdpau-dev 
       - name: Build
         run: cargo build --workspace --release --verbose ${{ matrix.features }}
 
