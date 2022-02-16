@@ -42,3 +42,6 @@ name = "android.permission.READ_EXTERNAL_STORAGE"
 config_changes = "orientation"
 launch_mode = "singleTop"
 orientation = "portrait"
+
+[features]
+ffmpeg = ["opengb/ffmpeg"]
