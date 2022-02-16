@@ -31,7 +31,7 @@ jobs:
           sudo apt update
           sudo apt install vulkan-sdk libudev-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev libavcodec-dev libavformat-dev libavfilter-dev libswresample-dev libswscale-dev
           sudo apt install libbs2b-dev liblilv-dev libsratom-dev libsord-dev libserd-dev librubberband-dev libmysofa-dev flite1-dev libfribidi-dev libass-dev libvidstab-dev libzmq3-dev libgme-dev
-          sudo apt install libopenmpt-dev libchromaprint-dev libbluray-dev libgnutls-dev libssh-dev libvpx-dev libwebpmux-dev libzvbi-dev libsnappy-dev libaom-dev libcodec2-dev libgsm-dev libmp3lame-dev libopenjp2-dev libopus-dev libshine-dev libspeex-dev libtheoraenc-dev libtheoradec-dev libogg-dev libtwolame-dev libvorbis-dev libvorbisenc-dev libwavpack-dev libwebp-dev libx264-dev libx265-dev libxvidcore-dev libsoxr-dev libva-drm-dev libva-x11-dev libvdpau-dev 
+          sudo apt install libopenmpt-dev libchromaprint-dev libbluray-dev libgnutls28-dev libssh-dev libvpx-dev libwebp-dev libzvbi-dev libsnappy-dev libaom-dev libcodec2-dev libgsm1-dev libmp3lame-dev libopenjp2-7-dev libopus-dev libshine-dev libspeex-dev libtheora-dev libogg-dev libtwolame-dev libvorbis-dev libwavpack-dev libwebp-dev libx264-dev libx265-dev libxvidcore-dev libsoxr-dev libva-dev libvdpau-dev 
       - name: Build
         run: cargo build --workspace --release --verbose ${{ matrix.features }}
 
