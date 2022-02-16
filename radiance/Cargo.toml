@@ -42,9 +42,10 @@ minimp3 = "0.5.1"
 gilrs = "0.8.1"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
-alto = { version = "3.0.4", features = ["dynamic"] }
+alto = { git = "https://github.com/dontpanic92/alto", features = ["dynamic"] }
+
 [target.'cfg(target_os = "android")'.dependencies]
-alto = { version = "3.0.4", default-features = false }
+alto = { git = "https://github.com/dontpanic92/alto", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef", "wingdi"] }
