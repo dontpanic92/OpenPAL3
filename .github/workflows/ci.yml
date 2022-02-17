@@ -29,7 +29,10 @@ jobs:
           wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
           sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.2.198-focal.list https://packages.lunarg.com/vulkan/1.2.198/lunarg-vulkan-1.2.198-focal.list
           sudo apt update
-          sudo apt install vulkan-sdk libudev-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev libavcodec-dev libavformat-dev libavfilter-dev libswresample-dev libswscale-dev
+          sudo apt install nasm vulkan-sdk libudev-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev libavcodec-dev libavformat-dev libavfilter-dev libswresample-dev libswscale-dev
+          sudo apt install libbs2b-dev liblilv-dev libsratom-dev libsord-dev libserd-dev librubberband-dev libmysofa-dev flite1-dev libfribidi-dev libass-dev libvidstab-dev libzmq3-dev libgme-dev
+          sudo apt install libopenmpt-dev libchromaprint-dev libbluray-dev libgnutls28-dev libssh-dev libvpx-dev libwebp-dev libzvbi-dev libsnappy-dev libaom-dev libcodec2-dev libgsm1-dev libmp3lame-dev libopenjp2-7-dev libopus-dev libshine-dev libspeex-dev libtheora-dev libogg-dev libtwolame-dev libvorbis-dev libwavpack-dev libwebp-dev libx264-dev libx265-dev libxvidcore-dev libsoxr-dev libva-dev libvdpau-dev 
+          sudo apt install libdrm-dev ocl-icd-opencl-dev libxv-dev
       - name: Build
         run: cargo build --workspace --release --verbose ${{ matrix.features }}
 
@@ -49,7 +52,7 @@ jobs:
           override: true
       - name: Install Deps
         run: |
-          brew install ffmpeg
+          brew install ffmpeg automake fdk-aac git lame libass libtool libvorbis libvpx opus sdl shtool texi2html theora wget x264 x265 xvid nasm
           curl -O https://sdk.lunarg.com/sdk/download/1.2.198.1/mac/vulkansdk-macos-1.2.198.1.dmg
           hdiutil attach vulkansdk-macos-1.2.198.1.dmg
           cd /Volumes/vulkansdk-macos-1.2.198.1
@@ -81,4 +84,4 @@ jobs:
       - name: Install Cargo APK
         run: cargo install --force cargo-apk
       - name: Build APK
-        run: cd openpal3 && cargo apk build --release --lib --verbose
+        run: cd openpal3 && cargo apk build --release --lib -vv
