@@ -84,4 +84,4 @@ jobs:
       - name: Install Cargo APK
         run: cargo install --force cargo-apk
       - name: Build APK
-        run: cd openpal3 && cargo apk build --release --lib --verbose
+        run: cd openpal3 && cargo apk build --release --lib -vv
