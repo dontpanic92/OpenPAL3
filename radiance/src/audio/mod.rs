@@ -1,6 +1,12 @@
+#[cfg(not(target_os = "psp"))]
 mod decoders;
-mod openal;
 
+mod null;
+pub use null::NullAudioEngine;
+
+#[cfg(not(target_os = "psp"))]
+mod openal;
+#[cfg(not(target_os = "psp"))]
 pub use openal::OpenAlAudioEngine;
 
 #[derive(Copy, Clone)]

@@ -7,16 +7,16 @@ use crate::{
     application::Platform,
     input::engine::{Axis, AxisState},
 };
-use std::{
-    cell::RefCell,
-    mem::swap,
-    rc::{Rc, Weak},
-};
+use core::{cell::RefCell, mem::swap};
+
+use alloc::boxed::Box;
+use alloc::rc::Rc;
+use alloc::vec;
 
 #[cfg(target_os = "windows")]
 use winapi::um::winuser;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))]
 use winit::event::Event;
 
 pub struct GenericInputEngine {

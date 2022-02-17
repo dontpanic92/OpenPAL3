@@ -1,4 +1,5 @@
 use super::{Director, Scene};
+use alloc::boxed::Box;
 use imgui::Ui;
 use std::{cell::RefCell, rc::Rc};
 

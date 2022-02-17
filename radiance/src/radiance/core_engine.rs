@@ -1,10 +1,7 @@
-#[cfg(not(target_os = "windows"))]
-use winit::window::Window;
-
 use super::DebugLayer;
 use crate::{
     audio::AudioEngine,
-    imgui::ImguiContext,
+    ui::ImguiContext,
     input::{InputEngine, InputEngineInternal},
 };
 use crate::{
@@ -82,8 +79,8 @@ impl CoreRadianceEngine {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
-    pub fn update(&mut self, window: &Window, delta_sec: f32) {
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "android",))]
+    pub fn update(&mut self, window: &winit::window::Window, delta_sec: f32) {
         self.input_engine.borrow_mut().update(delta_sec);
 
         let scene_manager = self.scene_manager.as_mut().unwrap();

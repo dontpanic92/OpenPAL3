@@ -1,3 +1,4 @@
+use alloc::vec;
 use image::ImageFormat;
 
 use crate::rendering::texture::TextureStore;

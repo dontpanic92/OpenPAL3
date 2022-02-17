@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use alloc::{boxed::Box, vec::Vec};
 use dashmap::DashMap;
 use imgui::TextureId;
 

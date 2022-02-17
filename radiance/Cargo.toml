@@ -7,47 +7,78 @@ build = "build.rs"
 
 [dependencies]
 
+########################## Alto (OpenAL) ##########################
+[target.'cfg(any(windows, linux, macos))'.dependencies.alto]
+git = "https://github.com/dontpanic92/alto"
+features = ["dynamic"]
+
+[target.'cfg(android)'.dependencies.alto]
+git = "https://github.com/dontpanic92/alto"
+default-features = false
+
+
+########################## lazy_static ##########################
+[target.'cfg(any(windows, linux, macos))'.dependencies.lazy_static]
+version = "1.4.0"
+
+[target.'cfg(psp)'.dependencies.lazy_static]
+version = "1.4.0"
+
+########################## serde ##########################
+[target.'cfg(any(windows, linux, macos))'.dependencies.serde]
+version = "1.0.136"
+features = ["derive"]
+
+[target.'cfg(psp)'.dependencies.serde]
+version = "1.0.136"
+default-features = false
+features = ["alloc", "derive"]
+
+#------------------------- Platform specific packages -------------------------
+
+########################## Desktops ##########################
+[target.'cfg(any(android, windows, linux, macos))'.dependencies]
+ash = { version = "0.35", default-features = false, features = ["loaded"] }
+imgui-rs-vulkan-renderer = { version = "1.1", features = ["vk-mem"] }
+vk-mem = "0.2"
+image = "0.23.0"
+winit = "0.26.1"
+imgui-winit-support = { version = "0.8.1", default-features = false, features = ["winit-26"] }
+ash-window = "0.9"
 # General
 backtrace = "0.3.44"
 bitflags = "1.2.1"
 clipboard = "0.5.0"
 dashmap = "4.0.2"
 downcast-rs = "1.2.0"
-lazy_static = "1.2.0"
 log = "0.4.13"
 lru = { version = "0.6.6", features=["nightly"] }
 memoffset = "0.5.3"
 radiance-assets = { path = "../radiance-assets" }
-serde = { version = "1.0.106", features = ["derive"] }
+
 failure = "0.1.8"
-
-# Rendering
-ash = { version = "0.35", default-features = false, features = ["loaded"] }
-image = "0.23.0"
-imgui = "^0.8"
-imgui-rs-vulkan-renderer = { version = "1.1", features = ["vk-mem"] }
-vk-mem = "0.2"
-
-# Window and event handling
-winit = "0.26.1"
-imgui-winit-support = { version = "0.8.1", default-features = false, features = ["winit-26"] }
-ash-window = "0.9"
 
 # Audio
 hound = "3.4.0"
 lewton = "0.10.1"
 minimp3 = "0.5.1"
 
+imgui = "^0.8"
+
 # Input
 gilrs = "0.8.1"
 
-[target.'cfg(not(target_os = "android"))'.dependencies]
-alto = { git = "https://github.com/dontpanic92/alto", features = ["dynamic"] }
-
-[target.'cfg(target_os = "android")'.dependencies]
-alto = { git = "https://github.com/dontpanic92/alto", default-features = false }
-
+########################## Windows ##########################
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef", "wingdi"] }
 
-# Video
+########################## Android ##########################
+[target.'cfg(android)'.dependencies]
+ash = { version = "0.35", default-features = false, features = ["loaded"] }
+imgui-rs-vulkan-renderer = { version = "1.1", features = ["vk-mem"] }
+vk-mem = "0.2"
+
+########################## PSP ##########################
+[target.'cfg(psp)'.dependencies]
+psp = "0.2"
+byteorder = {version = "1.4.3", default-features = false}

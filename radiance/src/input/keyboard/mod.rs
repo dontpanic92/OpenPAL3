@@ -1,9 +1,17 @@
 #[cfg(target_os = "windows")]
 mod windows;
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "android",
+))]
 mod winit;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "android",
+))]
 pub use self::winit::KeyboardInput;
 #[cfg(target_os = "windows")]
 pub use windows::KeyboardInput;

@@ -1,8 +1,11 @@
 use std::process::Command;
 
 fn main() {
-    build_shader("simple_triangle.vert");
-    build_shader("simple_triangle.frag");
+    if cfg!(not(target_os = "psp"))
+    {
+        build_shader("simple_triangle.vert");
+        build_shader("simple_triangle.frag");
+    }
 }
 
 fn build_shader(shader_name: &str) {
