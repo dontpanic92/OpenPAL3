@@ -1,7 +1,10 @@
-#[cfg(target_os = "windows")]
-mod windows;
-#[cfg(target_os = "windows")]
-pub use windows::Window;
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "android",
+))]
+pub mod vulkan;
 
 #[cfg(any(
     target_os = "windows",
@@ -9,16 +12,10 @@ pub use windows::Window;
     target_os = "macos",
     target_os = "android",
 ))]
-mod winit;
-#[cfg(any(
-    target_os = "windows",
-    target_os = "linux",
-    target_os = "macos",
-    target_os = "android",
-))]
-pub use ::winit::window::Window;
+pub type DefaultRenderingEngine = vulkan::VulkanRenderingEngine;
 
 #[cfg(target_os = "psp")]
-mod psp;
+pub mod gu;
+
 #[cfg(target_os = "psp")]
-pub use psp::Window;
+pub type DefaultRenderingEngine = gu::GuRenderingEngine;

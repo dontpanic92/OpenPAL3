@@ -1,10 +1,12 @@
-use super::{AudioSource, AudioSourceState};
+use alloc::{boxed::Box, vec::Vec};
+
+use super::{AudioEngine, AudioSource, AudioSourceState};
 
 pub struct NullAudioEngine {}
 
 impl AudioEngine for NullAudioEngine {
     fn create_source(&self) -> Box<dyn AudioSource> {
-        Box::new(NullAudioSource::new())
+        Box::new(NullAudioSource {})
     }
 }
 

@@ -1,6 +1,6 @@
 use super::texture::VulkanTextureStore;
 use super::{device::Device, shader::VulkanShader, texture::VulkanTexture};
-use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
+use super::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::{Material, MaterialDef};
 use std::rc::Rc;
 

@@ -1,6 +1,6 @@
 use super::buffer::{Buffer, BufferType};
+use super::descriptor_managers::DynamicUniformBufferDescriptorManager;
 use crate::math::Mat44;
-use crate::rendering::vulkan::descriptor_managers::DynamicUniformBufferDescriptorManager;
 use ash::vk;
 use std::{rc::Rc, sync::Mutex};
 

@@ -1,8 +1,7 @@
 use std::process::Command;
 
 fn main() {
-    if cfg!(not(target_os = "psp"))
-    {
+    if cfg!(not(target_os = "psp")) {
         build_shader("simple_triangle.vert");
         build_shader("simple_triangle.frag");
     }

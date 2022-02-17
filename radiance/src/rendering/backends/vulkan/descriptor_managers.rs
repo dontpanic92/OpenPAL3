@@ -2,8 +2,8 @@ use super::{
     buffer::Buffer, descriptor_pool::DescriptorPool, descriptor_pool::DescriptorPoolCreateInfo,
     descriptor_set_layout::DescriptorSetLayout, device::Device, texture::VulkanTexture,
 };
-use crate::rendering::vulkan::material::VulkanMaterial;
-use crate::rendering::vulkan::uniform_buffers::PerFrameUniformBuffer;
+use super::material::VulkanMaterial;
+use super::uniform_buffers::PerFrameUniformBuffer;
 use ash::prelude::VkResult;
 use ash::vk;
 use std::collections::HashMap;

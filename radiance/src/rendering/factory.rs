@@ -1,4 +1,6 @@
-use imgui::TextureId;
+use alloc::{boxed::Box, vec::Vec};
+
+use crate::ui::TextureId;
 
 use super::{
     texture::TextureDef, Material, MaterialDef, RenderObject, RenderingComponent, Shader,

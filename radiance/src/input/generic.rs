@@ -1,7 +1,7 @@
 use super::keyboard::KeyboardInput;
 use super::{
     engine::{InputEngine, InputEngineInternal, Key, KeyState},
-    gamepad::GilrsInput,
+    gamepad::GamePadInput,
 };
 use crate::{
     application::Platform,
@@ -10,8 +10,8 @@ use crate::{
 use core::{cell::RefCell, mem::swap};
 
 use alloc::boxed::Box;
-use alloc::rc::Rc;
-use alloc::vec;
+use alloc::rc::{Rc, Weak};
+use alloc::{vec, vec::Vec};
 
 #[cfg(target_os = "windows")]
 use winapi::um::winuser;
@@ -26,7 +26,7 @@ pub struct GenericInputEngine {
     axis_states: Box<Vec<AxisState>>,
 
     keyboard: KeyboardInput,
-    gamepad: GilrsInput,
+    gamepad: GamePadInput,
 }
 
 impl GenericInputEngine {
@@ -43,7 +43,7 @@ impl GenericInputEngine {
             ]),
             axis_states: Box::new(vec![AxisState::new(); Axis::Unknown as usize + 1]),
             keyboard: KeyboardInput,
-            gamepad: GilrsInput::new(),
+            gamepad: GamePadInput::new(),
         }));
 
         engine.borrow_mut().input_engine = Rc::downgrade(&engine);
@@ -56,7 +56,8 @@ impl GenericInputEngine {
         platform.add_message_callback(Box::new(move |msg| {
             _self.borrow_mut().message_callback(msg)
         }));
-        #[cfg(not(target_os = "windows"))]
+
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))]
         platform.add_message_callback(Box::new(move |_, msg| {
             _self.borrow_mut().message_callback(msg)
         }));
@@ -68,7 +69,7 @@ impl GenericInputEngine {
             .process_message(&mut self.last_key_states, msg);
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "android",))]
     fn message_callback(&mut self, msg: &Event<()>) {
         self.keyboard
             .process_message(&mut self.last_key_states, msg);

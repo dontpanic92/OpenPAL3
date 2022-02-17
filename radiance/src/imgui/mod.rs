@@ -14,11 +14,12 @@ use crate::application::Platform;
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))]
 use ::winit::window::Window;
-use imgui::*;
+
 use std::{
     cell::{RefCell, RefMut},
     rc::Rc,
 };
+use ui::*;
 
 pub struct ImguiContext {
     context: Rc<RefCell<Context>>,

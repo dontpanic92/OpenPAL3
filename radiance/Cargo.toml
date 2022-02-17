@@ -5,9 +5,33 @@ authors = ["dontpanic <lishengqiu.hit@gmail.com>"]
 edition = "2018"
 build = "build.rs"
 
-[dependencies]
+[features]
+default = ["std"]
+std = ["byteorder/default", "backtrace/default", "downcast-rs/default", "dashmap", "backtrace", "core2/default"]
+no_std = ["lazy_static/spin_no_std", "serde/alloc", "spin", "tinybmp", "tinytga", "dds-rs", "core2/alloc", "micromath"]
 
-########################## Alto (OpenAL) ##########################
+[dependencies]
+core2 = { version = "0.4.0", default-features = false }
+lru = { version = "0.6.6", features=["nightly"] }
+hashbrown = "0.12.0"
+log = "0.4.13"
+bitflags = "1.2.1"
+byteorder = { version = "1.4.3", default-features = false }
+
+lazy_static = { version = "1.4.0" }
+downcast-rs = { version = "1.2.0", default-features = false }
+dashmap = { version = "5.1.0", optional = true }
+backtrace = { version = "0.3.44", optional = true }
+serde = { version = "1.0.136", default-features = false, features = ["derive"]}
+
+# no_std stuff
+spin = { version = "0.9.2", optional = true }
+tinybmp = { version = "0.3.1", optional = true }
+tinytga = { version = "0.4.1", optional = true }
+dds-rs = { git = "https://github.com/dontpanic92/dds-rs", optional = true, default-features = false }
+micromath = { version = "2.0.0", optional = true }
+
+# alto (OpenAL)
 [target.'cfg(any(windows, linux, macos))'.dependencies.alto]
 git = "https://github.com/dontpanic92/alto"
 features = ["dynamic"]
@@ -16,27 +40,17 @@ features = ["dynamic"]
 git = "https://github.com/dontpanic92/alto"
 default-features = false
 
+# backtrace
+[target.'cfg(any(windows, linux, macos, android))'.dependencies.backtrace]
+version = "0.3.44"
 
-########################## lazy_static ##########################
-[target.'cfg(any(windows, linux, macos))'.dependencies.lazy_static]
-version = "1.4.0"
-
-[target.'cfg(psp)'.dependencies.lazy_static]
-version = "1.4.0"
-
-########################## serde ##########################
-[target.'cfg(any(windows, linux, macos))'.dependencies.serde]
-version = "1.0.136"
-features = ["derive"]
-
-[target.'cfg(psp)'.dependencies.serde]
-version = "1.0.136"
+[target.'cfg(psp)'.dependencies.backtrace]
+version = "0.3.44"
 default-features = false
-features = ["alloc", "derive"]
 
 #------------------------- Platform specific packages -------------------------
 
-########################## Desktops ##########################
+# Desktops
 [target.'cfg(any(android, windows, linux, macos))'.dependencies]
 ash = { version = "0.35", default-features = false, features = ["loaded"] }
 imgui-rs-vulkan-renderer = { version = "1.1", features = ["vk-mem"] }
@@ -45,40 +59,28 @@ image = "0.23.0"
 winit = "0.26.1"
 imgui-winit-support = { version = "0.8.1", default-features = false, features = ["winit-26"] }
 ash-window = "0.9"
-# General
-backtrace = "0.3.44"
-bitflags = "1.2.1"
+
 clipboard = "0.5.0"
-dashmap = "4.0.2"
-downcast-rs = "1.2.0"
-log = "0.4.13"
-lru = { version = "0.6.6", features=["nightly"] }
 memoffset = "0.5.3"
 radiance-assets = { path = "../radiance-assets" }
 
 failure = "0.1.8"
-
-# Audio
 hound = "3.4.0"
 lewton = "0.10.1"
 minimp3 = "0.5.1"
-
 imgui = "^0.8"
-
-# Input
 gilrs = "0.8.1"
 
-########################## Windows ##########################
+# Windows 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef", "wingdi"] }
 
-########################## Android ##########################
+# Android 
 [target.'cfg(android)'.dependencies]
 ash = { version = "0.35", default-features = false, features = ["loaded"] }
 imgui-rs-vulkan-renderer = { version = "1.1", features = ["vk-mem"] }
 vk-mem = "0.2"
 
-########################## PSP ##########################
+# PSP 
 [target.'cfg(psp)'.dependencies]
 psp = "0.2"
-byteorder = {version = "1.4.3", default-features = false}

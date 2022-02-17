@@ -16,8 +16,14 @@ pub mod audio;
         target_os = "macos",
         target_os = "android",
     ),
-    path = "imgui"
+    path = "imgui/mod.rs"
 )]
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "android",
+))]
 pub mod ui;
 
 #[cfg(target_os = "psp")]
@@ -32,8 +38,19 @@ pub mod video;
 
 mod constants;
 
+extern crate alloc;
+
 #[macro_use]
 extern crate lazy_static;
 
 #[macro_use]
+extern crate downcast_rs;
+
+#[macro_use]
 extern crate bitflags;
+
+#[cfg(all(feature = "std", feature = "no_std"))]
+compile_error!("feature \"std\" and feature \"no_std\" cannot be enabled at the same time");
+
+#[cfg(not(any(feature = "std", feature = "no_std")))]
+compile_error!("One of feature \"std\" and feature \"no_std\" must be enabled");

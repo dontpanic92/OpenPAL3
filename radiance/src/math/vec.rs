@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "no_std")]
+use micromath::F32Ext;
+
 /// 2d column vector
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[repr(C)]
@@ -15,7 +18,7 @@ impl Vec2 {
 
     pub fn as_slice(&self) -> &[u8] {
         unsafe {
-            std::slice::from_raw_parts(self as *const _ as *const u8, std::mem::size_of::<Self>())
+            core::slice::from_raw_parts(self as *const _ as *const u8, core::mem::size_of::<Self>())
         }
     }
 }
@@ -99,7 +102,7 @@ impl Vec3 {
 
     pub fn as_slice(&self) -> &[u8] {
         unsafe {
-            std::slice::from_raw_parts(self as *const _ as *const u8, std::mem::size_of::<Self>())
+            core::slice::from_raw_parts(self as *const _ as *const u8, core::mem::size_of::<Self>())
         }
     }
 }

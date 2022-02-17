@@ -1,12 +1,11 @@
-use alloc::vec;
-use image::ImageFormat;
-
+use super::{image::RgbaImage, texture::TextureDef, ShaderDef, SIMPLE_SHADER_DEF};
 use crate::rendering::texture::TextureStore;
+use alloc::string::ToString;
+use alloc::sync::Arc;
+use alloc::{string::String, vec, vec::Vec};
+use core2::io::Read;
 
-use super::{texture::TextureDef, ShaderDef, SIMPLE_SHADER_DEF};
-use std::{io::Read, sync::Arc};
-
-pub trait Material: downcast_rs::Downcast + std::fmt::Debug {}
+pub trait Material: downcast_rs::Downcast + core::fmt::Debug {}
 
 downcast_rs::impl_downcast!(Material);
 
@@ -60,10 +59,7 @@ impl SimpleMaterialDef {
             if let Some(mut r) = get_reader(texture_name) {
                 let mut buf = Vec::new();
                 r.read_to_end(&mut buf).unwrap();
-                image::load_from_memory(&buf)
-                    .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
-                    .and_then(|img| Ok(img.to_rgba8()))
-                    .ok()
+                RgbaImage::load_from_memory(&buf, texture_name)
             } else {
                 None
             }

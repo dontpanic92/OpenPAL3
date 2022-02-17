@@ -1,8 +1,8 @@
+use super::descriptor_managers::DescriptorManager;
+use super::material::VulkanMaterial;
 use super::{
     device::Device, pipeline_layout::PipelineLayout, render_pass::RenderPass, shader::VulkanShader,
 };
-use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
-use crate::rendering::vulkan::material::VulkanMaterial;
 use ash::vk;
 use std::error::Error;
 use std::ffi::CString;

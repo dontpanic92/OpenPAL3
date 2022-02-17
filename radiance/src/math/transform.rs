@@ -2,6 +2,9 @@ use super::mat::Mat44;
 use super::{vec::Vec3, Quaternion};
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "no_std")]
+use micromath::F32Ext;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Transform {
     mat: Mat44,

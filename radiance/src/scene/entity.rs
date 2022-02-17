@@ -1,7 +1,9 @@
 use crate::math::{Mat44, Transform};
-use std::any::{Any, TypeId};
-use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
+use alloc::string::ToString;
+use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use core::any::{Any, TypeId};
+use core::ops::{Deref, DerefMut};
+use hashbrown::HashMap;
 
 pub trait Entity: downcast_rs::Downcast {
     fn name(&self) -> &str;
@@ -143,7 +145,7 @@ impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
     }
 
     fn set_name(&mut self, name: &str) {
-        self.name = name.to_owned();
+        self.name = name.to_string();
     }
 
     fn load(&mut self) {

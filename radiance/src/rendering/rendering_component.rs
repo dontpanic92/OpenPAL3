@@ -1,3 +1,5 @@
+use alloc::{boxed::Box, vec, vec::Vec};
+
 use super::RenderObject;
 
 pub struct RenderingComponent {

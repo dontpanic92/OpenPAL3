@@ -1,7 +1,8 @@
-use std::sync::{Arc, RwLock};
-
-use image::RgbaImage;
+use alloc::string::{String, ToString};
+use alloc::sync::Arc;
 use lru::LruCache;
+
+use super::image::RgbaImage;
 
 pub trait Texture: downcast_rs::Downcast {
     fn width(&self) -> u32;
@@ -25,8 +26,14 @@ impl TextureDef {
     }
 }
 
+#[cfg(feature = "std")]
 lazy_static::lazy_static! {
-    static ref TEXTURE_STORE: RwLock<LruCache<String, Arc<TextureDef>>> = RwLock::new(LruCache::new(100));
+    static ref TEXTURE_STORE: std::sync::RwLock<LruCache<String, Arc<TextureDef>>> = std::sync::RwLock::new(LruCache::new(100));
+}
+
+#[cfg(feature = "no_std")]
+lazy_static::lazy_static! {
+    static ref TEXTURE_STORE: spin::RwLock<LruCache<String, Arc<TextureDef>>> = spin::RwLock::new(LruCache::new(100));
 }
 
 pub struct TextureStore;
@@ -35,7 +42,7 @@ impl TextureStore {
         name: &str,
         update: impl FnOnce() -> Option<RgbaImage>,
     ) -> Arc<TextureDef> {
-        let mut store = TEXTURE_STORE.write().unwrap();
+        let mut store = TEXTURE_STORE.write();
 
         if let Some(t) = store.get(name) {
             t.clone()

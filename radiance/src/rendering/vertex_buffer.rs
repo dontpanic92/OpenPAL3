@@ -1,6 +1,4 @@
-use alloc::vec;
-use dashmap::mapref::one::Ref;
-use dashmap::DashMap;
+use alloc::{vec, vec::Vec};
 
 use crate::math::*;
 
@@ -35,7 +33,15 @@ pub struct VertexComponentsLayout {
 
 impl VertexComponentsLayout {
     pub fn from_components(components: VertexComponents) -> VertexComponentsLayout {
-        Self::ref_from_components(components).clone()
+        #[cfg(feature = "no_std")]
+        {
+            internal::from_components(components)
+        }
+
+        #[cfg(feature = "std")]
+        {
+            internal::from_components(components)
+        }
     }
 
     pub fn size(&self) -> usize {
@@ -46,13 +52,6 @@ impl VertexComponentsLayout {
         self.components
             .contains(component)
             .then_some(self.offsets[Self::component_index(component)])
-    }
-
-    fn ref_from_components(components: VertexComponents) -> Ref<'static, VertexComponents, Self> {
-        LAYOUT_CACHE
-            .entry(components)
-            .or_insert_with(|| Self::calc_layout(components))
-            .downgrade()
     }
 
     fn component_index(component: VertexComponents) -> usize {
@@ -67,10 +66,10 @@ impl VertexComponentsLayout {
 
     fn component_size(component: VertexComponents) -> usize {
         match component {
-            VertexComponents::POSITION => std::mem::size_of::<Vec3>(),
-            VertexComponents::NORMAL => std::mem::size_of::<Vec3>(),
-            VertexComponents::TEXCOORD => std::mem::size_of::<Vec2>(),
-            VertexComponents::TEXCOORD2 => std::mem::size_of::<Vec2>(),
+            VertexComponents::POSITION => core::mem::size_of::<Vec3>(),
+            VertexComponents::NORMAL => core::mem::size_of::<Vec3>(),
+            VertexComponents::TEXCOORD => core::mem::size_of::<Vec2>(),
+            VertexComponents::TEXCOORD2 => core::mem::size_of::<Vec2>(),
             _ => unreachable!(),
         }
     }
@@ -92,10 +91,6 @@ impl VertexComponentsLayout {
 
         layout
     }
-}
-
-lazy_static! {
-    static ref LAYOUT_CACHE: DashMap<VertexComponents, VertexComponentsLayout> = DashMap::new();
 }
 
 #[derive(Debug, Clone)]
@@ -200,11 +195,11 @@ impl VertexBuffer {
         update: F,
     ) {
         let component_size = VertexComponentsLayout::component_size(component);
-        if component_size != std::mem::size_of::<TData>() {
+        if component_size != core::mem::size_of::<TData>() {
             panic!(
                 "Wrong size when set vertex data: component size {}, TData.size {}",
                 component_size,
-                std::mem::size_of::<TData>()
+                core::mem::size_of::<TData>()
             );
         }
 
@@ -226,7 +221,7 @@ impl VertexBuffer {
     pub fn set_vertex_blob<F: Fn(&mut [u8])>(&mut self, index: usize, update: F) {
         let vertex_size = self.layout.size;
         let data: &mut [u8] = unsafe {
-            std::slice::from_raw_parts_mut(
+            core::slice::from_raw_parts_mut(
                 self.data
                     .as_mut_ptr()
                     .offset((index * vertex_size) as isize) as *mut u8,
@@ -242,5 +237,45 @@ impl VertexBuffer {
 
     pub fn count(&self) -> usize {
         self.count
+    }
+}
+
+#[cfg(feature = "std")]
+mod internal {
+    use super::{VertexComponents, VertexComponentsLayout};
+    use dashmap::DashMap;
+
+    lazy_static::lazy_static! {
+        static ref LAYOUT_CACHE: DashMap<VertexComponents, VertexComponentsLayout> = DashMap::new();
+    }
+
+    pub fn from_components(components: VertexComponents) -> VertexComponentsLayout {
+        LAYOUT_CACHE
+            .entry(components)
+            .or_insert_with(|| VertexComponentsLayout::calc_layout(components))
+            .downgrade()
+            .clone()
+    }
+}
+
+#[cfg(feature = "no_std")]
+mod internal {
+    use super::{VertexComponents, VertexComponentsLayout};
+    use hashbrown::HashMap;
+    use spin::RwLock;
+
+    lazy_static::lazy_static! {
+        static ref LAYOUT_CACHE: RwLock<HashMap<VertexComponents, VertexComponentsLayout>> = RwLock::new(HashMap::new());
+    }
+
+    pub fn from_components(components: VertexComponents) -> VertexComponentsLayout {
+        let mut cache = LAYOUT_CACHE.write();
+        if let Some(layout) = cache.get(&components) {
+            layout.clone()
+        } else {
+            let layout = VertexComponentsLayout::calc_layout(components);
+            cache.insert(components, layout.clone());
+            layout
+        }
     }
 }

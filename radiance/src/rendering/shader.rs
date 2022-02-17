@@ -1,3 +1,8 @@
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+
 use super::VertexComponents;
 
 pub trait Shader: downcast_rs::Downcast {

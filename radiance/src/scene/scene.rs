@@ -1,12 +1,14 @@
-use crate::math::Transform;
+use alloc::{boxed::Box, vec, vec::Vec};
+
+use crate::{math::Transform, ui::Ui};
 
 use super::{entity::Entity, Camera};
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 
 pub trait Scene: downcast_rs::Downcast {
     fn load(&mut self);
     fn update(&mut self, delta_sec: f32);
-    fn draw_ui(&mut self, ui: &mut imgui::Ui);
+    fn draw_ui(&mut self, ui: &mut Ui);
     fn unload(&mut self);
     fn add_entity(&mut self, entity: Box<dyn Entity>);
     fn entities(&self) -> Vec<&dyn Entity>;
@@ -135,7 +137,7 @@ impl<TExtension: 'static + SceneExtension> Scene for CoreScene<TExtension> {
         self.on_updated(delta_sec);
     }
 
-    fn draw_ui(&mut self, ui: &mut imgui::Ui) {
+    fn draw_ui(&mut self, ui: &mut Ui) {
         self.on_ui_drawing();
     }
 

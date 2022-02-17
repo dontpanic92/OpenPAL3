@@ -1,11 +1,15 @@
-use image::{ImageFormat, RgbaImage};
+use crate::ui::TextureId;
+use alloc::boxed::Box;
 
-use super::{ComponentFactory, Texture};
+use super::{
+    image::{ImageFormat, RgbaImage},
+    ComponentFactory, Texture,
+};
 
 pub struct Sprite {
-    image: image::RgbaImage,
+    image: RgbaImage,
     _texture: Box<dyn Texture>,
-    texture_id: imgui::TextureId,
+    texture_id: TextureId,
 }
 
 impl Sprite {
@@ -25,13 +29,11 @@ impl Sprite {
         format: ImageFormat,
         factory: &dyn ComponentFactory,
     ) -> Self {
-        let image = image::load_from_memory_with_format(buffer, format)
-            .unwrap()
-            .to_rgba8();
+        let image = RgbaImage::load_from_memory_with_format(buffer, format).unwrap();
         Self::load_from_image(image, factory)
     }
 
-    pub fn imgui_texture_id(&self) -> imgui::TextureId {
+    pub fn imgui_texture_id(&self) -> TextureId {
         self.texture_id
     }
 

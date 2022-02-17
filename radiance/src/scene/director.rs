@@ -1,6 +1,7 @@
 use super::SceneManager;
-use imgui::Ui;
-use std::{cell::RefCell, rc::Rc};
+use crate::ui::Ui;
+use alloc::rc::Rc;
+use core::cell::RefCell;
 
 pub trait Director: downcast_rs::Downcast {
     fn activate(&mut self, scene_manager: &mut dyn SceneManager);

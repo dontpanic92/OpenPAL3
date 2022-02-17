@@ -1,4 +1,5 @@
-use std::{cell::RefCell, rc::Rc};
+use alloc::rc::Rc;
+use core::cell::RefCell;
 
 pub trait InputEngine {
     fn get_key_state(&self, key: Key) -> KeyState;

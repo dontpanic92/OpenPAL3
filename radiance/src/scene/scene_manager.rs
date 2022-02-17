@@ -1,7 +1,7 @@
 use super::{Director, Scene};
-use alloc::boxed::Box;
-use imgui::Ui;
-use std::{cell::RefCell, rc::Rc};
+use crate::ui::Ui;
+use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
+use core::cell::RefCell;
 
 pub trait SceneManager {
     fn update(&mut self, ui: &mut Ui, delta_sec: f32);

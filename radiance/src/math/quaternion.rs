@@ -1,6 +1,9 @@
 use super::{Mat44, Vec3};
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "no_std")]
+use micromath::F32Ext;
+
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[repr(C)]
 pub struct Quaternion {

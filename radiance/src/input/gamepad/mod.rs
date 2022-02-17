@@ -1,24 +1,20 @@
-#[cfg(target_os = "windows")]
-mod windows;
-#[cfg(target_os = "windows")]
-pub use windows::Window;
-
 #[cfg(any(
     target_os = "windows",
     target_os = "linux",
     target_os = "macos",
     target_os = "android",
 ))]
-mod winit;
+mod gilrs;
 #[cfg(any(
     target_os = "windows",
     target_os = "linux",
     target_os = "macos",
     target_os = "android",
 ))]
-pub use ::winit::window::Window;
+pub type GamePadInput = gilrs::GilrsInput;
 
 #[cfg(target_os = "psp")]
 mod psp;
+
 #[cfg(target_os = "psp")]
-pub use psp::Window;
+pub type GamePadInput = psp::PspInput;

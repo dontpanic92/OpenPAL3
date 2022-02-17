@@ -1,8 +1,8 @@
+use super::adhoc_command_runner::AdhocCommandRunner;
 use super::buffer::{Buffer, BufferType};
+use super::descriptor_managers::DescriptorManager;
 use super::material::VulkanMaterial;
 use super::uniform_buffers::DynamicUniformBufferManager;
-use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
-use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
 use crate::rendering::{Material, RenderObject, VertexBuffer};
 use ash::vk;
 use std::error::Error;

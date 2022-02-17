@@ -10,10 +10,7 @@ use super::{
     buffer::{Buffer, BufferType},
     instance::Instance,
 };
-use crate::{
-    imgui::{ImguiContext, ImguiFrame},
-    rendering::vulkan::imgui::ImguiRenderer,
-};
+use crate::imgui::{ImguiContext, ImguiFrame};
 use ash::prelude::VkResult;
 use ash::vk;
 use std::cell::RefCell;

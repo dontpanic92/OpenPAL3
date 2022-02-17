@@ -5,10 +5,8 @@ pub use core_engine::CoreRadianceEngine;
 pub use debugging::DebugLayer;
 
 use crate::{
-    application::Platform, imgui::ImguiContext, input::GenericInputEngine,
-    scene::DefaultSceneManager,
+    application::Platform, input::GenericInputEngine, scene::DefaultSceneManager, ui::ImguiContext,
 };
-use std::{cell::RefCell, error::Error, rc::Rc};
 
 #[cfg(any(
     target_os = "windows",
@@ -18,8 +16,9 @@ use std::{cell::RefCell, error::Error, rc::Rc};
 ))]
 pub fn create_radiance_engine(
     platform: &mut Platform,
-) -> Result<CoreRadianceEngine, Box<dyn Error>> {
+) -> Result<CoreRadianceEngine, Box<dyn std::error::Error>> {
     use crate::{audio::OpenAlAudioEngine, rendering::VulkanRenderingEngine};
+    use std::{cell::RefCell, rc::Rc};
 
     let imgui_context = Rc::new(RefCell::new(ImguiContext::new(platform)));
     #[cfg(target_os = "windows")]
@@ -65,11 +64,15 @@ pub fn create_radiance_engine(
 }
 
 #[cfg(target_os = "psp")]
-pub fn create_radiance_engine(platform: &mut Platform) {
-    use crate::{audio::NullAudioEngine, rendering::GuRenderingEngine};
+pub fn create_radiance_engine(
+    platform: &mut Platform,
+) -> Result<CoreRadianceEngine, alloc::boxed::Box<dyn core2::error::Error>> {
+    use crate::{audio::NullAudioEngine, rendering::backends::gu::GuRenderingEngine};
+    use alloc::rc::Rc;
+    use core::cell::RefCell;
 
     let imgui_context = Rc::new(RefCell::new(ImguiContext::new(platform)));
-    let rendering_engine = Rc::new(RefCell::new(GuRenderingEngine::new()?));
+    let rendering_engine = Rc::new(RefCell::new(GuRenderingEngine::new()));
     let audio_engine = Rc::new(NullAudioEngine::new());
     let input_engine = GenericInputEngine::new(platform);
     let scene_manager = Box::new(DefaultSceneManager::new());

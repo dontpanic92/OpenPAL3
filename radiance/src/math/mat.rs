@@ -1,6 +1,6 @@
+use core::ops::{Index, IndexMut};
+use core::ptr::swap;
 use serde::{Deserialize, Serialize};
-use std::ops::{Index, IndexMut};
-use std::ptr::swap;
 
 /// Row major 4x4 matrix
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
@@ -84,8 +84,8 @@ impl IndexMut<usize> for Mat44 {
     }
 }
 
-impl std::fmt::Display for Mat44 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Mat44 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         for i in 0..4usize {
             for j in 0..4usize {
                 write!(f, "{} ", self.0[i][j])?;

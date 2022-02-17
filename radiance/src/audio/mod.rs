@@ -2,6 +2,7 @@
 mod decoders;
 
 mod null;
+use alloc::{boxed::Box, vec::Vec};
 pub use null::NullAudioEngine;
 
 #[cfg(not(target_os = "psp"))]

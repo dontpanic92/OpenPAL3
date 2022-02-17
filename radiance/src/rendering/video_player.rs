@@ -1,6 +1,8 @@
-use std::rc::Rc;
+use alloc::boxed::Box;
+use alloc::rc::Rc;
 
-use imgui::TextureId;
+use crate::ui::TextureId;
+use alloc::vec::Vec;
 
 use crate::video::{create_stream, Codec, VideoStream, VideoStreamState};
 

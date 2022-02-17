@@ -1,14 +1,15 @@
 use super::DebugLayer;
 use crate::{
     audio::AudioEngine,
-    ui::ImguiContext,
     input::{InputEngine, InputEngineInternal},
+    ui::ImguiContext,
 };
 use crate::{
     rendering::{self, RenderingEngine},
     scene::SceneManager,
 };
-use std::{cell::RefCell, rc::Rc};
+use alloc::{boxed::Box, rc::Rc};
+use core::cell::RefCell;
 
 pub struct CoreRadianceEngine {
     rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
@@ -57,7 +58,7 @@ impl CoreRadianceEngine {
         self.scene_manager.as_mut().unwrap().as_mut()
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "psp"))]
     pub fn update(&mut self, delta_sec: f32) {
         self.input_engine.borrow_mut().update(delta_sec);
 
