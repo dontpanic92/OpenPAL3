@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use imgui::{Condition, Ui, Window};
-use radiance::rendering::Sprite;
+use radiance::rendering::{Sprite, ImageFormat};
 
 use crate::{asset_manager::AssetManager, utilities::StoreExt2};
 
@@ -171,7 +171,7 @@ impl DialogBox {
     fn load_sprite(path: &str, asset_mgr: &AssetManager) -> Sprite {
         Sprite::load_from_buffer(
             &asset_mgr.vfs().read_to_end(path).unwrap(),
-            image::ImageFormat::Tga,
+            ImageFormat::Tga,
             asset_mgr.component_factory().as_ref(),
         )
     }

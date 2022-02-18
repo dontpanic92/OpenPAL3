@@ -2,10 +2,9 @@ use super::DebugLayer;
 use crate::{
     audio::AudioEngine,
     input::{InputEngine, InputEngineInternal},
-    ui::ImguiContext,
 };
 use crate::{
-    rendering::{self, RenderingEngine},
+    rendering::{self, ui::ImguiContext, RenderingEngine},
     scene::SceneManager,
 };
 use alloc::{boxed::Box, rc::Rc};

@@ -1,4 +1,4 @@
-use radiance::rendering::{MaterialDef, ShaderDef, TextureDef, TextureStore, VertexComponents};
+use radiance::rendering::{MaterialDef, ShaderDef, TextureDef, TextureStore, VertexComponents, RgbaImage};
 use std::{io::Read, sync::Arc};
 
 static LIGHTMAP_TEXTURE_VERT: &'static [u8] =
@@ -42,13 +42,11 @@ impl LightMapMaterialDef {
                         }
                     };
 
-                    image::load_from_memory(b)
-                        .or_else(|err| {
-                            log::error!("Cannot load texture: {}", &err);
-                            Err(err)
+                    RgbaImage::load_from_memory(b, name)
+                        .or_else(|| {
+                            log::error!("Cannot load texture");
+                            None
                         })
-                        .ok()
-                        .and_then(|img| Some(img.to_rgba8()))
                 })
             })
             .collect();

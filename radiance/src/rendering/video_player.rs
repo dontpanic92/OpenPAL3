@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 
-use crate::ui::TextureId;
+use crate::rendering::ui::TextureId;
 use alloc::vec::Vec;
 
 use crate::video::{create_stream, Codec, VideoStream, VideoStreamState};

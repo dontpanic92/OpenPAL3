@@ -5,7 +5,7 @@ pub use core_engine::CoreRadianceEngine;
 pub use debugging::DebugLayer;
 
 use crate::{
-    application::Platform, input::GenericInputEngine, scene::DefaultSceneManager, ui::ImguiContext,
+    application::Platform, input::GenericInputEngine, scene::DefaultSceneManager, rendering::ui::ImguiContext,
 };
 
 #[cfg(any(
@@ -17,7 +17,7 @@ use crate::{
 pub fn create_radiance_engine(
     platform: &mut Platform,
 ) -> Result<CoreRadianceEngine, Box<dyn std::error::Error>> {
-    use crate::{audio::OpenAlAudioEngine, rendering::VulkanRenderingEngine};
+    use crate::{audio::OpenAlAudioEngine, rendering::backends::vulkan::VulkanRenderingEngine};
     use std::{cell::RefCell, rc::Rc};
 
     let imgui_context = Rc::new(RefCell::new(ImguiContext::new(platform)));

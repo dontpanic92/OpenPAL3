@@ -1,6 +1,6 @@
 use alloc::rc::Rc;
 
-use crate::ui::TextureId;
+use crate::rendering::ui::TextureId;
 use alloc::{boxed::Box, vec::Vec};
 
 use crate::rendering::ComponentFactory;

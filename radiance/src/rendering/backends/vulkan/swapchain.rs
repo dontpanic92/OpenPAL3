@@ -2,6 +2,7 @@ use super::creation_helpers;
 use super::descriptor_managers::DescriptorManager;
 use super::image::Image;
 use super::image_view::ImageView;
+use super::imgui::ImguiRenderer;
 use super::pipeline_manager::PipelineManager;
 use super::render_object::VulkanRenderObject;
 use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
@@ -10,7 +11,7 @@ use super::{
     buffer::{Buffer, BufferType},
     instance::Instance,
 };
-use crate::imgui::{ImguiContext, ImguiFrame};
+use crate::rendering::ui::{ImguiContext, ImguiFrame};
 use ash::prelude::VkResult;
 use ash::vk;
 use std::cell::RefCell;

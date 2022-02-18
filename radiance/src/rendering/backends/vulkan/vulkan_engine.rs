@@ -10,11 +10,11 @@ use super::{
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
 use crate::math::Mat44;
-use crate::scene::{entity_get_component, Scene};
-use crate::{
-    imgui::{ImguiContext, ImguiFrame},
-    rendering::{ComponentFactory, RenderingComponent, RenderingEngine, Window},
+use crate::rendering::{
+    ui::{ImguiContext, ImguiFrame},
+    ComponentFactory, RenderingComponent, RenderingEngine, Window,
 };
+use crate::scene::{entity_get_component, Scene};
 use ash::extensions::ext::DebugUtils;
 use ash::{vk, Entry};
 use std::iter::Iterator;

@@ -4,14 +4,12 @@ mod windows;
 pub use windows::Window;
 
 #[cfg(any(
-    target_os = "windows",
     target_os = "linux",
     target_os = "macos",
     target_os = "android",
 ))]
 mod winit;
 #[cfg(any(
-    target_os = "windows",
     target_os = "linux",
     target_os = "macos",
     target_os = "android",

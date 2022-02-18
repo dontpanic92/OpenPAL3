@@ -19,7 +19,9 @@ use std::{
     cell::{RefCell, RefMut},
     rc::Rc,
 };
-use ui::*;
+use imgui::*;
+
+pub use imgui::{TextureId, Ui};
 
 pub struct ImguiContext {
     context: Rc<RefCell<Context>>,

@@ -22,10 +22,10 @@ impl ComponentFactory for GuComponentFactory {
         row_length: u32,
         width: u32,
         height: u32,
-        texture_id: Option<crate::ui::TextureId>,
+        texture_id: Option<crate::rendering::ui::TextureId>,
     ) -> (
         alloc::boxed::Box<dyn crate::rendering::Texture>,
-        crate::ui::TextureId,
+        crate::rendering::ui::TextureId,
     ) {
         todo!()
     }

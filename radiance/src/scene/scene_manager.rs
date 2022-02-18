@@ -1,5 +1,5 @@
 use super::{Director, Scene};
-use crate::ui::Ui;
+use crate::rendering::ui::Ui;
 use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
 use core::cell::RefCell;
 

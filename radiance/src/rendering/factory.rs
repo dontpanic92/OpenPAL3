@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, vec::Vec};
 
-use crate::ui::TextureId;
+use crate::rendering::ui::TextureId;
 
 use super::{
     texture::TextureDef, Material, MaterialDef, RenderObject, RenderingComponent, Shader,

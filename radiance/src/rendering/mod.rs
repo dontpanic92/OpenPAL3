@@ -1,4 +1,25 @@
 pub mod backends;
+
+#[cfg_attr(
+    any(
+        target_os = "windows",
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "android",
+    ),
+    path = "imgui/mod.rs"
+)]
+#[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "android",
+))]
+pub mod ui;
+
+#[cfg(target_os = "psp")]
+pub mod ui;
+
 mod engine;
 mod factory;
 mod image;
@@ -24,3 +45,5 @@ pub use sprite::Sprite;
 pub use texture::{Texture, TextureDef, TextureStore};
 pub use vertex_buffer::{VertexBuffer, VertexComponents};
 pub use video_player::VideoPlayer;
+pub use ui::*;
+pub use self::image::*;

@@ -1,5 +1,5 @@
 use super::SceneManager;
-use crate::ui::Ui;
+use crate::rendering::ui::Ui;
 use alloc::rc::Rc;
 use core::cell::RefCell;
 

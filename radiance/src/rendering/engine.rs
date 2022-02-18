@@ -1,5 +1,5 @@
 use super::ComponentFactory;
-use crate::{scene::Scene, ui::ImguiFrame};
+use crate::{scene::Scene, rendering::ui::ImguiFrame};
 use alloc::rc::Rc;
 
 pub trait RenderingEngine {

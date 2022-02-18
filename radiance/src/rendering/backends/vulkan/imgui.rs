@@ -1,5 +1,5 @@
 use super::{descriptor_managers::DescriptorManager, device::Device, instance::Instance};
-use crate::imgui::{ImguiContext, ImguiFrame};
+use crate::rendering::ui::{ImguiContext, ImguiFrame};
 use ash::vk::{self, DescriptorSet};
 use imgui::*;
 use imgui_rs_vulkan_renderer::*;

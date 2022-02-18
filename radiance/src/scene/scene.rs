@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
-use crate::{math::Transform, ui::Ui};
+use crate::{math::Transform, rendering::ui::Ui};
 
 use super::{entity::Entity, Camera};
 use core::ops::{Deref, DerefMut};

@@ -2,6 +2,7 @@ use super::{
     adhoc_command_runner::AdhocCommandRunner, buffer::Buffer, device::Device, image::Image,
     image_view::ImageView, sampler::Sampler,
 };
+use crate::rendering::image::{ImageFormat, RgbaImage};
 use crate::rendering::texture::{Texture, TextureDef};
 use ash::vk;
 use lru::LruCache;
@@ -31,10 +32,11 @@ impl VulkanTexture {
         allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
     ) -> Result<Self, Box<dyn Error>> {
-        let texture_missing =
-            image::load_from_memory(radiance_assets::TEXTURE_MISSING_TEXTURE_FILE)
-                .unwrap()
-                .to_rgba8();
+        let texture_missing = RgbaImage::load_from_memory_with_format(
+            radiance_assets::TEXTURE_MISSING_TEXTURE_FILE,
+            ImageFormat::Png,
+        )
+        .unwrap();
         let rgba_image = def.image().unwrap_or_else(|| &texture_missing);
 
         Self::from_buffer(

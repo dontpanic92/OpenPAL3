@@ -1,5 +1,3 @@
-use alloc::{string::ToString, vec::Vec};
-
 #[cfg_attr(feature = "std", path = "image.rs")]
 #[cfg(feature = "std")]
 mod internal;
@@ -8,10 +6,14 @@ mod internal;
 #[cfg(feature = "no_std")]
 mod internal;
 
+#[cfg(feature = "no_std")]
+use alloc::{string::ToString, vec::Vec};
+
 pub enum ImageFormat {
-    BMP,
-    TGA,
-    DDS,
+    Bmp,
+    Png,
+    Tga,
+    Dds,
 }
 
 pub struct RgbaImage {
@@ -34,17 +36,7 @@ impl RgbaImage {
     }
 
     pub fn load_from_memory(buffer: &[u8], file_name: &str) -> Option<Self> {
-        let name = file_name.to_string();
-        let parts = name.rsplit_once('.');
-        let ext = parts.or(Some(("", "tga"))).unwrap();
-        let format = match ext.1.to_ascii_lowercase().as_str() {
-            "tga" => ImageFormat::TGA,
-            "bmp" => ImageFormat::BMP,
-            "dds" => ImageFormat::DDS,
-            _ => return None,
-        };
-
-        internal::load_from_memory_with_format(buffer, format)
+        internal::load_from_memory(buffer, file_name)
     }
 
     pub fn load_from_memory_with_format(buffer: &[u8], format: ImageFormat) -> Option<Self> {

@@ -8,27 +8,6 @@ mod macros;
 
 pub mod application;
 pub mod audio;
-
-#[cfg_attr(
-    any(
-        target_os = "windows",
-        target_os = "linux",
-        target_os = "macos",
-        target_os = "android",
-    ),
-    path = "imgui/mod.rs"
-)]
-#[cfg(any(
-    target_os = "windows",
-    target_os = "linux",
-    target_os = "macos",
-    target_os = "android",
-))]
-pub mod ui;
-
-#[cfg(target_os = "psp")]
-pub mod ui;
-
 pub mod input;
 pub mod math;
 pub mod radiance;
@@ -43,7 +22,6 @@ extern crate alloc;
 #[macro_use]
 extern crate lazy_static;
 
-#[macro_use]
 extern crate downcast_rs;
 
 #[macro_use]

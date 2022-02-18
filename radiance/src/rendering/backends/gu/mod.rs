@@ -15,7 +15,7 @@ impl GuRenderingEngine {
 }
 
 impl RenderingEngine for GuRenderingEngine {
-    fn render(&mut self, scene: &mut dyn crate::scene::Scene, ui_frame: crate::ui::ImguiFrame) {}
+    fn render(&mut self, scene: &mut dyn crate::scene::Scene, ui_frame: crate::rendering::ui::ImguiFrame) {}
 
     fn view_extent(&self) -> (u32, u32) {
         (480, 320)

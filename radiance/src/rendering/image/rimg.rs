@@ -11,6 +11,21 @@ pub fn load_from_memory_with_format(buffer: &[u8], format: ImageFormat) -> Optio
     }
 }
 
+pub fn load_from_memory(buffer: &[u8], file_name: &str) -> Option<Self> {
+    let name = file_name.to_string();
+    let parts = name.rsplit_once('.');
+    let ext = parts.or(Some(("", "tga"))).unwrap();
+    let format = match ext.1.to_ascii_lowercase().as_str() {
+        "tga" => ImageFormat::Tga,
+        "bmp" => ImageFormat::Bmp,
+        "dds" => ImageFormat::Dds,
+        _ => return None,
+    };
+
+    load_from_memory_with_format(buffer, format)
+}
+
+
 fn load_bmp_from_memory(b: &[u8]) -> Option<RgbaImage> {
     let bmp = tinybmp::RawBmp::from_slice(b).ok()?;
     let buffer = Vec::from(bmp.image_data());

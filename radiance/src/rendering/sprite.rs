@@ -1,4 +1,4 @@
-use crate::ui::TextureId;
+use crate::rendering::ui::TextureId;
 use alloc::boxed::Box;
 
 use super::{
