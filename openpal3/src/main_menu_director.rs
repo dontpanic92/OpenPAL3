@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use imgui::{Condition, Ui, Window};
+use imgui::{Condition, Ui};
 use log::debug;
 use opengb::{
     asset_manager::AssetManager,
@@ -60,13 +60,14 @@ impl Director for MainMenuDirector {
         };
 
         let window_size = ui.io().display_size;
-        let window = Window::new(" ")
+        let window = ui
+            .window(" ")
             .size(window_size, Condition::Always)
             .position([0.0, 0.0], Condition::Always)
             .collapsible(false)
             .always_auto_resize(true);
 
-        if let Some(Some(director)) = window.build(ui, || {
+        if let Some(Some(director)) = window.build(|| {
             if ui.button("开始游戏") {
                 return Some(Rc::new(RefCell::new(AdventureDirector::new(
                     "OpenPAL3",

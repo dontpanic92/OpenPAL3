@@ -6,3 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+imgui-sys = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
+imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
+radiance = { path = "../../radiance" }
+simple_logger = "1.16.0"

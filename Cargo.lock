@@ -108,18 +108,12 @@ checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
 name = "ash"
-version = "0.35.2+1.2.203"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f6a491bcad4563b355ac2bb6e3f09d5e1c5d628710c7156e901dad0c416075e"
-dependencies = [
- "libloading 0.7.3",
-]
-
-[[package]]
-name = "ash"
 version = "0.36.0+1.3.206"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ceea9c64653169f33f946debf0a41568afc4e23a4c37d29004a23b2ffbfb4034"
+dependencies = [
+ "libloading 0.7.3",
+]
 
 [[package]]
 name = "ash-window"
@@ -127,7 +121,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed540473cca5a9a40466521ec2fd0cfe5083173bf736a15a4580be523842ff93"
 dependencies = [
- "ash 0.36.0+1.3.206",
+ "ash",
  "raw-window-handle 0.3.4",
  "raw-window-metal",
 ]
@@ -1105,9 +1099,9 @@ dependencies = [
 [[package]]
 name = "imgui-rs-vulkan-renderer"
 version = "1.2.0"
-source = "git+https://github.com/dontpanic92/imgui-rs-vulkan-renderer?branch=imgui_main#9f114159523939d043f628389c62bb60918f975f"
+source = "git+https://github.com/dontpanic92/imgui-rs-vulkan-renderer?branch=imgui_main2#db044012dedb1d385d699f766539129a97b94bc9"
 dependencies = [
- "ash 0.36.0+1.3.206",
+ "ash",
  "imgui",
  "log",
  "thiserror",
@@ -1970,7 +1964,7 @@ name = "radiance"
 version = "0.1.0"
 dependencies = [
  "alto",
- "ash 0.35.2+1.2.203",
+ "ash",
  "ash-window",
  "backtrace",
  "bitflags",
@@ -2000,6 +1994,16 @@ dependencies = [
 [[package]]
 name = "radiance-assets"
 version = "0.1.0"
+
+[[package]]
+name = "radiance_editor"
+version = "0.1.0"
+dependencies = [
+ "imgui",
+ "imgui-sys",
+ "radiance",
+ "simple_logger",
+]
 
 [[package]]
 name = "rand"
@@ -2636,9 +2640,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "vk-mem"
 version = "0.2.3"
-source = "git+https://github.com/adrien-ben/vk-mem-rs?tag=0.2.3-ash-0.35#dfcccc9b9b60e7a2330c5c67cbed24b78d861dbf"
+source = "git+https://github.com/adrien-ben/vk-mem-rs?tag=0.2.3-ash-0.36#d5f24c34d22e36e9bca2f17321c3215c6fe9965d"
 dependencies = [
- "ash 0.35.2+1.2.203",
+ "ash",
  "bitflags",
  "cc",
 ]

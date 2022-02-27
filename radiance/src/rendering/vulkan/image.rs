@@ -229,9 +229,8 @@ impl Image {
             usage: vk_mem::MemoryUsage::GpuOnly,
             ..Default::default()
         };
-        let (image, allocation, allocation_info) = allocator
-            .create_image(&create_info, &allcation_create_info)
-            .unwrap();
+        let (image, allocation, allocation_info) =
+            unsafe { allocator.create_image(&create_info, &allcation_create_info) }.unwrap();
 
         Ok(Self {
             allocator: allocator.clone(),
@@ -271,6 +270,8 @@ impl Image {
 
 impl Drop for Image {
     fn drop(&mut self) {
-        self.allocator.destroy_image(self.image, &self.allocation);
+        unsafe {
+            self.allocator.destroy_image(self.image, self.allocation);
+        }
     }
 }

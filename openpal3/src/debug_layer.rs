@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use imgui::{InputTextMultiline, TabBar, TabItem, Ui, Window};
+use imgui::{InputTextMultiline, TabBar, TabItem, Ui};
 use opengb::directors::{AdventureDirector, SceneManagerExtensions};
 use radiance::{
     application::utils::FpsCounter,
@@ -31,8 +31,7 @@ impl OpenPal3DebugLayer {
     }
 
     fn render(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, delta_sec: f32) {
-        let w = Window::new("Debug");
-        w.build(ui, || {
+        ui.window("Debug").build(|| {
             let fps = self.fps_counter.update_fps(delta_sec);
             ui.text(format!("Fps: {}", fps));
             let scene = scene_manager.core_scene();

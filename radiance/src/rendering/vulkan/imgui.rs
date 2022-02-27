@@ -39,8 +39,10 @@ impl ImguiRenderer {
                     preferred_large_heap_block_size: 0,
                     frame_in_use_count: 0,
                     heap_size_limits: None,
+                    allocation_callbacks: None,
+                    vulkan_api_version: vk::make_api_version(0, 1, 0, 0),
                 };
-                Allocator::new(&allocator_create_info).unwrap()
+                unsafe { Allocator::new(&allocator_create_info) }.unwrap()
             };
 
             // Texture width desired by user before building the atlas.

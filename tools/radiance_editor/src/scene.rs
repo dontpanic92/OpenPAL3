@@ -8,7 +8,7 @@ impl SceneExtension for EditorScene {
 }
 
 impl EditorScene {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new() -> CoreScene<Self> {
+        CoreScene::new(Self {})
     }
 }

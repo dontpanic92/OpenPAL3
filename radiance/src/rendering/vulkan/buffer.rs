@@ -149,9 +149,7 @@ impl Buffer {
                 .usage(buffer_usage)
                 .size(buffer_size)
                 .build();
-            allocator
-                .create_buffer(&buffer_create_info, &allcation_create_info)
-                .unwrap()
+            unsafe { allocator.create_buffer(&buffer_create_info, &allcation_create_info) }.unwrap()
         };
 
         Ok(Self {
@@ -196,19 +194,27 @@ impl Buffer {
     }
 
     pub fn map_memory_do<F: Fn(*mut u8)>(&self, action: F) {
-        self.allocator.map_memory(&self.allocation).unwrap();
+        unsafe {
+            self.allocator.map_memory(self.allocation).unwrap();
+        }
+
         let dst = self.allocation_info.get_mapped_data();
         if dst == std::ptr::null_mut() {
             panic!("Unable to map the dest memory");
         }
 
         action(dst);
-        self.allocator.unmap_memory(&self.allocation);
+
+        unsafe {
+            self.allocator.unmap_memory(self.allocation);
+        }
     }
 }
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        self.allocator.destroy_buffer(self.buffer, &self.allocation);
+        unsafe {
+            self.allocator.destroy_buffer(self.buffer, self.allocation);
+        }
     }
 }

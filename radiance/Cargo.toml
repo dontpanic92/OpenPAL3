@@ -22,10 +22,10 @@ serde = { version = "1.0.106", features = ["derive"] }
 failure = "0.1.8"
 
 # Rendering
-ash = { version = "0.35", default-features = false, features = ["loaded"] }
+ash = { version = "0.36", default-features = false, features = ["loaded"] }
 image = "0.23.0"
 imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
-imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer", branch="imgui_main", features = ["vk-mem"] }
+imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer", branch="imgui_main2", features = ["vk-mem"] }
 vk-mem = "0.2"
 
 # Window and event handling

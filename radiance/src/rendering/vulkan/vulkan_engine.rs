@@ -128,9 +128,11 @@ impl VulkanRenderingEngine {
                 preferred_large_heap_block_size: 0,
                 frame_in_use_count: 0,
                 heap_size_limits: None,
+                allocation_callbacks: None,
+                vulkan_api_version: vk::make_api_version(0, 1, 0, 0),
             };
 
-            vk_mem::Allocator::new(&create_info).unwrap()
+            unsafe { vk_mem::Allocator::new(&create_info) }.unwrap()
         });
 
         let format =

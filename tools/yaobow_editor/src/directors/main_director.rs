@@ -1,5 +1,5 @@
 use super::{main_content::ContentTabs, DevToolsState, PreviewDirector};
-use imgui::{Condition, TreeNode, Ui, Window};
+use imgui::{Condition, Ui};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::asset_manager::AssetManager;
 use radiance::{
@@ -42,23 +42,23 @@ impl DevToolsDirector {
         let [window_width, window_height] = ui.io().display_size;
         let font = ui.push_font(ui.fonts().fonts()[1]);
 
-        let w = Window::new("Files")
+        ui.window("Files")
             .collapsible(false)
             .resizable(false)
             .size([window_width * 0.3, window_height], Condition::Always)
             .position([0., 0.], Condition::Always)
-            .movable(false);
-        w.build(ui, || self.render_tree_nodes(ui, "/"));
+            .movable(false)
+            .build(|| self.render_tree_nodes(ui, "/"));
 
         let mut state = None;
-        let w2 = Window::new("Content")
+        ui.window("Content")
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
             .size([window_width * 0.7, window_height], Condition::Always)
             .position([window_width * 0.3, 0.], Condition::Always)
-            .movable(false);
-        w2.build(ui, || state = self.render_content(ui));
+            .movable(false)
+            .build(|| state = self.render_content(ui));
 
         font.pop();
 
@@ -75,14 +75,14 @@ impl DevToolsDirector {
 
             let e_filename = &format!("{}", e_path.file_name().unwrap().to_str().unwrap());
             let e_fullname = path.as_ref().join(e_path.file_name().unwrap());
-            let treenode = TreeNode::new(e_filename);
+            let treenode = ui.tree_node_config(e_filename);
 
             if e.kind == EntryKind::Dir {
-                treenode.build(ui, || {
+                treenode.build(|| {
                     self.render_tree_nodes(ui, &e_fullname);
                 });
             } else {
-                treenode.leaf(true).build(ui, || {
+                treenode.leaf(true).build(|| {
                     if ui.is_item_clicked() {
                         self.content_tabs.open(
                             self.asset_mgr.component_factory(),

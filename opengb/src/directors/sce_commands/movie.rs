@@ -1,6 +1,6 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
 
-use imgui::{Condition, Image, TextureId, Ui, Window};
+use imgui::{Condition, Image, TextureId, Ui};
 use log::warn;
 use radiance::{input::Key, scene::SceneManager, video::VideoStreamState};
 
@@ -52,14 +52,6 @@ impl SceCommand for SceCommandMovie {
         }
 
         let window_size = ui.io().display_size;
-        let window = Window::new(" ")
-            .size(window_size, Condition::Always)
-            .position([0.0, 0.0], Condition::Always)
-            .always_auto_resize(false)
-            .draw_background(false)
-            .scrollable(false)
-            .no_decoration()
-            .movable(false);
 
         let mut target_size = window_size;
         if cfg!(feature = "movies-keep-aspect-ratio") {
@@ -69,17 +61,25 @@ impl SceCommand for SceCommandMovie {
             target_size = [source_w as f32 * scale, source_h as f32 * scale];
         }
 
-        window.build(ui, || {
-            let video_player = state.global_state_mut().video_player();
-            if let Some(texture_id) = video_player.get_texture(self.texture_id) {
-                self.texture_id = Some(texture_id);
-                ui.set_cursor_pos([
-                    (window_size[0] - target_size[0]) * 0.5,
-                    (window_size[1] - target_size[1]) * 0.5,
-                ]);
-                Image::new(texture_id, target_size).build(ui);
-            }
-        });
+        ui.window("movie")
+            .size(window_size, Condition::Always)
+            .position([0.0, 0.0], Condition::Always)
+            .always_auto_resize(false)
+            .draw_background(false)
+            .scrollable(false)
+            .no_decoration()
+            .movable(false)
+            .build(|| {
+                let video_player = state.global_state_mut().video_player();
+                if let Some(texture_id) = video_player.get_texture(self.texture_id) {
+                    self.texture_id = Some(texture_id);
+                    ui.set_cursor_pos([
+                        (window_size[0] - target_size[0]) * 0.5,
+                        (window_size[1] - target_size[1]) * 0.5,
+                    ]);
+                    Image::new(texture_id, target_size).build(ui);
+                }
+            });
 
         false
     }
