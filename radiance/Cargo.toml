@@ -24,13 +24,13 @@ failure = "0.1.8"
 # Rendering
 ash = { version = "0.35", default-features = false, features = ["loaded"] }
 image = "0.23.0"
-imgui = "^0.8"
-imgui-rs-vulkan-renderer = { version = "1.1", features = ["vk-mem"] }
+imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
+imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer", branch="imgui_main", features = ["vk-mem"] }
 vk-mem = "0.2"
 
 # Window and event handling
 winit = "0.26.1"
-imgui-winit-support = { version = "0.8.1", default-features = false, features = ["winit-26"] }
+imgui-winit-support = { git = "https://github.com/imgui-rs/imgui-rs/", default-features = false, features = ["winit-26"] }
 ash-window = "0.9"
 
 # Audio

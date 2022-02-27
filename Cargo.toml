@@ -3,7 +3,7 @@ members = [
     "radiance",
     "opengb",
     "openpal3",
-    "tools/dev_tools",
+    "tools/yaobow_editor",
 ]
 resolver = "2"
 

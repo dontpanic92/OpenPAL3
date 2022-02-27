@@ -6,6 +6,8 @@ pub trait SceneManager {
     fn update(&mut self, ui: &mut Ui, delta_sec: f32);
     fn scene(&self) -> Option<&dyn Scene>;
     fn scene_mut(&mut self) -> Option<&mut dyn Scene>;
+    fn scenes(&self) -> &[Box<dyn Scene>];
+    fn scenes_mut(&mut self) -> Vec<&mut dyn Scene>;
 
     fn set_view_extent(&mut self, extent: (u32, u32));
     fn director(&self) -> Option<Rc<RefCell<dyn Director>>>;
@@ -60,6 +62,14 @@ impl SceneManager for DefaultSceneManager {
 
     fn scene_mut(&mut self) -> Option<&mut dyn Scene> {
         scene_mut!(self)
+    }
+
+    fn scenes(&self) -> &[Box<dyn Scene>] {
+        &self.scenes
+    }
+
+    fn scenes_mut(&mut self) -> Vec<&mut dyn Scene> {
+        self.scenes.iter_mut().map(|s| s.as_mut()).collect()
     }
 
     fn set_view_extent(&mut self, extent: (u32, u32)) {

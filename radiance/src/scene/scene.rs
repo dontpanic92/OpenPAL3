@@ -1,10 +1,11 @@
 use crate::math::Transform;
 
-use super::{entity::Entity, Camera};
+use super::{entity::Entity, Camera, Director};
 use std::ops::{Deref, DerefMut};
 
 pub trait Scene: downcast_rs::Downcast {
     fn load(&mut self);
+    fn visible(&self) -> bool;
     fn update(&mut self, delta_sec: f32);
     fn draw_ui(&mut self, ui: &mut imgui::Ui);
     fn unload(&mut self);
@@ -51,6 +52,8 @@ pub trait SceneExtension {
 }
 
 pub struct CoreScene<TExtension: SceneExtension> {
+    active: bool,
+    visible: bool,
     entities: Vec<Box<dyn Entity>>,
     extension: TExtension,
     camera: Camera,
@@ -59,6 +62,8 @@ pub struct CoreScene<TExtension: SceneExtension> {
 impl<TExtension: SceneExtension> CoreScene<TExtension> {
     pub fn new(ext_calls: TExtension) -> Self {
         Self {
+            active: true,
+            visible: true,
             entities: vec![],
             extension: ext_calls,
             camera: Camera::new(),
@@ -71,6 +76,14 @@ impl<TExtension: SceneExtension> CoreScene<TExtension> {
 
     pub fn extension_mut(&mut self) -> &mut TExtension {
         &mut self.extension
+    }
+
+    pub fn set_active(&mut self, active: bool) {
+        self.active = active;
+    }
+
+    pub fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
     }
 
     fn collect_entities(entity: &dyn Entity) -> Vec<&dyn Entity> {
@@ -123,6 +136,10 @@ impl<TExtension: 'static + SceneExtension> Scene for CoreScene<TExtension> {
     }
 
     fn update(&mut self, delta_sec: f32) {
+        if !self.active {
+            return;
+        }
+
         self.on_updating(delta_sec);
         for e in &mut self.entities {
             e.update(delta_sec);
@@ -133,6 +150,10 @@ impl<TExtension: 'static + SceneExtension> Scene for CoreScene<TExtension> {
         }
 
         self.on_updated(delta_sec);
+    }
+
+    fn visible(&self) -> bool {
+        self.visible
     }
 
     fn draw_ui(&mut self, ui: &mut imgui::Ui) {

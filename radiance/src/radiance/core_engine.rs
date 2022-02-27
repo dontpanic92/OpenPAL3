@@ -73,13 +73,27 @@ impl CoreRadianceEngine {
             }
         });
 
+        use crate::scene::Viewport;
         let scene = self.scene_manager.as_mut().unwrap().scene_mut();
         if let Some(s) = scene {
             let mut rendering_engine = self.rendering_engine.as_ref().borrow_mut();
-            let extent = rendering_engine.view_extent();
-            s.camera_mut().set_aspect(extent.0 as f32 / extent.1 as f32);
+            let camera = s.camera_mut();
+            match camera.viewport() {
+                Viewport::FullExtent => {
+                    let extent = rendering_engine.view_extent();
+                    camera.set_aspect(extent.0 as f32 / extent.1 as f32)
+                }
+                Viewport::CustomViewport(r) => {
+                    camera.set_aspect(r.width as f32 / r.height as f32);
+                }
+            }
+
             rendering_engine.render(s, ui_frame);
         }
+
+        /*
+        TODO: how about multiple scenes?
+        */
     }
 
     #[cfg(not(target_os = "windows"))]

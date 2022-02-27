@@ -1,8 +1,16 @@
 use crate::math::Mat44;
+use crate::math::Rect;
 use crate::math::Transform;
+
+#[derive(Copy, Clone)]
+pub enum Viewport {
+    FullExtent,
+    CustomViewport(Rect)
+}
 
 pub struct Camera {
     transform: Transform,
+    viewport: Viewport,
     projection: Mat44,
     fov43: f32,
     aspect: f32,
@@ -18,12 +26,21 @@ impl Camera {
     pub fn new_with_params(fov43: f32, aspect: f32, near_clip: f32, far_clip: f32) -> Self {
         Self {
             transform: Transform::new(),
+            viewport: Viewport::FullExtent,
             projection: Self::generate_projection_matrix(fov43, aspect, near_clip, far_clip),
             fov43,
             aspect,
             near_clip,
             far_clip,
         }
+    }
+
+    pub fn viewport(&self) -> Viewport {
+        self.viewport
+    }
+
+    pub fn set_viewport(&mut self, viewport: Viewport) {
+        self.viewport = viewport;
     }
 
     pub fn set_fov43(&mut self, fov: f32) {

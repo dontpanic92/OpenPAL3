@@ -8,7 +8,7 @@ build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-imgui = "^0.8"
+imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
 opengb = { path = "../opengb" }
 radiance = { path = "../radiance" }
 simple_logger = "1.16.0"
