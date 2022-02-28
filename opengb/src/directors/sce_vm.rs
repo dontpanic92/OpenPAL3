@@ -66,7 +66,7 @@ impl SceVm {
     pub fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
-        ui: &mut Ui,
+        ui: &Ui,
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
         self.state.global_state_mut().update(delta_sec);
@@ -1112,7 +1112,7 @@ pub trait SceCommand: dyn_clone::DynClone + SceCommandDebug {
     fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
-        ui: &mut Ui,
+        ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool;

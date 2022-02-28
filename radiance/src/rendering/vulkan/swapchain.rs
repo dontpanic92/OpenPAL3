@@ -10,6 +10,7 @@ use super::{
     buffer::{Buffer, BufferType},
     instance::Instance,
 };
+use crate::scene::Viewport;
 use crate::{
     imgui::{ImguiContext, ImguiFrame},
     rendering::vulkan::imgui::ImguiRenderer,
@@ -205,6 +206,7 @@ impl SwapChain {
         image_index: usize,
         objects: &[&VulkanRenderObject],
         dub_manager: &DynamicUniformBufferManager,
+        viewport: Viewport,
         ui_frame: ImguiFrame,
     ) -> Result<vk::CommandBuffer, vk::Result> {
         let command_buffer = self.command_buffers[image_index];
@@ -251,6 +253,12 @@ impl SwapChain {
             &render_pass_begin_info,
             vk::SubpassContents::INLINE,
         );
+
+        if let Viewport::CustomViewport(rect) = viewport {
+            self.device.cmd_set_viewport(command_buffer, rect);
+        } else if let Viewport::FullExtent(rect) = viewport {
+            self.device.cmd_set_viewport(command_buffer, rect);
+        }
 
         let mut objects_by_material = vec![];
         for obj in objects {

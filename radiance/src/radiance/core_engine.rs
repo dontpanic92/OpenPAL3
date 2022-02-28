@@ -73,14 +73,20 @@ impl CoreRadianceEngine {
             }
         });
 
-        use crate::scene::Viewport;
+        use crate::{math::Rect, scene::Viewport};
         let scene = self.scene_manager.as_mut().unwrap().scene_mut();
         if let Some(s) = scene {
             let mut rendering_engine = self.rendering_engine.as_ref().borrow_mut();
             let camera = s.camera_mut();
             match camera.viewport() {
-                Viewport::FullExtent => {
+                Viewport::FullExtent(_) => {
                     let extent = rendering_engine.view_extent();
+                    camera.set_viewport(Viewport::FullExtent(Rect {
+                        x: 0.,
+                        y: 0.,
+                        width: extent.0 as f32,
+                        height: extent.1 as f32,
+                    }));
                     camera.set_aspect(extent.0 as f32 / extent.1 as f32)
                 }
                 Viewport::CustomViewport(r) => {
@@ -88,7 +94,8 @@ impl CoreRadianceEngine {
                 }
             }
 
-            rendering_engine.render(s, ui_frame);
+            let viewport = camera.viewport();
+            rendering_engine.render(s, viewport, ui_frame);
         }
 
         /*

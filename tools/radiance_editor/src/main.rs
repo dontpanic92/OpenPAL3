@@ -1,13 +1,7 @@
-#![feature(arbitrary_self_types)]
-use application::EditorApplication;
-
-mod application;
-mod director;
-mod scene;
-mod ui;
+use radiance_editor::application::EditorApplication;
 
 fn main() {
-    let mut application = EditorApplication::new(None);
+    let mut application = EditorApplication::new();
     application.initialize();
     application.run();
 }

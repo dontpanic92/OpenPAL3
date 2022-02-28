@@ -7,7 +7,7 @@ pub trait Director: downcast_rs::Downcast {
     fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
-        ui: &mut Ui,
+        ui: &Ui,
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>>;
 }

@@ -166,7 +166,7 @@ impl OpenPal3DebugLayer {
 }
 
 impl DebugLayer for OpenPal3DebugLayer {
-    fn update(&mut self, scene_manager: &mut dyn SceneManager, ui: &mut Ui, delta_sec: f32) {
+    fn update(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, delta_sec: f32) {
         let font = ui.push_font(ui.fonts().fonts()[1]);
         (|| {
             if self

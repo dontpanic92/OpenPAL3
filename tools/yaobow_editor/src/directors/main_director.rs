@@ -1,12 +1,18 @@
-use super::{main_content::ContentTabs, DevToolsState, PreviewDirector};
+use super::{main_content::ContentTabs, DevToolsState};
 use imgui::{Condition, Ui};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
-use opengb::asset_manager::AssetManager;
+use opengb::{
+    asset_manager::AssetManager,
+    loaders::mv3_loader::mv3_load_from_file,
+    scene::{CvdModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity},
+};
 use radiance::{
     audio::AudioEngine,
     input::InputEngine,
-    scene::{Director, SceneManager},
+    math::Vec3,
+    scene::{CoreEntity, Director, Entity, SceneManager},
 };
+use radiance_editor::ui::window_content_rect;
 use std::{
     cell::RefCell,
     cmp::Ordering,
@@ -38,15 +44,17 @@ impl DevToolsDirector {
         _self
     }
 
-    fn main_window(&mut self, ui: &mut Ui) -> Option<DevToolsState> {
-        let [window_width, window_height] = ui.io().display_size;
-        let font = ui.push_font(ui.fonts().fonts()[1]);
+    fn main_window(&mut self, ui: &Ui) -> Option<DevToolsState> {
+        let content_rect = window_content_rect(ui);
 
         ui.window("Files")
             .collapsible(false)
             .resizable(false)
-            .size([window_width * 0.3, window_height], Condition::Always)
-            .position([0., 0.], Condition::Always)
+            .size(
+                [content_rect.width * 0.3, content_rect.height],
+                Condition::Always,
+            )
+            .position([content_rect.x, content_rect.y], Condition::Always)
             .movable(false)
             .build(|| self.render_tree_nodes(ui, "/"));
 
@@ -55,12 +63,16 @@ impl DevToolsDirector {
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
-            .size([window_width * 0.7, window_height], Condition::Always)
-            .position([window_width * 0.3, 0.], Condition::Always)
+            .size(
+                [content_rect.width * 0.7, content_rect.height],
+                Condition::Always,
+            )
+            .position(
+                [content_rect.x + content_rect.width * 0.3, content_rect.y],
+                Condition::Always,
+            )
             .movable(false)
             .build(|| state = self.render_content(ui));
-
-        font.pop();
 
         state
     }
@@ -111,6 +123,72 @@ impl DevToolsDirector {
 
         entries
     }
+
+    fn load_model(&self, scene_manager: &mut dyn SceneManager, path: PathBuf) {
+        let entity = match path
+            .extension()
+            .map(|e| e.to_str().unwrap().to_ascii_lowercase())
+            .as_ref()
+            .map(|e| e.as_str())
+        {
+            Some("mv3") => {
+                let mv3file = mv3_load_from_file(self.asset_mgr.vfs(), &path);
+                let anim = mv3file.as_ref().map(|f| {
+                    RoleAnimation::new(
+                        &self.asset_mgr.component_factory(),
+                        f,
+                        self.asset_mgr.load_mv3_material(f, &path),
+                        RoleAnimationRepeatMode::NoRepeat,
+                    )
+                });
+
+                anim.map(|a| {
+                    let mut e = Box::new(CoreEntity::new(
+                        RoleEntity::new_from_idle_animation(
+                            self.asset_mgr.clone(),
+                            "preview",
+                            "preview",
+                            a,
+                        ),
+                        "preview".to_string(),
+                        true,
+                    ));
+                    e.set_active(true);
+                    e as Box<dyn Entity>
+                })
+                .ok()
+            }
+            Some("pol") => Some(Box::new(CoreEntity::new(
+                opengb::scene::PolModelEntity::new(
+                    &self.asset_mgr.component_factory(),
+                    &self.asset_mgr.vfs(),
+                    &path,
+                ),
+                "preview".to_string(),
+                true,
+            )) as Box<dyn Entity>),
+            Some("cvd") => Some(Box::new(CvdModelEntity::create(
+                self.asset_mgr.component_factory().clone(),
+                &self.asset_mgr.vfs(),
+                &path,
+                "preview".to_string(),
+                true,
+            )) as Box<dyn Entity>),
+            _ => None,
+        };
+
+        let scene = scene_manager.scene_mut().unwrap();
+        if let Some(mut e) = entity {
+            e.load();
+            scene.add_entity(e)
+        }
+
+        scene
+            .camera_mut()
+            .transform_mut()
+            .set_position(&Vec3::new(0., 200., 200.))
+            .look_at(&Vec3::new(0., 0., 0.));
+    }
 }
 
 impl Director for DevToolsDirector {
@@ -118,19 +196,19 @@ impl Director for DevToolsDirector {
 
     fn update(
         &mut self,
-        _scene_manager: &mut dyn SceneManager,
-        ui: &mut imgui::Ui,
+        scene_manager: &mut dyn SceneManager,
+        ui: &imgui::Ui,
         _delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
         if let Some(DevToolsState::Preview(path)) = self.main_window(ui) {
-            Some(PreviewDirector::new(
-                self.shared_self.upgrade().unwrap(),
-                self.asset_mgr.clone(),
-                self.input_engine.clone(),
-                path,
-            ))
-        } else {
-            None
+            scene_manager
+                .scene_mut()
+                .unwrap()
+                .root_entities_mut()
+                .clear();
+            self.load_model(scene_manager, path);
         }
+
+        None
     }
 }

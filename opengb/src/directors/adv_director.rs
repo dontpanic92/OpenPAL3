@@ -147,7 +147,7 @@ impl AdventureDirector {
     fn move_role(
         &mut self,
         scene_manager: &mut dyn SceneManager,
-        ui: &mut imgui::Ui,
+        ui: &imgui::Ui,
         delta_sec: f32,
         moving_direction: &Vec3,
     ) {
@@ -216,7 +216,7 @@ impl AdventureDirector {
     fn rotate_camera(
         &mut self,
         scene_manager: &mut dyn SceneManager,
-        ui: &mut imgui::Ui,
+        ui: &imgui::Ui,
         delta_sec: f32,
     ) {
         let input = self.input_engine.borrow();
@@ -250,7 +250,7 @@ impl Director for AdventureDirector {
     fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
-        ui: &mut imgui::Ui,
+        ui: &imgui::Ui,
         delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
         self.sce_vm.update(scene_manager, ui, delta_sec);

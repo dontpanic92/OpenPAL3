@@ -61,19 +61,19 @@ impl ImguiContext {
     }
 
     #[cfg(target_os = "windows")]
-    pub fn draw_ui<F: FnOnce(&mut Ui)>(&mut self, delta_sec: f32, draw: F) -> ImguiFrame {
+    pub fn draw_ui<F: FnOnce(&Ui)>(&mut self, delta_sec: f32, draw: F) -> ImguiFrame {
         self.platform.borrow_mut().new_frame(delta_sec);
 
         let mut context = self.context.borrow_mut();
-        let mut ui = context.frame();
-        draw(&mut ui);
+        let ui = context.frame();
+        draw(&ui);
         std::mem::forget(ui);
 
         ImguiFrame { frame_begun: true }
     }
 
     #[cfg(not(target_os = "windows"))]
-    pub fn draw_ui<F: FnOnce(&mut Ui)>(
+    pub fn draw_ui<F: FnOnce(&Ui)>(
         &mut self,
         window: &Window,
         delta_sec: f32,
@@ -83,7 +83,7 @@ impl ImguiContext {
 
         let mut context = self.context.borrow_mut();
         let mut ui = context.frame();
-        draw(&mut ui);
+        draw(&Ui);
         std::mem::forget(ui);
 
         ImguiFrame { frame_begun: true }

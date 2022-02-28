@@ -20,7 +20,7 @@ impl SceCommand for SceCommandMovie {
     fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
-        ui: &mut Ui,
+        ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {

@@ -24,7 +24,7 @@ impl<FCmp: Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> SceCommand for SceC
     fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
-        ui: &mut Ui,
+        ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {

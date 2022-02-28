@@ -10,7 +10,7 @@ use super::{
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
 use crate::math::Mat44;
-use crate::scene::{entity_get_component, Scene};
+use crate::scene::{entity_get_component, Scene, Viewport};
 use crate::{
     imgui::{ImguiContext, ImguiFrame},
     rendering::{ComponentFactory, RenderingComponent, RenderingEngine, Window},
@@ -53,7 +53,7 @@ pub struct VulkanRenderingEngine {
 }
 
 impl RenderingEngine for VulkanRenderingEngine {
-    fn render(&mut self, scene: &mut dyn Scene, ui_frame: ImguiFrame) {
+    fn render(&mut self, scene: &mut dyn Scene, viewport: Viewport, ui_frame: ImguiFrame) {
         if self.surface.is_none() {
             return;
         }
@@ -74,7 +74,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             }
         });
 
-        match self.render_objects(scene, ui_frame) {
+        match self.render_objects(scene, viewport, ui_frame) {
             Ok(()) => (),
             Err(err) => println!("{}", err),
         }
@@ -351,6 +351,7 @@ impl VulkanRenderingEngine {
     fn render_objects(
         &mut self,
         scene: &mut dyn Scene,
+        viewport: Viewport,
         ui_frame: ImguiFrame,
     ) -> Result<(), Box<dyn Error>> {
         macro_rules! swapchain {
@@ -386,7 +387,13 @@ impl VulkanRenderingEngine {
             .collect();
 
         let command_buffer = swapchain!()
-            .record_command_buffers(image_index as usize, &objects, &dub_manager, ui_frame)
+            .record_command_buffers(
+                image_index as usize,
+                &objects,
+                &dub_manager,
+                viewport,
+                ui_frame,
+            )
             .unwrap();
 
         // Update Per-frame Uniform Buffers

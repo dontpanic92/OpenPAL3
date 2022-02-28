@@ -4,8 +4,8 @@ use crate::math::Transform;
 
 #[derive(Copy, Clone)]
 pub enum Viewport {
-    FullExtent,
-    CustomViewport(Rect)
+    FullExtent(Rect),
+    CustomViewport(Rect),
 }
 
 pub struct Camera {
@@ -26,7 +26,7 @@ impl Camera {
     pub fn new_with_params(fov43: f32, aspect: f32, near_clip: f32, far_clip: f32) -> Self {
         Self {
             transform: Transform::new(),
-            viewport: Viewport::FullExtent,
+            viewport: Viewport::FullExtent(Rect::new(0., 0., 0., 0.)),
             projection: Self::generate_projection_matrix(fov43, aspect, near_clip, far_clip),
             fov43,
             aspect,

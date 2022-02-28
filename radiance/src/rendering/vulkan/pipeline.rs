@@ -150,11 +150,16 @@ impl Pipeline {
             .stencil_test_enable(false)
             .build();
 
+        let dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo::builder()
+            .dynamic_states(&[vk::DynamicState::VIEWPORT])
+            .build();
+
         let stages = [vert_shader_stage_create_info, frag_shader_stage_create_info];
         let create_info = vk::GraphicsPipelineCreateInfo::builder()
             .stages(&stages)
             .vertex_input_state(&pipeline_vertex_input_create_info)
             .input_assembly_state(&pipeline_input_assembly_create_info)
+            .dynamic_state(&dynamic_state_create_info)
             .viewport_state(&pipeline_viewport_state_create_info)
             .rasterization_state(&pipeline_rasterization_state_create_info)
             .multisample_state(&pipeline_multisample_state_create_info)

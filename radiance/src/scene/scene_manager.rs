@@ -3,7 +3,7 @@ use imgui::Ui;
 use std::{cell::RefCell, rc::Rc};
 
 pub trait SceneManager {
-    fn update(&mut self, ui: &mut Ui, delta_sec: f32);
+    fn update(&mut self, ui: &Ui, delta_sec: f32);
     fn scene(&self) -> Option<&dyn Scene>;
     fn scene_mut(&mut self) -> Option<&mut dyn Scene>;
     fn scenes(&self) -> &[Box<dyn Scene>];
@@ -41,7 +41,7 @@ macro_rules! scene_mut {
 }
 
 impl SceneManager for DefaultSceneManager {
-    fn update(&mut self, ui: &mut Ui, delta_sec: f32) {
+    fn update(&mut self, ui: &Ui, delta_sec: f32) {
         if let Some(d) = self.director.as_ref() {
             let director = d.clone();
             let new_director = director.borrow_mut().update(self, ui, delta_sec);

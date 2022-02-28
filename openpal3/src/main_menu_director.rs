@@ -50,7 +50,7 @@ impl Director for MainMenuDirector {
     fn update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
-        ui: &mut Ui,
+        ui: &Ui,
         _delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
         self.main_theme_source.update();
