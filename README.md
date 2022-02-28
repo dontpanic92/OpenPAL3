@@ -3,6 +3,9 @@
 [![Build Status](https://dontpanic92.visualstudio.com/OpenPAL3/_apis/build/status/dontpanic92.OpenPAL3?branchName=master)](https://dontpanic92.visualstudio.com/OpenPAL3/_build/latest?definitionId=5&branchName=master)
 [![CI Build](https://github.com/dontpanic92/OpenPAL3/actions/workflows/ci.yml/badge.svg)](https://github.com/dontpanic92/OpenPAL3/actions/workflows/ci.yml)
 
+
+> 云对雨，雪对风，仙剑对妖弓。
+
 《仙剑奇侠传三》开源实现。仙三开源版仍处于早期开发阶段，存在很多未实现的功能及 Bug，暂无完善的游戏体验。
 
 ## 📢 声明
@@ -16,7 +19,7 @@
 
 ## 📌 下载
 
-v0.2 版本请前往 Releases 页面下载，[Azure Pipelines](https://dontpanic92.visualstudio.com/OpenPAL3/_build?definitionId=5&_a=summary&repositoryFilter=5&branchFilter=9) 上可以获得最新开发版本。
+v0.3 版本请前往 Releases 页面下载，[Azure Pipelines](https://dontpanic92.visualstudio.com/OpenPAL3/_build?definitionId=5&_a=summary&repositoryFilter=5&branchFilter=9) 上可以获得最新开发版本。
 
 ### 运行
 
@@ -63,7 +66,6 @@ cargo build --release
 构建 Android 平台安装包需要先安装`cargo-apk`，并设置好 NDK 开发环境
 ```
 cd openpal3 && cargo apk build --release --lib
-
 ```
 
 ### 常见问题
