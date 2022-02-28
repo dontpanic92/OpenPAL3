@@ -17,7 +17,7 @@ mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 serde = "1.0.106"
 serde_json = "1.0.61"
 encoding = "0.2.33"
-log = { version = "0.4", features = ["max_level_debug", "release_max_level_warn"] }
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_debug"] }
 simple_logger = "1.16.0"
 
 [features]

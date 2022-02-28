@@ -4,15 +4,15 @@ use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::{
     asset_manager::AssetManager,
     loaders::mv3_loader::mv3_load_from_file,
-    scene::{CvdModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity},
+    scene::{CvdModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity, ScnScene},
 };
 use radiance::{
     audio::AudioEngine,
     input::InputEngine,
     math::Vec3,
-    scene::{CoreEntity, Director, Entity, SceneManager},
+    scene::{CoreEntity, CoreScene, Director, Entity, SceneManager},
 };
-use radiance_editor::ui::window_content_rect;
+use radiance_editor::{scene::EditorScene, ui::window_content_rect};
 use std::{
     cell::RefCell,
     cmp::Ordering,
@@ -200,13 +200,17 @@ impl Director for DevToolsDirector {
         ui: &imgui::Ui,
         _delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
-        if let Some(DevToolsState::Preview(path)) = self.main_window(ui) {
-            scene_manager
-                .scene_mut()
-                .unwrap()
-                .root_entities_mut()
-                .clear();
+        let state = self.main_window(ui);
+        if let Some(DevToolsState::Preview(path)) = state {
+            scene_manager.pop_scene();
+            scene_manager.push_scene(Box::new(EditorScene::new()));
             self.load_model(scene_manager, path);
+        } else if let Some(DevToolsState::PreviewScene { cpk_name, scn_name }) = state {
+            scene_manager.pop_scene();
+            scene_manager.push_scene(Box::new(CoreScene::new(
+                self.asset_mgr
+                    .load_scn(cpk_name.as_str(), scn_name.as_str()),
+            )));
         }
 
         None

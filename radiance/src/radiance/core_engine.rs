@@ -123,7 +123,7 @@ impl CoreRadianceEngine {
         if let Some(s) = scene {
             let extent = self.rendering_engine.as_ref().borrow().view_extent();
             s.camera_mut().set_aspect(extent.0 as f32 / extent.1 as f32);
-            
+
             let viewport = s.camera().viewport();
             self.rendering_engine
                 .as_ref()

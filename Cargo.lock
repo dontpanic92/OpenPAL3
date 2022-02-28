@@ -2001,6 +2001,7 @@ version = "0.1.0"
 dependencies = [
  "imgui",
  "imgui-sys",
+ "log",
  "radiance",
  "simple_logger",
 ]

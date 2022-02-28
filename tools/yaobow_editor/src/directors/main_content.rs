@@ -161,7 +161,14 @@ impl ContentTabs {
         self.show_or_add_tab(tab_name, || {
             let content = serde_json::to_string_pretty(&scn_file)
                 .unwrap_or("Cannot serialize as Json".to_string());
-            Box::new(TextPane::new(content, path.as_ref().to_owned(), None))
+            Box::new(TextPane::new(
+                content,
+                path.as_ref().to_owned(),
+                Some(DevToolsState::PreviewScene {
+                    cpk_name: scn_file.cpk_name.clone(),
+                    scn_name: scn_file.scn_name.clone(),
+                }),
+            ))
         });
     }
 

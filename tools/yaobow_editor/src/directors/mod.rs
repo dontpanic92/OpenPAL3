@@ -10,4 +10,5 @@ pub use main_director::DevToolsDirector;
 pub enum DevToolsState {
     _MainWindow,
     Preview(PathBuf),
+    PreviewScene { cpk_name: String, scn_name: String },
 }
