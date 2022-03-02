@@ -82,8 +82,8 @@ impl ImguiContext {
         self.platform.borrow().new_frame(window, delta_sec);
 
         let mut context = self.context.borrow_mut();
-        let mut ui = context.frame();
-        draw(&Ui);
+        let ui = context.frame();
+        draw(&ui);
         std::mem::forget(ui);
 
         ImguiFrame { frame_begun: true }
