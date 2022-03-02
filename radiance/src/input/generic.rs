@@ -52,12 +52,7 @@ impl GenericInputEngine {
     }
 
     fn append_message_callback_to(_self: Rc<RefCell<Self>>, platform: &mut Platform) {
-        #[cfg(target_os = "windows")]
         platform.add_message_callback(Box::new(move |msg| {
-            _self.borrow_mut().message_callback(msg)
-        }));
-        #[cfg(not(target_os = "windows"))]
-        platform.add_message_callback(Box::new(move |_, msg| {
             _self.borrow_mut().message_callback(msg)
         }));
     }

@@ -4,6 +4,7 @@ use crate::radiance;
 use crate::radiance::CoreRadianceEngine;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
+use std::time::Instant;
 
 pub trait ApplicationExtension<TImpl: ApplicationExtension<TImpl>> {
     define_ext_fn!(on_initialized, Application, TImpl);
@@ -16,26 +17,28 @@ mod private {
 }
 pub type DefaultApplication = Application<private::EmptyCallbacks>;
 
-pub struct Application<TExtension: ApplicationExtension<TExtension>> {
-    radiance_engine: CoreRadianceEngine,
-    platform: Platform,
+pub struct Application<TExtension: 'static + ApplicationExtension<TExtension>> {
+    radiance_engine: Rc<RefCell<CoreRadianceEngine>>,
+    platform: Rc<RefCell<Platform>>,
     extension: Rc<RefCell<TExtension>>,
 }
 
-impl<TExtension: ApplicationExtension<TExtension>> Application<TExtension> {
+impl<TExtension: 'static + ApplicationExtension<TExtension>> Application<TExtension> {
     pub fn new(extension: TExtension) -> Self {
         set_panic_hook();
         let mut platform = Platform::new();
         Self {
-            radiance_engine: radiance::create_radiance_engine(&mut platform)
-                .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
-            platform,
+            radiance_engine: Rc::new(RefCell::new(
+                radiance::create_radiance_engine(&mut platform)
+                    .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
+            )),
+            platform: Rc::new(RefCell::new(platform)),
             extension: Rc::new(RefCell::new(extension)),
         }
     }
 
-    pub fn engine_mut(&mut self) -> &mut CoreRadianceEngine {
-        &mut self.radiance_engine
+    pub fn engine_mut(&mut self) -> RefMut<CoreRadianceEngine> {
+        self.radiance_engine.borrow_mut()
     }
 
     pub fn callbacks_mut(&self) -> RefMut<TExtension> {
@@ -43,50 +46,33 @@ impl<TExtension: ApplicationExtension<TExtension>> Application<TExtension> {
     }
 
     pub fn initialize(&mut self) {
-        self.platform.initialize();
+        self.platform.borrow_mut().initialize();
         ext_call!(self, on_initialized);
     }
 
     pub fn set_title(&mut self, title: &str) {
-        self.platform.set_title(title);
+        self.platform.borrow_mut().set_title(title);
     }
 
-    #[cfg(target_os = "windows")]
-    pub fn run(&mut self) {
-        use std::time::Instant;
+    pub fn run(mut self) {
+        let engine = self.radiance_engine.clone();
+        let extension = self.extension.clone();
+        let platform = self.platform.clone();
 
-        let mut frame_start_time = Instant::now();
-        let mut elapsed;
-        loop {
-            if !self.platform.process_message() {
-                break;
-            }
-
-            let frame_end_time = Instant::now();
-            elapsed = frame_end_time
-                .duration_since(frame_start_time)
-                .as_secs_f32();
+        let mut start_time = Instant::now();
+        platform.borrow_mut().run_event_loop(move || {
+            let end_time = Instant::now();
+            let elapsed = end_time.duration_since(start_time).as_secs_f32();
+            start_time = end_time;
 
             /*if elapsed < 1./120. {
                 continue;
             }*/
 
-            frame_start_time = frame_end_time;
-            ext_call!(self, on_updating, elapsed);
-
-            self.radiance_engine.update(elapsed);
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    pub fn run(self) {
-        let Application {
-            mut radiance_engine,
-            platform,
-            ..
-        } = self;
-        platform.run_event_loop(move |window, elapsed| {
-            radiance_engine.update(window, elapsed);
+            let mut ext = extension.borrow_mut();
+            ext.on_updating(&mut self, elapsed);
+            // ext_call!(self, on_updating, elapsed);
+            engine.borrow_mut().update(elapsed);
         });
     }
 }

@@ -4,7 +4,7 @@ use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::{
     asset_manager::AssetManager,
     loaders::mv3_loader::mv3_load_from_file,
-    scene::{CvdModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity, ScnScene},
+    scene::{CvdModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity},
 };
 use radiance::{
     audio::AudioEngine,

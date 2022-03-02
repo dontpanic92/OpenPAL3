@@ -95,6 +95,14 @@ impl Platform {
         }
     }
 
+    pub fn run_event_loop<F: FnMut(f32)>(&mut self, mut update_engine: F) {
+        loop {
+            if !self.platform.process_message() {
+                break;
+            }
+        }
+    }
+
     pub fn hinstance(&self) -> HINSTANCE {
         self.instance
     }

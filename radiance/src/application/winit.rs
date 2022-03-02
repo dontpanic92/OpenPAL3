@@ -1,17 +1,18 @@
 use log::debug;
-use std::time::Instant;
+use std::cell::RefCell;
+use std::rc::Rc;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
-pub type MessageCallback = Box<dyn Fn(&Window, &Event<()>)>;
+pub type MessageCallback = Box<dyn Fn(&Event<()>)>;
 
 pub struct Platform {
-    event_loop: EventLoop<()>,
-    window: Window,
+    event_loop: Option<EventLoop<()>>,
+    window: Rc<Window>,
     dpi_scale: f32,
-    msg_callbacks: Vec<MessageCallback>,
+    msg_callbacks: Rc<RefCell<Vec<MessageCallback>>>,
 }
 
 impl Platform {
@@ -25,10 +26,10 @@ impl Platform {
             .unwrap();
 
         Self {
-            event_loop,
+            event_loop: Some(event_loop),
             dpi_scale: window.scale_factor() as f32,
-            msg_callbacks: vec![],
-            window,
+            msg_callbacks: Rc::new(RefCell::new(vec![])),
+            window: Rc::new(window),
         }
     }
 
@@ -39,36 +40,30 @@ impl Platform {
     pub fn initialize(&self) {}
 
     pub fn add_message_callback(&mut self, callback: MessageCallback) {
-        self.msg_callbacks.push(callback);
+        self.msg_callbacks.borrow_mut().push(callback);
     }
 
-    pub fn get_window(&self) -> &Window {
+    pub fn get_window(&self) -> &Rc<Window> {
         &self.window
     }
 
-    pub fn run_event_loop<F1: 'static + FnMut(&Window, f32)>(self, mut update_engine: F1) {
-        let Platform {
-            window,
-            msg_callbacks,
-            ..
-        } = self;
-        let mut start_time = Instant::now();
+    pub fn run_event_loop<F1: 'static + FnMut()>(&mut self, mut update_engine: F1) {
+        let window = self.window.clone();
+        let msg_callbacks = self.msg_callbacks.clone();
+        let event_loop = self.event_loop.take().unwrap();
         let mut active = true;
-        self.event_loop.run(move |event, _, control_flow| {
+        event_loop.run(move |event, _, control_flow| {
             match event {
                 Event::RedrawRequested(_) => {}
                 Event::RedrawEventsCleared => {}
                 Event::MainEventsCleared => {
                     // needed for imgui got notified to prepare frame
-                    for cb in &msg_callbacks {
-                        cb(&window, &event);
+                    for cb in msg_callbacks.borrow().iter() {
+                        cb(&event);
                     }
 
-                    let end_time = Instant::now();
-                    let elapsed = end_time.duration_since(start_time).as_secs_f32();
-                    start_time = end_time;
                     if active {
-                        update_engine(&window, elapsed);
+                        update_engine();
                     }
                 }
                 Event::WindowEvent {
@@ -79,8 +74,8 @@ impl Platform {
                 }
                 event => {
                     // debug!("Event: {:?}", event);
-                    for cb in &msg_callbacks {
-                        cb(&window, &event);
+                    for cb in msg_callbacks.borrow().iter() {
+                        cb(&event);
                     }
                     // other application-specific event handling
                     match event {

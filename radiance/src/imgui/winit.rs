@@ -13,53 +13,56 @@ use crate::application::Platform;
 pub struct ImguiPlatform {
     context: Rc<RefCell<Context>>,
     winit_platform: WinitPlatform,
+    window: Rc<Window>,
 }
 
 impl ImguiPlatform {
     pub fn new(context: Rc<RefCell<Context>>, platform: &mut Platform) -> Rc<RefCell<Self>> {
         let mut winit_platform = WinitPlatform::init(&mut context.as_ref().borrow_mut());
+        let window = platform.get_window().clone();
         winit_platform.attach_window(
             context.as_ref().borrow_mut().io_mut(),
-            platform.get_window(),
+            &window,
             HiDpiMode::Locked(1.0),
         );
 
         let imgui_platform = Rc::new(RefCell::new(Self {
             context: context.clone(),
             winit_platform,
+            window,
         }));
 
         let imgui_platform_clone = imgui_platform.clone();
-        platform.add_message_callback(Box::new(move |window, event| {
+        platform.add_message_callback(Box::new(move |event| {
             imgui_platform_clone
                 .as_ref()
                 .borrow_mut()
-                .handle_event(&window, &event);
+                .handle_event(&event);
         }));
 
         imgui_platform
     }
 
-    pub fn new_frame(&self, window: &Window, delta_sec: f32) {
+    pub fn new_frame(&self, delta_sec: f32) {
         self.update_delta_time(delta_sec);
-        self.update_display_size(window);
+        self.update_display_size(&self.window);
         self.update_cursor_shape();
         self.update_cursor_pos();
     }
 
-    fn prepare_frame(&self, io: &mut Io, window: &Window) {
+    fn prepare_frame(&self, io: &mut Io) {
         self.winit_platform
-            .prepare_frame(io, window)
+            .prepare_frame(io, &self.window)
             .expect("Failed to prepare frame");
-        window.request_redraw();
+        self.window.request_redraw();
     }
 
-    fn handle_event(&mut self, window: &Window, event: &Event<()>) {
+    fn handle_event(&mut self, event: &Event<()>) {
         let mut context = self.context.as_ref().borrow_mut();
         let io = context.io_mut();
         match event {
             Event::MainEventsCleared => {
-                self.prepare_frame(io, &window);
+                self.prepare_frame(io);
             }
             Event::RedrawRequested(_) => {}
             // interprete touch events as mouse input
@@ -89,9 +92,10 @@ impl ImguiPlatform {
                     },
                     window_id: *window_id,
                 };
-                self.winit_platform.handle_event(io, window, &mouse_input);
+                self.winit_platform
+                    .handle_event(io, &self.window, &mouse_input);
             }
-            event => self.winit_platform.handle_event(io, window, event),
+            event => self.winit_platform.handle_event(io, &self.window, event),
         }
     }
 
