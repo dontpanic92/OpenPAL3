@@ -44,7 +44,7 @@ impl SceneViewResourceView {
 
 fn main() {
     let mut application = EditorApplication::new_with_plugin(|app| {
-        let config = OpenGbConfig::load("openpal3", "OPENPAL3");
+        let config = OpenGbConfig::load("openpal3.toml", "OPENPAL3");
         let resource_view_content = SceneViewResourceView::new(config, app);
 
         SceneViewPlugins::new(Some(Box::new(resource_view_content)))
