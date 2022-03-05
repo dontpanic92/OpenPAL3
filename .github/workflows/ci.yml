@@ -41,7 +41,7 @@ jobs:
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage
           ./linuxdeploy-x86_64.AppImage --appdir AppDir
-          cp ../../packaging/AppImage/* ./AppDir/
+          cp ../packaging/AppImage/* ./AppDir/
           cp ./release/openpal3 ./AppDir/usr/bin/
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
       - uses: actions/upload-artifact@v3
