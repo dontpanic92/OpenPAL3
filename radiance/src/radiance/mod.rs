@@ -28,6 +28,7 @@ pub fn create_radiance_engine(
     {
         use winit::event::Event;
         let rendering_engine_clone = rendering_engine.clone();
+        let w = window.clone();
         platform.add_message_callback(Box::new(move |event| {
             let mut rendering_engine = rendering_engine_clone.borrow_mut();
             match event {
@@ -35,7 +36,7 @@ pub fn create_radiance_engine(
                     rendering_engine.drop_surface();
                 }
                 Event::Resumed => {
-                    rendering_engine.recreate_surface(window).unwrap();
+                    rendering_engine.recreate_surface(&w).unwrap();
                 }
                 _ => (),
             }
