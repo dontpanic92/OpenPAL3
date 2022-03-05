@@ -173,49 +173,59 @@ impl AssetManager {
         cpk_name: &str,
         scn_name: &str,
         pol_name: &str,
+        is_night: bool,
         index: u16,
     ) -> Option<CoreEntity<PolModelEntity>> {
-        let path = self
-            .scene_path
-            .join(cpk_name)
-            .join(scn_name)
-            .join(pol_name)
-            .with_extension("pol");
-        if self.vfs.open(&path).is_ok() {
-            Some(CoreEntity::new(
-                PolModelEntity::new(&self.factory, &self.vfs, &path),
-                format!("OBJECT_{}", index),
-                true,
-            ))
-        } else {
-            None
+        let folder = self.scene_path.join(cpk_name).join(scn_name);
+        let mut paths = vec![];
+        if is_night {
+            paths.push(folder.join("1").join(pol_name).with_extension("pol"));
         }
+
+        paths.push(folder.join(pol_name).with_extension("pol"));
+
+        for path in &paths {
+            if self.vfs.open(path).is_ok() {
+                return Some(CoreEntity::new(
+                    PolModelEntity::new(&self.factory, &self.vfs, path),
+                    format!("OBJECT_{}", index),
+                    true,
+                ));
+            }
+        }
+
+        None
     }
 
     pub fn load_scn_cvd(
         &self,
         cpk_name: &str,
         scn_name: &str,
-        pol_name: &str,
+        cvd_name: &str,
+        is_night: bool,
         index: u16,
     ) -> Option<CoreEntity<CvdModelEntity>> {
-        let path = self
-            .scene_path
-            .join(cpk_name)
-            .join(scn_name)
-            .join(pol_name)
-            .with_extension("cvd");
-        if self.vfs.open(&path).is_ok() {
-            Some(CvdModelEntity::create(
-                self.factory.clone(),
-                &self.vfs,
-                &path,
-                format!("OBJECT_{}", index),
-                true,
-            ))
-        } else {
-            None
+        let folder = self.scene_path.join(cpk_name).join(scn_name);
+        let mut paths = vec![];
+        if is_night {
+            paths.push(folder.join("1").join(cvd_name).with_extension("cvd"));
         }
+
+        paths.push(folder.join(cvd_name).with_extension("cvd"));
+
+        for path in &paths {
+            if self.vfs.open(path).is_ok() {
+                return Some(CvdModelEntity::create(
+                    self.factory.clone(),
+                    &self.vfs,
+                    path,
+                    format!("OBJECT_{}", index),
+                    true,
+                ));
+            }
+        }
+
+        None
     }
 
     pub fn load_object_item_pol(

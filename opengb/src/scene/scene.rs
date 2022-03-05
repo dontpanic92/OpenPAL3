@@ -374,6 +374,7 @@ impl ScnScene {
             &self.cpk_name,
             &self.scn_file.scn_base_name,
             &ground_pol_name,
+            self.scn_file.is_night,
             std::u16::MAX,
         );
 
@@ -404,15 +405,17 @@ impl ScnScene {
                 if obj.name.as_bytes()[0] as char == '_' {
                     if let Some(p) = _self.asset_mgr.load_scn_pol(
                         &_self.cpk_name,
-                        &_self.scn_name,
+                        &_self.scn_file.scn_base_name,
                         &obj.name,
+                        _self.scn_file.is_night,
                         obj.index,
                     ) {
                         entity = Some(Box::new(p));
                     } else if let Some(c) = _self.asset_mgr.load_scn_cvd(
                         &_self.cpk_name,
-                        &_self.scn_name,
+                        &_self.scn_file.scn_base_name,
                         &obj.name,
+                        _self.scn_file.is_night,
                         obj.index,
                     ) {
                         entity = Some(Box::new(c));

@@ -69,6 +69,9 @@ pub struct ScnFile {
     pub cpk_name: String,
     pub scn_name: String,
     pub scn_base_name: String,
+    pub global_scene_index: u32,
+    pub is_night: bool,
+    pub skybox_id: u32,
     pub roles: Vec<ScnRole>,
     pub nodes: Vec<ScnNode>,
 }
@@ -97,6 +100,10 @@ pub fn scn_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> ScnFile {
     let scn_name = reader.read_string(32).unwrap();
     let scn_base_name = reader.read_string(32).unwrap();
 
+    let global_scene_index = reader.read_u32::<LittleEndian>().unwrap();
+    let is_night = reader.read_u32::<LittleEndian>().unwrap();
+    let skybox_id = reader.read_u32::<LittleEndian>().unwrap();
+
     let mut roles = vec![];
     reader.seek(SeekFrom::Start(role_offset as u64)).unwrap();
     for _i in 0..role_num {
@@ -115,6 +122,9 @@ pub fn scn_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> ScnFile {
         cpk_name,
         scn_name,
         scn_base_name,
+        global_scene_index,
+        is_night: is_night == 1,
+        skybox_id,
         roles,
         nodes,
     }
