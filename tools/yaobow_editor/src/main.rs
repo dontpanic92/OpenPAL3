@@ -30,13 +30,8 @@ impl SceneViewResourceView {
 
         let factory = app.engine_mut().rendering_component_factory();
         let asset_mgr = AssetManager::new(factory, &config.asset_path);
-        let input_engine = app.engine_mut().input_engine();
         let audio_engine = app.engine_mut().audio_engine();
-        let ui = Some(DevToolsDirector::new(
-            input_engine,
-            audio_engine,
-            Rc::new(asset_mgr),
-        ));
+        let ui = Some(DevToolsDirector::new(audio_engine, Rc::new(asset_mgr)));
 
         SceneViewResourceView { ui }
     }

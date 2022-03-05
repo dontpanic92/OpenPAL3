@@ -8,9 +8,8 @@ use opengb::{
 };
 use radiance::{
     audio::AudioEngine,
-    input::InputEngine,
     math::Vec3,
-    scene::{CoreEntity, CoreScene, Director, Entity, SceneManager},
+    scene::{CoreEntity, CoreScene, Director, Entity, Scene, SceneManager},
 };
 use radiance_editor::{scene::EditorScene, ui::window_content_rect};
 use std::{
@@ -22,20 +21,17 @@ use std::{
 
 pub struct DevToolsDirector {
     shared_self: Weak<RefCell<Self>>,
-    input_engine: Rc<RefCell<dyn InputEngine>>,
     asset_mgr: Rc<AssetManager>,
     content_tabs: ContentTabs,
 }
 
 impl DevToolsDirector {
     pub fn new(
-        input_engine: Rc<RefCell<dyn InputEngine>>,
         audio_engine: Rc<dyn AudioEngine>,
         asset_mgr: Rc<AssetManager>,
     ) -> Rc<RefCell<Self>> {
         let mut _self = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
-            input_engine: input_engine,
             content_tabs: ContentTabs::new(audio_engine),
             asset_mgr,
         }));
@@ -207,10 +203,17 @@ impl Director for DevToolsDirector {
             self.load_model(scene_manager, path);
         } else if let Some(DevToolsState::PreviewScene { cpk_name, scn_name }) = state {
             scene_manager.pop_scene();
-            scene_manager.push_scene(Box::new(CoreScene::new(
+
+            let mut scene = CoreScene::new(
                 self.asset_mgr
                     .load_scn(cpk_name.as_str(), scn_name.as_str()),
-            )));
+            );
+            scene
+                .camera_mut()
+                .transform_mut()
+                .set_position(&Vec3::new(0., 500., 500.))
+                .look_at(&Vec3::new(0., 0., 0.));
+            scene_manager.push_scene(Box::new(scene));
         }
 
         None

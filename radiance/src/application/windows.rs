@@ -95,11 +95,13 @@ impl Platform {
         }
     }
 
-    pub fn run_event_loop<F: FnMut(f32)>(&mut self, mut update_engine: F) {
+    pub fn run_event_loop<F: FnMut()>(&mut self, mut update_engine: F) {
         loop {
-            if !self.platform.process_message() {
+            if !self.process_message() {
                 break;
             }
+
+            update_engine();
         }
     }
 

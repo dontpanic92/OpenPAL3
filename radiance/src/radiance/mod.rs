@@ -28,7 +28,7 @@ pub fn create_radiance_engine(
     {
         use winit::event::Event;
         let rendering_engine_clone = rendering_engine.clone();
-        platform.add_message_callback(Box::new(move |window, event| {
+        platform.add_message_callback(Box::new(move |event| {
             let mut rendering_engine = rendering_engine_clone.borrow_mut();
             match event {
                 Event::Suspended => {

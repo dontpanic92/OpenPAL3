@@ -51,15 +51,22 @@ impl UiDirector {
                 .translate_local(&t);
         }
 
-        scene_manager
-            .scene_mut()
-            .unwrap()
-            .camera_mut()
-            .transform_mut()
-            .rotate_axis_angle(
-                &Vec3::new(0., 1., 0.),
-                0.2 * delta_sec * std::f32::consts::PI,
-            );
+        let rotation = if input.get_key_state(Key::A).is_down() {
+            Some(-0.2 * delta_sec * std::f32::consts::PI)
+        } else if input.get_key_state(Key::D).is_down() {
+            Some(0.2 * delta_sec * std::f32::consts::PI)
+        } else {
+            None
+        };
+
+        if let Some(r) = rotation {
+            scene_manager
+                .scene_mut()
+                .unwrap()
+                .camera_mut()
+                .transform_mut()
+                .rotate_axis_angle(&Vec3::new(0., 1., 0.), r);
+        }
     }
 }
 
