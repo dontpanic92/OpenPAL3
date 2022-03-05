@@ -35,7 +35,7 @@ jobs:
           sudo apt install libdrm-dev ocl-icd-opencl-dev libxv-dev
       - name: Build
         run: cargo build --workspace --release --verbose ${{ matrix.features }}
-      -name: AppImage Packaging
+      - name: AppImage Packaging
         run: |
           cd target
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
