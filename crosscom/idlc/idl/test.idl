@@ -1,1 +1,13 @@
-interface Test { }
+
+[uuid(6ac46481-7efa-45ff-a279-687b4603c746)]
+interface ITest {
+    void test();
+}
+
+[uuid(de3d989d-2b1d-42a3-b085-a23e40840126)]
+interface ITest2 {
+    void test2();
+}
+
+[uuid(50203ee6-e472-42ba-bd57-a202e9cafe7f)]
+class Test: ITest2 {}

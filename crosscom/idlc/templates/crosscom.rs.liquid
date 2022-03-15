@@ -1,3 +1,170 @@
-{% for iface in interfaces %}
-pub struct {{ iface.name }};
+use std::{ffi::c_void, os::raw::c_long};
+
+use crosscom::{ComInterface, IUnknown, IUnknownVirtualTable};
+use uuid::Uuid;
+
+
+{% for item in items %}
+{% if item.definition.Interface %}
+{% assign attributes = item.attributes %}
+{% assign iface = item.definition.Interface %}
+
+/////////////////////// Interface {{ iface.name }} ///////////////////////
+
+#[repr(C)]
+pub struct {{ iface.name }}VirtualTable {
+    pub unknown: IUnknownVirtualTable,
+
+    {% for method in iface.methods %}
+    pub {{ method.name | rust_raw_type }}: unsafe extern "system" fn(this: *const c_void),
+    {% endfor %}
+}
+
+#[repr(C)]
+pub struct {{ iface.name }}VirtualTableCcw {
+    pub offset: *const c_void,
+    pub vtable: {{ iface.name }}VirtualTable,
+}
+
+#[repr(C)]
+pub struct {{ iface.name }} {
+    pub vtable: *const {{ iface.name }}VirtualTable,
+}
+
+impl {{ iface.name }} {
+    // {{ attributes.uuid }}
+    pub const INTERFACE_ID: [u8; 16] = [
+        {{ attributes.uuid | uuid_hex_array }}
+    ];
+    
+    pub fn query_interface(&self, guid: Uuid, retval: *mut c_void) -> c_long {
+        unsafe {
+            let unknown = self as *const {{ iface.name }} as *const IUnknown as *const c_void;
+            ((*self.vtable).unknown.query_interface)(unknown, guid, retval)
+        }
+    }
+
+    pub fn add_ref(&self) -> c_long {
+        unsafe {
+            let unknown = self as *const {{ iface.name }} as *const IUnknown as *const c_void;
+            ((*self.vtable).unknown.add_ref)(unknown)
+        }
+    }
+
+    pub fn release(&self) -> c_long {
+        unsafe {
+            let unknown = self as *const {{ iface.name }} as *const IUnknown as *const c_void;
+            ((*self.vtable).unknown.release)(unknown)
+        }
+    }
+    
+    pub fn test(&self) {
+        unsafe { ((*self.vtable).test)(self as *const {{ iface.name }} as *const c_void) }
+    }
+}
+
+
+pub trait {{ iface.name }}Trait {
+    fn test(&self);
+}
+
+impl ComInterface for {{ iface.name }} {}
+
+
+{% elsif item.definition.Class %}
+{% assign class = item.definition.Class %}
+
+/////////////////////// Class {{ class.name }} ///////////////////////
+
+macro_rules! implement_Test {
+    ($impl_type: ty) => {
+
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct {{ class.name }}Ccw {
+    {% for parent in class.implements %}
+    {{ parent }}: {{ ns_prefix }}::{{ parent }},
+    {% endfor %}
+
+    ref_count: std::sync::atomic::AtomicU32,
+    inner: $impl_type,
+}
+
+unsafe extern "system" fn query_interface(
+    this: *const std::os::raw::c_void,
+    guid: uuid::Uuid,
+    retval: *mut std::os::raw::c_void,
+) -> std::os::raw::c_long {
+    let object = crosscom::get_object::<{{ class.name }}Ccw>(this);
+
+    0
+}
+
+unsafe extern "system" fn add_ref(this: *const std::os::raw::c_void) -> std::os::raw::c_long {
+    let object = crosscom::get_object::<{{ class.name }}Ccw>(this);
+    let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    (previous + 1) as std::os::raw::c_long
+}
+
+unsafe extern "system" fn release(this: *const std::os::raw::c_void) -> std::os::raw::c_long {
+    let object = crosscom::get_object::<{{ class.name }}Ccw>(this);
+
+    let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    if previous - 1 == 0 {
+        Box::from_raw(object as *mut {{ class.name }}Ccw);
+    }
+
+    (previous - 1) as std::os::raw::c_long
+}
+
+unsafe extern "system" fn test(this: *const std::os::raw::c_void) -> () {
+    let object = crosscom::get_object::<{{ class.name }}Ccw>(this);
+    (*object).inner.test();
+}
+
+{% for parent in class.implements %}
+#[allow(non_upper_case_globals)]
+pub const GLOBAL_{{ parent }}VirtualTable_CCW_FOR_{{ class.name }}: {{ ns_prefix }}::{{ parent }}VirtualTableCcw 
+    = {{ ns_prefix }}::{{ parent }}VirtualTableCcw {
+    offset: 0 as *const std::os::raw::c_void,
+    vtable: {{ ns_prefix }}::{{ parent }}VirtualTable {
+        unknown: crosscom::IUnknownVirtualTable {
+            query_interface,
+            add_ref,
+            release,
+        },
+        test,
+    },
+};
+{% endfor %}
+
+impl {{ class.name }}Ccw {
+    pub fn new(inner: $impl_type) -> {{ class.name }}Ccw {
+        Self {
+            {% for parent in class.implements %}
+            {{ parent }}: {{ ns_prefix }}::{{ parent }} {
+                vtable: &GLOBAL_{{ parent }}VirtualTable_CCW_FOR_{{class.name}}.vtable
+                    as *const {{ ns_prefix }}::{{ parent }}VirtualTable,
+            },
+            {% endfor %}
+            ref_count: std::sync::atomic::AtomicU32::new(1),
+            inner,
+        }
+    }
+}
+
+impl ComObject for $impl_type {
+    type CcwType = {{ class.name }}Ccw;
+
+    fn create_ccw(self) -> Self::CcwType {
+        Self::CcwType::new(self)
+    }
+}
+
+
+};
+}
+
+
+{% endif %}
 {% endfor %}
