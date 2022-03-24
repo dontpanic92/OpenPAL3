@@ -1,89 +1,84 @@
 use std::{ffi::c_void, os::raw::c_long};
 
-use crosscom::{ComInterface, IUnknown, IUnknownVirtualTable};
+use crosscom::ComInterface;
 use uuid::Uuid;
 
 
-{% for item in items %}
-{% if item.definition.Interface %}
-{% assign attributes = item.attributes %}
-{% assign iface = item.definition.Interface %}
+{% for iface in model.interfaces %}
 
 /////////////////////// Interface {{ iface.name }} ///////////////////////
 
 #[repr(C)]
+#[allow(non_snake_case)]
 pub struct {{ iface.name }}VirtualTable {
-    pub unknown: IUnknownVirtualTable,
-
-    {% for method in iface.methods %}
-    pub {{ method.name | rust_raw_type }}: unsafe extern "system" fn(this: *const c_void),
+    {% for method in iface.all_methods %}
+    pub {{ method.name }}: {{ method.raw_signature }},
     {% endfor %}
 }
 
+#[allow(dead_code)]
 #[repr(C)]
 pub struct {{ iface.name }}VirtualTableCcw {
     pub offset: *const c_void,
     pub vtable: {{ iface.name }}VirtualTable,
 }
 
+#[allow(dead_code)]
 #[repr(C)]
 pub struct {{ iface.name }} {
     pub vtable: *const {{ iface.name }}VirtualTable,
 }
 
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
 impl {{ iface.name }} {
-    // {{ attributes.uuid }}
+    // {{ iface.uuid }}
     pub const INTERFACE_ID: [u8; 16] = [
-        {{ attributes.uuid | uuid_hex_array }}
+        {{ iface.uuid | uuid_hex_array }}
     ];
     
-    pub fn query_interface(&self, guid: Uuid, retval: *mut c_void) -> c_long {
-        unsafe {
-            let unknown = self as *const {{ iface.name }} as *const IUnknown as *const c_void;
-            ((*self.vtable).unknown.query_interface)(unknown, guid, retval)
+    {% for method in iface.all_methods %}
+        pub {{ method.signature_with_name }} {
+            unsafe {
+                let this = self as *const {{ iface.name }} as *const c_void;
+                ((*self.vtable).{{ method.name }})(this, {{ method.argument_list }})
+            }
         }
-    }
-
-    pub fn add_ref(&self) -> c_long {
-        unsafe {
-            let unknown = self as *const {{ iface.name }} as *const IUnknown as *const c_void;
-            ((*self.vtable).unknown.add_ref)(unknown)
-        }
-    }
-
-    pub fn release(&self) -> c_long {
-        unsafe {
-            let unknown = self as *const {{ iface.name }} as *const IUnknown as *const c_void;
-            ((*self.vtable).unknown.release)(unknown)
-        }
-    }
-    
-    pub fn test(&self) {
-        unsafe { ((*self.vtable).test)(self as *const {{ iface.name }} as *const c_void) }
-    }
+    {% endfor %}
 }
 
 
 pub trait {{ iface.name }}Trait {
-    fn test(&self);
+    {% for method in iface.methods %}
+    {{ method.signature_with_name }};
+    {% endfor %}
 }
 
 impl ComInterface for {{ iface.name }} {}
 
+{% endfor %}
 
-{% elsif item.definition.Class %}
-{% assign class = item.definition.Class %}
-
+{% for class in model.classes %}
 /////////////////////// Class {{ class.name }} ///////////////////////
 
+#[allow(unused)]
 macro_rules! implement_Test {
     ($impl_type: ty) => {
 
-#[repr(C)]
+#[allow(dead_code)]
 #[allow(non_snake_case)]
+#[allow(unused)]
+mod {{class.name}}_impl {
+
+{% for iface in model.interfaces %}
+use {{ ns_prefix }}::{{ iface.name }}Trait;
+{% endfor %}
+
+#[repr(C)]
 pub struct {{ class.name }}Ccw {
-    {% for parent in class.implements %}
-    {{ parent }}: {{ ns_prefix }}::{{ parent }},
+    {% for parent in class.parents %}
+    {{ parent.name }}: {{ ns_prefix }}::{{ parent.name }},
     {% endfor %}
 
     ref_count: std::sync::atomic::AtomicU32,
@@ -117,23 +112,22 @@ unsafe extern "system" fn release(this: *const std::os::raw::c_void) -> std::os:
     (previous - 1) as std::os::raw::c_long
 }
 
-unsafe extern "system" fn test(this: *const std::os::raw::c_void) -> () {
+{% for method in class.methods_to_implement %}
+{{method.raw_signature_with_name}} {
     let object = crosscom::get_object::<{{ class.name }}Ccw>(this);
-    (*object).inner.test();
+    (*object).inner.{{ method.name }}();
 }
+{% endfor %}
 
-{% for parent in class.implements %}
+{% for parent in class.parents %}
 #[allow(non_upper_case_globals)]
-pub const GLOBAL_{{ parent }}VirtualTable_CCW_FOR_{{ class.name }}: {{ ns_prefix }}::{{ parent }}VirtualTableCcw 
-    = {{ ns_prefix }}::{{ parent }}VirtualTableCcw {
+pub const GLOBAL_{{ parent.name }}VirtualTable_CCW_FOR_{{ class.name }}: {{ ns_prefix }}::{{ parent.name }}VirtualTableCcw 
+    = {{ ns_prefix }}::{{ parent.name }}VirtualTableCcw {
     offset: 0 as *const std::os::raw::c_void,
-    vtable: {{ ns_prefix }}::{{ parent }}VirtualTable {
-        unknown: crosscom::IUnknownVirtualTable {
-            query_interface,
-            add_ref,
-            release,
-        },
-        test,
+    vtable: {{ ns_prefix }}::{{ parent.name }}VirtualTable {
+        {% for method in parent.all_methods %}
+        {{ method.name }},
+        {% endfor %}
     },
 };
 {% endfor %}
@@ -141,10 +135,10 @@ pub const GLOBAL_{{ parent }}VirtualTable_CCW_FOR_{{ class.name }}: {{ ns_prefix
 impl {{ class.name }}Ccw {
     pub fn new(inner: $impl_type) -> {{ class.name }}Ccw {
         Self {
-            {% for parent in class.implements %}
-            {{ parent }}: {{ ns_prefix }}::{{ parent }} {
-                vtable: &GLOBAL_{{ parent }}VirtualTable_CCW_FOR_{{class.name}}.vtable
-                    as *const {{ ns_prefix }}::{{ parent }}VirtualTable,
+            {% for parent in class.parents %}
+            {{ parent.name }}: {{ ns_prefix }}::{{ parent.name }} {
+                vtable: &GLOBAL_{{ parent.name }}VirtualTable_CCW_FOR_{{class.name}}.vtable
+                    as *const {{ ns_prefix }}::{{ parent.name }}VirtualTable,
             },
             {% endfor %}
             ref_count: std::sync::atomic::AtomicU32::new(1),
@@ -153,7 +147,7 @@ impl {{ class.name }}Ccw {
     }
 }
 
-impl ComObject for $impl_type {
+impl crosscom::ComObject for $impl_type {
     type CcwType = {{ class.name }}Ccw;
 
     fn create_ccw(self) -> Self::CcwType {
@@ -162,9 +156,8 @@ impl ComObject for $impl_type {
 }
 
 
+}
 };
 }
 
-
-{% endif %}
 {% endfor %}

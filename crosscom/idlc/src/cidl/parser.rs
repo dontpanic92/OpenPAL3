@@ -13,7 +13,6 @@ use nom::{
 
 use super::ast::*;
 
-
 fn ws<'a, F: 'a, O, E: ParseError<&'a str>>(
     inner: F,
 ) -> impl FnMut(&'a str) -> IResult<&'a str, O, E>
@@ -99,14 +98,24 @@ fn parse_interface_body(input: &str) -> IResult<&str, InterfaceBody> {
 fn parse_interface(input: &str) -> IResult<&str, TopLevelItemDefinition> {
     let (input, _) = tag("interface")(input)?;
     let (input, _) = multispace1(input)?;
-    let (input, name) = parse_identifier(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, name) = ws(parse_identifier)(input)?;
+    let (input, colon) = opt(tag(":"))(input)?;
+
+    let (input, extends) = if colon.is_some() {
+        parse_bases(input)?
+    } else {
+        (input, vec![])
+    };
+
     let (input, body) = delimited(tag("{"), parse_interface_body, tag("}"))(input)?;
     Ok((
         input,
         TopLevelItemDefinition::Interface(Interface {
             name: name.to_string(),
             methods: body.methods,
+            extends,
+            attributes: HashMap::new(),
+            extra: Extra::new(),
         }),
     ))
 }
@@ -150,11 +159,11 @@ fn parse_attributes(input: &str) -> IResult<&str, HashMap<String, String>> {
     Ok((input, attributes))
 }
 
-pub fn parse_implements(mut input: &str) -> IResult<&str, Vec<String>> {
-    let mut implements = vec![];
+pub fn parse_bases(mut input: &str) -> IResult<&str, Vec<String>> {
+    let mut bases = vec![];
     loop {
         let (next_input, name) = ws(parse_identifier)(input)?;
-        implements.push(name.to_string());
+        bases.push(name.to_string());
         let result: Result<(&str, &str), nom::Err<nom::error::Error<&str>>> =
             ws(tag(","))(next_input);
 
@@ -164,7 +173,7 @@ pub fn parse_implements(mut input: &str) -> IResult<&str, Vec<String>> {
         }
     }
 
-    Ok((input, implements))
+    Ok((input, bases))
 }
 
 pub fn parse_class(input: &str) -> IResult<&str, TopLevelItemDefinition> {
@@ -175,7 +184,7 @@ pub fn parse_class(input: &str) -> IResult<&str, TopLevelItemDefinition> {
     let (input, colon) = opt(tag(":"))(input)?;
 
     let (input, implements) = if colon.is_some() {
-        parse_implements(input)?
+        parse_bases(input)?
     } else {
         (input, vec![])
     };
@@ -186,13 +195,17 @@ pub fn parse_class(input: &str) -> IResult<&str, TopLevelItemDefinition> {
         TopLevelItemDefinition::Class(Class {
             name: name.to_string(),
             implements,
+            attributes: HashMap::new(),
+            extra: Extra::new(),
         }),
     ))
 }
 
 pub fn parse_top_level(input: &str) -> IResult<&str, TopLevelItem> {
     let (input, attributes) = ws(parse_attributes)(input)?;
-    let (input, definition) = alt((parse_interface, parse_class))(input)?;
+    let (input, mut definition) = alt((parse_interface, parse_class))(input)?;
+
+    definition.set_attributes(attributes.clone());
 
     Ok((
         input,
@@ -205,7 +218,6 @@ pub fn parse_top_level(input: &str) -> IResult<&str, TopLevelItem> {
 
 pub fn parse_idl(input: &str) -> Option<Idl> {
     let result = many0(ws(parse_top_level))(input);
-    println!("{:?}", result);
 
     if let Ok((input, items)) = result {
         if input.len() == 0 {

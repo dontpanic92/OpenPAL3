@@ -1,11 +1,13 @@
+[uuid(00000000-0000-0000-C000-000000000046), codegen(ignore)]
+interface IUnknown {}
 
 [uuid(6ac46481-7efa-45ff-a279-687b4603c746)]
-interface ITest {
+interface ITest: IUnknown {
     void test();
 }
 
 [uuid(de3d989d-2b1d-42a3-b085-a23e40840126)]
-interface ITest2 {
+interface ITest2: ITest {
     void test2();
 }
 

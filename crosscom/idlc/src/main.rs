@@ -1,21 +1,28 @@
 use std::{env::args, error::Error, result::Result};
 
+use crate::analysis::SemanticAnalyzer;
+
+pub mod analysis;
 mod cidl;
 mod filters;
-mod analysis;
+mod viewmodels;
 
 fn render(input: &str, template: &str, output: &str) -> Result<(), Box<dyn Error>> {
     let content = std::fs::read_to_string(input)?;
     let result = cidl::parser::parse_idl(content.as_str());
-    println!("{:?}", result);
 
-    let idl = match result {
+    let mut idl = match result {
         Some(r) => r,
         None => {
             println!("Cannot parse idl");
             return Ok(());
         }
     };
+
+    let mut analyzer = SemanticAnalyzer::new();
+    analyzer.analyze(&mut idl);
+    let symbols = analyzer.symbols();
+    let viewmodel = viewmodels::rust::RustViewModel::from_symbols(symbols);
 
     let template_content = std::fs::read_to_string(template)?;
     let template = liquid::ParserBuilder::with_stdlib()
@@ -26,11 +33,12 @@ fn render(input: &str, template: &str, output: &str) -> Result<(), Box<dyn Error
         .unwrap();
 
     let globals = liquid::object!({
-        "items": idl.items,
-        "ns_prefix": "crosscom_gen",
+        "model": viewmodel,
+        "symbols": symbols,
+        "ns_prefix": "crate::crosscom_gen",
     });
 
-    println!("{:?}", globals);
+    // println!("Globals: {:?}\n", globals);
 
     let result = template.render(&globals).unwrap();
     std::fs::write(output, result)?;

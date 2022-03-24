@@ -26,6 +26,9 @@ pub struct Idl {
 pub struct Interface {
     pub name: String,
     pub methods: Vec<Method>,
+    pub extends: Vec<String>,
+    pub attributes: HashMap<String, String>,
+    pub extra: Extra,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -52,6 +55,8 @@ pub struct MethodParameter {
 pub struct Class {
     pub name: String,
     pub implements: Vec<String>,
+    pub attributes: HashMap<String, String>,
+    pub extra: Extra,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -64,4 +69,13 @@ pub struct TopLevelItem {
 pub enum TopLevelItemDefinition {
     Interface(Interface),
     Class(Class),
+}
+
+impl TopLevelItemDefinition {
+    pub fn set_attributes(&mut self, attributes: HashMap<String, String>) {
+        match self {
+            TopLevelItemDefinition::Class(class) => class.attributes.extend(attributes),
+            TopLevelItemDefinition::Interface(interface) => interface.attributes.extend(attributes),
+        }
+    }
 }
