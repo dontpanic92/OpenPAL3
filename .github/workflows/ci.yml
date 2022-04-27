@@ -23,8 +23,8 @@ jobs:
           override: true
       - name: Install Deps
         run: |
-          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
-          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.2.198-focal.list https://packages.lunarg.com/vulkan/1.2.198/lunarg-vulkan-1.2.198-focal.list
+          wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-bionic.list http://packages.lunarg.com/vulkan/lunarg-vulkan-bionic.list
           sudo apt update
           sudo apt install nasm vulkan-sdk libudev-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev libavcodec-dev libavformat-dev libavfilter-dev libswresample-dev libswscale-dev
           sudo apt install libbs2b-dev liblilv-dev libsratom-dev libsord-dev libserd-dev librubberband-dev libmysofa-dev flite1-dev libfribidi-dev libass-dev libvidstab-dev libzmq3-dev libgme-dev
