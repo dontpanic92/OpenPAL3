@@ -1,5 +1,7 @@
+use std::{cell::RefCell, rc::Rc};
+
 use imgui::Ui;
-use radiance::scene::SceneManager;
+use radiance::{input::InputEngine, scene::SceneManager};
 
 use self::{
     node_view::NodeView, property_view::PropertyView, resource_view::ResourceView,
@@ -19,14 +21,17 @@ pub struct SceneView {
 }
 
 impl SceneView {
-    pub fn new(mut plugins: Option<SceneViewPlugins>) -> SceneView {
+    pub fn new(
+        input: Rc<RefCell<dyn InputEngine>>,
+        mut plugins: Option<SceneViewPlugins>,
+    ) -> SceneView {
         let resource_view_content = plugins
             .as_mut()
             .and_then(|p| p.resource_view_content.take());
         Self {
             node_view: NodeView {},
             property_view: PropertyView {},
-            scene_edit_view: SceneEditView {},
+            scene_edit_view: SceneEditView::new(input),
             resource_view: ResourceView::new(resource_view_content),
         }
     }

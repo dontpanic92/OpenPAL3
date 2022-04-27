@@ -1,7 +1,6 @@
 use imgui::{Condition, Ui};
 use radiance::{
-    input::{InputEngine, Key},
-    math::Vec3,
+    input::InputEngine,
     scene::{Director, SceneManager},
 };
 use std::{
@@ -13,7 +12,6 @@ use crate::ui::scene_view::{SceneView, SceneViewPlugins};
 
 pub struct UiDirector {
     shared_self: Weak<RefCell<Self>>,
-    input: Rc<RefCell<dyn InputEngine>>,
     scene_view: SceneView,
 }
 
@@ -24,49 +22,11 @@ impl UiDirector {
     ) -> Rc<RefCell<Self>> {
         let mut _self = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
-            input,
-            scene_view: SceneView::new(scene_view_plugins),
+            scene_view: SceneView::new(input, scene_view_plugins),
         }));
 
         _self.borrow_mut().shared_self = Rc::downgrade(&_self);
         _self
-    }
-
-    fn update_scene(&mut self, scene_manager: &mut dyn SceneManager, delta_sec: f32) {
-        let input = self.input.borrow();
-        let translate = if input.get_key_state(Key::S).is_down() {
-            Some(Vec3::new(0., 0., 1000. * delta_sec))
-        } else if input.get_key_state(Key::W).is_down() {
-            Some(Vec3::new(0., 0., -1000. * delta_sec))
-        } else {
-            None
-        };
-
-        if let Some(t) = translate {
-            scene_manager
-                .scene_mut()
-                .unwrap()
-                .camera_mut()
-                .transform_mut()
-                .translate_local(&t);
-        }
-
-        let rotation = if input.get_key_state(Key::A).is_down() {
-            Some(-0.2 * delta_sec * std::f32::consts::PI)
-        } else if input.get_key_state(Key::D).is_down() {
-            Some(0.2 * delta_sec * std::f32::consts::PI)
-        } else {
-            None
-        };
-
-        if let Some(r) = rotation {
-            scene_manager
-                .scene_mut()
-                .unwrap()
-                .camera_mut()
-                .transform_mut()
-                .rotate_axis_angle(&Vec3::new(0., 1., 0.), r);
-        }
     }
 }
 
@@ -95,7 +55,6 @@ impl Director for UiDirector {
 
         font.pop();
 
-        self.update_scene(scene_manager, delta_sec);
         None
     }
 }

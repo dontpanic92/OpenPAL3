@@ -2,7 +2,7 @@ use super::mat::Mat44;
 use super::{vec::Vec3, Quaternion};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transform {
     mat: Mat44,
 }

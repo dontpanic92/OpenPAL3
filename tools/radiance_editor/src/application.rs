@@ -11,6 +11,12 @@ impl ApplicationExtension<EditorApplication> for EditorApplication {
         let scene_view_plugins = self.plugin_create.as_ref().map(|c| c(app));
 
         let logger = simple_logger::SimpleLogger::new();
+
+        // workaround panic on Linux for 'Could not determine the UTC offset on this system'
+        // see: https://github.com/borntyping/rust-simple_logger/issues/47
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))]
+        let logger = logger.with_utc_timestamps();
+
         logger.init().unwrap();
 
         let input = app.engine_mut().input_engine();
