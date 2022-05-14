@@ -164,12 +164,13 @@ pub fn parse_bases(mut input: &str) -> IResult<&str, Vec<String>> {
     loop {
         let (next_input, name) = ws(parse_identifier)(input)?;
         bases.push(name.to_string());
-        let result: Result<(&str, &str), nom::Err<nom::error::Error<&str>>> =
-            ws(tag(","))(next_input);
 
         input = next_input;
-        if result.is_err() {
-            break;
+        let result: Result<(&str, &str), nom::Err<nom::error::Error<&str>>> = ws(tag(","))(input);
+
+        match result {
+            Err(_) => break,
+            Ok((next_input, _)) => input = next_input,
         }
     }
 
@@ -219,6 +220,7 @@ pub fn parse_top_level(input: &str) -> IResult<&str, TopLevelItem> {
 pub fn parse_idl(input: &str) -> Option<Idl> {
     let result = many0(ws(parse_top_level))(input);
 
+    println!("{:?}", result);
     if let Ok((input, items)) = result {
         if input.len() == 0 {
             return Some(Idl { items });

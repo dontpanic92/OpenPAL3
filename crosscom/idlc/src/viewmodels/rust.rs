@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use serde::Serialize;
+use uuid::Uuid;
 
 use crate::{
     analysis::symbols::{Ancestor, Symbol, SymbolTable, SymbolType},
@@ -46,6 +49,10 @@ pub struct InterfaceViewModel {
     pub methods: Vec<InterfaceMethodViewModel>,
     pub all_methods: Vec<InterfaceMethodViewModel>,
     pub parent: Option<Box<InterfaceViewModel>>,
+    pub ancestors_uuid: Vec<String>,
+
+    // offset in a class
+    pub offset: isize,
 }
 
 impl InterfaceViewModel {
@@ -62,12 +69,23 @@ impl InterfaceViewModel {
         let mut all_methods = parent.all_methods.clone();
         all_methods.extend(methods.clone());
 
+        let ancestors_uuid = symbol
+            .ancestors
+            .iter()
+            .map(|a| {
+                let symbol_ref = symbols.0.get(&a.name).unwrap().borrow();
+                symbol_ref.uuid
+            })
+            .collect();
+
         Self {
             name: symbol.name.clone(),
             uuid: symbol.uuid.clone(),
             parent: Some(Box::new(parent)),
             methods,
             all_methods,
+            offset: 0,
+            ancestors_uuid,
         }
     }
 
@@ -88,7 +106,7 @@ impl InterfaceViewModel {
                 name: "query_interface".to_string(),
                 raw_signature: "unsafe extern \"system\" fn (this: *const std::os::raw::c_void, guid: uuid::Uuid, retval: *mut std::os::raw::c_void,) -> std::os::raw::c_long".to_string(),
                 raw_signature_with_name:"unsafe extern \"system\" fn query_interface(this: *const std::os::raw::c_void, guid: uuid::Uuid, retval: *mut std::os::raw::c_void,) -> std::os::raw::c_long".to_string(),
-                signature_with_name: "fn query_interface(&self, guid: Uuid, retval: *mut c_void) -> c_long".to_string(),
+                signature_with_name: "fn query_interface<T: ComInterface>(&self) -> crosscom::ComResult<crosscom::ComRc<T>>".to_string(),
                 argument_list: "guid, retval".to_string(),
             },
             InterfaceMethodViewModel {
@@ -112,6 +130,8 @@ impl InterfaceViewModel {
             parent: None,
             methods: methods.clone(),
             all_methods: methods,
+            offset: 0,
+            ancestors_uuid: vec![],
         }
     }
 }
@@ -155,6 +175,7 @@ pub struct ClassViewModel {
     pub methods: Vec<ClassMethodViewModel>,
 
     pub methods_to_implement: Vec<InterfaceMethodViewModel>,
+    pub uuid_offset_map: Vec<(String, isize)>
 }
 
 impl ClassViewModel {
@@ -165,14 +186,31 @@ impl ClassViewModel {
             .map(|m| ClassMethodViewModel::from_method(m, symbols))
             .collect();
 
-        let parents = symbol
+        let mut parents = symbol
             .parents
             .iter()
             .map(|p| {
                 let symbol_ref = symbols.0.get(p).unwrap().borrow();
                 InterfaceViewModel::from_symbol(&symbol_ref, symbols)
             })
-            .collect();
+            .collect::<Vec<InterfaceViewModel>>();
+
+        for (i, p) in parents.iter_mut().enumerate() {
+            p.offset = -(i as isize);
+        }
+
+        let mut uuid_offset_map = HashMap::new();
+        for p in &parents {
+            if !uuid_offset_map.contains_key(&p.uuid) {
+                uuid_offset_map.insert(p.uuid.clone(), p.offset);
+            }
+
+            for a in &p.ancestors_uuid {
+                if !uuid_offset_map.contains_key(a) {
+                    uuid_offset_map.insert(a.clone(), p.offset);
+                }
+            }
+        }
 
         let methods_to_implement = symbol
             .ancestors
@@ -192,6 +230,7 @@ impl ClassViewModel {
             parents,
             methods,
             methods_to_implement,
+            uuid_offset_map: uuid_offset_map.into_iter().collect(),
         }
     }
 }

@@ -19,7 +19,7 @@ pub struct {{ iface.name }}VirtualTable {
 #[allow(dead_code)]
 #[repr(C)]
 pub struct {{ iface.name }}VirtualTableCcw {
-    pub offset: *const c_void,
+    pub offset: isize,
     pub vtable: {{ iface.name }}VirtualTable,
 }
 
@@ -92,7 +92,9 @@ unsafe extern "system" fn query_interface(
 ) -> std::os::raw::c_long {
     let object = crosscom::get_object::<{{ class.name }}Ccw>(this);
 
+{% for parent in class.parents %}
     0
+{% endfor %}
 }
 
 unsafe extern "system" fn add_ref(this: *const std::os::raw::c_void) -> std::os::raw::c_long {
@@ -123,7 +125,7 @@ unsafe extern "system" fn release(this: *const std::os::raw::c_void) -> std::os:
 #[allow(non_upper_case_globals)]
 pub const GLOBAL_{{ parent.name }}VirtualTable_CCW_FOR_{{ class.name }}: {{ ns_prefix }}::{{ parent.name }}VirtualTableCcw 
     = {{ ns_prefix }}::{{ parent.name }}VirtualTableCcw {
-    offset: 0 as *const std::os::raw::c_void,
+    offset: {{ parent.offset }},
     vtable: {{ ns_prefix }}::{{ parent.name }}VirtualTable {
         {% for method in parent.all_methods %}
         {{ method.name }},

@@ -12,4 +12,4 @@ interface ITest2: ITest {
 }
 
 [uuid(50203ee6-e472-42ba-bd57-a202e9cafe7f)]
-class Test: ITest2 {}
+class Test: ITest2, ITest {}

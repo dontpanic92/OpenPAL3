@@ -6,86 +6,6 @@ use uuid::Uuid;
 
 
 
-/////////////////////// Interface ITest ///////////////////////
-
-#[repr(C)]
-#[allow(non_snake_case)]
-pub struct ITestVirtualTable {
-    
-    pub query_interface: unsafe extern "system" fn (this: *const std::os::raw::c_void, guid: uuid::Uuid, retval: *mut std::os::raw::c_void,) -> std::os::raw::c_long,
-    
-    pub add_ref: unsafe extern "system" fn (this: *const std::os::raw::c_void,) -> std::os::raw::c_long,
-    
-    pub release: unsafe extern "system" fn (this: *const std::os::raw::c_void,) -> std::os::raw::c_long,
-    
-    pub test: unsafe extern "system" fn (this: *const std::os::raw::c_void, ) -> (),
-    
-}
-
-#[allow(dead_code)]
-#[repr(C)]
-pub struct ITestVirtualTableCcw {
-    pub offset: *const c_void,
-    pub vtable: ITestVirtualTable,
-}
-
-#[allow(dead_code)]
-#[repr(C)]
-pub struct ITest {
-    pub vtable: *const ITestVirtualTable,
-}
-
-#[allow(dead_code)]
-#[allow(non_snake_case)]
-#[allow(unused)]
-impl ITest {
-    // 6ac46481-7efa-45ff-a279-687b4603c746
-    pub const INTERFACE_ID: [u8; 16] = [
-        0x6a, 0xc4, 0x64, 0x81, 0x7e, 0xfa, 0x45, 0xff, 0xa2, 0x79, 0x68, 0x7b, 0x46, 0x03, 0xc7, 0x46
-    ];
-    
-    
-        pub fn query_interface(&self, guid: Uuid, retval: *mut c_void) -> c_long {
-            unsafe {
-                let this = self as *const ITest as *const c_void;
-                ((*self.vtable).query_interface)(this, guid, retval)
-            }
-        }
-    
-        pub fn add_ref(&self) -> c_long {
-            unsafe {
-                let this = self as *const ITest as *const c_void;
-                ((*self.vtable).add_ref)(this, )
-            }
-        }
-    
-        pub fn release(&self) -> c_long {
-            unsafe {
-                let this = self as *const ITest as *const c_void;
-                ((*self.vtable).release)(this, )
-            }
-        }
-    
-        pub fn test (&self, ) -> () {
-            unsafe {
-                let this = self as *const ITest as *const c_void;
-                ((*self.vtable).test)(this, )
-            }
-        }
-    
-}
-
-
-pub trait ITestTrait {
-    
-    fn test (&self, ) -> ();
-    
-}
-
-impl ComInterface for ITest {}
-
-
-
 /////////////////////// Interface ITest2 ///////////////////////
 
 #[repr(C)]
@@ -107,7 +27,7 @@ pub struct ITest2VirtualTable {
 #[allow(dead_code)]
 #[repr(C)]
 pub struct ITest2VirtualTableCcw {
-    pub offset: *const c_void,
+    pub offset: isize,
     pub vtable: ITest2VirtualTable,
 }
 
@@ -175,6 +95,86 @@ impl ComInterface for ITest2 {}
 
 
 
+/////////////////////// Interface ITest ///////////////////////
+
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct ITestVirtualTable {
+    
+    pub query_interface: unsafe extern "system" fn (this: *const std::os::raw::c_void, guid: uuid::Uuid, retval: *mut std::os::raw::c_void,) -> std::os::raw::c_long,
+    
+    pub add_ref: unsafe extern "system" fn (this: *const std::os::raw::c_void,) -> std::os::raw::c_long,
+    
+    pub release: unsafe extern "system" fn (this: *const std::os::raw::c_void,) -> std::os::raw::c_long,
+    
+    pub test: unsafe extern "system" fn (this: *const std::os::raw::c_void, ) -> (),
+    
+}
+
+#[allow(dead_code)]
+#[repr(C)]
+pub struct ITestVirtualTableCcw {
+    pub offset: isize,
+    pub vtable: ITestVirtualTable,
+}
+
+#[allow(dead_code)]
+#[repr(C)]
+pub struct ITest {
+    pub vtable: *const ITestVirtualTable,
+}
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+impl ITest {
+    // 6ac46481-7efa-45ff-a279-687b4603c746
+    pub const INTERFACE_ID: [u8; 16] = [
+        0x6a, 0xc4, 0x64, 0x81, 0x7e, 0xfa, 0x45, 0xff, 0xa2, 0x79, 0x68, 0x7b, 0x46, 0x03, 0xc7, 0x46
+    ];
+    
+    
+        pub fn query_interface(&self, guid: Uuid, retval: *mut c_void) -> c_long {
+            unsafe {
+                let this = self as *const ITest as *const c_void;
+                ((*self.vtable).query_interface)(this, guid, retval)
+            }
+        }
+    
+        pub fn add_ref(&self) -> c_long {
+            unsafe {
+                let this = self as *const ITest as *const c_void;
+                ((*self.vtable).add_ref)(this, )
+            }
+        }
+    
+        pub fn release(&self) -> c_long {
+            unsafe {
+                let this = self as *const ITest as *const c_void;
+                ((*self.vtable).release)(this, )
+            }
+        }
+    
+        pub fn test (&self, ) -> () {
+            unsafe {
+                let this = self as *const ITest as *const c_void;
+                ((*self.vtable).test)(this, )
+            }
+        }
+    
+}
+
+
+pub trait ITestTrait {
+    
+    fn test (&self, ) -> ();
+    
+}
+
+impl ComInterface for ITest {}
+
+
+
 
 /////////////////////// Class Test ///////////////////////
 
@@ -188,15 +188,17 @@ macro_rules! implement_Test {
 mod Test_impl {
 
 
-use crate::crosscom_gen::ITestTrait;
-
 use crate::crosscom_gen::ITest2Trait;
+
+use crate::crosscom_gen::ITestTrait;
 
 
 #[repr(C)]
 pub struct TestCcw {
     
     ITest2: crate::crosscom_gen::ITest2,
+    
+    ITest: crate::crosscom_gen::ITest,
     
 
     ref_count: std::sync::atomic::AtomicU32,
@@ -246,7 +248,7 @@ unsafe extern "system" fn test (this: *const std::os::raw::c_void, ) -> () {
 #[allow(non_upper_case_globals)]
 pub const GLOBAL_ITest2VirtualTable_CCW_FOR_Test: crate::crosscom_gen::ITest2VirtualTableCcw 
     = crate::crosscom_gen::ITest2VirtualTableCcw {
-    offset: 0 as *const std::os::raw::c_void,
+    offset: 0,
     vtable: crate::crosscom_gen::ITest2VirtualTable {
         
         query_interface,
@@ -262,6 +264,23 @@ pub const GLOBAL_ITest2VirtualTable_CCW_FOR_Test: crate::crosscom_gen::ITest2Vir
     },
 };
 
+#[allow(non_upper_case_globals)]
+pub const GLOBAL_ITestVirtualTable_CCW_FOR_Test: crate::crosscom_gen::ITestVirtualTableCcw 
+    = crate::crosscom_gen::ITestVirtualTableCcw {
+    offset: -1,
+    vtable: crate::crosscom_gen::ITestVirtualTable {
+        
+        query_interface,
+        
+        add_ref,
+        
+        release,
+        
+        test,
+        
+    },
+};
+
 
 impl TestCcw {
     pub fn new(inner: $impl_type) -> TestCcw {
@@ -270,6 +289,11 @@ impl TestCcw {
             ITest2: crate::crosscom_gen::ITest2 {
                 vtable: &GLOBAL_ITest2VirtualTable_CCW_FOR_Test.vtable
                     as *const crate::crosscom_gen::ITest2VirtualTable,
+            },
+            
+            ITest: crate::crosscom_gen::ITest {
+                vtable: &GLOBAL_ITestVirtualTable_CCW_FOR_Test.vtable
+                    as *const crate::crosscom_gen::ITestVirtualTable,
             },
             
             ref_count: std::sync::atomic::AtomicU32::new(1),

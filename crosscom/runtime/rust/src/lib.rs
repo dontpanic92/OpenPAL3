@@ -1,8 +1,4 @@
-use std::{
-    ffi::c_void,
-    ops::Deref,
-    os::raw::{c_char, c_long},
-};
+use std::{ffi::c_void, ops::Deref, os::raw::c_long};
 
 use uuid::Uuid;
 
@@ -49,7 +45,9 @@ impl<TComInterface: ComInterface> Drop for ComRc<TComInterface> {
     }
 }
 
-pub trait ComInterface {}
+pub trait ComInterface {
+    const INTERFACE_ID: [u8; 16];
+}
 
 pub trait ComObject {
     type CcwType;
@@ -81,15 +79,13 @@ pub struct IUnknown {
     vtable: *const IUnknownVirtualTable,
 }
 
-impl IUnknown {
+impl ComInterface for IUnknown {
     // 00000000-0000-0000-C000-000000000046
-    pub const INTERFACE_ID: [u8; 16] = [
+    const INTERFACE_ID: [u8; 16] = [
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x46,
     ];
 }
-
-impl ComInterface for IUnknown {}
 
 impl IUnknownTrait for IUnknown {
     fn query_interface(&self, guid: Uuid, retval: *mut c_void) -> c_long {
@@ -108,8 +104,11 @@ impl IUnknownTrait for IUnknown {
 }
 
 pub unsafe fn get_object<T>(this: *const c_void) -> *const T {
-    let vtable = *(this as *const *const *const c_void);
+    let vtable = *(this as *const *const isize);
     let vtable_ccw = vtable.offset(-1);
-    let offset = (*vtable_ccw) as isize;
-    (this as *const c_char).offset(offset) as *const T
+    let offset = *vtable_ccw;
+    this.offset(offset) as *const T
 }
+
+pub type HResult = c_long;
+pub type ComResult<T> = Result<T, HResult>;
