@@ -8,14 +8,21 @@ pub struct TextPane {
     text: String,
     path: PathBuf,
     preview_state: Option<DevToolsState>,
+    export: Option<Box<dyn Fn()>>,
 }
 
 impl TextPane {
-    pub fn new(text: String, path: PathBuf, preview_state: Option<DevToolsState>) -> Self {
+    pub fn new(
+        text: String,
+        path: PathBuf,
+        preview_state: Option<DevToolsState>,
+        export: Option<Box<dyn Fn()>>,
+    ) -> Self {
         Self {
             text,
             path,
             preview_state,
+            export,
         }
     }
 }
@@ -25,6 +32,12 @@ impl ContentPane for TextPane {
         if self.preview_state.is_some() {
             if ui.button("Preview") {
                 return self.preview_state.clone();
+            }
+        }
+
+        if let Some(export) = &self.export {
+            if ui.button("Export") {
+                export();
             }
         }
 

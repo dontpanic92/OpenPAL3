@@ -1,6 +1,7 @@
 #![feature(arbitrary_self_types)]
 #![feature(drain_filter)]
 mod directors;
+mod exporters;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -12,6 +13,8 @@ use radiance::application::Application;
 use radiance::scene::{Director, SceneManager};
 use radiance_editor::application::EditorApplication;
 use radiance_editor::ui::scene_view::{SceneViewPlugins, SceneViewSubView};
+
+const TITLE: &str = "妖弓编辑器 - OpenPAL3";
 
 struct SceneViewResourceView {
     ui: Option<Rc<RefCell<DevToolsDirector>>>,
@@ -26,7 +29,7 @@ impl SceneViewSubView for SceneViewResourceView {
 
 impl SceneViewResourceView {
     pub fn new(config: OpenGbConfig, app: &mut Application<EditorApplication>) -> Self {
-        app.set_title("妖弓编辑器 - OpenPAL3");
+        app.set_title(TITLE);
 
         let factory = app.engine_mut().rendering_component_factory();
         let asset_mgr = AssetManager::new(factory, &config.asset_path);

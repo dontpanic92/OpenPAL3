@@ -3,6 +3,8 @@ use encoding::{label::encoding_from_whatwg_label, DecoderTrap};
 use image::ImageFormat;
 use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
 use mini_fs::MiniFs;
+use native_dialog::{FileDialog, MessageDialog, MessageType};
+use obj_exporter::ObjSet;
 use opengb::{
     loaders::{
         cvd_loader::cvd_load_from_file, mv3_loader::mv3_load_from_file,
@@ -17,6 +19,8 @@ use radiance::{
 };
 use serde::Serialize;
 use std::{path::Path, rc::Rc};
+
+use crate::exporters::obj_exporter::export_pol_to_obj;
 
 use super::{
     components::{AudioPane, ContentPane, ImagePane, TextPane, VideoPane},
@@ -42,6 +46,8 @@ impl ContentTabs {
         }
     }
 
+    const NONE_EXPORT: Option<fn()> = Option::<fn()>::None;
+
     pub fn open<P: AsRef<Path>>(
         &mut self,
         factory: Rc<dyn ComponentFactory>,
@@ -62,27 +68,35 @@ impl ContentTabs {
                 path.as_ref(),
                 || Some(nav_load_from_file(vfs, path.as_ref())),
                 true,
+                Self::NONE_EXPORT,
             ),
             Some("sce") => self.open_json_from(
                 path.as_ref(),
                 || Some(sce_load_from_file(vfs, path.as_ref())),
                 true,
+                Self::NONE_EXPORT,
             ),
             Some("mv3") => self.open_json_from(
                 path.as_ref(),
                 || mv3_load_from_file(vfs, path.as_ref()).ok(),
                 true,
+                Self::NONE_EXPORT,
             ),
             Some("cvd") => self.open_json_from(
                 path.as_ref(),
                 || cvd_load_from_file(vfs, path.as_ref()).ok(),
                 true,
+                Self::NONE_EXPORT,
             ),
-            Some("pol") => self.open_json_from(
-                path.as_ref(),
-                || pol_load_from_file(vfs, path.as_ref()).ok(),
-                true,
-            ),
+            Some("pol") => {
+                let pol_file = pol_load_from_file(vfs, path.as_ref()).ok();
+                self.open_json_from(
+                    path.as_ref(),
+                    || pol_load_from_file(vfs, path.as_ref()).ok(),
+                    true,
+                    Some(move || Self::export(|| export_pol_to_obj(pol_file.clone().as_ref()))),
+                )
+            }
             Some("h" | "asm" | "ini" | "txt" | "conf") => self.open_plain_text(vfs, path.as_ref()),
             _ => {}
         }
@@ -168,17 +182,24 @@ impl ContentTabs {
                     cpk_name: scn_file.cpk_name.clone(),
                     scn_name: scn_file.scn_name.clone(),
                 }),
+                None,
             ))
         });
     }
 
-    pub fn open_json_from<P: AsRef<Path>, O: Serialize, F: Fn() -> Option<O>>(
+    pub fn open_json_from<
+        P: AsRef<Path>,
+        O: Serialize,
+        F: Fn() -> Option<O>,
+        FExport: Fn() + 'static + Clone,
+    >(
         &mut self,
         path: P,
         loader: F,
         preview: bool,
+        export: Option<FExport>,
     ) {
-        self.open_text(
+        self.open_text2(
             path.as_ref(),
             || {
                 loader()
@@ -193,6 +214,7 @@ impl ContentTabs {
             } else {
                 None
             },
+            export,
         );
     }
 
@@ -221,6 +243,16 @@ impl ContentTabs {
         loader: F,
         preview_state: Option<DevToolsState>,
     ) {
+        self.open_text2::<P, F, fn()>(path, loader, preview_state, None)
+    }
+
+    pub fn open_text2<P: AsRef<Path>, F: Fn() -> String, FExport: Fn() + 'static + Clone>(
+        &mut self,
+        path: P,
+        loader: F,
+        preview_state: Option<DevToolsState>,
+        export: Option<FExport>,
+    ) {
         let tab_name = path.as_ref().to_string_lossy().to_string();
         self.show_or_add_tab(tab_name, || {
             let content = loader();
@@ -228,6 +260,9 @@ impl ContentTabs {
                 content,
                 path.as_ref().to_owned(),
                 preview_state.clone(),
+                export
+                    .clone()
+                    .and_then(|e| Some(Box::new(e) as Box<dyn Fn()>)),
             ))
         });
     }
@@ -278,6 +313,39 @@ impl ContentTabs {
                 .push(ContentTab::new(tab_name.to_string(), new_pane())),
             Some(_) => self.selected_tab = Some(tab_name),
         }
+    }
+
+    fn export<F: Fn() -> Option<ObjSet>>(do_export: F) {
+        let path = FileDialog::new()
+            .add_filter("Wavefront OBJ", &["obj"])
+            .show_save_single_file()
+            .unwrap();
+
+        let path = match path {
+            Some(path) => path,
+            None => return,
+        };
+
+        let obj = do_export();
+        if let Some(obj) = obj {
+            if let Ok(()) = obj_exporter::export_to_file(&obj, path) {
+                MessageDialog::new()
+                    .set_type(MessageType::Info)
+                    .set_title(crate::TITLE)
+                    .set_text("导出成功")
+                    .show_alert()
+                    .unwrap();
+
+                return;
+            }
+        }
+
+        MessageDialog::new()
+            .set_type(MessageType::Error)
+            .set_title(crate::TITLE)
+            .set_text("导出失败")
+            .show_alert()
+            .unwrap();
     }
 }
 

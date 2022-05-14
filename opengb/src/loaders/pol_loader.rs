@@ -8,7 +8,7 @@ use std::error::Error;
 use std::io::{BufReader, Read};
 use std::path::Path;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct PolVertexComponents(u32);
 impl PolVertexComponents {
     pub const POSITION: Self = PolVertexComponents(0b1);
@@ -26,20 +26,20 @@ impl PolVertexComponents {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct PolVertexPosition {
     pub x: f32,
     pub y: f32,
     pub z: f32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct PolVertexTexCoord {
     pub u: f32,
     pub v: f32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct PolVertex {
     pub position: PolVertexPosition,
     pub normal: Option<[f32; 3]>,
@@ -52,7 +52,7 @@ pub struct PolVertex {
     pub unknown100: Option<[f32; 4]>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct PolMaterialInfo {
     pub use_alpha: u32,
     pub unknown_68: Vec<f32>,
@@ -66,12 +66,12 @@ pub struct PolMaterialInfo {
     pub triangles: Vec<PolTriangle>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct PolTriangle {
     pub indices: [u16; 3],
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct PolMesh {
     pub aabb_min: [f32; 3],
     pub aabb_max: [f32; 3],
@@ -82,7 +82,7 @@ pub struct PolMesh {
     pub material_info: Vec<PolMaterialInfo>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct UnknownData {
     pub unknown: Vec<u8>, // size: 32
     pub matrix: Mat44,
@@ -91,12 +91,12 @@ pub struct UnknownData {
     pub ddd_str: Vec<u8>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct GeomNodeDesc {
     pub unknown: Vec<u16>, // size: 52
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct PolFile {
     pub magic: [u8; 4],
     pub some_flag: u32,
