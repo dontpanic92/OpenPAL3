@@ -1792,16 +1792,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "obj-exporter"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d133460dfa7bb530c954eb6c98c4c4ac983cc2ec70840f3a9cf9bf6cf3bee824"
-dependencies = [
- "lazy_static",
- "wavefront_obj",
-]
-
-[[package]]
 name = "objc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3186,16 +3176,17 @@ dependencies = [
  "encoding",
  "image",
  "imgui",
+ "lazy_static",
  "log",
  "mini-fs",
  "native-dialog",
- "obj-exporter",
  "opengb",
  "radiance",
  "radiance_editor",
  "serde",
  "serde_json",
  "simple_logger",
+ "wavefront_obj",
 ]
 
 [[package]]

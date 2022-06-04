@@ -4,7 +4,6 @@ use image::ImageFormat;
 use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
 use mini_fs::MiniFs;
 use native_dialog::{FileDialog, MessageDialog, MessageType};
-use obj_exporter::ObjSet;
 use opengb::{
     loaders::{
         cvd_loader::cvd_load_from_file, mv3_loader::mv3_load_from_file,
@@ -19,8 +18,10 @@ use radiance::{
 };
 use serde::Serialize;
 use std::{path::Path, rc::Rc};
+use wavefront_obj::mtl::MtlSet;
 
-use crate::exporters::obj_exporter::export_pol_to_obj;
+use crate::exporters::obj_exporter::{export_to_file, ObjSet};
+use crate::exporters::pol_obj_exporter::export_pol_to_obj;
 
 use super::{
     components::{AudioPane, ContentPane, ImagePane, TextPane, VideoPane},
@@ -90,11 +91,21 @@ impl ContentTabs {
             ),
             Some("pol") => {
                 let pol_file = pol_load_from_file(vfs, path.as_ref()).ok();
+                let name = path
+                    .as_ref()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
                 self.open_json_from(
                     path.as_ref(),
                     || pol_load_from_file(vfs, path.as_ref()).ok(),
                     true,
-                    Some(move || Self::export(|| export_pol_to_obj(pol_file.clone().as_ref()))),
+                    Some(move || {
+                        Self::export(|| {
+                            export_pol_to_obj(pol_file.clone().as_ref(), name.clone().as_str())
+                        })
+                    }),
                 )
             }
             Some("h" | "asm" | "ini" | "txt" | "conf") => self.open_plain_text(vfs, path.as_ref()),
@@ -315,7 +326,7 @@ impl ContentTabs {
         }
     }
 
-    fn export<F: Fn() -> Option<ObjSet>>(do_export: F) {
+    fn export<F: Fn() -> Option<(ObjSet, MtlSet)>>(do_export: F) {
         let path = FileDialog::new()
             .add_filter("Wavefront OBJ", &["obj"])
             .show_save_single_file()
@@ -328,7 +339,7 @@ impl ContentTabs {
 
         let obj = do_export();
         if let Some(obj) = obj {
-            if let Ok(()) = obj_exporter::export_to_file(&obj, path) {
+            if let Ok(()) = export_to_file(&obj.0, &obj.1, path) {
                 MessageDialog::new()
                     .set_type(MessageType::Info)
                     .set_title(crate::TITLE)
