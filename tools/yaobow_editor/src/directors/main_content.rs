@@ -20,8 +20,11 @@ use serde::Serialize;
 use std::{path::Path, rc::Rc};
 use wavefront_obj::mtl::MtlSet;
 
-use crate::exporters::obj_exporter::{export_to_file, ObjSet};
 use crate::exporters::pol_obj_exporter::export_pol_to_obj;
+use crate::exporters::{
+    mv3_obj_exporter::export_mv3_to_obj,
+    obj_exporter::{export_to_file, ObjSet},
+};
 
 use super::{
     components::{AudioPane, ContentPane, ImagePane, TextPane, VideoPane},
@@ -77,12 +80,25 @@ impl ContentTabs {
                 true,
                 Self::NONE_EXPORT,
             ),
-            Some("mv3") => self.open_json_from(
-                path.as_ref(),
-                || mv3_load_from_file(vfs, path.as_ref()).ok(),
-                true,
-                Self::NONE_EXPORT,
-            ),
+            Some("mv3") => {
+                let mv3_file = mv3_load_from_file(vfs, path.as_ref()).ok();
+                let name = path
+                    .as_ref()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
+                self.open_json_from(
+                    path.as_ref(),
+                    || mv3_load_from_file(vfs, path.as_ref()).ok(),
+                    true,
+                    Some(move || {
+                        Self::export(|| {
+                            export_mv3_to_obj(mv3_file.clone().as_ref(), name.clone().as_str())
+                        })
+                    }),
+                )
+            }
             Some("cvd") => self.open_json_from(
                 path.as_ref(),
                 || cvd_load_from_file(vfs, path.as_ref()).ok(),
