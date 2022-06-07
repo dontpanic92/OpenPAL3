@@ -15,7 +15,7 @@ dashmap = "4.0.2"
 downcast-rs = "1.2.0"
 lazy_static = "1.2.0"
 log = "0.4.13"
-lru = { version = "0.6.6", features=["nightly"] }
+lru = { version = "0.7.1", features=["nightly"] }
 memoffset = "0.5.3"
 radiance-assets = { path = "../radiance-assets" }
 serde = { version = "1.0.106", features = ["derive"] }
