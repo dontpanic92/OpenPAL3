@@ -4,6 +4,7 @@ from parsy import forward_declaration, regex, seq, string, whitespace, letter, a
 
 @dataclass
 class MethodParameter:
+    attrs: list[str]
     name: str
     ty: str
 
@@ -22,6 +23,9 @@ class Interface:
     methods: list[Method]
     attrs: map
 
+    def codegen_ignore(self):
+        return self.attrs is not None and 'codegen' in self.attrs and self.attrs['codegen'] == 'ignore'
+
 
 @dataclass
 class Class:
@@ -34,6 +38,13 @@ class Class:
 @dataclass
 class CrossComIdl:
     items: list[Class | Interface]
+
+    def find(self, name: str) -> None | Class | Interface:
+        for i in self.items:
+            if i.name == name:
+                return i
+
+        return None
 
 
 padding = whitespace.optional()
@@ -60,13 +71,14 @@ def test2(*args, **kwargs):
     return args
 
 
-identifier = (letter | digit).at_least(1).map("".join)
+identifier = (letter | digit | string('_')).at_least(1).map("".join)
 
 attr_value = regex(r"[^()]").many().map("".join)
 attributes = (lbrack >> (
     seq(identifier << lparen, attr_value << rparen)).sep_by(comma) << rbrack).map(lambda p: {i[0]: i[1] for i in p})
 
 method_param = seq(
+    attrs=(lbrack >> identifier.sep_by(comma) << rbrack).optional(),
     ty=identifier << whitespace,
     name=identifier << padding,
 ).combine_dict(MethodParameter)

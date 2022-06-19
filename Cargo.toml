@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "crosscom/idlc",
     "crosscom/runtime/rust",
     "radiance",
     "opengb",

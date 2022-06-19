@@ -11,6 +11,26 @@ impl<TComInterface: ComInterface> ComRc<TComInterface> {
         let p = Box::new(TComObject::create_ccw(obj));
         let raw = Box::into_raw(p);
 
+        unsafe {
+            (raw as *const IUnknown)
+                .as_ref()
+                .unwrap()
+                .query_interface::<TComInterface>()
+                .expect("Failed to create ComRc: Interface not found")
+        }
+    }
+
+    pub unsafe fn from_raw_pointer(raw: *const *const c_void) -> ComRc<TComInterface> {
+        raw.into()
+    }
+
+    pub unsafe fn into_raw(self) -> *const *const c_void {
+        self.into()
+    }
+}
+
+impl<TComInterface: ComInterface> From<*const *const c_void> for ComRc<TComInterface> {
+    fn from(raw: *const *const c_void) -> Self {
         Self {
             this: raw as *const TComInterface,
         }
@@ -45,6 +65,14 @@ impl<TComInterface: ComInterface> Drop for ComRc<TComInterface> {
     }
 }
 
+impl<TComInterface: ComInterface> From<ComRc<TComInterface>> for *const *const c_void {
+    fn from(rc: ComRc<TComInterface>) -> Self {
+        let ret = rc.this as *const *const c_void;
+        std::mem::forget(rc);
+        ret
+    }
+}
+
 pub trait ComInterface {
     const INTERFACE_ID: [u8; 16];
 }
@@ -56,10 +84,13 @@ pub trait ComObject {
 
 #[repr(C)]
 pub struct IUnknownVirtualTable {
-    pub query_interface:
-        unsafe extern "system" fn(this: *const c_void, guid: Uuid, retval: *mut c_void) -> c_long,
-    pub add_ref: unsafe extern "system" fn(this: *const c_void) -> c_long,
-    pub release: unsafe extern "system" fn(this: *const c_void) -> c_long,
+    pub query_interface: unsafe extern "system" fn(
+        this: *const c_void,
+        guid: Uuid,
+        retval: &mut *const *const c_void,
+    ) -> c_long,
+    pub add_ref: unsafe extern "system" fn(this: *const *const c_void) -> c_long,
+    pub release: unsafe extern "system" fn(this: *const *const c_void) -> c_long,
 }
 
 #[repr(C)]
@@ -68,8 +99,8 @@ pub struct IUnknownVirtualTableCcw {
     pub vtable: IUnknownVirtualTable,
 }
 
-pub trait IUnknownTrait {
-    fn query_interface(&self, guid: Uuid, retval: *mut c_void) -> c_long;
+pub trait IUnknownImpl {
+    fn query_interface(&self, guid: Uuid, retval: &mut *const *const c_void) -> c_long;
     fn add_ref(&self) -> c_long;
     fn release(&self) -> c_long;
 }
@@ -87,23 +118,29 @@ impl ComInterface for IUnknown {
     ];
 }
 
-impl IUnknownTrait for IUnknown {
-    fn query_interface(&self, guid: Uuid, retval: *mut c_void) -> c_long {
-        unsafe {
-            ((*self.vtable).query_interface)(self as *const IUnknown as *const c_void, guid, retval)
+impl IUnknown {
+    pub fn query_interface<T: ComInterface>(&self) -> Option<ComRc<T>> {
+        let this = self as *const IUnknown as *const std::os::raw::c_void;
+        let mut raw = 0 as *const *const std::os::raw::c_void;
+        let guid = Uuid::from_bytes(T::INTERFACE_ID);
+        let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
+        if ret_val != 0 {
+            None
+        } else {
+            Some(unsafe { ComRc::<T>::from_raw_pointer(raw) })
         }
     }
 
     fn add_ref(&self) -> c_long {
-        unsafe { ((*self.vtable).add_ref)(self as *const IUnknown as *const c_void) }
+        unsafe { ((*self.vtable).add_ref)(self as *const IUnknown as *const *const c_void) }
     }
 
     fn release(&self) -> c_long {
-        unsafe { ((*self.vtable).release)(self as *const IUnknown as *const c_void) }
+        unsafe { ((*self.vtable).release)(self as *const IUnknown as *const *const c_void) }
     }
 }
 
-pub unsafe fn get_object<T>(this: *const c_void) -> *const T {
+pub unsafe fn get_object<T>(this: *const *const c_void) -> *const T {
     let vtable = *(this as *const *const isize);
     let vtable_ccw = vtable.offset(-1);
     let offset = *vtable_ccw;
@@ -112,3 +149,8 @@ pub unsafe fn get_object<T>(this: *const c_void) -> *const T {
 
 pub type HResult = c_long;
 pub type ComResult<T> = Result<T, HResult>;
+
+pub enum ResultCode {
+    Ok = 0,
+    ENoInterface = -2147467262,
+}
