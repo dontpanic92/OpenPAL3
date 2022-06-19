@@ -22,6 +22,9 @@ simple_logger = "1.16.0"
 wavefront_obj = "5.1.0"
 native-dialog = "0.6.3"
 lazy_static = "1.2.0"
+uuid = "0.8"
+crosscom = { path = "../../crosscom/runtime/rust" }
+
 
 [features]
 ffmpeg = ["opengb/ffmpeg"]

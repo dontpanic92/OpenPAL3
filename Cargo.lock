@@ -671,6 +671,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "crosscom"
+version = "0.1.0"
+dependencies = [
+ "uuid",
+]
+
+[[package]]
 name = "cty"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2128,11 +2135,13 @@ version = "0.1.0"
 name = "radiance_editor"
 version = "0.1.0"
 dependencies = [
+ "crosscom",
  "imgui",
  "imgui-sys",
  "log",
  "radiance",
  "simple_logger",
+ "uuid",
 ]
 
 [[package]]
@@ -3174,6 +3183,7 @@ name = "yaobow_editor"
 version = "0.1.0"
 dependencies = [
  "chardet",
+ "crosscom",
  "encoding",
  "image",
  "imgui",
@@ -3187,6 +3197,7 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_logger",
+ "uuid",
  "wavefront_obj",
 ]
 

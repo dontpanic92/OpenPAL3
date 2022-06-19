@@ -1,7 +1,10 @@
 use std::{cell::RefCell, rc::Rc};
 
+use crosscom::ComRc;
 use imgui::Ui;
 use radiance::{input::InputEngine, scene::SceneManager};
+
+use crate::core::IViewContent;
 
 use self::{
     node_view::NodeView, property_view::PropertyView, resource_view::ResourceView,
@@ -45,17 +48,13 @@ impl SceneView {
 }
 
 pub struct SceneViewPlugins {
-    resource_view_content: Option<Box<dyn SceneViewSubView>>,
+    resource_view_content: Option<ComRc<IViewContent>>,
 }
 
 impl SceneViewPlugins {
-    pub fn new(resource_view_content: Option<Box<dyn SceneViewSubView>>) -> Self {
+    pub fn new(resource_view_content: Option<ComRc<IViewContent>>) -> Self {
         Self {
             resource_view_content,
         }
     }
-}
-
-pub trait SceneViewSubView {
-    fn render(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, delta_sec: f32);
 }
