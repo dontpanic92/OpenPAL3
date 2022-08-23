@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use imgui::{Condition, MouseButton, Ui};
 use radiance::{
     input::{InputEngine, Key},
-    math::{Transform, Vec3},
+    math::{Rect, Transform, Vec2, Vec3},
     scene::{SceneManager, Viewport},
 };
 
@@ -13,6 +13,8 @@ pub struct SceneEditView {
     input: Rc<RefCell<dyn InputEngine>>,
     dragging: bool,
     start_transform: Transform,
+    start_point: Vec2,
+    // window_rect: Rect,
 }
 
 impl SceneEditView {
@@ -21,6 +23,8 @@ impl SceneEditView {
             input,
             dragging: false,
             start_transform: Transform::new(),
+            start_point: Vec2::new(0., 0.),
+            // window_rect: Rect::new(0., 0., 0., 0.),
         }
     }
 
@@ -33,23 +37,32 @@ impl SceneEditView {
                 .unwrap()
                 .camera_mut()
                 .transform_mut()
-                .clone()
+                .clone();
+
+            let cursor_pos = ui.io().mouse_pos;
+            self.start_point.x = cursor_pos[0];
+            self.start_point.y = cursor_pos[1];
         }
+
+        let mouse_event_in_window = window_content_rect(ui).point_in(self.start_point);
+        self.dragging = self.dragging && mouse_event_in_window;
 
         let input = self.input.borrow();
 
-        let z_translate = ui.io().mouse_wheel * -3000. * delta_sec
-            + if input.get_key_state(Key::S).is_down() {
-                1000. * delta_sec
-            } else if input.get_key_state(Key::W).is_down() {
-                -1000. * delta_sec
-            } else {
-                0.
-            };
+        if mouse_event_in_window {
+            let z_translate = ui.io().mouse_wheel * -3000. * delta_sec
+                + if input.get_key_state(Key::S).is_down() {
+                    1000. * delta_sec
+                } else if input.get_key_state(Key::W).is_down() {
+                    -1000. * delta_sec
+                } else {
+                    0.
+                };
 
-        // Commit the z translate regardingless whether we are dragging
-        self.start_transform
-            .translate_local(&Vec3::new(0., 0., z_translate));
+            // Commit the z translate when zooming
+            self.start_transform
+                .translate_local(&Vec3::new(0., 0., z_translate));
+        }
 
         let mut transform = self.start_transform.clone();
         let [mouse_drag_x, mouse_drag_y] = ui.mouse_drag_delta();
@@ -94,8 +107,7 @@ impl SceneEditView {
                     .unwrap()
                     .camera_mut()
                     .set_viewport(Viewport::CustomViewport(rect));
+                self.update_scene(scene_manager, ui, delta_sec);
             });
-
-        self.update_scene(scene_manager, ui, delta_sec);
     }
 }

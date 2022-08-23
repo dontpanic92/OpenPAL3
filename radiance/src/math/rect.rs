@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::Vec2;
+
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[repr(C)]
 pub struct Rect {
@@ -17,5 +19,12 @@ impl Rect {
             width,
             height,
         }
+    }
+
+    pub fn point_in(&self, point: Vec2) -> bool {
+        point.x > self.x
+            && point.x < self.x + self.width
+            && point.y > self.y
+            && point.y < self.y + self.height
     }
 }
