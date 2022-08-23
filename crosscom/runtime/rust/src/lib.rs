@@ -1,6 +1,9 @@
-use std::{ffi::c_void, ops::Deref, os::raw::c_long};
+use std::{ffi::c_void, marker::PhantomData, ops::Deref, os::raw::c_long};
 
 use uuid::Uuid;
+
+pub type Void = ();
+pub type StaticStr = &'static str;
 
 pub struct ComRc<TComInterface: ComInterface> {
     this: *const TComInterface,
@@ -29,10 +32,47 @@ impl<TComInterface: ComInterface> ComRc<TComInterface> {
     }
 }
 
+#[repr(transparent)]
+pub struct RawPointer(pub *const *const c_void);
+
 impl<TComInterface: ComInterface> From<*const *const c_void> for ComRc<TComInterface> {
     fn from(raw: *const *const c_void) -> Self {
         Self {
             this: raw as *const TComInterface,
+        }
+    }
+}
+
+impl<TComInterface: ComInterface> From<RawPointer> for Option<ComRc<TComInterface>> {
+    fn from(raw: RawPointer) -> Self {
+        if raw.0 == std::ptr::null() {
+            None
+        } else {
+            Some(ComRc::<TComInterface> {
+                this: raw.0 as *const TComInterface,
+            })
+        }
+    }
+}
+
+impl<TComInterface: ComInterface> From<ComRc<TComInterface>> for *const *const c_void {
+    fn from(rc: ComRc<TComInterface>) -> Self {
+        let ret = rc.this as *const *const c_void;
+        std::mem::forget(rc);
+        ret
+    }
+}
+
+impl<TComInterface: ComInterface> From<Option<ComRc<TComInterface>>> for RawPointer {
+    fn from(rc: Option<ComRc<TComInterface>>) -> Self {
+        if rc.is_none() {
+            RawPointer {
+                0: std::ptr::null(),
+            }
+        } else {
+            let ret = rc.as_ref().unwrap().this as *const *const c_void;
+            std::mem::forget(rc);
+            RawPointer { 0: ret }
         }
     }
 }
@@ -62,14 +102,6 @@ impl<TComInterface: ComInterface> Drop for ComRc<TComInterface> {
         unsafe {
             (*(self.this as *const IUnknown)).release();
         }
-    }
-}
-
-impl<TComInterface: ComInterface> From<ComRc<TComInterface>> for *const *const c_void {
-    fn from(rc: ComRc<TComInterface>) -> Self {
-        let ret = rc.this as *const *const c_void;
-        std::mem::forget(rc);
-        ret
     }
 }
 
@@ -153,4 +185,80 @@ pub type ComResult<T> = Result<T, HResult>;
 pub enum ResultCode {
     Ok = 0,
     ENoInterface = -2147467262,
+}
+
+include!("defs.rs");
+
+pub struct ObjectArrayImpl {
+    buf: Vec<ComRc<IUnknown>>,
+}
+
+ComObject_ObjectArray!(crate::ObjectArrayImpl);
+
+impl IObjectArrayImpl for ObjectArrayImpl {
+    fn len(&self) -> i32 {
+        self.buf.len() as i32
+    }
+
+    fn get(&self, index: i32) -> crate::ComRc<IUnknown> {
+        self.buf[index as usize].clone()
+    }
+}
+
+pub struct ObjectArray<TComInterface: ComInterface> {
+    array: ComRc<IObjectArray>,
+    _pd: PhantomData<TComInterface>,
+}
+
+impl<TComInterface: ComInterface> ObjectArray<TComInterface> {
+    pub fn new(buf: Vec<ComRc<IUnknown>>) -> Self {
+        Self {
+            array: ComRc::<IObjectArray>::from_object(ObjectArrayImpl { buf }),
+            _pd: PhantomData {},
+        }
+    }
+
+    pub fn len(&self) -> i32 {
+        self.array.len()
+    }
+
+    pub fn get(&self, index: i32) -> crate::ComRc<TComInterface> {
+        self.array
+            .get(index)
+            .query_interface::<TComInterface>()
+            .unwrap()
+    }
+
+    pub fn raw(&self) -> &Vec<ComRc<IUnknown>> {
+        unsafe {
+            let p = crate::get_object::<crate::ObjectArray_crosscom_impl::ObjectArrayCcw>(
+                self.array.this as *const *const c_void,
+            );
+            &(*p).inner.buf
+        }
+    }
+}
+
+impl<TComInterface: ComInterface> Clone for ObjectArray<TComInterface> {
+    fn clone(&self) -> Self {
+        Self {
+            array: self.array.clone(),
+            _pd: self._pd.clone(),
+        }
+    }
+}
+
+impl<TComInterface: ComInterface> From<*const *const c_void> for ObjectArray<TComInterface> {
+    fn from(raw: *const *const c_void) -> Self {
+        Self {
+            array: ComRc::<IObjectArray>::from(raw),
+            _pd: PhantomData {},
+        }
+    }
+}
+
+impl<TComInterface: ComInterface> From<ObjectArray<TComInterface>> for *const *const c_void {
+    fn from(arr: ObjectArray<TComInterface>) -> Self {
+        arr.array.into()
+    }
 }

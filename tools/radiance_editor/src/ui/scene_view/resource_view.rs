@@ -28,11 +28,7 @@ impl ResourceView {
             .draw_background(false)
             .build(|| {
                 if let Some(content) = &mut self.content {
-                    let s = scene_manager as *const dyn SceneManager
-                        as *const radiance::scene::DefaultSceneManager
-                        as *const c_void as i64;
-                    let u = ui as *const Ui as i64;
-                    content.render(s, u, delta_sec);
+                    content.render(scene_manager, ui, delta_sec);
                 }
             });
 

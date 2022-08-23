@@ -4,37 +4,31 @@ mod directors;
 mod exporters;
 
 use std::cell::RefCell;
-use std::ffi::c_void;
 use std::rc::Rc;
 
 use directors::DevToolsDirector;
-use imgui::Ui;
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::Application;
-use radiance::scene::{Director, SceneManager};
+use radiance::scene::Director;
 use radiance_editor::application::EditorApplication;
 use radiance_editor::core::IViewContentImpl;
 use radiance_editor::ui::scene_view::SceneViewPlugins;
 
 const TITLE: &str = "妖弓编辑器 - OpenPAL3";
 
-struct SceneViewResourceView {
+pub struct SceneViewResourceView {
     ui: RefCell<Option<Rc<RefCell<DevToolsDirector>>>>,
 }
 
-radiance_editor::ComObject_ResourceViewContent!(crate::SceneViewResourceView);
+radiance_editor::core::ComObject_ResourceViewContent!(crate::SceneViewResourceView);
 
 impl IViewContentImpl for SceneViewResourceView {
-    fn render(&self, scene_manager: i64, ui: i64, delta_sec: f32) {
-        // CrossCom hack
-        let scene_manager = unsafe {
-            (scene_manager as *mut c_void as *mut radiance::scene::DefaultSceneManager)
-                .as_mut()
-                .unwrap()
-        };
-
-        let ui = unsafe { (ui as *const c_void as *mut Ui).as_mut().unwrap() };
-
+    fn render(
+        &self,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+        ui: &imgui::Ui,
+        delta_sec: f32,
+    ) -> crosscom::Void {
         let mut director = self.ui.borrow_mut();
         let view = director.as_mut().unwrap();
         view.borrow_mut().update(scene_manager, ui, delta_sec);

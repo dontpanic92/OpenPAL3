@@ -14,6 +14,7 @@ class Method:
     name: str
     ret_ty: str
     params: list[MethodParameter]
+    attrs: map
 
 
 @dataclass
@@ -23,8 +24,29 @@ class Interface:
     methods: list[Method]
     attrs: map
 
+    __public_methods: list[Method] = None
+    __internal_methods: list[Method] = None
+
     def codegen_ignore(self):
         return self.attrs is not None and 'codegen' in self.attrs and self.attrs['codegen'] == 'ignore'
+
+    def public_methods(self):
+        if self.__public_methods is None:
+            self.__public_methods = []
+            for m in self.methods:
+                if m.attrs is None or 'internal' not in m.attrs:
+                    self.__public_methods.append(m)
+
+        return self.__public_methods
+
+    def internal_methods(self):
+        if self.__internal_methods is None:
+            self.__internal_methods = []
+            for m in self.methods:
+                if  m.attrs is not None and 'internal' in m.attrs:
+                    self.__internal_methods.append(m)
+
+        return self.__internal_methods
 
 
 @dataclass
@@ -71,7 +93,8 @@ def test2(*args, **kwargs):
     return args
 
 
-identifier = (letter | digit | string('_')).at_least(1).map("".join)
+identifier = (string('dyn ') | letter | digit | string('&mut ') | regex(r'[_&]') | string('::') | string('?') | regex(r'[<>]')).at_least(1).map("".join)
+ty = (identifier + string('[]')) | (identifier + string('*')) | identifier
 
 attr_value = regex(r"[^()]").many().map("".join)
 attributes = (lbrack >> (
@@ -82,8 +105,10 @@ method_param = seq(
     ty=identifier << whitespace,
     name=identifier << padding,
 ).combine_dict(MethodParameter)
+
 method = seq(
-    ret_ty=identifier << whitespace,
+    attrs=(attributes << padding).optional(),
+    ret_ty=ty << whitespace,
     name=identifier << padding,
     params=lparen >> method_param.sep_by(comma) << rparen << semicolon,
 ).combine_dict(Method)

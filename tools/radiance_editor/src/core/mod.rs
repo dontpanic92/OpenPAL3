@@ -12,12 +12,12 @@ pub struct IViewContentVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub release:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
-    pub render: unsafe extern "system" fn(
+    pub render: fn(
         this: *const *const std::os::raw::c_void,
-        scene_manager: std::os::raw::c_longlong,
-        ui: std::os::raw::c_longlong,
-        delta_sec: std::os::raw::c_float,
-    ) -> (),
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+        ui: &imgui::Ui,
+        delta_sec: f32,
+    ) -> crosscom::Void,
 }
 
 #[repr(C)]
@@ -63,16 +63,26 @@ impl IViewContent {
         }
     }
 
-    pub fn render(&self, scene_manager: i64, ui: i64, delta_sec: f32) -> () {
+    pub fn render(
+        &self,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+        ui: &imgui::Ui,
+        delta_sec: f32,
+    ) -> crosscom::Void {
         unsafe {
             let this = self as *const IViewContent as *const *const std::os::raw::c_void;
-            ((*self.vtable).render)(this, scene_manager, ui, delta_sec).into()
+            ((*self.vtable).render)(this, scene_manager.into(), ui.into(), delta_sec.into()).into()
         }
     }
 }
 
 pub trait IViewContentImpl {
-    fn render(&self, scene_manager: i64, ui: i64, delta_sec: f32) -> ();
+    fn render(
+        &self,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+        ui: &imgui::Ui,
+        delta_sec: f32,
+    ) -> crosscom::Void;
 }
 
 impl crosscom::ComInterface for IViewContent {
@@ -101,7 +111,7 @@ macro_rules! ComObject_ResourceViewContent {
                 IViewContent: radiance_editor::core::IViewContent,
 
                 ref_count: std::sync::atomic::AtomicU32,
-                inner: $impl_type,
+                pub inner: $impl_type,
             }
 
             unsafe extern "system" fn query_interface(
@@ -152,14 +162,16 @@ macro_rules! ComObject_ResourceViewContent {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            unsafe extern "system" fn render(
+            fn render(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: std::os::raw::c_longlong,
-                ui: std::os::raw::c_longlong,
-                delta_sec: std::os::raw::c_float,
-            ) -> () {
-                let object = crosscom::get_object::<ResourceViewContentCcw>(this);
-                (*object).inner.render(scene_manager, ui, delta_sec)
+                scene_manager: &mut dyn radiance::scene::SceneManager,
+                ui: &imgui::Ui,
+                delta_sec: f32,
+            ) -> crosscom::Void {
+                unsafe {
+                    let object = crosscom::get_object::<ResourceViewContentCcw>(this);
+                    (*object).inner.render(scene_manager, ui, delta_sec)
+                }
             }
 
             #[allow(non_upper_case_globals)]
@@ -194,3 +206,5 @@ macro_rules! ComObject_ResourceViewContent {
         }
     };
 }
+
+pub use ComObject_ResourceViewContent;
