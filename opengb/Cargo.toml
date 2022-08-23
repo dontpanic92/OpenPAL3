@@ -31,7 +31,6 @@ minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
 regex = "1.4.5"
 lazy_static = "1.2.0"
 cpal = "0.13.4"
-failure = "0.1.8"
 
 [dependencies.ffmpeg]
 git = "https://github.com/meh/rust-ffmpeg"

@@ -1,5 +1,3 @@
-use std::ffi::c_void;
-
 use crosscom::ComRc;
 use imgui::{Condition, StyleVar, Ui};
 use radiance::scene::SceneManager;

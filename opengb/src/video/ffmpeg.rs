@@ -701,24 +701,21 @@ pub struct OutputFormat {
 }
 
 impl TryFrom<&FormatConfig> for OutputFormat {
-    type Error = failure::Error;
+    type Error = String;
 
     fn try_from(config: &FormatConfig) -> Result<Self, Self::Error> {
         let dst_format = match config.format {
             CpalSampleFormat::F32 => FFmpegSampleFormat::F32(SampleType::Packed),
             CpalSampleFormat::I16 => FFmpegSampleFormat::I16(SampleType::Packed),
             CpalSampleFormat::U16 => {
-                return Err(failure::err_msg("Unsupported sample format U16!"));
+                return Err("Unsupported sample format U16!".into());
             }
         };
         let channel_layout = match config.config.channels {
             1 => ChannelLayout::FRONT_CENTER,
             2 => ChannelLayout::FRONT_LEFT | ChannelLayout::FRONT_RIGHT,
             c => {
-                return Err(failure::format_err!(
-                    "Unsupported number of channels: {}!",
-                    c
-                ));
+                return Err(format!("Unsupported number of channels: {}!", c));
             }
         };
 
