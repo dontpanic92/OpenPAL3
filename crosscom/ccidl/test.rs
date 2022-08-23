@@ -99,6 +99,7 @@ impl crosscom::ComInterface for IViewContent {
 // Class ResourceViewContent
 
 #[allow(unused)]
+#[macro_export]
 macro_rules! ComObject_ResourceViewContent {
     ($impl_type: ty) => {
 
@@ -140,7 +141,7 @@ use radiance_editor::core::IViewContentImpl;
 }
 
 
-            _ => crosscom::ResultCode::ENoInterface as i32,
+            _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
         }
     }
 
@@ -214,5 +215,5 @@ IViewContent: radiance_editor::core::IViewContent {
     }
 }
 
-pub(crate) use ComObject_ResourceViewContent;
+pub use ComObject_ResourceViewContent;
 

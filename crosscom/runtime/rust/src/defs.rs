@@ -121,16 +121,16 @@ macro_rules! ComObject_ObjectArray {
                     &crate::IUnknown::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crate::ResultCode::Ok as i32
+                        crate::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &crate::IObjectArray::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crate::ResultCode::Ok as i32
+                        crate::ResultCode::Ok as std::os::raw::c_long
                     }
 
-                    _ => crate::ResultCode::ENoInterface as i32,
+                    _ => crate::ResultCode::ENoInterface as std::os::raw::c_long,
                 }
             }
 

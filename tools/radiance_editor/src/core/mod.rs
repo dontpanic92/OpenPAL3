@@ -133,7 +133,7 @@ macro_rules! ComObject_ResourceViewContent {
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    _ => crosscom::ResultCode::ENoInterface as i32,
+                    _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
                 }
             }
 

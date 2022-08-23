@@ -293,7 +293,7 @@ mod {klass.name}_crosscom_impl {{
         let object = {self.crosscom_module_name}::get_object::<{klass.name}Ccw>(this);
         match guid.as_bytes() {{
             {self.__gen_query_interface_branches(klass)}
-            _ => {self.crosscom_module_name}::ResultCode::ENoInterface as i32,
+            _ => {self.crosscom_module_name}::ResultCode::ENoInterface as std::os::raw::c_long,
         }}
     }}
 
