@@ -23,6 +23,10 @@ impl<TComInterface: ComInterface> ComRc<TComInterface> {
         }
     }
 
+    pub fn uuid(&self) -> Uuid {
+        Uuid::from_bytes(TComInterface::INTERFACE_ID)
+    }
+
     pub unsafe fn from_raw_pointer(raw: *const *const c_void) -> ComRc<TComInterface> {
         raw.into()
     }

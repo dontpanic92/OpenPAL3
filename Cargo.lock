@@ -1894,6 +1894,7 @@ dependencies = [
  "byteorder",
  "config",
  "cpal",
+ "crosscom",
  "dirs",
  "downcast-rs",
  "dyn-clone",
@@ -1913,6 +1914,7 @@ dependencies = [
  "rust-ini 0.16.1",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -2110,6 +2112,7 @@ dependencies = [
  "ash-window",
  "backtrace",
  "bitflags",
+ "crosscom",
  "dashmap",
  "downcast-rs",
  "gilrs",
@@ -2126,6 +2129,7 @@ dependencies = [
  "minimp3",
  "radiance-assets",
  "serde",
+ "uuid",
  "vk-mem",
  "winapi",
  "winit",

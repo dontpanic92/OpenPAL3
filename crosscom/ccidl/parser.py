@@ -16,6 +16,14 @@ class Method:
     params: list[MethodParameter]
     attrs: map
 
+@dataclass
+class Import:
+    file_name: str
+
+@dataclass
+class Module:
+    module_lang: str
+    module_name: str
 
 @dataclass
 class Interface:
@@ -26,6 +34,15 @@ class Interface:
 
     __public_methods: list[Method] = None
     __internal_methods: list[Method] = None
+
+    def __init__(self, name, bases, methods, attrs):
+        self.name = name
+        self.bases = bases
+        self.methods = methods
+        self.attrs = attrs
+
+        for method in self.methods:
+            method.interface = self
 
     def codegen_ignore(self):
         return self.attrs is not None and 'codegen' in self.attrs and self.attrs['codegen'] == 'ignore'
@@ -60,10 +77,12 @@ class Class:
 @dataclass
 class CrossComIdl:
     items: list[Class | Interface]
+    imports: list[Import]
+    modules: list[Module]
 
     def find(self, name: str) -> None | Class | Interface:
         for i in self.items:
-            if i.name == name:
+            if not isinstance(i, Import) and i.name == name:
                 return i
 
         return None
@@ -93,7 +112,7 @@ def test2(*args, **kwargs):
     return args
 
 
-identifier = (string('dyn ') | letter | digit | string('&mut ') | regex(r'[_&]') | string('::') | string('?') | regex(r'[<>]')).at_least(1).map("".join)
+identifier = (string('dyn ') | letter | digit | string('&mut ') | regex(r'[_&]') | string('::') | string('?') | regex(r'[<>]') | string(".")).at_least(1).map("".join)
 ty = (identifier + string('[]')) | (identifier + string('*')) | identifier
 
 attr_value = regex(r"[^()]").many().map("".join)
@@ -126,10 +145,30 @@ def def_top_level(keyword: str, ty: type):
 
 interface = def_top_level("interface", Interface)
 klass = def_top_level("class", Class)
+imqort = seq(
+    file_name=string("import") >> padding >> identifier << padding << semicolon,
+).combine_dict(Import)
+module = seq(
+    module_lang=string("module") >> padding >> lparen >> identifier << rparen,
+    module_name=identifier << padding << semicolon,
+).combine_dict(Module)
 
-top_level = interface | klass
-top_level_list = top_level.many().map(lambda *args: args)
-unit = top_level_list.combine(CrossComIdl)
+def collect_unit(top_level_list):
+    items = []
+    imports = []
+    modules = []
+    for item in top_level_list:
+        if isinstance(item, Import):
+            imports.append(item)
+        elif isinstance(item, Module):
+            modules.append(item)
+        else:
+            items.append(item)
+    
+    return CrossComIdl(items, imports, modules)
+
+top_level = interface | klass | imqort | module
+unit = top_level.many().map(collect_unit)
 
 
 def parse(content: str) -> CrossComIdl:

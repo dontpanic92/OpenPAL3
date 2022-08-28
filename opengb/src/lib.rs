@@ -6,6 +6,7 @@
 #![allow(unused_variables)]
 
 pub mod asset_manager;
+mod classes;
 pub mod config;
 pub mod cpk;
 pub mod directors;

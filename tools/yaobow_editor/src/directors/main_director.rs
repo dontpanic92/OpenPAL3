@@ -154,12 +154,10 @@ impl DevToolsDirector {
                 })
                 .ok()
             }
-            Some("pol") => Some(Box::new(CoreEntity::new(
-                opengb::scene::PolModelEntity::new(
-                    &self.asset_mgr.component_factory(),
-                    &self.asset_mgr.vfs(),
-                    &path,
-                ),
+            Some("pol") => Some(Box::new(opengb::scene::PolModelEntity::new(
+                &self.asset_mgr.component_factory(),
+                &self.asset_mgr.vfs(),
+                &path,
                 "preview".to_string(),
                 true,
             )) as Box<dyn Entity>),

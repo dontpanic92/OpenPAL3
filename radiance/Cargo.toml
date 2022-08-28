@@ -8,9 +8,10 @@ build = "build.rs"
 [dependencies]
 
 # General
+arboard = "2.1"
 backtrace = "0.3.44"
 bitflags = "1.2.1"
-arboard = "2.1"
+crosscom = { path = "../crosscom/runtime/rust" }
 dashmap = "5.1.0"
 downcast-rs = "1.2.0"
 lazy_static = "1.2.0"
@@ -19,6 +20,7 @@ lru = { version = "0.7.1", features=["nightly"] }
 memoffset = "0.5.3"
 radiance-assets = { path = "../radiance-assets" }
 serde = { version = "1.0.106", features = ["derive"] }
+uuid = "0.8"
 
 # Rendering
 ash = { version = "0.36", default-features = false, features = ["loaded"] }

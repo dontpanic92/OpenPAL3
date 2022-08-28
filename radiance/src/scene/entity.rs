@@ -1,3 +1,7 @@
+use crosscom::ComRc;
+use uuid::Uuid;
+
+use crate::interfaces::IComponent;
 use crate::math::{Mat44, Transform};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
@@ -45,6 +49,7 @@ pub struct CoreEntity<TExtension: EntityExtension> {
     children: Vec<Box<dyn Entity>>,
     visible: bool,
     extension: TExtension,
+    components2: HashMap<Uuid, ComRc<IComponent>>,
 }
 
 impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
@@ -57,7 +62,12 @@ impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
             children: vec![],
             visible,
             extension,
+            components2: HashMap::new(),
         }
+    }
+
+    pub fn add_component2(&mut self, component: ComRc<IComponent>) {
+        self.components2.insert(component.uuid(), component);
     }
 
     pub fn add_component<T: 'static>(&mut self, component: Box<T>) {
@@ -148,6 +158,10 @@ impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
 
     fn load(&mut self) {
         self.on_loading();
+
+        for c in self.components2.clone() {
+            c.1.on_loading(self)
+        }
 
         for e in &mut self.children {
             e.load();

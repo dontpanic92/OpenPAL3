@@ -186,8 +186,10 @@ impl AssetManager {
 
         for path in &paths {
             if self.vfs.open(path).is_ok() {
-                return Some(CoreEntity::new(
-                    PolModelEntity::new(&self.factory, &self.vfs, path),
+                return Some(PolModelEntity::new(
+                    &self.factory,
+                    &self.vfs,
+                    path,
                     format!("OBJECT_{}", index),
                     true,
                 ));
@@ -236,8 +238,10 @@ impl AssetManager {
     ) -> Option<CoreEntity<PolModelEntity>> {
         let path = self.get_object_item_path(obj_name);
         if self.vfs.open(&path).is_ok() {
-            Some(CoreEntity::new(
-                PolModelEntity::new(&self.factory, &self.vfs, &path),
+            Some(PolModelEntity::new(
+                &self.factory,
+                &self.vfs,
+                &path,
                 format!("OBJECT_{}", index),
                 visible,
             ))

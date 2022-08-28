@@ -1,0 +1,6 @@
+module(rust) opengb::classes;
+
+import radiance.idl;
+
+[uuid(287b3c25-f310-4512-bdfc-0c54892449bd)]
+class PolModel: IComponent {}

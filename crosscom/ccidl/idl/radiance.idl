@@ -1,0 +1,12 @@
+module(rust) radiance::interfaces;
+
+import crosscom.idl;
+
+[uuid(03748ce3-689d-4325-b1de-59de516b576b)]
+interface IComponent: IUnknown {
+    [internal(), rust()]
+    crosscom::Void on_loading(&mut dyn crate::scene::Entity entity);
+
+    [internal(), rust()]
+    crosscom::Void on_updating(&mut dyn crate::scene::Entity entity, f32 delta_sec);
+}

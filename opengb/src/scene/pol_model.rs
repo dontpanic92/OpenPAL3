@@ -1,21 +1,68 @@
+use crate::ComObject_PolModel;
 use crate::{loaders::pol_loader::*, material::LightMapMaterialDef};
 use mini_fs::{MiniFs, StoreExt};
+use radiance::interfaces::IComponentImpl;
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{
-    ComponentFactory, MaterialDef, SimpleMaterialDef, VertexBuffer, VertexComponents,
+    ComponentFactory, MaterialDef, RenderingComponent, SimpleMaterialDef, VertexBuffer,
+    VertexComponents,
 };
 use radiance::scene::{CoreEntity, EntityExtension};
+use std::any::TypeId;
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
 };
 
-pub struct PolModelEntity {
+pub struct PolModelEntity {}
+
+impl PolModelEntity {
+    pub fn new<P: AsRef<Path>>(
+        component_factory: &Rc<dyn ComponentFactory>,
+        vfs: &MiniFs,
+        path: P,
+        name: String,
+        visible: bool,
+    ) -> CoreEntity<Self> {
+        let mut entity = CoreEntity::new(Self {}, name, visible);
+        entity.add_component2(crosscom::ComRc::from_object(PolModel::new(
+            component_factory,
+            vfs,
+            path,
+        )));
+        entity
+    }
+}
+
+impl EntityExtension for PolModelEntity {}
+
+pub struct PolModel {
     component_factory: Rc<dyn ComponentFactory>,
     meshes: Vec<PolMesh>,
 }
 
-impl PolModelEntity {
+ComObject_PolModel!(super::PolModel);
+
+impl IComponentImpl for PolModel {
+    fn on_loading(&self, entity: &mut dyn radiance::scene::Entity) -> crosscom::Void {
+        let mut objects = vec![];
+        for mesh in &self.meshes {
+            let ro = self.component_factory.create_render_object(
+                mesh.vertices.clone(),
+                mesh.indices.clone(),
+                &mesh.material,
+                false,
+            );
+
+            objects.push(ro);
+        }
+
+        let component = self.component_factory.create_rendering_component(objects);
+        entity.add_component(TypeId::of::<RenderingComponent>(), Box::new(component));
+    }
+}
+
+impl PolModel {
     pub fn new<P: AsRef<Path>>(
         component_factory: &Rc<dyn ComponentFactory>,
         vfs: &MiniFs,
@@ -36,7 +83,7 @@ impl PolModelEntity {
             }
         }
 
-        PolModelEntity {
+        PolModel {
             component_factory: component_factory.clone(),
             meshes,
         }
@@ -88,25 +135,6 @@ impl PolModelEntity {
                 material.use_alpha != 0,
             )
         }
-    }
-}
-
-impl EntityExtension for PolModelEntity {
-    fn on_loading(self: &mut CoreEntity<Self>) {
-        let mut objects = vec![];
-        for mesh in &self.meshes {
-            let ro = self.component_factory.create_render_object(
-                mesh.vertices.clone(),
-                mesh.indices.clone(),
-                &mesh.material,
-                false,
-            );
-
-            objects.push(ro);
-        }
-
-        let component = self.component_factory.create_rendering_component(objects);
-        self.add_component(Box::new(component));
     }
 }
 

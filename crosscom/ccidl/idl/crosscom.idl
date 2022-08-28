@@ -1,0 +1,17 @@
+module(rust) crosscom;
+
+[uuid(00000000-0000-0000-C000-000000000046), codegen(ignore)]
+interface IUnknown {
+    long query_interface(UUID guid, [out] IUnknown retval);
+    long add_ref();
+    long release();
+}
+
+[uuid(928e03ea-0017-4741-80f9-c70a93b16702)]
+interface IObjectArray: IUnknown {
+    int len();
+    IUnknown get(int index);
+}
+
+[uuid(b0d303ba-918f-4482-8fbf-4a7e8abd4d35)]
+class ObjectArray: IObjectArray {}

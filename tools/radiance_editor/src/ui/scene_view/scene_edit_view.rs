@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use imgui::{Condition, MouseButton, Ui};
 use radiance::{
     input::{InputEngine, Key},
-    math::{Rect, Transform, Vec2, Vec3},
+    math::{Transform, Vec2, Vec3},
     scene::{SceneManager, Viewport},
 };
 
