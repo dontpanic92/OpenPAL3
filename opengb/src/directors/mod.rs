@@ -5,8 +5,12 @@ mod sce_commands;
 mod sce_vm;
 
 use self::sce_vm::SceState;
-use crate::scene::{RoleEntity, ScnScene};
+use crate::{
+    classes::IRoleModel,
+    scene::{RoleController, RoleEntity, ScnScene},
+};
 pub use adv_director::AdventureDirector;
+use crosscom::ComRc;
 pub use global_state::GlobalState;
 pub use persistent_state::PersistentState;
 use radiance::scene::{CoreEntity, CoreScene, SceneManager};
@@ -52,7 +56,7 @@ pub trait SceneManagerExtensions: SceneManager {
             .get_role_entity_mut(resolve_role_id(state, role_id))
     }
 
-    fn resolve_role_do<T, F: Fn(&CoreEntity<RoleEntity>) -> T>(
+    fn resolve_role_do<T, F: Fn(&CoreEntity<RoleEntity>, ComRc<IRoleModel>) -> T>(
         &mut self,
         state: &SceState,
         role_id: i32,
@@ -60,14 +64,15 @@ pub trait SceneManagerExtensions: SceneManager {
     ) -> Option<T> {
         let role = self.get_resolved_role(state, role_id);
         if let Some(r) = role {
-            Some(action(r))
+            let role_model = RoleController::try_get_role_model(r).unwrap();
+            Some(action(r, role_model))
         } else {
             log::error!("Cannot find role {}", role_id);
             None
         }
     }
 
-    fn resolve_role_mut_do<T, F: Fn(&mut CoreEntity<RoleEntity>) -> T>(
+    fn resolve_role_mut_do<T, F: Fn(&mut CoreEntity<RoleEntity>, ComRc<IRoleModel>) -> T>(
         &mut self,
         state: &SceState,
         role_id: i32,
@@ -75,7 +80,8 @@ pub trait SceneManagerExtensions: SceneManager {
     ) -> Option<T> {
         let role = self.get_resolved_role_mut(state, role_id);
         if let Some(r) = role {
-            Some(action(r))
+            let role_model = RoleController::try_get_role_model(r).unwrap();
+            Some(action(r, role_model))
         } else {
             log::error!("Cannot find role {}", role_id);
             None

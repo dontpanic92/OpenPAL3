@@ -1,6 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{asset_manager::AssetManager, scene::LadderTestResult};
+use crate::{
+    asset_manager::AssetManager,
+    scene::{LadderTestResult, RoleController},
+};
 
 use super::{
     global_state::GlobalState,
@@ -82,12 +85,15 @@ impl AdventureDirector {
         );
 
         // The role id should be saved in persistant state
-        let role = scene_manager
+        let role_entity = scene_manager
             .core_scene_mut_or_fail()
             .get_role_entity_mut(0)
             .unwrap();
-        role.set_active(true);
-        role.transform_mut()
+
+        let role = RoleController::try_get_role_model(role_entity).unwrap();
+        role.get().set_active(role_entity, true);
+        role_entity
+            .transform_mut()
             .set_position(&global_state.persistent_state_mut().position());
 
         global_state.play_default_bgm();
@@ -168,16 +174,20 @@ impl AdventureDirector {
         let role = scene_manager
             .get_resolved_role(self.sce_vm.state(), -1)
             .unwrap();
+        let role_controller = RoleController::try_get_role_model(role).unwrap();
         let mut position = role.transform().position();
 
         let scene = scene_manager.core_scene_or_fail();
         let speed = 175.;
         let mut target_position = Vec3::add(&position, &Vec3::dot(speed * delta_sec, &direction));
-        let target_nav_coord = scene.scene_coord_to_nav_coord(role.nav_layer(), &target_position);
-        let height = scene.get_height(role.nav_layer(), target_nav_coord);
+        let target_nav_coord =
+            scene.scene_coord_to_nav_coord(role_controller.get().nav_layer(), &target_position);
+        let height = scene.get_height(role_controller.get().nav_layer(), target_nav_coord);
         target_position.y = height;
-        let distance_to_border =
-            scene.get_distance_to_border_by_scene_coord(role.nav_layer(), &target_position);
+        let distance_to_border = scene.get_distance_to_border_by_scene_coord(
+            role_controller.get().nav_layer(),
+            &target_position,
+        );
 
         let role = scene_manager
             .get_resolved_role_mut(self.sce_vm.state(), -1)
@@ -186,7 +196,7 @@ impl AdventureDirector {
             && (self.sce_vm.global_state().pass_through_wall()
                 || distance_to_border > std::f32::EPSILON)
         {
-            role.run();
+            role_controller.get().run(role);
             let look_at = Vec3::new(target_position.x, position.y, target_position.z);
             role.transform_mut()
                 .look_at(&look_at)
@@ -199,7 +209,7 @@ impl AdventureDirector {
 
             position = target_position
         } else {
-            role.idle();
+            role_controller.get().idle(role);
         }
 
         scene_manager
@@ -311,7 +321,8 @@ impl Director for AdventureDirector {
             let role = scene_manager
                 .get_resolved_role(self.sce_vm.state(), -1)
                 .unwrap();
-            (role.transform().position(), role.nav_layer())
+            let r = RoleController::try_get_role_model(role).unwrap();
+            (role.transform().position(), r.get().nav_layer())
         };
 
         macro_rules! scene {
@@ -327,10 +338,13 @@ impl Director for AdventureDirector {
 
         if scene!().test_nav_layer_trigger(nav_layer, &position) {
             if !self.layer_switch_triggered {
-                let layer = scene_manager
-                    .get_resolved_role_mut(self.sce_vm.state(), -1)
-                    .unwrap()
-                    .nav_layer();
+                let layer = {
+                    let e = scene_manager
+                        .get_resolved_role_mut(self.sce_vm.state(), -1)
+                        .unwrap();
+                    let r = RoleController::try_get_role_model(e).unwrap();
+                    r.get().nav_layer()
+                };
                 let new_layer = (layer + 1) % 2;
 
                 let mut test_coord = position;
@@ -347,10 +361,11 @@ impl Director for AdventureDirector {
                 }
 
                 if d > 0.0 {
-                    scene_manager
+                    let e = scene_manager
                         .get_resolved_role_mut(self.sce_vm.state(), -1)
-                        .unwrap()
-                        .switch_nav_layer();
+                        .unwrap();
+                    let r = RoleController::try_get_role_model(e).unwrap();
+                    r.get().switch_nav_layer();
                     scene_manager
                         .get_resolved_role_mut(self.sce_vm.state(), -1)
                         .unwrap()
@@ -387,10 +402,11 @@ impl Director for AdventureDirector {
                     );
 
                     if new_layer {
-                        scene_manager
+                        let e = scene_manager
                             .get_resolved_role_mut(self.sce_vm.state(), -1)
-                            .unwrap()
-                            .switch_nav_layer();
+                            .unwrap();
+                        let r = RoleController::try_get_role_model(e).unwrap();
+                        r.get().switch_nav_layer();
                     }
 
                     scene_manager

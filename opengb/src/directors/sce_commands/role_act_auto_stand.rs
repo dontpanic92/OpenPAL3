@@ -18,8 +18,8 @@ impl SceCommand for SceCommandRoleActAutoStand {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        scene_manager.resolve_role_mut_do(state, self.role_id, |r| {
-            r.set_auto_play_idle(self.auto_play_idle == 1);
+        scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
+            r.get().set_auto_play_idle(self.auto_play_idle == 1);
         });
 
         true

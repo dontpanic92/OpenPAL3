@@ -1,6 +1,9 @@
-use crate::directors::{
-    sce_vm::{SceCommand, SceState},
-    SceneManagerExtensions,
+use crate::{
+    directors::{
+        sce_vm::{SceCommand, SceState},
+        SceneManagerExtensions,
+    },
+    scene::RoleController,
 };
 use imgui::Ui;
 use radiance::{
@@ -24,12 +27,13 @@ impl SceCommand for SceCommandHyFly {
         delta_sec: f32,
     ) -> bool {
         let entity = scene_manager.get_resolved_role_mut(state, 5).unwrap();
+        let role_controller = RoleController::try_get_role_model(entity).unwrap();
         entity.transform_mut().set_position(&Vec3::new(
             self.position_x,
             self.position_y,
             self.position_z,
         ));
-        entity.idle();
+        role_controller.get().idle(entity);
         true
     }
 }

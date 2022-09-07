@@ -66,8 +66,12 @@ impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
         }
     }
 
-    pub fn add_component2(&mut self, component: ComRc<IComponent>) {
-        self.components2.insert(component.uuid(), component);
+    pub fn add_component2(&mut self, uuid: Uuid, component: ComRc<IComponent>) {
+        self.components2.insert(uuid, component);
+    }
+
+    pub fn get_component2(&self, uuid: Uuid) -> Option<&ComRc<IComponent>> {
+        self.components2.get(&uuid)
     }
 
     pub fn add_component<T: 'static>(&mut self, component: Box<T>) {
@@ -170,6 +174,10 @@ impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
 
     fn update(&mut self, delta_sec: f32) {
         self.on_updating(delta_sec);
+
+        for c in self.components2.clone() {
+            c.1.on_updating(self, delta_sec);
+        }
     }
 
     fn transform(&self) -> &Transform {

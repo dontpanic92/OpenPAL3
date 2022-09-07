@@ -1,5 +1,6 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
 use crate::directors::SceneManagerExtensions;
+use crate::scene::RoleController;
 use imgui::Ui;
 use radiance::scene::{CoreScene, SceneManager};
 use std::rc::Rc;
@@ -28,10 +29,9 @@ impl SceCommand for SceCommandLoadScene {
         scene_manager.push_scene(Box::new(CoreScene::new(
             state.asset_mgr().load_scn(&self.name, &self.sub_name),
         )));
-        scene_manager
-            .get_resolved_role_mut(state, -1)
-            .unwrap()
-            .set_active(true);
+        let e = scene_manager.get_resolved_role_mut(state, -1).unwrap();
+        let r = RoleController::try_get_role_model(e).unwrap();
+        r.get().set_active(e, true);
 
         state
             .global_state_mut()

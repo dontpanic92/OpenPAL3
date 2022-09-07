@@ -1,3 +1,4 @@
+use crate::classes::IPolModel;
 use crate::ComObject_PolModel;
 use crate::{loaders::pol_loader::*, material::LightMapMaterialDef};
 use mini_fs::{MiniFs, StoreExt};
@@ -25,11 +26,10 @@ impl PolModelEntity {
         visible: bool,
     ) -> CoreEntity<Self> {
         let mut entity = CoreEntity::new(Self {}, name, visible);
-        entity.add_component2(crosscom::ComRc::from_object(PolModel::new(
-            component_factory,
-            vfs,
-            path,
-        )));
+        entity.add_component2(
+            IPolModel::uuid(),
+            crosscom::ComRc::from_object(PolModel::new(component_factory, vfs, path)),
+        );
         entity
     }
 }
@@ -59,6 +59,13 @@ impl IComponentImpl for PolModel {
 
         let component = self.component_factory.create_rendering_component(objects);
         entity.add_component(TypeId::of::<RenderingComponent>(), Box::new(component));
+    }
+
+    fn on_updating(
+        &self,
+        entity: &mut dyn radiance::scene::Entity,
+        delta_sec: f32,
+    ) -> crosscom::Void {
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
+use crate::scene::RoleController;
 use imgui::Ui;
 use radiance::scene::{Entity, SceneManager};
 
@@ -23,8 +24,13 @@ impl SceCommand for SceCommandRoleSetPos {
             let role = scene_manager
                 .get_resolved_role(state, self.role_id)
                 .unwrap();
+            let role_controller = RoleController::try_get_role_model(role).unwrap();
             let scene = scene_manager.core_scene_or_fail();
-            scene.nav_coord_to_scene_coord(role.nav_layer(), self.nav_x, self.nav_z)
+            scene.nav_coord_to_scene_coord(
+                role_controller.get().nav_layer(),
+                self.nav_x,
+                self.nav_z,
+            )
         };
 
         let role = scene_manager

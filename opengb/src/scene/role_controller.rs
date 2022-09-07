@@ -1,10 +1,18 @@
+use crate::classes::{IRoleModel, IRoleModelImpl};
+use crate::ComObject_RoleModel;
 use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
+use crosscom::ComRc;
+use dashmap::mapref::one::Ref;
+use dashmap::DashMap;
+use radiance::interfaces::IComponentImpl;
 use radiance::rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents};
-use radiance::scene::{CoreEntity, EntityExtension};
+use radiance::scene::{CoreEntity, Entity, EntityExtension};
 use radiance::{
     math::{Vec2, Vec3},
     rendering::RenderingComponent,
 };
+use std::any::TypeId;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -24,29 +32,73 @@ pub enum RoleState {
     Running,
 }
 
-pub struct RoleEntity {
-    model_name: String,
-    asset_mgr: Rc<AssetManager>,
-    _component_factory: Rc<dyn ComponentFactory>,
-    animations: HashMap<String, RoleAnimation>,
-    active_anim_name: String,
-    idle_anim_name: String,
-    walking_anim_name: String,
-    running_anim_name: String,
-    anim_repeat_mode: RoleAnimationRepeatMode,
-    is_active: bool,
-    state: RoleState,
-    auto_play_idle: bool,
-    nav_layer: usize,
-    proc_id: i32,
-}
+pub struct RoleEntity;
 
 impl RoleEntity {
     pub fn new(
         asset_mgr: Rc<AssetManager>,
         role_name: &str,
         idle_anim: &str,
-    ) -> Result<RoleEntity, EntityError> {
+        name: String,
+        visible: bool,
+    ) -> Result<CoreEntity<Self>, EntityError> {
+        let mut entity = CoreEntity::new(Self {}, name, visible);
+        entity.add_component2(
+            IRoleModel::uuid(),
+            crosscom::ComRc::from_object(RoleController::new(asset_mgr, role_name, idle_anim)?),
+        );
+
+        Ok(entity)
+    }
+
+    pub fn new_from_idle_animation(
+        asset_mgr: Rc<AssetManager>,
+        role_name: &str,
+        idle_anim_name: &str,
+        idle_anim: RoleAnimation,
+        name: String,
+        visible: bool,
+    ) -> Result<CoreEntity<Self>, EntityError> {
+        let mut entity = CoreEntity::new(Self {}, name, visible);
+        entity.add_component2(
+            IRoleModel::uuid(),
+            crosscom::ComRc::from_object(RoleController::new_from_idle_animation(
+                asset_mgr,
+                role_name,
+                idle_anim_name,
+                idle_anim,
+            )),
+        );
+
+        Ok(entity)
+    }
+}
+
+pub struct RoleController {
+    model_name: String,
+    asset_mgr: Rc<AssetManager>,
+    _component_factory: Rc<dyn ComponentFactory>,
+    animations: DashMap<String, RoleAnimation>,
+    active_anim_name: RefCell<String>,
+    idle_anim_name: String,
+    walking_anim_name: String,
+    running_anim_name: String,
+    anim_repeat_mode: RefCell<RoleAnimationRepeatMode>,
+    is_active: RefCell<bool>,
+    state: RefCell<RoleState>,
+    auto_play_idle: RefCell<bool>,
+    nav_layer: RefCell<usize>,
+    proc_id: RefCell<i32>,
+}
+
+ComObject_RoleModel!(super::RoleController);
+
+impl RoleController {
+    pub fn new(
+        asset_mgr: Rc<AssetManager>,
+        role_name: &str,
+        idle_anim: &str,
+    ) -> Result<Self, EntityError> {
         let idle_anim = idle_anim;
         let anim = asset_mgr
             .load_role_anim_first(role_name, &[idle_anim, "c01", "z1"])
@@ -62,8 +114,8 @@ impl RoleEntity {
         role_name: &str,
         idle_anim_name: &str,
         idle_anim: RoleAnimation,
-    ) -> RoleEntity {
-        let mut animations = HashMap::new();
+    ) -> Self {
+        let animations = DashMap::new();
         if !idle_anim_name.trim().is_empty() {
             animations.insert(idle_anim_name.to_string(), idle_anim);
         }
@@ -86,41 +138,54 @@ impl RoleEntity {
             asset_mgr: asset_mgr.clone(),
             _component_factory: asset_mgr.component_factory().clone(),
             animations,
-            active_anim_name: idle_anim_name.to_string(),
+            active_anim_name: RefCell::new(idle_anim_name.to_string()),
             idle_anim_name: idle_anim_name.to_string(),
             walking_anim_name,
             running_anim_name,
-            anim_repeat_mode: RoleAnimationRepeatMode::Repeat,
-            is_active: false,
-            state: RoleState::Idle,
-            auto_play_idle: true,
-            nav_layer: 0,
-            proc_id: 0,
+            anim_repeat_mode: RefCell::new(RoleAnimationRepeatMode::Repeat),
+            is_active: RefCell::new(false),
+            state: RefCell::new(RoleState::Idle),
+            auto_play_idle: RefCell::new(true),
+            nav_layer: RefCell::new(0),
+            proc_id: RefCell::new(0),
         }
     }
 
-    pub fn set_active(self: &mut CoreEntity<Self>, active: bool) {
-        self.is_active = active;
+    pub fn try_get_role_model(entity: &CoreEntity<RoleEntity>) -> Option<ComRc<IRoleModel>> {
+        entity
+            .get_component2(IRoleModel::uuid())
+            .unwrap()
+            .query_interface::<IRoleModel>()
+    }
+
+    pub fn is_active(&self) -> bool {
+        *self.is_active.borrow()
+    }
+
+    pub fn set_active(&self, entity: &mut dyn Entity, active: bool) {
+        *self.is_active.borrow_mut() = active;
         if active {
-            let anim_name = self.active_anim_name.clone();
-            self.play_anim(&anim_name, self.anim_repeat_mode);
+            let anim_name = { self.active_anim_name.borrow().clone() };
+            let mode = *self.anim_repeat_mode.borrow();
+            self.play_anim(entity, &anim_name, mode);
         } else {
-            self.remove_component::<RenderingComponent>();
+            entity.remove_component(TypeId::of::<RenderingComponent>());
         }
 
-        self.set_visible(active);
+        entity.set_visible(active);
     }
 
-    pub fn proc_id(self: &CoreEntity<Self>) -> i32 {
-        self.proc_id
+    pub fn proc_id(&self) -> i32 {
+        *self.proc_id.borrow()
     }
 
-    pub fn set_proc_id(self: &mut CoreEntity<Self>, proc_id: i32) {
-        self.proc_id = proc_id;
+    pub fn set_proc_id(&self, proc_id: i32) {
+        *self.proc_id.borrow_mut() = proc_id;
     }
 
     pub fn play_anim(
-        self: &mut CoreEntity<Self>,
+        &self,
+        entity: &mut dyn Entity,
         anim_name: &str,
         repeat_mode: RoleAnimationRepeatMode,
     ) {
@@ -140,82 +205,104 @@ impl RoleEntity {
             anim_name
         };
 
-        self.active_anim_name = anim_name.to_string();
-        self.anim_repeat_mode = repeat_mode;
+        *self.active_anim_name.borrow_mut() = anim_name.to_string();
+        *self.anim_repeat_mode.borrow_mut() = repeat_mode;
         self.active_anim_mut().reset(repeat_mode);
 
-        self.remove_component::<RenderingComponent>();
+        entity.remove_component(TypeId::of::<RenderingComponent>());
         let rc = self.active_anim().create_rendering_component();
-        self.add_component(Box::new(rc));
+        entity.add_component(TypeId::of::<RenderingComponent>(), Box::new(rc));
     }
 
-    pub fn run(self: &mut CoreEntity<Self>) {
-        if self.state != RoleState::Running {
+    pub fn run(&self, entity: &mut dyn Entity) {
+        if *self.state.borrow() != RoleState::Running {
             let name = self.running_anim_name.clone();
-            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
-            self.state = RoleState::Running;
+            self.play_anim(entity, &name, RoleAnimationRepeatMode::Repeat);
+            *self.state.borrow_mut() = RoleState::Running;
         }
     }
 
-    pub fn idle(self: &mut CoreEntity<Self>) {
-        if self.state != RoleState::Idle {
+    pub fn idle(&self, entity: &mut dyn Entity) {
+        if *self.state.borrow() != RoleState::Idle {
             let name = self.idle_anim_name.clone();
-            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
-            self.state = RoleState::Idle;
+            self.play_anim(entity, &name, RoleAnimationRepeatMode::Repeat);
+            *self.state.borrow_mut() = RoleState::Idle;
         }
     }
 
-    pub fn walk(self: &mut CoreEntity<Self>) {
-        if self.state != RoleState::Walking {
+    pub fn walk(&self, entity: &mut dyn Entity) {
+        if *self.state.borrow() != RoleState::Walking {
             let name = self.walking_anim_name.clone();
-            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
-            self.state = RoleState::Walking;
+            self.play_anim(entity, &name, RoleAnimationRepeatMode::Repeat);
+            *self.state.borrow_mut() = RoleState::Walking;
         }
     }
 
-    pub fn set_auto_play_idle(&mut self, auto_play_idle: bool) {
-        self.auto_play_idle = auto_play_idle;
+    pub fn set_auto_play_idle(&self, auto_play_idle: bool) {
+        *self.auto_play_idle.borrow_mut() = auto_play_idle;
     }
 
     pub fn state(&self) -> RoleState {
-        self.state
+        *self.state.borrow()
     }
 
     pub fn nav_layer(&self) -> usize {
-        self.nav_layer
+        *self.nav_layer.borrow()
     }
 
-    pub fn switch_nav_layer(&mut self) -> usize {
-        self.nav_layer = (self.nav_layer + 1) % 2;
-        self.nav_layer
+    pub fn switch_nav_layer(&self) -> usize {
+        *self.nav_layer.borrow_mut() = (self.nav_layer() + 1) % 2;
+        self.nav_layer()
     }
 
-    pub fn set_nav_layer(&mut self, layer: usize) {
-        self.nav_layer = layer;
+    pub fn set_nav_layer(&self, layer: usize) {
+        *self.nav_layer.borrow_mut() = layer;
     }
 
-    fn active_anim(&self) -> &RoleAnimation {
-        self.animations.get(&self.active_anim_name).unwrap()
+    fn active_anim(&self) -> Ref<String, RoleAnimation> {
+        self.animations
+            .get(&*self.active_anim_name.borrow())
+            .unwrap()
     }
 
-    fn active_anim_mut(&mut self) -> &mut RoleAnimation {
-        self.animations.get_mut(&self.active_anim_name).unwrap()
+    fn active_anim_mut(&self) -> dashmap::mapref::one::RefMut<String, RoleAnimation> {
+        self.animations
+            .get_mut(&*self.active_anim_name.borrow())
+            .unwrap()
     }
 }
 
 impl EntityExtension for RoleEntity {
-    fn on_loading(self: &mut CoreEntity<Self>) {
-        if !self.idle_anim_name.trim().is_empty() && self.is_active {
-            self.idle();
+    fn on_loading(self: &mut CoreEntity<Self>) {}
+
+    fn on_updating(self: &mut CoreEntity<Self>, delta_sec: f32) {}
+}
+
+impl IRoleModelImpl for RoleController {
+    fn get(&self) -> &crate::scene::RoleController {
+        self
+    }
+}
+
+impl IComponentImpl for RoleController {
+    fn on_loading(&self, entity: &mut dyn Entity) -> crosscom::Void {
+        if !self.idle_anim_name.trim().is_empty() && self.is_active() {
+            self.idle(entity);
         }
     }
 
-    fn on_updating(self: &mut CoreEntity<Self>, delta_sec: f32) {
-        if self.is_active {
+    fn on_updating(&self, entity: &mut dyn Entity, delta_sec: f32) -> crosscom::Void {
+        if self.is_active() {
             // TODO: Consider to use Arc<Mutex<>>>
             let rc = unsafe {
-                &mut *(self.get_component_mut::<RenderingComponent>().unwrap()
-                    as *mut RenderingComponent)
+                let component = entity
+                    .get_component_mut(TypeId::of::<RenderingComponent>())
+                    .unwrap();
+
+                &mut *(component
+                    .as_mut()
+                    .downcast_mut::<RenderingComponent>()
+                    .unwrap() as *mut RenderingComponent)
             };
             let ro = rc.render_objects_mut().first_mut().unwrap();
 
@@ -224,10 +311,10 @@ impl EntityExtension for RoleEntity {
             });
 
             if self.active_anim().anim_finished() {
-                self.state = RoleState::Idle;
+                *self.state.borrow_mut() = RoleState::Idle;
 
-                if self.state == RoleState::Idle && self.auto_play_idle {
-                    self.idle();
+                if *self.auto_play_idle.borrow() {
+                    self.idle(entity);
                 }
             }
         }

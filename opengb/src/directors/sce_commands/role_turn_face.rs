@@ -19,8 +19,8 @@ impl SceCommand for SceCommandRoleTurnFace {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        scene_manager.resolve_role_mut_do(state, self.role_id, |r| {
-            r.transform_mut()
+        scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
+            e.transform_mut()
                 .rotate_axis_angle_local(&Vec3::UP, -self.degree.to_radians());
         });
         true

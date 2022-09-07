@@ -20,9 +20,9 @@ impl SceCommand for SceCommandRoleShowAction {
             _ => RoleAnimationRepeatMode::NoRepeat,
         };
 
-        let entity = scene_manager.resolve_role_mut_do(state, self.role_id, |entity| {
-            entity.set_active(true);
-            entity.play_anim(&self.action_name, repeat);
+        let entity = scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
+            r.get().set_active(e, true);
+            r.get().play_anim(e, &self.action_name, repeat);
         });
     }
 
@@ -33,7 +33,7 @@ impl SceCommand for SceCommandRoleShowAction {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        let s = scene_manager.resolve_role_do(state, self.role_id, |r| r.state());
+        let s = scene_manager.resolve_role_do(state, self.role_id, |e, r| r.get().state());
 
         s.unwrap_or(RoleState::Idle) == RoleState::Idle
     }

@@ -1,3 +1,4 @@
+use crate as radiance;
 // Interface IComponent
 
 #[repr(C)]
@@ -14,7 +15,12 @@ pub struct IComponentVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub on_loading: fn(
         this: *const *const std::os::raw::c_void,
-        entity: &mut dyn crate::scene::Entity,
+        entity: &mut dyn radiance::scene::Entity,
+    ) -> crosscom::Void,
+    pub on_updating: fn(
+        this: *const *const std::os::raw::c_void,
+        entity: &mut dyn radiance::scene::Entity,
+        delta_sec: f32,
     ) -> crosscom::Void,
 }
 
@@ -47,30 +53,51 @@ impl IComponent {
         }
     }
 
-    pub fn add_ref(&self) -> i32 {
+    pub fn add_ref(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const IComponent as *const *const std::os::raw::c_void;
             ((*self.vtable).add_ref)(this).into()
         }
     }
 
-    pub fn release(&self) -> i32 {
+    pub fn release(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const IComponent as *const *const std::os::raw::c_void;
             ((*self.vtable).release)(this).into()
         }
     }
 
-    pub fn on_loading(&self, entity: &mut dyn crate::scene::Entity) -> crosscom::Void {
+    pub fn on_loading(&self, entity: &mut dyn radiance::scene::Entity) -> crosscom::Void {
         unsafe {
             let this = self as *const IComponent as *const *const std::os::raw::c_void;
             ((*self.vtable).on_loading)(this, entity.into()).into()
         }
     }
+
+    pub fn on_updating(
+        &self,
+        entity: &mut dyn radiance::scene::Entity,
+        delta_sec: f32,
+    ) -> crosscom::Void {
+        unsafe {
+            let this = self as *const IComponent as *const *const std::os::raw::c_void;
+            ((*self.vtable).on_updating)(this, entity.into(), delta_sec.into()).into()
+        }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(IComponent::INTERFACE_ID)
+    }
 }
 
 pub trait IComponentImpl {
-    fn on_loading(&self, entity: &mut dyn crate::scene::Entity) -> crosscom::Void;
+    fn on_loading(&self, entity: &mut dyn radiance::scene::Entity) -> crosscom::Void;
+    fn on_updating(
+        &self,
+        entity: &mut dyn radiance::scene::Entity,
+        delta_sec: f32,
+    ) -> crosscom::Void;
 }
 
 impl crosscom::ComInterface for IComponent {

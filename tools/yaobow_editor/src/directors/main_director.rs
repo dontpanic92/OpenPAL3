@@ -4,12 +4,12 @@ use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::{
     asset_manager::AssetManager,
     loaders::mv3_loader::mv3_load_from_file,
-    scene::{CvdModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity},
+    scene::{CvdModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleController, RoleEntity},
 };
 use radiance::{
     audio::AudioEngine,
     math::Vec3,
-    scene::{CoreEntity, CoreScene, Director, Entity, Scene, SceneManager},
+    scene::{CoreScene, Director, Entity, Scene, SceneManager},
 };
 use radiance_editor::{scene::EditorScene, ui::window_content_rect};
 use std::{
@@ -139,17 +139,19 @@ impl DevToolsDirector {
                 });
 
                 anim.map(|a| {
-                    let mut e = Box::new(CoreEntity::new(
+                    let mut e = Box::new(
                         RoleEntity::new_from_idle_animation(
                             self.asset_mgr.clone(),
                             "preview",
                             "preview",
                             a,
-                        ),
-                        "preview".to_string(),
-                        true,
-                    ));
-                    e.set_active(true);
+                            "preview".to_string(),
+                            true,
+                        )
+                        .unwrap(),
+                    );
+                    let r = RoleController::try_get_role_model(&e).unwrap();
+                    r.get().set_active(e.as_mut(), true);
                     e as Box<dyn Entity>
                 })
                 .ok()

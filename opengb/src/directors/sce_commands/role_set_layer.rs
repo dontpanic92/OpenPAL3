@@ -18,8 +18,8 @@ impl SceCommand for SceCommandRoleSetLayer {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        scene_manager.resolve_role_mut_do(state, self.role_id, |r| {
-            r.set_nav_layer(self.layer as usize)
+        scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
+            r.get().set_nav_layer(self.layer as usize)
         });
         true
     }

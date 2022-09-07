@@ -1,6 +1,7 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
+use crate::scene::RoleController;
 use imgui::Ui;
 use radiance::scene::Entity;
 use radiance::{math::Vec3, scene::SceneManager};
@@ -18,7 +19,10 @@ impl SceCommand for SceCommandRoleMoveTo {
     fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
         scene_manager
             .get_resolved_role_mut(state, self.role_id)
-            .and_then(|r| Some(r.run()));
+            .and_then(|e| {
+                let r = RoleController::try_get_role_model(e).unwrap();
+                Some(r.get().run(e))
+            });
     }
 
     fn update(
@@ -33,9 +37,15 @@ impl SceCommand for SceCommandRoleMoveTo {
         let role = scene_manager
             .get_resolved_role(state, self.role_id)
             .unwrap();
+
+        let role_controller = RoleController::try_get_role_model(role).unwrap();
         let to = {
             let scene = scene_manager.core_scene_or_fail();
-            scene.nav_coord_to_scene_coord(role.nav_layer(), self.nav_x, self.nav_z)
+            scene.nav_coord_to_scene_coord(
+                role_controller.get().nav_layer(),
+                self.nav_x,
+                self.nav_z,
+            )
         };
 
         let role = scene_manager
@@ -56,7 +66,7 @@ impl SceCommand for SceCommandRoleMoveTo {
             .set_position(&new_position);
 
         if completed {
-            role.idle();
+            role_controller.get().idle(role);
         }
 
         completed

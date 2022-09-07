@@ -19,11 +19,11 @@ impl SceCommand for SceCommandRoleSetFace {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        scene_manager.resolve_role_mut_do(state, self.role_id, |entity| {
-            let position = entity.transform().position();
+        scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
+            let position = e.transform().position();
             let target = Vec3::add(&position, &self.face_to);
 
-            entity.transform_mut().look_at(&target);
+            e.transform_mut().look_at(&target);
         });
         true
     }

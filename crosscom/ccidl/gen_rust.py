@@ -21,11 +21,11 @@ class Writer:
 
 
 type_map = {
-    'long': ('std::os::raw::c_long', 'i32'),
-    'longlong': ('std::os::raw::c_longlong', 'i64'),
-    'int': ('std::os::raw::c_int', 'i32'),
+    'long': ('std::os::raw::c_long', 'std::os::raw::c_long'),
+    'longlong': ('std::os::raw::c_longlong', 'std::os::raw::c_longlong'),
+    'int': ('std::os::raw::c_int', 'std::os::raw::c_int'),
     'float': ('std::os::raw::c_float', 'f32'),
-    'byte': ('std::os::raw::c_uchar', 'u8'),
+    'byte': ('std::os::raw::c_uchar', 'std::os::raw::c_uchar'),
     'byte*': ('*const std::os::raw::c_uchar', '*const std::os::raw::c_uchar'),
     'UUID': ('uuid::Uuid', 'uuid::Uuid'),
     'void': ('()', '()'),
@@ -43,6 +43,9 @@ class RustGen:
 
     def get_rust_module(self, unit):
         return next(filter(lambda m: m.module_lang == "rust", unit.modules))
+
+    def get_rust_crate(self):
+        return self.get_rust_module(self.unit).module_name.split("::")[0]
 
     def process_imports(self, idl_file_path: str, unit: CrossComIdl):
         import os
@@ -70,6 +73,7 @@ class RustGen:
     def gen(self) -> str:
 
         w = Writer()
+        w.ln(f"use crate as {self.get_rust_crate()};")
 
         for i in self.unit.items:
             if isinstance(i, Class):
@@ -307,6 +311,7 @@ macro_rules! ComObject_{klass.name} {{
 #[allow(non_snake_case)]
 #[allow(unused)]
 mod {klass.name}_crosscom_impl {{
+    use crate as {self.get_rust_crate()};
     {self.__gen_trait_use()}
 
     #[repr(C)]
@@ -445,6 +450,11 @@ pub struct { i.name } {{
 #[allow(unused)]
 impl { i.name } {{
     {self.__gen_interface_method_safe_wrapper(i)}
+
+    pub fn uuid() -> uuid::Uuid {{
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes({ i.name }::INTERFACE_ID)
+    }}
 }}
 """)
 

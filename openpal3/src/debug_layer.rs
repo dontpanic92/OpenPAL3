@@ -1,7 +1,10 @@
 use std::{cell::RefCell, rc::Rc};
 
 use imgui::{InputTextMultiline, TabBar, TabItem, Ui};
-use opengb::directors::{AdventureDirector, SceneManagerExtensions};
+use opengb::{
+    directors::{AdventureDirector, SceneManagerExtensions},
+    scene::RoleController,
+};
 use radiance::{
     application::utils::FpsCounter,
     audio::AudioEngine,
@@ -74,7 +77,8 @@ impl OpenPal3DebugLayer {
                                 if let Some(role) =
                                     scene_manager.get_resolved_role_mut(d.sce_vm_mut().state(), -1)
                                 {
-                                    role.switch_nav_layer();
+                                    let r = RoleController::try_get_role_model(role).unwrap();
+                                    r.get().switch_nav_layer();
                                 }
                             }
                         }

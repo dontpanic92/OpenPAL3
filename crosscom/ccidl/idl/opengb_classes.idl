@@ -2,5 +2,23 @@ module(rust) opengb::classes;
 
 import radiance.idl;
 
+[uuid(7f1742f7-5330-4834-b665-6dddfd7131c8)]
+interface IPolModel: IComponent {}
+
 [uuid(287b3c25-f310-4512-bdfc-0c54892449bd)]
-class PolModel: IComponent {}
+class PolModel: IPolModel {}
+
+[uuid(e11fe493-654a-4072-b883-a7ee1a35a24a)]
+interface IRoleModel: IComponent {
+    [internal(), rust()]
+    &opengb::scene::RoleController get();
+}
+
+[uuid(854b55b6-8054-4c4d-aa76-09e6d3287544)]
+class RoleModel: IRoleModel {}
+
+[uuid(9c6dc3a5-d858-40c0-960b-b3527ad4516f)]
+interface ICvdModel: IComponent {}
+
+[uuid(ac6e671f-79fc-4bee-bf31-65fd947d8244)]
+class CvdModel: IComponent {}

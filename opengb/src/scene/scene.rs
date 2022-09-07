@@ -1,4 +1,5 @@
 use crate::asset_manager::AssetManager;
+use crate::classes::IRoleModel;
 use crate::loaders::nav_loader::NavMapPoint;
 use crate::loaders::{nav_loader::NavFile, scn_loader::*};
 use radiance::scene::{CoreEntity, CoreScene, Entity, SceneExtension};
@@ -201,7 +202,9 @@ impl ScnScene {
 
                 let role_position = role.transform().position();
                 if Vec3::sub(coord, &role_position).norm2() < D * D {
-                    return Some(role.proc_id() as u32);
+                    let role_model =
+                        crate::scene::RoleController::try_get_role_model(role).unwrap();
+                    return Some(role_model.get().proc_id() as u32);
                 }
             }
         }
@@ -515,17 +518,21 @@ impl ScnScene {
         for i in &[0, 1, 2, 3, 4, 5] {
             let entity_name = format!("ROLE_{}", i);
             let model_name = Self::map_role_id(*i).to_string();
-            let role_entity = self.asset_mgr.load_role(&model_name, "C01").unwrap();
-            let entity = CoreEntity::new(role_entity, entity_name, false);
+            let entity = self
+                .asset_mgr
+                .load_role(&model_name, "C01", entity_name, false)
+                .unwrap();
             self.add_entity(Box::new(entity));
         }
 
         let mut entities = vec![];
         for role in &self.scn_file.roles {
-            if let Some(role_entity) = self.asset_mgr.load_role(&role.name, &role.action_name) {
-                let mut entity =
-                    CoreEntity::new(role_entity, format!("ROLE_{}", role.index), false);
-
+            if let Some(mut entity) = self.asset_mgr.load_role(
+                &role.name,
+                &role.action_name,
+                format!("ROLE_{}", role.index),
+                false,
+            ) {
                 let nav_coord = self.scene_coord_to_nav_coord(
                     0,
                     &Vec3::new(role.position_x, role.position_y, role.position_z),
@@ -537,9 +544,11 @@ impl ScnScene {
                     // HACK
                     .rotate_axis_angle_local(&Vec3::UP, std::f32::consts::PI);
 
+                let role_controller = entity.get_component2(IRoleModel::uuid()).unwrap();
+                let role_controller = role_controller.query_interface::<IRoleModel>().unwrap();
                 if role.sce_proc_id != 0 {
-                    entity.set_active(true);
-                    entity.set_proc_id(role.sce_proc_id as i32);
+                    role_controller.get().set_active(&mut entity, true);
+                    role_controller.get().set_proc_id(role.sce_proc_id as i32);
                 }
 
                 entities.push(entity);
