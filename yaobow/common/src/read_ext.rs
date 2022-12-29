@@ -3,6 +3,10 @@ use encoding::{types::Encoding, DecoderTrap};
 use std::io::Read;
 
 pub trait ReadExt: Read {
+    fn read_u32_le(&mut self) -> std::io::Result<u32> {
+        self.read_u32::<LittleEndian>()
+    }
+
     fn read_u8_vec(&mut self, size: usize) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut buf = vec![0u8; size];
         self.read_exact(&mut buf.as_mut_slice())?;

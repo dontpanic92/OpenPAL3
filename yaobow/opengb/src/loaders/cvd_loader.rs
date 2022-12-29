@@ -1,5 +1,5 @@
 use super::calc_vertex_size;
-use crate::utilities::ReadExt;
+use common::read_ext::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{DecoderTrap, Encoding};
 use mini_fs::{MiniFs, StoreExt};

@@ -5,6 +5,7 @@ members = [
     "radiance/radiance_editor",
     "yaobow/opengb",
     "yaobow/openpal3",
+    "yaobow/yaobow",
     "yaobow/yaobow_editor",
 ]
 resolver = "2"
