@@ -4,7 +4,7 @@ members = [
     "radiance/radiance",
     "radiance/radiance_editor",
     "yaobow/opengb",
-    "yaobow/penpal3",
+    "yaobow/openpal3",
     "yaobow/yaobow_editor",
 ]
 resolver = "2"

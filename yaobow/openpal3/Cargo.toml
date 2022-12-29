@@ -45,4 +45,5 @@ launch_mode = "singleTop"
 orientation = "portrait"
 
 [features]
+default = ["ffmpeg"]
 ffmpeg = ["opengb/ffmpeg"]
