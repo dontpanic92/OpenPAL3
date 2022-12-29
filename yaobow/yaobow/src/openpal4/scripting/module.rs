@@ -31,7 +31,7 @@ impl ScriptTypeReference {
 }
 
 #[derive(Debug, Serialize)]
-pub struct UnknownAClass8 {
+pub struct ScriptDataType {
     flag: u8,
     unknown: u32,
     type_ref: ScriptTypeReference,
@@ -41,7 +41,7 @@ pub struct UnknownAClass8 {
     unknown5: u8,
 }
 
-impl UnknownAClass8 {
+impl ScriptDataType {
     fn load(cursor: &mut dyn Read) -> Result<Self> {
         let flag = cursor.read_u8()?;
         if flag != 0 {
@@ -69,42 +69,41 @@ impl UnknownAClass8 {
 
 #[derive(Debug, Serialize)]
 pub struct Instruction {
-    inst: u32,
-    params: Vec<u8>,
+    pub inst: u32,
+    pub params: Vec<u8>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct UnknownAStruct2 {
-    name: String,
-    aclass8: UnknownAClass8,
-    aclass8_vec: Vec<UnknownAClass8>,
-    unknown_dword1: u32,
-    instructions: Vec<Instruction>,
-    type_refs: Vec<ScriptTypeReference>,
-    dword_with_type_ref: Vec<u32>,
-    unknown_dword: u32,
-    type_ref: ScriptTypeReference,
-    dword_vec: Vec<u32>,
+pub struct ScriptFunction {
+    pub name: String,
+    pub ret_type: ScriptDataType,
+    pub param_types: Vec<ScriptDataType>,
+    pub unknown_dword1: u32,
+    pub inst: Vec<u8>,
+    pub inst2: Vec<Instruction>,
+    pub type_refs: Vec<ScriptTypeReference>,
+    pub dword_with_type_ref: Vec<u32>,
+    pub unknown_dword: u32,
+    pub type_ref: ScriptTypeReference,
+    pub dword_vec: Vec<u32>,
 }
 
-impl UnknownAStruct2 {
+impl ScriptFunction {
     fn load(cursor: &mut dyn Read) -> Result<Self> {
-        println!("Loading astruct2");
-
         let name = read_string(cursor)?;
         println!("{}", name);
 
-        let aclass8 = UnknownAClass8::load(cursor)?;
-        let aclass8_count = cursor.read_u32_le()? as usize;
-        let mut aclass8_vec = vec![];
+        let ret_type = ScriptDataType::load(cursor)?;
+        let param_count = cursor.read_u32_le()? as usize;
+        let mut param_types = vec![];
 
-        for _ in 0..aclass8_count {
-            aclass8_vec.push(UnknownAClass8::load(cursor)?);
+        for _ in 0..param_count {
+            param_types.push(ScriptDataType::load(cursor)?);
         }
 
         let unknown_dword1 = cursor.read_u32_le()?;
         let count2 = cursor.read_u32_le()?;
-        let instructions = Self::read_instructions(cursor, count2 as usize)?;
+        let (inst, inst2) = Self::read_instructions(cursor, count2 as usize)?;
         let type_ref_count = cursor.read_u32_le()? as usize;
 
         let mut type_refs = vec![];
@@ -124,10 +123,11 @@ impl UnknownAStruct2 {
 
         Ok(Self {
             name,
-            aclass8,
-            aclass8_vec,
+            ret_type,
+            param_types,
             unknown_dword1,
-            instructions,
+            inst,
+            inst2,
             type_refs,
             dword_with_type_ref,
             unknown_dword,
@@ -136,24 +136,28 @@ impl UnknownAStruct2 {
         })
     }
 
-    fn read_instructions(cursor: &mut dyn Read, total_size: usize) -> Result<Vec<Instruction>> {
+    fn read_instructions(cursor: &mut dyn Read, total_size: usize) -> Result<(Vec<u8>, Vec<Instruction>)> {
         let mut i = 0;
-        let mut instructions = vec![];
+        let mut instructions = vec![0; total_size];
+        let mut instructions2 = vec![];
 
         while i < total_size {
             let inst = cursor.read_u8()?;
+            instructions[i] = inst;
             let inst_len = INST_LENGTH[inst as usize];
-            i += inst_len;
+            i += 4;
 
             let extra_len = inst_len - 4;
-            let params = cursor.read_u8_vec(extra_len)?;
-            instructions.push(Instruction {
-                inst: inst as u32,
-                params,
-            });
+            cursor.read_exact(&mut instructions[i..i + extra_len])?;
+
+            let mut p = Vec::new();
+            p.extend_from_slice(&instructions[i..i + extra_len]);
+            instructions2.push(Instruction {inst: inst as u32, params: p });
+
+            i += extra_len;
         }
 
-        Ok(instructions)
+        Ok((instructions, instructions2))
     }
 }
 
@@ -163,12 +167,12 @@ pub struct ScriptModule {
     type_refs: Vec<ScriptTypeReference>,
     unknown_count3: usize,
     unknown_count4: usize,
-    astruct: UnknownAStruct2,
-    astruct2: UnknownAStruct2,
+    astruct: ScriptFunction,
+    astruct2: ScriptFunction,
 
-    astruct_vec1: Vec<UnknownAStruct2>,
+    astruct_vec1: Vec<ScriptFunction>,
     string_vec: Vec<String>,
-    astruct_vec2: Vec<UnknownAStruct2>,
+    astruct_vec2: Vec<ScriptFunction>,
 }
 
 impl ScriptModule {
@@ -195,13 +199,13 @@ impl ScriptModule {
         let unknown_count3 = cursor.read_u32_le()? as usize;
         let unknown_count4 = cursor.read_u32_le()? as usize;
 
-        let astruct = UnknownAStruct2::load(cursor)?;
-        let astruct2 = UnknownAStruct2::load(cursor)?;
+        let astruct = ScriptFunction::load(cursor)?;
+        let astruct2 = ScriptFunction::load(cursor)?;
 
         let astruct_count1 = cursor.read_u32_le()? as usize;
         let mut astruct_vec1 = vec![];
         for _ in 0..astruct_count1 {
-            astruct_vec1.push(UnknownAStruct2::load(cursor)?);
+            astruct_vec1.push(ScriptFunction::load(cursor)?);
         }
 
         let string_count = cursor.read_u32_le()? as usize;
@@ -210,11 +214,10 @@ impl ScriptModule {
             string_vec.push(read_string(cursor)?);
         }
 
-        
         let astruct_count2 = cursor.read_u32_le()? as usize;
         let mut astruct_vec2 = vec![];
         for _ in 0..astruct_count2 {
-            astruct_vec2.push(UnknownAStruct2::load(cursor)?);
+            astruct_vec2.push(ScriptFunction::load(cursor)?);
         }
 
         Ok(Self {
