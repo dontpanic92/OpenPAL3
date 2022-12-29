@@ -16,6 +16,9 @@
     <Filter Include="minilzo">
       <UniqueIdentifier>{39702096-6e68-4aea-a056-2753ee83aa98}</UniqueIdentifier>
     </Filter>
+    <Filter Include="xxtea">
+      <UniqueIdentifier>{c2bf4156-8484-485a-876f-28d338f6927e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -26,6 +29,9 @@
     </ClCompile>
     <ClCompile Include="minilzo\minilzo.c">
       <Filter>minilzo</Filter>
+    </ClCompile>
+    <ClCompile Include="xxtea\xxtea.c">
+      <Filter>xxtea</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -40,6 +46,9 @@
     </ClInclude>
     <ClInclude Include="minilzo\lzoconf.h">
       <Filter>minilzo</Filter>
+    </ClInclude>
+    <ClInclude Include="xxtea\xxtea.h">
+      <Filter>xxtea</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

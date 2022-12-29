@@ -100,13 +100,13 @@ std::string getBaseFileName(const std::string cpkFullPath)
 //CPK解压工具 cpk文件路径 解压路径
 int main(int argc, char** argv)
 {
-    if (argc < 3) {
+    /* if (argc < 3) {
         printf("argument too less!");
         return -1;
-    }
+    }*/
 
-    std::string cpkFilePath = argv[1];
-    std::string saveRootPath = argv[2];
+    std::string cpkFilePath = "f:\\PAL4\\gamedata\\script.cpk";//argv[1];
+    std::string saveRootPath = "f:\\PAL4\\gamedata\\";//argv[2];
 
     createDirectory(saveRootPath);
 

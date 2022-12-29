@@ -3,6 +3,7 @@
 #include <cassert>
 #include <io.h>
 #include "minilzo/minilzo.h"
+#include "xxtea/xxtea.h"
 
 
 static bool g_bCrcTableInitialized = false;
@@ -43,6 +44,10 @@ CPK::~CPK()
         delete m_pgbVFile[i];
         m_pgbVFile[i] = nullptr;
     }
+}
+
+bool CPK::IsPal4Cpk() {
+    return this->cpkHeader.dwDataStart == 0x00100080;
 }
 
 void CPK::InitCrcTable()
@@ -175,7 +180,13 @@ int CPK::GetTableIndexFromCRC(DWORD targetCRC)
     if (!dwValidTableNum)
         return nCurrent;
 
-    while (true) {
+    for (int i = 0; i < dwValidTableNum; i++) {
+        if (entries[i].dwCRC == targetCRC) {
+            return i;
+        }
+    }
+
+    /*while (true) {
         nCurrent = nStart + (dwValidTableNum - nStart) / 2;
         unsigned int vCRC = entries[nCurrent].dwCRC;
         if (targetCRC == vCRC) {
@@ -193,7 +204,7 @@ int CPK::GetTableIndexFromCRC(DWORD targetCRC)
             nStart += (dwValidTableNum - nStart) / 2;
         if (dwValidTableNum == nStart)
             return -1;
-    }
+    }*/
     return nCurrent;
 }
 
@@ -347,7 +358,7 @@ bool CPK::BuildDirectoryTree(CPKDirectoryEntry& entry)
     std::map<DWORD, CPKDirectoryEntry*> handledEntries;
     handledEntries.emplace(0, &entry);
     //遍历所有的节点，构造树状结构
-    for (int i = 0; i < ARRAYSIZE(entries); i++) {
+    for (int i = 0; i < cpkHeader.dwFileNum; i++) {
         //skip deleted files
         CPKTable& currFileEntry = entries[i];
 
@@ -436,14 +447,53 @@ bool CPK::Load(const char *lpFileName)
         CloseHandle(m_dwCPKHandle);
         return 0;
     }
-    int totalRead = sizeof(CPKTable) * cpkHeader.dwMaxFileNum;
-    if (!ReadFile(m_dwCPKHandle, entries, totalRead, &NumberOfBytesRead, 0) ||
+
+    int totalRead = sizeof(CPKTable) * cpkHeader.dwFileNum;
+    if (IsPal4Cpk()) {
+        totalRead = (sizeof(CPKTable) + 4) * cpkHeader.dwFileNum;
+        if (totalRead < 0x1000) {
+            totalRead = 0x1000;
+        }
+    }
+
+    auto buffer = std::vector<char>(totalRead);
+
+
+    if (!ReadFile(m_dwCPKHandle, buffer.data(), totalRead, &NumberOfBytesRead, 0) ||
         NumberOfBytesRead != totalRead) {
         //showMsgBox(0x10u, aErrorCeCannotL, aDProjectGbengi, 200);
         //showMessageBox(aCouldNotLoadTa, lpFileName);
         CloseHandle(m_dwCPKHandle);
         return 0;
     }
+
+    if (IsPal4Cpk()) {
+        size_t len;
+        char* decrypt_data = (char*)xxtea_decrypt(buffer.data(), 0x1000, "Vampire.C.J at Softstar Technology (ShangHai) Co., Ltd", &len);
+        auto newBuffer = std::vector<char>(len + buffer.size() - 0x1000);
+        std::copy(decrypt_data, decrypt_data + len, newBuffer.begin());
+        std::copy(buffer.begin() + 0x1000, buffer.end(), newBuffer.begin() + len);
+
+        buffer = newBuffer;
+        delete[] decrypt_data;
+    }
+
+    if (entries) {
+        delete[] entries;
+    }
+
+    if (IsPal4Cpk()) {
+        entries = new CPKTable[cpkHeader.dwFileNum];
+        for (int i = 0; i < cpkHeader.dwFileNum; i++) {
+            memcpy(&entries[i], buffer.data() + i * (sizeof(CPKTable) + 4), sizeof(CPKTable));
+        }
+    }
+    else {
+        entries = new CPKTable[cpkHeader.dwFileNum];
+        memcpy(entries, buffer.data(), sizeof(CPKTable) * cpkHeader.dwFileNum);
+    }
+
+
     if (m_eMode != CPKM_FileMapping) {
         m_bLoaded = 1;
         return true;
@@ -498,6 +548,12 @@ bool CPK::Unload()
     for (int i = 0; i < ARRAYSIZE(m_pgbVFile); i++) {
         m_pgbVFile[i]->cpkFile.bValid = false;
     }
+
+    if (entries) {
+        delete[] entries;
+        entries = nullptr;
+    }
+
     return true;
 }
 

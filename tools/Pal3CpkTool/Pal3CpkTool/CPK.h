@@ -159,7 +159,7 @@ public:
     DWORD GetAllocationGranularity(void);
     void Reset();
     bool ReadFileEntryName(const CPKTable* pFileEntry, char* lpBuffer, DWORD bufferLen);
-
+    bool IsPal4Cpk();
 
 
 
@@ -167,7 +167,7 @@ private:
     DWORD dwAllocationGranularity;                  //0x0           块对齐长度，做文件映射时需要对齐到该长度，否则映射失败
     ECPKMode m_eMode;                               //0x4           打开模式 当前为ECPKMode_Mapped
     CPKHeader cpkHeader;                            //0x8           文件头信息
-    CPKTable entries[32768];                    //0x88          文件节点信息数组，通过哈希存储
+    CPKTable* entries = nullptr;                    //0x88          文件节点信息数组，通过哈希存储
     gbVFile* m_pgbVFile[0x8];                       //0xE0088       文件数组
     bool m_bLoaded;                                 //0xE00A8       是否已加载
     HANDLE m_dwCPKHandle;                           //0xE0090       文件句柄
