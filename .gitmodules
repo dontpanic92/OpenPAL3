@@ -1,6 +1,0 @@
-[submodule "launcher/launcher/toml11"]
-	path = launcher/launcher/toml11
-	url = https://github.com/ToruNiina/toml11
-[submodule "radiance-assets"]
-	path = radiance-assets
-	url = https://github.com/dontpanic92/radiance-assets

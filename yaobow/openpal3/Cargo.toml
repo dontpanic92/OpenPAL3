@@ -11,7 +11,7 @@ default-run = "openpal3"
 [dependencies]
 imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
 opengb = { path = "../opengb" }
-radiance = { path = "../radiance" }
+radiance = { path = "../../radiance/radiance" }
 simple_logger = "1.16.0"
 
 [dependencies.log]

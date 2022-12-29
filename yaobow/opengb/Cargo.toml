@@ -12,12 +12,12 @@ crate-type = [ "rlib" ]
 
 [dependencies]
 byteorder = "1.3.4"
-crosscom = { path = "../crosscom/runtime/rust" }
+crosscom = { path = "../../crosscom/runtime/rust" }
 dirs = "3.0.1"
 image = "0.23.0"
 dashmap = "5.1.0"
 dyn-clone = "1.0.1"
-radiance = { path = "../radiance" }
+radiance = { path = "../../radiance/radiance" }
 encoding = "0.2.33"
 imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
 downcast-rs = "1.2.0"

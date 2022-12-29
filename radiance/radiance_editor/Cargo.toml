@@ -12,7 +12,7 @@ crate-type = ["lib"]
 [dependencies]
 imgui-sys = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
 imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
-radiance = { path = "../../radiance" }
+radiance = { path = "../radiance" }
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_debug"] }
 simple_logger = "1.16.0"
 uuid = "0.8"

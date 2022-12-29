@@ -1,11 +1,11 @@
 [workspace]
 members = [
     "crosscom/runtime/rust",
-    "radiance",
-    "opengb",
-    "openpal3",
-    "tools/radiance_editor",
-    "tools/yaobow_editor",
+    "radiance/radiance",
+    "radiance/radiance_editor",
+    "yaobow/opengb",
+    "yaobow/penpal3",
+    "yaobow/yaobow_editor",
 ]
 resolver = "2"
 

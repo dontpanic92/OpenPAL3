@@ -8,9 +8,9 @@ edition = "2018"
 
 [dependencies]
 chardet = "0.2.4"
-opengb = { path = "../../opengb" }
-radiance = { path = "../../radiance" }
-radiance_editor = { path = "../radiance_editor" }
+opengb = { path = "../opengb" }
+radiance = { path = "../../radiance/radiance" }
+radiance_editor = { path = "../../radiance/radiance_editor" }
 image = "0.23.0"
 imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }

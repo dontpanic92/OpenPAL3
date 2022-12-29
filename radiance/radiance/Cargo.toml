@@ -11,7 +11,7 @@ build = "build.rs"
 arboard = "2.1"
 backtrace = "0.3.44"
 bitflags = "1.2.1"
-crosscom = { path = "../crosscom/runtime/rust" }
+crosscom = { path = "../../crosscom/runtime/rust" }
 dashmap = "5.1.0"
 downcast-rs = "1.2.0"
 lazy_static = "1.2.0"
