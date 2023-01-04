@@ -1,44 +1,65 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
-use super::module::ScriptFunction;
+use super::{
+    global_context::ScriptGlobalContext,
+    module::{ScriptFunction, ScriptModule},
+};
 
 pub struct ScriptVm {
-    function: Option<Rc<ScriptFunction>>,
+    context: Rc<RefCell<ScriptGlobalContext>>,
+    module: Option<Rc<RefCell<ScriptModule>>>,
+    function_index: usize,
     pc: usize,
     stack: Vec<u8>,
     sp: usize,
+    r1: u32,
+    r2: u32,
 }
 
 impl ScriptVm {
     const DEFAULT_STACK_SIZE: usize = 4096;
-    pub fn new() -> Self {
+    pub fn new(context: Rc<RefCell<ScriptGlobalContext>>) -> Self {
         Self {
-            function: None,
+            context,
+            module: None,
+            function_index: 0,
             pc: 0,
             stack: vec![0; Self::DEFAULT_STACK_SIZE],
             sp: Self::DEFAULT_STACK_SIZE,
+            r1: 0,
+            r2: 0,
         }
     }
 
-    pub fn set_function(&mut self, function: Rc<ScriptFunction>) {
-        self.function = Some(function);
+    pub fn set_module(&mut self, module: Rc<RefCell<ScriptModule>>) {
+        self.module = Some(module);
+    }
+
+    pub fn set_function(&mut self, index: usize) {
+        self.function_index = index;
     }
 
     pub fn execute(&mut self) {
-        if self.function.is_none() {
+        if self.module.is_none() {
             return;
         }
 
-        let f = self.function.clone().unwrap();
-        let function = f.as_ref();
+        let module = self.module.clone().unwrap();
+        let module_ref = module.borrow();
+        let function = module_ref.functions[self.function_index].clone();
         let mut reg: u32 = 0;
 
         loop {
-            let inst = self.read_inst(function);
+            let inst = self.read_inst(&function);
             macro_rules! command {
-                ($cmd_name: ident, $param_name: ident : $param_type: ident) => {{
-                    let $param_name = data_read::$param_type(&function.inst, &mut self.pc);
-                    self.$cmd_name($param_name);
+                ($cmd_name: ident $(, $param_name: ident : $param_type: ident)*) => {{
+                    $(let $param_name = data_read::$param_type(&function.inst, &mut self.pc);)*
+                    self.$cmd_name($($param_name ,)*);
+                }};
+
+                ($cmd_name: ident : $g_type: ident $(, $param_name: ident : $param_type: ident)*) => {{
+                    $(let $param_name = data_read::$param_type(&function.inst, &mut self.pc);)*
+                    self.$cmd_name::<$g_type>($($param_name)*);
                 }};
             }
 
@@ -52,11 +73,14 @@ impl ScriptVm {
                 6 => self.store_pop(),
                 7 => command!(lea, index: u16),
                 8 => command!(load_pop, index: u16),
-                9 => self.swap(),
+                9 => self.swap::<u32>(),
                 10 => self.store_reg(&mut reg),
                 11 => self.load_reg(reg),
                 12 => command!(call, function: u32),
-                13 => command!(ret, param_size: u16),
+                13 => {
+                    command!(ret, param_size: u16);
+                    return;
+                }
                 14 => command!(jmp, offset: i32),
                 15 => command!(jz, offset: i32),
                 16 => command!(jnz, offset: i32),
@@ -94,7 +118,7 @@ impl ScriptVm {
                 48 => self.shr(),
                 49 => self.sar(),
                 50 => self.fuld(),
-                52 => self.deref_cmp(),
+                52 => self.cmp::<i32>(),
                 53 => self.truc_to_i8(),
                 54 => self.truc_to_i16(),
                 55 => self.truc_to_u8(),
@@ -107,11 +131,63 @@ impl ScriptVm {
                 62 => self.deref_dec::<u8>(1),
                 63 => self.push_zero(),
                 64 => command!(memcpy, count: u16),
-                65 => unimplemented!("byte code 65"),
+                65 => command!(load_global, index: i32),
                 66 => command!(push_u64, data: u64),
                 67 => self.load_u64(),
                 68 => self.store_u64(),
-                _ => unreachable!(),
+                69 => self.neg::<f64>(),
+                70 => self.deref_inc::<f64>(1.),
+                71 => self.deref_dec::<f64>(1.),
+                72 => self.add::<f64>(),
+                73 => self.sub::<f64>(),
+                74 => self.mul::<f64>(),
+                75 => self.div::<f64>(0.),
+                76 => self.xmod::<f64>(0.),
+                77 => self.swap::<f64>(),
+                78 => self.cmp::<f64>(),
+                79 | 80 => self.d2i(),
+                81 => self.d2f(),
+                82 => self.x2d::<i32>(),
+                83 => self.x2d::<u32>(),
+                84 => self.x2d::<f32>(),
+                85 => self.jmps(),
+                86 => self.store_dword(),
+                87 => self.store_qword(),
+                88 => self.restore_dword(),
+                89 => self.restore_qword(),
+                90 => command!(get_string, index: u16),
+                91 => command!(jgez, offset: i32),
+                92 => command!(jlz, offset: i32),
+                93 => command!(jlez, offset: i32),
+                94 => command!(jgz, offset: i32),
+                95 | 96 => command!(cmp_imm: i32, rhs: i32),
+                97 => command!(call_global, function_index: i32),
+                98 => command!(call_external, function_index: u32),
+                99 => command!(load_global, index: i32),
+                100 => command!(store_global, index: i32),
+                101 => command!(add_imm: i32, rhs: i32),
+                102 => command!(sub_imm: i32, rhs: i32),
+                103 => command!(cmp_imm: f32, rhs: f32),
+                104 => command!(add_imm: f32, rhs: f32),
+                105 => command!(sub_imm: f32, rhs: f32),
+                106 => command!(mul_imm: i32, rhs: i32),
+                107 => command!(mul_imm: f32, rhs: f32),
+                108 => println!("unimplemented byte code 108"),
+                109 => command!(call_global2, this: i32, index: i32),
+                110 => unimplemented!("byte code 110"),
+                111 => unimplemented!("byte code 111"),
+                112 => unimplemented!("byte code 112"),
+                113 => unimplemented!("byte code 113"),
+                114 => unimplemented!("byte code 114"),
+                115 => unimplemented!("byte code 115"),
+                116 => unimplemented!("byte code 116"),
+                117 => unimplemented!("byte code 117"),
+                118 => unimplemented!("byte code 118"),
+                119 => unimplemented!("byte code 119"),
+                120 => unimplemented!("byte code 120"),
+                121 => unimplemented!("byte code 121"),
+                122 => unimplemented!("byte code 122"),
+                i => unimplemented!("byte code {}", i),
             }
         }
     }
@@ -162,10 +238,8 @@ impl ScriptVm {
     }
 
     fn store_pop(&mut self) {
-        unsafe {
-            self.store();
-            self.sp += 4;
-        }
+        self.store();
+        self.sp += 4;
     }
 
     fn lea(&mut self, index: u16) {
@@ -185,12 +259,13 @@ impl ScriptVm {
         }
     }
 
-    fn swap(&mut self) {
+    fn swap<T: Copy>(&mut self) {
         unsafe {
-            let data: u32 = self.read_stack(self.sp);
-            let data2: u32 = self.read_stack(self.sp + 4);
+            let size = std::mem::size_of::<T>();
+            let data: T = self.read_stack(self.sp);
+            let data2: T = self.read_stack(self.sp + size);
             self.write_stack(self.sp, data2);
-            self.write_stack(self.sp + 4, data);
+            self.write_stack(self.sp + size, data);
         }
     }
 
@@ -209,9 +284,25 @@ impl ScriptVm {
         }
     }
 
-    fn call(&mut self, function: u32) {}
+    fn call(&mut self, function: u32) {
+        println!("Unimplemented: call: {}", function);
+    }
 
-    fn ret(&mut self, param_size: u16) {}
+    fn call_external(&mut self, function: u32) {
+        println!("Unimplemented: call: {}", function);
+    }
+
+    fn call_global(&mut self, function: i32) {
+        println!("Unimplemented: call global: {}", function);
+    }
+
+    fn call_global2(&mut self, this: i32, function: i32) {
+        println!("Unimplemented: call global2: {} {}", this, function);
+    }
+
+    fn ret(&mut self, param_size: u16) {
+        println!("Unimplemented: ret: {}", param_size);
+    }
 
     fn jmp(&mut self, offset: i32) {
         self.pc += offset as usize;
@@ -304,7 +395,7 @@ impl ScriptVm {
     }
 
     fn cmp<T: Copy + PartialOrd>(&mut self) {
-        self.binary_op::<i32, _, _>(|a, b| {
+        self.binary_op::<T, _, _>(|a, b| {
             if b.gt(&a) {
                 1
             } else if a.gt(&b) {
@@ -369,24 +460,6 @@ impl ScriptVm {
 
     fn fuld(&mut self) {
         self.unary_op::<u32, _, _>(|a| a as f32);
-    }
-
-    fn deref_cmp(&mut self) {
-        unsafe {
-            let data: i32 = self.read_stack(self.sp);
-            self.sp += 4;
-            let pos: u32 = self.read_stack(self.sp);
-            let data2: i32 = self.read_stack(pos as usize);
-            let res = if data2.gt(&data) {
-                1
-            } else if data.gt(&data2) {
-                -1
-            } else {
-                0
-            };
-
-            self.write_stack(self.sp, res);
-        }
     }
 
     fn truc_to_i8(&mut self) {
@@ -458,6 +531,177 @@ impl ScriptVm {
         }
     }
 
+    fn d2i(&mut self) {
+        unsafe {
+            let data: f64 = self.read_stack(self.sp);
+            self.sp += 4;
+            self.write_stack(self.sp, data as i32);
+        }
+    }
+
+    fn d2f(&mut self) {
+        unsafe {
+            let data: f64 = self.read_stack(self.sp);
+            self.sp += 4;
+            self.write_stack(self.sp, data as f32);
+        }
+    }
+
+    fn x2d<T: Copy + std::convert::Into<f64>>(&mut self) {
+        unsafe {
+            let data: i32 = self.read_stack(self.sp);
+            self.sp += 8;
+            self.sp -= std::mem::size_of::<T>();
+            self.write_stack(self.sp, data as f64);
+        }
+    }
+
+    fn jmps(&mut self) {
+        unsafe {
+            let data: i32 = self.read_stack(self.sp);
+            self.sp += 4;
+            self.pc += (8 * data) as usize;
+        }
+    }
+
+    fn store_dword(&mut self) {
+        unsafe {
+            let data: u32 = self.read_stack(self.sp);
+            self.sp += 4;
+            self.r1 = data;
+        }
+    }
+
+    fn store_qword(&mut self) {
+        unsafe {
+            self.r1 = self.read_stack(self.sp);
+            self.sp += 4;
+            self.r2 = self.read_stack(self.sp);
+            self.sp += 4;
+        }
+    }
+
+    fn restore_dword(&mut self) {
+        unsafe {
+            self.sp -= 4;
+            self.write_stack(self.sp, self.r1);
+        }
+    }
+
+    fn restore_qword(&mut self) {
+        unsafe {
+            self.sp -= 4;
+            self.write_stack(self.sp, self.r2);
+            self.sp -= 4;
+            self.write_stack(self.sp, self.r1);
+        }
+    }
+
+    fn jgez(&mut self, offset: i32) {
+        self.j(offset, |data| data >= 0);
+    }
+
+    fn jlz(&mut self, offset: i32) {
+        self.j(offset, |data| data < 0);
+    }
+
+    fn jlez(&mut self, offset: i32) {
+        self.j(offset, |data| data <= 0);
+    }
+
+    fn jgz(&mut self, offset: i32) {
+        self.j(offset, |data| data > 0);
+    }
+
+    fn cmp_imm<T: Copy + PartialOrd>(&mut self, rhs: T) {
+        unsafe {
+            let data: T = self.read_stack(self.sp);
+            self.write_stack(
+                self.sp,
+                if rhs.gt(&data) {
+                    1
+                } else if data.gt(&rhs) {
+                    -1
+                } else {
+                    0
+                },
+            );
+        }
+    }
+
+    fn add_imm<T: Copy + std::ops::Add>(&mut self, rhs: T) {
+        unsafe {
+            let data: T = self.read_stack(self.sp);
+            self.write_stack(self.sp, data + rhs);
+        }
+    }
+
+    fn sub_imm<T: Copy + std::ops::Sub>(&mut self, rhs: T) {
+        unsafe {
+            let data: T = self.read_stack(self.sp);
+            self.write_stack(self.sp, data - rhs);
+        }
+    }
+
+    fn mul_imm<T: Copy + std::ops::Mul>(&mut self, rhs: T) {
+        unsafe {
+            let data: T = self.read_stack(self.sp);
+            self.write_stack(self.sp, data * rhs);
+        }
+    }
+
+    fn load_global(&mut self, index: i32) {
+        let data = if index > 0 {
+            let module = self.module.as_mut().unwrap().borrow();
+            module.globals[index as usize]
+        } else {
+            let context = self.context.borrow();
+            context.get_global((-index - 1) as usize)
+        };
+
+        self.sp -= 4;
+
+        unsafe {
+            self.write_stack(self.sp, data);
+        }
+    }
+
+    fn store_global(&mut self, index: i32) {
+        let data: u32 = unsafe { self.read_stack(self.sp) };
+
+        if index > 0 {
+            let mut module = self.module.as_mut().unwrap().borrow_mut();
+            module.globals[index as usize] = data;
+        } else {
+            let mut context = self.context.borrow_mut();
+            context.set_global((-index - 1) as usize, data);
+        };
+
+        self.sp += 4;
+    }
+
+    fn get_string(&mut self, index: u16) {
+        let module = self.module.as_ref().unwrap().clone();
+        let module_ref = module.borrow();
+        let string = &module_ref.strings[index as usize];
+        unsafe {
+            self.sp -= 4;
+            self.write_stack(self.sp, index as u32);
+            self.sp -= 4;
+            self.write_stack(self.sp, string.len());
+        }
+    }
+
+    #[inline]
+    fn j<F: Fn(i32) -> bool>(&mut self, offset: i32, f: F) {
+        unsafe {
+            let data: i32 = self.read_stack(self.sp);
+            if f(data) {
+                self.pc += offset as usize;
+            }
+        }
+    }
+
     #[inline]
     fn unary_op<T: Copy, U, F: Fn(T) -> U>(&mut self, f: F) {
         unsafe {
@@ -470,8 +714,10 @@ impl ScriptVm {
     fn binary_op<T: Copy, U, F: Fn(T, T) -> U>(&mut self, f: F) {
         unsafe {
             let data: T = self.read_stack(self.sp);
-            self.sp += 4;
+            self.sp += std::mem::size_of::<T>();
             let data2: T = self.read_stack(self.sp);
+            self.sp += std::mem::size_of::<T>();
+            self.sp -= std::mem::size_of::<U>();
             self.write_stack(self.sp, f(data, data2));
         }
     }

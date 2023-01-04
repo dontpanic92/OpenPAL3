@@ -1,10 +1,13 @@
-use std::io::{Cursor, Read};
+use std::{
+    io::{Cursor, Read},
+    rc::Rc,
+};
 
 use byteorder::ReadBytesExt;
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ScriptTypeDefinition {
     name: String,
 }
@@ -17,7 +20,7 @@ impl ScriptTypeDefinition {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ScriptTypeReference {
     name: String,
 }
@@ -30,7 +33,7 @@ impl ScriptTypeReference {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ScriptDataType {
     flag: u8,
     unknown: u32,
@@ -67,13 +70,13 @@ impl ScriptDataType {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Instruction {
     pub inst: u32,
     pub params: Vec<u8>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ScriptFunction {
     pub name: String,
     pub ret_type: ScriptDataType,
@@ -136,7 +139,10 @@ impl ScriptFunction {
         })
     }
 
-    fn read_instructions(cursor: &mut dyn Read, total_size: usize) -> Result<(Vec<u8>, Vec<Instruction>)> {
+    fn read_instructions(
+        cursor: &mut dyn Read,
+        total_size: usize,
+    ) -> Result<(Vec<u8>, Vec<Instruction>)> {
         let mut i = 0;
         let mut instructions = vec![0; total_size];
         let mut instructions2 = vec![];
@@ -152,7 +158,10 @@ impl ScriptFunction {
 
             let mut p = Vec::new();
             p.extend_from_slice(&instructions[i..i + extra_len]);
-            instructions2.push(Instruction {inst: inst as u32, params: p });
+            instructions2.push(Instruction {
+                inst: inst as u32,
+                params: p,
+            });
 
             i += extra_len;
         }
@@ -163,16 +172,16 @@ impl ScriptFunction {
 
 #[derive(Debug, Serialize)]
 pub struct ScriptModule {
-    type_defs: Vec<ScriptTypeDefinition>,
-    type_refs: Vec<ScriptTypeReference>,
-    unknown_count3: usize,
-    unknown_count4: usize,
-    astruct: ScriptFunction,
-    astruct2: ScriptFunction,
+    pub type_defs: Vec<ScriptTypeDefinition>,
+    pub type_refs: Vec<ScriptTypeReference>,
+    pub unknown_count3: usize,
+    pub globals: Vec<u32>,
+    pub module_loading: ScriptFunction,
+    pub module_unloading: ScriptFunction,
 
-    astruct_vec1: Vec<ScriptFunction>,
-    string_vec: Vec<String>,
-    astruct_vec2: Vec<ScriptFunction>,
+    pub functions: Vec<Rc<ScriptFunction>>,
+    pub strings: Vec<String>,
+    pub astruct_vec2: Vec<ScriptFunction>,
 }
 
 impl ScriptModule {
@@ -197,21 +206,23 @@ impl ScriptModule {
         }
 
         let unknown_count3 = cursor.read_u32_le()? as usize;
-        let unknown_count4 = cursor.read_u32_le()? as usize;
 
-        let astruct = ScriptFunction::load(cursor)?;
-        let astruct2 = ScriptFunction::load(cursor)?;
+        let global_count = cursor.read_u32_le()? as usize;
+        let globals = vec![0; global_count];
+
+        let module_loading = ScriptFunction::load(cursor)?;
+        let module_unloading = ScriptFunction::load(cursor)?;
 
         let astruct_count1 = cursor.read_u32_le()? as usize;
-        let mut astruct_vec1 = vec![];
+        let mut functions = vec![];
         for _ in 0..astruct_count1 {
-            astruct_vec1.push(ScriptFunction::load(cursor)?);
+            functions.push(Rc::new(ScriptFunction::load(cursor)?));
         }
 
         let string_count = cursor.read_u32_le()? as usize;
-        let mut string_vec = vec![];
+        let mut strings = vec![];
         for _ in 0..string_count {
-            string_vec.push(read_string(cursor)?);
+            strings.push(read_string(cursor)?);
         }
 
         let astruct_count2 = cursor.read_u32_le()? as usize;
@@ -224,11 +235,11 @@ impl ScriptModule {
             type_defs,
             type_refs,
             unknown_count3,
-            unknown_count4,
-            astruct,
-            astruct2,
-            astruct_vec1,
-            string_vec,
+            globals,
+            module_loading,
+            module_unloading,
+            functions,
+            strings,
             astruct_vec2,
         })
     }

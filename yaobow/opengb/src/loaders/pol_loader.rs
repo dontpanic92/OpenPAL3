@@ -1,5 +1,5 @@
-use common::read_ext::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
+use common::read_ext::ReadExt;
 use encoding::{DecoderTrap, Encoding};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::math::Mat44;

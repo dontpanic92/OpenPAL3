@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use radiance::application::{Application, ApplicationExtension};
 
-
 pub struct OpenPal4Application {
     root_path: PathBuf,
     app_name: String,

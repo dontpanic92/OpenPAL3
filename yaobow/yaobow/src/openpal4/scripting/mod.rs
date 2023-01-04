@@ -1,2 +1,3 @@
+pub mod global_context;
 pub mod module;
-mod vm;
+pub mod vm;

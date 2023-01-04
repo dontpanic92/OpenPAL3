@@ -1,5 +1,5 @@
-use common::read_ext::ReadExt;
 use byteorder::{LittleEndian, ReadBytesExt};
+use common::read_ext::ReadExt;
 use mini_fs::{MiniFs, StoreExt};
 use radiance::math::Vec3;
 use serde::Serialize;
