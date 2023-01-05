@@ -4,14 +4,11 @@ use crate::loaders::{
     sce_loader::{sce_load_from_file, SceFile},
     scn_loader::scn_load_from_file,
 };
-use crate::utilities::StoreExt2;
-use crate::{
-    cpk::CpkFs,
-    scene::{
-        CvdModelEntity, PolModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity,
-        ScnScene,
-    },
+use crate::scene::{
+    CvdModelEntity, PolModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity, ScnScene,
 };
+use crate::utilities::StoreExt2;
+use common::cpk::CpkFs;
 use encoding::{types::Encoding, DecoderTrap};
 use ini::Ini;
 use log::debug;

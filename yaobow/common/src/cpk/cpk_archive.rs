@@ -1,5 +1,4 @@
 use byteorder::{LittleEndian, ReadBytesExt};
-use common::read_ext::ReadExt;
 use mini_fs::UserFile;
 use std::{
     cell::RefCell,
@@ -8,6 +7,8 @@ use std::{
     rc::Rc,
 };
 use std::{clone::Clone, path::Path};
+
+use crate::read_ext::ReadExt;
 
 type IoResult<T> = std::io::Result<T>;
 type IoError = std::io::Error;
@@ -19,16 +20,89 @@ pub struct CpkArchive<T: AsRef<[u8]>> {
     cursor: Cursor<T>,
     header: CpkHeader,
     pub entries: Vec<CpkTable>,
-    file_names: Vec<String>,
+    pub file_names: Vec<String>,
     crc_to_index: HashMap<u32, usize>,
 }
 
 impl<T: AsRef<[u8]>> CpkArchive<T> {
     pub fn load(mut cursor: Cursor<T>) -> IoResult<CpkArchive<T>> {
         let header = CpkHeader::read(&mut cursor)?;
+
+        let buffer = if header.is_pal4() {
+            let buffer_len = (std::mem::size_of::<CpkTable>() + 4) * header.file_num as usize;
+            let mut encrypted_buffer = vec![0; 0x1000];
+            cursor.read_exact(&mut encrypted_buffer)?;
+            let mut decrypted_buffer = xxtea::decrypt_raw(
+                &encrypted_buffer,
+                "Vampire.C.J at Softstar Technology (ShangHai) Co., Ltd",
+            );
+
+            if buffer_len > 0x1000 {
+                let mut extra_buffer = vec![0; buffer_len - 0x1000];
+                cursor.read_exact(&mut extra_buffer)?;
+                decrypted_buffer.append(&mut extra_buffer);
+            }
+
+            decrypted_buffer
+        } else {
+            let buffer_len = std::mem::size_of::<CpkTable>() * header.file_num as usize;
+            let mut buffer = vec![0; buffer_len];
+            cursor.read_exact(&mut buffer)?;
+
+            buffer
+        };
+
+        let mut entry_cursor = Cursor::new(&buffer);
         let mut entries = vec![];
-        for _ in 0..header.max_file_num {
-            if let Ok(t) = CpkTable::read(&mut cursor) {
+        for _ in 0..header.file_num {
+            if let Ok(t) = CpkTable::read(&mut entry_cursor, header.is_pal4()) {
+                entries.push(t)
+            }
+        }
+
+        let crc_to_index = Self::build_index_map(&entries);
+        let file_names = Self::read_file_names(&mut cursor, &entries)?;
+
+        Ok(CpkArchive {
+            cursor,
+            header,
+            entries,
+            file_names,
+            crc_to_index,
+        })
+    }
+
+    pub fn load2(mut cursor: Cursor<T>, encrypt_size: usize) -> IoResult<CpkArchive<T>> {
+        let header = CpkHeader::read(&mut cursor)?;
+
+        let buffer = if header.is_pal4() {
+            let buffer_len = (std::mem::size_of::<CpkTable>() + 4) * header.file_num as usize;
+            let mut encrypted_buffer = vec![0; encrypt_size];
+            cursor.read_exact(&mut encrypted_buffer)?;
+            let mut decrypted_buffer = xxtea::decrypt_raw(
+                &encrypted_buffer,
+                "Vampire.C.J at Softstar Technology (ShangHai) Co., Ltd",
+            );
+
+            if buffer_len > encrypt_size {
+                let mut extra_buffer = vec![0; buffer_len - encrypt_size];
+                cursor.read_exact(&mut extra_buffer)?;
+                decrypted_buffer.append(&mut extra_buffer);
+            }
+
+            decrypted_buffer
+        } else {
+            let buffer_len = std::mem::size_of::<CpkTable>() * header.file_num as usize;
+            let mut buffer = vec![0; buffer_len];
+            cursor.read_exact(&mut buffer)?;
+
+            buffer
+        };
+
+        let mut entry_cursor = Cursor::new(&buffer);
+        let mut entries = vec![];
+        for _ in 0..header.file_num {
+            if let Ok(t) = CpkTable::read(&mut entry_cursor, header.is_pal4()) {
                 entries.push(t)
             }
         }
@@ -75,6 +149,10 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
 
     pub fn build_directory(&self) -> CpkEntry {
         Self::build_directory_internal(&self.entries, &self.file_names)
+    }
+
+    pub fn is_pal4(&self) -> bool {
+        self.header.data_start == 0x00100080
     }
 
     fn build_directory_internal(entries: &[CpkTable], file_names: &[String]) -> CpkEntry {
@@ -159,6 +237,10 @@ impl CpkFile {
     fn new(cursor: Cursor<Vec<u8>>) -> CpkFile {
         CpkFile { cursor }
     }
+
+    pub fn content(&self) -> Vec<u8> {
+        self.cursor.clone().into_inner()
+    }
 }
 
 impl UserFile for CpkFile {}
@@ -230,6 +312,10 @@ impl CpkHeader {
             reserved,
         })
     }
+
+    pub fn is_pal4(&self) -> bool {
+        self.data_start == 0x00100080
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -256,7 +342,7 @@ enum CpkTableFlag {
 }
 
 impl CpkTable {
-    pub fn read<T: AsRef<[u8]>>(cursor: &mut Cursor<T>) -> IoResult<CpkTable> {
+    pub fn read<T: AsRef<[u8]>>(cursor: &mut Cursor<T>, extra_ending: bool) -> IoResult<CpkTable> {
         let crc = cursor.read_u32::<LittleEndian>().unwrap();
         let flag = cursor.read_u32::<LittleEndian>().unwrap();
         let father_crc = cursor.read_u32::<LittleEndian>().unwrap();
@@ -264,6 +350,9 @@ impl CpkTable {
         let packed_size = cursor.read_u32::<LittleEndian>().unwrap();
         let origin_size = cursor.read_u32::<LittleEndian>().unwrap();
         let extra_info_size = cursor.read_u32::<LittleEndian>().unwrap();
+        if extra_ending {
+            let _ = cursor.read_u32::<LittleEndian>();
+        }
 
         Ok(CpkTable {
             crc,

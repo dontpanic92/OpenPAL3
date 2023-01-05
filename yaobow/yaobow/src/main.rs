@@ -16,10 +16,10 @@ pub fn main() {
     let stdin = std::io::stdin();
     stdin.lock().read_line(&mut line).unwrap();
 
-    let content = std::fs::read("F:\\PAL4\\gamedata\\script\\Q01.csb").unwrap();
+    let content = std::fs::read("F:\\PAL4\\gamedata\\script\\script.csb").unwrap();
 
     let module = ScriptModule::load_from_buffer(&content).unwrap();
-    // println!("{}", serde_json::to_string(&module).unwrap());
+    println!("{}", serde_json::to_string(&module).unwrap());
 
     let context = Rc::new(RefCell::new(ScriptGlobalContext::new()));
     let mut vm = ScriptVm::new(context);

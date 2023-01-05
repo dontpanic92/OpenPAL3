@@ -469,6 +469,11 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "encoding",
+ "log",
+ "memmap",
+ "mini-fs",
+ "minilzo-rs",
+ "xxtea",
 ]
 
 [[package]]
@@ -3184,6 +3189,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2d7d3948613f75c98fd9328cfdcc45acc4d360655289d0a7d4ec931392200a3"
 
 [[package]]
+name = "xxtea"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e52655abf007cc0520d91ac9e89d4fd34d5eb7462269d24b6c29edea6e47c29c"
+
+[[package]]
 name = "yaml-rust"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3215,6 +3226,7 @@ name = "yaobow_editor"
 version = "0.1.0"
 dependencies = [
  "chardet",
+ "common",
  "crosscom",
  "encoding",
  "image",
@@ -3231,6 +3243,7 @@ dependencies = [
  "simple_logger",
  "uuid",
  "wavefront_obj",
+ "xxtea",
 ]
 
 [[package]]

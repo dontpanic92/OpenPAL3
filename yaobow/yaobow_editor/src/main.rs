@@ -52,7 +52,13 @@ impl SceneViewResourceView {
 
 fn main() {
     let mut application = EditorApplication::new_with_plugin(|app| {
-        let config = OpenGbConfig::load("openpal3.toml", "OPENPAL3");
+        let mut config = OpenGbConfig::load("openpal3.toml", "OPENPAL3");
+
+        let args = std::env::args().collect::<Vec<String>>();
+        if args.len() > 1 && args[1] == "--pal4" {
+            config.asset_path = "F:\\PAL4\\".to_string();
+        }
+
         let resource_view_content = SceneViewResourceView::new(config, app);
 
         SceneViewPlugins::new(Some(crosscom::ComRc::from_object(resource_view_content)))

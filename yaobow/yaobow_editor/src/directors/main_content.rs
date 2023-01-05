@@ -1,4 +1,5 @@
 use chardet::{charset2encoding, detect};
+use common::cpk::CpkArchive;
 use encoding::{label::encoding_from_whatwg_label, DecoderTrap};
 use image::ImageFormat;
 use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
@@ -64,7 +65,7 @@ impl ContentTabs {
             .map(|e| e.to_str().unwrap().to_ascii_lowercase());
 
         match extension.as_ref().map(|e| e.as_str()) {
-            Some("mp3" | "wav") => self.open_audio(vfs, path, &extension.unwrap()),
+            Some("mp3" | "wav" | "smp") => self.open_audio(vfs, path, &extension.unwrap()),
             Some("bik" | "mp4") => self.open_video(factory, vfs, path, &extension.unwrap()),
             Some("tga" | "png" | "dds") => self.open_image(factory, vfs, path),
             Some("scn") => self.open_scn(vfs, path),
@@ -132,11 +133,26 @@ impl ContentTabs {
     pub fn open_audio<P: AsRef<Path>>(&mut self, vfs: &MiniFs, path: P, extension: &str) {
         let codec = match extension {
             "mp3" => Some(AudioCodec::Mp3),
+            "smp" => Some(AudioCodec::Mp3),
             "wav" => Some(AudioCodec::Wav),
             _ => None,
         };
 
-        if let Ok(data) = vfs.read_to_end(&path) {
+        if let Ok(mut data) = vfs.read_to_end(&path) {
+            if extension == "smp" {
+                let mut cpk = CpkArchive::load(std::io::Cursor::new(&data)).unwrap();
+                let name = cpk.file_names[0].clone();
+                let mut content = cpk.open_str(&name).unwrap().content();
+                let size = content.len() & 0xFFFFFFFC;
+                content.resize(size, 0);
+                println!("filename {} {} {:?}", name, content.len(), cpk.entries);
+
+                data = xxtea::decrypt_raw(
+                    &content,
+                    "Vampire.C.J at Softstar Technology (ShangHai) Co., Ltd",
+                );
+            }
+
             self.audio_tab = Some(ContentTab::new(
                 "audio".to_string(),
                 Box::new(AudioPane::new(

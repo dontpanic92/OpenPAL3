@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 chardet = "0.2.4"
+common = { path = "../common" }
 opengb = { path = "../opengb" }
 radiance = { path = "../../radiance/radiance" }
 radiance_editor = { path = "../../radiance/radiance_editor" }
@@ -24,6 +25,7 @@ native-dialog = "0.6.3"
 lazy_static = "1.2.0"
 uuid = "0.8"
 crosscom = { path = "../../crosscom/runtime/rust" }
+xxtea = "0.2.0"
 
 
 [features]
