@@ -13,7 +13,7 @@ pub struct ScriptTypeDefinition {
 }
 
 impl ScriptTypeDefinition {
-    fn load(cursor: &mut dyn Read) -> Result<Self> {
+    fn read(cursor: &mut dyn Read) -> Result<Self> {
         let name = read_string(cursor)?;
 
         Ok(Self { name })
@@ -26,7 +26,7 @@ pub struct ScriptTypeReference {
 }
 
 impl ScriptTypeReference {
-    fn load(cursor: &mut dyn Read) -> Result<Self> {
+    fn read(cursor: &mut dyn Read) -> Result<Self> {
         let name = read_string(cursor)?;
 
         Ok(Self { name })
@@ -45,14 +45,14 @@ pub struct ScriptDataType {
 }
 
 impl ScriptDataType {
-    fn load(cursor: &mut dyn Read) -> Result<Self> {
+    fn read(cursor: &mut dyn Read) -> Result<Self> {
         let flag = cursor.read_u8()?;
         if flag != 0 {
             unimplemented!("AClass8.flag != 0 unimplemented yet");
         }
 
         let unknown = cursor.read_u32_le()?;
-        let type_ref = ScriptTypeReference::load(cursor)?;
+        let type_ref = ScriptTypeReference::read(cursor)?;
         let unknown2 = cursor.read_u8()?;
         let unknown3 = cursor.read_u8()?;
         let unknown4 = cursor.read_u8()?;
@@ -92,16 +92,16 @@ pub struct ScriptFunction {
 }
 
 impl ScriptFunction {
-    fn load(cursor: &mut dyn Read) -> Result<Self> {
+    fn read(cursor: &mut dyn Read) -> Result<Self> {
         let name = read_string(cursor)?;
         println!("{}", name);
 
-        let ret_type = ScriptDataType::load(cursor)?;
+        let ret_type = ScriptDataType::read(cursor)?;
         let param_count = cursor.read_u32_le()? as usize;
         let mut param_types = vec![];
 
         for _ in 0..param_count {
-            param_types.push(ScriptDataType::load(cursor)?);
+            param_types.push(ScriptDataType::read(cursor)?);
         }
 
         let unknown_dword1 = cursor.read_u32_le()?;
@@ -112,12 +112,12 @@ impl ScriptFunction {
         let mut type_refs = vec![];
         let mut dword_with_type_ref = vec![];
         for _ in 0..type_ref_count {
-            type_refs.push(ScriptTypeReference::load(cursor)?);
+            type_refs.push(ScriptTypeReference::read(cursor)?);
             dword_with_type_ref.push(cursor.read_u32_le()?);
         }
 
         let unknown_dword = cursor.read_u32_le()?;
-        let type_ref = ScriptTypeReference::load(cursor)?;
+        let type_ref = ScriptTypeReference::read(cursor)?;
         let dword_count = cursor.read_u32_le()? as usize;
         let mut dword_vec = vec![];
         for _ in 0..dword_count {
@@ -185,24 +185,24 @@ pub struct ScriptModule {
 }
 
 impl ScriptModule {
-    pub fn load_from_buffer(buffer: &[u8]) -> Result<Self> {
+    pub fn read_from_buffer(buffer: &[u8]) -> Result<Self> {
         let mut cursor = Cursor::new(buffer);
-        Self::load(&mut cursor)
+        Self::read(&mut cursor)
     }
 
-    fn load(cursor: &mut Cursor<&[u8]>) -> Result<Self> {
+    fn read(cursor: &mut Cursor<&[u8]>) -> Result<Self> {
         cursor.set_position(4);
 
         let type_def_count = cursor.read_u32_le()?;
         let mut type_defs = vec![];
         for _ in 0..type_def_count {
-            type_defs.push(ScriptTypeDefinition::load(cursor)?);
+            type_defs.push(ScriptTypeDefinition::read(cursor)?);
         }
 
         let type_ref_count = cursor.read_u32_le()?;
         let mut type_refs = vec![];
         for _ in 0..type_ref_count {
-            type_refs.push(ScriptTypeReference::load(cursor)?);
+            type_refs.push(ScriptTypeReference::read(cursor)?);
         }
 
         let unknown_count3 = cursor.read_u32_le()? as usize;
@@ -210,13 +210,13 @@ impl ScriptModule {
         let global_count = cursor.read_u32_le()? as usize;
         let globals = vec![0; global_count];
 
-        let module_loading = ScriptFunction::load(cursor)?;
-        let module_unloading = ScriptFunction::load(cursor)?;
+        let module_loading = ScriptFunction::read(cursor)?;
+        let module_unloading = ScriptFunction::read(cursor)?;
 
         let astruct_count1 = cursor.read_u32_le()? as usize;
         let mut functions = vec![];
         for _ in 0..astruct_count1 {
-            functions.push(Rc::new(ScriptFunction::load(cursor)?));
+            functions.push(Rc::new(ScriptFunction::read(cursor)?));
         }
 
         let string_count = cursor.read_u32_le()? as usize;
@@ -228,7 +228,7 @@ impl ScriptModule {
         let astruct_count2 = cursor.read_u32_le()? as usize;
         let mut astruct_vec2 = vec![];
         for _ in 0..astruct_count2 {
-            astruct_vec2.push(ScriptFunction::load(cursor)?);
+            astruct_vec2.push(ScriptFunction::read(cursor)?);
         }
 
         Ok(Self {

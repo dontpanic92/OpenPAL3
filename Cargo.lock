@@ -978,6 +978,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "fileformats"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "common",
+ "dashmap",
+ "encoding",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "filetime"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3209,6 +3224,7 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "common",
+ "fileformats",
  "imgui",
  "log",
  "ndk 0.5.0",

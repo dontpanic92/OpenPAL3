@@ -3,8 +3,18 @@ use encoding::{types::Encoding, DecoderTrap};
 use std::io::Read;
 
 pub trait ReadExt: Read {
+    fn skip(&mut self, size: usize) -> std::io::Result<()> {
+        let mut buf = vec![0u8; size];
+        self.read_exact(&mut buf)?;
+        Ok(())
+    }
+
     fn read_u32_le(&mut self) -> std::io::Result<u32> {
         self.read_u32::<LittleEndian>()
+    }
+
+    fn read_u16_le(&mut self) -> std::io::Result<u16> {
+        self.read_u16::<LittleEndian>()
     }
 
     fn read_u8_vec(&mut self, size: usize) -> Result<Vec<u8>, Box<dyn std::error::Error>> {

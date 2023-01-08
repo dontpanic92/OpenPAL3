@@ -12,6 +12,7 @@ byteorder = "1.3.4"
 common = { path = "../common" }
 imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
 opengb = { path = "../opengb" }
+fileformats = { path = "../fileformats" }
 radiance = { path = "../../radiance/radiance" }
 simple_logger = "1.16.0"
 serde = { version = "1.0.106", features = ["derive", "rc"] }

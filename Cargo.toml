@@ -4,6 +4,7 @@ members = [
     "radiance/radiance",
     "radiance/radiance_editor",
     "yaobow/opengb",
+    "yaobow/fileformats",
     "yaobow/openpal3",
     "yaobow/yaobow",
     "yaobow/yaobow_editor",

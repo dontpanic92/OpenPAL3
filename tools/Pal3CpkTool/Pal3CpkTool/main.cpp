@@ -105,8 +105,8 @@ int main(int argc, char** argv)
         return -1;
     }*/
 
-    std::string cpkFilePath = "f:\\PAL4\\gamedata\\script.cpk";//argv[1];
-    std::string saveRootPath = "f:\\PAL4\\gamedata\\";//argv[2];
+    std::string cpkFilePath = argv[1];
+    std::string saveRootPath = argv[2];
 
     createDirectory(saveRootPath);
 
