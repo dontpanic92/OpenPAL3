@@ -1,6 +1,6 @@
 use super::PersistentState;
 use crate::asset_manager::AssetManager;
-use crate::utilities::StoreExt2;
+use common::store_ext::StoreExt2;
 use radiance::{
     audio::{AudioEngine, AudioSource, AudioSourceState, Codec as AudioCodec},
     rendering::VideoPlayer,

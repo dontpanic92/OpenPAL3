@@ -2,12 +2,6 @@ module(rust) opengb::classes;
 
 import radiance.idl;
 
-[uuid(7f1742f7-5330-4834-b665-6dddfd7131c8)]
-interface IPolModel: IComponent {}
-
-[uuid(287b3c25-f310-4512-bdfc-0c54892449bd)]
-class PolModel: IPolModel {}
-
 [uuid(e11fe493-654a-4072-b883-a7ee1a35a24a)]
 interface IRoleModel: IComponent {
     [internal(), rust()]

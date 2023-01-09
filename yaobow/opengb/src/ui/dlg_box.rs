@@ -1,9 +1,10 @@
 use std::rc::Rc;
 
+use common::store_ext::StoreExt2;
 use imgui::{Condition, Ui};
 use radiance::rendering::Sprite;
 
-use crate::{asset_manager::AssetManager, utilities::StoreExt2};
+use crate::asset_manager::AssetManager;
 
 pub struct DialogBox {
     top_left: Sprite,

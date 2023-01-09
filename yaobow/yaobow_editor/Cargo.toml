@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 chardet = "0.2.4"
 common = { path = "../common" }
+fileformats = { path = "../fileformats" }
 opengb = { path = "../opengb" }
 radiance = { path = "../../radiance/radiance" }
 radiance_editor = { path = "../../radiance/radiance_editor" }

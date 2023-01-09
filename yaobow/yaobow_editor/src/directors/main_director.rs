@@ -3,7 +3,7 @@ use imgui::{Condition, Ui};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::{
     asset_manager::AssetManager,
-    loaders::mv3_loader::mv3_load_from_file,
+    loaders::{mv3_loader::mv3_load_from_file, pol::create_entity_from_pol_model},
     scene::{CvdModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleController, RoleEntity},
 };
 use radiance::{
@@ -156,7 +156,7 @@ impl DevToolsDirector {
                 })
                 .ok()
             }
-            Some("pol") => Some(Box::new(opengb::scene::PolModelEntity::new(
+            Some("pol") => Some(Box::new(create_entity_from_pol_model(
                 &self.asset_mgr.component_factory(),
                 &self.asset_mgr.vfs(),
                 &path,

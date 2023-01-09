@@ -1,24 +1,21 @@
 use chardet::{charset2encoding, detect};
-use common::cpk::CpkArchive;
+use common::{cpk::CpkArchive, store_ext::StoreExt2};
 use encoding::{label::encoding_from_whatwg_label, DecoderTrap};
+use fileformats::pol::read_pol;
 use image::ImageFormat;
 use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
-use mini_fs::MiniFs;
+use mini_fs::{MiniFs, StoreExt};
 use native_dialog::{FileDialog, MessageDialog, MessageType};
-use opengb::{
-    loaders::{
-        cvd_loader::cvd_load_from_file, mv3_loader::mv3_load_from_file,
-        nav_loader::nav_load_from_file, pol_loader::pol_load_from_file,
-        sce_loader::sce_load_from_file, scn_loader::scn_load_from_file,
-    },
-    utilities::StoreExt2,
+use opengb::loaders::{
+    cvd_loader::cvd_load_from_file, mv3_loader::mv3_load_from_file, nav_loader::nav_load_from_file,
+    sce_loader::sce_load_from_file, scn_loader::scn_load_from_file,
 };
 use radiance::{
     audio::AudioEngine, audio::Codec as AudioCodec, rendering::ComponentFactory,
     video::Codec as VideoCodec,
 };
 use serde::Serialize;
-use std::{path::Path, rc::Rc};
+use std::{io::BufReader, path::Path, rc::Rc};
 use wavefront_obj::mtl::MtlSet;
 
 use crate::exporters::pol_obj_exporter::export_pol_to_obj;
@@ -107,7 +104,7 @@ impl ContentTabs {
                 Self::NONE_EXPORT,
             ),
             Some("pol") => {
-                let pol_file = pol_load_from_file(vfs, path.as_ref()).ok();
+                let pol_file = read_pol(&mut BufReader::new(vfs.open(&path).unwrap())).ok();
                 let name = path
                     .as_ref()
                     .file_name()
@@ -116,7 +113,7 @@ impl ContentTabs {
                     .to_string();
                 self.open_json_from(
                     path.as_ref(),
-                    || pol_load_from_file(vfs, path.as_ref()).ok(),
+                    || read_pol(&mut BufReader::new(vfs.open(&path).unwrap())).ok(),
                     true,
                     Some(move || {
                         Self::export(|| {

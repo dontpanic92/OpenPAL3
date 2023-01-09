@@ -1,22 +1,20 @@
 use crate::loaders::{
     mv3_loader::*,
     nav_loader::{nav_load_from_file, NavFile},
+    pol::create_entity_from_pol_model,
     sce_loader::{sce_load_from_file, SceFile},
     scn_loader::scn_load_from_file,
 };
-use crate::scene::{
-    CvdModelEntity, PolModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity, ScnScene,
-};
-use crate::utilities::StoreExt2;
-use common::cpk::CpkFs;
+use crate::scene::{CvdModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleEntity, ScnScene};
+use common::{cpk::CpkFs, store_ext::StoreExt2};
 use encoding::{types::Encoding, DecoderTrap};
 use ini::Ini;
 use log::debug;
 use mini_fs::prelude::*;
 use mini_fs::{LocalFs, MiniFs};
-use radiance::rendering::SimpleMaterialDef;
 use radiance::rendering::{ComponentFactory, MaterialDef};
 use radiance::scene::CoreEntity;
+use radiance::{rendering::SimpleMaterialDef, scene::CoreEntity2};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -178,7 +176,7 @@ impl AssetManager {
         pol_name: &str,
         is_night: bool,
         index: u16,
-    ) -> Option<CoreEntity<PolModelEntity>> {
+    ) -> Option<CoreEntity2> {
         let folder = self.scene_path.join(cpk_name).join(scn_name);
         let mut paths = vec![];
         if is_night {
@@ -189,7 +187,7 @@ impl AssetManager {
 
         for path in &paths {
             if self.vfs.open(path).is_ok() {
-                return Some(PolModelEntity::new(
+                return Some(create_entity_from_pol_model(
                     &self.factory,
                     &self.vfs,
                     path,
@@ -238,10 +236,10 @@ impl AssetManager {
         obj_name: &str,
         index: u16,
         visible: bool,
-    ) -> Option<CoreEntity<PolModelEntity>> {
+    ) -> Option<CoreEntity2> {
         let path = self.get_object_item_path(obj_name);
         if self.vfs.open(&path).is_ok() {
-            Some(PolModelEntity::new(
+            Some(create_entity_from_pol_model(
                 &self.factory,
                 &self.vfs,
                 &path,

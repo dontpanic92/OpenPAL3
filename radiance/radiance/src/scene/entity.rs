@@ -41,6 +41,16 @@ pub trait EntityExtension {
     }
 }
 
+pub struct CoreEntity2Extension {}
+impl EntityExtension for CoreEntity2Extension {}
+
+pub type CoreEntity2 = CoreEntity<CoreEntity2Extension>;
+impl CoreEntity2 {
+    pub fn new2(name: String, visible: bool) -> Self {
+        CoreEntity::<CoreEntity2Extension>::new(CoreEntity2Extension {}, name, visible)
+    }
+}
+
 pub struct CoreEntity<TExtension: EntityExtension> {
     name: String,
     transform: Transform,

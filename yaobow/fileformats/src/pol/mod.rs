@@ -1,12 +1,9 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
 use encoding::{DecoderTrap, Encoding};
-use mini_fs::{MiniFs, StoreExt};
-use radiance::math::Mat44;
 use serde::Serialize;
 use std::error::Error;
-use std::io::{BufReader, Read};
-use std::path::Path;
+use std::io::Read;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct PolVertexComponents(u32);
@@ -83,6 +80,19 @@ pub struct PolMesh {
 }
 
 #[derive(Debug, Serialize, Clone)]
+pub struct Mat44(pub [[f32; 4]; 4]);
+
+impl Mat44 {
+    pub fn new_zero() -> Self {
+        Mat44([[0.; 4]; 4])
+    }
+
+    pub fn floats_mut(&mut self) -> &mut [[f32; 4]; 4] {
+        &mut self.0
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
 pub struct UnknownData {
     pub unknown: Vec<u8>, // size: 32
     pub matrix: Mat44,
@@ -107,11 +117,7 @@ pub struct PolFile {
     pub meshes: Vec<PolMesh>,
 }
 
-pub fn pol_load_from_file<P: AsRef<Path>>(
-    vfs: &MiniFs,
-    path: P,
-) -> Result<PolFile, Box<dyn Error>> {
-    let mut reader = BufReader::new(vfs.open(path).unwrap());
+pub fn read_pol(reader: &mut dyn Read) -> Result<PolFile, Box<dyn Error>> {
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic)?;
 
@@ -155,7 +161,7 @@ pub fn pol_load_from_file<P: AsRef<Path>>(
 
     let mut meshes = vec![];
     for _i in 0..mesh_count {
-        meshes.push(read_pol_mesh(&mut reader)?);
+        meshes.push(read_pol_mesh(reader)?);
     }
 
     Ok(PolFile {
@@ -178,7 +184,7 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
         0: reader.read_i32::<LittleEndian>()? as u32,
     };
     let vertex_count = reader.read_u32::<LittleEndian>()?;
-    let _size = super::calc_vertex_size(vertex_type.0 as i32);
+    let _size = calc_vertex_size(vertex_type.0 as i32);
     let mut vertices = vec![];
     for _i in 0..vertex_count {
         if !vertex_type.has(PolVertexComponents::POSITION) {
@@ -328,4 +334,50 @@ fn read_pol_mesh(reader: &mut dyn Read) -> Result<PolMesh, Box<dyn Error>> {
         material_info_count,
         material_info,
     })
+}
+
+pub fn calc_vertex_size(t: i32) -> usize {
+    if t < 0 {
+        return (t & 0x7FFFFFFF) as usize;
+    }
+
+    let mut size = 0;
+
+    if t & 1 != 0 {
+        size += 12;
+    }
+
+    if t & 2 != 0 {
+        size += 12;
+    }
+
+    if t & 4 != 0 {
+        size += 4;
+    }
+
+    if t & 8 != 0 {
+        size += 4;
+    }
+
+    if t & 0x10 != 0 {
+        size += 8;
+    }
+
+    if t & 0x20 != 0 {
+        size += 8;
+    }
+
+    if t & 0x40 != 0 {
+        size += 8;
+    }
+
+    if t & 0x80 != 0 {
+        size += 8;
+    }
+
+    if t & 0x100 != 0 {
+        size += 16;
+    }
+
+    return size;
 }

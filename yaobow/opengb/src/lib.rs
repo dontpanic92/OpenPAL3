@@ -13,5 +13,4 @@ pub mod loaders;
 pub mod material;
 pub mod scene;
 pub mod ui;
-pub mod utilities;
 pub mod video;

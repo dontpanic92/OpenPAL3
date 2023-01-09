@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::obj_exporter::{Geometry, ObjSet, Object, Shape, TVertex, Vertex};
-use opengb::loaders::pol_loader::{PolFile, PolVertexComponents};
+use fileformats::pol::{PolFile, PolVertexComponents};
 use wavefront_obj::mtl::{Color, Material, MtlSet};
 
 pub fn export_pol_to_obj(pol_file: Option<&PolFile>, name: &str) -> Option<(ObjSet, MtlSet)> {

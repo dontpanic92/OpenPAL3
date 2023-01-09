@@ -3,6 +3,7 @@ members = [
     "crosscom/runtime/rust",
     "radiance/radiance",
     "radiance/radiance_editor",
+    "yaobow/common",
     "yaobow/opengb",
     "yaobow/fileformats",
     "yaobow/openpal3",
