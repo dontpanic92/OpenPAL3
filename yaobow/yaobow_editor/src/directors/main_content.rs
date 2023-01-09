@@ -1,6 +1,7 @@
 use chardet::{charset2encoding, detect};
 use common::{cpk::CpkArchive, store_ext::StoreExt2};
 use encoding::{label::encoding_from_whatwg_label, DecoderTrap};
+use fileformats::dff::read_dff;
 use fileformats::pol::read_pol;
 use image::ImageFormat;
 use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
@@ -15,6 +16,7 @@ use radiance::{
     video::Codec as VideoCodec,
 };
 use serde::Serialize;
+use std::io::Read;
 use std::{io::BufReader, path::Path, rc::Rc};
 use wavefront_obj::mtl::MtlSet;
 
@@ -122,6 +124,16 @@ impl ContentTabs {
                     }),
                 )
             }
+            Some("dff") => self.open_json_from(
+                path.as_ref(),
+                || {
+                    let mut data = vec![];
+                    vfs.open(&path).unwrap().read_to_end(&mut data).unwrap();
+                    read_dff(&data).ok()
+                },
+                true,
+                Self::NONE_EXPORT,
+            ),
             Some("h" | "asm" | "ini" | "txt" | "conf") => self.open_plain_text(vfs, path.as_ref()),
             _ => {}
         }

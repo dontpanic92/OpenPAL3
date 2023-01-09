@@ -13,6 +13,7 @@ fileformats = { path = "../fileformats" }
 opengb = { path = "../opengb" }
 radiance = { path = "../../radiance/radiance" }
 radiance_editor = { path = "../../radiance/radiance_editor" }
+shared = { path = "../shared" }
 image = "0.23.0"
 imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }

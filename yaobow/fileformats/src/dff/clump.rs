@@ -9,13 +9,13 @@ use super::{
 
 #[derive(Debug, Serialize)]
 pub struct Clump {
-    header: ChunkHeader,
-    light_count: u32,
-    camera_count: u32,
-    frames: Vec<Frame>,
-    geometries: Vec<Geometry>,
-    atomics: Vec<Atomic>,
-    extension: Vec<u8>,
+    pub header: ChunkHeader,
+    pub light_count: u32,
+    pub camera_count: u32,
+    pub frames: Vec<Frame>,
+    pub geometries: Vec<Geometry>,
+    pub atomics: Vec<Atomic>,
+    pub extension: Vec<u8>,
 }
 
 impl Clump {

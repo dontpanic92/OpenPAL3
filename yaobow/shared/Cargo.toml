@@ -1,0 +1,17 @@
+[package]
+name = "shared"
+version = "0.1.0"
+authors = ["Li Shengqiu <lishengqiu.hit@gmail.com>"]
+edition = "2021"
+
+[lib]
+crate-type = [ "rlib" ]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+common = { path = "../common" }
+crosscom = { path = "../../crosscom/runtime/rust" }
+fileformats = { path = "../fileformats" }
+radiance = { path = "../../radiance/radiance" }
+mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }

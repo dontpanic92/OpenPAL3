@@ -8,12 +8,12 @@ use super::Vec3f;
 
 #[derive(Debug, Serialize)]
 pub struct Frame {
-    right: Vec3f,
-    up: Vec3f,
-    at: Vec3f,
-    pos: Vec3f,
-    parent: u32,
-    unknown: u32,
+    pub right: Vec3f,
+    pub up: Vec3f,
+    pub at: Vec3f,
+    pub pos: Vec3f,
+    pub parent: u32,
+    pub unknown: u32,
 }
 
 impl Frame {

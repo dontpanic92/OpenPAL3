@@ -9,11 +9,11 @@ use super::{ChunkHeader, ChunkType};
 
 #[derive(Debug, Serialize)]
 pub struct Atomic {
-    frame: u32,
-    geometry: u32,
-    unknown: u32,
-    unknown2: u32,
-    extension: Vec<u8>,
+    pub frame: u32,
+    pub geometry: u32,
+    pub unknown: u32,
+    pub unknown2: u32,
+    pub extension: Vec<u8>,
 }
 
 impl Atomic {

@@ -34,15 +34,17 @@ pub struct Geometry {
 impl Geometry {
     pub fn new(
         vertices: &Vec<Vertex>,
-        texcoord: &Vec<Vec<TexCoord>>,
+        texcoords: &Vec<Vec<TexCoord>>,
         indices: Vec<u32>,
         material: MaterialDef,
         has_alpha: u32,
     ) -> Self {
-        let components = if material.textures().len() == 1 {
-            VertexComponents::POSITION | VertexComponents::TEXCOORD
-        } else {
-            VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2
+        let mut components = VertexComponents::POSITION;
+
+        if texcoords.len() == 1 {
+            components |= VertexComponents::TEXCOORD
+        } else if texcoords.len() == 2 {
+            components |= VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2
         };
 
         let mut buffer = VertexBuffer::new(components, vertices.len());
@@ -50,14 +52,14 @@ impl Geometry {
         for i in 0..vertices.len() {
             let vert = &vertices[i];
 
-            let texcoord1 = if texcoord.len() > 0 {
-                Some(Vec2::new(texcoord[0][i].u, texcoord[0][i].v))
+            let texcoord1 = if texcoords.len() > 0 {
+                Some(Vec2::new(texcoords[0][i].u, texcoords[0][i].v))
             } else {
                 None
             };
 
-            let texcoord2 = if texcoord.len() > 1 {
-                Some(Vec2::new(texcoord[1][i].u, texcoord[1][i].v))
+            let texcoord2 = if texcoords.len() > 1 {
+                Some(Vec2::new(texcoords[1][i].u, texcoords[1][i].v))
             } else {
                 None
             };

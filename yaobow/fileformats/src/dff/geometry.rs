@@ -7,7 +7,7 @@ use serde::Serialize;
 use super::{material::Material, ChunkHeader, ChunkType, DffReadError, Vec3f};
 
 #[derive(Debug, Serialize)]
-struct GeometryFlags(pub u32);
+pub struct GeometryFlags(pub u32);
 impl GeometryFlags {
     pub const TRISTRIP: Self = Self(0x1);
     pub const POSITIONS: Self = Self(0x2);
@@ -96,13 +96,13 @@ impl GeometryMorphTarget {
 
 #[derive(Debug, Serialize)]
 pub struct Geometry {
-    flags: GeometryFlags,
-    vertices_count: u32,
-    prelit: Option<Vec<u32>>,
-    texcoord_sets: Option<Vec<Vec<TexCoord>>>,
-    triangles: Vec<Triangle>,
-    materials: Vec<Material>,
-    morph_targets: Vec<GeometryMorphTarget>,
+    pub flags: GeometryFlags,
+    pub vertices_count: u32,
+    pub prelit: Option<Vec<u32>>,
+    pub texcoord_sets: Option<Vec<Vec<TexCoord>>>,
+    pub triangles: Vec<Triangle>,
+    pub materials: Vec<Material>,
+    pub morph_targets: Vec<GeometryMorphTarget>,
 }
 
 impl Geometry {

@@ -47,7 +47,7 @@ impl Texture {
             return Err(DffReadError::IncorrectClumpFormat)?;
         }
 
-        cursor.skip(header.length as usize);
+        cursor.skip(header.length as usize)?;
 
         Ok(Self {
             filter_mode,
@@ -61,13 +61,13 @@ impl Texture {
 
 #[derive(Debug, Serialize)]
 pub struct Material {
-    unknown: u32,
-    color: u32,
-    unknown2: u32,
-    texture: Option<Texture>,
-    ambient: f32,
-    specular: f32,
-    diffuse: f32,
+    pub unknown: u32,
+    pub color: u32,
+    pub unknown2: u32,
+    pub texture: Option<Texture>,
+    pub ambient: f32,
+    pub specular: f32,
+    pub diffuse: f32,
 }
 
 impl Material {

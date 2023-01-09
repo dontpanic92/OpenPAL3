@@ -162,7 +162,10 @@ impl VertexBuffer {
         }
 
         if components != self.layout.components {
-            panic!("Vertex component mismatch when setting vertex data");
+            panic!(
+                "Vertex component mismatch when setting vertex data {:?} {:?}",
+                components, self.layout.components
+            );
         }
 
         self.set_vertex_blob(index, |v: &mut [u8]| {

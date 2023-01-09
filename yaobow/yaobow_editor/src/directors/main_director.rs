@@ -12,6 +12,7 @@ use radiance::{
     scene::{CoreScene, Director, Entity, Scene, SceneManager},
 };
 use radiance_editor::{scene::EditorScene, ui::window_content_rect};
+use shared::loaders::dff::create_entity_from_dff_model;
 use std::{
     cell::RefCell,
     cmp::Ordering,
@@ -157,6 +158,13 @@ impl DevToolsDirector {
                 .ok()
             }
             Some("pol") => Some(Box::new(create_entity_from_pol_model(
+                &self.asset_mgr.component_factory(),
+                &self.asset_mgr.vfs(),
+                &path,
+                "preview".to_string(),
+                true,
+            )) as Box<dyn Entity>),
+            Some("dff") => Some(Box::new(create_entity_from_dff_model(
                 &self.asset_mgr.component_factory(),
                 &self.asset_mgr.vfs(),
                 &path,
