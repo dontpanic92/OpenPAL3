@@ -461,139 +461,133 @@ impl crosscom::ComInterface for IAnimatedMeshComponent {
 #[macro_export]
 macro_rules! ComObject_AnimatedMeshComponent {
     ($impl_type: ty) => {
+        #[allow(dead_code)]
+        #[allow(non_snake_case)]
+        #[allow(unused)]
+        mod AnimatedMeshComponent_crosscom_impl {
+            use crate as radiance;
+            use crosscom::ComInterface;
+            use crosscom::IObjectArrayImpl;
+            use crosscom::IUnknownImpl;
+            use radiance::interfaces::IAnimatedMeshComponentImpl;
+            use radiance::interfaces::IComponentImpl;
+            use radiance::interfaces::IStaticMeshComponentImpl;
 
-#[allow(dead_code)]
-#[allow(non_snake_case)]
-#[allow(unused)]
-mod AnimatedMeshComponent_crosscom_impl {
-    use crate as radiance;
-    use crosscom::ComInterface;
-use radiance::interfaces::IComponentImpl;
-use radiance::interfaces::IStaticMeshComponentImpl;
-use radiance::interfaces::IAnimatedMeshComponentImpl;
-use crosscom::IUnknownImpl;
-use crosscom::IObjectArrayImpl;
+            #[repr(C)]
+            pub struct AnimatedMeshComponentCcw {
+                IAnimatedMeshComponent: radiance::interfaces::IAnimatedMeshComponent,
 
+                ref_count: std::sync::atomic::AtomicU32,
+                pub inner: $impl_type,
+            }
 
-    #[repr(C)]
-    pub struct AnimatedMeshComponentCcw {
-        IAnimatedMeshComponent: radiance::interfaces::IAnimatedMeshComponent,
+            unsafe extern "system" fn query_interface(
+                this: *const *const std::os::raw::c_void,
+                guid: uuid::Uuid,
+                retval: &mut *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
+                match guid.as_bytes() {
+                    &crosscom::IUnknown::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
 
-        ref_count: std::sync::atomic::AtomicU32,
-        pub inner: $impl_type,
-    }
+                    &radiance::interfaces::IComponent::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
 
-    unsafe extern "system" fn query_interface(
-        this: *const *const std::os::raw::c_void,
-        guid: uuid::Uuid,
-        retval: &mut *const *const std::os::raw::c_void,
-    ) -> std::os::raw::c_long {
-        let object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
-        match guid.as_bytes() {
+                    &radiance::interfaces::IAnimatedMeshComponent::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
 
-&crosscom::IUnknown::INTERFACE_ID => {
-    *retval = (object as *const *const std::os::raw::c_void).offset(0);
-    add_ref(object as *const *const std::os::raw::c_void);
-    crosscom::ResultCode::Ok as i32
-}
+                    _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
+                }
+            }
 
+            unsafe extern "system" fn add_ref(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
+                let previous = (*object)
+                    .ref_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                (previous + 1) as std::os::raw::c_long
+            }
 
-&radiance::interfaces::IComponent::INTERFACE_ID => {
-    *retval = (object as *const *const std::os::raw::c_void).offset(0);
-    add_ref(object as *const *const std::os::raw::c_void);
-    crosscom::ResultCode::Ok as i32
-}
+            unsafe extern "system" fn release(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
 
+                let previous = (*object)
+                    .ref_count
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                if previous - 1 == 0 {
+                    Box::from_raw(object as *mut AnimatedMeshComponentCcw);
+                }
 
-&radiance::interfaces::IAnimatedMeshComponent::INTERFACE_ID => {
-    *retval = (object as *const *const std::os::raw::c_void).offset(0);
-    add_ref(object as *const *const std::os::raw::c_void);
-    crosscom::ResultCode::Ok as i32
-}
+                (previous - 1) as std::os::raw::c_long
+            }
 
+            fn on_loading(
+                this: *const *const std::os::raw::c_void,
+                entity: &mut dyn radiance::scene::Entity,
+            ) -> crosscom::Void {
+                unsafe {
+                    let object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
+                    (*object).inner.on_loading(entity)
+                }
+            }
 
-            _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
-        }
-    }
+            fn on_updating(
+                this: *const *const std::os::raw::c_void,
+                entity: &mut dyn radiance::scene::Entity,
+                delta_sec: f32,
+            ) -> crosscom::Void {
+                unsafe {
+                    let object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
+                    (*object).inner.on_updating(entity, delta_sec)
+                }
+            }
 
-    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
-        let object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
-        let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        (previous + 1) as std::os::raw::c_long
-    }
+            #[allow(non_upper_case_globals)]
+            pub const GLOBAL_IAnimatedMeshComponentVirtualTable_CCW_FOR_AnimatedMeshComponent:
+                radiance::interfaces::IAnimatedMeshComponentVirtualTableCcw =
+                radiance::interfaces::IAnimatedMeshComponentVirtualTableCcw {
+                    offset: 0,
+                    vtable: radiance::interfaces::IAnimatedMeshComponentVirtualTable {
+                        query_interface,
+                        add_ref,
+                        release,
+                        on_loading,
+                        on_updating,
+                    },
+                };
 
-    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
-        let object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
+            impl crosscom::ComObject for $impl_type {
+                type CcwType = AnimatedMeshComponentCcw;
 
-        let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-        if previous - 1 == 0 {
-            Box::from_raw(object as *mut AnimatedMeshComponentCcw);
-        }
+                fn create_ccw(self) -> Self::CcwType {
+                    Self::CcwType {
 
-        (previous - 1) as std::os::raw::c_long
-    }
+        IAnimatedMeshComponent: radiance::interfaces::IAnimatedMeshComponent {
+            vtable: &GLOBAL_IAnimatedMeshComponentVirtualTable_CCW_FOR_AnimatedMeshComponent.vtable
+                as *const radiance::interfaces::IAnimatedMeshComponentVirtualTable,
+        },
 
-
-
-    fn on_loading (this: *const *const std::os::raw::c_void, entity: &mut dyn radiance::scene::Entity,
-) -> crosscom::Void {
-        unsafe {
-            let object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
-            (*object).inner.on_loading(entity)
-        }
-    }
-
-
-
-    fn on_updating (this: *const *const std::os::raw::c_void, entity: &mut dyn radiance::scene::Entity,
-delta_sec: f32,
-) -> crosscom::Void {
-        unsafe {
-            let object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
-            (*object).inner.on_updating(entity,delta_sec)
-        }
-    }
-
-
-
-
-
-
-#[allow(non_upper_case_globals)]
-pub const GLOBAL_IAnimatedMeshComponentVirtualTable_CCW_FOR_AnimatedMeshComponent: radiance::interfaces::IAnimatedMeshComponentVirtualTableCcw
-    = radiance::interfaces::IAnimatedMeshComponentVirtualTableCcw {
-    offset: 0,
-    vtable: radiance::interfaces::IAnimatedMeshComponentVirtualTable {
-        query_interface,
-add_ref,
-release,
-on_loading,
-on_updating,
-
-    },
-};
-
-
-
-
-    impl crosscom::ComObject for $impl_type {
-        type CcwType = AnimatedMeshComponentCcw;
-
-        fn create_ccw(self) -> Self::CcwType {
-            Self::CcwType {
-
-IAnimatedMeshComponent: radiance::interfaces::IAnimatedMeshComponent {
-    vtable: &GLOBAL_IAnimatedMeshComponentVirtualTable_CCW_FOR_AnimatedMeshComponent.vtable
-        as *const radiance::interfaces::IAnimatedMeshComponentVirtualTable,
-},
-
-                ref_count: std::sync::atomic::AtomicU32::new(0),
-                inner: self,
+                        ref_count: std::sync::atomic::AtomicU32::new(0),
+                        inner: self,
+                    }
+                }
             }
         }
-    }
-}
-    }
+    };
 }
 
 pub use ComObject_AnimatedMeshComponent;

@@ -39,11 +39,11 @@ impl AnimatedMeshComponent {
         }
     }
 
-    pub fn props_mut(&self) -> RefMut<AnimatedMeshComponentProps> {
+    fn props_mut(&self) -> RefMut<AnimatedMeshComponentProps> {
         self.props.borrow_mut()
     }
 
-    pub fn props(&self) -> Ref<AnimatedMeshComponentProps> {
+    fn props(&self) -> Ref<AnimatedMeshComponentProps> {
         self.props.borrow()
     }
 
@@ -70,7 +70,7 @@ impl AnimatedMeshComponent {
         let frame_index = props
             .morph_targets
             .iter()
-            .position(|&t| t.timestamp > anim_timestamp)
+            .position(|t| t.timestamp > anim_timestamp)
             .unwrap_or(0)
             - 1;
 

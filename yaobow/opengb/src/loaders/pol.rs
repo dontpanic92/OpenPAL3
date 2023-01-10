@@ -1,9 +1,9 @@
 use fileformats::pol::{read_pol, PolMaterialInfo, PolTriangle, PolVertex};
 use mini_fs::{MiniFs, StoreExt};
-use radiance::interfaces::IMeshComponent;
+use radiance::interfaces::IStaticMeshComponent;
 use radiance::math::Vec3;
 use radiance::rendering::{
-    ComponentFactory, Geometry, MaterialDef, MeshComponent, SimpleMaterialDef, TexCoord, Vertex,
+    ComponentFactory, Geometry, MaterialDef, SimpleMaterialDef, StaticMeshComponent, TexCoord,
 };
 use radiance::scene::CoreEntity2;
 use std::io::BufReader;
@@ -23,9 +23,9 @@ pub fn create_entity_from_pol_model<P: AsRef<Path>>(
 ) -> CoreEntity2 {
     let mut entity = CoreEntity2::new2(name, visible);
     let geometries = load_pol_model(vfs, path);
-    let mesh_component = MeshComponent::new(geometries, component_factory.clone());
+    let mesh_component = StaticMeshComponent::new(geometries, component_factory.clone());
     entity.add_component2(
-        IMeshComponent::uuid(),
+        IStaticMeshComponent::uuid(),
         crosscom::ComRc::from_object(mesh_component),
     );
     entity

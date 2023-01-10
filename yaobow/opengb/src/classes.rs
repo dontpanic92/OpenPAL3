@@ -127,8 +127,9 @@ macro_rules! ComObject_RoleModel {
             use crosscom::IUnknownImpl;
             use opengb::classes::ICvdModelImpl;
             use opengb::classes::IRoleModelImpl;
+            use radiance::interfaces::IAnimatedMeshComponentImpl;
             use radiance::interfaces::IComponentImpl;
-            use radiance::interfaces::IMeshComponentImpl;
+            use radiance::interfaces::IStaticMeshComponentImpl;
 
             #[repr(C)]
             pub struct RoleModelCcw {
@@ -376,8 +377,9 @@ macro_rules! ComObject_CvdModel {
             use crosscom::IUnknownImpl;
             use opengb::classes::ICvdModelImpl;
             use opengb::classes::IRoleModelImpl;
+            use radiance::interfaces::IAnimatedMeshComponentImpl;
             use radiance::interfaces::IComponentImpl;
-            use radiance::interfaces::IMeshComponentImpl;
+            use radiance::interfaces::IStaticMeshComponentImpl;
 
             #[repr(C)]
             pub struct CvdModelCcw {

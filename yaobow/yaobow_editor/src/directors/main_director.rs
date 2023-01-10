@@ -4,7 +4,10 @@ use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::{
     asset_manager::AssetManager,
     loaders::{mv3_loader::mv3_load_from_file, pol::create_entity_from_pol_model},
-    scene::{CvdModelEntity, RoleAnimation, RoleAnimationRepeatMode, RoleController, RoleEntity},
+    scene::{
+        create_entity_from_cvd_model, RoleAnimation, RoleAnimationRepeatMode, RoleController,
+        RoleEntity,
+    },
 };
 use radiance::{
     audio::AudioEngine,
@@ -171,7 +174,7 @@ impl DevToolsDirector {
                 "preview".to_string(),
                 true,
             )) as Box<dyn Entity>),
-            Some("cvd") => Some(Box::new(CvdModelEntity::create(
+            Some("cvd") => Some(Box::new(create_entity_from_cvd_model(
                 self.asset_mgr.component_factory().clone(),
                 &self.asset_mgr.vfs(),
                 &path,

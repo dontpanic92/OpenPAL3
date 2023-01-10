@@ -7,9 +7,9 @@ use std::{
 use fileformats::dff::{self, read_dff};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
-    interfaces::IMeshComponent,
+    interfaces::IStaticMeshComponent,
     math::Vec3,
-    rendering::{ComponentFactory, MeshComponent},
+    rendering::{ComponentFactory, StaticMeshComponent},
     scene::CoreEntity2,
 };
 
@@ -22,9 +22,9 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
 ) -> CoreEntity2 {
     let mut entity = CoreEntity2::new2(name, visible);
     let geometries = load_dff_model(vfs, path);
-    let mesh_component = MeshComponent::new(geometries, component_factory.clone());
+    let mesh_component = StaticMeshComponent::new(geometries, component_factory.clone());
     entity.add_component2(
-        IMeshComponent::uuid(),
+        IStaticMeshComponent::uuid(),
         crosscom::ComRc::from_object(mesh_component),
     );
     entity
