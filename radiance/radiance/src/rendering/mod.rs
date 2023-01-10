@@ -17,7 +17,7 @@ pub use factory::ComponentFactory;
 pub use material::{Material, MaterialDef, SimpleMaterialDef};
 pub use mesh::{
     geometry::{Geometry, TexCoord, Vertex},
-    MeshComponent,
+    StaticMeshComponent,
 };
 pub use platform::Window;
 pub use render_object::RenderObject;

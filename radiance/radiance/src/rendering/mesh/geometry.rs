@@ -3,17 +3,6 @@ use crate::{
     rendering::{MaterialDef, VertexBuffer, VertexComponents},
 };
 
-pub struct Vertex {
-    pub position: Vec3,
-    pub normal: Option<Vec3>,
-}
-
-impl Vertex {
-    pub fn new(position: Vec3, normal: Option<Vec3>) -> Self {
-        Self { position, normal }
-    }
-}
-
 pub struct TexCoord {
     pub u: f32,
     pub v: f32,
@@ -33,8 +22,9 @@ pub struct Geometry {
 
 impl Geometry {
     pub fn new(
-        vertices: &Vec<Vertex>,
-        texcoords: &Vec<Vec<TexCoord>>,
+        vertices: &[Vec3],
+        normals: Option<&[Vec3]>,
+        texcoords: &[Vec<TexCoord>],
         indices: Vec<u32>,
         material: MaterialDef,
         has_alpha: u32,
@@ -42,15 +32,20 @@ impl Geometry {
         let mut components = VertexComponents::POSITION;
 
         if texcoords.len() == 1 {
-            components |= VertexComponents::TEXCOORD
+            components |= VertexComponents::TEXCOORD;
         } else if texcoords.len() == 2 {
-            components |= VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2
+            components |= VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2;
         };
+
+        if normals.is_some() {
+            components |= VertexComponents::NORMAL;
+        }
 
         let mut buffer = VertexBuffer::new(components, vertices.len());
 
         for i in 0..vertices.len() {
             let vert = &vertices[i];
+            let normal = normals.and_then(|n| Some(&n[i]));
 
             let texcoord1 = if texcoords.len() > 0 {
                 Some(Vec2::new(texcoords[0][i].u, texcoords[0][i].v))
@@ -66,12 +61,8 @@ impl Geometry {
 
             buffer.set_data(
                 i,
-                Some(&Vec3::new(
-                    vert.position.x,
-                    vert.position.y,
-                    vert.position.z,
-                )),
-                vert.normal.as_ref(),
+                Some(&Vec3::new(vert.x, vert.y, vert.z)),
+                normal,
                 texcoord1.as_ref(),
                 texcoord2.as_ref(),
             );

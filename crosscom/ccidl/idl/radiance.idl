@@ -12,7 +12,13 @@ interface IComponent: IUnknown {
 }
 
 [uuid(8dd91852-476b-401b-8668-ba9cc331b7a1)]
-interface IMeshComponent: IComponent {}
+interface IStaticMeshComponent: IComponent {}
 
 [uuid(aa9cfbdc-59a2-4e9e-9280-f77d52e79494)]
-class MeshComponent: IMeshComponent {}
+class StaticMeshComponent: IStaticMeshComponent {}
+
+[uuid(5c56adbc-bc22-4275-b99a-09973a3ffff0)]
+interface IAnimatedMeshComponent: IComponent {}
+
+[uuid(c1502819-57d7-45d2-a160-13d803e4fc48)]
+class AnimatedMeshComponent: IAnimatedMeshComponent {}

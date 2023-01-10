@@ -245,4 +245,8 @@ impl VertexBuffer {
     pub fn count(&self) -> usize {
         self.count
     }
+
+    pub fn components(&self) -> VertexComponents {
+        self.layout.components
+    }
 }

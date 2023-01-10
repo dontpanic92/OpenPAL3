@@ -58,11 +58,10 @@ fn create_geometry<P: AsRef<Path>>(
     let normals = geometry.morph_targets[0].normals.as_ref().unwrap();
 
     let mut r_vertices = vec![];
+    let mut r_normals = vec![];
     for i in 0..vertices.len() {
-        r_vertices.push(radiance::rendering::Vertex::new(
-            Vec3::new(vertices[i].x, vertices[i].y, vertices[i].z),
-            None, //Some(Vec3::new(normals[i].x, normals[i].y, normals[i].z)),
-        ));
+        r_vertices.push(Vec3::new(vertices[i].x, vertices[i].y, vertices[i].z));
+        r_normals.push(Vec3::new(normals[i].x, normals[i].y, normals[i].z));
     }
 
     let mut indices = vec![];
@@ -88,7 +87,7 @@ fn create_geometry<P: AsRef<Path>>(
             .as_ref()
             .parent()
             .unwrap()
-            .join(tex_name.to_string() + ".png");
+            .join(tex_name.to_string() + ".dds");
 
         (
             radiance::rendering::SimpleMaterialDef::create(
@@ -105,5 +104,12 @@ fn create_geometry<P: AsRef<Path>>(
         )
     };
 
-    radiance::rendering::Geometry::new(&r_vertices, &r_texcoords, indices, r_material, 1)
+    radiance::rendering::Geometry::new(
+        &r_vertices,
+        Some(&r_normals),
+        &r_texcoords,
+        indices,
+        r_material,
+        1,
+    )
 }

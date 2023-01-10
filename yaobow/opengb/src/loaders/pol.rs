@@ -128,10 +128,7 @@ fn create_geometry(
 
     for i in 0..reversed_index.len() {
         let vert = &all_vertices[reversed_index[i]];
-        let v = Vertex::new(
-            Vec3::new(vert.position.x, vert.position.y, vert.position.z),
-            None,
-        );
+        let v = Vec3::new(vert.position.x, vert.position.y, vert.position.z);
         vertices.push(v);
         texcoord1.push(TexCoord::new(vert.tex_coord.u, vert.tex_coord.v));
 
@@ -146,5 +143,5 @@ fn create_geometry(
         vec![texcoord1, texcoord2]
     };
 
-    Geometry::new(&vertices, &texcoords, indices, material, has_alpha)
+    Geometry::new(&vertices, None, &texcoords, indices, material, has_alpha)
 }
