@@ -6,10 +6,7 @@ use crate::{
     scene::RoleController,
 };
 use imgui::Ui;
-use radiance::{
-    math::Vec3,
-    scene::{Entity, SceneManager},
-};
+use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Debug, Clone)]
 pub struct SceCommandHyFly {
@@ -27,8 +24,8 @@ impl SceCommand for SceCommandHyFly {
         delta_sec: f32,
     ) -> bool {
         let entity = scene_manager.get_resolved_role_mut(state, 5).unwrap();
-        let role_controller = RoleController::try_get_role_model(entity).unwrap();
-        entity.transform_mut().set_position(&Vec3::new(
+        let role_controller = RoleController::try_get_role_model(entity.clone()).unwrap();
+        entity.transform().borrow_mut().set_position(&Vec3::new(
             self.position_x,
             self.position_y,
             self.position_z,

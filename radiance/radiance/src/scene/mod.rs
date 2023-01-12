@@ -6,8 +6,6 @@ mod scene_manager;
 
 pub use camera::{Camera, Viewport};
 pub use director::Director;
-pub use entity::{
-    entity_add_component, entity_get_component, CoreEntity, CoreEntity2, Entity, EntityExtension,
-};
+pub use entity::CoreEntity;
 pub use scene::{CoreScene, DefaultScene, Scene, SceneExtension};
 pub use scene_manager::{DefaultSceneManager, SceneManager};

@@ -16,14 +16,17 @@ class Method:
     params: list[MethodParameter]
     attrs: map
 
+
 @dataclass
 class Import:
     file_name: str
+
 
 @dataclass
 class Module:
     module_lang: str
     module_name: str
+
 
 @dataclass
 class Interface:
@@ -60,7 +63,7 @@ class Interface:
         if self.__internal_methods is None:
             self.__internal_methods = []
             for m in self.methods:
-                if  m.attrs is not None and 'internal' in m.attrs:
+                if m.attrs is not None and 'internal' in m.attrs:
                     self.__internal_methods.append(m)
 
         return self.__internal_methods
@@ -112,7 +115,8 @@ def test2(*args, **kwargs):
     return args
 
 
-identifier = (string('dyn ') | letter | digit | string('&mut ') | regex(r'[_&]') | string('::') | string('?') | regex(r'[<>]') | string(".")).at_least(1).map("".join)
+identifier = (string("'static ") | string("'static, ") | string('mut ')  | string('dyn ') | letter | digit| regex(
+    r'[_&]') | string('::') | string('?') | regex(r'[<>]') | string(".")).at_least(1).map("".join)
 ty = (identifier + string('[]')) | (identifier + string('*')) | identifier
 
 attr_value = regex(r"[^()]").many().map("".join)
@@ -146,12 +150,14 @@ def def_top_level(keyword: str, ty: type):
 interface = def_top_level("interface", Interface)
 klass = def_top_level("class", Class)
 imqort = seq(
-    file_name=string("import") >> padding >> identifier << padding << semicolon,
+    file_name=string(
+        "import") >> padding >> identifier << padding << semicolon,
 ).combine_dict(Import)
 module = seq(
     module_lang=string("module") >> padding >> lparen >> identifier << rparen,
     module_name=identifier << padding << semicolon,
 ).combine_dict(Module)
+
 
 def collect_unit(top_level_list):
     items = []
@@ -164,8 +170,9 @@ def collect_unit(top_level_list):
             modules.append(item)
         else:
             items.append(item)
-    
+
     return CrossComIdl(items, imports, modules)
+
 
 top_level = interface | klass | imqort | module
 unit = top_level.many().map(collect_unit)

@@ -13,15 +13,15 @@ pub struct IRoleModelVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub release:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
-    pub on_loading: fn(
+    pub on_loading: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
-        entity: &mut dyn radiance::scene::Entity,
-    ) -> crosscom::Void,
-    pub on_updating: fn(
+        entity: *const *const std::os::raw::c_void,
+    ) -> (),
+    pub on_updating: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
-        entity: &mut dyn radiance::scene::Entity,
-        delta_sec: f32,
-    ) -> crosscom::Void,
+        entity: *const *const std::os::raw::c_void,
+        delta_sec: std::os::raw::c_float,
+    ) -> (),
     pub get: fn(this: *const *const std::os::raw::c_void) -> &'static opengb::scene::RoleController,
 }
 
@@ -57,39 +57,53 @@ impl IRoleModel {
     pub fn add_ref(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const IRoleModel as *const *const std::os::raw::c_void;
-            ((*self.vtable).add_ref)(this).into()
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
     pub fn release(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const IRoleModel as *const *const std::os::raw::c_void;
-            ((*self.vtable).release)(this).into()
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
-    pub fn on_loading(&self, entity: &mut dyn radiance::scene::Entity) -> crosscom::Void {
+    pub fn on_loading(&self, entity: crosscom::ComRc<radiance::interfaces::IEntity>) -> () {
         unsafe {
             let this = self as *const IRoleModel as *const *const std::os::raw::c_void;
-            ((*self.vtable).on_loading)(this, entity.into()).into()
+            let ret = ((*self.vtable).on_loading)(this, entity.into());
+            let ret: () = ret.into();
+
+            ret
         }
     }
 
     pub fn on_updating(
         &self,
-        entity: &mut dyn radiance::scene::Entity,
+        entity: crosscom::ComRc<radiance::interfaces::IEntity>,
         delta_sec: f32,
-    ) -> crosscom::Void {
+    ) -> () {
         unsafe {
             let this = self as *const IRoleModel as *const *const std::os::raw::c_void;
-            ((*self.vtable).on_updating)(this, entity.into(), delta_sec.into()).into()
+            let ret = ((*self.vtable).on_updating)(this, entity.into(), delta_sec.into());
+            let ret: () = ret.into();
+
+            ret
         }
     }
 
-    pub fn get(&self) -> &opengb::scene::RoleController {
+    pub fn get(&self) -> &'static opengb::scene::RoleController {
         unsafe {
             let this = self as *const IRoleModel as *const *const std::os::raw::c_void;
-            ((*self.vtable).get)(this).into()
+            let ret = ((*self.vtable).get)(this);
+
+            ret
         }
     }
 
@@ -100,7 +114,7 @@ impl IRoleModel {
 }
 
 pub trait IRoleModelImpl {
-    fn get(&self) -> &opengb::scene::RoleController;
+    fn get(&self) -> &'static opengb::scene::RoleController;
 }
 
 impl crosscom::ComInterface for IRoleModel {
@@ -129,6 +143,7 @@ macro_rules! ComObject_RoleModel {
             use opengb::classes::IRoleModelImpl;
             use radiance::interfaces::IAnimatedMeshComponentImpl;
             use radiance::interfaces::IComponentImpl;
+            use radiance::interfaces::IEntityImpl;
             use radiance::interfaces::IStaticMeshComponentImpl;
 
             #[repr(C)]
@@ -197,30 +212,34 @@ macro_rules! ComObject_RoleModel {
                 this: *const *const std::os::raw::c_void,
             ) -> &'static opengb::scene::RoleController {
                 unsafe {
-                    let object = crosscom::get_object::<RoleModelCcw>(this);
-                    (*object).inner.get()
+                    let __crosscom_object = crosscom::get_object::<RoleModelCcw>(this);
+                    (*__crosscom_object).inner.get()
                 }
             }
 
-            fn on_loading(
+            unsafe extern "system" fn on_loading(
                 this: *const *const std::os::raw::c_void,
-                entity: &mut dyn radiance::scene::Entity,
-            ) -> crosscom::Void {
-                unsafe {
-                    let object = crosscom::get_object::<RoleModelCcw>(this);
-                    (*object).inner.on_loading(entity)
-                }
+                entity: *const *const std::os::raw::c_void,
+            ) -> () {
+                let entity: crosscom::ComRc<radiance::interfaces::IEntity> = entity.into();
+
+                let __crosscom_object = crosscom::get_object::<RoleModelCcw>(this);
+                (*__crosscom_object).inner.on_loading(entity.into()).into()
             }
 
-            fn on_updating(
+            unsafe extern "system" fn on_updating(
                 this: *const *const std::os::raw::c_void,
-                entity: &mut dyn radiance::scene::Entity,
-                delta_sec: f32,
-            ) -> crosscom::Void {
-                unsafe {
-                    let object = crosscom::get_object::<RoleModelCcw>(this);
-                    (*object).inner.on_updating(entity, delta_sec)
-                }
+                entity: *const *const std::os::raw::c_void,
+                delta_sec: std::os::raw::c_float,
+            ) -> () {
+                let entity: crosscom::ComRc<radiance::interfaces::IEntity> = entity.into();
+                let delta_sec: f32 = delta_sec.into();
+
+                let __crosscom_object = crosscom::get_object::<RoleModelCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .on_updating(entity.into(), delta_sec.into())
+                    .into()
             }
 
             #[allow(non_upper_case_globals)]
@@ -252,12 +271,21 @@ macro_rules! ComObject_RoleModel {
                         inner: self,
                     }
                 }
+
+                fn get_ccw(&self) -> &Self::CcwType {
+                    unsafe {
+                        let this = self as *const _ as *const u8;
+                        let this =
+                            this.offset(-(crosscom::offset_of!(RoleModelCcw, inner) as isize));
+                        &*(this as *const Self::CcwType)
+                    }
+                }
             }
         }
     };
 }
 
-pub use ComObject_RoleModel;
+// pub use ComObject_RoleModel;
 
 // Interface ICvdModel
 
@@ -273,15 +301,15 @@ pub struct ICvdModelVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub release:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
-    pub on_loading: fn(
+    pub on_loading: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
-        entity: &mut dyn radiance::scene::Entity,
-    ) -> crosscom::Void,
-    pub on_updating: fn(
+        entity: *const *const std::os::raw::c_void,
+    ) -> (),
+    pub on_updating: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
-        entity: &mut dyn radiance::scene::Entity,
-        delta_sec: f32,
-    ) -> crosscom::Void,
+        entity: *const *const std::os::raw::c_void,
+        delta_sec: std::os::raw::c_float,
+    ) -> (),
 }
 
 #[repr(C)]
@@ -316,32 +344,44 @@ impl ICvdModel {
     pub fn add_ref(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const ICvdModel as *const *const std::os::raw::c_void;
-            ((*self.vtable).add_ref)(this).into()
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
     pub fn release(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const ICvdModel as *const *const std::os::raw::c_void;
-            ((*self.vtable).release)(this).into()
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
-    pub fn on_loading(&self, entity: &mut dyn radiance::scene::Entity) -> crosscom::Void {
+    pub fn on_loading(&self, entity: crosscom::ComRc<radiance::interfaces::IEntity>) -> () {
         unsafe {
             let this = self as *const ICvdModel as *const *const std::os::raw::c_void;
-            ((*self.vtable).on_loading)(this, entity.into()).into()
+            let ret = ((*self.vtable).on_loading)(this, entity.into());
+            let ret: () = ret.into();
+
+            ret
         }
     }
 
     pub fn on_updating(
         &self,
-        entity: &mut dyn radiance::scene::Entity,
+        entity: crosscom::ComRc<radiance::interfaces::IEntity>,
         delta_sec: f32,
-    ) -> crosscom::Void {
+    ) -> () {
         unsafe {
             let this = self as *const ICvdModel as *const *const std::os::raw::c_void;
-            ((*self.vtable).on_updating)(this, entity.into(), delta_sec.into()).into()
+            let ret = ((*self.vtable).on_updating)(this, entity.into(), delta_sec.into());
+            let ret: () = ret.into();
+
+            ret
         }
     }
 
@@ -379,6 +419,7 @@ macro_rules! ComObject_CvdModel {
             use opengb::classes::IRoleModelImpl;
             use radiance::interfaces::IAnimatedMeshComponentImpl;
             use radiance::interfaces::IComponentImpl;
+            use radiance::interfaces::IEntityImpl;
             use radiance::interfaces::IStaticMeshComponentImpl;
 
             #[repr(C)]
@@ -437,25 +478,29 @@ macro_rules! ComObject_CvdModel {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            fn on_loading(
+            unsafe extern "system" fn on_loading(
                 this: *const *const std::os::raw::c_void,
-                entity: &mut dyn radiance::scene::Entity,
-            ) -> crosscom::Void {
-                unsafe {
-                    let object = crosscom::get_object::<CvdModelCcw>(this);
-                    (*object).inner.on_loading(entity)
-                }
+                entity: *const *const std::os::raw::c_void,
+            ) -> () {
+                let entity: crosscom::ComRc<radiance::interfaces::IEntity> = entity.into();
+
+                let __crosscom_object = crosscom::get_object::<CvdModelCcw>(this);
+                (*__crosscom_object).inner.on_loading(entity.into()).into()
             }
 
-            fn on_updating(
+            unsafe extern "system" fn on_updating(
                 this: *const *const std::os::raw::c_void,
-                entity: &mut dyn radiance::scene::Entity,
-                delta_sec: f32,
-            ) -> crosscom::Void {
-                unsafe {
-                    let object = crosscom::get_object::<CvdModelCcw>(this);
-                    (*object).inner.on_updating(entity, delta_sec)
-                }
+                entity: *const *const std::os::raw::c_void,
+                delta_sec: std::os::raw::c_float,
+            ) -> () {
+                let entity: crosscom::ComRc<radiance::interfaces::IEntity> = entity.into();
+                let delta_sec: f32 = delta_sec.into();
+
+                let __crosscom_object = crosscom::get_object::<CvdModelCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .on_updating(entity.into(), delta_sec.into())
+                    .into()
             }
 
             #[allow(non_upper_case_globals)]
@@ -486,9 +531,18 @@ macro_rules! ComObject_CvdModel {
                         inner: self,
                     }
                 }
+
+                fn get_ccw(&self) -> &Self::CcwType {
+                    unsafe {
+                        let this = self as *const _ as *const u8;
+                        let this =
+                            this.offset(-(crosscom::offset_of!(CvdModelCcw, inner) as isize));
+                        &*(this as *const Self::CcwType)
+                    }
+                }
             }
         }
     };
 }
 
-pub use ComObject_CvdModel;
+// pub use ComObject_CvdModel;

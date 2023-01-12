@@ -10,14 +10,14 @@ use crate::{
     scene::create_entity_from_cvd_model,
 };
 use common::{cpk::CpkFs, store_ext::StoreExt2};
+use crosscom::ComRc;
 use encoding::{types::Encoding, DecoderTrap};
 use ini::Ini;
 use log::debug;
 use mini_fs::prelude::*;
 use mini_fs::{LocalFs, MiniFs};
-use radiance::rendering::{ComponentFactory, MaterialDef};
-use radiance::scene::CoreEntity;
-use radiance::{rendering::SimpleMaterialDef, scene::CoreEntity2};
+use radiance::interfaces::IEntity;
+use radiance::rendering::{ComponentFactory, MaterialDef, SimpleMaterialDef};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -99,7 +99,7 @@ impl AssetManager {
         default_action: &str,
         name: String,
         visible: bool,
-    ) -> Option<CoreEntity<RoleEntity>> {
+    ) -> Option<ComRc<IEntity>> {
         RoleEntity::new(self.clone(), role_name, default_action, name, visible).ok()
     }
 
@@ -179,7 +179,7 @@ impl AssetManager {
         pol_name: &str,
         is_night: bool,
         index: u16,
-    ) -> Option<CoreEntity2> {
+    ) -> Option<ComRc<IEntity>> {
         let folder = self.scene_path.join(cpk_name).join(scn_name);
         let mut paths = vec![];
         if is_night {
@@ -210,7 +210,7 @@ impl AssetManager {
         cvd_name: &str,
         is_night: bool,
         index: u16,
-    ) -> Option<CoreEntity2> {
+    ) -> Option<ComRc<IEntity>> {
         let folder = self.scene_path.join(cpk_name).join(scn_name);
         let mut paths = vec![];
         if is_night {
@@ -239,7 +239,7 @@ impl AssetManager {
         obj_name: &str,
         index: u16,
         visible: bool,
-    ) -> Option<CoreEntity2> {
+    ) -> Option<ComRc<IEntity>> {
         let path = self.get_object_item_path(obj_name);
         if self.vfs.open(&path).is_ok() {
             Some(create_entity_from_pol_model(
@@ -259,7 +259,7 @@ impl AssetManager {
         obj_name: &str,
         index: u16,
         visible: bool,
-    ) -> Option<CoreEntity2> {
+    ) -> Option<ComRc<IEntity>> {
         let path = self.get_object_item_path(obj_name);
         if self.vfs.open(&path).is_ok() {
             Some(create_entity_from_cvd_model(

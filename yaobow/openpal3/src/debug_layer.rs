@@ -11,7 +11,7 @@ use radiance::{
     input::{InputEngine, Key},
     math::Vec3,
     radiance::DebugLayer,
-    scene::{Entity, SceneManager},
+    scene::SceneManager,
 };
 
 pub struct OpenPal3DebugLayer {
@@ -51,6 +51,7 @@ impl OpenPal3DebugLayer {
                                 .get_resolved_role(adv.sce_vm().state(), -1)
                                 .unwrap()
                                 .transform()
+                                .borrow()
                                 .position(),
                         )
                     })

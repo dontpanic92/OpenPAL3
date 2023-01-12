@@ -9,6 +9,7 @@ pub trait Material: downcast_rs::Downcast + std::fmt::Debug {}
 
 downcast_rs::impl_downcast!(Material);
 
+#[derive(Clone)]
 pub struct MaterialDef {
     name: String,
     shader: ShaderDef,

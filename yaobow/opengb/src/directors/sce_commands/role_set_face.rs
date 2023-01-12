@@ -2,7 +2,6 @@ use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
-use radiance::scene::Entity;
 use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Debug, Clone)]
@@ -20,10 +19,10 @@ impl SceCommand for SceCommandRoleSetFace {
         delta_sec: f32,
     ) -> bool {
         scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
-            let position = e.transform().position();
+            let position = e.transform().borrow().position();
             let target = Vec3::add(&position, &self.face_to);
 
-            e.transform_mut().look_at(&target);
+            e.transform().borrow_mut().look_at(&target);
         });
         true
     }

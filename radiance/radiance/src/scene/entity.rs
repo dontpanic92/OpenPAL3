@@ -1,13 +1,15 @@
 use crosscom::ComRc;
 use uuid::Uuid;
 
-use crate::interfaces::IComponent;
+use crate::interfaces::{IComponent, IEntity, IEntityImpl};
 use crate::math::{Mat44, Transform};
-use std::any::{Any, TypeId};
+use crate::rendering::RenderingComponent;
+use crate::ComObject_Entity;
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
+use std::rc::Rc;
 
-pub trait Entity: downcast_rs::Downcast {
+/*pub trait Entity {
     fn name(&self) -> &str;
     fn set_name(&mut self, name: &str);
     fn load(&mut self);
@@ -18,249 +20,164 @@ pub trait Entity: downcast_rs::Downcast {
     fn update_world_transform(&mut self, parent_transform: &Transform);
     fn add_component(&mut self, type_id: TypeId, component: Box<dyn Any>);
     fn get_component(&self, type_id: TypeId) -> Option<&Box<dyn Any>>;
+    fn get_component2(&self, uuid: Uuid) -> Option<&ComRc<IComponent>>;
     fn get_component_mut(&mut self, type_id: TypeId) -> Option<&mut Box<dyn Any>>;
     fn remove_component(&mut self, type_id: TypeId);
     fn children(&self) -> Vec<&dyn Entity>;
     fn visible(&self) -> bool;
     fn set_visible(&mut self, visible: bool);
+}*/
+
+pub struct CoreEntity {
+    transform: Rc<RefCell<Transform>>,
+    props: RefCell<CoreEntityProps>,
 }
 
-downcast_rs::impl_downcast!(Entity);
-
-pub trait EntityExtension {
-    fn on_loading(self: &mut CoreEntity<Self>)
-    where
-        Self: Sized + 'static,
-    {
-    }
-
-    fn on_updating(self: &mut CoreEntity<Self>, _delta_sec: f32)
-    where
-        Self: Sized + 'static,
-    {
-    }
-}
-
-pub struct CoreEntity2Extension {}
-impl EntityExtension for CoreEntity2Extension {}
-
-pub type CoreEntity2 = CoreEntity<CoreEntity2Extension>;
-impl CoreEntity2 {
-    pub fn new2(name: String, visible: bool) -> Self {
-        CoreEntity::<CoreEntity2Extension>::new(CoreEntity2Extension {}, name, visible)
-    }
-}
-
-pub struct CoreEntity<TExtension: EntityExtension> {
+pub struct CoreEntityProps {
     name: String,
-    transform: Transform,
     world_transform: Transform,
-    components: HashMap<TypeId, Vec<Box<dyn Any>>>,
-    children: Vec<Box<dyn Entity>>,
+    components: HashMap<Uuid, ComRc<IComponent>>,
+    children: Vec<ComRc<IEntity>>,
     visible: bool,
-    extension: TExtension,
-    components2: HashMap<Uuid, ComRc<IComponent>>,
+
+    rendering_component: Option<Rc<RenderingComponent>>,
 }
 
-impl<TExtension: EntityExtension + 'static> CoreEntity<TExtension> {
-    pub fn new(extension: TExtension, name: String, visible: bool) -> Self {
+ComObject_Entity!(super::CoreEntity);
+
+impl CoreEntity {
+    pub fn create(name: String, visible: bool) -> ComRc<IEntity> {
+        ComRc::<IEntity>::from_object(Self::new(name, visible))
+    }
+
+    pub fn from_object(entity: CoreEntity) -> ComRc<IEntity> {
+        ComRc::<IEntity>::from_object(entity)
+    }
+
+    pub fn new(name: String, visible: bool) -> Self {
         Self {
-            name,
-            transform: Transform::new(),
-            world_transform: Transform::new(),
-            components: HashMap::new(),
-            children: vec![],
-            visible,
-            extension,
-            components2: HashMap::new(),
+            transform: Rc::new(RefCell::new(Transform::new())),
+            props: RefCell::new(CoreEntityProps {
+                name,
+                world_transform: Transform::new(),
+                components: HashMap::new(),
+                children: vec![],
+                visible,
+
+                rendering_component: None,
+            }),
         }
     }
 
-    pub fn add_component2(&mut self, uuid: Uuid, component: ComRc<IComponent>) {
-        self.components2.insert(uuid, component);
+    pub fn props(&self) -> Ref<CoreEntityProps> {
+        self.props.borrow()
     }
 
-    pub fn get_component2(&self, uuid: Uuid) -> Option<&ComRc<IComponent>> {
-        self.components2.get(&uuid)
+    pub fn props_mut(&self) -> RefMut<CoreEntityProps> {
+        self.props.borrow_mut()
     }
 
-    pub fn add_component<T: 'static>(&mut self, component: Box<T>) {
-        <Self as Entity>::add_component(self, TypeId::of::<T>(), component);
-    }
-
-    pub fn get_component<TKey: 'static>(&self) -> Option<&TKey> {
-        let type_id = TypeId::of::<TKey>();
-        let component = Entity::get_component(self, type_id);
-        component.and_then(|c| c.downcast_ref())
-    }
-
-    pub fn get_component_mut<TKey: 'static>(&mut self) -> Option<&mut TKey> {
-        let type_id = TypeId::of::<TKey>();
-        let component = Entity::get_component_mut(self, type_id);
-        component.and_then(|c| c.downcast_mut())
-    }
-
-    pub fn remove_component<T: 'static>(&mut self) {
-        let type_id = TypeId::of::<T>();
-        Entity::remove_component(self, type_id);
-    }
-
-    pub fn attach(&mut self, child: Box<dyn Entity>) {
-        self.children.push(child);
-    }
-
-    pub fn detach_first(&mut self, name: &str) -> Option<Box<dyn Entity>> {
-        self.children
+    pub fn detach_first(&mut self, name: &str) -> Option<ComRc<IEntity>> {
+        self.props()
+            .children
             .iter()
             .position(|e| e.name() == name)
-            .and_then(|p| Some(self.children.remove(p)))
-    }
-
-    pub fn set_visible(&mut self, visible: bool) {
-        self.visible = visible;
+            .and_then(|p| Some(self.props_mut().children.remove(p)))
     }
 }
 
-impl<TExtension: EntityExtension + 'static> Deref for CoreEntity<TExtension> {
-    type Target = TExtension;
-
-    #[inline(always)]
-    fn deref(&self) -> &TExtension {
-        &self.extension
-    }
-}
-
-impl<TExtension: EntityExtension + 'static> DerefMut for CoreEntity<TExtension> {
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut TExtension {
-        &mut self.extension
-    }
-}
-
-#[inline]
-pub fn entity_add_component<T: 'static>(entity: &mut dyn Entity, component: T) {
-    entity.add_component(TypeId::of::<T>(), Box::new(component));
-}
-
-#[inline]
-pub fn _entity_add_component_as<TKey: 'static, T: 'static>(entity: &mut dyn Entity, component: T) {
-    entity.add_component(TypeId::of::<TKey>(), Box::new(component));
-}
-
-#[inline]
-pub fn entity_get_component<T: 'static>(entity: &dyn Entity) -> Option<&T> {
-    let type_id = TypeId::of::<T>();
-    entity
-        .get_component(type_id)
-        .and_then(|component| component.downcast_ref())
-}
-
-#[inline]
-pub fn _entity_remove_component<T: 'static>(entity: &mut dyn Entity) {
-    let type_id = TypeId::of::<T>();
-    entity.remove_component(type_id)
-}
-
-impl<TExtension: EntityExtension + 'static> Entity for CoreEntity<TExtension> {
-    fn name(&self) -> &str {
-        &self.name
+impl IEntityImpl for CoreEntity {
+    fn name(&self) -> String {
+        self.props().name.clone()
     }
 
-    fn set_name(&mut self, name: &str) {
-        self.name = name.to_owned();
+    fn set_name(&self, name: &str) -> crosscom::Void {
+        self.props_mut().name = name.to_owned();
     }
 
-    fn load(&mut self) {
-        self.on_loading();
+    fn load(&self) -> crosscom::Void {
+        let components = self.props().components.clone();
+        let children = self.props().children.clone();
 
-        for c in self.components2.clone() {
-            c.1.on_loading(self)
+        for c in components {
+            c.1.on_loading(ComRc::from_self(self))
         }
 
-        for e in &mut self.children {
+        for e in children {
             e.load();
         }
     }
 
-    fn update(&mut self, delta_sec: f32) {
-        self.on_updating(delta_sec);
-
-        for c in self.components2.clone() {
-            c.1.on_updating(self, delta_sec);
+    fn update(&self, delta_sec: f32) -> crosscom::Void {
+        let components = self.props().components.clone();
+        for c in components {
+            c.1.on_updating(ComRc::from_self(self), delta_sec);
         }
     }
 
-    fn transform(&self) -> &Transform {
-        &self.transform
+    fn transform(&self) -> Rc<RefCell<crate::math::Transform>> {
+        self.transform.clone()
     }
 
-    fn transform_mut(&mut self) -> &mut Transform {
-        &mut self.transform
+    fn world_transform(&self) -> crate::math::Transform {
+        self.props().world_transform.clone()
     }
 
-    fn world_transform(&self) -> &Transform {
-        &self.world_transform
-    }
+    fn update_world_transform(&self, parent_transform: &crate::math::Transform) -> crosscom::Void {
+        let mut props = self.props_mut();
 
-    fn update_world_transform(&mut self, parent_transform: &Transform) {
-        self.world_transform.set_matrix(Mat44::multiplied(
+        props.world_transform.set_matrix(Mat44::multiplied(
             parent_transform.matrix(),
-            self.transform.matrix(),
+            self.transform.borrow().matrix(),
         ));
 
-        for e in &mut self.children {
-            e.update_world_transform(&self.world_transform);
+        for e in props.children.clone() {
+            e.update_world_transform(&props.world_transform);
         }
     }
 
-    fn add_component(&mut self, type_id: TypeId, component: Box<dyn Any>) {
-        if !self.components.contains_key(&type_id) {
-            self.components.insert(type_id, vec![]);
-        }
-
-        let v = self.components.get_mut(&type_id).unwrap();
-        v.push(component);
+    fn add_component(&self, uuid: uuid::Uuid, component: crosscom::ComRc<IComponent>) -> () {
+        self.props_mut().components.insert(uuid, component);
     }
 
-    fn get_component(&self, type_id: TypeId) -> Option<&Box<dyn Any>> {
-        if !self.components.contains_key(&type_id) {
-            return None;
-        }
-
-        self.components
-            .get(&type_id)
-            .filter(|v| !v.is_empty())
-            .and_then(|v| Some(&v[0]))
+    fn get_component(
+        &self,
+        uuid: uuid::Uuid,
+    ) -> Option<crosscom::ComRc<crate::interfaces::IComponent>> {
+        self.props().components.get(&uuid).cloned()
     }
 
-    fn get_component_mut(&mut self, type_id: TypeId) -> Option<&mut Box<dyn Any>> {
-        if !self.components.contains_key(&type_id) {
-            return None;
-        }
-
-        self.components
-            .get_mut(&type_id)
-            .filter(|v| !v.is_empty())
-            .and_then(|v| Some(&mut v[0]))
+    fn remove_component(
+        &self,
+        uuid: uuid::Uuid,
+    ) -> Option<crosscom::ComRc<crate::interfaces::IComponent>> {
+        self.props_mut().components.remove(&uuid)
     }
 
-    fn remove_component(&mut self, type_id: TypeId) {
-        if !self.components.contains_key(&type_id) {
-            return;
-        }
-
-        self.components.remove(&type_id);
+    fn children(&self) -> Vec<crosscom::ComRc<crate::interfaces::IEntity>> {
+        self.props().children.clone()
     }
 
     fn visible(&self) -> bool {
-        self.visible
+        self.props().visible
     }
 
-    fn set_visible(&mut self, visible: bool) {
-        self.visible = visible;
+    fn set_visible(&self, visible: bool) -> () {
+        self.props_mut().visible = visible;
     }
 
-    fn children(&self) -> Vec<&dyn Entity> {
-        self.children.iter().map(|e| e.as_ref()).collect()
+    fn get_rendering_component(&self) -> Option<Rc<crate::rendering::RenderingComponent>> {
+        self.props().rendering_component.clone()
+    }
+
+    fn set_rendering_component(
+        &self,
+        component: Option<Rc<crate::rendering::RenderingComponent>>,
+    ) -> crosscom::Void {
+        self.props_mut().rendering_component = component;
+    }
+
+    fn attach(&self, child: crosscom::ComRc<crate::interfaces::IEntity>) -> () {
+        self.props_mut().children.push(child);
     }
 }

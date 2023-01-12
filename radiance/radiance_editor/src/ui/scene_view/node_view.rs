@@ -1,5 +1,6 @@
+use crosscom::ComRc;
 use imgui::{Condition, Ui};
-use radiance::scene::{Entity, SceneManager};
+use radiance::{interfaces::IEntity, scene::SceneManager};
 
 pub struct NodeView {}
 
@@ -15,12 +16,12 @@ impl NodeView {
             .build(|| {
                 let root_entities = scene_manager.scene().unwrap().root_entities();
                 for e in root_entities {
-                    self.build_node(ui, e.as_ref());
+                    self.build_node(ui, e.clone());
                 }
             });
     }
 
-    fn build_node(&mut self, ui: &Ui, entity: &dyn Entity) {
+    fn build_node(&mut self, ui: &Ui, entity: ComRc<IEntity>) {
         let treenode = ui.tree_node_config(entity.name());
         if entity.children().len() != 0 {
             for e in entity.children() {

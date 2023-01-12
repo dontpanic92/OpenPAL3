@@ -13,6 +13,7 @@ use radiance::scene::Director;
 use radiance_editor::application::EditorApplication;
 use radiance_editor::core::IViewContentImpl;
 use radiance_editor::ui::scene_view::SceneViewPlugins;
+use radiance_editor::ComObject_ResourceViewContent;
 
 const TITLE: &str = "妖弓编辑器 - OpenPAL3";
 
@@ -20,7 +21,7 @@ pub struct SceneViewResourceView {
     ui: RefCell<Option<Rc<RefCell<DevToolsDirector>>>>,
 }
 
-radiance_editor::core::ComObject_ResourceViewContent!(crate::SceneViewResourceView);
+ComObject_ResourceViewContent!(crate::SceneViewResourceView);
 
 impl IViewContentImpl for SceneViewResourceView {
     fn render(

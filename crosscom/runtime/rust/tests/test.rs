@@ -11,7 +11,7 @@ use crosscom::ComRc;
 #[macro_use]
 mod crosscom_gen;
 
-struct Test {
+pub struct Test {
     pub test: Option<ComRc<ITest3>>,
 }
 

@@ -4,12 +4,60 @@ import crosscom.idl;
 
 [uuid(03748ce3-689d-4325-b1de-59de516b576b)]
 interface IComponent: IUnknown {
+    void on_loading(IEntity entity);
+
+    void on_updating(IEntity entity, float delta_sec);
+}
+
+[uuid(95099190-580e-439f-be36-8d1345cf4dec)]
+interface IEntity: IUnknown {
+    
     [internal(), rust()]
-    crosscom::Void on_loading(&mut dyn radiance::scene::Entity entity);
+    String name();
 
     [internal(), rust()]
-    crosscom::Void on_updating(&mut dyn radiance::scene::Entity entity, f32 delta_sec);
+    crosscom::Void set_name(&str name);
+
+    [internal(), rust()]
+    crosscom::Void load();
+
+    [internal(), rust()]
+    crosscom::Void update(f32 delta_sec);
+    
+    [internal(), rust()]
+    std::rc::Rc<std::cell::RefCell<radiance::math::Transform>> transform();
+
+    [internal(), rust()]
+    radiance::math::Transform world_transform();
+
+    [internal(), rust()]
+    crosscom::Void update_world_transform(&radiance::math::Transform parent_transform);
+    
+
+    void add_component(UUID uuid, IComponent component);
+
+    IComponent? get_component(UUID uuid);
+
+    IComponent? remove_component(UUID uuid);
+
+    [internal(), rust()]
+    Vec<crosscom::ComRc<radiance::interfaces::IEntity>> children();
+    
+    bool visible();
+
+    void set_visible(bool visible);
+
+    [internal(), rust()]
+    Option<std::rc::Rc<radiance::rendering::RenderingComponent>> get_rendering_component();
+
+    [internal(), rust()]
+    crosscom::Void set_rendering_component(Option<std::rc::Rc<radiance::rendering::RenderingComponent>> component);
+
+    void attach(IEntity child);
 }
+
+[uuid(66d51e1e-3f46-4fe2-a0dc-6183edf7c063)]
+class Entity: IEntity {}
 
 [uuid(8dd91852-476b-401b-8668-ba9cc331b7a1)]
 interface IStaticMeshComponent: IComponent {}

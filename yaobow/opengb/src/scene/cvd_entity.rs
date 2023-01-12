@@ -1,16 +1,14 @@
 use crate::classes::ICvdModel;
 use crate::loaders::cvd_loader::*;
 use crate::ComObject_CvdModel;
+use crosscom::ComRc;
 use mini_fs::{MiniFs, StoreExt};
-use radiance::interfaces::IComponentImpl;
+use radiance::interfaces::{IComponentImpl, IEntity};
 use radiance::math::{Vec2, Vec3};
-use radiance::rendering::RenderingComponent;
-use radiance::scene::CoreEntity2;
-use radiance::{
-    rendering::{ComponentFactory, MaterialDef, SimpleMaterialDef, VertexBuffer, VertexComponents},
-    scene::Entity,
+use radiance::rendering::{
+    ComponentFactory, MaterialDef, SimpleMaterialDef, VertexBuffer, VertexComponents,
 };
-use std::any::TypeId;
+use radiance::scene::CoreEntity;
 use std::{path::Path, rc::Rc};
 
 pub fn create_entity_from_cvd_model<P: AsRef<Path>>(
@@ -19,23 +17,23 @@ pub fn create_entity_from_cvd_model<P: AsRef<Path>>(
     path: P,
     name: String,
     visible: bool,
-) -> CoreEntity2 {
-    let mut entity = CoreEntity2::new2(name, visible);
+) -> ComRc<IEntity> {
+    let entity = CoreEntity::create(name, visible);
     let mesh_component = CvdModelComponent::new(component_factory.clone());
-    entity.add_component2(
+    entity.add_component(
         ICvdModel::uuid(),
         crosscom::ComRc::from_object(mesh_component),
     );
 
     let cvd = cvd_load_from_file(vfs, path.as_ref()).unwrap();
     for (i, node) in cvd.models.iter().enumerate() {
-        entity.attach(Box::new(new_from_cvd_model_node(
+        entity.attach(new_from_cvd_model_node(
             component_factory.clone(),
             vfs,
             path.as_ref(),
             node,
             visible,
-        )));
+        ));
     }
 
     entity
@@ -47,7 +45,7 @@ fn new_from_cvd_model_node<P: AsRef<Path>>(
     path: P,
     node: &CvdModelNode,
     visible: bool,
-) -> CoreEntity2 {
+) -> ComRc<IEntity> {
     let mut scale_factor = 1.;
     let mut position_keyframes = None;
     let mut rotation_keyframes = None;
@@ -75,7 +73,7 @@ fn new_from_cvd_model_node<P: AsRef<Path>>(
         scale_factor = model.scale_factor;
     }
 
-    let mut entity = CoreEntity2::new2("cvd_obj".to_string(), true);
+    let entity = CoreEntity::create("cvd_obj".to_string(), true);
 
     let mesh_component = CvdModelComponent {
         component_factory: component_factory.clone(),
@@ -85,22 +83,22 @@ fn new_from_cvd_model_node<P: AsRef<Path>>(
         meshes,
     };
 
-    mesh_component.setup_transform(&mut entity, scale_factor);
+    mesh_component.setup_transform(entity.clone(), scale_factor);
 
-    entity.add_component2(
+    entity.add_component(
         ICvdModel::uuid(),
         crosscom::ComRc::from_object(mesh_component),
     );
 
     if let Some(children) = &node.children {
         for child in children {
-            entity.attach(Box::new(new_from_cvd_model_node(
+            entity.attach(new_from_cvd_model_node(
                 component_factory.clone(),
                 vfs,
                 path.as_ref(),
                 &child,
                 visible,
-            )));
+            ));
         }
     }
 
@@ -145,7 +143,7 @@ pub struct CvdModelComponent {
 ComObject_CvdModel!(super::CvdModelComponent);
 
 impl IComponentImpl for CvdModelComponent {
-    fn on_loading(&self, entity: &mut dyn radiance::scene::Entity) -> crosscom::Void {
+    fn on_loading(&self, entity: ComRc<IEntity>) -> crosscom::Void {
         let mut objects = vec![];
         println!("cvd: mesh count {}", self.meshes.len());
         for mesh in &self.meshes {
@@ -160,15 +158,10 @@ impl IComponentImpl for CvdModelComponent {
         }
 
         let component = self.component_factory.create_rendering_component(objects);
-        entity.add_component(TypeId::of::<RenderingComponent>(), Box::new(component));
+        entity.set_rendering_component(Some(Rc::new(component)));
     }
 
-    fn on_updating(
-        &self,
-        entity: &mut dyn radiance::scene::Entity,
-        delta_sec: f32,
-    ) -> crosscom::Void {
-    }
+    fn on_updating(&self, entity: ComRc<IEntity>, delta_sec: f32) -> crosscom::Void {}
 }
 
 impl CvdModelComponent {
@@ -182,19 +175,21 @@ impl CvdModelComponent {
         }
     }
 
-    pub fn setup_transform(&self, entity: &mut dyn Entity, scale_factor: f32) {
+    pub fn setup_transform(&self, entity: ComRc<IEntity>, scale_factor: f32) {
         if let Some(p) = self
             .position_keyframes
             .as_ref()
             .and_then(|frame| frame.frames.get(0))
             .and_then(|f| Some(f.position))
         {
-            entity.transform_mut().translate_local(&p);
+            entity.transform().borrow_mut().translate_local(&p);
         }
 
-        entity
-            .transform_mut()
-            .scale_local(&Vec3::new(scale_factor, scale_factor, scale_factor));
+        entity.transform().borrow_mut().scale_local(&Vec3::new(
+            scale_factor,
+            scale_factor,
+            scale_factor,
+        ));
 
         if let Some(q) = self
             .rotation_keyframes
@@ -202,7 +197,7 @@ impl CvdModelComponent {
             .and_then(|frame| frame.frames.get(0))
             .and_then(|f| Some(f.quaternion))
         {
-            entity.transform_mut().rotate_quaternion_local(&q);
+            entity.transform().borrow_mut().rotate_quaternion_local(&q);
         }
 
         if let Some(frame) = self
@@ -216,7 +211,8 @@ impl CvdModelComponent {
             q3.inverse();
 
             entity
-                .transform_mut()
+                .transform()
+                .borrow_mut()
                 .rotate_quaternion_local(&q2)
                 .scale_local(&scale)
                 .rotate_quaternion_local(&q3);

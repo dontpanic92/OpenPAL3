@@ -12,7 +12,7 @@ use opengb::{
 use radiance::{
     audio::AudioEngine,
     math::Vec3,
-    scene::{CoreScene, Director, Entity, Scene, SceneManager},
+    scene::{CoreScene, Director, Scene, SceneManager},
 };
 use radiance_editor::{scene::EditorScene, ui::window_content_rect};
 use shared::loaders::dff::create_entity_from_dff_model;
@@ -143,49 +143,47 @@ impl DevToolsDirector {
                 });
 
                 anim.map(|a| {
-                    let mut e = Box::new(
-                        RoleEntity::new_from_idle_animation(
-                            self.asset_mgr.clone(),
-                            "preview",
-                            "preview",
-                            a,
-                            "preview".to_string(),
-                            true,
-                        )
-                        .unwrap(),
-                    );
-                    let r = RoleController::try_get_role_model(&e).unwrap();
-                    r.get().set_active(e.as_mut(), true);
-                    e as Box<dyn Entity>
+                    let e = RoleEntity::new_from_idle_animation(
+                        self.asset_mgr.clone(),
+                        "preview",
+                        "preview",
+                        a,
+                        "preview".to_string(),
+                        true,
+                    )
+                    .unwrap();
+                    let r = RoleController::try_get_role_model(e.clone()).unwrap();
+                    r.get().set_active(e.clone(), true);
+                    e
                 })
                 .ok()
             }
-            Some("pol") => Some(Box::new(create_entity_from_pol_model(
+            Some("pol") => Some(create_entity_from_pol_model(
                 &self.asset_mgr.component_factory(),
                 &self.asset_mgr.vfs(),
                 &path,
                 "preview".to_string(),
                 true,
-            )) as Box<dyn Entity>),
-            Some("dff") => Some(Box::new(create_entity_from_dff_model(
+            )),
+            Some("dff") => Some(create_entity_from_dff_model(
                 &self.asset_mgr.component_factory(),
                 &self.asset_mgr.vfs(),
                 &path,
                 "preview".to_string(),
                 true,
-            )) as Box<dyn Entity>),
-            Some("cvd") => Some(Box::new(create_entity_from_cvd_model(
+            )),
+            Some("cvd") => Some(create_entity_from_cvd_model(
                 self.asset_mgr.component_factory().clone(),
                 &self.asset_mgr.vfs(),
                 &path,
                 "preview".to_string(),
                 true,
-            )) as Box<dyn Entity>),
+            )),
             _ => None,
         };
 
         let scene = scene_manager.scene_mut().unwrap();
-        if let Some(mut e) = entity {
+        if let Some(e) = entity {
             e.load();
             scene.add_entity(e)
         }

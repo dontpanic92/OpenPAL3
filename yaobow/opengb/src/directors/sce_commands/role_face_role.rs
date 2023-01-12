@@ -1,10 +1,7 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
 use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
-use radiance::{
-    math::Vec3,
-    scene::{Entity, SceneManager},
-};
+use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Debug, Clone)]
 pub struct SceCommandRoleFaceRole {
@@ -22,10 +19,10 @@ impl SceCommand for SceCommandRoleFaceRole {
     ) -> bool {
         let position = scene_manager
             .get_resolved_role(state, self.role_id)
-            .and_then(|r| Some(r.transform().position()));
+            .and_then(|r| Some(r.transform().borrow().position()));
         let target_position = scene_manager
             .get_resolved_role(state, self.role_id2)
-            .and_then(|r| Some(r.transform().position()));
+            .and_then(|r| Some(r.transform().borrow().position()));
 
         if position.is_none() {
             log::error!("Cannot find role {}", self.role_id);
@@ -39,7 +36,8 @@ impl SceCommand for SceCommandRoleFaceRole {
         scene_manager
             .get_resolved_role_mut(state, self.role_id)
             .unwrap()
-            .transform_mut()
+            .transform()
+            .borrow_mut()
             .look_at(&Vec3::new(
                 target_position.unwrap().x,
                 position.unwrap().y,

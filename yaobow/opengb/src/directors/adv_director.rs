@@ -15,7 +15,7 @@ use radiance::{
     audio::AudioEngine,
     input::{Axis, InputEngine, Key},
     math::{Mat44, Vec3},
-    scene::{CoreScene, Director, Entity, SceneManager},
+    scene::{CoreScene, Director, SceneManager},
 };
 
 pub struct AdventureDirector {
@@ -90,10 +90,11 @@ impl AdventureDirector {
             .get_role_entity_mut(0)
             .unwrap();
 
-        let role = RoleController::try_get_role_model(role_entity).unwrap();
-        role.get().set_active(role_entity, true);
+        let role = RoleController::try_get_role_model(role_entity.clone()).unwrap();
+        role.get().set_active(role_entity.clone(), true);
         role_entity
-            .transform_mut()
+            .transform()
+            .borrow_mut()
             .set_position(&global_state.persistent_state_mut().position());
 
         global_state.play_default_bgm();
@@ -174,8 +175,8 @@ impl AdventureDirector {
         let role = scene_manager
             .get_resolved_role(self.sce_vm.state(), -1)
             .unwrap();
-        let role_controller = RoleController::try_get_role_model(role).unwrap();
-        let mut position = role.transform().position();
+        let role_controller = RoleController::try_get_role_model(role.clone()).unwrap();
+        let mut position = role.transform().borrow().position();
 
         let scene = scene_manager.core_scene_or_fail();
         let speed = 175.;
@@ -196,9 +197,10 @@ impl AdventureDirector {
             && (self.sce_vm.global_state().pass_through_wall()
                 || distance_to_border > std::f32::EPSILON)
         {
-            role_controller.get().run(role);
+            role_controller.get().run(role.clone());
             let look_at = Vec3::new(target_position.x, position.y, target_position.z);
-            role.transform_mut()
+            role.transform()
+                .borrow_mut()
                 .look_at(&look_at)
                 .set_position(&target_position);
 
@@ -321,8 +323,8 @@ impl Director for AdventureDirector {
             let role = scene_manager
                 .get_resolved_role(self.sce_vm.state(), -1)
                 .unwrap();
-            let r = RoleController::try_get_role_model(role).unwrap();
-            (role.transform().position(), r.get().nav_layer())
+            let r = RoleController::try_get_role_model(role.clone()).unwrap();
+            (role.transform().borrow().position(), r.get().nav_layer())
         };
 
         macro_rules! scene {
@@ -369,7 +371,8 @@ impl Director for AdventureDirector {
                     scene_manager
                         .get_resolved_role_mut(self.sce_vm.state(), -1)
                         .unwrap()
-                        .transform_mut()
+                        .transform()
+                        .borrow_mut()
                         .set_position(&test_coord);
                     self.layer_switch_triggered = true;
                 }
@@ -412,7 +415,8 @@ impl Director for AdventureDirector {
                     scene_manager
                         .get_resolved_role_mut(self.sce_vm.state(), -1)
                         .unwrap()
-                        .transform_mut()
+                        .transform()
+                        .borrow_mut()
                         .set_position(&new_position);
                 }
                 Some(LadderTestResult::SceProc(proc_id)) => {

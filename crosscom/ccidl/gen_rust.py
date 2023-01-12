@@ -28,6 +28,7 @@ type_map = {
     'byte': ('std::os::raw::c_uchar', 'std::os::raw::c_uchar'),
     'byte*': ('*const std::os::raw::c_uchar', '*const std::os::raw::c_uchar'),
     'UUID': ('uuid::Uuid', 'uuid::Uuid'),
+    'bool': ('std::os::raw::c_int', 'bool', ' != 0'),
     'void': ('()', '()'),
 }
 
@@ -94,6 +95,45 @@ class RustGen:
 
         return w.get_value()
 
+    def __gen_method_param_mapping(self, method: Method):
+        w = Writer()
+
+        for p in method.params:
+            if method.attrs is not None and 'internal' in method.attrs:
+                w.ln(f'{p.name}: {self.__map_rust_internal_type(p.ty, method.interface.module)}, ')
+            else:
+                w.ln(f'let {p.name}: {self.__map_type(p.ty, True)} = {self.__gen_param_ty_convert(p)};')
+
+        return w.get_value()
+
+    def __gen_method_ret_mapping(self, method: Method):
+        w = Writer()
+
+        if method.attrs is not None and 'internal' in method.attrs:
+            w.ln(f'');
+        else:
+            w.ln(f'let ret: {self.__map_type(method.ret_ty, False)} = {self.__gen_ret_ty_convert(method)};')
+
+        return w.get_value()
+
+    def __gen_param_ty_convert(self, p: MethodParameter):
+        w = Writer()
+        if p.ty in type_map and len(type_map[p.ty]) > 2:
+            w.ln(f'{p.name}{type_map[p.ty][2]}')
+        else:
+            w.ln(f'{p.name}.into()')
+
+        return w.get_value()
+
+    def __gen_ret_ty_convert(self, p: Method):
+        w = Writer()
+        if p.ret_ty in type_map and len(type_map[p.ret_ty]) > 2:
+            w.ln(f'ret{type_map[p.ret_ty][2]}')
+        else:
+            w.ln(f'ret.into()')
+
+        return w.get_value()
+
     def __gen_method_raw_signature(self, method: Method, w: Writer):
         if method.attrs is not None and 'internal' in method.attrs:
             w.ln(
@@ -110,12 +150,12 @@ class RustGen:
             if method.attrs is not None and 'internal' in method.attrs:
                 w.ln(f'{p.name}: {p.ty}, ')
             else:
-                w.ln(f'{p.name}: {self.__map_type(p.ty, False)}, ')
+                w.ln(f'{p.name}: {self.__map_type(p.ty, True)}, ')
 
         if method.attrs is not None and 'internal' in method.attrs:
             w.ln(f') -> {method.ret_ty}')
         else:
-            w.ln(f') -> {self.__map_type(method.ret_ty, False)}')
+            w.ln(f') -> {self.__map_type(method.ret_ty, True)}')
 
         return w.get_value()
 
@@ -143,16 +183,17 @@ class RustGen:
             w.ln(f"""
     fn {method.name} (this: *const *const std::os::raw::c_void, {self.__gen_method_raw_param_list(method)}) -> {method.ret_ty} {{
         unsafe {{
-            let object = {self.crosscom_module_name}::get_object::<{klass.name}Ccw>(this);
-            (*object).inner{field_name}.{ method.name }({','.join([p.name for p in method.params])})
+            let __crosscom_object = {self.crosscom_module_name}::get_object::<{klass.name}Ccw>(this);
+            (*__crosscom_object).inner{field_name}.{ method.name }({','.join([p.name for p in method.params])})
         }}
     }}
     """)
         else:
             w.ln(f"""
     unsafe extern "system" fn {method.name} (this: *const *const std::os::raw::c_void, {self.__gen_method_raw_param_list(method)}) -> {self.__map_raw_type(method.ret_ty)} {{
-        let object = {self.crosscom_module_name}::get_object::<{klass.name}Ccw>(this);
-        (*object).inner{field_name}.{ method.name }({','.join([f'{p.name}.into()' for p in method.params])}).into()
+        {self.__gen_method_param_mapping(method)}
+        let __crosscom_object = {self.crosscom_module_name}::get_object::<{klass.name}Ccw>(this);
+        (*__crosscom_object).inner{field_name}.{ method.name }({','.join([f'{p.name}.into()' for p in method.params])}).into()
     }}
     """)
 
@@ -366,12 +407,20 @@ mod {klass.name}_crosscom_impl {{
                 inner: self,
             }}
         }}
+
+        fn get_ccw(&self) -> &Self::CcwType {{
+            unsafe {{
+                let this = self as *const _ as *const u8;
+                let this = this.offset(-(crosscom::offset_of!({klass.name}Ccw, inner) as isize));
+                &*(this as *const Self::CcwType)
+            }}
+        }}
     }}
 }}
     }}
 }}
 
-pub use ComObject_{klass.name};
+// pub use ComObject_{klass.name};
 """)
 
         return w.get_value()
@@ -385,7 +434,9 @@ pub use ComObject_{klass.name};
 pub {self.__gen_method_signature2(method)} {{
     unsafe {{
         let this = self as *const {i.name} as *const *const std::os::raw::c_void;
-        ((*self.vtable).{method.name})(this, {','.join([f'{p.name}.into()' for p in method.params])}).into()
+        let ret = ((*self.vtable).{method.name})(this, {','.join([f'{p.name}.into()' for p in method.params])});
+        {self.__gen_method_ret_mapping(method)}
+        ret
     }}
 }}
 """)

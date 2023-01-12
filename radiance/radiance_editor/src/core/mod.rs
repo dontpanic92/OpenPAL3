@@ -1,3 +1,4 @@
+use crate as radiance_editor;
 // Interface IViewContent
 
 #[repr(C)]
@@ -49,17 +50,23 @@ impl IViewContent {
         }
     }
 
-    pub fn add_ref(&self) -> i32 {
+    pub fn add_ref(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const IViewContent as *const *const std::os::raw::c_void;
-            ((*self.vtable).add_ref)(this).into()
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
-    pub fn release(&self) -> i32 {
+    pub fn release(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const IViewContent as *const *const std::os::raw::c_void;
-            ((*self.vtable).release)(this).into()
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
@@ -71,8 +78,16 @@ impl IViewContent {
     ) -> crosscom::Void {
         unsafe {
             let this = self as *const IViewContent as *const *const std::os::raw::c_void;
-            ((*self.vtable).render)(this, scene_manager.into(), ui.into(), delta_sec.into()).into()
+            let ret =
+                ((*self.vtable).render)(this, scene_manager.into(), ui.into(), delta_sec.into());
+
+            ret
         }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(IViewContent::INTERFACE_ID)
     }
 }
 
@@ -104,6 +119,8 @@ macro_rules! ComObject_ResourceViewContent {
         #[allow(unused)]
         mod ResourceViewContent_crosscom_impl {
             use crosscom::ComInterface;
+            use crosscom::IObjectArrayImpl;
+            use crosscom::IUnknownImpl;
             use radiance_editor::core::IViewContentImpl;
 
             #[repr(C)]
@@ -169,8 +186,10 @@ macro_rules! ComObject_ResourceViewContent {
                 delta_sec: f32,
             ) -> crosscom::Void {
                 unsafe {
-                    let object = crosscom::get_object::<ResourceViewContentCcw>(this);
-                    (*object).inner.render(scene_manager, ui, delta_sec)
+                    let __crosscom_object = crosscom::get_object::<ResourceViewContentCcw>(this);
+                    (*__crosscom_object)
+                        .inner
+                        .render(scene_manager, ui, delta_sec)
                 }
             }
 
@@ -202,9 +221,19 @@ macro_rules! ComObject_ResourceViewContent {
                         inner: self,
                     }
                 }
+
+                fn get_ccw(&self) -> &Self::CcwType {
+                    unsafe {
+                        let this = self as *const _ as *const u8;
+                        this.offset(
+                            -(crosscom::offset_of!(ResourceViewContentCcw, inner) as isize),
+                        );
+                        &*(this as *const Self::CcwType)
+                    }
+                }
             }
         }
     };
 }
 
-pub use ComObject_ResourceViewContent;
+// pub use ComObject_ResourceViewContent;

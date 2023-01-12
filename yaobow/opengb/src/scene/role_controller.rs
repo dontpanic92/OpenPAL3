@@ -4,14 +4,15 @@ use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
 use crosscom::ComRc;
 use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
-use radiance::interfaces::IComponentImpl;
-use radiance::rendering::{ComponentFactory, MaterialDef, VertexBuffer, VertexComponents};
-use radiance::scene::{CoreEntity, Entity, EntityExtension};
+use radiance::interfaces::{IComponentImpl, IEntity};
+use radiance::rendering::{
+    ComponentFactory, Geometry, MaterialDef, TexCoord, VertexBuffer, VertexComponents,
+};
+use radiance::scene::CoreEntity;
 use radiance::{
     math::{Vec2, Vec3},
     rendering::RenderingComponent,
 };
-use std::any::TypeId;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -41,9 +42,9 @@ impl RoleEntity {
         idle_anim: &str,
         name: String,
         visible: bool,
-    ) -> Result<CoreEntity<Self>, EntityError> {
-        let mut entity = CoreEntity::new(Self {}, name, visible);
-        entity.add_component2(
+    ) -> Result<ComRc<IEntity>, EntityError> {
+        let entity = CoreEntity::create(name, visible);
+        entity.add_component(
             IRoleModel::uuid(),
             crosscom::ComRc::from_object(RoleController::new(asset_mgr, role_name, idle_anim)?),
         );
@@ -58,9 +59,9 @@ impl RoleEntity {
         idle_anim: RoleAnimation,
         name: String,
         visible: bool,
-    ) -> Result<CoreEntity<Self>, EntityError> {
-        let mut entity = CoreEntity::new(Self {}, name, visible);
-        entity.add_component2(
+    ) -> Result<ComRc<IEntity>, EntityError> {
+        let entity = CoreEntity::create(name, visible);
+        entity.add_component(
             IRoleModel::uuid(),
             crosscom::ComRc::from_object(RoleController::new_from_idle_animation(
                 asset_mgr,
@@ -77,7 +78,7 @@ impl RoleEntity {
 pub struct RoleController {
     model_name: String,
     asset_mgr: Rc<AssetManager>,
-    _component_factory: Rc<dyn ComponentFactory>,
+    component_factory: Rc<dyn ComponentFactory>,
     animations: DashMap<String, RoleAnimation>,
     active_anim_name: RefCell<String>,
     idle_anim_name: String,
@@ -136,7 +137,7 @@ impl RoleController {
         Self {
             model_name: role_name.to_string(),
             asset_mgr: asset_mgr.clone(),
-            _component_factory: asset_mgr.component_factory().clone(),
+            component_factory: asset_mgr.component_factory().clone(),
             animations,
             active_anim_name: RefCell::new(idle_anim_name.to_string()),
             idle_anim_name: idle_anim_name.to_string(),
@@ -151,9 +152,9 @@ impl RoleController {
         }
     }
 
-    pub fn try_get_role_model(entity: &CoreEntity<RoleEntity>) -> Option<ComRc<IRoleModel>> {
+    pub fn try_get_role_model(entity: ComRc<IEntity>) -> Option<ComRc<IRoleModel>> {
         entity
-            .get_component2(IRoleModel::uuid())
+            .get_component(IRoleModel::uuid())
             .unwrap()
             .query_interface::<IRoleModel>()
     }
@@ -162,14 +163,14 @@ impl RoleController {
         *self.is_active.borrow()
     }
 
-    pub fn set_active(&self, entity: &mut dyn Entity, active: bool) {
+    pub fn set_active(&self, entity: ComRc<IEntity>, active: bool) {
         *self.is_active.borrow_mut() = active;
         if active {
             let anim_name = { self.active_anim_name.borrow().clone() };
             let mode = *self.anim_repeat_mode.borrow();
-            self.play_anim(entity, &anim_name, mode);
+            self.play_anim(entity.clone(), &anim_name, mode);
         } else {
-            entity.remove_component(TypeId::of::<RenderingComponent>());
+            entity.set_rendering_component(None);
         }
 
         entity.set_visible(active);
@@ -185,7 +186,7 @@ impl RoleController {
 
     pub fn play_anim(
         &self,
-        entity: &mut dyn Entity,
+        entity: ComRc<IEntity>,
         anim_name: &str,
         repeat_mode: RoleAnimationRepeatMode,
     ) {
@@ -209,12 +210,11 @@ impl RoleController {
         *self.anim_repeat_mode.borrow_mut() = repeat_mode;
         self.active_anim_mut().reset(repeat_mode);
 
-        entity.remove_component(TypeId::of::<RenderingComponent>());
         let rc = self.active_anim().create_rendering_component();
-        entity.add_component(TypeId::of::<RenderingComponent>(), Box::new(rc));
+        entity.set_rendering_component(Some(Rc::new(rc)));
     }
 
-    pub fn run(&self, entity: &mut dyn Entity) {
+    pub fn run(&self, entity: ComRc<IEntity>) {
         if *self.state.borrow() != RoleState::Running {
             let name = self.running_anim_name.clone();
             self.play_anim(entity, &name, RoleAnimationRepeatMode::Repeat);
@@ -222,7 +222,7 @@ impl RoleController {
         }
     }
 
-    pub fn idle(&self, entity: &mut dyn Entity) {
+    pub fn idle(&self, entity: ComRc<IEntity>) {
         if *self.state.borrow() != RoleState::Idle {
             let name = self.idle_anim_name.clone();
             self.play_anim(entity, &name, RoleAnimationRepeatMode::Repeat);
@@ -230,7 +230,7 @@ impl RoleController {
         }
     }
 
-    pub fn walk(&self, entity: &mut dyn Entity) {
+    pub fn walk(&self, entity: ComRc<IEntity>) {
         if *self.state.borrow() != RoleState::Walking {
             let name = self.walking_anim_name.clone();
             self.play_anim(entity, &name, RoleAnimationRepeatMode::Repeat);
@@ -272,29 +272,24 @@ impl RoleController {
     }
 }
 
-impl EntityExtension for RoleEntity {
-    fn on_loading(self: &mut CoreEntity<Self>) {}
-
-    fn on_updating(self: &mut CoreEntity<Self>, delta_sec: f32) {}
-}
-
 impl IRoleModelImpl for RoleController {
-    fn get(&self) -> &crate::scene::RoleController {
-        self
+    fn get(&self) -> &'static crate::scene::RoleController {
+        unsafe { &*(self as *const _) }
     }
 }
 
 impl IComponentImpl for RoleController {
-    fn on_loading(&self, entity: &mut dyn Entity) -> crosscom::Void {
+    fn on_loading(&self, entity: ComRc<IEntity>) -> crosscom::Void {
         if !self.idle_anim_name.trim().is_empty() && self.is_active() {
             self.idle(entity);
         }
     }
 
-    fn on_updating(&self, entity: &mut dyn Entity, delta_sec: f32) -> crosscom::Void {
+    fn on_updating(&self, entity: ComRc<IEntity>, delta_sec: f32) -> crosscom::Void {
         if self.is_active() {
             // TODO: Consider to use Arc<Mutex<>>>
-            let rc = unsafe {
+            let rc = entity.get_rendering_component().unwrap();
+            /* unsafe {
                 let component = entity
                     .get_component_mut(TypeId::of::<RenderingComponent>())
                     .unwrap();
@@ -303,16 +298,32 @@ impl IComponentImpl for RoleController {
                     .as_mut()
                     .downcast_mut::<RenderingComponent>()
                     .unwrap() as *mut RenderingComponent)
-            };
-            let ro = rc.render_objects_mut().first_mut().unwrap();
+            };*/
+
+            /*let ro = rc.render_objects_mut().first_mut().unwrap();
 
             ro.update_vertices(&mut |vb: &mut VertexBuffer| {
                 self.active_anim_mut().update(delta_sec, vb, false);
-            });
+            });*/
+
+            let geometries = self.active_anim_mut().blend_morph_target(delta_sec);
+            let mut objects = vec![];
+
+            for geometry in geometries {
+                let ro = self.component_factory.create_render_object(
+                    geometry.vertices.clone(),
+                    geometry.indices.clone(),
+                    &geometry.material,
+                    false,
+                );
+
+                objects.push(ro);
+            }
+
+            let component = self.component_factory.create_rendering_component(objects);
+            entity.set_rendering_component(Some(Rc::new(component)));
 
             if self.active_anim().anim_finished() {
-                *self.state.borrow_mut() = RoleState::Idle;
-
                 if *self.auto_play_idle.borrow() {
                     self.idle(entity);
                 }
@@ -468,6 +479,60 @@ impl RoleAnimation {
         }
 
         self.last_anim_time = anim_time;
+    }
+
+    pub fn blend_morph_target(&mut self, delta_sec: f32) -> Vec<Geometry> {
+        let mut anim_time = (delta_sec * 4580.) as u32 + self.last_anim_time;
+        let total_anim_length = *self.anim_timestamps.last().unwrap();
+        if anim_time >= total_anim_length && self.repeat_mode == RoleAnimationRepeatMode::NoRepeat {
+            self.anim_finished = true;
+            return vec![];
+        }
+
+        anim_time %= total_anim_length;
+        let frame_index = self
+            .anim_timestamps
+            .iter()
+            .position(|&t| t > anim_time)
+            .unwrap_or(0)
+            - 1;
+
+        let next_frame_index = (frame_index + 1) % self.anim_timestamps.len();
+        let percentile = (anim_time - self.anim_timestamps[frame_index]) as f32
+            / (self.anim_timestamps[next_frame_index] - self.anim_timestamps[frame_index]) as f32;
+
+        let vertex_buffer = self.frames.get(frame_index).unwrap();
+        let next_vertex_buffer = self.frames.get(next_frame_index).unwrap();
+        let vertex_count = vertex_buffer.count();
+
+        let mut new_vertices = vec![];
+        let mut tex_coord = vec![];
+        for i in 0..vertex_count {
+            let position = vertex_buffer.position(i).unwrap();
+            let next_position = next_vertex_buffer.position(i).unwrap();
+            let tex = vertex_buffer.tex_coord(i).unwrap();
+
+            new_vertices.push(Vec3::new(
+                position.x * (1. - percentile) + next_position.x * percentile,
+                position.y * (1. - percentile) + next_position.y * percentile,
+                position.z * (1. - percentile) + next_position.z * percentile,
+            ));
+
+            tex_coord.push(TexCoord::new(tex.x, tex.y));
+        }
+
+        let geometry = Geometry::new(
+            &new_vertices,
+            None,
+            &vec![tex_coord],
+            self.indices.clone(),
+            self.material.clone(),
+            1,
+        );
+
+        self.last_anim_time = anim_time;
+
+        vec![geometry]
     }
 
     pub fn anim_finished(&self) -> bool {

@@ -30,7 +30,7 @@ impl SceCommand for SceCommandLoadScene {
             state.asset_mgr().load_scn(&self.name, &self.sub_name),
         )));
         let e = scene_manager.get_resolved_role_mut(state, -1).unwrap();
-        let r = RoleController::try_get_role_model(e).unwrap();
+        let r = RoleController::try_get_role_model(e.clone()).unwrap();
         r.get().set_active(e, true);
 
         state

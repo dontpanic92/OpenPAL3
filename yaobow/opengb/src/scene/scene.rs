@@ -2,12 +2,12 @@ use crate::asset_manager::AssetManager;
 use crate::classes::IRoleModel;
 use crate::loaders::nav_loader::NavMapPoint;
 use crate::loaders::{nav_loader::NavFile, scn_loader::*};
-use radiance::scene::{CoreEntity, CoreScene, Entity, SceneExtension};
+use crosscom::ComRc;
+use radiance::interfaces::IEntity;
+use radiance::scene::{CoreScene, SceneExtension};
 use radiance::{math::Vec3, scene::Scene};
 use std::collections::HashSet;
 use std::rc::Rc;
-
-use super::RoleEntity;
 
 pub struct ScnScene {
     asset_mgr: Rc<AssetManager>,
@@ -190,23 +190,22 @@ impl ScnScene {
         exclude_role: i32,
     ) -> Option<u32> {
         const D: f32 = 100.;
-        for entity in self.entities() {
-            if let Some(role) = entity.downcast_ref::<CoreEntity<RoleEntity>>() {
-                if role.name() == format!("ROLE_{}", exclude_role) {
-                    continue;
-                }
-
-                if !role.visible() {
-                    continue;
-                }
-
-                let role_position = role.transform().position();
-                if Vec3::sub(coord, &role_position).norm2() < D * D {
-                    let role_model =
-                        crate::scene::RoleController::try_get_role_model(role).unwrap();
-                    return Some(role_model.get().proc_id() as u32);
-                }
+        for role in self.entities() {
+            //if let Some(role) = entity.downcast_ref::<CoreEntity>() {
+            if role.name() == format!("ROLE_{}", exclude_role) {
+                continue;
             }
+
+            if !role.visible() {
+                continue;
+            }
+
+            let role_position = role.transform().borrow().position();
+            if Vec3::sub(coord, &role_position).norm2() < D * D {
+                let role_model = crate::scene::RoleController::try_get_role_model(role).unwrap();
+                return Some(role_model.get().proc_id() as u32);
+            }
+            //}
         }
 
         None
@@ -290,37 +289,31 @@ impl ScnScene {
         )
     }
 
-    pub fn get_object<'a>(self: &'a mut CoreScene<Self>, id: i32) -> Option<&'a dyn Entity> {
+    pub fn get_object<'a>(self: &'a mut CoreScene<Self>, id: i32) -> Option<ComRc<IEntity>> {
         self.entities()
             .iter()
             .find(|e| e.name() == format!("OBJECT_{}", id))
-            .map(|e| *e)
+            .map(|e| e.clone())
     }
 
     pub fn get_root_object_mut<'a>(
         self: &'a mut CoreScene<Self>,
         id: i32,
-    ) -> Option<&'a mut dyn Entity> {
-        self.root_entities_mut()
-            .iter_mut()
+    ) -> Option<ComRc<IEntity>> {
+        self.root_entities()
+            .iter()
             .find(|e| e.name() == format!("OBJECT_{}", id))
-            .map(|e| &mut **e)
+            .cloned()
     }
 
-    pub fn get_role_entity<'a>(
-        self: &'a CoreScene<Self>,
-        id: i32,
-    ) -> Option<&'a CoreEntity<RoleEntity>> {
+    pub fn get_role_entity<'a>(self: &'a CoreScene<Self>, id: i32) -> Option<ComRc<IEntity>> {
         let pos = self
             .entities()
             .iter()
             .position(|e| e.name() == format!("ROLE_{}", id));
 
         if let Some(pos) = pos {
-            self.entities()
-                .get(pos)
-                .unwrap()
-                .downcast_ref::<CoreEntity<RoleEntity>>()
+            self.entities().get(pos).and_then(|e| Some(e.clone()))
         } else {
             None
         }
@@ -329,18 +322,14 @@ impl ScnScene {
     pub fn get_role_entity_mut<'a>(
         self: &'a mut CoreScene<Self>,
         id: i32,
-    ) -> Option<&'a mut CoreEntity<RoleEntity>> {
+    ) -> Option<ComRc<IEntity>> {
         let pos = self
             .root_entities_mut()
             .iter()
             .position(|e| e.name() == format!("ROLE_{}", id));
 
         if let Some(pos) = pos {
-            self.root_entities_mut()
-                .get_mut(pos)
-                .unwrap()
-                .as_mut()
-                .downcast_mut::<CoreEntity<RoleEntity>>()
+            self.root_entities().get(pos).cloned()
         } else {
             None
         }
@@ -371,7 +360,7 @@ impl ScnScene {
 
     fn load_objects(self: &mut CoreScene<ScnScene>) {
         let ground_pol_name = self.scn_file.scn_base_name.clone() + ".pol";
-        let mut entities: Vec<Box<dyn Entity>> = vec![];
+        let mut entities: Vec<ComRc<IEntity>> = vec![];
 
         let scn_object = self.asset_mgr.load_scn_pol(
             &self.cpk_name,
@@ -381,14 +370,14 @@ impl ScnScene {
             std::u16::MAX,
         );
 
-        if let Some(mut scn_object) = scn_object {
-            Self::apply_position_rotation(&mut scn_object, &Vec3::new(0., 0., 0.), 0.);
-            entities.push(Box::new(scn_object));
+        if let Some(scn_object) = scn_object {
+            Self::apply_position_rotation(scn_object.clone(), &Vec3::new(0., 0., 0.), 0.);
+            entities.push(scn_object);
         }
 
         let _self = self.extension_mut();
         for obj in &_self.scn_file.nodes {
-            let mut entity: Option<Box<dyn Entity>> = None;
+            let mut entity: Option<ComRc<IEntity>> = None;
             if obj.nav_trigger_coord_min.0 != 0
                 || obj.nav_trigger_coord_min.1 != 0
                 || obj.nav_trigger_coord_max.0 != 0
@@ -413,7 +402,7 @@ impl ScnScene {
                         _self.scn_file.is_night,
                         obj.index,
                     ) {
-                        entity = Some(Box::new(p));
+                        entity = Some(p);
                     } else if let Some(c) = _self.asset_mgr.load_scn_cvd(
                         &_self.cpk_name,
                         &_self.scn_file.scn_base_name,
@@ -421,34 +410,34 @@ impl ScnScene {
                         _self.scn_file.is_night,
                         obj.index,
                     ) {
-                        entity = Some(Box::new(c));
+                        entity = Some(c);
                     } else {
                         log::error!("Cannot load object: {}", obj.name);
                     }
                 } else if obj.name.to_lowercase().ends_with(".pol") {
-                    entity = Some(Box::new(
+                    entity = Some(
                         _self
                             .asset_mgr
                             .load_object_item_pol(&obj.name, obj.index, visible)
                             .unwrap(),
-                    ));
+                    );
                 } else if obj.name.to_lowercase().ends_with(".cvd") {
-                    entity = Some(Box::new(
+                    entity = Some(
                         _self
                             .asset_mgr
                             .load_object_item_cvd(&obj.name, obj.index, visible)
                             .unwrap(),
-                    ));
+                    );
                 } else if obj.name.as_bytes()[0] as char == '+' {
                     // Unknown
                     continue;
                 } else {
-                    entity = Some(Box::new(
+                    entity = Some(
                         _self
                             .asset_mgr
                             .load_object_item_pol(&obj.name, obj.index, visible)
                             .unwrap(),
-                    ));
+                    );
                 }
             }
 
@@ -483,8 +472,8 @@ impl ScnScene {
                 _ => {}
             }
 
-            if let Some(mut p) = entity {
-                Self::apply_position_rotation(p.as_mut(), &obj.position, obj.rotation.to_radians());
+            if let Some(p) = entity {
+                Self::apply_position_rotation(p.clone(), &obj.position, obj.rotation.to_radians());
                 entities.push(p);
             }
         }
@@ -494,9 +483,10 @@ impl ScnScene {
         }
     }
 
-    fn apply_position_rotation(entity: &mut dyn Entity, position: &Vec3, rotation: f32) {
+    fn apply_position_rotation(entity: ComRc<IEntity>, position: &Vec3, rotation: f32) {
         entity
-            .transform_mut()
+            .transform()
+            .borrow_mut()
             .set_position(position)
             .rotate_axis_angle_local(&Vec3::UP, rotation);
     }
@@ -522,32 +512,34 @@ impl ScnScene {
                 .asset_mgr
                 .load_role(&model_name, "C01", entity_name, false)
                 .unwrap();
-            self.add_entity(Box::new(entity));
+            self.add_entity(entity);
         }
 
         let mut entities = vec![];
         for role in &self.scn_file.roles {
-            if let Some(mut entity) = self.asset_mgr.load_role(
+            if let Some(entity) = self.asset_mgr.load_role(
                 &role.name,
                 &role.action_name,
                 format!("ROLE_{}", role.index),
                 false,
             ) {
+                let entity = entity;
                 let nav_coord = self.scene_coord_to_nav_coord(
                     0,
                     &Vec3::new(role.position_x, role.position_y, role.position_z),
                 );
                 let height = self.get_height(0, nav_coord);
                 entity
-                    .transform_mut()
+                    .transform()
+                    .borrow_mut()
                     .set_position(&Vec3::new(role.position_x, height, role.position_z))
                     // HACK
                     .rotate_axis_angle_local(&Vec3::UP, std::f32::consts::PI);
 
-                let role_controller = entity.get_component2(IRoleModel::uuid()).unwrap();
+                let role_controller = entity.get_component(IRoleModel::uuid()).unwrap();
                 let role_controller = role_controller.query_interface::<IRoleModel>().unwrap();
                 if role.sce_proc_id != 0 {
-                    role_controller.get().set_active(&mut entity, true);
+                    role_controller.get().set_active(entity.clone(), true);
                     role_controller.get().set_proc_id(role.sce_proc_id as i32);
                 }
 
@@ -556,7 +548,7 @@ impl ScnScene {
         }
 
         for e in entities {
-            self.add_entity(Box::new(e));
+            self.add_entity(e);
         }
     }
 }

@@ -4,13 +4,14 @@ use std::{
     rc::Rc,
 };
 
+use crosscom::ComRc;
 use fileformats::dff::{self, read_dff};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
-    interfaces::IStaticMeshComponent,
+    interfaces::{IEntity, IStaticMeshComponent},
     math::Vec3,
     rendering::{ComponentFactory, StaticMeshComponent},
-    scene::CoreEntity2,
+    scene::CoreEntity,
 };
 
 pub fn create_entity_from_dff_model<P: AsRef<Path>>(
@@ -19,11 +20,11 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
     path: P,
     name: String,
     visible: bool,
-) -> CoreEntity2 {
-    let mut entity = CoreEntity2::new2(name, visible);
+) -> ComRc<IEntity> {
+    let entity = CoreEntity::create(name, visible);
     let geometries = load_dff_model(vfs, path);
     let mesh_component = StaticMeshComponent::new(geometries, component_factory.clone());
-    entity.add_component2(
+    entity.add_component(
         IStaticMeshComponent::uuid(),
         crosscom::ComRc::from_object(mesh_component),
     );

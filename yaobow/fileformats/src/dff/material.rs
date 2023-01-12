@@ -87,7 +87,7 @@ impl Material {
         let mut texture = None;
 
         if textured != 0 {
-            let header = ChunkHeader::read(cursor)?;
+            let _header = ChunkHeader::read(cursor)?;
             texture = Some(Texture::read(cursor)?);
         }
 

@@ -1,6 +1,8 @@
-use crate::math::Transform;
+use crosscom::ComRc;
 
-use super::{entity::Entity, Camera};
+use crate::{interfaces::IEntity, math::Transform};
+
+use super::Camera;
 use std::ops::{Deref, DerefMut};
 
 pub trait Scene: downcast_rs::Downcast {
@@ -9,10 +11,10 @@ pub trait Scene: downcast_rs::Downcast {
     fn update(&mut self, delta_sec: f32);
     fn draw_ui(&mut self, ui: &mut imgui::Ui);
     fn unload(&mut self);
-    fn add_entity(&mut self, entity: Box<dyn Entity>);
-    fn entities(&self) -> Vec<&dyn Entity>;
-    fn root_entities(&self) -> &Vec<Box<dyn Entity>>;
-    fn root_entities_mut(&mut self) -> &mut Vec<Box<dyn Entity>>;
+    fn add_entity(&mut self, entity: ComRc<IEntity>);
+    fn entities(&self) -> Vec<ComRc<IEntity>>;
+    fn root_entities(&self) -> &Vec<ComRc<IEntity>>;
+    fn root_entities_mut(&mut self) -> &mut Vec<ComRc<IEntity>>;
     fn camera(&self) -> &Camera;
     fn camera_mut(&mut self) -> &mut Camera;
 }
@@ -54,7 +56,7 @@ pub trait SceneExtension {
 pub struct CoreScene<TExtension: SceneExtension> {
     active: bool,
     visible: bool,
-    entities: Vec<Box<dyn Entity>>,
+    entities: Vec<ComRc<IEntity>>,
     extension: TExtension,
     camera: Camera,
 }
@@ -86,9 +88,9 @@ impl<TExtension: SceneExtension> CoreScene<TExtension> {
         self.visible = visible;
     }
 
-    fn collect_entities(entity: &dyn Entity) -> Vec<&dyn Entity> {
+    fn collect_entities(entity: ComRc<IEntity>) -> Vec<ComRc<IEntity>> {
         let mut entities = vec![];
-        entities.push(entity);
+        entities.push(entity.clone());
         for e in entity.children() {
             entities.append(&mut Self::collect_entities(e));
         }
@@ -162,22 +164,22 @@ impl<TExtension: 'static + SceneExtension> Scene for CoreScene<TExtension> {
 
     fn unload(&mut self) {}
 
-    fn add_entity(&mut self, entity: Box<dyn Entity>) {
+    fn add_entity(&mut self, entity: ComRc<IEntity>) {
         self.entities.push(entity);
     }
 
-    fn root_entities(&self) -> &Vec<Box<dyn Entity>> {
+    fn root_entities(&self) -> &Vec<ComRc<IEntity>> {
         &self.entities
     }
 
-    fn root_entities_mut(&mut self) -> &mut Vec<Box<dyn Entity>> {
+    fn root_entities_mut(&mut self) -> &mut Vec<ComRc<IEntity>> {
         &mut self.entities
     }
 
-    fn entities(&self) -> Vec<&dyn Entity> {
+    fn entities(&self) -> Vec<ComRc<IEntity>> {
         let mut entities = vec![];
         for e in &self.entities {
-            entities.append(&mut Self::collect_entities(e.as_ref()));
+            entities.append(&mut Self::collect_entities(e.clone()));
         }
 
         entities

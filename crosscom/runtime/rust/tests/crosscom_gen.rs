@@ -1,3 +1,4 @@
+use crate as test;
 // Interface ITest
 
 #[repr(C)]
@@ -45,30 +46,44 @@ impl ITest {
         }
     }
 
-    pub fn add_ref(&self) -> i64 {
+    pub fn add_ref(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const ITest as *const *const std::os::raw::c_void;
-            ((*self.vtable).add_ref)(this).into()
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
-    pub fn release(&self) -> i64 {
+    pub fn release(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const ITest as *const *const std::os::raw::c_void;
-            ((*self.vtable).release)(this).into()
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
-    pub fn test(&self) -> i32 {
+    pub fn test(&self) -> std::os::raw::c_int {
         unsafe {
             let this = self as *const ITest as *const *const std::os::raw::c_void;
-            ((*self.vtable).test)(this).into()
+            let ret = ((*self.vtable).test)(this);
+            let ret: std::os::raw::c_int = ret.into();
+
+            ret
         }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(ITest::INTERFACE_ID)
     }
 }
 
 pub trait ITestImpl {
-    fn test(&self) -> i32;
+    fn test(&self) -> std::os::raw::c_int;
 }
 
 impl crosscom::ComInterface for ITest {
@@ -131,37 +146,54 @@ impl ITest2 {
         }
     }
 
-    pub fn add_ref(&self) -> i64 {
+    pub fn add_ref(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const ITest2 as *const *const std::os::raw::c_void;
-            ((*self.vtable).add_ref)(this).into()
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
-    pub fn release(&self) -> i64 {
+    pub fn release(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const ITest2 as *const *const std::os::raw::c_void;
-            ((*self.vtable).release)(this).into()
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
-    pub fn test(&self) -> i32 {
+    pub fn test(&self) -> std::os::raw::c_int {
         unsafe {
             let this = self as *const ITest2 as *const *const std::os::raw::c_void;
-            ((*self.vtable).test)(this).into()
+            let ret = ((*self.vtable).test)(this);
+            let ret: std::os::raw::c_int = ret.into();
+
+            ret
         }
     }
 
-    pub fn mul(&self, a: i32, b: f32) -> f32 {
+    pub fn mul(&self, a: std::os::raw::c_int, b: f32) -> f32 {
         unsafe {
             let this = self as *const ITest2 as *const *const std::os::raw::c_void;
-            ((*self.vtable).mul)(this, a, b).into()
+            let ret = ((*self.vtable).mul)(this, a.into(), b.into());
+            let ret: f32 = ret.into();
+
+            ret
         }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(ITest2::INTERFACE_ID)
     }
 }
 
 pub trait ITest2Impl {
-    fn mul(&self, a: i32, b: f32) -> f32;
+    fn mul(&self, a: std::os::raw::c_int, b: f32) -> f32;
 }
 
 impl crosscom::ComInterface for ITest2 {
@@ -221,30 +253,44 @@ impl ITest3 {
         }
     }
 
-    pub fn add_ref(&self) -> i64 {
+    pub fn add_ref(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const ITest3 as *const *const std::os::raw::c_void;
-            ((*self.vtable).add_ref)(this).into()
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
-    pub fn release(&self) -> i64 {
+    pub fn release(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const ITest3 as *const *const std::os::raw::c_void;
-            ((*self.vtable).release)(this).into()
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
-    pub fn echo(&self, a: i32) -> i32 {
+    pub fn echo(&self, a: std::os::raw::c_int) -> std::os::raw::c_int {
         unsafe {
             let this = self as *const ITest3 as *const *const std::os::raw::c_void;
-            ((*self.vtable).echo)(this, a).into()
+            let ret = ((*self.vtable).echo)(this, a.into());
+            let ret: std::os::raw::c_int = ret.into();
+
+            ret
         }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(ITest3::INTERFACE_ID)
     }
 }
 
 pub trait ITest3Impl {
-    fn echo(&self, a: i32) -> i32;
+    fn echo(&self, a: std::os::raw::c_int) -> std::os::raw::c_int;
 }
 
 impl crosscom::ComInterface for ITest3 {
@@ -303,25 +349,39 @@ impl ITest4 {
         }
     }
 
-    pub fn add_ref(&self) -> i64 {
+    pub fn add_ref(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const ITest4 as *const *const std::os::raw::c_void;
-            ((*self.vtable).add_ref)(this).into()
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
-    pub fn release(&self) -> i64 {
+    pub fn release(&self) -> std::os::raw::c_long {
         unsafe {
             let this = self as *const ITest4 as *const *const std::os::raw::c_void;
-            ((*self.vtable).release)(this).into()
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
         }
     }
 
     pub fn get(&self) -> crosscom::ComRc<ITest3> {
         unsafe {
             let this = self as *const ITest4 as *const *const std::os::raw::c_void;
-            ((*self.vtable).get)(this).into()
+            let ret = ((*self.vtable).get)(this);
+            let ret: crosscom::ComRc<ITest3> = ret.into();
+
+            ret
         }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(ITest4::INTERFACE_ID)
     }
 }
 
@@ -340,27 +400,31 @@ impl crosscom::ComInterface for ITest4 {
 // Class Test
 
 #[allow(unused)]
+#[macro_export]
 macro_rules! ComObject_Test {
     ($impl_type: ty) => {
         #[allow(dead_code)]
         #[allow(non_snake_case)]
         #[allow(unused)]
         mod Test_crosscom_impl {
-            use crate::crosscom_gen::ITest2Impl;
-            use crate::crosscom_gen::ITest3Impl;
-            use crate::crosscom_gen::ITest4Impl;
-            use crate::crosscom_gen::ITestImpl;
+            use crate as test;
             use crosscom::ComInterface;
+            use crosscom::IObjectArrayImpl;
+            use crosscom::IUnknownImpl;
+            use test::crosscom_gen::ITest2Impl;
+            use test::crosscom_gen::ITest3Impl;
+            use test::crosscom_gen::ITest4Impl;
+            use test::crosscom_gen::ITestImpl;
 
             #[repr(C)]
             pub struct TestCcw {
-                ITest2: crate::crosscom_gen::ITest2,
-                ITest: crate::crosscom_gen::ITest,
-                ITest3: crate::crosscom_gen::ITest3,
-                ITest4: crate::crosscom_gen::ITest4,
+                ITest2: test::crosscom_gen::ITest2,
+                ITest: test::crosscom_gen::ITest,
+                ITest3: test::crosscom_gen::ITest3,
+                ITest4: test::crosscom_gen::ITest4,
 
                 ref_count: std::sync::atomic::AtomicU32,
-                inner: $impl_type,
+                pub inner: $impl_type,
             }
 
             unsafe extern "system" fn query_interface(
@@ -376,31 +440,31 @@ macro_rules! ComObject_Test {
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &crate::crosscom_gen::ITest::INTERFACE_ID => {
+                    &test::crosscom_gen::ITest::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &crate::crosscom_gen::ITest2::INTERFACE_ID => {
+                    &test::crosscom_gen::ITest2::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &crate::crosscom_gen::ITest3::INTERFACE_ID => {
+                    &test::crosscom_gen::ITest3::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(2);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &crate::crosscom_gen::ITest4::INTERFACE_ID => {
+                    &test::crosscom_gen::ITest4::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(3);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    _ => crosscom::ResultCode::ENoInterface as i32,
+                    _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
                 }
             }
 
@@ -434,23 +498,28 @@ macro_rules! ComObject_Test {
                 a: std::os::raw::c_int,
                 b: std::os::raw::c_float,
             ) -> std::os::raw::c_float {
+                let a: std::os::raw::c_int = a.into();
+                let b: f32 = b.into();
+
                 let object = crosscom::get_object::<TestCcw>(this);
-                (*object).inner.mul(a, b)
+                (*object).inner.mul(a.into(), b.into()).into()
             }
 
             unsafe extern "system" fn test(
                 this: *const *const std::os::raw::c_void,
             ) -> std::os::raw::c_int {
                 let object = crosscom::get_object::<TestCcw>(this);
-                (*object).inner.test()
+                (*object).inner.test().into()
             }
 
             unsafe extern "system" fn echo(
                 this: *const *const std::os::raw::c_void,
                 a: std::os::raw::c_int,
             ) -> std::os::raw::c_int {
+                let a: std::os::raw::c_int = a.into();
+
                 let object = crosscom::get_object::<TestCcw>(this);
-                (*object).inner.echo(a)
+                (*object).inner.echo(a.into()).into()
             }
 
             unsafe extern "system" fn get(
@@ -462,10 +531,10 @@ macro_rules! ComObject_Test {
 
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_ITest2VirtualTable_CCW_FOR_Test:
-                crate::crosscom_gen::ITest2VirtualTableCcw =
-                crate::crosscom_gen::ITest2VirtualTableCcw {
+                test::crosscom_gen::ITest2VirtualTableCcw =
+                test::crosscom_gen::ITest2VirtualTableCcw {
                     offset: 0,
-                    vtable: crate::crosscom_gen::ITest2VirtualTable {
+                    vtable: test::crosscom_gen::ITest2VirtualTable {
                         query_interface,
                         add_ref,
                         release,
@@ -476,10 +545,10 @@ macro_rules! ComObject_Test {
 
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_ITestVirtualTable_CCW_FOR_Test:
-                crate::crosscom_gen::ITestVirtualTableCcw =
-                crate::crosscom_gen::ITestVirtualTableCcw {
+                test::crosscom_gen::ITestVirtualTableCcw =
+                test::crosscom_gen::ITestVirtualTableCcw {
                     offset: -1,
-                    vtable: crate::crosscom_gen::ITestVirtualTable {
+                    vtable: test::crosscom_gen::ITestVirtualTable {
                         query_interface,
                         add_ref,
                         release,
@@ -489,10 +558,10 @@ macro_rules! ComObject_Test {
 
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_ITest3VirtualTable_CCW_FOR_Test:
-                crate::crosscom_gen::ITest3VirtualTableCcw =
-                crate::crosscom_gen::ITest3VirtualTableCcw {
+                test::crosscom_gen::ITest3VirtualTableCcw =
+                test::crosscom_gen::ITest3VirtualTableCcw {
                     offset: -2,
-                    vtable: crate::crosscom_gen::ITest3VirtualTable {
+                    vtable: test::crosscom_gen::ITest3VirtualTable {
                         query_interface,
                         add_ref,
                         release,
@@ -502,10 +571,10 @@ macro_rules! ComObject_Test {
 
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_ITest4VirtualTable_CCW_FOR_Test:
-                crate::crosscom_gen::ITest4VirtualTableCcw =
-                crate::crosscom_gen::ITest4VirtualTableCcw {
+                test::crosscom_gen::ITest4VirtualTableCcw =
+                test::crosscom_gen::ITest4VirtualTableCcw {
                     offset: -3,
-                    vtable: crate::crosscom_gen::ITest4VirtualTable {
+                    vtable: test::crosscom_gen::ITest4VirtualTable {
                         query_interface,
                         add_ref,
                         release,
@@ -518,31 +587,41 @@ macro_rules! ComObject_Test {
 
                 fn create_ccw(self) -> Self::CcwType {
                     Self::CcwType {
-                        ITest2: crate::crosscom_gen::ITest2 {
+                        ITest2: test::crosscom_gen::ITest2 {
                             vtable: &GLOBAL_ITest2VirtualTable_CCW_FOR_Test.vtable
-                                as *const crate::crosscom_gen::ITest2VirtualTable,
+                                as *const test::crosscom_gen::ITest2VirtualTable,
                         },
 
-                        ITest: crate::crosscom_gen::ITest {
+                        ITest: test::crosscom_gen::ITest {
                             vtable: &GLOBAL_ITestVirtualTable_CCW_FOR_Test.vtable
-                                as *const crate::crosscom_gen::ITestVirtualTable,
+                                as *const test::crosscom_gen::ITestVirtualTable,
                         },
 
-                        ITest3: crate::crosscom_gen::ITest3 {
+                        ITest3: test::crosscom_gen::ITest3 {
                             vtable: &GLOBAL_ITest3VirtualTable_CCW_FOR_Test.vtable
-                                as *const crate::crosscom_gen::ITest3VirtualTable,
+                                as *const test::crosscom_gen::ITest3VirtualTable,
                         },
 
-                        ITest4: crate::crosscom_gen::ITest4 {
+                        ITest4: test::crosscom_gen::ITest4 {
                             vtable: &GLOBAL_ITest4VirtualTable_CCW_FOR_Test.vtable
-                                as *const crate::crosscom_gen::ITest4VirtualTable,
+                                as *const test::crosscom_gen::ITest4VirtualTable,
                         },
 
                         ref_count: std::sync::atomic::AtomicU32::new(0),
                         inner: self,
                     }
                 }
+
+                fn get_ccw(&self) -> &Self::CcwType {
+                    unsafe {
+                        let this = self as *const _ as *const u8;
+                        this.offset(-(crosscom::offset_of!(TestCcw, inner) as isize));
+                        &*(this as *const Self::CcwType)
+                    }
+                }
             }
         }
     };
 }
+
+// pub use ComObject_Test;

@@ -3,10 +3,7 @@ use crate::directors::{
     SceneManagerExtensions,
 };
 use imgui::Ui;
-use radiance::{
-    math::Vec3,
-    scene::{Entity, SceneManager},
-};
+use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Debug, Clone)]
 pub struct SceCommandRoleMoveBack {
@@ -23,7 +20,8 @@ impl SceCommand for SceCommandRoleMoveBack {
         delta_sec: f32,
     ) -> bool {
         scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
-            e.transform_mut()
+            e.transform()
+                .borrow_mut()
                 .translate_local(&Vec3::new(0., 0., self.speed));
         });
         true

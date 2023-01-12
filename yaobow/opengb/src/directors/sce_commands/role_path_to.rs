@@ -3,7 +3,6 @@ use crate::directors::sce_vm::{SceCommand, SceState};
 use crate::directors::SceneManagerExtensions;
 use crate::scene::RoleController;
 use imgui::Ui;
-use radiance::scene::Entity;
 use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Debug, Clone)]
@@ -56,7 +55,7 @@ impl SceCommand for SceCommandRolePathTo {
             .get_resolved_role_mut(state, self.role_id)
             .unwrap();
 
-        let position = role.transform().position();
+        let position = role.transform().borrow().position();
 
         // TODO: WHY?
         if position.x.is_nan() {
@@ -71,7 +70,8 @@ impl SceCommand for SceCommandRolePathTo {
             Vec3::add(&position, &Vec3::dot(step, &Vec3::normalized(&remain)))
         };
 
-        role.transform_mut()
+        role.transform()
+            .borrow_mut()
             .look_at(&Vec3::new(to.x, position.y, to.z))
             .set_position(&new_position);
 

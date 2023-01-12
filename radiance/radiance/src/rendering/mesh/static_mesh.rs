@@ -1,9 +1,10 @@
-use std::{any::TypeId, rc::Rc};
+use std::rc::Rc;
+
+use crosscom::ComRc;
 
 use crate::{
-    interfaces::IComponentImpl,
-    rendering::{ComponentFactory, Geometry, RenderingComponent},
-    scene::Entity,
+    interfaces::{IComponentImpl, IEntity},
+    rendering::{ComponentFactory, Geometry},
     ComObject_StaticMeshComponent,
 };
 
@@ -24,7 +25,7 @@ impl StaticMeshComponent {
 }
 
 impl IComponentImpl for StaticMeshComponent {
-    fn on_loading(&self, entity: &mut dyn Entity) -> crosscom::Void {
+    fn on_loading(&self, entity: ComRc<IEntity>) -> crosscom::Void {
         let mut objects = vec![];
         for geometry in &self.geometries {
             let ro = self.component_factory.create_render_object(
@@ -38,8 +39,8 @@ impl IComponentImpl for StaticMeshComponent {
         }
 
         let component = self.component_factory.create_rendering_component(objects);
-        entity.add_component(TypeId::of::<RenderingComponent>(), Box::new(component));
+        entity.set_rendering_component(Some(Rc::new(component)));
     }
 
-    fn on_updating(&self, entity: &mut dyn Entity, delta_sec: f32) -> crosscom::Void {}
+    fn on_updating(&self, entity: ComRc<IEntity>, delta_sec: f32) -> crosscom::Void {}
 }

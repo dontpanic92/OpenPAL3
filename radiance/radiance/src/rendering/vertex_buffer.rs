@@ -177,8 +177,16 @@ impl VertexBuffer {
         self.get_component(index, VertexComponents::POSITION)
     }
 
+    pub fn normal(&self, index: usize) -> Option<&Vec3> {
+        self.get_component(index, VertexComponents::NORMAL)
+    }
+
     pub fn tex_coord(&self, index: usize) -> Option<&Vec2> {
         self.get_component(index, VertexComponents::TEXCOORD)
+    }
+
+    pub fn tex_coord2(&self, index: usize) -> Option<&Vec2> {
+        self.get_component(index, VertexComponents::TEXCOORD2)
     }
 
     fn get_component<TData>(&self, index: usize, component: VertexComponents) -> Option<&TData> {

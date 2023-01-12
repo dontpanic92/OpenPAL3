@@ -10,10 +10,11 @@ use super::{
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
 use crate::math::Mat44;
-use crate::scene::{entity_get_component, Scene, Viewport};
+use crate::rendering::RenderingComponent;
+use crate::scene::{Scene, Viewport};
 use crate::{
     imgui::{ImguiContext, ImguiFrame},
-    rendering::{ComponentFactory, RenderingComponent, RenderingEngine, Window},
+    rendering::{ComponentFactory, RenderingEngine, Window},
 };
 use ash::extensions::ext::DebugUtils;
 use ash::{vk, Entry};
@@ -64,8 +65,9 @@ impl RenderingEngine for VulkanRenderingEngine {
 
         self.dub_manager().update_do(|updater| {
             for entity in scene.entities() {
-                if let Some(rc) = entity_get_component::<RenderingComponent>(entity) {
-                    for ro in rc.render_objects() {
+                if let Some(rc) = entity.get_rendering_component() {
+                    let objects = rc.render_objects();
+                    for ro in objects {
                         if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
                             updater(vro.dub_index(), entity.world_transform().matrix());
                         }
@@ -374,22 +376,24 @@ impl VulkanRenderingEngine {
             Err(e) => panic!("Unable to acquire next image {:?}", e),
         };
         let x = &|ui| scene.draw_ui(ui);
-        let objects: Vec<&VulkanRenderObject> = scene
+        let rc: Vec<Rc<RenderingComponent>> = scene
             .entities()
             .iter()
             .filter(|e| e.visible())
-            .filter_map(|e| {
-                entity_get_component::<RenderingComponent>(*e)
-                    .and_then(|c| Some(c.render_objects()))
-            })
+            .filter_map(|e| e.get_rendering_component())
+            .collect();
+
+        let r_objects: Vec<&VulkanRenderObject> = rc
+            .iter()
+            .map(|c| c.render_objects())
             .flatten()
-            .filter_map(|o| o.downcast_ref())
+            .filter_map(|c| c.downcast_ref())
             .collect();
 
         let command_buffer = swapchain!()
             .record_command_buffers(
                 image_index as usize,
-                &objects,
+                &r_objects,
                 &dub_manager,
                 viewport,
                 ui_frame,

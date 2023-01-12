@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 uuid = "0.8"
+memoffset = "0.8"

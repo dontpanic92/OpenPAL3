@@ -3,7 +3,7 @@ use crate::directors::sce_vm::{SceCommand, SceState};
 use crate::directors::SceneManagerExtensions;
 use crate::scene::RoleController;
 use imgui::Ui;
-use radiance::scene::{Entity, SceneManager};
+use radiance::scene::SceneManager;
 
 #[derive(Debug, Clone)]
 pub struct SceCommandRoleSetPos {
@@ -36,7 +36,7 @@ impl SceCommand for SceCommandRoleSetPos {
         let role = scene_manager
             .get_resolved_role_mut(state, self.role_id)
             .unwrap();
-        role.transform_mut().set_position(&position);
+        role.transform().borrow_mut().set_position(&position);
 
         state
             .global_state_mut()

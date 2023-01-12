@@ -1,9 +1,6 @@
-[uuid(00000000-0000-0000-C000-000000000046), codegen(ignore)]
-interface IUnknown {
-    long query_interface(UUID guid, [out] IUnknown retval);
-    long add_ref();
-    long release();
-}
+module(rust) test::crosscom_gen;
+
+import crosscom.idl;
 
 [uuid(6ac46481-7efa-45ff-a279-687b4603c746)]
 interface ITest: IUnknown {

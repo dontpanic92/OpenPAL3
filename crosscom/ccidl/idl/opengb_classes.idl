@@ -5,7 +5,7 @@ import radiance.idl;
 [uuid(e11fe493-654a-4072-b883-a7ee1a35a24a)]
 interface IRoleModel: IComponent {
     [internal(), rust()]
-    &opengb::scene::RoleController get();
+    &'static opengb::scene::RoleController get();
 }
 
 [uuid(854b55b6-8054-4c4d-aa76-09e6d3287544)]

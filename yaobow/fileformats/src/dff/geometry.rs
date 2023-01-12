@@ -197,7 +197,7 @@ impl Geometry {
 
         let material_count = cursor.read_u32_le()?;
         if material_count > 0 {
-            let unknown = cursor.read_dw_vec(material_count as usize)?;
+            let _unknown = cursor.read_dw_vec(material_count as usize)?;
             for _ in 0..material_count {
                 let header = ChunkHeader::read(cursor)?;
                 if header.ty != ChunkType::MATERIAL {
