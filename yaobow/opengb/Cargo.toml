@@ -46,7 +46,7 @@ optional = true
 [target.'cfg(target_os = "windows")'.dependencies.ffmpeg]
 git = "https://github.com/meh/rust-ffmpeg"
 default-features = false
-features = ["codec", "filter", "format", "resampling", "software-scaling"]
+features = ["codec", "filter", "format", "resampling", "software-scaling", "static"]
 optional = true
 
 [target.'cfg(target_os = "android")'.dependencies]
