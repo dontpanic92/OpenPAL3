@@ -1,9 +1,10 @@
 use super::{main_content::ContentTabs, DevToolsState};
+use fileformats::mv3::read_mv3;
 use imgui::{Condition, Ui};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::{
     asset_manager::AssetManager,
-    loaders::{mv3_loader::mv3_load_from_file, pol::create_entity_from_pol_model},
+    loaders::pol::create_entity_from_pol_model,
     scene::{
         create_entity_from_cvd_model, RoleAnimation, RoleAnimationRepeatMode, RoleController,
         RoleEntity,
@@ -19,6 +20,7 @@ use shared::loaders::dff::create_entity_from_dff_model;
 use std::{
     cell::RefCell,
     cmp::Ordering,
+    io::BufReader,
     path::{Path, PathBuf},
     rc::{Rc, Weak},
 };
@@ -132,7 +134,9 @@ impl DevToolsDirector {
             .map(|e| e.as_str())
         {
             Some("mv3") => {
-                let mv3file = mv3_load_from_file(self.asset_mgr.vfs(), &path);
+                let mv3file = read_mv3(&mut BufReader::new(
+                    self.asset_mgr.vfs().open(&path).unwrap(),
+                ));
                 let anim = mv3file.as_ref().map(|f| {
                     RoleAnimation::new(
                         &self.asset_mgr.component_factory(),

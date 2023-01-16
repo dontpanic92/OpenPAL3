@@ -1,7 +1,6 @@
 #![feature(arbitrary_self_types)]
 #![feature(drain_filter)]
 mod directors;
-mod exporters;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -56,8 +55,16 @@ fn main() {
         let mut config = OpenGbConfig::load("openpal3.toml", "OPENPAL3");
 
         let args = std::env::args().collect::<Vec<String>>();
-        if args.len() > 1 && args[1] == "--pal4" {
-            config.asset_path = "F:\\PAL4\\".to_string();
+        if args.len() > 1 {
+            match args[1].as_str() {
+                "--pal4" => config.asset_path = "F:\\PAL4\\".to_string(),
+                "--pal5" => config.asset_path = "F:\\PAL5\\".to_string(),
+                "--pal5q" => {
+                    config.asset_path =
+                        "F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 5 Prequel".to_string()
+                }
+                &_ => {}
+            }
         }
 
         let resource_view_content = SceneViewResourceView::new(config, app);

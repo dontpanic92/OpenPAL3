@@ -1,9 +1,10 @@
+use crate::asset_manager::AssetManager;
 use crate::classes::{IRoleModel, IRoleModelImpl};
 use crate::ComObject_RoleModel;
-use crate::{asset_manager::AssetManager, loaders::mv3_loader::*};
 use crosscom::ComRc;
 use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
+use fileformats::mv3::{Mv3File, Mv3Mesh, Mv3Model};
 use radiance::interfaces::{IComponentImpl, IEntity};
 use radiance::rendering::{
     ComponentFactory, Geometry, MaterialDef, TexCoord, VertexBuffer, VertexComponents,

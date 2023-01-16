@@ -1,4 +1,6 @@
-use super::{cpk_archive::CpkFile, CpkArchive, CpkEntry};
+use crate::fs::memory_file::MemoryFile;
+
+use super::{CpkArchive, CpkEntry};
 use encoding::{EncoderTrap, Encoding};
 use memmap::{Mmap, MmapOptions};
 use mini_fs::{Entries, Entry, EntryKind, Store};
@@ -29,7 +31,7 @@ impl CpkFs {
 }
 
 impl Store for CpkFs {
-    type File = CpkFile;
+    type File = MemoryFile;
 
     fn open_path(&self, path: &Path) -> std::io::Result<Self::File> {
         // need ad-hoc conversion to windows path

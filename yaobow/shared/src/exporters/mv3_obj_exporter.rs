@@ -1,5 +1,5 @@
 use super::obj_exporter::{Geometry, ObjSet, Object, Shape, TVertex, Vertex};
-use opengb::loaders::mv3_loader::Mv3File;
+use fileformats::mv3::Mv3File;
 use wavefront_obj::{
     mtl::{Color, Material, MtlSet},
     obj::Primitive,

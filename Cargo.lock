@@ -101,6 +101,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.68"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2cb2f989d18dd141ab8ae82f64d1a8cdd37e0840f73a406896cf5e99502fab61"
+
+[[package]]
 name = "arboard"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -467,13 +473,12 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "byteorder",
  "encoding",
  "log",
  "memmap",
  "mini-fs",
- "minilzo-rs",
- "xxtea",
 ]
 
 [[package]]
@@ -955,7 +960,7 @@ checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 [[package]]
 name = "ffmpeg"
 version = "0.4.0"
-source = "git+https://github.com/meh/rust-ffmpeg#f879c89ab8939032515a2890ee6ab0de4fe514a5"
+source = "git+https://github.com/meh/rust-ffmpeg#4378d480ed14cdf04c1b28a8bfda487b7a4cda8c"
 dependencies = [
  "bitflags",
  "ffmpeg-sys",
@@ -967,7 +972,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg-sys"
 version = "4.3.4"
-source = "git+https://github.com/meh/rust-ffmpeg-sys.git#8ba86ee3f9b85a3ad86002d980fb518f5e90afb1"
+source = "git+https://github.com/dontpanic92/rust-ffmpeg-sys.git#8ba86ee3f9b85a3ad86002d980fb518f5e90afb1"
 dependencies = [
  "bindgen",
  "cc",
@@ -982,6 +987,7 @@ dependencies = [
 name = "fileformats"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "byteorder",
  "common",
  "dashmap",
@@ -991,6 +997,7 @@ dependencies = [
  "num-traits",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -1444,6 +1451,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
+name = "md5"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
+
+[[package]]
 name = "memchr"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1563,6 +1576,15 @@ name = "miniz_oxide"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2b29bd4bc3f33391105ebee3589c19197c4271e3e5a9ec9bfe8127eeff8f082"
+dependencies = [
+ "adler",
+]
+
+[[package]]
+name = "miniz_oxide"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b275950c28b37e794e8c55d88aeb5e139d0ce23fdbbeda68f8d7174abdf9e8fa"
 dependencies = [
  "adler",
 ]
@@ -1955,6 +1977,7 @@ dependencies = [
  "rust-ini 0.16.1",
  "serde",
  "serde_json",
+ "shared",
  "uuid",
 ]
 
@@ -2110,6 +2133,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pol_exporter"
+version = "0.1.0"
+dependencies = [
+ "chardet",
+ "fileformats",
+ "opengb",
+ "shared",
+]
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2167,6 +2200,7 @@ dependencies = [
  "log",
  "lru",
  "memoffset 0.5.6",
+ "mini-fs",
  "minimp3",
  "radiance-assets",
  "serde",
@@ -2516,11 +2550,23 @@ checksum = "ae1a47186c03a32177042e55dbc5fd5aee900b8e0069a8d70fba96a9375cd012"
 name = "shared"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "byteorder",
  "common",
  "crosscom",
+ "encoding",
  "fileformats",
+ "lazy_static",
+ "log",
+ "md5",
+ "memmap",
  "mini-fs",
+ "minilzo-rs",
+ "miniz_oxide 0.6.2",
  "radiance",
+ "thiserror",
+ "wavefront_obj",
+ "xxtea",
 ]
 
 [[package]]
@@ -3252,10 +3298,10 @@ dependencies = [
  "ndk 0.5.0",
  "ndk-glue 0.5.2",
  "ndk-sys 0.3.0",
- "opengb",
  "radiance",
  "serde",
  "serde_json",
+ "shared",
  "simple_logger",
 ]
 

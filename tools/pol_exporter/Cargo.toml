@@ -1,0 +1,13 @@
+[package]
+name = "pol_exporter"
+version = "0.1.0"
+authors = ["Li Shengqiu <lishengqiu.hit@gmail.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chardet = "0.2.4"
+fileformats = { path = "../../yaobow/fileformats" }
+opengb = { path = "../../yaobow/opengb" }
+shared = { path = "../../yaobow/shared" }

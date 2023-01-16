@@ -1,10 +1,8 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
-use mini_fs::{MiniFs, StoreExt};
 use serde::Serialize;
-use std::io::{BufReader, Read};
-use std::path::Path;
-use std::{error::Error, io::Cursor};
+use std::error::Error;
+use std::io::Read;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Mv3Texture {
@@ -83,20 +81,7 @@ pub struct Mv3File {
     pub models: Vec<Mv3Model>,
 }
 
-pub fn mv3_load_from_file<P: AsRef<Path>>(
-    vfs: &MiniFs,
-    path: P,
-) -> Result<Mv3File, Box<dyn Error>> {
-    let mut reader = BufReader::new(vfs.open(&path)?);
-    mv3_load(&mut reader)
-}
-
-pub fn mv3_load_from_data(data: Vec<u8>) -> Result<Mv3File, Box<dyn Error>> {
-    let mut reader = BufReader::new(Cursor::new(data));
-    mv3_load(&mut reader)
-}
-
-pub fn mv3_load<T: Read>(reader: &mut BufReader<T>) -> Result<Mv3File, Box<dyn Error>> {
+pub fn read_mv3(reader: &mut dyn Read) -> Result<Mv3File, Box<dyn Error>> {
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic)?;
 

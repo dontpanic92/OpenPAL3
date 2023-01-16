@@ -1,14 +1,14 @@
 use byteorder::{LittleEndian, ReadBytesExt};
-use mini_fs::UserFile;
+use common::read_ext::ReadExt;
 use std::{
     cell::RefCell,
     collections::HashMap,
-    io::{Cursor, Read, Seek},
+    io::{Cursor, Read},
     rc::Rc,
 };
 use std::{clone::Clone, path::Path};
 
-use crate::read_ext::ReadExt;
+use crate::fs::memory_file::MemoryFile;
 
 type IoResult<T> = std::io::Result<T>;
 type IoError = std::io::Error;
@@ -119,7 +119,7 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
         })
     }
 
-    pub fn open(&mut self, file_name: &[u8]) -> IoResult<CpkFile> {
+    pub fn open(&mut self, file_name: &[u8]) -> IoResult<MemoryFile> {
         let hash = super::crc_checksum(file_name);
         let entry = self
             .get_entry_by_crc(hash)
@@ -133,17 +133,17 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
         let mut content = vec![0; entry.packed_size as usize];
         self.cursor.read(&mut content)?;
         if !entry.is_compressed() {
-            Ok(CpkFile::new(Cursor::new(content)))
+            Ok(MemoryFile::new(Cursor::new(content)))
         } else {
             let lzo = minilzo_rs::LZO::init().unwrap();
             let decompressed_content = lzo
                 .decompress(&content, entry.origin_size as usize)
                 .or_else(|e| Err(IoError::new(IoErrorKind::InvalidData, e)))?;
-            Ok(CpkFile::new(Cursor::new(decompressed_content)))
+            Ok(MemoryFile::new(Cursor::new(decompressed_content)))
         }
     }
 
-    pub fn open_str(&mut self, file_name: &str) -> IoResult<CpkFile> {
+    pub fn open_str(&mut self, file_name: &str) -> IoResult<MemoryFile> {
         self.open(file_name.to_lowercase().as_bytes())
     }
 
@@ -226,34 +226,6 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
         }
 
         Ok(names)
-    }
-}
-
-pub struct CpkFile {
-    cursor: Cursor<Vec<u8>>,
-}
-
-impl CpkFile {
-    fn new(cursor: Cursor<Vec<u8>>) -> CpkFile {
-        CpkFile { cursor }
-    }
-
-    pub fn content(&self) -> Vec<u8> {
-        self.cursor.clone().into_inner()
-    }
-}
-
-impl UserFile for CpkFile {}
-
-impl Read for CpkFile {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.cursor.read(buf)
-    }
-}
-
-impl Seek for CpkFile {
-    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
-        self.cursor.seek(pos)
     }
 }
 

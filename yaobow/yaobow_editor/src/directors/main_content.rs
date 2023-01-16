@@ -1,29 +1,31 @@
 use chardet::{charset2encoding, detect};
-use common::{cpk::CpkArchive, store_ext::StoreExt2};
+use common::store_ext::StoreExt2;
 use encoding::{label::encoding_from_whatwg_label, DecoderTrap};
 use fileformats::dff::read_dff;
+use fileformats::mv3::read_mv3;
 use fileformats::pol::read_pol;
 use image::ImageFormat;
 use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
 use mini_fs::{MiniFs, StoreExt};
 use native_dialog::{FileDialog, MessageDialog, MessageType};
 use opengb::loaders::{
-    cvd_loader::cvd_load_from_file, mv3_loader::mv3_load_from_file, nav_loader::nav_load_from_file,
-    sce_loader::sce_load_from_file, scn_loader::scn_load_from_file,
+    cvd_loader::cvd_load_from_file, nav_loader::nav_load_from_file, sce_loader::sce_load_from_file,
+    scn_loader::scn_load_from_file,
 };
 use radiance::{
     audio::AudioEngine, audio::Codec as AudioCodec, rendering::ComponentFactory,
     video::Codec as VideoCodec,
 };
 use serde::Serialize;
+use shared::fs::cpk::CpkArchive;
 use std::io::Read;
 use std::{io::BufReader, path::Path, rc::Rc};
 use wavefront_obj::mtl::MtlSet;
 
-use crate::exporters::pol_obj_exporter::export_pol_to_obj;
-use crate::exporters::{
+use shared::exporters::{
     mv3_obj_exporter::export_mv3_to_obj,
     obj_exporter::{export_to_file, ObjSet},
+    pol_obj_exporter::export_pol_to_obj,
 };
 
 use super::{
@@ -81,7 +83,7 @@ impl ContentTabs {
                 Self::NONE_EXPORT,
             ),
             Some("mv3") => {
-                let mv3_file = mv3_load_from_file(vfs, path.as_ref()).ok();
+                let mv3_file = read_mv3(&mut BufReader::new(vfs.open(&path).unwrap())).ok();
                 let name = path
                     .as_ref()
                     .file_name()
@@ -90,7 +92,7 @@ impl ContentTabs {
                     .to_string();
                 self.open_json_from(
                     path.as_ref(),
-                    || mv3_load_from_file(vfs, path.as_ref()).ok(),
+                    || read_mv3(&mut BufReader::new(vfs.open(&path).unwrap())).ok(),
                     true,
                     Some(move || {
                         Self::export(|| {

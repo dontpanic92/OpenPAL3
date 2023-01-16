@@ -1,7 +1,6 @@
 use crate::scene::{RoleAnimation, RoleAnimationRepeatMode, RoleEntity, ScnScene};
 use crate::{
     loaders::{
-        mv3_loader::*,
         nav_loader::{nav_load_from_file, NavFile},
         pol::create_entity_from_pol_model,
         sce_loader::{sce_load_from_file, SceFile},
@@ -9,19 +8,18 @@ use crate::{
     },
     scene::create_entity_from_cvd_model,
 };
-use common::{cpk::CpkFs, store_ext::StoreExt2};
+use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use encoding::{types::Encoding, DecoderTrap};
+use fileformats::mv3::{read_mv3, Mv3File};
 use ini::Ini;
-use log::debug;
 use mini_fs::prelude::*;
-use mini_fs::{LocalFs, MiniFs};
+use mini_fs::MiniFs;
 use radiance::interfaces::IEntity;
 use radiance::rendering::{ComponentFactory, MaterialDef, SimpleMaterialDef};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use shared::fs::init_virtual_fs;
+use std::io::Cursor;
+use std::path::{Path, PathBuf};
 use std::{io, rc::Rc};
 
 pub struct AssetManager {
@@ -38,9 +36,7 @@ pub struct AssetManager {
 
 impl AssetManager {
     pub fn new<P: AsRef<Path>>(factory: Rc<dyn ComponentFactory>, path: P) -> Self {
-        let local = LocalFs::new(path.as_ref());
-        let vfs = MiniFs::new(false).mount("/", local);
-        let vfs = Self::mount_cpk_recursive(vfs, path.as_ref(), &PathBuf::from("./"));
+        let vfs = init_virtual_fs(path);
         Self {
             factory,
             basedata_path: PathBuf::from("/basedata/basedata"),
@@ -140,7 +136,7 @@ impl AssetManager {
             .join(action_name)
             .with_extension("mv3");
 
-        mv3_load_from_file(&self.vfs, &path)
+        read_mv3(&mut Cursor::new(self.vfs.read_to_end(&path).unwrap()))
             .map(|f| {
                 RoleAnimation::new(
                     &self.factory,
@@ -296,30 +292,6 @@ impl AssetManager {
     pub fn load_snd_data(&self, snd_name: &str) -> io::Result<Vec<u8>> {
         let path = self.snd_path.join(snd_name).with_extension("wav");
         self.vfs.read_to_end(path)
-    }
-
-    fn mount_cpk_recursive(mut vfs: MiniFs, asset_path: &Path, relative_path: &Path) -> MiniFs {
-        let path = asset_path.join(relative_path);
-        if path.is_dir() {
-            for entry in fs::read_dir(path).unwrap() {
-                let entry = entry.unwrap();
-                let new_path = relative_path.join(entry.file_name());
-                vfs = Self::mount_cpk_recursive(vfs, asset_path, &new_path);
-            }
-        } else {
-            if Some(true)
-                == path
-                    .extension()
-                    .and_then(|ext| Some(ext.to_str() == Some("cpk")))
-            {
-                let vfs_path = PathBuf::from("/").join(relative_path.with_extension(""));
-
-                debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
-                vfs = vfs.mount(vfs_path, CpkFs::new(path).unwrap())
-            }
-        }
-
-        vfs
     }
 
     fn get_object_item_path(&self, obj_name: &str) -> PathBuf {

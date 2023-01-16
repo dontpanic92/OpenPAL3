@@ -1,3 +1,5 @@
+use mini_fs::MiniFs;
+
 use super::DebugLayer;
 use crate::{
     audio::AudioEngine,
@@ -16,6 +18,7 @@ pub struct CoreRadianceEngine {
     input_engine: Rc<RefCell<dyn InputEngineInternal>>,
     imgui_context: Rc<RefCell<ImguiContext>>,
     scene_manager: Option<Box<dyn SceneManager>>,
+    virtual_fs: Rc<RefCell<MiniFs>>,
     debug_layer: Option<Box<dyn DebugLayer>>,
 }
 
@@ -33,6 +36,7 @@ impl CoreRadianceEngine {
             input_engine,
             imgui_context,
             scene_manager: Some(scene_manager),
+            virtual_fs: Rc::new(RefCell::new(MiniFs::new(false))),
             debug_layer: None,
         }
     }
@@ -47,6 +51,10 @@ impl CoreRadianceEngine {
 
     pub fn input_engine(&self) -> Rc<RefCell<dyn InputEngine>> {
         self.input_engine.borrow().as_input_engine()
+    }
+
+    pub fn virtual_fs(&self) -> Rc<RefCell<MiniFs>> {
+        self.virtual_fs.clone()
     }
 
     pub fn set_debug_layer(&mut self, debug_layer: Box<dyn DebugLayer>) {

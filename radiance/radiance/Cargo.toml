@@ -18,6 +18,7 @@ lazy_static = "1.2.0"
 log = "0.4.13"
 lru = { version = "0.7.1", features=["nightly"] }
 memoffset = "0.5.3"
+mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 radiance-assets = { path = "../radiance-assets" }
 serde = { version = "1.0.106", features = ["derive"] }
 uuid = "0.8"

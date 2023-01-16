@@ -11,7 +11,7 @@ default-run = "yaobow"
 byteorder = "1.3.4"
 common = { path = "../common" }
 imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
-opengb = { path = "../opengb" }
+shared = { path = "../shared" }
 fileformats = { path = "../fileformats" }
 radiance = { path = "../../radiance/radiance" }
 simple_logger = "1.16.0"
@@ -45,5 +45,4 @@ launch_mode = "singleTop"
 orientation = "portrait"
 
 [features]
-default = ["ffmpeg"]
-ffmpeg = ["opengb/ffmpeg"]
+default = []
