@@ -4,9 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use fileformats::{
-    dff::{list_chunks, read_dff},
-};
+use fileformats::dff::{list_chunks, read_dff};
 use openpal4::{
     application::OpenPal4Application,
     scripting::{global_context::ScriptGlobalContext, module::ScriptModule, vm::ScriptVm},

@@ -35,8 +35,12 @@ pub struct AssetManager {
 }
 
 impl AssetManager {
-    pub fn new<P: AsRef<Path>>(factory: Rc<dyn ComponentFactory>, path: P) -> Self {
-        let vfs = init_virtual_fs(path);
+    pub fn new<P: AsRef<Path>>(
+        factory: Rc<dyn ComponentFactory>,
+        path: P,
+        pkg_key: Option<&str>,
+    ) -> Self {
+        let vfs = init_virtual_fs(path, pkg_key);
         Self {
             factory,
             basedata_path: PathBuf::from("/basedata/basedata"),

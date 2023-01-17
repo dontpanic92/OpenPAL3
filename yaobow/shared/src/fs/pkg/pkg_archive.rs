@@ -12,19 +12,19 @@ use crate::fs::memory_file::MemoryFile;
 #[derive(Debug)]
 pub struct PkgArchive<T: AsRef<[u8]>> {
     cursor: Cursor<T>,
-    header: PkgHeader,
-    pub entries: PkgEntires,
+    _header: PkgHeader,
+    pub entries: PkgEntries,
 }
 
 impl<T: AsRef<[u8]>> PkgArchive<T> {
     pub fn load(mut cursor: Cursor<T>, decrypt_key: &str) -> anyhow::Result<PkgArchive<T>> {
-        let header = PkgHeader::read(&mut cursor)?;
-        cursor.set_position(header.entries_start as u64);
+        let _header = PkgHeader::read(&mut cursor)?;
+        cursor.set_position(_header.entries_start as u64);
 
-        let entries = PkgEntires::read(&mut cursor, &decrypt_key)?;
+        let entries = PkgEntries::read(&mut cursor, &decrypt_key)?;
         Ok(Self {
             cursor,
-            header,
+            _header,
             entries,
         })
     }
@@ -36,8 +36,8 @@ impl<T: AsRef<[u8]>> PkgArchive<T> {
             path = format!("\\{}", path);
         }
 
-        for entry in &self.entries.entries {
-            if entry.filename == path {
+        for entry in &self.entries.file_entries {
+            if entry.fullpath == path {
                 self.cursor.set_position(entry.start_position as u64);
                 let data = self.cursor.read_u8_vec(entry.size as usize)?;
                 return Ok(MemoryFile::new(Cursor::new(data)));
@@ -112,17 +112,19 @@ impl PkgHeader {
 }
 
 #[derive(Debug, Clone)]
-pub struct PkgEntry {
+pub struct PkgFileEntry {
+    pub fullpath: String,
     pub filename: String,
     pub start_position: u32,
     pub size: u32,
     pub size2: u32,
 }
 
-impl PkgEntry {
-    pub fn new(filename: String, start_position: u32, size: u32, size2: u32) -> Self {
+impl PkgFileEntry {
+    pub fn new(fullpath: String, start_position: u32, size: u32, size2: u32) -> Self {
         Self {
-            filename,
+            fullpath: fullpath.clone(),
+            filename: fullpath.split("\\").last().unwrap_or("").to_string(),
             start_position,
             size,
             size2,
@@ -131,13 +133,69 @@ impl PkgEntry {
 }
 
 #[derive(Debug, Clone)]
-pub struct PkgEntires {
-    pub total_length: u32,
-    pub md5hash: Vec<u8>,
-    pub entries: Vec<PkgEntry>,
+pub struct PkgFolderEntry {
+    pub name: String,
+    pub children: Vec<PkgEntry>,
 }
 
-impl PkgEntires {
+impl PkgFolderEntry {
+    pub fn list_content<P: AsRef<Path>>(&self, path: P) -> std::io::Result<Vec<PkgEntry>> {
+        let mut components = path.as_ref().components();
+        let first = components.next();
+        match first {
+            Some(component) => {
+                let rest = components.as_path();
+                for entry in &self.children {
+                    match entry {
+                        PkgEntry::File(_) => {
+                            return Err(std::io::Error::from(std::io::ErrorKind::NotADirectory))
+                        }
+                        PkgEntry::Folder(f) => {
+                            if f.name.as_str() == component.as_os_str().to_str().unwrap() {
+                                return f.list_content(rest);
+                            }
+                        }
+                    }
+                }
+
+                return Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+            }
+            None => Ok(self.children.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum PkgEntry {
+    File(PkgFileEntry),
+    Folder(PkgFolderEntry),
+}
+
+impl PkgEntry {
+    pub fn name(&self) -> &str {
+        match self {
+            PkgEntry::File(f) => &f.filename,
+            PkgEntry::Folder(f) => &f.name,
+        }
+    }
+
+    pub fn as_folder_mut(&mut self) -> Option<&mut PkgFolderEntry> {
+        match self {
+            PkgEntry::File(_) => None,
+            PkgEntry::Folder(f) => Some(f),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PkgEntries {
+    pub total_length: u32,
+    pub md5hash: Vec<u8>,
+    pub file_entries: Vec<PkgFileEntry>,
+    pub root_entry: PkgFolderEntry,
+}
+
+impl PkgEntries {
     pub fn read(reader: &mut dyn Read, decrypt_key: &str) -> anyhow::Result<Self> {
         let decrypt_key = Self::preprocess_decrypt_key(decrypt_key);
 
@@ -157,8 +215,6 @@ impl PkgEntires {
             encoding::DecoderTrap::Ignore,
         );
 
-        println!("{:0x?} {:?}", md5hash, s);
-
         let mut buf = vec![];
         let _ = reader.read_to_end(&mut buf)?;
 
@@ -173,7 +229,6 @@ impl PkgEntires {
         }
 
         let md5_computed = context.compute();
-        println!("{:?}", md5_computed);
         if md5hash == &*md5_computed {
             Err(PkgReadError::HashMismatch)?;
         }
@@ -181,7 +236,7 @@ impl PkgEntires {
         let buf = miniz_oxide::inflate::decompress_to_vec_zlib(&buf)
             .map_err(|err| PkgReadError::DecompressionError(format!("{:?}", err)))?;
 
-        let mut entries = vec![];
+        let mut file_entries = vec![];
         let mut entry_cursor = Cursor::new(buf);
         while !entry_cursor.is_empty() {
             let name_len = entry_cursor.read_u32_le()?;
@@ -189,19 +244,21 @@ impl PkgEntires {
             let start_position = entry_cursor.read_u32_le()?;
             let size = entry_cursor.read_u32_le()?;
             let size2 = entry_cursor.read_u32_le()?;
-            entries.push(PkgEntry::new(name, start_position, size, size2));
+            file_entries.push(PkgFileEntry::new(name, start_position, size, size2));
         }
+
+        let root_entry = Self::construct_folder_structure(&file_entries);
 
         Ok(Self {
             total_length,
             md5hash,
-            entries,
+            file_entries,
+            root_entry,
         })
     }
 
     fn preprocess_decrypt_key(key: &str) -> Vec<u8> {
         let mut key = Vec::from(key.as_bytes());
-        println!("key: {:?}", &key);
         let pivot = key[key.len() / 2] ^ 0xa4;
 
         for i in 0..key.len() {
@@ -211,5 +268,58 @@ impl PkgEntires {
         let last = key.len() - 1;
         key.swap(0, last);
         key
+    }
+
+    fn construct_folder_structure(file_entries: &Vec<PkgFileEntry>) -> PkgFolderEntry {
+        let mut root_children = vec![];
+        for entry in file_entries {
+            let path = entry.fullpath.trim_start_matches('\\');
+            let components = path.split('\\').collect();
+            Self::create_entry_for(entry, &mut root_children, components);
+        }
+
+        PkgFolderEntry {
+            name: "/".to_string(),
+            children: root_children,
+        }
+    }
+
+    fn create_entry_for(
+        file_entry: &PkgFileEntry,
+        current: &mut Vec<PkgEntry>,
+        mut path_components: Vec<&str>,
+    ) {
+        let c = path_components.remove(0);
+
+        if path_components.len() == 0 {
+            current.push(PkgEntry::File(file_entry.clone()));
+        } else {
+            let mut children = None;
+            for child in current.iter_mut() {
+                match child {
+                    PkgEntry::File(_) => {}
+                    PkgEntry::Folder(f) => {
+                        if f.name == *c {
+                            children = Some(&mut f.children);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if children.is_none() {
+                current.push(PkgEntry::Folder(PkgFolderEntry {
+                    name: (*c).to_owned(),
+                    children: vec![],
+                }));
+                children = current
+                    .last_mut()
+                    .unwrap()
+                    .as_folder_mut()
+                    .and_then(|f| Some(&mut f.children));
+            }
+
+            Self::create_entry_for(file_entry, children.unwrap(), path_components);
+        }
     }
 }

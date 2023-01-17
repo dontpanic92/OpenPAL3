@@ -31,6 +31,7 @@ impl ApplicationExtension<OpenPal3Application> for OpenPal3Application {
         self.asset_mgr = Some(Rc::new(AssetManager::new(
             app.engine_mut().rendering_component_factory(),
             &self.root_path,
+            None,
         )));
 
         let debug_layer = OpenPal3DebugLayer::new(input_engine.clone(), audio_engine.clone());

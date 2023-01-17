@@ -93,7 +93,7 @@ fn create_geometry<P: AsRef<Path>>(
         (
             radiance::rendering::SimpleMaterialDef::create(
                 tex_name,
-                |name| Some(vfs.open(&tex_path).unwrap()),
+                |_name| Some(vfs.open(&tex_path).unwrap()),
                 true,
             ),
             texcoords,
