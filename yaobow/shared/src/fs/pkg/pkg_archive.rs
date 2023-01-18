@@ -36,10 +36,20 @@ impl<T: AsRef<[u8]>> PkgArchive<T> {
             path = format!("\\{}", path);
         }
 
+        println!("opening {:?}", path);
         for entry in &self.entries.file_entries {
+            println!(
+                "checking {:?} {} {} {}",
+                entry.fullpath, entry.start_position, entry.size, entry.size2
+            );
             if entry.fullpath == path {
                 self.cursor.set_position(entry.start_position as u64);
-                let data = self.cursor.read_u8_vec(entry.size as usize)?;
+                let mut data = self.cursor.read_u8_vec(entry.size as usize)?;
+                if entry.size != entry.size2 {
+                    data = miniz_oxide::inflate::decompress_to_vec_zlib(&data).map_err(|_| {
+                        PkgReadError::DecompressionError("Unable to decompress file".to_string())
+                    })?;
+                }
                 return Ok(MemoryFile::new(Cursor::new(data)));
             }
         }
@@ -206,7 +216,7 @@ impl PkgEntries {
             md5hash[i] ^= 0xa4;
         }
 
-        let s = encoding::all::GBK.decode(
+        let _ = encoding::all::GBK.decode(
             &md5hash
                 .clone()
                 .into_iter()

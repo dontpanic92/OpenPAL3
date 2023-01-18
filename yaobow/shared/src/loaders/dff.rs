@@ -100,7 +100,11 @@ fn create_geometry<P: AsRef<Path>>(
         )
     } else {
         (
-            radiance::rendering::SimpleMaterialDef::create("n", |name| None::<Cursor<&[u8]>>, true),
+            radiance::rendering::SimpleMaterialDef::create(
+                "n",
+                |_name| None::<Cursor<&[u8]>>,
+                true,
+            ),
             vec![],
         )
     };
