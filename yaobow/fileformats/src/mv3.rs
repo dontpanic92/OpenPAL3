@@ -1,7 +1,6 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
 use serde::Serialize;
-use std::error::Error;
 use std::io::Read;
 
 #[derive(Debug, Serialize, Clone)]
@@ -81,7 +80,7 @@ pub struct Mv3File {
     pub models: Vec<Mv3Model>,
 }
 
-pub fn read_mv3(reader: &mut dyn Read) -> Result<Mv3File, Box<dyn Error>> {
+pub fn read_mv3(reader: &mut dyn Read) -> anyhow::Result<Mv3File> {
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic)?;
 
@@ -162,7 +161,7 @@ pub fn read_mv3(reader: &mut dyn Read) -> Result<Mv3File, Box<dyn Error>> {
     })
 }
 
-fn read_mv3_model(reader: &mut dyn Read) -> Result<Mv3Model, Box<dyn Error>> {
+fn read_mv3_model(reader: &mut dyn Read) -> anyhow::Result<Mv3Model> {
     let unknown = reader.read_u8_vec(64)?;
     let vertex_per_frame = reader.read_u32::<LittleEndian>()?;
     let mut aabb_min = [0f32; 3];
@@ -223,7 +222,7 @@ fn read_mv3_model(reader: &mut dyn Read) -> Result<Mv3Model, Box<dyn Error>> {
     })
 }
 
-fn read_mv3_mesh(reader: &mut dyn Read) -> Result<Mv3Mesh, Box<dyn Error>> {
+fn read_mv3_mesh(reader: &mut dyn Read) -> anyhow::Result<Mv3Mesh> {
     let unknown = reader.read_u32::<LittleEndian>()?;
     let triangle_count = reader.read_u32::<LittleEndian>()?;
     let mut triangles = vec![];

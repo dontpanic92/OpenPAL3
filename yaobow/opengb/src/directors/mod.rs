@@ -6,7 +6,7 @@ mod sce_vm;
 
 use self::sce_vm::SceState;
 use crate::{
-    classes::IRoleModel,
+    classes::IRoleController,
     scene::{RoleController, ScnScene},
 };
 pub use adv_director::AdventureDirector;
@@ -55,7 +55,7 @@ pub trait SceneManagerExtensions: SceneManager {
             .get_role_entity_mut(resolve_role_id(state, role_id))
     }
 
-    fn resolve_role_do<T, F: Fn(ComRc<IEntity>, ComRc<IRoleModel>) -> T>(
+    fn resolve_role_do<T, F: Fn(ComRc<IEntity>, ComRc<IRoleController>) -> T>(
         &mut self,
         state: &SceState,
         role_id: i32,
@@ -71,7 +71,7 @@ pub trait SceneManagerExtensions: SceneManager {
         }
     }
 
-    fn resolve_role_mut_do<T, F: Fn(ComRc<IEntity>, ComRc<IRoleModel>) -> T>(
+    fn resolve_role_mut_do<T, F: Fn(ComRc<IEntity>, ComRc<IRoleController>) -> T>(
         &mut self,
         state: &SceState,
         role_id: i32,

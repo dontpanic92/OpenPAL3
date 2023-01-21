@@ -6,8 +6,8 @@ use crate::rendering::Window;
 use ash::extensions::khr::{Surface, Swapchain};
 use ash::prelude::VkResult;
 use ash::vk::{
-    Extent2D, PhysicalDevice, PresentModeKHR, SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR,
-    SwapchainKHR,
+    make_api_version, Extent2D, PhysicalDevice, PresentModeKHR, SurfaceCapabilitiesKHR,
+    SurfaceFormatKHR, SurfaceKHR, SwapchainKHR,
 };
 use ash::{vk, Device, Entry, Instance};
 use std::error::Error;
@@ -17,6 +17,7 @@ use std::rc::Rc;
 
 pub fn create_instance(entry: &Entry) -> VkResult<Instance> {
     let app_info = vk::ApplicationInfo::builder()
+        .api_version(make_api_version(0, 1, 0, 0))
         .engine_name(&CString::new(constants::STR_ENGINE_NAME).unwrap())
         .build();
     let extension_names = helpers::instance_extension_names();

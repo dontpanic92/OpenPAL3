@@ -1031,6 +1031,9 @@ pub struct IAnimatedMeshComponentVirtualTable {
         entity: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub morph_animation_state:
+        fn(this: *const *const std::os::raw::c_void) -> radiance::rendering::MorphAnimationState,
+    pub replay: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
 }
 
 #[repr(C)]
@@ -1106,13 +1109,35 @@ impl IAnimatedMeshComponent {
         }
     }
 
+    pub fn morph_animation_state(&self) -> radiance::rendering::MorphAnimationState {
+        unsafe {
+            let this = self as *const IAnimatedMeshComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).morph_animation_state)(this);
+
+            ret
+        }
+    }
+
+    pub fn replay(&self) -> () {
+        unsafe {
+            let this = self as *const IAnimatedMeshComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).replay)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
         uuid::Uuid::from_bytes(IAnimatedMeshComponent::INTERFACE_ID)
     }
 }
 
-pub trait IAnimatedMeshComponentImpl {}
+pub trait IAnimatedMeshComponentImpl {
+    fn morph_animation_state(&self) -> radiance::rendering::MorphAnimationState;
+    fn replay(&self) -> ();
+}
 
 impl crosscom::ComInterface for IAnimatedMeshComponent {
     // 5c56adbc-bc22-4275-b99a-09973a3ffff0
@@ -1203,6 +1228,20 @@ macro_rules! ComObject_AnimatedMeshComponent {
                 (previous - 1) as std::os::raw::c_long
             }
 
+            fn morph_animation_state(
+                this: *const *const std::os::raw::c_void,
+            ) -> radiance::rendering::MorphAnimationState {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
+                    (*__crosscom_object).inner.morph_animation_state()
+                }
+            }
+
+            unsafe extern "system" fn replay(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
+                (*__crosscom_object).inner.replay().into()
+            }
+
             unsafe extern "system" fn on_loading(
                 this: *const *const std::os::raw::c_void,
                 entity: *const *const std::os::raw::c_void,
@@ -1239,6 +1278,8 @@ macro_rules! ComObject_AnimatedMeshComponent {
                         release,
                         on_loading,
                         on_updating,
+                        morph_animation_state,
+                        replay,
                     },
                 };
 

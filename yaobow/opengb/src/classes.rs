@@ -1,9 +1,9 @@
 use crate as opengb;
-// Interface IRoleModel
+// Interface IRoleController
 
 #[repr(C)]
 #[allow(non_snake_case)]
-pub struct IRoleModelVirtualTable {
+pub struct IRoleControllerVirtualTable {
     pub query_interface: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
         guid: uuid::Uuid,
@@ -27,23 +27,23 @@ pub struct IRoleModelVirtualTable {
 
 #[repr(C)]
 #[allow(dead_code)]
-pub struct IRoleModelVirtualTableCcw {
+pub struct IRoleControllerVirtualTableCcw {
     pub offset: isize,
-    pub vtable: IRoleModelVirtualTable,
+    pub vtable: IRoleControllerVirtualTable,
 }
 
 #[repr(C)]
 #[allow(dead_code)]
-pub struct IRoleModel {
-    pub vtable: *const IRoleModelVirtualTable,
+pub struct IRoleController {
+    pub vtable: *const IRoleControllerVirtualTable,
 }
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
-impl IRoleModel {
+impl IRoleController {
     pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
-        let this = self as *const IRoleModel as *const *const std::os::raw::c_void;
+        let this = self as *const IRoleController as *const *const std::os::raw::c_void;
         let mut raw = 0 as *const *const std::os::raw::c_void;
         let guid = uuid::Uuid::from_bytes(T::INTERFACE_ID);
         let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
@@ -56,7 +56,7 @@ impl IRoleModel {
 
     pub fn add_ref(&self) -> std::os::raw::c_long {
         unsafe {
-            let this = self as *const IRoleModel as *const *const std::os::raw::c_void;
+            let this = self as *const IRoleController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).add_ref)(this);
             let ret: std::os::raw::c_long = ret.into();
 
@@ -66,7 +66,7 @@ impl IRoleModel {
 
     pub fn release(&self) -> std::os::raw::c_long {
         unsafe {
-            let this = self as *const IRoleModel as *const *const std::os::raw::c_void;
+            let this = self as *const IRoleController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).release)(this);
             let ret: std::os::raw::c_long = ret.into();
 
@@ -76,7 +76,7 @@ impl IRoleModel {
 
     pub fn on_loading(&self, entity: crosscom::ComRc<radiance::interfaces::IEntity>) -> () {
         unsafe {
-            let this = self as *const IRoleModel as *const *const std::os::raw::c_void;
+            let this = self as *const IRoleController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).on_loading)(this, entity.into());
             let ret: () = ret.into();
 
@@ -90,7 +90,7 @@ impl IRoleModel {
         delta_sec: f32,
     ) -> () {
         unsafe {
-            let this = self as *const IRoleModel as *const *const std::os::raw::c_void;
+            let this = self as *const IRoleController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).on_updating)(this, entity.into(), delta_sec.into());
             let ret: () = ret.into();
 
@@ -100,7 +100,7 @@ impl IRoleModel {
 
     pub fn get(&self) -> &'static opengb::scene::RoleController {
         unsafe {
-            let this = self as *const IRoleModel as *const *const std::os::raw::c_void;
+            let this = self as *const IRoleController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).get)(this);
 
             ret
@@ -109,15 +109,15 @@ impl IRoleModel {
 
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
-        uuid::Uuid::from_bytes(IRoleModel::INTERFACE_ID)
+        uuid::Uuid::from_bytes(IRoleController::INTERFACE_ID)
     }
 }
 
-pub trait IRoleModelImpl {
+pub trait IRoleControllerImpl {
     fn get(&self) -> &'static opengb::scene::RoleController;
 }
 
-impl crosscom::ComInterface for IRoleModel {
+impl crosscom::ComInterface for IRoleController {
     // e11fe493-654a-4072-b883-a7ee1a35a24a
     const INTERFACE_ID: [u8; 16] = [
         225u8, 31u8, 228u8, 147u8, 101u8, 74u8, 64u8, 114u8, 184u8, 131u8, 167u8, 238u8, 26u8,
@@ -125,30 +125,30 @@ impl crosscom::ComInterface for IRoleModel {
     ];
 }
 
-// Class RoleModel
+// Class RoleController
 
 #[allow(unused)]
 #[macro_export]
-macro_rules! ComObject_RoleModel {
+macro_rules! ComObject_RoleController {
     ($impl_type: ty) => {
         #[allow(dead_code)]
         #[allow(non_snake_case)]
         #[allow(unused)]
-        mod RoleModel_crosscom_impl {
+        mod RoleController_crosscom_impl {
             use crate as opengb;
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use opengb::classes::ICvdModelImpl;
-            use opengb::classes::IRoleModelImpl;
+            use opengb::classes::IRoleControllerImpl;
             use radiance::interfaces::IAnimatedMeshComponentImpl;
             use radiance::interfaces::IComponentImpl;
             use radiance::interfaces::IEntityImpl;
             use radiance::interfaces::IStaticMeshComponentImpl;
 
             #[repr(C)]
-            pub struct RoleModelCcw {
-                IRoleModel: opengb::classes::IRoleModel,
+            pub struct RoleControllerCcw {
+                IRoleController: opengb::classes::IRoleController,
 
                 ref_count: std::sync::atomic::AtomicU32,
                 pub inner: $impl_type,
@@ -159,7 +159,7 @@ macro_rules! ComObject_RoleModel {
                 guid: uuid::Uuid,
                 retval: &mut *const *const std::os::raw::c_void,
             ) -> std::os::raw::c_long {
-                let object = crosscom::get_object::<RoleModelCcw>(this);
+                let object = crosscom::get_object::<RoleControllerCcw>(this);
                 match guid.as_bytes() {
                     &crosscom::IUnknown::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
@@ -173,7 +173,7 @@ macro_rules! ComObject_RoleModel {
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &opengb::classes::IRoleModel::INTERFACE_ID => {
+                    &opengb::classes::IRoleController::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
@@ -186,7 +186,7 @@ macro_rules! ComObject_RoleModel {
             unsafe extern "system" fn add_ref(
                 this: *const *const std::os::raw::c_void,
             ) -> std::os::raw::c_long {
-                let object = crosscom::get_object::<RoleModelCcw>(this);
+                let object = crosscom::get_object::<RoleControllerCcw>(this);
                 let previous = (*object)
                     .ref_count
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -196,13 +196,13 @@ macro_rules! ComObject_RoleModel {
             unsafe extern "system" fn release(
                 this: *const *const std::os::raw::c_void,
             ) -> std::os::raw::c_long {
-                let object = crosscom::get_object::<RoleModelCcw>(this);
+                let object = crosscom::get_object::<RoleControllerCcw>(this);
 
                 let previous = (*object)
                     .ref_count
                     .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
                 if previous - 1 == 0 {
-                    Box::from_raw(object as *mut RoleModelCcw);
+                    Box::from_raw(object as *mut RoleControllerCcw);
                 }
 
                 (previous - 1) as std::os::raw::c_long
@@ -212,7 +212,7 @@ macro_rules! ComObject_RoleModel {
                 this: *const *const std::os::raw::c_void,
             ) -> &'static opengb::scene::RoleController {
                 unsafe {
-                    let __crosscom_object = crosscom::get_object::<RoleModelCcw>(this);
+                    let __crosscom_object = crosscom::get_object::<RoleControllerCcw>(this);
                     (*__crosscom_object).inner.get()
                 }
             }
@@ -223,7 +223,7 @@ macro_rules! ComObject_RoleModel {
             ) -> () {
                 let entity: crosscom::ComRc<radiance::interfaces::IEntity> = entity.into();
 
-                let __crosscom_object = crosscom::get_object::<RoleModelCcw>(this);
+                let __crosscom_object = crosscom::get_object::<RoleControllerCcw>(this);
                 (*__crosscom_object).inner.on_loading(entity.into()).into()
             }
 
@@ -235,7 +235,7 @@ macro_rules! ComObject_RoleModel {
                 let entity: crosscom::ComRc<radiance::interfaces::IEntity> = entity.into();
                 let delta_sec: f32 = delta_sec.into();
 
-                let __crosscom_object = crosscom::get_object::<RoleModelCcw>(this);
+                let __crosscom_object = crosscom::get_object::<RoleControllerCcw>(this);
                 (*__crosscom_object)
                     .inner
                     .on_updating(entity.into(), delta_sec.into())
@@ -243,11 +243,11 @@ macro_rules! ComObject_RoleModel {
             }
 
             #[allow(non_upper_case_globals)]
-            pub const GLOBAL_IRoleModelVirtualTable_CCW_FOR_RoleModel:
-                opengb::classes::IRoleModelVirtualTableCcw =
-                opengb::classes::IRoleModelVirtualTableCcw {
+            pub const GLOBAL_IRoleControllerVirtualTable_CCW_FOR_RoleController:
+                opengb::classes::IRoleControllerVirtualTableCcw =
+                opengb::classes::IRoleControllerVirtualTableCcw {
                     offset: 0,
-                    vtable: opengb::classes::IRoleModelVirtualTable {
+                    vtable: opengb::classes::IRoleControllerVirtualTable {
                         query_interface,
                         add_ref,
                         release,
@@ -258,13 +258,14 @@ macro_rules! ComObject_RoleModel {
                 };
 
             impl crosscom::ComObject for $impl_type {
-                type CcwType = RoleModelCcw;
+                type CcwType = RoleControllerCcw;
 
                 fn create_ccw(self) -> Self::CcwType {
                     Self::CcwType {
-                        IRoleModel: opengb::classes::IRoleModel {
-                            vtable: &GLOBAL_IRoleModelVirtualTable_CCW_FOR_RoleModel.vtable
-                                as *const opengb::classes::IRoleModelVirtualTable,
+                        IRoleController: opengb::classes::IRoleController {
+                            vtable: &GLOBAL_IRoleControllerVirtualTable_CCW_FOR_RoleController
+                                .vtable
+                                as *const opengb::classes::IRoleControllerVirtualTable,
                         },
 
                         ref_count: std::sync::atomic::AtomicU32::new(0),
@@ -276,7 +277,7 @@ macro_rules! ComObject_RoleModel {
                     unsafe {
                         let this = self as *const _ as *const u8;
                         let this =
-                            this.offset(-(crosscom::offset_of!(RoleModelCcw, inner) as isize));
+                            this.offset(-(crosscom::offset_of!(RoleControllerCcw, inner) as isize));
                         &*(this as *const Self::CcwType)
                     }
                 }
@@ -285,7 +286,7 @@ macro_rules! ComObject_RoleModel {
     };
 }
 
-// pub use ComObject_RoleModel;
+// pub use ComObject_RoleController;
 
 // Interface ICvdModel
 
@@ -416,7 +417,7 @@ macro_rules! ComObject_CvdModel {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use opengb::classes::ICvdModelImpl;
-            use opengb::classes::IRoleModelImpl;
+            use opengb::classes::IRoleControllerImpl;
             use radiance::interfaces::IAnimatedMeshComponentImpl;
             use radiance::interfaces::IComponentImpl;
             use radiance::interfaces::IEntityImpl;

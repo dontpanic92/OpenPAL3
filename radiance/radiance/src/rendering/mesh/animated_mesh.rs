@@ -6,7 +6,7 @@ use std::{
 use crosscom::ComRc;
 
 use crate::{
-    interfaces::{IComponentImpl, IEntity},
+    interfaces::{IAnimatedMeshComponentImpl, IComponentImpl, IEntity},
     math::{Vec2, Vec3},
     rendering::{ComponentFactory, Geometry, TexCoord, VertexBuffer, VertexComponents},
     ComObject_AnimatedMeshComponent,
@@ -19,9 +19,16 @@ pub struct AnimatedMeshComponent {
     props: RefCell<AnimatedMeshComponentProps>,
 }
 
+#[derive(PartialEq, Copy, Clone)]
+pub enum MorphAnimationState {
+    NotStarted,
+    Playing,
+    Finished,
+}
+
 struct AnimatedMeshComponentProps {
     morph_targets: Vec<MorphTarget>,
-    morph_animation_enabled: bool,
+    morph_animation_state: MorphAnimationState,
     last_time: f32,
 }
 
@@ -33,7 +40,7 @@ impl AnimatedMeshComponent {
             component_factory,
             props: RefCell::new(AnimatedMeshComponentProps {
                 morph_targets: vec![],
-                morph_animation_enabled: false,
+                morph_animation_state: MorphAnimationState::NotStarted,
                 last_time: 0.,
             }),
         }
@@ -60,6 +67,9 @@ impl AnimatedMeshComponent {
 
     pub fn set_morph_targets(&self, morph_targets: Vec<MorphTarget>) {
         self.props_mut().morph_targets = morph_targets;
+        self.props_mut().morph_animation_state = MorphAnimationState::Playing;
+        self.reset_morph_last_time();
+
         if self.props().morph_targets.is_empty() {
             return;
         }
@@ -226,10 +236,12 @@ impl IComponentImpl for AnimatedMeshComponent {
     }
 
     fn on_updating(&self, entity: ComRc<IEntity>, delta_sec: f32) -> crosscom::Void {
-        if self.props().morph_animation_enabled && !self.props().morph_targets.is_empty() {
+        if self.props().morph_animation_state == MorphAnimationState::Playing
+            && !self.props().morph_targets.is_empty()
+        {
             let anim_timestamp = self.props().last_time + delta_sec;
             if anim_timestamp > self.morph_animation_length().unwrap() {
-                self.props_mut().morph_animation_enabled = false;
+                self.props_mut().morph_animation_state = MorphAnimationState::Finished;
                 self.reset_morph_last_time();
                 return;
             }
@@ -249,5 +261,16 @@ impl IComponentImpl for AnimatedMeshComponent {
 
             self.props_mut().last_time = anim_timestamp;
         }
+    }
+}
+
+impl IAnimatedMeshComponentImpl for AnimatedMeshComponent {
+    fn morph_animation_state(&self) -> crate::rendering::MorphAnimationState {
+        self.props().morph_animation_state
+    }
+
+    fn replay(&self) -> () {
+        self.reset_morph_last_time();
+        self.props_mut().morph_animation_state = MorphAnimationState::Playing;
     }
 }

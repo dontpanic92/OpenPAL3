@@ -16,7 +16,9 @@ pub use engine::RenderingEngine;
 pub use factory::ComponentFactory;
 pub use material::{Material, MaterialDef, SimpleMaterialDef};
 pub use mesh::{
+    animated_mesh::{AnimatedMeshComponent, MorphAnimationState},
     geometry::{Geometry, TexCoord},
+    morph_target::MorphTarget,
     static_mesh::StaticMeshComponent,
 };
 pub use platform::Window;

@@ -72,7 +72,7 @@ impl DescriptorManager {
         let writes = [vk::WriteDescriptorSet::builder()
             .dst_set(set)
             .dst_binding(0)
-            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .image_info(&image_info)
             .build()];
         self.device.update_descriptor_sets(&writes, &[]);
@@ -81,6 +81,7 @@ impl DescriptorManager {
     }
 
     pub fn allocate_texture_descriptor_set(&self) -> VkResult<vk::DescriptorSet> {
+        println!("allocating descriptor set");
         let set = {
             let layouts = [self.texture_layout];
             let allocate_info = vk::DescriptorSetAllocateInfo::builder()
@@ -200,7 +201,7 @@ impl DescriptorManager {
 
     fn create_texture_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
         let sampler_pool_size = vk::DescriptorPoolSize::builder()
-            .descriptor_count(1)
+            .descriptor_count(MAX_DESCRIPTOR_COUNT)
             .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .build();
 

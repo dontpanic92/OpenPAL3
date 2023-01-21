@@ -1,17 +1,17 @@
 use super::{main_content::ContentTabs, DevToolsState};
-use fileformats::mv3::read_mv3;
 use imgui::{Condition, Ui};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::{
     asset_manager::AssetManager,
     loaders::pol::create_entity_from_pol_model,
     scene::{
-        create_entity_from_cvd_model, RoleAnimation, RoleAnimationRepeatMode, RoleController,
-        RoleEntity,
+        create_animated_mesh_from_mv3, create_entity_from_cvd_model, create_mv3_entity,
+        RoleController,
     },
 };
 use radiance::{
     audio::AudioEngine,
+    interfaces::{IAnimatedMeshComponent, IComponent},
     math::Vec3,
     scene::{CoreScene, Director, Scene, SceneManager},
 };
@@ -20,7 +20,6 @@ use shared::loaders::dff::create_entity_from_dff_model;
 use std::{
     cell::RefCell,
     cmp::Ordering,
-    io::BufReader,
     path::{Path, PathBuf},
     rc::{Rc, Weak},
 };
@@ -134,28 +133,27 @@ impl DevToolsDirector {
             .map(|e| e.as_str())
         {
             Some("mv3") => {
-                let mv3file = read_mv3(&mut BufReader::new(
-                    self.asset_mgr.vfs().open(&path).unwrap(),
-                ));
-                let anim = mv3file.as_ref().map(|f| {
-                    RoleAnimation::new(
-                        &self.asset_mgr.component_factory(),
-                        f,
-                        self.asset_mgr.load_mv3_material(f, &path),
-                        RoleAnimationRepeatMode::NoRepeat,
-                    )
-                });
+                let anim = create_animated_mesh_from_mv3(
+                    &self.asset_mgr.component_factory(),
+                    self.asset_mgr.vfs(),
+                    path,
+                );
 
                 anim.map(|a| {
-                    let e = RoleEntity::new_from_idle_animation(
+                    let e = create_mv3_entity(
                         self.asset_mgr.clone(),
                         "preview",
                         "preview",
-                        a,
                         "preview".to_string(),
                         true,
                     )
                     .unwrap();
+
+                    e.add_component(
+                        IAnimatedMeshComponent::uuid(),
+                        a.query_interface::<IComponent>().unwrap(),
+                    );
+
                     let r = RoleController::try_get_role_model(e.clone()).unwrap();
                     r.get().set_active(e.clone(), true);
                     e

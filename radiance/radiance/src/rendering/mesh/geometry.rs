@@ -3,6 +3,7 @@ use crate::{
     rendering::{MaterialDef, VertexBuffer, VertexComponents},
 };
 
+#[derive(Copy, Clone)]
 pub struct TexCoord {
     pub u: f32,
     pub v: f32,
@@ -14,6 +15,7 @@ impl TexCoord {
     }
 }
 
+#[derive(Clone)]
 pub struct Geometry {
     pub material: MaterialDef,
     pub vertices: VertexBuffer,

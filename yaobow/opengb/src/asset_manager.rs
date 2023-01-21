@@ -1,4 +1,4 @@
-use crate::scene::{RoleAnimation, RoleAnimationRepeatMode, RoleEntity, ScnScene};
+use crate::scene::{create_animated_mesh_from_mv3, create_mv3_entity, ScnScene};
 use crate::{
     loaders::{
         nav_loader::{nav_load_from_file, NavFile},
@@ -11,14 +11,12 @@ use crate::{
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use encoding::{types::Encoding, DecoderTrap};
-use fileformats::mv3::{read_mv3, Mv3File};
 use ini::Ini;
 use mini_fs::prelude::*;
 use mini_fs::MiniFs;
-use radiance::interfaces::IEntity;
-use radiance::rendering::{ComponentFactory, MaterialDef, SimpleMaterialDef};
+use radiance::interfaces::{IAnimatedMeshComponent, IEntity};
+use radiance::rendering::ComponentFactory;
 use shared::fs::init_virtual_fs;
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::{io, rc::Rc};
 
@@ -100,7 +98,7 @@ impl AssetManager {
         name: String,
         visible: bool,
     ) -> Option<ComRc<IEntity>> {
-        RoleEntity::new(self.clone(), role_name, default_action, name, visible).ok()
+        create_mv3_entity(self.clone(), role_name, default_action, name, visible).ok()
     }
 
     pub fn load_role_anim_config(&self, role_name: &str) -> Ini {
@@ -121,7 +119,7 @@ impl AssetManager {
         &self,
         role_name: &str,
         action_names: &[&'a str],
-    ) -> Option<(&'a str, RoleAnimation)> {
+    ) -> Option<(&'a str, ComRc<IAnimatedMeshComponent>)> {
         for action_name in action_names {
             let anim = self.load_role_anim(role_name, action_name);
             if anim.is_some() {
@@ -132,7 +130,11 @@ impl AssetManager {
         None
     }
 
-    pub fn load_role_anim(&self, role_name: &str, action_name: &str) -> Option<RoleAnimation> {
+    pub fn load_role_anim(
+        &self,
+        role_name: &str,
+        action_name: &str,
+    ) -> Option<ComRc<IAnimatedMeshComponent>> {
         let path = self
             .basedata_path
             .join("ROLE")
@@ -140,28 +142,7 @@ impl AssetManager {
             .join(action_name)
             .with_extension("mv3");
 
-        read_mv3(&mut Cursor::new(self.vfs.read_to_end(&path).unwrap()))
-            .map(|f| {
-                RoleAnimation::new(
-                    &self.factory,
-                    &f,
-                    self.load_mv3_material(&f, &path),
-                    RoleAnimationRepeatMode::NoRepeat,
-                )
-            })
-            .ok()
-    }
-
-    pub fn load_mv3_material(&self, mv3file: &Mv3File, mv3path: &Path) -> MaterialDef {
-        let mut texture_path = mv3path.to_owned();
-        texture_path.pop();
-        texture_path.push(std::str::from_utf8(&mv3file.textures[0].names[0]).unwrap());
-
-        SimpleMaterialDef::create(
-            texture_path.to_str().unwrap(),
-            |name| self.vfs.open(name).ok(),
-            false,
-        )
+        create_animated_mesh_from_mv3(&self.component_factory(), &self.vfs, &path).ok()
     }
 
     pub fn mv3_path(&self, role_name: &str, action_name: &str) -> PathBuf {

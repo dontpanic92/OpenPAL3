@@ -24,6 +24,7 @@ ndk-sys = "0.3.0"
 ndk-glue = "0.5.0"
 
 [lib]
+name="libopenpal3"
 path = "src/android.rs"
 crate-type = ["lib", "cdylib"]
 

@@ -1,5 +1,5 @@
 use crate::asset_manager::AssetManager;
-use crate::classes::IRoleModel;
+use crate::classes::IRoleController;
 use crate::loaders::nav_loader::NavMapPoint;
 use crate::loaders::{nav_loader::NavFile, scn_loader::*};
 use crosscom::ComRc;
@@ -536,8 +536,10 @@ impl ScnScene {
                     // HACK
                     .rotate_axis_angle_local(&Vec3::UP, std::f32::consts::PI);
 
-                let role_controller = entity.get_component(IRoleModel::uuid()).unwrap();
-                let role_controller = role_controller.query_interface::<IRoleModel>().unwrap();
+                let role_controller = entity.get_component(IRoleController::uuid()).unwrap();
+                let role_controller = role_controller
+                    .query_interface::<IRoleController>()
+                    .unwrap();
                 if role.sce_proc_id != 0 {
                     role_controller.get().set_active(entity.clone(), true);
                     role_controller.get().set_proc_id(role.sce_proc_id as i32);

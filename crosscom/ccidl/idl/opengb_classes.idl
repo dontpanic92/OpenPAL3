@@ -3,13 +3,13 @@ module(rust) opengb::classes;
 import radiance.idl;
 
 [uuid(e11fe493-654a-4072-b883-a7ee1a35a24a)]
-interface IRoleModel: IComponent {
+interface IRoleController: IComponent {
     [internal(), rust()]
     &'static opengb::scene::RoleController get();
 }
 
 [uuid(854b55b6-8054-4c4d-aa76-09e6d3287544)]
-class RoleModel: IRoleModel {}
+class RoleController: IRoleController {}
 
 [uuid(9c6dc3a5-d858-40c0-960b-b3527ad4516f)]
 interface ICvdModel: IComponent {}

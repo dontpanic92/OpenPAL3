@@ -1,21 +1,23 @@
 use crate::asset_manager::AssetManager;
-use crate::classes::{IRoleModel, IRoleModelImpl};
-use crate::ComObject_RoleModel;
+use crate::classes::{IRoleController, IRoleControllerImpl};
+use crate::ComObject_RoleController;
+use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
-use fileformats::mv3::{Mv3File, Mv3Mesh, Mv3Model};
-use radiance::interfaces::{IComponentImpl, IEntity};
+use fileformats::mv3::{read_mv3, Mv3Model};
+use mini_fs::{MiniFs, StoreExt};
+use radiance::interfaces::{IAnimatedMeshComponent, IComponent, IComponentImpl, IEntity};
+use radiance::math::Vec3;
 use radiance::rendering::{
-    ComponentFactory, Geometry, MaterialDef, TexCoord, VertexBuffer, VertexComponents,
+    AnimatedMeshComponent, ComponentFactory, Geometry, MaterialDef, MorphAnimationState,
+    MorphTarget, SimpleMaterialDef, TexCoord,
 };
 use radiance::scene::CoreEntity;
-use radiance::{
-    math::{Vec2, Vec3},
-    rendering::RenderingComponent,
-};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::io::Cursor;
+use std::path::Path;
 use std::rc::Rc;
 
 use super::error::EntityError;
@@ -34,53 +36,50 @@ pub enum RoleState {
     Running,
 }
 
-pub struct RoleEntity;
+pub fn create_mv3_entity(
+    asset_mgr: Rc<AssetManager>,
+    role_name: &str,
+    idle_anim: &str,
+    name: String,
+    visible: bool,
+) -> Result<ComRc<IEntity>, EntityError> {
+    let entity = CoreEntity::create(name, visible);
 
-impl RoleEntity {
-    pub fn new(
-        asset_mgr: Rc<AssetManager>,
-        role_name: &str,
-        idle_anim: &str,
-        name: String,
-        visible: bool,
-    ) -> Result<ComRc<IEntity>, EntityError> {
-        let entity = CoreEntity::create(name, visible);
-        entity.add_component(
-            IRoleModel::uuid(),
-            crosscom::ComRc::from_object(RoleController::new(asset_mgr, role_name, idle_anim)?),
-        );
+    entity.add_component(
+        IRoleController::uuid(),
+        crosscom::ComRc::from_object(RoleController::new(asset_mgr, role_name, idle_anim)?),
+    );
 
-        Ok(entity)
-    }
+    Ok(entity)
+}
 
-    pub fn new_from_idle_animation(
-        asset_mgr: Rc<AssetManager>,
-        role_name: &str,
-        idle_anim_name: &str,
-        idle_anim: RoleAnimation,
-        name: String,
-        visible: bool,
-    ) -> Result<ComRc<IEntity>, EntityError> {
-        let entity = CoreEntity::create(name, visible);
-        entity.add_component(
-            IRoleModel::uuid(),
-            crosscom::ComRc::from_object(RoleController::new_from_idle_animation(
-                asset_mgr,
-                role_name,
-                idle_anim_name,
-                idle_anim,
-            )),
-        );
+pub fn create_mv3_entity_from_animation(
+    asset_mgr: Rc<AssetManager>,
+    role_name: &str,
+    idle_anim_name: &str,
+    idle_anim: ComRc<IAnimatedMeshComponent>,
+    name: String,
+    visible: bool,
+) -> Result<ComRc<IEntity>, EntityError> {
+    let entity = CoreEntity::create(name, visible);
+    entity.add_component(
+        IRoleController::uuid(),
+        crosscom::ComRc::from_object(RoleController::new_from_idle_animation(
+            asset_mgr,
+            role_name,
+            idle_anim_name,
+            idle_anim,
+        )),
+    );
 
-        Ok(entity)
-    }
+    Ok(entity)
 }
 
 pub struct RoleController {
     model_name: String,
     asset_mgr: Rc<AssetManager>,
     component_factory: Rc<dyn ComponentFactory>,
-    animations: DashMap<String, RoleAnimation>,
+    animations: DashMap<String, ComRc<IAnimatedMeshComponent>>,
     active_anim_name: RefCell<String>,
     idle_anim_name: String,
     walking_anim_name: String,
@@ -93,7 +92,7 @@ pub struct RoleController {
     proc_id: RefCell<i32>,
 }
 
-ComObject_RoleModel!(super::RoleController);
+ComObject_RoleController!(super::RoleController);
 
 impl RoleController {
     pub fn new(
@@ -115,7 +114,7 @@ impl RoleController {
         asset_mgr: Rc<AssetManager>,
         role_name: &str,
         idle_anim_name: &str,
-        idle_anim: RoleAnimation,
+        idle_anim: ComRc<IAnimatedMeshComponent>,
     ) -> Self {
         let animations = DashMap::new();
         if !idle_anim_name.trim().is_empty() {
@@ -153,11 +152,11 @@ impl RoleController {
         }
     }
 
-    pub fn try_get_role_model(entity: ComRc<IEntity>) -> Option<ComRc<IRoleModel>> {
+    pub fn try_get_role_model(entity: ComRc<IEntity>) -> Option<ComRc<IRoleController>> {
         entity
-            .get_component(IRoleModel::uuid())
+            .get_component(IRoleController::uuid())
             .unwrap()
-            .query_interface::<IRoleModel>()
+            .query_interface::<IRoleController>()
     }
 
     pub fn is_active(&self) -> bool {
@@ -209,10 +208,14 @@ impl RoleController {
 
         *self.active_anim_name.borrow_mut() = anim_name.to_string();
         *self.anim_repeat_mode.borrow_mut() = repeat_mode;
-        self.active_anim_mut().reset(repeat_mode);
 
-        let rc = self.active_anim().create_rendering_component();
-        entity.set_rendering_component(Some(Rc::new(rc)));
+        entity.add_component(
+            IAnimatedMeshComponent::uuid(),
+            self.active_anim()
+                .value()
+                .query_interface::<IComponent>()
+                .unwrap(),
+        );
     }
 
     pub fn run(&self, entity: ComRc<IEntity>) {
@@ -260,20 +263,14 @@ impl RoleController {
         *self.nav_layer.borrow_mut() = layer;
     }
 
-    fn active_anim(&self) -> Ref<String, RoleAnimation> {
+    fn active_anim(&self) -> Ref<String, ComRc<IAnimatedMeshComponent>> {
         self.animations
             .get(&*self.active_anim_name.borrow())
             .unwrap()
     }
-
-    fn active_anim_mut(&self) -> dashmap::mapref::one::RefMut<String, RoleAnimation> {
-        self.animations
-            .get_mut(&*self.active_anim_name.borrow())
-            .unwrap()
-    }
 }
 
-impl IRoleModelImpl for RoleController {
+impl IRoleControllerImpl for RoleController {
     fn get(&self) -> &'static crate::scene::RoleController {
         unsafe { &*(self as *const _) }
     }
@@ -288,266 +285,126 @@ impl IComponentImpl for RoleController {
 
     fn on_updating(&self, entity: ComRc<IEntity>, delta_sec: f32) -> crosscom::Void {
         if self.is_active() {
-            // TODO: Consider to use Arc<Mutex<>>>
-            let rc = entity.get_rendering_component().unwrap();
-            /* unsafe {
-                let component = entity
-                    .get_component_mut(TypeId::of::<RenderingComponent>())
-                    .unwrap();
-
-                &mut *(component
-                    .as_mut()
-                    .downcast_mut::<RenderingComponent>()
-                    .unwrap() as *mut RenderingComponent)
-            };*/
-
-            /*let ro = rc.render_objects_mut().first_mut().unwrap();
-
-            ro.update_vertices(&mut |vb: &mut VertexBuffer| {
-                self.active_anim_mut().update(delta_sec, vb, false);
-            });*/
-
-            let geometries = self.active_anim_mut().blend_morph_target(delta_sec);
-            let mut objects = vec![];
-
-            for geometry in geometries {
-                let ro = self.component_factory.create_render_object(
-                    geometry.vertices.clone(),
-                    geometry.indices.clone(),
-                    &geometry.material,
-                    false,
-                );
-
-                objects.push(ro);
-            }
-
-            let component = self.component_factory.create_rendering_component(objects);
-            entity.set_rendering_component(Some(Rc::new(component)));
-
-            if self.active_anim().anim_finished() {
-                if *self.auto_play_idle.borrow() {
-                    self.idle(entity);
+            if self.active_anim().value().morph_animation_state() == MorphAnimationState::Finished {
+                if *self.anim_repeat_mode.borrow() == RoleAnimationRepeatMode::NoRepeat {
+                    if *self.auto_play_idle.borrow() {
+                        self.idle(entity);
+                    }
+                } else {
+                    self.active_anim().value().replay();
                 }
             }
         }
     }
 }
 
-pub struct RoleAnimation {
-    component_factory: Rc<dyn ComponentFactory>,
-    frames: Vec<VertexBuffer>,
-    anim_timestamps: Vec<u32>,
-    last_anim_time: u32,
-    repeat_mode: RoleAnimationRepeatMode,
-    anim_finished: bool,
-    vertices: VertexBuffer,
-    indices: Vec<u32>,
-    material: MaterialDef,
+pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
+    component_factory: &Rc<dyn ComponentFactory>,
+    vfs: &MiniFs,
+    path: P,
+) -> anyhow::Result<ComRc<IAnimatedMeshComponent>> {
+    let mv3file = read_mv3(&mut Cursor::new(vfs.read_to_end(&path)?))?;
+    let mut texture_path = path.as_ref().to_owned();
+    texture_path.pop();
+    texture_path.push(std::str::from_utf8(&mv3file.textures[0].names[0]).unwrap());
+
+    let material = SimpleMaterialDef::create(
+        texture_path.to_str().unwrap(),
+        |name| vfs.open(name).ok(),
+        false,
+    );
+
+    let mut frames = vec![];
+
+    for model in &mv3file.models {
+        for mesh_index in 0..model.mesh_count as usize {
+            frames.push(create_geometry_frames(model, mesh_index, &material))
+        }
+    }
+
+    let anim_timestamps: Vec<u32> = mv3file.models[0]
+        .frames
+        .iter()
+        .map(|f| f.timestamp)
+        .collect();
+
+    let mut morph_targets: Vec<MorphTarget> = Vec::<MorphTarget>::with_capacity(frames.len());
+    for frame_index in 0..mv3file.models[0].frame_count as usize {
+        let mut geometries = vec![];
+        for mesh_index in 0..frames.len() {
+            geometries.push(frames[mesh_index][frame_index].clone());
+        }
+
+        morph_targets.push(MorphTarget::new(
+            geometries,
+            anim_timestamps[frame_index] as f32 / 4580.,
+            component_factory.clone(),
+        ));
+    }
+
+    let animated_mesh = AnimatedMeshComponent::new(component_factory.clone());
+    animated_mesh.set_morph_targets(morph_targets);
+
+    Ok(ComRc::from_object(animated_mesh))
 }
 
-impl RoleAnimation {
-    pub fn new(
-        component_factory: &Rc<dyn ComponentFactory>,
-        mv3file: &Mv3File,
-        material: MaterialDef,
-        anim_repeat_mode: RoleAnimationRepeatMode,
-    ) -> Self {
-        let model: &Mv3Model = &mv3file.models[0];
-        let mesh: &Mv3Mesh = &model.meshes[0];
+fn create_geometry_frames(
+    model: &Mv3Model,
+    mesh_index: usize,
+    material: &MaterialDef,
+) -> Vec<Geometry> {
+    let mesh = &model.meshes[mesh_index];
+    let hash = |index, texcoord_index| index as u32 * model.texcoord_count + texcoord_index as u32;
 
-        let hash =
-            |index, texcoord_index| index as u32 * model.texcoord_count + texcoord_index as u32;
+    let mut indices: Vec<u32> = Vec::<u32>::with_capacity(model.vertex_per_frame as usize);
+    let mut vertices = vec![vec![]; model.frame_count as usize];
+    let mut texcoord = vec![vec![]; model.frame_count as usize];
+    let mut index_map = HashMap::new();
 
-        let mut indices: Vec<u32> = Vec::<u32>::with_capacity(model.vertex_per_frame as usize);
-        let mut vertices_data: Vec<Vec<(Vec3, Vec2)>> = vec![vec![]; model.frame_count as usize];
-        let mut index_map = HashMap::new();
+    for t in &mesh.triangles {
+        for (&i, &j) in t.indices.iter().zip(&t.texcoord_indices) {
+            let h = hash(i, j);
+            let index = match index_map.get(&h) {
+                None => {
+                    let index = index_map.len();
+                    for k in 0..model.frame_count as usize {
+                        let frame = &model.frames[k];
+                        vertices[k].push(Vec3::new(
+                            frame.vertices[i as usize].x as f32 * 0.01562,
+                            frame.vertices[i as usize].y as f32 * 0.01562,
+                            frame.vertices[i as usize].z as f32 * 0.01562,
+                        ));
 
-        for t in &mesh.triangles {
-            for (&i, &j) in t.indices.iter().zip(&t.texcoord_indices) {
-                let h = hash(i, j);
-                let index = match index_map.get(&h) {
-                    None => {
-                        let index = index_map.len();
-                        for k in 0..model.frame_count as usize {
-                            let frame = &model.frames[k];
-                            vertices_data[k].push((
-                                Vec3::new(
-                                    frame.vertices[i as usize].x as f32 * 0.01562,
-                                    frame.vertices[i as usize].y as f32 * 0.01562,
-                                    frame.vertices[i as usize].z as f32 * 0.01562,
-                                ),
-                                if (j as u32) < model.texcoord_count {
-                                    Vec2::new(
-                                        model.texcoords[j as usize].u,
-                                        -model.texcoords[j as usize].v,
-                                    )
-                                } else {
-                                    Vec2::new(0., 0.)
-                                },
+                        if (j as u32) < model.texcoord_count {
+                            texcoord[k].push(TexCoord::new(
+                                model.texcoords[j as usize].u,
+                                -model.texcoords[j as usize].v,
                             ));
+                        } else {
+                            texcoord[k].push(TexCoord::new(0., 0.));
                         }
-                        index_map.insert(h, index as u32);
-                        index as u32
                     }
-                    Some(index) => *index,
-                };
+                    index_map.insert(h, index as u32);
+                    index as u32
+                }
+                Some(index) => *index,
+            };
 
-                indices.push(index);
-            }
-        }
-
-        let mut frames: Vec<VertexBuffer> =
-            Vec::<VertexBuffer>::with_capacity(model.frame_count as usize);
-        for i in 0..model.frame_count as usize {
-            frames.push(VertexBuffer::new(
-                VertexComponents::POSITION | VertexComponents::TEXCOORD,
-                index_map.len(),
-            ));
-
-            let vertex_data = &vertices_data[i];
-            let vert = frames.get_mut(i).unwrap();
-            for j in 0..vertex_data.len() {
-                vert.set_component(j, VertexComponents::POSITION, |p: &mut Vec3| {
-                    *p = vertex_data[j].0;
-                });
-                vert.set_component(j, VertexComponents::TEXCOORD, |t: &mut Vec2| {
-                    *t = vertex_data[j].1;
-                });
-            }
-        }
-
-        let anim_timestamps = model.frames.iter().map(|f| f.timestamp).collect();
-        let vertices = frames[0].clone();
-
-        Self {
-            component_factory: component_factory.clone(),
-            frames,
-            anim_timestamps,
-            last_anim_time: 0,
-            repeat_mode: anim_repeat_mode,
-            anim_finished: false,
-            vertices,
-            indices,
-            material,
+            indices.push(index);
         }
     }
 
-    pub fn reset(&mut self, repeat_mode: RoleAnimationRepeatMode) {
-        self.anim_finished = false;
-        self.last_anim_time = 0;
-        self.repeat_mode = repeat_mode;
-    }
-
-    pub fn update(&mut self, delta_sec: f32, vertices: &mut VertexBuffer, debug: bool) {
-        let mut anim_time = (delta_sec * 4580.) as u32 + self.last_anim_time;
-        let total_anim_length = *self.anim_timestamps.last().unwrap();
-        if anim_time >= total_anim_length && self.repeat_mode == RoleAnimationRepeatMode::NoRepeat {
-            self.anim_finished = true;
-            return;
-        }
-
-        anim_time %= total_anim_length;
-        let frame_index = self
-            .anim_timestamps
-            .iter()
-            .position(|&t| t > anim_time)
-            .unwrap_or(0)
-            - 1;
-        if debug {
-            println!("frame_index {}", frame_index);
-        }
-        let next_frame_index = (frame_index + 1) % self.anim_timestamps.len();
-        let percentile = (anim_time - self.anim_timestamps[frame_index]) as f32
-            / (self.anim_timestamps[next_frame_index] - self.anim_timestamps[frame_index]) as f32;
-
-        let vertex_buffer = self.frames.get(frame_index).unwrap();
-        let next_vertex_buffer = self.frames.get(next_frame_index).unwrap();
-        let vertex_count = vertex_buffer.count();
-        for i in 0..vertex_count {
-            let position = vertex_buffer.position(i).unwrap();
-            let next_position = next_vertex_buffer.position(i).unwrap();
-            let tex_coord = vertex_buffer.tex_coord(i).unwrap();
-
-            vertices.set_component(i, VertexComponents::POSITION, |p: &mut Vec3| {
-                p.x = position.x * (1. - percentile) + next_position.x * percentile;
-                p.y = position.y * (1. - percentile) + next_position.y * percentile;
-                p.z = position.z * (1. - percentile) + next_position.z * percentile;
-            });
-            vertices.set_component(i, VertexComponents::TEXCOORD, |t: &mut Vec2| {
-                t.x = tex_coord.x;
-                t.y = tex_coord.y;
-            });
-        }
-
-        self.last_anim_time = anim_time;
-    }
-
-    pub fn blend_morph_target(&mut self, delta_sec: f32) -> Vec<Geometry> {
-        let mut anim_time = (delta_sec * 4580.) as u32 + self.last_anim_time;
-        let total_anim_length = *self.anim_timestamps.last().unwrap();
-        if anim_time >= total_anim_length && self.repeat_mode == RoleAnimationRepeatMode::NoRepeat {
-            self.anim_finished = true;
-            return vec![];
-        }
-
-        anim_time %= total_anim_length;
-        let frame_index = self
-            .anim_timestamps
-            .iter()
-            .position(|&t| t > anim_time)
-            .unwrap_or(0)
-            - 1;
-
-        let next_frame_index = (frame_index + 1) % self.anim_timestamps.len();
-        let percentile = (anim_time - self.anim_timestamps[frame_index]) as f32
-            / (self.anim_timestamps[next_frame_index] - self.anim_timestamps[frame_index]) as f32;
-
-        let vertex_buffer = self.frames.get(frame_index).unwrap();
-        let next_vertex_buffer = self.frames.get(next_frame_index).unwrap();
-        let vertex_count = vertex_buffer.count();
-
-        let mut new_vertices = vec![];
-        let mut tex_coord = vec![];
-        for i in 0..vertex_count {
-            let position = vertex_buffer.position(i).unwrap();
-            let next_position = next_vertex_buffer.position(i).unwrap();
-            let tex = vertex_buffer.tex_coord(i).unwrap();
-
-            new_vertices.push(Vec3::new(
-                position.x * (1. - percentile) + next_position.x * percentile,
-                position.y * (1. - percentile) + next_position.y * percentile,
-                position.z * (1. - percentile) + next_position.z * percentile,
-            ));
-
-            tex_coord.push(TexCoord::new(tex.x, tex.y));
-        }
-
-        let geometry = Geometry::new(
-            &new_vertices,
+    let mut geometries = vec![];
+    for i in 0..model.frame_count as usize {
+        geometries.push(Geometry::new(
+            &vertices[i],
             None,
-            &vec![tex_coord],
-            self.indices.clone(),
-            self.material.clone(),
+            &vec![texcoord[i].clone()],
+            indices.clone(),
+            material.clone(),
             1,
-        );
-
-        self.last_anim_time = anim_time;
-
-        vec![geometry]
+        ))
     }
 
-    pub fn anim_finished(&self) -> bool {
-        self.anim_finished
-    }
-
-    pub fn create_rendering_component(&self) -> RenderingComponent {
-        let ro = self.component_factory.create_render_object(
-            self.vertices.clone(),
-            self.indices.clone(),
-            &self.material,
-            true,
-        );
-
-        self.component_factory.create_rendering_component(vec![ro])
-    }
+    geometries
 }
