@@ -35,7 +35,8 @@ impl SceCommand for SceCommandRoleShowAction {
     ) -> bool {
         let s = scene_manager.resolve_role_do(state, self.role_id, |e, r| r.get().state());
 
-        s.unwrap_or(RoleState::Idle) == RoleState::Idle
+        let s = s.unwrap_or(RoleState::Idle);
+        s == RoleState::Idle || s == RoleState::AnimationFinished
     }
 }
 

@@ -31,6 +31,7 @@ pub enum RoleAnimationRepeatMode {
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum RoleState {
     PlayingAnimation,
+    AnimationFinished,
     Idle,
     Walking,
     Running,
@@ -208,6 +209,7 @@ impl RoleController {
 
         *self.active_anim_name.borrow_mut() = anim_name.to_string();
         *self.anim_repeat_mode.borrow_mut() = repeat_mode;
+        *self.state.borrow_mut() = RoleState::PlayingAnimation;
 
         entity.add_component(
             IAnimatedMeshComponent::uuid(),
@@ -286,6 +288,7 @@ impl IComponentImpl for RoleController {
     fn on_updating(&self, entity: ComRc<IEntity>, delta_sec: f32) -> crosscom::Void {
         if self.is_active() {
             if self.active_anim().value().morph_animation_state() == MorphAnimationState::Finished {
+                self.state.replace(RoleState::AnimationFinished);
                 if *self.anim_repeat_mode.borrow() == RoleAnimationRepeatMode::NoRepeat {
                     if *self.auto_play_idle.borrow() {
                         self.idle(entity);
@@ -304,19 +307,19 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
     path: P,
 ) -> anyhow::Result<ComRc<IAnimatedMeshComponent>> {
     let mv3file = read_mv3(&mut Cursor::new(vfs.read_to_end(&path)?))?;
-    let mut texture_path = path.as_ref().to_owned();
-    texture_path.pop();
-    texture_path.push(std::str::from_utf8(&mv3file.textures[0].names[0]).unwrap());
-
-    let material = SimpleMaterialDef::create(
-        texture_path.to_str().unwrap(),
-        |name| vfs.open(name).ok(),
-        false,
-    );
-
     let mut frames = vec![];
 
-    for model in &mv3file.models {
+    for model_index in 0..mv3file.models.len() {
+        let model = &mv3file.models[model_index];
+        let mut texture_path = path.as_ref().to_owned();
+        texture_path.pop();
+        texture_path.push(std::str::from_utf8(&mv3file.textures[model_index].names[0]).unwrap());
+
+        let material = SimpleMaterialDef::create(
+            texture_path.to_str().unwrap(),
+            |name| vfs.open(name).ok(),
+            false,
+        );
         for mesh_index in 0..model.mesh_count as usize {
             frames.push(create_geometry_frames(model, mesh_index, &material))
         }
