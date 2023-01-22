@@ -155,8 +155,7 @@ impl RoleController {
 
     pub fn try_get_role_model(entity: ComRc<IEntity>) -> Option<ComRc<IRoleController>> {
         entity
-            .get_component(IRoleController::uuid())
-            .unwrap()
+            .get_component(IRoleController::uuid())?
             .query_interface::<IRoleController>()
     }
 
@@ -313,7 +312,13 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
         let model = &mv3file.models[model_index];
         let mut texture_path = path.as_ref().to_owned();
         texture_path.pop();
-        texture_path.push(std::str::from_utf8(&mv3file.textures[model_index].names[0]).unwrap());
+        let texture_index = if model_index < mv3file.texture_count as usize {
+            model_index
+        } else {
+            0
+        };
+
+        texture_path.push(std::str::from_utf8(&mv3file.textures[texture_index].names[0]).unwrap());
 
         let material = SimpleMaterialDef::create(
             texture_path.to_str().unwrap(),
