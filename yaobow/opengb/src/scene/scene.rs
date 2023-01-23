@@ -191,7 +191,6 @@ impl ScnScene {
     ) -> Option<u32> {
         const D: f32 = 100.;
         for role in self.entities() {
-            //if let Some(role) = entity.downcast_ref::<CoreEntity>() {
             if role.name() == format!("ROLE_{}", exclude_role) {
                 continue;
             }
@@ -209,7 +208,6 @@ impl ScnScene {
 
                 return Some(role_model.unwrap().get().proc_id() as u32);
             }
-            //}
         }
 
         None
