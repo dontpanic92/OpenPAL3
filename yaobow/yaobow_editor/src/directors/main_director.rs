@@ -13,9 +13,9 @@ use radiance::{
     audio::AudioEngine,
     interfaces::{IAnimatedMeshComponent, IComponent},
     math::Vec3,
-    scene::{CoreScene, Director, Scene, SceneManager},
+    scene::{CoreScene, Director, SceneManager},
 };
-use radiance_editor::{scene::EditorScene, ui::window_content_rect};
+use radiance_editor::ui::window_content_rect;
 use shared::loaders::dff::create_entity_from_dff_model;
 use std::{
     cell::RefCell,
@@ -133,29 +133,30 @@ impl DevToolsDirector {
             .map(|e| e.as_str())
         {
             Some("mv3") => {
+                let e = create_mv3_entity(
+                    self.asset_mgr.clone(),
+                    "preview",
+                    "preview",
+                    "preview".to_string(),
+                    true,
+                )
+                .unwrap();
+
                 let anim = create_animated_mesh_from_mv3(
+                    e.clone(),
                     &self.asset_mgr.component_factory(),
                     self.asset_mgr.vfs(),
                     path,
                 );
 
                 anim.map(|a| {
-                    let e = create_mv3_entity(
-                        self.asset_mgr.clone(),
-                        "preview",
-                        "preview",
-                        "preview".to_string(),
-                        true,
-                    )
-                    .unwrap();
-
                     e.add_component(
                         IAnimatedMeshComponent::uuid(),
                         a.query_interface::<IComponent>().unwrap(),
                     );
 
                     let r = RoleController::try_get_role_model(e.clone()).unwrap();
-                    r.get().set_active(e.clone(), true);
+                    r.get().set_active(true);
                     e
                 })
                 .ok()
@@ -184,14 +185,15 @@ impl DevToolsDirector {
             _ => None,
         };
 
-        let scene = scene_manager.scene_mut().unwrap();
+        let scene = scene_manager.scene().unwrap();
         if let Some(e) = entity {
             e.load();
             scene.add_entity(e)
         }
 
         scene
-            .camera_mut()
+            .camera()
+            .borrow_mut()
             .transform_mut()
             .set_position(&Vec3::new(0., 200., 200.))
             .look_at(&Vec3::new(0., 0., 0.));
@@ -210,21 +212,21 @@ impl Director for DevToolsDirector {
         let state = self.main_window(ui);
         if let Some(DevToolsState::Preview(path)) = state {
             scene_manager.pop_scene();
-            scene_manager.push_scene(Box::new(EditorScene::new()));
+            scene_manager.push_scene(CoreScene::create());
             self.load_model(scene_manager, path);
         } else if let Some(DevToolsState::PreviewScene { cpk_name, scn_name }) = state {
             scene_manager.pop_scene();
 
-            let mut scene = CoreScene::new(
-                self.asset_mgr
-                    .load_scn(cpk_name.as_str(), scn_name.as_str()),
-            );
+            let scene = self
+                .asset_mgr
+                .load_scn(cpk_name.as_str(), scn_name.as_str());
             scene
-                .camera_mut()
+                .camera()
+                .borrow_mut()
                 .transform_mut()
                 .set_position(&Vec3::new(0., 500., 500.))
                 .look_at(&Vec3::new(0., 0., 0.));
-            scene_manager.push_scene(Box::new(scene));
+            scene_manager.push_scene(scene);
         }
 
         None

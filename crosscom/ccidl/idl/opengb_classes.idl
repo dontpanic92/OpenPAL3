@@ -16,3 +16,12 @@ interface ICvdModel: IComponent {}
 
 [uuid(ac6e671f-79fc-4bee-bf31-65fd947d8244)]
 class CvdModel: IComponent {}
+
+[uuid(77fe1a3d-05cf-47f9-b80a-08be6d19b0a4)]
+interface IScnSceneComponent: IComponent {
+    [internal(), rust()]
+    &'static opengb::scene::ScnScene get();
+}
+
+[uuid(69e2fd84-c679-40c0-9608-9578d1aaecaf)]
+class ScnSceneComponent: IScnSceneComponent {}

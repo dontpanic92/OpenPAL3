@@ -23,7 +23,8 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
 ) -> ComRc<IEntity> {
     let entity = CoreEntity::create(name, visible);
     let geometries = load_dff_model(vfs, path);
-    let mesh_component = StaticMeshComponent::new(geometries, component_factory.clone());
+    let mesh_component =
+        StaticMeshComponent::new(entity.clone(), geometries, component_factory.clone());
     entity.add_component(
         IStaticMeshComponent::uuid(),
         crosscom::ComRc::from_object(mesh_component),

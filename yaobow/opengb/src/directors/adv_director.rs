@@ -15,7 +15,7 @@ use radiance::{
     audio::AudioEngine,
     input::{Axis, InputEngine, Key},
     math::{Mat44, Vec3},
-    scene::{CoreScene, Director, SceneManager},
+    scene::{Director, SceneManager},
 };
 
 pub struct AdventureDirector {
@@ -71,10 +71,10 @@ impl AdventureDirector {
             return None;
         }
 
-        let scene = Box::new(CoreScene::new(asset_mgr.load_scn(
+        let scene = asset_mgr.load_scn(
             scene_name.as_ref().unwrap(),
             sub_scene_name.as_ref().unwrap(),
-        )));
+        );
 
         scene_manager.push_scene(scene);
 
@@ -86,12 +86,14 @@ impl AdventureDirector {
 
         // The role id should be saved in persistant state
         let role_entity = scene_manager
-            .core_scene_mut_or_fail()
-            .get_role_entity_mut(0)
+            .scn_scene()
+            .unwrap()
+            .get()
+            .get_role_entity(0)
             .unwrap();
 
         let role = RoleController::try_get_role_model(role_entity.clone()).unwrap();
-        role.get().set_active(role_entity.clone(), true);
+        role.get().set_active(true);
         role_entity
             .transform()
             .borrow_mut()
@@ -158,12 +160,9 @@ impl AdventureDirector {
         delta_sec: f32,
         moving_direction: &Vec3,
     ) {
-        let camera_mat = &scene_manager
-            .scene_mut()
-            .unwrap()
-            .camera_mut()
-            .transform()
-            .matrix();
+        let camera = scene_manager.scene().unwrap().camera();
+        let camera = camera.borrow();
+        let camera_mat = camera.transform().matrix();
         let mut direction_mat = Mat44::new_zero();
         direction_mat[0][3] = moving_direction.x;
         direction_mat[1][3] = moving_direction.y;
@@ -178,7 +177,7 @@ impl AdventureDirector {
         let role_controller = RoleController::try_get_role_model(role.clone()).unwrap();
         let mut position = role.transform().borrow().position();
 
-        let scene = scene_manager.core_scene_or_fail();
+        let scene = scene_manager.scn_scene().unwrap().get();
         let speed = 175.;
         let mut target_position = Vec3::add(&position, &Vec3::dot(speed * delta_sec, &direction));
         let target_nav_coord =
@@ -191,13 +190,13 @@ impl AdventureDirector {
         );
 
         let role = scene_manager
-            .get_resolved_role_mut(self.sce_vm.state(), -1)
+            .get_resolved_role(self.sce_vm.state(), -1)
             .unwrap();
         if direction.norm() > 0.5
             && (self.sce_vm.global_state().pass_through_wall()
                 || distance_to_border > std::f32::EPSILON)
         {
-            role_controller.get().run(role.clone());
+            role_controller.get().run();
             let look_at = Vec3::new(target_position.x, position.y, target_position.z);
             role.transform()
                 .borrow_mut()
@@ -211,13 +210,14 @@ impl AdventureDirector {
 
             position = target_position
         } else {
-            role_controller.get().idle(role);
+            role_controller.get().idle();
         }
 
         scene_manager
-            .scene_mut()
+            .scene()
             .unwrap()
-            .camera_mut()
+            .camera()
+            .borrow_mut()
             .transform_mut()
             .set_position(&Vec3::new(400., 400., 400.))
             .rotate_axis_angle(&Vec3::UP, self.camera_rotation)
@@ -270,7 +270,7 @@ impl Director for AdventureDirector {
             return None;
         }
 
-        if scene_manager.scene_mut().is_none() {
+        if scene_manager.scene().is_none() {
             return None;
         }
 
@@ -327,22 +327,17 @@ impl Director for AdventureDirector {
             (role.transform().borrow().position(), r.get().nav_layer())
         };
 
-        macro_rules! scene {
-            () => {
-                scene_manager.core_scene_or_fail()
-            };
-        }
-
-        if let Some(proc_id) = scene!().test_nav_trigger(nav_layer, &position) {
+        let scene = scene_manager.scn_scene().unwrap().get();
+        if let Some(proc_id) = scene.test_nav_trigger(nav_layer, &position) {
             debug!("New proc triggerd by nav: {}", proc_id);
             self.sce_vm.call_proc(proc_id);
         }
 
-        if scene!().test_nav_layer_trigger(nav_layer, &position) {
+        if scene.test_nav_layer_trigger(nav_layer, &position) {
             if !self.layer_switch_triggered {
                 let layer = {
                     let e = scene_manager
-                        .get_resolved_role_mut(self.sce_vm.state(), -1)
+                        .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap();
                     let r = RoleController::try_get_role_model(e).unwrap();
                     r.get().nav_layer()
@@ -352,9 +347,7 @@ impl Director for AdventureDirector {
                 let mut test_coord = position;
                 let mut d = 0.0;
                 for i in 0..50 {
-                    d = scene_manager
-                        .core_scene_or_fail()
-                        .get_distance_to_border_by_scene_coord(new_layer, &test_coord);
+                    d = scene.get_distance_to_border_by_scene_coord(new_layer, &test_coord);
                     if d > 0.0 {
                         break;
                     }
@@ -364,12 +357,12 @@ impl Director for AdventureDirector {
 
                 if d > 0.0 {
                     let e = scene_manager
-                        .get_resolved_role_mut(self.sce_vm.state(), -1)
+                        .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap();
                     let r = RoleController::try_get_role_model(e).unwrap();
                     r.get().switch_nav_layer();
                     scene_manager
-                        .get_resolved_role_mut(self.sce_vm.state(), -1)
+                        .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap()
                         .transform()
                         .borrow_mut()
@@ -384,19 +377,18 @@ impl Director for AdventureDirector {
         let input = self.input_engine.borrow_mut();
         if input.get_key_state(Key::F).pressed() || input.get_key_state(Key::GamePadEast).pressed()
         {
-            if let Some(proc_id) = scene!()
+            if let Some(proc_id) = scene
                 .test_aabb_trigger(&position)
-                .or_else(|| scene!().test_item_trigger(&position))
+                .or_else(|| scene.test_item_trigger(&position))
                 .or_else(|| {
-                    scene!()
-                        .test_role_trigger(&position, self.sce_vm.global_state().role_controlled())
+                    scene.test_role_trigger(&position, self.sce_vm.global_state().role_controlled())
                 })
             {
                 debug!("New proc triggerd: {}", proc_id);
                 self.sce_vm.call_proc(proc_id);
             }
 
-            let result = scene!().test_ladder(nav_layer, &position);
+            let result = scene.test_ladder(nav_layer, &position);
             match result {
                 Some(LadderTestResult::NewPosition((new_layer, new_position))) => {
                     debug!(
@@ -406,14 +398,14 @@ impl Director for AdventureDirector {
 
                     if new_layer {
                         let e = scene_manager
-                            .get_resolved_role_mut(self.sce_vm.state(), -1)
+                            .get_resolved_role(self.sce_vm.state(), -1)
                             .unwrap();
                         let r = RoleController::try_get_role_model(e).unwrap();
                         r.get().switch_nav_layer();
                     }
 
                     scene_manager
-                        .get_resolved_role_mut(self.sce_vm.state(), -1)
+                        .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap()
                         .transform()
                         .borrow_mut()

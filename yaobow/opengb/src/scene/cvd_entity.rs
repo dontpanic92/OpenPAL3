@@ -19,7 +19,7 @@ pub fn create_entity_from_cvd_model<P: AsRef<Path>>(
     visible: bool,
 ) -> ComRc<IEntity> {
     let entity = CoreEntity::create(name, visible);
-    let mesh_component = CvdModelComponent::new(component_factory.clone());
+    let mesh_component = CvdModelComponent::new(entity.clone(), component_factory.clone());
     entity.add_component(
         ICvdModel::uuid(),
         crosscom::ComRc::from_object(mesh_component),
@@ -76,6 +76,7 @@ fn new_from_cvd_model_node<P: AsRef<Path>>(
     let entity = CoreEntity::create("cvd_obj".to_string(), true);
 
     let mesh_component = CvdModelComponent {
+        entity: entity.clone(),
         component_factory: component_factory.clone(),
         position_keyframes,
         rotation_keyframes,
@@ -133,6 +134,7 @@ fn load_texture<P: AsRef<Path>>(
 }
 
 pub struct CvdModelComponent {
+    entity: ComRc<IEntity>,
     component_factory: Rc<dyn ComponentFactory>,
     position_keyframes: Option<CvdPositionKeyFrames>,
     rotation_keyframes: Option<CvdRotationKeyFrames>,
@@ -143,7 +145,7 @@ pub struct CvdModelComponent {
 ComObject_CvdModel!(super::CvdModelComponent);
 
 impl IComponentImpl for CvdModelComponent {
-    fn on_loading(&self, entity: ComRc<IEntity>) -> crosscom::Void {
+    fn on_loading(&self) -> crosscom::Void {
         let mut objects = vec![];
         println!("cvd: mesh count {}", self.meshes.len());
         for mesh in &self.meshes {
@@ -158,15 +160,17 @@ impl IComponentImpl for CvdModelComponent {
         }
 
         let component = self.component_factory.create_rendering_component(objects);
-        entity.set_rendering_component(Some(Rc::new(component)));
+        self.entity
+            .set_rendering_component(Some(Rc::new(component)));
     }
 
-    fn on_updating(&self, entity: ComRc<IEntity>, delta_sec: f32) -> crosscom::Void {}
+    fn on_updating(&self, delta_sec: f32) -> crosscom::Void {}
 }
 
 impl CvdModelComponent {
-    pub fn new(component_factory: Rc<dyn ComponentFactory>) -> Self {
+    pub fn new(entity: ComRc<IEntity>, component_factory: Rc<dyn ComponentFactory>) -> Self {
         Self {
+            entity,
             component_factory: component_factory.clone(),
             position_keyframes: None,
             rotation_keyframes: None,

@@ -17,9 +17,9 @@ impl SceCommand for SceCommandRolePathTo {
     fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
         let role = scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
             if self.run == 1 {
-                r.get().run(e);
+                r.get().run();
             } else {
-                r.get().walk(e);
+                r.get().walk();
             }
         });
     }
@@ -43,7 +43,7 @@ impl SceCommand for SceCommandRolePathTo {
         let role_controller = RoleController::try_get_role_model(role.unwrap()).unwrap();
 
         let to = {
-            let scene = scene_manager.core_scene_or_fail();
+            let scene = scene_manager.scn_scene().unwrap().get();
             scene.nav_coord_to_scene_coord(
                 role_controller.get().nav_layer(),
                 self.nav_x,
@@ -52,7 +52,7 @@ impl SceCommand for SceCommandRolePathTo {
         };
 
         let role = scene_manager
-            .get_resolved_role_mut(state, self.role_id)
+            .get_resolved_role(state, self.role_id)
             .unwrap();
 
         let position = role.transform().borrow().position();
@@ -76,7 +76,7 @@ impl SceCommand for SceCommandRolePathTo {
             .set_position(&new_position);
 
         if completed {
-            role_controller.get().idle(role);
+            role_controller.get().idle();
         }
         completed
     }

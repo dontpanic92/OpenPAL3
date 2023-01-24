@@ -48,7 +48,12 @@ pub fn create_mv3_entity(
 
     entity.add_component(
         IRoleController::uuid(),
-        crosscom::ComRc::from_object(RoleController::new(asset_mgr, role_name, idle_anim)?),
+        crosscom::ComRc::from_object(RoleController::new(
+            entity.clone(),
+            asset_mgr,
+            role_name,
+            idle_anim,
+        )?),
     );
 
     Ok(entity)
@@ -66,6 +71,7 @@ pub fn create_mv3_entity_from_animation(
     entity.add_component(
         IRoleController::uuid(),
         crosscom::ComRc::from_object(RoleController::new_from_idle_animation(
+            entity.clone(),
             asset_mgr,
             role_name,
             idle_anim_name,
@@ -77,6 +83,7 @@ pub fn create_mv3_entity_from_animation(
 }
 
 pub struct RoleController {
+    entity: ComRc<IEntity>,
     model_name: String,
     asset_mgr: Rc<AssetManager>,
     component_factory: Rc<dyn ComponentFactory>,
@@ -97,21 +104,23 @@ ComObject_RoleController!(super::RoleController);
 
 impl RoleController {
     pub fn new(
+        entity: ComRc<IEntity>,
         asset_mgr: Rc<AssetManager>,
         role_name: &str,
         idle_anim: &str,
     ) -> Result<Self, EntityError> {
         let idle_anim = idle_anim;
         let anim = asset_mgr
-            .load_role_anim_first(role_name, &[idle_anim, "c01", "z1"])
+            .load_role_anim_first(entity.clone(), role_name, &[idle_anim, "c01", "z1"])
             .ok_or(EntityError::EntityAnimationNotFound)?;
 
         Ok(Self::new_from_idle_animation(
-            asset_mgr, role_name, anim.0, anim.1,
+            entity, asset_mgr, role_name, anim.0, anim.1,
         ))
     }
 
     pub fn new_from_idle_animation(
+        entity: ComRc<IEntity>,
         asset_mgr: Rc<AssetManager>,
         role_name: &str,
         idle_anim_name: &str,
@@ -122,8 +131,10 @@ impl RoleController {
             animations.insert(idle_anim_name.to_string(), idle_anim);
         }
 
-        let walking_anim = asset_mgr.load_role_anim_first(role_name, &["c02", "z3"]);
-        let running_anim = asset_mgr.load_role_anim_first(role_name, &["c03", "c02", "z3"]);
+        let walking_anim =
+            asset_mgr.load_role_anim_first(entity.clone(), role_name, &["c02", "z3"]);
+        let running_anim =
+            asset_mgr.load_role_anim_first(entity.clone(), role_name, &["c03", "c02", "z3"]);
 
         let walking_anim_name = walking_anim
             .map(|(name, _)| name)
@@ -136,6 +147,7 @@ impl RoleController {
             .to_string();
 
         Self {
+            entity,
             model_name: role_name.to_string(),
             asset_mgr: asset_mgr.clone(),
             component_factory: asset_mgr.component_factory().clone(),
@@ -163,17 +175,17 @@ impl RoleController {
         *self.is_active.borrow()
     }
 
-    pub fn set_active(&self, entity: ComRc<IEntity>, active: bool) {
+    pub fn set_active(&self, active: bool) {
         *self.is_active.borrow_mut() = active;
         if active {
             let anim_name = { self.active_anim_name.borrow().clone() };
             let mode = *self.anim_repeat_mode.borrow();
-            self.play_anim(entity.clone(), &anim_name, mode);
+            self.play_anim(&anim_name, mode);
         } else {
-            entity.set_rendering_component(None);
+            self.entity.set_rendering_component(None);
         }
 
-        entity.set_visible(active);
+        self.entity.set_visible(active);
     }
 
     pub fn proc_id(&self) -> i32 {
@@ -184,18 +196,17 @@ impl RoleController {
         *self.proc_id.borrow_mut() = proc_id;
     }
 
-    pub fn play_anim(
-        &self,
-        entity: ComRc<IEntity>,
-        anim_name: &str,
-        repeat_mode: RoleAnimationRepeatMode,
-    ) {
+    pub fn play_anim(&self, anim_name: &str, repeat_mode: RoleAnimationRepeatMode) {
         let anim_name = if anim_name.is_empty() {
             self.idle_anim_name.to_lowercase()
         } else {
             let mut anim_name = anim_name.to_lowercase();
             if self.animations.get(&anim_name).is_none() {
-                let anim = self.asset_mgr.load_role_anim(&self.model_name, &anim_name);
+                let anim = self.asset_mgr.load_role_anim(
+                    self.entity.clone(),
+                    &self.model_name,
+                    &anim_name,
+                );
                 if let Some(anim) = anim {
                     self.animations.insert(anim_name.to_string(), anim);
                 } else {
@@ -210,7 +221,7 @@ impl RoleController {
         *self.anim_repeat_mode.borrow_mut() = repeat_mode;
         *self.state.borrow_mut() = RoleState::PlayingAnimation;
 
-        entity.add_component(
+        self.entity.add_component(
             IAnimatedMeshComponent::uuid(),
             self.active_anim()
                 .value()
@@ -219,26 +230,26 @@ impl RoleController {
         );
     }
 
-    pub fn run(&self, entity: ComRc<IEntity>) {
+    pub fn run(&self) {
         if *self.state.borrow() != RoleState::Running {
             let name = self.running_anim_name.clone();
-            self.play_anim(entity, &name, RoleAnimationRepeatMode::Repeat);
+            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
             *self.state.borrow_mut() = RoleState::Running;
         }
     }
 
-    pub fn idle(&self, entity: ComRc<IEntity>) {
+    pub fn idle(&self) {
         if *self.state.borrow() != RoleState::Idle {
             let name = self.idle_anim_name.clone();
-            self.play_anim(entity, &name, RoleAnimationRepeatMode::Repeat);
+            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
             *self.state.borrow_mut() = RoleState::Idle;
         }
     }
 
-    pub fn walk(&self, entity: ComRc<IEntity>) {
+    pub fn walk(&self) {
         if *self.state.borrow() != RoleState::Walking {
             let name = self.walking_anim_name.clone();
-            self.play_anim(entity, &name, RoleAnimationRepeatMode::Repeat);
+            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
             *self.state.borrow_mut() = RoleState::Walking;
         }
     }
@@ -278,19 +289,19 @@ impl IRoleControllerImpl for RoleController {
 }
 
 impl IComponentImpl for RoleController {
-    fn on_loading(&self, entity: ComRc<IEntity>) -> crosscom::Void {
+    fn on_loading(&self) -> crosscom::Void {
         if !self.idle_anim_name.trim().is_empty() && self.is_active() {
-            self.idle(entity);
+            self.idle();
         }
     }
 
-    fn on_updating(&self, entity: ComRc<IEntity>, delta_sec: f32) -> crosscom::Void {
+    fn on_updating(&self, delta_sec: f32) -> crosscom::Void {
         if self.is_active() {
             if self.active_anim().value().morph_animation_state() == MorphAnimationState::Finished {
                 self.state.replace(RoleState::AnimationFinished);
                 if *self.anim_repeat_mode.borrow() == RoleAnimationRepeatMode::NoRepeat {
                     if *self.auto_play_idle.borrow() {
-                        self.idle(entity);
+                        self.idle();
                     }
                 } else {
                     self.active_anim().value().replay();
@@ -301,6 +312,7 @@ impl IComponentImpl for RoleController {
 }
 
 pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
+    entity: ComRc<IEntity>,
     component_factory: &Rc<dyn ComponentFactory>,
     vfs: &MiniFs,
     path: P,
@@ -350,7 +362,7 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
         ));
     }
 
-    let animated_mesh = AnimatedMeshComponent::new(component_factory.clone());
+    let animated_mesh = AnimatedMeshComponent::new(entity, component_factory.clone());
     animated_mesh.set_morph_targets(morph_targets);
 
     Ok(ComRc::from_object(animated_mesh))

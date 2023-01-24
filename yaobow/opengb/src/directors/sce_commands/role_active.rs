@@ -19,7 +19,7 @@ impl SceCommand for SceCommandRoleActive {
         delta_sec: f32,
     ) -> bool {
         scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
-            r.get().set_active(e, self.active != 0)
+            r.get().set_active(self.active != 0)
         });
         true
     }

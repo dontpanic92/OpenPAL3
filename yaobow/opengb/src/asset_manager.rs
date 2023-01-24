@@ -1,3 +1,4 @@
+use crate::classes::IScnSceneComponent;
 use crate::scene::{create_animated_mesh_from_mv3, create_mv3_entity, ScnScene};
 use crate::{
     loaders::{
@@ -14,8 +15,9 @@ use encoding::{types::Encoding, DecoderTrap};
 use ini::Ini;
 use mini_fs::prelude::*;
 use mini_fs::MiniFs;
-use radiance::interfaces::{IAnimatedMeshComponent, IEntity};
+use radiance::interfaces::{IAnimatedMeshComponent, IEntity, IScene};
 use radiance::rendering::ComponentFactory;
+use radiance::scene::CoreScene;
 use shared::fs::init_virtual_fs;
 use std::path::{Path, PathBuf};
 use std::{io, rc::Rc};
@@ -60,14 +62,17 @@ impl AssetManager {
         self.factory.clone()
     }
 
-    pub fn load_scn(self: &Rc<Self>, cpk_name: &str, scn_name: &str) -> ScnScene {
+    pub fn load_scn(self: &Rc<Self>, cpk_name: &str, scn_name: &str) -> ComRc<IScene> {
         let scene_base = self.scene_path.join(cpk_name).join(scn_name);
         let scene_path = scene_base.with_extension("scn");
 
         let scn_file = scn_load_from_file(&self.vfs, scene_path);
         let nav_file = self.load_nav(&scn_file.cpk_name, &scn_file.scn_base_name);
 
-        ScnScene::new(&self, cpk_name, scn_name, scn_file, nav_file)
+        let scene = CoreScene::create();
+        let component = ScnScene::new(scene.clone(), &self, cpk_name, scn_name, scn_file, nav_file);
+        scene.add_component(IScnSceneComponent::uuid(), ComRc::from_object(component));
+        scene
     }
 
     pub fn load_sce(&self, cpk_name: &str) -> SceFile {
@@ -117,11 +122,12 @@ impl AssetManager {
 
     pub fn load_role_anim_first<'a>(
         &self,
+        entity: ComRc<IEntity>,
         role_name: &str,
         action_names: &[&'a str],
     ) -> Option<(&'a str, ComRc<IAnimatedMeshComponent>)> {
         for action_name in action_names {
-            let anim = self.load_role_anim(role_name, action_name);
+            let anim = self.load_role_anim(entity.clone(), role_name, action_name);
             if anim.is_some() {
                 return Some((action_name, anim.unwrap()));
             }
@@ -132,6 +138,7 @@ impl AssetManager {
 
     pub fn load_role_anim(
         &self,
+        entity: ComRc<IEntity>,
         role_name: &str,
         action_name: &str,
     ) -> Option<ComRc<IAnimatedMeshComponent>> {
@@ -142,7 +149,7 @@ impl AssetManager {
             .join(action_name)
             .with_extension("mv3");
 
-        create_animated_mesh_from_mv3(&self.component_factory(), &self.vfs, &path).ok()
+        create_animated_mesh_from_mv3(entity, &self.component_factory(), &self.vfs, &path).ok()
     }
 
     pub fn mv3_path(&self, role_name: &str, action_name: &str) -> PathBuf {

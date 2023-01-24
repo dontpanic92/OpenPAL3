@@ -21,8 +21,8 @@ impl SceCommand for SceCommandRoleShowAction {
         };
 
         let entity = scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
-            r.get().set_active(e.clone(), true);
-            r.get().play_anim(e, &self.action_name, repeat);
+            r.get().set_active(true);
+            r.get().play_anim(&self.action_name, repeat);
         });
     }
 

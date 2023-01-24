@@ -9,15 +9,17 @@ use super::{
     factory::VulkanComponentFactory,
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
+use crate::interfaces::IScene;
 use crate::math::Mat44;
 use crate::rendering::RenderingComponent;
-use crate::scene::{Scene, Viewport};
+use crate::scene::Viewport;
 use crate::{
     imgui::{ImguiContext, ImguiFrame},
     rendering::{ComponentFactory, RenderingEngine, Window},
 };
 use ash::extensions::ext::DebugUtils;
 use ash::{vk, Entry};
+use crosscom::ComRc;
 use std::iter::Iterator;
 use std::ptr;
 use std::rc::Rc;
@@ -54,7 +56,7 @@ pub struct VulkanRenderingEngine {
 }
 
 impl RenderingEngine for VulkanRenderingEngine {
-    fn render(&mut self, scene: &mut dyn Scene, viewport: Viewport, ui_frame: ImguiFrame) {
+    fn render(&mut self, scene: ComRc<IScene>, viewport: Viewport, ui_frame: ImguiFrame) {
         if self.surface.is_none() {
             return;
         }
@@ -352,7 +354,7 @@ impl VulkanRenderingEngine {
 
     fn render_objects(
         &mut self,
-        scene: &mut dyn Scene,
+        scene: ComRc<IScene>,
         viewport: Viewport,
         ui_frame: ImguiFrame,
     ) -> Result<(), Box<dyn Error>> {
@@ -403,7 +405,8 @@ impl VulkanRenderingEngine {
         // Update Per-frame Uniform Buffers
         {
             let ubo = {
-                let camera = scene.camera();
+                let c = scene.camera();
+                let camera = c.borrow();
                 let view = Mat44::inversed(camera.transform().matrix());
                 let proj = camera.projection_matrix();
                 PerFrameUniformBuffer::new(&view, proj)

@@ -15,6 +15,7 @@ use crate::{
 use super::morph_target::MorphTarget;
 
 pub struct AnimatedMeshComponent {
+    entity: ComRc<IEntity>,
     component_factory: Rc<dyn ComponentFactory>,
     props: RefCell<AnimatedMeshComponentProps>,
 }
@@ -35,8 +36,9 @@ struct AnimatedMeshComponentProps {
 ComObject_AnimatedMeshComponent!(super::AnimatedMeshComponent);
 
 impl AnimatedMeshComponent {
-    pub fn new(component_factory: Rc<dyn ComponentFactory>) -> Self {
+    pub fn new(entity: ComRc<IEntity>, component_factory: Rc<dyn ComponentFactory>) -> Self {
         Self {
+            entity,
             component_factory,
             props: RefCell::new(AnimatedMeshComponentProps {
                 morph_targets: vec![],
@@ -212,7 +214,7 @@ impl AnimatedMeshComponent {
         )
     }
 
-    fn load_geometries(&self, geometries: &[Geometry], entity: ComRc<IEntity>) {
+    fn load_geometries(&self, geometries: &[Geometry]) {
         let mut objects = vec![];
         for geometry in geometries {
             let ro = self.component_factory.create_render_object(
@@ -226,16 +228,17 @@ impl AnimatedMeshComponent {
         }
 
         let component = self.component_factory.create_rendering_component(objects);
-        entity.set_rendering_component(Some(Rc::new(component)));
+        self.entity
+            .set_rendering_component(Some(Rc::new(component)));
     }
 }
 
 impl IComponentImpl for AnimatedMeshComponent {
-    fn on_loading(&self, entity: ComRc<IEntity>) -> crosscom::Void {
-        self.load_geometries(&self.props().morph_targets[0].geometries, entity);
+    fn on_loading(&self) -> crosscom::Void {
+        self.load_geometries(&self.props().morph_targets[0].geometries);
     }
 
-    fn on_updating(&self, entity: ComRc<IEntity>, delta_sec: f32) -> crosscom::Void {
+    fn on_updating(&self, delta_sec: f32) -> crosscom::Void {
         if self.props().morph_animation_state == MorphAnimationState::Playing
             && !self.props().morph_targets.is_empty()
         {
@@ -257,7 +260,7 @@ impl IComponentImpl for AnimatedMeshComponent {
                 self.update_morph_target(anim_timestamp, vb);
             });*/
             let geometries = self.blend_morph_target(anim_timestamp);
-            self.load_geometries(&geometries, entity);
+            self.load_geometries(&geometries);
 
             self.props_mut().last_time = anim_timestamp;
         }

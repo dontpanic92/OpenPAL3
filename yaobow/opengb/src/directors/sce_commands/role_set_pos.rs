@@ -25,7 +25,7 @@ impl SceCommand for SceCommandRoleSetPos {
                 .get_resolved_role(state, self.role_id)
                 .unwrap();
             let role_controller = RoleController::try_get_role_model(role).unwrap();
-            let scene = scene_manager.core_scene_or_fail();
+            let scene = scene_manager.scn_scene().unwrap().get();
             scene.nav_coord_to_scene_coord(
                 role_controller.get().nav_layer(),
                 self.nav_x,
@@ -34,7 +34,7 @@ impl SceCommand for SceCommandRoleSetPos {
         };
 
         let role = scene_manager
-            .get_resolved_role_mut(state, self.role_id)
+            .get_resolved_role(state, self.role_id)
             .unwrap();
         role.transform().borrow_mut().set_position(&position);
 

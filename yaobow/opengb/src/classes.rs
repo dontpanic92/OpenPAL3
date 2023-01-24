@@ -13,13 +13,9 @@ pub struct IRoleControllerVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub release:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
-    pub on_loading: unsafe extern "system" fn(
-        this: *const *const std::os::raw::c_void,
-        entity: *const *const std::os::raw::c_void,
-    ) -> (),
+    pub on_loading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
     pub on_updating: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
-        entity: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
     pub get: fn(this: *const *const std::os::raw::c_void) -> &'static opengb::scene::RoleController,
@@ -74,24 +70,20 @@ impl IRoleController {
         }
     }
 
-    pub fn on_loading(&self, entity: crosscom::ComRc<radiance::interfaces::IEntity>) -> () {
+    pub fn on_loading(&self) -> () {
         unsafe {
             let this = self as *const IRoleController as *const *const std::os::raw::c_void;
-            let ret = ((*self.vtable).on_loading)(this, entity.into());
+            let ret = ((*self.vtable).on_loading)(this);
             let ret: () = ret.into();
 
             ret
         }
     }
 
-    pub fn on_updating(
-        &self,
-        entity: crosscom::ComRc<radiance::interfaces::IEntity>,
-        delta_sec: f32,
-    ) -> () {
+    pub fn on_updating(&self, delta_sec: f32) -> () {
         unsafe {
             let this = self as *const IRoleController as *const *const std::os::raw::c_void;
-            let ret = ((*self.vtable).on_updating)(this, entity.into(), delta_sec.into());
+            let ret = ((*self.vtable).on_updating)(this, delta_sec.into());
             let ret: () = ret.into();
 
             ret
@@ -141,9 +133,12 @@ macro_rules! ComObject_RoleController {
             use crosscom::IUnknownImpl;
             use opengb::classes::ICvdModelImpl;
             use opengb::classes::IRoleControllerImpl;
+            use opengb::classes::IScnSceneComponentImpl;
             use radiance::interfaces::IAnimatedMeshComponentImpl;
+            use radiance::interfaces::IComponentContainerImpl;
             use radiance::interfaces::IComponentImpl;
             use radiance::interfaces::IEntityImpl;
+            use radiance::interfaces::ISceneImpl;
             use radiance::interfaces::IStaticMeshComponentImpl;
 
             #[repr(C)]
@@ -217,28 +212,21 @@ macro_rules! ComObject_RoleController {
                 }
             }
 
-            unsafe extern "system" fn on_loading(
-                this: *const *const std::os::raw::c_void,
-                entity: *const *const std::os::raw::c_void,
-            ) -> () {
-                let entity: crosscom::ComRc<radiance::interfaces::IEntity> = entity.into();
-
+            unsafe extern "system" fn on_loading(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<RoleControllerCcw>(this);
-                (*__crosscom_object).inner.on_loading(entity.into()).into()
+                (*__crosscom_object).inner.on_loading().into()
             }
 
             unsafe extern "system" fn on_updating(
                 this: *const *const std::os::raw::c_void,
-                entity: *const *const std::os::raw::c_void,
                 delta_sec: std::os::raw::c_float,
             ) -> () {
-                let entity: crosscom::ComRc<radiance::interfaces::IEntity> = entity.into();
                 let delta_sec: f32 = delta_sec.into();
 
                 let __crosscom_object = crosscom::get_object::<RoleControllerCcw>(this);
                 (*__crosscom_object)
                     .inner
-                    .on_updating(entity.into(), delta_sec.into())
+                    .on_updating(delta_sec.into())
                     .into()
             }
 
@@ -302,13 +290,9 @@ pub struct ICvdModelVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub release:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
-    pub on_loading: unsafe extern "system" fn(
-        this: *const *const std::os::raw::c_void,
-        entity: *const *const std::os::raw::c_void,
-    ) -> (),
+    pub on_loading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
     pub on_updating: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
-        entity: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
 }
@@ -362,24 +346,20 @@ impl ICvdModel {
         }
     }
 
-    pub fn on_loading(&self, entity: crosscom::ComRc<radiance::interfaces::IEntity>) -> () {
+    pub fn on_loading(&self) -> () {
         unsafe {
             let this = self as *const ICvdModel as *const *const std::os::raw::c_void;
-            let ret = ((*self.vtable).on_loading)(this, entity.into());
+            let ret = ((*self.vtable).on_loading)(this);
             let ret: () = ret.into();
 
             ret
         }
     }
 
-    pub fn on_updating(
-        &self,
-        entity: crosscom::ComRc<radiance::interfaces::IEntity>,
-        delta_sec: f32,
-    ) -> () {
+    pub fn on_updating(&self, delta_sec: f32) -> () {
         unsafe {
             let this = self as *const ICvdModel as *const *const std::os::raw::c_void;
-            let ret = ((*self.vtable).on_updating)(this, entity.into(), delta_sec.into());
+            let ret = ((*self.vtable).on_updating)(this, delta_sec.into());
             let ret: () = ret.into();
 
             ret
@@ -418,9 +398,12 @@ macro_rules! ComObject_CvdModel {
             use crosscom::IUnknownImpl;
             use opengb::classes::ICvdModelImpl;
             use opengb::classes::IRoleControllerImpl;
+            use opengb::classes::IScnSceneComponentImpl;
             use radiance::interfaces::IAnimatedMeshComponentImpl;
+            use radiance::interfaces::IComponentContainerImpl;
             use radiance::interfaces::IComponentImpl;
             use radiance::interfaces::IEntityImpl;
+            use radiance::interfaces::ISceneImpl;
             use radiance::interfaces::IStaticMeshComponentImpl;
 
             #[repr(C)]
@@ -479,28 +462,21 @@ macro_rules! ComObject_CvdModel {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            unsafe extern "system" fn on_loading(
-                this: *const *const std::os::raw::c_void,
-                entity: *const *const std::os::raw::c_void,
-            ) -> () {
-                let entity: crosscom::ComRc<radiance::interfaces::IEntity> = entity.into();
-
+            unsafe extern "system" fn on_loading(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<CvdModelCcw>(this);
-                (*__crosscom_object).inner.on_loading(entity.into()).into()
+                (*__crosscom_object).inner.on_loading().into()
             }
 
             unsafe extern "system" fn on_updating(
                 this: *const *const std::os::raw::c_void,
-                entity: *const *const std::os::raw::c_void,
                 delta_sec: std::os::raw::c_float,
             ) -> () {
-                let entity: crosscom::ComRc<radiance::interfaces::IEntity> = entity.into();
                 let delta_sec: f32 = delta_sec.into();
 
                 let __crosscom_object = crosscom::get_object::<CvdModelCcw>(this);
                 (*__crosscom_object)
                     .inner
-                    .on_updating(entity.into(), delta_sec.into())
+                    .on_updating(delta_sec.into())
                     .into()
             }
 
@@ -547,3 +523,278 @@ macro_rules! ComObject_CvdModel {
 }
 
 // pub use ComObject_CvdModel;
+
+// Interface IScnSceneComponent
+
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct IScnSceneComponentVirtualTable {
+    pub query_interface: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        guid: uuid::Uuid,
+        retval: &mut *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_long,
+    pub add_ref:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub release:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub on_loading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub on_updating: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        delta_sec: std::os::raw::c_float,
+    ) -> (),
+    pub get: fn(this: *const *const std::os::raw::c_void) -> &'static opengb::scene::ScnScene,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IScnSceneComponentVirtualTableCcw {
+    pub offset: isize,
+    pub vtable: IScnSceneComponentVirtualTable,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IScnSceneComponent {
+    pub vtable: *const IScnSceneComponentVirtualTable,
+}
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+impl IScnSceneComponent {
+    pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
+        let this = self as *const IScnSceneComponent as *const *const std::os::raw::c_void;
+        let mut raw = 0 as *const *const std::os::raw::c_void;
+        let guid = uuid::Uuid::from_bytes(T::INTERFACE_ID);
+        let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
+        if ret_val != 0 {
+            None
+        } else {
+            Some(unsafe { crosscom::ComRc::<T>::from_raw_pointer(raw) })
+        }
+    }
+
+    pub fn add_ref(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IScnSceneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn release(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IScnSceneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn on_loading(&self) -> () {
+        unsafe {
+            let this = self as *const IScnSceneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_loading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn on_updating(&self, delta_sec: f32) -> () {
+        unsafe {
+            let this = self as *const IScnSceneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_updating)(this, delta_sec.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn get(&self) -> &'static opengb::scene::ScnScene {
+        unsafe {
+            let this = self as *const IScnSceneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).get)(this);
+
+            ret
+        }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(IScnSceneComponent::INTERFACE_ID)
+    }
+}
+
+pub trait IScnSceneComponentImpl {
+    fn get(&self) -> &'static opengb::scene::ScnScene;
+}
+
+impl crosscom::ComInterface for IScnSceneComponent {
+    // 77fe1a3d-05cf-47f9-b80a-08be6d19b0a4
+    const INTERFACE_ID: [u8; 16] = [
+        119u8, 254u8, 26u8, 61u8, 5u8, 207u8, 71u8, 249u8, 184u8, 10u8, 8u8, 190u8, 109u8, 25u8,
+        176u8, 164u8,
+    ];
+}
+
+// Class ScnSceneComponent
+
+#[allow(unused)]
+#[macro_export]
+macro_rules! ComObject_ScnSceneComponent {
+    ($impl_type: ty) => {
+        #[allow(dead_code)]
+        #[allow(non_snake_case)]
+        #[allow(unused)]
+        mod ScnSceneComponent_crosscom_impl {
+            use crate as opengb;
+            use crosscom::ComInterface;
+            use crosscom::IObjectArrayImpl;
+            use crosscom::IUnknownImpl;
+            use opengb::classes::ICvdModelImpl;
+            use opengb::classes::IRoleControllerImpl;
+            use opengb::classes::IScnSceneComponentImpl;
+            use radiance::interfaces::IAnimatedMeshComponentImpl;
+            use radiance::interfaces::IComponentContainerImpl;
+            use radiance::interfaces::IComponentImpl;
+            use radiance::interfaces::IEntityImpl;
+            use radiance::interfaces::ISceneImpl;
+            use radiance::interfaces::IStaticMeshComponentImpl;
+
+            #[repr(C)]
+            pub struct ScnSceneComponentCcw {
+                IScnSceneComponent: opengb::classes::IScnSceneComponent,
+
+                ref_count: std::sync::atomic::AtomicU32,
+                pub inner: $impl_type,
+            }
+
+            unsafe extern "system" fn query_interface(
+                this: *const *const std::os::raw::c_void,
+                guid: uuid::Uuid,
+                retval: &mut *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<ScnSceneComponentCcw>(this);
+                match guid.as_bytes() {
+                    &crosscom::IUnknown::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
+
+                    &radiance::interfaces::IComponent::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
+
+                    &opengb::classes::IScnSceneComponent::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
+
+                    _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
+                }
+            }
+
+            unsafe extern "system" fn add_ref(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<ScnSceneComponentCcw>(this);
+                let previous = (*object)
+                    .ref_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                (previous + 1) as std::os::raw::c_long
+            }
+
+            unsafe extern "system" fn release(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<ScnSceneComponentCcw>(this);
+
+                let previous = (*object)
+                    .ref_count
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                if previous - 1 == 0 {
+                    Box::from_raw(object as *mut ScnSceneComponentCcw);
+                }
+
+                (previous - 1) as std::os::raw::c_long
+            }
+
+            fn get(this: *const *const std::os::raw::c_void) -> &'static opengb::scene::ScnScene {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<ScnSceneComponentCcw>(this);
+                    (*__crosscom_object).inner.get()
+                }
+            }
+
+            unsafe extern "system" fn on_loading(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<ScnSceneComponentCcw>(this);
+                (*__crosscom_object).inner.on_loading().into()
+            }
+
+            unsafe extern "system" fn on_updating(
+                this: *const *const std::os::raw::c_void,
+                delta_sec: std::os::raw::c_float,
+            ) -> () {
+                let delta_sec: f32 = delta_sec.into();
+
+                let __crosscom_object = crosscom::get_object::<ScnSceneComponentCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .on_updating(delta_sec.into())
+                    .into()
+            }
+
+            #[allow(non_upper_case_globals)]
+            pub const GLOBAL_IScnSceneComponentVirtualTable_CCW_FOR_ScnSceneComponent:
+                opengb::classes::IScnSceneComponentVirtualTableCcw =
+                opengb::classes::IScnSceneComponentVirtualTableCcw {
+                    offset: 0,
+                    vtable: opengb::classes::IScnSceneComponentVirtualTable {
+                        query_interface,
+                        add_ref,
+                        release,
+                        on_loading,
+                        on_updating,
+                        get,
+                    },
+                };
+
+            impl crosscom::ComObject for $impl_type {
+                type CcwType = ScnSceneComponentCcw;
+
+                fn create_ccw(self) -> Self::CcwType {
+                    Self::CcwType {
+                        IScnSceneComponent: opengb::classes::IScnSceneComponent {
+                            vtable: &GLOBAL_IScnSceneComponentVirtualTable_CCW_FOR_ScnSceneComponent
+                                .vtable
+                                as *const opengb::classes::IScnSceneComponentVirtualTable,
+                        },
+
+                        ref_count: std::sync::atomic::AtomicU32::new(0),
+                        inner: self,
+                    }
+                }
+
+                fn get_ccw(&self) -> &Self::CcwType {
+                    unsafe {
+                        let this = self as *const _ as *const u8;
+                        let this = this
+                            .offset(-(crosscom::offset_of!(ScnSceneComponentCcw, inner) as isize));
+                        &*(this as *const Self::CcwType)
+                    }
+                }
+            }
+        }
+    };
+}
+
+// pub use ComObject_ScnSceneComponent;

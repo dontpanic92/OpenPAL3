@@ -3,5 +3,4 @@
 pub mod application;
 pub mod core;
 mod director;
-pub mod scene;
 pub mod ui;

@@ -19,8 +19,10 @@ impl SceCommand for SceCommandObjectActive {
         delta_sec: f32,
     ) -> bool {
         if let Some(e) = scene_manager
-            .core_scene_mut_or_fail()
-            .get_root_object_mut(self.object_id)
+            .scn_scene()
+            .unwrap()
+            .get()
+            .get_root_object(self.object_id)
         {
             e.set_visible(self.active != 0);
         }

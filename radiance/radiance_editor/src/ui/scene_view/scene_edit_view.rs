@@ -33,10 +33,11 @@ impl SceneEditView {
 
         if !self.dragging {
             self.start_transform = scene_manager
-                .scene_mut()
+                .scene()
                 .unwrap()
-                .camera_mut()
-                .transform_mut()
+                .camera()
+                .borrow()
+                .transform()
                 .clone();
 
             let cursor_pos = ui.io().mouse_pos;
@@ -77,10 +78,9 @@ impl SceneEditView {
             transform.rotate_axis_angle(&yaw_axis, mouse_drag_y * -0.002 * std::f32::consts::PI);
         }
 
-        scene_manager
-            .scene_mut()
-            .unwrap()
-            .camera_mut()
+        let camera = scene_manager.scene().unwrap().camera();
+        camera
+            .borrow_mut()
             .transform_mut()
             .set_matrix(*transform.matrix());
     }
@@ -103,9 +103,10 @@ impl SceneEditView {
             .build(|| {
                 let rect = window_content_rect(ui);
                 scene_manager
-                    .scene_mut()
+                    .scene()
                     .unwrap()
-                    .camera_mut()
+                    .camera()
+                    .borrow_mut()
                     .set_viewport(Viewport::CustomViewport(rect));
                 self.update_scene(scene_manager, ui, delta_sec);
             });

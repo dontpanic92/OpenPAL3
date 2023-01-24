@@ -1,6 +1,9 @@
-use radiance::application::{Application, ApplicationExtension};
+use radiance::{
+    application::{Application, ApplicationExtension},
+    scene::CoreScene,
+};
 
-use crate::{director::UiDirector, scene::EditorScene, ui::scene_view::SceneViewPlugins};
+use crate::{director::UiDirector, ui::scene_view::SceneViewPlugins};
 
 pub struct EditorApplication {
     plugin_create: Option<Box<dyn Fn(&mut Application<EditorApplication>) -> SceneViewPlugins>>,
@@ -15,7 +18,7 @@ impl ApplicationExtension<EditorApplication> for EditorApplication {
 
         app.engine_mut()
             .scene_manager()
-            .push_scene(Box::new(EditorScene::new()));
+            .push_scene(CoreScene::create());
         app.engine_mut().scene_manager().set_director(director);
     }
 

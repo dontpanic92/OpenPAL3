@@ -1,42 +1,23 @@
 use crosscom::ComRc;
+use dashmap::DashMap;
 use uuid::Uuid;
 
-use crate::interfaces::{IComponent, IEntity, IEntityImpl};
+use crate::interfaces::{IComponent, IComponentContainerImpl, IEntity, IEntityImpl};
 use crate::math::{Mat44, Transform};
 use crate::rendering::RenderingComponent;
 use crate::ComObject_Entity;
 use std::cell::{Ref, RefCell, RefMut};
-use std::collections::HashMap;
 use std::rc::Rc;
-
-/*pub trait Entity {
-    fn name(&self) -> &str;
-    fn set_name(&mut self, name: &str);
-    fn load(&mut self);
-    fn update(&mut self, delta_sec: f32);
-    fn transform(&self) -> &Transform;
-    fn transform_mut(&mut self) -> &mut Transform;
-    fn world_transform(&self) -> &Transform;
-    fn update_world_transform(&mut self, parent_transform: &Transform);
-    fn add_component(&mut self, type_id: TypeId, component: Box<dyn Any>);
-    fn get_component(&self, type_id: TypeId) -> Option<&Box<dyn Any>>;
-    fn get_component2(&self, uuid: Uuid) -> Option<&ComRc<IComponent>>;
-    fn get_component_mut(&mut self, type_id: TypeId) -> Option<&mut Box<dyn Any>>;
-    fn remove_component(&mut self, type_id: TypeId);
-    fn children(&self) -> Vec<&dyn Entity>;
-    fn visible(&self) -> bool;
-    fn set_visible(&mut self, visible: bool);
-}*/
 
 pub struct CoreEntity {
     transform: Rc<RefCell<Transform>>,
+    components: DashMap<Uuid, ComRc<IComponent>>,
     props: RefCell<CoreEntityProps>,
 }
 
 pub struct CoreEntityProps {
     name: String,
     world_transform: Transform,
-    components: HashMap<Uuid, ComRc<IComponent>>,
     children: Vec<ComRc<IEntity>>,
     visible: bool,
 
@@ -57,10 +38,10 @@ impl CoreEntity {
     pub fn new(name: String, visible: bool) -> Self {
         Self {
             transform: Rc::new(RefCell::new(Transform::new())),
+            components: DashMap::new(),
             props: RefCell::new(CoreEntityProps {
                 name,
                 world_transform: Transform::new(),
-                components: HashMap::new(),
                 children: vec![],
                 visible,
 
@@ -86,6 +67,28 @@ impl CoreEntity {
     }
 }
 
+impl IComponentContainerImpl for CoreEntity {
+    fn add_component(&self, uuid: uuid::Uuid, component: crosscom::ComRc<IComponent>) -> () {
+        self.components.insert(uuid, component);
+    }
+
+    fn get_component(
+        &self,
+        uuid: uuid::Uuid,
+    ) -> Option<crosscom::ComRc<crate::interfaces::IComponent>> {
+        self.components
+            .get(&uuid)
+            .and_then(|c| Some(c.value().clone()))
+    }
+
+    fn remove_component(
+        &self,
+        uuid: uuid::Uuid,
+    ) -> Option<crosscom::ComRc<crate::interfaces::IComponent>> {
+        self.components.remove(&uuid).and_then(|c| Some(c.1))
+    }
+}
+
 impl IEntityImpl for CoreEntity {
     fn name(&self) -> String {
         self.props().name.clone()
@@ -96,22 +99,31 @@ impl IEntityImpl for CoreEntity {
     }
 
     fn load(&self) -> crosscom::Void {
-        let components = self.props().components.clone();
-        let children = self.props().children.clone();
-
-        for c in components {
-            c.1.on_loading(ComRc::from_self(self))
+        for e in self.props().children.clone() {
+            e.load();
         }
 
-        for e in children {
-            e.load();
+        for c in self.components.clone() {
+            c.1.on_loading()
         }
     }
 
+    fn unload(&self) -> () {
+        for e in self.props().children.clone() {
+            e.unload();
+        }
+
+        self.props_mut().children.clear();
+        self.components.clear();
+    }
+
     fn update(&self, delta_sec: f32) -> crosscom::Void {
-        let components = self.props().components.clone();
-        for c in components {
-            c.1.on_updating(ComRc::from_self(self), delta_sec);
+        for e in self.props().children.clone() {
+            e.update(delta_sec);
+        }
+
+        for c in self.components.clone() {
+            c.1.on_updating(delta_sec);
         }
     }
 
@@ -134,24 +146,6 @@ impl IEntityImpl for CoreEntity {
         for e in props.children.clone() {
             e.update_world_transform(&props.world_transform);
         }
-    }
-
-    fn add_component(&self, uuid: uuid::Uuid, component: crosscom::ComRc<IComponent>) -> () {
-        self.props_mut().components.insert(uuid, component);
-    }
-
-    fn get_component(
-        &self,
-        uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<crate::interfaces::IComponent>> {
-        self.props().components.get(&uuid).cloned()
-    }
-
-    fn remove_component(
-        &self,
-        uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<crate::interfaces::IComponent>> {
-        self.props_mut().components.remove(&uuid)
     }
 
     fn children(&self) -> Vec<crosscom::ComRc<crate::interfaces::IEntity>> {

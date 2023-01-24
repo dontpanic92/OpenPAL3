@@ -9,7 +9,7 @@ use opengb::{
 use radiance::{
     audio::{AudioEngine, AudioSource, Codec},
     input::InputEngine,
-    scene::{DefaultScene, Director, SceneManager},
+    scene::{CoreScene, Director, SceneManager},
 };
 
 use crate::sce_proc_hooks::SceRestHooks;
@@ -43,7 +43,7 @@ impl MainMenuDirector {
 impl Director for MainMenuDirector {
     fn activate(&mut self, scene_manager: &mut dyn SceneManager) {
         debug!("MainMenuDirector activated");
-        scene_manager.push_scene(Box::new(DefaultScene::create()));
+        scene_manager.push_scene(CoreScene::create());
         self.main_theme_source.restart();
     }
 

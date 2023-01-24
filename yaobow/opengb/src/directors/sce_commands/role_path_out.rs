@@ -26,7 +26,7 @@ impl SceCommand for SceCommandRolePathOut {
     ) -> bool {
         if self.cmd_path_to.update(scene_manager, ui, state, delta_sec) {
             scene_manager
-                .resolve_role_mut_do(state, self.role_id, |e, r| r.get().set_active(e, false));
+                .resolve_role_mut_do(state, self.role_id, |e, r| r.get().set_active(false));
             true
         } else {
             false

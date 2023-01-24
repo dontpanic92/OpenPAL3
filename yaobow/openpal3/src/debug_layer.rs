@@ -37,9 +37,9 @@ impl OpenPal3DebugLayer {
         ui.window("Debug").build(|| {
             let fps = self.fps_counter.update_fps(delta_sec);
             ui.text(format!("Fps: {}", fps));
-            let scene = scene_manager.core_scene();
+            let scene = scene_manager.scn_scene();
             if let Some(s) = scene {
-                ui.text(format!("Scene: {} {}", s.name(), s.sub_name()));
+                ui.text(format!("Scene: {} {}", s.get().name(), s.get().sub_name()));
             }
 
             let coord = scene_manager.director().as_ref().and_then(|d| {
@@ -72,11 +72,11 @@ impl OpenPal3DebugLayer {
                     let pass_through = d.sce_vm_mut().global_state_mut().pass_through_wall_mut();
                     ui.checkbox("无视地形", pass_through);
 
-                    if let Some(s) = scene_manager.core_scene_mut() {
+                    if let Some(s) = scene_manager.scn_scene() {
                         if ui.button("切换地图层") {
-                            if s.nav().layer_count() > 1 {
+                            if s.get().nav().layer_count() > 1 {
                                 if let Some(role) =
-                                    scene_manager.get_resolved_role_mut(d.sce_vm_mut().state(), -1)
+                                    scene_manager.get_resolved_role(d.sce_vm_mut().state(), -1)
                                 {
                                     let r = RoleController::try_get_role_model(role).unwrap();
                                     r.get().switch_nav_layer();
@@ -88,16 +88,17 @@ impl OpenPal3DebugLayer {
             }
 
             TabBar::new("##debug_tab_bar_nav_bar").build(ui, || {
-                if scene_manager.core_scene().is_none() {
+                if scene_manager.scn_scene().is_none() {
                     return;
                 }
-                let layer_count = scene_manager.core_scene().unwrap().nav().layer_count();
+                let layer_count = scene_manager.scn_scene().unwrap().get().nav().layer_count();
                 for layer in 0..layer_count {
                     TabItem::new(&format!("Layer {}", layer)).build(ui, || {
                         let current_nav_coord = coord.as_ref().and_then(|c| {
                             Some(
                                 scene_manager
-                                    .core_scene_mut()?
+                                    .scn_scene()?
+                                    .get()
                                     .scene_coord_to_nav_coord(layer, c),
                             )
                         });
@@ -106,14 +107,16 @@ impl OpenPal3DebugLayer {
 
                         if current_nav_coord.is_some() {
                             let height = scene_manager
-                                .core_scene_or_fail()
+                                .scn_scene()
+                                .unwrap()
+                                .get()
                                 .get_height(layer, current_nav_coord.unwrap());
                             ui.text(format!("Height: {:?}", &height));
                         }
 
                         let text = {
-                            let s = scene_manager.core_scene().unwrap();
-                            let size = s.nav().get_map_size(layer);
+                            let s = scene_manager.scn_scene().unwrap();
+                            let size = s.get().nav().get_map_size(layer);
                             let mut text = "".to_string();
                             for j in 0..size.1 {
                                 for i in 0..size.0 {
@@ -125,6 +128,7 @@ impl OpenPal3DebugLayer {
                                         }
 
                                         let distance = s
+                                            .get()
                                             .nav()
                                             .get(layer, i as i32, j as i32)
                                             .unwrap()

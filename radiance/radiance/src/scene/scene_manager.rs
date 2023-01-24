@@ -1,26 +1,27 @@
-use super::{Director, Scene};
+use crate::interfaces::IScene;
+
+use super::Director;
+use crosscom::ComRc;
 use imgui::Ui;
 use std::{cell::RefCell, rc::Rc};
 
 pub trait SceneManager {
     fn update(&mut self, ui: &Ui, delta_sec: f32);
-    fn scene(&self) -> Option<&dyn Scene>;
-    fn scene_mut(&mut self) -> Option<&mut dyn Scene>;
-    fn scenes(&self) -> &[Box<dyn Scene>];
-    fn scenes_mut(&mut self) -> Vec<&mut dyn Scene>;
+    fn scene(&self) -> Option<ComRc<IScene>>;
+    fn scenes(&self) -> &[ComRc<IScene>];
 
     fn set_view_extent(&mut self, extent: (u32, u32));
     fn director(&self) -> Option<Rc<RefCell<dyn Director>>>;
     fn set_director(&mut self, director: Rc<RefCell<dyn Director>>);
-    fn push_scene(&mut self, scene: Box<dyn Scene>);
-    fn pop_scene(&mut self) -> Option<Box<dyn Scene>>;
+    fn push_scene(&mut self, scene: ComRc<IScene>);
+    fn pop_scene(&mut self) -> Option<ComRc<IScene>>;
     fn unload_all_scenes(&mut self);
     fn unset_director(&mut self);
 }
 
 pub struct DefaultSceneManager {
     director: Option<Rc<RefCell<dyn Director>>>,
-    scenes: Vec<Box<dyn Scene>>,
+    scenes: Vec<ComRc<IScene>>,
     view_extent: (u32, u32),
 }
 
@@ -34,12 +35,6 @@ impl DefaultSceneManager {
     }
 }
 
-macro_rules! scene_mut {
-    ($self: ident) => {
-        $self.scenes.last_mut().and_then(|x| Some(&mut **x))
-    };
-}
-
 impl SceneManager for DefaultSceneManager {
     fn update(&mut self, ui: &Ui, delta_sec: f32) {
         if let Some(d) = self.director.as_ref() {
@@ -51,25 +46,17 @@ impl SceneManager for DefaultSceneManager {
             }
         }
 
-        if let Some(s) = scene_mut!(self) {
+        if let Some(s) = self.scene() {
             s.update(delta_sec);
         }
     }
 
-    fn scene(&self) -> Option<&dyn Scene> {
-        self.scenes.last().and_then(|x| Some(&**x))
+    fn scene(&self) -> Option<ComRc<IScene>> {
+        self.scenes.last().and_then(|x| Some(x.clone()))
     }
 
-    fn scene_mut(&mut self) -> Option<&mut dyn Scene> {
-        scene_mut!(self)
-    }
-
-    fn scenes(&self) -> &[Box<dyn Scene>] {
+    fn scenes(&self) -> &[ComRc<IScene>] {
         &self.scenes
-    }
-
-    fn scenes_mut(&mut self) -> Vec<&mut dyn Scene> {
-        self.scenes.iter_mut().map(|s| s.as_mut()).collect()
     }
 
     fn set_view_extent(&mut self, extent: (u32, u32)) {
@@ -85,14 +72,12 @@ impl SceneManager for DefaultSceneManager {
         self.director = Some(director);
     }
 
-    fn push_scene(&mut self, scene: Box<dyn Scene>) {
-        self.scenes.push(scene);
-
-        let scene_mut = self.scene_mut().unwrap();
-        scene_mut.load();
+    fn push_scene(&mut self, scene: ComRc<IScene>) {
+        self.scenes.push(scene.clone());
+        scene.load();
     }
 
-    fn pop_scene(&mut self) -> Option<Box<dyn Scene>> {
+    fn pop_scene(&mut self) -> Option<ComRc<IScene>> {
         let mut scene = self.scenes.pop();
         if let Some(s) = scene.as_mut() {
             s.unload();

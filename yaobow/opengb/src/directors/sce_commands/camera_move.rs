@@ -1,7 +1,5 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
-use crate::directors::SceneManagerExtensions;
 use imgui::Ui;
-use radiance::scene::Scene;
 use radiance::{math::Vec3, scene::SceneManager};
 
 #[derive(Debug, Clone)]
@@ -17,9 +15,10 @@ impl SceCommand for SceCommandCameraMove {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        let scene = scene_manager.core_scene_mut_or_fail();
+        let scene = scene_manager.scene().unwrap();
         scene
-            .camera_mut()
+            .camera()
+            .borrow_mut()
             .transform_mut()
             .set_position(&self.position);
 

@@ -20,7 +20,7 @@ impl SceCommand for SceCommandRoleScript {
         delta_sec: f32,
     ) -> bool {
         let role = scene_manager
-            .get_resolved_role_mut(state, self.role_id)
+            .get_resolved_role(state, self.role_id)
             .unwrap();
 
         let role_controller = RoleController::try_get_role_model(role).unwrap();

@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub struct StaticMeshComponent {
+    entity: ComRc<IEntity>,
     geometries: Vec<Geometry>,
     component_factory: Rc<dyn ComponentFactory>,
 }
@@ -16,8 +17,13 @@ pub struct StaticMeshComponent {
 ComObject_StaticMeshComponent!(super::StaticMeshComponent);
 
 impl StaticMeshComponent {
-    pub fn new(geometries: Vec<Geometry>, component_factory: Rc<dyn ComponentFactory>) -> Self {
+    pub fn new(
+        entity: ComRc<IEntity>,
+        geometries: Vec<Geometry>,
+        component_factory: Rc<dyn ComponentFactory>,
+    ) -> Self {
         Self {
+            entity,
             geometries,
             component_factory,
         }
@@ -25,7 +31,8 @@ impl StaticMeshComponent {
 }
 
 impl IComponentImpl for StaticMeshComponent {
-    fn on_loading(&self, entity: ComRc<IEntity>) -> crosscom::Void {
+    fn on_loading(&self) -> crosscom::Void {
+        println!("static mesh onload");
         let mut objects = vec![];
         for geometry in &self.geometries {
             let ro = self.component_factory.create_render_object(
@@ -39,8 +46,9 @@ impl IComponentImpl for StaticMeshComponent {
         }
 
         let component = self.component_factory.create_rendering_component(objects);
-        entity.set_rendering_component(Some(Rc::new(component)));
+        self.entity
+            .set_rendering_component(Some(Rc::new(component)));
     }
 
-    fn on_updating(&self, entity: ComRc<IEntity>, delta_sec: f32) -> crosscom::Void {}
+    fn on_updating(&self, delta_sec: f32) -> crosscom::Void {}
 }

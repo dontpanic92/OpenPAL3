@@ -6,53 +6,33 @@ mod sce_vm;
 
 use self::sce_vm::SceState;
 use crate::{
-    classes::IRoleController,
-    scene::{RoleController, ScnScene},
+    classes::{IRoleController, IScnSceneComponent},
+    scene::RoleController,
 };
 pub use adv_director::AdventureDirector;
 use crosscom::ComRc;
 pub use global_state::GlobalState;
 pub use persistent_state::PersistentState;
-use radiance::{
-    interfaces::IEntity,
-    scene::{CoreScene, SceneManager},
-};
+use radiance::{interfaces::IEntity, scene::SceneManager};
 pub use sce_vm::{SceExecutionOptions, SceProcHooks};
 
 pub trait SceneManagerExtensions: SceneManager {
-    fn core_scene(&self) -> Option<&CoreScene<ScnScene>> {
-        self.scene()
-            .expect("No scene loaded. Probably a bug in Sce procedures.")
-            .downcast_ref::<CoreScene<ScnScene>>()
-    }
-
-    fn core_scene_mut(&mut self) -> Option<&mut CoreScene<ScnScene>> {
-        self.scene_mut()
-            .expect("No scene loaded. Probably a bug in Sce procedures.")
-            .downcast_mut::<CoreScene<ScnScene>>()
-    }
-
-    fn core_scene_or_fail(&self) -> &CoreScene<ScnScene> {
-        self.core_scene().unwrap()
-    }
-
-    fn core_scene_mut_or_fail(&mut self) -> &mut CoreScene<ScnScene> {
-        self.core_scene_mut().unwrap()
+    fn scn_scene(&self) -> Option<ComRc<IScnSceneComponent>> {
+        self.scene()?
+            .get_component(IScnSceneComponent::uuid())?
+            .query_interface::<IScnSceneComponent>()
     }
 
     fn get_resolved_role(&self, state: &SceState, role_id: i32) -> Option<ComRc<IEntity>> {
-        self.core_scene_or_fail()
-            .get_role_entity(resolve_role_id(state, role_id))
-    }
-
-    fn get_resolved_role_mut(&mut self, state: &SceState, role_id: i32) -> Option<ComRc<IEntity>> {
         let resolved_role_id = if role_id == -1 {
             state.global_state().role_controlled()
         } else {
             role_id
         };
-        self.core_scene_mut_or_fail()
-            .get_role_entity_mut(resolve_role_id(state, role_id))
+        self.scn_scene()
+            .unwrap()
+            .get()
+            .get_role_entity(resolve_role_id(state, role_id))
     }
 
     fn resolve_role_do<T, F: Fn(ComRc<IEntity>, ComRc<IRoleController>) -> T>(
@@ -72,12 +52,12 @@ pub trait SceneManagerExtensions: SceneManager {
     }
 
     fn resolve_role_mut_do<T, F: Fn(ComRc<IEntity>, ComRc<IRoleController>) -> T>(
-        &mut self,
+        &self,
         state: &SceState,
         role_id: i32,
         action: F,
     ) -> Option<T> {
-        let role = self.get_resolved_role_mut(state, role_id);
+        let role = self.get_resolved_role(state, role_id);
         if let Some(r) = role {
             let role_model = RoleController::try_get_role_model(r.clone()).unwrap();
             Some(action(r, role_model))

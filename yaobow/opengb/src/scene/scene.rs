@@ -1,37 +1,48 @@
 use crate::asset_manager::AssetManager;
-use crate::classes::IRoleController;
+use crate::classes::{IRoleController, IScnSceneComponentImpl};
 use crate::loaders::nav_loader::NavMapPoint;
 use crate::loaders::{nav_loader::NavFile, scn_loader::*};
+use crate::ComObject_ScnSceneComponent;
 use crosscom::ComRc;
-use radiance::interfaces::IEntity;
-use radiance::scene::{CoreScene, SceneExtension};
-use radiance::{math::Vec3, scene::Scene};
+use radiance::interfaces::{IComponentImpl, IEntity, IScene};
+use radiance::math::Vec3;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
 pub struct ScnScene {
+    scene: ComRc<IScene>,
     asset_mgr: Rc<AssetManager>,
     cpk_name: String,
     scn_name: String,
     scn_file: ScnFile,
     nav: Nav,
-    nav_triggers: Vec<SceNavTrigger>,
-    aabb_triggers: Vec<SceAabbTrigger>,
-    item_triggers: Vec<SceItemTrigger>,
-    ladder_triggers: Vec<LadderTrigger>,
+    nav_triggers: RefCell<Vec<SceNavTrigger>>,
+    aabb_triggers: RefCell<Vec<SceAabbTrigger>>,
+    item_triggers: RefCell<Vec<SceItemTrigger>>,
+    ladder_triggers: RefCell<Vec<LadderTrigger>>,
 }
 
-impl SceneExtension for ScnScene {
-    fn on_loading(self: &mut CoreScene<ScnScene>) {
+ComObject_ScnSceneComponent!(super::ScnScene);
+
+impl IComponentImpl for ScnScene {
+    fn on_loading(&self) {
         self.load_objects();
         self.load_roles();
     }
 
-    fn on_updating(self: &mut CoreScene<ScnScene>, delta_sec: f32) {}
+    fn on_updating(&self, delta_sec: f32) {}
+}
+
+impl IScnSceneComponentImpl for ScnScene {
+    fn get(&self) -> &'static crate::scene::ScnScene {
+        unsafe { &*(self as *const _) }
+    }
 }
 
 impl ScnScene {
     pub fn new(
+        scene: ComRc<IScene>,
         asset_mgr: &Rc<AssetManager>,
         cpk_name: &str,
         scn_name: &str,
@@ -39,15 +50,16 @@ impl ScnScene {
         nav_file: NavFile,
     ) -> Self {
         Self {
+            scene,
             asset_mgr: asset_mgr.clone(),
             cpk_name: cpk_name.to_string(),
             scn_name: scn_name.to_string(),
             scn_file,
             nav: Nav::new(nav_file),
-            nav_triggers: vec![],
-            aabb_triggers: vec![],
-            item_triggers: vec![],
-            ladder_triggers: vec![],
+            nav_triggers: RefCell::new(vec![]),
+            aabb_triggers: RefCell::new(vec![]),
+            item_triggers: RefCell::new(vec![]),
+            ladder_triggers: RefCell::new(vec![]),
         }
     }
 
@@ -106,7 +118,7 @@ impl ScnScene {
         let nav_coord = self.scene_coord_to_nav_coord(layer, coord);
         let nav_coord = (nav_coord.0 as i32, nav_coord.1 as i32);
 
-        for trigger in &self.nav_triggers {
+        for trigger in &*self.nav_triggers.borrow() {
             if Self::test_coord_in_bound(nav_coord, (trigger.nav_coord_min, trigger.nav_coord_max))
             {
                 if trigger.node_type == 14
@@ -152,7 +164,7 @@ impl ScnScene {
 
     pub fn test_aabb_trigger(&self, coord: &Vec3) -> Option<u32> {
         const R: f32 = 50.;
-        for trigger in &self.aabb_triggers {
+        for trigger in &*self.aabb_triggers.borrow() {
             log::debug!(
                 "Testing Aabb {:?} {:?} {:?}",
                 &trigger.aabb_coord2,
@@ -169,7 +181,7 @@ impl ScnScene {
 
     pub fn test_item_trigger(&self, coord: &Vec3) -> Option<u32> {
         const D: f32 = 100.;
-        for trigger in &self.item_triggers {
+        for trigger in &*self.item_triggers.borrow() {
             log::debug!(
                 "Testing item trigger {:?} {:?} {}",
                 &trigger.coord,
@@ -184,13 +196,9 @@ impl ScnScene {
         None
     }
 
-    pub fn test_role_trigger(
-        self: &CoreScene<ScnScene>,
-        coord: &Vec3,
-        exclude_role: i32,
-    ) -> Option<u32> {
+    pub fn test_role_trigger(&self, coord: &Vec3, exclude_role: i32) -> Option<u32> {
         const D: f32 = 100.;
-        for role in self.entities() {
+        for role in self.scene.entities() {
             if role.name() == format!("ROLE_{}", exclude_role) {
                 continue;
             }
@@ -219,7 +227,7 @@ impl ScnScene {
         let nav_coord = self
             .nav
             .round_nav_coord(layer, self.scene_coord_to_nav_coord(layer, coord));
-        for ladder in &self.ladder_triggers {
+        for ladder in &*self.ladder_triggers.borrow() {
             let new_layer = if ladder.switch_layer {
                 (layer + 1) % 2
             } else {
@@ -291,47 +299,31 @@ impl ScnScene {
         )
     }
 
-    pub fn get_object<'a>(self: &'a mut CoreScene<Self>, id: i32) -> Option<ComRc<IEntity>> {
-        self.entities()
+    pub fn get_object(&self, id: i32) -> Option<ComRc<IEntity>> {
+        self.scene
+            .entities()
             .iter()
             .find(|e| e.name() == format!("OBJECT_{}", id))
             .map(|e| e.clone())
     }
 
-    pub fn get_root_object_mut<'a>(
-        self: &'a mut CoreScene<Self>,
-        id: i32,
-    ) -> Option<ComRc<IEntity>> {
-        self.root_entities()
+    pub fn get_root_object(&self, id: i32) -> Option<ComRc<IEntity>> {
+        self.scene
+            .root_entities()
             .iter()
             .find(|e| e.name() == format!("OBJECT_{}", id))
             .cloned()
     }
 
-    pub fn get_role_entity<'a>(self: &'a CoreScene<Self>, id: i32) -> Option<ComRc<IEntity>> {
+    pub fn get_role_entity(&self, id: i32) -> Option<ComRc<IEntity>> {
         let pos = self
+            .scene
             .entities()
             .iter()
             .position(|e| e.name() == format!("ROLE_{}", id));
 
         if let Some(pos) = pos {
-            self.entities().get(pos).and_then(|e| Some(e.clone()))
-        } else {
-            None
-        }
-    }
-
-    pub fn get_role_entity_mut<'a>(
-        self: &'a mut CoreScene<Self>,
-        id: i32,
-    ) -> Option<ComRc<IEntity>> {
-        let pos = self
-            .root_entities_mut()
-            .iter()
-            .position(|e| e.name() == format!("ROLE_{}", id));
-
-        if let Some(pos) = pos {
-            self.root_entities().get(pos).cloned()
+            self.scene.entities().get(pos).cloned()
         } else {
             None
         }
@@ -360,7 +352,7 @@ impl ScnScene {
         dist < r * r
     }
 
-    fn load_objects(self: &mut CoreScene<ScnScene>) {
+    fn load_objects(&self) {
         let ground_pol_name = self.scn_file.scn_base_name.clone() + ".pol";
         let mut entities: Vec<ComRc<IEntity>> = vec![];
 
@@ -377,15 +369,14 @@ impl ScnScene {
             entities.push(scn_object);
         }
 
-        let _self = self.extension_mut();
-        for obj in &_self.scn_file.nodes {
+        for obj in &self.scn_file.nodes {
             let mut entity: Option<ComRc<IEntity>> = None;
             if obj.nav_trigger_coord_min.0 != 0
                 || obj.nav_trigger_coord_min.1 != 0
                 || obj.nav_trigger_coord_max.0 != 0
                 || obj.nav_trigger_coord_max.1 != 0
             {
-                _self.nav_triggers.push(SceNavTrigger {
+                self.nav_triggers.borrow_mut().push(SceNavTrigger {
                     nav_coord_max: obj.nav_trigger_coord_max,
                     nav_coord_min: obj.nav_trigger_coord_min,
                     node_type: obj.node_type,
@@ -397,19 +388,19 @@ impl ScnScene {
             let visible = obj.node_type != 17 && obj.node_type != 25;
             if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
                 if obj.name.as_bytes()[0] as char == '_' {
-                    if let Some(p) = _self.asset_mgr.load_scn_pol(
-                        &_self.cpk_name,
-                        &_self.scn_file.scn_base_name,
+                    if let Some(p) = self.asset_mgr.load_scn_pol(
+                        &self.cpk_name,
+                        &self.scn_file.scn_base_name,
                         &obj.name,
-                        _self.scn_file.is_night,
+                        self.scn_file.is_night,
                         obj.index,
                     ) {
                         entity = Some(p);
-                    } else if let Some(c) = _self.asset_mgr.load_scn_cvd(
-                        &_self.cpk_name,
-                        &_self.scn_file.scn_base_name,
+                    } else if let Some(c) = self.asset_mgr.load_scn_cvd(
+                        &self.cpk_name,
+                        &self.scn_file.scn_base_name,
                         &obj.name,
-                        _self.scn_file.is_night,
+                        self.scn_file.is_night,
                         obj.index,
                     ) {
                         entity = Some(c);
@@ -418,15 +409,13 @@ impl ScnScene {
                     }
                 } else if obj.name.to_lowercase().ends_with(".pol") {
                     entity = Some(
-                        _self
-                            .asset_mgr
+                        self.asset_mgr
                             .load_object_item_pol(&obj.name, obj.index, visible)
                             .unwrap(),
                     );
                 } else if obj.name.to_lowercase().ends_with(".cvd") {
                     entity = Some(
-                        _self
-                            .asset_mgr
+                        self.asset_mgr
                             .load_object_item_cvd(&obj.name, obj.index, visible)
                             .unwrap(),
                     );
@@ -435,8 +424,7 @@ impl ScnScene {
                     continue;
                 } else {
                     entity = Some(
-                        _self
-                            .asset_mgr
+                        self.asset_mgr
                             .load_object_item_pol(&obj.name, obj.index, visible)
                             .unwrap(),
                     );
@@ -445,7 +433,7 @@ impl ScnScene {
 
             match obj.node_type {
                 ScnNodeTypes::LADDER | ScnNodeTypes::LADDER2 => {
-                    _self.ladder_triggers.push(LadderTrigger {
+                    self.ladder_triggers.borrow_mut().push(LadderTrigger {
                         position: obj.position,
                         nav_coord1: obj.ladder_nav_coord1,
                         nav_coord2: obj.ladder_nav_coord2,
@@ -458,14 +446,14 @@ impl ScnScene {
                 | ScnNodeTypes::ITEM_TRIGGER2
                 | ScnNodeTypes::ITEM_TRIGGER3
                 | ScnNodeTypes::TRIGGER_SOURCE => {
-                    _self.item_triggers.push(SceItemTrigger {
+                    self.item_triggers.borrow_mut().push(SceItemTrigger {
                         coord: obj.position,
                         sce_proc_id: obj.sce_proc_id,
                     });
                 }
                 ScnNodeTypes::TRIGGER_TARGET => {}
                 ScnNodeTypes::AABB_TRIGGER => {
-                    _self.aabb_triggers.push(SceAabbTrigger {
+                    self.aabb_triggers.borrow_mut().push(SceAabbTrigger {
                         aabb_coord2: obj.aabb_trigger_coord2,
                         aabb_coord1: obj.aabb_trigger_coord1,
                         sce_proc_id: obj.sce_proc_id,
@@ -481,7 +469,8 @@ impl ScnScene {
         }
 
         for entity in entities {
-            self.add_entity(entity);
+            println!("add entities");
+            self.scene.add_entity(entity);
         }
     }
 
@@ -506,7 +495,7 @@ impl ScnScene {
         }
     }
 
-    fn load_roles(self: &mut CoreScene<ScnScene>) {
+    fn load_roles(&self) {
         for i in &[0, 1, 2, 3, 4, 5] {
             let entity_name = format!("ROLE_{}", i);
             let model_name = Self::map_role_id(*i).to_string();
@@ -514,7 +503,7 @@ impl ScnScene {
                 .asset_mgr
                 .load_role(&model_name, "C01", entity_name, false)
                 .unwrap();
-            self.add_entity(entity);
+            self.scene.add_entity(entity);
         }
 
         let mut entities = vec![];
@@ -543,7 +532,7 @@ impl ScnScene {
                     .query_interface::<IRoleController>()
                     .unwrap();
                 if role.sce_proc_id != 0 {
-                    role_controller.get().set_active(entity.clone(), true);
+                    role_controller.get().set_active(true);
                     role_controller.get().set_proc_id(role.sce_proc_id as i32);
                 }
 
@@ -552,7 +541,7 @@ impl ScnScene {
         }
 
         for e in entities {
-            self.add_entity(e);
+            self.scene.add_entity(e);
         }
     }
 }

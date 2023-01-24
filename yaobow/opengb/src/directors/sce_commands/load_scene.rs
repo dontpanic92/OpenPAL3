@@ -2,7 +2,7 @@ use crate::directors::sce_vm::{SceCommand, SceState};
 use crate::directors::SceneManagerExtensions;
 use crate::scene::RoleController;
 use imgui::Ui;
-use radiance::scene::{CoreScene, SceneManager};
+use radiance::scene::SceneManager;
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
@@ -19,19 +19,17 @@ impl SceCommand for SceCommandLoadScene {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        let last_scene = scene_manager.core_scene_mut();
+        let last_scene = scene_manager.scn_scene();
         let cpk_changed = last_scene
-            .and_then(|s| Some(s.name() != &self.name))
+            .and_then(|s| Some(s.get().name() != &self.name))
             .or(Some(true))
             .unwrap();
 
         scene_manager.pop_scene();
-        scene_manager.push_scene(Box::new(CoreScene::new(
-            state.asset_mgr().load_scn(&self.name, &self.sub_name),
-        )));
-        let e = scene_manager.get_resolved_role_mut(state, -1).unwrap();
+        scene_manager.push_scene(state.asset_mgr().load_scn(&self.name, &self.sub_name));
+        let e = scene_manager.get_resolved_role(state, -1).unwrap();
         let r = RoleController::try_get_role_model(e.clone()).unwrap();
-        r.get().set_active(e, true);
+        r.get().set_active(true);
 
         state
             .global_state_mut()

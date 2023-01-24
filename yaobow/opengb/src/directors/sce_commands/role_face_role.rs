@@ -34,7 +34,7 @@ impl SceCommand for SceCommandRoleFaceRole {
         }
 
         scene_manager
-            .get_resolved_role_mut(state, self.role_id)
+            .get_resolved_role(state, self.role_id)
             .unwrap()
             .transform()
             .borrow_mut()

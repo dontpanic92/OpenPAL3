@@ -23,14 +23,14 @@ impl SceCommand for SceCommandHyFly {
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        let entity = scene_manager.get_resolved_role_mut(state, 5).unwrap();
+        let entity = scene_manager.get_resolved_role(state, 5).unwrap();
         let role_controller = RoleController::try_get_role_model(entity.clone()).unwrap();
         entity.transform().borrow_mut().set_position(&Vec3::new(
             self.position_x,
             self.position_y,
             self.position_z,
         ));
-        role_controller.get().idle(entity);
+        role_controller.get().idle();
         true
     }
 }
