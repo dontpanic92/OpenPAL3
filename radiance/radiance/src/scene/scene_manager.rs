@@ -1,4 +1,4 @@
-use crate::interfaces::IScene;
+use crate::comdef::IScene;
 
 use super::Director;
 use crosscom::ComRc;

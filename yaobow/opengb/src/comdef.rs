@@ -131,19 +131,20 @@ macro_rules! ComObject_RoleController {
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
-            use opengb::classes::ICvdModelImpl;
-            use opengb::classes::IRoleControllerImpl;
-            use opengb::classes::IScnSceneComponentImpl;
-            use radiance::interfaces::IAnimatedMeshComponentImpl;
-            use radiance::interfaces::IComponentContainerImpl;
-            use radiance::interfaces::IComponentImpl;
-            use radiance::interfaces::IEntityImpl;
-            use radiance::interfaces::ISceneImpl;
-            use radiance::interfaces::IStaticMeshComponentImpl;
+            use opengb::comdef::ICvdModelImpl;
+            use opengb::comdef::IRoleControllerImpl;
+            use opengb::comdef::IScnSceneComponentImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
 
             #[repr(C)]
             pub struct RoleControllerCcw {
-                IRoleController: opengb::classes::IRoleController,
+                IRoleController: opengb::comdef::IRoleController,
 
                 ref_count: std::sync::atomic::AtomicU32,
                 pub inner: $impl_type,
@@ -162,13 +163,13 @@ macro_rules! ComObject_RoleController {
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &radiance::interfaces::IComponent::INTERFACE_ID => {
+                    &radiance::comdef::IComponent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &opengb::classes::IRoleController::INTERFACE_ID => {
+                    &opengb::comdef::IRoleController::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
@@ -232,10 +233,10 @@ macro_rules! ComObject_RoleController {
 
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IRoleControllerVirtualTable_CCW_FOR_RoleController:
-                opengb::classes::IRoleControllerVirtualTableCcw =
-                opengb::classes::IRoleControllerVirtualTableCcw {
+                opengb::comdef::IRoleControllerVirtualTableCcw =
+                opengb::comdef::IRoleControllerVirtualTableCcw {
                     offset: 0,
-                    vtable: opengb::classes::IRoleControllerVirtualTable {
+                    vtable: opengb::comdef::IRoleControllerVirtualTable {
                         query_interface,
                         add_ref,
                         release,
@@ -250,10 +251,10 @@ macro_rules! ComObject_RoleController {
 
                 fn create_ccw(self) -> Self::CcwType {
                     Self::CcwType {
-                        IRoleController: opengb::classes::IRoleController {
+                        IRoleController: opengb::comdef::IRoleController {
                             vtable: &GLOBAL_IRoleControllerVirtualTable_CCW_FOR_RoleController
                                 .vtable
-                                as *const opengb::classes::IRoleControllerVirtualTable,
+                                as *const opengb::comdef::IRoleControllerVirtualTable,
                         },
 
                         ref_count: std::sync::atomic::AtomicU32::new(0),
@@ -396,19 +397,20 @@ macro_rules! ComObject_CvdModel {
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
-            use opengb::classes::ICvdModelImpl;
-            use opengb::classes::IRoleControllerImpl;
-            use opengb::classes::IScnSceneComponentImpl;
-            use radiance::interfaces::IAnimatedMeshComponentImpl;
-            use radiance::interfaces::IComponentContainerImpl;
-            use radiance::interfaces::IComponentImpl;
-            use radiance::interfaces::IEntityImpl;
-            use radiance::interfaces::ISceneImpl;
-            use radiance::interfaces::IStaticMeshComponentImpl;
+            use opengb::comdef::ICvdModelImpl;
+            use opengb::comdef::IRoleControllerImpl;
+            use opengb::comdef::IScnSceneComponentImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
 
             #[repr(C)]
             pub struct CvdModelCcw {
-                IComponent: radiance::interfaces::IComponent,
+                IComponent: radiance::comdef::IComponent,
 
                 ref_count: std::sync::atomic::AtomicU32,
                 pub inner: $impl_type,
@@ -427,7 +429,7 @@ macro_rules! ComObject_CvdModel {
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &radiance::interfaces::IComponent::INTERFACE_ID => {
+                    &radiance::comdef::IComponent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
@@ -482,10 +484,10 @@ macro_rules! ComObject_CvdModel {
 
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IComponentVirtualTable_CCW_FOR_CvdModel:
-                radiance::interfaces::IComponentVirtualTableCcw =
-                radiance::interfaces::IComponentVirtualTableCcw {
+                radiance::comdef::IComponentVirtualTableCcw =
+                radiance::comdef::IComponentVirtualTableCcw {
                     offset: 0,
-                    vtable: radiance::interfaces::IComponentVirtualTable {
+                    vtable: radiance::comdef::IComponentVirtualTable {
                         query_interface,
                         add_ref,
                         release,
@@ -499,9 +501,9 @@ macro_rules! ComObject_CvdModel {
 
                 fn create_ccw(self) -> Self::CcwType {
                     Self::CcwType {
-                        IComponent: radiance::interfaces::IComponent {
+                        IComponent: radiance::comdef::IComponent {
                             vtable: &GLOBAL_IComponentVirtualTable_CCW_FOR_CvdModel.vtable
-                                as *const radiance::interfaces::IComponentVirtualTable,
+                                as *const radiance::comdef::IComponentVirtualTable,
                         },
 
                         ref_count: std::sync::atomic::AtomicU32::new(0),
@@ -656,19 +658,20 @@ macro_rules! ComObject_ScnSceneComponent {
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
-            use opengb::classes::ICvdModelImpl;
-            use opengb::classes::IRoleControllerImpl;
-            use opengb::classes::IScnSceneComponentImpl;
-            use radiance::interfaces::IAnimatedMeshComponentImpl;
-            use radiance::interfaces::IComponentContainerImpl;
-            use radiance::interfaces::IComponentImpl;
-            use radiance::interfaces::IEntityImpl;
-            use radiance::interfaces::ISceneImpl;
-            use radiance::interfaces::IStaticMeshComponentImpl;
+            use opengb::comdef::ICvdModelImpl;
+            use opengb::comdef::IRoleControllerImpl;
+            use opengb::comdef::IScnSceneComponentImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
 
             #[repr(C)]
             pub struct ScnSceneComponentCcw {
-                IScnSceneComponent: opengb::classes::IScnSceneComponent,
+                IScnSceneComponent: opengb::comdef::IScnSceneComponent,
 
                 ref_count: std::sync::atomic::AtomicU32,
                 pub inner: $impl_type,
@@ -687,13 +690,13 @@ macro_rules! ComObject_ScnSceneComponent {
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &radiance::interfaces::IComponent::INTERFACE_ID => {
+                    &radiance::comdef::IComponent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &opengb::classes::IScnSceneComponent::INTERFACE_ID => {
+                    &opengb::comdef::IScnSceneComponent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
@@ -755,10 +758,10 @@ macro_rules! ComObject_ScnSceneComponent {
 
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IScnSceneComponentVirtualTable_CCW_FOR_ScnSceneComponent:
-                opengb::classes::IScnSceneComponentVirtualTableCcw =
-                opengb::classes::IScnSceneComponentVirtualTableCcw {
+                opengb::comdef::IScnSceneComponentVirtualTableCcw =
+                opengb::comdef::IScnSceneComponentVirtualTableCcw {
                     offset: 0,
-                    vtable: opengb::classes::IScnSceneComponentVirtualTable {
+                    vtable: opengb::comdef::IScnSceneComponentVirtualTable {
                         query_interface,
                         add_ref,
                         release,
@@ -773,10 +776,10 @@ macro_rules! ComObject_ScnSceneComponent {
 
                 fn create_ccw(self) -> Self::CcwType {
                     Self::CcwType {
-                        IScnSceneComponent: opengb::classes::IScnSceneComponent {
+                        IScnSceneComponent: opengb::comdef::IScnSceneComponent {
                             vtable: &GLOBAL_IScnSceneComponentVirtualTable_CCW_FOR_ScnSceneComponent
                                 .vtable
-                                as *const opengb::classes::IScnSceneComponentVirtualTable,
+                                as *const opengb::comdef::IScnSceneComponentVirtualTable,
                         },
 
                         ref_count: std::sync::atomic::AtomicU32::new(0),

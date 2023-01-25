@@ -1,49 +1,42 @@
-use std::{
-    cell::RefCell,
-    io::{BufRead, Cursor},
-    rc::Rc,
-};
+#![allow(unused_variables)]
 
-use fileformats::dff::{list_chunks, read_dff};
-use openpal4::{
-    application::OpenPal4Application,
-    scripting::{global_context::ScriptGlobalContext, module::ScriptModule, vm::ScriptVm},
-};
-use shared::fs::pkg::pkg_archive::PkgHeader;
+use openpal3::run_openpal3;
+use openpal4::run_openpal4;
 
+mod comdef;
+mod openpal3;
 mod openpal4;
 
 pub fn main() {
-    /*let mut app = OpenPal4Application::create("OpenPAL4");
-    app.initialize();
-    app.run();*/
+    init_logger();
 
-    let mut line = String::new();
-    let stdin = std::io::stdin();
-    stdin.lock().read_line(&mut line).unwrap();
+    let args = std::env::args().collect::<Vec<String>>();
+    if args.len() <= 1 {
+        run_openpal3();
+    } else {
+        match args[1].as_str() {
+            "--pal3" => {
+                run_openpal3();
+            }
+            "--pal4" => {
+                run_openpal4();
+            }
+            "--pal5" => {
+                run_openpal4();
+            }
+            "--pal5q" => {
+                run_openpal4();
+            }
+            &_ => {}
+        }
+    }
+}
 
-    let data = std::fs::read("F:\\Pal5Q\\Music.pkg").unwrap();
-    let mut cursor = Cursor::new(data);
-    let header = PkgHeader::read(&mut cursor).unwrap();
-    cursor.set_position(header.entries_start as u64);
-    println!("start: {}", header.entries_start);
-
-    //let entries = PkgEntries::read(&mut cursor, "L#Z^zyjq" /*"Y%H^uz6i"*/).unwrap();
-    //println!("{}", serde_json::to_string(&entries).unwrap());
-
-    /*let data = std::fs::read("F:\\PAL4\\gamedata\\PALActor\\101\\101.dff").unwrap();
-    let chunks = read_dff(&data).unwrap();
-    println!("{}", serde_json::to_string(&chunks).unwrap());*/
-
-    /*let content = std::fs::read("F:\\PAL4\\gamedata\\script\\script.csb").unwrap();
-
-    let module = ScriptModule::load_from_buffer(&content).unwrap();
-    println!("{}", serde_json::to_string(&module).unwrap());
-
-    let context = Rc::new(RefCell::new(ScriptGlobalContext::new()));
-    let mut vm = ScriptVm::new(context);
-    let module = Rc::new(RefCell::new(module));
-    vm.set_module(module);
-    vm.set_function(0);
-    vm.execute();*/
+fn init_logger() {
+    let logger = simple_logger::SimpleLogger::new();
+    // workaround panic on Linux for 'Could not determine the UTC offset on this system'
+    // see: https://github.com/borntyping/rust-simple_logger/issues/47
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))]
+    let logger = logger.with_utc_timestamps();
+    logger.init().unwrap();
 }

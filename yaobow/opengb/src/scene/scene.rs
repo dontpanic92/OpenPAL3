@@ -1,10 +1,10 @@
 use crate::asset_manager::AssetManager;
-use crate::classes::{IRoleController, IScnSceneComponentImpl};
+use crate::comdef::{IRoleController, IScnSceneComponentImpl};
 use crate::loaders::nav_loader::NavMapPoint;
 use crate::loaders::{nav_loader::NavFile, scn_loader::*};
 use crate::ComObject_ScnSceneComponent;
 use crosscom::ComRc;
-use radiance::interfaces::{IComponentImpl, IEntity, IScene};
+use radiance::comdef::{IComponentImpl, IEntity, IScene};
 use radiance::math::Vec3;
 use std::cell::RefCell;
 use std::collections::HashSet;

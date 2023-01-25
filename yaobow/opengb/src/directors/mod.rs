@@ -6,14 +6,14 @@ mod sce_vm;
 
 use self::sce_vm::SceState;
 use crate::{
-    classes::{IRoleController, IScnSceneComponent},
+    comdef::{IRoleController, IScnSceneComponent},
     scene::RoleController,
 };
 pub use adv_director::AdventureDirector;
 use crosscom::ComRc;
 pub use global_state::GlobalState;
 pub use persistent_state::PersistentState;
-use radiance::{interfaces::IEntity, scene::SceneManager};
+use radiance::{comdef::IEntity, scene::SceneManager};
 pub use sce_vm::{SceExecutionOptions, SceProcHooks};
 
 pub trait SceneManagerExtensions: SceneManager {

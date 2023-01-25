@@ -6,7 +6,7 @@ use std::{
 use crosscom::ComRc;
 
 use crate::{
-    interfaces::{IAnimatedMeshComponentImpl, IComponentImpl, IEntity},
+    comdef::{IAnimatedMeshComponentImpl, IComponentImpl, IEntity},
     math::{Vec2, Vec3},
     rendering::{ComponentFactory, Geometry, TexCoord, VertexBuffer, VertexComponents},
     ComObject_AnimatedMeshComponent,

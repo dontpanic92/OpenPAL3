@@ -2,7 +2,7 @@ use crosscom::ComRc;
 use imgui::{Condition, StyleVar, Ui};
 use radiance::scene::SceneManager;
 
-use crate::core::IViewContent;
+use crate::comdef::IViewContent;
 
 pub struct ResourceView {
     content: Option<ComRc<IViewContent>>,

@@ -2,7 +2,7 @@ use crosscom::ComRc;
 use dashmap::DashMap;
 use uuid::Uuid;
 
-use crate::interfaces::{IComponent, IComponentContainerImpl, IEntity, IEntityImpl};
+use crate::comdef::{IComponent, IComponentContainerImpl, IEntity, IEntityImpl};
 use crate::math::{Mat44, Transform};
 use crate::rendering::RenderingComponent;
 use crate::ComObject_Entity;
@@ -72,19 +72,13 @@ impl IComponentContainerImpl for CoreEntity {
         self.components.insert(uuid, component);
     }
 
-    fn get_component(
-        &self,
-        uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<crate::interfaces::IComponent>> {
+    fn get_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
         self.components
             .get(&uuid)
             .and_then(|c| Some(c.value().clone()))
     }
 
-    fn remove_component(
-        &self,
-        uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<crate::interfaces::IComponent>> {
+    fn remove_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
         self.components.remove(&uuid).and_then(|c| Some(c.1))
     }
 }
@@ -148,7 +142,7 @@ impl IEntityImpl for CoreEntity {
         }
     }
 
-    fn children(&self) -> Vec<crosscom::ComRc<crate::interfaces::IEntity>> {
+    fn children(&self) -> Vec<ComRc<IEntity>> {
         self.props().children.clone()
     }
 
@@ -171,7 +165,7 @@ impl IEntityImpl for CoreEntity {
         self.props_mut().rendering_component = component;
     }
 
-    fn attach(&self, child: crosscom::ComRc<crate::interfaces::IEntity>) -> () {
+    fn attach(&self, child: ComRc<IEntity>) -> () {
         self.props_mut().children.push(child);
     }
 }

@@ -1,17 +1,17 @@
-#![feature(arbitrary_self_types)]
 #![feature(drain_filter)]
 mod directors;
 
 use std::cell::RefCell;
-use std::io::BufRead;
 use std::rc::Rc;
 
+use crosscom::ComRc;
 use directors::DevToolsDirector;
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::Application;
+use radiance::comdef::{IApplication, IApplicationLoaderComponent};
 use radiance::scene::Director;
-use radiance_editor::application::EditorApplication;
-use radiance_editor::core::IViewContentImpl;
+use radiance_editor::application::EditorApplicationLoader;
+use radiance_editor::comdef::IViewContentImpl;
 use radiance_editor::ui::scene_view::SceneViewPlugins;
 use radiance_editor::ComObject_ResourceViewContent;
 
@@ -44,11 +44,7 @@ impl IViewContentImpl for SceneViewResourceView {
 }
 
 impl SceneViewResourceView {
-    pub fn new(
-        config: OpenGbConfig,
-        app: &mut Application<EditorApplication>,
-        game: GameType,
-    ) -> Self {
+    pub fn new(config: OpenGbConfig, app: ComRc<IApplication>, game: GameType) -> Self {
         app.set_title(TITLE);
 
         let pkg_key = match game {
@@ -57,9 +53,9 @@ impl SceneViewResourceView {
             _ => None,
         };
 
-        let factory = app.engine_mut().rendering_component_factory();
+        let factory = app.engine().borrow().rendering_component_factory();
         let asset_mgr = AssetManager::new(factory, &config.asset_path, pkg_key);
-        let audio_engine = app.engine_mut().audio_engine();
+        let audio_engine = app.engine().borrow().audio_engine();
         let ui = Some(DevToolsDirector::new(audio_engine, Rc::new(asset_mgr)));
 
         SceneViewResourceView {
@@ -78,37 +74,41 @@ fn main() {
 
     logger.init().unwrap();
 
-    let mut line = String::new();
-    let stdin = std::io::stdin();
-    stdin.lock().read_line(&mut line).unwrap();
+    // let mut line = String::new();
+    // let stdin = std::io::stdin();
+    // stdin.lock().read_line(&mut line).unwrap();
 
-    let mut application = EditorApplication::new_with_plugin(|app| {
-        let mut config = OpenGbConfig::load("openpal3.toml", "OPENPAL3");
-        let mut game = GameType::PAL3;
+    let mut config = OpenGbConfig::load("openpal3.toml", "OPENPAL3");
+    let mut game = GameType::PAL3;
 
-        let args = std::env::args().collect::<Vec<String>>();
-        if args.len() > 1 {
-            match args[1].as_str() {
-                "--pal4" => {
-                    config.asset_path = "F:\\PAL4\\".to_string();
-                    game = GameType::PAL4;
-                }
-                "--pal5" => {
-                    config.asset_path = "F:\\PAL5\\".to_string();
-                    game = GameType::PAL5;
-                }
-                "--pal5q" => {
-                    config.asset_path = "F:\\PAL5Q\\".to_string();
-                    game = GameType::PAL5Q;
-                }
-                &_ => {}
+    let args = std::env::args().collect::<Vec<String>>();
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "--pal4" => {
+                config.asset_path = "F:\\PAL4\\".to_string();
+                game = GameType::PAL4;
             }
+            "--pal5" => {
+                config.asset_path = "F:\\PAL5\\".to_string();
+                game = GameType::PAL5;
+            }
+            "--pal5q" => {
+                config.asset_path = "F:\\PAL5Q\\".to_string();
+                game = GameType::PAL5Q;
+            }
+            &_ => {}
         }
+    }
 
-        let resource_view_content = SceneViewResourceView::new(config, app, game);
+    let app = ComRc::<IApplication>::from_object(Application::new());
+    let resource_view_content = SceneViewResourceView::new(config, app.clone(), game);
+    let plugins = SceneViewPlugins::new(Some(crosscom::ComRc::from_object(resource_view_content)));
 
-        SceneViewPlugins::new(Some(crosscom::ComRc::from_object(resource_view_content)))
-    });
-    application.initialize();
-    application.run();
+    app.add_component(
+        IApplicationLoaderComponent::uuid(),
+        ComRc::from_object(EditorApplicationLoader::new(app.clone(), Some(plugins))),
+    );
+
+    app.initialize();
+    app.run();
 }

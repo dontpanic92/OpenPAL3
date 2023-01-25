@@ -1,44 +1,44 @@
+use crosscom::ComRc;
 use radiance::{
-    application::{Application, ApplicationExtension},
+    comdef::{IApplication, IComponentImpl},
     scene::CoreScene,
 };
 
-use crate::{director::UiDirector, ui::scene_view::SceneViewPlugins};
+use crate::{
+    director::UiDirector, ui::scene_view::SceneViewPlugins,
+    ComObject_EditorApplicationLoaderComponent,
+};
 
-pub struct EditorApplication {
-    plugin_create: Option<Box<dyn Fn(&mut Application<EditorApplication>) -> SceneViewPlugins>>,
+pub struct EditorApplicationLoader {
+    // plugin_create: Option<Box<dyn Fn(ComRc<IApplication>) -> SceneViewPlugins>>,
+    app: ComRc<IApplication>,
+    plugins: Option<SceneViewPlugins>,
 }
 
-impl ApplicationExtension<EditorApplication> for EditorApplication {
-    fn on_initialized(&mut self, app: &mut Application<EditorApplication>) {
-        let scene_view_plugins = self.plugin_create.as_ref().map(|c| c(app));
+ComObject_EditorApplicationLoaderComponent!(super::EditorApplicationLoader);
 
-        let input = app.engine_mut().input_engine();
-        let director = UiDirector::new(scene_view_plugins, input);
+impl IComponentImpl for EditorApplicationLoader {
+    fn on_loading(&self) {
+        let input = self.app.engine().borrow().input_engine();
+        let director = UiDirector::new(self.plugins.clone(), input);
 
-        app.engine_mut()
+        self.app
+            .engine()
+            .borrow_mut()
             .scene_manager()
             .push_scene(CoreScene::create());
-        app.engine_mut().scene_manager().set_director(director);
+        self.app
+            .engine()
+            .borrow_mut()
+            .scene_manager()
+            .set_director(director);
     }
 
-    fn on_updating(&mut self, _app: &mut Application<EditorApplication>, _delta_sec: f32) {}
+    fn on_updating(&self, _delta_sec: f32) {}
 }
 
-impl EditorApplication {
-    pub fn new() -> Application<Self> {
-        Application::new(EditorApplication {
-            plugin_create: None,
-        })
-    }
-
-    pub fn new_with_plugin<
-        T: 'static + Fn(&mut Application<EditorApplication>) -> SceneViewPlugins,
-    >(
-        plugin_create: T,
-    ) -> Application<Self> {
-        Application::new(EditorApplication {
-            plugin_create: Some(Box::new(plugin_create)),
-        })
+impl EditorApplicationLoader {
+    pub fn new(app: ComRc<IApplication>, plugins: Option<SceneViewPlugins>) -> Self {
+        Self { app, plugins }
     }
 }

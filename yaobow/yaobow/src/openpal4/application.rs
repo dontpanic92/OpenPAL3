@@ -1,37 +1,46 @@
 use std::path::PathBuf;
 
-use radiance::application::{Application, ApplicationExtension};
+use crosscom::ComRc;
+use radiance::{
+    application::Application,
+    comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
+};
 
-pub struct OpenPal4Application {
+use crate::ComObject_OpenPal4ApplicationLoaderComponent;
+
+pub struct OpenPal4ApplicationLoader {
+    app: ComRc<IApplication>,
     root_path: PathBuf,
     app_name: String,
 }
 
-impl ApplicationExtension<OpenPal4Application> for OpenPal4Application {
-    fn on_initialized(&mut self, app: &mut Application<OpenPal4Application>) {
-        let logger = simple_logger::SimpleLogger::new();
-        // workaround panic on Linux for 'Could not determine the UTC offset on this system'
-        // see: https://github.com/borntyping/rust-simple_logger/issues/47
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))]
-        let logger = logger.with_utc_timestamps();
-        logger.init().unwrap();
+ComObject_OpenPal4ApplicationLoaderComponent!(super::OpenPal4ApplicationLoader);
 
-        app.set_title(&self.app_name);
+impl IComponentImpl for OpenPal4ApplicationLoader {
+    fn on_loading(&self) {
+        self.app.set_title(&self.app_name);
 
-        let input_engine = app.engine_mut().input_engine();
-        let audio_engine = app.engine_mut().audio_engine();
+        let input_engine = self.app.engine().borrow().input_engine();
+        let audio_engine = self.app.engine().borrow().audio_engine();
     }
 
-    fn on_updating(&mut self, _app: &mut Application<OpenPal4Application>, _delta_sec: f32) {}
+    fn on_updating(&self, _delta_sec: f32) {}
 }
 
-impl OpenPal4Application {
-    pub fn create(app_name: &str) -> Application<OpenPal4Application> {
-        Application::new(Self::new(app_name))
+impl OpenPal4ApplicationLoader {
+    pub fn create_application(app_name: &str) -> ComRc<IApplication> {
+        let app = ComRc::<IApplication>::from_object(Application::new());
+        app.add_component(
+            IApplicationLoaderComponent::uuid(),
+            ComRc::from_object(Self::new(app.clone(), app_name)),
+        );
+
+        app
     }
 
-    fn new(app_name: &str) -> Self {
-        OpenPal4Application {
+    fn new(app: ComRc<IApplication>, app_name: &str) -> Self {
+        Self {
+            app,
             root_path: PathBuf::from(""),
             app_name: app_name.to_owned(),
         }

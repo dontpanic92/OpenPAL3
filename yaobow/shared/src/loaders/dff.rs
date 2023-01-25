@@ -8,7 +8,7 @@ use crosscom::ComRc;
 use fileformats::dff::{self, read_dff};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
-    interfaces::{IEntity, IStaticMeshComponent},
+    comdef::{IEntity, IStaticMeshComponent},
     math::Vec3,
     rendering::{ComponentFactory, StaticMeshComponent},
     scene::CoreEntity,

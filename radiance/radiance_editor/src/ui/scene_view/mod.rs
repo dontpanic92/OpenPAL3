@@ -4,7 +4,7 @@ use crosscom::ComRc;
 use imgui::Ui;
 use radiance::{input::InputEngine, scene::SceneManager};
 
-use crate::core::IViewContent;
+use crate::comdef::IViewContent;
 
 use self::{
     node_view::NodeView, property_view::PropertyView, resource_view::ResourceView,
@@ -47,6 +47,7 @@ impl SceneView {
     }
 }
 
+#[derive(Clone)]
 pub struct SceneViewPlugins {
     resource_view_content: Option<ComRc<IViewContent>>,
 }

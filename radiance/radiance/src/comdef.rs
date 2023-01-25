@@ -189,7 +189,7 @@ impl IComponentContainer {
     pub fn add_component(
         &self,
         uuid: uuid::Uuid,
-        component: crosscom::ComRc<radiance::interfaces::IComponent>,
+        component: crosscom::ComRc<radiance::comdef::IComponent>,
     ) -> () {
         unsafe {
             let this = self as *const IComponentContainer as *const *const std::os::raw::c_void;
@@ -203,11 +203,11 @@ impl IComponentContainer {
     pub fn get_component(
         &self,
         uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<radiance::interfaces::IComponent>> {
+    ) -> Option<crosscom::ComRc<radiance::comdef::IComponent>> {
         unsafe {
             let this = self as *const IComponentContainer as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).get_component)(this, uuid.into());
-            let ret: Option<crosscom::ComRc<radiance::interfaces::IComponent>> = ret.into();
+            let ret: Option<crosscom::ComRc<radiance::comdef::IComponent>> = ret.into();
 
             ret
         }
@@ -216,11 +216,11 @@ impl IComponentContainer {
     pub fn remove_component(
         &self,
         uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<radiance::interfaces::IComponent>> {
+    ) -> Option<crosscom::ComRc<radiance::comdef::IComponent>> {
         unsafe {
             let this = self as *const IComponentContainer as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).remove_component)(this, uuid.into());
-            let ret: Option<crosscom::ComRc<radiance::interfaces::IComponent>> = ret.into();
+            let ret: Option<crosscom::ComRc<radiance::comdef::IComponent>> = ret.into();
 
             ret
         }
@@ -236,16 +236,16 @@ pub trait IComponentContainerImpl {
     fn add_component(
         &self,
         uuid: uuid::Uuid,
-        component: crosscom::ComRc<radiance::interfaces::IComponent>,
+        component: crosscom::ComRc<radiance::comdef::IComponent>,
     ) -> ();
     fn get_component(
         &self,
         uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<radiance::interfaces::IComponent>>;
+    ) -> Option<crosscom::ComRc<radiance::comdef::IComponent>>;
     fn remove_component(
         &self,
         uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<radiance::interfaces::IComponent>>;
+    ) -> Option<crosscom::ComRc<radiance::comdef::IComponent>>;
 }
 
 impl crosscom::ComInterface for IComponentContainer {
@@ -253,6 +253,499 @@ impl crosscom::ComInterface for IComponentContainer {
     const INTERFACE_ID: [u8; 16] = [
         184u8, 117u8, 191u8, 84u8, 140u8, 76u8, 73u8, 38u8, 162u8, 189u8, 106u8, 214u8, 247u8, 3u8,
         140u8, 254u8,
+    ];
+}
+
+// Interface IApplication
+
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct IApplicationVirtualTable {
+    pub query_interface: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        guid: uuid::Uuid,
+        retval: &mut *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_long,
+    pub add_ref:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub release:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub add_component: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        uuid: uuid::Uuid,
+        component: *const *const std::os::raw::c_void,
+    ) -> (),
+    pub get_component: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        uuid: uuid::Uuid,
+    ) -> crosscom::RawPointer,
+    pub remove_component: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        uuid: uuid::Uuid,
+    ) -> crosscom::RawPointer,
+    pub initialize: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub run: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub set_title: fn(this: *const *const std::os::raw::c_void, title: &str) -> crosscom::Void,
+    pub engine: fn(
+        this: *const *const std::os::raw::c_void,
+    ) -> std::rc::Rc<std::cell::RefCell<radiance::radiance::CoreRadianceEngine>>,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IApplicationVirtualTableCcw {
+    pub offset: isize,
+    pub vtable: IApplicationVirtualTable,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IApplication {
+    pub vtable: *const IApplicationVirtualTable,
+}
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+impl IApplication {
+    pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
+        let this = self as *const IApplication as *const *const std::os::raw::c_void;
+        let mut raw = 0 as *const *const std::os::raw::c_void;
+        let guid = uuid::Uuid::from_bytes(T::INTERFACE_ID);
+        let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
+        if ret_val != 0 {
+            None
+        } else {
+            Some(unsafe { crosscom::ComRc::<T>::from_raw_pointer(raw) })
+        }
+    }
+
+    pub fn add_ref(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IApplication as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn release(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IApplication as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn add_component(
+        &self,
+        uuid: uuid::Uuid,
+        component: crosscom::ComRc<radiance::comdef::IComponent>,
+    ) -> () {
+        unsafe {
+            let this = self as *const IApplication as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).add_component)(this, uuid.into(), component.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn get_component(
+        &self,
+        uuid: uuid::Uuid,
+    ) -> Option<crosscom::ComRc<radiance::comdef::IComponent>> {
+        unsafe {
+            let this = self as *const IApplication as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).get_component)(this, uuid.into());
+            let ret: Option<crosscom::ComRc<radiance::comdef::IComponent>> = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn remove_component(
+        &self,
+        uuid: uuid::Uuid,
+    ) -> Option<crosscom::ComRc<radiance::comdef::IComponent>> {
+        unsafe {
+            let this = self as *const IApplication as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).remove_component)(this, uuid.into());
+            let ret: Option<crosscom::ComRc<radiance::comdef::IComponent>> = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn initialize(&self) -> () {
+        unsafe {
+            let this = self as *const IApplication as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).initialize)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn run(&self) -> () {
+        unsafe {
+            let this = self as *const IApplication as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).run)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn set_title(&self, title: &str) -> crosscom::Void {
+        unsafe {
+            let this = self as *const IApplication as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).set_title)(this, title.into());
+
+            ret
+        }
+    }
+
+    pub fn engine(
+        &self,
+    ) -> std::rc::Rc<std::cell::RefCell<radiance::radiance::CoreRadianceEngine>> {
+        unsafe {
+            let this = self as *const IApplication as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).engine)(this);
+
+            ret
+        }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(IApplication::INTERFACE_ID)
+    }
+}
+
+pub trait IApplicationImpl {
+    fn initialize(&self) -> ();
+    fn run(&self) -> ();
+    fn set_title(&self, title: &str) -> crosscom::Void;
+    fn engine(&self) -> std::rc::Rc<std::cell::RefCell<radiance::radiance::CoreRadianceEngine>>;
+}
+
+impl crosscom::ComInterface for IApplication {
+    // fd2f7f28-c3ea-442c-a6dc-18e370de001a
+    const INTERFACE_ID: [u8; 16] = [
+        253u8, 47u8, 127u8, 40u8, 195u8, 234u8, 68u8, 44u8, 166u8, 220u8, 24u8, 227u8, 112u8,
+        222u8, 0u8, 26u8,
+    ];
+}
+
+// Class Application
+
+#[allow(unused)]
+#[macro_export]
+macro_rules! ComObject_Application {
+    ($impl_type: ty) => {
+        #[allow(dead_code)]
+        #[allow(non_snake_case)]
+        #[allow(unused)]
+        mod Application_crosscom_impl {
+            use crate as radiance;
+            use crosscom::ComInterface;
+            use crosscom::IObjectArrayImpl;
+            use crosscom::IUnknownImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
+
+            #[repr(C)]
+            pub struct ApplicationCcw {
+                IApplication: radiance::comdef::IApplication,
+
+                ref_count: std::sync::atomic::AtomicU32,
+                pub inner: $impl_type,
+            }
+
+            unsafe extern "system" fn query_interface(
+                this: *const *const std::os::raw::c_void,
+                guid: uuid::Uuid,
+                retval: &mut *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<ApplicationCcw>(this);
+                match guid.as_bytes() {
+                    &crosscom::IUnknown::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
+
+                    &radiance::comdef::IComponentContainer::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
+
+                    &radiance::comdef::IApplication::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
+
+                    _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
+                }
+            }
+
+            unsafe extern "system" fn add_ref(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<ApplicationCcw>(this);
+                let previous = (*object)
+                    .ref_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                (previous + 1) as std::os::raw::c_long
+            }
+
+            unsafe extern "system" fn release(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<ApplicationCcw>(this);
+
+                let previous = (*object)
+                    .ref_count
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                if previous - 1 == 0 {
+                    Box::from_raw(object as *mut ApplicationCcw);
+                }
+
+                (previous - 1) as std::os::raw::c_long
+            }
+
+            unsafe extern "system" fn initialize(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<ApplicationCcw>(this);
+                (*__crosscom_object).inner.initialize().into()
+            }
+
+            unsafe extern "system" fn run(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<ApplicationCcw>(this);
+                (*__crosscom_object).inner.run().into()
+            }
+
+            fn set_title(this: *const *const std::os::raw::c_void, title: &str) -> crosscom::Void {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<ApplicationCcw>(this);
+                    (*__crosscom_object).inner.set_title(title)
+                }
+            }
+
+            fn engine(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::rc::Rc<std::cell::RefCell<radiance::radiance::CoreRadianceEngine>> {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<ApplicationCcw>(this);
+                    (*__crosscom_object).inner.engine()
+                }
+            }
+
+            unsafe extern "system" fn add_component(
+                this: *const *const std::os::raw::c_void,
+                uuid: uuid::Uuid,
+                component: *const *const std::os::raw::c_void,
+            ) -> () {
+                let uuid: uuid::Uuid = uuid.into();
+                let component: crosscom::ComRc<radiance::comdef::IComponent> = component.into();
+
+                let __crosscom_object = crosscom::get_object::<ApplicationCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .add_component(uuid.into(), component.into())
+                    .into()
+            }
+
+            unsafe extern "system" fn get_component(
+                this: *const *const std::os::raw::c_void,
+                uuid: uuid::Uuid,
+            ) -> crosscom::RawPointer {
+                let uuid: uuid::Uuid = uuid.into();
+
+                let __crosscom_object = crosscom::get_object::<ApplicationCcw>(this);
+                (*__crosscom_object).inner.get_component(uuid.into()).into()
+            }
+
+            unsafe extern "system" fn remove_component(
+                this: *const *const std::os::raw::c_void,
+                uuid: uuid::Uuid,
+            ) -> crosscom::RawPointer {
+                let uuid: uuid::Uuid = uuid.into();
+
+                let __crosscom_object = crosscom::get_object::<ApplicationCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .remove_component(uuid.into())
+                    .into()
+            }
+
+            #[allow(non_upper_case_globals)]
+            pub const GLOBAL_IApplicationVirtualTable_CCW_FOR_Application:
+                radiance::comdef::IApplicationVirtualTableCcw =
+                radiance::comdef::IApplicationVirtualTableCcw {
+                    offset: 0,
+                    vtable: radiance::comdef::IApplicationVirtualTable {
+                        query_interface,
+                        add_ref,
+                        release,
+                        add_component,
+                        get_component,
+                        remove_component,
+                        initialize,
+                        run,
+                        set_title,
+                        engine,
+                    },
+                };
+
+            impl crosscom::ComObject for $impl_type {
+                type CcwType = ApplicationCcw;
+
+                fn create_ccw(self) -> Self::CcwType {
+                    Self::CcwType {
+                        IApplication: radiance::comdef::IApplication {
+                            vtable: &GLOBAL_IApplicationVirtualTable_CCW_FOR_Application.vtable
+                                as *const radiance::comdef::IApplicationVirtualTable,
+                        },
+
+                        ref_count: std::sync::atomic::AtomicU32::new(0),
+                        inner: self,
+                    }
+                }
+
+                fn get_ccw(&self) -> &Self::CcwType {
+                    unsafe {
+                        let this = self as *const _ as *const u8;
+                        let this =
+                            this.offset(-(crosscom::offset_of!(ApplicationCcw, inner) as isize));
+                        &*(this as *const Self::CcwType)
+                    }
+                }
+            }
+        }
+    };
+}
+
+// pub use ComObject_Application;
+
+// Interface IApplicationLoaderComponent
+
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct IApplicationLoaderComponentVirtualTable {
+    pub query_interface: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        guid: uuid::Uuid,
+        retval: &mut *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_long,
+    pub add_ref:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub release:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub on_loading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub on_updating: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        delta_sec: std::os::raw::c_float,
+    ) -> (),
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IApplicationLoaderComponentVirtualTableCcw {
+    pub offset: isize,
+    pub vtable: IApplicationLoaderComponentVirtualTable,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IApplicationLoaderComponent {
+    pub vtable: *const IApplicationLoaderComponentVirtualTable,
+}
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+impl IApplicationLoaderComponent {
+    pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
+        let this = self as *const IApplicationLoaderComponent as *const *const std::os::raw::c_void;
+        let mut raw = 0 as *const *const std::os::raw::c_void;
+        let guid = uuid::Uuid::from_bytes(T::INTERFACE_ID);
+        let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
+        if ret_val != 0 {
+            None
+        } else {
+            Some(unsafe { crosscom::ComRc::<T>::from_raw_pointer(raw) })
+        }
+    }
+
+    pub fn add_ref(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this =
+                self as *const IApplicationLoaderComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn release(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this =
+                self as *const IApplicationLoaderComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn on_loading(&self) -> () {
+        unsafe {
+            let this =
+                self as *const IApplicationLoaderComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_loading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn on_updating(&self, delta_sec: f32) -> () {
+        unsafe {
+            let this =
+                self as *const IApplicationLoaderComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_updating)(this, delta_sec.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(IApplicationLoaderComponent::INTERFACE_ID)
+    }
+}
+
+pub trait IApplicationLoaderComponentImpl {}
+
+impl crosscom::ComInterface for IApplicationLoaderComponent {
+    // 3afe8052-b675-4939-aafb-2a4fca8f2cf2
+    const INTERFACE_ID: [u8; 16] = [
+        58u8, 254u8, 128u8, 82u8, 182u8, 117u8, 73u8, 57u8, 170u8, 251u8, 42u8, 79u8, 202u8, 143u8,
+        44u8, 242u8,
     ];
 }
 
@@ -298,10 +791,10 @@ pub struct ISceneVirtualTable {
     ) -> (),
     pub entities: fn(
         this: *const *const std::os::raw::c_void,
-    ) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>>,
+    ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>,
     pub root_entities: fn(
         this: *const *const std::os::raw::c_void,
-    ) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>>,
+    ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>,
     pub camera: fn(
         this: *const *const std::os::raw::c_void,
     ) -> std::rc::Rc<std::cell::RefCell<radiance::scene::Camera>>,
@@ -359,7 +852,7 @@ impl IScene {
     pub fn add_component(
         &self,
         uuid: uuid::Uuid,
-        component: crosscom::ComRc<radiance::interfaces::IComponent>,
+        component: crosscom::ComRc<radiance::comdef::IComponent>,
     ) -> () {
         unsafe {
             let this = self as *const IScene as *const *const std::os::raw::c_void;
@@ -373,11 +866,11 @@ impl IScene {
     pub fn get_component(
         &self,
         uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<radiance::interfaces::IComponent>> {
+    ) -> Option<crosscom::ComRc<radiance::comdef::IComponent>> {
         unsafe {
             let this = self as *const IScene as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).get_component)(this, uuid.into());
-            let ret: Option<crosscom::ComRc<radiance::interfaces::IComponent>> = ret.into();
+            let ret: Option<crosscom::ComRc<radiance::comdef::IComponent>> = ret.into();
 
             ret
         }
@@ -386,11 +879,11 @@ impl IScene {
     pub fn remove_component(
         &self,
         uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<radiance::interfaces::IComponent>> {
+    ) -> Option<crosscom::ComRc<radiance::comdef::IComponent>> {
         unsafe {
             let this = self as *const IScene as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).remove_component)(this, uuid.into());
-            let ret: Option<crosscom::ComRc<radiance::interfaces::IComponent>> = ret.into();
+            let ret: Option<crosscom::ComRc<radiance::comdef::IComponent>> = ret.into();
 
             ret
         }
@@ -445,7 +938,7 @@ impl IScene {
         }
     }
 
-    pub fn add_entity(&self, entity: crosscom::ComRc<radiance::interfaces::IEntity>) -> () {
+    pub fn add_entity(&self, entity: crosscom::ComRc<radiance::comdef::IEntity>) -> () {
         unsafe {
             let this = self as *const IScene as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).add_entity)(this, entity.into());
@@ -455,7 +948,7 @@ impl IScene {
         }
     }
 
-    pub fn entities(&self) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>> {
+    pub fn entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
         unsafe {
             let this = self as *const IScene as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).entities)(this);
@@ -464,7 +957,7 @@ impl IScene {
         }
     }
 
-    pub fn root_entities(&self) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>> {
+    pub fn root_entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
         unsafe {
             let this = self as *const IScene as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).root_entities)(this);
@@ -494,9 +987,9 @@ pub trait ISceneImpl {
     fn update(&self, delta_sec: f32) -> ();
     fn draw_ui(&self, ui: &mut imgui::Ui) -> crosscom::Void;
     fn unload(&self) -> ();
-    fn add_entity(&self, entity: crosscom::ComRc<radiance::interfaces::IEntity>) -> ();
-    fn entities(&self) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>>;
-    fn root_entities(&self) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>>;
+    fn add_entity(&self, entity: crosscom::ComRc<radiance::comdef::IEntity>) -> ();
+    fn entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
+    fn root_entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
     fn camera(&self) -> std::rc::Rc<std::cell::RefCell<radiance::scene::Camera>>;
 }
 
@@ -522,16 +1015,18 @@ macro_rules! ComObject_Scene {
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
-            use radiance::interfaces::IAnimatedMeshComponentImpl;
-            use radiance::interfaces::IComponentContainerImpl;
-            use radiance::interfaces::IComponentImpl;
-            use radiance::interfaces::IEntityImpl;
-            use radiance::interfaces::ISceneImpl;
-            use radiance::interfaces::IStaticMeshComponentImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
 
             #[repr(C)]
             pub struct SceneCcw {
-                IScene: radiance::interfaces::IScene,
+                IScene: radiance::comdef::IScene,
 
                 ref_count: std::sync::atomic::AtomicU32,
                 pub inner: $impl_type,
@@ -550,13 +1045,13 @@ macro_rules! ComObject_Scene {
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &radiance::interfaces::IComponentContainer::INTERFACE_ID => {
+                    &radiance::comdef::IComponentContainer::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &radiance::interfaces::IScene::INTERFACE_ID => {
+                    &radiance::comdef::IScene::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
@@ -632,7 +1127,7 @@ macro_rules! ComObject_Scene {
                 this: *const *const std::os::raw::c_void,
                 entity: *const *const std::os::raw::c_void,
             ) -> () {
-                let entity: crosscom::ComRc<radiance::interfaces::IEntity> = entity.into();
+                let entity: crosscom::ComRc<radiance::comdef::IEntity> = entity.into();
 
                 let __crosscom_object = crosscom::get_object::<SceneCcw>(this);
                 (*__crosscom_object).inner.add_entity(entity.into()).into()
@@ -640,7 +1135,7 @@ macro_rules! ComObject_Scene {
 
             fn entities(
                 this: *const *const std::os::raw::c_void,
-            ) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>> {
+            ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
                 unsafe {
                     let __crosscom_object = crosscom::get_object::<SceneCcw>(this);
                     (*__crosscom_object).inner.entities()
@@ -649,7 +1144,7 @@ macro_rules! ComObject_Scene {
 
             fn root_entities(
                 this: *const *const std::os::raw::c_void,
-            ) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>> {
+            ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
                 unsafe {
                     let __crosscom_object = crosscom::get_object::<SceneCcw>(this);
                     (*__crosscom_object).inner.root_entities()
@@ -671,7 +1166,7 @@ macro_rules! ComObject_Scene {
                 component: *const *const std::os::raw::c_void,
             ) -> () {
                 let uuid: uuid::Uuid = uuid.into();
-                let component: crosscom::ComRc<radiance::interfaces::IComponent> = component.into();
+                let component: crosscom::ComRc<radiance::comdef::IComponent> = component.into();
 
                 let __crosscom_object = crosscom::get_object::<SceneCcw>(this);
                 (*__crosscom_object)
@@ -705,36 +1200,35 @@ macro_rules! ComObject_Scene {
 
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_ISceneVirtualTable_CCW_FOR_Scene:
-                radiance::interfaces::ISceneVirtualTableCcw =
-                radiance::interfaces::ISceneVirtualTableCcw {
-                    offset: 0,
-                    vtable: radiance::interfaces::ISceneVirtualTable {
-                        query_interface,
-                        add_ref,
-                        release,
-                        add_component,
-                        get_component,
-                        remove_component,
-                        load,
-                        visible,
-                        update,
-                        draw_ui,
-                        unload,
-                        add_entity,
-                        entities,
-                        root_entities,
-                        camera,
-                    },
-                };
+                radiance::comdef::ISceneVirtualTableCcw = radiance::comdef::ISceneVirtualTableCcw {
+                offset: 0,
+                vtable: radiance::comdef::ISceneVirtualTable {
+                    query_interface,
+                    add_ref,
+                    release,
+                    add_component,
+                    get_component,
+                    remove_component,
+                    load,
+                    visible,
+                    update,
+                    draw_ui,
+                    unload,
+                    add_entity,
+                    entities,
+                    root_entities,
+                    camera,
+                },
+            };
 
             impl crosscom::ComObject for $impl_type {
                 type CcwType = SceneCcw;
 
                 fn create_ccw(self) -> Self::CcwType {
                     Self::CcwType {
-                        IScene: radiance::interfaces::IScene {
+                        IScene: radiance::comdef::IScene {
                             vtable: &GLOBAL_ISceneVirtualTable_CCW_FOR_Scene.vtable
-                                as *const radiance::interfaces::ISceneVirtualTable,
+                                as *const radiance::comdef::ISceneVirtualTable,
                         },
 
                         ref_count: std::sync::atomic::AtomicU32::new(0),
@@ -801,7 +1295,7 @@ pub struct IEntityVirtualTable {
     ) -> crosscom::Void,
     pub children: fn(
         this: *const *const std::os::raw::c_void,
-    ) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>>,
+    ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>,
     pub visible:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_int,
     pub set_visible: unsafe extern "system" fn(
@@ -874,7 +1368,7 @@ impl IEntity {
     pub fn add_component(
         &self,
         uuid: uuid::Uuid,
-        component: crosscom::ComRc<radiance::interfaces::IComponent>,
+        component: crosscom::ComRc<radiance::comdef::IComponent>,
     ) -> () {
         unsafe {
             let this = self as *const IEntity as *const *const std::os::raw::c_void;
@@ -888,11 +1382,11 @@ impl IEntity {
     pub fn get_component(
         &self,
         uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<radiance::interfaces::IComponent>> {
+    ) -> Option<crosscom::ComRc<radiance::comdef::IComponent>> {
         unsafe {
             let this = self as *const IEntity as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).get_component)(this, uuid.into());
-            let ret: Option<crosscom::ComRc<radiance::interfaces::IComponent>> = ret.into();
+            let ret: Option<crosscom::ComRc<radiance::comdef::IComponent>> = ret.into();
 
             ret
         }
@@ -901,11 +1395,11 @@ impl IEntity {
     pub fn remove_component(
         &self,
         uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<radiance::interfaces::IComponent>> {
+    ) -> Option<crosscom::ComRc<radiance::comdef::IComponent>> {
         unsafe {
             let this = self as *const IEntity as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).remove_component)(this, uuid.into());
-            let ret: Option<crosscom::ComRc<radiance::interfaces::IComponent>> = ret.into();
+            let ret: Option<crosscom::ComRc<radiance::comdef::IComponent>> = ret.into();
 
             ret
         }
@@ -989,7 +1483,7 @@ impl IEntity {
         }
     }
 
-    pub fn children(&self) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>> {
+    pub fn children(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
         unsafe {
             let this = self as *const IEntity as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).children)(this);
@@ -1041,7 +1535,7 @@ impl IEntity {
         }
     }
 
-    pub fn attach(&self, child: crosscom::ComRc<radiance::interfaces::IEntity>) -> () {
+    pub fn attach(&self, child: crosscom::ComRc<radiance::comdef::IEntity>) -> () {
         unsafe {
             let this = self as *const IEntity as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).attach)(this, child.into());
@@ -1069,7 +1563,7 @@ pub trait IEntityImpl {
         &self,
         parent_transform: &radiance::math::Transform,
     ) -> crosscom::Void;
-    fn children(&self) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>>;
+    fn children(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
     fn visible(&self) -> bool;
     fn set_visible(&self, visible: bool) -> ();
     fn get_rendering_component(
@@ -1079,7 +1573,7 @@ pub trait IEntityImpl {
         &self,
         component: Option<std::rc::Rc<radiance::rendering::RenderingComponent>>,
     ) -> crosscom::Void;
-    fn attach(&self, child: crosscom::ComRc<radiance::interfaces::IEntity>) -> ();
+    fn attach(&self, child: crosscom::ComRc<radiance::comdef::IEntity>) -> ();
 }
 
 impl crosscom::ComInterface for IEntity {
@@ -1104,16 +1598,18 @@ macro_rules! ComObject_Entity {
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
-            use radiance::interfaces::IAnimatedMeshComponentImpl;
-            use radiance::interfaces::IComponentContainerImpl;
-            use radiance::interfaces::IComponentImpl;
-            use radiance::interfaces::IEntityImpl;
-            use radiance::interfaces::ISceneImpl;
-            use radiance::interfaces::IStaticMeshComponentImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
 
             #[repr(C)]
             pub struct EntityCcw {
-                IEntity: radiance::interfaces::IEntity,
+                IEntity: radiance::comdef::IEntity,
 
                 ref_count: std::sync::atomic::AtomicU32,
                 pub inner: $impl_type,
@@ -1132,13 +1628,13 @@ macro_rules! ComObject_Entity {
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &radiance::interfaces::IComponentContainer::INTERFACE_ID => {
+                    &radiance::comdef::IComponentContainer::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &radiance::interfaces::IEntity::INTERFACE_ID => {
+                    &radiance::comdef::IEntity::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
@@ -1239,7 +1735,7 @@ macro_rules! ComObject_Entity {
 
             fn children(
                 this: *const *const std::os::raw::c_void,
-            ) -> Vec<crosscom::ComRc<radiance::interfaces::IEntity>> {
+            ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
                 unsafe {
                     let __crosscom_object = crosscom::get_object::<EntityCcw>(this);
                     (*__crosscom_object).inner.children()
@@ -1291,7 +1787,7 @@ macro_rules! ComObject_Entity {
                 this: *const *const std::os::raw::c_void,
                 child: *const *const std::os::raw::c_void,
             ) -> () {
-                let child: crosscom::ComRc<radiance::interfaces::IEntity> = child.into();
+                let child: crosscom::ComRc<radiance::comdef::IEntity> = child.into();
 
                 let __crosscom_object = crosscom::get_object::<EntityCcw>(this);
                 (*__crosscom_object).inner.attach(child.into()).into()
@@ -1303,7 +1799,7 @@ macro_rules! ComObject_Entity {
                 component: *const *const std::os::raw::c_void,
             ) -> () {
                 let uuid: uuid::Uuid = uuid.into();
-                let component: crosscom::ComRc<radiance::interfaces::IComponent> = component.into();
+                let component: crosscom::ComRc<radiance::comdef::IComponent> = component.into();
 
                 let __crosscom_object = crosscom::get_object::<EntityCcw>(this);
                 (*__crosscom_object)
@@ -1337,10 +1833,10 @@ macro_rules! ComObject_Entity {
 
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IEntityVirtualTable_CCW_FOR_Entity:
-                radiance::interfaces::IEntityVirtualTableCcw =
-                radiance::interfaces::IEntityVirtualTableCcw {
+                radiance::comdef::IEntityVirtualTableCcw =
+                radiance::comdef::IEntityVirtualTableCcw {
                     offset: 0,
-                    vtable: radiance::interfaces::IEntityVirtualTable {
+                    vtable: radiance::comdef::IEntityVirtualTable {
                         query_interface,
                         add_ref,
                         release,
@@ -1369,9 +1865,9 @@ macro_rules! ComObject_Entity {
 
                 fn create_ccw(self) -> Self::CcwType {
                     Self::CcwType {
-                        IEntity: radiance::interfaces::IEntity {
+                        IEntity: radiance::comdef::IEntity {
                             vtable: &GLOBAL_IEntityVirtualTable_CCW_FOR_Entity.vtable
-                                as *const radiance::interfaces::IEntityVirtualTable,
+                                as *const radiance::comdef::IEntityVirtualTable,
                         },
 
                         ref_count: std::sync::atomic::AtomicU32::new(0),
@@ -1505,148 +2001,146 @@ impl crosscom::ComInterface for IStaticMeshComponent {
 #[macro_export]
 macro_rules! ComObject_StaticMeshComponent {
     ($impl_type: ty) => {
+        #[allow(dead_code)]
+        #[allow(non_snake_case)]
+        #[allow(unused)]
+        mod StaticMeshComponent_crosscom_impl {
+            use crate as radiance;
+            use crosscom::ComInterface;
+            use crosscom::IObjectArrayImpl;
+            use crosscom::IUnknownImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
 
-#[allow(dead_code)]
-#[allow(non_snake_case)]
-#[allow(unused)]
-mod StaticMeshComponent_crosscom_impl {
-    use crate as radiance;
-    use crosscom::ComInterface;
-use radiance::interfaces::IComponentImpl;
-use radiance::interfaces::IComponentContainerImpl;
-use radiance::interfaces::ISceneImpl;
-use radiance::interfaces::IEntityImpl;
-use radiance::interfaces::IStaticMeshComponentImpl;
-use radiance::interfaces::IAnimatedMeshComponentImpl;
-use crosscom::IUnknownImpl;
-use crosscom::IObjectArrayImpl;
+            #[repr(C)]
+            pub struct StaticMeshComponentCcw {
+                IStaticMeshComponent: radiance::comdef::IStaticMeshComponent,
 
+                ref_count: std::sync::atomic::AtomicU32,
+                pub inner: $impl_type,
+            }
 
-    #[repr(C)]
-    pub struct StaticMeshComponentCcw {
-        IStaticMeshComponent: radiance::interfaces::IStaticMeshComponent,
+            unsafe extern "system" fn query_interface(
+                this: *const *const std::os::raw::c_void,
+                guid: uuid::Uuid,
+                retval: &mut *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<StaticMeshComponentCcw>(this);
+                match guid.as_bytes() {
+                    &crosscom::IUnknown::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
 
-        ref_count: std::sync::atomic::AtomicU32,
-        pub inner: $impl_type,
-    }
+                    &radiance::comdef::IComponent::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
 
-    unsafe extern "system" fn query_interface(
-        this: *const *const std::os::raw::c_void,
-        guid: uuid::Uuid,
-        retval: &mut *const *const std::os::raw::c_void,
-    ) -> std::os::raw::c_long {
-        let object = crosscom::get_object::<StaticMeshComponentCcw>(this);
-        match guid.as_bytes() {
+                    &radiance::comdef::IStaticMeshComponent::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as i32
+                    }
 
-&crosscom::IUnknown::INTERFACE_ID => {
-    *retval = (object as *const *const std::os::raw::c_void).offset(0);
-    add_ref(object as *const *const std::os::raw::c_void);
-    crosscom::ResultCode::Ok as i32
-}
+                    _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
+                }
+            }
 
+            unsafe extern "system" fn add_ref(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<StaticMeshComponentCcw>(this);
+                let previous = (*object)
+                    .ref_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                (previous + 1) as std::os::raw::c_long
+            }
 
-&radiance::interfaces::IComponent::INTERFACE_ID => {
-    *retval = (object as *const *const std::os::raw::c_void).offset(0);
-    add_ref(object as *const *const std::os::raw::c_void);
-    crosscom::ResultCode::Ok as i32
-}
+            unsafe extern "system" fn release(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<StaticMeshComponentCcw>(this);
 
+                let previous = (*object)
+                    .ref_count
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                if previous - 1 == 0 {
+                    Box::from_raw(object as *mut StaticMeshComponentCcw);
+                }
 
-&radiance::interfaces::IStaticMeshComponent::INTERFACE_ID => {
-    *retval = (object as *const *const std::os::raw::c_void).offset(0);
-    add_ref(object as *const *const std::os::raw::c_void);
-    crosscom::ResultCode::Ok as i32
-}
+                (previous - 1) as std::os::raw::c_long
+            }
 
+            unsafe extern "system" fn on_loading(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<StaticMeshComponentCcw>(this);
+                (*__crosscom_object).inner.on_loading().into()
+            }
 
-            _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
-        }
-    }
+            unsafe extern "system" fn on_updating(
+                this: *const *const std::os::raw::c_void,
+                delta_sec: std::os::raw::c_float,
+            ) -> () {
+                let delta_sec: f32 = delta_sec.into();
 
-    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
-        let object = crosscom::get_object::<StaticMeshComponentCcw>(this);
-        let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        (previous + 1) as std::os::raw::c_long
-    }
+                let __crosscom_object = crosscom::get_object::<StaticMeshComponentCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .on_updating(delta_sec.into())
+                    .into()
+            }
 
-    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
-        let object = crosscom::get_object::<StaticMeshComponentCcw>(this);
+            #[allow(non_upper_case_globals)]
+            pub const GLOBAL_IStaticMeshComponentVirtualTable_CCW_FOR_StaticMeshComponent:
+                radiance::comdef::IStaticMeshComponentVirtualTableCcw =
+                radiance::comdef::IStaticMeshComponentVirtualTableCcw {
+                    offset: 0,
+                    vtable: radiance::comdef::IStaticMeshComponentVirtualTable {
+                        query_interface,
+                        add_ref,
+                        release,
+                        on_loading,
+                        on_updating,
+                    },
+                };
 
-        let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-        if previous - 1 == 0 {
-            Box::from_raw(object as *mut StaticMeshComponentCcw);
-        }
+            impl crosscom::ComObject for $impl_type {
+                type CcwType = StaticMeshComponentCcw;
 
-        (previous - 1) as std::os::raw::c_long
-    }
+                fn create_ccw(self) -> Self::CcwType {
+                    Self::CcwType {
+                        IStaticMeshComponent: radiance::comdef::IStaticMeshComponent {
+                            vtable:
+                                &GLOBAL_IStaticMeshComponentVirtualTable_CCW_FOR_StaticMeshComponent
+                                    .vtable
+                                    as *const radiance::comdef::IStaticMeshComponentVirtualTable,
+                        },
 
+                        ref_count: std::sync::atomic::AtomicU32::new(0),
+                        inner: self,
+                    }
+                }
 
-
-    unsafe extern "system" fn on_loading (this: *const *const std::os::raw::c_void, ) -> () {
-
-        let __crosscom_object = crosscom::get_object::<StaticMeshComponentCcw>(this);
-        (*__crosscom_object).inner.on_loading().into()
-    }
-
-
-
-    unsafe extern "system" fn on_updating (this: *const *const std::os::raw::c_void, delta_sec: std::os::raw::c_float,
-) -> () {
-        let delta_sec: f32 = delta_sec.into()
-;
-
-        let __crosscom_object = crosscom::get_object::<StaticMeshComponentCcw>(this);
-        (*__crosscom_object).inner.on_updating(delta_sec.into()).into()
-    }
-
-
-
-
-
-
-#[allow(non_upper_case_globals)]
-pub const GLOBAL_IStaticMeshComponentVirtualTable_CCW_FOR_StaticMeshComponent: radiance::interfaces::IStaticMeshComponentVirtualTableCcw
-    = radiance::interfaces::IStaticMeshComponentVirtualTableCcw {
-    offset: 0,
-    vtable: radiance::interfaces::IStaticMeshComponentVirtualTable {
-        query_interface,
-add_ref,
-release,
-on_loading,
-on_updating,
-
-    },
-};
-
-
-
-
-    impl crosscom::ComObject for $impl_type {
-        type CcwType = StaticMeshComponentCcw;
-
-        fn create_ccw(self) -> Self::CcwType {
-            Self::CcwType {
-
-IStaticMeshComponent: radiance::interfaces::IStaticMeshComponent {
-    vtable: &GLOBAL_IStaticMeshComponentVirtualTable_CCW_FOR_StaticMeshComponent.vtable
-        as *const radiance::interfaces::IStaticMeshComponentVirtualTable,
-},
-
-                ref_count: std::sync::atomic::AtomicU32::new(0),
-                inner: self,
+                fn get_ccw(&self) -> &Self::CcwType {
+                    unsafe {
+                        let this = self as *const _ as *const u8;
+                        let this = this.offset(
+                            -(crosscom::offset_of!(StaticMeshComponentCcw, inner) as isize),
+                        );
+                        &*(this as *const Self::CcwType)
+                    }
+                }
             }
         }
-
-        fn get_ccw(&self) -> &Self::CcwType {
-            unsafe {
-                let this = self as *const _ as *const u8;
-                let this = this.offset(-(crosscom::offset_of!(StaticMeshComponentCcw, inner) as isize));
-                &*(this as *const Self::CcwType)
-            }
-        }
-    }
-}
-    }
+    };
 }
 
 // pub use ComObject_StaticMeshComponent;
@@ -1796,16 +2290,18 @@ macro_rules! ComObject_AnimatedMeshComponent {
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
-            use radiance::interfaces::IAnimatedMeshComponentImpl;
-            use radiance::interfaces::IComponentContainerImpl;
-            use radiance::interfaces::IComponentImpl;
-            use radiance::interfaces::IEntityImpl;
-            use radiance::interfaces::ISceneImpl;
-            use radiance::interfaces::IStaticMeshComponentImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
 
             #[repr(C)]
             pub struct AnimatedMeshComponentCcw {
-                IAnimatedMeshComponent: radiance::interfaces::IAnimatedMeshComponent,
+                IAnimatedMeshComponent: radiance::comdef::IAnimatedMeshComponent,
 
                 ref_count: std::sync::atomic::AtomicU32,
                 pub inner: $impl_type,
@@ -1824,13 +2320,13 @@ macro_rules! ComObject_AnimatedMeshComponent {
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &radiance::interfaces::IComponent::INTERFACE_ID => {
+                    &radiance::comdef::IComponent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &radiance::interfaces::IAnimatedMeshComponent::INTERFACE_ID => {
+                    &radiance::comdef::IAnimatedMeshComponent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
@@ -1899,10 +2395,10 @@ macro_rules! ComObject_AnimatedMeshComponent {
 
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IAnimatedMeshComponentVirtualTable_CCW_FOR_AnimatedMeshComponent:
-                radiance::interfaces::IAnimatedMeshComponentVirtualTableCcw =
-                radiance::interfaces::IAnimatedMeshComponentVirtualTableCcw {
+                radiance::comdef::IAnimatedMeshComponentVirtualTableCcw =
+                radiance::comdef::IAnimatedMeshComponentVirtualTableCcw {
                     offset: 0,
-                    vtable: radiance::interfaces::IAnimatedMeshComponentVirtualTable {
+                    vtable: radiance::comdef::IAnimatedMeshComponentVirtualTable {
                         query_interface,
                         add_ref,
                         release,
@@ -1919,9 +2415,9 @@ macro_rules! ComObject_AnimatedMeshComponent {
                 fn create_ccw(self) -> Self::CcwType {
                     Self::CcwType {
 
-        IAnimatedMeshComponent: radiance::interfaces::IAnimatedMeshComponent {
+        IAnimatedMeshComponent: radiance::comdef::IAnimatedMeshComponent {
             vtable: &GLOBAL_IAnimatedMeshComponentVirtualTable_CCW_FOR_AnimatedMeshComponent.vtable
-                as *const radiance::interfaces::IAnimatedMeshComponentVirtualTable,
+                as *const radiance::comdef::IAnimatedMeshComponentVirtualTable,
         },
 
                         ref_count: std::sync::atomic::AtomicU32::new(0),

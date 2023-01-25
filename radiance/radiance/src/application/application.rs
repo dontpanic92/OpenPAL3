@@ -1,62 +1,52 @@
+use crosscom::ComRc;
+use dashmap::DashMap;
+use uuid::Uuid;
+
 use super::Platform;
+use crate::comdef::{IApplicationImpl, IComponent, IComponentContainerImpl};
 use crate::constants;
 use crate::radiance;
 use crate::radiance::CoreRadianceEngine;
-use std::cell::{RefCell, RefMut};
+use crate::ComObject_Application;
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 
-pub trait ApplicationExtension<TImpl: ApplicationExtension<TImpl>> {
-    define_ext_fn!(on_initialized, Application, TImpl);
-    define_ext_fn!(on_updating, Application, TImpl, _delta_sec: f32);
-}
-
-mod private {
-    pub struct EmptyCallbacks {}
-    impl super::ApplicationExtension<EmptyCallbacks> for EmptyCallbacks {}
-}
-pub type DefaultApplication = Application<private::EmptyCallbacks>;
-
-pub struct Application<TExtension: 'static + ApplicationExtension<TExtension>> {
+pub struct Application {
     radiance_engine: Rc<RefCell<CoreRadianceEngine>>,
     platform: Rc<RefCell<Platform>>,
-    extension: Rc<RefCell<TExtension>>,
+    components: DashMap<Uuid, ComRc<IComponent>>,
 }
 
-impl<TExtension: 'static + ApplicationExtension<TExtension>> Application<TExtension> {
-    pub fn new(extension: TExtension) -> Self {
-        set_panic_hook();
-        let mut platform = Platform::new();
-        Self {
-            radiance_engine: Rc::new(RefCell::new(
-                radiance::create_radiance_engine(&mut platform)
-                    .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
-            )),
-            platform: Rc::new(RefCell::new(platform)),
-            extension: Rc::new(RefCell::new(extension)),
+ComObject_Application!(super::Application);
+
+impl IComponentContainerImpl for Application {
+    fn add_component(&self, uuid: uuid::Uuid, component: ComRc<IComponent>) -> () {
+        self.components.insert(uuid, component);
+    }
+
+    fn get_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
+        self.components
+            .get(&uuid)
+            .and_then(|c| Some(c.value().clone()))
+    }
+
+    fn remove_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
+        self.components.remove(&uuid).and_then(|c| Some(c.1))
+    }
+}
+
+impl IApplicationImpl for Application {
+    fn initialize(&self) {
+        self.platform.borrow_mut().initialize();
+
+        for c in self.components.clone() {
+            c.1.on_loading()
         }
     }
 
-    pub fn engine_mut(&mut self) -> RefMut<CoreRadianceEngine> {
-        self.radiance_engine.borrow_mut()
-    }
-
-    pub fn callbacks_mut(&self) -> RefMut<TExtension> {
-        self.extension.borrow_mut()
-    }
-
-    pub fn initialize(&mut self) {
-        self.platform.borrow_mut().initialize();
-        ext_call!(self, on_initialized);
-    }
-
-    pub fn set_title(&mut self, title: &str) {
-        self.platform.borrow_mut().set_title(title);
-    }
-
-    pub fn run(mut self) {
+    fn run(&self) {
         let engine = self.radiance_engine.clone();
-        let extension = self.extension.clone();
         let platform = self.platform.clone();
 
         let mut start_time = Instant::now();
@@ -69,11 +59,35 @@ impl<TExtension: 'static + ApplicationExtension<TExtension>> Application<TExtens
                 continue;
             }*/
 
-            let mut ext = extension.borrow_mut();
-            ext.on_updating(&mut self, elapsed);
-            // ext_call!(self, on_updating, elapsed);
+            for c in self.components.clone() {
+                c.1.on_updating(elapsed);
+            }
+
             engine.borrow_mut().update(elapsed);
         });
+    }
+
+    fn set_title(&self, title: &str) {
+        self.platform.borrow_mut().set_title(title);
+    }
+
+    fn engine(&self) -> Rc<RefCell<CoreRadianceEngine>> {
+        self.radiance_engine.clone()
+    }
+}
+
+impl Application {
+    pub fn new() -> Self {
+        set_panic_hook();
+        let mut platform = Platform::new();
+        Self {
+            radiance_engine: Rc::new(RefCell::new(
+                radiance::create_radiance_engine(&mut platform)
+                    .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
+            )),
+            platform: Rc::new(RefCell::new(platform)),
+            components: DashMap::new(),
+        }
     }
 }
 

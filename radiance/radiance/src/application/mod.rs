@@ -11,4 +11,4 @@ pub use self::winit::Platform;
 #[cfg(target_os = "windows")]
 pub use windows::Platform;
 
-pub use application::{Application, ApplicationExtension, DefaultApplication};
+pub use application::Application;

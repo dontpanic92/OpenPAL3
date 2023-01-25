@@ -1,5 +1,5 @@
 use crate::asset_manager::AssetManager;
-use crate::classes::{IRoleController, IRoleControllerImpl};
+use crate::comdef::{IRoleController, IRoleControllerImpl};
 use crate::ComObject_RoleController;
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
@@ -7,7 +7,7 @@ use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
 use fileformats::mv3::{read_mv3, Mv3Model};
 use mini_fs::{MiniFs, StoreExt};
-use radiance::interfaces::{IAnimatedMeshComponent, IComponent, IComponentImpl, IEntity};
+use radiance::comdef::{IAnimatedMeshComponent, IComponent, IComponentImpl, IEntity};
 use radiance::math::Vec3;
 use radiance::rendering::{
     AnimatedMeshComponent, ComponentFactory, Geometry, MaterialDef, MorphAnimationState,

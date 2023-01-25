@@ -1,7 +1,7 @@
 use crosscom::ComRc;
 
 use super::ComponentFactory;
-use crate::{imgui::ImguiFrame, interfaces::IScene, scene::Viewport};
+use crate::{comdef::IScene, imgui::ImguiFrame, scene::Viewport};
 use std::rc::Rc;
 
 pub trait RenderingEngine {

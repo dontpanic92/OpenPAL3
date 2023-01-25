@@ -1,4 +1,4 @@
-module(rust) radiance::interfaces;
+module(rust) radiance::comdef;
 
 import crosscom.idl;
 
@@ -15,6 +15,24 @@ interface IComponentContainer: IUnknown {
     IComponent? remove_component(UUID uuid);
 }
 
+[uuid(fd2f7f28-c3ea-442c-a6dc-18e370de001a)]
+interface IApplication: IComponentContainer {
+    void initialize();
+    void run();
+
+    [internal(), rust()]
+    crosscom::Void set_title(&str title);
+
+    [internal(), rust()]
+    std::rc::Rc<std::cell::RefCell<radiance::radiance::CoreRadianceEngine>> engine();
+}
+
+[uuid(bd5ad7e2-635d-4bf2-94da-a814d001c811)]
+class Application: IApplication {}
+
+[uuid(3afe8052-b675-4939-aafb-2a4fca8f2cf2)]
+interface IApplicationLoaderComponent: IComponent {}
+
 [uuid(27e705f1-d035-4e91-8735-3a006fab870d)]
 interface IScene: IComponentContainer {
     void load();
@@ -28,10 +46,10 @@ interface IScene: IComponentContainer {
     void add_entity(IEntity entity);
 
     [internal(), rust()]
-    Vec<crosscom::ComRc<radiance::interfaces::IEntity>> entities();
+    Vec<crosscom::ComRc<radiance::comdef::IEntity>> entities();
 
     [internal(), rust()]
-    Vec<crosscom::ComRc<radiance::interfaces::IEntity>> root_entities();
+    Vec<crosscom::ComRc<radiance::comdef::IEntity>> root_entities();
     
     [internal(), rust()]
     std::rc::Rc<std::cell::RefCell<radiance::scene::Camera>> camera();
@@ -62,7 +80,7 @@ interface IEntity: IComponentContainer {
     crosscom::Void update_world_transform(&radiance::math::Transform parent_transform);
 
     [internal(), rust()]
-    Vec<crosscom::ComRc<radiance::interfaces::IEntity>> children();
+    Vec<crosscom::ComRc<radiance::comdef::IEntity>> children();
     
     bool visible();
     void set_visible(bool visible);

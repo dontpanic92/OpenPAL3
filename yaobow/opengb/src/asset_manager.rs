@@ -1,4 +1,4 @@
-use crate::classes::IScnSceneComponent;
+use crate::comdef::IScnSceneComponent;
 use crate::scene::{create_animated_mesh_from_mv3, create_mv3_entity, ScnScene};
 use crate::{
     loaders::{
@@ -15,7 +15,7 @@ use encoding::{types::Encoding, DecoderTrap};
 use ini::Ini;
 use mini_fs::prelude::*;
 use mini_fs::MiniFs;
-use radiance::interfaces::{IAnimatedMeshComponent, IEntity, IScene};
+use radiance::comdef::{IAnimatedMeshComponent, IEntity, IScene};
 use radiance::rendering::ComponentFactory;
 use radiance::scene::CoreScene;
 use shared::fs::init_virtual_fs;

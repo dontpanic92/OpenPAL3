@@ -1,3 +1,4 @@
+use crate as radiance_editor;
 // Interface IViewContent
 
 #[repr(C)]
@@ -120,11 +121,19 @@ macro_rules! ComObject_ResourceViewContent {
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
-            use radiance_editor::core::IViewContentImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
+            use radiance_editor::comdef::IViewContentImpl;
 
             #[repr(C)]
             pub struct ResourceViewContentCcw {
-                IViewContent: radiance_editor::core::IViewContent,
+                IViewContent: radiance_editor::comdef::IViewContent,
 
                 ref_count: std::sync::atomic::AtomicU32,
                 pub inner: $impl_type,
@@ -143,7 +152,7 @@ macro_rules! ComObject_ResourceViewContent {
                         crosscom::ResultCode::Ok as i32
                     }
 
-                    &radiance_editor::core::IViewContent::INTERFACE_ID => {
+                    &radiance_editor::comdef::IViewContent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
                         crosscom::ResultCode::Ok as i32
@@ -194,10 +203,10 @@ macro_rules! ComObject_ResourceViewContent {
 
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IViewContentVirtualTable_CCW_FOR_ResourceViewContent:
-                radiance_editor::core::IViewContentVirtualTableCcw =
-                radiance_editor::core::IViewContentVirtualTableCcw {
+                radiance_editor::comdef::IViewContentVirtualTableCcw =
+                radiance_editor::comdef::IViewContentVirtualTableCcw {
                     offset: 0,
-                    vtable: radiance_editor::core::IViewContentVirtualTable {
+                    vtable: radiance_editor::comdef::IViewContentVirtualTable {
                         query_interface,
                         add_ref,
                         release,
@@ -210,10 +219,10 @@ macro_rules! ComObject_ResourceViewContent {
 
                 fn create_ccw(self) -> Self::CcwType {
                     Self::CcwType {
-                        IViewContent: radiance_editor::core::IViewContent {
+                        IViewContent: radiance_editor::comdef::IViewContent {
                             vtable: &GLOBAL_IViewContentVirtualTable_CCW_FOR_ResourceViewContent
                                 .vtable
-                                as *const radiance_editor::core::IViewContentVirtualTable,
+                                as *const radiance_editor::comdef::IViewContentVirtualTable,
                         },
 
                         ref_count: std::sync::atomic::AtomicU32::new(0),
@@ -224,7 +233,7 @@ macro_rules! ComObject_ResourceViewContent {
                 fn get_ccw(&self) -> &Self::CcwType {
                     unsafe {
                         let this = self as *const _ as *const u8;
-                        this.offset(
+                        let this = this.offset(
                             -(crosscom::offset_of!(ResourceViewContentCcw, inner) as isize),
                         );
                         &*(this as *const Self::CcwType)
@@ -236,3 +245,158 @@ macro_rules! ComObject_ResourceViewContent {
 }
 
 // pub use ComObject_ResourceViewContent;
+
+// Class EditorApplicationLoaderComponent
+
+#[allow(unused)]
+#[macro_export]
+macro_rules! ComObject_EditorApplicationLoaderComponent {
+    ($impl_type: ty) => {
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+mod EditorApplicationLoaderComponent_crosscom_impl {
+    use crate as radiance_editor;
+    use crosscom::ComInterface;
+use radiance_editor::comdef::IViewContentImpl;
+use crosscom::IUnknownImpl;
+use crosscom::IObjectArrayImpl;
+use radiance::comdef::IComponentImpl;
+use radiance::comdef::IComponentContainerImpl;
+use radiance::comdef::IApplicationImpl;
+use radiance::comdef::IApplicationLoaderComponentImpl;
+use radiance::comdef::ISceneImpl;
+use radiance::comdef::IEntityImpl;
+use radiance::comdef::IStaticMeshComponentImpl;
+use radiance::comdef::IAnimatedMeshComponentImpl;
+
+
+    #[repr(C)]
+    pub struct EditorApplicationLoaderComponentCcw {
+        IApplicationLoaderComponent: radiance::comdef::IApplicationLoaderComponent,
+
+        ref_count: std::sync::atomic::AtomicU32,
+        pub inner: $impl_type,
+    }
+
+    unsafe extern "system" fn query_interface(
+        this: *const *const std::os::raw::c_void,
+        guid: uuid::Uuid,
+        retval: &mut *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_long {
+        let object = crosscom::get_object::<EditorApplicationLoaderComponentCcw>(this);
+        match guid.as_bytes() {
+
+&crosscom::IUnknown::INTERFACE_ID => {
+    *retval = (object as *const *const std::os::raw::c_void).offset(0);
+    add_ref(object as *const *const std::os::raw::c_void);
+    crosscom::ResultCode::Ok as i32
+}
+
+
+&radiance::comdef::IComponent::INTERFACE_ID => {
+    *retval = (object as *const *const std::os::raw::c_void).offset(0);
+    add_ref(object as *const *const std::os::raw::c_void);
+    crosscom::ResultCode::Ok as i32
+}
+
+
+&radiance::comdef::IApplicationLoaderComponent::INTERFACE_ID => {
+    *retval = (object as *const *const std::os::raw::c_void).offset(0);
+    add_ref(object as *const *const std::os::raw::c_void);
+    crosscom::ResultCode::Ok as i32
+}
+
+
+            _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
+        }
+    }
+
+    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+        let object = crosscom::get_object::<EditorApplicationLoaderComponentCcw>(this);
+        let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        (previous + 1) as std::os::raw::c_long
+    }
+
+    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+        let object = crosscom::get_object::<EditorApplicationLoaderComponentCcw>(this);
+
+        let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        if previous - 1 == 0 {
+            Box::from_raw(object as *mut EditorApplicationLoaderComponentCcw);
+        }
+
+        (previous - 1) as std::os::raw::c_long
+    }
+
+
+
+    unsafe extern "system" fn on_loading (this: *const *const std::os::raw::c_void, ) -> () {
+
+        let __crosscom_object = crosscom::get_object::<EditorApplicationLoaderComponentCcw>(this);
+        (*__crosscom_object).inner.on_loading().into()
+    }
+
+
+
+    unsafe extern "system" fn on_updating (this: *const *const std::os::raw::c_void, delta_sec: std::os::raw::c_float,
+) -> () {
+        let delta_sec: f32 = delta_sec.into()
+;
+
+        let __crosscom_object = crosscom::get_object::<EditorApplicationLoaderComponentCcw>(this);
+        (*__crosscom_object).inner.on_updating(delta_sec.into()).into()
+    }
+
+
+
+
+
+
+#[allow(non_upper_case_globals)]
+pub const GLOBAL_IApplicationLoaderComponentVirtualTable_CCW_FOR_EditorApplicationLoaderComponent: radiance::comdef::IApplicationLoaderComponentVirtualTableCcw
+    = radiance::comdef::IApplicationLoaderComponentVirtualTableCcw {
+    offset: 0,
+    vtable: radiance::comdef::IApplicationLoaderComponentVirtualTable {
+        query_interface,
+add_ref,
+release,
+on_loading,
+on_updating,
+
+    },
+};
+
+
+
+
+    impl crosscom::ComObject for $impl_type {
+        type CcwType = EditorApplicationLoaderComponentCcw;
+
+        fn create_ccw(self) -> Self::CcwType {
+            Self::CcwType {
+
+IApplicationLoaderComponent: radiance::comdef::IApplicationLoaderComponent {
+    vtable: &GLOBAL_IApplicationLoaderComponentVirtualTable_CCW_FOR_EditorApplicationLoaderComponent.vtable
+        as *const radiance::comdef::IApplicationLoaderComponentVirtualTable,
+},
+
+                ref_count: std::sync::atomic::AtomicU32::new(0),
+                inner: self,
+            }
+        }
+
+        fn get_ccw(&self) -> &Self::CcwType {
+            unsafe {
+                let this = self as *const _ as *const u8;
+                let this = this.offset(-(crosscom::offset_of!(EditorApplicationLoaderComponentCcw, inner) as isize));
+                &*(this as *const Self::CcwType)
+            }
+        }
+    }
+}
+    }
+}
+
+// pub use ComObject_EditorApplicationLoaderComponent;

@@ -11,7 +11,7 @@ use opengb::{
 };
 use radiance::{
     audio::AudioEngine,
-    interfaces::{IAnimatedMeshComponent, IComponent},
+    comdef::{IAnimatedMeshComponent, IComponent},
     math::Vec3,
     scene::{CoreScene, Director, SceneManager},
 };

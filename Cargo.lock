@@ -1983,20 +1983,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "openpal3"
-version = "0.1.0"
-dependencies = [
- "imgui",
- "log",
- "ndk 0.5.0",
- "ndk-glue 0.5.2",
- "ndk-sys 0.3.0",
- "opengb",
- "radiance",
- "simple_logger",
-]
-
-[[package]]
 name = "ordered-multimap"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3293,17 +3279,20 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "common",
+ "crosscom",
  "fileformats",
  "imgui",
  "log",
  "ndk 0.5.0",
  "ndk-glue 0.5.2",
  "ndk-sys 0.3.0",
+ "opengb",
  "radiance",
  "serde",
  "serde_json",
  "shared",
  "simple_logger",
+ "uuid",
 ]
 
 [[package]]

@@ -45,7 +45,7 @@ impl CoreRadianceEngine {
         self.rendering_engine.borrow().component_factory()
     }
 
-    pub fn audio_engine(&mut self) -> Rc<dyn AudioEngine> {
+    pub fn audio_engine(&self) -> Rc<dyn AudioEngine> {
         self.audio_engine.clone()
     }
 

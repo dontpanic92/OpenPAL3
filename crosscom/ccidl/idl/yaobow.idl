@@ -1,0 +1,9 @@
+module(rust) yaobow::comdef;
+
+import radiance.idl;
+
+[uuid(e0618113-5cf2-4562-ba93-ffd35d36c7f3)]
+class OpenPal3ApplicationLoaderComponent: IApplicationLoaderComponent {}
+
+[uuid(412087ff-19be-4fa1-865a-9dbc243bd434)]
+class OpenPal4ApplicationLoaderComponent: IApplicationLoaderComponent {}

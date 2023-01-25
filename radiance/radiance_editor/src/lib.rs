@@ -1,6 +1,4 @@
-#![feature(arbitrary_self_types)]
-
 pub mod application;
-pub mod core;
+pub mod comdef;
 mod director;
 pub mod ui;

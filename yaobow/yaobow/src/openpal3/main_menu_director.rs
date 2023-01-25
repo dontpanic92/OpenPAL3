@@ -12,7 +12,7 @@ use radiance::{
     scene::{CoreScene, Director, SceneManager},
 };
 
-use crate::sce_proc_hooks::SceRestHooks;
+use super::sce_proc_hooks::SceRestHooks;
 
 pub struct MainMenuDirector {
     asset_mgr: Rc<AssetManager>,

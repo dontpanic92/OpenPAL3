@@ -3,7 +3,7 @@ use dashmap::DashMap;
 use uuid::Uuid;
 
 use crate::{
-    interfaces::{IComponent, IComponentContainerImpl, IEntity, IScene, ISceneImpl},
+    comdef::{IComponent, IComponentContainerImpl, IEntity, IScene, ISceneImpl},
     math::Transform,
     ComObject_Scene,
 };
@@ -128,19 +128,13 @@ impl IComponentContainerImpl for CoreScene {
         self.components.insert(uuid, component);
     }
 
-    fn get_component(
-        &self,
-        uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<crate::interfaces::IComponent>> {
+    fn get_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
         self.components
             .get(&uuid)
             .and_then(|c| Some(c.value().clone()))
     }
 
-    fn remove_component(
-        &self,
-        uuid: uuid::Uuid,
-    ) -> Option<crosscom::ComRc<crate::interfaces::IComponent>> {
+    fn remove_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
         self.components.remove(&uuid).and_then(|c| Some(c.1))
     }
 }

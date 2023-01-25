@@ -1,4 +1,4 @@
-module(rust) opengb::classes;
+module(rust) opengb::comdef;
 
 import radiance.idl;
 
