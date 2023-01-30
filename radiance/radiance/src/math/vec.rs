@@ -18,6 +18,10 @@ impl Vec2 {
             std::slice::from_raw_parts(self as *const _ as *const u8, std::mem::size_of::<Self>())
         }
     }
+
+    pub fn u8_slice_len() -> usize {
+        std::mem::size_of::<Self>()
+    }
 }
 
 /// 3d column vector
@@ -101,6 +105,10 @@ impl Vec3 {
         unsafe {
             std::slice::from_raw_parts(self as *const _ as *const u8, std::mem::size_of::<Self>())
         }
+    }
+
+    pub fn u8_slice_len() -> usize {
+        std::mem::size_of::<Self>()
     }
 }
 

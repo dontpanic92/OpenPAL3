@@ -69,6 +69,7 @@ impl CoreEntity {
 
 impl IComponentContainerImpl for CoreEntity {
     fn add_component(&self, uuid: uuid::Uuid, component: crosscom::ComRc<IComponent>) -> () {
+        component.on_loading();
         self.components.insert(uuid, component);
     }
 
@@ -97,9 +98,9 @@ impl IEntityImpl for CoreEntity {
             e.load();
         }
 
-        for c in self.components.clone() {
-            c.1.on_loading()
-        }
+        // for c in self.components.clone() {
+        //     c.1.on_loading()
+        // }
     }
 
     fn unload(&self) -> () {

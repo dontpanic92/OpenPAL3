@@ -110,7 +110,7 @@ impl VertexBuffer {
         let size = layout.size;
         let data = vec![0u8; size * count];
         Self {
-            layout: layout,
+            layout,
             data,
             count,
         }
@@ -139,26 +139,31 @@ impl VertexBuffer {
         tex_coord: Option<&Vec2>,
         tex_coord2: Option<&Vec2>,
     ) {
-        let mut data: Vec<u8> = vec![];
         let mut components = VertexComponents::empty();
+        let mut size = 0;
         if let Some(p) = position {
-            data.extend(p.as_slice());
+            // data.extend(p.as_slice());
+            // data[i..i + Vec3::u8_slice_len()].copy_from_slice(p.as_slice());
             components |= VertexComponents::POSITION;
+            size += Vec3::u8_slice_len();
         }
 
         if let Some(n) = normal {
-            data.extend(n.as_slice());
+            // data.extend(n.as_slice());
             components |= VertexComponents::NORMAL;
+            size += Vec3::u8_slice_len();
         }
 
         if let Some(t) = tex_coord {
-            data.extend(t.as_slice());
+            // data.extend(t.as_slice());
             components |= VertexComponents::TEXCOORD;
+            size += Vec2::u8_slice_len();
         }
 
         if let Some(t) = tex_coord2 {
-            data.extend(t.as_slice());
+            // data.extend(t.as_slice());
             components |= VertexComponents::TEXCOORD2;
+            size += Vec2::u8_slice_len();
         }
 
         if components != self.layout.components {
@@ -166,6 +171,29 @@ impl VertexBuffer {
                 "Vertex component mismatch when setting vertex data {:?} {:?}",
                 components, self.layout.components
             );
+        }
+
+        let mut data: Vec<u8> = vec![0; size];
+        let mut i = 0;
+
+        if let Some(p) = position {
+            data[i..i + Vec3::u8_slice_len()].copy_from_slice(p.as_slice());
+            i += Vec3::u8_slice_len();
+        }
+
+        if let Some(n) = normal {
+            data[i..i + Vec3::u8_slice_len()].copy_from_slice(n.as_slice());
+            i += Vec3::u8_slice_len();
+        }
+
+        if let Some(t) = tex_coord {
+            data[i..i + Vec2::u8_slice_len()].copy_from_slice(t.as_slice());
+            i += Vec2::u8_slice_len();
+        }
+
+        if let Some(t) = tex_coord2 {
+            data[i..i + Vec2::u8_slice_len()].copy_from_slice(t.as_slice());
+            i += Vec2::u8_slice_len();
         }
 
         self.set_vertex_blob(index, |v: &mut [u8]| {

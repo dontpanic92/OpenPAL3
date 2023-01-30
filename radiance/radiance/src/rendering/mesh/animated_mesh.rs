@@ -75,9 +75,16 @@ impl AnimatedMeshComponent {
         if self.props().morph_targets.is_empty() {
             return;
         }
+
+        self.load_geometries(&self.props().morph_targets[0].geometries);
     }
 
-    pub fn update_morph_target(&self, anim_timestamp: f32, vertex_buffer: &mut VertexBuffer) {
+    pub fn update_morph_target(
+        &self,
+        anim_timestamp: f32,
+        g_index: usize,
+        mut vertex_buffer: RefMut<VertexBuffer>,
+    ) {
         let props = self.props();
         let frame_index = props
             .morph_targets
@@ -98,26 +105,35 @@ impl AnimatedMeshComponent {
             .unwrap()
             .geometries;
 
-        for (t, nt) in target.iter().zip(next_target) {
-            for i in 0..t.vertices.count() {
-                let position = t.vertices.position(i).unwrap();
-                let next_position = nt.vertices.position(i).unwrap();
-                let tex_coord = t.vertices.tex_coord(i);
+        // for (t, nt) in target.iter().zip(next_target) {
+        let t = target.get(g_index);
+        let nt = next_target.get(g_index);
+        if t.is_none() || nt.is_none() {
+            return;
+        }
 
-                vertex_buffer.set_component(i, VertexComponents::POSITION, |p: &mut Vec3| {
-                    p.x = position.x * (1. - percentile) + next_position.x * percentile;
-                    p.y = position.y * (1. - percentile) + next_position.y * percentile;
-                    p.z = position.z * (1. - percentile) + next_position.z * percentile;
+        let t = t.unwrap();
+        let nt = nt.unwrap();
+
+        for i in 0..vertex_buffer.count() {
+            let position = t.vertices.position(i).unwrap();
+            let next_position = nt.vertices.position(i).unwrap();
+            let tex_coord = t.vertices.tex_coord(i);
+
+            vertex_buffer.set_component(i, VertexComponents::POSITION, |p: &mut Vec3| {
+                p.x = position.x * (1. - percentile) + next_position.x * percentile;
+                p.y = position.y * (1. - percentile) + next_position.y * percentile;
+                p.z = position.z * (1. - percentile) + next_position.z * percentile;
+            });
+
+            if let Some(tex_coord) = tex_coord {
+                vertex_buffer.set_component(i, VertexComponents::TEXCOORD, |t: &mut Vec2| {
+                    t.x = tex_coord.x;
+                    t.y = tex_coord.y;
                 });
-
-                if let Some(tex_coord) = tex_coord {
-                    vertex_buffer.set_component(i, VertexComponents::TEXCOORD, |t: &mut Vec2| {
-                        t.x = tex_coord.x;
-                        t.y = tex_coord.y;
-                    });
-                }
             }
         }
+        // }
     }
 
     pub fn blend_morph_target(&self, anim_timestamp: f32) -> Vec<Geometry> {
@@ -221,7 +237,7 @@ impl AnimatedMeshComponent {
                 geometry.vertices.clone(),
                 geometry.indices.clone(),
                 &geometry.material,
-                false,
+                true,
             );
 
             objects.push(ro);
@@ -249,18 +265,22 @@ impl IComponentImpl for AnimatedMeshComponent {
                 return;
             }
 
-            /*let rc = entity
-                .get_component(IRenderingComponent::uuid())
-                .unwrap()
-                .query_interface::<IRenderingComponent>()
-                .unwrap();
-            let ro = rc.render_objects_mut().first_mut().unwrap();
+            if self.entity.get_rendering_component().is_none() {
+                return;
+            }
 
-            ro.update_vertices(&mut |vb: &mut VertexBuffer| {
-                self.update_morph_target(anim_timestamp, vb);
-            });*/
-            let geometries = self.blend_morph_target(anim_timestamp);
-            self.load_geometries(&geometries);
+            let rc = self.entity.get_rendering_component().unwrap();
+            let objects = rc.render_objects();
+
+            for i in 0..objects.len() {
+                let ro = &objects[i];
+                ro.update_vertices(&|vb: RefMut<VertexBuffer>| {
+                    self.update_morph_target(anim_timestamp, i, vb);
+                });
+            }
+
+            // let geometries = self.blend_morph_target(anim_timestamp);
+            // self.load_geometries(&geometries);
 
             self.props_mut().last_time = anim_timestamp;
         }

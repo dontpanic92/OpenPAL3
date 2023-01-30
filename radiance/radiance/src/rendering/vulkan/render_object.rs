@@ -5,12 +5,13 @@ use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
 use crate::rendering::{Material, RenderObject, VertexBuffer};
 use ash::vk;
+use std::cell::{RefCell, RefMut};
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
 
 pub struct VulkanRenderObject {
-    vertices: VertexBuffer,
+    vertices: RefCell<VertexBuffer>,
     _indices: Vec<u32>,
     _host_dynamic: bool,
     _dirty: bool,
@@ -25,9 +26,11 @@ pub struct VulkanRenderObject {
 }
 
 impl RenderObject for VulkanRenderObject {
-    fn update_vertices(&mut self, updater: &mut dyn FnMut(&mut VertexBuffer)) {
-        updater(&mut self.vertices);
-        let _ = self.vertex_buffer.copy_memory_from(self.vertices.data());
+    fn update_vertices(&self, updater: &dyn Fn(RefMut<VertexBuffer>)) {
+        updater(self.vertices.borrow_mut());
+        let _ = self
+            .vertex_buffer
+            .copy_memory_from(self.vertices.borrow().data());
     }
 }
 
@@ -66,7 +69,7 @@ impl VulkanRenderObject {
         let dub_index = dub_manager.allocate_buffer();
 
         Ok(Self {
-            vertices,
+            vertices: RefCell::new(vertices),
             _indices: indices,
             material,
             _host_dynamic: host_dynamic,

@@ -160,9 +160,12 @@ impl AdventureDirector {
         delta_sec: f32,
         moving_direction: &Vec3,
     ) {
-        let camera = scene_manager.scene().unwrap().camera();
-        let camera = camera.borrow();
-        let camera_mat = camera.transform().matrix();
+        let camera_mat = {
+            let camera = scene_manager.scene().unwrap().camera();
+            let camera = camera.borrow();
+            camera.transform().matrix().clone()
+        };
+
         let mut direction_mat = Mat44::new_zero();
         direction_mat[0][3] = moving_direction.x;
         direction_mat[1][3] = moving_direction.y;
