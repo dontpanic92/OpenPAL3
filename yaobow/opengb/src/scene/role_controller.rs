@@ -165,7 +165,7 @@ impl RoleController {
         }
     }
 
-    pub fn try_get_role_model(entity: ComRc<IEntity>) -> Option<ComRc<IRoleController>> {
+    pub fn get_role_controller(entity: ComRc<IEntity>) -> Option<ComRc<IRoleController>> {
         entity
             .get_component(IRoleController::uuid())?
             .query_interface::<IRoleController>()
@@ -197,36 +197,53 @@ impl RoleController {
     }
 
     pub fn play_anim(&self, anim_name: &str, repeat_mode: RoleAnimationRepeatMode) {
-        let anim_name = if anim_name.is_empty() {
-            self.idle_anim_name.to_lowercase()
-        } else {
-            let mut anim_name = anim_name.to_lowercase();
-            if self.animations.get(&anim_name).is_none() {
+        let anim_name = anim_name.to_lowercase();
+        if !anim_name.is_empty() {
+            if let Some(anim) = self.animations.get(&anim_name) {
+                self.play_anim_mesh_internal(
+                    anim.key().to_string(),
+                    anim.value().clone(),
+                    repeat_mode,
+                );
+            } else {
                 let anim = self.asset_mgr.load_role_anim(
                     self.entity.clone(),
                     &self.model_name,
                     &anim_name,
                 );
+
                 if let Some(anim) = anim {
-                    self.animations.insert(anim_name.to_string(), anim);
-                } else {
-                    anim_name = self.idle_anim_name.to_lowercase();
+                    self.animations.insert(anim_name.to_string(), anim.clone());
+                    self.play_anim_mesh_internal(anim_name, anim.clone(), repeat_mode);
+                    return;
                 }
             }
+        }
+    }
 
-            anim_name
-        };
+    pub fn play_anim_mesh(
+        &self,
+        anim_name: String,
+        anim: ComRc<IAnimatedMeshComponent>,
+        repeat_mode: RoleAnimationRepeatMode,
+    ) {
+        self.animations.insert(anim_name.clone(), anim.clone());
+        self.play_anim_mesh_internal(anim_name, anim, repeat_mode);
+    }
 
-        *self.active_anim_name.borrow_mut() = anim_name.to_string();
+    fn play_anim_mesh_internal(
+        &self,
+        anim_name: String,
+        anim: ComRc<IAnimatedMeshComponent>,
+        repeat_mode: RoleAnimationRepeatMode,
+    ) {
+        *self.active_anim_name.borrow_mut() = anim_name;
         *self.anim_repeat_mode.borrow_mut() = repeat_mode;
         *self.state.borrow_mut() = RoleState::PlayingAnimation;
 
         self.entity.add_component(
             IAnimatedMeshComponent::uuid(),
-            self.active_anim()
-                .value()
-                .query_interface::<IComponent>()
-                .unwrap(),
+            anim.query_interface::<IComponent>().unwrap(),
         );
     }
 

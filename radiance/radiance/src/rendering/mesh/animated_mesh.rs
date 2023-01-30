@@ -258,8 +258,7 @@ impl IComponentImpl for AnimatedMeshComponent {
         if self.props().morph_animation_state == MorphAnimationState::Playing
             && !self.props().morph_targets.is_empty()
         {
-            let anim_timestamp = self.props().last_time + delta_sec;
-            if anim_timestamp > self.morph_animation_length().unwrap() {
+            if self.props().last_time > self.morph_animation_length().unwrap() {
                 self.props_mut().morph_animation_state = MorphAnimationState::Finished;
                 self.reset_morph_last_time();
                 return;
@@ -275,14 +274,14 @@ impl IComponentImpl for AnimatedMeshComponent {
             for i in 0..objects.len() {
                 let ro = &objects[i];
                 ro.update_vertices(&|vb: RefMut<VertexBuffer>| {
-                    self.update_morph_target(anim_timestamp, i, vb);
+                    self.update_morph_target(self.props().last_time, i, vb);
                 });
             }
 
             // let geometries = self.blend_morph_target(anim_timestamp);
             // self.load_geometries(&geometries);
-
-            self.props_mut().last_time = anim_timestamp;
+            let last_time = self.props().last_time;
+            self.props_mut().last_time = last_time + delta_sec;
         }
     }
 }

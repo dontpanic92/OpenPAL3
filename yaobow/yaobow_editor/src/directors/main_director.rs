@@ -6,12 +6,11 @@ use opengb::{
     loaders::pol::create_entity_from_pol_model,
     scene::{
         create_animated_mesh_from_mv3, create_entity_from_cvd_model, create_mv3_entity,
-        RoleController,
+        RoleAnimationRepeatMode, RoleController,
     },
 };
 use radiance::{
     audio::AudioEngine,
-    comdef::{IAnimatedMeshComponent, IComponent},
     math::Vec3,
     scene::{CoreScene, Director, SceneManager},
 };
@@ -135,7 +134,7 @@ impl DevToolsDirector {
             Some("mv3") => {
                 let e = create_mv3_entity(
                     self.asset_mgr.clone(),
-                    "preview",
+                    "101",
                     "preview",
                     "preview".to_string(),
                     true,
@@ -149,17 +148,19 @@ impl DevToolsDirector {
                     path,
                 );
 
-                anim.map(|a| {
-                    e.add_component(
-                        IAnimatedMeshComponent::uuid(),
-                        a.query_interface::<IComponent>().unwrap(),
+                if let Ok(anim) = anim {
+                    let controller = RoleController::get_role_controller(e.clone()).unwrap();
+                    controller.get().play_anim_mesh(
+                        "preview".to_string(),
+                        anim,
+                        RoleAnimationRepeatMode::Repeat,
                     );
 
-                    let r = RoleController::try_get_role_model(e.clone()).unwrap();
-                    r.get().set_active(true);
-                    e
-                })
-                .ok()
+                    controller.get().set_active(true);
+                    Some(e)
+                } else {
+                    None
+                }
             }
             Some("pol") => Some(create_entity_from_pol_model(
                 &self.asset_mgr.component_factory(),

@@ -23,7 +23,7 @@ impl SceCommand for SceCommandRoleScript {
             .get_resolved_role(state, self.role_id)
             .unwrap();
 
-        let role_controller = RoleController::try_get_role_model(role).unwrap();
+        let role_controller = RoleController::get_role_controller(role).unwrap();
         role_controller.get().set_proc_id(self.proc_id);
         true
     }

@@ -43,7 +43,7 @@ pub trait SceneManagerExtensions: SceneManager {
     ) -> Option<T> {
         let role = self.get_resolved_role(state, role_id);
         if let Some(r) = role {
-            let role_model = RoleController::try_get_role_model(r.clone()).unwrap();
+            let role_model = RoleController::get_role_controller(r.clone()).unwrap();
             Some(action(r, role_model))
         } else {
             log::error!("Cannot find role {}", role_id);
@@ -59,7 +59,7 @@ pub trait SceneManagerExtensions: SceneManager {
     ) -> Option<T> {
         let role = self.get_resolved_role(state, role_id);
         if let Some(r) = role {
-            let role_model = RoleController::try_get_role_model(r.clone()).unwrap();
+            let role_model = RoleController::get_role_controller(r.clone()).unwrap();
             Some(action(r, role_model))
         } else {
             log::error!("Cannot find role {}", role_id);

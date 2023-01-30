@@ -78,7 +78,7 @@ impl OpenPal3DebugLayer {
                                 if let Some(role) =
                                     scene_manager.get_resolved_role(d.sce_vm_mut().state(), -1)
                                 {
-                                    let r = RoleController::try_get_role_model(role).unwrap();
+                                    let r = RoleController::get_role_controller(role).unwrap();
                                     r.get().switch_nav_layer();
                                 }
                             }

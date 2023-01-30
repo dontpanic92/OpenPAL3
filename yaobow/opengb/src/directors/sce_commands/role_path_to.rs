@@ -40,7 +40,7 @@ impl SceCommand for SceCommandRolePathTo {
         if role.is_none() {
             return true;
         }
-        let role_controller = RoleController::try_get_role_model(role.unwrap()).unwrap();
+        let role_controller = RoleController::get_role_controller(role.unwrap()).unwrap();
 
         let to = {
             let scene = scene_manager.scn_scene().unwrap().get();

@@ -209,7 +209,7 @@ impl ScnScene {
 
             let role_position = role.transform().borrow().position();
             if Vec3::sub(coord, &role_position).norm2() < D * D {
-                let role_model = crate::scene::RoleController::try_get_role_model(role);
+                let role_model = crate::scene::RoleController::get_role_controller(role);
                 if role_model.is_none() {
                     continue;
                 }

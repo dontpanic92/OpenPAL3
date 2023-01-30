@@ -92,7 +92,7 @@ impl AdventureDirector {
             .get_role_entity(0)
             .unwrap();
 
-        let role = RoleController::try_get_role_model(role_entity.clone()).unwrap();
+        let role = RoleController::get_role_controller(role_entity.clone()).unwrap();
         role.get().set_active(true);
         role_entity
             .transform()
@@ -177,7 +177,7 @@ impl AdventureDirector {
         let role = scene_manager
             .get_resolved_role(self.sce_vm.state(), -1)
             .unwrap();
-        let role_controller = RoleController::try_get_role_model(role.clone()).unwrap();
+        let role_controller = RoleController::get_role_controller(role.clone()).unwrap();
         let mut position = role.transform().borrow().position();
 
         let scene = scene_manager.scn_scene().unwrap().get();
@@ -326,7 +326,7 @@ impl Director for AdventureDirector {
             let role = scene_manager
                 .get_resolved_role(self.sce_vm.state(), -1)
                 .unwrap();
-            let r = RoleController::try_get_role_model(role.clone()).unwrap();
+            let r = RoleController::get_role_controller(role.clone()).unwrap();
             (role.transform().borrow().position(), r.get().nav_layer())
         };
 
@@ -342,7 +342,7 @@ impl Director for AdventureDirector {
                     let e = scene_manager
                         .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap();
-                    let r = RoleController::try_get_role_model(e).unwrap();
+                    let r = RoleController::get_role_controller(e).unwrap();
                     r.get().nav_layer()
                 };
                 let new_layer = (layer + 1) % 2;
@@ -362,7 +362,7 @@ impl Director for AdventureDirector {
                     let e = scene_manager
                         .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap();
-                    let r = RoleController::try_get_role_model(e).unwrap();
+                    let r = RoleController::get_role_controller(e).unwrap();
                     r.get().switch_nav_layer();
                     scene_manager
                         .get_resolved_role(self.sce_vm.state(), -1)
@@ -403,7 +403,7 @@ impl Director for AdventureDirector {
                         let e = scene_manager
                             .get_resolved_role(self.sce_vm.state(), -1)
                             .unwrap();
-                        let r = RoleController::try_get_role_model(e).unwrap();
+                        let r = RoleController::get_role_controller(e).unwrap();
                         r.get().switch_nav_layer();
                     }
 

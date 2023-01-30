@@ -28,7 +28,7 @@ impl SceCommand for SceCommandLoadScene {
         scene_manager.pop_scene();
         scene_manager.push_scene(state.asset_mgr().load_scn(&self.name, &self.sub_name));
         let e = scene_manager.get_resolved_role(state, -1).unwrap();
-        let r = RoleController::try_get_role_model(e.clone()).unwrap();
+        let r = RoleController::get_role_controller(e.clone()).unwrap();
         r.get().set_active(true);
 
         state

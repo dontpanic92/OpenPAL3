@@ -19,7 +19,7 @@ impl SceCommand for SceCommandRoleMoveTo {
         scene_manager
             .get_resolved_role(state, self.role_id)
             .and_then(|e| {
-                let r = RoleController::try_get_role_model(e.clone()).unwrap();
+                let r = RoleController::get_role_controller(e.clone()).unwrap();
                 Some(r.get().run())
             });
     }
@@ -37,7 +37,7 @@ impl SceCommand for SceCommandRoleMoveTo {
             .get_resolved_role(state, self.role_id)
             .unwrap();
 
-        let role_controller = RoleController::try_get_role_model(role).unwrap();
+        let role_controller = RoleController::get_role_controller(role).unwrap();
         let to = {
             let scene = scene_manager.scn_scene().unwrap().get();
             scene.nav_coord_to_scene_coord(
