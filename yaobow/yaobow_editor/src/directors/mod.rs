@@ -1,14 +1,13 @@
-mod components;
-mod main_content;
+pub mod main_content;
 mod main_director;
 
-use std::path::PathBuf;
-
+use crosscom::ComRc;
 pub use main_director::DevToolsDirector;
+use radiance::comdef::IEntity;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum DevToolsState {
-    _MainWindow,
-    Preview(PathBuf),
+    MainWindow,
+    PreviewEntity(ComRc<IEntity>),
     PreviewScene { cpk_name: String, scn_name: String },
 }

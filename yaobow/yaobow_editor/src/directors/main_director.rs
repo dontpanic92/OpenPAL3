@@ -1,21 +1,13 @@
 use super::{main_content::ContentTabs, DevToolsState};
 use imgui::{Condition, Ui};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
-use opengb::{
-    asset_manager::AssetManager,
-    loaders::pol::create_entity_from_pol_model,
-    scene::{
-        create_animated_mesh_from_mv3, create_entity_from_cvd_model, create_mv3_entity,
-        RoleAnimationRepeatMode, RoleController,
-    },
-};
+use opengb::asset_manager::AssetManager;
 use radiance::{
     audio::AudioEngine,
     math::Vec3,
     scene::{CoreScene, Director, SceneManager},
 };
 use radiance_editor::ui::window_content_rect;
-use shared::loaders::dff::create_entity_from_dff_model;
 use std::{
     cell::RefCell,
     cmp::Ordering,
@@ -36,7 +28,7 @@ impl DevToolsDirector {
     ) -> Rc<RefCell<Self>> {
         let mut _self = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
-            content_tabs: ContentTabs::new(audio_engine),
+            content_tabs: ContentTabs::new(audio_engine, asset_mgr.clone()),
             asset_mgr,
         }));
 
@@ -96,11 +88,7 @@ impl DevToolsDirector {
             } else {
                 treenode.leaf(true).build(|| {
                     if ui.is_item_clicked() {
-                        self.content_tabs.open(
-                            self.asset_mgr.component_factory(),
-                            self.asset_mgr.vfs(),
-                            &e_fullname,
-                        );
+                        self.content_tabs.open(self.asset_mgr.vfs(), &e_fullname);
                     }
                 });
             }
@@ -123,82 +111,6 @@ impl DevToolsDirector {
 
         entries
     }
-
-    fn load_model(&self, scene_manager: &mut dyn SceneManager, path: PathBuf) {
-        let entity = match path
-            .extension()
-            .map(|e| e.to_str().unwrap().to_ascii_lowercase())
-            .as_ref()
-            .map(|e| e.as_str())
-        {
-            Some("mv3") => {
-                let e = create_mv3_entity(
-                    self.asset_mgr.clone(),
-                    "101",
-                    "preview",
-                    "preview".to_string(),
-                    true,
-                )
-                .unwrap();
-
-                let anim = create_animated_mesh_from_mv3(
-                    e.clone(),
-                    &self.asset_mgr.component_factory(),
-                    self.asset_mgr.vfs(),
-                    path,
-                );
-
-                if let Ok(anim) = anim {
-                    let controller = RoleController::get_role_controller(e.clone()).unwrap();
-                    controller.get().play_anim_mesh(
-                        "preview".to_string(),
-                        anim,
-                        RoleAnimationRepeatMode::Repeat,
-                    );
-
-                    controller.get().set_active(true);
-                    Some(e)
-                } else {
-                    None
-                }
-            }
-            Some("pol") => Some(create_entity_from_pol_model(
-                &self.asset_mgr.component_factory(),
-                &self.asset_mgr.vfs(),
-                &path,
-                "preview".to_string(),
-                true,
-            )),
-            Some("dff") => Some(create_entity_from_dff_model(
-                &self.asset_mgr.component_factory(),
-                &self.asset_mgr.vfs(),
-                &path,
-                "preview".to_string(),
-                true,
-            )),
-            Some("cvd") => Some(create_entity_from_cvd_model(
-                self.asset_mgr.component_factory().clone(),
-                &self.asset_mgr.vfs(),
-                &path,
-                "preview".to_string(),
-                true,
-            )),
-            _ => None,
-        };
-
-        let scene = scene_manager.scene().unwrap();
-        if let Some(e) = entity {
-            e.load();
-            scene.add_entity(e)
-        }
-
-        scene
-            .camera()
-            .borrow_mut()
-            .transform_mut()
-            .set_position(&Vec3::new(0., 200., 200.))
-            .look_at(&Vec3::new(0., 0., 0.));
-    }
 }
 
 impl Director for DevToolsDirector {
@@ -211,23 +123,37 @@ impl Director for DevToolsDirector {
         _delta_sec: f32,
     ) -> Option<Rc<RefCell<dyn Director>>> {
         let state = self.main_window(ui);
-        if let Some(DevToolsState::Preview(path)) = state {
-            scene_manager.pop_scene();
-            scene_manager.push_scene(CoreScene::create());
-            self.load_model(scene_manager, path);
-        } else if let Some(DevToolsState::PreviewScene { cpk_name, scn_name }) = state {
-            scene_manager.pop_scene();
+        match state {
+            Some(DevToolsState::PreviewScene { cpk_name, scn_name }) => {
+                scene_manager.pop_scene();
 
-            let scene = self
-                .asset_mgr
-                .load_scn(cpk_name.as_str(), scn_name.as_str());
-            scene
-                .camera()
-                .borrow_mut()
-                .transform_mut()
-                .set_position(&Vec3::new(0., 500., 500.))
-                .look_at(&Vec3::new(0., 0., 0.));
-            scene_manager.push_scene(scene);
+                let scene = self
+                    .asset_mgr
+                    .load_scn(cpk_name.as_str(), scn_name.as_str());
+                scene
+                    .camera()
+                    .borrow_mut()
+                    .transform_mut()
+                    .set_position(&Vec3::new(0., 500., 500.))
+                    .look_at(&Vec3::new(0., 0., 0.));
+                scene_manager.push_scene(scene);
+            }
+            Some(DevToolsState::PreviewEntity(entity)) => {
+                let scene = CoreScene::create();
+                scene_manager.pop_scene();
+                scene_manager.push_scene(scene.clone());
+
+                entity.load();
+                scene.add_entity(entity);
+                scene
+                    .camera()
+                    .borrow_mut()
+                    .transform_mut()
+                    .set_position(&Vec3::new(0., 200., 200.))
+                    .look_at(&Vec3::new(0., 0., 0.));
+            }
+            Some(DevToolsState::MainWindow) => {}
+            None => {}
         }
 
         None

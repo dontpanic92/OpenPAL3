@@ -1,6 +1,8 @@
 #![feature(drain_filter)]
 mod directors;
 
+mod preview;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 

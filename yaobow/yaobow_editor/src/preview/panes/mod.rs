@@ -10,7 +10,7 @@ pub use image_pane::ImagePane;
 pub use text_pane::TextPane;
 pub use video_pane::VideoPane;
 
-use super::DevToolsState;
+use crate::directors::DevToolsState;
 
 pub trait ContentPane {
     fn render(&mut self, ui: &Ui) -> Option<DevToolsState>;

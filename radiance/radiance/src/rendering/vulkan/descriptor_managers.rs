@@ -81,7 +81,6 @@ impl DescriptorManager {
     }
 
     pub fn allocate_texture_descriptor_set(&self) -> VkResult<vk::DescriptorSet> {
-        println!("allocating descriptor set");
         let set = {
             let layouts = [self.texture_layout];
             let allocate_info = vk::DescriptorSetAllocateInfo::builder()

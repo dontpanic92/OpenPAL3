@@ -59,34 +59,10 @@ pub fn create_mv3_entity(
     Ok(entity)
 }
 
-pub fn create_mv3_entity_from_animation(
-    asset_mgr: Rc<AssetManager>,
-    role_name: &str,
-    idle_anim_name: &str,
-    idle_anim: ComRc<IAnimatedMeshComponent>,
-    name: String,
-    visible: bool,
-) -> Result<ComRc<IEntity>, EntityError> {
-    let entity = CoreEntity::create(name, visible);
-    entity.add_component(
-        IRoleController::uuid(),
-        crosscom::ComRc::from_object(RoleController::new_from_idle_animation(
-            entity.clone(),
-            asset_mgr,
-            role_name,
-            idle_anim_name,
-            idle_anim,
-        )),
-    );
-
-    Ok(entity)
-}
-
 pub struct RoleController {
     entity: ComRc<IEntity>,
     model_name: String,
     asset_mgr: Rc<AssetManager>,
-    component_factory: Rc<dyn ComponentFactory>,
     animations: DashMap<String, ComRc<IAnimatedMeshComponent>>,
     active_anim_name: RefCell<String>,
     idle_anim_name: String,
@@ -150,7 +126,6 @@ impl RoleController {
             entity,
             model_name: role_name.to_string(),
             asset_mgr: asset_mgr.clone(),
-            component_factory: asset_mgr.component_factory().clone(),
             animations,
             active_anim_name: RefCell::new(idle_anim_name.to_string()),
             idle_anim_name: idle_anim_name.to_string(),
