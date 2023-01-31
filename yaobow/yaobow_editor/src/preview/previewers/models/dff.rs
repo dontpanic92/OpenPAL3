@@ -32,7 +32,7 @@ impl ModelLoader for DffModelLoader {
 
     fn is_supported(&self, path: &Path) -> bool {
         let extension = get_extension(path);
-        extension.as_deref() == Some("pol")
+        extension.as_deref() == Some("dff")
     }
 
     fn load(&self, vfs: &MiniFs, path: &Path) -> ComRc<IEntity> {

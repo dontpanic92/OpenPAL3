@@ -4,6 +4,7 @@ use std::{
     rc::Rc,
 };
 
+use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use fileformats::dff::{self, read_dff};
 use mini_fs::{MiniFs, StoreExt};
@@ -94,7 +95,7 @@ fn create_geometry<P: AsRef<Path>>(
         (
             radiance::rendering::SimpleMaterialDef::create(
                 tex_name,
-                |_name| Some(vfs.open(&tex_path).unwrap()),
+                |_name| Some(vfs.open_with_fallback(&tex_path, &["png"]).unwrap()),
                 true,
             ),
             texcoords,

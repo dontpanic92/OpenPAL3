@@ -1,15 +1,18 @@
 pub mod cpk;
+pub mod fmb;
 pub mod memory_file;
 pub mod pkg;
+pub mod sfb;
 
 use std::{
     fs,
+    io::{Read, Seek},
     path::{Path, PathBuf},
 };
 
 use mini_fs::{LocalFs, MiniFs};
 
-use crate::fs::{cpk::CpkFs, pkg::pkg_fs::PkgFs};
+use crate::fs::{cpk::CpkFs, fmb::fmb_fs::FmbFs, pkg::pkg_fs::PkgFs, sfb::sfb_fs::SfbFs};
 
 pub fn init_virtual_fs<P: AsRef<Path>>(local_asset_path: P, pkg_key: Option<&str>) -> MiniFs {
     let local = LocalFs::new(local_asset_path.as_ref());
@@ -44,6 +47,14 @@ fn mount_packages_recursive(
                 log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
                 vfs = vfs.mount(vfs_path, CpkFs::new(path).unwrap())
             }
+            Some("fmb") => {
+                log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
+                vfs = vfs.mount(vfs_path, FmbFs::new(path).unwrap())
+            }
+            Some("sfb") => {
+                log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
+                vfs = vfs.mount(vfs_path, SfbFs::new(path).unwrap())
+            }
             Some("pkg") => match pkg_key {
                 None => log::debug!("Didn't mount {:?} as pkg key is not provided", &path),
                 Some(key) => {
@@ -57,3 +68,6 @@ fn mount_packages_recursive(
 
     vfs
 }
+
+pub trait SeekRead: Read + Seek {}
+impl<T> SeekRead for T where T: Read + Seek {}

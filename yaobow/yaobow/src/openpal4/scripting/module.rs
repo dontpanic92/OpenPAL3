@@ -13,7 +13,7 @@ pub struct ScriptTypeDefinition {
 }
 
 impl ScriptTypeDefinition {
-    fn read(cursor: &mut dyn Read) -> Result<Self> {
+    fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
         let name = read_string(cursor)?;
 
         Ok(Self { name })
@@ -26,7 +26,7 @@ pub struct ScriptTypeReference {
 }
 
 impl ScriptTypeReference {
-    fn read(cursor: &mut dyn Read) -> Result<Self> {
+    fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
         let name = read_string(cursor)?;
 
         Ok(Self { name })
@@ -45,7 +45,7 @@ pub struct ScriptDataType {
 }
 
 impl ScriptDataType {
-    fn read(cursor: &mut dyn Read) -> Result<Self> {
+    fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
         let flag = cursor.read_u8()?;
         if flag != 0 {
             unimplemented!("AClass8.flag != 0 unimplemented yet");
@@ -92,7 +92,7 @@ pub struct ScriptFunction {
 }
 
 impl ScriptFunction {
-    fn read(cursor: &mut dyn Read) -> Result<Self> {
+    fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
         let name = read_string(cursor)?;
         println!("{}", name);
 
@@ -142,7 +142,7 @@ impl ScriptFunction {
     fn read_instructions(
         cursor: &mut dyn Read,
         total_size: usize,
-    ) -> Result<(Vec<u8>, Vec<Instruction>)> {
+    ) -> anyhow::Result<(Vec<u8>, Vec<Instruction>)> {
         let mut i = 0;
         let mut instructions = vec![0; total_size];
         let mut instructions2 = vec![];
@@ -185,12 +185,12 @@ pub struct ScriptModule {
 }
 
 impl ScriptModule {
-    pub fn read_from_buffer(buffer: &[u8]) -> Result<Self> {
+    pub fn read_from_buffer(buffer: &[u8]) -> anyhow::Result<Self> {
         let mut cursor = Cursor::new(buffer);
         Self::read(&mut cursor)
     }
 
-    fn read(cursor: &mut Cursor<&[u8]>) -> Result<Self> {
+    fn read(cursor: &mut Cursor<&[u8]>) -> anyhow::Result<Self> {
         cursor.set_position(4);
 
         let type_def_count = cursor.read_u32_le()?;
@@ -245,9 +245,7 @@ impl ScriptModule {
     }
 }
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
-fn read_string(cursor: &mut dyn Read) -> Result<String> {
+fn read_string(cursor: &mut dyn Read) -> anyhow::Result<String> {
     let len = cursor.read_u32_le()?;
     cursor.read_string(len as usize)
 }

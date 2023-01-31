@@ -17,13 +17,12 @@ use radiance_editor::comdef::IViewContentImpl;
 use radiance_editor::ui::scene_view::SceneViewPlugins;
 use radiance_editor::ComObject_ResourceViewContent;
 
-const TITLE: &str = "妖弓编辑器 - OpenPAL3";
-
 pub enum GameType {
     PAL3,
     PAL4,
     PAL5,
     PAL5Q,
+    SWD5,
 }
 
 pub struct SceneViewResourceView {
@@ -47,7 +46,15 @@ impl IViewContentImpl for SceneViewResourceView {
 
 impl SceneViewResourceView {
     pub fn new(config: OpenGbConfig, app: ComRc<IApplication>, game: GameType) -> Self {
-        app.set_title(TITLE);
+        let game_name = match game {
+            GameType::PAL3 => "OpenPAL3",
+            GameType::PAL4 => "OpenPAL4",
+            GameType::PAL5 => "OpenPAL5",
+            GameType::PAL5Q => "OpenPAL5Q",
+            GameType::SWD5 => "OpenSWD5",
+        };
+
+        app.set_title(&format!("妖弓编辑器 - {}", game_name));
 
         let pkg_key = match game {
             GameType::PAL5 => Some("Y%H^uz6i"),
@@ -97,6 +104,10 @@ fn main() {
             "--pal5q" => {
                 config.asset_path = "F:\\PAL5Q\\".to_string();
                 game = GameType::PAL5Q;
+            }
+            "--swd5" => {
+                config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\SWD5".to_string();
+                game = GameType::SWD5;
             }
             &_ => {}
         }

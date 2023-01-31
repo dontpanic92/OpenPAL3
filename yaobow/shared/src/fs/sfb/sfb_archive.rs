@@ -1,0 +1,98 @@
+use std::{
+    collections::HashMap,
+    io::{Cursor, SeekFrom},
+    path::Path,
+};
+
+use common::read_ext::ReadExt;
+
+use crate::fs::{memory_file::MemoryFile, SeekRead};
+
+#[derive(Debug)]
+pub struct SfbArchive<T: AsRef<[u8]>> {
+    cursor: Cursor<T>,
+    _meta: SfbMeta,
+    pub files: HashMap<String, SfbFile>,
+}
+
+impl<T: AsRef<[u8]>> SfbArchive<T> {
+    pub fn load(mut cursor: Cursor<T>) -> anyhow::Result<SfbArchive<T>> {
+        let meta = SfbMeta::read(&mut cursor)?;
+        let mut files = HashMap::new();
+
+        for (i, entry) in meta.entries.iter().enumerate() {
+            cursor.set_position(*entry as u64);
+            let file = SfbFile::read(&mut cursor)?;
+            println!("file: {:?}", file);
+
+            files.insert(format!("{}.mp3", i), file);
+        }
+
+        Ok(Self {
+            cursor,
+            _meta: meta,
+            files,
+        })
+    }
+
+    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> anyhow::Result<MemoryFile> {
+        let path = path.as_ref().to_str().unwrap();
+
+        if let Some(file) = self.files.get(path) {
+            self.cursor.set_position(file.start_position as u64);
+            let data = self.cursor.read_u8_vec(file.file_size as usize)?;
+
+            Ok(MemoryFile::new(Cursor::new(data)))
+        } else {
+            Err(std::io::Error::from(std::io::ErrorKind::NotFound))?
+        }
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum SfbReadError {
+    #[error("Incorrect magic found for Sfb. Should be: 0x464d4220, found {0}")]
+    IncorrectMagic(u32),
+}
+
+#[derive(Debug, Clone)]
+pub struct SfbMeta {
+    pub entry_count: u32,
+    pub entries: Vec<u32>,
+}
+
+impl SfbMeta {
+    pub fn read(reader: &mut dyn SeekRead) -> anyhow::Result<Self> {
+        reader.seek(SeekFrom::Start(0))?;
+        let meta_position = reader.read_u32_le()?;
+
+        reader.seek(SeekFrom::Start(meta_position as u64))?;
+        let entry_count = reader.read_u32_le()?;
+        let entry_table_start = reader.read_u32_le()?;
+
+        reader.seek(SeekFrom::Start(entry_table_start as u64))?;
+        let entries = reader.read_dw_vec(entry_count as usize)?;
+        Ok(Self {
+            entry_count,
+            entries,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SfbFile {
+    pub file_size: u32,
+    pub start_position: u64,
+}
+
+impl SfbFile {
+    pub fn read(reader: &mut dyn SeekRead) -> anyhow::Result<Self> {
+        let file_size = reader.read_u32_le()?;
+        let start_position = reader.stream_position().unwrap();
+
+        Ok(Self {
+            file_size,
+            start_position,
+        })
+    }
+}

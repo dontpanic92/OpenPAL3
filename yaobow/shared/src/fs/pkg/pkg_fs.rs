@@ -16,8 +16,8 @@ pub struct PkgFs {
 }
 
 impl PkgFs {
-    pub fn new<P: AsRef<Path>>(cpk_path: P, decrypt_key: &str) -> anyhow::Result<PkgFs> {
-        let file = File::open(cpk_path.as_ref())?;
+    pub fn new<P: AsRef<Path>>(pkg_path: P, decrypt_key: &str) -> anyhow::Result<PkgFs> {
+        let file = File::open(pkg_path.as_ref())?;
         let mem = unsafe { MmapOptions::new().map(&file)? };
         let cursor = Cursor::new(mem);
         let pkg_archive = RefCell::new(PkgArchive::load(cursor, decrypt_key)?);

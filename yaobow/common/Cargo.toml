@@ -16,3 +16,4 @@ encoding = "0.2.33"
 log = { version = "0.4.13" }
 memmap = "0.7.0"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+thiserror = "1.0"

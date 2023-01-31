@@ -2,6 +2,12 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use encoding::{types::Encoding, DecoderTrap};
 use std::io::Read;
 
+#[derive(thiserror::Error, Debug)]
+pub enum FileReadError {
+    #[error("Decode Error")]
+    StringDecodeError,
+}
+
 pub trait ReadExt: Read {
     fn skip(&mut self, size: usize) -> std::io::Result<()> {
         let mut buf = vec![0u8; size];
@@ -41,16 +47,18 @@ pub trait ReadExt: Read {
         Ok(buf)
     }
 
-    fn read_string(&mut self, size: usize) -> Result<String, Box<dyn std::error::Error>> {
+    fn read_string(&mut self, size: usize) -> anyhow::Result<String> {
         let name = self.read_u8_vec(size)?;
 
-        let name_s = encoding::all::GBK.decode(
-            &name
-                .into_iter()
-                .take_while(|&c| c != 0)
-                .collect::<Vec<u8>>(),
-            DecoderTrap::Ignore,
-        )?;
+        let name_s = encoding::all::GBK
+            .decode(
+                &name
+                    .into_iter()
+                    .take_while(|&c| c != 0)
+                    .collect::<Vec<u8>>(),
+                DecoderTrap::Ignore,
+            )
+            .map_err(|_| FileReadError::StringDecodeError)?;
 
         Ok(name_s)
     }

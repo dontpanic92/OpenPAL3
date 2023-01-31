@@ -479,6 +479,7 @@ dependencies = [
  "log",
  "memmap",
  "mini-fs",
+ "thiserror",
 ]
 
 [[package]]
@@ -3277,6 +3278,7 @@ dependencies = [
 name = "yaobow"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "byteorder",
  "common",
  "crosscom",
