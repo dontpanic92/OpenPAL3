@@ -6,7 +6,7 @@ use std::{
 
 use common::read_ext::ReadExt;
 
-use crate::fs::{memory_file::MemoryFile, SeekRead};
+use crate::fs::{memory_file::MemoryFile, plain_fs::PlainArchive, SeekRead};
 
 #[derive(Debug)]
 pub struct SfbArchive<T: AsRef<[u8]>> {
@@ -23,8 +23,6 @@ impl<T: AsRef<[u8]>> SfbArchive<T> {
         for (i, entry) in meta.entries.iter().enumerate() {
             cursor.set_position(*entry as u64);
             let file = SfbFile::read(&mut cursor)?;
-            println!("file: {:?}", file);
-
             files.insert(format!("{}.mp3", i), file);
         }
 
@@ -34,8 +32,10 @@ impl<T: AsRef<[u8]>> SfbArchive<T> {
             files,
         })
     }
+}
 
-    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> anyhow::Result<MemoryFile> {
+impl<T: AsRef<[u8]>> PlainArchive for SfbArchive<T> {
+    fn open<P: AsRef<Path>>(&mut self, path: P) -> anyhow::Result<MemoryFile> {
         let path = path.as_ref().to_str().unwrap();
 
         if let Some(file) = self.files.get(path) {
@@ -46,6 +46,10 @@ impl<T: AsRef<[u8]>> SfbArchive<T> {
         } else {
             Err(std::io::Error::from(std::io::ErrorKind::NotFound))?
         }
+    }
+
+    fn files(&self) -> Vec<String> {
+        self.files.keys().map(|s| s.to_string()).collect()
     }
 }
 

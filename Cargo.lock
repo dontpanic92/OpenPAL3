@@ -2544,6 +2544,7 @@ dependencies = [
  "crosscom",
  "encoding",
  "fileformats",
+ "image",
  "lazy_static",
  "log",
  "md5",
@@ -3301,6 +3302,7 @@ dependencies = [
 name = "yaobow_editor"
 version = "0.1.0"
 dependencies = [
+ "byteorder",
  "chardet",
  "common",
  "crosscom",

@@ -1,21 +1,23 @@
 use std::{path::Path, rc::Rc};
 
+use byteorder::{LittleEndian, ReadBytesExt};
 use common::store_ext::StoreExt2;
 use image::ImageFormat;
 use mini_fs::MiniFs;
 use radiance::rendering::ComponentFactory;
 
-use crate::{directors::main_content::ContentTab, preview::panes::ImagePane};
+use crate::{directors::main_content::ContentTab, preview::panes::ImagePane, GameType};
 
 use super::Previewer;
 
 pub struct ImagePreviewer {
     factory: Rc<dyn ComponentFactory>,
+    game_type: GameType,
 }
 
 impl ImagePreviewer {
-    pub fn new(factory: Rc<dyn ComponentFactory>) -> Self {
-        Self { factory }
+    pub fn new(factory: Rc<dyn ComponentFactory>, game_type: GameType) -> Self {
+        Self { factory, game_type }
     }
 }
 
@@ -34,11 +36,25 @@ impl Previewer for ImagePreviewer {
         let image = vfs
             .read_to_end(&path)
             .ok()
-            .and_then(|b| {
-                image::load_from_memory(&b)
+            .and_then(|b| match (extension.as_str(), self.game_type) {
+                ("png", GameType::SWD5 | GameType::SWDCF | GameType::SWDHC) => {
+                    println!("png {:?}", &b[0..100]);
+                    let width = (&b[0..4]).read_u32::<LittleEndian>().unwrap();
+                    let height = (&b[4..8]).read_u32::<LittleEndian>().unwrap();
+                    let data = &b[8..];
+                    println!(
+                        "png width {} height {} datalen {}",
+                        width,
+                        height,
+                        data.len()
+                    );
+                    image::RgbaImage::from_raw(width, height, data.to_vec())
+                        .map(|img| image::DynamicImage::ImageRgba8(img))
+                }
+                _ => image::load_from_memory(&b)
                     .or_else(|_| image::load_from_memory_with_format(&b, ImageFormat::Tga))
                     .or_else(|err| Err(err))
-                    .ok()
+                    .ok(),
             })
             .and_then(|img| Some(img.to_rgba8()));
 

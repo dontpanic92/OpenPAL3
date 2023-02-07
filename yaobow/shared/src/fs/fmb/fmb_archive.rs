@@ -6,7 +6,7 @@ use std::{
 
 use common::read_ext::ReadExt;
 
-use crate::fs::{memory_file::MemoryFile, SeekRead};
+use crate::fs::{memory_file::MemoryFile, plain_fs::PlainArchive, SeekRead};
 
 #[derive(Debug)]
 pub struct FmbArchive<T: AsRef<[u8]>> {
@@ -32,8 +32,10 @@ impl<T: AsRef<[u8]>> FmbArchive<T> {
             files,
         })
     }
+}
 
-    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> anyhow::Result<MemoryFile> {
+impl<T: AsRef<[u8]>> PlainArchive for FmbArchive<T> {
+    fn open<P: AsRef<Path>>(&mut self, path: P) -> anyhow::Result<MemoryFile> {
         let path = path.as_ref().to_str().unwrap();
 
         if let Some(file) = self.files.get(path) {
@@ -44,6 +46,10 @@ impl<T: AsRef<[u8]>> FmbArchive<T> {
         } else {
             Err(std::io::Error::from(std::io::ErrorKind::NotFound))?
         }
+    }
+
+    fn files(&self) -> Vec<String> {
+        self.files.keys().map(|s| s.to_string()).collect()
     }
 }
 

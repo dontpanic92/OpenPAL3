@@ -17,12 +17,15 @@ use radiance_editor::comdef::IViewContentImpl;
 use radiance_editor::ui::scene_view::SceneViewPlugins;
 use radiance_editor::ComObject_ResourceViewContent;
 
+#[derive(Copy, Clone, PartialEq)]
 pub enum GameType {
     PAL3,
     PAL4,
     PAL5,
     PAL5Q,
     SWD5,
+    SWDHC,
+    SWDCF,
 }
 
 pub struct SceneViewResourceView {
@@ -52,6 +55,8 @@ impl SceneViewResourceView {
             GameType::PAL5 => "OpenPAL5",
             GameType::PAL5Q => "OpenPAL5Q",
             GameType::SWD5 => "OpenSWD5",
+            GameType::SWDHC => "OpenSWDHC",
+            GameType::SWDCF => "OpenSWDCF",
         };
 
         app.set_title(&format!("妖弓编辑器 - {}", game_name));
@@ -65,7 +70,11 @@ impl SceneViewResourceView {
         let factory = app.engine().borrow().rendering_component_factory();
         let asset_mgr = AssetManager::new(factory, &config.asset_path, pkg_key);
         let audio_engine = app.engine().borrow().audio_engine();
-        let ui = Some(DevToolsDirector::new(audio_engine, Rc::new(asset_mgr)));
+        let ui = Some(DevToolsDirector::new(
+            audio_engine,
+            Rc::new(asset_mgr),
+            game,
+        ));
 
         SceneViewResourceView {
             ui: RefCell::new(ui),
@@ -108,6 +117,14 @@ fn main() {
             "--swd5" => {
                 config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\SWD5".to_string();
                 game = GameType::SWD5;
+            }
+            "--swdhc" => {
+                config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\SWDHC".to_string();
+                game = GameType::SWDHC;
+            }
+            "--swdcf" => {
+                config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\SWDCF".to_string();
+                game = GameType::SWDCF;
             }
             &_ => {}
         }

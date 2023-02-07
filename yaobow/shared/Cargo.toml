@@ -16,6 +16,7 @@ common = { path = "../common" }
 crosscom = { path = "../../crosscom/runtime/rust" }
 encoding = "0.2.33"
 fileformats = { path = "../fileformats" }
+image = "0.23.0"
 lazy_static = "1.2.0"
 log = { version = "0.4.13" }
 md5 = "0.7"

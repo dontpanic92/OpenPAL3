@@ -1,7 +1,9 @@
 pub mod cpk;
 pub mod fmb;
+pub mod imd;
 pub mod memory_file;
 pub mod pkg;
+pub mod plain_fs;
 pub mod sfb;
 
 use std::{
@@ -12,7 +14,9 @@ use std::{
 
 use mini_fs::{LocalFs, MiniFs};
 
-use crate::fs::{cpk::CpkFs, fmb::fmb_fs::FmbFs, pkg::pkg_fs::PkgFs, sfb::sfb_fs::SfbFs};
+use crate::fs::{
+    cpk::CpkFs, fmb::fmb_fs::FmbFs, imd::imd_fs::ImdFs, pkg::pkg_fs::PkgFs, sfb::sfb_fs::SfbFs,
+};
 
 pub fn init_virtual_fs<P: AsRef<Path>>(local_asset_path: P, pkg_key: Option<&str>) -> MiniFs {
     let local = LocalFs::new(local_asset_path.as_ref());
@@ -49,11 +53,15 @@ fn mount_packages_recursive(
             }
             Some("fmb") => {
                 log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
-                vfs = vfs.mount(vfs_path, FmbFs::new(path).unwrap())
+                vfs = vfs.mount(vfs_path, FmbFs::create(path).unwrap())
+            }
+            Some("imd") => {
+                log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
+                vfs = vfs.mount(vfs_path, ImdFs::create(path).unwrap())
             }
             Some("sfb") => {
                 log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
-                vfs = vfs.mount(vfs_path, SfbFs::new(path).unwrap())
+                vfs = vfs.mount(vfs_path, SfbFs::create(path).unwrap())
             }
             Some("pkg") => match pkg_key {
                 None => log::debug!("Didn't mount {:?} as pkg key is not provided", &path),

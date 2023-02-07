@@ -1,3 +1,5 @@
+use crate::GameType;
+
 use super::{main_content::ContentTabs, DevToolsState};
 use imgui::{Condition, Ui};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
@@ -25,10 +27,11 @@ impl DevToolsDirector {
     pub fn new(
         audio_engine: Rc<dyn AudioEngine>,
         asset_mgr: Rc<AssetManager>,
+        game_type: GameType,
     ) -> Rc<RefCell<Self>> {
         let mut _self = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
-            content_tabs: ContentTabs::new(audio_engine, asset_mgr.clone()),
+            content_tabs: ContentTabs::new(audio_engine, asset_mgr.clone(), game_type),
             asset_mgr,
         }));
 

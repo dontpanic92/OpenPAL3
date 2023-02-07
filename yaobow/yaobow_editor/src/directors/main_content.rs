@@ -1,4 +1,3 @@
-use crate::preview::panes::ContentPane;
 use crate::preview::previewers::audio::AudioPreviewer;
 use crate::preview::previewers::image::ImagePreviewer;
 use crate::preview::previewers::models::ModelPreviewer;
@@ -6,6 +5,7 @@ use crate::preview::previewers::others::OthersPreviewer;
 use crate::preview::previewers::text::TextPreviewer;
 use crate::preview::previewers::video::VideoPreviewer;
 use crate::preview::previewers::Previewer;
+use crate::{preview::panes::ContentPane, GameType};
 use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
 use mini_fs::MiniFs;
 use opengb::asset_manager::AssetManager;
@@ -21,13 +21,20 @@ pub struct ContentTabs {
 }
 
 impl ContentTabs {
-    pub fn new(audio_engine: Rc<dyn AudioEngine>, asset_mgr: Rc<AssetManager>) -> Self {
+    pub fn new(
+        audio_engine: Rc<dyn AudioEngine>,
+        asset_mgr: Rc<AssetManager>,
+        game_type: GameType,
+    ) -> Self {
         Self {
             audio_tab: None,
             selected_tab: None,
             previewers: vec![
                 Box::new(TextPreviewer::new()),
-                Box::new(ImagePreviewer::new(asset_mgr.component_factory())),
+                Box::new(ImagePreviewer::new(
+                    asset_mgr.component_factory(),
+                    game_type,
+                )),
                 Box::new(AudioPreviewer::new(audio_engine)),
                 Box::new(VideoPreviewer::new(asset_mgr.component_factory())),
                 Box::new(OthersPreviewer::create()),
