@@ -32,7 +32,6 @@ impl StaticMeshComponent {
 
 impl IComponentImpl for StaticMeshComponent {
     fn on_loading(&self) -> crosscom::Void {
-        println!("static mesh onload");
         let mut objects = vec![];
         for geometry in &self.geometries {
             let ro = self.component_factory.create_render_object(

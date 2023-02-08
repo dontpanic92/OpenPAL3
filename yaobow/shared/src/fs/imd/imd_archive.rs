@@ -140,10 +140,6 @@ fn transform_rgb565(short: u16) -> [u8; 4] {
     let b = (((short & 0x1f) as u32 * 527 + 23) >> 6) as u8;
     let g = ((((short & 0x7e0) >> 5) as u32 * 259 + 23) >> 6) as u8;
     let r = ((((short >> 11) & 0x1f) as u32 * 527 + 23) >> 6) as u8;
-    // let short =
-    //     ((short | 0xffe0) << 0xe | short & 0x7e0) << 5 | ((short as i16) >> 8 & 0xf8) as u16;
-    // let first = (short & 0xff00) as u8;
-    // let next = (short & 0x00ff) as u8;
     [r, g, b, 255]
 }
 
