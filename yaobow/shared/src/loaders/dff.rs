@@ -113,7 +113,7 @@ fn create_geometry<P: AsRef<Path>>(
 
     radiance::rendering::Geometry::new(
         &r_vertices,
-        Some(&r_normals),
+        None,
         &r_texcoords,
         indices,
         r_material,
