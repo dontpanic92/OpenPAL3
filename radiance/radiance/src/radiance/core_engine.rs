@@ -65,6 +65,10 @@ impl CoreRadianceEngine {
         self.scene_manager.as_mut().unwrap().as_mut()
     }
 
+    pub fn imgui_context(&self) -> Rc<RefCell<ImguiContext>> {
+        self.imgui_context.clone()
+    }
+
     pub fn update(&mut self, delta_sec: f32) {
         self.input_engine.borrow_mut().update(delta_sec);
 

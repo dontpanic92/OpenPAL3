@@ -18,10 +18,9 @@ impl ResourceView {
         let style = ui.push_style_var(StyleVar::WindowPadding([0., 0.]));
         ui.window("资源")
             .collapsible(false)
-            .resizable(false)
-            .size([window_width, window_height * 0.3], Condition::Always)
-            .position([0., window_height * 0.7], Condition::Always)
-            .movable(false)
+            .size([window_width, window_height * 0.3], Condition::Appearing)
+            .position([0., window_height * 0.7], Condition::Appearing)
+            .movable(true)
             .bring_to_front_on_focus(false)
             .draw_background(false)
             .build(|| {

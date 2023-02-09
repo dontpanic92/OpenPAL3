@@ -47,6 +47,8 @@ impl ImguiContext {
             }),
         }]);
 
+        context.io_mut().config_flags |= imgui::ConfigFlags::DOCKING_ENABLE;
+
         if let Some(backend) = clipboard::init() {
             context.set_clipboard_backend(backend);
         } else {

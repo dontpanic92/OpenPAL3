@@ -8,10 +8,12 @@ impl PropertyView {
         let [window_width, window_height] = ui.window_size();
         ui.window("属性")
             .collapsible(false)
-            .resizable(false)
-            .size([window_width * 0.2, window_height * 0.7], Condition::Always)
-            .position([window_width * 0.8, 0.], Condition::Always)
-            .movable(false)
+            .size(
+                [window_width * 0.2, window_height * 0.7],
+                Condition::Appearing,
+            )
+            .position([window_width * 0.8, 0.], Condition::Appearing)
+            .movable(true)
             .build(|| ui.text("hello world"));
     }
 }

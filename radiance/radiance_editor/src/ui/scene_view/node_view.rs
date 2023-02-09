@@ -9,10 +9,12 @@ impl NodeView {
         let [window_width, window_height] = ui.window_size();
         ui.window("对象树")
             .collapsible(false)
-            .resizable(false)
-            .size([window_width * 0.2, window_height * 0.7], Condition::Always)
-            .position([0., 0.], Condition::Always)
-            .movable(false)
+            .size(
+                [window_width * 0.2, window_height * 0.7],
+                Condition::Appearing,
+            )
+            .position([0., 0.], Condition::Appearing)
+            .movable(true)
             .build(|| {
                 let root_entities = scene_manager.scene().unwrap().root_entities();
                 for e in root_entities {

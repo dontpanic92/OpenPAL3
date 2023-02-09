@@ -111,12 +111,5 @@ fn create_geometry<P: AsRef<Path>>(
         )
     };
 
-    radiance::rendering::Geometry::new(
-        &r_vertices,
-        None,
-        &r_texcoords,
-        indices,
-        r_material,
-        1,
-    )
+    radiance::rendering::Geometry::new(&r_vertices, None, &r_texcoords, indices, r_material, 1)
 }
