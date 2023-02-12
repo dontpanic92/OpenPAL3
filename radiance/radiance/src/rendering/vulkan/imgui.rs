@@ -31,18 +31,12 @@ impl ImguiRenderer {
     ) -> Self {
         let renderer = {
             let allocator = {
-                let allocator_create_info = AllocatorCreateInfo {
-                    physical_device: physical_device,
-                    device: device.vk_device().clone(),
-                    instance: instance.vk_instance().clone(),
-                    flags: AllocatorCreateFlags::NONE,
-                    preferred_large_heap_block_size: 0,
-                    frame_in_use_count: 0,
-                    heap_size_limits: None,
-                    allocation_callbacks: None,
-                    vulkan_api_version: vk::make_api_version(0, 1, 0, 0),
-                };
-                unsafe { Allocator::new(&allocator_create_info) }.unwrap()
+                let allocator_create_info = AllocatorCreateInfo::new(
+                    Rc::new(instance.vk_instance()),
+                    Rc::new(device.vk_device()),
+                    physical_device,
+                );
+                unsafe { Allocator::new(allocator_create_info) }.unwrap()
             };
 
             // Texture width desired by user before building the atlas.

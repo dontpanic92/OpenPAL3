@@ -22,10 +22,17 @@ pub fn create_instance(entry: &Entry) -> VkResult<Instance> {
         .build();
     let extension_names = helpers::instance_extension_names();
     let layer_names = enabled_layer_names();
+    let flags = if cfg!(any(target_os = "macos", target_os = "ios")) {
+        ash::vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR
+    } else {
+        ash::vk::InstanceCreateFlags::default()
+    };
+
     let create_info = vk::InstanceCreateInfo::builder()
         .application_info(&app_info)
         .enabled_extension_names(&extension_names)
         .enabled_layer_names(&layer_names[..])
+        .flags(flags)
         .build();
     unsafe { entry.create_instance(&create_info, None) }
 }
@@ -60,7 +67,16 @@ pub fn create_surface(
     instance: &Instance,
     window: &Window,
 ) -> VkResult<vk::SurfaceKHR> {
-    unsafe { ash_window::create_surface(&entry, &instance, window, None) }
+    use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+    unsafe {
+        ash_window::create_surface(
+            entry,
+            instance,
+            window.raw_display_handle(),
+            window.raw_window_handle(),
+            None,
+        )
+    }
 }
 
 pub fn get_graphics_queue_family_index(

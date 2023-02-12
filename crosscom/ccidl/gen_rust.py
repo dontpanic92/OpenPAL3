@@ -332,7 +332,7 @@ pub const GLOBAL_{b}VirtualTable_CCW_FOR_{ klass.name }: {symbol.module.module_n
 &{mod}::{interface.name}::INTERFACE_ID => {{
     *retval = (object as *const *const std::os::raw::c_void).offset({offset});
     add_ref(object as *const *const std::os::raw::c_void);
-    {self.crosscom_module_name}::ResultCode::Ok as i32
+    {self.crosscom_module_name}::ResultCode::Ok as std::os::raw::c_long
 }}
 """)
 

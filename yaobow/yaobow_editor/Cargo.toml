@@ -14,7 +14,7 @@ crosscom = { path = "../../crosscom/runtime/rust" }
 encoding = "0.2.33"
 fileformats = { path = "../fileformats" }
 image = "0.23.0"
-imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
+imgui = { version="0.10", features = ["docking"] }
 lazy_static = "1.2.0"
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_debug"] }
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }

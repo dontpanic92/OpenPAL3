@@ -5,12 +5,12 @@ use ash::prelude::VkResult;
 use ash::{vk, Instance};
 use std::error::Error;
 use std::rc::Rc;
+use vk_mem::Alloc;
 
 pub struct Image {
     allocator: Rc<vk_mem::Allocator>,
     image: vk::Image,
-    allocation: vk_mem::Allocation,
-    _allocation_info: vk_mem::AllocationInfo,
+    allocation: Option<vk_mem::Allocation>,
     format: vk::Format,
     width: u32,
     height: u32,
@@ -229,14 +229,13 @@ impl Image {
             usage: vk_mem::MemoryUsage::GpuOnly,
             ..Default::default()
         };
-        let (image, allocation, allocation_info) =
+        let (image, allocation) =
             unsafe { allocator.create_image(&create_info, &allcation_create_info) }.unwrap();
 
         Ok(Self {
             allocator: allocator.clone(),
             image,
-            allocation,
-            _allocation_info: allocation_info,
+            allocation: Some(allocation),
             format,
             width: tex_width,
             height: tex_height,
@@ -271,7 +270,8 @@ impl Image {
 impl Drop for Image {
     fn drop(&mut self) {
         unsafe {
-            self.allocator.destroy_image(self.image, self.allocation);
+            self.allocator
+                .destroy_image(self.image, self.allocation.take().unwrap());
         }
     }
 }

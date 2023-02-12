@@ -4,7 +4,7 @@ use ash::vk;
 use std::error::Error;
 use std::mem::size_of;
 use std::rc::Rc;
-use vk_mem;
+use vk_mem::{self, Alloc};
 
 pub enum BufferType {
     Index = 0,
@@ -25,8 +25,8 @@ impl BufferType {
 pub struct Buffer {
     allocator: Rc<vk_mem::Allocator>,
     buffer: vk::Buffer,
-    allocation: vk_mem::Allocation,
-    allocation_info: vk_mem::AllocationInfo,
+    allocation: Option<vk_mem::Allocation>,
+    // allocation_info: vk_mem::AllocationInfo,
     buffer_size: u64,
     element_size: usize,
     element_count: u32,
@@ -37,7 +37,7 @@ impl Buffer {
         allocator: &Rc<vk_mem::Allocator>,
         data: &[T],
     ) -> Result<Self, Box<dyn Error>> {
-        let staging_buffer = Buffer::new_buffer(
+        let mut staging_buffer = Buffer::new_buffer(
             allocator,
             size_of::<T>(),
             data.len(),
@@ -54,7 +54,7 @@ impl Buffer {
         buffer_type: BufferType,
         data: &[T],
     ) -> Result<Self, Box<dyn Error>> {
-        let dynamic_buffer = Buffer::new_buffer(
+        let mut dynamic_buffer = Buffer::new_buffer(
             allocator,
             size_of::<T>(),
             data.len(),
@@ -131,7 +131,7 @@ impl Buffer {
         memory_usage: vk_mem::MemoryUsage,
     ) -> Result<Self, Box<dyn Error>> {
         let buffer_size = element_count as u64 * element_size as u64;
-        let (buffer, allocation, allocation_info) = {
+        let (buffer, allocation) = {
             let allcation_create_info = vk_mem::AllocationCreateInfo {
                 usage: memory_usage,
                 flags: if memory_usage == vk_mem::MemoryUsage::CpuOnly
@@ -139,7 +139,7 @@ impl Buffer {
                 {
                     vk_mem::AllocationCreateFlags::MAPPED
                 } else {
-                    vk_mem::AllocationCreateFlags::NONE
+                    vk_mem::AllocationCreateFlags::empty()
                 },
                 ..Default::default()
             };
@@ -155,8 +155,7 @@ impl Buffer {
         Ok(Self {
             allocator: allocator.clone(),
             buffer,
-            allocation,
-            allocation_info,
+            allocation: Some(allocation),
             buffer_size,
             element_size,
             element_count: element_count as u32,
@@ -181,7 +180,7 @@ impl Buffer {
         })
     }
 
-    pub fn copy_memory_from<T>(&self, data: &[T]) {
+    pub fn copy_memory_from<T>(&mut self, data: &[T]) {
         self.map_memory_do(|dst| {
             unsafe {
                 std::ptr::copy(
@@ -193,12 +192,13 @@ impl Buffer {
         });
     }
 
-    pub fn map_memory_do<F: Fn(*mut u8)>(&self, action: F) {
-        unsafe {
-            self.allocator.map_memory(self.allocation).unwrap();
-        }
+    pub fn map_memory_do<F: Fn(*mut u8)>(&mut self, action: F) {
+        let dst = unsafe {
+            self.allocator
+                .map_memory(self.allocation.as_mut().unwrap())
+                .unwrap()
+        };
 
-        let dst = self.allocation_info.get_mapped_data();
         if dst == std::ptr::null_mut() {
             panic!("Unable to map the dest memory");
         }
@@ -206,7 +206,8 @@ impl Buffer {
         action(dst);
 
         unsafe {
-            self.allocator.unmap_memory(self.allocation);
+            self.allocator
+                .unmap_memory(self.allocation.as_mut().unwrap());
         }
     }
 }
@@ -214,7 +215,8 @@ impl Buffer {
 impl Drop for Buffer {
     fn drop(&mut self) {
         unsafe {
-            self.allocator.destroy_buffer(self.buffer, self.allocation);
+            self.allocator
+                .destroy_buffer(self.buffer, self.allocation.take().unwrap());
         }
     }
 }

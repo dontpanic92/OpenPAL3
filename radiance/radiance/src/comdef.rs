@@ -482,19 +482,19 @@ macro_rules! ComObject_Application {
                     &crosscom::IUnknown::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &radiance::comdef::IComponentContainer::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &radiance::comdef::IApplication::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
@@ -1042,19 +1042,19 @@ macro_rules! ComObject_Scene {
                     &crosscom::IUnknown::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &radiance::comdef::IComponentContainer::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &radiance::comdef::IScene::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
@@ -1625,19 +1625,19 @@ macro_rules! ComObject_Entity {
                     &crosscom::IUnknown::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &radiance::comdef::IComponentContainer::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &radiance::comdef::IEntity::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
@@ -2036,19 +2036,19 @@ macro_rules! ComObject_StaticMeshComponent {
                     &crosscom::IUnknown::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &radiance::comdef::IComponent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &radiance::comdef::IStaticMeshComponent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
@@ -2317,19 +2317,19 @@ macro_rules! ComObject_AnimatedMeshComponent {
                     &crosscom::IUnknown::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &radiance::comdef::IComponent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &radiance::comdef::IAnimatedMeshComponent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,

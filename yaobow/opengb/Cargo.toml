@@ -23,7 +23,7 @@ radiance = { path = "../../radiance/radiance" }
 shared = { path = "../shared" }
 fileformats = { path = "../fileformats" }
 encoding = "0.2.33"
-imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
+imgui = { version = "0.10", features = ["docking"] }
 downcast-rs = "1.2.0"
 config = "0.12.0"
 rand = "0.8.3"

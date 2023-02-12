@@ -124,19 +124,13 @@ impl VulkanRenderingEngine {
         ));
 
         let allocator = Rc::new({
-            let create_info = vk_mem::AllocatorCreateInfo {
+            let create_info = vk_mem::AllocatorCreateInfo::new(
+                Rc::new(instance.vk_instance()),
+                Rc::new(device.vk_device()),
                 physical_device,
-                device: device.vk_device().clone(),
-                instance: instance.vk_instance().clone(),
-                flags: vk_mem::AllocatorCreateFlags::NONE,
-                preferred_large_heap_block_size: 0,
-                frame_in_use_count: 0,
-                heap_size_limits: None,
-                allocation_callbacks: None,
-                vulkan_api_version: vk::make_api_version(0, 1, 0, 0),
-            };
+            );
 
-            unsafe { vk_mem::Allocator::new(&create_info) }.unwrap()
+            unsafe { vk_mem::Allocator::new(create_info) }.unwrap()
         });
 
         let format =

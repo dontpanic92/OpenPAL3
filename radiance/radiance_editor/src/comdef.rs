@@ -118,6 +118,7 @@ macro_rules! ComObject_ResourceViewContent {
         #[allow(non_snake_case)]
         #[allow(unused)]
         mod ResourceViewContent_crosscom_impl {
+            use crate as radiance_editor;
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
@@ -149,13 +150,13 @@ macro_rules! ComObject_ResourceViewContent {
                     &crosscom::IUnknown::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &radiance_editor::comdef::IViewContent::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
@@ -291,21 +292,21 @@ use radiance::comdef::IAnimatedMeshComponentImpl;
 &crosscom::IUnknown::INTERFACE_ID => {
     *retval = (object as *const *const std::os::raw::c_void).offset(0);
     add_ref(object as *const *const std::os::raw::c_void);
-    crosscom::ResultCode::Ok as i32
+    crosscom::ResultCode::Ok as std::os::raw::c_long
 }
 
 
 &radiance::comdef::IComponent::INTERFACE_ID => {
     *retval = (object as *const *const std::os::raw::c_void).offset(0);
     add_ref(object as *const *const std::os::raw::c_void);
-    crosscom::ResultCode::Ok as i32
+    crosscom::ResultCode::Ok as std::os::raw::c_long
 }
 
 
 &radiance::comdef::IApplicationLoaderComponent::INTERFACE_ID => {
     *retval = (object as *const *const std::os::raw::c_void).offset(0);
     add_ref(object as *const *const std::os::raw::c_void);
-    crosscom::ResultCode::Ok as i32
+    crosscom::ResultCode::Ok as std::os::raw::c_long
 }
 
 

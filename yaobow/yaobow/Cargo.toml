@@ -22,7 +22,7 @@ anyhow = "1.0"
 byteorder = "1.3.4"
 common = { path = "../common" }
 crosscom = { path = "../../crosscom/runtime/rust" }
-imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
+imgui = { version = "0.10", features = ["docking"] }
 shared = { path = "../shared" }
 fileformats = { path = "../fileformats" }
 opengb = { path = "../opengb" }

@@ -15,7 +15,7 @@ resolver = "2"
 
 [patch.crates-io]
 ffmpeg-sys = { git = "https://github.com/dontpanic92/rust-ffmpeg-sys.git" }
-vk-mem = { git = "https://github.com/adrien-ben/vk-mem-rs", tag = "0.2.3-ash-0.36" }
+vk-mem = { git = "https://github.com/gwihlidal/vk-mem-rs" }
 
 [profile.release-with-symbol]
 inherits = "release"

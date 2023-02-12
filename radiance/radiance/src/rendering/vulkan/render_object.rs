@@ -5,7 +5,7 @@ use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
 use crate::rendering::{Material, RenderObject, VertexBuffer};
 use ash::vk;
-use std::cell::{RefCell, RefMut};
+use std::cell::{Ref, RefCell, RefMut};
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -18,7 +18,7 @@ pub struct VulkanRenderObject {
 
     dub_manager: Arc<DynamicUniformBufferManager>,
     descriptor_manager: Rc<DescriptorManager>,
-    vertex_buffer: Buffer,
+    vertex_buffer: RefCell<Buffer>,
     index_buffer: Buffer,
     material: Box<VulkanMaterial>,
     per_object_descriptor_set: vk::DescriptorSet,
@@ -30,6 +30,7 @@ impl RenderObject for VulkanRenderObject {
         updater(self.vertices.borrow_mut());
         let _ = self
             .vertex_buffer
+            .borrow_mut()
             .copy_memory_from(self.vertices.borrow().data());
     }
 }
@@ -75,7 +76,7 @@ impl VulkanRenderObject {
             _host_dynamic: host_dynamic,
             _dirty: false,
             dub_manager: dub_manager.clone(),
-            vertex_buffer,
+            vertex_buffer: RefCell::new(vertex_buffer),
             index_buffer,
             per_object_descriptor_set,
             dub_index,
@@ -83,8 +84,8 @@ impl VulkanRenderObject {
         })
     }
 
-    pub fn vertex_buffer(&self) -> &Buffer {
-        &self.vertex_buffer
+    pub fn vertex_buffer(&self) -> Ref<Buffer> {
+        self.vertex_buffer.borrow()
     }
 
     pub fn index_buffer(&self) -> &Buffer {

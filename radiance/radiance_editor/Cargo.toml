@@ -11,8 +11,8 @@ crate-type = ["lib"]
 
 [dependencies]
 crosscom = { path = "../../crosscom/runtime/rust" }
-imgui-sys = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
-imgui = { git = "https://github.com/imgui-rs/imgui-rs/", features = ["docking"] }
+imgui-sys = { version = "0.10", features = ["docking"] }
+imgui = { version = "0.10", features = ["docking"] }
 radiance = { path = "../radiance" }
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_debug"] }
 simple_logger = "1.16.0"

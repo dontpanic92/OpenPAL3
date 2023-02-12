@@ -1,5 +1,5 @@
 import os
 import shutil
 
-os.system("python main.py idl/opengb.idl opengb::comdef")
+os.system("python3 main.py idl/opengb.idl opengb::comdef")
 shutil.copyfile("test.rs", "../../yaobow/opengb/src/comdef.rs")

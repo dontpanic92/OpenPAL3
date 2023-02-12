@@ -48,6 +48,7 @@ impl IApplicationImpl for Application {
     fn run(&self) {
         let engine = self.radiance_engine.clone();
         let platform = self.platform.clone();
+        let components = self.components.clone();
 
         let mut start_time = Instant::now();
         platform.borrow_mut().run_event_loop(move || {
@@ -59,8 +60,8 @@ impl IApplicationImpl for Application {
                 continue;
             }*/
 
-            for c in self.components.clone() {
-                c.1.on_updating(elapsed);
+            for c in &components {
+                c.on_updating(elapsed);
             }
 
             engine.borrow_mut().update(elapsed);

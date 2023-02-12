@@ -142,13 +142,13 @@ macro_rules! ComObject_ObjectArray {
                     &crosscom::IUnknown::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &crosscom::IObjectArray::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,

@@ -2,7 +2,7 @@ use super::buffer::{Buffer, BufferType};
 use crate::math::Mat44;
 use crate::rendering::vulkan::descriptor_managers::DynamicUniformBufferDescriptorManager;
 use ash::vk;
-use std::{rc::Rc, sync::Mutex};
+use std::{cell::RefCell, rc::Rc, sync::Mutex};
 
 #[derive(Clone)]
 #[repr(C)]
@@ -19,7 +19,7 @@ impl PerInstanceUniformBuffer {
 pub struct DynamicUniformBufferManager {
     descriptor_set: vk::DescriptorSet,
     alignment: u64,
-    buffer: Buffer,
+    buffer: RefCell<Buffer>,
     usage: Mutex<Vec<bool>>,
 }
 
@@ -35,7 +35,7 @@ impl DynamicUniformBufferManager {
         Self {
             descriptor_set,
             alignment,
-            buffer,
+            buffer: RefCell::new(buffer),
             usage: Mutex::new(vec![false; 10240]),
         }
     }
@@ -57,7 +57,7 @@ impl DynamicUniformBufferManager {
     }
 
     pub fn update_do<F: Fn(&dyn Fn(usize, &Mat44))>(&self, action: F) {
-        self.buffer.map_memory_do(|dst| {
+        self.buffer.borrow_mut().map_memory_do(|dst| {
             let updater = |id: usize, model: &Mat44| {
                 let uniform_buffer: &mut PerInstanceUniformBuffer = unsafe {
                     &mut *(dst.offset(self.get_offset(id) as isize) as *mut _
