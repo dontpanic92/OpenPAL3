@@ -1,4 +1,3 @@
-use crate as radiance_editor;
 // Interface IViewContent
 
 #[repr(C)]
@@ -118,7 +117,6 @@ macro_rules! ComObject_ResourceViewContent {
         #[allow(non_snake_case)]
         #[allow(unused)]
         mod ResourceViewContent_crosscom_impl {
-            use crate as radiance_editor;
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
