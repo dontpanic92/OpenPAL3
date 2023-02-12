@@ -36,7 +36,7 @@ impl ImguiRenderer {
                     Rc::new(device.vk_device()),
                     physical_device,
                 );
-                unsafe { Allocator::new(allocator_create_info) }.unwrap()
+                Allocator::new(allocator_create_info).unwrap()
             };
 
             // Texture width desired by user before building the atlas.

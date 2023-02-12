@@ -130,7 +130,7 @@ impl VulkanRenderingEngine {
                 physical_device,
             );
 
-            unsafe { vk_mem::Allocator::new(create_info) }.unwrap()
+            vk_mem::Allocator::new(create_info).unwrap()
         });
 
         let format =

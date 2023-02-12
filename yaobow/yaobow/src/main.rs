@@ -1,4 +1,5 @@
 #![allow(unused_variables)]
+#![allow(dead_code)]
 
 use openpal3::run_openpal3;
 use openpal4::run_openpal4;

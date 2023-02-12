@@ -1,10 +1,10 @@
-use std::{error::Error, io::Read};
+use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use super::{ChunkHeader, ChunkType, DffReadError};
+use crate::rwbs::{check_ty, ChunkHeader, ChunkType, RwbsReadError};
 
 #[derive(Debug, Serialize)]
 pub struct Texture {
@@ -16,11 +16,9 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn read(cursor: &mut dyn Read) -> Result<Self, Box<dyn Error>> {
+    pub fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::STRUCT {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::STRUCT);
 
         let modes = cursor.read_u32_le()?;
 
@@ -29,23 +27,17 @@ impl Texture {
         let address_mode_v = (modes & _private::TEXTURE_ADDRESS_MODE_V_MASK) >> 12;
 
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::STRING {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::STRING);
 
         let name = cursor.read_string(header.length as usize)?;
 
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::STRING {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::STRING);
 
         let mask_name = cursor.read_string(header.length as usize)?;
 
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::EXTENSION {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::EXTENSION);
 
         cursor.skip(header.length as usize)?;
 
@@ -71,11 +63,9 @@ pub struct Material {
 }
 
 impl Material {
-    pub fn read(cursor: &mut dyn Read) -> Result<Self, Box<dyn Error>> {
+    pub fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::STRUCT {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::STRUCT);
 
         let unknown = cursor.read_u32_le()?;
         let color = cursor.read_u32_le()?;
@@ -92,9 +82,7 @@ impl Material {
         }
 
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::EXTENSION {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::EXTENSION);
 
         cursor.skip(header.length as usize)?;
 
@@ -108,6 +96,33 @@ impl Material {
             diffuse,
         })
     }
+}
+
+pub fn read_material_list_header(cursor: &mut dyn Read) -> anyhow::Result<ChunkHeader> {
+    let header = ChunkHeader::read(cursor)?;
+    check_ty!(header.ty, ChunkType::MATERIAL_LIST);
+
+    Ok(header)
+}
+
+pub fn read_material_list(cursor: &mut dyn Read) -> anyhow::Result<Vec<Material>> {
+    let header = ChunkHeader::read(cursor)?;
+    check_ty!(header.ty, ChunkType::STRUCT);
+
+    let mut material_vec = vec![];
+
+    let material_count = cursor.read_u32_le()?;
+    if material_count > 0 {
+        let _unknown = cursor.read_dw_vec(material_count as usize)?;
+        for _ in 0..material_count {
+            let header = ChunkHeader::read(cursor)?;
+            check_ty!(header.ty, ChunkType::MATERIAL);
+
+            material_vec.push(Material::read(cursor)?);
+        }
+    }
+
+    Ok(material_vec)
 }
 
 mod _private {

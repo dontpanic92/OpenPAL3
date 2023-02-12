@@ -1,11 +1,9 @@
-use std::{error::Error, io::Read};
+use std::io::Read;
 
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use crate::dff::DffReadError;
-
-use super::{ChunkHeader, ChunkType};
+use crate::rwbs::{check_ty, ChunkHeader, ChunkType, RwbsReadError};
 
 #[derive(Debug, Serialize)]
 pub struct Atomic {
@@ -17,11 +15,9 @@ pub struct Atomic {
 }
 
 impl Atomic {
-    pub fn read(cursor: &mut dyn Read) -> Result<Self, Box<dyn Error>> {
+    pub fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::STRUCT {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::STRUCT);
 
         let frame = cursor.read_u32_le()?;
         let geometry = cursor.read_u32_le()?;
@@ -29,9 +25,7 @@ impl Atomic {
         let unknown2 = cursor.read_u32_le()?;
 
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::EXTENSION {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::EXTENSION);
 
         let mut extension = vec![0u8; header.length as usize];
         cursor.read_exact(&mut extension)?;

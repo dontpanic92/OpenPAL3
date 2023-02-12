@@ -1,11 +1,11 @@
-use std::{error::Error, io::Read};
+use std::io::Read;
 
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use super::{
-    atomic::Atomic, frame::Frame, geometry::Geometry, ChunkHeader, ChunkType, DffReadError,
-};
+use crate::rwbs::{check_ty, ChunkHeader, ChunkType, RwbsReadError};
+
+use super::{atomic::Atomic, frame::Frame, geometry::Geometry};
 
 #[derive(Debug, Serialize)]
 pub struct Clump {
@@ -19,46 +19,35 @@ pub struct Clump {
 }
 
 impl Clump {
-    pub fn read(cursor: &mut dyn Read) -> Result<Self, Box<dyn Error>> {
+    pub fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::STRUCT {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::STRUCT);
 
         let atomic_count = cursor.read_u32_le()?;
         let light_count = cursor.read_u32_le()?;
         let camera_count = cursor.read_u32_le()?;
 
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::FRAME_LIST {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::FRAME_LIST);
 
         let frames = Self::read_frame_list(cursor)?;
 
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::GEOMETRY_LIST {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::GEOMETRY_LIST);
 
         let geometries = Self::read_geometry_list(cursor)?;
 
         let mut atomics = vec![];
         for _ in 0..atomic_count {
             let header = ChunkHeader::read(cursor)?;
-            if header.ty != ChunkType::ATOMIC {
-                return Err(DffReadError::IncorrectClumpFormat)?;
-            }
+            check_ty!(header.ty, ChunkType::ATOMIC);
 
             let atomic = Atomic::read(cursor)?;
             atomics.push(atomic);
         }
 
         let header = ChunkHeader::read(cursor)?;
-
-        if header.ty != ChunkType::EXTENSION {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::EXTENSION);
 
         let mut extension = vec![0u8; header.length as usize];
         cursor.read_exact(&mut extension)?;
@@ -74,11 +63,9 @@ impl Clump {
         })
     }
 
-    fn read_frame_list(cursor: &mut dyn Read) -> Result<Vec<Frame>, Box<dyn Error>> {
+    fn read_frame_list(cursor: &mut dyn Read) -> anyhow::Result<Vec<Frame>> {
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::STRUCT {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::STRUCT);
 
         let frame_count = cursor.read_u32_le()?;
         let mut frames = vec![];
@@ -90,10 +77,7 @@ impl Clump {
 
         for _ in 0..frame_count {
             let header = ChunkHeader::read(cursor)?;
-
-            if header.ty != ChunkType::EXTENSION {
-                return Err(DffReadError::IncorrectClumpFormat)?;
-            }
+            check_ty!(header.ty, ChunkType::EXTENSION);
 
             cursor.skip(header.length as usize)?;
         }
@@ -101,19 +85,15 @@ impl Clump {
         Ok(frames)
     }
 
-    fn read_geometry_list(cursor: &mut dyn Read) -> Result<Vec<Geometry>, Box<dyn Error>> {
+    fn read_geometry_list(cursor: &mut dyn Read) -> anyhow::Result<Vec<Geometry>> {
         let header = ChunkHeader::read(cursor)?;
-        if header.ty != ChunkType::STRUCT {
-            return Err(DffReadError::IncorrectClumpFormat)?;
-        }
+        check_ty!(header.ty, ChunkType::STRUCT);
 
         let count = cursor.read_u32_le()?;
         let mut geometries = vec![];
         for _ in 0..count {
-            let geo_header = ChunkHeader::read(cursor)?;
-            if geo_header.ty != ChunkType::GEOMETRY {
-                return Err(DffReadError::IncorrectClumpFormat)?;
-            }
+            let _ = ChunkHeader::read(cursor)?;
+            check_ty!(header.ty, ChunkType::GEOMETRY);
 
             let geometry = Geometry::read(cursor)?;
             geometries.push(geometry);

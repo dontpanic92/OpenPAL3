@@ -1,3 +1,6 @@
+#![allow(unused_variables)]
+#![allow(dead_code)]
+
 mod comdef;
 mod openpal3;
 mod openpal4;

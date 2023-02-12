@@ -1,10 +1,10 @@
-use std::{error::Error, io::Read};
+use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use super::Vec3f;
+use crate::rwbs::Vec3f;
 
 #[derive(Debug, Serialize)]
 pub struct Frame {
@@ -17,7 +17,7 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn read(cursor: &mut dyn Read) -> Result<Self, Box<dyn Error>> {
+    pub fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
         let right = Self::read_vec3(cursor)?;
         let up = Self::read_vec3(cursor)?;
         let at = Self::read_vec3(cursor)?;
@@ -35,7 +35,7 @@ impl Frame {
         })
     }
 
-    fn read_vec3(cursor: &mut dyn Read) -> Result<Vec3f, Box<dyn Error>> {
+    fn read_vec3(cursor: &mut dyn Read) -> anyhow::Result<Vec3f> {
         let x = cursor.read_f32::<LittleEndian>()?;
         let y = cursor.read_f32::<LittleEndian>()?;
         let z = cursor.read_f32::<LittleEndian>()?;
