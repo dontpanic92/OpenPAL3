@@ -4,8 +4,8 @@ use crate::rwbs::{ChunkHeader, ChunkType};
 
 use self::world::World;
 
-mod plane;
-mod world;
+pub mod sector;
+pub mod world;
 
 pub fn read_bsp(data: &[u8]) -> anyhow::Result<Vec<World>> {
     let mut cursor = Cursor::new(data);

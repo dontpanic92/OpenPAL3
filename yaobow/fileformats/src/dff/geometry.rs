@@ -68,7 +68,7 @@ pub struct Geometry {
     pub flags: FormatFlag,
     pub vertices_count: u32,
     pub prelit: Option<Vec<u32>>,
-    pub texcoord_sets: Option<Vec<Vec<TexCoord>>>,
+    pub texcoord_sets: Vec<Vec<TexCoord>>,
     pub triangles: Vec<Triangle>,
     pub materials: Vec<Material>,
     pub morph_targets: Vec<GeometryMorphTarget>,
@@ -90,19 +90,16 @@ impl Geometry {
         }
 
         let texcoord_set_count = (flags.0 & 0x00ff0000) >> 16;
-        let mut texcoord_sets = None;
+        let mut texcoord_sets = vec![];
         if flags.contains(FormatFlag::TEXTURED) || flags.contains(FormatFlag::TEXTURED2) {
-            let mut texcoord_sets_vec = vec![];
             for _ in 0..texcoord_set_count {
                 let mut tex_coord_vec = vec![];
                 for _ in 0..vertices_count {
                     tex_coord_vec.push(TexCoord::read(cursor)?);
                 }
 
-                texcoord_sets_vec.push(tex_coord_vec);
+                texcoord_sets.push(tex_coord_vec);
             }
-
-            texcoord_sets = Some(texcoord_sets_vec);
         }
 
         let mut triangles = vec![];

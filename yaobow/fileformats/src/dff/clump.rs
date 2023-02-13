@@ -92,7 +92,7 @@ impl Clump {
         let count = cursor.read_u32_le()?;
         let mut geometries = vec![];
         for _ in 0..count {
-            let _ = ChunkHeader::read(cursor)?;
+            let header = ChunkHeader::read(cursor)?;
             check_ty!(header.ty, ChunkType::GEOMETRY);
 
             let geometry = Geometry::read(cursor)?;

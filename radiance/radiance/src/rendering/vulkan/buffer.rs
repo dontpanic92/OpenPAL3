@@ -149,6 +149,7 @@ impl Buffer {
                 .usage(buffer_usage)
                 .size(buffer_size)
                 .build();
+
             unsafe { allocator.create_buffer(&buffer_create_info, &allcation_create_info) }.unwrap()
         };
 

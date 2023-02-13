@@ -34,14 +34,16 @@ impl IComponentImpl for StaticMeshComponent {
     fn on_loading(&self) -> crosscom::Void {
         let mut objects = vec![];
         for geometry in &self.geometries {
-            let ro = self.component_factory.create_render_object(
-                geometry.vertices.clone(),
-                geometry.indices.clone(),
-                &geometry.material,
-                false,
-            );
+            if geometry.indices.len() != 0 {
+                let ro = self.component_factory.create_render_object(
+                    geometry.vertices.clone(),
+                    geometry.indices.clone(),
+                    &geometry.material,
+                    false,
+                );
 
-            objects.push(ro);
+                objects.push(ro);
+            }
         }
 
         let component = self.component_factory.create_rendering_component(objects);

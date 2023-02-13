@@ -1,3 +1,4 @@
+mod bsp;
 mod cvd;
 mod dff;
 mod mv3;
@@ -15,7 +16,10 @@ use crate::{
     preview::panes::TextPane,
 };
 
-use self::{cvd::CvdModelLoader, dff::DffModelLoader, mv3::Mv3ModelLoader, pol::PolModelLoader};
+use self::{
+    bsp::BspModelLoader, cvd::CvdModelLoader, dff::DffModelLoader, mv3::Mv3ModelLoader,
+    pol::PolModelLoader,
+};
 
 use super::Previewer;
 
@@ -30,6 +34,7 @@ impl ModelPreviewer {
                 Box::new(Mv3ModelLoader::new(asset_mgr.clone())),
                 Box::new(CvdModelLoader::new(asset_mgr.clone())),
                 Box::new(DffModelLoader::new(asset_mgr.clone())),
+                Box::new(BspModelLoader::new(asset_mgr.clone())),
                 Box::new(PolModelLoader::new(asset_mgr)),
             ],
         }

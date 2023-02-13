@@ -104,7 +104,7 @@ impl Normal {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct TexCoord {
     pub u: f32,
     pub v: f32,
@@ -155,11 +155,11 @@ pub enum RwbsReadError {
 }
 
 macro_rules! check_ty {
-    ($expected: expr, $actual: expr) => {
+    ($actual: expr, $expected: expr) => {
         if $expected != $actual {
             return Err(crate::rwbs::RwbsReadError::IncorrectChunkFormat(
-                $expected.0,
                 $actual.0,
+                $expected.0,
             ))?;
         }
     };
