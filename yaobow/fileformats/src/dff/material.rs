@@ -4,7 +4,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use crate::rwbs::{check_ty, ChunkHeader, ChunkType, RwbsReadError};
+use crate::rwbs::{check_ty, ChunkHeader, ChunkType};
 
 #[derive(Debug, Serialize)]
 pub struct Texture {

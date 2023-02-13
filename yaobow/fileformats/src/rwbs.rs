@@ -21,6 +21,7 @@ impl ChunkType {
     pub const MATERIAL: Self = Self(0x7);
     pub const MATERIAL_LIST: Self = Self(0x8);
     pub const ATOMIC_SECTOR: Self = Self(0x9);
+    pub const PLANE_SECTOR: Self = Self(0xa);
     pub const WORLD: Self = Self(0xb);
     pub const FRAME_LIST: Self = Self(0xe);
     pub const GEOMETRY: Self = Self(0xf);
@@ -65,6 +66,41 @@ impl Vec3f {
         let y = cursor.read_f32::<LittleEndian>()?;
         let z = cursor.read_f32::<LittleEndian>()?;
         Ok(Self { x, y, z })
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct PrelitColor {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+impl PrelitColor {
+    pub fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
+        let r = cursor.read_u8()?;
+        let g = cursor.read_u8()?;
+        let b = cursor.read_u8()?;
+        let a = cursor.read_u8()?;
+        Ok(Self { r, g, b, a })
+    }
+}
+#[derive(Debug, Serialize)]
+pub struct Normal {
+    pub x: u8,
+    pub y: u8,
+    pub z: u8,
+    pub p: u8,
+}
+
+impl Normal {
+    pub fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
+        let x = cursor.read_u8()?;
+        let y = cursor.read_u8()?;
+        let z = cursor.read_u8()?;
+        let p = cursor.read_u8()?;
+        Ok(Self { x, y, z, p })
     }
 }
 
@@ -121,7 +157,10 @@ pub enum RwbsReadError {
 macro_rules! check_ty {
     ($expected: expr, $actual: expr) => {
         if $expected != $actual {
-            return Err(RwbsReadError::IncorrectChunkFormat($expected.0, $actual.0))?;
+            return Err(crate::rwbs::RwbsReadError::IncorrectChunkFormat(
+                $expected.0,
+                $actual.0,
+            ))?;
         }
     };
 }
