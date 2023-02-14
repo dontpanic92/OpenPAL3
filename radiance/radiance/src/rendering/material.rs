@@ -72,6 +72,21 @@ impl SimpleMaterialDef {
         Self::create_internal(texture, use_alpha)
     }
 
+    pub fn create2(texture_name: &str, data: Option<Vec<u8>>, use_alpha: bool) -> MaterialDef {
+        let texture = TextureStore::get_or_update(texture_name, || {
+            if let Some(data) = data {
+                image::load_from_memory(&data)
+                    .or_else(|_| image::load_from_memory_with_format(&data, ImageFormat::Tga))
+                    .and_then(|img| Ok(img.to_rgba8()))
+                    .ok()
+            } else {
+                None
+            }
+        });
+
+        Self::create_internal(texture, use_alpha)
+    }
+
     fn create_internal(texture_def: Arc<TextureDef>, use_alpha: bool) -> MaterialDef {
         MaterialDef::new(
             "simple_material".to_string(),

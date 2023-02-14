@@ -5,7 +5,7 @@ use fileformats::rwbs::read_dff;
 use mini_fs::{MiniFs, StoreExt};
 use opengb::asset_manager::AssetManager;
 use radiance::comdef::IEntity;
-use shared::loaders::dff::create_entity_from_dff_model;
+use shared::loaders::{dff::create_entity_from_dff_model, TextureResolver};
 
 use crate::preview::previewers::{get_extension, jsonify};
 
@@ -13,11 +13,15 @@ use super::ModelLoader;
 
 pub struct DffModelLoader {
     asset_mgr: Rc<AssetManager>,
+    texture_resolver: Rc<dyn TextureResolver>,
 }
 
 impl DffModelLoader {
-    pub fn new(asset_mgr: Rc<AssetManager>) -> Self {
-        Self { asset_mgr }
+    pub fn new(asset_mgr: Rc<AssetManager>, texture_resolver: Rc<dyn TextureResolver>) -> Self {
+        Self {
+            asset_mgr,
+            texture_resolver,
+        }
     }
 }
 
@@ -42,6 +46,7 @@ impl ModelLoader for DffModelLoader {
             path,
             "preview".to_string(),
             true,
+            self.texture_resolver.as_ref(),
         )
     }
 }

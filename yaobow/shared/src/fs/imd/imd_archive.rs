@@ -132,7 +132,6 @@ fn decode_05(mut data: &[u8]) -> anyhow::Result<Vec<u8>> {
         }
     }
 
-    println!("{:?}", &output[0..50]);
     Ok(output)
 }
 

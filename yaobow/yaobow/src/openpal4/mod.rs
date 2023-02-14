@@ -1,6 +1,6 @@
 use std::io::{BufRead, Cursor};
 
-use fileformats::{bsp::read_bsp, rwbs::list_chunks};
+use fileformats::{rwbs::list_chunks, rwbs::read_bsp};
 use shared::fs::pkg::pkg_archive::PkgHeader;
 
 pub mod application;

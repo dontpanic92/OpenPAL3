@@ -52,10 +52,12 @@ fn mount_packages_recursive(
                 vfs = vfs.mount(vfs_path, CpkFs::new(path).unwrap())
             }
             Some("fmb") => {
+                let vfs_path = vfs_path.parent().unwrap().join("Model");
                 log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
                 vfs = vfs.mount(vfs_path, FmbFs::create(path).unwrap())
             }
             Some("imd") => {
+                let vfs_path = vfs_path.parent().unwrap().join("Texture");
                 log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
                 vfs = vfs.mount(vfs_path, ImdFs::create(path).unwrap())
             }

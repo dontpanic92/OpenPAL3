@@ -27,7 +27,6 @@ impl StoreExt2 for mini_fs::MiniFs {
         if res.is_err() {
             for ext in fallback_ext {
                 let new_path = path.as_ref().with_extension(ext);
-                println!("trying {:?}", new_path);
                 let res = self.open(new_path);
                 if res.is_ok() {
                     return res;

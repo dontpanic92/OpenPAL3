@@ -10,6 +10,7 @@ use radiance::{
     scene::{CoreScene, Director, SceneManager},
 };
 use radiance_editor::ui::window_content_rect;
+use shared::loaders::{Pal4TextureResolver, Swd5TextureResolver, TextureResolver};
 use std::{
     cell::RefCell,
     cmp::Ordering,
@@ -29,9 +30,21 @@ impl DevToolsDirector {
         asset_mgr: Rc<AssetManager>,
         game_type: GameType,
     ) -> Rc<RefCell<Self>> {
+        let texture_resolver: Rc<dyn TextureResolver> = match game_type {
+            GameType::PAL3 | GameType::PAL4 | GameType::PAL5 | GameType::PAL5Q => {
+                Rc::new(Pal4TextureResolver {})
+            }
+            _ => Rc::new(Swd5TextureResolver {}),
+        };
+
         let mut _self = Rc::new(RefCell::new(Self {
             shared_self: Weak::new(),
-            content_tabs: ContentTabs::new(audio_engine, asset_mgr.clone(), game_type),
+            content_tabs: ContentTabs::new(
+                audio_engine,
+                asset_mgr.clone(),
+                game_type,
+                texture_resolver,
+            ),
             asset_mgr,
         }));
 

@@ -1,11 +1,5 @@
-use std::{
-    collections::HashMap,
-    io::{Cursor, Read},
-    path::Path,
-    rc::Rc,
-};
+use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
 
-use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use fileformats::rwbs::{material::Material, read_dff, TexCoord, Triangle, Vec3f};
 use mini_fs::{MiniFs, StoreExt};
@@ -16,15 +10,18 @@ use radiance::{
     scene::CoreEntity,
 };
 
+use super::TextureResolver;
+
 pub fn create_entity_from_dff_model<P: AsRef<Path>>(
     component_factory: &Rc<dyn ComponentFactory>,
     vfs: &MiniFs,
     path: P,
     name: String,
     visible: bool,
+    texture_resolver: &dyn TextureResolver,
 ) -> ComRc<IEntity> {
     let entity = CoreEntity::create(name, visible);
-    let geometries = load_dff_model(vfs, path);
+    let geometries = load_dff_model(vfs, path, texture_resolver);
     let mesh_component =
         StaticMeshComponent::new(entity.clone(), geometries, component_factory.clone());
     entity.add_component(
@@ -34,7 +31,11 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
     entity
 }
 
-fn load_dff_model<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> Vec<radiance::rendering::Geometry> {
+fn load_dff_model<P: AsRef<Path>>(
+    vfs: &MiniFs,
+    path: P,
+    texture_resolver: &dyn TextureResolver,
+) -> Vec<radiance::rendering::Geometry> {
     let mut data = vec![];
     let _ = vfs.open(&path).unwrap().read_to_end(&mut data).unwrap();
     let chunks = read_dff(&data).unwrap();
@@ -45,7 +46,7 @@ fn load_dff_model<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> Vec<radiance::render
         for atomic in &chunks[0].atomics {
             // let frame = &chunks[0].frames[atomic.frame as usize];
             let geometry = &chunks[0].geometries[atomic.geometry as usize];
-            let mut r_geometry = create_geometry(geometry, vfs, &path);
+            let mut r_geometry = create_geometry(geometry, vfs, &path, texture_resolver);
             r_geometries.append(&mut r_geometry);
         }
 
@@ -57,21 +58,27 @@ fn create_geometry<P: AsRef<Path>>(
     geometry: &fileformats::rwbs::geometry::Geometry,
     vfs: &MiniFs,
     path: P,
+    texture_resolver: &dyn TextureResolver,
 ) -> Vec<radiance::rendering::Geometry> {
     let vertices = geometry.morph_targets[0].vertices.as_ref().unwrap();
     let normals = geometry.morph_targets[0].normals.as_ref();
     let triangles = &geometry.triangles;
-    let texcoord_sets = geometry.texcoord_sets.as_ref();
+    let texcoord_sets = if geometry.texcoord_sets.len() > 1 {
+        vec![geometry.texcoord_sets[0].clone()]
+    } else {
+        geometry.texcoord_sets.clone()
+    };
     let materials = &geometry.materials;
 
     create_geometry_internal(
         vertices,
         normals,
         triangles,
-        texcoord_sets,
+        &texcoord_sets,
         materials,
         vfs,
         path,
+        texture_resolver,
     )
 }
 
@@ -83,6 +90,7 @@ pub(crate) fn create_geometry_internal<P: AsRef<Path>>(
     materials: &[Material],
     vfs: &MiniFs,
     path: P,
+    texture_resolver: &dyn TextureResolver,
 ) -> Vec<radiance::rendering::Geometry> {
     let mut r_vertices = vec![];
     // let mut r_normals = vec![];
@@ -110,25 +118,11 @@ pub(crate) fn create_geometry_internal<P: AsRef<Path>>(
     for t in triangles {
         let group = material_to_indices.entry(t.material).or_insert_with(|| {
             let material = &materials[t.material as usize];
-            let md = if material.texture.is_some() {
-                let tex_name = &material.texture.as_ref().unwrap().name;
-                let tex_path = path
-                    .as_ref()
-                    .parent()
-                    .unwrap()
-                    .join(tex_name.to_string() + ".dds");
-
-                radiance::rendering::SimpleMaterialDef::create(
-                    tex_name,
-                    |_name| vfs.open_with_fallback(&tex_path, &["png"]).ok(),
-                    true,
-                )
+            let md = if let Some(texture) = material.texture.as_ref() {
+                let data = texture_resolver.resolve_texture(vfs, path.as_ref(), &texture.name);
+                radiance::rendering::SimpleMaterialDef::create2(&texture.name, data, true)
             } else {
-                radiance::rendering::SimpleMaterialDef::create(
-                    "missing",
-                    |_name| None::<Cursor<&[u8]>>,
-                    true,
-                )
+                radiance::rendering::SimpleMaterialDef::create2("missing", None, true)
             };
 
             MaterialGroupedIndices {
@@ -141,28 +135,6 @@ pub(crate) fn create_geometry_internal<P: AsRef<Path>>(
         group.indices.push(t.index[1] as u32);
         group.indices.push(t.index[2] as u32);
     }
-
-    // let r_material = if texcoord_sets.len() > 0 && triangles.len() > 0 {
-    //     let material = &materials[triangles[0].material as usize];
-    //     let tex_name = &material.texture.as_ref().unwrap().name;
-    //     let tex_path = path
-    //         .as_ref()
-    //         .parent()
-    //         .unwrap()
-    //         .join(tex_name.to_string() + ".dds");
-
-    //     radiance::rendering::SimpleMaterialDef::create(
-    //         tex_name,
-    //         |_name| Some(vfs.open_with_fallback(&tex_path, &["png"]).unwrap()),
-    //         true,
-    //     )
-    // } else {
-    //     radiance::rendering::SimpleMaterialDef::create(
-    //         "missing",
-    //         |_name| None::<Cursor<&[u8]>>,
-    //         true,
-    //     )
-    // };
 
     material_to_indices
         .into_values()

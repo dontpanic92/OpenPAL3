@@ -69,6 +69,7 @@ impl Geometry {
                 texcoord2.as_ref(),
             );
         }
+
         Self {
             material,
             vertices: buffer,

@@ -10,6 +10,7 @@ use crosscom::ComRc;
 use mini_fs::MiniFs;
 use opengb::asset_manager::AssetManager;
 use radiance::comdef::IEntity;
+use shared::loaders::TextureResolver;
 
 use crate::{
     directors::{main_content::ContentTab, DevToolsState},
@@ -28,13 +29,16 @@ pub struct ModelPreviewer {
 }
 
 impl ModelPreviewer {
-    pub fn new(asset_mgr: Rc<AssetManager>) -> Self {
+    pub fn new(asset_mgr: Rc<AssetManager>, texture_resolver: Rc<dyn TextureResolver>) -> Self {
         Self {
             model_loaders: vec![
                 Box::new(Mv3ModelLoader::new(asset_mgr.clone())),
                 Box::new(CvdModelLoader::new(asset_mgr.clone())),
-                Box::new(DffModelLoader::new(asset_mgr.clone())),
-                Box::new(BspModelLoader::new(asset_mgr.clone())),
+                Box::new(DffModelLoader::new(
+                    asset_mgr.clone(),
+                    texture_resolver.clone(),
+                )),
+                Box::new(BspModelLoader::new(asset_mgr.clone(), texture_resolver)),
                 Box::new(PolModelLoader::new(asset_mgr)),
             ],
         }

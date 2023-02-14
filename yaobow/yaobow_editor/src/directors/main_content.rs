@@ -10,6 +10,7 @@ use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
 use mini_fs::MiniFs;
 use opengb::asset_manager::AssetManager;
 use radiance::audio::AudioEngine;
+use shared::loaders::TextureResolver;
 use std::{path::Path, rc::Rc};
 
 use super::DevToolsState;
@@ -25,6 +26,7 @@ impl ContentTabs {
         audio_engine: Rc<dyn AudioEngine>,
         asset_mgr: Rc<AssetManager>,
         game_type: GameType,
+        texture_resolver: Rc<dyn TextureResolver>,
     ) -> Self {
         Self {
             audio_tab: None,
@@ -38,7 +40,7 @@ impl ContentTabs {
                 Box::new(AudioPreviewer::new(audio_engine)),
                 Box::new(VideoPreviewer::new(asset_mgr.component_factory())),
                 Box::new(OthersPreviewer::create()),
-                Box::new(ModelPreviewer::new(asset_mgr)),
+                Box::new(ModelPreviewer::new(asset_mgr, texture_resolver)),
             ],
         }
     }

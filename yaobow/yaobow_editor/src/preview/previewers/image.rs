@@ -38,16 +38,9 @@ impl Previewer for ImagePreviewer {
             .ok()
             .and_then(|b| match (extension.as_str(), self.game_type) {
                 ("png", GameType::SWD5 | GameType::SWDCF | GameType::SWDHC) => {
-                    println!("png {:?}", &b[0..100]);
                     let width = (&b[0..4]).read_u32::<LittleEndian>().unwrap();
                     let height = (&b[4..8]).read_u32::<LittleEndian>().unwrap();
                     let data = &b[8..];
-                    println!(
-                        "png width {} height {} datalen {}",
-                        width,
-                        height,
-                        data.len()
-                    );
                     image::RgbaImage::from_raw(width, height, data.to_vec())
                         .map(|img| image::DynamicImage::ImageRgba8(img))
                 }
