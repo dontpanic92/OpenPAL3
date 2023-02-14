@@ -1,12 +1,10 @@
 use std::{io::Read, path::Path, rc::Rc};
 
 use crosscom::ComRc;
-use fileformats::{
-    bsp::{
-        read_bsp,
-        sector::{AtomicSector, Sector},
-    },
-    dff::material::Material,
+use fileformats::rwbs::{
+    material::Material,
+    read_bsp,
+    sector::{AtomicSector, Sector},
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{

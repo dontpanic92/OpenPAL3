@@ -1,7 +1,7 @@
 use std::{io::Read, path::Path, rc::Rc};
 
 use crosscom::ComRc;
-use fileformats::bsp::read_bsp;
+use fileformats::rwbs::read_bsp;
 use mini_fs::{MiniFs, StoreExt};
 use opengb::asset_manager::AssetManager;
 use radiance::comdef::IEntity;

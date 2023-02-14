@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::rwbs::{check_ty, ChunkHeader, ChunkType, FormatFlag, TexCoord, Triangle, Vec3f};
 
-use super::material::Material;
+use super::{extension::Extension, material::Material};
 
 #[derive(Debug, Serialize)]
 pub struct GeometryMorphTarget {
@@ -72,6 +72,7 @@ pub struct Geometry {
     pub triangles: Vec<Triangle>,
     pub materials: Vec<Material>,
     pub morph_targets: Vec<GeometryMorphTarget>,
+    pub extensions: Vec<Extension>,
 }
 
 impl Geometry {
@@ -123,15 +124,7 @@ impl Geometry {
         let _ = super::material::read_material_list_header(cursor)?;
         let materials = super::material::read_material_list(cursor)?;
 
-        let header = ChunkHeader::read(cursor)?;
-        check_ty!(header.ty, ChunkType::EXTENSION);
-
-        let mut len = 0;
-        while len < header.length {
-            let header = ChunkHeader::read(cursor)?;
-            len += 12 + header.length;
-            cursor.skip(header.length as usize)?;
-        }
+        let extensions = Extension::read(cursor, vertices_count)?;
 
         Ok(Self {
             flags,
@@ -141,6 +134,7 @@ impl Geometry {
             triangles,
             materials,
             morph_targets,
+            extensions,
         })
     }
 }

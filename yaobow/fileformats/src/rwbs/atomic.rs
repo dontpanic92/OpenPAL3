@@ -3,7 +3,7 @@ use std::io::Read;
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use crate::rwbs::{check_ty, ChunkHeader, ChunkType};
+use crate::rwbs::{check_ty, extension::Extension, ChunkHeader, ChunkType};
 
 #[derive(Debug, Serialize)]
 pub struct Atomic {
@@ -11,7 +11,7 @@ pub struct Atomic {
     pub geometry: u32,
     pub unknown: u32,
     pub unknown2: u32,
-    pub extension: Vec<u8>,
+    pub extensions: Vec<Extension>,
 }
 
 impl Atomic {
@@ -24,18 +24,14 @@ impl Atomic {
         let unknown = cursor.read_u32_le()?;
         let unknown2 = cursor.read_u32_le()?;
 
-        let header = ChunkHeader::read(cursor)?;
-        check_ty!(header.ty, ChunkType::EXTENSION);
-
-        let mut extension = vec![0u8; header.length as usize];
-        cursor.read_exact(&mut extension)?;
+        let extensions = Extension::read(cursor, 0)?;
 
         Ok(Self {
             frame,
             geometry,
             unknown,
             unknown2,
-            extension,
+            extensions,
         })
     }
 }

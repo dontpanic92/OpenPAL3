@@ -3,7 +3,7 @@ use std::io::Read;
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use crate::rwbs::{check_ty, ChunkHeader, ChunkType};
+use crate::rwbs::{check_ty, extension::Extension, ChunkHeader, ChunkType};
 
 use super::{atomic::Atomic, frame::Frame, geometry::Geometry};
 
@@ -15,7 +15,7 @@ pub struct Clump {
     pub frames: Vec<Frame>,
     pub geometries: Vec<Geometry>,
     pub atomics: Vec<Atomic>,
-    pub extension: Vec<u8>,
+    pub extensions: Vec<Extension>,
 }
 
 impl Clump {
@@ -46,11 +46,7 @@ impl Clump {
             atomics.push(atomic);
         }
 
-        let header = ChunkHeader::read(cursor)?;
-        check_ty!(header.ty, ChunkType::EXTENSION);
-
-        let mut extension = vec![0u8; header.length as usize];
-        cursor.read_exact(&mut extension)?;
+        let extensions = Extension::read(cursor, 0)?;
 
         Ok(Self {
             header,
@@ -59,7 +55,7 @@ impl Clump {
             frames,
             geometries,
             atomics,
-            extension,
+            extensions,
         })
     }
 

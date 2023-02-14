@@ -7,10 +7,7 @@ use std::{
 
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
-use fileformats::{
-    dff::{self, material::Material, read_dff},
-    rwbs::{TexCoord, Triangle, Vec3f},
-};
+use fileformats::rwbs::{material::Material, read_dff, TexCoord, Triangle, Vec3f};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{IEntity, IStaticMeshComponent},
@@ -57,7 +54,7 @@ fn load_dff_model<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> Vec<radiance::render
 }
 
 fn create_geometry<P: AsRef<Path>>(
-    geometry: &dff::geometry::Geometry,
+    geometry: &fileformats::rwbs::geometry::Geometry,
     vfs: &MiniFs,
     path: P,
 ) -> Vec<radiance::rendering::Geometry> {

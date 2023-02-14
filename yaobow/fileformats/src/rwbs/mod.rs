@@ -1,12 +1,24 @@
+pub mod atomic;
+pub mod clump;
+pub mod extension;
+pub mod frame;
+pub mod geometry;
+pub mod material;
+pub mod sector;
+pub mod world;
+
 use std::io::{Cursor, Read};
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use clump::Clump;
 use common::read_ext::ReadExt;
 use serde::Serialize;
+use world::World;
 
 /**
  * RWBS formats details:
  *      https://helco.github.io/zzdocs/resources/
+ *      https://gtamods.com/wiki/
  *      https://rwsreader.sourceforge.net/
  */
 
@@ -31,6 +43,12 @@ impl ChunkType {
     pub const HANIM_ANIMATION: Self = Self(0x1b);
     pub const CHUNK_GROUP_START: Self = Self(0x29);
     pub const CHUNK_GROUP_END: Self = Self(0x2a);
+
+    pub const PLUGIN_MORPH: Self = Self(0x105);
+    pub const PLUGIN_SKIN: Self = Self(0x116);
+    pub const PLUGIN_HANIM: Self = Self(0x11e);
+    pub const PLUGIN_USERDATA: Self = Self(0x11f);
+    pub const PLUGIN_BINMESH: Self = Self(0x50e);
 }
 
 #[derive(Copy, Clone, Debug, Serialize)]
@@ -66,6 +84,16 @@ impl Vec3f {
         let y = cursor.read_f32::<LittleEndian>()?;
         let z = cursor.read_f32::<LittleEndian>()?;
         Ok(Self { x, y, z })
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct Matrix44f([f32; 16]);
+
+impl Matrix44f {
+    pub fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
+        let m = cursor.read_f32_vec(16)?;
+        Ok(Self(m.try_into().unwrap()))
     }
 }
 
@@ -178,4 +206,34 @@ pub fn list_chunks(data: &[u8]) -> anyhow::Result<Vec<ChunkHeader>> {
     }
 
     Ok(chunks)
+}
+
+pub fn read_dff(data: &[u8]) -> anyhow::Result<Vec<Clump>> {
+    let mut cursor = Cursor::new(data);
+    let mut chunks = vec![];
+
+    while !cursor.is_empty() {
+        let chunk = ChunkHeader::read(&mut cursor)?;
+        match chunk.ty {
+            ChunkType::CLUMP => chunks.push(Clump::read(&mut cursor)?),
+            _ => cursor.set_position(cursor.position() + chunk.length as u64),
+        }
+    }
+
+    Ok(chunks)
+}
+
+pub fn read_bsp(data: &[u8]) -> anyhow::Result<Vec<World>> {
+    let mut cursor = Cursor::new(data);
+    let mut world = vec![];
+
+    while !cursor.is_empty() {
+        let chunk = ChunkHeader::read(&mut cursor)?;
+        match chunk.ty {
+            ChunkType::WORLD => world.push(World::read(&mut cursor)?),
+            _ => cursor.set_position(cursor.position() + chunk.length as u64),
+        }
+    }
+
+    Ok(world)
 }

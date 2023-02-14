@@ -5,7 +5,8 @@ use common::read_ext::ReadExt;
 use serde::Serialize;
 
 use crate::rwbs::{
-    check_ty, ChunkHeader, ChunkType, FormatFlag, Normal, PrelitColor, TexCoord, Triangle, Vec3f,
+    check_ty, extension::Extension, ChunkHeader, ChunkType, FormatFlag, Normal, PrelitColor,
+    TexCoord, Triangle, Vec3f,
 };
 
 #[derive(Debug, Serialize)]
@@ -94,7 +95,7 @@ pub struct AtomicSector {
     pub texcoords: Option<Vec<TexCoord>>,
     pub texcoords2: Option<Vec<TexCoord>>,
     pub triangles: Vec<Triangle>,
-    pub extension: Vec<u8>,
+    pub extensions: Vec<Extension>,
 }
 
 impl AtomicSector {
@@ -111,20 +112,20 @@ impl AtomicSector {
 
         let _material_id_base = cursor.read_u32_le()?;
         let triangle_count = cursor.read_u32_le()?;
-        let vertex_count = cursor.read_u32_le()?;
+        let vertices_count = cursor.read_u32_le()?;
         let bbox_min = Vec3f::read(cursor)?;
         let bbox_max = Vec3f::read(cursor)?;
         let _unknown = cursor.read_u32_le()?;
         let _unknown2 = cursor.read_u32_le()?;
 
         let mut vertices = vec![];
-        for _ in 0..vertex_count {
+        for _ in 0..vertices_count {
             vertices.push(Vec3f::read(cursor)?);
         }
 
         let prelit_colors = if flag.contains(FormatFlag::PRELIT) {
             let mut colors = vec![];
-            for _ in 0..vertex_count {
+            for _ in 0..vertices_count {
                 colors.push(PrelitColor::read(cursor)?);
             }
 
@@ -135,7 +136,7 @@ impl AtomicSector {
 
         let normals = if flag.contains(FormatFlag::NORMALS) {
             let mut normals = vec![];
-            for _ in 0..vertex_count {
+            for _ in 0..vertices_count {
                 normals.push(Normal::read(cursor)?);
             }
 
@@ -147,7 +148,7 @@ impl AtomicSector {
         let texcoords =
             if flag.contains(FormatFlag::TEXTURED) || flag.contains(FormatFlag::TEXTURED2) {
                 let mut texcoords = vec![];
-                for _ in 0..vertex_count {
+                for _ in 0..vertices_count {
                     texcoords.push(TexCoord::read(cursor)?);
                 }
 
@@ -158,7 +159,7 @@ impl AtomicSector {
 
         let texcoords2 = if flag.contains(FormatFlag::TEXTURED2) {
             let mut texcoords = vec![];
-            for _ in 0..vertex_count {
+            for _ in 0..vertices_count {
                 texcoords.push(TexCoord::read(cursor)?);
             }
 
@@ -179,11 +180,7 @@ impl AtomicSector {
             });
         }
 
-        let header = ChunkHeader::read(cursor)?;
-        check_ty!(header.ty, ChunkType::EXTENSION);
-
-        let mut extension = vec![0u8; header.length as usize];
-        cursor.read_exact(&mut extension)?;
+        let extensions = Extension::read(cursor, vertices_count)?;
 
         Ok(Self {
             bbox_min,
@@ -194,7 +191,7 @@ impl AtomicSector {
             texcoords,
             texcoords2,
             triangles,
-            extension,
+            extensions,
         })
     }
 }

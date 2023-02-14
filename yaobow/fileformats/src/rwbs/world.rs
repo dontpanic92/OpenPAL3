@@ -4,10 +4,12 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use crate::{
-    bsp::sector::{AtomicSector, PlaneSector, Sector},
-    dff::material::Material,
-    rwbs::{check_ty, ChunkHeader, ChunkType, FormatFlag, Vec3f},
+use super::{
+    check_ty,
+    extension::Extension,
+    material::Material,
+    sector::{AtomicSector, PlaneSector, Sector},
+    ChunkHeader, ChunkType, FormatFlag, Vec3f,
 };
 
 #[derive(Debug, Serialize)]
@@ -28,7 +30,7 @@ pub struct World {
 
     pub materials: Vec<Material>,
     pub sector: Sector,
-    pub extension: Vec<u8>,
+    pub extensions: Vec<Extension>,
 }
 
 impl World {
@@ -51,8 +53,8 @@ impl World {
         let bbox_max = Vec3f::read(cursor)?;
         let bbox_min = Vec3f::read(cursor)?;
 
-        let _ = crate::dff::material::read_material_list_header(cursor)?;
-        let materials = crate::dff::material::read_material_list(cursor)?;
+        let _ = super::material::read_material_list_header(cursor)?;
+        let materials = super::material::read_material_list(cursor)?;
 
         let sector = if root_type == 0 {
             let _ = PlaneSector::read_header(cursor)?;
@@ -64,11 +66,7 @@ impl World {
             Sector::AtomicSector(atomic)
         };
 
-        let header = ChunkHeader::read(cursor)?;
-        check_ty!(header.ty, ChunkType::EXTENSION);
-
-        let mut extension = vec![0u8; header.length as usize];
-        cursor.read_exact(&mut extension)?;
+        let extensions = Extension::read(cursor, 0)?;
 
         Ok(Self {
             header,
@@ -87,7 +85,7 @@ impl World {
 
             materials,
             sector,
-            extension,
+            extensions,
         })
     }
 }
