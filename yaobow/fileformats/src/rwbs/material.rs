@@ -29,12 +29,12 @@ impl Texture {
         let header = ChunkHeader::read(cursor)?;
         check_ty!(header.ty, ChunkType::STRING);
 
-        let name = cursor.read_string(header.length as usize)?;
+        let name = cursor.read_gbk_string(header.length as usize)?;
 
         let header = ChunkHeader::read(cursor)?;
         check_ty!(header.ty, ChunkType::STRING);
 
-        let mask_name = cursor.read_string(header.length as usize)?;
+        let mask_name = cursor.read_gbk_string(header.length as usize)?;
 
         let header = ChunkHeader::read(cursor)?;
         check_ty!(header.ty, ChunkType::EXTENSION);

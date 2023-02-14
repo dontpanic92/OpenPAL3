@@ -104,7 +104,7 @@ impl FmbFile {
         let unknown5 = reader.read_u32_le()?;
 
         let name_length = reader.read_u32_le()?;
-        let name = reader.read_string(name_length as usize)?;
+        let name = reader.read_gbk_string(name_length as usize)?;
         let file_size = chunk_size - 4 - 20 - 4 - name_length;
         let start_position = reader.stream_position()?;
 

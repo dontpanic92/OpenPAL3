@@ -247,7 +247,7 @@ impl ScriptModule {
 
 fn read_string(cursor: &mut dyn Read) -> anyhow::Result<String> {
     let len = cursor.read_u32_le()?;
-    cursor.read_string(len as usize)
+    cursor.read_gbk_string(len as usize)
 }
 
 const INST_LENGTH: [usize; 256] = [

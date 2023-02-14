@@ -22,7 +22,7 @@ use world::World;
  *      https://rwsreader.sourceforge.net/
  */
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, PartialEq, Eq, Copy, Clone)]
 pub struct ChunkType(pub u32);
 
 impl ChunkType {
@@ -49,6 +49,8 @@ impl ChunkType {
     pub const PLUGIN_HANIM: Self = Self(0x11e);
     pub const PLUGIN_USERDATA: Self = Self(0x11f);
     pub const PLUGIN_BINMESH: Self = Self(0x50e);
+
+    pub const PLUGIN_NODENAME: Self = Self(0x0253f2fe);
 }
 
 #[derive(Copy, Clone, Debug, Serialize)]

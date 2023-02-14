@@ -47,10 +47,26 @@ pub trait ReadExt: Read {
         Ok(buf)
     }
 
-    fn read_string(&mut self, size: usize) -> anyhow::Result<String> {
+    fn read_gbk_string(&mut self, size: usize) -> anyhow::Result<String> {
         let name = self.read_u8_vec(size)?;
 
         let name_s = encoding::all::GBK
+            .decode(
+                &name
+                    .into_iter()
+                    .take_while(|&c| c != 0)
+                    .collect::<Vec<u8>>(),
+                DecoderTrap::Ignore,
+            )
+            .map_err(|_| FileReadError::StringDecodeError)?;
+
+        Ok(name_s)
+    }
+
+    fn read_string(&mut self, size: usize) -> anyhow::Result<String> {
+        let name = self.read_u8_vec(size)?;
+
+        let name_s = encoding::all::UTF_8
             .decode(
                 &name
                     .into_iter()

@@ -211,7 +211,7 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
             let length = entry.extra_info_size;
             cursor.set_position(offset as u64);
             let name = cursor
-                .read_string(length as usize)
+                .read_gbk_string(length as usize)
                 .or(Err(IoError::from(IoErrorKind::InvalidData)));
 
             if let Ok(n) = name {

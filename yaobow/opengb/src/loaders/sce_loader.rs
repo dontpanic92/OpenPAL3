@@ -72,7 +72,7 @@ pub fn sce_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> SceFile {
 fn read_sce_proc_header(reader: &mut dyn Read) -> SceProcHeader {
     let id = reader.read_u32::<LittleEndian>().unwrap();
     let offset = reader.read_u32::<LittleEndian>().unwrap();
-    let name = reader.read_string(64).unwrap();
+    let name = reader.read_gbk_string(64).unwrap();
 
     SceProcHeader { id, offset, name }
 }
@@ -80,7 +80,7 @@ fn read_sce_proc_header(reader: &mut dyn Read) -> SceProcHeader {
 fn read_sce_proc(reader: &mut dyn Read) -> SceProc {
     let id = reader.read_u32::<LittleEndian>().unwrap();
     let name_len = reader.read_u16::<LittleEndian>().unwrap();
-    let name = reader.read_string(name_len as usize).unwrap();
+    let name = reader.read_gbk_string(name_len as usize).unwrap();
     let local_var_num = reader.read_u16::<LittleEndian>().unwrap();
 
     let mut local_vars = vec![];

@@ -96,9 +96,9 @@ pub fn scn_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> ScnFile {
     let node_num = reader.read_u16::<LittleEndian>().unwrap();
     let node_offset = reader.read_u32::<LittleEndian>().unwrap();
 
-    let cpk_name = reader.read_string(32).unwrap();
-    let scn_name = reader.read_string(32).unwrap();
-    let scn_base_name = reader.read_string(32).unwrap();
+    let cpk_name = reader.read_gbk_string(32).unwrap();
+    let scn_name = reader.read_gbk_string(32).unwrap();
+    let scn_base_name = reader.read_gbk_string(32).unwrap();
 
     let global_scene_index = reader.read_u32::<LittleEndian>().unwrap();
     let is_night = reader.read_u32::<LittleEndian>().unwrap();
@@ -133,7 +133,7 @@ pub fn scn_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> ScnFile {
 fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
     let index = reader.read_u8().unwrap();
     let b1 = reader.read_u8().unwrap();
-    let name = reader.read_string(64).unwrap();
+    let name = reader.read_gbk_string(64).unwrap();
     let w42 = reader.read_u16::<LittleEndian>().unwrap();
     let dw44 = reader.read_f32::<LittleEndian>().unwrap();
     let dw48 = reader.read_u32::<LittleEndian>().unwrap();
@@ -143,7 +143,7 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
     let dw58 = reader.read_u32::<LittleEndian>().unwrap();
     let sce_proc_id = reader.read_u32::<LittleEndian>().unwrap();
     let dw60 = reader.read_u32::<LittleEndian>().unwrap();
-    let action_name = reader.read_string(16).unwrap();
+    let action_name = reader.read_gbk_string(16).unwrap();
     let dw74 = reader.read_u32::<LittleEndian>().unwrap();
     let dw78 = reader.read_u32::<LittleEndian>().unwrap();
     let dw7c = reader.read_u32::<LittleEndian>().unwrap();
@@ -183,7 +183,7 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
 fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
     let index = reader.read_u16::<LittleEndian>().unwrap();
     let w2 = reader.read_u16::<LittleEndian>().unwrap();
-    let name = reader.read_string(32).unwrap();
+    let name = reader.read_gbk_string(32).unwrap();
     let w24 = reader.read_u16::<LittleEndian>().unwrap();
     let w26 = reader.read_u16::<LittleEndian>().unwrap();
     let position_x = reader.read_f32::<LittleEndian>().unwrap();

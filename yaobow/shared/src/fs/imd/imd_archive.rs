@@ -189,7 +189,7 @@ impl ImdFile {
         let unknown12 = reader.read_dw_vec(12)?;
 
         let name_length = reader.read_u32_le()?;
-        let name = reader.read_string(name_length as usize)?;
+        let name = reader.read_gbk_string(name_length as usize)?;
         let file_type = unknown12[1];
         let width = unknown12[4];
         let height = unknown12[5];
