@@ -36,12 +36,7 @@ impl<T: AsRef<[u8]>> PkgArchive<T> {
             path = format!("\\{}", path);
         }
 
-        println!("opening {:?}", path);
         for entry in &self.entries.file_entries {
-            println!(
-                "checking {:?} {} {} {}",
-                entry.fullpath, entry.start_position, entry.size, entry.size2
-            );
             if entry.fullpath == path {
                 self.cursor.set_position(entry.start_position as u64);
                 let mut data = self.cursor.read_u8_vec(entry.size as usize)?;

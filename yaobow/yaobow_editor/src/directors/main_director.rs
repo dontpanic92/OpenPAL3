@@ -10,7 +10,9 @@ use radiance::{
     scene::{CoreScene, Director, SceneManager},
 };
 use radiance_editor::ui::window_content_rect;
-use shared::loaders::{Pal4TextureResolver, Swd5TextureResolver, TextureResolver};
+use shared::loaders::{
+    Pal4TextureResolver, Pal5TextureResolver, Swd5TextureResolver, TextureResolver,
+};
 use std::{
     cell::RefCell,
     cmp::Ordering,
@@ -31,9 +33,8 @@ impl DevToolsDirector {
         game_type: GameType,
     ) -> Rc<RefCell<Self>> {
         let texture_resolver: Rc<dyn TextureResolver> = match game_type {
-            GameType::PAL3 | GameType::PAL4 | GameType::PAL5 | GameType::PAL5Q => {
-                Rc::new(Pal4TextureResolver {})
-            }
+            GameType::PAL3 | GameType::PAL4 => Rc::new(Pal4TextureResolver {}),
+            GameType::PAL5 | GameType::PAL5Q => Rc::new(Pal5TextureResolver {}),
             _ => Rc::new(Swd5TextureResolver {}),
         };
 
