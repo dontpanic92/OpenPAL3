@@ -60,6 +60,14 @@ fn create_geometry<P: AsRef<Path>>(
     path: P,
     texture_resolver: &dyn TextureResolver,
 ) -> Vec<radiance::rendering::Geometry> {
+    if geometry.morph_targets.len() == 0 {
+        return vec![];
+    }
+
+    if geometry.morph_targets[0].vertices.is_none() {
+        return vec![];
+    }
+
     let vertices = geometry.morph_targets[0].vertices.as_ref().unwrap();
     let normals = geometry.morph_targets[0].normals.as_ref();
     let triangles = &geometry.triangles;

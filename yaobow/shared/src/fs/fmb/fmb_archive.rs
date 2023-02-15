@@ -40,7 +40,18 @@ impl<T: AsRef<[u8]>> PlainArchive for FmbArchive<T> {
 
         if let Some(file) = self.files.get(path) {
             self.cursor.set_position(file.start_position as u64);
-            let data = self.cursor.read_u8_vec(file.file_size as usize)?;
+            let mut data = self.cursor.read_u8_vec(file.compressed_size as usize)?;
+
+            if file.is_compressed == 1 {
+                let lzo = minilzo_rs::LZO::init().unwrap();
+                let decompressed_content = lzo
+                    .decompress(&data, file.uncompressed_size as usize)
+                    .or_else(|e| {
+                    Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+                })?;
+
+                data = decompressed_content;
+            }
 
             Ok(MemoryFile::new(Cursor::new(data)))
         } else {
@@ -82,12 +93,11 @@ impl FmbMeta {
 
 #[derive(Debug, Clone)]
 pub struct FmbFile {
-    pub file_size: u32,
     pub name: String,
     pub start_position: u64,
-    pub unknown1: u32,
-    pub unknown2: u32,
-    pub unknown3: u32,
+    pub is_compressed: u32,
+    pub uncompressed_size: u32,
+    pub compressed_size: u32,
     pub unknown4: u32,
     pub unknown5: u32,
 }
@@ -97,26 +107,24 @@ impl FmbFile {
         let current_position = reader.stream_position().unwrap();
 
         let chunk_size = reader.read_u32_le()?;
-        let unknown1 = reader.read_u32_le()?;
-        let unknown2 = reader.read_u32_le()?;
-        let unknown3 = reader.read_u32_le()?;
+        let is_compressed = reader.read_u32_le()?;
+        let uncompressed_size = reader.read_u32_le()?;
+        let compressed_size = reader.read_u32_le()?;
         let unknown4 = reader.read_u32_le()?;
         let unknown5 = reader.read_u32_le()?;
 
         let name_length = reader.read_u32_le()?;
         let name = reader.read_gbk_string(name_length as usize)?;
-        let file_size = chunk_size - 4 - 20 - 4 - name_length;
         let start_position = reader.stream_position()?;
 
         reader.seek(SeekFrom::Start(current_position + chunk_size as u64))?;
 
         Ok(Self {
-            file_size,
             name,
             start_position,
-            unknown1,
-            unknown2,
-            unknown3,
+            is_compressed,
+            uncompressed_size,
+            compressed_size,
             unknown4,
             unknown5,
         })
