@@ -12,6 +12,7 @@ crate-type = [ "rlib" ]
 [dependencies]
 anyhow = "1.0"
 byteorder = "1.3.4"
+cipher = "0.4.2"
 common = { path = "../common" }
 crosscom = { path = "../../crosscom/runtime/rust" }
 encoding = "0.2.33"
@@ -19,6 +20,7 @@ fileformats = { path = "../fileformats" }
 image = "0.23.0"
 lazy_static = "1.2.0"
 log = { version = "0.4.13" }
+lzma-rs = "0.3.0"
 md5 = "0.7"
 memmap = "0.7.0"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
@@ -26,5 +28,7 @@ minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
 miniz_oxide ="0.6"
 radiance = { path = "../../radiance/radiance" }
 thiserror = "1.0"
+# tomcrypt-sys = "0.1"
 wavefront_obj = "5.1.0"
+xtea = { git = "https://github.com/Brekcel/xtea" }
 xxtea = "0.2.0"

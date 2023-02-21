@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 mod comdef;
+mod opengujian;
 mod openpal3;
 mod openpal4;
 

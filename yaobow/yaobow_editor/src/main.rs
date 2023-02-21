@@ -24,6 +24,7 @@ pub enum GameType {
     SWD5,
     SWDHC,
     SWDCF,
+    Gujian,
 }
 
 pub struct SceneViewResourceView {
@@ -55,6 +56,7 @@ impl SceneViewResourceView {
             GameType::SWD5 => "OpenSWD5",
             GameType::SWDHC => "OpenSWDHC",
             GameType::SWDCF => "OpenSWDCF",
+            GameType::Gujian => "OpenGujian",
         };
 
         app.set_title(&format!("妖弓编辑器 - {}", game_name));
@@ -123,6 +125,10 @@ fn main() {
             "--swdcf" => {
                 config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\SWDCF".to_string();
                 game = GameType::SWDCF;
+            }
+            "--gujian" => {
+                config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\Gujian".to_string();
+                game = GameType::Gujian;
             }
             &_ => {}
         }

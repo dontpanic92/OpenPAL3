@@ -1,10 +1,12 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 
+use opengujian::run_opengujian;
 use openpal3::run_openpal3;
 use openpal4::run_openpal4;
 
 mod comdef;
+mod opengujian;
 mod openpal3;
 mod openpal4;
 
@@ -27,6 +29,9 @@ pub fn main() {
             }
             "--pal5q" => {
                 run_openpal4();
+            }
+            "--gujian" => {
+                run_opengujian();
             }
             &_ => {}
         }

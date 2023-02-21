@@ -5,6 +5,7 @@ pub mod memory_file;
 pub mod pkg;
 pub mod plain_fs;
 pub mod sfb;
+pub mod zpk;
 
 use std::{
     fs,
@@ -16,6 +17,7 @@ use mini_fs::{LocalFs, MiniFs};
 
 use crate::fs::{
     cpk::CpkFs, fmb::fmb_fs::FmbFs, imd::imd_fs::ImdFs, pkg::pkg_fs::PkgFs, sfb::sfb_fs::SfbFs,
+    zpk::zpk_fs::ZpkFs,
 };
 
 pub fn init_virtual_fs<P: AsRef<Path>>(local_asset_path: P, pkg_key: Option<&str>) -> MiniFs {
@@ -72,6 +74,10 @@ fn mount_packages_recursive(
                     vfs = vfs.mount(vfs_path, PkgFs::new(path, key).unwrap())
                 }
             },
+            Some("zpk") => {
+                log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
+                vfs = vfs.mount(vfs_path, ZpkFs::create(path).unwrap())
+            }
             _ => {}
         }
     }

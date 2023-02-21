@@ -30,6 +30,7 @@ impl Previewer for AudioPreviewer {
             Some("mp3") => Some(AudioCodec::Mp3),
             Some("smp") => Some(AudioCodec::Mp3),
             Some("wav") => Some(AudioCodec::Wav),
+            Some("ogg") => Some(AudioCodec::Ogg),
             _ => None,
         };
 
