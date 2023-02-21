@@ -460,6 +460,7 @@ macro_rules! ComObject_Application {
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
@@ -1020,6 +1021,7 @@ macro_rules! ComObject_Scene {
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
@@ -1603,6 +1605,7 @@ macro_rules! ComObject_Entity {
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
@@ -2014,6 +2017,7 @@ macro_rules! ComObject_StaticMeshComponent {
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
@@ -2295,6 +2299,7 @@ macro_rules! ComObject_AnimatedMeshComponent {
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
@@ -2440,3 +2445,129 @@ macro_rules! ComObject_AnimatedMeshComponent {
 }
 
 // pub use ComObject_AnimatedMeshComponent;
+
+// Interface IDirector
+
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct IDirectorVirtualTable {
+    pub query_interface: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        guid: uuid::Uuid,
+        retval: &mut *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_long,
+    pub add_ref:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub release:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub activate: fn(
+        this: *const *const std::os::raw::c_void,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+    ) -> crosscom::Void,
+    pub update: fn(
+        this: *const *const std::os::raw::c_void,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+        ui: &imgui::Ui,
+        delta_sec: f32,
+    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>>,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IDirectorVirtualTableCcw {
+    pub offset: isize,
+    pub vtable: IDirectorVirtualTable,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IDirector {
+    pub vtable: *const IDirectorVirtualTable,
+}
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+impl IDirector {
+    pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
+        let this = self as *const IDirector as *const *const std::os::raw::c_void;
+        let mut raw = 0 as *const *const std::os::raw::c_void;
+        let guid = uuid::Uuid::from_bytes(T::INTERFACE_ID);
+        let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
+        if ret_val != 0 {
+            None
+        } else {
+            Some(unsafe { crosscom::ComRc::<T>::from_raw_pointer(raw) })
+        }
+    }
+
+    pub fn add_ref(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IDirector as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn release(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IDirector as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn activate(
+        &self,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+    ) -> crosscom::Void {
+        unsafe {
+            let this = self as *const IDirector as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).activate)(this, scene_manager.into());
+
+            ret
+        }
+    }
+
+    pub fn update(
+        &self,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+        ui: &imgui::Ui,
+        delta_sec: f32,
+    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
+        unsafe {
+            let this = self as *const IDirector as *const *const std::os::raw::c_void;
+            let ret =
+                ((*self.vtable).update)(this, scene_manager.into(), ui.into(), delta_sec.into());
+
+            ret
+        }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(IDirector::INTERFACE_ID)
+    }
+}
+
+pub trait IDirectorImpl {
+    fn activate(&self, scene_manager: &mut dyn radiance::scene::SceneManager) -> crosscom::Void;
+    fn update(
+        &self,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+        ui: &imgui::Ui,
+        delta_sec: f32,
+    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>>;
+}
+
+impl crosscom::ComInterface for IDirector {
+    // 6dedae32-8339-482e-9f66-c30d557cacb4
+    const INTERFACE_ID: [u8; 16] = [
+        109u8, 237u8, 174u8, 50u8, 131u8, 57u8, 72u8, 46u8, 159u8, 102u8, 195u8, 13u8, 85u8, 124u8,
+        172u8, 180u8,
+    ];
+}

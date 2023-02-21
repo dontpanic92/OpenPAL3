@@ -1,5 +1,6 @@
 module(rust) radiance_editor::comdef;
 
+import crosscom.idl;
 import radiance.idl;
 
 [uuid(6ac46481-7efa-45ff-a279-687b4603c746)]
@@ -13,3 +14,6 @@ class ResourceViewContent: IViewContent {}
 
 [uuid(9a9be0b9-f9bd-4107-99ba-6813d858c464)]
 class EditorApplicationLoaderComponent: IApplicationLoaderComponent {}
+
+[uuid(e983407c-6197-42f8-bfb5-cd78dfc822b9)]
+class MainPageDirector: IDirector {}

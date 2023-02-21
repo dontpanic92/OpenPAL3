@@ -1,0 +1,14 @@
+module(rust) yaobow_editor::comdef;
+
+import crosscom.idl;
+import radiance.idl;
+import editor.idl;
+
+[uuid(6dfadcb1-4a4d-45ed-879f-43abc29ac8e1)]
+class WelcomePageDirector: IDirector {}
+
+[uuid(0181e046-cd8b-4b3c-8ee9-37952202fcb0)]
+class YaobowResourceViewContent: IViewContent {}
+
+[uuid(b8df017d-57f9-4f1c-956e-cc7e6a01f76e)]
+class DevToolsDirector: IDirector {}

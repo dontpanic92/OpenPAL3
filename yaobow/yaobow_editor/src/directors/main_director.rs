@@ -1,13 +1,15 @@
-use crate::GameType;
+use crate::{ComObject_DevToolsDirector, GameType};
 
 use super::{main_content::ContentTabs, DevToolsState};
+use crosscom::ComRc;
 use imgui::{Condition, Ui};
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::asset_manager::AssetManager;
 use radiance::{
     audio::AudioEngine,
+    comdef::{IDirector, IDirectorImpl},
     math::Vec3,
-    scene::{CoreScene, Director, SceneManager},
+    scene::{CoreScene, SceneManager},
 };
 use radiance_editor::ui::window_content_rect;
 use shared::loaders::{
@@ -17,43 +19,40 @@ use std::{
     cell::RefCell,
     cmp::Ordering,
     path::{Path, PathBuf},
-    rc::{Rc, Weak},
+    rc::Rc,
 };
 
 pub struct DevToolsDirector {
-    shared_self: Weak<RefCell<Self>>,
     asset_mgr: Rc<AssetManager>,
-    content_tabs: ContentTabs,
+    content_tabs: RefCell<ContentTabs>,
 }
+
+ComObject_DevToolsDirector!(super::DevToolsDirector);
 
 impl DevToolsDirector {
     pub fn new(
         audio_engine: Rc<dyn AudioEngine>,
         asset_mgr: Rc<AssetManager>,
         game_type: GameType,
-    ) -> Rc<RefCell<Self>> {
+    ) -> ComRc<IDirector> {
         let texture_resolver: Rc<dyn TextureResolver> = match game_type {
             GameType::PAL3 | GameType::PAL4 => Rc::new(Pal4TextureResolver {}),
             GameType::PAL5 | GameType::PAL5Q => Rc::new(Pal5TextureResolver {}),
             _ => Rc::new(Swd5TextureResolver {}),
         };
 
-        let mut _self = Rc::new(RefCell::new(Self {
-            shared_self: Weak::new(),
-            content_tabs: ContentTabs::new(
+        ComRc::from_object(Self {
+            content_tabs: RefCell::new(ContentTabs::new(
                 audio_engine,
                 asset_mgr.clone(),
                 game_type,
                 texture_resolver,
-            ),
+            )),
             asset_mgr,
-        }));
-
-        _self.borrow_mut().shared_self = Rc::downgrade(&_self);
-        _self
+        })
     }
 
-    fn main_window(&mut self, ui: &Ui) -> Option<DevToolsState> {
+    fn main_window(&self, ui: &Ui) -> Option<DevToolsState> {
         let content_rect = window_content_rect(ui);
 
         ui.window("Files")
@@ -86,7 +85,7 @@ impl DevToolsDirector {
         state
     }
 
-    fn render_tree_nodes<P: AsRef<Path>>(&mut self, ui: &Ui, path: P) {
+    fn render_tree_nodes<P: AsRef<Path>>(&self, ui: &Ui, path: P) {
         let entries = self.get_entries(path.as_ref());
         for e in entries {
             let e_path = PathBuf::from(&e.name);
@@ -105,15 +104,17 @@ impl DevToolsDirector {
             } else {
                 treenode.leaf(true).build(|| {
                     if ui.is_item_clicked() {
-                        self.content_tabs.open(self.asset_mgr.vfs(), &e_fullname);
+                        self.content_tabs
+                            .borrow_mut()
+                            .open(self.asset_mgr.vfs(), &e_fullname);
                     }
                 });
             }
         }
     }
 
-    fn render_content(&mut self, ui: &Ui) -> Option<DevToolsState> {
-        self.content_tabs.render_tabs(ui)
+    fn render_content(&self, ui: &Ui) -> Option<DevToolsState> {
+        self.content_tabs.borrow_mut().render_tabs(ui)
     }
 
     fn get_entries<P: AsRef<Path>>(&self, path: P) -> Vec<Entry> {
@@ -130,15 +131,15 @@ impl DevToolsDirector {
     }
 }
 
-impl Director for DevToolsDirector {
-    fn activate(&mut self, _scene_manager: &mut dyn SceneManager) {}
+impl IDirectorImpl for DevToolsDirector {
+    fn activate(&self, _scene_manager: &mut dyn SceneManager) {}
 
     fn update(
-        &mut self,
+        &self,
         scene_manager: &mut dyn SceneManager,
         ui: &imgui::Ui,
         _delta_sec: f32,
-    ) -> Option<Rc<RefCell<dyn Director>>> {
+    ) -> Option<ComRc<IDirector>> {
         let state = self.main_window(ui);
         match state {
             Some(DevToolsState::PreviewScene { cpk_name, scn_name }) => {

@@ -35,6 +35,10 @@ impl<TComInterface: ComInterface> ComRc<TComInterface> {
         self.into()
     }
 
+    pub fn is_null(&self) -> bool {
+        self.this.is_null()
+    }
+
     fn query_interface_raw(raw: *const c_void) -> ComRc<TComInterface> {
         unsafe {
             (raw as *const IUnknown)

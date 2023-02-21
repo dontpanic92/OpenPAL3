@@ -1,5 +1,6 @@
 module(rust) opengb::comdef;
 
+import crosscom.idl;
 import radiance.idl;
 
 [uuid(e11fe493-654a-4072-b883-a7ee1a35a24a)]
@@ -25,3 +26,12 @@ interface IScnSceneComponent: IComponent {
 
 [uuid(69e2fd84-c679-40c0-9608-9578d1aaecaf)]
 class ScnSceneComponent: IScnSceneComponent {}
+
+[uuid(4ca4e74c-c5a9-4356-8aae-19a0af9ac899)]
+interface IAdventureDirector: IDirector {
+    [internal(), rust()]
+    &'static opengb::directors::AdventureDirector get();
+}
+
+[uuid(0ac488a6-7d94-4b1d-ae37-8d9365005c7d)]
+class AdventureDirector: IAdventureDirector {}

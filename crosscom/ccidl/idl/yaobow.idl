@@ -1,5 +1,6 @@
 module(rust) yaobow::comdef;
 
+import crosscom.idl;
 import radiance.idl;
 
 [uuid(e0618113-5cf2-4562-ba93-ffd35d36c7f3)]
@@ -7,3 +8,6 @@ class OpenPal3ApplicationLoaderComponent: IApplicationLoaderComponent {}
 
 [uuid(412087ff-19be-4fa1-865a-9dbc243bd434)]
 class OpenPal4ApplicationLoaderComponent: IApplicationLoaderComponent {}
+
+[uuid(06c84916-355f-46a2-a61d-4e9caab8abe8)]
+class MainMenuDirector: IDirector {}

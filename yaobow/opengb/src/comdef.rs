@@ -131,6 +131,7 @@ macro_rules! ComObject_RoleController {
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
+            use opengb::comdef::IAdventureDirectorImpl;
             use opengb::comdef::ICvdModelImpl;
             use opengb::comdef::IRoleControllerImpl;
             use opengb::comdef::IScnSceneComponentImpl;
@@ -139,6 +140,7 @@ macro_rules! ComObject_RoleController {
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
@@ -398,6 +400,7 @@ macro_rules! ComObject_CvdModel {
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
+            use opengb::comdef::IAdventureDirectorImpl;
             use opengb::comdef::ICvdModelImpl;
             use opengb::comdef::IRoleControllerImpl;
             use opengb::comdef::IScnSceneComponentImpl;
@@ -406,6 +409,7 @@ macro_rules! ComObject_CvdModel {
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
@@ -660,6 +664,7 @@ macro_rules! ComObject_ScnSceneComponent {
             use crosscom::ComInterface;
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
+            use opengb::comdef::IAdventureDirectorImpl;
             use opengb::comdef::ICvdModelImpl;
             use opengb::comdef::IRoleControllerImpl;
             use opengb::comdef::IScnSceneComponentImpl;
@@ -668,6 +673,7 @@ macro_rules! ComObject_ScnSceneComponent {
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
@@ -804,3 +810,304 @@ macro_rules! ComObject_ScnSceneComponent {
 }
 
 // pub use ComObject_ScnSceneComponent;
+
+// Interface IAdventureDirector
+
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct IAdventureDirectorVirtualTable {
+    pub query_interface: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        guid: uuid::Uuid,
+        retval: &mut *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_long,
+    pub add_ref:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub release:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub activate: fn(
+        this: *const *const std::os::raw::c_void,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+    ) -> crosscom::Void,
+    pub update: fn(
+        this: *const *const std::os::raw::c_void,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+        ui: &imgui::Ui,
+        delta_sec: f32,
+    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>>,
+    pub get: fn(
+        this: *const *const std::os::raw::c_void,
+    ) -> &'static opengb::directors::AdventureDirector,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IAdventureDirectorVirtualTableCcw {
+    pub offset: isize,
+    pub vtable: IAdventureDirectorVirtualTable,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IAdventureDirector {
+    pub vtable: *const IAdventureDirectorVirtualTable,
+}
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+impl IAdventureDirector {
+    pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
+        let this = self as *const IAdventureDirector as *const *const std::os::raw::c_void;
+        let mut raw = 0 as *const *const std::os::raw::c_void;
+        let guid = uuid::Uuid::from_bytes(T::INTERFACE_ID);
+        let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
+        if ret_val != 0 {
+            None
+        } else {
+            Some(unsafe { crosscom::ComRc::<T>::from_raw_pointer(raw) })
+        }
+    }
+
+    pub fn add_ref(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IAdventureDirector as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn release(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IAdventureDirector as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn activate(
+        &self,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+    ) -> crosscom::Void {
+        unsafe {
+            let this = self as *const IAdventureDirector as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).activate)(this, scene_manager.into());
+
+            ret
+        }
+    }
+
+    pub fn update(
+        &self,
+        scene_manager: &mut dyn radiance::scene::SceneManager,
+        ui: &imgui::Ui,
+        delta_sec: f32,
+    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
+        unsafe {
+            let this = self as *const IAdventureDirector as *const *const std::os::raw::c_void;
+            let ret =
+                ((*self.vtable).update)(this, scene_manager.into(), ui.into(), delta_sec.into());
+
+            ret
+        }
+    }
+
+    pub fn get(&self) -> &'static opengb::directors::AdventureDirector {
+        unsafe {
+            let this = self as *const IAdventureDirector as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).get)(this);
+
+            ret
+        }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(IAdventureDirector::INTERFACE_ID)
+    }
+}
+
+pub trait IAdventureDirectorImpl {
+    fn get(&self) -> &'static opengb::directors::AdventureDirector;
+}
+
+impl crosscom::ComInterface for IAdventureDirector {
+    // 4ca4e74c-c5a9-4356-8aae-19a0af9ac899
+    const INTERFACE_ID: [u8; 16] = [
+        76u8, 164u8, 231u8, 76u8, 197u8, 169u8, 67u8, 86u8, 138u8, 174u8, 25u8, 160u8, 175u8,
+        154u8, 200u8, 153u8,
+    ];
+}
+
+// Class AdventureDirector
+
+#[allow(unused)]
+#[macro_export]
+macro_rules! ComObject_AdventureDirector {
+    ($impl_type: ty) => {
+        #[allow(dead_code)]
+        #[allow(non_snake_case)]
+        #[allow(unused)]
+        mod AdventureDirector_crosscom_impl {
+            use crate as opengb;
+            use crosscom::ComInterface;
+            use crosscom::IObjectArrayImpl;
+            use crosscom::IUnknownImpl;
+            use opengb::comdef::IAdventureDirectorImpl;
+            use opengb::comdef::ICvdModelImpl;
+            use opengb::comdef::IRoleControllerImpl;
+            use opengb::comdef::IScnSceneComponentImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IDirectorImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
+
+            #[repr(C)]
+            pub struct AdventureDirectorCcw {
+                IAdventureDirector: opengb::comdef::IAdventureDirector,
+
+                ref_count: std::sync::atomic::AtomicU32,
+                pub inner: $impl_type,
+            }
+
+            unsafe extern "system" fn query_interface(
+                this: *const *const std::os::raw::c_void,
+                guid: uuid::Uuid,
+                retval: &mut *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<AdventureDirectorCcw>(this);
+                match guid.as_bytes() {
+                    &crosscom::IUnknown::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
+                    }
+
+                    &radiance::comdef::IDirector::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
+                    }
+
+                    &opengb::comdef::IAdventureDirector::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
+                    }
+
+                    _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
+                }
+            }
+
+            unsafe extern "system" fn add_ref(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<AdventureDirectorCcw>(this);
+                let previous = (*object)
+                    .ref_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                (previous + 1) as std::os::raw::c_long
+            }
+
+            unsafe extern "system" fn release(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<AdventureDirectorCcw>(this);
+
+                let previous = (*object)
+                    .ref_count
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                if previous - 1 == 0 {
+                    Box::from_raw(object as *mut AdventureDirectorCcw);
+                }
+
+                (previous - 1) as std::os::raw::c_long
+            }
+
+            fn get(
+                this: *const *const std::os::raw::c_void,
+            ) -> &'static opengb::directors::AdventureDirector {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<AdventureDirectorCcw>(this);
+                    (*__crosscom_object).inner.get()
+                }
+            }
+
+            fn activate(
+                this: *const *const std::os::raw::c_void,
+                scene_manager: &mut dyn radiance::scene::SceneManager,
+            ) -> crosscom::Void {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<AdventureDirectorCcw>(this);
+                    (*__crosscom_object).inner.activate(scene_manager)
+                }
+            }
+
+            fn update(
+                this: *const *const std::os::raw::c_void,
+                scene_manager: &mut dyn radiance::scene::SceneManager,
+                ui: &imgui::Ui,
+                delta_sec: f32,
+            ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<AdventureDirectorCcw>(this);
+                    (*__crosscom_object)
+                        .inner
+                        .update(scene_manager, ui, delta_sec)
+                }
+            }
+
+            #[allow(non_upper_case_globals)]
+            pub const GLOBAL_IAdventureDirectorVirtualTable_CCW_FOR_AdventureDirector:
+                opengb::comdef::IAdventureDirectorVirtualTableCcw =
+                opengb::comdef::IAdventureDirectorVirtualTableCcw {
+                    offset: 0,
+                    vtable: opengb::comdef::IAdventureDirectorVirtualTable {
+                        query_interface,
+                        add_ref,
+                        release,
+                        activate,
+                        update,
+                        get,
+                    },
+                };
+
+            impl crosscom::ComObject for $impl_type {
+                type CcwType = AdventureDirectorCcw;
+
+                fn create_ccw(self) -> Self::CcwType {
+                    Self::CcwType {
+                        IAdventureDirector: opengb::comdef::IAdventureDirector {
+                            vtable: &GLOBAL_IAdventureDirectorVirtualTable_CCW_FOR_AdventureDirector
+                                .vtable
+                                as *const opengb::comdef::IAdventureDirectorVirtualTable,
+                        },
+
+                        ref_count: std::sync::atomic::AtomicU32::new(0),
+                        inner: self,
+                    }
+                }
+
+                fn get_ccw(&self) -> &Self::CcwType {
+                    unsafe {
+                        let this = self as *const _ as *const u8;
+                        let this = this
+                            .offset(-(crosscom::offset_of!(AdventureDirectorCcw, inner) as isize));
+                        &*(this as *const Self::CcwType)
+                    }
+                }
+            }
+        }
+    };
+}
+
+// pub use ComObject_AdventureDirector;

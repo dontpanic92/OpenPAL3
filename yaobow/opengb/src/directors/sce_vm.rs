@@ -1,10 +1,12 @@
 use super::{global_state::GlobalState, sce_commands::*};
 use crate::ui::dlg_box::DialogBox;
 use crate::{asset_manager::AssetManager, loaders::sce_loader::SceFile};
+use crosscom::ComRc;
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
 use log::{debug, error, warn};
-use radiance::scene::{Director, SceneManager};
+use radiance::comdef::IDirector;
+use radiance::scene::SceneManager;
 use radiance::{audio::AudioEngine, input::InputEngine};
 use std::fmt::Debug;
 use std::{
@@ -68,7 +70,7 @@ impl SceVm {
         scene_manager: &mut dyn SceneManager,
         ui: &Ui,
         delta_sec: f32,
-    ) -> Option<Rc<RefCell<dyn Director>>> {
+    ) -> Option<ComRc<IDirector>> {
         self.state.global_state_mut().update(delta_sec);
 
         if self.active_commands.len() == 0 {

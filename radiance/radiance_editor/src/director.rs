@@ -1,44 +1,43 @@
+use crosscom::ComRc;
 use imgui::{Condition, Ui};
 use radiance::{
+    comdef::{IDirector, IDirectorImpl},
     input::InputEngine,
-    scene::{Director, SceneManager},
+    scene::SceneManager,
 };
-use std::{
-    cell::RefCell,
-    rc::{Rc, Weak},
+use std::{cell::RefCell, rc::Rc};
+
+use crate::{
+    ui::scene_view::{SceneView, SceneViewPlugins},
+    ComObject_MainPageDirector,
 };
 
-use crate::ui::scene_view::{SceneView, SceneViewPlugins};
-
-pub struct UiDirector {
-    shared_self: Weak<RefCell<Self>>,
-    scene_view: SceneView,
+pub struct MainPageDirector {
+    scene_view: RefCell<SceneView>,
 }
 
-impl UiDirector {
+ComObject_MainPageDirector!(super::MainPageDirector);
+
+impl MainPageDirector {
     pub fn new(
         scene_view_plugins: Option<SceneViewPlugins>,
         input: Rc<RefCell<dyn InputEngine>>,
-    ) -> Rc<RefCell<Self>> {
-        let mut _self = Rc::new(RefCell::new(Self {
-            shared_self: Weak::new(),
-            scene_view: SceneView::new(input, scene_view_plugins),
-        }));
-
-        _self.borrow_mut().shared_self = Rc::downgrade(&_self);
-        _self
+    ) -> ComRc<IDirector> {
+        ComRc::from_object(Self {
+            scene_view: RefCell::new(SceneView::new(input, scene_view_plugins)),
+        })
     }
 }
 
-impl Director for UiDirector {
-    fn activate(&mut self, _scene_manager: &mut dyn SceneManager) {}
+impl IDirectorImpl for MainPageDirector {
+    fn activate(&self, _scene_manager: &mut dyn SceneManager) {}
 
     fn update(
-        &mut self,
+        &self,
         scene_manager: &mut dyn SceneManager,
         ui: &Ui,
         delta_sec: f32,
-    ) -> Option<Rc<RefCell<dyn Director>>> {
+    ) -> Option<ComRc<IDirector>> {
         let [window_width, window_height] = ui.io().display_size;
         let font = ui.push_font(ui.fonts().fonts()[1]);
 
@@ -51,7 +50,11 @@ impl Director for UiDirector {
             .draw_background(false)
             .title_bar(false)
             .bring_to_front_on_focus(false)
-            .build(|| self.scene_view.render(scene_manager, ui, delta_sec));
+            .build(|| {
+                self.scene_view
+                    .borrow_mut()
+                    .render(scene_manager, ui, delta_sec)
+            });
 
         font.pop();
 

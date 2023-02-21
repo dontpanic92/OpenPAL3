@@ -1,9 +1,7 @@
-use crate::comdef::IScene;
+use crate::comdef::{IDirector, IScene};
 
-use super::Director;
 use crosscom::ComRc;
 use imgui::Ui;
-use std::{cell::RefCell, rc::Rc};
 
 pub trait SceneManager {
     fn update(&mut self, ui: &Ui, delta_sec: f32);
@@ -11,8 +9,8 @@ pub trait SceneManager {
     fn scenes(&self) -> &[ComRc<IScene>];
 
     fn set_view_extent(&mut self, extent: (u32, u32));
-    fn director(&self) -> Option<Rc<RefCell<dyn Director>>>;
-    fn set_director(&mut self, director: Rc<RefCell<dyn Director>>);
+    fn director(&self) -> Option<ComRc<IDirector>>;
+    fn set_director(&mut self, director: ComRc<IDirector>);
     fn push_scene(&mut self, scene: ComRc<IScene>);
     fn pop_scene(&mut self) -> Option<ComRc<IScene>>;
     fn unload_all_scenes(&mut self);
@@ -20,7 +18,7 @@ pub trait SceneManager {
 }
 
 pub struct DefaultSceneManager {
-    director: Option<Rc<RefCell<dyn Director>>>,
+    director: Option<ComRc<IDirector>>,
     scenes: Vec<ComRc<IScene>>,
     view_extent: (u32, u32),
 }
@@ -39,9 +37,9 @@ impl SceneManager for DefaultSceneManager {
     fn update(&mut self, ui: &Ui, delta_sec: f32) {
         if let Some(d) = self.director.as_ref() {
             let director = d.clone();
-            let new_director = director.borrow_mut().update(self, ui, delta_sec);
+            let new_director = director.update(self, ui, delta_sec);
             if let Some(d) = new_director {
-                d.borrow_mut().activate(self);
+                d.activate(self);
                 self.director = Some(d);
             }
         }
@@ -63,12 +61,12 @@ impl SceneManager for DefaultSceneManager {
         self.view_extent = extent;
     }
 
-    fn director(&self) -> Option<Rc<RefCell<dyn Director>>> {
-        Some(self.director.as_ref()?.clone())
+    fn director(&self) -> Option<ComRc<IDirector>> {
+        self.director.clone()
     }
 
-    fn set_director(&mut self, director: Rc<RefCell<dyn Director>>) {
-        director.borrow_mut().activate(self);
+    fn set_director(&mut self, director: ComRc<IDirector>) {
+        director.activate(self);
         self.director = Some(director);
     }
 

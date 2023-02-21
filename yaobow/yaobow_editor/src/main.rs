@@ -1,6 +1,6 @@
 #![feature(drain_filter)]
+mod comdef;
 mod directors;
-
 mod preview;
 
 use std::cell::RefCell;
@@ -10,12 +10,10 @@ use crosscom::ComRc;
 use directors::DevToolsDirector;
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::Application;
-use radiance::comdef::{IApplication, IApplicationLoaderComponent};
-use radiance::scene::Director;
+use radiance::comdef::{IApplication, IApplicationLoaderComponent, IDirector};
 use radiance_editor::application::EditorApplicationLoader;
 use radiance_editor::comdef::IViewContentImpl;
 use radiance_editor::ui::scene_view::SceneViewPlugins;
-use radiance_editor::ComObject_ResourceViewContent;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum GameType {
@@ -29,10 +27,10 @@ pub enum GameType {
 }
 
 pub struct SceneViewResourceView {
-    ui: RefCell<Option<Rc<RefCell<DevToolsDirector>>>>,
+    ui: RefCell<Option<ComRc<IDirector>>>,
 }
 
-ComObject_ResourceViewContent!(crate::SceneViewResourceView);
+ComObject_YaobowResourceViewContent!(crate::SceneViewResourceView);
 
 impl IViewContentImpl for SceneViewResourceView {
     fn render(
@@ -43,7 +41,7 @@ impl IViewContentImpl for SceneViewResourceView {
     ) -> crosscom::Void {
         let mut director = self.ui.borrow_mut();
         let view = director.as_mut().unwrap();
-        view.borrow_mut().update(scene_manager, ui, delta_sec);
+        view.update(scene_manager, ui, delta_sec);
     }
 }
 

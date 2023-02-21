@@ -2,8 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use imgui::{InputTextMultiline, TabBar, TabItem, Ui};
 use opengb::{
-    directors::{AdventureDirector, SceneManagerExtensions},
-    scene::RoleController,
+    comdef::IAdventureDirector, directors::SceneManagerExtensions, scene::RoleController,
 };
 use radiance::{
     application::utils::FpsCounter,
@@ -43,18 +42,16 @@ impl OpenPal3DebugLayer {
             }
 
             let coord = scene_manager.director().as_ref().and_then(|d| {
-                d.borrow()
-                    .downcast_ref::<AdventureDirector>()
-                    .and_then(|adv| {
-                        Some(
-                            scene_manager
-                                .get_resolved_role(adv.sce_vm().state(), -1)
-                                .unwrap()
-                                .transform()
-                                .borrow()
-                                .position(),
-                        )
-                    })
+                d.query_interface::<IAdventureDirector>().and_then(|adv| {
+                    Some(
+                        scene_manager
+                            .get_resolved_role(adv.get().sce_vm().state(), -1)
+                            .unwrap()
+                            .transform()
+                            .borrow()
+                            .position(),
+                    )
+                })
             });
 
             ui.text(format!("Coord: {:?}", &coord));
@@ -68,8 +65,10 @@ impl OpenPal3DebugLayer {
     fn build_nav_tab(scene_manager: &mut dyn SceneManager, ui: &Ui, coord: Option<&Vec3>) {
         TabItem::new("Nav").build(ui, || {
             if let Some(d) = scene_manager.director().as_ref() {
-                if let Some(d) = d.borrow_mut().downcast_mut::<AdventureDirector>() {
-                    let pass_through = d.sce_vm_mut().global_state_mut().pass_through_wall_mut();
+                if let Some(director) = d.query_interface::<IAdventureDirector>() {
+                    let d = director.get();
+                    let mut sce_vm = d.sce_vm_mut();
+                    let pass_through = sce_vm.global_state_mut().pass_through_wall_mut();
                     ui.checkbox("无视地形", pass_through);
 
                     if let Some(s) = scene_manager.scn_scene() {
@@ -166,7 +165,8 @@ impl OpenPal3DebugLayer {
     fn build_sce_tab(scene_manager: &mut dyn SceneManager, ui: &Ui) {
         TabItem::new("Sce").build(ui, || {
             if let Some(d) = scene_manager.director().as_ref() {
-                if let Some(d) = d.borrow_mut().downcast_mut::<AdventureDirector>() {
+                if let Some(d) = d.query_interface::<IAdventureDirector>() {
+                    let d = d.get();
                     d.sce_vm_mut().render_debug(scene_manager, ui);
                 }
             }

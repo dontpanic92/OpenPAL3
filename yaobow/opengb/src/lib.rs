@@ -5,7 +5,7 @@
 #![allow(unused_variables)]
 
 pub mod asset_manager;
-mod comdef;
+pub mod comdef;
 pub mod config;
 pub mod directors;
 pub mod loaders;

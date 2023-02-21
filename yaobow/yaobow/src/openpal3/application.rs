@@ -8,8 +8,8 @@ use opengb::video::register_opengb_video_decoders;
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::Application;
 use radiance::comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl};
+use std::path::PathBuf;
 use std::rc::Rc;
-use std::{cell::RefCell, path::PathBuf};
 
 pub struct OpenPal3ApplicationLoader {
     app: ComRc<IApplication>,
@@ -48,7 +48,7 @@ impl IComponentImpl for OpenPal3ApplicationLoader {
             .engine()
             .borrow_mut()
             .scene_manager()
-            .set_director(Rc::new(RefCell::new(director)));
+            .set_director(ComRc::from_object(director));
     }
 
     fn on_updating(&self, _delta_sec: f32) {}

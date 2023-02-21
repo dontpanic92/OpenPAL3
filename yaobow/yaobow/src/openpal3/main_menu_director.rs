@@ -1,5 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
+use crosscom::ComRc;
 use imgui::{Condition, Ui};
 use log::debug;
 use opengb::{
@@ -8,9 +9,12 @@ use opengb::{
 };
 use radiance::{
     audio::{AudioEngine, AudioSource, Codec},
+    comdef::{IDirector, IDirectorImpl},
     input::InputEngine,
-    scene::{CoreScene, Director, SceneManager},
+    scene::{CoreScene, SceneManager},
 };
+
+use crate::ComObject_MainMenuDirector;
 
 use super::sce_proc_hooks::SceRestHooks;
 
@@ -18,8 +22,10 @@ pub struct MainMenuDirector {
     asset_mgr: Rc<AssetManager>,
     audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
-    main_theme_source: Box<dyn AudioSource>,
+    main_theme_source: RefCell<Box<dyn AudioSource>>,
 }
+
+ComObject_MainMenuDirector!(super::MainMenuDirector);
 
 impl MainMenuDirector {
     pub fn new(
@@ -35,25 +41,25 @@ impl MainMenuDirector {
             asset_mgr,
             audio_engine,
             input_engine,
-            main_theme_source,
+            main_theme_source: RefCell::new(main_theme_source),
         }
     }
 }
 
-impl Director for MainMenuDirector {
-    fn activate(&mut self, scene_manager: &mut dyn SceneManager) {
+impl IDirectorImpl for MainMenuDirector {
+    fn activate(&self, scene_manager: &mut dyn SceneManager) {
         debug!("MainMenuDirector activated");
         scene_manager.push_scene(CoreScene::create());
-        self.main_theme_source.restart();
+        self.main_theme_source.borrow_mut().restart();
     }
 
     fn update(
-        &mut self,
+        &self,
         scene_manager: &mut dyn SceneManager,
         ui: &Ui,
         _delta_sec: f32,
-    ) -> Option<Rc<RefCell<dyn Director>>> {
-        self.main_theme_source.update();
+    ) -> Option<ComRc<IDirector>> {
+        self.main_theme_source.borrow_mut().update();
 
         let sce_options = SceExecutionOptions {
             proc_hooks: vec![Box::new(SceRestHooks::new())],
@@ -69,27 +75,30 @@ impl Director for MainMenuDirector {
 
         if let Some(Some(director)) = window.build(|| {
             if ui.button("开始游戏") {
-                return Some(Rc::new(RefCell::new(AdventureDirector::new(
+                return Some(ComRc::from_object(AdventureDirector::new(
                     "OpenPAL3",
                     self.asset_mgr.clone(),
                     self.audio_engine.clone(),
                     self.input_engine.clone(),
                     Some(sce_options),
-                ))));
+                )));
             } else {
                 for i in 1..5 {
                     if ui.button(&format!("存档 {}", i)) {
-                        let director = AdventureDirector::load(
-                            "OpenPAL3",
-                            self.asset_mgr.clone(),
-                            self.audio_engine.clone(),
-                            self.input_engine.clone(),
-                            scene_manager,
-                            Some(sce_options),
-                            i,
+                        let director = ComRc::from_object(
+                            AdventureDirector::load(
+                                "OpenPAL3",
+                                self.asset_mgr.clone(),
+                                self.audio_engine.clone(),
+                                self.input_engine.clone(),
+                                scene_manager,
+                                Some(sce_options),
+                                i,
+                            )
+                            .unwrap(),
                         );
 
-                        return Some(Rc::new(RefCell::new(director.unwrap())));
+                        return Some(director);
                     }
                 }
                 None

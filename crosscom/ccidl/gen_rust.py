@@ -58,7 +58,7 @@ class RustGen:
             imp_unit = parse(imp_content)
             imp_module = self.get_rust_module(imp_unit)
 
-            self.process_imports(imp_file_path, imp_unit)
+            # self.process_imports(imp_file_path, imp_unit)
 
             for imp_item in imp_unit.items:
                 if isinstance(imp_item, Interface):

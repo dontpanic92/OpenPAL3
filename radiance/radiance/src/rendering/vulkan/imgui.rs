@@ -8,7 +8,7 @@ use std::{
     rc::Rc,
     sync::{Arc, Mutex},
 };
-use vk_mem::{Allocator, AllocatorCreateFlags, AllocatorCreateInfo};
+use vk_mem::{Allocator, AllocatorCreateInfo};
 
 pub struct ImguiRenderer {
     renderer: Renderer,

@@ -5,7 +5,7 @@ use radiance::{
 };
 
 use crate::{
-    director::UiDirector, ui::scene_view::SceneViewPlugins,
+    director::MainPageDirector, ui::scene_view::SceneViewPlugins,
     ComObject_EditorApplicationLoaderComponent,
 };
 
@@ -20,7 +20,7 @@ ComObject_EditorApplicationLoaderComponent!(super::EditorApplicationLoader);
 impl IComponentImpl for EditorApplicationLoader {
     fn on_loading(&self) {
         let input = self.app.engine().borrow().input_engine();
-        let director = UiDirector::new(self.plugins.clone(), input);
+        let director = MainPageDirector::new(self.plugins.clone(), input);
 
         self.app
             .engine()

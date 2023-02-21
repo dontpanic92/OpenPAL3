@@ -1,8 +1,13 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    rc::Rc,
+};
 
 use crate::{
     asset_manager::AssetManager,
+    comdef::IAdventureDirectorImpl,
     scene::{LadderTestResult, RoleController},
+    ComObject_AdventureDirector,
 };
 
 use super::{
@@ -10,20 +15,21 @@ use super::{
     sce_vm::{SceExecutionOptions, SceVm},
     PersistentState, SceneManagerExtensions,
 };
+use crosscom::ComRc;
 use log::debug;
 use radiance::{
     audio::AudioEngine,
+    comdef::{IDirector, IDirectorImpl},
     input::{Axis, InputEngine, Key},
     math::{Mat44, Vec3},
-    scene::{Director, SceneManager},
+    scene::SceneManager,
 };
 
 pub struct AdventureDirector {
-    input_engine: Rc<RefCell<dyn InputEngine>>,
-    sce_vm: SceVm,
-    camera_rotation: f32,
-    layer_switch_triggered: bool,
+    props: RefCell<AdventureDirectorProps>,
 }
+
+ComObject_AdventureDirector!(super::AdventureDirector);
 
 impl AdventureDirector {
     pub fn new(
@@ -47,11 +53,17 @@ impl AdventureDirector {
         sce_vm.call_proc(51);
 
         Self {
-            sce_vm,
-            input_engine,
-            camera_rotation: 0.,
-            layer_switch_triggered: false,
+            props: RefCell::new(AdventureDirectorProps {
+                input_engine,
+                sce_vm,
+                camera_rotation: 0.,
+                layer_switch_triggered: false,
+            }),
         }
+    }
+
+    fn props_mut(&self) -> RefMut<AdventureDirectorProps> {
+        self.props.borrow_mut()
     }
 
     pub fn load(
@@ -118,13 +130,53 @@ impl AdventureDirector {
         ));
 
         Some(Self {
-            sce_vm,
-            input_engine,
-            camera_rotation: 0.,
-            layer_switch_triggered: false,
+            props: RefCell::new(AdventureDirectorProps {
+                input_engine,
+                sce_vm,
+                camera_rotation: 0.,
+                layer_switch_triggered: false,
+            }),
         })
     }
 
+    pub fn sce_vm(&self) -> Ref<SceVm> {
+        Ref::map(self.props.borrow(), |p| &p.sce_vm)
+    }
+
+    pub fn sce_vm_mut(&self) -> RefMut<SceVm> {
+        RefMut::map(self.props.borrow_mut(), |p| &mut p.sce_vm)
+    }
+}
+
+impl IDirectorImpl for AdventureDirector {
+    fn activate(&self, scene_manager: &mut dyn SceneManager) {
+        debug!("AdventureDirector activated");
+    }
+
+    fn update(
+        &self,
+        scene_manager: &mut dyn SceneManager,
+        ui: &imgui::Ui,
+        delta_sec: f32,
+    ) -> Option<ComRc<IDirector>> {
+        self.props_mut().do_update(scene_manager, ui, delta_sec)
+    }
+}
+
+impl IAdventureDirectorImpl for AdventureDirector {
+    fn get(&self) -> &'static crate::directors::AdventureDirector {
+        unsafe { &*(self as *const _) }
+    }
+}
+
+struct AdventureDirectorProps {
+    input_engine: Rc<RefCell<dyn InputEngine>>,
+    sce_vm: SceVm,
+    camera_rotation: f32,
+    layer_switch_triggered: bool,
+}
+
+impl AdventureDirectorProps {
     fn test_save(&self) {
         let input = self.input_engine.borrow_mut();
         let save_slot = if input.get_key_state(Key::Num1).pressed() {
@@ -143,14 +195,6 @@ impl AdventureDirector {
             .global_state()
             .persistent_state()
             .save(save_slot);
-    }
-
-    pub fn sce_vm(&self) -> &SceVm {
-        &self.sce_vm
-    }
-
-    pub fn sce_vm_mut(&mut self) -> &mut SceVm {
-        &mut self.sce_vm
     }
 
     fn move_role(
@@ -255,19 +299,13 @@ impl AdventureDirector {
             self.camera_rotation -= std::f32::consts::PI * 2.;
         }
     }
-}
 
-impl Director for AdventureDirector {
-    fn activate(&mut self, scene_manager: &mut dyn SceneManager) {
-        debug!("AdventureDirector activated");
-    }
-
-    fn update(
+    fn do_update(
         &mut self,
         scene_manager: &mut dyn SceneManager,
         ui: &imgui::Ui,
         delta_sec: f32,
-    ) -> Option<Rc<RefCell<dyn Director>>> {
+    ) -> Option<ComRc<IDirector>> {
         self.sce_vm.update(scene_manager, ui, delta_sec);
         if !self.sce_vm.global_state().adv_input_enabled() {
             return None;
