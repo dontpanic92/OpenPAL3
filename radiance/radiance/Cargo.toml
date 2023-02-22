@@ -21,6 +21,7 @@ memoffset = "0.5.3"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 radiance-assets = { path = "../radiance-assets" }
 serde = { version = "1.0.106", features = ["derive"] }
+toml = "0.7"
 uuid = "0.8"
 
 # Rendering

@@ -4,7 +4,9 @@ mod windows;
 mod winit;
 
 mod clipboard;
+mod theme;
 
+use self::theme::setup_theme;
 #[cfg(not(target_os = "windows"))]
 pub use self::winit::ImguiPlatform;
 #[cfg(target_os = "windows")]
@@ -26,6 +28,8 @@ impl ImguiContext {
     pub fn new(platform: &mut Platform) -> Self {
         let mut context = Context::create();
         context.set_ini_filename(None);
+        setup_theme(&mut context);
+
         context.style_mut().scale_all_sizes(platform.dpi_scale());
         context.fonts().add_font(&[FontSource::TtfData {
             data: radiance_assets::FONT_SOURCE_HAN_SERIF,
