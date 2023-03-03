@@ -1,8 +1,9 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
+use crosscom::ComRc;
 use imgui::Ui;
-use radiance::scene::SceneManager;
+use radiance::comdef::ISceneManager;
 
 #[derive(Debug, Clone)]
 pub struct SceCommandRoleActAutoStand {
@@ -13,7 +14,7 @@ pub struct SceCommandRoleActAutoStand {
 impl SceCommand for SceCommandRoleActAutoStand {
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,

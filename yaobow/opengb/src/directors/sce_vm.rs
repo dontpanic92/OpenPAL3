@@ -5,8 +5,7 @@ use crosscom::ComRc;
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;
 use log::{debug, error, warn};
-use radiance::comdef::IDirector;
-use radiance::scene::SceneManager;
+use radiance::comdef::{IDirector, ISceneManager};
 use radiance::{audio::AudioEngine, input::InputEngine};
 use std::fmt::Debug;
 use std::{
@@ -67,7 +66,7 @@ impl SceVm {
 
     pub fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         delta_sec: f32,
     ) -> Option<ComRc<IDirector>> {
@@ -77,8 +76,8 @@ impl SceVm {
             loop {
                 match self.state.get_next_cmd() {
                     Some(mut cmd) => {
-                        cmd.initialize(scene_manager, &mut self.state);
-                        if !cmd.update(scene_manager, ui, &mut self.state, delta_sec) {
+                        cmd.initialize(scene_manager.clone(), &mut self.state);
+                        if !cmd.update(scene_manager.clone(), ui, &mut self.state, delta_sec) {
                             self.active_commands.push(cmd);
                         }
                     }
@@ -95,13 +94,13 @@ impl SceVm {
         } else {
             let state = &mut self.state;
             self.active_commands
-                .drain_filter(|cmd| cmd.update(scene_manager, ui, state, delta_sec));
+                .drain_filter(|cmd| cmd.update(scene_manager.clone(), ui, state, delta_sec));
         }
 
         None
     }
 
-    pub fn render_debug(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui) {
+    pub fn render_debug(&mut self, scene_manager: ComRc<ISceneManager>, ui: &Ui) {
         ui.text(format!("Active commands: {}", self.active_commands.len()));
 
         imgui::InputText::new(ui, "Sce Proc Id", &mut self.debug_proc).build();
@@ -1109,11 +1108,11 @@ pub trait SceCommandDebug {
 }
 
 pub trait SceCommand: dyn_clone::DynClone + SceCommandDebug {
-    fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {}
+    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {}
 
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,

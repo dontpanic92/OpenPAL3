@@ -1,6 +1,7 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
+use crosscom::ComRc;
 use imgui::Ui;
-use radiance::scene::SceneManager;
+use radiance::comdef::ISceneManager;
 
 #[derive(Clone)]
 pub struct SceCommandCmp<FCmp: Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> {
@@ -23,7 +24,7 @@ impl<FCmp: Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> std::fmt::Debug
 impl<FCmp: Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> SceCommand for SceCommandCmp<FCmp> {
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,

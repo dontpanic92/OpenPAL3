@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use crate::directors::sce_vm::{SceCommand, SceState};
+use crosscom::ComRc;
 use imgui::{Condition, Ui};
-use radiance::{input::Key, scene::SceneManager};
+use radiance::{comdef::ISceneManager, input::Key};
 
 lazy_static::lazy_static! {
     pub static ref KEY_NUM_MAP: HashMap<Key, i32> = create_key_num_hashmap();
@@ -16,7 +17,7 @@ pub struct SceCommandDlgSel {
 impl SceCommand for SceCommandDlgSel {
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,
@@ -69,7 +70,7 @@ impl SceCommand for SceCommandDlgSel {
         return false;
     }
 
-    fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {}
+    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {}
 }
 
 impl SceCommandDlgSel {

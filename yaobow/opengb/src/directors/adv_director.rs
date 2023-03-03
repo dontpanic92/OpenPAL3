@@ -19,10 +19,9 @@ use crosscom::ComRc;
 use log::debug;
 use radiance::{
     audio::AudioEngine,
-    comdef::{IDirector, IDirectorImpl},
+    comdef::{IDirector, IDirectorImpl, ISceneManager},
     input::{Axis, InputEngine, Key},
     math::{Mat44, Vec3},
-    scene::SceneManager,
 };
 
 pub struct AdventureDirector {
@@ -71,7 +70,7 @@ impl AdventureDirector {
         asset_mgr: Rc<AssetManager>,
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         sce_vm_options: Option<SceExecutionOptions>,
         slot: i32,
     ) -> Option<Self> {
@@ -149,13 +148,13 @@ impl AdventureDirector {
 }
 
 impl IDirectorImpl for AdventureDirector {
-    fn activate(&self, scene_manager: &mut dyn SceneManager) {
+    fn activate(&self, scene_manager: ComRc<ISceneManager>) {
         debug!("AdventureDirector activated");
     }
 
     fn update(
         &self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &imgui::Ui,
         delta_sec: f32,
     ) -> Option<ComRc<IDirector>> {
@@ -199,7 +198,7 @@ impl AdventureDirectorProps {
 
     fn move_role(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &imgui::Ui,
         delta_sec: f32,
         moving_direction: &Vec3,
@@ -274,7 +273,7 @@ impl AdventureDirectorProps {
 
     fn rotate_camera(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &imgui::Ui,
         delta_sec: f32,
     ) {
@@ -302,11 +301,11 @@ impl AdventureDirectorProps {
 
     fn do_update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &imgui::Ui,
         delta_sec: f32,
     ) -> Option<ComRc<IDirector>> {
-        self.sce_vm.update(scene_manager, ui, delta_sec);
+        self.sce_vm.update(scene_manager.clone(), ui, delta_sec);
         if !self.sce_vm.global_state().adv_input_enabled() {
             return None;
         }
@@ -357,8 +356,8 @@ impl AdventureDirectorProps {
             Vec3::normalized(&direction)
         };
 
-        self.move_role(scene_manager, ui, delta_sec, &moving_direction);
-        self.rotate_camera(scene_manager, ui, delta_sec);
+        self.move_role(scene_manager.clone(), ui, delta_sec, &moving_direction);
+        self.rotate_camera(scene_manager.clone(), ui, delta_sec);
 
         let (position, nav_layer) = {
             let role = scene_manager

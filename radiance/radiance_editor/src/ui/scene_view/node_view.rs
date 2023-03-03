@@ -1,11 +1,11 @@
 use crosscom::ComRc;
 use imgui::{Condition, Ui};
-use radiance::{comdef::IEntity, scene::SceneManager};
+use radiance::comdef::{IEntity, ISceneManager};
 
 pub struct NodeView {}
 
 impl NodeView {
-    pub fn render(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, _delta_sec: f32) {
+    pub fn render(&mut self, scene_manager: ComRc<ISceneManager>, ui: &Ui, _delta_sec: f32) {
         let [window_width, window_height] = ui.window_size();
         ui.window("对象树")
             .collapsible(false)

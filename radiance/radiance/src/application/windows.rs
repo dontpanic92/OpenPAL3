@@ -95,7 +95,7 @@ impl Platform {
         }
     }
 
-    pub fn run_event_loop<F: FnMut()>(&mut self, mut update_engine: F) {
+    pub fn run_event_loop<F: FnMut()>(&self, mut update_engine: F) {
         loop {
             if !self.process_message() {
                 break;
@@ -117,7 +117,7 @@ impl Platform {
         self.dpi_scale
     }
 
-    pub fn set_title(&mut self, title: &str) {
+    pub fn set_title(&self, title: &str) {
         unsafe {
             winuser::SetWindowTextW(self.hwnd, utf16_ptr!(title));
         }

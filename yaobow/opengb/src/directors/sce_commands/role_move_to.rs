@@ -2,8 +2,10 @@ use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
 use crate::scene::RoleController;
+use crosscom::ComRc;
 use imgui::Ui;
-use radiance::{math::Vec3, scene::SceneManager};
+use radiance::comdef::ISceneManager;
+use radiance::math::Vec3;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -15,7 +17,7 @@ pub struct SceCommandRoleMoveTo {
 }
 
 impl SceCommand for SceCommandRoleMoveTo {
-    fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
+    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
         scene_manager
             .get_resolved_role(state, self.role_id)
             .and_then(|e| {
@@ -26,7 +28,7 @@ impl SceCommand for SceCommandRoleMoveTo {
 
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,

@@ -7,9 +7,9 @@ use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::asset_manager::AssetManager;
 use radiance::{
     audio::AudioEngine,
-    comdef::{IDirector, IDirectorImpl},
+    comdef::{IDirector, IDirectorImpl, ISceneManager},
     math::Vec3,
-    scene::{CoreScene, SceneManager},
+    scene::CoreScene,
 };
 use radiance_editor::ui::window_content_rect;
 use shared::loaders::{
@@ -132,11 +132,11 @@ impl DevToolsDirector {
 }
 
 impl IDirectorImpl for DevToolsDirector {
-    fn activate(&self, _scene_manager: &mut dyn SceneManager) {}
+    fn activate(&self, _scene_manager: ComRc<ISceneManager>) {}
 
     fn update(
         &self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &imgui::Ui,
         _delta_sec: f32,
     ) -> Option<ComRc<IDirector>> {

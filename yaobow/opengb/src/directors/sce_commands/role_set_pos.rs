@@ -2,8 +2,9 @@ use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
 use crate::scene::RoleController;
+use crosscom::ComRc;
 use imgui::Ui;
-use radiance::scene::SceneManager;
+use radiance::comdef::ISceneManager;
 
 #[derive(Debug, Clone)]
 pub struct SceCommandRoleSetPos {
@@ -15,7 +16,7 @@ pub struct SceCommandRoleSetPos {
 impl SceCommand for SceCommandRoleSetPos {
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,

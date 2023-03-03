@@ -1,9 +1,8 @@
 use crosscom::ComRc;
 use imgui::{Condition, Ui};
 use radiance::{
-    comdef::{IDirector, IDirectorImpl},
+    comdef::{IDirector, IDirectorImpl, ISceneManager},
     input::InputEngine,
-    scene::SceneManager,
 };
 use std::{cell::RefCell, rc::Rc};
 
@@ -19,7 +18,7 @@ pub struct MainPageDirector {
 ComObject_MainPageDirector!(super::MainPageDirector);
 
 impl MainPageDirector {
-    pub fn new(
+    pub fn create(
         scene_view_plugins: Option<SceneViewPlugins>,
         input: Rc<RefCell<dyn InputEngine>>,
     ) -> ComRc<IDirector> {
@@ -30,11 +29,11 @@ impl MainPageDirector {
 }
 
 impl IDirectorImpl for MainPageDirector {
-    fn activate(&self, _scene_manager: &mut dyn SceneManager) {}
+    fn activate(&self, _scene_manager: ComRc<ISceneManager>) {}
 
     fn update(
         &self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         delta_sec: f32,
     ) -> Option<ComRc<IDirector>> {

@@ -1,10 +1,12 @@
 use std::{cell::RefCell, rc::Rc};
 
+use crosscom::ComRc;
 use imgui::{Condition, MouseButton, Ui};
 use radiance::{
+    comdef::ISceneManager,
     input::{InputEngine, Key},
     math::{Transform, Vec2, Vec3},
-    scene::{SceneManager, Viewport},
+    scene::Viewport,
 };
 
 use crate::ui::window_content_rect;
@@ -28,7 +30,7 @@ impl SceneEditView {
         }
     }
 
-    fn update_camera(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, delta_sec: f32) {
+    fn update_camera(&mut self, scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32) {
         self.dragging = ui.is_mouse_dragging(MouseButton::Left);
 
         if !self.dragging {
@@ -85,13 +87,13 @@ impl SceneEditView {
             .set_matrix(*transform.matrix());
     }
 
-    fn update_scene(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, delta_sec: f32) {
+    fn update_scene(&mut self, scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32) {
         self.update_camera(scene_manager, ui, delta_sec);
     }
 }
 
 impl SceneEditView {
-    pub fn render(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, delta_sec: f32) {
+    pub fn render(&mut self, scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32) {
         let [window_width, window_height] = ui.window_size();
         ui.window("场景")
             .collapsible(false)

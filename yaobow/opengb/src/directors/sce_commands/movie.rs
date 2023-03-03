@@ -1,8 +1,9 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
 
+use crosscom::ComRc;
 use imgui::{Condition, Image, TextureId, Ui};
 use log::warn;
-use radiance::{input::Key, scene::SceneManager, video::VideoStreamState};
+use radiance::{comdef::ISceneManager, input::Key, video::VideoStreamState};
 
 #[derive(Debug, Clone)]
 pub struct SceCommandMovie {
@@ -12,14 +13,14 @@ pub struct SceCommandMovie {
 }
 
 impl SceCommand for SceCommandMovie {
-    fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
+    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
         state.global_state_mut().set_adv_input_enabled(false);
         state.global_state_mut().bgm_source().stop();
     }
 
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,

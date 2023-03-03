@@ -116,13 +116,34 @@ class AnimatedMeshComponent: IAnimatedMeshComponent {}
 
 [uuid(6dedae32-8339-482e-9f66-c30d557cacb4)]
 interface IDirector: IUnknown {
-    [internal(), rust()]
-    crosscom::Void activate(&mut dyn radiance::scene::SceneManager scene_manager);
+    void activate(ISceneManager scene_manager);
 
     [internal(), rust()]
     Option<crosscom::ComRc<radiance::comdef::IDirector>> update(
-        &mut dyn radiance::scene::SceneManager scene_manager,
+        crosscom::ComRc<radiance::comdef::ISceneManager> scene_manager,
         &imgui::Ui ui,
         f32 delta_sec
     );
 }
+
+[uuid(a12c44d5-f5bc-4268-bd00-ab3b6270a829)]
+interface ISceneManager: IUnknown {
+
+    [internal(), rust()]
+    crosscom::Void update(&imgui::Ui ui, f32 delta_sec);
+
+    IScene? scene();
+
+    [internal(), rust()]
+    Vec<crosscom::ComRc<radiance::comdef::IScene>> scenes();
+
+    IDirector? director();
+    void set_director(IDirector director);
+    void push_scene(IScene scene);
+    IScene? pop_scene();
+    void unload_all_scenes();
+    void unset_director();
+}
+
+[uuid(c598eeb6-4ef5-498c-95b7-d06486b69f32)]
+class SceneManager: ISceneManager {}

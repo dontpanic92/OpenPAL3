@@ -2,10 +2,11 @@ use std::{cell::RefCell, fmt::Debug, rc::Rc};
 
 use crate::directors::sce_vm::{SceCommand, SceState};
 
+use crosscom::ComRc;
 use imgui::Ui;
 use radiance::{
     audio::{AudioSource, AudioSourceState, Codec},
-    scene::SceneManager,
+    comdef::ISceneManager,
 };
 
 #[derive(Clone)]
@@ -25,7 +26,7 @@ impl Debug for SceCommandPlaySound {
 }
 
 impl SceCommand for SceCommandPlaySound {
-    fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
+    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
         let data = state.asset_mgr().load_snd_data(&self.name);
         match data {
             Ok(d) => {
@@ -43,7 +44,7 @@ impl SceCommand for SceCommandPlaySound {
 
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,

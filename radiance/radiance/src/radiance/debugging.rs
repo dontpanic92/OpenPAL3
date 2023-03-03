@@ -1,6 +1,8 @@
-use crate::scene::SceneManager;
+use crosscom::ComRc;
 use imgui::Ui;
 
+use crate::comdef::ISceneManager;
+
 pub trait DebugLayer {
-    fn update(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, delta_sec: f32);
+    fn update(&self, scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32);
 }

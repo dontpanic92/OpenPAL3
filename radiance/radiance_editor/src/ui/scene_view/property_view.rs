@@ -1,10 +1,11 @@
+use crosscom::ComRc;
 use imgui::{Condition, Ui};
-use radiance::scene::SceneManager;
+use radiance::comdef::ISceneManager;
 
 pub struct PropertyView {}
 
 impl PropertyView {
-    pub fn render(&mut self, _scene_manager: &mut dyn SceneManager, ui: &Ui, _delta_sec: f32) {
+    pub fn render(&mut self, _scene_manager: ComRc<ISceneManager>, ui: &Ui, _delta_sec: f32) {
         let [window_width, window_height] = ui.window_size();
         ui.window("属性")
             .collapsible(false)

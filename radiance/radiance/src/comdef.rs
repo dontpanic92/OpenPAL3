@@ -463,6 +463,7 @@ macro_rules! ComObject_Application {
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
 
             #[repr(C)]
@@ -1024,6 +1025,7 @@ macro_rules! ComObject_Scene {
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
 
             #[repr(C)]
@@ -1608,6 +1610,7 @@ macro_rules! ComObject_Entity {
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
 
             #[repr(C)]
@@ -2020,6 +2023,7 @@ macro_rules! ComObject_StaticMeshComponent {
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
 
             #[repr(C)]
@@ -2302,6 +2306,7 @@ macro_rules! ComObject_AnimatedMeshComponent {
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
 
             #[repr(C)]
@@ -2460,13 +2465,13 @@ pub struct IDirectorVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub release:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
-    pub activate: fn(
+    pub activate: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
-        scene_manager: &mut dyn radiance::scene::SceneManager,
-    ) -> crosscom::Void,
+        scene_manager: *const *const std::os::raw::c_void,
+    ) -> (),
     pub update: fn(
         this: *const *const std::os::raw::c_void,
-        scene_manager: &mut dyn radiance::scene::SceneManager,
+        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
         ui: &imgui::Ui,
         delta_sec: f32,
     ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>>,
@@ -2521,13 +2526,11 @@ impl IDirector {
         }
     }
 
-    pub fn activate(
-        &self,
-        scene_manager: &mut dyn radiance::scene::SceneManager,
-    ) -> crosscom::Void {
+    pub fn activate(&self, scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>) -> () {
         unsafe {
             let this = self as *const IDirector as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).activate)(this, scene_manager.into());
+            let ret: () = ret.into();
 
             ret
         }
@@ -2535,7 +2538,7 @@ impl IDirector {
 
     pub fn update(
         &self,
-        scene_manager: &mut dyn radiance::scene::SceneManager,
+        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
         ui: &imgui::Ui,
         delta_sec: f32,
     ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
@@ -2555,10 +2558,10 @@ impl IDirector {
 }
 
 pub trait IDirectorImpl {
-    fn activate(&self, scene_manager: &mut dyn radiance::scene::SceneManager) -> crosscom::Void;
+    fn activate(&self, scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>) -> ();
     fn update(
         &self,
-        scene_manager: &mut dyn radiance::scene::SceneManager,
+        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
         ui: &imgui::Ui,
         delta_sec: f32,
     ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>>;
@@ -2571,3 +2574,417 @@ impl crosscom::ComInterface for IDirector {
         172u8, 180u8,
     ];
 }
+
+// Interface ISceneManager
+
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct ISceneManagerVirtualTable {
+    pub query_interface: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        guid: uuid::Uuid,
+        retval: &mut *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_long,
+    pub add_ref:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub release:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub update: fn(
+        this: *const *const std::os::raw::c_void,
+        ui: &imgui::Ui,
+        delta_sec: f32,
+    ) -> crosscom::Void,
+    pub scene:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> crosscom::RawPointer,
+    pub scenes: fn(
+        this: *const *const std::os::raw::c_void,
+    ) -> Vec<crosscom::ComRc<radiance::comdef::IScene>>,
+    pub director:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> crosscom::RawPointer,
+    pub set_director: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        director: *const *const std::os::raw::c_void,
+    ) -> (),
+    pub push_scene: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        scene: *const *const std::os::raw::c_void,
+    ) -> (),
+    pub pop_scene:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> crosscom::RawPointer,
+    pub unload_all_scenes:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub unset_director: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct ISceneManagerVirtualTableCcw {
+    pub offset: isize,
+    pub vtable: ISceneManagerVirtualTable,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct ISceneManager {
+    pub vtable: *const ISceneManagerVirtualTable,
+}
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+impl ISceneManager {
+    pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
+        let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+        let mut raw = 0 as *const *const std::os::raw::c_void;
+        let guid = uuid::Uuid::from_bytes(T::INTERFACE_ID);
+        let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
+        if ret_val != 0 {
+            None
+        } else {
+            Some(unsafe { crosscom::ComRc::<T>::from_raw_pointer(raw) })
+        }
+    }
+
+    pub fn add_ref(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn release(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn update(&self, ui: &imgui::Ui, delta_sec: f32) -> crosscom::Void {
+        unsafe {
+            let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).update)(this, ui.into(), delta_sec.into());
+
+            ret
+        }
+    }
+
+    pub fn scene(&self) -> Option<crosscom::ComRc<radiance::comdef::IScene>> {
+        unsafe {
+            let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).scene)(this);
+            let ret: Option<crosscom::ComRc<radiance::comdef::IScene>> = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn scenes(&self) -> Vec<crosscom::ComRc<radiance::comdef::IScene>> {
+        unsafe {
+            let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).scenes)(this);
+
+            ret
+        }
+    }
+
+    pub fn director(&self) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
+        unsafe {
+            let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).director)(this);
+            let ret: Option<crosscom::ComRc<radiance::comdef::IDirector>> = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn set_director(&self, director: crosscom::ComRc<radiance::comdef::IDirector>) -> () {
+        unsafe {
+            let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).set_director)(this, director.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn push_scene(&self, scene: crosscom::ComRc<radiance::comdef::IScene>) -> () {
+        unsafe {
+            let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).push_scene)(this, scene.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn pop_scene(&self) -> Option<crosscom::ComRc<radiance::comdef::IScene>> {
+        unsafe {
+            let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).pop_scene)(this);
+            let ret: Option<crosscom::ComRc<radiance::comdef::IScene>> = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn unload_all_scenes(&self) -> () {
+        unsafe {
+            let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).unload_all_scenes)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn unset_director(&self) -> () {
+        unsafe {
+            let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).unset_director)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(ISceneManager::INTERFACE_ID)
+    }
+}
+
+pub trait ISceneManagerImpl {
+    fn update(&self, ui: &imgui::Ui, delta_sec: f32) -> crosscom::Void;
+    fn scene(&self) -> Option<crosscom::ComRc<radiance::comdef::IScene>>;
+    fn scenes(&self) -> Vec<crosscom::ComRc<radiance::comdef::IScene>>;
+    fn director(&self) -> Option<crosscom::ComRc<radiance::comdef::IDirector>>;
+    fn set_director(&self, director: crosscom::ComRc<radiance::comdef::IDirector>) -> ();
+    fn push_scene(&self, scene: crosscom::ComRc<radiance::comdef::IScene>) -> ();
+    fn pop_scene(&self) -> Option<crosscom::ComRc<radiance::comdef::IScene>>;
+    fn unload_all_scenes(&self) -> ();
+    fn unset_director(&self) -> ();
+}
+
+impl crosscom::ComInterface for ISceneManager {
+    // a12c44d5-f5bc-4268-bd00-ab3b6270a829
+    const INTERFACE_ID: [u8; 16] = [
+        161u8, 44u8, 68u8, 213u8, 245u8, 188u8, 66u8, 104u8, 189u8, 0u8, 171u8, 59u8, 98u8, 112u8,
+        168u8, 41u8,
+    ];
+}
+
+// Class SceneManager
+
+#[allow(unused)]
+#[macro_export]
+macro_rules! ComObject_SceneManager {
+    ($impl_type: ty) => {
+        #[allow(dead_code)]
+        #[allow(non_snake_case)]
+        #[allow(unused)]
+        mod SceneManager_crosscom_impl {
+            use crate as radiance;
+            use crosscom::ComInterface;
+            use crosscom::IObjectArrayImpl;
+            use crosscom::IUnknownImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IDirectorImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
+
+            #[repr(C)]
+            pub struct SceneManagerCcw {
+                ISceneManager: radiance::comdef::ISceneManager,
+
+                ref_count: std::sync::atomic::AtomicU32,
+                pub inner: $impl_type,
+            }
+
+            unsafe extern "system" fn query_interface(
+                this: *const *const std::os::raw::c_void,
+                guid: uuid::Uuid,
+                retval: &mut *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<SceneManagerCcw>(this);
+                match guid.as_bytes() {
+                    &crosscom::IUnknown::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
+                    }
+
+                    &radiance::comdef::ISceneManager::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
+                    }
+
+                    _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
+                }
+            }
+
+            unsafe extern "system" fn add_ref(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<SceneManagerCcw>(this);
+                let previous = (*object)
+                    .ref_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                (previous + 1) as std::os::raw::c_long
+            }
+
+            unsafe extern "system" fn release(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<SceneManagerCcw>(this);
+
+                let previous = (*object)
+                    .ref_count
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                if previous - 1 == 0 {
+                    Box::from_raw(object as *mut SceneManagerCcw);
+                }
+
+                (previous - 1) as std::os::raw::c_long
+            }
+
+            fn update(
+                this: *const *const std::os::raw::c_void,
+                ui: &imgui::Ui,
+                delta_sec: f32,
+            ) -> crosscom::Void {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<SceneManagerCcw>(this);
+                    (*__crosscom_object).inner.update(ui, delta_sec)
+                }
+            }
+
+            unsafe extern "system" fn scene(
+                this: *const *const std::os::raw::c_void,
+            ) -> crosscom::RawPointer {
+                let __crosscom_object = crosscom::get_object::<SceneManagerCcw>(this);
+                (*__crosscom_object).inner.scene().into()
+            }
+
+            fn scenes(
+                this: *const *const std::os::raw::c_void,
+            ) -> Vec<crosscom::ComRc<radiance::comdef::IScene>> {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<SceneManagerCcw>(this);
+                    (*__crosscom_object).inner.scenes()
+                }
+            }
+
+            unsafe extern "system" fn director(
+                this: *const *const std::os::raw::c_void,
+            ) -> crosscom::RawPointer {
+                let __crosscom_object = crosscom::get_object::<SceneManagerCcw>(this);
+                (*__crosscom_object).inner.director().into()
+            }
+
+            unsafe extern "system" fn set_director(
+                this: *const *const std::os::raw::c_void,
+                director: *const *const std::os::raw::c_void,
+            ) -> () {
+                let director: crosscom::ComRc<radiance::comdef::IDirector> = director.into();
+
+                let __crosscom_object = crosscom::get_object::<SceneManagerCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .set_director(director.into())
+                    .into()
+            }
+
+            unsafe extern "system" fn push_scene(
+                this: *const *const std::os::raw::c_void,
+                scene: *const *const std::os::raw::c_void,
+            ) -> () {
+                let scene: crosscom::ComRc<radiance::comdef::IScene> = scene.into();
+
+                let __crosscom_object = crosscom::get_object::<SceneManagerCcw>(this);
+                (*__crosscom_object).inner.push_scene(scene.into()).into()
+            }
+
+            unsafe extern "system" fn pop_scene(
+                this: *const *const std::os::raw::c_void,
+            ) -> crosscom::RawPointer {
+                let __crosscom_object = crosscom::get_object::<SceneManagerCcw>(this);
+                (*__crosscom_object).inner.pop_scene().into()
+            }
+
+            unsafe extern "system" fn unload_all_scenes(
+                this: *const *const std::os::raw::c_void,
+            ) -> () {
+                let __crosscom_object = crosscom::get_object::<SceneManagerCcw>(this);
+                (*__crosscom_object).inner.unload_all_scenes().into()
+            }
+
+            unsafe extern "system" fn unset_director(
+                this: *const *const std::os::raw::c_void,
+            ) -> () {
+                let __crosscom_object = crosscom::get_object::<SceneManagerCcw>(this);
+                (*__crosscom_object).inner.unset_director().into()
+            }
+
+            #[allow(non_upper_case_globals)]
+            pub const GLOBAL_ISceneManagerVirtualTable_CCW_FOR_SceneManager:
+                radiance::comdef::ISceneManagerVirtualTableCcw =
+                radiance::comdef::ISceneManagerVirtualTableCcw {
+                    offset: 0,
+                    vtable: radiance::comdef::ISceneManagerVirtualTable {
+                        query_interface,
+                        add_ref,
+                        release,
+                        update,
+                        scene,
+                        scenes,
+                        director,
+                        set_director,
+                        push_scene,
+                        pop_scene,
+                        unload_all_scenes,
+                        unset_director,
+                    },
+                };
+
+            impl crosscom::ComObject for $impl_type {
+                type CcwType = SceneManagerCcw;
+
+                fn create_ccw(self) -> Self::CcwType {
+                    Self::CcwType {
+                        ISceneManager: radiance::comdef::ISceneManager {
+                            vtable: &GLOBAL_ISceneManagerVirtualTable_CCW_FOR_SceneManager.vtable
+                                as *const radiance::comdef::ISceneManagerVirtualTable,
+                        },
+
+                        ref_count: std::sync::atomic::AtomicU32::new(0),
+                        inner: self,
+                    }
+                }
+
+                fn get_ccw(&self) -> &Self::CcwType {
+                    unsafe {
+                        let this = self as *const _ as *const u8;
+                        let this =
+                            this.offset(-(crosscom::offset_of!(SceneManagerCcw, inner) as isize));
+                        &*(this as *const Self::CcwType)
+                    }
+                }
+            }
+        }
+    };
+}
+
+// pub use ComObject_SceneManager;

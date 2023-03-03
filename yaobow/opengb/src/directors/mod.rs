@@ -13,15 +13,11 @@ pub use adv_director::AdventureDirector;
 use crosscom::ComRc;
 pub use global_state::GlobalState;
 pub use persistent_state::PersistentState;
-use radiance::{comdef::IEntity, scene::SceneManager};
+use radiance::comdef::{IEntity, ISceneManager};
 pub use sce_vm::{SceExecutionOptions, SceProcHooks};
 
-pub trait SceneManagerExtensions: SceneManager {
-    fn scn_scene(&self) -> Option<ComRc<IScnSceneComponent>> {
-        self.scene()?
-            .get_component(IScnSceneComponent::uuid())?
-            .query_interface::<IScnSceneComponent>()
-    }
+pub trait SceneManagerExtensions {
+    fn scn_scene(&self) -> Option<ComRc<IScnSceneComponent>>;
 
     fn get_resolved_role(&self, state: &SceState, role_id: i32) -> Option<ComRc<IEntity>> {
         let resolved_role_id = if role_id == -1 {
@@ -36,7 +32,7 @@ pub trait SceneManagerExtensions: SceneManager {
     }
 
     fn resolve_role_do<T, F: Fn(ComRc<IEntity>, ComRc<IRoleController>) -> T>(
-        &mut self,
+        &self,
         state: &SceState,
         role_id: i32,
         action: F,
@@ -68,7 +64,13 @@ pub trait SceneManagerExtensions: SceneManager {
     }
 }
 
-impl<T: SceneManager + ?Sized> SceneManagerExtensions for T {}
+impl SceneManagerExtensions for ComRc<ISceneManager> {
+    fn scn_scene(&self) -> Option<ComRc<IScnSceneComponent>> {
+        self.scene()?
+            .get_component(IScnSceneComponent::uuid())?
+            .query_interface::<IScnSceneComponent>()
+    }
+}
 
 fn resolve_role_id(state: &SceState, role_id: i32) -> i32 {
     if role_id == -1 {

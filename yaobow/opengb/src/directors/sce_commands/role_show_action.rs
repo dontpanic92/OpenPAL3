@@ -2,8 +2,9 @@ use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
 use crate::scene::{RoleAnimationRepeatMode, RoleState};
+use crosscom::ComRc;
 use imgui::Ui;
-use radiance::scene::SceneManager;
+use radiance::comdef::ISceneManager;
 
 #[derive(Debug, Clone)]
 pub struct SceCommandRoleShowAction {
@@ -13,7 +14,7 @@ pub struct SceCommandRoleShowAction {
 }
 
 impl SceCommand for SceCommandRoleShowAction {
-    fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
+    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
         let repeat = match self.repeat_mode {
             0 => RoleAnimationRepeatMode::Repeat,
             1 => RoleAnimationRepeatMode::NoRepeat,
@@ -28,7 +29,7 @@ impl SceCommand for SceCommandRoleShowAction {
 
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,

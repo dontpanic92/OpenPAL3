@@ -15,7 +15,7 @@ pub struct IViewContentVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub render: fn(
         this: *const *const std::os::raw::c_void,
-        scene_manager: &mut dyn radiance::scene::SceneManager,
+        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
         ui: &imgui::Ui,
         delta_sec: f32,
     ) -> crosscom::Void,
@@ -72,7 +72,7 @@ impl IViewContent {
 
     pub fn render(
         &self,
-        scene_manager: &mut dyn radiance::scene::SceneManager,
+        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
         ui: &imgui::Ui,
         delta_sec: f32,
     ) -> crosscom::Void {
@@ -94,7 +94,7 @@ impl IViewContent {
 pub trait IViewContentImpl {
     fn render(
         &self,
-        scene_manager: &mut dyn radiance::scene::SceneManager,
+        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
         ui: &imgui::Ui,
         delta_sec: f32,
     ) -> crosscom::Void;
@@ -130,6 +130,7 @@ macro_rules! ComObject_ResourceViewContent {
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
             use radiance_editor::comdef::IViewContentImpl;
 
@@ -191,7 +192,7 @@ macro_rules! ComObject_ResourceViewContent {
 
             fn render(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: &mut dyn radiance::scene::SceneManager,
+                scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
                 ui: &imgui::Ui,
                 delta_sec: f32,
             ) -> crosscom::Void {
@@ -273,6 +274,7 @@ use radiance::comdef::IEntityImpl;
 use radiance::comdef::IStaticMeshComponentImpl;
 use radiance::comdef::IAnimatedMeshComponentImpl;
 use radiance::comdef::IDirectorImpl;
+use radiance::comdef::ISceneManagerImpl;
 
 
     #[repr(C)]
@@ -426,6 +428,7 @@ macro_rules! ComObject_MainPageDirector {
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
             use radiance_editor::comdef::IViewContentImpl;
 
@@ -485,19 +488,23 @@ macro_rules! ComObject_MainPageDirector {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            fn activate(
+            unsafe extern "system" fn activate(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: &mut dyn radiance::scene::SceneManager,
-            ) -> crosscom::Void {
-                unsafe {
-                    let __crosscom_object = crosscom::get_object::<MainPageDirectorCcw>(this);
-                    (*__crosscom_object).inner.activate(scene_manager)
-                }
+                scene_manager: *const *const std::os::raw::c_void,
+            ) -> () {
+                let scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager> =
+                    scene_manager.into();
+
+                let __crosscom_object = crosscom::get_object::<MainPageDirectorCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .activate(scene_manager.into())
+                    .into()
             }
 
             fn update(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: &mut dyn radiance::scene::SceneManager,
+                scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
                 ui: &imgui::Ui,
                 delta_sec: f32,
             ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {

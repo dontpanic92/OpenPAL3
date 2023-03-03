@@ -22,6 +22,7 @@ macro_rules! ComObject_WelcomePageDirector {
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
             use radiance_editor::comdef::IViewContentImpl;
 
@@ -81,19 +82,23 @@ macro_rules! ComObject_WelcomePageDirector {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            fn activate(
+            unsafe extern "system" fn activate(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: &mut dyn radiance::scene::SceneManager,
-            ) -> crosscom::Void {
-                unsafe {
-                    let __crosscom_object = crosscom::get_object::<WelcomePageDirectorCcw>(this);
-                    (*__crosscom_object).inner.activate(scene_manager)
-                }
+                scene_manager: *const *const std::os::raw::c_void,
+            ) -> () {
+                let scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager> =
+                    scene_manager.into();
+
+                let __crosscom_object = crosscom::get_object::<WelcomePageDirectorCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .activate(scene_manager.into())
+                    .into()
             }
 
             fn update(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: &mut dyn radiance::scene::SceneManager,
+                scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
                 ui: &imgui::Ui,
                 delta_sec: f32,
             ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
@@ -172,6 +177,7 @@ macro_rules! ComObject_YaobowResourceViewContent {
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
             use radiance_editor::comdef::IViewContentImpl;
 
@@ -233,7 +239,7 @@ macro_rules! ComObject_YaobowResourceViewContent {
 
             fn render(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: &mut dyn radiance::scene::SceneManager,
+                scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
                 ui: &imgui::Ui,
                 delta_sec: f32,
             ) -> crosscom::Void {
@@ -314,6 +320,7 @@ macro_rules! ComObject_DevToolsDirector {
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
             use radiance_editor::comdef::IViewContentImpl;
 
@@ -373,19 +380,23 @@ macro_rules! ComObject_DevToolsDirector {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            fn activate(
+            unsafe extern "system" fn activate(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: &mut dyn radiance::scene::SceneManager,
-            ) -> crosscom::Void {
-                unsafe {
-                    let __crosscom_object = crosscom::get_object::<DevToolsDirectorCcw>(this);
-                    (*__crosscom_object).inner.activate(scene_manager)
-                }
+                scene_manager: *const *const std::os::raw::c_void,
+            ) -> () {
+                let scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager> =
+                    scene_manager.into();
+
+                let __crosscom_object = crosscom::get_object::<DevToolsDirectorCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .activate(scene_manager.into())
+                    .into()
             }
 
             fn update(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: &mut dyn radiance::scene::SceneManager,
+                scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
                 ui: &imgui::Ui,
                 delta_sec: f32,
             ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {

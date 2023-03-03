@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crosscom::ComRc;
 use imgui::Ui;
-use radiance::{input::InputEngine, scene::SceneManager};
+use radiance::{comdef::ISceneManager, input::InputEngine};
 
 use crate::comdef::IViewContent;
 
@@ -39,11 +39,14 @@ impl SceneView {
         }
     }
 
-    pub fn render(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, delta_sec: f32) {
-        self.node_view.render(scene_manager, ui, delta_sec);
-        self.property_view.render(scene_manager, ui, delta_sec);
-        self.scene_edit_view.render(scene_manager, ui, delta_sec);
-        self.resource_view.render(scene_manager, ui, delta_sec);
+    pub fn render(&mut self, scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32) {
+        self.node_view.render(scene_manager.clone(), ui, delta_sec);
+        self.property_view
+            .render(scene_manager.clone(), ui, delta_sec);
+        self.scene_edit_view
+            .render(scene_manager.clone(), ui, delta_sec);
+        self.resource_view
+            .render(scene_manager.clone(), ui, delta_sec);
     }
 }
 

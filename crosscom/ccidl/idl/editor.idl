@@ -6,7 +6,7 @@ import radiance.idl;
 [uuid(6ac46481-7efa-45ff-a279-687b4603c746)]
 interface IViewContent: IUnknown {
     [internal(), rust()]
-    crosscom::Void render(&mut dyn radiance::scene::SceneManager scene_manager, &imgui::Ui ui, f32 delta_sec);
+    crosscom::Void render(crosscom::ComRc<radiance::comdef::ISceneManager> scene_manager, &imgui::Ui ui, f32 delta_sec);
 }
 
 [uuid(6ac46481-7efa-45ff-a279-687b4603c747)]

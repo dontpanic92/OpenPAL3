@@ -1,6 +1,7 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
+use crosscom::ComRc;
 use imgui::{MouseButton, Ui};
-use radiance::{input::Key, scene::SceneManager};
+use radiance::{comdef::ISceneManager, input::Key};
 
 #[derive(Debug, Clone)]
 pub struct SceCommandDlg {
@@ -10,14 +11,14 @@ pub struct SceCommandDlg {
 }
 
 impl SceCommand for SceCommandDlg {
-    fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
+    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
         self.adv_input_enabled = state.global_state_mut().adv_input_enabled();
         state.global_state_mut().set_adv_input_enabled(false);
     }
 
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,

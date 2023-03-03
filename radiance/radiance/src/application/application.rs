@@ -51,7 +51,7 @@ impl IApplicationImpl for Application {
         let components = self.components.clone();
 
         let mut start_time = Instant::now();
-        platform.borrow_mut().run_event_loop(move || {
+        platform.borrow().run_event_loop(move || {
             let end_time = Instant::now();
             let elapsed = end_time.duration_since(start_time).as_secs_f32();
             start_time = end_time;
@@ -64,12 +64,12 @@ impl IApplicationImpl for Application {
                 c.on_updating(elapsed);
             }
 
-            engine.borrow_mut().update(elapsed);
+            engine.borrow().update(elapsed);
         });
     }
 
     fn set_title(&self, title: &str) {
-        self.platform.borrow_mut().set_title(title);
+        self.platform.borrow().set_title(title);
     }
 
     fn engine(&self) -> Rc<RefCell<CoreRadianceEngine>> {

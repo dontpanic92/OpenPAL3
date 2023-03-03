@@ -2,6 +2,7 @@ mod core_engine;
 mod debugging;
 
 pub use core_engine::CoreRadianceEngine;
+use crosscom::ComRc;
 pub use debugging::DebugLayer;
 
 use crate::{
@@ -44,7 +45,7 @@ pub fn create_radiance_engine(
     }
     let audio_engine = Rc::new(OpenAlAudioEngine::new());
     let input_engine = GenericInputEngine::new(platform);
-    let scene_manager = Box::new(DefaultSceneManager::new());
+    let scene_manager = ComRc::from_object(DefaultSceneManager::new());
 
     Ok(CoreRadianceEngine::new(
         rendering_engine,

@@ -1,5 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
+use crosscom::ComRc;
 use imgui::{InputTextMultiline, TabBar, TabItem, Ui};
 use opengb::{
     comdef::IAdventureDirector, directors::SceneManagerExtensions, scene::RoleController,
@@ -7,17 +8,17 @@ use opengb::{
 use radiance::{
     application::utils::FpsCounter,
     audio::AudioEngine,
+    comdef::ISceneManager,
     input::{InputEngine, Key},
     math::Vec3,
     radiance::DebugLayer,
-    scene::SceneManager,
 };
 
 pub struct OpenPal3DebugLayer {
     input_engine: Rc<RefCell<dyn InputEngine>>,
 
-    visible: bool,
-    fps_counter: FpsCounter,
+    visible: RefCell<bool>,
+    fps_counter: RefCell<FpsCounter>,
 }
 
 impl OpenPal3DebugLayer {
@@ -27,14 +28,14 @@ impl OpenPal3DebugLayer {
     ) -> OpenPal3DebugLayer {
         OpenPal3DebugLayer {
             input_engine,
-            visible: false,
-            fps_counter: FpsCounter::new(),
+            visible: RefCell::new(false),
+            fps_counter: RefCell::new(FpsCounter::new()),
         }
     }
 
-    fn render(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, delta_sec: f32) {
+    fn render(&self, scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32) {
         ui.window("Debug").build(|| {
-            let fps = self.fps_counter.update_fps(delta_sec);
+            let fps = self.fps_counter.borrow_mut().update_fps(delta_sec);
             ui.text(format!("Fps: {}", fps));
             let scene = scene_manager.scn_scene();
             if let Some(s) = scene {
@@ -56,13 +57,13 @@ impl OpenPal3DebugLayer {
 
             ui.text(format!("Coord: {:?}", &coord));
             TabBar::new("##debug_tab_bar").build(ui, || {
-                Self::build_nav_tab(scene_manager, ui, coord.as_ref());
-                Self::build_sce_tab(scene_manager, ui);
+                Self::build_nav_tab(scene_manager.clone(), ui, coord.as_ref());
+                Self::build_sce_tab(scene_manager.clone(), ui);
             });
         });
     }
 
-    fn build_nav_tab(scene_manager: &mut dyn SceneManager, ui: &Ui, coord: Option<&Vec3>) {
+    fn build_nav_tab(scene_manager: ComRc<ISceneManager>, ui: &Ui, coord: Option<&Vec3>) {
         TabItem::new("Nav").build(ui, || {
             if let Some(d) = scene_manager.director().as_ref() {
                 if let Some(director) = d.query_interface::<IAdventureDirector>() {
@@ -162,7 +163,7 @@ impl OpenPal3DebugLayer {
         });
     }
 
-    fn build_sce_tab(scene_manager: &mut dyn SceneManager, ui: &Ui) {
+    fn build_sce_tab(scene_manager: ComRc<ISceneManager>, ui: &Ui) {
         TabItem::new("Sce").build(ui, || {
             if let Some(d) = scene_manager.director().as_ref() {
                 if let Some(d) = d.query_interface::<IAdventureDirector>() {
@@ -175,7 +176,7 @@ impl OpenPal3DebugLayer {
 }
 
 impl DebugLayer for OpenPal3DebugLayer {
-    fn update(&mut self, scene_manager: &mut dyn SceneManager, ui: &Ui, delta_sec: f32) {
+    fn update(&self, scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32) {
         let font = ui.push_font(ui.fonts().fonts()[1]);
         (|| {
             if self
@@ -184,10 +185,10 @@ impl DebugLayer for OpenPal3DebugLayer {
                 .get_key_state(Key::Tilde)
                 .pressed()
             {
-                self.visible = !self.visible;
+                self.visible.replace(!*self.visible.borrow());
             }
 
-            if !self.visible {
+            if !*self.visible.borrow() {
                 return;
             }
 

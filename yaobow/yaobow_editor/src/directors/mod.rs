@@ -1,5 +1,6 @@
 pub mod main_content;
-mod main_director;
+pub mod main_director;
+pub mod welcome_page;
 
 use crosscom::ComRc;
 pub use main_director::DevToolsDirector;

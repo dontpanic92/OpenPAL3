@@ -1,8 +1,9 @@
 use crate::directors::sce_vm::{SceCommand, SceState};
 
 use crate::directors::SceneManagerExtensions;
+use crosscom::ComRc;
 use imgui::Ui;
-use radiance::scene::SceneManager;
+use radiance::comdef::ISceneManager;
 
 use super::SceCommandRolePathTo;
 
@@ -13,18 +14,21 @@ pub struct SceCommandRolePathOut {
 }
 
 impl SceCommand for SceCommandRolePathOut {
-    fn initialize(&mut self, scene_manager: &mut dyn SceneManager, state: &mut SceState) {
+    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
         self.cmd_path_to.initialize(scene_manager, state);
     }
 
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
-        if self.cmd_path_to.update(scene_manager, ui, state, delta_sec) {
+        if self
+            .cmd_path_to
+            .update(scene_manager.clone(), ui, state, delta_sec)
+        {
             scene_manager
                 .resolve_role_mut_do(state, self.role_id, |e, r| r.get().set_active(false));
             true

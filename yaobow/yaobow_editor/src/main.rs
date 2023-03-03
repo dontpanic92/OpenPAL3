@@ -7,13 +7,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crosscom::ComRc;
+use directors::welcome_page::WelcomePageDirector;
 use directors::DevToolsDirector;
 use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::Application;
-use radiance::comdef::{IApplication, IApplicationLoaderComponent, IDirector};
+use radiance::comdef::{IApplication, IApplicationLoaderComponent, IDirector, ISceneManager};
 use radiance_editor::application::EditorApplicationLoader;
 use radiance_editor::comdef::IViewContentImpl;
-use radiance_editor::ui::scene_view::SceneViewPlugins;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum GameType {
@@ -27,6 +27,34 @@ pub enum GameType {
     Gujian,
 }
 
+impl GameType {
+    pub fn app_name(&self) -> &'static str {
+        match self {
+            GameType::PAL3 => "OpenPAL3",
+            GameType::PAL4 => "OpenPAL4",
+            GameType::PAL5 => "OpenPAL5",
+            GameType::PAL5Q => "OpenPAL5Q",
+            GameType::SWD5 => "OpenSWD5",
+            GameType::SWDHC => "OpenSWDHC",
+            GameType::SWDCF => "OpenSWDCF",
+            GameType::Gujian => "OpenGujian",
+        }
+    }
+
+    pub fn full_name(&self) -> &'static str {
+        match self {
+            GameType::PAL3 => "仙剑奇侠传三",
+            GameType::PAL4 => "仙剑奇侠传四",
+            GameType::PAL5 => "仙剑奇侠传五",
+            GameType::PAL5Q => "仙剑奇侠传五前传",
+            GameType::SWD5 => "轩辕剑五",
+            GameType::SWDHC => "轩辕剑外传 汉之云",
+            GameType::SWDCF => "轩辕剑外传 云之遥",
+            GameType::Gujian => "古剑奇谭",
+        }
+    }
+}
+
 pub struct SceneViewResourceView {
     ui: RefCell<Option<ComRc<IDirector>>>,
 }
@@ -36,7 +64,7 @@ ComObject_YaobowResourceViewContent!(crate::SceneViewResourceView);
 impl IViewContentImpl for SceneViewResourceView {
     fn render(
         &self,
-        scene_manager: &mut dyn radiance::scene::SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &imgui::Ui,
         delta_sec: f32,
     ) -> crosscom::Void {
@@ -48,18 +76,7 @@ impl IViewContentImpl for SceneViewResourceView {
 
 impl SceneViewResourceView {
     pub fn new(config: OpenGbConfig, app: ComRc<IApplication>, game: GameType) -> Self {
-        let game_name = match game {
-            GameType::PAL3 => "OpenPAL3",
-            GameType::PAL4 => "OpenPAL4",
-            GameType::PAL5 => "OpenPAL5",
-            GameType::PAL5Q => "OpenPAL5Q",
-            GameType::SWD5 => "OpenSWD5",
-            GameType::SWDHC => "OpenSWDHC",
-            GameType::SWDCF => "OpenSWDCF",
-            GameType::Gujian => "OpenGujian",
-        };
-
-        app.set_title(&format!("妖弓编辑器 - {}", game_name));
+        app.set_title(&format!("妖弓编辑器 - {}", game.app_name()));
 
         let pkg_key = match game {
             GameType::PAL5 => Some("Y%H^uz6i"),
@@ -96,51 +113,27 @@ fn main() {
     // let stdin = std::io::stdin();
     // stdin.lock().read_line(&mut line).unwrap();
 
-    let mut config = OpenGbConfig::load("openpal3.toml", "OPENPAL3");
-    let mut game = GameType::PAL3;
-
     let args = std::env::args().collect::<Vec<String>>();
     if args.len() > 1 {
-        match args[1].as_str() {
-            "--pal4" => {
-                config.asset_path = "F:\\PAL4\\".to_string();
-                game = GameType::PAL4;
-            }
-            "--pal5" => {
-                config.asset_path = "F:\\PAL5\\".to_string();
-                game = GameType::PAL5;
-            }
-            "--pal5q" => {
-                config.asset_path = "F:\\PAL5Q\\".to_string();
-                game = GameType::PAL5Q;
-            }
-            "--swd5" => {
-                config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\SWD5".to_string();
-                game = GameType::SWD5;
-            }
-            "--swdhc" => {
-                config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\SWDHC".to_string();
-                game = GameType::SWDHC;
-            }
-            "--swdcf" => {
-                config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\SWDCF".to_string();
-                game = GameType::SWDCF;
-            }
-            "--gujian" => {
-                config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\Gujian".to_string();
-                game = GameType::Gujian;
-            }
-            &_ => {}
-        }
+        let game = match args[1].as_str() {
+            "--pal4" => GameType::PAL4,
+            "--pal5" => GameType::PAL5,
+            "--pal5q" => GameType::PAL5Q,
+            "--swd5" => GameType::SWD5,
+            "--swdhc" => GameType::SWDHC,
+            "--swdcf" => GameType::SWDCF,
+            "--gujian" => GameType::Gujian,
+            &_ => GameType::PAL3,
+        };
     }
 
     let app = ComRc::<IApplication>::from_object(Application::new());
-    let resource_view_content = SceneViewResourceView::new(config, app.clone(), game);
-    let plugins = SceneViewPlugins::new(Some(crosscom::ComRc::from_object(resource_view_content)));
-
     app.add_component(
         IApplicationLoaderComponent::uuid(),
-        ComRc::from_object(EditorApplicationLoader::new(app.clone(), Some(plugins))),
+        ComRc::from_object(EditorApplicationLoader::new(
+            app.clone(),
+            WelcomePageDirector::create(app.clone()),
+        )),
     );
 
     app.initialize();

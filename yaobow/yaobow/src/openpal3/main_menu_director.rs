@@ -9,9 +9,9 @@ use opengb::{
 };
 use radiance::{
     audio::{AudioEngine, AudioSource, Codec},
-    comdef::{IDirector, IDirectorImpl},
+    comdef::{IDirector, IDirectorImpl, ISceneManager},
     input::InputEngine,
-    scene::{CoreScene, SceneManager},
+    scene::CoreScene,
 };
 
 use crate::ComObject_MainMenuDirector;
@@ -47,7 +47,7 @@ impl MainMenuDirector {
 }
 
 impl IDirectorImpl for MainMenuDirector {
-    fn activate(&self, scene_manager: &mut dyn SceneManager) {
+    fn activate(&self, scene_manager: ComRc<ISceneManager>) {
         debug!("MainMenuDirector activated");
         scene_manager.push_scene(CoreScene::create());
         self.main_theme_source.borrow_mut().restart();
@@ -55,7 +55,7 @@ impl IDirectorImpl for MainMenuDirector {
 
     fn update(
         &self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         _delta_sec: f32,
     ) -> Option<ComRc<IDirector>> {

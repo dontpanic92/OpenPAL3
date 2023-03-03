@@ -5,8 +5,10 @@ use crate::{
     },
     scene::RoleController,
 };
+use crosscom::ComRc;
 use imgui::Ui;
-use radiance::{math::Vec3, scene::SceneManager};
+use radiance::comdef::ISceneManager;
+use radiance::math::Vec3;
 
 #[derive(Debug, Clone)]
 pub struct SceCommandHyFly {
@@ -18,7 +20,7 @@ pub struct SceCommandHyFly {
 impl SceCommand for SceCommandHyFly {
     fn update(
         &mut self,
-        scene_manager: &mut dyn SceneManager,
+        scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,

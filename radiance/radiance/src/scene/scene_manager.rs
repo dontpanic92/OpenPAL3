@@ -1,46 +1,38 @@
-use crate::comdef::{IDirector, IScene};
+use std::cell::RefCell;
+
+use crate::{
+    comdef::{IDirector, IScene, ISceneManagerImpl},
+    ComObject_SceneManager,
+};
 
 use crosscom::ComRc;
 use imgui::Ui;
 
-pub trait SceneManager {
-    fn update(&mut self, ui: &Ui, delta_sec: f32);
-    fn scene(&self) -> Option<ComRc<IScene>>;
-    fn scenes(&self) -> &[ComRc<IScene>];
-
-    fn set_view_extent(&mut self, extent: (u32, u32));
-    fn director(&self) -> Option<ComRc<IDirector>>;
-    fn set_director(&mut self, director: ComRc<IDirector>);
-    fn push_scene(&mut self, scene: ComRc<IScene>);
-    fn pop_scene(&mut self) -> Option<ComRc<IScene>>;
-    fn unload_all_scenes(&mut self);
-    fn unset_director(&mut self);
-}
-
 pub struct DefaultSceneManager {
-    director: Option<ComRc<IDirector>>,
-    scenes: Vec<ComRc<IScene>>,
-    view_extent: (u32, u32),
+    director: RefCell<Option<ComRc<IDirector>>>,
+    scenes: RefCell<Vec<ComRc<IScene>>>,
 }
+
+ComObject_SceneManager!(super::DefaultSceneManager);
 
 impl DefaultSceneManager {
     pub fn new() -> Self {
         DefaultSceneManager {
-            director: None,
-            scenes: vec![],
-            view_extent: (1024, 768),
+            director: RefCell::new(None),
+            scenes: RefCell::new(vec![]),
         }
     }
 }
 
-impl SceneManager for DefaultSceneManager {
-    fn update(&mut self, ui: &Ui, delta_sec: f32) {
-        if let Some(d) = self.director.as_ref() {
+impl ISceneManagerImpl for DefaultSceneManager {
+    fn update(&self, ui: &Ui, delta_sec: f32) {
+        let d = self.director.borrow().clone();
+        if let Some(d) = d {
             let director = d.clone();
-            let new_director = director.update(self, ui, delta_sec);
+            let new_director = director.update(ComRc::from_self(self), ui, delta_sec);
             if let Some(d) = new_director {
-                d.activate(self);
-                self.director = Some(d);
+                d.activate(ComRc::from_self(self));
+                self.director.replace(Some(d));
             }
         }
 
@@ -50,33 +42,29 @@ impl SceneManager for DefaultSceneManager {
     }
 
     fn scene(&self) -> Option<ComRc<IScene>> {
-        self.scenes.last().and_then(|x| Some(x.clone()))
+        self.scenes.borrow().last().and_then(|x| Some(x.clone()))
     }
 
-    fn scenes(&self) -> &[ComRc<IScene>] {
-        &self.scenes
-    }
-
-    fn set_view_extent(&mut self, extent: (u32, u32)) {
-        self.view_extent = extent;
+    fn scenes(&self) -> Vec<ComRc<IScene>> {
+        self.scenes.borrow().clone()
     }
 
     fn director(&self) -> Option<ComRc<IDirector>> {
-        self.director.clone()
+        self.director.borrow().clone()
     }
 
-    fn set_director(&mut self, director: ComRc<IDirector>) {
-        director.activate(self);
-        self.director = Some(director);
+    fn set_director(&self, director: ComRc<IDirector>) {
+        director.activate(ComRc::from_self(self));
+        self.director.replace(Some(director));
     }
 
-    fn push_scene(&mut self, scene: ComRc<IScene>) {
-        self.scenes.push(scene.clone());
+    fn push_scene(&self, scene: ComRc<IScene>) {
+        self.scenes.borrow_mut().push(scene.clone());
         scene.load();
     }
 
-    fn pop_scene(&mut self) -> Option<ComRc<IScene>> {
-        let mut scene = self.scenes.pop();
+    fn pop_scene(&self) -> Option<ComRc<IScene>> {
+        let mut scene = self.scenes.borrow_mut().pop();
         if let Some(s) = scene.as_mut() {
             s.unload();
         }
@@ -84,12 +72,12 @@ impl SceneManager for DefaultSceneManager {
         scene
     }
 
-    fn unload_all_scenes(&mut self) {
+    fn unload_all_scenes(&self) {
         while self.pop_scene().is_some() {}
     }
 
-    fn unset_director(&mut self) {
-        self.director = None;
+    fn unset_director(&self) {
+        self.director.replace(None);
     }
 }
 
