@@ -76,7 +76,10 @@ impl AudioSource for OpenAlAudioSource {
                         self.streaming_source.queue_buffer(buffer).unwrap();
                     }
                     Ok(None) => {}
-                    Err(e) => println!("Error: {}", e),
+                    Err(e) => {
+                        println!("Error: {}", e);
+                        self.streaming_source.queue_buffer(buffer).unwrap();
+                    }
                 }
             }
 

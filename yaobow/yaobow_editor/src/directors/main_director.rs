@@ -94,7 +94,7 @@ impl DevToolsDirector {
             }
 
             let e_filename = &format!("{}", e_path.file_name().unwrap().to_str().unwrap());
-            let e_fullname = path.as_ref().join(e_path.file_name().unwrap());
+            let e_fullname = path.as_ref().join(e_path);
             let treenode = ui.tree_node_config(e_filename);
 
             if e.kind == EntryKind::Dir {

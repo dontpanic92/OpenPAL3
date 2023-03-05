@@ -1,5 +1,4 @@
-use shared::fs::zpk;
-
 pub fn run_opengujian() {
-    zpk::zpk_test().unwrap();
+    // zpk::zpk_test().unwrap();
+    shared::fs::zpkg::zpkg_test();
 }

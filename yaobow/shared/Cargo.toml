@@ -28,7 +28,7 @@ minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
 miniz_oxide ="0.6"
 radiance = { path = "../../radiance/radiance" }
 thiserror = "1.0"
-# tomcrypt-sys = "0.1"
+tomcrypt-sys = "0.1"
 wavefront_obj = "5.1.0"
 xtea = { git = "https://github.com/Brekcel/xtea" }
 xxtea = "0.2.0"

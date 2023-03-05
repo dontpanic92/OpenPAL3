@@ -5,6 +5,7 @@ use lewton::inside_ogg::OggStreamReader;
 use std::io::Cursor;
 
 pub struct OggDecoder {
+    data: Vec<u8>,
     decoder: OggStreamReader<Cursor<Vec<u8>>>,
 }
 
@@ -22,15 +23,16 @@ impl Decoder for OggDecoder {
     }
 
     fn reset(&mut self) {
-        self.decoder.seek_absgp_pg(0).unwrap();
+        let cursor = Cursor::new(self.data.clone());
+        self.decoder = OggStreamReader::new(cursor).unwrap();
     }
 }
 
 impl OggDecoder {
     pub fn new(data: Vec<u8>) -> Self {
-        let cursor = Cursor::new(data);
+        let cursor = Cursor::new(data.clone());
         let decoder = OggStreamReader::new(cursor).unwrap();
 
-        Self { decoder }
+        Self { data, decoder }
     }
 }

@@ -25,6 +25,7 @@ pub enum GameType {
     SWDHC,
     SWDCF,
     Gujian,
+    Gujian2,
 }
 
 impl GameType {
@@ -38,6 +39,7 @@ impl GameType {
             GameType::SWDHC => "OpenSWDHC",
             GameType::SWDCF => "OpenSWDCF",
             GameType::Gujian => "OpenGujian",
+            GameType::Gujian2 => "OpenGujian2",
         }
     }
 
@@ -51,6 +53,7 @@ impl GameType {
             GameType::SWDHC => "轩辕剑外传 汉之云",
             GameType::SWDCF => "轩辕剑外传 云之遥",
             GameType::Gujian => "古剑奇谭",
+            GameType::Gujian2 => "古剑奇谭二",
         }
     }
 }
@@ -123,6 +126,7 @@ fn main() {
             "--swdhc" => GameType::SWDHC,
             "--swdcf" => GameType::SWDCF,
             "--gujian" => GameType::Gujian,
+            "--gujian2" => GameType::Gujian2,
             &_ => GameType::PAL3,
         };
     }

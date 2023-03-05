@@ -41,6 +41,9 @@ impl WelcomePageDirector {
             GameType::Gujian => {
                 config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\Gujian".to_string();
             }
+            GameType::Gujian2 => {
+                config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\Gujian2".to_string();
+            }
             _ => {}
         };
 
@@ -74,7 +77,7 @@ impl IDirectorImpl for WelcomePageDirector {
                 GameType::PAL5,
                 GameType::PAL5Q,
             ],
-            vec![GameType::Gujian],
+            vec![GameType::Gujian, GameType::Gujian2],
             vec![GameType::SWD5, GameType::SWDHC, GameType::SWDCF],
         ];
 
