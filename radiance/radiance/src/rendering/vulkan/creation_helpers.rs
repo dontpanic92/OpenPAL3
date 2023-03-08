@@ -142,7 +142,7 @@ pub fn get_surface_format(
         .into_iter()
         .find(|f| {
             f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
-                && f.format == vk::Format::R8G8B8A8_UNORM
+                && f.format == vk::Format::B8G8R8A8_UNORM
         })
         .unwrap_or(default))
 }
