@@ -1,5 +1,5 @@
 use log::debug;
-use std::cell::RefCell;
+use std::cell::{RefCell, Cell};
 use std::rc::Rc;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
@@ -9,7 +9,7 @@ use winit::window::{Window, WindowBuilder};
 pub type MessageCallback = Box<dyn Fn(&Event<()>)>;
 
 pub struct Platform {
-    event_loop: Option<EventLoop<()>>,
+    event_loop: Cell<Option<EventLoop<()>>>,
     window: Rc<Window>,
     dpi_scale: f32,
     msg_callbacks: Rc<RefCell<Vec<MessageCallback>>>,
@@ -26,7 +26,7 @@ impl Platform {
             .unwrap();
 
         Self {
-            event_loop: Some(event_loop),
+            event_loop: Cell::new(Some(event_loop)),
             dpi_scale: window.scale_factor() as f32,
             msg_callbacks: Rc::new(RefCell::new(vec![])),
             window: Rc::new(window),
@@ -47,7 +47,7 @@ impl Platform {
         &self.window
     }
 
-    pub fn run_event_loop<F1: 'static + FnMut()>(&mut self, mut update_engine: F1) {
+    pub fn run_event_loop<F1: 'static + FnMut()>(&self, mut update_engine: F1) {
         let window = self.window.clone();
         let msg_callbacks = self.msg_callbacks.clone();
         let event_loop = self.event_loop.take().unwrap();
@@ -104,7 +104,7 @@ impl Platform {
         self.dpi_scale
     }
 
-    pub fn set_title(&mut self, title: &str) {
+    pub fn set_title(&self, title: &str) {
         self.window.set_title(title);
     }
 }
