@@ -1,5 +1,5 @@
 use log::debug;
-use std::cell::{RefCell, Cell};
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};

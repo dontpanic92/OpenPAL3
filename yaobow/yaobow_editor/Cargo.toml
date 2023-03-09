@@ -22,8 +22,8 @@ native-dialog = "0.6.3"
 opengb = { path = "../opengb" }
 radiance = { path = "../../radiance/radiance" }
 radiance_editor = { path = "../../radiance/radiance_editor" }
-serde = "1.0.106"
-serde_json = "1.0.61"
+serde = "1.0"
+serde_json = "1.0"
 simple_logger = "1.16.0"
 shared = { path = "../shared" }
 uuid = "0.8"

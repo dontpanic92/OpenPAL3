@@ -24,7 +24,6 @@ pub fn create_entity_from_pol_model<P: AsRef<Path>>(
 ) -> ComRc<IEntity> {
     let entity = CoreEntity::create(name, visible);
     let geometries = load_pol_model(vfs, path);
-    println!("loading pol");
     let mesh_component =
         StaticMeshComponent::new(entity.clone(), geometries, component_factory.clone());
     entity.add_component(

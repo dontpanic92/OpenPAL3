@@ -6,6 +6,7 @@ members = [
     "yaobow/common",
     "yaobow/opengb",
     "yaobow/fileformats",
+    "yaobow/macros",
     "yaobow/shared",
     "yaobow/yaobow",
     "yaobow/yaobow_editor",
