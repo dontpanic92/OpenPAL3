@@ -61,11 +61,16 @@ fn load_clump(
     for i in 0..chunk.frames.len() {
         if chunk.frames[i].parent > 0 && chunk.frames[i].parent != i as i32 {
             subs[chunk.frames[i].parent as usize].attach(subs[i].clone());
+        } else {
+            parent.attach(subs[i].clone());
         }
     }
 
     for atomic in &chunk.atomics {
-        let entity = subs[atomic.frame as usize].clone();
+        let p = subs[atomic.frame as usize].clone();
+        let entity = CoreEntity::create(format!("{}_sub", parent.name()), true);
+        p.attach(entity.clone());
+
         let geometry = &chunk.geometries[atomic.geometry as usize];
         let r_geometry = create_geometry(geometry, vfs, &path, texture_resolver);
 
@@ -75,8 +80,6 @@ fn load_clump(
             IStaticMeshComponent::uuid(),
             crosscom::ComRc::from_object(mesh_component),
         );
-
-        parent.attach(entity);
     }
 }
 

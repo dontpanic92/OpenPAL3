@@ -1,3 +1,4 @@
+pub mod anm;
 pub mod atomic;
 pub mod clump;
 pub mod extension;
@@ -9,7 +10,8 @@ pub mod world;
 
 use std::io::{Cursor, Read};
 
-use byteorder::{LittleEndian, ReadBytesExt};
+use binrw::{binrw, BinRead, BinResult};
+use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use clump::Clump;
 use common::read_ext::ReadExt;
 use serde::Serialize;
@@ -22,6 +24,8 @@ use world::World;
  *      https://rwsreader.sourceforge.net/
  */
 
+#[binrw]
+#[brw(little)]
 #[derive(Debug, Serialize, PartialEq, Eq, Copy, Clone)]
 pub struct ChunkType(pub u32);
 
@@ -40,7 +44,7 @@ impl ChunkType {
     pub const CLUMP: Self = Self(0x10);
     pub const ATOMIC: Self = Self(0x14);
     pub const GEOMETRY_LIST: Self = Self(0x1a);
-    pub const HANIM_ANIMATION: Self = Self(0x1b);
+    pub const ANIM_ANIMATION: Self = Self(0x1b);
     pub const CHUNK_GROUP_START: Self = Self(0x29);
     pub const CHUNK_GROUP_END: Self = Self(0x2a);
 
@@ -73,10 +77,60 @@ impl FormatFlag {
     }
 }
 
+#[binrw::parser(reader, endian)]
+fn float_parser((half_float,): (bool,)) -> BinResult<f32> {
+    if half_float {
+        if endian == binrw::Endian::Little {
+            Ok(half::f16::from_bits(reader.read_u16::<LittleEndian>()?).to_f32())
+        } else {
+            Ok(half::f16::from_bits(reader.read_u16::<BigEndian>()?).to_f32())
+        }
+    } else {
+        if endian == binrw::Endian::Little {
+            Ok(reader.read_f32::<LittleEndian>()?)
+        } else {
+            Ok(reader.read_f32::<BigEndian>()?)
+        }
+    }
+}
+
+#[binrw]
+#[brw(little)]
+#[brw(import{half_float: bool = false})]
+#[derive(Debug, Serialize)]
+pub struct Vec4f {
+    #[br(parse_with = float_parser)]
+    #[br(args(half_float))]
+    pub x: f32,
+
+    #[br(parse_with = float_parser)]
+    #[br(args(half_float))]
+    pub y: f32,
+
+    #[br(parse_with = float_parser)]
+    #[br(args(half_float))]
+    pub z: f32,
+
+    #[br(parse_with = float_parser)]
+    #[br(args(half_float))]
+    pub w: f32,
+}
+
+#[binrw]
+#[brw(little)]
+#[brw(import{half_float: bool = false})]
 #[derive(Debug, Serialize)]
 pub struct Vec3f {
+    #[br(parse_with = float_parser)]
+    #[br(args(half_float))]
     pub x: f32,
+
+    #[br(parse_with = float_parser)]
+    #[br(args(half_float))]
     pub y: f32,
+
+    #[br(parse_with = float_parser)]
+    #[br(args(half_float))]
     pub z: f32,
 }
 
@@ -154,6 +208,8 @@ pub struct Triangle {
     pub material: u16,
 }
 
+#[binrw]
+#[brw(little)]
 #[derive(Debug, Serialize)]
 pub struct ChunkHeader {
     pub ty: ChunkType,
@@ -197,6 +253,8 @@ macro_rules! check_ty {
 
 pub(crate) use check_ty;
 
+use self::anm::AnmAction;
+
 pub fn list_chunks(data: &[u8]) -> anyhow::Result<Vec<ChunkHeader>> {
     let mut cursor = Cursor::new(data);
     let mut chunks = vec![];
@@ -238,4 +296,19 @@ pub fn read_bsp(data: &[u8]) -> anyhow::Result<Vec<World>> {
     }
 
     Ok(world)
+}
+
+pub fn read_anm(data: &[u8]) -> anyhow::Result<Vec<AnmAction>> {
+    let mut cursor = Cursor::new(data);
+    let mut anim = vec![];
+
+    while !cursor.is_empty() {
+        let chunk = ChunkHeader::read(&mut cursor)?;
+        match chunk.ty {
+            ChunkType::ANIM_ANIMATION => anim.push(AnmAction::read(&mut cursor)?),
+            _ => cursor.set_position(cursor.position() + chunk.length as u64),
+        }
+    }
+
+    Ok(anim)
 }
