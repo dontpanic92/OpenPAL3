@@ -2,7 +2,7 @@ use crate::{ComObject_DevToolsDirector, GameType};
 
 use super::{main_content::ContentTabs, DevToolsState};
 use crosscom::ComRc;
-use imgui::{Condition, Ui};
+use imgui::Ui;
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
 use opengb::asset_manager::AssetManager;
 use radiance::{
@@ -54,32 +54,33 @@ impl DevToolsDirector {
 
     fn main_window(&self, ui: &Ui) -> Option<DevToolsState> {
         let content_rect = window_content_rect(ui);
+        let h_layout = content_rect.width > 800.;
 
-        ui.window("Files")
-            .collapsible(false)
-            .resizable(false)
-            .size(
-                [content_rect.width * 0.3, content_rect.height],
-                Condition::Always,
-            )
-            .position([content_rect.x, content_rect.y], Condition::Always)
-            .movable(false)
+        let sizes = {
+            if h_layout {
+                [
+                    [content_rect.width * 0.3, content_rect.height],
+                    [std::f32::MIN_POSITIVE, content_rect.height],
+                ]
+            } else {
+                [
+                    [content_rect.width, content_rect.height * 0.6],
+                    [content_rect.width, std::f32::MIN_POSITIVE],
+                ]
+            }
+        };
+
+        ui.child_window("Files")
+            .size(sizes[0])
             .build(|| self.render_tree_nodes(ui, "/"));
 
+        if h_layout {
+            ui.same_line();
+        }
+
         let mut state = None;
-        ui.window("Content")
-            .title_bar(false)
-            .collapsible(false)
-            .resizable(false)
-            .size(
-                [content_rect.width * 0.7, content_rect.height],
-                Condition::Always,
-            )
-            .position(
-                [content_rect.x + content_rect.width * 0.3, content_rect.y],
-                Condition::Always,
-            )
-            .movable(false)
+        ui.child_window("Content")
+            .size(sizes[1])
             .build(|| state = self.render_content(ui));
 
         state

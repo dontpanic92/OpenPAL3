@@ -11,9 +11,9 @@ impl NodeView {
             .collapsible(false)
             .size(
                 [window_width * 0.2, window_height * 0.7],
-                Condition::Appearing,
+                Condition::FirstUseEver,
             )
-            .position([0., 0.], Condition::Appearing)
+            .position([0., 0.], Condition::FirstUseEver)
             .movable(true)
             .build(|| {
                 let root_entities = scene_manager.scene().unwrap().root_entities();

@@ -2847,6 +2847,7 @@ dependencies = [
  "cipher",
  "common",
  "crosscom",
+ "dirs",
  "encoding",
  "fileformats",
  "image",

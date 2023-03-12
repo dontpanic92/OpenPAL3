@@ -1,7 +1,6 @@
-#[cfg(target_os = "android")]
-use ndk_glue;
 use radiance::math::Vec3;
 use serde::{Deserialize, Serialize};
+use shared::ydirs;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -26,17 +25,7 @@ impl PersistentState {
     }
 
     fn get_data_dir(app_name: &str) -> PathBuf {
-        #[cfg(target_os = "android")]
-        let path = PathBuf::from(
-            ndk_glue::native_activity()
-                .external_data_path()
-                .to_str()
-                .unwrap(),
-        );
-        #[cfg(not(target_os = "android"))]
-        let path = dirs::data_dir().unwrap().join(app_name);
-
-        path
+        ydirs::save_dir().join(app_name)
     }
 
     pub fn load(app_name: &str, slot: i32) -> Self {

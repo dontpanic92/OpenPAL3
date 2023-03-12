@@ -5,3 +5,4 @@ pub mod assets_loader;
 pub mod exporters;
 pub mod fs;
 pub mod loaders;
+pub mod ydirs;

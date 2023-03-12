@@ -1,5 +1,6 @@
 #![feature(drain_filter)]
 mod comdef;
+mod config;
 mod directors;
 mod preview;
 
@@ -18,6 +19,7 @@ use radiance_editor::comdef::IViewContentImpl;
 #[derive(Copy, Clone, PartialEq)]
 pub enum GameType {
     PAL3,
+    PAL3A,
     PAL4,
     PAL5,
     PAL5Q,
@@ -32,6 +34,7 @@ impl GameType {
     pub fn app_name(&self) -> &'static str {
         match self {
             GameType::PAL3 => "OpenPAL3",
+            GameType::PAL3A => "OpenPAL3A",
             GameType::PAL4 => "OpenPAL4",
             GameType::PAL5 => "OpenPAL5",
             GameType::PAL5Q => "OpenPAL5Q",
@@ -46,6 +49,7 @@ impl GameType {
     pub fn full_name(&self) -> &'static str {
         match self {
             GameType::PAL3 => "仙剑奇侠传三",
+            GameType::PAL3A => "仙剑奇侠传三外传",
             GameType::PAL4 => "仙剑奇侠传四",
             GameType::PAL5 => "仙剑奇侠传五",
             GameType::PAL5Q => "仙剑奇侠传五前传",
@@ -139,6 +143,8 @@ fn main() {
             WelcomePageDirector::create(app.clone()),
         )),
     );
+
+    config::init_imgui_ini(&app);
 
     app.initialize();
     app.run();

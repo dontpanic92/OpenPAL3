@@ -38,7 +38,7 @@ impl IDirectorImpl for MainPageDirector {
         delta_sec: f32,
     ) -> Option<ComRc<IDirector>> {
         let [window_width, window_height] = ui.io().display_size;
-        let font = ui.push_font(ui.fonts().fonts()[1]);
+        let style = ui.push_style_var(imgui::StyleVar::WindowPadding([0., 0.]));
 
         ui.window("TOP_LEVEL")
             .collapsible(false)
@@ -49,14 +49,31 @@ impl IDirectorImpl for MainPageDirector {
             .draw_background(false)
             .title_bar(false)
             .bring_to_front_on_focus(false)
+            .nav_focus(false)
             .build(|| {
+                unsafe {
+                    let s = "main_page_dock";
+                    let s1 = s.as_ptr() as *const std::os::raw::c_char;
+                    let id = {
+                        let s2 = s1.add(s.len());
+                        imgui::sys::igGetID_StrStr(s1, s2)
+                    };
+
+                    imgui::sys::igDockSpace(
+                        id,
+                        imgui::sys::ImVec2::new(0., 0.),
+                        imgui::sys::ImGuiDockNodeFlags::from_le(
+                            imgui::sys::ImGuiDockNodeFlags_PassthruCentralNode as i32,
+                        ),
+                        ::std::ptr::null::<imgui::sys::ImGuiWindowClass>(),
+                    );
+                };
                 self.scene_view
                     .borrow_mut()
                     .render(scene_manager, ui, delta_sec)
             });
 
-        font.pop();
-
+        style.pop();
         None
     }
 }

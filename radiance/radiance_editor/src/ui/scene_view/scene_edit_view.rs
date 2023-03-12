@@ -99,9 +99,9 @@ impl SceneEditView {
             .collapsible(false)
             .size(
                 [window_width * 0.6, window_height * 0.7],
-                Condition::Appearing,
+                Condition::FirstUseEver,
             )
-            .position([window_width * 0.2, 0.], Condition::Appearing)
+            .position([window_width * 0.2, 0.], Condition::FirstUseEver)
             .movable(true)
             .draw_background(false)
             .build(|| {

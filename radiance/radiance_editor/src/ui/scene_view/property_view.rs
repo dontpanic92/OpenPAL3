@@ -11,9 +11,9 @@ impl PropertyView {
             .collapsible(false)
             .size(
                 [window_width * 0.2, window_height * 0.7],
-                Condition::Appearing,
+                Condition::FirstUseEver,
             )
-            .position([window_width * 0.8, 0.], Condition::Appearing)
+            .position([window_width * 0.8, 0.], Condition::FirstUseEver)
             .movable(true)
             .build(|| ui.text("hello world"));
     }

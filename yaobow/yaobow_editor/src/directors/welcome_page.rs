@@ -18,8 +18,11 @@ impl WelcomePageDirector {
     }
 
     fn load_game(&self, game: GameType) -> Option<ComRc<IDirector>> {
-        let mut config = OpenGbConfig::load("openpal3.toml", "OPENPAL3");
+        let mut config = OpenGbConfig::load("openpal3.toml", "OpenPAL3");
         match game {
+            GameType::PAL3A => {
+                config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\PAL3A".to_string();
+            }
             GameType::PAL4 => {
                 config.asset_path = "F:\\PAL4\\".to_string();
             }
@@ -73,6 +76,7 @@ impl IDirectorImpl for WelcomePageDirector {
         let columns = [
             vec![
                 GameType::PAL3,
+                GameType::PAL3A,
                 GameType::PAL4,
                 GameType::PAL5,
                 GameType::PAL5Q,
@@ -90,6 +94,7 @@ impl IDirectorImpl for WelcomePageDirector {
             .flags(WindowFlags::NO_BRING_TO_FRONT_ON_FOCUS)
             .movable(false)
             .title_bar(false)
+            .draw_background(false)
             .build(|| {
                 let w = em * 50.;
                 let h = em * 30.;
