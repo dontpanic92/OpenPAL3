@@ -1,11 +1,13 @@
 use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
 
 use crosscom::ComRc;
-use fileformats::rwbs::{material::Material, read_dff, TexCoord, Triangle, Vec3f};
+use fileformats::rwbs::{
+    clump::Clump, frame::Frame, material::Material, read_dff, TexCoord, Triangle, Vec3f,
+};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{IEntity, IStaticMeshComponent},
-    math::Vec3,
+    math::{Mat44, Vec3},
     rendering::{ComponentFactory, MaterialDef, StaticMeshComponent},
     scene::CoreEntity,
 };
@@ -21,43 +23,85 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
     texture_resolver: &dyn TextureResolver,
 ) -> ComRc<IEntity> {
     let entity = CoreEntity::create(name, visible);
-    let geometries = load_dff_model(vfs, path, texture_resolver);
-    let mesh_component =
-        StaticMeshComponent::new(entity.clone(), geometries, component_factory.clone());
-    entity.add_component(
-        IStaticMeshComponent::uuid(),
-        crosscom::ComRc::from_object(mesh_component),
-    );
-    entity
-}
 
-fn load_dff_model<P: AsRef<Path>>(
-    vfs: &MiniFs,
-    path: P,
-    texture_resolver: &dyn TextureResolver,
-) -> Vec<radiance::rendering::Geometry> {
     let mut data = vec![];
     let _ = vfs.open(&path).unwrap().read_to_end(&mut data).unwrap();
     let chunks = read_dff(&data).unwrap();
-    if chunks.is_empty() {
-        vec![]
-    } else {
-        let mut r_geometries = vec![];
-        for atomic in &chunks[0].atomics {
-            // let frame = &chunks[0].frames[atomic.frame as usize];
-            let geometry = &chunks[0].geometries[atomic.geometry as usize];
-            let mut r_geometry = create_geometry(geometry, vfs, &path, texture_resolver);
-            r_geometries.append(&mut r_geometry);
-        }
+    for chunk in chunks {
+        load_clump(
+            chunk,
+            entity.clone(),
+            component_factory,
+            vfs,
+            path.as_ref(),
+            texture_resolver,
+        );
+    }
+    entity
+}
 
-        r_geometries
+fn load_clump(
+    chunk: Clump,
+    parent: ComRc<IEntity>,
+    component_factory: &Rc<dyn ComponentFactory>,
+    vfs: &MiniFs,
+    path: &Path,
+    texture_resolver: &dyn TextureResolver,
+) {
+    let subs: Vec<ComRc<IEntity>> = chunk
+        .frames
+        .iter()
+        .map(|f| {
+            let entity = CoreEntity::create(format!("{}_sub", parent.name()), true);
+            entity.transform().borrow_mut().set_matrix(create_matrix(f));
+            entity
+        })
+        .collect();
+
+    for i in 0..chunk.frames.len() {
+        if chunk.frames[i].parent > 0 && chunk.frames[i].parent != i as i32 {
+            subs[chunk.frames[i].parent as usize].attach(subs[i].clone());
+        }
+    }
+
+    for atomic in &chunk.atomics {
+        let entity = subs[atomic.frame as usize].clone();
+        let geometry = &chunk.geometries[atomic.geometry as usize];
+        let r_geometry = create_geometry(geometry, vfs, &path, texture_resolver);
+
+        let mesh_component =
+            StaticMeshComponent::new(entity.clone(), r_geometry, component_factory.clone());
+        entity.add_component(
+            IStaticMeshComponent::uuid(),
+            crosscom::ComRc::from_object(mesh_component),
+        );
+
+        parent.attach(entity);
     }
 }
 
-fn create_geometry<P: AsRef<Path>>(
+fn create_matrix(frame: &Frame) -> Mat44 {
+    let mut mat = Mat44::new_identity();
+    mat.floats_mut()[0][0] = frame.right.x;
+    mat.floats_mut()[1][0] = frame.right.y;
+    mat.floats_mut()[2][0] = frame.right.z;
+    mat.floats_mut()[0][1] = frame.up.x;
+    mat.floats_mut()[1][1] = frame.up.y;
+    mat.floats_mut()[2][1] = frame.up.z;
+    mat.floats_mut()[0][2] = frame.at.x;
+    mat.floats_mut()[1][2] = frame.at.y;
+    mat.floats_mut()[2][2] = frame.at.z;
+    mat.floats_mut()[0][3] = frame.pos.x;
+    mat.floats_mut()[1][3] = frame.pos.y;
+    mat.floats_mut()[2][3] = frame.pos.z;
+
+    mat
+}
+
+fn create_geometry(
     geometry: &fileformats::rwbs::geometry::Geometry,
     vfs: &MiniFs,
-    path: P,
+    path: &Path,
     texture_resolver: &dyn TextureResolver,
 ) -> Vec<radiance::rendering::Geometry> {
     if geometry.morph_targets.len() == 0 {
@@ -90,14 +134,14 @@ fn create_geometry<P: AsRef<Path>>(
     )
 }
 
-pub(crate) fn create_geometry_internal<P: AsRef<Path>>(
+pub(crate) fn create_geometry_internal(
     vertices: &[Vec3f],
     normals: Option<&Vec<Vec3f>>,
     triangles: &[Triangle],
     texcoord_sets: &[Vec<TexCoord>],
     materials: &[Material],
     vfs: &MiniFs,
-    path: P,
+    path: &Path,
     texture_resolver: &dyn TextureResolver,
 ) -> Vec<radiance::rendering::Geometry> {
     let mut r_vertices = vec![];

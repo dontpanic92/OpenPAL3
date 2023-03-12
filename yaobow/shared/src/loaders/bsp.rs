@@ -123,7 +123,7 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
         &texcoord_sets,
         materials,
         vfs,
-        path,
+        path.as_ref(),
         texture_resolver,
     )
 }

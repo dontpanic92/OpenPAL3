@@ -12,7 +12,7 @@ pub struct Frame {
     pub up: Vec3f,
     pub at: Vec3f,
     pub pos: Vec3f,
-    pub parent: u32,
+    pub parent: i32,
     pub unknown: u32,
 }
 
@@ -22,7 +22,7 @@ impl Frame {
         let up = Self::read_vec3(cursor)?;
         let at = Self::read_vec3(cursor)?;
         let pos = Self::read_vec3(cursor)?;
-        let parent = cursor.read_u32_le()?;
+        let parent = cursor.read_i32::<LittleEndian>()?;
         let unknown = cursor.read_u32_le()?;
 
         Ok(Self {
