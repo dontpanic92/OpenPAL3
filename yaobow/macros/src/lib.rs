@@ -17,8 +17,8 @@ pub fn ni_object_type(input: TokenStream) -> TokenStream {
         };
 
         #[allow(non_snake_case)]
-        fn #read_ident(reader: &mut Cursor<Vec<u8>>, block_size: u32) -> BinResult<Box<dyn NiObject>> {
-            Ok(Box::new(#ident::read_args(reader, block_size)?))
+        fn #read_ident(reader: &mut Cursor<Vec<u8>>, args: NiObjectArgs) -> BinResult<Box<dyn NiObject>> {
+            Ok(Box::new(#ident::read_args(reader, args)?))
         }
 
         #[allow(non_snake_case)]

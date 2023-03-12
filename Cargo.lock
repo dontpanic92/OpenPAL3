@@ -2466,7 +2466,6 @@ version = "0.1.0"
 dependencies = [
  "crosscom",
  "imgui",
- "imgui-sys",
  "log",
  "radiance",
  "simple_logger",

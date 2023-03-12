@@ -91,8 +91,8 @@ impl IDirectorImpl for WelcomePageDirector {
             .movable(false)
             .title_bar(false)
             .build(|| {
-                let w = em * 30.;
-                let h = em * 15.;
+                let w = em * 50.;
+                let h = em * 30.;
                 ui.window("WelcomePane")
                     .collapsible(false)
                     .resizable(false)
@@ -104,10 +104,12 @@ impl IDirectorImpl for WelcomePageDirector {
                     .movable(false)
                     .title_bar(false)
                     .build(|| {
+                        let font = ui.push_font(ui.fonts().fonts()[0]);
                         ui.text("妖弓编辑器");
+                        font.pop();
+
                         ui.dummy([0., 2. * em]);
 
-                        let font = ui.push_font(ui.fonts().fonts()[1]);
                         let table = ui.begin_table("t1", 3).unwrap();
 
                         let mut row = 0;
@@ -118,7 +120,7 @@ impl IDirectorImpl for WelcomePageDirector {
                                 if let Some(game) = columns[i].get(row) {
                                     if ui.button_with_size(
                                         format!("运行《{}》编辑器", game.full_name()),
-                                        [-std::f32::MIN_POSITIVE, em * 1.5],
+                                        [-std::f32::MIN_POSITIVE, em * 3.],
                                     ) {
                                         next_director = self.load_game(*game);
                                     }
@@ -136,7 +138,6 @@ impl IDirectorImpl for WelcomePageDirector {
                         }
 
                         table.end();
-                        font.pop();
                     });
             });
 

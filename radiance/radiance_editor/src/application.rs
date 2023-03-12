@@ -25,6 +25,13 @@ impl IComponentImpl for EditorApplicationLoader {
             .io_mut()
             .config_windows_move_from_title_bar_only = true;
 
+        unsafe {
+            (*imgui::sys::igGetIO()).FontDefault = std::slice::from_raw_parts_mut(
+                (*(*imgui::sys::igGetIO()).Fonts).Fonts.Data,
+                (*(*imgui::sys::igGetIO()).Fonts).Fonts.Size as usize,
+            )[1]
+        };
+
         self.app
             .engine()
             .borrow_mut()

@@ -1,4 +1,5 @@
 pub mod blocks;
+pub mod footer;
 pub mod header;
 
 use std::{
@@ -6,17 +7,63 @@ use std::{
     io::{Cursor, Read, Seek, Write},
 };
 
-use binrw::{binrw, BinRead, BinResult, BinWrite, Endian};
+use binrw::{binrw, binwrite, meta::ReadEndian, BinRead, BinResult, BinWrite, Endian};
+
+use self::{
+    blocks::{NiBlocks, NiBlocksArgs, NiObjectArgs},
+    footer::NiFooter,
+    header::NiHeader,
+};
 
 /**
  * Reference:
  *      https://github.com/niftools/nifskope
  */
 
+#[binwrite]
+#[bw(little)]
+#[derive(Debug)]
+pub struct NifModel {
+    header: NiHeader,
+    blocks: NiBlocks,
+    footer: NiFooter,
+}
+
+impl ReadEndian for NifModel {
+    const ENDIAN: binrw::meta::EndianKind = binrw::meta::EndianKind::None;
+}
+
+impl BinRead for NifModel {
+    type Args<'a> = ();
+
+    fn read_options<R: Read + Seek>(
+        reader: &mut R,
+        _: Endian,
+        _: Self::Args<'_>,
+    ) -> BinResult<Self> {
+        let header = NiHeader::read(reader)?;
+        let blocks = NiBlocks::read_args(
+            reader,
+            NiBlocksArgs {
+                block_sizes: &header.block_size,
+                block_types: &header.block_types,
+                block_type_index: &header.block_type_index,
+            },
+        )?;
+        let footer = NiFooter::read(reader)?;
+
+        Ok(Self {
+            header,
+            blocks,
+            footer,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct NiType {
     pub name: &'static str,
-    pub read: fn(&mut Cursor<Vec<u8>>, u32) -> BinResult<Box<dyn NiObject>>,
+    pub read: fn(&mut Cursor<Vec<u8>>, NiObjectArgs) -> BinResult<Box<dyn NiObject>>,
     pub write: fn(&dyn NiObject, &mut Cursor<Vec<u8>>) -> BinResult<()>,
 }
 
