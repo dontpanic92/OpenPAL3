@@ -9,7 +9,8 @@ use fileformats::rwbs::{
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{IEntity, IStaticMeshComponent},
-    rendering::{ComponentFactory, Geometry, StaticMeshComponent},
+    components::mesh::{Geometry, StaticMeshComponent},
+    rendering::ComponentFactory,
     scene::CoreEntity,
 };
 
@@ -37,7 +38,7 @@ fn load_bsp_model<P: AsRef<Path>>(
     vfs: &MiniFs,
     path: P,
     texture_resolver: &dyn TextureResolver,
-) -> Vec<radiance::rendering::Geometry> {
+) -> Vec<radiance::components::mesh::Geometry> {
     let mut data = vec![];
     let _ = vfs.open(&path).unwrap().read_to_end(&mut data).unwrap();
     let chunks = read_bsp(&data).unwrap();

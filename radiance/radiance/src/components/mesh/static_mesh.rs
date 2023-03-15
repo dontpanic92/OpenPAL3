@@ -4,9 +4,11 @@ use crosscom::ComRc;
 
 use crate::{
     comdef::{IComponentImpl, IEntity},
-    rendering::{ComponentFactory, Geometry},
+    rendering::ComponentFactory,
     ComObject_StaticMeshComponent,
 };
+
+use super::Geometry;
 
 pub struct StaticMeshComponent {
     entity: ComRc<IEntity>,

@@ -7,8 +7,9 @@ use fileformats::rwbs::{
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{IEntity, IStaticMeshComponent},
+    components::mesh::StaticMeshComponent,
     math::{Mat44, Vec3},
-    rendering::{ComponentFactory, MaterialDef, StaticMeshComponent},
+    rendering::{ComponentFactory, MaterialDef},
     scene::CoreEntity,
 };
 
@@ -106,7 +107,7 @@ fn create_geometry(
     vfs: &MiniFs,
     path: &Path,
     texture_resolver: &dyn TextureResolver,
-) -> Vec<radiance::rendering::Geometry> {
+) -> Vec<radiance::components::mesh::Geometry> {
     if geometry.morph_targets.len() == 0 {
         return vec![];
     }
@@ -146,7 +147,7 @@ pub(crate) fn create_geometry_internal(
     vfs: &MiniFs,
     path: &Path,
     texture_resolver: &dyn TextureResolver,
-) -> Vec<radiance::rendering::Geometry> {
+) -> Vec<radiance::components::mesh::Geometry> {
     let mut r_vertices = vec![];
     // let mut r_normals = vec![];
     for i in 0..vertices.len() {
@@ -154,11 +155,11 @@ pub(crate) fn create_geometry_internal(
         // r_normals.push(Vec3::new(normals[i].x, normals[i].y, normals[i].z));
     }
 
-    let r_texcoords: Vec<Vec<radiance::rendering::TexCoord>> = texcoord_sets
+    let r_texcoords: Vec<Vec<radiance::components::mesh::TexCoord>> = texcoord_sets
         .iter()
         .map(|t| {
             t.iter()
-                .map(|t| radiance::rendering::TexCoord::new(t.u, t.v))
+                .map(|t| radiance::components::mesh::TexCoord::new(t.u, t.v))
                 .collect()
         })
         .collect();
@@ -194,7 +195,7 @@ pub(crate) fn create_geometry_internal(
     material_to_indices
         .into_values()
         .map(|v| {
-            radiance::rendering::Geometry::new(
+            radiance::components::mesh::Geometry::new(
                 &r_vertices,
                 None,
                 &r_texcoords,

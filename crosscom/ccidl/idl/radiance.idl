@@ -106,7 +106,7 @@ class StaticMeshComponent: IStaticMeshComponent {}
 [uuid(5c56adbc-bc22-4275-b99a-09973a3ffff0)]
 interface IAnimatedMeshComponent: IComponent {
     [internal(), rust()]
-    radiance::rendering::MorphAnimationState morph_animation_state();
+    radiance::components::mesh::MorphAnimationState morph_animation_state();
 
     void replay();
 }

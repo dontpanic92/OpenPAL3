@@ -8,11 +8,11 @@ use crosscom::ComRc;
 use crate::{
     comdef::{IAnimatedMeshComponentImpl, IComponentImpl, IEntity},
     math::{Vec2, Vec3},
-    rendering::{ComponentFactory, Geometry, TexCoord, VertexBuffer, VertexComponents},
+    rendering::{ComponentFactory, VertexBuffer, VertexComponents},
     ComObject_AnimatedMeshComponent,
 };
 
-use super::morph_target::MorphTarget;
+use super::{morph_target::MorphTarget, Geometry, TexCoord};
 
 pub struct AnimatedMeshComponent {
     entity: ComRc<IEntity>,
@@ -287,7 +287,7 @@ impl IComponentImpl for AnimatedMeshComponent {
 }
 
 impl IAnimatedMeshComponentImpl for AnimatedMeshComponent {
-    fn morph_animation_state(&self) -> crate::rendering::MorphAnimationState {
+    fn morph_animation_state(&self) -> crate::components::mesh::MorphAnimationState {
         self.props().morph_animation_state
     }
 

@@ -8,11 +8,11 @@ use dashmap::DashMap;
 use fileformats::mv3::{read_mv3, Mv3Model};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::{IAnimatedMeshComponent, IComponent, IComponentImpl, IEntity};
-use radiance::math::Vec3;
-use radiance::rendering::{
-    AnimatedMeshComponent, ComponentFactory, Geometry, MaterialDef, MorphAnimationState,
-    MorphTarget, SimpleMaterialDef, TexCoord,
+use radiance::components::mesh::{
+    AnimatedMeshComponent, Geometry, MorphAnimationState, MorphTarget, TexCoord,
 };
+use radiance::math::Vec3;
+use radiance::rendering::{ComponentFactory, MaterialDef, SimpleMaterialDef};
 use radiance::scene::CoreEntity;
 use std::cell::RefCell;
 use std::collections::HashMap;

@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
-use crate::rendering::{ComponentFactory, Geometry};
+use crate::rendering::ComponentFactory;
+
+use super::Geometry;
 
 pub struct MorphTarget {
     pub component_factory: Rc<dyn ComponentFactory>,
