@@ -469,7 +469,6 @@ impl ScnScene {
         }
 
         for entity in entities {
-            println!("add entities");
             self.scene.add_entity(entity);
         }
     }

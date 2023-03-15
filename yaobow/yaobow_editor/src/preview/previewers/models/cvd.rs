@@ -31,7 +31,7 @@ impl ModelLoader for CvdModelLoader {
 
     fn is_supported(&self, path: &Path) -> bool {
         let extension = get_extension(path);
-        extension.as_deref() == Some("pol")
+        extension.as_deref() == Some("cvd")
     }
 
     fn load(&self, vfs: &MiniFs, path: &Path) -> ComRc<IEntity> {

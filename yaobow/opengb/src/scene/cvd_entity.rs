@@ -147,7 +147,6 @@ ComObject_CvdModel!(super::CvdModelComponent);
 impl IComponentImpl for CvdModelComponent {
     fn on_loading(&self) -> crosscom::Void {
         let mut objects = vec![];
-        println!("cvd: mesh count {}", self.meshes.len());
         for mesh in &self.meshes {
             let ro = self.component_factory.create_render_object(
                 mesh.vertices.clone(),

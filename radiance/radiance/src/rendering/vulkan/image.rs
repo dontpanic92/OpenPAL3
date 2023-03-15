@@ -226,7 +226,7 @@ impl Image {
             .build();
 
         let allcation_create_info = vk_mem::AllocationCreateInfo {
-            usage: vk_mem::MemoryUsage::GpuOnly,
+            usage: vk_mem::MemoryUsage::AutoPreferDevice,
             ..Default::default()
         };
         let (image, allocation) =

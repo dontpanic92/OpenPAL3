@@ -42,7 +42,7 @@ impl Buffer {
             size_of::<T>(),
             data.len(),
             vk::BufferUsageFlags::TRANSFER_SRC,
-            vk_mem::MemoryUsage::CpuOnly,
+            vk_mem::MemoryUsage::AutoPreferHost,
         )?;
 
         staging_buffer.copy_memory_from(data);
@@ -59,7 +59,7 @@ impl Buffer {
             size_of::<T>(),
             data.len(),
             buffer_type.to_buffer_usage(),
-            vk_mem::MemoryUsage::CpuToGpu,
+            vk_mem::MemoryUsage::Auto,
         )?;
 
         dynamic_buffer.copy_memory_from(data);
@@ -77,7 +77,7 @@ impl Buffer {
             element_size,
             element_count,
             buffer_type.to_buffer_usage(),
-            vk_mem::MemoryUsage::CpuToGpu,
+            vk_mem::MemoryUsage::Auto,
         )
     }
 
@@ -100,7 +100,7 @@ impl Buffer {
             size_of::<T>(),
             data.len(),
             flags | vk::BufferUsageFlags::TRANSFER_DST,
-            vk_mem::MemoryUsage::GpuOnly,
+            vk_mem::MemoryUsage::AutoPreferDevice,
         )?;
 
         buffer.copy_from(&staging_buffer, command_runner)?;
@@ -134,10 +134,11 @@ impl Buffer {
         let (buffer, allocation) = {
             let allcation_create_info = vk_mem::AllocationCreateInfo {
                 usage: memory_usage,
-                flags: if memory_usage == vk_mem::MemoryUsage::CpuOnly
-                    || memory_usage == vk_mem::MemoryUsage::CpuToGpu
+                flags: if memory_usage == vk_mem::MemoryUsage::Auto
+                    || memory_usage == vk_mem::MemoryUsage::AutoPreferHost
                 {
                     vk_mem::AllocationCreateFlags::MAPPED
+                        | vk_mem::AllocationCreateFlags::HOST_ACCESS_RANDOM
                 } else {
                     vk_mem::AllocationCreateFlags::empty()
                 },
