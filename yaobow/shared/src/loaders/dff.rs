@@ -60,26 +60,35 @@ fn load_clump(
     path: &Path,
     texture_resolver: &dyn TextureResolver,
 ) {
-    let subs: Vec<ComRc<IEntity>> = chunk
+    let entities: Vec<ComRc<IEntity>> = chunk
         .frames
         .iter()
         .map(|f| {
-            let entity = CoreEntity::create(format!("{}_sub", parent.name()), true);
+            let entity = CoreEntity::create(format!("{}", parent.name()), true);
             entity.transform().borrow_mut().set_matrix(create_matrix(f));
             entity
         })
         .collect();
 
+    let mut bones = HashMap::new();
+
     for i in 0..chunk.frames.len() {
         if chunk.frames[i].parent > 0 && chunk.frames[i].parent != i as i32 {
-            subs[chunk.frames[i].parent as usize].attach(subs[i].clone());
+            if let Some(Extension::HAnimPlugin(hanim)) = chunk.frames_extensions[i]
+                .iter()
+                .find(|e| matches!(e, Extension::HAnimPlugin(_)))
+            {
+                bones.insert(hanim.header.id, entities[i].clone());
+            } else {
+                entities[chunk.frames[i].parent as usize].attach(entities[i].clone());
+            }
         } else {
-            parent.attach(subs[i].clone());
+            parent.attach(entities[i].clone());
         }
     }
 
     for atomic in &chunk.atomics {
-        let p = subs[atomic.frame as usize].clone();
+        let p = entities[atomic.frame as usize].clone();
         let entity = CoreEntity::create(format!("{}_sub", parent.name()), true);
         p.attach(entity.clone());
 

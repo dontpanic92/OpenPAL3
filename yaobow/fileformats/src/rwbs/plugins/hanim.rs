@@ -30,9 +30,9 @@ impl HAnimPlugin {
 #[brw(little)]
 #[derive(Debug, Serialize)]
 pub struct HAnimHeader {
-    version: u32,
-    id: u32,
-    bone_count: u32,
+    pub version: u32,
+    pub id: u32,
+    pub bone_count: u32,
 }
 
 #[binrw]
@@ -47,7 +47,7 @@ pub struct HAnimUnknown {
 #[brw(little)]
 #[derive(Debug, Serialize)]
 pub struct HAnimBone {
-    id: u32,
-    index: u32,
-    ty: u32,
+    pub id: u32,
+    pub index: u32,
+    pub ty: u32,
 }

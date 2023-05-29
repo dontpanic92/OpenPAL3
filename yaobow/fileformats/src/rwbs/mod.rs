@@ -79,7 +79,7 @@ impl FormatFlag {
 }
 
 #[binrw::parser(reader, endian)]
-fn float_parser((half_float,): (bool,)) -> BinResult<f32> {
+fn float_parser(half_float: bool) -> BinResult<f32> {
     if half_float {
         if endian == binrw::Endian::Little {
             Ok(half::f16::from_bits(reader.read_u16::<LittleEndian>()?).to_f32())
