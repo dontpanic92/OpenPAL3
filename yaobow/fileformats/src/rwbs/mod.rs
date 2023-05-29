@@ -5,6 +5,7 @@ pub mod extension;
 pub mod frame;
 pub mod geometry;
 pub mod material;
+pub mod plugins;
 pub mod sector;
 pub mod world;
 
@@ -144,7 +145,7 @@ impl Vec3f {
 }
 
 #[derive(Debug, Serialize)]
-pub struct Matrix44f([f32; 16]);
+pub struct Matrix44f(pub [f32; 16]);
 
 impl Matrix44f {
     pub fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {

@@ -26,9 +26,11 @@ impl NodeView {
     fn build_node(&mut self, ui: &Ui, entity: ComRc<IEntity>) {
         let treenode = ui.tree_node_config(entity.name());
         if entity.children().len() != 0 {
-            for e in entity.children() {
-                self.build_node(ui, e);
-            }
+            treenode.build(|| {
+                for e in entity.children() {
+                    self.build_node(ui, e);
+                }
+            });
         } else {
             treenode.leaf(true).build(|| {});
         }

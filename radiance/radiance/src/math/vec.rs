@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::Mat44;
+
 /// 2d column vector
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[repr(C)]
@@ -90,6 +92,26 @@ impl Vec3 {
             lhs.z * rhs.x - lhs.x * rhs.z,
             lhs.x * rhs.y - lhs.y * rhs.x,
         )
+    }
+
+    pub fn crossed_mat(lhs: &Vec3, rhs: &Mat44) -> Self {
+        /*let x = lhs.x * rhs[0][0] + lhs.y * rhs[1][0] + lhs.z * rhs[2][0] + 1. * rhs[3][0];
+        let y = lhs.y * rhs[0][1] + lhs.y * rhs[1][1] + lhs.z * rhs[2][1] + 1. * rhs[3][1];
+        let z = lhs.z * rhs[0][2] + lhs.y * rhs[1][2] + lhs.z * rhs[2][2] + 1. * rhs[3][2];
+        let mut w = 1. * rhs[0][3] + 1. * rhs[1][3] + 1. * rhs[2][3] + 1. * rhs[3][3];
+        if w == 0.0 {
+            w = 1.0;
+        }*/
+
+        let x = lhs.x * rhs[0][0] + lhs.y * rhs[0][1] + lhs.z * rhs[0][2] + 1. * rhs[0][3];
+        let y = lhs.x * rhs[1][0] + lhs.y * rhs[1][1] + lhs.z * rhs[1][2] + 1. * rhs[1][3];
+        let z = lhs.x * rhs[2][0] + lhs.y * rhs[2][1] + lhs.z * rhs[2][2] + 1. * rhs[2][3];
+        let mut w = 1. * rhs[3][0] + 1. * rhs[3][1] + 1. * rhs[3][2] + 1. * rhs[3][3];
+        if w == 0.0 {
+            w = 1.0;
+        }
+
+        Vec3::new(x / w, y / w, z / w)
     }
 
     pub fn normalized(vec: &Vec3) -> Self {

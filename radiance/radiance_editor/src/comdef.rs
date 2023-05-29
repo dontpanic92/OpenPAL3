@@ -131,6 +131,7 @@ macro_rules! ComObject_ResourceViewContent {
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
+            use radiance::comdef::ISkinnedMeshComponentImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
             use radiance_editor::comdef::IViewContentImpl;
 
@@ -275,6 +276,7 @@ use radiance::comdef::IStaticMeshComponentImpl;
 use radiance::comdef::IAnimatedMeshComponentImpl;
 use radiance::comdef::IDirectorImpl;
 use radiance::comdef::ISceneManagerImpl;
+use radiance::comdef::ISkinnedMeshComponentImpl;
 
 
     #[repr(C)]
@@ -429,6 +431,7 @@ macro_rules! ComObject_MainPageDirector {
             use radiance::comdef::IEntityImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
+            use radiance::comdef::ISkinnedMeshComponentImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
             use radiance_editor::comdef::IViewContentImpl;
 

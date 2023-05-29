@@ -6,6 +6,7 @@ use std::{
 use common::store_ext::StoreExt2;
 use mini_fs::MiniFs;
 
+pub mod anm;
 pub mod bsp;
 pub mod dff;
 

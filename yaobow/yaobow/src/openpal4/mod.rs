@@ -4,7 +4,10 @@ use fileformats::{
     rwbs::list_chunks,
     rwbs::{read_anm, read_bsp, read_dff},
 };
-use shared::fs::pkg::pkg_archive::PkgHeader;
+use shared::{
+    fs::pkg::pkg_archive::PkgHeader,
+    loaders::anm::{load_anm, load_anm_action},
+};
 
 pub mod application;
 pub mod scripting;
@@ -21,6 +24,9 @@ pub fn run_openpal4() {
     let data = std::fs::read("F:\\PAL4\\gamedata\\PALActor\\101\\C01.anm").unwrap();
     let chunks = read_anm(&data).unwrap();
     println!("{}", serde_json::to_string(&chunks).unwrap());
+
+    let anm = load_anm_action(&chunks[0]);
+    println!("{:?}", anm);
 
     /*let content = std::fs::read("F:\\PAL4\\gamedata\\script\\script.csb").unwrap();
 

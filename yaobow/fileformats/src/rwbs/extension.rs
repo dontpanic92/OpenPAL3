@@ -7,10 +7,11 @@ use serde::Serialize;
 
 use crate::rwbs::{check_ty, ChunkHeader, ChunkType};
 
-use super::Matrix44f;
+use super::{plugins::hanim::HAnimPlugin, Matrix44f};
 
 #[derive(Debug, Serialize)]
 pub enum Extension {
+    HAnimPlugin(HAnimPlugin),
     SkinPlugin(SkinPlugin),
     UserDataPlugin(UserDataPlugin),
     NodeNamePlugin(NodeNamePlugin),
@@ -37,6 +38,10 @@ impl Extension {
             chunk_len -= 12 + ext_header.length;
 
             let ext = match ext_header.ty {
+                ChunkType::PLUGIN_HANIM => {
+                    Extension::HAnimPlugin(HAnimPlugin::read(cursor, ext_header)?)
+                }
+
                 ChunkType::PLUGIN_SKIN => {
                     Extension::SkinPlugin(SkinPlugin::read(cursor, vertices_count)?)
                 }
@@ -70,10 +75,10 @@ impl Extension {
 
 #[derive(Debug, Serialize)]
 pub struct SkinPlugin {
-    used_bones: Vec<u8>,
-    bone_indices: Vec<[u8; 4]>,
-    weights: Vec<[f32; 4]>,
-    matrix: Vec<Matrix44f>,
+    pub used_bones: Vec<u8>,
+    pub bone_indices: Vec<[u8; 4]>,
+    pub weights: Vec<[f32; 4]>,
+    pub matrix: Vec<Matrix44f>,
     unknown2: Vec<u8>,
 }
 

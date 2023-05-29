@@ -1,17 +1,28 @@
-use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
+use std::{
+    collections::HashMap,
+    io::Read,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use crosscom::ComRc;
 use fileformats::rwbs::{
-    clump::Clump, frame::Frame, material::Material, read_dff, TexCoord, Triangle, Vec3f,
+    clump::Clump,
+    extension::{Extension, SkinPlugin},
+    frame::Frame,
+    material::Material,
+    read_dff, Matrix44f, TexCoord, Triangle, Vec3f,
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
-    comdef::{IEntity, IStaticMeshComponent},
-    components::mesh::StaticMeshComponent,
+    comdef::{IEntity, ISkinnedMeshComponent, IStaticMeshComponent},
+    components::mesh::{skinned_mesh::SkinnedMeshComponent, StaticMeshComponent},
     math::{Mat44, Vec3},
     rendering::{ComponentFactory, MaterialDef},
     scene::CoreEntity,
 };
+
+use crate::loaders::anm::load_anm;
 
 use super::TextureResolver;
 
@@ -73,13 +84,13 @@ fn load_clump(
         p.attach(entity.clone());
 
         let geometry = &chunk.geometries[atomic.geometry as usize];
-        let r_geometry = create_geometry(geometry, vfs, &path, texture_resolver);
-
-        let mesh_component =
-            StaticMeshComponent::new(entity.clone(), r_geometry, component_factory.clone());
-        entity.add_component(
-            IStaticMeshComponent::uuid(),
-            crosscom::ComRc::from_object(mesh_component),
+        create_geometry(
+            entity,
+            component_factory,
+            geometry,
+            vfs,
+            &path,
+            texture_resolver,
         );
     }
 }
@@ -102,18 +113,42 @@ fn create_matrix(frame: &Frame) -> Mat44 {
     mat
 }
 
+fn create_mat44_from_matrix44f(m: &Matrix44f) -> Mat44 {
+    let mut mat = Mat44::new_identity();
+    mat.floats_mut()[0][0] = m.0[0];
+    mat.floats_mut()[1][0] = m.0[1];
+    mat.floats_mut()[2][0] = m.0[2];
+    mat.floats_mut()[3][0] = m.0[3];
+    mat.floats_mut()[0][1] = m.0[4];
+    mat.floats_mut()[1][1] = m.0[5];
+    mat.floats_mut()[2][1] = m.0[6];
+    mat.floats_mut()[3][1] = m.0[7];
+    mat.floats_mut()[0][2] = m.0[8];
+    mat.floats_mut()[1][2] = m.0[9];
+    mat.floats_mut()[2][2] = m.0[10];
+    mat.floats_mut()[3][2] = m.0[11];
+    mat.floats_mut()[0][3] = m.0[12];
+    mat.floats_mut()[1][3] = m.0[13];
+    mat.floats_mut()[2][3] = m.0[14];
+    mat.floats_mut()[3][3] = m.0[15];
+
+    mat
+}
+
 fn create_geometry(
+    entity: ComRc<IEntity>,
+    component_factory: &Rc<dyn ComponentFactory>,
     geometry: &fileformats::rwbs::geometry::Geometry,
     vfs: &MiniFs,
     path: &Path,
     texture_resolver: &dyn TextureResolver,
-) -> Vec<radiance::components::mesh::Geometry> {
+) {
     if geometry.morph_targets.len() == 0 {
-        return vec![];
+        return;
     }
 
     if geometry.morph_targets[0].vertices.is_none() {
-        return vec![];
+        return;
     }
 
     let vertices = geometry.morph_targets[0].vertices.as_ref().unwrap();
@@ -126,28 +161,41 @@ fn create_geometry(
     };
     let materials = &geometry.materials;
 
+    let mut skin_plugin = None;
+    for p in &geometry.extensions {
+        if let Extension::SkinPlugin(plugin) = p {
+            skin_plugin = Some(plugin);
+            break;
+        }
+    }
     create_geometry_internal(
+        entity,
+        component_factory,
         vertices,
         normals,
         triangles,
         &texcoord_sets,
         materials,
+        skin_plugin,
         vfs,
         path,
         texture_resolver,
-    )
+    );
 }
 
 pub(crate) fn create_geometry_internal(
+    entity: ComRc<IEntity>,
+    component_factory: &Rc<dyn ComponentFactory>,
     vertices: &[Vec3f],
     normals: Option<&Vec<Vec3f>>,
     triangles: &[Triangle],
     texcoord_sets: &[Vec<TexCoord>],
     materials: &[Material],
+    skin_plugin: Option<&SkinPlugin>,
     vfs: &MiniFs,
     path: &Path,
     texture_resolver: &dyn TextureResolver,
-) -> Vec<radiance::components::mesh::Geometry> {
+) {
     let mut r_vertices = vec![];
     // let mut r_normals = vec![];
     for i in 0..vertices.len() {
@@ -192,9 +240,10 @@ pub(crate) fn create_geometry_internal(
         group.indices.push(t.index[2] as u32);
     }
 
-    material_to_indices
+    let r_geometries = material_to_indices
         .into_values()
         .map(|v| {
+            // TODO: Optimize this
             radiance::components::mesh::Geometry::new(
                 &r_vertices,
                 None,
@@ -204,5 +253,66 @@ pub(crate) fn create_geometry_internal(
                 1,
             )
         })
-        .collect()
+        .collect();
+
+    if skin_plugin.is_none() {
+        let mesh_component =
+            StaticMeshComponent::new(entity.clone(), r_geometries, component_factory.clone());
+        entity.add_component(
+            IStaticMeshComponent::uuid(),
+            crosscom::ComRc::from_object(mesh_component),
+        );
+    } else {
+        let skin = skin_plugin.unwrap();
+        let mut bones = vec![];
+
+        for i in 0..skin.matrix.len() {
+            let bone = CoreEntity::create(format!("{}_bone_{}", entity.name(), i), true);
+            bone.transform()
+                .borrow_mut()
+                .set_matrix(create_mat44_from_matrix44f(&skin.matrix[i]));
+            bones.push(bone);
+        }
+
+        let bone_id: Vec<[usize; 4]> = skin
+            .bone_indices
+            .iter()
+            .map(|id| {
+                [
+                    id[0] as usize,
+                    id[1] as usize,
+                    id[2] as usize,
+                    id[3] as usize,
+                ]
+            })
+            .collect();
+
+        let anm = load_anm(vfs, &PathBuf::from("/gamedata/PALActor/101/C02.anm"));
+
+        for r_geometry in r_geometries {
+            let child = CoreEntity::create(format!("{}_sub", entity.name()), true);
+
+            let mesh_component = SkinnedMeshComponent::new(
+                child.clone(),
+                component_factory.clone(),
+                r_geometry,
+                bones.clone(),
+                bone_id.clone(),
+                skin.weights.clone(),
+            );
+
+            if let Ok(a) = &anm {
+                mesh_component.set_keyframes(a.clone());
+            } else {
+                println!("{:?}", &anm);
+            }
+
+            child.add_component(
+                ISkinnedMeshComponent::uuid(),
+                ComRc::from_object(mesh_component),
+            );
+
+            entity.attach(child);
+        }
+    }
 }
