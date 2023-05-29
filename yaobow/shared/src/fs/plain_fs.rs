@@ -23,6 +23,7 @@ impl<TArchive: PlainArchive> Store for PlainFs<TArchive> {
     type File = MemoryFile;
 
     fn open_path(&self, path: &Path) -> std::io::Result<Self::File> {
+        let path = path.to_string_lossy().to_string().replace('_', "/");
         self.archive
             .borrow_mut()
             .open(path)
@@ -36,7 +37,7 @@ impl<TArchive: PlainArchive> Store for PlainFs<TArchive> {
             .into_iter()
             .map(|name| {
                 Ok(Entry {
-                    name: OsString::from(name),
+                    name: OsString::from(name.replace('/', "_")),
                     kind: EntryKind::File,
                 })
             })

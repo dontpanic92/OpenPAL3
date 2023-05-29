@@ -54,6 +54,26 @@ impl Mat44 {
         inversed
     }
 
+    pub fn transposed(mat: &Mat44) -> Mat44 {
+        let mut transposed = *mat;
+        unsafe {
+            swap(&mut transposed[0][1], &mut transposed[1][0]);
+            swap(&mut transposed[0][2], &mut transposed[2][0]);
+            swap(&mut transposed[0][3], &mut transposed[3][0]);
+            swap(&mut transposed[1][0], &mut transposed[0][1]);
+            swap(&mut transposed[1][2], &mut transposed[2][1]);
+            swap(&mut transposed[1][3], &mut transposed[3][1]);
+            swap(&mut transposed[2][0], &mut transposed[0][2]);
+            swap(&mut transposed[2][1], &mut transposed[1][2]);
+            swap(&mut transposed[2][3], &mut transposed[3][2]);
+            swap(&mut transposed[3][0], &mut transposed[0][3]);
+            swap(&mut transposed[3][1], &mut transposed[1][3]);
+            swap(&mut transposed[3][2], &mut transposed[2][3]);
+        }
+
+        transposed
+    }
+
     pub fn multiplied(lhs: &Mat44, rhs: &Mat44) -> Mat44 {
         let mut new_mat = Mat44::new_zero();
         for i in 0..4usize {

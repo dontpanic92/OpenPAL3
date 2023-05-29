@@ -1,4 +1,4 @@
-use std::{io::Read, path::Path, rc::Rc};
+use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
 
 use crosscom::ComRc;
 use fileformats::rwbs::{
@@ -130,6 +130,7 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
         &triangles,
         &texcoord_sets,
         materials,
+        None,
         None,
         vfs,
         path.as_ref(),

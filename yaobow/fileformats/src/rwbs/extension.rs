@@ -143,6 +143,16 @@ pub enum UserData {
     String(String),
 }
 
+impl UserData {
+    pub fn get_string(&self) -> Option<String> {
+        if let Self::String(s) = self {
+            Some(s.clone())
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct UserDataPlugin {
     data: HashMap<String, Vec<UserData>>,
@@ -171,6 +181,10 @@ impl UserDataPlugin {
         }
 
         Ok(Self { data })
+    }
+
+    pub fn data(&self) -> &HashMap<String, Vec<UserData>> {
+        &self.data
     }
 
     fn read_string(cursor: &mut dyn Read) -> anyhow::Result<String> {

@@ -462,6 +462,7 @@ macro_rules! ComObject_Application {
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
+            use radiance::comdef::IHAnimBoneComponentImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::ISkinnedMeshComponentImpl;
@@ -1025,6 +1026,7 @@ macro_rules! ComObject_Scene {
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
+            use radiance::comdef::IHAnimBoneComponentImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::ISkinnedMeshComponentImpl;
@@ -1611,6 +1613,7 @@ macro_rules! ComObject_Entity {
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
+            use radiance::comdef::IHAnimBoneComponentImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::ISkinnedMeshComponentImpl;
@@ -2025,6 +2028,7 @@ macro_rules! ComObject_StaticMeshComponent {
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
+            use radiance::comdef::IHAnimBoneComponentImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::ISkinnedMeshComponentImpl;
@@ -2310,6 +2314,7 @@ macro_rules! ComObject_AnimatedMeshComponent {
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
+            use radiance::comdef::IHAnimBoneComponentImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::ISkinnedMeshComponentImpl;
@@ -2806,6 +2811,7 @@ macro_rules! ComObject_SceneManager {
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
+            use radiance::comdef::IHAnimBoneComponentImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::ISkinnedMeshComponentImpl;
@@ -3123,6 +3129,7 @@ macro_rules! ComObject_SkinnedMeshComponent {
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
+            use radiance::comdef::IHAnimBoneComponentImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
             use radiance::comdef::ISkinnedMeshComponentImpl;
@@ -3253,3 +3260,294 @@ macro_rules! ComObject_SkinnedMeshComponent {
 }
 
 // pub use ComObject_SkinnedMeshComponent;
+
+// Interface IHAnimBoneComponent
+
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct IHAnimBoneComponentVirtualTable {
+    pub query_interface: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        guid: uuid::Uuid,
+        retval: &mut *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_long,
+    pub add_ref:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub release:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub on_loading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub on_updating: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        delta_sec: std::os::raw::c_float,
+    ) -> (),
+    pub set_keyframes: fn(
+        this: *const *const std::os::raw::c_void,
+        keyframes: Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>,
+    ) -> crosscom::Void,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IHAnimBoneComponentVirtualTableCcw {
+    pub offset: isize,
+    pub vtable: IHAnimBoneComponentVirtualTable,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IHAnimBoneComponent {
+    pub vtable: *const IHAnimBoneComponentVirtualTable,
+}
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+impl IHAnimBoneComponent {
+    pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
+        let this = self as *const IHAnimBoneComponent as *const *const std::os::raw::c_void;
+        let mut raw = 0 as *const *const std::os::raw::c_void;
+        let guid = uuid::Uuid::from_bytes(T::INTERFACE_ID);
+        let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
+        if ret_val != 0 {
+            None
+        } else {
+            Some(unsafe { crosscom::ComRc::<T>::from_raw_pointer(raw) })
+        }
+    }
+
+    pub fn add_ref(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IHAnimBoneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn release(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IHAnimBoneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn on_loading(&self) -> () {
+        unsafe {
+            let this = self as *const IHAnimBoneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_loading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn on_updating(&self, delta_sec: f32) -> () {
+        unsafe {
+            let this = self as *const IHAnimBoneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_updating)(this, delta_sec.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn set_keyframes(
+        &self,
+        keyframes: Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>,
+    ) -> crosscom::Void {
+        unsafe {
+            let this = self as *const IHAnimBoneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).set_keyframes)(this, keyframes.into());
+
+            ret
+        }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(IHAnimBoneComponent::INTERFACE_ID)
+    }
+}
+
+pub trait IHAnimBoneComponentImpl {
+    fn set_keyframes(
+        &self,
+        keyframes: Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>,
+    ) -> crosscom::Void;
+}
+
+impl crosscom::ComInterface for IHAnimBoneComponent {
+    // 1b4b89da-94cb-4dd8-a1e1-493763f14ee3
+    const INTERFACE_ID: [u8; 16] = [
+        27u8, 75u8, 137u8, 218u8, 148u8, 203u8, 77u8, 216u8, 161u8, 225u8, 73u8, 55u8, 99u8, 241u8,
+        78u8, 227u8,
+    ];
+}
+
+// Class HAnimBoneComponent
+
+#[allow(unused)]
+#[macro_export]
+macro_rules! ComObject_HAnimBoneComponent {
+    ($impl_type: ty) => {
+        #[allow(dead_code)]
+        #[allow(non_snake_case)]
+        #[allow(unused)]
+        mod HAnimBoneComponent_crosscom_impl {
+            use crate as radiance;
+            use crosscom::ComInterface;
+            use crosscom::IObjectArrayImpl;
+            use crosscom::IUnknownImpl;
+            use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IApplicationImpl;
+            use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IComponentContainerImpl;
+            use radiance::comdef::IComponentImpl;
+            use radiance::comdef::IDirectorImpl;
+            use radiance::comdef::IEntityImpl;
+            use radiance::comdef::IHAnimBoneComponentImpl;
+            use radiance::comdef::ISceneImpl;
+            use radiance::comdef::ISceneManagerImpl;
+            use radiance::comdef::ISkinnedMeshComponentImpl;
+            use radiance::comdef::IStaticMeshComponentImpl;
+
+            #[repr(C)]
+            pub struct HAnimBoneComponentCcw {
+                IHAnimBoneComponent: radiance::comdef::IHAnimBoneComponent,
+
+                ref_count: std::sync::atomic::AtomicU32,
+                pub inner: $impl_type,
+            }
+
+            unsafe extern "system" fn query_interface(
+                this: *const *const std::os::raw::c_void,
+                guid: uuid::Uuid,
+                retval: &mut *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
+                match guid.as_bytes() {
+                    &crosscom::IUnknown::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
+                    }
+
+                    &radiance::comdef::IComponent::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
+                    }
+
+                    &radiance::comdef::IHAnimBoneComponent::INTERFACE_ID => {
+                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                        add_ref(object as *const *const std::os::raw::c_void);
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
+                    }
+
+                    _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
+                }
+            }
+
+            unsafe extern "system" fn add_ref(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
+                let previous = (*object)
+                    .ref_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                (previous + 1) as std::os::raw::c_long
+            }
+
+            unsafe extern "system" fn release(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_long {
+                let object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
+
+                let previous = (*object)
+                    .ref_count
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                if previous - 1 == 0 {
+                    Box::from_raw(object as *mut HAnimBoneComponentCcw);
+                }
+
+                (previous - 1) as std::os::raw::c_long
+            }
+
+            fn set_keyframes(
+                this: *const *const std::os::raw::c_void,
+                keyframes: Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>,
+            ) -> crosscom::Void {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
+                    (*__crosscom_object).inner.set_keyframes(keyframes)
+                }
+            }
+
+            unsafe extern "system" fn on_loading(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
+                (*__crosscom_object).inner.on_loading().into()
+            }
+
+            unsafe extern "system" fn on_updating(
+                this: *const *const std::os::raw::c_void,
+                delta_sec: std::os::raw::c_float,
+            ) -> () {
+                let delta_sec: f32 = delta_sec.into();
+
+                let __crosscom_object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .on_updating(delta_sec.into())
+                    .into()
+            }
+
+            #[allow(non_upper_case_globals)]
+            pub const GLOBAL_IHAnimBoneComponentVirtualTable_CCW_FOR_HAnimBoneComponent:
+                radiance::comdef::IHAnimBoneComponentVirtualTableCcw =
+                radiance::comdef::IHAnimBoneComponentVirtualTableCcw {
+                    offset: 0,
+                    vtable: radiance::comdef::IHAnimBoneComponentVirtualTable {
+                        query_interface,
+                        add_ref,
+                        release,
+                        on_loading,
+                        on_updating,
+                        set_keyframes,
+                    },
+                };
+
+            impl crosscom::ComObject for $impl_type {
+                type CcwType = HAnimBoneComponentCcw;
+
+                fn create_ccw(self) -> Self::CcwType {
+                    Self::CcwType {
+                        IHAnimBoneComponent: radiance::comdef::IHAnimBoneComponent {
+                            vtable:
+                                &GLOBAL_IHAnimBoneComponentVirtualTable_CCW_FOR_HAnimBoneComponent
+                                    .vtable
+                                    as *const radiance::comdef::IHAnimBoneComponentVirtualTable,
+                        },
+
+                        ref_count: std::sync::atomic::AtomicU32::new(0),
+                        inner: self,
+                    }
+                }
+
+                fn get_ccw(&self) -> &Self::CcwType {
+                    unsafe {
+                        let this = self as *const _ as *const u8;
+                        let this = this
+                            .offset(-(crosscom::offset_of!(HAnimBoneComponentCcw, inner) as isize));
+                        &*(this as *const Self::CcwType)
+                    }
+                }
+            }
+        }
+    };
+}
+
+// pub use ComObject_HAnimBoneComponent;

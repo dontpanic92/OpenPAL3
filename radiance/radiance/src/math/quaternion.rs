@@ -49,6 +49,7 @@ impl Quaternion {
         let x2 = self.x * self.x;
         let y2 = self.y * self.y;
         let z2 = self.z * self.z;
+        let w2 = self.w * self.w;
         let xy = self.x * self.y;
         let xz = self.x * self.z;
         let yz = self.y * self.z;
@@ -58,17 +59,15 @@ impl Quaternion {
 
         let mut matrix = Mat44::new_identity();
 
-        matrix[0][0] = 1. - 2. * (y2 + z2);
-        matrix[0][1] = 2. * (xy + wz);
-        matrix[0][2] = 2. * (xz - wy);
-
-        matrix[1][0] = 2. * (xy - wz);
-        matrix[1][1] = 1. - 2. * (x2 + z2);
-        matrix[1][2] = 2. * (yz + wx);
-
-        matrix[2][0] = 2. * (xz + wy);
-        matrix[2][1] = 2. * (yz - wx);
-        matrix[2][2] = 1. - 2. * (x2 + y2);
+        matrix[0][0] = 2. * (w2 + x2) - 1.;
+        matrix[0][1] = 2. * (xy - wz);
+        matrix[0][2] = 2. * (xz + wy);
+        matrix[1][0] = 2. * (xy + wz);
+        matrix[1][1] = 2. * (w2 + y2) - 1.;
+        matrix[1][2] = 2. * (yz - wx);
+        matrix[2][0] = 2. * (xz - wy);
+        matrix[2][1] = 2. * (yz + wx);
+        matrix[2][2] = 2. * (w2 + z2) - 1.;
 
         matrix
     }

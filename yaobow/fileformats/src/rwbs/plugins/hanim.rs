@@ -16,7 +16,7 @@ pub struct HAnimPlugin {
     pub unknown: Option<HAnimUnknown>,
 
     #[br(count = header.bone_count)]
-    pub block_types: Vec<HAnimBone>,
+    pub bones: Vec<HAnimBone>,
 }
 
 impl HAnimPlugin {

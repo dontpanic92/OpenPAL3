@@ -153,3 +153,12 @@ interface ISkinnedMeshComponent: IComponent {}
 
 [uuid(9f536433-8eb3-41da-b4f2-2a7e81c6a0cf)]
 class SkinnedMeshComponent: ISkinnedMeshComponent {}
+
+[uuid(1b4b89da-94cb-4dd8-a1e1-493763f14ee3)]
+interface IHAnimBoneComponent: IComponent {
+    [internal(), rust()]
+    crosscom::Void set_keyframes(Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame> keyframes);
+}
+
+[uuid(0fc724de-ae8c-42f1-9543-511c11560903)]
+class HAnimBoneComponent: IHAnimBoneComponent {}
