@@ -24,6 +24,46 @@ impl Quaternion {
         }
     }
 
+    pub fn normalized(q: &Quaternion) -> Self {
+        let norm = (q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w).sqrt();
+        if norm == 0. {
+            *q
+        } else {
+            Quaternion::new(q.x / norm, q.y / norm, q.z / norm, q.w / norm)
+        }
+    }
+
+    pub fn lerp(q1: &Self, q2: &Self, pct: f32) -> Self {
+        let ret = Self::new(
+            q1.x * (1. - pct) + q2.x * pct,
+            q1.y * (1. - pct) + q2.y * pct,
+            q1.z * (1. - pct) + q2.z * pct,
+            q1.w * (1. - pct) + q2.w * pct,
+        );
+
+        Self::normalized(&ret)
+    }
+
+    pub fn slerp(q1: &Self, q2: &Self, pct: f32) -> Self {
+        let cos_theta = q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
+        if cos_theta.abs() > 0.999 {
+            return Self::lerp(q1, q2, pct);
+        }
+
+        let theta = cos_theta.acos();
+
+        let inv_sin_theta = 1. / theta.sin();
+        let t1 = ((1. - pct) * theta).sin() * inv_sin_theta;
+        let t2 = (pct * theta).sin() * inv_sin_theta;
+
+        Self::normalized(&Self::new(
+            q1.x * t1 + q2.x * t2,
+            q1.y * t1 + q2.y * t2,
+            q1.z * t1 + q2.z * t2,
+            q1.w * t1 + q2.w * t2,
+        ))
+    }
+
     pub fn from_axis_angle(axis: &Vec3, angle: f32) -> Self {
         let half = angle / 2.;
         let sin_half = half.sin();

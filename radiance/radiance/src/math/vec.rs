@@ -54,6 +54,14 @@ impl Vec3 {
         }
     }
 
+    pub fn lerp(v1: &Vec3, v2: &Vec3, pct: f32) -> Self {
+        Self::new(
+            v1.x * (1. - pct) + v2.x * pct,
+            v1.y * (1. - pct) + v2.y * pct,
+            v1.z * (1. - pct) + v2.z * pct,
+        )
+    }
+
     pub fn normalize(&mut self) -> &mut Self {
         *self = Vec3::normalized(self);
         self

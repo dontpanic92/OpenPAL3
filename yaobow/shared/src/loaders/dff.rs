@@ -307,7 +307,7 @@ pub(crate) fn create_geometry_internal(
         let indexed_bones = &hanim_bone.as_ref().unwrap().indexed_bones;
 
         let mut bones = vec![];
-        let anm = load_anm(vfs, &PathBuf::from("/gamedata/PALActor/101/C02.anm"));
+        let anm = load_anm(vfs, &PathBuf::from("/gamedata/PALActor/101/C03.anm"));
 
         for i in 0..skin.matrix.len() {
             let bone = indexed_bones.get(&(i as u32)).unwrap();

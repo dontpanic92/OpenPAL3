@@ -133,7 +133,7 @@ struct HAnimBoneProps {
 
 impl HAnimBoneProps {
     pub fn update(&mut self, entity: ComRc<IEntity>, delta_sec: f32) {
-        self.last_time = self.last_time + delta_sec;
+        self.last_time = self.last_time + delta_sec / 100.;
 
         if self.last_time > self.max_time {
             self.last_time = 0.;
@@ -145,11 +145,30 @@ impl HAnimBoneProps {
             .position(|t| t.timestamp > self.last_time)
             .unwrap_or(0);
 
-        let mut frame_mat = self.frames[frame_index].rotation.to_rotate_matrix();
+        let next_frame_index = (frame_index + 1).min(self.frames.len() - 1);
+        let pct = if frame_index == next_frame_index {
+            0.
+        } else {
+            (self.last_time - self.frames[frame_index].timestamp)
+                / (self.frames[next_frame_index].timestamp)
+        };
 
-        frame_mat[0][3] = self.frames[frame_index].position.x;
-        frame_mat[1][3] = self.frames[frame_index].position.y;
-        frame_mat[2][3] = self.frames[frame_index].position.z;
+        let rotation = Quaternion::slerp(
+            &self.frames[frame_index].rotation,
+            &self.frames[next_frame_index].rotation,
+            pct,
+        );
+
+        let position = Vec3::lerp(
+            &self.frames[frame_index].position,
+            &self.frames[next_frame_index].position,
+            pct,
+        );
+
+        let mut frame_mat = rotation.to_rotate_matrix();
+        frame_mat[0][3] = position.x;
+        frame_mat[1][3] = position.y;
+        frame_mat[2][3] = position.z;
 
         let b = entity.transform();
         b.borrow_mut().set_matrix(frame_mat);
