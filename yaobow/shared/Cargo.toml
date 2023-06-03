@@ -28,6 +28,8 @@ mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
 miniz_oxide ="0.6"
 radiance = { path = "../../radiance/radiance" }
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
 thiserror = "1.0"
 tomcrypt-sys = "0.1"
 wavefront_obj = "5.1.0"

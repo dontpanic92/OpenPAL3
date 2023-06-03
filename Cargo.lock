@@ -2808,6 +2808,8 @@ dependencies = [
  "minilzo-rs",
  "miniz_oxide 0.6.2",
  "radiance",
+ "serde",
+ "serde_json",
  "thiserror",
  "tomcrypt-sys",
  "wavefront_obj",

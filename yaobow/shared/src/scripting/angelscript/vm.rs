@@ -39,6 +39,16 @@ impl ScriptVm {
         self.function_index = index;
     }
 
+    pub fn pop_stack_i32(&mut self) -> i32 {
+        let mut ret: u32 = 0;
+        self.store4(&mut ret);
+        ret as i32
+    }
+
+    pub fn push_ret_i32(&mut self, ret: i32) {
+        self.set4(ret as u32)
+    }
+
     pub fn execute(&mut self) {
         if self.module.is_none() {
             return;
@@ -64,18 +74,18 @@ impl ScriptVm {
             }
 
             match inst {
-                0 => command!(add_sp, size: u16),
-                1 => command!(sub_sp, size: u16),
-                2 => command!(push, size: u32),
-                3 => self.deref(),
-                4 => command!(load, index: u16),
-                5 => self.store(),
-                6 => self.store_pop(),
-                7 => command!(lea, index: u16),
-                8 => command!(load_pop, index: u16),
+                0 => command!(pop, size: u16),
+                1 => command!(push, size: u16),
+                2 => command!(set4, size: u32),
+                3 => self.rd4(),
+                4 => command!(rdsf4, index: u16),
+                5 => self.wrt4(),
+                6 => self.mov4(),
+                7 => command!(psf, index: u16),
+                8 => command!(movsf4, index: u16),
                 9 => self.swap::<u32>(),
-                10 => self.store_reg(&mut reg),
-                11 => self.load_reg(reg),
+                10 => self.store4(&mut reg),
+                11 => self.recall4(reg),
                 12 => command!(call, function: u32),
                 13 => {
                     command!(ret, param_size: u16);
@@ -84,12 +94,12 @@ impl ScriptVm {
                 14 => command!(jmp, offset: i32),
                 15 => command!(jz, offset: i32),
                 16 => command!(jnz, offset: i32),
-                17 => self.is_zero(),
-                18 => self.not_zero(),
-                19 => self.ltz(),
-                20 => self.gez(),
-                21 => self.gtz(),
-                22 => self.lez(),
+                17 => self.tz(),
+                18 => self.tnz(),
+                19 => self.ts_ltz(),
+                20 => self.tns_gez(),
+                21 => self.tp_gtz(),
+                22 => self.tnp_lez(),
                 23 => self.add::<i32>(),
                 24 => self.sub::<i32>(),
                 25 => self.mul::<i32>(),
@@ -97,9 +107,9 @@ impl ScriptVm {
                 27 => self.xmod::<i32>(0),
                 28 => self.neg::<i32>(),
                 29 => self.cmp::<i32>(),
-                30 => self.deref_inc::<i32>(1),
-                31 => self.deref_dec::<i32>(1),
-                32 => self.fild(),
+                30 => self.inc::<i32>(1),
+                31 => self.dec::<i32>(1),
+                32 => self.i2f(),
                 33 => self.add::<f32>(),
                 34 => self.sub::<f32>(),
                 35 => self.mul::<f32>(),
@@ -107,37 +117,38 @@ impl ScriptVm {
                 37 => self.xmod::<f32>(0.),
                 38 => self.neg::<f32>(),
                 39 => self.cmp::<f32>(),
-                40 => self.deref_inc::<f32>(1.),
-                41 => self.deref_dec::<f32>(1.),
-                42 | 51 => self.fst(),
+                40 => self.inc::<f32>(1.),
+                41 => self.dec::<f32>(1.),
+                42 => self.f2i(),
                 43 => self.bnot(),
                 44 => self.band(),
                 45 => self.bor(),
                 46 => self.bxor(),
-                47 => self.shl(),
-                48 => self.shr(),
-                49 => self.sar(),
-                50 => self.fuld(),
-                52 => self.cmp::<i32>(),
-                53 => self.truc_to_i8(),
-                54 => self.truc_to_i16(),
-                55 => self.truc_to_u8(),
-                56 => self.truc_to_u16(),
-                57 => self.assign_byte(),
-                58 => self.assign_word(),
-                59 => self.deref_inc::<u16>(1),
-                60 => self.deref_inc::<u8>(1),
-                61 => self.deref_dec::<u16>(1),
-                62 => self.deref_dec::<u8>(1),
+                47 => self.bsll(),
+                48 => self.bsrl(),
+                49 => self.bsra(),
+                50 => self.ui2f(),
+                51 => self.f2ui(),
+                52 => self.cmp::<u32>(),
+                53 => self.sb(),
+                54 => self.sw(),
+                55 => self.ub(),
+                56 => self.uw(),
+                57 => self.wrt1(),
+                58 => self.wrt2(),
+                59 => self.inc::<i16>(1),
+                60 => self.inc::<i8>(1),
+                61 => self.dec::<i16>(1),
+                62 => self.dec::<i8>(1),
                 63 => self.push_zero(),
-                64 => command!(memcpy, count: u16),
-                65 => command!(load_global, index: i32),
-                66 => command!(push_u64, data: u64),
-                67 => self.load_u64(),
-                68 => self.store_u64(),
+                64 => command!(copy, count: u16),
+                65 => command!(pga, index: i32),
+                66 => command!(set8, data: u64),
+                67 => self.wrt8(),
+                68 => self.rd8(),
                 69 => self.neg::<f64>(),
-                70 => self.deref_inc::<f64>(1.),
-                71 => self.deref_dec::<f64>(1.),
+                70 => self.inc::<f64>(1.),
+                71 => self.dec::<f64>(1.),
                 72 => self.add::<f64>(),
                 73 => self.sub::<f64>(),
                 74 => self.mul::<f64>(),
@@ -145,48 +156,50 @@ impl ScriptVm {
                 76 => self.xmod::<f64>(0.),
                 77 => self.swap::<f64>(),
                 78 => self.cmp::<f64>(),
-                79 | 80 => self.d2i(),
+                79 => self.d2i(),
+                80 => self.d2ui(),
                 81 => self.d2f(),
                 82 => self.x2d::<i32>(),
                 83 => self.x2d::<u32>(),
                 84 => self.x2d::<f32>(),
-                85 => self.jmps(),
-                86 => self.store_dword(),
-                87 => self.store_qword(),
-                88 => self.restore_dword(),
-                89 => self.restore_qword(),
-                90 => command!(get_string, index: u16),
-                91 => command!(jgez, offset: i32),
-                92 => command!(jlz, offset: i32),
-                93 => command!(jlez, offset: i32),
-                94 => command!(jgz, offset: i32),
-                95 | 96 => command!(cmp_imm: i32, rhs: i32),
-                97 => command!(call_global, function_index: i32),
-                98 => command!(call_external, function_index: u32),
-                99 => command!(load_global, index: i32),
-                100 => command!(store_global, index: i32),
-                101 => command!(add_imm: i32, rhs: i32),
-                102 => command!(sub_imm: i32, rhs: i32),
-                103 => command!(cmp_imm: f32, rhs: f32),
-                104 => command!(add_imm: f32, rhs: f32),
-                105 => command!(sub_imm: f32, rhs: f32),
-                106 => command!(mul_imm: i32, rhs: i32),
-                107 => command!(mul_imm: f32, rhs: f32),
-                108 => println!("unimplemented byte code 108"),
-                109 => command!(call_global2, this: i32, index: i32),
-                110 => unimplemented!("byte code 110"),
-                111 => unimplemented!("byte code 111"),
-                112 => unimplemented!("byte code 112"),
-                113 => unimplemented!("byte code 113"),
-                114 => unimplemented!("byte code 114"),
-                115 => unimplemented!("byte code 115"),
-                116 => unimplemented!("byte code 116"),
-                117 => unimplemented!("byte code 117"),
-                118 => unimplemented!("byte code 118"),
-                119 => unimplemented!("byte code 119"),
-                120 => unimplemented!("byte code 120"),
-                121 => unimplemented!("byte code 121"),
-                122 => unimplemented!("byte code 122"),
+                85 => self.jmpp(),
+                86 => self.sret4(),
+                87 => self.sret8(),
+                88 => self.rret4(),
+                89 => self.rret8(),
+                90 => command!(str, index: u16),
+                91 => command!(js_jgez, offset: i32),
+                92 => command!(jns_jlz, offset: i32),
+                93 => command!(jp_jlez, offset: i32),
+                94 => command!(jnp_jgz, offset: i32),
+                95 => command!(cmpi: i32, rhs: i32),
+                96 => command!(cmpi: u32, rhs: u32),
+                97 => command!(callsys, function_index: i32),
+                98 => command!(callbnd, function_index: u32),
+                99 => command!(rdga4, index: i32),
+                100 => command!(movga4, index: i32),
+                101 => command!(addi: i32, rhs: i32),
+                102 => command!(subi: i32, rhs: i32),
+                103 => command!(cmpi: f32, rhs: f32),
+                104 => command!(addi: f32, rhs: f32),
+                105 => command!(subi: f32, rhs: f32),
+                106 => command!(muli: i32, rhs: i32),
+                107 => command!(muli: f32, rhs: f32),
+                108 => self.suspend(),
+                109 => command!(alloc, this: i32, index: i32),
+                110 => unimplemented!("byte code 110 - free"),
+                111 => unimplemented!("byte code 111 - loadobj"),
+                112 => unimplemented!("byte code 112 - storeobj"),
+                113 => unimplemented!("byte code 113 - getobj"),
+                114 => unimplemented!("byte code 114 - refcpy"),
+                115 => unimplemented!("byte code 115 - chkref"),
+                116 => unimplemented!("byte code 116 - rd1"),
+                117 => unimplemented!("byte code 117 - rd2"),
+                118 => unimplemented!("byte code 118 - getobjref"),
+                119 => unimplemented!("byte code 119 - getref"),
+                120 => unimplemented!("byte code 120 - swap48"),
+                121 => unimplemented!("byte code 121 - swap84"),
+                122 => unimplemented!("byte code 122 - objtype"),
                 i => unimplemented!("byte code {}", i),
             }
         }
@@ -198,15 +211,22 @@ impl ScriptVm {
         inst
     }
 
-    fn add_sp(&mut self, size: u16) {
+    fn pop(&mut self, size: u16) {
         self.sp += size as usize;
     }
 
-    fn sub_sp(&mut self, size: u16) {
+    fn push(&mut self, size: u16) {
         self.sp -= size as usize;
     }
 
-    fn deref(&mut self) {
+    fn set4(&mut self, data: u32) {
+        self.sp -= 4;
+        unsafe {
+            self.write_stack(self.sp, data);
+        }
+    }
+
+    fn rd4(&mut self) {
         unsafe {
             let pos: u32 = self.read_stack(self.sp);
             let data: u32 = self.read_stack(pos as usize);
@@ -214,21 +234,14 @@ impl ScriptVm {
         }
     }
 
-    fn push(&mut self, data: u32) {
-        self.sp -= 4;
-        unsafe {
-            self.write_stack(self.sp, data);
-        }
-    }
-
-    fn load(&mut self, index: u16) {
+    fn rdsf4(&mut self, index: u16) {
         unsafe {
             let data: u32 = self.read_stack(self.stack.len() - index as usize * 4);
             self.write_stack(self.sp, data);
         }
     }
 
-    fn store(&mut self) {
+    fn wrt4(&mut self) {
         unsafe {
             let pos: u32 = self.read_stack(self.sp);
             self.sp += 4;
@@ -237,12 +250,12 @@ impl ScriptVm {
         }
     }
 
-    fn store_pop(&mut self) {
-        self.store();
+    fn mov4(&mut self) {
+        self.wrt4();
         self.sp += 4;
     }
 
-    fn lea(&mut self, index: u16) {
+    fn psf(&mut self, index: u16) {
         unsafe {
             let pos = self.stack.len() - index as usize * 4;
             self.sp -= 4;
@@ -250,7 +263,7 @@ impl ScriptVm {
         }
     }
 
-    fn load_pop(&mut self, index: u16) {
+    fn movsf4(&mut self, index: u16) {
         unsafe {
             let pos = self.stack.len() - index as usize * 4;
             let data: u32 = self.read_stack(pos);
@@ -269,7 +282,7 @@ impl ScriptVm {
         }
     }
 
-    fn store_reg(&mut self, reg: &mut u32) {
+    fn store4(&mut self, reg: &mut u32) {
         unsafe {
             let data = self.read_stack(self.sp);
             self.sp += 4;
@@ -277,7 +290,7 @@ impl ScriptVm {
         }
     }
 
-    fn load_reg(&mut self, reg: u32) {
+    fn recall4(&mut self, reg: u32) {
         unsafe {
             self.sp -= 4;
             self.write_stack(self.sp, reg);
@@ -288,15 +301,25 @@ impl ScriptVm {
         println!("Unimplemented: call: {}", function);
     }
 
-    fn call_external(&mut self, function: u32) {
+    fn callbnd(&mut self, function: u32) {
         println!("Unimplemented: call: {}", function);
     }
 
-    fn call_global(&mut self, function: i32) {
-        println!("Unimplemented: call global: {}", function);
+    fn rdga4(&mut self, offset: i32) {
+        println!("Unimplemented: rdga4: {}", offset);
     }
 
-    fn call_global2(&mut self, this: i32, function: i32) {
+    fn callsys(&mut self, function: i32) {
+        let index = -function - 1;
+        let context = self.context.clone();
+        context.borrow_mut().call_function(self, index as usize);
+    }
+
+    fn suspend(&mut self) {
+        println!("Unimplemented: suspend");
+    }
+
+    fn alloc(&mut self, this: i32, function: i32) {
         println!("Unimplemented: call global2: {} {}", this, function);
     }
 
@@ -328,27 +351,27 @@ impl ScriptVm {
         }
     }
 
-    fn is_zero(&mut self) {
+    fn tz(&mut self) {
         self.unary_op::<i32, _, _>(|a| (a == 0) as i32);
     }
 
-    fn not_zero(&mut self) {
+    fn tnz(&mut self) {
         self.unary_op::<i32, _, _>(|a| (a != 0) as i32);
     }
 
-    fn ltz(&mut self) {
+    fn ts_ltz(&mut self) {
         self.unary_op::<i32, _, _>(|a| (a < 0) as i32);
     }
 
-    fn gez(&mut self) {
+    fn tns_gez(&mut self) {
         self.unary_op::<i32, _, _>(|a| (a >= 0) as i32);
     }
 
-    fn gtz(&mut self) {
+    fn tp_gtz(&mut self) {
         self.unary_op::<i32, _, _>(|a| (a > 0) as i32);
     }
 
-    fn lez(&mut self) {
+    fn tnp_lez(&mut self) {
         self.unary_op::<i32, _, _>(|a| (a <= 0) as i32);
     }
 
@@ -406,7 +429,7 @@ impl ScriptVm {
         })
     }
 
-    fn deref_inc<T: Copy + std::ops::Add>(&mut self, one: T) {
+    fn inc<T: Copy + std::ops::Add>(&mut self, one: T) {
         unsafe {
             let pos: u32 = self.read_stack(self.sp);
             let data: T = self.read_stack(pos as usize);
@@ -414,7 +437,7 @@ impl ScriptVm {
         }
     }
 
-    fn deref_dec<T: Copy + std::ops::Sub>(&mut self, one: T) {
+    fn dec<T: Copy + std::ops::Sub>(&mut self, one: T) {
         unsafe {
             let pos: u32 = self.read_stack(self.sp);
             let data: T = self.read_stack(pos as usize);
@@ -422,11 +445,11 @@ impl ScriptVm {
         }
     }
 
-    fn fild(&mut self) {
+    fn i2f(&mut self) {
         self.unary_op::<i32, _, _>(|a| a as f32);
     }
 
-    fn fst(&mut self) {
+    fn f2i(&mut self) {
         self.unary_op::<f32, _, _>(|a| a as i32);
     }
 
@@ -446,43 +469,47 @@ impl ScriptVm {
         self.binary_op::<u32, _, _>(|a, b| b ^ a)
     }
 
-    fn shl(&mut self) {
+    fn bsll(&mut self) {
         self.binary_op::<u32, _, _>(|a, b| b << (a & 0xff))
     }
 
-    fn shr(&mut self) {
+    fn bsrl(&mut self) {
         self.binary_op::<u32, _, _>(|a, b| b >> (a & 0xff))
     }
 
-    fn sar(&mut self) {
+    fn bsra(&mut self) {
         self.binary_op::<i32, _, _>(|a, b| b >> (a & 0xff))
     }
 
-    fn fuld(&mut self) {
+    fn ui2f(&mut self) {
         self.unary_op::<u32, _, _>(|a| a as f32);
     }
 
-    fn truc_to_i8(&mut self) {
+    fn f2ui(&mut self) {
+        self.unary_op::<f32, _, _>(|a| a as u32);
+    }
+
+    fn sb(&mut self) {
         self.unary_op::<i32, _, _>(|a| (a as i8) as i32);
     }
 
-    fn truc_to_i16(&mut self) {
+    fn sw(&mut self) {
         self.unary_op::<i32, _, _>(|a| (a as i16) as i32);
     }
 
-    fn truc_to_u8(&mut self) {
+    fn ub(&mut self) {
         self.unary_op::<u32, _, _>(|a| (a as u8) as u32);
     }
 
-    fn truc_to_u16(&mut self) {
+    fn uw(&mut self) {
         self.unary_op::<u32, _, _>(|a| (a as u16) as u32);
     }
 
-    fn assign_byte(&mut self) {
+    fn wrt1(&mut self) {
         self.binary_op::<u32, _, _>(|a, b| (b & 0xFFFFFF00) + (a & 0xFF));
     }
 
-    fn assign_word(&mut self) {
+    fn wrt2(&mut self) {
         self.binary_op::<u32, _, _>(|a, b| (b & 0xFFFF0000) + (a & 0xFFFF));
     }
 
@@ -493,7 +520,7 @@ impl ScriptVm {
         }
     }
 
-    fn memcpy(&mut self, count: u16) {
+    fn copy(&mut self, count: u16) {
         unsafe {
             let dst: u32 = self.read_stack(self.sp);
             self.sp += 4;
@@ -506,14 +533,14 @@ impl ScriptVm {
         }
     }
 
-    fn push_u64(&mut self, data: u64) {
+    fn set8(&mut self, data: u64) {
         unsafe {
             self.sp -= 8;
             self.write_stack(self.sp, data);
         }
     }
 
-    fn store_u64(&mut self) {
+    fn rd8(&mut self) {
         unsafe {
             let pos: u32 = self.read_stack(self.sp);
             self.sp += 4;
@@ -522,7 +549,7 @@ impl ScriptVm {
         }
     }
 
-    fn load_u64(&mut self) {
+    fn wrt8(&mut self) {
         unsafe {
             let pos: u32 = self.read_stack(self.sp);
             self.sp -= 4;
@@ -536,6 +563,14 @@ impl ScriptVm {
             let data: f64 = self.read_stack(self.sp);
             self.sp += 4;
             self.write_stack(self.sp, data as i32);
+        }
+    }
+
+    fn d2ui(&mut self) {
+        unsafe {
+            let data: f64 = self.read_stack(self.sp);
+            self.sp += 4;
+            self.write_stack(self.sp, data as u32);
         }
     }
 
@@ -556,7 +591,7 @@ impl ScriptVm {
         }
     }
 
-    fn jmps(&mut self) {
+    fn jmpp(&mut self) {
         unsafe {
             let data: i32 = self.read_stack(self.sp);
             self.sp += 4;
@@ -564,7 +599,7 @@ impl ScriptVm {
         }
     }
 
-    fn store_dword(&mut self) {
+    fn sret4(&mut self) {
         unsafe {
             let data: u32 = self.read_stack(self.sp);
             self.sp += 4;
@@ -572,7 +607,7 @@ impl ScriptVm {
         }
     }
 
-    fn store_qword(&mut self) {
+    fn sret8(&mut self) {
         unsafe {
             self.r1 = self.read_stack(self.sp);
             self.sp += 4;
@@ -581,14 +616,14 @@ impl ScriptVm {
         }
     }
 
-    fn restore_dword(&mut self) {
+    fn rret4(&mut self) {
         unsafe {
             self.sp -= 4;
             self.write_stack(self.sp, self.r1);
         }
     }
 
-    fn restore_qword(&mut self) {
+    fn rret8(&mut self) {
         unsafe {
             self.sp -= 4;
             self.write_stack(self.sp, self.r2);
@@ -597,23 +632,23 @@ impl ScriptVm {
         }
     }
 
-    fn jgez(&mut self, offset: i32) {
+    fn js_jgez(&mut self, offset: i32) {
         self.j(offset, |data| data >= 0);
     }
 
-    fn jlz(&mut self, offset: i32) {
+    fn jns_jlz(&mut self, offset: i32) {
         self.j(offset, |data| data < 0);
     }
 
-    fn jlez(&mut self, offset: i32) {
+    fn jp_jlez(&mut self, offset: i32) {
         self.j(offset, |data| data <= 0);
     }
 
-    fn jgz(&mut self, offset: i32) {
+    fn jnp_jgz(&mut self, offset: i32) {
         self.j(offset, |data| data > 0);
     }
 
-    fn cmp_imm<T: Copy + PartialOrd>(&mut self, rhs: T) {
+    fn cmpi<T: Copy + PartialOrd>(&mut self, rhs: T) {
         unsafe {
             let data: T = self.read_stack(self.sp);
             self.write_stack(
@@ -629,34 +664,34 @@ impl ScriptVm {
         }
     }
 
-    fn add_imm<T: Copy + std::ops::Add>(&mut self, rhs: T) {
+    fn addi<T: Copy + std::ops::Add>(&mut self, rhs: T) {
         unsafe {
             let data: T = self.read_stack(self.sp);
             self.write_stack(self.sp, data + rhs);
         }
     }
 
-    fn sub_imm<T: Copy + std::ops::Sub>(&mut self, rhs: T) {
+    fn subi<T: Copy + std::ops::Sub>(&mut self, rhs: T) {
         unsafe {
             let data: T = self.read_stack(self.sp);
             self.write_stack(self.sp, data - rhs);
         }
     }
 
-    fn mul_imm<T: Copy + std::ops::Mul>(&mut self, rhs: T) {
+    fn muli<T: Copy + std::ops::Mul>(&mut self, rhs: T) {
         unsafe {
             let data: T = self.read_stack(self.sp);
             self.write_stack(self.sp, data * rhs);
         }
     }
 
-    fn load_global(&mut self, index: i32) {
+    fn pga(&mut self, index: i32) {
         let data = if index > 0 {
             let module = self.module.as_mut().unwrap().borrow();
             module.globals[index as usize]
         } else {
             let context = self.context.borrow();
-            context.get_global((-index - 1) as usize)
+            context.get_var((-index - 1) as usize)
         };
 
         self.sp -= 4;
@@ -666,7 +701,7 @@ impl ScriptVm {
         }
     }
 
-    fn store_global(&mut self, index: i32) {
+    fn movga4(&mut self, index: i32) {
         let data: u32 = unsafe { self.read_stack(self.sp) };
 
         if index > 0 {
@@ -674,13 +709,13 @@ impl ScriptVm {
             module.globals[index as usize] = data;
         } else {
             let mut context = self.context.borrow_mut();
-            context.set_global((-index - 1) as usize, data);
+            context.set_var((-index - 1) as usize, data);
         };
 
         self.sp += 4;
     }
 
-    fn get_string(&mut self, index: u16) {
+    fn str(&mut self, index: u16) {
         let module = self.module.as_ref().unwrap().clone();
         let module_ref = module.borrow();
         let string = &module_ref.strings[index as usize];
