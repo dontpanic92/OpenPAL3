@@ -14,6 +14,13 @@ impl ScriptGlobalFunction {
     }
 }
 
+#[macro_export]
+macro_rules! as_params {
+    ($vm: ident $(, $param_name: ident : $param_type: ident)*) => {
+        $(let $param_name = $vm.stack_pop::<$param_type>();)*
+    }
+}
+
 pub struct ScriptGlobalContext {
     vars: Vec<u32>,
     functions: Vec<ScriptGlobalFunction>,
@@ -63,7 +70,7 @@ impl ScriptGlobalContext {
             ScriptGlobalFunction::new("string.Release", Box::new(not_implemented)),
             ScriptGlobalFunction::new("string.operator=", Box::new(not_implemented)),
             ScriptGlobalFunction::new("string.operator+=", Box::new(not_implemented)),
-            ScriptGlobalFunction::new("string@", Box::new(not_implemented)),
+            ScriptGlobalFunction::new("string@", Box::new(string_factory)),
             ScriptGlobalFunction::new("string::operator==", Box::new(not_implemented)),
             ScriptGlobalFunction::new("string::operator!=", Box::new(not_implemented)),
             ScriptGlobalFunction::new("string::operator<=", Box::new(not_implemented)),
@@ -104,11 +111,17 @@ impl ScriptGlobalContext {
 }
 
 fn abs(_: &str, vm: &mut ScriptVm) {
-    let number = vm.pop_stack_i32();
+    as_params!(vm, number: i32);
+
     let ret = number.abs();
-    vm.push_ret_i32(ret);
+    vm.stack_push::<i32>(ret);
+}
+
+fn string_factory(_: &str, vm: &mut ScriptVm) {
+    as_params!(vm, s: i32);
+    // println!("string fatory: {} {:?}", s, vm.module.as_ref().unwrap().as_ref().borrow().strings.get(s as usize));
 }
 
 pub fn not_implemented(name: &str, _: &mut ScriptVm) {
-    unimplemented!("unimplemented function called: {}", name);
+    println!("unimplemented function called: {}", name);
 }

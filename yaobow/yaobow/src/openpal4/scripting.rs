@@ -1,16 +1,22 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crosscom::ComRc;
-use imgui::Ui;
-use radiance::comdef::ISceneManager;
-use shared::scripting::angelscript::{
-    not_implemented, ScriptGlobalContext, ScriptGlobalFunction, ScriptModule, ScriptVm,
+use shared::{
+    as_params,
+    scripting::angelscript::{
+        disasm, not_implemented, ScriptGlobalContext, ScriptGlobalFunction, ScriptModule, ScriptVm,
+    },
 };
 
 pub fn create_script_vm() -> ScriptVm {
     let mut vm = ScriptVm::new(Rc::new(RefCell::new(create_context())));
     let content = std::fs::read("F:\\PAL4\\gamedata\\script\\script.csb").unwrap();
     let module = ScriptModule::read_from_buffer(&content).unwrap();
+
+    let insts = disasm(&module.functions[0]);
+    for i in &insts {
+        println!("{:?}", i);
+    }
+
     let module = Rc::new(RefCell::new(module));
     vm.set_module(module);
     vm.set_function(0);
@@ -24,14 +30,8 @@ pub fn create_context() -> ScriptGlobalContext {
         "giWait",
         Box::new(not_implemented),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giIMMBegin",
-        Box::new(not_implemented),
-    ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giIMMEnd",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giIMMBegin", Box::new(imm_begin)));
+    context.register_function(ScriptGlobalFunction::new("giIMMEnd", Box::new(imm_end)));
     context.register_function(ScriptGlobalFunction::new(
         "giNewGame",
         Box::new(not_implemented),
@@ -242,7 +242,7 @@ pub fn create_context() -> ScriptGlobalContext {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giOpenMovieFlag",
-        Box::new(not_implemented),
+        Box::new(open_movie_flag),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAddQuestComplatePercentage",
@@ -750,11 +750,11 @@ pub fn create_context() -> ScriptGlobalContext {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giScriptMusicPause",
-        Box::new(not_implemented),
+        Box::new(script_music_pause),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giScriptMusicResume",
-        Box::new(not_implemented),
+        Box::new(script_music_resume),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giWait",
@@ -966,7 +966,7 @@ pub fn create_context() -> ScriptGlobalContext {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giFlashOutBlack",
-        Box::new(not_implemented),
+        Box::new(flash_out_black),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giFlashInBlack",
@@ -990,7 +990,7 @@ pub fn create_context() -> ScriptGlobalContext {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayMovie",
-        Box::new(not_implemented),
+        Box::new(play_movie),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giObjectDoAction",
@@ -1080,4 +1080,24 @@ pub fn create_context() -> ScriptGlobalContext {
     context
 }
 
-fn new_game(scene_manager: ComRc<ISceneManager>, ui: &Ui, vm: &mut ScriptVm) {}
+fn imm_begin(name: &str, vm: &mut ScriptVm) {}
+
+fn imm_end(name: &str, vm: &mut ScriptVm) {}
+
+fn new_game(name: &str, vm: &mut ScriptVm) {}
+
+fn flash_out_black(name: &str, vm: &mut ScriptVm) {
+    as_params!(vm, f: f32, b1: i32, b2: i32);
+}
+
+fn script_music_pause(name: &str, vm: &mut ScriptVm) {}
+
+fn play_movie(name: &str, vm: &mut ScriptVm) {
+    as_params!(vm, name_str: i32);
+}
+
+fn open_movie_flag(name: &str, vm: &mut ScriptVm) {
+    as_params!(vm, flag: i32);
+}
+
+fn script_music_resume(name: &str, vm: &mut ScriptVm) {}

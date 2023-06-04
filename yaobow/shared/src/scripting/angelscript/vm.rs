@@ -12,8 +12,11 @@ pub struct ScriptVm {
     pc: usize,
     stack: Vec<u8>,
     sp: usize,
+    fp: usize,
     r1: u32,
     r2: u32,
+    pub(crate) objects: Vec<Option<String>>,
+    object_register: usize,
 }
 
 impl ScriptVm {
@@ -26,8 +29,11 @@ impl ScriptVm {
             pc: 0,
             stack: vec![0; Self::DEFAULT_STACK_SIZE],
             sp: Self::DEFAULT_STACK_SIZE,
+            fp: Self::DEFAULT_STACK_SIZE,
             r1: 0,
             r2: 0,
+            objects: vec![],
+            object_register: 0,
         }
     }
 
@@ -39,14 +45,15 @@ impl ScriptVm {
         self.function_index = index;
     }
 
-    pub fn pop_stack_i32(&mut self) -> i32 {
-        let mut ret: u32 = 0;
-        self.store4(&mut ret);
-        ret as i32
+    pub fn stack_pop<T: std::marker::Copy>(&mut self) -> T {
+        let ret: T = unsafe { self.read_stack(self.sp) };
+        self.sp += std::mem::size_of::<T>();
+        ret
     }
 
-    pub fn push_ret_i32(&mut self, ret: i32) {
-        self.set4(ret as u32)
+    pub fn stack_push<T: std::marker::Copy>(&mut self, ret: i32) {
+        self.sp -= std::mem::size_of::<T>();
+        unsafe { self.write_stack(self.sp, ret) };
     }
 
     pub fn execute(&mut self) {
@@ -187,15 +194,15 @@ impl ScriptVm {
                 107 => command!(muli: f32, rhs: f32),
                 108 => self.suspend(),
                 109 => command!(alloc, this: i32, index: i32),
-                110 => unimplemented!("byte code 110 - free"),
+                110 => command!(free, obj_type: u32),
                 111 => unimplemented!("byte code 111 - loadobj"),
-                112 => unimplemented!("byte code 112 - storeobj"),
+                112 => command!(storeobj, param_index: i16),
                 113 => unimplemented!("byte code 113 - getobj"),
                 114 => unimplemented!("byte code 114 - refcpy"),
-                115 => unimplemented!("byte code 115 - chkref"),
+                115 => self.checkref(),
                 116 => unimplemented!("byte code 116 - rd1"),
                 117 => unimplemented!("byte code 117 - rd2"),
-                118 => unimplemented!("byte code 118 - getobjref"),
+                118 => command!(getobjref, offset: i16),
                 119 => unimplemented!("byte code 119 - getref"),
                 120 => unimplemented!("byte code 120 - swap48"),
                 121 => unimplemented!("byte code 121 - swap84"),
@@ -321,6 +328,32 @@ impl ScriptVm {
 
     fn alloc(&mut self, this: i32, function: i32) {
         println!("Unimplemented: call global2: {} {}", this, function);
+    }
+
+    fn storeobj(&mut self, param_index: i16) {
+        unsafe {
+            self.write_stack(
+                (self.fp as isize - param_index as isize * 4) as usize,
+                self.object_register as u32,
+            );
+        }
+    }
+
+    fn free(&mut self, _obj_type: u32) {
+        let obj_ref: u32 = unsafe { self.read_stack(self.sp) };
+        self.sp += 4;
+        self.objects[obj_ref as usize] = None;
+    }
+
+    fn checkref(&mut self) {}
+
+    fn getobjref(&mut self, offset: i16) {
+        unsafe {
+            let addr = (self.sp as isize + offset as isize) as usize;
+            let index: u32 = self.read_stack(addr);
+            let objref: u32 = self.read_stack((self.fp as isize - index as isize * 4) as usize);
+            self.write_stack(addr, objref);
+        }
     }
 
     fn ret(&mut self, param_size: u16) {
@@ -768,35 +801,35 @@ impl ScriptVm {
     }
 }
 
-mod data_read {
+pub(crate) mod data_read {
     use byteorder::{LittleEndian, ReadBytesExt};
 
-    pub(super) fn u16(inst: &[u8], pc: &mut usize) -> u16 {
+    pub(crate) fn u16(inst: &[u8], pc: &mut usize) -> u16 {
         *pc += 2;
         (&inst[*pc - 2..*pc]).read_u16::<LittleEndian>().unwrap()
     }
 
-    pub(super) fn i16(inst: &[u8], pc: &mut usize) -> i16 {
+    pub(crate) fn i16(inst: &[u8], pc: &mut usize) -> i16 {
         *pc += 2;
         (&inst[*pc - 2..*pc]).read_i16::<LittleEndian>().unwrap()
     }
 
-    pub(super) fn i32(inst: &[u8], pc: &mut usize) -> i32 {
+    pub(crate) fn i32(inst: &[u8], pc: &mut usize) -> i32 {
         *pc += 4;
         (&inst[*pc - 4..*pc]).read_i32::<LittleEndian>().unwrap()
     }
 
-    pub(super) fn u32(inst: &[u8], pc: &mut usize) -> u32 {
+    pub(crate) fn u32(inst: &[u8], pc: &mut usize) -> u32 {
         *pc += 4;
         (&inst[*pc - 4..*pc]).read_u32::<LittleEndian>().unwrap()
     }
 
-    pub(super) fn f32(inst: &[u8], pc: &mut usize) -> f32 {
+    pub(crate) fn f32(inst: &[u8], pc: &mut usize) -> f32 {
         *pc += 4;
         (&inst[*pc - 4..*pc]).read_f32::<LittleEndian>().unwrap()
     }
 
-    pub(super) fn u64(inst: &[u8], pc: &mut usize) -> u64 {
+    pub(crate) fn u64(inst: &[u8], pc: &mut usize) -> u64 {
         *pc += 8;
         (&inst[*pc - 8..*pc]).read_u64::<LittleEndian>().unwrap()
     }
