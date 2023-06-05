@@ -11,6 +11,7 @@ members = [
     "yaobow/yaobow",
     "yaobow/yaobow_editor",
     "tools/pol_exporter",
+    "tools/asdebug",
 ]
 resolver = "2"
 

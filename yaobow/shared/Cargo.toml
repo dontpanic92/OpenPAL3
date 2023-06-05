@@ -19,6 +19,7 @@ dirs = "3.0.1"
 encoding = "0.2.33"
 fileformats = { path = "../fileformats" }
 image = "0.23.0"
+interprocess = "1.2"
 lazy_static = "1.2.0"
 log = { version = "0.4.13" }
 lzma-rs = "0.3.0"

@@ -1,6 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use super::{
+    debug::create_client,
     global_context::ScriptGlobalContext,
     module::{ScriptFunction, ScriptModule},
 };
@@ -65,6 +66,9 @@ impl ScriptVm {
         let module_ref = module.borrow();
         let function = module_ref.functions[self.function_index].clone();
         let mut reg: u32 = 0;
+
+        let client = create_client();
+        println!("client {:?}", client);
 
         loop {
             let inst = self.read_inst(&function);

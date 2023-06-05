@@ -1,3 +1,4 @@
+mod debug;
 mod disassembler;
 mod global_context;
 mod module;
