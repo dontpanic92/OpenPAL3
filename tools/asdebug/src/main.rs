@@ -1,12 +1,18 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{
+    mpsc::{channel, Sender},
+    Arc, RwLock, RwLockReadGuard,
+};
 
 use context::Context;
-use eframe::egui;
+use disasm_view::DisasmView;
+use eframe::egui::{self, Layout, ScrollArea};
 use server::start_server;
+use shared::scripting::angelscript::{debug::Response, disasm, AsInst, AsInstInstance};
 
 mod context;
+mod disasm_view;
 mod server;
 
 fn main() -> Result<(), eframe::Error> {
@@ -26,27 +32,215 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
+enum AppState {
+    Debugger,
+    Disassembler,
+}
+
 struct AsDebugApp {
-    name: String,
-    age: u32,
+    state: AppState,
+    dv: DisasmView,
+    tx: Sender<Response>,
     context: Arc<RwLock<Context>>,
 }
 
 impl AsDebugApp {
     pub fn new(ec: eframe::egui::Context) -> Self {
+        let (tx, rx) = channel();
         let context = Arc::new(RwLock::new(Context::new(ec)));
-        start_server(context.clone());
+        start_server(rx, context.clone());
 
         Self {
-            name: "Arthur".to_owned(),
-            age: 42,
+            state: AppState::Debugger,
+            dv: DisasmView::new(),
+            tx,
             context,
         }
     }
-}
 
-impl eframe::App for AsDebugApp {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn show_toolbar(&self, ui: &mut egui::Ui) {
+        if ui.button("Step Into").clicked() {
+            let _ = self.tx.send(Response::SingleStep);
+        }
+    }
+
+    fn show_inst_note(
+        &self,
+        ui: &mut egui::Ui,
+        context: &RwLockReadGuard<Context>,
+        inst: &AsInstInstance,
+    ) {
+        let note = match inst.inst {
+            AsInst::CallSys { function_index } => {
+                format!(
+                    "// {}",
+                    context
+                        .functions
+                        .get((-function_index - 1) as usize)
+                        .unwrap_or(&"".to_string())
+                )
+            }
+
+            _ => "".to_string(),
+        };
+
+        ui.label(note);
+    }
+
+    fn show_code(&self, ui: &mut egui::Ui) {
+        let context = self.context.read().unwrap();
+        if context.module.is_none() {
+            return;
+        }
+
+        let module = context.module.as_ref().unwrap();
+
+        let insts = disasm(&module.functions[context.function_id as usize]);
+
+        ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.vertical(|ui| {
+                    egui::Grid::new("my_grid")
+                        .num_columns(4)
+                        .spacing([4.0, 4.0])
+                        .striped(false)
+                        .show(ui, |ui| {
+                            for inst in &insts {
+                                ui.add(|ui: &mut egui::Ui| ui.label(format!("{}", inst.addr)));
+                                if context.pc == inst.addr as usize {
+                                    ui.label("▶"); //.scroll_to_me(None);
+                                } else {
+                                    ui.label("");
+                                }
+
+                                ui.label(format!("{:?}", inst.inst));
+                                self.show_inst_note(ui, &context, inst);
+                                ui.end_row();
+                            }
+                        });
+                });
+
+                let margin = ui.visuals().clip_rect_margin;
+
+                let current_scroll = ui.clip_rect().top() - ui.min_rect().top() + margin;
+                let max_scroll = ui.min_rect().height() - ui.clip_rect().height() + 2.0 * margin;
+                (current_scroll, max_scroll)
+            })
+            .inner;
+    }
+
+    fn context_info(&self, ui: &mut egui::Ui) {
+        let context = self.context.read().unwrap();
+
+        if let Some(module) = context.module.as_ref() {
+            ui.label(egui::RichText::new("Module").strong());
+            ui.label(format!(
+                "Function: {}",
+                &module.functions[context.function_id as usize].name
+            ));
+            ui.label(format!("Strings"));
+            ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .max_height(100.)
+                .show(ui, |ui| {
+                    egui::Grid::new("my_grid")
+                        .num_columns(2)
+                        .spacing([4.0, 4.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for i in 0..module.strings.len() {
+                                ui.add(|ui: &mut egui::Ui| ui.label(format!("{}", i)));
+                                ui.label(format!("{}", module.strings[i]));
+                                ui.end_row();
+                            }
+                        });
+                });
+            ui.separator();
+
+            ui.label(egui::RichText::new("Registers").strong());
+            egui::Grid::new("my_grid")
+                .num_columns(2)
+                .spacing([40.0, 4.0])
+                .striped(false)
+                .show(ui, |ui| {
+                    ui.add(|ui: &mut egui::Ui| ui.label("pc"));
+                    ui.label(format!("{}", &context.pc));
+                    ui.end_row();
+
+                    ui.add(|ui: &mut egui::Ui| ui.label("sp"));
+                    ui.label(format!("{}", &context.sp));
+                    ui.end_row();
+
+                    ui.add(|ui: &mut egui::Ui| ui.label("fp"));
+                    ui.label(format!("{}", &context.fp));
+                    ui.end_row();
+
+                    ui.add(|ui: &mut egui::Ui| ui.label("r1"));
+                    ui.label(format!("{}", &context.r1));
+                    ui.end_row();
+
+                    ui.add(|ui: &mut egui::Ui| ui.label("r2"));
+                    ui.label(format!("{}", &context.r2));
+                    ui.end_row();
+
+                    ui.add(|ui: &mut egui::Ui| ui.label("obj"));
+                    ui.label(format!("{}", &context.object_register));
+                    ui.end_row();
+                });
+        }
+    }
+
+    fn show_stack(&self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new("Stack").strong());
+        ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                egui::Grid::new("my_grid")
+                    .num_columns(3)
+                    .spacing([4.0, 4.0])
+                    .striped(true)
+                    .show(ui, |ui| {
+                        let context = self.context.read().unwrap();
+                        for i in 0..context.stack.len() / 4 + 1 {
+                            let addr = i * 4;
+                            let resp = ui.add(|ui: &mut egui::Ui| ui.label(format!("{}", addr)));
+
+                            if context.sp >= addr && context.sp < addr + 4 {
+                                resp.scroll_to_me(None);
+                            }
+
+                            ui.label(format!(
+                                "{} {}",
+                                if addr == context.sp { "sp" } else { "" },
+                                if addr == context.fp { "fp" } else { "" },
+                            ));
+
+                            if addr + 4 > context.stack.len() {
+                                ui.label(egui::RichText::new("Bottom of Stack").weak());
+                            } else {
+                                let mut line = "".to_string();
+                                for j in 0..4 {
+                                    let addr = addr + j;
+                                    // let s = if addr == context.sp { "s" } else { " " };
+                                    // let f = if addr == context.fp { "f" } else { " " };
+                                    line = format!("{}{:02X}  ", line, context.stack[addr]);
+                                }
+
+                                ui.label(line);
+                            }
+
+                            ui.end_row();
+                        }
+                    });
+            });
+    }
+
+    fn show_debugger(
+        &mut self,
+        /*ctx: &egui::Context*/ ui: &mut egui::Ui,
+        frame: &mut eframe::Frame,
+    ) {
         let window_width = frame.info().window_info.size.x;
 
         let state = match &self.context.read().unwrap().connection_state {
@@ -60,37 +254,49 @@ impl eframe::App for AsDebugApp {
             .resizable(true)
             .default_width(400.0)
             .width_range((window_width / 4.)..=(window_width / 4. * 3.))
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.label(state);
                 });
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    lorem_ipsum(ui);
+
+                self.show_toolbar(ui);
+                ui.separator();
+                self.show_code(ui);
+            });
+
+        egui::SidePanel::right("right_panel")
+            .resizable(true)
+            .default_width(400.0)
+            .width_range((window_width / 4.)..=(window_width / 4. * 3.))
+            .show_inside(ui, |ui| {
+                self.show_stack(ui);
+            });
+
+        egui::CentralPanel::default().show_inside(ui, |ui| self.context_info(ui));
+    }
+}
+
+impl eframe::App for AsDebugApp {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        egui::SidePanel::left("side")
+            .resizable(false)
+            .exact_width(48.)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    if ui.button(egui::RichText::new("🚧").size(36.)).clicked() {
+                        self.state = AppState::Debugger;
+                    }
+                    if ui.button(egui::RichText::new("📃").size(36.)).clicked() {
+                        self.state = AppState::Disassembler;
+                    }
                 });
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                let name_label = ui.label("Your name: ");
-                ui.text_edit_singleline(&mut self.name)
-                    .labelled_by(name_label.id);
-            });
-            ui.add(egui::Slider::new(&mut self.age, 0..=120).text("age"));
-            if ui.button("Click each year").clicked() {
-                self.age += 1;
-            }
-            ui.label(format!("Hello '{}', age {}", self.name, self.age));
+            match self.state {
+                AppState::Debugger => self.show_debugger(ui, frame),
+                AppState::Disassembler => self.dv.show(ctx, frame),
+            };
         });
     }
-}
-
-fn lorem_ipsum(ui: &mut egui::Ui) {
-    ui.with_layout(
-        egui::Layout::top_down(egui::Align::LEFT).with_cross_justify(true),
-        |ui| {
-            ui.label(egui::RichText::new("aaaaaaaaaaaaaaaaaaa").small().weak());
-            ui.add(egui::Separator::default().grow(8.0));
-            ui.label(egui::RichText::new("aaaaaaaaaaaaaaaaaaa").small().weak());
-        },
-    );
 }

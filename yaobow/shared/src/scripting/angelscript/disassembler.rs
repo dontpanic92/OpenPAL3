@@ -1,5 +1,10 @@
 use super::module::ScriptFunction;
 
+pub struct AsInstInstance {
+    pub addr: u32,
+    pub inst: AsInst,
+}
+
 #[derive(Debug)]
 pub enum AsInst {
     Pop { data: u16 },
@@ -127,24 +132,28 @@ pub enum AsInst {
     ObjType { obj_type: u32 },
 }
 
-pub fn disasm(function: &ScriptFunction) -> Vec<AsInst> {
+pub fn disasm(function: &ScriptFunction) -> Vec<AsInstInstance> {
     let mut pc = 0 as usize;
     let mut insts = vec![];
-
-    macro_rules! command {
-        ($enum_type: ident $(, $param_name: ident : $param_type: ident)*) => {{
-            $(let $param_name = super::vm::data_read::$param_type(&function.inst, &mut pc);)*
-            AsInst::$enum_type {$($param_name: $param_name,)*}
-        }};
-    }
 
     loop {
         if pc >= function.inst.len() {
             break;
         }
 
+        let addr = pc;
         let inst = function.inst[pc];
         pc += 4;
+
+        macro_rules! command {
+            ($enum_type: ident $(, $param_name: ident : $param_type: ident)*) => {{
+                $(let $param_name = super::vm::data_read::$param_type(&function.inst, &mut pc);)*
+                AsInstInstance {
+                    addr: addr as u32,
+                    inst: AsInst::$enum_type {$($param_name: $param_name,)*}
+                }
+            }};
+        }
 
         match inst {
             0 => insts.push(command!(Pop, data: u16)),

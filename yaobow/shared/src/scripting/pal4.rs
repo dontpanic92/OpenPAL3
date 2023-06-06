@@ -1,9 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
-use shared::{
+use crate::{
     as_params,
     scripting::angelscript::{
-        disasm, not_implemented, ScriptGlobalContext, ScriptGlobalFunction, ScriptModule, ScriptVm,
+        not_implemented, ScriptGlobalContext, ScriptGlobalFunction, ScriptModule, ScriptVm,
     },
 };
 
@@ -11,11 +11,6 @@ pub fn create_script_vm() -> ScriptVm {
     let mut vm = ScriptVm::new(Rc::new(RefCell::new(create_context())));
     let content = std::fs::read("F:\\PAL4\\gamedata\\script\\script.csb").unwrap();
     let module = ScriptModule::read_from_buffer(&content).unwrap();
-
-    let insts = disasm(&module.functions[0]);
-    for i in &insts {
-        println!("{:?}", i);
-    }
 
     let module = Rc::new(RefCell::new(module));
     vm.set_module(module);
@@ -26,10 +21,7 @@ pub fn create_script_vm() -> ScriptVm {
 
 pub fn create_context() -> ScriptGlobalContext {
     let mut context = ScriptGlobalContext::new();
-    context.register_function(ScriptGlobalFunction::new(
-        "giWait",
-        Box::new(not_implemented),
-    ));
+
     context.register_function(ScriptGlobalFunction::new("giIMMBegin", Box::new(imm_begin)));
     context.register_function(ScriptGlobalFunction::new("giIMMEnd", Box::new(imm_end)));
     context.register_function(ScriptGlobalFunction::new(
@@ -755,6 +747,10 @@ pub fn create_context() -> ScriptGlobalContext {
     context.register_function(ScriptGlobalFunction::new(
         "giScriptMusicResume",
         Box::new(script_music_resume),
+    ));
+    context.register_function(ScriptGlobalFunction::new(
+        "giWait",
+        Box::new(not_implemented),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giWait",

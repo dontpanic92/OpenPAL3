@@ -1,23 +1,25 @@
 use std::{cell::RefCell, rc::Rc};
 
+use crate::scripting::angelscript::debug::DebugIpcClient;
+
 use super::{
-    debug::create_client,
+    debug::{Notification, Request},
     global_context::ScriptGlobalContext,
     module::{ScriptFunction, ScriptModule},
 };
 
 pub struct ScriptVm {
     context: Rc<RefCell<ScriptGlobalContext>>,
-    module: Option<Rc<RefCell<ScriptModule>>>,
+    pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
     function_index: usize,
-    pc: usize,
     stack: Vec<u8>,
+    pub(crate) objects: Vec<Option<String>>,
+    pc: usize,
     sp: usize,
     fp: usize,
     r1: u32,
     r2: u32,
-    pub(crate) objects: Vec<Option<String>>,
-    object_register: usize,
+    pub(crate) object_register: usize,
 }
 
 impl ScriptVm {
@@ -57,6 +59,18 @@ impl ScriptVm {
         unsafe { self.write_stack(self.sp, ret) };
     }
 
+    pub fn push_object(&mut self, object: String) -> usize {
+        for i in 0..self.objects.len() {
+            if self.objects[i].is_none() {
+                self.objects[i] = Some(object);
+                return i;
+            }
+        }
+
+        self.objects.push(Some(object));
+        return self.objects.len() - 1;
+    }
+
     pub fn execute(&mut self) {
         if self.module.is_none() {
             return;
@@ -67,10 +81,13 @@ impl ScriptVm {
         let function = module_ref.functions[self.function_index].clone();
         let mut reg: u32 = 0;
 
-        let client = create_client();
-        println!("client {:?}", client);
+        let mut client = DebugIpcClient::new();
+        self.debug_update_module(&mut client);
 
         loop {
+            self.debug_update_context(&mut client);
+            self.wait_for_action(&mut client);
+
             let inst = self.read_inst(&function);
             macro_rules! command {
                 ($cmd_name: ident $(, $param_name: ident : $param_type: ident)*) => {{
@@ -223,11 +240,11 @@ impl ScriptVm {
     }
 
     fn pop(&mut self, size: u16) {
-        self.sp += size as usize;
+        self.sp += size as usize * 4;
     }
 
     fn push(&mut self, size: u16) {
-        self.sp -= size as usize;
+        self.sp -= size as usize * 4;
     }
 
     fn set4(&mut self, data: u32) {
@@ -268,7 +285,7 @@ impl ScriptVm {
 
     fn psf(&mut self, index: u16) {
         unsafe {
-            let pos = self.stack.len() - index as usize * 4;
+            let pos = self.fp - index as usize * 4;
             self.sp -= 4;
             self.write_stack(self.sp, pos);
         }
@@ -276,7 +293,7 @@ impl ScriptVm {
 
     fn movsf4(&mut self, index: u16) {
         unsafe {
-            let pos = self.stack.len() - index as usize * 4;
+            let pos = self.fp - index as usize * 4;
             let data: u32 = self.read_stack(pos);
             self.write_stack(pos, data);
             self.sp += 4;
@@ -296,7 +313,6 @@ impl ScriptVm {
     fn store4(&mut self, reg: &mut u32) {
         unsafe {
             let data = self.read_stack(self.sp);
-            self.sp += 4;
             *reg = data;
         }
     }
@@ -345,15 +361,16 @@ impl ScriptVm {
 
     fn free(&mut self, _obj_type: u32) {
         let obj_ref: u32 = unsafe { self.read_stack(self.sp) };
+        let obj_index: u32 = unsafe { self.read_stack(obj_ref as usize) };
         self.sp += 4;
-        self.objects[obj_ref as usize] = None;
+        self.objects[obj_index as usize] = None;
     }
 
     fn checkref(&mut self) {}
 
     fn getobjref(&mut self, offset: i16) {
         unsafe {
-            let addr = (self.sp as isize + offset as isize) as usize;
+            let addr = (self.sp as isize + offset as isize * 4) as usize;
             let index: u32 = self.read_stack(addr);
             let objref: u32 = self.read_stack((self.fp as isize - index as isize * 4) as usize);
             self.write_stack(addr, objref);
@@ -802,6 +819,40 @@ impl ScriptVm {
     #[inline]
     unsafe fn read_stack<T: Copy>(&self, pos: usize) -> T {
         *(&self.stack[pos] as *const u8 as *const T)
+    }
+
+    fn debug_update_module(&self, client: &mut DebugIpcClient) {
+        let _ = client.notify(Notification::ModuleChanged {
+            module: self.module.as_ref().unwrap().as_ref().borrow().clone(),
+            function: self.function_index as u32,
+        });
+
+        let _ = client.notify(Notification::GlobalFunctionsChanged(
+            self.context
+                .borrow()
+                .functions
+                .iter()
+                .map(|f| f.name.clone())
+                .collect(),
+        ));
+    }
+
+    fn debug_update_context(&self, client: &mut DebugIpcClient) {
+        let _ = client.notify(Notification::ObjectsChanged(self.objects.clone()));
+        let _ = client.notify(Notification::RegisterChanged {
+            pc: self.pc,
+            sp: self.sp,
+            fp: self.fp,
+            r1: self.r1,
+            r2: self.r2,
+            object_register: self.object_register,
+        });
+
+        let _ = client.notify(Notification::StackChanged(self.stack.clone()));
+    }
+
+    fn wait_for_action(&self, client: &mut DebugIpcClient) {
+        let _ = client.call(Request::WaitForAction);
     }
 }
 

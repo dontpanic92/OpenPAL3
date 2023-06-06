@@ -1,13 +1,13 @@
 use std::{
     io::{Cursor, Read},
-    rc::Rc,
+    sync::Arc,
 };
 
 use byteorder::ReadBytesExt;
 use common::read_ext::ReadExt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ScriptTypeDefinition {
     name: String,
 }
@@ -20,7 +20,7 @@ impl ScriptTypeDefinition {
     }
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ScriptTypeReference {
     name: String,
 }
@@ -33,7 +33,7 @@ impl ScriptTypeReference {
     }
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ScriptDataType {
     flag: u8,
     unknown: u32,
@@ -70,13 +70,13 @@ impl ScriptDataType {
     }
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Instruction {
     pub inst: u32,
     pub params: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ScriptFunction {
     pub name: String,
     pub ret_type: ScriptDataType,
@@ -94,7 +94,6 @@ pub struct ScriptFunction {
 impl ScriptFunction {
     fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
         let name = read_string(cursor)?;
-        println!("{}", name);
 
         let ret_type = ScriptDataType::read(cursor)?;
         let param_count = cursor.read_u32_le()? as usize;
@@ -170,7 +169,7 @@ impl ScriptFunction {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ScriptModule {
     pub type_defs: Vec<ScriptTypeDefinition>,
     pub type_refs: Vec<ScriptTypeReference>,
@@ -179,7 +178,7 @@ pub struct ScriptModule {
     pub module_loading: ScriptFunction,
     pub module_unloading: ScriptFunction,
 
-    pub functions: Vec<Rc<ScriptFunction>>,
+    pub functions: Vec<Arc<ScriptFunction>>,
     pub strings: Vec<String>,
     pub astruct_vec2: Vec<ScriptFunction>,
 }
@@ -216,7 +215,7 @@ impl ScriptModule {
         let astruct_count1 = cursor.read_u32_le()? as usize;
         let mut functions = vec![];
         for _ in 0..astruct_count1 {
-            functions.push(Rc::new(ScriptFunction::read(cursor)?));
+            functions.push(Arc::new(ScriptFunction::read(cursor)?));
         }
 
         let string_count = cursor.read_u32_le()? as usize;

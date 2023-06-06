@@ -22,8 +22,8 @@ macro_rules! as_params {
 }
 
 pub struct ScriptGlobalContext {
-    vars: Vec<u32>,
-    functions: Vec<ScriptGlobalFunction>,
+    pub(crate) vars: Vec<u32>,
+    pub(crate) functions: Vec<ScriptGlobalFunction>,
 }
 
 impl ScriptGlobalContext {
@@ -40,6 +40,10 @@ impl ScriptGlobalContext {
 
     pub fn call_function(&mut self, vm: &mut ScriptVm, index: usize) {
         (self.functions[index].func)(&self.functions[index].name, vm)
+    }
+
+    pub fn functions(&self) -> &[ScriptGlobalFunction] {
+        &self.functions
     }
 
     pub fn get_var(&self, index: usize) -> u32 {
@@ -118,8 +122,11 @@ fn abs(_: &str, vm: &mut ScriptVm) {
 }
 
 fn string_factory(_: &str, vm: &mut ScriptVm) {
-    as_params!(vm, s: i32);
-    // println!("string fatory: {} {:?}", s, vm.module.as_ref().unwrap().as_ref().borrow().strings.get(s as usize));
+    as_params!(vm, _len: u32, str_id: u32);
+    let string = vm.module.as_ref().unwrap().borrow().strings[str_id as usize].clone();
+    let ret = vm.push_object(string);
+
+    vm.object_register = ret;
 }
 
 pub fn not_implemented(name: &str, _: &mut ScriptVm) {

@@ -1,7 +1,6 @@
-use self::scripting::create_script_vm;
+use shared::scripting::pal4::create_script_vm;
 
 pub mod application;
-pub mod scripting;
 
 pub fn run_openpal4() {
     /*let mut app = OpenPal4Application::create("OpenPAL4");
