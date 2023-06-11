@@ -266,8 +266,8 @@ impl AsDebugApp {
 
         egui::SidePanel::right("right_panel")
             .resizable(true)
-            .default_width(400.0)
-            .width_range((window_width / 4.)..=(window_width / 4. * 3.))
+            .default_width(100.0)
+            .width_range((window_width / 6.)..=(window_width / 2.))
             .show_inside(ui, |ui| {
                 self.show_stack(ui);
             });

@@ -287,7 +287,7 @@ impl ScriptVm {
         unsafe {
             let pos = self.fp - index as usize * 4;
             self.sp -= 4;
-            self.write_stack(self.sp, pos);
+            self.write_stack(self.sp, pos as u32);
         }
     }
 
@@ -570,7 +570,7 @@ impl ScriptVm {
     fn push_zero(&mut self) {
         self.sp -= 4;
         unsafe {
-            self.write_stack(self.sp, 0);
+            self.write_stack(self.sp, 0u32);
         }
     }
 

@@ -24,10 +24,7 @@ pub fn create_context() -> ScriptGlobalContext {
 
     context.register_function(ScriptGlobalFunction::new("giIMMBegin", Box::new(imm_begin)));
     context.register_function(ScriptGlobalFunction::new("giIMMEnd", Box::new(imm_end)));
-    context.register_function(ScriptGlobalFunction::new(
-        "giNewGame",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giNewGame", Box::new(new_game)));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraCtrlYPR",
         Box::new(not_implemented),
@@ -58,7 +55,7 @@ pub fn create_context() -> ScriptGlobalContext {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giArenaLoad",
-        Box::new(not_implemented),
+        Box::new(arena_load),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giArenaReady",
@@ -238,7 +235,7 @@ pub fn create_context() -> ScriptGlobalContext {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAddQuestComplatePercentage",
-        Box::new(not_implemented),
+        Box::new(add_quest_complete_percentage),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAddEquipment",
@@ -749,13 +746,10 @@ pub fn create_context() -> ScriptGlobalContext {
         Box::new(script_music_resume),
     ));
     context.register_function(ScriptGlobalFunction::new(
-        "giWait",
+        "giUnknown",
         Box::new(not_implemented),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giWait",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giWait", Box::new(wait)));
     context.register_function(ScriptGlobalFunction::new(
         "giTalk",
         Box::new(not_implemented),
@@ -1097,3 +1091,21 @@ fn open_movie_flag(name: &str, vm: &mut ScriptVm) {
 }
 
 fn script_music_resume(name: &str, vm: &mut ScriptVm) {}
+
+fn wait(_: &str, vm: &mut ScriptVm) {
+    as_params!(vm, time: f32);
+}
+
+fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm) {
+    as_params!(vm, pct: i32);
+}
+
+fn arena_load(_: &str, vm: &mut ScriptVm) {
+    as_params!(
+        vm,
+        scn_str: i32,
+        block_str: i32,
+        data_str: i32,
+        show_loading: i32
+    );
+}
