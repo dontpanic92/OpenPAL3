@@ -7,13 +7,17 @@ use std::sync::{
 
 use context::Context;
 use disasm_view::DisasmView;
-use eframe::egui::{self, Layout, ScrollArea};
+use eframe::egui::{self, ScrollArea};
 use server::start_server;
-use shared::scripting::angelscript::{debug::Response, disasm, AsInst, AsInstInstance};
+use shared::scripting::angelscript::{
+    debug::Response, disasm, AsInst, AsInstInstance, ScriptModule,
+};
+use utils::show_strings;
 
 mod context;
 mod disasm_view;
 mod server;
+mod utils;
 
 fn main() -> Result<(), eframe::Error> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
@@ -32,6 +36,31 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
+fn setup_font(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+
+    fonts.font_data.insert(
+        "my_font".to_owned(),
+        egui::FontData::from_static(include_bytes!(
+            "../../../radiance/radiance-assets/src/embed/fonts/SourceHanSerif-Regular.ttf"
+        )),
+    );
+
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .push("my_font".to_owned());
+
+    fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .push("my_font".to_owned());
+
+    ctx.set_fonts(fonts);
+}
+
 enum AppState {
     Debugger,
     Disassembler,
@@ -46,6 +75,8 @@ struct AsDebugApp {
 
 impl AsDebugApp {
     pub fn new(ec: eframe::egui::Context) -> Self {
+        setup_font(&ec);
+
         let (tx, rx) = channel();
         let context = Arc::new(RwLock::new(Context::new(ec)));
         start_server(rx, context.clone());
@@ -140,21 +171,12 @@ impl AsDebugApp {
                 &module.functions[context.function_id as usize].name
             ));
             ui.label(format!("Strings"));
+
             ScrollArea::vertical()
                 .auto_shrink([false; 2])
                 .max_height(100.)
                 .show(ui, |ui| {
-                    egui::Grid::new("my_grid")
-                        .num_columns(2)
-                        .spacing([4.0, 4.0])
-                        .striped(true)
-                        .show(ui, |ui| {
-                            for i in 0..module.strings.len() {
-                                ui.add(|ui: &mut egui::Ui| ui.label(format!("{}", i)));
-                                ui.label(format!("{}", module.strings[i]));
-                                ui.end_row();
-                            }
-                        });
+                    show_strings(ui, module);
                 });
             ui.separator();
 

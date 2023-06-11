@@ -11,6 +11,8 @@ use shared::{
     },
 };
 
+use crate::utils::{get_note, show_strings};
+
 pub struct DisasmView {
     vfs: MiniFs,
     files: Tree,
@@ -58,11 +60,27 @@ impl DisasmView {
                     .unwrap();
                 let module = ScriptModule::read_from_buffer(&content).unwrap();
                 let context = create_context();
-                egui::TopBottomPanel::top("")
+                egui::TopBottomPanel::top("_function_labels")
                     .resizable(false)
                     .show_inside(ui, |ui| {
                         self.show_functions(ctx, ui, &module);
                     });
+
+                egui::SidePanel::right("_strings")
+                    .default_width(200.)
+                    .width_range(200. ..=500.)
+                    .resizable(true)
+                    .show_inside(ui, |ui| {
+                        ui.label(format!(
+                            "Function {}",
+                            &module.functions[self.function_id as usize].name
+                        ));
+                        ui.label("Strings");
+                        ScrollArea::both().auto_shrink([false; 2]).show(ui, |ui| {
+                            show_strings(ui, &module);
+                        });
+                    });
+
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     self.show_code_editor(ui, &module, self.function_id, &context);
                 });
@@ -98,22 +116,13 @@ impl DisasmView {
         let mut content = "".to_string();
 
         for inst in insts {
-            let note = match inst.inst {
-                AsInst::CallSys { function_index } => context.functions()
-                    [(-function_index - 1) as usize]
-                    .name
-                    .as_str(),
-                AsInst::Str { index } => module.strings[index as usize].as_str(),
-                _ => "",
-            };
-
-            let note = if note.len() > 0 {
-                format!(" // {}", note)
-            } else {
-                note.to_string()
-            };
-
-            content = format!("{}{:?}{}\n", content, inst.inst, note);
+            let note = get_note(&inst, module, context);
+            content = format!(
+                "{}{:?}  {}\n",
+                content,
+                inst.inst,
+                note.unwrap_or("".to_string())
+            );
         }
 
         egui::ScrollArea::vertical().show(ui, |ui| {
