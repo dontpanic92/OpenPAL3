@@ -12,7 +12,7 @@ use server::start_server;
 use shared::scripting::angelscript::{
     debug::Response, disasm, AsInst, AsInstInstance, ScriptModule,
 };
-use utils::show_strings;
+use utils::{show_objects, show_strings};
 
 mod context;
 mod disasm_view;
@@ -172,16 +172,26 @@ impl AsDebugApp {
             ));
             ui.label(format!("Strings"));
 
-            ScrollArea::vertical()
+            ScrollArea::both()
+                .id_source("string_scroll")
                 .auto_shrink([false; 2])
                 .max_height(100.)
                 .show(ui, |ui| {
                     show_strings(ui, module);
                 });
+
+            ui.label(format!("Objects"));
+            ScrollArea::both()
+                .id_source("object_scroll")
+                .auto_shrink([false; 2])
+                .max_height(100.)
+                .show(ui, |ui| {
+                    show_objects(ui, &context.objects);
+                });
             ui.separator();
 
             ui.label(egui::RichText::new("Registers").strong());
-            egui::Grid::new("my_grid")
+            egui::Grid::new("registers")
                 .num_columns(2)
                 .spacing([40.0, 4.0])
                 .striped(false)
@@ -216,9 +226,10 @@ impl AsDebugApp {
     fn show_stack(&self, ui: &mut egui::Ui) {
         ui.label(egui::RichText::new("Stack").strong());
         ScrollArea::vertical()
+            .id_source("stack_scroll")
             .auto_shrink([false; 2])
             .show(ui, |ui| {
-                egui::Grid::new("my_grid")
+                egui::Grid::new("stack_grid")
                     .num_columns(3)
                     .spacing([4.0, 4.0])
                     .striped(true)

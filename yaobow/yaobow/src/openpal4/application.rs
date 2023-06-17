@@ -5,6 +5,10 @@ use radiance::{
     application::Application,
     comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
 };
+use shared::{
+    fs::init_virtual_fs,
+    openpal4::{asset_loader::AssetLoader, scripting::create_script_vm},
+};
 
 use crate::ComObject_OpenPal4ApplicationLoaderComponent;
 
@@ -22,6 +26,11 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
 
         let input_engine = self.app.engine().borrow().input_engine();
         let audio_engine = self.app.engine().borrow().audio_engine();
+
+        let vfs = init_virtual_fs(self.root_path.to_str().unwrap(), None);
+        let loader = AssetLoader::new(vfs);
+        let mut vm = create_script_vm(loader);
+        vm.execute();
     }
 
     fn on_updating(&self, _delta_sec: f32) {}
@@ -41,7 +50,7 @@ impl OpenPal4ApplicationLoader {
     fn new(app: ComRc<IApplication>, app_name: &str) -> Self {
         Self {
             app,
-            root_path: PathBuf::from(""),
+            root_path: PathBuf::from("F:\\PAL4"),
             app_name: app_name.to_owned(),
         }
     }

@@ -8,95 +8,128 @@ use super::{
     module::{ScriptFunction, ScriptModule},
 };
 
-pub struct ScriptVm {
-    context: Rc<RefCell<ScriptGlobalContext>>,
-    pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
+#[derive(Clone)]
+pub(crate) struct ScriptFunctionContext {
+    pub(crate) module: Rc<RefCell<ScriptModule>>,
     function_index: usize,
-    stack: Vec<u8>,
-    pub(crate) objects: Vec<Option<String>>,
     pc: usize,
+    stack: Vec<u8>,
     sp: usize,
     fp: usize,
-    r1: u32,
-    r2: u32,
-    pub(crate) object_register: usize,
 }
 
-impl ScriptVm {
-    const DEFAULT_STACK_SIZE: usize = 4096;
-    pub fn new(context: Rc<RefCell<ScriptGlobalContext>>) -> Self {
+impl ScriptFunctionContext {
+    const DEFAULT_STACK_SIZE: usize = 1024;
+    pub fn new(module: Rc<RefCell<ScriptModule>>, function_index: usize) -> Self {
         Self {
-            context,
-            module: None,
-            function_index: 0,
+            module,
+            function_index,
             pc: 0,
             stack: vec![0; Self::DEFAULT_STACK_SIZE],
             sp: Self::DEFAULT_STACK_SIZE,
             fp: Self::DEFAULT_STACK_SIZE,
+        }
+    }
+}
+
+pub struct ScriptVm<TAppContext: 'static> {
+    pub(crate) app_context: TAppContext,
+    pub(crate) g: Rc<RefCell<ScriptGlobalContext<TAppContext>>>,
+    pub(crate) context: ScriptFunctionContext,
+    debug_client: DebugIpcClient,
+    call_stack: Vec<ScriptFunctionContext>,
+    pub(crate) heap: Vec<Option<String>>,
+    r1: u32,
+    r2: u32,
+    pub(crate) robj: usize,
+}
+
+impl<TAppContext: 'static> ScriptVm<TAppContext> {
+    pub fn new(
+        g: Rc<RefCell<ScriptGlobalContext<TAppContext>>>,
+        module: Rc<RefCell<ScriptModule>>,
+        function_index: usize,
+        app_context: TAppContext,
+    ) -> Self {
+        let mut vm = Self {
+            app_context,
+            g,
+            context: ScriptFunctionContext::new(module, function_index),
+            debug_client: DebugIpcClient::new(),
+            call_stack: vec![],
+            heap: vec![],
             r1: 0,
             r2: 0,
-            objects: vec![],
-            object_register: 0,
+            robj: 0,
+        };
+
+        vm.debug_update_module();
+        vm
+    }
+
+    pub fn app_context(&self) -> &TAppContext {
+        &self.app_context
+    }
+
+    pub fn set_function(&mut self, module: Rc<RefCell<ScriptModule>>, index: usize) {
+        self.call_stack.push(self.context.clone());
+        self.context = ScriptFunctionContext::new(module, index);
+
+        self.debug_update_module();
+    }
+
+    pub fn set_function_by_name(&mut self, module: Rc<RefCell<ScriptModule>>, name: &str) {
+        for (i, f) in module.borrow().functions.iter().enumerate() {
+            if f.name.as_str() == name {
+                self.set_function(module.clone(), i)
+            }
         }
     }
 
-    pub fn set_module(&mut self, module: Rc<RefCell<ScriptModule>>) {
-        self.module = Some(module);
-    }
-
-    pub fn set_function(&mut self, index: usize) {
-        self.function_index = index;
-    }
-
     pub fn stack_pop<T: std::marker::Copy>(&mut self) -> T {
-        let ret: T = unsafe { self.read_stack(self.sp) };
-        self.sp += std::mem::size_of::<T>();
+        let ret: T = unsafe { self.read_stack(self.context.sp) };
+        self.context.sp += std::mem::size_of::<T>();
         ret
     }
 
     pub fn stack_push<T: std::marker::Copy>(&mut self, ret: i32) {
-        self.sp -= std::mem::size_of::<T>();
-        unsafe { self.write_stack(self.sp, ret) };
+        self.context.sp -= std::mem::size_of::<T>();
+        unsafe { self.write_stack(self.context.sp, ret) };
     }
 
     pub fn push_object(&mut self, object: String) -> usize {
-        for i in 0..self.objects.len() {
-            if self.objects[i].is_none() {
-                self.objects[i] = Some(object);
+        for i in 0..self.heap.len() {
+            if self.heap[i].is_none() {
+                self.heap[i] = Some(object);
                 return i;
             }
         }
 
-        self.objects.push(Some(object));
-        return self.objects.len() - 1;
+        self.heap.push(Some(object));
+        return self.heap.len() - 1;
     }
 
     pub fn execute(&mut self) {
-        if self.module.is_none() {
-            return;
-        }
-
-        let module = self.module.clone().unwrap();
-        let module_ref = module.borrow();
-        let function = module_ref.functions[self.function_index].clone();
-        let mut reg: u32 = 0;
-
-        let mut client = DebugIpcClient::new();
-        self.debug_update_module(&mut client);
-
         loop {
-            self.debug_update_context(&mut client);
-            self.wait_for_action(&mut client);
+            let module = self.context.module.clone();
+            let module_ref = module.borrow();
+            let function = module_ref.functions[self.context.function_index].clone();
+            let mut reg: u32 = 0;
 
+            self.debug_update_context();
+            self.wait_for_action();
+
+            println!("pc {}", self.context.pc);
             let inst = self.read_inst(&function);
+            println!("inst {}", inst);
             macro_rules! command {
                 ($cmd_name: ident $(, $param_name: ident : $param_type: ident)*) => {{
-                    $(let $param_name = data_read::$param_type(&function.inst, &mut self.pc);)*
+                    $(let $param_name = data_read::$param_type(&function.inst, &mut self.context.pc);)*
                     self.$cmd_name($($param_name ,)*);
                 }};
 
                 ($cmd_name: ident : $g_type: ident $(, $param_name: ident : $param_type: ident)*) => {{
-                    $(let $param_name = data_read::$param_type(&function.inst, &mut self.pc);)*
+                    $(let $param_name = data_read::$param_type(&function.inst, &mut self.context.pc);)*
                     self.$cmd_name::<$g_type>($($param_name)*);
                 }};
             }
@@ -234,98 +267,99 @@ impl ScriptVm {
     }
 
     fn read_inst(&mut self, function: &ScriptFunction) -> u8 {
-        let inst = function.inst[self.pc];
-        self.pc += 4;
+        let inst = function.inst[self.context.pc];
+        self.context.pc += 4;
         inst
     }
 
     fn pop(&mut self, size: u16) {
-        self.sp += size as usize * 4;
+        self.context.sp += size as usize * 4;
     }
 
     fn push(&mut self, size: u16) {
-        self.sp -= size as usize * 4;
+        self.context.sp -= size as usize * 4;
     }
 
     fn set4(&mut self, data: u32) {
-        self.sp -= 4;
+        self.context.sp -= 4;
         unsafe {
-            self.write_stack(self.sp, data);
+            self.write_stack(self.context.sp, data);
         }
     }
 
     fn rd4(&mut self) {
         unsafe {
-            let pos: u32 = self.read_stack(self.sp);
+            let pos: u32 = self.read_stack(self.context.sp);
             let data: u32 = self.read_stack(pos as usize);
-            self.write_stack(self.sp, data);
+            self.write_stack(self.context.sp, data);
         }
     }
 
     fn rdsf4(&mut self, index: u16) {
         unsafe {
-            let data: u32 = self.read_stack(self.stack.len() - index as usize * 4);
-            self.write_stack(self.sp, data);
+            let data: u32 = self.read_stack(self.context.stack.len() - index as usize * 4);
+            self.write_stack(self.context.sp, data);
         }
     }
 
     fn wrt4(&mut self) {
         unsafe {
-            let pos: u32 = self.read_stack(self.sp);
-            self.sp += 4;
-            let data: u32 = self.read_stack(self.sp);
+            let pos: u32 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
+            let data: u32 = self.read_stack(self.context.sp);
             self.write_stack(pos as usize, data);
         }
     }
 
     fn mov4(&mut self) {
         self.wrt4();
-        self.sp += 4;
+        self.context.sp += 4;
     }
 
     fn psf(&mut self, index: u16) {
         unsafe {
-            let pos = self.fp - index as usize * 4;
-            self.sp -= 4;
-            self.write_stack(self.sp, pos as u32);
+            let pos = self.context.fp - index as usize * 4;
+            self.context.sp -= 4;
+            self.write_stack(self.context.sp, pos as u32);
         }
     }
 
     fn movsf4(&mut self, index: u16) {
         unsafe {
-            let pos = self.fp - index as usize * 4;
+            let pos = self.context.fp - index as usize * 4;
             let data: u32 = self.read_stack(pos);
             self.write_stack(pos, data);
-            self.sp += 4;
+            self.context.sp += 4;
         }
     }
 
     fn swap<T: Copy>(&mut self) {
         unsafe {
             let size = std::mem::size_of::<T>();
-            let data: T = self.read_stack(self.sp);
-            let data2: T = self.read_stack(self.sp + size);
-            self.write_stack(self.sp, data2);
-            self.write_stack(self.sp + size, data);
+            let data: T = self.read_stack(self.context.sp);
+            let data2: T = self.read_stack(self.context.sp + size);
+            self.write_stack(self.context.sp, data2);
+            self.write_stack(self.context.sp + size, data);
         }
     }
 
     fn store4(&mut self, reg: &mut u32) {
         unsafe {
-            let data = self.read_stack(self.sp);
+            let data = self.read_stack(self.context.sp);
             *reg = data;
         }
     }
 
     fn recall4(&mut self, reg: u32) {
         unsafe {
-            self.sp -= 4;
-            self.write_stack(self.sp, reg);
+            self.context.sp -= 4;
+            self.write_stack(self.context.sp, reg);
         }
     }
 
     fn call(&mut self, function: u32) {
-        println!("Unimplemented: call: {}", function);
+        let module = self.context.module.clone();
+        self.set_function(module, function as usize);
     }
 
     fn callbnd(&mut self, function: u32) {
@@ -333,13 +367,20 @@ impl ScriptVm {
     }
 
     fn rdga4(&mut self, offset: i32) {
-        println!("Unimplemented: rdga4: {}", offset);
+        if offset < 0 {
+            let index = -offset - 1;
+            let context = self.g.clone();
+            let data = context.borrow().get_global(index as usize);
+            self.set4(data);
+        } else {
+            unimplemented!("Global memory not supported yet");
+        }
     }
 
     fn callsys(&mut self, function: i32) {
         let index = -function - 1;
-        let context = self.context.clone();
-        context.borrow_mut().call_function(self, index as usize);
+        let context = self.g.clone();
+        context.borrow().call_function(self, index as usize);
     }
 
     fn suspend(&mut self) {
@@ -353,26 +394,27 @@ impl ScriptVm {
     fn storeobj(&mut self, param_index: i16) {
         unsafe {
             self.write_stack(
-                (self.fp as isize - param_index as isize * 4) as usize,
-                self.object_register as u32,
+                (self.context.fp as isize - param_index as isize * 4) as usize,
+                self.robj as u32,
             );
         }
     }
 
     fn free(&mut self, _obj_type: u32) {
-        let obj_ref: u32 = unsafe { self.read_stack(self.sp) };
+        let obj_ref: u32 = unsafe { self.read_stack(self.context.sp) };
         let obj_index: u32 = unsafe { self.read_stack(obj_ref as usize) };
-        self.sp += 4;
-        self.objects[obj_index as usize] = None;
+        self.context.sp += 4;
+        self.heap[obj_index as usize] = None;
     }
 
     fn checkref(&mut self) {}
 
     fn getobjref(&mut self, offset: i16) {
         unsafe {
-            let addr = (self.sp as isize + offset as isize * 4) as usize;
+            let addr = (self.context.sp as isize + offset as isize * 4) as usize;
             let index: u32 = self.read_stack(addr);
-            let objref: u32 = self.read_stack((self.fp as isize - index as isize * 4) as usize);
+            let objref: u32 =
+                self.read_stack((self.context.fp as isize - index as isize * 4) as usize);
             self.write_stack(addr, objref);
         }
     }
@@ -382,13 +424,13 @@ impl ScriptVm {
     }
 
     fn jmp(&mut self, offset: i32) {
-        self.pc += offset as usize;
+        self.context.pc += offset as usize;
     }
 
     fn jz(&mut self, offset: i32) {
         unsafe {
-            let data: i32 = self.read_stack(self.sp);
-            self.sp += 4;
+            let data: i32 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
             if data == 0 {
                 self.jmp(offset);
             }
@@ -397,8 +439,8 @@ impl ScriptVm {
 
     fn jnz(&mut self, offset: i32) {
         unsafe {
-            let data: i32 = self.read_stack(self.sp);
-            self.sp += 4;
+            let data: i32 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
             if data != 0 {
                 self.jmp(offset);
             }
@@ -443,27 +485,27 @@ impl ScriptVm {
 
     fn div<T: Copy + std::ops::Div + PartialEq>(&mut self, zero: T) {
         unsafe {
-            let data1: T = self.read_stack(self.sp);
+            let data1: T = self.read_stack(self.context.sp);
             if data1 == zero {
                 panic!("divided by zero");
             }
 
-            self.sp += 4;
-            let data2: T = self.read_stack(self.sp);
-            self.write_stack(self.sp, data2 / data1);
+            self.context.sp += 4;
+            let data2: T = self.read_stack(self.context.sp);
+            self.write_stack(self.context.sp, data2 / data1);
         }
     }
 
     fn xmod<T: Copy + std::ops::Rem + PartialEq>(&mut self, zero: T) {
         unsafe {
-            let data1: T = self.read_stack(self.sp);
+            let data1: T = self.read_stack(self.context.sp);
             if data1 == zero {
                 panic!("divided by zero");
             }
 
-            self.sp += 4;
-            let data2: T = self.read_stack(self.sp);
-            self.write_stack(self.sp, data2 % data1);
+            self.context.sp += 4;
+            let data2: T = self.read_stack(self.context.sp);
+            self.write_stack(self.context.sp, data2 % data1);
         }
     }
 
@@ -485,7 +527,7 @@ impl ScriptVm {
 
     fn inc<T: Copy + std::ops::Add>(&mut self, one: T) {
         unsafe {
-            let pos: u32 = self.read_stack(self.sp);
+            let pos: u32 = self.read_stack(self.context.sp);
             let data: T = self.read_stack(pos as usize);
             self.write_stack(pos as usize, data + one);
         }
@@ -493,7 +535,7 @@ impl ScriptVm {
 
     fn dec<T: Copy + std::ops::Sub>(&mut self, one: T) {
         unsafe {
-            let pos: u32 = self.read_stack(self.sp);
+            let pos: u32 = self.read_stack(self.context.sp);
             let data: T = self.read_stack(pos as usize);
             self.write_stack(pos as usize, data - one);
         }
@@ -568,17 +610,17 @@ impl ScriptVm {
     }
 
     fn push_zero(&mut self) {
-        self.sp -= 4;
+        self.context.sp -= 4;
         unsafe {
-            self.write_stack(self.sp, 0u32);
+            self.write_stack(self.context.sp, 0u32);
         }
     }
 
     fn copy(&mut self, count: u16) {
         unsafe {
-            let dst: u32 = self.read_stack(self.sp);
-            self.sp += 4;
-            let src: u32 = self.read_stack(self.sp);
+            let dst: u32 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
+            let src: u32 = self.read_stack(self.context.sp);
 
             for i in 0..count {
                 let data: u32 = self.read_stack(src as usize + i as usize);
@@ -589,100 +631,100 @@ impl ScriptVm {
 
     fn set8(&mut self, data: u64) {
         unsafe {
-            self.sp -= 8;
-            self.write_stack(self.sp, data);
+            self.context.sp -= 8;
+            self.write_stack(self.context.sp, data);
         }
     }
 
     fn rd8(&mut self) {
         unsafe {
-            let pos: u32 = self.read_stack(self.sp);
-            self.sp += 4;
-            let data: u64 = self.read_stack(self.sp);
+            let pos: u32 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
+            let data: u64 = self.read_stack(self.context.sp);
             self.write_stack(pos as usize, data);
         }
     }
 
     fn wrt8(&mut self) {
         unsafe {
-            let pos: u32 = self.read_stack(self.sp);
-            self.sp -= 4;
+            let pos: u32 = self.read_stack(self.context.sp);
+            self.context.sp -= 4;
             let data: u64 = self.read_stack(pos as usize);
-            self.write_stack(self.sp, data);
+            self.write_stack(self.context.sp, data);
         }
     }
 
     fn d2i(&mut self) {
         unsafe {
-            let data: f64 = self.read_stack(self.sp);
-            self.sp += 4;
-            self.write_stack(self.sp, data as i32);
+            let data: f64 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
+            self.write_stack(self.context.sp, data as i32);
         }
     }
 
     fn d2ui(&mut self) {
         unsafe {
-            let data: f64 = self.read_stack(self.sp);
-            self.sp += 4;
-            self.write_stack(self.sp, data as u32);
+            let data: f64 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
+            self.write_stack(self.context.sp, data as u32);
         }
     }
 
     fn d2f(&mut self) {
         unsafe {
-            let data: f64 = self.read_stack(self.sp);
-            self.sp += 4;
-            self.write_stack(self.sp, data as f32);
+            let data: f64 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
+            self.write_stack(self.context.sp, data as f32);
         }
     }
 
     fn x2d<T: Copy + std::convert::Into<f64>>(&mut self) {
         unsafe {
-            let data: i32 = self.read_stack(self.sp);
-            self.sp += 8;
-            self.sp -= std::mem::size_of::<T>();
-            self.write_stack(self.sp, data as f64);
+            let data: i32 = self.read_stack(self.context.sp);
+            self.context.sp += 8;
+            self.context.sp -= std::mem::size_of::<T>();
+            self.write_stack(self.context.sp, data as f64);
         }
     }
 
     fn jmpp(&mut self) {
         unsafe {
-            let data: i32 = self.read_stack(self.sp);
-            self.sp += 4;
-            self.pc += (8 * data) as usize;
+            let data: i32 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
+            self.context.pc += (8 * data) as usize;
         }
     }
 
     fn sret4(&mut self) {
         unsafe {
-            let data: u32 = self.read_stack(self.sp);
-            self.sp += 4;
+            let data: u32 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
             self.r1 = data;
         }
     }
 
     fn sret8(&mut self) {
         unsafe {
-            self.r1 = self.read_stack(self.sp);
-            self.sp += 4;
-            self.r2 = self.read_stack(self.sp);
-            self.sp += 4;
+            self.r1 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
+            self.r2 = self.read_stack(self.context.sp);
+            self.context.sp += 4;
         }
     }
 
     fn rret4(&mut self) {
         unsafe {
-            self.sp -= 4;
-            self.write_stack(self.sp, self.r1);
+            self.context.sp -= 4;
+            self.write_stack(self.context.sp, self.r1);
         }
     }
 
     fn rret8(&mut self) {
         unsafe {
-            self.sp -= 4;
-            self.write_stack(self.sp, self.r2);
-            self.sp -= 4;
-            self.write_stack(self.sp, self.r1);
+            self.context.sp -= 4;
+            self.write_stack(self.context.sp, self.r2);
+            self.context.sp -= 4;
+            self.write_stack(self.context.sp, self.r1);
         }
     }
 
@@ -704,9 +746,9 @@ impl ScriptVm {
 
     fn cmpi<T: Copy + PartialOrd>(&mut self, rhs: T) {
         unsafe {
-            let data: T = self.read_stack(self.sp);
+            let data: T = self.read_stack(self.context.sp);
             self.write_stack(
-                self.sp,
+                self.context.sp,
                 if rhs.gt(&data) {
                     1
                 } else if data.gt(&rhs) {
@@ -720,73 +762,73 @@ impl ScriptVm {
 
     fn addi<T: Copy + std::ops::Add>(&mut self, rhs: T) {
         unsafe {
-            let data: T = self.read_stack(self.sp);
-            self.write_stack(self.sp, data + rhs);
+            let data: T = self.read_stack(self.context.sp);
+            self.write_stack(self.context.sp, data + rhs);
         }
     }
 
     fn subi<T: Copy + std::ops::Sub>(&mut self, rhs: T) {
         unsafe {
-            let data: T = self.read_stack(self.sp);
-            self.write_stack(self.sp, data - rhs);
+            let data: T = self.read_stack(self.context.sp);
+            self.write_stack(self.context.sp, data - rhs);
         }
     }
 
     fn muli<T: Copy + std::ops::Mul>(&mut self, rhs: T) {
         unsafe {
-            let data: T = self.read_stack(self.sp);
-            self.write_stack(self.sp, data * rhs);
+            let data: T = self.read_stack(self.context.sp);
+            self.write_stack(self.context.sp, data * rhs);
         }
     }
 
     fn pga(&mut self, index: i32) {
         let data = if index > 0 {
-            let module = self.module.as_mut().unwrap().borrow();
+            let module = self.context.module.borrow();
             module.globals[index as usize]
         } else {
-            let context = self.context.borrow();
-            context.get_var((-index - 1) as usize)
+            let context = self.g.borrow();
+            context.get_global((-index - 1) as usize)
         };
 
-        self.sp -= 4;
+        self.context.sp -= 4;
 
         unsafe {
-            self.write_stack(self.sp, data);
+            self.write_stack(self.context.sp, data);
         }
     }
 
     fn movga4(&mut self, index: i32) {
-        let data: u32 = unsafe { self.read_stack(self.sp) };
+        let data: u32 = unsafe { self.read_stack(self.context.sp) };
 
         if index > 0 {
-            let mut module = self.module.as_mut().unwrap().borrow_mut();
+            let mut module = self.context.module.borrow_mut();
             module.globals[index as usize] = data;
         } else {
-            let mut context = self.context.borrow_mut();
-            context.set_var((-index - 1) as usize, data);
+            let mut context = self.g.borrow_mut();
+            context.set_global((-index - 1) as usize, data);
         };
 
-        self.sp += 4;
+        self.context.sp += 4;
     }
 
     fn str(&mut self, index: u16) {
-        let module = self.module.as_ref().unwrap().clone();
+        let module = self.context.module.clone();
         let module_ref = module.borrow();
         let string = &module_ref.strings[index as usize];
         unsafe {
-            self.sp -= 4;
-            self.write_stack(self.sp, index as u32);
-            self.sp -= 4;
-            self.write_stack(self.sp, string.len());
+            self.context.sp -= 4;
+            self.write_stack(self.context.sp, index as u32);
+            self.context.sp -= 4;
+            self.write_stack(self.context.sp, string.len() as u32);
         }
     }
 
     #[inline]
     fn j<F: Fn(i32) -> bool>(&mut self, offset: i32, f: F) {
         unsafe {
-            let data: i32 = self.read_stack(self.sp);
+            let data: i32 = self.read_stack(self.context.sp);
             if f(data) {
-                self.pc += offset as usize;
+                self.context.pc += offset as usize;
             }
         }
     }
@@ -794,65 +836,71 @@ impl ScriptVm {
     #[inline]
     fn unary_op<T: Copy, U, F: Fn(T) -> U>(&mut self, f: F) {
         unsafe {
-            let data: T = self.read_stack(self.sp);
-            self.write_stack(self.sp, f(data));
+            let data: T = self.read_stack(self.context.sp);
+            self.write_stack(self.context.sp, f(data));
         }
     }
 
     #[inline]
     fn binary_op<T: Copy, U, F: Fn(T, T) -> U>(&mut self, f: F) {
         unsafe {
-            let data: T = self.read_stack(self.sp);
-            self.sp += std::mem::size_of::<T>();
-            let data2: T = self.read_stack(self.sp);
-            self.sp += std::mem::size_of::<T>();
-            self.sp -= std::mem::size_of::<U>();
-            self.write_stack(self.sp, f(data, data2));
+            let data: T = self.read_stack(self.context.sp);
+            self.context.sp += std::mem::size_of::<T>();
+            let data2: T = self.read_stack(self.context.sp);
+            self.context.sp += std::mem::size_of::<T>();
+            self.context.sp -= std::mem::size_of::<U>();
+            self.write_stack(self.context.sp, f(data, data2));
         }
     }
 
     #[inline]
     unsafe fn write_stack<T>(&mut self, pos: usize, data: T) {
-        *(&mut self.stack[pos] as *mut u8 as *mut T) = data;
+        *(&mut self.context.stack[pos] as *mut u8 as *mut T) = data;
     }
 
     #[inline]
     unsafe fn read_stack<T: Copy>(&self, pos: usize) -> T {
-        *(&self.stack[pos] as *const u8 as *const T)
+        *(&self.context.stack[pos] as *const u8 as *const T)
     }
 
-    fn debug_update_module(&self, client: &mut DebugIpcClient) {
-        let _ = client.notify(Notification::ModuleChanged {
-            module: self.module.as_ref().unwrap().as_ref().borrow().clone(),
-            function: self.function_index as u32,
+    fn debug_update_module(&mut self) {
+        let _ = self.debug_client.notify(Notification::ModuleChanged {
+            module: self.context.module.borrow().clone(),
+            function: self.context.function_index as u32,
         });
 
-        let _ = client.notify(Notification::GlobalFunctionsChanged(
-            self.context
-                .borrow()
-                .functions
-                .iter()
-                .map(|f| f.name.clone())
-                .collect(),
-        ));
+        let _ = self
+            .debug_client
+            .notify(Notification::GlobalFunctionsChanged(
+                self.g
+                    .borrow()
+                    .functions
+                    .iter()
+                    .map(|f| f.name.clone())
+                    .collect(),
+            ));
     }
 
-    fn debug_update_context(&self, client: &mut DebugIpcClient) {
-        let _ = client.notify(Notification::ObjectsChanged(self.objects.clone()));
-        let _ = client.notify(Notification::RegisterChanged {
-            pc: self.pc,
-            sp: self.sp,
-            fp: self.fp,
+    fn debug_update_context(&mut self) {
+        let _ = self
+            .debug_client
+            .notify(Notification::ObjectsChanged(self.heap.clone()));
+        let _ = self.debug_client.notify(Notification::RegisterChanged {
+            pc: self.context.pc,
+            sp: self.context.sp,
+            fp: self.context.fp,
             r1: self.r1,
             r2: self.r2,
-            object_register: self.object_register,
+            object_register: self.robj,
         });
 
-        let _ = client.notify(Notification::StackChanged(self.stack.clone()));
+        let _ = self
+            .debug_client
+            .notify(Notification::StackChanged(self.context.stack.clone()));
     }
 
-    fn wait_for_action(&self, client: &mut DebugIpcClient) {
-        let _ = client.call(Request::WaitForAction);
+    fn wait_for_action(&mut self) {
+        let _ = self.debug_client.call(Request::WaitForAction);
     }
 }
 

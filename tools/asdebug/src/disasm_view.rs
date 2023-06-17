@@ -5,10 +5,8 @@ use eframe::egui::{self, CollapsingHeader, ScrollArea, Ui};
 use mini_fs::{MiniFs, StoreExt};
 use shared::{
     fs::init_virtual_fs,
-    scripting::{
-        angelscript::{disasm, AsInst, ScriptGlobalContext, ScriptModule},
-        pal4::create_context,
-    },
+    openpal4::scripting::{create_context, Pal4AppContext},
+    scripting::angelscript::{disasm, ScriptGlobalContext, ScriptModule},
 };
 
 use crate::utils::{get_note, show_strings};
@@ -110,7 +108,7 @@ impl DisasmView {
         ui: &mut eframe::egui::Ui,
         module: &ScriptModule,
         function: usize,
-        context: &ScriptGlobalContext,
+        context: &ScriptGlobalContext<Pal4AppContext>,
     ) {
         let insts = disasm(&module.functions[function]);
         let mut content = "".to_string();

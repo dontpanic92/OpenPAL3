@@ -1,12 +1,15 @@
 use super::ScriptVm;
 
-pub struct ScriptGlobalFunction {
+pub struct ScriptGlobalFunction<TAppContext: 'static> {
     pub name: String,
-    pub func: Box<dyn Fn(&str, &mut ScriptVm)>,
+    pub func: Box<dyn Fn(&str, &mut ScriptVm<TAppContext>)>,
 }
 
-impl ScriptGlobalFunction {
-    pub fn new<S: AsRef<str>>(name: S, func: Box<dyn Fn(&str, &mut ScriptVm)>) -> Self {
+impl<TAppContext: 'static> ScriptGlobalFunction<TAppContext> {
+    pub fn new<S: AsRef<str>>(
+        name: S,
+        func: Box<dyn Fn(&str, &mut ScriptVm<TAppContext>)>,
+    ) -> Self {
         Self {
             name: name.as_ref().to_string(),
             func,
@@ -21,40 +24,40 @@ macro_rules! as_params {
     }
 }
 
-pub struct ScriptGlobalContext {
+pub struct ScriptGlobalContext<TAppContext: 'static> {
     pub(crate) vars: Vec<u32>,
-    pub(crate) functions: Vec<ScriptGlobalFunction>,
+    pub(crate) functions: Vec<ScriptGlobalFunction<TAppContext>>,
 }
 
-impl ScriptGlobalContext {
+impl<TAppContext: 'static> ScriptGlobalContext<TAppContext> {
     pub fn new() -> Self {
         Self {
-            vars: vec![0; 32],
+            vars: vec![0; 48],
             functions: Self::system_functions(),
         }
     }
 
-    pub fn register_function(&mut self, function: ScriptGlobalFunction) {
+    pub fn register_function(&mut self, function: ScriptGlobalFunction<TAppContext>) {
         self.functions.push(function);
     }
 
-    pub fn call_function(&mut self, vm: &mut ScriptVm, index: usize) {
+    pub fn call_function(&self, vm: &mut ScriptVm<TAppContext>, index: usize) {
         (self.functions[index].func)(&self.functions[index].name, vm)
     }
 
-    pub fn functions(&self) -> &[ScriptGlobalFunction] {
+    pub fn functions(&self) -> &[ScriptGlobalFunction<TAppContext>] {
         &self.functions
     }
 
-    pub fn get_var(&self, index: usize) -> u32 {
+    pub fn get_global(&self, index: usize) -> u32 {
         self.vars[index]
     }
 
-    pub fn set_var(&mut self, index: usize, data: u32) {
+    pub fn set_global(&mut self, index: usize, data: u32) {
         self.vars[index] = data;
     }
 
-    fn system_functions() -> Vec<ScriptGlobalFunction> {
+    fn system_functions() -> Vec<ScriptGlobalFunction<TAppContext>> {
         vec![
             ScriptGlobalFunction::new("ArrayObjectConstructor_Generic", Box::new(not_implemented)),
             ScriptGlobalFunction::new("ArrayObjectConstructor2_Generic", Box::new(not_implemented)),
@@ -114,21 +117,21 @@ impl ScriptGlobalContext {
     }
 }
 
-fn abs(_: &str, vm: &mut ScriptVm) {
+fn abs<TAppContext>(_: &str, vm: &mut ScriptVm<TAppContext>) {
     as_params!(vm, number: i32);
 
     let ret = number.abs();
     vm.stack_push::<i32>(ret);
 }
 
-fn string_factory(_: &str, vm: &mut ScriptVm) {
+fn string_factory<TAppContext>(_: &str, vm: &mut ScriptVm<TAppContext>) {
     as_params!(vm, _len: u32, str_id: u32);
-    let string = vm.module.as_ref().unwrap().borrow().strings[str_id as usize].clone();
+    let string = vm.context.module.borrow().strings[str_id as usize].clone();
     let ret = vm.push_object(string);
 
-    vm.object_register = ret;
+    vm.robj = ret;
 }
 
-pub fn not_implemented(name: &str, _: &mut ScriptVm) {
+pub fn not_implemented<TAppContext>(name: &str, _: &mut ScriptVm<TAppContext>) {
     println!("unimplemented function called: {}", name);
 }

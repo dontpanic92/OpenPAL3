@@ -1,8 +1,11 @@
 use eframe::egui::{self, ScrollArea};
-use shared::scripting::angelscript::{AsInst, AsInstInstance, ScriptGlobalContext, ScriptModule};
+use shared::{
+    openpal4::scripting::Pal4AppContext,
+    scripting::angelscript::{AsInst, AsInstInstance, ScriptGlobalContext, ScriptModule, ScriptVm},
+};
 
 pub fn show_strings(ui: &mut egui::Ui, module: &ScriptModule) {
-    egui::Grid::new("my_grid")
+    egui::Grid::new("string_grid")
         .num_columns(2)
         .spacing([4.0, 4.0])
         .striped(true)
@@ -15,10 +18,24 @@ pub fn show_strings(ui: &mut egui::Ui, module: &ScriptModule) {
         });
 }
 
+pub fn show_objects(ui: &mut egui::Ui, objects: &[Option<String>]) {
+    egui::Grid::new("object_grid")
+        .num_columns(2)
+        .spacing([4.0, 4.0])
+        .striped(true)
+        .show(ui, |ui| {
+            for i in 0..objects.len() {
+                ui.add(|ui: &mut egui::Ui| ui.label(format!("{}", i)));
+                ui.label(format!("{:?}", objects[i]));
+                ui.end_row();
+            }
+        });
+}
+
 pub fn get_note(
     inst: &AsInstInstance,
     module: &ScriptModule,
-    context: &ScriptGlobalContext,
+    context: &ScriptGlobalContext<Pal4AppContext>,
 ) -> Option<String> {
     let note = match inst.inst {
         AsInst::CallSys { function_index } => Some(

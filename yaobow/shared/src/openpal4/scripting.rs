@@ -7,19 +7,23 @@ use crate::{
     },
 };
 
-pub fn create_script_vm() -> ScriptVm {
-    let mut vm = ScriptVm::new(Rc::new(RefCell::new(create_context())));
-    let content = std::fs::read("F:\\PAL4\\gamedata\\script\\script.csb").unwrap();
-    let module = ScriptModule::read_from_buffer(&content).unwrap();
+use super::asset_loader::AssetLoader;
 
-    let module = Rc::new(RefCell::new(module));
-    vm.set_module(module);
-    vm.set_function(0);
-
-    vm
+pub struct Pal4AppContext {
+    loader: Rc<AssetLoader>,
 }
 
-pub fn create_context() -> ScriptGlobalContext {
+pub fn create_script_vm(loader: Rc<AssetLoader>) -> ScriptVm<Pal4AppContext> {
+    let module = loader.load_script_module("script").unwrap();
+    ScriptVm::new(
+        Rc::new(RefCell::new(create_context())),
+        module,
+        0,
+        Pal4AppContext { loader },
+    )
+}
+
+pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     let mut context = ScriptGlobalContext::new();
 
     context.register_function(ScriptGlobalFunction::new("giIMMBegin", Box::new(imm_begin)));
@@ -1043,7 +1047,7 @@ pub fn create_context() -> ScriptGlobalContext {
         Box::new(not_implemented),
     ));
     context.register_function(ScriptGlobalFunction::new(
-        "giPlayerCurrentMovment",
+        "giPlayerCurrentMovement",
         Box::new(not_implemented),
     ));
     context.register_function(ScriptGlobalFunction::new(
@@ -1070,37 +1074,37 @@ pub fn create_context() -> ScriptGlobalContext {
     context
 }
 
-fn imm_begin(name: &str, vm: &mut ScriptVm) {}
+fn imm_begin(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {}
 
-fn imm_end(name: &str, vm: &mut ScriptVm) {}
+fn imm_end(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {}
 
-fn new_game(name: &str, vm: &mut ScriptVm) {}
+fn new_game(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {}
 
-fn flash_out_black(name: &str, vm: &mut ScriptVm) {
+fn flash_out_black(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {
     as_params!(vm, f: f32, b1: i32, b2: i32);
 }
 
-fn script_music_pause(name: &str, vm: &mut ScriptVm) {}
+fn script_music_pause(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {}
 
-fn play_movie(name: &str, vm: &mut ScriptVm) {
+fn play_movie(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {
     as_params!(vm, name_str: i32);
 }
 
-fn open_movie_flag(name: &str, vm: &mut ScriptVm) {
+fn open_movie_flag(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {
     as_params!(vm, flag: i32);
 }
 
-fn script_music_resume(name: &str, vm: &mut ScriptVm) {}
+fn script_music_resume(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {}
 
-fn wait(_: &str, vm: &mut ScriptVm) {
+fn wait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) {
     as_params!(vm, time: f32);
 }
 
-fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm) {
+fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm<Pal4AppContext>) {
     as_params!(vm, pct: i32);
 }
 
-fn arena_load(_: &str, vm: &mut ScriptVm) {
+fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) {
     as_params!(
         vm,
         scn_str: i32,
@@ -1108,4 +1112,16 @@ fn arena_load(_: &str, vm: &mut ScriptVm) {
         data_str: i32,
         show_loading: i32
     );
+
+    let scn = get_str(vm, scn_str as usize).unwrap();
+    let block = get_str(vm, block_str as usize).unwrap();
+
+    println!("scn {} block {}", scn, block);
+    let module = vm.app_context().loader.load_script_module(&scn).unwrap();
+
+    vm.set_function_by_name(module, &format!("{}_{}_init", scn, block));
+}
+
+fn get_str(vm: &mut ScriptVm<Pal4AppContext>, index: usize) -> Option<String> {
+    vm.heap[index].clone()
 }
