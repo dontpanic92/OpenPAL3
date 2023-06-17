@@ -16,9 +16,9 @@ impl SceCommand for SceCommandRoleFaceRole {
     fn update(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         let position = scene_manager
             .get_resolved_role(state, self.role_id)

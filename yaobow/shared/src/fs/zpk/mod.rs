@@ -1,6 +1,6 @@
 use crate::fs::plain_fs::PlainArchive;
 
-use self::zpk_archive::{ZpkArchive, ZpkHeader};
+use self::zpk_archive::ZpkArchive;
 
 mod blowfish;
 mod consts;

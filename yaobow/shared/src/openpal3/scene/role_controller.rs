@@ -287,7 +287,7 @@ impl IComponentImpl for RoleController {
         }
     }
 
-    fn on_updating(&self, delta_sec: f32) -> crosscom::Void {
+    fn on_updating(&self, _delta_sec: f32) -> crosscom::Void {
         if self.is_active() {
             if self.active_anim().value().morph_animation_state() == MorphAnimationState::Finished {
                 self.state.replace(RoleState::AnimationFinished);

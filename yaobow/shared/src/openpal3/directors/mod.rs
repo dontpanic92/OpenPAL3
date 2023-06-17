@@ -15,7 +15,7 @@ pub trait SceneManagerExtensions {
     fn scn_scene(&self) -> Option<ComRc<IScnSceneComponent>>;
 
     fn get_resolved_role(&self, state: &SceState, role_id: i32) -> Option<ComRc<IEntity>> {
-        let resolved_role_id = if role_id == -1 {
+        let _resolved_role_id = if role_id == -1 {
             state.global_state().role_controlled()
         } else {
             role_id

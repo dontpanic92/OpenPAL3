@@ -212,7 +212,7 @@ pub fn cvd_load_model(
 pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMesh, Box<dyn Error>> {
     let frame_count = reader.read_u32::<LittleEndian>().unwrap();
     let vertex_count = reader.read_u32::<LittleEndian>().unwrap();
-    let vertex_size = calc_vertex_size(19);
+    let _vertex_size = calc_vertex_size(19);
     let mut frames = vec![];
     for _i in 0..frame_count {
         let mut vertices = vec![];
@@ -248,7 +248,7 @@ pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMes
         let color2 = reader.read_u32::<LittleEndian>().unwrap();
         let color3 = reader.read_u32::<LittleEndian>().unwrap();
         let color4 = reader.read_u32::<LittleEndian>().unwrap();
-        let unknown_float2 = reader.read_f32::<LittleEndian>().unwrap();
+        let _unknown_float2 = reader.read_f32::<LittleEndian>().unwrap();
         let name = reader.read_u8_vec(64).unwrap();
         let texture_name = encoding::all::GBK
             .decode(

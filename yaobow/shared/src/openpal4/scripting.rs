@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{
     as_params,
     scripting::angelscript::{
-        not_implemented, ScriptGlobalContext, ScriptGlobalFunction, ScriptModule, ScriptVm,
+        not_implemented, ScriptGlobalContext, ScriptGlobalFunction, ScriptVm,
     },
 };
 
@@ -1074,34 +1074,34 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     context
 }
 
-fn imm_begin(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {}
+fn imm_begin(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) {}
 
-fn imm_end(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {}
+fn imm_end(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) {}
 
-fn new_game(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {}
+fn new_game(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) {}
 
-fn flash_out_black(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {
-    as_params!(vm, f: f32, b1: i32, b2: i32);
+fn flash_out_black(_name: &str, vm: &mut ScriptVm<Pal4AppContext>) {
+    as_params!(vm, _f: f32, _b1: i32, _b2: i32);
 }
 
-fn script_music_pause(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {}
+fn script_music_pause(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) {}
 
-fn play_movie(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {
-    as_params!(vm, name_str: i32);
+fn play_movie(_name: &str, vm: &mut ScriptVm<Pal4AppContext>) {
+    as_params!(vm, _name_str: i32);
 }
 
-fn open_movie_flag(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {
-    as_params!(vm, flag: i32);
+fn open_movie_flag(_name: &str, vm: &mut ScriptVm<Pal4AppContext>) {
+    as_params!(vm, _flag: i32);
 }
 
-fn script_music_resume(name: &str, vm: &mut ScriptVm<Pal4AppContext>) {}
+fn script_music_resume(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) {}
 
 fn wait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) {
-    as_params!(vm, time: f32);
+    as_params!(vm, _time: f32);
 }
 
 fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm<Pal4AppContext>) {
-    as_params!(vm, pct: i32);
+    as_params!(vm, _pct: i32);
 }
 
 fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) {
@@ -1109,8 +1109,8 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) {
         vm,
         scn_str: i32,
         block_str: i32,
-        data_str: i32,
-        show_loading: i32
+        _data_str: i32,
+        _show_loading: i32
     );
 
     let scn = get_str(vm, scn_str as usize).unwrap();

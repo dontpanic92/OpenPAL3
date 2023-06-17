@@ -93,7 +93,7 @@ fn nav_read_unknown1(reader: &mut dyn Read, version: u8) -> NavMap {
     let mut layer_triggers = None;
     if version == 2 {
         let mut v = vec![];
-        for i in 0..8 {
+        for _i in 0..8 {
             let min_x = reader.read_i32::<LittleEndian>().unwrap();
             let min_y = reader.read_i32::<LittleEndian>().unwrap();
             let max_x = reader.read_i32::<LittleEndian>().unwrap();
@@ -139,7 +139,7 @@ fn nav_read_unknown1(reader: &mut dyn Read, version: u8) -> NavMap {
     }
 }
 
-fn nav_read_unknown2(reader: &mut dyn Read, version: u8) -> NavUnknown2 {
+fn nav_read_unknown2(reader: &mut dyn Read, _version: u8) -> NavUnknown2 {
     let count1 = reader.read_u16::<LittleEndian>().unwrap();
     let count2 = reader.read_u16::<LittleEndian>().unwrap();
     let mut unknown21 = vec![];

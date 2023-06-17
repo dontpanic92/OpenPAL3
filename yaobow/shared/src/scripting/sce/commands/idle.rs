@@ -12,9 +12,9 @@ pub struct SceCommandIdle {
 impl SceCommand for SceCommandIdle {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
-        state: &mut SceState,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
+        _state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
         self.cur_sec += delta_sec;

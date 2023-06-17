@@ -17,9 +17,9 @@ impl SceCommand for SceCommandObjectActive {
     fn update(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
-        state: &mut SceState,
-        delta_sec: f32,
+        _ui: &Ui,
+        _state: &mut SceState,
+        _delta_sec: f32,
     ) -> bool {
         if let Some(e) = scene_manager
             .scn_scene()

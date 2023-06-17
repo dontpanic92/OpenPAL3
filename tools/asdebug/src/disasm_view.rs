@@ -88,7 +88,7 @@ impl DisasmView {
 
     fn show_functions(
         &mut self,
-        ctx: &eframe::egui::Context,
+        _ctx: &eframe::egui::Context,
         ui: &mut eframe::egui::Ui,
         module: &ScriptModule,
     ) {

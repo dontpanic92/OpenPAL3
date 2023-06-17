@@ -50,7 +50,7 @@ impl DialogBox {
         }
     }
 
-    pub fn draw(&mut self, text: &str, ui: &Ui, delta_sec: f32) {
+    pub fn draw(&mut self, text: &str, ui: &Ui, _delta_sec: f32) {
         let [window_width, window_height] = ui.io().display_size;
         let (dialog_x, dialog_width) = {
             if window_width / window_height > 4. / 3. {

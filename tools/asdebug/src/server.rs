@@ -4,7 +4,6 @@ use std::{
     thread::spawn,
 };
 
-use byteorder::{LittleEndian, ReadBytesExt};
 use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
 use shared::scripting::angelscript::debug::{
     debug_ipc_read, debug_ipc_write, Message, Notification, Request, Response,

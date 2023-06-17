@@ -9,9 +9,7 @@ use context::Context;
 use disasm_view::DisasmView;
 use eframe::egui::{self, ScrollArea};
 use server::start_server;
-use shared::scripting::angelscript::{
-    debug::Response, disasm, AsInst, AsInstInstance, ScriptModule,
-};
+use shared::scripting::angelscript::{debug::Response, disasm, AsInst, AsInstInstance};
 use utils::{show_objects, show_strings};
 
 mod context;

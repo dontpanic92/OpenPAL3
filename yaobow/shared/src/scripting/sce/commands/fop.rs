@@ -15,10 +15,10 @@ pub struct SceCommandFop {
 impl SceCommand for SceCommandFop {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         match self.op {
             0 => state.global_state_mut().fop_state_mut().reset(),

@@ -10,9 +10,9 @@ impl SceCommand for SceCommandCameraDefault {
     fn update(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
-        state: &mut SceState,
-        delta_sec: f32,
+        _ui: &Ui,
+        _state: &mut SceState,
+        _delta_sec: f32,
     ) -> bool {
         let target = Vec3::new(0., 0., 0.);
         scene_manager
@@ -28,7 +28,7 @@ impl SceCommand for SceCommandCameraDefault {
 }
 
 impl SceCommandCameraDefault {
-    pub fn new(unknown: i32) -> Self {
+    pub fn new(_unknown: i32) -> Self {
         Self {}
     }
 }

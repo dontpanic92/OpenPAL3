@@ -11,10 +11,10 @@ pub struct SceCommandGetDlgSel {
 impl SceCommand for SceCommandGetDlgSel {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         let dlgsel = state.context_mut().current_proc_context_mut().get_dlgsel();
         state

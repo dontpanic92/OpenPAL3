@@ -13,17 +13,17 @@ pub struct SceCommandMovie {
 }
 
 impl SceCommand for SceCommandMovie {
-    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
+    fn initialize(&mut self, _scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
         state.global_state_mut().set_adv_input_enabled(false);
         state.global_state_mut().bgm_source().stop();
     }
 
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
+        _scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         let (source_w, source_h) = if let Some(size) = self.source_size {
             size

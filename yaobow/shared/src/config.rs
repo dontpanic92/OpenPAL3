@@ -29,7 +29,7 @@ impl YaobowConfig {
 
         match builder.build() {
             Ok(config) => config.try_deserialize().unwrap(),
-            Err(e) => {
+            Err(_e) => {
                 panic!("Failed to load config");
             }
         }

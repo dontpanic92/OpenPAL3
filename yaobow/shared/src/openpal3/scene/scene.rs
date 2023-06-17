@@ -32,7 +32,7 @@ impl IComponentImpl for ScnScene {
         self.load_roles();
     }
 
-    fn on_updating(&self, delta_sec: f32) {}
+    fn on_updating(&self, _delta_sec: f32) {}
 }
 
 impl IScnSceneComponentImpl for ScnScene {
@@ -107,7 +107,7 @@ impl ScnScene {
         );
         let distance_floor =
             &self.nav.nav_file.maps[layer].map[nav_coord_floor.1][nav_coord_floor.0];
-        let distance_ceil = &self.nav.nav_file.maps[layer].map[nav_coord_ceil.1][nav_coord_ceil.0];
+        let _distance_ceil = &self.nav.nav_file.maps[layer].map[nav_coord_ceil.1][nav_coord_ceil.0];
         /*std::cmp::min(
             distance_floor.distance_to_border,
             distance_ceil.distance_to_border,

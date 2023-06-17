@@ -12,10 +12,10 @@ pub struct SceCommandScriptRunMode {
 impl SceCommand for SceCommandScriptRunMode {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         state.set_run_mode(self.mode);
         return true;

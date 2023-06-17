@@ -13,10 +13,10 @@ pub struct SceCommandBetween {
 impl SceCommand for SceCommandBetween {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         let lhs = if self.var < 0 {
             state

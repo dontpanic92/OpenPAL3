@@ -14,10 +14,10 @@ pub struct SceCommandRnd {
 impl SceCommand for SceCommandRnd {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         let value = self.rng.gen_range(0..self.max_value);
         if self.var < 0 {

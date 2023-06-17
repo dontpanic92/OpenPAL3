@@ -12,10 +12,10 @@ pub struct SceCommandMusic {
 impl SceCommand for SceCommandMusic {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         if self.name.to_uppercase() == "NONE" {
             state.global_state_mut().bgm_source().stop();
@@ -28,7 +28,7 @@ impl SceCommand for SceCommandMusic {
 }
 
 impl SceCommandMusic {
-    pub fn new(name: String, unknown: i32) -> Self {
+    pub fn new(name: String, _unknown: i32) -> Self {
         Self { name }
     }
 }

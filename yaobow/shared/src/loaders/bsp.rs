@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
+use std::{io::Read, path::Path, rc::Rc};
 
 use crosscom::ComRc;
 use fileformats::rwbs::{
@@ -107,7 +107,7 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
     texture_resolver: &dyn TextureResolver,
 ) {
     let vertices = sector.vertices.as_ref();
-    let normals = sector.normals.as_ref();
+    let _normals = sector.normals.as_ref();
     let triangles = &sector.triangles;
 
     let mut texcoord_sets = vec![];
@@ -115,7 +115,7 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
         texcoord_sets.push(t.clone());
     }
 
-    if let Some(t) = &sector.texcoords2 {
+    if let Some(_t) = &sector.texcoords2 {
         // texcoord_sets.push(t.clone());
     }
 

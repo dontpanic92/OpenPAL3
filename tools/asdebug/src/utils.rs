@@ -1,7 +1,7 @@
-use eframe::egui::{self, ScrollArea};
+use eframe::egui::{self};
 use shared::{
     openpal4::scripting::Pal4AppContext,
-    scripting::angelscript::{AsInst, AsInstInstance, ScriptGlobalContext, ScriptModule, ScriptVm},
+    scripting::angelscript::{AsInst, AsInstInstance, ScriptGlobalContext, ScriptModule},
 };
 
 pub fn show_strings(ui: &mut egui::Ui, module: &ScriptModule) {

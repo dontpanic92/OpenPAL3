@@ -17,7 +17,7 @@ pub struct SceCommandRolePathTo {
 
 impl SceCommand for SceCommandRolePathTo {
     fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
-        let role = scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
+        let _role = scene_manager.resolve_role_mut_do(state, self.role_id, |_e, r| {
             if self.run == 1 {
                 r.get().run();
             } else {
@@ -29,7 +29,7 @@ impl SceCommand for SceCommandRolePathTo {
     fn update(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {

@@ -11,10 +11,10 @@ pub struct SceCommandCall {
 impl SceCommand for SceCommandCall {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         state.call_proc(self.proc_id);
         true

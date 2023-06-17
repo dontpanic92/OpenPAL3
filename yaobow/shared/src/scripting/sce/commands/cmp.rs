@@ -24,10 +24,10 @@ impl<FCmp: Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> std::fmt::Debug
 impl<FCmp: Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> SceCommand for SceCommandCmp<FCmp> {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         let lhs = if self.var < 0 {
             state
@@ -131,7 +131,7 @@ pub mod SceCommandGeq2 {
 
     pub fn new(
         var: i16,
-        var2: i16,
+        _var2: i16,
     ) -> SceCommandCmp<impl Clone + for<'a, 'b> Fn(&'a i32, &'b i32) -> bool> {
         SceCommandCmp::new(var, 0, i32::ge)
     }

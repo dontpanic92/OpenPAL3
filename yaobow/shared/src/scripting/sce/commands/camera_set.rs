@@ -15,9 +15,9 @@ impl SceCommand for SceCommandCameraSet {
     fn update(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
-        state: &mut SceState,
-        delta_sec: f32,
+        _ui: &Ui,
+        _state: &mut SceState,
+        _delta_sec: f32,
     ) -> bool {
         let scene = scene_manager.scene().unwrap();
         let target = Vec3::add(
@@ -41,7 +41,7 @@ impl SceCommandCameraSet {
     pub fn new(
         y_rot: f32,
         x_rot: f32,
-        unknown: f32,
+        _unknown: f32,
         position_x: f32,
         position_y: f32,
         position_z: f32,

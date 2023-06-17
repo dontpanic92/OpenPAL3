@@ -19,9 +19,9 @@ impl SceCommand for SceCommandHyFly {
     fn update(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         let entity = scene_manager.get_resolved_role(state, 5).unwrap();
         let role_controller = RoleController::get_role_controller(entity.clone()).unwrap();

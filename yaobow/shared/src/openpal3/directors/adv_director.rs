@@ -148,7 +148,7 @@ impl AdventureDirector {
 }
 
 impl IDirectorImpl for AdventureDirector {
-    fn activate(&self, scene_manager: ComRc<ISceneManager>) {
+    fn activate(&self, _scene_manager: ComRc<ISceneManager>) {
         debug!("AdventureDirector activated");
     }
 
@@ -199,7 +199,7 @@ impl AdventureDirectorProps {
     fn move_role(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        ui: &imgui::Ui,
+        _ui: &imgui::Ui,
         delta_sec: f32,
         moving_direction: &Vec3,
     ) {
@@ -273,8 +273,8 @@ impl AdventureDirectorProps {
 
     fn rotate_camera(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &imgui::Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &imgui::Ui,
         delta_sec: f32,
     ) {
         let input = self.input_engine.borrow();
@@ -386,7 +386,7 @@ impl AdventureDirectorProps {
 
                 let mut test_coord = position;
                 let mut d = 0.0;
-                for i in 0..50 {
+                for _i in 0..50 {
                     d = scene.get_distance_to_border_by_scene_coord(new_layer, &test_coord);
                     if d > 0.0 {
                         break;

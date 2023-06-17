@@ -16,11 +16,11 @@ impl SceCommand for SceCommandRoleSetFace {
     fn update(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
-        scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
+        scene_manager.resolve_role_mut_do(state, self.role_id, |e, _r| {
             let position = e.transform().borrow().position();
             let target = Vec3::add(&position, &self.face_to);
 

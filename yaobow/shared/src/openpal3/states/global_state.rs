@@ -147,7 +147,7 @@ impl GlobalState {
         &mut self.fop_state
     }
 
-    pub fn update(&mut self, delta_sec: f32) {
+    pub fn update(&mut self, _delta_sec: f32) {
         if self.bgm_source.state() == AudioSourceState::Playing {
             self.bgm_source.update();
         }

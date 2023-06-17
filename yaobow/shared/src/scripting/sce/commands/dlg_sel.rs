@@ -17,13 +17,13 @@ pub struct SceCommandDlgSel {
 impl SceCommand for SceCommandDlgSel {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
+        _scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         let [window_width, window_height] = ui.io().display_size;
-        let (dialog_x, dialog_width) = {
+        let (_dialog_x, _dialog_width) = {
             if window_width / window_height > 4. / 3. {
                 let dialog_width = window_height / 3. * 4.;
                 let dialog_x = (window_width - dialog_width) / 2.;
@@ -70,7 +70,7 @@ impl SceCommand for SceCommandDlgSel {
         return false;
     }
 
-    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {}
+    fn initialize(&mut self, _scene_manager: ComRc<ISceneManager>, _state: &mut SceState) {}
 }
 
 impl SceCommandDlgSel {

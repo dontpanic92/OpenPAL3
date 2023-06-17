@@ -29,7 +29,7 @@ pub fn create_entity_from_cvd_model<P: AsRef<Path>>(
     );
 
     let cvd = cvd_load_from_file(vfs, path.as_ref()).unwrap();
-    for (i, node) in cvd.models.iter().enumerate() {
+    for (_i, node) in cvd.models.iter().enumerate() {
         entity.attach(new_from_cvd_model_node(
             component_factory.clone(),
             vfs,
@@ -166,7 +166,7 @@ impl IComponentImpl for CvdModelComponent {
             .set_rendering_component(Some(Rc::new(component)));
     }
 
-    fn on_updating(&self, delta_sec: f32) -> crosscom::Void {}
+    fn on_updating(&self, _delta_sec: f32) -> crosscom::Void {}
 }
 
 impl CvdModelComponent {

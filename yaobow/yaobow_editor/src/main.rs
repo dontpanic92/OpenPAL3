@@ -123,7 +123,7 @@ fn main() {
 
     let args = std::env::args().collect::<Vec<String>>();
     if args.len() > 1 {
-        let game = match args[1].as_str() {
+        let _game = match args[1].as_str() {
             "--pal4" => GameType::PAL4,
             "--pal5" => GameType::PAL5,
             "--pal5q" => GameType::PAL5Q,

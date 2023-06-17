@@ -1,4 +1,3 @@
-use crate as test;
 // Interface ITest
 
 #[repr(C)]

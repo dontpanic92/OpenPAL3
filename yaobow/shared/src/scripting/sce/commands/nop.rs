@@ -9,10 +9,10 @@ pub struct SceCommandNop {}
 impl SceCommand for SceCommandNop {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
-        state: &mut SceState,
-        delta_sec: f32,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
+        _state: &mut SceState,
+        _delta_sec: f32,
     ) -> bool {
         true
     }

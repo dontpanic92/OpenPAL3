@@ -1,5 +1,5 @@
 use std::{
-    cell::{Ref, RefCell, RefMut},
+    cell::{RefCell, RefMut},
     rc::Rc,
 };
 
@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::{
     comdef::{IComponentImpl, IEntity, IHAnimBoneComponentImpl, ISkinnedMeshComponentImpl},
-    math::{Mat44, Quaternion, Transform, Vec3},
+    math::{Quaternion, Transform, Vec3},
     rendering::{ComponentFactory, VertexBuffer, VertexComponents},
     ComObject_HAnimBoneComponent, ComObject_SkinnedMeshComponent,
 };

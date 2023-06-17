@@ -11,14 +11,14 @@ pub struct SceCommandDlg {
 }
 
 impl SceCommand for SceCommandDlg {
-    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
+    fn initialize(&mut self, _scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
         self.adv_input_enabled = state.global_state_mut().adv_input_enabled();
         state.global_state_mut().set_adv_input_enabled(false);
     }
 
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
+        _scene_manager: ComRc<ISceneManager>,
         ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,

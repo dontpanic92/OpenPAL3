@@ -11,10 +11,10 @@ pub struct SceCommandGoto {
 impl SceCommand for SceCommandGoto {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         state.context_mut().jump_to(self.addr);
         true

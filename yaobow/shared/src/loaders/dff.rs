@@ -225,7 +225,7 @@ pub(crate) fn create_geometry_internal(
     entity: ComRc<IEntity>,
     component_factory: &Rc<dyn ComponentFactory>,
     vertices: &[Vec3f],
-    normals: Option<&Vec<Vec3f>>,
+    _normals: Option<&Vec<Vec3f>>,
     triangles: &[Triangle],
     texcoord_sets: &[Vec<TexCoord>],
     materials: &[Material],

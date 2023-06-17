@@ -17,11 +17,11 @@ impl SceCommand for SceCommandRoleActAutoStand {
     fn update(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
-        scene_manager.resolve_role_mut_do(state, self.role_id, |e, r| {
+        scene_manager.resolve_role_mut_do(state, self.role_id, |_e, r| {
             r.get().set_auto_play_idle(self.auto_play_idle == 1);
         });
 

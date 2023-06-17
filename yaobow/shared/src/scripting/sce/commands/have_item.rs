@@ -12,10 +12,10 @@ pub struct SceCommandHaveItem {
 impl SceCommand for SceCommandHaveItem {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         // TODO
         state.global_state_mut().fop_state_mut().push_value(true);

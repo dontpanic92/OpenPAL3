@@ -11,10 +11,10 @@ pub struct SceCommandRoleCtrl {
 impl SceCommand for SceCommandRoleCtrl {
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
         state: &mut SceState,
-        delta_sec: f32,
+        _delta_sec: f32,
     ) -> bool {
         state.global_state_mut().set_role_controlled(self.role_id);
         true

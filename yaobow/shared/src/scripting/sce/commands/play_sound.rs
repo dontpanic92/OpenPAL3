@@ -26,7 +26,7 @@ impl Debug for SceCommandPlaySound {
 }
 
 impl SceCommand for SceCommandPlaySound {
-    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
+    fn initialize(&mut self, _scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
         let data = state.asset_mgr().load_snd_data(&self.name);
         match data {
             Ok(d) => {
@@ -44,10 +44,10 @@ impl SceCommand for SceCommandPlaySound {
 
     fn update(
         &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
-        state: &mut SceState,
-        delta_sec: f32,
+        _scene_manager: ComRc<ISceneManager>,
+        _ui: &Ui,
+        _state: &mut SceState,
+        _delta_sec: f32,
     ) -> bool {
         if self.times <= 1 {
             return true;
