@@ -1,8 +1,8 @@
 import os
 import shutil
 
-os.system("python3 main.py idl/opengb.idl opengb::comdef")
-shutil.copyfile("test.rs", "../../yaobow/opengb/src/comdef.rs")
+os.system("python3 main.py idl/openpal3.idl shared::openpal3::comdef")
+shutil.copyfile("test.rs", "../../yaobow/shared/src/openpal3/comdef.rs")
 
 os.system("python3 main.py idl/yaobow.idl yaobow::comdef")
 shutil.copyfile("test.rs", "../../yaobow/yaobow/src/comdef.rs")

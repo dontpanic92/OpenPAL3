@@ -8,9 +8,8 @@ use std::{path::Path, rc::Rc};
 
 use crosscom::ComRc;
 use mini_fs::MiniFs;
-use opengb::asset_manager::AssetManager;
 use radiance::comdef::IEntity;
-use shared::loaders::TextureResolver;
+use shared::{loaders::TextureResolver, openpal3::asset_manager::AssetManager};
 
 use crate::{
     directors::{main_content::ContentTab, DevToolsState},

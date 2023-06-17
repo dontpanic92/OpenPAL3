@@ -3,9 +3,11 @@ use std::{io::Read, path::Path, rc::Rc};
 use crosscom::ComRc;
 use fileformats::rwbs::read_dff;
 use mini_fs::{MiniFs, StoreExt};
-use opengb::asset_manager::AssetManager;
 use radiance::comdef::IEntity;
-use shared::loaders::{dff::create_entity_from_dff_model, TextureResolver};
+use shared::{
+    loaders::{dff::create_entity_from_dff_model, TextureResolver},
+    openpal3::asset_manager::AssetManager,
+};
 
 use crate::preview::previewers::{get_extension, jsonify};
 

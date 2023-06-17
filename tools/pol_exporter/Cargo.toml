@@ -9,5 +9,4 @@ edition = "2021"
 [dependencies]
 chardet = "0.2.4"
 fileformats = { path = "../../yaobow/fileformats" }
-opengb = { path = "../../yaobow/opengb" }
 shared = { path = "../../yaobow/shared" }

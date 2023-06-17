@@ -1,7 +1,6 @@
 target
 **/*.rs.bk
 .idea
-opengb/Cargo.lock
 .redo
 generated
 out

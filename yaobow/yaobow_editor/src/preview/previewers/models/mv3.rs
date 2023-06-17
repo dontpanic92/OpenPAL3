@@ -3,13 +3,13 @@ use std::{io::BufReader, path::Path, rc::Rc};
 use crosscom::ComRc;
 use fileformats::mv3::read_mv3;
 use mini_fs::{MiniFs, StoreExt};
-use opengb::{
+use radiance::comdef::IEntity;
+use shared::openpal3::{
     asset_manager::AssetManager,
     scene::{
         create_animated_mesh_from_mv3, create_mv3_entity, RoleAnimationRepeatMode, RoleController,
     },
 };
-use radiance::comdef::IEntity;
 
 use crate::preview::previewers::{get_extension, jsonify};
 

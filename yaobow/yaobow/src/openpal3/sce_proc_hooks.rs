@@ -1,5 +1,6 @@
-use opengb::directors::{GlobalState, SceProcHooks};
 use std::collections::HashMap;
+
+use shared::{openpal3::states::global_state::GlobalState, scripting::sce::vm::SceProcHooks};
 
 pub struct SceRestHooks {
     g_story_updates: HashMap<String, HashMap<u32, HashMap<i32, i32>>>,

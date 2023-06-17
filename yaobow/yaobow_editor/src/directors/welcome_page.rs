@@ -1,8 +1,8 @@
 use crosscom::ComRc;
 use imgui::{Condition, WindowFlags};
-use opengb::config::OpenGbConfig;
 use radiance::comdef::{IApplication, IDirector, IDirectorImpl, ISceneManager};
 use radiance_editor::{director::MainPageDirector, ui::scene_view::SceneViewPlugins};
+use shared::config::YaobowConfig;
 
 use crate::{ComObject_WelcomePageDirector, GameType, SceneViewResourceView};
 
@@ -18,7 +18,7 @@ impl WelcomePageDirector {
     }
 
     fn load_game(&self, game: GameType) -> Option<ComRc<IDirector>> {
-        let mut config = OpenGbConfig::load("openpal3.toml", "OpenPAL3");
+        let mut config = YaobowConfig::load("openpal3.toml", "OpenPAL3");
         match game {
             GameType::PAL3A => {
                 config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\PAL3A".to_string();

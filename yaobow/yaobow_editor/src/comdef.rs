@@ -21,8 +21,10 @@ macro_rules! ComObject_WelcomePageDirector {
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
+            use radiance::comdef::IHAnimBoneComponentImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
+            use radiance::comdef::ISkinnedMeshComponentImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
             use radiance_editor::comdef::IViewContentImpl;
 
@@ -176,8 +178,10 @@ macro_rules! ComObject_YaobowResourceViewContent {
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
+            use radiance::comdef::IHAnimBoneComponentImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
+            use radiance::comdef::ISkinnedMeshComponentImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
             use radiance_editor::comdef::IViewContentImpl;
 
@@ -319,8 +323,10 @@ macro_rules! ComObject_DevToolsDirector {
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
             use radiance::comdef::IEntityImpl;
+            use radiance::comdef::IHAnimBoneComponentImpl;
             use radiance::comdef::ISceneImpl;
             use radiance::comdef::ISceneManagerImpl;
+            use radiance::comdef::ISkinnedMeshComponentImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
             use radiance_editor::comdef::IViewContentImpl;
 

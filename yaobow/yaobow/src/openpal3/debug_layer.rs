@@ -2,9 +2,6 @@ use std::{cell::RefCell, rc::Rc};
 
 use crosscom::ComRc;
 use imgui::{InputTextMultiline, TabBar, TabItem, Ui};
-use opengb::{
-    comdef::IAdventureDirector, directors::SceneManagerExtensions, scene::RoleController,
-};
 use radiance::{
     application::utils::FpsCounter,
     audio::AudioEngine,
@@ -12,6 +9,9 @@ use radiance::{
     input::{InputEngine, Key},
     math::Vec3,
     radiance::DebugLayer,
+};
+use shared::openpal3::{
+    comdef::IAdventureDirector, directors::SceneManagerExtensions, scene::RoleController,
 };
 
 pub struct OpenPal3DebugLayer {
@@ -76,7 +76,7 @@ impl OpenPal3DebugLayer {
                         if ui.button("切换地图层") {
                             if s.get().nav().layer_count() > 1 {
                                 if let Some(role) =
-                                    scene_manager.get_resolved_role(d.sce_vm_mut().state(), -1)
+                                    scene_manager.get_resolved_role(sce_vm.state(), -1)
                                 {
                                     let r = RoleController::get_role_controller(role).unwrap();
                                     r.get().switch_nav_layer();
@@ -185,7 +185,8 @@ impl DebugLayer for OpenPal3DebugLayer {
                 .get_key_state(Key::Tilde)
                 .pressed()
             {
-                self.visible.replace(!*self.visible.borrow());
+                let visible = *self.visible.borrow();
+                self.visible.replace(!visible);
             }
 
             if !*self.visible.borrow() {

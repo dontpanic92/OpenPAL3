@@ -3,8 +3,8 @@ use std::{io::BufReader, path::Path, rc::Rc};
 use crosscom::ComRc;
 use fileformats::pol::read_pol;
 use mini_fs::{MiniFs, StoreExt};
-use opengb::{asset_manager::AssetManager, loaders::pol::create_entity_from_pol_model};
 use radiance::comdef::IEntity;
+use shared::openpal3::{asset_manager::AssetManager, loaders::pol::create_entity_from_pol_model};
 
 use crate::preview::previewers::{get_extension, jsonify};
 

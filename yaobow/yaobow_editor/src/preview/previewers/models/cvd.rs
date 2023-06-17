@@ -2,11 +2,11 @@ use std::{path::Path, rc::Rc};
 
 use crosscom::ComRc;
 use mini_fs::MiniFs;
-use opengb::{
+use radiance::comdef::IEntity;
+use shared::openpal3::{
     asset_manager::AssetManager, loaders::cvd_loader::cvd_load_from_file,
     scene::create_entity_from_cvd_model,
 };
-use radiance::comdef::IEntity;
 
 use crate::preview::previewers::{get_extension, jsonify};
 

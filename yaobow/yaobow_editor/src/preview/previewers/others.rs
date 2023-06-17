@@ -1,7 +1,10 @@
-use opengb::loaders::{
-    nav_loader::nav_load_from_file, sce_loader::sce_load_from_file, scn_loader::scn_load_from_file,
+use shared::{
+    loaders::anm::load_anm,
+    openpal3::loaders::{
+        nav_loader::nav_load_from_file, sce_loader::sce_load_from_file,
+        scn_loader::scn_load_from_file,
+    },
 };
-use shared::loaders::anm::load_anm;
 
 use super::{
     get_extension, jsonify,

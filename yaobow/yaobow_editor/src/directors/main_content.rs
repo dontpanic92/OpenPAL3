@@ -8,9 +8,9 @@ use crate::preview::previewers::Previewer;
 use crate::{preview::panes::ContentPane, GameType};
 use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
 use mini_fs::MiniFs;
-use opengb::asset_manager::AssetManager;
 use radiance::audio::AudioEngine;
 use shared::loaders::TextureResolver;
+use shared::openpal3::asset_manager::AssetManager;
 use std::{path::Path, rc::Rc};
 
 use super::DevToolsState;

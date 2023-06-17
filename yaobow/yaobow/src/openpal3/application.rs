@@ -4,10 +4,11 @@ use super::debug_layer::OpenPal3DebugLayer;
 use super::main_menu_director;
 
 use crosscom::ComRc;
-use opengb::video::register_opengb_video_decoders;
-use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::Application;
 use radiance::comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl};
+use shared::config::YaobowConfig;
+use shared::openpal3::asset_manager::AssetManager;
+use shared::video::register_opengb_video_decoders;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -55,7 +56,7 @@ impl IComponentImpl for OpenPal3ApplicationLoader {
 }
 
 impl OpenPal3ApplicationLoader {
-    pub fn create_application(config: &OpenGbConfig, app_name: &str) -> ComRc<IApplication> {
+    pub fn create_application(config: &YaobowConfig, app_name: &str) -> ComRc<IApplication> {
         let app = ComRc::<IApplication>::from_object(Application::new());
         app.add_component(
             IApplicationLoaderComponent::uuid(),
@@ -65,7 +66,7 @@ impl OpenPal3ApplicationLoader {
         app
     }
 
-    fn new(app: ComRc<IApplication>, config: &OpenGbConfig, app_name: &str) -> Self {
+    fn new(app: ComRc<IApplication>, config: &YaobowConfig, app_name: &str) -> Self {
         let root_path = PathBuf::from(&config.asset_path);
 
         Self {

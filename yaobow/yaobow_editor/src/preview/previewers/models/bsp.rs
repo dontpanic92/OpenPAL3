@@ -3,9 +3,11 @@ use std::{io::Read, path::Path, rc::Rc};
 use crosscom::ComRc;
 use fileformats::rwbs::read_bsp;
 use mini_fs::{MiniFs, StoreExt};
-use opengb::asset_manager::AssetManager;
 use radiance::comdef::IEntity;
-use shared::loaders::{bsp::create_entity_from_bsp_model, TextureResolver};
+use shared::{
+    loaders::{bsp::create_entity_from_bsp_model, TextureResolver},
+    openpal3::asset_manager::AssetManager,
+};
 
 use crate::preview::previewers::{get_extension, jsonify};
 

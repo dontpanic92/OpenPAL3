@@ -3,15 +3,15 @@ use std::{cell::RefCell, rc::Rc};
 use crosscom::ComRc;
 use imgui::{Condition, Ui};
 use log::debug;
-use opengb::{
-    asset_manager::AssetManager,
-    directors::{AdventureDirector, SceExecutionOptions},
-};
 use radiance::{
     audio::{AudioEngine, AudioSource, Codec},
     comdef::{IDirector, IDirectorImpl, ISceneManager},
     input::InputEngine,
     scene::CoreScene,
+};
+use shared::{
+    openpal3::{asset_manager::AssetManager, directors::AdventureDirector},
+    scripting::sce::vm::SceExecutionOptions,
 };
 
 use crate::ComObject_MainMenuDirector;

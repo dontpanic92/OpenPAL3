@@ -4,7 +4,6 @@ use super::{main_content::ContentTabs, DevToolsState};
 use crosscom::ComRc;
 use imgui::Ui;
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
-use opengb::asset_manager::AssetManager;
 use radiance::{
     audio::AudioEngine,
     comdef::{IDirector, IDirectorImpl, ISceneManager},
@@ -12,8 +11,9 @@ use radiance::{
     scene::CoreScene,
 };
 use radiance_editor::ui::window_content_rect;
-use shared::loaders::{
-    Pal4TextureResolver, Pal5TextureResolver, Swd5TextureResolver, TextureResolver,
+use shared::{
+    loaders::{Pal4TextureResolver, Pal5TextureResolver, Swd5TextureResolver, TextureResolver},
+    openpal3::asset_manager::AssetManager,
 };
 use std::{
     cell::RefCell,

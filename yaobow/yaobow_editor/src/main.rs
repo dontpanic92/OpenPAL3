@@ -10,11 +10,12 @@ use std::rc::Rc;
 use crosscom::ComRc;
 use directors::welcome_page::WelcomePageDirector;
 use directors::DevToolsDirector;
-use opengb::{asset_manager::AssetManager, config::OpenGbConfig};
 use radiance::application::Application;
 use radiance::comdef::{IApplication, IApplicationLoaderComponent, IDirector, ISceneManager};
 use radiance_editor::application::EditorApplicationLoader;
 use radiance_editor::comdef::IViewContentImpl;
+use shared::config::YaobowConfig;
+use shared::openpal3::asset_manager::AssetManager;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum GameType {
@@ -82,7 +83,7 @@ impl IViewContentImpl for SceneViewResourceView {
 }
 
 impl SceneViewResourceView {
-    pub fn new(config: OpenGbConfig, app: ComRc<IApplication>, game: GameType) -> Self {
+    pub fn new(config: YaobowConfig, app: ComRc<IApplication>, game: GameType) -> Self {
         app.set_title(&format!("妖弓编辑器 - {}", game.app_name()));
 
         let pkg_key = match game {
