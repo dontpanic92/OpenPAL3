@@ -91,7 +91,7 @@ impl SceVm {
         } else {
             let state = &mut self.state;
             self.active_commands
-                .drain_filter(|cmd| cmd.update(scene_manager.clone(), ui, state, delta_sec));
+                .retain_mut(|cmd| !cmd.update(scene_manager.clone(), ui, state, delta_sec));
         }
 
         None

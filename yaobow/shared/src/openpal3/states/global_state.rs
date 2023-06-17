@@ -162,7 +162,7 @@ impl GlobalState {
 
     fn remove_stopped_sound_sources(&mut self) {
         self.sound_sources
-            .drain_filter(|s| s.borrow().state() == AudioSourceState::Stopped);
+            .retain(|s| s.borrow().state() != AudioSourceState::Stopped);
     }
 
     pub fn pass_through_wall(&self) -> bool {

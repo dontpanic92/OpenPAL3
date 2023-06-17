@@ -1,4 +1,3 @@
-#![feature(drain_filter)]
 mod comdef;
 mod config;
 mod directors;

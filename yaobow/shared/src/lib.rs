@@ -1,6 +1,5 @@
 #![feature(io_error_more)]
 #![feature(cursor_remaining)]
-#![feature(drain_filter)]
 #![feature(trait_upcasting)]
 
 pub mod config;

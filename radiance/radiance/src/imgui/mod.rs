@@ -70,7 +70,6 @@ impl ImguiContext {
         let mut context = self.context.borrow_mut();
         let ui = context.frame();
         draw(&ui);
-        std::mem::forget(ui);
 
         ImguiFrame { frame_begun: true }
     }
