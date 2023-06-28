@@ -9,7 +9,7 @@ use radiance::{
 
 pub fn load_anm<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> anyhow::Result<Vec<Vec<AnimKeyFrame>>> {
     let mut data = vec![];
-    let _ = vfs.open(&path).unwrap().read_to_end(&mut data).unwrap();
+    let _ = vfs.open(&path)?.read_to_end(&mut data)?;
 
     let anm = read_anm(&data)?;
     if anm.len() > 0 {

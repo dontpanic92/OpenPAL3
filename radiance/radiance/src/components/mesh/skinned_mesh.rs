@@ -7,8 +7,11 @@ use crosscom::ComRc;
 use serde::Serialize;
 
 use crate::{
-    comdef::{IComponentImpl, IEntity, IHAnimBoneComponentImpl, ISkinnedMeshComponentImpl},
-    math::{Quaternion, Transform, Vec3},
+    comdef::{
+        IComponentImpl, IEntity, IHAnimBoneComponent, IHAnimBoneComponentImpl,
+        ISkinnedMeshComponentImpl,
+    },
+    math::{Mat44, Quaternion, Transform, Vec3},
     rendering::{ComponentFactory, VertexBuffer, VertexComponents},
     ComObject_HAnimBoneComponent, ComObject_SkinnedMeshComponent,
 };
@@ -24,6 +27,14 @@ pub struct SkinnedMeshComponent {
     bond_pose: Vec<Transform>,
     v_bone_id: Vec<[usize; 4]>,
     v_weights: Vec<[f32; 4]>,
+    anim_state: RefCell<AnimState>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum AnimState {
+    BondPose,
+    Playing,
+    Stopped,
 }
 
 #[derive(Debug, Copy, Clone, Serialize)]
@@ -45,7 +56,15 @@ impl SkinnedMeshComponent {
     ) -> Self {
         let bond_pose = bones
             .iter()
-            .map(|b| b.transform().as_ref().borrow().clone())
+            .map(|b| {
+                Transform::from_matrix(
+                    b.get_component(IHAnimBoneComponent::uuid())
+                        .unwrap()
+                        .query_interface::<IHAnimBoneComponent>()
+                        .unwrap()
+                        .bond_pose(),
+                )
+            })
             .collect();
         Self {
             entity,
@@ -56,6 +75,7 @@ impl SkinnedMeshComponent {
             bond_pose,
             v_bone_id,
             v_weights,
+            anim_state: RefCell::new(AnimState::Playing),
         }
     }
 
@@ -80,10 +100,14 @@ impl SkinnedMeshComponent {
         for i in 0..vertex_buffer.count() {
             let bone_id = self.v_bone_id[i][0];
             let bond_pose_mat = *self.bond_pose[bone_id].matrix();
-            let frame_t = self.bones[bone_id].world_transform();
+            let frame_t = if *self.anim_state.borrow() == AnimState::BondPose {
+                Mat44::inversed(self.bond_pose[bone_id].matrix())
+            } else {
+                self.bones[bone_id].world_transform().matrix().clone()
+            };
 
             let v = self.geometry.vertices.position(i).unwrap();
-            let v = Vec3::crossed_mat(&Vec3::crossed_mat(v, &bond_pose_mat), &frame_t.matrix());
+            let v = Vec3::crossed_mat(&Vec3::crossed_mat(v, &bond_pose_mat), &frame_t);
 
             vertex_buffer.set_component(i, VertexComponents::POSITION, |p: &mut Vec3| {
                 *p = v;
@@ -126,6 +150,7 @@ pub struct HAnimBoneComponent {
 ComObject_HAnimBoneComponent!(super::HAnimBoneComponent);
 
 struct HAnimBoneProps {
+    bond_pose: Mat44,
     frames: Vec<AnimKeyFrame>,
     last_time: f32,
     max_time: f32,
@@ -181,6 +206,7 @@ impl HAnimBoneComponent {
             entity,
             id,
             props: RefCell::new(HAnimBoneProps {
+                bond_pose: Mat44::new_identity(),
                 frames: vec![],
                 last_time: 0.,
                 max_time: 0.,
@@ -194,12 +220,24 @@ impl IHAnimBoneComponentImpl for HAnimBoneComponent {
         self.props.borrow_mut().max_time = keyframes.last().unwrap().timestamp;
         self.props.borrow_mut().frames = keyframes;
     }
+
+    fn set_bond_pose(&self, matrix: Mat44) {
+        self.props.borrow_mut().bond_pose = matrix;
+    }
+
+    fn bond_pose(&self) -> Mat44 {
+        self.props.borrow().bond_pose.clone()
+    }
 }
 
 impl IComponentImpl for HAnimBoneComponent {
     fn on_loading(&self) -> () {}
 
     fn on_updating(&self, delta_sec: f32) -> () {
+        if self.props.borrow().frames.is_empty() {
+            return;
+        }
+
         self.props
             .borrow_mut()
             .update(self.entity.clone(), delta_sec)

@@ -16,6 +16,10 @@ impl Transform {
         }
     }
 
+    pub fn from_matrix(mat: Mat44) -> Self {
+        Self { mat }
+    }
+
     pub fn matrix(&self) -> &Mat44 {
         &self.mat
     }

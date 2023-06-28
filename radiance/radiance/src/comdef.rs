@@ -3284,6 +3284,11 @@ pub struct IHAnimBoneComponentVirtualTable {
         this: *const *const std::os::raw::c_void,
         keyframes: Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>,
     ) -> crosscom::Void,
+    pub set_bond_pose: fn(
+        this: *const *const std::os::raw::c_void,
+        matrix: radiance::math::Mat44,
+    ) -> crosscom::Void,
+    pub bond_pose: fn(this: *const *const std::os::raw::c_void) -> radiance::math::Mat44,
 }
 
 #[repr(C)]
@@ -3367,6 +3372,24 @@ impl IHAnimBoneComponent {
         }
     }
 
+    pub fn set_bond_pose(&self, matrix: radiance::math::Mat44) -> crosscom::Void {
+        unsafe {
+            let this = self as *const IHAnimBoneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).set_bond_pose)(this, matrix.into());
+
+            ret
+        }
+    }
+
+    pub fn bond_pose(&self) -> radiance::math::Mat44 {
+        unsafe {
+            let this = self as *const IHAnimBoneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).bond_pose)(this);
+
+            ret
+        }
+    }
+
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
         uuid::Uuid::from_bytes(IHAnimBoneComponent::INTERFACE_ID)
@@ -3378,6 +3401,8 @@ pub trait IHAnimBoneComponentImpl {
         &self,
         keyframes: Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>,
     ) -> crosscom::Void;
+    fn set_bond_pose(&self, matrix: radiance::math::Mat44) -> crosscom::Void;
+    fn bond_pose(&self) -> radiance::math::Mat44;
 }
 
 impl crosscom::ComInterface for IHAnimBoneComponent {
@@ -3487,6 +3512,23 @@ macro_rules! ComObject_HAnimBoneComponent {
                 }
             }
 
+            fn set_bond_pose(
+                this: *const *const std::os::raw::c_void,
+                matrix: radiance::math::Mat44,
+            ) -> crosscom::Void {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
+                    (*__crosscom_object).inner.set_bond_pose(matrix)
+                }
+            }
+
+            fn bond_pose(this: *const *const std::os::raw::c_void) -> radiance::math::Mat44 {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
+                    (*__crosscom_object).inner.bond_pose()
+                }
+            }
+
             unsafe extern "system" fn on_loading(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
                 (*__crosscom_object).inner.on_loading().into()
@@ -3517,6 +3559,8 @@ macro_rules! ComObject_HAnimBoneComponent {
                         on_loading,
                         on_updating,
                         set_keyframes,
+                        set_bond_pose,
+                        bond_pose,
                     },
                 };
 

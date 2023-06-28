@@ -76,6 +76,8 @@ fn load_clump(
         .iter()
         .map(|f| {
             let entity = CoreEntity::create(f.name().unwrap_or("unnamed".to_string()), true);
+            let m = create_matrix(f);
+            entity.transform().as_ref().borrow_mut().set_matrix(m);
             if let Some(hanim) = f.hanim_plugin() {
                 let bone = ComRc::<IComponent>::from_object(HAnimBoneComponent::new(
                     entity.clone(),
@@ -92,26 +94,27 @@ fn load_clump(
     let mut hanim_bone = None;
 
     for i in 0..chunk.frames.len() {
-        if chunk.frames[i].parent > 0 && chunk.frames[i].parent != i as i32 {
+        if chunk.frames[i].parent < 0 {
+            parent.attach(entities[i].clone());
+        } else if chunk.frames[i].parent != i as i32 {
             entities[chunk.frames[i].parent as usize].attach(entities[i].clone());
-        } else {
-            if entities[i]
+        }
+
+        if hanim_bone.is_none()
+            && entities[i]
                 .get_component(IHAnimBoneComponent::uuid())
                 .is_some()
-            {
-                let mut indexed_bones = HashMap::new();
-                let hanim = chunk.frames[i].hanim_plugin().unwrap();
-                for b in &hanim.bones {
-                    indexed_bones.insert(b.index, bones.get(&b.id).unwrap().clone());
-                }
-
-                hanim_bone = Some(HAnimBone {
-                    bone_root: entities[i].clone(),
-                    indexed_bones,
-                })
-            } else {
-                parent.attach(entities[i].clone());
+        {
+            let mut indexed_bones = HashMap::new();
+            let hanim = chunk.frames[i].hanim_plugin().unwrap();
+            for b in &hanim.bones {
+                indexed_bones.insert(b.index, bones.get(&b.id).unwrap().clone());
             }
+
+            hanim_bone = Some(HAnimBone {
+                bone_root: entities[i].clone(),
+                indexed_bones,
+            })
         }
     }
 
@@ -308,18 +311,22 @@ pub(crate) fn create_geometry_internal(
 
         let mut bones = vec![];
         let anm = load_anm(vfs, &PathBuf::from("/gamedata/PALActor/101/C03.anm"));
+        // let anm = load_anm(vfs, &PathBuf::from("/Model/NpcP5/cunmin/114_chiyao.anm"));
 
         for i in 0..skin.matrix.len() {
             let bone = indexed_bones.get(&(i as u32)).unwrap();
+            let bond_pose = create_mat44_from_matrix44f(&skin.matrix[i]);
             bone.transform()
                 .borrow_mut()
-                .set_matrix(create_mat44_from_matrix44f(&skin.matrix[i]));
+                .set_matrix(Mat44::inversed(&bond_pose));
 
             let bone_component = bone
                 .get_component(IHAnimBoneComponent::uuid())
                 .unwrap()
                 .query_interface::<IHAnimBoneComponent>()
                 .unwrap();
+
+            bone_component.set_bond_pose(bond_pose);
 
             if let Ok(a) = &anm {
                 bone_component.set_keyframes(a[i].clone());

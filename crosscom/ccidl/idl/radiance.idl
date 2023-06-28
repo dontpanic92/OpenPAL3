@@ -158,6 +158,12 @@ class SkinnedMeshComponent: ISkinnedMeshComponent {}
 interface IHAnimBoneComponent: IComponent {
     [internal(), rust()]
     crosscom::Void set_keyframes(Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame> keyframes);
+
+    [internal(), rust()]
+    crosscom::Void set_bond_pose(radiance::math::Mat44 matrix);
+    
+    [internal(), rust()]
+    radiance::math::Mat44 bond_pose();
 }
 
 [uuid(0fc724de-ae8c-42f1-9543-511c11560903)]
