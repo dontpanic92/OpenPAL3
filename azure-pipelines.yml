@@ -47,9 +47,9 @@ steps:
     script: |
       $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
-      cd openpal3
+      cd yaobow/yaobow
       & cargo build --release 2>&1 | %{ "$_" }
-      cd ../tools/dev_tools
+      cd ../yaobow/yaobow_editor
       & cargo build --release 2>&1 | %{ "$_" }
 
 - task: CopyFiles@2
