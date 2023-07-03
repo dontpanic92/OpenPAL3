@@ -54,24 +54,24 @@ steps:
 
 - task: CopyFiles@2
   inputs:
-    SourceFolder: 'openpal3'
+    SourceFolder: '.'
     Contents: 'openpal3.toml'
     TargetFolder: '$(Build.ArtifactStagingDirectory)'
   
 - task: CopyFiles@2
   inputs:
     SourceFolder: 'target/release'
-    Contents: 'openpal3.exe'
+    Contents: 'yaobow.exe'
     TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
 - task: CopyFiles@2
   inputs:
     SourceFolder: 'target/release'
-    Contents: 'dev_tools.exe'
+    Contents: 'yaobow_editor.exe'
     TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
 - task: PublishBuildArtifacts@1
   inputs:
     PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-    ArtifactName: 'openpal3'
+    ArtifactName: 'yaobow'
     publishLocation: 'Container'
