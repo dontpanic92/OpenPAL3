@@ -17,12 +17,6 @@ steps:
   submodules: true
 
 - task: PowerShell@2
-  displayName: 'Install choco'
-  inputs:
-    targetType: 'inline'
-    script: 'Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString(''https://chocolatey.org/install.ps1''))'
-
-- task: PowerShell@2
   displayName: 'Install dependencies'
   inputs:
     targetType: 'inline'
@@ -46,6 +40,8 @@ steps:
     errorActionPreference: continue
     script: |
       $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
+      echo $vulkanSdkVersion
+      ls C:\VulkanSDK
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
       cd yaobow/yaobow
       & cargo build --release 2>&1 | %{ "$_" }
