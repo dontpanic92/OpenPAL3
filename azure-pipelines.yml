@@ -49,7 +49,7 @@ steps:
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
       cd yaobow/yaobow
       & cargo build --release 2>&1 | %{ "$_" }
-      cd ../yaobow/yaobow_editor
+      cd ../yaobow_editor
       & cargo build --release 2>&1 | %{ "$_" }
 
 - task: CopyFiles@2
