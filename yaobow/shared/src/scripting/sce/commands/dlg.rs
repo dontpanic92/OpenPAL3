@@ -25,6 +25,8 @@ impl SceCommand for SceCommandDlg {
     ) -> bool {
         if self.dlg_end {
             // state.global_state_mut().set_adv_input_enabled(self.adv_input_enabled);
+            state.dialog_box().clear_avator();
+
             return true;
         }
 
