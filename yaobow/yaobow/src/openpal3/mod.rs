@@ -13,7 +13,6 @@ pub fn run_openpal3() {
     app.run();
 }
 
-#[cfg_attr(target_os = "android", ndk_glue::main(backtrace = "on"))]
 pub fn openpal3_android_entry() {
     let config = YaobowConfig {
         asset_path: "/sdcard/Games/PAL3".to_string(),

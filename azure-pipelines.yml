@@ -17,17 +17,15 @@ steps:
   submodules: true
 
 - task: PowerShell@2
-  displayName: 'Install choco'
+  displayName: 'Install Vulkan SDK'
   inputs:
     targetType: 'inline'
-    script: 'Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString(''https://chocolatey.org/install.ps1''))'
-
-- task: PowerShell@2
-  displayName: 'Install dependencies'
-  inputs:
-    targetType: 'inline'
+    errorActionPreference: continue
     script: |
-      choco install vulkan-sdk
+      $vulkanSdkVersion = "1.3.250.1"
+      Invoke-WebRequest https://sdk.lunarg.com/sdk/download/$vulkanSdkVersion/windows/VulkanSDK-$vulkanSdkVersion-Installer.exe -OutFile $(Agent.TempDirectory)/vulkan_sdk.exe
+      $(Agent.TempDirectory)/vulkan_sdk.exe in --da --al -c
+      ls C:\VulkanSDK
 
 - task: PowerShell@2
   displayName: 'Install rust'
@@ -45,33 +43,33 @@ steps:
     targetType: 'inline'
     errorActionPreference: continue
     script: |
-      $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
+      $vulkanSdkVersion = "1.3.250.1"
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
-      cd openpal3
+      cd yaobow/yaobow
       & cargo build --release 2>&1 | %{ "$_" }
-      cd ../tools/dev_tools
+      cd ../yaobow_editor
       & cargo build --release 2>&1 | %{ "$_" }
 
 - task: CopyFiles@2
   inputs:
-    SourceFolder: 'openpal3'
+    SourceFolder: '.'
     Contents: 'openpal3.toml'
     TargetFolder: '$(Build.ArtifactStagingDirectory)'
   
 - task: CopyFiles@2
   inputs:
     SourceFolder: 'target/release'
-    Contents: 'openpal3.exe'
+    Contents: 'yaobow.exe'
     TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
 - task: CopyFiles@2
   inputs:
     SourceFolder: 'target/release'
-    Contents: 'dev_tools.exe'
+    Contents: 'yaobow_editor.exe'
     TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
 - task: PublishBuildArtifacts@1
   inputs:
     PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-    ArtifactName: 'openpal3'
+    ArtifactName: 'yaobow'
     publishLocation: 'Container'

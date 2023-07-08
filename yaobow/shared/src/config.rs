@@ -6,7 +6,6 @@ pub struct YaobowConfig {
 }
 
 impl YaobowConfig {
-    #[cfg(not(target_os = "android"))]
     pub fn load(config_name: &str, app_name: &str) -> YaobowConfig {
         use crate::ydirs;
 

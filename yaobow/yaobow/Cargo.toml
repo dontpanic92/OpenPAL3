@@ -11,7 +11,7 @@ name = "yaobow"
 path = "src/main.rs"
 
 [lib]
-name = "libyaobow"
+name = "yaobow"
 path = "src/lib.rs"
 crate-type = ["lib", "cdylib"]
 
