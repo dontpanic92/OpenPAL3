@@ -17,6 +17,17 @@ steps:
   submodules: true
 
 - task: PowerShell@2
+  displayName: 'Install Vulkan SDK'
+  inputs:
+    targetType: 'inline'
+    errorActionPreference: continue
+    script: |
+      $vulkanSdkVersion = "1.3.250.1"
+      Invoke-WebRequest https://sdk.lunarg.com/sdk/download/$vulkanSdkVersion/windows/VulkanSDK-$vulkanSdkVersion-Installer.exe -OutFile $(Agent.TempDirectory)/vulkan_sdk.exe
+      $(Agent.TempDirectory)/vulkan_sdk.exe in --da --al -c
+      ls C:\VulkanSDK
+
+- task: PowerShell@2
   displayName: 'Install rust'
   inputs:
     targetType: 'inline'
@@ -33,9 +44,6 @@ steps:
     errorActionPreference: continue
     script: |
       $vulkanSdkVersion = "1.3.250.1"
-      Invoke-WebRequest https://sdk.lunarg.com/sdk/download/$vulkanSdkVersion/windows/VulkanSDK-$vulkanSdkVersion-Installer.exe -OutFile $(Agent.TempDirectory)/vulkan_sdk.exe
-      $(Agent.TempDirectory)/vulkan_sdk.exe in --da --al -c
-      ls C:\VulkanSDK
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
       cd yaobow/yaobow
       & cargo build --release 2>&1 | %{ "$_" }
