@@ -33,7 +33,7 @@ steps:
     errorActionPreference: continue
     script: |
       $vulkanSdkVersion = "1.3.250.1"
-      Invoke-WebRequest https://sdk.lunarg.com/sdk/download/$(vulkanSdkVersion)/windows/VulkanSDK-$(vulkanSdkVersion)-Installer.exe -OutFile $(Agent.TempDirectory)/vulkan_sdk.exe
+      Invoke-WebRequest https://sdk.lunarg.com/sdk/download/$vulkanSdkVersion/windows/VulkanSDK-$vulkanSdkVersion-Installer.exe -OutFile $(Agent.TempDirectory)/vulkan_sdk.exe
       $(Agent.TempDirectory)/vulkan_sdk.exe /S
       ls C:\VulkanSDK
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
