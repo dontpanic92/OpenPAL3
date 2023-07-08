@@ -8,7 +8,6 @@ build = "build.rs"
 [dependencies]
 
 # General
-arboard = "2.1"
 backtrace = "0.3.44"
 bitflags = "1.2.1"
 crosscom = { path = "../../crosscom/runtime/rust" }
@@ -46,6 +45,7 @@ minimp3 = "0.5.1"
 gilrs = "0.8.1"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
+arboard = "2.1"
 alto = { git = "https://github.com/dontpanic92/alto", features = ["dynamic"] }
 
 [target.'cfg(target_os = "android")'.dependencies]

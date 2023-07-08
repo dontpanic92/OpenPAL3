@@ -3,7 +3,9 @@ mod windows;
 #[cfg(not(target_os = "windows"))]
 mod winit;
 
+#[cfg_attr(target_os = "android", path = "clipboard_nop.rs")]
 mod clipboard;
+
 mod theme;
 
 use self::theme::setup_theme;
