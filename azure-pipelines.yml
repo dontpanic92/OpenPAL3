@@ -39,8 +39,8 @@ steps:
     targetType: 'inline'
     errorActionPreference: continue
     script: |
-      $vulkanSdkVersion = (choco list vulkan-sdk  -lr | Select -Index 1).Split("|") | Select -Index 1
-      choco list vulkan-sdk  -lr
+      $vulkanSdkVersion = (choco list vulkan-sdk -lr -Split "\n" | select -Index 1) -Split " " | Select -Index 1
+      choco list vulkan-sdk -lr
       echo $vulkanSdkVersion
       ls C:\VulkanSDK
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
