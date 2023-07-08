@@ -17,13 +17,6 @@ steps:
   submodules: true
 
 - task: PowerShell@2
-  displayName: 'Install dependencies'
-  inputs:
-    targetType: 'inline'
-    script: |
-      choco install vulkan-sdk
-
-- task: PowerShell@2
   displayName: 'Install rust'
   inputs:
     targetType: 'inline'
@@ -39,9 +32,9 @@ steps:
     targetType: 'inline'
     errorActionPreference: continue
     script: |
-      $vulkanSdkVersion = (choco list vulkan-sdk -lr -Split "\n" | select -Index 1) -Split " " | Select -Index 1
-      choco list vulkan-sdk -lr
-      echo $vulkanSdkVersion
+      $vulkanSdkVersion = "1.3.250.1"
+      Invoke-WebRequest https://sdk.lunarg.com/sdk/download/$(vulkanSdkVersion)/windows/VulkanSDK-$(vulkanSdkVersion)-Installer.exe -OutFile $(Agent.TempDirectory)/vulkan_sdk.exe
+      $(Agent.TempDirectory)/vulkan_sdk.exe /S
       ls C:\VulkanSDK
       $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
       cd yaobow/yaobow
