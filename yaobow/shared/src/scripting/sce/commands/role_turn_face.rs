@@ -30,7 +30,7 @@ impl SceCommand for SceCommandRoleTurnFace {
 }
 
 impl SceCommandRoleTurnFace {
-    pub fn new(role_id: i32, degree: f32) -> Self {
-        Self { role_id, degree }
+    pub fn new(role_id: i32, degree: i32) -> Self {
+        Self { role_id, degree: degree as f32 }
     }
 }
