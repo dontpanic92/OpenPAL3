@@ -8,7 +8,7 @@ pub struct Transform {
 }
 
 impl Transform {
-    const EPS: f32 = 0.0001;
+    pub const EPS: f32 = 0.0001;
 
     pub fn new() -> Self {
         Self {
@@ -26,6 +26,23 @@ impl Transform {
 
     pub fn position(&self) -> Vec3 {
         Vec3::new(self.mat[0][3], self.mat[1][3], self.mat[2][3])
+    }
+
+    pub fn euler(&self) -> Vec3 {
+        let sy = (self.mat[0][0] * self.mat[0][0] + self.mat[1][0] * self.mat[1][0]).sqrt();
+        let singular = sy < Self::EPS;
+
+        if !singular {
+            let x = self.mat[2][0].atan2(sy).to_degrees();
+            let y = self.mat[2][1].atan2(self.mat[2][2]).to_degrees();
+            let z = self.mat[1][0].atan2(self.mat[0][0]).to_degrees();
+            Vec3::new(x, y, z)
+        } else {
+            let x = self.mat[2][0].atan2(sy).to_degrees();
+            let y = (-self.mat[1][2]).atan2(self.mat[1][1]).to_degrees();
+            let z = 0.;
+            Vec3::new(x, y, z)
+        }
     }
 
     pub fn set_matrix(&mut self, mat: Mat44) -> &mut Self {

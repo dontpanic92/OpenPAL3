@@ -3,6 +3,7 @@ mod between;
 mod call;
 mod camera_default;
 mod camera_move;
+mod camera_rotate;
 mod camera_set;
 mod cmp;
 mod dlg;
@@ -54,6 +55,7 @@ pub use between::SceCommandBetween;
 pub use call::SceCommandCall;
 pub use camera_default::SceCommandCameraDefault;
 pub use camera_move::SceCommandCameraMove;
+pub use camera_rotate::SceCommandCameraRotate;
 pub use camera_set::SceCommandCameraSet;
 pub use cmp::{
     SceCommandEq, SceCommandGeq, SceCommandGeq2, SceCommandGt, SceCommandLeq, SceCommandLs,

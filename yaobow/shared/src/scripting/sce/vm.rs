@@ -397,7 +397,7 @@ impl SceProcContext {
             }
             33 => {
                 // CameraRotate
-                nop_command!(self, CameraRotate, f32, f32, f32, i32)
+                command!(self, SceCommandCameraRotate, to_rot_x: f32, to_rot_y: f32, duration: f32, _unknown: i32)
             }
             34 => {
                 // CameraMove

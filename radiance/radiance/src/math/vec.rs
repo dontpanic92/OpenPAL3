@@ -42,6 +42,12 @@ impl Vec3 {
         z: 0.,
     };
 
+    pub const EAST: Self = Vec3 {
+        x: 1.,
+        y: 0.,
+        z: 0.,
+    };
+
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Vec3 { x, y, z }
     }
