@@ -361,7 +361,7 @@ impl SceProcContext {
             }
             24 => {
                 // RoleTurnFace
-                command!(self, SceCommandRoleTurnFace, role_id: i32, degree: f32)
+                command!(self, SceCommandRoleTurnFace, role_id: i32, degree: i32)
             }
             25 => {
                 // TeamOpen

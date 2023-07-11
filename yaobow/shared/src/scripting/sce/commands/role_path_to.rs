@@ -72,9 +72,14 @@ impl SceCommand for SceCommandRolePathTo {
             Vec3::add(&position, &Vec3::dot(step, &Vec3::normalized(&remain)))
         };
 
+        let mut look_at = Vec3::new(to.x, position.y, to.z);
+        if self.run == 2 {
+            look_at = Vec3::add(&position, &Vec3::sub(&position, &to));
+        }
+
         role.transform()
             .borrow_mut()
-            .look_at(&Vec3::new(to.x, position.y, to.z))
+            .look_at(&look_at)
             .set_position(&new_position);
 
         if completed {
