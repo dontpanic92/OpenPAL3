@@ -498,7 +498,7 @@ impl SceProcContext {
             }
             67 => {
                 // DlgFace
-                nop_command!(self, DlgFace, i32, string, i32)
+                command!(self, SceCommandDlgFace, id: i32, face_name: string, left_or_right: i32)
             }
             68 => {
                 // Note
