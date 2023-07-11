@@ -20,7 +20,9 @@ impl SceCommand for SceCommandDlgFace {
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {
-        state.dialog_box().set_avator(&self.face_name, self.left_or_right);
+        state
+            .dialog_box()
+            .set_avator(&self.face_name, self.left_or_right);
 
         true
     }

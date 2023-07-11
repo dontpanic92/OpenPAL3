@@ -1,12 +1,12 @@
 use crosscom::ComRc;
 use mini_fs::MiniFs;
 
+use super::ui_manager::UiManager;
 use super::DebugLayer;
 use crate::comdef::ISceneManager;
 use crate::rendering::{self, RenderingEngine};
 use crate::{
     audio::AudioEngine,
-    imgui::ImguiContext,
     input::{InputEngine, InputEngineInternal},
 };
 use std::{cell::RefCell, rc::Rc};
@@ -15,7 +15,7 @@ pub struct CoreRadianceEngine {
     rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
     audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngineInternal>>,
-    imgui_context: Rc<RefCell<ImguiContext>>,
+    ui_manager: Rc<UiManager>,
     scene_manager: ComRc<ISceneManager>,
     virtual_fs: Rc<RefCell<MiniFs>>,
     debug_layer: Option<Box<dyn DebugLayer>>,
@@ -26,14 +26,14 @@ impl CoreRadianceEngine {
         rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngineInternal>>,
-        imgui_context: Rc<RefCell<ImguiContext>>,
+        ui_manager: Rc<UiManager>,
         scene_manager: ComRc<ISceneManager>,
     ) -> Self {
         Self {
             rendering_engine,
             audio_engine,
             input_engine,
-            imgui_context,
+            ui_manager,
             scene_manager,
             virtual_fs: Rc::new(RefCell::new(MiniFs::new(false))),
             debug_layer: None,
@@ -60,12 +60,12 @@ impl CoreRadianceEngine {
         self.debug_layer = Some(debug_layer);
     }
 
-    pub fn scene_manager(&mut self) -> ComRc<ISceneManager> {
+    pub fn scene_manager(&self) -> ComRc<ISceneManager> {
         self.scene_manager.clone()
     }
 
-    pub fn imgui_context(&self) -> Rc<RefCell<ImguiContext>> {
-        self.imgui_context.clone()
+    pub fn ui_manager(&self) -> Rc<UiManager> {
+        self.ui_manager.clone()
     }
 
     pub fn update(&self, delta_sec: f32) {
@@ -73,10 +73,10 @@ impl CoreRadianceEngine {
 
         let scene_manager = self.scene_manager.clone();
         let debug_layer = self.debug_layer.as_ref();
-        let ui_frame = self.imgui_context.borrow_mut().draw_ui(delta_sec, |ui| {
+        let ui_frame = self.ui_manager.update(delta_sec, |ui| {
             scene_manager.update(ui, delta_sec);
             if let Some(dl) = debug_layer {
-                dl.update(scene_manager, ui, delta_sec);
+                dl.update(scene_manager.clone(), ui, delta_sec);
             }
         });
 

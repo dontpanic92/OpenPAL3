@@ -42,6 +42,8 @@ pub struct ScriptVm<TAppContext: 'static> {
     r1: u32,
     r2: u32,
     pub(crate) robj: usize,
+
+    yield_func: Option<i32>,
 }
 
 impl<TAppContext: 'static> ScriptVm<TAppContext> {
@@ -61,6 +63,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             r1: 0,
             r2: 0,
             robj: 0,
+            yield_func: None,
         };
 
         vm.debug_update_module();
@@ -119,9 +122,20 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             self.debug_update_context();
             self.wait_for_action();
 
+            match self.yield_func {
+                Some(function) => {
+                    self.callsys(function);
+                    if self.yield_func.is_some() {
+                        return;
+                    }
+                }
+                None => {}
+            }
+
             println!("pc {}", self.context.pc);
             let inst = self.read_inst(&function);
             println!("inst {}", inst);
+
             macro_rules! command {
                 ($cmd_name: ident $(, $param_name: ident : $param_type: ident)*) => {{
                     $(let $param_name = data_read::$param_type(&function.inst, &mut self.context.pc);)*
@@ -235,7 +249,12 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
                 94 => command!(jnp_jgz, offset: i32),
                 95 => command!(cmpi: i32, rhs: i32),
                 96 => command!(cmpi: u32, rhs: u32),
-                97 => command!(callsys, function_index: i32),
+                97 => {
+                    command!(callsys, function_index: i32);
+                    if self.yield_func.is_some() {
+                        return;
+                    }
+                }
                 98 => command!(callbnd, function_index: u32),
                 99 => command!(rdga4, index: i32),
                 100 => command!(movga4, index: i32),
@@ -380,7 +399,11 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     fn callsys(&mut self, function: i32) {
         let index = -function - 1;
         let context = self.g.clone();
-        context.borrow().call_function(self, index as usize);
+        let context = context.borrow();
+        match context.call_function(self, index as usize) {
+            super::FunctionState::Yield => self.yield_func = Some(function),
+            super::FunctionState::Completed => self.yield_func = None,
+        }
     }
 
     fn suspend(&mut self) {
@@ -855,12 +878,28 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
     #[inline]
     unsafe fn write_stack<T>(&mut self, pos: usize, data: T) {
-        *(&mut self.context.stack[pos] as *mut u8 as *mut T) = data;
+        if std::mem::size_of::<T>() == 8 {
+            let data_bytes: &[u8; 8] = std::mem::transmute(&data as *const _ as *const u8);
+            for i in 0..8 {
+                self.context.stack[pos + i] = data_bytes[i];
+            }
+        } else {
+            *(&mut self.context.stack[pos] as *mut u8 as *mut T) = data;
+        }
     }
 
     #[inline]
     unsafe fn read_stack<T: Copy>(&self, pos: usize) -> T {
-        *(&self.context.stack[pos] as *const u8 as *const T)
+        if std::mem::size_of::<T>() == 8 {
+            let mut data_bytes = [0u8; 8];
+            for i in 0..8 {
+                data_bytes[i] = self.context.stack[pos + i];
+            }
+
+            *(&data_bytes as *const u8 as *const T)
+        } else {
+            *(&self.context.stack[pos] as *const u8 as *const T)
+        }
     }
 
     fn debug_update_module(&mut self) {

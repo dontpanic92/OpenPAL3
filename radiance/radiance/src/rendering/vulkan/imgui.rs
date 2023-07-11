@@ -27,7 +27,7 @@ impl ImguiRenderer {
         render_pass: vk::RenderPass,
         descriptor_manager: Rc<DescriptorManager>,
         in_flight_frames: usize,
-        context: &mut ImguiContext,
+        context: &ImguiContext,
     ) -> Self {
         let renderer = {
             let allocator = {

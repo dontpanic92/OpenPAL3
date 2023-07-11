@@ -66,7 +66,7 @@ impl ImguiContext {
         Self { context, platform }
     }
 
-    pub fn draw_ui<F: FnOnce(&Ui)>(&mut self, delta_sec: f32, draw: F) -> ImguiFrame {
+    pub fn draw_ui<F: FnOnce(&Ui)>(&self, delta_sec: f32, draw: F) -> ImguiFrame {
         self.platform.borrow_mut().new_frame(delta_sec);
 
         let mut context = self.context.borrow_mut();
@@ -76,7 +76,7 @@ impl ImguiContext {
         ImguiFrame { frame_begun: true }
     }
 
-    pub fn context_mut(&mut self) -> RefMut<Context> {
+    pub fn context_mut(&self) -> RefMut<Context> {
         self.context.borrow_mut()
     }
 }

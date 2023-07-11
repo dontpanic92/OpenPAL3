@@ -1,13 +1,17 @@
-use std::path::PathBuf;
+use std::{cell::RefCell, path::PathBuf};
 
-use crosscom::ComRc;
+use crosscom::{ComObject, ComRc};
 use radiance::{
     application::Application,
     comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
 };
 use shared::{
     fs::init_virtual_fs,
-    openpal4::{asset_loader::AssetLoader, scripting::create_script_vm},
+    openpal4::{
+        app_context::Pal4AppContext, asset_loader::AssetLoader, director::OpenPAL4Director,
+        scripting::create_script_vm,
+    },
+    scripting::angelscript::ScriptVm,
 };
 
 use crate::ComObject_OpenPal4ApplicationLoaderComponent;
@@ -26,11 +30,17 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
 
         let input_engine = self.app.engine().borrow().input_engine();
         let audio_engine = self.app.engine().borrow().audio_engine();
+        let scene_manager = self.app.engine().borrow().scene_manager().clone();
+        let ui = self.app.engine().borrow().ui_manager();
 
         let vfs = init_virtual_fs(self.root_path.to_str().unwrap(), None);
-        let loader = AssetLoader::new(vfs);
-        let mut vm = create_script_vm(loader);
-        vm.execute();
+        let loader = AssetLoader::new(
+            self.app.engine().borrow().rendering_component_factory(),
+            vfs,
+        );
+
+        let director = OpenPAL4Director::new(loader, scene_manager.clone(), ui);
+        scene_manager.set_director(ComRc::from_object(director));
     }
 
     fn on_updating(&self, _delta_sec: f32) {}

@@ -12,16 +12,16 @@ pub fn init_imgui_ini(app: &ComRc<IApplication>) {
     if !imgui_ini.exists() {
         app.engine()
             .borrow()
+            .ui_manager()
             .imgui_context()
-            .borrow_mut()
             .context_mut()
             .load_ini_settings(DEFAULT_IMGUI_INI_CONTENT);
     }
 
     app.engine()
         .borrow()
+        .ui_manager()
         .imgui_context()
-        .borrow_mut()
         .context_mut()
         .set_ini_filename(imgui_ini);
 }

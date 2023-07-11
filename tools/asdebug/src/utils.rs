@@ -1,6 +1,6 @@
 use eframe::egui::{self};
 use shared::{
-    openpal4::scripting::Pal4AppContext,
+    openpal4::app_context::Pal4AppContext,
     scripting::angelscript::{AsInst, AsInstInstance, ScriptGlobalContext, ScriptModule},
 };
 

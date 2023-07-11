@@ -1,14 +1,19 @@
 use super::ScriptVm;
 
+pub enum FunctionState {
+    Yield,
+    Completed,
+}
+
 pub struct ScriptGlobalFunction<TAppContext: 'static> {
     pub name: String,
-    pub func: Box<dyn Fn(&str, &mut ScriptVm<TAppContext>)>,
+    pub func: Box<dyn Fn(&str, &mut ScriptVm<TAppContext>) -> FunctionState>,
 }
 
 impl<TAppContext: 'static> ScriptGlobalFunction<TAppContext> {
     pub fn new<S: AsRef<str>>(
         name: S,
-        func: Box<dyn Fn(&str, &mut ScriptVm<TAppContext>)>,
+        func: Box<dyn Fn(&str, &mut ScriptVm<TAppContext>) -> FunctionState>,
     ) -> Self {
         Self {
             name: name.as_ref().to_string(),
@@ -41,7 +46,7 @@ impl<TAppContext: 'static> ScriptGlobalContext<TAppContext> {
         self.functions.push(function);
     }
 
-    pub fn call_function(&self, vm: &mut ScriptVm<TAppContext>, index: usize) {
+    pub fn call_function(&self, vm: &mut ScriptVm<TAppContext>, index: usize) -> FunctionState {
         (self.functions[index].func)(&self.functions[index].name, vm)
     }
 
@@ -117,21 +122,27 @@ impl<TAppContext: 'static> ScriptGlobalContext<TAppContext> {
     }
 }
 
-fn abs<TAppContext>(_: &str, vm: &mut ScriptVm<TAppContext>) {
+fn abs<TAppContext>(_: &str, vm: &mut ScriptVm<TAppContext>) -> FunctionState {
     as_params!(vm, number: i32);
 
     let ret = number.abs();
     vm.stack_push::<i32>(ret);
+
+    FunctionState::Completed
 }
 
-fn string_factory<TAppContext>(_: &str, vm: &mut ScriptVm<TAppContext>) {
+fn string_factory<TAppContext>(_: &str, vm: &mut ScriptVm<TAppContext>) -> FunctionState {
     as_params!(vm, _len: u32, str_id: u32);
     let string = vm.context.module.borrow().strings[str_id as usize].clone();
     let ret = vm.push_object(string);
 
     vm.robj = ret;
+
+    FunctionState::Completed
 }
 
-pub fn not_implemented<TAppContext>(name: &str, _: &mut ScriptVm<TAppContext>) {
-    println!("unimplemented function called: {}", name);
+pub fn not_implemented<TAppContext>(name: &str, _: &mut ScriptVm<TAppContext>) -> FunctionState {
+    panic!("unimplemented function called: {}", name);
+
+    FunctionState::Completed
 }

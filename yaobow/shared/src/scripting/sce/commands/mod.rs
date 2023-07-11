@@ -7,9 +7,9 @@ mod camera_rotate;
 mod camera_set;
 mod cmp;
 mod dlg;
+mod dlg_face;
 mod dlg_sel;
 mod dlg_time;
-mod dlg_face;
 mod entry_row;
 mod fop;
 mod get_appr;
@@ -63,9 +63,9 @@ pub use cmp::{
     SceCommandNeq,
 };
 pub use dlg::SceCommandDlg;
+pub use dlg_face::SceCommandDlgFace;
 pub use dlg_sel::SceCommandDlgSel;
 pub use dlg_time::SceCommandDlgTime;
-pub use dlg_face::SceCommandDlgFace;
 pub use entry_row::SceCommandEntryRow;
 pub use fop::SceCommandFop;
 pub use get_appr::SceCommandGetAppr;

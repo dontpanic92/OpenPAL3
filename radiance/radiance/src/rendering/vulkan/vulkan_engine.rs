@@ -51,8 +51,6 @@ pub struct VulkanRenderingEngine {
 
     image_available_semaphore: vk::Semaphore,
     render_finished_semaphore: vk::Semaphore,
-
-    imgui_context: Rc<RefCell<ImguiContext>>,
 }
 
 impl RenderingEngine for VulkanRenderingEngine {
@@ -99,7 +97,7 @@ impl RenderingEngine for VulkanRenderingEngine {
 impl VulkanRenderingEngine {
     pub fn new(
         window: &Window,
-        imgui_context: Rc<RefCell<ImguiContext>>,
+        imgui_context: &ImguiContext,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let entry = unsafe { Rc::new(Entry::load().unwrap()) };
         let instance = Rc::new(Instance::new(entry.clone()));
@@ -179,7 +177,6 @@ impl VulkanRenderingEngine {
             present_mode,
             &descriptor_manager,
             &adhoc_command_runner,
-            &mut imgui_context.as_ref().borrow_mut(),
         )
         .unwrap();
 
@@ -192,7 +189,7 @@ impl VulkanRenderingEngine {
             swapchain.render_pass(),
             descriptor_manager.clone(),
             swapchain.images_len(),
-            &mut imgui_context.as_ref().borrow_mut(),
+            imgui_context,
         )));
 
         swapchain.set_imgui(imgui.clone());
@@ -254,7 +251,6 @@ impl VulkanRenderingEngine {
             debug_entry,
             image_available_semaphore,
             render_finished_semaphore,
-            imgui_context,
             imgui,
         };
 
@@ -332,7 +328,6 @@ impl VulkanRenderingEngine {
             self.present_mode,
             self.descriptor_manager(),
             &self.adhoc_command_runner,
-            &mut self.imgui_context.as_ref().borrow_mut(),
         )?;
         self.imgui
             .as_ref()

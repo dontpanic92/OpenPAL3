@@ -1,0 +1,13 @@
+module(rust) shared::openpal4::comdef;
+
+import crosscom.idl;
+import radiance.idl;
+
+[uuid(f3d7f0fd-20ca-450c-bd66-ad019b984a54)]
+interface IOpenPAL4Director: IDirector {
+    [internal(), rust()]
+    &'static shared::openpal4::director::OpenPAL4Director get();
+}
+
+[uuid(981884a7-63e8-4ee1-96f1-6efd259ebe3b)]
+class OpenPAL4Director: IOpenPAL4Director {}

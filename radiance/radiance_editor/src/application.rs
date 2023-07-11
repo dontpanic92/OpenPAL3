@@ -1,3 +1,5 @@
+use std::borrow::BorrowMut;
+
 use crosscom::ComRc;
 use radiance::{
     comdef::{IApplication, IComponentImpl, IDirector},
@@ -18,10 +20,11 @@ impl IComponentImpl for EditorApplicationLoader {
     fn on_loading(&self) {
         self.app
             .engine()
-            .borrow_mut()
+            .borrow()
+            .ui_manager()
             .imgui_context()
-            .borrow_mut()
             .context_mut()
+            .borrow_mut()
             .io_mut()
             .config_windows_move_from_title_bar_only = true;
 
@@ -34,12 +37,12 @@ impl IComponentImpl for EditorApplicationLoader {
 
         self.app
             .engine()
-            .borrow_mut()
+            .borrow()
             .scene_manager()
             .push_scene(CoreScene::create());
         self.app
             .engine()
-            .borrow_mut()
+            .borrow()
             .scene_manager()
             .set_director(self.director.clone());
     }

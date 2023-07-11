@@ -11,10 +11,7 @@ use super::{
     instance::Instance,
 };
 use crate::scene::Viewport;
-use crate::{
-    imgui::{ImguiContext, ImguiFrame},
-    rendering::vulkan::imgui::ImguiRenderer,
-};
+use crate::{imgui::ImguiFrame, rendering::vulkan::imgui::ImguiRenderer};
 use ash::prelude::VkResult;
 use ash::vk;
 use std::cell::RefCell;
@@ -56,7 +53,6 @@ impl SwapChain {
         present_mode: vk::PresentModeKHR,
         descriptor_manager: &Rc<DescriptorManager>,
         command_runner: &Rc<AdhocCommandRunner>,
-        gui_context: &mut ImguiContext,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Make it at least 1x1 pixel for images
         capabilities.current_extent.width = capabilities.current_extent.width.max(1);

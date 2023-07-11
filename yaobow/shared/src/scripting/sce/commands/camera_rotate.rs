@@ -2,7 +2,7 @@ use crate::scripting::sce::{SceCommand, SceState};
 use crosscom::ComRc;
 use imgui::Ui;
 use radiance::comdef::ISceneManager;
-use radiance::math::{Vec3, Transform};
+use radiance::math::{Transform, Vec3};
 
 #[derive(Debug, Clone)]
 pub struct SceCommandCameraRotate {
@@ -28,7 +28,7 @@ impl SceCommand for SceCommandCameraRotate {
         let (x_rot, y_rot) = if left > Transform::EPS {
             let (mut x, mut y) = (
                 (self.to_rot_x - cam_rot.x).to_radians() / left * _delta_sec,
-                (self.to_rot_y - cam_rot.y).to_radians() / left * _delta_sec
+                (self.to_rot_y - cam_rot.y).to_radians() / left * _delta_sec,
             );
             if x.abs() < Transform::EPS {
                 x = 0.;
@@ -54,12 +54,7 @@ impl SceCommand for SceCommandCameraRotate {
 }
 
 impl SceCommandCameraRotate {
-    pub fn new(
-        to_rot_x: f32,
-        to_rot_y: f32,
-        duration: f32,
-        _unknown: i32,
-    ) -> Self {
+    pub fn new(to_rot_x: f32, to_rot_y: f32, duration: f32, _unknown: i32) -> Self {
         Self {
             to_rot_x,
             to_rot_y,

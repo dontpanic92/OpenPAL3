@@ -5,7 +5,7 @@ use eframe::egui::{self, CollapsingHeader, ScrollArea, Ui};
 use mini_fs::{MiniFs, StoreExt};
 use shared::{
     fs::init_virtual_fs,
-    openpal4::scripting::{create_context, Pal4AppContext},
+    openpal4::{app_context::Pal4AppContext, scripting::create_context},
     scripting::angelscript::{disasm, ScriptGlobalContext, ScriptModule},
 };
 

@@ -30,15 +30,24 @@ impl DialogBox {
         // dialog box resources
         let mut dialog_pic = Vec::new();
         for i in 0..9 {
-            dialog_pic.push(Self::load_sprite(&format!("/basedata/basedata/ui/flex/dlg{}.tga", i), asset_mgr.as_ref()));
+            dialog_pic.push(Self::load_sprite(
+                &format!("/basedata/basedata/ui/flex/dlg{}.tga", i),
+                asset_mgr.as_ref(),
+            ));
         }
         // a small decoration at bottom-center
-        dialog_pic.push(Self::load_sprite("/basedata/basedata/ui/scene/timeclose.tga", asset_mgr.as_ref()));
+        dialog_pic.push(Self::load_sprite(
+            "/basedata/basedata/ui/scene/timeclose.tga",
+            asset_mgr.as_ref(),
+        ));
 
         // click indicator at bottom-right of the dialog box
         let mut click_indicator_pic = Vec::new();
         for i in 0..2 {
-            click_indicator_pic.push(Self::load_sprite(&format!("/basedata/basedata/ui/scene/page{}.tga", i), asset_mgr.as_ref()),)
+            click_indicator_pic.push(Self::load_sprite(
+                &format!("/basedata/basedata/ui/scene/page{}.tga", i),
+                asset_mgr.as_ref(),
+            ))
         }
 
         Self {
@@ -75,7 +84,8 @@ impl DialogBox {
         };
 
         let dialog_height = window_height * Self::DLG_HEIGHT_FACTOR;
-        let dialog_y = window_height * Self::DLG_Y_POSITION_FACTOR - Self::DLG_DECORATION_BOTTOM_OVER_DIALOG;
+        let dialog_y =
+            window_height * Self::DLG_Y_POSITION_FACTOR - Self::DLG_DECORATION_BOTTOM_OVER_DIALOG;
         let avator_width = window_height * Self::DLG_AVATOR_WIDTH_FACTOR;
         let click_indicator_right_offset = if self.avator_at_right && self.avator.is_some() {
             // avator has set and avator is at right side
@@ -119,12 +129,17 @@ impl DialogBox {
 
                 let decoration_min = (
                     dialog_x + dialog_width / 2.0 - Self::DLG_DECORATION_WIDTH_TRIM,
-                    window_height - Self::DLG_DECORATION_HEIGHT_TRIM
+                    window_height - Self::DLG_DECORATION_HEIGHT_TRIM,
                 );
 
                 let click_indicator_min = [
-                    dialog_x + dialog_width - self.click_indicator_pic[0].width() as f32 * Self::DLG_CLICK_INDICATOR_PADDING_FACTOR - click_indicator_right_offset,
-                    dialog_y + dialog_height - self.click_indicator_pic[0].height() as f32 * Self::DLG_CLICK_INDICATOR_PADDING_FACTOR
+                    dialog_x + dialog_width
+                        - self.click_indicator_pic[0].width() as f32
+                            * Self::DLG_CLICK_INDICATOR_PADDING_FACTOR
+                        - click_indicator_right_offset,
+                    dialog_y + dialog_height
+                        - self.click_indicator_pic[0].height() as f32
+                            * Self::DLG_CLICK_INDICATOR_PADDING_FACTOR,
                 ];
 
                 let list = ui.get_background_draw_list();
@@ -165,7 +180,10 @@ impl DialogBox {
                 list.add_image(
                     self.dialog_pic[4].imgui_texture_id(),
                     [dialog_x, top_left_inner.1],
-                    [dialog_x + self.dialog_pic[4].width() as f32, bottom_left_inner.1],
+                    [
+                        dialog_x + self.dialog_pic[4].width() as f32,
+                        bottom_left_inner.1,
+                    ],
                 )
                 .build();
 
@@ -195,7 +213,10 @@ impl DialogBox {
                 list.add_image(
                     self.dialog_pic[7].imgui_texture_id(),
                     [top_left_inner.0, dialog_y],
-                    [top_right_inner.0, dialog_y + self.dialog_pic[7].height() as f32],
+                    [
+                        top_right_inner.0,
+                        dialog_y + self.dialog_pic[7].height() as f32,
+                    ],
                 )
                 .build();
 
@@ -211,30 +232,32 @@ impl DialogBox {
                 list.add_image(
                     self.dialog_pic[9].imgui_texture_id(),
                     [decoration_min.0, decoration_min.1],
-                    [decoration_min.0 + self.dialog_pic[9].width() as f32, decoration_min.1 + self.dialog_pic[9].height() as f32]
+                    [
+                        decoration_min.0 + self.dialog_pic[9].width() as f32,
+                        decoration_min.1 + self.dialog_pic[9].height() as f32,
+                    ],
                 )
                 .build();
 
                 // avator
                 if let Some(avator) = &self.avator {
-                    let avator_height = avator_width / avator.width() as f32 * avator.height() as f32;
+                    let avator_height =
+                        avator_width / avator.width() as f32 * avator.height() as f32;
                     let (min, max) = if !self.avator_at_right {
                         (
                             [dialog_x + avator_width, window_height - avator_height],
-                            [dialog_x, window_height]
+                            [dialog_x, window_height],
                         )
                     } else {
                         (
-                            [dialog_x + dialog_width - avator_width, window_height - avator_height],
-                            [dialog_x + dialog_width, window_height]
+                            [
+                                dialog_x + dialog_width - avator_width,
+                                window_height - avator_height,
+                            ],
+                            [dialog_x + dialog_width, window_height],
                         )
                     };
-                    list.add_image(
-                        avator.imgui_texture_id(),
-                        min,
-                        max
-                    )
-                    .build();
+                    list.add_image(avator.imgui_texture_id(), min, max).build();
                 }
 
                 // draw click indicator
@@ -249,8 +272,12 @@ impl DialogBox {
                         self.click_indicator_pic[1].imgui_texture_id()
                     },
                     [click_indicator_min[0], click_indicator_min[1]],
-                    [click_indicator_min[0] + self.click_indicator_pic[0].width() as f32, click_indicator_min[1] + self.click_indicator_pic[0].width() as f32]
-                ).build();
+                    [
+                        click_indicator_min[0] + self.click_indicator_pic[0].width() as f32,
+                        click_indicator_min[1] + self.click_indicator_pic[0].width() as f32,
+                    ],
+                )
+                .build();
 
                 // draw text
                 let mut text_x = 0.;
@@ -283,7 +310,11 @@ impl DialogBox {
                             text_color = imgui::ImColor32::WHITE;
                         }
                         _ => {
-                            list.add_text([dialog_x + avator_width + text_x, dialog_y + 18. + text_y], text_color ,&c.to_string());
+                            list.add_text(
+                                [dialog_x + avator_width + text_x, dialog_y + 18. + text_y],
+                                text_color,
+                                &c.to_string(),
+                            );
                             text_x += font_size * 1.1;
                         }
                     }

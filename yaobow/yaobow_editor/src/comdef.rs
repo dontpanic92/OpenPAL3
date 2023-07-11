@@ -1,3 +1,5 @@
+use crate as yaobow_editor;
+
 // Class WelcomePageDirector
 
 #[allow(unused)]
