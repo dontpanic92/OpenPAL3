@@ -506,11 +506,11 @@ impl SceProcContext {
             }
             69 => {
                 // FadeOut
-                nop_command!(self, FadeOut)
+                command!(self, SceCommandFadeOut)
             }
             70 => {
                 // FadeIn
-                nop_command!(self, FadeIn)
+                command!(self, SceCommandFadeIn)
             }
             71 => {
                 // RoleStop
@@ -544,8 +544,8 @@ impl SceProcContext {
                 nop_command!(self, CombatBoss, i32, i32, i32, i32, i32, i32)
             }
             81 => {
-                // FadeWhite
-                nop_command!(self, FadeWhite)
+                // FadeOutWhite
+                command!(self, SceCommandFadeOutWhite)
             }
             82 => {
                 // CombatBoss
@@ -586,8 +586,8 @@ impl SceProcContext {
                 nop_command!(self, ObjectMove, i32, f32, f32, f32, f32)
             }
             91 => {
-                // FadeNormal
-                nop_command!(self, FadeNormal)
+                // FadeInWhite
+                command!(self, SceCommandFadeInWhite)
             }
             102 => {
                 // SwitchRS

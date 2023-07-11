@@ -71,6 +71,35 @@ impl DialogBox {
         self.avator = None;
     }
 
+    pub fn fade_window(&mut self, ui: &Ui, fade_to_white: bool, opacity: f32) {
+        let window_size = ui.io().display_size;
+        ui.window("fade")
+            .collapsible(false)
+            .title_bar(false)
+            .resizable(false)
+            .draw_background(false)
+            .no_decoration()
+            .size(window_size, Condition::Appearing)
+            .position(window_size, Condition::Appearing)
+            .build(|| {
+                let list = ui.get_background_draw_list();
+                let mut color = if fade_to_white {
+                    imgui::ImColor32::WHITE
+                } else {
+                    imgui::ImColor32::BLACK
+                };
+
+                color.a = (255. * opacity) as u8;
+                list.add_rect(
+                    [0., 0.],
+                    window_size,
+                    color
+                )
+                .filled(true)
+                .build();
+            });
+    }
+
     pub fn draw(&mut self, text: &str, ui: &Ui, delta_sec: f32) {
         let [window_width, window_height] = ui.io().display_size;
         let (dialog_x, dialog_width) = {
