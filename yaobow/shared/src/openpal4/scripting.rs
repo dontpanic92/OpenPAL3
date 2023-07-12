@@ -5,11 +5,15 @@ use imgui::{Condition, MouseButton};
 use crate::{
     as_params,
     scripting::angelscript::{
-        not_implemented, FunctionState, ScriptGlobalContext, ScriptGlobalFunction, ScriptVm,
+        not_implemented, ContinuationState, GlobalFunctionContinuation, GlobalFunctionState,
+        ScriptGlobalContext, ScriptGlobalFunction, ScriptVm,
     },
 };
 
 use super::app_context::Pal4AppContext;
+
+type Pal4FunctionState = GlobalFunctionState<Pal4AppContext>;
+type Pal4Continuation = GlobalFunctionContinuation<Pal4AppContext>;
 
 pub fn create_script_vm(app_context: Pal4AppContext) -> ScriptVm<Pal4AppContext> {
     let module = app_context.loader.load_script_module("script").unwrap();
@@ -208,7 +212,7 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraSetCollide",
-        Box::new(not_implemented),
+        Box::new(camera_set_collide),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraSeekToPlayer",
@@ -216,7 +220,7 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraAutoSeek",
-        Box::new(not_implemented),
+        Box::new(camera_auto_seek),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerSetAttr",
@@ -232,7 +236,7 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAddPlayerEquip",
-        Box::new(not_implemented),
+        Box::new(add_player_equip),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giOpenMovieFlag",
@@ -304,7 +308,7 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giScriptMusicPlay",
-        Box::new(not_implemented),
+        Box::new(script_music_play),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giScriptMusicStop",
@@ -328,7 +332,7 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "gi2DSoundPlay",
-        Box::new(not_implemented),
+        Box::new(dd_sound_play),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "gi2DSoundStop",
@@ -424,7 +428,7 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGrantSystemUi",
-        Box::new(not_implemented),
+        Box::new(grant_system_ui),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giOpenSystemUi",
@@ -436,7 +440,7 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGrantMagicSystem",
-        Box::new(not_implemented),
+        Box::new(grant_magic_system),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCheckMagicMastered",
@@ -770,7 +774,7 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerDoAction",
-        Box::new(not_implemented),
+        Box::new(player_do_action),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerEndAction",
@@ -938,11 +942,11 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraPrepare",
-        Box::new(not_implemented),
+        Box::new(camera_prepare),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraRunSingle",
-        Box::new(not_implemented),
+        Box::new(camera_run_single),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraRunCircle",
@@ -958,7 +962,7 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giFlashInBlack",
-        Box::new(not_implemented),
+        Box::new(flash_in_black),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giFlashOutWhite",
@@ -1068,74 +1072,105 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     context
 }
 
-fn imm_begin(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    FunctionState::Completed
+fn imm_begin(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
 }
 
-fn imm_end(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    FunctionState::Completed
+fn imm_end(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
 }
 
-fn new_game(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    FunctionState::Completed
+fn new_game(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
 }
 
-fn flash_out_black(_name: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    as_params!(vm, _f: f32, _b1: i32, _b2: i32);
-    FunctionState::Completed
+fn camera_prepare(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _file_str: i32);
+    let file_name = get_str(vm, _file_str as usize).unwrap();
+    println!("camera prepare: {}", file_name);
+
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
 }
 
-fn script_music_pause(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    FunctionState::Completed
+fn camera_run_single(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _file_str: i32, _sync: i32);
+    let file_name = get_str(vm, _file_str as usize).unwrap();
+    println!("camera run single: {}", file_name);
+
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
 }
 
-fn play_movie(_name: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
+fn flash_out_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _duration: f32, _keep: i32, _sync: i32);
+    Pal4FunctionState::Completed
+}
+
+fn flash_in_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _duration: f32, _sync: i32);
+    Pal4FunctionState::Completed
+}
+
+fn script_music_pause(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, _name_str: i32);
-    FunctionState::Completed
+    Pal4FunctionState::Completed
 }
 
-fn open_movie_flag(_name: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
+fn add_player_equip(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player: i32, _equip: i32);
+    Pal4FunctionState::Completed
+}
+
+fn open_movie_flag(_name: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, _flag: i32);
-    FunctionState::Completed
+    Pal4FunctionState::Completed
 }
 
-fn script_music_resume(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    FunctionState::Completed
+fn script_music_resume(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
 }
 
-fn wait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    as_params!(vm, _time: f32);
-    FunctionState::Completed
+fn wait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _time: f64);
+    Pal4FunctionState::Completed
 }
 
-fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
+fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, str: i32);
-    let str = get_str(vm, str as usize).unwrap();
-    let ui = vm.app_context().ui.ui();
 
-    ui.window("dlg_box")
-        .collapsible(false)
-        .title_bar(false)
-        .resizable(false)
-        .draw_background(true)
-        .no_decoration()
-        .size([1024., 600.], Condition::Appearing)
-        .position([0., 0.], Condition::Appearing)
-        .build(|| ui.text(&str));
+    Pal4FunctionState::Yield(Box::new(move |vm| {
+        let str = get_str(vm, str as usize).unwrap();
+        let ui = vm.app_context().ui.ui();
+        let _ = ui
+            .window("dlg_box")
+            .collapsible(false)
+            .title_bar(false)
+            .resizable(false)
+            .draw_background(true)
+            .no_decoration()
+            .size([1024., 600.], Condition::Appearing)
+            .position([0., 0.], Condition::Appearing)
+            .build(|| ui.text(&str));
 
-    if ui.is_mouse_released(MouseButton::Left) {
-        FunctionState::Completed
-    } else {
-        FunctionState::Yield
-    }
+        if ui.is_mouse_released(MouseButton::Left) {
+            ContinuationState::Completed
+        } else {
+            ContinuationState::Loop
+        }
+    }))
 }
 
-fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
+fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, _pct: i32);
-    FunctionState::Completed
+    Pal4FunctionState::Completed
 }
 
-fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
+fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(
         vm,
         scn_str: i32,
@@ -1154,58 +1189,97 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
     let module = vm.app_context().loader.load_script_module(&scn).unwrap();
     vm.set_function_by_name(module, &format!("{}_{}_init", scn, block));
 
-    FunctionState::Completed
+    Pal4FunctionState::Completed
 }
 
-fn script_music_stop(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    as_params!(vm, _flag: i32, _fade_out: f32);
-    FunctionState::Completed
+fn script_music_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, str: i32, _mode: i32, _fade_in: f32, _fade_out: f32);
+
+    let str = get_str(vm, str as usize).unwrap();
+    println!("music play: {}", str);
+    Pal4FunctionState::Completed
 }
 
-fn arena_music_stop(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
+fn script_music_stop(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _flag: i32, _fade_in: f32);
+    Pal4FunctionState::Completed
+}
+
+fn arena_music_stop(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, _fade_out: f32);
-    FunctionState::Completed
+    Pal4FunctionState::Completed
 }
 
-fn camera_seek_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    FunctionState::Completed
-}
-
-fn player_set_leader(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    as_params!(vm, _player: i32);
-    FunctionState::Completed
-}
-
-fn player_set_attr(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    as_params!(vm, _player: i32, _attr: i32, _value: i32);
-    FunctionState::Completed
-}
-
-fn player_lock(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    FunctionState::Completed
-}
-
-fn player_current_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    as_params!(vm, _x: f32, _y: f32, _z: f32);
-    FunctionState::Completed
-}
-
-fn player_current_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    as_params!(vm, _rot: f32);
-    FunctionState::Completed
-}
-
-fn arena_ready(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    FunctionState::Completed
-}
-
-fn check_magic_mastered(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
+fn dd_sound_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _name_str: i32, _times: i32);
     vm.stack_push::<i32>(0);
-    FunctionState::Completed
+    Pal4FunctionState::Completed
 }
 
-fn unknown(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> FunctionState {
-    FunctionState::Completed
+fn camera_set_collide(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _collide: i32);
+    Pal4FunctionState::Completed
+}
+
+fn camera_seek_to_player(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn camera_auto_seek(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _auto_seek: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_set_leader(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_set_attr(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player: i32, _attr: i32, _value: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_lock(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn player_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player: i32, _action_str: i32, _loop: i32, _sync: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _x: f32, _y: f32, _z: f32);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _rot: f32);
+    Pal4FunctionState::Completed
+}
+
+fn arena_ready(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn grant_system_ui(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _ui: i32, _enable: i32);
+    Pal4FunctionState::Completed
+}
+
+fn grant_magic_system(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _magic: i32, _skill: i32);
+    Pal4FunctionState::Completed
+}
+
+fn check_magic_mastered(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<i32>(0);
+    Pal4FunctionState::Completed
+}
+
+fn unknown(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
 }
 
 fn get_str(vm: &mut ScriptVm<Pal4AppContext>, index: usize) -> Option<String> {

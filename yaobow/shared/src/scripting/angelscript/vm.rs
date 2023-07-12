@@ -4,7 +4,7 @@ use crate::scripting::angelscript::debug::DebugIpcClient;
 
 use super::{
     debug::{Notification, Request},
-    global_context::ScriptGlobalContext,
+    global_context::{GlobalFunctionContinuation, ScriptGlobalContext},
     module::{ScriptFunction, ScriptModule},
 };
 
@@ -43,7 +43,7 @@ pub struct ScriptVm<TAppContext: 'static> {
     r2: u32,
     pub(crate) robj: usize,
 
-    yield_func: Option<i32>,
+    yield_func: Option<GlobalFunctionContinuation<TAppContext>>,
 }
 
 impl<TAppContext: 'static> ScriptVm<TAppContext> {
@@ -121,21 +121,21 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
             self.debug_update_context();
             self.wait_for_action();
-
-            match self.yield_func {
-                Some(function) => {
-                    self.callsys(function);
-                    if self.yield_func.is_some() {
+            let cont = self.yield_func.take();
+            match cont {
+                Some(mut cont) => match cont(self) {
+                    crate::scripting::angelscript::ContinuationState::Loop => {
+                        self.yield_func = Some(cont);
                         return;
                     }
-                }
+                    crate::scripting::angelscript::ContinuationState::Completed => {
+                        self.yield_func = None;
+                    }
+                },
                 None => {}
             }
 
-            println!("pc {}", self.context.pc);
             let inst = self.read_inst(&function);
-            println!("inst {}", inst);
-
             macro_rules! command {
                 ($cmd_name: ident $(, $param_name: ident : $param_type: ident)*) => {{
                     $(let $param_name = data_read::$param_type(&function.inst, &mut self.context.pc);)*
@@ -265,7 +265,10 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
                 105 => command!(subi: f32, rhs: f32),
                 106 => command!(muli: i32, rhs: i32),
                 107 => command!(muli: f32, rhs: f32),
-                108 => self.suspend(),
+                108 => {
+                    // Suspend
+                    return;
+                }
                 109 => command!(alloc, this: i32, index: i32),
                 110 => command!(free, obj_type: u32),
                 111 => unimplemented!("byte code 111 - loadobj"),
@@ -401,13 +404,9 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         let context = self.g.clone();
         let context = context.borrow();
         match context.call_function(self, index as usize) {
-            super::FunctionState::Yield => self.yield_func = Some(function),
-            super::FunctionState::Completed => self.yield_func = None,
+            super::GlobalFunctionState::Yield(cont) => self.yield_func = Some(cont),
+            super::GlobalFunctionState::Completed => self.yield_func = None,
         }
-    }
-
-    fn suspend(&mut self) {
-        println!("Unimplemented: suspend");
     }
 
     fn alloc(&mut self, this: i32, function: i32) {

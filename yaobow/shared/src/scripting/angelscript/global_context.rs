@@ -1,19 +1,27 @@
 use super::ScriptVm;
 
-pub enum FunctionState {
-    Yield,
+pub type GlobalFunctionContinuation<TAppContext> =
+    Box<dyn FnMut(&mut ScriptVm<TAppContext>) -> ContinuationState>;
+
+pub enum GlobalFunctionState<TAppContext: 'static> {
+    Yield(GlobalFunctionContinuation<TAppContext>),
+    Completed,
+}
+
+pub enum ContinuationState {
+    Loop,
     Completed,
 }
 
 pub struct ScriptGlobalFunction<TAppContext: 'static> {
     pub name: String,
-    pub func: Box<dyn Fn(&str, &mut ScriptVm<TAppContext>) -> FunctionState>,
+    pub func: Box<dyn Fn(&str, &mut ScriptVm<TAppContext>) -> GlobalFunctionState<TAppContext>>,
 }
 
 impl<TAppContext: 'static> ScriptGlobalFunction<TAppContext> {
     pub fn new<S: AsRef<str>>(
         name: S,
-        func: Box<dyn Fn(&str, &mut ScriptVm<TAppContext>) -> FunctionState>,
+        func: Box<dyn Fn(&str, &mut ScriptVm<TAppContext>) -> GlobalFunctionState<TAppContext>>,
     ) -> Self {
         Self {
             name: name.as_ref().to_string(),
@@ -46,7 +54,11 @@ impl<TAppContext: 'static> ScriptGlobalContext<TAppContext> {
         self.functions.push(function);
     }
 
-    pub fn call_function(&self, vm: &mut ScriptVm<TAppContext>, index: usize) -> FunctionState {
+    pub fn call_function(
+        &self,
+        vm: &mut ScriptVm<TAppContext>,
+        index: usize,
+    ) -> GlobalFunctionState<TAppContext> {
         (self.functions[index].func)(&self.functions[index].name, vm)
     }
 
@@ -122,27 +134,33 @@ impl<TAppContext: 'static> ScriptGlobalContext<TAppContext> {
     }
 }
 
-fn abs<TAppContext>(_: &str, vm: &mut ScriptVm<TAppContext>) -> FunctionState {
+fn abs<TAppContext>(_: &str, vm: &mut ScriptVm<TAppContext>) -> GlobalFunctionState<TAppContext> {
     as_params!(vm, number: i32);
 
     let ret = number.abs();
     vm.stack_push::<i32>(ret);
 
-    FunctionState::Completed
+    GlobalFunctionState::Completed
 }
 
-fn string_factory<TAppContext>(_: &str, vm: &mut ScriptVm<TAppContext>) -> FunctionState {
+fn string_factory<TAppContext>(
+    _: &str,
+    vm: &mut ScriptVm<TAppContext>,
+) -> GlobalFunctionState<TAppContext> {
     as_params!(vm, _len: u32, str_id: u32);
     let string = vm.context.module.borrow().strings[str_id as usize].clone();
     let ret = vm.push_object(string);
 
     vm.robj = ret;
 
-    FunctionState::Completed
+    GlobalFunctionState::Completed
 }
 
-pub fn not_implemented<TAppContext>(name: &str, _: &mut ScriptVm<TAppContext>) -> FunctionState {
+pub fn not_implemented<TAppContext>(
+    name: &str,
+    _: &mut ScriptVm<TAppContext>,
+) -> GlobalFunctionState<TAppContext> {
     panic!("unimplemented function called: {}", name);
 
-    FunctionState::Completed
+    GlobalFunctionState::Completed
 }

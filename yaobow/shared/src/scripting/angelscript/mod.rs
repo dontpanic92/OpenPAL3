@@ -6,7 +6,8 @@ mod vm;
 
 pub use disassembler::{disasm, AsInst, AsInstInstance};
 pub use global_context::{
-    not_implemented, FunctionState, ScriptGlobalContext, ScriptGlobalFunction,
+    not_implemented, ContinuationState, GlobalFunctionContinuation, GlobalFunctionState,
+    ScriptGlobalContext, ScriptGlobalFunction,
 };
 pub use module::ScriptModule;
 pub use vm::ScriptVm;
