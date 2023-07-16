@@ -33,31 +33,31 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     context.register_function(ScriptGlobalFunction::new("giNewGame", Box::new(new_game)));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraCtrlYPR",
-        Box::new(not_implemented),
+        Box::new(camera_ctrl_ypr),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraCtrlDist",
-        Box::new(not_implemented),
+        Box::new(camera_ctrl_dist),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraCtrlYPRD",
-        Box::new(not_implemented),
+        Box::new(camera_ctrl_yprd),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraGetDist",
-        Box::new(not_implemented),
+        Box::new(camera_get_dist),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraGetYaw",
-        Box::new(not_implemented),
+        Box::new(camera_get_yaw),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraGetPitch",
-        Box::new(not_implemented),
+        Box::new(camera_get_pitch),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraGetRoll",
-        Box::new(not_implemented),
+        Box::new(camera_get_roll),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giArenaLoad",
@@ -69,15 +69,15 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giArenaReadyRestore",
-        Box::new(not_implemented),
+        Box::new(arena_ready_restore),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giArenaHint",
-        Box::new(not_implemented),
+        Box::new(arena_hint),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giArenaComeFromHere",
-        Box::new(not_implemented),
+        Box::new(arena_come_from_here),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerSetLeader",
@@ -85,15 +85,15 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerSetVisible",
-        Box::new(not_implemented),
+        Box::new(player_set_visible),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerAttachCollision",
-        Box::new(not_implemented),
+        Box::new(player_attach_collision),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerDetachCollision",
-        Box::new(not_implemented),
+        Box::new(player_detach_collision),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerLock",
@@ -101,115 +101,112 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerUnLock",
-        Box::new(not_implemented),
+        Box::new(player_unlock),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSetNpcVisible",
-        Box::new(not_implemented),
+        Box::new(set_npc_visible),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcCreate",
-        Box::new(not_implemented),
+        Box::new(npc_create),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcDelete",
-        Box::new(not_implemented),
+        Box::new(npc_delete),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSystemExchange",
-        Box::new(not_implemented),
+        Box::new(system_exchange),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giMonsterStopPursuit",
-        Box::new(not_implemented),
+        Box::new(monster_stop_pursuit),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraSetMode",
-        Box::new(not_implemented),
+        Box::new(camera_set_mode),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGetGoodsOpenCondition",
-        Box::new(not_implemented),
+        Box::new(get_goods_open_condition),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcPauseBeh",
-        Box::new(not_implemented),
+        Box::new(npc_pause_beh),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcResumeBeh",
-        Box::new(not_implemented),
+        Box::new(npc_resume_beh),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giOpenWeather",
-        Box::new(not_implemented),
+        Box::new(open_weather),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCloseWeather",
-        Box::new(not_implemented),
+        Box::new(close_weather),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSetMinimapExpmode",
-        Box::new(not_implemented),
+        Box::new(set_minimap_expmode),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGetRandnum",
-        Box::new(not_implemented),
+        Box::new(get_randnum),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSetTempGameState",
-        Box::new(not_implemented),
+        Box::new(set_temp_game_state),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giFlushTailYAngle",
-        Box::new(not_implemented),
+        Box::new(flush_tail_y_angle),
     ));
 
     context.register_function(ScriptGlobalFunction::new("giUnknown", Box::new(unknown)));
 
     context.register_function(ScriptGlobalFunction::new(
         "giAddCombatMonster",
-        Box::new(not_implemented),
+        Box::new(add_combat_monster),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giConfigCombatParam",
-        Box::new(not_implemented),
+        Box::new(config_combat_param),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giConfigCombatBgm",
-        Box::new(not_implemented),
+        Box::new(config_combat_bgm),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giConfigCombatCamera",
-        Box::new(not_implemented),
+        Box::new(config_combat_camera),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giStartCombat",
-        Box::new(not_implemented),
+        Box::new(start_combat),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSetObjectVisible",
-        Box::new(not_implemented),
+        Box::new(set_object_visible),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAddProperty",
-        Box::new(not_implemented),
+        Box::new(add_property),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giDelProperty",
-        Box::new(not_implemented),
+        Box::new(del_property),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerInTeam",
-        Box::new(not_implemented),
+        Box::new(player_in_team),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerOutTeam",
-        Box::new(not_implemented),
+        Box::new(player_out_team),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giGOMTouch",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giGOMTouch", Box::new(gom_touch)));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraSetCollide",
         Box::new(camera_set_collide),
@@ -228,11 +225,11 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerGetLeader",
-        Box::new(not_implemented),
+        Box::new(player_get_leader),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSetPlayerLevel",
-        Box::new(not_implemented),
+        Box::new(set_player_level),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAddPlayerEquip",
@@ -248,63 +245,60 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAddEquipment",
-        Box::new(not_implemented),
+        Box::new(add_equipment),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentSetVisible",
-        Box::new(not_implemented),
+        Box::new(player_current_set_visible),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSetFullHP",
-        Box::new(not_implemented),
+        Box::new(set_full_hp),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSetFullMP",
-        Box::new(not_implemented),
+        Box::new(set_full_mp),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGetPlayerLevel",
-        Box::new(not_implemented),
+        Box::new(get_player_level),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giGotoLogo",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giGotoLogo", Box::new(goto_logo)));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerUnHoldAct",
-        Box::new(not_implemented),
+        Box::new(player_unhold_act),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcUnHoldAct",
-        Box::new(not_implemented),
+        Box::new(npc_unhold_act),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraSetDistOptEnable",
-        Box::new(not_implemented),
+        Box::new(camera_set_dist_opt_enable),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giMonsterSetHide",
-        Box::new(not_implemented),
+        Box::new(monster_set_hide),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGameObjectSetResearch",
-        Box::new(not_implemented),
+        Box::new(game_object_set_research),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSetPortrait",
-        Box::new(not_implemented),
+        Box::new(set_portrait),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giBGMConfigSetMusic",
-        Box::new(not_implemented),
+        Box::new(bgm_config_set_music),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giBGMConfigIsInArea",
-        Box::new(not_implemented),
+        Box::new(bgm_config_is_in_area),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giScriptMusicMute",
-        Box::new(not_implemented),
+        Box::new(script_music_mute),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giScriptMusicPlay",
@@ -320,111 +314,108 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giWorldMapSetState",
-        Box::new(not_implemented),
+        Box::new(world_map_set_state),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGetPuzzleGameResult",
-        Box::new(not_implemented),
+        Box::new(get_puzzle_game_result),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAlwaysJump",
-        Box::new(not_implemented),
+        Box::new(always_jump),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "gi2DSoundPlay",
-        Box::new(dd_sound_play),
+        Box::new(sound_2d_play),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "gi2DSoundStop",
-        Box::new(not_implemented),
+        Box::new(sound_2d_stop),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "gi2DSoundStopID",
-        Box::new(not_implemented),
+        Box::new(sound_2d_stop_id),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCGEffPlay",
-        Box::new(not_implemented),
+        Box::new(cg_eff_play),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCGEffStop",
-        Box::new(not_implemented),
+        Box::new(cg_eff_stop),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectPlay",
-        Box::new(not_implemented),
+        Box::new(effect_play),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectPlayWithPlayer",
-        Box::new(not_implemented),
+        Box::new(effect_play_with_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectPlayWithCurrentPlayer",
-        Box::new(not_implemented),
+        Box::new(effect_play_with_current_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectPlayWithNPC",
-        Box::new(not_implemented),
+        Box::new(effect_play_with_npc),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectPlayWithOBJ",
-        Box::new(not_implemented),
+        Box::new(effect_play_with_obj),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectStopWithOBJ",
-        Box::new(not_implemented),
+        Box::new(effect_stop_with_obj),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giShowHint",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giShowHint", Box::new(show_hint)));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerAddSkill",
-        Box::new(not_implemented),
+        Box::new(player_add_skill),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giMonsterSetVisible",
-        Box::new(not_implemented),
+        Box::new(monster_set_visible),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerRandomPosition",
-        Box::new(not_implemented),
+        Box::new(player_random_position),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentRandomPosition",
-        Box::new(not_implemented),
+        Box::new(player_current_random_position),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEventVolumeVisible",
-        Box::new(not_implemented),
+        Box::new(event_volume_visible),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAllPlayerGarb2",
-        Box::new(not_implemented),
+        Box::new(all_player_garb2),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerGarb2",
-        Box::new(not_implemented),
+        Box::new(player_garb2),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAllPlayerGarb1",
-        Box::new(not_implemented),
+        Box::new(all_player_garb1),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerGarb1",
-        Box::new(not_implemented),
+        Box::new(player_garb1),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGetVisibleObject",
-        Box::new(not_implemented),
+        Box::new(get_visible_object),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGetVisibleMonster",
-        Box::new(not_implemented),
+        Box::new(get_visible_monster),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCheckPackProperty",
-        Box::new(not_implemented),
+        Box::new(check_pack_property),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGrantSystemUi",
@@ -432,11 +423,11 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giOpenSystemUi",
-        Box::new(not_implemented),
+        Box::new(open_system_ui),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGrantSmithSystem",
-        Box::new(not_implemented),
+        Box::new(grant_smith_system),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGrantMagicSystem",
@@ -448,131 +439,126 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSelectDialogAddItem",
-        Box::new(not_implemented),
+        Box::new(select_dialog_add_item),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSelectDialogGetLastSelect",
-        Box::new(not_implemented),
+        Box::new(select_dialog_get_last_select),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGOBAttachToPlayer",
-        Box::new(not_implemented),
+        Box::new(gob_attach_to_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGOBAttachToCurrentPlayer",
-        Box::new(not_implemented),
+        Box::new(gob_attach_to_current_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGOBDetachFromPlayer",
-        Box::new(not_implemented),
+        Box::new(gob_detach_from_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGOBDetachFromCurrentPlayer",
-        Box::new(not_implemented),
+        Box::new(gob_detach_from_current_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectAttachToPlayer",
-        Box::new(not_implemented),
+        Box::new(effect_attach_to_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectAttachToCurrentPlayer",
-        Box::new(not_implemented),
+        Box::new(effect_attach_to_current_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectDetachFromPlayer",
-        Box::new(not_implemented),
+        Box::new(effect_detach_from_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectDetachFromCurrentPlayer",
-        Box::new(not_implemented),
+        Box::new(effect_detach_from_current_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectAttachToNpc",
-        Box::new(not_implemented),
+        Box::new(effect_attach_to_npc),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEffectDetachFromNpc",
-        Box::new(not_implemented),
+        Box::new(effect_detach_from_npc),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGOBAttachToNpc",
-        Box::new(not_implemented),
+        Box::new(gob_attach_to_npc),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGOBDetachFromNPC",
-        Box::new(not_implemented),
+        Box::new(gob_detach_from_npc),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGOBSetPosition",
-        Box::new(not_implemented),
+        Box::new(gob_set_position),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giScriptClearCTXButCurrent",
-        Box::new(not_implemented),
+        Box::new(script_clear_ctx_but_current),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giAddMoney",
-        Box::new(not_implemented),
-    ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giPayMoney",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giAddMoney", Box::new(add_money)));
+    context.register_function(ScriptGlobalFunction::new("giPayMoney", Box::new(pay_money)));
     context.register_function(ScriptGlobalFunction::new(
         "giHideGASkillObject",
-        Box::new(not_implemented),
+        Box::new(hide_ga_skill_object),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giShowSignpost",
-        Box::new(not_implemented),
+        Box::new(show_signpost),
     ));
+
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerSetEmotion",
-        Box::new(not_implemented),
+        Box::new(player_set_emotion),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerResetEmotion",
-        Box::new(not_implemented),
+        Box::new(player_reset_emotion),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentSetEmotion",
-        Box::new(not_implemented),
+        Box::new(player_current_set_emotion),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentResetEmotion",
-        Box::new(not_implemented),
+        Box::new(player_current_reset_emotion),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giLINGSHALegsInjured",
-        Box::new(not_implemented),
+        Box::new(lingsha_legs_injured),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giLINGSHALegsHealing",
-        Box::new(not_implemented),
+        Box::new(lingsha_legs_healing),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcSetEmotion",
-        Box::new(not_implemented),
+        Box::new(npc_set_emotion),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcResetEmotion",
-        Box::new(not_implemented),
+        Box::new(npc_reset_emotion),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGetPropertyNumb",
-        Box::new(not_implemented),
+        Box::new(get_property_numb),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentGetPosX",
-        Box::new(not_implemented),
+        Box::new(player_current_get_pos_x),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentGetPosY",
-        Box::new(not_implemented),
+        Box::new(player_current_get_pos_y),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentGetPosZ",
-        Box::new(not_implemented),
+        Box::new(player_current_get_pos_z),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giArenaGetName",
@@ -584,168 +570,163 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giArenaSkillEnable",
-        Box::new(not_implemented),
+        Box::new(arena_skill_enable),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giShowInnDialog",
-        Box::new(not_implemented),
+        Box::new(show_inn_dialog),
     ));
+
     context.register_function(ScriptGlobalFunction::new(
         "giGetInnDialogResult",
-        Box::new(not_implemented),
+        Box::new(get_inn_dialog_result),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerTakeARest",
-        Box::new(not_implemented),
+        Box::new(player_take_a_rest),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giIsNightTime",
-        Box::new(not_implemented),
+        Box::new(is_night_time),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerSetPosRot1",
-        Box::new(not_implemented),
+        Box::new(player_set_pos_rot),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerSetPosRot2",
-        Box::new(not_implemented),
+        Box::new(player_set_pos_rot_npc),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giStartUiTimer",
-        Box::new(not_implemented),
+        Box::new(start_ui_timer),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerForbidenSkill",
-        Box::new(not_implemented),
+        Box::new(player_forbiden_skill),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giGetMoney",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giGetMoney", Box::new(get_money)));
     context.register_function(ScriptGlobalFunction::new(
         "giSelectDialogSetDefaultSelect",
-        Box::new(not_implemented),
+        Box::new(select_dialog_set_default_select),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giShowQuestDialog",
-        Box::new(not_implemented),
+        Box::new(show_quest_dialog),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGetQuestDialogResult",
-        Box::new(not_implemented),
+        Box::new(get_quest_dialog_result),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giResetPlayerToJumpStart",
-        Box::new(not_implemented),
+        Box::new(reset_player_to_jump_start),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giGOBReset",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giGOBReset", Box::new(gob_reset)));
     context.register_function(ScriptGlobalFunction::new(
         "giCheckEquipInInventory",
-        Box::new(not_implemented),
+        Box::new(check_equip_in_inventory),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giRemoveEquipment",
-        Box::new(not_implemented),
+        Box::new(remove_equipment),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAddPrescription",
-        Box::new(not_implemented),
+        Box::new(add_prescription),
     ));
+
     context.register_function(ScriptGlobalFunction::new(
         "giEnableShadow",
-        Box::new(not_implemented),
+        Box::new(enable_shadow),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAddRoundTimes",
-        Box::new(not_implemented),
+        Box::new(add_round_times),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giTimeScript",
-        Box::new(not_implemented),
+        Box::new(time_script),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giTimeScriptTerminate",
-        Box::new(not_implemented),
+        Box::new(time_script_terminate),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giConfigCombatGroundCamera",
-        Box::new(not_implemented),
+        Box::new(config_combat_ground_camera),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giAddPlayerFavor",
-        Box::new(not_implemented),
+        Box::new(add_player_favor),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGetPalTestResult",
-        Box::new(not_implemented),
+        Box::new(get_pal_test_result),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSetMinimapLevel",
-        Box::new(not_implemented),
+        Box::new(set_minimap_level),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giPetShow",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giPetShow", Box::new(pet_show)));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcAttachEffect",
-        Box::new(not_implemented),
+        Box::new(npc_attach_effect),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcDetachEffect",
-        Box::new(not_implemented),
+        Box::new(npc_detach_effect),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giMstAttachEffect",
-        Box::new(not_implemented),
+        Box::new(mst_attach_effect),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giMstDetachEffect",
-        Box::new(not_implemented),
+        Box::new(mst_detach_effect),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerHookEffect",
-        Box::new(not_implemented),
+        Box::new(player_hook_effect),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerDetachEffect",
-        Box::new(not_implemented),
+        Box::new(player_detach_effect),
     ));
+
     context.register_function(ScriptGlobalFunction::new(
         "giCommonDialogGetLastSelect",
-        Box::new(not_implemented),
+        Box::new(common_dialog_get_last_select),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giConfigCombatVipMonster",
-        Box::new(not_implemented),
+        Box::new(config_combat_vip_monster),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giEnableSTS",
-        Box::new(not_implemented),
+        Box::new(enable_sts),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giClearUiTimer",
-        Box::new(not_implemented),
+        Box::new(clear_ui_timer),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPauseUiTimer",
-        Box::new(not_implemented),
+        Box::new(pause_ui_timer),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giResumeUiTimer",
-        Box::new(not_implemented),
+        Box::new(resume_ui_timer),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giSetFullRage",
-        Box::new(not_implemented),
+        Box::new(set_full_rage),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giUiTimerGetSaveData",
-        Box::new(not_implemented),
+        Box::new(ui_timer_get_save_data),
     ));
+
     context.register_function(ScriptGlobalFunction::new(
         "giScriptMusicPause",
         Box::new(script_music_pause),
@@ -756,41 +737,36 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new("giWait", Box::new(wait)));
     context.register_function(ScriptGlobalFunction::new("giTalk", Box::new(talk)));
+
     context.register_function(ScriptGlobalFunction::new(
         "giRandTalkPush",
-        Box::new(not_implemented),
+        Box::new(rand_talk_push),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giRandTalk",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giRandTalk", Box::new(rand_talk)));
     context.register_function(ScriptGlobalFunction::new(
         "giRandTalkRelease",
-        Box::new(not_implemented),
+        Box::new(rand_talk_release),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giTalkWait",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giTalkWait", Box::new(talk_wait)));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerDoAction",
         Box::new(player_do_action),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerEndAction",
-        Box::new(not_implemented),
+        Box::new(player_end_action),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentDoAction",
-        Box::new(not_implemented),
+        Box::new(player_current_do_action),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentEndAction",
-        Box::new(not_implemented),
+        Box::new(player_current_end_action),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerSetPos",
-        Box::new(not_implemented),
+        Box::new(player_set_pos),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentSetPos",
@@ -798,11 +774,11 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerSetRot",
-        Box::new(not_implemented),
+        Box::new(player_set_rot),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerSetAng",
-        Box::new(not_implemented),
+        Box::new(player_set_ang),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentSetAng",
@@ -810,135 +786,137 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerFaceToPlayer",
-        Box::new(not_implemented),
+        Box::new(player_face_to_player),
     ));
+
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerSetDir",
-        Box::new(not_implemented),
+        Box::new(player_set_dir),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerFaceToNpc",
-        Box::new(not_implemented),
+        Box::new(player_face_to_npc),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerWalkTo",
-        Box::new(not_implemented),
+        Box::new(player_walk_to),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerRunTo",
-        Box::new(not_implemented),
+        Box::new(player_run_to),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentWalkTo",
-        Box::new(not_implemented),
+        Box::new(player_current_walk_to),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerBackTo",
-        Box::new(not_implemented),
+        Box::new(player_back_to),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerBlendOut",
-        Box::new(not_implemented),
+        Box::new(player_blend_out),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerBlendIn",
-        Box::new(not_implemented),
+        Box::new(player_blend_in),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerFaceToCurrentPlayer",
-        Box::new(not_implemented),
+        Box::new(player_face_to_current_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCurrentPlayerFaceToNpc",
-        Box::new(not_implemented),
+        Box::new(current_player_face_to_npc),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerDoActionRepeat",
-        Box::new(not_implemented),
+        Box::new(player_do_action_repeat),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerEndActionRepeat",
-        Box::new(not_implemented),
+        Box::new(player_end_action_repeat),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerEndMove",
-        Box::new(not_implemented),
+        Box::new(player_end_move),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCurrentPlayerEndMove",
-        Box::new(not_implemented),
+        Box::new(current_player_end_move),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcWalkTo",
-        Box::new(not_implemented),
+        Box::new(npc_walk_to),
     ));
+
     context.register_function(ScriptGlobalFunction::new(
         "giNpcRunTo",
-        Box::new(not_implemented),
+        Box::new(npc_run_to),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcBackTo",
-        Box::new(not_implemented),
+        Box::new(npc_back_to),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcDoAction",
-        Box::new(not_implemented),
+        Box::new(npc_do_action),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcEndAction",
-        Box::new(not_implemented),
+        Box::new(npc_end_action),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcSetPos",
-        Box::new(not_implemented),
+        Box::new(npc_set_pos),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcSetRot",
-        Box::new(not_implemented),
+        Box::new(npc_set_rot),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcSetDir",
-        Box::new(not_implemented),
+        Box::new(npc_set_dir),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcFaceToNpc",
-        Box::new(not_implemented),
+        Box::new(npc_face_to_npc),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcFaceToPlayer",
-        Box::new(not_implemented),
+        Box::new(npc_face_to_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcBlendOut",
-        Box::new(not_implemented),
+        Box::new(npc_blend_out),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcBlendIn",
-        Box::new(not_implemented),
+        Box::new(npc_blend_in),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcFaceToCurrentPlayer",
-        Box::new(not_implemented),
+        Box::new(npc_face_to_current_player),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcResetDir",
-        Box::new(not_implemented),
+        Box::new(npc_reset_dir),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcDoActionRepeat",
-        Box::new(not_implemented),
+        Box::new(npc_do_action_repeat),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcEndActionRepeat",
-        Box::new(not_implemented),
+        Box::new(npc_end_action_repeat),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcEndMove",
-        Box::new(not_implemented),
+        Box::new(npc_end_move),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNpcSetAng",
-        Box::new(not_implemented),
+        Box::new(npc_set_ang),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraPrepare",
@@ -950,11 +928,11 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraRunCircle",
-        Box::new(not_implemented),
+        Box::new(camera_run_circle),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giCameraWait",
-        Box::new(not_implemented),
+        Box::new(camera_wait),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giFlashOutBlack",
@@ -966,149 +944,1021 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giFlashOutWhite",
-        Box::new(not_implemented),
+        Box::new(flash_out_white),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giFlashInWhite",
-        Box::new(not_implemented),
+        Box::new(flash_in_white),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giFlashOutRed",
-        Box::new(not_implemented),
+        Box::new(flash_out_red),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giFlashInRed",
-        Box::new(not_implemented),
+        Box::new(flash_in_red),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayMovie",
         Box::new(play_movie),
     ));
+
     context.register_function(ScriptGlobalFunction::new(
         "giObjectDoAction",
-        Box::new(not_implemented),
+        Box::new(object_do_action),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giStartTradeSystem",
-        Box::new(not_implemented),
+        Box::new(start_trade_system),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giStartPuzzleGame",
-        Box::new(not_implemented),
+        Box::new(start_puzzle_game),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giStartJigsawGame",
-        Box::new(not_implemented),
+        Box::new(start_jigsaw_game),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giOBJBlendOut",
-        Box::new(not_implemented),
+        Box::new(obj_blend_out),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giOBJBlendIn",
-        Box::new(not_implemented),
+        Box::new(obj_blend_in),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giMSTBlendOut",
-        Box::new(not_implemented),
+        Box::new(mst_blend_out),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giMSTBlendIn",
-        Box::new(not_implemented),
+        Box::new(mst_blend_in),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giShowCommonDialog",
-        Box::new(not_implemented),
+        Box::new(show_common_dialog),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giShowSelectDialog",
-        Box::new(not_implemented),
+        Box::new(show_select_dialog),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGOBMovment",
-        Box::new(not_implemented),
+        Box::new(gob_movment),
     ));
+
     context.register_function(ScriptGlobalFunction::new(
         "giShowTutorial",
-        Box::new(not_implemented),
+        Box::new(show_tutorial),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giShowWorldMap",
-        Box::new(not_implemented),
+        Box::new(show_world_map),
     ));
-    context.register_function(ScriptGlobalFunction::new(
-        "giGOBScale",
-        Box::new(not_implemented),
-    ));
+    context.register_function(ScriptGlobalFunction::new("giGOBScale", Box::new(gob_scale)));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentFaceToGOB",
-        Box::new(not_implemented),
+        Box::new(player_current_face_to_gob),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayerCurrentMovement",
-        Box::new(not_implemented),
+        Box::new(player_current_movement),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giShowPoetry",
-        Box::new(not_implemented),
+        Box::new(show_poetry),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giNPCFlyTo",
-        Box::new(not_implemented),
+        Box::new(npc_fly_to),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giGotoLogoWait",
-        Box::new(not_implemented),
+        Box::new(goto_logo_wait),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giShowCommonDialogInSelectMode",
-        Box::new(not_implemented),
+        Box::new(show_common_dialog_in_select_mode),
     ));
     context.register_function(ScriptGlobalFunction::new(
         "giPlayMovieFinal",
-        Box::new(not_implemented),
+        Box::new(play_movie_final),
     ));
 
     context
 }
 
-fn imm_begin(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn imm_begin(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
-fn imm_end(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn imm_end(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
-fn new_game(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn new_game(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
-fn camera_prepare(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn camera_ctrl_ypr(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _yaw: f32, _pitch: f32, _roll: f32, _is_instant: i32);
+    Pal4FunctionState::Completed
+}
+
+fn camera_ctrl_dist(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _dist: f32, _is_instant: i32);
+    Pal4FunctionState::Completed
+}
+
+fn camera_ctrl_yprd(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _yaw: f32, _pitch: f32, _roll: f32, _dist: f32, _is_instant: i32);
+    Pal4FunctionState::Completed
+}
+
+fn camera_get_dist(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<f32>(1.0);
+    Pal4FunctionState::Completed
+}
+
+fn camera_get_yaw(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<f32>(1.0);
+    Pal4FunctionState::Completed
+}
+
+fn camera_get_pitch(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<f32>(1.0);
+    Pal4FunctionState::Completed
+}
+
+fn camera_get_roll(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<f32>(1.0);
+    Pal4FunctionState::Completed
+}
+
+fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(
+        vm,
+        scn_str: i32,
+        block_str: i32,
+        _data_str: i32,
+        _show_loading: i32
+    );
+
+    let scn = get_str(vm, scn_str as usize).unwrap();
+    let block = get_str(vm, block_str as usize).unwrap();
+
+    let _ = vm.app_context().scene_manager.pop_scene();
+    let scene = vm.app_context().loader.load_scene(&scn, &block).unwrap();
+    vm.app_context().scene_manager.push_scene(scene);
+
+    let module = vm.app_context().loader.load_script_module(&scn).unwrap();
+    vm.set_function_by_name(module, &format!("{}_{}_init", scn, block));
+
+    Pal4FunctionState::Completed
+}
+
+fn arena_ready(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn arena_ready_restore(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn arena_hint(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn arena_come_from_here(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _arena_name: i32, _come_from_here_name: i32);
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn player_set_leader(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _leader_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_set_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_id: i32, _is_visible: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_attach_collision(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_detach_collision(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_lock(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn player_unlock(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn set_npc_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_name: i32, _is_visible: i32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_create(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_name: i32, _behaviour_name: i32, _x_pos:f32,_y_pos:f32,_z_pos:f32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_delete(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_name:i32);
+    Pal4FunctionState::Completed
+}
+
+fn system_exchange(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_exchange_type:i32);
+    Pal4FunctionState::Completed
+}
+
+fn monster_stop_pursuit(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn camera_set_mode(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_camera_mode:i32,_is_instant:i32);
+    Pal4FunctionState::Completed
+}
+
+fn get_goods_open_condition(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_goods_id:i32);
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn set_goods_open_condition(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_goods_id:i32,_condition:i32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_pause_beh(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_name:i32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_resume_beh(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_name:i32);
+    Pal4FunctionState::Completed
+}
+
+fn open_weather(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_weather_type:i32);
+    Pal4FunctionState::Completed
+}
+
+fn close_weather(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn set_minimap_expmode(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_exp_mode:i32);
+    Pal4FunctionState::Completed
+}
+
+fn get_randnum(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_min:i32,_max:i32);
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn set_temp_game_state(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_state:i32);
+    Pal4FunctionState::Completed
+}
+
+fn flush_tail_y_angle(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn add_combat_monster(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_monster_id:i32,_monster_type:i32);
+    Pal4FunctionState::Completed
+}
+
+fn config_combat_param(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_is_auto_fight:i32,_auto_fight_skill_id:i32,_auto_fight_skill_percent:i32,_auto_fight_skill_target_count:i32);
+    Pal4FunctionState::Completed
+}
+
+fn config_combat_bgm(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_bgm_name:i32);
+    Pal4FunctionState::Completed
+}
+
+fn config_combat_camera(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_camera_name:i32);
+    Pal4FunctionState::Completed
+}
+
+fn start_combat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_combat_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn set_object_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_object_name:i32,_is_visible:i32);
+    Pal4FunctionState::Completed
+}
+
+fn add_property(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_property_id:i32,_property_value:i32,_is_persistent:i32);
+    Pal4FunctionState::Completed
+}
+
+fn del_property(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_property_id:i32,_property_value:i32,_is_persistent:i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_in_team(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_is_in_team:i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_out_team(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_is_in_team:i32);
+    Pal4FunctionState::Completed
+}
+
+fn gom_touch(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, _file_str: i32);
-    let file_name = get_str(vm, _file_str as usize).unwrap();
-    println!("camera prepare: {}", file_name);
+    Pal4FunctionState::Completed
+}
 
+fn camera_set_collide(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _collide: bool);
+    Pal4FunctionState::Completed
+}
+
+fn camera_seek_to_player(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn camera_auto_seek(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _auto_seek: bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_set_attr(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _attr1: i32, _attr2: i32, _attr3: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_get_leader(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
 
-fn camera_run_single(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _file_str: i32, _sync: i32);
-    let file_name = get_str(vm, _file_str as usize).unwrap();
-    println!("camera run single: {}", file_name);
+fn set_player_level(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_id: i32, _level: i32);
+    Pal4FunctionState::Completed
+}
 
+fn add_player_equip(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_id: i32, _equip_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn open_movie_flag(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _flag_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _percentage: i32);
+    Pal4FunctionState::Completed
+}
+
+fn add_equipment(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _equipment_id: i32, _is_add: bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_set_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _is_visible: bool);
+    Pal4FunctionState::Completed
+}
+
+fn set_full_hp(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn set_full_mp(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn get_player_level(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_id: i32);
     vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
 
-fn flash_out_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _duration: f32, _keep: i32, _sync: i32);
+fn goto_logo(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
-fn flash_in_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _duration: f32, _sync: i32);
+fn player_unhold_act(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_act_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_unhold_act(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn camera_set_dist_opt_enable(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_enable_dist_opt :bool);
+    Pal4FunctionState::Completed
+}
+
+fn monster_set_hide(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_file_str:i32,_hide_monster :bool);
+    Pal4FunctionState::Completed
+}
+
+fn game_object_set_research(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_file_str:i32,_research :bool);
+    Pal4FunctionState::Completed
+}
+
+fn set_portrait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_file_str:i32,_set_portrait :bool);
+    Pal4FunctionState::Completed
+}
+
+fn bgm_config_set_music(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn bgm_config_is_in_area(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_file_str:i32);
+    vm.stack_push::<bool>(true);
+    Pal4FunctionState::Completed
+}
+
+fn script_music_mute(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _mute: bool);
+    Pal4FunctionState::Completed
+}
+
+fn script_music_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, str: i32, _mode: i32, _fade_in: f32, _fade_out: f32);
+
+    let str = get_str(vm, str as usize).unwrap();
+    println!("music play: {}", str);
+    Pal4FunctionState::Completed
+}
+
+fn script_music_stop(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _flag: i32, _fade_in: f32);
+    Pal4FunctionState::Completed
+}
+
+fn arena_music_stop(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _fade_out: f32);
+    Pal4FunctionState::Completed
+}
+
+fn world_map_set_state(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _file_str: i32, _state_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn get_puzzle_game_result(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn always_jump(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _jump: bool);
+    Pal4FunctionState::Completed
+}
+
+fn sound_2d_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _name_str: i32, _times: i32);
+    vm.stack_push::<i32>(0);
+    Pal4FunctionState::Completed
+}
+
+fn sound_2d_stop(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn sound_2d_stop_id(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _sound_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn cg_eff_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _eff_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn cg_eff_stop(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn effect_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _file_str:i32,_effect_id:i32,_x:f32,_y:f32,_z:f32);
+    Pal4FunctionState::Completed
+}
+
+fn effect_play_with_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_file_str:i32,_effect_id:i32,_player_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn effect_play_with_current_player(
+    _: &str,
+    vm: &mut ScriptVm<Pal4AppContext>,
+) -> Pal4FunctionState {
+    as_params!(vm,_file_str:i32,_effect_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn effect_play_with_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_file_str:i32,_effect_id:i32,_npc_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn effect_play_with_obj(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_file_str:i32,_effect_id:i32,_obj_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn effect_stop_with_obj(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_obj_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn show_hint(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_hint_file_str:i32,_x:f32,_y:f32);
+    Pal4FunctionState::Completed
+}
+
+fn player_add_skill(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_skill_id:i32,_add_skill:bool);
+    Pal4FunctionState::Completed
+}
+
+fn monster_set_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_monster_file_str:i32,_visible_monster:bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_random_position(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_x:f32,_y:f32);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_random_position(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_x:f32,_y:f32);
+    Pal4FunctionState::Completed
+}
+
+fn event_volume_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_event_file_str:i32,_visible_event:bool);
+    Pal4FunctionState::Completed
+}
+
+fn all_player_garb2(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn player_garb2(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn all_player_garb1(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn player_garb1(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn get_visible_object(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_obj_file_str:i32);
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn get_visible_monster(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_monster_file_str:i32);
+    vm.stack_push::<bool>(true);
+    Pal4FunctionState::Completed
+}
+
+fn check_pack_property(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_property_id:i32,_property_value:i32);
+    vm.stack_push::<bool>(true);
+    Pal4FunctionState::Completed
+}
+
+fn grant_system_ui(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_ui_id:i32,_grant_ui:bool);
+    Pal4FunctionState::Completed
+}
+
+fn open_system_ui(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_ui_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn grant_smith_system(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_smith1:bool,_smith2:bool,_smith3:bool,_smith4:bool);
+    Pal4FunctionState::Completed
+}
+
+fn grant_magic_system(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_magic1:bool,_magic2:bool);
+    Pal4FunctionState::Completed
+}
+
+fn check_magic_mastered(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<bool>(true);
+    Pal4FunctionState::Completed
+}
+
+fn select_dialog_add_item(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_item_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn select_dialog_get_last_select(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn gob_attach_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_gob_file_str:i32,_attach_file_str:i32,_player_id:i32,_attach_gob:bool);
+    Pal4FunctionState::Completed
+}
+
+fn gob_attach_to_current_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_gob_file_str:i32,_attach_file_str:i32,_attach_gob:bool);
+    Pal4FunctionState::Completed
+}
+
+fn gob_detach_from_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn gob_detach_from_current_player(
+    _: &str,
+    _vm: &mut ScriptVm<Pal4AppContext>,
+) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn effect_attach_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_effect_file_str:i32,_attach_effect:bool);
+    Pal4FunctionState::Completed
+}
+
+fn effect_attach_to_current_player(
+    _: &str,
+    vm: &mut ScriptVm<Pal4AppContext>,
+) -> Pal4FunctionState {
+    as_params!(vm,_effect_file_str:i32,_attach_effect:bool);
+    Pal4FunctionState::Completed
+}
+
+fn effect_detach_from_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn effect_detach_from_current_player(
+    _: &str,
+    _vm: &mut ScriptVm<Pal4AppContext>,
+) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn effect_attach_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32, _effect_file_str: i32, _attach_effect: bool);
+    Pal4FunctionState::Completed
+}
+
+fn effect_detach_from_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32);
+    Pal4FunctionState::Completed
+}
+
+fn gob_attach_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _gob_file_str: i32, _attach_file_str: i32, _npc_file_str: i32, _attach_gob: bool);
+    Pal4FunctionState::Completed
+}
+
+fn gob_detach_from_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32);
+    Pal4FunctionState::Completed
+}
+
+fn gob_set_position(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _gob_file_str: i32, _x: f32, _y: f32, _z: f32);
+    Pal4FunctionState::Completed
+}
+
+fn script_clear_ctx_but_current(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn add_money(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _money_amount: i32, _add_money: bool);
+    Pal4FunctionState::Completed
+}
+
+fn pay_money(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _money_amount: i32, _pay_money: bool);
+    Pal4FunctionState::Completed
+}
+
+fn hide_ga_skill_object(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn show_signpost(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn player_set_emotion(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_id: i32, _emotion_file_str: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_reset_emotion(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_set_emotion(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _emotion_file_str: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_reset_emotion(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn lingsha_legs_injured(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _injured_file_str: i32);
+    Pal4FunctionState::Completed
+}
+
+fn lingsha_legs_healing(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn npc_set_emotion(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str:i32,_emotion_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_reset_emotion(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn get_property_numb(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_property_id:i32);
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_get_pos_x(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<f32>(1.0);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_get_pos_y(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<f32>(1.0);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_get_pos_z(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<f32>(1.0);
+    Pal4FunctionState::Completed
+}
+
+fn arena_skill_enable(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _enable: bool);
+    Pal4FunctionState::Completed
+}
+
+fn show_inn_dialog(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _show: bool);
+    Pal4FunctionState::Completed
+}
+
+fn get_inn_dialog_result(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn player_take_a_rest(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn is_night_time(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<bool>(true);
+    Pal4FunctionState::Completed
+}
+
+fn player_set_pos_rot(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_id: i32, _x: f32, _y: f32, _z: f32, _rot: f32);
+    Pal4FunctionState::Completed
+}
+
+fn player_set_pos_rot_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_file_str: i32, _x: f32, _y: f32, _z: f32, _rot: f32);
+    Pal4FunctionState::Completed
+}
+
+fn start_ui_timer(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _timer_id: i32, _timer_file_str: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_forbiden_skill(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_id: i32, _skill_id: i32, _forbiden_skill: bool);
+    Pal4FunctionState::Completed
+}
+
+fn get_money(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn select_dialog_set_default_select(
+    _: &str,
+    vm: &mut ScriptVm<Pal4AppContext>,
+) -> Pal4FunctionState {
+    as_params!(vm, _select_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn show_quest_dialog(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_quest_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn get_quest_dialog_result(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn reset_player_to_jump_start(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn gob_reset(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_gob_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn check_equip_in_inventory(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_equip_id:i32);
+    vm.stack_push::<bool>(true);
+    Pal4FunctionState::Completed
+}
+
+fn remove_equipment(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_equip_id:i32,_remove_equip :bool);
+    Pal4FunctionState::Completed
+}
+
+fn add_prescription(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_prescription_id:i32,_add_prescription :bool);
+    Pal4FunctionState::Completed
+}
+
+fn enable_shadow(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_enable_shadow :bool);
+    Pal4FunctionState::Completed
+}
+
+fn add_round_times(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn time_script(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_time:f32,_script_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn time_script_terminate(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn config_combat_ground_camera(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_camera_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn add_player_favor(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_favor_id:i32,_favor_value:i32);
+    Pal4FunctionState::Completed
+}
+
+fn get_pal_test_result(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_test_id:i32);
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn set_minimap_level(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_level_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn pet_show(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_show_pet:bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_attach_effect(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32,_effect_file_str:i32,_effect_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_detach_effect(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn mst_attach_effect(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_mst_file_str:i32,_effect_file_str:i32,_effect_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn mst_detach_effect(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_mst_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_hook_effect(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_effect_file_str:i32,_effect_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_detach_effect(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn common_dialog_get_last_select(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn config_combat_vip_monster(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _monster_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn enable_sts(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _sts_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn clear_ui_timer(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn pause_ui_timer(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn resume_ui_timer(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn set_full_rage(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn ui_timer_get_save_data(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
 
@@ -1116,22 +1966,7 @@ fn script_music_pause(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functi
     Pal4FunctionState::Completed
 }
 
-fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _name_str: i32);
-    Pal4FunctionState::Completed
-}
-
-fn add_player_equip(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player: i32, _equip: i32);
-    Pal4FunctionState::Completed
-}
-
-fn open_movie_flag(_name: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _flag: i32);
-    Pal4FunctionState::Completed
-}
-
-fn script_music_resume(_name: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn script_music_resume(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
@@ -1165,116 +2000,396 @@ fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     }))
 }
 
-fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _pct: i32);
+fn rand_talk_push(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _talk_file_str: i32);
     Pal4FunctionState::Completed
 }
 
-fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(
-        vm,
-        scn_str: i32,
-        block_str: i32,
-        _data_str: i32,
-        _show_loading: i32
-    );
-
-    let scn = get_str(vm, scn_str as usize).unwrap();
-    let block = get_str(vm, block_str as usize).unwrap();
-
-    let _ = vm.app_context().scene_manager.pop_scene();
-    let scene = vm.app_context().loader.load_scene(&scn, &block).unwrap();
-    vm.app_context().scene_manager.push_scene(scene);
-
-    let module = vm.app_context().loader.load_script_module(&scn).unwrap();
-    vm.set_function_by_name(module, &format!("{}_{}_init", scn, block));
-
+fn rand_talk(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
-fn script_music_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, str: i32, _mode: i32, _fade_in: f32, _fade_out: f32);
-
-    let str = get_str(vm, str as usize).unwrap();
-    println!("music play: {}", str);
+fn rand_talk_release(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
-fn script_music_stop(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _flag: i32, _fade_in: f32);
-    Pal4FunctionState::Completed
-}
-
-fn arena_music_stop(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _fade_out: f32);
-    Pal4FunctionState::Completed
-}
-
-fn dd_sound_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _name_str: i32, _times: i32);
-    vm.stack_push::<i32>(0);
-    Pal4FunctionState::Completed
-}
-
-fn camera_set_collide(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _collide: i32);
-    Pal4FunctionState::Completed
-}
-
-fn camera_seek_to_player(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    Pal4FunctionState::Completed
-}
-
-fn camera_auto_seek(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _auto_seek: i32);
-    Pal4FunctionState::Completed
-}
-
-fn player_set_leader(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player: i32);
-    Pal4FunctionState::Completed
-}
-
-fn player_set_attr(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player: i32, _attr: i32, _value: i32);
-    Pal4FunctionState::Completed
-}
-
-fn player_lock(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn talk_wait(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
 fn player_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player: i32, _action_str: i32, _loop: i32, _sync: i32);
+    as_params!(vm, _player_id: i32, _action_file_str: i32, _action_id: i32, _do_action: bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_end_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _player_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _action_file_str:i32,_action_id:i32,_do_action :bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_end_action(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn player_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32);
     Pal4FunctionState::Completed
 }
 
 fn player_current_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _x: f32, _y: f32, _z: f32);
+    as_params!(vm,_x:f32,_y:f32,_z:f32);
+    Pal4FunctionState::Completed
+}
+
+fn player_set_rot(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_rot_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_ang:f32);
     Pal4FunctionState::Completed
 }
 
 fn player_current_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _rot: f32);
+    as_params!(vm,_ang:f32);
     Pal4FunctionState::Completed
 }
 
-fn arena_ready(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn player_face_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player1_id:i32,_player2_id:i32,_face_to_player :bool);
     Pal4FunctionState::Completed
 }
 
-fn grant_system_ui(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _ui: i32, _enable: i32);
+fn player_set_dir(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_dir:f32,_set_dir :bool);
     Pal4FunctionState::Completed
 }
 
-fn grant_magic_system(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _magic: i32, _skill: i32);
+fn player_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_npc_file_str:i32,_face_to_npc :bool);
     Pal4FunctionState::Completed
 }
 
-fn check_magic_mastered(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<i32>(0);
+fn player_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_walk_to :bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_run_to :bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_x:f32,_y:f32,_z:f32,_walk_to :bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_back_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_back_to :bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_blend_out(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_blend_out_time:f32,_blend_out :bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_blend_in(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_blend_in_time:f32,_blend_in :bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_face_to_current_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_face_to_current_player :bool);
+    Pal4FunctionState::Completed
+}
+
+fn current_player_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32,_face_to_npc :bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_do_action_repeat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32,_action_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_end_action_repeat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn player_end_move(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_player_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn current_player_end_move(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn npc_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _walk_to: bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _run_to: bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_back_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _back_to: bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32, _action_file_str: i32, _action_id: i32, _do_action: bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_end_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32, _end_action: bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_set_rot(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32, _rot_file_str: i32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_set_dir(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32, _dir: f32, _set_dir: bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc1_file_str: i32, _npc2_file_str: i32, _face_to_npc: bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_face_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32, _player_id: i32, _face_to_player: bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_blend_out(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _npc_file_str: i32, _blend_out_time: f32, _blend_out: bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_blend_in(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32,_blend_in_time:f32,_blend_in :bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_face_to_current_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32,_face_to_current_player :bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_reset_dir(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_do_action_repeat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32,_action_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_end_action_repeat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_end_move(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn npc_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32,_ang:f32);
+    Pal4FunctionState::Completed
+}
+
+fn camera_prepare(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _file_str: i32);
+    let file_name = get_str(vm, _file_str as usize).unwrap();
+    println!("camera prepare: {}", file_name);
+
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn camera_run_single(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _file_str: i32, _sync: i32);
+    let file_name = get_str(vm, _file_str as usize).unwrap();
+    println!("camera run single: {}", file_name);
+
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn camera_run_circle(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_run_circle :bool);
+    vm.stack_push::<i32>(1);
+    Pal4FunctionState::Completed
+}
+
+fn camera_wait(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn flash_out_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _duration: f32, _keep: i32, _sync: i32);
+    Pal4FunctionState::Completed
+}
+
+fn flash_in_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _duration: f32, _sync: i32);
+    Pal4FunctionState::Completed
+}
+
+fn flash_out_white(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _flash_time:f32,_flash_out_white1 :bool,_flash_out_white2 :bool);
+    Pal4FunctionState::Completed
+}
+
+fn flash_in_white(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _flash_time:f32,_flash_in_white :bool);
+    Pal4FunctionState::Completed
+}
+
+fn flash_out_red(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _flash_time:f32,_flash_out_red1 :bool,_flash_out_red2 :bool);
+    Pal4FunctionState::Completed
+}
+
+fn flash_in_red(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _flash_time:f32,_flash_in_red1 :bool,_flash_in_red2 :bool);
+    Pal4FunctionState::Completed
+}
+
+fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _movie_file_str:i32);
+    Pal4FunctionState::Completed
+}
+
+fn object_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_object_file_str:i32,_action_file_str:i32,_action_id:i32,_do_action :bool);
+    Pal4FunctionState::Completed
+}
+
+fn start_trade_system(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_trade_file_str1:i32,_trade_file_str2:i32);
+    Pal4FunctionState::Completed
+}
+
+fn start_puzzle_game(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_puzzle_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn start_jigsaw_game(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_jigsaw_id:i32);
+    Pal4FunctionState::Completed
+}
+
+fn obj_blend_out(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_obj_file_str:i32,_blend_out_time:f32,_blend_out :bool);
+    Pal4FunctionState::Completed
+}
+
+fn obj_blend_in(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_obj_file_str:i32,_blend_in_time:f32,_blend_in :bool);
+    Pal4FunctionState::Completed
+}
+
+fn mst_blend_out(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_mst_file_str:i32,_blend_out_time:f32,_blend_out :bool);
+    Pal4FunctionState::Completed
+}
+
+fn mst_blend_in(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_mst_file_str:i32,_blend_in_time:f32,_blend_in :bool);
+    Pal4FunctionState::Completed
+}
+
+fn show_common_dialog(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_dialog_file_str:i32,_x:f32,_y:f32);
+    Pal4FunctionState::Completed
+}
+
+fn show_select_dialog(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_dialog_file_str:i32);
+    Pal4FunctionState::Completed
+}
+fn gob_movment(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _gob_file_str: i32, _x: f32, _y: f32, _z: f32, _rot: f32, _movment: bool);
+    Pal4FunctionState::Completed
+}
+
+fn show_tutorial(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _key_id: i32);
+    Pal4FunctionState::Completed
+}
+
+fn show_world_map(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn gob_scale(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _gob_file_str: i32, _x_scale: f32, _y_scale: f32, _scale_gob: bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_face_to_gob(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_gob_file_str:i32,_face_to_gob :bool);
+    Pal4FunctionState::Completed
+}
+
+fn player_current_movement(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_x:f32,_y:f32,_z:f32,_rot:f32,_movment :bool);
+    Pal4FunctionState::Completed
+}
+
+fn show_poetry(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_poetry_id:i32,_show_poetry :bool);
+    Pal4FunctionState::Completed
+}
+
+fn npc_fly_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm,_npc_file_str:i32,_x:f32,_y:f32,_z:f32,_fly_to :bool);
+    Pal4FunctionState::Completed
+}
+
+fn goto_logo_wait(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Completed
+}
+
+fn show_common_dialog_in_select_mode(
+    _: &str,
+    vm: &mut ScriptVm<Pal4AppContext>,
+) -> Pal4FunctionState {
+    as_params!(vm, _dialog_file_str:i32,_x:f32,_y:f32);
+    Pal4FunctionState::Completed
+}
+
+fn play_movie_final(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _movie_file_str:i32);
     Pal4FunctionState::Completed
 }
 

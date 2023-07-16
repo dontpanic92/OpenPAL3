@@ -90,13 +90,9 @@ impl DialogBox {
                 };
 
                 color.a = (255. * opacity) as u8;
-                list.add_rect(
-                    [0., 0.],
-                    window_size,
-                    color
-                )
-                .filled(true)
-                .build();
+                list.add_rect([0., 0.], window_size, color)
+                    .filled(true)
+                    .build();
             });
     }
 

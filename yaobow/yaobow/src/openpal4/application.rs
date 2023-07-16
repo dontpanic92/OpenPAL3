@@ -1,17 +1,13 @@
-use std::{cell::RefCell, path::PathBuf};
+use std::path::PathBuf;
 
-use crosscom::{ComObject, ComRc};
+use crosscom::ComRc;
 use radiance::{
     application::Application,
     comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
 };
 use shared::{
     fs::init_virtual_fs,
-    openpal4::{
-        app_context::Pal4AppContext, asset_loader::AssetLoader, director::OpenPAL4Director,
-        scripting::create_script_vm,
-    },
-    scripting::angelscript::ScriptVm,
+    openpal4::{asset_loader::AssetLoader, director::OpenPAL4Director},
 };
 
 use crate::ComObject_OpenPal4ApplicationLoaderComponent;

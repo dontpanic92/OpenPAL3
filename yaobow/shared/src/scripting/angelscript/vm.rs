@@ -95,7 +95,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         ret
     }
 
-    pub fn stack_push<T: std::marker::Copy>(&mut self, ret: i32) {
+    pub fn stack_push<T: std::marker::Copy>(&mut self, ret: T) {
         self.context.sp -= std::mem::size_of::<T>();
         unsafe { self.write_stack(self.context.sp, ret) };
     }

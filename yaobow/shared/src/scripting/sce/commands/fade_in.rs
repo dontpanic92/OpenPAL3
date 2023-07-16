@@ -7,7 +7,7 @@ pub const SCE_COMMAND_FADE_IN_TIMEOUT: f32 = 3.;
 
 #[derive(Debug, Clone)]
 pub struct SceCommandFadeIn {
-    spent: f32
+    spent: f32,
 }
 
 impl SceCommand for SceCommandFadeIn {
@@ -31,8 +31,6 @@ impl SceCommand for SceCommandFadeIn {
 
 impl SceCommandFadeIn {
     pub fn new() -> Self {
-        Self {
-            spent: 0.,
-        }
+        Self { spent: 0. }
     }
 }

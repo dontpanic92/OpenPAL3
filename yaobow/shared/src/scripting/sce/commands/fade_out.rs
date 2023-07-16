@@ -1,12 +1,12 @@
+use super::fade_in::SCE_COMMAND_FADE_IN_TIMEOUT;
 use crate::scripting::sce::{SceCommand, SceState};
 use crosscom::ComRc;
 use imgui::Ui;
 use radiance::comdef::ISceneManager;
-use super::fade_in::SCE_COMMAND_FADE_IN_TIMEOUT;
 
 #[derive(Debug, Clone)]
 pub struct SceCommandFadeOut {
-    spent: f32
+    spent: f32,
 }
 
 impl SceCommand for SceCommandFadeOut {
@@ -30,8 +30,6 @@ impl SceCommand for SceCommandFadeOut {
 
 impl SceCommandFadeOut {
     pub fn new() -> Self {
-        Self {
-            spent: 0.,
-        }
+        Self { spent: 0. }
     }
 }
