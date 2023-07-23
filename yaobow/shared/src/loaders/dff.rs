@@ -194,10 +194,10 @@ fn create_geometry(
     let vertices = geometry.morph_targets[0].vertices.as_ref().unwrap();
     let normals = geometry.morph_targets[0].normals.as_ref();
     let triangles = &geometry.triangles;
-    let texcoord_sets = if geometry.texcoord_sets.len() > 1 {
+    let texcoord_sets = if geometry.texcoord_sets.len() >= 1 {
         vec![geometry.texcoord_sets[0].clone()]
     } else {
-        geometry.texcoord_sets.clone()
+        vec![vertices.iter().map(|_| TexCoord { u: 0., v: 0. }).collect()]
     };
     let materials = &geometry.materials;
 

@@ -59,6 +59,7 @@ impl<TAppContext: 'static> ScriptGlobalContext<TAppContext> {
         vm: &mut ScriptVm<TAppContext>,
         index: usize,
     ) -> GlobalFunctionState<TAppContext> {
+        log::debug!("Calling: {}", self.functions[index].name);
         (self.functions[index].func)(&self.functions[index].name, vm)
     }
 
