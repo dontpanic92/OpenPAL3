@@ -1,6 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use imgui::{Condition, MouseButton};
+use radiance::{input::Key, video::VideoStreamState};
 
 use crate::{
     as_params,
@@ -8,6 +9,7 @@ use crate::{
         not_implemented, ContinuationState, GlobalFunctionContinuation, GlobalFunctionState,
         ScriptGlobalContext, ScriptGlobalFunction, ScriptVm,
     },
+    utils::show_video_window,
 };
 
 use super::app_context::Pal4AppContext;
@@ -2284,8 +2286,52 @@ fn flash_in_red(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
 }
 
 fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _movie_file_str:i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, movie_file_str:i32);
+
+    let movie_name = get_str(vm, movie_file_str as usize).unwrap();
+    let (source_w, source_h) = match vm.app_context.start_play_movie(&movie_name) {
+        Some(size) => size,
+        None => {
+            log::warn!("Skip movie '{}'", movie_name);
+            return Pal4FunctionState::Completed;
+        }
+    };
+    let mut texture_id = None;
+
+    Pal4FunctionState::Yield(Box::new(move |vm| {
+        let ui = vm.app_context.ui.clone();
+        let window_size = ui.ui().io().display_size;
+
+        let movie_skipped = {
+            let input = vm.app_context().input.borrow();
+            input.get_key_state(Key::Escape).pressed()
+        };
+
+        let video_player = vm.app_context.video_player();
+        if movie_skipped {
+            video_player.stop();
+            return ContinuationState::Completed;
+        }
+        if video_player.get_state() == VideoStreamState::Stopped {
+            return ContinuationState::Completed;
+        }
+
+        // Keep aspect ratio
+        let w_scale = window_size[0] / source_w as f32;
+        let h_scale = window_size[1] / source_h as f32;
+        let scale = w_scale.min(h_scale);
+        let target_size = [source_w as f32 * scale, source_h as f32 * scale];
+
+        texture_id = Some(show_video_window(
+            ui.ui(),
+            video_player,
+            texture_id,
+            window_size,
+            target_size,
+        ));
+
+        ContinuationState::Loop
+    }))
 }
 
 fn object_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {

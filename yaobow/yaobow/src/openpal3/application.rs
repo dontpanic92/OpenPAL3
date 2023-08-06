@@ -8,7 +8,6 @@ use radiance::application::Application;
 use radiance::comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl};
 use shared::config::YaobowConfig;
 use shared::openpal3::asset_manager::AssetManager;
-use shared::video::register_opengb_video_decoders;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -23,8 +22,6 @@ ComObject_OpenPal3ApplicationLoaderComponent!(super::OpenPal3ApplicationLoader);
 impl IComponentImpl for OpenPal3ApplicationLoader {
     fn on_loading(&self) {
         self.app.set_title(&self.app_name);
-
-        register_opengb_video_decoders();
 
         let input_engine = self.app.engine().borrow().input_engine();
         let audio_engine = self.app.engine().borrow().audio_engine();

@@ -24,6 +24,7 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
     fn on_loading(&self) {
         self.app.set_title(&self.app_name);
 
+        let component_factory = self.app.engine().borrow().rendering_component_factory();
         let input_engine = self.app.engine().borrow().input_engine();
         let audio_engine = self.app.engine().borrow().audio_engine();
         let scene_manager = self.app.engine().borrow().scene_manager().clone();
@@ -35,7 +36,13 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
             vfs,
         );
 
-        let director = OpenPAL4Director::new(loader, scene_manager.clone(), ui);
+        let director = OpenPAL4Director::new(
+            component_factory,
+            loader,
+            scene_manager.clone(),
+            ui,
+            input_engine,
+        );
         scene_manager.set_director(ComRc::from_object(director));
     }
 

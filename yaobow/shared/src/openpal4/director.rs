@@ -3,7 +3,10 @@ use std::{cell::RefCell, rc::Rc};
 use crosscom::ComRc;
 use radiance::{
     comdef::{IDirectorImpl, ISceneManager},
+    input::InputEngine,
     radiance::UiManager,
+    rendering::ComponentFactory,
+    scene::CoreScene,
 };
 
 use crate::{scripting::angelscript::ScriptVm, ComObject_OpenPAL4Director};
@@ -21,11 +24,13 @@ ComObject_OpenPAL4Director!(super::OpenPAL4Director);
 
 impl OpenPAL4Director {
     pub fn new(
+        component_factory: Rc<dyn ComponentFactory>,
         loader: Rc<AssetLoader>,
         scene_manager: ComRc<ISceneManager>,
         ui: Rc<UiManager>,
+        input: Rc<RefCell<dyn InputEngine>>,
     ) -> Self {
-        let app_context = Pal4AppContext::new(loader, scene_manager, ui);
+        let app_context = Pal4AppContext::new(component_factory, loader, scene_manager, ui, input);
         Self {
             vm: RefCell::new(create_script_vm(app_context)),
         }
@@ -39,7 +44,9 @@ impl IOpenPAL4DirectorImpl for OpenPAL4Director {
 }
 
 impl IDirectorImpl for OpenPAL4Director {
-    fn activate(&self, scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>) {}
+    fn activate(&self, scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>) {
+        scene_manager.push_scene(CoreScene::create());
+    }
 
     fn update(
         &self,

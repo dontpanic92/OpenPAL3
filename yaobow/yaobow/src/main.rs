@@ -4,6 +4,7 @@
 use opengujian::run_opengujian;
 use openpal3::run_openpal3;
 use openpal4::run_openpal4;
+use shared::video::register_opengb_video_decoders;
 
 mod comdef;
 mod opengujian;
@@ -12,6 +13,7 @@ mod openpal4;
 
 pub fn main() {
     init_logger();
+    register_opengb_video_decoders();
 
     let args = std::env::args().collect::<Vec<String>>();
     if args.len() <= 1 {

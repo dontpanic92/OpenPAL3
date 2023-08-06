@@ -52,4 +52,14 @@ impl AssetLoader {
         scene.add_entity(entity);
         Ok(scene)
     }
+
+    pub fn load_video(&self, video_name: &str) -> anyhow::Result<Vec<u8>> {
+        let video_folder = match video_name.to_lowercase().as_str() {
+            "1a.bik" | "end2.bik" | "pal4a.bik" => "VideoA",
+            _ => "videob",
+        };
+
+        let path = format!("/gamedata/{}/{}", video_folder, video_name);
+        Ok(self.vfs.read_to_end(&path)?)
+    }
 }
