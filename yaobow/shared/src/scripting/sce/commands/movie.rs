@@ -54,13 +54,14 @@ impl SceCommand for SceCommandMovie {
 
         let window_size = ui.io().display_size;
 
-        let mut target_size = window_size;
-        if cfg!(feature = "movies-keep-aspect-ratio") {
-            let w_scale = window_size[0] / source_w as f32;
-            let h_scale = window_size[1] / source_h as f32;
-            let scale = w_scale.min(h_scale);
-            target_size = [source_w as f32 * scale, source_h as f32 * scale];
-        }
+        // Keep aspect ratio
+        // PAL3 movies are 4:3 ones with black bars on top and bottom
+        // Scale movies to remove the black bars
+        let new_source_h = source_w * 9 / 16;
+        let w_scale = window_size[0] / source_w as f32;
+        let h_scale = window_size[1] / new_source_h as f32;
+        let scale = w_scale.min(h_scale);
+        let target_size = [source_w as f32 * scale, source_h as f32 * scale];
 
         ui.window("movie")
             .size(window_size, Condition::Always)

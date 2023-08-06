@@ -135,7 +135,7 @@ impl StreamData {
         let duration = (duration_s * 1000_f64) as i64;
         Self {
             stream_index: stream.index(),
-            decoder: decoder_fn(stream.codec().decoder()),
+            decoder: decoder_fn(stream.decoder().unwrap()),
             time_base: time_base.numerator() as f64 / time_base.denominator() as f64,
             duration_pts,
             duration,
@@ -474,7 +474,8 @@ fn get_source_frame(video: &mut VideoStreamData) -> Result<(VideoFrame, u32), Lo
     };
     let decoder = video.stream.decoder.as_video();
     let mut frame = VideoFrame::empty();
-    match decoder.decode(&packet, &mut frame) {
+    decoder.send_packet(&packet).unwrap();
+    match decoder.receive_frame(&mut frame) {
         Err(err) => {
             error!("failed to decode video frame: {}", err);
             Err(LoopState::Exit)
@@ -633,9 +634,15 @@ impl Audio {
         // Create the new output stream.
         let stream = self
             .output_device
-            .build_output_stream_raw(&config, format, callback, move |err| {
-                // react to errors here.
-            })
+            .build_output_stream_raw(
+                &config,
+                format,
+                callback,
+                move |err| {
+                    // react to errors here.
+                },
+                None,
+            )
             .unwrap();
         // Create our wrapper struct
         let audio_stream = Arc::new(OutputAudioStream {
@@ -707,13 +714,13 @@ impl TryFrom<&FormatConfig> for OutputFormat {
         let dst_format = match config.format {
             CpalSampleFormat::F32 => FFmpegSampleFormat::F32(SampleType::Packed),
             CpalSampleFormat::I16 => FFmpegSampleFormat::I16(SampleType::Packed),
-            CpalSampleFormat::U16 => {
-                return Err("Unsupported sample format U16!".into());
+            _ => {
+                return Err("Unsupported sample format!".into());
             }
         };
         let channel_layout = match config.config.channels {
-            1 => ChannelLayout::FRONT_CENTER,
-            2 => ChannelLayout::FRONT_LEFT | ChannelLayout::FRONT_RIGHT,
+            1 => ChannelLayout::MONO,
+            2 => ChannelLayout::STEREO,
             c => {
                 return Err(format!("Unsupported number of channels: {}!", c));
             }
@@ -854,7 +861,7 @@ pub fn play_audio(audio: &mut AudioStreamData) -> LoopState {
             CpalSampleFormat::F32 => SampleBuffer::F32 {
                 buffer: VecDeque::new(),
             },
-            CpalSampleFormat::U16 => unreachable!(),
+            _ => unreachable!(),
         };
         // Store stream and buffer.
         audio.output_stream.replace((output_stream, format));
