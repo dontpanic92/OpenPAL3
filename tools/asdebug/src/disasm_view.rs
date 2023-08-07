@@ -20,7 +20,10 @@ pub struct DisasmView {
 
 impl DisasmView {
     pub fn new() -> Self {
-        let vfs = init_virtual_fs("F:\\PAL4", None);
+        let vfs = init_virtual_fs(
+            "F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 4",
+            None,
+        );
         let mut files = Tree::new("PAL4".to_string(), PathBuf::from("/"), TreeNodeType::Folder);
         Self::construct_folder_tree(&vfs, &mut files);
 

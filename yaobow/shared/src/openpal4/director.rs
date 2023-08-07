@@ -1,10 +1,12 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crosscom::ComRc;
+use ffmpeg::codec::audio;
 use radiance::{
+    audio::AudioEngine,
     comdef::{IDirectorImpl, ISceneManager},
     input::InputEngine,
-    radiance::UiManager,
+    radiance::{TaskManager, UiManager},
     rendering::ComponentFactory,
     scene::CoreScene,
 };
@@ -29,8 +31,18 @@ impl OpenPAL4Director {
         scene_manager: ComRc<ISceneManager>,
         ui: Rc<UiManager>,
         input: Rc<RefCell<dyn InputEngine>>,
+        audio: Rc<dyn AudioEngine>,
+        task_manager: Rc<TaskManager>,
     ) -> Self {
-        let app_context = Pal4AppContext::new(component_factory, loader, scene_manager, ui, input);
+        let app_context = Pal4AppContext::new(
+            component_factory,
+            loader,
+            scene_manager,
+            ui,
+            input,
+            audio,
+            task_manager,
+        );
         Self {
             vm: RefCell::new(create_script_vm(app_context)),
         }

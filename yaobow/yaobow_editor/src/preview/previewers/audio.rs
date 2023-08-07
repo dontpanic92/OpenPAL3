@@ -3,7 +3,7 @@ use std::{path::Path, rc::Rc};
 use common::store_ext::StoreExt2;
 use mini_fs::MiniFs;
 use radiance::{audio::AudioEngine, audio::Codec as AudioCodec};
-use shared::fs::cpk::CpkArchive;
+use shared::{fs::cpk::CpkArchive, loaders::smp::load_smp};
 
 use crate::{directors::main_content::ContentTab, preview::panes::AudioPane};
 
@@ -43,16 +43,7 @@ impl Previewer for AudioPreviewer {
 
         if let Ok(mut data) = vfs.read_to_end(&path) {
             if extension == "smp" {
-                let mut cpk = CpkArchive::load(std::io::Cursor::new(&data)).unwrap();
-                let name = cpk.file_names[0].clone();
-                let mut content = cpk.open_str(&name).unwrap().content();
-                let size = content.len() & 0xFFFFFFFC;
-                content.resize(size, 0);
-
-                data = xxtea::decrypt_raw(
-                    &content,
-                    "Vampire.C.J at Softstar Technology (ShangHai) Co., Ltd",
-                );
+                data = load_smp(&data).unwrap();
             }
 
             Some(ContentTab::new(

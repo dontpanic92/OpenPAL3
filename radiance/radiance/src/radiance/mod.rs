@@ -1,9 +1,11 @@
 mod core_engine;
 mod debugging;
+mod task_manager;
 mod ui_manager;
 
 pub use core_engine::CoreRadianceEngine;
 pub use debugging::DebugLayer;
+pub use task_manager::{TaskHandle, TaskManager};
 pub use ui_manager::UiManager;
 
 use crosscom::ComRc;

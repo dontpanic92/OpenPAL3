@@ -2,7 +2,7 @@ use crosscom::ComRc;
 use mini_fs::MiniFs;
 
 use super::ui_manager::UiManager;
-use super::DebugLayer;
+use super::{DebugLayer, TaskManager};
 use crate::comdef::ISceneManager;
 use crate::rendering::{self, RenderingEngine};
 use crate::{
@@ -18,6 +18,7 @@ pub struct CoreRadianceEngine {
     ui_manager: Rc<UiManager>,
     scene_manager: ComRc<ISceneManager>,
     virtual_fs: Rc<RefCell<MiniFs>>,
+    task_manager: Rc<TaskManager>,
     debug_layer: Option<Box<dyn DebugLayer>>,
 }
 
@@ -36,6 +37,7 @@ impl CoreRadianceEngine {
             ui_manager,
             scene_manager,
             virtual_fs: Rc::new(RefCell::new(MiniFs::new(false))),
+            task_manager: Rc::new(TaskManager::new()),
             debug_layer: None,
         }
     }
@@ -68,13 +70,20 @@ impl CoreRadianceEngine {
         self.ui_manager.clone()
     }
 
+    pub fn task_manager(&self) -> Rc<TaskManager> {
+        self.task_manager.clone()
+    }
+
     pub fn update(&self, delta_sec: f32) {
         self.input_engine.borrow_mut().update(delta_sec);
 
         let scene_manager = self.scene_manager.clone();
+        let task_manager = self.task_manager.clone();
         let debug_layer = self.debug_layer.as_ref();
         let ui_frame = self.ui_manager.update(delta_sec, |ui| {
             scene_manager.update(ui, delta_sec);
+            task_manager.update(delta_sec);
+
             if let Some(dl) = debug_layer {
                 dl.update(scene_manager.clone(), ui, delta_sec);
             }

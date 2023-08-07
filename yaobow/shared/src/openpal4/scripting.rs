@@ -1421,13 +1421,17 @@ fn script_music_mute(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 fn script_music_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, str: i32, _mode: i32, _fade_in: f32, _fade_out: f32);
 
-    let str = get_str(vm, str as usize).unwrap();
-    println!("music play: {}", str);
+    let name = get_str(vm, str as usize).unwrap();
+    if let Err(e) = vm.app_context.play_bgm(&name) {
+        log::error!("Failed to play bgm: {}", e);
+    }
+
     Pal4FunctionState::Completed
 }
 
 fn script_music_stop(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, _flag: i32, _fade_in: f32);
+    vm.app_context.stop_bgm();
     Pal4FunctionState::Completed
 }
 
@@ -1452,17 +1456,26 @@ fn always_jump(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState 
 }
 
 fn sound_2d_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _name_str: i32, _times: i32);
-    vm.stack_push::<i32>(0);
+    as_params!(vm, name_str: i32, _times: i32);
+
+    let name = get_str(vm, name_str as usize).unwrap();
+    match vm.app_context.play_sound(&name) {
+        Ok(id) => vm.stack_push::<i32>(id),
+        Err(e) => log::error!("Failed to play sound: {}", e),
+    }
+
     Pal4FunctionState::Completed
 }
 
 fn sound_2d_stop(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    log::warn!("sound_2d_stop is not implemented");
     Pal4FunctionState::Completed
 }
 
 fn sound_2d_stop_id(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _sound_id: i32);
+    as_params!(vm, sound_id: i32);
+    vm.app_context.stop_sound(sound_id);
+
     Pal4FunctionState::Completed
 }
 
@@ -1979,6 +1992,18 @@ fn wait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 
 fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, str: i32);
+    let voice = vm.stack_peek::<i32>();
+
+    if let Some(voice) = voice {
+        let voice_name = vm.heap.get(voice as usize).cloned().flatten();
+        if let Some(voice_name) = voice_name {
+            if voice_name.len() == 5 && voice_name.starts_with("4") {
+                if let Err(e) = vm.app_context.play_voice(&voice_name) {
+                    log::error!("Play voice failed: {}", e);
+                }
+            }
+        }
+    }
 
     Pal4FunctionState::Yield(Box::new(move |vm| {
         let str = get_str(vm, str as usize).unwrap();
@@ -2239,7 +2264,7 @@ fn camera_prepare(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 fn camera_run_single(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, _file_str: i32, _sync: i32);
     let file_name = get_str(vm, _file_str as usize).unwrap();
-    println!("camera run single: {}", file_name);
+    println!("camera run single: {} {}", file_name, _sync);
 
     vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed

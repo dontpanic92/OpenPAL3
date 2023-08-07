@@ -1,10 +1,11 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crosscom::ComRc;
 use radiance::{
+    audio::AudioEngine,
     comdef::ISceneManager,
     input::InputEngine,
-    radiance::UiManager,
+    radiance::{TaskHandle, TaskManager, UiManager},
     rendering::{ComponentFactory, VideoPlayer},
 };
 
@@ -15,9 +16,15 @@ pub struct Pal4AppContext {
     pub(crate) scene_manager: ComRc<ISceneManager>,
     pub(crate) ui: Rc<UiManager>,
     pub(crate) input: Rc<RefCell<dyn InputEngine>>,
+    pub(crate) task_manager: Rc<TaskManager>,
 
     component_factory: Rc<dyn ComponentFactory>,
+    audio_engine: Rc<dyn AudioEngine>,
     video_player: Box<VideoPlayer>,
+    bgm_task: Option<Rc<TaskHandle>>,
+    sound_tasks: HashMap<i32, Rc<TaskHandle>>,
+    sound_id: i32,
+    voice_task: Option<Rc<TaskHandle>>,
 }
 
 impl Pal4AppContext {
@@ -27,14 +34,22 @@ impl Pal4AppContext {
         scene_manager: ComRc<ISceneManager>,
         ui: Rc<UiManager>,
         input: Rc<RefCell<dyn InputEngine>>,
+        audio_engine: Rc<dyn AudioEngine>,
+        task_manager: Rc<TaskManager>,
     ) -> Self {
         Self {
             loader,
             scene_manager,
             ui,
+            task_manager,
             input,
             component_factory: component_factory.clone(),
+            audio_engine,
             video_player: component_factory.create_video_player(),
+            bgm_task: None,
+            sound_tasks: HashMap::new(),
+            sound_id: 0,
+            voice_task: None,
         }
     }
 
@@ -50,5 +65,89 @@ impl Pal4AppContext {
 
     pub fn video_player(&mut self) -> &mut VideoPlayer {
         &mut self.video_player
+    }
+
+    pub fn play_bgm(&mut self, name: &str) -> anyhow::Result<()> {
+        self.stop_bgm();
+
+        let data = self.loader.load_music(name)?;
+        let mut source = self.audio_engine.create_source();
+        source.play(data, radiance::audio::Codec::Mp3, true);
+
+        self.bgm_task = Some(self.task_manager.run_generic(move |_| {
+            source.update();
+            false
+        }));
+
+        Ok(())
+    }
+
+    pub fn stop_bgm(&mut self) {
+        if let Some(task) = &self.bgm_task {
+            task.stop();
+        }
+    }
+
+    pub fn play_sound(&mut self, name: &str) -> anyhow::Result<i32> {
+        self.sound_tasks.retain(|_, v| !v.is_finished());
+
+        let id = self.find_next_sound_id();
+        let task = self.play_sound_internal(name, radiance::audio::Codec::Wav)?;
+        self.sound_tasks.insert(id, task);
+        Ok(id)
+    }
+
+    pub fn stop_sound(&mut self, id: i32) {
+        if let Some(task) = self.sound_tasks.remove(&id) {
+            task.stop();
+        }
+    }
+
+    pub fn play_voice(&mut self, name: &str) -> anyhow::Result<()> {
+        self.stop_voice();
+
+        let task = self.play_sound_internal(name, radiance::audio::Codec::Mp3)?;
+        self.voice_task = Some(task);
+        Ok(())
+    }
+
+    pub fn stop_voice(&mut self) {
+        if let Some(task) = &self.voice_task {
+            task.stop();
+        }
+    }
+
+    fn find_next_sound_id(&mut self) -> i32 {
+        while self.sound_tasks.contains_key(&self.sound_id) {
+            self.sound_id += 1;
+            if self.sound_id == 10000 {
+                self.sound_id = 0;
+            }
+        }
+
+        self.sound_id
+    }
+
+    fn play_sound_internal(
+        &mut self,
+        name: &str,
+        codec: radiance::audio::Codec,
+    ) -> anyhow::Result<Rc<TaskHandle>> {
+        let ext = if codec == radiance::audio::Codec::Mp3 {
+            "mp3"
+        } else {
+            "wav"
+        };
+
+        let data = self.loader.load_sound(name, ext)?;
+        let mut source = self.audio_engine.create_source();
+        source.play(data, codec, false);
+
+        let task = self.task_manager.run_generic(move |_| {
+            source.update();
+            source.state() == radiance::audio::AudioSourceState::Stopped
+        });
+
+        Ok(task)
     }
 }

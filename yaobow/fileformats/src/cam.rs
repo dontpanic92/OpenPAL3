@@ -2,8 +2,6 @@ use binrw::binrw;
 
 use crate::utils::SizedString;
 
-
-
 #[binrw]
 #[brw(little)]
 #[derive(Debug)]

@@ -89,6 +89,15 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         }
     }
 
+    pub fn stack_peek<T: std::marker::Copy>(&mut self) -> Option<T> {
+        if self.context.sp < self.context.stack.len() - std::mem::size_of::<T>() {
+            let ret: T = unsafe { self.read_stack(self.context.sp) };
+            Some(ret)
+        } else {
+            None
+        }
+    }
+
     pub fn stack_pop<T: std::marker::Copy>(&mut self) -> T {
         let ret: T = unsafe { self.read_stack(self.context.sp) };
         self.context.sp += std::mem::size_of::<T>();

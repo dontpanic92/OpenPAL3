@@ -3,7 +3,7 @@ mod openal;
 
 pub use openal::OpenAlAudioEngine;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum Codec {
     Wav,
     Mp3,

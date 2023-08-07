@@ -6,7 +6,7 @@ use mini_fs::MiniFs;
 use radiance::{comdef::IScene, rendering::ComponentFactory, scene::CoreScene};
 
 use crate::{
-    loaders::{bsp::create_entity_from_bsp_model, Pal4TextureResolver},
+    loaders::{bsp::create_entity_from_bsp_model, smp::load_smp, Pal4TextureResolver},
     scripting::angelscript::ScriptModule,
 };
 
@@ -61,5 +61,17 @@ impl AssetLoader {
 
         let path = format!("/gamedata/{}/{}", video_folder, video_name);
         Ok(self.vfs.read_to_end(&path)?)
+    }
+
+    pub fn load_music(&self, music_name: &str) -> anyhow::Result<Vec<u8>> {
+        let path = format!("/gamedata/Music/{}.smp", music_name);
+        let data = load_smp(&self.vfs.read_to_end(path)?)?;
+        Ok(data)
+    }
+
+    pub fn load_sound(&self, sound_name: &str, ext: &str) -> anyhow::Result<Vec<u8>> {
+        let path = format!("/gamedata/PALSound/{}.{}", sound_name, ext);
+        let data = self.vfs.read_to_end(path)?;
+        Ok(data)
     }
 }

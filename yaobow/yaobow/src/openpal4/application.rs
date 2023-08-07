@@ -26,6 +26,7 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
 
         let component_factory = self.app.engine().borrow().rendering_component_factory();
         let input_engine = self.app.engine().borrow().input_engine();
+        let task_manager = self.app.engine().borrow().task_manager();
         let audio_engine = self.app.engine().borrow().audio_engine();
         let scene_manager = self.app.engine().borrow().scene_manager().clone();
         let ui = self.app.engine().borrow().ui_manager();
@@ -42,6 +43,8 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
             scene_manager.clone(),
             ui,
             input_engine,
+            audio_engine,
+            task_manager,
         );
         scene_manager.set_director(ComRc::from_object(director));
     }
@@ -63,7 +66,7 @@ impl OpenPal4ApplicationLoader {
     fn new(app: ComRc<IApplication>, app_name: &str) -> Self {
         Self {
             app,
-            root_path: PathBuf::from("F:\\PAL4"),
+            root_path: PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 4"),
             app_name: app_name.to_owned(),
         }
     }
