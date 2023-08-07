@@ -9,9 +9,9 @@ use common::read_ext::ReadExt;
 use dashmap::DashMap;
 use yaobow_macros::NiObjectType;
 
-use crate::nif::NiType;
+use crate::{nif::NiType, utils::SizedString};
 
-use super::{Matrix33, NiObject, SizedString, Vector3};
+use super::{Matrix33, NiObject, Vector3};
 
 lazy_static::lazy_static! {
     static ref NI_OBJECT_TYPES: DashMap<&'static str, &'static NiType> = init_ni_object_types();

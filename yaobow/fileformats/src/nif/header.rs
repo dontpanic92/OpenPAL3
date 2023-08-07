@@ -1,6 +1,8 @@
 use binrw::binrw;
 
-use super::{HeaderString, SizedString};
+use crate::utils::SizedString;
+
+use super::HeaderString;
 
 #[binrw]
 #[brw(little)]
