@@ -1112,10 +1112,13 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 
     let _ = vm.app_context().scene_manager.pop_scene();
     let scene = vm.app_context().loader.load_scene(&scn, &block).unwrap();
+    scene.camera().borrow_mut().set_fov43(45_f32.to_radians());
     vm.app_context().scene_manager.push_scene(scene);
 
     let module = vm.app_context().loader.load_script_module(&scn).unwrap();
     vm.set_function_by_name(module, &format!("{}_{}_init", scn, block));
+
+    vm.app_context.set_scene_name(scn, block);
 
     Pal4FunctionState::Completed
 }
@@ -2253,18 +2256,26 @@ fn npc_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState 
 }
 
 fn camera_prepare(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _file_str: i32);
-    let file_name = get_str(vm, _file_str as usize).unwrap();
+    as_params!(vm, file_str: i32);
+    let file_name = get_str(vm, file_str as usize).unwrap();
     println!("camera prepare: {}", file_name);
 
-    vm.stack_push::<i32>(1);
+    if let Err(e) = vm.app_context.prepare_camera(&file_name) {
+        println!("camera prepare failed: {}", e);
+        vm.stack_push::<i32>(0);
+    } else {
+        vm.stack_push::<i32>(1);
+    }
+
     Pal4FunctionState::Completed
 }
 
 fn camera_run_single(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _file_str: i32, _sync: i32);
-    let file_name = get_str(vm, _file_str as usize).unwrap();
-    println!("camera run single: {} {}", file_name, _sync);
+    as_params!(vm, camera_data: i32, _sync: i32);
+    let name = get_str(vm, camera_data as usize).unwrap();
+    println!("camera run single: {} {}", name, _sync);
+
+    vm.app_context.run_camera(&name);
 
     vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed

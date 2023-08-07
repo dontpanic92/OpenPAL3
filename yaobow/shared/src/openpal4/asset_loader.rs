@@ -1,7 +1,8 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, io::Cursor, rc::Rc};
 
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
+use fileformats::{binrw::BinRead, cam::CameraDataFile};
 use mini_fs::MiniFs;
 use radiance::{comdef::IScene, rendering::ComponentFactory, scene::CoreScene};
 
@@ -72,6 +73,19 @@ impl AssetLoader {
     pub fn load_sound(&self, sound_name: &str, ext: &str) -> anyhow::Result<Vec<u8>> {
         let path = format!("/gamedata/PALSound/{}.{}", sound_name, ext);
         let data = self.vfs.read_to_end(path)?;
+        Ok(data)
+    }
+    pub fn load_camera_data(
+        &self,
+        camera_data_name: &str,
+        scene_name: &str,
+        block_name: &str,
+    ) -> anyhow::Result<CameraDataFile> {
+        let path = format!(
+            "/gamedata/scenedata/{}/{}/{}.cam",
+            scene_name, block_name, camera_data_name,
+        );
+        let data = CameraDataFile::read(&mut Cursor::new(self.vfs.read_to_end(path)?))?;
         Ok(data)
     }
 }

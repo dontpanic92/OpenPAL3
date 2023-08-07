@@ -11,6 +11,12 @@ pub struct SizedString {
     string: Vec<u8>,
 }
 
+impl SizedString {
+    pub fn data(&self) -> &[u8] {
+        &self.string
+    }
+}
+
 impl<T: AsRef<str>> From<T> for SizedString {
     fn from(value: T) -> Self {
         Self {
@@ -32,5 +38,11 @@ impl std::fmt::Debug for SizedString {
             "SizedString(\"{}\")",
             String::from_utf8_lossy(&self.string)
         )
+    }
+}
+
+impl PartialEq<&str> for SizedString {
+    fn eq(&self, other: &&str) -> bool {
+        String::from_utf8_lossy(&self.string) == *other
     }
 }

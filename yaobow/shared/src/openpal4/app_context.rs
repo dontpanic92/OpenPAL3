@@ -1,10 +1,12 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crosscom::ComRc;
+use fileformats::cam::CameraDataFile;
 use radiance::{
     audio::AudioEngine,
     comdef::ISceneManager,
     input::InputEngine,
+    math::Vec3,
     radiance::{TaskHandle, TaskManager, UiManager},
     rendering::{ComponentFactory, VideoPlayer},
 };
@@ -25,6 +27,9 @@ pub struct Pal4AppContext {
     sound_tasks: HashMap<i32, Rc<TaskHandle>>,
     sound_id: i32,
     voice_task: Option<Rc<TaskHandle>>,
+    camera_data: Option<CameraDataFile>,
+    scene_name: String,
+    block_name: String,
 }
 
 impl Pal4AppContext {
@@ -50,7 +55,15 @@ impl Pal4AppContext {
             sound_tasks: HashMap::new(),
             sound_id: 0,
             voice_task: None,
+            camera_data: None,
+            scene_name: String::new(),
+            block_name: String::new(),
         }
+    }
+
+    pub fn set_scene_name(&mut self, scene_name: String, block_name: String) {
+        self.scene_name = scene_name;
+        self.block_name = block_name;
     }
 
     pub fn start_play_movie(&mut self, name: &str) -> Option<(u32, u32)> {
@@ -114,6 +127,36 @@ impl Pal4AppContext {
     pub fn stop_voice(&mut self) {
         if let Some(task) = &self.voice_task {
             task.stop();
+        }
+    }
+
+    pub fn prepare_camera(&mut self, name: &str) -> anyhow::Result<()> {
+        let data = self
+            .loader
+            .load_camera_data(name, &self.scene_name, &self.block_name)?;
+        self.camera_data = Some(data);
+        Ok(())
+    }
+
+    pub fn run_camera(&mut self, name: &str) {
+        log::debug!("run_camera: {}", name);
+        if let Some(data) = &self.camera_data {
+            let camera_data = data.get_camera_data(name);
+            if let Some(camera_data) = camera_data {
+                let position = camera_data.get_position();
+                let look_at = camera_data.get_look_at();
+                log::debug!("camera_data: {:?} {:?}", position, look_at);
+                // if camera_data.is_instant() {
+                let camera = self.scene_manager.scene().unwrap().camera();
+                let mut camera = camera.borrow_mut();
+                camera
+                    .transform_mut()
+                    .set_position(&Vec3::new(position[0], position[1], position[2]))
+                    .look_at(&Vec3::new(look_at[0], look_at[1], look_at[2]));
+                // } else {
+
+                // }
+            }
         }
     }
 
