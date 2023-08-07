@@ -25,6 +25,7 @@ use std::{
 pub struct DevToolsDirector {
     asset_mgr: Rc<AssetManager>,
     content_tabs: RefCell<ContentTabs>,
+    cache: RefCell<lru::LruCache<String, Vec<Entry>>>,
 }
 
 ComObject_DevToolsDirector!(super::DevToolsDirector);
@@ -49,6 +50,7 @@ impl DevToolsDirector {
                 texture_resolver,
             )),
             asset_mgr,
+            cache: RefCell::new(lru::LruCache::new(20)),
         })
     }
 
@@ -120,16 +122,23 @@ impl DevToolsDirector {
     }
 
     fn get_entries<P: AsRef<Path>>(&self, path: P) -> Vec<Entry> {
-        let entries: Entries = self.asset_mgr.vfs().entries(path.as_ref()).unwrap();
-        let mut entries: Vec<Entry> = entries.map(|e| e.unwrap()).collect();
-        entries.sort_by(|a, b| match (a.kind, b.kind) {
-            (EntryKind::Dir, EntryKind::Dir) => a.name.cmp(&b.name),
-            (EntryKind::File, EntryKind::File) => a.name.cmp(&b.name),
-            (EntryKind::Dir, EntryKind::File) => Ordering::Less,
-            (EntryKind::File, EntryKind::Dir) => Ordering::Greater,
-        });
+        let key = path.as_ref().to_string_lossy().to_string();
+        self.cache
+            .borrow_mut()
+            .get_or_insert(key, || {
+                let entries: Entries = self.asset_mgr.vfs().entries(path.as_ref()).unwrap();
+                let mut entries: Vec<Entry> = entries.map(|e| e.unwrap()).collect();
+                entries.sort_by(|a, b| match (a.kind, b.kind) {
+                    (EntryKind::Dir, EntryKind::Dir) => a.name.cmp(&b.name),
+                    (EntryKind::File, EntryKind::File) => a.name.cmp(&b.name),
+                    (EntryKind::Dir, EntryKind::File) => Ordering::Less,
+                    (EntryKind::File, EntryKind::Dir) => Ordering::Greater,
+                });
 
-        entries
+                entries
+            })
+            .unwrap()
+            .clone()
     }
 }
 

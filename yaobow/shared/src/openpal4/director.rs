@@ -1,7 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crosscom::ComRc;
-use ffmpeg::codec::audio;
 use radiance::{
     audio::AudioEngine,
     comdef::{IDirectorImpl, ISceneManager},

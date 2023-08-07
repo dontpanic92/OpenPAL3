@@ -1,5 +1,4 @@
 use crosscom::ComRc;
-use dashmap::DashMap;
 use uuid::Uuid;
 
 use crate::comdef::{IComponent, IComponentContainerImpl, IEntity, IEntityImpl};
@@ -7,11 +6,12 @@ use crate::math::{Mat44, Transform};
 use crate::rendering::RenderingComponent;
 use crate::ComObject_Entity;
 use std::cell::{Ref, RefCell, RefMut};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct CoreEntity {
     transform: Rc<RefCell<Transform>>,
-    components: DashMap<Uuid, ComRc<IComponent>>,
+    components: RefCell<HashMap<Uuid, ComRc<IComponent>>>,
     props: RefCell<CoreEntityProps>,
 }
 
@@ -38,7 +38,7 @@ impl CoreEntity {
     pub fn new(name: String, visible: bool) -> Self {
         Self {
             transform: Rc::new(RefCell::new(Transform::new())),
-            components: DashMap::new(),
+            components: RefCell::new(HashMap::new()),
             props: RefCell::new(CoreEntityProps {
                 name,
                 world_transform: Transform::new(),
@@ -70,17 +70,21 @@ impl CoreEntity {
 impl IComponentContainerImpl for CoreEntity {
     fn add_component(&self, uuid: uuid::Uuid, component: crosscom::ComRc<IComponent>) -> () {
         component.on_loading();
-        self.components.insert(uuid, component);
+        self.components.borrow_mut().insert(uuid, component);
     }
 
     fn get_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
         self.components
+            .borrow()
             .get(&uuid)
-            .and_then(|c| Some(c.value().clone()))
+            .and_then(|c| Some(c.clone()))
     }
 
     fn remove_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
-        self.components.remove(&uuid).and_then(|c| Some(c.1))
+        self.components
+            .borrow_mut()
+            .remove(&uuid)
+            .and_then(|c| Some(c))
     }
 }
 
@@ -109,7 +113,7 @@ impl IEntityImpl for CoreEntity {
         }
 
         self.props_mut().children.clear();
-        self.components.clear();
+        self.components.borrow_mut().clear();
     }
 
     fn update(&self, delta_sec: f32) -> crosscom::Void {
@@ -117,8 +121,8 @@ impl IEntityImpl for CoreEntity {
             e.update(delta_sec);
         }
 
-        for c in self.components.clone() {
-            c.1.on_updating(delta_sec);
+        for c in self.components.borrow().values().clone() {
+            c.on_updating(delta_sec);
         }
     }
 
@@ -138,7 +142,7 @@ impl IEntityImpl for CoreEntity {
             self.transform.borrow().matrix(),
         ));
 
-        for e in props.children.clone() {
+        for e in &props.children {
             e.update_world_transform(&props.world_transform);
         }
     }
