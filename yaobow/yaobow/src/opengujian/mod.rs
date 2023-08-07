@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use fileformats::{binrw::BinRead, cam::CameraDataFile, nif::NifModel};
+use fileformats::{binrw::BinRead, cam::CameraDataFile, nif::NifModel, npc::NpcInfoFile};
 
 pub fn test_nif(data: &[u8]) {
     let model = NifModel::read(&mut Cursor::new(data));
@@ -15,7 +15,7 @@ pub fn run_opengujian() {
     // let data = std::fs::read("F:\\gujian_extracted\\101\\101.nif").unwrap();
     // test_nif(&data);
     let data =
-        std::fs::read("F:\\PAL4\\gamedata\\scenedata\\scenedata\\q01\\N01\\MC003.cam").unwrap();
-    let cam = CameraDataFile::read(&mut Cursor::new(data));
+        std::fs::read("F:\\PAL4\\gamedata\\scenedata\\scenedata\\q01\\N01\\npcInfo.npc").unwrap();
+    let cam = NpcInfoFile::read(&mut Cursor::new(data));
     println!("cam: {:?}", cam);
 }

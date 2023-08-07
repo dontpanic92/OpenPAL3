@@ -2048,7 +2048,7 @@ fn talk_wait(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 }
 
 fn player_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player_id: i32, _action_file_str: i32, _action_id: i32, _do_action: bool);
+    as_params!(vm, _player_id: i32, _action: i32, _flag: i32, _sync: bool);
     Pal4FunctionState::Completed
 }
 
