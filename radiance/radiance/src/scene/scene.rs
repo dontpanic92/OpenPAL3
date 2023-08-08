@@ -53,6 +53,18 @@ impl CoreScene {
 
         entities
     }
+
+    fn collect_visible_entities(entity: ComRc<IEntity>) -> Vec<ComRc<IEntity>> {
+        let mut entities = vec![];
+        entities.push(entity.clone());
+        for e in entity.children() {
+            if e.visible() {
+                entities.append(&mut Self::collect_entities(e));
+            }
+        }
+
+        entities
+    }
 }
 
 impl ISceneImpl for CoreScene {
@@ -113,6 +125,17 @@ impl ISceneImpl for CoreScene {
         let mut entities = vec![];
         for e in self.entities.borrow().clone() {
             entities.append(&mut Self::collect_entities(e));
+        }
+
+        entities
+    }
+
+    fn visible_entities(&self) -> Vec<crosscom::ComRc<crate::comdef::IEntity>> {
+        let mut entities = vec![];
+        for e in self.entities.borrow().clone() {
+            if e.visible() {
+                entities.append(&mut Self::collect_visible_entities(e));
+            }
         }
 
         entities

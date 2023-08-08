@@ -57,6 +57,19 @@ impl Transform {
         self
     }
 
+    pub fn clear_rotation(&mut self) -> &mut Self {
+        self.mat[0][0] = 1.;
+        self.mat[0][1] = 0.;
+        self.mat[0][2] = 0.;
+        self.mat[1][0] = 0.;
+        self.mat[1][1] = 1.;
+        self.mat[1][2] = 0.;
+        self.mat[2][0] = 0.;
+        self.mat[2][1] = 0.;
+        self.mat[2][2] = 1.;
+        self
+    }
+
     pub fn translate_local(&mut self, vec: &Vec3) -> &mut Self {
         self.translate_impl(vec, true)
     }

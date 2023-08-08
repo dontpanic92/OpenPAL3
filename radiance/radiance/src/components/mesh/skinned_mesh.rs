@@ -101,7 +101,7 @@ impl SkinnedMeshComponent {
             let bone_id = self.v_bone_id[i][0];
             let bond_pose_mat = *self.bond_pose[bone_id].matrix();
             let frame_t = if *self.anim_state.borrow() == AnimState::BondPose {
-                Mat44::inversed(self.bond_pose[bone_id].matrix())
+                Mat44::inversed(&bond_pose_mat)
             } else {
                 self.bones[bone_id].world_transform().matrix().clone()
             };
@@ -118,7 +118,17 @@ impl SkinnedMeshComponent {
 
 ComObject_SkinnedMeshComponent!(super::SkinnedMeshComponent);
 
-impl ISkinnedMeshComponentImpl for SkinnedMeshComponent {}
+impl ISkinnedMeshComponentImpl for SkinnedMeshComponent {
+    fn set_keyframes(&self, keyframes: Vec<Vec<AnimKeyFrame>>) -> crosscom::Void {
+        for b in self.bones.iter().zip(keyframes) {
+            b.0.get_component(IHAnimBoneComponent::uuid())
+                .unwrap()
+                .query_interface::<IHAnimBoneComponent>()
+                .unwrap()
+                .set_keyframes(b.1);
+        }
+    }
+}
 
 impl IComponentImpl for SkinnedMeshComponent {
     fn on_loading(&self) {

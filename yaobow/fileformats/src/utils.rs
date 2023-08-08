@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, str::Utf8Error};
 
 use binrw::{binrw, BinRead, BinWrite};
 
@@ -16,6 +16,16 @@ pub struct SizedString {
 impl SizedString {
     pub fn data(&self) -> &[u8] {
         &self.string
+    }
+
+    pub fn as_str(&self) -> Result<&str, Utf8Error> {
+        let slice = if self.string.last() == Some(&0) {
+            &self.string[..self.string.len() - 1]
+        } else {
+            &self.string
+        };
+
+        std::str::from_utf8(slice)
     }
 }
 
@@ -76,6 +86,19 @@ pub struct Pal4Node {
     pub children: Vec<Box<Pal4Node>>,
 }
 
+impl Pal4Node {
+    pub fn get_child_by_name(&self, name: &str) -> Option<&Pal4Node> {
+        self.children.iter().find(|c| c.name == name).map(|c| &**c)
+    }
+
+    pub fn get_property_by_name(&self, name: &str) -> Option<&Pal4NodeProperty> {
+        self.properties
+            .iter()
+            .find(|p| *p.name() == name)
+            .map(|p| p)
+    }
+}
+
 #[binrw]
 #[brw(little)]
 #[derive(Debug)]
@@ -88,6 +111,13 @@ pub enum Pal4NodeProperty {
 }
 
 impl Pal4NodeProperty {
+    pub fn name(&self) -> &SizedString {
+        match self {
+            Self::Float(v) => &v.name,
+            Self::String(v) => &v.name,
+        }
+    }
+
     pub fn f32(&self) -> Option<f32> {
         if let Self::Float(v) = self {
             Some(v.value)

@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use imgui::{Condition, MouseButton};
-use radiance::{input::Key, video::VideoStreamState};
+use radiance::{input::Key, math::Vec3, video::VideoStreamState};
 
 use crate::{
     as_params,
@@ -1110,15 +1110,10 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     let scn = get_str(vm, scn_str as usize).unwrap();
     let block = get_str(vm, block_str as usize).unwrap();
 
-    let _ = vm.app_context().scene_manager.pop_scene();
-    let scene = vm.app_context().loader.load_scene(&scn, &block).unwrap();
-    scene.camera().borrow_mut().set_fov43(45_f32.to_radians());
-    vm.app_context().scene_manager.push_scene(scene);
+    vm.app_context.load_scene(&scn, &block);
 
-    let module = vm.app_context().loader.load_script_module(&scn).unwrap();
+    let module = vm.app_context.loader.load_script_module(&scn).unwrap();
     vm.set_function_by_name(module, &format!("{}_{}_init", scn, block));
-
-    vm.app_context.set_scene_name(scn, block);
 
     Pal4FunctionState::Completed
 }
@@ -1142,7 +1137,10 @@ fn arena_come_from_here(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Funct
 }
 
 fn player_set_leader(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _leader_id: i32);
+    as_params!(vm, leader_id: i32);
+
+    vm.app_context.set_leader(leader_id);
+
     Pal4FunctionState::Completed
 }
 
@@ -2072,12 +2070,17 @@ fn player_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn player_current_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_x:f32,_y:f32,_z:f32);
+    as_params!(vm, x:f32, y:f32, z:f32);
+
+    vm.app_context.set_player_pos(-1, &Vec3::new(x, y, z));
     Pal4FunctionState::Completed
 }
 
 fn player_set_rot(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_rot_file_str:i32);
+    as_params!(vm, _player_id: i32, rot_file_str: i32);
+    let rot_file = get_str(vm, rot_file_str as usize).unwrap();
+    println!("rot_file {}", rot_file);
+
     Pal4FunctionState::Completed
 }
 
@@ -2087,7 +2090,11 @@ fn player_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn player_current_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_ang:f32);
+    as_params!(vm, ang: f32);
+
+    println!("set_ang: {}", ang);
+    vm.app_context.set_player_ang(-1, ang);
+
     Pal4FunctionState::Completed
 }
 

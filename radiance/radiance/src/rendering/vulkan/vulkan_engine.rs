@@ -368,9 +368,8 @@ impl VulkanRenderingEngine {
         };
         let x = &|ui| scene.draw_ui(ui);
         let rc: Vec<Rc<RenderingComponent>> = scene
-            .entities()
+            .visible_entities()
             .iter()
-            .filter(|e| e.visible())
             .filter_map(|e| e.get_rendering_component())
             .collect();
 

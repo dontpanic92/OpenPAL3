@@ -24,7 +24,8 @@ impl WelcomePageDirector {
                 config.asset_path = "F:\\SteamLibrary\\steamapps\\common\\PAL3A".to_string();
             }
             GameType::PAL4 => {
-                config.asset_path = "F:\\PAL4\\".to_string();
+                config.asset_path =
+                    "F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 4\\".to_string();
             }
             GameType::PAL5 => {
                 config.asset_path = "F:\\PAL5\\".to_string();

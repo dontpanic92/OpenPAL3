@@ -35,6 +35,16 @@ pub struct Vec3 {
     pub z: f32,
 }
 
+impl From<[f32; 3]> for Vec3 {
+    fn from(value: [f32; 3]) -> Self {
+        Self {
+            x: value[0],
+            y: value[1],
+            z: value[2],
+        }
+    }
+}
+
 impl Vec3 {
     pub const UP: Self = Vec3 {
         x: 0.,
@@ -46,6 +56,18 @@ impl Vec3 {
         x: 1.,
         y: 0.,
         z: 0.,
+    };
+
+    pub const BACK: Self = Vec3 {
+        x: 0.,
+        y: 0.,
+        z: 1.,
+    };
+
+    pub const FRONT: Self = Vec3 {
+        x: 0.,
+        y: 0.,
+        z: -1.,
     };
 
     pub fn new(x: f32, y: f32, z: f32) -> Self {

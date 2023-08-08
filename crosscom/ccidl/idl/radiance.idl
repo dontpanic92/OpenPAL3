@@ -49,6 +49,9 @@ interface IScene: IComponentContainer {
     Vec<crosscom::ComRc<radiance::comdef::IEntity>> entities();
 
     [internal(), rust()]
+    Vec<crosscom::ComRc<radiance::comdef::IEntity>> visible_entities();
+
+    [internal(), rust()]
     Vec<crosscom::ComRc<radiance::comdef::IEntity>> root_entities();
     
     [internal(), rust()]
@@ -149,7 +152,10 @@ interface ISceneManager: IUnknown {
 class SceneManager: ISceneManager {}
 
 [uuid(19ff0435-8a22-486c-b16a-69c2e1ffd0ae)]
-interface ISkinnedMeshComponent: IComponent {}
+interface ISkinnedMeshComponent: IComponent {
+    [internal(), rust()]
+    crosscom::Void set_keyframes(Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>> keyframes);
+}
 
 [uuid(9f536433-8eb3-41da-b4f2-2a7e81c6a0cf)]
 class SkinnedMeshComponent: ISkinnedMeshComponent {}

@@ -796,6 +796,9 @@ pub struct ISceneVirtualTable {
     pub entities: fn(
         this: *const *const std::os::raw::c_void,
     ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>,
+    pub visible_entities: fn(
+        this: *const *const std::os::raw::c_void,
+    ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>,
     pub root_entities: fn(
         this: *const *const std::os::raw::c_void,
     ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>,
@@ -961,6 +964,15 @@ impl IScene {
         }
     }
 
+    pub fn visible_entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
+        unsafe {
+            let this = self as *const IScene as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).visible_entities)(this);
+
+            ret
+        }
+    }
+
     pub fn root_entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
         unsafe {
             let this = self as *const IScene as *const *const std::os::raw::c_void;
@@ -993,6 +1005,7 @@ pub trait ISceneImpl {
     fn unload(&self) -> ();
     fn add_entity(&self, entity: crosscom::ComRc<radiance::comdef::IEntity>) -> ();
     fn entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
+    fn visible_entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
     fn root_entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
     fn camera(&self) -> std::rc::Rc<std::cell::RefCell<radiance::scene::Camera>>;
 }
@@ -1150,6 +1163,15 @@ macro_rules! ComObject_Scene {
                 }
             }
 
+            fn visible_entities(
+                this: *const *const std::os::raw::c_void,
+            ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<SceneCcw>(this);
+                    (*__crosscom_object).inner.visible_entities()
+                }
+            }
+
             fn root_entities(
                 this: *const *const std::os::raw::c_void,
             ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
@@ -1224,6 +1246,7 @@ macro_rules! ComObject_Scene {
                     unload,
                     add_entity,
                     entities,
+                    visible_entities,
                     root_entities,
                     camera,
                 },
@@ -3021,6 +3044,10 @@ pub struct ISkinnedMeshComponentVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub set_keyframes: fn(
+        this: *const *const std::os::raw::c_void,
+        keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+    ) -> crosscom::Void,
 }
 
 #[repr(C)]
@@ -3092,13 +3119,30 @@ impl ISkinnedMeshComponent {
         }
     }
 
+    pub fn set_keyframes(
+        &self,
+        keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+    ) -> crosscom::Void {
+        unsafe {
+            let this = self as *const ISkinnedMeshComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).set_keyframes)(this, keyframes.into());
+
+            ret
+        }
+    }
+
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
         uuid::Uuid::from_bytes(ISkinnedMeshComponent::INTERFACE_ID)
     }
 }
 
-pub trait ISkinnedMeshComponentImpl {}
+pub trait ISkinnedMeshComponentImpl {
+    fn set_keyframes(
+        &self,
+        keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+    ) -> crosscom::Void;
+}
 
 impl crosscom::ComInterface for ISkinnedMeshComponent {
     // 19ff0435-8a22-486c-b16a-69c2e1ffd0ae
@@ -3197,6 +3241,16 @@ macro_rules! ComObject_SkinnedMeshComponent {
                 (previous - 1) as std::os::raw::c_long
             }
 
+            fn set_keyframes(
+                this: *const *const std::os::raw::c_void,
+                keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+            ) -> crosscom::Void {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<SkinnedMeshComponentCcw>(this);
+                    (*__crosscom_object).inner.set_keyframes(keyframes)
+                }
+            }
+
             unsafe extern "system" fn on_loading(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<SkinnedMeshComponentCcw>(this);
                 (*__crosscom_object).inner.on_loading().into()
@@ -3226,6 +3280,7 @@ macro_rules! ComObject_SkinnedMeshComponent {
                         release,
                         on_loading,
                         on_updating,
+                        set_keyframes,
                     },
                 };
 

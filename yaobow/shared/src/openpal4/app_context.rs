@@ -11,7 +11,7 @@ use radiance::{
     rendering::{ComponentFactory, VideoPlayer},
 };
 
-use super::asset_loader::AssetLoader;
+use super::{asset_loader::AssetLoader, scene::Pal4Scene};
 
 pub struct Pal4AppContext {
     pub(crate) loader: Rc<AssetLoader>,
@@ -19,6 +19,7 @@ pub struct Pal4AppContext {
     pub(crate) ui: Rc<UiManager>,
     pub(crate) input: Rc<RefCell<dyn InputEngine>>,
     pub(crate) task_manager: Rc<TaskManager>,
+    pub(crate) scene: Pal4Scene,
 
     component_factory: Rc<dyn ComponentFactory>,
     audio_engine: Rc<dyn AudioEngine>,
@@ -30,6 +31,7 @@ pub struct Pal4AppContext {
     camera_data: Option<CameraDataFile>,
     scene_name: String,
     block_name: String,
+    leader: usize,
 }
 
 impl Pal4AppContext {
@@ -58,12 +60,53 @@ impl Pal4AppContext {
             camera_data: None,
             scene_name: String::new(),
             block_name: String::new(),
+            leader: 0,
+            scene: Pal4Scene::new_empty(),
         }
     }
 
-    pub fn set_scene_name(&mut self, scene_name: String, block_name: String) {
-        self.scene_name = scene_name;
-        self.block_name = block_name;
+    pub fn set_leader(&mut self, leader: i32) {
+        self.leader = leader as usize;
+        self.scene.get_player(self.leader).set_visible(true);
+    }
+
+    pub fn set_player_pos(&mut self, player: i32, pos: &Vec3) {
+        let player = if player == -1 {
+            self.leader
+        } else {
+            player as usize
+        };
+
+        self.scene
+            .get_player(player)
+            .transform()
+            .borrow_mut()
+            .set_position(&pos);
+    }
+
+    pub fn set_player_ang(&mut self, player: i32, ang: f32) {
+        let player = if player == -1 {
+            self.leader
+        } else {
+            player as usize
+        };
+
+        self.scene
+            .get_player(player)
+            .transform()
+            .borrow_mut()
+            .clear_rotation()
+            .rotate_axis_angle_local(&Vec3::UP, ang * std::f32::consts::PI / 180.0);
+    }
+
+    pub fn load_scene(&mut self, scene_name: &str, block_name: &str) {
+        let _ = self.scene_manager.pop_scene();
+        let scene = Pal4Scene::load(&self.loader, scene_name, block_name).unwrap();
+        self.scene_manager.push_scene(scene.scene.clone());
+
+        self.scene = scene;
+        self.scene_name = scene_name.to_string();
+        self.block_name = block_name.to_string();
     }
 
     pub fn start_play_movie(&mut self, name: &str) -> Option<(u32, u32)> {

@@ -2,12 +2,19 @@ use std::{cell::RefCell, io::Cursor, rc::Rc};
 
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
-use fileformats::{binrw::BinRead, cam::CameraDataFile};
+use fileformats::{binrw::BinRead, cam::CameraDataFile, npc::NpcInfoFile};
 use mini_fs::MiniFs;
-use radiance::{comdef::IScene, rendering::ComponentFactory, scene::CoreScene};
+use radiance::{
+    comdef::{IEntity, IScene, ISkinnedMeshComponent},
+    rendering::ComponentFactory,
+    scene::CoreScene,
+};
 
 use crate::{
-    loaders::{bsp::create_entity_from_bsp_model, smp::load_smp, Pal4TextureResolver},
+    loaders::{
+        anm::load_anm, bsp::create_entity_from_bsp_model, dff::create_entity_from_dff_model,
+        smp::load_smp, Pal4TextureResolver,
+    },
     scripting::angelscript::ScriptModule,
 };
 
@@ -35,6 +42,38 @@ impl AssetLoader {
         )))
     }
 
+    pub fn load_actor(
+        &self,
+        entity_name: &str,
+        actor_name: &str,
+        default_act: Option<&str>,
+    ) -> anyhow::Result<ComRc<IEntity>> {
+        let model_path = format!("/gamedata/PALActor/{}/{}.dff", actor_name, actor_name);
+
+        let entity = create_entity_from_dff_model(
+            &self.component_factory,
+            &self.vfs,
+            model_path,
+            entity_name.to_string(),
+            true,
+            &self.texture_resolver,
+        );
+
+        if let Some(default_act) = default_act {
+            let act_path = format!("/gamedata/PALActor/{}/{}.anm", actor_name, default_act);
+            let anm = load_anm(&self.vfs, &act_path)?;
+            println!("entity {} {}", entity.name(), entity.children()[1].name());
+            entity.children()[0]
+                .get_component(ISkinnedMeshComponent::uuid())
+                .unwrap()
+                .query_interface::<ISkinnedMeshComponent>()
+                .unwrap()
+                .set_keyframes(anm);
+        }
+
+        Ok(entity)
+    }
+
     pub fn load_scene(&self, scene_name: &str, block_name: &str) -> anyhow::Result<ComRc<IScene>> {
         let path = format!(
             "/gamedata/PALWorld/{}/{}/{}.bsp",
@@ -52,6 +91,17 @@ impl AssetLoader {
 
         scene.add_entity(entity);
         Ok(scene)
+    }
+
+    pub fn load_npc_info(&self, scene_name: &str, block_name: &str) -> anyhow::Result<NpcInfoFile> {
+        let path = format!(
+            "/gamedata/scenedata/{}/{}/npcInfo.npc",
+            scene_name, block_name,
+        );
+
+        let data = self.vfs.read_to_end(&path)?;
+        let mut cursor = Cursor::new(data);
+        Ok(NpcInfoFile::read(&mut cursor)?)
     }
 
     pub fn load_video(&self, video_name: &str) -> anyhow::Result<Vec<u8>> {
