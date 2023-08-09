@@ -7,7 +7,7 @@ pub fn show_video_window(
     texture_id: Option<TextureId>,
     window_size: [f32; 2],
     target_size: [f32; 2],
-) -> TextureId {
+) -> Option<TextureId> {
     let mut ret_texture_id = None;
     ui.window("video")
         .size(window_size, Condition::Always)
@@ -28,5 +28,5 @@ pub fn show_video_window(
             }
         });
 
-    ret_texture_id.unwrap()
+    ret_texture_id
 }

@@ -8,12 +8,12 @@ use serde::Serialize;
 
 use crate::{
     comdef::{
-        IComponentImpl, IEntity, IHAnimBoneComponent, IHAnimBoneComponentImpl,
-        ISkinnedMeshComponentImpl,
+        IArmatureComponentImpl, IComponentImpl, IEntity, IHAnimBoneComponent,
+        IHAnimBoneComponentImpl, ISkinnedMeshComponentImpl,
     },
     math::{Mat44, Quaternion, Transform, Vec3},
     rendering::{ComponentFactory, VertexBuffer, VertexComponents},
-    ComObject_HAnimBoneComponent, ComObject_SkinnedMeshComponent,
+    ComObject_ArmatureComponent, ComObject_HAnimBoneComponent, ComObject_SkinnedMeshComponent,
 };
 
 use super::Geometry;
@@ -23,7 +23,6 @@ pub struct SkinnedMeshComponent {
     component_factory: Rc<dyn ComponentFactory>,
     geometry: Geometry,
     bones: Vec<ComRc<IEntity>>,
-    root_bone: ComRc<IEntity>,
     bond_pose: Vec<Transform>,
     v_bone_id: Vec<[usize; 4]>,
     v_weights: Vec<[f32; 4]>,
@@ -49,7 +48,6 @@ impl SkinnedMeshComponent {
         entity: ComRc<IEntity>,
         component_factory: Rc<dyn ComponentFactory>,
         geometry: Geometry,
-        root_bone: ComRc<IEntity>,
         bones: Vec<ComRc<IEntity>>,
         v_bone_id: Vec<[usize; 4]>,
         v_weights: Vec<[f32; 4]>,
@@ -71,7 +69,6 @@ impl SkinnedMeshComponent {
             component_factory,
             geometry,
             bones,
-            root_bone,
             bond_pose,
             v_bone_id,
             v_weights,
@@ -108,6 +105,7 @@ impl SkinnedMeshComponent {
 
             let v = self.geometry.vertices.position(i).unwrap();
             let v = Vec3::crossed_mat(&Vec3::crossed_mat(v, &bond_pose_mat), &frame_t);
+            // let v = Vec3::crossed_mat(v, &frame_t);
 
             vertex_buffer.set_component(i, VertexComponents::POSITION, |p: &mut Vec3| {
                 *p = v;
@@ -118,7 +116,49 @@ impl SkinnedMeshComponent {
 
 ComObject_SkinnedMeshComponent!(super::SkinnedMeshComponent);
 
-impl ISkinnedMeshComponentImpl for SkinnedMeshComponent {
+impl ISkinnedMeshComponentImpl for SkinnedMeshComponent {}
+
+impl IComponentImpl for SkinnedMeshComponent {
+    fn on_loading(&self) {
+        self.load_geometries();
+    }
+
+    fn on_updating(&self, delta_sec: f32) {
+        let rc = self.entity.get_rendering_component().unwrap();
+        let objects = rc.render_objects();
+
+        if objects.len() > 0 {
+            let ro = &objects[0];
+            ro.update_vertices(&|vb: RefMut<VertexBuffer>| {
+                self.update_vertex_buffer(vb);
+            });
+        }
+    }
+}
+
+pub struct ArmatureComponent {
+    entity: ComRc<IEntity>,
+    root_bone: ComRc<IEntity>,
+    bones: Vec<ComRc<IEntity>>,
+}
+
+ComObject_ArmatureComponent!(super::ArmatureComponent);
+
+impl ArmatureComponent {
+    pub fn new(
+        entity: ComRc<IEntity>,
+        root_bone: ComRc<IEntity>,
+        bones: Vec<ComRc<IEntity>>,
+    ) -> Self {
+        Self {
+            entity,
+            root_bone,
+            bones,
+        }
+    }
+}
+
+impl IArmatureComponentImpl for ArmatureComponent {
     fn set_keyframes(&self, keyframes: Vec<Vec<AnimKeyFrame>>) -> crosscom::Void {
         for b in self.bones.iter().zip(keyframes) {
             b.0.get_component(IHAnimBoneComponent::uuid())
@@ -130,24 +170,12 @@ impl ISkinnedMeshComponentImpl for SkinnedMeshComponent {
     }
 }
 
-impl IComponentImpl for SkinnedMeshComponent {
-    fn on_loading(&self) {
-        self.load_geometries();
-    }
+impl IComponentImpl for ArmatureComponent {
+    fn on_loading(&self) -> () {}
 
-    fn on_updating(&self, delta_sec: f32) {
+    fn on_updating(&self, delta_sec: f32) -> () {
         self.root_bone.update(delta_sec);
         self.root_bone.update_world_transform(&Transform::new());
-
-        let rc = self.entity.get_rendering_component().unwrap();
-        let objects = rc.render_objects();
-
-        if objects.len() > 0 {
-            let ro = &objects[0];
-            ro.update_vertices(&|vb: RefMut<VertexBuffer>| {
-                self.update_vertex_buffer(vb);
-            });
-        }
     }
 }
 
@@ -168,7 +196,7 @@ struct HAnimBoneProps {
 
 impl HAnimBoneProps {
     pub fn update(&mut self, entity: ComRc<IEntity>, delta_sec: f32) {
-        self.last_time = self.last_time + delta_sec / 100.;
+        self.last_time = self.last_time + delta_sec;
 
         if self.last_time > self.max_time {
             self.last_time = 0.;

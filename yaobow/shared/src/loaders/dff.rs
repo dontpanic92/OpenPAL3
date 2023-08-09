@@ -1,26 +1,18 @@
-use std::{
-    collections::HashMap,
-    io::Read,
-    path::{Path, PathBuf},
-    rc::Rc,
-};
+use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
 
 use crosscom::ComRc;
 use fileformats::rwbs::{
-    clump::Clump,
-    extension::{Extension, SkinPlugin},
-    frame::Frame,
-    material::Material,
-    read_dff, Matrix44f, TexCoord, Triangle, Vec3f,
+    clump::Clump, extension::Extension, frame::Frame, material::Material, read_dff, Matrix44f,
+    TexCoord, Triangle, Vec3f,
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{
-        IComponent, IEntity, IHAnimBoneComponent, IHAnimBoneComponentImpl, ISkinnedMeshComponent,
-        IStaticMeshComponent,
+        IArmatureComponent, IComponent, IEntity, IHAnimBoneComponent, IHAnimBoneComponentImpl,
+        ISkinnedMeshComponent, IStaticMeshComponent,
     },
     components::mesh::{
-        skinned_mesh::{HAnimBoneComponent, SkinnedMeshComponent},
+        skinned_mesh::{ArmatureComponent, HAnimBoneComponent, SkinnedMeshComponent},
         StaticMeshComponent,
     },
     math::{Mat44, Vec3},
@@ -56,9 +48,15 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
     entity
 }
 
-pub(crate) struct HAnimBone {
+struct HAnimBone {
     bone_root: ComRc<IEntity>,
     indexed_bones: HashMap<u32, ComRc<IEntity>>,
+}
+
+pub(crate) struct SkinnedMeshInfo {
+    sorted_bones: Vec<ComRc<IEntity>>,
+    v_weights: Vec<[f32; 4]>,
+    v_bone_indices: Vec<[u8; 4]>,
 }
 
 fn load_clump(
@@ -74,11 +72,17 @@ fn load_clump(
         .frames
         .iter()
         .map(|f| {
-            let entity = CoreEntity::create(f.name().unwrap_or("frame".to_string()), true);
+            let entity =
+                CoreEntity::create(f.name().unwrap_or(format!("{}_frame", parent.name())), true);
             let m = create_matrix(f);
-            entity.transform().as_ref().borrow_mut().set_matrix(m);
+            entity
+                .transform()
+                .as_ref()
+                .borrow_mut()
+                .set_matrix(m.clone());
             if let Some(hanim) = f.hanim_plugin() {
                 let bone = HAnimBoneComponent::new(entity.clone(), hanim.header.id);
+                bone.set_bond_pose(m);
                 let bone = ComRc::<IComponent>::from_object(bone);
                 entity.add_component(IHAnimBoneComponent::uuid(), bone);
                 bones.insert(hanim.header.id, entity.clone());
@@ -91,12 +95,6 @@ fn load_clump(
     let mut hanim_bone = None;
 
     for i in 0..chunk.frames.len() {
-        if chunk.frames[i].parent < 0 {
-            parent.attach(entities[i].clone());
-        } else if chunk.frames[i].parent != i as i32 {
-            entities[chunk.frames[i].parent as usize].attach(entities[i].clone());
-        }
-
         if hanim_bone.is_none()
             && entities[i]
                 .get_component(IHAnimBoneComponent::uuid())
@@ -112,6 +110,12 @@ fn load_clump(
                 bone_root: entities[i].clone(),
                 indexed_bones,
             })
+        } else {
+            if chunk.frames[i].parent < 0 {
+                parent.attach(entities[i].clone());
+            } else if chunk.frames[i].parent != i as i32 {
+                entities[chunk.frames[i].parent as usize].attach(entities[i].clone());
+            }
         }
     }
 
@@ -166,7 +170,7 @@ fn create_mat44_from_matrix44f(m: &Matrix44f) -> Mat44 {
     mat.floats_mut()[0][3] = m.0[12];
     mat.floats_mut()[1][3] = m.0[13];
     mat.floats_mut()[2][3] = m.0[14];
-    mat.floats_mut()[3][3] = m.0[15];
+    mat.floats_mut()[3][3] = 1.; //m.0[15];
 
     mat
 }
@@ -197,6 +201,7 @@ fn create_geometry(
         vec![vertices.iter().map(|_| TexCoord { u: 0., v: 0. }).collect()]
     };
     let materials = &geometry.materials;
+    println!("materials: {:?}", materials);
 
     let mut skin_plugin = None;
     for p in &geometry.extensions {
@@ -206,14 +211,11 @@ fn create_geometry(
         }
     }
 
-    if let Some(skin) = skin_plugin {
+    let skin_info = skin_plugin.and_then(|skin| {
+        let hanim_bone = hanim_bone.unwrap();
+        let mut bones = vec![];
         for i in 0..skin.matrix.len() {
-            let bone = hanim_bone
-                .as_ref()
-                .unwrap()
-                .indexed_bones
-                .get(&(i as u32))
-                .unwrap();
+            let bone = hanim_bone.indexed_bones.get(&(i as u32)).unwrap();
             let bond_pose = create_mat44_from_matrix44f(&skin.matrix[i]);
             let bone_component = bone
                 .get_component(IHAnimBoneComponent::uuid())
@@ -222,12 +224,25 @@ fn create_geometry(
                 .unwrap();
 
             bone_component.set_bond_pose(bond_pose);
-
-            /*if let Ok(a) = &anm {
-                bone_component.set_keyframes(a[i].clone());
-            }*/
+            bones.push(bone.clone());
         }
-    }
+
+        let root = hanim_bone.bone_root.clone();
+        entity.add_component(
+            IArmatureComponent::uuid(),
+            ComRc::from_object(ArmatureComponent::new(
+                entity.clone(),
+                root.clone(),
+                bones.clone(),
+            )),
+        );
+
+        Some(SkinnedMeshInfo {
+            sorted_bones: bones,
+            v_weights: skin.weights.clone(),
+            v_bone_indices: skin.bone_indices.clone(),
+        })
+    });
 
     create_geometry_internal(
         entity,
@@ -237,8 +252,7 @@ fn create_geometry(
         triangles,
         &texcoord_sets,
         materials,
-        hanim_bone,
-        skin_plugin,
+        skin_info,
         vfs,
         path,
         texture_resolver,
@@ -253,8 +267,7 @@ pub(crate) fn create_geometry_internal(
     triangles: &[Triangle],
     texcoord_sets: &[Vec<TexCoord>],
     materials: &[Material],
-    hanim_bone: Option<&mut HAnimBone>,
-    skin_plugin: Option<&SkinPlugin>,
+    skin_info: Option<SkinnedMeshInfo>,
     vfs: &MiniFs,
     path: &Path,
     texture_resolver: &dyn TextureResolver,
@@ -318,64 +331,48 @@ pub(crate) fn create_geometry_internal(
         })
         .collect();
 
-    if skin_plugin.is_none() {
-        let mesh_component =
-            StaticMeshComponent::new(entity.clone(), r_geometries, component_factory.clone());
-        entity.add_component(
-            IStaticMeshComponent::uuid(),
-            crosscom::ComRc::from_object(mesh_component),
-        );
-    } else {
-        let skin = skin_plugin.unwrap();
-
-        let indexed_bones = &hanim_bone.as_ref().unwrap().indexed_bones;
-
-        let mut bones = vec![];
-        // let anm =
-        //    crate::loaders::anm::load_anm(vfs, &PathBuf::from("/gamedata/PALActor/105/C03.anm"));
-        // let anm = load_anm(vfs, &PathBuf::from("/Model/NpcP5/cunmin/114_chiyao.anm"));
-
-        for i in 0..skin.matrix.len() {
-            let bone = indexed_bones.get(&(i as u32)).unwrap();
-            /*bone.transform()
-            .borrow_mut()
-            .set_matrix(Mat44::inversed(&bond_pose));*/
-
-            bones.push(bone.clone());
+    match skin_info {
+        None => {
+            let mesh_component =
+                StaticMeshComponent::new(entity.clone(), r_geometries, component_factory.clone());
+            entity.add_component(
+                IStaticMeshComponent::uuid(),
+                crosscom::ComRc::from_object(mesh_component),
+            );
         }
+        Some(skin_info) => {
+            let bone_id: Vec<[usize; 4]> = skin_info
+                .v_bone_indices
+                .iter()
+                .map(|id| {
+                    [
+                        id[0] as usize,
+                        id[1] as usize,
+                        id[2] as usize,
+                        id[3] as usize,
+                    ]
+                })
+                .collect();
 
-        let bone_id: Vec<[usize; 4]> = skin
-            .bone_indices
-            .iter()
-            .map(|id| {
-                [
-                    id[0] as usize,
-                    id[1] as usize,
-                    id[2] as usize,
-                    id[3] as usize,
-                ]
-            })
-            .collect();
+            for r_geometry in r_geometries {
+                let child = CoreEntity::create(format!("{}_geom", entity.name()), true);
 
-        for r_geometry in r_geometries {
-            let child = CoreEntity::create(format!("{}_geom", entity.name()), true);
+                let mesh_component = SkinnedMeshComponent::new(
+                    child.clone(),
+                    component_factory.clone(),
+                    r_geometry,
+                    skin_info.sorted_bones.clone(),
+                    bone_id.clone(),
+                    skin_info.v_weights.clone(),
+                );
 
-            let mesh_component = SkinnedMeshComponent::new(
-                child.clone(),
-                component_factory.clone(),
-                r_geometry,
-                hanim_bone.as_ref().unwrap().bone_root.clone(),
-                bones.clone(),
-                bone_id.clone(),
-                skin.weights.clone(),
-            );
+                child.add_component(
+                    ISkinnedMeshComponent::uuid(),
+                    ComRc::from_object(mesh_component),
+                );
 
-            child.add_component(
-                ISkinnedMeshComponent::uuid(),
-                ComRc::from_object(mesh_component),
-            );
-
-            entity.attach(child);
+                entity.attach(child);
+            }
         }
     }
 }

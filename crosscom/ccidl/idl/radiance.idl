@@ -151,11 +151,17 @@ interface ISceneManager: IUnknown {
 [uuid(c598eeb6-4ef5-498c-95b7-d06486b69f32)]
 class SceneManager: ISceneManager {}
 
-[uuid(19ff0435-8a22-486c-b16a-69c2e1ffd0ae)]
-interface ISkinnedMeshComponent: IComponent {
+[uuid(cad476ee-990b-4ffe-af1b-02eac152e66e)]
+interface IArmatureComponent: IComponent {
     [internal(), rust()]
     crosscom::Void set_keyframes(Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>> keyframes);
 }
+
+[uuid(6ce422d7-70d9-4986-80ee-e67a53919db1)]
+class ArmatureComponent: IArmatureComponent {}
+
+[uuid(19ff0435-8a22-486c-b16a-69c2e1ffd0ae)]
+interface ISkinnedMeshComponent: IComponent {}
 
 [uuid(9f536433-8eb3-41da-b4f2-2a7e81c6a0cf)]
 class SkinnedMeshComponent: ISkinnedMeshComponent {}

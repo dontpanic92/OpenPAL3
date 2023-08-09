@@ -63,13 +63,8 @@ impl SceCommand for SceCommandMovie {
         let scale = w_scale.min(h_scale);
         let target_size = [source_w as f32 * scale, source_h as f32 * scale];
 
-        self.texture_id = Some(show_video_window(
-            ui,
-            video_player,
-            self.texture_id,
-            window_size,
-            target_size,
-        ));
+        self.texture_id =
+            show_video_window(ui, video_player, self.texture_id, window_size, target_size);
 
         false
     }

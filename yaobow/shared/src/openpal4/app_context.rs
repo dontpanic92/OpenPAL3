@@ -4,14 +4,14 @@ use crosscom::ComRc;
 use fileformats::cam::CameraDataFile;
 use radiance::{
     audio::AudioEngine,
-    comdef::ISceneManager,
+    comdef::{IArmatureComponent, ISceneManager},
     input::InputEngine,
     math::Vec3,
     radiance::{TaskHandle, TaskManager, UiManager},
     rendering::{ComponentFactory, VideoPlayer},
 };
 
-use super::{asset_loader::AssetLoader, scene::Pal4Scene};
+use super::{actor::Pal4Actor, asset_loader::AssetLoader, scene::Pal4Scene};
 
 pub struct Pal4AppContext {
     pub(crate) loader: Rc<AssetLoader>,
@@ -71,11 +71,7 @@ impl Pal4AppContext {
     }
 
     pub fn set_player_pos(&mut self, player: i32, pos: &Vec3) {
-        let player = if player == -1 {
-            self.leader
-        } else {
-            player as usize
-        };
+        let player = self.map_player(player);
 
         self.scene
             .get_player(player)
@@ -85,11 +81,7 @@ impl Pal4AppContext {
     }
 
     pub fn set_player_ang(&mut self, player: i32, ang: f32) {
-        let player = if player == -1 {
-            self.leader
-        } else {
-            player as usize
-        };
+        let player = self.map_player(player);
 
         self.scene
             .get_player(player)
@@ -97,6 +89,14 @@ impl Pal4AppContext {
             .borrow_mut()
             .clear_rotation()
             .rotate_axis_angle_local(&Vec3::UP, ang * std::f32::consts::PI / 180.0);
+    }
+
+    pub fn player_do_action(&mut self, player: i32, action: &str) {
+        let player = self.map_player(player);
+        let metadata = self.scene.get_player_metadata(player);
+        let anm = self.loader.load_anm(metadata.actor_name(), action).unwrap();
+
+        Pal4Actor::set_anim(self.scene.get_player(player), &anm);
     }
 
     pub fn load_scene(&mut self, scene_name: &str, block_name: &str) {
@@ -235,5 +235,14 @@ impl Pal4AppContext {
         });
 
         Ok(task)
+    }
+
+    #[inline]
+    fn map_player(&self, player: i32) -> usize {
+        if player == -1 {
+            self.leader
+        } else {
+            player as usize
+        }
     }
 }

@@ -2016,8 +2016,8 @@ fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
             .resizable(false)
             .draw_background(true)
             .no_decoration()
-            .size([1024., 600.], Condition::Appearing)
-            .position([0., 0.], Condition::Appearing)
+            .size([1024., 250.], Condition::Appearing)
+            .position([0., 750.], Condition::Appearing)
             .build(|| ui.text(&str));
 
         if ui.is_mouse_released(MouseButton::Left) {
@@ -2046,7 +2046,11 @@ fn talk_wait(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 }
 
 fn player_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player_id: i32, _action: i32, _flag: i32, _sync: bool);
+    as_params!(vm, player: i32, action_str: i32, _flag: i32, _sync: bool);
+
+    let action = get_str(vm, action_str as usize).unwrap();
+    vm.app_context.player_do_action(player, &action);
+
     Pal4FunctionState::Completed
 }
 
@@ -2154,7 +2158,10 @@ fn current_player_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal
 }
 
 fn player_do_action_repeat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_action_file_str:i32);
+    as_params!(vm, player: i32, action_str: i32);
+    let action = get_str(vm, action_str as usize).unwrap();
+    vm.app_context.player_do_action(player, &action);
+
     Pal4FunctionState::Completed
 }
 
@@ -2365,13 +2372,7 @@ fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
         let scale = w_scale.min(h_scale);
         let target_size = [source_w as f32 * scale, source_h as f32 * scale];
 
-        texture_id = Some(show_video_window(
-            ui.ui(),
-            video_player,
-            texture_id,
-            window_size,
-            target_size,
-        ));
+        texture_id = show_video_window(ui.ui(), video_player, texture_id, window_size, target_size);
 
         ContinuationState::Loop
     }))

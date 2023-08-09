@@ -5,7 +5,8 @@ use crosscom::ComRc;
 use fileformats::{binrw::BinRead, cam::CameraDataFile, npc::NpcInfoFile};
 use mini_fs::MiniFs;
 use radiance::{
-    comdef::{IEntity, IScene, ISkinnedMeshComponent},
+    comdef::{IArmatureComponent, IEntity, IScene},
+    components::mesh::skinned_mesh::AnimKeyFrame,
     rendering::ComponentFactory,
     scene::CoreScene,
 };
@@ -17,6 +18,8 @@ use crate::{
     },
     scripting::angelscript::ScriptModule,
 };
+
+use super::actor::Pal4Actor;
 
 pub struct AssetLoader {
     vfs: MiniFs,
@@ -62,16 +65,19 @@ impl AssetLoader {
         if let Some(default_act) = default_act {
             let act_path = format!("/gamedata/PALActor/{}/{}.anm", actor_name, default_act);
             let anm = load_anm(&self.vfs, &act_path)?;
-            println!("entity {} {}", entity.name(), entity.children()[1].name());
-            entity.children()[0]
-                .get_component(ISkinnedMeshComponent::uuid())
-                .unwrap()
-                .query_interface::<ISkinnedMeshComponent>()
-                .unwrap()
-                .set_keyframes(anm);
+            Pal4Actor::set_anim(entity.clone(), &anm);
         }
 
         Ok(entity)
+    }
+
+    pub fn load_anm(
+        &self,
+        actor_name: &str,
+        act_name: &str,
+    ) -> anyhow::Result<Vec<Vec<AnimKeyFrame>>> {
+        let act_path = format!("/gamedata/PALActor/{}/{}.anm", actor_name, act_name);
+        Ok(load_anm(&self.vfs, &act_path)?)
     }
 
     pub fn load_scene(&self, scene_name: &str, block_name: &str) -> anyhow::Result<ComRc<IScene>> {

@@ -125,6 +125,7 @@ macro_rules! ComObject_ResourceViewContent {
             use radiance::comdef::IAnimatedMeshComponentImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IArmatureComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
@@ -277,6 +278,7 @@ use radiance::comdef::IStaticMeshComponentImpl;
 use radiance::comdef::IAnimatedMeshComponentImpl;
 use radiance::comdef::IDirectorImpl;
 use radiance::comdef::ISceneManagerImpl;
+use radiance::comdef::IArmatureComponentImpl;
 use radiance::comdef::ISkinnedMeshComponentImpl;
 use radiance::comdef::IHAnimBoneComponentImpl;
 
@@ -427,6 +429,7 @@ macro_rules! ComObject_MainPageDirector {
             use radiance::comdef::IAnimatedMeshComponentImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IArmatureComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;

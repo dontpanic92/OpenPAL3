@@ -107,6 +107,16 @@ impl Pal4Scene {
     pub fn get_player(&self, player_id: usize) -> ComRc<IEntity> {
         self.players[player_id].clone()
     }
+
+    pub fn get_player_metadata(&self, player_id: usize) -> Player {
+        match player_id {
+            Self::ID_YUN_TIANHE => Player::YunTianhe,
+            Self::ID_HAN_LINGSHA => Player::HanLingsha,
+            Self::ID_LIU_MENGLI => Player::LiuMengli,
+            Self::ID_MURONG_ZIYING => Player::MurongZiying,
+            _ => unreachable!(),
+        }
+    }
 }
 
 fn load_player(asset_loader: &AssetLoader, player: Player) -> ComRc<IEntity> {
