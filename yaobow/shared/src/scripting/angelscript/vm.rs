@@ -121,7 +121,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         return self.heap.len() - 1;
     }
 
-    pub fn execute(&mut self) {
+    pub fn execute(&mut self, delta_sec: f32) {
         loop {
             let module = self.context.module.clone();
             let module_ref = module.borrow();
@@ -132,7 +132,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             self.wait_for_action();
             let cont = self.yield_func.take();
             match cont {
-                Some(mut cont) => match cont(self) {
+                Some(mut cont) => match cont(self, delta_sec) {
                     crate::scripting::angelscript::ContinuationState::Loop => {
                         self.yield_func = Some(cont);
                         return;

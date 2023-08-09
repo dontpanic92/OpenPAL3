@@ -2523,7 +2523,6 @@ dependencies = [
 [[package]]
 name = "mini-fs"
 version = "0.2.2"
-source = "git+https://github.com/dontpanic92/mini-fs/#09ce1a4da16ca421d6a7254bfa12d2477472fbe2"
 dependencies = [
  "flate2",
  "tar",
@@ -3466,6 +3465,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "roxmltree"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8f595a457b6b8c6cda66a48503e92ee8d19342f905948f29c383200ec9eb1d8"
+dependencies = [
+ "xmlparser",
+]
+
+[[package]]
 name = "rust-ini"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3778,6 +3786,7 @@ dependencies = [
  "radiance",
  "rand",
  "regex",
+ "roxmltree",
  "rust-ini 0.16.1",
  "serde",
  "serde_json",
@@ -5033,6 +5042,12 @@ name = "xml-rs"
 version = "0.8.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52839dc911083a8ef63efa4d039d1f58b5e409f923e44c80828f206f66e5541c"
+
+[[package]]
+name = "xmlparser"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d25c75bf9ea12c4040a97f829154768bbbce366287e2dc044af160cd79a13fd"
 
 [[package]]
 name = "xtea"

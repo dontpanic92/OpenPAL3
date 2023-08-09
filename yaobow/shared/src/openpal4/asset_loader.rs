@@ -1,13 +1,14 @@
-use std::{cell::RefCell, io::Cursor, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, io::Cursor, rc::Rc};
 
+use anyhow::anyhow;
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use fileformats::{binrw::BinRead, cam::CameraDataFile, npc::NpcInfoFile};
 use mini_fs::MiniFs;
 use radiance::{
-    comdef::{IArmatureComponent, IEntity, IScene},
+    comdef::{IEntity, IScene},
     components::mesh::skinned_mesh::AnimKeyFrame,
-    rendering::ComponentFactory,
+    rendering::{ComponentFactory, Sprite},
     scene::CoreScene,
 };
 
@@ -25,14 +26,17 @@ pub struct AssetLoader {
     vfs: MiniFs,
     component_factory: Rc<dyn ComponentFactory>,
     texture_resolver: Pal4TextureResolver,
+    portraits: HashMap<String, ImageSetImage>,
 }
 
 impl AssetLoader {
     pub fn new(component_factory: Rc<dyn ComponentFactory>, vfs: MiniFs) -> Rc<Self> {
+        let portraits = load_portraits(&component_factory, &vfs);
         Rc::new(Self {
             component_factory,
             vfs,
             texture_resolver: Pal4TextureResolver {},
+            portraits,
         })
     }
 
@@ -131,6 +135,7 @@ impl AssetLoader {
         let data = self.vfs.read_to_end(path)?;
         Ok(data)
     }
+
     pub fn load_camera_data(
         &self,
         camera_data_name: &str,
@@ -144,4 +149,118 @@ impl AssetLoader {
         let data = CameraDataFile::read(&mut Cursor::new(self.vfs.read_to_end(path)?))?;
         Ok(data)
     }
+
+    pub fn load_portrait(&self, name: &str) -> Option<ImageSetImage> {
+        self.portraits.get(&name.to_lowercase()).cloned()
+    }
+}
+
+#[derive(Clone)]
+pub struct ImageSetImage {
+    pub name: String,
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+    pub sprite: Rc<Sprite>,
+}
+
+fn load_portraits(
+    component_factory: &Rc<dyn ComponentFactory>,
+    vfs: &MiniFs,
+) -> HashMap<String, ImageSetImage> {
+    let portrait_files = [
+        "/gamedata/ui/portrait/portrait0_0.imageset",
+        "/gamedata/ui/portrait/portrait1_0.imageset",
+        "/gamedata/ui/portrait/portrait2_0.imageset",
+        "/gamedata/ui/portrait/portrait3_0.imageset",
+        "/gamedata/ui/portrait/portrait4_0.imageset",
+        "/gamedata/ui/portrait/portrait5_0.imageset",
+        "/gamedata/ui/portrait/portrait6_0.imageset",
+        "/gamedata/ui/portrait/portrait7_0.imageset",
+        "/gamedata/ui/portrait/portrait8_0.imageset",
+    ];
+
+    let mut portraits = HashMap::new();
+    for portrait_file in &portrait_files {
+        let ret = load_portraits_single(component_factory, vfs, portrait_file, &mut portraits);
+        if let Err(e) = ret {
+            log::error!("load_portraits_single failed: {:?}", e);
+        }
+    }
+
+    portraits
+}
+
+fn load_portraits_single(
+    component_factory: &Rc<dyn ComponentFactory>,
+    vfs: &MiniFs,
+    imageset: &str,
+    portraits: &mut HashMap<String, ImageSetImage>,
+) -> anyhow::Result<()> {
+    let data = vfs.read_to_end(imageset)?;
+    let content = String::from_utf8_lossy(&data);
+    let root = roxmltree::Document::parse(&content)?;
+    let root = root.root_element();
+    let image_file = root
+        .attribute("Imagefile")
+        .ok_or(anyhow!("Missing Imagefile attribute in root node"))?;
+    let image_file = if !image_file.starts_with(&['/', '\\']) {
+        format!("/{}", image_file)
+    } else {
+        image_file.to_string()
+    };
+
+    for image in root
+        .children()
+        .filter(|n| n.is_element() && n.tag_name().name() == "Image")
+    {
+        let mut read_node = || -> anyhow::Result<()> {
+            let name = image
+                .attribute("Name")
+                .ok_or(anyhow!("Missing Name in image node"))?
+                .to_lowercase();
+            let x = image
+                .attribute("XPos")
+                .ok_or(anyhow!("Missing XPos in image node"))?
+                .parse::<u32>()?;
+            let y = image
+                .attribute("YPos")
+                .ok_or(anyhow!("Missing YPos in image node"))?
+                .parse::<u32>()?;
+            let width = image
+                .attribute("Width")
+                .ok_or(anyhow!("Missing Width in image node"))?
+                .parse::<u32>()?;
+            let height = image
+                .attribute("Height")
+                .ok_or(anyhow!("Missing Height in image node"))?
+                .parse::<u32>()?;
+            let sprite = Rc::new(Sprite::load_from_buffer(
+                &vfs.read_to_end(&image_file)?,
+                image::ImageFormat::Png,
+                component_factory.as_ref(),
+            ));
+            portraits.insert(
+                name.clone(),
+                ImageSetImage {
+                    name,
+                    x,
+                    y,
+                    width,
+                    height,
+                    sprite,
+                },
+            );
+
+            Ok(())
+        };
+
+        let ret = read_node();
+        if let Err(e) = ret {
+            log::error!("load portrait node failed: {:?}", e);
+        }
+    }
+
+    Ok(())
 }

@@ -9,6 +9,7 @@ use crate::{
         not_implemented, ContinuationState, GlobalFunctionContinuation, GlobalFunctionState,
         ScriptGlobalContext, ScriptGlobalFunction, ScriptVm,
     },
+    ui::dialog_box::{AvatarPosition, DialogBox, DialogBoxPresenter},
     utils::show_video_window,
 };
 
@@ -1202,11 +1203,6 @@ fn get_goods_open_condition(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4F
     Pal4FunctionState::Completed
 }
 
-fn set_goods_open_condition(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_goods_id:i32,_condition:i32);
-    Pal4FunctionState::Completed
-}
-
 fn npc_pause_beh(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_npc_name:i32);
     Pal4FunctionState::Completed
@@ -1399,7 +1395,10 @@ fn game_object_set_research(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4F
 }
 
 fn set_portrait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_file_str:i32,_set_portrait :bool);
+    as_params!(vm, file_str: i32, left: bool);
+    let file_name = get_str(vm, file_str as usize).unwrap();
+    vm.app_context.set_portrait(&file_name, left);
+
     Pal4FunctionState::Completed
 }
 
@@ -2006,21 +2005,18 @@ fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
         }
     }
 
-    Pal4FunctionState::Yield(Box::new(move |vm| {
-        let str = get_str(vm, str as usize).unwrap();
-        let ui = vm.app_context().ui.ui();
-        let _ = ui
-            .window("dlg_box")
-            .collapsible(false)
-            .title_bar(false)
-            .resizable(false)
-            .draw_background(true)
-            .no_decoration()
-            .size([1024., 250.], Condition::Appearing)
-            .position([0., 750.], Condition::Appearing)
-            .build(|| ui.text(&str));
+    let text = get_str(vm, str as usize).unwrap();
+    vm.app_context.dialog_box.set_text(&text);
+    let presenter = DialogBoxPresenter::new();
 
-        if ui.is_mouse_released(MouseButton::Left) {
+    Pal4FunctionState::Yield(Box::new(move |vm, delta_sec| {
+        let ui = &vm.app_context().ui;
+        presenter.update(&vm.app_context.dialog_box, delta_sec);
+
+        if ui.ui().is_mouse_released(MouseButton::Left) {
+            vm.app_context
+                .dialog_box
+                .set_avatar(None, AvatarPosition::Left);
             ContinuationState::Completed
         } else {
             ContinuationState::Loop
@@ -2348,7 +2344,7 @@ fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     };
     let mut texture_id = None;
 
-    Pal4FunctionState::Yield(Box::new(move |vm| {
+    Pal4FunctionState::Yield(Box::new(move |vm, _| {
         let ui = vm.app_context.ui.clone();
         let window_size = ui.ui().io().display_size;
 

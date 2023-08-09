@@ -4,12 +4,14 @@ use crosscom::ComRc;
 use fileformats::cam::CameraDataFile;
 use radiance::{
     audio::AudioEngine,
-    comdef::{IArmatureComponent, ISceneManager},
+    comdef::ISceneManager,
     input::InputEngine,
     math::Vec3,
     radiance::{TaskHandle, TaskManager, UiManager},
     rendering::{ComponentFactory, VideoPlayer},
 };
+
+use crate::ui::dialog_box::{AvatarPosition, DialogBox};
 
 use super::{actor::Pal4Actor, asset_loader::AssetLoader, scene::Pal4Scene};
 
@@ -20,6 +22,7 @@ pub struct Pal4AppContext {
     pub(crate) input: Rc<RefCell<dyn InputEngine>>,
     pub(crate) task_manager: Rc<TaskManager>,
     pub(crate) scene: Pal4Scene,
+    pub(crate) dialog_box: DialogBox,
 
     component_factory: Rc<dyn ComponentFactory>,
     audio_engine: Rc<dyn AudioEngine>,
@@ -47,7 +50,7 @@ impl Pal4AppContext {
         Self {
             loader,
             scene_manager,
-            ui,
+            ui: ui.clone(),
             task_manager,
             input,
             component_factory: component_factory.clone(),
@@ -62,6 +65,7 @@ impl Pal4AppContext {
             block_name: String::new(),
             leader: 0,
             scene: Pal4Scene::new_empty(),
+            dialog_box: DialogBox::new(ui),
         }
     }
 
@@ -201,6 +205,18 @@ impl Pal4AppContext {
                 // }
             }
         }
+    }
+
+    pub fn set_portrait(&mut self, name: &str, left: bool) {
+        let image = self.loader.load_portrait(name);
+        self.dialog_box.set_avatar(
+            image,
+            if left {
+                AvatarPosition::Left
+            } else {
+                AvatarPosition::Right
+            },
+        );
     }
 
     fn find_next_sound_id(&mut self) -> i32 {

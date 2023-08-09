@@ -1,7 +1,7 @@
 use super::ScriptVm;
 
 pub type GlobalFunctionContinuation<TAppContext> =
-    Box<dyn FnMut(&mut ScriptVm<TAppContext>) -> ContinuationState>;
+    Box<dyn FnMut(&mut ScriptVm<TAppContext>, f32) -> ContinuationState>;
 
 pub enum GlobalFunctionState<TAppContext: 'static> {
     Yield(GlobalFunctionContinuation<TAppContext>),
