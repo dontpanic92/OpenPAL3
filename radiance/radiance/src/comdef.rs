@@ -3050,10 +3050,17 @@ pub struct IArmatureComponentVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
-    pub set_keyframes: fn(
+    pub set_animation: fn(
         this: *const *const std::os::raw::c_void,
         keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
     ) -> crosscom::Void,
+    pub clear_animation: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub animation_state: fn(
+        this: *const *const std::os::raw::c_void,
+    ) -> radiance::components::mesh::skinned_mesh::AnimationState,
+    pub bones: fn(
+        this: *const *const std::os::raw::c_void,
+    ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>,
 }
 
 #[repr(C)]
@@ -3125,13 +3132,41 @@ impl IArmatureComponent {
         }
     }
 
-    pub fn set_keyframes(
+    pub fn set_animation(
         &self,
         keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
     ) -> crosscom::Void {
         unsafe {
             let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
-            let ret = ((*self.vtable).set_keyframes)(this, keyframes.into());
+            let ret = ((*self.vtable).set_animation)(this, keyframes.into());
+
+            ret
+        }
+    }
+
+    pub fn clear_animation(&self) -> () {
+        unsafe {
+            let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).clear_animation)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn animation_state(&self) -> radiance::components::mesh::skinned_mesh::AnimationState {
+        unsafe {
+            let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).animation_state)(this);
+
+            ret
+        }
+    }
+
+    pub fn bones(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
+        unsafe {
+            let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).bones)(this);
 
             ret
         }
@@ -3144,10 +3179,13 @@ impl IArmatureComponent {
 }
 
 pub trait IArmatureComponentImpl {
-    fn set_keyframes(
+    fn set_animation(
         &self,
         keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
     ) -> crosscom::Void;
+    fn clear_animation(&self) -> ();
+    fn animation_state(&self) -> radiance::components::mesh::skinned_mesh::AnimationState;
+    fn bones(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
 }
 
 impl crosscom::ComInterface for IArmatureComponent {
@@ -3248,13 +3286,38 @@ macro_rules! ComObject_ArmatureComponent {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            fn set_keyframes(
+            fn set_animation(
                 this: *const *const std::os::raw::c_void,
                 keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
             ) -> crosscom::Void {
                 unsafe {
                     let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
-                    (*__crosscom_object).inner.set_keyframes(keyframes)
+                    (*__crosscom_object).inner.set_animation(keyframes)
+                }
+            }
+
+            unsafe extern "system" fn clear_animation(
+                this: *const *const std::os::raw::c_void,
+            ) -> () {
+                let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
+                (*__crosscom_object).inner.clear_animation().into()
+            }
+
+            fn animation_state(
+                this: *const *const std::os::raw::c_void,
+            ) -> radiance::components::mesh::skinned_mesh::AnimationState {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
+                    (*__crosscom_object).inner.animation_state()
+                }
+            }
+
+            fn bones(
+                this: *const *const std::os::raw::c_void,
+            ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
+                    (*__crosscom_object).inner.bones()
                 }
             }
 
@@ -3287,7 +3350,10 @@ macro_rules! ComObject_ArmatureComponent {
                         release,
                         on_loading,
                         on_updating,
-                        set_keyframes,
+                        set_animation,
+                        clear_animation,
+                        animation_state,
+                        bones,
                     },
                 };
 

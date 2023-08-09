@@ -45,7 +45,7 @@ pub struct HAnimUnknown {
 
 #[binrw]
 #[brw(little)]
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct HAnimBone {
     pub id: u32,
     pub index: u32,

@@ -154,7 +154,15 @@ class SceneManager: ISceneManager {}
 [uuid(cad476ee-990b-4ffe-af1b-02eac152e66e)]
 interface IArmatureComponent: IComponent {
     [internal(), rust()]
-    crosscom::Void set_keyframes(Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>> keyframes);
+    crosscom::Void set_animation(Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>> keyframes);
+
+    void clear_animation();
+
+    [internal(), rust()]
+    radiance::components::mesh::skinned_mesh::AnimationState animation_state();
+
+    [internal(), rust()]
+    Vec<crosscom::ComRc<radiance::comdef::IEntity>> bones();
 }
 
 [uuid(6ce422d7-70d9-4986-80ee-e67a53919db1)]

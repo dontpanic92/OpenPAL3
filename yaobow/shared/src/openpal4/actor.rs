@@ -12,7 +12,7 @@ impl Pal4Actor {
             let x = || -> Option<()> {
                 e.get_component(IArmatureComponent::uuid())?
                     .query_interface::<IArmatureComponent>()?
-                    .set_keyframes(anm.clone());
+                    .set_animation(anm.clone());
                 Some(())
             };
 

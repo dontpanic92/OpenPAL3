@@ -2,14 +2,14 @@ use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
 
 use crosscom::ComRc;
 use fileformats::rwbs::{
-    clump::Clump, extension::Extension, frame::Frame, material::Material, read_dff, Matrix44f,
-    TexCoord, Triangle, Vec3f,
+    clump::Clump, extension::Extension, frame::Frame, material::Material, plugins::hanim, read_dff,
+    Matrix44f, TexCoord, Triangle, Vec3f,
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{
-        IArmatureComponent, IComponent, IEntity, IHAnimBoneComponent, IHAnimBoneComponentImpl,
-        ISkinnedMeshComponent, IStaticMeshComponent,
+        IArmatureComponent, IComponent, IEntity, IHAnimBoneComponent, ISkinnedMeshComponent,
+        IStaticMeshComponent,
     },
     components::mesh::{
         skinned_mesh::{ArmatureComponent, HAnimBoneComponent, SkinnedMeshComponent},
@@ -45,6 +45,7 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
             texture_resolver,
         );
     }
+
     entity
 }
 
@@ -54,7 +55,7 @@ struct HAnimBone {
 }
 
 pub(crate) struct SkinnedMeshInfo {
-    sorted_bones: Vec<ComRc<IEntity>>,
+    armature: ComRc<IArmatureComponent>,
     v_weights: Vec<[f32; 4]>,
     v_bone_indices: Vec<[u8; 4]>,
 }
@@ -67,8 +68,9 @@ fn load_clump(
     path: &Path,
     texture_resolver: &dyn TextureResolver,
 ) {
-    let mut bones: HashMap<u32, ComRc<IEntity>> = HashMap::new();
-    let entities: Vec<ComRc<IEntity>> = chunk
+    let mut root_bone = None;
+    let mut bone_id_map: HashMap<u32, ComRc<IEntity>> = HashMap::new();
+    let entities: Vec<(ComRc<IEntity>, Option<ComRc<IEntity>>)> = chunk
         .frames
         .iter()
         .map(|f| {
@@ -80,54 +82,70 @@ fn load_clump(
                 .as_ref()
                 .borrow_mut()
                 .set_matrix(m.clone());
-            if let Some(hanim) = f.hanim_plugin() {
-                let bone = HAnimBoneComponent::new(entity.clone(), hanim.header.id);
-                bone.set_bond_pose(m);
-                let bone = ComRc::<IComponent>::from_object(bone);
-                entity.add_component(IHAnimBoneComponent::uuid(), bone);
-                bones.insert(hanim.header.id, entity.clone());
-            }
+            let bone = if let Some(hanim) = f.hanim_plugin() {
+                let bone =
+                    CoreEntity::create(format!("{}_bone", f.name().unwrap_or_default()), false);
 
-            entity
+                let bone_component = ComRc::<IComponent>::from_object(HAnimBoneComponent::new(
+                    bone.clone(),
+                    hanim.header.id,
+                ));
+                bone.add_component(IHAnimBoneComponent::uuid(), bone_component);
+                bone_id_map.insert(hanim.header.id, bone.clone());
+
+                if root_bone.is_none() {
+                    root_bone = Some((bone.clone(), hanim.bones.clone()));
+                }
+
+                Some(bone)
+            } else {
+                None
+            };
+
+            (entity, bone)
         })
         .collect();
 
-    let mut hanim_bone = None;
+    let hanim_bone = if let Some((root_bone, index_map)) = &root_bone {
+        let mut indexed_bones = HashMap::new();
+        for b in index_map {
+            indexed_bones.insert(b.index, bone_id_map.get(&b.id).unwrap().clone());
+        }
+
+        Some(HAnimBone {
+            bone_root: root_bone.clone(),
+            indexed_bones,
+        })
+    } else {
+        None
+    };
 
     for i in 0..chunk.frames.len() {
-        if hanim_bone.is_none()
-            && entities[i]
-                .get_component(IHAnimBoneComponent::uuid())
-                .is_some()
-        {
-            let mut indexed_bones = HashMap::new();
-            let hanim = chunk.frames[i].hanim_plugin().unwrap();
-            for b in &hanim.bones {
-                indexed_bones.insert(b.index, bones.get(&b.id).unwrap().clone());
+        if chunk.frames[i].parent < 0 {
+            parent.attach(entities[i].0.clone());
+        } else if chunk.frames[i].parent != i as i32 {
+            let parent_id = chunk.frames[i].parent as usize;
+            entities[parent_id].0.attach(entities[i].0.clone());
+            match (&entities[parent_id].1, &entities[i].1) {
+                (Some(parent_bone), Some(bone)) => {
+                    parent_bone.attach(bone.clone());
+                }
+                _ => {}
             }
-
-            hanim_bone = Some(HAnimBone {
-                bone_root: entities[i].clone(),
-                indexed_bones,
-            })
         } else {
-            if chunk.frames[i].parent < 0 {
-                parent.attach(entities[i].clone());
-            } else if chunk.frames[i].parent != i as i32 {
-                entities[chunk.frames[i].parent as usize].attach(entities[i].clone());
-            }
+            log::warn!("Ignored orphan frame");
         }
     }
 
     for atomic in &chunk.atomics {
-        let entity = entities[atomic.frame as usize].clone();
+        let entity = entities[atomic.frame as usize].0.clone();
 
         let geometry = &chunk.geometries[atomic.geometry as usize];
         create_geometry(
             entity,
             component_factory,
             geometry,
-            hanim_bone.as_mut(),
+            hanim_bone.as_ref(),
             vfs,
             &path,
             texture_resolver,
@@ -135,51 +153,11 @@ fn load_clump(
     }
 }
 
-fn create_matrix(frame: &Frame) -> Mat44 {
-    let mut mat = Mat44::new_identity();
-    mat.floats_mut()[0][0] = frame.right.x;
-    mat.floats_mut()[1][0] = frame.right.y;
-    mat.floats_mut()[2][0] = frame.right.z;
-    mat.floats_mut()[0][1] = frame.up.x;
-    mat.floats_mut()[1][1] = frame.up.y;
-    mat.floats_mut()[2][1] = frame.up.z;
-    mat.floats_mut()[0][2] = frame.at.x;
-    mat.floats_mut()[1][2] = frame.at.y;
-    mat.floats_mut()[2][2] = frame.at.z;
-    mat.floats_mut()[0][3] = frame.pos.x;
-    mat.floats_mut()[1][3] = frame.pos.y;
-    mat.floats_mut()[2][3] = frame.pos.z;
-
-    mat
-}
-
-fn create_mat44_from_matrix44f(m: &Matrix44f) -> Mat44 {
-    let mut mat = Mat44::new_identity();
-    mat.floats_mut()[0][0] = m.0[0];
-    mat.floats_mut()[1][0] = m.0[1];
-    mat.floats_mut()[2][0] = m.0[2];
-    mat.floats_mut()[3][0] = m.0[3];
-    mat.floats_mut()[0][1] = m.0[4];
-    mat.floats_mut()[1][1] = m.0[5];
-    mat.floats_mut()[2][1] = m.0[6];
-    mat.floats_mut()[3][1] = m.0[7];
-    mat.floats_mut()[0][2] = m.0[8];
-    mat.floats_mut()[1][2] = m.0[9];
-    mat.floats_mut()[2][2] = m.0[10];
-    mat.floats_mut()[3][2] = m.0[11];
-    mat.floats_mut()[0][3] = m.0[12];
-    mat.floats_mut()[1][3] = m.0[13];
-    mat.floats_mut()[2][3] = m.0[14];
-    mat.floats_mut()[3][3] = 1.; //m.0[15];
-
-    mat
-}
-
 fn create_geometry(
     entity: ComRc<IEntity>,
     component_factory: &Rc<dyn ComponentFactory>,
     geometry: &fileformats::rwbs::geometry::Geometry,
-    hanim_bone: Option<&mut HAnimBone>,
+    hanim_bone: Option<&HAnimBone>,
     vfs: &MiniFs,
     path: &Path,
     texture_resolver: &dyn TextureResolver,
@@ -201,7 +179,6 @@ fn create_geometry(
         vec![vertices.iter().map(|_| TexCoord { u: 0., v: 0. }).collect()]
     };
     let materials = &geometry.materials;
-    println!("materials: {:?}", materials);
 
     let mut skin_plugin = None;
     for p in &geometry.extensions {
@@ -227,18 +204,25 @@ fn create_geometry(
             bones.push(bone.clone());
         }
 
-        let root = hanim_bone.bone_root.clone();
-        entity.add_component(
-            IArmatureComponent::uuid(),
-            ComRc::from_object(ArmatureComponent::new(
-                entity.clone(),
-                root.clone(),
-                bones.clone(),
-            )),
-        );
+        let armature = entity
+            .get_component(IArmatureComponent::uuid())
+            .and_then(|c| c.query_interface::<IArmatureComponent>())
+            .or_else(|| {
+                let armature = ComRc::<IArmatureComponent>::from_object(ArmatureComponent::new(
+                    entity.clone(),
+                    hanim_bone.bone_root.clone(),
+                    bones.clone(),
+                ));
+                entity.add_component(
+                    IArmatureComponent::uuid(),
+                    armature.clone().query_interface::<IComponent>().unwrap(),
+                );
+                Some(armature)
+            })
+            .unwrap();
 
         Some(SkinnedMeshInfo {
-            sorted_bones: bones,
+            armature,
             v_weights: skin.weights.clone(),
             v_bone_indices: skin.bone_indices.clone(),
         })
@@ -361,7 +345,7 @@ pub(crate) fn create_geometry_internal(
                     child.clone(),
                     component_factory.clone(),
                     r_geometry,
-                    skin_info.sorted_bones.clone(),
+                    skin_info.armature.clone(),
                     bone_id.clone(),
                     skin_info.v_weights.clone(),
                 );
@@ -375,4 +359,44 @@ pub(crate) fn create_geometry_internal(
             }
         }
     }
+}
+
+fn create_matrix(frame: &Frame) -> Mat44 {
+    let mut mat = Mat44::new_identity();
+    mat.floats_mut()[0][0] = frame.right.x;
+    mat.floats_mut()[1][0] = frame.right.y;
+    mat.floats_mut()[2][0] = frame.right.z;
+    mat.floats_mut()[0][1] = frame.up.x;
+    mat.floats_mut()[1][1] = frame.up.y;
+    mat.floats_mut()[2][1] = frame.up.z;
+    mat.floats_mut()[0][2] = frame.at.x;
+    mat.floats_mut()[1][2] = frame.at.y;
+    mat.floats_mut()[2][2] = frame.at.z;
+    mat.floats_mut()[0][3] = frame.pos.x;
+    mat.floats_mut()[1][3] = frame.pos.y;
+    mat.floats_mut()[2][3] = frame.pos.z;
+
+    mat
+}
+
+fn create_mat44_from_matrix44f(m: &Matrix44f) -> Mat44 {
+    let mut mat = Mat44::new_identity();
+    mat.floats_mut()[0][0] = m.0[0];
+    mat.floats_mut()[1][0] = m.0[1];
+    mat.floats_mut()[2][0] = m.0[2];
+    mat.floats_mut()[3][0] = m.0[3];
+    mat.floats_mut()[0][1] = m.0[4];
+    mat.floats_mut()[1][1] = m.0[5];
+    mat.floats_mut()[2][1] = m.0[6];
+    mat.floats_mut()[3][1] = m.0[7];
+    mat.floats_mut()[0][2] = m.0[8];
+    mat.floats_mut()[1][2] = m.0[9];
+    mat.floats_mut()[2][2] = m.0[10];
+    mat.floats_mut()[3][2] = m.0[11];
+    mat.floats_mut()[0][3] = m.0[12];
+    mat.floats_mut()[1][3] = m.0[13];
+    mat.floats_mut()[2][3] = m.0[14];
+    mat.floats_mut()[3][3] = 1.; //m.0[15];
+
+    mat
 }

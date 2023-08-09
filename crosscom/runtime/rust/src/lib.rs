@@ -35,6 +35,10 @@ impl<TComInterface: ComInterface> ComRc<TComInterface> {
         self.into()
     }
 
+    pub fn ptr_value(&self) -> *const c_void {
+        self.this as *const c_void
+    }
+
     pub fn is_null(&self) -> bool {
         self.this.is_null()
     }
