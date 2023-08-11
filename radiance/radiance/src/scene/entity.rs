@@ -121,7 +121,8 @@ impl IEntityImpl for CoreEntity {
             e.update(delta_sec);
         }
 
-        for c in self.components.borrow().values().clone() {
+        let components = self.components.borrow().clone();
+        for c in components.values() {
             c.on_updating(delta_sec);
         }
     }
