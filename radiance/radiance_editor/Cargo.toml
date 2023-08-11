@@ -14,5 +14,5 @@ crosscom = { path = "../../crosscom/runtime/rust" }
 imgui = { version = "0.10", features = ["docking"] }
 radiance = { path = "../radiance" }
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_debug"] }
-simple_logger = "1.16.0"
+simple_logger = "4"
 uuid = "0.8"

@@ -123,8 +123,8 @@ impl VulkanRenderingEngine {
 
         let allocator = Rc::new({
             let create_info = vk_mem::AllocatorCreateInfo::new(
-                Rc::new(instance.vk_instance()),
-                Rc::new(device.vk_device()),
+                Rc::new(instance.vk_instance().clone()),
+                Rc::new(device.vk_device().clone()),
                 physical_device,
             );
 

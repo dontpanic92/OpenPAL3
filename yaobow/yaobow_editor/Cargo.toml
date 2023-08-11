@@ -25,7 +25,7 @@ radiance = { path = "../../radiance/radiance" }
 radiance_editor = { path = "../../radiance/radiance_editor" }
 serde = "1.0"
 serde_json = "1.0"
-simple_logger = "1.16.0"
+simple_logger = "4"
 shared = { path = "../shared" }
 uuid = "0.8"
 wavefront_obj = "5.1.0"

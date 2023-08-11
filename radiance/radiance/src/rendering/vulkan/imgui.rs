@@ -32,8 +32,8 @@ impl ImguiRenderer {
         let renderer = {
             let allocator = {
                 let allocator_create_info = AllocatorCreateInfo::new(
-                    Rc::new(instance.vk_instance()),
-                    Rc::new(device.vk_device()),
+                    Rc::new(instance.vk_instance().clone()),
+                    Rc::new(device.vk_device().clone()),
                     physical_device,
                 );
                 Allocator::new(allocator_create_info).unwrap()
