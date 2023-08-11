@@ -22,7 +22,8 @@ ComObject_OpenPal4ApplicationLoaderComponent!(super::OpenPal4ApplicationLoader);
 
 impl IComponentImpl for OpenPal4ApplicationLoader {
     fn on_loading(&self) {
-        self.app.set_title(&self.app_name);
+        self.app
+            .set_title(&format!("{} - Project Yaobow", &self.app_name));
 
         let component_factory = self.app.engine().borrow().rendering_component_factory();
         let input_engine = self.app.engine().borrow().input_engine();

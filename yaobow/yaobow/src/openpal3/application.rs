@@ -21,7 +21,8 @@ ComObject_OpenPal3ApplicationLoaderComponent!(super::OpenPal3ApplicationLoader);
 
 impl IComponentImpl for OpenPal3ApplicationLoader {
     fn on_loading(&self) {
-        self.app.set_title(&self.app_name);
+        self.app
+            .set_title(&format!("{} - Project Yaobow", &self.app_name));
 
         let input_engine = self.app.engine().borrow().input_engine();
         let audio_engine = self.app.engine().borrow().audio_engine();

@@ -20,9 +20,6 @@ vk-mem = { git = "https://github.com/gwihlidal/vk-mem-rs" }
 [patch."https://github.com/meh/rust-ffmpeg"]
 ffmpeg = { git = "https://github.com/dontpanic92/rust-ffmpeg", branch = "yaobow" }
 
-[patch."https://github.com/dontpanic92/mini-fs"]
-mini-fs = { path = "../mini-fs" }
-
 [profile.release-with-symbol]
 inherits = "release"
 debug = true

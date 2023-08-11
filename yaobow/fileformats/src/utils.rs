@@ -61,6 +61,60 @@ impl PartialEq<&str> for SizedString {
 
 #[binrw]
 #[brw(little)]
+#[derive(Clone)]
+#[brw(import(capacity: u32))]
+pub struct StringWithCapacity {
+    #[br(count = capacity)]
+    string: Vec<u8>,
+}
+
+impl StringWithCapacity {
+    pub fn data(&self) -> &[u8] {
+        &self.string
+    }
+
+    pub fn as_str(&self) -> Result<&str, Utf8Error> {
+        let end = self
+            .string
+            .iter()
+            .position(|x| *x == 0)
+            .unwrap_or(self.string.len());
+
+        std::str::from_utf8(&self.string[..end])
+    }
+}
+
+impl<T: AsRef<str>> From<T> for StringWithCapacity {
+    fn from(value: T) -> Self {
+        Self {
+            string: value.as_ref().as_bytes().to_vec(),
+        }
+    }
+}
+
+impl From<StringWithCapacity> for String {
+    fn from(value: StringWithCapacity) -> Self {
+        String::from_utf8_lossy(&value.string).to_string()
+    }
+}
+
+impl std::fmt::Debug for StringWithCapacity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "StringWithCapacity(\"{:?}\")", self.as_str(),)
+    }
+}
+
+impl PartialEq<&str> for StringWithCapacity {
+    fn eq(&self, other: &&str) -> bool {
+        match self.as_str() {
+            Err(_) => false,
+            Ok(s) => s == *other,
+        }
+    }
+}
+
+#[binrw]
+#[brw(little)]
 #[derive(Debug)]
 pub struct Pal4NodeSection {
     version1: u32,

@@ -25,7 +25,7 @@ fn main() -> Result<(), eframe::Error> {
     };
 
     eframe::run_native(
-        "PAL4 AngelScript Debugger",
+        "OpenPAL4 AngelScript Debugger - Project Yaobow",
         options,
         Box::new(|cc| {
             let frame = cc.egui_ctx.clone();
