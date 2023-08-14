@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc};
 
 use imgui::{Context, Io};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
@@ -43,8 +43,7 @@ impl ImguiPlatform {
         imgui_platform
     }
 
-    pub fn new_frame(&self, delta_sec: f32) {
-        self.update_delta_time(delta_sec);
+    pub fn new_frame(&self) {
         self.update_display_size(&self.window);
         self.update_cursor_shape();
         self.update_cursor_pos();
@@ -97,12 +96,6 @@ impl ImguiPlatform {
             }
             event => self.winit_platform.handle_event(io, &self.window, event),
         }
-    }
-
-    fn update_delta_time(&self, delta_sec: f32) {
-        let mut context = self.context.as_ref().borrow_mut();
-        let io = context.io_mut();
-        io.update_delta_time(Duration::from_secs_f32(delta_sec));
     }
 
     fn update_display_size(&self, window: &Window) {

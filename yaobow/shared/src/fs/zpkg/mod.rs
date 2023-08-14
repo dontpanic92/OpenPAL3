@@ -1,10 +1,7 @@
-use std::{fs::File, io::Cursor};
+use std::io::Cursor;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
-use memmap::MmapOptions;
-
-use crate::fs::{plain_fs::PlainArchive, zpkg::zpkg_archive::ZpkgArchive};
 
 use self::cipher::Cipher;
 
@@ -101,19 +98,4 @@ fn swap_endian(data: &mut [u8]) {
         data.swap(i * 4, i * 4 + 3);
         data.swap(i * 4 + 1, i * 4 + 2);
     }
-}
-
-pub fn zpkg_test() {
-    let buffer =
-        std::fs::read("F:\\SteamLibrary\\steamapps\\common\\Gujian2\\Bin\\TRGameCache.dll")
-            .unwrap();
-
-    let file = File::open("F:\\SteamLibrary\\steamapps\\common\\Gujian2\\Base.zpkg").unwrap();
-    let mem = unsafe { MmapOptions::new().map(&file).unwrap() };
-    let cursor = Cursor::new(mem);
-    let mut archive = ZpkgArchive::load(cursor, &buffer).unwrap();
-
-    println!("{:?}", archive);
-
-    let _ = archive.open("Water/Caustics_22.bmp").unwrap();
 }

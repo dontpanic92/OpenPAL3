@@ -7,23 +7,22 @@ use byteorder::ReadBytesExt;
 use common::read_ext::ReadExt;
 use encoding::Encoding;
 
-use crate::fs::memory_file::MemoryFile;
+use crate::fs::{memory_file::MemoryFile, SeekRead};
 
-#[derive(Debug)]
-pub struct PkgArchive<T: AsRef<[u8]>> {
-    cursor: Cursor<T>,
+pub struct PkgArchive {
+    reader: Box<dyn SeekRead>,
     _header: PkgHeader,
     pub entries: PkgEntries,
 }
 
-impl<T: AsRef<[u8]>> PkgArchive<T> {
-    pub fn load(mut cursor: Cursor<T>, decrypt_key: &str) -> anyhow::Result<PkgArchive<T>> {
-        let _header = PkgHeader::read(&mut cursor)?;
-        cursor.set_position(_header.entries_start as u64);
+impl PkgArchive {
+    pub fn load(mut reader: Box<dyn SeekRead>, decrypt_key: &str) -> anyhow::Result<PkgArchive> {
+        let _header = PkgHeader::read(&mut reader)?;
+        reader.seek(std::io::SeekFrom::Start(_header.entries_start as u64))?;
 
-        let entries = PkgEntries::read(&mut cursor, &decrypt_key)?;
+        let entries = PkgEntries::read(&mut reader, &decrypt_key)?;
         Ok(Self {
-            cursor,
+            reader,
             _header,
             entries,
         })
@@ -38,8 +37,8 @@ impl<T: AsRef<[u8]>> PkgArchive<T> {
 
         for entry in &self.entries.file_entries {
             if entry.fullpath == path {
-                self.cursor.set_position(entry.start_position as u64);
-                let mut data = self.cursor.read_u8_vec(entry.size as usize)?;
+                self.reader.seek(std::io::SeekFrom::Start(entry.start_position as u64))?;
+                let mut data = self.reader.read_u8_vec(entry.size as usize)?;
                 if entry.size != entry.size2 {
                     data = miniz_oxide::inflate::decompress_to_vec_zlib(&data).map_err(|_| {
                         PkgReadError::DecompressionError("Unable to decompress file".to_string())

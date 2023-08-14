@@ -6,13 +6,14 @@ edition = "2018"
 build = "build.rs"
 
 [dependencies]
-
-# General
 backtrace = "0.3.44"
 bitflags = "1.2.1"
+cfg-if = "1"
 crosscom = { path = "../../crosscom/runtime/rust" }
 dashmap = "5.1.0"
 downcast-rs = "1.2.0"
+image = "0.23.0"
+imgui = { version = "0.10", features = ["docking"] }
 lazy_static = "1.2.0"
 log = "0.4.13"
 lru = { version = "0.7.1", features=["nightly"] }
@@ -22,36 +23,33 @@ radiance-assets = { path = "../radiance-assets" }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.7"
 uuid = "0.8"
-
-# Rendering
-ash = { version = "0.37", default-features = false, features = ["loaded"] }
-image = "0.23.0"
-imgui = { version = "0.10", features = ["docking"] }
-imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer", features = ["vk-mem"] }
-vk-mem = { git = "https://github.com/gwihlidal/vk-mem-rs" }
-
-# Window and event handling
-winit = "0.27"
-imgui-winit-support = { version = "0.10", default-features = false}
-ash-window = "0.12"
-raw-window-handle = "0.5"
-
-# Audio
 hound = "3.4.0"
 lewton = "0.10.1"
+
+[target.'cfg(not(target_os = "vita"))'.dependencies]
+ash = { version = "0.37", default-features = false, features = ["loaded"] }
+ash-window = "0.12"
+imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer", features = ["vma"] }
+imgui-winit-support = { version = "0.10", default-features = false}
+gilrs = "0.8.1"
+raw-window-handle = "0.5"
+vma = "0.3"
+winit = "0.27"
 minimp3 = { package = "minimp3_fixed", version = "0.5.3" }
 
-# Input
-gilrs = "0.8.1"
+[target.'cfg(target_os = "vita")'.dependencies]
+vitagl-sys = { git = "https://github.com/dontpanic92/vitagl-sys" }
+vitasdk-sys = { git = "https://github.com/dontpanic92/vitasdk-sys", branch = "yaobow"}
 
-[target.'cfg(not(target_os = "android"))'.dependencies]
+[target.'cfg(not(any(target_os = "android", target_os = "vita")))'.dependencies]
 arboard = "2.1"
 alto = { git = "https://github.com/dontpanic92/alto", features = ["dynamic"] }
 
-[target.'cfg(target_os = "android")'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "vita"))'.dependencies]
 alto = { git = "https://github.com/dontpanic92/alto", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef", "wingdi"] }
 
-# Video
+[build-dependencies]
+cfg_aliases = "0.1.0"

@@ -92,3 +92,17 @@ fn mount_packages_recursive(
 
 pub trait SeekRead: Read + Seek {}
 impl<T> SeekRead for T where T: Read + Seek {}
+
+#[cfg(vita)]
+fn create_reader<P: AsRef<Path>>(path: P) -> anyhow::Result<Box<dyn SeekRead>> {
+    let file = std::fs::File::open(path.as_ref())?;
+    let reader = std::io::BufReader::new(file);
+    Ok(Box::new(reader))
+}
+
+#[cfg(any(windows, linux, macos, android))]
+fn create_reader<P: AsRef<Path>>(path: P) -> anyhow::Result<Box<dyn SeekRead>> {
+    let file = std::fs::File::open(path.as_ref())?;
+    let mem = unsafe { memmap::MmapOptions::new().map(&file)? };
+    Ok(Box::new(std::io::Cursor::new(mem)))
+}

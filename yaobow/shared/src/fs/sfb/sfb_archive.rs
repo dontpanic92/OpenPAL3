@@ -8,39 +8,38 @@ use common::read_ext::ReadExt;
 
 use crate::fs::{memory_file::MemoryFile, plain_fs::PlainArchive, SeekRead};
 
-#[derive(Debug)]
-pub struct SfbArchive<T: AsRef<[u8]>> {
-    cursor: Cursor<T>,
+pub struct SfbArchive {
+    reader: Box<dyn SeekRead>,
     _meta: SfbMeta,
     pub files: HashMap<String, SfbFile>,
 }
 
-impl<T: AsRef<[u8]>> SfbArchive<T> {
-    pub fn load(mut cursor: Cursor<T>) -> anyhow::Result<SfbArchive<T>> {
-        let meta = SfbMeta::read(&mut cursor)?;
+impl SfbArchive {
+    pub fn load(mut reader: Box<dyn SeekRead>) -> anyhow::Result<SfbArchive> {
+        let meta = SfbMeta::read(&mut reader)?;
         let mut files = HashMap::new();
 
         for (i, entry) in meta.entries.iter().enumerate() {
-            cursor.set_position(*entry as u64);
-            let file = SfbFile::read(&mut cursor)?;
+            reader.seek(SeekFrom::Start(*entry as u64))?;
+            let file = SfbFile::read(&mut reader)?;
             files.insert(format!("{}.mp3", i), file);
         }
 
         Ok(Self {
-            cursor,
+            reader,
             _meta: meta,
             files,
         })
     }
 }
 
-impl<T: AsRef<[u8]>> PlainArchive for SfbArchive<T> {
+impl PlainArchive for SfbArchive {
     fn open<P: AsRef<Path>>(&mut self, path: P) -> anyhow::Result<MemoryFile> {
         let path = path.as_ref().to_str().unwrap();
 
         if let Some(file) = self.files.get(path) {
-            self.cursor.set_position(file.start_position as u64);
-            let data = self.cursor.read_u8_vec(file.file_size as usize)?;
+            self.reader.seek(SeekFrom::Start(file.start_position as u64))?;
+            let data = self.reader.read_u8_vec(file.file_size as usize)?;
 
             Ok(MemoryFile::new(Cursor::new(data)))
         } else {

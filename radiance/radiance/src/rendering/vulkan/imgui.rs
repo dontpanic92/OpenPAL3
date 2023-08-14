@@ -8,7 +8,7 @@ use std::{
     rc::Rc,
     sync::{Arc, Mutex},
 };
-use vk_mem::{Allocator, AllocatorCreateInfo};
+use vma::{Allocator, AllocatorCreateInfo};
 
 pub struct ImguiRenderer {
     renderer: Renderer,
@@ -32,8 +32,8 @@ impl ImguiRenderer {
         let renderer = {
             let allocator = {
                 let allocator_create_info = AllocatorCreateInfo::new(
-                    Rc::new(instance.vk_instance().clone()),
-                    Rc::new(device.vk_device().clone()),
+                    instance.vk_instance(),
+                    device.vk_device(),
                     physical_device,
                 );
                 Allocator::new(allocator_create_info).unwrap()
@@ -60,7 +60,7 @@ impl ImguiRenderer {
                 enable_depth_write: true,
             });
 
-            Renderer::with_vk_mem_allocator(
+            Renderer::with_vma_allocator(
                 Arc::new(Mutex::new(allocator)),
                 device.vk_device().clone(),
                 queue,

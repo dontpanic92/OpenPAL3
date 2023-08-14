@@ -46,10 +46,13 @@ pub fn main() {
 }
 
 fn init_logger() {
-    let logger = simple_logger::SimpleLogger::new();
-    // workaround panic on Linux for 'Could not determine the UTC offset on this system'
-    // see: https://github.com/borntyping/rust-simple_logger/issues/47
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))]
-    let logger = logger.with_utc_timestamps();
-    logger.init().unwrap();
+    #[cfg(any(windows, linux, macos, android))]
+    {
+        let logger = simple_logger::SimpleLogger::new();
+        // workaround panic on Linux for 'Could not determine the UTC offset on this system'
+        // see: https://github.com/borntyping/rust-simple_logger/issues/47
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))]
+        let logger = logger.with_utc_timestamps();
+        logger.init().unwrap();
+    }
 }

@@ -1,26 +1,18 @@
-use std::{
-    fs::File,
-    io::Cursor,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-use memmap::{Mmap, MmapOptions};
-
-use crate::fs::plain_fs::PlainFs;
+use crate::fs::{create_reader, plain_fs::PlainFs};
 
 use super::zpkg_archive::ZpkgArchive;
 
-pub type ZpkgFs = PlainFs<ZpkgArchive<Mmap>>;
+pub type ZpkgFs = PlainFs<ZpkgArchive>;
 
 impl ZpkgFs {
     pub fn create<P: AsRef<Path>>(zpkg_path: P) -> anyhow::Result<ZpkgFs> {
         let cache_path = map_cache_path(zpkg_path.as_ref())?;
         let cache_content = std::fs::read(cache_path)?;
 
-        let file = File::open(zpkg_path.as_ref())?;
-        let mem = unsafe { MmapOptions::new().map(&file)? };
-        let cursor = Cursor::new(mem);
-        let archive = ZpkgArchive::load(cursor, &cache_content)?;
+        let reader = create_reader(zpkg_path)?;
+        let archive = ZpkgArchive::load(reader, &cache_content)?;
         Ok(Self::new(archive))
     }
 }

@@ -1,17 +1,14 @@
-use crate::fs::plain_fs::PlainFs;
-use memmap::{Mmap, MmapOptions};
-use std::{fs::File, io::Cursor, path::Path};
+use crate::fs::{create_reader, plain_fs::PlainFs};
+use std::path::Path;
 
 use super::imd_archive::ImdArchive;
 
-pub type ImdFs = PlainFs<ImdArchive<Mmap>>;
+pub type ImdFs = PlainFs<ImdArchive>;
 
 impl ImdFs {
     pub fn create<P: AsRef<Path>>(imd_path: P) -> anyhow::Result<Self> {
-        let file = File::open(imd_path.as_ref())?;
-        let mem = unsafe { MmapOptions::new().map(&file)? };
-        let cursor = Cursor::new(mem);
-        let sfb_archive = ImdArchive::load(cursor)?;
+        let reader = create_reader(imd_path)?;
+        let sfb_archive = ImdArchive::load(reader)?;
         Ok(Self::new(sfb_archive))
     }
 }

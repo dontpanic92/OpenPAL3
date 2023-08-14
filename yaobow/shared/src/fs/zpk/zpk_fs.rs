@@ -1,19 +1,15 @@
-use std::{fs::File, io::Cursor, path::Path};
+use std::path::Path;
 
-use memmap::{Mmap, MmapOptions};
-
-use crate::fs::plain_fs::PlainFs;
+use crate::fs::{create_reader, plain_fs::PlainFs};
 
 use super::zpk_archive::ZpkArchive;
 
-pub type ZpkFs = PlainFs<ZpkArchive<Mmap>>;
+pub type ZpkFs = PlainFs<ZpkArchive>;
 
 impl ZpkFs {
     pub fn create<P: AsRef<Path>>(zpk_path: P) -> anyhow::Result<ZpkFs> {
-        let file = File::open(zpk_path.as_ref())?;
-        let mem = unsafe { MmapOptions::new().map(&file)? };
-        let cursor = Cursor::new(mem);
-        let sfb_archive = ZpkArchive::load(cursor)?;
+        let reader = create_reader(zpk_path)?;
+        let sfb_archive = ZpkArchive::load(reader)?;
         Ok(Self::new(sfb_archive))
     }
 }

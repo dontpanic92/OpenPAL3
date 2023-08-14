@@ -8,39 +8,38 @@ use common::read_ext::ReadExt;
 
 use crate::fs::{memory_file::MemoryFile, plain_fs::PlainArchive, SeekRead};
 
-#[derive(Debug)]
-pub struct FmbArchive<T: AsRef<[u8]>> {
-    cursor: Cursor<T>,
+pub struct FmbArchive {
+    reader: Box<dyn SeekRead>,
     _meta: FmbMeta,
     pub files: HashMap<String, FmbFile>,
 }
 
-impl<T: AsRef<[u8]>> FmbArchive<T> {
-    pub fn load(mut cursor: Cursor<T>) -> anyhow::Result<FmbArchive<T>> {
-        let meta = FmbMeta::read(&mut cursor)?;
+impl FmbArchive {
+    pub fn load(mut reader: Box<dyn SeekRead>) -> anyhow::Result<FmbArchive> {
+        let meta = FmbMeta::read(&mut reader)?;
         let mut files = HashMap::new();
 
-        cursor.set_position(4);
+        reader.seek(SeekFrom::Start(4))?;
         for _ in 0..meta.file_count {
-            let file = FmbFile::read(&mut cursor)?;
+            let file = FmbFile::read(&mut reader)?;
             files.insert(file.name.clone(), file);
         }
 
         Ok(Self {
-            cursor,
+            reader,
             _meta: meta,
             files,
         })
     }
 }
 
-impl<T: AsRef<[u8]>> PlainArchive for FmbArchive<T> {
+impl PlainArchive for FmbArchive {
     fn open<P: AsRef<Path>>(&mut self, path: P) -> anyhow::Result<MemoryFile> {
         let path = path.as_ref().to_str().unwrap();
 
         if let Some(file) = self.files.get(path) {
-            self.cursor.set_position(file.start_position as u64);
-            let mut data = self.cursor.read_u8_vec(file.compressed_size as usize)?;
+            self.reader.seek(SeekFrom::Start(file.start_position as u64))?;
+            let mut data = self.reader.read_u8_vec(file.compressed_size as usize)?;
 
             if file.is_compressed == 1 {
                 let lzo = minilzo_rs::LZO::init().unwrap();

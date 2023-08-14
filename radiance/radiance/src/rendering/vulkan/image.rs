@@ -5,12 +5,12 @@ use ash::prelude::VkResult;
 use ash::{vk, Instance};
 use std::error::Error;
 use std::rc::Rc;
-use vk_mem::Alloc;
+use vma::Alloc;
 
 pub struct Image {
-    allocator: Rc<vk_mem::Allocator>,
+    allocator: Rc<vma::Allocator>,
     image: vk::Image,
-    allocation: Option<vk_mem::Allocation>,
+    allocation: vma::Allocation,
     format: vk::Format,
     width: u32,
     height: u32,
@@ -18,7 +18,7 @@ pub struct Image {
 
 impl Image {
     pub fn new_color_image(
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         tex_width: u32,
         tex_height: u32,
     ) -> Result<Self, Box<dyn Error>> {
@@ -34,7 +34,7 @@ impl Image {
     pub fn new_depth_image(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         tex_width: u32,
         tex_height: u32,
     ) -> Result<Self, Box<dyn Error>> {
@@ -200,7 +200,7 @@ impl Image {
     }
 
     fn new(
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         tex_width: u32,
         tex_height: u32,
         format: vk::Format,
@@ -225,8 +225,8 @@ impl Image {
             .samples(vk::SampleCountFlags::TYPE_1)
             .build();
 
-        let allcation_create_info = vk_mem::AllocationCreateInfo {
-            usage: vk_mem::MemoryUsage::AutoPreferDevice,
+        let allcation_create_info = vma::AllocationCreateInfo {
+            usage: vma::MemoryUsage::AutoPreferDevice,
             ..Default::default()
         };
         let (image, allocation) =
@@ -235,7 +235,7 @@ impl Image {
         Ok(Self {
             allocator: allocator.clone(),
             image,
-            allocation: Some(allocation),
+            allocation,
             format,
             width: tex_width,
             height: tex_height,
@@ -271,7 +271,7 @@ impl Drop for Image {
     fn drop(&mut self) {
         unsafe {
             self.allocator
-                .destroy_image(self.image, self.allocation.take().unwrap());
+                .destroy_image(self.image, &mut self.allocation);
         }
     }
 }

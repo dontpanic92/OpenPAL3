@@ -31,7 +31,7 @@ pub struct VulkanRenderingEngine {
     instance: Rc<Instance>,
     physical_device: vk::PhysicalDevice,
     device: Rc<Device>,
-    allocator: Option<Rc<vk_mem::Allocator>>,
+    allocator: Option<Rc<vma::Allocator>>,
     surface: Option<vk::SurfaceKHR>,
     format: vk::SurfaceFormatKHR,
     present_mode: vk::PresentModeKHR,
@@ -122,13 +122,13 @@ impl VulkanRenderingEngine {
         ));
 
         let allocator = Rc::new({
-            let create_info = vk_mem::AllocatorCreateInfo::new(
-                Rc::new(instance.vk_instance().clone()),
-                Rc::new(device.vk_device().clone()),
+            let create_info = vma::AllocatorCreateInfo::new(
+                instance.vk_instance(),
+                device.vk_device(),
                 physical_device,
             );
 
-            vk_mem::Allocator::new(create_info).unwrap()
+            vma::Allocator::new(create_info).unwrap()
         });
 
         let format =
@@ -257,7 +257,7 @@ impl VulkanRenderingEngine {
         return Ok(vulkan);
     }
 
-    pub fn allocator(&self) -> &Rc<vk_mem::Allocator> {
+    pub fn allocator(&self) -> &Rc<vma::Allocator> {
         self.allocator.as_ref().unwrap()
     }
 

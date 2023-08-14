@@ -43,7 +43,7 @@ impl SwapChain {
     pub fn new(
         instance: &Rc<Instance>,
         device: Rc<Device>,
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         command_pool: vk::CommandPool,
         physical_device: vk::PhysicalDevice,
         queue: vk::Queue,

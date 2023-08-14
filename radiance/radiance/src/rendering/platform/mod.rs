@@ -1,9 +1,12 @@
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 mod windows;
-#[cfg(not(target_os = "windows"))]
-mod winit;
+#[cfg(vita)]
+mod dummy;
 
-#[cfg(not(target_os = "windows"))]
-pub use ::winit::window::Window;
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 pub use windows::Window;
+#[cfg(any(linux, macos, android))]
+pub use ::winit::window::Window;
+
+#[cfg(vita)]
+pub use dummy::Window;

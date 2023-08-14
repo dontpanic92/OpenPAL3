@@ -126,7 +126,7 @@ impl AssetLoader {
 
     pub fn load_music(&self, music_name: &str) -> anyhow::Result<Vec<u8>> {
         let path = format!("/gamedata/Music/{}.smp", music_name);
-        let data = load_smp(&self.vfs.read_to_end(path)?)?;
+        let data = load_smp(self.vfs.read_to_end(path)?)?;
         Ok(data)
     }
 

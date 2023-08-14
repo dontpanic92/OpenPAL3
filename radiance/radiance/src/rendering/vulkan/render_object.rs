@@ -41,7 +41,7 @@ impl VulkanRenderObject {
         indices: Vec<u32>,
         material: Box<dyn Material>,
         host_dynamic: bool,
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
         dub_manager: &Arc<DynamicUniformBufferManager>,
         descriptor_manager: &Rc<DescriptorManager>,

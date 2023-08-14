@@ -1,6 +1,6 @@
 use gilrs::{Axis, Button, Event, EventType, Gilrs};
 
-use super::{engine::AxisState, Key, KeyState};
+use crate::input::{AxisState, Key, KeyState};
 
 pub struct GilrsInput {
     gilrs: Option<Gilrs>,
@@ -51,13 +51,13 @@ impl GilrsInput {
         }
     }
 
-    fn map_axis(axis: Axis) -> super::engine::Axis {
+    fn map_axis(axis: Axis) -> crate::input::Axis {
         match axis {
-            Axis::LeftStickX => super::engine::Axis::LeftStickX,
-            Axis::LeftStickY => super::engine::Axis::LeftStickY,
-            Axis::RightStickX => super::engine::Axis::RightStickX,
-            Axis::RightStickY => super::engine::Axis::RightStickY,
-            _ => super::engine::Axis::Unknown,
+            Axis::LeftStickX => crate::input::Axis::LeftStickX,
+            Axis::LeftStickY => crate::input::Axis::LeftStickY,
+            Axis::RightStickX => crate::input::Axis::RightStickX,
+            Axis::RightStickY => crate::input::Axis::RightStickY,
+            _ => crate::input::Axis::Unknown,
         }
     }
 }

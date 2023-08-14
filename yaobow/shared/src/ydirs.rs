@@ -1,7 +1,12 @@
 use std::path::PathBuf;
 
 pub fn save_dir() -> PathBuf {
-    #[cfg(target_os = "android")]
+    #[cfg(any(windows, linux, macos))]
+    {
+        dirs::data_dir().unwrap().join("yaobow")
+    }
+
+    #[cfg(android)]
     {
         PathBuf::from(
             ndk_glue::native_activity()
@@ -12,12 +17,20 @@ pub fn save_dir() -> PathBuf {
         .join("yaobow")
     }
 
-    #[cfg(not(target_os = "android"))]
+    #[cfg(vita)]
     {
-        dirs::data_dir().unwrap().join("yaobow")
+        PathBuf::from("ux0:yaobow")
     }
 }
 
 pub fn config_dir() -> PathBuf {
-    dirs::config_dir().unwrap().join("yaobow")
+    #[cfg(any(windows, linux, macos, android))]
+    {
+        dirs::config_dir().unwrap().join("yaobow")
+    }
+
+    #[cfg(vita)]
+    {
+        PathBuf::from("ux0:yaobow")
+    }
 }

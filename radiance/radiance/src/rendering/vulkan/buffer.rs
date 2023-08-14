@@ -4,7 +4,7 @@ use ash::vk;
 use std::error::Error;
 use std::mem::size_of;
 use std::rc::Rc;
-use vk_mem::{self, Alloc};
+use vma::{self, Alloc};
 
 pub enum BufferType {
     Index = 0,
@@ -23,10 +23,9 @@ impl BufferType {
 }
 
 pub struct Buffer {
-    allocator: Rc<vk_mem::Allocator>,
+    allocator: Rc<vma::Allocator>,
     buffer: vk::Buffer,
-    allocation: Option<vk_mem::Allocation>,
-    // allocation_info: vk_mem::AllocationInfo,
+    allocation: vma::Allocation,
     buffer_size: u64,
     element_size: usize,
     element_count: u32,
@@ -34,7 +33,7 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn new_staging_buffer_with_data<T>(
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         data: &[T],
     ) -> Result<Self, Box<dyn Error>> {
         let mut staging_buffer = Buffer::new_buffer(
@@ -42,7 +41,7 @@ impl Buffer {
             size_of::<T>(),
             data.len(),
             vk::BufferUsageFlags::TRANSFER_SRC,
-            vk_mem::MemoryUsage::AutoPreferHost,
+            vma::MemoryUsage::AutoPreferHost,
         )?;
 
         staging_buffer.copy_memory_from(data);
@@ -50,7 +49,7 @@ impl Buffer {
     }
 
     pub fn new_dynamic_buffer_with_data<T>(
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         buffer_type: BufferType,
         data: &[T],
     ) -> Result<Self, Box<dyn Error>> {
@@ -59,7 +58,7 @@ impl Buffer {
             size_of::<T>(),
             data.len(),
             buffer_type.to_buffer_usage(),
-            vk_mem::MemoryUsage::Auto,
+            vma::MemoryUsage::Auto,
         )?;
 
         dynamic_buffer.copy_memory_from(data);
@@ -67,7 +66,7 @@ impl Buffer {
     }
 
     pub fn new_dynamic_buffer(
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         buffer_type: BufferType,
         element_size: usize,
         element_count: usize,
@@ -77,12 +76,12 @@ impl Buffer {
             element_size,
             element_count,
             buffer_type.to_buffer_usage(),
-            vk_mem::MemoryUsage::Auto,
+            vma::MemoryUsage::Auto,
         )
     }
 
     pub fn new_device_buffer_with_data<T>(
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         buffer_type: BufferType,
         data: &[T],
         command_runner: &AdhocCommandRunner,
@@ -100,7 +99,7 @@ impl Buffer {
             size_of::<T>(),
             data.len(),
             flags | vk::BufferUsageFlags::TRANSFER_DST,
-            vk_mem::MemoryUsage::AutoPreferDevice,
+            vma::MemoryUsage::AutoPreferDevice,
         )?;
 
         buffer.copy_from(&staging_buffer, command_runner)?;
@@ -124,23 +123,23 @@ impl Buffer {
     }
 
     fn new_buffer(
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         element_size: usize,
         element_count: usize,
         buffer_usage: vk::BufferUsageFlags,
-        memory_usage: vk_mem::MemoryUsage,
+        memory_usage: vma::MemoryUsage,
     ) -> Result<Self, Box<dyn Error>> {
         let buffer_size = element_count as u64 * element_size as u64;
         let (buffer, allocation) = {
-            let allcation_create_info = vk_mem::AllocationCreateInfo {
+            let allcation_create_info = vma::AllocationCreateInfo {
                 usage: memory_usage,
-                flags: if memory_usage == vk_mem::MemoryUsage::Auto
-                    || memory_usage == vk_mem::MemoryUsage::AutoPreferHost
+                flags: if memory_usage == vma::MemoryUsage::Auto
+                    || memory_usage == vma::MemoryUsage::AutoPreferHost
                 {
-                    vk_mem::AllocationCreateFlags::MAPPED
-                        | vk_mem::AllocationCreateFlags::HOST_ACCESS_RANDOM
+                    vma::AllocationCreateFlags::MAPPED
+                        | vma::AllocationCreateFlags::HOST_ACCESS_RANDOM
                 } else {
-                    vk_mem::AllocationCreateFlags::empty()
+                    vma::AllocationCreateFlags::empty()
                 },
                 ..Default::default()
             };
@@ -157,7 +156,7 @@ impl Buffer {
         Ok(Self {
             allocator: allocator.clone(),
             buffer,
-            allocation: Some(allocation),
+            allocation,
             buffer_size,
             element_size,
             element_count: element_count as u32,
@@ -197,7 +196,7 @@ impl Buffer {
     pub fn map_memory_do<F: Fn(*mut u8)>(&mut self, action: F) {
         let dst = unsafe {
             self.allocator
-                .map_memory(self.allocation.as_mut().unwrap())
+                .map_memory(&mut self.allocation)
                 .unwrap()
         };
 
@@ -209,7 +208,7 @@ impl Buffer {
 
         unsafe {
             self.allocator
-                .unmap_memory(self.allocation.as_mut().unwrap());
+                .unmap_memory(&mut self.allocation);
         }
     }
 }
@@ -218,7 +217,7 @@ impl Drop for Buffer {
     fn drop(&mut self) {
         unsafe {
             self.allocator
-                .destroy_buffer(self.buffer, self.allocation.take().unwrap());
+                .destroy_buffer(self.buffer, &mut self.allocation);
         }
     }
 }

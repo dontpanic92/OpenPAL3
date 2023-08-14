@@ -4,15 +4,13 @@ use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::{IEntity, IStaticMeshComponent};
 use radiance::components::mesh::{Geometry, StaticMeshComponent, TexCoord};
 use radiance::math::Vec3;
-use radiance::rendering::{ComponentFactory, MaterialDef, SimpleMaterialDef};
+use radiance::rendering::{ComponentFactory, LightMapMaterialDef, MaterialDef, SimpleMaterialDef};
 use radiance::scene::CoreEntity;
 use std::io::BufReader;
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
 };
-
-use crate::openpal3::material::LightMapMaterialDef;
 
 pub fn create_entity_from_pol_model<P: AsRef<Path>>(
     component_factory: &Rc<dyn ComponentFactory>,

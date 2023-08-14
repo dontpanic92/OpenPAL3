@@ -10,10 +10,7 @@ pub use ui_manager::UiManager;
 
 use crosscom::ComRc;
 
-use crate::{
-    application::Platform, audio::OpenAlAudioEngine, input::GenericInputEngine,
-    rendering::VulkanRenderingEngine, scene::DefaultSceneManager,
-};
+use crate::{application::Platform, audio::OpenAlAudioEngine, scene::DefaultSceneManager};
 use std::{cell::RefCell, error::Error, rc::Rc};
 
 pub fn create_radiance_engine(
@@ -21,18 +18,22 @@ pub fn create_radiance_engine(
 ) -> Result<CoreRadianceEngine, Box<dyn Error>> {
     let ui_manager = Rc::new(UiManager::new(platform));
 
-    #[cfg(target_os = "windows")]
+    #[cfg(windows)]
     let window = &crate::rendering::Window {
         hwnd: platform.hwnd(),
     };
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(any(linux, macos, android))]
     let window = platform.get_window();
 
-    let rendering_engine = Rc::new(RefCell::new(VulkanRenderingEngine::new(
+    #[cfg(vulkan)]
+    let rendering_engine = Rc::new(RefCell::new(crate::rendering::VulkanRenderingEngine::new(
         window,
         &ui_manager.imgui_context(),
     )?));
+
+    #[cfg(vitagl)]
+    let rendering_engine = Rc::new(RefCell::new(crate::rendering::VitaGLRenderingEngine::new()));
 
     #[cfg(target_os = "android")]
     {
@@ -53,7 +54,7 @@ pub fn create_radiance_engine(
         }));
     }
     let audio_engine = Rc::new(OpenAlAudioEngine::new());
-    let input_engine = GenericInputEngine::new(platform);
+    let input_engine = crate::input::CoreInputEngine::new(platform);
     let scene_manager = ComRc::from_object(DefaultSceneManager::new());
 
     Ok(CoreRadianceEngine::new(

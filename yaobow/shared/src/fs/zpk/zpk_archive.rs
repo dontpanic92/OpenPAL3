@@ -20,25 +20,24 @@ pub enum ZpkReadError {
     UnsupportedCompressionType(u8),
 }
 
-#[derive(Debug)]
-pub struct ZpkArchive<T: AsRef<[u8]>> {
-    cursor: Cursor<T>,
+pub struct ZpkArchive {
+    reader: Box<dyn SeekRead>,
     header: ZpkHeader,
     entries: Vec<ZpkEntry>,
 }
 
-impl<T: AsRef<[u8]>> ZpkArchive<T> {
-    pub fn load(mut cursor: Cursor<T>) -> anyhow::Result<ZpkArchive<T>> {
-        let header = ZpkHeader::read(&mut cursor)?;
+impl ZpkArchive {
+    pub fn load(mut reader: Box<dyn SeekRead>) -> anyhow::Result<ZpkArchive> {
+        let header = ZpkHeader::read(&mut reader)?;
 
-        let entry_start = cursor.read_u32_le()?;
-        cursor.set_position(entry_start as u64);
+        let entry_start = reader.read_u32_le()?;
+        reader.seek(SeekFrom::Start(entry_start as u64))?;
 
         let mut entries = vec![];
         let mut xor_key = 0x6fd7;
         loop {
-            let entry_size_enc = cursor.read_u16::<BigEndian>()?;
-            let chunk_size_enc = cursor.read_u16::<LittleEndian>()?;
+            let entry_size_enc = reader.read_u16::<BigEndian>()?;
+            let chunk_size_enc = reader.read_u16::<LittleEndian>()?;
             let entry_size = entry_size_enc ^ xor_key;
             let chunk_size = entry_size_enc ^ chunk_size_enc;
             xor_key = entry_size_enc;
@@ -48,7 +47,7 @@ impl<T: AsRef<[u8]>> ZpkArchive<T> {
             }
 
             entries.append(&mut ZpkEntry::read(
-                &mut cursor,
+                &mut reader,
                 entry_size,
                 chunk_size,
                 header.key.clone(),
@@ -56,7 +55,7 @@ impl<T: AsRef<[u8]>> ZpkArchive<T> {
         }
 
         Ok(Self {
-            cursor,
+            reader,
             header,
             entries,
         })
@@ -95,7 +94,7 @@ impl<T: AsRef<[u8]>> ZpkArchive<T> {
     }
 }
 
-impl<T: AsRef<[u8]>> PlainArchive for ZpkArchive<T> {
+impl PlainArchive for ZpkArchive {
     fn open<P: AsRef<Path>>(&mut self, path: P) -> anyhow::Result<MemoryFile> {
         let path = path.as_ref().to_str().unwrap();
 
@@ -104,15 +103,15 @@ impl<T: AsRef<[u8]>> PlainArchive for ZpkArchive<T> {
             .iter()
             .find(|item| item.name == path.to_string())
         {
-            self.cursor.set_position(file.offset as u64);
+            self.reader.seek(SeekFrom::Start(file.offset as u64))?;
 
             let mut content = vec![];
 
             while content.len() < file.original_size as usize {
-                let data_size = self.cursor.read_u32::<BigEndian>()?;
-                let chunk_size = self.cursor.read_u32::<LittleEndian>()?;
+                let data_size = self.reader.read_u32::<BigEndian>()?;
+                let chunk_size = self.reader.read_u32::<LittleEndian>()?;
 
-                let data = self.cursor.read_u8_vec(chunk_size as usize)?;
+                let data = self.reader.read_u8_vec(chunk_size as usize)?;
                 let data = self.decrypt_data(file, &data)?;
                 let data = self.decompress_data(file, &data)?;
 

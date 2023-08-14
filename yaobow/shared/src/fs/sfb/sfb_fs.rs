@@ -1,17 +1,14 @@
-use crate::fs::plain_fs::PlainFs;
-use memmap::{Mmap, MmapOptions};
-use std::{fs::File, io::Cursor, path::Path};
+use crate::fs::{create_reader, plain_fs::PlainFs};
+use std::path::Path;
 
 use super::sfb_archive::SfbArchive;
 
-pub type SfbFs = PlainFs<SfbArchive<Mmap>>;
+pub type SfbFs = PlainFs<SfbArchive>;
 
 impl SfbFs {
     pub fn create<P: AsRef<Path>>(sfb_path: P) -> anyhow::Result<SfbFs> {
-        let file = File::open(sfb_path.as_ref())?;
-        let mem = unsafe { MmapOptions::new().map(&file)? };
-        let cursor = Cursor::new(mem);
-        let sfb_archive = SfbArchive::load(cursor)?;
+        let reader = create_reader(sfb_path)?;
+        let sfb_archive = SfbArchive::load(reader)?;
         Ok(Self::new(sfb_archive))
     }
 }

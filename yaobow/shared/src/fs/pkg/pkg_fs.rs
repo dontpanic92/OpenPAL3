@@ -1,26 +1,22 @@
-use crate::fs::memory_file::MemoryFile;
-use memmap::{Mmap, MmapOptions};
+use crate::fs::{create_reader, memory_file::MemoryFile};
 use mini_fs::{Entries, Entry, EntryKind, Store};
 use std::{
     cell::RefCell,
     ffi::OsString,
-    fs::File,
-    io::{self, Cursor},
+    io::{self},
     path::Path,
 };
 
 use super::pkg_archive::{PkgArchive, PkgEntry};
 
 pub struct PkgFs {
-    pkg_archive: RefCell<PkgArchive<Mmap>>,
+    pkg_archive: RefCell<PkgArchive>,
 }
 
 impl PkgFs {
     pub fn new<P: AsRef<Path>>(pkg_path: P, decrypt_key: &str) -> anyhow::Result<PkgFs> {
-        let file = File::open(pkg_path.as_ref())?;
-        let mem = unsafe { MmapOptions::new().map(&file)? };
-        let cursor = Cursor::new(mem);
-        let pkg_archive = RefCell::new(PkgArchive::load(cursor, decrypt_key)?);
+        let reader = create_reader(pkg_path)?;
+        let pkg_archive = RefCell::new(PkgArchive::load(reader, decrypt_key)?);
         Ok(PkgFs { pkg_archive })
     }
 }

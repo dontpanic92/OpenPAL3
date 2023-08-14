@@ -14,10 +14,23 @@ pub struct ShaderDef {
     frag_src: Vec<u8>,
 }
 
-static SIMPLE_TRIANGLE_VERT: &'static [u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.vert.spv"));
-static SIMPLE_TRIANGLE_FRAG: &'static [u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.frag.spv"));
+cfg_if::cfg_if! {
+    if #[cfg(vulkan)] {
+        pub static SIMPLE_TRIANGLE_VERT: &'static [u8] =
+            include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.vert.spv"));
+        pub static SIMPLE_TRIANGLE_FRAG: &'static [u8] =
+            include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.frag.spv"));
+        pub static LIGHTMAP_TEXTURE_VERT: &'static [u8] =
+            include_bytes!(concat!(env!("OUT_DIR"), "/lightmap_texture.vert.spv"));
+        pub static LIGHTMAP_TEXTURE_FRAG: &'static [u8] =
+            include_bytes!(concat!(env!("OUT_DIR"), "/lightmap_texture.frag.spv"));
+    } else {
+        pub static SIMPLE_TRIANGLE_VERT: &'static [u8] = &[];
+        pub static SIMPLE_TRIANGLE_FRAG: &'static [u8] = &[];
+        pub static LIGHTMAP_TEXTURE_VERT: &'static [u8] = &[];
+        pub static LIGHTMAP_TEXTURE_FRAG: &'static [u8] = &[];
+    }
+}
 
 lazy_static! {
     pub static ref SIMPLE_SHADER_DEF: ShaderDef = ShaderDef::new(
@@ -57,5 +70,17 @@ impl ShaderDef {
 
     pub fn frag_src(&self) -> &[u8] {
         &self.frag_src
+    }
+}
+
+pub struct LightMapShaderDef;
+impl LightMapShaderDef {
+    pub fn create() -> ShaderDef {
+        ShaderDef::new(
+            "lightmap_texture",
+            VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2,
+            LIGHTMAP_TEXTURE_VERT,
+            LIGHTMAP_TEXTURE_FRAG,
+        )
     }
 }

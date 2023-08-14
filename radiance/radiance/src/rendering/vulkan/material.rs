@@ -23,7 +23,7 @@ impl VulkanMaterial {
     pub fn new(
         def: &MaterialDef,
         device: &Rc<Device>,
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
         texture_store: &mut VulkanTextureStore,
     ) -> Self {

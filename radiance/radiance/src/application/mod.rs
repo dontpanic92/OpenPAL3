@@ -1,14 +1,19 @@
 mod application;
 pub mod utils;
 
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 mod windows;
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(linux, macos, android))]
 mod winit;
+#[cfg(vita)]
+mod vita;
 
-#[cfg(not(target_os = "windows"))]
-pub use self::winit::Platform;
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 pub use windows::Platform;
+#[cfg(any(linux, macos, android))]
+pub use self::winit::Platform;
+#[cfg(vita)]
+pub use vita::Platform;
+
 
 pub use application::Application;

@@ -1,18 +1,22 @@
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 mod windows;
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(linux, macos, android))]
 mod winit;
+#[cfg(vita)]
+mod vita;
 
-#[cfg_attr(target_os = "android", path = "clipboard_nop.rs")]
+#[cfg_attr(any(android, vita), path = "clipboard_nop.rs")]
 mod clipboard;
 
 mod theme;
 
 use self::theme::setup_theme;
-#[cfg(not(target_os = "windows"))]
-pub use self::winit::ImguiPlatform;
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 pub use windows::ImguiPlatform;
+#[cfg(any(linux, macos, android))]
+pub use self::winit::ImguiPlatform;
+#[cfg(vita)]
+pub use vita::ImguiPlatform;
 
 use crate::application::Platform;
 use imgui::*;
@@ -67,7 +71,8 @@ impl ImguiContext {
     }
 
     pub fn draw_ui<F: FnOnce(&Ui)>(&self, delta_sec: f32, draw: F) -> ImguiFrame {
-        self.platform.borrow_mut().new_frame(delta_sec);
+        self.update_delta_time(delta_sec);
+        self.platform.borrow_mut().new_frame();
 
         let mut context = self.context.borrow_mut();
         let ui = context.frame();
@@ -78,6 +83,12 @@ impl ImguiContext {
 
     pub fn context_mut(&self) -> RefMut<Context> {
         self.context.borrow_mut()
+    }
+
+    fn update_delta_time(&self, delta_sec: f32) {
+        let mut context = self.context.borrow_mut();
+        let io = context.io_mut();
+        io.update_delta_time(std::time::Duration::from_secs_f32(delta_sec));
     }
 }
 

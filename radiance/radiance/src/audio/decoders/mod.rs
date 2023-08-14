@@ -1,8 +1,12 @@
+#[cfg(not(vita))]
 mod mp3;
+
 mod ogg;
 mod wav;
 
+#[cfg(not(vita))]
 pub use mp3::Mp3Decoder;
+
 pub use ogg::OggDecoder;
 pub use wav::WavDecoder;
 

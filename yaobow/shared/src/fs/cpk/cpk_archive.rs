@@ -8,30 +8,29 @@ use std::{
 };
 use std::{clone::Clone, path::Path};
 
-use crate::fs::memory_file::MemoryFile;
+use crate::fs::{memory_file::MemoryFile, SeekRead};
 
 type IoResult<T> = std::io::Result<T>;
 type IoError = std::io::Error;
 type IoErrorKind = std::io::ErrorKind;
 
 #[allow(dead_code)]
-#[derive(Debug)]
-pub struct CpkArchive<T: AsRef<[u8]>> {
-    cursor: Cursor<T>,
+pub struct CpkArchive {
+    reader: Box<dyn SeekRead>,
     header: CpkHeader,
     pub entries: Vec<CpkTable>,
     pub file_names: Vec<String>,
     crc_to_index: HashMap<u32, usize>,
 }
 
-impl<T: AsRef<[u8]>> CpkArchive<T> {
-    pub fn load(mut cursor: Cursor<T>) -> IoResult<CpkArchive<T>> {
-        let header = CpkHeader::read(&mut cursor)?;
+impl CpkArchive {
+    pub fn load(mut reader: Box<dyn SeekRead>) -> IoResult<CpkArchive> {
+        let header = CpkHeader::read(&mut reader)?;
 
         let buffer = if header.is_pal4() {
             let buffer_len = (std::mem::size_of::<CpkTable>() + 4) * header.file_num as usize;
             let mut encrypted_buffer = vec![0; 0x1000];
-            cursor.read_exact(&mut encrypted_buffer)?;
+            reader.read_exact(&mut encrypted_buffer)?;
             let mut decrypted_buffer = xxtea::decrypt_raw(
                 &encrypted_buffer,
                 "Vampire.C.J at Softstar Technology (ShangHai) Co., Ltd",
@@ -39,7 +38,7 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
 
             if buffer_len > 0x1000 {
                 let mut extra_buffer = vec![0; buffer_len - 0x1000];
-                cursor.read_exact(&mut extra_buffer)?;
+                reader.read_exact(&mut extra_buffer)?;
                 decrypted_buffer.append(&mut extra_buffer);
             }
 
@@ -47,7 +46,7 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
         } else {
             let buffer_len = std::mem::size_of::<CpkTable>() * header.file_num as usize;
             let mut buffer = vec![0; buffer_len];
-            cursor.read_exact(&mut buffer)?;
+            reader.read_exact(&mut buffer)?;
 
             buffer
         };
@@ -61,10 +60,10 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
         }
 
         let crc_to_index = Self::build_index_map(&entries);
-        let file_names = Self::read_file_names(&mut cursor, &entries)?;
+        let file_names = Self::read_file_names(&mut reader, &entries)?;
 
         Ok(CpkArchive {
-            cursor,
+            reader,
             header,
             entries,
             file_names,
@@ -72,13 +71,13 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
         })
     }
 
-    pub fn load2(mut cursor: Cursor<T>, encrypt_size: usize) -> IoResult<CpkArchive<T>> {
-        let header = CpkHeader::read(&mut cursor)?;
+    pub fn load2(mut reader: Box<dyn SeekRead>, encrypt_size: usize) -> IoResult<CpkArchive> {
+        let header = CpkHeader::read(&mut reader)?;
 
         let buffer = if header.is_pal4() {
             let buffer_len = (std::mem::size_of::<CpkTable>() + 4) * header.file_num as usize;
             let mut encrypted_buffer = vec![0; encrypt_size];
-            cursor.read_exact(&mut encrypted_buffer)?;
+            reader.read_exact(&mut encrypted_buffer)?;
             let mut decrypted_buffer = xxtea::decrypt_raw(
                 &encrypted_buffer,
                 "Vampire.C.J at Softstar Technology (ShangHai) Co., Ltd",
@@ -86,7 +85,7 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
 
             if buffer_len > encrypt_size {
                 let mut extra_buffer = vec![0; buffer_len - encrypt_size];
-                cursor.read_exact(&mut extra_buffer)?;
+                reader.read_exact(&mut extra_buffer)?;
                 decrypted_buffer.append(&mut extra_buffer);
             }
 
@@ -94,7 +93,7 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
         } else {
             let buffer_len = std::mem::size_of::<CpkTable>() * header.file_num as usize;
             let mut buffer = vec![0; buffer_len];
-            cursor.read_exact(&mut buffer)?;
+            reader.read_exact(&mut buffer)?;
 
             buffer
         };
@@ -108,10 +107,10 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
         }
 
         let crc_to_index = Self::build_index_map(&entries);
-        let file_names = Self::read_file_names(&mut cursor, &entries)?;
+        let file_names = Self::read_file_names(&mut reader, &entries)?;
 
         Ok(CpkArchive {
-            cursor,
+            reader,
             header,
             entries,
             file_names,
@@ -129,9 +128,9 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
             return Err(IoError::from(IoErrorKind::IsADirectory));
         }
 
-        self.cursor.set_position(entry.start_pos as u64);
+        self.reader.seek(std::io::SeekFrom::Start(entry.start_pos as u64))?;
         let mut content = vec![0; entry.packed_size as usize];
-        self.cursor.read(&mut content)?;
+        self.reader.read(&mut content)?;
         if !entry.is_compressed() {
             Ok(MemoryFile::new(Cursor::new(content)))
         } else {
@@ -204,12 +203,12 @@ impl<T: AsRef<[u8]>> CpkArchive<T> {
             .and_then(|index| Some(self.entries[*index]))
     }
 
-    fn read_file_names(cursor: &mut Cursor<T>, entries: &[CpkTable]) -> IoResult<Vec<String>> {
+    fn read_file_names(cursor: &mut dyn SeekRead, entries: &[CpkTable]) -> IoResult<Vec<String>> {
         let mut names = vec![];
         for entry in entries {
             let offset = entry.start_pos + entry.packed_size;
             let length = entry.extra_info_size;
-            cursor.set_position(offset as u64);
+            cursor.seek(std::io::SeekFrom::Start(offset as u64))?;
             let name = cursor
                 .read_gbk_string(length as usize)
                 .or(Err(IoError::from(IoErrorKind::InvalidData)));
@@ -248,7 +247,7 @@ struct CpkHeader {
 }
 
 impl CpkHeader {
-    pub fn read<T: AsRef<[u8]>>(cursor: &mut Cursor<T>) -> IoResult<CpkHeader> {
+    pub fn read(cursor: &mut dyn SeekRead) -> IoResult<CpkHeader> {
         let label = cursor.read_u32::<LittleEndian>().unwrap();
         let version = cursor.read_u32::<LittleEndian>().unwrap();
         let table_start = cursor.read_u32::<LittleEndian>().unwrap();
@@ -314,7 +313,7 @@ enum CpkTableFlag {
 }
 
 impl CpkTable {
-    pub fn read<T: AsRef<[u8]>>(cursor: &mut Cursor<T>, extra_ending: bool) -> IoResult<CpkTable> {
+    pub fn read(cursor: &mut dyn SeekRead, extra_ending: bool) -> IoResult<CpkTable> {
         let crc = cursor.read_u32::<LittleEndian>().unwrap();
         let flag = cursor.read_u32::<LittleEndian>().unwrap();
         let father_crc = cursor.read_u32::<LittleEndian>().unwrap();

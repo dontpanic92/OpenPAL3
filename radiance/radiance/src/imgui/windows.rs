@@ -40,8 +40,7 @@ impl ImguiPlatform {
         imgui_platform
     }
 
-    pub fn new_frame(&mut self, delta_sec: f32) {
-        self.update_delta_time(delta_sec);
+    pub fn new_frame(&mut self) {
         self.update_display_size();
         self.update_cursor_shape();
         self.update_cursor_pos();
@@ -82,12 +81,6 @@ impl ImguiPlatform {
         if msg.hwnd == self.hwnd {
             self.process_message_internal(msg);
         }
-    }
-
-    fn update_delta_time(&mut self, delta_sec: f32) {
-        let mut context = self.context.borrow_mut();
-        let io = context.io_mut();
-        io.update_delta_time(Duration::from_secs_f32(delta_sec));
     }
 
     fn update_display_size(&mut self) {

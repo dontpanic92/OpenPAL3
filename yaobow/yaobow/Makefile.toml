@@ -1,0 +1,101 @@
+[env]
+TITLE = "妖弓"
+TITLEID = "YAOBOW000"
+
+# Directory holding static files. There should be at least a "sce_sys" directory in there for app metadata (title, icons, description...)
+# You can find sample assets for that on $VITASDK/share/gcc-arm-vita-eabi/samples/hello_world/sce_sys/
+STATIC_DIR = "static"   # Folder where static assets should be placed (sce_sys folder is at $STATIC_DIR/sce_sys)
+CARGO_TARGET_DIR = { script = ["echo ${CARGO_TARGET_DIR:=target}"] }
+# Map `dev` profile to the `debug` directory
+CARGO_MAKE_CARGO_PROFILE = "release"
+CARGO_PROFILE_TARGET_DIR = { source = "${CARGO_MAKE_CARGO_PROFILE}", default_value = "${CARGO_MAKE_CARGO_PROFILE}", mapping = {"dev" = "debug"}}
+RUST_TARGET = "armv7-sony-vita-newlibeabihf"
+CARGO_OUT_DIR = "${CARGO_TARGET_DIR}/${RUST_TARGET}/${CARGO_PROFILE_TARGET_DIR}"
+TARGET_CC = "arm-vita-eabi-gcc"
+TARGET_CXX = "arm-vita-eabi-g++"
+TARGET_CFLAGS = "-fno-pic -fno-plt"
+TARGET_CXXFLAGS = "-fno-pic -fno-plt"
+
+[tasks.build]
+description = "Build the project using `cargo`."
+command = "cargo"
+args = ["build", "-Z", "build-std=std,panic_abort", "--target=${RUST_TARGET}", "--profile", "${CARGO_MAKE_CARGO_PROFILE}", "-vv"]
+
+[tasks.testbuild]
+script = '''
+echo $CARGO_TARGET_DIR
+cargo build -Z build-std=std,panic_abort --target=${RUST_TARGET} --profile ${CARGO_MAKE_CARGO_PROFILE} &> test.log
+'''
+
+[tasks.strip]
+description = "Strip the produced ELF executable."
+dependencies = ["build"]
+command = "arm-vita-eabi-strip"
+args = ["-g", '${CARGO_OUT_DIR}/${CARGO_MAKE_CRATE_NAME}.elf']
+
+[tasks.velf]
+description = "Build an VELF executable from the obtained ELF file."
+dependencies = ["strip"]
+command = "vita-elf-create"
+args = ['${CARGO_OUT_DIR}/${CARGO_MAKE_CRATE_NAME}.elf', '${CARGO_OUT_DIR}/${CARGO_MAKE_CRATE_NAME}.velf']
+
+[tasks.eboot-bin]
+description = "Build an `eboot.bin` file from the obtained VELF file."
+dependencies = ["velf"]
+command = "vita-make-fself"
+args = ["-s", '${CARGO_OUT_DIR}/${CARGO_MAKE_CRATE_NAME}.velf', '${CARGO_OUT_DIR}/eboot.bin']
+
+[tasks.param-sfo]
+description = "Build the `param.sfo` manifest using with given TITLE and TITLEID."
+command = "vita-mksfoex"
+args = ["-s", 'TITLE_ID=${TITLEID}', '${TITLE}', '${CARGO_OUT_DIR}/param.sfo']
+
+[tasks.manifest]
+description = "List all static resources into a manifest file."
+script = [
+  'mkdir -p "${CARGO_OUT_DIR}"',
+  '''
+  if [ -d "${STATIC_DIR}" ]; then
+    find "${STATIC_DIR}" -type f > "${CARGO_OUT_DIR}/MANIFEST"
+  else
+    touch "${CARGO_OUT_DIR}/MANIFEST"
+  fi
+  '''
+]
+
+[tasks.vpk]
+description = "Build a VPK distribution of the project executable and resources."
+dependencies = ["eboot-bin", "param-sfo", "manifest"]
+script_runner = "@rust"
+script = [
+    '''
+    use std::io::BufRead;
+    use std::fs::File;
+
+    fn main() {
+
+      let crate_name = env!("CARGO_MAKE_CRATE_NAME");
+      let static_dir = env!("STATIC_DIR");
+      let out_dir = std::path::PathBuf::from(env!("CARGO_OUT_DIR"));
+
+      let mut cmd = ::std::process::Command::new("vita-pack-vpk");
+      cmd.arg("-s").arg(out_dir.join("param.sfo"));
+      cmd.arg("-b").arg(out_dir.join("eboot.bin"));
+
+      // Add files from MANIFEST
+      if let Ok(file) = File::open(out_dir.join("MANIFEST")) {
+          let reader = std::io::BufReader::new(file);
+          let mut lines = reader.lines();
+          while let Some(Ok(line)) = lines.next() {
+              let p1 = ::std::path::PathBuf::from(line);          // path on FS
+              let p2 = p1.strip_prefix(static_dir).unwrap();      // path in VPK
+              cmd.arg("--add").arg(format!("{}={}", p1.display(), p2.display()));
+          }
+      }
+
+      cmd.arg(out_dir.join(format!("{}.vpk", crate_name)))
+        .output()
+        .expect("command failed.");
+    }
+    '''
+]

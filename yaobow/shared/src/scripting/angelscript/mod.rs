@@ -1,4 +1,6 @@
+#[cfg(any(windows, linux, macos))]
 pub mod debug;
+
 mod disassembler;
 mod global_context;
 mod module;

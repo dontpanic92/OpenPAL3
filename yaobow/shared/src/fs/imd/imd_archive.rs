@@ -9,39 +9,38 @@ use common::read_ext::ReadExt;
 
 use crate::fs::{memory_file::MemoryFile, plain_fs::PlainArchive, SeekRead};
 
-#[derive(Debug)]
-pub struct ImdArchive<T: AsRef<[u8]>> {
-    cursor: Cursor<T>,
+pub struct ImdArchive {
+    reader: Box<dyn SeekRead>,
     _meta: ImdMeta,
     pub files: HashMap<String, ImdFile>,
 }
 
-impl<T: AsRef<[u8]>> ImdArchive<T> {
-    pub fn load(mut cursor: Cursor<T>) -> anyhow::Result<ImdArchive<T>> {
-        let meta = ImdMeta::read(&mut cursor)?;
+impl ImdArchive {
+    pub fn load(mut reader: Box<dyn SeekRead>) -> anyhow::Result<ImdArchive> {
+        let meta = ImdMeta::read(&mut reader)?;
         let mut files = HashMap::new();
 
-        cursor.set_position(4);
+        reader.seek(SeekFrom::Start(4))?;
         for _ in 0..meta.file_count {
-            let file = ImdFile::read(&mut cursor)?;
+            let file = ImdFile::read(&mut reader)?;
             files.insert(file.name.clone(), file);
         }
 
         Ok(Self {
-            cursor,
+            reader,
             _meta: meta,
             files,
         })
     }
 }
 
-impl<T: AsRef<[u8]>> PlainArchive for ImdArchive<T> {
+impl PlainArchive for ImdArchive {
     fn open<P: AsRef<Path>>(&mut self, path: P) -> anyhow::Result<MemoryFile> {
         let path = path.as_ref().to_str().unwrap();
 
         if let Some(file) = self.files.get(path) {
-            self.cursor.set_position(file.start_position as u64);
-            let data = self.cursor.read_u8_vec(file.file_size as usize)?;
+            self.reader.seek(SeekFrom::Start(file.start_position as u64))?;
+            let data = self.reader.read_u8_vec(file.file_size as usize)?;
 
             let data = match file.file_type {
                 3 => {

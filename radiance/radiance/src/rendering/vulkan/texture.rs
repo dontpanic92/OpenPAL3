@@ -28,7 +28,7 @@ impl VulkanTexture {
     pub fn new(
         def: &TextureDef,
         device: &Rc<Device>,
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
     ) -> Result<Self, Box<dyn Error>> {
         let texture_missing =
@@ -54,7 +54,7 @@ impl VulkanTexture {
         width: u32,
         height: u32,
         device: &Rc<Device>,
-        allocator: &Rc<vk_mem::Allocator>,
+        allocator: &Rc<vma::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
     ) -> Result<Self, Box<dyn Error>> {
         let buffer = Buffer::new_staging_buffer_with_data(allocator, &image_buffer)?;

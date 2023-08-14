@@ -1,9 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::scripting::angelscript::debug::DebugIpcClient;
+#[cfg(enable_debug)]
+use super::debug::{DebugIpcClient, Notification, Request};
 
 use super::{
-    debug::{Notification, Request},
     global_context::{GlobalFunctionContinuation, ScriptGlobalContext},
     module::{ScriptFunction, ScriptModule},
 };
@@ -36,7 +36,10 @@ pub struct ScriptVm<TAppContext: 'static> {
     pub(crate) app_context: TAppContext,
     pub(crate) g: Rc<RefCell<ScriptGlobalContext<TAppContext>>>,
     pub(crate) context: ScriptFunctionContext,
+
+    #[cfg(enable_debug)]
     debug_client: DebugIpcClient,
+
     call_stack: Vec<ScriptFunctionContext>,
     pub(crate) heap: Vec<Option<String>>,
     r1: u32,
@@ -57,13 +60,15 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             app_context,
             g,
             context: ScriptFunctionContext::new(module, function_index),
-            debug_client: DebugIpcClient::new(),
             call_stack: vec![],
             heap: vec![],
             r1: 0,
             r2: 0,
             robj: 0,
             yield_func: None,
+
+            #[cfg(enable_debug)]
+            debug_client: DebugIpcClient::new(),
         };
 
         vm.debug_update_module();
@@ -911,43 +916,52 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     fn debug_update_module(&mut self) {
-        let _ = self.debug_client.notify(Notification::ModuleChanged {
-            module: self.context.module.borrow().clone(),
-            function: self.context.function_index as u32,
-        });
+        #[cfg(enable_debug)]
+        {
+            let _ = self.debug_client.notify(Notification::ModuleChanged {
+                module: self.context.module.borrow().clone(),
+                function: self.context.function_index as u32,
+            });
 
-        let _ = self
-            .debug_client
-            .notify(Notification::GlobalFunctionsChanged(
-                self.g
-                    .borrow()
-                    .functions
-                    .iter()
-                    .map(|f| f.name.clone())
-                    .collect(),
-            ));
+            let _ = self
+                .debug_client
+                .notify(Notification::GlobalFunctionsChanged(
+                    self.g
+                        .borrow()
+                        .functions
+                        .iter()
+                        .map(|f| f.name.clone())
+                        .collect(),
+                ));
+        }
     }
 
     fn debug_update_context(&mut self) {
-        let _ = self
-            .debug_client
-            .notify(Notification::ObjectsChanged(self.heap.clone()));
-        let _ = self.debug_client.notify(Notification::RegisterChanged {
-            pc: self.context.pc,
-            sp: self.context.sp,
-            fp: self.context.fp,
-            r1: self.r1,
-            r2: self.r2,
-            object_register: self.robj,
-        });
+        #[cfg(enable_debug)]
+        {
+            let _ = self
+                .debug_client
+                .notify(Notification::ObjectsChanged(self.heap.clone()));
+            let _ = self.debug_client.notify(Notification::RegisterChanged {
+                pc: self.context.pc,
+                sp: self.context.sp,
+                fp: self.context.fp,
+                r1: self.r1,
+                r2: self.r2,
+                object_register: self.robj,
+            });
 
-        let _ = self
-            .debug_client
-            .notify(Notification::StackChanged(self.context.stack.clone()));
+            let _ = self
+                .debug_client
+                .notify(Notification::StackChanged(self.context.stack.clone()));
+        }
     }
 
     fn wait_for_action(&mut self) {
-        let _ = self.debug_client.call(Request::WaitForAction);
+        #[cfg(enable_debug)]
+        {
+            let _ = self.debug_client.call(Request::WaitForAction);
+        }
     }
 }
 

@@ -1,10 +1,25 @@
 use std::process::Command;
 
+mod features;
+
 fn main() {
-    build_shader("simple_triangle.vert");
-    build_shader("simple_triangle.frag");
+    features::enable_features();
+
+    #[cfg(any(
+        target_os = "windows",
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "android",
+    ))]
+    {
+        build_shader("simple_triangle.vert");
+        build_shader("simple_triangle.frag");
+        build_shader("lightmap_texture.vert");
+        build_shader("lightmap_texture.frag");
+    }
 }
 
+#[allow(dead_code)]
 fn build_shader(shader_name: &str) {
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();

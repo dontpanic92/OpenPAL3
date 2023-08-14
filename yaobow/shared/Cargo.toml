@@ -18,18 +18,15 @@ common = { path = "../common" }
 config = "0.12.0"
 crosscom = { path = "../../crosscom/runtime/rust" }
 dashmap = "5.1.0"
-dirs = "3.0.1"
 dyn-clone = "1.0.1"
 encoding = "0.2.33"
 fileformats = { path = "../fileformats" }
 image = "0.23.0"
 imgui = { version = "0.10", features = ["docking"] }
-interprocess = "1.2"
 lazy_static = "1.2.0"
 log = { version = "0.4.13" }
 lzma-rs = "0.3.0"
 md5 = "0.7"
-memmap = "0.7.0"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
 miniz_oxide ="0.6"
@@ -53,3 +50,11 @@ ndk-glue = "0.5.0"
 [target.'cfg(target_os = "windows")'.dependencies]
 cpal = "0.15"
 ffmpeg = { git = "https://github.com/meh/rust-ffmpeg" }
+
+[target.'cfg(not(target_os = "vita"))'.dependencies]
+interprocess = "1.2"
+memmap = "0.7.0"
+dirs = "3.0.1"
+
+[build-dependencies]
+cfg_aliases = "0.1.0"

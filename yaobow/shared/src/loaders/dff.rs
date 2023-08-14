@@ -2,8 +2,8 @@ use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
 
 use crosscom::ComRc;
 use fileformats::rwbs::{
-    clump::Clump, extension::Extension, frame::Frame, material::Material, plugins::hanim, read_dff,
-    Matrix44f, TexCoord, Triangle, Vec3f,
+    clump::Clump, extension::Extension, frame::Frame, material::Material, read_dff, Matrix44f,
+    TexCoord, Triangle, Vec3f,
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{

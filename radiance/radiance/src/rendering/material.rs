@@ -2,7 +2,7 @@ use image::ImageFormat;
 
 use crate::rendering::texture::TextureStore;
 
-use super::{texture::TextureDef, ShaderDef, SIMPLE_SHADER_DEF};
+use super::{texture::TextureDef, ShaderDef, SIMPLE_SHADER_DEF, shader::LightMapShaderDef};
 use std::{io::Read, sync::Arc};
 
 pub trait Material: downcast_rs::Downcast + std::fmt::Debug {}
@@ -96,3 +96,44 @@ impl SimpleMaterialDef {
         )
     }
 }
+
+pub struct LightMapMaterialDef;
+impl LightMapMaterialDef {
+    pub fn create<R: Read>(
+        textures: Vec<&str>,
+        get_reader: impl Fn(&str) -> Option<R>,
+        use_alpha: bool,
+    ) -> MaterialDef {
+        let textures: Vec<Arc<TextureDef>> = textures
+            .into_iter()
+            .map(|name| {
+                TextureStore::get_or_update(name, || {
+                    let mut buf = Vec::new();
+                    let b = match get_reader(name) {
+                        None => radiance_assets::TEXTURE_WHITE_TEXTURE_FILE,
+                        Some(mut reader) => {
+                            reader.read_to_end(&mut buf).unwrap();
+                            &buf
+                        }
+                    };
+
+                    image::load_from_memory(b)
+                        .or_else(|err| {
+                            log::error!("Cannot load texture: {}", &err);
+                            Err(err)
+                        })
+                        .ok()
+                        .and_then(|img| Some(img.to_rgba8()))
+                })
+            })
+            .collect();
+
+        MaterialDef::new(
+            "lightmap_material".to_string(),
+            LightMapShaderDef::create(),
+            textures,
+            use_alpha,
+        )
+    }
+}
+
