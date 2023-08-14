@@ -27,5 +27,7 @@ impl Platform {
 
         let mut screen = screen::DebugScreen::new();
         writeln!(screen, "{}", msg).ok();
+
+        std::thread::sleep(std::time::Duration::from_secs(100));
     }
 }

@@ -1,0 +1,2 @@
+[target.armv7-sony-vita-newlibeabihf]
+linker = "arm-vita-eabi-gcc"

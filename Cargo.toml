@@ -24,3 +24,7 @@ ffmpeg = { git = "https://github.com/dontpanic92/rust-ffmpeg", branch = "yaobow"
 [profile.release-with-symbol]
 inherits = "release"
 debug = true
+
+[profile.vita-release]
+inherits = "release"
+lto = true

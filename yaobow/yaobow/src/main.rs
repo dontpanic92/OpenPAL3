@@ -16,6 +16,7 @@ mod test;
 pub fn main() {
     init_logger();
     register_opengb_video_decoders();
+    radiance::application::Application::set_panic_hook();
 
     let args = std::env::args().collect::<Vec<String>>();
     if args.len() <= 1 {
@@ -56,3 +57,7 @@ fn init_logger() {
         logger.init().unwrap();
     }
 }
+
+#[used]
+#[export_name = "_newlib_heap_size_user"]
+pub static _NEWLIB_HEAP_SIZE_USER: u32 = 496 * 1024 * 1024;

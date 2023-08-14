@@ -6,6 +6,7 @@ edition = "2018"
 build = "build.rs"
 
 [dependencies]
+anyhow = "1"
 backtrace = "0.3.44"
 bitflags = "1.2.1"
 cfg-if = "1"

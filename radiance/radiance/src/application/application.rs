@@ -79,7 +79,7 @@ impl IApplicationImpl for Application {
 
 impl Application {
     pub fn new() -> Self {
-        set_panic_hook();
+        Self::set_panic_hook();
         let mut platform = Platform::new();
         Self {
             radiance_engine: Rc::new(RefCell::new(
@@ -90,12 +90,12 @@ impl Application {
             components: DashMap::new(),
         }
     }
-}
 
-fn set_panic_hook() {
-    std::panic::set_hook(Box::new(|panic_info| {
-        let backtrace = backtrace::Backtrace::new();
-        let msg = format!("Radiance {}\n{:?}", panic_info, backtrace);
-        Platform::show_error_dialog(crate::constants::STR_SORRY_DIALOG_TITLE, &msg);
-    }));
+    pub fn set_panic_hook() {
+        std::panic::set_hook(Box::new(|panic_info| {
+            let backtrace = backtrace::Backtrace::new();
+            let msg = format!("Radiance {}\n{:?}", panic_info, backtrace);
+            Platform::show_error_dialog(crate::constants::STR_SORRY_DIALOG_TITLE, &msg);
+        }));
+    }
 }

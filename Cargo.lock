@@ -3388,6 +3388,7 @@ name = "radiance"
 version = "0.1.0"
 dependencies = [
  "alto",
+ "anyhow",
  "arboard 2.1.1",
  "ash",
  "ash-window",
@@ -5277,6 +5278,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "byteorder",
+ "cfg_aliases",
  "common",
  "crosscom",
  "fileformats",
