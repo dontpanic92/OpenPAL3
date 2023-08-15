@@ -7,14 +7,19 @@ use std::{cell::RefCell, ffi::OsString, path::Path, rc::Rc};
 
 pub struct CpkFs {
     cpk_archive: RefCell<CpkArchive>,
-    entry: CpkEntry,
+    entry: Option<CpkEntry>,
 }
 
 impl CpkFs {
     pub fn new<P: AsRef<Path>>(cpk_path: P) -> anyhow::Result<CpkFs> {
         let reader = create_reader(cpk_path)?;
         let cpk_archive = RefCell::new(CpkArchive::load(reader)?);
-        let entry = cpk_archive.borrow().build_directory();
+
+        #[cfg(any(windows, linux, macos))]
+        let entry = Some(cpk_archive.borrow_mut().build_directory());
+
+        #[cfg(any(android, vita))]
+        let entry = None;
 
         Ok(CpkFs { cpk_archive, entry })
     }
@@ -36,10 +41,14 @@ impl Store for CpkFs {
     }
 
     fn entries_path(&self, p: &Path) -> std::io::Result<Entries> {
-        let entries = self.entry.ls(p)?;
-        Ok(Entries::new(CpkEntryIter::new(Box::new(
-            entries.into_iter(),
-        ))))
+        if let Some(entry) = self.entry.as_ref() {
+            let entries = entry.ls(p)?;
+            Ok(Entries::new(CpkEntryIter::new(Box::new(
+                entries.into_iter(),
+            ))))
+        } else {
+            Ok(Entries::new(vec![]))
+        }
     }
 }
 

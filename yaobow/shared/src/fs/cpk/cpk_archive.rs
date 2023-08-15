@@ -19,7 +19,6 @@ pub struct CpkArchive {
     reader: Box<dyn SeekRead>,
     header: CpkHeader,
     pub entries: Vec<CpkTable>,
-    pub file_names: Vec<String>,
     crc_to_index: HashMap<u32, usize>,
 }
 
@@ -60,13 +59,11 @@ impl CpkArchive {
         }
 
         let crc_to_index = Self::build_index_map(&entries);
-        let file_names = Self::read_file_names(&mut reader, &entries)?;
 
         Ok(CpkArchive {
             reader,
             header,
             entries,
-            file_names,
             crc_to_index,
         })
     }
@@ -107,23 +104,34 @@ impl CpkArchive {
         }
 
         let crc_to_index = Self::build_index_map(&entries);
-        let file_names = Self::read_file_names(&mut reader, &entries)?;
 
         Ok(CpkArchive {
             reader,
             header,
             entries,
-            file_names,
             crc_to_index,
         })
     }
 
     pub fn open(&mut self, file_name: &[u8]) -> IoResult<MemoryFile> {
         let hash = super::crc_checksum(file_name);
-        let entry = self
-            .get_entry_by_crc(hash)
+        let index = self
+            .get_entry_index_by_crc(hash)
             .ok_or(IoError::from(IoErrorKind::NotFound))?;
 
+        self.open_entry(index)
+    }
+
+    pub fn open_str(&mut self, file_name: &str) -> IoResult<MemoryFile> {
+        self.open(file_name.to_lowercase().as_bytes())
+    }
+
+    pub fn open_first(&mut self) -> IoResult<MemoryFile> {
+        self.open_entry(0)
+    }
+
+    fn open_entry(&mut self, index: usize) -> IoResult<MemoryFile> {
+        let entry = &self.entries[index];
         if entry.is_dir() {
             return Err(IoError::from(IoErrorKind::IsADirectory));
         }
@@ -143,12 +151,9 @@ impl CpkArchive {
         }
     }
 
-    pub fn open_str(&mut self, file_name: &str) -> IoResult<MemoryFile> {
-        self.open(file_name.to_lowercase().as_bytes())
-    }
-
-    pub fn build_directory(&self) -> CpkEntry {
-        Self::build_directory_internal(&self.entries, &self.file_names)
+    pub fn build_directory(&mut self) -> CpkEntry {
+        let file_names = Self::read_file_names(&mut self.reader, &self.entries).unwrap();
+        Self::build_directory_internal(&self.entries, &file_names)
     }
 
     pub fn is_pal4(&self) -> bool {
@@ -202,6 +207,10 @@ impl CpkArchive {
         self.crc_to_index
             .get(&crc)
             .and_then(|index| Some(self.entries[*index]))
+    }
+
+    fn get_entry_index_by_crc(&self, crc: u32) -> Option<usize> {
+        self.crc_to_index.get(&crc).and_then(|index| Some(*index))
     }
 
     fn read_file_names(cursor: &mut dyn SeekRead, entries: &[CpkTable]) -> IoResult<Vec<String>> {

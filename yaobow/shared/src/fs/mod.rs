@@ -96,7 +96,7 @@ impl<T> SeekRead for T where T: Read + Seek {}
 #[cfg(vita)]
 fn create_reader<P: AsRef<Path>>(path: P) -> anyhow::Result<Box<dyn SeekRead>> {
     let file = std::fs::File::open(path.as_ref())?;
-    let reader = std::io::BufReader::new(file);
+    let reader = std::io::BufReader::with_capacity(1024, file);
     Ok(Box::new(reader))
 }
 
