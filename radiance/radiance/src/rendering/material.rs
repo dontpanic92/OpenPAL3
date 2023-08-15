@@ -2,7 +2,7 @@ use image::ImageFormat;
 
 use crate::rendering::texture::TextureStore;
 
-use super::{texture::TextureDef, ShaderDef, SIMPLE_SHADER_DEF, shader::LightMapShaderDef};
+use super::{shader::LightMapShaderDef, texture::TextureDef, ShaderDef, SIMPLE_SHADER_DEF};
 use std::{io::Read, sync::Arc};
 
 pub trait Material: downcast_rs::Downcast + std::fmt::Debug {}
@@ -136,4 +136,3 @@ impl LightMapMaterialDef {
         )
     }
 }
-

@@ -86,8 +86,18 @@ impl RenderingEngine for VitaGLRenderingEngine {
 
             glEnableClientState(GL_VERTEX_ARRAY);
             glEnableClientState(GL_COLOR_ARRAY);
-            glVertexPointer(3, GL_FLOAT, 0, vertex_array.as_ptr() as *const std::ffi::c_void);
-            glColorPointer(3, GL_FLOAT, 0, color_array.as_ptr() as *const std::ffi::c_void);
+            glVertexPointer(
+                3,
+                GL_FLOAT,
+                0,
+                vertex_array.as_ptr() as *const std::ffi::c_void,
+            );
+            glColorPointer(
+                3,
+                GL_FLOAT,
+                0,
+                color_array.as_ptr() as *const std::ffi::c_void,
+            );
             glRotatef(1., 0., 0., 1.);
             glRotatef(0.5, 0., 1., 0.);
             glDrawElements(

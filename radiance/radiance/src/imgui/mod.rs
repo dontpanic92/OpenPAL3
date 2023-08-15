@@ -1,9 +1,9 @@
+#[cfg(vita)]
+mod vita;
 #[cfg(windows)]
 mod windows;
 #[cfg(any(linux, macos, android))]
 mod winit;
-#[cfg(vita)]
-mod vita;
 
 #[cfg_attr(any(android, vita), path = "clipboard_nop.rs")]
 mod clipboard;
@@ -11,12 +11,12 @@ mod clipboard;
 mod theme;
 
 use self::theme::setup_theme;
-#[cfg(windows)]
-pub use windows::ImguiPlatform;
 #[cfg(any(linux, macos, android))]
 pub use self::winit::ImguiPlatform;
 #[cfg(vita)]
 pub use vita::ImguiPlatform;
+#[cfg(windows)]
+pub use windows::ImguiPlatform;
 
 use crate::application::Platform;
 use imgui::*;

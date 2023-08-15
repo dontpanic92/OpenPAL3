@@ -1,8 +1,8 @@
 pub use engine::CoreInputEngine;
 
 mod engine;
-mod keyboard;
 mod gamepad;
+mod keyboard;
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -149,4 +149,3 @@ pub(crate) trait InputEngineInternal: InputEngine {
     fn update(&mut self, delta_sec: f32);
     fn as_input_engine(&self) -> Rc<RefCell<dyn InputEngine>>;
 }
-

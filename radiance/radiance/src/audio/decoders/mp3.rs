@@ -7,7 +7,7 @@ pub struct Mp3Decoder {
 }
 
 impl super::Decoder for Mp3Decoder {
-    fn fetch_samples(&mut self) -> Result<Option<super::Samples>, Box<dyn std::error::Error>> {
+    fn fetch_samples(&mut self) -> anyhow::Result<Option<super::Samples>> {
         self.decoder
             .next_frame()
             .and_then(|frame| {

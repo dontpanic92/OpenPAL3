@@ -23,6 +23,8 @@ impl Platform {
     }
 
     pub fn show_error_dialog(title: &str, msg: &str) {
+        log::error!("panic: {}", msg);
+
         use std::fmt::Write;
 
         let mut screen = screen::DebugScreen::new();

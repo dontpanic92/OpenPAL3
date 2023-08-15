@@ -56,6 +56,17 @@ fn init_logger() {
         let logger = logger.with_utc_timestamps();
         logger.init().unwrap();
     }
+
+    #[cfg(vita)]
+    {
+        let logger = simplelog::WriteLogger::new(
+            simplelog::LevelFilter::Debug,
+            simplelog::Config::default(),
+            std::fs::File::create("ux0:data/yaobow.log").unwrap(),
+        );
+
+        simplelog::CombinedLogger::init(vec![logger]).unwrap();
+    }
 }
 
 #[used]

@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
-    rc::{Rc, Weak}, mem::swap,
+    mem::swap,
+    rc::{Rc, Weak},
 };
 
 #[cfg(windows)]
@@ -11,7 +12,10 @@ use winit::event::Event;
 
 use crate::application::Platform;
 
-use super::{keyboard::KeyboardInput, gamepad::GamepadInput, Axis, AxisState, Key, KeyState, InputEngine, InputEngineInternal};
+use super::{
+    gamepad::GamepadInput, keyboard::KeyboardInput, Axis, AxisState, InputEngine,
+    InputEngineInternal, Key, KeyState,
+};
 
 pub struct CoreInputEngine {
     input_engine: Weak<RefCell<CoreInputEngine>>,

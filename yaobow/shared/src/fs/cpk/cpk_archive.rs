@@ -128,7 +128,8 @@ impl CpkArchive {
             return Err(IoError::from(IoErrorKind::IsADirectory));
         }
 
-        self.reader.seek(std::io::SeekFrom::Start(entry.start_pos as u64))?;
+        self.reader
+            .seek(std::io::SeekFrom::Start(entry.start_pos as u64))?;
         let mut content = vec![0; entry.packed_size as usize];
         self.reader.read(&mut content)?;
         if !entry.is_compressed() {

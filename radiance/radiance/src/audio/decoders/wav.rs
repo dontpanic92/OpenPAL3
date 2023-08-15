@@ -10,7 +10,7 @@ pub struct WavDecoder {
 }
 
 impl Decoder for WavDecoder {
-    fn fetch_samples(&mut self) -> Result<Option<super::Samples>, Box<dyn std::error::Error>> {
+    fn fetch_samples(&mut self) -> anyhow::Result<Option<super::Samples>> {
         let samples = self
             .decoder
             .samples()

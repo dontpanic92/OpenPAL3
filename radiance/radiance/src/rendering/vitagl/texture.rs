@@ -14,6 +14,6 @@ impl Texture for VitaGLTexture {
 
 impl VitaGLTexture {
     pub fn new() -> anyhow::Result<Self> {
-        Ok(Self{})
+        Ok(Self {})
     }
 }

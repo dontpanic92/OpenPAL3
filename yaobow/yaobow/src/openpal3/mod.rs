@@ -20,7 +20,6 @@ pub fn run_openpal3() {
         asset_path: "ux0:games/PAL3".to_string(),
     };
 
-    
     let app = OpenPal3ApplicationLoader::create_application(&config, "OpenPAL3");
     log::info!("initializing with config {:?}", config);
     app.initialize();

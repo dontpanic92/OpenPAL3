@@ -38,7 +38,8 @@ impl PlainArchive for FmbArchive {
         let path = path.as_ref().to_str().unwrap();
 
         if let Some(file) = self.files.get(path) {
-            self.reader.seek(SeekFrom::Start(file.start_position as u64))?;
+            self.reader
+                .seek(SeekFrom::Start(file.start_position as u64))?;
             let mut data = self.reader.read_u8_vec(file.compressed_size as usize)?;
 
             if file.is_compressed == 1 {

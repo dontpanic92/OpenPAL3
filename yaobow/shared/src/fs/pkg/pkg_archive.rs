@@ -37,7 +37,8 @@ impl PkgArchive {
 
         for entry in &self.entries.file_entries {
             if entry.fullpath == path {
-                self.reader.seek(std::io::SeekFrom::Start(entry.start_position as u64))?;
+                self.reader
+                    .seek(std::io::SeekFrom::Start(entry.start_position as u64))?;
                 let mut data = self.reader.read_u8_vec(entry.size as usize)?;
                 if entry.size != entry.size2 {
                     data = miniz_oxide::inflate::decompress_to_vec_zlib(&data).map_err(|_| {

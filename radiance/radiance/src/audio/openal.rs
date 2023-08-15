@@ -1,5 +1,5 @@
 use super::{
-    decoders::{Decoder, OggDecoder, Samples, WavDecoder},
+    decoders::{Decoder, OggDecoder, Samples, SymphoniaDecoder, WavDecoder},
     Codec,
 };
 use super::{AudioEngine, AudioSource, AudioSourceState};
@@ -193,10 +193,7 @@ fn create_buffer_from_samples(samples: Samples, context: &Context) -> Option<alt
 
 fn create_decoder(data: Vec<u8>, codec: Codec) -> Box<dyn Decoder> {
     match codec {
-        #[cfg(not(vita))]
-        Codec::Mp3 => Box::new(Mp3Decoder::new(data)),
-        #[cfg(vita)]
-        Codec::Mp3 => Box::new(OggDecoder::new(data)),
+        Codec::Mp3 => Box::new(SymphoniaDecoder::new(data)),
         Codec::Ogg => Box::new(OggDecoder::new(data)),
         Codec::Wav => Box::new(WavDecoder::new(data)),
     }

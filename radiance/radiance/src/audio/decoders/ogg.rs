@@ -10,7 +10,7 @@ pub struct OggDecoder {
 }
 
 impl Decoder for OggDecoder {
-    fn fetch_samples(&mut self) -> Result<Option<super::Samples>, Box<dyn std::error::Error>> {
+    fn fetch_samples(&mut self) -> anyhow::Result<Option<super::Samples>> {
         Ok(self.decoder.read_dec_packet_itl().and_then(|s| {
             Ok(s.and_then(|samples| {
                 Some(super::Samples {

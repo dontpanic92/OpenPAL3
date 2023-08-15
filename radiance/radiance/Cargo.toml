@@ -13,9 +13,12 @@ cfg-if = "1"
 crosscom = { path = "../../crosscom/runtime/rust" }
 dashmap = "5.1.0"
 downcast-rs = "1.2.0"
+hound = "3.4.0"
+symphonia = {version = "0.5", features = ["all"] }
 image = "0.23.0"
 imgui = { version = "0.10", features = ["docking"] }
 lazy_static = "1.2.0"
+lewton = "0.10.1"
 log = "0.4.13"
 lru = { version = "0.7.1", features=["nightly"] }
 memoffset = "0.9.0"
@@ -24,8 +27,6 @@ radiance-assets = { path = "../radiance-assets" }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.7"
 uuid = "0.8"
-hound = "3.4.0"
-lewton = "0.10.1"
 
 [target.'cfg(not(target_os = "vita"))'.dependencies]
 ash = { version = "0.37", default-features = false, features = ["loaded"] }

@@ -1,14 +1,9 @@
-use crate::fs::{memory_file::MemoryFile, create_reader};
+use crate::fs::{create_reader, memory_file::MemoryFile};
 
 use super::{CpkArchive, CpkEntry};
 use encoding::{EncoderTrap, Encoding};
 use mini_fs::{Entries, Entry, EntryKind, Store};
-use std::{
-    cell::RefCell,
-    ffi::OsString,
-    path::Path,
-    rc::Rc,
-};
+use std::{cell::RefCell, ffi::OsString, path::Path, rc::Rc};
 
 pub struct CpkFs {
     cpk_archive: RefCell<CpkArchive>,
@@ -17,7 +12,7 @@ pub struct CpkFs {
 
 impl CpkFs {
     pub fn new<P: AsRef<Path>>(cpk_path: P) -> anyhow::Result<CpkFs> {
-        let reader  = create_reader(cpk_path)?;
+        let reader = create_reader(cpk_path)?;
         let cpk_archive = RefCell::new(CpkArchive::load(reader)?);
         let entry = cpk_archive.borrow().build_directory();
 

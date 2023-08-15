@@ -194,11 +194,7 @@ impl Buffer {
     }
 
     pub fn map_memory_do<F: Fn(*mut u8)>(&mut self, action: F) {
-        let dst = unsafe {
-            self.allocator
-                .map_memory(&mut self.allocation)
-                .unwrap()
-        };
+        let dst = unsafe { self.allocator.map_memory(&mut self.allocation).unwrap() };
 
         if dst == std::ptr::null_mut() {
             panic!("Unable to map the dest memory");
@@ -207,8 +203,7 @@ impl Buffer {
         action(dst);
 
         unsafe {
-            self.allocator
-                .unmap_memory(&mut self.allocation);
+            self.allocator.unmap_memory(&mut self.allocation);
         }
     }
 }

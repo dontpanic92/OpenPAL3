@@ -39,7 +39,8 @@ impl PlainArchive for ImdArchive {
         let path = path.as_ref().to_str().unwrap();
 
         if let Some(file) = self.files.get(path) {
-            self.reader.seek(SeekFrom::Start(file.start_position as u64))?;
+            self.reader
+                .seek(SeekFrom::Start(file.start_position as u64))?;
             let data = self.reader.read_u8_vec(file.file_size as usize)?;
 
             let data = match file.file_type {

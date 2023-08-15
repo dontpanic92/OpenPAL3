@@ -2,16 +2,18 @@
 mod mp3;
 
 mod ogg;
+mod symphonia;
 mod wav;
 
 #[cfg(not(vita))]
 pub use mp3::Mp3Decoder;
 
 pub use ogg::OggDecoder;
+pub use symphonia::SymphoniaDecoder;
 pub use wav::WavDecoder;
 
 pub trait Decoder {
-    fn fetch_samples(&mut self) -> Result<Option<Samples>, Box<dyn std::error::Error>>;
+    fn fetch_samples(&mut self) -> anyhow::Result<Option<Samples>>;
     fn reset(&mut self);
 }
 

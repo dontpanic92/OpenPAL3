@@ -38,7 +38,8 @@ impl PlainArchive for SfbArchive {
         let path = path.as_ref().to_str().unwrap();
 
         if let Some(file) = self.files.get(path) {
-            self.reader.seek(SeekFrom::Start(file.start_position as u64))?;
+            self.reader
+                .seek(SeekFrom::Start(file.start_position as u64))?;
             let data = self.reader.read_u8_vec(file.file_size as usize)?;
 
             Ok(MemoryFile::new(Cursor::new(data)))
