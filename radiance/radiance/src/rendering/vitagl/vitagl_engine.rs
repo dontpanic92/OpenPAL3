@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use crosscom::ComRc;
+use imgui_rs_vitagl_renderer::ImguiRenderer;
 use vitagl_sys::*;
 
 use crate::{
@@ -14,6 +15,7 @@ use super::factory::VitaGLComponentFactory;
 
 pub struct VitaGLRenderingEngine {
     factory: Rc<VitaGLComponentFactory>,
+    imgui: ImguiRenderer,
 }
 
 impl VitaGLRenderingEngine {
@@ -33,6 +35,7 @@ impl VitaGLRenderingEngine {
 
         Self {
             factory: Rc::new(VitaGLComponentFactory::new()),
+            imgui: ImguiRenderer::new(),
         }
     }
 }
@@ -109,6 +112,8 @@ impl RenderingEngine for VitaGLRenderingEngine {
             glDisableClientState(GL_VERTEX_ARRAY);
             glDisableClientState(GL_COLOR_ARRAY);
 
+            self.imgui.render();
+
             vglSwapBuffers(GL_FALSE as u8);
         }
     }
@@ -120,6 +125,12 @@ impl RenderingEngine for VitaGLRenderingEngine {
     fn component_factory(&self) -> Rc<dyn ComponentFactory> {
         self.factory.clone()
     }
+
+    fn begin_frame(&mut self) {
+        self.imgui.new_frame();
+    }
+
+    fn end_frame(&mut self) {}
 }
 
 impl Drop for VitaGLRenderingEngine {

@@ -23,7 +23,6 @@ args = ["build", "-Z", "build-std=std,panic_abort", "--target=${RUST_TARGET}", "
 
 [tasks.testbuild]
 script = '''
-echo $CARGO_TARGET_DIR
 cargo build -Z build-std=std,panic_abort --target=${RUST_TARGET} --profile ${CARGO_MAKE_CARGO_PROFILE} &> test.log
 '''
 

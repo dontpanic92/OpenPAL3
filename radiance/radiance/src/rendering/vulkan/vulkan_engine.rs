@@ -92,6 +92,10 @@ impl RenderingEngine for VulkanRenderingEngine {
     fn component_factory(&self) -> Rc<dyn ComponentFactory> {
         self.component_factory.as_component_factory()
     }
+
+    fn begin_frame(&mut self) {}
+
+    fn end_frame(&mut self) {}
 }
 
 impl VulkanRenderingEngine {

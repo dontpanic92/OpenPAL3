@@ -40,6 +40,7 @@ winit = "0.27"
 minimp3 = { package = "minimp3_fixed", version = "0.5.3" }
 
 [target.'cfg(target_os = "vita")'.dependencies]
+imgui-rs-vitagl-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vitagl-renderer" }
 vitagl-sys = { git = "https://github.com/dontpanic92/vitagl-sys" }
 vitasdk-sys = { git = "https://github.com/dontpanic92/vitasdk-sys", branch = "yaobow"}
 
@@ -54,4 +55,5 @@ alto = { git = "https://github.com/dontpanic92/alto", default-features = false }
 winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlingapi", "windef", "wingdi"] }
 
 [build-dependencies]
+cc = "1.0"
 cfg_aliases = "0.1.0"

@@ -75,8 +75,9 @@ impl CoreRadianceEngine {
     }
 
     pub fn update(&self, delta_sec: f32) {
-        self.input_engine.borrow_mut().update(delta_sec);
+        self.rendering_engine.borrow_mut().begin_frame();
 
+        self.input_engine.borrow_mut().update(delta_sec);
         let scene_manager = self.scene_manager.clone();
         let task_manager = self.task_manager.clone();
         let debug_layer = self.debug_layer.as_ref();
@@ -118,8 +119,6 @@ impl CoreRadianceEngine {
             rendering_engine.render(s, viewport, ui_frame);
         }
 
-        /*
-        TODO: how about multiple scenes?
-        */
+        self.rendering_engine.borrow_mut().end_frame();
     }
 }

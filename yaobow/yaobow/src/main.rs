@@ -14,9 +14,9 @@ mod openpal4;
 mod test;
 
 pub fn main() {
+    radiance::application::Application::set_panic_hook();
     init_logger();
     register_opengb_video_decoders();
-    radiance::application::Application::set_panic_hook();
 
     let args = std::env::args().collect::<Vec<String>>();
     if args.len() <= 1 {
@@ -71,4 +71,8 @@ fn init_logger() {
 
 #[used]
 #[export_name = "_newlib_heap_size_user"]
-pub static _NEWLIB_HEAP_SIZE_USER: u32 = 496 * 1024 * 1024;
+pub static _NEWLIB_HEAP_SIZE_USER: u32 = 192 * 1024 * 1024;
+
+#[used]
+#[export_name = "sceUserMainThreadStackSize"]
+pub static SCE_USER_MAIN_THREAD_STACK_SIZE: u32 = 4 * 1024 * 1024;

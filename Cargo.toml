@@ -27,4 +27,5 @@ debug = true
 
 [profile.vita-release]
 inherits = "release"
-lto = true
+# debug = true
+# lto = true

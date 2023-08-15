@@ -5,17 +5,15 @@ mod features;
 fn main() {
     features::enable_features();
 
-    #[cfg(any(
-        target_os = "windows",
-        target_os = "linux",
-        target_os = "macos",
-        target_os = "android",
-    ))]
-    {
-        build_shader("simple_triangle.vert");
-        build_shader("simple_triangle.frag");
-        build_shader("lightmap_texture.vert");
-        build_shader("lightmap_texture.frag");
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+    match target_os.as_str() {
+        "windows" | "linux" | "macos" | "android" => {
+            build_shader("simple_triangle.vert");
+            build_shader("simple_triangle.frag");
+            build_shader("lightmap_texture.vert");
+            build_shader("lightmap_texture.frag");
+        }
+        _ => {}
     }
 }
 

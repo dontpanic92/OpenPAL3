@@ -54,6 +54,8 @@ impl<TComInterface: ComInterface> ComRc<TComInterface> {
     }
 }
 
+unsafe impl<T: ComInterface> Send for ComRc<T> {}
+
 #[repr(transparent)]
 pub struct RawPointer(pub *const *const c_void);
 
