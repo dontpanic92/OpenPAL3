@@ -114,10 +114,10 @@ impl Pal4AppContext {
     }
 
     pub fn start_play_movie(&mut self, name: &str) -> Option<(u32, u32)> {
-        let data = self.loader.load_video(name).unwrap();
+        let reader = self.loader.load_video(name).unwrap();
         self.video_player.play(
             self.component_factory.clone(),
-            data,
+            reader,
             radiance::video::Codec::Bik,
             false,
         )

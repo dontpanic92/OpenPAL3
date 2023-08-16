@@ -6,8 +6,9 @@ use std::{
 use byteorder::ReadBytesExt;
 use common::read_ext::ReadExt;
 use encoding::Encoding;
+use radiance::utils::SeekRead;
 
-use crate::fs::{memory_file::MemoryFile, SeekRead};
+use crate::fs::memory_file::MemoryFile;
 
 pub struct PkgArchive {
     reader: Box<dyn SeekRead>,

@@ -1,5 +1,6 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
+use radiance::utils::SeekRead;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -8,7 +9,7 @@ use std::{
 };
 use std::{clone::Clone, path::Path};
 
-use crate::fs::{memory_file::MemoryFile, SeekRead};
+use crate::fs::memory_file::MemoryFile;
 
 type IoResult<T> = std::io::Result<T>;
 type IoError = std::io::Error;

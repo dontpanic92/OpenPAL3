@@ -41,7 +41,10 @@ use std::{
 use imgui::TextureId;
 use lazy_static::lazy_static;
 use log::{debug, error, warn};
-use radiance::rendering::{ComponentFactory, Texture};
+use radiance::{
+    rendering::{ComponentFactory, Texture},
+    utils::SeekRead,
+};
 
 use radiance::video::{VideoStream, VideoStreamState};
 
@@ -233,7 +236,7 @@ struct VideoState {
 }
 
 pub struct VideoStreamFFmpeg {
-    data: Option<Vec<u8>>,
+    reader: Option<Box<dyn SeekRead>>,
     factory: Rc<dyn ComponentFactory>,
     state: VideoStreamState,
     looping: bool,
@@ -244,8 +247,8 @@ pub struct VideoStreamFFmpeg {
 }
 
 impl VideoStream for VideoStreamFFmpeg {
-    fn set_data(&mut self, data: Vec<u8>) {
-        self.data = Some(data);
+    fn set_reader(&mut self, reader: Box<dyn SeekRead>) {
+        self.reader = Some(reader);
     }
 
     fn play(&mut self, looping: bool) -> (u32, u32) {
@@ -253,8 +256,8 @@ impl VideoStream for VideoStreamFFmpeg {
         self.looping = looping;
         self.set_looping(looping);
 
-        let data = self.data.take().unwrap();
-        let result = self.init_with_data(data);
+        let reader = self.reader.take().unwrap();
+        let result = self.init(reader);
 
         if let Some(time) = self.time.as_ref() {
             let mut time = time.write().unwrap();
@@ -331,7 +334,7 @@ impl VideoStream for VideoStreamFFmpeg {
 impl VideoStreamFFmpeg {
     pub fn new(factory: Rc<dyn ComponentFactory>) -> Self {
         Self {
-            data: None,
+            reader: None,
             factory,
             state: VideoStreamState::Stopped,
             looping: false,
@@ -346,14 +349,46 @@ impl VideoStreamFFmpeg {
         Box::new(Self::new(factory))
     }
 
-    pub fn init_with_data(&mut self, data: Vec<u8>) -> InitResult {
-        use std::io::Cursor;
-        self._init(Cursor::new(data))
-    }
-
-    fn _init(&mut self, io: impl io::Read + io::Seek + 'static) -> InitResult {
+    pub fn init(&mut self, io: impl io::Read + io::Seek + 'static) -> InitResult {
         let time = Arc::new(RwLock::new(TimeData::new()));
-        let input = ffmpeg::format::io::input(io).unwrap();
+        let input = ffmpeg::format::io::input(io);
+        let input = match input {
+            Ok(i) => i,
+            Err(e) => {
+                log::debug!("input error {:?}", e);
+                match e {
+                    ffmpeg::Error::Io(io_e) => log::debug!("err: Io {}", io_e),
+                    ffmpeg::Error::Bug => log::debug!("err: Bug"),
+                    ffmpeg::Error::Bug2 => log::debug!("err: Bug2"),
+                    ffmpeg::Error::Unknown => log::debug!("err: Unknown"),
+                    ffmpeg::Error::Experimental => log::debug!("err: Experimental"),
+                    ffmpeg::Error::BufferTooSmall => log::debug!("err: BufferTooSmall"),
+                    ffmpeg::Error::Eof => log::debug!("err: Eof"),
+                    ffmpeg::Error::Exit => log::debug!("err: Exit"),
+                    ffmpeg::Error::External => log::debug!("err: External"),
+                    ffmpeg::Error::InvalidData => log::debug!("err: InvalidData"),
+                    ffmpeg::Error::PatchWelcome => log::debug!("err: PatchWelcome"),
+                    ffmpeg::Error::InputChanged => log::debug!("err: InputChanged"),
+                    ffmpeg::Error::OutputChanged => log::debug!("err: OutputChanged"),
+                    ffmpeg::Error::BsfNotFound => log::debug!("err: BsfNotFound"),
+                    ffmpeg::Error::DecoderNotFound => log::debug!("err: DecoderNotFound"),
+                    ffmpeg::Error::DemuxerNotFound => log::debug!("err: DemuxerNotFound"),
+                    ffmpeg::Error::EncoderNotFound => log::debug!("err: EncoderNotFound"),
+                    ffmpeg::Error::OptionNotFound => log::debug!("err: OptionNotFound"),
+                    ffmpeg::Error::MuxerNotFound => log::debug!("err: MuxerNotFound"),
+                    ffmpeg::Error::FilterNotFound => log::debug!("err: FilterNotFound"),
+                    ffmpeg::Error::ProtocolNotFound => log::debug!("err: ProtocolNotFound"),
+                    ffmpeg::Error::StreamNotFound => log::debug!("err: StreamNotFound"),
+                    ffmpeg::Error::HttpBadRequest => log::debug!("err: HttpBadRequest"),
+                    ffmpeg::Error::HttpUnauthorized => log::debug!("err: HttpUnauthorized"),
+                    ffmpeg::Error::HttpForbidden => log::debug!("err: HttpForbidden"),
+                    ffmpeg::Error::HttpNotFound => log::debug!("err: HttpNotFound"),
+                    ffmpeg::Error::HttpOther4xx => log::debug!("err: HttpOther4xx"),
+                    ffmpeg::Error::HttpServerError => log::debug!("err: HttpServerError"),
+                }
+                panic!()
+            }
+        };
         let video = Arc::new(Mutex::new(VideoStreamData::new(StreamData::new(
             &input,
             &input.streams().best(Type::Video).unwrap(),

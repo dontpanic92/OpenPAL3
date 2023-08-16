@@ -1,15 +1,21 @@
-use std::{cell::RefCell, collections::HashMap, io::Cursor, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    io::{BufReader, Cursor},
+    rc::Rc,
+};
 
 use anyhow::anyhow;
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use fileformats::{binrw::BinRead, cam::CameraDataFile, npc::NpcInfoFile};
-use mini_fs::MiniFs;
+use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{IEntity, IScene},
     components::mesh::skinned_mesh::AnimKeyFrame,
     rendering::{ComponentFactory, Sprite},
     scene::CoreScene,
+    utils::SeekRead,
 };
 
 use crate::{
@@ -114,14 +120,14 @@ impl AssetLoader {
         Ok(NpcInfoFile::read(&mut cursor)?)
     }
 
-    pub fn load_video(&self, video_name: &str) -> anyhow::Result<Vec<u8>> {
+    pub fn load_video(&self, video_name: &str) -> anyhow::Result<Box<dyn SeekRead>> {
         let video_folder = match video_name.to_lowercase().as_str() {
             "1a.bik" | "end2.bik" | "pal4a.bik" => "VideoA",
             _ => "videob",
         };
 
         let path = format!("/gamedata/{}/{}", video_folder, video_name);
-        Ok(self.vfs.read_to_end(&path)?)
+        Ok(Box::new(BufReader::new(self.vfs.open(&path)?)))
     }
 
     pub fn load_music(&self, music_name: &str) -> anyhow::Result<Vec<u8>> {

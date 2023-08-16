@@ -43,15 +43,16 @@ uuid = "0.8"
 wavefront_obj = "5.1.0"
 xtea = { git = "https://github.com/Brekcel/xtea" }
 xxtea = "0.2.0"
+cpal = "0.15"
 
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-glue = "0.5.0"
 
-[target.'cfg(target_os = "windows")'.dependencies]
-cpal = "0.15"
-ffmpeg = { git = "https://github.com/meh/rust-ffmpeg" }
+[target.'cfg(target_os = "vita")'.dependencies]
+ffmpeg = { git = "https://github.com/meh/rust-ffmpeg", features = ["static"] }
 
 [target.'cfg(not(target_os = "vita"))'.dependencies]
+ffmpeg = { git = "https://github.com/meh/rust-ffmpeg" }
 interprocess = "1.2"
 memmap = "0.7.0"
 dirs = "3.0.1"

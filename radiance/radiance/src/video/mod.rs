@@ -3,7 +3,7 @@ use std::rc::Rc;
 use dashmap::DashMap;
 use imgui::TextureId;
 
-use crate::rendering::ComponentFactory;
+use crate::{rendering::ComponentFactory, utils::SeekRead};
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum VideoStreamState {
@@ -20,7 +20,7 @@ pub enum Codec {
 }
 
 pub trait VideoStream {
-    fn set_data(&mut self, data: Vec<u8>);
+    fn set_reader(&mut self, reader: Box<dyn SeekRead>);
 
     fn play(&mut self, looping: bool) -> (u32, u32);
     fn stop(&mut self);
@@ -43,11 +43,11 @@ pub fn register_video_decoder(codec: Codec, constructor: DecoderConstructor) {
 
 pub(crate) fn create_stream(
     factory: Rc<dyn ComponentFactory>,
-    data: Vec<u8>,
+    reader: Box<dyn SeekRead>,
     codec: Codec,
 ) -> Option<Box<dyn VideoStream>> {
     let entry = VIDEO_DECODER_MAP.get(&codec)?;
     let mut stream = entry.value()(factory);
-    stream.set_data(data);
+    stream.set_reader(reader);
     Some(stream)
 }

@@ -7,6 +7,8 @@ use mini_fs::MiniFs;
 use radiance::comdef::{IAnimatedMeshComponent, IEntity, IScene};
 use radiance::rendering::ComponentFactory;
 use radiance::scene::CoreScene;
+use radiance::utils::SeekRead;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::{io, rc::Rc};
 
@@ -269,18 +271,20 @@ impl AssetManager {
         self.vfs.read_to_end(path).unwrap()
     }
 
-    pub fn load_movie_data(&self, movie_name: &str) -> Vec<u8> {
+    pub fn load_movie_data(&self, movie_name: &str) -> Box<dyn SeekRead> {
         let movie = self.movie_path.join(movie_name).with_extension("bik");
         let end_movie = self.movie_end_path.join(movie_name).with_extension("bik");
         let effect_movie = self
             .movie_effect_path
             .join(movie_name)
             .with_extension("bik");
-        self.vfs.read_to_end(movie).unwrap_or_else(|_| {
+        let file = self.vfs.open(movie).unwrap_or_else(|_| {
             self.vfs
-                .read_to_end(end_movie)
-                .unwrap_or_else(|_| self.vfs.read_to_end(effect_movie).unwrap())
-        })
+                .open(end_movie)
+                .unwrap_or_else(|_| self.vfs.open(effect_movie).unwrap())
+        });
+
+        Box::new(BufReader::new(file))
     }
 
     pub fn load_snd_data(&self, snd_name: &str) -> io::Result<Vec<u8>> {

@@ -15,6 +15,7 @@ TARGET_CC = "arm-vita-eabi-gcc"
 TARGET_CXX = "arm-vita-eabi-g++"
 TARGET_CFLAGS = "-fno-pic -fno-plt"
 TARGET_CXXFLAGS = "-fno-pic -fno-plt"
+FFMPEG_DIR = "${VITASDK}/arm-vita-eabi"
 
 [tasks.build]
 description = "Build the project using `cargo`."

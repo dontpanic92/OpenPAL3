@@ -2,7 +2,10 @@ use std::rc::Rc;
 
 use imgui::TextureId;
 
-use crate::video::{create_stream, Codec, VideoStream, VideoStreamState};
+use crate::{
+    utils::SeekRead,
+    video::{create_stream, Codec, VideoStream, VideoStreamState},
+};
 
 use super::ComponentFactory;
 
@@ -18,11 +21,11 @@ impl VideoPlayer {
     pub fn play(
         &mut self,
         factory: Rc<dyn ComponentFactory>,
-        data: Vec<u8>,
+        reader: Box<dyn SeekRead>,
         codec: Codec,
         looping: bool,
     ) -> Option<(u32, u32)> {
-        let size: Option<(u32, u32)> = create_stream(factory, data, codec).map(|mut stream| {
+        let size: Option<(u32, u32)> = create_stream(factory, reader, codec).map(|mut stream| {
             let size = stream.play(looping);
             self.stream = Some(stream);
             size

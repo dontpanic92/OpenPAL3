@@ -1649,7 +1649,6 @@ dependencies = [
 [[package]]
 name = "ffmpeg"
 version = "0.6.0"
-source = "git+https://github.com/dontpanic92/rust-ffmpeg?branch=yaobow#36360bd12bf21eaadaef77e005d5e730433c9604"
 dependencies = [
  "bitflags 1.3.2",
  "ffmpeg-sys",
@@ -1661,7 +1660,6 @@ dependencies = [
 [[package]]
 name = "ffmpeg-sys"
 version = "6.0.0"
-source = "git+https://github.com/dontpanic92/rust-ffmpeg?branch=yaobow#36360bd12bf21eaadaef77e005d5e730433c9604"
 dependencies = [
  "bindgen",
  "cc",

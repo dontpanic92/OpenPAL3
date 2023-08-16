@@ -10,11 +10,11 @@ pub mod zpkg;
 
 use std::{
     fs,
-    io::{Read, Seek},
     path::{Path, PathBuf},
 };
 
 use mini_fs::{LocalFs, MiniFs};
+use radiance::utils::SeekRead;
 
 use crate::fs::{
     cpk::CpkFs, fmb::fmb_fs::FmbFs, imd::imd_fs::ImdFs, pkg::pkg_fs::PkgFs, sfb::sfb_fs::SfbFs,
@@ -89,9 +89,6 @@ fn mount_packages_recursive(
 
     vfs
 }
-
-pub trait SeekRead: Read + Seek {}
-impl<T> SeekRead for T where T: Read + Seek {}
 
 #[cfg(vita)]
 fn create_reader<P: AsRef<Path>>(path: P) -> anyhow::Result<Box<dyn SeekRead>> {
