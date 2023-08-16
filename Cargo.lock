@@ -224,9 +224,9 @@ checksum = "fc7eb209b1518d6bb87b283c20095f5228ecda460da70b44f0802523dea6da04"
 
 [[package]]
 name = "anyhow"
-version = "1.0.73"
+version = "1.0.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f768393e7fabd388fe8409b13faa4d93ab0fef35db1508438dfdb066918bcf38"
+checksum = "8c6f84b74db2535ebae81eede2f39b947dcbf01d093ae5f791e5dd414a1bf289"
 
 [[package]]
 name = "arboard"
@@ -2161,7 +2161,7 @@ dependencies = [
 [[package]]
 name = "imgui-rs-vitagl-renderer"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/imgui-rs-vitagl-renderer#688cc8b23004901f290ec5b6dde5b0a3e0fa0b07"
+source = "git+https://github.com/dontpanic92/imgui-rs-vitagl-renderer#6d9fbdea33b0624537b970abc95f731cb771f31b"
 dependencies = [
  "cc",
  "imgui",
@@ -2622,7 +2622,7 @@ dependencies = [
 [[package]]
 name = "minilzo-rs"
 version = "0.5.0"
-source = "git+https://github.com/dontpanic92/minilzo-rs/#d0fd799902ff1d7cb33a9297236fff8672c2d0bc"
+source = "git+https://github.com/dontpanic92/minilzo-rs/#7fcc6b3ab200ce12e2d4f759988c0436e0aef467"
 dependencies = [
  "cc",
 ]
@@ -3846,9 +3846,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.104"
+version = "1.0.105"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "076066c5f1078eac5b722a31827a8832fe108bed65dfa75e233c89f8206e976c"
+checksum = "693151e1ac27563d6dbcec9dee9fbd5da8539b20fa14ad3752b2e6d363ace360"
 dependencies = [
  "itoa",
  "ryu",
@@ -4441,18 +4441,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.45"
+version = "1.0.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dedd246497092a89beedfe2c9f176d44c1b672ea6090edc20544ade01fbb7ea0"
+checksum = "d9207952ae1a003f42d3d5e892dac3c6ba42aa6ac0c79a6a91a2b5cb4253e75c"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.45"
+version = "1.0.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d7b1fadccbbc7e19ea64708629f9d8dccd007c260d66485f20a6d41bc1cf4b3"
+checksum = "f1728216d3244de4f14f14f8c15c79be1a7c67867d28d69b719690e2a19fb445"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5364,9 +5364,9 @@ dependencies = [
 
 [[package]]
 name = "winnow"
-version = "0.5.10"
+version = "0.5.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5504cc7644f4b593cbc05c4a55bf9bd4e94b867c3c0bd440934174d50482427d"
+checksum = "83817bbecf72c73bad717ee86820ebf286203d2e04c3951f3cd538869c897364"
 dependencies = [
  "memchr",
 ]

@@ -26,25 +26,28 @@ impl ImguiContext {
         setup_theme(&mut context);
 
         context.style_mut().scale_all_sizes(platform.dpi_scale());
-        context.fonts().add_font(&[FontSource::TtfData {
-            data: radiance_assets::FONT_SOURCE_HAN_SERIF,
-            size_pixels: 28. * platform.dpi_scale(),
-            config: Some(FontConfig {
-                rasterizer_multiply: 1.75,
-                glyph_ranges: FontGlyphRanges::chinese_full(),
-                ..FontConfig::default()
-            }),
-        }]);
+        #[cfg(not(vita))]
+        {
+            context.fonts().add_font(&[FontSource::TtfData {
+                data: radiance_assets::FONT_SOURCE_HAN_SERIF,
+                size_pixels: 28. * platform.dpi_scale(),
+                config: Some(FontConfig {
+                    rasterizer_multiply: 1.75,
+                    glyph_ranges: FontGlyphRanges::chinese_full(),
+                    ..FontConfig::default()
+                }),
+            }]);
 
-        context.fonts().add_font(&[FontSource::TtfData {
-            data: radiance_assets::FONT_SOURCE_HAN_SERIF,
-            size_pixels: 18. * platform.dpi_scale(),
-            config: Some(FontConfig {
-                rasterizer_multiply: 1.75,
-                glyph_ranges: FontGlyphRanges::chinese_full(),
-                ..FontConfig::default()
-            }),
-        }]);
+            context.fonts().add_font(&[FontSource::TtfData {
+                data: radiance_assets::FONT_SOURCE_HAN_SERIF,
+                size_pixels: 18. * platform.dpi_scale(),
+                config: Some(FontConfig {
+                    rasterizer_multiply: 1.75,
+                    glyph_ranges: FontGlyphRanges::chinese_full(),
+                    ..FontConfig::default()
+                }),
+            }]);
+        }
 
         context.io_mut().config_flags |= imgui::ConfigFlags::DOCKING_ENABLE;
 

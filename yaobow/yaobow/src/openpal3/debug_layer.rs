@@ -177,7 +177,13 @@ impl OpenPal3DebugLayer {
 
 impl DebugLayer for OpenPal3DebugLayer {
     fn update(&self, scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32) {
-        let font = ui.push_font(ui.fonts().fonts()[1]);
+        let fonts = ui.fonts().fonts();
+        let font = if fonts.len() > 1 {
+            Some(ui.push_font(fonts[1]))
+        } else {
+            None
+        };
+
         (|| {
             if self
                 .input_engine
@@ -195,6 +201,9 @@ impl DebugLayer for OpenPal3DebugLayer {
 
             self.render(scene_manager, ui, delta_sec);
         })();
-        font.pop();
+
+        if let Some(font) = font {
+            font.pop();
+        }
     }
 }

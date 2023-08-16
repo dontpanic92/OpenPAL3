@@ -14,6 +14,19 @@ mod openpal4;
 mod test;
 
 pub fn main() {
+    #[cfg(vita)]
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || entry())
+        .expect("Unable to spawn thread")
+        .join()
+        .expect("Unable to join thread");
+
+    #[cfg(not(vita))]
+    entry();
+}
+
+fn entry() {
     radiance::application::Application::set_panic_hook();
     init_logger();
     register_opengb_video_decoders();
@@ -71,8 +84,8 @@ fn init_logger() {
 
 #[used]
 #[export_name = "_newlib_heap_size_user"]
-pub static _NEWLIB_HEAP_SIZE_USER: u32 = 192 * 1024 * 1024;
+pub static _NEWLIB_HEAP_SIZE_USER: u32 = 204 * 1024 * 1024;
 
 #[used]
-#[export_name = "sceUserMainThreadStackSize"]
-pub static SCE_USER_MAIN_THREAD_STACK_SIZE: u32 = 4 * 1024 * 1024;
+#[export_name = "sceLibcHeapSize"]
+pub static SCE_LIBC_HEAP_SIZE: u32 = 16 * 1024 * 1024;

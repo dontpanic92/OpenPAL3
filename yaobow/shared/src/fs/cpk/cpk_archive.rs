@@ -20,6 +20,7 @@ pub struct CpkArchive {
     header: CpkHeader,
     pub entries: Vec<CpkTable>,
     crc_to_index: HashMap<u32, usize>,
+    lzo: minilzo_rs::LZO,
 }
 
 impl CpkArchive {
@@ -59,57 +60,14 @@ impl CpkArchive {
         }
 
         let crc_to_index = Self::build_index_map(&entries);
+        let lzo = minilzo_rs::LZO::init().unwrap();
 
         Ok(CpkArchive {
             reader,
             header,
             entries,
             crc_to_index,
-        })
-    }
-
-    pub fn load2(mut reader: Box<dyn SeekRead>, encrypt_size: usize) -> IoResult<CpkArchive> {
-        let header = CpkHeader::read(&mut reader)?;
-
-        let buffer = if header.is_pal4() {
-            let buffer_len = (std::mem::size_of::<CpkTable>() + 4) * header.file_num as usize;
-            let mut encrypted_buffer = vec![0; encrypt_size];
-            reader.read_exact(&mut encrypted_buffer)?;
-            let mut decrypted_buffer = xxtea::decrypt_raw(
-                &encrypted_buffer,
-                "Vampire.C.J at Softstar Technology (ShangHai) Co., Ltd",
-            );
-
-            if buffer_len > encrypt_size {
-                let mut extra_buffer = vec![0; buffer_len - encrypt_size];
-                reader.read_exact(&mut extra_buffer)?;
-                decrypted_buffer.append(&mut extra_buffer);
-            }
-
-            decrypted_buffer
-        } else {
-            let buffer_len = std::mem::size_of::<CpkTable>() * header.file_num as usize;
-            let mut buffer = vec![0; buffer_len];
-            reader.read_exact(&mut buffer)?;
-
-            buffer
-        };
-
-        let mut entry_cursor = Cursor::new(&buffer);
-        let mut entries = vec![];
-        for _ in 0..header.file_num {
-            if let Ok(t) = CpkTable::read(&mut entry_cursor, header.is_pal4()) {
-                entries.push(t)
-            }
-        }
-
-        let crc_to_index = Self::build_index_map(&entries);
-
-        Ok(CpkArchive {
-            reader,
-            header,
-            entries,
-            crc_to_index,
+            lzo,
         })
     }
 
@@ -143,8 +101,8 @@ impl CpkArchive {
         if !entry.is_compressed() {
             Ok(MemoryFile::new(Cursor::new(content)))
         } else {
-            let lzo = minilzo_rs::LZO::init().unwrap();
-            let decompressed_content = lzo
+            let decompressed_content = self
+                .lzo
                 .decompress(&content, entry.origin_size as usize)
                 .or_else(|e| Err(IoError::new(IoErrorKind::InvalidData, e)))?;
             Ok(MemoryFile::new(Cursor::new(decompressed_content)))
