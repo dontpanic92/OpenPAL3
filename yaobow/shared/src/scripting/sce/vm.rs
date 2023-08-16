@@ -514,7 +514,7 @@ impl SceProcContext {
             }
             71 => {
                 // RoleStop
-                nop_command!(self, RoleStop, i32)
+                command!(self, SceCommandRoleStop, role_id: i32)
             }
             72 => {
                 // RoleEmote
@@ -839,7 +839,7 @@ impl SceProcContext {
             }
             221 => {
                 // RoleEndAction
-                nop_command!(self, RoleEndAction, i32)
+                command!(self, SceCommandRoleEndAction, role_id: i32)
             }
             250 => {
                 // CameraFree

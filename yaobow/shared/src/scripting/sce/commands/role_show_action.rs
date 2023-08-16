@@ -20,12 +20,13 @@ pub struct SceCommandRoleShowAction {
 impl SceCommand for SceCommandRoleShowAction {
     fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
         let repeat = match self.repeat_mode {
-            0 => RoleAnimationRepeatMode::Repeat,
-            1 => RoleAnimationRepeatMode::NoRepeat,
-            _ => RoleAnimationRepeatMode::NoRepeat,
+            r if r > 0 => RoleAnimationRepeatMode::Repeat(r),
+            -1 => RoleAnimationRepeatMode::Loop,
+            -2 => RoleAnimationRepeatMode::Hold,
+            _ => RoleAnimationRepeatMode::Repeat(1),
         };
 
-        let _entity = scene_manager.resolve_role_mut_do(state, self.role_id, |_e, r| {
+        let _ = scene_manager.resolve_role_mut_do(state, self.role_id, |_, r| {
             r.get().set_active(true);
             r.get().play_anim(&self.action_name, repeat);
         });
@@ -34,14 +35,14 @@ impl SceCommand for SceCommandRoleShowAction {
     fn update(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        _ui: &Ui,
+        ui: &Ui,
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {
-        let s = scene_manager.resolve_role_do(state, self.role_id, |_e, r| r.get().state());
+        let rc = scene_manager.resolve_role_do(state, self.role_id, |_, r| r.get()).unwrap();
+        let s = rc.state();
 
-        let s = s.unwrap_or(RoleState::Idle);
-        s == RoleState::Idle || s == RoleState::AnimationFinished
+        s == RoleState::Idle || s == RoleState::AnimationFinished || s == RoleState::AnimationHolding
     }
 }
 

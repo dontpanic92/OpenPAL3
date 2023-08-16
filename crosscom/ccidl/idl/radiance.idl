@@ -111,7 +111,7 @@ interface IAnimatedMeshComponent: IComponent {
     [internal(), rust()]
     radiance::components::mesh::MorphAnimationState morph_animation_state();
 
-    void replay();
+    void play(bool replay);
 }
 
 [uuid(c1502819-57d7-45d2-a160-13d803e4fc48)]

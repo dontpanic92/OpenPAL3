@@ -24,14 +24,16 @@ use super::error::EntityError;
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum RoleAnimationRepeatMode {
-    NoRepeat,
-    Repeat,
+    Repeat(i32),
+    Loop,
+    Hold,
 }
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum RoleState {
     PlayingAnimation,
     AnimationFinished,
+    AnimationHolding,
     Idle,
     Walking,
     Running,
@@ -131,7 +133,7 @@ impl RoleController {
             idle_anim_name: idle_anim_name.to_string(),
             walking_anim_name,
             running_anim_name,
-            anim_repeat_mode: RefCell::new(RoleAnimationRepeatMode::Repeat),
+            anim_repeat_mode: RefCell::new(RoleAnimationRepeatMode::Repeat(1)),
             is_active: RefCell::new(false),
             state: RefCell::new(RoleState::Idle),
             auto_play_idle: RefCell::new(true),
@@ -220,12 +222,22 @@ impl RoleController {
             IAnimatedMeshComponent::uuid(),
             anim.query_interface::<IComponent>().unwrap(),
         );
+        self.replay_anim();
+    }
+
+    pub fn continue_anim(&self) {
+        self.active_anim().value().play(false);
+        *self.state.borrow_mut() = RoleState::PlayingAnimation;
+    }
+
+    pub fn replay_anim(&self) {
+        self.active_anim().value().play(true);
     }
 
     pub fn run(&self) {
         if *self.state.borrow() != RoleState::Running {
             let name = self.running_anim_name.clone();
-            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
+            self.play_anim(&name, RoleAnimationRepeatMode::Loop);
             *self.state.borrow_mut() = RoleState::Running;
         }
     }
@@ -233,7 +245,7 @@ impl RoleController {
     pub fn idle(&self) {
         if *self.state.borrow() != RoleState::Idle {
             let name = self.idle_anim_name.clone();
-            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
+            self.play_anim(&name, RoleAnimationRepeatMode::Loop);
             *self.state.borrow_mut() = RoleState::Idle;
         }
     }
@@ -241,7 +253,7 @@ impl RoleController {
     pub fn walk(&self) {
         if *self.state.borrow() != RoleState::Walking {
             let name = self.walking_anim_name.clone();
-            self.play_anim(&name, RoleAnimationRepeatMode::Repeat);
+            self.play_anim(&name, RoleAnimationRepeatMode::Loop);
             *self.state.borrow_mut() = RoleState::Walking;
         }
     }
@@ -291,12 +303,36 @@ impl IComponentImpl for RoleController {
         if self.is_active() {
             if self.active_anim().value().morph_animation_state() == MorphAnimationState::Finished {
                 self.state.replace(RoleState::AnimationFinished);
-                if *self.anim_repeat_mode.borrow() == RoleAnimationRepeatMode::NoRepeat {
-                    if *self.auto_play_idle.borrow() {
-                        self.idle();
-                    }
-                } else {
-                    self.active_anim().value().replay();
+                let mode = *self.anim_repeat_mode.borrow();
+                match mode {
+                    RoleAnimationRepeatMode::Loop => {
+                        self.replay_anim();
+                    },
+                    RoleAnimationRepeatMode::Repeat(count) => {
+                        if count - 1 > 0 {
+                            *self.anim_repeat_mode.borrow_mut() = RoleAnimationRepeatMode::Repeat(count - 1);
+                            self.replay_anim();
+                        } else {
+                            if *self.auto_play_idle.borrow() {
+                                self.idle();
+                            }
+                        }
+                    },
+                    RoleAnimationRepeatMode::Hold => {
+                        if *self.auto_play_idle.borrow() {
+                            self.idle();
+                        }
+                    },
+                }
+            } else if self.active_anim().value().morph_animation_state() == MorphAnimationState::Holding {
+                let mode = *self.anim_repeat_mode.borrow();
+                match mode {
+                    RoleAnimationRepeatMode::Loop | RoleAnimationRepeatMode::Repeat(_) => {
+                        self.continue_anim();
+                    },
+                    RoleAnimationRepeatMode::Hold => {
+                        self.state.replace(RoleState::AnimationHolding);
+                    },
                 }
             }
         }
@@ -354,8 +390,15 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
         ));
     }
 
+    let mut hold_time = 0.;
+    for anim in mv3file.action_desc {
+        if anim.name.starts_with("hold") {
+            hold_time = anim.tick as f32 / 4580.;
+        }
+    }
+
     let animated_mesh = AnimatedMeshComponent::new(entity, component_factory.clone());
-    animated_mesh.set_morph_targets(morph_targets);
+    animated_mesh.set_morph_targets(morph_targets, hold_time);
 
     Ok(ComRc::from_object(animated_mesh))
 }

@@ -2210,7 +2210,10 @@ pub struct IAnimatedMeshComponentVirtualTable {
     pub morph_animation_state: fn(
         this: *const *const std::os::raw::c_void,
     ) -> radiance::components::mesh::MorphAnimationState,
-    pub replay: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub play: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        replay: std::os::raw::c_int,
+    ) -> (),
 }
 
 #[repr(C)]
@@ -2291,10 +2294,10 @@ impl IAnimatedMeshComponent {
         }
     }
 
-    pub fn replay(&self) -> () {
+    pub fn play(&self, replay: bool) -> () {
         unsafe {
             let this = self as *const IAnimatedMeshComponent as *const *const std::os::raw::c_void;
-            let ret = ((*self.vtable).replay)(this);
+            let ret = ((*self.vtable).play)(this, replay.into());
             let ret: () = ret.into();
 
             ret
@@ -2309,7 +2312,7 @@ impl IAnimatedMeshComponent {
 
 pub trait IAnimatedMeshComponentImpl {
     fn morph_animation_state(&self) -> radiance::components::mesh::MorphAnimationState;
-    fn replay(&self) -> ();
+    fn play(&self, replay: bool) -> ();
 }
 
 impl crosscom::ComInterface for IAnimatedMeshComponent {
@@ -2419,9 +2422,14 @@ macro_rules! ComObject_AnimatedMeshComponent {
                 }
             }
 
-            unsafe extern "system" fn replay(this: *const *const std::os::raw::c_void) -> () {
+            unsafe extern "system" fn play(
+                this: *const *const std::os::raw::c_void,
+                replay: std::os::raw::c_int,
+            ) -> () {
+                let replay: bool = replay != 0;
+
                 let __crosscom_object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
-                (*__crosscom_object).inner.replay().into()
+                (*__crosscom_object).inner.play(replay.into()).into()
             }
 
             unsafe extern "system" fn on_loading(this: *const *const std::os::raw::c_void) -> () {
@@ -2454,7 +2462,7 @@ macro_rules! ComObject_AnimatedMeshComponent {
                         on_loading,
                         on_updating,
                         morph_animation_state,
-                        replay,
+                        play,
                     },
                 };
 
