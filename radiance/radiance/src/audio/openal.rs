@@ -6,9 +6,6 @@ use super::{AudioEngine, AudioSource, AudioSourceState};
 use alto::{Alto, Context, Mono, Source, Stereo};
 use std::rc::Rc;
 
-#[cfg(not(vita))]
-use super::decoders::Mp3Decoder;
-
 pub struct OpenAlAudioEngine {
     context: Rc<Context>,
 }
@@ -80,7 +77,7 @@ impl AudioSource for OpenAlAudioSource {
                     }
                     Ok(None) => {}
                     Err(e) => {
-                        println!("Error: {}", e);
+                        println!("Error: {:?}", e);
                         self.streaming_source.queue_buffer(buffer).unwrap();
                     }
                 }

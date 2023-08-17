@@ -24,7 +24,15 @@ impl super::Decoder for SymphoniaDecoder {
             let packet = match self.format.next_packet() {
                 Ok(packet) => packet,
                 Err(Error::ResetRequired) => {
-                    unimplemented!();
+                    self.reset();
+                    return Err(Error::ResetRequired)?;
+                }
+                Err(Error::IoError(err)) => {
+                    if err.kind() == std::io::ErrorKind::UnexpectedEof {
+                        return Ok(None);
+                    } else {
+                        return Err(err)?;
+                    }
                 }
                 Err(err) => {
                     return Err(err)?;
@@ -73,6 +81,7 @@ impl super::Decoder for SymphoniaDecoder {
                 track_id: self.track_id,
             },
         );
+        self.decoder.reset();
     }
 }
 

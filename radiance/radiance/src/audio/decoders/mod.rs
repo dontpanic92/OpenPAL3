@@ -1,15 +1,9 @@
-#[cfg(not(vita))]
-mod mp3;
-
 mod ogg;
 mod symphonia;
 mod wav;
 
-#[cfg(not(vita))]
-pub use mp3::Mp3Decoder;
-
+pub use self::symphonia::SymphoniaDecoder;
 pub use ogg::OggDecoder;
-pub use symphonia::SymphoniaDecoder;
 pub use wav::WavDecoder;
 
 pub trait Decoder {

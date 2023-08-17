@@ -37,7 +37,6 @@ gilrs = "0.8.1"
 raw-window-handle = "0.5"
 vma = "0.3"
 winit = "0.27"
-minimp3 = { package = "minimp3_fixed", version = "0.5.3" }
 
 [target.'cfg(target_os = "vita")'.dependencies]
 imgui-rs-vitagl-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vitagl-renderer" }
