@@ -43,7 +43,6 @@ uuid = "0.8"
 wavefront_obj = "5.1.0"
 xtea = { git = "https://github.com/Brekcel/xtea" }
 xxtea = "0.2.0"
-cpal = "0.15"
 
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-glue = "0.5.0"

@@ -1,8 +1,3 @@
-use cpal::{
-    traits::{DeviceTrait, HostTrait, StreamTrait},
-    Data, Data as CpalStreamData, Device, SampleFormat, SampleFormat as CpalSampleFormat,
-    Stream as CpalStream, StreamConfig,
-};
 use ffmpeg::{
     codec::{
         decoder::{Audio as AudioDecoder, Decoder as FFmpegDecoder, Video as VideoDecoder},
@@ -18,7 +13,6 @@ use ffmpeg::{
 use ffmpeg::{
     software::resampling::Context as FFmpegResamplingContext,
     util::{
-        channel_layout::ChannelLayout,
         format::sample::{Sample as FFmpegSampleFormat, Type as SampleType},
         frame::Audio as AudioFrame,
     },
@@ -26,7 +20,6 @@ use ffmpeg::{
 
 use std::{
     collections::VecDeque,
-    convert::{TryFrom, TryInto},
     io,
     ops::Add,
     rc::Rc,
@@ -42,13 +35,14 @@ use imgui::TextureId;
 use lazy_static::lazy_static;
 use log::{debug, error, warn};
 use radiance::{
+    audio::AudioEngine,
     rendering::{ComponentFactory, Texture},
     utils::SeekRead,
 };
 
 use radiance::video::{VideoStream, VideoStreamState};
 
-const OUTPUT_AUDIO_BUFFER_MAX: usize = 50_000;
+const OUTPUT_AUDIO_BUFFER_MAX: usize = 20;
 
 const VIDEO_PACKET_QUEUE_MAX: usize = 1024;
 const AUDIO_PACKET_QUEUE_MAX: usize = 512;
@@ -61,10 +55,6 @@ const ENDED_SLEEP: u64 = 50;
 
 lazy_static! {
     static ref FRAME_SLEEP_EPSILON: Duration = Duration::from_millis(1);
-}
-
-lazy_static! {
-    static ref AUDIO: Audio = Audio::new();
 }
 
 pub struct InitResult {
@@ -238,6 +228,7 @@ struct VideoState {
 pub struct VideoStreamFFmpeg {
     reader: Option<Box<dyn SeekRead>>,
     factory: Rc<dyn ComponentFactory>,
+    audio_engine: Rc<dyn AudioEngine>,
     state: VideoStreamState,
     looping: bool,
     video_state: Option<Arc<Mutex<VideoState>>>,
@@ -332,10 +323,11 @@ impl VideoStream for VideoStreamFFmpeg {
 }
 
 impl VideoStreamFFmpeg {
-    pub fn new(factory: Rc<dyn ComponentFactory>) -> Self {
+    pub fn new(factory: Rc<dyn ComponentFactory>, audio_engine: Rc<dyn AudioEngine>) -> Self {
         Self {
             reader: None,
             factory,
+            audio_engine,
             state: VideoStreamState::Stopped,
             looping: false,
             video_state: None,
@@ -345,50 +337,16 @@ impl VideoStreamFFmpeg {
         }
     }
 
-    pub fn ctor(factory: Rc<dyn ComponentFactory>) -> Box<dyn VideoStream> {
-        Box::new(Self::new(factory))
+    pub fn create(
+        factory: Rc<dyn ComponentFactory>,
+        audio_engine: Rc<dyn AudioEngine>,
+    ) -> Box<dyn VideoStream> {
+        Box::new(Self::new(factory, audio_engine))
     }
 
     pub fn init(&mut self, io: impl io::Read + io::Seek + 'static) -> InitResult {
         let time = Arc::new(RwLock::new(TimeData::new()));
-        let input = ffmpeg::format::io::input(io);
-        let input = match input {
-            Ok(i) => i,
-            Err(e) => {
-                log::debug!("input error {:?}", e);
-                match e {
-                    ffmpeg::Error::Io(io_e) => log::debug!("err: Io {}", io_e),
-                    ffmpeg::Error::Bug => log::debug!("err: Bug"),
-                    ffmpeg::Error::Bug2 => log::debug!("err: Bug2"),
-                    ffmpeg::Error::Unknown => log::debug!("err: Unknown"),
-                    ffmpeg::Error::Experimental => log::debug!("err: Experimental"),
-                    ffmpeg::Error::BufferTooSmall => log::debug!("err: BufferTooSmall"),
-                    ffmpeg::Error::Eof => log::debug!("err: Eof"),
-                    ffmpeg::Error::Exit => log::debug!("err: Exit"),
-                    ffmpeg::Error::External => log::debug!("err: External"),
-                    ffmpeg::Error::InvalidData => log::debug!("err: InvalidData"),
-                    ffmpeg::Error::PatchWelcome => log::debug!("err: PatchWelcome"),
-                    ffmpeg::Error::InputChanged => log::debug!("err: InputChanged"),
-                    ffmpeg::Error::OutputChanged => log::debug!("err: OutputChanged"),
-                    ffmpeg::Error::BsfNotFound => log::debug!("err: BsfNotFound"),
-                    ffmpeg::Error::DecoderNotFound => log::debug!("err: DecoderNotFound"),
-                    ffmpeg::Error::DemuxerNotFound => log::debug!("err: DemuxerNotFound"),
-                    ffmpeg::Error::EncoderNotFound => log::debug!("err: EncoderNotFound"),
-                    ffmpeg::Error::OptionNotFound => log::debug!("err: OptionNotFound"),
-                    ffmpeg::Error::MuxerNotFound => log::debug!("err: MuxerNotFound"),
-                    ffmpeg::Error::FilterNotFound => log::debug!("err: FilterNotFound"),
-                    ffmpeg::Error::ProtocolNotFound => log::debug!("err: ProtocolNotFound"),
-                    ffmpeg::Error::StreamNotFound => log::debug!("err: StreamNotFound"),
-                    ffmpeg::Error::HttpBadRequest => log::debug!("err: HttpBadRequest"),
-                    ffmpeg::Error::HttpUnauthorized => log::debug!("err: HttpUnauthorized"),
-                    ffmpeg::Error::HttpForbidden => log::debug!("err: HttpForbidden"),
-                    ffmpeg::Error::HttpNotFound => log::debug!("err: HttpNotFound"),
-                    ffmpeg::Error::HttpOther4xx => log::debug!("err: HttpOther4xx"),
-                    ffmpeg::Error::HttpServerError => log::debug!("err: HttpServerError"),
-                }
-                panic!()
-            }
-        };
+        let input = ffmpeg::format::io::input(io).unwrap();
         let video = Arc::new(Mutex::new(VideoStreamData::new(StreamData::new(
             &input,
             &input.streams().best(Type::Video).unwrap(),
@@ -405,13 +363,25 @@ impl VideoStreamFFmpeg {
         let weak_video = Arc::downgrade(&video);
         let duration = video.lock().unwrap().stream.duration;
         let duration_pts = video.lock().unwrap().stream.duration_pts;
+
         // Now create the audio stream data.
-        let audio = Arc::new(Mutex::new(AudioStreamData::new(StreamData::new(
-            &input,
-            &input.streams().best(Type::Audio).unwrap(),
-            Decoder::new_audio,
-            Arc::clone(&time),
-        ))));
+        let resampled_frames = Arc::new(Mutex::new(VecDeque::new()));
+        let mut audio_source = self.audio_engine.create_custom_decoder_source();
+        audio_source.set_decoder(Box::new(AudioFFmpegDecoder::new(resampled_frames.clone())));
+        let audio_output_stream = Arc::new(OutputAudioStream {
+            stream_source: Mutex::new(audio_source),
+            resampled_frames,
+        });
+
+        let audio = Arc::new(Mutex::new(AudioStreamData::new(
+            StreamData::new(
+                &input,
+                &input.streams().best(Type::Audio).unwrap(),
+                Decoder::new_audio,
+                Arc::clone(&time),
+            ),
+            audio_output_stream,
+        )));
         let weak_audio = Arc::downgrade(&audio);
         // Create the state.
         let state = Arc::new(Mutex::new(VideoState {
@@ -434,7 +404,6 @@ impl VideoStreamFFmpeg {
         self.threads.push(thread::spawn(|| {
             run_player_thread(weak_state, "queue".into(), enqueue_next_packet)
         }));
-        let weak_video_2 = Weak::clone(&weak_video);
         self.threads.push(thread::spawn(move || {
             run_player_thread(weak_video, "video player".into(), play_video)
         }));
@@ -493,6 +462,55 @@ impl Drop for VideoStreamFFmpeg {
     fn drop(&mut self) {
         self._stop_threads();
     }
+}
+
+struct AudioFFmpegDecoder {
+    resampled_frames: Arc<Mutex<VecDeque<AudioFrame>>>,
+}
+
+impl AudioFFmpegDecoder {
+    pub fn new(resampled_frames: Arc<Mutex<VecDeque<AudioFrame>>>) -> Self {
+        Self { resampled_frames }
+    }
+}
+
+impl radiance::audio::Decoder for AudioFFmpegDecoder {
+    fn fetch_samples(&mut self) -> anyhow::Result<Option<radiance::audio::Samples>> {
+        let mut frames = self.resampled_frames.lock().unwrap();
+
+        let frame = frames.pop_front();
+        let samples = match frame {
+            Some(f) => {
+                // Get frame data in the correct type.
+                let channels = f.channels() as usize;
+                let sample_rate = f.sample_rate() as i32;
+
+                let frame_data = unsafe {
+                    // FFmpeg internally allocates the data pointers, they're definitely aligned.
+                    #[allow(clippy::cast_ptr_alignment)]
+                    std::slice::from_raw_parts(
+                        f.data(0).as_ptr() as *const i16,
+                        f.samples() * f.channels() as usize,
+                    )
+                };
+
+                radiance::audio::Samples {
+                    data: frame_data.to_vec(),
+                    channels,
+                    sample_rate,
+                }
+            }
+            None => radiance::audio::Samples {
+                data: vec![0; 100],
+                channels: 2,
+                sample_rate: 44100,
+            },
+        };
+
+        Ok(Some(samples))
+    }
+
+    fn reset(&mut self) {}
 }
 
 fn get_source_frame(video: &mut VideoStreamData) -> Result<(VideoFrame, u32), LoopState> {
@@ -625,102 +643,31 @@ fn play_video(video: &mut VideoStreamData) -> LoopState {
     LoopState::Running
 }
 
-pub struct Audio {
-    output_device: Device,
+struct OutputAudioStream {
+    stream_source: Mutex<Box<dyn radiance::audio::AudioCustomDecoderSource>>,
+    resampled_frames: Arc<Mutex<VecDeque<AudioFrame>>>,
 }
 
-#[derive(Clone, Debug)]
-pub struct FormatConfig {
-    pub config: StreamConfig,
-    pub format: SampleFormat,
-}
-
-pub struct OutputAudioStream {
-    pub stream: CpalStream,
-    pub config: FormatConfig,
-}
-
-unsafe impl Send for OutputAudioStream {}
-unsafe impl Sync for OutputAudioStream {}
-
-impl Audio {
-    fn new() -> Self {
-        let host = cpal::default_host();
-        let output_device = host
-            .default_output_device()
-            .expect("Failed to open audio output device");
-
-        Self { output_device }
-    }
-
-    pub fn create_output_stream<F>(&'static self, callback: F) -> Arc<OutputAudioStream>
-    where
-        F: Fn(&mut Data, &cpal::OutputCallbackInfo) -> () + Send + Sync + 'static,
-    {
-        let default_output_config = self
-            .output_device
-            .default_output_config()
-            .expect("error querying default ouput config");
-
-        let format = default_output_config.sample_format();
-        let config = default_output_config.into();
-        debug!("default playback config: {:?}", config);
-
-        // Create the new output stream.
-        let stream = self
-            .output_device
-            .build_output_stream_raw(
-                &config,
-                format,
-                callback,
-                move |err| {
-                    // react to errors here.
-                },
-                None,
-            )
-            .unwrap();
-        // Create our wrapper struct
-        let audio_stream = Arc::new(OutputAudioStream {
-            stream,
-            config: FormatConfig { config, format },
-        });
-
-        audio_stream
-    }
-}
-
-impl OutputAudioStream {
-    pub fn play(&self) -> Result<(), cpal::PlayStreamError> {
-        self.stream.play()
-    }
-
-    pub fn pause(&self) -> Result<(), cpal::PauseStreamError> {
-        self.stream.pause()
-    }
-}
-
-impl Drop for OutputAudioStream {
-    fn drop(&mut self) {}
-}
-
-pub struct AudioStreamData {
+struct AudioStreamData {
     pub stream: StreamData,
-    output_stream: Option<(Arc<OutputAudioStream>, OutputFormat)>,
+    output_stream: Arc<OutputAudioStream>,
     source_frames: VecDeque<AudioFrame>,
-    resampled_frames: VecDeque<AudioFrame>,
     resampler: Option<ResamplingContext>,
-    sample_buffer: Arc<Mutex<Option<SampleBuffer>>>,
+    target_format: FFmpegSampleFormat,
+    target_channel_layout: ffmpeg::ChannelLayout,
+    target_sample_rate: u32,
 }
 
 impl AudioStreamData {
-    pub fn new(stream: StreamData) -> Self {
+    pub fn new(stream: StreamData, output_stream: Arc<OutputAudioStream>) -> Self {
         Self {
             stream,
-            output_stream: None,
+            output_stream,
             source_frames: VecDeque::new(),
-            resampled_frames: VecDeque::new(),
             resampler: None,
-            sample_buffer: Arc::new(Mutex::new(None)),
+            target_format: FFmpegSampleFormat::I16(SampleType::Packed),
+            target_channel_layout: ffmpeg::ChannelLayout::STEREO,
+            target_sample_rate: 44100,
         }
     }
 }
@@ -730,44 +677,6 @@ struct ResamplingContext {
 }
 
 unsafe impl Send for ResamplingContext {}
-
-enum SampleBuffer {
-    I16 { buffer: VecDeque<i16> },
-    F32 { buffer: VecDeque<f32> },
-}
-
-pub struct OutputFormat {
-    format: FFmpegSampleFormat,
-    channel_layout: ChannelLayout,
-    rate: u32,
-}
-
-impl TryFrom<&FormatConfig> for OutputFormat {
-    type Error = String;
-
-    fn try_from(config: &FormatConfig) -> Result<Self, Self::Error> {
-        let dst_format = match config.format {
-            CpalSampleFormat::F32 => FFmpegSampleFormat::F32(SampleType::Packed),
-            CpalSampleFormat::I16 => FFmpegSampleFormat::I16(SampleType::Packed),
-            _ => {
-                return Err("Unsupported sample format!".into());
-            }
-        };
-        let channel_layout = match config.config.channels {
-            1 => ChannelLayout::MONO,
-            2 => ChannelLayout::STEREO,
-            c => {
-                return Err(format!("Unsupported number of channels: {}!", c));
-            }
-        };
-
-        Ok(Self {
-            format: dst_format,
-            channel_layout,
-            rate: config.config.sample_rate.0,
-        })
-    }
-}
 
 fn get_audio_source_frames(audio: &mut AudioStreamData) -> Result<Vec<AudioFrame>, LoopState> {
     // Get a packet from the packet queue.
@@ -798,7 +707,7 @@ fn get_audio_source_frames(audio: &mut AudioStreamData) -> Result<Vec<AudioFrame
     loop {
         let mut frame = AudioFrame::empty();
         match decoder.receive_frame(&mut frame) {
-            Err(err) => break,
+            Err(_) => break,
             Ok(()) => {
                 if frame.format() != FFmpegSampleFormat::None {
                     frames.push(frame);
@@ -818,8 +727,6 @@ fn resample_source_frame(
     audio: &mut AudioStreamData,
     source_frame: &AudioFrame,
 ) -> Vec<AudioFrame> {
-    // Get the stream's output format.
-    let (_stream, format) = audio.output_stream.as_ref().unwrap();
     // Get or create the correct resampler.
     let resampler = if let Some(resampler) = audio.resampler.as_mut() {
         resampler
@@ -829,14 +736,15 @@ fn resample_source_frame(
                 source_frame.format(),
                 source_frame.channel_layout(),
                 source_frame.sample_rate(),
-                format.format,
-                format.channel_layout,
-                format.rate,
+                audio.target_format,
+                audio.target_channel_layout,
+                audio.target_sample_rate,
             )
             .unwrap(),
         });
         audio.resampler.as_mut().unwrap()
     };
+
     // Start resampling.
     let context = &mut resampler.context;
     let mut resampled_frames = Vec::new();
@@ -846,9 +754,9 @@ fn resample_source_frame(
     resampled_frames.push(resampled_frame);
     while let Some(_) = delay {
         let mut resampled_frame = AudioFrame::empty();
-        resampled_frame.set_channel_layout(format.channel_layout);
-        resampled_frame.set_format(format.format);
-        resampled_frame.set_rate(format.rate);
+        resampled_frame.set_channel_layout(audio.target_channel_layout);
+        resampled_frame.set_format(audio.target_format);
+        resampled_frame.set_rate(audio.target_sample_rate);
         delay = context.flush(&mut resampled_frame).unwrap();
         resampled_frames.push(resampled_frame);
     }
@@ -856,177 +764,52 @@ fn resample_source_frame(
     resampled_frames
 }
 
-pub fn play_audio(audio: &mut AudioStreamData) -> LoopState {
+fn play_audio(audio: &mut AudioStreamData) -> LoopState {
     // First of all, check for pause and pause/play the audio stream.
     {
         let time = audio.stream.time.read().unwrap();
-        if time.paused.is_some() {
-            if let Some(stream) = audio.output_stream.as_ref() {
-                let _ = stream.0.pause();
-            }
+        let mut stream_source = audio.output_stream.stream_source.lock().unwrap();
+        stream_source.update();
+        if time.paused.is_some()
+            && stream_source.state() == radiance::audio::AudioSourceState::Playing
+        {
+            stream_source.pause();
             return LoopState::Sleep(PAUSE_SLEEP);
-        } else if let Some(stream) = audio.output_stream.as_ref() {
-            let _ = stream.0.play();
+        } else if stream_source.state() != radiance::audio::AudioSourceState::Playing {
+            stream_source.play(false);
         }
     }
 
-    // Create a new audio stream if we don't have one.
-    if audio.output_stream.is_none() {
-        // Clone the sample buffer Arc so we can pass it to the callback.
-        let sample_buffer = Arc::clone(&audio.sample_buffer);
-        let err_fn =
-            |err: &cpal::OutputCallbackInfo| eprintln!("an error occurred on stream: {:?}", err);
-        let output_stream = AUDIO.create_output_stream(move |stream_data, err_fn| {
-            buffer_callback(stream_data, &sample_buffer)
-        });
-        output_stream.play().unwrap();
-        // Convert the stream format from cpal to ffmpeg.
-        let format = match (&output_stream.config).try_into() {
-            Ok(format) => format,
-            Err(e) => {
-                error!("{}", e);
-                return LoopState::Exit;
-            }
-        };
-        // Create the sample buffer.
-        let buffer = match output_stream.config.format {
-            CpalSampleFormat::I16 => SampleBuffer::I16 {
-                buffer: VecDeque::new(),
-            },
-            CpalSampleFormat::F32 => SampleBuffer::F32 {
-                buffer: VecDeque::new(),
-            },
-            _ => unreachable!(),
-        };
-        // Store stream and buffer.
-        audio.output_stream.replace((output_stream, format));
-        audio.sample_buffer.lock().unwrap().replace(buffer);
-    }
-
-    // Try to get a cached frame first.
-    let resampled_frame = if let Some(frame) = audio.resampled_frames.pop_front() {
+    // No resampled frame available, calculate a new one.
+    let source_frame = if let Some(frame) = audio.source_frames.pop_front() {
         frame
     } else {
-        // No resampled frame available, calculate a new one.
-        let source_frame = if let Some(frame) = audio.source_frames.pop_front() {
-            frame
-        } else {
-            // No source frame available, so decode a new one.
-            let frames = match get_audio_source_frames(audio) {
-                Ok(frames) => frames,
-                Err(state) => return state,
-            };
-            // Store the frames.
-            audio.source_frames.extend(frames);
-            audio.source_frames.pop_front().unwrap()
+        // No source frame available, so decode a new one.
+        let frames = match get_audio_source_frames(audio) {
+            Ok(frames) => frames,
+            Err(state) => return state,
         };
-        // Resample the frame.
-        let mut resampled_frames = resample_source_frame(audio, &source_frame).into();
-        audio.resampled_frames.append(&mut resampled_frames);
-        audio.resampled_frames.pop_front().unwrap()
+        // Store the frames.
+        audio.source_frames.extend(frames);
+        audio.source_frames.pop_front().unwrap()
     };
 
-    // Get the sample buffer.
-    let mut buffer = audio.sample_buffer.lock().unwrap();
-    let buffer = buffer.as_mut().unwrap();
-    // Check for the sample data type.
-    match buffer {
-        SampleBuffer::F32 { buffer } => {
-            // Check that we don't store too many samples.
-            if buffer.len() >= OUTPUT_AUDIO_BUFFER_MAX {
-                audio.resampled_frames.push_front(resampled_frame);
-                return LoopState::Sleep(QUEUE_FULL_SLEEP);
-            }
-            // Get frame data in the correct type.
-            let frame_data = resampled_frame.data(0);
-            let frame_data = unsafe {
-                // FFmpeg internally allocates the data pointers, they're definitely aligned.
-                #[allow(clippy::cast_ptr_alignment)]
-                std::slice::from_raw_parts(
-                    frame_data.as_ptr() as *const f32,
-                    resampled_frame.samples() * resampled_frame.channels() as usize,
-                )
-            };
-            // Store frame data in the sample buffer.
-            buffer.extend(frame_data);
-        }
-        SampleBuffer::I16 { buffer } => {
-            // Check that we don't store too many samples.
-            if buffer.len() >= OUTPUT_AUDIO_BUFFER_MAX {
-                audio.resampled_frames.push_front(resampled_frame);
-                return LoopState::Sleep(QUEUE_FULL_SLEEP);
-            }
-            // Get frame data in the correct type.
-            let frame_data = resampled_frame.data(0);
-            let frame_data = unsafe {
-                // FFmpeg internally allocates the data pointers, they're definitely aligned.
-                #[allow(clippy::cast_ptr_alignment)]
-                std::slice::from_raw_parts(
-                    frame_data.as_ptr() as *const i16,
-                    resampled_frame.samples() * resampled_frame.channels() as usize,
-                )
-            };
-            // Store frame data in the sample buffer.
-            buffer.extend(frame_data);
-        }
+    let resampled_frames_len = audio.output_stream.resampled_frames.lock().unwrap().len();
+    if resampled_frames_len >= OUTPUT_AUDIO_BUFFER_MAX {
+        audio.source_frames.push_front(source_frame);
+        return LoopState::Sleep(QUEUE_FULL_SLEEP);
     }
+
+    // Resample the frame.
+    let mut frames = resample_source_frame(audio, &source_frame).into();
+    audio
+        .output_stream
+        .resampled_frames
+        .lock()
+        .unwrap()
+        .append(&mut frames);
 
     LoopState::Running
-}
-
-fn buffer_callback(
-    stream_data: &mut CpalStreamData,
-    sample_buffer: &Arc<Mutex<Option<SampleBuffer>>>,
-) {
-    // Get the sample buffer.
-    let mut sample_buffer = sample_buffer.lock().unwrap();
-    if let Some(sample_buffer) = sample_buffer.as_mut() {
-        // Check that data types match.
-        match sample_buffer {
-            SampleBuffer::F32 {
-                buffer: sample_buffer,
-            } => {
-                // Copy samples from one buffer to the other.
-                copy_buffers(stream_data.as_slice_mut().unwrap(), sample_buffer, 0.0);
-            }
-            SampleBuffer::I16 {
-                buffer: sample_buffer,
-            } => {
-                // Copy samples from one buffer to the other.
-                copy_buffers(stream_data.as_slice_mut().unwrap(), sample_buffer, 0);
-            }
-        }
-    }
-}
-
-fn copy_buffers<T: Copy>(
-    stream_buffer: &mut [T],
-    sample_buffer: &mut VecDeque<T>,
-    zero: T,
-) -> usize {
-    // Check that we don't access anything beyond buffer lengths.
-    let len = stream_buffer.len().min(sample_buffer.len());
-    let (front, back) = sample_buffer.as_slices();
-    if front.len() >= len {
-        // Just copy from the first slice, it's enough.
-        (&mut stream_buffer[0..len]).copy_from_slice(&front[0..len]);
-    } else {
-        // Copy from both slices of the VecDeque.
-        let front_len = front.len();
-        (&mut stream_buffer[0..front_len]).copy_from_slice(&front[0..front_len]);
-        (&mut stream_buffer[front_len..len]).copy_from_slice(&back[0..len - front_len]);
-    }
-    // Remove copied samples from our sample buffer.
-    sample_buffer.rotate_left(len);
-    sample_buffer.truncate(sample_buffer.len() - len);
-    // Fill remaining stream buffer with silence.
-    if len < stream_buffer.len() {
-        // warn!("Not enough samples to fill stream buffer!");
-        for s in stream_buffer[len..].iter_mut() {
-            *s = zero;
-        }
-    }
-    len
 }
 
 fn run_player_thread<F, T>(state: Weak<Mutex<T>>, description: String, f: F)
@@ -1094,7 +877,9 @@ fn enqueue_next_packet(state: &mut VideoState) -> LoopState {
                         .push_back(PacketData::Packet(packet, state.loop_count));
                 }
             }
-            Err(error) => {}
+            Err(error) => {
+                error!("error reading packet: {}", error);
+            }
         },
         None => {
             // Caution! It's not end of file.

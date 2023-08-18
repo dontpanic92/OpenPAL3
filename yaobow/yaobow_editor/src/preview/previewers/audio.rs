@@ -43,7 +43,7 @@ impl Previewer for AudioPreviewer {
 
         if let Ok(mut data) = vfs.read_to_end(&path) {
             if extension == "smp" {
-                data = load_smp(&data).unwrap();
+                data = load_smp(data).unwrap();
             }
 
             Some(ContentTab::new(

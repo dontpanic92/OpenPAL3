@@ -39,7 +39,7 @@ impl AdventureDirector {
         sce_vm_options: Option<SceExecutionOptions>,
     ) -> Self {
         let p_state = Rc::new(RefCell::new(PersistentState::new(app_name.to_string())));
-        let global_state = GlobalState::new(asset_mgr.clone(), &audio_engine, p_state);
+        let global_state = GlobalState::new(asset_mgr.clone(), audio_engine.clone(), p_state);
         let mut sce_vm = SceVm::new(
             audio_engine.clone(),
             input_engine.clone(),
@@ -91,7 +91,7 @@ impl AdventureDirector {
 
         let mut global_state = GlobalState::new(
             asset_mgr.clone(),
-            &audio_engine,
+            audio_engine.clone(),
             Rc::new(RefCell::new(p_state)),
         );
 

@@ -9,21 +9,22 @@ use crate::openpal3::asset_manager::AssetManager;
 use super::persistent_state::PersistentState;
 use common::store_ext::StoreExt2;
 use radiance::{
-    audio::{AudioEngine, AudioSource, AudioSourceState, Codec as AudioCodec},
+    audio::{AudioEngine, AudioMemorySource, AudioSource, AudioSourceState, Codec as AudioCodec},
     rendering::VideoPlayer,
     video::Codec as VideoCodec,
 };
 use regex::Regex;
 
 pub struct GlobalState {
+    audio_engine: Rc<dyn AudioEngine>,
     persistent_state: Rc<RefCell<PersistentState>>,
     fop_state: FopState,
     adv_input_enabled: bool,
     role_controlled: i32,
 
     asset_mgr: Rc<AssetManager>,
-    bgm_source: Box<dyn AudioSource>,
-    sound_sources: Vec<Rc<RefCell<Box<dyn AudioSource>>>>,
+    bgm_source: Box<dyn AudioMemorySource>,
+    sound_sources: Vec<Rc<RefCell<Box<dyn AudioMemorySource>>>>,
     default_scene_bgm: HashMap<String, String>,
     video_player: Box<VideoPlayer>,
 
@@ -33,7 +34,7 @@ pub struct GlobalState {
 impl GlobalState {
     pub fn new(
         asset_mgr: Rc<AssetManager>,
-        audio_engine: &Rc<dyn AudioEngine>,
+        audio_engine: Rc<dyn AudioEngine>,
         persistent_state: Rc<RefCell<PersistentState>>,
     ) -> Self {
         let bgm_source = audio_engine.create_source();
@@ -45,6 +46,7 @@ impl GlobalState {
 
         Self {
             persistent_state,
+            audio_engine,
             fop_state: FopState::new(),
             adv_input_enabled: true,
             role_controlled: 0,
@@ -75,7 +77,8 @@ impl GlobalState {
 
     pub fn play_bgm(&mut self, name: &str) {
         let data = self.asset_mgr.load_music_data(name);
-        self.bgm_source.play(data, AudioCodec::Mp3, true);
+        self.bgm_source.set_data(data, AudioCodec::Mp3);
+        self.bgm_source.play(true);
     }
 
     pub fn play_default_bgm(&mut self) {
@@ -116,8 +119,13 @@ impl GlobalState {
     pub fn play_movie(&mut self, name: &str) -> Option<(u32, u32)> {
         let reader = self.asset_mgr.load_movie_data(name);
         let factory = self.asset_mgr.component_factory();
-        self.video_player
-            .play(factory, reader, VideoCodec::Bik, false)
+        self.video_player.play(
+            factory,
+            self.audio_engine.clone(),
+            reader,
+            VideoCodec::Bik,
+            false,
+        )
     }
 
     pub fn asset_mgr(&self) -> Rc<AssetManager> {
@@ -132,11 +140,11 @@ impl GlobalState {
         self.persistent_state.borrow_mut()
     }
 
-    pub fn add_sound_source(&mut self, source: Rc<RefCell<Box<dyn AudioSource>>>) {
+    pub fn add_sound_source(&mut self, source: Rc<RefCell<Box<dyn AudioMemorySource>>>) {
         self.sound_sources.push(source);
     }
 
-    pub fn remove_sound_source(&mut self, source: Rc<RefCell<Box<dyn AudioSource>>>) {
+    pub fn remove_sound_source(&mut self, source: Rc<RefCell<Box<dyn AudioMemorySource>>>) {
         self.sound_sources
             .iter()
             .position(|s| Rc::ptr_eq(s, &source))

@@ -1,8 +1,7 @@
-use std::{path::Path, rc::Rc};
+use std::{io::BufReader, path::Path, rc::Rc};
 
-use common::store_ext::StoreExt2;
-use mini_fs::MiniFs;
-use radiance::{rendering::ComponentFactory, video::Codec as VideoCodec};
+use mini_fs::{MiniFs, StoreExt};
+use radiance::{audio::AudioEngine, rendering::ComponentFactory, video::Codec as VideoCodec};
 
 use crate::{directors::main_content::ContentTab, preview::panes::VideoPane};
 
@@ -10,11 +9,15 @@ use super::Previewer;
 
 pub struct VideoPreviewer {
     factory: Rc<dyn ComponentFactory>,
+    audio_engine: Rc<dyn AudioEngine>,
 }
 
 impl VideoPreviewer {
-    pub fn new(factory: Rc<dyn ComponentFactory>) -> Self {
-        Self { factory }
+    pub fn new(factory: Rc<dyn ComponentFactory>, audio_engine: Rc<dyn AudioEngine>) -> Self {
+        Self {
+            factory,
+            audio_engine,
+        }
     }
 }
 
@@ -30,13 +33,14 @@ impl Previewer for VideoPreviewer {
             _ => None,
         }?;
 
-        let data = vfs.read_to_end(path).ok()?;
+        let reader = Box::new(BufReader::new(vfs.open(path).ok()?));
 
         Some(ContentTab::new(
             "video".to_string(),
             Box::new(VideoPane::new(
                 self.factory.clone(),
-                data,
+                self.audio_engine.clone(),
+                reader,
                 Some(codec),
                 path.to_owned(),
             )),

@@ -2,18 +2,19 @@ use crate::directors::DevToolsState;
 
 use super::ContentPane;
 use audio::{AudioSourceState, Codec};
-use radiance::audio::{self, AudioEngine, AudioSource};
+use radiance::audio::{self, AudioEngine, AudioMemorySource};
 use std::path::PathBuf;
 
 pub struct AudioPane {
-    source: Box<dyn AudioSource>,
+    source: Box<dyn AudioMemorySource>,
     path: PathBuf,
 }
 
 impl AudioPane {
     pub fn new(audio_engine: &dyn AudioEngine, data: Vec<u8>, codec: Codec, path: PathBuf) -> Self {
         let mut source = audio_engine.create_source();
-        source.play(data, codec, true);
+        source.set_data(data, codec);
+        source.play(true);
 
         Self { source, path }
     }

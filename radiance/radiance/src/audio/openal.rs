@@ -1,18 +1,22 @@
 use super::{
     decoders::{Decoder, OggDecoder, Samples, SymphoniaDecoder, WavDecoder},
-    Codec,
+    AudioCustomDecoderSource, AudioMemorySource, Codec,
 };
 use super::{AudioEngine, AudioSource, AudioSourceState};
-use alto::{Alto, Context, Mono, Source, Stereo};
-use std::rc::Rc;
+use alto::{Alto, AltoResult, Context, Mono, Source, Stereo};
+use std::sync::Arc;
 
 pub struct OpenAlAudioEngine {
-    context: Rc<Context>,
+    context: Arc<Context>,
 }
 
 impl AudioEngine for OpenAlAudioEngine {
-    fn create_source(&self) -> Box<dyn AudioSource> {
-        Box::new(OpenAlAudioSource::new(self.context.clone()))
+    fn create_source(&self) -> Box<dyn AudioMemorySource> {
+        Box::new(OpenAlAudioMemorySource::new(self.context.clone()))
+    }
+
+    fn create_custom_decoder_source(&self) -> Box<dyn AudioCustomDecoderSource> {
+        Box::new(OpenAlAudioCustomDecoderSource::new(self.context.clone()))
     }
 }
 
@@ -20,23 +24,22 @@ impl OpenAlAudioEngine {
     pub fn new() -> Self {
         let alto = Alto::load_default().unwrap();
         let device = alto.open(None).unwrap();
-        let context = Rc::new(device.new_context(None).unwrap());
+        let context = Arc::new(device.new_context(None).unwrap());
 
         Self { context }
     }
 }
 
-pub struct OpenAlAudioSource {
-    context: Rc<Context>,
+pub struct OpenAlAudioSource<T: Send + Sync> {
+    context: Arc<Context>,
     streaming_source: alto::StreamingSource,
     decoder: Option<Box<dyn Decoder>>,
     state: AudioSourceState,
     looping: bool,
-    data: Option<Vec<u8>>,
-    codec: Option<Codec>,
+    _marker: std::marker::PhantomData<T>,
 }
 
-impl AudioSource for OpenAlAudioSource {
+impl<T: Send + Sync> AudioSource for OpenAlAudioSource<T> {
     fn update(&mut self) {
         if self.decoder.is_none() {
             return;
@@ -70,7 +73,9 @@ impl AudioSource for OpenAlAudioSource {
                             2 => buffer
                                 .set_data::<Stereo<i16>, _>(samples.data, samples.sample_rate)
                                 .unwrap(),
-                            _ => {}
+                            _ => {
+                                println!("Unsupported channel count: {}", samples.channels);
+                            }
                         }
 
                         self.streaming_source.queue_buffer(buffer).unwrap();
@@ -92,13 +97,9 @@ impl AudioSource for OpenAlAudioSource {
         }
     }
 
-    fn play(&mut self, data: Vec<u8>, codec: Codec, looping: bool) {
+    fn play(&mut self, looping: bool) {
         self.stop();
 
-        self.data = Some(data.clone());
-        self.codec = Some(codec);
-
-        self.decoder = Some(create_decoder(data, codec));
         self.looping = looping;
         self.play_internal();
     }
@@ -136,8 +137,8 @@ impl AudioSource for OpenAlAudioSource {
     }
 }
 
-impl OpenAlAudioSource {
-    pub fn new(context: Rc<Context>) -> Self {
+impl<T: Send + Sync> OpenAlAudioSource<T> {
+    pub fn new(context: Arc<Context>) -> Self {
         let streaming_source = context.new_streaming_source().unwrap();
 
         Self {
@@ -146,8 +147,7 @@ impl OpenAlAudioSource {
             decoder: None,
             state: AudioSourceState::Stopped,
             looping: false,
-            data: None,
-            codec: None,
+            _marker: std::marker::PhantomData,
         }
     }
 
@@ -161,7 +161,12 @@ impl OpenAlAudioSource {
                         continue;
                     }
 
-                    self.streaming_source.queue_buffer(buffer.unwrap()).unwrap();
+                    match buffer.unwrap() {
+                        Ok(buffer) => self.streaming_source.queue_buffer(buffer).unwrap(),
+                        Err(e) => {
+                            log::error!("Audio: error creating buffer: {:?}", e);
+                        }
+                    }
                 }
                 _ => break,
             }
@@ -172,18 +177,31 @@ impl OpenAlAudioSource {
     }
 }
 
-fn create_buffer_from_samples(samples: Samples, context: &Context) -> Option<alto::Buffer> {
+struct _MemorySource;
+type OpenAlAudioMemorySource = OpenAlAudioSource<_MemorySource>;
+
+impl AudioMemorySource for OpenAlAudioMemorySource {
+    fn set_data(&mut self, data: Vec<u8>, codec_hint: Codec) {
+        self.decoder = Some(create_decoder(data, codec_hint));
+    }
+}
+
+struct _CustomDecoderSource;
+type OpenAlAudioCustomDecoderSource = OpenAlAudioSource<_CustomDecoderSource>;
+
+impl AudioCustomDecoderSource for OpenAlAudioCustomDecoderSource {
+    fn set_decoder(&mut self, reader: Box<dyn super::decoders::Decoder>) {
+        self.decoder = Some(reader);
+    }
+}
+
+fn create_buffer_from_samples(
+    samples: Samples,
+    context: &Context,
+) -> Option<AltoResult<alto::Buffer>> {
     match samples.channels {
-        1 => Some(
-            context
-                .new_buffer::<Mono<i16>, _>(samples.data, samples.sample_rate)
-                .unwrap(),
-        ),
-        2 => Some(
-            context
-                .new_buffer::<Stereo<i16>, _>(samples.data, samples.sample_rate)
-                .unwrap(),
-        ),
+        1 => Some(context.new_buffer::<Mono<i16>, _>(samples.data, samples.sample_rate)),
+        2 => Some(context.new_buffer::<Stereo<i16>, _>(samples.data, samples.sample_rate)),
         _ => None,
     }
 }

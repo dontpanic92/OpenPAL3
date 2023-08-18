@@ -117,6 +117,7 @@ impl Pal4AppContext {
         let reader = self.loader.load_video(name).unwrap();
         self.video_player.play(
             self.component_factory.clone(),
+            self.audio_engine.clone(),
             reader,
             radiance::video::Codec::Bik,
             false,
@@ -132,7 +133,8 @@ impl Pal4AppContext {
 
         let data = self.loader.load_music(name)?;
         let mut source = self.audio_engine.create_source();
-        source.play(data, radiance::audio::Codec::Mp3, true);
+        source.set_data(data, radiance::audio::Codec::Mp3);
+        source.play(true);
 
         self.bgm_task = Some(self.task_manager.run_generic(move |_| {
             source.update();
@@ -243,7 +245,8 @@ impl Pal4AppContext {
 
         let data = self.loader.load_sound(name, ext)?;
         let mut source = self.audio_engine.create_source();
-        source.play(data, codec, false);
+        source.set_data(data, codec);
+        source.play(false);
 
         let task = self.task_manager.run_generic(move |_| {
             source.update();

@@ -37,8 +37,11 @@ impl ContentTabs {
                     asset_mgr.component_factory(),
                     game_type,
                 )),
-                Box::new(AudioPreviewer::new(audio_engine)),
-                Box::new(VideoPreviewer::new(asset_mgr.component_factory())),
+                Box::new(AudioPreviewer::new(audio_engine.clone())),
+                Box::new(VideoPreviewer::new(
+                    asset_mgr.component_factory(),
+                    audio_engine.clone(),
+                )),
                 Box::new(OthersPreviewer::create()),
                 Box::new(ModelPreviewer::new(asset_mgr, texture_resolver)),
             ],

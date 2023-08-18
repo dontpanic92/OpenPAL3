@@ -5,7 +5,7 @@ use crate::scripting::sce::{SceCommand, SceState};
 use crosscom::ComRc;
 use imgui::Ui;
 use radiance::{
-    audio::{AudioSource, AudioSourceState, Codec},
+    audio::{AudioMemorySource, AudioSourceState, Codec},
     comdef::ISceneManager,
 };
 
@@ -13,7 +13,7 @@ use radiance::{
 pub struct SceCommandPlaySound {
     name: String,
     times: i32,
-    source: Option<Rc<RefCell<Box<dyn AudioSource>>>>,
+    source: Option<Rc<RefCell<Box<dyn AudioMemorySource>>>>,
 }
 
 impl Debug for SceCommandPlaySound {
@@ -31,7 +31,8 @@ impl SceCommand for SceCommandPlaySound {
         match data {
             Ok(d) => {
                 let mut source = state.audio_engine().create_source();
-                source.play(d, Codec::Wav, false);
+                source.set_data(d, Codec::Wav);
+                source.play(false);
 
                 let source = Rc::new(RefCell::new(source));
                 state.global_state_mut().add_sound_source(source.clone());

@@ -3,7 +3,9 @@ use crate::directors::DevToolsState;
 use super::ContentPane;
 use imgui::{Image, TextureId};
 use radiance::{
+    audio::AudioEngine,
     rendering::{ComponentFactory, VideoPlayer},
+    utils::SeekRead,
     video::Codec,
     video::VideoStreamState,
 };
@@ -19,14 +21,15 @@ pub struct VideoPane {
 impl VideoPane {
     pub fn new(
         factory: Rc<dyn ComponentFactory>,
-        data: Vec<u8>,
+        audio_engine: Rc<dyn AudioEngine>,
+        reader: Box<dyn SeekRead>,
         codec: Option<Codec>,
         path: PathBuf,
     ) -> Self {
         let mut source_size = None;
         let video_player = codec.map(|c| {
             let mut video_player = factory.create_video_player();
-            source_size = video_player.play(factory, data, c, true);
+            source_size = video_player.play(factory, audio_engine, reader, c, true);
             video_player
         });
 

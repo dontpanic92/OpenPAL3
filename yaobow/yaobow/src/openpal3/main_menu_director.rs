@@ -4,7 +4,7 @@ use crosscom::ComRc;
 use imgui::{Condition, Ui};
 use log::debug;
 use radiance::{
-    audio::{AudioEngine, AudioSource, Codec},
+    audio::{AudioEngine, AudioMemorySource, Codec},
     comdef::{IDirector, IDirectorImpl, ISceneManager},
     input::InputEngine,
     scene::CoreScene,
@@ -22,7 +22,7 @@ pub struct MainMenuDirector {
     asset_mgr: Rc<AssetManager>,
     audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
-    main_theme_source: RefCell<Box<dyn AudioSource>>,
+    main_theme_source: RefCell<Box<dyn AudioMemorySource>>,
 }
 
 ComObject_MainMenuDirector!(super::MainMenuDirector);
@@ -35,7 +35,8 @@ impl MainMenuDirector {
     ) -> Self {
         let data = asset_mgr.load_music_data("PI01");
         let mut main_theme_source = audio_engine.create_source();
-        main_theme_source.play(data, Codec::Mp3, true);
+        main_theme_source.set_data(data, Codec::Mp3);
+        main_theme_source.play(true);
 
         Self {
             asset_mgr,
