@@ -28,7 +28,7 @@ impl Platform {
         use std::fmt::Write;
 
         let mut screen = screen::DebugScreen::new();
-        screen.write_str(msg);
+        let _ = screen.write_str(msg);
 
         std::thread::sleep(std::time::Duration::from_secs(100));
     }

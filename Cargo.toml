@@ -19,8 +19,7 @@ filetime = { git = "https://github.com/dontpanic92/filetime", branch = "yaobow" 
 chlorine = { git = "https://github.com/dontpanic92/chlorine", branch = "yaobow" }
 
 [patch."https://github.com/meh/rust-ffmpeg"]
-# ffmpeg = { git = "https://github.com/dontpanic92/rust-ffmpeg", branch = "yaobow" }
-ffmpeg = { path = "../rust-ffmpeg" }
+ffmpeg = { git = "https://github.com/dontpanic92/rust-ffmpeg", branch = "yaobow" }
 
 [profile.release-with-symbol]
 inherits = "release"
