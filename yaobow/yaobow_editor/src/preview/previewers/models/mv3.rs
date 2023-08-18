@@ -59,7 +59,7 @@ impl ModelLoader for Mv3ModelLoader {
             controller.get().play_anim_mesh(
                 "preview".to_string(),
                 anim,
-                RoleAnimationRepeatMode::Repeat,
+                RoleAnimationRepeatMode::Loop,
             );
 
             controller.get().set_active(true);

@@ -24,6 +24,7 @@ pub struct AnimatedMeshComponent {
 pub enum MorphAnimationState {
     NotStarted,
     Playing,
+    Holding,
     Finished,
 }
 
@@ -31,6 +32,8 @@ struct AnimatedMeshComponentProps {
     morph_targets: Vec<MorphTarget>,
     morph_animation_state: MorphAnimationState,
     last_time: f32,
+    hold_time: f32,
+    hold: bool,
 }
 
 ComObject_AnimatedMeshComponent!(super::AnimatedMeshComponent);
@@ -44,6 +47,8 @@ impl AnimatedMeshComponent {
                 morph_targets: vec![],
                 morph_animation_state: MorphAnimationState::NotStarted,
                 last_time: 0.,
+                hold_time: 0.,
+                hold: false,
             }),
         }
     }
@@ -63,13 +68,36 @@ impl AnimatedMeshComponent {
             .and_then(|m| Some(m.timestamp))
     }
 
+    pub fn add_morph_last_time(&self, time: f32) {
+        self.props_mut().last_time += time;
+    }
+
     pub fn reset_morph_last_time(&self) {
         self.props_mut().last_time = 0.;
     }
 
-    pub fn set_morph_targets(&self, morph_targets: Vec<MorphTarget>) {
+    pub fn set_morph_hold(&self) {
+        self.props_mut().hold = true;
+    }
+
+    pub fn reset_morph_hold(&self) {
+        self.props_mut().hold = false;
+    }
+
+    pub fn is_to_hold(&self) -> bool {
+        !self.props().hold
+            && self.props().hold_time > 0.
+            && self.props().last_time > self.props().hold_time
+    }
+
+    pub fn is_to_end(&self) -> bool {
+        self.props().last_time > self.morph_animation_length().unwrap()
+    }
+
+    pub fn set_morph_targets(&self, morph_targets: Vec<MorphTarget>, hold_time: f32) {
         self.props_mut().morph_targets = morph_targets;
         self.props_mut().morph_animation_state = MorphAnimationState::Playing;
+        self.props_mut().hold_time = hold_time;
         self.reset_morph_last_time();
 
         if self.props().morph_targets.is_empty() {
@@ -247,6 +275,22 @@ impl AnimatedMeshComponent {
         self.entity
             .set_rendering_component(Some(Rc::new(component)));
     }
+
+    fn render(&self, timestamp: f32) {
+        if self.entity.get_rendering_component().is_none() {
+            return;
+        }
+
+        let rc = self.entity.get_rendering_component().unwrap();
+        let objects = rc.render_objects();
+
+        for i in 0..objects.len() {
+            let ro = &objects[i];
+            ro.update_vertices(&|vb: RefMut<VertexBuffer>| {
+                self.update_morph_target(timestamp, i, vb);
+            });
+        }
+    }
 }
 
 impl IComponentImpl for AnimatedMeshComponent {
@@ -255,33 +299,29 @@ impl IComponentImpl for AnimatedMeshComponent {
     }
 
     fn on_updating(&self, delta_sec: f32) -> crosscom::Void {
-        if self.props().morph_animation_state == MorphAnimationState::Playing
-            && !self.props().morph_targets.is_empty()
-        {
-            if self.props().last_time > self.morph_animation_length().unwrap() {
+        let last_time = self.props().last_time;
+        let anim_state = self.props().morph_animation_state;
+
+        if self.props().morph_targets.is_empty() {
+            return;
+        }
+
+        if anim_state == MorphAnimationState::Playing {
+            if self.is_to_end() {
                 self.props_mut().morph_animation_state = MorphAnimationState::Finished;
                 self.reset_morph_last_time();
+                self.reset_morph_hold();
                 return;
+            } else if self.is_to_hold() {
+                self.props_mut().morph_animation_state = MorphAnimationState::Holding;
+                self.set_morph_hold();
+            } else {
+                self.add_morph_last_time(delta_sec);
             }
 
-            if self.entity.get_rendering_component().is_none() {
-                return;
-            }
-
-            let rc = self.entity.get_rendering_component().unwrap();
-            let objects = rc.render_objects();
-
-            for i in 0..objects.len() {
-                let ro = &objects[i];
-                ro.update_vertices(&|vb: RefMut<VertexBuffer>| {
-                    self.update_morph_target(self.props().last_time, i, vb);
-                });
-            }
-
-            // let geometries = self.blend_morph_target(anim_timestamp);
-            // self.load_geometries(&geometries);
-            let last_time = self.props().last_time;
-            self.props_mut().last_time = last_time + delta_sec;
+            self.render(last_time);
+        } else if anim_state == MorphAnimationState::Holding {
+            self.render(last_time);
         }
     }
 }
@@ -291,8 +331,11 @@ impl IAnimatedMeshComponentImpl for AnimatedMeshComponent {
         self.props().morph_animation_state
     }
 
-    fn replay(&self) -> () {
-        self.reset_morph_last_time();
+    fn play(&self, replay: bool) -> () {
+        if replay {
+            self.reset_morph_last_time();
+            self.reset_morph_hold();
+        }
         self.props_mut().morph_animation_state = MorphAnimationState::Playing;
     }
 }

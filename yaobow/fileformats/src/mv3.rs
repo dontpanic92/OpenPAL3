@@ -66,6 +66,12 @@ pub struct Mv3Model {
 }
 
 #[derive(Debug, Serialize, Clone)]
+pub struct Mv3ActionDesc {
+    pub tick: u32,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
 pub struct Mv3File {
     pub magic: [u8; 4],
     pub unknown_dw: u32,
@@ -74,7 +80,7 @@ pub struct Mv3File {
     pub unknown_data_count: u32,
     pub model_count: u32,
     pub action_count: u32,
-    pub action_desc: Vec<[u8; 20]>,
+    pub action_desc: Vec<Mv3ActionDesc>,
     pub unknown_data: Vec<Vec<u8>>,
     pub textures: Vec<Mv3Texture>,
     pub models: Vec<Mv3Model>,
@@ -98,9 +104,10 @@ pub fn read_mv3(reader: &mut dyn Read) -> anyhow::Result<Mv3File> {
 
     let mut action_desc = vec![];
     for _i in 0..action_count {
-        let mut buf = [0; 20];
-        reader.read_exact(&mut buf)?;
-        action_desc.push(buf);
+        action_desc.push(Mv3ActionDesc {
+            tick: reader.read_u32_le()?,
+            name: reader.read_string(16)?
+        });
     }
 
     let unknown_data = vec![];
