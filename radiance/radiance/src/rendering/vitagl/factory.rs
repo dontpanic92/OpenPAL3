@@ -14,7 +14,14 @@ pub struct VitaGLComponentFactory {}
 
 impl ComponentFactory for VitaGLComponentFactory {
     fn create_texture(&self, texture_def: &TextureDef) -> Box<dyn Texture> {
-        Box::new(VitaGLTexture::new().unwrap())
+        let rgba_image = texture_def
+            .image()
+            .unwrap_or_else(|| &TEXTURE_MISSING_IMAGE);
+        Box::new(VitaGLTexture::new(
+            rgba_image.width(),
+            rgba_image.height(),
+            &rgba_image,
+        ))
     }
 
     fn create_imgui_texture(
@@ -25,8 +32,9 @@ impl ComponentFactory for VitaGLComponentFactory {
         height: u32,
         texture_id: Option<TextureId>,
     ) -> (Box<dyn Texture>, TextureId) {
-        let texture = VitaGLTexture::new().unwrap();
-        (Box::new(texture), TextureId::new(1))
+        let texture = VitaGLTexture::new(width, height, buffer);
+        let texture_id = texture.texture_id();
+        (Box::new(texture), TextureId::new(texture_id as usize))
     }
 
     fn create_shader(&self, shader_def: &ShaderDef) -> Box<dyn Shader> {
@@ -70,4 +78,9 @@ impl VitaGLComponentFactory {
     pub fn new() -> Self {
         Self {}
     }
+}
+
+lazy_static::lazy_static! {
+    static ref TEXTURE_MISSING_IMAGE: image::RgbaImage
+         = image::load_from_memory(radiance_assets::TEXTURE_MISSING_TEXTURE_FILE).unwrap().to_rgba8();
 }

@@ -1,0 +1,52 @@
+pkgname=ffmpeg
+pkgver=6.0
+pkgrel=1
+url="https://ffmpeg.org/"
+source=("https://ffmpeg.org/releases/ffmpeg-$pkgver.tar.xz")
+sha256sums=('57be87c22d9b49c112b6d24bc67d42508660e6b718b3db89c44e47e289137082')
+depends=('lame' 'libvorbis' 'flac' 'opus')
+
+prepare() {
+  cd $pkgname-$pkgver
+}
+
+build() {
+  cd $pkgname-$pkgver
+  ./configure --prefix=$prefix \
+		--enable-cross-compile \
+		--cross-prefix=$VITASDK/bin/arm-vita-eabi- \
+		--disable-shared \
+		--disable-runtime-cpudetect \
+		--disable-armv5te \
+		--disable-programs \
+		--disable-doc \
+		--disable-network \
+		--enable-libmp3lame \
+		--disable-everything \
+		--enable-decoder=bink,binkaudio_dct,binkaudio_rdft \
+		--enable-demuxer=bink,binka \
+		--enable-parser=aac,dvdsub,opus,aac_latm,flac,png,ac3,ftr,pnm,adx,g723_1,qoi,amr,g729,rv30,av1,gif,rv40,avs2,gsm,sbc,avs3,h261,sipr,bmp,h263,tak,cavsvideo,h264,vc1,cook,hdr,vorbis,cri,hevc,vp3,dca,ipu,vp8,dirac,jpeg2000,vp9,dnxhd,misc4,webp,dolby_e,mjpeg,xbm,dpx,mlp,xma,dvaudio,mpeg4video,xwd,dvbsub,mpegaudio,dvd_nav,mpegvideo \
+		--enable-protocol=file \
+		--enable-static \
+		--disable-debug \
+		--arch=armv7-a \
+		--cpu=cortex-a9 \
+		--disable-armv6t2 \
+		--target-os=none \
+		--extra-cflags=" -Wl,-q -O2 -ftree-vectorize -fomit-frame-pointer -fno-short-enums -ffast-math -D_BSD_SOURCE" \
+		--extra-cxxflags=" -Wl,-q -O2 -ftree-vectorize -fomit-frame-pointer -fno-short-enums -ffast-math -fno-rtti -fno-exceptions -std=gnu++11 -D_BSD_SOURCE" \
+		--extra-ldflags=" -L$VITASDK/lib " \
+		--disable-bzlib \
+		--disable-iconv \
+		--disable-lzma \
+		--disable-sdl2 \
+		--disable-securetransport \
+		--disable-xlib \
+		--enable-pthreads
+  make -j$(nproc)
+}
+
+package () {
+  cd $pkgname-$pkgver
+  make DESTDIR=$pkgdir install
+}
