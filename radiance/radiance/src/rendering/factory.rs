@@ -1,8 +1,10 @@
+use std::rc::Rc;
+
 use imgui::TextureId;
 
 use super::{
     texture::TextureDef, Material, MaterialDef, RenderObject, RenderingComponent, Shader,
-    ShaderDef, Texture, VertexBuffer, VideoPlayer,
+    ShaderProgram, Texture, VertexBuffer, VideoPlayer,
 };
 
 pub trait ComponentFactory {
@@ -15,7 +17,6 @@ pub trait ComponentFactory {
         height: u32,
         texture_id: Option<TextureId>,
     ) -> (Box<dyn Texture>, TextureId);
-    fn create_shader(&self, shader_def: &ShaderDef) -> Box<dyn Shader>;
     fn create_material(&self, material_def: &MaterialDef) -> Box<dyn Material>;
     fn create_render_object(
         &self,

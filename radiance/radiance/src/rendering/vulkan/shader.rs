@@ -1,6 +1,6 @@
 use super::device::Device;
 use crate::rendering::vertex_buffer::{VertexComponents, VertexComponentsLayout};
-use crate::rendering::{Shader, ShaderDef};
+use crate::rendering::{shader::ShaderProgramData, Shader, ShaderProgram};
 use ash::vk;
 use std::error::Error;
 use std::rc::Rc;
@@ -20,20 +20,18 @@ impl Shader for VulkanShader {
 }
 
 impl VulkanShader {
-    pub fn new(shader_def: &ShaderDef, device: Rc<Device>) -> Result<Self, Box<dyn Error>> {
-        let vert_shader =
-            Self::create_shader_module_from_memory(&device, shader_def.vert_src()).unwrap();
-        let frag_shader =
-            Self::create_shader_module_from_memory(&device, shader_def.frag_src()).unwrap();
+    pub fn new(shader: ShaderProgram, device: Rc<Device>) -> Result<Self, Box<dyn Error>> {
+        let data = get_shader_proram_data(shader);
+
+        let vert_shader = Self::create_shader_module_from_memory(&device, data.vert_src).unwrap();
+        let frag_shader = Self::create_shader_module_from_memory(&device, data.frag_src).unwrap();
 
         Ok(Self {
             device,
-            vertex_component_layout: VertexComponentsLayout::from_components(
-                shader_def.vertex_components(),
-            ),
+            vertex_component_layout: VertexComponentsLayout::from_components(data.components),
             vert_shader,
             frag_shader,
-            name: shader_def.name().to_owned(),
+            name: data.name.to_owned(),
         })
     }
 
@@ -131,5 +129,31 @@ impl Drop for VulkanShader {
     fn drop(&mut self) {
         self.device.destroy_shader_module(self.vert_shader);
         self.device.destroy_shader_module(self.frag_shader);
+    }
+}
+
+static SIMPLE_TRIANGLE_VERT: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.vert.spv"));
+static SIMPLE_TRIANGLE_FRAG: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/simple_triangle.frag.spv"));
+static LIGHTMAP_TEXTURE_VERT: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/lightmap_texture.vert.spv"));
+static LIGHTMAP_TEXTURE_FRAG: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/lightmap_texture.frag.spv"));
+
+fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
+    match shader {
+        ShaderProgram::TexturedNoLight => ShaderProgramData::new(
+            "simple_shader",
+            SIMPLE_TRIANGLE_VERT,
+            SIMPLE_TRIANGLE_FRAG,
+            VertexComponents::POSITION | VertexComponents::TEXCOORD,
+        ),
+        ShaderProgram::TexturedLightmap => ShaderProgramData::new(
+            "lightmap_texture",
+            LIGHTMAP_TEXTURE_VERT,
+            LIGHTMAP_TEXTURE_FRAG,
+            VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2,
+        ),
     }
 }

@@ -93,7 +93,7 @@ fn mount_packages_recursive(
 #[cfg(vita)]
 fn create_reader<P: AsRef<Path>>(path: P) -> anyhow::Result<Box<dyn SeekRead>> {
     let file = std::fs::File::open(path.as_ref())?;
-    let reader = std::io::BufReader::with_capacity(1024, file);
+    let reader = std::io::BufReader::with_capacity(512, file);
     Ok(Box::new(reader))
 }
 

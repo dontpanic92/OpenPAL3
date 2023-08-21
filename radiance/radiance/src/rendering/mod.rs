@@ -22,7 +22,7 @@ pub use material::{LightMapMaterialDef, Material, MaterialDef, SimpleMaterialDef
 pub use platform::Window;
 pub use render_object::RenderObject;
 pub use rendering_component::RenderingComponent;
-pub use shader::{Shader, ShaderDef, SIMPLE_SHADER_DEF};
+pub use shader::{Shader, ShaderProgram};
 pub use sprite::Sprite;
 pub use texture::{Texture, TextureDef, TextureStore};
 pub use vertex_buffer::{VertexBuffer, VertexComponents};

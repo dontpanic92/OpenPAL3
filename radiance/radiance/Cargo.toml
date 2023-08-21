@@ -40,7 +40,8 @@ winit = "0.27"
 
 [target.'cfg(target_os = "vita")'.dependencies]
 imgui-rs-vitagl-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vitagl-renderer" }
-vitagl-sys = { git = "https://github.com/dontpanic92/vitagl-sys" }
+# vitagl-sys = { git = "https://github.com/dontpanic92/vitagl-sys" }
+vitagl-sys = { path ="../../../vitagl-sys/vitagl-sys"}
 vitasdk-sys = { git = "https://github.com/dontpanic92/vitasdk-sys", branch = "yaobow"}
 
 [target.'cfg(not(any(target_os = "android", target_os = "vita")))'.dependencies]

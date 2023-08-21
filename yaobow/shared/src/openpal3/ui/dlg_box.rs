@@ -120,7 +120,7 @@ impl DialogBox {
         };
 
         // FIXME: seem not a good method to get font size
-        let font = ui.fonts().fonts()[1];
+        let font = ui.fonts().fonts()[0];
         let font_size = ui.fonts().get_font(font).unwrap().font_size;
 
         ui.window("dlg_box")

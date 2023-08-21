@@ -307,32 +307,35 @@ impl IComponentImpl for RoleController {
                 match mode {
                     RoleAnimationRepeatMode::Loop => {
                         self.replay_anim();
-                    },
+                    }
                     RoleAnimationRepeatMode::Repeat(count) => {
                         if count - 1 > 0 {
-                            *self.anim_repeat_mode.borrow_mut() = RoleAnimationRepeatMode::Repeat(count - 1);
+                            *self.anim_repeat_mode.borrow_mut() =
+                                RoleAnimationRepeatMode::Repeat(count - 1);
                             self.replay_anim();
                         } else {
                             if *self.auto_play_idle.borrow() {
                                 self.idle();
                             }
                         }
-                    },
+                    }
                     RoleAnimationRepeatMode::Hold => {
                         if *self.auto_play_idle.borrow() {
                             self.idle();
                         }
-                    },
+                    }
                 }
-            } else if self.active_anim().value().morph_animation_state() == MorphAnimationState::Holding {
+            } else if self.active_anim().value().morph_animation_state()
+                == MorphAnimationState::Holding
+            {
                 let mode = *self.anim_repeat_mode.borrow();
                 match mode {
                     RoleAnimationRepeatMode::Loop | RoleAnimationRepeatMode::Repeat(_) => {
                         self.continue_anim();
-                    },
+                    }
                     RoleAnimationRepeatMode::Hold => {
                         self.state.replace(RoleState::AnimationHolding);
-                    },
+                    }
                 }
             }
         }

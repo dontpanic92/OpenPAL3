@@ -7,11 +7,12 @@ use vitagl_sys::*;
 use crate::{
     comdef::IScene,
     imgui::ImguiFrame,
-    rendering::{ComponentFactory, RenderingEngine},
+    math::Mat44,
+    rendering::{ComponentFactory, RenderingComponent, RenderingEngine},
     scene::Viewport,
 };
 
-use super::factory::VitaGLComponentFactory;
+use super::{factory::VitaGLComponentFactory, render_object::VitaGLRenderObject};
 
 pub struct VitaGLRenderingEngine {
     factory: Rc<VitaGLComponentFactory>,
@@ -42,78 +43,110 @@ impl VitaGLRenderingEngine {
 
 impl RenderingEngine for VitaGLRenderingEngine {
     fn render(&mut self, scene: ComRc<IScene>, viewport: Viewport, ui_frame: ImguiFrame) {
-        let colors: [f32; 12] = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0];
-        let vertices_front: [f32; 12] = [
-            -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5,
-        ];
-        let vertices_back: [f32; 12] = [
-            -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, -0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
-        ];
-        let vertices_left: [f32; 12] = [
-            -0.5, -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, -0.5, 0.5, -0.5, 0.5, 0.5,
-        ];
-        let vertices_right: [f32; 12] = [
-            0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, -0.5, 0.5, 0.5, 0.5, 0.5,
-        ];
-        let vertices_top: [f32; 12] = [
-            -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5,
-        ];
-        let vertices_bottom: [f32; 12] = [
-            -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
-        ];
-
-        let indices: [u16; 36] = [
-            0, 1, 2, 1, 2, 3, 4, 5, 6, 5, 6, 7, 8, 9, 10, 9, 10, 11, 12, 13, 14, 13, 14, 15, 16,
-            17, 18, 17, 18, 19, 20, 21, 22, 21, 22, 23,
-        ];
-
-        let mut color_array = [0.; 12 * 6];
-        for i in 0..12 * 6 {
-            color_array[i] = colors[i % 12];
+        unsafe {
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glDepthFunc(GL_LESS);
         }
 
-        let mut vertex_array = vec![];
-        vertex_array.extend_from_slice(&vertices_front);
-        vertex_array.extend_from_slice(&vertices_back);
-        vertex_array.extend_from_slice(&vertices_left);
-        vertex_array.extend_from_slice(&vertices_right);
-        vertex_array.extend_from_slice(&vertices_top);
-        vertex_array.extend_from_slice(&vertices_bottom);
+        let (view, proj) = {
+            let c = scene.camera();
+            let camera = c.borrow();
+            let view = Mat44::inversed(camera.transform().matrix());
+            let proj = camera.projection_matrix();
+            (view, *proj)
+        };
+
+        let rc: Vec<_> = scene
+            .visible_entities()
+            .iter()
+            .filter_map(|e| {
+                e.get_rendering_component()
+                    .and_then(|c| Some((c, e.world_transform().matrix().clone())))
+            })
+            .collect();
+        let r_objects: Vec<&VitaGLRenderObject> = rc
+            .iter()
+            .map(|(c, m)| {
+                let m = m.clone();
+                c.render_objects().iter().map(move |o| (o, m))
+            })
+            .flatten()
+            .filter_map(|(c, m)| {
+                c.downcast_ref::<VitaGLRenderObject>()
+                    .and_then(|c| Some((c, m)))
+            })
+            .map(|(c, m)| {
+                c.set_model_matrix(m);
+                c
+            })
+            .collect();
+
+        let mut objects_by_material = vec![];
+        for obj in r_objects {
+            objects_by_material.push((obj.material(), vec![obj]));
+        }
+        for (material, objects) in objects_by_material {
+            unsafe {
+                glUseProgram(material.shader().program());
+                glUniformMatrix4fv(
+                    material.shader().uniform_view_matrix(),
+                    1,
+                    GL_FALSE as u8,
+                    view.floats().as_ptr() as *const _,
+                );
+                glUniformMatrix4fv(
+                    material.shader().uniform_projection_matrix(),
+                    1,
+                    GL_FALSE as u8,
+                    proj.floats().as_ptr() as *const _,
+                );
+
+                let textures = material.textures();
+                if textures.len() > 0 {
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, textures[0].texture_id());
+                }
+
+                if textures.len() > 1 {
+                    glActiveTexture(GL_TEXTURE1);
+                    glBindTexture(GL_TEXTURE_2D, textures[1].texture_id());
+                }
+
+                for obj in objects {
+                    glUniformMatrix4fv(
+                        material.shader().uniform_model_matrix(),
+                        1,
+                        GL_FALSE as u8,
+                        obj.model_matrix().floats().as_ptr() as *const _,
+                    );
+
+                    glEnableVertexAttribArray(0);
+                    glBindBuffer(GL_ARRAY_BUFFER, obj.vertex_buffer());
+                    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE as u8, 0, std::ptr::null());
+
+                    glEnableVertexAttribArray(1);
+                    glBindBuffer(GL_ARRAY_BUFFER, obj.tex_buffer());
+                    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE as u8, 0, std::ptr::null());
+
+                    if textures.len() > 1 {
+                        glEnableVertexAttribArray(2);
+                        glBindBuffer(GL_ARRAY_BUFFER, obj.tex2_buffer());
+                        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE as u8, 0, std::ptr::null());
+                    }
+
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj.index_buffer());
+                    glDrawElements(
+                        GL_TRIANGLES,
+                        obj.index_count(),
+                        GL_UNSIGNED_SHORT,
+                        std::ptr::null(),
+                    );
+                }
+            }
+        }
 
         unsafe {
-            glMatrixMode(GL_MODELVIEW);
-            glLoadIdentity();
-            glTranslatef(0., 0., -3.);
-
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            glEnableClientState(GL_VERTEX_ARRAY);
-            glEnableClientState(GL_COLOR_ARRAY);
-            glVertexPointer(
-                3,
-                GL_FLOAT,
-                0,
-                vertex_array.as_ptr() as *const std::ffi::c_void,
-            );
-            glColorPointer(
-                3,
-                GL_FLOAT,
-                0,
-                color_array.as_ptr() as *const std::ffi::c_void,
-            );
-            glRotatef(1., 0., 0., 1.);
-            glRotatef(0.5, 0., 1., 0.);
-            glDrawElements(
-                GL_TRIANGLES,
-                6 * 6,
-                GL_UNSIGNED_SHORT,
-                indices.as_ptr() as *const std::ffi::c_void,
-            );
-            glDisableClientState(GL_VERTEX_ARRAY);
-            glDisableClientState(GL_COLOR_ARRAY);
-
             self.imgui.render();
-
             vglSwapBuffers(GL_FALSE as u8);
         }
     }

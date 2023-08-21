@@ -39,10 +39,14 @@ impl SceCommand for SceCommandRoleShowAction {
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {
-        let rc = scene_manager.resolve_role_do(state, self.role_id, |_, r| r.get()).unwrap();
+        let rc = scene_manager
+            .resolve_role_do(state, self.role_id, |_, r| r.get())
+            .unwrap();
         let s = rc.state();
 
-        s == RoleState::Idle || s == RoleState::AnimationFinished || s == RoleState::AnimationHolding
+        s == RoleState::Idle
+            || s == RoleState::AnimationFinished
+            || s == RoleState::AnimationHolding
     }
 }
 

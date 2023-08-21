@@ -10,7 +10,7 @@ use super::{
 use crate::rendering::VideoPlayer;
 use crate::rendering::{
     factory::ComponentFactory, texture::TextureDef, Material, MaterialDef, RenderObject,
-    RenderingComponent, Shader, ShaderDef, Texture, VertexBuffer,
+    RenderingComponent, Shader, ShaderProgram, Texture, VertexBuffer,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -67,10 +67,6 @@ impl ComponentFactory for VulkanComponentFactory {
             .borrow_mut()
             .upsert_texture(texture_id, descriptor_set);
         (Box::new(texture), texture_id)
-    }
-
-    fn create_shader(&self, shader_def: &ShaderDef) -> Box<dyn Shader> {
-        Box::new(VulkanShader::new(shader_def, self.device.clone()).unwrap())
     }
 
     fn create_material(&self, material_def: &MaterialDef) -> Box<dyn Material> {

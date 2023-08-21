@@ -106,7 +106,7 @@ pub fn read_mv3(reader: &mut dyn Read) -> anyhow::Result<Mv3File> {
     for _i in 0..action_count {
         action_desc.push(Mv3ActionDesc {
             tick: reader.read_u32_le()?,
-            name: reader.read_string(16)?
+            name: reader.read_string(16)?,
         });
     }
 

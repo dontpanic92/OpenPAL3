@@ -8,23 +8,22 @@ fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     match target_os.as_str() {
         "windows" | "linux" | "macos" | "android" => {
-            build_shader("simple_triangle.vert");
-            build_shader("simple_triangle.frag");
-            build_shader("lightmap_texture.vert");
-            build_shader("lightmap_texture.frag");
+            build_vulkan_shader("simple_triangle.vert");
+            build_vulkan_shader("simple_triangle.frag");
+            build_vulkan_shader("lightmap_texture.vert");
+            build_vulkan_shader("lightmap_texture.frag");
         }
         _ => {}
     }
 }
 
 #[allow(dead_code)]
-fn build_shader(shader_name: &str) {
+fn build_vulkan_shader(shader_name: &str) {
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let path = std::fs::canonicalize(
         std::path::PathBuf::from(manifest_dir)
-            .join("src")
-            .join("shaders")
+            .join("src/rendering/vulkan/shaders")
             .join(shader_name),
     )
     .unwrap();

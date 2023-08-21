@@ -2,7 +2,7 @@ use image::ImageFormat;
 
 use crate::rendering::texture::TextureStore;
 
-use super::{shader::LightMapShaderDef, texture::TextureDef, ShaderDef, SIMPLE_SHADER_DEF};
+use super::{texture::TextureDef, ShaderProgram};
 use std::{io::Read, sync::Arc};
 
 pub trait Material: downcast_rs::Downcast + std::fmt::Debug {}
@@ -12,7 +12,7 @@ downcast_rs::impl_downcast!(Material);
 #[derive(Clone)]
 pub struct MaterialDef {
     name: String,
-    shader: ShaderDef,
+    shader: ShaderProgram,
     textures: Vec<Arc<TextureDef>>,
     use_alpha: bool,
 }
@@ -20,7 +20,7 @@ pub struct MaterialDef {
 impl MaterialDef {
     pub fn new(
         name: String,
-        shader: ShaderDef,
+        shader: ShaderProgram,
         textures: Vec<Arc<TextureDef>>,
         use_alpha: bool,
     ) -> Self {
@@ -36,8 +36,8 @@ impl MaterialDef {
         &self.name
     }
 
-    pub fn shader(&self) -> &ShaderDef {
-        &self.shader
+    pub fn shader(&self) -> ShaderProgram {
+        self.shader
     }
 
     pub fn textures(&self) -> &[Arc<TextureDef>] {
@@ -90,7 +90,7 @@ impl SimpleMaterialDef {
     fn create_internal(texture_def: Arc<TextureDef>, use_alpha: bool) -> MaterialDef {
         MaterialDef::new(
             "simple_material".to_string(),
-            SIMPLE_SHADER_DEF.clone(),
+            ShaderProgram::TexturedNoLight,
             vec![texture_def],
             use_alpha,
         )
@@ -130,7 +130,7 @@ impl LightMapMaterialDef {
 
         MaterialDef::new(
             "lightmap_material".to_string(),
-            LightMapShaderDef::create(),
+            ShaderProgram::TexturedLightmap,
             textures,
             use_alpha,
         )

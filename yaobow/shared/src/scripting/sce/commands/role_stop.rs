@@ -20,7 +20,9 @@ impl SceCommand for SceCommandRoleStop {
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {
-        let rc = scene_manager.resolve_role_mut_do(state, self.role_id, |_, r| { r.get() }).unwrap();
+        let rc = scene_manager
+            .resolve_role_mut_do(state, self.role_id, |_, r| r.get())
+            .unwrap();
 
         rc.idle();
 
@@ -30,8 +32,6 @@ impl SceCommand for SceCommandRoleStop {
 
 impl SceCommandRoleStop {
     pub fn new(role_id: i32) -> Self {
-        Self {
-            role_id,
-        }
+        Self { role_id }
     }
 }

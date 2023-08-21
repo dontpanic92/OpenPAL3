@@ -85,6 +85,10 @@ impl Mat44 {
         new_mat
     }
 
+    pub fn floats(&self) -> &[[f32; 4]; 4] {
+        &self.0
+    }
+
     pub fn floats_mut(&mut self) -> &mut [[f32; 4]; 4] {
         &mut self.0
     }

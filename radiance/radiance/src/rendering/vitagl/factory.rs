@@ -1,8 +1,10 @@
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
 use imgui::TextureId;
 
 use crate::rendering::{
-    ComponentFactory, Material, MaterialDef, RenderObject, RenderingComponent, Shader, ShaderDef,
-    Texture, TextureDef, VertexBuffer, VideoPlayer,
+    ComponentFactory, Material, MaterialDef, RenderObject, RenderingComponent, Shader,
+    ShaderProgram, Texture, TextureDef, VertexBuffer, VideoPlayer,
 };
 
 use super::{
@@ -10,7 +12,9 @@ use super::{
     texture::VitaGLTexture,
 };
 
-pub struct VitaGLComponentFactory {}
+pub struct VitaGLComponentFactory {
+    shaders: RefCell<HashMap<ShaderProgram, Rc<VitaGLShader>>>,
+}
 
 impl ComponentFactory for VitaGLComponentFactory {
     fn create_texture(&self, texture_def: &TextureDef) -> Box<dyn Texture> {
@@ -37,12 +41,11 @@ impl ComponentFactory for VitaGLComponentFactory {
         (Box::new(texture), TextureId::new(texture_id as usize))
     }
 
-    fn create_shader(&self, shader_def: &ShaderDef) -> Box<dyn Shader> {
-        Box::new(VitaGLShader::new().unwrap())
-    }
-
     fn create_material(&self, material_def: &MaterialDef) -> Box<dyn Material> {
-        Box::new(VitaGLMaterial::new())
+        Box::new(VitaGLMaterial::new(
+            material_def,
+            self.create_shader(material_def.shader()),
+        ))
     }
 
     fn create_render_object(
@@ -53,7 +56,8 @@ impl ComponentFactory for VitaGLComponentFactory {
         host_dynamic: bool,
     ) -> Box<dyn RenderObject> {
         let material = self.create_material(material_def);
-        let x = Box::new(VitaGLRenderObject::new().unwrap());
+        let x =
+            Box::new(VitaGLRenderObject::new(vertices, indices, material, host_dynamic).unwrap());
         x
     }
 
@@ -76,7 +80,17 @@ impl ComponentFactory for VitaGLComponentFactory {
 
 impl VitaGLComponentFactory {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            shaders: RefCell::new(HashMap::new()),
+        }
+    }
+
+    fn create_shader(&self, shader: ShaderProgram) -> Rc<VitaGLShader> {
+        self.shaders
+            .borrow_mut()
+            .entry(shader)
+            .or_insert_with(|| Rc::new(VitaGLShader::new(shader).unwrap()))
+            .clone()
     }
 }
 

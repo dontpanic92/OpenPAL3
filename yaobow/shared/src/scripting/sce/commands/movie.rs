@@ -11,6 +11,7 @@ use radiance::{comdef::ISceneManager, input::Key, video::VideoStreamState};
 #[derive(Debug, Clone)]
 pub struct SceCommandMovie {
     name: String,
+    remove_black_bars: bool,
     source_size: Option<(u32, u32)>,
     texture_id: Option<TextureId>,
 }
@@ -44,7 +45,9 @@ impl SceCommand for SceCommandMovie {
         };
 
         // check state to stop movie
-        let movie_skipped = state.input().get_key_state(Key::Escape).pressed();
+        let movie_skipped = state.input().get_key_state(Key::Escape).pressed()
+            || state.input().get_key_state(Key::GamePadSouth).pressed();
+
         let global_state_mut = state.global_state_mut();
         let video_player = global_state_mut.video_player();
         if movie_skipped {
@@ -59,7 +62,15 @@ impl SceCommand for SceCommandMovie {
 
         // Keep aspect ratio
         let w_scale = window_size[0] / source_w as f32;
-        let h_scale = window_size[1] / source_h as f32;
+        let h_scale = if self.remove_black_bars {
+            // Some of PAL3 movies are 4:3 ones with black bars on top and bottom
+            // Scale movies to remove the black bars
+            let new_source_h = source_w * 9 / 16;
+            window_size[1] / new_source_h as f32
+        } else {
+            window_size[1] / source_h as f32
+        };
+
         let scale = w_scale.min(h_scale);
         let target_size = [source_w as f32 * scale, source_h as f32 * scale];
 
@@ -72,10 +83,17 @@ impl SceCommand for SceCommandMovie {
 
 impl SceCommandMovie {
     pub fn new(name: String) -> Self {
+        let remove_black_bars = MOVIE_CONTAINS_BLACK_BARS
+            .iter()
+            .any(|&name| name.to_lowercase().as_str() == name);
+
         Self {
             name,
+            remove_black_bars,
             source_size: None,
             texture_id: None,
         }
     }
 }
+
+const MOVIE_CONTAINS_BLACK_BARS: &[&str; 1] = &["pal3op"];
