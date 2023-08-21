@@ -436,31 +436,31 @@ macro_rules! ComObject_Test {
                     &crosscom::IUnknown::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &test::crosscom_gen::ITest::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &test::crosscom_gen::ITest2::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(0);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &test::crosscom_gen::ITest3::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(2);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     &test::crosscom_gen::ITest4::INTERFACE_ID => {
                         *retval = (object as *const *const std::os::raw::c_void).offset(3);
                         add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as i32
+                        crosscom::ResultCode::Ok as std::os::raw::c_long
                     }
 
                     _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
