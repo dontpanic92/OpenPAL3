@@ -251,7 +251,7 @@ impl AnimatedMeshComponent {
         )
     }
 
-    fn blend_vec2(v1: &Vec2, v2: &Vec2, v2_p: f32) -> Vec2 {
+    fn _blend_vec2(v1: &Vec2, v2: &Vec2, v2_p: f32) -> Vec2 {
         Vec2::new(
             v1.x * (1. - v2_p) + v2.x * v2_p,
             v1.y * (1. - v2_p) + v2.y * v2_p,

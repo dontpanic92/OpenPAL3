@@ -1,5 +1,5 @@
 use std::{
-    io::{BufReader, Read, Write},
+    io::BufReader,
     sync::{mpsc::Receiver, Arc, RwLock},
     thread::spawn,
 };

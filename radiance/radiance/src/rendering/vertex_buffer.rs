@@ -193,7 +193,6 @@ impl VertexBuffer {
 
         if let Some(t) = tex_coord2 {
             data[i..i + Vec2::u8_slice_len()].copy_from_slice(t.as_slice());
-            i += Vec2::u8_slice_len();
         }
 
         self.set_vertex_blob(index, |v: &mut [u8]| {

@@ -3,7 +3,7 @@ use std::{path::Path, rc::Rc};
 use common::store_ext::StoreExt2;
 use mini_fs::MiniFs;
 use radiance::{audio::AudioEngine, audio::Codec as AudioCodec};
-use shared::{fs::cpk::CpkArchive, loaders::smp::load_smp};
+use shared::loaders::smp::load_smp;
 
 use crate::{directors::main_content::ContentTab, preview::panes::AudioPane};
 

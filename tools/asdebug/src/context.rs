@@ -1,5 +1,6 @@
 use shared::scripting::angelscript::ScriptModule;
 
+#[allow(dead_code)]
 pub enum ServerConnectionState {
     NotStarted,
     Listening,
