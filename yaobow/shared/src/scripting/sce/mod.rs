@@ -48,6 +48,7 @@ pub struct SceState {
     global_state: GlobalState,
     context: SceExecutionContext,
     run_mode: i32,
+    curtain: f32,
     ext: HashMap<String, Box<dyn Any>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
     audio_engine: Rc<dyn AudioEngine>,
@@ -73,6 +74,7 @@ impl SceState {
             global_state,
             context: SceExecutionContext::new(sce, sce_name, options),
             run_mode: 1,
+            curtain: 1.,
             ext,
             input_engine,
             audio_engine,
@@ -106,6 +108,21 @@ impl SceState {
 
     pub fn set_run_mode(&mut self, run_mode: i32) {
         self.run_mode = run_mode;
+    }
+
+    pub fn curtain(&self) -> f32 {
+        self.curtain
+    }
+
+    pub fn set_curtain(&mut self, curtain: f32) {
+        let curtain = if curtain > 1. {
+            1.
+        } else if curtain < -1. {
+            -1.
+        } else {
+            curtain
+        };
+        self.curtain = curtain;
     }
 
     pub fn ext_mut(&mut self) -> &mut HashMap<String, Box<dyn Any>> {
