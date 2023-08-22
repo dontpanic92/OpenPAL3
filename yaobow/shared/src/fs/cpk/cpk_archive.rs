@@ -162,7 +162,7 @@ impl CpkArchive {
         map
     }
 
-    fn get_entry_by_crc(&self, crc: u32) -> Option<CpkTable> {
+    fn _get_entry_by_crc(&self, crc: u32) -> Option<CpkTable> {
         self.crc_to_index
             .get(&crc)
             .and_then(|index| Some(self.entries[*index]))

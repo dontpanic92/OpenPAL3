@@ -35,7 +35,7 @@ impl SceCommand for SceCommandRoleShowAction {
     fn update(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _ui: &Ui,
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {

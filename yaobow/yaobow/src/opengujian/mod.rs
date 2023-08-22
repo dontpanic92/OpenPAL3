@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use fileformats::{binrw::BinRead, cam::CameraDataFile, nif::NifModel, npc::NpcInfoFile};
+use fileformats::{binrw::BinRead, nif::NifModel, npc::NpcInfoFile};
 
 pub fn test_nif(data: &[u8]) {
     let model = NifModel::read(&mut Cursor::new(data));

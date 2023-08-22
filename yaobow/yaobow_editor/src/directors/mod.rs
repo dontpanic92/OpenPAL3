@@ -6,6 +6,7 @@ use crosscom::ComRc;
 pub use main_director::DevToolsDirector;
 use radiance::comdef::IEntity;
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub enum DevToolsState {
     MainWindow,

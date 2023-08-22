@@ -163,5 +163,5 @@ pub fn not_implemented<TAppContext>(
 ) -> GlobalFunctionState<TAppContext> {
     panic!("unimplemented function called: {}", name);
 
-    GlobalFunctionState::Completed
+    // GlobalFunctionState::Completed
 }

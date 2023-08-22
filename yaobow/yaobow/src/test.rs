@@ -1,6 +1,6 @@
-use std::{borrow::Cow, io::Cursor};
+use std::io::Cursor;
 
-use fileformats::{binrw::BinRead, nod::NodFile, role_bin::RoleBinFile};
+use fileformats::{binrw::BinRead, role_bin::RoleBinFile};
 
 pub fn run_test() {
     let data = std::fs::read(
