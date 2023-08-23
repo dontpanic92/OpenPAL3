@@ -37,7 +37,11 @@ impl SceCommand for SceCommandQuake {
 
         self.spent += _delta_sec;
         if self.spent > self.duration {
-            scene.camera().borrow_mut().transform_mut().set_position(&self.original_position);
+            scene
+                .camera()
+                .borrow_mut()
+                .transform_mut()
+                .set_position(&self.original_position);
             true
         } else {
             false

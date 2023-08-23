@@ -93,25 +93,33 @@ impl DialogBoxPresenter {
                 [dialog_x, window_height - avatar_size[1]]
             } else {
                 [
-                    dialog_x + dialog_width - text_margins.1,
+                    dialog_x + dialog_width - avatar_size[0],
                     window_height - avatar_size[1],
                 ]
             };
 
+            let mut uv0 = [
+                avatar.x as f32 / avatar.sprite.width() as f32,
+                avatar.y as f32 / avatar.sprite.height() as f32,
+            ];
+            let mut uv1 = [
+                (avatar.x + avatar.width) as f32 / avatar.sprite.width() as f32,
+                (avatar.y + avatar.height) as f32 / avatar.sprite.height() as f32,
+            ];
+
+            if dialog_box.avatar_position == AvatarPosition::Right {
+                std::mem::swap(&mut uv0[0], &mut uv1[0]);
+            }
+
+            let _tok = ui.push_style_var(imgui::StyleVar::WindowPadding([0., 0.]));
             basic_dlg_box(ui, "avatar_box")
                 .draw_background(false)
                 .position(avatar_position, Condition::Always)
                 .size(avatar_size, Condition::Always)
                 .build(|| {
                     imgui::Image::new(avatar.sprite.imgui_texture_id(), avatar_size)
-                        .uv0([
-                            avatar.x as f32 / avatar.sprite.width() as f32,
-                            avatar.y as f32 / avatar.sprite.height() as f32,
-                        ])
-                        .uv1([
-                            (avatar.x + avatar.width) as f32 / avatar.sprite.width() as f32,
-                            (avatar.y + avatar.height) as f32 / avatar.sprite.height() as f32,
-                        ])
+                        .uv0(uv0)
+                        .uv1(uv1)
                         .build(ui);
                 });
         }
