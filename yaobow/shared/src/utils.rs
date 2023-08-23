@@ -30,3 +30,30 @@ pub fn show_video_window(
 
     ret_texture_id
 }
+
+pub fn play_movie(
+    ui: &Ui,
+    video_player: &mut VideoPlayer,
+    texture_id: Option<TextureId>,
+    source_size: (u32, u32),
+    remove_black_bars: bool,
+) -> Option<TextureId> {
+    let window_size = ui.io().display_size;
+    let (source_w, source_h) = source_size;
+
+    // Keep aspect ratio
+    let w_scale = window_size[0] / source_w as f32;
+    let h_scale = if remove_black_bars {
+        // Some of PAL3 movies are 4:3 ones with black bars on top and bottom
+        // Scale movies to remove the black bars
+        let new_source_h = source_w * 9 / 16;
+        window_size[1] / new_source_h as f32
+    } else {
+        window_size[1] / source_h as f32
+    };
+
+    let scale = w_scale.min(h_scale);
+    let target_size = [source_w as f32 * scale, source_h as f32 * scale];
+
+    show_video_window(ui, video_player, texture_id, window_size, target_size)
+}

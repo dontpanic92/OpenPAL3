@@ -1,4 +1,5 @@
 pub mod animated_mesh;
+pub mod event;
 pub mod geometry;
 pub mod morph_target;
 pub mod skinned_mesh;

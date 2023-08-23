@@ -13,7 +13,7 @@ use radiance::{
 
 use crate::ui::dialog_box::{AvatarPosition, DialogBox};
 
-use super::{actor::Pal4Actor, asset_loader::AssetLoader, scene::Pal4Scene};
+use super::{actor::Pal4ActorAnimationConfig, asset_loader::AssetLoader, scene::Pal4Scene};
 
 pub struct Pal4AppContext {
     pub(crate) loader: Rc<AssetLoader>,
@@ -95,12 +95,45 @@ impl Pal4AppContext {
             .rotate_axis_angle_local(&Vec3::UP, ang * std::f32::consts::PI / 180.0);
     }
 
-    pub fn player_do_action(&mut self, player: i32, action: &str) {
+    pub fn player_do_action(&mut self, player: i32, action: &str, flag: i32) {
         let player = self.map_player(player);
         let metadata = self.scene.get_player_metadata(player);
         let anm = self.loader.load_anm(metadata.actor_name(), action).unwrap();
+        let events = self.loader.load_amf(metadata.actor_name(), action);
 
-        Pal4Actor::set_anim(self.scene.get_player(player), &anm);
+        let config = match flag {
+            -1 => Pal4ActorAnimationConfig::PauseOnHold,
+            0 => Pal4ActorAnimationConfig::Looping,
+
+            // TODO: >0 means playing n times
+            _ => Pal4ActorAnimationConfig::OneTime,
+        };
+
+        self.scene
+            .get_player_controller(player)
+            .play_animation(anm, events, config);
+    }
+
+    pub fn player_unhold_act(&mut self, player: i32) {
+        let player = self.map_player(player);
+        self.scene.get_player_controller(player).unhold();
+    }
+
+    pub fn player_act_completed(&mut self, player: i32) -> bool {
+        let player = self.map_player(player);
+        self.scene
+            .get_player_controller(player)
+            .animation_completed()
+    }
+
+    pub fn player_set_direction(&mut self, player: i32, direction: f32) {
+        let player = self.map_player(player);
+        self.scene
+            .get_player(player)
+            .transform()
+            .borrow_mut()
+            .clear_rotation()
+            .rotate_axis_angle_local(&Vec3::UP, direction * std::f32::consts::PI / 180.0);
     }
 
     pub fn load_scene(&mut self, scene_name: &str, block_name: &str) {

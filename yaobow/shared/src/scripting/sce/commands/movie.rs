@@ -1,6 +1,6 @@
 use crate::{
     scripting::sce::{SceCommand, SceState},
-    utils::show_video_window,
+    utils::play_movie,
 };
 
 use crosscom::ComRc;
@@ -29,7 +29,7 @@ impl SceCommand for SceCommandMovie {
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {
-        let (source_w, source_h) = if let Some(size) = self.source_size {
+        let source_size = if let Some(size) = self.source_size {
             size
         } else {
             match state.global_state_mut().play_movie(&self.name) {
@@ -58,24 +58,13 @@ impl SceCommand for SceCommandMovie {
             return true;
         }
 
-        let window_size = ui.io().display_size;
-
-        // Keep aspect ratio
-        let w_scale = window_size[0] / source_w as f32;
-        let h_scale = if self.remove_black_bars {
-            // Some of PAL3 movies are 4:3 ones with black bars on top and bottom
-            // Scale movies to remove the black bars
-            let new_source_h = source_w * 9 / 16;
-            window_size[1] / new_source_h as f32
-        } else {
-            window_size[1] / source_h as f32
-        };
-
-        let scale = w_scale.min(h_scale);
-        let target_size = [source_w as f32 * scale, source_h as f32 * scale];
-
-        self.texture_id =
-            show_video_window(ui, video_player, self.texture_id, window_size, target_size);
+        self.texture_id = play_movie(
+            ui,
+            video_player,
+            self.texture_id,
+            source_size,
+            self.remove_black_bars,
+        );
 
         false
     }
@@ -83,9 +72,9 @@ impl SceCommand for SceCommandMovie {
 
 impl SceCommandMovie {
     pub fn new(name: String) -> Self {
-        let remove_black_bars = MOVIE_CONTAINS_BLACK_BARS
+        let remove_black_bars = MOVIES_CONTAIN_BLACK_BARS
             .iter()
-            .any(|&name| name.to_lowercase().as_str() == name);
+            .any(|&n| name.to_lowercase().as_str() == n);
 
         Self {
             name,
@@ -96,4 +85,4 @@ impl SceCommandMovie {
     }
 }
 
-const MOVIE_CONTAINS_BLACK_BARS: &[&str; 1] = &["pal3op"];
+const MOVIES_CONTAIN_BLACK_BARS: &[&str; 1] = &["pal3op"];

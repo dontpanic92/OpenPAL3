@@ -81,10 +81,17 @@ impl IComponentContainerImpl for CoreEntity {
     }
 
     fn remove_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
-        self.components
+        let component = self
+            .components
             .borrow_mut()
             .remove(&uuid)
-            .and_then(|c| Some(c))
+            .and_then(|c| Some(c));
+
+        if let Some(c) = &component {
+            c.on_unloading();
+        }
+
+        component
     }
 }
 
@@ -102,14 +109,18 @@ impl IEntityImpl for CoreEntity {
             e.load();
         }
 
-        // for c in self.components.clone() {
-        //     c.1.on_loading()
-        // }
+        for c in self.components.borrow().clone() {
+            c.1.on_loading()
+        }
     }
 
     fn unload(&self) -> () {
         for e in self.props().children.clone() {
             e.unload();
+        }
+
+        for c in self.components.borrow().clone() {
+            c.1.on_unloading()
         }
 
         self.props_mut().children.clear();

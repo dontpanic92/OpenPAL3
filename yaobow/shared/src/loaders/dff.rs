@@ -5,6 +5,7 @@ use fileformats::rwbs::{
     clump::Clump, extension::Extension, frame::Frame, material::Material, read_dff, Matrix44f,
     TexCoord, Triangle, Vec3f,
 };
+use itertools::Itertools;
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{
@@ -51,7 +52,7 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
 
 struct HAnimBone {
     bone_root: ComRc<IEntity>,
-    indexed_bones: HashMap<u32, ComRc<IEntity>>,
+    bones: Vec<ComRc<IEntity>>,
 }
 
 pub(crate) struct SkinnedMeshInfo {
@@ -112,9 +113,14 @@ fn load_clump(
             indexed_bones.insert(b.index, bone_id_map.get(&b.id).unwrap().clone());
         }
 
+        let mut bones = vec![];
+        for b in indexed_bones.keys().sorted() {
+            bones.push(indexed_bones.get(b).unwrap().clone());
+        }
+
         Some(HAnimBone {
             bone_root: root_bone.clone(),
-            indexed_bones,
+            bones,
         })
     } else {
         None
@@ -125,17 +131,33 @@ fn load_clump(
             parent.attach(entities[i].0.clone());
         } else if chunk.frames[i].parent != i as i32 {
             let parent_id = chunk.frames[i].parent as usize;
-            entities[parent_id].0.attach(entities[i].0.clone());
             match (&entities[parent_id].1, &entities[i].1) {
                 (Some(parent_bone), Some(bone)) => {
                     parent_bone.attach(bone.clone());
                 }
-                _ => {}
+                _ => {
+                    entities[parent_id].0.attach(entities[i].0.clone());
+                }
             }
         } else {
             log::warn!("Ignored orphan frame");
         }
     }
+
+    let armature: Option<ComRc<IArmatureComponent>> = if let Some(hanim_bone) = &hanim_bone {
+        let armature = ComRc::<IArmatureComponent>::from_object(ArmatureComponent::new(
+            parent.clone(),
+            hanim_bone.bone_root.clone(),
+            hanim_bone.bones.clone(),
+        ));
+        parent.add_component(
+            IArmatureComponent::uuid(),
+            armature.clone().query_interface::<IComponent>().unwrap(),
+        );
+        Some(armature)
+    } else {
+        None
+    };
 
     for atomic in &chunk.atomics {
         let entity = entities[atomic.frame as usize].0.clone();
@@ -146,6 +168,7 @@ fn load_clump(
             component_factory,
             geometry,
             hanim_bone.as_ref(),
+            armature.clone(),
             vfs,
             &path,
             texture_resolver,
@@ -158,6 +181,7 @@ fn create_geometry(
     component_factory: &Rc<dyn ComponentFactory>,
     geometry: &fileformats::rwbs::geometry::Geometry,
     hanim_bone: Option<&HAnimBone>,
+    armature: Option<ComRc<IArmatureComponent>>,
     vfs: &MiniFs,
     path: &Path,
     texture_resolver: &dyn TextureResolver,
@@ -192,7 +216,7 @@ fn create_geometry(
         let hanim_bone = hanim_bone.unwrap();
         let mut bones = vec![];
         for i in 0..skin.matrix.len() {
-            let bone = hanim_bone.indexed_bones.get(&(i as u32)).unwrap();
+            let bone = hanim_bone.bones[i as usize].clone();
             let bond_pose = create_mat44_from_matrix44f(&skin.matrix[i]);
             let bone_component = bone
                 .get_component(IHAnimBoneComponent::uuid())
@@ -204,25 +228,25 @@ fn create_geometry(
             bones.push(bone.clone());
         }
 
-        let armature = entity
-            .get_component(IArmatureComponent::uuid())
-            .and_then(|c| c.query_interface::<IArmatureComponent>())
-            .or_else(|| {
-                let armature = ComRc::<IArmatureComponent>::from_object(ArmatureComponent::new(
-                    entity.clone(),
-                    hanim_bone.bone_root.clone(),
-                    bones.clone(),
-                ));
-                entity.add_component(
-                    IArmatureComponent::uuid(),
-                    armature.clone().query_interface::<IComponent>().unwrap(),
-                );
-                Some(armature)
-            })
-            .unwrap();
-
+        /*let armature = entity
+                    .get_component(IArmatureComponent::uuid())
+                    .and_then(|c| c.query_interface::<IArmatureComponent>())
+                    .or_else(|| {
+                        let armature = ComRc::<IArmatureComponent>::from_object(ArmatureComponent::new(
+                            entity.clone(),
+                            hanim_bone.bone_root.clone(),
+                            bones.clone(),
+                        ));
+                        entity.add_component(
+                            IArmatureComponent::uuid(),
+                            armature.clone().query_interface::<IComponent>().unwrap(),
+                        );
+                        Some(armature)
+                    })
+                    .unwrap();
+        */
         Some(SkinnedMeshInfo {
-            armature,
+            armature: armature.unwrap(),
             v_weights: skin.weights.clone(),
             v_bone_indices: skin.bone_indices.clone(),
         })

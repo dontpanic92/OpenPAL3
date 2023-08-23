@@ -18,6 +18,7 @@ pub struct IRoleControllerVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
     pub get: fn(
         this: *const *const std::os::raw::c_void,
     ) -> &'static shared::openpal3::scene::RoleController,
@@ -92,6 +93,16 @@ impl IRoleController {
         }
     }
 
+    pub fn on_unloading(&self) -> () {
+        unsafe {
+            let this = self as *const IRoleController as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_unloading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn get(&self) -> &'static shared::openpal3::scene::RoleController {
         unsafe {
             let this = self as *const IRoleController as *const *const std::os::raw::c_void;
@@ -134,8 +145,10 @@ macro_rules! ComObject_RoleController {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IArmatureComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
@@ -239,6 +252,11 @@ macro_rules! ComObject_RoleController {
                     .into()
             }
 
+            unsafe extern "system" fn on_unloading(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<RoleControllerCcw>(this);
+                (*__crosscom_object).inner.on_unloading().into()
+            }
+
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IRoleControllerVirtualTable_CCW_FOR_RoleController:
                 shared::openpal3::comdef::IRoleControllerVirtualTableCcw =
@@ -250,6 +268,7 @@ macro_rules! ComObject_RoleController {
                         release,
                         on_loading,
                         on_updating,
+                        on_unloading,
                         get,
                     },
                 };
@@ -304,6 +323,7 @@ pub struct ICvdModelVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
 }
 
 #[repr(C)]
@@ -375,6 +395,16 @@ impl ICvdModel {
         }
     }
 
+    pub fn on_unloading(&self) -> () {
+        unsafe {
+            let this = self as *const ICvdModel as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_unloading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
         uuid::Uuid::from_bytes(ICvdModel::INTERFACE_ID)
@@ -406,8 +436,10 @@ macro_rules! ComObject_CvdModel {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IArmatureComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
@@ -496,6 +528,11 @@ macro_rules! ComObject_CvdModel {
                     .into()
             }
 
+            unsafe extern "system" fn on_unloading(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<CvdModelCcw>(this);
+                (*__crosscom_object).inner.on_unloading().into()
+            }
+
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IComponentVirtualTable_CCW_FOR_CvdModel:
                 radiance::comdef::IComponentVirtualTableCcw =
@@ -507,6 +544,7 @@ macro_rules! ComObject_CvdModel {
                         release,
                         on_loading,
                         on_updating,
+                        on_unloading,
                     },
                 };
 
@@ -559,6 +597,7 @@ pub struct IScnSceneComponentVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
     pub get:
         fn(this: *const *const std::os::raw::c_void) -> &'static shared::openpal3::scene::ScnScene,
 }
@@ -632,6 +671,16 @@ impl IScnSceneComponent {
         }
     }
 
+    pub fn on_unloading(&self) -> () {
+        unsafe {
+            let this = self as *const IScnSceneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_unloading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn get(&self) -> &'static shared::openpal3::scene::ScnScene {
         unsafe {
             let this = self as *const IScnSceneComponent as *const *const std::os::raw::c_void;
@@ -674,8 +723,10 @@ macro_rules! ComObject_ScnSceneComponent {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IArmatureComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
@@ -779,6 +830,11 @@ macro_rules! ComObject_ScnSceneComponent {
                     .into()
             }
 
+            unsafe extern "system" fn on_unloading(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<ScnSceneComponentCcw>(this);
+                (*__crosscom_object).inner.on_unloading().into()
+            }
+
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IScnSceneComponentVirtualTable_CCW_FOR_ScnSceneComponent:
                 shared::openpal3::comdef::IScnSceneComponentVirtualTableCcw =
@@ -790,6 +846,7 @@ macro_rules! ComObject_ScnSceneComponent {
                         release,
                         on_loading,
                         on_updating,
+                        on_unloading,
                         get,
                     },
                 };
@@ -970,8 +1027,10 @@ macro_rules! ComObject_AdventureDirector {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IArmatureComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;

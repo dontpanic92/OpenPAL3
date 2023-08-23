@@ -18,6 +18,7 @@ pub struct IComponentVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
 }
 
 #[repr(C)]
@@ -89,6 +90,16 @@ impl IComponent {
         }
     }
 
+    pub fn on_unloading(&self) -> () {
+        unsafe {
+            let this = self as *const IComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_unloading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
         uuid::Uuid::from_bytes(IComponent::INTERFACE_ID)
@@ -98,6 +109,7 @@ impl IComponent {
 pub trait IComponentImpl {
     fn on_loading(&self) -> ();
     fn on_updating(&self, delta_sec: f32) -> ();
+    fn on_unloading(&self) -> ();
 }
 
 impl crosscom::ComInterface for IComponent {
@@ -456,6 +468,7 @@ macro_rules! ComObject_Application {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IArmatureComponentImpl;
@@ -663,6 +676,7 @@ pub struct IApplicationLoaderComponentVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
 }
 
 #[repr(C)]
@@ -732,6 +746,17 @@ impl IApplicationLoaderComponent {
             let this =
                 self as *const IApplicationLoaderComponent as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).on_updating)(this, delta_sec.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn on_unloading(&self) -> () {
+        unsafe {
+            let this =
+                self as *const IApplicationLoaderComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_unloading)(this);
             let ret: () = ret.into();
 
             ret
@@ -1034,6 +1059,7 @@ macro_rules! ComObject_Scene {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IArmatureComponentImpl;
@@ -1632,6 +1658,7 @@ macro_rules! ComObject_Entity {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IArmatureComponentImpl;
@@ -1946,6 +1973,7 @@ pub struct IStaticMeshComponentVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
 }
 
 #[repr(C)]
@@ -2017,6 +2045,16 @@ impl IStaticMeshComponent {
         }
     }
 
+    pub fn on_unloading(&self) -> () {
+        unsafe {
+            let this = self as *const IStaticMeshComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_unloading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
         uuid::Uuid::from_bytes(IStaticMeshComponent::INTERFACE_ID)
@@ -2048,6 +2086,7 @@ macro_rules! ComObject_StaticMeshComponent {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IArmatureComponentImpl;
@@ -2141,6 +2180,11 @@ macro_rules! ComObject_StaticMeshComponent {
                     .into()
             }
 
+            unsafe extern "system" fn on_unloading(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<StaticMeshComponentCcw>(this);
+                (*__crosscom_object).inner.on_unloading().into()
+            }
+
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IStaticMeshComponentVirtualTable_CCW_FOR_StaticMeshComponent:
                 radiance::comdef::IStaticMeshComponentVirtualTableCcw =
@@ -2152,6 +2196,7 @@ macro_rules! ComObject_StaticMeshComponent {
                         release,
                         on_loading,
                         on_updating,
+                        on_unloading,
                     },
                 };
 
@@ -2207,6 +2252,7 @@ pub struct IAnimatedMeshComponentVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
     pub morph_animation_state: fn(
         this: *const *const std::os::raw::c_void,
     ) -> radiance::components::mesh::MorphAnimationState,
@@ -2285,6 +2331,16 @@ impl IAnimatedMeshComponent {
         }
     }
 
+    pub fn on_unloading(&self) -> () {
+        unsafe {
+            let this = self as *const IAnimatedMeshComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_unloading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn morph_animation_state(&self) -> radiance::components::mesh::MorphAnimationState {
         unsafe {
             let this = self as *const IAnimatedMeshComponent as *const *const std::os::raw::c_void;
@@ -2338,6 +2394,7 @@ macro_rules! ComObject_AnimatedMeshComponent {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IArmatureComponentImpl;
@@ -2450,6 +2507,11 @@ macro_rules! ComObject_AnimatedMeshComponent {
                     .into()
             }
 
+            unsafe extern "system" fn on_unloading(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<AnimatedMeshComponentCcw>(this);
+                (*__crosscom_object).inner.on_unloading().into()
+            }
+
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IAnimatedMeshComponentVirtualTable_CCW_FOR_AnimatedMeshComponent:
                 radiance::comdef::IAnimatedMeshComponentVirtualTableCcw =
@@ -2461,6 +2523,7 @@ macro_rules! ComObject_AnimatedMeshComponent {
                         release,
                         on_loading,
                         on_updating,
+                        on_unloading,
                         morph_animation_state,
                         play,
                     },
@@ -2841,6 +2904,7 @@ macro_rules! ComObject_SceneManager {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IArmatureComponentImpl;
@@ -3058,17 +3122,30 @@ pub struct IArmatureComponentVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
     pub set_animation: fn(
         this: *const *const std::os::raw::c_void,
         keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+        events: Vec<radiance::components::mesh::event::AnimationEvent>,
     ) -> crosscom::Void,
     pub clear_animation: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub set_looping: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        looping: std::os::raw::c_int,
+    ) -> (),
+    pub play: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub pause: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub stop: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
     pub animation_state: fn(
         this: *const *const std::os::raw::c_void,
     ) -> radiance::components::mesh::skinned_mesh::AnimationState,
     pub bones: fn(
         this: *const *const std::os::raw::c_void,
     ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>,
+    pub add_animation_event_observer: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        observer: *const *const std::os::raw::c_void,
+    ) -> (),
 }
 
 #[repr(C)]
@@ -3140,13 +3217,24 @@ impl IArmatureComponent {
         }
     }
 
+    pub fn on_unloading(&self) -> () {
+        unsafe {
+            let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_unloading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn set_animation(
         &self,
         keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+        events: Vec<radiance::components::mesh::event::AnimationEvent>,
     ) -> crosscom::Void {
         unsafe {
             let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
-            let ret = ((*self.vtable).set_animation)(this, keyframes.into());
+            let ret = ((*self.vtable).set_animation)(this, keyframes.into(), events.into());
 
             ret
         }
@@ -3156,6 +3244,46 @@ impl IArmatureComponent {
         unsafe {
             let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).clear_animation)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn set_looping(&self, looping: bool) -> () {
+        unsafe {
+            let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).set_looping)(this, looping.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn play(&self) -> () {
+        unsafe {
+            let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).play)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn pause(&self) -> () {
+        unsafe {
+            let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).pause)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn stop(&self) -> () {
+        unsafe {
+            let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).stop)(this);
             let ret: () = ret.into();
 
             ret
@@ -3180,6 +3308,19 @@ impl IArmatureComponent {
         }
     }
 
+    pub fn add_animation_event_observer(
+        &self,
+        observer: crosscom::ComRc<radiance::comdef::IAnimationEventObserver>,
+    ) -> () {
+        unsafe {
+            let this = self as *const IArmatureComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).add_animation_event_observer)(this, observer.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
         uuid::Uuid::from_bytes(IArmatureComponent::INTERFACE_ID)
@@ -3190,10 +3331,19 @@ pub trait IArmatureComponentImpl {
     fn set_animation(
         &self,
         keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+        events: Vec<radiance::components::mesh::event::AnimationEvent>,
     ) -> crosscom::Void;
     fn clear_animation(&self) -> ();
+    fn set_looping(&self, looping: bool) -> ();
+    fn play(&self) -> ();
+    fn pause(&self) -> ();
+    fn stop(&self) -> ();
     fn animation_state(&self) -> radiance::components::mesh::skinned_mesh::AnimationState;
     fn bones(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
+    fn add_animation_event_observer(
+        &self,
+        observer: crosscom::ComRc<radiance::comdef::IAnimationEventObserver>,
+    ) -> ();
 }
 
 impl crosscom::ComInterface for IArmatureComponent {
@@ -3219,6 +3369,7 @@ macro_rules! ComObject_ArmatureComponent {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IArmatureComponentImpl;
@@ -3297,10 +3448,11 @@ macro_rules! ComObject_ArmatureComponent {
             fn set_animation(
                 this: *const *const std::os::raw::c_void,
                 keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+                events: Vec<radiance::components::mesh::event::AnimationEvent>,
             ) -> crosscom::Void {
                 unsafe {
                     let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
-                    (*__crosscom_object).inner.set_animation(keyframes)
+                    (*__crosscom_object).inner.set_animation(keyframes, events)
                 }
             }
 
@@ -3309,6 +3461,34 @@ macro_rules! ComObject_ArmatureComponent {
             ) -> () {
                 let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
                 (*__crosscom_object).inner.clear_animation().into()
+            }
+
+            unsafe extern "system" fn set_looping(
+                this: *const *const std::os::raw::c_void,
+                looping: std::os::raw::c_int,
+            ) -> () {
+                let looping: bool = looping != 0;
+
+                let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .set_looping(looping.into())
+                    .into()
+            }
+
+            unsafe extern "system" fn play(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
+                (*__crosscom_object).inner.play().into()
+            }
+
+            unsafe extern "system" fn pause(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
+                (*__crosscom_object).inner.pause().into()
+            }
+
+            unsafe extern "system" fn stop(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
+                (*__crosscom_object).inner.stop().into()
             }
 
             fn animation_state(
@@ -3329,6 +3509,20 @@ macro_rules! ComObject_ArmatureComponent {
                 }
             }
 
+            unsafe extern "system" fn add_animation_event_observer(
+                this: *const *const std::os::raw::c_void,
+                observer: *const *const std::os::raw::c_void,
+            ) -> () {
+                let observer: crosscom::ComRc<radiance::comdef::IAnimationEventObserver> =
+                    observer.into();
+
+                let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .add_animation_event_observer(observer.into())
+                    .into()
+            }
+
             unsafe extern "system" fn on_loading(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
                 (*__crosscom_object).inner.on_loading().into()
@@ -3347,6 +3541,11 @@ macro_rules! ComObject_ArmatureComponent {
                     .into()
             }
 
+            unsafe extern "system" fn on_unloading(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<ArmatureComponentCcw>(this);
+                (*__crosscom_object).inner.on_unloading().into()
+            }
+
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IArmatureComponentVirtualTable_CCW_FOR_ArmatureComponent:
                 radiance::comdef::IArmatureComponentVirtualTableCcw =
@@ -3358,10 +3557,16 @@ macro_rules! ComObject_ArmatureComponent {
                         release,
                         on_loading,
                         on_updating,
+                        on_unloading,
                         set_animation,
                         clear_animation,
+                        set_looping,
+                        play,
+                        pause,
+                        stop,
                         animation_state,
                         bones,
+                        add_animation_event_observer,
                     },
                 };
 
@@ -3415,6 +3620,7 @@ pub struct ISkinnedMeshComponentVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
 }
 
 #[repr(C)]
@@ -3486,6 +3692,16 @@ impl ISkinnedMeshComponent {
         }
     }
 
+    pub fn on_unloading(&self) -> () {
+        unsafe {
+            let this = self as *const ISkinnedMeshComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_unloading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
         uuid::Uuid::from_bytes(ISkinnedMeshComponent::INTERFACE_ID)
@@ -3517,6 +3733,7 @@ macro_rules! ComObject_SkinnedMeshComponent {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IArmatureComponentImpl;
@@ -3610,6 +3827,11 @@ macro_rules! ComObject_SkinnedMeshComponent {
                     .into()
             }
 
+            unsafe extern "system" fn on_unloading(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<SkinnedMeshComponentCcw>(this);
+                (*__crosscom_object).inner.on_unloading().into()
+            }
+
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_ISkinnedMeshComponentVirtualTable_CCW_FOR_SkinnedMeshComponent:
                 radiance::comdef::ISkinnedMeshComponentVirtualTableCcw =
@@ -3621,6 +3843,7 @@ macro_rules! ComObject_SkinnedMeshComponent {
                         release,
                         on_loading,
                         on_updating,
+                        on_unloading,
                     },
                 };
 
@@ -3675,6 +3898,7 @@ pub struct IHAnimBoneComponentVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
+    pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
     pub set_keyframes: fn(
         this: *const *const std::os::raw::c_void,
         keyframes: Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>,
@@ -3684,6 +3908,7 @@ pub struct IHAnimBoneComponentVirtualTable {
         matrix: radiance::math::Mat44,
     ) -> crosscom::Void,
     pub bond_pose: fn(this: *const *const std::os::raw::c_void) -> radiance::math::Mat44,
+    pub reset_timestamp: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
 }
 
 #[repr(C)]
@@ -3755,6 +3980,16 @@ impl IHAnimBoneComponent {
         }
     }
 
+    pub fn on_unloading(&self) -> () {
+        unsafe {
+            let this = self as *const IHAnimBoneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_unloading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn set_keyframes(
         &self,
         keyframes: Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>,
@@ -3785,6 +4020,16 @@ impl IHAnimBoneComponent {
         }
     }
 
+    pub fn reset_timestamp(&self) -> () {
+        unsafe {
+            let this = self as *const IHAnimBoneComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).reset_timestamp)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
         uuid::Uuid::from_bytes(IHAnimBoneComponent::INTERFACE_ID)
@@ -3798,6 +4043,7 @@ pub trait IHAnimBoneComponentImpl {
     ) -> crosscom::Void;
     fn set_bond_pose(&self, matrix: radiance::math::Mat44) -> crosscom::Void;
     fn bond_pose(&self) -> radiance::math::Mat44;
+    fn reset_timestamp(&self) -> ();
 }
 
 impl crosscom::ComInterface for IHAnimBoneComponent {
@@ -3823,6 +4069,7 @@ macro_rules! ComObject_HAnimBoneComponent {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IArmatureComponentImpl;
@@ -3925,6 +4172,13 @@ macro_rules! ComObject_HAnimBoneComponent {
                 }
             }
 
+            unsafe extern "system" fn reset_timestamp(
+                this: *const *const std::os::raw::c_void,
+            ) -> () {
+                let __crosscom_object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
+                (*__crosscom_object).inner.reset_timestamp().into()
+            }
+
             unsafe extern "system" fn on_loading(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
                 (*__crosscom_object).inner.on_loading().into()
@@ -3943,6 +4197,11 @@ macro_rules! ComObject_HAnimBoneComponent {
                     .into()
             }
 
+            unsafe extern "system" fn on_unloading(this: *const *const std::os::raw::c_void) -> () {
+                let __crosscom_object = crosscom::get_object::<HAnimBoneComponentCcw>(this);
+                (*__crosscom_object).inner.on_unloading().into()
+            }
+
             #[allow(non_upper_case_globals)]
             pub const GLOBAL_IHAnimBoneComponentVirtualTable_CCW_FOR_HAnimBoneComponent:
                 radiance::comdef::IHAnimBoneComponentVirtualTableCcw =
@@ -3954,9 +4213,11 @@ macro_rules! ComObject_HAnimBoneComponent {
                         release,
                         on_loading,
                         on_updating,
+                        on_unloading,
                         set_keyframes,
                         set_bond_pose,
                         bond_pose,
+                        reset_timestamp,
                     },
                 };
 
@@ -3991,3 +4252,97 @@ macro_rules! ComObject_HAnimBoneComponent {
 }
 
 // pub use ComObject_HAnimBoneComponent;
+
+// Interface IAnimationEventObserver
+
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct IAnimationEventObserverVirtualTable {
+    pub query_interface: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        guid: uuid::Uuid,
+        retval: &mut *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_long,
+    pub add_ref:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub release:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub on_animation_event:
+        fn(this: *const *const std::os::raw::c_void, event_name: &str) -> crosscom::Void,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IAnimationEventObserverVirtualTableCcw {
+    pub offset: isize,
+    pub vtable: IAnimationEventObserverVirtualTable,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IAnimationEventObserver {
+    pub vtable: *const IAnimationEventObserverVirtualTable,
+}
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+impl IAnimationEventObserver {
+    pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
+        let this = self as *const IAnimationEventObserver as *const *const std::os::raw::c_void;
+        let mut raw = 0 as *const *const std::os::raw::c_void;
+        let guid = uuid::Uuid::from_bytes(T::INTERFACE_ID);
+        let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
+        if ret_val != 0 {
+            None
+        } else {
+            Some(unsafe { crosscom::ComRc::<T>::from_raw_pointer(raw) })
+        }
+    }
+
+    pub fn add_ref(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IAnimationEventObserver as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn release(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IAnimationEventObserver as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn on_animation_event(&self, event_name: &str) -> crosscom::Void {
+        unsafe {
+            let this = self as *const IAnimationEventObserver as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_animation_event)(this, event_name.into());
+
+            ret
+        }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(IAnimationEventObserver::INTERFACE_ID)
+    }
+}
+
+pub trait IAnimationEventObserverImpl {
+    fn on_animation_event(&self, event_name: &str) -> crosscom::Void;
+}
+
+impl crosscom::ComInterface for IAnimationEventObserver {
+    // 55c4060c-91ab-4373-9139-84293c1fc66f
+    const INTERFACE_ID: [u8; 16] = [
+        85u8, 196u8, 6u8, 12u8, 145u8, 171u8, 67u8, 115u8, 145u8, 57u8, 132u8, 41u8, 60u8, 31u8,
+        198u8, 111u8,
+    ];
+}

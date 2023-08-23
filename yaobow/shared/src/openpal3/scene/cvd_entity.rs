@@ -166,6 +166,8 @@ impl IComponentImpl for CvdModelComponent {
             .set_rendering_component(Some(Rc::new(component)));
     }
 
+    fn on_unloading(&self) {}
+
     fn on_updating(&self, _delta_sec: f32) -> crosscom::Void {}
 }
 

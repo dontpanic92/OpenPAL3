@@ -53,5 +53,7 @@ impl IComponentImpl for StaticMeshComponent {
             .set_rendering_component(Some(Rc::new(component)));
     }
 
+    fn on_unloading(&self) {}
+
     fn on_updating(&self, delta_sec: f32) -> crosscom::Void {}
 }

@@ -1,9 +1,17 @@
-use std::{collections::HashMap, io::Read, path::Path};
+use std::{
+    collections::HashMap,
+    io::{Cursor, Read},
+    path::Path,
+};
 
-use fileformats::rwbs::{anm::AnmAction, read_anm};
+use fileformats::{
+    amf::AmfFile,
+    binrw::BinRead,
+    rwbs::{anm::AnmAction, read_anm},
+};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
-    components::mesh::skinned_mesh::AnimKeyFrame,
+    components::mesh::{event::AnimationEvent, skinned_mesh::AnimKeyFrame},
     math::{Quaternion, Vec3},
 };
 
@@ -17,6 +25,18 @@ pub fn load_anm<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> anyhow::Result<Vec<Vec
     } else {
         Ok(vec![])
     }
+}
+
+pub fn load_amf<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> anyhow::Result<Vec<AnimationEvent>> {
+    let mut data = vec![];
+    let _ = vfs.open(&path)?.read_to_end(&mut data)?;
+
+    let amf = AmfFile::read(&mut Cursor::new(data))?;
+    Ok(amf
+        .events()
+        .iter()
+        .map(|e| AnimationEvent::new(e.get_name(), e.get_tick()))
+        .collect())
 }
 
 pub fn load_anm_action(action: &AnmAction) -> Vec<Vec<AnimKeyFrame>> {

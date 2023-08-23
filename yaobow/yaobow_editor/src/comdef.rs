@@ -15,8 +15,10 @@ macro_rules! ComObject_WelcomePageDirector {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IArmatureComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
@@ -172,8 +174,10 @@ macro_rules! ComObject_YaobowResourceViewContent {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IArmatureComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;
@@ -317,8 +321,10 @@ macro_rules! ComObject_DevToolsDirector {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
+            use radiance::comdef::IArmatureComponentImpl;
             use radiance::comdef::IComponentContainerImpl;
             use radiance::comdef::IComponentImpl;
             use radiance::comdef::IDirectorImpl;

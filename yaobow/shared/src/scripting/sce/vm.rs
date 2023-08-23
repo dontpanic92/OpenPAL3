@@ -106,7 +106,9 @@ impl SceVm {
             curtain < 0.
         };
 
-        self.state_mut().dialog_box().fade_window(ui, fade_to_white, curtain.abs());
+        self.state_mut()
+            .dialog_box()
+            .fade_window(ui, fade_to_white, curtain.abs());
     }
 
     pub fn render_debug(&mut self, _scene_manager: ComRc<ISceneManager>, ui: &Ui) {

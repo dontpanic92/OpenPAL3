@@ -5,13 +5,13 @@ use opengujian::run_opengujian;
 use openpal3::run_openpal3;
 use openpal4::run_openpal4;
 use shared::video::register_opengb_video_decoders;
-use test::run_test;
+use testing::run_test;
 
 mod comdef;
 mod opengujian;
 mod openpal3;
 mod openpal4;
-mod test;
+mod testing;
 
 pub fn main() {
     radiance::application::Application::set_panic_hook();

@@ -50,6 +50,8 @@ impl IComponentImpl for OpenPal3ApplicationLoader {
             .set_director(ComRc::from_object(director));
     }
 
+    fn on_unloading(&self) {}
+
     fn on_updating(&self, _delta_sec: f32) {}
 }
 

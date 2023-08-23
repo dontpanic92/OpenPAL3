@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use imgui::{Condition, MouseButton};
+use imgui::MouseButton;
 use radiance::{input::Key, math::Vec3, video::VideoStreamState};
 
 use crate::{
@@ -9,8 +9,8 @@ use crate::{
         not_implemented, ContinuationState, GlobalFunctionContinuation, GlobalFunctionState,
         ScriptGlobalContext, ScriptGlobalFunction, ScriptVm,
     },
-    ui::dialog_box::{AvatarPosition, DialogBox, DialogBoxPresenter},
-    utils::show_video_window,
+    ui::dialog_box::{AvatarPosition, DialogBoxPresenter},
+    utils::{self},
 };
 
 use super::app_context::Pal4AppContext;
@@ -1370,7 +1370,8 @@ fn goto_logo(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 }
 
 fn player_unhold_act(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_act_id:i32);
+    as_params!(vm, player_id: i32);
+    vm.app_context.player_unhold_act(player_id);
     Pal4FunctionState::Completed
 }
 
@@ -1999,7 +2000,7 @@ fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
         if let Some(voice_name) = voice_name {
             if voice_name.len() == 5 && voice_name.starts_with("4") {
                 if let Err(e) = vm.app_context.play_voice(&voice_name) {
-                    log::error!("Play voice failed: {}", e);
+                    log::debug!("Play voice failed: {}", e);
                 }
             }
         }
@@ -2042,17 +2043,24 @@ fn talk_wait(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 }
 
 fn player_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, player: i32, action_str: i32, _flag: i32, _sync: bool);
+    as_params!(vm, player: i32, action_str: i32, flag: i32, _sync: bool);
 
     let action = get_str(vm, action_str as usize).unwrap();
-    vm.app_context.player_do_action(player, &action);
+    vm.app_context.player_do_action(player, &action, flag);
 
     Pal4FunctionState::Completed
 }
 
 fn player_end_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player_id: i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, player_id: i32);
+
+    Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
+        if vm.app_context.player_act_completed(player_id) {
+            ContinuationState::Completed
+        } else {
+            ContinuationState::Loop
+        }
+    }))
 }
 
 fn player_current_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
@@ -2092,7 +2100,6 @@ fn player_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 fn player_current_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, ang: f32);
 
-    println!("set_ang: {}", ang);
     vm.app_context.set_player_ang(-1, ang);
 
     Pal4FunctionState::Completed
@@ -2104,7 +2111,9 @@ fn player_face_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Func
 }
 
 fn player_set_dir(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_dir:f32,_set_dir :bool);
+    as_params!(vm, player_id: i32, direction: f32, _sync :bool);
+
+    vm.app_context.player_set_direction(player_id, direction);
     Pal4FunctionState::Completed
 }
 
@@ -2156,7 +2165,7 @@ fn current_player_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal
 fn player_do_action_repeat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, player: i32, action_str: i32);
     let action = get_str(vm, action_str as usize).unwrap();
-    vm.app_context.player_do_action(player, &action);
+    vm.app_context.player_do_action(player, &action, 0);
 
     Pal4FunctionState::Completed
 }
@@ -2268,10 +2277,9 @@ fn npc_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState 
 fn camera_prepare(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, file_str: i32);
     let file_name = get_str(vm, file_str as usize).unwrap();
-    println!("camera prepare: {}", file_name);
 
     if let Err(e) = vm.app_context.prepare_camera(&file_name) {
-        println!("camera prepare failed: {}", e);
+        log::error!("camera prepare failed: {}", e);
         vm.stack_push::<i32>(0);
     } else {
         vm.stack_push::<i32>(1);
@@ -2283,7 +2291,6 @@ fn camera_prepare(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 fn camera_run_single(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, camera_data: i32, _sync: i32);
     let name = get_str(vm, camera_data as usize).unwrap();
-    println!("camera run single: {} {}", name, _sync);
 
     vm.app_context.run_camera(&name);
 
@@ -2331,11 +2338,13 @@ fn flash_in_red(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
     Pal4FunctionState::Completed
 }
 
+const MOVIES_CONTAIN_BLACK_BARS: &[&str; 1] = &["pal4a.bik"];
+
 fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, movie_file_str:i32);
 
     let movie_name = get_str(vm, movie_file_str as usize).unwrap();
-    let (source_w, source_h) = match vm.app_context.start_play_movie(&movie_name) {
+    let source_size = match vm.app_context.start_play_movie(&movie_name) {
         Some(size) => size,
         None => {
             log::warn!("Skip movie '{}'", movie_name);
@@ -2343,14 +2352,17 @@ fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
         }
     };
     let mut texture_id = None;
+    let remove_black_bars = MOVIES_CONTAIN_BLACK_BARS
+        .iter()
+        .any(|&name| movie_name.to_lowercase().as_str() == name);
 
     Pal4FunctionState::Yield(Box::new(move |vm, _| {
         let ui = vm.app_context.ui.clone();
-        let window_size = ui.ui().io().display_size;
 
         let movie_skipped = {
             let input = vm.app_context().input.borrow();
             input.get_key_state(Key::Escape).pressed()
+                || input.get_key_state(Key::GamePadSouth).pressed()
         };
 
         let video_player = vm.app_context.video_player();
@@ -2362,13 +2374,13 @@ fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
             return ContinuationState::Completed;
         }
 
-        // Keep aspect ratio
-        let w_scale = window_size[0] / source_w as f32;
-        let h_scale = window_size[1] / source_h as f32;
-        let scale = w_scale.min(h_scale);
-        let target_size = [source_w as f32 * scale, source_h as f32 * scale];
-
-        texture_id = show_video_window(ui.ui(), video_player, texture_id, window_size, target_size);
+        texture_id = utils::play_movie(
+            ui.ui(),
+            video_player,
+            texture_id,
+            source_size,
+            remove_black_bars,
+        );
 
         ContinuationState::Loop
     }))

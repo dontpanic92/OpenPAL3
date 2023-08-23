@@ -5,7 +5,10 @@ use radiance::{
     scene::{CoreEntity, CoreScene},
 };
 
-use super::asset_loader::{self, AssetLoader};
+use super::{
+    asset_loader::{self, AssetLoader},
+    comdef::IPal4CharacterController,
+};
 
 pub enum Player {
     YunTianhe,
@@ -107,6 +110,14 @@ impl Pal4Scene {
 
     pub fn get_player(&self, player_id: usize) -> ComRc<IEntity> {
         self.players[player_id].clone()
+    }
+
+    pub fn get_player_controller(&self, player_id: usize) -> ComRc<IPal4CharacterController> {
+        self.players[player_id]
+            .get_component(IPal4CharacterController::uuid())
+            .unwrap()
+            .query_interface::<IPal4CharacterController>()
+            .unwrap()
     }
 
     pub fn get_player_metadata(&self, player_id: usize) -> Player {

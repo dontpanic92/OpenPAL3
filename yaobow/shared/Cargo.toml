@@ -23,6 +23,7 @@ encoding = "0.2.33"
 fileformats = { path = "../fileformats" }
 image = "0.23.0"
 imgui = { version = "0.10", features = ["docking"] }
+itertools = "0"
 lazy_static = "1.2.0"
 log = { version = "0.4.13" }
 lzma-rs = "0.3.0"

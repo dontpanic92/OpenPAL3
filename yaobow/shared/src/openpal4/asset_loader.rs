@@ -11,8 +11,8 @@ use crosscom::ComRc;
 use fileformats::{binrw::BinRead, cam::CameraDataFile, npc::NpcInfoFile};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
-    comdef::{IEntity, IScene},
-    components::mesh::skinned_mesh::AnimKeyFrame,
+    comdef::{IArmatureComponent, IComponent, IEntity, IScene},
+    components::mesh::{event::AnimationEvent, skinned_mesh::AnimKeyFrame},
     rendering::{ComponentFactory, Sprite},
     scene::CoreScene,
     utils::SeekRead,
@@ -20,13 +20,19 @@ use radiance::{
 
 use crate::{
     loaders::{
-        anm::load_anm, bsp::create_entity_from_bsp_model, dff::create_entity_from_dff_model,
-        smp::load_smp, Pal4TextureResolver,
+        anm::{load_amf, load_anm},
+        bsp::create_entity_from_bsp_model,
+        dff::create_entity_from_dff_model,
+        smp::load_smp,
+        Pal4TextureResolver,
     },
     scripting::angelscript::ScriptModule,
 };
 
-use super::actor::Pal4Actor;
+use super::{
+    actor::{Pal4ActorAnimationConfig, Pal4CharacterController},
+    comdef::IPal4CharacterController,
+};
 
 pub struct AssetLoader {
     vfs: MiniFs,
@@ -72,10 +78,22 @@ impl AssetLoader {
             &self.texture_resolver,
         );
 
+        let armature = entity
+            .get_component(IArmatureComponent::uuid())
+            .unwrap()
+            .query_interface::<IArmatureComponent>()
+            .unwrap();
+
+        let controller = Pal4CharacterController::create(armature);
+        entity.add_component(
+            IPal4CharacterController::uuid(),
+            controller.query_interface::<IComponent>().unwrap(),
+        );
+
         if let Some(default_act) = default_act {
-            let act_path = format!("/gamedata/PALActor/{}/{}.anm", actor_name, default_act);
-            let anm = load_anm(&self.vfs, &act_path)?;
-            Pal4Actor::set_anim(entity.clone(), &anm);
+            let anm = self.load_anm(actor_name, default_act).unwrap_or(vec![]);
+            let events = self.load_amf(actor_name, default_act);
+            controller.play_animation(anm, events, Pal4ActorAnimationConfig::Looping);
         }
 
         Ok(entity)
@@ -88,6 +106,11 @@ impl AssetLoader {
     ) -> anyhow::Result<Vec<Vec<AnimKeyFrame>>> {
         let act_path = format!("/gamedata/PALActor/{}/{}.anm", actor_name, act_name);
         Ok(load_anm(&self.vfs, &act_path)?)
+    }
+
+    pub fn load_amf(&self, actor_name: &str, act_name: &str) -> Vec<AnimationEvent> {
+        let amf_path = format!("/gamedata/PALActor/{}/{}.amf", actor_name, act_name);
+        load_amf(&self.vfs, &amf_path).unwrap_or(vec![])
     }
 
     pub fn load_scene(&self, scene_name: &str, block_name: &str) -> anyhow::Result<ComRc<IScene>> {

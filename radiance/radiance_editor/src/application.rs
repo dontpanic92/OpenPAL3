@@ -47,6 +47,8 @@ impl IComponentImpl for EditorApplicationLoader {
             .set_director(self.director.clone());
     }
 
+    fn on_unloading(&self) {}
+
     fn on_updating(&self, _delta_sec: f32) {}
 }
 

@@ -6,6 +6,7 @@ import crosscom.idl;
 interface IComponent: IUnknown {
     void on_loading();
     void on_updating(float delta_sec);
+    void on_unloading();
 }
 
 [uuid(b875bf54-8c4c-4926-a2bd-6ad6f7038cfe)]
@@ -154,15 +155,22 @@ class SceneManager: ISceneManager {}
 [uuid(cad476ee-990b-4ffe-af1b-02eac152e66e)]
 interface IArmatureComponent: IComponent {
     [internal(), rust()]
-    crosscom::Void set_animation(Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>> keyframes);
+    crosscom::Void set_animation(Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>> keyframes, Vec<radiance::components::mesh::event::AnimationEvent> events);
 
     void clear_animation();
+    void set_looping(bool looping);
+
+    void play();
+    void pause();
+    void stop();
 
     [internal(), rust()]
     radiance::components::mesh::skinned_mesh::AnimationState animation_state();
 
     [internal(), rust()]
     Vec<crosscom::ComRc<radiance::comdef::IEntity>> bones();
+
+    void add_animation_event_observer(IAnimationEventObserver observer);
 }
 
 [uuid(6ce422d7-70d9-4986-80ee-e67a53919db1)]
@@ -184,7 +192,15 @@ interface IHAnimBoneComponent: IComponent {
     
     [internal(), rust()]
     radiance::math::Mat44 bond_pose();
+
+    void reset_timestamp();
 }
 
 [uuid(0fc724de-ae8c-42f1-9543-511c11560903)]
 class HAnimBoneComponent: IHAnimBoneComponent {}
+
+[uuid(55c4060c-91ab-4373-9139-84293c1fc66f)]
+interface IAnimationEventObserver: IUnknown {
+    [internal(), rust()]
+    crosscom::Void on_animation_event(&str event_name);
+}

@@ -32,6 +32,8 @@ impl IComponentImpl for ScnScene {
         self.load_roles();
     }
 
+    fn on_unloading(&self) {}
+
     fn on_updating(&self, _delta_sec: f32) {}
 }
 

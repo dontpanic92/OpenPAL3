@@ -298,6 +298,8 @@ impl IComponentImpl for AnimatedMeshComponent {
         self.load_geometries(&self.props().morph_targets[0].geometries);
     }
 
+    fn on_unloading(&self) {}
+
     fn on_updating(&self, delta_sec: f32) -> crosscom::Void {
         let last_time = self.props().last_time;
         let anim_state = self.props().morph_animation_state;

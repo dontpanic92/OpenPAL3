@@ -123,6 +123,7 @@ macro_rules! ComObject_ResourceViewContent {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IArmatureComponentImpl;
@@ -281,6 +282,7 @@ use radiance::comdef::ISceneManagerImpl;
 use radiance::comdef::IArmatureComponentImpl;
 use radiance::comdef::ISkinnedMeshComponentImpl;
 use radiance::comdef::IHAnimBoneComponentImpl;
+use radiance::comdef::IAnimationEventObserverImpl;
 
 
     #[repr(C)]
@@ -362,6 +364,14 @@ use radiance::comdef::IHAnimBoneComponentImpl;
 
 
 
+    unsafe extern "system" fn on_unloading (this: *const *const std::os::raw::c_void, ) -> () {
+
+        let __crosscom_object = crosscom::get_object::<EditorApplicationLoaderComponentCcw>(this);
+        (*__crosscom_object).inner.on_unloading().into()
+    }
+
+
+
 
 
 
@@ -375,6 +385,7 @@ add_ref,
 release,
 on_loading,
 on_updating,
+on_unloading,
 
     },
 };
@@ -427,6 +438,7 @@ macro_rules! ComObject_MainPageDirector {
             use crosscom::IObjectArrayImpl;
             use crosscom::IUnknownImpl;
             use radiance::comdef::IAnimatedMeshComponentImpl;
+            use radiance::comdef::IAnimationEventObserverImpl;
             use radiance::comdef::IApplicationImpl;
             use radiance::comdef::IApplicationLoaderComponentImpl;
             use radiance::comdef::IArmatureComponentImpl;
