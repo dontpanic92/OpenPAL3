@@ -29,9 +29,6 @@ impl VitaGLRenderingEngine {
             glMatrixMode(GL_PROJECTION);
             glLoadIdentity();
             gluPerspective(90., 960. / 544., 0.01, 100.);
-
-            glEnable(GL_DEPTH_TEST);
-            glDepthFunc(GL_LESS);
         }
 
         Self {
@@ -45,6 +42,7 @@ impl RenderingEngine for VitaGLRenderingEngine {
     fn render(&mut self, scene: ComRc<IScene>, viewport: Viewport, ui_frame: ImguiFrame) {
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glEnable(GL_DEPTH_TEST);
             glDepthFunc(GL_LESS);
         }
 
@@ -122,23 +120,44 @@ impl RenderingEngine for VitaGLRenderingEngine {
 
                     glEnableVertexAttribArray(0);
                     glBindBuffer(GL_ARRAY_BUFFER, obj.vertex_buffer());
-                    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE as u8, 0, std::ptr::null());
+                    glVertexAttribPointer(
+                        0,
+                        3,
+                        GL_FLOAT,
+                        GL_FALSE as u8,
+                        obj.stride(),
+                        obj.vertex_offset() as *const _,
+                    );
 
                     glEnableVertexAttribArray(1);
-                    glBindBuffer(GL_ARRAY_BUFFER, obj.tex_buffer());
-                    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE as u8, 0, std::ptr::null());
+                    glBindBuffer(GL_ARRAY_BUFFER, obj.vertex_buffer());
+                    glVertexAttribPointer(
+                        1,
+                        2,
+                        GL_FLOAT,
+                        GL_FALSE as u8,
+                        obj.stride(),
+                        obj.tex_coord_offset() as *const _,
+                    );
 
                     if textures.len() > 1 {
                         glEnableVertexAttribArray(2);
-                        glBindBuffer(GL_ARRAY_BUFFER, obj.tex2_buffer());
-                        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE as u8, 0, std::ptr::null());
+                        glBindBuffer(GL_ARRAY_BUFFER, obj.vertex_buffer());
+                        glVertexAttribPointer(
+                            2,
+                            2,
+                            GL_FLOAT,
+                            GL_FALSE as u8,
+                            obj.stride(),
+                            obj.tex_coord2_offset() as *const _,
+                        );
                     }
 
                     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj.index_buffer());
                     glDrawElements(
                         GL_TRIANGLES,
                         obj.index_count(),
-                        GL_UNSIGNED_SHORT,
+                        GL_UNSIGNED_INT,
                         std::ptr::null(),
                     );
                 }

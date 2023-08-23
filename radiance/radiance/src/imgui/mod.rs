@@ -49,6 +49,17 @@ impl ImguiContext {
             }]);
         }
 
+        #[cfg(vita)]
+        context.fonts().add_font(&[FontSource::TtfData {
+            data: include_bytes!("../../../../assets_ignore/LXGWNeoXiHeiScreen.ttf"),
+            size_pixels: 18. * platform.dpi_scale(),
+            config: Some(FontConfig {
+                rasterizer_multiply: 1.,
+                glyph_ranges: FontGlyphRanges::chinese_full(),
+                ..FontConfig::default()
+            }),
+        }]);
+
         context.io_mut().config_flags |= imgui::ConfigFlags::DOCKING_ENABLE;
 
         if let Some(backend) = clipboard::init() {

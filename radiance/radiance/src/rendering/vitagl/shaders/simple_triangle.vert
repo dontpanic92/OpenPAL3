@@ -8,8 +8,7 @@ void main(
 	float2 out out_texcoord : TEXCOORD0,
 	float4 out gl_Position : POSITION
 ) {
-	
-	float4 mvPosition = mul(mul(float4(position, 1.0f), modelMatrix), viewMatrix);
-	gl_Position = mul(mvPosition, projectionMatrix);
+	float4 mvPosition = mul(viewMatrix, mul(modelMatrix,float4(position, 1.0f)));
+	gl_Position = mul(projectionMatrix, mvPosition);
 	out_texcoord = texcoord;
 }

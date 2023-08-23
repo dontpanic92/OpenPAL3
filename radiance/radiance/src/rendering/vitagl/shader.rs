@@ -48,18 +48,18 @@ impl VitaGLShader {
             glBindAttribLocation(program, 0, position.as_ptr());
             glBindAttribLocation(program, 1, texcoord.as_ptr());
 
-            // let sampler = CString::new("texSampler").unwrap();
-            // glUniform1i(glGetUniformLocation(program, sampler.as_ptr()), 0);
+            glLinkProgram(program);
+
+            let sampler = CString::new("texSampler").unwrap();
+            glUniform1i(glGetUniformLocation(program, sampler.as_ptr()), 0);
 
             if data.components.contains(VertexComponents::TEXCOORD2) {
                 let texcoord2 = CString::new("texcoord2").unwrap();
                 glBindAttribLocation(program, 2, texcoord2.as_ptr());
 
-                // let sampler = CString::new("texSampler2").unwrap();
-                // glUniform1i(glGetUniformLocation(program, sampler.as_ptr()), 1);
+                let sampler2 = CString::new("texSampler2").unwrap();
+                glUniform1i(glGetUniformLocation(program, sampler2.as_ptr()), 1);
             }
-
-            glLinkProgram(program);
 
             let model_matrix = CString::new("modelMatrix").unwrap();
             let uniform_model_matrix = glGetUniformLocation(program, model_matrix.as_ptr());

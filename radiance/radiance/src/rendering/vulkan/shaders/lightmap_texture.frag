@@ -11,7 +11,7 @@ layout(location = 0) out vec4 outColor;
 void main() {
     vec4 lightMap = texture(texSampler[0], fragTexCoord);
     vec4 color = texture(texSampler[1], fragTexCoord2);
-    if (color.a == 0.0) {
+    if (color.a < 0.9) {
         discard;
     }
 
