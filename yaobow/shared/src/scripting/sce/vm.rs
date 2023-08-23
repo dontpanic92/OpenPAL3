@@ -649,7 +649,7 @@ impl SceProcContext {
             }
             118 => {
                 // Quake
-                nop_command!(self, Quake, f32, f32)
+                command!(self, SceCommandQuake, duration: f32, amplitude: f32)
             }
             119 => {
                 // ShowChatRest
