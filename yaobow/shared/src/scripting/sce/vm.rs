@@ -68,6 +68,7 @@ impl SceVm {
         delta_sec: f32,
     ) -> Option<ComRc<IDirector>> {
         self.state.global_state_mut().update(delta_sec);
+        self.draw_curtain(ui);
 
         if self.active_commands.len() == 0 {
             loop {
@@ -95,6 +96,17 @@ impl SceVm {
         }
 
         None
+    }
+
+    fn draw_curtain(&mut self, ui: &Ui) {
+        let curtain = self.state().curtain();
+        let fade_to_white = if curtain == 0. {
+            return;
+        } else {
+            curtain < 0.
+        };
+
+        self.state_mut().dialog_box().fade_window(ui, fade_to_white, curtain.abs());
     }
 
     pub fn render_debug(&mut self, _scene_manager: ComRc<ISceneManager>, ui: &Ui) {

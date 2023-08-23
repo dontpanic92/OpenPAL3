@@ -11,21 +11,24 @@ pub struct SceCommandFadeIn {
 }
 
 impl SceCommand for SceCommandFadeIn {
-    fn initialize(&mut self, _scene_manager: ComRc<ISceneManager>, _state: &mut SceState) {}
-
     fn update(
         &mut self,
         _scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
+        _ui: &Ui,
         state: &mut SceState,
         delta_sec: f32,
     ) -> bool {
         let opacity = 1. - self.spent / SCE_COMMAND_FADE_IN_TIMEOUT;
 
-        state.dialog_box().fade_window(ui, false, opacity);
+        state.set_curtain(opacity);
         self.spent += delta_sec;
 
-        self.spent >= SCE_COMMAND_FADE_IN_TIMEOUT
+        if self.spent >= SCE_COMMAND_FADE_IN_TIMEOUT {
+            state.set_curtain(0.);
+            true
+        } else {
+            false
+        }
     }
 }
 
