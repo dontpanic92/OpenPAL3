@@ -19,6 +19,11 @@ impl SceCommand for SceCommandRoleInput {
         state
             .global_state_mut()
             .set_adv_input_enabled(self.enable_input != 0);
+
+        // don't draw curtain when enable player's input
+        if self.enable_input != 0 {
+            state.set_curtain(0.);
+        }
         true
     }
 }
