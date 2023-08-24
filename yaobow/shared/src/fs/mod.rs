@@ -44,6 +44,10 @@ fn mount_packages_recursive(
     if path.is_dir() {
         for entry in fs::read_dir(path).unwrap() {
             let entry = entry.unwrap();
+            if entry.file_name().eq_ignore_ascii_case("PALSound") {
+                continue;
+            }
+
             let new_path = relative_path.join(entry.file_name());
             vfs = mount_packages_recursive(vfs, local_path, &new_path, pkg_key.clone());
         }
@@ -93,8 +97,7 @@ fn mount_packages_recursive(
 #[cfg(vita)]
 fn create_reader<P: AsRef<Path>>(path: P) -> anyhow::Result<Box<dyn SeekRead>> {
     let file = std::fs::File::open(path.as_ref())?;
-    let reader = std::io::BufReader::with_capacity(512, file);
-    Ok(Box::new(reader))
+    Ok(Box::new(file))
 }
 
 #[cfg(any(windows, linux, macos, android))]

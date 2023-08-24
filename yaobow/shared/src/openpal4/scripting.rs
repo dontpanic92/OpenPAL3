@@ -1298,7 +1298,7 @@ fn gom_touch(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 }
 
 fn camera_set_collide(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _collide: bool);
+    as_params!(vm, _collide: i32);
     Pal4FunctionState::Completed
 }
 
@@ -1307,7 +1307,7 @@ fn camera_seek_to_player(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Fun
 }
 
 fn camera_auto_seek(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _auto_seek: bool);
+    as_params!(vm, _auto_seek: i32);
     Pal4FunctionState::Completed
 }
 
@@ -1342,12 +1342,12 @@ fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> 
 }
 
 fn add_equipment(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _equipment_id: i32, _is_add: bool);
+    as_params!(vm, _equipment_id: i32, _is_add: i32);
     Pal4FunctionState::Completed
 }
 
 fn player_current_set_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _is_visible: bool);
+    as_params!(vm, _is_visible: i32);
     Pal4FunctionState::Completed
 }
 
@@ -1381,24 +1381,24 @@ fn npc_unhold_act(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn camera_set_dist_opt_enable(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_enable_dist_opt :bool);
+    as_params!(vm,_enable_dist_opt :i32);
     Pal4FunctionState::Completed
 }
 
 fn monster_set_hide(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_file_str:i32,_hide_monster :bool);
+    as_params!(vm,_file_str:i32,_hide_monster :i32);
     Pal4FunctionState::Completed
 }
 
 fn game_object_set_research(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_file_str:i32,_research :bool);
+    as_params!(vm,_file_str:i32,_research :i32);
     Pal4FunctionState::Completed
 }
 
 fn set_portrait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, file_str: i32, left: bool);
+    as_params!(vm, file_str: i32, left: i32);
     let file_name = get_str(vm, file_str as usize).unwrap();
-    vm.app_context.set_portrait(&file_name, left);
+    vm.app_context.set_portrait(&file_name, left != 0);
 
     Pal4FunctionState::Completed
 }
@@ -1410,12 +1410,12 @@ fn bgm_config_set_music(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Funct
 
 fn bgm_config_is_in_area(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_file_str:i32);
-    vm.stack_push::<bool>(true);
+    vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
 
 fn script_music_mute(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _mute: bool);
+    as_params!(vm, _mute: i32);
     Pal4FunctionState::Completed
 }
 
@@ -1452,7 +1452,7 @@ fn get_puzzle_game_result(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Fun
 }
 
 fn always_jump(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _jump: bool);
+    as_params!(vm, _jump: i32);
     Pal4FunctionState::Completed
 }
 
@@ -1528,12 +1528,12 @@ fn show_hint(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 }
 
 fn player_add_skill(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_skill_id:i32,_add_skill:bool);
+    as_params!(vm,_player_id:i32,_skill_id:i32,_add_skill:i32);
     Pal4FunctionState::Completed
 }
 
 fn monster_set_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_monster_file_str:i32,_visible_monster:bool);
+    as_params!(vm,_monster_file_str:i32,_visible_monster:i32);
     Pal4FunctionState::Completed
 }
 
@@ -1548,7 +1548,7 @@ fn player_current_random_position(_: &str, vm: &mut ScriptVm<Pal4AppContext>) ->
 }
 
 fn event_volume_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_event_file_str:i32,_visible_event:bool);
+    as_params!(vm,_event_file_str:i32,_visible_event:i32);
     Pal4FunctionState::Completed
 }
 
@@ -1578,18 +1578,18 @@ fn get_visible_object(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functio
 
 fn get_visible_monster(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_monster_file_str:i32);
-    vm.stack_push::<bool>(true);
+    vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
 
 fn check_pack_property(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_property_id:i32,_property_value:i32);
-    vm.stack_push::<bool>(true);
+    vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
 
 fn grant_system_ui(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_ui_id:i32,_grant_ui:bool);
+    as_params!(vm,_ui_id:i32,_grant_ui:i32);
     Pal4FunctionState::Completed
 }
 
@@ -1599,17 +1599,17 @@ fn open_system_ui(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn grant_smith_system(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_smith1:bool,_smith2:bool,_smith3:bool,_smith4:bool);
+    as_params!(vm,_smith1:i32,_smith2:i32,_smith3:i32,_smith4:i32);
     Pal4FunctionState::Completed
 }
 
 fn grant_magic_system(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_magic1:bool,_magic2:bool);
+    as_params!(vm,_magic1:i32,_magic2:i32);
     Pal4FunctionState::Completed
 }
 
 fn check_magic_mastered(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<bool>(true);
+    vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
 
@@ -1624,12 +1624,12 @@ fn select_dialog_get_last_select(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> 
 }
 
 fn gob_attach_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_gob_file_str:i32,_attach_file_str:i32,_player_id:i32,_attach_gob:bool);
+    as_params!(vm,_gob_file_str:i32,_attach_file_str:i32,_player_id:i32,_attach_gob:i32);
     Pal4FunctionState::Completed
 }
 
 fn gob_attach_to_current_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_gob_file_str:i32,_attach_file_str:i32,_attach_gob:bool);
+    as_params!(vm,_gob_file_str:i32,_attach_file_str:i32,_attach_gob:i32);
     Pal4FunctionState::Completed
 }
 
@@ -1646,7 +1646,7 @@ fn gob_detach_from_current_player(
 }
 
 fn effect_attach_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_effect_file_str:i32,_attach_effect:bool);
+    as_params!(vm,_player_id:i32,_effect_file_str:i32,_attach_effect:i32);
     Pal4FunctionState::Completed
 }
 
@@ -1654,7 +1654,7 @@ fn effect_attach_to_current_player(
     _: &str,
     vm: &mut ScriptVm<Pal4AppContext>,
 ) -> Pal4FunctionState {
-    as_params!(vm,_effect_file_str:i32,_attach_effect:bool);
+    as_params!(vm,_effect_file_str:i32,_attach_effect:i32);
     Pal4FunctionState::Completed
 }
 
@@ -1671,7 +1671,7 @@ fn effect_detach_from_current_player(
 }
 
 fn effect_attach_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _effect_file_str: i32, _attach_effect: bool);
+    as_params!(vm, _npc_file_str: i32, _effect_file_str: i32, _attach_effect: i32);
     Pal4FunctionState::Completed
 }
 
@@ -1681,7 +1681,7 @@ fn effect_detach_from_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Fun
 }
 
 fn gob_attach_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _gob_file_str: i32, _attach_file_str: i32, _npc_file_str: i32, _attach_gob: bool);
+    as_params!(vm, _gob_file_str: i32, _attach_file_str: i32, _npc_file_str: i32, _attach_gob: i32);
     Pal4FunctionState::Completed
 }
 
@@ -1700,12 +1700,12 @@ fn script_clear_ctx_but_current(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> 
 }
 
 fn add_money(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _money_amount: i32, _add_money: bool);
+    as_params!(vm, _money_amount: i32, _add_money: i32);
     Pal4FunctionState::Completed
 }
 
 fn pay_money(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _money_amount: i32, _pay_money: bool);
+    as_params!(vm, _money_amount: i32, _pay_money: i32);
     Pal4FunctionState::Completed
 }
 
@@ -1777,12 +1777,12 @@ fn player_current_get_pos_z(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4F
 }
 
 fn arena_skill_enable(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _enable: bool);
+    as_params!(vm, _enable: i32);
     Pal4FunctionState::Completed
 }
 
 fn show_inn_dialog(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _show: bool);
+    as_params!(vm, _show: i32);
     Pal4FunctionState::Completed
 }
 
@@ -1796,7 +1796,7 @@ fn player_take_a_rest(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functi
 }
 
 fn is_night_time(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<bool>(true);
+    vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
 
@@ -1816,7 +1816,7 @@ fn start_ui_timer(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn player_forbiden_skill(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player_id: i32, _skill_id: i32, _forbiden_skill: bool);
+    as_params!(vm, _player_id: i32, _skill_id: i32, _forbiden_skill: i32);
     Pal4FunctionState::Completed
 }
 
@@ -1854,22 +1854,22 @@ fn gob_reset(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 
 fn check_equip_in_inventory(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_equip_id:i32);
-    vm.stack_push::<bool>(true);
+    vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
 
 fn remove_equipment(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_equip_id:i32,_remove_equip :bool);
+    as_params!(vm,_equip_id:i32,_remove_equip :i32);
     Pal4FunctionState::Completed
 }
 
 fn add_prescription(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_prescription_id:i32,_add_prescription :bool);
+    as_params!(vm,_prescription_id:i32,_add_prescription :i32);
     Pal4FunctionState::Completed
 }
 
 fn enable_shadow(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_enable_shadow :bool);
+    as_params!(vm,_enable_shadow :i32);
     Pal4FunctionState::Completed
 }
 
@@ -1908,7 +1908,7 @@ fn set_minimap_level(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 }
 
 fn pet_show(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_show_pet:bool);
+    as_params!(vm,_show_pet:i32);
     Pal4FunctionState::Completed
 }
 
@@ -2014,7 +2014,12 @@ fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
         let ui = &vm.app_context().ui;
         presenter.update(&vm.app_context.dialog_box, delta_sec);
 
-        if ui.ui().is_mouse_released(MouseButton::Left) {
+        let input = vm.app_context().input.clone();
+        let input = input.borrow();
+        let completed = ui.ui().is_mouse_released(MouseButton::Left)
+            || input.get_key_state(Key::GamePadEast).pressed()
+            || input.get_key_state(Key::GamePadSouth).pressed();
+        if completed {
             vm.app_context
                 .dialog_box
                 .set_avatar(None, AvatarPosition::Left);
@@ -2043,7 +2048,7 @@ fn talk_wait(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 }
 
 fn player_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, player: i32, action_str: i32, flag: i32, _sync: bool);
+    as_params!(vm, player: i32, action_str: i32, flag: i32, _sync: i32);
 
     let action = get_str(vm, action_str as usize).unwrap();
     vm.app_context.player_do_action(player, &action, flag);
@@ -2064,7 +2069,7 @@ fn player_end_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 }
 
 fn player_current_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _action_file_str:i32,_action_id:i32,_do_action :bool);
+    as_params!(vm, _action_file_str:i32,_action_id:i32,_do_action :i32);
     Pal4FunctionState::Completed
 }
 
@@ -2079,7 +2084,6 @@ fn player_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 
 fn player_current_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, x:f32, y:f32, z:f32);
-
     vm.app_context.set_player_pos(-1, &Vec3::new(x, y, z));
     Pal4FunctionState::Completed
 }
@@ -2106,59 +2110,59 @@ fn player_current_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Fun
 }
 
 fn player_face_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player1_id:i32,_player2_id:i32,_face_to_player :bool);
+    as_params!(vm,_player1_id:i32,_player2_id:i32,_face_to_player :i32);
     Pal4FunctionState::Completed
 }
 
 fn player_set_dir(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, player_id: i32, direction: f32, _sync :bool);
+    as_params!(vm, player_id: i32, direction: f32, _sync :i32);
 
     vm.app_context.player_set_direction(player_id, direction);
     Pal4FunctionState::Completed
 }
 
 fn player_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_npc_file_str:i32,_face_to_npc :bool);
+    as_params!(vm,_player_id:i32,_npc_file_str:i32,_face_to_npc :i32);
     Pal4FunctionState::Completed
 }
 
 fn player_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_walk_to :bool);
+    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_walk_to :i32);
     Pal4FunctionState::Completed
 }
 
 fn player_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_run_to :bool);
+    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_run_to :i32);
     Pal4FunctionState::Completed
 }
 
 fn player_current_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_x:f32,_y:f32,_z:f32,_walk_to :bool);
+    as_params!(vm,_x:f32,_y:f32,_z:f32,_walk_to :i32);
     Pal4FunctionState::Completed
 }
 
 fn player_back_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_back_to :bool);
+    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_back_to :i32);
     Pal4FunctionState::Completed
 }
 
 fn player_blend_out(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_blend_out_time:f32,_blend_out :bool);
+    as_params!(vm,_player_id:i32,_blend_out_time:f32,_blend_out :i32);
     Pal4FunctionState::Completed
 }
 
 fn player_blend_in(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_blend_in_time:f32,_blend_in :bool);
+    as_params!(vm,_player_id:i32,_blend_in_time:f32,_blend_in :i32);
     Pal4FunctionState::Completed
 }
 
 fn player_face_to_current_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_face_to_current_player :bool);
+    as_params!(vm,_player_id:i32,_face_to_current_player :i32);
     Pal4FunctionState::Completed
 }
 
 fn current_player_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32,_face_to_npc :bool);
+    as_params!(vm,_npc_file_str:i32,_face_to_npc :i32);
     Pal4FunctionState::Completed
 }
 
@@ -2185,27 +2189,27 @@ fn current_player_end_move(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4F
 }
 
 fn npc_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _walk_to: bool);
+    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _walk_to: i32);
     Pal4FunctionState::Completed
 }
 
 fn npc_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _run_to: bool);
+    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _run_to: i32);
     Pal4FunctionState::Completed
 }
 
 fn npc_back_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _back_to: bool);
+    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _back_to: i32);
     Pal4FunctionState::Completed
 }
 
 fn npc_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _action_file_str: i32, _action_id: i32, _do_action: bool);
+    as_params!(vm, _npc_file_str: i32, _action_file_str: i32, _action_id: i32, _do_action: i32);
     Pal4FunctionState::Completed
 }
 
 fn npc_end_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _end_action: bool);
+    as_params!(vm, _npc_file_str: i32, _end_action: i32);
     Pal4FunctionState::Completed
 }
 
@@ -2220,32 +2224,32 @@ fn npc_set_rot(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState 
 }
 
 fn npc_set_dir(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _dir: f32, _set_dir: bool);
+    as_params!(vm, _npc_file_str: i32, _dir: f32, _set_dir: i32);
     Pal4FunctionState::Completed
 }
 
 fn npc_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc1_file_str: i32, _npc2_file_str: i32, _face_to_npc: bool);
+    as_params!(vm, _npc1_file_str: i32, _npc2_file_str: i32, _face_to_npc: i32);
     Pal4FunctionState::Completed
 }
 
 fn npc_face_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _player_id: i32, _face_to_player: bool);
+    as_params!(vm, _npc_file_str: i32, _player_id: i32, _face_to_player: i32);
     Pal4FunctionState::Completed
 }
 
 fn npc_blend_out(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _blend_out_time: f32, _blend_out: bool);
+    as_params!(vm, _npc_file_str: i32, _blend_out_time: f32, _blend_out: i32);
     Pal4FunctionState::Completed
 }
 
 fn npc_blend_in(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32,_blend_in_time:f32,_blend_in :bool);
+    as_params!(vm,_npc_file_str:i32,_blend_in_time:f32,_blend_in :i32);
     Pal4FunctionState::Completed
 }
 
 fn npc_face_to_current_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32,_face_to_current_player :bool);
+    as_params!(vm,_npc_file_str:i32,_face_to_current_player :i32);
     Pal4FunctionState::Completed
 }
 
@@ -2299,7 +2303,7 @@ fn camera_run_single(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 }
 
 fn camera_run_circle(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_run_circle :bool);
+    as_params!(vm,_run_circle :i32);
     vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
@@ -2319,22 +2323,22 @@ fn flash_in_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn flash_out_white(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _flash_time:f32,_flash_out_white1 :bool,_flash_out_white2 :bool);
+    as_params!(vm, _flash_time:f32,_flash_out_white1 :i32,_flash_out_white2 :i32);
     Pal4FunctionState::Completed
 }
 
 fn flash_in_white(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _flash_time:f32,_flash_in_white :bool);
+    as_params!(vm, _flash_time:f32,_flash_in_white :i32);
     Pal4FunctionState::Completed
 }
 
 fn flash_out_red(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _flash_time:f32,_flash_out_red1 :bool,_flash_out_red2 :bool);
+    as_params!(vm, _flash_time:f32,_flash_out_red1 :i32,_flash_out_red2 :i32);
     Pal4FunctionState::Completed
 }
 
 fn flash_in_red(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _flash_time:f32,_flash_in_red1 :bool,_flash_in_red2 :bool);
+    as_params!(vm, _flash_time:f32,_flash_in_red1 :i32,_flash_in_red2 :i32);
     Pal4FunctionState::Completed
 }
 
@@ -2387,7 +2391,7 @@ fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 }
 
 fn object_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_object_file_str:i32,_action_file_str:i32,_action_id:i32,_do_action :bool);
+    as_params!(vm,_object_file_str:i32,_action_file_str:i32,_action_id:i32,_do_action :i32);
     Pal4FunctionState::Completed
 }
 
@@ -2407,22 +2411,22 @@ fn start_jigsaw_game(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 }
 
 fn obj_blend_out(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_obj_file_str:i32,_blend_out_time:f32,_blend_out :bool);
+    as_params!(vm,_obj_file_str:i32,_blend_out_time:f32,_blend_out :i32);
     Pal4FunctionState::Completed
 }
 
 fn obj_blend_in(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_obj_file_str:i32,_blend_in_time:f32,_blend_in :bool);
+    as_params!(vm,_obj_file_str:i32,_blend_in_time:f32,_blend_in :i32);
     Pal4FunctionState::Completed
 }
 
 fn mst_blend_out(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_mst_file_str:i32,_blend_out_time:f32,_blend_out :bool);
+    as_params!(vm,_mst_file_str:i32,_blend_out_time:f32,_blend_out :i32);
     Pal4FunctionState::Completed
 }
 
 fn mst_blend_in(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_mst_file_str:i32,_blend_in_time:f32,_blend_in :bool);
+    as_params!(vm,_mst_file_str:i32,_blend_in_time:f32,_blend_in :i32);
     Pal4FunctionState::Completed
 }
 
@@ -2436,7 +2440,7 @@ fn show_select_dialog(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functio
     Pal4FunctionState::Completed
 }
 fn gob_movment(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _gob_file_str: i32, _x: f32, _y: f32, _z: f32, _rot: f32, _movment: bool);
+    as_params!(vm, _gob_file_str: i32, _x: f32, _y: f32, _z: f32, _rot: f32, _movment: i32);
     Pal4FunctionState::Completed
 }
 
@@ -2450,27 +2454,27 @@ fn show_world_map(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSt
 }
 
 fn gob_scale(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _gob_file_str: i32, _x_scale: f32, _y_scale: f32, _scale_gob: bool);
+    as_params!(vm, _gob_file_str: i32, _x_scale: f32, _y_scale: f32, _scale_gob: i32);
     Pal4FunctionState::Completed
 }
 
 fn player_current_face_to_gob(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_gob_file_str:i32,_face_to_gob :bool);
+    as_params!(vm,_gob_file_str:i32,_face_to_gob :i32);
     Pal4FunctionState::Completed
 }
 
 fn player_current_movement(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_x:f32,_y:f32,_z:f32,_rot:f32,_movment :bool);
+    as_params!(vm,_x:f32,_y:f32,_z:f32,_rot:f32,_movment :i32);
     Pal4FunctionState::Completed
 }
 
 fn show_poetry(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_poetry_id:i32,_show_poetry :bool);
+    as_params!(vm,_poetry_id:i32,_show_poetry :i32);
     Pal4FunctionState::Completed
 }
 
 fn npc_fly_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32,_x:f32,_y:f32,_z:f32,_fly_to :bool);
+    as_params!(vm,_npc_file_str:i32,_x:f32,_y:f32,_z:f32,_fly_to :i32);
     Pal4FunctionState::Completed
 }
 

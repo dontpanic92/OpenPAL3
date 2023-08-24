@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use image::RgbaImage;
+
 use crate::rendering::{Material, MaterialDef};
 
 use super::{shader::VitaGLShader, texture::VitaGLTexture};
@@ -24,11 +26,8 @@ impl VitaGLMaterial {
             .textures()
             .iter()
             .map(|t| {
-                Rc::new(VitaGLTexture::new(
-                    t.image().unwrap().width(),
-                    t.image().unwrap().height(),
-                    t.image().unwrap(),
-                ))
+                let image = t.image().unwrap_or(&TEXTURE_MISSING);
+                Rc::new(VitaGLTexture::new(image.width(), image.height(), image))
             })
             .collect();
 
@@ -46,4 +45,11 @@ impl VitaGLMaterial {
     pub fn textures(&self) -> &[Rc<VitaGLTexture>] {
         &self.textures
     }
+}
+
+lazy_static::lazy_static! {
+static ref TEXTURE_MISSING: RgbaImage =
+image::load_from_memory(radiance_assets::TEXTURE_MISSING_TEXTURE_FILE)
+    .unwrap()
+    .to_rgba8();
 }

@@ -1,4 +1,4 @@
-use image::ImageFormat;
+use image::{GenericImageView, ImageFormat};
 
 use crate::rendering::texture::TextureStore;
 
@@ -75,10 +75,11 @@ impl SimpleMaterialDef {
     pub fn create2(texture_name: &str, data: Option<Vec<u8>>, use_alpha: bool) -> MaterialDef {
         let texture = TextureStore::get_or_update(texture_name, || {
             if let Some(data) = data {
-                image::load_from_memory(&data)
-                    .or_else(|_| image::load_from_memory_with_format(&data, ImageFormat::Tga))
-                    .and_then(|img| Ok(img.to_rgba8()))
-                    .ok()
+                let image = {
+                    image::load_from_memory(&data)
+                        .or_else(|_| image::load_from_memory_with_format(&data, ImageFormat::Tga))
+                };
+                image.ok()
             } else {
                 None
             }

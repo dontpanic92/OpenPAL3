@@ -71,8 +71,4 @@ fn init_logger() {
 
 #[used]
 #[export_name = "_newlib_heap_size_user"]
-pub static _NEWLIB_HEAP_SIZE_USER: u32 = 204 * 1024 * 1024;
-
-#[used]
-#[export_name = "sceLibcHeapSize"]
-pub static SCE_LIBC_HEAP_SIZE: u32 = 64 * 1024 * 1024;
+pub static _NEWLIB_HEAP_SIZE_USER: u32 = 216 * 1024 * 1024;

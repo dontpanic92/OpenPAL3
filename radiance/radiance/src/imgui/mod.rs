@@ -55,7 +55,7 @@ impl ImguiContext {
             size_pixels: 18. * platform.dpi_scale(),
             config: Some(FontConfig {
                 rasterizer_multiply: 1.,
-                glyph_ranges: FontGlyphRanges::chinese_full(),
+                glyph_ranges: FontGlyphRanges::chinese_simplified_common(),
                 ..FontConfig::default()
             }),
         }]);

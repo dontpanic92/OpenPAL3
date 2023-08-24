@@ -211,8 +211,15 @@ fn load_portraits(
     ];
 
     let mut portraits = HashMap::new();
+    let mut sprite_cache = HashMap::new();
     for portrait_file in &portrait_files {
-        let ret = load_portraits_single(component_factory, vfs, portrait_file, &mut portraits);
+        let ret = load_portraits_single(
+            component_factory,
+            vfs,
+            portrait_file,
+            &mut portraits,
+            &mut sprite_cache,
+        );
         if let Err(e) = ret {
             log::error!("load_portraits_single failed: {:?}", e);
         }
@@ -226,6 +233,7 @@ fn load_portraits_single(
     vfs: &MiniFs,
     imageset: &str,
     portraits: &mut HashMap<String, ImageSetImage>,
+    sprite_cache: &mut HashMap<String, Rc<Sprite>>,
 ) -> anyhow::Result<()> {
     let data = vfs.read_to_end(imageset)?;
     let content = String::from_utf8_lossy(&data);
@@ -234,6 +242,7 @@ fn load_portraits_single(
     let image_file = root
         .attribute("Imagefile")
         .ok_or(anyhow!("Missing Imagefile attribute in root node"))?;
+    let image_file = image_file.replace('\\', "/");
     let image_file = if !image_file.starts_with(&['/', '\\']) {
         format!("/{}", image_file)
     } else {
@@ -265,11 +274,20 @@ fn load_portraits_single(
                 .attribute("Height")
                 .ok_or(anyhow!("Missing Height in image node"))?
                 .parse::<u32>()?;
-            let sprite = Rc::new(Sprite::load_from_buffer(
-                &vfs.read_to_end(&image_file)?,
-                image::ImageFormat::Png,
-                component_factory.as_ref(),
-            ));
+
+            let sprite = sprite_cache
+                .entry(image_file.clone())
+                .or_insert_with(|| {
+                    let image = {
+                        let buf = vfs.read_to_end(&image_file).unwrap();
+                        image::load_from_memory_with_format(&buf, image::ImageFormat::Png)
+                    };
+                    Rc::new(Sprite::load_from_image(
+                        image.unwrap(),
+                        component_factory.as_ref(),
+                    ))
+                })
+                .clone();
             portraits.insert(
                 name.clone(),
                 ImageSetImage {
