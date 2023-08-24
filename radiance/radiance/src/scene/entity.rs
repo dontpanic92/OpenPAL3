@@ -109,8 +109,9 @@ impl IEntityImpl for CoreEntity {
             e.load();
         }
 
-        for c in self.components.borrow().clone() {
-            c.1.on_loading()
+        let components = self.components.borrow().clone();
+        for c in components.values() {
+            c.on_loading()
         }
     }
 
@@ -119,8 +120,9 @@ impl IEntityImpl for CoreEntity {
             e.unload();
         }
 
-        for c in self.components.borrow().clone() {
-            c.1.on_unloading()
+        let components = self.components.borrow().clone();
+        for c in components.values() {
+            c.on_unloading()
         }
 
         self.props_mut().children.clear();
