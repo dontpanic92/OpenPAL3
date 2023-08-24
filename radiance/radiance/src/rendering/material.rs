@@ -1,4 +1,4 @@
-use image::{GenericImageView, ImageFormat};
+use image::ImageFormat;
 
 use crate::rendering::texture::TextureStore;
 
@@ -79,7 +79,7 @@ impl SimpleMaterialDef {
                     image::load_from_memory(&data)
                         .or_else(|_| image::load_from_memory_with_format(&data, ImageFormat::Tga))
                 };
-                image.ok()
+                image.and_then(|img| Ok(img.to_rgba8())).ok()
             } else {
                 None
             }

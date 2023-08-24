@@ -281,11 +281,10 @@ fn load_portraits_single(
                     let image = {
                         let buf = vfs.read_to_end(&image_file).unwrap();
                         image::load_from_memory_with_format(&buf, image::ImageFormat::Png)
+                            .unwrap()
+                            .to_rgba8()
                     };
-                    Rc::new(Sprite::load_from_image(
-                        image.unwrap(),
-                        component_factory.as_ref(),
-                    ))
+                    Rc::new(Sprite::load_from_image(image, component_factory.as_ref()))
                 })
                 .clone();
             portraits.insert(

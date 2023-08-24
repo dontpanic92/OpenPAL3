@@ -66,6 +66,13 @@ impl OpenPal3ApplicationLoader {
         app
     }
 
+    pub fn create(
+        app: ComRc<IApplication>,
+        config: &YaobowConfig,
+    ) -> ComRc<IApplicationLoaderComponent> {
+        ComRc::from_object(Self::new(app.clone(), config, "OpenPAL3"))
+    }
+
     fn new(app: ComRc<IApplication>, config: &YaobowConfig, app_name: &str) -> Self {
         let root_path = PathBuf::from(&config.asset_path);
 

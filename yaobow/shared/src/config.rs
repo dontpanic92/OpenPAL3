@@ -6,7 +6,7 @@ pub struct YaobowConfig {
 }
 
 impl YaobowConfig {
-    pub fn load(config_name: &str, app_name: &str) -> YaobowConfig {
+    pub fn load(config_name: &str, app_name: &str) -> anyhow::Result<YaobowConfig> {
         use crate::ydirs;
 
         let mut builder = config::Config::builder();
@@ -27,10 +27,8 @@ impl YaobowConfig {
         builder = builder.add_source(config::Environment::with_prefix(app_name));
 
         match builder.build() {
-            Ok(config) => config.try_deserialize().unwrap(),
-            Err(_e) => {
-                panic!("Failed to load config");
-            }
+            Ok(config) => Ok(config.try_deserialize()?),
+            Err(e) => anyhow::bail!("failed to load config: {}", e),
         }
     }
 }

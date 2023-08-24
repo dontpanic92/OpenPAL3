@@ -1,12 +1,14 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 
+use application::run_title_selection;
 use opengujian::run_opengujian;
 use openpal3::run_openpal3;
 use openpal4::run_openpal4;
 use shared::video::register_opengb_video_decoders;
 use testing::run_test;
 
+mod application;
 mod comdef;
 mod opengujian;
 mod openpal3;
@@ -20,7 +22,7 @@ pub fn main() {
 
     let args = std::env::args().collect::<Vec<String>>();
     if args.len() <= 1 {
-        run_openpal3();
+        run_title_selection();
     } else {
         match args[1].as_str() {
             "--pal3" => {

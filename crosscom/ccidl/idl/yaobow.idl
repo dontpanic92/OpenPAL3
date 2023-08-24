@@ -9,5 +9,11 @@ class OpenPal3ApplicationLoaderComponent: IApplicationLoaderComponent {}
 [uuid(412087ff-19be-4fa1-865a-9dbc243bd434)]
 class OpenPal4ApplicationLoaderComponent: IApplicationLoaderComponent {}
 
+[uuid(9492ea12-f90d-4909-9dbb-7d16a0df716d)]
+class YaobowApplicationLoader: IApplicationLoaderComponent {}
+
+[uuid(0542eaa7-3ff7-44c0-9558-1ff9258f665c)]
+class TitleSelectionDirector: IDirector {}
+
 [uuid(06c84916-355f-46a2-a61d-4e9caab8abe8)]
 class MainMenuDirector: IDirector {}

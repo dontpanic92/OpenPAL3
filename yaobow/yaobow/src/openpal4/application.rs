@@ -6,6 +6,7 @@ use radiance::{
     comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
 };
 use shared::{
+    config::YaobowConfig,
     fs::init_virtual_fs,
     openpal4::{asset_loader::AssetLoader, director::OpenPAL4Director},
 };
@@ -64,6 +65,13 @@ impl OpenPal4ApplicationLoader {
         );
 
         app
+    }
+
+    pub fn create(
+        app: ComRc<IApplication>,
+        _config: YaobowConfig,
+    ) -> ComRc<IApplicationLoaderComponent> {
+        ComRc::from_object(Self::new(app.clone(), "OpenPAL4"))
     }
 
     fn new(app: ComRc<IApplication>, app_name: &str) -> Self {
