@@ -122,6 +122,8 @@ impl AdventureDirector {
             sce_vm_options,
         );
 
+        // don't draw curtain when loading a save
+        sce_vm.state_mut().set_curtain(0.);
         sce_vm.state_mut().try_call_proc_by_name(&format!(
             "_{}_{}",
             scene_name.as_ref().unwrap(),
