@@ -26,6 +26,8 @@ interface IApplication: IComponentContainer {
 
     [internal(), rust()]
     std::rc::Rc<std::cell::RefCell<radiance::radiance::CoreRadianceEngine>> engine();
+
+    float dpi_scale();
 }
 
 [uuid(bd5ad7e2-635d-4bf2-94da-a814d001c811)]

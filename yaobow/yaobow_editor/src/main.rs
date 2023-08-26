@@ -15,6 +15,7 @@ use radiance_editor::application::EditorApplicationLoader;
 use radiance_editor::comdef::IViewContentImpl;
 use shared::config::YaobowConfig;
 use shared::openpal3::asset_manager::AssetManager;
+use shared::GameType;
 
 pub struct SceneViewResourceView {
     ui: RefCell<Option<ComRc<IDirector>>>,

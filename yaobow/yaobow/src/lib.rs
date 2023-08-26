@@ -1,6 +1,7 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 
+mod application;
 mod comdef;
 mod opengujian;
 mod openpal3;

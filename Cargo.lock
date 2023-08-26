@@ -5326,6 +5326,7 @@ dependencies = [
  "fileformats",
  "imgui",
  "log",
+ "mini-fs",
  "ndk 0.5.0",
  "ndk-glue 0.5.2",
  "ndk-sys 0.3.0",

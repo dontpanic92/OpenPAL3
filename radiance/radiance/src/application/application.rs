@@ -75,6 +75,10 @@ impl IApplicationImpl for Application {
     fn engine(&self) -> Rc<RefCell<CoreRadianceEngine>> {
         self.radiance_engine.clone()
     }
+
+    fn dpi_scale(&self) -> f32 {
+        self.platform.borrow().dpi_scale()
+    }
 }
 
 impl Application {

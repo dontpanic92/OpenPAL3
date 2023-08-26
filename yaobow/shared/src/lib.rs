@@ -14,3 +14,49 @@ pub mod ui;
 pub mod utils;
 pub mod video;
 pub mod ydirs;
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum GameType {
+    PAL3,
+    PAL3A,
+    PAL4,
+    PAL5,
+    PAL5Q,
+    SWD5,
+    SWDHC,
+    SWDCF,
+    Gujian,
+    Gujian2,
+}
+
+impl GameType {
+    pub fn app_name(&self) -> &'static str {
+        match self {
+            GameType::PAL3 => "OpenPAL3",
+            GameType::PAL3A => "OpenPAL3A",
+            GameType::PAL4 => "OpenPAL4",
+            GameType::PAL5 => "OpenPAL5",
+            GameType::PAL5Q => "OpenPAL5Q",
+            GameType::SWD5 => "OpenSWD5",
+            GameType::SWDHC => "OpenSWDHC",
+            GameType::SWDCF => "OpenSWDCF",
+            GameType::Gujian => "OpenGujian",
+            GameType::Gujian2 => "OpenGujian2",
+        }
+    }
+
+    pub fn full_name(&self) -> &'static str {
+        match self {
+            GameType::PAL3 => "仙剑奇侠传三",
+            GameType::PAL3A => "仙剑奇侠传三外传",
+            GameType::PAL4 => "仙剑奇侠传四",
+            GameType::PAL5 => "仙剑奇侠传五",
+            GameType::PAL5Q => "仙剑奇侠传五前传",
+            GameType::SWD5 => "轩辕剑五",
+            GameType::SWDHC => "轩辕剑外传 汉之云",
+            GameType::SWDCF => "轩辕剑外传 云之遥",
+            GameType::Gujian => "古剑奇谭",
+            GameType::Gujian2 => "古剑奇谭二",
+        }
+    }
+}

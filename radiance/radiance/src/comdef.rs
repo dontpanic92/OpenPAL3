@@ -301,6 +301,9 @@ pub struct IApplicationVirtualTable {
     pub engine: fn(
         this: *const *const std::os::raw::c_void,
     ) -> std::rc::Rc<std::cell::RefCell<radiance::radiance::CoreRadianceEngine>>,
+    pub dpi_scale: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_float,
 }
 
 #[repr(C)]
@@ -432,6 +435,16 @@ impl IApplication {
         }
     }
 
+    pub fn dpi_scale(&self) -> f32 {
+        unsafe {
+            let this = self as *const IApplication as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).dpi_scale)(this);
+            let ret: f32 = ret.into();
+
+            ret
+        }
+    }
+
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
         uuid::Uuid::from_bytes(IApplication::INTERFACE_ID)
@@ -443,6 +456,7 @@ pub trait IApplicationImpl {
     fn run(&self) -> ();
     fn set_title(&self, title: &str) -> crosscom::Void;
     fn engine(&self) -> std::rc::Rc<std::cell::RefCell<radiance::radiance::CoreRadianceEngine>>;
+    fn dpi_scale(&self) -> f32;
 }
 
 impl crosscom::ComInterface for IApplication {
@@ -570,6 +584,13 @@ macro_rules! ComObject_Application {
                 }
             }
 
+            unsafe extern "system" fn dpi_scale(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_float {
+                let __crosscom_object = crosscom::get_object::<ApplicationCcw>(this);
+                (*__crosscom_object).inner.dpi_scale().into()
+            }
+
             unsafe extern "system" fn add_component(
                 this: *const *const std::os::raw::c_void,
                 uuid: uuid::Uuid,
@@ -624,6 +645,7 @@ macro_rules! ComObject_Application {
                         run,
                         set_title,
                         engine,
+                        dpi_scale,
                     },
                 };
 

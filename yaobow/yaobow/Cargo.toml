@@ -24,6 +24,7 @@ crosscom = { path = "../../crosscom/runtime/rust" }
 imgui = { version = "0.10", features = ["docking"] }
 shared = { path = "../shared" }
 fileformats = { path = "../fileformats" }
+mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 radiance = { path = "../../radiance/radiance" }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
