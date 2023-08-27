@@ -14,6 +14,14 @@ use std::{
     rc::Rc,
 };
 
+pub struct FontIndex;
+impl FontIndex {
+    pub const LARGE_FONT: usize = 0;
+
+    #[cfg(not(vita))]
+    pub const SMALL_FONT: usize = 1;
+}
+
 pub struct ImguiContext {
     context: Rc<RefCell<Context>>,
     platform: Rc<RefCell<ImguiPlatform>>,

@@ -3563,6 +3563,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustversion"
+version = "1.0.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ffc183a10b4478d04cbbbfc96d0873219d962dd5accaff2ffbd4ceb7df837f4"
+
+[[package]]
 name = "rusty-xinput"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4578,6 +4584,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
 
 [[package]]
+name = "vergen"
+version = "8.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbc5ad0d9d26b2c49a5ab7da76c3e79d3ee37e7821799f8223fcb8f2f391a2e7"
+dependencies = [
+ "anyhow",
+ "rustversion",
+ "time",
+]
+
+[[package]]
 name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5324,6 +5341,7 @@ dependencies = [
  "common",
  "crosscom",
  "fileformats",
+ "image 0.23.14",
  "imgui",
  "log",
  "mini-fs",
@@ -5331,12 +5349,14 @@ dependencies = [
  "ndk-glue 0.5.2",
  "ndk-sys 0.3.0",
  "radiance",
+ "rand",
  "serde",
  "serde_json",
  "shared",
  "simple_logger",
  "simplelog",
  "uuid",
+ "vergen",
 ]
 
 [[package]]

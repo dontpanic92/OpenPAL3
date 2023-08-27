@@ -30,8 +30,16 @@ impl IComponentImpl for YaobowApplicationLoader {
         self.app.set_title("妖弓 - Project Yaobow");
         let audio = self.app.engine().borrow().audio_engine();
         let dpi_scale = self.app.dpi_scale();
+        let factory = self.app.engine().borrow().rendering_component_factory();
+        let input = self.app.engine().borrow().input_engine();
 
-        let director = TitleSelectionDirector::new(audio, self.selected_game.clone(), dpi_scale);
+        let director = TitleSelectionDirector::new(
+            factory,
+            audio,
+            input,
+            self.selected_game.clone(),
+            dpi_scale,
+        );
         let scene_manager = self.app.engine().borrow().scene_manager().clone();
         scene_manager.set_director(ComRc::from_object(director));
         scene_manager.push_scene(CoreScene::create());
