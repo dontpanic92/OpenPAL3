@@ -247,7 +247,7 @@ impl TitleUi {
 
     fn draw_version(&mut self, ui: &Ui) {
         let version = format!(
-            "妖弓主程序版本：{} build{}",
+            "妖弓主程序版本：{}-{} build-dev",
             env!("CARGO_PKG_VERSION"),
             GIT_SHORT_TAG
         );
@@ -435,7 +435,6 @@ impl TitleList {
 
     fn check_any_key(&mut self, ui: &Ui) {
         if ui.io().keys_down.iter().any(|&k| k) || ui.io().mouse_down.iter().any(|&k| k) {
-            println!("asdf");
             self.state = TitleListState::InAnimation { time: 0. };
         }
     }

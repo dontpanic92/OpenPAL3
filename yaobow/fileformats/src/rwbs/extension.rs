@@ -11,6 +11,7 @@ use super::{plugins::hanim::HAnimPlugin, Matrix44f};
 
 #[derive(Debug, Serialize)]
 pub enum Extension {
+    RightToRender(RightToRenderPlugin),
     HAnimPlugin(HAnimPlugin),
     SkinPlugin(SkinPlugin),
     UserDataPlugin(UserDataPlugin),
@@ -38,6 +39,10 @@ impl Extension {
             chunk_len -= 12 + ext_header.length;
 
             let ext = match ext_header.ty {
+                ChunkType::RIGHT_TO_RENDER => {
+                    Extension::RightToRender(RightToRenderPlugin::read(cursor)?)
+                }
+
                 ChunkType::PLUGIN_HANIM => {
                     Extension::HAnimPlugin(HAnimPlugin::read(cursor, ext_header)?)
                 }
@@ -70,6 +75,23 @@ impl Extension {
     pub fn read(cursor: &mut dyn Read, vertices_count: u32) -> anyhow::Result<Vec<Self>> {
         let header = Self::read_header(cursor)?;
         Self::read_data(cursor, header.length, vertices_count)
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct RightToRenderPlugin {
+    pub target_plugin_id: u32,
+    pub param: u32,
+}
+
+impl RightToRenderPlugin {
+    pub fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
+        let target_plugin_id = cursor.read_u32_le()?;
+        let param = cursor.read_u32_le()?;
+        Ok(Self {
+            target_plugin_id,
+            param,
+        })
     }
 }
 

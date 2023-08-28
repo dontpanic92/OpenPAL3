@@ -34,4 +34,10 @@ impl Atomic {
             extensions,
         })
     }
+
+    pub fn contains_right_to_render(&self) -> bool {
+        self.extensions
+            .iter()
+            .any(|e| matches!(e, Extension::RightToRender(_)))
+    }
 }

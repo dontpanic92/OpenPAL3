@@ -46,6 +46,7 @@ impl ChunkType {
     pub const ATOMIC: Self = Self(0x14);
     pub const GEOMETRY_LIST: Self = Self(0x1a);
     pub const ANIM_ANIMATION: Self = Self(0x1b);
+    pub const RIGHT_TO_RENDER: Self = Self(0x1f);
     pub const CHUNK_GROUP_START: Self = Self(0x29);
     pub const CHUNK_GROUP_END: Self = Self(0x2a);
 

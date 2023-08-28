@@ -131,13 +131,12 @@ fn load_clump(
             parent.attach(entities[i].0.clone());
         } else if chunk.frames[i].parent != i as i32 {
             let parent_id = chunk.frames[i].parent as usize;
+            entities[parent_id].0.attach(entities[i].0.clone());
             match (&entities[parent_id].1, &entities[i].1) {
                 (Some(parent_bone), Some(bone)) => {
                     parent_bone.attach(bone.clone());
                 }
-                _ => {
-                    entities[parent_id].0.attach(entities[i].0.clone());
-                }
+                _ => {}
             }
         } else {
             log::warn!("Ignored orphan frame");
@@ -160,6 +159,10 @@ fn load_clump(
     };
 
     for atomic in &chunk.atomics {
+        if !atomic.contains_right_to_render() {
+            continue;
+        }
+
         let entity = entities[atomic.frame as usize].0.clone();
 
         let geometry = &chunk.geometries[atomic.geometry as usize];
