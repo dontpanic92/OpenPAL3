@@ -1,6 +1,9 @@
 use std::{borrow::Cow, str::Utf8Error};
 
 use binrw::{binrw, BinRead, BinWrite};
+use common::read_ext::FileReadError;
+use encoding::{Encoding, DecoderTrap};
+use serde::Serialize;
 
 #[binrw]
 #[brw(little)]
@@ -59,6 +62,24 @@ impl PartialEq<&str> for SizedString {
     }
 }
 
+impl Serialize for SizedString {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        let str = encoding::all::GBK
+            .decode(
+                &self.string.clone()
+                    .into_iter()
+                    .take_while(|&c| c != 0)
+                    .collect::<Vec<u8>>(),
+                DecoderTrap::Ignore,
+            )
+            .map_err(|_| FileReadError::StringDecodeError);
+        serializer.serialize_str(&str.unwrap())
+    }
+}
+
 #[binrw]
 #[brw(little)]
 #[derive(Clone)]
@@ -110,6 +131,24 @@ impl PartialEq<&str> for StringWithCapacity {
             Err(_) => false,
             Ok(s) => s == *other,
         }
+    }
+}
+
+impl Serialize for StringWithCapacity {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        let str = encoding::all::GBK
+            .decode(
+                &self.string.clone()
+                    .into_iter()
+                    .take_while(|&c| c != 0)
+                    .collect::<Vec<u8>>(),
+                DecoderTrap::Ignore,
+            )
+            .map_err(|_| FileReadError::StringDecodeError);
+        serializer.serialize_str(&str.unwrap())
     }
 }
 
