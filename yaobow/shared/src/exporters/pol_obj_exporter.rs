@@ -29,10 +29,10 @@ fn convert_mtl(pol_file: &PolFile) -> Vec<Material> {
         .iter()
         .flat_map(|p| {
             p.material_info.iter().map(|m| {
-                let texture_name = m.texture_names.last().unwrap().clone();
+                let texture_name = m.texture_names.last().unwrap().as_str().unwrap().to_string();
                 let texture_path = PathBuf::from(&texture_name).with_extension("dds");
                 Material {
-                    name: texture_name.clone(),
+                    name: texture_name,
                     specular_coefficient: 0.078431,
                     color_ambient: Color {
                         r: 0.0,
@@ -117,7 +117,7 @@ fn convert_obj(pol_file: &PolFile) -> Vec<Object> {
                         .collect();
 
                     Geometry {
-                        material_name: Some(m.texture_names.last().unwrap().clone()),
+                        material_name: Some(m.texture_names.last().unwrap().as_str().unwrap().to_string()),
                         shapes,
                     }
                 })

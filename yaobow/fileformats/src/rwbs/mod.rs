@@ -145,7 +145,9 @@ impl Vec3f {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[binrw]
+#[brw(little)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Matrix44f(pub [f32; 16]);
 
 impl Matrix44f {

@@ -55,6 +55,7 @@ fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path:
         .texture_names
         .iter()
         .map(|name| {
+            let name = &name.as_str().unwrap();
             name.split_terminator('.')
                 .next()
                 .and_then(|n| Some(n.to_owned() + ".dds"))
