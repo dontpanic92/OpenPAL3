@@ -115,5 +115,5 @@ fn convert_obj(mv3_file: &Mv3File) -> Vec<Object> {
 }
 
 fn get_texture_name(mv3_file: &Mv3File) -> String {
-    String::from_utf8(mv3_file.textures[0].names[0].clone()).unwrap()
+    mv3_file.textures[0].names[0].as_str().unwrap().to_owned()
 }

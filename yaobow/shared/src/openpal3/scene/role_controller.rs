@@ -363,7 +363,7 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
             0
         };
 
-        texture_path.push(std::str::from_utf8(&mv3file.textures[texture_index].names[0]).unwrap());
+        texture_path.push(mv3file.textures[texture_index].names[0].as_str().unwrap());
 
         let material = SimpleMaterialDef::create(
             texture_path.to_str().unwrap(),
@@ -397,7 +397,7 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
 
     let mut hold_time = 0.;
     for anim in mv3file.action_desc {
-        if anim.name.starts_with("hold") {
+        if anim.name.as_str()?.starts_with("hold") {
             hold_time = anim.tick as f32 / 4580.;
         }
     }

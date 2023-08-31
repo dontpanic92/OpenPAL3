@@ -121,7 +121,7 @@ pub struct Vec4f {
 #[binrw]
 #[brw(little)]
 #[brw(import{half_float: bool = false})]
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Vec3f {
     #[br(parse_with = float_parser)]
     #[br(args(half_float))]
@@ -153,6 +153,28 @@ impl Matrix44f {
         let m = cursor.read_f32_vec(16)?;
         Ok(Self(m.try_into().unwrap()))
     }
+}
+
+#[binrw]
+#[brw(little)]
+#[brw(import{half_float: bool = false})]
+#[derive(Debug, Serialize, Clone)]
+pub struct Quaternion {
+    #[br(parse_with = float_parser)]
+    #[br(args(half_float))]
+    pub x: f32,
+
+    #[br(parse_with = float_parser)]
+    #[br(args(half_float))]
+    pub y: f32,
+
+    #[br(parse_with = float_parser)]
+    #[br(args(half_float))]
+    pub z: f32,
+
+    #[br(parse_with = float_parser)]
+    #[br(args(half_float))]
+    pub w: f32,
 }
 
 #[derive(Debug, Serialize)]
@@ -190,6 +212,8 @@ impl Normal {
     }
 }
 
+#[binrw]
+#[brw(little)]
 #[derive(Clone, Debug, Serialize)]
 pub struct TexCoord {
     pub u: f32,
