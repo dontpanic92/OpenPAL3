@@ -1,9 +1,16 @@
-use std::{borrow::Cow, str::Utf8Error};
+use std::borrow::Cow;
 
 use binrw::{binrw, BinRead, BinWrite};
 use common::read_ext::FileReadError;
 use encoding::{Encoding, DecoderTrap};
 use serde::Serialize;
+
+pub fn to_gbk_string(v: &[u8]) -> Result<String, FileReadError> {
+    let str = encoding::all::GBK
+            .decode(v, DecoderTrap::Ignore)
+            .map_err(|_| FileReadError::StringDecodeError)?;
+    Ok(str)
+}
 
 #[binrw]
 #[brw(little)]
@@ -21,14 +28,14 @@ impl SizedString {
         &self.string
     }
 
-    pub fn as_str(&self) -> Result<&str, Utf8Error> {
+    pub fn as_str(&self) -> Result<String, FileReadError> {
         let slice = if self.string.last() == Some(&0) {
             &self.string[..self.string.len() - 1]
         } else {
             &self.string
         };
 
-        std::str::from_utf8(slice)
+        to_gbk_string(slice)
     }
 }
 
@@ -67,15 +74,7 @@ impl Serialize for SizedString {
     where
         S: serde::Serializer
     {
-        let str = encoding::all::GBK
-            .decode(
-                &self.string.clone()
-                    .into_iter()
-                    .take_while(|&c| c != 0)
-                    .collect::<Vec<u8>>(),
-                DecoderTrap::Ignore,
-            )
-            .map_err(|_| FileReadError::StringDecodeError);
+        let str = to_gbk_string(self.data());
         serializer.serialize_str(&str.unwrap())
     }
 }
@@ -94,14 +93,14 @@ impl StringWithCapacity {
         &self.string
     }
 
-    pub fn as_str(&self) -> Result<&str, Utf8Error> {
+    pub fn as_str(&self) -> Result<String, FileReadError> {
         let end = self
             .string
             .iter()
             .position(|x| *x == 0)
             .unwrap_or(self.string.len());
 
-        std::str::from_utf8(&self.string[..end])
+        to_gbk_string(&self.string[..end])
     }
 }
 
@@ -139,16 +138,8 @@ impl Serialize for StringWithCapacity {
     where
         S: serde::Serializer
     {
-        let str = encoding::all::GBK
-            .decode(
-                &self.string.clone()
-                    .into_iter()
-                    .take_while(|&c| c != 0)
-                    .collect::<Vec<u8>>(),
-                DecoderTrap::Ignore,
-            )
-            .map_err(|_| FileReadError::StringDecodeError);
-        serializer.serialize_str(&str.unwrap())
+        let str = self.as_str().unwrap_or_default();
+        serializer.serialize_str(&str)
     }
 }
 

@@ -86,8 +86,8 @@ impl Pal4Scene {
             match actor_name {
                 Ok(actor_name) => {
                     let entity = asset_loader.load_actor(
-                        npc.name.as_str().unwrap_or_default(),
-                        actor_name,
+                        npc.name.as_str().unwrap_or_default().as_str(),
+                        actor_name.as_str(),
                         npc.get_default_act().as_deref(),
                     );
 
