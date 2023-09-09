@@ -1,0 +1,13 @@
+module(rust) shared::openpal5::comdef;
+
+import crosscom.idl;
+import radiance.idl;
+
+[uuid(1c4589d1-769a-4fdc-aac9-16744e4a88b0)]
+interface IOpenPAL5Director: IDirector {
+    [internal(), rust()]
+    &'static shared::openpal5::director::OpenPAL5Director get();
+}
+
+[uuid(985261df-d055-48e5-a3e2-fd06f70c71df)]
+class OpenPAL5Director: IOpenPAL5Director {}

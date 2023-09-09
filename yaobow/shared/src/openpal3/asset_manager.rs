@@ -12,8 +12,6 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::{io, rc::Rc};
 
-use crate::fs::init_virtual_fs;
-
 use super::comdef::IScnSceneComponent;
 use super::loaders::nav_loader::nav_load_from_file;
 use super::loaders::nav_loader::NavFile;
@@ -35,16 +33,11 @@ pub struct AssetManager {
     movie_effect_path: PathBuf,
     snd_path: PathBuf,
     basedata_path: PathBuf,
-    vfs: MiniFs,
+    vfs: Rc<MiniFs>,
 }
 
 impl AssetManager {
-    pub fn new<P: AsRef<Path>>(
-        factory: Rc<dyn ComponentFactory>,
-        path: P,
-        pkg_key: Option<&str>,
-    ) -> Self {
-        let vfs = init_virtual_fs(path, pkg_key);
+    pub fn new(factory: Rc<dyn ComponentFactory>, vfs: Rc<MiniFs>) -> Self {
         Self {
             factory,
             basedata_path: PathBuf::from("/basedata/basedata"),

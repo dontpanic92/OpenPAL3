@@ -26,10 +26,10 @@ impl IComponentImpl for OpenPal3ApplicationLoader {
 
         let input_engine = self.app.engine().borrow().input_engine();
         let audio_engine = self.app.engine().borrow().audio_engine();
+        let vfs = shared::fs::init_virtual_fs(&self.root_path, None);
         let asset_mgr = Rc::new(AssetManager::new(
             self.app.engine().borrow().rendering_component_factory(),
-            &self.root_path,
-            None,
+            Rc::new(vfs),
         ));
 
         let debug_layer = OpenPal3DebugLayer::new(input_engine.clone(), audio_engine.clone());

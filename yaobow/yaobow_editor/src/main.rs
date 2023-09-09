@@ -47,7 +47,8 @@ impl SceneViewResourceView {
         };
 
         let factory = app.engine().borrow().rendering_component_factory();
-        let asset_mgr = AssetManager::new(factory, &config.asset_path, pkg_key);
+        let vfs = Rc::new(shared::fs::init_virtual_fs(&config.asset_path, pkg_key));
+        let asset_mgr = AssetManager::new(factory.clone(), vfs.clone());
         let audio_engine = app.engine().borrow().audio_engine();
         let ui = Some(DevToolsDirector::new(
             audio_engine,

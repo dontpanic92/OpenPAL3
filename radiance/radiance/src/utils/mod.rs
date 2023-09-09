@@ -1,3 +1,5 @@
+pub mod free_view;
+
 use std::io::{Read, Seek};
 
 pub trait SeekRead: Read + Seek {}

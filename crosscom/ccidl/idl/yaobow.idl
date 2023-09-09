@@ -9,6 +9,9 @@ class OpenPal3ApplicationLoaderComponent: IApplicationLoaderComponent {}
 [uuid(412087ff-19be-4fa1-865a-9dbc243bd434)]
 class OpenPal4ApplicationLoaderComponent: IApplicationLoaderComponent {}
 
+[uuid(ce2243b2-1fdf-42e4-96fc-194199729350)]
+class OpenPal5ApplicationLoaderComponent: IApplicationLoaderComponent {}
+
 [uuid(9492ea12-f90d-4909-9dbb-7d16a0df716d)]
 class YaobowApplicationLoader: IApplicationLoaderComponent {}
 

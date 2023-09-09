@@ -1,3 +1,5 @@
+use fileformats::{binrw::BinRead, nod::NodFile};
+use mini_fs::StoreExt;
 use shared::{
     loaders::anm::load_anm,
     openpal3::loaders::{
@@ -24,7 +26,7 @@ impl TextContentLoader for OthersTextContentLoader {
     fn is_supported(&self, path: &std::path::Path) -> bool {
         let extension = get_extension(path);
         match extension.as_deref() {
-            Some("scn" | "nav" | "sce" | "anm") => true,
+            Some("scn" | "nav" | "sce" | "anm" | "nod") => true,
             _ => false,
         }
     }
@@ -45,6 +47,7 @@ fn try_load(vfs: &mini_fs::MiniFs, path: &std::path::Path) -> anyhow::Result<Str
         Some("nav") => jsonify(&nav_load_from_file(vfs, path)),
         Some("sce") => jsonify(&sce_load_from_file(vfs, path)),
         Some("anm") => jsonify(&load_anm(vfs, path)?),
+        Some("nod") => jsonify(&NodFile::read(&mut vfs.open(path)?)?),
         _ => "Unsupported".to_string(),
     };
 

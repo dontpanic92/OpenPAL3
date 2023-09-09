@@ -1,10 +1,11 @@
 use binrw::binrw;
+use serde::Serialize;
 
 use crate::utils::StringWithCapacity;
 
 #[binrw]
 #[brw(little, magic = 0x0001e240u32)]
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct NodFile {
     pub version: u32,
     pub node_count: u32,
@@ -19,7 +20,7 @@ pub struct NodFile {
 
 #[binrw]
 #[brw(little)]
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Node {
     #[brw(args(100))]
     pub name: StringWithCapacity,

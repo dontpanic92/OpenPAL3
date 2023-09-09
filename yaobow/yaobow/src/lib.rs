@@ -6,6 +6,7 @@ mod comdef;
 mod opengujian;
 mod openpal3;
 mod openpal4;
+mod openpal5;
 
 #[cfg_attr(target_os = "android", ndk_glue::main(backtrace = "on"))]
 pub fn android_entry() {

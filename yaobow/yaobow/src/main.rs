@@ -5,6 +5,7 @@ use application::run_title_selection;
 use opengujian::run_opengujian;
 use openpal3::run_openpal3;
 use openpal4::run_openpal4;
+use openpal5::run_openpal5;
 use shared::video::register_opengb_video_decoders;
 use testing::run_test;
 
@@ -13,6 +14,7 @@ mod comdef;
 mod opengujian;
 mod openpal3;
 mod openpal4;
+mod openpal5;
 mod testing;
 
 pub fn main() {
@@ -32,10 +34,10 @@ pub fn main() {
                 run_openpal4();
             }
             "--pal5" => {
-                run_openpal4();
+                run_openpal5();
             }
             "--pal5q" => {
-                run_openpal4();
+                run_openpal5();
             }
             "--gujian" => {
                 run_opengujian();

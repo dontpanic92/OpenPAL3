@@ -1,25 +1,26 @@
 use std::{collections::HashMap, io::Cursor, rc::Rc};
 
 use common::store_ext::StoreExt2;
+use crosscom::ComRc;
 use fileformats::{
     binrw::BinRead,
     nod::NodFile,
     role_bin::{AssetItem, RoleBinFile},
 };
 use mini_fs::MiniFs;
-use radiance::rendering::ComponentFactory;
+use radiance::{comdef::IEntity, rendering::ComponentFactory};
 
-use crate::loaders::Pal5TextureResolver;
+use crate::loaders::{dff::create_entity_from_dff_model, Pal5TextureResolver};
 
 pub struct AssetLoader {
-    vfs: MiniFs,
+    vfs: Rc<MiniFs>,
     component_factory: Rc<dyn ComponentFactory>,
-    index: HashMap<u32, AssetItem>,
+    pub index: HashMap<u32, AssetItem>,
     texture_resolver: Pal5TextureResolver,
 }
 
 impl AssetLoader {
-    pub fn new(component_factory: Rc<dyn ComponentFactory>, vfs: MiniFs) -> Rc<Self> {
+    pub fn new(component_factory: Rc<dyn ComponentFactory>, vfs: Rc<MiniFs>) -> Rc<Self> {
         let index = load_index(&vfs);
         Rc::new(Self {
             component_factory,
@@ -30,10 +31,23 @@ impl AssetLoader {
     }
 
     pub fn load_map_nod(&self, map_name: &str) -> anyhow::Result<NodFile> {
-        let path = format!("/{}/{}_0_0.nod", map_name, map_name);
+        let path = format!("/Map/{}/{}_0_0.nod", map_name, map_name);
         Ok(NodFile::read(&mut Cursor::new(
             self.vfs.read_to_end(&path)?,
         ))?)
+    }
+
+    pub fn load_model(&self, model_path: &str) -> anyhow::Result<ComRc<IEntity>> {
+        let model_path = format!("/Model/{}", model_path);
+        let entity = create_entity_from_dff_model(
+            &self.component_factory,
+            &self.vfs,
+            model_path.clone(),
+            model_path,
+            true,
+            &self.texture_resolver,
+        );
+        Ok(entity)
     }
 }
 
@@ -49,7 +63,12 @@ fn load_index(vfs: &MiniFs) -> HashMap<u32, AssetItem> {
 
     let mut index = HashMap::new();
     for path in index_files.iter() {
-        load_index_single(vfs, path, &mut index).unwrap();
+        match load_index_single(vfs, path, &mut index) {
+            Ok(_) => {}
+            Err(e) => {
+                log::warn!("Failed to load index file {}: {}", path, e);
+            }
+        }
     }
 
     index
