@@ -25,8 +25,11 @@ pub struct Node {
     #[brw(args(100))]
     pub name: StringWithCapacity,
 
-    pub unknown_f32: [f32; 12],
-    pub unknown: u32,
+    pub position: [f32; 3],
+    pub scale: [f32; 3],
+    pub rotation: [f32; 4],
+    pub unknown_f32: [f32; 2],
+    pub id: u32,
     pub asset_id: u32,
     pub unknown2: u32,
     pub unknown2_f32: [f32; 6],

@@ -47,7 +47,6 @@ impl DevToolsDirector {
                 audio_engine,
                 asset_mgr.clone(),
                 game_type,
-                texture_resolver,
             )),
             asset_mgr,
             cache: RefCell::new(lru::LruCache::new(20)),

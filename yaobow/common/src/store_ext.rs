@@ -15,6 +15,8 @@ pub trait StoreExt2: mini_fs::StoreExt {
         path: P,
         fallback_ext: &[&str],
     ) -> io::Result<File>;
+
+    fn try_open_files<P: AsRef<Path>>(&self, path: &[P]) -> io::Result<File>;
 }
 
 impl StoreExt2 for mini_fs::MiniFs {
@@ -51,5 +53,16 @@ impl StoreExt2 for mini_fs::MiniFs {
     ) -> Result<String, Box<dyn std::error::Error>> {
         let data = self.read_to_end(path)?;
         Ok(encoding::all::GBK.decode(&data, DecoderTrap::Ignore)?)
+    }
+
+    fn try_open_files<P: AsRef<Path>>(&self, paths: &[P]) -> io::Result<File> {
+        for p in paths {
+            let res: Result<File, io::Error> = self.open(p);
+            if res.is_ok() {
+                return res;
+            }
+        }
+
+        Err(io::Error::new(io::ErrorKind::NotFound, "File not found"))
     }
 }

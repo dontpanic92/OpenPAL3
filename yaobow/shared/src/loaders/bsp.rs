@@ -9,23 +9,17 @@ use fileformats::rwbs::{
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{comdef::IEntity, rendering::ComponentFactory, scene::CoreEntity};
 
-use super::TextureResolver;
+use super::{dff::DffLoaderConfig, TextureResolver};
 
 pub fn create_entity_from_bsp_model<P: AsRef<Path>>(
     component_factory: &Rc<dyn ComponentFactory>,
     vfs: &MiniFs,
     path: P,
     name: String,
-    texture_resolver: &dyn TextureResolver,
+    config: &DffLoaderConfig,
 ) -> ComRc<IEntity> {
     let entity = CoreEntity::create(name, true);
-    load_bsp_model(
-        entity.clone(),
-        component_factory,
-        vfs,
-        path,
-        texture_resolver,
-    );
+    load_bsp_model(entity.clone(), component_factory, vfs, path, config);
 
     entity
 }
@@ -35,7 +29,7 @@ fn load_bsp_model<P: AsRef<Path>>(
     component_factory: &Rc<dyn ComponentFactory>,
     vfs: &MiniFs,
     path: P,
-    texture_resolver: &dyn TextureResolver,
+    config: &DffLoaderConfig,
 ) {
     let mut data = vec![];
     let _ = vfs.open(&path).unwrap().read_to_end(&mut data).unwrap();
@@ -48,7 +42,7 @@ fn load_bsp_model<P: AsRef<Path>>(
             &chunks[0].materials,
             vfs,
             path,
-            texture_resolver,
+            config,
         );
     }
 }
@@ -60,7 +54,7 @@ fn create_geometries<P: AsRef<Path>>(
     materials: &[Material],
     vfs: &MiniFs,
     path: P,
-    texture_resolver: &dyn TextureResolver,
+    config: &DffLoaderConfig,
 ) {
     match sector {
         Sector::AtomicSector(a) => {
@@ -71,7 +65,7 @@ fn create_geometries<P: AsRef<Path>>(
                 materials,
                 vfs,
                 path,
-                texture_resolver,
+                config,
             );
         }
         Sector::PlaneSector(p) => {
@@ -82,7 +76,7 @@ fn create_geometries<P: AsRef<Path>>(
                 materials,
                 vfs,
                 path.as_ref(),
-                texture_resolver,
+                config,
             );
             create_geometries(
                 entity.clone(),
@@ -91,7 +85,7 @@ fn create_geometries<P: AsRef<Path>>(
                 materials,
                 vfs,
                 path,
-                texture_resolver,
+                config,
             );
         }
     }
@@ -104,7 +98,7 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
     materials: &[Material],
     vfs: &MiniFs,
     path: P,
-    texture_resolver: &dyn TextureResolver,
+    config: &DffLoaderConfig,
 ) {
     let vertices = sector.vertices.as_ref();
     let _normals = sector.normals.as_ref();
@@ -133,6 +127,6 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
         None,
         vfs,
         path.as_ref(),
-        texture_resolver,
+        config.texture_resolver,
     );
 }

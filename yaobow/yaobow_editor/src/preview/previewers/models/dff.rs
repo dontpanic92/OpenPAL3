@@ -7,6 +7,7 @@ use radiance::comdef::IEntity;
 use shared::{
     loaders::{dff::create_entity_from_dff_model, TextureResolver},
     openpal3::asset_manager::AssetManager,
+    GameType,
 };
 
 use crate::preview::previewers::{get_extension, jsonify};
@@ -15,14 +16,14 @@ use super::ModelLoader;
 
 pub struct DffModelLoader {
     asset_mgr: Rc<AssetManager>,
-    texture_resolver: Rc<dyn TextureResolver>,
+    game_type: GameType,
 }
 
 impl DffModelLoader {
-    pub fn new(asset_mgr: Rc<AssetManager>, texture_resolver: Rc<dyn TextureResolver>) -> Self {
+    pub fn new(asset_mgr: Rc<AssetManager>, game_type: GameType) -> Self {
         Self {
             asset_mgr,
-            texture_resolver,
+            game_type,
         }
     }
 }
@@ -48,7 +49,7 @@ impl ModelLoader for DffModelLoader {
             path,
             "preview".to_string(),
             true,
-            self.texture_resolver.as_ref(),
+            self.game_type.dff_loader_config().unwrap(),
         )
     }
 }

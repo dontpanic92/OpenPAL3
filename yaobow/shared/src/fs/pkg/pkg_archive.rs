@@ -30,14 +30,14 @@ impl PkgArchive {
     }
 
     pub fn open<P: AsRef<Path>>(&mut self, path: P) -> anyhow::Result<MemoryFile> {
-        let path = path.as_ref().as_os_str().to_string_lossy();
+        let path = path.as_ref().as_os_str().to_string_lossy().to_lowercase();
         let mut path = path.replace('/', "\\");
         if !path.starts_with("\\") {
             path = format!("\\{}", path);
         }
 
         for entry in &self.entries.file_entries {
-            if entry.fullpath == path {
+            if entry.fullpath.to_lowercase() == path {
                 self.reader
                     .seek(std::io::SeekFrom::Start(entry.start_position as u64))?;
                 let mut data = self.reader.read_u8_vec(entry.size as usize)?;

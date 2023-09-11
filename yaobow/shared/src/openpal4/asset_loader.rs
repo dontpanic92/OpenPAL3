@@ -22,7 +22,7 @@ use crate::{
     loaders::{
         anm::{load_amf, load_anm},
         bsp::create_entity_from_bsp_model,
-        dff::create_entity_from_dff_model,
+        dff::{create_entity_from_dff_model, DffLoaderConfig},
         smp::load_smp,
         Pal4TextureResolver,
     },
@@ -75,7 +75,10 @@ impl AssetLoader {
             model_path,
             entity_name.to_string(),
             true,
-            &self.texture_resolver,
+            &DffLoaderConfig {
+                texture_resolver: &self.texture_resolver,
+                keep_right_to_render_only: true,
+            },
         );
 
         let armature = entity
@@ -125,7 +128,10 @@ impl AssetLoader {
             &self.vfs,
             path,
             "world".to_string(),
-            &self.texture_resolver,
+            &DffLoaderConfig {
+                texture_resolver: &self.texture_resolver,
+                keep_right_to_render_only: true,
+            },
         );
 
         scene.add_entity(entity);

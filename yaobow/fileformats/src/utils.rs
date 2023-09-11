@@ -2,13 +2,13 @@ use std::borrow::Cow;
 
 use binrw::{binrw, BinRead, BinWrite};
 use common::read_ext::FileReadError;
-use encoding::{Encoding, DecoderTrap};
+use encoding::{DecoderTrap, Encoding};
 use serde::Serialize;
 
 pub fn to_gbk_string(v: &[u8]) -> Result<String, FileReadError> {
     let str = encoding::all::GBK
-            .decode(v, DecoderTrap::Ignore)
-            .map_err(|_| FileReadError::StringDecodeError)?;
+        .decode(v, DecoderTrap::Ignore)
+        .map_err(|_| FileReadError::StringDecodeError)?;
     Ok(str)
 }
 
@@ -72,7 +72,7 @@ impl PartialEq<&str> for SizedString {
 impl Serialize for SizedString {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer
+        S: serde::Serializer,
     {
         let str = to_gbk_string(self.data());
         serializer.serialize_str(&str.unwrap())
@@ -136,7 +136,7 @@ impl PartialEq<&str> for StringWithCapacity {
 impl Serialize for StringWithCapacity {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer
+        S: serde::Serializer,
     {
         let str = self.as_str().unwrap_or_default();
         serializer.serialize_str(&str)

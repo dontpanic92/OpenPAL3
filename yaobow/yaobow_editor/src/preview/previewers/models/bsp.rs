@@ -5,8 +5,7 @@ use fileformats::rwbs::read_bsp;
 use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::IEntity;
 use shared::{
-    loaders::{bsp::create_entity_from_bsp_model, TextureResolver},
-    openpal3::asset_manager::AssetManager,
+    loaders::bsp::create_entity_from_bsp_model, openpal3::asset_manager::AssetManager, GameType,
 };
 
 use crate::preview::previewers::{get_extension, jsonify};
@@ -15,14 +14,14 @@ use super::ModelLoader;
 
 pub struct BspModelLoader {
     asset_mgr: Rc<AssetManager>,
-    texture_resolver: Rc<dyn TextureResolver>,
+    game_type: GameType,
 }
 
 impl BspModelLoader {
-    pub fn new(asset_mgr: Rc<AssetManager>, texture_resolver: Rc<dyn TextureResolver>) -> Self {
+    pub fn new(asset_mgr: Rc<AssetManager>, game_type: GameType) -> Self {
         Self {
             asset_mgr,
-            texture_resolver,
+            game_type,
         }
     }
 }
@@ -47,7 +46,7 @@ impl ModelLoader for BspModelLoader {
             vfs,
             path,
             "preview".to_string(),
-            self.texture_resolver.as_ref(),
+            self.game_type.dff_loader_config().unwrap(),
         )
     }
 }

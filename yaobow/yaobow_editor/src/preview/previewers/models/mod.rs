@@ -9,7 +9,7 @@ use std::{path::Path, rc::Rc};
 use crosscom::ComRc;
 use mini_fs::MiniFs;
 use radiance::comdef::IEntity;
-use shared::{loaders::TextureResolver, openpal3::asset_manager::AssetManager};
+use shared::{openpal3::asset_manager::AssetManager, GameType};
 
 use crate::{
     directors::{main_content::ContentTab, DevToolsState},
@@ -28,16 +28,13 @@ pub struct ModelPreviewer {
 }
 
 impl ModelPreviewer {
-    pub fn new(asset_mgr: Rc<AssetManager>, texture_resolver: Rc<dyn TextureResolver>) -> Self {
+    pub fn new(asset_mgr: Rc<AssetManager>, game_type: GameType) -> Self {
         Self {
             model_loaders: vec![
                 Box::new(Mv3ModelLoader::new(asset_mgr.clone())),
                 Box::new(CvdModelLoader::new(asset_mgr.clone())),
-                Box::new(DffModelLoader::new(
-                    asset_mgr.clone(),
-                    texture_resolver.clone(),
-                )),
-                Box::new(BspModelLoader::new(asset_mgr.clone(), texture_resolver)),
+                Box::new(DffModelLoader::new(asset_mgr.clone(), game_type)),
+                Box::new(BspModelLoader::new(asset_mgr.clone(), game_type)),
                 Box::new(PolModelLoader::new(asset_mgr)),
             ],
         }

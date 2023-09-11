@@ -2,6 +2,10 @@
 #![feature(cursor_remaining)]
 #![feature(trait_upcasting)]
 
+use loaders::{dff::DffLoaderConfig, Pal4TextureResolver};
+
+use crate::loaders::{Pal5TextureResolver, Swd5TextureResolver};
+
 pub mod config;
 pub mod exporters;
 pub mod fs;
@@ -59,4 +63,36 @@ impl GameType {
             GameType::Gujian2 => "古剑奇谭二",
         }
     }
+
+    pub fn dff_loader_config(&self) -> Option<&DffLoaderConfig> {
+        match self {
+            GameType::PAL3 => None,
+            GameType::PAL3A => None,
+            GameType::PAL4 => Some(&PAL4_DFF_LOADER_CONFIG),
+            GameType::PAL5 => Some(&PAL5_DFF_LOADER_CONFIG),
+            GameType::PAL5Q => Some(&PAL5_DFF_LOADER_CONFIG),
+            GameType::SWD5 => Some(&SWD5_DFF_LOADER_CONFIG),
+            GameType::SWDHC => Some(&SWD5_DFF_LOADER_CONFIG),
+            GameType::SWDCF => Some(&SWD5_DFF_LOADER_CONFIG),
+            GameType::Gujian => None,
+            GameType::Gujian2 => None,
+        }
+    }
+}
+
+lazy_static::lazy_static! {
+    static ref PAL4_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
+        texture_resolver: &Pal4TextureResolver {},
+        keep_right_to_render_only: true,
+    };
+
+    static ref PAL5_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
+        texture_resolver: &Pal5TextureResolver {},
+        keep_right_to_render_only: false,
+    };
+
+    static ref SWD5_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
+        texture_resolver: &Swd5TextureResolver {},
+        keep_right_to_render_only: false,
+    };
 }

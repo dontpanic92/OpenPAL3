@@ -18,7 +18,7 @@ impl FreeViewController {
     }
 
     pub fn update(&self, scene: ComRc<IScene>, delta_sec: f32) {
-        const SPEED: f32 = 50.0;
+        const SPEED: f32 = 500.0;
 
         let input = self.input.borrow_mut();
 
@@ -43,12 +43,28 @@ impl FreeViewController {
             movement = Vec3::add(&movement, &Vec3::EAST);
         }
 
+        if movement.norm() > 0.0 {
+            movement.normalize();
+            movement = Vec3::dot(SPEED * delta_sec, &movement);
+
+            transform.translate_local(&movement);
+        }
+
+        let mut movement = Vec3::new(0., 0., 0.);
+
         if input.get_key_state(Key::Q).is_down() {
             movement = Vec3::add(&movement, &Vec3::UP);
         }
 
         if input.get_key_state(Key::E).is_down() {
             movement = Vec3::sub(&movement, &Vec3::UP);
+        }
+
+        if movement.norm() > 0.0 {
+            movement.normalize();
+            movement = Vec3::dot(SPEED * delta_sec, &movement);
+
+            transform.translate(&movement);
         }
 
         const ROTATE_SPEED: f32 = 1.0;
@@ -85,13 +101,6 @@ impl FreeViewController {
 
         if pitch > std::f32::consts::PI * 2. {
             pitch -= std::f32::consts::PI * 2.;
-        }
-
-        if movement.norm() > 0.0 {
-            movement.normalize();
-            movement = Vec3::dot(SPEED * delta_sec, &movement);
-
-            transform.translate_local(&movement);
         }
 
         transform

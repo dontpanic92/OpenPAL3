@@ -23,13 +23,18 @@ use radiance::{
 
 use super::TextureResolver;
 
+pub struct DffLoaderConfig<'a> {
+    pub texture_resolver: &'a dyn TextureResolver,
+    pub keep_right_to_render_only: bool,
+}
+
 pub fn create_entity_from_dff_model<P: AsRef<Path>>(
     component_factory: &Rc<dyn ComponentFactory>,
     vfs: &MiniFs,
     path: P,
     name: String,
     visible: bool,
-    texture_resolver: &dyn TextureResolver,
+    config: &DffLoaderConfig,
 ) -> ComRc<IEntity> {
     let entity = CoreEntity::create(name, visible);
 
@@ -43,7 +48,7 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
             component_factory,
             vfs,
             path.as_ref(),
-            texture_resolver,
+            config,
         );
     }
 
@@ -67,7 +72,7 @@ fn load_clump(
     component_factory: &Rc<dyn ComponentFactory>,
     vfs: &MiniFs,
     path: &Path,
-    texture_resolver: &dyn TextureResolver,
+    config: &DffLoaderConfig,
 ) {
     let mut root_bone = None;
     let mut bone_id_map: HashMap<u32, ComRc<IEntity>> = HashMap::new();
@@ -159,7 +164,12 @@ fn load_clump(
     };
 
     for atomic in &chunk.atomics {
-        if !atomic.contains_right_to_render() {
+        if config.keep_right_to_render_only && !atomic.contains_right_to_render() {
+            continue;
+        }
+
+        let frame = &chunk.frames[atomic.frame as usize];
+        if check_frame_name(frame) {
             continue;
         }
 
@@ -174,9 +184,27 @@ fn load_clump(
             armature.clone(),
             vfs,
             &path,
-            texture_resolver,
+            config.texture_resolver,
         );
     }
+}
+
+fn check_frame_name(frame: &Frame) -> bool {
+    for e in frame.extensions() {
+        if let Extension::UserDataPlugin(plugin) = e {
+            if let Some(prt) = plugin.data().get("prt") {
+                if prt.len() > 0 {
+                    if let Some(prt) = prt[0].get_string() {
+                        if prt.starts_with('[') {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    false
 }
 
 fn create_geometry(
@@ -231,23 +259,6 @@ fn create_geometry(
             bones.push(bone.clone());
         }
 
-        /*let armature = entity
-                    .get_component(IArmatureComponent::uuid())
-                    .and_then(|c| c.query_interface::<IArmatureComponent>())
-                    .or_else(|| {
-                        let armature = ComRc::<IArmatureComponent>::from_object(ArmatureComponent::new(
-                            entity.clone(),
-                            hanim_bone.bone_root.clone(),
-                            bones.clone(),
-                        ));
-                        entity.add_component(
-                            IArmatureComponent::uuid(),
-                            armature.clone().query_interface::<IComponent>().unwrap(),
-                        );
-                        Some(armature)
-                    })
-                    .unwrap();
-        */
         Some(SkinnedMeshInfo {
             armature: armature.unwrap(),
             v_weights: skin.weights.clone(),
@@ -311,8 +322,12 @@ pub(crate) fn create_geometry_internal(
             let material = &materials[t.material as usize];
             let md = if let Some(texture) = material.texture.as_ref() {
                 let data = texture_resolver.resolve_texture(vfs, path.as_ref(), &texture.name);
+                if data.is_none() {
+                    log::warn!("Failed to resolve texture {} for {:?}", texture.name, path);
+                }
                 radiance::rendering::SimpleMaterialDef::create2(&texture.name, data, true)
             } else {
+                log::debug!("no texture info for material {:?}", path);
                 radiance::rendering::SimpleMaterialDef::create2("missing", None, true)
             };
 

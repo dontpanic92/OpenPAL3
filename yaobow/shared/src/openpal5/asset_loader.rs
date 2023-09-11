@@ -10,7 +10,10 @@ use fileformats::{
 use mini_fs::MiniFs;
 use radiance::{comdef::IEntity, rendering::ComponentFactory};
 
-use crate::loaders::{dff::create_entity_from_dff_model, Pal5TextureResolver};
+use crate::loaders::{
+    dff::{create_entity_from_dff_model, DffLoaderConfig},
+    Pal5TextureResolver,
+};
 
 pub struct AssetLoader {
     vfs: Rc<MiniFs>,
@@ -45,7 +48,10 @@ impl AssetLoader {
             model_path.clone(),
             model_path,
             true,
-            &self.texture_resolver,
+            &DffLoaderConfig {
+                texture_resolver: &self.texture_resolver,
+                keep_right_to_render_only: false,
+            },
         );
         Ok(entity)
     }

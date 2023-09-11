@@ -26,7 +26,6 @@ impl ContentTabs {
         audio_engine: Rc<dyn AudioEngine>,
         asset_mgr: Rc<AssetManager>,
         game_type: GameType,
-        texture_resolver: Rc<dyn TextureResolver>,
     ) -> Self {
         Self {
             audio_tab: None,
@@ -43,7 +42,7 @@ impl ContentTabs {
                     audio_engine.clone(),
                 )),
                 Box::new(OthersPreviewer::create()),
-                Box::new(ModelPreviewer::new(asset_mgr, texture_resolver)),
+                Box::new(ModelPreviewer::new(asset_mgr, game_type)),
             ],
         }
     }

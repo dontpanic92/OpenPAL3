@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     io::Read,
     path::{Path, PathBuf},
 };
@@ -11,7 +12,7 @@ pub mod bsp;
 pub mod dff;
 pub mod smp;
 
-pub trait TextureResolver {
+pub trait TextureResolver: Send + Sync {
     fn resolve_texture(
         &self,
         vfs: &MiniFs,
@@ -52,20 +53,47 @@ impl TextureResolver for Pal5TextureResolver {
         model_path: &Path,
         texture_name: &str,
     ) -> Option<Vec<u8>> {
-        let relative_path: PathBuf = model_path
-            .parent()
-            .unwrap()
-            .to_owned()
-            .iter()
-            .skip(2)
-            .collect();
-        let tex_path = PathBuf::from("/Texture")
-            .join(relative_path)
-            .join(texture_name.to_string() + ".dds");
+        let tex_path = if model_path.file_name() == Some(&OsStr::new("jiemian.dff")) {
+            vec![PathBuf::from(format!(
+                "/Texture/load/xianjianwu/{}.dds",
+                texture_name
+            ))]
+        } else {
+            let mut paths = vec![];
+
+            let relative_path: PathBuf = model_path
+                .parent()
+                .unwrap()
+                .to_owned()
+                .iter()
+                .skip(2)
+                .collect();
+            let tex_path = PathBuf::from("/Texture")
+                .join(relative_path)
+                .join(texture_name.to_string() + ".dds");
+
+            paths.push(tex_path.clone());
+
+            if model_path.to_str().unwrap().contains("jianzhu") {
+                let building_path = tex_path.parent().unwrap().parent().unwrap();
+                let tex_path = building_path
+                    .join("ZhuangShi")
+                    .join(texture_name.to_string() + ".dds");
+                paths.push(tex_path.clone());
+
+                let tex_path = building_path
+                    .join("jianzhu")
+                    .join("ssd")
+                    .join(texture_name.to_string() + ".dds");
+                paths.push(tex_path);
+            }
+
+            paths
+        };
 
         let mut data = vec![];
         let _ = vfs
-            .open_with_fallback(&tex_path, &["DDS"])
+            .try_open_files(&tex_path)
             .ok()?
             .read_to_end(&mut data)
             .ok()?;
