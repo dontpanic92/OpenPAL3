@@ -27,11 +27,11 @@ pub struct Node {
 
     pub position: [f32; 3],
     pub scale: [f32; 3],
-    pub rotation: [f32; 4],
-    pub unknown_f32: [f32; 2],
+    pub rotation: [f32; 3],
+    pub unknown_f32: [f32; 3],
     pub id: u32,
     pub asset_id: u32,
     pub unknown2: u32,
-    pub unknown2_f32: [f32; 6],
+    pub aabb: [f32; 6],
     pub unknown3: [u32; 7],
 }
