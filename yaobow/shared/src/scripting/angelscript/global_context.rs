@@ -149,7 +149,7 @@ fn string_factory<TAppContext>(
     vm: &mut ScriptVm<TAppContext>,
 ) -> GlobalFunctionState<TAppContext> {
     as_params!(vm, _len: u32, str_id: u32);
-    let string = vm.context.module.borrow().strings[str_id as usize].clone();
+    let string = vm.context.as_ref().unwrap().module.borrow().strings[str_id as usize].clone();
     let ret = vm.push_object(string);
 
     vm.robj = ret;

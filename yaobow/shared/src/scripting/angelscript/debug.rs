@@ -109,7 +109,7 @@ pub enum Response {
 #[derive(Serialize, Deserialize)]
 pub enum Notification {
     ModuleChanged {
-        module: ScriptModule,
+        module: Option<ScriptModule>,
         function: u32,
     },
     StackChanged(Vec<u8>),

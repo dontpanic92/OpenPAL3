@@ -70,7 +70,7 @@ fn handle_message(
     match msg {
         Message::Notification(Notification::ModuleChanged { module, function }) => {
             let mut c = context.write().unwrap();
-            c.module = Some(module);
+            c.module = module;
             c.function_id = function;
         }
         Message::Notification(Notification::ObjectsChanged(obj)) => {
