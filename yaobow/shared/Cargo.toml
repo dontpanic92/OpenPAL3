@@ -25,6 +25,7 @@ image = "0.23.0"
 imgui = { version = "0.10", features = ["docking"] }
 itertools = "0"
 lazy_static = "1.2.0"
+lua50-32-sys = { git = "https://github.com/dontpanic92/lua50-32-sys" }
 log = { version = "0.4.13" }
 lzma-rs = "0.3.0"
 md5 = "0.7"

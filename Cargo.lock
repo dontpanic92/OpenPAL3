@@ -2414,6 +2414,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lua50-32-sys"
+version = "0.0.1"
+source = "git+https://github.com/dontpanic92/lua50-32-sys#3f489459433a9c0aad6405aa54b46b3d90d7594c"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "lzma-rs"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3808,6 +3817,7 @@ dependencies = [
  "itertools",
  "lazy_static",
  "log",
+ "lua50-32-sys",
  "lzma-rs",
  "md5",
  "memmap",
