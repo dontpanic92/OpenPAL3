@@ -32,6 +32,7 @@ md5 = "0.7"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
 miniz_oxide ="0.6"
+paste = "1.0"
 rand = "0.8.3"
 radiance = { path = "../../radiance/radiance" }
 regex = "1.4.5"

@@ -9,7 +9,6 @@ pub struct C00 {
     pub data: Vec<u8>,
 }
 
-
 #[derive(Debug, BinRead)]
 #[brw(little)]
 pub struct C00Header {

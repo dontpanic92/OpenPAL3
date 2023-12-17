@@ -1,0 +1,13 @@
+module(rust) shared::openswd5::comdef;
+
+import crosscom.idl;
+import radiance.idl;
+
+[uuid(58a80825-5ee3-436f-81fe-55bffe5d955e)]
+interface IOpenSWD5Director: IDirector {
+    [internal(), rust()]
+    &'static shared::openswd5::director::OpenSWD5Director get();
+}
+
+[uuid(ca7de830-4aeb-4538-bacb-34d7d5614392)]
+class OpenSWD5Director: IOpenSWD5Director {}
