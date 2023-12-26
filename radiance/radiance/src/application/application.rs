@@ -99,6 +99,7 @@ impl Application {
         std::panic::set_hook(Box::new(|panic_info| {
             let backtrace = backtrace::Backtrace::new();
             let msg = format!("Radiance {}\n{:?}", panic_info, backtrace);
+            log::error!("{}", &msg);
             Platform::show_error_dialog(crate::constants::STR_SORRY_DIALOG_TITLE, &msg);
         }));
     }

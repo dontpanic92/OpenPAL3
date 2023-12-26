@@ -1,4 +1,4 @@
-use std::pin::Pin;
+use std::{cell::RefCell, rc::Rc};
 
 use anyhow::bail;
 use encoding::{DecoderTrap, Encoding};
@@ -8,11 +8,15 @@ pub struct Lua5032Vm<TContext> {
     lib: Vec<u8>,
     lua: *mut lua_State,
     thread: *mut lua_State,
-    context: Pin<Box<TContext>>,
+    context: Rc<RefCell<TContext>>,
 }
 
 impl<TContext> Lua5032Vm<TContext> {
-    pub fn new(lib: Vec<u8>, function: &str, context: TContext) -> anyhow::Result<Self> {
+    pub fn new(
+        lib: Vec<u8>,
+        function: &str,
+        context: Rc<RefCell<TContext>>,
+    ) -> anyhow::Result<Self> {
         unsafe {
             let lua = lua50_32_sys::lua_open();
             lua50_32_sys::luaopen_base(lua);
@@ -48,15 +52,16 @@ impl<TContext> Lua5032Vm<TContext> {
                 lib,
                 lua,
                 thread,
-                context: Box::pin(context),
+                context,
             })
         }
     }
 
     pub fn register(&self, name: &str, func: lua50_32_sys::lua_CFunction) {
         let cname = std::ffi::CString::new(name).unwrap();
+
         unsafe {
-            let p = self.context.as_ref().get_ref() as *const _ as *mut _;
+            let p = self.context.as_ref() as *const _ as *mut _;
             lua50_32_sys::lua_pushlightuserdata(self.thread, p);
             lua50_32_sys::lua_pushcclosure(self.thread, func, 1);
             lua50_32_sys::lsetglobal(self.thread, cname.as_ptr());

@@ -2,22 +2,45 @@ use std::{cell::RefCell, rc::Rc};
 
 use crosscom::ComRc;
 use radiance::{
+    audio::AudioEngine,
     comdef::{IDirector, IDirectorImpl, ISceneManager},
     input::InputEngine,
+    radiance::UiManager,
     utils::free_view::FreeViewController,
 };
 
-use crate::ComObject_OpenSWD5Director;
+use crate::{scripting::lua50_32::Lua5032Vm, ComObject_OpenSWD5Director};
 
-use super::comdef::IOpenSWD5DirectorImpl;
+use super::{
+    asset_loader::AssetLoader,
+    comdef::IOpenSWD5DirectorImpl,
+    scripting::{create_lua_vm, SWD5Context},
+};
 
 pub struct OpenSWD5Director {
+    vm: Lua5032Vm<SWD5Context>,
+    context: Rc<RefCell<SWD5Context>>,
     control: FreeViewController,
 }
 
 impl OpenSWD5Director {
-    pub fn new(input: Rc<RefCell<dyn InputEngine>>) -> Self {
+    pub fn new(
+        asset_loader: Rc<AssetLoader>,
+        input: Rc<RefCell<dyn InputEngine>>,
+        audio_engine: Rc<dyn AudioEngine>,
+        ui: Rc<UiManager>,
+    ) -> Self {
+        let context = Rc::new(RefCell::new(SWD5Context::new(
+            asset_loader.clone(),
+            audio_engine,
+            input.clone(),
+            ui,
+        )));
+        let vm = create_lua_vm(&asset_loader, context.clone()).unwrap();
+
         Self {
+            vm,
+            context,
             control: FreeViewController::new(input),
         }
     }
@@ -32,8 +55,10 @@ impl IDirectorImpl for OpenSWD5Director {
         &self,
         _scene_manager: ComRc<ISceneManager>,
         _ui: &imgui::Ui,
-        _delta_sec: f32,
+        delta_sec: f32,
     ) -> Option<ComRc<IDirector>> {
+        self.context.borrow_mut().update(delta_sec);
+        self.vm.execute().unwrap();
         None
     }
 }

@@ -9,20 +9,20 @@ use crate::GameType;
 
 pub struct AssetLoader {
     game: GameType,
-    vfs: MiniFs,
-    // component_factory: Rc<dyn ComponentFactory>,
+    vfs: Rc<MiniFs>,
+    component_factory: Rc<dyn ComponentFactory>,
 }
 
 impl AssetLoader {
     pub fn new(
-        // component_factory: Rc<dyn ComponentFactory>,
-        vfs: MiniFs,
+        component_factory: Rc<dyn ComponentFactory>,
+        vfs: Rc<MiniFs>,
         game: GameType,
     ) -> Rc<Self> {
         Rc::new(Self {
             game,
             vfs,
-            // component_factory,
+            component_factory,
         })
     }
 
@@ -35,6 +35,20 @@ impl AssetLoader {
         let out = lzo.decompress(&c00.data, c00.header.original_size as usize)?;
 
         Ok(out)
+    }
+
+    pub fn load_sound(&self, sound_id: i32) -> anyhow::Result<Vec<u8>> {
+        let path = format!("/Sound/SoundDB/{}.mp3", sound_id);
+        let content = self.vfs.read_to_end(path)?;
+
+        Ok(content)
+    }
+
+    pub fn load_music(&self, music_id: i32) -> anyhow::Result<Vec<u8>> {
+        let path = format!("/Music/Music/{}.mp3", music_id);
+        let content = self.vfs.read_to_end(path)?;
+
+        Ok(content)
     }
 
     fn main_script_path(&self) -> String {

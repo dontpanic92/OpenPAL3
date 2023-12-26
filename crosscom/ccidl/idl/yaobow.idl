@@ -12,6 +12,9 @@ class OpenPal4ApplicationLoaderComponent: IApplicationLoaderComponent {}
 [uuid(ce2243b2-1fdf-42e4-96fc-194199729350)]
 class OpenPal5ApplicationLoaderComponent: IApplicationLoaderComponent {}
 
+[uuid(21ab7796-95b3-4cf9-b68d-715e1d7287ac)]
+class OpenSwd5ApplicationLoaderComponent: IApplicationLoaderComponent {}
+
 [uuid(9492ea12-f90d-4909-9dbb-7d16a0df716d)]
 class YaobowApplicationLoader: IApplicationLoaderComponent {}
 
