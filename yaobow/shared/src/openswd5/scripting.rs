@@ -1,12 +1,13 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use encoding::{DecoderTrap, Encoding};
-use imgui::Ui;
+use imgui::Image;
 use lua50_32_sys::lua_State;
 use radiance::{
     audio::{AudioEngine, AudioMemorySource, AudioSourceState, Codec},
     input::{InputEngine, Key},
     radiance::UiManager,
+    rendering::Sprite,
 };
 
 use crate::scripting::lua50_32::Lua5032Vm;
@@ -22,6 +23,7 @@ pub struct SWD5Context {
     bgm_source: Box<dyn AudioMemorySource>,
     sound_sources: HashMap<i32, RefCell<Box<dyn AudioMemorySource>>>,
     story_msg: Option<StoryMsg>,
+    story_pic: Option<Sprite>,
 }
 
 impl SWD5Context {
@@ -40,12 +42,14 @@ impl SWD5Context {
             bgm_source,
             sound_sources: HashMap::new(),
             story_msg: None,
+            story_pic: None,
         }
     }
 
     pub fn update(&mut self, _delta_sec: f32) {
         self.update_audio();
         self.update_storymsg();
+        self.update_story_pic();
     }
 
     fn update_storymsg(&mut self) {
@@ -83,21 +87,45 @@ impl SWD5Context {
         self.bgm_source.update();
     }
 
+    fn update_story_pic(&mut self) {
+        if let Some(sprite) = &self.story_pic {
+            let [width, height] = self.ui.ui().io().display_size;
+            let size = [sprite.width() as f32, sprite.height() as f32];
+            let x = (width - sprite.width() as f32) / 2.;
+            let y = (height - sprite.height() as f32) / 2.;
+
+            self.ui
+                .ui()
+                .window("story_pic")
+                .position([x, y], imgui::Condition::Always)
+                .size(size, imgui::Condition::Always)
+                .movable(false)
+                .resizable(false)
+                .collapsible(false)
+                .title_bar(false)
+                .draw_background(false)
+                .scroll_bar(false)
+                .build(|| {
+                    Image::new(sprite.imgui_texture_id(), size).build(self.ui.ui());
+                });
+        }
+    }
+
     fn anykey_down(&mut self) -> bool {
         self.input_engine
             .borrow()
             .get_key_state(Key::Space)
-            .is_down()
+            .pressed()
             || self
                 .input_engine
                 .borrow()
                 .get_key_state(Key::Escape)
-                .is_down()
+                .pressed()
             || self
                 .input_engine
                 .borrow()
                 .get_key_state(Key::GamePadSouth)
-                .is_down()
+                .pressed()
     }
 
     fn isfon(&mut self, f: f64) -> i32 {
@@ -152,6 +180,13 @@ impl SWD5Context {
         }
     }
 
+    fn stop_sound(&mut self, sound_id: f64) {
+        let sound_id = sound_id as i32;
+        self.sound_sources
+            .remove(&sound_id)
+            .map(|source| source.borrow_mut().stop());
+    }
+
     fn storymsg(&mut self, text: *const i8) {
         let text = decode_big5(text);
         let [width, height] = self.ui.ui().io().display_size;
@@ -160,6 +195,26 @@ impl SWD5Context {
             text,
             position: [width / 2. - 300., height / 2. - 200.],
         });
+    }
+
+    fn storymsgpos(&mut self, text: *const i8, x: f64, y: f64) {
+        let text = decode_big5(text);
+        let [width, height] = self.ui.ui().io().display_size;
+
+        self.story_msg = Some(StoryMsg {
+            text,
+            position: [width / 2. - 300. + x as f32, height / 2. - 200. + y as f32],
+        });
+    }
+
+    fn openstorypic(&mut self, pic_id: f64) {
+        let data = self.asset_loader.load_story_pic(pic_id as i32);
+        match data {
+            Ok(sprite) => {
+                self.story_pic = Some(sprite);
+            }
+            Err(e) => log::error!("openstorypic: {:?}", e),
+        }
     }
 
     fn anykey(&mut self) -> i32 {
@@ -228,7 +283,10 @@ pub fn create_lua_vm(
     def_func!(vm, set_walks, f1: number, f2: number);
     def_func!(vm, play_sound, sound_id: number, volume: number);
     def_func!(vm, storymsg, text: string);
+    def_func!(vm, storymsgpos, text: string, x: number, y: number);
     def_func!(vm, anykey -> number);
+    def_func!(vm, openstorypic, pic_id: number);
+    def_func!(vm, stop_sound, sound_id: number);
 
     Ok(vm)
 }

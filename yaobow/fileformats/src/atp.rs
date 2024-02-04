@@ -102,7 +102,7 @@ impl AtpFile {
 }
 
 macro_rules! read_data {
-    ($cursor: ident, $length: ident, $item_length: ident, $($index: expr => $action: expr, )*) => {
+    ($struct_name: expr, $cursor: ident, $length: ident, $item_length: ident, $($index: expr => $action: expr, )*) => {
         let mut cur_length = 0;
         while cur_length < $length {
             $item_length = $cursor.read_u32_le()?;
@@ -111,7 +111,7 @@ macro_rules! read_data {
             match index {
                 $($index => $action,)*
                 _ => {
-                    log::warn!("Unknown index: {}", index);
+                    log::warn!("Unknown index in {}: {} at position {}", $struct_name, index, $cursor.position());
                     $cursor.skip(($item_length - 2) as usize)?
                 }
             }
@@ -125,7 +125,7 @@ macro_rules! read_data {
 pub struct AtpEntry {
     pub unknown: Option<u32>,
     pub data2: Option<AtpEntryData2>,
-    pub data3: Option<AtpEntryData3>,
+    pub data3: Option<Vec<AtpEntryData3>>,
     pub data4: Option<AtpEntryData4>,
 }
 
@@ -146,7 +146,7 @@ impl AtpEntry {
             match index {
                 1 => entry.unknown = Some(cursor.read_u32_le()?),
                 2 => entry.data2 = Some(AtpEntryData2::read(cursor, item_length - 2)?),
-                3 => entry.data3 = Some(AtpEntryData3::read(cursor)?),
+                3 => entry.data3 = Some(read_data3(cursor)?),
                 4 => {
                     entry.data4 = Some(AtpEntryData4::read(
                         cursor,
@@ -190,6 +190,7 @@ impl AtpEntryData2 {
 
         let mut _item_length = 0;
         read_data!(
+            "AptEntryData2",
             cursor,
             length,
             _item_length,
@@ -208,13 +209,25 @@ impl AtpEntryData2 {
 #[derive(Debug, BinRead)]
 #[brw(little)]
 pub struct AtpEntryData3 {
-    pub dword: [u32; 8],
+    pub dword: [u32; 7],
     pub float: [f32; 6],
+}
+
+fn read_data3(cursor: &mut Cursor<&[u8]>) -> anyhow::Result<Vec<AtpEntryData3>> {
+    let mut data3 = vec![];
+    let count = cursor.read_u32_le()?;
+    for _ in 0..count {
+        let item = AtpEntryData3::read(cursor)?;
+        data3.push(item);
+    }
+
+    Ok(data3)
 }
 
 #[derive(Debug)]
 pub enum AtpEntryData4 {
     Data1(AtpEntryData41),
+    Data2(AtpEntryData42),
     Data5(AtpEntryData45),
 }
 
@@ -222,6 +235,7 @@ impl AtpEntryData4 {
     pub fn read(cursor: &mut Cursor<&[u8]>, length: u32, ty: u32) -> anyhow::Result<Self> {
         match ty {
             1 => Ok(AtpEntryData4::Data1(AtpEntryData41::read(cursor, length)?)),
+            2 => Ok(AtpEntryData4::Data2(AtpEntryData42::read(cursor, length)?)),
             5 => Ok(AtpEntryData4::Data5(AtpEntryData45::read(cursor, length)?)),
             _ => Err(anyhow::anyhow!("Unknown AtpEntryData4 type: {}", ty)),
         }
@@ -235,6 +249,8 @@ pub struct AtpEntryData41 {
     pub file: Option<AtpEntryData41File>,
     pub sub_files: Option<Vec<AtpEntryData41SubFile>>,
     pub unknown5: Option<u32>,
+    pub unknown6: Option<Vec<u8>>,
+    pub unknown7: Option<u32>,
     pub unknown8: Option<u64>,
     pub unknown9: Option<u32>,
     pub unknown10: Option<u32>,
@@ -253,6 +269,8 @@ impl AtpEntryData41 {
             file: None,
             sub_files: None,
             unknown5: None,
+            unknown6: None,
+            unknown7: None,
             unknown8: None,
             unknown9: None,
             unknown10: None,
@@ -265,6 +283,7 @@ impl AtpEntryData41 {
 
         let mut _item_length = 0;
         read_data!(
+            "AtpEntryData41",
             cursor,
             length,
             _item_length,
@@ -273,6 +292,8 @@ impl AtpEntryData41 {
             3 => data.file = Some(AtpEntryData41File::read(cursor, _item_length - 2)?),
             4 => data.sub_files = Some(read_sub_files(cursor, _item_length - 2)?),
             5 => data.unknown5 = Some(cursor.read_u32_le()?),
+            6 => data.unknown6 = Some(cursor.read_u8_vec((_item_length - 2) as usize)?),
+            7 => data.unknown7 = Some(cursor.read_u32_le()?),
             8 => data.unknown8 = Some(cursor.read_u64_le()?),
             9 => data.unknown9 = Some(cursor.read_u32_le()?),
             10 => data.unknown10 = Some(cursor.read_u32_le()?),
@@ -325,6 +346,7 @@ impl AtpEntryData41File {
 
         let mut _item_length = 0;
         read_data!(
+            "AtpEntryData41File",
             cursor,
             length,
             _item_length,
@@ -382,6 +404,7 @@ impl AtpEntryData41SubFile {
 
         let mut _item_length = 0;
         read_data!(
+            "AtpEntryData41SubFile",
             cursor,
             length,
             _item_length,
@@ -391,6 +414,102 @@ impl AtpEntryData41SubFile {
             4 => data.unknown4 = Some(cursor.read_u8_vec((_item_length - 2) as usize)?),
             5 => data.unknown5 = Some(cursor.read_u32_le()?),
             6 => data.unknown6 = Some(cursor.read_u32_le()?),
+        );
+
+        Ok(data)
+    }
+}
+
+#[derive(Debug)]
+pub struct AtpEntryData42 {
+    pub unknown1: Option<AtpEntryData42Unknown>,
+    pub unknown2: Option<f32>,
+    pub unknown3: Option<u32>,
+    pub unknown4: Option<u32>,
+    pub unknown5: Option<u64>,
+    pub unknown6: Option<u32>,
+    pub unknown7: Option<[u32; 3]>,
+    pub unknown8: Option<u32>,
+    pub unknown9: Option<u32>,
+    pub unknown10: Option<Vec<u8>>,
+    pub unknown11: Option<u32>,
+    pub unknown12: Option<Vec<u8>>,
+    pub unknown13: Option<f32>,
+    pub unknown14: Option<f32>,
+}
+
+impl AtpEntryData42 {
+    pub fn read(cursor: &mut Cursor<&[u8]>, length: u32) -> anyhow::Result<Self> {
+        let mut data = AtpEntryData42 {
+            unknown1: None,
+            unknown2: None,
+            unknown3: None,
+            unknown4: None,
+            unknown5: None,
+            unknown6: None,
+            unknown7: None,
+            unknown8: None,
+            unknown9: None,
+            unknown10: None,
+            unknown11: None,
+            unknown12: None,
+            unknown13: None,
+            unknown14: None,
+        };
+
+        let mut _item_length = 0;
+        read_data!(
+            "AtpEntryData42",
+            cursor,
+            length,
+            _item_length,
+            1 => data.unknown1 = Some(AtpEntryData42Unknown::read(cursor, _item_length - 2)?),
+            2 => data.unknown2 = Some(cursor.read_f32_le()?),
+            3 => data.unknown3 = Some(cursor.read_u32_le()?),
+            4 => data.unknown4 = Some(cursor.read_u32_le()?),
+            5 => data.unknown5 = Some(cursor.read_u64_le()?),
+            6 => data.unknown6 = Some(cursor.read_u32_le()?),
+            7 => data.unknown7 = Some([cursor.read_u32_le()?, cursor.read_u32_le()?, cursor.read_u32_le()?]),
+            8 => data.unknown8 = Some(cursor.read_u32_le()?),
+            9 => data.unknown9 = Some(cursor.read_u32_le()?),
+            10 => data.unknown10 = Some(cursor.read_u8_vec((_item_length - 2) as usize)?),
+            11 => data.unknown11 = Some(cursor.read_u32_le()?),
+            12 => data.unknown12 = Some(cursor.read_u8_vec((_item_length - 2) as usize)?),
+            13 => data.unknown13 = Some(cursor.read_f32_le()?),
+            14 => data.unknown14 = Some(cursor.read_f32_le()?),
+        );
+
+        Ok(data)
+    }
+}
+
+#[derive(Debug)]
+pub struct AtpEntryData42Unknown {
+    pub path: Option<SizedBig5String>,
+    pub unknown2: Option<u32>,
+    pub unknown4: Option<Vec<u8>>, // 10 bytes
+    pub unknown5: Option<[f32; 2]>,
+}
+
+impl AtpEntryData42Unknown {
+    pub fn read(cursor: &mut Cursor<&[u8]>, length: u32) -> anyhow::Result<Self> {
+        let mut data = AtpEntryData42Unknown {
+            path: None,
+            unknown2: None,
+            unknown4: None,
+            unknown5: None,
+        };
+
+        let mut _item_length = 0;
+        read_data!(
+            "AtpEntryData42Unknown",
+            cursor,
+            length,
+            _item_length,
+            1 => data.path = Some(SizedBig5String::read(cursor)?),
+            2 => data.unknown2 = Some(cursor.read_u32_le()?),
+            4 => data.unknown4 = Some(cursor.read_u8_vec(10)?),
+            5 => data.unknown5 = Some([cursor.read_f32_le()?, cursor.read_f32_le()?]),
         );
 
         Ok(data)
@@ -424,6 +543,7 @@ impl AtpEntryData45 {
 
         let mut _item_length = 0;
         read_data!(
+            "AtpEntryData45",
             cursor,
             length,
             _item_length,
