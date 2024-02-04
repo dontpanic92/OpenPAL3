@@ -1,13 +1,13 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use encoding::{DecoderTrap, Encoding};
-use imgui::Image;
+use imgui::{Image, TextureId};
 use lua50_32_sys::lua_State;
 use radiance::{
     audio::{AudioEngine, AudioMemorySource, AudioSourceState, Codec},
     input::{InputEngine, Key},
     radiance::UiManager,
-    rendering::Sprite,
+    rendering::{ComponentFactory, Sprite, VideoPlayer},
 };
 
 use crate::scripting::lua50_32::Lua5032Vm;
@@ -18,12 +18,16 @@ pub struct SWD5Context {
     asset_loader: Rc<AssetLoader>,
     audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
+    component_factory: Rc<dyn ComponentFactory>,
     ui: Rc<UiManager>,
+    video_player: Box<VideoPlayer>,
 
     bgm_source: Box<dyn AudioMemorySource>,
     sound_sources: HashMap<i32, RefCell<Box<dyn AudioMemorySource>>>,
     story_msg: Option<StoryMsg>,
     story_pic: Option<Sprite>,
+
+    movie_texture: Option<TextureId>,
 }
 
 impl SWD5Context {
@@ -31,25 +35,31 @@ impl SWD5Context {
         asset_loader: Rc<AssetLoader>,
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
+        component_factory: Rc<dyn ComponentFactory>,
         ui: Rc<UiManager>,
     ) -> Self {
         let bgm_source = audio_engine.create_source();
+        let video_player = component_factory.create_video_player();
         Self {
             asset_loader,
             audio_engine,
             input_engine,
+            component_factory,
             ui,
+            video_player,
             bgm_source,
             sound_sources: HashMap::new(),
             story_msg: None,
             story_pic: None,
+            movie_texture: None,
         }
     }
 
     pub fn update(&mut self, _delta_sec: f32) {
         self.update_audio();
-        self.update_storymsg();
         self.update_story_pic();
+        self.update_storymsg();
+        self.update_video();
     }
 
     fn update_storymsg(&mut self) {
@@ -89,15 +99,17 @@ impl SWD5Context {
 
     fn update_story_pic(&mut self) {
         if let Some(sprite) = &self.story_pic {
-            let [width, height] = self.ui.ui().io().display_size;
-            let size = [sprite.width() as f32, sprite.height() as f32];
-            let x = (width - sprite.width() as f32) / 2.;
-            let y = (height - sprite.height() as f32) / 2.;
+            let (start, size) = calc_43_box(&self.ui.ui());
+
+            let style = self
+                .ui
+                .ui()
+                .push_style_var(imgui::StyleVar::WindowPadding([0., 0.]));
 
             self.ui
                 .ui()
                 .window("story_pic")
-                .position([x, y], imgui::Condition::Always)
+                .position(start, imgui::Condition::Always)
                 .size(size, imgui::Condition::Always)
                 .movable(false)
                 .resizable(false)
@@ -105,9 +117,27 @@ impl SWD5Context {
                 .title_bar(false)
                 .draw_background(false)
                 .scroll_bar(false)
+                .nav_focus(false)
+                .focused(false)
+                .mouse_inputs(false)
                 .build(|| {
                     Image::new(sprite.imgui_texture_id(), size).build(self.ui.ui());
                 });
+
+            style.pop();
+        }
+    }
+
+    fn update_video(&mut self) {
+        if self.video_player.get_state() == radiance::video::VideoStreamState::Playing {
+            let source_size = self.video_player.get_source_size().unwrap();
+            self.movie_texture = crate::utils::play_movie(
+                self.ui.ui(),
+                &mut self.video_player,
+                self.movie_texture,
+                source_size,
+                false,
+            );
         }
     }
 
@@ -133,6 +163,8 @@ impl SWD5Context {
     }
 
     fn fon(&mut self, f: f64) {}
+
+    fn foff(&mut self, f: f64) {}
 
     fn lock_player(&mut self, f: f64) {}
 
@@ -199,11 +231,13 @@ impl SWD5Context {
 
     fn storymsgpos(&mut self, text: *const i8, x: f64, y: f64) {
         let text = decode_big5(text);
-        let [width, height] = self.ui.ui().io().display_size;
+        let (start, size) = calc_43_box(self.ui.ui());
+        let x = x as f32 / 960. * size[0];
+        let y = y as f32 / 720. * size[1];
 
         self.story_msg = Some(StoryMsg {
             text,
-            position: [width / 2. - 300. + x as f32, height / 2. - 200. + y as f32],
+            position: [x + start[0], y + start[1]],
         });
     }
 
@@ -215,6 +249,30 @@ impl SWD5Context {
             }
             Err(e) => log::error!("openstorypic: {:?}", e),
         }
+    }
+
+    fn closestorypic(&mut self) {
+        self.story_pic = None;
+    }
+
+    fn play_movie(&mut self, id: f64) {
+        let reader = self.asset_loader.load_movie_data(id as u32);
+        match reader {
+            Ok(reader) => {
+                self.video_player.play(
+                    self.component_factory.clone(),
+                    self.audio_engine.clone(),
+                    reader,
+                    radiance::video::Codec::Bik,
+                    false,
+                );
+            }
+            Err(e) => log::error!("play_movie: {:?}", e),
+        }
+    }
+
+    fn is_play_movie(&mut self) -> f64 {
+        (self.video_player.get_state() == radiance::video::VideoStreamState::Playing) as u32 as f64
     }
 
     fn anykey(&mut self) -> i32 {
@@ -270,6 +328,7 @@ pub fn create_lua_vm(
 
     def_func!(vm, isfon, f: number -> number);
     def_func!(vm, fon, f: number);
+    def_func!(vm, foff, f: number);
     def_func!(vm, lock_player, f: number);
     def_func!(vm, dark, speed: number);
     vm.register("sleep", Some(sleep));
@@ -287,6 +346,9 @@ pub fn create_lua_vm(
     def_func!(vm, anykey -> number);
     def_func!(vm, openstorypic, pic_id: number);
     def_func!(vm, stop_sound, sound_id: number);
+    def_func!(vm, closestorypic);
+    def_func!(vm, play_movie, id: number);
+    def_func!(vm, is_play_movie -> number);
 
     Ok(vm)
 }
@@ -312,4 +374,24 @@ fn decode_big5(s: *const i8) -> String {
 struct StoryMsg {
     text: String,
     position: [f32; 2],
+}
+
+fn calc_43_box(ui: &imgui::Ui) -> ([f32; 2], [f32; 2]) {
+    let [width, height] = ui.io().display_size;
+
+    let start = if width > height {
+        let x = (width - height * 4. / 3.) / 2.;
+        [x, 0.]
+    } else {
+        let y = (height - width * 3. / 4.) / 2.;
+        [0., y]
+    };
+
+    let size = if width > height {
+        [height * 4. / 3., height]
+    } else {
+        [width, width * 3. / 4.]
+    };
+
+    (start, size)
 }

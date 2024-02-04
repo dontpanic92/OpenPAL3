@@ -1,16 +1,16 @@
 use imgui::TextureId;
 
 use super::imgui::ImguiRenderer;
-use super::texture::VulkanTextureStore;
+use super::texture::{self, VulkanTextureStore};
 use super::{
     adhoc_command_runner::AdhocCommandRunner, descriptor_managers::DescriptorManager,
     device::Device, material::VulkanMaterial, render_object::VulkanRenderObject,
-    shader::VulkanShader, texture::VulkanTexture, uniform_buffers::DynamicUniformBufferManager,
+    texture::VulkanTexture, uniform_buffers::DynamicUniformBufferManager,
 };
 use crate::rendering::VideoPlayer;
 use crate::rendering::{
     factory::ComponentFactory, texture::TextureDef, Material, MaterialDef, RenderObject,
-    RenderingComponent, Shader, ShaderProgram, Texture, VertexBuffer,
+    RenderingComponent, Texture, VertexBuffer,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -67,6 +67,10 @@ impl ComponentFactory for VulkanComponentFactory {
             .borrow_mut()
             .upsert_texture(texture_id, descriptor_set);
         (Box::new(texture), texture_id)
+    }
+
+    fn remove_imgui_texture(&self, texture_id: Option<TextureId>) {
+        self.imgui.borrow_mut().remove_texture(texture_id);
     }
 
     fn create_material(&self, material_def: &MaterialDef) -> Box<dyn Material> {

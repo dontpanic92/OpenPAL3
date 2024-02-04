@@ -1,4 +1,8 @@
-use std::{io::Cursor, path::PathBuf, rc::Rc};
+use std::{
+    io::{BufReader, Cursor},
+    path::PathBuf,
+    rc::Rc,
+};
 
 use common::{read_ext::ReadExt, store_ext::StoreExt2};
 use encoding::{DecoderTrap, Encoding};
@@ -8,7 +12,10 @@ use fileformats::{
     c00::C00,
 };
 use mini_fs::{MiniFs, StoreExt};
-use radiance::rendering::{ComponentFactory, Sprite};
+use radiance::{
+    rendering::{ComponentFactory, Sprite},
+    utils::SeekRead,
+};
 
 use crate::GameType;
 
@@ -60,7 +67,7 @@ impl AssetLoader {
     }
 
     pub fn load_story_pic(&self, pic_id: i32) -> anyhow::Result<Sprite> {
-        let atp_entry = self.index[pic_id as usize]
+        let atp_entry = self.index[(pic_id + -1) as usize]
             .as_ref()
             .ok_or(anyhow::anyhow!("No such pic {pic_id}"))?;
 
@@ -94,6 +101,15 @@ impl AssetLoader {
             }
             _ => anyhow::bail!("Unsupported data4 type"),
         }
+    }
+
+    pub fn load_movie_data(&self, movie_id: u32) -> anyhow::Result<Box<dyn SeekRead>> {
+        let path = format!("/movie/movie{:0>2}.bik", movie_id);
+
+        println!("Loading movie: {}", path);
+        let content = self.vfs.open(path)?;
+
+        Ok(Box::new(BufReader::new(content)))
     }
 
     fn main_script_path(&self) -> String {

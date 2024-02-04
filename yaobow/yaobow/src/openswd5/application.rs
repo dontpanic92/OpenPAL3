@@ -42,8 +42,13 @@ impl IComponentImpl for OpenSwd5ApplicationLoader {
         let scene = CoreScene::create();
         scene_manager.push_scene(scene);
 
-        let director =
-            OpenSWD5Director::new(loader, input_engine.clone(), audio_engine, ui.clone());
+        let director = OpenSWD5Director::new(
+            loader,
+            input_engine.clone(),
+            audio_engine,
+            component_factory.clone(),
+            ui.clone(),
+        );
         scene_manager.set_director(ComRc::from_object(director));
     }
 

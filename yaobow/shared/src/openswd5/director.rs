@@ -6,6 +6,7 @@ use radiance::{
     comdef::{IDirector, IDirectorImpl, ISceneManager},
     input::InputEngine,
     radiance::UiManager,
+    rendering::ComponentFactory,
     utils::free_view::FreeViewController,
 };
 
@@ -28,12 +29,14 @@ impl OpenSWD5Director {
         asset_loader: Rc<AssetLoader>,
         input: Rc<RefCell<dyn InputEngine>>,
         audio_engine: Rc<dyn AudioEngine>,
+        component_factory: Rc<dyn ComponentFactory>,
         ui: Rc<UiManager>,
     ) -> Self {
         let context = Rc::new(RefCell::new(SWD5Context::new(
             asset_loader.clone(),
             audio_engine,
             input.clone(),
+            component_factory,
             ui,
         )));
         let vm = create_lua_vm(&asset_loader, context.clone()).unwrap();

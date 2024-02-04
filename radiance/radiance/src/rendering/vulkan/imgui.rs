@@ -97,6 +97,15 @@ impl ImguiRenderer {
         }
     }
 
+    pub fn remove_texture(&mut self, id: Option<TextureId>) {
+        if let Some(id) = id {
+            let descriptor_set = self.renderer.textures().remove(id);
+            self.descriptor_manager
+                .free_texture_descriptor_set(descriptor_set.unwrap());
+            self.texture_id_set.remove(&id);
+        }
+    }
+
     pub fn set_render_pass(&mut self, render_pass: vk::RenderPass) -> RendererResult<()> {
         self.renderer.set_render_pass(render_pass)
     }
