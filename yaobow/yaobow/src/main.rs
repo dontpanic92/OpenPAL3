@@ -7,8 +7,8 @@ use openpal3::run_openpal3;
 use openpal4::run_openpal4;
 use openpal5::run_openpal5;
 use openswd5::run_openswd5;
+use playground::run_test;
 use shared::video::register_opengb_video_decoders;
-use testing::run_test;
 
 mod application;
 mod comdef;
@@ -17,7 +17,7 @@ mod openpal3;
 mod openpal4;
 mod openpal5;
 mod openswd5;
-mod testing;
+mod playground;
 
 pub fn main() {
     radiance::application::Application::set_panic_hook();

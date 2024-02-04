@@ -15,6 +15,10 @@ pub trait ReadExt: Read {
         Ok(())
     }
 
+    fn read_u64_le(&mut self) -> std::io::Result<u64> {
+        self.read_u64::<LittleEndian>()
+    }
+
     fn read_u32_le(&mut self) -> std::io::Result<u32> {
         self.read_u32::<LittleEndian>()
     }
@@ -45,6 +49,10 @@ pub trait ReadExt: Read {
         let mut buf = vec![0f32; count];
         self.read_f32_into::<LittleEndian>(&mut buf)?;
         Ok(buf)
+    }
+
+    fn read_f32_le(&mut self) -> std::io::Result<f32> {
+        self.read_f32::<LittleEndian>()
     }
 
     fn read_gbk_string(&mut self, size: usize) -> anyhow::Result<String> {

@@ -2699,15 +2699,6 @@ dependencies = [
 
 [[package]]
 name = "miniz_oxide"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b275950c28b37e794e8c55d88aeb5e139d0ce23fdbbeda68f8d7174abdf9e8fa"
-dependencies = [
- "adler",
-]
-
-[[package]]
-name = "miniz_oxide"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7810e0be55b428ada41041c41f32c9f1a42817901b4ccf45fa3d4b6561e74c7"
@@ -3998,7 +3989,7 @@ dependencies = [
  "memmap",
  "mini-fs",
  "minilzo-rs",
- "miniz_oxide 0.6.2",
+ "miniz_oxide 0.7.1",
  "ndk-glue 0.5.2",
  "paste",
  "radiance",

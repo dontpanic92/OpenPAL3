@@ -14,6 +14,7 @@ pub mod openpal3;
 pub mod openpal4;
 pub mod openpal5;
 pub mod openswd5;
+pub mod playground;
 pub mod scripting;
 pub mod ui;
 pub mod utils;

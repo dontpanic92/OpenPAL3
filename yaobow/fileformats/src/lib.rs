@@ -1,6 +1,7 @@
 #![feature(cursor_remaining)]
 
 pub mod amf;
+pub mod atp;
 pub mod c00;
 pub mod cam;
 pub mod mv3;
