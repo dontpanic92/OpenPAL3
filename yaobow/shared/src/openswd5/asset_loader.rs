@@ -121,7 +121,7 @@ impl AssetLoader {
         }
     }
 
-    fn load_index(vfs: &MiniFs) -> anyhow::Result<Vec<Option<AtpEntry>>> {
+    pub fn load_index(vfs: &MiniFs) -> anyhow::Result<Vec<Option<AtpEntry>>> {
         let mut entries = vec![];
         for i in 1..99 {
             let path = format!("/ACT/{:0>8}.atp", i);

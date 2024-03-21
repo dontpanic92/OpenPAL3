@@ -130,6 +130,16 @@ impl SWD5Context {
 
     fn update_video(&mut self) {
         if self.video_player.get_state() == radiance::video::VideoStreamState::Playing {
+            if self
+                .input_engine
+                .borrow()
+                .get_key_state(Key::Escape)
+                .pressed()
+            {
+                self.video_player.stop();
+                return;
+            }
+
             let source_size = self.video_player.get_source_size().unwrap();
             self.movie_texture = crate::utils::play_movie(
                 self.ui.ui(),
@@ -255,6 +265,12 @@ impl SWD5Context {
         self.story_pic = None;
     }
 
+    fn set_camera_src_pos(&mut self, x: f64, y: f64, z: f64) {}
+
+    fn set_camera_pos(&mut self, x: f64, y: f64, z: f64) {}
+
+    fn set_view_camera(&mut self, dx: f64, dy: f64, disc: f64) {}
+
     fn play_movie(&mut self, id: f64) {
         let reader = self.asset_loader.load_movie_data(id as u32);
         match reader {
@@ -349,6 +365,9 @@ pub fn create_lua_vm(
     def_func!(vm, closestorypic);
     def_func!(vm, play_movie, id: number);
     def_func!(vm, is_play_movie -> number);
+    def_func!(vm, set_camera_src_pos, x: number, y: number, z: number);
+    def_func!(vm, set_camera_pos, x: number, y: number, z: number);
+    def_func!(vm, set_view_camera, dx: number, dy: number, disc: number);
 
     Ok(vm)
 }

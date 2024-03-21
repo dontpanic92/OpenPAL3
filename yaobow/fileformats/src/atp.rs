@@ -3,6 +3,8 @@ use std::{collections::HashMap, io::Cursor};
 use binrw::BinRead;
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
+use encoding::{DecoderTrap, Encoding};
+use serde::Serialize;
 
 #[derive(Debug)]
 pub enum AtpHeaderItem {
@@ -121,7 +123,7 @@ macro_rules! read_data {
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct AtpEntry {
     pub unknown: Option<u32>,
     pub data2: Option<AtpEntryData2>,
@@ -167,7 +169,7 @@ impl AtpEntry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct AtpEntryData2 {
     pub name: Option<SizedBig5String>,
     pub unknown2: Option<u64>,
@@ -206,7 +208,7 @@ impl AtpEntryData2 {
     }
 }
 
-#[derive(Debug, BinRead)]
+#[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct AtpEntryData3 {
     pub dword: [u32; 7],
@@ -224,7 +226,7 @@ fn read_data3(cursor: &mut Cursor<&[u8]>) -> anyhow::Result<Vec<AtpEntryData3>> 
     Ok(data3)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum AtpEntryData4 {
     Data1(AtpEntryData41),
     Data2(AtpEntryData42),
@@ -242,7 +244,7 @@ impl AtpEntryData4 {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct AtpEntryData41 {
     pub unknown1: Option<[f32; 3]>,
     pub unknown2: Option<u32>,
@@ -323,7 +325,7 @@ fn read_sub_files(
     Ok(sub_files)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct AtpEntryData41File {
     pub path: Option<SizedBig5String>,
     pub unknown2: Option<u32>,
@@ -362,7 +364,7 @@ impl AtpEntryData41File {
     }
 }
 
-#[derive(Debug, BinRead)]
+#[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct AtpEntryData41FileNextName {
     pub unknown1: u32,
@@ -381,7 +383,7 @@ fn read_names(cursor: &mut Cursor<&[u8]>) -> anyhow::Result<Vec<SizedBig5String>
     Ok(names)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct AtpEntryData41SubFile {
     pub name: Option<SizedBig5String>,
     pub path: Option<SizedBig5String>,
@@ -420,7 +422,7 @@ impl AtpEntryData41SubFile {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct AtpEntryData42 {
     pub unknown1: Option<AtpEntryData42Unknown>,
     pub unknown2: Option<f32>,
@@ -483,7 +485,7 @@ impl AtpEntryData42 {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct AtpEntryData42Unknown {
     pub path: Option<SizedBig5String>,
     pub unknown2: Option<u32>,
@@ -516,7 +518,7 @@ impl AtpEntryData42Unknown {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct AtpEntryData45 {
     pub unknown3: Option<Vec<AtpEntryData45Unknown>>,
     pub unknown4: Option<u32>,
@@ -561,7 +563,7 @@ impl AtpEntryData45 {
     }
 }
 
-#[derive(Debug, BinRead)]
+#[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct AtpEntryData45Unknown {
     pub dword: [u32; 3],
@@ -579,7 +581,7 @@ fn read_data45_unknown(cursor: &mut Cursor<&[u8]>) -> anyhow::Result<Vec<AtpEntr
     Ok(unknowns)
 }
 
-#[derive(Debug, BinRead)]
+#[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct AtpEntryFilePath {
     pub path: SizedBig5String,
@@ -604,4 +606,14 @@ pub struct SizedBig5String {
 
     #[brw(count = len)]
     pub data: Vec<u8>,
+}
+
+impl Serialize for SizedBig5String {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let s = encoding::all::BIG5_2003
+            .decode(&self.data, DecoderTrap::Ignore)
+            .unwrap_or("Cannot decode text using BIG5".to_string());
+
+        serializer.serialize_str(&s)
+    }
 }

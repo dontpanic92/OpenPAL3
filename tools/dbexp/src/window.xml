@@ -1,0 +1,15 @@
+<Window width="1024" height="768" title="Swd5 Index Explorer - Project Yaobow">
+    <LeftPanel resizable="true" width="400">
+        <ScrollArea orientation="vertical">
+            <TableView id="test">
+            </TableView>
+        </ScrollArea>
+    </LeftPanel>
+
+    <CentralPanel>
+        <ScrollArea orientation="vertical">
+            <Label id="tree">
+            </Label>
+        </ScrollArea>
+    </CentralPanel>
+</Window>
