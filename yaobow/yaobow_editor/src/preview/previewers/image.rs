@@ -35,6 +35,9 @@ impl Previewer for ImagePreviewer {
 
         let image = vfs
             .read_to_end(&path)
+            .map_err(|err| {
+                log::error!("failed to read image: {:?}", err);
+            })
             .ok()
             .and_then(|b| match (extension.as_str(), self.game_type) {
                 ("png", GameType::SWD5 | GameType::SWDCF | GameType::SWDHC) => {
