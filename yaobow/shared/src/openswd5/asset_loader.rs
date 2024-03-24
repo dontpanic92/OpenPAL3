@@ -7,9 +7,12 @@ use std::{
 use common::{read_ext::ReadExt, store_ext::StoreExt2};
 use encoding::{DecoderTrap, Encoding};
 use fileformats::{
-    atp::{AtpEntry, AtpEntryData4, AtpFile},
     binrw::BinRead,
     c00::C00,
+    swd5::{
+        atp::{AtpEntry, AtpEntryData4, AtpFile},
+        mapsdat::{MapData, MapsData},
+    },
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
@@ -24,6 +27,7 @@ pub struct AssetLoader {
     vfs: Rc<MiniFs>,
     component_factory: Rc<dyn ComponentFactory>,
     index: Vec<Option<AtpEntry>>,
+    maps: Vec<MapData>,
 }
 
 impl AssetLoader {
@@ -33,11 +37,16 @@ impl AssetLoader {
         game: GameType,
     ) -> Rc<Self> {
         let index = Self::load_index(&vfs).unwrap();
+        let maps = Self::load_map_data(&vfs, game).unwrap();
+
+        println!("{:?}", maps);
+
         Rc::new(Self {
             game,
             vfs,
             component_factory,
             index,
+            maps,
         })
     }
 
@@ -135,5 +144,19 @@ impl AssetLoader {
         }
 
         Ok(entries)
+    }
+
+    pub fn load_map_data(vfs: &MiniFs, game: GameType) -> anyhow::Result<Vec<MapData>> {
+        let path = match game {
+            GameType::SWD5 => "/Script/MAPS.DAT",
+            GameType::SWDHC => "/Script/Maps.dat",
+            GameType::SWDCF => "/Script/Maps.dat",
+            _ => panic!("Unsupported game type"),
+        };
+
+        let content = vfs.read_to_end(path)?;
+        let mut reader = Cursor::new(content);
+        let data = MapsData::read(&mut reader)?;
+        Ok(data.maps)
     }
 }

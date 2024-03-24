@@ -5,8 +5,18 @@ use common::read_ext::FileReadError;
 use encoding::{DecoderTrap, Encoding};
 use serde::Serialize;
 
+pub trait SeekRead: std::io::Read + std::io::Seek {}
+impl<T> SeekRead for T where T: std::io::Read + std::io::Seek {}
+
 pub fn to_gbk_string(v: &[u8]) -> Result<String, FileReadError> {
     let str = encoding::all::GBK
+        .decode(v, DecoderTrap::Ignore)
+        .map_err(|_| FileReadError::StringDecodeError)?;
+    Ok(str)
+}
+
+pub fn to_big5_string(v: &[u8]) -> Result<String, FileReadError> {
+    let str = encoding::all::BIG5_2003
         .decode(v, DecoderTrap::Ignore)
         .map_err(|_| FileReadError::StringDecodeError)?;
     Ok(str)

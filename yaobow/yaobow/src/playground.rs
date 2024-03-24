@@ -1,10 +1,9 @@
-pub fn run_test() {
-    // shared::playground::test();
-    let atp = fileformats::atp::AtpFile::read(
-        &std::fs::read("F:\\SteamLibrary\\steamapps\\common\\SWDHC\\ACT\\00000010.atp").unwrap(),
-    )
-    .unwrap();
+use fileformats::binrw::BinRead;
 
-    // std::fs::write("f:\\test.atp", &atp.files[0].as_ref().unwrap()).unwrap();
-    // println!("{:?}", atp);
+pub fn run_test() {
+    let data =
+        std::fs::read("F:\\SteamLibrary\\steamapps\\common\\SWDHC\\Map\\S5a_03_4.map").unwrap();
+    let map = fileformats::swd5::map::Map::read(&mut std::io::Cursor::new(data)).unwrap();
+
+    println!("{:?}", map);
 }

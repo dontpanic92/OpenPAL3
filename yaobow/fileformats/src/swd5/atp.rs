@@ -3,8 +3,9 @@ use std::{collections::HashMap, io::Cursor};
 use binrw::BinRead;
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
-use encoding::{DecoderTrap, Encoding};
 use serde::Serialize;
+
+use super::SizedBig5String;
 
 #[derive(Debug)]
 pub enum AtpHeaderItem {
@@ -597,23 +598,4 @@ fn read_file_path(cursor: &mut Cursor<&[u8]>) -> anyhow::Result<Vec<AtpEntryFile
     }
 
     Ok(paths)
-}
-
-#[derive(Debug, BinRead, Clone)]
-#[brw(little)]
-pub struct SizedBig5String {
-    pub len: u16,
-
-    #[brw(count = len)]
-    pub data: Vec<u8>,
-}
-
-impl Serialize for SizedBig5String {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let s = encoding::all::BIG5_2003
-            .decode(&self.data, DecoderTrap::Ignore)
-            .unwrap_or("Cannot decode text using BIG5".to_string());
-
-        serializer.serialize_str(&s)
-    }
 }

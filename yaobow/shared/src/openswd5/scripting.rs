@@ -180,6 +180,8 @@ impl SWD5Context {
 
     fn dark(&mut self, speed: f64) {}
 
+    fn undark(&mut self, speed: f64) {}
+
     fn chang_map(&mut self, map: f64, x: f64, y: f64, z: f64) {}
 
     fn wait_camera(&mut self) {}
@@ -239,6 +241,17 @@ impl SWD5Context {
         });
     }
 
+    fn talkmsg(&mut self, name: *const i8, text: *const i8) {
+        let name = decode_big5(name);
+        let text = decode_big5(text);
+        let [width, height] = self.ui.ui().io().display_size;
+
+        self.story_msg = Some(StoryMsg {
+            text: format!("{}: {}", name, text),
+            position: [width / 2. - 300., height / 2. - 200.],
+        });
+    }
+
     fn storymsgpos(&mut self, text: *const i8, x: f64, y: f64) {
         let text = decode_big5(text);
         let (start, size) = calc_43_box(self.ui.ui());
@@ -270,6 +283,8 @@ impl SWD5Context {
     fn set_camera_pos(&mut self, x: f64, y: f64, z: f64) {}
 
     fn set_view_camera(&mut self, dx: f64, dy: f64, disc: f64) {}
+
+    fn set_role_face_motion(&mut self, role: f64, face_motion: f64) {}
 
     fn play_movie(&mut self, id: f64) {
         let reader = self.asset_loader.load_movie_data(id as u32);
@@ -347,6 +362,7 @@ pub fn create_lua_vm(
     def_func!(vm, foff, f: number);
     def_func!(vm, lock_player, f: number);
     def_func!(vm, dark, speed: number);
+    def_func!(vm, undark, speed: number);
     vm.register("sleep", Some(sleep));
     def_func!(vm, chang_map, map: number, x: number, y: number, z: number);
     def_func!(vm, wait_camera);
@@ -359,6 +375,7 @@ pub fn create_lua_vm(
     def_func!(vm, play_sound, sound_id: number, volume: number);
     def_func!(vm, storymsg, text: string);
     def_func!(vm, storymsgpos, text: string, x: number, y: number);
+    def_func!(vm, talkmsg, name: string, text: string);
     def_func!(vm, anykey -> number);
     def_func!(vm, openstorypic, pic_id: number);
     def_func!(vm, stop_sound, sound_id: number);
@@ -368,6 +385,7 @@ pub fn create_lua_vm(
     def_func!(vm, set_camera_src_pos, x: number, y: number, z: number);
     def_func!(vm, set_camera_pos, x: number, y: number, z: number);
     def_func!(vm, set_view_camera, dx: number, dy: number, disc: number);
+    def_func!(vm, set_role_face_motion, role: number, face_motion: number);
 
     Ok(vm)
 }
