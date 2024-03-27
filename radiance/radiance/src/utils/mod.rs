@@ -1,4 +1,5 @@
 pub mod free_view;
+pub mod interp_value;
 
 use std::io::{Read, Seek};
 

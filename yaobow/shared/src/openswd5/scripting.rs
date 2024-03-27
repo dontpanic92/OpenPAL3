@@ -11,6 +11,7 @@ use radiance::{
     math::Vec3,
     radiance::UiManager,
     rendering::{ComponentFactory, Sprite, VideoPlayer},
+    utils::interp_value::InterpValue,
 };
 
 use crate::scripting::lua50_32::Lua5032Vm;
@@ -26,6 +27,7 @@ pub struct SWD5Context {
     video_player: Box<VideoPlayer>,
     scene_manager: ComRc<ISceneManager>,
     scene: Option<Swd5Scene>,
+    sleep_sec: f32,
 
     bgm_source: Box<dyn AudioMemorySource>,
     sound_sources: HashMap<i32, RefCell<Box<dyn AudioMemorySource>>>,
@@ -34,6 +36,8 @@ pub struct SWD5Context {
     talk_msg: Option<TalkMsg>,
 
     movie_texture: Option<TextureId>,
+    darkness: InterpValue<f32>,
+    anykey_down: bool,
 }
 
 impl SWD5Context {
@@ -55,12 +59,15 @@ impl SWD5Context {
             video_player,
             scene_manager: unsafe { ComRc::from_raw_pointer(std::ptr::null()) },
             scene: None,
+            sleep_sec: 0.,
             bgm_source,
             sound_sources: HashMap::new(),
             story_msg: None,
             story_pic: None,
             talk_msg: None,
             movie_texture: None,
+            darkness: InterpValue::new(0., 0., 0.),
+            anykey_down: false,
         }
     }
 
@@ -73,12 +80,55 @@ impl SWD5Context {
         }
     }
 
-    pub fn update(&mut self, _delta_sec: f32) {
+    pub fn sleep(&mut self, sleep_sec: f32) {
+        self.sleep_sec = sleep_sec;
+        self.anykey_down = false;
+    }
+
+    pub fn is_sleeping(&self) -> bool {
+        self.sleep_sec > 0.
+    }
+
+    pub fn update(&mut self, delta_sec: f32) {
+        if self.is_sleeping() {
+            self.sleep_sec -= delta_sec;
+            self.anykey_down = self.anykey_down || self.anykey_down();
+        }
+
+        self.darkness.update(delta_sec);
+
         self.update_audio();
+        self.update_actdrop();
         self.update_story_pic();
         self.update_storymsg();
         self.update_talkmsg();
         self.update_video();
+    }
+
+    fn update_actdrop(&mut self) {
+        let value = self.darkness.value();
+        if value == 0. {
+            return;
+        }
+
+        let ui = self.ui.ui();
+        let [width, height] = ui.io().display_size;
+        let color = [0., 0., 0., value];
+        let style = ui.push_style_color(imgui::StyleColor::WindowBg, color);
+        ui.window("actdrop")
+            .position([0., 0.], imgui::Condition::Always)
+            .size([width, height], imgui::Condition::Always)
+            .movable(false)
+            .resizable(false)
+            .collapsible(false)
+            .title_bar(false)
+            .draw_background(true)
+            .scroll_bar(false)
+            .nav_focus(false)
+            .focused(false)
+            .mouse_inputs(false)
+            .build(|| {});
+        style.pop();
     }
 
     fn update_storymsg(&mut self) {
@@ -218,9 +268,13 @@ impl SWD5Context {
 
     fn lock_player(&mut self, f: f64) {}
 
-    fn dark(&mut self, speed: f64) {}
+    fn dark(&mut self, speed: f64) {
+        self.darkness = InterpValue::new(0., 1., 0.1 * speed as f32);
+    }
 
-    fn undark(&mut self, speed: f64) {}
+    fn undark(&mut self, speed: f64) {
+        self.darkness = InterpValue::new(1., 0., 0.1 * speed as f32);
+    }
 
     fn chang_map(&mut self, map_id: f64, x: f64, y: f64, z: f64) {
         let map_id = map_id as i32;
@@ -327,7 +381,8 @@ impl SWD5Context {
     }
 
     fn set_camera_src_pos(&mut self, x: f64, y: f64, z: f64) {
-        println!("set_camera_src_pos({}, {}, {})", x, y, z);
+        let scene = self.scene.as_mut().unwrap();
+        scene.set_camera_lookat(x as f32, y as f32, z as f32);
     }
 
     fn set_camera_pos(&mut self, x: f64, y: f64, z: f64) {
@@ -335,7 +390,8 @@ impl SWD5Context {
     }
 
     fn chang_camera_view(&mut self, dx: f64, dy: f64, dis: f64, time: f64) {
-        println!("chang_camera_view({}, {}, {})", dx, dy, dis);
+        let scene = self.scene.as_mut().unwrap();
+        scene.set_camera_delta(dx as f32, dy as f32, dis as f32);
     }
 
     fn set_role_face_motion(&mut self, role: f64, face_motion: f64) {}
@@ -361,7 +417,7 @@ impl SWD5Context {
     }
 
     fn anykey(&mut self) -> i32 {
-        self.anykey_down() as i32
+        (self.anykey_down || self.anykey_down()) as i32
     }
 }
 

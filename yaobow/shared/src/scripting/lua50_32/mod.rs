@@ -70,14 +70,15 @@ impl<TContext> Lua5032Vm<TContext> {
         }
     }
 
-    pub fn execute(&self) -> anyhow::Result<()> {
+    pub fn execute(&self) -> anyhow::Result<f32> {
         unsafe {
             let ret = lua50_32_sys::lua_resume(self.thread, 0);
             if ret != 0 {
                 bail!(get_error(self.thread));
             }
 
-            Ok(())
+            let param = lua50_32_sys::lua_tonumber(self.thread, -1);
+            Ok(param as f32)
         }
     }
 }
