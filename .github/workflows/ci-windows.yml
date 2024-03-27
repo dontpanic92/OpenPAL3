@@ -32,7 +32,7 @@ jobs:
       - name: Install ffmpeg
         shell: pwsh
         run: |
-          vcpkg install ffmpeg:x64-windows-static
+          vcpkg install --triplet=x64-static
           vcpkg integrate install
       - name: Build Yaobow
         shell: pwsh

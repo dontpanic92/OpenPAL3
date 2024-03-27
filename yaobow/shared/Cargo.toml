@@ -56,7 +56,7 @@ features = ["static"]
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies.ffmpeg]
 git = "https://github.com/meh/rust-ffmpeg"
-features = ["build"]
+features = ["static"]
 
 [target.'cfg(not(target_os = "vita"))'.dependencies]
 interprocess = "1.2"
