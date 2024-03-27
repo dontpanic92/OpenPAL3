@@ -5,22 +5,33 @@ use std::{
 };
 
 use common::{read_ext::ReadExt, store_ext::StoreExt2};
+use crosscom::ComRc;
 use encoding::{DecoderTrap, Encoding};
 use fileformats::{
     binrw::BinRead,
     c00::C00,
     swd5::{
         atp::{AtpEntry, AtpEntryData4, AtpFile},
+        fld::Fld,
+        map::Map,
         mapsdat::{MapData, MapsData},
     },
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
+    comdef::IScene,
     rendering::{ComponentFactory, Sprite},
+    scene::CoreScene,
     utils::SeekRead,
 };
 
-use crate::GameType;
+use crate::{
+    loaders::{
+        dff::{create_entity_from_dff_model, DffLoaderConfig},
+        Swd5TextureResolver,
+    },
+    GameType,
+};
 
 pub struct AssetLoader {
     game: GameType,
@@ -28,6 +39,7 @@ pub struct AssetLoader {
     component_factory: Rc<dyn ComponentFactory>,
     index: Vec<Option<AtpEntry>>,
     maps: Vec<MapData>,
+    texture_resolver: Swd5TextureResolver,
 }
 
 impl AssetLoader {
@@ -39,14 +51,13 @@ impl AssetLoader {
         let index = Self::load_index(&vfs).unwrap();
         let maps = Self::load_map_data(&vfs, game).unwrap();
 
-        println!("{:?}", maps);
-
         Rc::new(Self {
             game,
             vfs,
             component_factory,
             index,
             maps,
+            texture_resolver: Swd5TextureResolver {},
         })
     }
 
@@ -73,6 +84,27 @@ impl AssetLoader {
         let content = self.vfs.read_to_end(path)?;
 
         Ok(content)
+    }
+
+    pub fn load_scene_dff(&self, model_name: &str) -> anyhow::Result<ComRc<IScene>> {
+        let path = format!("/Map/{}", model_name);
+        println!("loading scene: {}", path);
+
+        let dff = create_entity_from_dff_model(
+            &self.component_factory,
+            &self.vfs,
+            &path,
+            model_name.to_string(),
+            true,
+            &DffLoaderConfig {
+                texture_resolver: &self.texture_resolver,
+                keep_right_to_render_only: false,
+            },
+        );
+
+        let scene = CoreScene::create();
+        scene.add_entity(dff);
+        Ok(scene)
     }
 
     pub fn load_story_pic(&self, pic_id: i32) -> anyhow::Result<Sprite> {
@@ -115,10 +147,34 @@ impl AssetLoader {
     pub fn load_movie_data(&self, movie_id: u32) -> anyhow::Result<Box<dyn SeekRead>> {
         let path = format!("/movie/movie{:0>2}.bik", movie_id);
 
-        println!("Loading movie: {}", path);
+        log::debug!("Loading movie: {}", path);
         let content = self.vfs.open(path)?;
 
         Ok(Box::new(BufReader::new(content)))
+    }
+
+    pub fn load_fld(&self, map_id: i32) -> anyhow::Result<Fld> {
+        let map = self
+            .maps
+            .iter()
+            .find(|map| map.id as i32 == map_id)
+            .ok_or(anyhow::anyhow!("No such map"))?;
+        let path = format!("/Map/{}", map.file_name);
+        log::debug!("loading flg: {}", path);
+
+        let content = self.vfs.read_to_end(&path)?;
+        let fld = Fld::read(&mut Cursor::new(content))?;
+
+        Ok(fld)
+    }
+
+    pub fn load_map(&self, map_file: String) -> anyhow::Result<Map> {
+        let path = format!("/Map/{}", map_file);
+        log::debug!("loading map: {}", path);
+
+        let content = self.vfs.read_to_end(&path)?;
+        let map = Map::read(&mut Cursor::new(content))?;
+        Ok(map)
     }
 
     fn main_script_path(&self) -> String {

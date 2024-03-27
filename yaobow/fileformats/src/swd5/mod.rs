@@ -3,6 +3,7 @@ use encoding::{DecoderTrap, Encoding};
 use serde::Serialize;
 
 pub mod atp;
+pub mod fld;
 pub mod map;
 pub mod mapsdat;
 

@@ -1,18 +1,21 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+use crosscom::ComRc;
 use encoding::{DecoderTrap, Encoding};
 use imgui::{Image, TextureId};
 use lua50_32_sys::lua_State;
 use radiance::{
     audio::{AudioEngine, AudioMemorySource, AudioSourceState, Codec},
+    comdef::ISceneManager,
     input::{InputEngine, Key},
+    math::Vec3,
     radiance::UiManager,
     rendering::{ComponentFactory, Sprite, VideoPlayer},
 };
 
 use crate::scripting::lua50_32::Lua5032Vm;
 
-use super::asset_loader::AssetLoader;
+use super::{asset_loader::AssetLoader, scene::Swd5Scene};
 
 pub struct SWD5Context {
     asset_loader: Rc<AssetLoader>,
@@ -21,11 +24,14 @@ pub struct SWD5Context {
     component_factory: Rc<dyn ComponentFactory>,
     ui: Rc<UiManager>,
     video_player: Box<VideoPlayer>,
+    scene_manager: ComRc<ISceneManager>,
+    scene: Option<Swd5Scene>,
 
     bgm_source: Box<dyn AudioMemorySource>,
     sound_sources: HashMap<i32, RefCell<Box<dyn AudioMemorySource>>>,
     story_msg: Option<StoryMsg>,
     story_pic: Option<Sprite>,
+    talk_msg: Option<TalkMsg>,
 
     movie_texture: Option<TextureId>,
 }
@@ -47,11 +53,23 @@ impl SWD5Context {
             component_factory,
             ui,
             video_player,
+            scene_manager: unsafe { ComRc::from_raw_pointer(std::ptr::null()) },
+            scene: None,
             bgm_source,
             sound_sources: HashMap::new(),
             story_msg: None,
             story_pic: None,
+            talk_msg: None,
             movie_texture: None,
+        }
+    }
+
+    pub fn set_scene_manager(&mut self, mut scene_manager: ComRc<ISceneManager>) {
+        if self.scene_manager.is_null() {
+            std::mem::swap(&mut self.scene_manager, &mut scene_manager);
+            std::mem::forget(scene_manager);
+        } else {
+            self.scene_manager = scene_manager;
         }
     }
 
@@ -59,6 +77,7 @@ impl SWD5Context {
         self.update_audio();
         self.update_story_pic();
         self.update_storymsg();
+        self.update_talkmsg();
         self.update_video();
     }
 
@@ -79,6 +98,27 @@ impl SWD5Context {
                 .draw_background(false)
                 .build(|| {
                     ui.text(story_msg.text.as_str());
+                });
+        }
+    }
+
+    fn update_talkmsg(&mut self) {
+        if self.anykey_down() {
+            self.talk_msg = None;
+        }
+
+        let ui = self.ui.ui();
+        if let Some(talk_msg) = &self.talk_msg {
+            ui.window("talk_msg")
+                .position([200., 200.], imgui::Condition::Always)
+                .size([800., 800.], imgui::Condition::Always)
+                .movable(false)
+                .resizable(false)
+                .collapsible(false)
+                .title_bar(false)
+                .draw_background(false)
+                .build(|| {
+                    ui.text(talk_msg.text.as_str());
                 });
         }
     }
@@ -182,7 +222,19 @@ impl SWD5Context {
 
     fn undark(&mut self, speed: f64) {}
 
-    fn chang_map(&mut self, map: f64, x: f64, y: f64, z: f64) {}
+    fn chang_map(&mut self, map_id: f64, x: f64, y: f64, z: f64) {
+        let map_id = map_id as i32;
+        let scene = Swd5Scene::load(&self.asset_loader, map_id);
+        match scene {
+            Ok(scene) => {
+                self.scene_manager.pop_scene();
+                self.scene_manager.push_scene(scene.scene.clone());
+
+                self.scene = Some(scene);
+            }
+            Err(e) => log::error!("chang_map {}: {:?}", map_id, e),
+        }
+    }
 
     fn wait_camera(&mut self) {}
 
@@ -244,12 +296,8 @@ impl SWD5Context {
     fn talkmsg(&mut self, name: *const i8, text: *const i8) {
         let name = decode_big5(name);
         let text = decode_big5(text);
-        let [width, height] = self.ui.ui().io().display_size;
 
-        self.story_msg = Some(StoryMsg {
-            text: format!("{}: {}", name, text),
-            position: [width / 2. - 300., height / 2. - 200.],
-        });
+        self.talk_msg = Some(TalkMsg { name, text });
     }
 
     fn storymsgpos(&mut self, text: *const i8, x: f64, y: f64) {
@@ -278,11 +326,17 @@ impl SWD5Context {
         self.story_pic = None;
     }
 
-    fn set_camera_src_pos(&mut self, x: f64, y: f64, z: f64) {}
+    fn set_camera_src_pos(&mut self, x: f64, y: f64, z: f64) {
+        println!("set_camera_src_pos({}, {}, {})", x, y, z);
+    }
 
-    fn set_camera_pos(&mut self, x: f64, y: f64, z: f64) {}
+    fn set_camera_pos(&mut self, x: f64, y: f64, z: f64) {
+        println!("set_camera_pos({}, {}, {})", x, y, z);
+    }
 
-    fn set_view_camera(&mut self, dx: f64, dy: f64, disc: f64) {}
+    fn chang_camera_view(&mut self, dx: f64, dy: f64, dis: f64, time: f64) {
+        println!("chang_camera_view({}, {}, {})", dx, dy, dis);
+    }
 
     fn set_role_face_motion(&mut self, role: f64, face_motion: f64) {}
 
@@ -336,7 +390,9 @@ macro_rules! def_func {
 
                     $(stringify!($ret_type); let _log_str = format!("{} -> {}", _log_str, _ret);)?
 
-                    // log::warn!("{}", _log_str);
+                    if stringify!($fn_name) != "anykey" {
+                        log::warn!("{}", _log_str);
+                    }
                 }
 
                 let _ret = 0;
@@ -384,7 +440,7 @@ pub fn create_lua_vm(
     def_func!(vm, is_play_movie -> number);
     def_func!(vm, set_camera_src_pos, x: number, y: number, z: number);
     def_func!(vm, set_camera_pos, x: number, y: number, z: number);
-    def_func!(vm, set_view_camera, dx: number, dy: number, disc: number);
+    def_func!(vm, chang_camera_view, dx: number, dy: number, dis: number, time: number);
     def_func!(vm, set_role_face_motion, role: number, face_motion: number);
 
     Ok(vm)
@@ -411,6 +467,11 @@ fn decode_big5(s: *const i8) -> String {
 struct StoryMsg {
     text: String,
     position: [f32; 2],
+}
+
+struct TalkMsg {
+    name: String,
+    text: String,
 }
 
 fn calc_43_box(ui: &imgui::Ui) -> ([f32; 2], [f32; 2]) {

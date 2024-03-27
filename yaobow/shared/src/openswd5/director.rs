@@ -5,6 +5,7 @@ use radiance::{
     audio::AudioEngine,
     comdef::{IDirector, IDirectorImpl, ISceneManager},
     input::InputEngine,
+    math::{Quaternion, Vec3},
     radiance::UiManager,
     rendering::ComponentFactory,
     utils::free_view::FreeViewController,
@@ -52,16 +53,37 @@ impl OpenSWD5Director {
 ComObject_OpenSWD5Director!(super::OpenSWD5Director);
 
 impl IDirectorImpl for OpenSWD5Director {
-    fn activate(&self, _scene_manager: ComRc<ISceneManager>) {}
+    fn activate(&self, scene_manager: ComRc<ISceneManager>) {
+        self.context.borrow_mut().set_scene_manager(scene_manager);
+    }
 
     fn update(
         &self,
-        _scene_manager: ComRc<ISceneManager>,
+        scene_manager: ComRc<ISceneManager>,
         _ui: &imgui::Ui,
         delta_sec: f32,
     ) -> Option<ComRc<IDirector>> {
         self.context.borrow_mut().update(delta_sec);
         self.vm.execute().unwrap();
+
+        let scene = scene_manager.scene().unwrap();
+        // self.control.update(scene, delta_sec);
+
+        scene.camera().borrow_mut().set_fov43(60_f32.to_radians());
+
+        scene
+            .camera()
+            .borrow_mut()
+            .transform_mut()
+            //.set_position(&Vec3::new(15.5, 35., 122.))
+            //.look_at(&Vec3::new(-13., 7., -13.));
+            .set_position(&Vec3::new(-13., 7., -13.))
+            .look_at(&Vec3::new(-13., 7., -12.))
+            // .rotate_quaternion_local(&Quaternion::new(-122_f32.to_radians(), -35_f32.to_radians(), 0., 0.))
+            .rotate_axis_angle_local(&Vec3::UP, (-122.0_f32).to_radians())
+            .rotate_axis_angle_local(&Vec3::EAST, (-35_f32).to_radians())
+            .translate_local(&Vec3::new(0., 0., 15.5));
+
         None
     }
 }

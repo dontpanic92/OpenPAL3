@@ -38,21 +38,21 @@ impl MapsData {
 
 #[derive(Debug)]
 pub struct MapData {
-    unknown: [i16; 12],
-    file_name: String,
-    map_name: String,
+    pub id: i16,
+    pub unknown: [i16; 11],
+    pub file_name: String,
+    pub map_name: String,
 }
 
 impl MapData {
     pub fn read(reader: &mut dyn SeekRead) -> anyhow::Result<Option<Self>> {
-        let sig = reader.read_i16::<LittleEndian>()?;
-        if sig == -1 {
+        let id = reader.read_i16::<LittleEndian>()?;
+        if id == -1 {
             return Ok(None);
         }
 
-        let mut unknown = [0; 12];
-        unknown[0] = sig;
-        for i in 1..12 {
+        let mut unknown = [0; 11];
+        for i in 0..11 {
             unknown[i] = reader.read_i16::<LittleEndian>()?;
         }
 
@@ -60,6 +60,7 @@ impl MapData {
         let map_name = Self::read_string(reader)?;
 
         Ok(Some(Self {
+            id,
             unknown,
             file_name,
             map_name,
