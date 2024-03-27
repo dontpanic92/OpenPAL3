@@ -33,6 +33,7 @@ jobs:
         shell: pwsh
         run: |
           vcpkg install ffmpeg:x64-windows-static
+          vcpkg integrate install
       - name: Build Yaobow
         shell: pwsh
         run: |
