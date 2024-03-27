@@ -25,9 +25,14 @@ jobs:
         shell: pwsh
         run: |
           $vulkanSdkVersion = "1.3.250.1"
+          mkdir temp
           Invoke-WebRequest https://sdk.lunarg.com/sdk/download/$vulkanSdkVersion/windows/VulkanSDK-$vulkanSdkVersion-Installer.exe -OutFile ./temp/vulkan_sdk.exe
           ./temp/vulkan_sdk.exe in --da --al -c
           ls C:\VulkanSDK
+      - name: Install ffmpeg
+        shell: pwsh
+        run: |
+          vcpkg install ffmpeg:x64-windows-static
       - name: Build Yaobow
         shell: pwsh
         run: |
