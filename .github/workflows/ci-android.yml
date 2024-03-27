@@ -35,6 +35,11 @@ jobs:
           sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.3.250-jammy.list https://packages.lunarg.com/vulkan/1.3.250/lunarg-vulkan-1.3.250-jammy.list
           sudo apt update
           sudo apt install vulkan-sdk
+      - name: Install ffmpeg
+        run: |
+          vcpkg x-update-baseline
+          vcpkg install --triplet=arm-android
+          vcpkg integrate install
       - name: Set NDK_HOME env
         run: echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
       - name: Install Android targets
