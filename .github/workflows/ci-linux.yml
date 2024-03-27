@@ -1,4 +1,4 @@
-name: CI Build
+name: Linux CI Build
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
           sudo apt install libdrm-dev ocl-icd-opencl-dev libxv-dev libfuse2
       - name: Install ffmpeg
         run: |
-          vcpkg install --triplet=x64-static
+          vcpkg install --triplet=x64-linux
           vcpkg integrate install
       - name: Build
         run: cargo build --workspace --release --verbose

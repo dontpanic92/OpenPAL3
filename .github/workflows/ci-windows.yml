@@ -1,4 +1,4 @@
-name: CI Build
+name: Windows CI Build
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
       - name: Install ffmpeg
         shell: pwsh
         run: |
-          vcpkg install --triplet=x64-static
+          vcpkg install --triplet=x64-windows-static
           vcpkg integrate install
       - name: Build Yaobow
         shell: pwsh
