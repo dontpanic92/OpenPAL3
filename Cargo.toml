@@ -18,7 +18,7 @@ resolver = "2"
 [patch.crates-io]
 filetime = { git = "https://github.com/dontpanic92/filetime", branch = "yaobow" }
 chlorine = { git = "https://github.com/dontpanic92/chlorine", branch = "yaobow" }
-vcpkg-rs = { git = "https://github.com/mcgoo/vcpkg-rs" }
+vcpkg = { git = "https://github.com/mcgoo/vcpkg-rs" }
 
 [profile.release-with-symbol]
 inherits = "release"
