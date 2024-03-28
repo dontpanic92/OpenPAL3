@@ -33,7 +33,7 @@ jobs:
       - name: Install ffmpeg
         run: |
           vcpkg x-update-baseline
-          vcpkg install --triplet=x64-linux-release
+          vcpkg install --triplet=x64-linux
           vcpkg integrate install
       - name: Build
         run: cargo build --workspace --release --verbose

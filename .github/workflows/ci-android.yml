@@ -40,7 +40,7 @@ jobs:
       - name: Install ffmpeg
         run: |
           vcpkg x-update-baseline
-          vcpkg install --triplet=arm64-android-release
+          vcpkg install --triplet=arm64-android
           vcpkg integrate install
       - name: Install Android targets
         run: rustup target add aarch64-linux-android

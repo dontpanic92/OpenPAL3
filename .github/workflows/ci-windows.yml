@@ -33,7 +33,7 @@ jobs:
         shell: pwsh
         run: |
           vcpkg x-update-baseline
-          vcpkg install --triplet=x64-windows-static-md-release
+          vcpkg install --triplet=x64-windows-static-md
           vcpkg integrate install
       - name: Build Yaobow
         shell: pwsh
