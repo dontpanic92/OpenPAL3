@@ -675,7 +675,7 @@ const GAME_PICS: &[(&str, usize); 2] = &[("pal3", 7), ("pal4", 4)];
 
 #[cfg(windows)]
 const ASSET_PATH: &'static str = "./yaobow-assets.zip";
-#[cfg(any(linux, mac))]
+#[cfg(any(linux, macos))]
 const ASSET_PATH: &'static str = "../shared/yaobow/yaobow-assets.zip";
 #[cfg(vita)]
 const ASSET_PATH: &'static str = "ux0:data/yaobow-assets.zip";

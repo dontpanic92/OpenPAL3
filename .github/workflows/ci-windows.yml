@@ -1,0 +1,54 @@
+name: Windows CI Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $vulkanSdkVersion = "1.3.250.1"
+          mkdir temp
+          Invoke-WebRequest https://sdk.lunarg.com/sdk/download/$vulkanSdkVersion/windows/VulkanSDK-$vulkanSdkVersion-Installer.exe -OutFile ./temp/vulkan_sdk.exe
+          ./temp/vulkan_sdk.exe in --da --al -c
+          ls C:\VulkanSDK
+      - name: Install ffmpeg
+        shell: pwsh
+        run: |
+          vcpkg x-update-baseline
+          vcpkg install --triplet=x64-windows-static-md
+          vcpkg integrate install
+      - name: Build Yaobow
+        shell: pwsh
+        run: |
+          $vulkanSdkVersion = "1.3.250.1"
+          $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
+          cargo build --workspace --release --verbose
+      - name: Zip Packaging
+        run: |
+          mkdir target/release/yaobow
+          cp openpal3.toml target/release/yaobow
+          cp target/release/yaobow.exe target/release/yaobow
+          cp target/release/yaobow_editor.exe target/release/yaobow
+          7z a -tzip target/yaobow-windows-x86_64.zip target/release/yaobow
+      - uses: actions/upload-artifact@v3
+        with:
+          name: yaobow-windows-x86_64
+          path: target/yaobow-windows-x86_64.zip

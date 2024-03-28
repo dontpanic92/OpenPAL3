@@ -50,11 +50,15 @@ xxtea = "0.2.0"
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-glue = "0.5.0"
 
-[target.'cfg(target_os = "vita")'.dependencies]
-ffmpeg = { git = "https://github.com/meh/rust-ffmpeg", features = ["static"] }
+[target.'cfg(any(target_os = "vita", target_os = "windows"))'.dependencies.ffmpeg]
+git = "https://github.com/meh/rust-ffmpeg"
+features = ["static"]
+
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))'.dependencies.ffmpeg]
+git = "https://github.com/meh/rust-ffmpeg"
+features = ["static"]
 
 [target.'cfg(not(target_os = "vita"))'.dependencies]
-ffmpeg = { git = "https://github.com/meh/rust-ffmpeg" }
 interprocess = "1.2"
 memmap = "0.7.0"
 dirs = "3.0.1"

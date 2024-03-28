@@ -117,7 +117,10 @@ impl StreamData {
         decoder_fn: D,
         time: Arc<RwLock<TimeData>>,
     ) -> Self {
-        let time_base = stream.time_base();
+        let time_base = stream
+            .time_base()
+            .and_then(|time_base| Some(time_base.approx()))
+            .unwrap_or(0.);
         // calculate duration in ms
         let input_duration = input.duration();
         let stream_duration = stream.duration();
@@ -129,7 +132,7 @@ impl StreamData {
         Self {
             stream_index: stream.index(),
             decoder: decoder_fn(stream.decoder().unwrap()),
-            time_base: time_base.numerator() as f64 / time_base.denominator() as f64,
+            time_base,
             duration_pts,
             duration,
             time,
