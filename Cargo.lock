@@ -5774,7 +5774,7 @@ checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 [[package]]
 name = "vcpkg"
 version = "0.2.15"
-source = "git+https://github.com/mcgoo/vcpkg-rs#79f292f672293ad132281fd80d15ff28548af225"
+source = "git+https://github.com/dontpanic92/vcpkg-rs?branch=yaobow#ceb38c692e44e518c1df9658a0186745591b3d9c"
 
 [[package]]
 name = "vec_map"

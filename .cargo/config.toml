@@ -1,9 +1,5 @@
 [env]
 VCPKG_INSTALLED_ROOT = { value = "vcpkg_installed", relative = true }
 
-# As VCPKG_INSTALLED_ROOT is set, VCPKG_ROOT is actually not used.
-# vcpkg-rs will complain without this.
-VCPKG_ROOT = { value = ".", reletive = true }
-
 [target.armv7-sony-vita-newlibeabihf]
 linker = "arm-vita-eabi-gcc"
