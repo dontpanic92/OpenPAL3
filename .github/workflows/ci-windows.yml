@@ -45,6 +45,10 @@ jobs:
           vcpkg x-update-baseline
           vcpkg install --triplet=x64-windows-static-md
           vcpkg integrate install
+          ls C:\vcpkg\
+          ls C:\vcpkg\installed\
+          ls C:\vcpkg\installed\vcpkg\
+          ls C:\vcpkg\installed\vcpkg\updates
       - name: Zip Packaging
         run: |
           mkdir target/release/yaobow
