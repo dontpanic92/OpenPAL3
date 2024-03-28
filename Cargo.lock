@@ -2207,7 +2207,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg-sys"
 version = "6.0.0"
-source = "git+https://github.com/meh/rust-ffmpeg/sys#7c354aa36ad761f825ae6e245035ad7319f24861"
+source = "git+https://github.com/meh/rust-ffmpeg#7c354aa36ad761f825ae6e245035ad7319f24861"
 dependencies = [
  "bindgen",
  "cc",
