@@ -47,4 +47,4 @@ jobs:
       - name: Install Cargo APK
         run: cargo install --force cargo-apk
       - name: Build APK
-        run: cd yaobow/yaobow && cargo apk build --lib -vv
+        run: cd yaobow/yaobow && cargo apk build --lib --verbose
