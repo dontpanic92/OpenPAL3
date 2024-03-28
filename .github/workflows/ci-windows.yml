@@ -36,7 +36,6 @@ jobs:
           vcpkg install --triplet=x64-windows-static-md
           vcpkg integrate install
           cargo install cargo-vcpkg
-          cargo vcpkg build
       - name: Build Yaobow
         shell: pwsh
         run: |
