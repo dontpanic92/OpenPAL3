@@ -29,12 +29,6 @@ jobs:
           Invoke-WebRequest https://sdk.lunarg.com/sdk/download/$vulkanSdkVersion/windows/VulkanSDK-$vulkanSdkVersion-Installer.exe -OutFile ./temp/vulkan_sdk.exe
           ./temp/vulkan_sdk.exe in --da --al -c
           ls C:\VulkanSDK
-      - name: Install ffmpeg
-        shell: pwsh
-        run: |
-          vcpkg x-update-baseline
-          vcpkg install --triplet=x64-windows-static-md
-          vcpkg integrate install
       - name: Build Yaobow
         shell: pwsh
         run: |
@@ -45,6 +39,12 @@ jobs:
           $env:VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT
           echo $env:VCPKG_ROOT
           cargo build --workspace --release --verbose
+      - name: Install ffmpeg
+        shell: pwsh
+        run: |
+          vcpkg x-update-baseline
+          vcpkg install --triplet=x64-windows-static-md
+          vcpkg integrate install
       - name: Zip Packaging
         run: |
           mkdir target/release/yaobow
