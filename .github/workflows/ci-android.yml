@@ -42,9 +42,10 @@ jobs:
           vcpkg x-update-baseline
           vcpkg install --triplet=arm64-android
           vcpkg integrate install
+          tree vcpkg_installed
       - name: Install Android targets
         run: rustup target add aarch64-linux-android
       - name: Install Cargo APK
         run: cargo install --force cargo-apk
       - name: Build APK
-        run: cd yaobow/yaobow && cargo apk build --lib --verbose
+        run: cd yaobow/yaobow && cargo apk build --lib

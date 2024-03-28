@@ -1,9 +1,9 @@
 # 仙三开源版
 
-![Windows](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-windows.yml?style=flat-square&label=Windows&logo=windows)
-![Linux](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-linux.yml?style=flat-square&label=Linux&logo=linux)
-![macOS](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-macos.yml?style=flat-square&label=macOS&logo=apple)
-![Android](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-android.yml?style=flat-square&label=Android&logo=android)
+![Windows](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-windows.yml?branch=master&style=flat-square&label=Windows&logo=windows)
+![Linux](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-linux.yml?branch=master&style=flat-square&label=Linux&logo=linux)
+![macOS](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-macos.yml?branch=master&style=flat-square&label=macOS&logo=apple)
+![Android](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-android.yml?branch=master&style=flat-square&label=Android&logo=android)
 
 
 > 云对雨，雪对风，仙剑对妖弓。
