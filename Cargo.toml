@@ -22,6 +22,7 @@ vcpkg = { git = "https://github.com/mcgoo/vcpkg-rs" }
 
 [patch."https://github.com/meh/rust-ffmpeg"]
 ffmpeg = { git = "https://github.com/dontpanic92/rust-ffmpeg", branch = "yaobow2" }
+ffmpeg-sys = { git = "https://github.com/dontpanic92/rust-ffmpeg/sys", branch = "yaobow2" }
 
 [profile.release-with-symbol]
 inherits = "release"
