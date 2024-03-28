@@ -21,11 +21,6 @@ jobs:
         with:
           toolchain: nightly
           override: true
-      - name: Install ffmpeg
-        run: |
-          vcpkg x-update-baseline
-          vcpkg install --triplet=x64-osx
-          vcpkg integrate install
       - name: Install Deps
         run: |
           brew install automake fdk-aac git lame libass libtool libvorbis libvpx opus sdl shtool texi2html theora wget x264 x265 xvid nasm
@@ -33,5 +28,10 @@ jobs:
           hdiutil attach vulkansdk-macos-1.2.198.1.dmg
           cd /Volumes/vulkansdk-macos-1.2.198.1
           sudo ./InstallVulkan.app/Contents/MacOS/InstallVulkan --root ~/VulkanSDK/1.2.176.1 --accept-licenses --default-answer --confirm-command install
+      - name: Install ffmpeg
+        run: |
+          vcpkg x-update-baseline
+          vcpkg install --triplet=x64-osx
+          vcpkg integrate install
       - name: Build
         run: cargo build --workspace --release --verbose
