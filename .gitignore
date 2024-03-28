@@ -7,6 +7,7 @@ out
 CMakeSettings.json
 radiance/Cargo.lock
 assets_ignore/
+vcpkg_installed/
 yaobow-assets.zip
 
 # swiftshader

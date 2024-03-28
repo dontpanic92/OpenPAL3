@@ -2195,7 +2195,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg"
 version = "0.6.0"
-source = "git+https://github.com/meh/rust-ffmpeg#7c354aa36ad761f825ae6e245035ad7319f24861"
+source = "git+https://github.com/dontpanic92/rust-ffmpeg?branch=yaobow2#d7c4f842f9a68089cd082d957d51fc54a6748652"
 dependencies = [
  "bitflags 1.3.2",
  "ffmpeg-sys",
@@ -2207,7 +2207,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg-sys"
 version = "6.0.0"
-source = "git+https://github.com/meh/rust-ffmpeg#7c354aa36ad761f825ae6e245035ad7319f24861"
+source = "git+https://github.com/dontpanic92/rust-ffmpeg?branch=yaobow2#d7c4f842f9a68089cd082d957d51fc54a6748652"
 dependencies = [
  "bindgen",
  "cc",
@@ -3303,9 +3303,9 @@ checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
 
 [[package]]
 name = "memchr"
-version = "2.7.1"
+version = "2.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
+checksum = "6c8640c5d730cb13ebd907d8d04b52f55ac9a2eec55b440c8892f40d56c76c1d"
 
 [[package]]
 name = "memmap"
@@ -5774,8 +5774,7 @@ checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 [[package]]
 name = "vcpkg"
 version = "0.2.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
+source = "git+https://github.com/mcgoo/vcpkg-rs#79f292f672293ad132281fd80d15ff28548af225"
 
 [[package]]
 name = "vec_map"
