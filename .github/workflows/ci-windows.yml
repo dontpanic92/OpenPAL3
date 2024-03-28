@@ -35,12 +35,15 @@ jobs:
           vcpkg x-update-baseline
           vcpkg install --triplet=x64-windows-static-md
           vcpkg integrate install
-          cargo install cargo-vcpkg
       - name: Build Yaobow
         shell: pwsh
         run: |
           $vulkanSdkVersion = "1.3.250.1"
           $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
+          echo $env:VCPKG_INSTALLATION_ROOT
+          echo $env:VCPKG_ROOT
+          $env:VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT
+          echo $env:VCPKG_ROOT
           cargo build --workspace --release --verbose
       - name: Zip Packaging
         run: |
