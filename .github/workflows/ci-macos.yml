@@ -21,6 +21,11 @@ jobs:
         with:
           toolchain: nightly
           override: true
+      - name: Install ffmpeg
+        run: |
+          vcpkg x-update-baseline
+          vcpkg install --triplet=x64-osx
+          vcpkg integrate install
       - name: Install Deps
         run: |
           brew install automake fdk-aac git lame libass libtool libvorbis libvpx opus sdl shtool texi2html theora wget x264 x265 xvid nasm

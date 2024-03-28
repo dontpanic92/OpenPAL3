@@ -54,13 +54,9 @@ ndk-glue = "0.5.0"
 git = "https://github.com/meh/rust-ffmpeg"
 features = ["static"]
 
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies.ffmpeg]
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))'.dependencies.ffmpeg]
 git = "https://github.com/meh/rust-ffmpeg"
 features = ["static"]
-
-[target.'cfg(any(target_os = "android"))'.dependencies.ffmpeg]
-git = "https://github.com/meh/rust-ffmpeg"
-features = ["build"]
 
 [target.'cfg(not(target_os = "vita"))'.dependencies]
 interprocess = "1.2"
