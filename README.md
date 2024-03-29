@@ -4,6 +4,7 @@
 ![Linux](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-linux.yml?branch=master&style=flat-square&label=Linux&logo=linux)
 ![macOS](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-macos.yml?branch=master&style=flat-square&label=macOS&logo=apple)
 ![Android](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-android.yml?branch=master&style=flat-square&label=Android&logo=android)
+![PSVita](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-psvita.yml?branch=master&style=flat-square&label=PlayStation%20Vita&logo=playstation)
 
 
 > 云对雨，雪对风，仙剑对妖弓。

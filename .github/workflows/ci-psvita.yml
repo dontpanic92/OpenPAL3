@@ -1,0 +1,47 @@
+name: Linux CI Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ubuntu-build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+      - name: Install vitasdk
+        run: |
+          export VITASDK=$pwd/vitasdk
+          export PATH=$VITASDK/bin:$PATH
+          git clone https://github.com/vitasdk/vdpm
+          cd vdpm
+          ./bootstrap-vitasdk.sh
+          ./install-all.sh
+      - name: Install ffmpeg
+        run: |
+          export VITASDK=$pwd/vitasdk
+          export PATH=$VITASDK/bin:$PATH
+          cd yaobow/misc/
+          vita-makepkg
+          vdpm ffmpeg-6.0-1-arm.tar.xz
+      - name: Build
+        run: |
+          cargo install cargo-make
+          cd yaobow/yaobow
+          cargo make
+      - uses: actions/upload-artifact@v3
+        with:
+          name: yaobow-vpk
+          path: yaobow/yaobow/target/yaobow.vpk
