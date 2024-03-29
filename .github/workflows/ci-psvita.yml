@@ -48,4 +48,4 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: yaobow-vpk
-          path: yaobow/yaobow/target/target/armv7-sony-vita-newlibeabihf/vita-release/yaobow.vpk
+          path: yaobow/yaobow/target/armv7-sony-vita-newlibeabihf/vita-release/yaobow.vpk
