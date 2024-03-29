@@ -28,6 +28,11 @@ jobs:
           hdiutil attach vulkansdk-macos-1.2.198.1.dmg
           cd /Volumes/vulkansdk-macos-1.2.198.1
           sudo ./InstallVulkan.app/Contents/MacOS/InstallVulkan --root ~/VulkanSDK/1.2.176.1 --accept-licenses --default-answer --confirm-command install
+      - name: Cache ffmpeg
+        uses: actions/cache@v3
+        with:
+          path: vcpkg_installed
+          key: ${{ runner.os }}-build-ffmpeg
       - name: Install ffmpeg
         run: |
           vcpkg x-update-baseline

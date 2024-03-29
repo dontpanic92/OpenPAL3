@@ -37,6 +37,11 @@ jobs:
           sudo apt install vulkan-sdk nasm
       - name: Set NDK_HOME env
         run: echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
+      - name: Cache ffmpeg
+        uses: actions/cache@v3
+        with:
+          path: vcpkg_installed
+          key: ${{ runner.os }}-android-build-ffmpeg
       - name: Install ffmpeg
         run: |
           vcpkg x-update-baseline
