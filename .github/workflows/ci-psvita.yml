@@ -23,7 +23,7 @@ jobs:
           override: true
       - name: Install Deps
         run: |
-          sudo apt install libarchive-tools
+          sudo apt install libarchive-tools libudev-dev
       - name: Setup Environment Variables
         run: |
           echo "VITASDK=/vitasdk" >> $GITHUB_ENV
