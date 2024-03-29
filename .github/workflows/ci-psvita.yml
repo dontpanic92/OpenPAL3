@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  VITASDK: $pwd/vitasdk
+  PATH: $VITASDK/bin:$PATH
 
 jobs:
   psvita-build:
@@ -24,18 +26,18 @@ jobs:
       - name: Install Deps
         run: |
           sudo apt install libarchive-tools
+      - name: Setup Environment Variables
+        run: |
+          echo "VITASDK=$pwd/vitasdk" >> $GITHUB_ENV
+          echo "PATH=$VITASDK/bin:$PATH" >> $GITHUB_ENV
       - name: Install vitasdk
         run: |
-          export VITASDK=$pwd/vitasdk
-          export PATH=$VITASDK/bin:$PATH
           git clone https://github.com/vitasdk/vdpm
           cd vdpm
           ./bootstrap-vitasdk.sh
           ./install-all.sh
       - name: Install ffmpeg
         run: |
-          export VITASDK=$pwd/vitasdk
-          export PATH=$VITASDK/bin:$PATH
           cd yaobow/misc/
           vita-makepkg
           vdpm ffmpeg-6.0-1-arm.tar.xz
