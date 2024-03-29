@@ -26,8 +26,8 @@ jobs:
           sudo apt install libarchive-tools
       - name: Setup Environment Variables
         run: |
-          echo "VITASDK=$pwd/vitasdk" >> $GITHUB_ENV
-          echo "PATH=$VITASDK/bin:$PATH" >> $GITHUB_ENV
+          echo "VITASDK=/vitasdk" >> $GITHUB_ENV
+          echo "PATH=/vitasdk/bin:$PATH" >> $GITHUB_ENV
       - name: Install vitasdk
         run: |
           git clone https://github.com/vitasdk/vdpm
