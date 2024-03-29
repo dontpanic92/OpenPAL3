@@ -29,6 +29,11 @@ jobs:
           Invoke-WebRequest https://sdk.lunarg.com/sdk/download/$vulkanSdkVersion/windows/VulkanSDK-$vulkanSdkVersion-Installer.exe -OutFile ./temp/vulkan_sdk.exe
           ./temp/vulkan_sdk.exe in --da --al -c
           ls C:\VulkanSDK
+      - name: Cache ffmpeg
+        uses: actions/cache@v3
+        with:
+          path: vcpkg_installed
+          key: ${{ runner.os }}-build-ffmpeg
       - name: Install ffmpeg
         shell: pwsh
         run: |

@@ -41,6 +41,8 @@ impl ComponentFactory for VitaGLComponentFactory {
         (Box::new(texture), TextureId::new(texture_id as usize))
     }
 
+    fn remove_imgui_texture(&self, texture_id: Option<TextureId>) {}
+
     fn create_material(&self, material_def: &MaterialDef) -> Box<dyn Material> {
         Box::new(VitaGLMaterial::new(
             material_def,

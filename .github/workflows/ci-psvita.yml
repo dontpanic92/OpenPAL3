@@ -1,0 +1,51 @@
+name: PlayStation Vita CI Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  psvita-build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+      - name: Install Deps
+        run: |
+          sudo apt install libarchive-tools libudev-dev
+      - name: Setup Environment Variables
+        run: |
+          echo "VITASDK=/vitasdk" >> $GITHUB_ENV
+          echo "PATH=/vitasdk/bin:$PATH" >> $GITHUB_ENV
+      - name: Install vitasdk
+        run: |
+          git clone https://github.com/vitasdk/vdpm
+          cd vdpm
+          ./bootstrap-vitasdk.sh
+          ./install-all.sh
+      - name: Install ffmpeg
+        run: |
+          cd yaobow/misc/
+          vita-makepkg
+          vdpm ffmpeg-6.0-1-arm.tar.xz
+      - name: Build
+        run: |
+          rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
+          cargo install cargo-make
+          cd yaobow/yaobow
+          cargo make vpk
+      - uses: actions/upload-artifact@v3
+        with:
+          name: yaobow-vpk
+          path: yaobow/yaobow/target/armv7-sony-vita-newlibeabihf/vita-release/yaobow.vpk

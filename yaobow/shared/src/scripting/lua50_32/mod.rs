@@ -102,3 +102,15 @@ fn get_error(state: *mut lua_State) -> String {
         }
     }
 }
+
+#[cfg(vita)]
+#[no_mangle]
+pub extern "C" fn popen() {
+    panic!("popen not supported on vita");
+}
+
+#[cfg(vita)]
+#[no_mangle]
+pub extern "C" fn pclose() {
+    panic!("pclose not supported on vita");
+}
