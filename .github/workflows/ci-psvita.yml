@@ -1,4 +1,4 @@
-name: Linux CI Build
+name: PlayStation Vita CI Build
 
 on:
   push:
@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  ubuntu-build:
+  psvita-build:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +21,9 @@ jobs:
         with:
           toolchain: nightly
           override: true
+      - name: Install Deps
+        run: |
+          sudo apt install bsdtar
       - name: Install vitasdk
         run: |
           export VITASDK=$pwd/vitasdk
