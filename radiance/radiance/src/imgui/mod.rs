@@ -20,6 +20,9 @@ impl FontIndex {
 
     #[cfg(not(vita))]
     pub const SMALL_FONT: usize = 1;
+
+    #[cfg(vita)]
+    pub const SMALL_FONT: usize = 0;
 }
 
 pub struct ImguiContext {
@@ -59,7 +62,7 @@ impl ImguiContext {
 
         #[cfg(vita)]
         context.fonts().add_font(&[FontSource::TtfData {
-            data: include_bytes!("../../../../assets_ignore/LXGWNeoXiHeiScreen.ttf"),
+            data: radiance_assets::FONT_LXGW_NEOXIHEI_SCREEN,
             size_pixels: 18. * platform.dpi_scale(),
             config: Some(FontConfig {
                 rasterizer_multiply: 1.,
