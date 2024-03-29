@@ -23,7 +23,7 @@ jobs:
           override: true
       - name: Install Deps
         run: |
-          sudo apt install bsdtar
+          sudo apt install libarchive-tools
       - name: Install vitasdk
         run: |
           export VITASDK=$pwd/vitasdk
