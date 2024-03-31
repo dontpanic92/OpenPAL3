@@ -4,7 +4,7 @@ use ash::vk;
 use std::error::Error;
 use std::mem::size_of;
 use std::rc::Rc;
-use vma::{self, Alloc};
+use vma::Alloc;
 
 pub enum BufferType {
     Index = 0,

@@ -20,7 +20,6 @@ use crate::{
 use ash::extensions::ext::DebugUtils;
 use ash::{vk, Entry};
 use crosscom::ComRc;
-use std::iter::Iterator;
 use std::ptr;
 use std::rc::Rc;
 use std::sync::Arc;

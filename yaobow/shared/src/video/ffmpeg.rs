@@ -755,13 +755,17 @@ fn resample_source_frame(
     let mut resampled_frame = AudioFrame::empty();
     let mut delay = context.run(source_frame, &mut resampled_frame).unwrap();
     resampled_frames.push(resampled_frame);
-    while let Some(_) = delay {
-        let mut resampled_frame = AudioFrame::empty();
-        resampled_frame.set_channel_layout(audio.target_channel_layout);
-        resampled_frame.set_format(audio.target_format);
-        resampled_frame.set_rate(audio.target_sample_rate);
-        delay = context.flush(&mut resampled_frame).unwrap();
-        resampled_frames.push(resampled_frame);
+    while let Some(d) = delay {
+        if d.input > source_frame.samples() as i64 {
+            let mut resampled_frame = AudioFrame::empty();
+            resampled_frame.set_channel_layout(audio.target_channel_layout);
+            resampled_frame.set_format(audio.target_format);
+            resampled_frame.set_rate(audio.target_sample_rate);
+            delay = context.flush(&mut resampled_frame).unwrap();
+            resampled_frames.push(resampled_frame);
+        } else {
+            break;
+        }
     }
 
     resampled_frames
