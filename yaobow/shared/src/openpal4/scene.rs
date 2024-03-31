@@ -75,9 +75,8 @@ impl Pal4Scene {
             load_player(asset_loader, Player::MurongZiying),
         ];
 
-        scene.add_entity(players[Self::ID_YUN_TIANHE].clone());
         for p in &players {
-            //scene.add_entity(p.clone());
+            scene.add_entity(p.clone());
         }
 
         let npc_info = asset_loader.load_npc_info(scene_name, block_name)?;

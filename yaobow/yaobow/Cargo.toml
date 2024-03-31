@@ -34,7 +34,7 @@ uuid = "0.8"
 
 [dependencies.log]
 version = "0.4.14"
-features = ["max_level_warn", "release_max_level_warn"]
+features = ["max_level_debug", "release_max_level_debug"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 ndk = "0.5.0"

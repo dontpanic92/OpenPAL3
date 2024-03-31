@@ -76,6 +76,7 @@ impl Pal4AppContext {
 
     pub fn set_player_pos(&mut self, player: i32, pos: &Vec3) {
         let player = self.map_player(player);
+        self.scene.get_player(player).set_visible(true);
 
         self.scene
             .get_player(player)
@@ -139,6 +140,7 @@ impl Pal4AppContext {
     pub fn load_scene(&mut self, scene_name: &str, block_name: &str) {
         let _ = self.scene_manager.pop_scene();
         let scene = Pal4Scene::load(&self.loader, scene_name, block_name).unwrap();
+        self.set_leader(self.leader as i32);
         self.scene_manager.push_scene(scene.scene.clone());
 
         self.scene = scene;
