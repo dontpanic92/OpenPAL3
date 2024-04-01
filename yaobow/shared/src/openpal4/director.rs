@@ -65,6 +65,7 @@ impl IDirectorImpl for OpenPAL4Director {
         _ui: &imgui::Ui,
         delta_sec: f32,
     ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
+        self.vm.borrow_mut().app_context_mut().update(delta_sec);
         self.vm.borrow_mut().execute(delta_sec);
 
         None

@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use imgui::MouseButton;
-use radiance::{input::Key, math::Vec3, video::VideoStreamState};
+use radiance::{input::Key, math::Vec3, utils::interp_value::InterpValue, video::VideoStreamState};
 
 use crate::{
     as_params,
@@ -1987,8 +1987,17 @@ fn script_music_resume(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Funct
 }
 
 fn wait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _time: f64);
-    Pal4FunctionState::Completed
+    as_params!(vm, time: f64);
+
+    let mut time = time as f32;
+    Pal4FunctionState::Yield(Box::new(move |vm, delta_sec| {
+        if time <= 0.0 {
+            ContinuationState::Completed
+        } else {
+            time = time - delta_sec;
+            ContinuationState::Loop
+        }
+    }))
 }
 
 fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
@@ -2313,13 +2322,41 @@ fn camera_wait(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
 }
 
 fn flash_out_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _duration: f32, _keep: i32, _sync: i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, duration: f32, keep: i32, sync: i32);
+
+    vm.app_context
+        .set_actdrop(InterpValue::new(0., 1., duration));
+
+    if sync == 1 {
+        Pal4FunctionState::Yield(Box::new(move |vm, _| {
+            if vm.app_context.get_actdrop().current() == 1. {
+                ContinuationState::Completed
+            } else {
+                ContinuationState::Loop
+            }
+        }))
+    } else {
+        Pal4FunctionState::Completed
+    }
 }
 
 fn flash_in_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _duration: f32, _sync: i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, duration: f32, sync: i32);
+
+    vm.app_context
+        .set_actdrop(InterpValue::new(1., 0., duration));
+
+    if sync == 1 {
+        Pal4FunctionState::Yield(Box::new(move |vm, _| {
+            if vm.app_context.get_actdrop().current() == 0. {
+                ContinuationState::Completed
+            } else {
+                ContinuationState::Loop
+            }
+        }))
+    } else {
+        Pal4FunctionState::Completed
+    }
 }
 
 fn flash_out_white(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {

@@ -8,10 +8,9 @@ use radiance::{
     audio::{AudioEngine, AudioMemorySource, AudioSourceState, Codec},
     comdef::ISceneManager,
     input::{InputEngine, Key},
-    math::Vec3,
     radiance::UiManager,
     rendering::{ComponentFactory, Sprite, VideoPlayer},
-    utils::interp_value::InterpValue,
+    utils::{act_drop::ActDrop, interp_value::InterpValue},
 };
 
 use crate::scripting::lua50_32::Lua5032Vm;
@@ -36,7 +35,7 @@ pub struct SWD5Context {
     talk_msg: Option<TalkMsg>,
 
     movie_texture: Option<TextureId>,
-    darkness: InterpValue<f32>,
+    actdrop: ActDrop,
     anykey_down: bool,
 }
 
@@ -66,7 +65,7 @@ impl SWD5Context {
             story_pic: None,
             talk_msg: None,
             movie_texture: None,
-            darkness: InterpValue::new(0., 0., 0.),
+            actdrop: ActDrop::new(),
             anykey_down: false,
         }
     }
@@ -95,40 +94,13 @@ impl SWD5Context {
             self.anykey_down = self.anykey_down || self.anykey_down();
         }
 
-        self.darkness.update(delta_sec);
+        self.actdrop.update(self.ui.ui(), delta_sec);
 
         self.update_audio();
-        self.update_actdrop();
         self.update_story_pic();
         self.update_storymsg();
         self.update_talkmsg();
         self.update_video();
-    }
-
-    fn update_actdrop(&mut self) {
-        let value = self.darkness.value();
-        if value == 0. {
-            return;
-        }
-
-        let ui = self.ui.ui();
-        let [width, height] = ui.io().display_size;
-        let color = [0., 0., 0., value];
-        let style = ui.push_style_color(imgui::StyleColor::WindowBg, color);
-        ui.window("actdrop")
-            .position([0., 0.], imgui::Condition::Always)
-            .size([width, height], imgui::Condition::Always)
-            .movable(false)
-            .resizable(false)
-            .collapsible(false)
-            .title_bar(false)
-            .draw_background(true)
-            .scroll_bar(false)
-            .nav_focus(false)
-            .focused(false)
-            .mouse_inputs(false)
-            .build(|| {});
-        style.pop();
     }
 
     fn update_storymsg(&mut self) {
@@ -269,11 +241,13 @@ impl SWD5Context {
     fn lock_player(&mut self, f: f64) {}
 
     fn dark(&mut self, speed: f64) {
-        self.darkness = InterpValue::new(0., 1., 0.1 * speed as f32);
+        self.actdrop
+            .set_darkness(InterpValue::new(0., 1., 0.1 * speed as f32));
     }
 
     fn undark(&mut self, speed: f64) {
-        self.darkness = InterpValue::new(1., 0., 0.1 * speed as f32);
+        self.actdrop
+            .set_darkness(InterpValue::new(1., 0., 0.1 * speed as f32));
     }
 
     fn chang_map(&mut self, map_id: f64, x: f64, y: f64, z: f64) {

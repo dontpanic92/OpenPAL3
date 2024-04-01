@@ -83,6 +83,10 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         &self.app_context
     }
 
+    pub fn app_context_mut(&mut self) -> &mut TAppContext {
+        &mut self.app_context
+    }
+
     pub fn set_function(&mut self, module: Rc<RefCell<ScriptModule>>, index: usize) {
         self.call_stack.push(self.context.clone().unwrap());
         self.context = Some(ScriptFunctionContext::new(module, index));

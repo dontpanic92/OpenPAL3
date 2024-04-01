@@ -9,6 +9,7 @@ use radiance::{
     math::Vec3,
     radiance::{TaskHandle, TaskManager, UiManager},
     rendering::{ComponentFactory, VideoPlayer},
+    utils::{act_drop::ActDrop, interp_value::InterpValue},
 };
 
 use crate::ui::dialog_box::{AvatarPosition, DialogBox};
@@ -30,6 +31,7 @@ pub struct Pal4AppContext {
     bgm_task: Option<Rc<TaskHandle>>,
     sound_tasks: HashMap<i32, Rc<TaskHandle>>,
     sound_id: i32,
+    actdrop: ActDrop,
     voice_task: Option<Rc<TaskHandle>>,
     camera_data: Option<CameraDataFile>,
     scene_name: String,
@@ -59,6 +61,7 @@ impl Pal4AppContext {
             bgm_task: None,
             sound_tasks: HashMap::new(),
             sound_id: 0,
+            actdrop: ActDrop::new(),
             voice_task: None,
             camera_data: None,
             scene_name: String::new(),
@@ -67,6 +70,18 @@ impl Pal4AppContext {
             scene: Pal4Scene::new_empty(),
             dialog_box: DialogBox::new(ui),
         }
+    }
+
+    pub fn update(&mut self, delta_sec: f32) {
+        self.actdrop.update(self.ui.ui(), delta_sec);
+    }
+
+    pub fn set_actdrop(&mut self, darkness: InterpValue<f32>) {
+        self.actdrop.set_darkness(darkness);
+    }
+
+    pub fn get_actdrop(&self) -> &ActDrop {
+        &self.actdrop
     }
 
     pub fn set_leader(&mut self, leader: i32) {

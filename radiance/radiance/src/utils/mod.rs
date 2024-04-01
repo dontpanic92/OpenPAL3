@@ -1,3 +1,4 @@
+pub mod act_drop;
 pub mod free_view;
 pub mod interp_value;
 
