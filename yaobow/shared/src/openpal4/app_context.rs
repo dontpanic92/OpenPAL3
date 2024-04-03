@@ -24,6 +24,7 @@ pub struct Pal4AppContext {
     pub(crate) task_manager: Rc<TaskManager>,
     pub(crate) scene: Pal4Scene,
     pub(crate) dialog_box: DialogBox,
+    pub(crate) player_locked: bool,
 
     component_factory: Rc<dyn ComponentFactory>,
     audio_engine: Rc<dyn AudioEngine>,
@@ -58,6 +59,7 @@ impl Pal4AppContext {
             component_factory: component_factory.clone(),
             audio_engine,
             video_player: component_factory.create_video_player(),
+            player_locked: false,
             bgm_task: None,
             sound_tasks: HashMap::new(),
             sound_id: 0,

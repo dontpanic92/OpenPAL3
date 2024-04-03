@@ -8,6 +8,7 @@ use radiance::{
     radiance::{TaskManager, UiManager},
     rendering::ComponentFactory,
     scene::CoreScene,
+    utils::free_view::FreeViewController,
 };
 
 use crate::{scripting::angelscript::ScriptVm, ComObject_OpenPAL4Director};
@@ -19,6 +20,7 @@ use super::{
 
 pub struct OpenPAL4Director {
     vm: RefCell<ScriptVm<Pal4AppContext>>,
+    control: FreeViewController,
 }
 
 ComObject_OpenPAL4Director!(super::OpenPAL4Director);
@@ -38,12 +40,13 @@ impl OpenPAL4Director {
             loader,
             scene_manager,
             ui,
-            input,
+            input.clone(),
             audio,
             task_manager,
         );
         Self {
             vm: RefCell::new(create_script_vm(app_context)),
+            control: FreeViewController::new(input),
         }
     }
 }
@@ -61,12 +64,17 @@ impl IDirectorImpl for OpenPAL4Director {
 
     fn update(
         &self,
-        _scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
+        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
         _ui: &imgui::Ui,
         delta_sec: f32,
     ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
         self.vm.borrow_mut().app_context_mut().update(delta_sec);
         self.vm.borrow_mut().execute(delta_sec);
+
+        if !self.vm.borrow().app_context().player_locked {
+            self.control
+                .update(scene_manager.scene().unwrap(), delta_sec)
+        }
 
         None
     }

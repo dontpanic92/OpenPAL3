@@ -130,12 +130,56 @@ impl AssetLoader {
             "world".to_string(),
             &DffLoaderConfig {
                 texture_resolver: &self.texture_resolver,
-                keep_right_to_render_only: true,
+                keep_right_to_render_only: false,
             },
         );
 
         scene.add_entity(entity);
         Ok(scene)
+    }
+
+    pub fn try_load_scene_sky(&self, scene_name: &str, block_name: &str) -> Option<ComRc<IEntity>> {
+        let path = format!(
+            "/gamedata/PALWorld/{}/{}/{}_sky.dff",
+            scene_name, block_name, block_name,
+        );
+
+        self.try_load_scene_dff(path)
+    }
+
+    pub fn try_load_scene_clip(
+        &self,
+        scene_name: &str,
+        block_name: &str,
+    ) -> Option<ComRc<IEntity>> {
+        let path = format!(
+            "/gamedata/PALWorld/{}/{}/{}_clip.dff",
+            scene_name, block_name, block_name,
+        );
+
+        self.try_load_scene_dff(path)
+    }
+
+    fn try_load_scene_dff(&self, path: String) -> Option<ComRc<IEntity>> {
+        if self.vfs.exists(&path) {
+            let entity = create_entity_from_dff_model(
+                &self.component_factory,
+                &self.vfs,
+                path.clone(),
+                "world_clip".to_string(),
+                true,
+                &DffLoaderConfig {
+                    texture_resolver: &self.texture_resolver,
+                    keep_right_to_render_only: false,
+                },
+            );
+
+            println!("Loaded dff: {}", path);
+            Some(entity)
+        } else {
+            println!("Not Loaded dff: {}", path);
+            None
+        }
     }
 
     pub fn load_npc_info(&self, scene_name: &str, block_name: &str) -> anyhow::Result<NpcInfoFile> {

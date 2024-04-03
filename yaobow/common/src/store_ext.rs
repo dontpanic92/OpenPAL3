@@ -16,6 +16,8 @@ pub trait StoreExt2: mini_fs::StoreExt {
         fallback_ext: &[&str],
     ) -> io::Result<File>;
 
+    fn exists<P: AsRef<Path>>(&self, path: &P) -> bool;
+
     fn try_open_files<P: AsRef<Path>>(&self, path: &[P]) -> io::Result<File>;
 }
 
@@ -53,6 +55,10 @@ impl StoreExt2 for mini_fs::MiniFs {
     ) -> Result<String, Box<dyn std::error::Error>> {
         let data = self.read_to_end(path)?;
         Ok(encoding::all::GBK.decode(&data, DecoderTrap::Ignore)?)
+    }
+
+    fn exists<P: AsRef<Path>>(&self, paths: &P) -> bool {
+        self.open(paths).is_ok()
     }
 
     fn try_open_files<P: AsRef<Path>>(&self, paths: &[P]) -> io::Result<File> {

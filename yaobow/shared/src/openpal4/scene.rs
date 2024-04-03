@@ -66,6 +66,16 @@ impl Pal4Scene {
         block_name: &str,
     ) -> anyhow::Result<Self> {
         let scene = asset_loader.load_scene(scene_name, block_name)?;
+        let clip = asset_loader.try_load_scene_clip(scene_name, block_name);
+        if let Some(clip) = clip {
+            scene.add_entity(clip);
+        }
+
+        let skybox = asset_loader.try_load_scene_sky(scene_name, block_name);
+        if let Some(skybox) = skybox {
+            scene.add_entity(skybox);
+        }
+
         scene.camera().borrow_mut().set_fov43(45_f32.to_radians());
 
         let players = [

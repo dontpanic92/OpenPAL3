@@ -5,7 +5,10 @@ use fileformats::rwbs::read_dff;
 use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::IEntity;
 use shared::{
-    loaders::{dff::create_entity_from_dff_model, TextureResolver},
+    loaders::{
+        dff::{create_entity_from_dff_model, DffLoaderConfig},
+        Pal4TextureResolver, TextureResolver,
+    },
     openpal3::asset_manager::AssetManager,
     GameType,
 };
@@ -49,7 +52,10 @@ impl ModelLoader for DffModelLoader {
             path,
             "preview".to_string(),
             true,
-            self.game_type.dff_loader_config().unwrap(),
+            &DffLoaderConfig {
+                texture_resolver: &Pal4TextureResolver {},
+                keep_right_to_render_only: false,
+            }, //self.game_type.dff_loader_config().unwrap(),
         )
     }
 }
