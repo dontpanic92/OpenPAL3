@@ -23,7 +23,7 @@ pub struct NpcInfo {
     pub unknown_name: SizedString,
     pub position: [f32; 3],
     pub rotation: [f32; 3],
-    unknown: i32,
+    pub default_visible: i32,
     unknown2: i32,
     unknown3: f32,
 

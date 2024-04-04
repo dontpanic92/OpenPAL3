@@ -1173,7 +1173,15 @@ fn player_unlock(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionStat
 }
 
 fn set_npc_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_name: i32, _is_visible: i32);
+    as_params!(vm, npc_name: i32, is_visible: i32);
+
+    let npc_name = get_str(vm, npc_name as usize).unwrap();
+    if let Some(entity) = vm.app_context.scene.get_npc(&npc_name) {
+        entity.set_visible(is_visible != 0);
+    } else {
+        log::warn!("SetNPCVisible: NPC {} not found", npc_name);
+    }
+
     Pal4FunctionState::Completed
 }
 

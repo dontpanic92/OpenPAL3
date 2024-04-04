@@ -138,12 +138,12 @@ impl Pal4ActorControllerInner {
             Vec3::add(&current_position, &Vec3::dot(speed * delta_sec, &direction));
 
         if direction.norm() > 0.5 {
-            let look_at = Vec3::new(target_position.x, current_position.y, target_position.z);
+            let look_at = Vec3::new(current_position.x, target_position.y, current_position.z);
             self.entity
                 .transform()
                 .borrow_mut()
-                .look_at(&look_at)
-                .set_position(&target_position);
+                .set_position(&target_position)
+                .look_at(&look_at);
         }
 
         self.camera_rotation =
@@ -152,7 +152,7 @@ impl Pal4ActorControllerInner {
             .camera()
             .borrow_mut()
             .transform_mut()
-            .set_position(&Vec3::new(400., 400., 400.))
+            .set_position(&Vec3::new(300., 300., 300.))
             .rotate_axis_angle(&Vec3::UP, self.camera_rotation)
             .translate(&target_position)
             .look_at(&target_position);

@@ -167,6 +167,19 @@ impl AssetLoader {
         self.try_load_scene_dff(path)
     }
 
+    pub fn try_load_scene_clip_na(
+        &self,
+        scene_name: &str,
+        block_name: &str,
+    ) -> Option<ComRc<IEntity>> {
+        let path = format!(
+            "/gamedata/PALWorld/{}/{}/{}_clipNA.dff",
+            scene_name, block_name, block_name,
+        );
+
+        self.try_load_scene_dff(path)
+    }
+
     fn try_load_scene_dff(&self, path: String) -> Option<ComRc<IEntity>> {
         if self.vfs.exists(&path) {
             let entity = create_entity_from_dff_model(

@@ -167,12 +167,11 @@ impl Pal4AppContext {
 
     pub fn load_scene(&mut self, scene_name: &str, block_name: &str) {
         let _ = self.scene_manager.pop_scene();
-        let scene =
+        self.scene =
             Pal4Scene::load(&self.loader, self.input.clone(), scene_name, block_name).unwrap();
         self.set_leader(self.leader as i32);
-        self.scene_manager.push_scene(scene.scene.clone());
+        self.scene_manager.push_scene(self.scene.scene.clone());
 
-        self.scene = scene;
         self.scene_name = scene_name.to_string();
         self.block_name = block_name.to_string();
     }

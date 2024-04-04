@@ -44,6 +44,7 @@ impl Player {
 pub struct Pal4Scene {
     pub(crate) scene: ComRc<IScene>,
     pub(crate) players: [ComRc<IEntity>; 4],
+    pub(crate) npcs: Vec<ComRc<IEntity>>,
 }
 
 impl Pal4Scene {
@@ -61,6 +62,7 @@ impl Pal4Scene {
                 CoreEntity::create("".to_string(), false),
                 CoreEntity::create("".to_string(), false),
             ],
+            npcs: vec![],
         }
     }
 
@@ -74,6 +76,11 @@ impl Pal4Scene {
         let clip = asset_loader.try_load_scene_clip(scene_name, block_name);
         if let Some(clip) = clip {
             scene.add_entity(clip);
+        }
+
+        let clip_na = asset_loader.try_load_scene_clip_na(scene_name, block_name);
+        if let Some(clip_na) = clip_na {
+            scene.add_entity(clip_na);
         }
 
         let skybox = asset_loader.try_load_scene_sky(scene_name, block_name);
@@ -98,6 +105,7 @@ impl Pal4Scene {
         }
 
         let npc_info = asset_loader.load_npc_info(scene_name, block_name)?;
+        let mut npcs = vec![];
         for npc in &npc_info.data {
             let actor_name = npc.model_name.as_str();
             match actor_name {
@@ -109,10 +117,17 @@ impl Pal4Scene {
                     );
 
                     if let Ok(entity) = entity {
+                        entity.set_visible(npc.default_visible == 1);
                         entity
                             .transform()
                             .borrow_mut()
+                            .set_position(&Vec3::new_zeros())
+                            .rotate_axis_angle(&Vec3::BACK, npc.rotation[2].to_radians())
+                            .rotate_axis_angle(&Vec3::UP, npc.rotation[1].to_radians())
+                            .rotate_axis_angle(&Vec3::EAST, npc.rotation[0].to_radians())
                             .set_position(&Vec3::from(npc.position));
+
+                        npcs.push(entity.clone());
                         scene.add_entity(entity);
                     }
                 }
@@ -122,11 +137,19 @@ impl Pal4Scene {
             }
         }
 
-        Ok(Self { scene, players })
+        Ok(Self {
+            scene,
+            players,
+            npcs,
+        })
     }
 
     pub fn get_player(&self, player_id: usize) -> ComRc<IEntity> {
         self.players[player_id].clone()
+    }
+
+    pub fn get_npc(&self, name: &str) -> Option<ComRc<IEntity>> {
+        self.npcs.iter().find(|npc| name == npc.name()).cloned()
     }
 
     pub fn get_player_controller(&self, player_id: usize) -> ComRc<IPal4ActorAnimationController> {

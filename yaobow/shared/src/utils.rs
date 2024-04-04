@@ -116,7 +116,7 @@ pub fn get_moving_direction(input: Rc<RefCell<dyn InputEngine>>, scene: ComRc<IS
     world_direction_mat[2][3] = local_direction.z;
     let world_direction_mat = Mat44::multiplied(&camera_mat, &world_direction_mat);
 
-    let mut world_direction = Vec3::new(world_direction_mat[0][3], 0., world_direction_mat[2][3]);
+    let world_direction = Vec3::new(world_direction_mat[0][3], 0., world_direction_mat[2][3]);
     Vec3::normalized(&world_direction)
 }
 
