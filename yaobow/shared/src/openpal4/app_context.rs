@@ -14,7 +14,10 @@ use radiance::{
 
 use crate::ui::dialog_box::{AvatarPosition, DialogBox};
 
-use super::{actor::Pal4ActorAnimationConfig, asset_loader::AssetLoader, scene::Pal4Scene};
+use super::{
+    actor::Pal4ActorAnimationConfig, asset_loader::AssetLoader, comdef::IPal4ActorController,
+    scene::Pal4Scene,
+};
 
 pub struct Pal4AppContext {
     pub(crate) loader: Rc<AssetLoader>,
@@ -24,7 +27,6 @@ pub struct Pal4AppContext {
     pub(crate) task_manager: Rc<TaskManager>,
     pub(crate) scene: Pal4Scene,
     pub(crate) dialog_box: DialogBox,
-    pub(crate) player_locked: bool,
 
     component_factory: Rc<dyn ComponentFactory>,
     audio_engine: Rc<dyn AudioEngine>,
@@ -59,7 +61,6 @@ impl Pal4AppContext {
             component_factory: component_factory.clone(),
             audio_engine,
             video_player: component_factory.create_video_player(),
-            player_locked: false,
             bgm_task: None,
             sound_tasks: HashMap::new(),
             sound_id: 0,
@@ -102,6 +103,16 @@ impl Pal4AppContext {
             .set_position(&pos);
     }
 
+    pub fn lock_player(&mut self, lock: bool) {
+        self.scene
+            .get_player(self.leader)
+            .get_component(IPal4ActorController::uuid())
+            .unwrap()
+            .query_interface::<IPal4ActorController>()
+            .unwrap()
+            .lock_control(lock);
+    }
+
     pub fn set_player_ang(&mut self, player: i32, ang: f32) {
         let player = self.map_player(player);
 
@@ -110,7 +121,7 @@ impl Pal4AppContext {
             .transform()
             .borrow_mut()
             .clear_rotation()
-            .rotate_axis_angle_local(&Vec3::UP, ang * std::f32::consts::PI / 180.0);
+            .rotate_axis_angle_local(&Vec3::UP, ang.to_radians());
     }
 
     pub fn player_do_action(&mut self, player: i32, action: &str, flag: i32) {
@@ -156,7 +167,8 @@ impl Pal4AppContext {
 
     pub fn load_scene(&mut self, scene_name: &str, block_name: &str) {
         let _ = self.scene_manager.pop_scene();
-        let scene = Pal4Scene::load(&self.loader, scene_name, block_name).unwrap();
+        let scene =
+            Pal4Scene::load(&self.loader, self.input.clone(), scene_name, block_name).unwrap();
         self.set_leader(self.leader as i32);
         self.scene_manager.push_scene(scene.scene.clone());
 

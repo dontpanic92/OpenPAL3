@@ -1,9 +1,5 @@
 use crosscom::ComRc;
-use radiance::{
-    comdef::IScene,
-    math::{Quaternion, Vec3},
-    scene::{CoreEntity, CoreScene},
-};
+use radiance::{comdef::IScene, math::Vec3, scene::CoreScene};
 
 use super::asset_loader::AssetLoader;
 

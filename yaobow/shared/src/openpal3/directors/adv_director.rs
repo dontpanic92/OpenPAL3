@@ -12,6 +12,7 @@ use crate::{
         states::{global_state::GlobalState, persistent_state::PersistentState},
     },
     scripting::sce::vm::{SceExecutionOptions, SceVm},
+    utils::{get_camera_rotation, get_moving_direction},
     ComObject_AdventureDirector,
 };
 
@@ -205,20 +206,6 @@ impl AdventureDirectorProps {
         delta_sec: f32,
         moving_direction: &Vec3,
     ) {
-        let camera_mat = {
-            let camera = scene_manager.scene().unwrap().camera();
-            let camera = camera.borrow();
-            camera.transform().matrix().clone()
-        };
-
-        let mut direction_mat = Mat44::new_zero();
-        direction_mat[0][3] = moving_direction.x;
-        direction_mat[1][3] = moving_direction.y;
-        direction_mat[2][3] = moving_direction.z;
-        let direction_mat = Mat44::multiplied(&camera_mat, &direction_mat);
-        let mut direction = Vec3::new(direction_mat[0][3], 0., direction_mat[2][3]);
-        direction.normalize();
-
         let role = scene_manager
             .get_resolved_role(self.sce_vm.state(), -1)
             .unwrap();
@@ -227,7 +214,8 @@ impl AdventureDirectorProps {
 
         let scene = scene_manager.scn_scene().unwrap().get();
         let speed = 175.;
-        let mut target_position = Vec3::add(&position, &Vec3::dot(speed * delta_sec, &direction));
+        let mut target_position =
+            Vec3::add(&position, &Vec3::dot(speed * delta_sec, &moving_direction));
         let target_nav_coord =
             scene.scene_coord_to_nav_coord(role_controller.get().nav_layer(), &target_position);
         let height = scene.get_height(role_controller.get().nav_layer(), target_nav_coord);
@@ -240,7 +228,7 @@ impl AdventureDirectorProps {
         let role = scene_manager
             .get_resolved_role(self.sce_vm.state(), -1)
             .unwrap();
-        if direction.norm() > 0.5
+        if moving_direction.norm() > 0.5
             && (self.sce_vm.global_state().pass_through_wall()
                 || distance_to_border > std::f32::EPSILON)
         {
@@ -273,34 +261,6 @@ impl AdventureDirectorProps {
             .look_at(&position);
     }
 
-    fn rotate_camera(
-        &mut self,
-        _scene_manager: ComRc<ISceneManager>,
-        _ui: &imgui::Ui,
-        delta_sec: f32,
-    ) {
-        let input = self.input_engine.borrow();
-        const CAMERA_ROTATE_SPEED: f32 = 1.5;
-        if input.get_key_state(Key::A).is_down() {
-            self.camera_rotation -= CAMERA_ROTATE_SPEED * delta_sec;
-        }
-
-        if input.get_key_state(Key::D).is_down() {
-            self.camera_rotation += CAMERA_ROTATE_SPEED * delta_sec;
-        }
-
-        self.camera_rotation -=
-            CAMERA_ROTATE_SPEED * delta_sec * input.get_axis_state(Axis::RightStickX).value();
-
-        if self.camera_rotation < 0. {
-            self.camera_rotation += std::f32::consts::PI * 2.;
-        }
-
-        if self.camera_rotation > std::f32::consts::PI * 2. {
-            self.camera_rotation -= std::f32::consts::PI * 2.;
-        }
-    }
-
     fn do_update(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
@@ -318,48 +278,12 @@ impl AdventureDirectorProps {
 
         self.test_save();
 
-        let moving_direction = {
-            let input = self.input_engine.borrow_mut();
-            let mut direction = Vec3::new(0., 0., 0.);
-
-            if input.get_key_state(Key::Up).is_down()
-                || input.get_key_state(Key::GamePadDPadUp).is_down()
-            {
-                direction = Vec3::add(&direction, &Vec3::new(0., 0., -1.));
-            }
-
-            if input.get_key_state(Key::Down).is_down()
-                || input.get_key_state(Key::GamePadDPadDown).is_down()
-            {
-                direction = Vec3::add(&direction, &Vec3::new(0., 0., 1.));
-            }
-
-            direction = Vec3::add(
-                &direction,
-                &Vec3::new(0., 0., -input.get_axis_state(Axis::LeftStickY).value()),
-            );
-
-            if input.get_key_state(Key::Left).is_down()
-                || input.get_key_state(Key::GamePadDPadLeft).is_down()
-            {
-                direction = Vec3::add(&direction, &Vec3::new(-1., 0., 0.));
-            }
-
-            if input.get_key_state(Key::Right).is_down()
-                || input.get_key_state(Key::GamePadDPadRight).is_down()
-            {
-                direction = Vec3::add(&direction, &Vec3::new(1., 0., 0.));
-            }
-
-            direction = Vec3::add(
-                &direction,
-                &Vec3::new(input.get_axis_state(Axis::LeftStickX).value(), 0., 0.),
-            );
-            Vec3::normalized(&direction)
-        };
-
+        let moving_direction =
+            get_moving_direction(self.input_engine.clone(), scene_manager.scene().unwrap());
         self.move_role(scene_manager.clone(), ui, delta_sec, &moving_direction);
-        self.rotate_camera(scene_manager.clone(), ui, delta_sec);
+
+        self.camera_rotation =
+            get_camera_rotation(self.input_engine.clone(), self.camera_rotation, delta_sec);
 
         let (position, nav_layer) = {
             let role = scene_manager

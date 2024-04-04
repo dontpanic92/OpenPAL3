@@ -1,13 +1,17 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crosscom::ComRc;
 use radiance::{
     comdef::{IEntity, IScene},
+    input::InputEngine,
     math::Vec3,
     scene::{CoreEntity, CoreScene},
 };
 
 use super::{
+    actor::Pal4ActorController,
     asset_loader::{self, AssetLoader},
-    comdef::IPal4CharacterController,
+    comdef::{IPal4ActorAnimationController, IPal4ActorController},
 };
 
 pub enum Player {
@@ -62,6 +66,7 @@ impl Pal4Scene {
 
     pub fn load(
         asset_loader: &asset_loader::AssetLoader,
+        input: Rc<RefCell<dyn InputEngine>>,
         scene_name: &str,
         block_name: &str,
     ) -> anyhow::Result<Self> {
@@ -84,6 +89,9 @@ impl Pal4Scene {
             load_player(asset_loader, Player::LiuMengli),
             load_player(asset_loader, Player::MurongZiying),
         ];
+
+        let controller = Pal4ActorController::create(input, players[0].clone(), scene.clone());
+        players[0].add_component(IPal4ActorController::uuid(), ComRc::from_object(controller));
 
         for p in &players {
             scene.add_entity(p.clone());
@@ -121,11 +129,11 @@ impl Pal4Scene {
         self.players[player_id].clone()
     }
 
-    pub fn get_player_controller(&self, player_id: usize) -> ComRc<IPal4CharacterController> {
+    pub fn get_player_controller(&self, player_id: usize) -> ComRc<IPal4ActorAnimationController> {
         self.players[player_id]
-            .get_component(IPal4CharacterController::uuid())
+            .get_component(IPal4ActorAnimationController::uuid())
             .unwrap()
-            .query_interface::<IPal4CharacterController>()
+            .query_interface::<IPal4ActorAnimationController>()
             .unwrap()
     }
 

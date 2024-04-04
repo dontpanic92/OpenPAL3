@@ -1,4 +1,3 @@
-use crate as radiance_editor;
 // Interface IViewContent
 
 #[repr(C)]

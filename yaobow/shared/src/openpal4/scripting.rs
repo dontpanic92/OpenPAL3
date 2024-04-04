@@ -1161,13 +1161,13 @@ fn player_detach_collision(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Fu
 }
 
 fn player_lock(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.app_context.player_locked = true;
+    vm.app_context.lock_player(true);
 
     Pal4FunctionState::Completed
 }
 
 fn player_unlock(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.app_context.player_locked = false;
+    vm.app_context.lock_player(false);
 
     Pal4FunctionState::Completed
 }

@@ -158,7 +158,8 @@ macro_rules! ComObject_OpenPAL4Director {
             use radiance::comdef::ISkinnedMeshComponentImpl;
             use radiance::comdef::IStaticMeshComponentImpl;
             use shared::openpal4::comdef::IOpenPAL4DirectorImpl;
-            use shared::openpal4::comdef::IPal4CharacterControllerImpl;
+            use shared::openpal4::comdef::IPal4ActorAnimationControllerImpl;
+            use shared::openpal4::comdef::IPal4ActorControllerImpl;
 
             #[repr(C)]
             pub struct OpenPAL4DirectorCcw {
@@ -305,11 +306,11 @@ macro_rules! ComObject_OpenPAL4Director {
 
 // pub use ComObject_OpenPAL4Director;
 
-// Interface IPal4CharacterController
+// Interface IPal4ActorAnimationController
 
 #[repr(C)]
 #[allow(non_snake_case)]
-pub struct IPal4CharacterControllerVirtualTable {
+pub struct IPal4ActorAnimationControllerVirtualTable {
     pub query_interface: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
         guid: uuid::Uuid,
@@ -338,23 +339,24 @@ pub struct IPal4CharacterControllerVirtualTable {
 
 #[repr(C)]
 #[allow(dead_code)]
-pub struct IPal4CharacterControllerVirtualTableCcw {
+pub struct IPal4ActorAnimationControllerVirtualTableCcw {
     pub offset: isize,
-    pub vtable: IPal4CharacterControllerVirtualTable,
+    pub vtable: IPal4ActorAnimationControllerVirtualTable,
 }
 
 #[repr(C)]
 #[allow(dead_code)]
-pub struct IPal4CharacterController {
-    pub vtable: *const IPal4CharacterControllerVirtualTable,
+pub struct IPal4ActorAnimationController {
+    pub vtable: *const IPal4ActorAnimationControllerVirtualTable,
 }
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
-impl IPal4CharacterController {
+impl IPal4ActorAnimationController {
     pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
-        let this = self as *const IPal4CharacterController as *const *const std::os::raw::c_void;
+        let this =
+            self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
         let mut raw = 0 as *const *const std::os::raw::c_void;
         let guid = uuid::Uuid::from_bytes(T::INTERFACE_ID);
         let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
@@ -368,7 +370,7 @@ impl IPal4CharacterController {
     pub fn add_ref(&self) -> std::os::raw::c_long {
         unsafe {
             let this =
-                self as *const IPal4CharacterController as *const *const std::os::raw::c_void;
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).add_ref)(this);
             let ret: std::os::raw::c_long = ret.into();
 
@@ -379,7 +381,7 @@ impl IPal4CharacterController {
     pub fn release(&self) -> std::os::raw::c_long {
         unsafe {
             let this =
-                self as *const IPal4CharacterController as *const *const std::os::raw::c_void;
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).release)(this);
             let ret: std::os::raw::c_long = ret.into();
 
@@ -390,7 +392,7 @@ impl IPal4CharacterController {
     pub fn on_loading(&self) -> () {
         unsafe {
             let this =
-                self as *const IPal4CharacterController as *const *const std::os::raw::c_void;
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).on_loading)(this);
             let ret: () = ret.into();
 
@@ -401,7 +403,7 @@ impl IPal4CharacterController {
     pub fn on_updating(&self, delta_sec: f32) -> () {
         unsafe {
             let this =
-                self as *const IPal4CharacterController as *const *const std::os::raw::c_void;
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).on_updating)(this, delta_sec.into());
             let ret: () = ret.into();
 
@@ -412,7 +414,7 @@ impl IPal4CharacterController {
     pub fn on_unloading(&self) -> () {
         unsafe {
             let this =
-                self as *const IPal4CharacterController as *const *const std::os::raw::c_void;
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).on_unloading)(this);
             let ret: () = ret.into();
 
@@ -428,7 +430,7 @@ impl IPal4CharacterController {
     ) -> crosscom::Void {
         unsafe {
             let this =
-                self as *const IPal4CharacterController as *const *const std::os::raw::c_void;
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).play_animation)(
                 this,
                 keyframes.into(),
@@ -443,7 +445,7 @@ impl IPal4CharacterController {
     pub fn unhold(&self) -> () {
         unsafe {
             let this =
-                self as *const IPal4CharacterController as *const *const std::os::raw::c_void;
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).unhold)(this);
             let ret: () = ret.into();
 
@@ -454,7 +456,7 @@ impl IPal4CharacterController {
     pub fn animation_completed(&self) -> bool {
         unsafe {
             let this =
-                self as *const IPal4CharacterController as *const *const std::os::raw::c_void;
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).animation_completed)(this);
             let ret: bool = ret != 0;
 
@@ -464,11 +466,11 @@ impl IPal4CharacterController {
 
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
-        uuid::Uuid::from_bytes(IPal4CharacterController::INTERFACE_ID)
+        uuid::Uuid::from_bytes(IPal4ActorAnimationController::INTERFACE_ID)
     }
 }
 
-pub trait IPal4CharacterControllerImpl {
+pub trait IPal4ActorAnimationControllerImpl {
     fn play_animation(
         &self,
         keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
@@ -479,7 +481,7 @@ pub trait IPal4CharacterControllerImpl {
     fn animation_completed(&self) -> bool;
 }
 
-impl crosscom::ComInterface for IPal4CharacterController {
+impl crosscom::ComInterface for IPal4ActorAnimationController {
     // f6d70031-86e7-4efa-b1c5-5196063441ea
     const INTERFACE_ID: [u8; 16] = [
         246u8, 215u8, 0u8, 49u8, 134u8, 231u8, 78u8, 250u8, 177u8, 197u8, 81u8, 150u8, 6u8, 52u8,
@@ -487,21 +489,22 @@ impl crosscom::ComInterface for IPal4CharacterController {
     ];
 }
 
-// Class Pal4CharacterController
+// Class Pal4ActorAnimationController
 
 #[allow(unused)]
 #[macro_export]
-macro_rules! ComObject_Pal4CharacterController {
+macro_rules! ComObject_Pal4ActorAnimationController {
     ($impl_type: ty) => {
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
-mod Pal4CharacterController_crosscom_impl {
+mod Pal4ActorAnimationController_crosscom_impl {
     use crate as shared;
     use crosscom::ComInterface;
 use shared::openpal4::comdef::IOpenPAL4DirectorImpl;
-use shared::openpal4::comdef::IPal4CharacterControllerImpl;
+use shared::openpal4::comdef::IPal4ActorAnimationControllerImpl;
+use shared::openpal4::comdef::IPal4ActorControllerImpl;
 use crosscom::IUnknownImpl;
 use crosscom::IObjectArrayImpl;
 use radiance::comdef::IComponentImpl;
@@ -521,8 +524,8 @@ use radiance::comdef::IAnimationEventObserverImpl;
 
 
     #[repr(C)]
-    pub struct Pal4CharacterControllerCcw {
-        IPal4CharacterController: shared::openpal4::comdef::IPal4CharacterController,
+    pub struct Pal4ActorAnimationControllerCcw {
+        IPal4ActorAnimationController: shared::openpal4::comdef::IPal4ActorAnimationController,
 IAnimationEventObserver: radiance::comdef::IAnimationEventObserver,
 
         ref_count: std::sync::atomic::AtomicU32,
@@ -534,7 +537,7 @@ IAnimationEventObserver: radiance::comdef::IAnimationEventObserver,
         guid: uuid::Uuid,
         retval: &mut *const *const std::os::raw::c_void,
     ) -> std::os::raw::c_long {
-        let object = crosscom::get_object::<Pal4CharacterControllerCcw>(this);
+        let object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
         match guid.as_bytes() {
 
 &crosscom::IUnknown::INTERFACE_ID => {
@@ -551,7 +554,7 @@ IAnimationEventObserver: radiance::comdef::IAnimationEventObserver,
 }
 
 
-&shared::openpal4::comdef::IPal4CharacterController::INTERFACE_ID => {
+&shared::openpal4::comdef::IPal4ActorAnimationController::INTERFACE_ID => {
     *retval = (object as *const *const std::os::raw::c_void).offset(0);
     add_ref(object as *const *const std::os::raw::c_void);
     crosscom::ResultCode::Ok as std::os::raw::c_long
@@ -570,17 +573,17 @@ IAnimationEventObserver: radiance::comdef::IAnimationEventObserver,
     }
 
     unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
-        let object = crosscom::get_object::<Pal4CharacterControllerCcw>(this);
+        let object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
         let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         (previous + 1) as std::os::raw::c_long
     }
 
     unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
-        let object = crosscom::get_object::<Pal4CharacterControllerCcw>(this);
+        let object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
 
         let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
         if previous - 1 == 0 {
-            Box::from_raw(object as *mut Pal4CharacterControllerCcw);
+            Box::from_raw(object as *mut Pal4ActorAnimationControllerCcw);
         }
 
         (previous - 1) as std::os::raw::c_long
@@ -593,7 +596,7 @@ events: Vec<radiance::components::mesh::event::AnimationEvent>,
 config: shared::openpal4::actor::Pal4ActorAnimationConfig,
 ) -> crosscom::Void {
         unsafe {
-            let __crosscom_object = crosscom::get_object::<Pal4CharacterControllerCcw>(this);
+            let __crosscom_object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
             (*__crosscom_object).inner.play_animation(keyframes,events,config)
         }
     }
@@ -602,7 +605,7 @@ config: shared::openpal4::actor::Pal4ActorAnimationConfig,
 
     unsafe extern "system" fn unhold (this: *const *const std::os::raw::c_void, ) -> () {
 
-        let __crosscom_object = crosscom::get_object::<Pal4CharacterControllerCcw>(this);
+        let __crosscom_object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
         (*__crosscom_object).inner.unhold().into()
     }
 
@@ -610,7 +613,7 @@ config: shared::openpal4::actor::Pal4ActorAnimationConfig,
 
     unsafe extern "system" fn animation_completed (this: *const *const std::os::raw::c_void, ) -> std::os::raw::c_int {
 
-        let __crosscom_object = crosscom::get_object::<Pal4CharacterControllerCcw>(this);
+        let __crosscom_object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
         (*__crosscom_object).inner.animation_completed().into()
     }
 
@@ -619,7 +622,7 @@ config: shared::openpal4::actor::Pal4ActorAnimationConfig,
     fn on_animation_event (this: *const *const std::os::raw::c_void, event_name: &str,
 ) -> crosscom::Void {
         unsafe {
-            let __crosscom_object = crosscom::get_object::<Pal4CharacterControllerCcw>(this);
+            let __crosscom_object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
             (*__crosscom_object).inner.on_animation_event(event_name)
         }
     }
@@ -628,7 +631,7 @@ config: shared::openpal4::actor::Pal4ActorAnimationConfig,
 
     unsafe extern "system" fn on_loading (this: *const *const std::os::raw::c_void, ) -> () {
 
-        let __crosscom_object = crosscom::get_object::<Pal4CharacterControllerCcw>(this);
+        let __crosscom_object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
         (*__crosscom_object).inner.on_loading().into()
     }
 
@@ -639,7 +642,7 @@ config: shared::openpal4::actor::Pal4ActorAnimationConfig,
         let delta_sec: f32 = delta_sec.into()
 ;
 
-        let __crosscom_object = crosscom::get_object::<Pal4CharacterControllerCcw>(this);
+        let __crosscom_object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
         (*__crosscom_object).inner.on_updating(delta_sec.into()).into()
     }
 
@@ -647,7 +650,7 @@ config: shared::openpal4::actor::Pal4ActorAnimationConfig,
 
     unsafe extern "system" fn on_unloading (this: *const *const std::os::raw::c_void, ) -> () {
 
-        let __crosscom_object = crosscom::get_object::<Pal4CharacterControllerCcw>(this);
+        let __crosscom_object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
         (*__crosscom_object).inner.on_unloading().into()
     }
 
@@ -657,10 +660,10 @@ config: shared::openpal4::actor::Pal4ActorAnimationConfig,
 
 
 #[allow(non_upper_case_globals)]
-pub const GLOBAL_IPal4CharacterControllerVirtualTable_CCW_FOR_Pal4CharacterController: shared::openpal4::comdef::IPal4CharacterControllerVirtualTableCcw
-    = shared::openpal4::comdef::IPal4CharacterControllerVirtualTableCcw {
+pub const GLOBAL_IPal4ActorAnimationControllerVirtualTable_CCW_FOR_Pal4ActorAnimationController: shared::openpal4::comdef::IPal4ActorAnimationControllerVirtualTableCcw
+    = shared::openpal4::comdef::IPal4ActorAnimationControllerVirtualTableCcw {
     offset: 0,
-    vtable: shared::openpal4::comdef::IPal4CharacterControllerVirtualTable {
+    vtable: shared::openpal4::comdef::IPal4ActorAnimationControllerVirtualTable {
         query_interface,
 add_ref,
 release,
@@ -677,7 +680,7 @@ animation_completed,
 
 
 #[allow(non_upper_case_globals)]
-pub const GLOBAL_IAnimationEventObserverVirtualTable_CCW_FOR_Pal4CharacterController: radiance::comdef::IAnimationEventObserverVirtualTableCcw
+pub const GLOBAL_IAnimationEventObserverVirtualTable_CCW_FOR_Pal4ActorAnimationController: radiance::comdef::IAnimationEventObserverVirtualTableCcw
     = radiance::comdef::IAnimationEventObserverVirtualTableCcw {
     offset: -1,
     vtable: radiance::comdef::IAnimationEventObserverVirtualTable {
@@ -693,18 +696,18 @@ on_animation_event,
 
 
     impl crosscom::ComObject for $impl_type {
-        type CcwType = Pal4CharacterControllerCcw;
+        type CcwType = Pal4ActorAnimationControllerCcw;
 
         fn create_ccw(self) -> Self::CcwType {
             Self::CcwType {
 
-IPal4CharacterController: shared::openpal4::comdef::IPal4CharacterController {
-    vtable: &GLOBAL_IPal4CharacterControllerVirtualTable_CCW_FOR_Pal4CharacterController.vtable
-        as *const shared::openpal4::comdef::IPal4CharacterControllerVirtualTable,
+IPal4ActorAnimationController: shared::openpal4::comdef::IPal4ActorAnimationController {
+    vtable: &GLOBAL_IPal4ActorAnimationControllerVirtualTable_CCW_FOR_Pal4ActorAnimationController.vtable
+        as *const shared::openpal4::comdef::IPal4ActorAnimationControllerVirtualTable,
 },
 
 IAnimationEventObserver: radiance::comdef::IAnimationEventObserver {
-    vtable: &GLOBAL_IAnimationEventObserverVirtualTable_CCW_FOR_Pal4CharacterController.vtable
+    vtable: &GLOBAL_IAnimationEventObserverVirtualTable_CCW_FOR_Pal4ActorAnimationController.vtable
         as *const radiance::comdef::IAnimationEventObserverVirtualTable,
 },
 
@@ -716,7 +719,7 @@ IAnimationEventObserver: radiance::comdef::IAnimationEventObserver {
         fn get_ccw(&self) -> &Self::CcwType {
             unsafe {
                 let this = self as *const _ as *const u8;
-                let this = this.offset(-(crosscom::offset_of!(Pal4CharacterControllerCcw, inner) as isize));
+                let this = this.offset(-(crosscom::offset_of!(Pal4ActorAnimationControllerCcw, inner) as isize));
                 &*(this as *const Self::CcwType)
             }
         }
@@ -725,4 +728,321 @@ IAnimationEventObserver: radiance::comdef::IAnimationEventObserver {
     }
 }
 
-// pub use ComObject_Pal4CharacterController;
+// pub use ComObject_Pal4ActorAnimationController;
+
+// Interface IPal4ActorController
+
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct IPal4ActorControllerVirtualTable {
+    pub query_interface: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        guid: uuid::Uuid,
+        retval: &mut *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_long,
+    pub add_ref:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub release:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
+    pub on_loading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub on_updating: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        delta_sec: std::os::raw::c_float,
+    ) -> (),
+    pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub lock_control: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        lock: std::os::raw::c_int,
+    ) -> (),
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IPal4ActorControllerVirtualTableCcw {
+    pub offset: isize,
+    pub vtable: IPal4ActorControllerVirtualTable,
+}
+
+#[repr(C)]
+#[allow(dead_code)]
+pub struct IPal4ActorController {
+    pub vtable: *const IPal4ActorControllerVirtualTable,
+}
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+impl IPal4ActorController {
+    pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
+        let this = self as *const IPal4ActorController as *const *const std::os::raw::c_void;
+        let mut raw = 0 as *const *const std::os::raw::c_void;
+        let guid = uuid::Uuid::from_bytes(T::INTERFACE_ID);
+        let ret_val = unsafe { ((*self.vtable).query_interface)(this, guid, &mut raw) };
+        if ret_val != 0 {
+            None
+        } else {
+            Some(unsafe { crosscom::ComRc::<T>::from_raw_pointer(raw) })
+        }
+    }
+
+    pub fn add_ref(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IPal4ActorController as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).add_ref)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn release(&self) -> std::os::raw::c_long {
+        unsafe {
+            let this = self as *const IPal4ActorController as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).release)(this);
+            let ret: std::os::raw::c_long = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn on_loading(&self) -> () {
+        unsafe {
+            let this = self as *const IPal4ActorController as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_loading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn on_updating(&self, delta_sec: f32) -> () {
+        unsafe {
+            let this = self as *const IPal4ActorController as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_updating)(this, delta_sec.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn on_unloading(&self) -> () {
+        unsafe {
+            let this = self as *const IPal4ActorController as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).on_unloading)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn lock_control(&self, lock: bool) -> () {
+        unsafe {
+            let this = self as *const IPal4ActorController as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).lock_control)(this, lock.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn uuid() -> uuid::Uuid {
+        use crosscom::ComInterface;
+        uuid::Uuid::from_bytes(IPal4ActorController::INTERFACE_ID)
+    }
+}
+
+pub trait IPal4ActorControllerImpl {
+    fn lock_control(&self, lock: bool) -> ();
+}
+
+impl crosscom::ComInterface for IPal4ActorController {
+    // 9ccfa4a1-16f9-483c-95d8-6095fbf24e09
+    const INTERFACE_ID: [u8; 16] = [
+        156u8, 207u8, 164u8, 161u8, 22u8, 249u8, 72u8, 60u8, 149u8, 216u8, 96u8, 149u8, 251u8,
+        242u8, 78u8, 9u8,
+    ];
+}
+
+// Class Pal4ActorController
+
+#[allow(unused)]
+#[macro_export]
+macro_rules! ComObject_Pal4ActorController {
+    ($impl_type: ty) => {
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[allow(unused)]
+mod Pal4ActorController_crosscom_impl {
+    use crate as shared;
+    use crosscom::ComInterface;
+use shared::openpal4::comdef::IOpenPAL4DirectorImpl;
+use shared::openpal4::comdef::IPal4ActorAnimationControllerImpl;
+use shared::openpal4::comdef::IPal4ActorControllerImpl;
+use crosscom::IUnknownImpl;
+use crosscom::IObjectArrayImpl;
+use radiance::comdef::IComponentImpl;
+use radiance::comdef::IComponentContainerImpl;
+use radiance::comdef::IApplicationImpl;
+use radiance::comdef::IApplicationLoaderComponentImpl;
+use radiance::comdef::ISceneImpl;
+use radiance::comdef::IEntityImpl;
+use radiance::comdef::IStaticMeshComponentImpl;
+use radiance::comdef::IAnimatedMeshComponentImpl;
+use radiance::comdef::IDirectorImpl;
+use radiance::comdef::ISceneManagerImpl;
+use radiance::comdef::IArmatureComponentImpl;
+use radiance::comdef::ISkinnedMeshComponentImpl;
+use radiance::comdef::IHAnimBoneComponentImpl;
+use radiance::comdef::IAnimationEventObserverImpl;
+
+
+    #[repr(C)]
+    pub struct Pal4ActorControllerCcw {
+        IPal4ActorController: shared::openpal4::comdef::IPal4ActorController,
+
+        ref_count: std::sync::atomic::AtomicU32,
+        pub inner: $impl_type,
+    }
+
+    unsafe extern "system" fn query_interface(
+        this: *const *const std::os::raw::c_void,
+        guid: uuid::Uuid,
+        retval: &mut *const *const std::os::raw::c_void,
+    ) -> std::os::raw::c_long {
+        let object = crosscom::get_object::<Pal4ActorControllerCcw>(this);
+        match guid.as_bytes() {
+
+&crosscom::IUnknown::INTERFACE_ID => {
+    *retval = (object as *const *const std::os::raw::c_void).offset(0);
+    add_ref(object as *const *const std::os::raw::c_void);
+    crosscom::ResultCode::Ok as std::os::raw::c_long
+}
+
+
+&radiance::comdef::IComponent::INTERFACE_ID => {
+    *retval = (object as *const *const std::os::raw::c_void).offset(0);
+    add_ref(object as *const *const std::os::raw::c_void);
+    crosscom::ResultCode::Ok as std::os::raw::c_long
+}
+
+
+&shared::openpal4::comdef::IPal4ActorController::INTERFACE_ID => {
+    *retval = (object as *const *const std::os::raw::c_void).offset(0);
+    add_ref(object as *const *const std::os::raw::c_void);
+    crosscom::ResultCode::Ok as std::os::raw::c_long
+}
+
+
+            _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
+        }
+    }
+
+    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+        let object = crosscom::get_object::<Pal4ActorControllerCcw>(this);
+        let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        (previous + 1) as std::os::raw::c_long
+    }
+
+    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+        let object = crosscom::get_object::<Pal4ActorControllerCcw>(this);
+
+        let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        if previous - 1 == 0 {
+            Box::from_raw(object as *mut Pal4ActorControllerCcw);
+        }
+
+        (previous - 1) as std::os::raw::c_long
+    }
+
+
+
+    unsafe extern "system" fn lock_control (this: *const *const std::os::raw::c_void, lock: std::os::raw::c_int,
+) -> () {
+        let lock: bool = lock != 0
+;
+
+        let __crosscom_object = crosscom::get_object::<Pal4ActorControllerCcw>(this);
+        (*__crosscom_object).inner.lock_control(lock.into()).into()
+    }
+
+
+
+    unsafe extern "system" fn on_loading (this: *const *const std::os::raw::c_void, ) -> () {
+
+        let __crosscom_object = crosscom::get_object::<Pal4ActorControllerCcw>(this);
+        (*__crosscom_object).inner.on_loading().into()
+    }
+
+
+
+    unsafe extern "system" fn on_updating (this: *const *const std::os::raw::c_void, delta_sec: std::os::raw::c_float,
+) -> () {
+        let delta_sec: f32 = delta_sec.into()
+;
+
+        let __crosscom_object = crosscom::get_object::<Pal4ActorControllerCcw>(this);
+        (*__crosscom_object).inner.on_updating(delta_sec.into()).into()
+    }
+
+
+
+    unsafe extern "system" fn on_unloading (this: *const *const std::os::raw::c_void, ) -> () {
+
+        let __crosscom_object = crosscom::get_object::<Pal4ActorControllerCcw>(this);
+        (*__crosscom_object).inner.on_unloading().into()
+    }
+
+
+
+
+
+
+#[allow(non_upper_case_globals)]
+pub const GLOBAL_IPal4ActorControllerVirtualTable_CCW_FOR_Pal4ActorController: shared::openpal4::comdef::IPal4ActorControllerVirtualTableCcw
+    = shared::openpal4::comdef::IPal4ActorControllerVirtualTableCcw {
+    offset: 0,
+    vtable: shared::openpal4::comdef::IPal4ActorControllerVirtualTable {
+        query_interface,
+add_ref,
+release,
+on_loading,
+on_updating,
+on_unloading,
+lock_control,
+
+    },
+};
+
+
+
+
+    impl crosscom::ComObject for $impl_type {
+        type CcwType = Pal4ActorControllerCcw;
+
+        fn create_ccw(self) -> Self::CcwType {
+            Self::CcwType {
+
+IPal4ActorController: shared::openpal4::comdef::IPal4ActorController {
+    vtable: &GLOBAL_IPal4ActorControllerVirtualTable_CCW_FOR_Pal4ActorController.vtable
+        as *const shared::openpal4::comdef::IPal4ActorControllerVirtualTable,
+},
+
+                ref_count: std::sync::atomic::AtomicU32::new(0),
+                inner: self,
+            }
+        }
+
+        fn get_ccw(&self) -> &Self::CcwType {
+            unsafe {
+                let this = self as *const _ as *const u8;
+                let this = this.offset(-(crosscom::offset_of!(Pal4ActorControllerCcw, inner) as isize));
+                &*(this as *const Self::CcwType)
+            }
+        }
+    }
+}
+    }
+}
+
+// pub use ComObject_Pal4ActorController;

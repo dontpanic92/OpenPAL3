@@ -9,7 +9,7 @@ use fileformats::rwbs::{
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{comdef::IEntity, rendering::ComponentFactory, scene::CoreEntity};
 
-use super::{dff::DffLoaderConfig, TextureResolver};
+use super::dff::DffLoaderConfig;
 
 pub fn create_entity_from_bsp_model<P: AsRef<Path>>(
     component_factory: &Rc<dyn ComponentFactory>,

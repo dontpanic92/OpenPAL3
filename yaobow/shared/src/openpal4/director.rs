@@ -71,10 +71,10 @@ impl IDirectorImpl for OpenPAL4Director {
         self.vm.borrow_mut().app_context_mut().update(delta_sec);
         self.vm.borrow_mut().execute(delta_sec);
 
-        if !self.vm.borrow().app_context().player_locked {
+        /*if !self.vm.borrow().app_context().player_locked {
             self.control
                 .update(scene_manager.scene().unwrap(), delta_sec)
-        }
+        }*/
 
         None
     }

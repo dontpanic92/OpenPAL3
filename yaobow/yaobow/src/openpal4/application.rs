@@ -36,6 +36,7 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
         let vfs = init_virtual_fs(self.root_path.to_str().unwrap(), None);
         let loader = AssetLoader::new(
             self.app.engine().borrow().rendering_component_factory(),
+            input_engine.clone(),
             vfs,
         );
 

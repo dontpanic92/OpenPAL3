@@ -5,7 +5,6 @@ use radiance::{
     audio::AudioEngine,
     comdef::{IDirector, IDirectorImpl, ISceneManager},
     input::InputEngine,
-    math::{Quaternion, Vec3},
     radiance::UiManager,
     rendering::ComponentFactory,
     utils::free_view::FreeViewController,

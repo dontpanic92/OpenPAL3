@@ -9,7 +9,7 @@ use radiance::rendering::ComponentFactory;
 use radiance::scene::CoreScene;
 use radiance::utils::SeekRead;
 use std::io::BufReader;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::{io, rc::Rc};
 
 use super::comdef::IScnSceneComponent;

@@ -7,7 +7,7 @@ use radiance::comdef::IEntity;
 use shared::{
     loaders::{
         dff::{create_entity_from_dff_model, DffLoaderConfig},
-        Pal4TextureResolver, TextureResolver,
+        Pal4TextureResolver,
     },
     openpal3::asset_manager::AssetManager,
     GameType,

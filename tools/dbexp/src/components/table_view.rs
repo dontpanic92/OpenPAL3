@@ -70,7 +70,7 @@ impl TableView {
                         });
                     }
                 })
-                .body(|mut body| {
+                .body(|body| {
                     body.rows(text_height, self.items.len(), |mut row| {
                         let row_index = row.index();
 

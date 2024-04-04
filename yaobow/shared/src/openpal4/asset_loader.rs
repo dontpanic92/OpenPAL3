@@ -13,6 +13,7 @@ use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{IArmatureComponent, IComponent, IEntity, IScene},
     components::mesh::{event::AnimationEvent, skinned_mesh::AnimKeyFrame},
+    input::InputEngine,
     rendering::{ComponentFactory, Sprite},
     scene::CoreScene,
     utils::SeekRead,
@@ -30,22 +31,28 @@ use crate::{
 };
 
 use super::{
-    actor::{Pal4ActorAnimationConfig, Pal4CharacterController},
-    comdef::IPal4CharacterController,
+    actor::{Pal4ActorAnimationConfig, Pal4ActorAnimationController},
+    comdef::IPal4ActorAnimationController,
 };
 
 pub struct AssetLoader {
     vfs: MiniFs,
     component_factory: Rc<dyn ComponentFactory>,
+    input: Rc<RefCell<dyn InputEngine>>,
     texture_resolver: Pal4TextureResolver,
     portraits: HashMap<String, ImageSetImage>,
 }
 
 impl AssetLoader {
-    pub fn new(component_factory: Rc<dyn ComponentFactory>, vfs: MiniFs) -> Rc<Self> {
+    pub fn new(
+        component_factory: Rc<dyn ComponentFactory>,
+        input: Rc<RefCell<dyn InputEngine>>,
+        vfs: MiniFs,
+    ) -> Rc<Self> {
         let portraits = load_portraits(&component_factory, &vfs);
         Rc::new(Self {
             component_factory,
+            input,
             vfs,
             texture_resolver: Pal4TextureResolver {},
             portraits,
@@ -87,9 +94,9 @@ impl AssetLoader {
             .query_interface::<IArmatureComponent>()
             .unwrap();
 
-        let controller = Pal4CharacterController::create(armature);
+        let controller = Pal4ActorAnimationController::create(armature);
         entity.add_component(
-            IPal4CharacterController::uuid(),
+            IPal4ActorAnimationController::uuid(),
             controller.query_interface::<IComponent>().unwrap(),
         );
 

@@ -2,7 +2,7 @@ use crate::scripting::sce::{SceCommand, SceState};
 use crosscom::ComRc;
 use imgui::Ui;
 use radiance::comdef::ISceneManager;
-use radiance::math::{Transform, Vec3};
+use radiance::math::Vec3;
 
 #[derive(Debug, Clone)]
 pub struct SceCommandQuake {

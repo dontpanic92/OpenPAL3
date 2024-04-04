@@ -1,7 +1,7 @@
 use imgui::TextureId;
 
 use super::imgui::ImguiRenderer;
-use super::texture::{self, VulkanTextureStore};
+use super::texture::VulkanTextureStore;
 use super::{
     adhoc_command_runner::AdhocCommandRunner, descriptor_managers::DescriptorManager,
     device::Device, material::VulkanMaterial, render_object::VulkanRenderObject,

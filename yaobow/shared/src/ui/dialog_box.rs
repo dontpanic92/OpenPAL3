@@ -131,5 +131,7 @@ fn basic_dlg_box<'a>(ui: &'a Ui, name: &'static str) -> imgui::Window<'a, 'a, &'
         .collapsible(false)
         .title_bar(false)
         .resizable(false)
+        .movable(false)
+        .focused(false)
         .no_decoration()
 }
