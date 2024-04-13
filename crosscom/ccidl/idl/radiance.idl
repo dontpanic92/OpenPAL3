@@ -104,7 +104,10 @@ interface IEntity: IComponentContainer {
 class Entity: IEntity {}
 
 [uuid(8dd91852-476b-401b-8668-ba9cc331b7a1)]
-interface IStaticMeshComponent: IComponent {}
+interface IStaticMeshComponent: IComponent {
+    [internal(), rust()]
+    &'static radiance::components::mesh::static_mesh::StaticMeshComponent get();
+}
 
 [uuid(aa9cfbdc-59a2-4e9e-9280-f77d52e79494)]
 class StaticMeshComponent: IStaticMeshComponent {}

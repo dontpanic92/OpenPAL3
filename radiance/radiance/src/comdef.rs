@@ -1996,6 +1996,9 @@ pub struct IStaticMeshComponentVirtualTable {
         delta_sec: std::os::raw::c_float,
     ) -> (),
     pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub get: fn(
+        this: *const *const std::os::raw::c_void,
+    ) -> &'static radiance::components::mesh::static_mesh::StaticMeshComponent,
 }
 
 #[repr(C)]
@@ -2077,13 +2080,24 @@ impl IStaticMeshComponent {
         }
     }
 
+    pub fn get(&self) -> &'static radiance::components::mesh::static_mesh::StaticMeshComponent {
+        unsafe {
+            let this = self as *const IStaticMeshComponent as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).get)(this);
+
+            ret
+        }
+    }
+
     pub fn uuid() -> uuid::Uuid {
         use crosscom::ComInterface;
         uuid::Uuid::from_bytes(IStaticMeshComponent::INTERFACE_ID)
     }
 }
 
-pub trait IStaticMeshComponentImpl {}
+pub trait IStaticMeshComponentImpl {
+    fn get(&self) -> &'static radiance::components::mesh::static_mesh::StaticMeshComponent;
+}
 
 impl crosscom::ComInterface for IStaticMeshComponent {
     // 8dd91852-476b-401b-8668-ba9cc331b7a1
@@ -2184,6 +2198,15 @@ macro_rules! ComObject_StaticMeshComponent {
                 (previous - 1) as std::os::raw::c_long
             }
 
+            fn get(
+                this: *const *const std::os::raw::c_void,
+            ) -> &'static radiance::components::mesh::static_mesh::StaticMeshComponent {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<StaticMeshComponentCcw>(this);
+                    (*__crosscom_object).inner.get()
+                }
+            }
+
             unsafe extern "system" fn on_loading(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<StaticMeshComponentCcw>(this);
                 (*__crosscom_object).inner.on_loading().into()
@@ -2219,6 +2242,7 @@ macro_rules! ComObject_StaticMeshComponent {
                         on_loading,
                         on_updating,
                         on_unloading,
+                        get,
                     },
                 };
 

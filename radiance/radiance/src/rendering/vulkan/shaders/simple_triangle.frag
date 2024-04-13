@@ -10,5 +10,7 @@ void main() {
     outColor = texture(texSampler, fragTexCoord);
     if (outColor.a < 0.4) {
         discard;
+    } else {
+        outColor.a = 1.0;
     }
 }

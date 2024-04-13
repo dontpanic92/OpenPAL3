@@ -288,4 +288,21 @@ impl VertexBuffer {
     pub fn components(&self) -> VertexComponents {
         self.layout.components
     }
+
+    pub fn to_position_vec(&self) -> Vec<Vec3> {
+        let vertex_size = self.layout.size;
+        let mut result = Vec::with_capacity(self.count);
+        let offset = self.layout.get_offset(VertexComponents::POSITION).unwrap();
+        for i in 0..self.count {
+            let data: &Vec3 = unsafe {
+                &*(self
+                    .data
+                    .as_ptr()
+                    .offset((i * vertex_size + offset) as isize) as *const Vec3)
+            };
+            result.push(*data);
+        }
+
+        result
+    }
 }

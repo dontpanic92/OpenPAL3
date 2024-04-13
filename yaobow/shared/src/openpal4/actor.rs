@@ -12,6 +12,7 @@ use radiance::{
     },
     input::InputEngine,
     math::{Mat44, Vec3},
+    utils::ray_casting::RayCaster,
 };
 
 use crate::{
@@ -106,6 +107,7 @@ struct Pal4ActorControllerInner {
     input: Rc<RefCell<dyn InputEngine>>,
     entity: ComRc<IEntity>,
     scene: ComRc<IScene>,
+    ray_caster: RayCaster,
     lock_control: bool,
     camera_rotation: f32,
 }
@@ -115,11 +117,13 @@ impl Pal4ActorControllerInner {
         input: Rc<RefCell<dyn InputEngine>>,
         entity: ComRc<IEntity>,
         scene: ComRc<IScene>,
+        ray_caster: RayCaster,
     ) -> Self {
         Self {
             input,
             entity,
             scene,
+            ray_caster,
             lock_control: false,
             camera_rotation: 0.,
         }
@@ -134,16 +138,36 @@ impl Pal4ActorControllerInner {
         let current_position = self.entity.transform().borrow().position();
         let direction = get_moving_direction(self.input.clone(), self.scene.clone());
 
-        let target_position =
-            Vec3::add(&current_position, &Vec3::dot(speed * delta_sec, &direction));
+        let target_position = Vec3::add(
+            &current_position,
+            &Vec3::scalar_mul(speed * delta_sec, &direction),
+        );
 
-        if direction.norm() > 0.5 {
-            let look_at = Vec3::new(current_position.x, target_position.y, current_position.z);
-            self.entity
-                .transform()
-                .borrow_mut()
-                .set_position(&target_position)
-                .look_at(&look_at);
+        const STEP_HEIGHT: f32 = 10.;
+
+        let ray_origin = Vec3::new(
+            target_position.x,
+            target_position.y + STEP_HEIGHT,
+            target_position.z,
+        );
+        let p = self
+            .ray_caster
+            .cast_aaray(ray_origin, radiance::utils::ray_casting::AARayDirection::NY);
+
+        if let Some(p) = p {
+            if direction.norm() > 0.5 {
+                let target_position = Vec3::new(
+                    target_position.x,
+                    target_position.y + STEP_HEIGHT - p,
+                    target_position.z,
+                );
+                let look_at = Vec3::new(current_position.x, target_position.y, current_position.z);
+                self.entity
+                    .transform()
+                    .borrow_mut()
+                    .set_position(&target_position)
+                    .look_at(&look_at);
+            }
         }
 
         self.camera_rotation =
@@ -170,9 +194,12 @@ impl Pal4ActorController {
         input: Rc<RefCell<dyn InputEngine>>,
         entity: ComRc<IEntity>,
         scene: ComRc<IScene>,
+        ray_caster: RayCaster,
     ) -> Pal4ActorController {
         Self {
-            inner: RefCell::new(Pal4ActorControllerInner::new(input, entity, scene)),
+            inner: RefCell::new(Pal4ActorControllerInner::new(
+                input, entity, scene, ray_caster,
+            )),
         }
     }
 }

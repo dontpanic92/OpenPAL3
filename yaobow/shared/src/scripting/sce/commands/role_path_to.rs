@@ -69,7 +69,10 @@ impl SceCommand for SceCommandRolePathTo {
         let new_position = if completed {
             to
         } else {
-            Vec3::add(&position, &Vec3::dot(step, &Vec3::normalized(&remain)))
+            Vec3::add(
+                &position,
+                &Vec3::scalar_mul(step, &Vec3::normalized(&remain)),
+            )
         };
 
         let mut look_at = Vec3::new(to.x, position.y, to.z);

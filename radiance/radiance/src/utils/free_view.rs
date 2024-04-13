@@ -45,7 +45,7 @@ impl FreeViewController {
 
         if movement.norm() > 0.0 {
             movement.normalize();
-            movement = Vec3::dot(SPEED * delta_sec, &movement);
+            movement = Vec3::scalar_mul(SPEED * delta_sec, &movement);
 
             transform.translate_local(&movement);
         }
@@ -62,7 +62,7 @@ impl FreeViewController {
 
         if movement.norm() > 0.0 {
             movement.normalize();
-            movement = Vec3::dot(SPEED * delta_sec, &movement);
+            movement = Vec3::scalar_mul(SPEED * delta_sec, &movement);
 
             transform.translate(&movement);
         }

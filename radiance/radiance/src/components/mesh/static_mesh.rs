@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crosscom::ComRc;
 
 use crate::{
-    comdef::{IComponentImpl, IEntity},
+    comdef::{IComponentImpl, IEntity, IStaticMeshComponent, IStaticMeshComponentImpl},
     rendering::ComponentFactory,
     ComObject_StaticMeshComponent,
 };
@@ -29,6 +29,16 @@ impl StaticMeshComponent {
             geometries,
             component_factory,
         }
+    }
+
+    pub fn get_geometries(&self) -> &[Geometry] {
+        &self.geometries
+    }
+}
+
+impl IStaticMeshComponentImpl for StaticMeshComponent {
+    fn get(&self) -> &'static StaticMeshComponent {
+        unsafe { &*(self as *const _) }
     }
 }
 

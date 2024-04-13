@@ -151,7 +151,7 @@ impl AssetLoader {
             scene_name, block_name, block_name,
         );
 
-        self.try_load_scene_dff(path)
+        self.try_load_dff(path, "sky".to_string())
     }
 
     pub fn try_load_scene_clip(
@@ -164,7 +164,7 @@ impl AssetLoader {
             scene_name, block_name, block_name,
         );
 
-        self.try_load_scene_dff(path)
+        self.try_load_dff(path, "clip".to_string())
     }
 
     pub fn try_load_scene_clip_na(
@@ -177,16 +177,16 @@ impl AssetLoader {
             scene_name, block_name, block_name,
         );
 
-        self.try_load_scene_dff(path)
+        self.try_load_dff(path, "clipNA".to_string())
     }
 
-    fn try_load_scene_dff(&self, path: String) -> Option<ComRc<IEntity>> {
+    fn try_load_dff(&self, path: String, object_name: String) -> Option<ComRc<IEntity>> {
         if self.vfs.exists(&path) {
             let entity = create_entity_from_dff_model(
                 &self.component_factory,
                 &self.vfs,
                 path.clone(),
-                "world_clip".to_string(),
+                object_name,
                 true,
                 &DffLoaderConfig {
                     texture_resolver: &self.texture_resolver,
@@ -200,6 +200,24 @@ impl AssetLoader {
             println!("Not Loaded dff: {}", path);
             None
         }
+    }
+
+    pub fn load_scene_floor(&self, scene_name: &str, block_name: &str) -> Option<ComRc<IEntity>> {
+        let path = format!(
+            "/gamedata/scenedata/{}/{}/{}_floor.dff",
+            scene_name, block_name, block_name,
+        );
+
+        self.try_load_dff(path, "floor".to_string())
+    }
+
+    pub fn load_scene_wall(&self, scene_name: &str, block_name: &str) -> Option<ComRc<IEntity>> {
+        let path = format!(
+            "/gamedata/scenedata/{}/{}/{}_wall.dff",
+            scene_name, block_name, block_name,
+        );
+
+        self.try_load_dff(path, "wall".to_string())
     }
 
     pub fn load_npc_info(&self, scene_name: &str, block_name: &str) -> anyhow::Result<NpcInfoFile> {

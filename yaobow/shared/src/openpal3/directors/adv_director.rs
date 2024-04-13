@@ -214,8 +214,10 @@ impl AdventureDirectorProps {
 
         let scene = scene_manager.scn_scene().unwrap().get();
         let speed = 175.;
-        let mut target_position =
-            Vec3::add(&position, &Vec3::dot(speed * delta_sec, &moving_direction));
+        let mut target_position = Vec3::add(
+            &position,
+            &Vec3::scalar_mul(speed * delta_sec, &moving_direction),
+        );
         let target_nav_coord =
             scene.scene_coord_to_nav_coord(role_controller.get().nav_layer(), &target_position);
         let height = scene.get_height(role_controller.get().nav_layer(), target_nav_coord);

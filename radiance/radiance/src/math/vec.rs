@@ -118,8 +118,12 @@ impl Vec3 {
         Vec3::new(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z)
     }
 
-    pub fn dot(lhs: f32, rhs: &Vec3) -> Self {
+    pub fn scalar_mul(lhs: f32, rhs: &Vec3) -> Self {
         Vec3::new(lhs * rhs.x, lhs * rhs.y, lhs * rhs.z)
+    }
+
+    pub fn dot(lhs: &Vec3, rhs: &Vec3) -> f32 {
+        lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z
     }
 
     pub fn cross(lhs: &Vec3, rhs: &Vec3) -> Self {

@@ -1,11 +1,13 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crosscom::ComRc;
+use itertools::Itertools;
 use radiance::{
-    comdef::{IEntity, IScene},
+    comdef::{IEntity, IScene, IStaticMeshComponent},
     input::InputEngine,
-    math::Vec3,
+    math::{Transform, Vec3},
     scene::{CoreEntity, CoreScene},
+    utils::ray_casting::RayCaster,
 };
 
 use super::{
@@ -90,6 +92,19 @@ impl Pal4Scene {
 
         scene.camera().borrow_mut().set_fov43(45_f32.to_radians());
 
+        let mut ray_caster = RayCaster::new();
+        let floor = asset_loader.load_scene_floor(scene_name, block_name);
+        let wall = asset_loader.load_scene_wall(scene_name, block_name);
+        setup_ray_caster(&mut ray_caster, floor.clone(), wall.clone());
+
+        /*if let Some(floor) = floor {
+            scene.add_entity(floor);
+        }
+
+        if let Some(wall) = wall {
+            scene.add_entity(wall);
+        }*/
+
         let players = [
             load_player(asset_loader, Player::YunTianhe),
             load_player(asset_loader, Player::HanLingsha),
@@ -97,7 +112,8 @@ impl Pal4Scene {
             load_player(asset_loader, Player::MurongZiying),
         ];
 
-        let controller = Pal4ActorController::create(input, players[0].clone(), scene.clone());
+        let controller =
+            Pal4ActorController::create(input, players[0].clone(), scene.clone(), ray_caster);
         players[0].add_component(IPal4ActorController::uuid(), ComRc::from_object(controller));
 
         for p in &players {
@@ -179,4 +195,46 @@ fn load_player(asset_loader: &AssetLoader, player: Player) -> ComRc<IEntity> {
     entity.set_visible(false);
 
     entity
+}
+
+fn setup_ray_caster(
+    ray_caster: &mut RayCaster,
+    floor: Option<ComRc<IEntity>>,
+    wall: Option<ComRc<IEntity>>,
+) {
+    if let Some(floor) = floor {
+        floor.update_world_transform(&Transform::new());
+        add_mesh(ray_caster, floor);
+    }
+
+    if let Some(wall) = wall {
+        wall.update_world_transform(&Transform::new());
+        add_mesh(ray_caster, wall);
+    }
+}
+
+fn add_mesh(ray_caster: &mut RayCaster, entity: ComRc<IEntity>) {
+    for child in entity.children() {
+        add_mesh(ray_caster, child);
+    }
+
+    let mesh = entity.get_component(IStaticMeshComponent::uuid());
+    if let Some(mesh) = mesh {
+        let mesh = mesh.query_interface::<IStaticMeshComponent>().unwrap();
+        let mesh = mesh.get();
+        let geometries = mesh.get_geometries();
+        let entity_position = entity.world_transform().position();
+
+        for geometry in geometries {
+            let v = geometry
+                .vertices
+                .to_position_vec()
+                .into_iter()
+                .map(|v| Vec3::add(&entity_position, &v))
+                .collect();
+
+            let i = geometry.indices.clone();
+            ray_caster.add_mesh(v, i);
+        }
+    }
 }
