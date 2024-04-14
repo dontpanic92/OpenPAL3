@@ -75,7 +75,6 @@ impl AssetLoader {
         default_act: Option<&str>,
     ) -> anyhow::Result<ComRc<IEntity>> {
         let model_path = format!("/gamedata/PALActor/{}/{}.dff", actor_name, actor_name);
-
         let entity = create_entity_from_dff_model(
             &self.component_factory,
             &self.vfs,

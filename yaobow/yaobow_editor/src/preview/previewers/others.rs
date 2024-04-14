@@ -26,7 +26,7 @@ impl TextContentLoader for OthersTextContentLoader {
     fn is_supported(&self, path: &std::path::Path) -> bool {
         let extension = get_extension(path);
         match extension.as_deref() {
-            Some("scn" | "nav" | "sce" | "anm" | "nod") => true,
+            Some("scn" | "nav" | "sce" | "nod") => true,
             _ => false,
         }
     }
