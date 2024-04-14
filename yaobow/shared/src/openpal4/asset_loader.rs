@@ -30,10 +30,7 @@ use crate::{
     scripting::angelscript::ScriptModule,
 };
 
-use super::{
-    actor::{Pal4ActorAnimationConfig, Pal4ActorAnimationController},
-    comdef::IPal4ActorAnimationController,
-};
+use super::{actor::Pal4ActorAnimationController, comdef::IPal4ActorAnimationController};
 
 pub struct AssetLoader {
     vfs: MiniFs,
@@ -59,6 +56,14 @@ impl AssetLoader {
         })
     }
 
+    pub fn component_factory(&self) -> Rc<dyn ComponentFactory> {
+        self.component_factory.clone()
+    }
+
+    pub fn vfs(&self) -> &MiniFs {
+        &self.vfs
+    }
+
     pub fn load_script_module(&self, scene: &str) -> anyhow::Result<Rc<RefCell<ScriptModule>>> {
         let content = self
             .vfs
@@ -69,7 +74,7 @@ impl AssetLoader {
     }
 
     pub fn load_actor(
-        &self,
+        self: &Rc<Self>,
         entity_name: &str,
         actor_name: &str,
         default_act: Option<&str>,
@@ -93,7 +98,8 @@ impl AssetLoader {
             .query_interface::<IArmatureComponent>()
             .unwrap();
 
-        let controller = Pal4ActorAnimationController::create(armature);
+        let controller =
+            Pal4ActorAnimationController::create(actor_name.to_string(), self.clone(), armature);
         entity.add_component(
             IPal4ActorAnimationController::uuid(),
             controller.query_interface::<IComponent>().unwrap(),
@@ -102,10 +108,22 @@ impl AssetLoader {
         if let Some(default_act) = default_act {
             let anm = self.load_anm(actor_name, default_act).unwrap_or(vec![]);
             let events = self.load_amf(actor_name, default_act);
-            controller.play_animation(anm, events, Pal4ActorAnimationConfig::Looping);
+            controller.set_default(anm, events);
+            controller.play_default();
         }
 
         Ok(entity)
+    }
+
+    pub fn load_run_animation(&self, actor_name: &str) -> anyhow::Result<Animation> {
+        self.load_animation(actor_name, "C03")
+            .or_else(|_| self.load_animation(actor_name, "C02"))
+    }
+
+    pub fn load_animation(&self, actor_name: &str, act_name: &str) -> anyhow::Result<Animation> {
+        let keyframes = self.load_anm(actor_name, act_name)?;
+        let events = self.load_amf(actor_name, act_name);
+        Ok(Animation { keyframes, events })
     }
 
     pub fn load_anm(
@@ -396,4 +414,9 @@ fn load_portraits_single(
     }
 
     Ok(())
+}
+
+pub struct Animation {
+    pub keyframes: Vec<Vec<AnimKeyFrame>>,
+    pub events: Vec<AnimationEvent>,
 }

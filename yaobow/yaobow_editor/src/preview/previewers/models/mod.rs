@@ -4,15 +4,15 @@ mod dff;
 mod mv3;
 mod pol;
 
-use std::{path::Path, rc::Rc};
+use std::path::Path;
 
 use crosscom::ComRc;
 use mini_fs::MiniFs;
 use radiance::comdef::IEntity;
-use shared::{openpal3::asset_manager::AssetManager, GameType};
+use shared::GameType;
 
 use crate::{
-    directors::{main_content::ContentTab, DevToolsState},
+    directors::{main_content::ContentTab, DevToolsAssetLoader, DevToolsState},
     preview::panes::TextPane,
 };
 
@@ -28,7 +28,7 @@ pub struct ModelPreviewer {
 }
 
 impl ModelPreviewer {
-    pub fn new(asset_mgr: Rc<AssetManager>, game_type: GameType) -> Self {
+    pub fn new(asset_mgr: DevToolsAssetLoader, game_type: GameType) -> Self {
         Self {
             model_loaders: vec![
                 Box::new(Mv3ModelLoader::new(asset_mgr.clone())),

@@ -1,23 +1,25 @@
-use std::{path::Path, rc::Rc};
+use std::path::Path;
 
 use crosscom::ComRc;
 use mini_fs::MiniFs;
 use radiance::comdef::IEntity;
 use shared::openpal3::{
-    asset_manager::AssetManager, loaders::cvd_loader::cvd_load_from_file,
-    scene::create_entity_from_cvd_model,
+    loaders::cvd_loader::cvd_load_from_file, scene::create_entity_from_cvd_model,
 };
 
-use crate::preview::previewers::{get_extension, jsonify};
+use crate::{
+    directors::DevToolsAssetLoader,
+    preview::previewers::{get_extension, jsonify},
+};
 
 use super::ModelLoader;
 
 pub struct CvdModelLoader {
-    asset_mgr: Rc<AssetManager>,
+    asset_mgr: DevToolsAssetLoader,
 }
 
 impl CvdModelLoader {
-    pub fn new(asset_mgr: Rc<AssetManager>) -> Self {
+    pub fn new(asset_mgr: DevToolsAssetLoader) -> Self {
         Self { asset_mgr }
     }
 }

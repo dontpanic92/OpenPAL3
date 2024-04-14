@@ -1,21 +1,24 @@
-use std::{io::BufReader, path::Path, rc::Rc};
+use std::{io::BufReader, path::Path};
 
 use crosscom::ComRc;
 use fileformats::pol::read_pol;
 use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::IEntity;
-use shared::openpal3::{asset_manager::AssetManager, loaders::pol::create_entity_from_pol_model};
+use shared::openpal3::loaders::pol::create_entity_from_pol_model;
 
-use crate::preview::previewers::{get_extension, jsonify};
+use crate::{
+    directors::DevToolsAssetLoader,
+    preview::previewers::{get_extension, jsonify},
+};
 
 use super::ModelLoader;
 
 pub struct PolModelLoader {
-    asset_mgr: Rc<AssetManager>,
+    asset_mgr: DevToolsAssetLoader,
 }
 
 impl PolModelLoader {
-    pub fn new(asset_mgr: Rc<AssetManager>) -> Self {
+    pub fn new(asset_mgr: DevToolsAssetLoader) -> Self {
         Self { asset_mgr }
     }
 }

@@ -1,24 +1,25 @@
-use std::{io::Read, path::Path, rc::Rc};
+use std::{io::Read, path::Path};
 
 use crosscom::ComRc;
 use fileformats::rwbs::read_bsp;
 use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::IEntity;
-use shared::{
-    loaders::bsp::create_entity_from_bsp_model, openpal3::asset_manager::AssetManager, GameType,
-};
+use shared::{loaders::bsp::create_entity_from_bsp_model, GameType};
 
-use crate::preview::previewers::{get_extension, jsonify};
+use crate::{
+    directors::DevToolsAssetLoader,
+    preview::previewers::{get_extension, jsonify},
+};
 
 use super::ModelLoader;
 
 pub struct BspModelLoader {
-    asset_mgr: Rc<AssetManager>,
+    asset_mgr: DevToolsAssetLoader,
     game_type: GameType,
 }
 
 impl BspModelLoader {
-    pub fn new(asset_mgr: Rc<AssetManager>, game_type: GameType) -> Self {
+    pub fn new(asset_mgr: DevToolsAssetLoader, game_type: GameType) -> Self {
         Self {
             asset_mgr,
             game_type,

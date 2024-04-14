@@ -326,6 +326,19 @@ pub struct IPal4ActorAnimationControllerVirtualTable {
         delta_sec: std::os::raw::c_float,
     ) -> (),
     pub on_unloading: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub set_default: fn(
+        this: *const *const std::os::raw::c_void,
+        keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+        events: Vec<radiance::components::mesh::event::AnimationEvent>,
+    ) -> crosscom::Void,
+    pub play_default: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub play: fn(
+        this: *const *const std::os::raw::c_void,
+        animation: shared::openpal4::actor::Pal4ActorAnimation,
+        config: shared::openpal4::actor::Pal4ActorAnimationConfig,
+    ) -> crosscom::Void,
+    pub current:
+        fn(this: *const *const std::os::raw::c_void) -> shared::openpal4::actor::Pal4ActorAnimation,
     pub play_animation: fn(
         this: *const *const std::os::raw::c_void,
         keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
@@ -422,6 +435,55 @@ impl IPal4ActorAnimationController {
         }
     }
 
+    pub fn set_default(
+        &self,
+        keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+        events: Vec<radiance::components::mesh::event::AnimationEvent>,
+    ) -> crosscom::Void {
+        unsafe {
+            let this =
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).set_default)(this, keyframes.into(), events.into());
+
+            ret
+        }
+    }
+
+    pub fn play_default(&self) -> () {
+        unsafe {
+            let this =
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).play_default)(this);
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn play(
+        &self,
+        animation: shared::openpal4::actor::Pal4ActorAnimation,
+        config: shared::openpal4::actor::Pal4ActorAnimationConfig,
+    ) -> crosscom::Void {
+        unsafe {
+            let this =
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).play)(this, animation.into(), config.into());
+
+            ret
+        }
+    }
+
+    pub fn current(&self) -> shared::openpal4::actor::Pal4ActorAnimation {
+        unsafe {
+            let this =
+                self as *const IPal4ActorAnimationController as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).current)(this);
+
+            ret
+        }
+    }
+
     pub fn play_animation(
         &self,
         keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
@@ -471,6 +533,18 @@ impl IPal4ActorAnimationController {
 }
 
 pub trait IPal4ActorAnimationControllerImpl {
+    fn set_default(
+        &self,
+        keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+        events: Vec<radiance::components::mesh::event::AnimationEvent>,
+    ) -> crosscom::Void;
+    fn play_default(&self) -> ();
+    fn play(
+        &self,
+        animation: shared::openpal4::actor::Pal4ActorAnimation,
+        config: shared::openpal4::actor::Pal4ActorAnimationConfig,
+    ) -> crosscom::Void;
+    fn current(&self) -> shared::openpal4::actor::Pal4ActorAnimation;
     fn play_animation(
         &self,
         keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
@@ -591,6 +665,45 @@ IAnimationEventObserver: radiance::comdef::IAnimationEventObserver,
 
 
 
+    fn set_default (this: *const *const std::os::raw::c_void, keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+events: Vec<radiance::components::mesh::event::AnimationEvent>,
+) -> crosscom::Void {
+        unsafe {
+            let __crosscom_object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
+            (*__crosscom_object).inner.set_default(keyframes,events)
+        }
+    }
+
+
+
+    unsafe extern "system" fn play_default (this: *const *const std::os::raw::c_void, ) -> () {
+
+        let __crosscom_object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
+        (*__crosscom_object).inner.play_default().into()
+    }
+
+
+
+    fn play (this: *const *const std::os::raw::c_void, animation: shared::openpal4::actor::Pal4ActorAnimation,
+config: shared::openpal4::actor::Pal4ActorAnimationConfig,
+) -> crosscom::Void {
+        unsafe {
+            let __crosscom_object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
+            (*__crosscom_object).inner.play(animation,config)
+        }
+    }
+
+
+
+    fn current (this: *const *const std::os::raw::c_void, ) -> shared::openpal4::actor::Pal4ActorAnimation {
+        unsafe {
+            let __crosscom_object = crosscom::get_object::<Pal4ActorAnimationControllerCcw>(this);
+            (*__crosscom_object).inner.current()
+        }
+    }
+
+
+
     fn play_animation (this: *const *const std::os::raw::c_void, keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
 events: Vec<radiance::components::mesh::event::AnimationEvent>,
 config: shared::openpal4::actor::Pal4ActorAnimationConfig,
@@ -670,6 +783,10 @@ release,
 on_loading,
 on_updating,
 on_unloading,
+set_default,
+play_default,
+play,
+current,
 play_animation,
 unhold,
 animation_completed,

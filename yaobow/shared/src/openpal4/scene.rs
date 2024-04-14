@@ -1,7 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crosscom::ComRc;
-use itertools::Itertools;
 use radiance::{
     comdef::{IEntity, IScene, IStaticMeshComponent},
     input::InputEngine,
@@ -69,7 +68,7 @@ impl Pal4Scene {
     }
 
     pub fn load(
-        asset_loader: &asset_loader::AssetLoader,
+        asset_loader: &Rc<asset_loader::AssetLoader>,
         input: Rc<RefCell<dyn InputEngine>>,
         scene_name: &str,
         block_name: &str,
@@ -187,7 +186,7 @@ impl Pal4Scene {
     }
 }
 
-fn load_player(asset_loader: &AssetLoader, player: Player) -> ComRc<IEntity> {
+fn load_player(asset_loader: &Rc<AssetLoader>, player: Player) -> ComRc<IEntity> {
     let entity = asset_loader
         .load_actor(player.name(), player.actor_name(), Some("C01"))
         .unwrap();

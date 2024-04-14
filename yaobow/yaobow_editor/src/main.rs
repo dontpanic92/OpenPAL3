@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 use directors::welcome_page::WelcomePageDirector;
-use directors::DevToolsDirector;
+use directors::{DevToolsAssetLoader, DevToolsDirector};
 use radiance::application::Application;
 use radiance::comdef::{IApplication, IApplicationLoaderComponent, IDirector, ISceneManager};
 use radiance_editor::application::EditorApplicationLoader;
@@ -47,14 +47,33 @@ impl SceneViewResourceView {
         };
 
         let factory = app.engine().borrow().rendering_component_factory();
-        let vfs = Rc::new(shared::fs::init_virtual_fs(&config.asset_path, pkg_key));
-        let asset_mgr = AssetManager::new(factory.clone(), vfs.clone());
+        let input = app.engine().borrow().input_engine();
+        let vfs = shared::fs::init_virtual_fs(&config.asset_path, pkg_key);
+        let asset_loader = match game {
+            GameType::PAL4 => {
+                DevToolsAssetLoader::Pal4(shared::openpal4::asset_loader::AssetLoader::new(
+                    factory.clone(),
+                    input.clone(),
+                    vfs,
+                ))
+            }
+            GameType::PAL5 => DevToolsAssetLoader::Pal5(
+                shared::openpal5::asset_loader::AssetLoader::new(factory.clone(), Rc::new(vfs)),
+            ),
+            GameType::SWD5 => {
+                DevToolsAssetLoader::Swd5(shared::openswd5::asset_loader::AssetLoader::new(
+                    factory.clone(),
+                    Rc::new(vfs),
+                    game,
+                ))
+            }
+            _ => {
+                DevToolsAssetLoader::Pal3(Rc::new(AssetManager::new(factory.clone(), Rc::new(vfs))))
+            }
+        };
+
         let audio_engine = app.engine().borrow().audio_engine();
-        let ui = Some(DevToolsDirector::new(
-            audio_engine,
-            Rc::new(asset_mgr),
-            game,
-        ));
+        let ui = Some(DevToolsDirector::new(audio_engine, asset_loader, game));
 
         SceneViewResourceView {
             ui: RefCell::new(ui),

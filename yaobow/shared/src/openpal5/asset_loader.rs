@@ -33,6 +33,14 @@ impl AssetLoader {
         })
     }
 
+    pub fn component_factory(&self) -> Rc<dyn ComponentFactory> {
+        self.component_factory.clone()
+    }
+
+    pub fn vfs(&self) -> &MiniFs {
+        &self.vfs
+    }
+
     pub fn load_map_nod(&self, map_name: &str) -> anyhow::Result<NodFile> {
         let path = format!("/Map/{}/{}_0_0.nod", map_name, map_name);
         Ok(NodFile::read(&mut Cursor::new(

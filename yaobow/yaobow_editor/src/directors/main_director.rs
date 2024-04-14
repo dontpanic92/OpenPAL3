@@ -1,6 +1,6 @@
 use crate::{ComObject_DevToolsDirector, GameType};
 
-use super::{main_content::ContentTabs, DevToolsState};
+use super::{main_content::ContentTabs, DevToolsAssetLoader, DevToolsState};
 use crosscom::ComRc;
 use imgui::Ui;
 use mini_fs::{Entries, Entry, EntryKind, StoreExt};
@@ -11,10 +11,6 @@ use radiance::{
     scene::CoreScene,
 };
 use radiance_editor::ui::window_content_rect;
-use shared::{
-    loaders::{Pal4TextureResolver, Pal5TextureResolver, Swd5TextureResolver, TextureResolver},
-    openpal3::asset_manager::AssetManager,
-};
 use std::{
     cell::RefCell,
     cmp::Ordering,
@@ -23,7 +19,7 @@ use std::{
 };
 
 pub struct DevToolsDirector {
-    asset_mgr: Rc<AssetManager>,
+    asset_mgr: DevToolsAssetLoader,
     content_tabs: RefCell<ContentTabs>,
     cache: RefCell<lru::LruCache<String, Vec<Entry>>>,
 }
@@ -33,15 +29,9 @@ ComObject_DevToolsDirector!(super::DevToolsDirector);
 impl DevToolsDirector {
     pub fn new(
         audio_engine: Rc<dyn AudioEngine>,
-        asset_mgr: Rc<AssetManager>,
+        asset_mgr: DevToolsAssetLoader,
         game_type: GameType,
     ) -> ComRc<IDirector> {
-        let texture_resolver: Rc<dyn TextureResolver> = match game_type {
-            GameType::PAL3 | GameType::PAL4 => Rc::new(Pal4TextureResolver {}),
-            GameType::PAL5 | GameType::PAL5Q => Rc::new(Pal5TextureResolver {}),
-            _ => Rc::new(Swd5TextureResolver {}),
-        };
-
         ComRc::from_object(Self {
             content_tabs: RefCell::new(ContentTabs::new(
                 audio_engine,
@@ -157,6 +147,8 @@ impl IDirectorImpl for DevToolsDirector {
 
                 let scene = self
                     .asset_mgr
+                    .pal3()
+                    .unwrap()
                     .load_scn(cpk_name.as_str(), scn_name.as_str());
                 scene
                     .camera()

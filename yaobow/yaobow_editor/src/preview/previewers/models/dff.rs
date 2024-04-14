@@ -1,4 +1,4 @@
-use std::{io::Read, path::Path, rc::Rc};
+use std::{io::Read, path::Path};
 
 use crosscom::ComRc;
 use fileformats::rwbs::read_dff;
@@ -10,7 +10,6 @@ use shared::{
         dff::{create_entity_from_dff_model, DffLoaderConfig},
         Pal4TextureResolver,
     },
-    openpal3::asset_manager::AssetManager,
     openpal4::{
         actor::{Pal4ActorAnimationConfig, Pal4ActorAnimationController},
         comdef::IPal4ActorAnimationController,
@@ -18,17 +17,20 @@ use shared::{
     GameType,
 };
 
-use crate::preview::previewers::{get_extension, jsonify};
+use crate::{
+    directors::DevToolsAssetLoader,
+    preview::previewers::{get_extension, jsonify},
+};
 
 use super::ModelLoader;
 
 pub struct DffModelLoader {
-    asset_mgr: Rc<AssetManager>,
+    asset_mgr: DevToolsAssetLoader,
     game_type: GameType,
 }
 
 impl DffModelLoader {
-    pub fn new(asset_mgr: Rc<AssetManager>, game_type: GameType) -> Self {
+    pub fn new(asset_mgr: DevToolsAssetLoader, game_type: GameType) -> Self {
         Self {
             asset_mgr,
             game_type,
@@ -71,37 +73,50 @@ impl ModelLoader for DffModelLoader {
                 }, //self.game_type.dff_loader_config().unwrap(),
             )
         } else {
-            let folder_path = path.parent().unwrap();
-            let actor_name = folder_path.file_name().unwrap().to_str().unwrap();
-            let dff_path = folder_path.join(format!("{}.dff", actor_name));
-            let entity = create_entity_from_dff_model(
-                &self.asset_mgr.component_factory(),
-                vfs,
-                dff_path,
-                "preview".to_string(),
-                true,
-                &DffLoaderConfig {
-                    texture_resolver: &Pal4TextureResolver {},
-                    keep_right_to_render_only: false,
-                },
-            );
+            if self.game_type == GameType::PAL4 {
+                let folder_path = path.parent().unwrap();
+                let actor_name = folder_path.file_name().unwrap().to_str().unwrap();
+                let dff_path = folder_path.join(format!("{}.dff", actor_name));
+                let entity = create_entity_from_dff_model(
+                    &self.asset_mgr.component_factory(),
+                    vfs,
+                    dff_path,
+                    "preview".to_string(),
+                    true,
+                    &DffLoaderConfig {
+                        texture_resolver: &Pal4TextureResolver {},
+                        keep_right_to_render_only: false,
+                    },
+                );
 
-            let armature = entity
-                .get_component(IArmatureComponent::uuid())
-                .unwrap()
-                .query_interface::<IArmatureComponent>()
-                .unwrap();
+                let armature = entity
+                    .get_component(IArmatureComponent::uuid())
+                    .unwrap()
+                    .query_interface::<IArmatureComponent>()
+                    .unwrap();
 
-            let controller = Pal4ActorAnimationController::create(armature);
-            entity.add_component(
-                IPal4ActorAnimationController::uuid(),
-                controller.query_interface::<IComponent>().unwrap(),
-            );
+                let asset_loader = match self.asset_mgr {
+                    DevToolsAssetLoader::Pal4(ref loader) => loader,
+                    _ => unreachable!(),
+                };
 
-            let anm = load_anm(self.asset_mgr.vfs(), path).unwrap_or(vec![]);
-            controller.play_animation(anm, vec![], Pal4ActorAnimationConfig::Looping);
+                let controller = Pal4ActorAnimationController::create(
+                    actor_name.to_string(),
+                    asset_loader.clone(),
+                    armature,
+                );
+                entity.add_component(
+                    IPal4ActorAnimationController::uuid(),
+                    controller.query_interface::<IComponent>().unwrap(),
+                );
 
-            entity
+                let anm = load_anm(self.asset_mgr.vfs(), path).unwrap_or(vec![]);
+                controller.play_animation(anm, vec![], Pal4ActorAnimationConfig::Looping);
+
+                entity
+            } else {
+                unimplemented!()
+            }
         }
     }
 }

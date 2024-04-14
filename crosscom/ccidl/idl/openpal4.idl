@@ -15,7 +15,20 @@ class OpenPAL4Director: IOpenPAL4Director {}
 [uuid(f6d70031-86e7-4efa-b1c5-5196063441ea)]
 interface IPal4ActorAnimationController: IComponent {
     [internal(), rust()]
+    crosscom::Void set_default(Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>> keyframes, Vec<radiance::components::mesh::event::AnimationEvent> events);
+
+    void play_default();
+
+    [internal(), rust()]
+    crosscom::Void play(shared::openpal4::actor::Pal4ActorAnimation animation, shared::openpal4::actor::Pal4ActorAnimationConfig config);
+
+    
+    [internal(), rust()]
+    shared::openpal4::actor::Pal4ActorAnimation current();
+
+    [internal(), rust()]
     crosscom::Void play_animation(Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>> keyframes, Vec<radiance::components::mesh::event::AnimationEvent> events, shared::openpal4::actor::Pal4ActorAnimationConfig config);
+
 
     void unhold();
     bool animation_completed();

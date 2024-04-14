@@ -1,3 +1,5 @@
+use crate as yaobow;
+
 // Class OpenPal3ApplicationLoaderComponent
 
 #[allow(unused)]

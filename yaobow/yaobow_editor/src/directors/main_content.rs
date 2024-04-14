@@ -9,10 +9,9 @@ use crate::{preview::panes::ContentPane, GameType};
 use imgui::{TabBar, TabBarFlags, TabItem, TabItemFlags, Ui};
 use mini_fs::MiniFs;
 use radiance::audio::AudioEngine;
-use shared::openpal3::asset_manager::AssetManager;
 use std::{path::Path, rc::Rc};
 
-use super::DevToolsState;
+use super::{DevToolsAssetLoader, DevToolsState};
 
 pub struct ContentTabs {
     audio_tab: Option<ContentTab>,
@@ -23,7 +22,7 @@ pub struct ContentTabs {
 impl ContentTabs {
     pub fn new(
         audio_engine: Rc<dyn AudioEngine>,
-        asset_mgr: Rc<AssetManager>,
+        asset_mgr: DevToolsAssetLoader,
         game_type: GameType,
     ) -> Self {
         Self {

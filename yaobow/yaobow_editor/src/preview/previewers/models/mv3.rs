@@ -1,26 +1,26 @@
-use std::{io::BufReader, path::Path, rc::Rc};
+use std::{io::BufReader, path::Path};
 
 use crosscom::ComRc;
 use fileformats::mv3::read_mv3;
 use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::IEntity;
-use shared::openpal3::{
-    asset_manager::AssetManager,
-    scene::{
-        create_animated_mesh_from_mv3, create_mv3_entity, RoleAnimationRepeatMode, RoleController,
-    },
+use shared::openpal3::scene::{
+    create_animated_mesh_from_mv3, create_mv3_entity, RoleAnimationRepeatMode, RoleController,
 };
 
-use crate::preview::previewers::{get_extension, jsonify};
+use crate::{
+    directors::DevToolsAssetLoader,
+    preview::previewers::{get_extension, jsonify},
+};
 
 use super::ModelLoader;
 
 pub struct Mv3ModelLoader {
-    asset_mgr: Rc<AssetManager>,
+    asset_mgr: DevToolsAssetLoader,
 }
 
 impl Mv3ModelLoader {
-    pub fn new(asset_mgr: Rc<AssetManager>) -> Self {
+    pub fn new(asset_mgr: DevToolsAssetLoader) -> Self {
         Self { asset_mgr }
     }
 }
@@ -39,7 +39,7 @@ impl ModelLoader for Mv3ModelLoader {
 
     fn load(&self, _vfs: &MiniFs, path: &Path) -> ComRc<IEntity> {
         let e = create_mv3_entity(
-            self.asset_mgr.clone(),
+            self.asset_mgr.pal3().unwrap().clone(),
             "101",
             "preview",
             "preview".to_string(),

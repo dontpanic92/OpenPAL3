@@ -61,6 +61,14 @@ impl AssetLoader {
         })
     }
 
+    pub fn component_factory(&self) -> Rc<dyn ComponentFactory> {
+        self.component_factory.clone()
+    }
+
+    pub fn vfs(&self) -> &MiniFs {
+        &self.vfs
+    }
+
     pub fn load_main_script(&self) -> anyhow::Result<Vec<u8>> {
         let content = self.vfs.read_to_end(self.main_script_path())?;
         let mut reader = Cursor::new(content);
