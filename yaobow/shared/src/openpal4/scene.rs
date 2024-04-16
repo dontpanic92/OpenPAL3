@@ -175,6 +175,12 @@ impl Pal4Scene {
             .unwrap()
     }
 
+    pub fn get_npc_controller(&self, name: &str) -> Option<ComRc<IPal4ActorAnimationController>> {
+        self.get_npc(name)?
+            .get_component(IPal4ActorAnimationController::uuid())?
+            .query_interface::<IPal4ActorAnimationController>()
+    }
+
     pub fn get_player_metadata(&self, player_id: usize) -> Player {
         match player_id {
             Self::ID_YUN_TIANHE => Player::YunTianhe,

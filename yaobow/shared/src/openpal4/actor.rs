@@ -202,7 +202,7 @@ impl Pal4ActorControllerInner {
             entity,
             scene,
             ray_caster,
-            lock_control: false,
+            lock_control: true,
             camera_rotation: 0.,
         }
     }

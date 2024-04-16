@@ -44,7 +44,8 @@ pub struct ScriptVm<TAppContext: 'static> {
     r1: u32,
     r2: u32,
 
-    yield_func: Option<GlobalFunctionContinuation<TAppContext>>,
+    yield_func: Vec<GlobalFunctionContinuation<TAppContext>>,
+    pub(crate) imm: bool,
 }
 
 impl<TAppContext: 'static> ScriptVm<TAppContext> {
@@ -65,7 +66,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             r1: 0,
             r2: 0,
             robj: 0,
-            yield_func: None,
+            yield_func: vec![],
 
             #[cfg(enable_debug)]
             debug_client: DebugIpcClient::new(),
@@ -73,6 +74,8 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             stack: vec![0; Self::DEFAULT_STACK_SIZE],
             sp: Self::DEFAULT_STACK_SIZE,
             fp: Self::DEFAULT_STACK_SIZE,
+
+            imm: true,
         };
 
         vm.debug_update_module();
@@ -148,18 +151,26 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
             self.debug_update_context();
             self.wait_for_action();
-            let cont = self.yield_func.take();
-            match cont {
-                Some(mut cont) => match cont(self, delta_sec) {
+
+            let mut wait = false;
+            let mut new_funcs = vec![];
+            while let Some(mut cont) = self.yield_func.pop() {
+                match cont(self, delta_sec) {
                     crate::scripting::angelscript::ContinuationState::Loop => {
-                        self.yield_func = Some(cont);
-                        return;
+                        new_funcs.push(cont);
+                        wait = true;
                     }
-                    crate::scripting::angelscript::ContinuationState::Completed => {
-                        self.yield_func = None;
+                    crate::scripting::angelscript::ContinuationState::Concurrent => {
+                        new_funcs.push(cont);
                     }
-                },
-                None => {}
+                    crate::scripting::angelscript::ContinuationState::Completed => {}
+                }
+            }
+
+            self.yield_func = new_funcs;
+
+            if wait {
+                return;
             }
 
             let inst = self.read_inst(&function);
@@ -278,9 +289,10 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
                 96 => command!(cmpi: u32, rhs: u32),
                 97 => {
                     command!(callsys, function_index: i32);
-                    if self.yield_func.is_some() {
+                    /*if self.yield_func.is_some() {
                         return;
-                    }
+                    }*/
+                    return;
                 }
                 98 => command!(callbnd, function_index: u32),
                 99 => command!(rdga4, index: i32),
@@ -431,8 +443,8 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         let context = self.g.clone();
         let context = context.borrow();
         match context.call_function(self, index as usize) {
-            super::GlobalFunctionState::Yield(cont) => self.yield_func = Some(cont),
-            super::GlobalFunctionState::Completed => self.yield_func = None,
+            super::GlobalFunctionState::Yield(cont) => self.yield_func.push(cont),
+            super::GlobalFunctionState::Completed => {}
         }
     }
 

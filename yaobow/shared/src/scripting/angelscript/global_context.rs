@@ -10,6 +10,7 @@ pub enum GlobalFunctionState<TAppContext: 'static> {
 
 pub enum ContinuationState {
     Loop,
+    Concurrent,
     Completed,
 }
 

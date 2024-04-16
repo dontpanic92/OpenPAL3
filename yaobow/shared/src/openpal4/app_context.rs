@@ -4,7 +4,7 @@ use crosscom::ComRc;
 use fileformats::cam::CameraDataFile;
 use radiance::{
     audio::AudioEngine,
-    comdef::ISceneManager,
+    comdef::{IEntity, ISceneManager},
     input::InputEngine,
     math::Vec3,
     radiance::{TaskHandle, TaskManager, UiManager},
@@ -15,7 +15,9 @@ use radiance::{
 use crate::ui::dialog_box::{AvatarPosition, DialogBox};
 
 use super::{
-    actor::Pal4ActorAnimationConfig, asset_loader::AssetLoader, comdef::IPal4ActorController,
+    actor::{Pal4ActorAnimation, Pal4ActorAnimationConfig},
+    asset_loader::AssetLoader,
+    comdef::IPal4ActorController,
     scene::Pal4Scene,
 };
 
@@ -40,6 +42,9 @@ pub struct Pal4AppContext {
     scene_name: String,
     block_name: String,
     leader: usize,
+
+    moving_players: HashMap<usize, MovingEntity>,
+    moving_npcs: HashMap<String, MovingEntity>,
 }
 
 impl Pal4AppContext {
@@ -72,11 +77,67 @@ impl Pal4AppContext {
             leader: 0,
             scene: Pal4Scene::new_empty(),
             dialog_box: DialogBox::new(ui),
+            moving_players: HashMap::new(),
+            moving_npcs: HashMap::new(),
         }
     }
 
     pub fn update(&mut self, delta_sec: f32) {
         self.actdrop.update(self.ui.ui(), delta_sec);
+        self.update_moving_entities(delta_sec);
+    }
+
+    fn update_moving_entities(&mut self, delta_sec: f32) {
+        let moving_players = std::mem::take(&mut self.moving_players);
+        let moving_npcs = std::mem::take(&mut self.moving_npcs);
+
+        self.moving_players = self.update_moving_entities_(moving_players, delta_sec);
+        self.moving_npcs = self.update_moving_entities_(moving_npcs, delta_sec);
+    }
+
+    fn update_moving_entities_<T: std::cmp::Eq + std::hash::Hash + Clone>(
+        &mut self,
+        mut entities: HashMap<T, MovingEntity>,
+        delta_sec: f32,
+    ) -> HashMap<T, MovingEntity> {
+        let mut to_remove = Vec::new();
+
+        const RUN_SPEED: f32 = 150.;
+        const WALK_SPEED: f32 = 75.;
+
+        for (id, entity) in entities.iter() {
+            let pos = entity.entity.transform().borrow().position();
+            let target = entity.target;
+            let speed = if entity.running {
+                RUN_SPEED
+            } else {
+                WALK_SPEED
+            };
+
+            let moving_distance = speed * delta_sec;
+            let diff = Vec3::sub(&target, &pos);
+            let distance = diff.norm();
+            if distance < moving_distance {
+                entity.entity.transform().borrow_mut().set_position(&target);
+                to_remove.push(id.clone());
+            } else {
+                let direction = Vec3::normalized(&diff);
+                let new_pos = Vec3::add(&pos, &Vec3::scalar_mul(moving_distance, &direction));
+                let look_at = Vec3::new(pos.x, new_pos.y, pos.z);
+                entity
+                    .entity
+                    .transform()
+                    .borrow_mut()
+                    .set_position(&new_pos)
+                    .look_at(&look_at);
+            }
+        }
+
+        for id in to_remove {
+            entities.remove(&id);
+        }
+
+        entities
     }
 
     pub fn set_actdrop(&mut self, darkness: InterpValue<f32>) {
@@ -101,6 +162,65 @@ impl Pal4AppContext {
             .transform()
             .borrow_mut()
             .set_position(&pos);
+    }
+
+    pub fn get_player_pos(&mut self, player: i32) -> Vec3 {
+        let player = self.map_player(player);
+
+        self.scene
+            .get_player(player)
+            .transform()
+            .borrow()
+            .position()
+    }
+
+    pub fn player_run(&mut self, player: i32, target: &Vec3) {
+        let mapped_player = self.map_player(player);
+        let entity = self.scene.get_player(mapped_player);
+
+        let moving_entity = MovingEntity {
+            entity,
+            target: target.clone(),
+            running: true,
+        };
+
+        self.player_play_animation(player, Pal4ActorAnimation::Run);
+        self.moving_players.insert(mapped_player, moving_entity);
+    }
+
+    pub fn player_moving(&mut self, player: i32) -> bool {
+        let player = self.map_player(player);
+        self.moving_players.contains_key(&player)
+    }
+
+    pub fn npc_run(&mut self, name: &str, target: &Vec3) {
+        let entity = self.scene.get_npc(name);
+        if entity.is_none() {
+            return;
+        }
+
+        let moving_entity = MovingEntity {
+            entity: entity.unwrap(),
+            target: target.clone(),
+            running: true,
+        };
+
+        self.npc_play_animation(name, Pal4ActorAnimation::Run);
+        self.moving_npcs.insert(name.to_string(), moving_entity);
+    }
+
+    pub fn npc_moving(&mut self, name: &str) -> bool {
+        self.moving_npcs.contains_key(name)
+    }
+
+    pub fn player_lookat(&mut self, player: i32, target: &Vec3) {
+        let player = self.map_player(player);
+
+        self.scene
+            .get_player(player)
+            .transform()
+            .borrow_mut()
+            .look_at(target);
     }
 
     pub fn lock_player(&mut self, lock: bool) {
@@ -141,6 +261,19 @@ impl Pal4AppContext {
         self.scene
             .get_player_controller(player)
             .play_animation(anm, events, config);
+    }
+
+    pub fn player_play_animation(&mut self, player: i32, animation: Pal4ActorAnimation) {
+        let player = self.map_player(player);
+        self.scene
+            .get_player_controller(player)
+            .play(animation, Pal4ActorAnimationConfig::Looping);
+    }
+
+    pub fn npc_play_animation(&mut self, name: &str, animation: Pal4ActorAnimation) {
+        self.scene
+            .get_npc_controller(name)
+            .map(|controller| controller.play(animation, Pal4ActorAnimationConfig::Looping));
     }
 
     pub fn player_unhold_act(&mut self, player: i32) {
@@ -327,4 +460,10 @@ impl Pal4AppContext {
             player as usize
         }
     }
+}
+
+struct MovingEntity {
+    entity: ComRc<IEntity>,
+    target: Vec3,
+    running: bool,
 }

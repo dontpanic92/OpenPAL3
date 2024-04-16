@@ -5,12 +5,13 @@ use radiance::{input::Key, math::Vec3, utils::interp_value::InterpValue, video::
 
 use crate::{
     as_params,
+    openpal4::actor::Pal4ActorAnimation,
     scripting::angelscript::{
         not_implemented, ContinuationState, GlobalFunctionContinuation, GlobalFunctionState,
         ScriptGlobalContext, ScriptGlobalFunction, ScriptVm,
     },
     ui::dialog_box::{AvatarPosition, DialogBoxPresenter},
-    utils::{self},
+    utils,
 };
 
 use super::app_context::Pal4AppContext;
@@ -1053,10 +1054,12 @@ pub fn create_context() -> ScriptGlobalContext<Pal4AppContext> {
 }
 
 fn imm_begin(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.imm = true;
     Pal4FunctionState::Completed
 }
 
 fn imm_end(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.imm = false;
     Pal4FunctionState::Completed
 }
 
@@ -2153,7 +2156,9 @@ fn player_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn player_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_run_to :i32);
+    as_params!(vm, player_id:i32, x:f32, y:f32, z:f32, _run_to :i32);
+
+    vm.app_context.player_run(player_id, &Vec3::new(x, y, z));
     Pal4FunctionState::Completed
 }
 
@@ -2201,12 +2206,25 @@ fn player_end_action_repeat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4F
 }
 
 fn player_end_move(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, player_id:i32);
+
+    Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
+        if vm.app_context.player_moving(player_id) {
+            ContinuationState::Loop
+        } else {
+            ContinuationState::Completed
+        }
+    }))
 }
 
 fn current_player_end_move(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    Pal4FunctionState::Completed
+    Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
+        if vm.app_context.player_moving(-1) {
+            ContinuationState::Loop
+        } else {
+            ContinuationState::Completed
+        }
+    }))
 }
 
 fn npc_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
@@ -2215,7 +2233,10 @@ fn npc_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState 
 }
 
 fn npc_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _run_to: i32);
+    as_params!(vm, npc_file_str: i32, x: f32, y: f32, z: f32, _run_to: i32);
+
+    let npc_name = get_str(vm, npc_file_str as usize).unwrap();
+    vm.app_context.npc_run(&npc_name, &Vec3::new(x, y, z));
     Pal4FunctionState::Completed
 }
 
@@ -2290,8 +2311,17 @@ fn npc_end_action_repeat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Func
 }
 
 fn npc_end_move(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, npc_file_str:i32);
+
+    let npc_name = get_str(vm, npc_file_str as usize).unwrap();
+
+    Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
+        if vm.app_context.npc_moving(&npc_name) {
+            ContinuationState::Loop
+        } else {
+            ContinuationState::Completed
+        }
+    }))
 }
 
 fn npc_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
