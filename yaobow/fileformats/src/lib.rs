@@ -3,6 +3,7 @@
 pub mod amf;
 pub mod c00;
 pub mod cam;
+pub mod evf;
 pub mod mv3;
 pub mod nif;
 pub mod nod;

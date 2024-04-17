@@ -1,9 +1,10 @@
-use fileformats::binrw::BinRead;
+use std::io::Cursor;
 
+use fileformats::{binrw::BinRead, evf::EvfFile};
 pub fn run_test() {
     let data =
-        std::fs::read("F:\\SteamLibrary\\steamapps\\common\\SWDHC\\Map\\S5a_03_4.map").unwrap();
-    let map = fileformats::swd5::map::Map::read(&mut std::io::Cursor::new(data)).unwrap();
+        std::fs::read("F:\\PAL4\\gamedata\\scenedata\\scenedata\\q01\\Q01\\Q01.evf").unwrap();
+    let evf = EvfFile::read(&mut Cursor::new(data));
 
-    println!("{:?}", map);
+    println!("{:?}", evf);
 }
