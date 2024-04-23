@@ -91,13 +91,16 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     pub fn set_function(&mut self, module: Rc<RefCell<ScriptModule>>, index: usize) {
-        self.call_stack.push(self.context.clone().unwrap());
+        if self.context.is_some() {
+            self.call_stack.push(self.context.clone().unwrap());
+        }
+
         self.context = Some(ScriptFunctionContext::new(module, index));
 
         self.debug_update_module();
     }
 
-    pub fn set_function_by_name(&mut self, module: Rc<RefCell<ScriptModule>>, name: &str) {
+    pub fn set_function_by_name2(&mut self, module: Rc<RefCell<ScriptModule>>, name: &str) {
         for (i, f) in module.borrow().functions.iter().enumerate() {
             if f.name.as_str() == name {
                 self.set_function(module.clone(), i)

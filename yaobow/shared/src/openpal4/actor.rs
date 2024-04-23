@@ -130,7 +130,7 @@ impl IPal4ActorAnimationControllerImpl for Pal4ActorAnimationController {
         config: crate::openpal4::actor::Pal4ActorAnimationConfig,
     ) {
         let anim = match animation {
-            Pal4ActorAnimation::Walk => self.asset_loader.load_animation(&self.actor_name, "C01"),
+            Pal4ActorAnimation::Walk => self.asset_loader.load_animation(&self.actor_name, "C02"),
             Pal4ActorAnimation::Run => self.asset_loader.load_run_animation(&self.actor_name),
             _ => {
                 self.play_default();

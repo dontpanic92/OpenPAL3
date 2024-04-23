@@ -64,11 +64,26 @@ impl IDirectorImpl for OpenPAL4Director {
 
     fn update(
         &self,
-        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
+        _scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
         _ui: &imgui::Ui,
         delta_sec: f32,
     ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
         self.vm.borrow_mut().app_context_mut().update(delta_sec);
+
+        if self.vm.borrow().context.is_none() {
+            let function = self
+                .vm
+                .borrow_mut()
+                .app_context_mut()
+                .try_trigger_scene_events(delta_sec);
+            if let Some(function) = function {
+                let module = self.vm.borrow().app_context.scene.module.clone().unwrap();
+                self.vm
+                    .borrow_mut()
+                    .set_function_by_name2(module, &function);
+            }
+        }
+
         self.vm.borrow_mut().execute(delta_sec);
 
         /*if !self.vm.borrow().app_context().player_locked {

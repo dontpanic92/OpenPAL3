@@ -48,8 +48,8 @@ pub struct EvfFunctionInfo {
 pub struct EvfTrigger {
     pub center: Vec3f,
     pub half_size: Vec3f,
-    pub min: Vec3f,
     pub max: Vec3f,
+    pub min: Vec3f,
     pub unknown: Vec3f,
     pub unknown2: Vec3f,
     pub unknown3: u32,

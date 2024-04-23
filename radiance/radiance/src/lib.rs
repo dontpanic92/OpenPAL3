@@ -4,6 +4,7 @@ pub mod application;
 pub mod audio;
 pub mod comdef;
 pub mod components;
+pub mod debug;
 pub mod imgui;
 pub mod input;
 pub mod math;

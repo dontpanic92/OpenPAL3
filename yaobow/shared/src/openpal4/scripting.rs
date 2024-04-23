@@ -1116,8 +1116,8 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 
     vm.app_context.load_scene(&scn, &block);
 
-    let module = vm.app_context.loader.load_script_module(&scn).unwrap();
-    vm.set_function_by_name(module, &format!("{}_{}_init", scn, block));
+    let module = vm.app_context.scene.module.clone().unwrap();
+    vm.set_function_by_name2(module, &format!("{}_{}_init", scn, block));
 
     Pal4FunctionState::Completed
 }
@@ -2151,14 +2151,18 @@ fn player_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functio
 }
 
 fn player_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_walk_to :i32);
+    as_params!(vm, player_id:i32, x:f32, y:f32, z:f32, _walk_to :i32);
+
+    vm.app_context
+        .player_to(player_id, &Vec3::new(x, y, z), false);
     Pal4FunctionState::Completed
 }
 
 fn player_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, player_id:i32, x:f32, y:f32, z:f32, _run_to :i32);
 
-    vm.app_context.player_run(player_id, &Vec3::new(x, y, z));
+    vm.app_context
+        .player_to(player_id, &Vec3::new(x, y, z), true);
     Pal4FunctionState::Completed
 }
 
@@ -2228,7 +2232,10 @@ fn current_player_end_move(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4F
 }
 
 fn npc_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _walk_to: i32);
+    as_params!(vm, npc_file_str: i32, x: f32, y: f32, z: f32, _walk_to: i32);
+
+    let npc_name = get_str(vm, npc_file_str as usize).unwrap();
+    vm.app_context.npc_to(&npc_name, &Vec3::new(x, y, z), false);
     Pal4FunctionState::Completed
 }
 
@@ -2236,7 +2243,7 @@ fn npc_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, npc_file_str: i32, x: f32, y: f32, z: f32, _run_to: i32);
 
     let npc_name = get_str(vm, npc_file_str as usize).unwrap();
-    vm.app_context.npc_run(&npc_name, &Vec3::new(x, y, z));
+    vm.app_context.npc_to(&npc_name, &Vec3::new(x, y, z), true);
     Pal4FunctionState::Completed
 }
 

@@ -8,7 +8,7 @@ use std::{
 use anyhow::anyhow;
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
-use fileformats::{binrw::BinRead, cam::CameraDataFile, npc::NpcInfoFile};
+use fileformats::{binrw::BinRead, cam::CameraDataFile, evf::EvfFile, npc::NpcInfoFile};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{IArmatureComponent, IComponent, IEntity, IScene},
@@ -113,6 +113,16 @@ impl AssetLoader {
         }
 
         Ok(entity)
+    }
+
+    pub fn load_evf(&self, scene_name: &str, block_name: &str) -> anyhow::Result<EvfFile> {
+        let path = format!(
+            "/gamedata/scenedata/{}/{}/{}.evf",
+            scene_name, block_name, block_name,
+        );
+
+        let mut reader = BufReader::new(self.vfs.open(&path)?);
+        Ok(EvfFile::read(&mut reader)?)
     }
 
     pub fn load_run_animation(&self, actor_name: &str) -> anyhow::Result<Animation> {
