@@ -1179,11 +1179,7 @@ fn set_npc_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSt
     as_params!(vm, npc_name: i32, is_visible: i32);
 
     let npc_name = get_str(vm, npc_name as usize).unwrap();
-    if let Some(entity) = vm.app_context.scene.get_npc(&npc_name) {
-        entity.set_visible(is_visible != 0);
-    } else {
-        log::warn!("SetNPCVisible: NPC {} not found", npc_name);
-    }
+    vm.app_context.enable_npc(&npc_name, is_visible != 0);
 
     Pal4FunctionState::Completed
 }

@@ -158,18 +158,32 @@ impl Pal4AppContext {
 
     pub fn set_leader(&mut self, leader: i32) {
         self.leader = leader as usize;
-        self.scene.get_player(self.leader).set_visible(true);
+        self.enable_player(self.leader, true);
     }
 
     pub fn set_player_pos(&mut self, player: i32, pos: &Vec3) {
         let player = self.map_player(player);
-        self.scene.get_player(player).set_visible(true);
+        self.enable_player(player, true);
 
         self.scene
             .get_player(player)
             .transform()
             .borrow_mut()
             .set_position(&pos);
+    }
+
+    pub fn enable_player(&mut self, player: usize, enable: bool) {
+        let player = self.scene.get_player(player);
+        player.set_visible(enable);
+        player.set_enabled(enable);
+    }
+
+    pub fn enable_npc(&mut self, npc: &str, enable: bool) {
+        let npc = self.scene.get_npc(npc);
+        if let Some(npc) = npc {
+            npc.set_visible(enable);
+            npc.set_enabled(enable);
+        }
     }
 
     pub fn get_player_pos(&mut self, player: i32) -> Vec3 {

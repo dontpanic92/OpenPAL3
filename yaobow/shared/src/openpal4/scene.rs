@@ -4,7 +4,7 @@ use crosscom::ComRc;
 use fileformats::evf::EvfEvent;
 use radiance::{
     comdef::{IEntity, IScene, IStaticMeshComponent},
-    debug::{create_box_entity, create_triangle_entity},
+    debug::create_box_entity,
     input::InputEngine,
     math::{Transform, Vec3},
     scene::{CoreEntity, CoreScene},
@@ -141,6 +141,7 @@ impl Pal4Scene {
 
                     if let Ok(entity) = entity {
                         entity.set_visible(npc.default_visible == 1);
+                        entity.set_enabled(npc.default_visible == 1);
                         entity
                             .transform()
                             .borrow_mut()
@@ -151,6 +152,7 @@ impl Pal4Scene {
                             .set_position(&Vec3::from(npc.position));
 
                         npcs.push(entity.clone());
+
                         scene.add_entity(entity);
                     }
                 }
@@ -163,7 +165,6 @@ impl Pal4Scene {
         let events = asset_loader.load_evf(scene_name, block_name)?;
         let module = asset_loader.load_script_module(scene_name)?;
 
-        println!("{:?}", events);
         for event in &events.events {
             if event.trigger_count != 8 {
                 continue;
@@ -179,30 +180,6 @@ impl Pal4Scene {
                 entity.transform().borrow_mut().set_position(&center);
                 scene.add_entity(entity);
             }
-            /*for i in 0..(event.triggers.len() - 3) {
-                let trigger1 = &event.triggers[i];
-                let trigger2 = &event.triggers[i + 1];
-                let trigger3 = &event.triggers[i + 2];
-                let entity = create_triangle_entity(
-                    asset_loader.component_factory(),
-                    Vec3::new(
-                        trigger1.center.x as f32,
-                        trigger1.center.y as f32,
-                        trigger1.center.z as f32,
-                    ),
-                    Vec3::new(
-                        trigger2.center.x as f32,
-                        trigger2.center.y as f32,
-                        trigger2.center.z as f32,
-                    ),
-                    Vec3::new(
-                        trigger3.center.x as f32,
-                        trigger3.center.y as f32,
-                        trigger3.center.z as f32,
-                    ),
-                );
-                scene.add_entity(entity);
-            }*/
         }
 
         Ok(Self {
@@ -296,6 +273,7 @@ fn load_player(asset_loader: &Rc<AssetLoader>, player: Player) -> ComRc<IEntity>
         .unwrap();
 
     entity.set_visible(false);
+    entity.set_enabled(false);
 
     entity
 }

@@ -42,11 +42,11 @@ interface IScene: IComponentContainer {
     bool visible();
     void update(float delta_sec);
 
-    [internal(), rust()]
-    crosscom::Void draw_ui(&mut imgui::Ui ui);
-
     void unload();
     void add_entity(IEntity entity);
+
+    [internal(), rust()]
+    Vec<crosscom::ComRc<radiance::comdef::IEntity>> remove_entities_by_name(&str name);
 
     [internal(), rust()]
     Vec<crosscom::ComRc<radiance::comdef::IEntity>> entities();
@@ -90,6 +90,9 @@ interface IEntity: IComponentContainer {
     
     bool visible();
     void set_visible(bool visible);
+
+    bool enabled();
+    void set_enabled(bool enabled);
 
     [internal(), rust()]
     Option<std::rc::Rc<radiance::rendering::RenderingComponent>> get_rendering_component();

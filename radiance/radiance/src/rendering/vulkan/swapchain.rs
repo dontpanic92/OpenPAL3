@@ -15,7 +15,6 @@ use crate::{imgui::ImguiFrame, rendering::vulkan::imgui::ImguiRenderer};
 use ash::prelude::VkResult;
 use ash::vk;
 use std::cell::RefCell;
-use std::cmp::Ordering;
 use std::rc::Rc;
 
 pub struct SwapChain {
@@ -256,25 +255,27 @@ impl SwapChain {
             self.device.cmd_set_viewport(command_buffer, rect);
         }
 
+        // let mut objects_by_material = std::collections::HashMap::new();
+        let mut material_index = std::collections::HashMap::new();
+        let mut materials = vec![];
         let mut objects_by_material = vec![];
+
         for obj in objects {
             let key = obj.material().name();
-            self.pipeline_manager
-                .create_pipeline_if_not_exist(obj.material());
-            objects_by_material.push((obj.material(), vec![obj]));
+            if !material_index.contains_key(key) {
+                material_index.insert(key, materials.len());
+                self.pipeline_manager
+                    .create_pipeline_if_not_exist(obj.material());
+                materials.push(obj.material());
+                objects_by_material.push(vec![obj]);
+            } else {
+                let index = material_index.get(key).unwrap();
+                objects_by_material[*index].push(obj);
+            }
         }
 
-        objects_by_material.sort_by(|a, b| {
-            if a.0.use_alpha() && !b.0.use_alpha() {
-                Ordering::Greater
-            } else if !a.0.use_alpha() && b.0.use_alpha() {
-                Ordering::Less
-            } else {
-                Ordering::Equal
-            }
-        });
-
-        for (material, object_group) in &objects_by_material {
+        for (index, object_group) in objects_by_material.iter().enumerate() {
+            let material = materials[index];
             let pipeline = self.pipeline_manager.get_pipeline(material.name());
 
             self.device.cmd_bind_pipeline(
@@ -283,9 +284,9 @@ impl SwapChain {
                 pipeline.vk_pipeline(),
             );
 
-            for obj in object_group {
-                let vertex_buffer = obj.vertex_buffer();
-                let index_buffer = obj.index_buffer();
+            for object in object_group {
+                let vertex_buffer = object.vertex_buffer();
+                let index_buffer = object.index_buffer();
                 self.device.cmd_bind_vertex_buffers(
                     command_buffer,
                     0,
@@ -307,9 +308,9 @@ impl SwapChain {
                     &[
                         per_frame_descriptor_set,
                         dub_manager.descriptor_set(),
-                        obj.vk_descriptor_set(),
+                        object.vk_descriptor_set(),
                     ],
-                    &[dub_manager.get_offset(obj.dub_index()) as u32],
+                    &[dub_manager.get_offset(object.dub_index()) as u32],
                 );
                 self.device.cmd_draw_indexed(
                     command_buffer,

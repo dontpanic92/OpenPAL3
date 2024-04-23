@@ -9,10 +9,10 @@ use super::{
     factory::VulkanComponentFactory,
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
-use crate::comdef::IScene;
+use crate::comdef::{IEntity, IScene};
 use crate::math::Mat44;
 use crate::rendering::RenderingComponent;
-use crate::scene::Viewport;
+use crate::scene::{Camera, Viewport};
 use crate::{
     imgui::{ImguiContext, ImguiFrame},
     rendering::{ComponentFactory, RenderingEngine, Window},
@@ -20,6 +20,7 @@ use crate::{
 use ash::extensions::ext::DebugUtils;
 use ash::{vk, Entry};
 use crosscom::ComRc;
+use std::cell::Ref;
 use std::ptr;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -62,8 +63,10 @@ impl RenderingEngine for VulkanRenderingEngine {
             return;
         }
 
+        let entities = scene.visible_entities();
+
         self.dub_manager().update_do(|updater| {
-            for entity in scene.entities() {
+            for entity in &entities {
                 if let Some(rc) = entity.get_rendering_component() {
                     let objects = rc.render_objects();
                     for ro in objects {
@@ -75,7 +78,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             }
         });
 
-        match self.render_objects(scene, viewport, ui_frame) {
+        match self.render_objects(scene.camera().borrow(), entities, viewport, ui_frame) {
             Ok(()) => (),
             Err(err) => println!("{}", err),
         }
@@ -346,7 +349,8 @@ impl VulkanRenderingEngine {
 
     fn render_objects(
         &mut self,
-        scene: ComRc<IScene>,
+        camera: Ref<Camera>,
+        entities: Vec<ComRc<IEntity>>,
         viewport: Viewport,
         ui_frame: ImguiFrame,
     ) -> Result<(), Box<dyn Error>> {
@@ -369,9 +373,8 @@ impl VulkanRenderingEngine {
             }
             Err(e) => panic!("Unable to acquire next image {:?}", e),
         };
-        let x = &|ui| scene.draw_ui(ui);
-        let rc: Vec<Rc<RenderingComponent>> = scene
-            .visible_entities()
+
+        let rc: Vec<Rc<RenderingComponent>> = entities
             .iter()
             .filter_map(|e| e.get_rendering_component())
             .collect();
@@ -396,8 +399,6 @@ impl VulkanRenderingEngine {
         // Update Per-frame Uniform Buffers
         {
             let ubo = {
-                let c = scene.camera();
-                let camera = c.borrow();
                 let view = Mat44::inversed(camera.transform().matrix());
                 let proj = camera.projection_matrix();
                 PerFrameUniformBuffer::new(&view, proj)

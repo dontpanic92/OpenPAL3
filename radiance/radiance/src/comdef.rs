@@ -835,12 +835,15 @@ pub struct ISceneVirtualTable {
         this: *const *const std::os::raw::c_void,
         delta_sec: std::os::raw::c_float,
     ) -> (),
-    pub draw_ui: fn(this: *const *const std::os::raw::c_void, ui: &mut imgui::Ui) -> crosscom::Void,
     pub unload: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
     pub add_entity: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
         entity: *const *const std::os::raw::c_void,
     ) -> (),
+    pub remove_entities_by_name: fn(
+        this: *const *const std::os::raw::c_void,
+        name: &str,
+    ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>,
     pub entities: fn(
         this: *const *const std::os::raw::c_void,
     ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>,
@@ -974,15 +977,6 @@ impl IScene {
         }
     }
 
-    pub fn draw_ui(&self, ui: &mut imgui::Ui) -> crosscom::Void {
-        unsafe {
-            let this = self as *const IScene as *const *const std::os::raw::c_void;
-            let ret = ((*self.vtable).draw_ui)(this, ui.into());
-
-            ret
-        }
-    }
-
     pub fn unload(&self) -> () {
         unsafe {
             let this = self as *const IScene as *const *const std::os::raw::c_void;
@@ -998,6 +992,18 @@ impl IScene {
             let this = self as *const IScene as *const *const std::os::raw::c_void;
             let ret = ((*self.vtable).add_entity)(this, entity.into());
             let ret: () = ret.into();
+
+            ret
+        }
+    }
+
+    pub fn remove_entities_by_name(
+        &self,
+        name: &str,
+    ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
+        unsafe {
+            let this = self as *const IScene as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).remove_entities_by_name)(this, name.into());
 
             ret
         }
@@ -1049,9 +1055,12 @@ pub trait ISceneImpl {
     fn load(&self) -> ();
     fn visible(&self) -> bool;
     fn update(&self, delta_sec: f32) -> ();
-    fn draw_ui(&self, ui: &mut imgui::Ui) -> crosscom::Void;
     fn unload(&self) -> ();
     fn add_entity(&self, entity: crosscom::ComRc<radiance::comdef::IEntity>) -> ();
+    fn remove_entities_by_name(
+        &self,
+        name: &str,
+    ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
     fn entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
     fn visible_entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
     fn root_entities(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
@@ -1179,16 +1188,6 @@ macro_rules! ComObject_Scene {
                 (*__crosscom_object).inner.update(delta_sec.into()).into()
             }
 
-            fn draw_ui(
-                this: *const *const std::os::raw::c_void,
-                ui: &mut imgui::Ui,
-            ) -> crosscom::Void {
-                unsafe {
-                    let __crosscom_object = crosscom::get_object::<SceneCcw>(this);
-                    (*__crosscom_object).inner.draw_ui(ui)
-                }
-            }
-
             unsafe extern "system" fn unload(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<SceneCcw>(this);
                 (*__crosscom_object).inner.unload().into()
@@ -1202,6 +1201,16 @@ macro_rules! ComObject_Scene {
 
                 let __crosscom_object = crosscom::get_object::<SceneCcw>(this);
                 (*__crosscom_object).inner.add_entity(entity.into()).into()
+            }
+
+            fn remove_entities_by_name(
+                this: *const *const std::os::raw::c_void,
+                name: &str,
+            ) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>> {
+                unsafe {
+                    let __crosscom_object = crosscom::get_object::<SceneCcw>(this);
+                    (*__crosscom_object).inner.remove_entities_by_name(name)
+                }
             }
 
             fn entities(
@@ -1292,9 +1301,9 @@ macro_rules! ComObject_Scene {
                     load,
                     visible,
                     update,
-                    draw_ui,
                     unload,
                     add_entity,
+                    remove_entities_by_name,
                     entities,
                     visible_entities,
                     root_entities,
@@ -1382,6 +1391,12 @@ pub struct IEntityVirtualTable {
     pub set_visible: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
         visible: std::os::raw::c_int,
+    ) -> (),
+    pub enabled:
+        unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_int,
+    pub set_enabled: unsafe extern "system" fn(
+        this: *const *const std::os::raw::c_void,
+        enabled: std::os::raw::c_int,
     ) -> (),
     pub get_rendering_component: fn(
         this: *const *const std::os::raw::c_void,
@@ -1593,6 +1608,26 @@ impl IEntity {
         }
     }
 
+    pub fn enabled(&self) -> bool {
+        unsafe {
+            let this = self as *const IEntity as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).enabled)(this);
+            let ret: bool = ret != 0;
+
+            ret
+        }
+    }
+
+    pub fn set_enabled(&self, enabled: bool) -> () {
+        unsafe {
+            let this = self as *const IEntity as *const *const std::os::raw::c_void;
+            let ret = ((*self.vtable).set_enabled)(this, enabled.into());
+            let ret: () = ret.into();
+
+            ret
+        }
+    }
+
     pub fn get_rendering_component(
         &self,
     ) -> Option<std::rc::Rc<radiance::rendering::RenderingComponent>> {
@@ -1647,6 +1682,8 @@ pub trait IEntityImpl {
     fn children(&self) -> Vec<crosscom::ComRc<radiance::comdef::IEntity>>;
     fn visible(&self) -> bool;
     fn set_visible(&self, visible: bool) -> ();
+    fn enabled(&self) -> bool;
+    fn set_enabled(&self, enabled: bool) -> ();
     fn get_rendering_component(
         &self,
     ) -> Option<std::rc::Rc<radiance::rendering::RenderingComponent>>;
@@ -1849,6 +1886,26 @@ macro_rules! ComObject_Entity {
                     .into()
             }
 
+            unsafe extern "system" fn enabled(
+                this: *const *const std::os::raw::c_void,
+            ) -> std::os::raw::c_int {
+                let __crosscom_object = crosscom::get_object::<EntityCcw>(this);
+                (*__crosscom_object).inner.enabled().into()
+            }
+
+            unsafe extern "system" fn set_enabled(
+                this: *const *const std::os::raw::c_void,
+                enabled: std::os::raw::c_int,
+            ) -> () {
+                let enabled: bool = enabled != 0;
+
+                let __crosscom_object = crosscom::get_object::<EntityCcw>(this);
+                (*__crosscom_object)
+                    .inner
+                    .set_enabled(enabled.into())
+                    .into()
+            }
+
             fn get_rendering_component(
                 this: *const *const std::os::raw::c_void,
             ) -> Option<std::rc::Rc<radiance::rendering::RenderingComponent>> {
@@ -1941,6 +1998,8 @@ macro_rules! ComObject_Entity {
                         children,
                         visible,
                         set_visible,
+                        enabled,
+                        set_enabled,
                         get_rendering_component,
                         set_rendering_component,
                         attach,

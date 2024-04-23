@@ -44,26 +44,20 @@ impl CoreScene {
         self.visible = visible;
     }
 
-    fn collect_entities(entity: ComRc<IEntity>) -> Vec<ComRc<IEntity>> {
-        let mut entities = vec![];
+    fn collect_entities(entity: ComRc<IEntity>, entities: &mut Vec<ComRc<IEntity>>) {
         entities.push(entity.clone());
         for e in entity.children() {
-            entities.append(&mut Self::collect_entities(e));
+            Self::collect_entities(e, entities);
         }
-
-        entities
     }
 
-    fn collect_visible_entities(entity: ComRc<IEntity>) -> Vec<ComRc<IEntity>> {
-        let mut entities = vec![];
+    fn collect_visible_entities(entity: ComRc<IEntity>, entities: &mut Vec<ComRc<IEntity>>) {
         entities.push(entity.clone());
         for e in entity.children() {
             if e.visible() {
-                entities.append(&mut Self::collect_entities(e));
+                Self::collect_visible_entities(e, entities);
             }
         }
-
-        entities
     }
 }
 
@@ -102,8 +96,6 @@ impl ISceneImpl for CoreScene {
         self.visible
     }
 
-    fn draw_ui(&self, ui: &mut imgui::Ui) {}
-
     fn unload(&self) {
         for e in self.entities.borrow().clone() {
             e.unload();
@@ -117,6 +109,22 @@ impl ISceneImpl for CoreScene {
         self.entities.borrow_mut().push(entity);
     }
 
+    fn remove_entities_by_name(&self, name: &str) -> Vec<crosscom::ComRc<crate::comdef::IEntity>> {
+        let mut entities = vec![];
+        let mut i = 0;
+        while i < self.entities.borrow().len() {
+            let e = self.entities.borrow()[i].clone();
+            if e.name() == name {
+                entities.push(e.clone());
+                self.entities.borrow_mut().remove(i);
+            } else {
+                i += 1;
+            }
+        }
+
+        entities
+    }
+
     fn root_entities(&self) -> Vec<ComRc<IEntity>> {
         self.entities.borrow().clone()
     }
@@ -124,7 +132,7 @@ impl ISceneImpl for CoreScene {
     fn entities(&self) -> Vec<ComRc<IEntity>> {
         let mut entities = vec![];
         for e in self.entities.borrow().clone() {
-            entities.append(&mut Self::collect_entities(e));
+            Self::collect_entities(e, &mut entities);
         }
 
         entities
@@ -134,7 +142,7 @@ impl ISceneImpl for CoreScene {
         let mut entities = vec![];
         for e in self.entities.borrow().clone() {
             if e.visible() {
-                entities.append(&mut Self::collect_visible_entities(e));
+                Self::collect_visible_entities(e, &mut entities);
             }
         }
 

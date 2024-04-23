@@ -236,17 +236,20 @@ impl VertexBuffer {
         component: VertexComponents,
         update: F,
     ) {
-        let component_size = VertexComponentsLayout::component_size(component);
-        if component_size != std::mem::size_of::<TData>() {
-            panic!(
-                "Wrong size when set vertex data: component size {}, TData.size {}",
-                component_size,
-                std::mem::size_of::<TData>()
-            );
-        }
+        #[cfg(debug_assertions)]
+        {
+            let component_size = VertexComponentsLayout::component_size(component);
+            if component_size != std::mem::size_of::<TData>() {
+                panic!(
+                    "Wrong size when set vertex data: component size {}, TData.size {}",
+                    component_size,
+                    std::mem::size_of::<TData>()
+                );
+            }
 
-        if index >= self.count {
-            panic!("Index out of range: {}", index);
+            if index >= self.count {
+                panic!("Index out of range: {}", index);
+            }
         }
 
         let offset = self.layout.get_offset(component).unwrap();

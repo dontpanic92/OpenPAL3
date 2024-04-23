@@ -20,6 +20,7 @@ pub struct CoreEntityProps {
     world_transform: Transform,
     children: Vec<ComRc<IEntity>>,
     visible: bool,
+    enabled: bool,
 
     rendering_component: Option<Rc<RenderingComponent>>,
 }
@@ -44,6 +45,7 @@ impl CoreEntity {
                 world_transform: Transform::new(),
                 children: vec![],
                 visible,
+                enabled: true,
 
                 rendering_component: None,
             }),
@@ -130,6 +132,10 @@ impl IEntityImpl for CoreEntity {
     }
 
     fn update(&self, delta_sec: f32) -> crosscom::Void {
+        if !self.enabled() {
+            return;
+        }
+
         for e in self.props().children.clone() {
             e.update(delta_sec);
         }
@@ -186,5 +192,13 @@ impl IEntityImpl for CoreEntity {
 
     fn attach(&self, child: ComRc<IEntity>) -> () {
         self.props_mut().children.push(child);
+    }
+
+    fn enabled(&self) -> bool {
+        self.props().enabled
+    }
+
+    fn set_enabled(&self, enabled: bool) -> () {
+        self.props_mut().enabled = enabled;
     }
 }
