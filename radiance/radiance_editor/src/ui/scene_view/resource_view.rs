@@ -13,7 +13,7 @@ impl ResourceView {
         Self { content }
     }
 
-    pub fn render(&mut self, scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32) {
+    pub fn render(&mut self, _scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32) {
         let [window_width, window_height] = ui.window_size();
         let style = ui.push_style_var(StyleVar::WindowPadding([0., 0.]));
         ui.window("资源")
@@ -24,7 +24,7 @@ impl ResourceView {
             .draw_background(false)
             .build(|| {
                 if let Some(content) = &mut self.content {
-                    content.render(scene_manager, ui, delta_sec);
+                    content.render(delta_sec);
                 }
             });
 

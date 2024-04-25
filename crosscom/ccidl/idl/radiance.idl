@@ -128,22 +128,13 @@ class AnimatedMeshComponent: IAnimatedMeshComponent {}
 
 [uuid(6dedae32-8339-482e-9f66-c30d557cacb4)]
 interface IDirector: IUnknown {
-    void activate(ISceneManager scene_manager);
-
-    [internal(), rust()]
-    Option<crosscom::ComRc<radiance::comdef::IDirector>> update(
-        crosscom::ComRc<radiance::comdef::ISceneManager> scene_manager,
-        &imgui::Ui ui,
-        f32 delta_sec
-    );
+    void activate();
+    IDirector? update(float delta_sec);
 }
 
 [uuid(a12c44d5-f5bc-4268-bd00-ab3b6270a829)]
 interface ISceneManager: IUnknown {
-
-    [internal(), rust()]
-    crosscom::Void update(&imgui::Ui ui, f32 delta_sec);
-
+    void update(float delta_sec);
     IScene? scene();
 
     [internal(), rust()]

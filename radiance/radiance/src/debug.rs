@@ -37,7 +37,7 @@ pub fn create_box_entity(component_factory: std::rc::Rc<dyn ComponentFactory>) -
     ];
 
     let material = SimpleMaterialDef::create2("box", None, false);
-    let geometry = Geometry::new(&vertices, None, &texcoords, indices, material, 0);
+    let geometry = Geometry::new(&vertices, None, &texcoords, indices, material);
 
     let entity = ComRc::<IEntity>::from_object(CoreEntity::new("box".to_string(), true));
     let mesh_component =
@@ -67,7 +67,7 @@ pub fn create_triangle_entity(
     let indices = vec![0, 1, 2];
 
     let material = SimpleMaterialDef::create2("triangle", None, false);
-    let geometry = Geometry::new(&vertices, None, &texcoords, indices, material, 0);
+    let geometry = Geometry::new(&vertices, None, &texcoords, indices, material);
 
     let entity = ComRc::<IEntity>::from_object(CoreEntity::new("triangle".to_string(), true));
     let mesh_component =

@@ -29,7 +29,6 @@ impl Geometry {
         texcoords: &[Vec<TexCoord>],
         indices: Vec<u32>,
         material: MaterialDef,
-        has_alpha: u32,
     ) -> Self {
         let mut components = VertexComponents::POSITION;
 

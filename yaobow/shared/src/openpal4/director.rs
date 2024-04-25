@@ -58,16 +58,15 @@ impl IOpenPAL4DirectorImpl for OpenPAL4Director {
 }
 
 impl IDirectorImpl for OpenPAL4Director {
-    fn activate(&self, scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>) {
-        scene_manager.push_scene(CoreScene::create());
+    fn activate(&self) {
+        self.vm
+            .borrow()
+            .app_context
+            .scene_manager
+            .push_scene(CoreScene::create());
     }
 
-    fn update(
-        &self,
-        _scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-        _ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
+    fn update(&self, delta_sec: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
         self.vm.borrow_mut().app_context_mut().update(delta_sec);
 
         if self.vm.borrow().context.is_none() {

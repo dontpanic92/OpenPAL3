@@ -45,10 +45,12 @@ impl IComponentImpl for OpenSwd5ApplicationLoader {
         let director = OpenSWD5Director::new(
             loader,
             input_engine.clone(),
+            scene_manager.clone(),
             audio_engine,
             component_factory.clone(),
             ui.clone(),
         );
+
         scene_manager.set_director(ComRc::from_object(director));
     }
 

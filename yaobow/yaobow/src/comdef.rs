@@ -930,32 +930,19 @@ macro_rules! ComObject_TitleSelectionDirector {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            unsafe extern "system" fn activate(
-                this: *const *const std::os::raw::c_void,
-                scene_manager: *const *const std::os::raw::c_void,
-            ) -> () {
-                let scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager> =
-                    scene_manager.into();
-
+            unsafe extern "system" fn activate(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<TitleSelectionDirectorCcw>(this);
-                (*__crosscom_object)
-                    .inner
-                    .activate(scene_manager.into())
-                    .into()
+                (*__crosscom_object).inner.activate().into()
             }
 
-            fn update(
+            unsafe extern "system" fn update(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-                ui: &imgui::Ui,
-                delta_sec: f32,
-            ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
-                unsafe {
-                    let __crosscom_object = crosscom::get_object::<TitleSelectionDirectorCcw>(this);
-                    (*__crosscom_object)
-                        .inner
-                        .update(scene_manager, ui, delta_sec)
-                }
+                delta_sec: std::os::raw::c_float,
+            ) -> crosscom::RawPointer {
+                let delta_sec: f32 = delta_sec.into();
+
+                let __crosscom_object = crosscom::get_object::<TitleSelectionDirectorCcw>(this);
+                (*__crosscom_object).inner.update(delta_sec.into()).into()
             }
 
             #[allow(non_upper_case_globals)]
@@ -1089,32 +1076,19 @@ macro_rules! ComObject_MainMenuDirector {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            unsafe extern "system" fn activate(
-                this: *const *const std::os::raw::c_void,
-                scene_manager: *const *const std::os::raw::c_void,
-            ) -> () {
-                let scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager> =
-                    scene_manager.into();
-
+            unsafe extern "system" fn activate(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<MainMenuDirectorCcw>(this);
-                (*__crosscom_object)
-                    .inner
-                    .activate(scene_manager.into())
-                    .into()
+                (*__crosscom_object).inner.activate().into()
             }
 
-            fn update(
+            unsafe extern "system" fn update(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-                ui: &imgui::Ui,
-                delta_sec: f32,
-            ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
-                unsafe {
-                    let __crosscom_object = crosscom::get_object::<MainMenuDirectorCcw>(this);
-                    (*__crosscom_object)
-                        .inner
-                        .update(scene_manager, ui, delta_sec)
-                }
+                delta_sec: std::os::raw::c_float,
+            ) -> crosscom::RawPointer {
+                let delta_sec: f32 = delta_sec.into();
+
+                let __crosscom_object = crosscom::get_object::<MainMenuDirectorCcw>(this);
+                (*__crosscom_object).inner.update(delta_sec.into()).into()
             }
 
             #[allow(non_upper_case_globals)]

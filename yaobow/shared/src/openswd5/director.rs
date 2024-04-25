@@ -28,6 +28,7 @@ impl OpenSWD5Director {
     pub fn new(
         asset_loader: Rc<AssetLoader>,
         input: Rc<RefCell<dyn InputEngine>>,
+        scene_manager: ComRc<ISceneManager>,
         audio_engine: Rc<dyn AudioEngine>,
         component_factory: Rc<dyn ComponentFactory>,
         ui: Rc<UiManager>,
@@ -37,6 +38,7 @@ impl OpenSWD5Director {
             audio_engine,
             input.clone(),
             component_factory,
+            scene_manager,
             ui,
         )));
         let vm = create_lua_vm(&asset_loader, context.clone()).unwrap();
@@ -52,16 +54,9 @@ impl OpenSWD5Director {
 ComObject_OpenSWD5Director!(super::OpenSWD5Director);
 
 impl IDirectorImpl for OpenSWD5Director {
-    fn activate(&self, scene_manager: ComRc<ISceneManager>) {
-        self.context.borrow_mut().set_scene_manager(scene_manager);
-    }
+    fn activate(&self) {}
 
-    fn update(
-        &self,
-        _scene_manager: ComRc<ISceneManager>,
-        _ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> Option<ComRc<IDirector>> {
+    fn update(&self, delta_sec: f32) -> Option<ComRc<IDirector>> {
         self.context.borrow_mut().update(delta_sec);
 
         if !self.context.borrow().is_sleeping() {

@@ -1,6 +1,9 @@
 use crosscom::ComRc;
 use imgui::{Condition, WindowFlags};
-use radiance::comdef::{IApplication, IDirector, IDirectorImpl, ISceneManager};
+use radiance::{
+    comdef::{IApplication, IDirector, IDirectorImpl, ISceneManager},
+    scene,
+};
 use radiance_editor::{director::MainPageDirector, ui::scene_view::SceneViewPlugins};
 use shared::config::YaobowConfig;
 
@@ -56,23 +59,21 @@ impl WelcomePageDirector {
             SceneViewPlugins::new(Some(crosscom::ComRc::from_object(resource_view_content)));
 
         let input = self.app.engine().borrow().input_engine().clone();
-        let director = MainPageDirector::create(Some(plugins), input);
+        let ui = self.app.engine().borrow().ui_manager();
+        let scene_manager = self.app.engine().borrow().scene_manager();
+        let director = MainPageDirector::create(Some(plugins), ui, input, scene_manager);
 
         Some(director)
     }
 }
 
 impl IDirectorImpl for WelcomePageDirector {
-    fn activate(&self, _: ComRc<ISceneManager>) -> crosscom::Void {}
+    fn activate(&self) -> crosscom::Void {}
 
-    fn update(
-        &self,
-        _: ComRc<ISceneManager>,
-        ui: &imgui::Ui,
-        _: f32,
-    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
+    fn update(&self, _: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
         let vpos = unsafe { (*imgui::sys::igGetMainViewport()).Pos };
         let vsize = unsafe { (*imgui::sys::igGetMainViewport()).Size };
+        let ui = self.app.engine().borrow().ui_manager().ui();
         let em = ui.current_font_size();
         let columns = [
             vec![

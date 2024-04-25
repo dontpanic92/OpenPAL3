@@ -1,12 +1,13 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crosscom::ComRc;
-use imgui::{Condition, Ui};
+use imgui::Condition;
 use log::debug;
 use radiance::{
     audio::{AudioEngine, AudioMemorySource, Codec},
     comdef::{IDirector, IDirectorImpl, ISceneManager},
     input::InputEngine,
+    radiance::UiManager,
     scene::CoreScene,
 };
 use shared::{
@@ -22,6 +23,8 @@ pub struct MainMenuDirector {
     asset_mgr: Rc<AssetManager>,
     audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
+    scene_manager: ComRc<ISceneManager>,
+    ui: Rc<UiManager>,
     main_theme_source: RefCell<Box<dyn AudioMemorySource>>,
 }
 
@@ -32,6 +35,8 @@ impl MainMenuDirector {
         asset_mgr: Rc<AssetManager>,
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
+        scene_manager: ComRc<ISceneManager>,
+        ui: Rc<UiManager>,
     ) -> Self {
         let data = asset_mgr.load_music_data("PI01");
         let mut main_theme_source = audio_engine.create_source();
@@ -42,30 +47,28 @@ impl MainMenuDirector {
             asset_mgr,
             audio_engine,
             input_engine,
+            scene_manager,
+            ui,
             main_theme_source: RefCell::new(main_theme_source),
         }
     }
 }
 
 impl IDirectorImpl for MainMenuDirector {
-    fn activate(&self, scene_manager: ComRc<ISceneManager>) {
+    fn activate(&self) {
         debug!("MainMenuDirector activated");
-        scene_manager.push_scene(CoreScene::create());
+        self.scene_manager.push_scene(CoreScene::create());
         self.main_theme_source.borrow_mut().restart();
     }
 
-    fn update(
-        &self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
-        _delta_sec: f32,
-    ) -> Option<ComRc<IDirector>> {
+    fn update(&self, _delta_sec: f32) -> Option<ComRc<IDirector>> {
         self.main_theme_source.borrow_mut().update();
 
         let sce_options = SceExecutionOptions {
             proc_hooks: vec![Box::new(SceRestHooks::new())],
         };
 
+        let ui = self.ui.ui();
         let window_size = ui.io().display_size;
         let window = ui
             .window(" ")
@@ -81,6 +84,8 @@ impl IDirectorImpl for MainMenuDirector {
                     self.asset_mgr.clone(),
                     self.audio_engine.clone(),
                     self.input_engine.clone(),
+                    self.ui.clone(),
+                    self.scene_manager.clone(),
                     Some(sce_options),
                 )));
             } else {
@@ -92,7 +97,8 @@ impl IDirectorImpl for MainMenuDirector {
                                 self.asset_mgr.clone(),
                                 self.audio_engine.clone(),
                                 self.input_engine.clone(),
-                                scene_manager,
+                                self.ui.clone(),
+                                self.scene_manager.clone(),
                                 Some(sce_options),
                                 i,
                             )

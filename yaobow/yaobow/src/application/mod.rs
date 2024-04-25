@@ -32,11 +32,13 @@ impl IComponentImpl for YaobowApplicationLoader {
         let dpi_scale = self.app.dpi_scale();
         let factory = self.app.engine().borrow().rendering_component_factory();
         let input = self.app.engine().borrow().input_engine();
+        let ui = self.app.engine().borrow().ui_manager();
 
         let director = TitleSelectionDirector::new(
             factory,
             audio,
             input,
+            ui,
             self.selected_game.clone(),
             dpi_scale,
         );

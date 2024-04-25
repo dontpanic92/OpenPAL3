@@ -21,8 +21,9 @@ use log::debug;
 use radiance::{
     audio::AudioEngine,
     comdef::{IDirector, IDirectorImpl, ISceneManager},
-    input::{Axis, InputEngine, Key},
-    math::{Mat44, Vec3},
+    input::{InputEngine, Key},
+    math::Vec3,
+    radiance::UiManager,
 };
 
 pub struct AdventureDirector {
@@ -37,6 +38,8 @@ impl AdventureDirector {
         asset_mgr: Rc<AssetManager>,
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
+        ui: Rc<UiManager>,
+        scene_manager: ComRc<ISceneManager>,
         sce_vm_options: Option<SceExecutionOptions>,
     ) -> Self {
         let p_state = Rc::new(RefCell::new(PersistentState::new(app_name.to_string())));
@@ -44,6 +47,8 @@ impl AdventureDirector {
         let mut sce_vm = SceVm::new(
             audio_engine.clone(),
             input_engine.clone(),
+            ui,
+            scene_manager.clone(),
             asset_mgr.load_init_sce(),
             "init".to_string(),
             asset_mgr.clone(),
@@ -55,6 +60,7 @@ impl AdventureDirector {
         Self {
             props: RefCell::new(AdventureDirectorProps {
                 input_engine,
+                scene_manager,
                 sce_vm,
                 camera_rotation: 0.,
                 layer_switch_triggered: false,
@@ -71,6 +77,7 @@ impl AdventureDirector {
         asset_mgr: Rc<AssetManager>,
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
+        ui: Rc<UiManager>,
         scene_manager: ComRc<ISceneManager>,
         sce_vm_options: Option<SceExecutionOptions>,
         slot: i32,
@@ -116,6 +123,8 @@ impl AdventureDirector {
         let mut sce_vm = SceVm::new(
             audio_engine.clone(),
             input_engine.clone(),
+            ui,
+            scene_manager.clone(),
             asset_mgr.load_sce(scene_name.as_ref().unwrap()),
             scene_name.as_ref().unwrap().clone(),
             asset_mgr.clone(),
@@ -134,6 +143,7 @@ impl AdventureDirector {
         Some(Self {
             props: RefCell::new(AdventureDirectorProps {
                 input_engine,
+                scene_manager: scene_manager.clone(),
                 sce_vm,
                 camera_rotation: 0.,
                 layer_switch_triggered: false,
@@ -151,17 +161,12 @@ impl AdventureDirector {
 }
 
 impl IDirectorImpl for AdventureDirector {
-    fn activate(&self, _scene_manager: ComRc<ISceneManager>) {
+    fn activate(&self) {
         debug!("AdventureDirector activated");
     }
 
-    fn update(
-        &self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> Option<ComRc<IDirector>> {
-        self.props_mut().do_update(scene_manager, ui, delta_sec)
+    fn update(&self, delta_sec: f32) -> Option<ComRc<IDirector>> {
+        self.props_mut().do_update(delta_sec)
     }
 }
 
@@ -173,6 +178,7 @@ impl IAdventureDirectorImpl for AdventureDirector {
 
 struct AdventureDirectorProps {
     input_engine: Rc<RefCell<dyn InputEngine>>,
+    scene_manager: ComRc<ISceneManager>,
     sce_vm: SceVm,
     camera_rotation: f32,
     layer_switch_triggered: bool,
@@ -202,7 +208,6 @@ impl AdventureDirectorProps {
     fn move_role(
         &mut self,
         scene_manager: ComRc<ISceneManager>,
-        _ui: &imgui::Ui,
         delta_sec: f32,
         moving_direction: &Vec3,
     ) {
@@ -263,39 +268,37 @@ impl AdventureDirectorProps {
             .look_at(&position);
     }
 
-    fn do_update(
-        &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> Option<ComRc<IDirector>> {
-        self.sce_vm.update(scene_manager.clone(), ui, delta_sec);
+    fn do_update(&mut self, delta_sec: f32) -> Option<ComRc<IDirector>> {
+        self.sce_vm.update(delta_sec);
         if !self.sce_vm.global_state().adv_input_enabled() {
             return None;
         }
 
-        if scene_manager.scene().is_none() {
+        if self.scene_manager.scene().is_none() {
             return None;
         }
 
         self.test_save();
 
-        let moving_direction =
-            get_moving_direction(self.input_engine.clone(), scene_manager.scene().unwrap());
-        self.move_role(scene_manager.clone(), ui, delta_sec, &moving_direction);
+        let moving_direction = get_moving_direction(
+            self.input_engine.clone(),
+            self.scene_manager.scene().unwrap(),
+        );
+        self.move_role(self.scene_manager.clone(), delta_sec, &moving_direction);
 
         self.camera_rotation =
             get_camera_rotation(self.input_engine.clone(), self.camera_rotation, delta_sec);
 
         let (position, nav_layer) = {
-            let role = scene_manager
+            let role = self
+                .scene_manager
                 .get_resolved_role(self.sce_vm.state(), -1)
                 .unwrap();
             let r = RoleController::get_role_controller(role.clone()).unwrap();
             (role.transform().borrow().position(), r.get().nav_layer())
         };
 
-        let scene = scene_manager.scn_scene().unwrap().get();
+        let scene = self.scene_manager.scn_scene().unwrap().get();
         if let Some(proc_id) = scene.test_nav_trigger(nav_layer, &position) {
             debug!("New proc triggerd by nav: {}", proc_id);
             self.sce_vm.call_proc(proc_id);
@@ -304,7 +307,8 @@ impl AdventureDirectorProps {
         if scene.test_nav_layer_trigger(nav_layer, &position) {
             if !self.layer_switch_triggered {
                 let layer = {
-                    let e = scene_manager
+                    let e = self
+                        .scene_manager
                         .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap();
                     let r = RoleController::get_role_controller(e).unwrap();
@@ -324,12 +328,13 @@ impl AdventureDirectorProps {
                 }
 
                 if d > 0.0 {
-                    let e = scene_manager
+                    let e = self
+                        .scene_manager
                         .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap();
                     let r = RoleController::get_role_controller(e).unwrap();
                     r.get().switch_nav_layer();
-                    scene_manager
+                    self.scene_manager
                         .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap()
                         .transform()
@@ -365,14 +370,15 @@ impl AdventureDirectorProps {
                     );
 
                     if new_layer {
-                        let e = scene_manager
+                        let e = self
+                            .scene_manager
                             .get_resolved_role(self.sce_vm.state(), -1)
                             .unwrap();
                         let r = RoleController::get_role_controller(e).unwrap();
                         r.get().switch_nav_layer();
                     }
 
-                    scene_manager
+                    self.scene_manager
                         .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap()
                         .transform()

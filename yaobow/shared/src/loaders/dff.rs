@@ -352,7 +352,6 @@ pub(crate) fn create_geometry_internal(
                 &r_texcoords,
                 v.indices,
                 v.material,
-                1,
             )
         })
         .collect();

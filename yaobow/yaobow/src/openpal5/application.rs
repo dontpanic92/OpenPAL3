@@ -40,7 +40,7 @@ impl IComponentImpl for OpenPal5ApplicationLoader {
         let scene = Pal5Scene::load(&loader, "kuangfengzhai").unwrap();
         scene_manager.push_scene(scene.scene);
 
-        let director = OpenPAL5Director::new(input_engine.clone());
+        let director = OpenPAL5Director::new(input_engine.clone(), scene_manager.clone());
         scene_manager.set_director(ComRc::from_object(director));
     }
 

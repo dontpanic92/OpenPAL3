@@ -18,21 +18,16 @@ use shared::openpal3::asset_manager::AssetManager;
 use shared::GameType;
 
 pub struct SceneViewResourceView {
-    ui: RefCell<Option<ComRc<IDirector>>>,
+    director: RefCell<Option<ComRc<IDirector>>>,
 }
 
 ComObject_YaobowResourceViewContent!(crate::SceneViewResourceView);
 
 impl IViewContentImpl for SceneViewResourceView {
-    fn render(
-        &self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> crosscom::Void {
-        let mut director = self.ui.borrow_mut();
+    fn render(&self, delta_sec: f32) -> crosscom::Void {
+        let mut director = self.director.borrow_mut();
         let view = director.as_mut().unwrap();
-        view.update(scene_manager, ui, delta_sec);
+        view.update(delta_sec);
     }
 }
 
@@ -73,10 +68,18 @@ impl SceneViewResourceView {
         };
 
         let audio_engine = app.engine().borrow().audio_engine();
-        let ui = Some(DevToolsDirector::new(audio_engine, asset_loader, game));
+        let scene_manager = app.engine().borrow().scene_manager();
+        let ui = app.engine().borrow().ui_manager();
+        let director = Some(DevToolsDirector::new(
+            audio_engine,
+            scene_manager,
+            asset_loader,
+            ui,
+            game,
+        ));
 
         SceneViewResourceView {
-            ui: RefCell::new(ui),
+            director: RefCell::new(director),
         }
     }
 }

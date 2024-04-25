@@ -36,7 +36,7 @@ impl UiManager {
         frame
     }
 
-    pub fn ui(&self) -> &Ui {
+    pub fn ui(&self) -> &'static Ui {
         self.ui
             .borrow()
             .expect("UI is not available outside of the update function")

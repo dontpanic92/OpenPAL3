@@ -462,7 +462,6 @@ fn create_geometry_frames(
             &vec![texcoord[i].clone()],
             indices.clone(),
             material.clone(),
-            1,
         ))
     }
 

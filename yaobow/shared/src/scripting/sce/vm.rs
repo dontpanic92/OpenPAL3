@@ -9,6 +9,7 @@ use encoding::{DecoderTrap, Encoding};
 use imgui::*;
 use log::{debug, error, warn};
 use radiance::comdef::{IDirector, ISceneManager};
+use radiance::radiance::UiManager;
 use radiance::{audio::AudioEngine, input::InputEngine};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -24,6 +25,8 @@ pub trait SceProcHooks {
 pub struct SceVm {
     state: SceState,
     active_commands: Vec<Box<dyn SceCommand>>,
+    ui: Rc<UiManager>,
+    scene_manager: ComRc<ISceneManager>,
 
     debug_proc: String,
     debug_scn_name: String,
@@ -35,6 +38,8 @@ impl SceVm {
     pub fn new(
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
+        ui: Rc<UiManager>,
+        scene_manager: ComRc<ISceneManager>,
         sce: SceFile,
         sce_name: String,
         asset_mgr: Rc<AssetManager>,
@@ -54,6 +59,8 @@ impl SceVm {
         Self {
             state,
             active_commands: vec![],
+            ui,
+            scene_manager,
             debug_proc: String::from(""),
             debug_scn_name: String::from(""),
             debug_scn_subname: String::from(""),
@@ -61,21 +68,17 @@ impl SceVm {
         }
     }
 
-    pub fn update(
-        &mut self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
-        delta_sec: f32,
-    ) -> Option<ComRc<IDirector>> {
+    pub fn update(&mut self, delta_sec: f32) -> Option<ComRc<IDirector>> {
         self.state.global_state_mut().update(delta_sec);
-        self.draw_curtain(ui);
+        self.draw_curtain();
 
+        let ui = self.ui.ui();
         if self.active_commands.len() == 0 {
             loop {
                 match self.state.get_next_cmd() {
                     Some(mut cmd) => {
-                        cmd.initialize(scene_manager.clone(), &mut self.state);
-                        if !cmd.update(scene_manager.clone(), ui, &mut self.state, delta_sec) {
+                        cmd.initialize(self.scene_manager.clone(), &mut self.state);
+                        if !cmd.update(self.scene_manager.clone(), ui, &mut self.state, delta_sec) {
                             self.active_commands.push(cmd);
                         }
                     }
@@ -92,13 +95,13 @@ impl SceVm {
         } else {
             let state = &mut self.state;
             self.active_commands
-                .retain_mut(|cmd| !cmd.update(scene_manager.clone(), ui, state, delta_sec));
+                .retain_mut(|cmd| !cmd.update(self.scene_manager.clone(), ui, state, delta_sec));
         }
 
         None
     }
 
-    fn draw_curtain(&mut self, ui: &Ui) {
+    fn draw_curtain(&mut self) {
         let curtain = self.state().curtain();
         let fade_to_white = if curtain == 0. {
             return;
@@ -106,6 +109,7 @@ impl SceVm {
             curtain < 0.
         };
 
+        let ui = self.ui.ui();
         self.state_mut()
             .dialog_box()
             .fade_window(ui, fade_to_white, curtain.abs());

@@ -235,7 +235,6 @@ impl AnimatedMeshComponent {
                 &texcoords,
                 t.indices.clone(),
                 t.material.clone(),
-                1,
             );
             blended.push(geometry);
         }

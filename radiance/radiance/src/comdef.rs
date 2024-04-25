@@ -2680,16 +2680,11 @@ pub struct IDirectorVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub release:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
-    pub activate: unsafe extern "system" fn(
+    pub activate: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub update: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
-        scene_manager: *const *const std::os::raw::c_void,
-    ) -> (),
-    pub update: fn(
-        this: *const *const std::os::raw::c_void,
-        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>>,
+        delta_sec: std::os::raw::c_float,
+    ) -> crosscom::RawPointer,
 }
 
 #[repr(C)]
@@ -2741,26 +2736,21 @@ impl IDirector {
         }
     }
 
-    pub fn activate(&self, scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>) -> () {
+    pub fn activate(&self) -> () {
         unsafe {
             let this = self as *const IDirector as *const *const std::os::raw::c_void;
-            let ret = ((*self.vtable).activate)(this, scene_manager.into());
+            let ret = ((*self.vtable).activate)(this);
             let ret: () = ret.into();
 
             ret
         }
     }
 
-    pub fn update(
-        &self,
-        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
+    pub fn update(&self, delta_sec: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
         unsafe {
             let this = self as *const IDirector as *const *const std::os::raw::c_void;
-            let ret =
-                ((*self.vtable).update)(this, scene_manager.into(), ui.into(), delta_sec.into());
+            let ret = ((*self.vtable).update)(this, delta_sec.into());
+            let ret: Option<crosscom::ComRc<radiance::comdef::IDirector>> = ret.into();
 
             ret
         }
@@ -2773,13 +2763,8 @@ impl IDirector {
 }
 
 pub trait IDirectorImpl {
-    fn activate(&self, scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>) -> ();
-    fn update(
-        &self,
-        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>>;
+    fn activate(&self) -> ();
+    fn update(&self, delta_sec: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>>;
 }
 
 impl crosscom::ComInterface for IDirector {
@@ -2804,11 +2789,10 @@ pub struct ISceneManagerVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub release:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
-    pub update: fn(
+    pub update: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> crosscom::Void,
+        delta_sec: std::os::raw::c_float,
+    ) -> (),
     pub scene:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> crosscom::RawPointer,
     pub scenes: fn(
@@ -2880,10 +2864,11 @@ impl ISceneManager {
         }
     }
 
-    pub fn update(&self, ui: &imgui::Ui, delta_sec: f32) -> crosscom::Void {
+    pub fn update(&self, delta_sec: f32) -> () {
         unsafe {
             let this = self as *const ISceneManager as *const *const std::os::raw::c_void;
-            let ret = ((*self.vtable).update)(this, ui.into(), delta_sec.into());
+            let ret = ((*self.vtable).update)(this, delta_sec.into());
+            let ret: () = ret.into();
 
             ret
         }
@@ -2975,7 +2960,7 @@ impl ISceneManager {
 }
 
 pub trait ISceneManagerImpl {
-    fn update(&self, ui: &imgui::Ui, delta_sec: f32) -> crosscom::Void;
+    fn update(&self, delta_sec: f32) -> ();
     fn scene(&self) -> Option<crosscom::ComRc<radiance::comdef::IScene>>;
     fn scenes(&self) -> Vec<crosscom::ComRc<radiance::comdef::IScene>>;
     fn director(&self) -> Option<crosscom::ComRc<radiance::comdef::IDirector>>;
@@ -3079,15 +3064,14 @@ macro_rules! ComObject_SceneManager {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            fn update(
+            unsafe extern "system" fn update(
                 this: *const *const std::os::raw::c_void,
-                ui: &imgui::Ui,
-                delta_sec: f32,
-            ) -> crosscom::Void {
-                unsafe {
-                    let __crosscom_object = crosscom::get_object::<SceneManagerCcw>(this);
-                    (*__crosscom_object).inner.update(ui, delta_sec)
-                }
+                delta_sec: std::os::raw::c_float,
+            ) -> () {
+                let delta_sec: f32 = delta_sec.into();
+
+                let __crosscom_object = crosscom::get_object::<SceneManagerCcw>(this);
+                (*__crosscom_object).inner.update(delta_sec.into()).into()
             }
 
             unsafe extern "system" fn scene(

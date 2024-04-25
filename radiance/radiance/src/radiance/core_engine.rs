@@ -82,11 +82,11 @@ impl CoreRadianceEngine {
         let task_manager = self.task_manager.clone();
         let debug_layer = self.debug_layer.as_ref();
         let ui_frame = self.ui_manager.update(delta_sec, |ui| {
-            scene_manager.update(ui, delta_sec);
+            scene_manager.update(delta_sec);
             task_manager.update(delta_sec);
 
             if let Some(dl) = debug_layer {
-                dl.update(scene_manager.clone(), ui, delta_sec);
+                dl.update(delta_sec);
             }
         });
 

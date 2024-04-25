@@ -4,11 +4,10 @@ use crosscom::ComRc;
 use imgui::{InputTextMultiline, TabBar, TabItem, Ui};
 use radiance::{
     application::utils::FpsCounter,
-    audio::AudioEngine,
     comdef::ISceneManager,
     input::{InputEngine, Key},
     math::Vec3,
-    radiance::DebugLayer,
+    radiance::{DebugLayer, UiManager},
 };
 use shared::openpal3::{
     comdef::IAdventureDirector, directors::SceneManagerExtensions, scene::RoleController,
@@ -16,6 +15,8 @@ use shared::openpal3::{
 
 pub struct OpenPal3DebugLayer {
     input_engine: Rc<RefCell<dyn InputEngine>>,
+    scene_manager: ComRc<ISceneManager>,
+    ui: Rc<UiManager>,
 
     visible: RefCell<bool>,
     fps_counter: RefCell<FpsCounter>,
@@ -24,28 +25,32 @@ pub struct OpenPal3DebugLayer {
 impl OpenPal3DebugLayer {
     pub fn new(
         input_engine: Rc<RefCell<dyn InputEngine>>,
-        _audio_engine: Rc<dyn AudioEngine>,
+        scene_manager: ComRc<ISceneManager>,
+        ui: Rc<UiManager>,
     ) -> OpenPal3DebugLayer {
         OpenPal3DebugLayer {
             input_engine,
+            scene_manager,
+            ui,
             visible: RefCell::new(false),
             fps_counter: RefCell::new(FpsCounter::new()),
         }
     }
 
-    fn render(&self, scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32) {
+    fn render(&self, delta_sec: f32) {
+        let ui = self.ui.ui();
         ui.window("Debug").build(|| {
             let fps = self.fps_counter.borrow_mut().update_fps(delta_sec);
             ui.text(format!("Fps: {}", fps));
-            let scene = scene_manager.scn_scene();
+            let scene = self.scene_manager.scn_scene();
             if let Some(s) = scene {
                 ui.text(format!("Scene: {} {}", s.get().name(), s.get().sub_name()));
             }
 
-            let coord = scene_manager.director().as_ref().and_then(|d| {
+            let coord = self.scene_manager.director().as_ref().and_then(|d| {
                 d.query_interface::<IAdventureDirector>().and_then(|adv| {
                     Some(
-                        scene_manager
+                        self.scene_manager
                             .get_resolved_role(adv.get().sce_vm().state(), -1)
                             .unwrap()
                             .transform()
@@ -57,8 +62,8 @@ impl OpenPal3DebugLayer {
 
             ui.text(format!("Coord: {:?}", &coord));
             TabBar::new("##debug_tab_bar").build(ui, || {
-                Self::build_nav_tab(scene_manager.clone(), ui, coord.as_ref());
-                Self::build_sce_tab(scene_manager.clone(), ui);
+                Self::build_nav_tab(self.scene_manager.clone(), ui, coord.as_ref());
+                Self::build_sce_tab(self.scene_manager.clone(), ui);
             });
         });
     }
@@ -176,7 +181,8 @@ impl OpenPal3DebugLayer {
 }
 
 impl DebugLayer for OpenPal3DebugLayer {
-    fn update(&self, scene_manager: ComRc<ISceneManager>, ui: &Ui, delta_sec: f32) {
+    fn update(&self, delta_sec: f32) {
+        let ui = self.ui.ui();
         let fonts = ui.fonts().fonts();
         let font = if fonts.len() > 1 {
             Some(ui.push_font(fonts[1]))
@@ -199,7 +205,7 @@ impl DebugLayer for OpenPal3DebugLayer {
                 return;
             }
 
-            self.render(scene_manager, ui, delta_sec);
+            self.render(delta_sec);
         })();
 
         if let Some(font) = font {

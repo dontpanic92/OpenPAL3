@@ -13,12 +13,10 @@ pub struct IViewContentVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub release:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
-    pub render: fn(
+    pub render: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
-        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> crosscom::Void,
+        delta_sec: std::os::raw::c_float,
+    ) -> (),
 }
 
 #[repr(C)]
@@ -70,16 +68,11 @@ impl IViewContent {
         }
     }
 
-    pub fn render(
-        &self,
-        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> crosscom::Void {
+    pub fn render(&self, delta_sec: f32) -> () {
         unsafe {
             let this = self as *const IViewContent as *const *const std::os::raw::c_void;
-            let ret =
-                ((*self.vtable).render)(this, scene_manager.into(), ui.into(), delta_sec.into());
+            let ret = ((*self.vtable).render)(this, delta_sec.into());
+            let ret: () = ret.into();
 
             ret
         }
@@ -92,12 +85,7 @@ impl IViewContent {
 }
 
 pub trait IViewContentImpl {
-    fn render(
-        &self,
-        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> crosscom::Void;
+    fn render(&self, delta_sec: f32) -> ();
 }
 
 impl crosscom::ComInterface for IViewContent {
@@ -194,18 +182,14 @@ macro_rules! ComObject_ResourceViewContent {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            fn render(
+            unsafe extern "system" fn render(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-                ui: &imgui::Ui,
-                delta_sec: f32,
-            ) -> crosscom::Void {
-                unsafe {
-                    let __crosscom_object = crosscom::get_object::<ResourceViewContentCcw>(this);
-                    (*__crosscom_object)
-                        .inner
-                        .render(scene_manager, ui, delta_sec)
-                }
+                delta_sec: std::os::raw::c_float,
+            ) -> () {
+                let delta_sec: f32 = delta_sec.into();
+
+                let __crosscom_object = crosscom::get_object::<ResourceViewContentCcw>(this);
+                (*__crosscom_object).inner.render(delta_sec.into()).into()
             }
 
             #[allow(non_upper_case_globals)]
@@ -509,32 +493,19 @@ macro_rules! ComObject_MainPageDirector {
                 (previous - 1) as std::os::raw::c_long
             }
 
-            unsafe extern "system" fn activate(
-                this: *const *const std::os::raw::c_void,
-                scene_manager: *const *const std::os::raw::c_void,
-            ) -> () {
-                let scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager> =
-                    scene_manager.into();
-
+            unsafe extern "system" fn activate(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<MainPageDirectorCcw>(this);
-                (*__crosscom_object)
-                    .inner
-                    .activate(scene_manager.into())
-                    .into()
+                (*__crosscom_object).inner.activate().into()
             }
 
-            fn update(
+            unsafe extern "system" fn update(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-                ui: &imgui::Ui,
-                delta_sec: f32,
-            ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
-                unsafe {
-                    let __crosscom_object = crosscom::get_object::<MainPageDirectorCcw>(this);
-                    (*__crosscom_object)
-                        .inner
-                        .update(scene_manager, ui, delta_sec)
-                }
+                delta_sec: std::os::raw::c_float,
+            ) -> crosscom::RawPointer {
+                let delta_sec: f32 = delta_sec.into();
+
+                let __crosscom_object = crosscom::get_object::<MainPageDirectorCcw>(this);
+                (*__crosscom_object).inner.update(delta_sec.into()).into()
             }
 
             #[allow(non_upper_case_globals)]

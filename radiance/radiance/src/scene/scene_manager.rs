@@ -6,7 +6,6 @@ use crate::{
 };
 
 use crosscom::ComRc;
-use imgui::Ui;
 
 pub struct DefaultSceneManager {
     director: RefCell<Option<ComRc<IDirector>>>,
@@ -25,13 +24,13 @@ impl DefaultSceneManager {
 }
 
 impl ISceneManagerImpl for DefaultSceneManager {
-    fn update(&self, ui: &Ui, delta_sec: f32) {
+    fn update(&self, delta_sec: f32) {
         let d = self.director.borrow().clone();
         if let Some(d) = d {
             let director = d.clone();
-            let new_director = director.update(ComRc::from_self(self), ui, delta_sec);
+            let new_director = director.update(delta_sec);
             if let Some(d) = new_director {
-                d.activate(ComRc::from_self(self));
+                d.activate();
                 self.director.replace(Some(d));
             }
         }
@@ -54,7 +53,7 @@ impl ISceneManagerImpl for DefaultSceneManager {
     }
 
     fn set_director(&self, director: ComRc<IDirector>) {
-        director.activate(ComRc::from_self(self));
+        director.activate();
         self.director.replace(Some(director));
     }
 

@@ -45,6 +45,7 @@ impl SWD5Context {
         audio_engine: Rc<dyn AudioEngine>,
         input_engine: Rc<RefCell<dyn InputEngine>>,
         component_factory: Rc<dyn ComponentFactory>,
+        scene_manager: ComRc<ISceneManager>,
         ui: Rc<UiManager>,
     ) -> Self {
         let bgm_source = audio_engine.create_source();
@@ -56,7 +57,7 @@ impl SWD5Context {
             component_factory,
             ui,
             video_player,
-            scene_manager: unsafe { ComRc::from_raw_pointer(std::ptr::null()) },
+            scene_manager,
             scene: None,
             sleep_sec: 0.,
             bgm_source,
@@ -67,15 +68,6 @@ impl SWD5Context {
             movie_texture: None,
             actdrop: ActDrop::new(),
             anykey_down: false,
-        }
-    }
-
-    pub fn set_scene_manager(&mut self, mut scene_manager: ComRc<ISceneManager>) {
-        if self.scene_manager.is_null() {
-            std::mem::swap(&mut self.scene_manager, &mut scene_manager);
-            std::mem::forget(scene_manager);
-        } else {
-            self.scene_manager = scene_manager;
         }
     }
 

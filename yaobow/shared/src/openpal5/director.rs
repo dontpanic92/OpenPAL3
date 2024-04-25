@@ -13,13 +13,15 @@ use crate::ComObject_OpenPAL5Director;
 use super::comdef::IOpenPAL5DirectorImpl;
 
 pub struct OpenPAL5Director {
+    scene_manager: ComRc<ISceneManager>,
     control: FreeViewController,
 }
 
 impl OpenPAL5Director {
-    pub fn new(input: Rc<RefCell<dyn InputEngine>>) -> Self {
+    pub fn new(input: Rc<RefCell<dyn InputEngine>>, scene_manager: ComRc<ISceneManager>) -> Self {
         test();
         Self {
+            scene_manager,
             control: FreeViewController::new(input),
         }
     }
@@ -28,8 +30,8 @@ impl OpenPAL5Director {
 ComObject_OpenPAL5Director!(super::OpenPAL5Director);
 
 impl IDirectorImpl for OpenPAL5Director {
-    fn activate(&self, scene_manager: ComRc<ISceneManager>) {
-        scene_manager
+    fn activate(&self) {
+        self.scene_manager
             .scene()
             .unwrap()
             .camera()
@@ -37,7 +39,7 @@ impl IDirectorImpl for OpenPAL5Director {
             .transform_mut()
             .set_position(&Vec3::new(5500.0, 612.1155, 2500.0));
 
-        scene_manager
+        self.scene_manager
             .scene()
             .unwrap()
             .camera()
@@ -46,14 +48,9 @@ impl IDirectorImpl for OpenPAL5Director {
             .look_at(&Vec3::new(4319.2227, 612.1155, 1708.5408));
     }
 
-    fn update(
-        &self,
-        scene_manager: ComRc<ISceneManager>,
-        _ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> Option<ComRc<IDirector>> {
+    fn update(&self, delta_sec: f32) -> Option<ComRc<IDirector>> {
         self.control
-            .update(scene_manager.scene().unwrap(), delta_sec);
+            .update(self.scene_manager.scene().unwrap(), delta_sec);
 
         None
     }

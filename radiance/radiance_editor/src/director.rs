@@ -1,8 +1,9 @@
 use crosscom::ComRc;
-use imgui::{Condition, Ui};
+use imgui::Condition;
 use radiance::{
     comdef::{IDirector, IDirectorImpl, ISceneManager},
     input::InputEngine,
+    radiance::UiManager,
 };
 use std::{cell::RefCell, rc::Rc};
 
@@ -13,6 +14,8 @@ use crate::{
 
 pub struct MainPageDirector {
     scene_view: RefCell<SceneView>,
+    ui: Rc<UiManager>,
+    scene_manager: ComRc<ISceneManager>,
 }
 
 ComObject_MainPageDirector!(super::MainPageDirector);
@@ -20,23 +23,23 @@ ComObject_MainPageDirector!(super::MainPageDirector);
 impl MainPageDirector {
     pub fn create(
         scene_view_plugins: Option<SceneViewPlugins>,
+        ui: Rc<UiManager>,
         input: Rc<RefCell<dyn InputEngine>>,
+        scene_manager: ComRc<ISceneManager>,
     ) -> ComRc<IDirector> {
         ComRc::from_object(Self {
             scene_view: RefCell::new(SceneView::new(input, scene_view_plugins)),
+            ui,
+            scene_manager,
         })
     }
 }
 
 impl IDirectorImpl for MainPageDirector {
-    fn activate(&self, _scene_manager: ComRc<ISceneManager>) {}
+    fn activate(&self) {}
 
-    fn update(
-        &self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &Ui,
-        delta_sec: f32,
-    ) -> Option<ComRc<IDirector>> {
+    fn update(&self, delta_sec: f32) -> Option<ComRc<IDirector>> {
+        let ui = self.ui.ui();
         let [window_width, window_height] = ui.io().display_size;
         let style = ui.push_style_var(imgui::StyleVar::WindowPadding([0., 0.]));
 
@@ -70,7 +73,7 @@ impl IDirectorImpl for MainPageDirector {
                 };
                 self.scene_view
                     .borrow_mut()
-                    .render(scene_manager, ui, delta_sec)
+                    .render(self.scene_manager.clone(), ui, delta_sec)
             });
 
         style.pop();

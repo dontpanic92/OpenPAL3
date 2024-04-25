@@ -12,8 +12,9 @@ use imgui::{ColorStackToken, Condition, StyleColor, StyleVar, TextureId, Ui};
 use mini_fs::{LocalFs, MiniFs, StoreExt, ZipFs};
 use radiance::{
     audio::AudioEngine,
-    comdef::{IDirector, IDirectorImpl, ISceneManager},
+    comdef::{IDirector, IDirectorImpl},
     input::InputEngine,
+    radiance::UiManager,
     rendering::{ComponentFactory, Texture},
 };
 
@@ -25,6 +26,7 @@ pub struct TitleSelectionDirector {
     factory: Rc<dyn ComponentFactory>,
     audio: Rc<dyn AudioEngine>,
     input: Rc<RefCell<dyn InputEngine>>,
+    ui: Rc<UiManager>,
     selected_game: Rc<RefCell<Option<GameType>>>,
     vfs: Option<Rc<MiniFs>>,
     dpi_scale: f32,
@@ -40,7 +42,7 @@ pub struct Props {
 }
 
 impl IDirectorImpl for TitleSelectionDirector {
-    fn activate(&self, scene_manager: ComRc<ISceneManager>) {
+    fn activate(&self) {
         if let Some(vfs) = &self.vfs {
             let data = vfs.read_to_end("/music/Grace.ogg").unwrap();
             let mut bgm_source = self.audio.create_source();
@@ -72,15 +74,11 @@ impl IDirectorImpl for TitleSelectionDirector {
         }
     }
 
-    fn update(
-        &self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> Option<ComRc<IDirector>> {
+    fn update(&self, delta_sec: f32) -> Option<ComRc<IDirector>> {
         if let Some(props) = self.props.borrow_mut().as_mut() {
             props.bgm_source.update();
 
+            let ui = self.ui.ui();
             let window_size = ui.io().display_size;
             let _t2 = ui.push_style_var(StyleVar::WindowBorderSize(0.));
             let _t0 = ui.push_style_color(StyleColor::WindowBg, [1.0, 1.0, 1.0, 1.0]);
@@ -124,6 +122,7 @@ impl TitleSelectionDirector {
         factory: Rc<dyn ComponentFactory>,
         audio: Rc<dyn AudioEngine>,
         input: Rc<RefCell<dyn InputEngine>>,
+        ui: Rc<UiManager>,
         selected_game: Rc<RefCell<Option<GameType>>>,
         dpi_scale: f32,
     ) -> Self {
@@ -132,6 +131,7 @@ impl TitleSelectionDirector {
             factory,
             audio,
             input,
+            ui,
             selected_game,
             vfs,
             dpi_scale,

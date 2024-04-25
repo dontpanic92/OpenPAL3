@@ -13,16 +13,11 @@ pub struct IOpenPAL4DirectorVirtualTable {
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
     pub release:
         unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long,
-    pub activate: unsafe extern "system" fn(
+    pub activate: unsafe extern "system" fn(this: *const *const std::os::raw::c_void) -> (),
+    pub update: unsafe extern "system" fn(
         this: *const *const std::os::raw::c_void,
-        scene_manager: *const *const std::os::raw::c_void,
-    ) -> (),
-    pub update: fn(
-        this: *const *const std::os::raw::c_void,
-        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>>,
+        delta_sec: std::os::raw::c_float,
+    ) -> crosscom::RawPointer,
     pub get: fn(
         this: *const *const std::os::raw::c_void,
     ) -> &'static shared::openpal4::director::OpenPAL4Director,
@@ -77,26 +72,21 @@ impl IOpenPAL4Director {
         }
     }
 
-    pub fn activate(&self, scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>) -> () {
+    pub fn activate(&self) -> () {
         unsafe {
             let this = self as *const IOpenPAL4Director as *const *const std::os::raw::c_void;
-            let ret = ((*self.vtable).activate)(this, scene_manager.into());
+            let ret = ((*self.vtable).activate)(this);
             let ret: () = ret.into();
 
             ret
         }
     }
 
-    pub fn update(
-        &self,
-        scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-        ui: &imgui::Ui,
-        delta_sec: f32,
-    ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
+    pub fn update(&self, delta_sec: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
         unsafe {
             let this = self as *const IOpenPAL4Director as *const *const std::os::raw::c_void;
-            let ret =
-                ((*self.vtable).update)(this, scene_manager.into(), ui.into(), delta_sec.into());
+            let ret = ((*self.vtable).update)(this, delta_sec.into());
+            let ret: Option<crosscom::ComRc<radiance::comdef::IDirector>> = ret.into();
 
             ret
         }
@@ -232,32 +222,19 @@ macro_rules! ComObject_OpenPAL4Director {
                 }
             }
 
-            unsafe extern "system" fn activate(
-                this: *const *const std::os::raw::c_void,
-                scene_manager: *const *const std::os::raw::c_void,
-            ) -> () {
-                let scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager> =
-                    scene_manager.into();
-
+            unsafe extern "system" fn activate(this: *const *const std::os::raw::c_void) -> () {
                 let __crosscom_object = crosscom::get_object::<OpenPAL4DirectorCcw>(this);
-                (*__crosscom_object)
-                    .inner
-                    .activate(scene_manager.into())
-                    .into()
+                (*__crosscom_object).inner.activate().into()
             }
 
-            fn update(
+            unsafe extern "system" fn update(
                 this: *const *const std::os::raw::c_void,
-                scene_manager: crosscom::ComRc<radiance::comdef::ISceneManager>,
-                ui: &imgui::Ui,
-                delta_sec: f32,
-            ) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
-                unsafe {
-                    let __crosscom_object = crosscom::get_object::<OpenPAL4DirectorCcw>(this);
-                    (*__crosscom_object)
-                        .inner
-                        .update(scene_manager, ui, delta_sec)
-                }
+                delta_sec: std::os::raw::c_float,
+            ) -> crosscom::RawPointer {
+                let delta_sec: f32 = delta_sec.into();
+
+                let __crosscom_object = crosscom::get_object::<OpenPAL4DirectorCcw>(this);
+                (*__crosscom_object).inner.update(delta_sec.into()).into()
             }
 
             #[allow(non_upper_case_globals)]

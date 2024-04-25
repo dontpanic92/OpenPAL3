@@ -40,7 +40,6 @@ fn load_pol_model<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> Vec<Geometry> {
                 &mesh.vertices,
                 &material.triangles,
                 load_material(&material, vfs, path.as_ref()),
-                material.use_alpha,
             );
 
             geometries.push(geometry);
@@ -99,7 +98,6 @@ fn create_geometry(
     all_vertices: &Vec<PolVertex>,
     triangles: &[PolTriangle],
     material: MaterialDef,
-    has_alpha: u32,
 ) -> Geometry {
     let mut index_map = std::collections::HashMap::new();
     let mut reversed_index = vec![];
@@ -143,5 +141,5 @@ fn create_geometry(
         vec![texcoord1, texcoord2]
     };
 
-    Geometry::new(&vertices, None, &texcoords, indices, material, has_alpha)
+    Geometry::new(&vertices, None, &texcoords, indices, material)
 }

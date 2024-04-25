@@ -8,6 +8,7 @@ use radiance::{
     audio::AudioEngine,
     comdef::{IDirector, IDirectorImpl, ISceneManager},
     math::Vec3,
+    radiance::UiManager,
     scene::CoreScene,
 };
 use radiance_editor::ui::window_content_rect;
@@ -19,7 +20,9 @@ use std::{
 };
 
 pub struct DevToolsDirector {
+    scene_manager: ComRc<ISceneManager>,
     asset_mgr: DevToolsAssetLoader,
+    ui: Rc<UiManager>,
     content_tabs: RefCell<ContentTabs>,
     cache: RefCell<lru::LruCache<String, Vec<Entry>>>,
 }
@@ -29,15 +32,19 @@ ComObject_DevToolsDirector!(super::DevToolsDirector);
 impl DevToolsDirector {
     pub fn new(
         audio_engine: Rc<dyn AudioEngine>,
+        scene_manager: ComRc<ISceneManager>,
         asset_mgr: DevToolsAssetLoader,
+        ui: Rc<UiManager>,
         game_type: GameType,
     ) -> ComRc<IDirector> {
         ComRc::from_object(Self {
+            scene_manager,
             content_tabs: RefCell::new(ContentTabs::new(
                 audio_engine,
                 asset_mgr.clone(),
                 game_type,
             )),
+            ui,
             asset_mgr,
             cache: RefCell::new(lru::LruCache::new(20)),
         })
@@ -132,18 +139,14 @@ impl DevToolsDirector {
 }
 
 impl IDirectorImpl for DevToolsDirector {
-    fn activate(&self, _scene_manager: ComRc<ISceneManager>) {}
+    fn activate(&self) {}
 
-    fn update(
-        &self,
-        scene_manager: ComRc<ISceneManager>,
-        ui: &imgui::Ui,
-        _delta_sec: f32,
-    ) -> Option<ComRc<IDirector>> {
+    fn update(&self, _delta_sec: f32) -> Option<ComRc<IDirector>> {
+        let ui = self.ui.ui();
         let state = self.main_window(ui);
         match state {
             Some(DevToolsState::PreviewScene { cpk_name, scn_name }) => {
-                scene_manager.pop_scene();
+                self.scene_manager.pop_scene();
 
                 let scene = self
                     .asset_mgr
@@ -156,12 +159,12 @@ impl IDirectorImpl for DevToolsDirector {
                     .transform_mut()
                     .set_position(&Vec3::new(0., 500., 500.))
                     .look_at(&Vec3::new(0., 0., 0.));
-                scene_manager.push_scene(scene);
+                self.scene_manager.push_scene(scene);
             }
             Some(DevToolsState::PreviewEntity(entity)) => {
                 let scene = CoreScene::create();
-                scene_manager.pop_scene();
-                scene_manager.push_scene(scene.clone());
+                self.scene_manager.pop_scene();
+                self.scene_manager.push_scene(scene.clone());
 
                 entity.load();
                 scene.add_entity(entity);
