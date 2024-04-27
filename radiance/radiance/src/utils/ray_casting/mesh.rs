@@ -33,7 +33,7 @@ impl Triangle {
 
     pub fn cast_aaray(
         &self,
-        ray_origin: Vec3,
+        ray_origin: &Vec3,
         aaray: AARayDirection,
         vertices: &Vec<Vec3>,
     ) -> Option<f32> {
@@ -67,13 +67,13 @@ impl Triangle {
             }
         }
 
-        self.cast_ray(ray_origin, ray_direction, vertices)
+        self.cast_ray(ray_origin, &ray_direction, vertices)
     }
 
     pub fn cast_ray(
         &self,
-        ray_origin: Vec3,
-        ray_direction: Vec3,
+        ray_origin: &Vec3,
+        ray_direction: &Vec3,
         vertices: &Vec<Vec3>,
     ) -> Option<f32> {
         const EPSILON: f32 = 0.00001;
@@ -142,7 +142,7 @@ impl Mesh {
         }
     }
 
-    pub fn cast_aaray(&self, ray_origin: Vec3, aaray: AARayDirection) -> Option<f32> {
+    pub fn cast_aaray(&self, ray_origin: &Vec3, aaray: AARayDirection) -> Option<f32> {
         let mut min_distance = None;
         for triangle in &self.triangles {
             if let Some(distance) = triangle.cast_aaray(ray_origin, aaray, &self.vertices) {
@@ -159,7 +159,7 @@ impl Mesh {
         min_distance
     }
 
-    pub fn cast_ray(&self, ray_origin: Vec3, ray_direction: Vec3) -> Option<f32> {
+    pub fn cast_ray(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<f32> {
         let mut min_distance = None;
         for triangle in &self.triangles {
             if let Some(distance) = triangle.cast_ray(ray_origin, ray_direction, &self.vertices) {

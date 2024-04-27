@@ -142,9 +142,9 @@ impl Pal4AppContext {
         entities
     }
 
-    pub fn try_trigger_scene_events(&mut self, _delta_sec: f32) -> Option<String> {
+    pub fn scene_event_triggered(&mut self, _delta_sec: f32) -> Option<String> {
         self.scene
-            .test_event_triggers(self.leader)
+            .test_event_triggers()
             .and_then(|event| event.function.function.as_str().ok())
     }
 

@@ -1,11 +1,12 @@
 use binrw::BinRead;
+use serde::Serialize;
 
 use crate::{
     rwbs::{ChunkHeader, Vec3f},
     utils::SizedString,
 };
 
-#[derive(Debug, BinRead)]
+#[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct EvfFile {
     pub count: u32,
@@ -14,7 +15,7 @@ pub struct EvfFile {
     pub events: Vec<EvfEvent>,
 }
 
-#[derive(Debug, BinRead)]
+#[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct EvfEvent {
     pub name: SizedString,
@@ -23,17 +24,17 @@ pub struct EvfEvent {
     pub unknown3: SizedString,
     pub function: EvfFunctionInfo,
 
-    pub trigger_count: u32,
+    pub vertex_count: u32,
 
-    #[br(count = trigger_count)]
-    pub triggers: Vec<EvfTrigger>,
+    #[br(count = vertex_count)]
+    pub vertices: Vec<EvfTrigger>,
 
     pub unknown4: u32,
     pub unknown5: u32,
     pub chunk: EvfClump,
 }
 
-#[derive(Debug, BinRead)]
+#[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct EvfFunctionInfo {
     pub unknown: u32,
@@ -43,7 +44,7 @@ pub struct EvfFunctionInfo {
     pub function: SizedString,
 }
 
-#[derive(Debug, BinRead)]
+#[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct EvfTrigger {
     pub center: Vec3f,
@@ -56,7 +57,7 @@ pub struct EvfTrigger {
     pub unknown4: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct EvfClump {
     pub header: ChunkHeader,
 }

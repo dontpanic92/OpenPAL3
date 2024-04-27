@@ -1,10 +1,12 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use crosscom::ComRc;
 use fileformats::evf::EvfEvent;
 use radiance::{
     comdef::{IEntity, IScene, IStaticMeshComponent},
-    debug::create_box_entity,
     input::InputEngine,
     math::{Transform, Vec3},
     scene::{CoreEntity, CoreScene},
@@ -52,6 +54,7 @@ pub struct Pal4Scene {
     pub(crate) npcs: Vec<ComRc<IEntity>>,
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
+    pub(crate) triggers: Vec<Rc<SceneEventTrigger>>,
 }
 
 impl Pal4Scene {
@@ -72,6 +75,7 @@ impl Pal4Scene {
             npcs: vec![],
             events: vec![],
             module: None,
+            triggers: vec![],
         }
     }
 
@@ -99,10 +103,9 @@ impl Pal4Scene {
 
         scene.camera().borrow_mut().set_fov43(45_f32.to_radians());
 
-        let mut ray_caster = RayCaster::new();
         let floor = asset_loader.load_scene_floor(scene_name, block_name);
         let wall = asset_loader.load_scene_wall(scene_name, block_name);
-        setup_ray_caster(&mut ray_caster, floor.clone(), wall.clone());
+        let ray_caster = create_floor_wall_ray_caster(floor.clone(), wall.clone());
 
         /*if let Some(floor) = floor {
             scene.add_entity(floor);
@@ -119,8 +122,45 @@ impl Pal4Scene {
             load_player(asset_loader, Player::MurongZiying),
         ];
 
-        let controller =
-            Pal4ActorController::create(input, players[0].clone(), scene.clone(), ray_caster);
+        let events = asset_loader.load_evf(scene_name, block_name)?;
+
+        let mut triggers = vec![];
+        for (i, event) in events.events.iter().enumerate() {
+            if event.vertex_count != 8 {
+                continue;
+            }
+
+            let trigger = event
+                .vertices
+                .iter()
+                .map(|trigger| {
+                    Vec3::new(
+                        trigger.center.x as f32,
+                        trigger.center.y as f32,
+                        trigger.center.z as f32,
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            // let entity = create_box_entity2(asset_loader.component_factory(), trigger.clone());
+            // scene.add_entity(entity);
+
+            let ray_caster = create_trigger_ray_caster(trigger);
+            triggers.push(Rc::new(SceneEventTrigger {
+                ray_caster,
+                event_index: i,
+                triggered: Cell::new(false),
+            }));
+        }
+
+        let controller = Pal4ActorController::create(
+            input,
+            players[0].clone(),
+            scene.clone(),
+            triggers.clone(),
+            ray_caster,
+        );
+
         players[0].add_component(IPal4ActorController::uuid(), ComRc::from_object(controller));
 
         for p in &players {
@@ -162,25 +202,7 @@ impl Pal4Scene {
             }
         }
 
-        let events = asset_loader.load_evf(scene_name, block_name)?;
         let module = asset_loader.load_script_module(scene_name)?;
-
-        for event in &events.events {
-            if event.trigger_count != 8 {
-                continue;
-            }
-            for trigger in &event.triggers {
-                let center = Vec3::new(
-                    trigger.center.x as f32,
-                    trigger.center.y as f32,
-                    trigger.center.z as f32,
-                );
-
-                let entity = create_box_entity(asset_loader.component_factory());
-                entity.transform().borrow_mut().set_position(&center);
-                scene.add_entity(entity);
-            }
-        }
 
         Ok(Self {
             scene,
@@ -188,6 +210,7 @@ impl Pal4Scene {
             npcs,
             events: events.events,
             module: Some(module),
+            triggers,
         })
     }
 
@@ -213,7 +236,7 @@ impl Pal4Scene {
             .query_interface::<IPal4ActorAnimationController>()
     }
 
-    pub fn test_event_triggers(&self, player_id: usize) -> Option<&EvfEvent> {
+    /*pub fn test_event_triggers(&self, player_id: usize) -> Option<&EvfEvent> {
         let player = self.get_player(player_id);
         let position = player.world_transform().position();
         let mut min_distance = 99999.;
@@ -254,6 +277,16 @@ impl Pal4Scene {
         }
 
         None
+    }*/
+
+    pub fn test_event_triggers(&self) -> Option<&EvfEvent> {
+        for trigger in &self.triggers {
+            if trigger.triggered.get() {
+                return self.events.get(trigger.event_index);
+            }
+        }
+
+        None
     }
 
     pub fn get_player_metadata(&self, player_id: usize) -> Player {
@@ -278,20 +311,22 @@ fn load_player(asset_loader: &Rc<AssetLoader>, player: Player) -> ComRc<IEntity>
     entity
 }
 
-fn setup_ray_caster(
-    ray_caster: &mut RayCaster,
+fn create_floor_wall_ray_caster(
     floor: Option<ComRc<IEntity>>,
     wall: Option<ComRc<IEntity>>,
-) {
+) -> RayCaster {
+    let mut ray_caster = RayCaster::new();
     if let Some(floor) = floor {
         floor.update_world_transform(&Transform::new());
-        add_mesh(ray_caster, floor);
+        add_mesh(&mut ray_caster, floor);
     }
 
     if let Some(wall) = wall {
         wall.update_world_transform(&Transform::new());
-        add_mesh(ray_caster, wall);
+        add_mesh(&mut ray_caster, wall);
     }
+
+    ray_caster
 }
 
 fn add_mesh(ray_caster: &mut RayCaster, entity: ComRc<IEntity>) {
@@ -318,4 +353,37 @@ fn add_mesh(ray_caster: &mut RayCaster, entity: ComRc<IEntity>) {
             ray_caster.add_mesh(v, i);
         }
     }
+}
+
+pub struct SceneEventTrigger {
+    ray_caster: RayCaster,
+    event_index: usize,
+    triggered: Cell<bool>,
+}
+
+impl SceneEventTrigger {
+    pub fn check(&self, origin: &Vec3, direction: &Vec3) {
+        let hit = self.ray_caster.cast_ray(origin, direction);
+        let distance = Vec3::norm(direction);
+
+        self.triggered.set(false);
+        if let Some(p) = hit {
+            if p < distance {
+                self.triggered.set(true);
+            }
+        }
+    }
+}
+
+fn create_trigger_ray_caster(trigger: Vec<Vec3>) -> RayCaster {
+    let mut ray_caster = RayCaster::new();
+    ray_caster.add_mesh(
+        trigger,
+        vec![
+            0, 2, 1, 0, 3, 2, 0, 4, 7, 0, 7, 3, 0, 5, 4, 0, 1, 5, 6, 1, 2, 6, 5, 1, 6, 2, 3, 6, 3,
+            7, 6, 7, 4, 6, 4, 5,
+        ],
+    );
+
+    ray_caster
 }

@@ -25,6 +25,7 @@ use super::{
     comdef::{
         IPal4ActorAnimationController, IPal4ActorAnimationControllerImpl, IPal4ActorControllerImpl,
     },
+    scene::SceneEventTrigger,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -186,6 +187,7 @@ struct Pal4ActorControllerInner {
     entity: ComRc<IEntity>,
     scene: ComRc<IScene>,
     ray_caster: RayCaster,
+    event_triggers: Vec<Rc<SceneEventTrigger>>,
     lock_control: bool,
     camera_rotation: f32,
 }
@@ -196,12 +198,14 @@ impl Pal4ActorControllerInner {
         entity: ComRc<IEntity>,
         scene: ComRc<IScene>,
         ray_caster: RayCaster,
+        event_triggers: Vec<Rc<SceneEventTrigger>>,
     ) -> Self {
         Self {
             input,
             entity,
             scene,
             ray_caster,
+            event_triggers,
             lock_control: true,
             camera_rotation: 0.,
         }
@@ -212,25 +216,39 @@ impl Pal4ActorControllerInner {
             return;
         }
 
-        let speed = 175.;
+        const SPEED: f32 = 175.;
+        const STEP_HEIGHT: f32 = 10.;
+        const TRIGGER_HEIGHT: f32 = 10.;
+
         let current_position = self.entity.transform().borrow().position();
         let direction = get_moving_direction(self.input.clone(), self.scene.clone());
 
         let target_position = Vec3::add(
             &current_position,
-            &Vec3::scalar_mul(speed * delta_sec, &direction),
+            &Vec3::scalar_mul(SPEED * delta_sec, &direction),
         );
 
-        const STEP_HEIGHT: f32 = 10.;
+        let movement = Vec3::sub(&target_position, &current_position);
+        for trigger in self.event_triggers.iter() {
+            trigger.check(
+                &Vec3::new(
+                    current_position.x,
+                    current_position.y + TRIGGER_HEIGHT,
+                    current_position.z,
+                ),
+                &movement,
+            );
+        }
 
         let ray_origin = Vec3::new(
             target_position.x,
             target_position.y + STEP_HEIGHT,
             target_position.z,
         );
-        let p = self
-            .ray_caster
-            .cast_aaray(ray_origin, radiance::utils::ray_casting::AARayDirection::NY);
+        let p = self.ray_caster.cast_aaray(
+            &ray_origin,
+            radiance::utils::ray_casting::AARayDirection::NY,
+        );
 
         if let Some(p) = p {
             let animation_controller = self
@@ -288,11 +306,16 @@ impl Pal4ActorController {
         input: Rc<RefCell<dyn InputEngine>>,
         entity: ComRc<IEntity>,
         scene: ComRc<IScene>,
+        event_triggers: Vec<Rc<SceneEventTrigger>>,
         ray_caster: RayCaster,
     ) -> Pal4ActorController {
         Self {
             inner: RefCell::new(Pal4ActorControllerInner::new(
-                input, entity, scene, ray_caster,
+                input,
+                entity,
+                scene,
+                ray_caster,
+                event_triggers,
             )),
         }
     }
