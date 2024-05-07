@@ -8,7 +8,11 @@ use std::{
 use anyhow::anyhow;
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
-use fileformats::{binrw::BinRead, cam::CameraDataFile, evf::EvfFile, npc::NpcInfoFile};
+use fileformats::{
+    binrw::BinRead,
+    npc::NpcInfoFile,
+    pal4::{cam::CameraDataFile, evf::EvfFile},
+};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{IArmatureComponent, IComponent, IEntity, IScene},

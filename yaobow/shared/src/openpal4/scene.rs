@@ -4,7 +4,7 @@ use std::{
 };
 
 use crosscom::ComRc;
-use fileformats::evf::EvfEvent;
+use fileformats::pal4::evf::EvfEvent;
 use radiance::{
     comdef::{IEntity, IScene, IStaticMeshComponent},
     input::InputEngine,

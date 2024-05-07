@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crosscom::ComRc;
-use fileformats::cam::CameraDataFile;
+use fileformats::pal4::cam::CameraDataFile;
 use radiance::{
     audio::AudioEngine,
     comdef::{IEntity, ISceneManager},
@@ -340,11 +340,13 @@ impl Pal4AppContext {
         let _ = self.scene_manager.pop_scene();
         self.scene =
             Pal4Scene::load(&self.loader, self.input.clone(), scene_name, block_name).unwrap();
-        self.set_leader(self.leader as i32);
         self.scene_manager.push_scene(self.scene.scene.clone());
 
         self.scene_name = scene_name.to_string();
         self.block_name = block_name.to_string();
+
+        self.set_leader(self.leader as i32);
+        self.lock_player(self.player_locked);
     }
 
     pub fn start_play_movie(&mut self, name: &str) -> Option<(u32, u32)> {

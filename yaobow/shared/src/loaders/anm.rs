@@ -5,8 +5,8 @@ use std::{
 };
 
 use fileformats::{
-    amf::AmfFile,
     binrw::BinRead,
+    pal4::amf::AmfFile,
     rwbs::{anm::AnmAction, read_anm},
 };
 use mini_fs::{MiniFs, StoreExt};

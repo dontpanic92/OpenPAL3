@@ -1,10 +1,11 @@
-use std::io::Cursor;
+use fileformats::binrw::BinRead;
 
-use fileformats::{binrw::BinRead, evf::EvfFile};
 pub fn run_test() {
     let data =
-        std::fs::read("F:\\PAL4\\gamedata\\scenedata\\scenedata\\q01\\Q01\\Q01.evf").unwrap();
-    let evf = EvfFile::read(&mut Cursor::new(data));
+        std::fs::read("F:\\PAL4\\gamedata\\scenedata\\scenedata\\q01\\Q01\\GameObjs.gob").unwrap();
+    let mut cursor = std::io::Cursor::new(data);
+    let gob = fileformats::pal4::gob::GobFile::read(&mut cursor).unwrap();
+    println!("cursor position: {}", cursor.position());
 
-    println!("{:?}", evf);
+    println!("{}", serde_json::to_string_pretty(&gob).unwrap());
 }
