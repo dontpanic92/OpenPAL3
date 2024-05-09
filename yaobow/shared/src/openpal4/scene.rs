@@ -4,7 +4,10 @@ use std::{
 };
 
 use crosscom::ComRc;
-use fileformats::pal4::evf::EvfEvent;
+use fileformats::pal4::{
+    evf::EvfEvent,
+    gob::{GobCommonProperties, GobObjectType},
+};
 use radiance::{
     comdef::{IEntity, IScene, IStaticMeshComponent},
     input::InputEngine,
@@ -52,6 +55,7 @@ pub struct Pal4Scene {
     pub(crate) scene: ComRc<IScene>,
     pub(crate) players: [ComRc<IEntity>; 4],
     pub(crate) npcs: Vec<ComRc<IEntity>>,
+    pub(crate) objects: Vec<ComRc<IEntity>>,
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
     pub(crate) triggers: Vec<Rc<SceneEventTrigger>>,
@@ -73,6 +77,7 @@ impl Pal4Scene {
                 CoreEntity::create("".to_string(), false),
             ],
             npcs: vec![],
+            objects: vec![],
             events: vec![],
             module: None,
             triggers: vec![],
@@ -170,11 +175,11 @@ impl Pal4Scene {
         let npc_info = asset_loader.load_npc_info(scene_name, block_name)?;
         let mut npcs = vec![];
         for npc in &npc_info.data {
-            let actor_name = npc.model_name.as_str();
+            let actor_name = npc.model_name.to_string();
             match actor_name {
                 Ok(actor_name) => {
                     let entity = asset_loader.load_actor(
-                        npc.name.as_str().unwrap_or_default().as_str(),
+                        npc.name.to_string().unwrap_or_default().as_str(),
                         actor_name.as_str(),
                         npc.get_default_act().as_deref(),
                     );
@@ -186,9 +191,9 @@ impl Pal4Scene {
                             .transform()
                             .borrow_mut()
                             .set_position(&Vec3::new_zeros())
-                            .rotate_axis_angle(&Vec3::BACK, npc.rotation[2].to_radians())
-                            .rotate_axis_angle(&Vec3::UP, npc.rotation[1].to_radians())
-                            .rotate_axis_angle(&Vec3::EAST, npc.rotation[0].to_radians())
+                            .rotate_axis_angle_local(&Vec3::BACK, npc.rotation[2].to_radians())
+                            .rotate_axis_angle_local(&Vec3::UP, npc.rotation[1].to_radians())
+                            .rotate_axis_angle_local(&Vec3::EAST, npc.rotation[0].to_radians())
                             .set_position(&Vec3::from(npc.position));
 
                         npcs.push(entity.clone());
@@ -202,12 +207,63 @@ impl Pal4Scene {
             }
         }
 
+        let mut objects = vec![];
+        let gob = asset_loader.load_gob(scene_name, block_name)?;
+
+        for (i, entry) in gob.entries.iter().enumerate() {
+            let object_type = gob.header.object_types[i];
+            let object_name = entry.file_name.to_string();
+            let folder = entry.folder.to_string();
+            let file_name = entry.file_name.to_string();
+            match (object_name, folder, file_name) {
+                (Ok(object_name), Ok(folder), Ok(file_name)) => {
+                    if object_type == GobObjectType::EFFECT {
+                        continue;
+                    }
+
+                    let entity = asset_loader.load_object(&object_name, &folder, &file_name);
+
+                    if let Some(entity) = entity {
+                        entity.set_visible(true);
+                        entity.set_enabled(true);
+
+                        let scale = entry
+                            .get_common_property(GobCommonProperties::Scale)
+                            .and_then(|s| s.value_f32())
+                            .unwrap_or(1.0);
+
+                        entity
+                            .transform()
+                            .borrow_mut()
+                            .scale_local(&Vec3::new(scale, scale, scale))
+                            .rotate_axis_angle_local(&Vec3::BACK, entry.rotation[2].to_radians())
+                            .rotate_axis_angle_local(&Vec3::UP, entry.rotation[1].to_radians())
+                            .rotate_axis_angle_local(&Vec3::EAST, entry.rotation[0].to_radians())
+                            .set_position(&Vec3::from(entry.position));
+
+                        objects.push(entity.clone());
+
+                        scene.add_entity(entity);
+                    }
+                }
+                (object_name, folder, file_name) => {
+                    log::error!(
+                        "Cannot load object: {:?} {:?} {:?}",
+                        object_name,
+                        folder,
+                        file_name
+                    );
+                }
+            }
+        }
+
         let module = asset_loader.load_script_module(scene_name)?;
 
         Ok(Self {
             scene,
             players,
             npcs,
+            objects,
             events: events.events,
             module: Some(module),
             triggers,
@@ -235,49 +291,6 @@ impl Pal4Scene {
             .get_component(IPal4ActorAnimationController::uuid())?
             .query_interface::<IPal4ActorAnimationController>()
     }
-
-    /*pub fn test_event_triggers(&self, player_id: usize) -> Option<&EvfEvent> {
-        let player = self.get_player(player_id);
-        let position = player.world_transform().position();
-        let mut min_distance = 99999.;
-
-        for event in &self.events {
-            for trigger in &event.triggers {
-                let center = Vec3::new(
-                    trigger.center.x as f32,
-                    trigger.center.y as f32,
-                    trigger.center.z as f32,
-                );
-                let distance = Vec3::sub(&position, &center).norm();
-                if distance < min_distance {
-                    min_distance = distance;
-                }
-
-                let half_size = Vec3::scalar_mul(
-                    10.,
-                    &Vec3::new(
-                        trigger.half_size.x,
-                        trigger.half_size.y,
-                        trigger.half_size.z,
-                    ),
-                );
-                let min = Vec3::sub(&center, &half_size);
-                let max = Vec3::add(&center, &half_size);
-
-                if min.x <= position.x
-                    && min.y <= position.y
-                    && min.z <= position.z
-                    && max.x >= position.x
-                    && max.y >= position.y
-                    && max.z >= position.z
-                {
-                    return Some(event);
-                }
-            }
-        }
-
-        None
-    }*/
 
     pub fn test_event_triggers(&self) -> Option<&EvfEvent> {
         for trigger in &self.triggers {

@@ -190,6 +190,7 @@ struct Pal4ActorControllerInner {
     event_triggers: Vec<Rc<SceneEventTrigger>>,
     lock_control: bool,
     camera_rotation: f32,
+    camera_height: f32,
 }
 
 impl Pal4ActorControllerInner {
@@ -208,6 +209,7 @@ impl Pal4ActorControllerInner {
             event_triggers,
             lock_control: true,
             camera_rotation: 0.,
+            camera_height: 300.,
         }
     }
 
@@ -284,15 +286,42 @@ impl Pal4ActorControllerInner {
 
         self.camera_rotation =
             get_camera_rotation(self.input.clone(), self.camera_rotation, delta_sec);
+        self.camera_height = get_camera_height(self.input.clone(), self.camera_height, delta_sec);
         self.scene
             .camera()
             .borrow_mut()
             .transform_mut()
-            .set_position(&Vec3::new(300., 300., 300.))
+            .set_position(&Vec3::new(300., self.camera_height, 300.))
             .rotate_axis_angle(&Vec3::UP, self.camera_rotation)
             .translate(&target_position)
             .look_at(&target_position);
     }
+}
+
+fn get_camera_height(
+    input: Rc<RefCell<dyn InputEngine>>,
+    current_height: f32,
+    delta_sec: f32,
+) -> f32 {
+    const SPEED: f32 = 30.;
+
+    let mut height = current_height;
+    if input
+        .borrow()
+        .get_key_state(radiance::input::Key::W)
+        .is_down()
+    {
+        height += SPEED * delta_sec;
+    }
+    if input
+        .borrow()
+        .get_key_state(radiance::input::Key::S)
+        .is_down()
+    {
+        height -= SPEED * delta_sec;
+    }
+
+    height
 }
 
 pub struct Pal4ActorController {

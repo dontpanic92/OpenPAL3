@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use binrw::{binrw, BinRead, BinWrite};
+use binrw::{binrw, BinRead, BinResult, BinWrite};
 use common::read_ext::FileReadError;
 use encoding::{DecoderTrap, Encoding};
 use serde::Serialize;
@@ -38,7 +38,7 @@ impl SizedString {
         &self.string
     }
 
-    pub fn as_str(&self) -> Result<String, FileReadError> {
+    pub fn to_string(&self) -> Result<String, FileReadError> {
         let slice = if self.string.last() == Some(&0) {
             &self.string[..self.string.len() - 1]
         } else {
@@ -87,6 +87,17 @@ impl Serialize for SizedString {
         let str = to_gbk_string(self.data());
         serializer.serialize_str(&str.unwrap())
     }
+}
+
+#[binrw::parser(reader, endian)]
+pub fn parse_sized_string() -> BinResult<String> {
+    let sized_string = SizedString::read_options(reader, endian, ())?;
+    let s = sized_string.to_string().unwrap_or_else(|_| {
+        log::error!("Failed to decode string: {:?}", sized_string);
+        "Failed to decode string".to_string()
+    });
+
+    Ok(s)
 }
 
 #[binrw]

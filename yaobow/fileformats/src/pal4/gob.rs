@@ -4,16 +4,21 @@ use binrw::{BinRead, BinResult};
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use crate::utils::SizedString;
+use crate::utils::{parse_sized_string, SizedString};
 
 #[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobFile {
     pub header: GobHeader,
 
-    // #[br(count = header.count)]
-    #[br(count = 30)]
+    #[br(count = header.count)]
     pub entries: Vec<GobEntry>,
+}
+
+pub struct GobObjectType;
+impl GobObjectType {
+    pub const ITEM: u32 = 0;
+    pub const EFFECT: u32 = 0x8;
 }
 
 #[derive(Debug, BinRead, Serialize)]
@@ -43,13 +48,57 @@ pub struct GobEntry {
     pub game_object: GobPropertyI32,
 
     #[br(count = game_object.value)]
-    pub game_object_properties: Vec<GobProperty>,
+    pub properties: Vec<GobProperty>,
 
     pub prameters_magic: u32,
-    pub prameters: GobPropertyI32,
+    pub prameters_begin: GobPropertyI32,
 
     #[br(parse_with = parse_properties)]
-    pub properties: Vec<GobProperty>,
+    pub parameters: Vec<GobProperty>,
+}
+
+pub enum GobCommonProperties {
+    Scale,
+    ResearchNum,
+    AutoDisappear,
+}
+
+pub enum GobCommonParameters {
+    EffectName,
+    EffectTimes,
+}
+
+impl GobEntry {
+    pub fn get_property(&self, name: &str) -> Option<&GobProperty> {
+        self.properties
+            .iter()
+            .find_map(|p| if p.name() == name { Some(p) } else { None })
+    }
+
+    pub fn get_parameter(&self, name: &str) -> Option<&GobProperty> {
+        self.parameters
+            .iter()
+            .find_map(|p| if name == p.name() { Some(p) } else { None })
+    }
+
+    pub fn get_common_property(&self, property: GobCommonProperties) -> Option<&GobProperty> {
+        match property {
+            GobCommonProperties::Scale => self.get_property("PAL4-GameObject-object-scale"),
+            GobCommonProperties::ResearchNum => {
+                self.get_property("PAL4-GameObject-object-research-num")
+            }
+            GobCommonProperties::AutoDisappear => {
+                self.get_property("PAL4-GameObject-object-auto-disappear")
+            }
+        }
+    }
+
+    pub fn get_common_parameter(&self, parameter: GobCommonParameters) -> Option<&GobProperty> {
+        match parameter {
+            GobCommonParameters::EffectName => self.get_parameter("PAL4_GameObject-effect-name"),
+            GobCommonParameters::EffectTimes => self.get_parameter("PAL4_GameObject-effect-times"),
+        }
+    }
 }
 
 #[binrw::parser(reader, endian)]
@@ -86,6 +135,41 @@ pub enum GobProperty {
     GobPropertyObjectArray(GobPropertyObjectArray),
 }
 
+impl GobProperty {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::GobPropertyI32(v) => &v.name,
+            Self::GobPropertyF32(v) => &v.name,
+            Self::GobPropertyString(v) => &v.name,
+            Self::GobPropertyObjectArray(v) => &v.0[0].name,
+        }
+    }
+
+    pub fn value_i32(&self) -> Option<i32> {
+        if let Self::GobPropertyI32(v) = self {
+            Some(v.value)
+        } else {
+            None
+        }
+    }
+
+    pub fn value_f32(&self) -> Option<f32> {
+        if let Self::GobPropertyF32(v) = self {
+            Some(v.value)
+        } else {
+            None
+        }
+    }
+
+    pub fn value_string(&self) -> Option<&str> {
+        if let Self::GobPropertyString(v) = self {
+            Some(&v.value)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct GobPropertyObjectArray(pub Vec<GobObject>);
 
@@ -97,6 +181,10 @@ impl BinRead for GobPropertyObjectArray {
         endian: binrw::Endian,
         _: Self::Args<'_>,
     ) -> BinResult<Self> {
+        println!(
+            "GobPropertyObjectArray::read_options cursor position: {}",
+            reader.stream_position()?
+        );
         let mut properties = vec![];
 
         let count = reader.read_u32_le()?;
@@ -115,28 +203,34 @@ impl BinRead for GobPropertyObjectArray {
 #[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobPropertyI32 {
-    pub name: SizedString,
+    #[br(parse_with = parse_sized_string)]
+    pub name: String,
     pub value: i32,
 }
 
 #[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobPropertyF32 {
-    pub name: SizedString,
+    #[br(parse_with = parse_sized_string)]
+    pub name: String,
     pub value: f32,
 }
 
 #[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobPropertyString {
-    pub name: SizedString,
-    pub value: SizedString,
+    #[br(parse_with = parse_sized_string)]
+    pub name: String,
+
+    #[br(parse_with = parse_sized_string)]
+    pub value: String,
 }
 
 #[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobObject {
-    pub name: SizedString,
+    #[br(parse_with = parse_sized_string)]
+    pub name: String,
     pub prop_count: u32,
 
     #[br(count = prop_count)]

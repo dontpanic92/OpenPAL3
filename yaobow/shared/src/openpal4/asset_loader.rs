@@ -11,7 +11,7 @@ use crosscom::ComRc;
 use fileformats::{
     binrw::BinRead,
     npc::NpcInfoFile,
-    pal4::{cam::CameraDataFile, evf::EvfFile},
+    pal4::{cam::CameraDataFile, evf::EvfFile, gob::GobFile},
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
@@ -75,6 +75,16 @@ impl AssetLoader {
         Ok(Rc::new(RefCell::new(
             ScriptModule::read_from_buffer(&content).unwrap(),
         )))
+    }
+
+    pub fn load_object(
+        &self,
+        object_name: &str,
+        folder: &str,
+        file_name: &str,
+    ) -> Option<ComRc<IEntity>> {
+        let path = format!("/{}{}.dff", folder, file_name);
+        self.try_load_dff(path, object_name.to_string())
     }
 
     pub fn load_actor(
@@ -152,6 +162,16 @@ impl AssetLoader {
     pub fn load_amf(&self, actor_name: &str, act_name: &str) -> Vec<AnimationEvent> {
         let amf_path = format!("/gamedata/PALActor/{}/{}.amf", actor_name, act_name);
         load_amf(&self.vfs, &amf_path).unwrap_or(vec![])
+    }
+
+    pub fn load_gob(&self, scene_name: &str, block_name: &str) -> anyhow::Result<GobFile> {
+        let path = format!(
+            "/gamedata/scenedata/{}/{}/GameObjs.gob",
+            scene_name, block_name,
+        );
+
+        let mut reader = BufReader::new(self.vfs.open(&path)?);
+        Ok(GobFile::read(&mut reader)?)
     }
 
     pub fn load_scene(&self, scene_name: &str, block_name: &str) -> anyhow::Result<ComRc<IScene>> {

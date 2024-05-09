@@ -363,7 +363,11 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
             0
         };
 
-        texture_path.push(mv3file.textures[texture_index].names[0].as_str().unwrap());
+        texture_path.push(
+            mv3file.textures[texture_index].names[0]
+                .to_string()
+                .unwrap(),
+        );
 
         let material = SimpleMaterialDef::create(
             texture_path.to_str().unwrap(),
