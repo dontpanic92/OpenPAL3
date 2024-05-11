@@ -6,7 +6,7 @@ use std::{
 use crosscom::ComRc;
 use fileformats::pal4::{
     evf::EvfEvent,
-    gob::{GobCommonProperties, GobObjectType},
+    gob::{GobCommonProperties, GobFile, GobObjectType},
 };
 use radiance::{
     comdef::{IEntity, IScene, IStaticMeshComponent},
@@ -56,6 +56,7 @@ pub struct Pal4Scene {
     pub(crate) players: [ComRc<IEntity>; 4],
     pub(crate) npcs: Vec<ComRc<IEntity>>,
     pub(crate) objects: Vec<ComRc<IEntity>>,
+    pub(crate) objects_gob: Option<GobFile>,
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
     pub(crate) triggers: Vec<Rc<SceneEventTrigger>>,
@@ -78,6 +79,7 @@ impl Pal4Scene {
             ],
             npcs: vec![],
             objects: vec![],
+            objects_gob: None,
             events: vec![],
             module: None,
             triggers: vec![],
@@ -264,6 +266,7 @@ impl Pal4Scene {
             players,
             npcs,
             objects,
+            objects_gob: Some(gob),
             events: events.events,
             module: Some(module),
             triggers,
@@ -300,6 +303,45 @@ impl Pal4Scene {
         }
 
         None
+    }
+
+    pub fn test_interaction(
+        &self,
+        input: Rc<RefCell<dyn InputEngine>>,
+        leader: usize,
+    ) -> Option<String> {
+        let input = input.borrow();
+        let down = input.get_key_state(radiance::input::Key::F).pressed()
+            || input
+                .get_key_state(radiance::input::Key::GamePadEast)
+                .pressed();
+
+        if !down {
+            return None;
+        }
+
+        println!("testing interadction");
+        let position = self.players[leader].world_transform().position();
+        let mut min_distance = 99999.;
+        let mut min_function = None;
+
+        println!("position: {:?}", position);
+
+        for (i, object) in self.objects.iter().enumerate() {
+            let entry = &self.objects_gob.as_ref().unwrap().entries[i];
+            let distance = Vec3::norm(&Vec3::sub(&object.world_transform().position(), &position));
+            println!(
+                "object: {:?} distance {:?}",
+                entry.research_function, distance
+            );
+            if distance < 50. && distance < min_distance && entry.research_function != "" {
+                min_distance = distance;
+                min_function = Some(entry.research_function.to_string().unwrap());
+            }
+        }
+
+        println!("min_function: {:?}", min_function);
+        min_function
     }
 
     pub fn get_player_metadata(&self, player_id: usize) -> Player {

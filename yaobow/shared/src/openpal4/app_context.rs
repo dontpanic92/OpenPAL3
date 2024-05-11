@@ -142,10 +142,11 @@ impl Pal4AppContext {
         entities
     }
 
-    pub fn scene_event_triggered(&mut self, _delta_sec: f32) -> Option<String> {
+    pub fn event_triggered(&mut self, _delta_sec: f32) -> Option<String> {
         self.scene
             .test_event_triggers()
             .and_then(|event| event.function.function.to_string().ok())
+            .or_else(|| self.scene.test_interaction(self.input.clone(), self.leader))
     }
 
     pub fn set_actdrop(&mut self, darkness: InterpValue<f32>) {

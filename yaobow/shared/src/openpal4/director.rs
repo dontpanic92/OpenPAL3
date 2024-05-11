@@ -74,7 +74,7 @@ impl IDirectorImpl for OpenPAL4Director {
                 .vm
                 .borrow_mut()
                 .app_context_mut()
-                .scene_event_triggered(delta_sec);
+                .event_triggered(delta_sec);
             if let Some(function) = function {
                 let module = self.vm.borrow().app_context.scene.module.clone().unwrap();
                 self.vm
