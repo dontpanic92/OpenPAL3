@@ -1,4 +1,4 @@
-use crate::fs::{create_reader, memory_file::MemoryFile};
+use crate::{create_reader, memory_file::MemoryFile};
 use mini_fs::{Entries, Entry, EntryKind, Store};
 use std::{
     cell::RefCell,

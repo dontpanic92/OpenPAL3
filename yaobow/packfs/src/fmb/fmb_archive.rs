@@ -5,9 +5,9 @@ use std::{
 };
 
 use common::read_ext::ReadExt;
-use radiance::utils::SeekRead;
+use common::SeekRead;
 
-use crate::fs::{memory_file::MemoryFile, plain_fs::PlainArchive};
+use crate::{memory_file::MemoryFile, plain_fs::PlainArchive};
 
 pub struct FmbArchive {
     reader: Box<dyn SeekRead>,

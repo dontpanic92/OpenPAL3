@@ -1,4 +1,4 @@
-use crate::fs::cpk::CpkArchive;
+use packfs::cpk::CpkArchive;
 
 pub fn load_smp(data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
     let mut cpk = CpkArchive::load(Box::new(std::io::Cursor::new(data)))?;

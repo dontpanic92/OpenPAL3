@@ -6,9 +6,9 @@ use std::{
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use common::read_ext::ReadExt;
-use radiance::utils::SeekRead;
+use common::SeekRead;
 
-use crate::fs::{memory_file::MemoryFile, plain_fs::PlainArchive};
+use crate::{memory_file::MemoryFile, plain_fs::PlainArchive};
 
 pub struct ImdArchive {
     reader: Box<dyn SeekRead>,

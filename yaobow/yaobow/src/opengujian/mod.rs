@@ -11,7 +11,7 @@ pub fn test_nif(data: &[u8]) {
 
 pub fn run_opengujian() {
     // zpk::zpk_test().unwrap();
-    // shared::fs::zpkg::zpkg_test();
+    // packfs::zpkg::zpkg_test();
     // let data = std::fs::read("F:\\gujian_extracted\\101\\101.nif").unwrap();
     // test_nif(&data);
     let data =

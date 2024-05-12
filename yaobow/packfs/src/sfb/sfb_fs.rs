@@ -1,4 +1,4 @@
-use crate::fs::{create_reader, plain_fs::PlainFs};
+use crate::{create_reader, plain_fs::PlainFs};
 use std::path::Path;
 
 use super::sfb_archive::SfbArchive;

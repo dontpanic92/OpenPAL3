@@ -1,9 +1,9 @@
 use std::{io::Cursor, path::Path};
 
 use common::read_ext::ReadExt;
-use radiance::utils::SeekRead;
+use common::SeekRead;
 
-use crate::fs::{memory_file::MemoryFile, plain_fs::PlainArchive};
+use crate::{memory_file::MemoryFile, plain_fs::PlainArchive};
 
 use super::tr_cache::TrCacheFile;
 

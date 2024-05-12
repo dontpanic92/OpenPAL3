@@ -7,11 +7,13 @@ members = [
     "yaobow/fileformats",
     "yaobow/macros",
     "yaobow/shared",
+    "yaobow/packfs",
     "yaobow/yaobow",
     "yaobow/yaobow_editor",
     "tools/pol_exporter",
     "tools/asdebug",
     "tools/dbexp",
+    "tools/repacker",
 ]
 resolver = "2"
 
@@ -22,6 +24,9 @@ vcpkg = { git = "https://github.com/dontpanic92/vcpkg-rs", branch = "yaobow" }
 
 [patch."https://github.com/meh/rust-ffmpeg"]
 ffmpeg = { git = "https://github.com/dontpanic92/rust-ffmpeg", branch = "yaobow2" }
+
+#[patch."https://github.com/dontpanic92/mini-fs"]
+#mini-fs = { path = "../mini-fs" }
 
 [profile.release-with-symbol]
 inherits = "release"

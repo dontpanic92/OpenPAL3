@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::fs::{create_reader, plain_fs::PlainFs};
+use crate::{create_reader, plain_fs::PlainFs};
 
 use super::zpk_archive::ZpkArchive;
 

@@ -1,6 +1,7 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
-use radiance::utils::SeekRead;
+use common::SeekRead;
+use encoding::Encoding;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -9,7 +10,7 @@ use std::{
 };
 use std::{clone::Clone, path::Path};
 
-use crate::fs::memory_file::MemoryFile;
+use crate::memory_file::MemoryFile;
 
 type IoResult<T> = std::io::Result<T>;
 type IoError = std::io::Error;
@@ -82,7 +83,10 @@ impl CpkArchive {
     }
 
     pub fn open_str(&mut self, file_name: &str) -> IoResult<MemoryFile> {
-        self.open(file_name.to_lowercase().as_bytes())
+        let file_name = encoding::all::GBK
+            .encode(&file_name.to_lowercase(), encoding::EncoderTrap::Strict)
+            .unwrap();
+        self.open(&file_name)
     }
 
     pub fn open_first(&mut self) -> IoResult<MemoryFile> {

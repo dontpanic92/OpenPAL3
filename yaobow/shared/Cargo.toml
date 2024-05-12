@@ -27,11 +27,10 @@ itertools = "0"
 lazy_static = "1.2.0"
 lua50-32-sys = { git = "https://github.com/dontpanic92/lua50-32-sys" }
 log = { version = "0.4.13" }
-lzma-rs = "0.3.0"
 md5 = "0.7"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
-miniz_oxide ="0.7"
+packfs = { path = "../packfs" }
 paste = "1.0"
 rand = "0.8.3"
 radiance = { path = "../../radiance/radiance" }
@@ -41,10 +40,8 @@ rust-ini = "0.16.1"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 thiserror = "1.0"
-tomcrypt-sys = "0.1"
 uuid = "0.8"
 wavefront_obj = "5.1.0"
-xtea = { git = "https://github.com/Brekcel/xtea" }
 xxtea = "0.2.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
@@ -64,4 +61,4 @@ memmap = "0.7.0"
 dirs = "3.0.1"
 
 [build-dependencies]
-cfg_aliases = "0.1.0"
+cfg_aliases = "0.2"

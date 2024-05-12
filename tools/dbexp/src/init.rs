@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
-use shared::{fs::init_virtual_fs, openswd5::asset_loader::AssetLoader};
+use packfs::init_virtual_fs;
+use shared::openswd5::asset_loader::AssetLoader;
 
 use crate::components::{table_view::TableViewEvents, window::Window, Events};
 

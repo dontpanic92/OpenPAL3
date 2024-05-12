@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use common::store_ext::StoreExt2;
 use eframe::egui::{self, CollapsingHeader, ScrollArea, Ui};
 use mini_fs::{MiniFs, StoreExt};
+use packfs::init_virtual_fs;
 use shared::{
-    fs::init_virtual_fs,
     openpal4::{app_context::Pal4AppContext, scripting::create_context},
     scripting::angelscript::{disasm, ScriptGlobalContext, ScriptModule},
 };

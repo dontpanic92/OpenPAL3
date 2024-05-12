@@ -55,4 +55,4 @@ winapi = { version = "0.3.8", features = ["winuser", "libloaderapi", "errhandlin
 
 [build-dependencies]
 cc = "1.0"
-cfg_aliases = "0.1.0"
+cfg_aliases = "0.2"

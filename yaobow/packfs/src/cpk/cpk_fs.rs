@@ -1,4 +1,4 @@
-use crate::fs::{create_reader, memory_file::MemoryFile};
+use crate::{create_reader, memory_file::MemoryFile};
 
 use super::{CpkArchive, CpkEntry};
 use encoding::{EncoderTrap, Encoding};

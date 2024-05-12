@@ -28,7 +28,7 @@ impl IComponentImpl for OpenPal3ApplicationLoader {
         let audio_engine = self.app.engine().borrow().audio_engine();
         let scene_manager = self.app.engine().borrow().scene_manager();
         let ui = self.app.engine().borrow().ui_manager();
-        let vfs = shared::fs::init_virtual_fs(&self.root_path, None);
+        let vfs = packfs::init_virtual_fs(&self.root_path, None);
         let asset_mgr = Rc::new(AssetManager::new(
             self.app.engine().borrow().rendering_component_factory(),
             Rc::new(vfs),

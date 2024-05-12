@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::fs::{create_reader, plain_fs::PlainFs};
+use crate::{create_reader, plain_fs::PlainFs};
 
 use super::zpkg_archive::ZpkgArchive;
 

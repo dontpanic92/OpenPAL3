@@ -19,7 +19,6 @@ pub struct OpenPAL5Director {
 
 impl OpenPAL5Director {
     pub fn new(input: Rc<RefCell<dyn InputEngine>>, scene_manager: ComRc<ISceneManager>) -> Self {
-        test();
         Self {
             scene_manager,
             control: FreeViewController::new(input),
@@ -60,15 +59,4 @@ impl IOpenPAL5DirectorImpl for OpenPAL5Director {
     fn get(&self) -> &'static crate::openpal5::director::OpenPAL5Director {
         unsafe { &*(self as *const _) }
     }
-}
-
-fn test() {
-    let content =
-        std::fs::read("F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 5\\Map\\kuangfengzhai\\kuangfengzhai_0_0.mp")
-            .unwrap();
-
-    let content = content[0x3c..].to_vec();
-    let data = miniz_oxide::inflate::decompress_to_vec_zlib(&content).unwrap();
-
-    std::fs::write("f:\\test.bin", &data).unwrap();
 }

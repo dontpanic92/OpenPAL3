@@ -289,6 +289,7 @@ impl AssetLoader {
         };
 
         let path = format!("/gamedata/{}/{}", video_folder, video_name);
+        println!("Loading video: {}", path);
         Ok(Box::new(BufReader::new(self.vfs.open(&path)?)))
     }
 

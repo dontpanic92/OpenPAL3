@@ -14,3 +14,4 @@ egui_extras = "0.26.2"
 env_logger = "0.10"
 roxmltree = "0.19.0"
 serde_json = "1.0.114"
+packfs = { path = "../../yaobow/packfs" }

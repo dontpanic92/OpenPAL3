@@ -1,5 +1,3 @@
-#![feature(io_error_more)]
-#![feature(cursor_remaining)]
 #![feature(trait_upcasting)]
 
 use loaders::{dff::DffLoaderConfig, Pal4TextureResolver};
@@ -8,7 +6,6 @@ use crate::loaders::{Pal5TextureResolver, Swd5TextureResolver};
 
 pub mod config;
 pub mod exporters;
-pub mod fs;
 pub mod loaders;
 pub mod openpal3;
 pub mod openpal4;

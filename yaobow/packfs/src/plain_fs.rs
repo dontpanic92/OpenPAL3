@@ -1,6 +1,7 @@
-use crate::fs::memory_file::MemoryFile;
 use mini_fs::{Entries, Entry, EntryKind, Store};
 use std::{cell::RefCell, ffi::OsString, path::Path};
+
+use crate::memory_file::MemoryFile;
 
 pub trait PlainArchive {
     fn open<P: AsRef<Path>>(&mut self, path: P) -> anyhow::Result<MemoryFile>;

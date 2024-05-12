@@ -6,9 +6,9 @@ use std::{
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use cipher::{generic_array::GenericArray, BlockDecrypt, KeyInit};
 use common::read_ext::ReadExt;
-use radiance::utils::SeekRead;
+use common::SeekRead;
 
-use crate::fs::{memory_file::MemoryFile, plain_fs::PlainArchive};
+use crate::{memory_file::MemoryFile, plain_fs::PlainArchive};
 
 use super::{blowfish, tea::Tea, xtea::XTea};
 

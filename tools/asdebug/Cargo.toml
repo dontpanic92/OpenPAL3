@@ -14,3 +14,4 @@ env_logger = "0.10"
 interprocess = "1.2"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 shared = { path = "../../yaobow/shared" }
+packfs = { path = "../../yaobow/packfs" }

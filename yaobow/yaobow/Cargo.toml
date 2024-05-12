@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Li Shengqiu <lishengqiu.hit@gmail.com>"]
 edition = "2021"
 default-run = "yaobow"
+build = "build.rs"
 
 [[bin]]
 name = "yaobow"
@@ -26,6 +27,7 @@ shared = { path = "../shared" }
 fileformats = { path = "../fileformats" }
 image = "0.23.0"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+packfs = { path = "../packfs" }
 radiance = { path = "../../radiance/radiance" }
 rand = "0.8.3"
 serde = { version = "1.0", features = ["derive", "rc"] }
@@ -66,5 +68,5 @@ launch_mode = "singleTop"
 orientation = "portrait"
 
 [build-dependencies]
-cfg_aliases = "0.1.0"
+cfg_aliases = "0.2"
 vergen = { version = "8.0.0", features = [ "build", "git", "gitcl" ]}

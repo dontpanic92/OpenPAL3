@@ -1,13 +1,13 @@
 use std::{path::PathBuf, rc::Rc};
 
 use crosscom::ComRc;
+use packfs::init_virtual_fs;
 use radiance::{
     application::Application,
     comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
 };
 use shared::{
     config::YaobowConfig,
-    fs::init_virtual_fs,
     openpal5::{asset_loader::AssetLoader, director::OpenPAL5Director, scene::Pal5Scene},
 };
 

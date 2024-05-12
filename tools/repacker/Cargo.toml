@@ -1,0 +1,9 @@
+[package]
+name = "repacker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+indicatif = "0.17"
+packfs ={ path = "../../yaobow/packfs" }
+zip = "1.2"

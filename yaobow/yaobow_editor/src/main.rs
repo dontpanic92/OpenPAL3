@@ -43,7 +43,7 @@ impl SceneViewResourceView {
 
         let factory = app.engine().borrow().rendering_component_factory();
         let input = app.engine().borrow().input_engine();
-        let vfs = shared::fs::init_virtual_fs(&config.asset_path, pkg_key);
+        let vfs = packfs::init_virtual_fs(&config.asset_path, pkg_key);
         let asset_loader = match game {
             GameType::PAL4 => {
                 DevToolsAssetLoader::Pal4(shared::openpal4::asset_loader::AssetLoader::new(

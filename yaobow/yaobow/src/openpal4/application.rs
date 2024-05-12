@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
 use crosscom::ComRc;
+use packfs::init_virtual_fs;
 use radiance::{
     application::Application,
     comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
 };
 use shared::{
     config::YaobowConfig,
-    fs::init_virtual_fs,
     openpal4::{asset_loader::AssetLoader, director::OpenPAL4Director},
 };
 
@@ -78,7 +78,7 @@ impl OpenPal4ApplicationLoader {
     fn new(app: ComRc<IApplication>, app_name: &str) -> Self {
         Self {
             app,
-            root_path: PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 4"),
+            root_path: PathBuf::from("F:\\PAL4_test"), //PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 4"),
             app_name: app_name.to_owned(),
         }
     }

@@ -1,3 +1,6 @@
+#![feature(io_error_more)]
+#![feature(cursor_remaining)]
+
 pub mod cpk;
 pub mod fmb;
 pub mod imd;
@@ -13,10 +16,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use mini_fs::{LocalFs, MiniFs};
-use radiance::utils::SeekRead;
+use common::SeekRead;
+use mini_fs::{LocalFs, MiniFs, ZipFs};
 
-use crate::fs::{
+use crate::{
     cpk::CpkFs, fmb::fmb_fs::FmbFs, imd::imd_fs::ImdFs, pkg::pkg_fs::PkgFs, sfb::sfb_fs::SfbFs,
     zpk::zpk_fs::ZpkFs, zpkg::zpkg_fs::ZpkgFs,
 };
@@ -86,6 +89,11 @@ fn mount_packages_recursive(
             Some("zpkg") => {
                 log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
                 vfs = vfs.mount(vfs_path, ZpkgFs::create(path).unwrap())
+            }
+            Some("zip") => {
+                log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
+                let z = ZipFs::open(path).unwrap();
+                vfs = vfs.mount(vfs_path, z);
             }
             _ => {}
         }
