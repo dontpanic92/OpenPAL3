@@ -44,13 +44,11 @@ pub struct GobEntry {
     pub unknown7: f32,
     pub unknown8: u32,
 
-    pub game_object_magic: u32,
     pub game_object: GobPropertyI32,
 
     #[br(count = game_object.value)]
     pub properties: Vec<GobProperty>,
 
-    pub prameters_magic: u32,
     pub prameters_begin: GobPropertyI32,
 
     #[br(parse_with = parse_properties)]
@@ -113,26 +111,82 @@ fn parse_properties() -> BinResult<Vec<GobProperty>> {
             reader.seek(SeekFrom::Current(-4))?;
         }
 
+        println!(
+            "   parse_properties cursor position: {}",
+            reader.stream_position()?
+        );
+
         let property = GobProperty::read_options(reader, endian, ())?;
+        println!(
+            "   parse_properties completed cursor position: {}",
+            reader.stream_position()?
+        );
         properties.push(property);
     }
 
     Ok(properties)
 }
 
-#[derive(Debug, BinRead, Serialize)]
-#[brw(little)]
+#[derive(Debug, Serialize)]
 pub enum GobProperty {
-    #[br(magic(0x1u32))]
     GobPropertyI32(GobPropertyI32),
-
-    #[br(magic(0x2u32))]
     GobPropertyF32(GobPropertyF32),
-
-    #[br(magic(0x3u32))]
     GobPropertyString(GobPropertyString),
-
     GobPropertyObjectArray(GobPropertyObjectArray),
+}
+
+impl BinRead for GobProperty {
+    type Args<'a> = ();
+
+    fn read_options<R: std::io::prelude::Read + std::io::prelude::Seek>(
+        reader: &mut R,
+        endian: binrw::Endian,
+        _: Self::Args<'_>,
+    ) -> BinResult<Self> {
+        let start_position = reader.stream_position()?;
+        println!(
+            "GobProperty::read_options cursor position: {}",
+            start_position
+        );
+        let ty = reader.read_u32_le()?;
+        let name = SizedString::read_options(reader, endian, ())?;
+        reader.seek(SeekFrom::Start(start_position))?;
+
+        if name == "PAL4_GameObject-machine-condition" || name == "PAL4-GOMTask-[ 0 ]" {
+            return Ok(Self::GobPropertyObjectArray(
+                GobPropertyObjectArray::read_options(reader, endian, ())?,
+            ));
+        } else {
+            println!(
+                "GobProperty::read_options reading ty {} at cursor position: {}",
+                ty, start_position
+            );
+            match ty {
+                1 => Ok(Self::GobPropertyI32(GobPropertyI32::read_options(
+                    reader,
+                    endian,
+                    (),
+                )?)),
+                2 => Ok(Self::GobPropertyF32(GobPropertyF32::read_options(
+                    reader,
+                    endian,
+                    (),
+                )?)),
+                3 => Ok(Self::GobPropertyString(GobPropertyString::read_options(
+                    reader,
+                    endian,
+                    (),
+                )?)),
+                _ => {
+                    unreachable!(
+                        "Unknown array name: {:?} at position {}",
+                        name.to_string(),
+                        start_position
+                    );
+                }
+            }
+        }
+    }
 }
 
 impl GobProperty {
@@ -189,11 +243,21 @@ impl BinRead for GobPropertyObjectArray {
 
         let count = reader.read_u32_le()?;
         reader.seek(SeekFrom::Current(-4))?;
-        for _ in 0..count {
+        for i in 0..count {
+            println!(
+                "   GobPropertyObjectArray::read_options {} cursor position: {}",
+                i,
+                reader.stream_position()?
+            );
             let _ = reader.read_u32_le()?;
 
             let obj = GobObject::read_options(reader, endian, ())?;
             properties.push(obj);
+            println!(
+                "   GobPropertyObjectArray::read_options {} completed cursor position: {}",
+                i,
+                reader.stream_position()?
+            );
         }
 
         Ok(Self(properties))
@@ -203,6 +267,8 @@ impl BinRead for GobPropertyObjectArray {
 #[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobPropertyI32 {
+    pub ty: u32,
+
     #[br(parse_with = parse_sized_string)]
     pub name: String,
     pub value: i32,
@@ -211,6 +277,8 @@ pub struct GobPropertyI32 {
 #[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobPropertyF32 {
+    pub ty: u32,
+
     #[br(parse_with = parse_sized_string)]
     pub name: String,
     pub value: f32,
@@ -219,6 +287,8 @@ pub struct GobPropertyF32 {
 #[derive(Debug, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobPropertyString {
+    pub ty: u32,
+
     #[br(parse_with = parse_sized_string)]
     pub name: String,
 
@@ -235,4 +305,22 @@ pub struct GobObject {
 
     #[br(count = prop_count)]
     pub properties: Vec<GobProperty>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+    use std::io::BufReader;
+
+    use super::*;
+
+    #[test]
+    fn test_gob() {
+        let file =
+            File::open("F:\\PAL4\\gamedata\\scenedata\\scenedata\\M01\\1\\GameObjs.gob").unwrap();
+        let mut reader = BufReader::new(file);
+        let gob_file = GobFile::read(&mut reader).unwrap();
+
+        println!("{:#?}", gob_file);
+    }
 }

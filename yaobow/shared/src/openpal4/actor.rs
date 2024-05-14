@@ -303,7 +303,7 @@ fn get_camera_height(
     current_height: f32,
     delta_sec: f32,
 ) -> f32 {
-    const SPEED: f32 = 50.;
+    const SPEED: f32 = 100.;
 
     let mut height = current_height;
     if input

@@ -2038,7 +2038,8 @@ fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
         let input = input.borrow();
         let completed = ui.ui().is_mouse_released(MouseButton::Left)
             || input.get_key_state(Key::GamePadEast).pressed()
-            || input.get_key_state(Key::GamePadSouth).pressed();
+            || input.get_key_state(Key::GamePadSouth).pressed()
+            || input.get_key_state(Key::Space).pressed();
         if completed {
             vm.app_context
                 .dialog_box

@@ -62,6 +62,10 @@ pub struct Pal4Scene {
     pub(crate) triggers: Vec<Rc<SceneEventTrigger>>,
 }
 
+const SHOW_TRIGGER_POINT: bool = false;
+const SHOW_FLOOR: bool = false;
+const SHOW_WALL: bool = false;
+
 impl Pal4Scene {
     const ID_YUN_TIANHE: usize = 0;
     const ID_HAN_LINGSHA: usize = 1;
@@ -114,13 +118,17 @@ impl Pal4Scene {
         let wall = asset_loader.load_scene_wall(scene_name, block_name);
         let ray_caster = create_floor_wall_ray_caster(floor.clone(), wall.clone());
 
-        /*if let Some(floor) = floor {
-            scene.add_entity(floor);
+        if SHOW_FLOOR {
+            if let Some(floor) = floor {
+                scene.add_entity(floor);
+            }
         }
 
-        if let Some(wall) = wall {
-            scene.add_entity(wall);
-        }*/
+        if SHOW_WALL {
+            if let Some(wall) = wall {
+                scene.add_entity(wall);
+            }
+        }
 
         let players = [
             load_player(asset_loader, Player::YunTianhe),
@@ -133,10 +141,6 @@ impl Pal4Scene {
 
         let mut triggers = vec![];
         for (i, event) in events.events.iter().enumerate() {
-            if event.vertex_count != 8 {
-                continue;
-            }
-
             let trigger = event
                 .vertices
                 .iter()
@@ -149,8 +153,18 @@ impl Pal4Scene {
                 })
                 .collect::<Vec<_>>();
 
-            // let entity = create_box_entity2(asset_loader.component_factory(), trigger.clone());
-            // scene.add_entity(entity);
+            if SHOW_TRIGGER_POINT {
+                for point in &trigger {
+                    let entity =
+                        radiance::debug::create_box_entity(asset_loader.component_factory());
+                    entity.transform().borrow_mut().set_position(point);
+                    scene.add_entity(entity);
+                }
+            }
+
+            if event.vertex_count != 8 && event.vertex_count != 4 {
+                continue;
+            }
 
             let ray_caster = create_trigger_ray_caster(trigger);
             triggers.push(Rc::new(SceneEventTrigger {
@@ -422,15 +436,27 @@ impl SceneEventTrigger {
     }
 }
 
+lazy_static::lazy_static! {
+    pub static ref BOX_TRIGGER_INDICES: Vec<u32> = vec![
+        0, 2, 1, 0, 3, 2, 0, 4, 7, 0, 7, 3, 0, 5, 4, 0, 1, 5, 6, 1, 2, 6, 5, 1, 6, 2, 3, 6, 3,
+        7, 6, 7, 4, 6, 4, 5,
+    ];
+
+    pub static ref PLANE_TRIGGER_INDICES: Vec<u32> = vec![0, 1, 2, 2, 1, 3];
+}
+
 fn create_trigger_ray_caster(trigger: Vec<Vec3>) -> RayCaster {
     let mut ray_caster = RayCaster::new();
-    ray_caster.add_mesh(
-        trigger,
-        vec![
-            0, 2, 1, 0, 3, 2, 0, 4, 7, 0, 7, 3, 0, 5, 4, 0, 1, 5, 6, 1, 2, 6, 5, 1, 6, 2, 3, 6, 3,
-            7, 6, 7, 4, 6, 4, 5,
-        ],
-    );
+    match trigger.len() {
+        4 => {
+            println!("trigger: {:?}", trigger);
+            ray_caster.add_mesh(trigger, PLANE_TRIGGER_INDICES.clone());
+        }
+        8 => {
+            ray_caster.add_mesh(trigger, BOX_TRIGGER_INDICES.clone());
+        }
+        _ => panic!("Invalid trigger point count"),
+    }
 
     ray_caster
 }

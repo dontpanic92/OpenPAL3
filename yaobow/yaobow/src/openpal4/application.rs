@@ -78,7 +78,7 @@ impl OpenPal4ApplicationLoader {
     fn new(app: ComRc<IApplication>, app_name: &str) -> Self {
         Self {
             app,
-            root_path: PathBuf::from("F:\\PAL4_test"), //PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 4"),
+            root_path: PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 4"), //PathBuf::from("F:\\PAL4_test"),
             app_name: app_name.to_owned(),
         }
     }
