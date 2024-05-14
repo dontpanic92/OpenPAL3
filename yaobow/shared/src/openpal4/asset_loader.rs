@@ -193,6 +193,8 @@ impl AssetLoader {
         );
 
         scene.add_entity(entity);
+
+        println!("Loaded scene: {} {}", scene_name, block_name);
         Ok(scene)
     }
 
@@ -245,10 +247,8 @@ impl AssetLoader {
                 },
             );
 
-            println!("Loaded dff: {}", path);
             Some(entity)
         } else {
-            println!("Not Loaded dff: {}", path);
             None
         }
     }

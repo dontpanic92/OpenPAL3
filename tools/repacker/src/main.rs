@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 mod pal4;
 
 fn main() {
@@ -17,7 +15,7 @@ fn main() {
             pal4::repack(pal4::Pal4RepackConfig {
                 input_folder: input_folder.to_string(),
                 output_file: output_file.to_string(),
-                resize_texture: false,
+                resize_texture: true,
             });
 
             println!("Repacking done!");

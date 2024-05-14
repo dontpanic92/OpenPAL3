@@ -320,27 +320,19 @@ impl Pal4Scene {
             return None;
         }
 
-        println!("testing interadction");
         let position = self.players[leader].world_transform().position();
         let mut min_distance = 99999.;
         let mut min_function = None;
 
-        println!("position: {:?}", position);
-
         for (i, object) in self.objects.iter().enumerate() {
             let entry = &self.objects_gob.as_ref().unwrap().entries[i];
             let distance = Vec3::norm(&Vec3::sub(&object.world_transform().position(), &position));
-            println!(
-                "object: {:?} distance {:?}",
-                entry.research_function, distance
-            );
             if distance < 50. && distance < min_distance && entry.research_function != "" {
                 min_distance = distance;
                 min_function = Some(entry.research_function.to_string().unwrap());
             }
         }
 
-        println!("min_function: {:?}", min_function);
         min_function
     }
 
