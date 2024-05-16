@@ -21,6 +21,7 @@ resolver = "2"
 filetime = { git = "https://github.com/dontpanic92/filetime", branch = "yaobow" }
 chlorine = { git = "https://github.com/dontpanic92/chlorine", branch = "yaobow" }
 vcpkg = { git = "https://github.com/dontpanic92/vcpkg-rs", branch = "yaobow" }
+xxhash-rust = { git = "https://github.com/dontpanic92/xxhash-rust", branch = "yaobow" }
 
 [patch."https://github.com/meh/rust-ffmpeg"]
 ffmpeg = { git = "https://github.com/dontpanic92/rust-ffmpeg", branch = "yaobow2" }
