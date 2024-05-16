@@ -8,6 +8,7 @@ pub mod memory_file;
 pub mod pkg;
 pub mod plain_fs;
 pub mod sfb;
+pub mod ypk;
 pub mod zpk;
 pub mod zpkg;
 
@@ -94,6 +95,10 @@ fn mount_packages_recursive(
                 log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
                 let z = ZipFs::open(path).unwrap();
                 vfs = vfs.mount(vfs_path, z);
+            }
+            Some("ypk") => {
+                log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
+                vfs = vfs.mount(vfs_path, ypk::YpkFs::new(path).unwrap())
             }
             _ => {}
         }

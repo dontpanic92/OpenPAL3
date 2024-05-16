@@ -7,7 +7,7 @@ use std::{
 
 use image::{GenericImageView, ImageFormat, ImageOutputFormat};
 use indicatif::ProgressBar;
-use packfs::cpk::CpkArchive;
+use packfs::{cpk::CpkArchive, ypk::YpkWriter};
 use zip::{write::SimpleFileOptions, ZipWriter};
 
 pub struct Pal4RepackConfig {
@@ -21,7 +21,8 @@ pub fn repack(config: Pal4RepackConfig) {
     bar.enable_steady_tick(Duration::from_millis(100));
 
     let file = File::create(&config.output_file).unwrap();
-    let mut writer = ZipWriter::new(file);
+    // let mut writer = ZipWriter::new(file);
+    let mut writer = YpkWriter::new(Box::new(file)).unwrap();
     repack_recursive(
         &config,
         &bar,
@@ -29,6 +30,7 @@ pub fn repack(config: Pal4RepackConfig) {
         &PathBuf::from(""),
         &mut writer,
     );
+    writer.finish().unwrap();
     bar.finish();
 }
 
@@ -37,15 +39,16 @@ fn repack_recursive(
     bar: &ProgressBar,
     file_path: &Path,
     dest_path: &Path,
-    writer: &mut ZipWriter<File>,
+    // writer: &mut ZipWriter<File>,
+    writer: &mut YpkWriter,
 ) {
     if file_path.is_dir() {
-        writer
-            .add_directory(
-                dest_path.to_str().unwrap(),
-                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Zstd),
-            )
-            .unwrap();
+        /*writer
+        .add_directory(
+            dest_path.to_str().unwrap(),
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Zstd),
+        )
+        .unwrap();*/
         for entry in file_path.read_dir().unwrap() {
             let dest_path =
                 dest_path.join(entry.as_ref().unwrap().file_name().to_ascii_lowercase());
@@ -63,14 +66,17 @@ fn repack_recursive(
                 let content = std::fs::read(file_path).unwrap();
                 let (dest_path, content) = transform(config, dest_path, content);
 
-                writer
+                /*writer
                     .start_file(
                         dest_path.to_str().unwrap(),
                         SimpleFileOptions::default()
                             .compression_method(zip::CompressionMethod::Zstd),
                     )
                     .unwrap();
-                writer.write_all(&content).unwrap();
+                writer.write_all(&content).unwrap();*/
+                writer
+                    .write_file(dest_path.to_str().unwrap(), &content)
+                    .unwrap();
             }
         }
     }
@@ -81,7 +87,8 @@ fn repack_cpk(
     bar: &ProgressBar,
     file_path: &Path,
     dest_path: &Path,
-    writer: &mut ZipWriter<File>,
+    // writer: &mut ZipWriter<File>,
+    writer: &mut YpkWriter,
 ) {
     let reader = Box::new(std::fs::File::open(file_path).unwrap());
     let mut archive = CpkArchive::load(reader).unwrap();
@@ -109,7 +116,8 @@ fn repack_cpk_recursive(
     entry_path: &Path,
     entry: &packfs::cpk::CpkEntry,
     dest_path: &Path,
-    writer: &mut ZipWriter<File>,
+    // writer: &mut ZipWriter<File>,
+    writer: &mut YpkWriter,
 ) {
     for entry in entry.children() {
         let entry = entry.borrow();
@@ -118,12 +126,12 @@ fn repack_cpk_recursive(
         let dest_path = dest_path.join(name.to_ascii_lowercase());
 
         if entry.is_dir() {
-            writer
-                .add_directory(
-                    dest_path.to_str().unwrap(),
-                    SimpleFileOptions::default().compression_method(zip::CompressionMethod::Zstd),
-                )
-                .unwrap();
+            /*writer
+            .add_directory(
+                dest_path.to_str().unwrap(),
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Zstd),
+            )
+            .unwrap();*/
             repack_cpk_recursive(
                 config,
                 bar,
@@ -146,13 +154,17 @@ fn repack_cpk_recursive(
             file.read_to_end(&mut content).unwrap();
 
             let (dest_path, content) = transform(config, &dest_path, content);
-            writer
+            /*writer
                 .start_file(
                     dest_path.to_str().unwrap(),
                     SimpleFileOptions::default().compression_method(zip::CompressionMethod::Zstd),
                 )
                 .unwrap();
-            writer.write_all(&content).unwrap();
+            writer.write_all(&content).unwrap();*/
+
+            writer
+                .write_file(dest_path.to_str().unwrap(), &content)
+                .unwrap();
         }
     }
 }

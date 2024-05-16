@@ -12,6 +12,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 anyhow = "1.0"
+binrw = "0.11"
 byteorder = "1.3.4"
 cipher = "0.4.2"
 common = { path = "../common" }
@@ -30,6 +31,8 @@ tomcrypt-sys = "0.1"
 uuid = "0.8"
 xtea = { git = "https://github.com/Brekcel/xtea" }
 xxtea = "0.2.0"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+zstd = "0.13"
 
 [target.'cfg(not(target_os = "vita"))'.dependencies]
 memmap = "0.7.0"
