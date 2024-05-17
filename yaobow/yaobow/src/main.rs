@@ -24,33 +24,37 @@ pub fn main() {
     init_logger();
     register_opengb_video_decoders();
 
-    let args = std::env::args().collect::<Vec<String>>();
-    if args.len() <= 1 {
-        run_title_selection();
+    if cfg!(vita) {
+        run_openpal4();
     } else {
-        match args[1].as_str() {
-            "--pal3" => {
-                run_openpal3();
+        let args = std::env::args().collect::<Vec<String>>();
+        if args.len() <= 1 {
+            run_title_selection();
+        } else {
+            match args[1].as_str() {
+                "--pal3" => {
+                    run_openpal3();
+                }
+                "--pal4" => {
+                    run_openpal4();
+                }
+                "--pal5" => {
+                    run_openpal5();
+                }
+                "--pal5q" => {
+                    run_openpal5();
+                }
+                "--swd5" => {
+                    run_openswd5();
+                }
+                "--gujian" => {
+                    run_opengujian();
+                }
+                "--test" => {
+                    run_test();
+                }
+                &_ => {}
             }
-            "--pal4" => {
-                run_openpal4();
-            }
-            "--pal5" => {
-                run_openpal5();
-            }
-            "--pal5q" => {
-                run_openpal5();
-            }
-            "--swd5" => {
-                run_openswd5();
-            }
-            "--gujian" => {
-                run_opengujian();
-            }
-            "--test" => {
-                run_test();
-            }
-            &_ => {}
         }
     }
 }
@@ -69,7 +73,7 @@ fn init_logger() {
     #[cfg(vita)]
     {
         let logger = simplelog::WriteLogger::new(
-            simplelog::LevelFilter::Debug,
+            simplelog::LevelFilter::Error,
             simplelog::Config::default(),
             std::fs::File::create("ux0:data/yaobow.log").unwrap(),
         );

@@ -80,10 +80,9 @@ pub fn get_moving_direction(input: Rc<RefCell<dyn InputEngine>>, scene: ComRc<IS
         local_direction = Vec3::add(&local_direction, &Vec3::new(0., 0., 1.));
     }
 
-    local_direction = Vec3::add(
-        &local_direction,
-        &Vec3::new(0., 0., -input.get_axis_state(Axis::LeftStickY).value()),
-    );
+    let left_y = input.get_axis_state(Axis::LeftStickY).value();
+    let left_y = if left_y.abs() < 0.4 { 0. } else { left_y };
+    local_direction = Vec3::add(&local_direction, &Vec3::new(0., 0., -left_y));
 
     if input.get_key_state(Key::Left).is_down()
         || input.get_key_state(Key::GamePadDPadLeft).is_down()
@@ -97,11 +96,10 @@ pub fn get_moving_direction(input: Rc<RefCell<dyn InputEngine>>, scene: ComRc<IS
         local_direction = Vec3::add(&local_direction, &Vec3::new(1., 0., 0.));
     }
 
-    local_direction = Vec3::add(
-        &local_direction,
-        &Vec3::new(input.get_axis_state(Axis::LeftStickX).value(), 0., 0.),
-    );
+    let left_x = input.get_axis_state(Axis::LeftStickX).value();
+    let left_x = if left_x.abs() < 0.4 { 0. } else { left_x };
 
+    local_direction = Vec3::add(&local_direction, &Vec3::new(left_x, 0., 0.));
     local_direction.normalize();
 
     let camera_mat = {
@@ -136,8 +134,10 @@ pub fn get_camera_rotation(
         current_rotation += CAMERA_ROTATE_SPEED * delta_sec;
     }
 
-    current_rotation -=
-        CAMERA_ROTATE_SPEED * delta_sec * input.get_axis_state(Axis::RightStickX).value();
+    let right_x = input.get_axis_state(Axis::RightStickX).value();
+    let right_x = if right_x.abs() < 0.4 { 0. } else { right_x };
+
+    current_rotation -= CAMERA_ROTATE_SPEED * delta_sec * right_x;
 
     if current_rotation < 0. {
         current_rotation += std::f32::consts::PI * 2.;

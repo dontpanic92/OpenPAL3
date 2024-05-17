@@ -1,6 +1,6 @@
 #![feature(io_error_more)]
 #![feature(cursor_remaining)]
-#![cfg_attr(target_os = "vita", stdarch_arm_neon_intrinsics)]
+#![cfg_attr(target_os = "vita", feature(stdarch_arm_neon_intrinsics))]
 
 pub mod cpk;
 pub mod fmb;
@@ -28,6 +28,10 @@ use crate::{
 };
 
 pub fn init_virtual_fs<P: AsRef<Path>>(local_asset_path: P, pkg_key: Option<&str>) -> MiniFs {
+    log::debug!(
+        "Initializing virtual file system with {:?}",
+        local_asset_path.as_ref()
+    );
     let local = LocalFs::new(local_asset_path.as_ref());
     let vfs = MiniFs::new(false).mount("/", local);
     let vfs = mount_packages_recursive(

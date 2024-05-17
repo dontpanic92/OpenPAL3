@@ -76,9 +76,14 @@ impl OpenPal4ApplicationLoader {
     }
 
     fn new(app: ComRc<IApplication>, app_name: &str) -> Self {
+        let root_path = if cfg!(vita) {
+            PathBuf::from("ux0:games/PAL4")
+        } else {
+            PathBuf::from("F:\\PAL4_test") // PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 4")
+        };
         Self {
             app,
-            root_path: PathBuf::from("F:\\PAL4_test"), // PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 4")
+            root_path,
             app_name: app_name.to_owned(),
         }
     }
