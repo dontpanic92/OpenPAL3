@@ -1,5 +1,6 @@
 #![feature(io_error_more)]
 #![feature(cursor_remaining)]
+#![cfg_attr(target_os = "vita", stdarch_arm_neon_intrinsics)]
 
 pub mod cpk;
 pub mod fmb;
@@ -8,6 +9,7 @@ pub mod memory_file;
 pub mod pkg;
 pub mod plain_fs;
 pub mod sfb;
+pub mod streaming_file;
 pub mod ypk;
 pub mod zpk;
 pub mod zpkg;

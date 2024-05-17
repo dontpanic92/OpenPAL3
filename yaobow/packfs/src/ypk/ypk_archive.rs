@@ -1,27 +1,31 @@
 use std::{
     collections::HashMap,
-    io::{Cursor, Write},
+    io::{Cursor, Read, Write},
+    ops::DerefMut,
+    sync::{Arc, Mutex},
 };
 
 use binrw::{binrw, BinRead, BinWrite};
 use common::{SeekRead, SeekWrite};
+use mini_fs::File;
 
-use crate::memory_file::MemoryFile;
+use crate::{memory_file::MemoryFile, streaming_file::StreamingFile};
 
 pub struct YpkArchive {
-    reader: Box<dyn SeekRead>,
+    reader: Arc<Mutex<dyn SeekRead + Send + Sync>>,
     pub entries: Vec<YpkEntry>,
     entries_hash: HashMap<u64, Vec<usize>>,
 }
 
 impl YpkArchive {
-    pub fn load(mut reader: Box<dyn SeekRead>) -> anyhow::Result<Self> {
-        let header = YpkHeader::read(&mut reader)?;
+    pub fn load(file: Arc<Mutex<dyn SeekRead + Send + Sync>>) -> anyhow::Result<Self> {
+        let mut reader = file.lock().unwrap();
+        let header = YpkHeader::read(&mut reader.deref_mut())?;
 
         reader.seek(std::io::SeekFrom::Start(header.entry_offset))?;
         let mut entries = Vec::with_capacity(header.entry_count as usize);
         for _ in 0..header.entry_count {
-            entries.push(YpkEntry::read(&mut reader)?);
+            entries.push(YpkEntry::read(&mut reader.deref_mut())?);
         }
 
         let mut entries_hash = HashMap::new();
@@ -32,15 +36,17 @@ impl YpkArchive {
                 .push(i);
         }
 
+        drop(reader);
+
         Ok(Self {
-            reader,
+            reader: file,
             entries,
             entries_hash,
         })
     }
 
-    pub fn open(&mut self, name: &str) -> std::io::Result<MemoryFile> {
-        let (offset, actual_size) = {
+    pub fn open(&mut self, name: &str) -> std::io::Result<File> {
+        let (offset, actual_size, is_compressed) = {
             let entry = self.get_entry(name).ok_or_else(|| {
                 std::io::Error::new(
                     std::io::ErrorKind::NotFound,
@@ -48,15 +54,26 @@ impl YpkArchive {
                 )
             })?;
 
-            (entry.offset, entry.actual_size)
+            (entry.offset, entry.actual_size, entry.is_compressed == 1)
         };
 
-        self.reader.seek(std::io::SeekFrom::Start(offset))?;
+        /*let mut reader = self.reader.lock().unwrap();
+        reader.seek(std::io::SeekFrom::Start(offset))?;
         let mut buf = vec![0; actual_size as usize];
-        self.reader.read_exact(&mut buf)?;
+        reader.read_exact(&mut buf)?;*/
 
-        let buf = zstd::stream::decode_all::<&[u8]>(buf.as_ref());
-        Ok(MemoryFile::new(Cursor::new(buf.unwrap())))
+        let mut streaming =
+            StreamingFile::new(self.reader.clone(), offset, offset + actual_size as u64);
+
+        if is_compressed {
+            let buf = zstd::stream::decode_all(&mut streaming)?;
+            return Ok(MemoryFile::new(Cursor::new(buf)).into());
+        } else {
+            /*let mut buf = Vec::new();
+            streaming.read_to_end(&mut buf)?;
+            return Ok(MemoryFile::new(Cursor::new(buf)).into());*/
+            return Ok(streaming.into());
+        }
     }
 
     fn get_entry(&self, name: &str) -> Option<&YpkEntry> {
@@ -102,6 +119,7 @@ pub struct YpkEntry {
     name: Vec<u8>,
 
     offset: u64,
+    is_compressed: u32,
     original_size: u32,
     actual_size: u32,
 }
@@ -129,17 +147,22 @@ impl YpkWriter {
         let offset = self.writer.stream_position()?;
         let original_size = data.len() as u32;
 
+        let (is_compressed, data) = if name.ends_with(".bik") {
+            (false, data.to_vec())
+        } else {
+            (true, zstd::stream::encode_all(data, 0)?)
+        };
+
         let name = normorlize_path(name);
         let name_for_hash = name.to_lowercase();
         let name = name.as_bytes();
-
-        let data = zstd::stream::encode_all(data, 0)?;
 
         self.entries.push(YpkEntry {
             hash: xxhash_rust::xxh3::xxh3_64(name_for_hash.as_bytes()),
             name_len: name.len() as u32,
             name: name.to_vec(),
             offset,
+            is_compressed: is_compressed as u32,
             original_size,
             actual_size: data.len() as u32,
         });
