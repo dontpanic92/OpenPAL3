@@ -83,7 +83,7 @@ impl AssetLoader {
         folder: &str,
         file_name: &str,
     ) -> Option<ComRc<IEntity>> {
-        let path = format!("/{}{}.dff", folder, file_name);
+        let path = format!("/{}{}.dff", folder, file_name).replace("\\", "/");
         self.try_load_dff(path, object_name.to_string())
     }
 

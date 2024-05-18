@@ -24,9 +24,13 @@ pub fn main() {
     init_logger();
     register_opengb_video_decoders();
 
-    if cfg!(vita) {
+    #[cfg(vita)]
+    {
         run_openpal4();
-    } else {
+    }
+
+    #[cfg(not(vita))]
+    {
         let args = std::env::args().collect::<Vec<String>>();
         if args.len() <= 1 {
             run_title_selection();

@@ -14,7 +14,6 @@ impl VitaGamepadInput {
         unsafe {
             let mut ctrl: SceCtrlData = std::mem::zeroed();
             sceCtrlPeekBufferPositive(0, &mut ctrl as *mut _, 1);
-
             set_key_state(
                 states,
                 Key::GamePadEast,
@@ -52,10 +51,11 @@ impl VitaGamepadInput {
                 ctrl.buttons & SCE_CTRL_RIGHT != 0,
             );
 
-            axis_states[Axis::LeftStickX as usize].set_value(ctrl.lx as f32 / 255.0);
-            axis_states[Axis::LeftStickY as usize].set_value(ctrl.ly as f32 / 255.0);
-            axis_states[Axis::RightStickX as usize].set_value(ctrl.rx as f32 / 255.0);
-            axis_states[Axis::RightStickY as usize].set_value(ctrl.ry as f32 / 255.0);
+            axis_states[Axis::LeftStickX as usize].set_value(ctrl.lx as f32 / 255.0 * 2.0 - 1.0);
+            axis_states[Axis::LeftStickY as usize].set_value(-(ctrl.ly as f32 / 255.0 * 2.0 - 1.0));
+            axis_states[Axis::RightStickX as usize].set_value(ctrl.rx as f32 / 255.0 * 2.0 - 1.0);
+            axis_states[Axis::RightStickY as usize]
+                .set_value(-(ctrl.ry as f32 / 255.0 * 2.0 - 1.0));
         }
     }
 }

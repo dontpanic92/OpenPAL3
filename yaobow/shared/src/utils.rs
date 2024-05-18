@@ -81,7 +81,7 @@ pub fn get_moving_direction(input: Rc<RefCell<dyn InputEngine>>, scene: ComRc<IS
     }
 
     let left_y = input.get_axis_state(Axis::LeftStickY).value();
-    let left_y = if left_y.abs() < 0.4 { 0. } else { left_y };
+    let left_y = if left_y.abs() < 0.1 { 0. } else { left_y };
     local_direction = Vec3::add(&local_direction, &Vec3::new(0., 0., -left_y));
 
     if input.get_key_state(Key::Left).is_down()
@@ -97,7 +97,7 @@ pub fn get_moving_direction(input: Rc<RefCell<dyn InputEngine>>, scene: ComRc<IS
     }
 
     let left_x = input.get_axis_state(Axis::LeftStickX).value();
-    let left_x = if left_x.abs() < 0.4 { 0. } else { left_x };
+    let left_x = if left_x.abs() < 0.1 { 0. } else { left_x };
 
     local_direction = Vec3::add(&local_direction, &Vec3::new(left_x, 0., 0.));
     local_direction.normalize();
@@ -135,7 +135,7 @@ pub fn get_camera_rotation(
     }
 
     let right_x = input.get_axis_state(Axis::RightStickX).value();
-    let right_x = if right_x.abs() < 0.4 { 0. } else { right_x };
+    let right_x = if right_x.abs() < 0.1 { 0. } else { right_x };
 
     current_rotation -= CAMERA_ROTATE_SPEED * delta_sec * right_x;
 

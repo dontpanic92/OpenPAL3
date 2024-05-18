@@ -33,6 +33,7 @@ impl ActDrop {
         let color = [0., 0., 0., value];
         let style = ui.push_style_color(imgui::StyleColor::WindowBg, color);
         ui.window("actdrop")
+            .no_decoration()
             .position([0., 0.], imgui::Condition::Always)
             .size([width, height], imgui::Condition::Always)
             .movable(false)

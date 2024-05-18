@@ -97,9 +97,12 @@ impl Pal4Scene {
         block_name: &str,
     ) -> anyhow::Result<Self> {
         let scene = asset_loader.load_scene(scene_name, block_name)?;
-        let clip = asset_loader.try_load_scene_clip(scene_name, block_name);
-        if let Some(clip) = clip {
-            scene.add_entity(clip);
+
+        if !cfg!(vita) {
+            let clip = asset_loader.try_load_scene_clip(scene_name, block_name);
+            if let Some(clip) = clip {
+                scene.add_entity(clip);
+            }
         }
 
         let clip_na = asset_loader.try_load_scene_clip_na(scene_name, block_name);
@@ -237,30 +240,38 @@ impl Pal4Scene {
                         continue;
                     }
 
-                    let entity = asset_loader.load_object(&object_name, &folder, &file_name);
+                    let entity = asset_loader
+                        .load_object(&object_name, &folder, &file_name)
+                        .unwrap_or_else(|| {
+                            log::error!(
+                                "Cannot load object: {:?} {:?} {:?}",
+                                object_name,
+                                folder,
+                                file_name
+                            );
+                            CoreEntity::create(object_name.clone(), false)
+                        });
 
-                    if let Some(entity) = entity {
-                        entity.set_visible(true);
-                        entity.set_enabled(true);
+                    entity.set_visible(true);
+                    entity.set_enabled(true);
 
-                        let scale = entry
-                            .get_common_property(GobCommonProperties::Scale)
-                            .and_then(|s| s.value_f32())
-                            .unwrap_or(1.0);
+                    let scale = entry
+                        .get_common_property(GobCommonProperties::Scale)
+                        .and_then(|s| s.value_f32())
+                        .unwrap_or(1.0);
 
-                        entity
-                            .transform()
-                            .borrow_mut()
-                            .scale_local(&Vec3::new(scale, scale, scale))
-                            .rotate_axis_angle_local(&Vec3::BACK, entry.rotation[2].to_radians())
-                            .rotate_axis_angle_local(&Vec3::UP, entry.rotation[1].to_radians())
-                            .rotate_axis_angle_local(&Vec3::EAST, entry.rotation[0].to_radians())
-                            .set_position(&Vec3::from(entry.position));
+                    entity
+                        .transform()
+                        .borrow_mut()
+                        .scale_local(&Vec3::new(scale, scale, scale))
+                        .rotate_axis_angle_local(&Vec3::BACK, entry.rotation[2].to_radians())
+                        .rotate_axis_angle_local(&Vec3::UP, entry.rotation[1].to_radians())
+                        .rotate_axis_angle_local(&Vec3::EAST, entry.rotation[0].to_radians())
+                        .set_position(&Vec3::from(entry.position));
 
-                        objects.push(entity.clone());
+                    objects.push(entity.clone());
 
-                        scene.add_entity(entity);
-                    }
+                    scene.add_entity(entity);
                 }
                 (object_name, folder, file_name) => {
                     log::error!(

@@ -321,11 +321,19 @@ pub(crate) fn create_geometry_internal(
         let group = material_to_indices.entry(t.material).or_insert_with(|| {
             let material = &materials[t.material as usize];
             let md = if let Some(texture) = material.texture.as_ref() {
-                let data = texture_resolver.resolve_texture(vfs, path.as_ref(), &texture.name);
-                if data.is_none() {
-                    log::warn!("Failed to resolve texture {} for {:?}", texture.name, path);
-                }
-                radiance::rendering::SimpleMaterialDef::create2(&texture.name, data, true)
+                radiance::rendering::SimpleMaterialDef::create(
+                    &texture.name,
+                    |name| {
+                        let data =
+                            texture_resolver.resolve_texture(vfs, path.as_ref(), &texture.name);
+                        if data.is_none() {
+                            log::warn!("Failed to resolve texture {} for {:?}", texture.name, path);
+                        }
+
+                        data.and_then(|data| Some(std::io::Cursor::new(data)))
+                    },
+                    true,
+                )
             } else {
                 log::debug!("no texture info for material {:?}", path);
                 radiance::rendering::SimpleMaterialDef::create2("missing", None, true)

@@ -22,10 +22,17 @@ impl YpkArchive {
         let mut reader = file.lock().unwrap();
         let header = YpkHeader::read(&mut reader.deref_mut())?;
 
+        let file_end = reader.seek(std::io::SeekFrom::End(0))?;
+        let entry_list_size = file_end - header.entry_offset;
+
         reader.seek(std::io::SeekFrom::Start(header.entry_offset))?;
+        let mut entry_list = Vec::with_capacity(entry_list_size as usize);
+        reader.read_to_end(&mut entry_list);
+        let mut entry_reader = Cursor::new(entry_list);
+
         let mut entries = Vec::with_capacity(header.entry_count as usize);
         for _ in 0..header.entry_count {
-            entries.push(YpkEntry::read(&mut reader.deref_mut())?);
+            entries.push(YpkEntry::read(&mut entry_reader)?);
         }
 
         let mut entries_hash = HashMap::new();
@@ -57,11 +64,6 @@ impl YpkArchive {
             (entry.offset, entry.actual_size, entry.is_compressed == 1)
         };
 
-        /*let mut reader = self.reader.lock().unwrap();
-        reader.seek(std::io::SeekFrom::Start(offset))?;
-        let mut buf = vec![0; actual_size as usize];
-        reader.read_exact(&mut buf)?;*/
-
         let mut streaming =
             StreamingFile::new(self.reader.clone(), offset, offset + actual_size as u64);
 
@@ -69,9 +71,6 @@ impl YpkArchive {
             let buf = zstd::stream::decode_all(&mut streaming)?;
             return Ok(MemoryFile::new(Cursor::new(buf)).into());
         } else {
-            /*let mut buf = Vec::new();
-            streaming.read_to_end(&mut buf)?;
-            return Ok(MemoryFile::new(Cursor::new(buf)).into());*/
             return Ok(streaming.into());
         }
     }
