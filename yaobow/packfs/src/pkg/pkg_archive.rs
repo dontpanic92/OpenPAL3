@@ -244,7 +244,7 @@ impl PkgEntries {
 
         let mut file_entries = vec![];
         let mut entry_cursor = Cursor::new(buf);
-        while !entry_cursor.is_empty() {
+        while entry_cursor.position() < entry_cursor.get_ref().len() as u64 {
             let name_len = entry_cursor.read_u32_le()?;
             let name = String::from_utf8(entry_cursor.read_u8_vec(name_len as usize)?)?;
             let start_position = entry_cursor.read_u32_le()?;

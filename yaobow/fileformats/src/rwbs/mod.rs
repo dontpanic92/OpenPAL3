@@ -287,7 +287,7 @@ pub fn list_chunks(data: &[u8]) -> anyhow::Result<Vec<ChunkHeader>> {
     let mut cursor = Cursor::new(data);
     let mut chunks = vec![];
 
-    while !cursor.is_empty() {
+    while cursor.position() < cursor.get_ref().len() as u64 {
         let chunk = ChunkHeader::read(&mut cursor)?;
         cursor.set_position(cursor.position() + chunk.length as u64);
         chunks.push(chunk);
@@ -300,7 +300,7 @@ pub fn read_dff(data: &[u8]) -> anyhow::Result<Vec<Clump>> {
     let mut cursor = Cursor::new(data);
     let mut chunks = vec![];
 
-    while !cursor.is_empty() {
+    while cursor.position() < cursor.get_ref().len() as u64 {
         let chunk = ChunkHeader::read(&mut cursor)?;
         match chunk.ty {
             ChunkType::CLUMP => chunks.push(Clump::read(&mut cursor)?),
@@ -315,7 +315,7 @@ pub fn read_bsp(data: &[u8]) -> anyhow::Result<Vec<World>> {
     let mut cursor = Cursor::new(data);
     let mut world = vec![];
 
-    while !cursor.is_empty() {
+    while cursor.position() < cursor.get_ref().len() as u64 {
         let chunk = ChunkHeader::read(&mut cursor)?;
         match chunk.ty {
             ChunkType::WORLD => world.push(World::read(&mut cursor)?),
@@ -330,7 +330,7 @@ pub fn read_anm(data: &[u8]) -> anyhow::Result<Vec<AnmAction>> {
     let mut cursor = Cursor::new(data);
     let mut anim = vec![];
 
-    while !cursor.is_empty() {
+    while cursor.position() < cursor.get_ref().len() as u64 {
         let chunk = ChunkHeader::read(&mut cursor)?;
         match chunk.ty {
             ChunkType::ANIM_ANIMATION => anim.push(AnmAction::read(&mut cursor)?),

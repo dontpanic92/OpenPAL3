@@ -1,5 +1,3 @@
-#![feature(cursor_remaining)]
-
 pub mod c00;
 pub mod mv3;
 pub mod nif;
