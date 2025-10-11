@@ -144,6 +144,7 @@ impl TitleSelectionDirector {
         let zip = PathBuf::from(ASSET_PATH);
         let local1 = PathBuf::from("./yaobow/yaobow-assets");
         let local2 = PathBuf::from("../yaobow-assets");
+        let local3 = PathBuf::from("/usr/share/yaobow/yaobow-assets");
 
         if Path::exists(&zip) {
             let local = ZipFs::new(std::fs::File::open(zip).unwrap());
@@ -155,6 +156,10 @@ impl TitleSelectionDirector {
             Some(Rc::new(vfs))
         } else if Path::exists(&local2) {
             let local = LocalFs::new(&local2);
+            vfs = vfs.mount(PathBuf::from("/"), local);
+            Some(Rc::new(vfs))
+        } else if Path::exists(&local3) {
+            let local = LocalFs::new(&local3);
             vfs = vfs.mount(PathBuf::from("/"), local);
             Some(Rc::new(vfs))
         } else {
