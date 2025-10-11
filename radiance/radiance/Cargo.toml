@@ -33,7 +33,7 @@ ash = { version = "0.37", default-features = false, features = ["loaded"] }
 ash-window = "0.12"
 imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer", features = ["vma"] }
 imgui-winit-support = { version = "0.10", default-features = false}
-gilrs = "0.8.1"
+gilrs = "0.10.10"
 raw-window-handle = "0.5"
 vma = "0.3"
 winit = "0.27"
@@ -44,7 +44,7 @@ vitagl-sys = { git = "https://github.com/dontpanic92/vitagl-sys" }
 vitasdk-sys = { git = "https://github.com/dontpanic92/vitasdk-sys", branch = "yaobow"}
 
 [target.'cfg(not(any(target_os = "android", target_os = "vita")))'.dependencies]
-arboard = "2.1"
+arboard = "3.4.0"
 alto = { git = "https://github.com/dontpanic92/alto", features = ["dynamic"] }
 
 [target.'cfg(any(target_os = "android", target_os = "vita"))'.dependencies]
