@@ -73,6 +73,9 @@ impl YaobowApplicationLoader {
     pub fn new(app: ComRc<IApplication>) -> Self {
         Self {
             app,
+            #[cfg(linux)]
+            config: YaobowConfig::load("~/.config/openpal3.toml", "OPENPAL3"),
+            #[cfg(not(linux))]
             config: YaobowConfig::load("openpal3.toml", "OPENPAL3"),
             selected_game: Rc::new(RefCell::new(None)),
         }
