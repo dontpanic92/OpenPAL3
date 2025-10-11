@@ -51,7 +51,7 @@ jobs:
           cp ../packaging/AppImage/* ./AppDir/
           cp ./release/yaobow ./AppDir/usr/bin/
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: yaobow-AppImage
           path: target/yaobow*.AppImage

@@ -45,7 +45,7 @@ jobs:
           cargo install cargo-make
           cd yaobow/yaobow
           cargo make vpk
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: yaobow-vpk
           path: yaobow/yaobow/target/armv7-sony-vita-newlibeabihf/vita-release/yaobow.vpk
