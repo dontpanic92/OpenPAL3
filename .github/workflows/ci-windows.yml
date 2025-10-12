@@ -53,7 +53,7 @@ jobs:
           cp target/release/yaobow.exe target/release/yaobow
           cp target/release/yaobow_editor.exe target/release/yaobow
           7z a -tzip target/yaobow-windows-x86_64.zip target/release/yaobow
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: yaobow-windows-x86_64
           path: target/yaobow-windows-x86_64.zip
