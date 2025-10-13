@@ -8,7 +8,7 @@
   "overrides": [
     {
       "name": "ffmpeg",
-      "version": "6.0#2"
+      "version": "7.1.1#5"
     }
   ],
   "builtin-baseline": "be9eb6694585a8db137872b29fcad3619a5f893a"
