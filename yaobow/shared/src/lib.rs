@@ -1,5 +1,3 @@
-#![feature(trait_upcasting)]
-
 use loaders::{dff::DffLoaderConfig, Pal4TextureResolver};
 
 use crate::loaders::{Pal5TextureResolver, Swd5TextureResolver};

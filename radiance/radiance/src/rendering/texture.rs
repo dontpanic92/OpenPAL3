@@ -1,4 +1,5 @@
 use std::sync::{Arc, RwLock};
+use std::num::NonZero;
 
 use image::RgbaImage;
 use lru::LruCache;
@@ -26,7 +27,7 @@ impl TextureDef {
 }
 
 lazy_static::lazy_static! {
-    static ref TEXTURE_STORE: RwLock<LruCache<String, Arc<TextureDef>>> = RwLock::new(LruCache::new(100));
+    static ref TEXTURE_STORE: RwLock<LruCache<String, Arc<TextureDef>>> = RwLock::new(LruCache::new(NonZero::new(100).unwrap()));
 }
 
 pub struct TextureStore;

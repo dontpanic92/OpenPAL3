@@ -20,7 +20,7 @@ imgui = { version = "0.10", features = ["docking"] }
 lazy_static = "1.2.0"
 lewton = "0.10.1"
 log = "0.4.13"
-lru = { version = "0.7.1", features=["nightly"] }
+lru = { version = "0.12.5" }
 memoffset = "0.9.0"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 radiance-assets = { path = "../radiance-assets" }
