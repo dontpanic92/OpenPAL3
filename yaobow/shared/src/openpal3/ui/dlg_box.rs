@@ -60,8 +60,7 @@ impl DialogBox {
         }
     }
 
-    pub fn set_avator(&mut self, face_name: &str, left_or_right: i32) {
-        let role_id = face_name[..3].to_string();
+    pub fn set_avator(&mut self, role_id: &str, face_name: &str, left_or_right: i32) {
         let path = format!("/basedata/basedata/ROLE/{}/{}.tga", role_id, face_name);
         self.avator = Some(Self::load_sprite(&path, self.asset_mgr.as_ref()));
         self.avator_at_right = left_or_right == 1;

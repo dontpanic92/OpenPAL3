@@ -270,6 +270,10 @@ impl RoleController {
         *self.nav_layer.borrow()
     }
 
+    pub fn model_name(&self) -> String {
+        (*self.model_name).to_string()
+    }
+
     pub fn switch_nav_layer(&self) -> usize {
         *self.nav_layer.borrow_mut() = (self.nav_layer() + 1) % 2;
         self.nav_layer()
