@@ -7,6 +7,7 @@ use ash::vk;
 use lru::LruCache;
 use std::error::Error;
 use std::rc::Rc;
+use std::num::NonZero;
 
 pub struct VulkanTexture {
     image: Image,
@@ -102,7 +103,7 @@ pub struct VulkanTextureStore {
 impl VulkanTextureStore {
     pub fn new() -> Self {
         Self {
-            store: LruCache::new(10000),
+            store: LruCache::new(NonZero::new(10000).unwrap()),
         }
     }
 

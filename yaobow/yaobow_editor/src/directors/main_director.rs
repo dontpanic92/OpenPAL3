@@ -17,6 +17,7 @@ use std::{
     cmp::Ordering,
     path::{Path, PathBuf},
     rc::Rc,
+    num::NonZero,
 };
 
 pub struct DevToolsDirector {
@@ -46,7 +47,7 @@ impl DevToolsDirector {
             )),
             ui,
             asset_mgr,
-            cache: RefCell::new(lru::LruCache::new(20)),
+            cache: RefCell::new(lru::LruCache::new(NonZero::new(20).unwrap())),
         })
     }
 
@@ -133,7 +134,6 @@ impl DevToolsDirector {
 
                 entries
             })
-            .unwrap()
             .clone()
     }
 }

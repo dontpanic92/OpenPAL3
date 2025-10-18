@@ -1,4 +1,3 @@
-#![feature(io_error_more)]
 #![cfg_attr(target_os = "vita", feature(stdarch_arm_neon_intrinsics))]
 
 pub mod cpk;
