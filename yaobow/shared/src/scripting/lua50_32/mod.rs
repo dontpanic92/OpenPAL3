@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, os::raw::c_char};
 
 use anyhow::bail;
 use encoding::{DecoderTrap, Encoding};
@@ -29,9 +29,9 @@ impl<TContext> Lua5032Vm<TContext> {
 
             let ret = lua50_32_sys::luaL_loadbuffer(
                 lua,
-                lib.as_ptr() as *const i8,
+                lib.as_ptr() as *const c_char,
                 lib.len(),
-                b"main\0".as_ptr() as *const i8,
+                b"main\0".as_ptr() as *const c_char,
             );
 
             if ret > 0 {

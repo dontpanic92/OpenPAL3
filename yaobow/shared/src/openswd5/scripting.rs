@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, os::raw::c_char};
 
 use crosscom::ComRc;
 use encoding::{DecoderTrap, Encoding};
@@ -303,7 +303,7 @@ impl SWD5Context {
             .map(|source| source.borrow_mut().stop());
     }
 
-    fn storymsg(&mut self, text: *const i8) {
+    fn storymsg(&mut self, text: *const c_char) {
         let text = decode_big5(text);
         let [width, height] = self.ui.ui().io().display_size;
 
@@ -313,14 +313,14 @@ impl SWD5Context {
         });
     }
 
-    fn talkmsg(&mut self, name: *const i8, text: *const i8) {
+    fn talkmsg(&mut self, name: *const c_char, text: *const c_char) {
         let name = decode_big5(name);
         let text = decode_big5(text);
 
         self.talk_msg = Some(TalkMsg { name, text });
     }
 
-    fn storymsgpos(&mut self, text: *const i8, x: f64, y: f64) {
+    fn storymsgpos(&mut self, text: *const c_char, x: f64, y: f64) {
         let text = decode_big5(text);
         let (start, size) = calc_43_box(self.ui.ui());
         let x = x as f32 / 960. * size[0];
@@ -477,7 +477,7 @@ extern "C" fn sleep(state: *mut lua_State) -> i32 {
     }
 }
 
-fn decode_big5(s: *const i8) -> String {
+fn decode_big5(s: *const c_char) -> String {
     let str = unsafe { std::ffi::CStr::from_ptr(s) };
     let str = encoding::all::BIG5_2003.decode(str.to_bytes(), DecoderTrap::Ignore);
     match str {
