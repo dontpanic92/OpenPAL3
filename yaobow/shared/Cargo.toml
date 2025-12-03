@@ -49,11 +49,13 @@ shellexpand = "3.1"
 ndk-glue = "0.5.0"
 
 [target.'cfg(any(target_os = "vita", target_os = "windows"))'.dependencies.ffmpeg]
-git = "https://github.com/meh/rust-ffmpeg"
+git = "https://github.com/dontpanic92/rust-ffmpeg"
+branch = "yaobow2"
 features = ["static"]
 
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))'.dependencies.ffmpeg]
-git = "https://github.com/meh/rust-ffmpeg"
+git = "https://github.com/dontpanic92/rust-ffmpeg"
+branch = "yaobow2"
 features = ["static"]
 
 [target.'cfg(not(target_os = "vita"))'.dependencies]
