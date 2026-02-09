@@ -12,6 +12,9 @@ env:
 jobs:
   windows-build:
     runs-on: windows-latest
+    env:
+      VCPKG_ROOT: C:\vcpkg
+      VCPKG_FEATURE_FLAGS: manifests
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,9 +40,7 @@ jobs:
       - name: Install ffmpeg
         shell: pwsh
         run: |
-          vcpkg x-update-baseline
-          vcpkg install --triplet=x64-windows-static-md
-          vcpkg integrate install
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet=x64-windows-static-md --x-manifest-root="$env:GITHUB_WORKSPACE" --x-install-root="$env:GITHUB_WORKSPACE\vcpkg_installed"
       - name: Build Yaobow
         shell: pwsh
         run: |
