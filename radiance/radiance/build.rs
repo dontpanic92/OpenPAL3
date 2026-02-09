@@ -30,14 +30,32 @@ fn build_vulkan_shader(shader_name: &str) {
     println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
     let shader_out_dir = format!("{}/{}.spv", out_dir, shader_name);
 
+    let shader_path = path.to_str().unwrap();
     let output = Command::new("glslc")
-        .args(&[
-            path.to_str().unwrap().to_owned(),
-            "-o".to_string(),
-            shader_out_dir,
-        ])
+        .arg(shader_path)
+        .arg("-o")
+        .arg(&shader_out_dir)
         .output()
-        .expect(&format!("Failed to compile shader {}", shader_name));
+        .unwrap_or_else(|err| {
+            panic!(
+                "Failed to find or execute glslc for shader {}: {}. Ensure the Vulkan SDK is installed and glslc is in PATH.",
+                shader_name, err
+            )
+        });
 
-    println!("{}", std::str::from_utf8(&output.stdout).unwrap());
+    if !output.status.success() {
+        panic!(
+            "Failed to compile shader {} with glslc: stderr: {} stdout: {}",
+            shader_name,
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+
+    if !output.stdout.is_empty() {
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+    }
+    if !output.stderr.is_empty() {
+        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+    }
 }
