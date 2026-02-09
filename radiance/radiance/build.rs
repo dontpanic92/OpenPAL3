@@ -51,5 +51,13 @@ fn build_vulkan_shader(shader_name: &str) {
         Err(err) => panic!("Failed to compile shader {}: {}", shader_name, err),
     };
 
+    if !output.status.success() {
+        panic!(
+            "Failed to compile shader {}: {}",
+            shader_name,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     println!("{}", std::str::from_utf8(&output.stdout).unwrap());
 }
