@@ -36,7 +36,10 @@ fn build_vulkan_shader(shader_name: &str) {
         .arg("-o")
         .arg(&shader_out_dir)
         .output()
-        .expect(&format!("Failed to run glslc for shader {}", shader_name));
+        .expect(&format!(
+            "Failed to find or execute glslc for shader {}. Ensure the Vulkan SDK is installed and glslc is in PATH.",
+            shader_name
+        ));
 
     if !output.status.success() {
         panic!(
