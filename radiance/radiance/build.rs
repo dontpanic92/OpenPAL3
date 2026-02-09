@@ -48,7 +48,7 @@ fn build_vulkan_shader(shader_name: &str) {
             {
                 Ok(output) => ("glslangValidator", output),
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => panic!(
-                    "Failed to compile shader {}: glslc and glslangValidator not found (install glslang-tools or Shaderc)",
+                    "Failed to compile shader {}: glslc and glslangValidator not found (install glslang-tools or shaderc)",
                     shader_name
                 ),
                 Err(err) => panic!(
