@@ -23,7 +23,7 @@ jobs:
           override: true
       - name: Install Deps
         run: |
-          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/lunarg.gpg
           sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
           sudo apt update
           sudo apt install nasm vulkan-sdk libvulkan-dev libudev-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev
