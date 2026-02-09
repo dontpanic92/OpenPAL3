@@ -47,7 +47,10 @@ fn build_vulkan_shader(shader_name: &str) {
                 .output()
             {
                 Ok(output) => output,
-                Err(err) => panic!("Failed to compile shader {}: {}", shader_name, err),
+                Err(err) => panic!(
+                    "Failed to compile shader {} with glslangValidator: {}",
+                    shader_name, err
+                ),
             }
         }
         Err(err) => panic!("Failed to compile shader {}: {}", shader_name, err),
