@@ -57,7 +57,7 @@ fn build_vulkan_shader(shader_name: &str) {
                 ),
             }
         }
-        Err(err) => panic!("Failed to compile shader {}: {}", shader_name, err),
+        Err(err) => panic!("Failed to compile shader {} with glslc: {}", shader_name, err),
     };
 
     if !output.status.success() {
@@ -68,5 +68,7 @@ fn build_vulkan_shader(shader_name: &str) {
         );
     }
 
-    println!("{}", String::from_utf8_lossy(&output.stdout));
+    if !output.stdout.is_empty() {
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+    }
 }
