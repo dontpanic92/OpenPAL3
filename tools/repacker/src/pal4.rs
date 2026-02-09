@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{Read, Write},
+    io::Read,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -8,7 +8,6 @@ use std::{
 use image::{GenericImageView, ImageFormat, ImageOutputFormat};
 use indicatif::ProgressBar;
 use packfs::{cpk::CpkArchive, ypk::YpkWriter};
-use zip::{write::SimpleFileOptions, ZipWriter};
 
 pub struct Pal4RepackConfig {
     pub input_folder: String,

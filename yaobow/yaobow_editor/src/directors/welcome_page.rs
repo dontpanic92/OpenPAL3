@@ -1,9 +1,6 @@
 use crosscom::ComRc;
 use imgui::{Condition, WindowFlags};
-use radiance::{
-    comdef::{IApplication, IDirector, IDirectorImpl, ISceneManager},
-    scene,
-};
+use radiance::comdef::{IApplication, IDirector, IDirectorImpl};
 use radiance_editor::{director::MainPageDirector, ui::scene_view::SceneViewPlugins};
 use shared::config::YaobowConfig;
 

@@ -231,7 +231,7 @@ impl Pal4NodeProperty {
         }
     }
 
-    pub fn string(&self) -> Option<Cow<str>> {
+    pub fn string(&self) -> Option<Cow<'_, str>> {
         if let Self::String(v) = self {
             Some(String::from_utf8_lossy(v.value.data()))
         } else {

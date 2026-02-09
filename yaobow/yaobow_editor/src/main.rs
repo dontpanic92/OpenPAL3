@@ -10,7 +10,7 @@ use crosscom::ComRc;
 use directors::welcome_page::WelcomePageDirector;
 use directors::{DevToolsAssetLoader, DevToolsDirector};
 use radiance::application::Application;
-use radiance::comdef::{IApplication, IApplicationLoaderComponent, IDirector, ISceneManager};
+use radiance::comdef::{IApplication, IApplicationLoaderComponent, IDirector};
 use radiance_editor::application::EditorApplicationLoader;
 use radiance_editor::comdef::IViewContentImpl;
 use shared::config::YaobowConfig;

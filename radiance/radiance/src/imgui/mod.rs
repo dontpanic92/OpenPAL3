@@ -97,7 +97,7 @@ impl ImguiContext {
         ImguiFrame { frame_begun: true }
     }
 
-    pub fn context_mut(&self) -> RefMut<Context> {
+    pub fn context_mut(&self) -> RefMut<'_, Context> {
         self.context.borrow_mut()
     }
 

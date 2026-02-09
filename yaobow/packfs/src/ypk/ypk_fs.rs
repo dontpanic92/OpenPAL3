@@ -26,7 +26,7 @@ impl Store for YpkFs {
         self.archive.borrow_mut().open(path.to_str().unwrap())
     }
 
-    fn entries_path(&self, _: &Path) -> std::io::Result<Entries> {
+    fn entries_path(&self, _: &Path) -> std::io::Result<Entries<'_>> {
         unimplemented!();
     }
 }

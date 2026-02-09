@@ -33,7 +33,7 @@ impl Store for PkgFs {
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::Unsupported))
     }
 
-    fn entries_path(&self, p: &Path) -> io::Result<Entries> {
+    fn entries_path(&self, p: &Path) -> io::Result<Entries<'_>> {
         let archive = self.pkg_archive.borrow();
         let list = archive.entries.root_entry.list_content(p)?;
         let entries = list.into_iter().map(|e| {

@@ -32,7 +32,7 @@ pub struct NpcInfo {
 }
 
 impl NpcInfo {
-    pub fn get_default_act(&self) -> Option<Cow<str>> {
+    pub fn get_default_act(&self) -> Option<Cow<'_, str>> {
         Some(
             self.buffer_cache
                 .root

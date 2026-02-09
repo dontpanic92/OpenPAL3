@@ -73,8 +73,7 @@ impl DescriptorManager {
             .dst_set(set)
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .image_info(&image_info)
-            ];
+            .image_info(&image_info)];
         self.device.update_descriptor_sets(&writes, &[]);
 
         set
@@ -117,7 +116,6 @@ impl DescriptorManager {
                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                     .image_view(t.image_view().vk_image_view())
                     .sampler(t.sampler().vk_sampler())
-                    
             })
             .collect();
 

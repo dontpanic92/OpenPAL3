@@ -52,11 +52,11 @@ impl CoreEntity {
         }
     }
 
-    pub fn props(&self) -> Ref<CoreEntityProps> {
+    pub fn props(&self) -> Ref<'_, CoreEntityProps> {
         self.props.borrow()
     }
 
-    pub fn props_mut(&self) -> RefMut<CoreEntityProps> {
+    pub fn props_mut(&self) -> RefMut<'_, CoreEntityProps> {
         self.props.borrow_mut()
     }
 

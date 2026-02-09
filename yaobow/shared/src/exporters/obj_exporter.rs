@@ -82,7 +82,7 @@ struct Exporter<'a, W: 'a + Write> {
 }
 
 impl<'a, W: 'a + Write> Exporter<'a, W> {
-    fn new(output: &'a mut W) -> Exporter<W> {
+    fn new(output: &'a mut W) -> Exporter<'a, W> {
         Exporter {
             output,
             v_base_id: 1,
@@ -240,7 +240,7 @@ struct MtlExporter<'a, W: 'a + Write> {
 }
 
 impl<'a, W: 'a + Write> MtlExporter<'a, W> {
-    fn new(output: &'a mut W) -> MtlExporter<W> {
+    fn new(output: &'a mut W) -> MtlExporter<'a, W> {
         MtlExporter { output }
     }
 

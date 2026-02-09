@@ -31,7 +31,7 @@ impl<TArchive: PlainArchive> Store for PlainFs<TArchive> {
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::Unsupported))
     }
 
-    fn entries_path(&self, _: &Path) -> std::io::Result<Entries> {
+    fn entries_path(&self, _: &Path) -> std::io::Result<Entries<'_>> {
         let archive = self.archive.borrow();
         let list: Vec<Result<Entry, std::io::Error>> = archive
             .files()

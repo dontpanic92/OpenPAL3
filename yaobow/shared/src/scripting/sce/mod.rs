@@ -94,7 +94,7 @@ impl SceState {
         &mut self.context
     }
 
-    pub fn input(&self) -> Ref<dyn InputEngine> {
+    pub fn input(&self) -> Ref<'_, dyn InputEngine> {
         self.input_engine.borrow()
     }
 

@@ -143,8 +143,7 @@ impl Image {
                         .level_count(1)
                         .base_mip_level(0)
                         .base_array_layer(0)
-                        .layer_count(1)
-                        ,
+                        .layer_count(1),
                 )
                 .src_access_mask(src_access_mask)
                 .dst_access_mask(dst_access_mask);
@@ -172,8 +171,7 @@ impl Image {
                     vk::Extent3D::default()
                         .width(self.width)
                         .height(self.height)
-                        .depth(1)
-                        ,
+                        .depth(1),
                 )
                 .image_offset(vk::Offset3D::default().x(0).y(0).z(0))
                 .buffer_offset(0)
@@ -184,8 +182,7 @@ impl Image {
                         .layer_count(1)
                         .base_array_layer(0)
                         .mip_level(0)
-                        .aspect_mask(vk::ImageAspectFlags::COLOR)
-                        ,
+                        .aspect_mask(vk::ImageAspectFlags::COLOR),
                 );
             device.cmd_copy_buffer_to_image(
                 *command_buffer,
@@ -210,8 +207,7 @@ impl Image {
                 vk::Extent3D::default()
                     .width(tex_width)
                     .height(tex_height)
-                    .depth(1)
-                    ,
+                    .depth(1),
             )
             .mip_levels(1)
             .array_layers(1)

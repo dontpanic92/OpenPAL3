@@ -12,7 +12,6 @@ use super::{
 };
 use crate::scene::Viewport;
 use crate::{imgui::ImguiFrame, rendering::vulkan::imgui::ImguiRenderer};
-use ash::khr::swapchain;
 use ash::prelude::VkResult;
 use ash::vk;
 use std::cell::RefCell;

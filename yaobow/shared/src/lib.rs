@@ -61,7 +61,7 @@ impl GameType {
         }
     }
 
-    pub fn dff_loader_config(&self) -> Option<&DffLoaderConfig> {
+    pub fn dff_loader_config(&self) -> Option<&DffLoaderConfig<'_>> {
         match self {
             GameType::PAL3 => None,
             GameType::PAL3A => None,

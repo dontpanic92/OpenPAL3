@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crosscom::ComRc;
 
 use crate::{
-    comdef::{IComponentImpl, IEntity, IStaticMeshComponent, IStaticMeshComponentImpl},
+    comdef::{IComponentImpl, IEntity, IStaticMeshComponentImpl},
     rendering::ComponentFactory,
     ComObject_StaticMeshComponent,
 };

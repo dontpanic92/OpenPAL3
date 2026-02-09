@@ -53,11 +53,11 @@ impl AnimatedMeshComponent {
         }
     }
 
-    fn props_mut(&self) -> RefMut<AnimatedMeshComponentProps> {
+    fn props_mut(&self) -> RefMut<'_, AnimatedMeshComponentProps> {
         self.props.borrow_mut()
     }
 
-    fn props(&self) -> Ref<AnimatedMeshComponentProps> {
+    fn props(&self) -> Ref<'_, AnimatedMeshComponentProps> {
         self.props.borrow()
     }
 

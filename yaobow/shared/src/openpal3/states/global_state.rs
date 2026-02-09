@@ -132,11 +132,11 @@ impl GlobalState {
         self.asset_mgr.clone()
     }
 
-    pub fn persistent_state(&self) -> Ref<PersistentState> {
+    pub fn persistent_state(&self) -> Ref<'_, PersistentState> {
         self.persistent_state.borrow()
     }
 
-    pub fn persistent_state_mut(&mut self) -> RefMut<PersistentState> {
+    pub fn persistent_state_mut(&mut self) -> RefMut<'_, PersistentState> {
         self.persistent_state.borrow_mut()
     }
 

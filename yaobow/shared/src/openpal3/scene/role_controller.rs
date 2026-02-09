@@ -283,7 +283,7 @@ impl RoleController {
         *self.nav_layer.borrow_mut() = layer;
     }
 
-    fn active_anim(&self) -> Ref<String, ComRc<IAnimatedMeshComponent>> {
+    fn active_anim(&self) -> Ref<'_, String, ComRc<IAnimatedMeshComponent>> {
         self.animations
             .get(&*self.active_anim_name.borrow())
             .unwrap()

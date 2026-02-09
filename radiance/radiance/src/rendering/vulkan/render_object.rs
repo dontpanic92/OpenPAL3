@@ -84,7 +84,7 @@ impl VulkanRenderObject {
         })
     }
 
-    pub fn vertex_buffer(&self) -> Ref<Buffer> {
+    pub fn vertex_buffer(&self) -> Ref<'_, Buffer> {
         self.vertex_buffer.borrow()
     }
 

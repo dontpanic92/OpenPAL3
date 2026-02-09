@@ -68,7 +68,7 @@ impl AdventureDirector {
         }
     }
 
-    fn props_mut(&self) -> RefMut<AdventureDirectorProps> {
+    fn props_mut(&self) -> RefMut<'_, AdventureDirectorProps> {
         self.props.borrow_mut()
     }
 
@@ -151,11 +151,11 @@ impl AdventureDirector {
         })
     }
 
-    pub fn sce_vm(&self) -> Ref<SceVm> {
+    pub fn sce_vm(&self) -> Ref<'_, SceVm> {
         Ref::map(self.props.borrow(), |p| &p.sce_vm)
     }
 
-    pub fn sce_vm_mut(&self) -> RefMut<SceVm> {
+    pub fn sce_vm_mut(&self) -> RefMut<'_, SceVm> {
         RefMut::map(self.props.borrow_mut(), |p| &mut p.sce_vm)
     }
 }

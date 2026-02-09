@@ -23,7 +23,6 @@ impl DescriptorPool {
                 vk::DescriptorPoolSize::default()
                     .descriptor_count(info.descriptor_count)
                     .ty(info.ty)
-                    
             })
             .collect();
 

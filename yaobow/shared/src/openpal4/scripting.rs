@@ -5,7 +5,6 @@ use radiance::{input::Key, math::Vec3, utils::interp_value::InterpValue, video::
 
 use crate::{
     as_params,
-    openpal4::actor::Pal4ActorAnimation,
     scripting::angelscript::{
         not_implemented, ContinuationState, GlobalFunctionContinuation, GlobalFunctionState,
         ScriptGlobalContext, ScriptGlobalFunction, ScriptVm,

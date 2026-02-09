@@ -40,7 +40,7 @@ impl Store for CpkFs {
         )
     }
 
-    fn entries_path(&self, p: &Path) -> std::io::Result<Entries> {
+    fn entries_path(&self, p: &Path) -> std::io::Result<Entries<'_>> {
         if let Some(entry) = self.entry.as_ref() {
             let entries = entry.ls(p)?;
             Ok(Entries::new(CpkEntryIter::new(Box::new(
