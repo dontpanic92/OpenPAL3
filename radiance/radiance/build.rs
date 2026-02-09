@@ -48,7 +48,7 @@ fn build_vulkan_shader(shader_name: &str) {
             {
                 Ok(output) => ("glslangValidator", output),
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => panic!(
-                    "Failed to compile shader {}: no GLSL compiler found. Install glslc or glslangValidator via your package manager.",
+                    "Failed to compile shader {}: no GLSL compiler found. Install glslc or glslangValidator (packages often named shaderc or glslang-tools).",
                     shader_name
                 ),
                 Err(err) => panic!(
@@ -72,5 +72,8 @@ fn build_vulkan_shader(shader_name: &str) {
 
     if !output.stdout.is_empty() {
         println!("{}", String::from_utf8_lossy(&output.stdout));
+    }
+    if !output.stderr.is_empty() {
+        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
     }
 }
