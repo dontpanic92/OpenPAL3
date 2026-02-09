@@ -31,13 +31,13 @@ fn build_vulkan_shader(shader_name: &str) {
     let shader_out_dir = format!("{}/{}.spv", out_dir, shader_name);
 
     let shader_path = path.to_str().unwrap();
-    let output = match Command::new("glslc")
+    let (compiler, output) = match Command::new("glslc")
         .arg(shader_path)
         .arg("-o")
         .arg(&shader_out_dir)
         .output()
     {
-        Ok(output) => output,
+        Ok(output) => ("glslc", output),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
             match Command::new("glslangValidator")
                 .arg("-V")
@@ -46,7 +46,7 @@ fn build_vulkan_shader(shader_name: &str) {
                 .arg(&shader_out_dir)
                 .output()
             {
-                Ok(output) => output,
+                Ok(output) => ("glslangValidator", output),
                 Err(err) => panic!(
                     "Failed to compile shader {} with glslangValidator: {}",
                     shader_name, err
@@ -58,8 +58,8 @@ fn build_vulkan_shader(shader_name: &str) {
 
     if !output.status.success() {
         panic!(
-            "Failed to compile shader {}: {}",
-            shader_name,
+            "Failed to compile shader {} with {}: {}",
+            shader_name, compiler,
             String::from_utf8_lossy(&output.stderr)
         );
     }
