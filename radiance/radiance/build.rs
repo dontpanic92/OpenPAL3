@@ -38,16 +38,18 @@ fn build_vulkan_shader(shader_name: &str) {
         .output()
     {
         Ok(output) => output,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Command::new("glslangValidator")
-            .arg("-V")
-            .arg(shader_path)
-            .arg("-o")
-            .arg(&shader_out_dir)
-            .output()
-            .expect(&format!(
-                "Failed to compile shader {} with glslangValidator",
-                shader_name
-            )),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            match Command::new("glslangValidator")
+                .arg("-V")
+                .arg(shader_path)
+                .arg("-o")
+                .arg(&shader_out_dir)
+                .output()
+            {
+                Ok(output) => output,
+                Err(err) => panic!("Failed to compile shader {}: {}", shader_name, err),
+            }
+        }
         Err(err) => panic!("Failed to compile shader {}: {}", shader_name, err),
     };
 
@@ -59,5 +61,5 @@ fn build_vulkan_shader(shader_name: &str) {
         );
     }
 
-    println!("{}", std::str::from_utf8(&output.stdout).unwrap());
+    println!("{}", String::from_utf8_lossy(&output.stdout));
 }
