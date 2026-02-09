@@ -52,11 +52,13 @@ pub fn create_surface(
     instance: &Instance,
     window: &Window,
 ) -> VkResult<vk::SurfaceKHR> {
-    let win32surface_entry = ash::extensions::khr::Win32Surface::new(entry, instance);
+    use ash::vk::{HINSTANCE, HWND};
+
+    let win32surface_entry = ash::khr::win32_surface::Instance::new(entry, instance);
     let instance = unsafe { winapi::um::libloaderapi::GetModuleHandleW(std::ptr::null_mut()) };
     let create_info = vk::Win32SurfaceCreateInfoKHR::default()
-        .hinstance(instance as *const std::ffi::c_void)
-        .hwnd(window.hwnd as *const std::ffi::c_void);
+        .hinstance(instance as HINSTANCE)
+        .hwnd(window.hwnd as HWND);
     unsafe { win32surface_entry.create_win32_surface(&create_info, None) }
 }
 

@@ -41,11 +41,14 @@ impl ImguiPlatform {
         imgui_platform
     }
 
-    pub fn new_frame(&mut self, ui: &mut imgui::Ui) {
-        self.winit_platform.prepare_render(ui, &self.window);
+    pub fn new_frame(&mut self) {
         self.update_display_size(&self.window);
         self.update_cursor_shape();
         self.update_cursor_pos();
+    }
+
+    pub fn prepare_render(&mut self, ui: &mut imgui::Ui) {
+        self.winit_platform.prepare_render(ui, &self.window);
     }
 
     fn prepare_frame(&self, io: &mut Io) {

@@ -46,6 +46,8 @@ impl ImguiPlatform {
         self.update_cursor_pos();
     }
 
+    pub fn prepare_render(&mut self, _ui: &mut imgui::Ui) {}
+
     fn setup_platform(context: &mut Context) {
         context.set_platform_name(Some(String::from(format!(
             "radiance-imgui-windows {}",
