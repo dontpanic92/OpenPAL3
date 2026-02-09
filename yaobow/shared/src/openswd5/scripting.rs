@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, os::raw::c_char};
+use std::{cell::RefCell, collections::HashMap, os::raw::c_char, rc::Rc};
 
 use crosscom::ComRc;
 use encoding::{DecoderTrap, Encoding};

@@ -85,7 +85,12 @@ impl ZpkArchive {
             unimplemented!("compression type 1 not implemented for zpk");
         } else if file.compression_type == 2 {
             let mut output = vec![];
-            lzma_rs::lzma_decompress(&mut Cursor::new(&data[4..]), &mut output)?;
+            // lzma_rs::lzma_decompress(&mut Cursor::new(&data[4..]), &mut output)?;
+            let mut reader =
+                lzma_rust2::LzmaReader::new_mem_limit(Cursor::new(&data[4..]), u32::MAX, None)?;
+            let mut writer = Cursor::new(&mut output);
+            std::io::copy(&mut reader, &mut writer)?;
+
             Ok(output)
         } else {
             Err(ZpkReadError::UnsupportedCompressionType(

@@ -22,7 +22,7 @@ dyn-clone = "1.0.1"
 encoding = "0.2.33"
 fileformats = { path = "../fileformats" }
 image = "0.23.0"
-imgui = { version = "0.10", features = ["docking"] }
+imgui = { workspace = true }
 itertools = "0"
 lazy_static = "1.2.0"
 lua50-32-sys = { git = "https://github.com/dontpanic92/lua50-32-sys" }

@@ -230,14 +230,13 @@ impl Device {
 
     pub fn cmd_set_viewport(&self, command_buffer: CommandBuffer, viewport: Rect) {
         unsafe {
-            let vp = ash::vk::Viewport::builder()
+            let vp = ash::vk::Viewport::default()
                 .x(viewport.x)
                 .y(viewport.y)
                 .width(viewport.width)
                 .height(viewport.height)
                 .min_depth(0f32)
-                .max_depth(1f32)
-                .build();
+                .max_depth(1f32);
             self.device.cmd_set_viewport(command_buffer, 0, &[vp])
         }
     }

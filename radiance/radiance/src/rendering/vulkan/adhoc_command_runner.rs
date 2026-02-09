@@ -24,26 +24,22 @@ impl AdhocCommandRunner {
         record_command: F,
     ) -> VkResult<()> {
         let command_buffers = {
-            let allocation_info = vk::CommandBufferAllocateInfo::builder()
+            let allocation_info = vk::CommandBufferAllocateInfo::default()
                 .command_pool(self.command_pool)
                 .level(vk::CommandBufferLevel::PRIMARY)
-                .command_buffer_count(1)
-                .build();
+                .command_buffer_count(1);
             self.device.allocate_command_buffers(&allocation_info)?
         };
 
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
-            .build();
+        let begin_info = vk::CommandBufferBeginInfo::default()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         self.device
             .begin_command_buffer(command_buffers[0], &begin_info)?;
 
         record_command(&self.device, &command_buffers[0]);
         self.device.end_command_buffer(command_buffers[0])?;
 
-        let submit_info = vk::SubmitInfo::builder()
-            .command_buffers(&command_buffers)
-            .build();
+        let submit_info = vk::SubmitInfo::default().command_buffers(&command_buffers);
         self.device
             .queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
 

@@ -36,26 +36,23 @@ impl ImageView {
         format: vk::Format,
         aspect_mask: vk::ImageAspectFlags,
     ) -> VkResult<Self> {
-        let component_mapping = vk::ComponentMapping::builder()
+        let component_mapping = vk::ComponentMapping::default()
             .a(vk::ComponentSwizzle::IDENTITY)
             .r(vk::ComponentSwizzle::IDENTITY)
             .g(vk::ComponentSwizzle::IDENTITY)
-            .b(vk::ComponentSwizzle::IDENTITY)
-            .build();
-        let subres_range = vk::ImageSubresourceRange::builder()
+            .b(vk::ComponentSwizzle::IDENTITY);
+        let subres_range = vk::ImageSubresourceRange::default()
             .aspect_mask(aspect_mask)
             .base_array_layer(0)
             .layer_count(1)
             .base_mip_level(0)
-            .level_count(1)
-            .build();
-        let create_info = vk::ImageViewCreateInfo::builder()
+            .level_count(1);
+        let create_info = vk::ImageViewCreateInfo::default()
             .format(format)
             .image(image)
             .components(component_mapping)
             .subresource_range(subres_range)
-            .view_type(vk::ImageViewType::TYPE_2D)
-            .build();
+            .view_type(vk::ImageViewType::TYPE_2D);
         let view = device.create_image_view(&create_info)?;
         Ok(Self {
             device,

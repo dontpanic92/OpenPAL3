@@ -3,7 +3,8 @@ use super::helpers;
 use super::image_view::ImageView;
 use crate::constants;
 use crate::rendering::Window;
-use ash::extensions::khr::{Surface, Swapchain};
+use ash::khr::surface::Instance as Surface;
+use ash::khr::swapchain::Device as Swapchain;
 use ash::prelude::VkResult;
 use ash::vk::{
     make_api_version, Extent2D, PhysicalDevice, PresentModeKHR, SurfaceCapabilitiesKHR,
@@ -16,10 +17,10 @@ use std::os::raw::c_char;
 use std::rc::Rc;
 
 pub fn create_instance(entry: &Entry) -> VkResult<Instance> {
-    let app_info = vk::ApplicationInfo::builder()
+    let name = CString::new(constants::STR_ENGINE_NAME).unwrap();
+    let app_info = vk::ApplicationInfo::default()
         .api_version(make_api_version(0, 1, 0, 0))
-        .engine_name(&CString::new(constants::STR_ENGINE_NAME).unwrap())
-        .build();
+        .engine_name(&name);
     let extension_names = helpers::instance_extension_names();
     let layer_names = enabled_layer_names();
     let flags = if cfg!(any(target_os = "macos", target_os = "ios")) {
@@ -28,12 +29,11 @@ pub fn create_instance(entry: &Entry) -> VkResult<Instance> {
         ash::vk::InstanceCreateFlags::default()
     };
 
-    let create_info = vk::InstanceCreateInfo::builder()
+    let create_info = vk::InstanceCreateInfo::default()
         .application_info(&app_info)
         .enabled_extension_names(&extension_names)
         .enabled_layer_names(&layer_names[..])
-        .flags(flags)
-        .build();
+        .flags(flags);
     unsafe { entry.create_instance(&create_info, None) }
 }
 
@@ -54,10 +54,9 @@ pub fn create_surface(
 ) -> VkResult<vk::SurfaceKHR> {
     let win32surface_entry = ash::extensions::khr::Win32Surface::new(entry, instance);
     let instance = unsafe { winapi::um::libloaderapi::GetModuleHandleW(std::ptr::null_mut()) };
-    let create_info = vk::Win32SurfaceCreateInfoKHR::builder()
+    let create_info = vk::Win32SurfaceCreateInfoKHR::default()
         .hinstance(instance as *const std::ffi::c_void)
-        .hwnd(window.hwnd as *const std::ffi::c_void)
-        .build();
+        .hwnd(window.hwnd as *const std::ffi::c_void);
     unsafe { win32surface_entry.create_win32_surface(&create_info, None) }
 }
 
@@ -69,11 +68,13 @@ pub fn create_surface(
 ) -> VkResult<vk::SurfaceKHR> {
     use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
     unsafe {
+        use winit::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+
         ash_window::create_surface(
             entry,
             instance,
-            window.raw_display_handle(),
-            window.raw_window_handle(),
+            window.raw_display_handle().unwrap(),
+            window.raw_window_handle().unwrap(),
             None,
         )
     }
@@ -108,20 +109,16 @@ pub fn create_device(
     graphic_queue_family_index: u32,
 ) -> VkResult<Device> {
     let priorities = [0.5 as f32];
-    let queue_create_info = vk::DeviceQueueCreateInfo::builder()
+    let queue_create_info = vk::DeviceQueueCreateInfo::default()
         .queue_family_index(graphic_queue_family_index)
-        .queue_priorities(&priorities)
-        .build();
+        .queue_priorities(&priorities);
     let extension_names = helpers::device_extension_names();
     let queue_create_info = [queue_create_info];
-    let physical_device_features = vk::PhysicalDeviceFeatures::builder()
-        .sampler_anisotropy(true)
-        .build();
-    let create_info = vk::DeviceCreateInfo::builder()
+    let physical_device_features = vk::PhysicalDeviceFeatures::default().sampler_anisotropy(true);
+    let create_info = vk::DeviceCreateInfo::default()
         .queue_create_infos(&queue_create_info)
         .enabled_extension_names(&extension_names)
-        .enabled_features(&physical_device_features)
-        .build();
+        .enabled_features(&physical_device_features);
     unsafe { instance.create_device(physical_device, &create_info, None) }
 }
 
@@ -167,13 +164,13 @@ pub fn get_present_mode(
 }
 
 pub fn create_swapchain(
-    swapchain_entry: &Swapchain,
+    swapchain_device: &Swapchain,
     surface: SurfaceKHR,
     capabilities: SurfaceCapabilitiesKHR,
     format: SurfaceFormatKHR,
     present_mode: PresentModeKHR,
 ) -> VkResult<SwapchainKHR> {
-    let create_info = vk::SwapchainCreateInfoKHR::builder()
+    let create_info = vk::SwapchainCreateInfoKHR::default()
         .surface(surface)
         .min_image_count(capabilities.min_image_count + 1)
         .image_format(format.format)
@@ -186,9 +183,8 @@ pub fn create_swapchain(
         .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
         .present_mode(present_mode)
         .clipped(true)
-        .old_swapchain(vk::SwapchainKHR::default())
-        .build();
-    unsafe { swapchain_entry.create_swapchain(&create_info, None) }
+        .old_swapchain(vk::SwapchainKHR::default());
+    unsafe { swapchain_device.create_swapchain(&create_info, None) }
 }
 
 pub fn create_image_views(
@@ -209,7 +205,7 @@ pub fn _create_shader_module(
     let code = std::fs::read(shader_path)?;
     let code_u32 =
         unsafe { std::slice::from_raw_parts::<u32>(code.as_ptr().cast(), code.len() / 4) };
-    let create_info = vk::ShaderModuleCreateInfo::builder().code(code_u32).build();
+    let create_info = vk::ShaderModuleCreateInfo::default().code(code_u32);
     unsafe { Ok(device.create_shader_module(&create_info, None)?) }
 }
 
@@ -224,13 +220,12 @@ pub fn create_framebuffers(
         .iter()
         .map(|view| {
             let attachments = [view.vk_image_view(), depth_image_view.vk_image_view()];
-            let create_info = vk::FramebufferCreateInfo::builder()
+            let create_info = vk::FramebufferCreateInfo::default()
                 .render_pass(render_pass)
                 .attachments(&attachments)
                 .layers(1)
                 .width(extent.width)
-                .height(extent.height)
-                .build();
+                .height(extent.height);
             device.create_framebuffer(&create_info)
         })
         .collect()

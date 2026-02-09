@@ -11,11 +11,14 @@ members = [
     "yaobow/yaobow",
     "yaobow/yaobow_editor",
     "tools/pol_exporter",
-    "tools/asdebug",
-    "tools/dbexp",
+#   "tools/asdebug",
+#   "tools/dbexp",
     "tools/repacker",
 ]
 resolver = "2"
+
+[workspace.dependencies]
+imgui = { version = "0.12", features = ["docking", "tables-api"] }
 
 [patch.crates-io]
 filetime = { git = "https://github.com/dontpanic92/filetime", branch = "yaobow" }

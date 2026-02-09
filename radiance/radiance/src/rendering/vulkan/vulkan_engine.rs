@@ -17,7 +17,7 @@ use crate::{
     imgui::{ImguiContext, ImguiFrame},
     rendering::{ComponentFactory, RenderingEngine, Window},
 };
-use ash::extensions::ext::DebugUtils;
+use ash::ext::debug_utils::Instance as DebugUtils;
 use ash::{vk, Entry};
 use crosscom::ComRc;
 use std::cell::Ref;
@@ -31,7 +31,7 @@ pub struct VulkanRenderingEngine {
     instance: Rc<Instance>,
     physical_device: vk::PhysicalDevice,
     device: Rc<Device>,
-    allocator: Option<Rc<vma::Allocator>>,
+    allocator: Option<Rc<vk_mem::Allocator>>,
     surface: Option<vk::SurfaceKHR>,
     format: vk::SurfaceFormatKHR,
     present_mode: vk::PresentModeKHR,
@@ -46,8 +46,8 @@ pub struct VulkanRenderingEngine {
     dub_manager: Option<Arc<DynamicUniformBufferManager>>,
     adhoc_command_runner: Rc<AdhocCommandRunner>,
 
-    surface_entry: ash::extensions::khr::Surface,
-    debug_entry: ash::extensions::ext::DebugUtils,
+    surface_entry: ash::khr::surface::Instance,
+    debug_entry: ash::ext::debug_utils::Instance,
 
     image_available_semaphore: vk::Semaphore,
     render_finished_semaphore: vk::Semaphore,
@@ -110,7 +110,7 @@ impl VulkanRenderingEngine {
         let physical_device = creation_helpers::get_physical_device(&instance.vk_instance())?;
 
         let surface_entry =
-            ash::extensions::khr::Surface::new(entry.as_ref(), &instance.vk_instance());
+            ash::khr::surface::Instance::new(entry.as_ref(), &instance.vk_instance());
         let surface =
             creation_helpers::create_surface(entry.as_ref(), &instance.vk_instance(), &window)?;
 
@@ -128,13 +128,13 @@ impl VulkanRenderingEngine {
         ));
 
         let allocator = Rc::new({
-            let create_info = vma::AllocatorCreateInfo::new(
+            let create_info = vk_mem::AllocatorCreateInfo::new(
                 instance.vk_instance(),
                 device.vk_device(),
                 physical_device,
             );
 
-            vma::Allocator::new(create_info).unwrap()
+            unsafe { vk_mem::Allocator::new(create_info).unwrap() }
         });
 
         let format =
@@ -147,13 +147,12 @@ impl VulkanRenderingEngine {
 
         let queue = device.get_device_queue(graphics_queue_family_index, 0);
         let command_pool = {
-            let create_info = vk::CommandPoolCreateInfo::builder()
+            let create_info = vk::CommandPoolCreateInfo::default()
                 .flags(
                     vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER
                         | vk::CommandPoolCreateFlags::TRANSIENT,
                 )
-                .queue_family_index(graphics_queue_family_index)
-                .build();
+                .queue_family_index(graphics_queue_family_index);
             device.create_command_pool(&create_info)?
         };
 
@@ -200,7 +199,7 @@ impl VulkanRenderingEngine {
 
         swapchain.set_imgui(imgui.clone());
 
-        let semaphore_create_info = vk::SemaphoreCreateInfo::builder().build();
+        let semaphore_create_info = vk::SemaphoreCreateInfo::default();
         let image_available_semaphore = device.create_semaphore(&semaphore_create_info)?;
         let render_finished_semaphore = device.create_semaphore(&semaphore_create_info)?;
 
@@ -229,6 +228,7 @@ impl VulkanRenderingEngine {
                     flags: vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
                     p_user_data: ptr::null_mut(),
                     p_next: ptr::null(),
+                    _marker: std::marker::PhantomData,
                 };
                 unsafe { Some(debug_entry.create_debug_utils_messenger(&create_info, None)?) }
             } else {
@@ -263,7 +263,7 @@ impl VulkanRenderingEngine {
         return Ok(vulkan);
     }
 
-    pub fn allocator(&self) -> &Rc<vma::Allocator> {
+    pub fn allocator(&self) -> &Rc<vk_mem::Allocator> {
         self.allocator.as_ref().unwrap()
     }
 
@@ -413,12 +413,11 @@ impl VulkanRenderingEngine {
             let wait_semaphores = [self.image_available_semaphore];
             let stage_mask = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
             let signal_semaphores = [self.render_finished_semaphore];
-            let submit_info = vk::SubmitInfo::builder()
+            let submit_info = vk::SubmitInfo::default()
                 .wait_semaphores(&wait_semaphores)
                 .wait_dst_stage_mask(&stage_mask)
                 .command_buffers(&commands)
-                .signal_semaphores(&signal_semaphores)
-                .build();
+                .signal_semaphores(&signal_semaphores);
 
             self.device
                 .queue_submit(self.queue, &[submit_info], vk::Fence::default())?;

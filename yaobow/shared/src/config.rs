@@ -12,9 +12,12 @@ impl YaobowConfig {
         let mut builder = config::Config::builder();
 
         if let Ok(expanded) = shellexpand::full(config_name) {
-            let path = std::path::PathBuf::from(expanded.as_ref());
+            let path = std::path::PathBuf::from(String::from_utf8(expanded.as_bytes().into())?);
             if path.exists() {
-                builder = builder.add_source(config::File::new(expanded.as_ref(), config::FileFormat::Toml));
+                builder = builder.add_source(config::File::new(
+                    expanded.as_ref(),
+                    config::FileFormat::Toml,
+                ));
             }
         }
 

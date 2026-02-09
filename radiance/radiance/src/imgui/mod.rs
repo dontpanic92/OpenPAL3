@@ -86,10 +86,10 @@ impl ImguiContext {
 
     pub fn draw_ui<F: FnOnce(&Ui)>(&self, delta_sec: f32, draw: F) -> ImguiFrame {
         self.update_delta_time(delta_sec);
-        self.platform.borrow_mut().new_frame();
 
         let mut context = self.context.borrow_mut();
         let ui = context.frame();
+        self.platform.borrow_mut().new_frame(ui);
         draw(&ui);
 
         ImguiFrame { frame_begun: true }

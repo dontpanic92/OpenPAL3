@@ -3,9 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use imgui::{Context, Io};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use winit::dpi::PhysicalPosition;
-use winit::event::{
-    DeviceId, ElementState, Event, ModifiersState, MouseButton, Touch, TouchPhase, WindowEvent,
-};
+use winit::event::{DeviceId, ElementState, Event, MouseButton, Touch, TouchPhase, WindowEvent};
 use winit::window::Window;
 
 use crate::application::Platform;
@@ -43,7 +41,8 @@ impl ImguiPlatform {
         imgui_platform
     }
 
-    pub fn new_frame(&self) {
+    pub fn new_frame(&mut self, ui: &mut imgui::Ui) {
+        self.winit_platform.prepare_render(ui, &self.window);
         self.update_display_size(&self.window);
         self.update_cursor_shape();
         self.update_cursor_pos();
@@ -60,11 +59,10 @@ impl ImguiPlatform {
         let mut context = self.context.as_ref().borrow_mut();
         let io = context.io_mut();
         match event {
-            Event::MainEventsCleared => {
+            Event::AboutToWait => {
                 self.prepare_frame(io);
             }
-            Event::RedrawRequested(_) => {}
-            // interprete touch events as mouse input
+
             Event::WindowEvent {
                 event:
                     WindowEvent::Touch(Touch {
@@ -84,10 +82,9 @@ impl ImguiPlatform {
                 };
                 let mouse_input: Event<()> = Event::WindowEvent {
                     event: WindowEvent::MouseInput {
-                        device_id: unsafe { DeviceId::dummy() },
+                        device_id: DeviceId::dummy(),
                         state,
                         button: MouseButton::Left,
-                        modifiers: ModifiersState::empty(),
                     },
                     window_id: *window_id,
                 };

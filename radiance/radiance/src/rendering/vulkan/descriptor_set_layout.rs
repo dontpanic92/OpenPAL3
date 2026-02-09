@@ -15,17 +15,14 @@ impl DescriptorSetLayout {
         stage_flags: vk::ShaderStageFlags,
         descriptor_count: u32,
     ) -> Self {
-        let layout_binding = vk::DescriptorSetLayoutBinding::builder()
+        let layout_binding = vk::DescriptorSetLayoutBinding::default()
             .binding(0)
             .descriptor_count(descriptor_count)
             .descriptor_type(descriptor_type)
-            .stage_flags(stage_flags)
-            .build();
+            .stage_flags(stage_flags);
 
         let bindings = [layout_binding];
-        let create_info = vk::DescriptorSetLayoutCreateInfo::builder()
-            .bindings(&bindings)
-            .build();
+        let create_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
 
         let layout = device.create_descriptor_set_layout(&create_info).unwrap();
         Self { device, layout }

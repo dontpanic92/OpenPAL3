@@ -10,7 +10,7 @@ pub struct Sampler {
 
 impl Sampler {
     pub fn new(device: Rc<Device>) -> VkResult<Self> {
-        let sampler_info = vk::SamplerCreateInfo::builder()
+        let sampler_info = vk::SamplerCreateInfo::default()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)
             .address_mode_u(vk::SamplerAddressMode::REPEAT)
@@ -25,8 +25,7 @@ impl Sampler {
             .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
             .mip_lod_bias(0.)
             .min_lod(0.)
-            .max_lod(0.)
-            .build();
+            .max_lod(0.);
         let sampler = device.create_sampler(&sampler_info)?;
         Ok(Self {
             device: device.clone(),

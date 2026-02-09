@@ -5,12 +5,12 @@ use ash::prelude::VkResult;
 use ash::{vk, Instance};
 use std::error::Error;
 use std::rc::Rc;
-use vma::Alloc;
+use vk_mem::Alloc;
 
 pub struct Image {
-    allocator: Rc<vma::Allocator>,
+    allocator: Rc<vk_mem::Allocator>,
     image: vk::Image,
-    allocation: vma::Allocation,
+    allocation: vk_mem::Allocation,
     format: vk::Format,
     width: u32,
     height: u32,
@@ -18,7 +18,7 @@ pub struct Image {
 
 impl Image {
     pub fn new_color_image(
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         tex_width: u32,
         tex_height: u32,
     ) -> Result<Self, Box<dyn Error>> {
@@ -34,7 +34,7 @@ impl Image {
     pub fn new_depth_image(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         tex_width: u32,
         tex_height: u32,
     ) -> Result<Self, Box<dyn Error>> {
@@ -131,24 +131,23 @@ impl Image {
                 }
             };
 
-            let barrier = vk::ImageMemoryBarrier::builder()
+            let barrier = vk::ImageMemoryBarrier::default()
                 .old_layout(old_layout)
                 .new_layout(new_layout)
                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .image(self.image)
                 .subresource_range(
-                    vk::ImageSubresourceRange::builder()
+                    vk::ImageSubresourceRange::default()
                         .aspect_mask(aspect_mask)
                         .level_count(1)
                         .base_mip_level(0)
                         .base_array_layer(0)
                         .layer_count(1)
-                        .build(),
+                        ,
                 )
                 .src_access_mask(src_access_mask)
-                .dst_access_mask(dst_access_mask)
-                .build();
+                .dst_access_mask(dst_access_mask);
             device.cmd_pipeline_barrier(
                 *command_buffer,
                 src_stage,
@@ -168,27 +167,26 @@ impl Image {
         command_runner: &AdhocCommandRunner,
     ) -> VkResult<()> {
         command_runner.run_commands_one_shot(|device, command_buffer| {
-            let region = vk::BufferImageCopy::builder()
+            let region = vk::BufferImageCopy::default()
                 .image_extent(
-                    vk::Extent3D::builder()
+                    vk::Extent3D::default()
                         .width(self.width)
                         .height(self.height)
                         .depth(1)
-                        .build(),
+                        ,
                 )
-                .image_offset(vk::Offset3D::builder().x(0).y(0).z(0).build())
+                .image_offset(vk::Offset3D::default().x(0).y(0).z(0))
                 .buffer_offset(0)
                 .buffer_row_length(row_length)
                 .buffer_image_height(0)
                 .image_subresource(
-                    vk::ImageSubresourceLayers::builder()
+                    vk::ImageSubresourceLayers::default()
                         .layer_count(1)
                         .base_array_layer(0)
                         .mip_level(0)
                         .aspect_mask(vk::ImageAspectFlags::COLOR)
-                        .build(),
-                )
-                .build();
+                        ,
+                );
             device.cmd_copy_buffer_to_image(
                 *command_buffer,
                 buffer.vk_buffer(),
@@ -200,20 +198,20 @@ impl Image {
     }
 
     fn new(
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         tex_width: u32,
         tex_height: u32,
         format: vk::Format,
         usage: vk::ImageUsageFlags,
     ) -> Result<Self, Box<dyn Error>> {
-        let create_info = vk::ImageCreateInfo::builder()
+        let create_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(
-                vk::Extent3D::builder()
+                vk::Extent3D::default()
                     .width(tex_width)
                     .height(tex_height)
                     .depth(1)
-                    .build(),
+                    ,
             )
             .mip_levels(1)
             .array_layers(1)
@@ -222,11 +220,10 @@ impl Image {
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .usage(usage)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .build();
+            .samples(vk::SampleCountFlags::TYPE_1);
 
-        let allcation_create_info = vma::AllocationCreateInfo {
-            usage: vma::MemoryUsage::AutoPreferDevice,
+        let allcation_create_info = vk_mem::AllocationCreateInfo {
+            usage: vk_mem::MemoryUsage::AutoPreferDevice,
             ..Default::default()
         };
         let (image, allocation) =

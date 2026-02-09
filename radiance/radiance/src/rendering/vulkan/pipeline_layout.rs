@@ -27,9 +27,8 @@ impl PipelineLayout {
         device: &Rc<Device>,
         descriptor_set_layouts: &[vk::DescriptorSetLayout],
     ) -> VkResult<vk::PipelineLayout> {
-        let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(descriptor_set_layouts)
-            .build();
+        let pipeline_layout_create_info =
+            vk::PipelineLayoutCreateInfo::default().set_layouts(descriptor_set_layouts);
         device.create_pipeline_layout(&pipeline_layout_create_info)
     }
 }

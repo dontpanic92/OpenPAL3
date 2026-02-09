@@ -4,7 +4,7 @@ use ash::vk;
 use std::error::Error;
 use std::mem::size_of;
 use std::rc::Rc;
-use vma::Alloc;
+use vk_mem::Alloc;
 
 pub enum BufferType {
     Index = 0,
@@ -23,9 +23,9 @@ impl BufferType {
 }
 
 pub struct Buffer {
-    allocator: Rc<vma::Allocator>,
+    allocator: Rc<vk_mem::Allocator>,
     buffer: vk::Buffer,
-    allocation: vma::Allocation,
+    allocation: vk_mem::Allocation,
     buffer_size: u64,
     element_size: usize,
     element_count: u32,
@@ -33,7 +33,7 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn new_staging_buffer_with_data<T>(
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         data: &[T],
     ) -> Result<Self, Box<dyn Error>> {
         let mut staging_buffer = Buffer::new_buffer(
@@ -41,7 +41,7 @@ impl Buffer {
             size_of::<T>(),
             data.len(),
             vk::BufferUsageFlags::TRANSFER_SRC,
-            vma::MemoryUsage::AutoPreferHost,
+            vk_mem::MemoryUsage::AutoPreferHost,
         )?;
 
         staging_buffer.copy_memory_from(data);
@@ -49,7 +49,7 @@ impl Buffer {
     }
 
     pub fn new_dynamic_buffer_with_data<T>(
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         buffer_type: BufferType,
         data: &[T],
     ) -> Result<Self, Box<dyn Error>> {
@@ -58,7 +58,7 @@ impl Buffer {
             size_of::<T>(),
             data.len(),
             buffer_type.to_buffer_usage(),
-            vma::MemoryUsage::Auto,
+            vk_mem::MemoryUsage::Auto,
         )?;
 
         dynamic_buffer.copy_memory_from(data);
@@ -66,7 +66,7 @@ impl Buffer {
     }
 
     pub fn new_dynamic_buffer(
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         buffer_type: BufferType,
         element_size: usize,
         element_count: usize,
@@ -76,12 +76,12 @@ impl Buffer {
             element_size,
             element_count,
             buffer_type.to_buffer_usage(),
-            vma::MemoryUsage::Auto,
+            vk_mem::MemoryUsage::Auto,
         )
     }
 
     pub fn new_device_buffer_with_data<T>(
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         buffer_type: BufferType,
         data: &[T],
         command_runner: &AdhocCommandRunner,
@@ -99,7 +99,7 @@ impl Buffer {
             size_of::<T>(),
             data.len(),
             flags | vk::BufferUsageFlags::TRANSFER_DST,
-            vma::MemoryUsage::AutoPreferDevice,
+            vk_mem::MemoryUsage::AutoPreferDevice,
         )?;
 
         buffer.copy_from(&staging_buffer, command_runner)?;
@@ -123,32 +123,31 @@ impl Buffer {
     }
 
     fn new_buffer(
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         element_size: usize,
         element_count: usize,
         buffer_usage: vk::BufferUsageFlags,
-        memory_usage: vma::MemoryUsage,
+        memory_usage: vk_mem::MemoryUsage,
     ) -> Result<Self, Box<dyn Error>> {
         let buffer_size = element_count as u64 * element_size as u64;
         let (buffer, allocation) = {
-            let allcation_create_info = vma::AllocationCreateInfo {
+            let allcation_create_info = vk_mem::AllocationCreateInfo {
                 usage: memory_usage,
-                flags: if memory_usage == vma::MemoryUsage::Auto
-                    || memory_usage == vma::MemoryUsage::AutoPreferHost
+                flags: if memory_usage == vk_mem::MemoryUsage::Auto
+                    || memory_usage == vk_mem::MemoryUsage::AutoPreferHost
                 {
-                    vma::AllocationCreateFlags::MAPPED
-                        | vma::AllocationCreateFlags::HOST_ACCESS_RANDOM
+                    vk_mem::AllocationCreateFlags::MAPPED
+                        | vk_mem::AllocationCreateFlags::HOST_ACCESS_RANDOM
                 } else {
-                    vma::AllocationCreateFlags::empty()
+                    vk_mem::AllocationCreateFlags::empty()
                 },
                 ..Default::default()
             };
 
-            let buffer_create_info = vk::BufferCreateInfo::builder()
+            let buffer_create_info = vk::BufferCreateInfo::default()
                 .sharing_mode(vk::SharingMode::EXCLUSIVE)
                 .usage(buffer_usage)
-                .size(buffer_size)
-                .build();
+                .size(buffer_size);
 
             unsafe { allocator.create_buffer(&buffer_create_info, &allcation_create_info) }.unwrap()
         };
@@ -169,9 +168,7 @@ impl Buffer {
         command_runner: &AdhocCommandRunner,
     ) -> VkResult<()> {
         command_runner.run_commands_one_shot(|device, &command_buffer| {
-            let copy_region = vk::BufferCopy::builder()
-                .size(src_buffer.buffer_size)
-                .build();
+            let copy_region = vk::BufferCopy::default().size(src_buffer.buffer_size);
             device.cmd_copy_buffer(
                 command_buffer,
                 src_buffer.buffer,

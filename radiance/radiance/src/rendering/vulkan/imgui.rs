@@ -8,7 +8,7 @@ use std::{
     rc::Rc,
     sync::{Arc, Mutex},
 };
-use vma::{Allocator, AllocatorCreateInfo};
+use vk_mem::{Allocator, AllocatorCreateInfo};
 
 pub struct ImguiRenderer {
     renderer: Renderer,
@@ -36,7 +36,7 @@ impl ImguiRenderer {
                     device.vk_device(),
                     physical_device,
                 );
-                Allocator::new(allocator_create_info).unwrap()
+                unsafe { Allocator::new(allocator_create_info).unwrap() }
             };
 
             // Texture width desired by user before building the atlas.
@@ -58,9 +58,10 @@ impl ImguiRenderer {
                 in_flight_frames: 1,
                 enable_depth_test: true,
                 enable_depth_write: true,
+                ..Options::default()
             });
 
-            Renderer::with_vma_allocator(
+            Renderer::with_vk_mem_allocator(
                 Arc::new(Mutex::new(allocator)),
                 device.vk_device().clone(),
                 queue,

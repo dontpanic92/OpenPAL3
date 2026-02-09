@@ -1,9 +1,9 @@
+use crate::openpal3::directors::SceneManagerExtensions;
+use crate::openpal3::scene::RoleController;
 use crate::scripting::sce::{SceCommand, SceState};
 use crosscom::ComRc;
 use imgui::Ui;
 use radiance::comdef::ISceneManager;
-use crate::openpal3::directors::SceneManagerExtensions;
-use crate::openpal3::scene::RoleController;
 
 #[derive(Debug, Clone)]
 pub struct SceCommandDlgFace {
@@ -33,7 +33,10 @@ impl SceCommand for SceCommandDlgFace {
             .get()
             .get_role_entity(_resolved_role_id)
             .unwrap();
-        let role_name = RoleController::get_role_controller(role_entity.clone()).unwrap().get().model_name();
+        let role_name = RoleController::get_role_controller(role_entity.clone())
+            .unwrap()
+            .get()
+            .model_name();
         state
             .dialog_box()
             .set_avator(&role_name, &self.face_name, self.left_or_right);

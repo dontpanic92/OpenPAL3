@@ -12,6 +12,7 @@ use super::{
 };
 use crate::scene::Viewport;
 use crate::{imgui::ImguiFrame, rendering::vulkan::imgui::ImguiRenderer};
+use ash::khr::swapchain;
 use ash::prelude::VkResult;
 use ash::vk;
 use std::cell::RefCell;
@@ -35,14 +36,14 @@ pub struct SwapChain {
     render_pass: vk::RenderPass,
     imgui: Option<Rc<RefCell<ImguiRenderer>>>,
 
-    entry: ash::extensions::khr::Swapchain,
+    device_fn: ash::khr::swapchain::Device,
 }
 
 impl SwapChain {
     pub fn new(
         instance: &Rc<Instance>,
         device: Rc<Device>,
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         command_pool: vk::CommandPool,
         physical_device: vk::PhysicalDevice,
         queue: vk::Queue,
@@ -57,17 +58,17 @@ impl SwapChain {
         capabilities.current_extent.width = capabilities.current_extent.width.max(1);
         capabilities.current_extent.height = capabilities.current_extent.height.max(1);
 
-        let entry =
-            ash::extensions::khr::Swapchain::new(&instance.vk_instance(), &device.vk_device());
+        let device_fn =
+            ash::khr::swapchain::Device::new(&instance.vk_instance(), &device.vk_device());
         let handle = creation_helpers::create_swapchain(
-            &entry,
+            &device_fn,
             surface,
             capabilities,
             format,
             present_mode,
         )?;
 
-        let images = unsafe { entry.get_swapchain_images(handle)? };
+        let images = unsafe { device_fn.get_swapchain_images(handle)? };
         let image_views = creation_helpers::create_image_views(&device, &images, format)?;
         let uniform_buffers: Vec<Buffer> = (0..images.len())
             .map(|_| {
@@ -122,11 +123,10 @@ impl SwapChain {
         )?;
 
         let command_buffers = {
-            let create_info = vk::CommandBufferAllocateInfo::builder()
+            let create_info = vk::CommandBufferAllocateInfo::default()
                 .command_pool(command_pool)
                 .command_buffer_count(framebuffers.len() as u32)
-                .level(vk::CommandBufferLevel::PRIMARY)
-                .build();
+                .level(vk::CommandBufferLevel::PRIMARY);
             device.allocate_command_buffers(&create_info)?
         };
 
@@ -147,7 +147,7 @@ impl SwapChain {
             pipeline_manager,
             render_pass,
             imgui: None,
-            entry,
+            device_fn,
         })
     }
 
@@ -170,7 +170,7 @@ impl SwapChain {
         fence: vk::Fence,
     ) -> VkResult<(u32, bool)> {
         unsafe {
-            self.entry
+            self.device_fn
                 .acquire_next_image(self.handle, timeout, semaphore, fence)
         }
     }
@@ -187,13 +187,12 @@ impl SwapChain {
     ) -> VkResult<bool> {
         let swapchains = [self.handle];
         let image_indices = [image_index];
-        let present_info = vk::PresentInfoKHR::builder()
+        let present_info = vk::PresentInfoKHR::default()
             .wait_semaphores(&wait_semaphores)
             .swapchains(&swapchains)
-            .image_indices(&image_indices)
-            .build();
+            .image_indices(&image_indices);
 
-        unsafe { self.entry.queue_present(queue, &present_info) }
+        unsafe { self.device_fn.queue_present(queue, &present_info) }
     }
 
     pub fn record_command_buffers(
@@ -208,9 +207,8 @@ impl SwapChain {
         let framebuffer = self.framebuffers[image_index];
         let per_frame_descriptor_set = self.per_frame_descriptor_sets[image_index];
 
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
-            .build();
+        let begin_info = vk::CommandBufferBeginInfo::default()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         self.device.reset_command_buffer(
             command_buffer,
             vk::CommandBufferResetFlags::RELEASE_RESOURCES,
@@ -231,17 +229,15 @@ impl SwapChain {
                 },
             },
         ];
-        let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+        let render_pass_begin_info = vk::RenderPassBeginInfo::default()
             .render_pass(self.pipeline_manager.render_pass().vk_render_pass())
             .framebuffer(framebuffer)
             .render_area(
-                vk::Rect2D::builder()
-                    .offset(vk::Offset2D::builder().x(0).y(0).build())
-                    .extent(self.capabilities.current_extent)
-                    .build(),
+                vk::Rect2D::default()
+                    .offset(vk::Offset2D::default().x(0).y(0))
+                    .extent(self.capabilities.current_extent),
             )
-            .clear_values(&clear_values)
-            .build();
+            .clear_values(&clear_values);
 
         self.device.cmd_begin_render_pass(
             command_buffer,
@@ -348,7 +344,7 @@ impl Drop for SwapChain {
         self.device
             .free_command_buffers(self.command_pool, &self.command_buffers);
         unsafe {
-            self.entry.destroy_swapchain(self.handle, None);
+            self.device_fn.destroy_swapchain(self.handle, None);
         }
     }
 }

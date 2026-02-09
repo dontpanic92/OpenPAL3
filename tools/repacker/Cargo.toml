@@ -9,4 +9,4 @@ indicatif = "0.17"
 image = "0.23.0"
 packfs ={ path = "../../yaobow/packfs" }
 regex = "1.10"
-zip = "1.2"
+zip = "7"

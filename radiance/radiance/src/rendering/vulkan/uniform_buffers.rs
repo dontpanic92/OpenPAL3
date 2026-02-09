@@ -25,7 +25,7 @@ pub struct DynamicUniformBufferManager {
 
 impl DynamicUniformBufferManager {
     pub fn new(
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         descriptor_manager: &DynamicUniformBufferDescriptorManager,
         min_alignment: u64,
     ) -> Self {
@@ -81,7 +81,7 @@ impl DynamicUniformBufferManager {
     }
 
     fn allocate_dynamic_buffer(
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         min_alignment: u64,
         buffer_count: u32,
     ) -> (u64, Buffer) {

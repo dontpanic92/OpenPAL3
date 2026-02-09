@@ -15,9 +15,9 @@ use radiance_editor::ui::window_content_rect;
 use std::{
     cell::RefCell,
     cmp::Ordering,
+    num::NonZero,
     path::{Path, PathBuf},
     rc::Rc,
-    num::NonZero,
 };
 
 pub struct DevToolsDirector {

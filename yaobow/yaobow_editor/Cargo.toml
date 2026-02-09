@@ -15,12 +15,12 @@ crosscom = { path = "../../crosscom/runtime/rust" }
 encoding = "0.2.33"
 fileformats = { path = "../fileformats" }
 image = "0.23.0"
-imgui = { version="0.10", features = ["docking", "tables-api"] }
+imgui = { workspace = true }
 lazy_static = "1.2.0"
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_debug"] }
 lru = { version = "0.12.5" }
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
-native-dialog = "0.6.3"
+native-dialog = "0.9"
 radiance = { path = "../../radiance/radiance" }
 radiance_editor = { path = "../../radiance/radiance_editor" }
 packfs = { path = "../packfs" }

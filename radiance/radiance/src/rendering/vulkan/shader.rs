@@ -36,11 +36,10 @@ impl VulkanShader {
     }
 
     pub fn get_binding_description(&self) -> vk::VertexInputBindingDescription {
-        vk::VertexInputBindingDescription::builder()
+        vk::VertexInputBindingDescription::default()
             .binding(0)
             .stride(self.vertex_component_layout.size() as u32)
             .input_rate(vk::VertexInputRate::VERTEX)
-            .build()
     }
 
     // A better way: reflect shader code to get the desciprtions automatically
@@ -51,12 +50,11 @@ impl VulkanShader {
             .vertex_component_layout
             .get_offset(VertexComponents::POSITION)
         {
-            let pos_attr = vk::VertexInputAttributeDescription::builder()
+            let pos_attr = vk::VertexInputAttributeDescription::default()
                 .offset(position_offset as u32)
                 .binding(0)
                 .location(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .build();
+                .format(vk::Format::R32G32B32_SFLOAT);
 
             descs.push(pos_attr);
         }
@@ -65,12 +63,11 @@ impl VulkanShader {
             .vertex_component_layout
             .get_offset(VertexComponents::NORMAL)
         {
-            let normal_attr = vk::VertexInputAttributeDescription::builder()
+            let normal_attr = vk::VertexInputAttributeDescription::default()
                 .offset(normal_offset as u32)
                 .binding(0)
                 .location(1)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .build();
+                .format(vk::Format::R32G32B32_SFLOAT);
 
             descs.push(normal_attr);
         }
@@ -79,12 +76,11 @@ impl VulkanShader {
             .vertex_component_layout
             .get_offset(VertexComponents::TEXCOORD)
         {
-            let tex_attr = vk::VertexInputAttributeDescription::builder()
+            let tex_attr = vk::VertexInputAttributeDescription::default()
                 .offset(texcoord_offset as u32)
                 .binding(0)
                 .location(2)
-                .format(vk::Format::R32G32_SFLOAT)
-                .build();
+                .format(vk::Format::R32G32_SFLOAT);
 
             descs.push(tex_attr);
         }
@@ -93,12 +89,11 @@ impl VulkanShader {
             .vertex_component_layout
             .get_offset(VertexComponents::TEXCOORD2)
         {
-            let texcoord2_attr = vk::VertexInputAttributeDescription::builder()
+            let texcoord2_attr = vk::VertexInputAttributeDescription::default()
                 .offset(texcoord2_offset as u32)
                 .binding(0)
                 .location(3)
-                .format(vk::Format::R32G32_SFLOAT)
-                .build();
+                .format(vk::Format::R32G32_SFLOAT);
 
             descs.push(texcoord2_attr);
         }
@@ -120,7 +115,7 @@ impl VulkanShader {
     ) -> Result<vk::ShaderModule, Box<dyn Error>> {
         let code_u32 =
             unsafe { std::slice::from_raw_parts::<u32>(code.as_ptr().cast(), code.len() / 4) };
-        let create_info = vk::ShaderModuleCreateInfo::builder().code(code_u32).build();
+        let create_info = vk::ShaderModuleCreateInfo::default().code(code_u32);
         Ok(device.create_shader_module(&create_info)?)
     }
 }

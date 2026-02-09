@@ -69,12 +69,12 @@ impl DescriptorManager {
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         }];
 
-        let writes = [vk::WriteDescriptorSet::builder()
+        let writes = [vk::WriteDescriptorSet::default()
             .dst_set(set)
             .dst_binding(0)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .image_info(&image_info)
-            .build()];
+            ];
         self.device.update_descriptor_sets(&writes, &[]);
 
         set
@@ -83,7 +83,7 @@ impl DescriptorManager {
     pub fn allocate_texture_descriptor_set(&self) -> VkResult<vk::DescriptorSet> {
         let set = {
             let layouts = [self.texture_layout];
-            let allocate_info = vk::DescriptorSetAllocateInfo::builder()
+            let allocate_info = vk::DescriptorSetAllocateInfo::default()
                 .descriptor_pool(self.texture_pool)
                 .set_layouts(&layouts);
 
@@ -104,31 +104,29 @@ impl DescriptorManager {
     ) -> VkResult<vk::DescriptorSet> {
         let layout = self.get_per_material_descriptor_layout(material);
         let layouts = [layout];
-        let create_info = vk::DescriptorSetAllocateInfo::builder()
+        let create_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(self.per_object_pool)
-            .set_layouts(&layouts)
-            .build();
+            .set_layouts(&layouts);
         let descriptor_sets = self.device.allocate_descriptor_sets(&create_info)?;
 
         let image_info: Vec<vk::DescriptorImageInfo> = material
             .textures()
             .iter()
             .map(|t| {
-                vk::DescriptorImageInfo::builder()
+                vk::DescriptorImageInfo::default()
                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                     .image_view(t.image_view().vk_image_view())
                     .sampler(t.sampler().vk_sampler())
-                    .build()
+                    
             })
             .collect();
 
-        let write_descriptor_set = vk::WriteDescriptorSet::builder()
+        let write_descriptor_set = vk::WriteDescriptorSet::default()
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .dst_set(descriptor_sets[0])
             .dst_binding(0)
             .dst_array_element(0)
-            .image_info(&image_info)
-            .build();
+            .image_info(&image_info);
         let write_descriptor_sets = [write_descriptor_set];
         self.device
             .update_descriptor_sets(&write_descriptor_sets, &[]);
@@ -146,27 +144,24 @@ impl DescriptorManager {
         uniform_buffers: &[Buffer],
     ) -> VkResult<Vec<vk::DescriptorSet>> {
         let layouts = vec![self.per_frame_layout; uniform_buffers.len()];
-        let create_info = vk::DescriptorSetAllocateInfo::builder()
+        let create_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(self.per_frame_pool)
-            .set_layouts(layouts.as_slice())
-            .build();
+            .set_layouts(layouts.as_slice());
         let descriptor_sets = self.device.allocate_descriptor_sets(&create_info)?;
 
         for i in 0..uniform_buffers.len() {
-            let uniform_buffer_info = vk::DescriptorBufferInfo::builder()
+            let uniform_buffer_info = vk::DescriptorBufferInfo::default()
                 .buffer(uniform_buffers[i].vk_buffer())
                 .offset(0)
-                .range(std::mem::size_of::<PerFrameUniformBuffer>() as u64)
-                .build();
+                .range(std::mem::size_of::<PerFrameUniformBuffer>() as u64);
 
             let buffer_info_array = [uniform_buffer_info];
-            let write_descriptor_set = vk::WriteDescriptorSet::builder()
+            let write_descriptor_set = vk::WriteDescriptorSet::default()
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                 .dst_set(descriptor_sets[i])
                 .dst_binding(0)
                 .dst_array_element(0)
-                .buffer_info(&buffer_info_array)
-                .build();
+                .buffer_info(&buffer_info_array);
             let write_descriptor_sets = [write_descriptor_set];
             self.device
                 .update_descriptor_sets(&write_descriptor_sets, &[])
@@ -199,49 +194,43 @@ impl DescriptorManager {
     }
 
     fn create_texture_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
-        let sampler_pool_size = vk::DescriptorPoolSize::builder()
+        let sampler_pool_size = vk::DescriptorPoolSize::default()
             .descriptor_count(MAX_DESCRIPTOR_COUNT)
-            .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .build();
+            .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER);
 
         let pool_sizes = [sampler_pool_size];
-        let create_info = vk::DescriptorPoolCreateInfo::builder()
+        let create_info = vk::DescriptorPoolCreateInfo::default()
             .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
             .pool_sizes(&pool_sizes)
-            .max_sets(MAX_DESCRIPTOR_SET_COUNT)
-            .build();
+            .max_sets(MAX_DESCRIPTOR_SET_COUNT);
 
         device.create_descriptor_pool(&create_info)
     }
 
     fn create_per_frame_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
-        let uniform_pool_size = vk::DescriptorPoolSize::builder()
+        let uniform_pool_size = vk::DescriptorPoolSize::default()
             .descriptor_count(MAX_SWAPCHAIN_IMAGE_COUNT)
-            .ty(vk::DescriptorType::UNIFORM_BUFFER)
-            .build();
+            .ty(vk::DescriptorType::UNIFORM_BUFFER);
 
         let pool_sizes = [uniform_pool_size];
-        let create_info = vk::DescriptorPoolCreateInfo::builder()
+        let create_info = vk::DescriptorPoolCreateInfo::default()
             .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
             .pool_sizes(&pool_sizes)
-            .max_sets(MAX_DESCRIPTOR_SET_COUNT)
-            .build();
+            .max_sets(MAX_DESCRIPTOR_SET_COUNT);
 
         device.create_descriptor_pool(&create_info)
     }
 
     fn create_per_object_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
-        let sampler_pool_size = vk::DescriptorPoolSize::builder()
+        let sampler_pool_size = vk::DescriptorPoolSize::default()
             .descriptor_count(MAX_DESCRIPTOR_COUNT)
-            .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .build();
+            .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER);
 
         let pool_sizes = [sampler_pool_size];
-        let create_info = vk::DescriptorPoolCreateInfo::builder()
+        let create_info = vk::DescriptorPoolCreateInfo::default()
             .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
             .pool_sizes(&pool_sizes)
-            .max_sets(MAX_DESCRIPTOR_SET_COUNT)
-            .build();
+            .max_sets(MAX_DESCRIPTOR_SET_COUNT);
 
         device.create_descriptor_pool(&create_info)
     }
@@ -252,17 +241,14 @@ impl DescriptorManager {
         stage_flags: vk::ShaderStageFlags,
         descriptor_count: u32,
     ) -> VkResult<vk::DescriptorSetLayout> {
-        let layout_binding = vk::DescriptorSetLayoutBinding::builder()
+        let layout_binding = vk::DescriptorSetLayoutBinding::default()
             .binding(0)
             .descriptor_count(descriptor_count)
             .descriptor_type(descriptor_type)
-            .stage_flags(stage_flags)
-            .build();
+            .stage_flags(stage_flags);
 
         let bindings = [layout_binding];
-        let create_info = vk::DescriptorSetLayoutCreateInfo::builder()
-            .bindings(&bindings)
-            .build();
+        let create_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
 
         device.create_descriptor_set_layout(&create_info)
     }
@@ -343,26 +329,23 @@ impl DynamicUniformBufferDescriptorManager {
 
     pub fn allocate_descriptor_sets(&self, dynamic_uniform_buffer: &Buffer) -> vk::DescriptorSet {
         let layouts = [self.layout.vk_layout()];
-        let create_info = vk::DescriptorSetAllocateInfo::builder()
+        let create_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(self.pool.vk_pool())
-            .set_layouts(&layouts)
-            .build();
+            .set_layouts(&layouts);
         let descriptor_sets = self.device.allocate_descriptor_sets(&create_info).unwrap();
 
-        let buffer_info = vk::DescriptorBufferInfo::builder()
+        let buffer_info = vk::DescriptorBufferInfo::default()
             .buffer(dynamic_uniform_buffer.vk_buffer())
             .offset(0)
-            .range(dynamic_uniform_buffer.element_size() as u64)
-            .build();
+            .range(dynamic_uniform_buffer.element_size() as u64);
 
         let buffer_info_array = [buffer_info];
-        let write_descriptor_set = vk::WriteDescriptorSet::builder()
+        let write_descriptor_set = vk::WriteDescriptorSet::default()
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
             .dst_set(descriptor_sets[0])
             .dst_binding(0)
             .dst_array_element(0)
-            .buffer_info(&buffer_info_array)
-            .build();
+            .buffer_info(&buffer_info_array);
         let write_descriptor_sets = [write_descriptor_set];
         self.device
             .update_descriptor_sets(&write_descriptor_sets, &[]);

@@ -1,5 +1,5 @@
-use std::sync::{Arc, RwLock};
 use std::num::NonZero;
+use std::sync::{Arc, RwLock};
 
 use image::RgbaImage;
 use lru::LruCache;

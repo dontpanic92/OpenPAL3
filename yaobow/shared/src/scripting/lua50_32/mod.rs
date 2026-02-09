@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, os::raw::c_char};
+use std::{cell::RefCell, os::raw::c_char, rc::Rc};
 
 use anyhow::bail;
 use encoding::{DecoderTrap, Encoding};

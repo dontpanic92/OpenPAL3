@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 pub struct VulkanComponentFactory {
     device: Rc<Device>,
-    allocator: Rc<vma::Allocator>,
+    allocator: Rc<vk_mem::Allocator>,
     descriptor_manager: Rc<DescriptorManager>,
     dub_manager: Arc<DynamicUniformBufferManager>,
     command_runner: Rc<AdhocCommandRunner>,
@@ -128,7 +128,7 @@ impl ComponentFactory for VulkanComponentFactory {
 impl VulkanComponentFactory {
     pub fn new(
         device: Rc<Device>,
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         descriptor_manager: &Rc<DescriptorManager>,
         dub_manager: &Arc<DynamicUniformBufferManager>,
         command_runner: &Rc<AdhocCommandRunner>,

@@ -16,7 +16,7 @@ downcast-rs = "1.2.0"
 hound = "3.4.0"
 symphonia = {version = "0.5", features = ["all"] }
 image = "0.23.0"
-imgui = { version = "0.10", features = ["docking"] }
+imgui = { workspace = true }
 lazy_static = "1.2.0"
 lewton = "0.10.1"
 log = "0.4.13"
@@ -29,14 +29,14 @@ toml = "0.7"
 uuid = "0.8"
 
 [target.'cfg(not(target_os = "vita"))'.dependencies]
-ash = { version = "0.37", default-features = false, features = ["loaded"] }
-ash-window = "0.12"
-imgui-rs-vulkan-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vulkan-renderer", features = ["vma"] }
-imgui-winit-support = { version = "0.10", default-features = false}
+ash = { version = "0.38", default-features = false, features = ["loaded"] }
+ash-window = "0.13"
+imgui-rs-vulkan-renderer = { version = "1.16", features = ["vk-mem"] }
+imgui-winit-support = "0.13"
 gilrs = "0.10.10"
-raw-window-handle = "0.5"
-vma = "0.3"
-winit = "0.27"
+raw-window-handle = "0.6"
+vk-mem = "0.4"
+winit = "0.30"
 
 [target.'cfg(target_os = "vita")'.dependencies]
 imgui-rs-vitagl-renderer = { git = "https://github.com/dontpanic92/imgui-rs-vitagl-renderer" }

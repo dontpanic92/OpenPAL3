@@ -19,7 +19,7 @@ common = { path = "../common" }
 encoding = "0.2.33"
 lazy_static = "1.2.0"
 log = { version = "0.4.13" }
-lzma-rs = "0.3.0"
+lzma-rust2 = "0.15"
 md5 = "0.7"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }

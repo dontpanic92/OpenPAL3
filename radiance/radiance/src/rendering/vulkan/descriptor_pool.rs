@@ -20,18 +20,17 @@ impl DescriptorPool {
         let pool_sizes: Vec<vk::DescriptorPoolSize> = create_info
             .iter()
             .map(|info| {
-                vk::DescriptorPoolSize::builder()
+                vk::DescriptorPoolSize::default()
                     .descriptor_count(info.descriptor_count)
                     .ty(info.ty)
-                    .build()
+                    
             })
             .collect();
 
-        let create_info = vk::DescriptorPoolCreateInfo::builder()
+        let create_info = vk::DescriptorPoolCreateInfo::default()
             .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
             .pool_sizes(&pool_sizes)
-            .max_sets(MAX_DESCRIPTOR_SET_COUNT)
-            .build();
+            .max_sets(MAX_DESCRIPTOR_SET_COUNT);
 
         let pool = device.create_descriptor_pool(&create_info).unwrap();
 

@@ -3,8 +3,8 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
+use winit::event_loop::EventLoop;
+use winit::window::{Window, WindowAttributes};
 
 pub type MessageCallback = Box<dyn Fn(&Event<()>)>;
 
@@ -17,13 +17,12 @@ pub struct Platform {
 
 impl Platform {
     pub fn new() -> Self {
-        let event_loop = EventLoop::new();
-        let window = WindowBuilder::new()
+        let event_loop = EventLoop::new().unwrap();
+        let wa = WindowAttributes::default()
             .with_title("Radiance")
             .with_inner_size(LogicalSize::new(1280.0, 960.0))
-            .with_resizable(true)
-            .build(&event_loop)
-            .unwrap();
+            .with_resizable(true);
+        let window = event_loop.create_window(wa).unwrap();
 
         Self {
             event_loop: Cell::new(Some(event_loop)),
@@ -52,50 +51,43 @@ impl Platform {
         let msg_callbacks = self.msg_callbacks.clone();
         let event_loop = self.event_loop.take().unwrap();
         let mut active = true;
-        event_loop.run(move |event, _, control_flow| {
+        event_loop.run(move |event, window_target| {
+            for cb in msg_callbacks.borrow().iter() {
+                cb(&event);
+            }
             match event {
-                Event::RedrawRequested(_) => {}
-                Event::RedrawEventsCleared => {}
-                Event::MainEventsCleared => {
-                    // needed for imgui got notified to prepare frame
-                    for cb in msg_callbacks.borrow().iter() {
-                        cb(&event);
-                    }
-
-                    if active {
-                        update_engine();
-                    }
+                Event::AboutToWait => {
+                    window.request_redraw();
                 }
                 Event::WindowEvent {
                     event: WindowEvent::CloseRequested,
                     ..
                 } => {
-                    *control_flow = ControlFlow::Exit;
+                    window_target.exit();
                 }
-                event => {
-                    // debug!("Event: {:?}", event);
-                    for cb in msg_callbacks.borrow().iter() {
-                        cb(&event);
-                    }
-                    // other application-specific event handling
-                    match event {
-                        Event::Suspended => {
-                            debug!("Suspended");
-                            active = false;
-                        }
-                        Event::Resumed => {
-                            debug!("Resumed");
-                            active = true;
-                        }
-                        Event::WindowEvent {
-                            event: WindowEvent::Focused(focused),
-                            ..
-                        } => {
-                            active = focused;
-                        }
-                        _ => (),
+                Event::WindowEvent {
+                    event: WindowEvent::RedrawRequested,
+                    ..
+                } => {
+                    if active {
+                        update_engine();
                     }
                 }
+                Event::Suspended => {
+                    debug!("Suspended");
+                    active = false;
+                }
+                Event::Resumed => {
+                    debug!("Resumed");
+                    active = true;
+                }
+                Event::WindowEvent {
+                    event: WindowEvent::Focused(focused),
+                    ..
+                } => {
+                    active = focused;
+                }
+                _ => (),
             }
         });
     }

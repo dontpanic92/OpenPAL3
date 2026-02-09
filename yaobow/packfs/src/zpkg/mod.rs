@@ -75,17 +75,22 @@ fn decompress(buffer: &[u8]) -> anyhow::Result<Vec<u8>> {
             0x10000
         };
 
-        lzma_rs::lzma_decompress_with_options(
-            &mut Cursor::new(&input),
-            &mut lzma_output,
-            &lzma_rs::decompress::Options {
-                unpacked_size: lzma_rs::decompress::UnpackedSize::UseProvided(Some(
-                    unpacked_size as u64,
-                )),
-                memlimit: None,
-                allow_incomplete: false,
-            },
-        )?;
+        // lzma_rs::lzma_decompress_with_options(
+        //     &mut Cursor::new(&input),
+        //     &mut lzma_output,
+        //     &lzma_rs::decompress::Options {
+        //         unpacked_size: lzma_rs::decompress::UnpackedSize::UseProvided(Some(
+        //             unpacked_size as u64,
+        //         )),
+        //         memlimit: None,
+        //         allow_incomplete: false,
+        //     },
+        // )?;
+
+        let mut reader =
+            lzma_rust2::LzmaReader::new_mem_limit(Cursor::new(&input), u32::MAX, None)?;
+        let mut writer = Cursor::new(&mut lzma_output);
+        std::io::copy(&mut reader, &mut writer)?;
 
         output.append(&mut lzma_output);
     }

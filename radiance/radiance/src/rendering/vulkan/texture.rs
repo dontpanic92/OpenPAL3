@@ -6,8 +6,8 @@ use crate::rendering::texture::{Texture, TextureDef};
 use ash::vk;
 use lru::LruCache;
 use std::error::Error;
-use std::rc::Rc;
 use std::num::NonZero;
+use std::rc::Rc;
 
 pub struct VulkanTexture {
     image: Image,
@@ -29,7 +29,7 @@ impl VulkanTexture {
     pub fn new(
         def: &TextureDef,
         device: &Rc<Device>,
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
     ) -> Result<Self, Box<dyn Error>> {
         let texture_missing =
@@ -55,7 +55,7 @@ impl VulkanTexture {
         width: u32,
         height: u32,
         device: &Rc<Device>,
-        allocator: &Rc<vma::Allocator>,
+        allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
     ) -> Result<Self, Box<dyn Error>> {
         let buffer = Buffer::new_staging_buffer_with_data(allocator, &image_buffer)?;
