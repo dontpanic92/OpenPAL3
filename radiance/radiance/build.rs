@@ -30,14 +30,26 @@ fn build_vulkan_shader(shader_name: &str) {
     println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
     let shader_out_dir = format!("{}/{}.spv", out_dir, shader_name);
 
-    let output = Command::new("glslc")
-        .args(&[
-            path.to_str().unwrap().to_owned(),
-            "-o".to_string(),
-            shader_out_dir,
-        ])
+    let shader_path = path.to_str().unwrap();
+    let output = match Command::new("glslc")
+        .arg(shader_path)
+        .arg("-o")
+        .arg(&shader_out_dir)
         .output()
-        .expect(&format!("Failed to compile shader {}", shader_name));
+    {
+        Ok(output) => output,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Command::new("glslangValidator")
+            .arg("-V")
+            .arg(shader_path)
+            .arg("-o")
+            .arg(&shader_out_dir)
+            .output()
+            .expect(&format!(
+                "Failed to compile shader {} with glslangValidator",
+                shader_name
+            )),
+        Err(err) => panic!("Failed to compile shader {}: {}", shader_name, err),
+    };
 
     println!("{}", std::str::from_utf8(&output.stdout).unwrap());
 }
