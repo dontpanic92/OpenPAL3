@@ -34,7 +34,9 @@ jobs:
           # The zip extracts to InstallVulkan.app
           if [ -d "/tmp/InstallVulkan.app" ]; then
             echo "Using InstallVulkan.app installer..."
-            sudo /tmp/InstallVulkan.app/Contents/MacOS/InstallVulkan --root ~/VulkanSDK/${VULKAN_SDK_VERSION} --accept-licenses --default-answer --confirm-command install
+            sudo /tmp/InstallVulkan.app/Contents/MacOS/InstallVulkan --root $HOME/VulkanSDK/${VULKAN_SDK_VERSION} --accept-licenses --default-answer --confirm-command install
+            echo "VULKAN_SDK=$HOME/VulkanSDK/${VULKAN_SDK_VERSION}" >> $GITHUB_ENV
+            echo "$HOME/VulkanSDK/${VULKAN_SDK_VERSION}/bin" >> $GITHUB_PATH
             rm -rf /tmp/InstallVulkan.app
           else
             echo "Error: Could not find Vulkan SDK installer"
