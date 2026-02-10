@@ -31,6 +31,10 @@ jobs:
           VULKAN_SDK_VERSION="1.4.304.0"
           curl -L -o /tmp/vulkan_sdk.zip https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/mac/vulkan_sdk.zip
           unzip -q /tmp/vulkan_sdk.zip -d /tmp
+          echo "Contents of /tmp after extraction:"
+          ls -la /tmp/ | grep -i vulkan || true
+          echo "Looking for extracted SDK directories..."
+          find /tmp -maxdepth 2 -name "*vulkan*" -o -name "*Vulkan*" 2>/dev/null || true
           # Try to find and run the installer app
           if [ -d "/tmp/vulkansdk-macos-${VULKAN_SDK_VERSION}.app" ]; then
             echo "Using .app installer..."
