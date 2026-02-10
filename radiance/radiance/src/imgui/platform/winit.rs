@@ -16,7 +16,7 @@ pub struct ImguiPlatform {
 
 impl ImguiPlatform {
     pub fn new(context: Rc<RefCell<Context>>, platform: &mut Platform) -> Rc<RefCell<Self>> {
-        let mut winit_platform = WinitPlatform::init(&mut context.as_ref().borrow_mut());
+        let mut winit_platform = WinitPlatform::new(&mut context.as_ref().borrow_mut());
         let window = platform.get_window().clone();
         winit_platform.attach_window(
             context.as_ref().borrow_mut().io_mut(),

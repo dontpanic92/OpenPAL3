@@ -68,15 +68,14 @@ pub fn create_surface(
     instance: &Instance,
     window: &Window,
 ) -> VkResult<vk::SurfaceKHR> {
-    use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
     unsafe {
-        use winit::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+        use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
         ash_window::create_surface(
             entry,
             instance,
-            window.raw_display_handle().unwrap(),
-            window.raw_window_handle().unwrap(),
+            window.display_handle().unwrap().as_raw(),
+            window.window_handle().unwrap().as_raw(),
             None,
         )
     }

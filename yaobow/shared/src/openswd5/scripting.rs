@@ -222,15 +222,15 @@ impl SWD5Context {
                 .pressed()
     }
 
-    fn isfon(&mut self, f: f64) -> i32 {
+    fn isfon(&mut self, _f: f64) -> i32 {
         0
     }
 
-    fn fon(&mut self, f: f64) {}
+    fn fon(&mut self, _f: f64) {}
 
-    fn foff(&mut self, f: f64) {}
+    fn foff(&mut self, _f: f64) {}
 
-    fn lock_player(&mut self, f: f64) {}
+    fn lock_player(&mut self, _f: f64) {}
 
     fn dark(&mut self, speed: f64) {
         self.actdrop
@@ -242,7 +242,7 @@ impl SWD5Context {
             .set_darkness(InterpValue::new(1., 0., 0.1 * speed as f32));
     }
 
-    fn chang_map(&mut self, map_id: f64, x: f64, y: f64, z: f64) {
+    fn chang_map(&mut self, map_id: f64, _x: f64, _y: f64, _z: f64) {
         let map_id = map_id as i32;
         let scene = Swd5Scene::load(&self.asset_loader, map_id);
         match scene {
@@ -258,13 +258,13 @@ impl SWD5Context {
 
     fn wait_camera(&mut self) {}
 
-    fn camera_mode(&mut self, mode: f64) {}
+    fn camera_mode(&mut self, _mode: f64) {}
 
-    fn story_music_off(&mut self, f1: f64, f2: f64) {
+    fn story_music_off(&mut self, _f1: f64, _f2: f64) {
         self.bgm_source.stop();
     }
 
-    fn story_music(&mut self, music_id: f64, f2: f64, f3: f64, f4: f64, f5: f64, f6: f64) {
+    fn story_music(&mut self, music_id: f64, _f2: f64, _f3: f64, _f4: f64, _f5: f64, _f6: f64) {
         let data = self.asset_loader.load_music(music_id as i32);
         match data {
             Ok(data) => {
@@ -275,13 +275,13 @@ impl SWD5Context {
         }
     }
 
-    fn chang_role_map(&mut self, map_id: f64, f2: f64, f3: f64, f4: f64) {}
+    fn chang_role_map(&mut self, _map_id: f64, _f2: f64, _f3: f64, _f4: f64) {}
 
-    fn set_motion(&mut self, f1: f64, f2: f64) {}
+    fn set_motion(&mut self, _f1: f64, _f2: f64) {}
 
-    fn set_walks(&mut self, f1: f64, f2: f64) {}
+    fn set_walks(&mut self, _f1: f64, _f2: f64) {}
 
-    fn play_sound(&mut self, sound_id: f64, volume: f64) {
+    fn play_sound(&mut self, sound_id: f64, _volume: f64) {
         let sound_id = sound_id as i32;
         let data = self.asset_loader.load_sound(sound_id);
         match data {
@@ -355,12 +355,12 @@ impl SWD5Context {
         println!("set_camera_pos({}, {}, {})", x, y, z);
     }
 
-    fn chang_camera_view(&mut self, dx: f64, dy: f64, dis: f64, time: f64) {
+    fn chang_camera_view(&mut self, dx: f64, dy: f64, dis: f64, _time: f64) {
         let scene = self.scene.as_mut().unwrap();
         scene.set_camera_delta(dx as f32, dy as f32, dis as f32);
     }
 
-    fn set_role_face_motion(&mut self, role: f64, face_motion: f64) {}
+    fn set_role_face_motion(&mut self, _role: f64, _face_motion: f64) {}
 
     fn play_movie(&mut self, id: f64) {
         let reader = self.asset_loader.load_movie_data(id as u32);

@@ -69,7 +69,7 @@ fn decompress(buffer: &[u8]) -> anyhow::Result<Vec<u8>> {
     for i in 0..trunk_num {
         let input = cursor.read_u8_vec(trunk_sizes[i] as usize)?;
         let mut lzma_output = vec![];
-        let unpacked_size = if i == trunk_num - 1 {
+        let _unpacked_size = if i == trunk_num - 1 {
             total_length - trunk_unpacked_size * (trunk_num as i64 - 1)
         } else {
             0x10000

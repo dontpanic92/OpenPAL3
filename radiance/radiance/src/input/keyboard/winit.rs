@@ -2,7 +2,7 @@ use crate::input::{Key, KeyState};
 #[cfg(any(target_os = "macos", target_os = "android"))]
 use winit::event::WindowEvent;
 use winit::{
-    event::{DeviceEvent, ElementState, Event, KeyEvent, RawKeyEvent},
+    event::{DeviceEvent, ElementState, Event, RawKeyEvent},
     keyboard::{KeyCode, PhysicalKey},
 };
 

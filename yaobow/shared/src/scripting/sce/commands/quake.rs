@@ -13,7 +13,7 @@ pub struct SceCommandQuake {
 }
 
 impl SceCommand for SceCommandQuake {
-    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
+    fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, _state: &mut SceState) {
         let scene = scene_manager.scene().unwrap();
         self.original_position = scene.camera().borrow().transform().position();
     }

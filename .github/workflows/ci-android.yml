@@ -44,9 +44,7 @@ jobs:
           key: ${{ runner.os }}-android-build-ffmpeg
       - name: Install ffmpeg
         run: |
-          vcpkg x-update-baseline
           vcpkg install --triplet=arm64-android
-          vcpkg integrate install
           tree vcpkg_installed
       - name: Install Android targets
         run: rustup target add aarch64-linux-android

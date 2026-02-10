@@ -1062,7 +1062,7 @@ fn imm_end(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
-fn new_game(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn new_game(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
@@ -1121,15 +1121,15 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
-fn arena_ready(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn arena_ready(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
-fn arena_ready_restore(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn arena_ready_restore(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
-fn arena_hint(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn arena_hint(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
@@ -1198,7 +1198,7 @@ fn system_exchange(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSt
     Pal4FunctionState::Completed
 }
 
-fn monster_stop_pursuit(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn monster_stop_pursuit(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
@@ -1228,7 +1228,7 @@ fn open_weather(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
     Pal4FunctionState::Completed
 }
 
-fn close_weather(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn close_weather(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
@@ -1248,7 +1248,7 @@ fn set_temp_game_state(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functi
     Pal4FunctionState::Completed
 }
 
-fn flush_tail_y_angle(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn flush_tail_y_angle(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
@@ -2000,7 +2000,7 @@ fn wait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, time: f64);
 
     let mut time = time as f32;
-    Pal4FunctionState::Yield(Box::new(move |vm, delta_sec| {
+    Pal4FunctionState::Yield(Box::new(move |_vm, delta_sec| {
         if time <= 0.0 {
             ContinuationState::Completed
         } else {

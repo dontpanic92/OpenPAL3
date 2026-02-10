@@ -36,8 +36,6 @@ jobs:
           key: ${{ runner.os }}-build-ffmpeg
       - name: Install ffmpeg
         run: |
-          vcpkg x-update-baseline
           vcpkg install --triplet=arm64-osx
-          vcpkg integrate install
       - name: Build
         run: cargo build --workspace --release --verbose

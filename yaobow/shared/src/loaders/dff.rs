@@ -323,7 +323,7 @@ pub(crate) fn create_geometry_internal(
             let md = if let Some(texture) = material.texture.as_ref() {
                 radiance::rendering::SimpleMaterialDef::create(
                     &texture.name,
-                    |name| {
+                    |_name| {
                         let data =
                             texture_resolver.resolve_texture(vfs, path.as_ref(), &texture.name);
                         if data.is_none() {

@@ -51,7 +51,7 @@ impl Platform {
         let msg_callbacks = self.msg_callbacks.clone();
         let event_loop = self.event_loop.take().unwrap();
         let mut active = true;
-        event_loop.run(move |event, window_target| {
+        let _ = event_loop.run(move |event, window_target| {
             for cb in msg_callbacks.borrow().iter() {
                 cb(&event);
             }
