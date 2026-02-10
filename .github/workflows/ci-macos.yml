@@ -8,7 +8,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  VULKAN_SDK_VERSION: "1.4.304.0"
 
 jobs:
   macos-build:
@@ -27,22 +26,8 @@ jobs:
       - name: Install Deps
         run: |
           brew install automake fdk-aac git lame libass libtool libvorbis libvpx opus sdl shtool texi2html theora wget x264 x265 xvid nasm
-      - name: Install Vulkan SDK
-        run: |
-          curl -L -o /tmp/vulkan_sdk.zip https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/mac/vulkan_sdk.zip
-          unzip -q /tmp/vulkan_sdk.zip -d /tmp
-          # The zip extracts to InstallVulkan.app
-          if [ -d "/tmp/InstallVulkan.app" ]; then
-            echo "Using InstallVulkan.app installer..."
-            # Install to system location (default) instead of custom --root
-            sudo /tmp/InstallVulkan.app/Contents/MacOS/InstallVulkan --accept-licenses --default-answer --confirm-command install
-            rm -rf /tmp/InstallVulkan.app
-          else
-            echo "Error: Could not find Vulkan SDK installer"
-            ls -la /tmp/ | grep -i vulkan || true
-            exit 1
-          fi
-          rm -f /tmp/vulkan_sdk.zip
+          # Install Vulkan tools via Homebrew (includes glslc shader compiler)
+          brew install molten-vk vulkan-headers vulkan-loader vulkan-tools
       - name: Cache ffmpeg
         uses: actions/cache@v3
         with:
