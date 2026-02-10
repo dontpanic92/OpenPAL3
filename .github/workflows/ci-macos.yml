@@ -55,4 +55,8 @@ jobs:
           vcpkg install --triplet=arm64-osx
           vcpkg integrate install
       - name: Build
-        run: cargo build --workspace --release --verbose
+        run: |
+          VULKAN_SDK_VERSION="1.4.304.0"
+          export VULKAN_SDK="$HOME/VulkanSDK/${VULKAN_SDK_VERSION}"
+          export PATH="$HOME/VulkanSDK/${VULKAN_SDK_VERSION}/bin:$PATH"
+          cargo build --workspace --release --verbose
