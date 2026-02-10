@@ -2,7 +2,7 @@ use crate::input::{Key, KeyState};
 #[cfg(any(target_os = "macos", target_os = "android"))]
 use winit::event::WindowEvent;
 use winit::{
-    event::{DeviceEvent, ElementState, Event, RawKeyEvent},
+    event::{DeviceEvent, ElementState, Event, KeyEvent, RawKeyEvent},
     keyboard::{KeyCode, PhysicalKey},
 };
 
@@ -46,11 +46,10 @@ impl KeyboardInput {
             Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
-                        input:
-                            winit::event::KeyboardInput {
+                        event:
+                            winit::event::KeyEvent {
                                 state: ElementState::Pressed,
-                                virtual_keycode,
-                                scancode,
+                                physical_key: PhysicalKey::Code(code),
                                 ..
                             },
                         ..
@@ -58,7 +57,6 @@ impl KeyboardInput {
                 ..
             } => {
                 keycode = Some(code);
-                scan_code = scancode;
                 action = Box::new(move |key| {
                     states[key as usize].set_down(true);
                     states[key as usize].set_pressed(true);
@@ -68,19 +66,17 @@ impl KeyboardInput {
             Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
-                        input:
-                            winit::event::KeyboardInput {
+                        event:
+                            winit::event::KeyEvent {
                                 state: ElementState::Released,
-                                virtual_keycode,
-                                scancode,
+                                physical_key: PhysicalKey::Code(code),
                                 ..
                             },
                         ..
                     },
                 ..
             } => {
-                virtual_code = virtual_keycode;
-                scan_code = scancode;
+                keycode = Some(code);
                 action = Box::new(|key| {
                     states[key as usize].set_down(false);
                     states[key as usize].set_released(true);
