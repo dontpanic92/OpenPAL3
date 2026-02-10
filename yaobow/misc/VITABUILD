@@ -1,18 +1,25 @@
 pkgname=ffmpeg
-pkgver=6.0
+pkgver=7.1.1
 pkgrel=1
 url="https://ffmpeg.org/"
 source=("https://ffmpeg.org/releases/ffmpeg-$pkgver.tar.xz")
-sha256sums=('57be87c22d9b49c112b6d24bc67d42508660e6b718b3db89c44e47e289137082')
+sha256sums=('733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1')
 depends=('lame' 'libvorbis' 'flac' 'opus')
 
 prepare() {
-  cd $pkgname-$pkgver
+	if [ ! -d "$pkgname-$pkgver" ]; then
+		if [ -f "$pkgname-$pkgver.tar" ]; then
+			tar -xf "$pkgname-$pkgver.tar"
+		elif [ -f "$pkgname-$pkgver.tar.xz" ]; then
+			tar -xf "$pkgname-$pkgver.tar.xz"
+		fi
+	fi
+	cd $pkgname-$pkgver
 }
 
 build() {
-  cd $pkgname-$pkgver
-  ./configure --prefix=$prefix \
+	cd $pkgname-$pkgver
+	./configure --prefix=$prefix \
 		--enable-cross-compile \
 		--cross-prefix=$VITASDK/bin/arm-vita-eabi- \
 		--disable-shared \
@@ -43,10 +50,10 @@ build() {
 		--disable-securetransport \
 		--disable-xlib \
 		--enable-pthreads
-  make -j$(nproc)
+	make -j$(nproc)
 }
 
 package () {
-  cd $pkgname-$pkgver
-  make DESTDIR=$pkgdir install
+	cd $pkgname-$pkgver
+	make DESTDIR=$pkgdir install
 }

@@ -186,9 +186,5 @@ impl RenderingEngine for VitaGLRenderingEngine {
 }
 
 impl Drop for VitaGLRenderingEngine {
-    fn drop(&mut self) {
-        unsafe {
-            vglEnd();
-        }
-    }
+    fn drop(&mut self) {}
 }

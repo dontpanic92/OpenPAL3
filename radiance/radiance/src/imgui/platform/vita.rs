@@ -16,6 +16,8 @@ impl ImguiPlatform {
 
     pub fn new_frame(&self) {}
 
+    pub fn prepare_render(&self, ui: &imgui::Ui) {}
+
     fn set_display_size(context: &Rc<RefCell<Context>>) {
         let mut context = context.borrow_mut();
         context.io_mut().display_size = [960., 544.];

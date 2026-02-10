@@ -1799,9 +1799,9 @@ checksum = "2c4a545a15244c7d945065b5d392b2d2d7f21526fba56ce51467b06ed445e8f7"
 
 [[package]]
 name = "libc"
-version = "0.2.180"
+version = "0.2.181"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcc35a38544a891a5f7c865aca548a982ccb3b8650a5b06d0fd33a10283c56fc"
+checksum = "459427e2af2b9c839b132acb702a1c654d95e10f8c326bfc2ad11310e458b1c5"
 
 [[package]]
 name = "libloading"
@@ -4210,7 +4210,7 @@ dependencies = [
 [[package]]
 name = "vitagl-sys"
 version = "0.1.0"
-source = "git+https://github.com/dontpanic92/vitagl-sys#83102bd9f51d9f3343460c622f7e13daed67edc3"
+source = "git+https://github.com/dontpanic92/vitagl-sys#f368f0e913e5e6192d50f3c6cf53b99f9d52ff83"
 
 [[package]]
 name = "vitasdk-sys"
