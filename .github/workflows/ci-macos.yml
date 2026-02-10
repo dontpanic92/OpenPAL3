@@ -25,10 +25,7 @@ jobs:
           rustflags: ''
       - name: Install Deps
         run: |
-          brew install automake fdk-aac git lame libass libtool libvorbis libvpx opus sdl shtool texi2html theora wget x264 x265 xvid nasm
-          # Install Vulkan tools via Homebrew
-          # shaderc provides glslc (shader compiler needed by build.rs)
-          brew install molten-vk vulkan-headers vulkan-loader shaderc
+          brew install nasm molten-vk vulkan-headers vulkan-loader shaderc
       - name: Cache ffmpeg
         uses: actions/cache@v3
         with:
