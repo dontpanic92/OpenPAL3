@@ -31,22 +31,14 @@ jobs:
           VULKAN_SDK_VERSION="1.4.304.0"
           curl -L -o /tmp/vulkan_sdk.zip https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/mac/vulkan_sdk.zip
           unzip -q /tmp/vulkan_sdk.zip -d /tmp
-          echo "Contents of /tmp after extraction:"
-          ls -la /tmp/ | grep -i vulkan || true
-          echo "Looking for extracted SDK directories..."
-          find /tmp -maxdepth 2 -name "*vulkan*" -o -name "*Vulkan*" 2>/dev/null || true
-          # Try to find and run the installer app
-          if [ -d "/tmp/vulkansdk-macos-${VULKAN_SDK_VERSION}.app" ]; then
-            echo "Using .app installer..."
-            sudo /tmp/vulkansdk-macos-${VULKAN_SDK_VERSION}.app/Contents/MacOS/vulkansdk-macos-${VULKAN_SDK_VERSION} --accept-licenses --default-answer --confirm-command install
-            rm -rf /tmp/vulkansdk-macos-${VULKAN_SDK_VERSION}.app
-          elif [ -d "/tmp/vulkansdk-macos-${VULKAN_SDK_VERSION}" ] && [ -f "/tmp/vulkansdk-macos-${VULKAN_SDK_VERSION}/install_vulkan.py" ]; then
-            echo "Using install_vulkan.py script..."
-            cd /tmp/vulkansdk-macos-${VULKAN_SDK_VERSION}
-            sudo ./install_vulkan.py
+          # The zip extracts to InstallVulkan.app
+          if [ -d "/tmp/InstallVulkan.app" ]; then
+            echo "Using InstallVulkan.app installer..."
+            sudo /tmp/InstallVulkan.app/Contents/MacOS/InstallVulkan --root ~/VulkanSDK/${VULKAN_SDK_VERSION} --accept-licenses --default-answer --confirm-command install
+            rm -rf /tmp/InstallVulkan.app
           else
-            echo "Error: Could not find Vulkan SDK installer in expected locations"
-            ls -la /tmp/vulkan*
+            echo "Error: Could not find Vulkan SDK installer"
+            ls -la /tmp/ | grep -i vulkan || true
             exit 1
           fi
           rm -f /tmp/vulkan_sdk.zip
