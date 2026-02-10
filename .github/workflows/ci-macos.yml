@@ -58,4 +58,10 @@ jobs:
         run: |
           export VULKAN_SDK="$HOME/VulkanSDK/${VULKAN_SDK_VERSION}"
           export PATH="$HOME/VulkanSDK/${VULKAN_SDK_VERSION}/bin:$PATH"
+          echo "Checking Vulkan SDK installation:"
+          ls -la "$HOME/VulkanSDK/" || echo "VulkanSDK directory not found"
+          ls -la "$HOME/VulkanSDK/${VULKAN_SDK_VERSION}/" || echo "Version directory not found"
+          ls -la "$HOME/VulkanSDK/${VULKAN_SDK_VERSION}/bin/" || echo "bin directory not found"
+          which glslc || echo "glslc not found in PATH"
+          echo "PATH: $PATH"
           cargo build --workspace --release --verbose
