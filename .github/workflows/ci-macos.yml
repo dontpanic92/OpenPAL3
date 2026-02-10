@@ -29,10 +29,17 @@ jobs:
       - name: Install Vulkan SDK
         run: |
           VULKAN_SDK_VERSION="1.4.304.0"
-          curl -L -o vulkan_sdk.zip https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/mac/vulkan_sdk.zip
-          unzip -q vulkan_sdk.zip -d $HOME
-          cd $HOME/vulkansdk-macos-${VULKAN_SDK_VERSION}
-          sudo ./install_vulkan.py --accept-licenses --default-answer --confirm-command install
+          curl -L -o /tmp/vulkan_sdk.zip https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/mac/vulkan_sdk.zip
+          unzip -q /tmp/vulkan_sdk.zip -d /tmp
+          if [ -d "/tmp/vulkansdk-macos-${VULKAN_SDK_VERSION}.app" ]; then
+            /tmp/vulkansdk-macos-${VULKAN_SDK_VERSION}.app/Contents/MacOS/vulkansdk-macos-${VULKAN_SDK_VERSION} --accept-licenses --default-answer --confirm-command install
+            rm -rf /tmp/vulkansdk-macos-${VULKAN_SDK_VERSION}.app
+          else
+            echo "Trying alternate installation method..."
+            cd /tmp/vulkansdk-macos-${VULKAN_SDK_VERSION}
+            sudo ./install_vulkan.py
+          fi
+          rm -f /tmp/vulkan_sdk.zip
       - name: Cache ffmpeg
         uses: actions/cache@v3
         with:
