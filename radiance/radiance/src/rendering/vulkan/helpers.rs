@@ -9,8 +9,8 @@ pub fn instance_extension_names() -> Vec<*const c_char> {
         ash::khr::surface::NAME.as_ptr(),
         ash::ext::metal_surface::NAME.as_ptr(),
         ash::ext::debug_utils::NAME.as_ptr(),
-        ash::vk::KhrPortabilityEnumerationFn::name().as_ptr(),
-        ash::vk::KhrGetPhysicalDeviceProperties2Fn::name().as_ptr(),
+        ash::khr::portability_enumeration::NAME.as_ptr(),
+        ash::khr::get_physical_device_properties2::NAME.as_ptr(),
     ]
 }
 #[cfg(target_os = "linux")]
