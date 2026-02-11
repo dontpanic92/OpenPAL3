@@ -848,9 +848,9 @@ checksum = "26bf8fc351c5ed29b5c2f0cbbac1b209b74f60ecd62e675a998df72c49af5204"
 
 [[package]]
 name = "deranged"
-version = "0.5.5"
+version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ececcb659e7ba858fb4f10388c250a7252eb0a27373f1a72b8748afdd248e587"
+checksum = "cc3dc5ad92c2e2d1c193bbbbdf2ea477cb81331de4f3103f267ca18368b988c4"
 dependencies = [
  "powerfmt",
 ]
@@ -1139,7 +1139,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg"
 version = "0.7.0"
-source = "git+https://github.com/dontpanic92/rust-ffmpeg?branch=yaobow2#191ab5b50076fbf1d21d45727d5ece28871fb7da"
+source = "git+https://github.com/dontpanic92/rust-ffmpeg?branch=yaobow2#b5c117e8d09e418d827cd5382754e2e5392f6d2d"
 dependencies = [
  "bitflags 1.3.2",
  "ffmpeg-sys",
@@ -1151,7 +1151,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg-sys"
 version = "7.0.0"
-source = "git+https://github.com/dontpanic92/rust-ffmpeg?branch=yaobow2#191ab5b50076fbf1d21d45727d5ece28871fb7da"
+source = "git+https://github.com/dontpanic92/rust-ffmpeg?branch=yaobow2#b5c117e8d09e418d827cd5382754e2e5392f6d2d"
 dependencies = [
  "bindgen",
  "cc",
@@ -4072,9 +4072,9 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.0.6+spec-1.1.0"
+version = "1.0.7+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3198b4b0a8e11f09dd03e133c0280504d0801269e9afa46362ffde1cbeebf44"
+checksum = "247eaa3197818b831697600aadf81514e577e0cba5eab10f7e064e78ae154df1"
 dependencies = [
  "winnow 0.7.14",
 ]
@@ -4103,9 +4103,9 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
 name = "typed-path"
-version = "0.12.2"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3015e6ce46d5ad8751e4a772543a30c7511468070e98e64e20165f8f81155b64"
+checksum = "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
 
 [[package]]
 name = "typenum"
