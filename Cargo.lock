@@ -304,7 +304,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab81d22cbd2d745852348b2138f3db2103afa8ce043117a374581926a523e267"
 dependencies = [
  "array-init",
- "binrw_derive",
+ "binrw_derive 0.11.2",
+ "bytemuck",
+]
+
+[[package]]
+name = "binrw"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81419ff39e6ed10a92a7f125290859776ced35d9a08a665ae40b23e7ca702f30"
+dependencies = [
+ "array-init",
+ "binrw_derive 0.15.0",
  "bytemuck",
 ]
 
@@ -315,10 +326,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6b019a3efebe7f453612083202887b6f1ace59e20d010672e336eea4ed5be97"
 dependencies = [
  "either",
- "owo-colors",
+ "owo-colors 3.5.0",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "binrw_derive"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "376404e55ec40d0d6f8b4b7df3f87b87954bd987f0cf9a7207ea3b6ea5c9add4"
+dependencies = [
+ "either",
+ "owo-colors 4.2.3",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
 ]
 
 [[package]]
@@ -1167,7 +1191,7 @@ name = "fileformats"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "binrw",
+ "binrw 0.11.2",
  "byteorder",
  "common",
  "dashmap",
@@ -1175,7 +1199,7 @@ dependencies = [
  "half",
  "lazy_static",
  "log",
- "num-derive",
+ "num-derive 0.3.3",
  "num-traits",
  "serde",
  "serde_json",
@@ -2200,6 +2224,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-derive"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed3955f1a9c7c0c15e092f9c887db08b1fc683305fdf6eb6684f22555355e202"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2654,11 +2689,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1b04fb49957986fdce4d6ee7a65027d55d4b6d2265e5848bbb507b58ccfdb6f"
 
 [[package]]
+name = "owo-colors"
+version = "4.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c6901729fa79e91a0913333229e9ca5dc725089d1c363b2f4b4760709dc4a52"
+
+[[package]]
+name = "p7"
+version = "0.1.0"
+dependencies = [
+ "binrw 0.15.0",
+ "num-derive 0.4.2",
+ "num-traits",
+]
+
+[[package]]
 name = "packfs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "binrw",
+ "binrw 0.11.2",
  "byteorder",
  "cfg_aliases",
  "cipher",
@@ -3020,8 +3070,10 @@ dependencies = [
  "lru",
  "memoffset",
  "mini-fs",
+ "p7",
  "radiance-assets",
  "raw-window-handle",
+ "roxmltree 0.20.0",
  "serde",
  "symphonia",
  "toml 0.7.8",
@@ -3254,6 +3306,12 @@ checksum = "862340e351ce1b271a378ec53f304a5558f7db87f3769dc655a8f6ecbb68b302"
 dependencies = [
  "xmlparser",
 ]
+
+[[package]]
+name = "roxmltree"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 
 [[package]]
 name = "rust-ini"
@@ -3491,7 +3549,7 @@ dependencies = [
  "radiance",
  "rand",
  "regex",
- "roxmltree",
+ "roxmltree 0.18.1",
  "rust-ini 0.16.1",
  "serde",
  "serde_json",

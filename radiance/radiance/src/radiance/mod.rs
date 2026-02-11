@@ -10,8 +10,14 @@ pub use ui_manager::UiManager;
 
 use crosscom::ComRc;
 
-use crate::{application::Platform, audio::OpenAlAudioEngine, scene::DefaultSceneManager};
+use crate::{
+    application::Platform,
+    audio::OpenAlAudioEngine,
+    scene::DefaultSceneManager,
+    ui::{install_ui_interop_handle, UiInterop},
+};
 use std::{cell::RefCell, error::Error, rc::Rc};
+use std::sync::{Arc, Mutex};
 
 pub fn create_radiance_engine(
     platform: &mut Platform,
@@ -56,6 +62,8 @@ pub fn create_radiance_engine(
     let audio_engine = Rc::new(OpenAlAudioEngine::new());
     let input_engine = crate::input::CoreInputEngine::new(platform);
     let scene_manager = ComRc::from_object(DefaultSceneManager::new());
+    let ui_interop = Arc::new(Mutex::new(UiInterop::new()));
+    install_ui_interop_handle(ui_interop.clone());
 
     Ok(CoreRadianceEngine::new(
         rendering_engine,
@@ -63,5 +71,6 @@ pub fn create_radiance_engine(
         input_engine,
         ui_manager,
         scene_manager,
+        ui_interop,
     ))
 }

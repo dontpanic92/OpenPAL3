@@ -1,21 +1,24 @@
 use crosscom::ComRc;
+use log::warn;
 use mini_fs::MiniFs;
 
 use super::ui_manager::UiManager;
 use super::{DebugLayer, TaskManager};
 use crate::comdef::ISceneManager;
 use crate::rendering::{self, RenderingEngine};
+use crate::ui::UiInterop;
 use crate::{
     audio::AudioEngine,
     input::{InputEngine, InputEngineInternal},
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::{Arc, Mutex}};
 
 pub struct CoreRadianceEngine {
     rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
     audio_engine: Rc<dyn AudioEngine>,
     input_engine: Rc<RefCell<dyn InputEngineInternal>>,
     ui_manager: Rc<UiManager>,
+    ui_interop: Arc<Mutex<UiInterop>>,
     scene_manager: ComRc<ISceneManager>,
     virtual_fs: Rc<RefCell<MiniFs>>,
     task_manager: Rc<TaskManager>,
@@ -29,12 +32,14 @@ impl CoreRadianceEngine {
         input_engine: Rc<RefCell<dyn InputEngineInternal>>,
         ui_manager: Rc<UiManager>,
         scene_manager: ComRc<ISceneManager>,
+        ui_interop: Arc<Mutex<UiInterop>>,
     ) -> Self {
         Self {
             rendering_engine,
             audio_engine,
             input_engine,
             ui_manager,
+            ui_interop,
             scene_manager,
             virtual_fs: Rc::new(RefCell::new(MiniFs::new(false))),
             task_manager: Rc::new(TaskManager::new()),
@@ -70,6 +75,10 @@ impl CoreRadianceEngine {
         self.ui_manager.clone()
     }
 
+    pub fn ui_interop(&self) -> Arc<Mutex<UiInterop>> {
+        self.ui_interop.clone()
+    }
+
     pub fn task_manager(&self) -> Rc<TaskManager> {
         self.task_manager.clone()
     }
@@ -84,6 +93,11 @@ impl CoreRadianceEngine {
         let ui_frame = self.ui_manager.update(delta_sec, |ui| {
             scene_manager.update(delta_sec);
             task_manager.update(delta_sec);
+
+            match self.ui_interop.lock() {
+                Ok(mut interop) => interop.render(ui),
+                Err(_) => warn!("UI interop lock poisoned during render"),
+            }
 
             if let Some(dl) = debug_layer {
                 dl.update(delta_sec);

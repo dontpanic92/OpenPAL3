@@ -1,5 +1,6 @@
 target
 **/*.rs.bk
+.specs
 .idea
 .redo
 generated
