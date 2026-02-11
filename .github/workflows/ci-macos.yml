@@ -2,7 +2,7 @@ name: macOS CI Build
 
 on:
   push:
-    branches: [master]
+    branches: [debug_macos]
   pull_request:
     branches: [master]
 
@@ -36,3 +36,5 @@ jobs:
           vcpkg install --triplet=arm64-osx
       - name: Build
         run: cargo build --workspace --release --verbose
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
