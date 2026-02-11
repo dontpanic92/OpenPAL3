@@ -1,10 +1,10 @@
 # 仙三开源版
 
-![Windows](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-windows.yml?branch=master&style=flat-square&label=Windows&logo=windows)
-![Linux](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-linux.yml?branch=master&style=flat-square&label=Linux&logo=linux)
-![macOS](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-macos.yml?branch=master&style=flat-square&label=macOS&logo=apple)
-![Android](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-android.yml?branch=master&style=flat-square&label=Android&logo=android)
-![PSVita](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-psvita.yml?branch=master&style=flat-square&label=PlayStation%20Vita&logo=playstation)
+[![Windows](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-windows.yml?branch=master&style=flat-square&label=Windows&logo=windows)](https://github.com/dontpanic92/OpenPAL3/actions/workflows/ci-windows.yml?query=branch%3Amaster)
+[![Linux](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-linux.yml?branch=master&style=flat-square&label=Linux&logo=linux)](https://github.com/dontpanic92/OpenPAL3/actions/workflows/ci-linux.yml?query=branch%3Amaster)
+[![macOS](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-macos.yml?branch=master&style=flat-square&label=macOS&logo=apple)](https://github.com/dontpanic92/OpenPAL3/actions/workflows/ci-macos.yml?query=branch%3Amaster)
+[![Android](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-android.yml?branch=master&style=flat-square&label=Android&logo=android)](https://github.com/dontpanic92/OpenPAL3/actions/workflows/ci-android.yml?query=branch%3Amaster)
+[![PSVita](https://img.shields.io/github/actions/workflow/status/dontpanic92/OpenPAL3/ci-psvita.yml?branch=master&style=flat-square&label=PlayStation%20Vita&logo=playstation)](https://github.com/dontpanic92/OpenPAL3/actions/workflows/ci-psvita.yml?query=branch%3Amaster)
 
 
 > 云对雨，雪对风，仙剑对妖弓。
@@ -48,36 +48,7 @@ asset_path = "E:\\CubeLibrary\\apps\\1000039"
 
 ## 🛠 本地构建
 
-目前 OpenPAL3 支持 Windows、Linux、 macOS 和 Android 作为目标平台。
-
-### 工具链与依赖库
-
-在构建 OpenPAL3 前，请确认已安装以下工具链与依赖库：
-
-- [Rust](https://www.rust-lang.org/) nightly toolchain
-  - 理论上 MSVC ABI 工具链与 GNU ABI 工具链均可编译
-- [OpenAL](https://www.openal.org)
-- [最新的 Vulkan SDK](https://www.lunarg.com/vulkan-sdk/)
-
-### 构建步骤
-
-```
-cd openpal3
-cargo build --release
-```
-
-构建 Android 平台安装包需要先安装`cargo-apk`，并设置好 NDK 开发环境
-```
-cd openpal3 && cargo apk build --release --lib
-```
-
-### 常见问题
-
-macOS 平台下由于 nightly 工具链的一个[bug](https://github.com/rust-lang/rust/issues/91372) 构建时可用下面命令规避链接错误的问题：
-
-```
-MACOSX_DEPLOYMENT_TARGET=11.0 cargo build --release
-```
+详细构建步骤请参阅 [BUILD_INSTRUCTIONS.md](docs/BUILD_INSTRUCTIONS.md)。
 
 ## 🙋‍♂️ 贡献
 
