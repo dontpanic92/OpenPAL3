@@ -11,6 +11,9 @@ use p7::errors::RuntimeError;
 use p7::interpreter::context::{Context, ContextResult, Data};
 use p7::ModuleProvider;
 
+mod p7_runner;
+pub use p7_runner::{warn_if_error, UiScriptRunner};
+
 const P7_UI_MODULE_SOURCE: &str = r#"
 // Host-provided module: radiance.ui
 

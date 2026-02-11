@@ -1,0 +1,36 @@
+import radiance.ui;
+import radiance.ui.Message;
+import radiance.ui.DataUpdate;
+import std.io;
+
+fn[throws] set_bindings(count_text: string, name_text: string) {
+    let updates = [
+        DataUpdate(key = "count_text", value = count_text),
+        DataUpdate(key = "name_text", value = name_text),
+    ];
+    ui.update_data(ref(updates));
+}
+
+pub fn[throws] init() {
+    let xml = "<ui version=\"1\"><vbox id=\"root\"><label id=\"title\" text=\"Radiance + p7 UI demo\" /><hbox id=\"row\"><label id=\"count_label\" text=\"{count_text}\" /><button id=\"inc\" text=\"+\" on_click=\"demo.increment\" /><button id=\"reset\" text=\"reset\" on_click=\"demo.reset\" /></hbox><text_input id=\"name\" text=\"{name_text}\" on_change=\"demo.name_changed\" /><label id=\"hello\" text=\"Hello, {name_text}\" /></vbox></ui>";
+
+    ui.set_ui(xml);
+    set_bindings("count=0", "world");
+
+    io.println("p7 UI demo initialized");
+}
+
+pub fn[throws] process_message(msg: Message) {
+    if msg.kind == "demo.increment" {
+        set_bindings("count=(inc)", "world");
+    }
+
+    if msg.kind == "demo.reset" {
+        set_bindings("count=0", "world");
+    }
+
+    if msg.kind == "demo.name_changed" {
+        let updates = [DataUpdate(key = "name_text", value = msg.payload)];
+        ui.update_data(ref(updates));
+    }
+}

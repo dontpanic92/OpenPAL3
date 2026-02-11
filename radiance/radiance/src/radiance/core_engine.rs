@@ -6,7 +6,7 @@ use super::ui_manager::UiManager;
 use super::{DebugLayer, TaskManager};
 use crate::comdef::ISceneManager;
 use crate::rendering::{self, RenderingEngine};
-use crate::ui::UiInterop;
+use crate::ui::{warn_if_error, UiInterop, UiScriptRunner};
 use crate::{
     audio::AudioEngine,
     input::{InputEngine, InputEngineInternal},
@@ -19,6 +19,7 @@ pub struct CoreRadianceEngine {
     input_engine: Rc<RefCell<dyn InputEngineInternal>>,
     ui_manager: Rc<UiManager>,
     ui_interop: Arc<Mutex<UiInterop>>,
+    ui_script_runner: RefCell<Option<UiScriptRunner>>,
     scene_manager: ComRc<ISceneManager>,
     virtual_fs: Rc<RefCell<MiniFs>>,
     task_manager: Rc<TaskManager>,
@@ -40,6 +41,7 @@ impl CoreRadianceEngine {
             input_engine,
             ui_manager,
             ui_interop,
+            ui_script_runner: RefCell::new(None),
             scene_manager,
             virtual_fs: Rc::new(RefCell::new(MiniFs::new(false))),
             task_manager: Rc::new(TaskManager::new()),
@@ -79,6 +81,10 @@ impl CoreRadianceEngine {
         self.ui_interop.clone()
     }
 
+    pub fn set_ui_script_runner(&self, runner: UiScriptRunner) {
+        self.ui_script_runner.replace(Some(runner));
+    }
+
     pub fn task_manager(&self) -> Rc<TaskManager> {
         self.task_manager.clone()
     }
@@ -97,6 +103,22 @@ impl CoreRadianceEngine {
             match self.ui_interop.lock() {
                 Ok(mut interop) => interop.render(ui),
                 Err(_) => warn!("UI interop lock poisoned during render"),
+            }
+
+            if let Some(runner) = self.ui_script_runner.borrow_mut().as_mut() {
+                warn_if_error("init", runner.init_if_available());
+
+                let messages = match self.ui_interop.lock() {
+                    Ok(mut interop) => interop.drain_messages(),
+                    Err(_) => {
+                        warn!("UI interop lock poisoned while draining messages");
+                        Vec::new()
+                    }
+                };
+
+                if !messages.is_empty() {
+                    warn_if_error("process_message", runner.process_messages(messages));
+                }
             }
 
             if let Some(dl) = debug_layer {

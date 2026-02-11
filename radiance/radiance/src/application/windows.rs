@@ -4,12 +4,11 @@ use winapi::shared::minwindef::{HINSTANCE, LPARAM, LRESULT, WPARAM};
 use winapi::shared::windef::{HWND, POINT};
 use winapi::um::{errhandlingapi, libloaderapi, wingdi, winuser};
 
-macro_rules! utf16_ptr {
+macro_rules! utf16 {
     ( $x:expr ) => {
         append_zero($x)
             .encode_utf16()
             .collect::<Vec<u16>>()
-            .as_ptr()
     };
 }
 
@@ -42,11 +41,13 @@ impl Platform {
     }
 
     pub fn show_error_dialog(title: &str, msg: &str) {
+        let title = utf16!(title);
+        let msg = utf16!(msg);
         unsafe {
             winuser::MessageBoxW(
                 null_mut(),
-                utf16_ptr!(msg),
-                utf16_ptr!(title),
+                msg.as_ptr(),
+                title.as_ptr(),
                 winuser::MB_OK | winuser::MB_ICONERROR,
             );
         }
@@ -118,8 +119,9 @@ impl Platform {
     }
 
     pub fn set_title(&self, title: &str) {
+        let title = utf16!(title);
         unsafe {
-            winuser::SetWindowTextW(self.hwnd, utf16_ptr!(title));
+            winuser::SetWindowTextW(self.hwnd, title.as_ptr());
         }
     }
 
@@ -132,6 +134,8 @@ impl Platform {
     }
 
     fn create_window(instance: HINSTANCE, title: &str) -> HWND {
+        let class_name = utf16!(WINDOW_CLASS_NAME);
+        let title = utf16!(title);
         unsafe {
             let wnd_class = winuser::WNDCLASSW {
                 style: winuser::CS_HREDRAW | winuser::CS_VREDRAW,
@@ -143,14 +147,14 @@ impl Platform {
                 hCursor: winuser::LoadCursorW(null_mut(), winuser::IDC_ARROW),
                 hbrBackground: null_mut(),
                 lpszMenuName: null_mut(),
-                lpszClassName: utf16_ptr!(WINDOW_CLASS_NAME),
+                lpszClassName: class_name.as_ptr(),
             };
 
             winuser::RegisterClassW(&wnd_class);
             winuser::CreateWindowExW(
                 winuser::WS_EX_OVERLAPPEDWINDOW,
-                utf16_ptr!(WINDOW_CLASS_NAME),
-                utf16_ptr!(title),
+                class_name.as_ptr(),
+                title.as_ptr(),
                 winuser::WS_OVERLAPPEDWINDOW,
                 winuser::CW_USEDEFAULT,
                 winuser::CW_USEDEFAULT,
