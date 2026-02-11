@@ -23,6 +23,10 @@ jobs:
         with:
           toolchain: stable
           rustflags: ''
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        with:
+          detached: true
       - name: Install Deps
         run: |
           brew install nasm molten-vk vulkan-headers vulkan-loader shaderc
@@ -36,5 +40,3 @@ jobs:
           vcpkg install --triplet=arm64-osx
       - name: Build
         run: cargo build --workspace --release --verbose
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
