@@ -8,6 +8,7 @@ pub trait RenderingEngine {
     fn begin_frame(&mut self);
     fn end_frame(&mut self);
     fn render(&mut self, scene: ComRc<IScene>, viewport: Viewport, ui_frame: ImguiFrame);
+    fn render_empty(&mut self, ui_frame: ImguiFrame);
     fn view_extent(&self) -> (u32, u32);
     fn component_factory(&self) -> Rc<dyn ComponentFactory>;
 }

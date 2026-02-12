@@ -21,7 +21,9 @@ pub fn[throws] init() {
 }
 
 pub fn[throws] process_message(msg: Message) {
+    io.println(msg.kind);
     if msg.kind == "demo.increment" {
+        io.println("Good");
         set_bindings("count=(inc)", "world");
     }
 

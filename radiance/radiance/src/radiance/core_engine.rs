@@ -11,7 +11,11 @@ use crate::{
     audio::AudioEngine,
     input::{InputEngine, InputEngineInternal},
 };
-use std::{cell::RefCell, rc::Rc, sync::{Arc, Mutex}};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
 pub struct CoreRadianceEngine {
     rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
@@ -128,8 +132,8 @@ impl CoreRadianceEngine {
 
         use crate::{math::Rect, scene::Viewport};
         let scene = self.scene_manager.scene();
+        let mut rendering_engine = self.rendering_engine.as_ref().borrow_mut();
         if let Some(s) = scene {
-            let mut rendering_engine = self.rendering_engine.as_ref().borrow_mut();
             let viewport = {
                 let c = s.camera();
                 let mut camera = c.borrow_mut();
@@ -153,8 +157,10 @@ impl CoreRadianceEngine {
             };
 
             rendering_engine.render(s, viewport, ui_frame);
+        } else {
+            rendering_engine.render_empty(ui_frame);
         }
 
-        self.rendering_engine.borrow_mut().end_frame();
+        rendering_engine.end_frame();
     }
 }

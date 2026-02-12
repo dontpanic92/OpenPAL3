@@ -192,6 +192,7 @@ impl UiInterop {
     }
 
     pub fn update_data(&mut self, updates: &[DataUpdate]) -> Result<(), DataError> {
+        println!("Updating data: {:?}", updates);
         for update in updates {
             if update.key.trim().is_empty() {
                 return Err(DataError::InvalidKey(update.key.clone()));
@@ -567,7 +568,8 @@ fn host_update_data(ctx: &mut Context) -> ContextResult<()> {
         .ok_or(RuntimeError::StackUnderflow)?;
 
     let updates = parse_data_updates(ctx, updates_data)?;
-
+    println!("Parsed data updates: {:?}", updates);
+    
     let handle = get_ui_interop_handle()?;
     let mut interop = handle
         .lock()

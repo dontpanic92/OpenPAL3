@@ -10,7 +10,7 @@ use super::{
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
 use crate::comdef::{IEntity, IScene};
-use crate::math::Mat44;
+use crate::math::{Mat44, Rect};
 use crate::rendering::RenderingComponent;
 use crate::scene::{Camera, Viewport};
 use crate::{
@@ -98,6 +98,32 @@ impl RenderingEngine for VulkanRenderingEngine {
     fn begin_frame(&mut self) {}
 
     fn end_frame(&mut self) {}
+
+    fn render_empty(&mut self, ui_frame: ImguiFrame) {
+        if self.surface.is_none() {
+            return;
+        }
+        if self.swapchain.is_none() {
+            self.recreate_swapchain().unwrap();
+            return;
+        }
+
+        let camera = RefCell::new(Camera::new());
+        match self.render_objects(
+            camera.borrow(),
+            Vec::new(),
+            Viewport::FullExtent(Rect {
+                x: 0.,
+                y: 0.,
+                width: self.view_extent().0 as f32,
+                height: self.view_extent().1 as f32,
+            }),
+            ui_frame,
+        ) {
+            Ok(()) => (),
+            Err(err) => println!("{}", err),
+        }
+    }
 }
 
 impl VulkanRenderingEngine {
