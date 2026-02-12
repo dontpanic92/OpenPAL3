@@ -85,7 +85,10 @@ fn main() -> Result<()> {
 
     let app = Application::new();
     app.set_title("Radiance UI p7 Test");
-    app.engine().borrow().set_ui_script_runner(runner);
+    app.engine()
+        .borrow()
+        .set_ui_script_runner(runner)
+        .context("Failed to initialize UI script")?;
 
     app.initialize();
     app.run();

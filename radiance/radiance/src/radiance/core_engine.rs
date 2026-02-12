@@ -1,6 +1,7 @@
 use crosscom::ComRc;
 use log::warn;
 use mini_fs::MiniFs;
+use p7::errors::Proto7Error;
 
 use super::ui_manager::UiManager;
 use super::{DebugLayer, TaskManager};
@@ -85,8 +86,10 @@ impl CoreRadianceEngine {
         self.ui_interop.clone()
     }
 
-    pub fn set_ui_script_runner(&self, runner: UiScriptRunner) {
+    pub fn set_ui_script_runner(&self, mut runner: UiScriptRunner) -> Result<(), Proto7Error> {
+        runner.init()?;
         self.ui_script_runner.replace(Some(runner));
+        Ok(())
     }
 
     pub fn task_manager(&self) -> Rc<TaskManager> {
@@ -110,8 +113,6 @@ impl CoreRadianceEngine {
             }
 
             if let Some(runner) = self.ui_script_runner.borrow_mut().as_mut() {
-                warn_if_error("init", runner.init_if_available());
-
                 let messages = match self.ui_interop.lock() {
                     Ok(mut interop) => interop.drain_messages(),
                     Err(_) => {

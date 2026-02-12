@@ -11,7 +11,7 @@ use super::{register_p7_ui_host_functions, Message, RadianceUiModuleProvider};
 pub struct UiScriptRunner {
     context: Context,
     module: Module,
-    initialized: bool,
+    state: Option<Data>,
 }
 
 impl UiScriptRunner {
@@ -26,27 +26,47 @@ impl UiScriptRunner {
         register_p7_ui_host_functions(&mut context);
         context.load_module(module.clone());
 
+        if module.get_function("init").is_none() {
+            return Err(Proto7Error::RuntimeError(RuntimeError::Other(
+                "init not found".to_string(),
+            )));
+        }
+
         Ok(Self {
             context,
             module,
-            initialized: false,
+            state: None,
         })
     }
 
-    pub fn init_if_available(&mut self) -> Result<(), Proto7Error> {
-        if self.initialized {
+    pub fn init(&mut self) -> Result<(), Proto7Error> {
+        if self.state.is_some() {
             return Ok(());
         }
 
-        if self.has_function("init") {
-            self.call_function("init", Vec::new())?;
+        let state = self
+            .call_function("init", Vec::new())?
+            .ok_or_else(|| Proto7Error::RuntimeError(RuntimeError::Other(
+                "init returned no value".to_string(),
+            )))?;
+
+        if !matches!(state, Data::BoxRef(_) | Data::ProtoBoxRef { .. }) {
+            return Err(Proto7Error::RuntimeError(RuntimeError::Other(
+                "init must return box<UiState>".to_string(),
+            )));
         }
 
-        self.initialized = true;
+        self.state = Some(state);
         Ok(())
     }
 
     pub fn process_messages(&mut self, messages: Vec<Message>) -> Result<(), Proto7Error> {
+        let state = self.state.clone().ok_or_else(|| {
+            Proto7Error::RuntimeError(RuntimeError::Other(
+                "init must be called before process_message".to_string(),
+            ))
+        })?;
+
         if !self.has_function("process_message") {
             return Err(Proto7Error::RuntimeError(RuntimeError::Other(
                 "process_message not found".to_string(),
@@ -55,13 +75,17 @@ impl UiScriptRunner {
 
         for message in messages {
             let data = self.message_to_data(message);
-            self.call_function("process_message", vec![data])?;
+            self.call_function("process_message", vec![state.clone(), data])?;
         }
 
         Ok(())
     }
 
-    fn call_function(&mut self, name: &str, params: Vec<Data>) -> Result<(), Proto7Error> {
+    fn call_function(
+        &mut self,
+        name: &str,
+        params: Vec<Data>,
+    ) -> Result<Option<Data>, Proto7Error> {
         if !self.has_function(name) {
             return Err(Proto7Error::RuntimeError(RuntimeError::Other(format!(
                 "function '{}' not found",
@@ -74,11 +98,13 @@ impl UiScriptRunner {
             .resume()
             .map_err(Proto7Error::RuntimeError)?;
 
-        if let Some(frame) = self.context.stack.get_mut(0) {
-            let _ = frame.stack.pop();
-        }
+        let return_value = self
+            .context
+            .stack
+            .get_mut(0)
+            .and_then(|frame| frame.stack.pop());
 
-        Ok(())
+        Ok(return_value)
     }
 
     fn has_function(&self, name: &str) -> bool {
