@@ -10,6 +10,7 @@ members = [
     "yaobow/packfs",
     "yaobow/yaobow",
     "yaobow/yaobow_editor",
+    "yaobow/yaobow_editor_p7",
     "tools/pol_exporter",
 #   "tools/asdebug",
 #   "tools/dbexp",

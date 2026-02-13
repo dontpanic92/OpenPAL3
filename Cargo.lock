@@ -5482,6 +5482,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "yaobow_editor_p7"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "p7",
+ "radiance",
+ "simple_logger",
+]
+
+[[package]]
 name = "zerocopy"
 version = "0.8.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,34 @@
+import radiance.ui;
+import std.io;
+
+struct State(
+    status: string,
+);
+
+fn[throws] set_bindings(title: string, subtitle: string, status: string) {
+    let updates = [
+        ui.DataUpdate(key = "title", value = title),
+        ui.DataUpdate(key = "subtitle", value = subtitle),
+        ui.DataUpdate(key = "status", value = status),
+    ];
+    ui.update_data(ref(updates));
+}
+
+fn[throws] handle_action(state: box<State>, label: string) {
+    state.status = label;
+    let updates = [ui.DataUpdate(key = "status", value = state.status)];
+    ui.update_data(ref(updates));
+    io.println(f"action: {label}");
+}
+
+pub fn[throws] init() -> box<State> {
+    let xml = "<ui version=\"1\"><vbox id=\"root\"><label id=\"title\" text=\"{title}\" /><label id=\"subtitle\" text=\"{subtitle}\" /><label id=\"status\" text=\"{status}\" /></vbox></ui>";
+
+    ui.set_ui(xml);
+    set_bindings("Yaobow Editor (p7)", "p7 scripting UI loaded", "Ready");
+    box(State("Ready"))
+}
+
+pub fn[throws] process_message(state: box<State>, msg: ui.Message) {
+    handle_action(state, msg.kind);
+}
