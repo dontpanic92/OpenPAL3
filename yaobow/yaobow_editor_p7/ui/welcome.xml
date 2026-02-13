@@ -1,0 +1,25 @@
+<ui version="1">
+  <vbox id="root">
+    <label id="title" text="{title}" />
+    <label id="subtitle" text="{subtitle}" />
+    <label id="status" text="{status}" />
+    <hbox id="row1">
+      <button id="pal3" text="Run PAL3 editor" on_click="welcome.launch_pal3" />
+      <button id="pal3a" text="Run PAL3A editor" on_click="welcome.launch_pal3a" />
+      <button id="pal4" text="Run PAL4 editor" on_click="welcome.launch_pal4" />
+    </hbox>
+    <hbox id="row2">
+      <button id="pal5" text="Run PAL5 editor" on_click="welcome.launch_pal5" />
+      <button id="pal5q" text="Run PAL5Q editor" on_click="welcome.launch_pal5q" />
+      <button id="gujian" text="Run Gujian editor" on_click="welcome.launch_gujian" />
+    </hbox>
+    <hbox id="row3">
+      <button id="gujian2" text="Run Gujian2 editor" on_click="welcome.launch_gujian2" />
+      <button id="swd5" text="Run SWD5 editor" on_click="welcome.launch_swd5" />
+      <button id="swdhc" text="Run SWDHC editor" on_click="welcome.launch_swdhc" />
+    </hbox>
+    <hbox id="row4">
+      <button id="swdcf" text="Run SWDCF editor" on_click="welcome.launch_swdcf" />
+    </hbox>
+  </vbox>
+</ui>

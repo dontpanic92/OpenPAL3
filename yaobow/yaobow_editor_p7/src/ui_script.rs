@@ -91,11 +91,8 @@ pub fn load_ui_script_runner(script_path: &Path) -> Result<UiScriptRunner> {
         return Err(anyhow!("UI script not found: {}", script_path.display()));
     }
 
-    let script_source = fs::read_to_string(script_path)
-        .with_context(|| format!("Failed to read script: {}", script_path.display()))?;
-
     let provider = FileSystemModuleProvider::new(script_path);
-    UiScriptRunner::new(script_source, Box::new(provider))
+    UiScriptRunner::new_from_path(script_path, Box::new(provider))
         .with_context(|| format!("Failed to compile script: {}", script_path.display()))
 }
 

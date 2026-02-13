@@ -14,21 +14,33 @@ fn[throws] set_bindings(title: string, subtitle: string, status: string) {
     ui.update_data(ref(updates));
 }
 
-fn[throws] handle_action(state: box<State>, label: string) {
+fn[throws] handle_launch(state: box<State>, label: string) {
     state.status = label;
     let updates = [ui.DataUpdate(key = "status", value = state.status)];
     ui.update_data(ref(updates));
-    io.println(f"action: {label}");
+    io.println(f"welcome: {label}");
 }
 
 pub fn[throws] init() -> box<State> {
-    let xml = "<ui version=\"1\"><vbox id=\"root\"><label id=\"title\" text=\"{title}\" /><label id=\"subtitle\" text=\"{subtitle}\" /><label id=\"status\" text=\"{status}\" /></vbox></ui>";
+    let dir = __entry_script_dir__() ?? ".";
+    let path = f"{dir}/welcome.xml";
+    io.println(path);
+    let xml = io.read_file(path) ?? "";
 
     ui.set_ui(xml);
-    set_bindings("Yaobow Editor (p7)", "p7 scripting UI loaded", "Ready");
+    set_bindings("Yaobow Editor", "Select a game to open the editor", "Ready");
     box(State("Ready"))
 }
 
 pub fn[throws] process_message(state: box<State>, msg: ui.Message) {
-    handle_action(state, msg.kind);
+    if msg.kind == "welcome.launch_pal3" { handle_launch(state, "Selected PAL3"); }
+    if msg.kind == "welcome.launch_pal3a" { handle_launch(state, "Selected PAL3A"); }
+    if msg.kind == "welcome.launch_pal4" { handle_launch(state, "Selected PAL4"); }
+    if msg.kind == "welcome.launch_pal5" { handle_launch(state, "Selected PAL5"); }
+    if msg.kind == "welcome.launch_pal5q" { handle_launch(state, "Selected PAL5Q"); }
+    if msg.kind == "welcome.launch_gujian" { handle_launch(state, "Selected Gujian"); }
+    if msg.kind == "welcome.launch_gujian2" { handle_launch(state, "Selected Gujian2"); }
+    if msg.kind == "welcome.launch_swd5" { handle_launch(state, "Selected SWD5"); }
+    if msg.kind == "welcome.launch_swdhc" { handle_launch(state, "Selected SWDHC"); }
+    if msg.kind == "welcome.launch_swdcf" { handle_launch(state, "Selected SWDCF"); }
 }

@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use log::warn;
 
 use p7::bytecode::Module;
@@ -15,14 +17,13 @@ pub struct UiScriptRunner {
 }
 
 impl UiScriptRunner {
-    pub fn new(
-        source: String,
-        provider: Box<dyn ModuleProvider>,
-    ) -> Result<Self, Proto7Error> {
+    pub fn new(source: String, provider: Box<dyn ModuleProvider>) -> Result<Self, Proto7Error> {
         let provider = RadianceUiModuleProvider::new(provider);
+        let script_path = std::path::PathBuf::from(&source);
         let module = p7::compile_with_provider(source, Box::new(provider))?;
 
         let mut context = Context::new();
+
         register_p7_ui_host_functions(&mut context);
         context.load_module(module.clone());
 
@@ -39,21 +40,38 @@ impl UiScriptRunner {
         })
     }
 
+    pub fn new_from_path(
+        script_path: &std::path::Path,
+        provider: Box<dyn ModuleProvider>,
+    ) -> Result<Self, Proto7Error> {
+        let source = std::fs::read_to_string(script_path).map_err(|e| {
+            Proto7Error::RuntimeError(RuntimeError::Other(format!(
+                "Failed to read script {}: {}",
+                script_path.display(),
+                e
+            )))
+        })?;
+
+        let mut s = Self::new(source, provider)?;
+        s.context
+            .set_script_dir(script_path.parent().unwrap().to_str().map(|s| s.to_string()));
+        Ok(s)
+    }
+
     pub fn init(&mut self) -> Result<(), Proto7Error> {
         if self.state.is_some() {
             return Ok(());
         }
 
-        let state = self
-            .call_function("init", Vec::new())?
-            .ok_or_else(|| Proto7Error::RuntimeError(RuntimeError::Other(
-                "init returned no value".to_string(),
-            )))?;
+        let state = self.call_function("init", Vec::new())?.ok_or_else(|| {
+            Proto7Error::RuntimeError(RuntimeError::Other("init returned no value".to_string()))
+        })?;
 
         if !matches!(state, Data::BoxRef(_) | Data::ProtoBoxRef { .. }) {
-            return Err(Proto7Error::RuntimeError(RuntimeError::Other(
-                "init must return box<UiState>".to_string(),
-            )));
+            return Err(Proto7Error::RuntimeError(RuntimeError::Other(format!(
+                "init returned invalid state type: {:?}",
+                state
+            ))));
         }
 
         self.state = Some(state);
@@ -94,9 +112,7 @@ impl UiScriptRunner {
         }
 
         self.context.push_function(name, params);
-        self.context
-            .resume()
-            .map_err(Proto7Error::RuntimeError)?;
+        self.context.resume().map_err(Proto7Error::RuntimeError)?;
 
         let return_value = self
             .context
