@@ -26,19 +26,19 @@ pub fn[throws] init() -> box<State> {
 }
 
 pub fn[throws] process_message(state: box<State>, msg: ui.Message) {
-    io.println(msg.kind);
     if msg.kind == "demo.increment" {
         state.count = state.count + 1;
-        set_bindings("count={state.count}", state.name);
+        set_bindings(f"count={state.count}", state.name);
     }
 
     if msg.kind == "demo.reset" {
         state.count = 0;
         state.name = "world";
-        set_bindings("count=0", state.name);
+        set_bindings(f"count={state.count}", state.name);
     }
 
     if msg.kind == "demo.name_changed" {
+        state.name = msg.payload;
         let updates = [ui.DataUpdate(key = "name_text", value = msg.payload)];
         ui.update_data(ref(updates));
     }

@@ -5468,6 +5468,7 @@ dependencies = [
  "lru",
  "mini-fs",
  "native-dialog",
+ "p7",
  "packfs",
  "radiance",
  "radiance_editor",

@@ -1,0 +1,43 @@
+import radiance.ui;
+import std.io;
+
+struct State(
+    status: string,
+);
+
+fn[throws] set_bindings(title: string, subtitle: string, status: string) {
+    let updates = [
+        ui.DataUpdate(key = "title", value = title),
+        ui.DataUpdate(key = "subtitle", value = subtitle),
+        ui.DataUpdate(key = "status", value = status),
+    ];
+    ui.update_data(ref(updates));
+}
+
+fn[throws] handle_launch(state: box<State>, label: string) {
+    state.status = label;
+    let updates = [ui.DataUpdate(key = "status", value = state.status)];
+    ui.update_data(ref(updates));
+    io.println(f"welcome: {label}");
+}
+
+pub fn[throws] init() -> box<State> {
+    let xml = "<ui version=\"1\"><vbox id=\"root\"><label id=\"title\" text=\"{title}\" /><label id=\"subtitle\" text=\"{subtitle}\" /><label id=\"status\" text=\"{status}\" /><hbox id=\"row1\"><button id=\"pal3\" text=\"Run PAL3 editor\" on_click=\"welcome.launch_pal3\" /><button id=\"pal3a\" text=\"Run PAL3A editor\" on_click=\"welcome.launch_pal3a\" /><button id=\"pal4\" text=\"Run PAL4 editor\" on_click=\"welcome.launch_pal4\" /></hbox><hbox id=\"row2\"><button id=\"pal5\" text=\"Run PAL5 editor\" on_click=\"welcome.launch_pal5\" /><button id=\"pal5q\" text=\"Run PAL5Q editor\" on_click=\"welcome.launch_pal5q\" /><button id=\"gujian\" text=\"Run Gujian editor\" on_click=\"welcome.launch_gujian\" /></hbox><hbox id=\"row3\"><button id=\"gujian2\" text=\"Run Gujian2 editor\" on_click=\"welcome.launch_gujian2\" /><button id=\"swd5\" text=\"Run SWD5 editor\" on_click=\"welcome.launch_swd5\" /><button id=\"swdhc\" text=\"Run SWDHC editor\" on_click=\"welcome.launch_swdhc\" /></hbox><hbox id=\"row4\"><button id=\"swdcf\" text=\"Run SWDCF editor\" on_click=\"welcome.launch_swdcf\" /></hbox></vbox></ui>";
+
+    ui.set_ui(xml);
+    set_bindings("Yaobow Editor", "Select a game to open the editor", "Ready");
+    box(State("Ready"))
+}
+
+pub fn[throws] process_message(state: box<State>, msg: ui.Message) {
+    if msg.kind == "welcome.launch_pal3" { handle_launch(state, "Selected PAL3"); }
+    if msg.kind == "welcome.launch_pal3a" { handle_launch(state, "Selected PAL3A"); }
+    if msg.kind == "welcome.launch_pal4" { handle_launch(state, "Selected PAL4"); }
+    if msg.kind == "welcome.launch_pal5" { handle_launch(state, "Selected PAL5"); }
+    if msg.kind == "welcome.launch_pal5q" { handle_launch(state, "Selected PAL5Q"); }
+    if msg.kind == "welcome.launch_gujian" { handle_launch(state, "Selected Gujian"); }
+    if msg.kind == "welcome.launch_gujian2" { handle_launch(state, "Selected Gujian2"); }
+    if msg.kind == "welcome.launch_swd5" { handle_launch(state, "Selected SWD5"); }
+    if msg.kind == "welcome.launch_swdhc" { handle_launch(state, "Selected SWDHC"); }
+    if msg.kind == "welcome.launch_swdcf" { handle_launch(state, "Selected SWDCF"); }
+}

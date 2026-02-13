@@ -2,6 +2,7 @@ mod comdef;
 mod config;
 mod directors;
 mod preview;
+mod ui_script;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -9,6 +10,7 @@ use std::rc::Rc;
 use crosscom::ComRc;
 use directors::welcome_page::WelcomePageDirector;
 use directors::{DevToolsAssetLoader, DevToolsDirector};
+use log::warn;
 use radiance::application::Application;
 use radiance::comdef::{IApplication, IApplicationLoaderComponent, IDirector};
 use radiance_editor::application::EditorApplicationLoader;
@@ -114,11 +116,30 @@ fn main() {
     }
 
     let app = ComRc::<IApplication>::from_object(Application::new());
+
+    let use_p7_ui = ui_script::resolve_ui_script_path(&args).map_or(false, |path| {
+        match ui_script::load_ui_script_runner(&path) {
+            Ok(runner) => app
+                .engine()
+                .borrow()
+                .set_ui_script_runner(runner)
+                .map(|_| true)
+                .unwrap_or_else(|err| {
+                    warn!("Failed to initialize p7 UI: {}", err);
+                    false
+                }),
+            Err(err) => {
+                warn!("Failed to load p7 UI script: {}", err);
+                false
+            }
+        }
+    });
+
     app.add_component(
         IApplicationLoaderComponent::uuid(),
         ComRc::from_object(EditorApplicationLoader::new(
             app.clone(),
-            WelcomePageDirector::create(app.clone()),
+            WelcomePageDirector::create(app.clone(), use_p7_ui),
         )),
     );
 

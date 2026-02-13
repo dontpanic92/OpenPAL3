@@ -8,13 +8,14 @@ use crate::{ComObject_WelcomePageDirector, GameType, SceneViewResourceView};
 
 pub struct WelcomePageDirector {
     app: ComRc<IApplication>,
+    use_p7_ui: bool,
 }
 
 ComObject_WelcomePageDirector!(super::WelcomePageDirector);
 
 impl WelcomePageDirector {
-    pub fn create(app: ComRc<IApplication>) -> ComRc<IDirector> {
-        ComRc::from_object(Self { app })
+    pub fn create(app: ComRc<IApplication>, use_p7_ui: bool) -> ComRc<IDirector> {
+        ComRc::from_object(Self { app, use_p7_ui })
     }
 
     fn load_game(&self, game: GameType) -> Option<ComRc<IDirector>> {
@@ -68,6 +69,10 @@ impl IDirectorImpl for WelcomePageDirector {
     fn activate(&self) -> crosscom::Void {}
 
     fn update(&self, _: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
+        if self.use_p7_ui {
+            return None;
+        }
+
         let vpos = unsafe { (*imgui::sys::igGetMainViewport()).Pos };
         let vsize = unsafe { (*imgui::sys::igGetMainViewport()).Size };
         let ui = self.app.engine().borrow().ui_manager().ui();
