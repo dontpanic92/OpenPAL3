@@ -1,8 +1,11 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 
+#[macro_use]
+mod comdef {
+    include!(concat!(env!("OUT_DIR"), "/yaobow_comdef.rs"));
+}
 mod application;
-mod comdef;
 mod opengujian;
 mod openpal3;
 mod openpal4;

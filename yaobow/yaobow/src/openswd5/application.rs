@@ -12,7 +12,6 @@ use shared::{
     openswd5::{asset_loader::AssetLoader, director::OpenSWD5Director},
 };
 
-use crate::ComObject_OpenSwd5ApplicationLoaderComponent;
 
 pub struct OpenSwd5ApplicationLoader {
     app: ComRc<IApplication>,

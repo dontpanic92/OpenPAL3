@@ -4,7 +4,7 @@ use radiance::comdef::{IApplication, IDirector, IDirectorImpl};
 use radiance_editor::{director::MainPageDirector, ui::scene_view::SceneViewPlugins};
 use shared::config::YaobowConfig;
 
-use crate::{ComObject_WelcomePageDirector, GameType, SceneViewResourceView};
+use crate::{GameType, SceneViewResourceView};
 
 pub struct WelcomePageDirector {
     app: ComRc<IApplication>,

@@ -2,6 +2,7 @@
 name = "radiance_editor"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [lib]
 path = "src/lib.rs"
@@ -16,3 +17,6 @@ radiance = { path = "../radiance" }
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_debug"] }
 simple_logger = "4"
 uuid = "0.8"
+
+[build-dependencies]
+crosscom-ccidl = { path = "../../crosscom/ccidl-rs" }

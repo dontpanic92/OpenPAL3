@@ -761,6 +761,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "crosscom-ccidl"
+version = "0.1.0"
+
+[[package]]
 name = "crunchy"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3005,6 +3009,7 @@ dependencies = [
  "cfg-if 1.0.4",
  "cfg_aliases",
  "crosscom",
+ "crosscom-ccidl",
  "dashmap",
  "downcast-rs",
  "gilrs",
@@ -3042,6 +3047,7 @@ name = "radiance_editor"
 version = "0.1.0"
 dependencies = [
  "crosscom",
+ "crosscom-ccidl",
  "imgui",
  "log",
  "radiance",
@@ -3468,6 +3474,7 @@ dependencies = [
  "common",
  "config",
  "crosscom",
+ "crosscom-ccidl",
  "dashmap",
  "dirs 3.0.2",
  "dyn-clone",
@@ -5222,6 +5229,7 @@ dependencies = [
  "cfg_aliases",
  "common",
  "crosscom",
+ "crosscom-ccidl",
  "fileformats",
  "image 0.23.14",
  "imgui",
@@ -5260,6 +5268,7 @@ dependencies = [
  "chardet",
  "common",
  "crosscom",
+ "crosscom-ccidl",
  "encoding",
  "fileformats",
  "image 0.23.14",

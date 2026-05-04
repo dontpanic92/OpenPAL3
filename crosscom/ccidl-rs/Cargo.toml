@@ -1,0 +1,12 @@
+[package]
+name = "crosscom-ccidl"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "crosscom_ccidl"
+path = "src/lib.rs"
+
+[[bin]]
+name = "crosscom-ccidl"
+path = "src/main.rs"

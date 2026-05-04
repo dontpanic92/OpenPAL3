@@ -11,7 +11,7 @@ use radiance::{
     utils::free_view::FreeViewController,
 };
 
-use crate::{scripting::angelscript::ScriptVm, ComObject_OpenPAL4Director};
+use crate::scripting::angelscript::ScriptVm;
 
 use super::{
     app_context::Pal4AppContext, asset_loader::AssetLoader, comdef::IOpenPAL4DirectorImpl,

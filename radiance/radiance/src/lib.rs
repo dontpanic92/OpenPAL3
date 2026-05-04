@@ -1,8 +1,11 @@
 #![allow(unused_variables)]
 
+#[macro_use]
+pub mod comdef {
+    include!(concat!(env!("OUT_DIR"), "/radiance_comdef.rs"));
+}
 pub mod application;
 pub mod audio;
-pub mod comdef;
 pub mod components;
 pub mod debug;
 pub mod imgui;

@@ -3,6 +3,7 @@ name = "yaobow_editor"
 version = "0.1.0"
 authors = ["Li Shengqiu <lishengqiu.hit@gmail.com>"]
 edition = "2018"
+build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -31,3 +32,6 @@ shared = { path = "../shared" }
 uuid = "0.8"
 wavefront_obj = "5.1.0"
 xxtea = "0.2.0"
+
+[build-dependencies]
+crosscom-ccidl = { path = "../../crosscom/ccidl-rs" }

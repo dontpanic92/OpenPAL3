@@ -3,7 +3,6 @@ use crate::openpal3::comdef::{IRoleController, IScnSceneComponentImpl};
 use crate::openpal3::loaders::nav_loader::{NavFile, NavMapPoint};
 use crate::openpal3::loaders::scn_loader::ScnFile;
 use crate::openpal3::scene::RoleController;
-use crate::ComObject_ScnSceneComponent;
 use crosscom::ComRc;
 use radiance::comdef::{IComponentImpl, IEntity, IScene};
 use radiance::math::Vec3;

@@ -17,7 +17,6 @@ use radiance::{
 
 use crate::{
     utils::{get_camera_rotation, get_moving_direction},
-    ComObject_Pal4ActorAnimationController, ComObject_Pal4ActorController,
 };
 
 use super::{

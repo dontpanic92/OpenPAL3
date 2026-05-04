@@ -18,7 +18,6 @@ use radiance::{
     rendering::{ComponentFactory, Texture},
 };
 
-use crate::ComObject_TitleSelectionDirector;
 
 use super::GameType;
 

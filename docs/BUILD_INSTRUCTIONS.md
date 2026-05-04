@@ -23,6 +23,11 @@
     - 本项目使用 `vcpkg` 管理 ffmpeg 依赖。
     - 请参考 [vcpkg 官方文档](https://github.com/microsoft/vcpkg) 安装 vcpkg，并确保将其添加到系统环境变量中，或者在构建时指定路径。
 
+4.  **CrossCom IDL**:
+    - `comdef` Rust 模块由 `crosscom\ccidl\idl` 下的 IDL 文件在 Cargo 构建时自动生成。
+    - 生成结果写入 Cargo `OUT_DIR`，不需要手动提交 `src\comdef.rs`。
+    - 如需调试生成结果，可运行 `cargo run -p crosscom-ccidl -- crosscom\ccidl\idl\radiance.idl`。
+
 ---
 
 ## Windows 构建

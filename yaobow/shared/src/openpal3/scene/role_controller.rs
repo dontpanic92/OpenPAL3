@@ -1,6 +1,5 @@
 use crate::openpal3::asset_manager::AssetManager;
 use crate::openpal3::comdef::{IRoleController, IRoleControllerImpl};
-use crate::ComObject_RoleController;
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use dashmap::mapref::one::Ref;

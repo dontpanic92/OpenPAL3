@@ -1,4 +1,7 @@
-mod comdef;
+#[macro_use]
+mod comdef {
+    include!(concat!(env!("OUT_DIR"), "/yaobow_editor_comdef.rs"));
+}
 mod config;
 mod directors;
 mod preview;

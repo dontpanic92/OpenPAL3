@@ -7,10 +7,7 @@ use radiance::{
 };
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{
-    ui::scene_view::{SceneView, SceneViewPlugins},
-    ComObject_MainPageDirector,
-};
+use crate::ui::scene_view::{SceneView, SceneViewPlugins};
 
 pub struct MainPageDirector {
     scene_view: RefCell<SceneView>,

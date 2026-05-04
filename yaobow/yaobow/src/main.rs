@@ -1,6 +1,10 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 
+#[macro_use]
+mod comdef {
+    include!(concat!(env!("OUT_DIR"), "/yaobow_comdef.rs"));
+}
 use application::run_title_selection;
 use opengujian::run_opengujian;
 use openpal3::run_openpal3;
@@ -11,7 +15,6 @@ use playground::run_test;
 use shared::video::register_opengb_video_decoders;
 
 mod application;
-mod comdef;
 mod opengujian;
 mod openpal3;
 mod openpal4;

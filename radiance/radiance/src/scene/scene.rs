@@ -5,7 +5,6 @@ use uuid::Uuid;
 use crate::{
     comdef::{IComponent, IComponentContainerImpl, IEntity, IScene, ISceneImpl},
     math::Transform,
-    ComObject_Scene,
 };
 
 use super::Camera;

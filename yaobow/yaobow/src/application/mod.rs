@@ -12,7 +12,6 @@ use shared::{config::YaobowConfig, GameType};
 
 use crate::{
     openpal3::OpenPal3ApplicationLoader, openpal4::application::OpenPal4ApplicationLoader,
-    ComObject_YaobowApplicationLoader,
 };
 
 use self::director::TitleSelectionDirector;

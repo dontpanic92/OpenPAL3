@@ -1,5 +1,8 @@
 pub mod asset_manager;
-pub mod comdef;
+#[macro_use]
+pub mod comdef {
+    include!(concat!(env!("OUT_DIR"), "/shared_openpal3_comdef.rs"));
+}
 pub mod directors;
 pub mod loaders;
 pub mod scene;

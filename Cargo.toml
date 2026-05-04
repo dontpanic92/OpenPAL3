@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crosscom/ccidl-rs",
     "crosscom/runtime/rust",
     "radiance/radiance",
     "radiance/radiance_editor",

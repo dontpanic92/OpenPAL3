@@ -1,9 +1,6 @@
 use std::cell::RefCell;
 
-use crate::{
-    comdef::{IDirector, IScene, ISceneManagerImpl},
-    ComObject_SceneManager,
-};
+use crate::comdef::{IDirector, IScene, ISceneManagerImpl};
 
 use crosscom::ComRc;
 

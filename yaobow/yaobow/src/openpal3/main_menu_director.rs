@@ -15,7 +15,6 @@ use shared::{
     scripting::sce::vm::SceExecutionOptions,
 };
 
-use crate::ComObject_MainMenuDirector;
 
 use super::sce_proc_hooks::SceRestHooks;
 

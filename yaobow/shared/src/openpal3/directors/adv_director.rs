@@ -13,7 +13,6 @@ use crate::{
     },
     scripting::sce::vm::{SceExecutionOptions, SceVm},
     utils::{get_camera_rotation, get_moving_direction},
-    ComObject_AdventureDirector,
 };
 
 use crosscom::ComRc;

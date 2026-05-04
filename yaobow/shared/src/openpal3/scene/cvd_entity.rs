@@ -3,7 +3,6 @@ use crate::openpal3::loaders::cvd_loader::{
     cvd_load_from_file, CvdMaterial, CvdModelNode, CvdPositionKeyFrames, CvdRotationKeyFrames,
     CvdScaleKeyFrames, CvdVertex,
 };
-use crate::ComObject_CvdModel;
 use crosscom::ComRc;
 use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::{IComponentImpl, IEntity};

@@ -10,7 +10,7 @@ use radiance::{
     utils::free_view::FreeViewController,
 };
 
-use crate::{scripting::lua50_32::Lua5032Vm, ComObject_OpenSWD5Director};
+use crate::scripting::lua50_32::Lua5032Vm;
 
 use super::{
     asset_loader::AssetLoader,

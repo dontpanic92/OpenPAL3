@@ -1,4 +1,4 @@
-use crate::{ComObject_DevToolsDirector, GameType};
+use crate::GameType;
 
 use super::{main_content::ContentTabs, DevToolsAssetLoader, DevToolsState};
 use crosscom::ComRc;

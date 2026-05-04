@@ -9,7 +9,6 @@ use crate::{
     comdef::{IAnimatedMeshComponentImpl, IComponentImpl, IEntity},
     math::{Vec2, Vec3},
     rendering::{ComponentFactory, VertexBuffer, VertexComponents},
-    ComObject_AnimatedMeshComponent,
 };
 
 use super::{morph_target::MorphTarget, Geometry, TexCoord};

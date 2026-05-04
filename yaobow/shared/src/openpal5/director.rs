@@ -8,7 +8,6 @@ use radiance::{
     utils::free_view::FreeViewController,
 };
 
-use crate::ComObject_OpenPAL5Director;
 
 use super::comdef::IOpenPAL5DirectorImpl;
 

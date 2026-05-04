@@ -69,4 +69,5 @@ orientation = "portrait"
 
 [build-dependencies]
 cfg_aliases = "0.2"
+crosscom-ccidl = { path = "../../crosscom/ccidl-rs" }
 vergen = { version = "8.0.0", features = [ "build", "git", "gitcl" ]}

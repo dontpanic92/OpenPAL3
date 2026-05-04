@@ -4,7 +4,6 @@ use uuid::Uuid;
 use crate::comdef::{IComponent, IComponentContainerImpl, IEntity, IEntityImpl};
 use crate::math::{Mat44, Transform};
 use crate::rendering::RenderingComponent;
-use crate::ComObject_Entity;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::Rc;

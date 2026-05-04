@@ -11,7 +11,6 @@ use shared::{
     openpal4::{asset_loader::AssetLoader, director::OpenPAL4Director},
 };
 
-use crate::ComObject_OpenPal4ApplicationLoaderComponent;
 
 pub struct OpenPal4ApplicationLoader {
     app: ComRc<IApplication>,

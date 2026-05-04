@@ -1,4 +1,3 @@
-use crate::ComObject_OpenPal3ApplicationLoaderComponent;
 
 use super::debug_layer::OpenPal3DebugLayer;
 use super::main_menu_director;

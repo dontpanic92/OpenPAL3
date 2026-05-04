@@ -5,7 +5,6 @@ use crosscom::ComRc;
 use crate::{
     comdef::{IComponentImpl, IEntity, IStaticMeshComponentImpl},
     rendering::ComponentFactory,
-    ComObject_StaticMeshComponent,
 };
 
 use super::Geometry;

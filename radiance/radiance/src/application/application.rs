@@ -7,7 +7,6 @@ use crate::comdef::{IApplicationImpl, IComponent, IComponentContainerImpl};
 use crate::constants;
 use crate::radiance;
 use crate::radiance::CoreRadianceEngine;
-use crate::ComObject_Application;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;

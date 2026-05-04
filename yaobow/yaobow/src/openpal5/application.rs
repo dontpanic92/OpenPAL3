@@ -11,7 +11,6 @@ use shared::{
     openpal5::{asset_loader::AssetLoader, director::OpenPAL5Director, scene::Pal5Scene},
 };
 
-use crate::ComObject_OpenPal5ApplicationLoaderComponent;
 
 pub struct OpenPal5ApplicationLoader {
     app: ComRc<IApplication>,

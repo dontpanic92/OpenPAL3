@@ -13,7 +13,6 @@ use crate::{
     },
     math::{Mat44, Quaternion, Transform, Vec3},
     rendering::{ComponentFactory, VertexBuffer, VertexComponents},
-    ComObject_ArmatureComponent, ComObject_HAnimBoneComponent, ComObject_SkinnedMeshComponent,
 };
 
 use super::{
