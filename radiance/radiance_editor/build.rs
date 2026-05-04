@@ -9,7 +9,6 @@ fn generate_comdef(idl_file: &str, out_file: &str) {
     let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
     let idl_path = workspace_root
         .join("crosscom")
-        .join("ccidl")
         .join("idl")
         .join(idl_file);
     let out_path = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join(out_file);

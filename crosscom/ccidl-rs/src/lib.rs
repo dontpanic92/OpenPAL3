@@ -1308,7 +1308,7 @@ mod tests {
     #[test]
     fn generates_repository_idls() {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let idl_dir = manifest_dir.join("..").join("ccidl").join("idl");
+        let idl_dir = manifest_dir.join("..").join("idl");
         for idl_name in [
             "crosscom.idl",
             "editor.idl",
