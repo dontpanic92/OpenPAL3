@@ -489,7 +489,6 @@ struct TitleOutlines {
     outline_state: OutlineState,
     texture: Option<Box<dyn Texture>>,
     texture_id: Option<TextureId>,
-    time: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -519,7 +518,6 @@ impl TitleOutlines {
             },
             texture_id: None,
             texture: None,
-            time: 0.,
         }
     }
 
@@ -626,31 +624,6 @@ impl TitleOutlines {
                 next_outline_id,
                 time,
             } => {
-                self.time += delta_sec;
-                if self.time > UNDERLINE_MARGIN_TIME + UNDERLINE_SHOW_TIME {
-                    self.time = 0.;
-                }
-
-                if self.time > UNDERLINE_MARGIN_TIME {
-                    let underline_size = [size[0] * 0.5, 4.];
-                    ui.set_cursor_pos([
-                        center[0] - underline_size[0] * 0.5,
-                        center[1] + size[1] * 0.5 - underline_size[1],
-                    ]);
-                    let draw_list = ui.get_window_draw_list();
-                    draw_list
-                        .add_rect(
-                            ui.cursor_pos(),
-                            [
-                                ui.cursor_pos()[0] + underline_size[0],
-                                ui.cursor_pos()[1] + underline_size[1],
-                            ],
-                            [0.12, 0.12, 0.12, 1.],
-                        )
-                        .filled(true)
-                        .build();
-                }
-
                 *time -= delta_sec;
                 if *time < 0. {
                     self.outline_state = OutlineState::PlayingFrame {
