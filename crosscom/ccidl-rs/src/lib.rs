@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+mod protosept;
+
 pub struct GeneratedUnit {
     pub source: String,
     pub dependencies: Vec<PathBuf>,
@@ -64,6 +66,44 @@ pub fn generate_to_file(
     Ok(generated.dependencies)
 }
 
+/// Generate a Protosept (`.p7`) source file for the given IDL.
+///
+/// The output declares one `proto` per IDL interface (with flattened
+/// inheritance) and one `struct` per IDL class whose methods forward to
+/// host functions named `<idl-rust-module>.<method>`. Methods whose IDL
+/// signature contains types that cannot be represented in protosept (for
+/// example `[internal(), rust()]` methods or raw byte pointers) are
+/// silently omitted.
+pub fn generate_protosept(idl_path: impl AsRef<Path>) -> Result<GeneratedUnit, Error> {
+    let idl_path = idl_path.as_ref();
+    let mut dependencies = Vec::new();
+    let mut visited = HashSet::new();
+    collect_dependencies(idl_path, &mut visited, &mut dependencies)?;
+
+    let mut unit = parse_file(idl_path)?;
+    process_imports(idl_path, &mut unit)?;
+    let source = protosept::generate(unit)?;
+
+    Ok(GeneratedUnit {
+        source,
+        dependencies,
+    })
+}
+
+/// Convenience wrapper around [`generate_protosept`] that writes the result
+/// to `output_path`.
+pub fn generate_protosept_to_file(
+    idl_path: impl AsRef<Path>,
+    output_path: impl AsRef<Path>,
+) -> Result<Vec<PathBuf>, Error> {
+    let generated = generate_protosept(idl_path)?;
+    std::fs::write(output_path.as_ref(), generated.source).map_err(|source| Error::Io {
+        path: output_path.as_ref().to_path_buf(),
+        source,
+    })?;
+    Ok(generated.dependencies)
+}
+
 fn parse_file(path: &Path) -> Result<CrossComIdl, Error> {
     let content = std::fs::read_to_string(path).map_err(|source| Error::Io {
         path: path.to_path_buf(),
@@ -107,12 +147,23 @@ fn process_imports(idl_path: &Path, unit: &mut CrossComIdl) -> Result<(), Error>
         let import_path = source_dir.join(&import.file_name);
         let import_unit = parse_file(&import_path)?;
         let import_module = rust_module(&import_unit)?.clone();
+        let import_stem = std::path::Path::new(&import.file_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&import.file_name)
+            .to_string();
 
         for item in import_unit.items {
             if let Item::Interface(mut interface) = item {
                 interface
                     .attrs
                     .insert("codegen".to_string(), "ignore".to_string());
+                // Record the originating IDL filename so the protosept
+                // emitter can qualify cross-module type references. RustGen
+                // ignores this attribute.
+                interface
+                    .attrs
+                    .insert("idl_origin".to_string(), import_stem.clone());
                 interface.module = Some(import_module.clone());
                 unit.items.push(Item::Interface(interface));
             }
@@ -123,44 +174,44 @@ fn process_imports(idl_path: &Path, unit: &mut CrossComIdl) -> Result<(), Error>
 }
 
 #[derive(Clone, Debug)]
-struct CrossComIdl {
-    items: Vec<Item>,
-    imports: Vec<Import>,
-    modules: Vec<Module>,
+pub(crate) struct CrossComIdl {
+    pub items: Vec<Item>,
+    pub imports: Vec<Import>,
+    pub modules: Vec<Module>,
 }
 
 #[derive(Clone, Debug)]
-struct Import {
-    file_name: String,
+pub(crate) struct Import {
+    pub file_name: String,
 }
 
 #[derive(Clone, Debug)]
-struct Module {
-    module_lang: String,
-    module_name: String,
+pub(crate) struct Module {
+    pub module_lang: String,
+    pub module_name: String,
 }
 
 #[derive(Clone, Debug)]
-enum Item {
+pub(crate) enum Item {
     Interface(Interface),
     Class(Class),
 }
 
 #[derive(Clone, Debug)]
-struct Interface {
-    name: String,
-    bases: Vec<String>,
-    methods: Vec<Method>,
-    attrs: Attrs,
-    module: Option<Module>,
+pub(crate) struct Interface {
+    pub name: String,
+    pub bases: Vec<String>,
+    pub methods: Vec<Method>,
+    pub attrs: Attrs,
+    pub module: Option<Module>,
 }
 
 impl Interface {
-    fn codegen_ignore(&self) -> bool {
+    pub(crate) fn codegen_ignore(&self) -> bool {
         self.attrs.get("codegen").map(String::as_str) == Some("ignore")
     }
 
-    fn public_methods(&self) -> Vec<Method> {
+    pub(crate) fn public_methods(&self) -> Vec<Method> {
         self.methods
             .iter()
             .filter(|method| !method.attrs.contains_key("internal"))
@@ -170,31 +221,31 @@ impl Interface {
 }
 
 #[derive(Clone, Debug)]
-struct Class {
-    name: String,
-    bases: Vec<String>,
-    methods: Vec<Method>,
-    attrs: Attrs,
-    module: Option<Module>,
+pub(crate) struct Class {
+    pub name: String,
+    pub bases: Vec<String>,
+    pub methods: Vec<Method>,
+    pub attrs: Attrs,
+    pub module: Option<Module>,
 }
 
 #[derive(Clone, Debug)]
-struct Method {
-    name: String,
-    ret_ty: String,
-    params: Vec<MethodParameter>,
-    attrs: Attrs,
-    interface_module: Option<Module>,
+pub(crate) struct Method {
+    pub name: String,
+    pub ret_ty: String,
+    pub params: Vec<MethodParameter>,
+    pub attrs: Attrs,
+    pub interface_module: Option<Module>,
 }
 
 #[derive(Clone, Debug)]
-struct MethodParameter {
-    attrs: Vec<String>,
-    name: String,
-    ty: String,
+pub(crate) struct MethodParameter {
+    pub attrs: Vec<String>,
+    pub name: String,
+    pub ty: String,
 }
 
-type Attrs = HashMap<String, String>;
+pub(crate) type Attrs = HashMap<String, String>;
 
 struct Parser<'a> {
     input: &'a str,
@@ -522,7 +573,7 @@ fn split_params(input: &str) -> Vec<&str> {
     params
 }
 
-fn rust_module(unit: &CrossComIdl) -> Result<&Module, Error> {
+pub(crate) fn rust_module(unit: &CrossComIdl) -> Result<&Module, Error> {
     unit.modules
         .iter()
         .find(|module| module.module_lang == "rust")
@@ -530,7 +581,7 @@ fn rust_module(unit: &CrossComIdl) -> Result<&Module, Error> {
 }
 
 #[derive(Clone)]
-enum Symbol {
+pub(crate) enum Symbol {
     Interface(Interface),
     Class,
 }
@@ -1288,7 +1339,7 @@ fn uuid_to_hex_array(id: &str) -> Result<String, Error> {
     ))
 }
 
-fn parse_uuid_bytes(id: &str) -> Result<[u8; 16], Error> {
+pub(crate) fn parse_uuid_bytes(id: &str) -> Result<[u8; 16], Error> {
     let hex = id.replace('-', "");
     if hex.len() != 32 {
         return Err(Error::Generate(format!("invalid UUID: {id}")));
@@ -1328,6 +1379,88 @@ mod tests {
     }
 
     #[test]
+    fn generates_protosept_for_repository_idls() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let idl_dir = manifest_dir.join("..").join("idl");
+        for idl_name in [
+            "crosscom.idl",
+            "editor.idl",
+            "radiance.idl",
+            "test.idl",
+            "yaobow.idl",
+            "yaobow_editor.idl",
+            "openpal3.idl",
+            "openpal4.idl",
+            "openpal5.idl",
+            "openswd5.idl",
+        ] {
+            let generated =
+                generate_protosept(idl_dir.join(idl_name)).unwrap_or_else(|err| {
+                    panic!("protosept gen failed for {idl_name}: {err}")
+                });
+            assert!(
+                !generated.source.is_empty(),
+                "{idl_name}: empty protosept output"
+            );
+            // Sanity: no leftover Rust syntax leaked into the protosept output.
+            assert!(
+                !generated.source.contains("crosscom::"),
+                "{idl_name}: contains crosscom:: which is Rust-only"
+            );
+            assert!(
+                !generated.source.contains("ComRc<"),
+                "{idl_name}: contains ComRc<...> which is Rust-only"
+            );
+        }
+    }
+
+    #[test]
+    fn protosept_radiance_emits_expected_shape() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let idl_dir = manifest_dir.join("..").join("idl");
+        let out = generate_protosept(idl_dir.join("radiance.idl"))
+            .unwrap()
+            .source;
+
+        // IDirector should have its UUID constant + a @foreign proto with
+        // activate/update.
+        assert!(out.contains("pub let IDirector_UUID: string ="), "{out}");
+        assert!(out.contains("pub proto IDirector"), "{out}");
+        assert!(
+            out.contains("@foreign(dispatcher=\"com.invoke\", finalizer=\"com.release\""),
+            "{out}"
+        );
+        assert!(
+            out.contains("type_tag=\"radiance.comdef.IDirector\""),
+            "{out}"
+        );
+        assert!(
+            out.contains("fn activate(self: ref<IDirector>) -> int"),
+            "{out}"
+        );
+        // Foreign-aware return type now uses ?box<IDirector>, not ?int.
+        assert!(
+            out.contains(
+                "fn update(self: ref<IDirector>, delta_sec: float) -> ?box<IDirector>"
+            ),
+            "{out}"
+        );
+
+        // No more class Handle structs.
+        assert!(!out.contains("ApplicationHandle"), "{out}");
+        assert!(!out.contains("@intrinsic"), "{out}");
+
+        // No Rust-only modules colon syntax. Strip the comment-line
+        // `// Module: ...::...` first.
+        let body: String = out
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!body.contains("::"), "body still contains ::\n{body}");
+    }
+
+    #[test]
     fn parses_uuid_bytes_in_network_order() {
         assert_eq!(
             parse_uuid_bytes("00000000-0000-0000-C000-000000000046").unwrap(),
@@ -1336,5 +1469,82 @@ mod tests {
                 0x00, 0x46,
             ]
         );
+    }
+
+    /// The host dispatcher computes a method's vtable slot as
+    /// `3 + (method's index inside the @foreign proto)`. The +3 skips
+    /// IUnknown's vtable prefix; the per-proto index must match the
+    /// flattened (bases first, then own methods, IDL declaration order)
+    /// walk that the IDL author wrote. This test pins that invariant down
+    /// against a concrete IDL: any reordering of method emission would
+    /// silently break dispatch for every downstream method.
+    #[test]
+    fn protosept_emits_methods_in_vtable_order() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let idl_dir = manifest_dir.join("..").join("idl");
+        let out = generate_protosept(idl_dir.join("radiance.idl"))
+            .unwrap()
+            .source;
+
+        // Find the `pub proto IDirector { ... }` block.
+        let body = extract_proto_body(&out, "IDirector");
+        let methods: Vec<&str> = body
+            .lines()
+            .filter_map(|l| {
+                let l = l.trim();
+                if l.starts_with("fn ") {
+                    let name = l.trim_start_matches("fn ").split('(').next().unwrap();
+                    Some(name)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        // IDirector's IDL declares (in order): activate, update.
+        assert_eq!(
+            methods,
+            vec!["activate", "update"],
+            "IDirector method order changed (vtable slots would shift)"
+        );
+
+        let body = extract_proto_body(&out, "ISceneManager");
+        let methods: Vec<&str> = body
+            .lines()
+            .filter_map(|l| {
+                let l = l.trim();
+                if l.starts_with("fn ") {
+                    let name = l.trim_start_matches("fn ").split('(').next().unwrap();
+                    Some(name)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        // ISceneManager's IDL declares (in order): update, scene, director,
+        // set_director, push_scene, pop_scene, unload_all_scenes,
+        // unset_director.
+        assert_eq!(
+            methods,
+            vec![
+                "update",
+                "scene",
+                "director",
+                "set_director",
+                "push_scene",
+                "pop_scene",
+                "unload_all_scenes",
+                "unset_director",
+            ],
+            "ISceneManager method order changed (vtable slots would shift)"
+        );
+    }
+
+    #[cfg(test)]
+    fn extract_proto_body<'a>(src: &'a str, iface: &str) -> &'a str {
+        let needle = format!("pub proto {iface} {{");
+        let start = src.find(&needle).expect("proto not found") + needle.len();
+        let rest = &src[start..];
+        let end = rest.find("\n}").expect("proto end not found");
+        &rest[..end]
     }
 }
