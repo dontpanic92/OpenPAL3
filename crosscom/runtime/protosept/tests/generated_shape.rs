@@ -5,7 +5,7 @@
 #[test]
 fn protosept_radiance_has_expected_foreign_shape() {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let idl_dir = manifest_dir.join("..").join("idl");
+    let idl_dir = manifest_dir.join("..").join("..").join("idl");
 
     let radiance = crosscom_ccidl::generate_protosept(idl_dir.join("radiance.idl"))
         .unwrap()
@@ -44,7 +44,7 @@ fn protosept_radiance_has_expected_foreign_shape() {
 #[test]
 fn protosept_editor_has_expected_foreign_shape() {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let idl_dir = manifest_dir.join("..").join("idl");
+    let idl_dir = manifest_dir.join("..").join("..").join("idl");
     let editor = crosscom_ccidl::generate_protosept(idl_dir.join("editor.idl"))
         .unwrap()
         .source;
@@ -57,7 +57,7 @@ fn protosept_editor_has_expected_foreign_shape() {
 #[test]
 fn protosept_skips_internal_methods() {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let idl_dir = manifest_dir.join("..").join("idl");
+    let idl_dir = manifest_dir.join("..").join("..").join("idl");
     let radiance = crosscom_ccidl::generate_protosept(idl_dir.join("radiance.idl"))
         .unwrap()
         .source;

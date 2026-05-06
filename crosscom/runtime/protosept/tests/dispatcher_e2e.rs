@@ -1,5 +1,5 @@
 //! End-to-end test for the generic `com.invoke` / `com.release`
-//! dispatcher in `crosscom-p7host-p7adapter`.
+//! dispatcher in `crosscom-protosept`.
 //!
 //! Builds a fake `IUnknown`-derived interface ("ICounter") with a
 //! hand-rolled `#[repr(C)]` vtable, pushes a script that calls one of
@@ -10,8 +10,7 @@ use std::ffi::c_void;
 use std::os::raw::c_long;
 
 use crosscom::{ComInterface, IUnknown, IUnknownVirtualTable};
-use crosscom_p7host::{ComObjectTable, HostServices, scope};
-use crosscom_p7host_p7adapter::install_com_dispatcher;
+use crosscom_protosept::{ComObjectTable, HostServices, install_com_dispatcher, scope};
 use p7::interpreter::context::{Context, Data};
 
 const COUNTER_UUID_BYTES: [u8; 16] = [
@@ -112,7 +111,7 @@ fn host_make_counter(ctx: &mut Context) -> Result<(), p7::errors::RuntimeError> 
     });
     let raw = Box::into_raw(counter) as *const *const c_void;
     let unk = unsafe { crosscom::ComRc::<IUnknown>::from_raw_pointer(raw) };
-    let handle = crosscom_p7host::with_services(|s| s.com_table_mut().intern_unknown(unk))
+    let handle = crosscom_protosept::with_services(|s| s.com_table_mut().intern_unknown(unk))
         .map_err(|e| p7::errors::RuntimeError::Other(format!("with_services: {}", e)))?;
     ctx.push_foreign("test.ICounter", handle)
 }

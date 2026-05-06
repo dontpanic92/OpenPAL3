@@ -1,22 +1,7 @@
-//! Adapter crate: implements [`crosscom_p7host::HostContext`] for the
+//! Default adapter that implements [`crate::HostContext`] for the
 //! protosept interpreter [`p7::interpreter::context::Context`].
-//!
-//! This is the only crate in OpenPAL3 that depends on the protosept
-//! workspace directly. By keeping the dep narrow (this single adapter),
-//! every other consumer can pull in scripting via the
-//! `crosscom-p7host` trait without taking on the protosept toolchain
-//! constraints (resolver = "3", edition 2024) themselves.
-//!
-//! The crate also hosts the generic, AST-free crosscom dispatcher in
-//! the [`dispatcher`] submodule. Use [`dispatcher::install_com_dispatcher`]
-//! to wire `com.invoke` and `com.release` onto a freshly-created
-//! [`p7::interpreter::context::Context`] before loading any modules.
 
-pub mod dispatcher;
-
-pub use dispatcher::install_com_dispatcher;
-
-use crosscom_p7host::{ComObjectTable, HostContext, HostError, HostServices};
+use crate::{ComObjectTable, HostContext, HostError, HostServices};
 use p7::errors::RuntimeError;
 use p7::interpreter::context::{Context, Data};
 

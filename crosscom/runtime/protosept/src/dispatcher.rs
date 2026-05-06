@@ -35,7 +35,7 @@
 use std::ffi::{CString, c_char, c_float, c_long, c_void};
 use std::os::raw::c_int;
 
-use crosscom_p7host::{ComObjectTable, with_services};
+use crate::{ComObjectTable, with_services};
 use libffi::middle::{Arg, Cif, CodePtr, Type, arg};
 use p7::errors::RuntimeError;
 use p7::interpreter::context::{Context, Data};

@@ -798,20 +798,11 @@ name = "crosscom-ccidl"
 version = "0.1.0"
 
 [[package]]
-name = "crosscom-p7host"
+name = "crosscom-protosept"
 version = "0.1.0"
 dependencies = [
  "crosscom",
  "crosscom-ccidl",
- "uuid 0.8.2",
-]
-
-[[package]]
-name = "crosscom-p7host-p7adapter"
-version = "0.1.0"
-dependencies = [
- "crosscom",
- "crosscom-p7host",
  "libffi",
  "p7",
  "uuid 0.8.2",

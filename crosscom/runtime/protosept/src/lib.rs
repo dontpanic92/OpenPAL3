@@ -1,25 +1,28 @@
-//! Host-side runtime support for crosscom IDL → protosept binding.
+//! Protosept runtime support for crosscom.
 //!
-//! This crate is the seam between the *generated* host-fn shims (produced by
-//! `crosscom-ccidl --host-shims`) and the *protosept interpreter* (the `p7`
-//! crate, which lives in its own cargo workspace).
+//! This crate is the seam between the *generated* protosept (`.p7`) bindings
+//! produced by `crosscom-ccidl --protosept` and the *protosept interpreter*
+//! (the `p7` crate, which lives in `radiance/protosept/`).
 //!
-//! Decoupling the two is intentional: the generated shims only see the
-//! [`HostContext`] trait declared here. A consumer that wants to plug in a
-//! protosept runtime implements the trait against `p7::Context` in its own
-//! crate. This avoids forcing the OpenPAL3 main workspace to depend directly
-//! on protosept, while still letting the IDL/code-generation pipeline
-//! validate end-to-end at compile time.
+//! It provides three pieces, all in one crate:
 //!
-//! # Components
+//! - The COM-object handle table ([`ComObjectTable`]) and the encoded
+//!   script-side id type ([`ComObjectId`]).
+//! - The [`HostContext`] / [`HostServices`] traits plus a thread-local
+//!   [`scope`] / [`with_services`] helper so generated host-fn shims can
+//!   reach the active services bundle without taking on a static dep on the
+//!   protosept workspace.
+//! - The generic, AST-free `@foreign` proto dispatcher
+//!   ([`install_com_dispatcher`]) that wires `com.invoke` and `com.release`
+//!   onto a freshly-created [`p7::interpreter::context::Context`]. Adding a
+//!   new crosscom IDL only requires running
+//!   `crosscom-ccidl --protosept` to produce its `.p7` source — no per-IDL
+//!   Rust code is generated.
+//! - A default adapter ([`P7HostContext`]) that implements [`HostContext`]
+//!   for [`p7::interpreter::context::Context`].
 //!
-//! - [`ComObjectTable`] — a generation-checked slotmap of
-//!   `ComRc<dyn IUnknown>`. Scripts hold `i64` ids; this is the only path
-//!   from a script-side id back to a live COM handle.
-//! - [`HostContext`] — the trait the generated shims call (push/pop typed
-//!   values, register host fns, fetch services).
-//! - [`HostError`] — error type returned by shims.
-//! - [`scope`] / [`with_services`] — thread-local services scope helper.
+//! Use [`install_com_dispatcher`] after `Context::new()` and before loading
+//! any modules whose `@foreign` protos use the dispatcher names.
 
 use std::any::Any;
 use std::cell::RefCell;
@@ -27,6 +30,12 @@ use std::collections::HashMap;
 
 pub use crosscom;
 use crosscom::{ComInterface, ComRc, IUnknown};
+
+pub mod adapter;
+pub mod dispatcher;
+
+pub use adapter::{MinimalServices, P7HostContext};
+pub use dispatcher::install_com_dispatcher;
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -304,7 +313,7 @@ pub fn with_services<R>(
 ) -> Result<R, HostError> {
     CURRENT_SERVICES.with(|c| {
         let ptr = c.borrow().ok_or_else(|| {
-            HostError::message("with_services called outside crosscom_p7host::scope")
+            HostError::message("with_services called outside crosscom_protosept::scope")
         })?;
         // Safety: `scope` guarantees the pointer is valid for the duration
         // of `body`. Re-entry into `scope` from `body` is documented as

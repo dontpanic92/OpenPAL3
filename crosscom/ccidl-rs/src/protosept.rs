@@ -11,7 +11,7 @@
 //!
 //! Classes are no longer emitted as script-visible artifacts: scripts
 //! interact with COM objects through `box<I>` foreign cells whose
-//! handle is interned by the host (see `crosscom-p7host_p7adapter` for
+//! handle is interned by the host (see `crosscom-protosept` for
 //! the dispatcher implementation).
 //!
 //! Methods that contain any IDL parameter or return type that cannot be
@@ -293,7 +293,7 @@ impl ProtoseptGen {
     /// Map an IDL type string to its protosept equivalent, or `Ok(None)` if
     /// the type cannot be represented in script. Interface types lower to
     /// `box<I>` carriers backed by a host-managed `ComRc<I>` (see
-    /// `crosscom-p7host_p7adapter` for the dispatcher).
+    /// `crosscom-protosept` for the dispatcher).
     fn protosept_type(&self, idl_ty: &str) -> Result<Option<String>, Error> {
         let trimmed = idl_ty.trim();
 

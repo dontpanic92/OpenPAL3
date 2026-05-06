@@ -1,8 +1,7 @@
 [workspace]
 members = [
     "crosscom/ccidl-rs",
-    "crosscom/p7host",
-    "crosscom/p7host_p7adapter",
+    "crosscom/runtime/protosept",
     "crosscom/runtime/rust",
     "radiance/radiance",
     "radiance/radiance_editor",
