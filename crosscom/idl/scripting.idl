@@ -1,0 +1,11 @@
+module(rust) radiance_scripting::comdef::scripting;
+
+import crosscom.idl;
+import radiance.idl;
+import editor.idl;
+
+[uuid(36a97a52-3ef3-48c5-a656-c37798939a3b)]
+class ScriptedDirector: IDirector {}
+
+[uuid(0886f017-a5c5-4e21-bc79-02057cbf1d95)]
+class ScriptedViewContent: IViewContent {}

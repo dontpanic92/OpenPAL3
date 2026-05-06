@@ -1,0 +1,90 @@
+module(rust) radiance_scripting::comdef::services;
+
+import crosscom.idl;
+import radiance.idl;
+
+[uuid(831d0c9e-f26f-4b2a-aadc-0e8b47584487)]
+interface IAudioSource: IUnknown {
+    void play(bool looped);
+    void pause();
+    void stop();
+    void update();
+    int state();
+}
+[uuid(c27b7e01-4b90-4392-b66f-3a96f48f2e99)]
+class AudioSource: IAudioSource {}
+
+[uuid(bd0f4f5a-15bf-4ebd-93de-12a24f2ff8c7)]
+interface IAudioService: IUnknown {
+    IAudioSource? load(&str vfs_path, int codec);
+}
+[uuid(9a86224e-8e50-45bc-b7e3-96da10497204)]
+class AudioService: IAudioService {}
+
+[uuid(eb3b4e35-0a69-4e1f-8d34-12a7a93869e4)]
+interface ITexture: IUnknown {
+    int width();
+    int height();
+    int imgui_id();
+}
+[uuid(25ab340f-cbc1-4e4e-a9f6-545bf090d741)]
+class Texture: ITexture {}
+
+[uuid(15a50631-5098-45ca-ac41-1036b48df398)]
+interface ITextureService: IUnknown {
+    ITexture? load_png(&str vfs_path);
+    IObjectArray? load_gif_frames(&str vfs_path);
+}
+[uuid(7807f40d-87f5-46f9-a479-32449fb4bb74)]
+class TextureService: ITextureService {}
+
+[uuid(fa71af91-765f-4fc4-a36d-63fcbe27c4f5)]
+interface IVfsService: IUnknown {
+    bool exists(&str vfs_path);
+    [internal(), rust()]
+    Vec<u8> read_bytes_internal(&str vfs_path);
+    int byte_len(&str vfs_path);
+}
+[uuid(f19e19aa-9568-4021-ae47-7658426780f2)]
+class VfsService: IVfsService {}
+
+[uuid(c0d98698-33e4-4503-a403-eb3573716ed0)]
+interface IInputService: IUnknown {
+    bool key_down(int keycode);
+    bool key_pressed(int keycode);
+    float mouse_x();
+    float mouse_y();
+}
+[uuid(0993f2d2-6b91-4bbb-92ac-acd5e3ee94c4)]
+class InputService: IInputService {}
+
+[uuid(5ad2bb0f-3e0c-4282-ab44-3d503ce44443)]
+interface IGameRegistry: IUnknown {
+    int count();
+    int game_at(int index);
+    &str full_name(int game);
+    &str config_key(int game);
+    &str default_asset_path(int game);
+}
+[uuid(4192e6b8-7985-4d18-8d28-032f1fc63de6)]
+class GameRegistry: IGameRegistry {}
+
+[uuid(302fd52d-e93d-45e3-bfb3-719b94f2b215)]
+interface ICommandBus: IUnknown {
+    int dispatch(int cmd_kind, int arg);
+}
+[uuid(12138761-4a28-457f-b386-4d3a0ac89209)]
+class CommandBus: ICommandBus {}
+
+[uuid(b6fd26a0-e028-427c-994c-e18310c1cd34)]
+interface IHostContext: IUnknown {
+    ISceneManager scene_manager();
+    IAudioService audio();
+    ITextureService textures();
+    IVfsService vfs();
+    IInputService input();
+    IGameRegistry games();
+    ICommandBus commands();
+}
+[uuid(e7c264f9-fea1-472f-9d47-468a6dec9331)]
+class HostContext: IHostContext {}

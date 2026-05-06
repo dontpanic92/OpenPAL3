@@ -1,11 +1,12 @@
 pub mod main_content;
 pub mod main_director;
-pub mod welcome_page;
+pub mod scripted_welcome_page;
 
 use std::rc::Rc;
 
 use crosscom::ComRc;
 pub use main_director::DevToolsDirector;
+pub use scripted_welcome_page::ScriptedWelcomePage;
 use radiance::{comdef::IEntity, rendering::ComponentFactory};
 
 #[allow(dead_code)]

@@ -24,6 +24,7 @@ mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 native-dialog = "0.9"
 radiance = { path = "../../radiance/radiance" }
 radiance_editor = { path = "../../radiance/radiance_editor" }
+radiance_scripting = { path = "../../radiance/radiance_scripting" }
 packfs = { path = "../packfs" }
 serde = "1.0"
 serde_json = "1.0"

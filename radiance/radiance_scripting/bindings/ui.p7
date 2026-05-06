@@ -1,0 +1,97 @@
+// UI tree helpers for scripted imgui rendering.
+//
+// All constructors return `UiNode`, a fixed-shape recursive struct. Kind-
+// specific fields are filled by the constructor; unused fields default to
+// 0 / empty / "" so the type checker sees one uniform shape regardless of
+// node kind. The Rust walker dispatches on `kind` and reads only the
+// fields relevant to that kind.
+
+pub let KIND_WINDOW: int = 1;
+pub let KIND_WINDOW_CENTERED: int = 2;
+pub let KIND_COLUMN: int = 3;
+pub let KIND_ROW: int = 4;
+pub let KIND_TEXT: int = 5;
+pub let KIND_TEXT_WITH_FONT: int = 6;
+pub let KIND_BUTTON: int = 7;
+pub let KIND_SPACER: int = 8;
+pub let KIND_DUMMY: int = 9;
+pub let KIND_IMAGE: int = 10;
+pub let KIND_TABLE: int = 11;
+pub let KIND_STYLE_ALPHA: int = 12;
+pub let KIND_GROUP: int = 13;
+
+// Field meaning per kind:
+//   kind     : KIND_* tag (always set)
+//   label    : window title / text content / button label / "" otherwise
+//   w        : width / dummy.w / spacer.w / image.w / style_alpha.alpha
+//   h        : height / dummy.h / spacer.h / image.h
+//   i1       : window flags / font_idx / button command_id / image texture com_id / table num_columns
+//   i2       : reserved (always 0 today)
+//   children : window/column/row/group/style_alpha body, table cells
+pub struct UiNode(
+    pub kind: int,
+    pub label: string,
+    pub w: float,
+    pub h: float,
+    pub i1: int,
+    pub i2: int,
+    pub children: array<UiNode>,
+);
+
+pub fn window(title: string, w: float, h: float, flags: int, body: array<UiNode>) -> UiNode {
+    UiNode(KIND_WINDOW, title, w, h, flags, 0, body)
+}
+
+pub fn window_centered(title: string, w: float, h: float, body: array<UiNode>) -> UiNode {
+    UiNode(KIND_WINDOW_CENTERED, title, w, h, 0, 0, body)
+}
+
+pub fn column(body: array<UiNode>) -> UiNode {
+    UiNode(KIND_COLUMN, "", 0.0, 0.0, 0, 0, body)
+}
+
+pub fn row(body: array<UiNode>) -> UiNode {
+    UiNode(KIND_ROW, "", 0.0, 0.0, 0, 0, body)
+}
+
+pub fn text(text: string) -> UiNode {
+    let children: array<UiNode> = [];
+    UiNode(KIND_TEXT, text, 0.0, 0.0, 0, 0, children)
+}
+
+pub fn text_with_font(font_idx: int, text: string) -> UiNode {
+    let children: array<UiNode> = [];
+    UiNode(KIND_TEXT_WITH_FONT, text, 0.0, 0.0, font_idx, 0, children)
+}
+
+pub fn button(label: string, w: float, h: float, command_id: int) -> UiNode {
+    let children: array<UiNode> = [];
+    UiNode(KIND_BUTTON, label, w, h, command_id, 0, children)
+}
+
+pub fn spacer(w: float, h: float) -> UiNode {
+    let children: array<UiNode> = [];
+    UiNode(KIND_SPACER, "", w, h, 0, 0, children)
+}
+
+pub fn dummy(w: float, h: float) -> UiNode {
+    let children: array<UiNode> = [];
+    UiNode(KIND_DUMMY, "", w, h, 0, 0, children)
+}
+
+pub fn image(texture_com_id: int, w: float, h: float) -> UiNode {
+    let children: array<UiNode> = [];
+    UiNode(KIND_IMAGE, "", w, h, texture_com_id, 0, children)
+}
+
+pub fn table(num_columns: int, cells: array<UiNode>) -> UiNode {
+    UiNode(KIND_TABLE, "", 0.0, 0.0, num_columns, 0, cells)
+}
+
+pub fn style_alpha(alpha: float, body: array<UiNode>) -> UiNode {
+    UiNode(KIND_STYLE_ALPHA, "", alpha, 0.0, 0, 0, body)
+}
+
+pub fn group(body: array<UiNode>) -> UiNode {
+    UiNode(KIND_GROUP, "", 0.0, 0.0, 0, 0, body)
+}

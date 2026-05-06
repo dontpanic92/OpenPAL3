@@ -976,12 +976,18 @@ pub const GLOBAL_{base}VirtualTable_CCW_FOR_{class_name}: {module}::{base}Virtua
                 .map(|param| format!("{}.into()", param.name))
                 .collect::<Vec<_>>()
                 .join(",");
+            let ret_mapping = if method.ret_ty == "&str" || method.ret_ty == "string" {
+                "std::ffi::CString::new(ret).unwrap().into_raw() as *const std::os::raw::c_char".to_string()
+            } else {
+                "ret.into()".to_string()
+            };
             Ok(format!(
                 r#"
     unsafe extern "system" fn {method_name}(this: *const *const std::os::raw::c_void{raw_params}) -> {raw_ret} {{
         {param_mapping}
         let __crosscom_object = {crosscom}::get_object::<{class_name}Ccw>(this);
-        (*__crosscom_object).inner{field_name}.{method_name}({call_args}).into()
+        let ret = (*__crosscom_object).inner{field_name}.{method_name}({call_args});
+        {ret_mapping}
     }}
 "#,
                 method_name = method.name,
@@ -1092,10 +1098,20 @@ pub fn query_interface<T: {crosscom}::ComInterface>(&self) -> Option<{crosscom}:
                 let call_args = method
                     .params
                     .iter()
-                    .map(|param| format!("{}.into()", param.name))
+                    .map(|param| {
+                        if !method.attrs.contains_key("internal") && (param.ty == "&str" || param.ty == "string") {
+                            format!("std::ffi::CString::new({}).unwrap().as_ptr()", param.name)
+                        } else {
+                            format!("{}.into()", param.name)
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join(",");
-                let ret_mapping = self.gen_method_ret_mapping(&method)?;
+                let ret_mapping = if method.ret_ty == "&str" || method.ret_ty == "string" {
+                    "let ret = if ret.is_null() { \"\" } else { std::ffi::CStr::from_ptr(ret).to_str().unwrap() };".to_string()
+                } else {
+                    self.gen_method_ret_mapping(&method)?
+                };
                 out.push_str(&format!(
                     r#"
 pub {signature} {{
@@ -1220,6 +1236,12 @@ pub {signature} {{
     }
 
     fn gen_param_ty_convert(&self, param: &MethodParameter) -> String {
+        if param.ty == "&str" || param.ty == "string" {
+            return format!(
+                "unsafe {{ std::ffi::CStr::from_ptr({}).to_str().unwrap() }}",
+                param.name
+            );
+        }
         match type_map(&param.ty).and_then(|mapped| mapped.2) {
             Some(conversion) => format!("{}{}", param.name, conversion),
             None => format!("{}.into()", param.name),
@@ -1227,6 +1249,9 @@ pub {signature} {{
     }
 
     fn gen_ret_ty_convert(&self, method: &Method) -> String {
+        if method.ret_ty == "&str" || method.ret_ty == "string" {
+            return "std::ffi::CString::new(ret).unwrap().into_raw() as *const std::os::raw::c_char".to_string();
+        }
         match type_map(&method.ret_ty).and_then(|mapped| mapped.2) {
             Some(conversion) => format!("ret{conversion}"),
             None => "ret.into()".to_string(),
@@ -1298,9 +1323,10 @@ pub {signature} {{
                     self.crosscom_module_name, module, interface.name
                 ));
             }
+            let module = &interface.module.as_ref().unwrap().module_name;
             return Ok(format!(
-                "{}::ComRc<{}>",
-                self.crosscom_module_name, interface.name
+                "{}::ComRc<{}::{}>",
+                self.crosscom_module_name, module, interface.name
             ));
         }
 
@@ -1321,6 +1347,7 @@ fn type_map(idl_ty: &str) -> Option<(&'static str, &'static str, Option<&'static
             None,
         )),
         "UUID" => Some(("uuid::Uuid", "uuid::Uuid", None)),
+        "&str" | "string" => Some(("*const std::os::raw::c_char", "&str", None)),
         "bool" => Some(("std::os::raw::c_int", "bool", Some(" != 0"))),
         "void" => Some(("()", "()", None)),
         _ => None,
