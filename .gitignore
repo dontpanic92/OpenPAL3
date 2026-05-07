@@ -9,6 +9,7 @@ radiance/Cargo.lock
 assets_ignore/
 vcpkg_installed/
 yaobow-assets.zip
+.DS_Store
 
 # swiftshader
 vk_swiftshader*
@@ -377,4 +378,3 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-

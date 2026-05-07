@@ -11,7 +11,7 @@ path = "src/lib.rs"
 crosscom = { path = "../rust" }
 p7 = { path = "../../../radiance/protosept/p7" }
 uuid = "0.8"
-libffi = "3"
+libffi = "5"
 
 [dev-dependencies]
 crosscom-ccidl = { path = "../../ccidl-rs" }
