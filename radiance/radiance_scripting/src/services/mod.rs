@@ -17,8 +17,8 @@ use radiance::input::InputEngine;
 use radiance::rendering::ComponentFactory;
 
 use crate::comdef::services::{
-    IAudioService, ICommandBus, IGameRegistry, IHostContext, IHostContextImpl, IInputService,
-    ITextureService, IVfsService,
+    IAudioService, ICommandBus, IConfigService, IGameRegistry, IHostContext, IHostContextImpl,
+    IInputService, ITextureService, IVfsService,
 };
 pub struct HostContext {
     scene_manager: ComRc<ISceneManager>,
@@ -28,6 +28,7 @@ pub struct HostContext {
     input: ComRc<IInputService>,
     games: ComRc<IGameRegistry>,
     commands: ComRc<ICommandBus>,
+    config: ComRc<IConfigService>,
 }
 
 ComObject_HostContext!(super::HostContext);
@@ -41,6 +42,7 @@ impl HostContext {
         input: ComRc<IInputService>,
         games: ComRc<IGameRegistry>,
         commands: ComRc<ICommandBus>,
+        config: ComRc<IConfigService>,
     ) -> ComRc<IHostContext> {
         ComRc::from_object(Self {
             scene_manager,
@@ -50,6 +52,7 @@ impl HostContext {
             input,
             games,
             commands,
+            config,
         })
     }
 
@@ -59,6 +62,7 @@ impl HostContext {
         texture_factory: Rc<dyn ComponentFactory>,
         vfs: Rc<MiniFs>,
         input: Rc<RefCell<dyn InputEngine>>,
+        config: ComRc<IConfigService>,
     ) -> ComRc<IHostContext> {
         let commands = CommandBus::create(None);
         Self::new(
@@ -69,6 +73,7 @@ impl HostContext {
             InputService::create(input),
             GameRegistry::create(),
             commands,
+            config,
         )
     }
 }
@@ -94,6 +99,9 @@ impl IHostContextImpl for HostContext {
     }
     fn commands(&self) -> ComRc<ICommandBus> {
         self.commands.clone()
+    }
+    fn config(&self) -> ComRc<IConfigService> {
+        self.config.clone()
     }
 }
 

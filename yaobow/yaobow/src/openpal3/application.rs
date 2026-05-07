@@ -1,11 +1,9 @@
-
 use super::debug_layer::OpenPal3DebugLayer;
 use super::main_menu_director;
 
 use crosscom::ComRc;
 use radiance::application::Application;
 use radiance::comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl};
-use shared::config::YaobowConfig;
 use shared::openpal3::asset_manager::AssetManager;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -60,11 +58,11 @@ impl IComponentImpl for OpenPal3ApplicationLoader {
 }
 
 impl OpenPal3ApplicationLoader {
-    pub fn create_application(config: &YaobowConfig, app_name: &str) -> ComRc<IApplication> {
+    pub fn create_application(asset_path: &str, app_name: &str) -> ComRc<IApplication> {
         let app = ComRc::<IApplication>::from_object(Application::new());
         app.add_component(
             IApplicationLoaderComponent::uuid(),
-            ComRc::from_object(Self::new(app.clone(), config, app_name)),
+            ComRc::from_object(Self::new(app.clone(), asset_path, app_name)),
         );
 
         app
@@ -72,13 +70,13 @@ impl OpenPal3ApplicationLoader {
 
     pub fn create(
         app: ComRc<IApplication>,
-        config: &YaobowConfig,
+        asset_path: &str,
     ) -> ComRc<IApplicationLoaderComponent> {
-        ComRc::from_object(Self::new(app.clone(), config, "OpenPAL3"))
+        ComRc::from_object(Self::new(app.clone(), asset_path, "OpenPAL3"))
     }
 
-    fn new(app: ComRc<IApplication>, config: &YaobowConfig, app_name: &str) -> Self {
-        let root_path = PathBuf::from(&config.asset_path);
+    fn new(app: ComRc<IApplication>, asset_path: &str, app_name: &str) -> Self {
+        let root_path = PathBuf::from(asset_path);
 
         Self {
             app,

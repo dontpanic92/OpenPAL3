@@ -1,3 +1,4 @@
+pub mod config_service;
 pub mod main_content;
 pub mod main_director;
 pub mod scripted_welcome_page;

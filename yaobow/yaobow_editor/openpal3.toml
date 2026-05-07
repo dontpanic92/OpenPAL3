@@ -1,3 +1,7 @@
-# PAL3.exe 所在的目录
-# The folder where PAL3.exe is
-asset_path = ""
+# DEPRECATED — see docs/yaobow.toml.example for the new schema.
+# This file is no longer read by yaobow or yaobow_editor.
+# The active config now lives at:
+#   Windows: %APPDATA%\yaobow\yaobow.toml
+#   macOS:   ~/Library/Application Support/yaobow/yaobow.toml
+#   Linux:   ~/.config/yaobow/yaobow.toml
+# Edit those paths from inside the editor via the "设置" button.

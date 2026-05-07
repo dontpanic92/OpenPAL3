@@ -13,7 +13,6 @@ use std::rc::Rc;
 use crosscom::ComRc;
 use radiance::comdef::{IApplication, IDirector};
 use radiance_editor::comdef::IViewContentImpl;
-use shared::config::YaobowConfig;
 use shared::openpal3::asset_manager::AssetManager;
 pub use shared::GameType;
 
@@ -34,7 +33,7 @@ impl IViewContentImpl for SceneViewResourceView {
 }
 
 impl SceneViewResourceView {
-    pub fn new(config: YaobowConfig, app: ComRc<IApplication>, game: GameType) -> Self {
+    pub fn new(asset_path: &str, app: ComRc<IApplication>, game: GameType) -> Self {
         app.set_title(&format!("妖弓编辑器 - {}", game.app_name()));
 
         let pkg_key = match game {
@@ -45,7 +44,7 @@ impl SceneViewResourceView {
 
         let factory = app.engine().borrow().rendering_component_factory();
         let input = app.engine().borrow().input_engine();
-        let vfs = packfs::init_virtual_fs(&config.asset_path, pkg_key);
+        let vfs = packfs::init_virtual_fs(asset_path, pkg_key);
         let asset_loader = match game {
             GameType::PAL4 => {
                 DevToolsAssetLoader::Pal4(shared::openpal4::asset_loader::AssetLoader::new(

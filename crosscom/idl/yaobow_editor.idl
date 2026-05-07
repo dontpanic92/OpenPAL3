@@ -3,9 +3,13 @@ module(rust) yaobow_editor::comdef;
 import crosscom.idl;
 import radiance.idl;
 import editor.idl;
+import editor_services.idl;
 
 [uuid(0181e046-cd8b-4b3c-8ee9-37952202fcb0)]
 class YaobowResourceViewContent: IViewContent {}
 
 [uuid(b8df017d-57f9-4f1c-956e-cc7e6a01f76e)]
 class DevToolsDirector: IDirector {}
+
+[uuid(8c4d50aa-3b07-4a32-9d20-2e0b2f7c0002)]
+class ConfigService: IConfigService {}

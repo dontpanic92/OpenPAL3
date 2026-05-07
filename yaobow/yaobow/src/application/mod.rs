@@ -18,7 +18,7 @@ use self::director::TitleSelectionDirector;
 
 pub struct YaobowApplicationLoader {
     app: ComRc<IApplication>,
-    config: anyhow::Result<YaobowConfig>,
+    config: YaobowConfig,
     selected_game: Rc<RefCell<Option<GameType>>>,
 }
 
@@ -52,13 +52,10 @@ impl IComponentImpl for YaobowApplicationLoader {
         }
 
         let game = self.selected_game.borrow().unwrap();
-        let loader = create_loader(
-            game,
-            self.app.clone(),
-            self.config.as_ref().cloned().unwrap(),
-        )
-        .query_interface::<IComponent>()
-        .unwrap();
+        let asset_path = self.config.asset_path_for(game).to_string();
+        let loader = create_loader(game, self.app.clone(), asset_path)
+            .query_interface::<IComponent>()
+            .unwrap();
 
         loader.on_loading();
 
@@ -72,10 +69,7 @@ impl YaobowApplicationLoader {
     pub fn new(app: ComRc<IApplication>) -> Self {
         Self {
             app,
-            #[cfg(linux)]
-            config: YaobowConfig::load("~/.config/openpal3.toml", "OPENPAL3"),
-            #[cfg(not(linux))]
-            config: YaobowConfig::load("openpal3.toml", "OPENPAL3"),
+            config: YaobowConfig::load(),
             selected_game: Rc::new(RefCell::new(None)),
         }
     }
@@ -84,11 +78,11 @@ impl YaobowApplicationLoader {
 fn create_loader(
     game: GameType,
     app: ComRc<IApplication>,
-    config: YaobowConfig,
+    asset_path: String,
 ) -> ComRc<IApplicationLoaderComponent> {
     match game {
-        GameType::PAL3 => OpenPal3ApplicationLoader::create(app, &config),
-        GameType::PAL4 => OpenPal4ApplicationLoader::create(app, config),
+        GameType::PAL3 => OpenPal3ApplicationLoader::create(app, &asset_path),
+        GameType::PAL4 => OpenPal4ApplicationLoader::create(app, asset_path),
         _ => unimplemented!(),
     }
 }

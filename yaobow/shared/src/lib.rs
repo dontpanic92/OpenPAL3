@@ -75,6 +75,52 @@ impl GameType {
             GameType::Gujian2 => None,
         }
     }
+
+    pub fn config_key(&self) -> &'static str {
+        match self {
+            GameType::PAL3 => "pal3",
+            GameType::PAL3A => "pal3a",
+            GameType::PAL4 => "pal4",
+            GameType::PAL5 => "pal5",
+            GameType::PAL5Q => "pal5q",
+            GameType::SWD5 => "swd5",
+            GameType::SWDHC => "swdhc",
+            GameType::SWDCF => "swdcf",
+            GameType::Gujian => "gujian",
+            GameType::Gujian2 => "gujian2",
+        }
+    }
+
+    pub fn from_config_key(key: &str) -> Option<Self> {
+        match key {
+            "pal3" => Some(GameType::PAL3),
+            "pal3a" => Some(GameType::PAL3A),
+            "pal4" => Some(GameType::PAL4),
+            "pal5" => Some(GameType::PAL5),
+            "pal5q" => Some(GameType::PAL5Q),
+            "swd5" => Some(GameType::SWD5),
+            "swdhc" => Some(GameType::SWDHC),
+            "swdcf" => Some(GameType::SWDCF),
+            "gujian" => Some(GameType::Gujian),
+            "gujian2" => Some(GameType::Gujian2),
+            _ => None,
+        }
+    }
+
+    pub fn all() -> &'static [GameType] {
+        &[
+            GameType::PAL3,
+            GameType::PAL3A,
+            GameType::PAL4,
+            GameType::PAL5,
+            GameType::PAL5Q,
+            GameType::SWD5,
+            GameType::SWDHC,
+            GameType::SWDCF,
+            GameType::Gujian,
+            GameType::Gujian2,
+        ]
+    }
 }
 
 lazy_static::lazy_static! {

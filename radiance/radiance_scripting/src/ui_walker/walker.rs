@@ -91,6 +91,7 @@ pub trait UiVisitor {
 pub struct UiAdapter<'a> {
     pub ui: &'a imgui::Ui,
     pub ctx: WalkContext<'a>,
+    pub table_counter: std::cell::Cell<u32>,
 }
 
 impl<'a> UiVisitor for UiAdapter<'a> {
@@ -165,7 +166,12 @@ impl<'a> UiVisitor for UiAdapter<'a> {
     }
 
     fn button(&mut self, label: &str, w: f32, h: f32, command_id: i32) -> Result<(), WalkError> {
-        let clicked = self.ui.button_with_size(label, [w, h]);
+        // imgui derives a widget id from the visible label, so multiple
+        // buttons with the same caption (e.g. several "选择...") would all
+        // share an id and only the first becomes interactive. Append a
+        // hidden `##cmd_<id>` suffix to make each unique.
+        let id_label = format!("{}##cmd_{}", label, command_id);
+        let clicked = self.ui.button_with_size(&id_label, [w, h]);
         if clicked {
             log::info!(
                 "ui_walker: button '{}' clicked, enqueuing cmd {}",
@@ -202,7 +208,13 @@ impl<'a> UiVisitor for UiAdapter<'a> {
         cells: &[OwnedNode],
         walk_cell: &mut dyn FnMut(&mut dyn UiVisitor, &OwnedNode) -> Result<(), WalkError>,
     ) -> Result<(), WalkError> {
-        if let Some(_table) = self.ui.begin_table("ui_table", num_columns as usize) {
+        // imgui asserts when two BeginTable calls share an id but differ in
+        // column count. Use a per-frame monotonic counter to keep ids unique
+        // even when several tables of different shapes appear in one render.
+        let n = self.table_counter.get();
+        self.table_counter.set(n + 1);
+        let table_id = format!("ui_table_{}", n);
+        if let Some(_table) = self.ui.begin_table(&table_id, num_columns as usize) {
             for cell in cells {
                 self.ui.table_next_column();
                 walk_cell(self, cell)?;

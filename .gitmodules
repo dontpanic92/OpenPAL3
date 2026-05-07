@@ -1,6 +1,9 @@
 [submodule "radiance/radiance-assets"]
 	path = radiance/radiance-assets
 	url = https://github.com/dontpanic92/radiance-assets
+[submodule "path/to/module"]
+	path = radiance/protosept
+	url = https://github.com/dontpanic92/protosept
 [submodule "yaobow/yaobow-assets"]
 	path = yaobow/yaobow-assets
 	url = https://github.com/dontpanic92/yaobow-assets

@@ -76,6 +76,15 @@ interface ICommandBus: IUnknown {
 [uuid(12138761-4a28-457f-b386-4d3a0ac89209)]
 class CommandBus: ICommandBus {}
 
+[uuid(8c4d50aa-3b07-4a32-9d20-2e0b2f7c0001)]
+interface IConfigService: IUnknown {
+    &str get_asset_path(int game);
+    void set_asset_path(int game, &str path);
+    bool save();
+    void reload();
+    &str pick_folder(&str initial);
+}
+
 [uuid(b6fd26a0-e028-427c-994c-e18310c1cd34)]
 interface IHostContext: IUnknown {
     ISceneManager scene_manager();
@@ -85,6 +94,7 @@ interface IHostContext: IUnknown {
     IInputService input();
     IGameRegistry games();
     ICommandBus commands();
+    IConfigService config();
 }
 [uuid(e7c264f9-fea1-472f-9d47-468a6dec9331)]
 class HostContext: IHostContext {}

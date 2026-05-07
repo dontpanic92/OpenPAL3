@@ -10,6 +10,17 @@ pub proto IGameRegistry {
 }
 
 @foreign(dispatcher="com.invoke", finalizer="com.release",
+         type_tag="radiance_scripting.comdef.services.IConfigService",
+         uuid="8c4d50aa-3b07-4a32-9d20-2e0b2f7c0001")
+pub proto IConfigService {
+    fn get_asset_path(self: ref<IConfigService>, game: int) -> string;
+    fn set_asset_path(self: ref<IConfigService>, game: int, path: string) -> int;
+    fn save(self: ref<IConfigService>) -> int;
+    fn reload(self: ref<IConfigService>) -> int;
+    fn pick_folder(self: ref<IConfigService>, initial: string) -> string;
+}
+
+@foreign(dispatcher="com.invoke", finalizer="com.release",
          type_tag="radiance_scripting.comdef.services.IHostContext",
          uuid="b6fd26a0-e028-427c-994c-e18310c1cd34")
 pub proto IHostContext {
@@ -20,13 +31,20 @@ pub proto IHostContext {
     fn input(self: ref<IHostContext>) -> int;
     fn games(self: ref<IHostContext>) -> box<IGameRegistry>;
     fn commands(self: ref<IHostContext>) -> int;
+    fn config(self: ref<IHostContext>) -> box<IConfigService>;
 }
 
 let KIND_WINDOW_CENTERED: int = 2;
 let KIND_TEXT_WITH_FONT: int = 6;
+let KIND_TEXT: int = 5;
 let KIND_BUTTON: int = 7;
 let KIND_DUMMY: int = 9;
 let KIND_TABLE: int = 11;
+
+let PICK_CMD_BASE: int = 4000;
+let CLEAR_CMD_BASE: int = 5000;
+let SAVE_CMD: int = 9002;
+let CANCEL_CMD: int = 9000;
 
 pub struct UiNode(
     pub kind: int,
@@ -42,9 +60,14 @@ fn window_centered(title: string, w: float, h: float, body: array<UiNode>) -> Ui
     UiNode(KIND_WINDOW_CENTERED, title, w, h, 0, 0, body)
 }
 
-fn text_with_font(font_idx: int, text: string) -> UiNode {
+fn text_with_font(font_idx: int, t: string) -> UiNode {
     let children: array<UiNode> = [];
-    UiNode(KIND_TEXT_WITH_FONT, text, 0.0, 0.0, font_idx, 0, children)
+    UiNode(KIND_TEXT_WITH_FONT, t, 0.0, 0.0, font_idx, 0, children)
+}
+
+fn text(t: string) -> UiNode {
+    let children: array<UiNode> = [];
+    UiNode(KIND_TEXT, t, 0.0, 0.0, 0, 0, children)
 }
 
 fn button(label: string, w: float, h: float, command_id: int) -> UiNode {
@@ -75,75 +98,76 @@ pub fn init(host: ref<IHostContext>) -> box<State> {
     let names = box(names_arr);
     let n = registry.count();
     let mut i = 0;
-
     while i < n {
         let ordinal = registry.game_at(i);
         games.push(ordinal);
         names.push(registry.full_name(ordinal));
         i = i + 1;
     }
-
     box(State(host, games, names))
 }
 
-fn game_name(state: ref<State>, ordinal: int) -> string {
+fn path_label(p: string) -> string {
+    if p == "" {
+        return "(未设置)";
+    }
+    return p;
+}
+
+fn name_cell(state: ref<State>, ordinal: int) -> UiNode {
     let mut i = 0;
     while i < state.games.len() {
         if state.games[i] == ordinal {
-            return state.names[i];
+            return text(state.names[i]);
         }
         i = i + 1;
     }
-    ""
+    return text("");
 }
 
-fn title_node() -> UiNode {
-    return text_with_font(0, "妖弓编辑器");
+fn path_cell(state: ref<State>, ordinal: int) -> UiNode {
+    let cfg = state.host.config();
+    let current = cfg.get_asset_path(ordinal);
+    return text(path_label(current));
 }
 
-fn top_spacer_node() -> UiNode {
-    return dummy(0.0, 24.0);
+fn pick_cell(ordinal: int) -> UiNode {
+    return button("选择...", 100.0, 24.0, PICK_CMD_BASE + ordinal);
 }
 
-fn mid_spacer_node() -> UiNode {
-    return dummy(0.0, 16.0);
+fn clear_cell(ordinal: int) -> UiNode {
+    return button("清除", 80.0, 24.0, CLEAR_CMD_BASE + ordinal);
 }
 
-fn reload_button_node() -> UiNode {
-    return button("重载脚本", 120.0, 24.0, 9999);
+fn rows_node(state: ref<State>) -> UiNode {
+    return table(4, [
+        name_cell(state, 0), path_cell(state, 0), pick_cell(0), clear_cell(0),
+        name_cell(state, 1), path_cell(state, 1), pick_cell(1), clear_cell(1),
+        name_cell(state, 2), path_cell(state, 2), pick_cell(2), clear_cell(2),
+        name_cell(state, 3), path_cell(state, 3), pick_cell(3), clear_cell(3),
+        name_cell(state, 4), path_cell(state, 4), pick_cell(4), clear_cell(4),
+        name_cell(state, 5), path_cell(state, 5), pick_cell(5), clear_cell(5),
+        name_cell(state, 6), path_cell(state, 6), pick_cell(6), clear_cell(6),
+        name_cell(state, 7), path_cell(state, 7), pick_cell(7), clear_cell(7),
+        name_cell(state, 8), path_cell(state, 8), pick_cell(8), clear_cell(8),
+        name_cell(state, 9), path_cell(state, 9), pick_cell(9), clear_cell(9),
+    ]);
 }
 
-fn settings_button_node() -> UiNode {
-    return button("设置", 120.0, 24.0, 9001);
-}
-
-fn game_button_node(state: ref<State>, ordinal: int) -> UiNode {
-    let name = game_name(state, ordinal);
-    return button(f"运行《{name}》编辑器", -1.0, 60.0, 1000 + ordinal);
-}
-
-fn empty_cell_node() -> UiNode {
-    return dummy(0.0, 0.0);
-}
-
-fn game_table_node(state: ref<State>) -> UiNode {
-    return table(3, [
-        game_button_node(state, 0), game_button_node(state, 8), game_button_node(state, 5),
-        game_button_node(state, 1), game_button_node(state, 9), game_button_node(state, 6),
-        game_button_node(state, 2), empty_cell_node(), game_button_node(state, 7),
-        game_button_node(state, 3), empty_cell_node(), empty_cell_node(),
-        game_button_node(state, 4), empty_cell_node(), empty_cell_node(),
+fn footer_node() -> UiNode {
+    return table(2, [
+        button("保存并返回", 200.0, 32.0, SAVE_CMD),
+        button("取消", 200.0, 32.0, CANCEL_CMD),
     ]);
 }
 
 pub fn render(state: ref<State>, dt: float) -> UiNode {
-    return window_centered("妖弓编辑器", 720.0, 480.0, [
-        title_node(),
-        top_spacer_node(),
-        game_table_node(state),
-        mid_spacer_node(),
-        settings_button_node(),
-        reload_button_node(),
+    return window_centered("游戏路径设置", 820.0, 560.0, [
+        text_with_font(0, "游戏资源路径设置"),
+        dummy(0.0, 12.0),
+        rows_node(state),
+        dummy(0.0, 16.0),
+        footer_node(),
     ]);
 }
 

@@ -6,10 +6,7 @@ use radiance::{
     application::Application,
     comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
 };
-use shared::{
-    config::YaobowConfig,
-    openpal4::{asset_loader::AssetLoader, director::OpenPAL4Director},
-};
+use shared::openpal4::{asset_loader::AssetLoader, director::OpenPAL4Director};
 
 
 pub struct OpenPal4ApplicationLoader {
@@ -57,11 +54,11 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
 }
 
 impl OpenPal4ApplicationLoader {
-    pub fn create_application(app_name: &str) -> ComRc<IApplication> {
+    pub fn create_application(asset_path: String, app_name: &str) -> ComRc<IApplication> {
         let app = ComRc::<IApplication>::from_object(Application::new());
         app.add_component(
             IApplicationLoaderComponent::uuid(),
-            ComRc::from_object(Self::new(app.clone(), app_name)),
+            ComRc::from_object(Self::new(app.clone(), asset_path, app_name)),
         );
 
         app
@@ -69,16 +66,18 @@ impl OpenPal4ApplicationLoader {
 
     pub fn create(
         app: ComRc<IApplication>,
-        _config: YaobowConfig,
+        asset_path: String,
     ) -> ComRc<IApplicationLoaderComponent> {
-        ComRc::from_object(Self::new(app.clone(), "OpenPAL4"))
+        ComRc::from_object(Self::new(app.clone(), asset_path, "OpenPAL4"))
     }
 
-    fn new(app: ComRc<IApplication>, app_name: &str) -> Self {
+    fn new(app: ComRc<IApplication>, asset_path: String, app_name: &str) -> Self {
         let root_path = if cfg!(vita) {
             PathBuf::from("ux0:games/PAL4")
+        } else if !asset_path.is_empty() {
+            PathBuf::from(asset_path)
         } else {
-            PathBuf::from("F:\\PAL4_test") // PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 4")
+            PathBuf::from("F:\\PAL4_test")
         };
         Self {
             app,

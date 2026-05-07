@@ -1,0 +1,43 @@
+# Example yaobow.toml
+#
+# This file is automatically read from the OS-specific user config dir:
+#   Windows: %APPDATA%\yaobow\yaobow.toml
+#   macOS:   ~/Library/Application Support/yaobow/yaobow.toml
+#   Linux:   ~/.config/yaobow/yaobow.toml
+#
+# It is normally edited from the editor's settings page (click "设置" on the
+# welcome screen) — manual editing is supported but optional. The
+# YAOBOW_CONFIG environment variable can override the path used.
+#
+# Each [game.<id>] section holds per-game settings. Currently only
+# `asset_path` (the directory containing the original game install) is read.
+
+[game.pal3]
+asset_path = "F:\\SteamLibrary\\steamapps\\common\\PAL3"
+
+[game.pal3a]
+asset_path = "F:\\SteamLibrary\\steamapps\\common\\PAL3A"
+
+[game.pal4]
+asset_path = "F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 4"
+
+[game.pal5]
+asset_path = "F:\\PAL5"
+
+[game.pal5q]
+asset_path = "F:\\PAL5Q"
+
+[game.swd5]
+asset_path = "F:\\SteamLibrary\\steamapps\\common\\SWD5"
+
+[game.swdhc]
+asset_path = "F:\\SteamLibrary\\steamapps\\common\\SWDHC"
+
+[game.swdcf]
+asset_path = "F:\\SteamLibrary\\steamapps\\common\\SWDCF"
+
+[game.gujian]
+asset_path = "F:\\SteamLibrary\\steamapps\\common\\Gujian"
+
+[game.gujian2]
+asset_path = "F:\\SteamLibrary\\steamapps\\common\\Gujian2"

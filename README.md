@@ -26,14 +26,17 @@ v0.3 版本请前往 Releases 页面下载，[Azure Pipelines](https://dontpanic
 
 ### 运行
 
-**首次运行前请手动修改 `openpal3.toml`，将《仙剑奇侠传三》游戏目录填入：**
-**（请注意反斜杠需要重复两次）**
+首次运行前请通过妖弓编辑器的 **设置** 按钮配置《仙剑奇侠传三》等游戏的资源目录。配置文件会自动保存到您操作系统的标准用户配置目录：
 
-```
-# PAL3.exe 所在的目录
-# The folder where PAL3.exe is
-asset_path = "E:\\CubeLibrary\\apps\\1000039"
-```
+| 平台 | 路径 |
+| --- | --- |
+| Windows | `%APPDATA%\yaobow\yaobow.toml` |
+| macOS | `~/Library/Application Support/yaobow/yaobow.toml` |
+| Linux | `~/.config/yaobow/yaobow.toml` |
+
+也可以参考 [`docs/yaobow.toml.example`](docs/yaobow.toml.example) 手动编辑（需要时可设置 `YAOBOW_CONFIG` 环境变量覆盖路径）。
+
+> 旧版的根目录 `openpal3.toml` 已弃用，不会自动迁移；请通过编辑器内的设置界面重新指定。
 
 之后运行 `openpal3.exe` 即可。如果运行时提示 OpenAL 出错，[请下载并安装 OpenAL](http://www.openal.org/downloads/oalinst.zip)。
 

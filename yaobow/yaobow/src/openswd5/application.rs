@@ -7,10 +7,7 @@ use radiance::{
     comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
     scene::CoreScene,
 };
-use shared::{
-    config::YaobowConfig,
-    openswd5::{asset_loader::AssetLoader, director::OpenSWD5Director},
-};
+use shared::openswd5::{asset_loader::AssetLoader, director::OpenSWD5Director};
 
 
 pub struct OpenSwd5ApplicationLoader {
@@ -59,11 +56,11 @@ impl IComponentImpl for OpenSwd5ApplicationLoader {
 }
 
 impl OpenSwd5ApplicationLoader {
-    pub fn create_application() -> ComRc<IApplication> {
+    pub fn create_application(asset_path: String) -> ComRc<IApplication> {
         let app = ComRc::<IApplication>::from_object(Application::new());
         app.add_component(
             IApplicationLoaderComponent::uuid(),
-            ComRc::from_object(Self::new(app.clone())),
+            ComRc::from_object(Self::new(app.clone(), asset_path)),
         );
 
         app
@@ -71,15 +68,17 @@ impl OpenSwd5ApplicationLoader {
 
     pub fn create(
         app: ComRc<IApplication>,
-        _config: YaobowConfig,
+        asset_path: String,
     ) -> ComRc<IApplicationLoaderComponent> {
-        ComRc::from_object(Self::new(app.clone()))
+        ComRc::from_object(Self::new(app.clone(), asset_path))
     }
 
-    fn new(app: ComRc<IApplication>) -> Self {
-        Self {
-            app,
-            root_path: PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\SWDHC"),
-        }
+    fn new(app: ComRc<IApplication>, asset_path: String) -> Self {
+        let root_path = if !asset_path.is_empty() {
+            PathBuf::from(asset_path)
+        } else {
+            PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\SWDHC")
+        };
+        Self { app, root_path }
     }
 }

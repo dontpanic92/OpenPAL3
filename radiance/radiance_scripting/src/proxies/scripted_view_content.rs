@@ -61,6 +61,7 @@ impl IViewContentImpl for ScriptedViewContent {
                             commands: &mut queue,
                             fonts: &fonts,
                         },
+                        table_counter: std::cell::Cell::new(0),
                     };
                     if let Err(err) = walk(owned, &mut adapter) {
                         log::error!("scripted view content walk failed: {:?}", err);

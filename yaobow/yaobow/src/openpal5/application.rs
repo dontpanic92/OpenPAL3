@@ -6,10 +6,7 @@ use radiance::{
     application::Application,
     comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
 };
-use shared::{
-    config::YaobowConfig,
-    openpal5::{asset_loader::AssetLoader, director::OpenPAL5Director, scene::Pal5Scene},
-};
+use shared::openpal5::{asset_loader::AssetLoader, director::OpenPAL5Director, scene::Pal5Scene};
 
 
 pub struct OpenPal5ApplicationLoader {
@@ -49,11 +46,11 @@ impl IComponentImpl for OpenPal5ApplicationLoader {
 }
 
 impl OpenPal5ApplicationLoader {
-    pub fn create_application() -> ComRc<IApplication> {
+    pub fn create_application(asset_path: String) -> ComRc<IApplication> {
         let app = ComRc::<IApplication>::from_object(Application::new());
         app.add_component(
             IApplicationLoaderComponent::uuid(),
-            ComRc::from_object(Self::new(app.clone())),
+            ComRc::from_object(Self::new(app.clone(), asset_path)),
         );
 
         app
@@ -61,15 +58,17 @@ impl OpenPal5ApplicationLoader {
 
     pub fn create(
         app: ComRc<IApplication>,
-        _config: YaobowConfig,
+        asset_path: String,
     ) -> ComRc<IApplicationLoaderComponent> {
-        ComRc::from_object(Self::new(app.clone()))
+        ComRc::from_object(Self::new(app.clone(), asset_path))
     }
 
-    fn new(app: ComRc<IApplication>) -> Self {
-        Self {
-            app,
-            root_path: PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 5"),
-        }
+    fn new(app: ComRc<IApplication>, asset_path: String) -> Self {
+        let root_path = if !asset_path.is_empty() {
+            PathBuf::from(asset_path)
+        } else {
+            PathBuf::from("F:\\SteamLibrary\\steamapps\\common\\Chinese Paladin 5")
+        };
+        Self { app, root_path }
     }
 }
