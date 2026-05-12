@@ -135,6 +135,6 @@ fn dispatcher_roundtrips_long_arg_and_return_through_real_vtable() {
         let result = ctx.stack[0].stack.pop().expect("result");
         assert_eq!(result, Data::Int(15));
 
-        ctx.collect_garbage();
+        ctx.collect_garbage().expect("collect");
     });
 }

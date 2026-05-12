@@ -164,8 +164,8 @@ fn com_invoke(ctx: &mut Context) -> Result<(), RuntimeError> {
 ///   handle:   Data::Int      (ComObjectTable id)
 /// ```
 ///
-/// We accept either order (with or without a leading type_tag) for
-/// resilience as the runtime protocol firms up.
+/// `type_tag` + `handle` is the canonical protocol. A handle-only call is
+/// still accepted for compatibility with older embedding code.
 fn com_release(ctx: &mut Context) -> Result<(), RuntimeError> {
     let top = ctx
         .stack_frame_mut()?
@@ -190,10 +190,17 @@ fn com_release(ctx: &mut Context) -> Result<(), RuntimeError> {
             )));
         }
     };
-    let _ = with_services(|s| {
+    let released = with_services(|s| {
         let table: &mut ComObjectTable = s.com_table_mut();
-        table.release(handle);
-    });
+        table.release(handle)
+    })
+    .map_err(|e| RuntimeError::Other(format!("com.release: with_services: {}", e)))?;
+    if !released {
+        return Err(RuntimeError::Other(format!(
+            "com.release: invalid COM object handle {}",
+            handle
+        )));
+    }
     Ok(())
 }
 
