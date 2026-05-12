@@ -65,3 +65,36 @@ fn constructor_returns_uinode_struct_shape() {
     assert_eq!(child_fields[5], Data::Int(0));
     assert_eq!(child_fields[6], Data::Array(Vec::new()));
 }
+
+#[test]
+fn imported_ui_module_constructors_return_walkable_nodes() {
+    let mut provider = p7::InMemoryModuleProvider::new();
+    provider.add_module(
+        "ui".to_string(),
+        radiance_scripting::ui_walker::UI_BINDINGS_P7.to_string(),
+    );
+
+    let source = r#"
+import ui;
+
+pub fn make() -> ui.UiNode {
+    return ui.window("t", 100.0, 200.0, 0, [ui.text("hi")]);
+}
+"#;
+    let module = p7::compile_with_provider(source.to_string(), Box::new(provider))
+        .expect("script using import ui compiles");
+
+    let mut ctx = Context::new();
+    ctx.load_module(module);
+    ctx.push_function("make", Vec::new());
+    ctx.resume().expect("run make");
+
+    let result = ctx.stack[0].stack.pop().expect("make returned a value");
+    let owned = radiance_scripting::ui_walker::owned::resolve(&ctx, &result)
+        .expect("resolve imported UiNode to owned tree");
+    assert_eq!(owned.kind, 1);
+    assert_eq!(owned.label, "t");
+    assert_eq!(owned.children.len(), 1);
+    assert_eq!(owned.children[0].kind, 5);
+    assert_eq!(owned.children[0].label, "hi");
+}

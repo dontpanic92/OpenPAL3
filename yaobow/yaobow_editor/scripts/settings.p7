@@ -1,54 +1,10 @@
 import editor_services;
-
-let KIND_WINDOW_CENTERED: int = 2;
-let KIND_TEXT_WITH_FONT: int = 6;
-let KIND_TEXT: int = 5;
-let KIND_BUTTON: int = 7;
-let KIND_DUMMY: int = 9;
-let KIND_TABLE: int = 11;
+import ui;
 
 let PICK_CMD_BASE: int = 4000;
 let CLEAR_CMD_BASE: int = 5000;
 let SAVE_CMD: int = 9002;
 let CANCEL_CMD: int = 9000;
-
-pub struct UiNode(
-    pub kind: int,
-    pub label: string,
-    pub w: float,
-    pub h: float,
-    pub i1: int,
-    pub i2: int,
-    pub children: array<UiNode>,
-);
-
-fn window_centered(title: string, w: float, h: float, body: array<UiNode>) -> UiNode {
-    UiNode(KIND_WINDOW_CENTERED, title, w, h, 0, 0, body)
-}
-
-fn text_with_font(font_idx: int, t: string) -> UiNode {
-    let children: array<UiNode> = [];
-    UiNode(KIND_TEXT_WITH_FONT, t, 0.0, 0.0, font_idx, 0, children)
-}
-
-fn text(t: string) -> UiNode {
-    let children: array<UiNode> = [];
-    UiNode(KIND_TEXT, t, 0.0, 0.0, 0, 0, children)
-}
-
-fn button(label: string, w: float, h: float, command_id: int) -> UiNode {
-    let children: array<UiNode> = [];
-    UiNode(KIND_BUTTON, label, w, h, command_id, 0, children)
-}
-
-fn dummy(w: float, h: float) -> UiNode {
-    let children: array<UiNode> = [];
-    UiNode(KIND_DUMMY, "", w, h, 0, 0, children)
-}
-
-fn table(num_columns: int, cells: array<UiNode>) -> UiNode {
-    UiNode(KIND_TABLE, "", 0.0, 0.0, num_columns, 0, cells)
-}
 
 pub struct State(
     pub host: ref<editor_services.IHostContext>,
@@ -80,33 +36,33 @@ fn path_label(p: string) -> string {
     return p;
 }
 
-fn name_cell(state: ref<State>, ordinal: int) -> UiNode {
+fn name_cell(state: ref<State>, ordinal: int) -> ui.UiNode {
     let mut i = 0;
     while i < state.games.len() {
         if state.games[i] == ordinal {
-            return text(state.names[i]);
+            return ui.text(state.names[i]);
         }
         i = i + 1;
     }
-    return text("");
+    return ui.text("");
 }
 
-fn path_cell(state: ref<State>, ordinal: int) -> UiNode {
+fn path_cell(state: ref<State>, ordinal: int) -> ui.UiNode {
     let cfg = state.host.config();
     let current = cfg.get_asset_path(ordinal);
-    return text(path_label(current));
+    return ui.text(path_label(current));
 }
 
-fn pick_cell(ordinal: int) -> UiNode {
-    return button("选择...", 100.0, 24.0, PICK_CMD_BASE + ordinal);
+fn pick_cell(ordinal: int) -> ui.UiNode {
+    return ui.button("选择...", 100.0, 24.0, PICK_CMD_BASE + ordinal);
 }
 
-fn clear_cell(ordinal: int) -> UiNode {
-    return button("清除", 80.0, 24.0, CLEAR_CMD_BASE + ordinal);
+fn clear_cell(ordinal: int) -> ui.UiNode {
+    return ui.button("清除", 80.0, 24.0, CLEAR_CMD_BASE + ordinal);
 }
 
-fn rows_node(state: ref<State>) -> UiNode {
-    return table(4, [
+fn rows_node(state: ref<State>) -> ui.UiNode {
+    return ui.table(4, [
         name_cell(state, 0), path_cell(state, 0), pick_cell(0), clear_cell(0),
         name_cell(state, 1), path_cell(state, 1), pick_cell(1), clear_cell(1),
         name_cell(state, 2), path_cell(state, 2), pick_cell(2), clear_cell(2),
@@ -120,19 +76,19 @@ fn rows_node(state: ref<State>) -> UiNode {
     ]);
 }
 
-fn footer_node() -> UiNode {
-    return table(2, [
-        button("保存并返回", 200.0, 32.0, SAVE_CMD),
-        button("取消", 200.0, 32.0, CANCEL_CMD),
+fn footer_node() -> ui.UiNode {
+    return ui.table(2, [
+        ui.button("保存并返回", 200.0, 32.0, SAVE_CMD),
+        ui.button("取消", 200.0, 32.0, CANCEL_CMD),
     ]);
 }
 
-pub fn render(state: ref<State>, dt: float) -> UiNode {
-    return window_centered("游戏路径设置", 820.0, 560.0, [
-        text_with_font(0, "游戏资源路径设置"),
-        dummy(0.0, 12.0),
+pub fn render(state: ref<State>, dt: float) -> ui.UiNode {
+    return ui.window_centered("游戏路径设置", 820.0, 560.0, [
+        ui.text_with_font(0, "游戏资源路径设置"),
+        ui.dummy(0.0, 12.0),
         rows_node(state),
-        dummy(0.0, 16.0),
+        ui.dummy(0.0, 16.0),
         footer_node(),
     ]);
 }

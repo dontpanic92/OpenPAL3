@@ -1,43 +1,5 @@
 import editor_services;
-
-let KIND_WINDOW_CENTERED: int = 2;
-let KIND_TEXT_WITH_FONT: int = 6;
-let KIND_BUTTON: int = 7;
-let KIND_DUMMY: int = 9;
-let KIND_TABLE: int = 11;
-
-pub struct UiNode(
-    pub kind: int,
-    pub label: string,
-    pub w: float,
-    pub h: float,
-    pub i1: int,
-    pub i2: int,
-    pub children: array<UiNode>,
-);
-
-fn window_centered(title: string, w: float, h: float, body: array<UiNode>) -> UiNode {
-    UiNode(KIND_WINDOW_CENTERED, title, w, h, 0, 0, body)
-}
-
-fn text_with_font(font_idx: int, text: string) -> UiNode {
-    let children: array<UiNode> = [];
-    UiNode(KIND_TEXT_WITH_FONT, text, 0.0, 0.0, font_idx, 0, children)
-}
-
-fn button(label: string, w: float, h: float, command_id: int) -> UiNode {
-    let children: array<UiNode> = [];
-    UiNode(KIND_BUTTON, label, w, h, command_id, 0, children)
-}
-
-fn dummy(w: float, h: float) -> UiNode {
-    let children: array<UiNode> = [];
-    UiNode(KIND_DUMMY, "", w, h, 0, 0, children)
-}
-
-fn table(num_columns: int, cells: array<UiNode>) -> UiNode {
-    UiNode(KIND_TABLE, "", 0.0, 0.0, num_columns, 0, cells)
-}
+import ui;
 
 pub struct State(
     pub host: ref<editor_services.IHostContext>,
@@ -75,37 +37,37 @@ fn game_name(state: ref<State>, ordinal: int) -> string {
     ""
 }
 
-fn title_node() -> UiNode {
-    return text_with_font(0, "妖弓编辑器");
+fn title_node() -> ui.UiNode {
+    return ui.text_with_font(0, "妖弓编辑器");
 }
 
-fn top_spacer_node() -> UiNode {
-    return dummy(0.0, 24.0);
+fn top_spacer_node() -> ui.UiNode {
+    return ui.dummy(0.0, 24.0);
 }
 
-fn mid_spacer_node() -> UiNode {
-    return dummy(0.0, 16.0);
+fn mid_spacer_node() -> ui.UiNode {
+    return ui.dummy(0.0, 16.0);
 }
 
-fn reload_button_node() -> UiNode {
-    return button("重载脚本", 120.0, 24.0, 9999);
+fn reload_button_node() -> ui.UiNode {
+    return ui.button("重载脚本", 120.0, 24.0, 9999);
 }
 
-fn settings_button_node() -> UiNode {
-    return button("设置", 120.0, 24.0, 9001);
+fn settings_button_node() -> ui.UiNode {
+    return ui.button("设置", 120.0, 24.0, 9001);
 }
 
-fn game_button_node(state: ref<State>, ordinal: int) -> UiNode {
+fn game_button_node(state: ref<State>, ordinal: int) -> ui.UiNode {
     let name = game_name(state, ordinal);
-    return button(f"运行《{name}》编辑器", -1.0, 60.0, 1000 + ordinal);
+    return ui.button(f"运行《{name}》编辑器", -1.0, 60.0, 1000 + ordinal);
 }
 
-fn empty_cell_node() -> UiNode {
-    return dummy(0.0, 0.0);
+fn empty_cell_node() -> ui.UiNode {
+    return ui.dummy(0.0, 0.0);
 }
 
-fn game_table_node(state: ref<State>) -> UiNode {
-    return table(3, [
+fn game_table_node(state: ref<State>) -> ui.UiNode {
+    return ui.table(3, [
         game_button_node(state, 0), game_button_node(state, 8), game_button_node(state, 5),
         game_button_node(state, 1), game_button_node(state, 9), game_button_node(state, 6),
         game_button_node(state, 2), empty_cell_node(), game_button_node(state, 7),
@@ -114,8 +76,8 @@ fn game_table_node(state: ref<State>) -> UiNode {
     ]);
 }
 
-pub fn render(state: ref<State>, dt: float) -> UiNode {
-    return window_centered("妖弓编辑器", 720.0, 480.0, [
+pub fn render(state: ref<State>, dt: float) -> ui.UiNode {
+    return ui.window_centered("妖弓编辑器", 720.0, 480.0, [
         title_node(),
         top_spacer_node(),
         game_table_node(state),
