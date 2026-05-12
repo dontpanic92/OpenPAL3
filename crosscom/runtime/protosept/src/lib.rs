@@ -131,8 +131,7 @@ impl ComObjectTable {
         // we drop the original `rc` to keep the net count at one.
         let unk: ComRc<IUnknown> = unsafe {
             let p = rc.ptr_value() as *const IUnknown;
-            (*p)
-                .query_interface::<IUnknown>()
+            (*p).query_interface::<IUnknown>()
                 .expect("every ComInterface must expose IUnknown")
         };
         drop(rc);
@@ -209,7 +208,11 @@ impl ComObjectTable {
     /// single virtual call should drop the strong ref afterwards via
     /// `unsafe { ComRc::<IUnknown>::from_raw_pointer(p) }` so the count
     /// stays balanced. The dispatcher does this around every call.
-    pub fn get_raw_qi(&self, id: i64, uuid_bytes: [u8; 16]) -> Option<*const *const std::ffi::c_void> {
+    pub fn get_raw_qi(
+        &self,
+        id: i64,
+        uuid_bytes: [u8; 16],
+    ) -> Option<*const *const std::ffi::c_void> {
         let (slot, generation) = ComObjectId::decode(id)?;
         let s = self.slots.get(slot)?;
         if s.generation != generation {
@@ -308,9 +311,7 @@ pub fn scope<S: HostServices, R>(services: &mut S, body: impl FnOnce() -> R) -> 
 
 /// Access the services installed by [`scope`]. Returns `Err` if called
 /// outside any `scope`. The closure must not call back into `scope`.
-pub fn with_services<R>(
-    body: impl FnOnce(&mut dyn HostServices) -> R,
-) -> Result<R, HostError> {
+pub fn with_services<R>(body: impl FnOnce(&mut dyn HostServices) -> R) -> Result<R, HostError> {
     CURRENT_SERVICES.with(|c| {
         let ptr = c.borrow().ok_or_else(|| {
             HostError::message("with_services called outside crosscom_protosept::scope")

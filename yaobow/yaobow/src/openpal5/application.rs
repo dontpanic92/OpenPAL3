@@ -8,7 +8,6 @@ use radiance::{
 };
 use shared::openpal5::{asset_loader::AssetLoader, director::OpenPAL5Director, scene::Pal5Scene};
 
-
 pub struct OpenPal5ApplicationLoader {
     app: ComRc<IApplication>,
     root_path: PathBuf,

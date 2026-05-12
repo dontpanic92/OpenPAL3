@@ -7,8 +7,8 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 pub use main_director::DevToolsDirector;
-pub use scripted_welcome_page::ScriptedWelcomePage;
 use radiance::{comdef::IEntity, rendering::ComponentFactory};
+pub use scripted_welcome_page::ScriptedWelcomePage;
 
 #[allow(dead_code)]
 #[derive(Clone)]

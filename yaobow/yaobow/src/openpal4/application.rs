@@ -8,7 +8,6 @@ use radiance::{
 };
 use shared::openpal4::{asset_loader::AssetLoader, director::OpenPAL4Director};
 
-
 pub struct OpenPal4ApplicationLoader {
     app: ComRc<IApplication>,
     root_path: PathBuf,

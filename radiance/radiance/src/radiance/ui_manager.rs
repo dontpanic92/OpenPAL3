@@ -10,13 +10,16 @@ use crate::{
 pub struct UiManager {
     imgui_context: Rc<ImguiContext>,
     ui: RefCell<Option<&'static Ui>>,
+    dpi_scale: f32,
 }
 
 impl UiManager {
     pub fn new(platform: &mut Platform) -> Self {
+        let dpi_scale = platform.dpi_scale();
         Self {
             imgui_context: Rc::new(ImguiContext::new(platform)),
             ui: RefCell::new(None),
+            dpi_scale,
         }
     }
 
@@ -40,5 +43,9 @@ impl UiManager {
         self.ui
             .borrow()
             .expect("UI is not available outside of the update function")
+    }
+
+    pub fn dpi_scale(&self) -> f32 {
+        self.dpi_scale
     }
 }

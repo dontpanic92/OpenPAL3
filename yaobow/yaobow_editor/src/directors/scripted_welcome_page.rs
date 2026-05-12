@@ -9,10 +9,10 @@ use std::rc::Rc;
 use crosscom::ComRc;
 use mini_fs::MiniFs;
 use radiance::comdef::{IApplication, IDirector};
+use radiance_editor::{director::MainPageDirector, ui::scene_view::SceneViewPlugins};
 use radiance_scripting::comdef::services::IHostContext;
 use radiance_scripting::services::{HostContext, ImguiTextureCache};
 use radiance_scripting::{CommandRouter, ScriptedDirector};
-use radiance_editor::{director::MainPageDirector, ui::scene_view::SceneViewPlugins};
 use shared::config::YaobowConfig;
 
 use crate::directors::config_service::ConfigService;
@@ -122,14 +122,18 @@ impl WelcomeCommandRouter {
             ));
         }
 
-        let resource_view_content =
-            SceneViewResourceView::new(&asset_path, self.app.clone(), game);
+        let resource_view_content = SceneViewResourceView::new(&asset_path, self.app.clone(), game);
         let plugins = SceneViewPlugins::new(Some(ComRc::from_object(resource_view_content)));
 
         let input = self.app.engine().borrow().input_engine().clone();
         let ui = self.app.engine().borrow().ui_manager();
         let scene_manager = self.app.engine().borrow().scene_manager();
-        Some(MainPageDirector::create(Some(plugins), ui, input, scene_manager))
+        Some(MainPageDirector::create(
+            Some(plugins),
+            ui,
+            input,
+            scene_manager,
+        ))
     }
 
     fn reload_script(&self) -> Option<ComRc<IDirector>> {
@@ -218,9 +222,7 @@ impl CommandRouter for SettingsCommandRouter {
         if (CLEAR_CMD_BASE..CLEAR_CMD_BASE + 1000).contains(&command_id) {
             let ordinal = command_id - CLEAR_CMD_BASE;
             if let Some(game) = game_from_ordinal(ordinal) {
-                self.config
-                    .borrow_mut()
-                    .set_asset_path(game, String::new());
+                self.config.borrow_mut().set_asset_path(game, String::new());
             }
             return None;
         }

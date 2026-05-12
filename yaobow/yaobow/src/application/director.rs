@@ -18,7 +18,6 @@ use radiance::{
     rendering::{ComponentFactory, Texture},
 };
 
-
 use super::GameType;
 
 pub struct TitleSelectionDirector {

@@ -9,7 +9,6 @@ use radiance::{
 };
 use shared::openswd5::{asset_loader::AssetLoader, director::OpenSWD5Director};
 
-
 pub struct OpenSwd5ApplicationLoader {
     app: ComRc<IApplication>,
     root_path: PathBuf,

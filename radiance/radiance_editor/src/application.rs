@@ -6,7 +6,6 @@ use radiance::{
     scene::CoreScene,
 };
 
-
 pub struct EditorApplicationLoader {
     // plugin_create: Option<Box<dyn Fn(ComRc<IApplication>) -> SceneViewPlugins>>,
     app: ComRc<IApplication>,

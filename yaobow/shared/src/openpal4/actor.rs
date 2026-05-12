@@ -15,9 +15,7 @@ use radiance::{
     utils::ray_casting::RayCaster,
 };
 
-use crate::{
-    utils::{get_camera_rotation, get_moving_direction},
-};
+use crate::utils::{get_camera_rotation, get_moving_direction};
 
 use super::{
     asset_loader::AssetLoader,

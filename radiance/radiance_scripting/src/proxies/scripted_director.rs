@@ -58,9 +58,11 @@ impl IDirectorImpl for ScriptedDirector {
             None
         };
 
-        if let (Some(owned), Some(ui_manager), Some(textures)) =
-            (owned.as_ref(), self.ui_manager.as_ref(), self.textures.as_ref())
-        {
+        if let (Some(owned), Some(ui_manager), Some(textures)) = (
+            owned.as_ref(),
+            self.ui_manager.as_ref(),
+            self.textures.as_ref(),
+        ) {
             let ui = ui_manager.ui();
             let mut queue = LocalCommandQueue::default();
             let fonts: Vec<imgui::FontId> = ui.fonts().fonts().to_vec();
@@ -72,6 +74,7 @@ impl IDirectorImpl for ScriptedDirector {
                         textures: &mut *tex,
                         commands: &mut queue,
                         fonts: &fonts,
+                        dpi_scale: ui_manager.dpi_scale(),
                     },
                     table_counter: std::cell::Cell::new(0),
                 };

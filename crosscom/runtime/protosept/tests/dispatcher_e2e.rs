@@ -10,7 +10,7 @@ use std::ffi::c_void;
 use std::os::raw::c_long;
 
 use crosscom::{ComInterface, IUnknown, IUnknownVirtualTable};
-use crosscom_protosept::{ComObjectTable, HostServices, install_com_dispatcher, scope};
+use crosscom_protosept::{install_com_dispatcher, scope, ComObjectTable, HostServices};
 use p7::interpreter::context::{Context, Data};
 
 const COUNTER_UUID_BYTES: [u8; 16] = [

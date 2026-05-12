@@ -28,6 +28,7 @@ pub struct WalkContext<'a> {
     pub textures: &'a mut dyn TextureResolver,
     pub commands: &'a mut dyn CommandSink,
     pub fonts: &'a [imgui::FontId],
+    pub dpi_scale: f32,
 }
 
 #[derive(Debug)]
@@ -103,6 +104,7 @@ impl<'a> UiVisitor for UiAdapter<'a> {
         flags: u32,
         body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
     ) -> Result<(), WalkError> {
+        let [w, h] = self.scaled_size(w, h);
         let mut result = Ok(());
         self.ui
             .window(title)
@@ -119,6 +121,7 @@ impl<'a> UiVisitor for UiAdapter<'a> {
         h: f32,
         body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
     ) -> Result<(), WalkError> {
+        let [w, h] = self.scaled_size(w, h);
         let [display_w, display_h] = self.ui.io().display_size;
         let cx = (display_w - w) / 2.0;
         let cy = (display_h - h) / 2.0;
@@ -171,6 +174,7 @@ impl<'a> UiVisitor for UiAdapter<'a> {
         // share an id and only the first becomes interactive. Append a
         // hidden `##cmd_<id>` suffix to make each unique.
         let id_label = format!("{}##cmd_{}", label, command_id);
+        let [w, h] = self.scaled_size(w, h);
         let clicked = self.ui.button_with_size(&id_label, [w, h]);
         if clicked {
             log::info!(
@@ -184,16 +188,19 @@ impl<'a> UiVisitor for UiAdapter<'a> {
     }
 
     fn spacer(&mut self, w: f32, h: f32) -> Result<(), WalkError> {
+        let [w, h] = self.scaled_size(w, h);
         self.ui.dummy([w, h]);
         Ok(())
     }
 
     fn dummy(&mut self, w: f32, h: f32) -> Result<(), WalkError> {
+        let [w, h] = self.scaled_size(w, h);
         self.ui.dummy([w, h]);
         Ok(())
     }
 
     fn image(&mut self, com_id: i64, w: f32, h: f32) -> Result<(), WalkError> {
+        let [w, h] = self.scaled_size(w, h);
         if let Some(texture_id) = self.ctx.textures.resolve(com_id) {
             imgui::Image::new(texture_id, [w, h]).build(self.ui);
         } else {
@@ -244,6 +251,23 @@ impl<'a> UiVisitor for UiAdapter<'a> {
     }
 }
 
+impl<'a> UiAdapter<'a> {
+    fn scaled_size(&self, w: f32, h: f32) -> [f32; 2] {
+        [
+            scale_script_dimension(w, self.ctx.dpi_scale),
+            scale_script_dimension(h, self.ctx.dpi_scale),
+        ]
+    }
+}
+
+fn scale_script_dimension(value: f32, dpi_scale: f32) -> f32 {
+    if value > 0.0 {
+        value * dpi_scale
+    } else {
+        value
+    }
+}
+
 pub fn walk(node: &OwnedNode, visitor: &mut dyn UiVisitor) -> Result<(), WalkError> {
     match node.kind {
         kinds::WINDOW => {
@@ -291,4 +315,20 @@ fn walk_children(children: &[OwnedNode], visitor: &mut dyn UiVisitor) -> Result<
         walk(child, visitor)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scale_script_dimension;
+
+    #[test]
+    fn scales_positive_script_dimensions() {
+        assert_eq!(scale_script_dimension(120.0, 2.0), 240.0);
+    }
+
+    #[test]
+    fn preserves_non_positive_script_dimensions() {
+        assert_eq!(scale_script_dimension(-1.0, 2.0), -1.0);
+        assert_eq!(scale_script_dimension(0.0, 2.0), 0.0);
+    }
 }

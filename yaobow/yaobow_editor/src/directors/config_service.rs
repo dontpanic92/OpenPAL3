@@ -61,9 +61,7 @@ impl IConfigServiceImpl for ConfigService {
 
     fn set_asset_path(&self, game: i32, path: &str) {
         if let Some(g) = Self::game_from_ordinal(game) {
-            self.config
-                .borrow_mut()
-                .set_asset_path(g, path.to_string());
+            self.config.borrow_mut().set_asset_path(g, path.to_string());
         }
     }
 

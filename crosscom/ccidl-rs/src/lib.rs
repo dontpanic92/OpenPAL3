@@ -977,7 +977,8 @@ pub const GLOBAL_{base}VirtualTable_CCW_FOR_{class_name}: {module}::{base}Virtua
                 .collect::<Vec<_>>()
                 .join(",");
             let ret_mapping = if method.ret_ty == "&str" || method.ret_ty == "string" {
-                "std::ffi::CString::new(ret).unwrap().into_raw() as *const std::os::raw::c_char".to_string()
+                "std::ffi::CString::new(ret).unwrap().into_raw() as *const std::os::raw::c_char"
+                    .to_string()
             } else {
                 "ret.into()".to_string()
             };
@@ -1099,7 +1100,9 @@ pub fn query_interface<T: {crosscom}::ComInterface>(&self) -> Option<{crosscom}:
                     .params
                     .iter()
                     .map(|param| {
-                        if !method.attrs.contains_key("internal") && (param.ty == "&str" || param.ty == "string") {
+                        if !method.attrs.contains_key("internal")
+                            && (param.ty == "&str" || param.ty == "string")
+                        {
                             format!("std::ffi::CString::new({}).unwrap().as_ptr()", param.name)
                         } else {
                             format!("{}.into()", param.name)
@@ -1421,10 +1424,8 @@ mod tests {
             "openpal5.idl",
             "openswd5.idl",
         ] {
-            let generated =
-                generate_protosept(idl_dir.join(idl_name)).unwrap_or_else(|err| {
-                    panic!("protosept gen failed for {idl_name}: {err}")
-                });
+            let generated = generate_protosept(idl_dir.join(idl_name))
+                .unwrap_or_else(|err| panic!("protosept gen failed for {idl_name}: {err}"));
             assert!(
                 !generated.source.is_empty(),
                 "{idl_name}: empty protosept output"
@@ -1467,9 +1468,7 @@ mod tests {
         );
         // Foreign-aware return type now uses ?box<IDirector>, not ?int.
         assert!(
-            out.contains(
-                "fn update(self: ref<IDirector>, delta_sec: float) -> ?box<IDirector>"
-            ),
+            out.contains("fn update(self: ref<IDirector>, delta_sec: float) -> ?box<IDirector>"),
             "{out}"
         );
 

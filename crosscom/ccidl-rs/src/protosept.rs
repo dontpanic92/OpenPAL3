@@ -41,8 +41,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    CrossComIdl, Error, Interface, Item, Method, Module, Symbol, parse_uuid_bytes,
-    rust_module,
+    parse_uuid_bytes, rust_module, CrossComIdl, Error, Interface, Item, Method, Module, Symbol,
 };
 
 /// Top-level entry point: generate a protosept source file from a parsed IDL
@@ -182,9 +181,7 @@ impl ProtoseptGen {
         let module_dot = self.current_module.module_name.replace("::", ".");
         let type_tag = format!("{module_dot}.{}", interface.name);
 
-        out.push_str(
-            "@foreign(dispatcher=\"com.invoke\", finalizer=\"com.release\",\n",
-        );
+        out.push_str("@foreign(dispatcher=\"com.invoke\", finalizer=\"com.release\",\n");
         out.push_str(&format!(
             "         type_tag=\"{type_tag}\",\n         uuid=\"{uuid_lc}\")\n",
         ));

@@ -60,6 +60,7 @@ impl IViewContentImpl for ScriptedViewContent {
                             textures: &mut *tex,
                             commands: &mut queue,
                             fonts: &fonts,
+                            dpi_scale: ui_mgr.dpi_scale(),
                         },
                         table_counter: std::cell::Cell::new(0),
                     };

@@ -32,11 +32,11 @@
 //! libffi-rs's `Cif::call::<R>` is generic over the Rust return type
 //! at the call site.
 
-use std::ffi::{CString, c_char, c_float, c_long, c_void};
+use std::ffi::{c_char, c_float, c_long, c_void, CString};
 use std::os::raw::c_int;
 
-use crate::{ComObjectTable, with_services};
-use libffi::middle::{Arg, Cif, CodePtr, Type, arg};
+use crate::{with_services, ComObjectTable};
+use libffi::middle::{arg, Arg, Cif, CodePtr, Type};
 use p7::errors::RuntimeError;
 use p7::interpreter::context::{Context, Data};
 use p7::semantic::HostReturnTy;
@@ -113,16 +113,15 @@ fn com_invoke(ctx: &mut Context) -> Result<(), RuntimeError> {
         .to_string();
     let recv_uuid_bytes = parse_uuid(&recv_uuid_str)?;
 
-    let this_ptr: *const *const c_void = with_services(|s| {
-        s.com_table_mut().get_raw_qi(recv_handle, recv_uuid_bytes)
-    })
-    .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?
-    .ok_or_else(|| {
-        RuntimeError::Other(format!(
-            "com.invoke: receiver handle {} did not expose interface for type_tag '{}'",
-            recv_handle, type_tag
-        ))
-    })?;
+    let this_ptr: *const *const c_void =
+        with_services(|s| s.com_table_mut().get_raw_qi(recv_handle, recv_uuid_bytes))
+            .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?
+            .ok_or_else(|| {
+                RuntimeError::Other(format!(
+                    "com.invoke: receiver handle {} did not expose interface for type_tag '{}'",
+                    recv_handle, type_tag
+                ))
+            })?;
 
     // Compute the vtable function pointer. The +3 skips IUnknown's
     // prefix slots; p7's `vtable_slot` is the method's index *within
@@ -252,7 +251,8 @@ fn classify_pop(
         }
         Data::Null => Ok(ClassifiedPop::Arg(MarshalledArg::Pointer(std::ptr::null()))),
         Data::Some(inner) => classify_pop(ctx, *inner, recv_tag),
-        Data::ProtoBoxRef { box_idx, .. } | Data::ProtoRefRef {
+        Data::ProtoBoxRef { box_idx, .. }
+        | Data::ProtoRefRef {
             ref_idx: box_idx, ..
         } => classify_foreign_box(ctx, box_idx, recv_tag),
         Data::BoxRef(idx) => classify_foreign_box(ctx, idx, recv_tag),
@@ -292,17 +292,18 @@ fn classify_foreign_box(
                 })?
                 .to_string();
             let uuid_bytes = parse_uuid(&uuid_str)?;
-            let p: *const *const c_void = with_services(|s| {
-                s.com_table_mut().get_raw_qi(handle, uuid_bytes)
-            })
-            .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?
-            .ok_or_else(|| {
-                RuntimeError::Other(format!(
-                    "com.invoke: foreign-arg handle {} does not expose '{}'",
-                    handle, type_tag
-                ))
-            })?;
-            Ok(ClassifiedPop::Arg(MarshalledArg::Pointer(p as *const c_void)))
+            let p: *const *const c_void =
+                with_services(|s| s.com_table_mut().get_raw_qi(handle, uuid_bytes))
+                    .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?
+                    .ok_or_else(|| {
+                        RuntimeError::Other(format!(
+                            "com.invoke: foreign-arg handle {} does not expose '{}'",
+                            handle, type_tag
+                        ))
+                    })?;
+            Ok(ClassifiedPop::Arg(MarshalledArg::Pointer(
+                p as *const c_void,
+            )))
         }
         other => Err(RuntimeError::Other(format!(
             "com.invoke: box did not contain a Foreign value: {:?}",
@@ -537,11 +538,7 @@ fn decode_return_ty(data: Data) -> Result<HostReturnTy, RuntimeError> {
 // Return marshaling
 // ---------------------------------------------------------------------------
 
-fn push_return(
-    ctx: &mut Context,
-    rt: &HostReturnTy,
-    raw: RawReturn,
-) -> Result<(), RuntimeError> {
+fn push_return(ctx: &mut Context, rt: &HostReturnTy, raw: RawReturn) -> Result<(), RuntimeError> {
     match (rt, raw) {
         (HostReturnTy::Void, RawReturn::Void) => {
             // crosscom IDL `void` is mapped to protosept `int` (= 0 by
@@ -560,7 +557,9 @@ fn push_return(
         }
         (HostReturnTy::String, RawReturn::Pointer(p)) => {
             if p.is_null() {
-                ctx.stack_frame_mut()?.stack.push(Data::String(String::new()));
+                ctx.stack_frame_mut()?
+                    .stack
+                    .push(Data::String(String::new()));
             } else {
                 let s = unsafe { std::ffi::CStr::from_ptr(p as *const c_char) }
                     .to_string_lossy()
