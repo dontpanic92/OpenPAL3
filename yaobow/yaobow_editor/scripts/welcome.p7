@@ -2,12 +2,12 @@ import editor_services;
 import ui;
 
 pub struct State(
-    pub host: ref<editor_services.IHostContext>,
+    pub host: box<editor_services.IHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
 );
 
-pub fn init(host: ref<editor_services.IHostContext>) -> box<State> {
+pub fn init(host: box<editor_services.IHostContext>) -> box<State> {
     let registry = host.games();
     let games_arr: array<int> = [];
     let names_arr: array<string> = [];

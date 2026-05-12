@@ -2,10 +2,10 @@ import editor_services;
 import ui;
 
 pub struct State(
-    pub vfs: ref<editor_services.IVfsService>,
+    pub vfs: box<editor_services.IVfsService>,
 );
 
-pub fn init(vfs: ref<editor_services.IVfsService>) -> box<State> {
+pub fn init(vfs: box<editor_services.IVfsService>) -> box<State> {
     box(State(vfs))
 }
 
@@ -16,7 +16,7 @@ fn join_path(parent: string, name: string) -> string {
     return f"{parent}/{name}";
 }
 
-fn render_dir(vfs: ref<editor_services.IVfsService>, path: string) -> box<array<ui.UiNode>> {
+fn render_dir(vfs: box<editor_services.IVfsService>, path: string) -> box<array<ui.UiNode>> {
     let nodes: array<ui.UiNode> = [];
     let boxed_nodes = box(nodes);
     let count = vfs.entry_count(path);

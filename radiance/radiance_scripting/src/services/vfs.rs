@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 use mini_fs::{Entry, EntryKind, MiniFs, StoreExt};
+use radiance::perf;
 
 use crate::comdef::services::{IVfsService, IVfsServiceImpl};
 
@@ -42,6 +43,7 @@ impl VfsService {
             return entries.clone();
         }
 
+        perf::count("editor.tree.vfs.cache_misses", 1);
         let Ok(entries) = self.vfs.entries(Path::new(vfs_path)) else {
             let entries = Rc::new(Vec::new());
             self.entries_cache
@@ -130,6 +132,7 @@ impl IVfsServiceImpl for VfsService {
     }
 
     fn entry_count(&self, vfs_path: &str) -> i32 {
+        perf::count("editor.tree.vfs.entry_count_calls", 1);
         self.sorted_entries(vfs_path)
             .len()
             .try_into()
@@ -137,6 +140,7 @@ impl IVfsServiceImpl for VfsService {
     }
 
     fn entry_name(&self, vfs_path: &str, index: i32) -> &str {
+        perf::count("editor.tree.vfs.entry_name_calls", 1);
         let value = self
             .entry_at(vfs_path, index)
             .map(|entry| Self::entry_display_name(&entry))
@@ -145,6 +149,7 @@ impl IVfsServiceImpl for VfsService {
     }
 
     fn entry_is_dir(&self, vfs_path: &str, index: i32) -> bool {
+        perf::count("editor.tree.vfs.entry_is_dir_calls", 1);
         self.entry_at(vfs_path, index)
             .map(|entry| entry.kind == EntryKind::Dir)
             .unwrap_or(false)

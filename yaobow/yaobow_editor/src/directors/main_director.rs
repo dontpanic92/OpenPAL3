@@ -8,6 +8,7 @@ use radiance::{
     audio::AudioEngine,
     comdef::{IDirector, IDirectorImpl, ISceneManager},
     math::Vec3,
+    perf,
     radiance::UiManager,
     scene::CoreScene,
 };
@@ -15,7 +16,7 @@ use radiance_editor::ui::window_content_rect;
 use radiance_scripting::comdef::services::IVfsService;
 use radiance_scripting::services::VfsService;
 use radiance_scripting::ui_walker::{
-    owned, walk, LocalCommandQueue, TextureResolver, UiAdapter, WalkContext,
+    owned, walk, LocalCommandQueue, OwnedNode, TextureResolver, UiAdapter, WalkContext,
 };
 use radiance_scripting::ScriptRuntime;
 use std::{cell::RefCell, rc::Rc};
@@ -92,6 +93,7 @@ impl DevToolsDirector {
     }
 
     fn render_tree(&self, ui: &Ui) {
+        let _frame_timer = perf::timer("editor.tree.frame");
         let state = match self.tree_runtime.borrow().state_clone() {
             Some(state) => state,
             None => return,
@@ -99,14 +101,21 @@ impl DevToolsDirector {
 
         let owned = {
             let mut runtime = self.tree_runtime.borrow_mut();
-            match runtime.call_returning_data("render", vec![state, Data::Float(0.0)]) {
-                Ok(node) => match runtime.with_ctx(|ctx| owned::resolve(ctx, &node)) {
-                    Ok(owned) => Some(owned),
-                    Err(err) => {
-                        log::error!("scripted resource tree resolve failed: {}", err);
-                        None
+            let node = {
+                let _script_timer = perf::timer("editor.tree.script_render");
+                runtime.call_returning_data("render", vec![state, Data::Float(0.0)])
+            };
+            match node {
+                Ok(node) => {
+                    let _resolve_timer = perf::timer("editor.tree.resolve");
+                    match runtime.with_ctx(|ctx| owned::resolve(ctx, &node)) {
+                        Ok(owned) => Some(owned),
+                        Err(err) => {
+                            log::error!("scripted resource tree resolve failed: {}", err);
+                            None
+                        }
                     }
-                },
+                }
                 Err(err) => {
                     log::error!("scripted resource tree render failed: {}", err);
                     None
@@ -117,6 +126,7 @@ impl DevToolsDirector {
         let Some(owned) = owned.as_ref() else {
             return;
         };
+        perf::gauge("editor.tree.owned_nodes", count_owned_nodes(owned) as u64);
 
         let mut textures = NullTextureResolver;
         let mut queue = LocalCommandQueue::default();
@@ -131,9 +141,13 @@ impl DevToolsDirector {
             },
             table_counter: std::cell::Cell::new(0),
         };
-        if let Err(err) = walk(owned, &mut adapter) {
-            log::error!("scripted resource tree walk failed: {:?}", err);
+        {
+            let _walk_timer = perf::timer("editor.tree.walk");
+            if let Err(err) = walk(owned, &mut adapter) {
+                log::error!("scripted resource tree walk failed: {:?}", err);
+            }
         }
+        perf::gauge("editor.tree.commands", queue.queue.len() as u64);
 
         for command_id in queue.queue {
             let path = self.tree_vfs.command_path(command_id).to_string();
@@ -169,6 +183,10 @@ impl TextureResolver for NullTextureResolver {
     }
 }
 
+fn count_owned_nodes(node: &OwnedNode) -> usize {
+    1 + node.children.iter().map(count_owned_nodes).sum::<usize>()
+}
+
 fn init_tree_runtime(vfs: ComRc<IVfsService>) -> ScriptRuntime {
     let mut runtime = ScriptRuntime::new();
     runtime
@@ -191,6 +209,7 @@ impl IDirectorImpl for DevToolsDirector {
     fn update(&self, _delta_sec: f32) -> Option<ComRc<IDirector>> {
         let ui = self.ui.ui();
         let state = self.main_window(ui);
+        perf::flush_frame();
         match state {
             Some(DevToolsState::PreviewScene { cpk_name, scn_name }) => {
                 self.scene_manager.pop_scene();
