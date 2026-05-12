@@ -101,13 +101,6 @@ impl ProtoseptGen {
         // `foo.idl` producing a module accessible as `foo.*`. Consumers that
         // use a different layout can post-process the import lines.
         for import in &self.unit.imports {
-            // `crosscom.idl` only declares IUnknown/IObjectArray; IUnknown is
-            // synthetic (not script-callable) and IObjectArray is rarely
-            // needed. Importing it would create a useless dependency, so
-            // skip it.
-            if import.file_name == "crosscom.idl" {
-                continue;
-            }
             let module_stem = import
                 .file_name
                 .strip_suffix(".idl")
@@ -294,13 +287,27 @@ impl ProtoseptGen {
     /// the type cannot be represented in script. Interface types lower to
     /// `box<I>` carriers backed by a host-managed `ComRc<I>` (see
     /// `crosscom-protosept` for the dispatcher).
+    ///
+    /// Interfaces declared in an *imported* IDL are emitted as qualified
+    /// references — `<idl_origin>.<Interface>` — so the p7 type resolver can
+    /// find them in the imported binding module. Interfaces declared in
+    /// the current IDL are emitted unqualified.
+    ///
+    /// Special case: `IUnknown` is the synthetic root and is never emitted
+    /// as a proto on the script side. Methods that traffic in raw IUnknown
+    /// pointers (e.g. `IObjectArray::get`) lower it to `int`, treating it as
+    /// an opaque COM handle that scripts can only forward back to host
+    /// builtins (e.g. `com.query_interface`).
     fn protosept_type(&self, idl_ty: &str) -> Result<Option<String>, Error> {
         let trimmed = idl_ty.trim();
 
         if let Some(inner) = trimmed.strip_suffix("[]") {
             let inner = inner.trim();
-            if matches!(self.symbols.get(inner), Some(Symbol::Interface(_))) {
-                return Ok(Some(format!("array<box<{inner}>>")));
+            if inner == "IUnknown" {
+                return Ok(Some("array<int>".to_string()));
+            }
+            if let Some(iface) = self.interface_name_for_p7(inner) {
+                return Ok(Some(format!("array<box<{iface}>>")));
             }
             // Primitive-element arrays could be added later.
             return Ok(None);
@@ -308,8 +315,11 @@ impl ProtoseptGen {
 
         if let Some(inner) = trimmed.strip_suffix('?') {
             let inner = inner.trim();
-            if matches!(self.symbols.get(inner), Some(Symbol::Interface(_))) {
-                return Ok(Some(format!("?box<{inner}>")));
+            if inner == "IUnknown" {
+                return Ok(Some("?int".to_string()));
+            }
+            if let Some(iface) = self.interface_name_for_p7(inner) {
+                return Ok(Some(format!("?box<{iface}>")));
             }
             // Nullable primitives are not currently used in any IDL; map them
             // anyway for completeness.
@@ -323,12 +333,32 @@ impl ProtoseptGen {
             return Ok(Some(prim.to_string()));
         }
 
-        if matches!(self.symbols.get(trimmed), Some(Symbol::Interface(_))) {
-            return Ok(Some(format!("box<{trimmed}>")));
+        if trimmed == "IUnknown" {
+            return Ok(Some("int".to_string()));
+        }
+
+        if let Some(iface) = self.interface_name_for_p7(trimmed) {
+            return Ok(Some(format!("box<{iface}>")));
         }
 
         // Unknown — caller treats as "skip method".
         Ok(None)
+    }
+
+    /// If `name` is an interface symbol known to this generator, return the
+    /// name as it should appear on the script side: qualified by the
+    /// originating IDL's file stem when the interface comes from an import,
+    /// unqualified when it's declared locally.
+    fn interface_name_for_p7(&self, name: &str) -> Option<String> {
+        if let Some(Symbol::Interface(iface)) = self.symbols.get(name) {
+            if let Some(origin) = iface.attrs.get("idl_origin") {
+                Some(format!("{}.{}", origin, name))
+            } else {
+                Some(name.to_string())
+            }
+        } else {
+            None
+        }
     }
 }
 

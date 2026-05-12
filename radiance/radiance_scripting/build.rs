@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 fn main() {
+    generate_p7("crosscom.idl", "crosscom.p7");
     generate_pair("scripting.idl", "scripting_comdef.rs", "scripting.p7");
     generate_pair(
         "editor_services.idl",

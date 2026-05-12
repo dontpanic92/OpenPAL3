@@ -1,38 +1,4 @@
-@foreign(dispatcher="com.invoke", finalizer="com.release",
-         type_tag="radiance_scripting.comdef.services.IGameRegistry",
-         uuid="5ad2bb0f-3e0c-4282-ab44-3d503ce44443")
-pub proto IGameRegistry {
-    fn count(self: ref<IGameRegistry>) -> int;
-    fn game_at(self: ref<IGameRegistry>, index: int) -> int;
-    fn full_name(self: ref<IGameRegistry>, game: int) -> string;
-    fn config_key(self: ref<IGameRegistry>, game: int) -> string;
-    fn default_asset_path(self: ref<IGameRegistry>, game: int) -> string;
-}
-
-@foreign(dispatcher="com.invoke", finalizer="com.release",
-         type_tag="radiance_scripting.comdef.services.IConfigService",
-         uuid="8c4d50aa-3b07-4a32-9d20-2e0b2f7c0001")
-pub proto IConfigService {
-    fn get_asset_path(self: ref<IConfigService>, game: int) -> string;
-    fn set_asset_path(self: ref<IConfigService>, game: int, path: string) -> int;
-    fn save(self: ref<IConfigService>) -> int;
-    fn reload(self: ref<IConfigService>) -> int;
-    fn pick_folder(self: ref<IConfigService>, initial: string) -> string;
-}
-
-@foreign(dispatcher="com.invoke", finalizer="com.release",
-         type_tag="radiance_scripting.comdef.services.IHostContext",
-         uuid="b6fd26a0-e028-427c-994c-e18310c1cd34")
-pub proto IHostContext {
-    fn scene_manager(self: ref<IHostContext>) -> int;
-    fn audio(self: ref<IHostContext>) -> int;
-    fn textures(self: ref<IHostContext>) -> int;
-    fn vfs(self: ref<IHostContext>) -> int;
-    fn input(self: ref<IHostContext>) -> int;
-    fn games(self: ref<IHostContext>) -> box<IGameRegistry>;
-    fn commands(self: ref<IHostContext>) -> int;
-    fn config(self: ref<IHostContext>) -> box<IConfigService>;
-}
+import editor_services;
 
 let KIND_WINDOW_CENTERED: int = 2;
 let KIND_TEXT_WITH_FONT: int = 6;
@@ -85,12 +51,12 @@ fn table(num_columns: int, cells: array<UiNode>) -> UiNode {
 }
 
 pub struct State(
-    pub host: ref<IHostContext>,
+    pub host: ref<editor_services.IHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
 );
 
-pub fn init(host: ref<IHostContext>) -> box<State> {
+pub fn init(host: ref<editor_services.IHostContext>) -> box<State> {
     let registry = host.games();
     let games_arr: array<int> = [];
     let names_arr: array<string> = [];

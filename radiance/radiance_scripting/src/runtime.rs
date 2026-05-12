@@ -171,6 +171,10 @@ impl ScriptRuntime {
 fn binding_provider() -> Box<dyn ModuleProvider> {
     let mut provider = InMemoryModuleProvider::new();
     provider.add_module(
+        "crosscom".to_string(),
+        include_str!(concat!(env!("OUT_DIR"), "/crosscom.p7")).to_string(),
+    );
+    provider.add_module(
         "scripting".to_string(),
         include_str!(concat!(env!("OUT_DIR"), "/scripting.p7")).to_string(),
     );
