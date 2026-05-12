@@ -51,6 +51,24 @@ impl IDirectorImpl for MainPageDirector {
             .bring_to_front_on_focus(false)
             .nav_focus(false)
             .build(|| {
+                // Push a fully-transparent WindowBg around igDockSpace().
+                //
+                // Dear ImGui's PassthruCentralNode renders a hole only when the
+                // central node is *empty*. As soon as a window is docked into
+                // the central node, the dockspace falls back to filling the
+                // entire root node with `ImGuiCol_WindowBg` (see
+                // imgui.cpp DockNodeUpdate, "Draw whole dockspace background"),
+                // which paints over our 3D scene that is rendered behind ImGui.
+                //
+                // Setting WindowBg's alpha to 0 only for the duration of the
+                // igDockSpace() call neutralizes that fill without affecting
+                // any other docked window (each one reads WindowBg at its own
+                // Begin() time).
+                let _bg = ui.push_style_color(
+                    imgui::StyleColor::WindowBg,
+                    [0.0, 0.0, 0.0, 0.0],
+                );
+
                 unsafe {
                     let s = "main_page_dock";
                     let s1 = s.as_ptr() as *const std::os::raw::c_char;
@@ -68,6 +86,9 @@ impl IDirectorImpl for MainPageDirector {
                         ::std::ptr::null::<imgui::sys::ImGuiWindowClass>(),
                     );
                 };
+
+                drop(_bg);
+
                 self.scene_view
                     .borrow_mut()
                     .render(self.scene_manager.clone(), ui, delta_sec)

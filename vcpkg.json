@@ -1,7 +1,6 @@
 {
   "dependencies": [
-    "ffmpeg",
-    "libffi"
+    "ffmpeg"
   ],
   "overrides": [
     {

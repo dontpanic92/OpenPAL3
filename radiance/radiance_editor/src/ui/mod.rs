@@ -4,13 +4,18 @@ use radiance::math::Rect;
 pub mod scene_view;
 
 pub fn window_content_rect(ui: &Ui) -> Rect {
-    let [content_min_x, content_min_y] = ui.window_content_region_min();
-    let [content_max_x, content_max_y] = ui.window_content_region_max();
-    let [x, y] = ui.window_pos();
-    let content_width = content_max_x - content_min_x;
-    let content_height = content_max_y - content_min_y;
-    let content_x = x + content_min_x;
-    let content_y = y + content_min_y;
+    // Use GetCursorScreenPos + GetContentRegionAvail (the recommended replacement
+    // for the deprecated GetWindowContentRegionMin/Max APIs, which produce
+    // unreliable results inside docked windows in Dear ImGui >= 1.89.4).
+    let (content_x, content_y, content_width, content_height) = unsafe {
+        let mut cursor = imgui::sys::ImVec2::zero();
+        imgui::sys::igGetCursorScreenPos(&mut cursor);
+        let mut avail = imgui::sys::ImVec2::zero();
+        imgui::sys::igGetContentRegionAvail(&mut avail);
+        (cursor.x, cursor.y, avail.x, avail.y)
+    };
+
+    let _ = ui;
 
     Rect {
         x: content_x,
