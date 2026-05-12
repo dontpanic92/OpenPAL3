@@ -25,6 +25,14 @@ enum Event {
         w: f32,
         h: f32,
     },
+    TreeNode {
+        label: String,
+        command: i32,
+    },
+    TreeLeaf {
+        label: String,
+        command: i32,
+    },
 }
 
 #[derive(Default)]
@@ -161,6 +169,36 @@ impl UiVisitor for TestRecorder {
         self.events.push(Event::ExitContainer("group"));
         Ok(())
     }
+
+    fn tree_node(
+        &mut self,
+        label: &str,
+        command_id: i32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError> {
+        self.events.push(Event::TreeNode {
+            label: label.to_owned(),
+            command: command_id,
+        });
+        if self.commands_to_click.contains(&command_id) {
+            self.commands.queue.push_back(command_id);
+        }
+        self.events.push(Event::EnterContainer("tree_node"));
+        body(self)?;
+        self.events.push(Event::ExitContainer("tree_node"));
+        Ok(())
+    }
+
+    fn tree_leaf(&mut self, label: &str, command_id: i32) -> Result<(), WalkError> {
+        self.events.push(Event::TreeLeaf {
+            label: label.to_owned(),
+            command: command_id,
+        });
+        if self.commands_to_click.contains(&command_id) {
+            self.commands.queue.push_back(command_id);
+        }
+        Ok(())
+    }
 }
 
 #[test]
@@ -226,6 +264,35 @@ fn recorder_can_mirror_missing_texture_fallback() {
     );
 }
 
+#[test]
+fn recorder_walks_tree_nodes_and_enqueues_leaf_commands() {
+    let node = tree_node("dir", 55, vec![tree_leaf("file.txt", 77)]);
+    let mut recorder = TestRecorder::default();
+    recorder.commands_to_click.insert(77);
+
+    walk(&node, &mut recorder).unwrap();
+
+    assert_eq!(
+        recorder.events,
+        vec![
+            Event::TreeNode {
+                label: "dir".to_owned(),
+                command: 55,
+            },
+            Event::EnterContainer("tree_node"),
+            Event::TreeLeaf {
+                label: "file.txt".to_owned(),
+                command: 77,
+            },
+            Event::ExitContainer("tree_node"),
+        ]
+    );
+    assert_eq!(
+        recorder.commands.queue.into_iter().collect::<Vec<_>>(),
+        vec![77]
+    );
+}
+
 fn window(title: &str, w: f32, h: f32, flags: i64, children: Vec<OwnedNode>) -> OwnedNode {
     node(kinds::WINDOW, title, w, h, flags, 0, children)
 }
@@ -240,6 +307,14 @@ fn button(label: &str, w: f32, h: f32, command_id: i64) -> OwnedNode {
 
 fn image(com_id: i64, w: f32, h: f32) -> OwnedNode {
     node(kinds::IMAGE, "", w, h, com_id, 0, Vec::new())
+}
+
+fn tree_node(label: &str, command_id: i64, children: Vec<OwnedNode>) -> OwnedNode {
+    node(kinds::TREE_NODE, label, 0.0, 0.0, command_id, 0, children)
+}
+
+fn tree_leaf(label: &str, command_id: i64) -> OwnedNode {
+    node(kinds::TREE_LEAF, label, 0.0, 0.0, command_id, 0, Vec::new())
 }
 
 fn node(

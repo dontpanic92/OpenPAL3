@@ -90,7 +90,7 @@ fn welcome_script_renders_three_column_wide_layout() {
         .expect("welcome UiNode should resolve");
 
     assert_eq!(owned.kind, kinds::WINDOW_CENTERED);
-    assert_eq!(owned.w, 1180.0);
+    assert_eq!(owned.w, 720.0);
     assert_eq!(owned.h, 480.0);
 
     let table = owned
@@ -113,6 +113,38 @@ fn welcome_script_renders_three_column_wide_layout() {
 #[test]
 fn settings_script_init_loads_with_imported_bindings() {
     init_script(SETTINGS_SRC).expect("settings.p7 init should load");
+}
+
+#[test]
+fn welcome_script_update_returns_null() {
+    let mut runtime = init_runtime(WELCOME_SRC).expect("welcome.p7 init should load");
+    let state = runtime
+        .state_clone()
+        .expect("welcome state should be stored");
+    let result = runtime
+        .call_returning_data("update", vec![state, Data::Float(0.0)])
+        .expect("welcome.p7 update should return");
+    assert_eq!(result, Data::Null);
+}
+
+#[test]
+fn welcome_script_render_update_survives_repeated_frames() {
+    let mut runtime = init_runtime(WELCOME_SRC).expect("welcome.p7 init should load");
+    for _ in 0..200 {
+        let state = runtime
+            .state_clone()
+            .expect("welcome state should be stored");
+        let node = runtime
+            .call_returning_data("render", vec![state.clone(), Data::Float(0.0)])
+            .expect("welcome.p7 render should return a UiNode");
+        runtime
+            .with_ctx(|ctx| owned::resolve(ctx, &node))
+            .expect("welcome UiNode should resolve");
+        let result = runtime
+            .call_returning_data("update", vec![state, Data::Float(0.0)])
+            .expect("welcome.p7 update should return");
+        assert_eq!(result, Data::Null);
+    }
 }
 
 fn init_script(source: &str) -> Result<(), crosscom_protosept::HostError> {

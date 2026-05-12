@@ -19,15 +19,17 @@ pub let KIND_IMAGE: int = 10;
 pub let KIND_TABLE: int = 11;
 pub let KIND_STYLE_ALPHA: int = 12;
 pub let KIND_GROUP: int = 13;
+pub let KIND_TREE_NODE: int = 14;
+pub let KIND_TREE_LEAF: int = 15;
 
 // Field meaning per kind:
 //   kind     : KIND_* tag (always set)
-//   label    : window title / text content / button label / "" otherwise
+//   label    : window title / text content / button label / tree label / "" otherwise
 //   w        : width / dummy.w / spacer.w / image.w / style_alpha.alpha
 //   h        : height / dummy.h / spacer.h / image.h
-//   i1       : window flags / font_idx / button command_id / image texture com_id / table num_columns
+//   i1       : window flags / font_idx / command_id / image texture com_id / table num_columns
 //   i2       : reserved (always 0 today)
-//   children : window/column/row/group/style_alpha body, table cells
+//   children : boxed window/column/row/group/style_alpha body, table cells
 pub struct UiNode(
     pub kind: int,
     pub label: string,
@@ -35,63 +37,80 @@ pub struct UiNode(
     pub h: float,
     pub i1: int,
     pub i2: int,
-    pub children: array<UiNode>,
+    pub children: box<array<UiNode>>,
 );
 
 pub fn window(title: string, w: float, h: float, flags: int, body: array<UiNode>) -> UiNode {
-    UiNode(KIND_WINDOW, title, w, h, flags, 0, body)
+    UiNode(KIND_WINDOW, title, w, h, flags, 0, box(body))
 }
 
 pub fn window_centered(title: string, w: float, h: float, body: array<UiNode>) -> UiNode {
-    UiNode(KIND_WINDOW_CENTERED, title, w, h, 0, 0, body)
+    UiNode(KIND_WINDOW_CENTERED, title, w, h, 0, 0, box(body))
 }
 
 pub fn column(body: array<UiNode>) -> UiNode {
+    UiNode(KIND_COLUMN, "", 0.0, 0.0, 0, 0, box(body))
+}
+
+pub fn column_box(body: box<array<UiNode>>) -> UiNode {
     UiNode(KIND_COLUMN, "", 0.0, 0.0, 0, 0, body)
 }
 
 pub fn row(body: array<UiNode>) -> UiNode {
-    UiNode(KIND_ROW, "", 0.0, 0.0, 0, 0, body)
+    UiNode(KIND_ROW, "", 0.0, 0.0, 0, 0, box(body))
 }
 
 pub fn text(text: string) -> UiNode {
     let children: array<UiNode> = [];
-    UiNode(KIND_TEXT, text, 0.0, 0.0, 0, 0, children)
+    UiNode(KIND_TEXT, text, 0.0, 0.0, 0, 0, box(children))
 }
 
 pub fn text_with_font(font_idx: int, text: string) -> UiNode {
     let children: array<UiNode> = [];
-    UiNode(KIND_TEXT_WITH_FONT, text, 0.0, 0.0, font_idx, 0, children)
+    UiNode(KIND_TEXT_WITH_FONT, text, 0.0, 0.0, font_idx, 0, box(children))
 }
 
 pub fn button(label: string, w: float, h: float, command_id: int) -> UiNode {
     let children: array<UiNode> = [];
-    UiNode(KIND_BUTTON, label, w, h, command_id, 0, children)
+    UiNode(KIND_BUTTON, label, w, h, command_id, 0, box(children))
 }
 
 pub fn spacer(w: float, h: float) -> UiNode {
     let children: array<UiNode> = [];
-    UiNode(KIND_SPACER, "", w, h, 0, 0, children)
+    UiNode(KIND_SPACER, "", w, h, 0, 0, box(children))
 }
 
 pub fn dummy(w: float, h: float) -> UiNode {
     let children: array<UiNode> = [];
-    UiNode(KIND_DUMMY, "", w, h, 0, 0, children)
+    UiNode(KIND_DUMMY, "", w, h, 0, 0, box(children))
 }
 
 pub fn image(texture_com_id: int, w: float, h: float) -> UiNode {
     let children: array<UiNode> = [];
-    UiNode(KIND_IMAGE, "", w, h, texture_com_id, 0, children)
+    UiNode(KIND_IMAGE, "", w, h, texture_com_id, 0, box(children))
 }
 
 pub fn table(num_columns: int, cells: array<UiNode>) -> UiNode {
-    UiNode(KIND_TABLE, "", 0.0, 0.0, num_columns, 0, cells)
+    UiNode(KIND_TABLE, "", 0.0, 0.0, num_columns, 0, box(cells))
 }
 
 pub fn style_alpha(alpha: float, body: array<UiNode>) -> UiNode {
-    UiNode(KIND_STYLE_ALPHA, "", alpha, 0.0, 0, 0, body)
+    UiNode(KIND_STYLE_ALPHA, "", alpha, 0.0, 0, 0, box(body))
 }
 
 pub fn group(body: array<UiNode>) -> UiNode {
-    UiNode(KIND_GROUP, "", 0.0, 0.0, 0, 0, body)
+    UiNode(KIND_GROUP, "", 0.0, 0.0, 0, 0, box(body))
+}
+
+pub fn tree_node(label: string, command_id: int, body: array<UiNode>) -> UiNode {
+    UiNode(KIND_TREE_NODE, label, 0.0, 0.0, command_id, 0, box(body))
+}
+
+pub fn tree_node_box(label: string, command_id: int, body: box<array<UiNode>>) -> UiNode {
+    UiNode(KIND_TREE_NODE, label, 0.0, 0.0, command_id, 0, body)
+}
+
+pub fn tree_leaf(label: string, command_id: int) -> UiNode {
+    let children: array<UiNode> = [];
+    UiNode(KIND_TREE_LEAF, label, 0.0, 0.0, command_id, 0, box(children))
 }

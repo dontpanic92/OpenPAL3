@@ -46,12 +46,15 @@ impl ContentTabs {
     }
 
     pub fn open<P: AsRef<Path>>(&mut self, vfs: &MiniFs, path: P) {
+        let path = path.as_ref();
         for p in &self.previewers {
-            if let Some(content_tab) = p.open(vfs, path.as_ref()) {
+            if let Some(content_tab) = p.open(vfs, path) {
+                log::info!("content tabs: opened '{}'", path.display());
                 self.audio_tab = Some(content_tab);
                 return;
             }
         }
+        log::warn!("content tabs: no previewer handled '{}'", path.display());
     }
 
     pub fn render_tabs(&mut self, ui: &Ui) -> Option<DevToolsState> {

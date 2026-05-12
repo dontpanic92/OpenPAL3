@@ -27,14 +27,17 @@ impl HostServices for RuntimeServices {
 
 pub struct ScriptRuntime {
     host: P7HostContext<RuntimeServices>,
-    state: Option<Data>,
+    state_root: Option<usize>,
 }
 
 impl ScriptRuntime {
     pub fn new() -> Self {
         let mut host = P7HostContext::new(RuntimeServices::default());
         install_com_dispatcher(&mut host.ctx);
-        Self { host, state: None }
+        Self {
+            host,
+            state_root: None,
+        }
     }
 
     pub fn load_source(&mut self, source: &str) -> Result<(), HostError> {
@@ -66,6 +69,13 @@ impl ScriptRuntime {
 
     pub fn with_ctx<R>(&self, body: impl FnOnce(&p7::interpreter::context::Context) -> R) -> R {
         body(&self.host.ctx)
+    }
+
+    pub fn with_ctx_mut<R>(
+        &mut self,
+        body: impl FnOnce(&mut p7::interpreter::context::Context) -> R,
+    ) -> R {
+        body(&mut self.host.ctx)
     }
 
     pub fn foreign_box(&mut self, type_tag: &str, handle: i64) -> Result<Data, HostError> {
@@ -122,11 +132,16 @@ impl ScriptRuntime {
     }
 
     pub fn store_state(&mut self, state: Data) {
-        self.state = Some(state);
+        if let Some(root) = self.state_root {
+            self.host.ctx.set_external_root(root, state);
+        } else {
+            self.state_root = Some(self.host.ctx.add_external_root(state));
+        }
     }
 
     pub fn state_clone(&self) -> Option<Data> {
-        self.state.clone()
+        self.state_root
+            .and_then(|root| self.host.ctx.external_root(root))
     }
 
     fn call_inner(&mut self, name: &str, args: Vec<Data>) -> Result<(), HostError> {

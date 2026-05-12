@@ -72,4 +72,13 @@ impl DevToolsAssetLoader {
             DevToolsAssetLoader::Swd5(asset_mgr) => asset_mgr.vfs(),
         }
     }
+
+    pub fn vfs_rc(&self) -> Rc<mini_fs::MiniFs> {
+        match self {
+            DevToolsAssetLoader::Pal3(asset_mgr) => asset_mgr.vfs_rc(),
+            DevToolsAssetLoader::Pal4(asset_mgr) => asset_mgr.vfs_rc(),
+            DevToolsAssetLoader::Pal5(asset_mgr) => asset_mgr.vfs_rc(),
+            DevToolsAssetLoader::Swd5(asset_mgr) => asset_mgr.vfs_rc(),
+        }
+    }
 }

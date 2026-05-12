@@ -3,7 +3,7 @@ use crate::GameType;
 use super::{main_content::ContentTabs, DevToolsAssetLoader, DevToolsState};
 use crosscom::ComRc;
 use imgui::Ui;
-use mini_fs::{Entries, Entry, EntryKind, StoreExt};
+use p7::interpreter::context::Data;
 use radiance::{
     audio::AudioEngine,
     comdef::{IDirector, IDirectorImpl, ISceneManager},
@@ -12,20 +12,23 @@ use radiance::{
     scene::CoreScene,
 };
 use radiance_editor::ui::window_content_rect;
-use std::{
-    cell::RefCell,
-    cmp::Ordering,
-    num::NonZero,
-    path::{Path, PathBuf},
-    rc::Rc,
+use radiance_scripting::comdef::services::IVfsService;
+use radiance_scripting::services::VfsService;
+use radiance_scripting::ui_walker::{
+    owned, walk, LocalCommandQueue, TextureResolver, UiAdapter, WalkContext,
 };
+use radiance_scripting::ScriptRuntime;
+use std::{cell::RefCell, rc::Rc};
+
+const MAIN_TREE_SCRIPT: &str = include_str!("../../scripts/main_tree.p7");
 
 pub struct DevToolsDirector {
     scene_manager: ComRc<ISceneManager>,
     asset_mgr: DevToolsAssetLoader,
     ui: Rc<UiManager>,
     content_tabs: RefCell<ContentTabs>,
-    cache: RefCell<lru::LruCache<String, Vec<Entry>>>,
+    tree_runtime: RefCell<ScriptRuntime>,
+    tree_vfs: ComRc<IVfsService>,
 }
 
 ComObject_DevToolsDirector!(super::DevToolsDirector);
@@ -38,6 +41,8 @@ impl DevToolsDirector {
         ui: Rc<UiManager>,
         game_type: GameType,
     ) -> ComRc<IDirector> {
+        let tree_vfs = VfsService::create(asset_mgr.vfs_rc());
+        let tree_runtime = init_tree_runtime(tree_vfs.clone());
         ComRc::from_object(Self {
             scene_manager,
             content_tabs: RefCell::new(ContentTabs::new(
@@ -47,7 +52,8 @@ impl DevToolsDirector {
             )),
             ui,
             asset_mgr,
-            cache: RefCell::new(lru::LruCache::new(NonZero::new(20).unwrap())),
+            tree_runtime: RefCell::new(tree_runtime),
+            tree_vfs,
         })
     }
 
@@ -71,7 +77,7 @@ impl DevToolsDirector {
 
         ui.child_window("Files")
             .size(sizes[0])
-            .build(|| self.render_tree_nodes(ui, "/"));
+            .build(|| self.render_tree(ui));
 
         if h_layout {
             ui.same_line();
@@ -85,31 +91,67 @@ impl DevToolsDirector {
         state
     }
 
-    fn render_tree_nodes<P: AsRef<Path>>(&self, ui: &Ui, path: P) {
-        let entries = self.get_entries(path.as_ref());
-        for e in entries {
-            let e_path = PathBuf::from(&e.name);
-            if e_path.file_name().is_none() {
+    fn render_tree(&self, ui: &Ui) {
+        let state = match self.tree_runtime.borrow().state_clone() {
+            Some(state) => state,
+            None => return,
+        };
+
+        let owned = {
+            let mut runtime = self.tree_runtime.borrow_mut();
+            match runtime.call_returning_data("render", vec![state, Data::Float(0.0)]) {
+                Ok(node) => match runtime.with_ctx(|ctx| owned::resolve(ctx, &node)) {
+                    Ok(owned) => Some(owned),
+                    Err(err) => {
+                        log::error!("scripted resource tree resolve failed: {}", err);
+                        None
+                    }
+                },
+                Err(err) => {
+                    log::error!("scripted resource tree render failed: {}", err);
+                    None
+                }
+            }
+        };
+
+        let Some(owned) = owned.as_ref() else {
+            return;
+        };
+
+        let mut textures = NullTextureResolver;
+        let mut queue = LocalCommandQueue::default();
+        let fonts: Vec<imgui::FontId> = ui.fonts().fonts().to_vec();
+        let mut adapter = UiAdapter {
+            ui,
+            ctx: WalkContext {
+                textures: &mut textures,
+                commands: &mut queue,
+                fonts: &fonts,
+                dpi_scale: self.ui.dpi_scale(),
+            },
+            table_counter: std::cell::Cell::new(0),
+        };
+        if let Err(err) = walk(owned, &mut adapter) {
+            log::error!("scripted resource tree walk failed: {:?}", err);
+        }
+
+        for command_id in queue.queue {
+            let path = self.tree_vfs.command_path(command_id).to_string();
+            if path.is_empty() {
+                log::warn!(
+                    "scripted resource tree command {} resolved to an empty path",
+                    command_id
+                );
                 continue;
             }
-
-            let e_filename = &format!("{}", e_path.file_name().unwrap().to_str().unwrap());
-            let e_fullname = path.as_ref().join(e_filename);
-
-            let treenode = ui.tree_node_config(e_filename);
-
-            if e.kind == EntryKind::Dir {
-                treenode.build(|| {
-                    self.render_tree_nodes(ui, &e_fullname);
-                });
+            if self.tree_vfs.is_dir(&path) {
+                log::info!("scripted resource tree toggling directory '{}'", path);
+                self.tree_vfs.toggle_expanded(&path);
             } else {
-                treenode.leaf(true).build(|| {
-                    if ui.is_item_clicked() {
-                        self.content_tabs
-                            .borrow_mut()
-                            .open(self.asset_mgr.vfs(), &e_fullname);
-                    }
-                });
+                log::info!("scripted resource tree opening file '{}'", path);
+                self.content_tabs
+                    .borrow_mut()
+                    .open(self.asset_mgr.vfs(), path);
             }
         }
     }
@@ -117,25 +159,30 @@ impl DevToolsDirector {
     fn render_content(&self, ui: &Ui) -> Option<DevToolsState> {
         self.content_tabs.borrow_mut().render_tabs(ui)
     }
+}
 
-    fn get_entries<P: AsRef<Path>>(&self, path: P) -> Vec<Entry> {
-        let key = path.as_ref().to_string_lossy().to_string();
-        self.cache
-            .borrow_mut()
-            .get_or_insert(key, || {
-                let entries: Entries = self.asset_mgr.vfs().entries(path.as_ref()).unwrap();
-                let mut entries: Vec<Entry> = entries.map(|e| e.unwrap()).collect();
-                entries.sort_by(|a, b| match (a.kind, b.kind) {
-                    (EntryKind::Dir, EntryKind::Dir) => a.name.cmp(&b.name),
-                    (EntryKind::File, EntryKind::File) => a.name.cmp(&b.name),
-                    (EntryKind::Dir, EntryKind::File) => Ordering::Less,
-                    (EntryKind::File, EntryKind::Dir) => Ordering::Greater,
-                });
+struct NullTextureResolver;
 
-                entries
-            })
-            .clone()
+impl TextureResolver for NullTextureResolver {
+    fn resolve(&mut self, _com_id: i64) -> Option<imgui::TextureId> {
+        None
     }
+}
+
+fn init_tree_runtime(vfs: ComRc<IVfsService>) -> ScriptRuntime {
+    let mut runtime = ScriptRuntime::new();
+    runtime
+        .load_source(MAIN_TREE_SCRIPT)
+        .expect("main_tree.p7 must load successfully");
+    let vfs_id = runtime.intern(vfs);
+    let vfs = runtime
+        .foreign_box("radiance_scripting.comdef.services.IVfsService", vfs_id)
+        .expect("scripted resource tree VFS service must be internable");
+    let state = runtime
+        .call_returning_data("init", vec![vfs])
+        .expect("main_tree.p7 init must succeed");
+    runtime.store_state(state);
+    runtime
 }
 
 impl IDirectorImpl for DevToolsDirector {

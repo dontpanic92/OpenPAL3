@@ -64,10 +64,7 @@ impl IDirectorImpl for MainPageDirector {
                 // igDockSpace() call neutralizes that fill without affecting
                 // any other docked window (each one reads WindowBg at its own
                 // Begin() time).
-                let _bg = ui.push_style_color(
-                    imgui::StyleColor::WindowBg,
-                    [0.0, 0.0, 0.0, 0.0],
-                );
+                let _bg = ui.push_style_color(imgui::StyleColor::WindowBg, [0.0, 0.0, 0.0, 0.0]);
 
                 unsafe {
                     let s = "main_page_dock";

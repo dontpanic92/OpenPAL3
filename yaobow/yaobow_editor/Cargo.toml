@@ -22,6 +22,7 @@ log = { version = "0.4", features = ["max_level_debug", "release_max_level_debug
 lru = { version = "0.12.5" }
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 native-dialog = "0.9"
+p7 = { path = "../../radiance/protosept/p7" }
 radiance = { path = "../../radiance/radiance" }
 radiance_editor = { path = "../../radiance/radiance_editor" }
 radiance_scripting = { path = "../../radiance/radiance_scripting" }

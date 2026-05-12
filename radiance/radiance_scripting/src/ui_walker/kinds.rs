@@ -13,3 +13,5 @@ pub const IMAGE: i64 = 10;
 pub const TABLE: i64 = 11;
 pub const STYLE_ALPHA: i64 = 12;
 pub const GROUP: i64 = 13;
+pub const TREE_NODE: i64 = 14;
+pub const TREE_LEAF: i64 = 15;

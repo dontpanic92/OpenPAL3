@@ -41,6 +41,10 @@ impl AssetLoader {
         &self.vfs
     }
 
+    pub fn vfs_rc(&self) -> Rc<MiniFs> {
+        self.vfs.clone()
+    }
+
     pub fn load_map_nod(&self, map_name: &str) -> anyhow::Result<NodFile> {
         let path = format!("/Map/{}/{}_0_0.nod", map_name, map_name);
         Ok(NodFile::read(&mut Cursor::new(

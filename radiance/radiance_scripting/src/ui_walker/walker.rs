@@ -87,6 +87,13 @@ pub trait UiVisitor {
         &mut self,
         body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
     ) -> Result<(), WalkError>;
+    fn tree_node(
+        &mut self,
+        label: &str,
+        command_id: i32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError>;
+    fn tree_leaf(&mut self, label: &str, command_id: i32) -> Result<(), WalkError>;
 }
 
 pub struct UiAdapter<'a> {
@@ -249,6 +256,39 @@ impl<'a> UiVisitor for UiAdapter<'a> {
         self.ui.group(|| result = body(self));
         result
     }
+
+    fn tree_node(
+        &mut self,
+        label: &str,
+        command_id: i32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError> {
+        let mut result = Ok(());
+        let id_label = format!("{}##cmd_{}", label, command_id);
+        if let Some(_node) = self.ui.tree_node_config(&id_label).push() {
+            if command_id != 0 && self.ui.is_item_clicked() {
+                self.ctx.commands.enqueue(command_id);
+            }
+            result = body(self);
+        } else if command_id != 0 && self.ui.is_item_clicked() {
+            self.ctx.commands.enqueue(command_id);
+        }
+        result
+    }
+
+    fn tree_leaf(&mut self, label: &str, command_id: i32) -> Result<(), WalkError> {
+        let id_label = format!("{}##cmd_{}", label, command_id);
+        let _node = self.ui.tree_node_config(&id_label).leaf(true).push();
+        if command_id != 0 && self.ui.is_item_clicked() {
+            log::info!(
+                "ui_walker: tree leaf '{}' clicked, enqueuing cmd {}",
+                label,
+                command_id
+            );
+            self.ctx.commands.enqueue(command_id);
+        }
+        Ok(())
+    }
 }
 
 impl<'a> UiAdapter<'a> {
@@ -304,6 +344,11 @@ pub fn walk(node: &OwnedNode, visitor: &mut dyn UiVisitor) -> Result<(), WalkErr
             let mut body = |v: &mut dyn UiVisitor| walk_children(&node.children, v);
             visitor.group(&mut body)
         }
+        kinds::TREE_NODE => {
+            let mut body = |v: &mut dyn UiVisitor| walk_children(&node.children, v);
+            visitor.tree_node(&node.label, node.i1 as i32, &mut body)
+        }
+        kinds::TREE_LEAF => visitor.tree_leaf(&node.label, node.i1 as i32),
         other => Err(WalkError::ShapeMismatch(format!(
             "unknown UiNode kind {other}"
         ))),

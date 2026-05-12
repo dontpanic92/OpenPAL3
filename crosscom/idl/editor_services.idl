@@ -41,9 +41,17 @@ class TextureService: ITextureService {}
 [uuid(fa71af91-765f-4fc4-a36d-63fcbe27c4f5)]
 interface IVfsService: IUnknown {
     bool exists(&str vfs_path);
+    int byte_len(&str vfs_path);
+    int entry_count(&str vfs_path);
+    &str entry_name(&str vfs_path, int index);
+    bool entry_is_dir(&str vfs_path, int index);
+    bool is_dir(&str vfs_path);
+    bool is_expanded(&str vfs_path);
+    void toggle_expanded(&str vfs_path);
+    int command_id(&str vfs_path);
+    &str command_path(int command_id);
     [internal(), rust()]
     Vec<u8> read_bytes_internal(&str vfs_path);
-    int byte_len(&str vfs_path);
 }
 [uuid(f19e19aa-9568-4021-ae47-7658426780f2)]
 class VfsService: IVfsService {}

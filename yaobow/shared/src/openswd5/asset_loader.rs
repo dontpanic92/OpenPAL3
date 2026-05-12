@@ -69,6 +69,10 @@ impl AssetLoader {
         &self.vfs
     }
 
+    pub fn vfs_rc(&self) -> Rc<MiniFs> {
+        self.vfs.clone()
+    }
+
     pub fn load_main_script(&self) -> anyhow::Result<Vec<u8>> {
         let content = self.vfs.read_to_end(self.main_script_path())?;
         let mut reader = Cursor::new(content);

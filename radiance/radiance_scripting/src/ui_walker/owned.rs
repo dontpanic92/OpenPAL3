@@ -39,7 +39,7 @@ pub fn resolve(ctx: &Context, data: &Data) -> Result<OwnedNode, HostError> {
     let h = expect_f32(&fields[3], "UiNode.h")?;
     let i1 = expect_int(&fields[4], "UiNode.i1")?;
     let i2 = expect_int(&fields[5], "UiNode.i2")?;
-    let children_data = expect_array(&fields[6], "UiNode.children")?;
+    let children_data = expect_array(ctx, &fields[6], "UiNode.children")?;
     let mut children = Vec::with_capacity(children_data.len());
     for child in children_data {
         children.push(resolve(ctx, child)?);
@@ -109,9 +109,27 @@ fn expect_f32(data: &Data, name: &str) -> Result<f32, HostError> {
     }
 }
 
-fn expect_array<'a>(data: &'a Data, name: &str) -> Result<&'a [Data], HostError> {
+fn expect_array<'a>(ctx: &'a Context, data: &'a Data, name: &str) -> Result<&'a [Data], HostError> {
     match data {
         Data::Array(items) => Ok(items.as_slice()),
+        Data::BoxRef(idx) => match ctx.box_heap.get(*idx as usize) {
+            Some(Data::Array(items)) => Ok(items.as_slice()),
+            Some(other) => Err(HostError::message(format!(
+                "{name}: expected boxed array, got {other:?}"
+            ))),
+            None => Err(HostError::message(format!(
+                "{name}: box_heap[{idx}] missing"
+            ))),
+        },
+        Data::ProtoBoxRef { box_idx, .. } => match ctx.box_heap.get(*box_idx as usize) {
+            Some(Data::Array(items)) => Ok(items.as_slice()),
+            Some(other) => Err(HostError::message(format!(
+                "{name}: expected boxed array, got {other:?}"
+            ))),
+            None => Err(HostError::message(format!(
+                "{name}: box_heap[{box_idx}] missing"
+            ))),
+        },
         other => Err(HostError::message(format!(
             "{name}: expected array, got {other:?}"
         ))),

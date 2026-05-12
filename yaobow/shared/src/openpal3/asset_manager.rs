@@ -55,6 +55,10 @@ impl AssetManager {
         &self.vfs
     }
 
+    pub fn vfs_rc(&self) -> Rc<MiniFs> {
+        self.vfs.clone()
+    }
+
     pub fn component_factory(&self) -> Rc<dyn ComponentFactory> {
         self.factory.clone()
     }

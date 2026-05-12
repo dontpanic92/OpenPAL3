@@ -37,7 +37,7 @@ use crate::{
 use super::{actor::Pal4ActorAnimationController, comdef::IPal4ActorAnimationController};
 
 pub struct AssetLoader {
-    vfs: MiniFs,
+    vfs: Rc<MiniFs>,
     component_factory: Rc<dyn ComponentFactory>,
     input: Rc<RefCell<dyn InputEngine>>,
     texture_resolver: Pal4TextureResolver,
@@ -51,6 +51,7 @@ impl AssetLoader {
         vfs: MiniFs,
     ) -> Rc<Self> {
         let portraits = load_portraits(&component_factory, &vfs);
+        let vfs = Rc::new(vfs);
         Rc::new(Self {
             component_factory,
             input,
@@ -66,6 +67,10 @@ impl AssetLoader {
 
     pub fn vfs(&self) -> &MiniFs {
         &self.vfs
+    }
+
+    pub fn vfs_rc(&self) -> Rc<MiniFs> {
+        self.vfs.clone()
     }
 
     pub fn load_script_module(&self, scene: &str) -> anyhow::Result<Rc<RefCell<ScriptModule>>> {
