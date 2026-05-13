@@ -375,7 +375,6 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
         let material = SimpleMaterialDef::create(
             texture_path.to_str().unwrap(),
             |name| vfs.open(name).ok(),
-            false,
         );
         for mesh_index in 0..model.mesh_count as usize {
             frames.push(create_geometry_frames(model, mesh_index, &material))

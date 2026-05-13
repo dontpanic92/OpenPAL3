@@ -332,11 +332,10 @@ pub(crate) fn create_geometry_internal(
 
                         data.and_then(|data| Some(std::io::Cursor::new(data)))
                     },
-                    true,
                 )
             } else {
                 log::debug!("no texture info for material {:?}", path);
-                radiance::rendering::SimpleMaterialDef::create2("missing", None, true)
+                radiance::rendering::SimpleMaterialDef::create2("missing", None)
             };
 
             MaterialGroupedIndices {

@@ -131,7 +131,6 @@ fn load_texture<P: AsRef<Path>>(
     SimpleMaterialDef::create(
         texture_path.to_str().unwrap(),
         |name| vfs.open(name).ok(),
-        false,
     )
 }
 

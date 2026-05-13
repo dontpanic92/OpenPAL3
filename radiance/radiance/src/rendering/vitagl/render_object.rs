@@ -1,8 +1,9 @@
 use std::cell::{RefCell, RefMut};
+use std::rc::Rc;
 
 use crate::{
     math::Mat44,
-    rendering::{Material, RenderObject, VertexBuffer, VertexComponents},
+    rendering::{RenderObject, VertexBuffer, VertexComponents},
 };
 
 use super::material::VitaGLMaterial;
@@ -10,7 +11,7 @@ use super::material::VitaGLMaterial;
 pub struct VitaGLRenderObject {
     buffers: [u32; 2],
     vertices: RefCell<VertexBuffer>,
-    material: Box<VitaGLMaterial>,
+    material: Rc<VitaGLMaterial>,
     indices: Vec<u32>,
 
     model_matrix: RefCell<Mat44>,
@@ -36,7 +37,7 @@ impl VitaGLRenderObject {
     pub fn new(
         vertices: VertexBuffer,
         indices: Vec<u32>,
-        material: Box<dyn Material>,
+        material: Rc<VitaGLMaterial>,
         host_dynamic: bool,
     ) -> anyhow::Result<Self> {
         let mut buffers = [0; 2];
@@ -70,7 +71,7 @@ impl VitaGLRenderObject {
         Ok(Self {
             buffers,
             vertices: RefCell::new(vertices),
-            material: material.downcast::<VitaGLMaterial>().unwrap(),
+            material,
             indices,
             model_matrix: RefCell::new(Mat44::new_identity()),
         })

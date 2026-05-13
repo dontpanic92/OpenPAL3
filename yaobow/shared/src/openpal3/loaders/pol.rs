@@ -78,7 +78,6 @@ fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path:
         SimpleMaterialDef::create(
             texture_paths[0].to_str().unwrap(),
             |name| vfs.open(name).ok(),
-            material.use_alpha != 0,
         )
     } else {
         let textures: Vec<_> = texture_paths.iter().map(|p| p.to_str().unwrap()).collect();
@@ -89,7 +88,6 @@ fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path:
                     .file_stem()
                     .and_then(|_| vfs.open(name).ok())
             },
-            material.use_alpha != 0,
         )
     }
 }

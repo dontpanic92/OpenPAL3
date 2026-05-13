@@ -1,8 +1,12 @@
-use super::texture::VulkanTextureStore;
-use super::{device::Device, shader::VulkanShader, texture::VulkanTexture};
+use super::buffer::{Buffer, BufferType};
+use super::descriptor_managers::DescriptorManager;
 use super::shader_cache::VulkanShaderCache;
+use super::texture::VulkanTextureStore;
+use super::uniform_buffers::MaterialParamsGpu;
+use super::{device::Device, shader::VulkanShader, texture::VulkanTexture};
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
-use crate::rendering::{Material, MaterialDef, MaterialKey, MaterialParams};
+use crate::rendering::{MaterialDef, MaterialKey, MaterialParams};
+use ash::vk;
 use std::rc::Rc;
 
 pub struct VulkanMaterial {
@@ -11,9 +15,11 @@ pub struct VulkanMaterial {
     shader: Rc<VulkanShader>,
     textures: Vec<Rc<VulkanTexture>>,
     params: MaterialParams,
-}
 
-impl Material for VulkanMaterial {}
+    descriptor_manager: Rc<DescriptorManager>,
+    _params_buffer: Buffer,
+    params_descriptor_set: vk::DescriptorSet,
+}
 
 impl std::fmt::Debug for VulkanMaterial {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -29,7 +35,9 @@ impl VulkanMaterial {
         command_runner: &Rc<AdhocCommandRunner>,
         texture_store: &mut VulkanTextureStore,
         shader_cache: &VulkanShaderCache,
+        descriptor_manager: &Rc<DescriptorManager>,
     ) -> Self {
+        let _ = device;
         let shader = shader_cache.get_or_create(def.program());
         let textures = def
             .textures()
@@ -40,22 +48,28 @@ impl VulkanMaterial {
                 })
             })
             .collect();
+
+        let gpu_params = MaterialParamsGpu::from_params(def.params());
+        let params_buffer =
+            Buffer::new_dynamic_buffer_with_data(allocator, BufferType::Uniform, &[gpu_params])
+                .expect("failed to allocate material params UBO");
+        let params_descriptor_set = descriptor_manager
+            .allocate_material_params_descriptor_set(&params_buffer)
+            .expect("failed to allocate material params descriptor set");
+
         Self {
             debug_name: def.debug_name().to_string(),
             key: def.key(),
             shader,
             textures,
             params: *def.params(),
+            descriptor_manager: descriptor_manager.clone(),
+            _params_buffer: params_buffer,
+            params_descriptor_set,
         }
     }
 
-    /// Debug-only name. Do not use as a cache key.
     pub fn debug_name(&self) -> &str {
-        &self.debug_name
-    }
-
-    /// Backwards-compatible alias for `debug_name()`.
-    pub fn name(&self) -> &str {
         &self.debug_name
     }
 
@@ -73,5 +87,16 @@ impl VulkanMaterial {
 
     pub fn params(&self) -> &MaterialParams {
         &self.params
+    }
+
+    pub fn material_params_descriptor_set(&self) -> vk::DescriptorSet {
+        self.params_descriptor_set
+    }
+}
+
+impl Drop for VulkanMaterial {
+    fn drop(&mut self) {
+        self.descriptor_manager
+            .free_material_params_descriptor_set(self.params_descriptor_set);
     }
 }

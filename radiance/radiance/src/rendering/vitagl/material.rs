@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use image::RgbaImage;
 
-use crate::rendering::{Material, MaterialDef};
+use crate::rendering::MaterialDef;
 
 use super::{shader::VitaGLShader, texture::VitaGLTexture};
 
@@ -11,8 +11,6 @@ pub struct VitaGLMaterial {
     shader: Rc<VitaGLShader>,
     textures: Vec<Rc<VitaGLTexture>>,
 }
-
-impl Material for VitaGLMaterial {}
 
 impl std::fmt::Debug for VitaGLMaterial {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

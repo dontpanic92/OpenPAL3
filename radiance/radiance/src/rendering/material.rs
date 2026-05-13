@@ -5,10 +5,6 @@ use crate::rendering::texture::TextureStore;
 use super::{texture::TextureDef, ShaderProgram};
 use std::{io::Read, sync::Arc};
 
-pub trait Material: downcast_rs::Downcast + std::fmt::Debug {}
-
-downcast_rs::impl_downcast!(Material);
-
 /// Color-blend mode for a material. Today every variant maps to a distinct
 /// Vulkan pipeline; the cross-backend `MaterialDef` only exposes the enum.
 ///
@@ -94,16 +90,12 @@ pub struct MaterialDef {
 }
 
 impl MaterialDef {
-    /// Construct a `MaterialDef` with the legacy positional argument set.
-    ///
-    /// `use_alpha` is accepted for source compatibility but is ignored:
-    /// blend state is determined by `BlendMode`, which defaults to
-    /// `AlphaTest` for legacy call sites (matching today's runtime).
+    /// Construct a `MaterialDef` directly. New code should prefer
+    /// [`MaterialDef::builder`].
     pub fn new(
         name: String,
         shader: ShaderProgram,
         textures: Vec<Arc<TextureDef>>,
-        _use_alpha: bool,
     ) -> Self {
         MaterialDefBuilder::new(shader)
             .debug_name(name)
@@ -116,12 +108,6 @@ impl MaterialDef {
     }
 
     pub fn debug_name(&self) -> &str {
-        &self.debug_name
-    }
-
-    /// Backwards-compatible alias for `debug_name()`. New code should
-    /// prefer `debug_name()` or `key()`.
-    pub fn name(&self) -> &str {
         &self.debug_name
     }
 
@@ -237,7 +223,6 @@ impl SimpleMaterialDef {
     pub fn create<R: Read>(
         texture_name: &str,
         get_reader: impl FnOnce(&str) -> Option<R>,
-        use_alpha: bool,
     ) -> MaterialDef {
         let texture = TextureStore::get_or_update(texture_name, || {
             if let Some(mut r) = get_reader(texture_name) {
@@ -252,10 +237,10 @@ impl SimpleMaterialDef {
             }
         });
 
-        Self::create_internal(texture, use_alpha)
+        Self::create_internal(texture)
     }
 
-    pub fn create2(texture_name: &str, data: Option<Vec<u8>>, use_alpha: bool) -> MaterialDef {
+    pub fn create2(texture_name: &str, data: Option<Vec<u8>>) -> MaterialDef {
         let texture = TextureStore::get_or_update(texture_name, || {
             if let Some(data) = data {
                 let image = {
@@ -268,13 +253,10 @@ impl SimpleMaterialDef {
             }
         });
 
-        Self::create_internal(texture, use_alpha)
+        Self::create_internal(texture)
     }
 
-    fn create_internal(texture_def: Arc<TextureDef>, _use_alpha: bool) -> MaterialDef {
-        // `_use_alpha` is accepted for source compatibility; legacy callers
-        // get the historical hybrid pipeline via `BlendMode::AlphaTest`,
-        // which is the builder default.
+    fn create_internal(texture_def: Arc<TextureDef>) -> MaterialDef {
         MaterialDef::builder(ShaderProgram::TexturedNoLight)
             .debug_name("simple_material")
             .textures(vec![texture_def])
@@ -287,7 +269,6 @@ impl LightMapMaterialDef {
     pub fn create<R: Read>(
         textures: Vec<&str>,
         get_reader: impl Fn(&str) -> Option<R>,
-        _use_alpha: bool,
     ) -> MaterialDef {
         let textures: Vec<Arc<TextureDef>> = textures
             .into_iter()

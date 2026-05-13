@@ -306,6 +306,7 @@ impl SwapChain {
                         per_frame_descriptor_set,
                         dub_manager.descriptor_set(),
                         object.vk_descriptor_set(),
+                        material.material_params_descriptor_set(),
                     ],
                     &[dub_manager.get_offset(object.dub_index()) as u32],
                 );

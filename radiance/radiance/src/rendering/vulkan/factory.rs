@@ -10,12 +10,58 @@ use super::{
 };
 use crate::rendering::VideoPlayer;
 use crate::rendering::{
-    factory::ComponentFactory, texture::TextureDef, Material, MaterialDef, RenderObject,
-    RenderingComponent, Texture, VertexBuffer,
+    factory::ComponentFactory, texture::TextureDef, MaterialDef, MaterialKey, MaterialParams,
+    RenderObject, RenderingComponent, Texture, VertexBuffer,
 };
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
+
+/// Bit-pattern view of [`MaterialParams`] so it can be a `HashMap` key.
+/// Two materials with identical floats hash equal; `+0.0`/`-0.0` and NaN
+/// patterns are *not* normalized (this is the desired behavior — we only
+/// care about exact equality).
+#[derive(Hash, Eq, PartialEq, Clone, Copy)]
+struct MaterialParamsBits {
+    tint: [u32; 4],
+    alpha_ref: u32,
+    uv_scale: [u32; 2],
+    uv_offset: [u32; 2],
+}
+
+impl From<&MaterialParams> for MaterialParamsBits {
+    fn from(p: &MaterialParams) -> Self {
+        Self {
+            tint: [
+                p.tint[0].to_bits(),
+                p.tint[1].to_bits(),
+                p.tint[2].to_bits(),
+                p.tint[3].to_bits(),
+            ],
+            alpha_ref: p.alpha_ref.to_bits(),
+            uv_scale: [p.uv_scale[0].to_bits(), p.uv_scale[1].to_bits()],
+            uv_offset: [p.uv_offset[0].to_bits(), p.uv_offset[1].to_bits()],
+        }
+    }
+}
+
+#[derive(Hash, Eq, PartialEq, Clone)]
+struct MaterialIdentity {
+    key: MaterialKey,
+    texture_names: Vec<String>,
+    params: MaterialParamsBits,
+}
+
+impl MaterialIdentity {
+    fn from(def: &MaterialDef) -> Self {
+        Self {
+            key: def.key(),
+            texture_names: def.textures().iter().map(|t| t.name().to_string()).collect(),
+            params: MaterialParamsBits::from(def.params()),
+        }
+    }
+}
 
 pub struct VulkanComponentFactory {
     device: Rc<Device>,
@@ -25,6 +71,7 @@ pub struct VulkanComponentFactory {
     command_runner: Rc<AdhocCommandRunner>,
     texture_store: RefCell<VulkanTextureStore>,
     shader_cache: Rc<VulkanShaderCache>,
+    material_cache: RefCell<HashMap<MaterialIdentity, Rc<VulkanMaterial>>>,
     imgui: Rc<RefCell<ImguiRenderer>>,
 }
 
@@ -75,18 +122,6 @@ impl ComponentFactory for VulkanComponentFactory {
         self.imgui.borrow_mut().remove_texture(texture_id);
     }
 
-    fn create_material(&self, material_def: &MaterialDef) -> Box<dyn Material> {
-        let mut texture_store = self.texture_store.borrow_mut();
-        Box::new(VulkanMaterial::new(
-            material_def,
-            &self.device,
-            &self.allocator,
-            &self.command_runner,
-            &mut texture_store,
-            &self.shader_cache,
-        ))
-    }
-
     fn create_render_object(
         &self,
         vertices: VertexBuffer,
@@ -94,7 +129,7 @@ impl ComponentFactory for VulkanComponentFactory {
         material_def: &MaterialDef,
         host_dynamic: bool,
     ) -> Box<dyn RenderObject> {
-        let material = self.create_material(material_def);
+        let material = self.get_or_create_material(material_def);
         let x = Box::new(
             VulkanRenderObject::new(
                 vertices,
@@ -146,8 +181,33 @@ impl VulkanComponentFactory {
             command_runner: command_runner.clone(),
             texture_store: RefCell::new(VulkanTextureStore::new()),
             shader_cache,
+            material_cache: RefCell::new(HashMap::new()),
             imgui,
         }
+    }
+
+    fn get_or_create_material(&self, def: &MaterialDef) -> Rc<VulkanMaterial> {
+        let identity = MaterialIdentity::from(def);
+        if let Some(existing) = self.material_cache.borrow().get(&identity) {
+            return existing.clone();
+        }
+
+        let material = {
+            let mut texture_store = self.texture_store.borrow_mut();
+            Rc::new(VulkanMaterial::new(
+                def,
+                &self.device,
+                &self.allocator,
+                &self.command_runner,
+                &mut texture_store,
+                &self.shader_cache,
+                &self.descriptor_manager,
+            ))
+        };
+        self.material_cache
+            .borrow_mut()
+            .insert(identity, material.clone());
+        material
     }
 
     pub fn as_component_factory(self: &Rc<Self>) -> Rc<dyn ComponentFactory> {

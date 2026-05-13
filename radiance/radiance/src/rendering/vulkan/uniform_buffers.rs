@@ -113,3 +113,30 @@ impl PerFrameUniformBuffer {
         }
     }
 }
+
+/// GPU-side layout of [`crate::rendering::MaterialParams`] used by the
+/// per-material UBO (descriptor set 3). All members are `vec4`s for
+/// std140 friendliness; `misc.x` carries `alpha_ref` and `uv_xform`
+/// (xy=scale, zw=offset) is reserved for a future vertex-shader UV xform.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct MaterialParamsGpu {
+    pub tint: [f32; 4],
+    pub misc: [f32; 4],
+    pub uv_xform: [f32; 4],
+}
+
+impl MaterialParamsGpu {
+    pub fn from_params(p: &crate::rendering::MaterialParams) -> Self {
+        Self {
+            tint: p.tint,
+            misc: [p.alpha_ref, 0.0, 0.0, 0.0],
+            uv_xform: [
+                p.uv_scale[0],
+                p.uv_scale[1],
+                p.uv_offset[0],
+                p.uv_offset[1],
+            ],
+        }
+    }
+}

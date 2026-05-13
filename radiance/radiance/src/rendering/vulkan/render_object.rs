@@ -3,7 +3,7 @@ use super::material::VulkanMaterial;
 use super::uniform_buffers::DynamicUniformBufferManager;
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
-use crate::rendering::{Material, RenderObject, VertexBuffer};
+use crate::rendering::{RenderObject, VertexBuffer};
 use ash::vk;
 use std::cell::{Ref, RefCell, RefMut};
 use std::error::Error;
@@ -20,7 +20,7 @@ pub struct VulkanRenderObject {
     descriptor_manager: Rc<DescriptorManager>,
     vertex_buffer: RefCell<Buffer>,
     index_buffer: Buffer,
-    material: Box<VulkanMaterial>,
+    material: Rc<VulkanMaterial>,
     per_object_descriptor_set: vk::DescriptorSet,
     dub_index: usize,
 }
@@ -39,7 +39,7 @@ impl VulkanRenderObject {
     pub fn new(
         vertices: VertexBuffer,
         indices: Vec<u32>,
-        material: Box<dyn Material>,
+        material: Rc<VulkanMaterial>,
         host_dynamic: bool,
         allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
@@ -64,7 +64,6 @@ impl VulkanRenderObject {
             command_runner,
         )?;
 
-        let material = material.downcast::<VulkanMaterial>().unwrap();
         let per_object_descriptor_set =
             descriptor_manager.allocate_per_object_descriptor_set(&material)?;
         let dub_index = dub_manager.allocate_buffer();

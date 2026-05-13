@@ -3,8 +3,8 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use imgui::TextureId;
 
 use crate::rendering::{
-    ComponentFactory, Material, MaterialDef, RenderObject, RenderingComponent, Shader,
-    ShaderProgram, Texture, TextureDef, VertexBuffer, VideoPlayer,
+    ComponentFactory, MaterialDef, RenderObject, RenderingComponent, Shader, ShaderProgram,
+    Texture, TextureDef, VertexBuffer, VideoPlayer,
 };
 
 use super::{
@@ -43,13 +43,6 @@ impl ComponentFactory for VitaGLComponentFactory {
 
     fn remove_imgui_texture(&self, texture_id: Option<TextureId>) {}
 
-    fn create_material(&self, material_def: &MaterialDef) -> Box<dyn Material> {
-        Box::new(VitaGLMaterial::new(
-            material_def,
-            self.create_shader(material_def.shader()),
-        ))
-    }
-
     fn create_render_object(
         &self,
         vertices: VertexBuffer,
@@ -57,7 +50,10 @@ impl ComponentFactory for VitaGLComponentFactory {
         material_def: &MaterialDef,
         host_dynamic: bool,
     ) -> Box<dyn RenderObject> {
-        let material = self.create_material(material_def);
+        let material = Rc::new(VitaGLMaterial::new(
+            material_def,
+            self.create_shader(material_def.shader()),
+        ));
         let x =
             Box::new(VitaGLRenderObject::new(vertices, indices, material, host_dynamic).unwrap());
         x

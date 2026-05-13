@@ -3,7 +3,7 @@ use super::{
     descriptor_set_layout::DescriptorSetLayout, device::Device, texture::VulkanTexture,
 };
 use crate::rendering::vulkan::material::VulkanMaterial;
-use crate::rendering::vulkan::uniform_buffers::PerFrameUniformBuffer;
+use crate::rendering::vulkan::uniform_buffers::{MaterialParamsGpu, PerFrameUniformBuffer};
 use crate::rendering::ShaderProgram;
 use ash::prelude::VkResult;
 use ash::vk;
@@ -16,10 +16,6 @@ const MAX_DESCRIPTOR_SET_COUNT: u32 = 40960;
 const MAX_DESCRIPTOR_COUNT: u32 = 40960;
 const MAX_SWAPCHAIN_IMAGE_COUNT: u32 = 4;
 
-/// Per-material descriptor-set layouts are keyed by `(program, texture
-/// count)`. That tuple is what actually determines the layout (the
-/// `COMBINED_IMAGE_SAMPLER` array size in `binding=0`); two materials
-/// sharing this key share the layout.
 type PerMaterialLayoutKey = (ShaderProgram, u32);
 
 pub struct DescriptorManager {
@@ -27,8 +23,10 @@ pub struct DescriptorManager {
     texture_pool: vk::DescriptorPool,
     per_frame_pool: vk::DescriptorPool,
     per_object_pool: vk::DescriptorPool,
+    per_material_params_pool: vk::DescriptorPool,
     texture_layout: vk::DescriptorSetLayout,
     per_frame_layout: vk::DescriptorSetLayout,
+    per_material_params_layout: vk::DescriptorSetLayout,
     per_material_layouts:
         Arc<Mutex<HashMap<PerMaterialLayoutKey, vk::DescriptorSetLayout>>>,
     dub_descriptor_manager: DynamicUniformBufferDescriptorManager,
@@ -39,6 +37,8 @@ impl DescriptorManager {
         let texture_pool = Self::create_texture_descriptor_pool(&device).unwrap();
         let per_frame_pool = Self::create_per_frame_descriptor_pool(&device).unwrap();
         let per_object_pool = Self::create_per_object_descriptor_pool(&device).unwrap();
+        let per_material_params_pool =
+            Self::create_per_material_params_descriptor_pool(&device).unwrap();
         let texture_layout = Self::create_descriptor_set_layout(
             &device,
             vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -51,6 +51,12 @@ impl DescriptorManager {
             vk::ShaderStageFlags::VERTEX,
             1,
         )?;
+        let per_material_params_layout = Self::create_descriptor_set_layout(
+            &device,
+            vk::DescriptorType::UNIFORM_BUFFER,
+            vk::ShaderStageFlags::FRAGMENT,
+            1,
+        )?;
         let dub_descriptor_manager = DynamicUniformBufferDescriptorManager::new(device.clone());
 
         Ok(Self {
@@ -58,8 +64,10 @@ impl DescriptorManager {
             texture_pool,
             per_frame_pool,
             per_object_pool,
+            per_material_params_pool,
             texture_layout,
             per_frame_layout,
+            per_material_params_layout,
             per_material_layouts: Arc::new(Mutex::new(HashMap::new())),
             dub_descriptor_manager,
         })
@@ -190,13 +198,46 @@ impl DescriptorManager {
     pub fn get_vk_descriptor_set_layouts(
         &self,
         material: &VulkanMaterial,
-    ) -> [vk::DescriptorSetLayout; 3] {
+    ) -> [vk::DescriptorSetLayout; 4] {
         let per_material_layout = self.get_per_material_descriptor_layout(material);
         [
             self.per_frame_layout,
             self.dub_descriptor_manager.layout().vk_layout(),
             per_material_layout,
+            self.per_material_params_layout,
         ]
+    }
+
+    /// Allocate a descriptor set bound to a 1-binding UBO (set = 3,
+    /// binding = 0) carrying the material's [`MaterialParamsGpu`].
+    pub fn allocate_material_params_descriptor_set(
+        &self,
+        buffer: &Buffer,
+    ) -> VkResult<vk::DescriptorSet> {
+        let layouts = [self.per_material_params_layout];
+        let allocate_info = vk::DescriptorSetAllocateInfo::default()
+            .descriptor_pool(self.per_material_params_pool)
+            .set_layouts(&layouts);
+        let set = self.device.allocate_descriptor_sets(&allocate_info)?[0];
+
+        let buffer_info = [vk::DescriptorBufferInfo::default()
+            .buffer(buffer.vk_buffer())
+            .offset(0)
+            .range(std::mem::size_of::<MaterialParamsGpu>() as u64)];
+        let writes = [vk::WriteDescriptorSet::default()
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+            .dst_set(set)
+            .dst_binding(0)
+            .dst_array_element(0)
+            .buffer_info(&buffer_info)];
+        self.device.update_descriptor_sets(&writes, &[]);
+
+        Ok(set)
+    }
+
+    pub fn free_material_params_descriptor_set(&self, descriptor_set: vk::DescriptorSet) {
+        self.device
+            .free_descriptor_sets(self.per_material_params_pool, &[descriptor_set]);
     }
 
     fn create_texture_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
@@ -233,6 +274,22 @@ impl DescriptorManager {
             .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER);
 
         let pool_sizes = [sampler_pool_size];
+        let create_info = vk::DescriptorPoolCreateInfo::default()
+            .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
+            .pool_sizes(&pool_sizes)
+            .max_sets(MAX_DESCRIPTOR_SET_COUNT);
+
+        device.create_descriptor_pool(&create_info)
+    }
+
+    fn create_per_material_params_descriptor_pool(
+        device: &Device,
+    ) -> VkResult<vk::DescriptorPool> {
+        let uniform_pool_size = vk::DescriptorPoolSize::default()
+            .descriptor_count(MAX_DESCRIPTOR_COUNT)
+            .ty(vk::DescriptorType::UNIFORM_BUFFER);
+
+        let pool_sizes = [uniform_pool_size];
         let create_info = vk::DescriptorPoolCreateInfo::default()
             .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
             .pool_sizes(&pool_sizes)
@@ -287,6 +344,8 @@ impl Drop for DescriptorManager {
             .destroy_descriptor_set_layout(self.texture_layout);
         self.device
             .destroy_descriptor_set_layout(self.per_frame_layout);
+        self.device
+            .destroy_descriptor_set_layout(self.per_material_params_layout);
 
         for layout in self.per_material_layouts.lock().unwrap().values() {
             self.device.destroy_descriptor_set_layout(*layout);
@@ -295,6 +354,8 @@ impl Drop for DescriptorManager {
         self.device.destroy_descriptor_pool(self.texture_pool);
         self.device.destroy_descriptor_pool(self.per_frame_pool);
         self.device.destroy_descriptor_pool(self.per_object_pool);
+        self.device
+            .destroy_descriptor_pool(self.per_material_params_pool);
     }
 }
 

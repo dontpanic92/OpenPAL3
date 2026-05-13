@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use imgui::TextureId;
 use radiance::rendering::{
-    ComponentFactory, Material, MaterialDef, RenderObject, RenderingComponent, Texture, TextureDef,
+    ComponentFactory, MaterialDef, RenderObject, RenderingComponent, Texture, TextureDef,
     VertexBuffer, VideoPlayer,
 };
 use radiance_scripting::services::{ImguiTextureCache, Texture as ScriptTexture};
@@ -42,10 +42,6 @@ impl ComponentFactory for MockFactory {
     }
 
     fn remove_imgui_texture(&self, _texture_id: Option<TextureId>) {}
-
-    fn create_material(&self, _material_def: &MaterialDef) -> Box<dyn Material> {
-        panic!("not used by texture cache smoke test")
-    }
 
     fn create_render_object(
         &self,

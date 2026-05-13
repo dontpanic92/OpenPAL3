@@ -1,8 +1,8 @@
 use imgui::TextureId;
 
 use super::{
-    texture::TextureDef, Material, MaterialDef, RenderObject, RenderingComponent, Texture,
-    VertexBuffer, VideoPlayer,
+    texture::TextureDef, MaterialDef, RenderObject, RenderingComponent, Texture, VertexBuffer,
+    VideoPlayer,
 };
 
 pub trait ComponentFactory {
@@ -18,8 +18,6 @@ pub trait ComponentFactory {
     ) -> (Box<dyn Texture>, TextureId);
 
     fn remove_imgui_texture(&self, texture_id: Option<TextureId>);
-
-    fn create_material(&self, material_def: &MaterialDef) -> Box<dyn Material>;
 
     fn create_render_object(
         &self,
