@@ -206,7 +206,7 @@ fn welcome_script_update_returns_empty_transition_list() {
         .runtime
         .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
         .expect("welcome.p7 update should return");
-    assert_eq!(result, Data::Array(Vec::new()));
+    assert_eq!(result, Data::Array(std::rc::Rc::new(Vec::new())));
 }
 
 #[test]
@@ -238,7 +238,7 @@ fn welcome_script_unknown_command_is_a_no_op() {
         .runtime
         .call_method_returning_data(director, "dispatch", vec![Data::Int(9999)])
         .expect("welcome.p7 dispatch should return");
-    assert_eq!(result, Data::Array(Vec::new()));
+    assert_eq!(result, Data::Array(std::rc::Rc::new(Vec::new())));
 }
 
 #[test]
@@ -282,6 +282,6 @@ fn welcome_script_render_update_survives_repeated_frames() {
             .runtime
             .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
             .expect("welcome.p7 update should return");
-        assert_eq!(result, Data::Array(Vec::new()));
+        assert_eq!(result, Data::Array(std::rc::Rc::new(Vec::new())));
     }
 }

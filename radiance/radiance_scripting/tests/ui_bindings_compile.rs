@@ -39,7 +39,7 @@ fn constructor_returns_uinode_struct_shape() {
     let fields = ctx.heap[parent_ref as usize].fields.clone();
     assert_eq!(fields.len(), 7);
     assert_eq!(fields[0], Data::Int(1));
-    assert_eq!(fields[1], Data::String("t".to_string()));
+    assert_eq!(fields[1], Data::String("t".into()));
     assert_eq!(fields[2], Data::Float(100.0));
     assert_eq!(fields[3], Data::Float(200.0));
     assert_eq!(fields[4], Data::Int(0));
@@ -61,13 +61,13 @@ fn constructor_returns_uinode_struct_shape() {
     let child_fields = &ctx.heap[child_ref as usize].fields;
     assert_eq!(child_fields.len(), 7);
     assert_eq!(child_fields[0], Data::Int(5));
-    assert_eq!(child_fields[1], Data::String("hi".to_string()));
+    assert_eq!(child_fields[1], Data::String("hi".into()));
     assert_eq!(child_fields[2], Data::Float(0.0));
     assert_eq!(child_fields[3], Data::Float(0.0));
     assert_eq!(child_fields[4], Data::Int(0));
     assert_eq!(child_fields[5], Data::Int(0));
     match child_fields[6] {
-        Data::BoxRef(idx) => assert_eq!(ctx.box_heap[idx as usize], Data::Array(Vec::new())),
+        Data::BoxRef(idx) => assert_eq!(ctx.box_heap[idx as usize], Data::Array(std::rc::Rc::new(Vec::new()))),
         ref other => panic!("expected boxed child children array, got {other:?}"),
     }
 }

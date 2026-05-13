@@ -92,7 +92,7 @@ fn expect_int(data: &Data, name: &str) -> Result<i64, HostError> {
 
 fn expect_string(data: &Data, name: &str) -> Result<String, HostError> {
     match data {
-        Data::String(v) => Ok(v.clone()),
+        Data::String(v) => Ok(v.to_string()),
         other => Err(HostError::message(format!(
             "{name}: expected string, got {other:?}"
         ))),

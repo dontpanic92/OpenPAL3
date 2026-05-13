@@ -2876,6 +2876,7 @@ dependencies = [
  "bincode",
  "binrw 0.15.1",
  "criterion",
+ "indexmap",
  "num-derive 0.4.2",
  "num-traits",
  "serde",

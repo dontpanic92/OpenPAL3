@@ -4,6 +4,7 @@
 use crate::{ComObjectTable, HostContext, HostError, HostServices};
 use p7::errors::RuntimeError;
 use p7::interpreter::context::{Context, Data};
+use std::rc::Rc;
 
 /// Wraps a [`Context`] together with a per-runtime services bundle so the
 /// [`HostContext`] trait can be implemented uniformly on the same object
@@ -88,7 +89,7 @@ impl<S: HostServices> HostContext for P7HostContext<S> {
             .pop()
             .ok_or_else(|| HostError::message("pop_string: stack underflow"))?;
         match v {
-            Data::String(s) => Ok(s),
+            Data::String(s) => Ok(s.to_string()),
             other => Err(HostError::message(format!(
                 "pop_string: expected string, got {:?}",
                 other
@@ -106,8 +107,8 @@ impl<S: HostServices> HostContext for P7HostContext<S> {
             .ok_or_else(|| HostError::message("pop_optional_int: stack underflow"))?;
         match v {
             Data::Null => Ok(None),
-            Data::Some(inner) => match *inner {
-                Data::Int(i) => Ok(Some(i)),
+            Data::Some(inner) => match inner.as_ref() {
+                Data::Int(i) => Ok(Some(*i)),
                 other => Err(HostError::message(format!(
                     "pop_optional_int: Some(non-int): {:?}",
                     other
@@ -131,9 +132,9 @@ impl<S: HostServices> HostContext for P7HostContext<S> {
             .ok_or_else(|| HostError::message("pop_int_array: stack underflow"))?;
         match v {
             Data::Array(items) => items
-                .into_iter()
+                .iter()
                 .map(|d| match d {
-                    Data::Int(i) => Ok(i),
+                    Data::Int(i) => Ok(*i),
                     other => Err(HostError::message(format!(
                         "pop_int_array: non-int element {:?}",
                         other
@@ -161,14 +162,14 @@ impl<S: HostServices> HostContext for P7HostContext<S> {
 
     fn push_string(&mut self, value: String) {
         if let Ok(frame) = self.ctx.stack_frame_mut() {
-            frame.stack.push(Data::String(value));
+            frame.stack.push(Data::String(value.into()));
         }
     }
 
     fn push_optional_int(&mut self, value: Option<i64>) {
         if let Ok(frame) = self.ctx.stack_frame_mut() {
             let d = match value {
-                Some(i) => Data::Some(Box::new(Data::Int(i))),
+                Some(i) => Data::Some(Rc::new(Data::Int(i))),
                 None => Data::Null,
             };
             frame.stack.push(d);
@@ -177,8 +178,8 @@ impl<S: HostServices> HostContext for P7HostContext<S> {
 
     fn push_int_array(&mut self, value: Vec<i64>) {
         if let Ok(frame) = self.ctx.stack_frame_mut() {
-            let arr = value.into_iter().map(Data::Int).collect();
-            frame.stack.push(Data::Array(arr));
+            let arr: Vec<Data> = value.into_iter().map(Data::Int).collect();
+            frame.stack.push(Data::Array(Rc::new(arr)));
         }
     }
 

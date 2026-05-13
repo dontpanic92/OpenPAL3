@@ -203,10 +203,10 @@ impl Drop for ScriptedDirector {
 fn optional_script_director(data: Data) -> Result<Option<Data>, HostError> {
     match data {
         Data::Null => Ok(None),
-        Data::Some(inner) => Ok(Some(*inner)),
-        Data::Array(mut values) => match values.len() {
+        Data::Some(inner) => Ok(Some((*inner).clone())),
+        Data::Array(values) => match values.len() {
             0 => Ok(None),
-            1 => Ok(Some(values.remove(0))),
+            1 => Ok(Some(values[0].clone())),
             len => Err(HostError::message(format!(
                 "expected zero or one script director, got {len}"
             ))),

@@ -34,6 +34,7 @@
 
 use std::ffi::{c_char, c_float, c_long, c_void, CString};
 use std::os::raw::c_int;
+use std::rc::Rc;
 
 use crate::{with_services, ComObjectTable};
 use libffi::middle::{arg, Arg, Cif, CodePtr, Type};
@@ -251,13 +252,13 @@ fn classify_pop(
         Data::Int(i) => Ok(ClassifiedPop::Arg(MarshalledArg::Long(i as c_long))),
         Data::Float(f) => Ok(ClassifiedPop::Arg(MarshalledArg::Float(f as c_float))),
         Data::String(s) => {
-            let c = CString::new(s).map_err(|_| {
+            let c = CString::new(s.as_bytes()).map_err(|_| {
                 RuntimeError::Other("com.invoke: string arg contained interior NUL".into())
             })?;
             Ok(ClassifiedPop::Arg(MarshalledArg::Str(c)))
         }
         Data::Null => Ok(ClassifiedPop::Arg(MarshalledArg::Pointer(std::ptr::null()))),
-        Data::Some(inner) => classify_pop(ctx, *inner, recv_tag),
+        Data::Some(inner) => classify_pop(ctx, (*inner).clone(), recv_tag),
         Data::ProtoBoxRef { box_idx, .. }
         | Data::ProtoRefRef {
             ref_idx: box_idx, ..
@@ -451,7 +452,7 @@ unsafe fn invoke_via_catalog(
 
 fn pop_string(ctx: &mut Context, what: &str) -> Result<String, RuntimeError> {
     match ctx.stack_frame_mut()?.stack.pop() {
-        Some(Data::String(s)) => Ok(s),
+        Some(Data::String(s)) => Ok(s.to_string()),
         other => Err(RuntimeError::Other(format!(
             "{}: expected string, got {:?}",
             what, other
@@ -491,8 +492,8 @@ fn pop_return_ty(ctx: &mut Context) -> Result<HostReturnTy, RuntimeError> {
 }
 
 fn decode_return_ty(data: Data) -> Result<HostReturnTy, RuntimeError> {
-    let items = match data {
-        Data::Array(items) => items,
+    let items: Vec<Data> = match data {
+        Data::Array(items) => Rc::try_unwrap(items).unwrap_or_else(|rc| (*rc).clone()),
         other => {
             return Err(RuntimeError::Other(format!(
                 "pop_return_ty: expected Array, got {:?}",
@@ -517,7 +518,7 @@ fn decode_return_ty(data: Data) -> Result<HostReturnTy, RuntimeError> {
         3 => HostReturnTy::String,
         4 => match iter.next() {
             Some(Data::String(s)) => HostReturnTy::Foreign {
-                type_tag: p7::intern::InternedString::from(s),
+                type_tag: p7::intern::InternedString::from(s.as_ref()),
             },
             other => {
                 return Err(RuntimeError::Other(format!(
@@ -566,12 +567,12 @@ fn push_return(ctx: &mut Context, rt: &HostReturnTy, raw: RawReturn) -> Result<(
             if p.is_null() {
                 ctx.stack_frame_mut()?
                     .stack
-                    .push(Data::String(String::new()));
+                    .push(Data::String(Rc::from("")));
             } else {
                 let s = unsafe { std::ffi::CStr::from_ptr(p as *const c_char) }
                     .to_string_lossy()
                     .into_owned();
-                ctx.stack_frame_mut()?.stack.push(Data::String(s));
+                ctx.stack_frame_mut()?.stack.push(Data::String(s.into()));
             }
             Ok(())
         }
@@ -585,13 +586,13 @@ fn push_return(ctx: &mut Context, rt: &HostReturnTy, raw: RawReturn) -> Result<(
             (HostReturnTy::Int, RawReturn::Long(v)) => {
                 ctx.stack_frame_mut()?
                     .stack
-                    .push(Data::Some(Box::new(Data::Int(v as i64))));
+                    .push(Data::Some(Rc::new(Data::Int(v as i64))));
                 Ok(())
             }
             (HostReturnTy::Float, RawReturn::Float(v)) => {
                 ctx.stack_frame_mut()?
                     .stack
-                    .push(Data::Some(Box::new(Data::Float(v as f64))));
+                    .push(Data::Some(Rc::new(Data::Float(v as f64))));
                 Ok(())
             }
             (other_inner, _) => Err(RuntimeError::Other(format!(
