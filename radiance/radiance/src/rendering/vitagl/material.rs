@@ -32,7 +32,7 @@ impl VitaGLMaterial {
             .collect();
 
         Self {
-            name: def.name().to_string(),
+            name: def.debug_name().to_string(),
             shader,
             textures,
         }

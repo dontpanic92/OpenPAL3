@@ -9,43 +9,226 @@ pub trait Material: downcast_rs::Downcast + std::fmt::Debug {}
 
 downcast_rs::impl_downcast!(Material);
 
+/// Color-blend mode for a material. Today every variant maps to a distinct
+/// Vulkan pipeline; the cross-backend `MaterialDef` only exposes the enum.
+///
+/// `AlphaTest` is the default and is wired to *reproduce* the legacy
+/// behavior of the pipeline (blend always enabled with
+/// `SRC_ALPHA / ONE_MINUS_SRC_ALPHA`, plus a `discard` in the fragment
+/// shader). Once the GLSL shaders learn about a real opaque vs cutout
+/// split, `AlphaTest` will switch to blend-disabled.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum BlendMode {
+    Opaque,
+    AlphaTest,
+    AlphaBlend,
+    Additive,
+    Multiply,
+}
+
+/// Depth test/write configuration for a material.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum DepthMode {
+    /// Test enabled, write enabled. Today's default for every material.
+    TestWrite,
+    /// Test enabled, write disabled. Use for translucent surfaces.
+    TestOnly,
+    /// Test and write both disabled. Use for overlays / UI / debug.
+    Disabled,
+}
+
+/// Cull mode for a material.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum CullMode {
+    Back,
+    Front,
+    None,
+}
+
+/// Per-material parameters that, once a per-material UBO is wired up, will
+/// be uploaded to the fragment shader. For now the values are carried
+/// through the material model but consumed only as documentation: the
+/// fragment shaders still hardcode the cutoff.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct MaterialParams {
+    pub tint: [f32; 4],
+    pub alpha_ref: f32,
+    pub uv_scale: [f32; 2],
+    pub uv_offset: [f32; 2],
+}
+
+impl Default for MaterialParams {
+    fn default() -> Self {
+        Self {
+            tint: [1.0, 1.0, 1.0, 1.0],
+            // 0.4 matches the literal in simple_triangle.frag /
+            // lightmap_texture.frag so default `AlphaTest` materials keep
+            // today's cutoff once the shaders consume this value.
+            alpha_ref: 0.4,
+            uv_scale: [1.0, 1.0],
+            uv_offset: [0.0, 0.0],
+        }
+    }
+}
+
+/// Identity key used to look up the Vulkan pipeline and the per-material
+/// descriptor-set layout. Two materials that produce the same `MaterialKey`
+/// share both.
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub struct MaterialKey {
+    pub program: ShaderProgram,
+    pub blend: BlendMode,
+    pub depth: DepthMode,
+    pub cull: CullMode,
+}
+
 #[derive(Clone)]
 pub struct MaterialDef {
-    name: String,
-    shader: ShaderProgram,
+    debug_name: String,
+    program: ShaderProgram,
     textures: Vec<Arc<TextureDef>>,
-    use_alpha: bool,
+    params: MaterialParams,
+    blend: BlendMode,
+    depth: DepthMode,
+    cull: CullMode,
 }
 
 impl MaterialDef {
+    /// Construct a `MaterialDef` with the legacy positional argument set.
+    ///
+    /// `use_alpha` is accepted for source compatibility but is ignored:
+    /// blend state is determined by `BlendMode`, which defaults to
+    /// `AlphaTest` for legacy call sites (matching today's runtime).
     pub fn new(
         name: String,
         shader: ShaderProgram,
         textures: Vec<Arc<TextureDef>>,
-        use_alpha: bool,
+        _use_alpha: bool,
     ) -> Self {
-        Self {
-            name,
-            textures,
-            shader,
-            use_alpha,
-        }
+        MaterialDefBuilder::new(shader)
+            .debug_name(name)
+            .textures(textures)
+            .build()
     }
 
+    pub fn builder(program: ShaderProgram) -> MaterialDefBuilder {
+        MaterialDefBuilder::new(program)
+    }
+
+    pub fn debug_name(&self) -> &str {
+        &self.debug_name
+    }
+
+    /// Backwards-compatible alias for `debug_name()`. New code should
+    /// prefer `debug_name()` or `key()`.
     pub fn name(&self) -> &str {
-        &self.name
+        &self.debug_name
     }
 
     pub fn shader(&self) -> ShaderProgram {
-        self.shader
+        self.program
+    }
+
+    pub fn program(&self) -> ShaderProgram {
+        self.program
     }
 
     pub fn textures(&self) -> &[Arc<TextureDef>] {
         &self.textures
     }
 
-    pub fn use_alpha(&self) -> bool {
-        self.use_alpha
+    pub fn params(&self) -> &MaterialParams {
+        &self.params
+    }
+
+    pub fn blend(&self) -> BlendMode {
+        self.blend
+    }
+
+    pub fn depth(&self) -> DepthMode {
+        self.depth
+    }
+
+    pub fn cull(&self) -> CullMode {
+        self.cull
+    }
+
+    pub fn key(&self) -> MaterialKey {
+        MaterialKey {
+            program: self.program,
+            blend: self.blend,
+            depth: self.depth,
+            cull: self.cull,
+        }
+    }
+}
+
+/// Builder for [`MaterialDef`]. Defaults reproduce today's renderer
+/// behavior: `BlendMode::AlphaTest`, `DepthMode::TestWrite`,
+/// `CullMode::Back`, and default `MaterialParams` (`alpha_ref = 0.4`).
+pub struct MaterialDefBuilder {
+    debug_name: String,
+    program: ShaderProgram,
+    textures: Vec<Arc<TextureDef>>,
+    params: MaterialParams,
+    blend: BlendMode,
+    depth: DepthMode,
+    cull: CullMode,
+}
+
+impl MaterialDefBuilder {
+    pub fn new(program: ShaderProgram) -> Self {
+        Self {
+            debug_name: String::new(),
+            program,
+            textures: Vec::new(),
+            params: MaterialParams::default(),
+            blend: BlendMode::AlphaTest,
+            depth: DepthMode::TestWrite,
+            cull: CullMode::Back,
+        }
+    }
+
+    pub fn debug_name(mut self, name: impl Into<String>) -> Self {
+        self.debug_name = name.into();
+        self
+    }
+
+    pub fn textures(mut self, textures: Vec<Arc<TextureDef>>) -> Self {
+        self.textures = textures;
+        self
+    }
+
+    pub fn params(mut self, params: MaterialParams) -> Self {
+        self.params = params;
+        self
+    }
+
+    pub fn blend(mut self, blend: BlendMode) -> Self {
+        self.blend = blend;
+        self
+    }
+
+    pub fn depth(mut self, depth: DepthMode) -> Self {
+        self.depth = depth;
+        self
+    }
+
+    pub fn cull(mut self, cull: CullMode) -> Self {
+        self.cull = cull;
+        self
+    }
+
+    pub fn build(self) -> MaterialDef {
+        MaterialDef {
+            debug_name: self.debug_name,
+            program: self.program,
+            textures: self.textures,
+            params: self.params,
+            blend: self.blend,
+            depth: self.depth,
+            cull: self.cull,
+        }
     }
 }
 
@@ -88,13 +271,14 @@ impl SimpleMaterialDef {
         Self::create_internal(texture, use_alpha)
     }
 
-    fn create_internal(texture_def: Arc<TextureDef>, use_alpha: bool) -> MaterialDef {
-        MaterialDef::new(
-            "simple_material".to_string(),
-            ShaderProgram::TexturedNoLight,
-            vec![texture_def],
-            use_alpha,
-        )
+    fn create_internal(texture_def: Arc<TextureDef>, _use_alpha: bool) -> MaterialDef {
+        // `_use_alpha` is accepted for source compatibility; legacy callers
+        // get the historical hybrid pipeline via `BlendMode::AlphaTest`,
+        // which is the builder default.
+        MaterialDef::builder(ShaderProgram::TexturedNoLight)
+            .debug_name("simple_material")
+            .textures(vec![texture_def])
+            .build()
     }
 }
 
@@ -103,7 +287,7 @@ impl LightMapMaterialDef {
     pub fn create<R: Read>(
         textures: Vec<&str>,
         get_reader: impl Fn(&str) -> Option<R>,
-        use_alpha: bool,
+        _use_alpha: bool,
     ) -> MaterialDef {
         let textures: Vec<Arc<TextureDef>> = textures
             .into_iter()
@@ -129,11 +313,9 @@ impl LightMapMaterialDef {
             })
             .collect();
 
-        MaterialDef::new(
-            "lightmap_material".to_string(),
-            ShaderProgram::TexturedLightmap,
-            textures,
-            use_alpha,
-        )
+        MaterialDef::builder(ShaderProgram::TexturedLightmap)
+            .debug_name("lightmap_material")
+            .textures(textures)
+            .build()
     }
 }

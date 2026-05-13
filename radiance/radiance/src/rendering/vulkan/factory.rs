@@ -1,6 +1,7 @@
 use imgui::TextureId;
 
 use super::imgui::ImguiRenderer;
+use super::shader_cache::VulkanShaderCache;
 use super::texture::VulkanTextureStore;
 use super::{
     adhoc_command_runner::AdhocCommandRunner, descriptor_managers::DescriptorManager,
@@ -23,6 +24,7 @@ pub struct VulkanComponentFactory {
     dub_manager: Arc<DynamicUniformBufferManager>,
     command_runner: Rc<AdhocCommandRunner>,
     texture_store: RefCell<VulkanTextureStore>,
+    shader_cache: Rc<VulkanShaderCache>,
     imgui: Rc<RefCell<ImguiRenderer>>,
 }
 
@@ -81,6 +83,7 @@ impl ComponentFactory for VulkanComponentFactory {
             &self.allocator,
             &self.command_runner,
             &mut texture_store,
+            &self.shader_cache,
         ))
     }
 
@@ -134,6 +137,7 @@ impl VulkanComponentFactory {
         command_runner: &Rc<AdhocCommandRunner>,
         imgui: Rc<RefCell<ImguiRenderer>>,
     ) -> Self {
+        let shader_cache = Rc::new(VulkanShaderCache::new(device.clone()));
         Self {
             device,
             allocator: allocator.clone(),
@@ -141,6 +145,7 @@ impl VulkanComponentFactory {
             dub_manager: dub_manager.clone(),
             command_runner: command_runner.clone(),
             texture_store: RefCell::new(VulkanTextureStore::new()),
+            shader_cache,
             imgui,
         }
     }

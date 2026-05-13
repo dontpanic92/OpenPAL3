@@ -1,6 +1,7 @@
 use super::{device::Device, material::VulkanMaterial};
 use super::{pipeline::Pipeline, render_pass::RenderPass};
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
+use crate::rendering::MaterialKey;
 use ash::vk;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -12,7 +13,7 @@ pub struct PipelineManager {
     _depth_format: vk::Format,
     extent: vk::Extent2D,
     render_pass: RenderPass,
-    pipelines: HashMap<String, Pipeline>,
+    pipelines: HashMap<MaterialKey, Pipeline>,
 }
 
 impl PipelineManager {
@@ -37,10 +38,10 @@ impl PipelineManager {
     }
 
     pub fn create_pipeline_if_not_exist(&mut self, material: &VulkanMaterial) -> &Pipeline {
-        let name = material.name();
-        if !self.pipelines.contains_key(name) {
+        let key = *material.key();
+        if !self.pipelines.contains_key(&key) {
             self.pipelines.insert(
-                name.to_owned(),
+                key,
                 Pipeline::new(
                     self.device.clone(),
                     &self.descriptor_manager,
@@ -51,11 +52,11 @@ impl PipelineManager {
             );
         }
 
-        self.pipelines.get(name).unwrap()
+        self.pipelines.get(&key).unwrap()
     }
 
-    pub fn get_pipeline(&mut self, material_name: &str) -> &Pipeline {
-        self.pipelines.get(material_name).unwrap()
+    pub fn get_pipeline(&mut self, key: &MaterialKey) -> &Pipeline {
+        self.pipelines.get(key).unwrap()
     }
 
     pub fn render_pass(&self) -> &RenderPass {

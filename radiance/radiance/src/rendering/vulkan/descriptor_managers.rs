@@ -4,6 +4,7 @@ use super::{
 };
 use crate::rendering::vulkan::material::VulkanMaterial;
 use crate::rendering::vulkan::uniform_buffers::PerFrameUniformBuffer;
+use crate::rendering::ShaderProgram;
 use ash::prelude::VkResult;
 use ash::vk;
 use std::collections::HashMap;
@@ -15,6 +16,12 @@ const MAX_DESCRIPTOR_SET_COUNT: u32 = 40960;
 const MAX_DESCRIPTOR_COUNT: u32 = 40960;
 const MAX_SWAPCHAIN_IMAGE_COUNT: u32 = 4;
 
+/// Per-material descriptor-set layouts are keyed by `(program, texture
+/// count)`. That tuple is what actually determines the layout (the
+/// `COMBINED_IMAGE_SAMPLER` array size in `binding=0`); two materials
+/// sharing this key share the layout.
+type PerMaterialLayoutKey = (ShaderProgram, u32);
+
 pub struct DescriptorManager {
     device: Rc<Device>,
     texture_pool: vk::DescriptorPool,
@@ -22,7 +29,8 @@ pub struct DescriptorManager {
     per_object_pool: vk::DescriptorPool,
     texture_layout: vk::DescriptorSetLayout,
     per_frame_layout: vk::DescriptorSetLayout,
-    per_material_layouts: Arc<Mutex<HashMap<String, vk::DescriptorSetLayout>>>,
+    per_material_layouts:
+        Arc<Mutex<HashMap<PerMaterialLayoutKey, vk::DescriptorSetLayout>>>,
     dub_descriptor_manager: DynamicUniformBufferDescriptorManager,
 }
 
@@ -255,19 +263,21 @@ impl DescriptorManager {
         &self,
         material: &VulkanMaterial,
     ) -> vk::DescriptorSetLayout {
+        let key: PerMaterialLayoutKey =
+            (material.key().program, material.textures().len() as u32);
         let mut per_material_layouts = self.per_material_layouts.lock().unwrap();
-        if !per_material_layouts.contains_key(material.name()) {
+        if !per_material_layouts.contains_key(&key) {
             let layout = Self::create_descriptor_set_layout(
                 &self.device,
                 vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                 vk::ShaderStageFlags::FRAGMENT,
-                material.textures().len() as u32,
+                key.1,
             )
             .unwrap();
-            per_material_layouts.insert(material.name().to_owned(), layout);
+            per_material_layouts.insert(key, layout);
         }
 
-        *per_material_layouts.get(material.name()).unwrap()
+        *per_material_layouts.get(&key).unwrap()
     }
 }
 

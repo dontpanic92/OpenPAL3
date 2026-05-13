@@ -3,6 +3,7 @@ use super::{
 };
 use crate::rendering::vulkan::descriptor_managers::DescriptorManager;
 use crate::rendering::vulkan::material::VulkanMaterial;
+use crate::rendering::{BlendMode, CullMode, DepthMode, MaterialKey};
 use ash::vk;
 use std::error::Error;
 use std::ffi::CString;
@@ -30,6 +31,7 @@ impl Pipeline {
             pipeline_layout.vk_pipeline_layout(),
             &extent,
             material.shader(),
+            material.key(),
         )
         .unwrap()[0];
 
@@ -54,6 +56,7 @@ impl Pipeline {
         layout: vk::PipelineLayout,
         extent: &vk::Extent2D,
         shader: &VulkanShader,
+        key: &MaterialKey,
     ) -> Result<Vec<vk::Pipeline>, Box<dyn Error>> {
         let entry_point = CString::new("main").unwrap();
         let vert_shader_stage_create_info = vk::PipelineShaderStageCreateInfo::default()
@@ -100,7 +103,11 @@ impl Pipeline {
                 .rasterizer_discard_enable(false)
                 .polygon_mode(vk::PolygonMode::FILL)
                 .line_width(1f32)
-                .cull_mode(vk::CullModeFlags::BACK)
+                .cull_mode(match key.cull {
+                    CullMode::Back => vk::CullModeFlags::BACK,
+                    CullMode::Front => vk::CullModeFlags::FRONT,
+                    CullMode::None => vk::CullModeFlags::NONE,
+                })
                 .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
                 .depth_bias_enable(false);
 
@@ -108,6 +115,49 @@ impl Pipeline {
             vk::PipelineMultisampleStateCreateInfo::default()
                 .sample_shading_enable(false)
                 .rasterization_samples(vk::SampleCountFlags::TYPE_1);
+
+        // BlendMode -> color-attachment blend state. `AlphaTest` mirrors
+        // today's legacy behavior (blend always on,
+        // SRC_ALPHA / ONE_MINUS_SRC_ALPHA) so existing visuals are
+        // unchanged. A later transparency pass will flip `AlphaTest` to
+        // blend-disabled once the GLSL shaders stop forcing `outColor.a`.
+        let (blend_enable, src_color, dst_color, src_alpha, dst_alpha) = match key.blend {
+            BlendMode::Opaque => (
+                false,
+                vk::BlendFactor::ONE,
+                vk::BlendFactor::ZERO,
+                vk::BlendFactor::ONE,
+                vk::BlendFactor::ZERO,
+            ),
+            BlendMode::AlphaTest => (
+                true,
+                vk::BlendFactor::SRC_ALPHA,
+                vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+                vk::BlendFactor::SRC_ALPHA,
+                vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+            ),
+            BlendMode::AlphaBlend => (
+                true,
+                vk::BlendFactor::SRC_ALPHA,
+                vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+                vk::BlendFactor::ONE,
+                vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+            ),
+            BlendMode::Additive => (
+                true,
+                vk::BlendFactor::SRC_ALPHA,
+                vk::BlendFactor::ONE,
+                vk::BlendFactor::ZERO,
+                vk::BlendFactor::ONE,
+            ),
+            BlendMode::Multiply => (
+                true,
+                vk::BlendFactor::DST_COLOR,
+                vk::BlendFactor::ZERO,
+                vk::BlendFactor::ZERO,
+                vk::BlendFactor::ONE,
+            ),
+        };
 
         let pipeline_color_blend_attachment_state =
             vk::PipelineColorBlendAttachmentState::default()
@@ -117,13 +167,13 @@ impl Pipeline {
                         | vk::ColorComponentFlags::B
                         | vk::ColorComponentFlags::A,
                 )
-                .blend_enable(true)
-                .src_alpha_blend_factor(vk::BlendFactor::SRC_ALPHA)
-                .dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-                .alpha_blend_op(vk::BlendOp::ADD)
-                .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
-                .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-                .color_blend_op(vk::BlendOp::ADD);
+                .blend_enable(blend_enable)
+                .src_color_blend_factor(src_color)
+                .dst_color_blend_factor(dst_color)
+                .color_blend_op(vk::BlendOp::ADD)
+                .src_alpha_blend_factor(src_alpha)
+                .dst_alpha_blend_factor(dst_alpha)
+                .alpha_blend_op(vk::BlendOp::ADD);
 
         let attachments = [pipeline_color_blend_attachment_state];
         let pipeline_color_blending_state_create_info =
@@ -131,9 +181,14 @@ impl Pipeline {
                 .logic_op_enable(false)
                 .attachments(&attachments);
 
+        let (depth_test, depth_write) = match key.depth {
+            DepthMode::TestWrite => (true, true),
+            DepthMode::TestOnly => (true, false),
+            DepthMode::Disabled => (false, false),
+        };
         let depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo::default()
-            .depth_test_enable(true)
-            .depth_write_enable(true)
+            .depth_test_enable(depth_test)
+            .depth_write_enable(depth_write)
             .depth_compare_op(vk::CompareOp::LESS)
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false);

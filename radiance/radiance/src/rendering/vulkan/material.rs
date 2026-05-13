@@ -1,21 +1,23 @@
 use super::texture::VulkanTextureStore;
 use super::{device::Device, shader::VulkanShader, texture::VulkanTexture};
+use super::shader_cache::VulkanShaderCache;
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
-use crate::rendering::{Material, MaterialDef};
+use crate::rendering::{Material, MaterialDef, MaterialKey, MaterialParams};
 use std::rc::Rc;
 
 pub struct VulkanMaterial {
-    name: String,
-    shader: VulkanShader,
+    debug_name: String,
+    key: MaterialKey,
+    shader: Rc<VulkanShader>,
     textures: Vec<Rc<VulkanTexture>>,
-    use_alpha: bool,
+    params: MaterialParams,
 }
 
 impl Material for VulkanMaterial {}
 
 impl std::fmt::Debug for VulkanMaterial {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("VulkanMaterial: {}", &self.name))
+        f.write_fmt(format_args!("VulkanMaterial: {}", &self.debug_name))
     }
 }
 
@@ -26,8 +28,9 @@ impl VulkanMaterial {
         allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
         texture_store: &mut VulkanTextureStore,
+        shader_cache: &VulkanShaderCache,
     ) -> Self {
-        let shader = VulkanShader::new(def.shader(), device.clone()).unwrap();
+        let shader = shader_cache.get_or_create(def.program());
         let textures = def
             .textures()
             .iter()
@@ -38,15 +41,26 @@ impl VulkanMaterial {
             })
             .collect();
         Self {
-            name: def.name().to_string(),
+            debug_name: def.debug_name().to_string(),
+            key: def.key(),
             shader,
             textures,
-            use_alpha: def.use_alpha(),
+            params: *def.params(),
         }
     }
 
+    /// Debug-only name. Do not use as a cache key.
+    pub fn debug_name(&self) -> &str {
+        &self.debug_name
+    }
+
+    /// Backwards-compatible alias for `debug_name()`.
     pub fn name(&self) -> &str {
-        &self.name
+        &self.debug_name
+    }
+
+    pub fn key(&self) -> &MaterialKey {
+        &self.key
     }
 
     pub fn shader(&self) -> &VulkanShader {
@@ -57,7 +71,7 @@ impl VulkanMaterial {
         &self.textures
     }
 
-    pub fn use_alpha(&self) -> bool {
-        self.use_alpha
+    pub fn params(&self) -> &MaterialParams {
+        &self.params
     }
 }

@@ -6,6 +6,7 @@ use super::pipeline_manager::PipelineManager;
 use super::render_object::VulkanRenderObject;
 use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
 use super::{adhoc_command_runner::AdhocCommandRunner, device::Device};
+use crate::rendering::MaterialKey;
 use super::{
     buffer::{Buffer, BufferType},
     instance::Instance,
@@ -251,27 +252,28 @@ impl SwapChain {
         }
 
         // let mut objects_by_material = std::collections::HashMap::new();
-        let mut material_index = std::collections::HashMap::new();
+        let mut material_index: std::collections::HashMap<MaterialKey, usize> =
+            std::collections::HashMap::new();
         let mut materials = vec![];
         let mut objects_by_material = vec![];
 
         for obj in objects {
-            let key = obj.material().name();
-            if !material_index.contains_key(key) {
+            let key = *obj.material().key();
+            if !material_index.contains_key(&key) {
                 material_index.insert(key, materials.len());
                 self.pipeline_manager
                     .create_pipeline_if_not_exist(obj.material());
                 materials.push(obj.material());
                 objects_by_material.push(vec![obj]);
             } else {
-                let index = material_index.get(key).unwrap();
+                let index = material_index.get(&key).unwrap();
                 objects_by_material[*index].push(obj);
             }
         }
 
         for (index, object_group) in objects_by_material.iter().enumerate() {
             let material = materials[index];
-            let pipeline = self.pipeline_manager.get_pipeline(material.name());
+            let pipeline = self.pipeline_manager.get_pipeline(material.key());
 
             self.device.cmd_bind_pipeline(
                 command_buffer,

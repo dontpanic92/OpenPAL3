@@ -6,7 +6,7 @@ pub trait Shader: downcast_rs::Downcast {
 
 downcast_rs::impl_downcast!(Shader);
 
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub enum ShaderProgram {
     TexturedNoLight,
     TexturedLightmap,

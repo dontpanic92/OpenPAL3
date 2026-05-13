@@ -20,6 +20,7 @@ mod render_object;
 mod render_pass;
 mod sampler;
 mod shader;
+mod shader_cache;
 mod swapchain;
 mod texture;
 mod uniform_buffers;
