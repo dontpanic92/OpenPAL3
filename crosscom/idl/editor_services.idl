@@ -78,11 +78,11 @@ interface IGameRegistry: IUnknown {
 class GameRegistry: IGameRegistry {}
 
 [uuid(302fd52d-e93d-45e3-bfb3-719b94f2b215)]
-interface ICommandBus: IUnknown {
-    int dispatch(int cmd_kind, int arg);
+interface IAppService: IUnknown {
+    IDirector? open_game(int ordinal);
 }
-[uuid(12138761-4a28-457f-b386-4d3a0ac89209)]
-class CommandBus: ICommandBus {}
+[uuid(8c4d50aa-3b07-4a32-9d20-2e0b2f7c0003)]
+class AppService: IAppService {}
 
 [uuid(8c4d50aa-3b07-4a32-9d20-2e0b2f7c0001)]
 interface IConfigService: IUnknown {
@@ -101,7 +101,7 @@ interface IHostContext: IUnknown {
     IVfsService vfs();
     IInputService input();
     IGameRegistry games();
-    ICommandBus commands();
+    IAppService app();
     IConfigService config();
 }
 [uuid(e7c264f9-fea1-472f-9d47-468a6dec9331)]

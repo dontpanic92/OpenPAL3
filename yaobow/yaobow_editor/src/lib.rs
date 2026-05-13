@@ -1,6 +1,14 @@
 #[macro_use]
 pub mod comdef {
     include!(concat!(env!("OUT_DIR"), "/yaobow_editor_comdef.rs"));
+
+    // Mirror radiance_scripting's services namespace so cross-crate uses of
+    // `radiance_scripting::ComObject_*!` macros (which expand `use crate as
+    // radiance_scripting`) can resolve `radiance_scripting::comdef::services::*`
+    // through this crate.
+    pub mod services {
+        pub use radiance_scripting::comdef::services::*;
+    }
 }
 
 pub mod config;
@@ -13,6 +21,7 @@ use std::rc::Rc;
 use crosscom::ComRc;
 use radiance::comdef::{IApplication, IDirector};
 use radiance_editor::comdef::IViewContentImpl;
+use radiance_scripting::ScriptHost;
 use shared::openpal3::asset_manager::AssetManager;
 pub use shared::GameType;
 
@@ -33,7 +42,12 @@ impl IViewContentImpl for SceneViewResourceView {
 }
 
 impl SceneViewResourceView {
-    pub fn new(asset_path: &str, app: ComRc<IApplication>, game: GameType) -> Self {
+    pub fn new(
+        asset_path: &str,
+        app: ComRc<IApplication>,
+        game: GameType,
+        script_runtime: Rc<ScriptHost>,
+    ) -> Self {
         app.set_title(&format!("妖弓编辑器 - {}", game.app_name()));
 
         let pkg_key = match game {
@@ -77,6 +91,7 @@ impl SceneViewResourceView {
             asset_loader,
             ui,
             game,
+            script_runtime,
         ));
 
         SceneViewResourceView {

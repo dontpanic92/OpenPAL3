@@ -1,0 +1,42 @@
+// Canonical script-side director lifecycle. Every screen, page, or stage
+// in a scripted app implements this proto; both script-defined directors
+// and Rust-implemented `radiance.IDirector` instances are surfaced as
+// `box<director.Director>`, so transitions stay return-value-only.
+//
+// To surface a Rust-implemented `radiance.IDirector` as a `Director`, each
+// user package MUST define its own host-director adapter in its main
+// module (not in an imported helper module). p7's vtable for proto-struct
+// method dispatch keys on concrete type ids that are local to the module
+// in which the struct is declared, so an adapter defined here would not
+// dispatch correctly when its `box<Director>` value crosses back to the
+// host from a different package's entry frame. Recommended adapter shape:
+//
+//     pub struct[director.Director] HostDirector(pub inner: box<radiance.IDirector>) {
+//         pub fn activate(self: ref<Self>) {
+//             let _ = self.inner.activate();
+//         }
+//         pub fn deactivate(self: ref<Self>) {}
+//         pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
+//             return ui.dummy(0.0, 0.0);
+//         }
+//         pub fn dispatch(self: ref<Self>, cmd: int) -> array<box<director.Director>> {
+//             let r: array<box<director.Director>> = []; return r;
+//         }
+//         pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+//             let next = self.inner.update(dt);
+//             if next != null {
+//                 return [box(HostDirector(next!)) as box<director.Director>];
+//             }
+//             let r: array<box<director.Director>> = []; return r;
+//         }
+//     }
+
+import ui;
+
+pub proto Director {
+    fn activate(self: ref<Director>);
+    fn deactivate(self: ref<Director>);
+    fn render(self: ref<Director>, dt: float) -> ui.UiNode;
+    fn dispatch(self: ref<Director>, command_id: int) -> array<box<Director>>;
+    fn update(self: ref<Director>, dt: float) -> array<box<Director>>;
+}

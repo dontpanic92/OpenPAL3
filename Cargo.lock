@@ -5378,6 +5378,7 @@ dependencies = [
  "common",
  "crosscom",
  "crosscom-ccidl",
+ "crosscom-protosept",
  "encoding",
  "fileformats",
  "image 0.23.14",

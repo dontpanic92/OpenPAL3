@@ -1,3 +1,4 @@
+pub mod app_service;
 pub mod config_service;
 pub mod main_content;
 pub mod main_director;

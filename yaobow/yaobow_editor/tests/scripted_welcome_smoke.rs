@@ -85,32 +85,22 @@ fn scripted_welcome_page_module_compiles() {
 
 #[test]
 fn welcome_scripts_compile_with_shared_ui_module() {
-    let mut runtime = radiance_scripting::ScriptRuntime::new();
+    let runtime = radiance_scripting::ScriptHost::new();
     runtime
         .load_source(include_str!("../scripts/welcome.p7"))
         .expect("welcome.p7 compiles");
-
-    let mut runtime = radiance_scripting::ScriptRuntime::new();
-    runtime
-        .load_source(include_str!("../scripts/settings.p7"))
-        .expect("settings.p7 compiles");
-
-    let mut runtime = radiance_scripting::ScriptRuntime::new();
-    runtime
-        .load_source(include_str!("../scripts/main_tree.p7"))
-        .expect("main_tree.p7 compiles");
 }
 
 #[test]
-fn main_tree_script_renders_vfs_entries() {
+fn welcome_runtime_can_create_resource_tree_root() {
     use crosscom::ComRc;
     use radiance_scripting::comdef::services::IVfsService;
     use radiance_scripting::ui_walker::{kinds, owned};
 
-    let mut runtime = radiance_scripting::ScriptRuntime::new();
+    let runtime = radiance_scripting::ScriptHost::new();
     runtime
-        .load_source(include_str!("../scripts/main_tree.p7"))
-        .expect("main_tree.p7 compiles");
+        .load_source(include_str!("../scripts/welcome.p7"))
+        .expect("welcome.p7 compiles");
     let vfs = ComRc::<IVfsService>::from_object(StubVfs {
         last_string: RefCell::new(String::new()),
     });
@@ -118,19 +108,19 @@ fn main_tree_script_renders_vfs_entries() {
     let vfs = runtime
         .foreign_box("radiance_scripting.comdef.services.IVfsService", vfs_id)
         .expect("vfs foreign box");
-    let state = runtime
-        .call_returning_data("init", vec![vfs])
-        .expect("main_tree init");
-    runtime.store_state(state.clone());
+    let tree = runtime
+        .call_returning_data("init_resource_tree", vec![vfs])
+        .expect("resource tree init");
     let node = runtime
-        .call_returning_data(
+        .call_method_returning_data(
+            tree,
             "render",
-            vec![state, p7::interpreter::context::Data::Float(0.0)],
+            vec![p7::interpreter::context::Data::Float(0.0)],
         )
-        .expect("main_tree render");
+        .expect("resource tree render");
     let owned = runtime
         .with_ctx(|ctx| owned::resolve(ctx, &node))
-        .expect("main_tree UiNode should resolve");
+        .expect("resource tree UiNode should resolve");
 
     assert_eq!(owned.kind, kinds::COLUMN);
     assert_eq!(owned.children.len(), 2);

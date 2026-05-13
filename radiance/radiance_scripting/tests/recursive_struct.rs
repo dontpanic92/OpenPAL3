@@ -8,7 +8,7 @@ pub fn make() -> Node {
 
 #[test]
 fn recursive_struct_compiles_via_runtime() {
-    let mut runtime = radiance_scripting::ScriptRuntime::new();
+    let runtime = radiance_scripting::ScriptHost::new();
     runtime
         .load_source(RECURSIVE_SRC)
         .expect("recursive struct compiles");

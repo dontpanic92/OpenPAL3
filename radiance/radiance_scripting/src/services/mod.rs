@@ -1,5 +1,4 @@
 pub mod audio;
-pub mod command_bus;
 pub mod game_registry;
 pub mod input;
 pub mod texture;
@@ -17,9 +16,10 @@ use radiance::input::InputEngine;
 use radiance::rendering::ComponentFactory;
 
 use crate::comdef::services::{
-    IAudioService, ICommandBus, IConfigService, IGameRegistry, IHostContext, IHostContextImpl,
+    IAppService, IAudioService, IConfigService, IGameRegistry, IHostContext, IHostContextImpl,
     IInputService, ITextureService, IVfsService,
 };
+
 pub struct HostContext {
     scene_manager: ComRc<ISceneManager>,
     audio: ComRc<IAudioService>,
@@ -27,7 +27,7 @@ pub struct HostContext {
     vfs: ComRc<IVfsService>,
     input: ComRc<IInputService>,
     games: ComRc<IGameRegistry>,
-    commands: ComRc<ICommandBus>,
+    app: ComRc<IAppService>,
     config: ComRc<IConfigService>,
 }
 
@@ -41,7 +41,7 @@ impl HostContext {
         vfs: ComRc<IVfsService>,
         input: ComRc<IInputService>,
         games: ComRc<IGameRegistry>,
-        commands: ComRc<ICommandBus>,
+        app: ComRc<IAppService>,
         config: ComRc<IConfigService>,
     ) -> ComRc<IHostContext> {
         ComRc::from_object(Self {
@@ -51,7 +51,7 @@ impl HostContext {
             vfs,
             input,
             games,
-            commands,
+            app,
             config,
         })
     }
@@ -62,9 +62,9 @@ impl HostContext {
         texture_factory: Rc<dyn ComponentFactory>,
         vfs: Rc<MiniFs>,
         input: Rc<RefCell<dyn InputEngine>>,
+        app: ComRc<IAppService>,
         config: ComRc<IConfigService>,
     ) -> ComRc<IHostContext> {
-        let commands = CommandBus::create(None);
         Self::new(
             scene_manager,
             AudioService::create(audio_engine, vfs.clone()),
@@ -72,7 +72,7 @@ impl HostContext {
             VfsService::create(vfs),
             InputService::create(input),
             GameRegistry::create(),
-            commands,
+            app,
             config,
         )
     }
@@ -97,8 +97,8 @@ impl IHostContextImpl for HostContext {
     fn games(&self) -> ComRc<IGameRegistry> {
         self.games.clone()
     }
-    fn commands(&self) -> ComRc<ICommandBus> {
-        self.commands.clone()
+    fn app(&self) -> ComRc<IAppService> {
+        self.app.clone()
     }
     fn config(&self) -> ComRc<IConfigService> {
         self.config.clone()
@@ -106,7 +106,6 @@ impl IHostContextImpl for HostContext {
 }
 
 pub use audio::{AudioService, AudioSource};
-pub use command_bus::CommandBus;
 pub use game_registry::GameRegistry;
 pub use input::InputService;
 pub use texture::{Texture, TextureService};

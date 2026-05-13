@@ -11,16 +11,14 @@ pub mod comdef {
     }
 }
 
-pub mod command_router;
 pub mod proxies;
 pub mod runtime;
 pub mod services;
 pub mod ui_walker;
 
-pub use command_router::{CommandRouter, NullCommandRouter};
-pub use proxies::{ScriptedDirector, ScriptedViewContent};
-pub use runtime::{RuntimeServices, ScriptRuntime};
-pub use services::{CommandBus, HostContext};
+pub use proxies::ScriptedDirector;
+pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};
+pub use services::HostContext;
 pub use ui_walker::{
     walk, CommandSink, LocalCommandQueue, OwnedNode, TextureResolver, UiAdapter, UiVisitor,
     WalkContext, WalkError,

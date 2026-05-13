@@ -9,7 +9,12 @@ use crate::{
     audio::AudioEngine,
     input::{InputEngine, InputEngineInternal},
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    any::{Any, TypeId},
+    cell::RefCell,
+    collections::HashMap,
+    rc::Rc,
+};
 
 pub struct CoreRadianceEngine {
     rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
@@ -19,6 +24,7 @@ pub struct CoreRadianceEngine {
     scene_manager: ComRc<ISceneManager>,
     virtual_fs: Rc<RefCell<MiniFs>>,
     task_manager: Rc<TaskManager>,
+    services: RefCell<HashMap<TypeId, Rc<dyn Any>>>,
     debug_layer: Option<Box<dyn DebugLayer>>,
 }
 
@@ -38,6 +44,7 @@ impl CoreRadianceEngine {
             scene_manager,
             virtual_fs: Rc::new(RefCell::new(MiniFs::new(false))),
             task_manager: Rc::new(TaskManager::new()),
+            services: RefCell::new(HashMap::new()),
             debug_layer: None,
         }
     }
@@ -72,6 +79,31 @@ impl CoreRadianceEngine {
 
     pub fn task_manager(&self) -> Rc<TaskManager> {
         self.task_manager.clone()
+    }
+
+    pub fn set_service<T: Any>(&self, service: Rc<T>) -> Option<Rc<T>> {
+        self.services
+            .borrow_mut()
+            .insert(TypeId::of::<T>(), service)
+            .and_then(|service| service.downcast::<T>().ok())
+    }
+
+    pub fn service<T: Any>(&self) -> Option<Rc<T>> {
+        self.services
+            .borrow()
+            .get(&TypeId::of::<T>())
+            .cloned()
+            .and_then(|service| service.downcast::<T>().ok())
+    }
+
+    pub fn get_or_insert_service<T: Any>(&self, create: impl FnOnce() -> T) -> Rc<T> {
+        if let Some(service) = self.service::<T>() {
+            return service;
+        }
+
+        let service = Rc::new(create());
+        self.set_service(service.clone());
+        service
     }
 
     pub fn update(&self, delta_sec: f32) {

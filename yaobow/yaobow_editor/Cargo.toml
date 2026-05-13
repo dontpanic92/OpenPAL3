@@ -37,3 +37,6 @@ xxtea = "0.2.0"
 
 [build-dependencies]
 crosscom-ccidl = { path = "../../crosscom/ccidl-rs" }
+
+[dev-dependencies]
+crosscom-protosept = { path = "../../crosscom/runtime/protosept" }

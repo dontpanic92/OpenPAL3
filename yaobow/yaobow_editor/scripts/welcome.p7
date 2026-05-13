@@ -1,13 +1,177 @@
+import director;
 import editor_services;
+import radiance;
 import ui;
 
-pub struct State(
+let SETTINGS_CMD: int = 9001;
+let SAVE_CMD: int = 9002;
+let CANCEL_CMD: int = 9000;
+let GAME_CMD_BASE: int = 1000;
+let PICK_CMD_BASE: int = 4000;
+let CLEAR_CMD_BASE: int = 5000;
+
+// Adapter that lets a host-built `radiance.IDirector` participate in
+// the `director.Director` lifecycle. Must live in this (the user-main)
+// module — p7's cross-module proto-struct dispatch does not find this
+// type when it's declared in an imported helper module.
+pub struct[director.Director] HostDirector(pub inner: box<radiance.IDirector>) {
+    pub fn activate(self: ref<Self>) {
+        let _ = self.inner.activate();
+    }
+    pub fn deactivate(self: ref<Self>) {}
+    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
+        return ui.dummy(0.0, 0.0);
+    }
+    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
+        let result: array<box<director.Director>> = [];
+        return result;
+    }
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+        let next = self.inner.update(dt);
+        if next != null {
+            return [box(HostDirector(next!)) as box<director.Director>];
+        }
+        let result: array<box<director.Director>> = [];
+        return result;
+    }
+}
+
+fn wrap_host(inner: box<radiance.IDirector>) -> box<director.Director> {
+    return box(HostDirector(inner)) as box<director.Director>;
+}
+
+pub struct[director.Director] WelcomeDirector(
     pub host: box<editor_services.IHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
-);
+) {
+    pub fn activate(self: ref<Self>) {}
+    pub fn deactivate(self: ref<Self>) {}
 
-pub fn init(host: box<editor_services.IHostContext>) -> box<State> {
+    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
+        return ui.window_centered("妖弓编辑器", 720.0, 480.0, [
+            title_node(),
+            top_spacer_node(),
+            game_table_node(self),
+            mid_spacer_node(),
+            settings_button_node(),
+        ]);
+    }
+
+    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
+        if command_id == 9001 {
+            return [make_settings_director(self.host, self.games, self.names)];
+        }
+
+        if command_id >= 1000 && command_id < 2000 {
+            let ordinal = command_id - 1000;
+            let cfg = self.host.config();
+            if cfg.get_asset_path(ordinal) == "" {
+                return [make_settings_director(self.host, self.games, self.names)];
+            }
+            let next = self.host.app().open_game(ordinal);
+            if next != null {
+                return [wrap_host(next!)];
+            }
+        }
+
+        let result: array<box<director.Director>> = [];
+        return result;
+    }
+
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+        let result: array<box<director.Director>> = [];
+        return result;
+    }
+}
+
+pub struct[director.Director] SettingsDirector(
+    pub host: box<editor_services.IHostContext>,
+    pub games: box<array<int>>,
+    pub names: box<array<string>>,
+) {
+    pub fn activate(self: ref<Self>) {}
+    pub fn deactivate(self: ref<Self>) {}
+
+    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
+        return settings_window_node(self);
+    }
+
+    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
+        let cfg = self.host.config();
+
+        if command_id == 9002 {
+            cfg.save();
+            return [make_welcome_director(self.host, self.games, self.names)];
+        }
+
+        if command_id == 9000 {
+            cfg.reload();
+            return [make_welcome_director(self.host, self.games, self.names)];
+        }
+
+        if command_id >= 4000 && command_id < 5000 {
+            let ordinal = command_id - 4000;
+            let current = cfg.get_asset_path(ordinal);
+            let picked = cfg.pick_folder(current);
+            if picked != "" {
+                cfg.set_asset_path(ordinal, picked);
+            }
+        }
+
+        if command_id >= 5000 && command_id < 6000 {
+            let ordinal = command_id - 5000;
+            cfg.set_asset_path(ordinal, "");
+        }
+
+        let result: array<box<director.Director>> = [];
+        return result;
+    }
+
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+        let result: array<box<director.Director>> = [];
+        return result;
+    }
+}
+
+pub struct[director.Director] ResourceTree(
+    pub vfs: box<editor_services.IVfsService>,
+) {
+    pub fn activate(self: ref<Self>) {}
+    pub fn deactivate(self: ref<Self>) {}
+
+    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
+        return ui.column_box(render_tree_dir(self.vfs, "/"));
+    }
+
+    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
+        let result: array<box<director.Director>> = [];
+        return result;
+    }
+
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+        let result: array<box<director.Director>> = [];
+        return result;
+    }
+}
+
+fn make_welcome_director(
+    host: box<editor_services.IHostContext>,
+    games: box<array<int>>,
+    names: box<array<string>>,
+) -> box<director.Director> {
+    return box(WelcomeDirector(host, games, names)) as box<director.Director>;
+}
+
+fn make_settings_director(
+    host: box<editor_services.IHostContext>,
+    games: box<array<int>>,
+    names: box<array<string>>,
+) -> box<director.Director> {
+    return box(SettingsDirector(host, games, names)) as box<director.Director>;
+}
+
+pub fn init(host: box<editor_services.IHostContext>) -> box<director.Director> {
     let registry = host.games();
     let games_arr: array<int> = [];
     let names_arr: array<string> = [];
@@ -23,14 +187,18 @@ pub fn init(host: box<editor_services.IHostContext>) -> box<State> {
         i = i + 1;
     }
 
-    box(State(host, games, names))
+    make_welcome_director(host, games, names)
 }
 
-fn game_name(state: ref<State>, ordinal: int) -> string {
+pub fn init_resource_tree(vfs: box<editor_services.IVfsService>) -> box<director.Director> {
+    return box(ResourceTree(vfs)) as box<director.Director>;
+}
+
+fn game_name(director: ref<WelcomeDirector>, ordinal: int) -> string {
     let mut i = 0;
-    while i < state.games.len() {
-        if state.games[i] == ordinal {
-            return state.names[i];
+    while i < director.games.len() {
+        if director.games[i] == ordinal {
+            return director.names[i];
         }
         i = i + 1;
     }
@@ -49,45 +217,122 @@ fn mid_spacer_node() -> ui.UiNode {
     return ui.dummy(0.0, 16.0);
 }
 
-fn reload_button_node() -> ui.UiNode {
-    return ui.button("重载脚本", 120.0, 24.0, 9999);
-}
-
 fn settings_button_node() -> ui.UiNode {
-    return ui.button("设置", 120.0, 24.0, 9001);
+    return ui.button("设置", 120.0, 24.0, SETTINGS_CMD);
 }
 
-fn game_button_node(state: ref<State>, ordinal: int) -> ui.UiNode {
-    let name = game_name(state, ordinal);
-    return ui.button(f"运行《{name}》编辑器", -1.0, 60.0, 1000 + ordinal);
+fn game_button_node(director: ref<WelcomeDirector>, ordinal: int) -> ui.UiNode {
+    let name = game_name(director, ordinal);
+    return ui.button(f"运行《{name}》编辑器", -1.0, 60.0, GAME_CMD_BASE + ordinal);
 }
 
 fn empty_cell_node() -> ui.UiNode {
     return ui.dummy(0.0, 0.0);
 }
 
-fn game_table_node(state: ref<State>) -> ui.UiNode {
+fn game_table_node(director: ref<WelcomeDirector>) -> ui.UiNode {
     return ui.table(3, [
-        game_button_node(state, 0), game_button_node(state, 8), game_button_node(state, 5),
-        game_button_node(state, 1), game_button_node(state, 9), game_button_node(state, 6),
-        game_button_node(state, 2), empty_cell_node(), game_button_node(state, 7),
-        game_button_node(state, 3), empty_cell_node(), empty_cell_node(),
-        game_button_node(state, 4), empty_cell_node(), empty_cell_node(),
+        game_button_node(director, 0), game_button_node(director, 8), game_button_node(director, 5),
+        game_button_node(director, 1), game_button_node(director, 9), game_button_node(director, 6),
+        game_button_node(director, 2), empty_cell_node(), game_button_node(director, 7),
+        game_button_node(director, 3), empty_cell_node(), empty_cell_node(),
+        game_button_node(director, 4), empty_cell_node(), empty_cell_node(),
     ]);
 }
 
-pub fn render(state: ref<State>, dt: float) -> ui.UiNode {
-    return ui.window_centered("妖弓编辑器", 720.0, 480.0, [
-        title_node(),
-        top_spacer_node(),
-        game_table_node(state),
-        mid_spacer_node(),
-        settings_button_node(),
-        reload_button_node(),
+fn path_label(p: string) -> string {
+    if p == "" {
+        return "(未设置)";
+    }
+    return p;
+}
+
+fn settings_name_cell(director: ref<SettingsDirector>, ordinal: int) -> ui.UiNode {
+    let mut i = 0;
+    while i < director.games.len() {
+        if director.games[i] == ordinal {
+            return ui.text(director.names[i]);
+        }
+        i = i + 1;
+    }
+    return ui.text("");
+}
+
+fn settings_path_cell(director: ref<SettingsDirector>, ordinal: int) -> ui.UiNode {
+    let cfg = director.host.config();
+    let current = cfg.get_asset_path(ordinal);
+    return ui.text(path_label(current));
+}
+
+fn pick_cell(ordinal: int) -> ui.UiNode {
+    return ui.button("选择...", 100.0, 24.0, PICK_CMD_BASE + ordinal);
+}
+
+fn clear_cell(ordinal: int) -> ui.UiNode {
+    return ui.button("清除", 80.0, 24.0, CLEAR_CMD_BASE + ordinal);
+}
+
+fn settings_rows_node(director: ref<SettingsDirector>) -> ui.UiNode {
+    return ui.table(4, [
+        settings_name_cell(director, 0), settings_path_cell(director, 0), pick_cell(0), clear_cell(0),
+        settings_name_cell(director, 1), settings_path_cell(director, 1), pick_cell(1), clear_cell(1),
+        settings_name_cell(director, 2), settings_path_cell(director, 2), pick_cell(2), clear_cell(2),
+        settings_name_cell(director, 3), settings_path_cell(director, 3), pick_cell(3), clear_cell(3),
+        settings_name_cell(director, 4), settings_path_cell(director, 4), pick_cell(4), clear_cell(4),
+        settings_name_cell(director, 5), settings_path_cell(director, 5), pick_cell(5), clear_cell(5),
+        settings_name_cell(director, 6), settings_path_cell(director, 6), pick_cell(6), clear_cell(6),
+        settings_name_cell(director, 7), settings_path_cell(director, 7), pick_cell(7), clear_cell(7),
+        settings_name_cell(director, 8), settings_path_cell(director, 8), pick_cell(8), clear_cell(8),
+        settings_name_cell(director, 9), settings_path_cell(director, 9), pick_cell(9), clear_cell(9),
     ]);
 }
 
-pub fn update(state: ref<State>, dt: float) -> ?int {
-    let result: ?int = null;
-    return result;
+fn settings_footer_node() -> ui.UiNode {
+    return ui.table(2, [
+        ui.button("保存并返回", 200.0, 32.0, SAVE_CMD),
+        ui.button("取消", 200.0, 32.0, CANCEL_CMD),
+    ]);
+}
+
+fn settings_window_node(director: ref<SettingsDirector>) -> ui.UiNode {
+    return ui.window_centered("游戏路径设置", 820.0, 560.0, [
+        ui.text_with_font(0, "游戏资源路径设置"),
+        ui.dummy(0.0, 12.0),
+        settings_rows_node(director),
+        ui.dummy(0.0, 16.0),
+        settings_footer_node(),
+    ]);
+}
+
+fn join_tree_path(parent: string, name: string) -> string {
+    if parent == "/" {
+        return f"/{name}";
+    }
+    return f"{parent}/{name}";
+}
+
+fn render_tree_dir(vfs: box<editor_services.IVfsService>, path: string) -> box<array<ui.UiNode>> {
+    let nodes: array<ui.UiNode> = [];
+    let boxed_nodes = box(nodes);
+    let count = vfs.entry_count(path);
+    let mut i = 0;
+
+    while i < count {
+        let name = vfs.entry_name(path, i);
+        let child_path = join_tree_path(path, name);
+        if vfs.entry_is_dir(path, i) != 0 {
+            let children: array<ui.UiNode> = [];
+            let boxed_children = if vfs.is_expanded(child_path) != 0 {
+                render_tree_dir(vfs, child_path)
+            } else {
+                box(children)
+            };
+            boxed_nodes.push(ui.tree_node_box(name, vfs.command_id(child_path), boxed_children));
+        } else {
+            boxed_nodes.push(ui.tree_leaf(name, vfs.command_id(child_path)));
+        }
+        i = i + 1;
+    }
+
+    return boxed_nodes;
 }

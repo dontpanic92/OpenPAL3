@@ -7,42 +7,116 @@ use p7::interpreter::context::Data;
 use radiance::comdef::{IDirector, IDirectorImpl};
 use radiance::radiance::UiManager;
 
-use crate::comdef::services::IHostContext;
-use crate::command_router::{dispatch_commands, CommandRouter, NullCommandRouter};
-use crate::runtime::ScriptRuntime;
+use crate::runtime::{ScriptDirectorHandle, ScriptHost};
 use crate::services::ImguiTextureCache;
 use crate::ui_walker::{owned, walk, LocalCommandQueue, UiAdapter, WalkContext};
 
+/// Rust-side `IDirector` ComObject that drives a single script-owned
+/// `box<director.Director>` value. Every transition decision (which director
+/// to run next) comes from the script via return values from `dispatch` or
+/// `update`.
 pub struct ScriptedDirector {
-    runtime: Rc<RefCell<ScriptRuntime>>,
+    host: Rc<ScriptHost>,
+    handle: ScriptDirectorHandle,
     ui_manager: Option<Rc<UiManager>>,
     textures: Option<Rc<RefCell<ImguiTextureCache>>>,
-    router: Rc<dyn CommandRouter>,
 }
 
 ComObject_ScriptedDirector!(super::ScriptedDirector);
 
+impl ScriptedDirector {
+    /// Wraps a rooted script director handle as an `IDirector` ComObject for
+    /// directors that do not render UI (e.g. test stubs).
+    pub fn wrap(host: Rc<ScriptHost>, handle: ScriptDirectorHandle) -> ComRc<IDirector> {
+        ComRc::from_object(Self {
+            host,
+            handle,
+            ui_manager: None,
+            textures: None,
+        })
+    }
+
+    /// Wraps a rooted script director and equips it with the host's UI
+    /// manager and texture cache so its `render` output drives imgui every
+    /// frame.
+    pub fn with_ui(
+        host: Rc<ScriptHost>,
+        handle: ScriptDirectorHandle,
+        ui_manager: Rc<UiManager>,
+        textures: Rc<RefCell<ImguiTextureCache>>,
+    ) -> ComRc<IDirector> {
+        ComRc::from_object(Self {
+            host,
+            handle,
+            ui_manager: Some(ui_manager),
+            textures: Some(textures),
+        })
+    }
+
+    fn current_director(&self) -> Option<Data> {
+        self.host.deref_handle(self.handle)
+    }
+
+    fn wrap_next(&self, director: Data) -> ComRc<IDirector> {
+        let handle = self.host.root(director);
+        ComRc::from_object(Self {
+            host: self.host.clone(),
+            handle,
+            ui_manager: self.ui_manager.clone(),
+            textures: self.textures.clone(),
+        })
+    }
+
+    fn dispatch_script_command(
+        &self,
+        director: &Data,
+        command_id: i32,
+    ) -> Option<ComRc<IDirector>> {
+        match self.host.call_method_returning_data(
+            director.clone(),
+            "dispatch",
+            vec![Data::Int(command_id as i64)],
+        ) {
+            Ok(next) => match optional_script_director(next) {
+                Ok(Some(next)) => Some(self.wrap_next(next)),
+                Ok(None) => None,
+                Err(err) => {
+                    log::error!("scripted director dispatch returned invalid value: {}", err);
+                    None
+                }
+            },
+            Err(err) => {
+                log::error!("scripted director dispatch failed: {}", err);
+                None
+            }
+        }
+    }
+}
+
 impl IDirectorImpl for ScriptedDirector {
     fn activate(&self) {
-        let Some(state) = self.runtime.borrow().state_clone() else {
+        let Some(director) = self.current_director() else {
             return;
         };
-        if !self.runtime.borrow().has_function("activate") {
-            return;
-        }
-        if let Err(err) = self.runtime.borrow_mut().call_void("activate", vec![state]) {
+        if let Err(err) = self
+            .host
+            .call_method_void(director, "activate", Vec::new())
+        {
             log::error!("scripted director activate failed: {}", err);
         }
     }
 
     fn update(&self, delta_sec: f32) -> Option<ComRc<IDirector>> {
-        let state = self.runtime.borrow().state_clone()?;
+        let director = self.current_director()?;
 
         let owned = if self.ui_manager.is_some() && self.textures.is_some() {
-            let render_args = vec![state.clone(), Data::Float(delta_sec as f64)];
-            let mut rt = self.runtime.borrow_mut();
-            match rt.call_returning_data("render", render_args) {
-                Ok(node) => match rt.with_ctx(|ctx| owned::resolve(ctx, &node)) {
+            let node = self.host.call_method_returning_data(
+                director.clone(),
+                "render",
+                vec![Data::Float(delta_sec as f64)],
+            );
+            match node {
+                Ok(node) => match self.host.with_ctx(|ctx| owned::resolve(ctx, &node)) {
                     Ok(owned) => Some(owned),
                     Err(err) => {
                         log::error!("scripted director walker resolve failed: {}", err);
@@ -83,27 +157,26 @@ impl IDirectorImpl for ScriptedDirector {
                 }
             }
 
-            if !queue.queue.is_empty() {
-                log::info!(
-                    "scripted director: walk produced {} command(s): {:?}",
-                    queue.queue.len(),
-                    queue.queue
-                );
-            }
-            if let Some(next) = dispatch_commands(&mut queue, self.router.as_ref()) {
-                log::info!("scripted director: router returned next director, swapping");
-                return Some(next);
+            while let Some(command_id) = queue.queue.pop_front() {
+                if let Some(next) = self.dispatch_script_command(&director, command_id) {
+                    return Some(next);
+                }
             }
         }
 
-        match self
-            .runtime
-            .borrow_mut()
-            .call_returning_optional_com::<IDirector>(
-                "update",
-                vec![state, Data::Float(delta_sec as f64)],
-            ) {
-            Ok(next) => next,
+        match self.host.call_method_returning_data(
+            director,
+            "update",
+            vec![Data::Float(delta_sec as f64)],
+        ) {
+            Ok(next) => match optional_script_director(next) {
+                Ok(Some(next)) => Some(self.wrap_next(next)),
+                Ok(None) => None,
+                Err(err) => {
+                    log::error!("scripted director update returned invalid value: {}", err);
+                    None
+                }
+            },
             Err(err) => {
                 log::error!("scripted director update failed: {}", err);
                 None
@@ -112,47 +185,36 @@ impl IDirectorImpl for ScriptedDirector {
     }
 }
 
-impl ScriptedDirector {
-    pub fn create(
-        source: &str,
-        host_ctx: ComRc<IHostContext>,
-    ) -> Result<ComRc<IDirector>, HostError> {
-        let runtime = Self::init_runtime(source, host_ctx)?;
-        Ok(ComRc::from_object(Self {
-            runtime: Rc::new(RefCell::new(runtime)),
-            ui_manager: None,
-            textures: None,
-            router: Rc::new(NullCommandRouter),
-        }))
+impl Drop for ScriptedDirector {
+    fn drop(&mut self) {
+        let Some(director) = self.host.deref_handle(self.handle) else {
+            return;
+        };
+        if let Err(err) = self
+            .host
+            .call_method_void(director, "deactivate", Vec::new())
+        {
+            log::error!("scripted director deactivate failed: {}", err);
+        }
+        self.host.unroot(self.handle);
     }
+}
 
-    pub fn create_with_ui(
-        source: &str,
-        host_ctx: ComRc<IHostContext>,
-        ui_manager: Rc<UiManager>,
-        textures: Rc<RefCell<ImguiTextureCache>>,
-        router: Rc<dyn CommandRouter>,
-    ) -> Result<ComRc<IDirector>, HostError> {
-        let runtime = Self::init_runtime(source, host_ctx)?;
-        Ok(ComRc::from_object(Self {
-            runtime: Rc::new(RefCell::new(runtime)),
-            ui_manager: Some(ui_manager),
-            textures: Some(textures),
-            router,
-        }))
-    }
-
-    fn init_runtime(
-        source: &str,
-        host_ctx: ComRc<IHostContext>,
-    ) -> Result<ScriptRuntime, HostError> {
-        let mut runtime = ScriptRuntime::new();
-        runtime.load_source(source)?;
-        let host_id = runtime.intern(host_ctx);
-        let host =
-            runtime.foreign_box("radiance_scripting.comdef.services.IHostContext", host_id)?;
-        let state = runtime.call_returning_data("init", vec![host])?;
-        runtime.store_state(state);
-        Ok(runtime)
+fn optional_script_director(data: Data) -> Result<Option<Data>, HostError> {
+    match data {
+        Data::Null => Ok(None),
+        Data::Some(inner) => Ok(Some(*inner)),
+        Data::Array(mut values) => match values.len() {
+            0 => Ok(None),
+            1 => Ok(Some(values.remove(0))),
+            len => Err(HostError::message(format!(
+                "expected zero or one script director, got {len}"
+            ))),
+        },
+        Data::BoxRef(_) | Data::ProtoBoxRef { .. } => Ok(Some(data)),
+        other => Err(HostError::message(format!(
+            "expected optional script director box, got {:?}",
+            other
+        ))),
     }
 }

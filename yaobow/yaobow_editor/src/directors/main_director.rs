@@ -18,17 +18,16 @@ use radiance_scripting::services::VfsService;
 use radiance_scripting::ui_walker::{
     owned, walk, LocalCommandQueue, OwnedNode, TextureResolver, UiAdapter, WalkContext,
 };
-use radiance_scripting::ScriptRuntime;
+use radiance_scripting::{ScriptDirectorHandle, ScriptHost};
 use std::{cell::RefCell, rc::Rc};
-
-const MAIN_TREE_SCRIPT: &str = include_str!("../../scripts/main_tree.p7");
 
 pub struct DevToolsDirector {
     scene_manager: ComRc<ISceneManager>,
     asset_mgr: DevToolsAssetLoader,
     ui: Rc<UiManager>,
     content_tabs: RefCell<ContentTabs>,
-    tree_runtime: RefCell<ScriptRuntime>,
+    tree_runtime: Rc<ScriptHost>,
+    tree_root: ScriptDirectorHandle,
     tree_vfs: ComRc<IVfsService>,
 }
 
@@ -41,9 +40,10 @@ impl DevToolsDirector {
         asset_mgr: DevToolsAssetLoader,
         ui: Rc<UiManager>,
         game_type: GameType,
+        script_runtime: Rc<ScriptHost>,
     ) -> ComRc<IDirector> {
         let tree_vfs = VfsService::create(asset_mgr.vfs_rc());
-        let tree_runtime = init_tree_runtime(tree_vfs.clone());
+        let tree_root = init_tree_root(&script_runtime, tree_vfs.clone());
         ComRc::from_object(Self {
             scene_manager,
             content_tabs: RefCell::new(ContentTabs::new(
@@ -53,7 +53,8 @@ impl DevToolsDirector {
             )),
             ui,
             asset_mgr,
-            tree_runtime: RefCell::new(tree_runtime),
+            tree_runtime: script_runtime,
+            tree_root,
             tree_vfs,
         })
     }
@@ -94,21 +95,21 @@ impl DevToolsDirector {
 
     fn render_tree(&self, ui: &Ui) {
         let _frame_timer = perf::timer("editor.tree.frame");
-        let state = match self.tree_runtime.borrow().state_clone() {
+        let state = match self.tree_runtime.deref_handle(self.tree_root) {
             Some(state) => state,
             None => return,
         };
 
         let owned = {
-            let mut runtime = self.tree_runtime.borrow_mut();
             let node = {
                 let _script_timer = perf::timer("editor.tree.script_render");
-                runtime.call_returning_data("render", vec![state, Data::Float(0.0)])
+                self.tree_runtime
+                    .call_method_returning_data(state, "render", vec![Data::Float(0.0)])
             };
             match node {
                 Ok(node) => {
                     let _resolve_timer = perf::timer("editor.tree.resolve");
-                    match runtime.with_ctx(|ctx| owned::resolve(ctx, &node)) {
+                    match self.tree_runtime.with_ctx(|ctx| owned::resolve(ctx, &node)) {
                         Ok(owned) => Some(owned),
                         Err(err) => {
                             log::error!("scripted resource tree resolve failed: {}", err);
@@ -175,6 +176,12 @@ impl DevToolsDirector {
     }
 }
 
+impl Drop for DevToolsDirector {
+    fn drop(&mut self) {
+        self.tree_runtime.unroot(self.tree_root);
+    }
+}
+
 struct NullTextureResolver;
 
 impl TextureResolver for NullTextureResolver {
@@ -187,20 +194,15 @@ fn count_owned_nodes(node: &OwnedNode) -> usize {
     1 + node.children.iter().map(count_owned_nodes).sum::<usize>()
 }
 
-fn init_tree_runtime(vfs: ComRc<IVfsService>) -> ScriptRuntime {
-    let mut runtime = ScriptRuntime::new();
-    runtime
-        .load_source(MAIN_TREE_SCRIPT)
-        .expect("main_tree.p7 must load successfully");
-    let vfs_id = runtime.intern(vfs);
-    let vfs = runtime
+fn init_tree_root(host: &Rc<ScriptHost>, vfs: ComRc<IVfsService>) -> ScriptDirectorHandle {
+    let vfs_id = host.intern(vfs);
+    let vfs = host
         .foreign_box("radiance_scripting.comdef.services.IVfsService", vfs_id)
         .expect("scripted resource tree VFS service must be internable");
-    let state = runtime
-        .call_returning_data("init", vec![vfs])
-        .expect("main_tree.p7 init must succeed");
-    runtime.store_state(state);
-    runtime
+    let tree = host
+        .call_returning_data("init_resource_tree", vec![vfs])
+        .expect("resource tree script init must succeed");
+    host.root(tree)
 }
 
 impl IDirectorImpl for DevToolsDirector {

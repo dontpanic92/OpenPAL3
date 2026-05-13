@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use mini_fs::{LocalFs, MiniFs};
-use radiance_scripting::services::{CommandBus, GameRegistry, VfsService};
+use radiance_scripting::services::{GameRegistry, VfsService};
 
 #[test]
 fn game_registry_exposes_static_game_data() {
@@ -10,12 +10,6 @@ fn game_registry_exposes_static_game_data() {
     assert_eq!(games.game_at(0), 0);
     assert_eq!(games.config_key(0), "OpenPAL3");
     assert!(!games.full_name(0).is_empty());
-}
-
-#[test]
-fn command_bus_dispatches_and_drains() {
-    let bus = CommandBus::create(Some(Box::new(|kind, arg| kind + arg)));
-    assert_eq!(bus.dispatch(4, 5), 9);
 }
 
 #[test]
@@ -46,10 +40,8 @@ fn vfs_service_tracks_expanded_paths() {
 
 #[test]
 fn vfs_service_classifies_cached_entry_paths() {
-    let root = std::env::temp_dir().join(format!(
-        "openpal3-vfs-service-test-{}",
-        std::process::id()
-    ));
+    let root =
+        std::env::temp_dir().join(format!("openpal3-vfs-service-test-{}", std::process::id()));
     let dir = root.join("dir");
     std::fs::create_dir_all(&dir).expect("create temp dir");
     std::fs::write(dir.join("file.txt"), b"hello").expect("write temp file");
