@@ -147,6 +147,26 @@ impl MaterialDef {
             cull: self.cull,
         }
     }
+
+    /// Override the blend mode on an existing `MaterialDef`. Also resets
+    /// `params.alpha_ref` to the mode-appropriate default (0.4 for
+    /// `AlphaTest`, 0 for every other mode) so existing call sites that
+    /// reach into a `SimpleMaterialDef::create*` result can switch the mode
+    /// without thinking about the cutoff.
+    pub fn with_blend(mut self, blend: BlendMode) -> Self {
+        self.blend = blend;
+        self.params.alpha_ref = match blend {
+            BlendMode::AlphaTest => 0.4,
+            _ => 0.0,
+        };
+        self
+    }
+
+    /// Override the depth mode on an existing `MaterialDef`.
+    pub fn with_depth(mut self, depth: DepthMode) -> Self {
+        self.depth = depth;
+        self
+    }
 }
 
 /// Builder for [`MaterialDef`]. Defaults reproduce today's renderer
@@ -191,7 +211,15 @@ impl MaterialDefBuilder {
     }
 
     pub fn blend(mut self, blend: BlendMode) -> Self {
+        // Reset `alpha_ref` to the mode-appropriate default. Cutout
+        // (`AlphaTest`) keeps the legacy 0.4 threshold; every other mode
+        // sets it to 0 because the opaque shader variant ignores it. Call
+        // `.params(...)` after `.blend(...)` if a custom value is needed.
         self.blend = blend;
+        self.params.alpha_ref = match blend {
+            BlendMode::AlphaTest => 0.4,
+            _ => 0.0,
+        };
         self
     }
 
@@ -218,6 +246,13 @@ impl MaterialDefBuilder {
     }
 }
 
+/// `SimpleMaterialDef` and `LightMapMaterialDef` decode their textures via
+/// `image::to_rgba8()`, producing *straight* (non-premultiplied) RGBA. The
+/// Vulkan blend factors in `pipeline.rs` and the GLSL math in
+/// `simple_triangle.frag` / `lightmap_texture.frag` are written to that
+/// convention. If a future loader needs premultiplied input, premultiply
+/// at upload time and adjust the `BlendMode::AlphaBlend` color factor to
+/// `ONE / ONE_MINUS_SRC_ALPHA` accordingly.
 pub struct SimpleMaterialDef;
 impl SimpleMaterialDef {
     pub fn create<R: Read>(

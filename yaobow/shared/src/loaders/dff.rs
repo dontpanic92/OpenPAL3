@@ -320,6 +320,8 @@ pub(crate) fn create_geometry_internal(
     for t in triangles {
         let group = material_to_indices.entry(t.material).or_insert_with(|| {
             let material = &materials[t.material as usize];
+            // RenderWare DFF materials don't expose an opaque-vs-cutout
+            // flag here; keep the legacy `BlendMode::AlphaTest` fallback.
             let md = if let Some(texture) = material.texture.as_ref() {
                 radiance::rendering::SimpleMaterialDef::create(
                     &texture.name,

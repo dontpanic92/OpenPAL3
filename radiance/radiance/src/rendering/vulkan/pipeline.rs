@@ -63,10 +63,27 @@ impl Pipeline {
             .name(&entry_point)
             .stage(vk::ShaderStageFlags::VERTEX)
             .module(shader.vk_vert_shader_module());
+
+        // Fragment-shader specialization: constant_id = 0 -> ALPHA_TEST (bool).
+        // Set to 1 only for `BlendMode::AlphaTest`; every other mode runs the
+        // opaque variant so early-Z is preserved.
+        let alpha_test_value: u32 = match key.blend {
+            BlendMode::AlphaTest => 1,
+            _ => 0,
+        };
+        let alpha_test_bytes = alpha_test_value.to_ne_bytes();
+        let spec_map_entries = [vk::SpecializationMapEntry::default()
+            .constant_id(0)
+            .offset(0)
+            .size(std::mem::size_of::<u32>())];
+        let spec_info = vk::SpecializationInfo::default()
+            .map_entries(&spec_map_entries)
+            .data(&alpha_test_bytes);
         let frag_shader_stage_create_info = vk::PipelineShaderStageCreateInfo::default()
             .name(&entry_point)
             .stage(vk::ShaderStageFlags::FRAGMENT)
-            .module(shader.vk_frag_shader_module());
+            .module(shader.vk_frag_shader_module())
+            .specialization_info(&spec_info);
 
         let binding_descriptions = [shader.get_binding_description()];
         let attribute_descriptions = shader.get_attribute_descriptions();
@@ -116,25 +133,23 @@ impl Pipeline {
                 .sample_shading_enable(false)
                 .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
-        // BlendMode -> color-attachment blend state. `AlphaTest` mirrors
-        // today's legacy behavior (blend always on,
-        // SRC_ALPHA / ONE_MINUS_SRC_ALPHA) so existing visuals are
-        // unchanged. A later transparency pass will flip `AlphaTest` to
-        // blend-disabled once the GLSL shaders stop forcing `outColor.a`.
+        // BlendMode -> color-attachment blend state. `AlphaTest` is now
+        // blend-disabled: the cutout shader variant runs `discard` so
+        // surviving pixels are fully opaque and don't need the blender.
+        //
+        // The blend factors assume *straight* (non-premultiplied) alpha for
+        // source colors — `AlphaBlend` uses `SRC_ALPHA / 1-SRC_ALPHA` for
+        // color, and `Additive` weights the source by its own alpha
+        // (`SRC_ALPHA / ONE`) so transparent texels contribute nothing.
+        // Destination alpha is accumulated with `ONE_MINUS_SRC_ALPHA` so
+        // overlapping translucent draws compose to a correct final alpha.
         let (blend_enable, src_color, dst_color, src_alpha, dst_alpha) = match key.blend {
-            BlendMode::Opaque => (
+            BlendMode::Opaque | BlendMode::AlphaTest => (
                 false,
                 vk::BlendFactor::ONE,
                 vk::BlendFactor::ZERO,
                 vk::BlendFactor::ONE,
                 vk::BlendFactor::ZERO,
-            ),
-            BlendMode::AlphaTest => (
-                true,
-                vk::BlendFactor::SRC_ALPHA,
-                vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
-                vk::BlendFactor::SRC_ALPHA,
-                vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
             ),
             BlendMode::AlphaBlend => (
                 true,

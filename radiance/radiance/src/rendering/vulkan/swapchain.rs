@@ -198,7 +198,9 @@ impl SwapChain {
     pub fn record_command_buffers(
         &mut self,
         image_index: usize,
-        objects: &[&VulkanRenderObject],
+        opaque_objects: &[&VulkanRenderObject],
+        cutout_objects: &[&VulkanRenderObject],
+        transparent_objects: &[&VulkanRenderObject],
         dub_manager: &DynamicUniformBufferManager,
         viewport: Viewport,
         ui_frame: ImguiFrame,
@@ -251,28 +253,96 @@ impl SwapChain {
             self.device.cmd_set_viewport(command_buffer, rect);
         }
 
-        // let mut objects_by_material = std::collections::HashMap::new();
+        // Three transparency buckets are submitted in order:
+        //   1. Opaque   (blend off, depth-write on) — grouped by MaterialKey
+        //      to minimize pipeline switches.
+        //   2. Cutout   (AlphaTest: blend off, discard) — same grouping.
+        //   3. Transparent (AlphaBlend/Additive/Multiply: depth-write off) —
+        //      drawn in the order received (caller back-to-front-sorts);
+        //      neighboring objects sharing a material are still grouped.
+        self.draw_bucket_grouped(command_buffer, opaque_objects, per_frame_descriptor_set, dub_manager);
+        self.draw_bucket_grouped(command_buffer, cutout_objects, per_frame_descriptor_set, dub_manager);
+        self.draw_bucket_ordered(command_buffer, transparent_objects, per_frame_descriptor_set, dub_manager);
+
+        self.imgui
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .record_command_buffer(ui_frame, command_buffer);
+
+        self.device.cmd_end_render_pass(command_buffer);
+        self.device.end_command_buffer(command_buffer)?;
+
+        Ok(command_buffer)
+    }
+
+    fn draw_bucket_grouped(
+        &mut self,
+        command_buffer: vk::CommandBuffer,
+        objects: &[&VulkanRenderObject],
+        per_frame_descriptor_set: vk::DescriptorSet,
+        dub_manager: &DynamicUniformBufferManager,
+    ) {
         let mut material_index: std::collections::HashMap<MaterialKey, usize> =
             std::collections::HashMap::new();
-        let mut materials = vec![];
-        let mut objects_by_material = vec![];
-
+        let mut materials: Vec<*const super::material::VulkanMaterial> = vec![];
+        let mut groups: Vec<Vec<&VulkanRenderObject>> = vec![];
         for obj in objects {
             let key = *obj.material().key();
-            if !material_index.contains_key(&key) {
+            if let Some(&idx) = material_index.get(&key) {
+                groups[idx].push(obj);
+            } else {
                 material_index.insert(key, materials.len());
                 self.pipeline_manager
                     .create_pipeline_if_not_exist(obj.material());
-                materials.push(obj.material());
-                objects_by_material.push(vec![obj]);
-            } else {
-                let index = material_index.get(&key).unwrap();
-                objects_by_material[*index].push(obj);
+                materials.push(obj.material() as *const _);
+                groups.push(vec![obj]);
             }
         }
+        self.draw_groups(command_buffer, &materials, &groups, per_frame_descriptor_set, dub_manager);
+    }
 
-        for (index, object_group) in objects_by_material.iter().enumerate() {
-            let material = materials[index];
+    fn draw_bucket_ordered(
+        &mut self,
+        command_buffer: vk::CommandBuffer,
+        objects: &[&VulkanRenderObject],
+        per_frame_descriptor_set: vk::DescriptorSet,
+        dub_manager: &DynamicUniformBufferManager,
+    ) {
+        // Preserve caller-supplied order; only consolidate consecutive
+        // objects that share a MaterialKey. Required for back-to-front
+        // correctness on translucent geometry.
+        let mut materials: Vec<*const super::material::VulkanMaterial> = vec![];
+        let mut groups: Vec<Vec<&VulkanRenderObject>> = vec![];
+        let mut last_key: Option<MaterialKey> = None;
+        for obj in objects {
+            let key = *obj.material().key();
+            if Some(key) != last_key {
+                self.pipeline_manager
+                    .create_pipeline_if_not_exist(obj.material());
+                materials.push(obj.material() as *const _);
+                groups.push(vec![obj]);
+                last_key = Some(key);
+            } else {
+                groups.last_mut().unwrap().push(obj);
+            }
+        }
+        self.draw_groups(command_buffer, &materials, &groups, per_frame_descriptor_set, dub_manager);
+    }
+
+    fn draw_groups(
+        &mut self,
+        command_buffer: vk::CommandBuffer,
+        materials: &[*const super::material::VulkanMaterial],
+        groups: &[Vec<&VulkanRenderObject>],
+        per_frame_descriptor_set: vk::DescriptorSet,
+        dub_manager: &DynamicUniformBufferManager,
+    ) {
+        for (index, object_group) in groups.iter().enumerate() {
+            // SAFETY: each pointer originates from `obj.material()` whose
+            // lifetime is bound to `objects` (still on the stack of the
+            // caller's `record_command_buffers` invocation).
+            let material = unsafe { &*materials[index] };
             let pipeline = self.pipeline_manager.get_pipeline(material.key());
 
             self.device.cmd_bind_pipeline(
@@ -320,17 +390,6 @@ impl SwapChain {
                 );
             }
         }
-
-        self.imgui
-            .as_ref()
-            .unwrap()
-            .borrow_mut()
-            .record_command_buffer(ui_frame, command_buffer);
-
-        self.device.cmd_end_render_pass(command_buffer);
-        self.device.end_command_buffer(command_buffer)?;
-
-        Ok(command_buffer)
     }
 }
 

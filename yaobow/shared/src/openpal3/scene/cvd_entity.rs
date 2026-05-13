@@ -128,6 +128,9 @@ fn load_texture<P: AsRef<Path>>(
         texture_path.push(&material.texture_name);
     }
 
+    // CVD props don't carry an explicit alpha flag; keep the default
+    // `BlendMode::AlphaTest` as a conservative fallback (matches the
+    // legacy renderer's "always cutout" behavior).
     SimpleMaterialDef::create(
         texture_path.to_str().unwrap(),
         |name| vfs.open(name).ok(),

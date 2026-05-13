@@ -11,7 +11,7 @@ use super::{
 };
 use crate::comdef::{IEntity, IScene};
 use crate::math::Mat44;
-use crate::rendering::RenderingComponent;
+use crate::rendering::{BlendMode, RenderingComponent};
 use crate::scene::{Camera, Viewport};
 use crate::{
     imgui::{ImguiContext, ImguiFrame},
@@ -374,22 +374,59 @@ impl VulkanRenderingEngine {
             Err(e) => panic!("Unable to acquire next image {:?}", e),
         };
 
-        let rc: Vec<Rc<RenderingComponent>> = entities
+        // Pair each visible rendering component with its owning entity's
+        // world-space translation so the transparent bucket can be sorted
+        // back-to-front against the camera.
+        let camera_world = {
+            let m = camera.transform().matrix();
+            [m[0][3], m[1][3], m[2][3]]
+        };
+        let rc: Vec<(Rc<RenderingComponent>, f32)> = entities
             .iter()
-            .filter_map(|e| e.get_rendering_component())
+            .filter_map(|e| {
+                let r = e.get_rendering_component()?;
+                let xform = e.world_transform();
+                let m = xform.matrix();
+                let dx = m[0][3] - camera_world[0];
+                let dy = m[1][3] - camera_world[1];
+                let dz = m[2][3] - camera_world[2];
+                Some((r, dx * dx + dy * dy + dz * dz))
+            })
             .collect();
 
-        let r_objects: Vec<&VulkanRenderObject> = rc
-            .iter()
-            .map(|c| c.render_objects())
-            .flatten()
-            .filter_map(|c| c.downcast_ref())
-            .collect();
+        let mut opaque: Vec<&VulkanRenderObject> = vec![];
+        let mut cutout: Vec<&VulkanRenderObject> = vec![];
+        let mut transparent: Vec<(f32, &VulkanRenderObject)> = vec![];
+        for (rendering, dist_sq) in rc.iter() {
+            for ro in rendering.render_objects() {
+                if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
+                    match vro.material().key().blend {
+                        BlendMode::Opaque => opaque.push(vro),
+                        BlendMode::AlphaTest => cutout.push(vro),
+                        BlendMode::AlphaBlend
+                        | BlendMode::Additive
+                        | BlendMode::Multiply => transparent.push((*dist_sq, vro)),
+                    }
+                }
+            }
+        }
+        // Back-to-front: farthest from the camera first.
+        transparent
+            .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        let transparent_ordered: Vec<&VulkanRenderObject> =
+            transparent.iter().map(|(_, ro)| *ro).collect();
+        // Back-to-front: farthest from the camera first.
+        transparent
+            .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        let transparent_ordered: Vec<&VulkanRenderObject> =
+            transparent.into_iter().map(|(_, ro)| ro).collect();
 
         let command_buffer = swapchain!()
             .record_command_buffers(
                 image_index as usize,
-                &r_objects,
+                &opaque,
+                &cutout,
+                &transparent_ordered,
                 &dub_manager,
                 viewport,
                 ui_frame,

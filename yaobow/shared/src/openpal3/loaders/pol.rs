@@ -4,7 +4,9 @@ use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::{IEntity, IStaticMeshComponent};
 use radiance::components::mesh::{Geometry, StaticMeshComponent, TexCoord};
 use radiance::math::Vec3;
-use radiance::rendering::{ComponentFactory, LightMapMaterialDef, MaterialDef, SimpleMaterialDef};
+use radiance::rendering::{
+    BlendMode, ComponentFactory, LightMapMaterialDef, MaterialDef, SimpleMaterialDef,
+};
 use radiance::scene::CoreEntity;
 use std::io::BufReader;
 use std::{
@@ -74,11 +76,21 @@ fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path:
         })
         .collect();
 
+    // PAL3 `.pol` materials carry `use_alpha`: 0 means the surface is
+    // fully opaque (no cutout, no blending), non-zero means the legacy
+    // alpha-test path (cutout against `MaterialParams::alpha_ref`).
+    let blend = if material.use_alpha == 0 {
+        BlendMode::Opaque
+    } else {
+        BlendMode::AlphaTest
+    };
+
     if texture_paths.len() == 1 {
         SimpleMaterialDef::create(
             texture_paths[0].to_str().unwrap(),
             |name| vfs.open(name).ok(),
         )
+        .with_blend(blend)
     } else {
         let textures: Vec<_> = texture_paths.iter().map(|p| p.to_str().unwrap()).collect();
         LightMapMaterialDef::create(
@@ -89,6 +101,7 @@ fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path:
                     .and_then(|_| vfs.open(name).ok())
             },
         )
+        .with_blend(blend)
     }
 }
 

@@ -372,6 +372,8 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
                 .unwrap(),
         );
 
+        // MV3 actor textures (PAL3 roles) typically rely on alpha cutout
+        // for hair / eye fringes. Keep the default `BlendMode::AlphaTest`.
         let material = SimpleMaterialDef::create(
             texture_path.to_str().unwrap(),
             |name| vfs.open(name).ok(),
