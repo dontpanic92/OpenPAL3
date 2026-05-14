@@ -57,10 +57,16 @@ impl Default for MaterialParams {
     fn default() -> Self {
         Self {
             tint: [1.0, 1.0, 1.0, 1.0],
-            // 0.4 matches the literal in simple_triangle.frag /
-            // lightmap_texture.frag so default `AlphaTest` materials keep
-            // today's cutoff once the shaders consume this value.
-            alpha_ref: 0.4,
+            // Very low discard threshold (≈ 1/255): only fully-transparent
+            // texels are skipped; bilinear-filtered edge texels with any
+            // alpha at all survive and are alpha-blended on top of what's
+            // behind. The shaders in `simple_triangle.frag` /
+            // `lightmap_texture.frag` consume this value when `ALPHA_TEST`
+            // is set. The previous 0.4 cutoff caused a sharp visible
+            // boundary at filtered edge pixels (the source of the
+            // black-fringe regression on PAL4 cloth assets where there
+            // was no opaque geometry behind the cloth's fringe).
+            alpha_ref: 0.004,
             uv_scale: [1.0, 1.0],
             uv_offset: [0.0, 0.0],
         }
@@ -145,14 +151,16 @@ impl MaterialDef {
     }
 
     /// Override the blend mode on an existing `MaterialDef`. Also resets
-    /// `params.alpha_ref` to the mode-appropriate default (0.4 for
-    /// `AlphaTest`, 0 for every other mode) so existing call sites that
+    /// `params.alpha_ref` to the mode-appropriate default (0.004 for
+    /// `AlphaTest` — small enough to discard only fully-transparent
+    /// texels, leaving bilinear-filtered edge texels for the blender —
+    /// and 0 for every other mode) so existing call sites that
     /// reach into a `SimpleMaterialDef::create*` result can switch the mode
     /// without thinking about the cutoff.
     pub fn with_blend(mut self, blend: BlendMode) -> Self {
         self.blend = blend;
         self.params.alpha_ref = match blend {
-            BlendMode::AlphaTest => 0.4,
+            BlendMode::AlphaTest => 0.004,
             _ => 0.0,
         };
         self
@@ -167,7 +175,7 @@ impl MaterialDef {
 
 /// Builder for [`MaterialDef`]. Defaults reproduce today's renderer
 /// behavior: `BlendMode::AlphaTest`, `DepthMode::TestWrite`,
-/// `CullMode::Back`, and default `MaterialParams` (`alpha_ref = 0.4`).
+/// `CullMode::Back`, and default `MaterialParams` (`alpha_ref = 0.004`).
 pub struct MaterialDefBuilder {
     debug_name: String,
     program: ShaderProgram,
@@ -185,7 +193,7 @@ impl MaterialDefBuilder {
             program,
             textures: Vec::new(),
             params: MaterialParams::default(),
-            blend: BlendMode::AlphaBlend,
+            blend: BlendMode::AlphaTest,
             depth: DepthMode::TestWrite,
             cull: CullMode::Back,
         }
@@ -208,12 +216,13 @@ impl MaterialDefBuilder {
 
     pub fn blend(mut self, blend: BlendMode) -> Self {
         // Reset `alpha_ref` to the mode-appropriate default. Cutout
-        // (`AlphaTest`) keeps the legacy 0.4 threshold; every other mode
-        // sets it to 0 because the opaque shader variant ignores it. Call
+        // (`AlphaTest`) keeps a near-zero threshold so only fully
+        // transparent texels are discarded; every other mode sets it to
+        // 0 because the opaque shader variant ignores it. Call
         // `.params(...)` after `.blend(...)` if a custom value is needed.
         self.blend = blend;
         self.params.alpha_ref = match blend {
-            BlendMode::AlphaTest => 0.4,
+            BlendMode::AlphaTest => 0.004,
             _ => 0.0,
         };
         self
@@ -243,12 +252,18 @@ impl MaterialDefBuilder {
 }
 
 /// `SimpleMaterialDef` and `LightMapMaterialDef` decode their textures via
-/// `image::to_rgba8()`, producing *straight* (non-premultiplied) RGBA. The
-/// Vulkan blend factors in `pipeline.rs` and the GLSL math in
-/// `simple_triangle.frag` / `lightmap_texture.frag` are written to that
-/// convention. If a future loader needs premultiplied input, premultiply
-/// at upload time and adjust the `BlendMode::AlphaBlend` color factor to
-/// `ONE / ONE_MINUS_SRC_ALPHA` accordingly.
+/// `image::to_rgba8()`. Any texture that carries transparency
+/// (`AlphaKind::Cutout` or `AlphaKind::Blend`) is then **premultiplied**
+/// in `TextureStore::get_or_update` so the Vulkan blender can use
+/// `ONE / ONE_MINUS_SRC_ALPHA` for `BlendMode::AlphaBlend` (and `ONE / ONE`
+/// for `Additive`). This avoids the classic black-halo artifact at the
+/// edges of bilinear-filtered alpha textures whose RGB was zeroed in
+/// fully-transparent texels. Opaque textures (alpha identically 255) and
+/// the lightmap channel of `LightMapMaterialDef` skip premultiplication,
+/// so opaque draws are bit-identical to before. See
+/// `texture::premultiply_alpha` and the comments in
+/// `simple_triangle.frag` / `lightmap_texture.frag` for the matching
+/// shader-side math.
 pub struct SimpleMaterialDef;
 impl SimpleMaterialDef {
     pub fn create<R: Read>(
@@ -284,6 +299,18 @@ impl SimpleMaterialDef {
             }
         });
 
+        Self::create_internal(texture)
+    }
+
+    /// Build a `SimpleMaterialDef` directly from an already-decoded
+    /// `RgbaImage`. Used by loaders that need to synthesize a composite
+    /// texture (e.g. RenderWare DFF materials that pair an RGB texture
+    /// with a separate alpha-mask texture) without re-routing through
+    /// `image::load_from_memory`. The `texture_name` doubles as the
+    /// `TextureStore` cache key, so callers should pick a name that
+    /// uniquely identifies the composite (e.g. `"<main>|<mask>"`).
+    pub fn create_with_image(texture_name: &str, image: Option<image::RgbaImage>) -> MaterialDef {
+        let texture = TextureStore::get_or_update(texture_name, || image);
         Self::create_internal(texture)
     }
 

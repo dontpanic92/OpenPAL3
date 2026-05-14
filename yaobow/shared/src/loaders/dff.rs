@@ -17,7 +17,7 @@ use radiance::{
         StaticMeshComponent,
     },
     math::{Mat44, Vec3},
-    rendering::{ComponentFactory, MaterialDef},
+    rendering::{AlphaKind, BlendMode, ComponentFactory, MaterialDef},
     scene::CoreEntity,
 };
 
@@ -322,25 +322,20 @@ pub(crate) fn create_geometry_internal(
             Some(idx) => idx,
             None => {
                 let material = &materials[t.material as usize];
-                // RenderWare DFF materials don't expose an opaque-vs-cutout
-                // flag here; keep the legacy `BlendMode::AlphaTest` fallback.
+                // RenderWare DFF carries blend info implicitly: the
+                // material's RGBA `color` alpha byte signals translucency
+                // and the texture's own alpha channel separates
+                // alpha-cutout (binary) from alpha-blended (graded). See
+                // `detect_blend` below.
                 let md = if let Some(texture) = material.texture.as_ref() {
-                    radiance::rendering::SimpleMaterialDef::create(
-                        &texture.name,
-                        |_name| {
-                            let data =
-                                texture_resolver.resolve_texture(vfs, path.as_ref(), &texture.name);
-                            if data.is_none() {
-                                log::warn!("Failed to resolve texture {} for {:?}", texture.name, path);
-                            }
-
-                            data.and_then(|data| Some(std::io::Cursor::new(data)))
-                        },
-                    )
+                    load_material_texture(texture, vfs, path.as_ref(), texture_resolver)
                 } else {
                     log::debug!("no texture info for material {:?}", path);
                     radiance::rendering::SimpleMaterialDef::create2("missing", None)
                 };
+
+                let blend = detect_blend(material, &md);
+                let md = md.with_blend(blend);
 
                 material_to_indices.push((
                     t.material,
@@ -457,4 +452,165 @@ fn create_mat44_from_matrix44f(m: &Matrix44f) -> Mat44 {
     mat.floats_mut()[3][3] = 1.; //m.0[15];
 
     mat
+}
+
+/// Map a RenderWare DFF material to a `BlendMode`. RW stores translucency
+/// in two places: the material's RGBA `color` (alpha byte = "global"
+/// material transparency) and the texture's own alpha channel.
+///
+/// - `mat_alpha < 255` → translucent material → `AlphaBlend`.
+/// - texture is `AlphaKind::Blend` (truly graded alpha across many
+///   pixels) → `AlphaBlend`.
+/// - texture is `AlphaKind::Cutout` (mostly binary alpha) → `AlphaTest`.
+///   The `AlphaTest` pipeline keeps depth-write on (so cutout meshes
+///   stay in the cutout bucket and continue to occlude later transparent
+///   draws against them) but uses premultiplied alpha-blend factors plus
+///   a near-zero discard threshold, so bilinear-filtered edges still
+///   look soft. Routing these to `AlphaBlend` would silently move
+///   mostly-opaque atlases into the depth-write-off bucket and cause the
+///   "see through the table" symptom: alpha-0 atlas texels stop
+///   discarding and instead leave the destination unchanged.
+/// - everything else → `Opaque`.
+fn detect_blend(material: &Material, md: &MaterialDef) -> BlendMode {
+    let mat_alpha = ((material.color >> 24) & 0xFF) as u8;
+    let texture_alpha = md
+        .textures()
+        .first()
+        .map(|t| t.alpha_kind())
+        .unwrap_or(AlphaKind::Opaque);
+
+    let blend = if mat_alpha < 255 || texture_alpha == AlphaKind::Blend {
+        BlendMode::AlphaBlend
+    } else if texture_alpha == AlphaKind::Cutout {
+        BlendMode::AlphaTest
+    } else {
+        BlendMode::Opaque
+    };
+
+    log::info!(
+        "dff material blend: mat_alpha={} tex_alpha_kind={:?} tex={} blend={:?}",
+        mat_alpha,
+        texture_alpha,
+        md.textures()
+            .first()
+            .map(|t| t.name())
+            .unwrap_or("<none>"),
+        blend,
+    );
+
+    blend
+}
+
+/// Decode a DFF material's texture (and optional alpha mask) into a
+/// `MaterialDef`.
+///
+/// RenderWare materials reference up to two textures: `name` (the diffuse
+/// RGB) and an optional `mask_name`. The mask is rendered as the alpha
+/// channel of the diffuse: where the mask is bright the pixel is opaque,
+/// where it's dark the pixel is transparent. PAL4 (and other RW games)
+/// ships many cutout / glass textures this way — the diffuse is plain
+/// RGB with no alpha channel of its own, so without composing the mask
+/// we'd classify the surface as `Opaque` and write its (often black)
+/// transparent regions into the depth/color buffer, occluding everything
+/// behind it.
+///
+/// Returns a material whose single texture is the composited RGBA image.
+/// The composite is cached under `"<main>|<mask>"` so repeated materials
+/// sharing the same pair don't re-decode.
+fn load_material_texture(
+    texture: &fileformats::rwbs::material::Texture,
+    vfs: &MiniFs,
+    model_path: &Path,
+    texture_resolver: &dyn TextureResolver,
+) -> MaterialDef {
+    if texture.mask_name.is_empty() {
+        return radiance::rendering::SimpleMaterialDef::create(&texture.name, |_name| {
+            let data = texture_resolver.resolve_texture(vfs, model_path, &texture.name);
+            if data.is_none() {
+                log::warn!(
+                    "Failed to resolve texture {} for {:?}",
+                    texture.name,
+                    model_path
+                );
+            }
+            data.and_then(|data| Some(std::io::Cursor::new(data)))
+        });
+    }
+
+    let composite_name = format!("{}|{}", texture.name, texture.mask_name);
+    let main_name = texture.name.clone();
+    let mask_name = texture.mask_name.clone();
+    let model_path_buf = model_path.to_path_buf();
+    radiance::rendering::SimpleMaterialDef::create_with_image(&composite_name, {
+        let main = decode_texture(vfs, &model_path_buf, &main_name, texture_resolver);
+        let mask = decode_texture(vfs, &model_path_buf, &mask_name, texture_resolver);
+        match (main, mask) {
+            (Some(mut main), Some(mask)) => {
+                apply_mask_alpha(&mut main, &mask);
+                Some(main)
+            }
+            (Some(main), None) => {
+                log::warn!(
+                    "Failed to resolve mask {} for {:?}; using diffuse alpha as-is",
+                    mask_name,
+                    model_path_buf
+                );
+                Some(main)
+            }
+            (None, _) => {
+                log::warn!(
+                    "Failed to resolve texture {} for {:?}",
+                    main_name,
+                    model_path_buf
+                );
+                None
+            }
+        }
+    })
+}
+
+fn decode_texture(
+    vfs: &MiniFs,
+    model_path: &Path,
+    name: &str,
+    texture_resolver: &dyn TextureResolver,
+) -> Option<image::RgbaImage> {
+    let data = texture_resolver.resolve_texture(vfs, model_path, name)?;
+    image::load_from_memory(&data)
+        .or_else(|_| image::load_from_memory_with_format(&data, image::ImageFormat::Tga))
+        .ok()
+        .map(|img| img.to_rgba8())
+}
+
+/// Composite a RenderWare mask texture onto `main`'s alpha channel.
+///
+/// RW mask textures are conventionally grayscale (bright = opaque, dark =
+/// transparent). We sample the mask's luminance — averaging RGB lets us
+/// handle masks stored as either grayscale or color without picking a
+/// channel arbitrarily — and overwrite `main`'s alpha with it. If the
+/// mask resolution differs from the main texture, sample with a nearest
+/// lookup; mismatched resolutions are rare and a coarse sample is good
+/// enough for cutout / blend classification.
+fn apply_mask_alpha(main: &mut image::RgbaImage, mask: &image::RgbaImage) {
+    let (mw, mh) = (main.width(), main.height());
+    let (kw, kh) = (mask.width(), mask.height());
+    if kw == 0 || kh == 0 {
+        return;
+    }
+
+    let same_size = mw == kw && mh == kh;
+    for y in 0..mh {
+        for x in 0..mw {
+            let mp = if same_size {
+                *mask.get_pixel(x, y)
+            } else {
+                let mx = (x as u64 * kw as u64 / mw.max(1) as u64) as u32;
+                let my = (y as u64 * kh as u64 / mh.max(1) as u64) as u32;
+                *mask.get_pixel(mx.min(kw - 1), my.min(kh - 1))
+            };
+            // Luminance approximation; cheap and channel-agnostic.
+            let luma = ((mp.0[0] as u16 + mp.0[1] as u16 + mp.0[2] as u16) / 3) as u8;
+            main.get_pixel_mut(x, y).0[3] = luma;
+        }
+    }
 }

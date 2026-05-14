@@ -1,8 +1,11 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-// Alpha convention: textures are decoded as straight (non-premultiplied)
-// RGBA. Blend factors in the Vulkan pipeline assume this convention.
+// Alpha convention: non-opaque textures are stored **premultiplied** by
+// the texture loader (`texture::premultiply_alpha`). The Vulkan pipeline
+// uses `ONE / 1-SRC_ALPHA` blend factors to match. The cutout / opaque
+// path is unaffected because those textures bypass premultiplication
+// (alpha is identically 255).
 //
 // ALPHA_TEST is selected at pipeline creation via a Vulkan specialization
 // constant (constant_id = 0). It is `true` for the `BlendMode::AlphaTest`
@@ -25,5 +28,8 @@ void main() {
     if (ALPHA_TEST && sampled.a < mat.misc.x) {
         discard;
     }
-    outColor = vec4(sampled.rgb * mat.tint.rgb, sampled.a * mat.tint.a);
+    // Premultiplied invariant: scale RGB *and* alpha by tint.a so the
+    // resulting fragment is still premultiplied. Tinting the RGB by
+    // tint.rgb (default white) is applied on top.
+    outColor = vec4(sampled.rgb * mat.tint.rgb * mat.tint.a, sampled.a * mat.tint.a);
 }

@@ -1,9 +1,13 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-// Alpha convention: textures are decoded as straight (non-premultiplied)
-// RGBA. ALPHA_TEST is selected via specialization constant 0 at pipeline
-// creation; see simple_triangle.frag for details.
+// Alpha convention: non-opaque diffuse textures are stored premultiplied
+// (`texture::premultiply_alpha`). Lightmap textures sampled from
+// `texSampler[0]` are bypassed by premultiplication because their alpha
+// channel is conventionally a junk 255 and the classifier tags them as
+// `AlphaKind::Opaque`. The cutout test runs on the diffuse texture's
+// alpha (which `AlphaTest` materials always keep binary). See
+// `simple_triangle.frag` for details on the specialization constant.
 layout(constant_id = 0) const bool ALPHA_TEST = true;
 
 layout(set = 2, binding = 0) uniform sampler2D texSampler[2];
@@ -25,6 +29,9 @@ void main() {
         discard;
     }
 
-    vec3 rgb = (lightMap.rgb * 1.5 + 0.15) * color.rgb * mat.tint.rgb;
+    // `color.rgb` is premultiplied when the diffuse has transparency; the
+    // lightmap factor and tint must therefore also be multiplied by
+    // `mat.tint.a` to preserve the premultiplied invariant of the output.
+    vec3 rgb = (lightMap.rgb * 1.5 + 0.15) * color.rgb * mat.tint.rgb * mat.tint.a;
     outColor = vec4(rgb, color.a * mat.tint.a);
 }

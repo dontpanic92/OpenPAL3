@@ -27,7 +27,7 @@ pub use render_object::RenderObject;
 pub use rendering_component::RenderingComponent;
 pub use shader::{Shader, ShaderProgram};
 pub use sprite::Sprite;
-pub use texture::{Texture, TextureDef, TextureStore};
+pub use texture::{AlphaKind, Texture, TextureDef, TextureStore};
 pub use vertex_buffer::{VertexBuffer, VertexComponents};
 pub use video_player::VideoPlayer;
 

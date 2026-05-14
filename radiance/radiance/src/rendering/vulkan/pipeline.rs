@@ -133,34 +133,49 @@ impl Pipeline {
                 .sample_shading_enable(false)
                 .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
-        // BlendMode -> color-attachment blend state. `AlphaTest` is now
-        // blend-disabled: the cutout shader variant runs `discard` so
-        // surviving pixels are fully opaque and don't need the blender.
+        // BlendMode -> color-attachment blend state.
         //
-        // The blend factors assume *straight* (non-premultiplied) alpha for
-        // source colors — `AlphaBlend` uses `SRC_ALPHA / 1-SRC_ALPHA` for
-        // color, and `Additive` weights the source by its own alpha
-        // (`SRC_ALPHA / ONE`) so transparent texels contribute nothing.
-        // Destination alpha is accumulated with `ONE_MINUS_SRC_ALPHA` so
-        // overlapping translucent draws compose to a correct final alpha.
+        // The blend factors assume **premultiplied** alpha for source
+        // colors (see `texture::premultiply_alpha` and the shader-side
+        // tint application in `simple_triangle.frag` /
+        // `lightmap_texture.frag`). `AlphaBlend` uses `ONE / 1-SRC_ALPHA`
+        // for color so the already-premultiplied source is added on top
+        // of the destination weighted by `1 - src.a`; `Additive` uses
+        // `ONE / ONE` for the same reason (the texel's own alpha is
+        // already baked into RGB, so transparent texels contribute
+        // nothing). Destination alpha is accumulated with
+        // `ONE_MINUS_SRC_ALPHA` so overlapping translucent draws compose
+        // to a correct final alpha.
+        //
+        // `AlphaTest` uses the same premultiplied blend factors as
+        // `AlphaBlend` instead of being blend-disabled. The fragment
+        // shader still discards fully-transparent texels (preventing
+        // them from writing depth) but bilinear-filtered edge texels
+        // survive and blend smoothly with the destination. Disabled
+        // blending was the cause of the hard black-fringe artifact at
+        // the boundary of binary-alpha cutout assets where there was no
+        // opaque geometry behind the cutout edge — without blending the
+        // surviving premultiplied edge texels were written opaquely
+        // (dim color over clear-color black). With blending on, those
+        // same texels properly attenuate the destination instead.
         let (blend_enable, src_color, dst_color, src_alpha, dst_alpha) = match key.blend {
-            BlendMode::Opaque | BlendMode::AlphaTest => (
+            BlendMode::Opaque => (
                 false,
                 vk::BlendFactor::ONE,
                 vk::BlendFactor::ZERO,
                 vk::BlendFactor::ONE,
                 vk::BlendFactor::ZERO,
             ),
-            BlendMode::AlphaBlend => (
+            BlendMode::AlphaTest | BlendMode::AlphaBlend => (
                 true,
-                vk::BlendFactor::SRC_ALPHA,
+                vk::BlendFactor::ONE,
                 vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
                 vk::BlendFactor::ONE,
                 vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
             ),
             BlendMode::Additive => (
                 true,
-                vk::BlendFactor::SRC_ALPHA,
+                vk::BlendFactor::ONE,
                 vk::BlendFactor::ONE,
                 vk::BlendFactor::ZERO,
                 vk::BlendFactor::ONE,
