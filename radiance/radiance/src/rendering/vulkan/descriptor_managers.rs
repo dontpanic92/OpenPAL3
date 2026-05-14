@@ -1,6 +1,7 @@
 use super::{
     buffer::Buffer, descriptor_pool::DescriptorPool, descriptor_pool::DescriptorPoolCreateInfo,
-    descriptor_set_layout::DescriptorSetLayout, device::Device, texture::VulkanTexture,
+    descriptor_set_layout::DescriptorSetLayout, device::Device, sampler::VulkanSamplerCache,
+    texture::VulkanTexture,
 };
 use crate::rendering::vulkan::material::VulkanMaterial;
 use crate::rendering::vulkan::uniform_buffers::{MaterialParamsGpu, PerFrameUniformBuffer};
@@ -30,6 +31,7 @@ pub struct DescriptorManager {
     per_material_layouts:
         Arc<Mutex<HashMap<PerMaterialLayoutKey, vk::DescriptorSetLayout>>>,
     dub_descriptor_manager: DynamicUniformBufferDescriptorManager,
+    sampler_cache: VulkanSamplerCache,
 }
 
 impl DescriptorManager {
@@ -58,6 +60,7 @@ impl DescriptorManager {
             1,
         )?;
         let dub_descriptor_manager = DynamicUniformBufferDescriptorManager::new(device.clone());
+        let sampler_cache = VulkanSamplerCache::new(device.clone());
 
         Ok(Self {
             device,
@@ -70,6 +73,7 @@ impl DescriptorManager {
             per_material_params_layout,
             per_material_layouts: Arc::new(Mutex::new(HashMap::new())),
             dub_descriptor_manager,
+            sampler_cache,
         })
     }
 
@@ -77,10 +81,15 @@ impl DescriptorManager {
         &self.dub_descriptor_manager
     }
 
+    pub fn sampler_cache(&self) -> &VulkanSamplerCache {
+        &self.sampler_cache
+    }
+
     pub fn create_texture_descriptor_set(&self, texture: &VulkanTexture) -> vk::DescriptorSet {
+        let sampler = self.sampler_cache.default_sampler();
         let set = self.allocate_texture_descriptor_set().unwrap();
         let image_info = [vk::DescriptorImageInfo {
-            sampler: texture.sampler().vk_sampler(),
+            sampler: sampler.vk_sampler(),
             image_view: texture.image_view().vk_image_view(),
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         }];
@@ -127,11 +136,12 @@ impl DescriptorManager {
         let image_info: Vec<vk::DescriptorImageInfo> = material
             .textures()
             .iter()
-            .map(|t| {
+            .zip(material.samplers().iter())
+            .map(|(t, s)| {
                 vk::DescriptorImageInfo::default()
                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                     .image_view(t.image_view().vk_image_view())
-                    .sampler(t.sampler().vk_sampler())
+                    .sampler(s.vk_sampler())
             })
             .collect();
 

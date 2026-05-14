@@ -17,7 +17,9 @@ use radiance::{
         StaticMeshComponent,
     },
     math::{Mat44, Vec3},
-    rendering::{AlphaKind, BlendMode, ComponentFactory, MaterialDef},
+    rendering::{
+        AddressMode, AlphaKind, BlendMode, ComponentFactory, FilterMode, MaterialDef, SamplerDef,
+    },
     scene::CoreEntity,
 };
 
@@ -514,59 +516,133 @@ fn detect_blend(material: &Material, md: &MaterialDef) -> BlendMode {
 /// transparent regions into the depth/color buffer, occluding everything
 /// behind it.
 ///
+/// Decode a DFF material's texture (and optional alpha mask) into a
+/// `MaterialDef`.
+///
+/// RenderWare materials reference up to two textures: `name` (the diffuse
+/// RGB) and an optional `mask_name`. The mask is rendered as the alpha
+/// channel of the diffuse: where the mask is bright the pixel is opaque,
+/// where it's dark the pixel is transparent. PAL4 (and other RW games)
+/// ships many cutout / glass textures this way — the diffuse is plain
+/// RGB with no alpha channel of its own, so without composing the mask
+/// we'd classify the surface as `Opaque` and write its (often black)
+/// transparent regions into the depth/color buffer, occluding everything
+/// behind it.
+///
 /// Returns a material whose single texture is the composited RGBA image.
 /// The composite is cached under `"<main>|<mask>"` so repeated materials
-/// sharing the same pair don't re-decode.
+/// sharing the same pair don't re-decode. The texture's `filter_mode`
+/// and `address_mode_u/v` (parsed in
+/// `fileformats/src/rwbs/material.rs`) are mapped to a cross-backend
+/// `SamplerDef` via [`rw_sampler_def`] and forwarded to the material,
+/// so CLAMP / MIRROR / BORDER addressing and NEAREST filtering reach
+/// the GPU sampler instead of being silently dropped.
 fn load_material_texture(
     texture: &fileformats::rwbs::material::Texture,
     vfs: &MiniFs,
     model_path: &Path,
     texture_resolver: &dyn TextureResolver,
 ) -> MaterialDef {
+    let sampler = rw_sampler_def(texture);
     if texture.mask_name.is_empty() {
-        return radiance::rendering::SimpleMaterialDef::create(&texture.name, |_name| {
-            let data = texture_resolver.resolve_texture(vfs, model_path, &texture.name);
-            if data.is_none() {
-                log::warn!(
-                    "Failed to resolve texture {} for {:?}",
-                    texture.name,
-                    model_path
-                );
-            }
-            data.and_then(|data| Some(std::io::Cursor::new(data)))
-        });
+        return radiance::rendering::SimpleMaterialDef::create_with_sampler(
+            &texture.name,
+            |_name| {
+                let data = texture_resolver.resolve_texture(vfs, model_path, &texture.name);
+                if data.is_none() {
+                    log::warn!(
+                        "Failed to resolve texture {} for {:?}",
+                        texture.name,
+                        model_path
+                    );
+                }
+                data.and_then(|data| Some(std::io::Cursor::new(data)))
+            },
+            sampler,
+        );
     }
 
     let composite_name = format!("{}|{}", texture.name, texture.mask_name);
     let main_name = texture.name.clone();
     let mask_name = texture.mask_name.clone();
     let model_path_buf = model_path.to_path_buf();
-    radiance::rendering::SimpleMaterialDef::create_with_image(&composite_name, {
-        let main = decode_texture(vfs, &model_path_buf, &main_name, texture_resolver);
-        let mask = decode_texture(vfs, &model_path_buf, &mask_name, texture_resolver);
-        match (main, mask) {
-            (Some(mut main), Some(mask)) => {
-                apply_mask_alpha(&mut main, &mask);
-                Some(main)
+    radiance::rendering::SimpleMaterialDef::create_with_image_and_sampler(
+        &composite_name,
+        {
+            let main = decode_texture(vfs, &model_path_buf, &main_name, texture_resolver);
+            let mask = decode_texture(vfs, &model_path_buf, &mask_name, texture_resolver);
+            match (main, mask) {
+                (Some(mut main), Some(mask)) => {
+                    apply_mask_alpha(&mut main, &mask);
+                    Some(main)
+                }
+                (Some(main), None) => {
+                    log::warn!(
+                        "Failed to resolve mask {} for {:?}; using diffuse alpha as-is",
+                        mask_name,
+                        model_path_buf
+                    );
+                    Some(main)
+                }
+                (None, _) => {
+                    log::warn!(
+                        "Failed to resolve texture {} for {:?}",
+                        main_name,
+                        model_path_buf
+                    );
+                    None
+                }
             }
-            (Some(main), None) => {
-                log::warn!(
-                    "Failed to resolve mask {} for {:?}; using diffuse alpha as-is",
-                    mask_name,
-                    model_path_buf
-                );
-                Some(main)
-            }
-            (None, _) => {
-                log::warn!(
-                    "Failed to resolve texture {} for {:?}",
-                    main_name,
-                    model_path_buf
-                );
-                None
-            }
-        }
-    })
+        },
+        sampler,
+    )
+}
+
+/// Build a cross-backend `SamplerDef` from the raw RenderWare
+/// `Texture::filter_mode / address_mode_u / address_mode_v` fields
+/// parsed in `fileformats/src/rwbs/material.rs`.
+///
+/// Filter mode mapping (RW values; see RW SDK `RwTextureFilterMode`):
+///   0 = NAFILTERMODE              -> Linear (today's default)
+///   1 = NEAREST                   -> Nearest
+///   2 = LINEAR                    -> Linear
+///   3 = MIPNEAREST                -> Nearest (mip levels not generated)
+///   4 = MIPLINEAR                 -> Linear  (mip levels not generated)
+///   5 = LINEARMIPNEAREST          -> Linear
+///   6 = LINEARMIPLINEAR           -> Linear
+///
+/// Address mode mapping (RW `RwTextureAddressMode`):
+///   0 = NATEXTUREADDRESS          -> Repeat (today's default)
+///   1 = WRAP                      -> Repeat
+///   2 = MIRROR                    -> Mirror
+///   3 = CLAMP                     -> Clamp
+///   4 = BORDER                    -> Border
+///
+/// Mip-map generation is intentionally skipped for now; once
+/// `VulkanTexture` learns to build mip chains the `mipmap_mode` carried
+/// on `SamplerDef` already takes effect (see
+/// `radiance/.../vulkan/sampler.rs`).
+fn rw_sampler_def(texture: &fileformats::rwbs::material::Texture) -> SamplerDef {
+    let filter = match texture.filter_mode {
+        1 | 3 => FilterMode::Nearest,
+        2 | 4 | 5 | 6 => FilterMode::Linear,
+        _ => FilterMode::Linear,
+    };
+    SamplerDef::with_address_uv(
+        filter,
+        rw_address_mode(texture.address_mode_u),
+        rw_address_mode(texture.address_mode_v),
+    )
+}
+
+fn rw_address_mode(mode: u32) -> AddressMode {
+    match mode {
+        1 => AddressMode::Repeat,
+        2 => AddressMode::Mirror,
+        3 => AddressMode::Clamp,
+        4 => AddressMode::Border,
+        _ => AddressMode::Repeat,
+    }
 }
 
 fn decode_texture(

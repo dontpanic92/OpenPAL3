@@ -4,6 +4,7 @@ mod material;
 mod platform;
 mod render_object;
 mod rendering_component;
+mod sampler;
 mod shader;
 mod sprite;
 mod texture;
@@ -25,6 +26,7 @@ pub use material::{
 pub use platform::Window;
 pub use render_object::RenderObject;
 pub use rendering_component::RenderingComponent;
+pub use sampler::{AddressMode, FilterMode, MipmapMode, SamplerDef};
 pub use shader::{Shader, ShaderProgram};
 pub use sprite::Sprite;
 pub use texture::{AlphaKind, Texture, TextureDef, TextureStore};

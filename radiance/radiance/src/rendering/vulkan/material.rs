@@ -1,5 +1,6 @@
 use super::buffer::{Buffer, BufferType};
 use super::descriptor_managers::DescriptorManager;
+use super::sampler::Sampler;
 use super::shader_cache::VulkanShaderCache;
 use super::texture::VulkanTextureStore;
 use super::uniform_buffers::MaterialParamsGpu;
@@ -14,6 +15,7 @@ pub struct VulkanMaterial {
     key: MaterialKey,
     shader: Rc<VulkanShader>,
     textures: Vec<Rc<VulkanTexture>>,
+    samplers: Vec<Rc<Sampler>>,
     params: MaterialParams,
 
     descriptor_manager: Rc<DescriptorManager>,
@@ -48,6 +50,11 @@ impl VulkanMaterial {
                 })
             })
             .collect();
+        let samplers = def
+            .samplers()
+            .iter()
+            .map(|s| descriptor_manager.sampler_cache().get_or_create(s))
+            .collect();
 
         let gpu_params = MaterialParamsGpu::from_params(def.params());
         let params_buffer =
@@ -62,6 +69,7 @@ impl VulkanMaterial {
             key: def.key(),
             shader,
             textures,
+            samplers,
             params: *def.params(),
             descriptor_manager: descriptor_manager.clone(),
             _params_buffer: params_buffer,
@@ -83,6 +91,10 @@ impl VulkanMaterial {
 
     pub fn textures(&self) -> &[Rc<VulkanTexture>] {
         &self.textures
+    }
+
+    pub fn samplers(&self) -> &[Rc<Sampler>] {
+        &self.samplers
     }
 
     pub fn params(&self) -> &MaterialParams {

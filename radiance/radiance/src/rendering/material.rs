@@ -2,7 +2,7 @@ use image::ImageFormat;
 
 use crate::rendering::texture::TextureStore;
 
-use super::{texture::TextureDef, ShaderProgram};
+use super::{sampler::SamplerDef, texture::TextureDef, ShaderProgram};
 use std::{io::Read, sync::Arc};
 
 /// Color-blend mode for a material. Today every variant maps to a distinct
@@ -89,6 +89,7 @@ pub struct MaterialDef {
     debug_name: String,
     program: ShaderProgram,
     textures: Vec<Arc<TextureDef>>,
+    samplers: Vec<SamplerDef>,
     params: MaterialParams,
     blend: BlendMode,
     depth: DepthMode,
@@ -123,6 +124,15 @@ impl MaterialDef {
 
     pub fn textures(&self) -> &[Arc<TextureDef>] {
         &self.textures
+    }
+
+    /// Per-texture-binding sampler descriptions. Always the same length
+    /// as `textures()`. Backends that don't yet route per-material
+    /// sampler state are free to ignore this; the default values
+    /// (`SamplerDef::DEFAULT` — LINEAR + REPEAT) match today's
+    /// hardcoded sampler behavior.
+    pub fn samplers(&self) -> &[SamplerDef] {
+        &self.samplers
     }
 
     pub fn params(&self) -> &MaterialParams {
@@ -180,6 +190,7 @@ pub struct MaterialDefBuilder {
     debug_name: String,
     program: ShaderProgram,
     textures: Vec<Arc<TextureDef>>,
+    samplers: Vec<SamplerDef>,
     params: MaterialParams,
     blend: BlendMode,
     depth: DepthMode,
@@ -192,6 +203,7 @@ impl MaterialDefBuilder {
             debug_name: String::new(),
             program,
             textures: Vec::new(),
+            samplers: Vec::new(),
             params: MaterialParams::default(),
             blend: BlendMode::AlphaTest,
             depth: DepthMode::TestWrite,
@@ -204,8 +216,32 @@ impl MaterialDefBuilder {
         self
     }
 
+    /// Set the texture bindings, defaulting their sampler state to
+    /// `SamplerDef::DEFAULT` (LINEAR + REPEAT). Use
+    /// [`MaterialDefBuilder::textures_with_samplers`] when the loader
+    /// has explicit sampler state to forward (e.g. RW
+    /// `address_mode_u/v`).
     pub fn textures(mut self, textures: Vec<Arc<TextureDef>>) -> Self {
+        self.samplers = vec![SamplerDef::default(); textures.len()];
         self.textures = textures;
+        self
+    }
+
+    /// Set the texture bindings together with a per-binding
+    /// `SamplerDef`. Both vectors must have the same length; this is
+    /// asserted at build time.
+    pub fn textures_with_samplers(
+        mut self,
+        textures: Vec<Arc<TextureDef>>,
+        samplers: Vec<SamplerDef>,
+    ) -> Self {
+        assert_eq!(
+            textures.len(),
+            samplers.len(),
+            "textures and samplers must be parallel vectors of equal length",
+        );
+        self.textures = textures;
+        self.samplers = samplers;
         self
     }
 
@@ -239,10 +275,16 @@ impl MaterialDefBuilder {
     }
 
     pub fn build(self) -> MaterialDef {
+        debug_assert_eq!(
+            self.textures.len(),
+            self.samplers.len(),
+            "MaterialDefBuilder: textures/samplers length mismatch (use .textures(...) or .textures_with_samplers(...))",
+        );
         MaterialDef {
             debug_name: self.debug_name,
             program: self.program,
             textures: self.textures,
+            samplers: self.samplers,
             params: self.params,
             blend: self.blend,
             depth: self.depth,
@@ -270,6 +312,14 @@ impl SimpleMaterialDef {
         texture_name: &str,
         get_reader: impl FnOnce(&str) -> Option<R>,
     ) -> MaterialDef {
+        Self::create_with_sampler(texture_name, get_reader, SamplerDef::default())
+    }
+
+    pub fn create_with_sampler<R: Read>(
+        texture_name: &str,
+        get_reader: impl FnOnce(&str) -> Option<R>,
+        sampler: SamplerDef,
+    ) -> MaterialDef {
         let texture = TextureStore::get_or_update(texture_name, || {
             if let Some(mut r) = get_reader(texture_name) {
                 let mut buf = Vec::new();
@@ -283,10 +333,18 @@ impl SimpleMaterialDef {
             }
         });
 
-        Self::create_internal(texture)
+        Self::create_internal(texture, sampler)
     }
 
     pub fn create2(texture_name: &str, data: Option<Vec<u8>>) -> MaterialDef {
+        Self::create2_with_sampler(texture_name, data, SamplerDef::default())
+    }
+
+    pub fn create2_with_sampler(
+        texture_name: &str,
+        data: Option<Vec<u8>>,
+        sampler: SamplerDef,
+    ) -> MaterialDef {
         let texture = TextureStore::get_or_update(texture_name, || {
             if let Some(data) = data {
                 let image = {
@@ -299,7 +357,7 @@ impl SimpleMaterialDef {
             }
         });
 
-        Self::create_internal(texture)
+        Self::create_internal(texture, sampler)
     }
 
     /// Build a `SimpleMaterialDef` directly from an already-decoded
@@ -310,14 +368,22 @@ impl SimpleMaterialDef {
     /// `TextureStore` cache key, so callers should pick a name that
     /// uniquely identifies the composite (e.g. `"<main>|<mask>"`).
     pub fn create_with_image(texture_name: &str, image: Option<image::RgbaImage>) -> MaterialDef {
-        let texture = TextureStore::get_or_update(texture_name, || image);
-        Self::create_internal(texture)
+        Self::create_with_image_and_sampler(texture_name, image, SamplerDef::default())
     }
 
-    fn create_internal(texture_def: Arc<TextureDef>) -> MaterialDef {
+    pub fn create_with_image_and_sampler(
+        texture_name: &str,
+        image: Option<image::RgbaImage>,
+        sampler: SamplerDef,
+    ) -> MaterialDef {
+        let texture = TextureStore::get_or_update(texture_name, || image);
+        Self::create_internal(texture, sampler)
+    }
+
+    fn create_internal(texture_def: Arc<TextureDef>, sampler: SamplerDef) -> MaterialDef {
         MaterialDef::builder(ShaderProgram::TexturedNoLight)
             .debug_name("simple_material")
-            .textures(vec![texture_def])
+            .textures_with_samplers(vec![texture_def], vec![sampler])
             .build()
     }
 }
@@ -328,6 +394,20 @@ impl LightMapMaterialDef {
         textures: Vec<&str>,
         get_reader: impl Fn(&str) -> Option<R>,
     ) -> MaterialDef {
+        let count = textures.len();
+        Self::create_with_samplers(textures, get_reader, vec![SamplerDef::default(); count])
+    }
+
+    pub fn create_with_samplers<R: Read>(
+        textures: Vec<&str>,
+        get_reader: impl Fn(&str) -> Option<R>,
+        samplers: Vec<SamplerDef>,
+    ) -> MaterialDef {
+        assert_eq!(
+            textures.len(),
+            samplers.len(),
+            "LightMapMaterialDef: textures and samplers must be parallel vectors of equal length",
+        );
         let textures: Vec<Arc<TextureDef>> = textures
             .into_iter()
             .map(|name| {
@@ -354,7 +434,7 @@ impl LightMapMaterialDef {
 
         MaterialDef::builder(ShaderProgram::TexturedLightmap)
             .debug_name("lightmap_material")
-            .textures(textures)
+            .textures_with_samplers(textures, samplers)
             .build()
     }
 }
