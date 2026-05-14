@@ -1,3 +1,12 @@
+// Welcome and Settings screens. Both directors live here; cross-module
+// proto dispatch makes the host's entry frame (in module `main`) able to
+// invoke their methods directly.
+
+import director;
+import editor_services;
+import yaobow_editor_services;
+import ui;
+import editor_consts;
 
 let SETTINGS_CMD: int = 9001;
 let SAVE_CMD: int = 9002;
@@ -37,7 +46,7 @@ pub struct[director.Director] WelcomeDirector(
             }
             let next = self.host.app().open_game(ordinal);
             if next != null {
-                return [wrap_host(next!)];
+                return [editor_consts.wrap_host(next!)];
             }
         }
 
@@ -100,7 +109,7 @@ pub struct[director.Director] SettingsDirector(
     }
 }
 
-fn make_welcome_director(
+pub fn make_welcome_director(
     host: box<yaobow_editor_services.IEditorHostContext>,
     games: box<array<int>>,
     names: box<array<string>>,
@@ -116,11 +125,11 @@ fn make_settings_director(
     return box(SettingsDirector(host, games, names)) as box<director.Director>;
 }
 
-fn game_name(director: ref<WelcomeDirector>, ordinal: int) -> string {
+fn game_name(d: ref<WelcomeDirector>, ordinal: int) -> string {
     let mut i = 0;
-    while i < director.games.len() {
-        if director.games[i] == ordinal {
-            return director.names[i];
+    while i < d.games.len() {
+        if d.games[i] == ordinal {
+            return d.names[i];
         }
         i = i + 1;
     }
@@ -143,8 +152,8 @@ fn settings_button_node() -> ui.UiNode {
     return ui.button("设置", 120.0, 24.0, SETTINGS_CMD);
 }
 
-fn game_button_node(director: ref<WelcomeDirector>, ordinal: int) -> ui.UiNode {
-    let name = game_name(director, ordinal);
+fn game_button_node(d: ref<WelcomeDirector>, ordinal: int) -> ui.UiNode {
+    let name = game_name(d, ordinal);
     return ui.button(f"运行《{name}》编辑器", -1.0, 60.0, GAME_CMD_BASE + ordinal);
 }
 
@@ -152,13 +161,13 @@ fn empty_cell_node() -> ui.UiNode {
     return ui.dummy(0.0, 0.0);
 }
 
-fn game_table_node(director: ref<WelcomeDirector>) -> ui.UiNode {
+fn game_table_node(d: ref<WelcomeDirector>) -> ui.UiNode {
     return ui.table(3, [
-        game_button_node(director, 0), game_button_node(director, 8), game_button_node(director, 5),
-        game_button_node(director, 1), game_button_node(director, 9), game_button_node(director, 6),
-        game_button_node(director, 2), empty_cell_node(), game_button_node(director, 7),
-        game_button_node(director, 3), empty_cell_node(), empty_cell_node(),
-        game_button_node(director, 4), empty_cell_node(), empty_cell_node(),
+        game_button_node(d, 0), game_button_node(d, 8), game_button_node(d, 5),
+        game_button_node(d, 1), game_button_node(d, 9), game_button_node(d, 6),
+        game_button_node(d, 2), empty_cell_node(), game_button_node(d, 7),
+        game_button_node(d, 3), empty_cell_node(), empty_cell_node(),
+        game_button_node(d, 4), empty_cell_node(), empty_cell_node(),
     ]);
 }
 
@@ -169,19 +178,19 @@ fn path_label(p: string) -> string {
     return p;
 }
 
-fn settings_name_cell(director: ref<SettingsDirector>, ordinal: int) -> ui.UiNode {
+fn settings_name_cell(d: ref<SettingsDirector>, ordinal: int) -> ui.UiNode {
     let mut i = 0;
-    while i < director.games.len() {
-        if director.games[i] == ordinal {
-            return ui.text(director.names[i]);
+    while i < d.games.len() {
+        if d.games[i] == ordinal {
+            return ui.text(d.names[i]);
         }
         i = i + 1;
     }
     return ui.text("");
 }
 
-fn settings_path_cell(director: ref<SettingsDirector>, ordinal: int) -> ui.UiNode {
-    let cfg = director.host.config();
+fn settings_path_cell(d: ref<SettingsDirector>, ordinal: int) -> ui.UiNode {
+    let cfg = d.host.config();
     let current = cfg.get_asset_path(ordinal);
     return ui.text(path_label(current));
 }
@@ -194,18 +203,18 @@ fn clear_cell(ordinal: int) -> ui.UiNode {
     return ui.button("清除", 80.0, 24.0, CLEAR_CMD_BASE + ordinal);
 }
 
-fn settings_rows_node(director: ref<SettingsDirector>) -> ui.UiNode {
+fn settings_rows_node(d: ref<SettingsDirector>) -> ui.UiNode {
     return ui.table(4, [
-        settings_name_cell(director, 0), settings_path_cell(director, 0), pick_cell(0), clear_cell(0),
-        settings_name_cell(director, 1), settings_path_cell(director, 1), pick_cell(1), clear_cell(1),
-        settings_name_cell(director, 2), settings_path_cell(director, 2), pick_cell(2), clear_cell(2),
-        settings_name_cell(director, 3), settings_path_cell(director, 3), pick_cell(3), clear_cell(3),
-        settings_name_cell(director, 4), settings_path_cell(director, 4), pick_cell(4), clear_cell(4),
-        settings_name_cell(director, 5), settings_path_cell(director, 5), pick_cell(5), clear_cell(5),
-        settings_name_cell(director, 6), settings_path_cell(director, 6), pick_cell(6), clear_cell(6),
-        settings_name_cell(director, 7), settings_path_cell(director, 7), pick_cell(7), clear_cell(7),
-        settings_name_cell(director, 8), settings_path_cell(director, 8), pick_cell(8), clear_cell(8),
-        settings_name_cell(director, 9), settings_path_cell(director, 9), pick_cell(9), clear_cell(9),
+        settings_name_cell(d, 0), settings_path_cell(d, 0), pick_cell(0), clear_cell(0),
+        settings_name_cell(d, 1), settings_path_cell(d, 1), pick_cell(1), clear_cell(1),
+        settings_name_cell(d, 2), settings_path_cell(d, 2), pick_cell(2), clear_cell(2),
+        settings_name_cell(d, 3), settings_path_cell(d, 3), pick_cell(3), clear_cell(3),
+        settings_name_cell(d, 4), settings_path_cell(d, 4), pick_cell(4), clear_cell(4),
+        settings_name_cell(d, 5), settings_path_cell(d, 5), pick_cell(5), clear_cell(5),
+        settings_name_cell(d, 6), settings_path_cell(d, 6), pick_cell(6), clear_cell(6),
+        settings_name_cell(d, 7), settings_path_cell(d, 7), pick_cell(7), clear_cell(7),
+        settings_name_cell(d, 8), settings_path_cell(d, 8), pick_cell(8), clear_cell(8),
+        settings_name_cell(d, 9), settings_path_cell(d, 9), pick_cell(9), clear_cell(9),
     ]);
 }
 
@@ -216,11 +225,11 @@ fn settings_footer_node() -> ui.UiNode {
     ]);
 }
 
-fn settings_window_node(director: ref<SettingsDirector>) -> ui.UiNode {
+fn settings_window_node(d: ref<SettingsDirector>) -> ui.UiNode {
     return ui.window_centered("游戏路径设置", 820.0, 560.0, [
         ui.text_with_font(0, "游戏资源路径设置"),
         ui.dummy(0.0, 12.0),
-        settings_rows_node(director),
+        settings_rows_node(d),
         ui.dummy(0.0, 16.0),
         settings_footer_node(),
     ]);

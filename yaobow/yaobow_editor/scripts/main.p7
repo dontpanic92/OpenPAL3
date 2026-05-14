@@ -1,65 +1,12 @@
+// Editor user-main module. Loads the sibling modules and exposes the two
+// entry points called from Rust (`init` / `init_main_editor`). All
+// per-page logic lives in `welcome` / `main_editor`; shared constants
+// and the @foreign carrier adapter live in `editor_consts`.
 
 import director;
-import editor_services;
 import yaobow_editor_services;
-import radiance;
-import ui;
-
-pub fn CONTENT_KIND_TEXT() -> int { 1 }
-pub fn CONTENT_KIND_IMAGE() -> int { 2 }
-pub fn CONTENT_KIND_AUDIO() -> int { 3 }
-pub fn CONTENT_KIND_VIDEO() -> int { 4 }
-pub fn CONTENT_KIND_MODEL() -> int { 5 }
-pub fn CONTENT_KIND_STRUCTURED() -> int { 6 }
-
-pub fn CLOSE_CMD_BASE() -> int { 200000 }
-pub fn MODEL_PREVIEW_CMD_BASE() -> int { 300000 }
-pub fn AUDIO_TOGGLE_CMD_BASE() -> int { 400000 }
-pub fn VIDEO_TOGGLE_CMD_BASE() -> int { 500000 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-pub struct[director.Director] HostDirector(pub inner: box<radiance.IDirector>) {
-    pub fn activate(self: ref<Self>) {
-        let _ = self.inner.activate();
-    }
-    pub fn deactivate(self: ref<Self>) {}
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        return ui.dummy(0.0, 0.0);
-    }
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
-        let next = self.inner.update(dt);
-        if next != null {
-            return [box(HostDirector(next!)) as box<director.Director>];
-        }
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-}
-
-fn wrap_host(inner: box<radiance.IDirector>) -> box<director.Director> {
-    return box(HostDirector(inner)) as box<director.Director>;
-}
-
-
-
-
-
+import welcome;
+import main_editor;
 
 pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.Director> {
     let registry = host.games();
@@ -77,11 +24,9 @@ pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<directo
         i = i + 1;
     }
 
-    make_welcome_director(host, games, names)
+    welcome.make_welcome_director(host, games, names)
 }
 
-
-
 pub fn init_main_editor(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.Director> {
-    return make_main_editor_director(host);
+    return main_editor.make_main_editor_director(host);
 }

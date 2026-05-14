@@ -17,7 +17,7 @@ use shared::config::YaobowConfig;
 use crate::directors::app_service::AppService;
 use crate::directors::config_service::ConfigService;
 use crate::editor_bindings::EDITOR_SERVICES_P7;
-use crate::script_source::compose_editor_script;
+use crate::script_source::{MAIN_P7, register_editor_modules};
 use crate::services::editor_host_context::EditorHostContext;
 
 pub struct ScriptedWelcomePage;
@@ -32,10 +32,12 @@ impl ScriptedWelcomePage {
             ScriptHost::install(&engine)
         };
 
-        // Register editor-only IDL bindings; survives reload.
+        // Register editor-only IDL bindings + each sibling .p7 module.
+        // All add_binding registrations survive ScriptHost::reload.
         host.add_binding("yaobow_editor_services", EDITOR_SERVICES_P7);
+        register_editor_modules(&host);
 
-        host.load_source(&compose_editor_script())
+        host.load_source(MAIN_P7)
             .expect("editor script must load successfully");
 
         let textures = build_texture_cache(&app);

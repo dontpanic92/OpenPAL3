@@ -1,0 +1,46 @@
+// Shared editor constants and the `HostDirector` adapter that surfaces a
+// Rust-implemented `radiance.IDirector` as a script-side
+// `director.Director`. Exposed so every sibling module (and the user-main
+// `main.p7`) can refer to a single source of truth.
+
+import director;
+import radiance;
+import ui;
+
+pub fn CONTENT_KIND_TEXT() -> int { 1 }
+pub fn CONTENT_KIND_IMAGE() -> int { 2 }
+pub fn CONTENT_KIND_AUDIO() -> int { 3 }
+pub fn CONTENT_KIND_VIDEO() -> int { 4 }
+pub fn CONTENT_KIND_MODEL() -> int { 5 }
+pub fn CONTENT_KIND_STRUCTURED() -> int { 6 }
+
+pub fn CLOSE_CMD_BASE() -> int { 200000 }
+pub fn MODEL_PREVIEW_CMD_BASE() -> int { 300000 }
+pub fn AUDIO_TOGGLE_CMD_BASE() -> int { 400000 }
+pub fn VIDEO_TOGGLE_CMD_BASE() -> int { 500000 }
+
+pub struct[director.Director] HostDirector(pub inner: box<radiance.IDirector>) {
+    pub fn activate(self: ref<Self>) {
+        let _ = self.inner.activate();
+    }
+    pub fn deactivate(self: ref<Self>) {}
+    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
+        return ui.dummy(0.0, 0.0);
+    }
+    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
+        let result: array<box<director.Director>> = [];
+        return result;
+    }
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+        let next = self.inner.update(dt);
+        if next != null {
+            return [box(HostDirector(next!)) as box<director.Director>];
+        }
+        let result: array<box<director.Director>> = [];
+        return result;
+    }
+}
+
+pub fn wrap_host(inner: box<radiance.IDirector>) -> box<director.Director> {
+    return box(HostDirector(inner)) as box<director.Director>;
+}

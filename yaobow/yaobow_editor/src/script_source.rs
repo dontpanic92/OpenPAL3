@@ -1,31 +1,32 @@
-//! Composes the editor's per-concern p7 scripts into a single user-main
-//! module source for `ScriptHost::load_source`.
+//! Editor p7 script bundle.
 //!
-//! The cross-module proto-struct dispatch limitation requires every
-//! `Director` adapter (`HostDirector`, `WelcomeDirector`,
-//! `MainEditorDirector`, ...) to live in the same user-main module. We keep
-//! the source split across files for navigability but concatenate at load
-//! time. The order matters: `main.p7` carries the `import` block and the
-//! `HostDirector` adapter; everything else may use forward references to
-//! module-level `pub` items.
+//! Each `.p7` file in `scripts/` is a separate protosept module. `main.p7`
+//! is the user-main: it imports the sibling modules and exposes the
+//! entry-point functions (`init`, `init_main_editor`) that Rust calls.
+//!
+//! Hosts register the sibling modules with `ScriptHost::add_binding`
+//! before calling `ScriptHost::load_source(MAIN_P7)` so the binding
+//! provider can resolve their imports at compile time.
 
-const MAIN_P7: &str = include_str!("../scripts/main.p7");
-const WELCOME_P7: &str = include_str!("../scripts/welcome.p7");
-const RESOURCE_TREE_P7: &str = include_str!("../scripts/resource_tree.p7");
-const CONTENT_TABS_P7: &str = include_str!("../scripts/content_tabs.p7");
-const MAIN_EDITOR_P7: &str = include_str!("../scripts/main_editor.p7");
+pub const MAIN_P7: &str = include_str!("../scripts/main.p7");
 
-pub fn compose_editor_script() -> String {
-    let mut out = String::new();
-    for chunk in [
-        MAIN_P7,
-        WELCOME_P7,
-        RESOURCE_TREE_P7,
-        CONTENT_TABS_P7,
-        MAIN_EDITOR_P7,
-    ] {
-        out.push_str(chunk);
-        out.push('\n');
+/// Sibling modules referenced by `main.p7`. The first element is the
+/// module path (as it appears in `import` statements), the second is the
+/// p7 source.
+pub const SIBLING_MODULES: &[(&str, &str)] = &[
+    ("editor_consts", include_str!("../scripts/editor_consts.p7")),
+    ("welcome", include_str!("../scripts/welcome.p7")),
+    ("content_tabs", include_str!("../scripts/content_tabs.p7")),
+    ("resource_tree", include_str!("../scripts/resource_tree.p7")),
+    ("main_editor", include_str!("../scripts/main_editor.p7")),
+];
+
+/// Registers every sibling module with `host` via `add_binding`. After
+/// this, callers must `host.load_source(MAIN_P7)` to compile the user-main.
+/// Bindings survive `ScriptHost::reload`, but a host that fully recreates
+/// its `ScriptHost` must call this again.
+pub fn register_editor_modules(host: &radiance_scripting::ScriptHost) {
+    for (name, source) in SIBLING_MODULES {
+        host.add_binding(*name, *source);
     }
-    out
 }

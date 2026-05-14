@@ -90,8 +90,9 @@ fn welcome_scripts_compile_with_shared_ui_module() {
         "yaobow_editor_services",
         yaobow_editor::editor_bindings::EDITOR_SERVICES_P7,
     );
+    yaobow_editor::script_source::register_editor_modules(&runtime);
     runtime
-        .load_source(&yaobow_editor::script_source::compose_editor_script())
+        .load_source(yaobow_editor::script_source::MAIN_P7)
         .expect("editor script compiles");
 }
 
@@ -106,8 +107,9 @@ fn welcome_runtime_can_create_resource_tree_root() {
         "yaobow_editor_services",
         yaobow_editor::editor_bindings::EDITOR_SERVICES_P7,
     );
+    yaobow_editor::script_source::register_editor_modules(&runtime);
     runtime
-        .load_source(&yaobow_editor::script_source::compose_editor_script())
+        .load_source(yaobow_editor::script_source::MAIN_P7)
         .expect("editor script compiles");
     let vfs = ComRc::<IVfsService>::from_object(StubVfs {
         last_string: RefCell::new(String::new()),

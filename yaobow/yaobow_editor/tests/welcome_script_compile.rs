@@ -18,7 +18,7 @@ use yaobow_editor::comdef::editor_services::{
     IEditorHostContext, IEditorHostContextImpl, IPreviewerHub, IPreviewerHubImpl,
 };
 use yaobow_editor::editor_bindings::EDITOR_SERVICES_P7;
-use yaobow_editor::script_source::compose_editor_script;
+use yaobow_editor::script_source::{MAIN_P7, register_editor_modules};
 
 mod comdef {
     pub use radiance_scripting::comdef::*;
@@ -171,6 +171,7 @@ fn init_runtime(source: &str) -> Result<TestEnv, crosscom_protosept::HostError> 
 
     let runtime = radiance_scripting::ScriptHost::new();
     runtime.add_binding("yaobow_editor_services", EDITOR_SERVICES_P7);
+    register_editor_modules(&runtime);
     runtime.load_source(source)?;
     let host_ctx = ComRc::<IEditorHostContext>::from_object(TestHostContext {
         app,
@@ -200,19 +201,20 @@ fn init_script(source: &str) -> Result<(), crosscom_protosept::HostError> {
 fn welcome_script_compiles() {
     let runtime = radiance_scripting::ScriptHost::new();
     runtime.add_binding("yaobow_editor_services", EDITOR_SERVICES_P7);
+    register_editor_modules(&runtime);
     runtime
-        .load_source(&compose_editor_script())
+        .load_source(MAIN_P7)
         .expect("editor script should compile");
 }
 
 #[test]
 fn welcome_script_init_loads_with_imported_bindings() {
-    init_script(&compose_editor_script()).expect("editor script init should load");
+    init_script(MAIN_P7).expect("editor script init should load");
 }
 
 #[test]
 fn welcome_script_renders_three_column_wide_layout() {
-    let env = init_runtime(&compose_editor_script()).expect("editor script init should load");
+    let env = init_runtime(MAIN_P7).expect("editor script init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -249,7 +251,7 @@ fn welcome_script_renders_three_column_wide_layout() {
 
 #[test]
 fn welcome_script_update_returns_empty_transition_list() {
-    let env = init_runtime(&compose_editor_script()).expect("welcome.p7 init should load");
+    let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -263,7 +265,7 @@ fn welcome_script_update_returns_empty_transition_list() {
 
 #[test]
 fn welcome_script_settings_command_returns_script_director() {
-    let env = init_runtime(&compose_editor_script()).expect("welcome.p7 init should load");
+    let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -281,7 +283,7 @@ fn welcome_script_settings_command_returns_script_director() {
 
 #[test]
 fn welcome_script_unknown_command_is_a_no_op() {
-    let env = init_runtime(&compose_editor_script()).expect("welcome.p7 init should load");
+    let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -295,7 +297,7 @@ fn welcome_script_unknown_command_is_a_no_op() {
 
 #[test]
 fn welcome_script_game_command_with_configured_path_calls_open_game() {
-    let env = init_runtime(&compose_editor_script()).expect("welcome.p7 init should load");
+    let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     env.config_paths
         .borrow_mut()
         .insert(0, "/tmp/openpal3".to_string());
@@ -317,7 +319,7 @@ fn welcome_script_game_command_with_configured_path_calls_open_game() {
 
 #[test]
 fn welcome_script_render_update_survives_repeated_frames() {
-    let env = init_runtime(&compose_editor_script()).expect("welcome.p7 init should load");
+    let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     for _ in 0..200 {
         let director = env
             .runtime

@@ -111,16 +111,7 @@ fn parse_properties() -> BinResult<Vec<GobProperty>> {
             reader.seek(SeekFrom::Current(-4))?;
         }
 
-        println!(
-            "   parse_properties cursor position: {}",
-            reader.stream_position()?
-        );
-
         let property = GobProperty::read_options(reader, endian, ())?;
-        println!(
-            "   parse_properties completed cursor position: {}",
-            reader.stream_position()?
-        );
         properties.push(property);
     }
 
@@ -144,10 +135,6 @@ impl BinRead for GobProperty {
         _: Self::Args<'_>,
     ) -> BinResult<Self> {
         let start_position = reader.stream_position()?;
-        println!(
-            "GobProperty::read_options cursor position: {}",
-            start_position
-        );
         let ty = reader.read_u32_le()?;
         let name = SizedString::read_options(reader, endian, ())?;
         reader.seek(SeekFrom::Start(start_position))?;
@@ -157,10 +144,6 @@ impl BinRead for GobProperty {
                 GobPropertyObjectArray::read_options(reader, endian, ())?,
             ));
         } else {
-            println!(
-                "GobProperty::read_options reading ty {} at cursor position: {}",
-                ty, start_position
-            );
             match ty {
                 1 => Ok(Self::GobPropertyI32(GobPropertyI32::read_options(
                     reader,

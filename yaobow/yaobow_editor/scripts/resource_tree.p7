@@ -1,5 +1,7 @@
+// VFS tree renderer for the main editor's left pane.
 
-
+import editor_services;
+import ui;
 
 fn join_tree_path(parent: string, name: string) -> string {
     if parent == "/" {
@@ -34,6 +36,6 @@ fn render_tree_dir(vfs: box<editor_services.IVfsService>, path: string) -> box<a
     return boxed_nodes;
 }
 
-fn resource_tree_root_node(vfs: box<editor_services.IVfsService>) -> ui.UiNode {
+pub fn resource_tree_root_node(vfs: box<editor_services.IVfsService>) -> ui.UiNode {
     return ui.column_box(render_tree_dir(vfs, "/"));
 }

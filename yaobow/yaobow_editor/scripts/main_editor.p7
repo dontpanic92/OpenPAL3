@@ -1,10 +1,18 @@
+// Main editor page: resource tree + content tabs. The director itself
+// lives here as a `struct[director.Director]`; the host's entry frame
+// (module `main`) can dispatch into it directly thanks to origin-tagged
+// proto values.
 
-
-
+import director;
+import yaobow_editor_services;
+import ui;
+import content_tabs;
+import resource_tree;
+import editor_consts;
 
 pub struct[director.Director] MainEditorDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
-    pub tabs: box<array<ContentTab>>,
+    pub tabs: box<array<content_tabs.ContentTab>>,
     pub next_close_cmd: box<array<int>>,
 ) {
     pub fn activate(self: ref<Self>) {}
@@ -13,7 +21,7 @@ pub struct[director.Director] MainEditorDirector(
     pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
         let vfs = self.host.vfs();
         let tree_node = ui.child_window("##editor_tree", 320.0, 0.0, [
-            resource_tree_root_node(vfs),
+            resource_tree.resource_tree_root_node(vfs),
         ]);
 
         let tab_items: array<ui.UiNode> = [];
@@ -22,7 +30,7 @@ pub struct[director.Director] MainEditorDirector(
         while i < self.tabs.len() {
             let t = ref(self.tabs[i]);
             tab_items_box.push(ui.tab_item(t.label, t.close_cmd, [
-                render_tab_body(t),
+                content_tabs.render_tab_body(t),
             ]));
             i = i + 1;
         }
@@ -50,32 +58,32 @@ pub struct[director.Director] MainEditorDirector(
             let mut next = self.next_close_cmd[0];
             next = next + 1;
             self.next_close_cmd[0] = next;
-            let tab = open_content_tab(self.host.previewers(), path, CLOSE_CMD_BASE() + next);
+            let tab = content_tabs.open_content_tab(self.host.previewers(), path, editor_consts.CLOSE_CMD_BASE() + next);
             if tab.kind != 0 {
                 self.tabs.push(tab);
             }
             return empty_transitions();
         }
 
-        if command_id >= CLOSE_CMD_BASE() && command_id < MODEL_PREVIEW_CMD_BASE() {
+        if command_id >= editor_consts.CLOSE_CMD_BASE() && command_id < editor_consts.MODEL_PREVIEW_CMD_BASE() {
             close_tab_by_close_cmd(self.tabs, command_id);
             return empty_transitions();
         }
 
-        if command_id >= MODEL_PREVIEW_CMD_BASE() && command_id < AUDIO_TOGGLE_CMD_BASE() {
-            let close_cmd = command_id - MODEL_PREVIEW_CMD_BASE() + CLOSE_CMD_BASE();
+        if command_id >= editor_consts.MODEL_PREVIEW_CMD_BASE() && command_id < editor_consts.AUDIO_TOGGLE_CMD_BASE() {
+            let close_cmd = command_id - editor_consts.MODEL_PREVIEW_CMD_BASE() + editor_consts.CLOSE_CMD_BASE();
             preview_model_in_tab(self.tabs, close_cmd);
             return empty_transitions();
         }
 
-        if command_id >= AUDIO_TOGGLE_CMD_BASE() && command_id < VIDEO_TOGGLE_CMD_BASE() {
-            let close_cmd = command_id - AUDIO_TOGGLE_CMD_BASE() + CLOSE_CMD_BASE();
+        if command_id >= editor_consts.AUDIO_TOGGLE_CMD_BASE() && command_id < editor_consts.VIDEO_TOGGLE_CMD_BASE() {
+            let close_cmd = command_id - editor_consts.AUDIO_TOGGLE_CMD_BASE() + editor_consts.CLOSE_CMD_BASE();
             toggle_audio_in_tab(self.tabs, close_cmd);
             return empty_transitions();
         }
 
-        if command_id >= VIDEO_TOGGLE_CMD_BASE() {
-            let close_cmd = command_id - VIDEO_TOGGLE_CMD_BASE() + CLOSE_CMD_BASE();
+        if command_id >= editor_consts.VIDEO_TOGGLE_CMD_BASE() {
+            let close_cmd = command_id - editor_consts.VIDEO_TOGGLE_CMD_BASE() + editor_consts.CLOSE_CMD_BASE();
             toggle_video_in_tab(self.tabs, close_cmd);
             return empty_transitions();
         }
@@ -87,7 +95,7 @@ pub struct[director.Director] MainEditorDirector(
         let mut i = 0;
         while i < self.tabs.len() {
             let t = ref(self.tabs[i]);
-            if t.kind == CONTENT_KIND_AUDIO() && t.audio_handle != null {
+            if t.kind == editor_consts.CONTENT_KIND_AUDIO() && t.audio_handle != null {
                 let h = t.audio_handle!;
                 h.update();
             }
@@ -103,13 +111,13 @@ fn empty_transitions() -> array<box<director.Director>> {
     return result;
 }
 
-fn make_main_editor_director(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.Director> {
-    let tabs: array<ContentTab> = [];
+pub fn make_main_editor_director(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.Director> {
+    let tabs: array<content_tabs.ContentTab> = [];
     let counter: array<int> = [0];
     return box(MainEditorDirector(host, box(tabs), box(counter))) as box<director.Director>;
 }
 
-fn close_tab_by_close_cmd(tabs: box<array<ContentTab>>, close_cmd: int) {
+fn close_tab_by_close_cmd(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {
     let mut i = 0;
     while i < tabs.len() {
         if tabs[i].close_cmd == close_cmd {
@@ -120,11 +128,9 @@ fn close_tab_by_close_cmd(tabs: box<array<ContentTab>>, close_cmd: int) {
     }
 }
 
-fn preview_model_in_tab(tabs: box<array<ContentTab>>, close_cmd: int) {
-    // Model preview push is currently a no-op; the open_preview() session
-    // was previously stored on the tab itself but that requires struct-field
-    // mutation which p7 ref<Self> doesn't permit. A future change will
-    // route this through a proto-struct adapter that owns the session.
+fn preview_model_in_tab(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {
+    // Model preview push is currently a no-op; future change will route
+    // through a proto-struct adapter that owns the open_preview session.
     let mut i = 0;
     while i < tabs.len() {
         if tabs[i].close_cmd == close_cmd {
@@ -134,7 +140,7 @@ fn preview_model_in_tab(tabs: box<array<ContentTab>>, close_cmd: int) {
     }
 }
 
-fn toggle_audio_in_tab(tabs: box<array<ContentTab>>, close_cmd: int) {
+fn toggle_audio_in_tab(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {
     let mut i = 0;
     while i < tabs.len() {
         if tabs[i].close_cmd == close_cmd {
@@ -149,7 +155,7 @@ fn toggle_audio_in_tab(tabs: box<array<ContentTab>>, close_cmd: int) {
     }
 }
 
-fn toggle_video_in_tab(tabs: box<array<ContentTab>>, close_cmd: int) {
+fn toggle_video_in_tab(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {
     let mut i = 0;
     while i < tabs.len() {
         if tabs[i].close_cmd == close_cmd {
