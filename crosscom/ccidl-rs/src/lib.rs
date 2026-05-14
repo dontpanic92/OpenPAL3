@@ -109,12 +109,68 @@ fn parse_file(path: &Path) -> Result<CrossComIdl, Error> {
         path: path.to_path_buf(),
         source,
     })?;
-    Parser::new(&content)
-        .parse()
-        .map_err(|message| Error::Parse {
-            path: path.to_path_buf(),
-            message,
-        })
+    parse_source(&content).map_err(|message| Error::Parse {
+        path: path.to_path_buf(),
+        message,
+    })
+}
+
+pub(crate) fn parse_source(input: &str) -> Result<CrossComIdl, String> {
+    let cleaned = strip_comments(input)?;
+    Parser::new(&cleaned).parse()
+}
+
+/// Replace every `//` line comment and `/* ... */` block comment with an
+/// equal-length run of spaces (newlines inside block comments are
+/// preserved as `\n`). Byte offsets are preserved exactly, so parse-error
+/// messages keep pointing at meaningful source positions.
+///
+/// Block comments do not nest, matching the conventions of C / MIDL.
+fn strip_comments(input: &str) -> Result<String, String> {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'/' {
+            out.push(b' ');
+            out.push(b' ');
+            i += 2;
+            while i < bytes.len() && bytes[i] != b'\n' {
+                out.push(b' ');
+                i += 1;
+            }
+        } else if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
+            let start = i;
+            out.push(b' ');
+            out.push(b' ');
+            i += 2;
+            let mut closed = false;
+            while i + 1 < bytes.len() {
+                if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                    out.push(b' ');
+                    out.push(b' ');
+                    i += 2;
+                    closed = true;
+                    break;
+                }
+                if bytes[i] == b'\n' {
+                    out.push(b'\n');
+                } else {
+                    out.push(b' ');
+                }
+                i += 1;
+            }
+            if !closed {
+                return Err(format!(
+                    "unterminated block comment starting at byte {start}"
+                ));
+            }
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).map_err(|err| format!("strip_comments produced invalid UTF-8: {err}"))
 }
 
 fn collect_dependencies(
@@ -141,20 +197,54 @@ fn collect_dependencies(
 }
 
 fn process_imports(idl_path: &Path, unit: &mut CrossComIdl) -> Result<(), Error> {
-    let source_dir = idl_path.parent().unwrap_or_else(|| Path::new(""));
-    let imports = unit.imports.clone();
-    for import in imports {
-        let import_path = source_dir.join(&import.file_name);
-        let import_unit = parse_file(&import_path)?;
+    let root_canon = idl_path.canonicalize().map_err(|source| Error::Io {
+        path: idl_path.to_path_buf(),
+        source,
+    })?;
+    let mut visited: HashSet<PathBuf> = HashSet::new();
+    visited.insert(root_canon);
+
+    let mut queue: Vec<(PathBuf, String)> = unit
+        .imports
+        .iter()
+        .map(|imp| {
+            (
+                idl_path
+                    .parent()
+                    .unwrap_or_else(|| Path::new(""))
+                    .to_path_buf(),
+                imp.file_name.clone(),
+            )
+        })
+        .collect();
+
+    let mut seen_items: HashSet<(String, String)> = HashSet::new();
+
+    while let Some((from_dir, file_name)) = queue.pop() {
+        let import_path = from_dir.join(&file_name);
+        let canon = import_path.canonicalize().map_err(|source| Error::Io {
+            path: import_path.clone(),
+            source,
+        })?;
+        if !visited.insert(canon.clone()) {
+            continue;
+        }
+
+        let import_unit = parse_file(&canon)?;
         let import_module = rust_module(&import_unit)?.clone();
-        let import_stem = std::path::Path::new(&import.file_name)
+        let import_stem = canon
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or(&import.file_name)
+            .unwrap_or(&file_name)
             .to_string();
 
-        for item in import_unit.items {
-            if let Item::Interface(mut interface) = item {
+        for item in &import_unit.items {
+            if let Item::Interface(interface) = item {
+                let key = (import_stem.clone(), interface.name.clone());
+                if !seen_items.insert(key) {
+                    continue;
+                }
+                let mut interface = interface.clone();
                 interface
                     .attrs
                     .insert("codegen".to_string(), "ignore".to_string());
@@ -167,6 +257,14 @@ fn process_imports(idl_path: &Path, unit: &mut CrossComIdl) -> Result<(), Error>
                 interface.module = Some(import_module.clone());
                 unit.items.push(Item::Interface(interface));
             }
+        }
+
+        let next_dir = canon
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
+            .to_path_buf();
+        for imp in import_unit.imports {
+            queue.push((next_dir.clone(), imp.file_name));
         }
     }
 
@@ -1572,5 +1670,195 @@ mod tests {
         let rest = &src[start..];
         let end = rest.find("\n}").expect("proto end not found");
         &rest[..end]
+    }
+
+    // ---------- comment-support tests (p7_quirks #6) ----------
+
+    #[test]
+    fn parses_line_comments_at_top_level() {
+        let src = r#"
+            // top-level comment before module
+            module(rust) demo::comments;
+
+            // before interface
+            [uuid(00000000-0000-0000-0000-000000000001)]
+            interface IFoo: IUnknown {
+                int answer(); // trailing comment after method
+                // between methods
+                void noop();
+            }
+        "#;
+        let unit = parse_source(src).unwrap();
+        assert_eq!(unit.items.len(), 1);
+        match &unit.items[0] {
+            Item::Interface(i) => {
+                assert_eq!(i.name, "IFoo");
+                let names: Vec<&str> = i.methods.iter().map(|m| m.name.as_str()).collect();
+                assert_eq!(names, vec!["answer", "noop"]);
+            }
+            _ => panic!("expected interface"),
+        }
+    }
+
+    #[test]
+    fn parses_block_comments() {
+        let src = r#"
+            module(rust) demo::comments;
+            /* leading
+               multi-line
+               block comment */
+            [uuid(00000000-0000-0000-0000-000000000002)]
+            interface IBar: IUnknown {
+                /* before method */ int a(); /* after method, before next */ void b();
+            }
+        "#;
+        let unit = parse_source(src).unwrap();
+        match &unit.items[0] {
+            Item::Interface(i) => {
+                let names: Vec<&str> = i.methods.iter().map(|m| m.name.as_str()).collect();
+                assert_eq!(names, vec!["a", "b"]);
+            }
+            _ => panic!("expected interface"),
+        }
+    }
+
+    #[test]
+    fn unterminated_block_comment_is_a_parse_error() {
+        let src = r#"
+            module(rust) demo::comments;
+            /* this block comment never closes
+            interface IBaz: IUnknown { int a(); }
+        "#;
+        let err = parse_source(src).unwrap_err();
+        assert!(
+            err.contains("unterminated block comment"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    // ---------- transitive-imports tests (p7_quirks #8) ----------
+
+    fn write_idl(dir: &Path, name: &str, body: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    #[test]
+    fn transitive_imports_chain_a_to_b_to_c() {
+        let tmp = std::env::temp_dir().join(format!(
+            "ccidl-transitive-chain-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        write_idl(
+            &tmp,
+            "c.idl",
+            "module(rust) demo::c;\n\
+             [uuid(00000000-0000-0000-0000-0000000000c1)]\n\
+             interface IFromC: IUnknown { int c_method(); }\n",
+        );
+        write_idl(
+            &tmp,
+            "b.idl",
+            "module(rust) demo::b;\n\
+             import c.idl;\n\
+             [uuid(00000000-0000-0000-0000-0000000000b1)]\n\
+             interface IFromB: IUnknown { int b_method(); }\n",
+        );
+        let a_path = write_idl(
+            &tmp,
+            "a.idl",
+            "module(rust) demo::a;\n\
+             import b.idl;\n\
+             [uuid(00000000-0000-0000-0000-0000000000a1)]\n\
+             interface IFromA: IUnknown { int a_method(); }\n",
+        );
+
+        let mut unit = parse_file(&a_path).unwrap();
+        process_imports(&a_path, &mut unit).unwrap();
+
+        let mut by_origin: Vec<(String, String)> = unit
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Interface(i) => Some((
+                    i.attrs
+                        .get("idl_origin")
+                        .cloned()
+                        .unwrap_or_else(|| "<root>".to_string()),
+                    i.name.clone(),
+                )),
+                _ => None,
+            })
+            .collect();
+        by_origin.sort();
+        assert_eq!(
+            by_origin,
+            vec![
+                ("<root>".to_string(), "IFromA".to_string()),
+                ("b".to_string(), "IFromB".to_string()),
+                ("c".to_string(), "IFromC".to_string()),
+            ],
+            "transitive import did not pull IFromC with idl_origin=c"
+        );
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn transitive_imports_diamond_dedupes() {
+        let tmp = std::env::temp_dir().join(format!(
+            "ccidl-transitive-diamond-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        write_idl(
+            &tmp,
+            "c.idl",
+            "module(rust) demo::c;\n\
+             [uuid(00000000-0000-0000-0000-0000000000c1)]\n\
+             interface IFromC: IUnknown { int c_method(); }\n",
+        );
+        write_idl(
+            &tmp,
+            "b.idl",
+            "module(rust) demo::b;\n\
+             import c.idl;\n",
+        );
+        write_idl(
+            &tmp,
+            "d.idl",
+            "module(rust) demo::d;\n\
+             import c.idl;\n",
+        );
+        let a_path = write_idl(
+            &tmp,
+            "a.idl",
+            "module(rust) demo::a;\n\
+             import b.idl;\n\
+             import d.idl;\n\
+             [uuid(00000000-0000-0000-0000-0000000000a1)]\n\
+             interface IFromA: IUnknown { int a_method(); }\n",
+        );
+
+        let mut unit = parse_file(&a_path).unwrap();
+        process_imports(&a_path, &mut unit).unwrap();
+
+        let c_count = unit
+            .items
+            .iter()
+            .filter(|item| matches!(item, Item::Interface(i) if i.name == "IFromC"))
+            .count();
+        assert_eq!(
+            c_count, 1,
+            "IFromC should appear exactly once even when reachable via a diamond"
+        );
+
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }
