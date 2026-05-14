@@ -292,6 +292,33 @@ impl VertexBuffer {
         self.layout.components
     }
 
+    /// Returns the midpoint of the axis-aligned bounding box of the
+    /// vertex positions, or `[0.0; 3]` if the buffer carries no positions
+    /// or is empty. Used as a coarse per-render-object sort key for the
+    /// transparent bucket; cheap (single linear pass at construction
+    /// time) and stable across draws.
+    pub fn aabb_centroid(&self) -> [f32; 3] {
+        if self.count == 0 || !self.layout.components.contains(VertexComponents::POSITION) {
+            return [0.0, 0.0, 0.0];
+        }
+
+        let first = self.position(0).unwrap();
+        let mut min = [first.x, first.y, first.z];
+        let mut max = min;
+        for i in 1..self.count {
+            let p = self.position(i).unwrap();
+            if p.x < min[0] { min[0] = p.x; } else if p.x > max[0] { max[0] = p.x; }
+            if p.y < min[1] { min[1] = p.y; } else if p.y > max[1] { max[1] = p.y; }
+            if p.z < min[2] { min[2] = p.z; } else if p.z > max[2] { max[2] = p.z; }
+        }
+
+        [
+            0.5 * (min[0] + max[0]),
+            0.5 * (min[1] + max[1]),
+            0.5 * (min[2] + max[2]),
+        ]
+    }
+
     pub fn to_position_vec(&self) -> Vec<Vec3> {
         let vertex_size = self.layout.size;
         let mut result = Vec::with_capacity(self.count);

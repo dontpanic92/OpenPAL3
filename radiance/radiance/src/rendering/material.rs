@@ -92,11 +92,7 @@ pub struct MaterialDef {
 impl MaterialDef {
     /// Construct a `MaterialDef` directly. New code should prefer
     /// [`MaterialDef::builder`].
-    pub fn new(
-        name: String,
-        shader: ShaderProgram,
-        textures: Vec<Arc<TextureDef>>,
-    ) -> Self {
+    pub fn new(name: String, shader: ShaderProgram, textures: Vec<Arc<TextureDef>>) -> Self {
         MaterialDefBuilder::new(shader)
             .debug_name(name)
             .textures(textures)
@@ -189,7 +185,7 @@ impl MaterialDefBuilder {
             program,
             textures: Vec::new(),
             params: MaterialParams::default(),
-            blend: BlendMode::AlphaTest,
+            blend: BlendMode::AlphaBlend,
             depth: DepthMode::TestWrite,
             cull: CullMode::Back,
         }

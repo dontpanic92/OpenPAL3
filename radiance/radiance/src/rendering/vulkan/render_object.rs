@@ -23,6 +23,7 @@ pub struct VulkanRenderObject {
     material: Rc<VulkanMaterial>,
     per_object_descriptor_set: vk::DescriptorSet,
     dub_index: usize,
+    local_centroid: [f32; 3],
 }
 
 impl RenderObject for VulkanRenderObject {
@@ -32,6 +33,10 @@ impl RenderObject for VulkanRenderObject {
             .vertex_buffer
             .borrow_mut()
             .copy_memory_from(self.vertices.borrow().data());
+    }
+
+    fn local_centroid(&self) -> [f32; 3] {
+        self.local_centroid
     }
 }
 
@@ -68,6 +73,8 @@ impl VulkanRenderObject {
             descriptor_manager.allocate_per_object_descriptor_set(&material)?;
         let dub_index = dub_manager.allocate_buffer();
 
+        let local_centroid = vertices.aabb_centroid();
+
         Ok(Self {
             vertices: RefCell::new(vertices),
             _indices: indices,
@@ -80,6 +87,7 @@ impl VulkanRenderObject {
             per_object_descriptor_set,
             dub_index,
             descriptor_manager: descriptor_manager.clone(),
+            local_centroid,
         })
     }
 

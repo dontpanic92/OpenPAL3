@@ -310,7 +310,7 @@ pub(crate) fn create_geometry_internal(
         })
         .collect();
 
-    let mut material_to_indices = HashMap::new();
+    let mut material_to_indices: Vec<(u16, MaterialGroupedIndices)> = Vec::new();
 
     struct MaterialGroupedIndices {
         material: MaterialDef,
@@ -318,42 +318,50 @@ pub(crate) fn create_geometry_internal(
     }
 
     for t in triangles {
-        let group = material_to_indices.entry(t.material).or_insert_with(|| {
-            let material = &materials[t.material as usize];
-            // RenderWare DFF materials don't expose an opaque-vs-cutout
-            // flag here; keep the legacy `BlendMode::AlphaTest` fallback.
-            let md = if let Some(texture) = material.texture.as_ref() {
-                radiance::rendering::SimpleMaterialDef::create(
-                    &texture.name,
-                    |_name| {
-                        let data =
-                            texture_resolver.resolve_texture(vfs, path.as_ref(), &texture.name);
-                        if data.is_none() {
-                            log::warn!("Failed to resolve texture {} for {:?}", texture.name, path);
-                        }
+        let group_idx = match material_to_indices.iter().position(|(m, _)| *m == t.material) {
+            Some(idx) => idx,
+            None => {
+                let material = &materials[t.material as usize];
+                // RenderWare DFF materials don't expose an opaque-vs-cutout
+                // flag here; keep the legacy `BlendMode::AlphaTest` fallback.
+                let md = if let Some(texture) = material.texture.as_ref() {
+                    radiance::rendering::SimpleMaterialDef::create(
+                        &texture.name,
+                        |_name| {
+                            let data =
+                                texture_resolver.resolve_texture(vfs, path.as_ref(), &texture.name);
+                            if data.is_none() {
+                                log::warn!("Failed to resolve texture {} for {:?}", texture.name, path);
+                            }
 
-                        data.and_then(|data| Some(std::io::Cursor::new(data)))
+                            data.and_then(|data| Some(std::io::Cursor::new(data)))
+                        },
+                    )
+                } else {
+                    log::debug!("no texture info for material {:?}", path);
+                    radiance::rendering::SimpleMaterialDef::create2("missing", None)
+                };
+
+                material_to_indices.push((
+                    t.material,
+                    MaterialGroupedIndices {
+                        material: md,
+                        indices: vec![],
                     },
-                )
-            } else {
-                log::debug!("no texture info for material {:?}", path);
-                radiance::rendering::SimpleMaterialDef::create2("missing", None)
-            };
-
-            MaterialGroupedIndices {
-                material: md,
-                indices: vec![],
+                ));
+                material_to_indices.len() - 1
             }
-        });
+        };
 
+        let group = &mut material_to_indices[group_idx].1;
         group.indices.push(t.index[0] as u32);
         group.indices.push(t.index[1] as u32);
         group.indices.push(t.index[2] as u32);
     }
 
     let r_geometries = material_to_indices
-        .into_values()
-        .map(|v| {
+        .into_iter()
+        .map(|(_, v)| {
             // TODO: Optimize this
             radiance::components::mesh::Geometry::new(
                 &r_vertices,

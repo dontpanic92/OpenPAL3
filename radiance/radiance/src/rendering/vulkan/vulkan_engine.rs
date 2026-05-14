@@ -11,7 +11,7 @@ use super::{
 };
 use crate::comdef::{IEntity, IScene};
 use crate::math::Mat44;
-use crate::rendering::{BlendMode, RenderingComponent};
+use crate::rendering::{BlendMode, RenderObject, RenderingComponent};
 use crate::scene::{Camera, Viewport};
 use crate::{
     imgui::{ImguiContext, ImguiFrame},
@@ -374,52 +374,63 @@ impl VulkanRenderingEngine {
             Err(e) => panic!("Unable to acquire next image {:?}", e),
         };
 
-        // Pair each visible rendering component with its owning entity's
-        // world-space translation so the transparent bucket can be sorted
-        // back-to-front against the camera.
+        // Build the visible render-object list, pairing each render
+        // object with its owning entity's world matrix and a stable
+        // ordinal so transparent sorting can compute per-object centroid
+        // distance against the camera (instead of per-entity, which
+        // would tie every sub-mesh of a single dff together).
         let camera_world = {
             let m = camera.transform().matrix();
             [m[0][3], m[1][3], m[2][3]]
         };
-        let rc: Vec<(Rc<RenderingComponent>, f32)> = entities
+        let rc: Vec<(Rc<RenderingComponent>, Mat44)> = entities
             .iter()
             .filter_map(|e| {
                 let r = e.get_rendering_component()?;
-                let xform = e.world_transform();
-                let m = xform.matrix();
-                let dx = m[0][3] - camera_world[0];
-                let dy = m[1][3] - camera_world[1];
-                let dz = m[2][3] - camera_world[2];
-                Some((r, dx * dx + dy * dy + dz * dz))
+                Some((r, e.world_transform().matrix().clone()))
             })
             .collect();
 
         let mut opaque: Vec<&VulkanRenderObject> = vec![];
         let mut cutout: Vec<&VulkanRenderObject> = vec![];
-        let mut transparent: Vec<(f32, &VulkanRenderObject)> = vec![];
-        for (rendering, dist_sq) in rc.iter() {
-            for ro in rendering.render_objects() {
+        // (dist_sq, entity_idx, ro_idx, ro)
+        let mut transparent: Vec<(f32, usize, usize, &VulkanRenderObject)> = vec![];
+        for (entity_idx, (rendering, world)) in rc.iter().enumerate() {
+            let m = world.floats();
+            for (ro_idx, ro) in rendering.render_objects().iter().enumerate() {
                 if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
                     match vro.material().key().blend {
                         BlendMode::Opaque => opaque.push(vro),
                         BlendMode::AlphaTest => cutout.push(vro),
                         BlendMode::AlphaBlend
                         | BlendMode::Additive
-                        | BlendMode::Multiply => transparent.push((*dist_sq, vro)),
+                        | BlendMode::Multiply => {
+                            let c = vro.local_centroid();
+                            // Affine transform: world_pos = M * [c, 1].
+                            let wx = m[0][0] * c[0] + m[0][1] * c[1] + m[0][2] * c[2] + m[0][3];
+                            let wy = m[1][0] * c[0] + m[1][1] * c[1] + m[1][2] * c[2] + m[1][3];
+                            let wz = m[2][0] * c[0] + m[2][1] * c[1] + m[2][2] * c[2] + m[2][3];
+                            let dx = wx - camera_world[0];
+                            let dy = wy - camera_world[1];
+                            let dz = wz - camera_world[2];
+                            transparent.push((dx * dx + dy * dy + dz * dz, entity_idx, ro_idx, vro));
+                        }
                     }
                 }
             }
         }
-        // Back-to-front: farthest from the camera first.
-        transparent
-            .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        // Back-to-front: farthest from the camera first. Tie-break by
+        // loader-supplied order (entity index, then render-object index)
+        // so equal-distance siblings draw in a deterministic, file-defined
+        // sequence rather than a hash-randomized one.
+        transparent.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.1.cmp(&b.1))
+                .then(a.2.cmp(&b.2))
+        });
         let transparent_ordered: Vec<&VulkanRenderObject> =
-            transparent.iter().map(|(_, ro)| *ro).collect();
-        // Back-to-front: farthest from the camera first.
-        transparent
-            .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-        let transparent_ordered: Vec<&VulkanRenderObject> =
-            transparent.into_iter().map(|(_, ro)| ro).collect();
+            transparent.into_iter().map(|(_, _, _, ro)| ro).collect();
 
         let command_buffer = swapchain!()
             .record_command_buffers(
