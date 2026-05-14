@@ -1,9 +1,9 @@
 //! Scripted welcome page bootstrap.
 //!
-//! Single entry point that wires the editor's `ScriptHost` (engine service),
-//! `AppService`, and `ConfigService` together, loads `welcome.p7`, calls its
-//! `init(host)` entry point, and wraps the returned script director in a
-//! `ScriptedDirector` proxy ready to be pushed onto the engine.
+//! Loads the composed editor script (welcome + main editor + content tabs +
+//! resource tree + previewers), wires the `EditorHostContext`, calls
+//! `init(host)`, and wraps the returned director in a `ScriptedDirector`
+//! ready to be pushed onto the engine.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -14,9 +14,11 @@ use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::{ScriptHost, ScriptedDirector};
 use shared::config::YaobowConfig;
 
-use crate::directors::app_service::build_host_context;
-
-const WELCOME_SCRIPT: &str = include_str!("../../scripts/welcome.p7");
+use crate::directors::app_service::AppService;
+use crate::directors::config_service::ConfigService;
+use crate::editor_bindings::EDITOR_SERVICES_P7;
+use crate::script_source::compose_editor_script;
+use crate::services::editor_host_context::EditorHostContext;
 
 pub struct ScriptedWelcomePage;
 
@@ -29,21 +31,50 @@ impl ScriptedWelcomePage {
             let engine = engine.borrow();
             ScriptHost::install(&engine)
         };
-        host.load_source(WELCOME_SCRIPT)
-            .expect("welcome.p7 must load successfully");
 
-        let host_ctx = build_host_context(&app, config, host.clone());
+        // Register editor-only IDL bindings; survives reload.
+        host.add_binding("yaobow_editor_services", EDITOR_SERVICES_P7);
+
+        host.load_source(&compose_editor_script())
+            .expect("editor script must load successfully");
+
+        let textures = build_texture_cache(&app);
+
+        let app_service = AppService::create_with_textures(
+            app.clone(),
+            config.clone(),
+            host.clone(),
+            textures.clone(),
+        );
+        let config_service = ConfigService::create(config.clone());
+
+        let host_ctx = {
+            let engine = app.engine();
+            let engine = engine.borrow();
+            EditorHostContext::create_welcome(
+                engine.scene_manager(),
+                engine.audio_engine(),
+                engine.rendering_component_factory(),
+                engine.input_engine(),
+                app_service,
+                config_service,
+                textures.clone(),
+            )
+        };
+
         let host_id = host.intern(host_ctx);
         let host_box = host
-            .foreign_box("radiance_scripting.comdef.services.IHostContext", host_id)
-            .expect("IHostContext foreign box must construct");
+            .foreign_box(
+                "yaobow_editor.comdef.editor_services.IEditorHostContext",
+                host_id,
+            )
+            .expect("IEditorHostContext foreign box must construct");
         let director = host
             .call_returning_data("init", vec![host_box])
-            .expect("welcome.p7 must initialize successfully");
+            .expect("welcome script init must succeed");
         let handle = host.root(director);
 
         let ui_manager = app.engine().borrow().ui_manager();
-        let textures = build_texture_cache(&app);
         ScriptedDirector::with_ui(host, handle, ui_manager, textures)
     }
 }

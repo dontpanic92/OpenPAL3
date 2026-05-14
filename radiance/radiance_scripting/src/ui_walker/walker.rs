@@ -72,6 +72,7 @@ pub trait UiVisitor {
     fn spacer(&mut self, w: f32, h: f32) -> Result<(), WalkError>;
     fn dummy(&mut self, w: f32, h: f32) -> Result<(), WalkError>;
     fn image(&mut self, com_id: i64, w: f32, h: f32) -> Result<(), WalkError>;
+    fn image_fit(&mut self, com_id: i64, src_w: f32, src_h: f32) -> Result<(), WalkError>;
     fn table(
         &mut self,
         num_columns: u32,
@@ -94,6 +95,27 @@ pub trait UiVisitor {
         body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
     ) -> Result<(), WalkError>;
     fn tree_leaf(&mut self, label: &str, command_id: i32) -> Result<(), WalkError>;
+    fn multiline_text(&mut self, content: &str, w: f32, h: f32) -> Result<(), WalkError>;
+    fn tab_bar(
+        &mut self,
+        id: &str,
+        items: &[OwnedNode],
+        walk_item: &mut dyn FnMut(&mut dyn UiVisitor, &OwnedNode) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError>;
+    fn tab_item(
+        &mut self,
+        label: &str,
+        close_command_id: i32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError>;
+    fn child_window(
+        &mut self,
+        id: &str,
+        w: f32,
+        h: f32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError>;
+    fn same_line(&mut self) -> Result<(), WalkError>;
 }
 
 pub struct UiAdapter<'a> {
@@ -289,6 +311,108 @@ impl<'a> UiVisitor for UiAdapter<'a> {
         }
         Ok(())
     }
+
+    fn multiline_text(&mut self, content: &str, w: f32, h: f32) -> Result<(), WalkError> {
+        // Auto-id from the table_counter so multiple multiline panes can
+        // coexist on screen without the script having to coordinate ids.
+        let n = self.table_counter.get();
+        self.table_counter.set(n + 1);
+        let id = format!("##multi_{}", n);
+        let [w, h] = self.scaled_size(w, h);
+        let mut buf = content.to_string();
+        imgui::InputTextMultiline::new(self.ui, &id, &mut buf, [w, h])
+            .read_only(true)
+            .build();
+        Ok(())
+    }
+
+    fn tab_bar(
+        &mut self,
+        id: &str,
+        items: &[OwnedNode],
+        walk_item: &mut dyn FnMut(&mut dyn UiVisitor, &OwnedNode) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError> {
+        let bar = imgui::TabBar::new(id).flags(
+            imgui::TabBarFlags::REORDERABLE
+                | imgui::TabBarFlags::FITTING_POLICY_DEFAULT
+                | imgui::TabBarFlags::AUTO_SELECT_NEW_TABS,
+        );
+        let mut result = Ok(());
+        bar.build(self.ui, || {
+            for item in items {
+                if result.is_err() {
+                    return;
+                }
+                result = walk_item(self, item);
+            }
+        });
+        result
+    }
+
+    fn tab_item(
+        &mut self,
+        label: &str,
+        close_command_id: i32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError> {
+        let mut opened = true;
+        let mut result = Ok(());
+        let item = imgui::TabItem::new(label).opened(&mut opened);
+        item.build(self.ui, || result = body(self));
+        if !opened && close_command_id != 0 {
+            log::info!(
+                "ui_walker: tab '{}' closed, enqueuing cmd {}",
+                label,
+                close_command_id
+            );
+            self.ctx.commands.enqueue(close_command_id);
+        }
+        result
+    }
+
+    fn child_window(
+        &mut self,
+        id: &str,
+        w: f32,
+        h: f32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError> {
+        let [w, h] = self.scaled_size(w, h);
+        let mut result = Ok(());
+        self.ui
+            .child_window(id)
+            .size([w, h])
+            .build(|| result = body(self));
+        result
+    }
+
+    fn same_line(&mut self) -> Result<(), WalkError> {
+        self.ui.same_line();
+        Ok(())
+    }
+
+    fn image_fit(&mut self, com_id: i64, src_w: f32, src_h: f32) -> Result<(), WalkError> {
+        if src_w <= 0.0 || src_h <= 0.0 {
+            return Ok(());
+        }
+        let Some(texture_id) = self.ctx.textures.resolve(com_id) else {
+            self.ui.text("[missing texture]");
+            return Ok(());
+        };
+        let [avail_w, avail_h] = self.ui.content_region_avail();
+        if avail_w <= 0.0 || avail_h <= 0.0 {
+            return Ok(());
+        }
+        let scale = (avail_w / src_w).min(avail_h / src_h);
+        let target = [src_w * scale, src_h * scale];
+        let cursor = self.ui.cursor_pos();
+        self.ui.set_cursor_pos([
+            cursor[0] + (avail_w - target[0]) * 0.5,
+            cursor[1] + (avail_h - target[1]) * 0.5,
+        ]);
+        imgui::Image::new(texture_id, target).build(self.ui);
+        Ok(())
+    }
 }
 
 impl<'a> UiAdapter<'a> {
@@ -349,6 +473,21 @@ pub fn walk(node: &OwnedNode, visitor: &mut dyn UiVisitor) -> Result<(), WalkErr
             visitor.tree_node(&node.label, node.i1 as i32, &mut body)
         }
         kinds::TREE_LEAF => visitor.tree_leaf(&node.label, node.i1 as i32),
+        kinds::MULTILINE_TEXT => visitor.multiline_text(&node.label, node.w, node.h),
+        kinds::TAB_BAR => {
+            let mut walk_item = |v: &mut dyn UiVisitor, item: &OwnedNode| walk(item, v);
+            visitor.tab_bar(&node.label, &node.children, &mut walk_item)
+        }
+        kinds::TAB_ITEM => {
+            let mut body = |v: &mut dyn UiVisitor| walk_children(&node.children, v);
+            visitor.tab_item(&node.label, node.i2 as i32, &mut body)
+        }
+        kinds::CHILD_WINDOW => {
+            let mut body = |v: &mut dyn UiVisitor| walk_children(&node.children, v);
+            visitor.child_window(&node.label, node.w, node.h, &mut body)
+        }
+        kinds::IMAGE_FIT => visitor.image_fit(node.i1, node.w, node.h),
+        kinds::SAME_LINE => visitor.same_line(),
         other => Err(WalkError::ShapeMismatch(format!(
             "unknown UiNode kind {other}"
         ))),

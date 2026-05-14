@@ -199,6 +199,68 @@ impl UiVisitor for TestRecorder {
         }
         Ok(())
     }
+
+    fn multiline_text(&mut self, content: &str, _w: f32, _h: f32) -> Result<(), WalkError> {
+        self.events.push(Event::Text(content.to_owned()));
+        Ok(())
+    }
+
+    fn tab_bar(
+        &mut self,
+        _id: &str,
+        items: &[OwnedNode],
+        walk_item: &mut dyn FnMut(&mut dyn UiVisitor, &OwnedNode) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError> {
+        self.events.push(Event::EnterContainer("tab_bar"));
+        for item in items {
+            walk_item(self, item)?;
+        }
+        self.events.push(Event::ExitContainer("tab_bar"));
+        Ok(())
+    }
+
+    fn tab_item(
+        &mut self,
+        _label: &str,
+        _close_command_id: i32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError> {
+        self.events.push(Event::EnterContainer("tab_item"));
+        body(self)?;
+        self.events.push(Event::ExitContainer("tab_item"));
+        Ok(())
+    }
+
+    fn child_window(
+        &mut self,
+        _id: &str,
+        _w: f32,
+        _h: f32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError> {
+        self.events.push(Event::EnterContainer("child_window"));
+        body(self)?;
+        self.events.push(Event::ExitContainer("child_window"));
+        Ok(())
+    }
+
+    fn same_line(&mut self) -> Result<(), WalkError> {
+        Ok(())
+    }
+
+    fn image_fit(&mut self, com_id: i64, src_w: f32, src_h: f32) -> Result<(), WalkError> {
+        if self.missing_textures.contains(&com_id) {
+            self.events
+                .push(Event::Text("[missing texture]".to_owned()));
+        } else {
+            self.events.push(Event::Image {
+                com_id,
+                w: src_w,
+                h: src_h,
+            });
+        }
+        Ok(())
+    }
 }
 
 #[test]

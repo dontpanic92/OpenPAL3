@@ -1,0 +1,165 @@
+
+
+
+
+pub struct[director.Director] MainEditorDirector(
+    pub host: box<yaobow_editor_services.IEditorHostContext>,
+    pub tabs: box<array<ContentTab>>,
+    pub next_close_cmd: box<array<int>>,
+) {
+    pub fn activate(self: ref<Self>) {}
+    pub fn deactivate(self: ref<Self>) {}
+
+    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
+        let vfs = self.host.vfs();
+        let tree_node = ui.child_window("##editor_tree", 320.0, 0.0, [
+            resource_tree_root_node(vfs),
+        ]);
+
+        let tab_items: array<ui.UiNode> = [];
+        let tab_items_box = box(tab_items);
+        let mut i = 0;
+        while i < self.tabs.len() {
+            let t = ref(self.tabs[i]);
+            tab_items_box.push(ui.tab_item(t.label, t.close_cmd, [
+                render_tab_body(t),
+            ]));
+            i = i + 1;
+        }
+
+        let content_node = ui.child_window("##editor_content", 0.0, 0.0, [
+            ui.tab_bar_box("##editor_tab_bar", tab_items_box),
+        ]);
+
+        return ui.window("妖弓编辑器", -1.0, -1.0, 0, [
+            tree_node,
+            ui.same_line(),
+            content_node,
+        ]);
+    }
+
+    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
+        let vfs = self.host.vfs();
+        let path = vfs.command_path(command_id);
+        if path != "" {
+            if vfs.is_dir(path) != 0 {
+                vfs.toggle_expanded(path);
+                return empty_transitions();
+            }
+
+            let mut next = self.next_close_cmd[0];
+            next = next + 1;
+            self.next_close_cmd[0] = next;
+            let tab = open_content_tab(self.host.previewers(), path, CLOSE_CMD_BASE() + next);
+            if tab.kind != 0 {
+                self.tabs.push(tab);
+            }
+            return empty_transitions();
+        }
+
+        if command_id >= CLOSE_CMD_BASE() && command_id < MODEL_PREVIEW_CMD_BASE() {
+            close_tab_by_close_cmd(self.tabs, command_id);
+            return empty_transitions();
+        }
+
+        if command_id >= MODEL_PREVIEW_CMD_BASE() && command_id < AUDIO_TOGGLE_CMD_BASE() {
+            let close_cmd = command_id - MODEL_PREVIEW_CMD_BASE() + CLOSE_CMD_BASE();
+            preview_model_in_tab(self.tabs, close_cmd);
+            return empty_transitions();
+        }
+
+        if command_id >= AUDIO_TOGGLE_CMD_BASE() && command_id < VIDEO_TOGGLE_CMD_BASE() {
+            let close_cmd = command_id - AUDIO_TOGGLE_CMD_BASE() + CLOSE_CMD_BASE();
+            toggle_audio_in_tab(self.tabs, close_cmd);
+            return empty_transitions();
+        }
+
+        if command_id >= VIDEO_TOGGLE_CMD_BASE() {
+            let close_cmd = command_id - VIDEO_TOGGLE_CMD_BASE() + CLOSE_CMD_BASE();
+            toggle_video_in_tab(self.tabs, close_cmd);
+            return empty_transitions();
+        }
+
+        return empty_transitions();
+    }
+
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+        let mut i = 0;
+        while i < self.tabs.len() {
+            let t = ref(self.tabs[i]);
+            if t.kind == CONTENT_KIND_AUDIO() && t.audio_handle != null {
+                let h = t.audio_handle!;
+                h.update();
+            }
+            i = i + 1;
+        }
+        let result: array<box<director.Director>> = [];
+        return result;
+    }
+}
+
+fn empty_transitions() -> array<box<director.Director>> {
+    let result: array<box<director.Director>> = [];
+    return result;
+}
+
+fn make_main_editor_director(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.Director> {
+    let tabs: array<ContentTab> = [];
+    let counter: array<int> = [0];
+    return box(MainEditorDirector(host, box(tabs), box(counter))) as box<director.Director>;
+}
+
+fn close_tab_by_close_cmd(tabs: box<array<ContentTab>>, close_cmd: int) {
+    let mut i = 0;
+    while i < tabs.len() {
+        if tabs[i].close_cmd == close_cmd {
+            tabs.remove(i);
+            return;
+        }
+        i = i + 1;
+    }
+}
+
+fn preview_model_in_tab(tabs: box<array<ContentTab>>, close_cmd: int) {
+    // Model preview push is currently a no-op; the open_preview() session
+    // was previously stored on the tab itself but that requires struct-field
+    // mutation which p7 ref<Self> doesn't permit. A future change will
+    // route this through a proto-struct adapter that owns the session.
+    let mut i = 0;
+    while i < tabs.len() {
+        if tabs[i].close_cmd == close_cmd {
+            return;
+        }
+        i = i + 1;
+    }
+}
+
+fn toggle_audio_in_tab(tabs: box<array<ContentTab>>, close_cmd: int) {
+    let mut i = 0;
+    while i < tabs.len() {
+        if tabs[i].close_cmd == close_cmd {
+            let t = ref(tabs[i]);
+            if t.audio_handle != null {
+                let h = t.audio_handle!;
+                h.toggle();
+            }
+            return;
+        }
+        i = i + 1;
+    }
+}
+
+fn toggle_video_in_tab(tabs: box<array<ContentTab>>, close_cmd: int) {
+    let mut i = 0;
+    while i < tabs.len() {
+        if tabs[i].close_cmd == close_cmd {
+            let t = ref(tabs[i]);
+            if t.video_handle != null {
+                let h = t.video_handle!;
+                h.toggle();
+            }
+            return;
+        }
+        i = i + 1;
+    }
+}

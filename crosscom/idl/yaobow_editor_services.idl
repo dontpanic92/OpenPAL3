@@ -1,0 +1,72 @@
+module(rust) yaobow_editor::comdef::editor_services;
+
+import crosscom.idl;
+import radiance.idl;
+import editor_services.idl;
+
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c01)]
+interface IImageHandle: IUnknown {
+    int width();
+    int height();
+
+    int texture_com_id();
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c02)]
+class ImageHandle: IImageHandle {}
+
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c03)]
+interface IAudioHandle: IUnknown {
+    void toggle();
+
+    int state();
+    void update();
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c04)]
+class AudioHandle: IAudioHandle {}
+
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c05)]
+interface IVideoHandle: IUnknown {
+    void toggle();
+    int state();
+    int width();
+    int height();
+    int texture_com_id();
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c06)]
+class VideoHandle: IVideoHandle {}
+
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c07)]
+interface IPreviewSession: IUnknown {
+    void close();
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c08)]
+class PreviewSession: IPreviewSession {}
+
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c09)]
+interface IModelHandle: IUnknown {
+    &str text_dump();
+
+    IPreviewSession open_preview();
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0a)]
+class ModelHandle: IModelHandle {}
+
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0b)]
+interface IPreviewerHub: IUnknown {
+    int classify(&str vfs_path);
+    &str open_text(&str vfs_path);
+    &str dump_structured(&str vfs_path);
+    IImageHandle? open_image(&str vfs_path);
+    IAudioHandle? open_audio(&str vfs_path);
+    IVideoHandle? open_video(&str vfs_path);
+    IModelHandle? open_model(&str vfs_path);
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0c)]
+class PreviewerHub: IPreviewerHub {}
+
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0d)]
+interface IEditorHostContext: IHostContext {
+    IPreviewerHub previewers();
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0e)]
+class EditorHostContext: IEditorHostContext {}

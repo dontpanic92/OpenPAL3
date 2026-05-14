@@ -10,12 +10,15 @@ use p7::interpreter::context::Data;
 use radiance::comdef::{IDirector, IDirectorImpl, ISceneManager};
 use radiance_scripting::comdef::services::{
     IAppService, IAppServiceImpl, IAudioService, IConfigService, IConfigServiceImpl,
-    IGameRegistry, IHostContext, IHostContextImpl, IInputService, ITextureService, IVfsService,
+    IGameRegistry, IHostContextImpl, IInputService, ITextureService, IVfsService,
 };
 use radiance_scripting::services::GameRegistry;
 use radiance_scripting::ui_walker::{kinds, owned};
-
-const WELCOME_SRC: &str = include_str!("../scripts/welcome.p7");
+use yaobow_editor::comdef::editor_services::{
+    IEditorHostContext, IEditorHostContextImpl, IPreviewerHub, IPreviewerHubImpl,
+};
+use yaobow_editor::editor_bindings::EDITOR_SERVICES_P7;
+use yaobow_editor::script_source::compose_editor_script;
 
 mod comdef {
     pub use radiance_scripting::comdef::*;
@@ -77,9 +80,10 @@ impl IConfigServiceImpl for StubConfigService {
 struct TestHostContext {
     app: ComRc<IAppService>,
     config: ComRc<IConfigService>,
+    previewers: ComRc<IPreviewerHub>,
 }
 
-radiance_scripting::ComObject_HostContext!(crate::TestHostContext);
+yaobow_editor::ComObject_EditorHostContext!(crate::TestHostContext);
 
 impl IHostContextImpl for TestHostContext {
     fn scene_manager(&self) -> ComRc<ISceneManager> {
@@ -108,6 +112,42 @@ impl IHostContextImpl for TestHostContext {
     }
 }
 
+impl IEditorHostContextImpl for TestHostContext {
+    fn previewers(&self) -> ComRc<IPreviewerHub> {
+        self.previewers.clone()
+    }
+}
+
+struct StubPreviewerHub {
+    last: std::cell::RefCell<String>,
+}
+yaobow_editor::ComObject_PreviewerHub!(crate::StubPreviewerHub);
+impl IPreviewerHubImpl for StubPreviewerHub {
+    fn classify(&self, _vfs_path: &str) -> i32 {
+        0
+    }
+    fn open_text(&self, _vfs_path: &str) -> &str {
+        *self.last.borrow_mut() = String::new();
+        unsafe { (*self.last.as_ptr()).as_str() }
+    }
+    fn dump_structured(&self, _vfs_path: &str) -> &str {
+        *self.last.borrow_mut() = String::new();
+        unsafe { (*self.last.as_ptr()).as_str() }
+    }
+    fn open_image(&self, _vfs_path: &str) -> Option<ComRc<yaobow_editor::comdef::editor_services::IImageHandle>> {
+        None
+    }
+    fn open_audio(&self, _vfs_path: &str) -> Option<ComRc<yaobow_editor::comdef::editor_services::IAudioHandle>> {
+        None
+    }
+    fn open_video(&self, _vfs_path: &str) -> Option<ComRc<yaobow_editor::comdef::editor_services::IVideoHandle>> {
+        None
+    }
+    fn open_model(&self, _vfs_path: &str) -> Option<ComRc<yaobow_editor::comdef::editor_services::IModelHandle>> {
+        None
+    }
+}
+
 struct TestEnv {
     runtime: Rc<radiance_scripting::ScriptHost>,
     handle: radiance_scripting::ScriptDirectorHandle,
@@ -125,12 +165,23 @@ fn init_runtime(source: &str) -> Result<TestEnv, crosscom_protosept::HostError> 
         paths: config_paths.clone(),
         last: RefCell::new(String::new()),
     });
+    let previewers = ComRc::<IPreviewerHub>::from_object(StubPreviewerHub {
+        last: std::cell::RefCell::new(String::new()),
+    });
 
     let runtime = radiance_scripting::ScriptHost::new();
+    runtime.add_binding("yaobow_editor_services", EDITOR_SERVICES_P7);
     runtime.load_source(source)?;
-    let host_ctx = ComRc::<IHostContext>::from_object(TestHostContext { app, config });
+    let host_ctx = ComRc::<IEditorHostContext>::from_object(TestHostContext {
+        app,
+        config,
+        previewers,
+    });
     let host_id = runtime.intern(host_ctx);
-    let host = runtime.foreign_box("radiance_scripting.comdef.services.IHostContext", host_id)?;
+    let host = runtime.foreign_box(
+        "yaobow_editor.comdef.editor_services.IEditorHostContext",
+        host_id,
+    )?;
     let state = runtime.call_returning_data("init", vec![host])?;
     let handle = runtime.root(state);
     Ok(TestEnv {
@@ -148,19 +199,20 @@ fn init_script(source: &str) -> Result<(), crosscom_protosept::HostError> {
 #[test]
 fn welcome_script_compiles() {
     let runtime = radiance_scripting::ScriptHost::new();
+    runtime.add_binding("yaobow_editor_services", EDITOR_SERVICES_P7);
     runtime
-        .load_source(WELCOME_SRC)
-        .expect("welcome.p7 should compile");
+        .load_source(&compose_editor_script())
+        .expect("editor script should compile");
 }
 
 #[test]
 fn welcome_script_init_loads_with_imported_bindings() {
-    init_script(WELCOME_SRC).expect("welcome.p7 init should load");
+    init_script(&compose_editor_script()).expect("editor script init should load");
 }
 
 #[test]
 fn welcome_script_renders_three_column_wide_layout() {
-    let env = init_runtime(WELCOME_SRC).expect("welcome.p7 init should load");
+    let env = init_runtime(&compose_editor_script()).expect("editor script init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -197,7 +249,7 @@ fn welcome_script_renders_three_column_wide_layout() {
 
 #[test]
 fn welcome_script_update_returns_empty_transition_list() {
-    let env = init_runtime(WELCOME_SRC).expect("welcome.p7 init should load");
+    let env = init_runtime(&compose_editor_script()).expect("welcome.p7 init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -211,7 +263,7 @@ fn welcome_script_update_returns_empty_transition_list() {
 
 #[test]
 fn welcome_script_settings_command_returns_script_director() {
-    let env = init_runtime(WELCOME_SRC).expect("welcome.p7 init should load");
+    let env = init_runtime(&compose_editor_script()).expect("welcome.p7 init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -229,7 +281,7 @@ fn welcome_script_settings_command_returns_script_director() {
 
 #[test]
 fn welcome_script_unknown_command_is_a_no_op() {
-    let env = init_runtime(WELCOME_SRC).expect("welcome.p7 init should load");
+    let env = init_runtime(&compose_editor_script()).expect("welcome.p7 init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -243,7 +295,7 @@ fn welcome_script_unknown_command_is_a_no_op() {
 
 #[test]
 fn welcome_script_game_command_with_configured_path_calls_open_game() {
-    let env = init_runtime(WELCOME_SRC).expect("welcome.p7 init should load");
+    let env = init_runtime(&compose_editor_script()).expect("welcome.p7 init should load");
     env.config_paths
         .borrow_mut()
         .insert(0, "/tmp/openpal3".to_string());
@@ -265,7 +317,7 @@ fn welcome_script_game_command_with_configured_path_calls_open_game() {
 
 #[test]
 fn welcome_script_render_update_survives_repeated_frames() {
-    let env = init_runtime(WELCOME_SRC).expect("welcome.p7 init should load");
+    let env = init_runtime(&compose_editor_script()).expect("welcome.p7 init should load");
     for _ in 0..200 {
         let director = env
             .runtime

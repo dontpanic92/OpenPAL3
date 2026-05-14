@@ -1,0 +1,39 @@
+
+
+
+fn join_tree_path(parent: string, name: string) -> string {
+    if parent == "/" {
+        return f"/{name}";
+    }
+    return f"{parent}/{name}";
+}
+
+fn render_tree_dir(vfs: box<editor_services.IVfsService>, path: string) -> box<array<ui.UiNode>> {
+    let nodes: array<ui.UiNode> = [];
+    let boxed_nodes = box(nodes);
+    let count = vfs.entry_count(path);
+    let mut i = 0;
+
+    while i < count {
+        let name = vfs.entry_name(path, i);
+        let child_path = join_tree_path(path, name);
+        if vfs.entry_is_dir(path, i) != 0 {
+            let children: array<ui.UiNode> = [];
+            let boxed_children = if vfs.is_expanded(child_path) != 0 {
+                render_tree_dir(vfs, child_path)
+            } else {
+                box(children)
+            };
+            boxed_nodes.push(ui.tree_node_box(name, vfs.command_id(child_path), boxed_children));
+        } else {
+            boxed_nodes.push(ui.tree_leaf(name, vfs.command_id(child_path)));
+        }
+        i = i + 1;
+    }
+
+    return boxed_nodes;
+}
+
+fn resource_tree_root_node(vfs: box<editor_services.IVfsService>) -> ui.UiNode {
+    return ui.column_box(render_tree_dir(vfs, "/"));
+}

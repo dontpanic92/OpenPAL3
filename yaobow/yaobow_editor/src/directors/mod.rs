@@ -1,13 +1,10 @@
 pub mod app_service;
 pub mod config_service;
-pub mod main_content;
-pub mod main_director;
 pub mod scripted_welcome_page;
 
 use std::rc::Rc;
 
 use crosscom::ComRc;
-pub use main_director::DevToolsDirector;
 use radiance::{comdef::IEntity, rendering::ComponentFactory};
 pub use scripted_welcome_page::ScriptedWelcomePage;
 

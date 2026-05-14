@@ -59,13 +59,22 @@ pub const DIRECTOR_BINDINGS_P7: &str = include_str!("../bindings/director.p7");
 struct Inner {
     host: P7HostContext<RuntimeServices>,
     epoch: u64,
+    extra_bindings: Vec<(String, String)>,
 }
 
 impl Inner {
     fn fresh() -> Self {
+        Self::with_bindings(Vec::new())
+    }
+
+    fn with_bindings(extra_bindings: Vec<(String, String)>) -> Self {
         let mut host = P7HostContext::new(RuntimeServices::default());
         install_com_dispatcher(&mut host.ctx);
-        Self { host, epoch: 0 }
+        Self {
+            host,
+            epoch: 0,
+            extra_bindings,
+        }
     }
 }
 
@@ -129,8 +138,30 @@ impl ScriptHost {
         })
     }
 
+    /// Registers an additional p7 binding module that will be visible to every
+    /// subsequently-loaded script via `import <name>`. Must be called before
+    /// `load_source` (registrations made afterward apply only to later
+    /// `load_source` calls; previously compiled modules are not re-resolved).
+    /// The binding survives `reload`.
+    pub fn add_binding(&self, name: impl Into<String>, source: impl Into<String>) {
+        let name = name.into();
+        let source = source.into();
+        self.with_inner(|inner| {
+            if let Some(existing) = inner
+                .extra_bindings
+                .iter_mut()
+                .find(|(n, _)| *n == name)
+            {
+                existing.1 = source;
+            } else {
+                inner.extra_bindings.push((name, source));
+            }
+        });
+    }
+
     pub fn load_source(&self, source: &str) -> Result<(), HostError> {
-        let module = p7::compile_with_provider(source.to_string(), binding_provider())
+        let extra = self.with_inner(|inner| inner.extra_bindings.clone());
+        let module = p7::compile_with_provider(source.to_string(), binding_provider(&extra))
             .map_err(|err| HostError::message(format!("p7 compile failed: {:?}", err)))?;
         self.with_inner(|inner| inner.host.ctx.load_module(module));
         Ok(())
@@ -139,7 +170,8 @@ impl ScriptHost {
     /// Discards every loaded module, every rooted handle, and every interned
     /// ComObject, then re-initialises a fresh interpreter. Any
     /// `ScriptDirectorHandle` outstanding from before the call is silently
-    /// invalidated by an epoch bump.
+    /// invalidated by an epoch bump. Extra binding modules registered via
+    /// `add_binding` are preserved.
     ///
     /// Must NOT be called while a script is executing (i.e. from within a
     /// host service invoked by p7) — there is no static check enforcing this,
@@ -148,7 +180,8 @@ impl ScriptHost {
         let new_epoch = self.next_epoch.get().wrapping_add(1);
         self.next_epoch.set(new_epoch);
         self.with_inner(|inner| {
-            *inner = Inner::fresh();
+            let extra = std::mem::take(&mut inner.extra_bindings);
+            *inner = Inner::with_bindings(extra);
             inner.epoch = new_epoch;
         });
     }
@@ -325,7 +358,7 @@ fn current_frame_stack_pop(inner: &mut Inner) -> Option<Data> {
     inner.host.ctx.stack.last_mut().and_then(|frame| frame.stack.pop())
 }
 
-fn binding_provider() -> Box<dyn ModuleProvider> {
+fn binding_provider(extra: &[(String, String)]) -> Box<dyn ModuleProvider> {
     let mut provider = InMemoryModuleProvider::new();
     provider.add_module(
         "crosscom".to_string(),
@@ -352,5 +385,8 @@ fn binding_provider() -> Box<dyn ModuleProvider> {
         "editor".to_string(),
         include_str!(concat!(env!("OUT_DIR"), "/editor.p7")).to_string(),
     );
+    for (name, source) in extra {
+        provider.add_module(name.clone(), source.clone());
+    }
     Box::new(provider)
 }

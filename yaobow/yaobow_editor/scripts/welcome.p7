@@ -1,7 +1,3 @@
-import director;
-import editor_services;
-import radiance;
-import ui;
 
 let SETTINGS_CMD: int = 9001;
 let SAVE_CMD: int = 9002;
@@ -10,38 +6,8 @@ let GAME_CMD_BASE: int = 1000;
 let PICK_CMD_BASE: int = 4000;
 let CLEAR_CMD_BASE: int = 5000;
 
-// Adapter that lets a host-built `radiance.IDirector` participate in
-// the `director.Director` lifecycle. Must live in this (the user-main)
-// module — p7's cross-module proto-struct dispatch does not find this
-// type when it's declared in an imported helper module.
-pub struct[director.Director] HostDirector(pub inner: box<radiance.IDirector>) {
-    pub fn activate(self: ref<Self>) {
-        let _ = self.inner.activate();
-    }
-    pub fn deactivate(self: ref<Self>) {}
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        return ui.dummy(0.0, 0.0);
-    }
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
-        let next = self.inner.update(dt);
-        if next != null {
-            return [box(HostDirector(next!)) as box<director.Director>];
-        }
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-}
-
-fn wrap_host(inner: box<radiance.IDirector>) -> box<director.Director> {
-    return box(HostDirector(inner)) as box<director.Director>;
-}
-
 pub struct[director.Director] WelcomeDirector(
-    pub host: box<editor_services.IHostContext>,
+    pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
 ) {
@@ -50,7 +16,7 @@ pub struct[director.Director] WelcomeDirector(
 
     pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
         return ui.window_centered("妖弓编辑器", 720.0, 480.0, [
-            title_node(),
+            welcome_title_node(),
             top_spacer_node(),
             game_table_node(self),
             mid_spacer_node(),
@@ -86,7 +52,7 @@ pub struct[director.Director] WelcomeDirector(
 }
 
 pub struct[director.Director] SettingsDirector(
-    pub host: box<editor_services.IHostContext>,
+    pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
 ) {
@@ -134,29 +100,8 @@ pub struct[director.Director] SettingsDirector(
     }
 }
 
-pub struct[director.Director] ResourceTree(
-    pub vfs: box<editor_services.IVfsService>,
-) {
-    pub fn activate(self: ref<Self>) {}
-    pub fn deactivate(self: ref<Self>) {}
-
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        return ui.column_box(render_tree_dir(self.vfs, "/"));
-    }
-
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-}
-
 fn make_welcome_director(
-    host: box<editor_services.IHostContext>,
+    host: box<yaobow_editor_services.IEditorHostContext>,
     games: box<array<int>>,
     names: box<array<string>>,
 ) -> box<director.Director> {
@@ -164,34 +109,11 @@ fn make_welcome_director(
 }
 
 fn make_settings_director(
-    host: box<editor_services.IHostContext>,
+    host: box<yaobow_editor_services.IEditorHostContext>,
     games: box<array<int>>,
     names: box<array<string>>,
 ) -> box<director.Director> {
     return box(SettingsDirector(host, games, names)) as box<director.Director>;
-}
-
-pub fn init(host: box<editor_services.IHostContext>) -> box<director.Director> {
-    let registry = host.games();
-    let games_arr: array<int> = [];
-    let names_arr: array<string> = [];
-    let games = box(games_arr);
-    let names = box(names_arr);
-    let n = registry.count();
-    let mut i = 0;
-
-    while i < n {
-        let ordinal = registry.game_at(i);
-        games.push(ordinal);
-        names.push(registry.full_name(ordinal));
-        i = i + 1;
-    }
-
-    make_welcome_director(host, games, names)
-}
-
-pub fn init_resource_tree(vfs: box<editor_services.IVfsService>) -> box<director.Director> {
-    return box(ResourceTree(vfs)) as box<director.Director>;
 }
 
 fn game_name(director: ref<WelcomeDirector>, ordinal: int) -> string {
@@ -205,7 +127,7 @@ fn game_name(director: ref<WelcomeDirector>, ordinal: int) -> string {
     ""
 }
 
-fn title_node() -> ui.UiNode {
+fn welcome_title_node() -> ui.UiNode {
     return ui.text_with_font(0, "妖弓编辑器");
 }
 
@@ -302,37 +224,4 @@ fn settings_window_node(director: ref<SettingsDirector>) -> ui.UiNode {
         ui.dummy(0.0, 16.0),
         settings_footer_node(),
     ]);
-}
-
-fn join_tree_path(parent: string, name: string) -> string {
-    if parent == "/" {
-        return f"/{name}";
-    }
-    return f"{parent}/{name}";
-}
-
-fn render_tree_dir(vfs: box<editor_services.IVfsService>, path: string) -> box<array<ui.UiNode>> {
-    let nodes: array<ui.UiNode> = [];
-    let boxed_nodes = box(nodes);
-    let count = vfs.entry_count(path);
-    let mut i = 0;
-
-    while i < count {
-        let name = vfs.entry_name(path, i);
-        let child_path = join_tree_path(path, name);
-        if vfs.entry_is_dir(path, i) != 0 {
-            let children: array<ui.UiNode> = [];
-            let boxed_children = if vfs.is_expanded(child_path) != 0 {
-                render_tree_dir(vfs, child_path)
-            } else {
-                box(children)
-            };
-            boxed_nodes.push(ui.tree_node_box(name, vfs.command_id(child_path), boxed_children));
-        } else {
-            boxed_nodes.push(ui.tree_leaf(name, vfs.command_id(child_path)));
-        }
-        i = i + 1;
-    }
-
-    return boxed_nodes;
 }

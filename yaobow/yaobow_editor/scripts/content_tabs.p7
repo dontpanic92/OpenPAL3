@@ -1,0 +1,160 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+pub struct ContentTab(
+    pub label: string,
+    pub close_cmd: int,
+    pub kind: int,
+    pub text_content: string,
+    pub image_handle: ?box<yaobow_editor_services.IImageHandle>,
+    pub audio_handle: ?box<yaobow_editor_services.IAudioHandle>,
+    pub video_handle: ?box<yaobow_editor_services.IVideoHandle>,
+    pub model_handle: ?box<yaobow_editor_services.IModelHandle>,
+);
+
+fn make_text_tab(label: string, close_cmd: int, content: string, kind: int) -> ContentTab {
+    let img: ?box<yaobow_editor_services.IImageHandle> = null;
+    let aud: ?box<yaobow_editor_services.IAudioHandle> = null;
+    let vid: ?box<yaobow_editor_services.IVideoHandle> = null;
+    let mdl: ?box<yaobow_editor_services.IModelHandle> = null;
+    ContentTab(label, close_cmd, kind, content, img, aud, vid, mdl)
+}
+
+fn make_image_tab(label: string, close_cmd: int, handle: ?box<yaobow_editor_services.IImageHandle>) -> ContentTab {
+    let aud: ?box<yaobow_editor_services.IAudioHandle> = null;
+    let vid: ?box<yaobow_editor_services.IVideoHandle> = null;
+    let mdl: ?box<yaobow_editor_services.IModelHandle> = null;
+    ContentTab(label, close_cmd, CONTENT_KIND_IMAGE(), "", handle, aud, vid, mdl)
+}
+
+fn make_audio_tab(label: string, close_cmd: int, handle: ?box<yaobow_editor_services.IAudioHandle>) -> ContentTab {
+    let img: ?box<yaobow_editor_services.IImageHandle> = null;
+    let vid: ?box<yaobow_editor_services.IVideoHandle> = null;
+    let mdl: ?box<yaobow_editor_services.IModelHandle> = null;
+    ContentTab(label, close_cmd, CONTENT_KIND_AUDIO(), "", img, handle, vid, mdl)
+}
+
+fn make_video_tab(label: string, close_cmd: int, handle: ?box<yaobow_editor_services.IVideoHandle>) -> ContentTab {
+    let img: ?box<yaobow_editor_services.IImageHandle> = null;
+    let aud: ?box<yaobow_editor_services.IAudioHandle> = null;
+    let mdl: ?box<yaobow_editor_services.IModelHandle> = null;
+    ContentTab(label, close_cmd, CONTENT_KIND_VIDEO(), "", img, aud, handle, mdl)
+}
+
+fn make_model_tab(label: string, close_cmd: int, content: string, handle: ?box<yaobow_editor_services.IModelHandle>) -> ContentTab {
+    let img: ?box<yaobow_editor_services.IImageHandle> = null;
+    let aud: ?box<yaobow_editor_services.IAudioHandle> = null;
+    let vid: ?box<yaobow_editor_services.IVideoHandle> = null;
+    ContentTab(label, close_cmd, CONTENT_KIND_MODEL(), content, img, aud, vid, handle)
+}
+
+fn make_unsupported_tab(label: string, close_cmd: int) -> ContentTab {
+    let img: ?box<yaobow_editor_services.IImageHandle> = null;
+    let aud: ?box<yaobow_editor_services.IAudioHandle> = null;
+    let vid: ?box<yaobow_editor_services.IVideoHandle> = null;
+    let mdl: ?box<yaobow_editor_services.IModelHandle> = null;
+    ContentTab(label, close_cmd, 0, "", img, aud, vid, mdl)
+}
+
+
+// Returns a ContentTab. If the path can't be opened, the returned tab has
+// kind == 0 (unsupported) and the caller should not push it.
+fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: string, close_cmd: int) -> ContentTab {
+    let kind = hub.classify(path);
+    if kind == CONTENT_KIND_TEXT() {
+        return make_text_tab(path, close_cmd, hub.open_text(path), CONTENT_KIND_TEXT());
+    }
+    if kind == CONTENT_KIND_STRUCTURED() {
+        return make_text_tab(path, close_cmd, hub.dump_structured(path), CONTENT_KIND_STRUCTURED());
+    }
+    if kind == CONTENT_KIND_IMAGE() {
+        let h = hub.open_image(path);
+        if h != null {
+            return make_image_tab(path, close_cmd, h);
+        }
+        return make_unsupported_tab(path, close_cmd);
+    }
+    if kind == CONTENT_KIND_AUDIO() {
+        let h = hub.open_audio(path);
+        if h != null {
+            return make_audio_tab(path, close_cmd, h);
+        }
+        return make_unsupported_tab(path, close_cmd);
+    }
+    if kind == CONTENT_KIND_VIDEO() {
+        let h = hub.open_video(path);
+        if h != null {
+            return make_video_tab(path, close_cmd, h);
+        }
+        return make_unsupported_tab(path, close_cmd);
+    }
+    if kind == CONTENT_KIND_MODEL() {
+        let h = hub.open_model(path);
+        if h != null {
+            let dump = h!.text_dump();
+            return make_model_tab(path, close_cmd, dump, h);
+        }
+        return make_unsupported_tab(path, close_cmd);
+    }
+    return make_unsupported_tab(path, close_cmd);
+}
+
+
+fn render_tab_body(tab: ref<ContentTab>) -> ui.UiNode {
+    if tab.kind == CONTENT_KIND_TEXT() || tab.kind == CONTENT_KIND_STRUCTURED() {
+        return ui.multiline_text(tab.text_content, -1.0, -1.0);
+    }
+    if tab.kind == CONTENT_KIND_IMAGE() {
+        if tab.image_handle != null {
+            let h = tab.image_handle!;
+            let w = h.width() * 1.0;
+            let hgt = h.height() * 1.0;
+            return ui.image_fit(h.texture_com_id(), w, hgt);
+        }
+        return ui.text("Unable to load image");
+    }
+    if tab.kind == CONTENT_KIND_AUDIO() {
+        if tab.audio_handle != null {
+            let h = tab.audio_handle!;
+            let label = if h.state() == 1 { "Pause" } else { "Play" };
+            return ui.column([
+                ui.text(f"Audio: {tab.label}"),
+                ui.button(label, 80.0, 24.0, AUDIO_TOGGLE_CMD_BASE() + tab.close_cmd),
+            ]);
+        }
+        return ui.text("Unable to load audio");
+    }
+    if tab.kind == CONTENT_KIND_VIDEO() {
+        if tab.video_handle != null {
+            let h = tab.video_handle!;
+            let label = if h.state() == 1 { "Pause" } else { "Play" };
+            let w = h.width() * 1.0;
+            let hgt = h.height() * 1.0;
+            return ui.column([
+                ui.text(f"Video: {tab.label}"),
+                ui.button(label, 80.0, 24.0, VIDEO_TOGGLE_CMD_BASE() + tab.close_cmd),
+                ui.image_fit(h.texture_com_id(), w, hgt),
+            ]);
+        }
+        return ui.text("Video format not supported");
+    }
+    if tab.kind == CONTENT_KIND_MODEL() {
+        return ui.column([
+            ui.button("Preview", 100.0, 24.0, MODEL_PREVIEW_CMD_BASE() + tab.close_cmd),
+            ui.multiline_text(tab.text_content, -1.0, -1.0),
+        ]);
+    }
+    return ui.text("Unsupported preview");
+}
