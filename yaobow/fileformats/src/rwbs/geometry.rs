@@ -90,17 +90,15 @@ impl Geometry {
             prelit = Some(cursor.read_dw_vec(vertices_count as usize)?);
         }
 
-        let texcoord_set_count = (flags.0 & 0x00ff0000) >> 16;
+        let texcoord_set_count = flags.texcoord_set_count();
         let mut texcoord_sets = vec![];
-        if flags.contains(FormatFlag::TEXTURED) || flags.contains(FormatFlag::TEXTURED2) {
-            for _ in 0..texcoord_set_count {
-                let mut tex_coord_vec = vec![];
-                for _ in 0..vertices_count {
-                    tex_coord_vec.push(TexCoord::read(cursor)?);
-                }
-
-                texcoord_sets.push(tex_coord_vec);
+        for _ in 0..texcoord_set_count {
+            let mut tex_coord_vec = vec![];
+            for _ in 0..vertices_count {
+                tex_coord_vec.push(TexCoord::read(cursor)?);
             }
+
+            texcoord_sets.push(tex_coord_vec);
         }
 
         let mut triangles = vec![];

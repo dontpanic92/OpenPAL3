@@ -77,6 +77,25 @@ impl FormatFlag {
     pub fn contains(&self, flag: Self) -> bool {
         (self.0 & flag.0) != 0
     }
+
+    /// Returns the number of texcoord sets encoded in this format flag.
+    ///
+    /// In RW 3.5+ the authoritative source is the upper byte
+    /// `(flags >> 16) & 0xFF`. Older files (and some assets) only set the
+    /// legacy `TEXTURED` / `TEXTURED2` bits; fall back to those when the
+    /// upper byte is zero.
+    pub fn texcoord_set_count(&self) -> usize {
+        let upper = ((self.0 >> 16) & 0xFF) as usize;
+        if upper > 0 {
+            upper
+        } else if self.contains(Self::TEXTURED2) {
+            2
+        } else if self.contains(Self::TEXTURED) {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 #[binrw::parser(reader, endian)]
@@ -339,4 +358,28 @@ pub fn read_anm(data: &[u8]) -> anyhow::Result<Vec<AnmAction>> {
     }
 
     Ok(anim)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::FormatFlag;
+
+    #[test]
+    fn texcoord_set_count_upper_byte_authoritative() {
+        // upper=1, no legacy bit -> 1 (PAL5 effect/animated case)
+        assert_eq!(FormatFlag(0x0001_0000).texcoord_set_count(), 1);
+        // upper=2, TEXTURED2 set -> 2 (typical multi-UV)
+        assert_eq!(FormatFlag(0x0002_0000 | 0x80).texcoord_set_count(), 2);
+    }
+
+    #[test]
+    fn texcoord_set_count_legacy_fallback() {
+        // upper=0, TEXTURED set -> 1 (PAL4 inverse case fix)
+        assert_eq!(FormatFlag(0x4).texcoord_set_count(), 1);
+        // upper=0, TEXTURED2 set -> 2
+        assert_eq!(FormatFlag(0x80).texcoord_set_count(), 2);
+        // upper=0, no flags -> 0
+        assert_eq!(FormatFlag(0x0).texcoord_set_count(), 0);
+    }
 }

@@ -145,19 +145,19 @@ impl AtomicSector {
             None
         };
 
-        let texcoords =
-            if flag.contains(FormatFlag::TEXTURED) || flag.contains(FormatFlag::TEXTURED2) {
-                let mut texcoords = vec![];
-                for _ in 0..vertices_count {
-                    texcoords.push(TexCoord::read(cursor)?);
-                }
+        let texcoord_set_count = flag.texcoord_set_count();
+        let texcoords = if texcoord_set_count >= 1 {
+            let mut texcoords = vec![];
+            for _ in 0..vertices_count {
+                texcoords.push(TexCoord::read(cursor)?);
+            }
 
-                Some(texcoords)
-            } else {
-                None
-            };
+            Some(texcoords)
+        } else {
+            None
+        };
 
-        let texcoords2 = if flag.contains(FormatFlag::TEXTURED2) {
+        let texcoords2 = if texcoord_set_count >= 2 {
             let mut texcoords = vec![];
             for _ in 0..vertices_count {
                 texcoords.push(TexCoord::read(cursor)?);
