@@ -2,10 +2,9 @@ use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
 
 use crosscom::ComRc;
 use fileformats::rwbs::{
-    clump::Clump, extension::Extension, frame::Frame, material::Material, read_dff, Matrix44f,
-    TexCoord, Triangle, Vec3f,
+    clump::Clump, extension::Extension, frame::Frame, material::Material,
+    plugins::hanim::HAnimBone as RwHAnimBone, read_dff, Matrix44f, TexCoord, Triangle, Vec3f,
 };
-use itertools::Itertools;
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{
@@ -60,6 +59,12 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
 struct HAnimBone {
     bone_root: ComRc<IEntity>,
     bones: Vec<ComRc<IEntity>>,
+    // Maps HAnim id (the value stored in `SkinPlugin.used_bones`) to the slot
+    // in `bones` / the armature.
+    hanim_id_to_slot: HashMap<u32, usize>,
+    // For each slot, the bone's HAnim `index` field — i.e. the position in
+    // `SkinPlugin.matrix` that holds its inverse-bind matrix.
+    slot_to_hanim_index: Vec<u32>,
 }
 
 pub(crate) struct SkinnedMeshInfo {
@@ -114,20 +119,38 @@ fn load_clump(
         })
         .collect();
 
-    let hanim_bone = if let Some((root_bone, index_map)) = &root_bone {
-        let mut indexed_bones = HashMap::new();
-        for b in index_map {
-            indexed_bones.insert(b.index, bone_id_map.get(&b.id).unwrap().clone());
-        }
+    let hanim_bone = if let Some((root_bone, hanim_bones_list)) = &root_bone {
+        // Sort the HAnim bones by their `index` field; this preserves the
+        // historical slot ordering and matches the order RW exporters write
+        // the `SkinPlugin.matrix` array in.
+        let mut sorted: Vec<&RwHAnimBone> = hanim_bones_list.iter().collect();
+        sorted.sort_by_key(|b| b.index);
 
         let mut bones = vec![];
-        for b in indexed_bones.keys().sorted() {
-            bones.push(indexed_bones.get(b).unwrap().clone());
+        let mut hanim_id_to_slot: HashMap<u32, usize> = HashMap::new();
+        let mut slot_to_hanim_index: Vec<u32> = vec![];
+        for b in &sorted {
+            let bone_entity = match bone_id_map.get(&b.id) {
+                Some(e) => e.clone(),
+                None => {
+                    log::warn!(
+                        "HAnim bone id {} referenced by hierarchy is missing an entity; skipping",
+                        b.id
+                    );
+                    continue;
+                }
+            };
+            let slot = bones.len();
+            bones.push(bone_entity);
+            hanim_id_to_slot.insert(b.id, slot);
+            slot_to_hanim_index.push(b.index);
         }
 
         Some(HAnimBone {
             bone_root: root_bone.clone(),
             bones,
+            hanim_id_to_slot,
+            slot_to_hanim_index,
         })
     } else {
         None
@@ -247,10 +270,25 @@ fn create_geometry(
 
     let skin_info = skin_plugin.and_then(|skin| {
         let hanim_bone = hanim_bone.unwrap();
-        let mut bones = vec![];
-        for i in 0..skin.matrix.len() {
-            let bone = hanim_bone.bones[i as usize].clone();
-            let bond_pose = create_mat44_from_matrix44f(&skin.matrix[i]);
+
+        // Bind-pose assignment.
+        //
+        // `SkinPlugin.matrix` is indexed by each bone's HAnim `index` field,
+        // not by the bone's slot in the armature. Walk the slots and look up
+        // the matrix via `slot_to_hanim_index`.
+        for (slot, &hanim_index) in hanim_bone.slot_to_hanim_index.iter().enumerate() {
+            let hi = hanim_index as usize;
+            if hi >= skin.matrix.len() {
+                log::warn!(
+                    "SkinPlugin: HAnim index {} out of range (matrix len {}); skipping bone slot {}",
+                    hi,
+                    skin.matrix.len(),
+                    slot
+                );
+                continue;
+            }
+            let bone = hanim_bone.bones[slot].clone();
+            let bond_pose = create_mat44_from_matrix44f(&skin.matrix[hi]);
             let bone_component = bone
                 .get_component(IHAnimBoneComponent::uuid())
                 .unwrap()
@@ -258,13 +296,98 @@ fn create_geometry(
                 .unwrap();
 
             bone_component.set_bond_pose(bond_pose);
-            bones.push(bone.clone());
+        }
+
+        // Per-vertex bone-index remap.
+        //
+        // `SkinPlugin.bone_indices[v][k]` indexes into `used_bones` (which is
+        // a list of HAnim ids of the active bones). Build a single
+        // `used_to_slot` table so the per-vertex loop is a flat lookup, then
+        // collapse missing entries by zero-weighting the influence.
+        const SLOT_MISSING: usize = usize::MAX;
+        let used_to_slot: Vec<usize> = if !skin.used_bones.is_empty() {
+            skin.used_bones
+                .iter()
+                .map(|&hid| {
+                    hanim_bone
+                        .hanim_id_to_slot
+                        .get(&(hid as u32))
+                        .copied()
+                        .unwrap_or_else(|| {
+                            log::warn!(
+                                "SkinPlugin: used_bones entry HAnim id {} not present in HAnim hierarchy",
+                                hid
+                            );
+                            SLOT_MISSING
+                        })
+                })
+                .collect()
+        } else {
+            // Fallback for files that omit `used_bones`: indices address
+            // `SkinPlugin.matrix` slots directly (i.e. the HAnim `index`
+            // space). Translate that back to slot space via
+            // `slot_to_hanim_index`.
+            let max_hi = skin
+                .matrix
+                .len()
+                .max(hanim_bone.slot_to_hanim_index.iter().map(|i| *i as usize + 1).max().unwrap_or(0));
+            let mut hanim_index_to_slot = vec![SLOT_MISSING; max_hi];
+            for (slot, &hi) in hanim_bone.slot_to_hanim_index.iter().enumerate() {
+                let hi = hi as usize;
+                if hi < hanim_index_to_slot.len() {
+                    hanim_index_to_slot[hi] = slot;
+                }
+            }
+            hanim_index_to_slot
+        };
+
+        let mut remapped_indices: Vec<[u8; 4]> = Vec::with_capacity(skin.bone_indices.len());
+        let mut remapped_weights: Vec<[f32; 4]> = Vec::with_capacity(skin.weights.len());
+        let mut warned_oob = false;
+        let mut warned_missing = false;
+        for (v, idxs) in skin.bone_indices.iter().enumerate() {
+            let mut new_idx = [0u8; 4];
+            let mut new_w = skin.weights[v];
+            for k in 0..4 {
+                let raw = idxs[k] as usize;
+                let slot = if raw < used_to_slot.len() {
+                    used_to_slot[raw]
+                } else {
+                    if !warned_oob {
+                        log::warn!(
+                            "SkinPlugin: per-vertex bone index {} >= used_to_slot len {}",
+                            raw,
+                            used_to_slot.len()
+                        );
+                        warned_oob = true;
+                    }
+                    SLOT_MISSING
+                };
+
+                if slot == SLOT_MISSING {
+                    if !warned_missing {
+                        log::warn!(
+                            "SkinPlugin: dropping per-vertex bone influence that has no armature slot"
+                        );
+                        warned_missing = true;
+                    }
+                    new_idx[k] = 0;
+                    new_w[k] = 0.0;
+                } else {
+                    // Slot must fit in u8: RW per-vertex skin indices are
+                    // themselves u8s, so bones.len() <= 256.
+                    debug_assert!(slot < 256, "armature has more than 256 bones");
+                    new_idx[k] = slot as u8;
+                }
+            }
+            remapped_indices.push(new_idx);
+            remapped_weights.push(new_w);
         }
 
         Some(SkinnedMeshInfo {
             armature: armature.unwrap(),
-            v_weights: skin.weights.clone(),
-            v_bone_indices: skin.bone_indices.clone(),
+            v_weights: remapped_weights,
+            v_bone_indices: remapped_indices,
         })
     });
 
