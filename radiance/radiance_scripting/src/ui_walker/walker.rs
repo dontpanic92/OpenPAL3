@@ -488,6 +488,7 @@ pub fn walk(node: &OwnedNode, visitor: &mut dyn UiVisitor) -> Result<(), WalkErr
         }
         kinds::IMAGE_FIT => visitor.image_fit(node.i1, node.w, node.h),
         kinds::SAME_LINE => visitor.same_line(),
+        kinds::NOOP => Ok(()),
         other => Err(WalkError::ShapeMismatch(format!(
             "unknown UiNode kind {other}"
         ))),

@@ -25,7 +25,11 @@ pub struct[director.Director] HostDirector(pub inner: box<radiance.IDirector>) {
     }
     pub fn deactivate(self: ref<Self>) {}
     pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        return ui.dummy(0.0, 0.0);
+        // The wrapped inner Rust director draws its own window from its
+        // `update` (see ScriptedDirector::update). Returning a real widget
+        // here would emit an orphan imgui call before that runs and trip
+        // dear-imgui's implicit "Debug" fallback window.
+        return ui.noop();
     }
     pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
         let result: array<box<director.Director>> = [];

@@ -27,6 +27,7 @@ pub let KIND_TAB_ITEM: int = 18;
 pub let KIND_CHILD_WINDOW: int = 19;
 pub let KIND_IMAGE_FIT: int = 20;
 pub let KIND_SAME_LINE: int = 21;
+pub let KIND_NOOP: int = 22;
 
 // Field meaning per kind:
 //   kind     : KIND_* tag (always set)
@@ -162,4 +163,13 @@ pub fn child_window(id: string, w: float, h: float, body: array<UiNode>) -> UiNo
 pub fn same_line() -> UiNode {
     let children: array<UiNode> = [];
     UiNode(KIND_SAME_LINE, "", 0.0, 0.0, 0, 0, box(children))
+}
+
+// No-op node: the walker emits zero imgui calls. Use as the top-level
+// render result for adapter directors that delegate all drawing to a
+// wrapped inner director (otherwise an orphan widget would trigger
+// imgui's implicit "Debug" fallback window).
+pub fn noop() -> UiNode {
+    let children: array<UiNode> = [];
+    UiNode(KIND_NOOP, "", 0.0, 0.0, 0, 0, box(children))
 }
