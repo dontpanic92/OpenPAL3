@@ -7,17 +7,17 @@ import director;
 import radiance;
 import ui;
 
-pub fn CONTENT_KIND_TEXT() -> int { 1 }
-pub fn CONTENT_KIND_IMAGE() -> int { 2 }
-pub fn CONTENT_KIND_AUDIO() -> int { 3 }
-pub fn CONTENT_KIND_VIDEO() -> int { 4 }
-pub fn CONTENT_KIND_MODEL() -> int { 5 }
-pub fn CONTENT_KIND_STRUCTURED() -> int { 6 }
+pub let CONTENT_KIND_TEXT: int = 1;
+pub let CONTENT_KIND_IMAGE: int = 2;
+pub let CONTENT_KIND_AUDIO: int = 3;
+pub let CONTENT_KIND_VIDEO: int = 4;
+pub let CONTENT_KIND_MODEL: int = 5;
+pub let CONTENT_KIND_STRUCTURED: int = 6;
 
-pub fn CLOSE_CMD_BASE() -> int { 200000 }
-pub fn MODEL_PREVIEW_CMD_BASE() -> int { 300000 }
-pub fn AUDIO_TOGGLE_CMD_BASE() -> int { 400000 }
-pub fn VIDEO_TOGGLE_CMD_BASE() -> int { 500000 }
+pub let CLOSE_CMD_BASE: int = 200000;
+pub let MODEL_PREVIEW_CMD_BASE: int = 300000;
+pub let AUDIO_TOGGLE_CMD_BASE: int = 400000;
+pub let VIDEO_TOGGLE_CMD_BASE: int = 500000;
 
 pub struct[director.Director] HostDirector(pub inner: box<radiance.IDirector>) {
     pub fn activate(self: ref<Self>) {

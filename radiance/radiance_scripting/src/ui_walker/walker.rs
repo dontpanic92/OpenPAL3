@@ -51,6 +51,13 @@ pub trait UiVisitor {
         flags: u32,
         body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
     ) -> Result<(), WalkError>;
+
+    fn window_fullscreen(
+        &mut self,
+        title: &str,
+        flags: u32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError>;
     fn window_centered(
         &mut self,
         title: &str,
@@ -162,6 +169,40 @@ impl<'a> UiVisitor for UiAdapter<'a> {
             .movable(false)
             .title_bar(false)
             .build(|| result = body(self));
+        result
+    }
+
+    fn window_fullscreen(
+        &mut self,
+        title: &str,
+        flags: u32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError> {
+        let display = self.ui.io().display_size;
+        let chrome = imgui::WindowFlags::NO_TITLE_BAR
+            | imgui::WindowFlags::NO_RESIZE
+            | imgui::WindowFlags::NO_MOVE
+            | imgui::WindowFlags::NO_COLLAPSE
+            | imgui::WindowFlags::NO_BRING_TO_FRONT_ON_FOCUS
+            | imgui::WindowFlags::NO_NAV_FOCUS
+            | imgui::WindowFlags::NO_SCROLLBAR
+            | imgui::WindowFlags::NO_SCROLL_WITH_MOUSE;
+        let extra = imgui::WindowFlags::from_bits_truncate(flags);
+        let mut result = Ok(());
+        let pad_token = self
+            .ui
+            .push_style_var(imgui::StyleVar::WindowPadding([0.0, 0.0]));
+        let rounding_token = self.ui.push_style_var(imgui::StyleVar::WindowRounding(0.0));
+        let border_token = self.ui.push_style_var(imgui::StyleVar::WindowBorderSize(0.0));
+        self.ui
+            .window(title)
+            .position([0.0, 0.0], imgui::Condition::Always)
+            .size(display, imgui::Condition::Always)
+            .flags(chrome | extra)
+            .build(|| result = body(self));
+        border_token.pop();
+        rounding_token.pop();
+        pad_token.pop();
         result
     }
 
@@ -441,6 +482,10 @@ pub fn walk(node: &OwnedNode, visitor: &mut dyn UiVisitor) -> Result<(), WalkErr
         kinds::WINDOW_CENTERED => {
             let mut body = |v: &mut dyn UiVisitor| walk_children(&node.children, v);
             visitor.window_centered(&node.label, node.w, node.h, &mut body)
+        }
+        kinds::WINDOW_FULLSCREEN => {
+            let mut body = |v: &mut dyn UiVisitor| walk_children(&node.children, v);
+            visitor.window_fullscreen(&node.label, node.i1 as u32, &mut body)
         }
         kinds::COLUMN => {
             let mut body = |v: &mut dyn UiVisitor| walk_children(&node.children, v);

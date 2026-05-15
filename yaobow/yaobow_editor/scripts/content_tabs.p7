@@ -1,5 +1,5 @@
 // Content-tab data type and renderers. Consumed by `main_editor`; the
-// per-kind command-base constants live in `main`.
+// per-kind command-base constants live in `editor_consts`.
 
 import yaobow_editor_services;
 import ui;
@@ -14,135 +14,109 @@ pub struct ContentTab(
     pub audio_handle: ?box<yaobow_editor_services.IAudioHandle>,
     pub video_handle: ?box<yaobow_editor_services.IVideoHandle>,
     pub model_handle: ?box<yaobow_editor_services.IModelHandle>,
+    pub preview_session: ?box<yaobow_editor_services.IPreviewSession>,
 );
 
 fn make_text_tab(label: string, close_cmd: int, content: string, kind: int) -> ContentTab {
-    let img: ?box<yaobow_editor_services.IImageHandle> = null;
-    let aud: ?box<yaobow_editor_services.IAudioHandle> = null;
-    let vid: ?box<yaobow_editor_services.IVideoHandle> = null;
-    let mdl: ?box<yaobow_editor_services.IModelHandle> = null;
-    ContentTab(label, close_cmd, kind, content, img, aud, vid, mdl)
+    ContentTab(label, close_cmd, kind, content, null, null, null, null, null)
 }
 
-fn make_image_tab(label: string, close_cmd: int, handle: ?box<yaobow_editor_services.IImageHandle>) -> ContentTab {
-    let aud: ?box<yaobow_editor_services.IAudioHandle> = null;
-    let vid: ?box<yaobow_editor_services.IVideoHandle> = null;
-    let mdl: ?box<yaobow_editor_services.IModelHandle> = null;
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_IMAGE(), "", handle, aud, vid, mdl)
+fn make_image_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IImageHandle>) -> ContentTab {
+    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_IMAGE, "", handle, null, null, null, null)
 }
 
-fn make_audio_tab(label: string, close_cmd: int, handle: ?box<yaobow_editor_services.IAudioHandle>) -> ContentTab {
-    let img: ?box<yaobow_editor_services.IImageHandle> = null;
-    let vid: ?box<yaobow_editor_services.IVideoHandle> = null;
-    let mdl: ?box<yaobow_editor_services.IModelHandle> = null;
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_AUDIO(), "", img, handle, vid, mdl)
+fn make_audio_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IAudioHandle>) -> ContentTab {
+    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_AUDIO, "", null, handle, null, null, null)
 }
 
-fn make_video_tab(label: string, close_cmd: int, handle: ?box<yaobow_editor_services.IVideoHandle>) -> ContentTab {
-    let img: ?box<yaobow_editor_services.IImageHandle> = null;
-    let aud: ?box<yaobow_editor_services.IAudioHandle> = null;
-    let mdl: ?box<yaobow_editor_services.IModelHandle> = null;
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_VIDEO(), "", img, aud, handle, mdl)
+fn make_video_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IVideoHandle>) -> ContentTab {
+    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_VIDEO, "", null, null, handle, null, null)
 }
 
-fn make_model_tab(label: string, close_cmd: int, content: string, handle: ?box<yaobow_editor_services.IModelHandle>) -> ContentTab {
-    let img: ?box<yaobow_editor_services.IImageHandle> = null;
-    let aud: ?box<yaobow_editor_services.IAudioHandle> = null;
-    let vid: ?box<yaobow_editor_services.IVideoHandle> = null;
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_MODEL(), content, img, aud, vid, handle)
+fn make_model_tab(label: string, close_cmd: int, content: string, handle: box<yaobow_editor_services.IModelHandle>) -> ContentTab {
+    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_MODEL, content, null, null, null, handle, null)
 }
 
-fn make_unsupported_tab(label: string, close_cmd: int) -> ContentTab {
-    let img: ?box<yaobow_editor_services.IImageHandle> = null;
-    let aud: ?box<yaobow_editor_services.IAudioHandle> = null;
-    let vid: ?box<yaobow_editor_services.IVideoHandle> = null;
-    let mdl: ?box<yaobow_editor_services.IModelHandle> = null;
-    ContentTab(label, close_cmd, 0, "", img, aud, vid, mdl)
-}
-
-// Returns a ContentTab. If the path can't be opened, the returned tab has
-// kind == 0 (unsupported) and the caller should not push it.
-pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: string, close_cmd: int) -> ContentTab {
+// Returns null if the path could not be opened (unsupported extension or
+// loader failure). Caller pushes the value only when non-null.
+pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: string, close_cmd: int) -> ?ContentTab {
     let kind = hub.classify(path);
-    if kind == editor_consts.CONTENT_KIND_TEXT() {
-        return make_text_tab(path, close_cmd, hub.open_text(path), editor_consts.CONTENT_KIND_TEXT());
+    if kind == editor_consts.CONTENT_KIND_TEXT {
+        return make_text_tab(path, close_cmd, hub.open_text(path), editor_consts.CONTENT_KIND_TEXT);
     }
-    if kind == editor_consts.CONTENT_KIND_STRUCTURED() {
-        return make_text_tab(path, close_cmd, hub.dump_structured(path), editor_consts.CONTENT_KIND_STRUCTURED());
+    if kind == editor_consts.CONTENT_KIND_STRUCTURED {
+        return make_text_tab(path, close_cmd, hub.dump_structured(path), editor_consts.CONTENT_KIND_STRUCTURED);
     }
-    if kind == editor_consts.CONTENT_KIND_IMAGE() {
+    if kind == editor_consts.CONTENT_KIND_IMAGE {
         let h = hub.open_image(path);
         if h != null {
-            return make_image_tab(path, close_cmd, h);
+            return make_image_tab(path, close_cmd, h!);
         }
-        return make_unsupported_tab(path, close_cmd);
+        return null;
     }
-    if kind == editor_consts.CONTENT_KIND_AUDIO() {
+    if kind == editor_consts.CONTENT_KIND_AUDIO {
         let h = hub.open_audio(path);
         if h != null {
-            return make_audio_tab(path, close_cmd, h);
+            return make_audio_tab(path, close_cmd, h!);
         }
-        return make_unsupported_tab(path, close_cmd);
+        return null;
     }
-    if kind == editor_consts.CONTENT_KIND_VIDEO() {
+    if kind == editor_consts.CONTENT_KIND_VIDEO {
         let h = hub.open_video(path);
         if h != null {
-            return make_video_tab(path, close_cmd, h);
+            return make_video_tab(path, close_cmd, h!);
         }
-        return make_unsupported_tab(path, close_cmd);
+        return null;
     }
-    if kind == editor_consts.CONTENT_KIND_MODEL() {
+    if kind == editor_consts.CONTENT_KIND_MODEL {
         let h = hub.open_model(path);
         if h != null {
-            let dump = h!.text_dump();
-            return make_model_tab(path, close_cmd, dump, h);
+            let handle = h!;
+            let dump = handle.text_dump();
+            return make_model_tab(path, close_cmd, dump, handle);
         }
-        return make_unsupported_tab(path, close_cmd);
+        return null;
     }
-    return make_unsupported_tab(path, close_cmd);
+    return null;
 }
 
 pub fn render_tab_body(tab: ref<ContentTab>) -> ui.UiNode {
-    if tab.kind == editor_consts.CONTENT_KIND_TEXT() || tab.kind == editor_consts.CONTENT_KIND_STRUCTURED() {
+    if tab.kind == editor_consts.CONTENT_KIND_TEXT || tab.kind == editor_consts.CONTENT_KIND_STRUCTURED {
         return ui.multiline_text(tab.text_content, -1.0, -1.0);
     }
-    if tab.kind == editor_consts.CONTENT_KIND_IMAGE() {
+    if tab.kind == editor_consts.CONTENT_KIND_IMAGE {
         if tab.image_handle != null {
             let h = tab.image_handle!;
-            let w = h.width() * 1.0;
-            let hgt = h.height() * 1.0;
-            return ui.image_fit(h.texture_com_id(), w, hgt);
+            return ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
         }
         return ui.text("Unable to load image");
     }
-    if tab.kind == editor_consts.CONTENT_KIND_AUDIO() {
+    if tab.kind == editor_consts.CONTENT_KIND_AUDIO {
         if tab.audio_handle != null {
             let h = tab.audio_handle!;
             let label = if h.state() == 1 { "Pause" } else { "Play" };
             return ui.column([
                 ui.text(f"Audio: {tab.label}"),
-                ui.button(label, 80.0, 24.0, editor_consts.AUDIO_TOGGLE_CMD_BASE() + tab.close_cmd),
+                ui.button(label, 80.0, 24.0, editor_consts.AUDIO_TOGGLE_CMD_BASE + tab.close_cmd),
             ]);
         }
         return ui.text("Unable to load audio");
     }
-    if tab.kind == editor_consts.CONTENT_KIND_VIDEO() {
+    if tab.kind == editor_consts.CONTENT_KIND_VIDEO {
         if tab.video_handle != null {
             let h = tab.video_handle!;
             let label = if h.state() == 1 { "Pause" } else { "Play" };
-            let w = h.width() * 1.0;
-            let hgt = h.height() * 1.0;
             return ui.column([
                 ui.text(f"Video: {tab.label}"),
-                ui.button(label, 80.0, 24.0, editor_consts.VIDEO_TOGGLE_CMD_BASE() + tab.close_cmd),
-                ui.image_fit(h.texture_com_id(), w, hgt),
+                ui.button(label, 80.0, 24.0, editor_consts.VIDEO_TOGGLE_CMD_BASE + tab.close_cmd),
+                ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float),
             ]);
         }
         return ui.text("Video format not supported");
     }
-    if tab.kind == editor_consts.CONTENT_KIND_MODEL() {
+    if tab.kind == editor_consts.CONTENT_KIND_MODEL {
         return ui.column([
-            ui.button("Preview", 100.0, 24.0, editor_consts.MODEL_PREVIEW_CMD_BASE() + tab.close_cmd),
+            ui.button("Preview", 100.0, 24.0, editor_consts.MODEL_PREVIEW_CMD_BASE + tab.close_cmd),
             ui.multiline_text(tab.text_content, -1.0, -1.0),
         ]);
     }

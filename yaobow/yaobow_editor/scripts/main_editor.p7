@@ -39,7 +39,7 @@ pub struct[director.Director] MainEditorDirector(
             ui.tab_bar_box("##editor_tab_bar", tab_items_box),
         ]);
 
-        return ui.window("妖弓编辑器", -1.0, -1.0, 0, [
+        return ui.window_fullscreen("##editor_root", 0, [
             tree_node,
             ui.same_line(),
             content_node,
@@ -55,35 +55,37 @@ pub struct[director.Director] MainEditorDirector(
                 return empty_transitions();
             }
 
-            let mut next = self.next_close_cmd[0];
-            next = next + 1;
-            self.next_close_cmd[0] = next;
-            let tab = content_tabs.open_content_tab(self.host.previewers(), path, editor_consts.CLOSE_CMD_BASE() + next);
-            if tab.kind != 0 {
-                self.tabs.push(tab);
+            self.next_close_cmd[0] = self.next_close_cmd[0] + 1;
+            let tab = content_tabs.open_content_tab(
+                self.host.previewers(),
+                path,
+                editor_consts.CLOSE_CMD_BASE + self.next_close_cmd[0],
+            );
+            if tab != null {
+                self.tabs.push(tab!);
             }
             return empty_transitions();
         }
 
-        if command_id >= editor_consts.CLOSE_CMD_BASE() && command_id < editor_consts.MODEL_PREVIEW_CMD_BASE() {
+        if command_id >= editor_consts.CLOSE_CMD_BASE && command_id < editor_consts.MODEL_PREVIEW_CMD_BASE {
             close_tab_by_close_cmd(self.tabs, command_id);
             return empty_transitions();
         }
 
-        if command_id >= editor_consts.MODEL_PREVIEW_CMD_BASE() && command_id < editor_consts.AUDIO_TOGGLE_CMD_BASE() {
-            let close_cmd = command_id - editor_consts.MODEL_PREVIEW_CMD_BASE() + editor_consts.CLOSE_CMD_BASE();
+        if command_id >= editor_consts.MODEL_PREVIEW_CMD_BASE && command_id < editor_consts.AUDIO_TOGGLE_CMD_BASE {
+            let close_cmd = command_id - editor_consts.MODEL_PREVIEW_CMD_BASE + editor_consts.CLOSE_CMD_BASE;
             preview_model_in_tab(self.tabs, close_cmd);
             return empty_transitions();
         }
 
-        if command_id >= editor_consts.AUDIO_TOGGLE_CMD_BASE() && command_id < editor_consts.VIDEO_TOGGLE_CMD_BASE() {
-            let close_cmd = command_id - editor_consts.AUDIO_TOGGLE_CMD_BASE() + editor_consts.CLOSE_CMD_BASE();
+        if command_id >= editor_consts.AUDIO_TOGGLE_CMD_BASE && command_id < editor_consts.VIDEO_TOGGLE_CMD_BASE {
+            let close_cmd = command_id - editor_consts.AUDIO_TOGGLE_CMD_BASE + editor_consts.CLOSE_CMD_BASE;
             toggle_audio_in_tab(self.tabs, close_cmd);
             return empty_transitions();
         }
 
-        if command_id >= editor_consts.VIDEO_TOGGLE_CMD_BASE() {
-            let close_cmd = command_id - editor_consts.VIDEO_TOGGLE_CMD_BASE() + editor_consts.CLOSE_CMD_BASE();
+        if command_id >= editor_consts.VIDEO_TOGGLE_CMD_BASE {
+            let close_cmd = command_id - editor_consts.VIDEO_TOGGLE_CMD_BASE + editor_consts.CLOSE_CMD_BASE;
             toggle_video_in_tab(self.tabs, close_cmd);
             return empty_transitions();
         }
@@ -95,14 +97,13 @@ pub struct[director.Director] MainEditorDirector(
         let mut i = 0;
         while i < self.tabs.len() {
             let t = ref(self.tabs[i]);
-            if t.kind == editor_consts.CONTENT_KIND_AUDIO() && t.audio_handle != null {
+            if t.kind == editor_consts.CONTENT_KIND_AUDIO && t.audio_handle != null {
                 let h = t.audio_handle!;
                 h.update();
             }
             i = i + 1;
         }
-        let result: array<box<director.Director>> = [];
-        return result;
+        return empty_transitions();
     }
 }
 
@@ -129,11 +130,13 @@ fn close_tab_by_close_cmd(tabs: box<array<content_tabs.ContentTab>>, close_cmd: 
 }
 
 fn preview_model_in_tab(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {
-    // Model preview push is currently a no-op; future change will route
-    // through a proto-struct adapter that owns the open_preview session.
     let mut i = 0;
     while i < tabs.len() {
         if tabs[i].close_cmd == close_cmd {
+            if tabs[i].model_handle != null {
+                let h = tabs[i].model_handle!;
+                tabs[i].preview_session = h.open_preview();
+            }
             return;
         }
         i = i + 1;
@@ -144,9 +147,8 @@ fn toggle_audio_in_tab(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int
     let mut i = 0;
     while i < tabs.len() {
         if tabs[i].close_cmd == close_cmd {
-            let t = ref(tabs[i]);
-            if t.audio_handle != null {
-                let h = t.audio_handle!;
+            if tabs[i].audio_handle != null {
+                let h = tabs[i].audio_handle!;
                 h.toggle();
             }
             return;
@@ -159,9 +161,8 @@ fn toggle_video_in_tab(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int
     let mut i = 0;
     while i < tabs.len() {
         if tabs[i].close_cmd == close_cmd {
-            let t = ref(tabs[i]);
-            if t.video_handle != null {
-                let h = t.video_handle!;
+            if tabs[i].video_handle != null {
+                let h = tabs[i].video_handle!;
                 h.toggle();
             }
             return;

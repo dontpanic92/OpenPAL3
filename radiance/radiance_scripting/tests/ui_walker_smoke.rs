@@ -74,6 +74,15 @@ impl UiVisitor for TestRecorder {
         self.window(title, w, h, 0, body)
     }
 
+    fn window_fullscreen(
+        &mut self,
+        title: &str,
+        flags: u32,
+        body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,
+    ) -> Result<(), WalkError> {
+        self.window(title, -1.0, -1.0, flags, body)
+    }
+
     fn column(
         &mut self,
         body: &mut dyn FnMut(&mut dyn UiVisitor) -> Result<(), WalkError>,

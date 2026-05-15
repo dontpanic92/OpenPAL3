@@ -22,3 +22,4 @@ pub const CHILD_WINDOW: i64 = 19;
 pub const IMAGE_FIT: i64 = 20;
 pub const SAME_LINE: i64 = 21;
 pub const NOOP: i64 = 22;
+pub const WINDOW_FULLSCREEN: i64 = 23;

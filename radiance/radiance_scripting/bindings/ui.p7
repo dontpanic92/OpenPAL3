@@ -28,6 +28,7 @@ pub let KIND_CHILD_WINDOW: int = 19;
 pub let KIND_IMAGE_FIT: int = 20;
 pub let KIND_SAME_LINE: int = 21;
 pub let KIND_NOOP: int = 22;
+pub let KIND_WINDOW_FULLSCREEN: int = 23;
 
 // Field meaning per kind:
 //   kind     : KIND_* tag (always set)
@@ -49,6 +50,15 @@ pub struct UiNode(
 
 pub fn window(title: string, w: float, h: float, flags: int, body: array<UiNode>) -> UiNode {
     UiNode(KIND_WINDOW, title, w, h, flags, 0, box(body))
+}
+
+// Fullscreen window: anchors at (0, 0), sizes to the imgui display each
+// frame, and disables title bar / resize / move / collapse / scrollbar so
+// the body fills the entire OS window. `title` is used only as the imgui
+// id (not displayed). `flags` accept extra `imgui::WindowFlags` bits that
+// are OR'd onto the chrome-suppression flags.
+pub fn window_fullscreen(title: string, flags: int, body: array<UiNode>) -> UiNode {
+    UiNode(KIND_WINDOW_FULLSCREEN, title, 0.0, 0.0, flags, 0, box(body))
 }
 
 pub fn window_centered(title: string, w: float, h: float, body: array<UiNode>) -> UiNode {
