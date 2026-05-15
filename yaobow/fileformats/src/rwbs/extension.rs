@@ -48,7 +48,7 @@ impl Extension {
                 }
 
                 ChunkType::PLUGIN_SKIN => {
-                    Extension::SkinPlugin(SkinPlugin::read(cursor, vertices_count)?)
+                    Extension::SkinPlugin(SkinPlugin::read(cursor, ext_header, vertices_count)?)
                 }
 
                 ChunkType::PLUGIN_NODENAME => {
@@ -105,7 +105,11 @@ pub struct SkinPlugin {
 }
 
 impl SkinPlugin {
-    pub fn read(cursor: &mut dyn Read, vertices_count: u32) -> anyhow::Result<Self> {
+    pub fn read(
+        cursor: &mut dyn Read,
+        header: ChunkHeader,
+        vertices_count: u32,
+    ) -> anyhow::Result<Self> {
         let count = cursor.read_u32_le()?;
         let bone_count = count & 0xFF;
 
@@ -130,7 +134,26 @@ impl SkinPlugin {
             matrix.push(m);
         }
 
-        let unknown2 = cursor.read_u8_vec(12)?;
+        // The skin-plugin trailer length depends on the RW build (0 bytes for
+        // some minimal exports, 12 bytes for non-instanced PC, 16 bytes for
+        // pre-instanced PC, possibly larger for PS2/Xbox splits). Derive its
+        // size from the extension's chunk header so the cursor stays aligned
+        // for chunks that follow.
+        let parsed = 4usize
+            + used_bone_count as usize
+            + (vertices_count as usize) * 4
+            + (vertices_count as usize) * 16
+            + (bone_count as usize) * 64;
+        let chunk_len = header.length as usize;
+        if parsed > chunk_len {
+            anyhow::bail!(
+                "SkinPlugin: parsed {} bytes exceeds chunk length {}",
+                parsed,
+                chunk_len
+            );
+        }
+        let tail_len = chunk_len - parsed;
+        let unknown2 = cursor.read_u8_vec(tail_len)?;
 
         Ok(Self {
             used_bones,
