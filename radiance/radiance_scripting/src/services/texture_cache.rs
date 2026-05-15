@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem::{align_of, size_of};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -21,6 +22,14 @@ struct CachedTexture {
 pub struct ImguiTextureCache {
     factory: Rc<dyn ComponentFactory>,
     cache: HashMap<i64, CachedTexture>,
+    /// Com-ids queued for removal by destructors that ran while the
+    /// cache was already borrowed elsewhere (e.g.
+    /// `ScriptedRenderTarget::Drop` firing from GC inside an
+    /// `ImguiFrameState`-parked render pass — see plan.md follow-up
+    /// #5). Drained at the start of every `&mut self` method, so by
+    /// the time any consumer observes the cache state, queued forgets
+    /// have been applied.
+    pending_forgets: Rc<RefCell<Vec<i64>>>,
 }
 
 impl ImguiTextureCache {
@@ -28,10 +37,31 @@ impl ImguiTextureCache {
         Self {
             factory,
             cache: HashMap::new(),
+            pending_forgets: Rc::new(RefCell::new(Vec::new())),
+        }
+    }
+
+    /// Shared queue handle. Destructors that can't safely call
+    /// `forget()` directly (because the cache is borrowed elsewhere)
+    /// should hold an `Rc` clone of this and push their com_id on
+    /// drop. The cache picks the queued ids up on its next `&mut`
+    /// access.
+    pub fn pending_forgets_sink(&self) -> Rc<RefCell<Vec<i64>>> {
+        self.pending_forgets.clone()
+    }
+
+    fn drain_pending_forgets(&mut self) {
+        // Take ownership of the queued ids before iterating so handlers
+        // that drop other handles re-entrantly can append to the queue
+        // without aliasing the iterator.
+        let to_forget: Vec<i64> = self.pending_forgets.borrow_mut().drain(..).collect();
+        for id in to_forget {
+            self.cache.remove(&id);
         }
     }
 
     pub fn upload(&mut self, com_id: i64, tex: ComRc<ITexture>) -> Option<TextureId> {
+        self.drain_pending_forgets();
         if let Some(entry) = self.cache.get(&com_id) {
             return Some(entry.id);
         }
@@ -51,6 +81,7 @@ impl ImguiTextureCache {
         width: u32,
         height: u32,
     ) -> Option<TextureId> {
+        self.drain_pending_forgets();
         if let Some(entry) = self.cache.get(&com_id) {
             return Some(entry.id);
         }
@@ -94,6 +125,7 @@ impl ImguiTextureCache {
     /// owners (e.g. a video player) that recycle the same TextureId across
     /// frames. Re-calling overwrites the mapping.
     pub fn set_external(&mut self, com_id: i64, texture_id: TextureId) {
+        self.drain_pending_forgets();
         self.cache.insert(
             com_id,
             CachedTexture {
@@ -106,10 +138,12 @@ impl ImguiTextureCache {
     /// Drops the cached entry (and the owned GPU texture, if any) for
     /// `com_id`. Subsequent `resolve` calls will return None.
     pub fn forget(&mut self, com_id: i64) {
+        self.drain_pending_forgets();
         self.cache.remove(&com_id);
     }
 
     pub fn resolve(&mut self, com_id: i64) -> Option<TextureId> {
+        self.drain_pending_forgets();
         self.cache.get(&com_id).map(|entry| entry.id)
     }
 }

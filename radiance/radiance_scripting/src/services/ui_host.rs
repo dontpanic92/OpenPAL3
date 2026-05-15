@@ -418,6 +418,28 @@ impl IUiHostImpl for ImguiUiHost {
     fn mouse_wheel(&self) -> f32 {
         with_frame("mouse_wheel", |f| f.ui.io().mouse_wheel).unwrap_or(0.0)
     }
+
+    fn content_region_avail_x(&self) -> i32 {
+        with_frame("content_region_avail_x", |f| {
+            let [w, _] = f.ui.content_region_avail();
+            // Return in script-side (unscaled) units to match how
+            // widgets accept sizes; the value is meant to be fed back
+            // into `image(...)` (which scales it via `scaled_size`) or
+            // `IRenderTarget.resize(int, int)`.
+            let logical = if f.dpi_scale > 0.0 { w / f.dpi_scale } else { w };
+            logical.max(0.0) as i32
+        })
+        .unwrap_or(0)
+    }
+
+    fn content_region_avail_y(&self) -> i32 {
+        with_frame("content_region_avail_y", |f| {
+            let [_, h] = f.ui.content_region_avail();
+            let logical = if f.dpi_scale > 0.0 { h / f.dpi_scale } else { h };
+            logical.max(0.0) as i32
+        })
+        .unwrap_or(0)
+    }
 }
 
 fn map_mouse_button(button: i32) -> imgui::MouseButton {

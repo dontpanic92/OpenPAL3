@@ -138,15 +138,18 @@ pub fn render_tab_body_im(
     }
     if tab.kind == editor_consts.CONTENT_KIND_MODEL {
         if tab.preview_session != null {
-            // Embedded offscreen preview. The host renders the preview
-            // scene into `session.target()` once per frame (driven from
-            // the director's `update` via `host.render_pending_previews()`)
-            // and the offscreen color image is sampled here.
+            // Embedded offscreen preview. Fit the offscreen target to
+            // the tab's remaining content region every frame so the
+            // image fills the tab and stays correctly aspected; the
+            // target's `resize` is a no-op when the size is unchanged.
             let s = tab.preview_session!;
             let t = s.target();
-            let w = t.width() as float;
-            let h = t.height() as float;
-            let _ = ui.image(t.texture_id(), w, h);
+            let avail_w = ui.content_region_avail_x();
+            let avail_h = ui.content_region_avail_y();
+            let target_w = if avail_w >= 1 { avail_w } else { 1 };
+            let target_h = if avail_h >= 1 { avail_h } else { 1 };
+            let _ = t.resize(target_w, target_h);
+            let _ = ui.image(t.texture_id(), target_w as float, target_h as float);
 
             // Orbit/pan/zoom: cumulative drag deltas come from imgui, so
             // read + reset every frame to get incremental motion. We

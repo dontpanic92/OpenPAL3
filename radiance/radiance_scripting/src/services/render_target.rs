@@ -19,7 +19,12 @@ use crate::services::texture_cache::{next_handle_com_id, ImguiTextureCache};
 
 pub struct ScriptedRenderTarget {
     inner: Rc<RefCell<Box<dyn EngineRenderTarget>>>,
-    cache: Rc<RefCell<ImguiTextureCache>>,
+    /// Independent queue handle, NOT the cache itself. Pushing to this
+    /// on `Drop` is safe even while the cache is borrowed elsewhere
+    /// (which is the case for the entire imgui frame — the cache is
+    /// held in `borrow_mut()` by `ScriptedImmediateDirector::update`,
+    /// and GC can drop `ScriptedRenderTarget`s mid-frame).
+    pending_forgets: Rc<RefCell<Vec<i64>>>,
     com_id: i64,
 }
 
@@ -32,11 +37,15 @@ impl ScriptedRenderTarget {
     ) -> (ComRc<IRenderTarget>, Rc<RefCell<Box<dyn EngineRenderTarget>>>) {
         let com_id = next_handle_com_id();
         let tex_id = TextureId::new(target.imgui_texture_id() as usize);
-        cache.borrow_mut().set_external(com_id, tex_id);
+        let pending_forgets = {
+            let mut cache_ref = cache.borrow_mut();
+            cache_ref.set_external(com_id, tex_id);
+            cache_ref.pending_forgets_sink()
+        };
         let inner = Rc::new(RefCell::new(target));
         let com = ComRc::from_object(Self {
             inner: Rc::clone(&inner),
-            cache,
+            pending_forgets,
             com_id,
         });
         (com, inner)
@@ -55,14 +64,11 @@ impl IRenderTargetImpl for ScriptedRenderTarget {
     fn resize(&self, w: i32, h: i32) {
         let w = w.max(1) as u32;
         let h = h.max(1) as u32;
-        let new_id = {
-            let mut t = self.inner.borrow_mut();
-            t.resize(w, h);
-            TextureId::new(t.imgui_texture_id() as usize)
-        };
-        // Re-bind the same com_id to the new TextureId so scripts don't
-        // need to re-fetch after a resize.
-        self.cache.borrow_mut().set_external(self.com_id, new_id);
+        // The backend keeps `imgui_texture_id()` stable across resizes
+        // (descriptor is `upsert`-replaced in place), so the
+        // ImguiTextureCache entry registered in `create` remains valid
+        // without any further bookkeeping.
+        self.inner.borrow_mut().resize(w, h);
     }
 
     fn texture_id(&self) -> i32 {
@@ -77,6 +83,12 @@ impl IRenderTargetImpl for ScriptedRenderTarget {
 
 impl Drop for ScriptedRenderTarget {
     fn drop(&mut self) {
-        self.cache.borrow_mut().forget(self.com_id);
+        // Queue the com_id for cache removal. The cache drains its
+        // pending queue at the start of every `&mut self` method, so
+        // by the next imgui frame this entry is gone. We can't call
+        // `cache.borrow_mut().forget(...)` directly here because drop
+        // commonly fires from GC running inside the imgui frame, when
+        // the cache is held in `borrow_mut()` by the frame state.
+        self.pending_forgets.borrow_mut().push(self.com_id);
     }
 }

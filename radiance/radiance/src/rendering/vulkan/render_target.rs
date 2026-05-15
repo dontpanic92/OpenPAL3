@@ -40,14 +40,17 @@ const COLOR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 
 /// Resources that get recreated on every `resize`. Kept in their own
 /// struct so we can swap them out atomically and so `Drop` doesn't need
-/// to special-case half-initialized state.
+/// to special-case half-initialized state. Note: the `imgui::TextureId`
+/// is *not* part of this struct — it's stable for the target's whole
+/// lifetime (allocated in `new` and `upsert`-replaced on resize) so
+/// script code holding the id stays valid without having to re-fetch
+/// it through the texture cache after every resize.
 struct Attachments {
     _color_image: Image,
     _color_view: ImageView,
     _depth_image: Image,
     _depth_view: ImageView,
     framebuffer: vk::Framebuffer,
-    imgui_texture_id: TextureId,
 }
 
 pub struct VulkanRenderTarget {
@@ -67,6 +70,15 @@ pub struct VulkanRenderTarget {
 
     render_pass: RenderPass,
     attachments: Option<Attachments>,
+
+    /// Stable for the target's whole lifetime. Allocated once in `new`
+    /// and `upsert_texture`-replaced on every resize so the underlying
+    /// descriptor follows the new color view without invalidating the
+    /// id — meaning scripts holding `target.texture_id()` (and the
+    /// `ImguiTextureCache` entry routing that com_id to this id) stay
+    /// valid through resizes, and `resize` itself does not need to
+    /// reach for the texture cache.
+    imgui_texture_id: TextureId,
 
     uniform_buffer: Buffer,
     per_frame_descriptor_set: vk::DescriptorSet,
@@ -113,7 +125,7 @@ impl VulkanRenderTarget {
 
         let w = width.max(1);
         let h = height.max(1);
-        let attachments = build_attachments(
+        let (attachments, imgui_texture_id) = build_attachments(
             &device,
             &descriptor_manager,
             &allocator,
@@ -121,6 +133,7 @@ impl VulkanRenderTarget {
             physical_device,
             &render_pass,
             &imgui,
+            None,
             w,
             h,
         )?;
@@ -139,6 +152,7 @@ impl VulkanRenderTarget {
             height: h,
             render_pass,
             attachments: Some(attachments),
+            imgui_texture_id,
             uniform_buffer,
             per_frame_descriptor_set,
             command_buffer,
@@ -195,13 +209,14 @@ impl RenderTarget for VulkanRenderTarget {
         self.device.wait_idle();
 
         if let Some(old) = self.attachments.take() {
-            self.imgui
-                .borrow_mut()
-                .remove_texture(Some(old.imgui_texture_id));
+            // Don't remove_texture here — we want to KEEP the imgui
+            // TextureId stable across resizes. The new attachments
+            // build below will `upsert_texture(Some(id), new_descriptor)`
+            // which replaces the underlying descriptor in place.
             self.device.destroy_framebuffer(old.framebuffer);
         }
 
-        let new_attachments = build_attachments(
+        let (new_attachments, _new_id) = build_attachments(
             &self.device,
             &self.descriptor_manager,
             &self.allocator,
@@ -209,6 +224,7 @@ impl RenderTarget for VulkanRenderTarget {
             self.physical_device,
             &self.render_pass,
             &self.imgui,
+            Some(self.imgui_texture_id),
             w,
             h,
         )
@@ -220,20 +236,18 @@ impl RenderTarget for VulkanRenderTarget {
     }
 
     fn imgui_texture_id(&self) -> u64 {
-        self.attachments
-            .as_ref()
-            .map(|a| a.imgui_texture_id.id() as u64)
-            .unwrap_or(0)
+        self.imgui_texture_id.id() as u64
     }
 }
 
 impl Drop for VulkanRenderTarget {
     fn drop(&mut self) {
         self.device.wait_idle();
+        // Now we DO release the texture id, since this target owns it.
+        self.imgui
+            .borrow_mut()
+            .remove_texture(Some(self.imgui_texture_id));
         if let Some(old) = self.attachments.take() {
-            self.imgui
-                .borrow_mut()
-                .remove_texture(Some(old.imgui_texture_id));
             self.device.destroy_framebuffer(old.framebuffer);
         }
         if self.render_finished_semaphore != vk::Semaphore::null() {
@@ -271,9 +285,10 @@ fn build_attachments(
     physical_device: vk::PhysicalDevice,
     render_pass: &RenderPass,
     imgui: &Rc<RefCell<ImguiRenderer>>,
+    existing_texture_id: Option<TextureId>,
     width: u32,
     height: u32,
-) -> Result<Attachments, Box<dyn Error>> {
+) -> Result<(Attachments, TextureId), Box<dyn Error>> {
     let color_image = Image::new_color_attachment_image(allocator, width, height)?;
     let color_view = ImageView::new_color_image_view(
         device.clone(),
@@ -298,14 +313,23 @@ fn build_attachments(
 
     let descriptor_set =
         descriptor_manager.create_image_view_descriptor_set(color_view.vk_image_view());
-    let texture_id = imgui.borrow_mut().upsert_texture(None, descriptor_set);
+    // When `existing_texture_id` is `Some(id)`, `upsert_texture` swaps
+    // the descriptor bound to that id and frees the old one — keeping
+    // the id stable across resizes (critical: the texture cache, which
+    // is held in `borrow_mut()` for the whole imgui frame, must not be
+    // re-bound from within a script-triggered `resize`).
+    let texture_id = imgui
+        .borrow_mut()
+        .upsert_texture(existing_texture_id, descriptor_set);
 
-    Ok(Attachments {
-        _color_image: color_image,
-        _color_view: color_view,
-        _depth_image: depth_image,
-        _depth_view: depth_view,
-        framebuffer,
-        imgui_texture_id: texture_id,
-    })
+    Ok((
+        Attachments {
+            _color_image: color_image,
+            _color_view: color_view,
+            _depth_image: depth_image,
+            _depth_view: depth_view,
+            framebuffer,
+        },
+        texture_id,
+    ))
 }

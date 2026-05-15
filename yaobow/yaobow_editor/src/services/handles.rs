@@ -32,7 +32,11 @@ pub struct ImageHandle {
     width: u32,
     height: u32,
     com_id: i64,
-    cache: Rc<RefCell<ImguiTextureCache>>,
+    /// Independent queue used by `Drop` so cache cleanup never tries to
+    /// `borrow_mut()` the cache while it's held by an active imgui
+    /// frame (`ScriptedImmediateDirector::update`). See
+    /// `ImguiTextureCache::pending_forgets_sink` for details.
+    pending_forgets: Rc<RefCell<Vec<i64>>>,
 }
 
 ComObject_ImageHandle!(super::ImageHandle);
@@ -45,21 +49,28 @@ impl ImageHandle {
         height: u32,
     ) -> Option<ComRc<IImageHandle>> {
         let com_id = next_handle_com_id();
-        cache
-            .borrow_mut()
-            .upload_pixels(com_id, pixels, width, height)?;
+        let pending_forgets = {
+            let mut c = cache.borrow_mut();
+            c.upload_pixels(com_id, pixels, width, height)?;
+            c.pending_forgets_sink()
+        };
         Some(ComRc::from_object(Self {
             width,
             height,
             com_id,
-            cache,
+            pending_forgets,
         }))
     }
 }
 
 impl Drop for ImageHandle {
     fn drop(&mut self) {
-        self.cache.borrow_mut().forget(self.com_id);
+        // Queue the com_id for cache removal; the cache drains its
+        // queue on the next `&mut self` access. We can't call
+        // `cache.borrow_mut().forget(...)` directly because GC can
+        // drop this handle mid-imgui-frame while the cache is held in
+        // `borrow_mut()` by the frame state.
+        self.pending_forgets.borrow_mut().push(self.com_id);
     }
 }
 
@@ -127,6 +138,7 @@ pub struct VideoHandle {
     height: u32,
     com_id: i64,
     cache: Rc<RefCell<ImguiTextureCache>>,
+    pending_forgets: Rc<RefCell<Vec<i64>>>,
     last_texture: RefCell<Option<imgui::TextureId>>,
 }
 
@@ -140,12 +152,14 @@ impl VideoHandle {
         height: u32,
     ) -> ComRc<IVideoHandle> {
         let com_id = next_handle_com_id();
+        let pending_forgets = cache.borrow().pending_forgets_sink();
         ComRc::from_object(Self {
             player: RefCell::new(player),
             width,
             height,
             com_id,
             cache,
+            pending_forgets,
             last_texture: RefCell::new(None),
         })
     }
@@ -153,7 +167,10 @@ impl VideoHandle {
 
 impl Drop for VideoHandle {
     fn drop(&mut self) {
-        self.cache.borrow_mut().forget(self.com_id);
+        // See `ImageHandle::Drop` — queue the cache removal because
+        // GC may fire this destructor mid-imgui-frame while the cache
+        // is held in `borrow_mut()` by the frame state.
+        self.pending_forgets.borrow_mut().push(self.com_id);
     }
 }
 

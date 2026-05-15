@@ -67,6 +67,13 @@ impl PreviewState {
         let eye = orbit.eye();
         let camera = self.scene.camera();
         let mut camera = camera.borrow_mut();
+        // Keep the projection's aspect ratio synchronized with the
+        // target's current pixel extent so resizing the editor tab
+        // doesn't squish the rendered model.
+        let (tw, th) = self.target.borrow().extent();
+        if tw > 0 && th > 0 {
+            camera.set_aspect(tw as f32 / th as f32);
+        }
         camera.transform_mut().set_position(&eye).look_at(&orbit.focus);
     }
 }

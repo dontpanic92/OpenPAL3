@@ -81,6 +81,15 @@ interface IUiHost: IUnknown {
     float mouse_drag_delta_y(int button);
     void reset_mouse_drag_delta(int button);
     float mouse_wheel();
+
+    // Available content region of the current container, in scaled
+    // pixels. Useful when sizing widgets (e.g. an offscreen render
+    // target's `ui.image(...)`) to fill the remaining space. Returned
+    // as int because the primary consumer (`IRenderTarget.resize`)
+    // takes integer pixel extents, and p7 doesn't have an implicit
+    // float→int cast.
+    int content_region_avail_x();
+    int content_region_avail_y();
 }
 
 [uuid(7d3c8a44-58f1-4d12-9c4b-1a2f9c0e0d02)]

@@ -105,15 +105,30 @@ impl Transform {
     pub fn look_at(&mut self, target: &Vec3) -> &mut Self {
         let position = Vec3::new(self.mat[0][3], self.mat[1][3], self.mat[2][3]);
         let forward = Vec3::normalized(&Vec3::sub(&position, target));
+        // `right` must be a unit vector orthogonal to `forward`. The
+        // `cross(UP, forward)` shortcut produces a vector of magnitude
+        // `sin(angle(UP, forward))`, which collapses toward zero as
+        // forward approaches the world-up axis — yielding a degenerate
+        // basis at high orbit pitches. Explicitly normalize, and
+        // fall back to a fixed axis at the exact pole.
         let right = if (forward.y - 1.).abs() <= Self::EPS
             && forward.x.abs() <= Self::EPS
             && forward.z.abs() <= Self::EPS
         {
             Vec3::new(1., 0., 0.)
+        } else if (forward.y + 1.).abs() <= Self::EPS
+            && forward.x.abs() <= Self::EPS
+            && forward.z.abs() <= Self::EPS
+        {
+            // Looking straight up: pick the same canonical right so the
+            // upper and lower poles agree.
+            Vec3::new(1., 0., 0.)
         } else {
-            Vec3::cross(&Vec3::UP, &forward)
+            Vec3::normalized(&Vec3::cross(&Vec3::UP, &forward))
         };
 
+        // `forward` and `right` are unit and orthogonal, so this `up` is
+        // already a unit vector — no extra normalization needed.
         let up = Vec3::cross(&forward, &right);
 
         self.mat[0][0] = right.x;
