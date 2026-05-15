@@ -67,6 +67,35 @@ struct HAnimBone {
     slot_to_hanim_index: Vec<u32>,
 }
 
+/// How a frame should be wired into the clump's entity hierarchy.
+#[derive(Debug, PartialEq, Eq)]
+enum FrameAttachment {
+    /// Frame at index 0: aliased to the caller-provided clump root and
+    /// therefore already in the scene graph (no attach needed).
+    ImplicitRoot,
+    /// Frame attaches directly to the caller-provided clump root. The
+    /// `self_parent` flag distinguishes between an explicit "`parent == -1`"
+    /// frame and a self-parent (`parent == own_index`) frame used by some
+    /// PAL5 exporters to mean "attach to clump root".
+    ClumpRoot { self_parent: bool },
+    /// Frame attaches to another frame at the given index.
+    Child(usize),
+}
+
+/// Classify how a frame should be wired given its `parent` field and its
+/// own index in the clump's frame array.
+fn frame_attachment(parent: i32, index: usize) -> FrameAttachment {
+    if index == 0 {
+        FrameAttachment::ImplicitRoot
+    } else if parent < 0 {
+        FrameAttachment::ClumpRoot { self_parent: false }
+    } else if parent == index as i32 {
+        FrameAttachment::ClumpRoot { self_parent: true }
+    } else {
+        FrameAttachment::Child(parent as usize)
+    }
+}
+
 pub(crate) struct SkinnedMeshInfo {
     armature: ComRc<IArmatureComponent>,
     v_weights: Vec<[f32; 4]>,
@@ -86,15 +115,27 @@ fn load_clump(
     let entities: Vec<(ComRc<IEntity>, Option<ComRc<IEntity>>)> = chunk
         .frames
         .iter()
-        .map(|f| {
-            let entity =
-                CoreEntity::create(f.name().unwrap_or(format!("{}_frame", parent.name())), true);
-            let m = create_matrix(f);
-            entity
-                .transform()
-                .as_ref()
-                .borrow_mut()
-                .set_matrix(m.clone());
+        .enumerate()
+        .map(|(i, f)| {
+            // RW's `frames[0]` is the implicit clump root with identity
+            // transform. Aliasing it to the caller-provided `parent`
+            // collapses the redundant transform level that would otherwise
+            // appear under every clump.
+            let entity = if i == 0 {
+                debug_assert!(
+                    is_identity_frame(f),
+                    "DFF clump frames[0] expected to be identity transform",
+                );
+                parent.clone()
+            } else {
+                let e = CoreEntity::create(
+                    f.name().unwrap_or(format!("{}_frame", parent.name())),
+                    true,
+                );
+                let m = create_matrix(f);
+                e.transform().as_ref().borrow_mut().set_matrix(m);
+                e
+            };
             let bone = if let Some(hanim) = f.hanim_plugin() {
                 let bone =
                     CoreEntity::create(format!("{}_bone", f.name().unwrap_or_default()), false);
@@ -157,19 +198,32 @@ fn load_clump(
     };
 
     for i in 0..chunk.frames.len() {
-        if chunk.frames[i].parent < 0 {
-            parent.attach(entities[i].0.clone());
-        } else if chunk.frames[i].parent != i as i32 {
-            let parent_id = chunk.frames[i].parent as usize;
-            entities[parent_id].0.attach(entities[i].0.clone());
-            match (&entities[parent_id].1, &entities[i].1) {
-                (Some(parent_bone), Some(bone)) => {
-                    parent_bone.attach(bone.clone());
-                }
-                _ => {}
+        match frame_attachment(chunk.frames[i].parent, i) {
+            FrameAttachment::ImplicitRoot => {
+                // entities[0].0 is aliased to `parent`; nothing to attach.
             }
-        } else {
-            log::warn!("Ignored orphan frame");
+            FrameAttachment::ClumpRoot { self_parent } => {
+                if self_parent {
+                    // Some PAL5 effect exporters write `parent = own_index`
+                    // to mean "attach to clump root". Treating this as
+                    // orphan (the historical behaviour) silently dropped
+                    // the geometry; route it to the clump root instead.
+                    log::trace!(
+                        "DFF frame {} self-parents; attaching as clump root",
+                        i
+                    );
+                }
+                parent.attach(entities[i].0.clone());
+            }
+            FrameAttachment::Child(parent_id) => {
+                entities[parent_id].0.attach(entities[i].0.clone());
+                match (&entities[parent_id].1, &entities[i].1) {
+                    (Some(parent_bone), Some(bone)) => {
+                        parent_bone.attach(bone.clone());
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -196,6 +250,18 @@ fn load_clump(
         let frame = &chunk.frames[atomic.frame as usize];
         if check_frame_name(frame) {
             continue;
+        }
+
+        if frame.is_hanim_bone() {
+            // Atomics targeting a frame whose matrix_flags mark it as an
+            // HAnim bone are unusual (typical for weapon-mount style
+            // attachments). Log for diagnostics; do not skip — the
+            // geometry is still legitimate.
+            log::trace!(
+                "DFF atomic targets HAnim bone frame {} (matrix_flags=0x{:08x})",
+                atomic.frame,
+                frame.matrix_flags(),
+            );
         }
 
         let entity = entities[atomic.frame as usize].0.clone();
@@ -557,6 +623,17 @@ fn create_matrix(frame: &Frame) -> Mat44 {
     mat
 }
 
+/// Whether `frame` carries an identity rotation+translation. Used as a
+/// debug-only sanity check when collapsing the implicit clump root.
+fn is_identity_frame(frame: &Frame) -> bool {
+    const EPS: f32 = 1e-5;
+    let close = |a: f32, b: f32| (a - b).abs() <= EPS;
+    close(frame.right.x, 1.0) && close(frame.right.y, 0.0) && close(frame.right.z, 0.0)
+        && close(frame.up.x, 0.0) && close(frame.up.y, 1.0) && close(frame.up.z, 0.0)
+        && close(frame.at.x, 0.0) && close(frame.at.y, 0.0) && close(frame.at.z, 1.0)
+        && close(frame.pos.x, 0.0) && close(frame.pos.y, 0.0) && close(frame.pos.z, 0.0)
+}
+
 fn create_mat44_from_matrix44f(m: &Matrix44f) -> Mat44 {
     let mut mat = Mat44::new_identity();
     mat.floats_mut()[0][0] = m.0[0];
@@ -800,5 +877,73 @@ fn apply_mask_alpha(main: &mut image::RgbaImage, mask: &image::RgbaImage) {
             let luma = ((mp.0[0] as u16 + mp.0[1] as u16 + mp.0[2] as u16) / 3) as u8;
             main.get_pixel_mut(x, y).0[3] = luma;
         }
+    }
+}
+
+
+#[cfg(test)]
+mod hierarchy_tests {
+    use super::*;
+    use fileformats::rwbs::frame::FRAME_MATRIX_FLAG_HANIM_BONE;
+
+    fn make_test_frame(parent: i32, matrix_flags: u32) -> Frame {
+        Frame {
+            right: Vec3f { x: 1.0, y: 0.0, z: 0.0 },
+            up: Vec3f { x: 0.0, y: 1.0, z: 0.0 },
+            at: Vec3f { x: 0.0, y: 0.0, z: 1.0 },
+            pos: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
+            parent,
+            matrix_flags,
+            extensions: vec![],
+        }
+    }
+
+    #[test]
+    fn frame_attachment_index_zero_is_implicit_root_regardless_of_parent() {
+        assert_eq!(frame_attachment(-1, 0), FrameAttachment::ImplicitRoot);
+        assert_eq!(frame_attachment(0, 0), FrameAttachment::ImplicitRoot);
+        assert_eq!(frame_attachment(42, 0), FrameAttachment::ImplicitRoot);
+    }
+
+    #[test]
+    fn frame_attachment_negative_parent_is_clump_root_non_self() {
+        assert_eq!(
+            frame_attachment(-1, 3),
+            FrameAttachment::ClumpRoot { self_parent: false }
+        );
+    }
+
+    #[test]
+    fn frame_attachment_self_parent_is_clump_root_self() {
+        assert_eq!(
+            frame_attachment(7, 7),
+            FrameAttachment::ClumpRoot { self_parent: true }
+        );
+    }
+
+    #[test]
+    fn frame_attachment_other_parent_is_child() {
+        assert_eq!(frame_attachment(2, 5), FrameAttachment::Child(2));
+    }
+
+    #[test]
+    fn is_identity_frame_recognises_synthetic_identity() {
+        let f = make_test_frame(-1, 0);
+        assert!(is_identity_frame(&f));
+    }
+
+    #[test]
+    fn is_identity_frame_rejects_translated_frame() {
+        let mut f = make_test_frame(-1, 0);
+        f.pos.x = 1.0;
+        assert!(!is_identity_frame(&f));
+    }
+
+    #[test]
+    fn frame_matrix_flags_bone_bit_round_trips() {
+        let bone_frame = make_test_frame(0, FRAME_MATRIX_FLAG_HANIM_BONE);
+        let plain_frame = make_test_frame(0, 0);
+        assert!(bone_frame.is_hanim_bone());
+        assert!(!plain_frame.is_hanim_bone());
     }
 }

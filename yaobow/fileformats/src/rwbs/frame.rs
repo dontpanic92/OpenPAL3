@@ -15,10 +15,16 @@ pub struct Frame {
     pub at: Vec3f,
     pub pos: Vec3f,
     pub parent: i32,
-    pub unknown: u32,
+    /// Matrix flags inherited from the parent (RW per-frame flags).
+    /// Bit 1 (`0x2`) indicates the frame participates in HAnim as a bone.
+    /// Historically parsed as an anonymous `unknown` field.
+    pub matrix_flags: u32,
 
     pub extensions: Vec<Extension>,
 }
+
+/// Bit in `Frame::matrix_flags` indicating the frame is an HAnim bone.
+pub const FRAME_MATRIX_FLAG_HANIM_BONE: u32 = 0x2;
 
 impl Frame {
     pub fn read(cursor: &mut dyn Read) -> anyhow::Result<Self> {
@@ -27,7 +33,7 @@ impl Frame {
         let at = Self::read_vec3(cursor)?;
         let pos = Self::read_vec3(cursor)?;
         let parent = cursor.read_i32::<LittleEndian>()?;
-        let unknown = cursor.read_u32_le()?;
+        let matrix_flags = cursor.read_u32_le()?;
 
         Ok(Self {
             right,
@@ -35,9 +41,22 @@ impl Frame {
             at,
             pos,
             parent,
-            unknown,
+            matrix_flags,
             extensions: vec![],
         })
+    }
+
+    /// Raw parent matrix-flags field, as stored in the RW frame record.
+    pub fn matrix_flags(&self) -> u32 {
+        self.matrix_flags
+    }
+
+    /// Whether the frame is tagged as an HAnim bone by its matrix flags.
+    /// Some exporters set this bit independently of attaching an
+    /// `HAnimPlugin` extension, so callers that care about bone identity
+    /// should cross-check with [`Frame::hanim_plugin`].
+    pub fn is_hanim_bone(&self) -> bool {
+        self.matrix_flags & FRAME_MATRIX_FLAG_HANIM_BONE != 0
     }
 
     pub fn set_extensions(&mut self, ext: Vec<Extension>) {
@@ -107,9 +126,35 @@ mod tests {
             at: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
             pos: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
             parent: -1,
-            unknown: 0,
+            matrix_flags: 0,
             extensions,
         }
+    }
+
+    fn make_frame_with_flags(matrix_flags: u32) -> Frame {
+        let mut f = make_frame(vec![]);
+        f.matrix_flags = matrix_flags;
+        f
+    }
+
+    #[test]
+    fn matrix_flags_bit_1_marks_hanim_bone() {
+        let f = make_frame_with_flags(FRAME_MATRIX_FLAG_HANIM_BONE);
+        assert!(f.is_hanim_bone());
+        assert_eq!(f.matrix_flags(), 0x2);
+    }
+
+    #[test]
+    fn matrix_flags_zero_is_not_a_bone() {
+        let f = make_frame_with_flags(0);
+        assert!(!f.is_hanim_bone());
+    }
+
+    #[test]
+    fn matrix_flags_other_bits_do_not_imply_bone() {
+        let f = make_frame_with_flags(0xFFFF_FFFD); // every bit except bit 1
+        assert!(!f.is_hanim_bone());
+        assert_eq!(f.matrix_flags() & FRAME_MATRIX_FLAG_HANIM_BONE, 0);
     }
 
     #[test]
