@@ -2,8 +2,8 @@ use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
 
 use crosscom::ComRc;
 use fileformats::rwbs::{
-    clump::Clump, extension::Extension, frame::Frame, material::Material,
-    plugins::hanim::HAnimBone as RwHAnimBone, read_dff, Matrix44f, TexCoord, Triangle, Vec3f,
+    clump::Clump, extension::Extension, frame::Frame, material::Material, read_dff, Matrix44f,
+    TexCoord, Triangle, Vec3f,
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
@@ -120,16 +120,16 @@ fn load_clump(
         .collect();
 
     let hanim_bone = if let Some((root_bone, hanim_bones_list)) = &root_bone {
-        // Sort the HAnim bones by their `index` field; this preserves the
-        // historical slot ordering and matches the order RW exporters write
-        // the `SkinPlugin.matrix` array in.
-        let mut sorted: Vec<&RwHAnimBone> = hanim_bones_list.iter().collect();
-        sorted.sort_by_key(|b| b.index);
-
+        // Iterate HAnim bones in file order. The matrix-to-bone correspondence
+        // is preserved via `slot_to_hanim_index` (used below to look up
+        // `SkinPlugin.matrix[hanim_index]`), so slot order is independent of
+        // the bones' `index` field. PAL5 exporters sometimes write bones in
+        // author order rather than sorted by `index`; sorting here would
+        // shuffle the slot-to-bone correspondence relative to the file.
         let mut bones = vec![];
         let mut hanim_id_to_slot: HashMap<u32, usize> = HashMap::new();
         let mut slot_to_hanim_index: Vec<u32> = vec![];
-        for b in &sorted {
+        for b in hanim_bones_list {
             let bone_entity = match bone_id_map.get(&b.id) {
                 Some(e) => e.clone(),
                 None => {

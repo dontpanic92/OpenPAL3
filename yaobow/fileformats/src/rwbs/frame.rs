@@ -65,7 +65,20 @@ impl Frame {
         for e in &self.extensions {
             if let Extension::UserDataPlugin(u) = e {
                 if let Some(names) = u.data().get("name") {
-                    return names.get(0).and_then(|s| s.get_string());
+                    if let Some(name) = names.get(0).and_then(|s| s.get_string()) {
+                        return Some(name);
+                    }
+                }
+            }
+        }
+
+        for e in &self.extensions {
+            if let Extension::NodeNamePlugin(n) = e {
+                let trimmed = n
+                    .name()
+                    .trim_end_matches(|c: char| c == '\0' || c.is_whitespace());
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_owned());
                 }
             }
         }
@@ -78,5 +91,60 @@ impl Frame {
         let y = cursor.read_f32::<LittleEndian>()?;
         let z = cursor.read_f32::<LittleEndian>()?;
         Ok(Vec3f { x, y, z })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rwbs::extension::{NodeNamePlugin, UserData, UserDataPlugin};
+    use std::collections::HashMap;
+
+    fn make_frame(extensions: Vec<Extension>) -> Frame {
+        Frame {
+            right: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
+            up: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
+            at: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
+            pos: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
+            parent: -1,
+            unknown: 0,
+            extensions,
+        }
+    }
+
+    #[test]
+    fn name_falls_back_to_node_name_plugin_and_trims_padding() {
+        let frame = make_frame(vec![Extension::NodeNamePlugin(
+            NodeNamePlugin::new_for_test("Bip01_Head\0\0".to_string()),
+        )]);
+        assert_eq!(frame.name().as_deref(), Some("Bip01_Head"));
+    }
+
+    #[test]
+    fn user_data_plugin_takes_priority_over_node_name_plugin() {
+        let mut data = HashMap::new();
+        data.insert(
+            "name".to_string(),
+            vec![UserData::String("FromUserData".to_string())],
+        );
+        let frame = make_frame(vec![
+            Extension::NodeNamePlugin(NodeNamePlugin::new_for_test("FromNodeName".to_string())),
+            Extension::UserDataPlugin(UserDataPlugin::new_for_test(data)),
+        ]);
+        assert_eq!(frame.name().as_deref(), Some("FromUserData"));
+    }
+
+    #[test]
+    fn name_returns_none_when_no_name_plugin_present() {
+        let frame = make_frame(vec![]);
+        assert_eq!(frame.name(), None);
+    }
+
+    #[test]
+    fn empty_node_name_after_trim_returns_none() {
+        let frame = make_frame(vec![Extension::NodeNamePlugin(
+            NodeNamePlugin::new_for_test("\0\0\0".to_string()),
+        )]);
+        assert_eq!(frame.name(), None);
     }
 }

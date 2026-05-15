@@ -179,6 +179,15 @@ impl NodeNamePlugin {
             .unwrap();
         Ok(Self { name })
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(name: String) -> Self {
+        Self { name }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -230,6 +239,11 @@ impl UserDataPlugin {
 
     pub fn data(&self) -> &HashMap<String, Vec<UserData>> {
         &self.data
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(data: HashMap<String, Vec<UserData>>) -> Self {
+        Self { data }
     }
 
     fn read_string(cursor: &mut dyn Read) -> anyhow::Result<String> {
