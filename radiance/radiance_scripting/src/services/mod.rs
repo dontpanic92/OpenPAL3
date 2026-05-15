@@ -3,6 +3,9 @@ pub mod game_registry;
 pub mod input;
 pub mod texture;
 pub mod texture_cache;
+pub mod texture_resolver;
+pub mod ui_host;
+pub mod ui_host_recording;
 pub mod vfs;
 
 use std::cell::RefCell;

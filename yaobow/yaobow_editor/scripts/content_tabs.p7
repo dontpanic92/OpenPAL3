@@ -1,8 +1,13 @@
-// Content-tab data type and renderers. Consumed by `main_editor`; the
-// per-kind command-base constants live in `editor_consts`.
+// Content-tab data + immediate-mode tab body renderer. Consumed by
+// `main_editor` (H4 of generated/plan.md). The legacy command-id-based
+// preview/toggle dispatch is gone; per-frame intents now travel via
+// (a) direct calls into the previewer handles (audio/video toggle), or
+// (b) `box<array<int>>` slots written by buttons and drained by the
+// owning director's `update` (model preview, since it mutates the
+// owning tab's `preview_session` field).
 
 import yaobow_editor_services;
-import ui;
+import ui_host;
 import editor_consts;
 
 pub struct ContentTab(
@@ -80,45 +85,63 @@ pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: st
     return null;
 }
 
-pub fn render_tab_body(tab: ref<ContentTab>) -> ui.UiNode {
+// Immediate-mode body renderer. Called from inside the owning
+// `ui.tab_item(...)` body. `preview_intents` collects close_cmds for
+// which the user pressed "Preview" on a model tab; the owning
+// director's `update` opens the actual preview session (which mutates
+// the owning tab via indexed array assignment — not legal through a
+// `ref<ContentTab>` capture).
+pub fn render_tab_body_im(
+    ui: box<ui_host.IUiHost>,
+    tab: ref<ContentTab>,
+    preview_intents: box<array<int>>,
+) {
     if tab.kind == editor_consts.CONTENT_KIND_TEXT || tab.kind == editor_consts.CONTENT_KIND_STRUCTURED {
-        return ui.multiline_text(tab.text_content, -1.0, -1.0);
+        let _ = ui.multiline_text(tab.text_content, -1.0, -1.0);
+        return;
     }
     if tab.kind == editor_consts.CONTENT_KIND_IMAGE {
         if tab.image_handle != null {
             let h = tab.image_handle!;
-            return ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
+            let _ = ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
+        } else {
+            let _ = ui.text("Unable to load image");
         }
-        return ui.text("Unable to load image");
+        return;
     }
     if tab.kind == editor_consts.CONTENT_KIND_AUDIO {
         if tab.audio_handle != null {
             let h = tab.audio_handle!;
             let label = if h.state() == 1 { "Pause" } else { "Play" };
-            return ui.column([
-                ui.text(f"Audio: {tab.label}"),
-                ui.button(label, 80.0, 24.0, editor_consts.AUDIO_TOGGLE_CMD_BASE + tab.close_cmd),
-            ]);
+            let _ = ui.text(f"Audio: {tab.label}");
+            if ui.button(label, 80.0, 24.0) != 0 {
+                let _ = h.toggle();
+            }
+        } else {
+            let _ = ui.text("Unable to load audio");
         }
-        return ui.text("Unable to load audio");
+        return;
     }
     if tab.kind == editor_consts.CONTENT_KIND_VIDEO {
         if tab.video_handle != null {
             let h = tab.video_handle!;
             let label = if h.state() == 1 { "Pause" } else { "Play" };
-            return ui.column([
-                ui.text(f"Video: {tab.label}"),
-                ui.button(label, 80.0, 24.0, editor_consts.VIDEO_TOGGLE_CMD_BASE + tab.close_cmd),
-                ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float),
-            ]);
+            let _ = ui.text(f"Video: {tab.label}");
+            if ui.button(label, 80.0, 24.0) != 0 {
+                let _ = h.toggle();
+            }
+            let _ = ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
+        } else {
+            let _ = ui.text("Video format not supported");
         }
-        return ui.text("Video format not supported");
+        return;
     }
     if tab.kind == editor_consts.CONTENT_KIND_MODEL {
-        return ui.column([
-            ui.button("Preview", 100.0, 24.0, editor_consts.MODEL_PREVIEW_CMD_BASE + tab.close_cmd),
-            ui.multiline_text(tab.text_content, -1.0, -1.0),
-        ]);
+        if ui.button("Preview", 100.0, 24.0) != 0 {
+            preview_intents.push(tab.close_cmd);
+        }
+        let _ = ui.multiline_text(tab.text_content, -1.0, -1.0);
+        return;
     }
-    return ui.text("Unsupported preview");
+    let _ = ui.text("Unsupported preview");
 }

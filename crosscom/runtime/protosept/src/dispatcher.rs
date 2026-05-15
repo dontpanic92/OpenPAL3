@@ -36,7 +36,9 @@ use std::ffi::{c_char, c_float, c_long, c_void, CString};
 use std::os::raw::c_int;
 use std::rc::Rc;
 
+use crate::script_proxy::wrap_action;
 use crate::{with_services, ComObjectTable};
+use crosscom::{ComInterface, IAction};
 use libffi::middle::{arg, Arg, Cif, CodePtr, Type};
 use p7::errors::RuntimeError;
 use p7::interpreter::context::{Context, Data};
@@ -262,15 +264,29 @@ fn classify_pop(
         Data::ProtoBoxRef {
             box_idx,
             generation,
-            ..
-        }
-        | Data::ProtoRefRef {
+            concrete_type_id,
+            origin_module_idx,
+        } => classify_foreign_box(
+            ctx,
+            box_idx,
+            generation,
+            Some((concrete_type_id, origin_module_idx)),
+            recv_tag,
+        ),
+        Data::ProtoRefRef {
             ref_idx: box_idx,
             generation,
-            ..
-        } => classify_foreign_box(ctx, box_idx, generation, recv_tag),
+            concrete_type_id,
+            origin_module_idx,
+        } => classify_foreign_box(
+            ctx,
+            box_idx,
+            generation,
+            Some((concrete_type_id, origin_module_idx)),
+            recv_tag,
+        ),
         Data::BoxRef { idx, generation } => {
-            classify_foreign_box(ctx, idx, generation, recv_tag)
+            classify_foreign_box(ctx, idx, generation, None, recv_tag)
         }
         other => Err(RuntimeError::Other(format!(
             "com.invoke: unsupported argument shape: {:?}",
@@ -283,6 +299,7 @@ fn classify_foreign_box(
     ctx: &mut Context,
     box_idx: u32,
     generation: u32,
+    proto_origin: Option<(u32, u32)>,
     recv_tag: &str,
 ) -> Result<ClassifiedPop, RuntimeError> {
     let payload = ctx.box_heap.get(box_idx, generation)?.clone();
@@ -318,11 +335,94 @@ fn classify_foreign_box(
                 p as *const c_void,
             )))
         }
-        other => Err(RuntimeError::Other(format!(
-            "com.invoke: box did not contain a Foreign value: {:?}",
-            other
-        ))),
+        other => {
+            // Not a Foreign-payload box. This may still be a valid
+            // crosscom arg if the script value is a struct that
+            // *conforms to* a known `@foreign` proto (the SAM-coerced
+            // closure / explicit `struct[F] X(...)` pattern from §L1/
+            // §L2). Wrap it as a Rust-side CCW (`wrap_action` for
+            // `IAction`), intern, and pass the raw pointer.
+            let (concrete_type_id, origin_module_idx) = proto_origin.ok_or_else(|| {
+                RuntimeError::Other(format!(
+                    "com.invoke: box did not contain a Foreign value: {:?}",
+                    other
+                ))
+            })?;
+            classify_script_impl_arg(ctx, box_idx, generation, concrete_type_id, origin_module_idx)
+        }
     }
+}
+
+/// Handle a script-impl-of-foreign-proto argument: look up the
+/// concrete struct's foreign-conforming proto, wrap the value as the
+/// matching Rust CCW (`wrap_action` for IAction in v1), intern, and
+/// return the raw COM pointer.
+fn classify_script_impl_arg(
+    ctx: &mut Context,
+    box_idx: u32,
+    generation: u32,
+    concrete_type_id: u32,
+    origin_module_idx: u32,
+) -> Result<ClassifiedPop, RuntimeError> {
+    let tag = ctx
+        .struct_first_foreign_proto_tag(origin_module_idx as usize, concrete_type_id)
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            RuntimeError::Other(format!(
+                "com.invoke: script value (struct id {}) does not conform to any @foreign proto",
+                concrete_type_id
+            ))
+        })?;
+
+    // v1: only IAction is supported as a script-impl arg.
+    if tag != "crosscom.IAction" {
+        return Err(RuntimeError::Other(format!(
+            "com.invoke: script-impl arg for foreign proto '{}' is not supported in v1 \
+             (only crosscom.IAction is wrapped via wrap_action)",
+            tag
+        )));
+    }
+
+    // Wrap the script box as `ComRc<IAction>`. wrap_action holds an
+    // external root on the underlying script box, so re-entrant
+    // invocations across the host boundary remain valid until the CCW
+    // is released. We pass through the original `ProtoBoxRef` so that
+    // when the CCW's `invoke` thunk later calls
+    // `Context::push_proto_method`, the receiver carries the concrete
+    // type id + origin module needed for vtable resolution.
+    let data = Data::ProtoBoxRef {
+        box_idx,
+        generation,
+        concrete_type_id,
+        origin_module_idx,
+    };
+    let com_rc = wrap_action(ctx, data)
+        .map_err(|e| RuntimeError::Other(format!("com.invoke: wrap_action failed: {}", e)))?;
+
+    let handle = with_services(|s| s.com_table_mut().intern(com_rc))
+        .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?;
+
+    let uuid_bytes = IAction::INTERFACE_ID;
+    let p: *const *const c_void =
+        with_services(|s| s.com_table_mut().get_raw_qi(handle, uuid_bytes))
+            .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?
+            .ok_or_else(|| {
+                RuntimeError::Other(format!(
+                    "com.invoke: wrapped script-impl-of-IAction handle {} did not expose IAction",
+                    handle
+                ))
+            })?;
+
+    // NOTE: the interned slot intentionally outlives this invocation.
+    // The host CCW may be stored by the receiving method (e.g. for
+    // delayed dispatch); releasing here would invalidate that. A
+    // future task may add call-scope release for non-stored callback
+    // args.
+    let _ = handle;
+
+    Ok(ClassifiedPop::Arg(MarshalledArg::Pointer(
+        p as *const c_void,
+    )))
 }
 
 // ---------------------------------------------------------------------------

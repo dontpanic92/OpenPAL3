@@ -77,49 +77,39 @@ fn runtime_calls_script_owned_director_methods() {
         .load_source(
             r#"
 import director;
-import ui;
+import ui_host;
 
-pub struct[director.Director] First() {
+pub struct[director.ImmediateDirector] First(pub trigger: box<array<int>>) {
     pub fn activate(self: ref<Self>) {}
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        return ui.text("first");
-    }
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        if command_id == 7 {
+    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {}
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
+        if self.trigger[0] != 0 {
+            self.trigger[0] = 0;
             return [make_second()];
         }
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
-        let result: array<box<director.Director>> = [];
+        let result: array<box<director.ImmediateDirector>> = [];
         return result;
     }
 }
 
-pub struct[director.Director] Second() {
+pub struct[director.ImmediateDirector] Second() {
     pub fn activate(self: ref<Self>) {}
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        return ui.text("second");
-    }
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
-        let result: array<box<director.Director>> = [];
+    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {}
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
+        let result: array<box<director.ImmediateDirector>> = [];
         return result;
     }
 }
 
-fn make_second() -> box<director.Director> {
-    return box(Second()) as box<director.Director>;
+fn make_second() -> box<director.ImmediateDirector> {
+    return box(Second()) as box<director.ImmediateDirector>;
 }
 
-pub fn init() -> box<director.Director> {
-    return box(First()) as box<director.Director>;
+pub fn init() -> box<director.ImmediateDirector> {
+    let trigger: array<int> = [1];
+    return box(First(box(trigger))) as box<director.ImmediateDirector>;
 }
 "#,
         )
@@ -129,8 +119,8 @@ pub fn init() -> box<director.Director> {
         .call_returning_data("init", Vec::new())
         .expect("init director");
     let result = runtime
-        .call_method_returning_data(director, "dispatch", vec![Data::Int(7)])
-        .expect("dispatch director command");
+        .call_method_returning_data(director, "update", vec![Data::Float(0.016)])
+        .expect("update director");
 
     match result {
         Data::Array(values) => assert_eq!(values.len(), 1),

@@ -5,7 +5,7 @@ use crosscom::ComRc;
 use radiance::comdef::{IApplication, IDirector};
 use radiance_scripting::comdef::services::{IAppService, IAppServiceImpl};
 use radiance_scripting::services::ImguiTextureCache;
-use radiance_scripting::{ScriptHost, ScriptedDirector};
+use radiance_scripting::{ScriptHost, ScriptedImmediateDirector};
 use shared::config::YaobowConfig;
 
 use crate::directors::config_service::ConfigService;
@@ -142,9 +142,10 @@ impl IAppServiceImpl for AppService {
             .ok()?;
         let handle = self.script_host.root(director_data);
 
-        Some(ScriptedDirector::with_ui(
+        Some(ScriptedImmediateDirector::with_ui(
             self.script_host.clone(),
             handle,
+            radiance_scripting::services::ui_host::ImguiUiHost::create(),
             engine.ui_manager(),
             self.textures.clone(),
         ))

@@ -8,7 +8,7 @@ import yaobow_editor_services;
 import welcome;
 import main_editor;
 
-pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.Director> {
+pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.ImmediateDirector> {
     let registry = host.games();
     let games_arr: array<int> = [];
     let names_arr: array<string> = [];
@@ -27,6 +27,6 @@ pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<directo
     welcome.make_welcome_director(host, games, names)
 }
 
-pub fn init_main_editor(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.Director> {
+pub fn init_main_editor(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.ImmediateDirector> {
     return main_editor.make_main_editor_director(host);
 }

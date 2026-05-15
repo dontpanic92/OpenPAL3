@@ -1,121 +1,134 @@
-// Main editor page: resource tree + content tabs. The director itself
-// lives here as a `struct[director.Director]`; the host's entry frame
-// (module `main`) can dispatch into it directly thanks to origin-tagged
-// proto values.
+// Main editor page (immediate-mode, H4 of generated/plan.md): a left
+// pane VFS tree and a right pane tab bar of content previewers, both
+// driven by `ui_host.IUiHost` calls inside `render_im`. Cross-frame
+// intents (clicked tree leaves, close requests, model-preview
+// requests) travel through `box<array<...>>` slots that `update`
+// drains.
 
 import director;
 import yaobow_editor_services;
-import ui;
+import ui_host;
 import content_tabs;
 import resource_tree;
 import editor_consts;
 
-pub struct[director.Director] MainEditorDirector(
+pub struct[director.ImmediateDirector] MainEditorDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub tabs: box<array<content_tabs.ContentTab>>,
     pub next_close_cmd: box<array<int>>,
+    pub picks: box<array<string>>,
+    pub close_intents: box<array<int>>,
+    pub preview_intents: box<array<int>>,
 ) {
     pub fn activate(self: ref<Self>) {}
     pub fn deactivate(self: ref<Self>) {}
 
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        let vfs = self.host.vfs();
-        let tree_node = ui.child_window("##editor_tree", 320.0, 0.0, [
-            resource_tree.resource_tree_root_node(vfs),
-        ]);
-
-        let tab_items: array<ui.UiNode> = [];
-        let tab_items_box = box(tab_items);
-        let mut i = 0;
-        while i < self.tabs.len() {
-            let t = ref(self.tabs[i]);
-            tab_items_box.push(ui.tab_item(t.label, t.close_cmd, [
-                content_tabs.render_tab_body(t),
-            ]));
-            i = i + 1;
-        }
-
-        let content_node = ui.child_window("##editor_content", 0.0, 0.0, [
-            ui.tab_bar_box("##editor_tab_bar", tab_items_box),
-        ]);
-
-        return ui.window_fullscreen("##editor_root", 0, [
-            tree_node,
-            ui.same_line(),
-            content_node,
-        ]);
+    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {
+        let _ = ui.window_fullscreen("##editor_root", 0, () => {
+            let _ = ui.child_window("##editor_tree", 320.0, 0.0, () => {
+                resource_tree.render_resource_tree_im(ui, self.host.vfs(), self.picks);
+            });
+            let _ = ui.same_line();
+            let _ = ui.child_window("##editor_content", 0.0, 0.0, () => {
+                let _ = ui.tab_bar("##editor_tab_bar", () => {
+                    let mut i = 0;
+                    while i < self.tabs.len() {
+                        let t = ref(self.tabs[i]);
+                        let close_cmd = t.close_cmd;
+                        let closed = ui.tab_item(t.label, 1, () => {
+                            content_tabs.render_tab_body_im(ui, t, self.preview_intents);
+                        });
+                        if closed != 0 {
+                            self.close_intents.push(close_cmd);
+                        }
+                        i = i + 1;
+                    }
+                });
+            });
+        });
     }
 
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        let vfs = self.host.vfs();
-        let path = vfs.command_path(command_id);
-        if path != "" {
+    pub fn update(
+        self: ref<Self>,
+        dt: float,
+    ) -> array<box<director.ImmediateDirector>> {
+        // Open new tabs for clicked tree leaves.
+        let mut p = 0;
+        while p < self.picks.len() {
+            let path = self.picks[p];
+            let vfs = self.host.vfs();
             if vfs.is_dir(path) != 0 {
-                vfs.toggle_expanded(path);
-                return empty_transitions();
+                let _ = vfs.toggle_expanded(path);
+            } else {
+                self.next_close_cmd[0] = self.next_close_cmd[0] + 1;
+                let tab = content_tabs.open_content_tab(
+                    self.host.previewers(),
+                    path,
+                    editor_consts.CLOSE_CMD_BASE + self.next_close_cmd[0],
+                );
+                if tab != null {
+                    self.tabs.push(tab!);
+                }
             }
-
-            self.next_close_cmd[0] = self.next_close_cmd[0] + 1;
-            let tab = content_tabs.open_content_tab(
-                self.host.previewers(),
-                path,
-                editor_consts.CLOSE_CMD_BASE + self.next_close_cmd[0],
-            );
-            if tab != null {
-                self.tabs.push(tab!);
-            }
-            return empty_transitions();
+            p = p + 1;
         }
+        self.picks.clear();
 
-        if command_id >= editor_consts.CLOSE_CMD_BASE && command_id < editor_consts.MODEL_PREVIEW_CMD_BASE {
-            close_tab_by_close_cmd(self.tabs, command_id);
-            return empty_transitions();
+        // Close tabs whose tab_item reported a close click this frame.
+        let mut c = 0;
+        while c < self.close_intents.len() {
+            close_tab_by_close_cmd(self.tabs, self.close_intents[c]);
+            c = c + 1;
         }
+        self.close_intents.clear();
 
-        if command_id >= editor_consts.MODEL_PREVIEW_CMD_BASE && command_id < editor_consts.AUDIO_TOGGLE_CMD_BASE {
-            let close_cmd = command_id - editor_consts.MODEL_PREVIEW_CMD_BASE + editor_consts.CLOSE_CMD_BASE;
-            preview_model_in_tab(self.tabs, close_cmd);
-            return empty_transitions();
+        // Open preview sessions for model tabs whose "Preview" button
+        // was pressed this frame. `set_preview_session_for_close_cmd`
+        // mutates the owning tab via indexed assignment — not legal
+        // through the `ref<ContentTab>` capture inside `render_im`.
+        let mut m = 0;
+        while m < self.preview_intents.len() {
+            set_preview_session_for_close_cmd(self.tabs, self.preview_intents[m]);
+            m = m + 1;
         }
+        self.preview_intents.clear();
 
-        if command_id >= editor_consts.AUDIO_TOGGLE_CMD_BASE && command_id < editor_consts.VIDEO_TOGGLE_CMD_BASE {
-            let close_cmd = command_id - editor_consts.AUDIO_TOGGLE_CMD_BASE + editor_consts.CLOSE_CMD_BASE;
-            toggle_audio_in_tab(self.tabs, close_cmd);
-            return empty_transitions();
-        }
-
-        if command_id >= editor_consts.VIDEO_TOGGLE_CMD_BASE {
-            let close_cmd = command_id - editor_consts.VIDEO_TOGGLE_CMD_BASE + editor_consts.CLOSE_CMD_BASE;
-            toggle_video_in_tab(self.tabs, close_cmd);
-            return empty_transitions();
-        }
-
-        return empty_transitions();
-    }
-
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+        // Per-frame audio handle pump.
         let mut i = 0;
         while i < self.tabs.len() {
             let t = ref(self.tabs[i]);
             if t.kind == editor_consts.CONTENT_KIND_AUDIO && t.audio_handle != null {
                 let h = t.audio_handle!;
-                h.update();
+                let _ = h.update();
             }
             i = i + 1;
         }
+
         return empty_transitions();
     }
 }
 
-fn empty_transitions() -> array<box<director.Director>> {
-    let result: array<box<director.Director>> = [];
+fn empty_transitions() -> array<box<director.ImmediateDirector>> {
+    let result: array<box<director.ImmediateDirector>> = [];
     return result;
 }
 
-pub fn make_main_editor_director(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.Director> {
+pub fn make_main_editor_director(
+    host: box<yaobow_editor_services.IEditorHostContext>,
+) -> box<director.ImmediateDirector> {
     let tabs: array<content_tabs.ContentTab> = [];
     let counter: array<int> = [0];
-    return box(MainEditorDirector(host, box(tabs), box(counter))) as box<director.Director>;
+    let picks: array<string> = [];
+    let close_intents: array<int> = [];
+    let preview_intents: array<int> = [];
+    return box(MainEditorDirector(
+        host,
+        box(tabs),
+        box(counter),
+        box(picks),
+        box(close_intents),
+        box(preview_intents),
+    )) as box<director.ImmediateDirector>;
 }
 
 fn close_tab_by_close_cmd(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {
@@ -129,41 +142,16 @@ fn close_tab_by_close_cmd(tabs: box<array<content_tabs.ContentTab>>, close_cmd: 
     }
 }
 
-fn preview_model_in_tab(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {
+fn set_preview_session_for_close_cmd(
+    tabs: box<array<content_tabs.ContentTab>>,
+    close_cmd: int,
+) {
     let mut i = 0;
     while i < tabs.len() {
         if tabs[i].close_cmd == close_cmd {
             if tabs[i].model_handle != null {
                 let h = tabs[i].model_handle!;
                 tabs[i].preview_session = h.open_preview();
-            }
-            return;
-        }
-        i = i + 1;
-    }
-}
-
-fn toggle_audio_in_tab(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {
-    let mut i = 0;
-    while i < tabs.len() {
-        if tabs[i].close_cmd == close_cmd {
-            if tabs[i].audio_handle != null {
-                let h = tabs[i].audio_handle!;
-                h.toggle();
-            }
-            return;
-        }
-        i = i + 1;
-    }
-}
-
-fn toggle_video_in_tab(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {
-    let mut i = 0;
-    while i < tabs.len() {
-        if tabs[i].close_cmd == close_cmd {
-            if tabs[i].video_handle != null {
-                let h = tabs[i].video_handle!;
-                h.toggle();
             }
             return;
         }

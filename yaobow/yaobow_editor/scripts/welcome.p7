@@ -1,110 +1,210 @@
-// Welcome and Settings screens. Both directors live here; cross-module
-// proto dispatch makes the host's entry frame (in module `main`) able to
-// invoke their methods directly.
+// Welcome and Settings screens, immediate-mode (H3/H4 of
+// generated/plan.md). Both directors implement `director.ImmediateDirector`
+// and call `ui_host.IUiHost` methods directly. Button presses surface as
+// boolean returns from `ui.button(...)`; the legacy `command_id` /
+// `dispatch(cmd)` round-trip is gone.
+//
+// Cross-page transitions live in a `box<array<int>>` "intent" slot
+// that `render_im` writes and `update` reads — keeping the script
+// side single-threaded and re-entrancy-safe.
 
 import director;
 import editor_services;
 import yaobow_editor_services;
-import ui;
+import ui_host;
 import editor_consts;
 
-let SETTINGS_CMD: int = 9001;
-let SAVE_CMD: int = 9002;
-let CANCEL_CMD: int = 9000;
-let GAME_CMD_BASE: int = 1000;
-let PICK_CMD_BASE: int = 4000;
-let CLEAR_CMD_BASE: int = 5000;
+// Intent codes written by render_im, consumed by update.
+let INTENT_NONE: int = 0;
+let INTENT_OPEN_SETTINGS: int = 1;
+let INTENT_OPEN_GAME: int = 2;
+let INTENT_SAVE_AND_RETURN: int = 3;
+let INTENT_CANCEL: int = 4;
+let INTENT_PICK_FOLDER: int = 5;
+let INTENT_CLEAR_PATH: int = 6;
 
-pub struct[director.Director] WelcomeDirector(
+pub struct[director.ImmediateDirector] WelcomeDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
+    pub intent: box<array<int>>,
+    pub intent_arg: box<array<int>>,
 ) {
-    pub fn activate(self: ref<Self>) {}
+    pub fn activate(self: ref<Self>) {
+        self.intent[0] = INTENT_NONE;
+        self.intent_arg[0] = 0;
+    }
     pub fn deactivate(self: ref<Self>) {}
 
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        return ui.window_centered("妖弓编辑器", 720.0, 480.0, [
-            welcome_title_node(),
-            top_spacer_node(),
-            game_table_node(self),
-            mid_spacer_node(),
-            settings_button_node(),
-        ]);
+    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {
+        let _ = ui.window_centered("妖弓编辑器", 720.0, 480.0, () => {
+            let _ = ui.text_with_font(0, "妖弓编辑器");
+            let _ = ui.dummy(0.0, 24.0);
+            let _ = ui.table("welcome.games", 3, () => {
+                let _ = ui.table_next_column();
+                self.render_game_cell(ui, 0);
+                let _ = ui.table_next_column();
+                self.render_game_cell(ui, 8);
+                let _ = ui.table_next_column();
+                self.render_game_cell(ui, 5);
+                let _ = ui.table_next_column();
+                self.render_game_cell(ui, 1);
+                let _ = ui.table_next_column();
+                self.render_game_cell(ui, 9);
+                let _ = ui.table_next_column();
+                self.render_game_cell(ui, 6);
+                let _ = ui.table_next_column();
+                self.render_game_cell(ui, 2);
+                let _ = ui.table_next_column();
+                let _ = ui.dummy(0.0, 0.0);
+                let _ = ui.table_next_column();
+                self.render_game_cell(ui, 7);
+                let _ = ui.table_next_column();
+                self.render_game_cell(ui, 3);
+                let _ = ui.table_next_column();
+                let _ = ui.dummy(0.0, 0.0);
+                let _ = ui.table_next_column();
+                let _ = ui.dummy(0.0, 0.0);
+                let _ = ui.table_next_column();
+                self.render_game_cell(ui, 4);
+                let _ = ui.table_next_column();
+                let _ = ui.dummy(0.0, 0.0);
+                let _ = ui.table_next_column();
+                let _ = ui.dummy(0.0, 0.0);
+            });
+            let _ = ui.dummy(0.0, 16.0);
+            if ui.button("设置", 120.0, 24.0) != 0 {
+                self.intent[0] = INTENT_OPEN_SETTINGS;
+            }
+        });
     }
 
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        if command_id == 9001 {
+    pub fn render_game_cell(self: ref<Self>, ui: box<ui_host.IUiHost>, ordinal: int) {
+        let name = welcome_game_name(self, ordinal);
+        let label = f"运行《{name}》编辑器";
+        if ui.button(label, -1.0, 60.0) != 0 {
+            self.intent[0] = INTENT_OPEN_GAME;
+            self.intent_arg[0] = ordinal;
+        }
+    }
+
+    pub fn update(
+        self: ref<Self>,
+        dt: float,
+    ) -> array<box<director.ImmediateDirector>> {
+        let code = self.intent[0];
+        let arg = self.intent_arg[0];
+        self.intent[0] = INTENT_NONE;
+        self.intent_arg[0] = 0;
+
+        if code == INTENT_OPEN_SETTINGS {
             return [make_settings_director(self.host, self.games, self.names)];
         }
-
-        if command_id >= 1000 && command_id < 2000 {
-            let ordinal = command_id - 1000;
+        if code == INTENT_OPEN_GAME {
             let cfg = self.host.config();
-            if cfg.get_asset_path(ordinal) == "" {
+            if cfg.get_asset_path(arg) == "" {
                 return [make_settings_director(self.host, self.games, self.names)];
             }
-            let next = self.host.app().open_game(ordinal);
+            let next = self.host.app().open_game(arg);
             if next != null {
-                return [editor_consts.wrap_host(next!)];
+                return [editor_consts.wrap_host_im(next!)];
             }
         }
-
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
-        let result: array<box<director.Director>> = [];
+        let result: array<box<director.ImmediateDirector>> = [];
         return result;
     }
 }
 
-pub struct[director.Director] SettingsDirector(
+pub struct[director.ImmediateDirector] SettingsDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
+    pub intent: box<array<int>>,
+    pub intent_arg: box<array<int>>,
 ) {
-    pub fn activate(self: ref<Self>) {}
+    pub fn activate(self: ref<Self>) {
+        self.intent[0] = INTENT_NONE;
+        self.intent_arg[0] = 0;
+    }
     pub fn deactivate(self: ref<Self>) {}
 
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        return settings_window_node(self);
+    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {
+        let _ = ui.window_centered("游戏路径设置", 820.0, 560.0, () => {
+            let _ = ui.text_with_font(0, "游戏资源路径设置");
+            let _ = ui.dummy(0.0, 12.0);
+            let _ = ui.table("settings.rows", 4, () => {
+                self.render_settings_row(ui, 0);
+                self.render_settings_row(ui, 1);
+                self.render_settings_row(ui, 2);
+                self.render_settings_row(ui, 3);
+                self.render_settings_row(ui, 4);
+                self.render_settings_row(ui, 5);
+                self.render_settings_row(ui, 6);
+                self.render_settings_row(ui, 7);
+                self.render_settings_row(ui, 8);
+                self.render_settings_row(ui, 9);
+            });
+            let _ = ui.dummy(0.0, 16.0);
+            let _ = ui.table("settings.footer", 2, () => {
+                let _ = ui.table_next_column();
+                if ui.button("保存并返回", 200.0, 32.0) != 0 {
+                    self.intent[0] = INTENT_SAVE_AND_RETURN;
+                }
+                let _ = ui.table_next_column();
+                if ui.button("取消", 200.0, 32.0) != 0 {
+                    self.intent[0] = INTENT_CANCEL;
+                }
+            });
+        });
     }
 
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
+    pub fn render_settings_row(self: ref<Self>, ui: box<ui_host.IUiHost>, ordinal: int) {
+        let _ = ui.table_next_column();
+        let _ = ui.text(settings_game_name(self, ordinal));
+        let _ = ui.table_next_column();
         let cfg = self.host.config();
+        let _ = ui.text(path_label(cfg.get_asset_path(ordinal)));
+        let _ = ui.table_next_column();
+        if ui.button(f"选择...##pick_{ordinal}", 100.0, 24.0) != 0 {
+            self.intent[0] = INTENT_PICK_FOLDER;
+            self.intent_arg[0] = ordinal;
+        }
+        let _ = ui.table_next_column();
+        if ui.button(f"清除##clear_{ordinal}", 80.0, 24.0) != 0 {
+            self.intent[0] = INTENT_CLEAR_PATH;
+            self.intent_arg[0] = ordinal;
+        }
+    }
 
-        if command_id == 9002 {
-            cfg.save();
+    pub fn update(
+        self: ref<Self>,
+        dt: float,
+    ) -> array<box<director.ImmediateDirector>> {
+        let code = self.intent[0];
+        let arg = self.intent_arg[0];
+        self.intent[0] = INTENT_NONE;
+        self.intent_arg[0] = 0;
+
+        let cfg = self.host.config();
+        if code == INTENT_SAVE_AND_RETURN {
+            let _ = cfg.save();
             return [make_welcome_director(self.host, self.games, self.names)];
         }
-
-        if command_id == 9000 {
+        if code == INTENT_CANCEL {
             cfg.reload();
             return [make_welcome_director(self.host, self.games, self.names)];
         }
-
-        if command_id >= 4000 && command_id < 5000 {
-            let ordinal = command_id - 4000;
-            let current = cfg.get_asset_path(ordinal);
+        if code == INTENT_PICK_FOLDER {
+            let current = cfg.get_asset_path(arg);
             let picked = cfg.pick_folder(current);
             if picked != "" {
-                cfg.set_asset_path(ordinal, picked);
+                cfg.set_asset_path(arg, picked);
             }
         }
-
-        if command_id >= 5000 && command_id < 6000 {
-            let ordinal = command_id - 5000;
-            cfg.set_asset_path(ordinal, "");
+        if code == INTENT_CLEAR_PATH {
+            cfg.set_asset_path(arg, "");
         }
-
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
-        let result: array<box<director.Director>> = [];
+        let result: array<box<director.ImmediateDirector>> = [];
         return result;
     }
 }
@@ -113,19 +213,25 @@ pub fn make_welcome_director(
     host: box<yaobow_editor_services.IEditorHostContext>,
     games: box<array<int>>,
     names: box<array<string>>,
-) -> box<director.Director> {
-    return box(WelcomeDirector(host, games, names)) as box<director.Director>;
+) -> box<director.ImmediateDirector> {
+    let intent: array<int> = [INTENT_NONE];
+    let intent_arg: array<int> = [0];
+    return box(WelcomeDirector(host, games, names, box(intent), box(intent_arg)))
+        as box<director.ImmediateDirector>;
 }
 
 fn make_settings_director(
     host: box<yaobow_editor_services.IEditorHostContext>,
     games: box<array<int>>,
     names: box<array<string>>,
-) -> box<director.Director> {
-    return box(SettingsDirector(host, games, names)) as box<director.Director>;
+) -> box<director.ImmediateDirector> {
+    let intent: array<int> = [INTENT_NONE];
+    let intent_arg: array<int> = [0];
+    return box(SettingsDirector(host, games, names, box(intent), box(intent_arg)))
+        as box<director.ImmediateDirector>;
 }
 
-fn game_name(d: ref<WelcomeDirector>, ordinal: int) -> string {
+fn welcome_game_name(d: ref<WelcomeDirector>, ordinal: int) -> string {
     let mut i = 0;
     while i < d.games.len() {
         if d.games[i] == ordinal {
@@ -136,39 +242,15 @@ fn game_name(d: ref<WelcomeDirector>, ordinal: int) -> string {
     ""
 }
 
-fn welcome_title_node() -> ui.UiNode {
-    return ui.text_with_font(0, "妖弓编辑器");
-}
-
-fn top_spacer_node() -> ui.UiNode {
-    return ui.dummy(0.0, 24.0);
-}
-
-fn mid_spacer_node() -> ui.UiNode {
-    return ui.dummy(0.0, 16.0);
-}
-
-fn settings_button_node() -> ui.UiNode {
-    return ui.button("设置", 120.0, 24.0, SETTINGS_CMD);
-}
-
-fn game_button_node(d: ref<WelcomeDirector>, ordinal: int) -> ui.UiNode {
-    let name = game_name(d, ordinal);
-    return ui.button(f"运行《{name}》编辑器", -1.0, 60.0, GAME_CMD_BASE + ordinal);
-}
-
-fn empty_cell_node() -> ui.UiNode {
-    return ui.dummy(0.0, 0.0);
-}
-
-fn game_table_node(d: ref<WelcomeDirector>) -> ui.UiNode {
-    return ui.table(3, [
-        game_button_node(d, 0), game_button_node(d, 8), game_button_node(d, 5),
-        game_button_node(d, 1), game_button_node(d, 9), game_button_node(d, 6),
-        game_button_node(d, 2), empty_cell_node(), game_button_node(d, 7),
-        game_button_node(d, 3), empty_cell_node(), empty_cell_node(),
-        game_button_node(d, 4), empty_cell_node(), empty_cell_node(),
-    ]);
+fn settings_game_name(d: ref<SettingsDirector>, ordinal: int) -> string {
+    let mut i = 0;
+    while i < d.games.len() {
+        if d.games[i] == ordinal {
+            return d.names[i];
+        }
+        i = i + 1;
+    }
+    ""
 }
 
 fn path_label(p: string) -> string {
@@ -176,61 +258,4 @@ fn path_label(p: string) -> string {
         return "(未设置)";
     }
     return p;
-}
-
-fn settings_name_cell(d: ref<SettingsDirector>, ordinal: int) -> ui.UiNode {
-    let mut i = 0;
-    while i < d.games.len() {
-        if d.games[i] == ordinal {
-            return ui.text(d.names[i]);
-        }
-        i = i + 1;
-    }
-    return ui.text("");
-}
-
-fn settings_path_cell(d: ref<SettingsDirector>, ordinal: int) -> ui.UiNode {
-    let cfg = d.host.config();
-    let current = cfg.get_asset_path(ordinal);
-    return ui.text(path_label(current));
-}
-
-fn pick_cell(ordinal: int) -> ui.UiNode {
-    return ui.button("选择...", 100.0, 24.0, PICK_CMD_BASE + ordinal);
-}
-
-fn clear_cell(ordinal: int) -> ui.UiNode {
-    return ui.button("清除", 80.0, 24.0, CLEAR_CMD_BASE + ordinal);
-}
-
-fn settings_rows_node(d: ref<SettingsDirector>) -> ui.UiNode {
-    return ui.table(4, [
-        settings_name_cell(d, 0), settings_path_cell(d, 0), pick_cell(0), clear_cell(0),
-        settings_name_cell(d, 1), settings_path_cell(d, 1), pick_cell(1), clear_cell(1),
-        settings_name_cell(d, 2), settings_path_cell(d, 2), pick_cell(2), clear_cell(2),
-        settings_name_cell(d, 3), settings_path_cell(d, 3), pick_cell(3), clear_cell(3),
-        settings_name_cell(d, 4), settings_path_cell(d, 4), pick_cell(4), clear_cell(4),
-        settings_name_cell(d, 5), settings_path_cell(d, 5), pick_cell(5), clear_cell(5),
-        settings_name_cell(d, 6), settings_path_cell(d, 6), pick_cell(6), clear_cell(6),
-        settings_name_cell(d, 7), settings_path_cell(d, 7), pick_cell(7), clear_cell(7),
-        settings_name_cell(d, 8), settings_path_cell(d, 8), pick_cell(8), clear_cell(8),
-        settings_name_cell(d, 9), settings_path_cell(d, 9), pick_cell(9), clear_cell(9),
-    ]);
-}
-
-fn settings_footer_node() -> ui.UiNode {
-    return ui.table(2, [
-        ui.button("保存并返回", 200.0, 32.0, SAVE_CMD),
-        ui.button("取消", 200.0, 32.0, CANCEL_CMD),
-    ]);
-}
-
-fn settings_window_node(d: ref<SettingsDirector>) -> ui.UiNode {
-    return ui.window_centered("游戏路径设置", 820.0, 560.0, [
-        ui.text_with_font(0, "游戏资源路径设置"),
-        ui.dummy(0.0, 12.0),
-        settings_rows_node(d),
-        ui.dummy(0.0, 16.0),
-        settings_footer_node(),
-    ]);
 }

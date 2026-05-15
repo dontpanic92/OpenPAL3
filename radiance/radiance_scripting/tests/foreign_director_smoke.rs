@@ -1,14 +1,17 @@
 //! Verifies the Rust→script director round-trip: a Rust-implemented
-//! `IDirector` ComObject can be handed to a script as a `box<radiance.IDirector>`
-//! foreign box, wrapped via `director.wrap_host_director`, and then driven by
-//! a `ScriptedDirector` proxy exactly as if it were script-implemented.
+//! `IDirector` ComObject can be handed to a script as a
+//! `box<radiance.IDirector>` foreign box, wrapped in a script-side
+//! adapter struct conforming to `director.ImmediateDirector`, and then
+//! driven by a `ScriptedImmediateDirector` proxy exactly as if it were
+//! script-implemented.
 
 use std::cell::Cell;
 use std::rc::Rc;
 
 use crosscom::ComRc;
 use radiance::comdef::{IDirector, IDirectorImpl};
-use radiance_scripting::{ScriptHost, ScriptedDirector};
+use radiance_scripting::services::ui_host_recording::RecordingUiHost;
+use radiance_scripting::{ScriptHost, ScriptedImmediateDirector};
 
 struct CountingDirector {
     activated: Rc<Cell<u32>>,
@@ -31,29 +34,23 @@ impl IDirectorImpl for CountingDirector {
 const SCRIPT: &str = r#"
 import director;
 import radiance;
-import ui;
+import ui_host;
 
-pub struct[director.Director] LocalHostDirector(pub inner: box<radiance.IDirector>) {
+pub struct[director.ImmediateDirector] LocalHostDirector(pub inner: box<radiance.IDirector>) {
     pub fn activate(self: ref<Self>) {
         let _ = self.inner.activate();
     }
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        return ui.dummy(0.0, 0.0);
-    }
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {}
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
         let _ = self.inner.update(dt);
-        let result: array<box<director.Director>> = [];
+        let result: array<box<director.ImmediateDirector>> = [];
         return result;
     }
 }
 
-pub fn wrap(host: box<radiance.IDirector>) -> box<director.Director> {
-    return box(LocalHostDirector(host)) as box<director.Director>;
+pub fn wrap(host: box<radiance.IDirector>) -> box<director.ImmediateDirector> {
+    return box(LocalHostDirector(host)) as box<director.ImmediateDirector>;
 }
 "#;
 
@@ -76,22 +73,23 @@ fn script_can_wrap_rust_director_and_proxy_drives_it() {
 
     let wrapped = host
         .call_returning_data("wrap", vec![foreign])
-        .expect("wrap should produce a Director box");
+        .expect("wrap should produce an ImmediateDirector box");
 
     let handle = host.root(wrapped);
-    let proxy = ScriptedDirector::wrap(host.clone(), handle);
+    let (_recording, ui_host) = RecordingUiHost::create();
+    let proxy = ScriptedImmediateDirector::wrap(host.clone(), handle, ui_host);
 
     proxy.activate();
     assert_eq!(
         activated.get(),
         1,
-        "Rust IDirector::activate must fire through HostDirector adapter when driven by the proxy"
+        "Rust IDirector::activate must fire through the script-side adapter when driven by the proxy"
     );
 
     let _ = proxy.update(0.016);
     assert_eq!(
         updated.get(),
         1,
-        "Rust IDirector::update must fire through HostDirector adapter when driven by the proxy"
+        "Rust IDirector::update must fire through the script-side adapter when driven by the proxy"
     );
 }

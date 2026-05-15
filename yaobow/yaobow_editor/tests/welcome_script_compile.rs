@@ -12,8 +12,8 @@ use radiance_scripting::comdef::services::{
     IAppService, IAppServiceImpl, IAudioService, IConfigService, IConfigServiceImpl,
     IGameRegistry, IHostContextImpl, IInputService, ITextureService, IVfsService,
 };
+use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 use radiance_scripting::services::GameRegistry;
-use radiance_scripting::ui_walker::{kinds, owned};
 use yaobow_editor::comdef::editor_services::{
     IEditorHostContext, IEditorHostContextImpl, IPreviewerHub, IPreviewerHubImpl,
 };
@@ -213,40 +213,57 @@ fn welcome_script_init_loads_with_imported_bindings() {
 }
 
 #[test]
-fn welcome_script_renders_three_column_wide_layout() {
+fn welcome_script_render_im_emits_window_centered_with_game_table() {
     let env = init_runtime(MAIN_P7).expect("editor script init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
         .expect("welcome director should be rooted");
-    let node = env
+    let (recorder, ui_com) = RecordingUiHost::create();
+    let ui_com_id = env.runtime.intern(ui_com);
+    let ui_box = env
         .runtime
-        .call_method_returning_data(director, "render", vec![Data::Float(0.0)])
-        .expect("welcome.p7 render should return a UiNode");
-    let owned = env
-        .runtime
-        .with_ctx(|ctx| owned::resolve(ctx, &node))
-        .expect("welcome UiNode should resolve");
+        .foreign_box(
+            "radiance_scripting.comdef.ui_host.IUiHost",
+            ui_com_id,
+        )
+        .expect("ui_host foreign box");
 
-    assert_eq!(owned.kind, kinds::WINDOW_CENTERED);
-    assert_eq!(owned.w, 720.0);
-    assert_eq!(owned.h, 480.0);
+    env.runtime
+        .call_method_void(
+            director,
+            "render_im",
+            vec![ui_box, Data::Float(0.0)],
+        )
+        .expect("welcome.p7 render_im should run");
 
-    let table = owned
-        .children
+    let calls = recorder.calls.borrow().clone();
+    // Outer window centered + body + game table opened with 3 columns.
+    assert!(
+        matches!(
+            calls.first(),
+            Some(UiCall::WindowCentered { title, w, h })
+                if title == "妖弓编辑器" && *w == 720.0 && *h == 480.0
+        ),
+        "expected WindowCentered at start, got: {:?}",
+        calls.first()
+    );
+    let table = calls
         .iter()
-        .find(|child| child.kind == kinds::TABLE)
-        .expect("welcome layout should include a game table");
-    assert_eq!(table.i1, 3);
-    assert_eq!(table.children.len(), 15);
-
-    let buttons = table
-        .children
+        .find(|c| matches!(c, UiCall::Table { id, .. } if id == "welcome.games"))
+        .expect("welcome render_im should emit a Table");
+    if let UiCall::Table { cols, .. } = table {
+        assert_eq!(*cols, 3, "welcome game table should be 3 columns wide");
+    }
+    let button_count = calls
         .iter()
-        .filter(|child| child.kind == kinds::BUTTON)
-        .collect::<Vec<_>>();
-    assert_eq!(buttons.len(), 10);
-    assert!(buttons.iter().all(|button| button.w == -1.0));
+        .filter(|c| matches!(c, UiCall::Button { .. }))
+        .count();
+    // 10 game buttons + 1 "设置" button.
+    assert_eq!(
+        button_count, 11,
+        "welcome should emit 10 game buttons + 1 settings button, got {button_count}: {calls:?}"
+    );
 }
 
 #[test]
@@ -264,39 +281,78 @@ fn welcome_script_update_returns_empty_transition_list() {
 }
 
 #[test]
-fn welcome_script_settings_command_returns_script_director() {
+fn welcome_script_settings_button_routes_to_settings_director() {
     let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
         .expect("welcome director should be rooted");
-    let result = env
+    let (recorder, ui_com) = RecordingUiHost::create();
+    recorder
+        .button_results
+        .borrow_mut()
+        .insert("设置".to_string(), true);
+    let ui_com_id = env.runtime.intern(ui_com);
+    let ui_box = env
         .runtime
-        .call_method_returning_data(director, "dispatch", vec![Data::Int(9001)])
-        .expect("welcome.p7 dispatch should return");
+        .foreign_box(
+            "radiance_scripting.comdef.ui_host.IUiHost",
+            ui_com_id,
+        )
+        .expect("ui_host foreign box");
 
-    match result {
-        Data::Array(values) => assert_eq!(values.len(), 1),
-        other => panic!("expected one script director transition, got {other:?}"),
+    env.runtime
+        .call_method_void(
+            director.clone(),
+            "render_im",
+            vec![ui_box, Data::Float(0.0)],
+        )
+        .expect("render_im should run with the simulated click");
+
+    let next = env
+        .runtime
+        .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
+        .expect("update should return after a settings click");
+
+    match next {
+        Data::Array(values) => assert_eq!(values.len(), 1, "expected settings director"),
+        other => panic!("expected one transition, got {other:?}"),
     }
 }
 
 #[test]
-fn welcome_script_unknown_command_is_a_no_op() {
+fn welcome_script_no_click_yields_no_transition() {
     let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
         .expect("welcome director should be rooted");
+    let (_recorder, ui_com) = RecordingUiHost::create();
+    let ui_com_id = env.runtime.intern(ui_com);
+    let ui_box = env
+        .runtime
+        .foreign_box(
+            "radiance_scripting.comdef.ui_host.IUiHost",
+            ui_com_id,
+        )
+        .expect("ui_host foreign box");
+
+    env.runtime
+        .call_method_void(
+            director.clone(),
+            "render_im",
+            vec![ui_box, Data::Float(0.0)],
+        )
+        .expect("render_im should run");
     let result = env
         .runtime
-        .call_method_returning_data(director, "dispatch", vec![Data::Int(9999)])
-        .expect("welcome.p7 dispatch should return");
+        .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
+        .expect("update should return");
     assert_eq!(result, Data::Array(std::rc::Rc::new(Vec::new())));
 }
 
 #[test]
-fn welcome_script_game_command_with_configured_path_calls_open_game() {
+fn welcome_script_game_button_with_configured_path_calls_open_game() {
     let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     env.config_paths
         .borrow_mut()
@@ -305,33 +361,64 @@ fn welcome_script_game_command_with_configured_path_calls_open_game() {
         .runtime
         .deref_handle(env.handle)
         .expect("welcome director should be rooted");
-    let result = env
+    let (recorder, ui_com) = RecordingUiHost::create();
+    recorder
+        .button_results
+        .borrow_mut()
+        .insert("运行《仙剑奇侠传三》编辑器".to_string(), true);
+    let ui_com_id = env.runtime.intern(ui_com);
+    let ui_box = env
         .runtime
-        .call_method_returning_data(director, "dispatch", vec![Data::Int(1000)])
-        .expect("welcome.p7 dispatch should return");
+        .foreign_box(
+            "radiance_scripting.comdef.ui_host.IUiHost",
+            ui_com_id,
+        )
+        .expect("ui_host foreign box");
 
-    match result {
-        Data::Array(values) => assert_eq!(values.len(), 1),
+    env.runtime
+        .call_method_void(
+            director.clone(),
+            "render_im",
+            vec![ui_box, Data::Float(0.0)],
+        )
+        .expect("render_im should run with the simulated click");
+
+    let next = env
+        .runtime
+        .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
+        .expect("update should return after a game click");
+
+    match next {
+        Data::Array(values) => assert_eq!(values.len(), 1, "expected wrapped host director"),
         other => panic!("expected one wrapped host director, got {other:?}"),
     }
     assert_eq!(*env.open_calls.borrow(), vec![0]);
 }
 
 #[test]
-fn welcome_script_render_update_survives_repeated_frames() {
+fn welcome_script_render_im_update_survives_repeated_frames() {
     let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
+    let (_recorder, ui_com) = RecordingUiHost::create();
+    let ui_com_id = env.runtime.intern(ui_com);
     for _ in 0..200 {
         let director = env
             .runtime
             .deref_handle(env.handle)
             .expect("welcome director should be rooted");
-        let node = env
+        let ui_box = env
             .runtime
-            .call_method_returning_data(director.clone(), "render", vec![Data::Float(0.0)])
-            .expect("welcome.p7 render should return a UiNode");
+            .foreign_box(
+                "radiance_scripting.comdef.ui_host.IUiHost",
+                ui_com_id,
+            )
+            .expect("ui_host foreign box");
         env.runtime
-            .with_ctx(|ctx| owned::resolve(ctx, &node))
-            .expect("welcome UiNode should resolve");
+            .call_method_void(
+                director.clone(),
+                "render_im",
+                vec![ui_box, Data::Float(0.0)],
+            )
+            .expect("welcome.p7 render_im should run");
         let result = env
             .runtime
             .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
@@ -341,10 +428,10 @@ fn welcome_script_render_update_survives_repeated_frames() {
 }
 
 #[test]
-fn host_director_returned_by_open_game_renders_and_updates() {
+fn host_director_returned_by_open_game_renders_im_and_updates() {
     // Mirrors the editor flow that the user reported failing: pick a game
-    // with a configured asset path, take the wrapped HostDirector returned
-    // by welcome.dispatch, and drive it through render/update.
+    // with a configured asset path, take the wrapped HostDirectorIm
+    // returned by welcome.update, and drive it through render_im/update.
     let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     env.config_paths
         .borrow_mut()
@@ -353,10 +440,30 @@ fn host_director_returned_by_open_game_renders_and_updates() {
         .runtime
         .deref_handle(env.handle)
         .expect("welcome director should be rooted");
+    let (recorder, ui_com) = RecordingUiHost::create();
+    recorder
+        .button_results
+        .borrow_mut()
+        .insert("运行《仙剑奇侠传三》编辑器".to_string(), true);
+    let ui_com_id = env.runtime.intern(ui_com);
+    let ui_box = env
+        .runtime
+        .foreign_box(
+            "radiance_scripting.comdef.ui_host.IUiHost",
+            ui_com_id,
+        )
+        .expect("ui_host foreign box");
+    env.runtime
+        .call_method_void(
+            director.clone(),
+            "render_im",
+            vec![ui_box, Data::Float(0.0)],
+        )
+        .expect("render_im should run with the simulated click");
     let result = env
         .runtime
-        .call_method_returning_data(director, "dispatch", vec![Data::Int(1000)])
-        .expect("welcome.p7 dispatch should return");
+        .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
+        .expect("welcome.p7 update should return");
 
     let next_director = match result {
         Data::Array(values) => {
@@ -366,21 +473,33 @@ fn host_director_returned_by_open_game_renders_and_updates() {
         other => panic!("expected one wrapped host director, got {other:?}"),
     };
 
-    // Drive the HostDirector through render+update — this is what
-    // ScriptedDirector::update would do every frame on the active
-    // director after the game-pick transition.
+    // Drive the HostDirectorIm through render_im+update — this is what
+    // ScriptedImmediateDirector::update would do every frame on the
+    // active director after the game-pick transition. The
+    // RecordingUiHost is reused so successive renders accumulate.
     for _ in 0..3 {
-        let node = env
+        let ui_box = env
             .runtime
-            .call_method_returning_data(next_director.clone(), "render", vec![Data::Float(0.0)])
-            .expect("HostDirector.render should return a UiNode");
+            .foreign_box(
+                "radiance_scripting.comdef.ui_host.IUiHost",
+                ui_com_id,
+            )
+            .expect("ui_host foreign box");
         env.runtime
-            .with_ctx(|ctx| owned::resolve(ctx, &node))
-            .expect("HostDirector UiNode should resolve");
+            .call_method_void(
+                next_director.clone(),
+                "render_im",
+                vec![ui_box, Data::Float(0.0)],
+            )
+            .expect("HostDirectorIm.render_im should run");
         let updated = env
             .runtime
-            .call_method_returning_data(next_director.clone(), "update", vec![Data::Float(0.016)])
-            .expect("HostDirector.update should return");
+            .call_method_returning_data(
+                next_director.clone(),
+                "update",
+                vec![Data::Float(0.016)],
+            )
+            .expect("HostDirectorIm.update should return");
         assert_eq!(updated, Data::Array(std::rc::Rc::new(Vec::new())));
     }
 }

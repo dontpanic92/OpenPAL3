@@ -3,24 +3,25 @@
 Scripting layer for radiance. **One** script runtime for the
 application lifetime, **one** director lifecycle interface used by both script-
 and Rust-implemented directors, and **one** transition mechanism: every
-director swap is a return value from `dispatch` or `update`.
+director swap is a return value from `update`.
 
 ## Lifetime Rules
 
 1. **`ScriptHost` is installed once on the radiance engine** (`ScriptHost::install(engine)`)
    and lives until the process exits. There is no second host, no swap, no per-screen runtime.
 2. **Each user package loads exactly one script source** via `host.load_source(SRC)`.
-   The package's main module must define a `pub fn init(host: box<IHostContext>) -> box<director.Director>`
+   The package's main module must define a `pub fn init(host: box<IHostContext>) -> box<director.ImmediateDirector>`
    that returns the root director.
 3. **The root director is rooted via an opaque `ScriptDirectorHandle`.** The
-   `ScriptedDirector` Rust ComObject (`ScriptedDirector::wrap` /
-   `ScriptedDirector::with_ui`) drives its lifecycle and drops the GC root on
-   `Drop`. `IDirector::activate` and `IDirector::update` forward to the
-   wrapped script director's proto methods.
-4. **Transitions are return values.** Every `dispatch(command_id) -> array<box<Director>>`
-   and `update(dt) -> array<box<Director>>` returns zero or one wrapped
-   director. The proxy unwraps the array, replaces itself with a new
-   `ScriptedDirector` over the returned director, and the previous one drops.
+   `ScriptedImmediateDirector` Rust ComObject (`ScriptedImmediateDirector::wrap` /
+   `ScriptedImmediateDirector::with_ui`) drives its lifecycle and drops the GC
+   root on `Drop`. `IDirector::activate` and `IDirector::update` forward to
+   the wrapped script director's `activate` / `render_im` + `update` proto
+   methods.
+4. **Transitions are return values.** Every `update(dt) -> array<box<ImmediateDirector>>`
+   returns zero or one wrapped director. The proxy unwraps the array,
+   replaces itself with a new `ScriptedImmediateDirector` over the returned
+   director, and the previous one drops.
 5. **Hot reload is not supported.** p7's `load_module` is append-only, and
    `ScriptHost::reload` (which would discard and rebuild interpreter state)
    cannot run inside a script call without panicking on `RefCell` reentry.
@@ -36,27 +37,27 @@ the next director by:
 3. Returning it from a host-service method (e.g. `IAppService::open_game`).
 
 The receiving script then wraps it in a local `HostDirector` adapter and
-returns it from `dispatch` / `update`. The adapter **must** be declared in
-the user's main script module (the one passed to `host.load_source`) — p7's
-proto-struct method dispatch keys on module-local type ids, so a
-`HostDirector` defined in `director.p7` (the shared bindings module) would
-not dispatch from cross-module callers. The canonical adapter shape is in
-the doc comment at the top of `bindings/director.p7`; the editor's
-`welcome.p7` is the reference implementation.
+returns it from `update`. The adapter **must** be declared in the user's main
+script module (the one passed to `host.load_source`) — p7's proto-struct
+method dispatch keys on module-local type ids, so a `HostDirector` defined
+in `director.p7` (the shared bindings module) would not dispatch from
+cross-module callers. The canonical adapter shape is in the doc comment at
+the top of `bindings/director.p7`; the editor's `editor_consts.p7` is the
+reference implementation.
 
 ## File Map
 
 | Path | Role |
 | --- | --- |
-| `bindings/director.p7` | The `Director` proto + adapter pattern doc |
-| `bindings/ui.p7` | `UiNode` constructors used in `render` |
+| `bindings/director.p7` | The `ImmediateDirector` proto + adapter pattern doc |
 | `src/runtime.rs` | `ScriptHost`, `ScriptDirectorHandle`, `RuntimeServices` |
-| `src/proxies/scripted_director.rs` | `ScriptedDirector` ComObject |
-| `src/services/` | `HostContext`, `GameRegistry`, `InputService`, `AudioService`, `TextureService`, `VfsService` |
-| `src/ui_walker/` | Owned `UiNode` resolver + imgui walker |
+| `src/proxies/scripted_immediate_director.rs` | `ScriptedImmediateDirector` ComObject |
+| `src/services/` | `HostContext`, `GameRegistry`, `InputService`, `AudioService`, `TextureService`, `VfsService`, `ImguiUiHost`, `RecordingUiHost`, `TextureResolver` |
 | `tests/runtime_smoke.rs` | `ScriptHost` lifecycle round-trips |
 | `tests/services_smoke.rs` | Typed host-service contracts |
 | `tests/foreign_director_smoke.rs` | Rust→script director surfacing |
+| `tests/ui_host_smoke.rs` | `IUiHost` recording + dispatcher plumbing |
+| `tests/immediate_director_smoke.rs` | `ScriptedImmediateDirector` proxy smoke |
 
 ## What's Deliberately Not Here
 
@@ -68,5 +69,10 @@ the doc comment at the top of `bindings/director.p7`; the editor's
   state is append-only; if you need to discard rooted handles, drop the
   director ComObjects that own them (their `Drop` unroots).
 - **No top-level free-function lifecycle.** Every screen is a struct
-  implementing `director.Director`. Free functions are only entry points
-  (`init`) and helpers.
+  implementing `director.ImmediateDirector`. Free functions are only entry
+  points (`init`) and helpers.
+- **No retained `UiNode` tree.** UI is immediate-mode: scripts call
+  `IUiHost` methods directly from `render_im`. SAM coercion turns p7
+  closures into `IAction` callbacks for pairing widgets (windows, tables,
+  tab bars).
+

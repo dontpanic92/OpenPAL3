@@ -9,7 +9,7 @@ use imgui::TextureId;
 use radiance::rendering::{ComponentFactory, Texture as RenderingTexture};
 
 use crate::comdef::services::ITexture;
-use crate::ui_walker::TextureResolver;
+use crate::services::texture_resolver::TextureResolver;
 
 use super::texture::Texture;
 

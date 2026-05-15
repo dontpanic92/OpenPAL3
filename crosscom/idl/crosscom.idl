@@ -15,3 +15,38 @@ interface IObjectArray: IUnknown {
 
 [uuid(b0d303ba-918f-4482-8fbf-4a7e8abd4d35)]
 class ObjectArray: IObjectArray {}
+
+// Standard callback (single-abstract-method) interfaces. These are the
+// language-neutral shapes that scripts and hosts use to pass callable
+// behaviour across the crosscom boundary. Per the editor UI scripting
+// plan (generated/plan.md), a closure in a script language coerces to
+// one of these via a per-language SAM-coercion rule; the crosscom layer
+// itself stays unaware of "closures" as a concept.
+
+[uuid(5a8b1d3f-7a26-4d4b-9c41-1e9b4f0a0c01)]
+interface IAction: IUnknown {
+    void invoke();
+}
+[uuid(5a8b1d3f-7a26-4d4b-9c41-1e9b4f0a0c02)]
+class Action: IAction {}
+
+[uuid(5a8b1d3f-7a26-4d4b-9c41-1e9b4f0a0c03)]
+interface IIntAction: IUnknown {
+    void invoke(int value);
+}
+[uuid(5a8b1d3f-7a26-4d4b-9c41-1e9b4f0a0c04)]
+class IntAction: IIntAction {}
+
+[uuid(5a8b1d3f-7a26-4d4b-9c41-1e9b4f0a0c05)]
+interface IFloatAction: IUnknown {
+    void invoke(float value);
+}
+[uuid(5a8b1d3f-7a26-4d4b-9c41-1e9b4f0a0c06)]
+class FloatAction: IFloatAction {}
+
+[uuid(5a8b1d3f-7a26-4d4b-9c41-1e9b4f0a0c07)]
+interface IStrAction: IUnknown {
+    void invoke(&str value);
+}
+[uuid(5a8b1d3f-7a26-4d4b-9c41-1e9b4f0a0c08)]
+class StrAction: IStrAction {}

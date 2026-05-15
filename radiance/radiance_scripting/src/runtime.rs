@@ -30,7 +30,8 @@ use std::rc::Rc;
 
 use crosscom::{ComInterface, ComRc};
 use crosscom_protosept::{
-    install_com_dispatcher, scope, ComObjectTable, HostError, HostServices, P7HostContext,
+    install_com_dispatcher, scope, scope_context, with_context, ComObjectTable, HostError,
+    HostServices, P7HostContext,
 };
 use p7::interpreter::context::{Context, Data};
 use p7::{InMemoryModuleProvider, ModuleProvider};
@@ -192,11 +193,30 @@ impl ScriptHost {
 
     pub fn foreign_box(&self, type_tag: &str, handle: i64) -> Result<Data, HostError> {
         self.with_inner(|inner| {
-            inner
+            // Each foreign box owns one strong handle on the underlying
+            // ComObject; its GC finalizer balances this by calling
+            // `com.release`. Without the explicit `add_ref` the host's
+            // own intern handle would be consumed by the first
+            // collected box, invalidating any sibling box that shares
+            // the same id (e.g. a singleton `IUiHost` materialised
+            // anew each frame by `ScriptedImmediateDirector`).
+            if !inner.host.services.com_table_mut().add_ref(handle) {
+                return Err(HostError::message(format!(
+                    "foreign_box: invalid COM object handle {}",
+                    handle,
+                )));
+            }
+            let pushed = inner
                 .host
                 .ctx
                 .push_foreign(type_tag, handle)
-                .map_err(|err| HostError::message(format!("push foreign failed: {:?}", err)))?;
+                .map_err(|err| {
+                    // Undo the add_ref above so a failed push doesn't
+                    // leak a handle.
+                    inner.host.services.com_table_mut().release(handle);
+                    HostError::message(format!("push foreign failed: {:?}", err))
+                });
+            pushed?;
             current_frame_stack_pop(inner)
                 .ok_or_else(|| HostError::message("push foreign produced no stack value"))
         })
@@ -310,9 +330,28 @@ impl ScriptHost {
         let host = &mut inner.host;
         std::panic::catch_unwind(AssertUnwindSafe(|| {
             let P7HostContext { ctx, services } = host;
+            // `scope_context` parks the active interpreter pointer in a
+            // thread-local so that re-entrant invocations from
+            // crosscom-wrapped script callbacks (e.g. `IAction.invoke()`
+            // dispatched from a host method while body codegen runs)
+            // can recover the same `Context` via `with_context`.
+            // `scope` does the analogous park for `HostServices` (the
+            // `ComObjectTable`). Both are required: SAM-coerced
+            // closures (§L2) cross the script/host boundary in both
+            // directions during a single render frame.
             scope(services, || {
-                ctx.push_function(name, args);
-                ctx.resume()
+                scope_context(ctx, || {
+                    with_context(|ctx| {
+                        ctx.push_function(name, args);
+                        ctx.resume()
+                    })
+                    .map_err(|err| {
+                        p7::errors::RuntimeError::Other(format!(
+                            "with_context unavailable: {:?}",
+                            err
+                        ))
+                    })?
+                })
             })
         }))
         .map_err(|_| HostError::message(format!("script function '{name}' panicked")))?
@@ -329,8 +368,18 @@ impl ScriptHost {
         std::panic::catch_unwind(AssertUnwindSafe(|| {
             let P7HostContext { ctx, services } = host;
             scope(services, || {
-                ctx.push_proto_method(receiver, method_name, args)?;
-                ctx.resume()
+                scope_context(ctx, || {
+                    with_context(|ctx| {
+                        ctx.push_proto_method(receiver, method_name, args)?;
+                        ctx.resume()
+                    })
+                    .map_err(|err| {
+                        p7::errors::RuntimeError::Other(format!(
+                            "with_context unavailable: {:?}",
+                            err
+                        ))
+                    })?
+                })
             })
         }))
         .map_err(|_| HostError::message(format!("script method '{method_name}' panicked")))?
@@ -373,12 +422,12 @@ fn binding_provider(extra: &[(String, String)]) -> Box<dyn ModuleProvider> {
         include_str!(concat!(env!("OUT_DIR"), "/editor_services.p7")).to_string(),
     );
     provider.add_module(
-        "radiance".to_string(),
-        include_str!(concat!(env!("OUT_DIR"), "/radiance.p7")).to_string(),
+        "ui_host".to_string(),
+        include_str!(concat!(env!("OUT_DIR"), "/ui_host.p7")).to_string(),
     );
     provider.add_module(
-        "ui".to_string(),
-        crate::ui_walker::UI_BINDINGS_P7.to_string(),
+        "radiance".to_string(),
+        include_str!(concat!(env!("OUT_DIR"), "/radiance.p7")).to_string(),
     );
     provider.add_module("director".to_string(), DIRECTOR_BINDINGS_P7.to_string());
     provider.add_module(

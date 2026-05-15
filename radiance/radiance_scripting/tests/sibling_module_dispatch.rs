@@ -4,16 +4,16 @@
 //!   returns it through a host service. Its `update` body accesses
 //!   field 1 (a box<array<int>>). The host service is exposed via a
 //!   foreign proto method that calls back into the script and returns
-//!   the multi-field director as a `box<director.Director>` — exactly
-//!   the editor's open_game path.
+//!   the multi-field director as a `box<director.ImmediateDirector>` —
+//!   exactly the editor's open_game path.
 //! - User-main entry just calls `adapter_mod.wrap_host(host_director)`,
-//!   where `host_director` is a Rust-side ScriptedDirector wrapping the
-//!   MainEditorDirector.
+//!   where `host_director` is a Rust-side ScriptedImmediateDirector
+//!   wrapping the MainEditorDirector.
 //! When the proxy drives update, the dispatch chain is:
-//!   outer ScriptedDirector(HostDirector).update
-//!     → HostDirector.update body: self.inner.update(dt)   (self is 1 field)
-//!       → inner ScriptedDirector(MainEditorDirector).update
-//!         → MainEditorDirector.update body: self.b read    (self is 3 fields)
+//!   outer ScriptedImmediateDirector(HostDirector).update
+//!     → HostDirector.update body: self.inner.update(dt)  (self is 1 field)
+//!       → inner ScriptedImmediateDirector(GameDirector).update
+//!         → GameDirector.update body: self.b read    (self is 3 fields)
 //! A bug in cross-module dispatch can route either method body to the
 //! wrong receiver and panic on field index.
 
@@ -23,7 +23,8 @@ use std::rc::Rc;
 use crosscom::ComRc;
 use p7::interpreter::context::Data;
 use radiance::comdef::{IDirector, IDirectorImpl};
-use radiance_scripting::{ScriptHost, ScriptedDirector};
+use radiance_scripting::services::ui_host_recording::RecordingUiHost;
+use radiance_scripting::{ScriptHost, ScriptedImmediateDirector};
 
 struct CountingDirector {
     updated: Rc<Cell<u32>>,
@@ -42,57 +43,50 @@ impl IDirectorImpl for CountingDirector {
 const ADAPTER_MOD: &str = r#"
 import director;
 import radiance;
-import ui;
+import ui_host;
 
-pub struct[director.Director] HostDirector(pub inner: box<radiance.IDirector>) {
+pub struct[director.ImmediateDirector] HostDirector(pub inner: box<radiance.IDirector>) {
     pub fn activate(self: ref<Self>) { let _ = self.inner.activate(); }
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode { return ui.dummy(0.0, 0.0); }
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        let r: array<box<director.Director>> = []; return r;
-    }
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {}
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
         let _ = self.inner.update(dt);
-        let r: array<box<director.Director>> = []; return r;
+        let r: array<box<director.ImmediateDirector>> = []; return r;
     }
 }
 
-pub fn wrap_host(inner: box<radiance.IDirector>) -> box<director.Director> {
-    return box(HostDirector(inner)) as box<director.Director>;
+pub fn wrap_host(inner: box<radiance.IDirector>) -> box<director.ImmediateDirector> {
+    return box(HostDirector(inner)) as box<director.ImmediateDirector>;
 }
 "#;
 
 const GAME_MOD: &str = r#"
 import director;
-import ui;
+import ui_host;
 
-pub struct[director.Director] GameDirector(
+pub struct[director.ImmediateDirector] GameDirector(
     pub a: box<array<int>>,
     pub b: box<array<int>>,
     pub c: box<array<int>>,
 ) {
     pub fn activate(self: ref<Self>) {}
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
+    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {
         // Touch field 1 the same way the real MainEditorDirector does
         // (`self.tabs.len()`-style).
         let n = self.b.len();
-        return ui.dummy(0.0, 0.0);
     }
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        let r: array<box<director.Director>> = []; return r;
-    }
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
         let n = self.b.len();
-        let r: array<box<director.Director>> = []; return r;
+        let r: array<box<director.ImmediateDirector>> = []; return r;
     }
 }
 
-pub fn make_game_director() -> box<director.Director> {
+pub fn make_game_director() -> box<director.ImmediateDirector> {
     let arr1: array<int> = [];
     let arr2: array<int> = [];
     let arr3: array<int> = [];
-    return box(GameDirector(box(arr1), box(arr2), box(arr3))) as box<director.Director>;
+    return box(GameDirector(box(arr1), box(arr2), box(arr3))) as box<director.ImmediateDirector>;
 }
 "#;
 
@@ -102,11 +96,11 @@ import radiance;
 import adapter_mod;
 import game_mod;
 
-pub fn make_game() -> box<director.Director> {
+pub fn make_game() -> box<director.ImmediateDirector> {
     return game_mod.make_game_director();
 }
 
-pub fn wrap_host_director(inner: box<radiance.IDirector>) -> box<director.Director> {
+pub fn wrap_host_director(inner: box<radiance.IDirector>) -> box<director.ImmediateDirector> {
     return adapter_mod.wrap_host(inner);
 }
 "#;
@@ -119,28 +113,30 @@ fn host_director_wrapping_a_scripted_multi_field_director_dispatches_correctly()
     host.load_source(MAIN_MOD).expect("main script should compile");
 
     // Step 1: build the inner game director (multi-field) and wrap it in
-    // a Rust-side ScriptedDirector — this is what app_service::open_game
-    // returns to welcome.dispatch in the editor.
+    // a Rust-side ScriptedImmediateDirector — this is what
+    // app_service::open_game returns in the editor.
     let inner_data = host
         .call_returning_data("make_game", vec![])
         .expect("make_game should succeed");
     let inner_handle = host.root(inner_data);
+    let (_inner_recording, inner_ui) = RecordingUiHost::create();
     let inner_director: ComRc<IDirector> =
-        ScriptedDirector::wrap(host.clone(), inner_handle);
+        ScriptedImmediateDirector::wrap(host.clone(), inner_handle, inner_ui);
 
     // Step 2: hand it back into the script as a foreign IDirector and
-    // wrap it in the HostDirector adapter — this is welcome.dispatch
-    // returning [editor_consts.wrap_host(next!)] in the editor.
+    // wrap it in the HostDirector adapter — this is welcome.update
+    // returning [editor_consts.wrap_host_im(next!)] in the editor.
     let inner_com_id = host.intern(inner_director);
     let inner_foreign = host
         .foreign_box("radiance.comdef.IDirector", inner_com_id)
         .expect("inner foreign box");
     let outer_data = host
         .call_returning_data("wrap_host_director", vec![inner_foreign])
-        .expect("wrap_host_director should produce a Director box");
+        .expect("wrap_host_director should produce an ImmediateDirector box");
 
     let outer_handle = host.root(outer_data);
-    let proxy = ScriptedDirector::wrap(host.clone(), outer_handle);
+    let (_outer_recording, outer_ui) = RecordingUiHost::create();
+    let proxy = ScriptedImmediateDirector::wrap(host.clone(), outer_handle, outer_ui);
 
     proxy.activate();
     let _ = proxy.update(0.016);
@@ -151,27 +147,22 @@ fn host_director_wrapping_a_scripted_multi_field_director_dispatches_correctly()
 
 const GC_STRESS_MOD: &str = r#"
 import director;
-import ui;
+import ui_host;
 
-pub struct[director.Director] CountingDir(pub tick: box<array<int>>) {
+pub struct[director.ImmediateDirector] CountingDir(pub tick: box<array<int>>) {
     pub fn activate(self: ref<Self>) {}
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        return ui.dummy(0.0, 0.0);
-    }
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        let r: array<box<director.Director>> = []; return r;
-    }
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {}
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
         let n = self.tick[0];
         self.tick[0] = n + 1;
-        let r: array<box<director.Director>> = []; return r;
+        let r: array<box<director.ImmediateDirector>> = []; return r;
     }
 }
 
-pub fn make() -> box<director.Director> {
+pub fn make() -> box<director.ImmediateDirector> {
     let arr: array<int> = [0];
-    return box(CountingDir(box(arr))) as box<director.Director>;
+    return box(CountingDir(box(arr))) as box<director.ImmediateDirector>;
 }
 
 // Forces ~150 box allocations per call, well past the default
@@ -204,7 +195,7 @@ fn host_cached_data_survives_mid_call_gc() {
 import director;
 import gc_stress;
 
-pub fn make_dir() -> box<director.Director> {
+pub fn make_dir() -> box<director.ImmediateDirector> {
     return gc_stress.make();
 }
 
@@ -248,4 +239,3 @@ pub fn churn() -> int {
 
     host.unroot(root);
 }
-

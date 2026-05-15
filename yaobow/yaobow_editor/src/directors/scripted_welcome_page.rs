@@ -2,7 +2,7 @@
 //!
 //! Loads the composed editor script (welcome + main editor + content tabs +
 //! resource tree + previewers), wires the `EditorHostContext`, calls
-//! `init(host)`, and wraps the returned director in a `ScriptedDirector`
+//! `init(host)`, and wraps the returned director in a `ScriptedImmediateDirector`
 //! ready to be pushed onto the engine.
 
 use std::cell::RefCell;
@@ -10,8 +10,9 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 use radiance::comdef::{IApplication, IDirector};
+use radiance_scripting::services::ui_host::ImguiUiHost;
 use radiance_scripting::services::ImguiTextureCache;
-use radiance_scripting::{ScriptHost, ScriptedDirector};
+use radiance_scripting::{ScriptHost, ScriptedImmediateDirector};
 use shared::config::YaobowConfig;
 
 use crate::directors::app_service::AppService;
@@ -77,7 +78,8 @@ impl ScriptedWelcomePage {
         let handle = host.root(director);
 
         let ui_manager = app.engine().borrow().ui_manager();
-        ScriptedDirector::with_ui(host, handle, ui_manager, textures)
+        let ui_host = ImguiUiHost::create();
+        ScriptedImmediateDirector::with_ui(host, handle, ui_host, ui_manager, textures)
     }
 }
 

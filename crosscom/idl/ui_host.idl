@@ -1,0 +1,72 @@
+// Editor-UI scripting host service (H1).
+//
+// `IUiHost` is the immediate-mode imgui surface exposed to p7 scripts.
+// Pairing widgets (`window`, `child_window`, `table`, `tab_bar`, ...)
+// take a trailing `IAction` body that runs *between* the host's
+// `begin_*` / `end_*` calls. The Rust impl guarantees pairing via RAII
+// (imgui-rs's scope-guard closures), and surfaces button presses as
+// return values so scripts no longer need command-id side channels.
+//
+// Scripts pass callbacks as ordinary p7 closures, which the language
+// elaborates into anonymous structs implementing `IAction` via SAM
+// coercion (§L2 of generated/plan.md). The crosscom layer wraps those
+// script structs as `ComRc<IAction>` on entry, so this IDL stays
+// language-neutral.
+//
+// `texture_com_id` parameters use the same i32 token convention as the
+// retained `UiNode` path's image bindings, resolved through the host's
+// `ImguiTextureCache`.
+
+module(rust) radiance_scripting::comdef::ui_host;
+
+import crosscom.idl;
+
+[uuid(7d3c8a44-58f1-4d12-9c4b-1a2f9c0e0d01)]
+interface IUiHost: IUnknown {
+    // --- Pairing widgets ---------------------------------------------
+    // Body runs between begin/end; if the begin returns false (e.g.
+    // window is collapsed) the body is *not* invoked, and the matching
+    // end is still emitted via RAII.
+
+    void window(&str title, float w, float h, int flags, IAction body);
+    void window_centered(&str title, float w, float h, IAction body);
+    void window_fullscreen(&str title, int flags, IAction body);
+    void child_window(&str id, float w, float h, IAction body);
+    void table(&str id, int cols, IAction body);
+    void tab_bar(&str id, IAction body);
+    void tree_node(&str label, IAction body);
+    void group(IAction body);
+    void style_alpha(float alpha, IAction body);
+
+    // tab_item: body runs only while the tab is selected; the close
+    // flag is reported as the return value (true == user requested
+    // close on this frame).
+    bool tab_item(&str label, bool closable, IAction body);
+
+    // --- Layout primitives --------------------------------------------
+
+    void same_line();
+    void dummy(float w, float h);
+    void spacer(float w, float h);
+
+    // Advance to the next column inside the most recently opened
+    // `table(...)` body. Cells in an imgui table do not auto-advance;
+    // immediate-mode scripts must call `table_next_column()` before
+    // every cell (the legacy retained-tree walker called it between
+    // children automatically — that helper is gone in the
+    // immediate-mode model).
+    void table_next_column();
+
+    // --- Leaf widgets ------------------------------------------------
+
+    void text(&str s);
+    void text_with_font(int font_idx, &str s);
+    bool button(&str label, float w, float h);
+    void image(int texture_com_id, float w, float h);
+    void image_fit(int texture_com_id, float src_w, float src_h);
+    void multiline_text(&str content, float w, float h);
+    bool tree_leaf(&str label);
+}
+
+[uuid(7d3c8a44-58f1-4d12-9c4b-1a2f9c0e0d02)]
+class UiHost: IUiHost {}

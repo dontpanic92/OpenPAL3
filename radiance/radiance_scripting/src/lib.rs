@@ -9,17 +9,17 @@ pub mod comdef {
     pub mod services {
         include!(concat!(env!("OUT_DIR"), "/services_comdef.rs"));
     }
+
+    #[macro_use]
+    pub mod ui_host {
+        include!(concat!(env!("OUT_DIR"), "/ui_host_comdef.rs"));
+    }
 }
 
 pub mod proxies;
 pub mod runtime;
 pub mod services;
-pub mod ui_walker;
 
-pub use proxies::ScriptedDirector;
+pub use proxies::ScriptedImmediateDirector;
 pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};
 pub use services::HostContext;
-pub use ui_walker::{
-    walk, CommandSink, LocalCommandQueue, OwnedNode, TextureResolver, UiAdapter, UiVisitor,
-    WalkContext, WalkError,
-};

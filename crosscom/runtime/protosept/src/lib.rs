@@ -33,9 +33,11 @@ use crosscom::{ComInterface, ComRc, IUnknown};
 
 pub mod adapter;
 pub mod dispatcher;
+pub mod script_proxy;
 
 pub use adapter::{MinimalServices, P7HostContext};
 pub use dispatcher::install_com_dispatcher;
+pub use script_proxy::{wrap_action, ScriptActionProxy};
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -83,6 +85,18 @@ pub struct ComObjectTable {
 struct Slot {
     rc: Option<ComRc<IUnknown>>,
     generation: u32,
+    /// Outstanding strong-handle count. `intern` / `intern_unknown`
+    /// initialise this to 1 (the host's own handle). Each call to
+    /// [`ComObjectTable::add_ref`] bumps it; each [`ComObjectTable::release`]
+    /// decrements it. When it reaches 0 the underlying `ComRc` is
+    /// dropped, the slot enters the free list, and its generation is
+    /// bumped so stale ids fail-fast. This makes the
+    /// `host.foreign_box(id) → script-side box → GC finalizer
+    /// (com.release)` round-trip safe even when multiple foreign
+    /// boxes share the same intern id (e.g. a per-frame `box<IUiHost>`
+    /// that drops after the frame while the next frame allocates a
+    /// fresh one pointing at the same singleton ComObject).
+    refs: u32,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
@@ -143,12 +157,14 @@ impl ComObjectTable {
         if let Some(idx) = self.free.pop() {
             let s = &mut self.slots[idx];
             s.rc = Some(rc);
+            s.refs = 1;
             return ComObjectId::encode(idx, s.generation);
         }
         let idx = self.slots.len();
         self.slots.push(Slot {
             rc: Some(rc),
             generation: 0,
+            refs: 1,
         });
         ComObjectId::encode(idx, 0)
     }
@@ -173,9 +189,30 @@ impl ComObjectTable {
         }
     }
 
-    /// Drop the strong ref backing `id`, freeing the slot and bumping its
-    /// generation so subsequent lookups with the old id fail. Returns
-    /// `false` if the id was already invalid.
+    /// Increment the strong-handle count on `id`. Returns `false` if
+    /// the id is invalid, the slot is empty, or the generation does
+    /// not match. Each successful `add_ref` must be balanced by a
+    /// later [`ComObjectTable::release`] — typically by handing the
+    /// same id to a script-side foreign box whose GC finalizer calls
+    /// `com.release`.
+    pub fn add_ref(&mut self, id: i64) -> bool {
+        let Some((slot, generation)) = ComObjectId::decode(id) else {
+            return false;
+        };
+        let Some(s) = self.slots.get_mut(slot) else {
+            return false;
+        };
+        if s.generation != generation || s.rc.is_none() {
+            return false;
+        }
+        s.refs = s.refs.saturating_add(1);
+        true
+    }
+
+    /// Decrement the strong-handle count on `id`. When it reaches zero
+    /// the underlying `ComRc` is dropped, the slot is freed, and its
+    /// generation is bumped so subsequent lookups with the old id
+    /// fail. Returns `false` if the id was already invalid.
     pub fn release(&mut self, id: i64) -> bool {
         let Some((slot, generation)) = ComObjectId::decode(id) else {
             return false;
@@ -186,6 +223,11 @@ impl ComObjectTable {
         if s.generation != generation || s.rc.is_none() {
             return false;
         }
+        if s.refs > 1 {
+            s.refs -= 1;
+            return true;
+        }
+        s.refs = 0;
         s.rc = None;
         s.generation = s.generation.wrapping_add(1);
         self.free.push(slot);
@@ -283,6 +325,7 @@ pub trait HostServices: Any {
 
 thread_local! {
     static CURRENT_SERVICES: RefCell<Option<*mut dyn HostServices>> = const { RefCell::new(None) };
+    static CURRENT_CONTEXT: RefCell<Option<*mut p7::interpreter::context::Context>> = const { RefCell::new(None) };
 }
 
 /// Run `body` with `services` available via [`with_services`]. The pointer
@@ -321,6 +364,55 @@ pub fn with_services<R>(body: impl FnOnce(&mut dyn HostServices) -> R) -> Result
         // disallowed.
         let services = unsafe { &mut *ptr };
         Ok(body(services))
+    })
+}
+
+/// Run `body` with `ctx` accessible via [`with_context`]. Mirrors
+/// [`scope`] for the interpreter [`Context`]. Used by host methods that
+/// receive a script-implemented `@foreign` proto handle: the receiving
+/// site installs the context scope so that, when the
+/// [`ComRc`](crosscom::ComRc) wrapper around the script handle has its
+/// vtable invoked (e.g. `IAction.invoke()`), the thunk can find the
+/// owning interpreter to push a frame onto and resume.
+///
+/// The pointer is cleared before this function returns; access outside
+/// the dynamic extent is impossible.
+pub fn scope_context<R>(
+    ctx: &mut p7::interpreter::context::Context,
+    body: impl FnOnce() -> R,
+) -> R {
+    let prev = CURRENT_CONTEXT.with(|c| {
+        let mut c = c.borrow_mut();
+        let prev = *c;
+        *c = Some(ctx as *mut _);
+        prev
+    });
+    struct Guard {
+        prev: Option<*mut p7::interpreter::context::Context>,
+    }
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            CURRENT_CONTEXT.with(|c| {
+                *c.borrow_mut() = self.prev;
+            });
+        }
+    }
+    let _guard = Guard { prev };
+    body()
+}
+
+/// Access the [`Context`] installed by [`scope_context`]. Returns `Err`
+/// when called outside any `scope_context`. The closure must not call
+/// back into `scope_context`.
+pub fn with_context<R>(
+    body: impl FnOnce(&mut p7::interpreter::context::Context) -> R,
+) -> Result<R, HostError> {
+    CURRENT_CONTEXT.with(|c| {
+        let ptr = c.borrow().ok_or_else(|| {
+            HostError::message("with_context called outside crosscom_protosept::scope_context")
+        })?;
+        let ctx = unsafe { &mut *ptr };
+        Ok(body(ctx))
     })
 }
 

@@ -1,7 +1,17 @@
-// VFS tree renderer for the main editor's left pane.
+// VFS tree renderer for the main editor's left pane, immediate-mode
+// (H4 of generated/plan.md). Calls `ui_host.IUiHost` directly. Tree
+// expansion is owned by imgui itself — directory bodies inside a
+// `ui.tree_node(...)` only execute while the node is open, so the
+// recursive descent is naturally pruned without any side state on
+// the vfs.
+//
+// The caller passes a `picks` slot (`box<array<string>>`); whenever
+// the user clicks a leaf, its vfs path is pushed into the slot.
+// `MainEditorDirector.update` then drains the slot to open new
+// content tabs.
 
 import editor_services;
-import ui;
+import ui_host;
 
 fn join_tree_path(parent: string, name: string) -> string {
     if parent == "/" {
@@ -10,32 +20,35 @@ fn join_tree_path(parent: string, name: string) -> string {
     return f"{parent}/{name}";
 }
 
-fn render_tree_dir(vfs: box<editor_services.IVfsService>, path: string) -> box<array<ui.UiNode>> {
-    let nodes: array<ui.UiNode> = [];
-    let boxed_nodes = box(nodes);
+fn render_tree_dir(
+    ui: box<ui_host.IUiHost>,
+    vfs: box<editor_services.IVfsService>,
+    path: string,
+    picks: box<array<string>>,
+) {
     let count = vfs.entry_count(path);
     let mut i = 0;
-
     while i < count {
         let name = vfs.entry_name(path, i);
         let child_path = join_tree_path(path, name);
         if vfs.entry_is_dir(path, i) != 0 {
-            let children: array<ui.UiNode> = [];
-            let boxed_children = if vfs.is_expanded(child_path) != 0 {
-                render_tree_dir(vfs, child_path)
-            } else {
-                box(children)
-            };
-            boxed_nodes.push(ui.tree_node_box(name, vfs.command_id(child_path), boxed_children));
+            let expanded_path = child_path;
+            let _ = ui.tree_node(name, () => {
+                render_tree_dir(ui, vfs, expanded_path, picks);
+            });
         } else {
-            boxed_nodes.push(ui.tree_leaf(name, vfs.command_id(child_path)));
+            if ui.tree_leaf(name) != 0 {
+                picks.push(child_path);
+            }
         }
         i = i + 1;
     }
-
-    return boxed_nodes;
 }
 
-pub fn resource_tree_root_node(vfs: box<editor_services.IVfsService>) -> ui.UiNode {
-    return ui.column_box(render_tree_dir(vfs, "/"));
+pub fn render_resource_tree_im(
+    ui: box<ui_host.IUiHost>,
+    vfs: box<editor_services.IVfsService>,
+    picks: box<array<string>>,
+) {
+    render_tree_dir(ui, vfs, "/", picks);
 }

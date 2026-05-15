@@ -1,11 +1,11 @@
-// Shared editor constants and the `HostDirector` adapter that surfaces a
-// Rust-implemented `radiance.IDirector` as a script-side
-// `director.Director`. Exposed so every sibling module (and the user-main
-// `main.p7`) can refer to a single source of truth.
+// Shared editor constants and the `HostDirectorIm` adapter that
+// surfaces a Rust-implemented `radiance.IDirector` as a script-side
+// `director.ImmediateDirector`. Exposed so every sibling module (and
+// the user-main `main.p7`) can refer to a single source of truth.
 
 import director;
 import radiance;
-import ui;
+import ui_host;
 
 pub let CONTENT_KIND_TEXT: int = 1;
 pub let CONTENT_KIND_IMAGE: int = 2;
@@ -19,32 +19,30 @@ pub let MODEL_PREVIEW_CMD_BASE: int = 300000;
 pub let AUDIO_TOGGLE_CMD_BASE: int = 400000;
 pub let VIDEO_TOGGLE_CMD_BASE: int = 500000;
 
-pub struct[director.Director] HostDirector(pub inner: box<radiance.IDirector>) {
+// Bridges a Rust-side `box<radiance.IDirector>` (which renders via its
+// own `update`) into the `director.ImmediateDirector` proto so the
+// immediate-mode welcome page can transition into a Rust-driven
+// director without the engine seeing the proto seam. `render_im` is a
+// no-op: the wrapped inner Rust director draws its own window from
+// its `update` (see `ScriptedImmediateDirector::update`); returning a
+// real widget here would emit an orphan imgui call before that runs
+// and trip dear-imgui's implicit "Debug" fallback window.
+pub struct[director.ImmediateDirector] HostDirectorIm(pub inner: box<radiance.IDirector>) {
     pub fn activate(self: ref<Self>) {
         let _ = self.inner.activate();
     }
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render(self: ref<Self>, dt: float) -> ui.UiNode {
-        // The wrapped inner Rust director draws its own window from its
-        // `update` (see ScriptedDirector::update). Returning a real widget
-        // here would emit an orphan imgui call before that runs and trip
-        // dear-imgui's implicit "Debug" fallback window.
-        return ui.noop();
-    }
-    pub fn dispatch(self: ref<Self>, command_id: int) -> array<box<director.Director>> {
-        let result: array<box<director.Director>> = [];
-        return result;
-    }
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.Director>> {
+    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {}
+    pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
         let next = self.inner.update(dt);
         if next != null {
-            return [box(HostDirector(next!)) as box<director.Director>];
+            return [box(HostDirectorIm(next!)) as box<director.ImmediateDirector>];
         }
-        let result: array<box<director.Director>> = [];
+        let result: array<box<director.ImmediateDirector>> = [];
         return result;
     }
 }
 
-pub fn wrap_host(inner: box<radiance.IDirector>) -> box<director.Director> {
-    return box(HostDirector(inner)) as box<director.Director>;
+pub fn wrap_host_im(inner: box<radiance.IDirector>) -> box<director.ImmediateDirector> {
+    return box(HostDirectorIm(inner)) as box<director.ImmediateDirector>;
 }

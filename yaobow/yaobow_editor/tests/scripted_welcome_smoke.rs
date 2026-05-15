@@ -100,7 +100,6 @@ fn welcome_scripts_compile_with_shared_ui_module() {
 fn welcome_runtime_can_create_resource_tree_root() {
     use crosscom::ComRc;
     use radiance_scripting::comdef::services::IVfsService;
-    use radiance_scripting::ui_walker::{kinds, owned};
 
     let runtime = radiance_scripting::ScriptHost::new();
     runtime.add_binding(
@@ -124,6 +123,4 @@ fn welcome_runtime_can_create_resource_tree_root() {
     // round-trip works.
     let _ = vfs;
     drop(runtime);
-
-    let _ = (kinds::COLUMN, owned::resolve as fn(_, _) -> _);
 }
