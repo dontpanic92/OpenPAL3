@@ -113,40 +113,53 @@ pub fn read_material_list(cursor: &mut dyn Read) -> anyhow::Result<Vec<Material>
 
     let material_count = cursor.read_u32_le()?;
     if material_count > 0 {
-        // The "material index table" preceding the MATERIAL chunks:
+        // The "material index table" preceding the MATERIAL chunks per the
+        // RW 3.4+ spec:
         //   idx == -1 : the next slot has its own MATERIAL chunk to parse.
         //   idx >=  0 : the slot reuses (shares) material_vec[idx]; no chunk
         //               is emitted on disk for this entry.
-        // RW writers (notably PAL5 building BSPs) use shared indices heavily;
-        // skipping the table caused us to read a fresh MATERIAL chunk for
-        // every slot and walk off the end of the material list.
+        // Some games (notably PAL5) build BSPs that use shared indices
+        // heavily, so we cannot just skip the table and read a MATERIAL
+        // chunk per slot. However, other titles (PAL3/PAL4) emit a DWORD
+        // per slot here whose contents are NOT share indices, with a full
+        // run of N MATERIAL chunks following regardless. Detect which
+        // dialect we're looking at by validating the share-format
+        // invariants:
+        //   * indices[0] must be -1 (you cannot share before any slot is
+        //     defined);
+        //   * for i > 0, indices[i] is either -1 or a back-reference to a
+        //     strictly earlier slot (0 <= indices[i] < i).
+        // If those invariants hold, treat the table as share indices;
+        // otherwise fall back to the legacy "read N MATERIAL chunks"
+        // behavior so we don't desync the cursor.
         let mut indices = Vec::with_capacity(material_count as usize);
         for _ in 0..material_count {
             indices.push(cursor.read_i32::<LittleEndian>()?);
         }
 
-        for idx in indices {
-            if idx < 0 {
+        let is_share_format = indices[0] == -1
+            && indices
+                .iter()
+                .enumerate()
+                .all(|(i, &idx)| idx == -1 || (idx >= 0 && (idx as usize) < i));
+
+        if is_share_format {
+            for idx in indices {
+                if idx < 0 {
+                    let header = ChunkHeader::read(cursor)?;
+                    check_ty!(header.ty, ChunkType::MATERIAL);
+                    material_vec.push(Material::read(cursor)?);
+                } else {
+                    let shared = material_vec[idx as usize].clone();
+                    material_vec.push(shared);
+                }
+            }
+        } else {
+            // Legacy / non-share dialect: one MATERIAL chunk per slot.
+            for _ in 0..material_count {
                 let header = ChunkHeader::read(cursor)?;
                 check_ty!(header.ty, ChunkType::MATERIAL);
                 material_vec.push(Material::read(cursor)?);
-            } else {
-                let i = idx as usize;
-                if i < material_vec.len() {
-                    let shared = material_vec[i].clone();
-                    material_vec.push(shared);
-                } else {
-                    // Forward / out-of-range share index. Keep the slot count
-                    // stable (Triangle.material indexes into this Vec) by
-                    // pushing a default so downstream code doesn't desync.
-                    log::warn!(
-                        "rwbs material list: shared index {} out of range (len={}); \
-                         substituting default material",
-                        idx,
-                        material_vec.len()
-                    );
-                    material_vec.push(Material::default());
-                }
             }
         }
     }
@@ -216,17 +229,30 @@ mod tests {
     }
 
     #[test]
-    fn material_list_out_of_range_share_substitutes_default() {
+    fn material_list_legacy_dialect_reads_one_chunk_per_slot() {
+        // Some titles (PAL3/PAL4) store a DWORD per slot here that does NOT
+        // follow the RW share-index invariants and always emit one MATERIAL
+        // chunk per slot. Index table starting with a non-(-1) value is the
+        // detection signal for the legacy dialect.
         let mut buf = Vec::new();
         write_header(&mut buf, ChunkType::STRUCT.0, 0);
-        buf.extend(&1u32.to_le_bytes());
-        // Forward reference to a slot that doesn't exist yet.
-        buf.extend(&5i32.to_le_bytes());
+        buf.extend(&2u32.to_le_bytes());
+        // Non-share-format leading DWORDs (e.g. zeros or sequence numbers).
+        buf.extend(&0i32.to_le_bytes());
+        buf.extend(&0i32.to_le_bytes());
+        // Two MATERIAL chunks follow, one per slot.
+        let mc0 = material_chunk(0x11223344);
+        write_header(&mut buf, ChunkType::MATERIAL.0, mc0.len() as u32);
+        buf.extend(&mc0);
+        let mc1 = material_chunk(0x55667788);
+        write_header(&mut buf, ChunkType::MATERIAL.0, mc1.len() as u32);
+        buf.extend(&mc1);
 
         let mut cursor = Cursor::new(buf);
         let mats = read_material_list(&mut cursor).expect("parse");
-        assert_eq!(mats.len(), 1);
-        assert_eq!(mats[0].color, 0);
+        assert_eq!(mats.len(), 2);
+        assert_eq!(mats[0].color, 0x11223344);
+        assert_eq!(mats[1].color, 0x55667788);
         assert_eq!(cursor.position(), cursor.get_ref().len() as u64);
     }
 }
