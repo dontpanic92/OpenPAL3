@@ -39,9 +39,16 @@ impl World {
         check_ty!(header.ty, ChunkType::STRUCT);
 
         let root_type = cursor.read_u32_le()?;
-        let world_origin_x = -cursor.read_f32::<LittleEndian>()?;
-        let world_origin_y = -cursor.read_f32::<LittleEndian>()?;
-        let world_origin_z = -cursor.read_f32::<LittleEndian>()?;
+        // World origin is stored on disk in the same coordinate convention as
+        // `AtomicSector::bbox_{min,max}` (no sign flip). Earlier versions of
+        // this loader negated these floats; the negation was unused by any
+        // consumer (BSP loader ignores world_origin entirely) and created an
+        // inconsistency between origin and sector bounds. Read verbatim and
+        // let callers do any handedness flip alongside the rest of the scene
+        // transform.
+        let world_origin_x = cursor.read_f32::<LittleEndian>()?;
+        let world_origin_y = cursor.read_f32::<LittleEndian>()?;
+        let world_origin_z = cursor.read_f32::<LittleEndian>()?;
 
         let triangle_count = cursor.read_u32_le()?;
         let vertices_count = cursor.read_u32_le()?;

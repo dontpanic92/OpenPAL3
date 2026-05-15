@@ -107,10 +107,12 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
     let mut texcoord_sets = vec![];
     if let Some(t) = &sector.texcoords {
         texcoord_sets.push(t.clone());
-    }
 
-    if let Some(_t) = &sector.texcoords2 {
-        // texcoord_sets.push(t.clone());
+        // Only forward the second set when the first is present so radiance
+        // sees a contiguous run of texcoord sets.
+        if let Some(t2) = &sector.texcoords2 {
+            texcoord_sets.push(t2.clone());
+        }
     }
 
     let child = CoreEntity::create(format!("{}_sub", entity.name()), true);
