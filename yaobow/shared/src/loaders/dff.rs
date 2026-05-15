@@ -489,17 +489,6 @@ fn detect_blend(material: &Material, md: &MaterialDef) -> BlendMode {
         BlendMode::Opaque
     };
 
-    log::info!(
-        "dff material blend: mat_alpha={} tex_alpha_kind={:?} tex={} blend={:?}",
-        mat_alpha,
-        texture_alpha,
-        md.textures()
-            .first()
-            .map(|t| t.name())
-            .unwrap_or("<none>"),
-        blend,
-    );
-
     blend
 }
 

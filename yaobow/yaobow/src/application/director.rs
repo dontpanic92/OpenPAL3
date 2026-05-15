@@ -85,7 +85,10 @@ impl IDirectorImpl for TitleSelectionDirector {
                 .size(window_size, Condition::Always)
                 .position([0.0, 0.0], Condition::Always)
                 .collapsible(false)
-                .always_auto_resize(true)
+                .movable(false)
+                .resizable(false)
+                .bring_to_front_on_focus(false)
+                .nav_focus(false)
                 .build(|| {});
 
             let _t1 = ui.push_style_color(StyleColor::WindowBg, BG_COLOR);
@@ -105,7 +108,8 @@ impl IDirectorImpl for TitleSelectionDirector {
                 .size(window_size, Condition::Always)
                 .position([0.0, 0.0], Condition::Always)
                 .collapsible(false)
-                .always_auto_resize(true)
+                .movable(false)
+                .resizable(false)
                 .build(|| {
                     props.ui.update(ui, delta_sec);
                 });
@@ -428,9 +432,16 @@ impl TitleList {
                 *time += delta_sec;
                 self.check_any_key(ui);
             }
-            TitleListState::InAnimation { time } => {
-                self.hovered_game.borrow_mut().replace(0);
-                self.state = TitleListState::ShowingList { time: 0. };
+            TitleListState::InAnimation { time: _ } => {
+                // Wait for the user to release the key/mouse that dismissed the
+                // "press any key" prompt before showing the game list, so that
+                // the same input doesn't immediately activate a game button.
+                let any_input = ui.io().keys_down.iter().any(|&k| k)
+                    || ui.io().mouse_down.iter().any(|&k| k);
+                if !any_input {
+                    self.hovered_game.borrow_mut().replace(0);
+                    self.state = TitleListState::ShowingList { time: 0. };
+                }
             }
             TitleListState::ShowingList { time } => self.draw_game_list(ui, center, size),
         }
