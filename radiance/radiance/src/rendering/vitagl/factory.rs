@@ -74,6 +74,17 @@ impl ComponentFactory for VitaGLComponentFactory {
     fn create_video_player(&self) -> Box<VideoPlayer> {
         Box::new(VideoPlayer::new())
     }
+
+    fn create_render_target(
+        &self,
+        _width: u32,
+        _height: u32,
+    ) -> Box<dyn crate::rendering::RenderTarget> {
+        // vitagl backend does not yet support offscreen render targets.
+        // Tracked in plan.md under todo `vitagl-stub` — once the editor
+        // ships on Vita this will need a real FBO-backed implementation.
+        unimplemented!("vitagl backend does not yet support offscreen render targets");
+    }
 }
 
 impl VitaGLComponentFactory {

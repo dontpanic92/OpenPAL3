@@ -11,16 +11,18 @@ use crosscom::ComRc;
 use radiance::audio::{AudioMemorySource, AudioSourceState};
 use radiance::comdef::{IEntity, IScene, ISceneManager};
 use radiance::math::Vec3;
-use radiance::rendering::VideoPlayer;
+use radiance::rendering::{ComponentFactory, VideoPlayer};
 use radiance::scene::CoreScene;
 use radiance::video::VideoStreamState;
+use radiance_scripting::comdef::services::IRenderTarget;
 use radiance_scripting::services::texture_cache::next_handle_com_id;
-use radiance_scripting::services::ImguiTextureCache;
+use radiance_scripting::services::{ImguiTextureCache, ScriptedRenderTarget};
 
 use crate::comdef::editor_services::{
     IAudioHandle, IAudioHandleImpl, IImageHandle, IImageHandleImpl, IModelHandle,
     IModelHandleImpl, IPreviewSession, IPreviewSessionImpl, IVideoHandle, IVideoHandleImpl,
 };
+use crate::services::preview_registry::{tick_orbit, OrbitState, PreviewRegistry, PreviewState};
 
 // ---------------------------------------------------------------------------
 // Image
@@ -199,57 +201,51 @@ impl IVideoHandleImpl for VideoHandle {
 // ---------------------------------------------------------------------------
 
 pub struct PreviewSession {
-    scene_manager: ComRc<ISceneManager>,
-    scene: ComRc<IScene>,
-    closed: std::cell::Cell<bool>,
+    state: Rc<PreviewState>,
+    target_com: ComRc<IRenderTarget>,
 }
 
 ComObject_PreviewSession!(super::PreviewSession);
 
 impl PreviewSession {
     pub fn create(
-        scene_manager: ComRc<ISceneManager>,
-        scene: ComRc<IScene>,
+        state: Rc<PreviewState>,
+        target_com: ComRc<IRenderTarget>,
     ) -> ComRc<IPreviewSession> {
-        ComRc::from_object(Self {
-            scene_manager,
-            scene,
-            closed: std::cell::Cell::new(false),
-        })
-    }
-
-    fn pop(&self) {
-        if self.closed.replace(true) {
-            return;
-        }
-        if let Some(top) = self.scene_manager.scene() {
-            if std::ptr::eq(top.ptr_value(), self.scene.ptr_value()) {
-                self.scene_manager.pop_scene();
-            } else {
-                log::warn!(
-                    "preview session close skipped: scene_manager top is not our preview scene"
-                );
-            }
-        }
+        ComRc::from_object(Self { state, target_com })
     }
 }
 
 impl Drop for PreviewSession {
     fn drop(&mut self) {
-        self.pop();
+        self.state.closed.set(true);
     }
 }
 
 impl IPreviewSessionImpl for PreviewSession {
     fn close(&self) {
-        self.pop();
+        self.state.closed.set(true);
+    }
+
+    fn target(&self) -> ComRc<IRenderTarget> {
+        self.target_com.clone()
+    }
+
+    fn tick_camera(&self, dx: f32, dy: f32, wheel: f32, buttons: i32) {
+        if self.state.closed.get() {
+            return;
+        }
+        let mut orbit = self.state.orbit.borrow_mut();
+        tick_orbit(&mut orbit, dx, dy, wheel, buttons);
     }
 }
 
 pub struct ModelHandle {
     text_dump: String,
     entity: RefCell<Option<ComRc<IEntity>>>,
-    scene_manager: ComRc<ISceneManager>,
+    factory: Rc<dyn ComponentFactory>,
+    cache: Rc<RefCell<ImguiTextureCache>>,
+    registry: Rc<PreviewRegistry>,
     last_string: RefCell<String>,
 }
 
@@ -257,14 +253,18 @@ ComObject_ModelHandle!(super::ModelHandle);
 
 impl ModelHandle {
     pub fn create(
-        scene_manager: ComRc<ISceneManager>,
         text_dump: String,
         entity: ComRc<IEntity>,
+        factory: Rc<dyn ComponentFactory>,
+        cache: Rc<RefCell<ImguiTextureCache>>,
+        registry: Rc<PreviewRegistry>,
     ) -> ComRc<IModelHandle> {
         ComRc::from_object(Self {
             text_dump,
             entity: RefCell::new(Some(entity)),
-            scene_manager,
+            factory,
+            cache,
+            registry,
             last_string: RefCell::new(String::new()),
         })
     }
@@ -285,18 +285,27 @@ impl IModelHandleImpl for ModelHandle {
             .take()
             .expect("model handle preview can only be opened once");
         let scene = CoreScene::create();
-        self.scene_manager.pop_scene();
-        self.scene_manager.push_scene(scene.clone());
 
         entity.load();
         scene.add_entity(entity);
-        scene
-            .camera()
-            .borrow_mut()
-            .transform_mut()
-            .set_position(&Vec3::new(0., 200., 200.))
-            .look_at(&Vec3::new(0., 0., 0.));
 
-        PreviewSession::create(self.scene_manager.clone(), scene)
+        // Allocate the offscreen target. 512x512 is a reasonable initial
+        // size for an editor tab; the script can call `target.resize(w,h)`
+        // once it knows the imgui child window dimensions.
+        let target_box = self.factory.create_render_target(512, 512);
+        let (target_com, target_shared) =
+            ScriptedRenderTarget::create(target_box, self.cache.clone());
+
+        let orbit = OrbitState::new(Vec3::new(0., 0., 0.), 0., 0.3, 200.);
+        let state = Rc::new(PreviewState {
+            scene,
+            target: target_shared,
+            orbit: RefCell::new(orbit),
+            closed: std::cell::Cell::new(false),
+        });
+        state.apply_camera();
+        self.registry.register(&state);
+
+        PreviewSession::create(state, target_com)
     }
 }

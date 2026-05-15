@@ -31,6 +31,23 @@ impl Image {
         )
     }
 
+    /// Color image suitable as an offscreen render target: usable as a
+    /// `COLOR_ATTACHMENT` and as a `SAMPLED` texture in subsequent passes
+    /// (e.g. imgui sampling the result inside the editor preview).
+    pub fn new_color_attachment_image(
+        allocator: &Rc<vk_mem::Allocator>,
+        tex_width: u32,
+        tex_height: u32,
+    ) -> Result<Self, Box<dyn Error>> {
+        Self::new(
+            allocator,
+            tex_width,
+            tex_height,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+        )
+    }
+
     pub fn new_depth_image(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,

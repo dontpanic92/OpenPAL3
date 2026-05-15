@@ -137,10 +137,54 @@ pub fn render_tab_body_im(
         return;
     }
     if tab.kind == editor_consts.CONTENT_KIND_MODEL {
-        if ui.button("Preview", 100.0, 24.0) != 0 {
-            preview_intents.push(tab.close_cmd);
+        if tab.preview_session != null {
+            // Embedded offscreen preview. The host renders the preview
+            // scene into `session.target()` once per frame (driven from
+            // the director's `update` via `host.render_pending_previews()`)
+            // and the offscreen color image is sampled here.
+            let s = tab.preview_session!;
+            let t = s.target();
+            let w = t.width() as float;
+            let h = t.height() as float;
+            let _ = ui.image(t.texture_id(), w, h);
+
+            // Orbit/pan/zoom: cumulative drag deltas come from imgui, so
+            // read + reset every frame to get incremental motion. We
+            // collect deltas only while the user is interacting over
+            // the offscreen image to avoid hijacking input meant for
+            // surrounding widgets.
+            let hovered = ui.is_item_hovered();
+            let left = ui.mouse_down(0);
+            let right = ui.mouse_down(1);
+            let mut dx = 0.0;
+            let mut dy = 0.0;
+            let mut buttons = 0;
+            if hovered != 0 && left != 0 {
+                dx = ui.mouse_drag_delta_x(0);
+                dy = ui.mouse_drag_delta_y(0);
+                ui.reset_mouse_drag_delta(0);
+                buttons = buttons | 1;
+            }
+            if hovered != 0 && right != 0 {
+                let rdx = ui.mouse_drag_delta_x(1);
+                let rdy = ui.mouse_drag_delta_y(1);
+                ui.reset_mouse_drag_delta(1);
+                if rdx != 0.0 || rdy != 0.0 {
+                    dx = dx + rdx;
+                    dy = dy + rdy;
+                }
+                buttons = buttons | 2;
+            }
+            let wheel = if hovered != 0 { ui.mouse_wheel() } else { 0.0 };
+            if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
+                let _ = s.tick_camera(dx, dy, wheel, buttons);
+            }
+        } else {
+            if ui.button("Preview", 100.0, 24.0) != 0 {
+                preview_intents.push(tab.close_cmd);
+            }
+            let _ = ui.multiline_text(tab.text_content, -1.0, -1.0);
         }
-        let _ = ui.multiline_text(tab.text_content, -1.0, -1.0);
         return;
     }
     let _ = ui.text("Unsupported preview");

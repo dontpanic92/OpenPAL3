@@ -101,7 +101,13 @@ impl SwapChain {
             depth_image.vk_format(),
         )?;
 
-        descriptor_manager.reset_per_frame_descriptor_pool();
+        // NOTE: we deliberately do NOT call
+        // `descriptor_manager.reset_per_frame_descriptor_pool()` here. The
+        // pool is created with `FREE_DESCRIPTOR_SET` and the previous
+        // `SwapChain::Drop` already frees its own per-frame descriptor
+        // sets explicitly. Resetting would invalidate descriptor sets
+        // allocated by `VulkanRenderTarget`s, breaking offscreen previews
+        // across swapchain recreation (e.g. window resize).
         let pipeline_manager = PipelineManager::new(
             device.clone(),
             &descriptor_manager,
@@ -274,6 +280,83 @@ impl SwapChain {
         self.device.end_command_buffer(command_buffer)?;
 
         Ok(command_buffer)
+    }
+
+    /// Record a command buffer that renders `opaque`/`cutout`/`transparent`
+    /// objects into an externally-owned framebuffer (typically a
+    /// `VulkanRenderTarget`). No imgui pass; the caller decides the
+    /// render pass + framebuffer + descriptor set + extent. The pipeline
+    /// manager is reused so any new materials get a pipeline created
+    /// against the swapchain's render pass (which is render-pass
+    /// compatible with the offscreen one).
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_to_external_framebuffer(
+        &mut self,
+        command_buffer: vk::CommandBuffer,
+        render_pass: vk::RenderPass,
+        framebuffer: vk::Framebuffer,
+        extent: vk::Extent2D,
+        per_frame_descriptor_set: vk::DescriptorSet,
+        opaque_objects: &[&VulkanRenderObject],
+        cutout_objects: &[&VulkanRenderObject],
+        transparent_objects: &[&VulkanRenderObject],
+        dub_manager: &DynamicUniformBufferManager,
+    ) -> Result<(), vk::Result> {
+        let begin_info = vk::CommandBufferBeginInfo::default()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        self.device.reset_command_buffer(
+            command_buffer,
+            vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+        )?;
+        self.device
+            .begin_command_buffer(command_buffer, &begin_info)?;
+
+        let clear_values = [
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0f32, 0f32, 0f32, 1f32],
+                },
+            },
+            vk::ClearValue {
+                depth_stencil: vk::ClearDepthStencilValue {
+                    depth: 1.,
+                    stencil: 0,
+                },
+            },
+        ];
+        let render_pass_begin_info = vk::RenderPassBeginInfo::default()
+            .render_pass(render_pass)
+            .framebuffer(framebuffer)
+            .render_area(
+                vk::Rect2D::default()
+                    .offset(vk::Offset2D::default().x(0).y(0))
+                    .extent(extent),
+            )
+            .clear_values(&clear_values);
+
+        self.device.cmd_begin_render_pass(
+            command_buffer,
+            &render_pass_begin_info,
+            vk::SubpassContents::INLINE,
+        );
+
+        // Offscreen viewport spans the full target. Same convention as
+        // the swapchain path: positive height, origin at (0,0). Vulkan's
+        // Y-down NDC is already accommodated upstream in the projection
+        // matrix.
+        self.device.cmd_set_viewport(
+            command_buffer,
+            crate::math::Rect::new(0., 0., extent.width as f32, extent.height as f32),
+        );
+
+        self.draw_bucket_grouped(command_buffer, opaque_objects, per_frame_descriptor_set, dub_manager);
+        self.draw_bucket_grouped(command_buffer, cutout_objects, per_frame_descriptor_set, dub_manager);
+        self.draw_bucket_ordered(command_buffer, transparent_objects, per_frame_descriptor_set, dub_manager);
+
+        self.device.cmd_end_render_pass(command_buffer);
+        self.device.end_command_buffer(command_buffer)?;
+
+        Ok(())
     }
 
     fn draw_bucket_grouped(

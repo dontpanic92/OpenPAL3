@@ -53,6 +53,13 @@ impl CoreRadianceEngine {
         self.rendering_engine.borrow().component_factory()
     }
 
+    /// Shared handle to the rendering engine. Exposed so editor-style
+    /// hosts can drive `render_scene_to_target` against offscreen
+    /// `RenderTarget`s outside of the normal `update` flow.
+    pub fn rendering_engine(&self) -> Rc<RefCell<dyn RenderingEngine>> {
+        self.rendering_engine.clone()
+    }
+
     pub fn audio_engine(&self) -> Rc<dyn AudioEngine> {
         self.audio_engine.clone()
     }

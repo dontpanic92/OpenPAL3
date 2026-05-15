@@ -52,6 +52,10 @@ pub struct[director.ImmediateDirector] MainEditorDirector(
         self: ref<Self>,
         dt: float,
     ) -> array<box<director.ImmediateDirector>> {
+        // Drive offscreen preview passes for any active sessions BEFORE
+        // the next imgui frame samples their color textures.
+        let _ = self.host.render_pending_previews();
+
         // Open new tabs for clicked tree leaves.
         let mut p = 0;
         while p < self.picks.len() {
@@ -86,8 +90,14 @@ pub struct[director.ImmediateDirector] MainEditorDirector(
         // was pressed this frame. `set_preview_session_for_close_cmd`
         // mutates the owning tab via indexed assignment — not legal
         // through the `ref<ContentTab>` capture inside `render_im`.
+        //
+        // Single-active editor policy: when a new preview opens, close
+        // any other tab's existing session. The host registry holds
+        // weak refs so closing here drops the strong ref and lets the
+        // backend reclaim GPU resources.
         let mut m = 0;
         while m < self.preview_intents.len() {
+            close_other_preview_sessions(self.tabs, self.preview_intents[m]);
             set_preview_session_for_close_cmd(self.tabs, self.preview_intents[m]);
             m = m + 1;
         }
@@ -154,6 +164,27 @@ fn set_preview_session_for_close_cmd(
                 tabs[i].preview_session = h.open_preview();
             }
             return;
+        }
+        i = i + 1;
+    }
+}
+
+// Single-active editor policy: drop preview sessions on tabs *other*
+// than the one whose `close_cmd` is opening a new preview this frame.
+// The dropped sessions release their offscreen targets back to the
+// backend.
+fn close_other_preview_sessions(
+    tabs: box<array<content_tabs.ContentTab>>,
+    keep_close_cmd: int,
+) {
+    let mut i = 0;
+    while i < tabs.len() {
+        if tabs[i].close_cmd != keep_close_cmd {
+            if tabs[i].preview_session != null {
+                let s = tabs[i].preview_session!;
+                let _ = s.close();
+                tabs[i].preview_session = null;
+            }
         }
         i = i + 1;
     }

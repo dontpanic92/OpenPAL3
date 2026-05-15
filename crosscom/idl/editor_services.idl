@@ -30,6 +30,20 @@ interface ITexture: IUnknown {
 [uuid(25ab340f-cbc1-4e4e-a9f6-545bf090d741)]
 class Texture: ITexture {}
 
+[uuid(d6f4f7a1-7c4a-4f1f-9c2e-1b3a4d5e6f70)]
+interface IRenderTarget: IUnknown {
+    int width();
+    int height();
+    void resize(int w, int h);
+    // Script-side com_id for `ui.image(id, w, h)`. The ImguiTextureCache
+    // routes the com_id to the live `imgui::TextureId` of the backing
+    // color image, which the host re-registers on resize so the same
+    // com_id stays valid for the target's lifetime.
+    int texture_id();
+}
+[uuid(d6f4f7a1-7c4a-4f1f-9c2e-1b3a4d5e6f71)]
+class RenderTarget: IRenderTarget {}
+
 [uuid(15a50631-5098-45ca-ac41-1036b48df398)]
 interface ITextureService: IUnknown {
     ITexture? load_png(&str vfs_path);

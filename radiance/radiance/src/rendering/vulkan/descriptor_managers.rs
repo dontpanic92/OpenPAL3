@@ -122,6 +122,31 @@ impl DescriptorManager {
             .free_descriptor_sets(self.texture_pool, &[descriptor_set]);
     }
 
+    /// Allocates a `COMBINED_IMAGE_SAMPLER` descriptor set bound to the
+    /// given `image_view` with the default sampler. Used by render targets
+    /// to register their color image with `imgui-rs-vulkan-renderer`.
+    pub fn create_image_view_descriptor_set(
+        &self,
+        image_view: vk::ImageView,
+    ) -> vk::DescriptorSet {
+        let sampler = self.sampler_cache.default_sampler();
+        let set = self.allocate_texture_descriptor_set().unwrap();
+        let image_info = [vk::DescriptorImageInfo {
+            sampler: sampler.vk_sampler(),
+            image_view,
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        }];
+
+        let writes = [vk::WriteDescriptorSet::default()
+            .dst_set(set)
+            .dst_binding(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(&image_info)];
+        self.device.update_descriptor_sets(&writes, &[]);
+
+        set
+    }
+
     pub fn allocate_per_object_descriptor_set(
         &self,
         material: &VulkanMaterial,

@@ -1,5 +1,7 @@
 //! Editor-flavoured host context. Wraps the shared `radiance_scripting`
-//! `HostContext` services and adds the editor-only `IPreviewerHub`.
+//! `HostContext` services and adds the editor-only `IPreviewerHub` plus
+//! the offscreen-preview registry that the editor's directors poll each
+//! frame.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -9,18 +11,20 @@ use mini_fs::MiniFs;
 use radiance::audio::AudioEngine;
 use radiance::comdef::ISceneManager;
 use radiance::input::InputEngine;
-use radiance::rendering::ComponentFactory;
+use radiance::rendering::{ComponentFactory, RenderingEngine};
 use radiance_scripting::comdef::services::{
     IAppService, IAudioService, IConfigService, IGameRegistry, IHostContext, IInputService,
-    ITextureService, IVfsService,
+    IRenderTarget, ITextureService, IVfsService,
 };
 use radiance_scripting::services::{
-    AudioService, GameRegistry, ImguiTextureCache, InputService, TextureService, VfsService,
+    AudioService, GameRegistry, ImguiTextureCache, InputService, ScriptedRenderTarget,
+    TextureService, VfsService,
 };
 
 use crate::comdef::editor_services::{IEditorHostContext, IEditorHostContextImpl, IPreviewerHub};
 use crate::comdef::services::IHostContextImpl;
 use crate::directors::DevToolsAssetLoader;
+use crate::services::preview_registry::PreviewRegistry;
 use crate::services::previewer_hub::PreviewerHub;
 use shared::GameType;
 
@@ -34,6 +38,11 @@ pub struct EditorHostContext {
     app: ComRc<IAppService>,
     config: ComRc<IConfigService>,
     previewers: ComRc<IPreviewerHub>,
+
+    factory: Rc<dyn ComponentFactory>,
+    texture_cache: Rc<RefCell<ImguiTextureCache>>,
+    rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
+    preview_registry: Rc<PreviewRegistry>,
 }
 
 ComObject_EditorHostContext!(super::EditorHostContext);
@@ -49,6 +58,7 @@ impl EditorHostContext {
         app: ComRc<IAppService>,
         config: ComRc<IConfigService>,
         cache: Rc<RefCell<ImguiTextureCache>>,
+        rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
     ) -> ComRc<IEditorHostContext> {
         let vfs = Rc::new(MiniFs::new(false));
         let asset_loader =
@@ -56,6 +66,7 @@ impl EditorHostContext {
                 factory.clone(),
                 vfs.clone(),
             )));
+        let preview_registry = Rc::new(PreviewRegistry::new());
         let previewers = PreviewerHub::create(
             vfs.clone(),
             asset_loader,
@@ -63,7 +74,8 @@ impl EditorHostContext {
             factory.clone(),
             audio_engine.clone(),
             scene_manager.clone(),
-            cache,
+            cache.clone(),
+            preview_registry.clone(),
         );
 
         Self::create(
@@ -75,11 +87,13 @@ impl EditorHostContext {
             app,
             config,
             previewers,
+            cache,
+            rendering_engine,
+            preview_registry,
         )
     }
 
-    /// Builds an editor host context for a specific opened game. The
-    /// previewer hub uses the game's vfs / asset loader.
+    /// Builds an editor host context for a specific opened game.
     pub fn create_for_game(
         scene_manager: ComRc<ISceneManager>,
         audio_engine: Rc<dyn AudioEngine>,
@@ -91,7 +105,9 @@ impl EditorHostContext {
         vfs: Rc<MiniFs>,
         asset_loader: DevToolsAssetLoader,
         game_type: GameType,
+        rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
     ) -> ComRc<IEditorHostContext> {
+        let preview_registry = Rc::new(PreviewRegistry::new());
         let previewers = PreviewerHub::create(
             vfs.clone(),
             asset_loader,
@@ -99,7 +115,8 @@ impl EditorHostContext {
             factory.clone(),
             audio_engine.clone(),
             scene_manager.clone(),
-            cache,
+            cache.clone(),
+            preview_registry.clone(),
         );
         Self::create(
             scene_manager,
@@ -110,9 +127,13 @@ impl EditorHostContext {
             app,
             config,
             previewers,
+            cache,
+            rendering_engine,
+            preview_registry,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create(
         scene_manager: ComRc<ISceneManager>,
         audio_engine: Rc<dyn AudioEngine>,
@@ -122,17 +143,24 @@ impl EditorHostContext {
         app: ComRc<IAppService>,
         config: ComRc<IConfigService>,
         previewers: ComRc<IPreviewerHub>,
+        cache: Rc<RefCell<ImguiTextureCache>>,
+        rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
+        preview_registry: Rc<PreviewRegistry>,
     ) -> ComRc<IEditorHostContext> {
         ComRc::from_object(Self {
             scene_manager,
             audio: AudioService::create(audio_engine, vfs.clone()),
-            textures: TextureService::create(factory, vfs.clone()),
+            textures: TextureService::create(factory.clone(), vfs.clone()),
             vfs: VfsService::create(vfs),
             input: InputService::create(input),
             games: GameRegistry::create(),
             app,
             config,
             previewers,
+            factory,
+            texture_cache: cache,
+            rendering_engine,
+            preview_registry,
         })
     }
 }
@@ -167,6 +195,23 @@ impl IHostContextImpl for EditorHostContext {
 impl IEditorHostContextImpl for EditorHostContext {
     fn previewers(&self) -> ComRc<IPreviewerHub> {
         self.previewers.clone()
+    }
+
+    fn new_render_target(&self, w: i32, h: i32) -> ComRc<IRenderTarget> {
+        let w = w.max(1) as u32;
+        let h = h.max(1) as u32;
+        let target_box = self.factory.create_render_target(w, h);
+        // We discard the shared `Rc<RefCell<Box<...>>>` here because the
+        // caller is the script side, which routes through the IDL
+        // wrapper for all subsequent access. Scenes-to-render are
+        // associated with their target inside `PreviewState`, which
+        // holds its own shared handle.
+        ScriptedRenderTarget::create(target_box, self.texture_cache.clone()).0
+    }
+
+    fn render_pending_previews(&self) {
+        let mut engine = self.rendering_engine.borrow_mut();
+        self.preview_registry.render_all(&mut *engine);
     }
 }
 

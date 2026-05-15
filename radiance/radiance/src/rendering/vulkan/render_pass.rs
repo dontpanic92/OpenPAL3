@@ -10,7 +10,39 @@ pub struct RenderPass {
 
 impl RenderPass {
     pub fn new(device: Rc<Device>, color_format: vk::Format, depth_format: vk::Format) -> Self {
-        let render_pass = Self::create_render_pass(&device, color_format, depth_format).unwrap();
+        Self::new_with_color_final_layout(
+            device,
+            color_format,
+            depth_format,
+            vk::ImageLayout::PRESENT_SRC_KHR,
+        )
+    }
+
+    /// Render pass whose color attachment ends in
+    /// `SHADER_READ_ONLY_OPTIMAL` so subsequent passes (imgui) can sample
+    /// it. Used by offscreen render targets.
+    pub fn new_offscreen(
+        device: Rc<Device>,
+        color_format: vk::Format,
+        depth_format: vk::Format,
+    ) -> Self {
+        Self::new_with_color_final_layout(
+            device,
+            color_format,
+            depth_format,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        )
+    }
+
+    fn new_with_color_final_layout(
+        device: Rc<Device>,
+        color_format: vk::Format,
+        depth_format: vk::Format,
+        color_final_layout: vk::ImageLayout,
+    ) -> Self {
+        let render_pass =
+            Self::create_render_pass(&device, color_format, depth_format, color_final_layout)
+                .unwrap();
 
         Self {
             device,
@@ -26,6 +58,7 @@ impl RenderPass {
         device: &Rc<Device>,
         color_format: vk::Format,
         depth_format: vk::Format,
+        color_final_layout: vk::ImageLayout,
     ) -> VkResult<vk::RenderPass> {
         let color_attachment = vk::AttachmentDescription::default()
             .format(color_format)
@@ -35,7 +68,7 @@ impl RenderPass {
             .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
             .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR);
+            .final_layout(color_final_layout);
 
         let depth_attachment = vk::AttachmentDescription::default()
             .format(depth_format)

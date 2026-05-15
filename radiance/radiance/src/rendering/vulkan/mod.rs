@@ -18,6 +18,7 @@ mod pipeline_layout;
 mod pipeline_manager;
 mod render_object;
 mod render_pass;
+mod render_target;
 mod sampler;
 mod shader;
 mod shader_cache;

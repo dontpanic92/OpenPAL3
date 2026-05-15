@@ -183,6 +183,14 @@ impl RenderingEngine for VitaGLRenderingEngine {
     }
 
     fn end_frame(&mut self) {}
+
+    fn render_scene_to_target(
+        &mut self,
+        _scene: ComRc<IScene>,
+        _target: &mut dyn crate::rendering::RenderTarget,
+    ) {
+        unimplemented!("vitagl backend does not yet support offscreen render targets");
+    }
 }
 
 impl Drop for VitaGLRenderingEngine {

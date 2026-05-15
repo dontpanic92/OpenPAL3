@@ -62,6 +62,7 @@ impl ScriptedWelcomePage {
                 app_service,
                 config_service,
                 textures.clone(),
+                engine.rendering_engine(),
             )
         };
 

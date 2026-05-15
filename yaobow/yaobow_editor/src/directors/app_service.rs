@@ -126,6 +126,7 @@ impl IAppServiceImpl for AppService {
             vfs_rc,
             asset_loader,
             game,
+            engine.rendering_engine(),
         );
 
         let host_id = self.script_host.intern(host_ctx);

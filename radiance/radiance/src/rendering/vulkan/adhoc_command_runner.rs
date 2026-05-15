@@ -49,4 +49,16 @@ impl AdhocCommandRunner {
 
         Ok(())
     }
+
+    pub fn device(&self) -> &Rc<Device> {
+        &self.device
+    }
+
+    pub fn command_pool(&self) -> vk::CommandPool {
+        self.command_pool
+    }
+
+    pub fn queue(&self) -> vk::Queue {
+        self.queue
+    }
 }

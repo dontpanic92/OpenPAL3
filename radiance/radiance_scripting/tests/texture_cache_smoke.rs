@@ -63,6 +63,14 @@ impl ComponentFactory for MockFactory {
     fn create_video_player(&self) -> Box<VideoPlayer> {
         Box::new(VideoPlayer::new())
     }
+
+    fn create_render_target(
+        &self,
+        _width: u32,
+        _height: u32,
+    ) -> Box<dyn radiance::rendering::RenderTarget> {
+        panic!("not used by texture cache smoke test")
+    }
 }
 
 #[allow(dead_code)]

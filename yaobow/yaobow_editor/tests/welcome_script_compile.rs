@@ -116,6 +116,16 @@ impl IEditorHostContextImpl for TestHostContext {
     fn previewers(&self) -> ComRc<IPreviewerHub> {
         self.previewers.clone()
     }
+    fn new_render_target(
+        &self,
+        _w: i32,
+        _h: i32,
+    ) -> ComRc<radiance_scripting::comdef::services::IRenderTarget> {
+        panic!("not used by welcome_script_compile")
+    }
+    fn render_pending_previews(&self) {
+        // no-op in the script-compile smoke test.
+    }
 }
 
 struct StubPreviewerHub {

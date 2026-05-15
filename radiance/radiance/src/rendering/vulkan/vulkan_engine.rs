@@ -51,14 +51,21 @@ pub struct VulkanRenderingEngine {
 
     image_available_semaphore: vk::Semaphore,
     render_finished_semaphore: vk::Semaphore,
+
+    /// Render-finished semaphores from offscreen target submissions that
+    /// the next swapchain submit must wait on before sampling. Populated
+    /// by `render_scene_to_target`, drained by `render`.
+    pending_offscreen_waits: Vec<vk::Semaphore>,
 }
 
 impl RenderingEngine for VulkanRenderingEngine {
     fn render(&mut self, scene: ComRc<IScene>, viewport: Viewport, ui_frame: ImguiFrame) {
         if self.surface.is_none() {
+            self.drain_pending_offscreen();
             return;
         }
         if self.swapchain.is_none() {
+            self.drain_pending_offscreen();
             self.recreate_swapchain().unwrap();
             return;
         }
@@ -98,6 +105,145 @@ impl RenderingEngine for VulkanRenderingEngine {
     fn begin_frame(&mut self) {}
 
     fn end_frame(&mut self) {}
+
+    fn render_scene_to_target(
+        &mut self,
+        scene: ComRc<IScene>,
+        target: &mut dyn crate::rendering::RenderTarget,
+    ) {
+        let target = match target.downcast_mut::<super::render_target::VulkanRenderTarget>() {
+            Some(t) => t,
+            None => {
+                log::warn!("render_scene_to_target: target is not a VulkanRenderTarget");
+                return;
+            }
+        };
+
+        let swapchain = match self.swapchain.as_mut() {
+            Some(s) => s,
+            None => {
+                // No swapchain yet means no command pool / pipeline cache
+                // wired up; defer until the first `render` call recreates
+                // the swapchain. The script-level previewer will retry on
+                // the next frame.
+                return;
+            }
+        };
+
+        let entities = scene.visible_entities();
+
+        // Update the dynamic UBO with entity transforms — same bucket as
+        // the main pass uses. Safe to share because both pass record the
+        // same frame and the engine `wait_idle`s at end-of-frame.
+        let dub_manager = self.dub_manager.as_ref().unwrap().clone();
+        dub_manager.update_do(|updater| {
+            for entity in &entities {
+                if let Some(rc) = entity.get_rendering_component() {
+                    for ro in rc.render_objects() {
+                        if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
+                            updater(vro.dub_index(), entity.world_transform().matrix());
+                        }
+                    }
+                }
+            }
+        });
+
+        // Build opaque / cutout / transparent buckets (mirrors `render_objects`).
+        let camera_ref = scene.camera();
+        let camera = camera_ref.borrow();
+        let camera_world = {
+            let m = camera.transform().matrix();
+            [m[0][3], m[1][3], m[2][3]]
+        };
+        let rc: Vec<(Rc<RenderingComponent>, Mat44)> = entities
+            .iter()
+            .filter_map(|e| {
+                let r = e.get_rendering_component()?;
+                Some((r, e.world_transform().matrix().clone()))
+            })
+            .collect();
+
+        let mut opaque: Vec<&VulkanRenderObject> = vec![];
+        let mut cutout: Vec<&VulkanRenderObject> = vec![];
+        let mut transparent: Vec<(f32, usize, usize, &VulkanRenderObject)> = vec![];
+        for (entity_idx, (rendering, world)) in rc.iter().enumerate() {
+            let m = world.floats();
+            for (ro_idx, ro) in rendering.render_objects().iter().enumerate() {
+                if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
+                    match vro.material().key().blend {
+                        BlendMode::Opaque => opaque.push(vro),
+                        BlendMode::AlphaTest => cutout.push(vro),
+                        BlendMode::AlphaBlend
+                        | BlendMode::Additive
+                        | BlendMode::Multiply => {
+                            let c = vro.local_centroid();
+                            let wx = m[0][0] * c[0] + m[0][1] * c[1] + m[0][2] * c[2] + m[0][3];
+                            let wy = m[1][0] * c[0] + m[1][1] * c[1] + m[1][2] * c[2] + m[1][3];
+                            let wz = m[2][0] * c[0] + m[2][1] * c[1] + m[2][2] * c[2] + m[2][3];
+                            let dx = wx - camera_world[0];
+                            let dy = wy - camera_world[1];
+                            let dz = wz - camera_world[2];
+                            transparent.push((dx * dx + dy * dy + dz * dz, entity_idx, ro_idx, vro));
+                        }
+                    }
+                }
+            }
+        }
+        transparent.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.1.cmp(&b.1))
+                .then(a.2.cmp(&b.2))
+        });
+        let transparent_ordered: Vec<&VulkanRenderObject> =
+            transparent.into_iter().map(|(_, _, _, ro)| ro).collect();
+
+        // Update target's per-frame UBO with the scene's camera.
+        let ubo = {
+            let view = Mat44::inversed(camera.transform().matrix());
+            let proj = camera.projection_matrix();
+            PerFrameUniformBuffer::new(&view, proj)
+        };
+        target.uniform_buffer_mut().copy_memory_from(&[ubo]);
+
+        // Record + submit the offscreen pass.
+        let target_cmd = target.vk_command_buffer();
+        let target_rp = target.vk_render_pass();
+        let target_fb = target.vk_framebuffer();
+        let target_extent = target.vk_extent();
+        let target_descriptor = target.per_frame_descriptor_set();
+        let target_semaphore = target.vk_render_finished_semaphore();
+
+        if let Err(e) = swapchain.record_to_external_framebuffer(
+            target_cmd,
+            target_rp,
+            target_fb,
+            target_extent,
+            target_descriptor,
+            &opaque,
+            &cutout,
+            &transparent_ordered,
+            &dub_manager,
+        ) {
+            log::warn!("offscreen record failed: {:?}", e);
+            return;
+        }
+
+        let signal = [target_semaphore];
+        let commands = [target_cmd];
+        let submit = vk::SubmitInfo::default()
+            .command_buffers(&commands)
+            .signal_semaphores(&signal);
+        if let Err(e) = self
+            .device
+            .queue_submit(self.queue, &[submit], vk::Fence::default())
+        {
+            log::warn!("offscreen submit failed: {:?}", e);
+            return;
+        }
+
+        self.pending_offscreen_waits.push(target_semaphore);
+    }
 }
 
 impl VulkanRenderingEngine {
@@ -204,6 +350,8 @@ impl VulkanRenderingEngine {
         let render_finished_semaphore = device.create_semaphore(&semaphore_create_info)?;
 
         let component_factory = Rc::new(VulkanComponentFactory::new(
+            instance.clone(),
+            physical_device,
             device.clone(),
             &allocator,
             &descriptor_manager,
@@ -258,6 +406,7 @@ impl VulkanRenderingEngine {
             image_available_semaphore,
             render_finished_semaphore,
             imgui,
+            pending_offscreen_waits: Vec::new(),
         };
 
         return Ok(vulkan);
@@ -458,8 +607,19 @@ impl VulkanRenderingEngine {
         // Submit commands
         {
             let commands = [command_buffer];
-            let wait_semaphores = [self.image_available_semaphore];
-            let stage_mask = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+
+            // Wait on swapchain image acquisition + any offscreen-target
+            // submits queued earlier this frame (their color images need
+            // to finish writing before the imgui pass samples them).
+            let mut wait_semaphores: Vec<vk::Semaphore> =
+                vec![self.image_available_semaphore];
+            let mut stage_mask: Vec<vk::PipelineStageFlags> =
+                vec![vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+            for sem in self.pending_offscreen_waits.drain(..) {
+                wait_semaphores.push(sem);
+                stage_mask.push(vk::PipelineStageFlags::FRAGMENT_SHADER);
+            }
+
             let signal_semaphores = [self.render_finished_semaphore];
             let submit_info = vk::SubmitInfo::default()
                 .wait_semaphores(&wait_semaphores)
@@ -493,6 +653,17 @@ impl VulkanRenderingEngine {
     fn drop_swapchain(&mut self) {
         self.device.wait_idle();
         self.swapchain = None;
+    }
+
+    /// If any offscreen render submits were queued but the swapchain pass
+    /// can't run (surface lost, swapchain pending recreate), block on the
+    /// queue so those binary semaphores get signaled-then-discarded by an
+    /// idle wait rather than left dangling for next frame.
+    fn drain_pending_offscreen(&mut self) {
+        if !self.pending_offscreen_waits.is_empty() {
+            let _ = self.device.queue_wait_idle(self.queue);
+            self.pending_offscreen_waits.clear();
+        }
     }
 
     fn get_capabilities(&self) -> ash::prelude::VkResult<vk::SurfaceCapabilitiesKHR> {

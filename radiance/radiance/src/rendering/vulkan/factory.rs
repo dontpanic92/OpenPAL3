@@ -64,6 +64,8 @@ impl MaterialIdentity {
 }
 
 pub struct VulkanComponentFactory {
+    instance: Rc<super::instance::Instance>,
+    physical_device: ash::vk::PhysicalDevice,
     device: Rc<Device>,
     allocator: Rc<vk_mem::Allocator>,
     descriptor_manager: Rc<DescriptorManager>,
@@ -161,10 +163,34 @@ impl ComponentFactory for VulkanComponentFactory {
     fn create_video_player(&self) -> Box<VideoPlayer> {
         Box::new(VideoPlayer::new())
     }
+
+    fn create_render_target(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Box<dyn crate::rendering::RenderTarget> {
+        Box::new(
+            super::render_target::VulkanRenderTarget::new(
+                width,
+                height,
+                &self.instance,
+                self.physical_device,
+                self.device.clone(),
+                self.allocator.clone(),
+                self.descriptor_manager.clone(),
+                self.dub_manager.clone(),
+                self.command_runner.clone(),
+                self.imgui.clone(),
+            )
+            .expect("failed to allocate VulkanRenderTarget"),
+        )
+    }
 }
 
 impl VulkanComponentFactory {
     pub fn new(
+        instance: Rc<super::instance::Instance>,
+        physical_device: ash::vk::PhysicalDevice,
         device: Rc<Device>,
         allocator: &Rc<vk_mem::Allocator>,
         descriptor_manager: &Rc<DescriptorManager>,
@@ -174,6 +200,8 @@ impl VulkanComponentFactory {
     ) -> Self {
         let shader_cache = Rc::new(VulkanShaderCache::new(device.clone()));
         Self {
+            instance,
+            physical_device,
             device,
             allocator: allocator.clone(),
             descriptor_manager: descriptor_manager.clone(),

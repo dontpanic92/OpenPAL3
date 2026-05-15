@@ -1,8 +1,8 @@
 use imgui::TextureId;
 
 use super::{
-    texture::TextureDef, MaterialDef, RenderObject, RenderingComponent, Texture, VertexBuffer,
-    VideoPlayer,
+    texture::TextureDef, MaterialDef, RenderObject, RenderTarget, RenderingComponent, Texture,
+    VertexBuffer, VideoPlayer,
 };
 
 pub trait ComponentFactory {
@@ -31,4 +31,12 @@ pub trait ComponentFactory {
         -> RenderingComponent;
 
     fn create_video_player(&self) -> Box<VideoPlayer>;
+
+    /// Allocate a fresh offscreen color target sized `width` x `height`.
+    /// The returned target is owned by the caller; the engine renders into
+    /// it via [`RenderingEngine::render_scene_to_target`](super::RenderingEngine::render_scene_to_target).
+    ///
+    /// Backends that don't yet support offscreen rendering (vitagl) panic
+    /// with a clear message — see the per-backend impl for status.
+    fn create_render_target(&self, width: u32, height: u32) -> Box<dyn RenderTarget>;
 }

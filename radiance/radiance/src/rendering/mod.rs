@@ -3,6 +3,7 @@ mod factory;
 mod material;
 mod platform;
 mod render_object;
+mod render_target;
 mod rendering_component;
 mod sampler;
 mod shader;
@@ -25,6 +26,7 @@ pub use material::{
 };
 pub use platform::Window;
 pub use render_object::RenderObject;
+pub use render_target::RenderTarget;
 pub use rendering_component::RenderingComponent;
 pub use sampler::{AddressMode, FilterMode, MipmapMode, SamplerDef};
 pub use shader::{Shader, ShaderProgram};

@@ -385,4 +385,48 @@ impl IUiHostImpl for ImguiUiHost {
         })
         .unwrap_or(false)
     }
+
+    fn is_item_hovered(&self) -> bool {
+        with_frame("is_item_hovered", |f| f.ui.is_item_hovered()).unwrap_or(false)
+    }
+
+    fn mouse_down(&self, button: i32) -> bool {
+        with_frame("mouse_down", |f| f.ui.is_mouse_down(map_mouse_button(button)))
+            .unwrap_or(false)
+    }
+
+    fn mouse_drag_delta_x(&self, button: i32) -> f32 {
+        with_frame("mouse_drag_delta_x", |f| {
+            f.ui.mouse_drag_delta_with_button(map_mouse_button(button))[0]
+        })
+        .unwrap_or(0.0)
+    }
+
+    fn mouse_drag_delta_y(&self, button: i32) -> f32 {
+        with_frame("mouse_drag_delta_y", |f| {
+            f.ui.mouse_drag_delta_with_button(map_mouse_button(button))[1]
+        })
+        .unwrap_or(0.0)
+    }
+
+    fn reset_mouse_drag_delta(&self, button: i32) {
+        let _ = with_frame("reset_mouse_drag_delta", |f| {
+            f.ui.reset_mouse_drag_delta(map_mouse_button(button))
+        });
+    }
+
+    fn mouse_wheel(&self) -> f32 {
+        with_frame("mouse_wheel", |f| f.ui.io().mouse_wheel).unwrap_or(0.0)
+    }
+}
+
+fn map_mouse_button(button: i32) -> imgui::MouseButton {
+    match button {
+        0 => imgui::MouseButton::Left,
+        1 => imgui::MouseButton::Right,
+        2 => imgui::MouseButton::Middle,
+        3 => imgui::MouseButton::Extra1,
+        4 => imgui::MouseButton::Extra2,
+        _ => imgui::MouseButton::Left,
+    }
 }

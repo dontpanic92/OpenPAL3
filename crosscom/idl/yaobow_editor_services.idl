@@ -38,6 +38,20 @@ class VideoHandle: IVideoHandle {}
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c07)]
 interface IPreviewSession: IUnknown {
     void close();
+
+    // Offscreen target the editor's content tab samples via
+    // `ui.image(target.texture_id(), w, h)`. Stays valid for the
+    // session's lifetime; `target.resize(w, h)` reuses the same com_id.
+    IRenderTarget target();
+
+    // Per-frame camera controller for orbit/pan/zoom previews.
+    //   dx, dy: pointer-pixel deltas (positive right / down).
+    //   wheel: scroll delta (positive zooms in).
+    //   buttons: bitmask of held buttons —
+    //            bit 0 = left  -> orbit (yaw/pitch around focus)
+    //            bit 1 = right -> pan   (translate focus in camera plane)
+    //            bit 2 = middle (reserved)
+    void tick_camera(float dx, float dy, float wheel, int buttons);
 }
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c08)]
 class PreviewSession: IPreviewSession {}
@@ -67,6 +81,15 @@ class PreviewerHub: IPreviewerHub {}
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0d)]
 interface IEditorHostContext: IHostContext {
     IPreviewerHub previewers();
+
+    // Allocate a fresh offscreen render target. Used by `PreviewSession`
+    // to render a private preview scene into an imgui-sampleable texture.
+    IRenderTarget new_render_target(int w, int h);
+
+    // Drive any active preview sessions' offscreen passes BEFORE the
+    // current imgui frame is built. Called from the editor director's
+    // `update`; idempotent if no sessions are active.
+    void render_pending_previews();
 }
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0e)]
 class EditorHostContext: IEditorHostContext {}

@@ -53,6 +53,7 @@ pub struct PreviewerHub {
     audio_engine: Rc<dyn AudioEngine>,
     scene_manager: ComRc<ISceneManager>,
     cache: Rc<RefCell<ImguiTextureCache>>,
+    preview_registry: Rc<crate::services::preview_registry::PreviewRegistry>,
     last_string: RefCell<String>,
 }
 
@@ -67,6 +68,7 @@ impl PreviewerHub {
         audio_engine: Rc<dyn AudioEngine>,
         scene_manager: ComRc<ISceneManager>,
         cache: Rc<RefCell<ImguiTextureCache>>,
+        preview_registry: Rc<crate::services::preview_registry::PreviewRegistry>,
     ) -> ComRc<IPreviewerHub> {
         ComRc::from_object(Self {
             vfs,
@@ -76,6 +78,7 @@ impl PreviewerHub {
             audio_engine,
             scene_manager,
             cache,
+            preview_registry,
             last_string: RefCell::new(String::new()),
         })
     }
@@ -240,7 +243,13 @@ impl IPreviewerHubImpl for PreviewerHub {
             "pol" => load_pol(&self.vfs, &path, &self.asset_loader)?,
             _ => return None,
         };
-        Some(ModelHandle::create(self.scene_manager.clone(), text, entity))
+        Some(ModelHandle::create(
+            text,
+            entity,
+            self.factory.clone(),
+            self.cache.clone(),
+            self.preview_registry.clone(),
+        ))
     }
 }
 

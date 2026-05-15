@@ -213,4 +213,25 @@ impl IUiHostImpl for HostFacade {
             .copied()
             .unwrap_or(false)
     }
+
+    // Mouse-query methods are no-ops in the recording host: the
+    // recording UI is only used by tests that don't drive real mouse
+    // input, and returning fixed defaults keeps script-side branches
+    // predictable.
+    fn is_item_hovered(&self) -> bool {
+        false
+    }
+    fn mouse_down(&self, _button: i32) -> bool {
+        false
+    }
+    fn mouse_drag_delta_x(&self, _button: i32) -> f32 {
+        0.0
+    }
+    fn mouse_drag_delta_y(&self, _button: i32) -> f32 {
+        0.0
+    }
+    fn reset_mouse_drag_delta(&self, _button: i32) {}
+    fn mouse_wheel(&self) -> f32 {
+        0.0
+    }
 }

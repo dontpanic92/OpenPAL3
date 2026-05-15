@@ -66,6 +66,21 @@ interface IUiHost: IUnknown {
     void image_fit(int texture_com_id, float src_w, float src_h);
     void multiline_text(&str content, float w, float h);
     bool tree_leaf(&str label);
+
+    // --- Mouse query ---------------------------------------------------
+    // Reflect the imgui state of the *last* item submitted (typically
+    // the just-drawn `image(...)`). Plus per-frame mouse deltas the
+    // script uses for orbit/pan/zoom previews. `mouse_drag_delta_*`
+    // returns the cumulative drag since the press; pair with
+    // `reset_mouse_drag_delta(button)` after consumption so the next
+    // frame yields incremental motion.
+    //   button 0 = left, 1 = right, 2 = middle
+    bool is_item_hovered();
+    bool mouse_down(int button);
+    float mouse_drag_delta_x(int button);
+    float mouse_drag_delta_y(int button);
+    void reset_mouse_drag_delta(int button);
+    float mouse_wheel();
 }
 
 [uuid(7d3c8a44-58f1-4d12-9c4b-1a2f9c0e0d02)]
