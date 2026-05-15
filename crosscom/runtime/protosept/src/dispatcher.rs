@@ -259,11 +259,19 @@ fn classify_pop(
         }
         Data::Null => Ok(ClassifiedPop::Arg(MarshalledArg::Pointer(std::ptr::null()))),
         Data::Some(inner) => classify_pop(ctx, (*inner).clone(), recv_tag),
-        Data::ProtoBoxRef { box_idx, .. }
+        Data::ProtoBoxRef {
+            box_idx,
+            generation,
+            ..
+        }
         | Data::ProtoRefRef {
-            ref_idx: box_idx, ..
-        } => classify_foreign_box(ctx, box_idx, recv_tag),
-        Data::BoxRef(idx) => classify_foreign_box(ctx, idx, recv_tag),
+            ref_idx: box_idx,
+            generation,
+            ..
+        } => classify_foreign_box(ctx, box_idx, generation, recv_tag),
+        Data::BoxRef { idx, generation } => {
+            classify_foreign_box(ctx, idx, generation, recv_tag)
+        }
         other => Err(RuntimeError::Other(format!(
             "com.invoke: unsupported argument shape: {:?}",
             other
@@ -274,13 +282,10 @@ fn classify_pop(
 fn classify_foreign_box(
     ctx: &mut Context,
     box_idx: u32,
+    generation: u32,
     recv_tag: &str,
 ) -> Result<ClassifiedPop, RuntimeError> {
-    let payload = ctx
-        .box_heap
-        .get(box_idx as usize)
-        .ok_or_else(|| RuntimeError::Other(format!("com.invoke: invalid box index {}", box_idx)))?
-        .clone();
+    let payload = ctx.box_heap.get(box_idx, generation)?.clone();
     match payload {
         Data::Foreign {
             type_tag, handle, ..

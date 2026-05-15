@@ -46,9 +46,10 @@ fn constructor_returns_uinode_struct_shape() {
     assert_eq!(fields[5], Data::Int(0));
 
     let children = match &fields[6] {
-        Data::BoxRef(idx) => match &ctx.box_heap[*idx as usize] {
-            Data::Array(children) => children,
-            other => panic!("expected boxed children array, got {other:?}"),
+        Data::BoxRef { idx, generation } => match ctx.box_heap.get(*idx, *generation) {
+            Ok(Data::Array(children)) => children.clone(),
+            Ok(other) => panic!("expected boxed children array, got {other:?}"),
+            Err(err) => panic!("expected boxed children array, got error {err:?}"),
         },
         other => panic!("expected boxed children array, got {other:?}"),
     };
@@ -67,7 +68,10 @@ fn constructor_returns_uinode_struct_shape() {
     assert_eq!(child_fields[4], Data::Int(0));
     assert_eq!(child_fields[5], Data::Int(0));
     match child_fields[6] {
-        Data::BoxRef(idx) => assert_eq!(ctx.box_heap[idx as usize], Data::Array(std::rc::Rc::new(Vec::new()))),
+        Data::BoxRef { idx, generation } => assert_eq!(
+            ctx.box_heap.get(idx, generation).expect("box deref"),
+            &Data::Array(std::rc::Rc::new(Vec::new()))
+        ),
         ref other => panic!("expected boxed child children array, got {other:?}"),
     }
 }

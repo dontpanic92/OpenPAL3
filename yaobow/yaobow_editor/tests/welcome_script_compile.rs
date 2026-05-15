@@ -339,3 +339,48 @@ fn welcome_script_render_update_survives_repeated_frames() {
         assert_eq!(result, Data::Array(std::rc::Rc::new(Vec::new())));
     }
 }
+
+#[test]
+fn host_director_returned_by_open_game_renders_and_updates() {
+    // Mirrors the editor flow that the user reported failing: pick a game
+    // with a configured asset path, take the wrapped HostDirector returned
+    // by welcome.dispatch, and drive it through render/update.
+    let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
+    env.config_paths
+        .borrow_mut()
+        .insert(0, "/tmp/openpal3".to_string());
+    let director = env
+        .runtime
+        .deref_handle(env.handle)
+        .expect("welcome director should be rooted");
+    let result = env
+        .runtime
+        .call_method_returning_data(director, "dispatch", vec![Data::Int(1000)])
+        .expect("welcome.p7 dispatch should return");
+
+    let next_director = match result {
+        Data::Array(values) => {
+            assert_eq!(values.len(), 1, "expected one wrapped host director");
+            values[0].clone()
+        }
+        other => panic!("expected one wrapped host director, got {other:?}"),
+    };
+
+    // Drive the HostDirector through render+update — this is what
+    // ScriptedDirector::update would do every frame on the active
+    // director after the game-pick transition.
+    for _ in 0..3 {
+        let node = env
+            .runtime
+            .call_method_returning_data(next_director.clone(), "render", vec![Data::Float(0.0)])
+            .expect("HostDirector.render should return a UiNode");
+        env.runtime
+            .with_ctx(|ctx| owned::resolve(ctx, &node))
+            .expect("HostDirector UiNode should resolve");
+        let updated = env
+            .runtime
+            .call_method_returning_data(next_director.clone(), "update", vec![Data::Float(0.016)])
+            .expect("HostDirector.update should return");
+        assert_eq!(updated, Data::Array(std::rc::Rc::new(Vec::new())));
+    }
+}

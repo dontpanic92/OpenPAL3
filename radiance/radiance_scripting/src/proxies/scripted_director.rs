@@ -107,6 +107,13 @@ impl IDirectorImpl for ScriptedDirector {
     }
 
     fn update(&self, delta_sec: f32) -> Option<ComRc<IDirector>> {
+        // The rooted director handle survives GC because p7's box heap
+        // uses stable slot indices: GC frees unmarked slots in place and
+        // bumps their generation, so an external root's slot is never
+        // moved. We can therefore fetch the director once and reuse the
+        // same `Data` value across render/dispatch/update; if the slot
+        // were ever invalidated the runtime would fail fast with
+        // `RuntimeError::StaleBoxHandle` rather than silently aliasing.
         let director = self.current_director()?;
 
         let owned = if self.ui_manager.is_some() && self.textures.is_some() {
@@ -211,7 +218,7 @@ fn optional_script_director(data: Data) -> Result<Option<Data>, HostError> {
                 "expected zero or one script director, got {len}"
             ))),
         },
-        Data::BoxRef(_) | Data::ProtoBoxRef { .. } => Ok(Some(data)),
+        Data::BoxRef { .. } | Data::ProtoBoxRef { .. } => Ok(Some(data)),
         other => Err(HostError::message(format!(
             "expected optional script director box, got {:?}",
             other

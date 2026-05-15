@@ -63,16 +63,18 @@ fn struct_fields<'a>(ctx: &'a Context, data: &Data) -> Result<&'a [Data], HostEr
             .get(*idx as usize)
             .map(|s| s.fields.as_slice())
             .ok_or_else(|| HostError::message(format!("UiNode resolve: heap[{idx}] missing"))),
-        Data::BoxRef(idx) => match ctx.box_heap.get(*idx as usize) {
-            Some(inner) => struct_fields(ctx, inner),
-            None => Err(HostError::message(format!(
-                "UiNode resolve: box_heap[{idx}] missing"
+        Data::BoxRef { idx, generation } => match ctx.box_heap.get(*idx, *generation) {
+            Ok(inner) => struct_fields(ctx, inner),
+            Err(err) => Err(HostError::message(format!(
+                "UiNode resolve: box_heap[{idx}] failed: {err}"
             ))),
         },
-        Data::ProtoBoxRef { box_idx, .. } => match ctx.box_heap.get(*box_idx as usize) {
-            Some(inner) => struct_fields(ctx, inner),
-            None => Err(HostError::message(format!(
-                "UiNode resolve: box_heap[{box_idx}] missing"
+        Data::ProtoBoxRef {
+            box_idx, generation, ..
+        } => match ctx.box_heap.get(*box_idx, *generation) {
+            Ok(inner) => struct_fields(ctx, inner),
+            Err(err) => Err(HostError::message(format!(
+                "UiNode resolve: box_heap[{box_idx}] failed: {err}"
             ))),
         },
         other => Err(HostError::message(format!(
@@ -112,22 +114,24 @@ fn expect_f32(data: &Data, name: &str) -> Result<f32, HostError> {
 fn expect_array<'a>(ctx: &'a Context, data: &'a Data, name: &str) -> Result<&'a [Data], HostError> {
     match data {
         Data::Array(items) => Ok(items.as_slice()),
-        Data::BoxRef(idx) => match ctx.box_heap.get(*idx as usize) {
-            Some(Data::Array(items)) => Ok(items.as_slice()),
-            Some(other) => Err(HostError::message(format!(
+        Data::BoxRef { idx, generation } => match ctx.box_heap.get(*idx, *generation) {
+            Ok(Data::Array(items)) => Ok(items.as_slice()),
+            Ok(other) => Err(HostError::message(format!(
                 "{name}: expected boxed array, got {other:?}"
             ))),
-            None => Err(HostError::message(format!(
-                "{name}: box_heap[{idx}] missing"
+            Err(err) => Err(HostError::message(format!(
+                "{name}: box_heap[{idx}] failed: {err}"
             ))),
         },
-        Data::ProtoBoxRef { box_idx, .. } => match ctx.box_heap.get(*box_idx as usize) {
-            Some(Data::Array(items)) => Ok(items.as_slice()),
-            Some(other) => Err(HostError::message(format!(
+        Data::ProtoBoxRef {
+            box_idx, generation, ..
+        } => match ctx.box_heap.get(*box_idx, *generation) {
+            Ok(Data::Array(items)) => Ok(items.as_slice()),
+            Ok(other) => Err(HostError::message(format!(
                 "{name}: expected boxed array, got {other:?}"
             ))),
-            None => Err(HostError::message(format!(
-                "{name}: box_heap[{box_idx}] missing"
+            Err(err) => Err(HostError::message(format!(
+                "{name}: box_heap[{box_idx}] failed: {err}"
             ))),
         },
         other => Err(HostError::message(format!(
