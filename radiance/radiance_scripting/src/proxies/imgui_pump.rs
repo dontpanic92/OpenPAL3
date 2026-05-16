@@ -24,12 +24,13 @@ use radiance::radiance::{ImmediateDirectorPump, UiManager};
 
 use crate::comdef::immediate_director::{IImmediateDirector, IUiHost};
 use crate::services::ui_host::{with_imgui_frame, ImguiFrameState};
-use crate::services::ImguiTextureCache;
+use crate::services::{ImguiTextureCache, PerfOverlay};
 
 pub struct ImguiImmediateDirectorPump {
     ui_manager: Rc<UiManager>,
     textures: Rc<RefCell<ImguiTextureCache>>,
     ui_host: ComRc<IUiHost>,
+    perf_overlay: PerfOverlay,
 }
 
 impl ImguiImmediateDirectorPump {
@@ -42,6 +43,7 @@ impl ImguiImmediateDirectorPump {
             ui_manager,
             textures,
             ui_host,
+            perf_overlay: PerfOverlay::new(),
         }
     }
 
@@ -65,6 +67,7 @@ impl ImguiImmediateDirectorPump {
 
 impl ImmediateDirectorPump for ImguiImmediateDirectorPump {
     fn pump(&self, director: ComRc<IDirector>, dt: f32) {
+        let pump_start = std::time::Instant::now();
         let Some(im) = director.query_interface::<IImmediateDirector>() else {
             return;
         };
@@ -74,7 +77,19 @@ impl ImmediateDirectorPump for ImguiImmediateDirectorPump {
         let mut frame =
             ImguiFrameState::new(ui, &mut *tex, &fonts, self.ui_manager.dpi_scale());
         with_imgui_frame(&mut frame, || {
+            let render_im_start = std::time::Instant::now();
             im.render_im(self.ui_host.clone(), dt);
+            radiance::perf::count(
+                "editor.render_im_total_ns",
+                render_im_start.elapsed().as_nanos() as u64,
+            );
+            // Perf overlay submits last so it draws on top of the
+            // editor surface. No-op when the env flag isn't set.
+            self.perf_overlay.render(ui);
         });
+        radiance::perf::count(
+            "editor.pump_total_ns",
+            pump_start.elapsed().as_nanos() as u64,
+        );
     }
 }

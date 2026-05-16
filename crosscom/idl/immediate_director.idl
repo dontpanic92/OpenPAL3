@@ -94,6 +94,20 @@ interface IUiHost: IUnknown {
     void list_clipped(int count, IAction body);
     int list_clipped_index();
 
+    // Two-phase tree-node submission for hot paths that can't afford
+    // to pay the per-call SAM-closure allocation cost of the
+    // `tree_node(label, IAction body)` form (e.g. iterating thousands
+    // of sibling directories per frame). `tree_node_open` submits an
+    // imgui tree node with `label` and returns whether the node is
+    // currently open. When it returns true, the caller is responsible
+    // for emitting the body's widgets *and then* calling `tree_pop()`
+    // to close the imgui tree-node scope. When it returns false the
+    // caller emits nothing and does NOT call `tree_pop()`. This
+    // mirrors imgui's native `TreeNode` / `TreePop` pairing and
+    // bypasses crosscom's IAction CCW machinery.
+    bool tree_node_open(&str label);
+    void tree_pop();
+
     // --- Mouse query ---------------------------------------------------
     // Reflect the imgui state of the *last* item submitted (typically
     // the just-drawn `image(...)`). Plus per-frame mouse deltas the

@@ -111,6 +111,96 @@ pub fn gauge(name: &'static str, value: u64) {
     }
 }
 
+/// Snapshot of a single metric, suitable for rendering in a diagnostic
+/// overlay. Values are read-only copies; the underlying registry is
+/// unaffected.
+#[derive(Debug, Clone)]
+pub enum MetricSnapshot {
+    Timing {
+        calls: u64,
+        avg_ns: u64,
+        max_ns: u64,
+    },
+    Counter {
+        frame: u64,
+        total: u64,
+    },
+    Gauge {
+        last: u64,
+        max: u64,
+    },
+}
+
+impl MetricSnapshot {
+    /// Pre-formatted single-line value, matching the `flush_frame`
+    /// log output. Useful for overlays that want a one-shot string
+    /// per metric.
+    pub fn format_value(&self) -> String {
+        match self {
+            MetricSnapshot::Timing {
+                calls,
+                avg_ns,
+                max_ns,
+            } => format!(
+                "calls={} avg={} max={}",
+                calls,
+                format_duration_ns(*avg_ns),
+                format_duration_ns(*max_ns)
+            ),
+            MetricSnapshot::Counter { frame, total } => {
+                format!("frame={} total={}", frame, total)
+            }
+            MetricSnapshot::Gauge { last, max } => format!("last={} max={}", last, max),
+        }
+    }
+}
+
+/// Read-only snapshot of all metrics currently tracked on this thread.
+/// Returned sorted by metric name. Always callable, even when perf is
+/// `Disabled` (returns an empty vec).
+pub fn snapshot() -> Vec<(&'static str, MetricSnapshot)> {
+    if !enabled() {
+        return Vec::new();
+    }
+    REGISTRY.with(|registry| {
+        let Ok(registry) = registry.try_borrow() else {
+            return Vec::new();
+        };
+        let mut out: Vec<(&'static str, MetricSnapshot)> = registry
+            .metrics
+            .iter()
+            .map(|(name, metric)| (*name, snapshot_metric(metric)))
+            .collect();
+        out.sort_by_key(|(name, _)| *name);
+        out
+    })
+}
+
+fn snapshot_metric(metric: &MetricStats) -> MetricSnapshot {
+    match metric {
+        MetricStats::Timing(stats) => {
+            let avg_ns = if stats.calls == 0 {
+                0
+            } else {
+                (stats.total_ns / stats.calls as u128).min(u64::MAX as u128) as u64
+            };
+            MetricSnapshot::Timing {
+                calls: stats.calls,
+                avg_ns,
+                max_ns: stats.max_ns,
+            }
+        }
+        MetricStats::Counter(stats) => MetricSnapshot::Counter {
+            frame: stats.frame,
+            total: stats.total,
+        },
+        MetricStats::Gauge(stats) => MetricSnapshot::Gauge {
+            last: stats.last,
+            max: stats.max,
+        },
+    }
+}
+
 pub fn flush_frame() {
     let config = config();
     if config.mode == Mode::Disabled {

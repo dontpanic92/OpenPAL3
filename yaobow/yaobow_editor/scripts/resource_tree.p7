@@ -39,17 +39,23 @@ fn render_tree_dir(
     let dirs = vfs.subdir_count(path);
 
     // Subdirs come first in the cached sorted_entries() listing.
-    // There are typically tens of these per directory, and each
-    // tree_node submission is cheap (constant text + arrow), so we
-    // render them without clipping. The recursive descent into a
-    // closed tree_node is pruned by imgui itself.
+    // We submit each subdir's tree node with the two-phase
+    // `tree_node_open` / `tree_pop` pair instead of the
+    // closure-taking `tree_node(label, body)`. The closure form
+    // forces a fresh SAM IAction CCW allocation per call — for a
+    // directory chain whose ancestors each have many siblings, that
+    // dominates frame time (~360us/call in release). The two-phase
+    // form skips the closure entirely; collapsed subdirs cost only
+    // a crosscom call + imgui submission, and only the truly-open
+    // subdir pays the recursion cost.
     let mut i = 0;
     while i < dirs {
         let name = vfs.entry_name(path, i);
-        let expanded_path = join_tree_path(path, name);
-        let _ = ui.tree_node(name, () => {
+        if ui.tree_node_open(name) != 0 {
+            let expanded_path = join_tree_path(path, name);
             render_tree_dir(ui, vfs, expanded_path, picks);
-        });
+            ui.tree_pop();
+        }
         i = i + 1;
     }
 

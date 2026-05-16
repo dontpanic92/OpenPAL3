@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod game_registry;
 pub mod input;
+pub mod perf_overlay;
 pub mod render_target;
 pub mod texture;
 pub mod texture_cache;
@@ -112,6 +113,7 @@ impl IHostContextImpl for HostContext {
 pub use audio::{AudioService, AudioSource};
 pub use game_registry::GameRegistry;
 pub use input::InputService;
+pub use perf_overlay::PerfOverlay;
 pub use render_target::ScriptedRenderTarget;
 pub use texture::{Texture, TextureService};
 pub use texture_cache::ImguiTextureCache;

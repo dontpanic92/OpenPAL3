@@ -134,9 +134,21 @@ impl CoreRadianceEngine {
     }
 
     pub fn update(&self, delta_sec: f32) {
+        let frame_start = std::time::Instant::now();
+        let phase_start = std::time::Instant::now();
         self.rendering_engine.borrow_mut().begin_frame();
+        crate::perf::count(
+            "engine.begin_frame_total_ns",
+            phase_start.elapsed().as_nanos() as u64,
+        );
 
+        let phase_start = std::time::Instant::now();
         self.input_engine.borrow_mut().update(delta_sec);
+        crate::perf::count(
+            "engine.input_update_total_ns",
+            phase_start.elapsed().as_nanos() as u64,
+        );
+
         let scene_manager = self.scene_manager.clone();
         let task_manager = self.task_manager.clone();
         let debug_layer = self.debug_layer.as_ref();
@@ -144,6 +156,7 @@ impl CoreRadianceEngine {
         // the ui_manager closure so a pump impl that re-enters
         // engine methods doesn't double-borrow `immediate_pump`.
         let pump = self.immediate_pump.borrow().clone();
+        let phase_start = std::time::Instant::now();
         let ui_frame = self.ui_manager.update(delta_sec, |ui| {
             // Fire the immediate-mode director pump *before*
             // scene_manager.update so the active director's
@@ -157,7 +170,12 @@ impl CoreRadianceEngine {
                     pump.pump(director, delta_sec);
                 }
             }
+            let scene_update_start = std::time::Instant::now();
             scene_manager.update(delta_sec);
+            crate::perf::count(
+                "engine.scene_update_total_ns",
+                scene_update_start.elapsed().as_nanos() as u64,
+            );
             task_manager.update(delta_sec);
 
             if let Some(dl) = debug_layer {
@@ -165,8 +183,13 @@ impl CoreRadianceEngine {
             }
             let _ = ui;
         });
+        crate::perf::count(
+            "engine.ui_manager_update_total_ns",
+            phase_start.elapsed().as_nanos() as u64,
+        );
 
         use crate::{math::Rect, scene::Viewport};
+        let phase_start = std::time::Instant::now();
         let scene = self.scene_manager.scene();
         if let Some(s) = scene {
             let mut rendering_engine = self.rendering_engine.as_ref().borrow_mut();
@@ -194,7 +217,21 @@ impl CoreRadianceEngine {
 
             rendering_engine.render(s, viewport, ui_frame);
         }
+        crate::perf::count(
+            "engine.scene_render_total_ns",
+            phase_start.elapsed().as_nanos() as u64,
+        );
 
+        let phase_start = std::time::Instant::now();
         self.rendering_engine.borrow_mut().end_frame();
+        crate::perf::count(
+            "engine.end_frame_total_ns",
+            phase_start.elapsed().as_nanos() as u64,
+        );
+
+        crate::perf::count(
+            "engine.update_total_ns",
+            frame_start.elapsed().as_nanos() as u64,
+        );
     }
 }

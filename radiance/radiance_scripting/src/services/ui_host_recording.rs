@@ -50,6 +50,8 @@ pub enum UiCall {
     MultilineText { content: String, w: f32, h: f32 },
     TreeLeaf { label: String },
     ListClipped { count: i32 },
+    TreeNodeOpen { label: String },
+    TreePop,
     BodyEnter(&'static str),
     BodyExit(&'static str),
 }
@@ -60,6 +62,7 @@ pub struct RecordingUiHost {
     pub button_results: RefCell<std::collections::HashMap<String, bool>>,
     pub tab_item_results: RefCell<std::collections::HashMap<String, bool>>,
     pub tree_leaf_results: RefCell<std::collections::HashMap<String, bool>>,
+    pub tree_node_open_results: RefCell<std::collections::HashMap<String, bool>>,
 }
 
 impl RecordingUiHost {
@@ -226,6 +229,21 @@ impl IUiHostImpl for HostFacade {
 
     fn list_clipped_index(&self) -> i32 {
         -1
+    }
+
+    fn tree_node_open(&self, label: &str) -> bool {
+        self.inner
+            .record(UiCall::TreeNodeOpen { label: label.into() });
+        self.inner
+            .tree_node_open_results
+            .borrow()
+            .get(label)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn tree_pop(&self) {
+        self.inner.record(UiCall::TreePop);
     }
 
     // Mouse-query methods are no-ops in the recording host: the

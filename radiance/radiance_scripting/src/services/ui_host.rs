@@ -399,22 +399,51 @@ impl IUiHostImpl for ImguiUiHost {
             if count <= 0 {
                 return;
             }
-            let prev = f.list_clipped_index.replace(-1);
-            let clipper = imgui::ListClipper::new(count);
-            let tok = clipper.begin(f.ui);
-            let mut visible: u64 = 0;
-            for row in tok.iter() {
-                f.list_clipped_index.set(row);
-                body.invoke();
-                visible = visible.saturating_add(1);
-            }
-            f.list_clipped_index.set(prev);
-            radiance::perf::count("editor.ui.list_clipped.rows", visible);
+            // Time the full clipped section (begin + per-row body
+            // invocations + end). Cheap when perf is disabled (no
+            // syscalls/allocations).
+            radiance::perf::time("editor.tree.render_us", || {
+                let prev = f.list_clipped_index.replace(-1);
+                let clipper = imgui::ListClipper::new(count);
+                let tok = clipper.begin(f.ui);
+                let mut visible: u64 = 0;
+                for row in tok.iter() {
+                    f.list_clipped_index.set(row);
+                    body.invoke();
+                    visible = visible.saturating_add(1);
+                }
+                f.list_clipped_index.set(prev);
+                radiance::perf::count("editor.ui.list_clipped.rows", visible);
+            });
         });
     }
 
     fn list_clipped_index(&self) -> i32 {
         with_frame("list_clipped_index", |f| f.list_clipped_index.get()).unwrap_or(-1)
+    }
+
+    fn tree_node_open(&self, label: &str) -> bool {
+        with_frame("tree_node_open", |f| {
+            let token = f.ui.tree_node_config(label).push();
+            let is_open = token.is_some();
+            // Defuse the RAII drop guard: the matching `tree_pop`
+            // (called by the script after rendering the body) issues
+            // the real `igTreePop`. Dropping the token here would
+            // pop the imgui scope before the body widgets are
+            // submitted, which is exactly what we don't want.
+            std::mem::forget(token);
+            is_open
+        })
+        .unwrap_or(false)
+    }
+
+    fn tree_pop(&self) {
+        let _ = with_frame("tree_pop", |_f| {
+            // imgui-rs only exposes TreePop via the RAII token, but
+            // it's a thin wrapper over `igTreePop`. We invoke the
+            // sys binding directly so callers can pair manually.
+            unsafe { imgui::sys::igTreePop() }
+        });
     }
 
     fn is_item_hovered(&self) -> bool {
