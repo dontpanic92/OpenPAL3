@@ -57,6 +57,12 @@ interface IVfsService: IUnknown {
     bool exists(&str vfs_path);
     int byte_len(&str vfs_path);
     int entry_count(&str vfs_path);
+    // Number of entries in `vfs_path` that are directories. Returned
+    // as a prefix count: the cached sorted_entries() listing places
+    // all subdirs first, so files start at index `subdir_count(...)`.
+    // Used by the resource tree to render subdirs with `tree_node` and
+    // the (potentially-huge) file tail through `IUiHost.list_clipped`.
+    int subdir_count(&str vfs_path);
     &str entry_name(&str vfs_path, int index);
     bool entry_is_dir(&str vfs_path, int index);
     bool is_dir(&str vfs_path);

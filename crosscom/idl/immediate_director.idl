@@ -76,6 +76,24 @@ interface IUiHost: IUnknown {
     void multiline_text(&str content, float w, float h);
     bool tree_leaf(&str label);
 
+    // Render only the rows of a large flat list that are actually
+    // visible in the current scroll region, using `ImGuiListClipper`.
+    // `count` is the total number of rows the script *would* render
+    // without clipping. `body` is invoked once per visible row index;
+    // inside the body the script reads the current index via
+    // `list_clipped_index()`.
+    //
+    // Bodies must submit one *constant-height* widget per invocation
+    // (the row); otherwise the clipper's height estimate breaks.
+    // Variable-height children (e.g. nested expanded tree nodes)
+    // belong outside the clipper.
+    //
+    // Using an index thread-local instead of `IIntAction` keeps the
+    // callback as a plain `IAction` and avoids extending the script-
+    // impl-arg CCW registry in `crosscom_protosept`.
+    void list_clipped(int count, IAction body);
+    int list_clipped_index();
+
     // --- Mouse query ---------------------------------------------------
     // Reflect the imgui state of the *last* item submitted (typically
     // the just-drawn `image(...)`). Plus per-frame mouse deltas the

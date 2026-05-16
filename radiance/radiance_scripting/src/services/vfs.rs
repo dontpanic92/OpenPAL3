@@ -139,6 +139,18 @@ impl IVfsServiceImpl for VfsService {
             .unwrap_or(i32::MAX)
     }
 
+    fn subdir_count(&self, vfs_path: &str) -> i32 {
+        perf::count("editor.tree.vfs.subdir_count_calls", 1);
+        let entries = self.sorted_entries(vfs_path);
+        // sorted_entries places EntryKind::Dir first, so a linear
+        // count from the front matches the directory prefix length.
+        let n = entries
+            .iter()
+            .take_while(|e| e.kind == EntryKind::Dir)
+            .count();
+        n.try_into().unwrap_or(i32::MAX)
+    }
+
     fn entry_name(&self, vfs_path: &str, index: i32) -> &str {
         perf::count("editor.tree.vfs.entry_name_calls", 1);
         let value = self

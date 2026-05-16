@@ -43,6 +43,13 @@ pub struct ImguiFrameState<'a> {
     pub dpi_scale: f32,
     table_counter: Cell<u32>,
     multiline_counter: Cell<u32>,
+    /// Current row index inside an active `list_clipped(...)` body,
+    /// or `-1` when no clipper body is on the stack. Scripts read this
+    /// via `IUiHost.list_clipped_index()`. A single cell is enough
+    /// because clippers are not nested (the body is a flat row
+    /// renderer); if a body invokes `list_clipped` recursively the
+    /// outer index would be clobbered, which we treat as a misuse.
+    list_clipped_index: Cell<i32>,
 }
 
 impl<'a> ImguiFrameState<'a> {
@@ -59,6 +66,7 @@ impl<'a> ImguiFrameState<'a> {
             dpi_scale,
             table_counter: Cell::new(0),
             multiline_counter: Cell::new(0),
+            list_clipped_index: Cell::new(-1),
         }
     }
 
@@ -384,6 +392,29 @@ impl IUiHostImpl for ImguiUiHost {
             f.ui.is_item_clicked()
         })
         .unwrap_or(false)
+    }
+
+    fn list_clipped(&self, count: i32, body: ComRc<IAction>) {
+        with_frame("list_clipped", |f| {
+            if count <= 0 {
+                return;
+            }
+            let prev = f.list_clipped_index.replace(-1);
+            let clipper = imgui::ListClipper::new(count);
+            let tok = clipper.begin(f.ui);
+            let mut visible: u64 = 0;
+            for row in tok.iter() {
+                f.list_clipped_index.set(row);
+                body.invoke();
+                visible = visible.saturating_add(1);
+            }
+            f.list_clipped_index.set(prev);
+            radiance::perf::count("editor.ui.list_clipped.rows", visible);
+        });
+    }
+
+    fn list_clipped_index(&self) -> i32 {
+        with_frame("list_clipped_index", |f| f.list_clipped_index.get()).unwrap_or(-1)
     }
 
     fn is_item_hovered(&self) -> bool {

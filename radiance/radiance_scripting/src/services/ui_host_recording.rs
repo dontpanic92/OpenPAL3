@@ -49,6 +49,7 @@ pub enum UiCall {
     ImageFit { texture_com_id: i32, src_w: f32, src_h: f32 },
     MultilineText { content: String, w: f32, h: f32 },
     TreeLeaf { label: String },
+    ListClipped { count: i32 },
     BodyEnter(&'static str),
     BodyExit(&'static str),
 }
@@ -212,6 +213,19 @@ impl IUiHostImpl for HostFacade {
             .get(label)
             .copied()
             .unwrap_or(false)
+    }
+
+    // The recording host invokes the body once per row to mirror the
+    // imgui clipper's per-visible-row callback shape, but without an
+    // actual imgui viewport every row is "visible". Tests that need
+    // to assert specific visible windows can stub the count.
+    fn list_clipped(&self, count: i32, body: ComRc<IAction>) {
+        self.inner.record(UiCall::ListClipped { count });
+        invoke_body("list_clipped", &self.inner, body);
+    }
+
+    fn list_clipped_index(&self) -> i32 {
+        -1
     }
 
     // Mouse-query methods are no-ops in the recording host: the

@@ -5,6 +5,15 @@
 // recursive descent is naturally pruned without any side state on
 // the vfs.
 //
+// File leaves are funnelled through `ui.list_clipped(count, body)`
+// (backed by `ImGuiListClipper`) so directories with thousands of
+// files only submit the rows actually scrolled into view, rather than
+// paying per-frame widget submission + crosscom roundtrip cost for
+// every off-screen file. Subdirs come first in the cached
+// `sorted_entries()` listing, so the script walks subdirs sequentially
+// (variable height once expanded) and lets the clipper handle the
+// constant-height file tail.
+//
 // The caller passes a `picks` slot (`box<array<string>>`); whenever
 // the user clicks a leaf, its vfs path is pushed into the slot.
 // `MainEditorDirector.update` then drains the slot to open new
@@ -26,23 +35,40 @@ fn render_tree_dir(
     path: string,
     picks: box<array<string>>,
 ) {
-    let count = vfs.entry_count(path);
+    let total = vfs.entry_count(path);
+    let dirs = vfs.subdir_count(path);
+
+    // Subdirs come first in the cached sorted_entries() listing.
+    // There are typically tens of these per directory, and each
+    // tree_node submission is cheap (constant text + arrow), so we
+    // render them without clipping. The recursive descent into a
+    // closed tree_node is pruned by imgui itself.
     let mut i = 0;
-    while i < count {
+    while i < dirs {
         let name = vfs.entry_name(path, i);
-        let child_path = join_tree_path(path, name);
-        if vfs.entry_is_dir(path, i) != 0 {
-            let expanded_path = child_path;
-            let _ = ui.tree_node(name, () => {
-                render_tree_dir(ui, vfs, expanded_path, picks);
-            });
-        } else {
-            if ui.tree_leaf(name) != 0 {
-                picks.push(child_path);
-            }
-        }
+        let expanded_path = join_tree_path(path, name);
+        let _ = ui.tree_node(name, () => {
+            render_tree_dir(ui, vfs, expanded_path, picks);
+        });
         i = i + 1;
     }
+
+    // File leaves come after the subdir prefix; there can be
+    // thousands of them in a single CPK directory. Funnel them
+    // through ImGuiListClipper so imgui only submits the visible
+    // rows. The body reads its row index via ui.list_clipped_index();
+    // we resolve the absolute vfs index by adding the subdir prefix.
+    let files = total - dirs;
+    let leaf_base = dirs;
+    let leaf_path = path;
+    let _ = ui.list_clipped(files, () => {
+        let k = ui.list_clipped_index();
+        let name = vfs.entry_name(leaf_path, leaf_base + k);
+        let child_path = join_tree_path(leaf_path, name);
+        if ui.tree_leaf(name) != 0 {
+            picks.push(child_path);
+        }
+    });
 }
 
 pub fn render_resource_tree_im(

@@ -35,6 +35,15 @@ impl IVfsServiceImpl for StubVfs {
         }
     }
 
+    fn subdir_count(&self, vfs_path: &str) -> i32 {
+        // Mirror entry_is_dir: only the leading "/dir" entry under "/"
+        // is a directory; everything else is a file.
+        match vfs_path {
+            "/" => 1,
+            _ => 0,
+        }
+    }
+
     fn entry_name(&self, vfs_path: &str, index: i32) -> &str {
         let value = match (vfs_path, index) {
             ("/", 0) => "dir",
