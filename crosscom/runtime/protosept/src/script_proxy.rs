@@ -26,24 +26,19 @@
 //!
 //! The script handle (`Data::ProtoBoxRef`) is rooted via
 //! [`Context::add_external_root`] for as long as the wrapping
-//! [`ComRc`](crosscom::ComRc) exists. Releasing the last `ComRc`
-//! triggers `Drop` on the inner [`ScriptActionProxy`], which unroots —
-//! *if* a script context is currently in scope (via
-//! [`crate::scope_context`]).
-//!
-//! In v1, `ComRc<I>` instances obtained from this adapter MUST be
-//! released within the dynamic extent of the same
-//! [`crate::scope_context`] that produced them. Storing one past the
-//! end of the scope leaks the script handle. This matches the
-//! editor-UI scripting plan's "callbacks don't escape" stance for v1;
-//! a future revision can lift the limitation by carrying a `Weak`
-//! handle to the runtime so `Drop` can unroot even outside any scope.
+//! [`ComRc`](crosscom::ComRc) exists. Each CCW carries a
+//! [`RuntimeHandle`](crate::RuntimeHandle) (a `Weak` to the owning
+//! runtime); thunks and `Drop` upgrade it on entry to re-enter the
+//! interpreter. A `ComRc<I>` produced by [`wrap_action`] may therefore
+//! outlive any single [`crate::scope_context`] activation and is safe
+//! to drop after the runtime itself has been destroyed — the `Weak`
+//! upgrade simply returns `None` and the drop is a quiet no-op.
 
 use std::ffi::c_void;
 use std::os::raw::c_long;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use crate::{with_context, HostError};
+use crate::{HostError, RuntimeHandle};
 use crosscom::{ComInterface, ComRc, IAction, IActionVirtualTable, IActionVirtualTableCcw, ResultCode};
 use p7::interpreter::context::{Context, Data};
 
@@ -51,30 +46,60 @@ use p7::interpreter::context::{Context, Data};
 /// a script struct conforming to `crosscom.IAction` is passed across
 /// the host boundary as `box<crosscom.IAction>` — as a Rust-side
 /// [`ComRc<crosscom::IAction>`].
-pub fn wrap_action(ctx: &mut Context, data: Data) -> Result<ComRc<IAction>, HostError> {
+///
+/// `handle` must be a live [`RuntimeHandle`] pointing at the runtime
+/// that owns `data`; the returned `ComRc<IAction>` keeps a clone of
+/// it for use by the CCW's vtable thunks and `Drop`.
+pub fn wrap_action(handle: &RuntimeHandle, data: Data) -> Result<ComRc<IAction>, HostError> {
     match data {
-        Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {
-            let root_idx = ctx.add_external_root(data);
-            Ok(ActionCcw::into_com_rc(ScriptActionProxy { root_idx }))
+        Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
+        other => {
+            return Err(HostError::message(format!(
+                "wrap_action: expected ProtoBoxRef / BoxRef, got {:?}",
+                other
+            )));
         }
-        other => Err(HostError::message(format!(
-            "wrap_action: expected ProtoBoxRef / BoxRef, got {:?}",
-            other
-        ))),
     }
+
+    if handle.is_dangling() {
+        return Err(HostError::message(
+            "wrap_action called with a dangling RuntimeHandle; \
+             did the runtime forget to call RuntimeHandle::from_rc?",
+        ));
+    }
+
+    let root_idx = handle
+        .try_with_ctx(|ctx| ctx.add_external_root(data.clone()))
+        .ok_or_else(|| {
+            HostError::message(
+                "wrap_action: runtime was dropped between is_dangling check and root install",
+            )
+        })?;
+
+    Ok(ActionCcw::into_com_rc(ScriptActionProxy {
+        root_idx,
+        handle: handle.clone(),
+    }))
 }
 
 /// Script-side payload carried by an `IAction`-shaped CCW. Holds the
 /// [`Context::add_external_root`] index that pins the script's
-/// `Data::ProtoBoxRef` for the proxy's lifetime.
+/// `Data::ProtoBoxRef` for the proxy's lifetime, plus a
+/// [`RuntimeHandle`] used by thunks and `Drop` to re-enter the runtime.
 pub struct ScriptActionProxy {
     pub(crate) root_idx: usize,
+    pub(crate) handle: RuntimeHandle,
 }
 
 impl Drop for ScriptActionProxy {
     fn drop(&mut self) {
-        let _ = with_context(|ctx| {
-            ctx.remove_external_root(self.root_idx);
+        // If the runtime is still alive, unroot the script handle.
+        // If the runtime has already been dropped, the external-root
+        // table went with it and there is nothing to do — `try_with_ctx`
+        // returns `None` and we exit silently.
+        let root_idx = self.root_idx;
+        let _ = self.handle.try_with_ctx(|ctx| {
+            ctx.remove_external_root(root_idx);
         });
     }
 }
@@ -145,17 +170,24 @@ unsafe extern "system" fn release(this: *const *const c_void) -> c_long {
 unsafe extern "system" fn invoke(this: *const *const c_void) {
     let object = &*(this as *const ActionCcw);
     let root_idx = object.inner.root_idx;
-    match with_context(|ctx| invoke_unit_method(ctx, root_idx, "invoke")) {
-        Ok(Ok(())) => {}
-        Ok(Err(err)) => {
+    let result = object
+        .inner
+        .handle
+        .try_with_ctx(|ctx| invoke_unit_method(ctx, root_idx, "invoke"));
+    match result {
+        Some(Ok(())) => {}
+        Some(Err(err)) => {
             // Loud-failure on script-side errors: a SAM callback that
             // panics or throws would otherwise silently no-op (the
             // observable symptom in earlier integration runs was "body
             // recorded BodyEnter/BodyExit but produced no inner calls").
             eprintln!("IAction.invoke failed: {}", err);
         }
-        Err(err) => {
-            eprintln!("IAction.invoke could not find context: {}", err);
+        None => {
+            // Runtime has been dropped underneath us. Nothing to do.
+            // We deliberately do not warn because the canonical
+            // teardown sequence (drop runtime → drop ComRc) can fire
+            // a pending callback during teardown.
         }
     }
 }

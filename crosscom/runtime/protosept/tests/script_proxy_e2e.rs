@@ -3,7 +3,10 @@
 //! `ComRc<IAction>` backed by a script struct, invokes it, and the
 //! script method runs.
 
-use crosscom_protosept::{scope_context, wrap_action};
+use std::cell::UnsafeCell;
+use std::rc::Rc;
+
+use crosscom_protosept::{wrap_action, RuntimeAccess, RuntimeHandle};
 use p7::interpreter::context::{Context, Data};
 
 const SOURCE: &str = r#"
@@ -45,6 +48,39 @@ fn recorder_set_host_fn(ctx: &mut Context) -> Result<(), p7::errors::RuntimeErro
     }
 }
 
+/// Minimal `RuntimeAccess` impl that owns a `Context` behind an
+/// `UnsafeCell`. Mirrors what `radiance_scripting::ScriptHost` does,
+/// minus the cross-frame re-entrancy machinery — the test is linear.
+pub struct TestRuntime {
+    ctx: UnsafeCell<Context>,
+}
+
+impl TestRuntime {
+    pub fn new(ctx: Context) -> Rc<Self> {
+        Rc::new(Self {
+            ctx: UnsafeCell::new(ctx),
+        })
+    }
+
+    pub fn with_ctx_mut<R>(&self, body: impl FnOnce(&mut Context) -> R) -> R {
+        // SAFETY: TestRuntime is single-threaded; tests issue
+        // non-overlapping borrows.
+        unsafe { body(&mut *self.ctx.get()) }
+    }
+}
+
+impl RuntimeAccess for TestRuntime {
+    fn with_ctx(&self, body: &mut dyn FnMut(&mut Context)) {
+        // SAFETY: as above.
+        let ctx = unsafe { &mut *self.ctx.get() };
+        crosscom_protosept::scope_context(ctx, || {
+            let _ = crosscom_protosept::with_context(|c| {
+                body(c);
+            });
+        });
+    }
+}
+
 #[test]
 fn host_can_invoke_script_struct_via_comrc_action() {
     {
@@ -63,30 +99,21 @@ fn host_can_invoke_script_struct_via_comrc_action() {
     ctx.resume().expect("make_recorder ran");
     let action_data = ctx.stack[0].stack.pop().expect("returned box");
 
+    // Move the context into a TestRuntime so we can take a Weak handle.
+    let runtime = TestRuntime::new(ctx);
+    let handle = RuntimeHandle::from_rc(&runtime);
+
     // Wrap as a ComRc<IAction> + invoke twice. Both invocations should
     // re-enter the interpreter and run `Recorder.invoke`, which calls
     // `record_invocation(self.seed)`.
-    scope_context(&mut ctx, || {
-        let action = wrap_action(unsafe { current_ctx() }, action_data).expect("wrap_action");
-        action.invoke();
-        action.invoke();
-        // Drop here releases the ComRc → frees the CCW → unroots via
-        // Drop on ScriptActionProxy.
-        drop(action);
-    });
+    let action = wrap_action(&handle, action_data).expect("wrap_action");
+    action.invoke();
+    action.invoke();
+    // Drop here releases the ComRc → frees the CCW → unroots via
+    // Drop on ScriptActionProxy (which re-enters the runtime via the
+    // captured handle).
+    drop(action);
 
     let recorded = RECORDED.lock().unwrap().clone();
     assert_eq!(recorded, vec![7, 7]);
-}
-
-/// Re-fetch the context pointer set by `scope_context` for use inside
-/// the body. Since the closure passed to `scope_context` doesn't
-/// receive `&mut Context`, we need this helper for the test.
-///
-/// Safety: only valid while `scope_context` is on the stack.
-unsafe fn current_ctx<'a>() -> &'a mut Context {
-    crosscom_protosept::with_context(|ctx| ctx as *mut Context)
-        .expect("context not in scope")
-        .as_mut()
-        .unwrap()
 }

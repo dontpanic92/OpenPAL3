@@ -27,6 +27,7 @@
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::{Rc, Weak};
 
 pub use crosscom;
 use crosscom::{ComInterface, ComRc, IUnknown};
@@ -317,6 +318,116 @@ pub trait HostContext {
 /// [`ComObjectTable`].
 pub trait HostServices: Any {
     fn com_table_mut(&mut self) -> &mut ComObjectTable;
+
+    /// Weak handle to the runtime that owns this services bundle. Reverse-
+    /// wrap CCWs (see [`crate::script_proxy::wrap_action`]) capture this
+    /// when constructed so their thunks and `Drop` can re-enter the
+    /// runtime without relying on a thread-local
+    /// [`scope_context`](crate::scope_context). The default returns a
+    /// permanently-dangling handle; consumers that hand out long-lived
+    /// reverse-wrapped `ComRc`s must override it.
+    fn runtime_handle(&self) -> RuntimeHandle {
+        RuntimeHandle::dangling()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RuntimeAccess + RuntimeHandle
+// ---------------------------------------------------------------------------
+
+/// Object-safe, re-entrant, interior-mut access to the protosept
+/// interpreter [`Context`](p7::interpreter::context::Context) owned by
+/// some runtime. Implementors live behind an [`Rc<dyn RuntimeAccess>`];
+/// reverse-wrap CCWs carry a [`Weak`] to one so they neither pin the
+/// runtime alive nor risk dangling pointers.
+///
+/// Implementations are responsible for installing whatever re-entrancy
+/// guard / scope they need around `body` — typically
+/// [`scope_context(ctx, || body(ctx))`](crate::scope_context) — so that
+/// existing [`with_context`](crate::with_context) consumers
+/// transparently see the same context.
+pub trait RuntimeAccess: Any {
+    fn with_ctx(&self, body: &mut dyn FnMut(&mut p7::interpreter::context::Context));
+}
+
+/// Weak, cheaply-cloneable handle to a [`RuntimeAccess`]. Reverse-wrap
+/// CCWs store one of these in their payload so the methods they
+/// dispatch (and their `Drop`) can re-enter the owning runtime even
+/// outside the dynamic extent of any [`scope_context`](crate::scope_context).
+#[derive(Clone)]
+pub struct RuntimeHandle {
+    weak: Weak<dyn RuntimeAccess>,
+}
+
+impl RuntimeHandle {
+    /// Build a handle from an `Rc` to a concrete `RuntimeAccess`
+    /// implementor. The underlying `Rc` is *not* retained; only a
+    /// [`Weak`] coercion is stored.
+    pub fn from_rc<T: RuntimeAccess + 'static>(rc: &Rc<T>) -> Self {
+        let weak: Weak<T> = Rc::downgrade(rc);
+        Self {
+            weak: weak as Weak<dyn RuntimeAccess>,
+        }
+    }
+
+    /// A handle whose upgrade always fails. Useful as a default for
+    /// [`HostServices::runtime_handle`] impls that have no runtime to
+    /// point at, and as a sentinel that [`wrap_action`](crate::wrap_action)
+    /// can detect to fail loudly.
+    pub fn dangling() -> Self {
+        Self {
+            weak: Weak::<DanglingRuntime>::new() as Weak<dyn RuntimeAccess>,
+        }
+    }
+
+    /// True if the underlying runtime is already gone.
+    pub fn is_dangling(&self) -> bool {
+        self.weak.upgrade().is_none()
+    }
+
+    /// Attempt to re-enter the runtime. Returns `None` if the
+    /// underlying `Rc` is gone.
+    pub fn try_with_ctx<R>(
+        &self,
+        mut body: impl FnMut(&mut p7::interpreter::context::Context) -> R,
+    ) -> Option<R> {
+        let rc = self.weak.upgrade()?;
+        let mut out: Option<R> = None;
+        rc.with_ctx(&mut |ctx| {
+            out = Some(body(ctx));
+        });
+        out
+    }
+}
+
+impl std::fmt::Debug for RuntimeHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "RuntimeHandle {{ dangling: {} }}",
+            self.weak.upgrade().is_none()
+        )
+    }
+}
+
+/// Carrier type so [`RuntimeHandle::dangling`] can construct a
+/// `Weak<dyn RuntimeAccess>` without needing an actual runtime instance.
+/// The `with_ctx` impl is unreachable — upgrade always fails.
+struct DanglingRuntime;
+
+impl RuntimeAccess for DanglingRuntime {
+    fn with_ctx(&self, _body: &mut dyn FnMut(&mut p7::interpreter::context::Context)) {
+        // Unreachable: `RuntimeHandle::dangling` builds the Weak via
+        // `Weak::<DanglingRuntime>::new()`, which never has a live
+        // strong reference. If someone constructs a real
+        // `Rc<DanglingRuntime>` and downgrades it, calling `with_ctx`
+        // is a programming error.
+        debug_assert!(
+            false,
+            "DanglingRuntime::with_ctx invoked; \
+             RuntimeHandle::dangling should never resolve to a live runtime"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

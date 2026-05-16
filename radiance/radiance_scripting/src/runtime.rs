@@ -24,14 +24,14 @@
 //! exclusivity is upheld by the single-threaded, stack-disciplined nature of
 //! p7's interpreter loop and the foreign dispatcher.
 
-use std::cell::{Cell, UnsafeCell};
+use std::cell::{Cell, OnceCell, UnsafeCell};
 use std::panic::AssertUnwindSafe;
 use std::rc::Rc;
 
 use crosscom::{ComInterface, ComRc};
 use crosscom_protosept::{
     install_com_dispatcher, scope, scope_context, with_context, ComObjectTable, HostError,
-    HostServices, P7HostContext,
+    HostServices, P7HostContext, RuntimeAccess, RuntimeHandle,
 };
 use p7::interpreter::context::{Context, Data};
 use p7::{InMemoryModuleProvider, ModuleProvider};
@@ -39,12 +39,20 @@ use radiance::radiance::CoreRadianceEngine;
 
 pub struct RuntimeServices {
     pub com: ComObjectTable,
+    /// Weak handle to the owning [`ScriptHost`], installed by
+    /// [`ScriptHost::new`] / [`ScriptHost::install`] once the
+    /// `Rc<ScriptHost>` exists. Reverse-wrap CCWs constructed inside
+    /// the `com.invoke` dispatcher capture this so their thunks and
+    /// `Drop` can re-enter the runtime outside any active
+    /// [`scope_context`].
+    pub runtime_handle: RuntimeHandle,
 }
 
 impl Default for RuntimeServices {
     fn default() -> Self {
         Self {
             com: ComObjectTable::new(),
+            runtime_handle: RuntimeHandle::dangling(),
         }
     }
 }
@@ -52,6 +60,10 @@ impl Default for RuntimeServices {
 impl HostServices for RuntimeServices {
     fn com_table_mut(&mut self) -> &mut ComObjectTable {
         &mut self.com
+    }
+
+    fn runtime_handle(&self) -> RuntimeHandle {
+        self.runtime_handle.clone()
     }
 }
 
@@ -93,6 +105,13 @@ pub struct ScriptDirectorHandle {
 pub struct ScriptHost {
     inner: UnsafeCell<Inner>,
     next_epoch: Cell<u64>,
+    /// Weak-handle to `self`, installed by [`ScriptHost::new`] /
+    /// [`ScriptHost::install`] once the `Rc<Self>` exists. Stored
+    /// here so [`reload`](Self::reload) — which rebuilds the inner
+    /// services bundle from scratch — can re-stamp the handle into
+    /// the freshly-constructed services without needing the original
+    /// `Rc<Self>` again.
+    runtime_handle: OnceCell<RuntimeHandle>,
 }
 
 impl ScriptHost {
@@ -124,19 +143,43 @@ impl ScriptHost {
 
 impl ScriptHost {
     pub fn new() -> Rc<Self> {
-        Rc::new(Self {
+        let host = Rc::new(Self {
             inner: UnsafeCell::new(Inner::fresh()),
             next_epoch: Cell::new(0),
-        })
+            runtime_handle: OnceCell::new(),
+        });
+        Self::install_runtime_handle(&host);
+        host
     }
 
     /// Installs a single `ScriptHost` on the radiance engine, creating it on
     /// first call and returning the existing instance thereafter.
     pub fn install(engine: &CoreRadianceEngine) -> Rc<Self> {
-        engine.get_or_insert_service(|| Self {
+        let host = engine.get_or_insert_service(|| Self {
             inner: UnsafeCell::new(Inner::fresh()),
             next_epoch: Cell::new(0),
-        })
+            runtime_handle: OnceCell::new(),
+        });
+        Self::install_runtime_handle(&host);
+        host
+    }
+
+    /// Wire a `Weak<ScriptHost>` into the inner [`RuntimeServices`] so
+    /// reverse-wrap CCWs (constructed by the `com.invoke` dispatcher
+    /// when a script passes a SAM-coerced callback across the host
+    /// boundary) capture a handle that survives past any single
+    /// script call.
+    ///
+    /// Idempotent — only the first call ever stores the handle; later
+    /// calls re-stamp the same handle into the current services
+    /// bundle (used by [`reload`](Self::reload) after it rebuilds
+    /// `Inner`).
+    fn install_runtime_handle(host: &Rc<Self>) {
+        let handle = RuntimeHandle::from_rc(host);
+        let _ = host.runtime_handle.set(handle.clone());
+        host.with_inner(|inner| {
+            inner.host.services.runtime_handle = handle;
+        });
     }
 
     /// Registers an additional p7 binding module that will be visible to every
@@ -184,6 +227,12 @@ impl ScriptHost {
             let extra = std::mem::take(&mut inner.extra_bindings);
             *inner = Inner::with_bindings(extra);
             inner.epoch = new_epoch;
+            // The fresh `Inner` carries a dangling runtime_handle in
+            // its services bundle. Re-stamp the original Weak so
+            // dispatcher-built CCWs keep working after a reload.
+            if let Some(handle) = self.runtime_handle.get() {
+                inner.host.services.runtime_handle = handle.clone();
+            }
         });
     }
 
@@ -386,6 +435,40 @@ impl ScriptHost {
         .map_err(|err| {
             HostError::message(format!("script method '{method_name}' failed: {:?}", err))
         })
+    }
+}
+
+/// Bridge between reverse-wrap CCWs (in `crosscom-protosept`) and the
+/// `ScriptHost` runtime. CCWs carry a `Weak<dyn RuntimeAccess>`
+/// pointing at the owning `Rc<ScriptHost>`; on each thunk / Drop they
+/// upgrade the weak and call back through this impl to re-enter the
+/// interpreter.
+///
+/// Installing `scope_context` (and `scope`) inside the body is what
+/// makes the existing dispatcher / host-fn shims keep working
+/// transparently: code that reads the active context via
+/// `with_context` (or services via `with_services`) sees the same
+/// pointers whether the call entered through `ScriptHost::call_*`
+/// (which already brackets `scope`/`scope_context`) or through a
+/// CCW thunk (which brackets via this trait impl).
+impl RuntimeAccess for ScriptHost {
+    fn with_ctx(&self, body: &mut dyn FnMut(&mut Context)) {
+        // See `with_inner` re-entrancy contract: nested `with_inner`
+        // calls produce overlapping `&mut Inner` references. The
+        // existing call paths (e.g. `intern` invoked from inside a
+        // host service that was invoked from inside `call_inner`)
+        // already exercise this pattern, so a CCW thunk re-entering
+        // here mid-call is structurally identical.
+        self.with_inner(|inner| {
+            let P7HostContext { ctx, services } = &mut inner.host;
+            scope(services, || {
+                scope_context(ctx, || {
+                    let _ = with_context(|c| {
+                        body(c);
+                    });
+                });
+            });
+        });
     }
 }
 

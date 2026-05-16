@@ -396,7 +396,12 @@ fn classify_script_impl_arg(
         concrete_type_id,
         origin_module_idx,
     };
-    let com_rc = wrap_action(ctx, data)
+    // Pull the runtime handle out of the active services bundle so the
+    // produced CCW can re-enter the runtime from its thunks / Drop
+    // without relying on `scope_context` being alive at the time.
+    let runtime_handle = with_services(|s| s.runtime_handle())
+        .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?;
+    let com_rc = wrap_action(&runtime_handle, data)
         .map_err(|e| RuntimeError::Other(format!("com.invoke: wrap_action failed: {}", e)))?;
 
     let handle = with_services(|s| s.com_table_mut().intern(com_rc))
