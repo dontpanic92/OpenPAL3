@@ -76,40 +76,38 @@ fn runtime_calls_script_owned_director_methods() {
     runtime
         .load_source(
             r#"
-import director;
+import radiance;
 import immediate_director;
 
-pub struct[director.ImmediateDirector] First(pub trigger: box<array<int>>) {
-    pub fn activate(self: ref<Self>) {}
-    pub fn deactivate(self: ref<Self>) {}
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {}
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
+pub struct[immediate_director.IImmediateDirector, radiance.IDirector] First(pub trigger: box<array<int>>) {
+    pub fn activate(self: ref<Self>) -> int { 0 }
+    pub fn deactivate(self: ref<Self>) -> int { 0 }
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int { 0 }
+    pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
         if self.trigger[0] != 0 {
             self.trigger[0] = 0;
-            return [make_second()];
+            return make_second();
         }
-        let result: array<box<director.ImmediateDirector>> = [];
-        return result;
+        return null;
     }
 }
 
-pub struct[director.ImmediateDirector] Second() {
-    pub fn activate(self: ref<Self>) {}
-    pub fn deactivate(self: ref<Self>) {}
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {}
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
-        let result: array<box<director.ImmediateDirector>> = [];
-        return result;
+pub struct[immediate_director.IImmediateDirector, radiance.IDirector] Second() {
+    pub fn activate(self: ref<Self>) -> int { 0 }
+    pub fn deactivate(self: ref<Self>) -> int { 0 }
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int { 0 }
+    pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
+        return null;
     }
 }
 
-fn make_second() -> box<director.ImmediateDirector> {
-    return box(Second()) as box<director.ImmediateDirector>;
+fn make_second() -> box<radiance.IDirector> {
+    return box(Second()) as box<radiance.IDirector>;
 }
 
-pub fn init() -> box<director.ImmediateDirector> {
+pub fn init() -> box<immediate_director.IImmediateDirector> {
     let trigger: array<int> = [1];
-    return box(First(box(trigger))) as box<director.ImmediateDirector>;
+    return box(First(box(trigger))) as box<immediate_director.IImmediateDirector>;
 }
 "#,
         )
@@ -122,8 +120,12 @@ pub fn init() -> box<director.ImmediateDirector> {
         .call_method_returning_data(director, "update", vec![Data::Float(0.016)])
         .expect("update director");
 
+    // Phase 6: update returns `?box<radiance.IDirector>`
+    // instead of the legacy 0-or-1 array shape. First's trigger is
+    // initially 1, so the first update returns Some(next).
     match result {
-        Data::Array(values) => assert_eq!(values.len(), 1),
-        other => panic!("expected one returned director, got {other:?}"),
+        Data::Some(_) => {}
+        Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
+        other => panic!("expected Some/box return for transition, got {other:?}"),
     }
 }

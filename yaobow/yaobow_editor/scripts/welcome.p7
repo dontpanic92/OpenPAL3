@@ -1,18 +1,26 @@
-// Welcome and Settings screens, immediate-mode (H3/H4 of
-// generated/plan.md). Both directors implement `director.ImmediateDirector`
-// and call `immediate_director.IUiHost` methods directly. Button presses surface as
-// boolean returns from `ui.button(...)`; the legacy `command_id` /
-// `dispatch(cmd)` round-trip is gone.
+// Welcome and Settings screens, immediate-mode.
+// Both directors implement `immediate_director.IImmediateDirector` and call
+// `immediate_director.IUiHost` methods directly. Button presses
+// surface as boolean returns from `ui.button(...)`; the legacy
+// `command_id` / `dispatch(cmd)` round-trip is gone.
 //
 // Cross-page transitions live in a `box<array<int>>` "intent" slot
 // that `render_im` writes and `update` reads — keeping the script
 // side single-threaded and re-entrancy-safe.
 
-import director;
+import radiance;
 import editor_services;
 import yaobow_editor_services;
 import immediate_director;
 import editor_consts;
+
+// Forces p7's import resolution for `immediate_director.IImmediateDirector`
+// before the struct decl below references it in its conforming-to list.
+fn _force_im_resolution(
+    x: box<immediate_director.IImmediateDirector>,
+) -> box<immediate_director.IImmediateDirector> {
+    x
+}
 
 // Intent codes written by render_im, consumed by update.
 let INTENT_NONE: int = 0;
@@ -23,20 +31,21 @@ let INTENT_CANCEL: int = 4;
 let INTENT_PICK_FOLDER: int = 5;
 let INTENT_CLEAR_PATH: int = 6;
 
-pub struct[director.ImmediateDirector] WelcomeDirector(
+pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
     pub intent: box<array<int>>,
     pub intent_arg: box<array<int>>,
 ) {
-    pub fn activate(self: ref<Self>) {
+    pub fn activate(self: ref<Self>) -> int {
         self.intent[0] = INTENT_NONE;
         self.intent_arg[0] = 0;
+        0
     }
-    pub fn deactivate(self: ref<Self>) {}
+    pub fn deactivate(self: ref<Self>) -> int { 0 }
 
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
         let _ = ui.window_centered("妖弓编辑器", 720.0, 480.0, () => {
             let _ = ui.text_with_font(0, "妖弓编辑器");
             let _ = ui.dummy(0.0, 24.0);
@@ -77,6 +86,7 @@ pub struct[director.ImmediateDirector] WelcomeDirector(
                 self.intent[0] = INTENT_OPEN_SETTINGS;
             }
         });
+        0
     }
 
     pub fn render_game_cell(self: ref<Self>, ui: box<immediate_director.IUiHost>, ordinal: int) {
@@ -91,44 +101,51 @@ pub struct[director.ImmediateDirector] WelcomeDirector(
     pub fn update(
         self: ref<Self>,
         dt: float,
-    ) -> array<box<director.ImmediateDirector>> {
+    ) -> ?box<radiance.IDirector> {
         let code = self.intent[0];
         let arg = self.intent_arg[0];
         self.intent[0] = INTENT_NONE;
         self.intent_arg[0] = 0;
 
         if code == INTENT_OPEN_SETTINGS {
-            return [make_settings_director(self.host, self.games, self.names)];
+            return make_settings_director(self.host, self.games, self.names);
         }
         if code == INTENT_OPEN_GAME {
             let cfg = self.host.config();
             if cfg.get_asset_path(arg) == "" {
-                return [make_settings_director(self.host, self.games, self.names)];
+                return make_settings_director(self.host, self.games, self.names);
             }
             let next = self.host.app().open_game(arg);
             if next != null {
-                return [editor_consts.wrap_host_im(next!)];
+                // `open_game` returns a `ComRc<IDirector>` produced
+                // by `wrap_im_director` (the QI'd view of the
+                // script-side MainEditorDirector). Hand it back to
+                // the engine directly; the pump's QI to
+                // IImmediateDirector will succeed and drive
+                // MainEditorDirector.render_im inside the imgui
+                // frame scope.
+                return next!;
             }
         }
-        let result: array<box<director.ImmediateDirector>> = [];
-        return result;
+        return null;
     }
 }
 
-pub struct[director.ImmediateDirector] SettingsDirector(
+pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
     pub intent: box<array<int>>,
     pub intent_arg: box<array<int>>,
 ) {
-    pub fn activate(self: ref<Self>) {
+    pub fn activate(self: ref<Self>) -> int {
         self.intent[0] = INTENT_NONE;
         self.intent_arg[0] = 0;
+        0
     }
-    pub fn deactivate(self: ref<Self>) {}
+    pub fn deactivate(self: ref<Self>) -> int { 0 }
 
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
         let _ = ui.window_centered("游戏路径设置", 820.0, 560.0, () => {
             let _ = ui.text_with_font(0, "游戏资源路径设置");
             let _ = ui.dummy(0.0, 12.0);
@@ -156,6 +173,7 @@ pub struct[director.ImmediateDirector] SettingsDirector(
                 }
             });
         });
+        0
     }
 
     pub fn render_settings_row(self: ref<Self>, ui: box<immediate_director.IUiHost>, ordinal: int) {
@@ -179,7 +197,7 @@ pub struct[director.ImmediateDirector] SettingsDirector(
     pub fn update(
         self: ref<Self>,
         dt: float,
-    ) -> array<box<director.ImmediateDirector>> {
+    ) -> ?box<radiance.IDirector> {
         let code = self.intent[0];
         let arg = self.intent_arg[0];
         self.intent[0] = INTENT_NONE;
@@ -188,11 +206,11 @@ pub struct[director.ImmediateDirector] SettingsDirector(
         let cfg = self.host.config();
         if code == INTENT_SAVE_AND_RETURN {
             let _ = cfg.save();
-            return [make_welcome_director(self.host, self.games, self.names)];
+            return make_welcome_director(self.host, self.games, self.names);
         }
         if code == INTENT_CANCEL {
             cfg.reload();
-            return [make_welcome_director(self.host, self.games, self.names)];
+            return make_welcome_director(self.host, self.games, self.names);
         }
         if code == INTENT_PICK_FOLDER {
             let current = cfg.get_asset_path(arg);
@@ -204,8 +222,7 @@ pub struct[director.ImmediateDirector] SettingsDirector(
         if code == INTENT_CLEAR_PATH {
             cfg.set_asset_path(arg, "");
         }
-        let result: array<box<director.ImmediateDirector>> = [];
-        return result;
+        return null;
     }
 }
 
@@ -213,22 +230,22 @@ pub fn make_welcome_director(
     host: box<yaobow_editor_services.IEditorHostContext>,
     games: box<array<int>>,
     names: box<array<string>>,
-) -> box<director.ImmediateDirector> {
+) -> box<radiance.IDirector> {
     let intent: array<int> = [INTENT_NONE];
     let intent_arg: array<int> = [0];
     return box(WelcomeDirector(host, games, names, box(intent), box(intent_arg)))
-        as box<director.ImmediateDirector>;
+        as box<radiance.IDirector>;
 }
 
 fn make_settings_director(
     host: box<yaobow_editor_services.IEditorHostContext>,
     games: box<array<int>>,
     names: box<array<string>>,
-) -> box<director.ImmediateDirector> {
+) -> box<radiance.IDirector> {
     let intent: array<int> = [INTENT_NONE];
     let intent_arg: array<int> = [0];
     return box(SettingsDirector(host, games, names, box(intent), box(intent_arg)))
-        as box<director.ImmediateDirector>;
+        as box<radiance.IDirector>;
 }
 
 fn welcome_game_name(d: ref<WelcomeDirector>, ordinal: int) -> string {

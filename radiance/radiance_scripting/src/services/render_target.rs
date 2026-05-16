@@ -22,7 +22,7 @@ pub struct ScriptedRenderTarget {
     /// Independent queue handle, NOT the cache itself. Pushing to this
     /// on `Drop` is safe even while the cache is borrowed elsewhere
     /// (which is the case for the entire imgui frame — the cache is
-    /// held in `borrow_mut()` by `ScriptedImmediateDirector::update`,
+    /// held in `borrow_mut()` by `ImguiImmediateDirectorPump::pump`,
     /// and GC can drop `ScriptedRenderTarget`s mid-frame).
     pending_forgets: Rc<RefCell<Vec<i64>>>,
     com_id: i64,

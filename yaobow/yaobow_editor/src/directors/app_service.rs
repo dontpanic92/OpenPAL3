@@ -3,9 +3,14 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 use radiance::comdef::{IApplication, IDirector};
+use radiance_scripting::comdef::immediate_director::IUiHost;
 use radiance_scripting::comdef::services::{IAppService, IAppServiceImpl};
+use radiance_scripting::services::ui_host::ImguiUiHost;
 use radiance_scripting::services::ImguiTextureCache;
-use radiance_scripting::{ScriptHost, ScriptedImmediateDirector};
+use radiance_scripting::{
+    with_services, wrap_im_director, ImguiImmediateDirectorPump, RuntimeAccess, RuntimeHandle,
+    ScriptHost,
+};
 use shared::config::YaobowConfig;
 
 use crate::directors::config_service::ConfigService;
@@ -141,16 +146,36 @@ impl IAppServiceImpl for AppService {
             .script_host
             .call_returning_data("init_main_editor", vec![host_box])
             .ok()?;
-        let handle = self.script_host.root(director_data);
 
-        Some(ScriptedImmediateDirector::with_ui(
-            self.script_host.clone(),
-            handle,
-            radiance_scripting::services::ui_host::ImguiUiHost::create(),
+        // Reverse-wrap via the Phase 5 runtime-typed CCW factory
+        // and install (re-install) the imgui pump for the new
+        // director. Sharing the same `textures` cache the welcome
+        // bootstrap built keeps previewer com_ids resolvable.
+        let runtime_handle = host_runtime_handle(&self.script_host);
+        let im = wrap_im_director(&runtime_handle, director_data).ok()?;
+        let director: ComRc<IDirector> = im.query_interface::<IDirector>()?;
+
+        let ui_host: ComRc<IUiHost> = ImguiUiHost::create();
+        let pump = Rc::new(ImguiImmediateDirectorPump::new(
             engine.ui_manager(),
             self.textures.clone(),
-        ))
+            ui_host,
+        ));
+        engine.clear_immediate_director_pump();
+        engine.set_immediate_director_pump(pump);
+
+        Some(director)
     }
+}
+
+fn host_runtime_handle(host: &Rc<ScriptHost>) -> RuntimeHandle {
+    let mut out = None;
+    <ScriptHost as RuntimeAccess>::with_ctx(host, &mut |_ctx| {
+        let h = with_services(|s| s.runtime_handle())
+            .expect("with_services inside RuntimeAccess scope");
+        out = Some(h);
+    });
+    out.expect("RuntimeAccess::with_ctx ran body")
 }
 
 fn game_from_ordinal(ordinal: i32) -> Option<GameType> {

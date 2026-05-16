@@ -4,6 +4,12 @@ import crosscom.idl;
 import radiance.idl;
 import editor.idl;
 
+// Generic `IDirector` ComObject vehicle for tests and host-side
+// stubs that need to hand a `ComRc<IDirector>` to engine APIs
+// without bringing in a real director's IDL class. The Phase 6
+// editor flow itself no longer needs this — it goes through
+// `wrap_im_director` + `ImguiImmediateDirectorPump` — but tests
+// exercising `IDirector` ComObjects keep using it.
 [uuid(36a97a52-3ef3-48c5-a656-c37798939a3b)]
 class ScriptedDirector: IDirector {}
 

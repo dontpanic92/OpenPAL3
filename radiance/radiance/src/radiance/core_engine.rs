@@ -145,14 +145,20 @@ impl CoreRadianceEngine {
         // engine methods doesn't double-borrow `immediate_pump`.
         let pump = self.immediate_pump.borrow().clone();
         let ui_frame = self.ui_manager.update(delta_sec, |ui| {
-            scene_manager.update(delta_sec);
-            task_manager.update(delta_sec);
-
+            // Fire the immediate-mode director pump *before*
+            // scene_manager.update so the active director's
+            // `render_im` runs in render-then-update order
+            // (matching the legacy `ScriptedImmediateDirector`
+            // semantics). A transition produced by
+            // `scene_manager.update`'s `director.update` call will
+            // first appear on the next frame's `render_im`.
             if let Some(pump) = pump.as_ref() {
                 if let Some(director) = scene_manager.director() {
                     pump.pump(director, delta_sec);
                 }
             }
+            scene_manager.update(delta_sec);
+            task_manager.update(delta_sec);
 
             if let Some(dl) = debug_layer {
                 dl.update(delta_sec);

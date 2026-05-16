@@ -20,8 +20,15 @@ pub mod proxies;
 pub mod runtime;
 pub mod services;
 
-pub use proxies::{
-    wrap_director, wrap_im_director, ImguiImmediateDirectorPump, ScriptedImmediateDirector,
-};
+pub use proxies::{wrap_director, wrap_im_director, ImguiImmediateDirectorPump};
 pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};
 pub use services::HostContext;
+
+// Re-export crosscom-protosept primitives that editor bootstrap code
+// uses (RuntimeHandle, RuntimeAccess, with_services). Keeps the
+// dependency surface for `yaobow_editor` minimal — it can pull
+// everything it needs from this crate.
+pub use crosscom_protosept::{
+    register_proto_ccw, with_services, ArgKind, MethodSpec, ProtoSpec, RetKind, RuntimeAccess,
+    RuntimeHandle,
+};

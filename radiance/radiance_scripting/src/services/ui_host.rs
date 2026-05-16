@@ -2,7 +2,7 @@
 //!
 //! The ComObject itself is stateless: every method routes through a
 //! thread-local `ImguiFrameState` pointer that the host (typically
-//! `ScriptedImmediateDirector::update`) sets up at the start of each frame and
+//! `ImguiImmediateDirectorPump::pump`) sets up at the start of each frame and
 //! tears down at the end via [`with_imgui_frame`]. This mirrors
 //! `crosscom_protosept::scope_context` and keeps the `ComRc<IUiHost>`
 //! itself a 'static value the script can intern once and re-use

@@ -1,9 +1,9 @@
 // Shared editor constants and the `HostDirectorIm` adapter that
 // surfaces a Rust-implemented `radiance.IDirector` as a script-side
-// `director.ImmediateDirector`. Exposed so every sibling module (and
-// the user-main `main.p7`) can refer to a single source of truth.
+// `immediate_director.IImmediateDirector`. Exposed so every sibling module
+// (and the user-main `main.p7`) can refer to a single source of
+// truth.
 
-import director;
 import radiance;
 import immediate_director;
 
@@ -19,30 +19,41 @@ pub let MODEL_PREVIEW_CMD_BASE: int = 300000;
 pub let AUDIO_TOGGLE_CMD_BASE: int = 400000;
 pub let VIDEO_TOGGLE_CMD_BASE: int = 500000;
 
+// Forces p7's import resolution for `immediate_director.IImmediateDirector`
+// to materialise before the struct decl below. Without this top-level
+// signature mentioning the proto, p7's type-checker fails the struct's
+// conforming-to list with `TypeNotFound`. The body identity-returns;
+// no call site needs to use this in production paths.
+pub fn force_im_resolution(
+    x: box<immediate_director.IImmediateDirector>,
+) -> box<immediate_director.IImmediateDirector> {
+    x
+}
+
 // Bridges a Rust-side `box<radiance.IDirector>` (which renders via its
-// own `update`) into the `director.ImmediateDirector` proto so the
+// own `update`) into the `immediate_director.IImmediateDirector` proto so the
 // immediate-mode welcome page can transition into a Rust-driven
 // director without the engine seeing the proto seam. `render_im` is a
 // no-op: the wrapped inner Rust director draws its own window from
-// its `update` (see `ScriptedImmediateDirector::update`); returning a
-// real widget here would emit an orphan imgui call before that runs
-// and trip dear-imgui's implicit "Debug" fallback window.
-pub struct[director.ImmediateDirector] HostDirectorIm(pub inner: box<radiance.IDirector>) {
-    pub fn activate(self: ref<Self>) {
+// its `update`; returning a real widget here would emit an orphan
+// imgui call before that runs and trip dear-imgui's implicit
+// "Debug" fallback window.
+pub struct[immediate_director.IImmediateDirector, radiance.IDirector] HostDirectorIm(pub inner: box<radiance.IDirector>) {
+    pub fn activate(self: ref<Self>) -> int {
         let _ = self.inner.activate();
+        0
     }
-    pub fn deactivate(self: ref<Self>) {}
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {}
-    pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
+    pub fn deactivate(self: ref<Self>) -> int { 0 }
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int { 0 }
+    pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
         let next = self.inner.update(dt);
         if next != null {
-            return [box(HostDirectorIm(next!)) as box<director.ImmediateDirector>];
+            return box(HostDirectorIm(next!)) as box<radiance.IDirector>;
         }
-        let result: array<box<director.ImmediateDirector>> = [];
-        return result;
+        return null;
     }
 }
 
-pub fn wrap_host_im(inner: box<radiance.IDirector>) -> box<director.ImmediateDirector> {
-    return box(HostDirectorIm(inner)) as box<director.ImmediateDirector>;
+pub fn wrap_host_im(inner: box<radiance.IDirector>) -> box<radiance.IDirector> {
+    return box(HostDirectorIm(inner)) as box<radiance.IDirector>;
 }

@@ -31,5 +31,11 @@ pub trait ImmediateDirectorPump {
     ///    director isn't immediate-mode).
     /// 2. Park frame-state (textures, fonts, dpi) appropriately.
     /// 3. Call the script-facing `render_im` method.
+    ///
+    /// `CoreRadianceEngine::update` calls this *before*
+    /// `scene_manager.update(dt)` so the render-then-update order
+    /// matches the legacy `ScriptedImmediateDirector` semantics.
+    /// A transition produced by the script's `update` therefore
+    /// appears for the first time on the *next* frame's `render_im`.
     fn pump(&self, director: ComRc<IDirector>, dt: f32);
 }

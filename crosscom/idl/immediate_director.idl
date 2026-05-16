@@ -21,12 +21,9 @@
 // * `IImmediateDirector` — the engine-visible immediate-mode director.
 //   Inherits from `radiance.comdef.IDirector` and adds a `render_im`
 //   step that the engine pumps inside its imgui frame scope. Scripts
-//   may implement this directly via `struct[radiance.IImmediateDirector]`
-//   once the reverse-wrap path (`wrap_director`) lands. Until then the
-//   script-side `director.ImmediateDirector` proto in
-//   `radiance/radiance_scripting/bindings/director.p7` remains the
-//   authoring surface, and `ScriptedImmediateDirector` continues to
-//   adapt it to `IDirector`.
+//   may implement this directly via `struct[radiance.IImmediateDirector]`,
+//   and the resulting `box<IImmediateDirector>` is reverse-wrapped to
+//   `ComRc<IDirector>` via `radiance_scripting::wrap_im_director`.
 
 module(rust) radiance_scripting::comdef::immediate_director;
 

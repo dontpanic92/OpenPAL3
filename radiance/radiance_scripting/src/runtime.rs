@@ -67,8 +67,6 @@ impl HostServices for RuntimeServices {
     }
 }
 
-pub const DIRECTOR_BINDINGS_P7: &str = include_str!("../bindings/director.p7");
-
 struct Inner {
     host: P7HostContext<RuntimeServices>,
     epoch: u64,
@@ -248,7 +246,7 @@ impl ScriptHost {
             // own intern handle would be consumed by the first
             // collected box, invalidating any sibling box that shares
             // the same id (e.g. a singleton `IUiHost` materialised
-            // anew each frame by `ScriptedImmediateDirector`).
+            // anew each frame by `ImguiImmediateDirectorPump`).
             if !inner.host.services.com_table_mut().add_ref(handle) {
                 return Err(HostError::message(format!(
                     "foreign_box: invalid COM object handle {}",
@@ -512,7 +510,6 @@ fn binding_provider(extra: &[(String, String)]) -> Box<dyn ModuleProvider> {
         "radiance".to_string(),
         include_str!(concat!(env!("OUT_DIR"), "/radiance.p7")).to_string(),
     );
-    provider.add_module("director".to_string(), DIRECTOR_BINDINGS_P7.to_string());
     provider.add_module(
         "editor".to_string(),
         include_str!(concat!(env!("OUT_DIR"), "/editor.p7")).to_string(),

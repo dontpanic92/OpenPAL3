@@ -5,14 +5,22 @@
 // requests) travel through `box<array<...>>` slots that `update`
 // drains.
 
-import director;
+import radiance;
 import yaobow_editor_services;
 import immediate_director;
 import content_tabs;
 import resource_tree;
 import editor_consts;
 
-pub struct[director.ImmediateDirector] MainEditorDirector(
+// Forces p7's import resolution for `immediate_director.IImmediateDirector`
+// before the struct decl below references it in its conforming-to list.
+fn _force_im_resolution(
+    x: box<immediate_director.IImmediateDirector>,
+) -> box<immediate_director.IImmediateDirector> {
+    x
+}
+
+pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditorDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub tabs: box<array<content_tabs.ContentTab>>,
     pub next_close_cmd: box<array<int>>,
@@ -20,10 +28,10 @@ pub struct[director.ImmediateDirector] MainEditorDirector(
     pub close_intents: box<array<int>>,
     pub preview_intents: box<array<int>>,
 ) {
-    pub fn activate(self: ref<Self>) {}
-    pub fn deactivate(self: ref<Self>) {}
+    pub fn activate(self: ref<Self>) -> int { 0 }
+    pub fn deactivate(self: ref<Self>) -> int { 0 }
 
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
         let _ = ui.window_fullscreen("##editor_root", 0, () => {
             let _ = ui.child_window("##editor_tree", 320.0, 0.0, () => {
                 resource_tree.render_resource_tree_im(ui, self.host.vfs(), self.picks);
@@ -46,12 +54,13 @@ pub struct[director.ImmediateDirector] MainEditorDirector(
                 });
             });
         });
+        0
     }
 
     pub fn update(
         self: ref<Self>,
         dt: float,
-    ) -> array<box<director.ImmediateDirector>> {
+    ) -> ?box<radiance.IDirector> {
         // Drive offscreen preview passes for any active sessions BEFORE
         // the next imgui frame samples their color textures.
         let _ = self.host.render_pending_previews();
@@ -118,14 +127,13 @@ pub struct[director.ImmediateDirector] MainEditorDirector(
     }
 }
 
-fn empty_transitions() -> array<box<director.ImmediateDirector>> {
-    let result: array<box<director.ImmediateDirector>> = [];
-    return result;
+fn empty_transitions() -> ?box<radiance.IDirector> {
+    return null;
 }
 
 pub fn make_main_editor_director(
     host: box<yaobow_editor_services.IEditorHostContext>,
-) -> box<director.ImmediateDirector> {
+) -> box<radiance.IDirector> {
     let tabs: array<content_tabs.ContentTab> = [];
     let counter: array<int> = [0];
     let picks: array<string> = [];
@@ -138,7 +146,7 @@ pub fn make_main_editor_director(
         box(picks),
         box(close_intents),
         box(preview_intents),
-    )) as box<director.ImmediateDirector>;
+    )) as box<radiance.IDirector>;
 }
 
 fn close_tab_by_close_cmd(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {

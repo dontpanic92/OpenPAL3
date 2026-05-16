@@ -34,7 +34,7 @@ pub struct ImageHandle {
     com_id: i64,
     /// Independent queue used by `Drop` so cache cleanup never tries to
     /// `borrow_mut()` the cache while it's held by an active imgui
-    /// frame (`ScriptedImmediateDirector::update`). See
+    /// frame (`ImguiImmediateDirectorPump::pump`). See
     /// `ImguiTextureCache::pending_forgets_sink` for details.
     pending_forgets: Rc<RefCell<Vec<i64>>>,
 }

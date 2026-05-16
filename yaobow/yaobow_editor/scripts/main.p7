@@ -2,13 +2,21 @@
 // entry points called from Rust (`init` / `init_main_editor`). All
 // per-page logic lives in `welcome` / `main_editor`; shared constants
 // and the @foreign carrier adapter live in `editor_consts`.
+//
+// The returned `box<radiance.IDirector>` is consumed by Rust's
+// `wrap_im_director`, which reverse-wraps it as
+// `ComRc<IImmediateDirector>`. The runtime-typed CCW factory
+// dispatches `activate`/`update`/`render_im` via the script struct's
+// `conforming_to` set, so the box's static type at the p7 level
+// doesn't need to be `box<immediate_director.IImmediateDirector>`
+// — the underlying struct conforming to that proto is what counts.
 
-import director;
+import radiance;
 import yaobow_editor_services;
 import welcome;
 import main_editor;
 
-pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.ImmediateDirector> {
+pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<radiance.IDirector> {
     let registry = host.games();
     let games_arr: array<int> = [];
     let names_arr: array<string> = [];
@@ -27,6 +35,6 @@ pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<directo
     welcome.make_welcome_director(host, games, names)
 }
 
-pub fn init_main_editor(host: box<yaobow_editor_services.IEditorHostContext>) -> box<director.ImmediateDirector> {
+pub fn init_main_editor(host: box<yaobow_editor_services.IEditorHostContext>) -> box<radiance.IDirector> {
     return main_editor.make_main_editor_director(host);
 }

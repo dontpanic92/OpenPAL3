@@ -35,11 +35,18 @@ pub fn wrap_director(
     handle: &RuntimeHandle,
     data: Data,
 ) -> Result<ComRc<IDirector>, HostError> {
-    ensure_registered();
+    ensure_idirector_registered();
     wrap_proto::<IDirector>(handle, data)
 }
 
-fn ensure_registered() {
+/// Lazily register the `radiance.comdef.IDirector` spec with the
+/// runtime-typed CCW factory. Exposed (crate-visible) so
+/// [`crate::wrap_im_director`] can call it too — the
+/// `IImmediateDirector` spec's `update` return is
+/// `OptionalForeign { uuid: IDirector::INTERFACE_ID }`, so the CCW's
+/// recursive `wrap_proto_unknown` for a transition path needs the
+/// IDirector spec to exist as well.
+pub(crate) fn ensure_idirector_registered() {
     static GUARD: OnceLock<()> = OnceLock::new();
     GUARD.get_or_init(|| {
         // `register_proto_ccw` is idempotent (Phase 4 B4); we ignore

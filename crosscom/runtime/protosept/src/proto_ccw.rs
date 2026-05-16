@@ -525,6 +525,14 @@ enum DispatchOutcome {
     /// Returned interface — either `Null` or a script-side box ready
     /// for recursive wrap_proto.
     OptionalForeign(Option<Data>),
+    /// Returned interface where the script's `?box<F>` value was a
+    /// foreign-carrier box (a `Data::Foreign{...}` wrapped in a
+    /// `ProtoBoxRef`) — i.e. a box that wraps an actual Rust
+    /// `ComRc<I>` rather than a script struct conforming to `F`.
+    /// In this case we skip the recursive `wrap_proto` (which would
+    /// build a CCW on top of a CCW and fail script-method dispatch)
+    /// and pass the underlying COM pointer through directly.
+    OptionalForeignRaw(*const *const c_void),
     Error(HostError),
 }
 
@@ -598,6 +606,12 @@ unsafe extern "C" fn method_thunk_ptr(
                     }
                 }
             }
+        }
+        DispatchOutcome::OptionalForeignRaw(raw) => {
+            // Script returned a foreign-carrier box that wraps a real
+            // Rust ComObject. Pass its raw COM pointer through; the
+            // engine sees the underlying ComObject directly.
+            *result = raw as *const c_void;
         }
         DispatchOutcome::Error(err) => {
             eprintln!(
@@ -725,18 +739,18 @@ fn invoke_script_method(
                 method_name, other
             ))),
         },
-        RetKind::OptionalForeign { .. } => match frame.stack.pop() {
+        RetKind::OptionalForeign { uuid: ret_uuid, .. } => match frame.stack.pop() {
             Some(Data::Null) => DispatchOutcome::OptionalForeign(None),
             Some(Data::Some(inner)) => {
                 // `inner: Rc<Data>`; clone the inner Data out (the
                 // recursive wrap_proto will root it again).
-                DispatchOutcome::OptionalForeign(Some((*inner).clone()))
+                classify_optional_foreign_return(ctx, (*inner).clone(), *ret_uuid)
             }
             Some(d @ Data::ProtoBoxRef { .. }) | Some(d @ Data::BoxRef { .. }) => {
                 // Tolerate bare-box returns (the script's `return self` /
                 // `return some_box` pattern); director.md A2 flags this
                 // as an explicit p7 ergonomic gap.
-                DispatchOutcome::OptionalForeign(Some(d))
+                classify_optional_foreign_return(ctx, d, *ret_uuid)
             }
             other => DispatchOutcome::Error(HostError::message(format!(
                 "{}: expected OptionalForeign return, got {:?}",
@@ -744,6 +758,67 @@ fn invoke_script_method(
             ))),
         },
     }
+}
+
+/// Classify the inner value of an `?box<F>` return:
+///
+/// * If the underlying box wraps a foreign carrier (i.e. a
+///   `Data::Foreign{type_tag, handle, ...}` payload in the box heap),
+///   look up the carrier's interned `ComObjectTable` entry and return
+///   its raw COM pointer via `OptionalForeignRaw`. This is the path
+///   taken when a script `update` returns a `box<radiance.IDirector>`
+///   value that originated as a Rust `ComRc<IDirector>` handed to the
+///   script via `host.foreign_box(...)` — re-wrapping it in another
+///   CCW would create a CCW pointing at a foreign carrier whose
+///   script-side struct has no method impls, causing method dispatch
+///   to fail.
+///
+/// * Otherwise the box is a script-side struct conforming to the
+///   target proto; return `OptionalForeign(Some(data))` so the libffi
+///   thunk recursively builds a CCW around it.
+fn classify_optional_foreign_return(
+    ctx: &mut Context,
+    data: Data,
+    ret_uuid: [u8; 16],
+) -> DispatchOutcome {
+    // Read the box payload from p7's box heap. Foreign carriers store
+    // a `Data::Foreign` inside the box; script structs store a
+    // struct heap reference. Only the former needs the pass-through.
+    let (box_idx, generation) = match &data {
+        Data::ProtoBoxRef {
+            box_idx,
+            generation,
+            ..
+        } => (*box_idx, *generation),
+        Data::BoxRef { idx, generation } => (*idx, *generation),
+        _ => return DispatchOutcome::OptionalForeign(Some(data)),
+    };
+    let payload = match ctx.box_heap.get(box_idx, generation) {
+        Ok(p) => p.clone(),
+        Err(_) => return DispatchOutcome::OptionalForeign(Some(data)),
+    };
+    if let Data::Foreign {
+        handle: com_handle,
+        ..
+    } = payload
+    {
+        // Bypass wrap_proto: fetch the ComObjectTable entry's raw COM
+        // pointer for the target interface UUID, add_ref it so the
+        // caller's strong reference matches `wrap_proto`'s output
+        // contract, and return.
+        let raw = match with_services(|s| s.com_table_mut().get_raw_qi(com_handle, ret_uuid)) {
+            Ok(Some(p)) => p,
+            Ok(None) => {
+                return DispatchOutcome::Error(HostError::message(format!(
+                    "foreign-return: ComObject {} does not expose interface {:?}",
+                    com_handle, ret_uuid
+                )));
+            }
+            Err(e) => return DispatchOutcome::Error(e),
+        };
+        return DispatchOutcome::OptionalForeignRaw(raw);
+    }
+    DispatchOutcome::OptionalForeign(Some(data))
 }
 
 unsafe fn marshal_arg_in(

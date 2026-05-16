@@ -287,7 +287,7 @@ fn welcome_script_update_returns_empty_transition_list() {
         .runtime
         .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
         .expect("welcome.p7 update should return");
-    assert_eq!(result, Data::Array(std::rc::Rc::new(Vec::new())));
+    assert_eq!(result, Data::Null);
 }
 
 #[test]
@@ -325,7 +325,7 @@ fn welcome_script_settings_button_routes_to_settings_director() {
         .expect("update should return after a settings click");
 
     match next {
-        Data::Array(values) => assert_eq!(values.len(), 1, "expected settings director"),
+        Data::Some(_) | Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
         other => panic!("expected one transition, got {other:?}"),
     }
 }
@@ -358,7 +358,7 @@ fn welcome_script_no_click_yields_no_transition() {
         .runtime
         .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
         .expect("update should return");
-    assert_eq!(result, Data::Array(std::rc::Rc::new(Vec::new())));
+    assert_eq!(result, Data::Null);
 }
 
 #[test]
@@ -399,7 +399,7 @@ fn welcome_script_game_button_with_configured_path_calls_open_game() {
         .expect("update should return after a game click");
 
     match next {
-        Data::Array(values) => assert_eq!(values.len(), 1, "expected wrapped host director"),
+        Data::Some(_) | Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
         other => panic!("expected one wrapped host director, got {other:?}"),
     }
     assert_eq!(*env.open_calls.borrow(), vec![0]);
@@ -433,15 +433,18 @@ fn welcome_script_render_im_update_survives_repeated_frames() {
             .runtime
             .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
             .expect("welcome.p7 update should return");
-        assert_eq!(result, Data::Array(std::rc::Rc::new(Vec::new())));
+        assert_eq!(result, Data::Null);
     }
 }
 
 #[test]
-fn host_director_returned_by_open_game_renders_im_and_updates() {
-    // Mirrors the editor flow that the user reported failing: pick a game
-    // with a configured asset path, take the wrapped HostDirectorIm
-    // returned by welcome.update, and drive it through render_im/update.
+fn welcome_script_game_button_with_configured_path_returns_open_game_director() {
+    // Phase 6: welcome.update on a game-pick with a configured path
+    // returns the `ComRc<IDirector>` that `open_game` produced. The
+    // engine then makes that the active director and the pump fires
+    // its `render_im` via QI (when it conforms to IImmediateDirector).
+    // Here open_game's stub returns a plain `StubDirector`, so we
+    // just verify the transition value is the foreign box itself.
     let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     env.config_paths
         .borrow_mut()
@@ -475,41 +478,9 @@ fn host_director_returned_by_open_game_renders_im_and_updates() {
         .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
         .expect("welcome.p7 update should return");
 
-    let next_director = match result {
-        Data::Array(values) => {
-            assert_eq!(values.len(), 1, "expected one wrapped host director");
-            values[0].clone()
-        }
-        other => panic!("expected one wrapped host director, got {other:?}"),
-    };
-
-    // Drive the HostDirectorIm through render_im+update — this is what
-    // ScriptedImmediateDirector::update would do every frame on the
-    // active director after the game-pick transition. The
-    // RecordingUiHost is reused so successive renders accumulate.
-    for _ in 0..3 {
-        let ui_box = env
-            .runtime
-            .foreign_box(
-                "radiance_scripting.comdef.immediate_director.IUiHost",
-                ui_com_id,
-            )
-            .expect("ui_host foreign box");
-        env.runtime
-            .call_method_void(
-                next_director.clone(),
-                "render_im",
-                vec![ui_box, Data::Float(0.0)],
-            )
-            .expect("HostDirectorIm.render_im should run");
-        let updated = env
-            .runtime
-            .call_method_returning_data(
-                next_director.clone(),
-                "update",
-                vec![Data::Float(0.016)],
-            )
-            .expect("HostDirectorIm.update should return");
-        assert_eq!(updated, Data::Array(std::rc::Rc::new(Vec::new())));
+    match result {
+        Data::Some(_) | Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
+        other => panic!("expected a transition box, got {other:?}"),
     }
+    assert_eq!(*env.open_calls.borrow(), vec![0]);
 }

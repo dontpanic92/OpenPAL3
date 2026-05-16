@@ -32,6 +32,16 @@ pub fn wrap_im_director(
 }
 
 fn ensure_registered() {
+    // The IImmediateDirector spec's `update` return type is
+    // `OptionalForeign { uuid: IDirector::INTERFACE_ID }`. When the
+    // script returns a transition `Some(box)` from update, the CCW's
+    // libffi thunk recursively calls
+    // `wrap_proto_unknown(handle, data, IDirector::INTERFACE_ID)`,
+    // which requires IDirector to also be registered. Register both
+    // here so a bootstrap that only calls `wrap_im_director` still
+    // works when the script returns a real transition.
+    crate::proxies::wrap_director::ensure_idirector_registered();
+
     static GUARD: OnceLock<()> = OnceLock::new();
     GUARD.get_or_init(|| {
         let _ = register_proto_ccw(ProtoSpec {
