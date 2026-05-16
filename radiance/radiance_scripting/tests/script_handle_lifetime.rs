@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::sync::Mutex;
 
 use crosscom::{ComRc, IAction};
-use crosscom_protosept::{with_services, wrap_action};
+use crosscom_protosept::{with_services, wrap_proto};
 use p7::errors::RuntimeError;
 use p7::interpreter::context::Context;
 use radiance_scripting::ScriptHost;
@@ -39,7 +39,7 @@ pub fn save_callback() {
 pub fn run_unrelated() {
     // No-op script call between save and invoke; exists so we have a
     // second `ScriptHost::call_void` activation between the
-    // `wrap_action` call and the post-call `invoke` to demonstrate
+    // `wrap_proto` call and the post-call `invoke` to demonstrate
     // that the captured ComRc survives across distinct
     // `scope_context` activations.
 }
@@ -66,8 +66,8 @@ fn capture_action_host_fn(ctx: &mut Context) -> Result<(), RuntimeError> {
         .ok_or_else(|| RuntimeError::Other("capture_action: missing arg".into()))?;
     let handle = with_services(|s| s.runtime_handle())
         .map_err(|e| RuntimeError::Other(format!("capture_action: services: {}", e)))?;
-    let com = wrap_action(&handle, arg)
-        .map_err(|e| RuntimeError::Other(format!("capture_action: wrap_action: {}", e)))?;
+    let com = wrap_proto::<IAction>(&handle, arg)
+        .map_err(|e| RuntimeError::Other(format!("capture_action: wrap_proto: {}", e)))?;
     CAPTURED.with(|c| c.borrow_mut().push(com));
     Ok(())
 }
@@ -96,7 +96,7 @@ fn captured_action_survives_across_script_host_calls() {
     // First scope_context activation: the script constructs a
     // Callback box, passes it across the dispatcher's `com.invoke`
     // path (into our host fn), which builds a ComRc<IAction> via
-    // `wrap_action` and stores it.
+    // `wrap_proto` and stores it.
     host.call_void("save_callback", vec![])
         .expect("save_callback");
 

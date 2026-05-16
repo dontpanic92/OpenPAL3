@@ -36,9 +36,8 @@ use std::ffi::{c_char, c_float, c_long, c_void, CString};
 use std::os::raw::c_int;
 use std::rc::Rc;
 
-use crate::script_proxy::wrap_action;
+use crate::proto_ccw::wrap_proto_unknown;
 use crate::{with_services, ComObjectTable};
-use crosscom::{ComInterface, IAction};
 use libffi::middle::{arg, Arg, Cif, CodePtr, Type};
 use p7::errors::RuntimeError;
 use p7::interpreter::context::{Context, Data};
@@ -49,11 +48,19 @@ use p7::semantic::HostReturnTy;
 /// Idempotent: safe to call once per [`Context`] (multiple calls just
 /// re-register).
 ///
+/// As a side effect this also registers the well-known
+/// `crosscom.IAction` interface with the runtime-typed CCW factory
+/// (`register_proto_ccw`). That registration is required for the
+/// dispatcher's `classify_script_impl_arg` path to wrap any
+/// SAM-coerced script closure crossing the host boundary as a
+/// `box<crosscom.IAction>`.
+///
 /// Use after `Context::new()` and before loading any modules whose
 /// `@foreign` protos use these dispatcher names.
 pub fn install_com_dispatcher(ctx: &mut Context) {
     ctx.register_host_function("com.invoke".to_string(), com_invoke);
     ctx.register_host_function("com.release".to_string(), com_release);
+    crate::proto_ccw::register_crosscom_iaction();
 }
 
 // ---------------------------------------------------------------------------
@@ -340,7 +347,7 @@ fn classify_foreign_box(
             // crosscom arg if the script value is a struct that
             // *conforms to* a known `@foreign` proto (the SAM-coerced
             // closure / explicit `struct[F] X(...)` pattern from §L1/
-            // §L2). Wrap it as a Rust-side CCW (`wrap_action` for
+            // §L2). Wrap it as a Rust-side CCW (`wrap_proto` for
             // `IAction`), intern, and pass the raw pointer.
             let (concrete_type_id, origin_module_idx) = proto_origin.ok_or_else(|| {
                 RuntimeError::Other(format!(
@@ -355,7 +362,7 @@ fn classify_foreign_box(
 
 /// Handle a script-impl-of-foreign-proto argument: look up the
 /// concrete struct's foreign-conforming proto, wrap the value as the
-/// matching Rust CCW (`wrap_action` for IAction in v1), intern, and
+/// matching Rust CCW (`wrap_proto` for IAction in v1), intern, and
 /// return the raw COM pointer.
 fn classify_script_impl_arg(
     ctx: &mut Context,
@@ -374,16 +381,15 @@ fn classify_script_impl_arg(
             ))
         })?;
 
-    // v1: only IAction is supported as a script-impl arg.
-    if tag != "crosscom.IAction" {
-        return Err(RuntimeError::Other(format!(
-            "com.invoke: script-impl arg for foreign proto '{}' is not supported in v1 \
-             (only crosscom.IAction is wrapped via wrap_action)",
-            tag
-        )));
-    }
+    // v1: only IAction was supported; Phase 3 (B1b) extends this to
+    // any interface UUID registered via
+    // `crosscom_protosept::register_proto_ccw`. The fallback below
+    // checks the registry and either reverse-wraps via the runtime-
+    // typed CCW factory or errors loudly with a pointer at the
+    // registration entry point.
+    // No early return here — handled below.
 
-    // Wrap the script box as `ComRc<IAction>`. wrap_action holds an
+    // Wrap the script box as `ComRc<IAction>`. wrap_proto holds an
     // external root on the underlying script box, so re-entrant
     // invocations across the host boundary remain valid until the CCW
     // is released. We pass through the original `ProtoBoxRef` so that
@@ -401,20 +407,43 @@ fn classify_script_impl_arg(
     // without relying on `scope_context` being alive at the time.
     let runtime_handle = with_services(|s| s.runtime_handle())
         .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?;
-    let com_rc = wrap_action(&runtime_handle, data)
-        .map_err(|e| RuntimeError::Other(format!("com.invoke: wrap_action failed: {}", e)))?;
 
-    let handle = with_services(|s| s.com_table_mut().intern(com_rc))
+    // Uniform reverse-wrap path: look up `tag`'s UUID from the
+    // script's @foreign metadata, then reverse-wrap via the runtime-
+    // typed CCW factory. `install_com_dispatcher` pre-registers
+    // `crosscom.IAction`; consumers add other interfaces via
+    // `register_proto_ccw` at startup (e.g. `wrap_director` /
+    // `wrap_im_director` register the directors lazily on first
+    // call).
+    let uuid_str = ctx
+        .foreign_uuid(&tag)
+        .ok_or_else(|| {
+            RuntimeError::Other(format!(
+                "com.invoke: no UUID known for foreign proto '{}' (script lacks `uuid=...`?)",
+                tag
+            ))
+        })?
+        .to_string();
+    let uuid_bytes = parse_uuid(&uuid_str)?;
+    if !crate::proto_ccw::is_proto_registered(uuid_bytes) {
+        return Err(RuntimeError::Other(format!(
+            "com.invoke: script-impl arg for foreign proto '{}' is not supported; \
+             call crosscom_protosept::register_proto_ccw for UUID {} at startup",
+            tag, uuid_str
+        )));
+    }
+    let com_rc = wrap_proto_unknown(&runtime_handle, data, uuid_bytes)
+        .map_err(|e| RuntimeError::Other(format!("com.invoke: wrap_proto failed: {}", e)))?;
+    let com_handle = with_services(|s| s.com_table_mut().intern(com_rc))
         .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?;
 
-    let uuid_bytes = IAction::INTERFACE_ID;
     let p: *const *const c_void =
-        with_services(|s| s.com_table_mut().get_raw_qi(handle, uuid_bytes))
+        with_services(|s| s.com_table_mut().get_raw_qi(com_handle, uuid_bytes))
             .map_err(|e| RuntimeError::Other(format!("com.invoke: with_services: {}", e)))?
             .ok_or_else(|| {
                 RuntimeError::Other(format!(
-                    "com.invoke: wrapped script-impl-of-IAction handle {} did not expose IAction",
-                    handle
+                    "com.invoke: wrapped script-impl handle {} did not expose tag '{}'",
+                    com_handle, tag
                 ))
             })?;
 
@@ -423,7 +452,7 @@ fn classify_script_impl_arg(
     // delayed dispatch); releasing here would invalidate that. A
     // future task may add call-scope release for non-stored callback
     // args.
-    let _ = handle;
+    let _ = com_handle;
 
     Ok(ClassifiedPop::Arg(MarshalledArg::Pointer(
         p as *const c_void,

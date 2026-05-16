@@ -34,11 +34,14 @@ use crosscom::{ComInterface, ComRc, IUnknown};
 
 pub mod adapter;
 pub mod dispatcher;
-pub mod script_proxy;
+pub mod proto_ccw;
 
 pub use adapter::{MinimalServices, P7HostContext};
 pub use dispatcher::install_com_dispatcher;
-pub use script_proxy::{wrap_action, ScriptActionProxy};
+pub use proto_ccw::{
+    is_proto_registered, register_crosscom_iaction, register_proto_ccw, wrap_proto,
+    wrap_proto_unknown, ArgKind, MethodSpec, ProtoSpec, RetKind,
+};
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -320,12 +323,11 @@ pub trait HostServices: Any {
     fn com_table_mut(&mut self) -> &mut ComObjectTable;
 
     /// Weak handle to the runtime that owns this services bundle. Reverse-
-    /// wrap CCWs (see [`crate::script_proxy::wrap_action`]) capture this
-    /// when constructed so their thunks and `Drop` can re-enter the
-    /// runtime without relying on a thread-local
-    /// [`scope_context`](crate::scope_context). The default returns a
-    /// permanently-dangling handle; consumers that hand out long-lived
-    /// reverse-wrapped `ComRc`s must override it.
+    /// wrap CCWs (see [`crate::wrap_proto`]) capture this when constructed
+    /// so their thunks and `Drop` can re-enter the runtime without relying
+    /// on a thread-local [`scope_context`](crate::scope_context). The
+    /// default returns a permanently-dangling handle; consumers that hand
+    /// out long-lived reverse-wrapped `ComRc`s must override it.
     fn runtime_handle(&self) -> RuntimeHandle {
         RuntimeHandle::dangling()
     }
@@ -372,7 +374,7 @@ impl RuntimeHandle {
 
     /// A handle whose upgrade always fails. Useful as a default for
     /// [`HostServices::runtime_handle`] impls that have no runtime to
-    /// point at, and as a sentinel that [`wrap_action`](crate::wrap_action)
+    /// point at, and as a sentinel that [`wrap_proto`](crate::wrap_proto)
     /// can detect to fail loudly.
     pub fn dangling() -> Self {
         Self {

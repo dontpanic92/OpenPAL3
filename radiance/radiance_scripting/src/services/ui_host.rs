@@ -23,7 +23,7 @@
 //! `body.invoke()` *inside* the imgui-rs scope guard (which fires
 //! `End*` via `Drop` even if the body panics or short-circuits),
 //! preserving begin/end pairing safety by construction. Errors from
-//! `invoke` already surface to `eprintln!` in `script_proxy.rs`.
+//! `invoke` already surface to `eprintln!` in `proto_ccw.rs`.
 
 use std::cell::{Cell, RefCell};
 

@@ -1,10 +1,12 @@
 mod core_engine;
 mod debugging;
+mod immediate_pump;
 mod task_manager;
 mod ui_manager;
 
 pub use core_engine::CoreRadianceEngine;
 pub use debugging::DebugLayer;
+pub use immediate_pump::ImmediateDirectorPump;
 pub use task_manager::{TaskHandle, TaskManager};
 pub use ui_manager::UiManager;
 

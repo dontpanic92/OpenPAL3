@@ -20,6 +20,8 @@ pub mod proxies;
 pub mod runtime;
 pub mod services;
 
-pub use proxies::ScriptedImmediateDirector;
+pub use proxies::{
+    wrap_director, wrap_im_director, ImguiImmediateDirectorPump, ScriptedImmediateDirector,
+};
 pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};
 pub use services::HostContext;

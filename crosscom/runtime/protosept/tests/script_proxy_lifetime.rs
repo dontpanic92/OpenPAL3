@@ -1,5 +1,5 @@
-//! Lifetime tests for `wrap_action`: a `ComRc<IAction>` returned by
-//! `crosscom_protosept::wrap_action` must behave correctly even when
+//! Lifetime tests for `wrap_proto`: a `ComRc<IAction>` returned by
+//! `crosscom_protosept::wrap_proto` must behave correctly even when
 //! the surrounding `scope_context` is gone (the v1 lifetime caveat
 //! that Phase B3 in `generated/director.md` set out to lift), and
 //! must also tolerate the runtime itself being dropped before the
@@ -9,7 +9,7 @@ use std::cell::UnsafeCell;
 use std::rc::Rc;
 use std::sync::Mutex;
 
-use crosscom_protosept::{wrap_action, RuntimeAccess, RuntimeHandle};
+use crosscom_protosept::{register_crosscom_iaction, wrap_proto, RuntimeAccess, RuntimeHandle};
 use p7::interpreter::context::{Context, Data};
 
 const SOURCE: &str = r#"
@@ -86,6 +86,11 @@ impl RuntimeAccess for TestRuntime {
 }
 
 fn build_runtime_with_recorder() -> (Rc<TestRuntime>, Data) {
+    // Pre-register `crosscom.IAction` for the runtime-typed CCW
+    // factory. `install_com_dispatcher` would do this, but these
+    // tests bypass the dispatcher.
+    register_crosscom_iaction();
+
     let module = p7::compile(SOURCE.to_string()).expect("compile");
     let mut ctx = Context::new();
     ctx.register_host_function("recorder.set".to_string(), recorder_set_host_fn);
@@ -109,8 +114,8 @@ fn comrc_invokes_without_outer_scope_context() {
     let (runtime, action_data) = build_runtime_with_recorder();
     let handle = RuntimeHandle::from_rc(&runtime);
 
-    let action = wrap_action(&handle, action_data).expect("wrap_action");
-    // No outer scope_context here — `wrap_action` installs its own
+    let action = wrap_proto::<crosscom::IAction>(&handle, action_data).expect("wrap_proto IAction");
+    // No outer scope_context here — `wrap_proto` installs its own
     // via `RuntimeAccess::with_ctx`.
     action.invoke();
     action.invoke();
@@ -120,7 +125,7 @@ fn comrc_invokes_without_outer_scope_context() {
     // Runtime is still alive; the dropped action's CCW unrooted the
     // script handle via the captured runtime handle.
     runtime.with_ctx_mut(|ctx| {
-        // Root index 0 was used by wrap_action; after Drop it should
+        // Root index 0 was used by wrap_proto; after Drop it should
         // be `None`.
         assert!(ctx.external_root(0).is_none(), "drop should unroot");
     });
@@ -134,11 +139,11 @@ fn drop_outside_scope_clears_external_root() {
     RECORDED.lock().unwrap().clear();
     let (runtime, action_data) = build_runtime_with_recorder();
     let handle = RuntimeHandle::from_rc(&runtime);
-    let action = wrap_action(&handle, action_data).expect("wrap_action");
+    let action = wrap_proto::<crosscom::IAction>(&handle, action_data).expect("wrap_proto IAction");
 
     // Confirm the root is currently occupied.
     runtime.with_ctx_mut(|ctx| {
-        assert!(ctx.external_root(0).is_some(), "wrap_action must have rooted");
+        assert!(ctx.external_root(0).is_some(), "wrap_proto must have rooted");
     });
 
     // Drop with no surrounding scope_context. The CCW's `Drop` must
@@ -162,7 +167,7 @@ fn drop_after_runtime_drop_is_safe() {
     RECORDED.lock().unwrap().clear();
     let (runtime, action_data) = build_runtime_with_recorder();
     let handle = RuntimeHandle::from_rc(&runtime);
-    let action = wrap_action(&handle, action_data).expect("wrap_action");
+    let action = wrap_proto::<crosscom::IAction>(&handle, action_data).expect("wrap_proto IAction");
 
     drop(runtime);
     assert!(handle.is_dangling(), "Weak upgrade should fail after runtime drop");
@@ -179,7 +184,7 @@ fn invoke_after_runtime_drop_is_silent_noop() {
     RECORDED.lock().unwrap().clear();
     let (runtime, action_data) = build_runtime_with_recorder();
     let handle = RuntimeHandle::from_rc(&runtime);
-    let action = wrap_action(&handle, action_data).expect("wrap_action");
+    let action = wrap_proto::<crosscom::IAction>(&handle, action_data).expect("wrap_proto IAction");
 
     drop(runtime);
     assert!(handle.is_dangling(), "Weak upgrade should fail after runtime drop");
@@ -198,7 +203,7 @@ fn invoke_after_runtime_drop_is_silent_noop() {
     drop(action);
 }
 
-/// (5) `wrap_action` called with a dangling handle errors loudly
+/// (5) `wrap_proto` called with a dangling handle errors loudly
 /// rather than silently leaking a root.
 #[test]
 fn dangling_handle_errors_at_wrap_time() {
@@ -208,7 +213,7 @@ fn dangling_handle_errors_at_wrap_time() {
         idx: 0,
         generation: 0,
     };
-    let err = match wrap_action(&handle, dummy) {
+    let err = match wrap_proto::<crosscom::IAction>(&handle, dummy) {
         Ok(_) => panic!("dangling handle should error"),
         Err(e) => e,
     };

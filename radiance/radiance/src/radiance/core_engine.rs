@@ -1,6 +1,7 @@
 use crosscom::ComRc;
 use mini_fs::MiniFs;
 
+use super::immediate_pump::ImmediateDirectorPump;
 use super::ui_manager::UiManager;
 use super::{DebugLayer, TaskManager};
 use crate::comdef::ISceneManager;
@@ -26,6 +27,10 @@ pub struct CoreRadianceEngine {
     task_manager: Rc<TaskManager>,
     services: RefCell<HashMap<TypeId, Rc<dyn Any>>>,
     debug_layer: Option<Box<dyn DebugLayer>>,
+    /// Per-frame pump invoked inside the imgui scope when the
+    /// active director needs immediate-mode rendering. See
+    /// [`ImmediateDirectorPump`].
+    immediate_pump: RefCell<Option<Rc<dyn ImmediateDirectorPump>>>,
 }
 
 impl CoreRadianceEngine {
@@ -46,6 +51,7 @@ impl CoreRadianceEngine {
             task_manager: Rc::new(TaskManager::new()),
             services: RefCell::new(HashMap::new()),
             debug_layer: None,
+            immediate_pump: RefCell::new(None),
         }
     }
 
@@ -88,6 +94,20 @@ impl CoreRadianceEngine {
         self.task_manager.clone()
     }
 
+    /// Install a per-frame immediate-mode director pump (see
+    /// [`ImmediateDirectorPump`]). Replaces any previously-installed
+    /// pump. The pump is invoked inside the imgui frame scope on
+    /// each [`CoreRadianceEngine::update`] when both the pump slot
+    /// and the scene manager's director are set.
+    pub fn set_immediate_director_pump(&self, pump: Rc<dyn ImmediateDirectorPump>) {
+        *self.immediate_pump.borrow_mut() = Some(pump);
+    }
+
+    /// Clear the previously-installed immediate-mode director pump.
+    pub fn clear_immediate_director_pump(&self) {
+        *self.immediate_pump.borrow_mut() = None;
+    }
+
     pub fn set_service<T: Any>(&self, service: Rc<T>) -> Option<Rc<T>> {
         self.services
             .borrow_mut()
@@ -120,13 +140,24 @@ impl CoreRadianceEngine {
         let scene_manager = self.scene_manager.clone();
         let task_manager = self.task_manager.clone();
         let debug_layer = self.debug_layer.as_ref();
+        // Snapshot the pump out of the RefCell *before* entering
+        // the ui_manager closure so a pump impl that re-enters
+        // engine methods doesn't double-borrow `immediate_pump`.
+        let pump = self.immediate_pump.borrow().clone();
         let ui_frame = self.ui_manager.update(delta_sec, |ui| {
             scene_manager.update(delta_sec);
             task_manager.update(delta_sec);
 
+            if let Some(pump) = pump.as_ref() {
+                if let Some(director) = scene_manager.director() {
+                    pump.pump(director, delta_sec);
+                }
+            }
+
             if let Some(dl) = debug_layer {
                 dl.update(delta_sec);
             }
+            let _ = ui;
         });
 
         use crate::{math::Rect, scene::Viewport};

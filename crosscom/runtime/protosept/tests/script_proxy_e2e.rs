@@ -1,12 +1,15 @@
 //! End-to-end test for the reverse-direction adapter
-//! `script_proxy::wrap_action`: a Rust caller obtains a
+//! [`crosscom_protosept::wrap_proto`]: a Rust caller obtains a
 //! `ComRc<IAction>` backed by a script struct, invokes it, and the
 //! script method runs.
 
 use std::cell::UnsafeCell;
 use std::rc::Rc;
 
-use crosscom_protosept::{wrap_action, RuntimeAccess, RuntimeHandle};
+use crosscom::ComInterface;
+use crosscom_protosept::{
+    register_crosscom_iaction, wrap_proto, RuntimeAccess, RuntimeHandle,
+};
 use p7::interpreter::context::{Context, Data};
 
 const SOURCE: &str = r#"
@@ -88,6 +91,11 @@ fn host_can_invoke_script_struct_via_comrc_action() {
         RECORDED.lock().unwrap().clear();
     }
 
+    // Register the runtime-typed CCW spec for `crosscom.IAction`.
+    // `install_com_dispatcher` does this automatically but this test
+    // bypasses the dispatcher, so register manually (idempotent).
+    register_crosscom_iaction();
+
     let module = p7::compile(SOURCE.to_string()).expect("compile");
     let mut ctx = Context::new();
     ctx.register_host_function("recorder.set".to_string(), recorder_set_host_fn);
@@ -103,17 +111,19 @@ fn host_can_invoke_script_struct_via_comrc_action() {
     let runtime = TestRuntime::new(ctx);
     let handle = RuntimeHandle::from_rc(&runtime);
 
-    // Wrap as a ComRc<IAction> + invoke twice. Both invocations should
-    // re-enter the interpreter and run `Recorder.invoke`, which calls
+    // Wrap as a ComRc<IAction> via the generic runtime-typed CCW
+    // factory + invoke twice. Both invocations should re-enter the
+    // interpreter and run `Recorder.invoke`, which calls
     // `record_invocation(self.seed)`.
-    let action = wrap_action(&handle, action_data).expect("wrap_action");
+    let action = wrap_proto::<crosscom::IAction>(&handle, action_data).expect("wrap_proto IAction");
     action.invoke();
     action.invoke();
     // Drop here releases the ComRc → frees the CCW → unroots via
-    // Drop on ScriptActionProxy (which re-enters the runtime via the
-    // captured handle).
+    // the proto_ccw release path (which re-enters the runtime via
+    // the captured handle).
     drop(action);
 
     let recorded = RECORDED.lock().unwrap().clone();
     assert_eq!(recorded, vec![7, 7]);
+    let _ = crosscom::IAction::INTERFACE_ID;
 }

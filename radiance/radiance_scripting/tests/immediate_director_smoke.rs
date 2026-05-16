@@ -4,7 +4,7 @@
 //!
 //! Uses `RecordingUiHost` (no imgui dependency) so the test exercises
 //! every piece of plumbing — SAM closure synthesis, foreign-box arg
-//! marshalling, `wrap_action`-driven script-impl-of-IAction CCWs,
+//! marshalling, `wrap_proto`-driven script-impl-of-IAction CCWs,
 //! and the IDirector proxy lifecycle — without needing a real imgui
 //! frame.
 
