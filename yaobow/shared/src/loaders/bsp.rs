@@ -128,5 +128,6 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
         vfs,
         path.as_ref(),
         config.texture_resolver,
+        config.force_unique_materials,
     );
 }

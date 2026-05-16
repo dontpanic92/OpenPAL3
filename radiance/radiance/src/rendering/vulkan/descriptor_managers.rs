@@ -56,7 +56,7 @@ impl DescriptorManager {
         let per_material_params_layout = Self::create_descriptor_set_layout(
             &device,
             vk::DescriptorType::UNIFORM_BUFFER,
-            vk::ShaderStageFlags::FRAGMENT,
+            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
             1,
         )?;
         let dub_descriptor_manager = DynamicUniformBufferDescriptorManager::new(device.clone());

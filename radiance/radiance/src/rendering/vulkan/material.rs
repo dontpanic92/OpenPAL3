@@ -8,6 +8,7 @@ use super::{device::Device, shader::VulkanShader, texture::VulkanTexture};
 use crate::rendering::vulkan::adhoc_command_runner::AdhocCommandRunner;
 use crate::rendering::{MaterialDef, MaterialKey, MaterialParams};
 use ash::vk;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 pub struct VulkanMaterial {
@@ -15,11 +16,16 @@ pub struct VulkanMaterial {
     key: MaterialKey,
     shader: Rc<VulkanShader>,
     textures: Vec<Rc<VulkanTexture>>,
+    texture_names: Vec<String>,
     samplers: Vec<Rc<Sampler>>,
-    params: MaterialParams,
+    /// Current per-material parameters. The `tint` / `misc` fields are
+    /// frozen at construction; `uv_scale` / `uv_offset` may be updated at
+    /// runtime via [`update_uv_xform`] to drive UV animation (PAL4
+    /// water).
+    params: Cell<MaterialParams>,
 
     descriptor_manager: Rc<DescriptorManager>,
-    _params_buffer: Buffer,
+    params_buffer: RefCell<Buffer>,
     params_descriptor_set: vk::DescriptorSet,
 }
 
@@ -41,6 +47,11 @@ impl VulkanMaterial {
     ) -> Self {
         let _ = device;
         let shader = shader_cache.get_or_create(def.program());
+        let texture_names: Vec<String> = def
+            .textures()
+            .iter()
+            .map(|t| t.name().to_string())
+            .collect();
         let textures = def
             .textures()
             .iter()
@@ -69,10 +80,11 @@ impl VulkanMaterial {
             key: def.key(),
             shader,
             textures,
+            texture_names,
             samplers,
-            params: *def.params(),
+            params: Cell::new(*def.params()),
             descriptor_manager: descriptor_manager.clone(),
-            _params_buffer: params_buffer,
+            params_buffer: RefCell::new(params_buffer),
             params_descriptor_set,
         }
     }
@@ -93,16 +105,41 @@ impl VulkanMaterial {
         &self.textures
     }
 
+    /// Per-binding texture names captured from the source `MaterialDef`
+    /// at construction time. Exposed so callers (e.g. the PAL4
+    /// `UvAnimDriver` inventory dump) can answer "what texture does
+    /// material X use?" without needing the original `MaterialDef`.
+    pub fn texture_names(&self) -> &[String] {
+        &self.texture_names
+    }
+
     pub fn samplers(&self) -> &[Rc<Sampler>] {
         &self.samplers
     }
 
-    pub fn params(&self) -> &MaterialParams {
-        &self.params
+    pub fn params(&self) -> MaterialParams {
+        self.params.get()
     }
 
     pub fn material_params_descriptor_set(&self) -> vk::DescriptorSet {
         self.params_descriptor_set
+    }
+
+    /// Re-upload `MaterialParamsGpu` with a new UV affine
+    /// (`scale = xy`, `offset = zw`). Used by the runtime
+    /// `UvAnimComponent` to drive PAL4 water animation each tick.
+    ///
+    /// `tint` and `misc` are preserved from the immutable `MaterialDef`
+    /// captured at construction; only the `uv_xform` slot is rewritten.
+    /// Uses interior mutability so the existing `Rc<VulkanMaterial>`
+    /// sharing pattern keeps working.
+    pub fn update_uv_xform(&self, scale: [f32; 2], offset: [f32; 2]) {
+        let mut p = self.params.get();
+        p.uv_scale = scale;
+        p.uv_offset = offset;
+        self.params.set(p);
+        let gpu = MaterialParamsGpu::from_params(&p);
+        self.params_buffer.borrow_mut().copy_memory_from(&[gpu]);
     }
 }
 

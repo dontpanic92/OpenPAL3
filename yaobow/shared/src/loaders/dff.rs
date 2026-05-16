@@ -27,6 +27,26 @@ use super::TextureResolver;
 pub struct DffLoaderConfig<'a> {
     pub texture_resolver: &'a dyn TextureResolver,
     pub keep_right_to_render_only: bool,
+    /// When `true`, every `MaterialDef` built from this DFF is stamped
+    /// with [`MaterialDef::make_unique`], opting it out of the
+    /// renderer's identity-keyed material cache. Required for DFFs
+    /// whose materials get mutated at runtime (PAL4 `_water.dff`s) so
+    /// the per-frame UV transform doesn't leak onto unrelated geometry
+    /// (grass / leaves / hair) that happens to share the same texture.
+    /// Default `false` so non-animated DFFs keep benefiting from the
+    /// cache.
+    pub force_unique_materials: bool,
+}
+
+impl<'a> DffLoaderConfig<'a> {
+    /// Constructor with default (`force_unique_materials = false`).
+    pub fn new(texture_resolver: &'a dyn TextureResolver) -> Self {
+        Self {
+            texture_resolver,
+            keep_right_to_render_only: false,
+            force_unique_materials: false,
+        }
+    }
 }
 
 pub fn create_entity_from_dff_model<P: AsRef<Path>>(
@@ -244,6 +264,7 @@ fn load_clump(
             vfs,
             &path,
             config.texture_resolver,
+            config.force_unique_materials,
         );
     }
 }
@@ -275,6 +296,7 @@ fn create_geometry(
     vfs: &MiniFs,
     path: &Path,
     texture_resolver: &dyn TextureResolver,
+    force_unique_materials: bool,
 ) {
     if geometry.morph_targets.len() == 0 {
         return;
@@ -415,6 +437,7 @@ fn create_geometry(
         vfs,
         path,
         texture_resolver,
+        force_unique_materials,
     );
 }
 
@@ -430,6 +453,7 @@ pub(crate) fn create_geometry_internal(
     vfs: &MiniFs,
     path: &Path,
     texture_resolver: &dyn TextureResolver,
+    force_unique_materials: bool,
 ) {
     let mut r_vertices = vec![];
     // let mut r_normals = vec![];
@@ -472,7 +496,13 @@ pub(crate) fn create_geometry_internal(
                 };
 
                 let blend = detect_blend(material, &md);
-                let md = md.with_blend(blend);
+                let mut md = md.with_blend(blend);
+                if let Some(name) = material.userdata_name.as_deref() {
+                    md = md.with_debug_name(name);
+                }
+                if force_unique_materials {
+                    md = md.make_unique();
+                }
 
                 material_to_indices.push((
                     t.material,

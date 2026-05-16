@@ -94,6 +94,18 @@ pub struct MaterialDef {
     blend: BlendMode,
     depth: DepthMode,
     cull: CullMode,
+    /// Optional nonce that opts this material out of the renderer's
+    /// `MaterialIdentity` cache. When `Some`, two `MaterialDef`s that
+    /// are otherwise identical (same textures, same params) still
+    /// resolve to *separate* backend `VulkanMaterial` instances.
+    ///
+    /// Required for materials that get mutated at runtime — e.g. PAL4
+    /// water materials whose UV transform is animated by
+    /// `UvAnimDriver`. Without this, the per-material UBO would be
+    /// shared with any non-animated material that happens to use the
+    /// same texture, leaking the UV scroll onto unrelated geometry like
+    /// grass / leaves / hair.
+    unique_nonce: Option<u64>,
 }
 
 impl MaterialDef {
@@ -180,6 +192,38 @@ impl MaterialDef {
     pub fn with_depth(mut self, depth: DepthMode) -> Self {
         self.depth = depth;
         self
+    }
+
+    /// Override the debug name (post-build) — useful when the loader
+    /// only learns the source identifier (e.g. an RW material's
+    /// `PLUGIN_USERDATA name`) after the underlying `MaterialDef` is
+    /// constructed. The name is *not* part of `MaterialIdentity`, so
+    /// renaming a material does not affect cache de-duplication;
+    /// callers that want a distinct backend material must also call
+    /// `make_unique`.
+    pub fn with_debug_name(mut self, name: impl Into<String>) -> Self {
+        self.debug_name = name.into();
+        self
+    }
+
+    /// Stamp this material with a fresh unique nonce so the renderer
+    /// allocates a separate backend `VulkanMaterial` for it rather than
+    /// sharing one through the texture/params cache. Use this for
+    /// materials that will be mutated at runtime (e.g. PAL4 water
+    /// surfaces whose UV affine is updated each frame by
+    /// `UvAnimDriver`). Idempotent — calling it again replaces the
+    /// existing nonce with a fresh one.
+    pub fn make_unique(mut self) -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
+        self.unique_nonce = Some(COUNTER.fetch_add(1, Ordering::Relaxed));
+        self
+    }
+
+    /// Nonce previously stamped by [`MaterialDef::make_unique`], if any.
+    /// `None` means the material is eligible for cache de-duplication.
+    pub fn unique_nonce(&self) -> Option<u64> {
+        self.unique_nonce
     }
 }
 
@@ -289,6 +333,7 @@ impl MaterialDefBuilder {
             blend: self.blend,
             depth: self.depth,
             cull: self.cull,
+            unique_nonce: None,
         }
     }
 }

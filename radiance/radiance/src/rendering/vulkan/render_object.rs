@@ -38,6 +38,18 @@ impl RenderObject for VulkanRenderObject {
     fn local_centroid(&self) -> [f32; 3] {
         self.local_centroid
     }
+
+    fn set_uv_xform(&self, scale: [f32; 2], offset: [f32; 2]) {
+        self.material.update_uv_xform(scale, offset);
+    }
+
+    fn material_debug_name(&self) -> Option<&str> {
+        Some(self.material.debug_name())
+    }
+
+    fn material_texture_name(&self) -> Option<&str> {
+        self.material.texture_names().first().map(String::as_str)
+    }
 }
 
 impl VulkanRenderObject {

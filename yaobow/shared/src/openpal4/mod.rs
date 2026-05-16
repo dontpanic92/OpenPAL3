@@ -8,3 +8,4 @@ pub mod actor;
 pub mod director;
 pub mod scene;
 pub mod scripting;
+pub mod uv_anim;

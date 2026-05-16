@@ -51,6 +51,12 @@ struct MaterialIdentity {
     key: MaterialKey,
     texture_names: Vec<String>,
     params: MaterialParamsBits,
+    /// When `Some`, this material was explicitly opted out of cache
+    /// de-duplication via `MaterialDef::make_unique`. The nonce is part
+    /// of the hash key so two `make_unique`'d materials always resolve
+    /// to different `VulkanMaterial` instances even when their other
+    /// fields are identical.
+    unique_nonce: Option<u64>,
 }
 
 impl MaterialIdentity {
@@ -59,6 +65,7 @@ impl MaterialIdentity {
             key: def.key(),
             texture_names: def.textures().iter().map(|t| t.name().to_string()).collect(),
             params: MaterialParamsBits::from(def.params()),
+            unique_nonce: def.unique_nonce(),
         }
     }
 }

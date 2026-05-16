@@ -85,6 +85,8 @@ impl Pal4AppContext {
     pub fn update(&mut self, delta_sec: f32) {
         self.actdrop.update(self.ui.ui(), delta_sec);
         self.update_moving_entities(delta_sec);
+        // Drive water UV animation each frame (PAL4 water surfaces).
+        self.scene.tick_uv_anim(delta_sec);
     }
 
     fn update_moving_entities(&mut self, delta_sec: f32) {

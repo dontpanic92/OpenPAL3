@@ -450,6 +450,17 @@ impl SwapChain {
                     vk::IndexType::UINT32,
                 );
 
+                // `MaterialKey`-grouping above only consolidates pipeline
+                // state (program/blend/depth/cull). Multiple distinct
+                // materials with the same key share a group — they share
+                // the pipeline but each still owns its own per-material
+                // UBO (tint / alpha_ref / uv_xform). Read the per-material
+                // descriptor from THIS object's material, not the group's
+                // representative, otherwise runtime per-material mutations
+                // (e.g. PAL4 water UV animation) silently leak onto every
+                // other render object sharing the key — typically every
+                // textured opaque mesh in the scene.
+                let object_material = object.material();
                 self.device.cmd_bind_descriptor_sets(
                     command_buffer,
                     vk::PipelineBindPoint::GRAPHICS,
@@ -459,7 +470,7 @@ impl SwapChain {
                         per_frame_descriptor_set,
                         dub_manager.descriptor_set(),
                         object.vk_descriptor_set(),
-                        material.material_params_descriptor_set(),
+                        object_material.material_params_descriptor_set(),
                     ],
                     &[dub_manager.get_offset(object.dub_index()) as u32],
                 );

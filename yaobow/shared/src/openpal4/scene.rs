@@ -22,6 +22,7 @@ use super::{
     actor::Pal4ActorController,
     asset_loader::{self, AssetLoader},
     comdef::{IPal4ActorAnimationController, IPal4ActorController},
+    uv_anim::UvAnimDriver,
 };
 
 pub enum Player {
@@ -60,6 +61,7 @@ pub struct Pal4Scene {
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
     pub(crate) triggers: Vec<Rc<SceneEventTrigger>>,
+    pub(crate) uv_anim: UvAnimDriver,
 }
 
 const SHOW_TRIGGER_POINT: bool = false;
@@ -87,7 +89,14 @@ impl Pal4Scene {
             events: vec![],
             module: None,
             triggers: vec![],
+            uv_anim: UvAnimDriver::new(),
         }
+    }
+
+    /// Drive UV animation each frame for water (and any other entity
+    /// registered with the driver). No-op when no animation is bound.
+    pub fn tick_uv_anim(&mut self, delta_sec: f32) {
+        self.uv_anim.tick(delta_sec);
     }
 
     pub fn load(
@@ -113,6 +122,24 @@ impl Pal4Scene {
         let skybox = asset_loader.try_load_scene_sky(scene_name, block_name);
         if let Some(skybox) = skybox {
             scene.add_entity(skybox);
+        }
+
+        // Optional water surface (PAL4 scenes that ship a `_water.dff`,
+        // e.g. Q01/q01/Q01, Q01/q01/Q01Y). The sibling `_water.uva`
+        // drives per-frame UV animation via `UvAnimDriver`.
+        let mut uv_anim = UvAnimDriver::new();
+        let water = asset_loader.try_load_scene_water(scene_name, block_name);
+        if let Some(water) = water {
+            scene.add_entity(water.clone());
+            if let Some(dict) = asset_loader.try_load_scene_water_uva(scene_name, block_name) {
+                log::debug!(
+                    "Loaded water UV-anim dict for {}/{}: {} animation(s)",
+                    scene_name,
+                    block_name,
+                    dict.animations.len()
+                );
+                uv_anim.register_water_entity(water, &dict);
+            }
         }
 
         scene.camera().borrow_mut().set_fov43(45_f32.to_radians());
@@ -295,6 +322,7 @@ impl Pal4Scene {
             events: events.events,
             module: Some(module),
             triggers,
+            uv_anim,
         })
     }
 

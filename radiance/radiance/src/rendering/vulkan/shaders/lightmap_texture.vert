@@ -10,6 +10,15 @@ layout(set = 1, binding = 0) uniform PerInstanceUbo {
     mat4 model;
 } perInstanceUbo;
 
+// Mirror of the per-material UBO from `lightmap_texture.frag`. Only the
+// primary UV channel is transformed — the lightmap channel
+// (`fragTexCoord2`) is intentionally static.
+layout(set = 3, binding = 0) uniform MaterialParams {
+    vec4 tint;
+    vec4 misc;
+    vec4 uv_xform;
+} mat;
+
 layout(location = 0) in vec3 position;
 layout(location = 2) in vec2 inTexCoord;
 layout(location = 3) in vec2 inTexCoord2;
@@ -25,6 +34,6 @@ mat4 clip = mat4(vec4(1.0, 0.0, 0.0, 0.0),
 void main() {
     gl_Position = vec4(position, 1.0) * perInstanceUbo.model * perFrameUbo.view * perFrameUbo.proj * clip;
 
-    fragTexCoord = inTexCoord;
+    fragTexCoord = inTexCoord * mat.uv_xform.xy + mat.uv_xform.zw;
     fragTexCoord2 = inTexCoord2;
 }

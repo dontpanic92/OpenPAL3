@@ -127,15 +127,18 @@ lazy_static::lazy_static! {
     static ref PAL4_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
         texture_resolver: &Pal4TextureResolver {},
         keep_right_to_render_only: true,
+        force_unique_materials: false,
     };
 
     static ref PAL5_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
         texture_resolver: &Pal5TextureResolver {},
         keep_right_to_render_only: false,
+        force_unique_materials: false,
     };
 
     static ref SWD5_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
         texture_resolver: &Swd5TextureResolver {},
         keep_right_to_render_only: false,
+        force_unique_materials: false,
     };
 }

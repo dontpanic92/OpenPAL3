@@ -4,9 +4,9 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use crate::rwbs::{check_ty, ChunkHeader, ChunkType};
+use crate::rwbs::{check_ty, extension::Extension, ChunkHeader, ChunkType};
 
-#[derive(Debug, Serialize, Clone, Default)]
+use super::extension::UserData;#[derive(Debug, Serialize, Clone, Default)]
 pub struct Texture {
     pub filter_mode: u32,
     pub address_mode_u: u32,
@@ -60,6 +60,13 @@ pub struct Material {
     pub ambient: f32,
     pub specular: f32,
     pub diffuse: f32,
+    /// Value of the material-level `PLUGIN_USERDATA name` entry when one
+    /// is present in the EXTENSION chunk. PAL4 water materials stamp the
+    /// UV-animation name here (e.g. `"Material #6662438"`); this is the
+    /// lookup key into the scene's sibling `.uva` dictionary
+    /// (`crate::rwbs::uva::UvAnimDict::find`). `None` for materials
+    /// without the entry (the typical case for non-water materials).
+    pub userdata_name: Option<String>,
 }
 
 impl Material {
@@ -84,7 +91,15 @@ impl Material {
         let header = ChunkHeader::read(cursor)?;
         check_ty!(header.ty, ChunkType::EXTENSION);
 
-        cursor.skip(header.length as usize)?;
+        // Parse the EXTENSION body and extract the userdata `name` link.
+        // Materials carry no per-vertex skin data, so the `vertices_count`
+        // threaded through `Extension::read_data` only as `SkinPlugin`
+        // context isn't relevant here. The parsed extensions are
+        // discarded after the name extraction so `Material` stays `Clone`
+        // (the Extension enum isn't Clone-able without a much larger
+        // patch and isn't needed for any downstream consumer today).
+        let extensions = Extension::read_data(cursor, header.length, 0)?;
+        let userdata_name = userdata_name_from_extensions(&extensions);
 
         Ok(Self {
             unknown,
@@ -94,8 +109,22 @@ impl Material {
             ambient,
             specular,
             diffuse,
+            userdata_name,
         })
     }
+}
+
+fn userdata_name_from_extensions(extensions: &[Extension]) -> Option<String> {
+    for ext in extensions {
+        if let Extension::UserDataPlugin(udp) = ext {
+            if let Some(items) = udp.data().get("name") {
+                if let Some(UserData::String(s)) = items.first() {
+                    return Some(s.clone());
+                }
+            }
+        }
+    }
+    None
 }
 
 pub fn read_material_list_header(cursor: &mut dyn Read) -> anyhow::Result<ChunkHeader> {
@@ -201,6 +230,58 @@ mod tests {
         body.extend(&0f32.to_le_bytes()); // diffuse
         write_header(&mut body, ChunkType::EXTENSION.0, 0);
         body
+    }
+
+    #[test]
+    fn material_extracts_userdata_name_link_for_uva_lookup() {
+        // Construct a MATERIAL with a single PLUGIN_USERDATA entry of
+        // form `name = "Material #6662438"` — the exact shape PAL4 water
+        // materials use to link to their `.uva` UV-animation.
+        // PLUGIN_USERDATA body for one entry "name" → ["Material #6662438"]:
+        //   u32 entry_count = 1
+        //   entry:
+        //     u32 name_len + bytes ("name")
+        //     u32 type = 3 (string)
+        //     u32 item_count = 1
+        //     u32 str_len + bytes
+        let value = b"Material #6662438\0";
+        let mut udp_body: Vec<u8> = Vec::new();
+        udp_body.extend(&1u32.to_le_bytes());
+        udp_body.extend(&5u32.to_le_bytes());
+        udp_body.extend(b"name\0");
+        udp_body.extend(&3u32.to_le_bytes());
+        udp_body.extend(&1u32.to_le_bytes());
+        udp_body.extend(&(value.len() as u32).to_le_bytes());
+        udp_body.extend(value);
+
+        let mut udp_chunk: Vec<u8> = Vec::new();
+        write_header(&mut udp_chunk, 0x11F, udp_body.len() as u32);
+        udp_chunk.extend(&udp_body);
+
+        let mut body: Vec<u8> = Vec::new();
+        let struct_len: u32 = 7 * 4;
+        write_header(&mut body, ChunkType::STRUCT.0, struct_len);
+        body.extend(&0u32.to_le_bytes()); // unknown
+        body.extend(&0u32.to_le_bytes()); // color
+        body.extend(&0u32.to_le_bytes()); // unknown2
+        body.extend(&0u32.to_le_bytes()); // textured=false
+        body.extend(&0f32.to_le_bytes());
+        body.extend(&0f32.to_le_bytes());
+        body.extend(&0f32.to_le_bytes());
+        write_header(&mut body, ChunkType::EXTENSION.0, udp_chunk.len() as u32);
+        body.extend(&udp_chunk);
+
+        let mut cursor = Cursor::new(body);
+        let mat = Material::read(&mut cursor).expect("parse material");
+        assert_eq!(mat.userdata_name.as_deref(), Some("Material #6662438"));
+    }
+
+    #[test]
+    fn material_without_userdata_name_has_none_link() {
+        let body = material_chunk(0);
+        let mut cursor = Cursor::new(body);
+        let mat = Material::read(&mut cursor).expect("parse material");
+        assert!(mat.userdata_name.is_none());
     }
 
     #[test]

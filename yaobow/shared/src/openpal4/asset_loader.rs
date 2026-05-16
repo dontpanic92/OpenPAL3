@@ -12,6 +12,7 @@ use fileformats::{
     binrw::BinRead,
     npc::NpcInfoFile,
     pal4::{cam::CameraDataFile, evf::EvfFile, gob::GobFile},
+    rwbs::uva::UvAnimDict,
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
@@ -108,6 +109,7 @@ impl AssetLoader {
             &DffLoaderConfig {
                 texture_resolver: &self.texture_resolver,
                 keep_right_to_render_only: true,
+                force_unique_materials: false,
             },
         );
 
@@ -194,6 +196,7 @@ impl AssetLoader {
             &DffLoaderConfig {
                 texture_resolver: &self.texture_resolver,
                 keep_right_to_render_only: false,
+                force_unique_materials: false,
             },
         );
 
@@ -238,6 +241,119 @@ impl AssetLoader {
         self.try_load_dff(path, "clipNA".to_string())
     }
 
+    /// Try to load the optional `<block>_water.dff` (animated water
+    /// surface). Mirrors `try_load_scene_clip` / `try_load_scene_sky` —
+    /// returns `None` for scenes that don't ship a water mesh.
+    ///
+    /// The on-disk layout for PAL4 water assets isn't uniform across
+    /// scene categories (M-series → `/gamedata/scenedata/...`, Q-series
+    /// → `/gamedata/{scene}/q01/{block}/...`, combat → `/gamedata/
+    /// PALWorld/CombatWorld/...`), so this method probes several
+    /// plausible candidates and loads the first that exists.
+    pub fn try_load_scene_water(
+        &self,
+        scene_name: &str,
+        block_name: &str,
+    ) -> Option<ComRc<IEntity>> {
+        let candidates = self.water_candidate_paths(scene_name, block_name, "dff");
+        let path = self.find_first_existing(&candidates)?;
+        log::debug!("[uv-anim] loading water DFF from {}", path);
+        let entity = create_entity_from_dff_model(
+            &self.component_factory,
+            &self.vfs,
+            path.clone(),
+            "water".to_string(),
+            true,
+            &DffLoaderConfig {
+                texture_resolver: &self.texture_resolver,
+                keep_right_to_render_only: false,
+                // Water materials are mutated per-frame by UvAnimDriver.
+                // Opt them out of the shared material cache so the UV
+                // transform doesn't leak onto unrelated geometry that
+                // happens to share the same texture+params.
+                force_unique_materials: true,
+            },
+        );
+        Some(entity)
+    }
+
+    /// Try to load the UV-animation dictionary sibling of the water mesh
+    /// (`<block>_water.uva`). Returns `None` if the file is missing or
+    /// fails to parse — water surfaces without a `.uva` render statically
+    /// with identity UVs.
+    pub fn try_load_scene_water_uva(
+        &self,
+        scene_name: &str,
+        block_name: &str,
+    ) -> Option<UvAnimDict> {
+        let candidates = self.water_candidate_paths(scene_name, block_name, "uva");
+        let path = self.find_first_existing(&candidates)?;
+        let data = self.vfs.read_to_end(&path).ok()?;
+        match UvAnimDict::read_from_bytes(&data) {
+            Ok(dict) => {
+                log::debug!(
+                    "[uv-anim] parsed {} animation(s) from {}",
+                    dict.animations.len(),
+                    path
+                );
+                Some(dict)
+            }
+            Err(e) => {
+                log::error!("[uv-anim] failed to parse {}: {}", path, e);
+                None
+            }
+        }
+    }
+
+    fn find_first_existing(&self, candidates: &[String]) -> Option<String> {
+        for c in candidates {
+            let exists = self.vfs.exists(c);
+            log::debug!("[uv-anim] probe {} -> exists={}", c, exists);
+            if exists {
+                return Some(c.clone());
+            }
+        }
+        // Most PAL4 scenes don't ship water; keep this at debug so it
+        // doesn't drown the log on every scene load. Bump to info when
+        // diagnosing a scene that SHOULD have water but isn't being
+        // detected.
+        log::debug!(
+            "[uv-anim] no water asset found; tried {} path(s): {:?}",
+            candidates.len(),
+            candidates
+        );
+        None
+    }
+
+    /// Build the list of candidate VFS paths for a water asset, ordered
+    /// most→least likely based on observed disk layouts:
+    ///
+    /// 1. `/gamedata/PALWorld/{scene}/{block}/{block}_water.<ext>`
+    ///    (mirrors `_clip.dff` / `_sky.dff` — combat scenes)
+    /// 2. `/gamedata/{scene}/q01/{block}/{block}_water.<ext>`
+    ///    (Q-series quest layout: Q01_water lives at this shape)
+    /// 3. `/gamedata/{scene}/{block_lower}/{block}/{block}_water.<ext>`
+    ///    (general form of #2 for any block-lowercase mid-folder)
+    /// 4. `/gamedata/scenedata/{scene}/{block}/{block}_water.<ext>`
+    ///    (M-series scenedata layout, parallel to `_floor.dff`)
+    /// 5. `/gamedata/ui2/ui/uiWorld/{block_lower}/{block}_water.<ext>`
+    ///    (UI worlds — BJ_water, ZJM_water live here)
+    fn water_candidate_paths(
+        &self,
+        scene_name: &str,
+        block_name: &str,
+        ext: &str,
+    ) -> Vec<String> {
+        let bl = block_name.to_lowercase();
+        vec![
+            format!("/gamedata/PALWorld/{}/{}/{}_water.{}", scene_name, block_name, block_name, ext),
+            format!("/gamedata/{}/q01/{}/{}_water.{}", scene_name, block_name, block_name, ext),
+            format!("/gamedata/{}/{}/{}/{}_water.{}", scene_name, bl, block_name, block_name, ext),
+            format!("/gamedata/scenedata/{}/{}/{}_water.{}", scene_name, block_name, block_name, ext),
+            format!("/gamedata/ui2/ui/uiWorld/{}/{}_water.{}", bl, block_name, ext),
+        ]
+    }
+
     fn try_load_dff(&self, path: String, object_name: String) -> Option<ComRc<IEntity>> {
         if self.vfs.exists(&path) {
             let entity = create_entity_from_dff_model(
@@ -249,6 +365,7 @@ impl AssetLoader {
                 &DffLoaderConfig {
                     texture_resolver: &self.texture_resolver,
                     keep_right_to_render_only: false,
+                    force_unique_materials: false,
                 },
             );
 

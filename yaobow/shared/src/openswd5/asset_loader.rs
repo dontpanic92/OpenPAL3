@@ -111,6 +111,7 @@ impl AssetLoader {
             &DffLoaderConfig {
                 texture_resolver: &self.texture_resolver,
                 keep_right_to_render_only: false,
+                force_unique_materials: false,
             },
         );
 

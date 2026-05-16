@@ -7,6 +7,7 @@ pub mod geometry;
 pub mod material;
 pub mod plugins;
 pub mod sector;
+pub mod uva;
 pub mod world;
 
 use std::io::{Cursor, Read};
@@ -49,6 +50,7 @@ impl ChunkType {
     pub const RIGHT_TO_RENDER: Self = Self(0x1f);
     pub const CHUNK_GROUP_START: Self = Self(0x29);
     pub const CHUNK_GROUP_END: Self = Self(0x2a);
+    pub const UVANIMDICT: Self = Self(0x2b);
 
     pub const PLUGIN_MORPH: Self = Self(0x105);
     pub const PLUGIN_SKIN: Self = Self(0x116);
