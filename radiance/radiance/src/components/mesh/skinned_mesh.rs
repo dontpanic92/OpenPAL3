@@ -97,22 +97,77 @@ impl SkinnedMeshComponent {
 
     fn update_vertex_buffer(&self, mut vertex_buffer: RefMut<VertexBuffer>) {
         let use_bond_pose = self.armature.animation_state() == AnimationState::NoAnimation;
-        for i in 0..vertex_buffer.count() {
-            let bone_id = self.v_bone_id[i][0];
-            let bond_pose_mat = self.bone_components[bone_id].bond_pose();
-            let v = self.geometry.vertices.position(i).unwrap();
 
-            let v = if use_bond_pose {
-                *v
+        if use_bond_pose {
+            // No animation: copy the original mesh-space positions through
+            // unchanged. The geometry buffer already holds these on initial
+            // upload, but `on_updating` re-runs this function every tick, so
+            // restore them explicitly in case a prior animation left
+            // deformed positions in the buffer.
+            for i in 0..vertex_buffer.count() {
+                let v = *self.geometry.vertices.position(i).unwrap();
+                vertex_buffer.set_component(i, VertexComponents::POSITION, |p: &mut Vec3| {
+                    *p = v;
+                });
+            }
+            return;
+        }
+
+        // Precompute `skin = bond_pose * world_transform` for each bone
+        // once per frame. This is the linear-blend-skinning matrix applied
+        // to mesh-space vertices.
+        let skin_mats: Vec<Mat44> = self
+            .bone_components
+            .iter()
+            .zip(self.bones.iter())
+            .map(|(bc, bone)| {
+                let bond_pose = bc.bond_pose();
+                let world = bone.world_transform().matrix().clone();
+                Mat44::multiplied(&world, &bond_pose)
+            })
+            .collect();
+
+        for i in 0..vertex_buffer.count() {
+            let v = self.geometry.vertices.position(i).unwrap();
+            let ids = &self.v_bone_id[i];
+            let weights = &self.v_weights[i];
+
+            let mut blended = Vec3::new(0., 0., 0.);
+            let mut total_weight = 0.0f32;
+            for k in 0..4 {
+                let w = weights[k];
+                if w == 0.0 {
+                    continue;
+                }
+                let bone_id = ids[k];
+                if bone_id >= skin_mats.len() {
+                    continue;
+                }
+                let contrib = Vec3::crossed_mat(v, &skin_mats[bone_id]);
+                blended = Vec3::add(&blended, &Vec3::scalar_mul(w, &contrib));
+                total_weight += w;
+            }
+
+            // Fall back to the first influence when all weights are zero
+            // (e.g. weights stripped by the loader or a degenerate vertex);
+            // keeps the vertex anchored to a bone rather than the origin.
+            let final_v = if total_weight > 0.0 {
+                if (total_weight - 1.0).abs() > 1e-4 {
+                    Vec3::scalar_mul(1.0 / total_weight, &blended)
+                } else {
+                    blended
+                }
             } else {
-                Vec3::crossed_mat(
-                    &Vec3::crossed_mat(v, &bond_pose_mat),
-                    self.bones[bone_id].world_transform().matrix(),
-                )
+                let bone_id = ids[0];
+                if bone_id < skin_mats.len() {
+                    Vec3::crossed_mat(v, &skin_mats[bone_id])
+                } else {
+                    *v
+                }
             };
 
             vertex_buffer.set_component(i, VertexComponents::POSITION, |p: &mut Vec3| {
-                *p = v;
+                *p = final_v;
             });
         }
     }
