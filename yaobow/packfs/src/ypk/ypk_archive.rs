@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{Cursor, Read, Write},
+    io::{Cursor, Write},
     ops::DerefMut,
     sync::{Arc, Mutex},
 };
@@ -27,7 +27,7 @@ impl YpkArchive {
 
         reader.seek(std::io::SeekFrom::Start(header.entry_offset))?;
         let mut entry_list = Vec::with_capacity(entry_list_size as usize);
-        reader.read_to_end(&mut entry_list);
+        reader.read_to_end(&mut entry_list)?;
         let mut entry_reader = Cursor::new(entry_list);
 
         let mut entries = Vec::with_capacity(header.entry_count as usize);

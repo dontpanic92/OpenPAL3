@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 use radiance::audio::{AudioMemorySource, AudioSourceState};
-use radiance::comdef::{IEntity, IScene, ISceneManager};
+use radiance::comdef::IEntity;
 use radiance::math::Vec3;
 use radiance::rendering::{ComponentFactory, VideoPlayer};
 use radiance::scene::CoreScene;

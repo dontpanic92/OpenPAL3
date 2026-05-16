@@ -4,13 +4,11 @@ use winapi::shared::minwindef::{HINSTANCE, LPARAM, LRESULT, WPARAM};
 use winapi::shared::windef::{HWND, POINT};
 use winapi::um::{errhandlingapi, libloaderapi, wingdi, winuser};
 
-macro_rules! utf16_ptr {
-    ( $x:expr ) => {
-        append_zero($x)
-            .encode_utf16()
-            .collect::<Vec<u16>>()
-            .as_ptr()
-    };
+fn utf16_z<T: AsRef<str>>(s: T) -> Vec<u16> {
+    s.as_ref()
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 const WM_CLOSE_WINDOW: u32 = winuser::WM_USER + 1;
@@ -42,11 +40,13 @@ impl Platform {
     }
 
     pub fn show_error_dialog(title: &str, msg: &str) {
+        let msg_w = utf16_z(msg);
+        let title_w = utf16_z(title);
         unsafe {
             winuser::MessageBoxW(
                 null_mut(),
-                utf16_ptr!(msg),
-                utf16_ptr!(title),
+                msg_w.as_ptr(),
+                title_w.as_ptr(),
                 winuser::MB_OK | winuser::MB_ICONERROR,
             );
         }
@@ -118,8 +118,9 @@ impl Platform {
     }
 
     pub fn set_title(&self, title: &str) {
+        let title_w = utf16_z(title);
         unsafe {
-            winuser::SetWindowTextW(self.hwnd, utf16_ptr!(title));
+            winuser::SetWindowTextW(self.hwnd, title_w.as_ptr());
         }
     }
 
@@ -132,6 +133,8 @@ impl Platform {
     }
 
     fn create_window(instance: HINSTANCE, title: &str) -> HWND {
+        let class_name_w = utf16_z(WINDOW_CLASS_NAME);
+        let title_w = utf16_z(title);
         unsafe {
             let wnd_class = winuser::WNDCLASSW {
                 style: winuser::CS_HREDRAW | winuser::CS_VREDRAW,
@@ -143,14 +146,14 @@ impl Platform {
                 hCursor: winuser::LoadCursorW(null_mut(), winuser::IDC_ARROW),
                 hbrBackground: null_mut(),
                 lpszMenuName: null_mut(),
-                lpszClassName: utf16_ptr!(WINDOW_CLASS_NAME),
+                lpszClassName: class_name_w.as_ptr(),
             };
 
             winuser::RegisterClassW(&wnd_class);
             winuser::CreateWindowExW(
                 winuser::WS_EX_OVERLAPPEDWINDOW,
-                utf16_ptr!(WINDOW_CLASS_NAME),
-                utf16_ptr!(title),
+                class_name_w.as_ptr(),
+                title_w.as_ptr(),
                 winuser::WS_OVERLAPPEDWINDOW,
                 winuser::CW_USEDEFAULT,
                 winuser::CW_USEDEFAULT,
@@ -182,10 +185,6 @@ impl Platform {
 }
 
 const WINDOW_CLASS_NAME: &str = "RADIANCE_WINDOW";
-
-fn append_zero<T: Into<String>>(s: T) -> String {
-    format!("{}\0", s.into())
-}
 
 fn get_dpi(hwnd: HWND) -> (i32, i32) {
     unsafe {

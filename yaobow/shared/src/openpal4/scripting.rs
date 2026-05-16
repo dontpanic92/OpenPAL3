@@ -2367,7 +2367,7 @@ fn camera_wait(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
 }
 
 fn flash_out_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, duration: f32, keep: i32, sync: i32);
+    as_params!(vm, duration: f32, _keep: i32, sync: i32);
 
     vm.app_context
         .set_actdrop(InterpValue::new(0., 1., duration));
