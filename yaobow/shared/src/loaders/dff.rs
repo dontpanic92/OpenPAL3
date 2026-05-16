@@ -59,11 +59,9 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
 struct HAnimBone {
     bone_root: ComRc<IEntity>,
     bones: Vec<ComRc<IEntity>>,
-    // Maps HAnim id (the value stored in `SkinPlugin.used_bones`) to the slot
-    // in `bones` / the armature.
-    hanim_id_to_slot: HashMap<u32, usize>,
     // For each slot, the bone's HAnim `index` field — i.e. the position in
-    // `SkinPlugin.matrix` that holds its inverse-bind matrix.
+    // `SkinPlugin.matrix` that holds its inverse-bind matrix, and also the
+    // value RW writes into per-vertex `SkinPlugin.bone_indices`.
     slot_to_hanim_index: Vec<u32>,
 }
 
@@ -147,14 +145,7 @@ fn load_clump(
         .collect();
 
     let hanim_bone = if let Some((root_bone, hanim_bones_list)) = &root_bone {
-        // Iterate HAnim bones in file order. The matrix-to-bone correspondence
-        // is preserved via `slot_to_hanim_index` (used below to look up
-        // `SkinPlugin.matrix[hanim_index]`), so slot order is independent of
-        // the bones' `index` field. PAL5 exporters sometimes write bones in
-        // author order rather than sorted by `index`; sorting here would
-        // shuffle the slot-to-bone correspondence relative to the file.
         let mut bones = vec![];
-        let mut hanim_id_to_slot: HashMap<u32, usize> = HashMap::new();
         let mut slot_to_hanim_index: Vec<u32> = vec![];
         for b in hanim_bones_list {
             let bone_entity = match bone_id_map.get(&b.id) {
@@ -167,16 +158,13 @@ fn load_clump(
                     continue;
                 }
             };
-            let slot = bones.len();
             bones.push(bone_entity);
-            hanim_id_to_slot.insert(b.id, slot);
             slot_to_hanim_index.push(b.index);
         }
 
         Some(HAnimBone {
             bone_root: root_bone.clone(),
             bones,
-            hanim_id_to_slot,
             slot_to_hanim_index,
         })
     } else {
@@ -346,82 +334,60 @@ fn create_geometry(
 
         // Per-vertex bone-index remap.
         //
-        // `SkinPlugin.bone_indices[v][k]` indexes into `used_bones` (which is
-        // a list of HAnim ids of the active bones). Build a single
-        // `used_to_slot` table so the per-vertex loop is a flat lookup, then
-        // collapse missing entries by zero-weighting the influence.
+        // RW stores `SkinPlugin.bone_indices[v][k]` in HAnim *index* space —
+        // i.e. it directly addresses the `SkinPlugin.matrix` array (and, by
+        // construction, the bone whose HAnim `index` field equals that
+        // value). Translate that into our armature slot space via
+        // `slot_to_hanim_index`. The `used_bones` field is informational
+        // metadata (active-bone subset for GPU matrix uploads) and is *not*
+        // an indirection table for per-vertex weighting; treating it as one
+        // (as a previous revision did) silently zeroed influences for PAL4
+        // skins and froze the mesh in bind pose.
         const SLOT_MISSING: usize = usize::MAX;
-        let used_to_slot: Vec<usize> = if !skin.used_bones.is_empty() {
-            skin.used_bones
-                .iter()
-                .map(|&hid| {
-                    hanim_bone
-                        .hanim_id_to_slot
-                        .get(&(hid as u32))
-                        .copied()
-                        .unwrap_or_else(|| {
-                            log::warn!(
-                                "SkinPlugin: used_bones entry HAnim id {} not present in HAnim hierarchy",
-                                hid
-                            );
-                            SLOT_MISSING
-                        })
-                })
-                .collect()
-        } else {
-            // Fallback for files that omit `used_bones`: indices address
-            // `SkinPlugin.matrix` slots directly (i.e. the HAnim `index`
-            // space). Translate that back to slot space via
-            // `slot_to_hanim_index`.
-            let max_hi = skin
-                .matrix
-                .len()
-                .max(hanim_bone.slot_to_hanim_index.iter().map(|i| *i as usize + 1).max().unwrap_or(0));
-            let mut hanim_index_to_slot = vec![SLOT_MISSING; max_hi];
-            for (slot, &hi) in hanim_bone.slot_to_hanim_index.iter().enumerate() {
-                let hi = hi as usize;
-                if hi < hanim_index_to_slot.len() {
-                    hanim_index_to_slot[hi] = slot;
-                }
+        let max_hi = skin
+            .matrix
+            .len()
+            .max(
+                hanim_bone
+                    .slot_to_hanim_index
+                    .iter()
+                    .map(|i| *i as usize + 1)
+                    .max()
+                    .unwrap_or(0),
+            )
+            .max(256);
+        let mut hanim_index_to_slot = vec![SLOT_MISSING; max_hi];
+        for (slot, &hi) in hanim_bone.slot_to_hanim_index.iter().enumerate() {
+            let hi = hi as usize;
+            if hi < hanim_index_to_slot.len() {
+                hanim_index_to_slot[hi] = slot;
             }
-            hanim_index_to_slot
-        };
+        }
 
         let mut remapped_indices: Vec<[u8; 4]> = Vec::with_capacity(skin.bone_indices.len());
         let mut remapped_weights: Vec<[f32; 4]> = Vec::with_capacity(skin.weights.len());
-        let mut warned_oob = false;
         let mut warned_missing = false;
         for (v, idxs) in skin.bone_indices.iter().enumerate() {
             let mut new_idx = [0u8; 4];
             let mut new_w = skin.weights[v];
             for k in 0..4 {
                 let raw = idxs[k] as usize;
-                let slot = if raw < used_to_slot.len() {
-                    used_to_slot[raw]
-                } else {
-                    if !warned_oob {
-                        log::warn!(
-                            "SkinPlugin: per-vertex bone index {} >= used_to_slot len {}",
-                            raw,
-                            used_to_slot.len()
-                        );
-                        warned_oob = true;
-                    }
-                    SLOT_MISSING
-                };
+                let slot = hanim_index_to_slot
+                    .get(raw)
+                    .copied()
+                    .unwrap_or(SLOT_MISSING);
 
                 if slot == SLOT_MISSING {
                     if !warned_missing {
                         log::warn!(
-                            "SkinPlugin: dropping per-vertex bone influence that has no armature slot"
+                            "SkinPlugin: dropping per-vertex bone influence with HAnim index {} (no armature slot)",
+                            raw
                         );
                         warned_missing = true;
                     }
                     new_idx[k] = 0;
                     new_w[k] = 0.0;
                 } else {
-                    // Slot must fit in u8: RW per-vertex skin indices are
-                    // themselves u8s, so bones.len() <= 256.
                     debug_assert!(slot < 256, "armature has more than 256 bones");
                     new_idx[k] = slot as u8;
                 }
