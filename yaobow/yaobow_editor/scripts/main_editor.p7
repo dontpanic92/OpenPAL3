@@ -1,13 +1,13 @@
 // Main editor page (immediate-mode, H4 of generated/plan.md): a left
 // pane VFS tree and a right pane tab bar of content previewers, both
-// driven by `ui_host.IUiHost` calls inside `render_im`. Cross-frame
+// driven by `immediate_director.IUiHost` calls inside `render_im`. Cross-frame
 // intents (clicked tree leaves, close requests, model-preview
 // requests) travel through `box<array<...>>` slots that `update`
 // drains.
 
 import director;
 import yaobow_editor_services;
-import ui_host;
+import immediate_director;
 import content_tabs;
 import resource_tree;
 import editor_consts;
@@ -23,7 +23,7 @@ pub struct[director.ImmediateDirector] MainEditorDirector(
     pub fn activate(self: ref<Self>) {}
     pub fn deactivate(self: ref<Self>) {}
 
-    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {
         let _ = ui.window_fullscreen("##editor_root", 0, () => {
             let _ = ui.child_window("##editor_tree", 320.0, 0.0, () => {
                 resource_tree.render_resource_tree_im(ui, self.host.vfs(), self.picks);

@@ -28,7 +28,7 @@ use p7::interpreter::context::Data;
 use radiance::comdef::{IDirector, IDirectorImpl};
 use radiance::radiance::UiManager;
 
-use crate::comdef::ui_host::IUiHost;
+use crate::comdef::immediate_director::IUiHost;
 use crate::runtime::{ScriptDirectorHandle, ScriptHost};
 use crate::services::ui_host::{with_imgui_frame, ImguiFrameState};
 use crate::services::ImguiTextureCache;
@@ -54,8 +54,8 @@ pub struct ScriptedImmediateDirector {
 ComObject_ScriptedDirector!(super::ScriptedImmediateDirector);
 
 /// p7 type-tag for `crosscom.IUiHost` carriers (matches the
-/// `@foreign(type_tag=...)` declared in the generated `ui_host.p7`).
-const UI_HOST_TYPE_TAG: &str = "radiance_scripting.comdef.ui_host.IUiHost";
+/// `@foreign(type_tag=...)` declared in the generated `immediate_director.p7`).
+const UI_HOST_TYPE_TAG: &str = "radiance_scripting.comdef.immediate_director.IUiHost";
 
 impl ScriptedImmediateDirector {
     /// Wrap a rooted script-side `box<ImmediateDirector>` together

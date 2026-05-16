@@ -234,7 +234,7 @@ fn welcome_script_render_im_emits_window_centered_with_game_table() {
     let ui_box = env
         .runtime
         .foreign_box(
-            "radiance_scripting.comdef.ui_host.IUiHost",
+            "radiance_scripting.comdef.immediate_director.IUiHost",
             ui_com_id,
         )
         .expect("ui_host foreign box");
@@ -306,7 +306,7 @@ fn welcome_script_settings_button_routes_to_settings_director() {
     let ui_box = env
         .runtime
         .foreign_box(
-            "radiance_scripting.comdef.ui_host.IUiHost",
+            "radiance_scripting.comdef.immediate_director.IUiHost",
             ui_com_id,
         )
         .expect("ui_host foreign box");
@@ -342,7 +342,7 @@ fn welcome_script_no_click_yields_no_transition() {
     let ui_box = env
         .runtime
         .foreign_box(
-            "radiance_scripting.comdef.ui_host.IUiHost",
+            "radiance_scripting.comdef.immediate_director.IUiHost",
             ui_com_id,
         )
         .expect("ui_host foreign box");
@@ -380,7 +380,7 @@ fn welcome_script_game_button_with_configured_path_calls_open_game() {
     let ui_box = env
         .runtime
         .foreign_box(
-            "radiance_scripting.comdef.ui_host.IUiHost",
+            "radiance_scripting.comdef.immediate_director.IUiHost",
             ui_com_id,
         )
         .expect("ui_host foreign box");
@@ -418,7 +418,7 @@ fn welcome_script_render_im_update_survives_repeated_frames() {
         let ui_box = env
             .runtime
             .foreign_box(
-                "radiance_scripting.comdef.ui_host.IUiHost",
+                "radiance_scripting.comdef.immediate_director.IUiHost",
                 ui_com_id,
             )
             .expect("ui_host foreign box");
@@ -459,7 +459,7 @@ fn host_director_returned_by_open_game_renders_im_and_updates() {
     let ui_box = env
         .runtime
         .foreign_box(
-            "radiance_scripting.comdef.ui_host.IUiHost",
+            "radiance_scripting.comdef.immediate_director.IUiHost",
             ui_com_id,
         )
         .expect("ui_host foreign box");
@@ -491,7 +491,7 @@ fn host_director_returned_by_open_game_renders_im_and_updates() {
         let ui_box = env
             .runtime
             .foreign_box(
-                "radiance_scripting.comdef.ui_host.IUiHost",
+                "radiance_scripting.comdef.immediate_director.IUiHost",
                 ui_com_id,
             )
             .expect("ui_host foreign box");

@@ -29,7 +29,7 @@
 //             let _ = self.inner.activate();
 //         }
 //         pub fn deactivate(self: ref<Self>) {}
-//         pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {}
+//         pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {}
 //         pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
 //             let next = self.inner.update(dt);
 //             if next != null {
@@ -39,14 +39,14 @@
 //         }
 //     }
 
-import ui_host;
+import immediate_director;
 
 pub proto ImmediateDirector {
     fn activate(self: ref<ImmediateDirector>);
     fn deactivate(self: ref<ImmediateDirector>);
     fn render_im(
         self: ref<ImmediateDirector>,
-        ui: box<ui_host.IUiHost>,
+        ui: box<immediate_director.IUiHost>,
         dt: float,
     );
     fn update(

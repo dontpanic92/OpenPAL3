@@ -29,7 +29,7 @@ use std::cell::{Cell, RefCell};
 
 use crosscom::{ComRc, IAction};
 
-use crate::comdef::ui_host::{IUiHost, IUiHostImpl};
+use crate::comdef::immediate_director::{IUiHost, IUiHostImpl};
 use crate::services::texture_resolver::TextureResolver;
 
 /// Per-frame backing state shared by every `IUiHost` call. Constructed

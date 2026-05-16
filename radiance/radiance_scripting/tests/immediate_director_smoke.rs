@@ -14,13 +14,13 @@ use radiance_scripting::{ScriptHost, ScriptedImmediateDirector};
 
 const SCRIPT_BASIC: &str = r#"
 import director;
-import ui_host;
+import immediate_director;
 
 pub struct[director.ImmediateDirector] HelloPage(pub greet: string) {
     pub fn activate(self: ref<Self>) {}
     pub fn deactivate(self: ref<Self>) {}
 
-    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {
         let _ = ui.window_centered(self.greet, 200.0, 100.0, () => {
             let _ = ui.text(self.greet);
             let _ = ui.button("ok", 80.0, 24.0);
@@ -80,12 +80,12 @@ fn immediate_director_proxy_drives_render_each_frame() {
 
 const SCRIPT_WITH_TRANSITION: &str = r#"
 import director;
-import ui_host;
+import immediate_director;
 
 pub struct[director.ImmediateDirector] SecondPage() {
     pub fn activate(self: ref<Self>) {}
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {
         let _ = ui.text("second");
     }
     pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
@@ -97,7 +97,7 @@ pub struct[director.ImmediateDirector] SecondPage() {
 pub struct[director.ImmediateDirector] FirstPage() {
     pub fn activate(self: ref<Self>) {}
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {
         let _ = ui.text("first");
     }
     pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {

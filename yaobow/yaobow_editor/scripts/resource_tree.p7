@@ -1,5 +1,5 @@
 // VFS tree renderer for the main editor's left pane, immediate-mode
-// (H4 of generated/plan.md). Calls `ui_host.IUiHost` directly. Tree
+// (H4 of generated/plan.md). Calls `immediate_director.IUiHost` directly. Tree
 // expansion is owned by imgui itself — directory bodies inside a
 // `ui.tree_node(...)` only execute while the node is open, so the
 // recursive descent is naturally pruned without any side state on
@@ -11,7 +11,7 @@
 // content tabs.
 
 import editor_services;
-import ui_host;
+import immediate_director;
 
 fn join_tree_path(parent: string, name: string) -> string {
     if parent == "/" {
@@ -21,7 +21,7 @@ fn join_tree_path(parent: string, name: string) -> string {
 }
 
 fn render_tree_dir(
-    ui: box<ui_host.IUiHost>,
+    ui: box<immediate_director.IUiHost>,
     vfs: box<editor_services.IVfsService>,
     path: string,
     picks: box<array<string>>,
@@ -46,7 +46,7 @@ fn render_tree_dir(
 }
 
 pub fn render_resource_tree_im(
-    ui: box<ui_host.IUiHost>,
+    ui: box<immediate_director.IUiHost>,
     vfs: box<editor_services.IVfsService>,
     picks: box<array<string>>,
 ) {

@@ -24,7 +24,7 @@ use std::rc::Rc;
 
 use crosscom::{ComRc, IAction};
 
-use crate::comdef::ui_host::{IUiHost, IUiHostImpl};
+use crate::comdef::immediate_director::{IUiHost, IUiHostImpl};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiCall {

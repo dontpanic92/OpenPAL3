@@ -1,25 +1,37 @@
-// Editor-UI scripting host service (H1).
+// Editor-UI scripting host service.
 //
-// `IUiHost` is the immediate-mode imgui surface exposed to p7 scripts.
-// Pairing widgets (`window`, `child_window`, `table`, `tab_bar`, ...)
-// take a trailing `IAction` body that runs *between* the host's
-// `begin_*` / `end_*` calls. The Rust impl guarantees pairing via RAII
-// (imgui-rs's scope-guard closures), and surfaces button presses as
-// return values so scripts no longer need command-id side channels.
+// This file declares two paired interfaces:
 //
-// Scripts pass callbacks as ordinary p7 closures, which the language
-// elaborates into anonymous structs implementing `IAction` via SAM
-// coercion (§L2 of generated/plan.md). The crosscom layer wraps those
-// script structs as `ComRc<IAction>` on entry, so this IDL stays
-// language-neutral.
+// * `IUiHost` — the immediate-mode imgui surface exposed to p7 scripts.
+//   Pairing widgets (`window`, `child_window`, `table`, `tab_bar`, ...)
+//   take a trailing `IAction` body that runs *between* the host's
+//   `begin_*` / `end_*` calls. The Rust impl guarantees pairing via RAII
+//   (imgui-rs's scope-guard closures), and surfaces button presses as
+//   return values so scripts no longer need command-id side channels.
 //
-// `texture_com_id` parameters use the same i32 token convention as the
-// retained `UiNode` path's image bindings, resolved through the host's
-// `ImguiTextureCache`.
+//   Scripts pass callbacks as ordinary p7 closures, which the language
+//   elaborates into anonymous structs implementing `IAction` via SAM
+//   coercion. The crosscom layer wraps those script structs as
+//   `ComRc<IAction>` on entry, so this IDL stays language-neutral.
+//
+//   `texture_com_id` parameters use the same i32 token convention as
+//   the retained `UiNode` path's image bindings, resolved through the
+//   host's `ImguiTextureCache`.
+//
+// * `IImmediateDirector` — the engine-visible immediate-mode director.
+//   Inherits from `radiance.comdef.IDirector` and adds a `render_im`
+//   step that the engine pumps inside its imgui frame scope. Scripts
+//   may implement this directly via `struct[radiance.IImmediateDirector]`
+//   once the reverse-wrap path (`wrap_director`) lands. Until then the
+//   script-side `director.ImmediateDirector` proto in
+//   `radiance/radiance_scripting/bindings/director.p7` remains the
+//   authoring surface, and `ScriptedImmediateDirector` continues to
+//   adapt it to `IDirector`.
 
-module(rust) radiance_scripting::comdef::ui_host;
+module(rust) radiance_scripting::comdef::immediate_director;
 
 import crosscom.idl;
+import radiance.idl;
 
 [uuid(7d3c8a44-58f1-4d12-9c4b-1a2f9c0e0d01)]
 interface IUiHost: IUnknown {
@@ -94,3 +106,12 @@ interface IUiHost: IUnknown {
 
 [uuid(7d3c8a44-58f1-4d12-9c4b-1a2f9c0e0d02)]
 class UiHost: IUiHost {}
+
+// Engine-visible immediate-mode director. `render_im` is pumped by the
+// engine inside its imgui frame scope (Phase D of director.md); the
+// inherited `IDirector::activate` / `IDirector::update` remain the
+// activation/transition contract.
+[uuid(3cc6ab2c-0d00-499f-b59f-7e9d63abb136)]
+interface IImmediateDirector: IDirector {
+    void render_im(IUiHost ui, float dt);
+}

@@ -11,8 +11,8 @@ pub mod comdef {
     }
 
     #[macro_use]
-    pub mod ui_host {
-        include!(concat!(env!("OUT_DIR"), "/ui_host_comdef.rs"));
+    pub mod immediate_director {
+        include!(concat!(env!("OUT_DIR"), "/immediate_director_comdef.rs"));
     }
 }
 

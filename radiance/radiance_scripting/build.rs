@@ -8,7 +8,11 @@ fn main() {
         "services_comdef.rs",
         "editor_services.p7",
     );
-    generate_pair("ui_host.idl", "ui_host_comdef.rs", "ui_host.p7");
+    generate_pair(
+        "immediate_director.idl",
+        "immediate_director_comdef.rs",
+        "immediate_director.p7",
+    );
     generate_p7("radiance.idl", "radiance.p7");
     generate_p7("editor.idl", "editor.p7");
 }

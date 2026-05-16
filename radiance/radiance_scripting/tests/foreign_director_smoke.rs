@@ -34,14 +34,14 @@ impl IDirectorImpl for CountingDirector {
 const SCRIPT: &str = r#"
 import director;
 import radiance;
-import ui_host;
+import immediate_director;
 
 pub struct[director.ImmediateDirector] LocalHostDirector(pub inner: box<radiance.IDirector>) {
     pub fn activate(self: ref<Self>) {
         let _ = self.inner.activate();
     }
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {}
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {}
     pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
         let _ = self.inner.update(dt);
         let result: array<box<director.ImmediateDirector>> = [];

@@ -7,7 +7,7 @@
 // owning tab's `preview_session` field).
 
 import yaobow_editor_services;
-import ui_host;
+import immediate_director;
 import editor_consts;
 
 pub struct ContentTab(
@@ -92,7 +92,7 @@ pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: st
 // the owning tab via indexed array assignment — not legal through a
 // `ref<ContentTab>` capture).
 pub fn render_tab_body_im(
-    ui: box<ui_host.IUiHost>,
+    ui: box<immediate_director.IUiHost>,
     tab: ref<ContentTab>,
     preview_intents: box<array<int>>,
 ) {

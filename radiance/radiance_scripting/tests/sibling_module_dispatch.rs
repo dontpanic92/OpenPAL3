@@ -43,12 +43,12 @@ impl IDirectorImpl for CountingDirector {
 const ADAPTER_MOD: &str = r#"
 import director;
 import radiance;
-import ui_host;
+import immediate_director;
 
 pub struct[director.ImmediateDirector] HostDirector(pub inner: box<radiance.IDirector>) {
     pub fn activate(self: ref<Self>) { let _ = self.inner.activate(); }
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {}
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {}
     pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
         let _ = self.inner.update(dt);
         let r: array<box<director.ImmediateDirector>> = []; return r;
@@ -62,7 +62,7 @@ pub fn wrap_host(inner: box<radiance.IDirector>) -> box<director.ImmediateDirect
 
 const GAME_MOD: &str = r#"
 import director;
-import ui_host;
+import immediate_director;
 
 pub struct[director.ImmediateDirector] GameDirector(
     pub a: box<array<int>>,
@@ -71,7 +71,7 @@ pub struct[director.ImmediateDirector] GameDirector(
 ) {
     pub fn activate(self: ref<Self>) {}
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {
         // Touch field 1 the same way the real MainEditorDirector does
         // (`self.tabs.len()`-style).
         let n = self.b.len();
@@ -147,12 +147,12 @@ fn host_director_wrapping_a_scripted_multi_field_director_dispatches_correctly()
 
 const GC_STRESS_MOD: &str = r#"
 import director;
-import ui_host;
+import immediate_director;
 
 pub struct[director.ImmediateDirector] CountingDir(pub tick: box<array<int>>) {
     pub fn activate(self: ref<Self>) {}
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {}
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {}
     pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
         let n = self.tick[0];
         self.tick[0] = n + 1;

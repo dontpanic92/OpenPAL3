@@ -422,8 +422,8 @@ fn binding_provider(extra: &[(String, String)]) -> Box<dyn ModuleProvider> {
         include_str!(concat!(env!("OUT_DIR"), "/editor_services.p7")).to_string(),
     );
     provider.add_module(
-        "ui_host".to_string(),
-        include_str!(concat!(env!("OUT_DIR"), "/ui_host.p7")).to_string(),
+        "immediate_director".to_string(),
+        include_str!(concat!(env!("OUT_DIR"), "/immediate_director.p7")).to_string(),
     );
     provider.add_module(
         "radiance".to_string(),

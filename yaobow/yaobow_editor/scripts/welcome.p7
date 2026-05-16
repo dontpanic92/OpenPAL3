@@ -1,6 +1,6 @@
 // Welcome and Settings screens, immediate-mode (H3/H4 of
 // generated/plan.md). Both directors implement `director.ImmediateDirector`
-// and call `ui_host.IUiHost` methods directly. Button presses surface as
+// and call `immediate_director.IUiHost` methods directly. Button presses surface as
 // boolean returns from `ui.button(...)`; the legacy `command_id` /
 // `dispatch(cmd)` round-trip is gone.
 //
@@ -11,7 +11,7 @@
 import director;
 import editor_services;
 import yaobow_editor_services;
-import ui_host;
+import immediate_director;
 import editor_consts;
 
 // Intent codes written by render_im, consumed by update.
@@ -36,7 +36,7 @@ pub struct[director.ImmediateDirector] WelcomeDirector(
     }
     pub fn deactivate(self: ref<Self>) {}
 
-    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {
         let _ = ui.window_centered("妖弓编辑器", 720.0, 480.0, () => {
             let _ = ui.text_with_font(0, "妖弓编辑器");
             let _ = ui.dummy(0.0, 24.0);
@@ -79,7 +79,7 @@ pub struct[director.ImmediateDirector] WelcomeDirector(
         });
     }
 
-    pub fn render_game_cell(self: ref<Self>, ui: box<ui_host.IUiHost>, ordinal: int) {
+    pub fn render_game_cell(self: ref<Self>, ui: box<immediate_director.IUiHost>, ordinal: int) {
         let name = welcome_game_name(self, ordinal);
         let label = f"运行《{name}》编辑器";
         if ui.button(label, -1.0, 60.0) != 0 {
@@ -128,7 +128,7 @@ pub struct[director.ImmediateDirector] SettingsDirector(
     }
     pub fn deactivate(self: ref<Self>) {}
 
-    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {
         let _ = ui.window_centered("游戏路径设置", 820.0, 560.0, () => {
             let _ = ui.text_with_font(0, "游戏资源路径设置");
             let _ = ui.dummy(0.0, 12.0);
@@ -158,7 +158,7 @@ pub struct[director.ImmediateDirector] SettingsDirector(
         });
     }
 
-    pub fn render_settings_row(self: ref<Self>, ui: box<ui_host.IUiHost>, ordinal: int) {
+    pub fn render_settings_row(self: ref<Self>, ui: box<immediate_director.IUiHost>, ordinal: int) {
         let _ = ui.table_next_column();
         let _ = ui.text(settings_game_name(self, ordinal));
         let _ = ui.table_next_column();

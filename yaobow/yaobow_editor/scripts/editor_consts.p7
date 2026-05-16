@@ -5,7 +5,7 @@
 
 import director;
 import radiance;
-import ui_host;
+import immediate_director;
 
 pub let CONTENT_KIND_TEXT: int = 1;
 pub let CONTENT_KIND_IMAGE: int = 2;
@@ -32,7 +32,7 @@ pub struct[director.ImmediateDirector] HostDirectorIm(pub inner: box<radiance.ID
         let _ = self.inner.activate();
     }
     pub fn deactivate(self: ref<Self>) {}
-    pub fn render_im(self: ref<Self>, ui: box<ui_host.IUiHost>, dt: float) {}
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) {}
     pub fn update(self: ref<Self>, dt: float) -> array<box<director.ImmediateDirector>> {
         let next = self.inner.update(dt);
         if next != null {
