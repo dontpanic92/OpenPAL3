@@ -19,17 +19,6 @@ pub let MODEL_PREVIEW_CMD_BASE: int = 300000;
 pub let AUDIO_TOGGLE_CMD_BASE: int = 400000;
 pub let VIDEO_TOGGLE_CMD_BASE: int = 500000;
 
-// Forces p7's import resolution for `immediate_director.IImmediateDirector`
-// to materialise before the struct decl below. Without this top-level
-// signature mentioning the proto, p7's type-checker fails the struct's
-// conforming-to list with `TypeNotFound`. The body identity-returns;
-// no call site needs to use this in production paths.
-pub fn force_im_resolution(
-    x: box<immediate_director.IImmediateDirector>,
-) -> box<immediate_director.IImmediateDirector> {
-    x
-}
-
 // Bridges a Rust-side `box<radiance.IDirector>` (which renders via its
 // own `update`) into the `immediate_director.IImmediateDirector` proto so the
 // immediate-mode welcome page can transition into a Rust-driven

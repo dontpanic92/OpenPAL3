@@ -12,14 +12,6 @@ import content_tabs;
 import resource_tree;
 import editor_consts;
 
-// Forces p7's import resolution for `immediate_director.IImmediateDirector`
-// before the struct decl below references it in its conforming-to list.
-fn _force_im_resolution(
-    x: box<immediate_director.IImmediateDirector>,
-) -> box<immediate_director.IImmediateDirector> {
-    x
-}
-
 pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditorDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub tabs: box<array<content_tabs.ContentTab>>,

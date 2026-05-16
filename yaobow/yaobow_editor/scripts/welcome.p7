@@ -14,14 +14,6 @@ import yaobow_editor_services;
 import immediate_director;
 import editor_consts;
 
-// Forces p7's import resolution for `immediate_director.IImmediateDirector`
-// before the struct decl below references it in its conforming-to list.
-fn _force_im_resolution(
-    x: box<immediate_director.IImmediateDirector>,
-) -> box<immediate_director.IImmediateDirector> {
-    x
-}
-
 // Intent codes written by render_im, consumed by update.
 let INTENT_NONE: int = 0;
 let INTENT_OPEN_SETTINGS: int = 1;
