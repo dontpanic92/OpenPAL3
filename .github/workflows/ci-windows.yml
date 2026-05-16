@@ -50,7 +50,6 @@ jobs:
       - name: Zip Packaging
         run: |
           mkdir target/release/yaobow
-          cp openpal3.toml target/release/yaobow
           cp target/release/yaobow.exe target/release/yaobow
           cp target/release/yaobow_editor.exe target/release/yaobow
           7z a -tzip target/yaobow-windows-x86_64.zip target/release/yaobow
