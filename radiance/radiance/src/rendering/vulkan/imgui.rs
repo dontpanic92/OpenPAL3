@@ -54,8 +54,15 @@ impl ImguiRenderer {
             context.context_mut().fonts().tex_desired_width =
                 device_properties.limits.max_image_dimension2_d as i32;
 
+            // Size imgui's per-frame ring buffers to match the
+            // engine-level frames-in-flight ceiling, so frame N+1's
+            // imgui pass doesn't stomp on frame N's still-in-flight
+            // vertex/index buffers. The `in_flight_frames` argument to
+            // this function is the swapchain image count (passed for
+            // historical reasons); imgui's own pacing is independent
+            // and must match `MAX_FRAMES_IN_FLIGHT`.
             let options = Some(Options {
-                in_flight_frames: 1,
+                in_flight_frames: super::vulkan_engine::MAX_FRAMES_IN_FLIGHT,
                 enable_depth_test: true,
                 enable_depth_write: true,
                 ..Options::default()

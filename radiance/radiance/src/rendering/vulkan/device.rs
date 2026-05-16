@@ -1,3 +1,5 @@
+use std::cell::Cell;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use ash::vk::{CommandBuffer, CommandBufferAllocateInfo, DescriptorPoolResetFlags};
@@ -24,6 +26,8 @@ use super::{creation_helpers, instance::Instance};
 pub struct Device {
     _instance: Rc<Instance>,
     device: ash::Device,
+    pipeline_cache: Cell<PipelineCache>,
+    pipeline_cache_path: Option<PathBuf>,
 }
 
 impl Device {
@@ -39,9 +43,40 @@ impl Device {
         )
         .unwrap();
 
+        let pipeline_cache_path = pipeline_cache_disk_path();
+        let initial_data = pipeline_cache_path
+            .as_ref()
+            .and_then(|p| std::fs::read(p).ok())
+            .unwrap_or_default();
+        let pipeline_cache = unsafe {
+            let mut info = ash::vk::PipelineCacheCreateInfo::default();
+            if !initial_data.is_empty() {
+                info = info.initial_data(&initial_data);
+            }
+            match device.create_pipeline_cache(&info, None) {
+                Ok(cache) => cache,
+                Err(e) => {
+                    log::warn!(
+                        "Failed to create vk::PipelineCache (initial_data_len={}): {:?}; \
+                         retrying with empty cache",
+                        initial_data.len(),
+                        e
+                    );
+                    device
+                        .create_pipeline_cache(
+                            &ash::vk::PipelineCacheCreateInfo::default(),
+                            None,
+                        )
+                        .unwrap_or(PipelineCache::null())
+                }
+            }
+        };
+
         Self {
             _instance: instance,
             device,
+            pipeline_cache: Cell::new(pipeline_cache),
+            pipeline_cache_path,
         }
     }
 
@@ -364,7 +399,7 @@ impl Device {
     ) -> Result<Vec<Pipeline>, (Vec<Pipeline>, ash::vk::Result)> {
         unsafe {
             self.device
-                .create_graphics_pipelines(PipelineCache::default(), create_infos, None)
+                .create_graphics_pipelines(self.pipeline_cache.get(), create_infos, None)
         }
     }
 
@@ -420,6 +455,28 @@ impl Device {
         }
     }
 
+    pub fn create_fence(&self, signaled: bool) -> VkResult<Fence> {
+        let flags = if signaled {
+            ash::vk::FenceCreateFlags::SIGNALED
+        } else {
+            ash::vk::FenceCreateFlags::empty()
+        };
+        let info = ash::vk::FenceCreateInfo::default().flags(flags);
+        unsafe { self.device.create_fence(&info, None) }
+    }
+
+    pub fn destroy_fence(&self, fence: Fence) {
+        unsafe { self.device.destroy_fence(fence, None) }
+    }
+
+    pub fn wait_for_fences(&self, fences: &[Fence], wait_all: bool, timeout_ns: u64) -> VkResult<()> {
+        unsafe { self.device.wait_for_fences(fences, wait_all, timeout_ns) }
+    }
+
+    pub fn reset_fences(&self, fences: &[Fence]) -> VkResult<()> {
+        unsafe { self.device.reset_fences(fences) }
+    }
+
     pub fn wait_idle(&self) {
         unsafe { self.device.device_wait_idle().unwrap() }
     }
@@ -429,7 +486,62 @@ impl Drop for Device {
     fn drop(&mut self) {
         log::debug!("Destroying Device");
         unsafe {
+            let cache = self.pipeline_cache.get();
+            if cache != PipelineCache::null() {
+                if let Some(path) = self.pipeline_cache_path.as_ref() {
+                    match self.device.get_pipeline_cache_data(cache) {
+                        Ok(bytes) if !bytes.is_empty() => {
+                            if let Some(parent) = path.parent() {
+                                let _ = std::fs::create_dir_all(parent);
+                            }
+                            if let Err(e) = std::fs::write(path, &bytes) {
+                                log::warn!(
+                                    "Failed to persist vk::PipelineCache to {:?}: {:?}",
+                                    path,
+                                    e
+                                );
+                            }
+                        }
+                        Ok(_) => (),
+                        Err(e) => log::warn!("get_pipeline_cache_data failed: {:?}", e),
+                    }
+                }
+                self.device.destroy_pipeline_cache(cache, None);
+            }
             self.device.destroy_device(None);
         }
     }
+}
+
+/// Determine where to persist the on-disk `vk::PipelineCache` blob.
+///
+/// Order of preference:
+/// 1. `RADIANCE_PIPELINE_CACHE_DIR` — explicit override for tests / CI.
+/// 2. Platform user cache dir:
+///    - Windows: `%LOCALAPPDATA%\openpal3\pipeline_cache.bin`
+///    - macOS:   `$HOME/Library/Caches/openpal3/pipeline_cache.bin`
+///    - Other:   `$XDG_CACHE_HOME/openpal3/pipeline_cache.bin`
+///              or `$HOME/.cache/openpal3/pipeline_cache.bin` as fallback.
+/// 3. Returns `None` if no sensible location can be derived; in that case
+///    the cache is still used in-process but isn't persisted across runs.
+fn pipeline_cache_disk_path() -> Option<PathBuf> {
+    if let Ok(override_dir) = std::env::var("RADIANCE_PIPELINE_CACHE_DIR") {
+        return Some(PathBuf::from(override_dir).join("pipeline_cache.bin"));
+    }
+
+    let base: PathBuf = if cfg!(windows) {
+        std::env::var_os("LOCALAPPDATA").map(PathBuf::from)?
+    } else if cfg!(target_os = "macos") {
+        let home = std::env::var_os("HOME").map(PathBuf::from)?;
+        home.join("Library").join("Caches")
+    } else {
+        if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
+            PathBuf::from(xdg)
+        } else {
+            let home = std::env::var_os("HOME").map(PathBuf::from)?;
+            home.join(".cache")
+        }
+    };
+
+    Some(base.join("openpal3").join("pipeline_cache.bin"))
 }

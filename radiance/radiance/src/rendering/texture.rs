@@ -1,5 +1,5 @@
 use std::num::NonZero;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use image::RgbaImage;
 use lru::LruCache;
@@ -41,7 +41,21 @@ const BLEND_PIXEL_FRACTION: f32 = 0.07;
 
 pub struct TextureDef {
     name: String,
-    image: Option<RgbaImage>,
+    /// The decoded CPU-side image. Backends consume this exactly once,
+    /// at GPU upload time, via [`TextureDef::take_image`]; afterwards
+    /// the `RgbaImage` is dropped and the slot returns `None`. PAL3
+    /// scenes routinely reference enough textures that keeping the CPU
+    /// copy alive in `TEXTURE_STORE` indefinitely costs tens of MB of
+    /// otherwise-dead memory.
+    ///
+    /// Backends that don't cache their GPU texture object per
+    /// `TextureDef` (e.g. `vitagl`) should keep using [`with_image`]
+    /// instead of [`take_image`] so subsequent material creations on
+    /// the same `TextureDef` still find the bytes. The Vulkan backend
+    /// is safe to drain because `VulkanTextureStore` already caches
+    /// `Rc<VulkanTexture>` by name, so the upload runs at most once
+    /// per `TextureDef`.
+    image: Mutex<Option<RgbaImage>>,
     alpha_kind: AlphaKind,
 }
 
@@ -50,8 +64,19 @@ impl TextureDef {
         &self.name
     }
 
-    pub fn image(&self) -> Option<&RgbaImage> {
-        self.image.as_ref()
+    /// Run `f` with a borrowed reference to the cached CPU-side
+    /// `RgbaImage`, or `None` if the slot has already been drained
+    /// (see [`take_image`]) or was never populated.
+    pub fn with_image<R>(&self, f: impl FnOnce(Option<&RgbaImage>) -> R) -> R {
+        let guard = self.image.lock().unwrap();
+        f(guard.as_ref())
+    }
+
+    /// Drain the cached `RgbaImage` out of the `TextureDef`, freeing
+    /// its memory. Returns `None` on the second call (or if no image
+    /// was ever set).
+    pub fn take_image(&self) -> Option<RgbaImage> {
+        self.image.lock().unwrap().take()
     }
 
     pub fn alpha_kind(&self) -> AlphaKind {
@@ -147,7 +172,7 @@ impl TextureStore {
             }
             let t = Arc::new(TextureDef {
                 name: name.to_string(),
-                image,
+                image: Mutex::new(image),
                 alpha_kind,
             });
             store.put(name.to_string(), t.clone());

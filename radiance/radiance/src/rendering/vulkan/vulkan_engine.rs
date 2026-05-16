@@ -26,6 +26,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::{cell::RefCell, error::Error};
 
+/// Maximum number of frames the CPU is allowed to record ahead of the
+/// GPU. Each frame owns its own semaphores + fence; `current_frame`
+/// cycles through `[0, MAX_FRAMES_IN_FLIGHT)`. This is independent of
+/// the swapchain image count — the two are tied together with the
+/// per-image `images_in_flight` map so a slow swapchain doesn't let two
+/// in-flight CPU frames write to the same image's command buffer.
+pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
+
 pub struct VulkanRenderingEngine {
     entry: Rc<Entry>,
     instance: Rc<Instance>,
@@ -49,8 +57,25 @@ pub struct VulkanRenderingEngine {
     surface_entry: ash::khr::surface::Instance,
     debug_entry: ash::ext::debug_utils::Instance,
 
-    image_available_semaphore: vk::Semaphore,
-    render_finished_semaphore: vk::Semaphore,
+    /// Per-in-flight-frame semaphores signaled by `acquire_next_image`
+    /// (consumed by the matching submit's `wait_semaphores`).
+    image_available_semaphores: [vk::Semaphore; MAX_FRAMES_IN_FLIGHT],
+    /// Per-in-flight-frame semaphores signaled by the main submit
+    /// (consumed by `present`).
+    render_finished_semaphores: [vk::Semaphore; MAX_FRAMES_IN_FLIGHT],
+    /// Per-in-flight-frame submit fences. Created in the signaled
+    /// state so the very first frame's `wait_for_fences` returns
+    /// immediately.
+    in_flight_fences: [vk::Fence; MAX_FRAMES_IN_FLIGHT],
+    /// Swapchain-image-indexed fence map. Tracks which `in_flight_fence`
+    /// (if any) currently owns each swapchain image's resources, so
+    /// that when the CPU wraps around and tries to record the same
+    /// image again it can wait on the right fence first. Initialized
+    /// to `vk::Fence::null()`.
+    images_in_flight: Vec<vk::Fence>,
+    /// Index of the current in-flight frame (advances mod
+    /// `MAX_FRAMES_IN_FLIGHT` after each successful submit).
+    current_frame: usize,
 
     /// Render-finished semaphores from offscreen target submissions that
     /// the next swapchain submit must wait on before sampling. Populated
@@ -346,8 +371,28 @@ impl VulkanRenderingEngine {
         swapchain.set_imgui(imgui.clone());
 
         let semaphore_create_info = vk::SemaphoreCreateInfo::default();
-        let image_available_semaphore = device.create_semaphore(&semaphore_create_info)?;
-        let render_finished_semaphore = device.create_semaphore(&semaphore_create_info)?;
+        let image_available_semaphores = {
+            let mut sems = [vk::Semaphore::null(); MAX_FRAMES_IN_FLIGHT];
+            for s in sems.iter_mut() {
+                *s = device.create_semaphore(&semaphore_create_info)?;
+            }
+            sems
+        };
+        let render_finished_semaphores = {
+            let mut sems = [vk::Semaphore::null(); MAX_FRAMES_IN_FLIGHT];
+            for s in sems.iter_mut() {
+                *s = device.create_semaphore(&semaphore_create_info)?;
+            }
+            sems
+        };
+        let in_flight_fences = {
+            let mut fences = [vk::Fence::null(); MAX_FRAMES_IN_FLIGHT];
+            for f in fences.iter_mut() {
+                *f = device.create_fence(true)?;
+            }
+            fences
+        };
+        let images_in_flight = vec![vk::Fence::null(); swapchain.images_len()];
 
         let component_factory = Rc::new(VulkanComponentFactory::new(
             instance.clone(),
@@ -403,8 +448,11 @@ impl VulkanRenderingEngine {
             component_factory,
             surface_entry,
             debug_entry,
-            image_available_semaphore,
-            render_finished_semaphore,
+            image_available_semaphores,
+            render_finished_semaphores,
+            in_flight_fences,
+            images_in_flight,
+            current_frame: 0,
             imgui,
             pending_offscreen_waits: Vec::new(),
         };
@@ -491,6 +539,15 @@ impl VulkanRenderingEngine {
 
         swapchain.set_imgui(self.imgui.clone());
 
+        // Resize the per-image fence map to match the new swapchain's
+        // image count. `wait_idle()` above guarantees no in-flight
+        // frame is still referencing the previous map, so reseating
+        // the vector here is safe even when the count changes.
+        self.images_in_flight = vec![vk::Fence::null(); swapchain.images_len()];
+        // Reset the in-flight cursor so the next frame starts from a
+        // known slot.
+        self.current_frame = 0;
+
         self.swapchain = Some(swapchain);
 
         Ok(())
@@ -510,9 +567,16 @@ impl VulkanRenderingEngine {
         }
 
         let dub_manager = self.dub_manager().clone();
+
+        // Block until this frame's slot is free on the GPU. The fence
+        // is created signaled, so frame 0 returns immediately.
+        let frame = self.current_frame;
+        self.device
+            .wait_for_fences(&[self.in_flight_fences[frame]], true, u64::MAX)?;
+
         let (image_index, _) = match swapchain!().acquire_next_image(
             u64::max_value(),
-            self.image_available_semaphore,
+            self.image_available_semaphores[frame],
             vk::Fence::default(),
         ) {
             Ok(res) => res,
@@ -522,6 +586,19 @@ impl VulkanRenderingEngine {
             }
             Err(e) => panic!("Unable to acquire next image {:?}", e),
         };
+
+        // If a previous in-flight frame is still using this swapchain
+        // image's resources (command buffer / uniform buffer indexed
+        // by `image_index`), block until that frame finishes before
+        // re-recording. This is the per-image guard that lets us drive
+        // `MAX_FRAMES_IN_FLIGHT` decoupled from the swapchain image
+        // count.
+        let prev_fence = self.images_in_flight[image_index as usize];
+        if prev_fence != vk::Fence::null() {
+            self.device
+                .wait_for_fences(&[prev_fence], true, u64::MAX)?;
+        }
+        self.images_in_flight[image_index as usize] = self.in_flight_fences[frame];
 
         // Build the visible render-object list, pairing each render
         // object with its owning entity's world matrix and a stable
@@ -612,7 +689,7 @@ impl VulkanRenderingEngine {
             // submits queued earlier this frame (their color images need
             // to finish writing before the imgui pass samples them).
             let mut wait_semaphores: Vec<vk::Semaphore> =
-                vec![self.image_available_semaphore];
+                vec![self.image_available_semaphores[frame]];
             let mut stage_mask: Vec<vk::PipelineStageFlags> =
                 vec![vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
             for sem in self.pending_offscreen_waits.drain(..) {
@@ -620,20 +697,28 @@ impl VulkanRenderingEngine {
                 stage_mask.push(vk::PipelineStageFlags::FRAGMENT_SHADER);
             }
 
-            let signal_semaphores = [self.render_finished_semaphore];
+            let signal_semaphores = [self.render_finished_semaphores[frame]];
             let submit_info = vk::SubmitInfo::default()
                 .wait_semaphores(&wait_semaphores)
                 .wait_dst_stage_mask(&stage_mask)
                 .command_buffers(&commands)
                 .signal_semaphores(&signal_semaphores);
 
+            // Reset the fence immediately before re-using it as the
+            // submit's completion fence. Doing it here (rather than at
+            // the top of the function next to `wait_for_fences`) keeps
+            // the fence in the signaled state on every error path that
+            // returns before reaching this submit, so we don't deadlock
+            // a future frame that waits on an unsignaled fence.
             self.device
-                .queue_submit(self.queue, &[submit_info], vk::Fence::default())?;
+                .reset_fences(&[self.in_flight_fences[frame]])?;
+            self.device
+                .queue_submit(self.queue, &[submit_info], self.in_flight_fences[frame])?;
         }
 
         // Present
         {
-            let wait_semaphores = [self.render_finished_semaphore];
+            let wait_semaphores = [self.render_finished_semaphores[frame]];
             let ret = swapchain!().present(image_index, self.queue, &wait_semaphores);
 
             match ret {
@@ -644,8 +729,12 @@ impl VulkanRenderingEngine {
             };
         }
 
-        // Not an optimized way
-        self.device.wait_idle();
+        // Advance to the next in-flight slot. The previous slot's GPU
+        // work proceeds asynchronously; we no longer block on it via
+        // `device.wait_idle()` — the per-frame fence + per-image guard
+        // above is what keeps re-use of command buffers / uniform
+        // buffers safe.
+        self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
         Ok(())
     }
@@ -691,10 +780,15 @@ impl Drop for VulkanRenderingEngine {
         }
         self.device.destroy_command_pool(self.command_pool);
 
-        self.device
-            .destroy_semaphore(self.image_available_semaphore);
-        self.device
-            .destroy_semaphore(self.render_finished_semaphore);
+        for s in self.image_available_semaphores.iter() {
+            self.device.destroy_semaphore(*s);
+        }
+        for s in self.render_finished_semaphores.iter() {
+            self.device.destroy_semaphore(*s);
+        }
+        for f in self.in_flight_fences.iter() {
+            self.device.destroy_fence(*f);
+        }
         unsafe {
             self.surface_entry
                 .destroy_surface(self.surface.unwrap(), None);

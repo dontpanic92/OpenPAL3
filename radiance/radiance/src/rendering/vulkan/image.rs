@@ -99,81 +99,96 @@ impl Image {
         command_runner: &AdhocCommandRunner,
     ) -> VkResult<()> {
         command_runner.run_commands_one_shot(|device, command_buffer| {
-            let aspect_mask = {
-                match new_layout {
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL => {
-                        let mut aspect_mask = vk::ImageAspectFlags::DEPTH;
-                        if self.format == vk::Format::D32_SFLOAT_S8_UINT
-                            || self.format == vk::Format::D24_UNORM_S8_UINT
-                        {
-                            aspect_mask |= vk::ImageAspectFlags::STENCIL;
-                        }
-
-                        aspect_mask
-                    }
-                    _ => vk::ImageAspectFlags::COLOR,
-                }
-            };
-
-            let (src_access_mask, src_stage) = {
-                match old_layout {
-                    vk::ImageLayout::UNDEFINED => (
-                        vk::AccessFlags::default(),
-                        vk::PipelineStageFlags::TOP_OF_PIPE,
-                    ),
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL => (
-                        vk::AccessFlags::TRANSFER_WRITE,
-                        vk::PipelineStageFlags::TRANSFER,
-                    ),
-                    _ => panic!("unsupported transfer source layout: {:?}", old_layout),
-                }
-            };
-
-            let (dst_access_mask, dst_stage) = {
-                match new_layout {
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL => (
-                        vk::AccessFlags::TRANSFER_WRITE,
-                        vk::PipelineStageFlags::TRANSFER,
-                    ),
-                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => (
-                        vk::AccessFlags::SHADER_READ,
-                        vk::PipelineStageFlags::FRAGMENT_SHADER,
-                    ),
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL => (
-                        vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                            | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                        vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                    ),
-                    _ => panic!("unsupported transfer source layout: {:?}", new_layout),
-                }
-            };
-
-            let barrier = vk::ImageMemoryBarrier::default()
-                .old_layout(old_layout)
-                .new_layout(new_layout)
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .image(self.image)
-                .subresource_range(
-                    vk::ImageSubresourceRange::default()
-                        .aspect_mask(aspect_mask)
-                        .level_count(1)
-                        .base_mip_level(0)
-                        .base_array_layer(0)
-                        .layer_count(1),
-                )
-                .src_access_mask(src_access_mask)
-                .dst_access_mask(dst_access_mask);
-            device.cmd_pipeline_barrier(
-                *command_buffer,
-                src_stage,
-                dst_stage,
-                vk::DependencyFlags::default(),
-                &[],
-                &[],
-                &[barrier],
-            )
+            self.record_transit_layout(old_layout, new_layout, device, command_buffer);
         })
+    }
+
+    /// Record an image layout transition into an externally-provided
+    /// command buffer. Used by callers that want to batch multiple
+    /// barriers + copies into a single one-shot submit (e.g.
+    /// `VulkanTexture::from_buffer`, which would otherwise pay 3
+    /// `vkQueueSubmit` + 3 `vkQueueWaitIdle`s per texture upload).
+    pub fn record_transit_layout(
+        &mut self,
+        old_layout: vk::ImageLayout,
+        new_layout: vk::ImageLayout,
+        device: &Rc<super::device::Device>,
+        command_buffer: &vk::CommandBuffer,
+    ) {
+        let aspect_mask = {
+            match new_layout {
+                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL => {
+                    let mut aspect_mask = vk::ImageAspectFlags::DEPTH;
+                    if self.format == vk::Format::D32_SFLOAT_S8_UINT
+                        || self.format == vk::Format::D24_UNORM_S8_UINT
+                    {
+                        aspect_mask |= vk::ImageAspectFlags::STENCIL;
+                    }
+
+                    aspect_mask
+                }
+                _ => vk::ImageAspectFlags::COLOR,
+            }
+        };
+
+        let (src_access_mask, src_stage) = {
+            match old_layout {
+                vk::ImageLayout::UNDEFINED => (
+                    vk::AccessFlags::default(),
+                    vk::PipelineStageFlags::TOP_OF_PIPE,
+                ),
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL => (
+                    vk::AccessFlags::TRANSFER_WRITE,
+                    vk::PipelineStageFlags::TRANSFER,
+                ),
+                _ => panic!("unsupported transfer source layout: {:?}", old_layout),
+            }
+        };
+
+        let (dst_access_mask, dst_stage) = {
+            match new_layout {
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL => (
+                    vk::AccessFlags::TRANSFER_WRITE,
+                    vk::PipelineStageFlags::TRANSFER,
+                ),
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => (
+                    vk::AccessFlags::SHADER_READ,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                ),
+                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL => (
+                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                        | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                    vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+                ),
+                _ => panic!("unsupported transfer source layout: {:?}", new_layout),
+            }
+        };
+
+        let barrier = vk::ImageMemoryBarrier::default()
+            .old_layout(old_layout)
+            .new_layout(new_layout)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(self.image)
+            .subresource_range(
+                vk::ImageSubresourceRange::default()
+                    .aspect_mask(aspect_mask)
+                    .level_count(1)
+                    .base_mip_level(0)
+                    .base_array_layer(0)
+                    .layer_count(1),
+            )
+            .src_access_mask(src_access_mask)
+            .dst_access_mask(dst_access_mask);
+        device.cmd_pipeline_barrier(
+            *command_buffer,
+            src_stage,
+            dst_stage,
+            vk::DependencyFlags::default(),
+            &[],
+            &[],
+            &[barrier],
+        )
     }
 
     pub fn copy_from(
@@ -183,32 +198,44 @@ impl Image {
         command_runner: &AdhocCommandRunner,
     ) -> VkResult<()> {
         command_runner.run_commands_one_shot(|device, command_buffer| {
-            let region = vk::BufferImageCopy::default()
-                .image_extent(
-                    vk::Extent3D::default()
-                        .width(self.width)
-                        .height(self.height)
-                        .depth(1),
-                )
-                .image_offset(vk::Offset3D::default().x(0).y(0).z(0))
-                .buffer_offset(0)
-                .buffer_row_length(row_length)
-                .buffer_image_height(0)
-                .image_subresource(
-                    vk::ImageSubresourceLayers::default()
-                        .layer_count(1)
-                        .base_array_layer(0)
-                        .mip_level(0)
-                        .aspect_mask(vk::ImageAspectFlags::COLOR),
-                );
-            device.cmd_copy_buffer_to_image(
-                *command_buffer,
-                buffer.vk_buffer(),
-                self.vk_image(),
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &[region],
-            )
+            self.record_copy_from(buffer, row_length, device, command_buffer);
         })
+    }
+
+    /// Record a buffer-to-image copy into an externally-provided command
+    /// buffer (companion to `record_transit_layout`).
+    pub fn record_copy_from(
+        &mut self,
+        buffer: &Buffer,
+        row_length: u32,
+        device: &Rc<super::device::Device>,
+        command_buffer: &vk::CommandBuffer,
+    ) {
+        let region = vk::BufferImageCopy::default()
+            .image_extent(
+                vk::Extent3D::default()
+                    .width(self.width)
+                    .height(self.height)
+                    .depth(1),
+            )
+            .image_offset(vk::Offset3D::default().x(0).y(0).z(0))
+            .buffer_offset(0)
+            .buffer_row_length(row_length)
+            .buffer_image_height(0)
+            .image_subresource(
+                vk::ImageSubresourceLayers::default()
+                    .layer_count(1)
+                    .base_array_layer(0)
+                    .mip_level(0)
+                    .aspect_mask(vk::ImageAspectFlags::COLOR),
+            );
+        device.cmd_copy_buffer_to_image(
+            *command_buffer,
+            buffer.vk_buffer(),
+            self.vk_image(),
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            &[region],
+        )
     }
 
     fn new(

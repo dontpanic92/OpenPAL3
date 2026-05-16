@@ -31,11 +31,23 @@ impl VulkanTexture {
         allocator: &Rc<vk_mem::Allocator>,
         command_runner: &Rc<AdhocCommandRunner>,
     ) -> Result<Self, Box<dyn Error>> {
+        // Drain the CPU-side `RgbaImage` out of the `TextureDef` here:
+        // after this upload the GPU copy is the source of truth and the
+        // CPU bytes are dead weight that would otherwise linger in
+        // `TEXTURE_STORE` for the process lifetime. `VulkanTextureStore`
+        // caches `Rc<VulkanTexture>` by texture name so a repeat
+        // `create_texture` call for the same `TextureDef` short-circuits
+        // before reaching here — `take_image` returning `None` on a
+        // re-entry path only happens if the same `TextureDef` is wired
+        // through two different `VulkanTextureStore` instances, in
+        // which case falling back to the missing-texture sentinel keeps
+        // rendering correct (just visually wrong for that one texture).
+        let owned_image = def.take_image();
         let texture_missing =
             image::load_from_memory(radiance_assets::TEXTURE_MISSING_TEXTURE_FILE)
                 .unwrap()
                 .to_rgba8();
-        let rgba_image = def.image().unwrap_or_else(|| &texture_missing);
+        let rgba_image = owned_image.as_ref().unwrap_or(&texture_missing);
 
         Self::from_buffer(
             rgba_image.as_raw(),
@@ -60,17 +72,27 @@ impl VulkanTexture {
         let buffer = Buffer::new_staging_buffer_with_data(allocator, &image_buffer)?;
         let format = vk::Format::R8G8B8A8_UNORM;
         let mut image = Image::new_color_image(allocator, width, height)?;
-        image.transit_layout(
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            &command_runner,
-        )?;
-        image.copy_from(&buffer, row_length, &command_runner)?;
-        image.transit_layout(
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            &command_runner,
-        )?;
+        // Batch the three texture-upload steps (UNDEFINED -> TRANSFER_DST
+        // barrier, buffer-to-image copy, TRANSFER_DST -> SHADER_READ_ONLY
+        // barrier) into a single one-shot command buffer instead of one
+        // submit per step. PAL3 scenes can reference hundreds of
+        // textures at load time; previously every texture cost three
+        // `vkQueueSubmit` + `vkQueueWaitIdle` round-trips.
+        command_runner.run_commands_one_shot(|dev, cb| {
+            image.record_transit_layout(
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                dev,
+                cb,
+            );
+            image.record_copy_from(&buffer, row_length, dev, cb);
+            image.record_transit_layout(
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                dev,
+                cb,
+            );
+        })?;
 
         let image_view = ImageView::new_color_image_view(device.clone(), image.vk_image(), format)?;
 

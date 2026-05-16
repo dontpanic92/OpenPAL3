@@ -18,14 +18,14 @@ pub struct VitaGLComponentFactory {
 
 impl ComponentFactory for VitaGLComponentFactory {
     fn create_texture(&self, texture_def: &TextureDef) -> Box<dyn Texture> {
-        let rgba_image = texture_def
-            .image()
-            .unwrap_or_else(|| &TEXTURE_MISSING_IMAGE);
-        Box::new(VitaGLTexture::new(
-            rgba_image.width(),
-            rgba_image.height(),
-            &rgba_image,
-        ))
+        texture_def.with_image(|img| {
+            let rgba_image = img.unwrap_or(&TEXTURE_MISSING_IMAGE);
+            Box::new(VitaGLTexture::new(
+                rgba_image.width(),
+                rgba_image.height(),
+                &rgba_image,
+            )) as Box<dyn Texture>
+        })
     }
 
     fn create_imgui_texture(

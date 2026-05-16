@@ -24,8 +24,10 @@ impl VitaGLMaterial {
             .textures()
             .iter()
             .map(|t| {
-                let image = t.image().unwrap_or(&TEXTURE_MISSING);
-                Rc::new(VitaGLTexture::new(image.width(), image.height(), image))
+                t.with_image(|img| {
+                    let image = img.unwrap_or(&TEXTURE_MISSING);
+                    Rc::new(VitaGLTexture::new(image.width(), image.height(), image))
+                })
             })
             .collect();
 
