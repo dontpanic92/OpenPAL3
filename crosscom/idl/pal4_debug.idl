@@ -1,0 +1,43 @@
+// PAL4 debug overlay bridge.
+//
+// Two interfaces:
+//
+// * `IPal4DebugContext` — host-implemented data sink. The Rust
+//   `OpenPAL4Director` refreshes a per-frame snapshot on this object
+//   before invoking the script overlay; the script reads it via the
+//   getters below.
+//
+// * `IPal4DebugOverlay` — script-implemented. A p7 struct conforms
+//   to this proto directly (no Rust wrapper). The reverse-wrap
+//   helper in `shared::openpal4::debug::wrap_overlay` turns the
+//   `box<...>` returned from the bootstrap script into a
+//   `ComRc<IPal4DebugOverlay>` the director can call each frame.
+
+module(rust) shared::openpal4::comdef::pal4_debug;
+
+import crosscom.idl;
+import radiance.idl;
+import immediate_director.idl;
+
+[uuid(9c1b6f70-1f7a-4d31-9b6a-2e9d4a8e0b01)]
+interface IPal4DebugContext: IUnknown {
+    &str scene_name();
+    &str block_name();
+    int  leader_index();
+    float leader_pos_x();
+    float leader_pos_y();
+    float leader_pos_z();
+    float delta_time();
+    float fps();
+}
+
+[uuid(9c1b6f70-1f7a-4d31-9b6a-2e9d4a8e0b02)]
+class Pal4DebugContext: IPal4DebugContext {}
+
+[uuid(9c1b6f70-1f7a-4d31-9b6a-2e9d4a8e0b03)]
+interface IPal4DebugOverlay: IUnknown {
+    void render(IUiHost ui, float dt, IPal4DebugContext ctx);
+}
+
+[uuid(9c1b6f70-1f7a-4d31-9b6a-2e9d4a8e0b04)]
+class Pal4DebugOverlay: IPal4DebugOverlay {}

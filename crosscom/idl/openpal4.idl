@@ -2,6 +2,7 @@ module(rust) shared::openpal4::comdef;
 
 import crosscom.idl;
 import radiance.idl;
+import immediate_director.idl;
 
 [uuid(f3d7f0fd-20ca-450c-bd66-ad019b984a54)]
 interface IOpenPAL4Director: IDirector {
@@ -10,7 +11,7 @@ interface IOpenPAL4Director: IDirector {
 }
 
 [uuid(981884a7-63e8-4ee1-96f1-6efd259ebe3b)]
-class OpenPAL4Director: IOpenPAL4Director {}
+class OpenPAL4Director: IOpenPAL4Director, IImmediateDirector {}
 
 [uuid(f6d70031-86e7-4efa-b1c5-5196063441ea)]
 interface IPal4ActorAnimationController: IComponent {

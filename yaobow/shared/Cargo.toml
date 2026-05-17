@@ -17,6 +17,8 @@ cipher = "0.4.2"
 common = { path = "../common" }
 config = "0.12.0"
 crosscom = { path = "../../crosscom/runtime/rust" }
+crosscom-protosept = { path = "../../crosscom/runtime/protosept" }
+p7 = { path = "../../radiance/protosept/p7" }
 dashmap = "5.1.0"
 dyn-clone = "1.0.1"
 encoding = "0.2.33"
@@ -34,6 +36,7 @@ packfs = { path = "../packfs" }
 paste = "1.0"
 rand = "0.8.3"
 radiance = { path = "../../radiance/radiance" }
+radiance_scripting = { path = "../../radiance/radiance_scripting" }
 regex = "1.4.5"
 roxmltree = "0.18.0"
 rust-ini = "0.16.1"

@@ -1,0 +1,36 @@
+// Protosept implementation of `pal4_debug.IPal4DebugOverlay`. The
+// struct conforms to the IDL proto directly — no Rust wrapper.
+// `render` is invoked by `OpenPAL4Director::render_im` (Rust) only
+// while the overlay is toggled on, so we don't gate visibility here.
+
+import pal4_debug;
+import immediate_director;
+
+pub struct[pal4_debug.IPal4DebugOverlay] Pal4DebugOverlay(
+    pub ctx_ref: box<pal4_debug.IPal4DebugContext>,
+) {
+    pub fn render(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        dt: float,
+        ctx: box<pal4_debug.IPal4DebugContext>,
+    ) -> int {
+        let _ = ui.window("PAL4 Debug (`)", 320.0, 220.0, 0, () => {
+            let _ = ui.text(f"Scene: {ctx.scene_name()}");
+            let _ = ui.text(f"Block: {ctx.block_name()}");
+            let _ = ui.text(f"Leader: #{ctx.leader_index()}");
+            let _ = ui.text(f"Pos:   x={ctx.leader_pos_x()}");
+            let _ = ui.text(f"       y={ctx.leader_pos_y()}");
+            let _ = ui.text(f"       z={ctx.leader_pos_z()}");
+            let _ = ui.text(f"dt:    {ctx.delta_time() * 1000.0} ms");
+            let _ = ui.text(f"FPS:   {ctx.fps()}");
+        });
+        0
+    }
+}
+
+pub fn make_overlay(
+    ctx: box<pal4_debug.IPal4DebugContext>,
+) -> box<pal4_debug.IPal4DebugOverlay> {
+    return box(Pal4DebugOverlay(ctx));
+}

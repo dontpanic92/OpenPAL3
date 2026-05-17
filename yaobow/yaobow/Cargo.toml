@@ -29,6 +29,7 @@ image = "0.23.0"
 mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 packfs = { path = "../packfs" }
 radiance = { path = "../../radiance/radiance" }
+radiance_scripting = { path = "../../radiance/radiance_scripting" }
 rand = "0.8.3"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"

@@ -339,6 +339,30 @@ impl Pal4AppContext {
             .rotate_axis_angle_local(&Vec3::UP, direction * std::f32::consts::PI / 180.0);
     }
 
+    pub fn scene_name(&self) -> &str {
+        &self.scene_name
+    }
+
+    pub fn block_name(&self) -> &str {
+        &self.block_name
+    }
+
+    pub fn leader(&self) -> usize {
+        self.leader
+    }
+
+    /// `&self`-safe leader position lookup for diagnostics overlays.
+    /// Returns `Vec3::new(0.0, 0.0, 0.0)` while the scene hasn't been
+    /// loaded (e.g. before the first `load_scene` call).
+    pub fn leader_pos(&self) -> Vec3 {
+        let leader = self.leader;
+        // `Pal4Scene::get_player` is `&self`. On an empty scene the
+        // helper still returns the placeholder entity slot, whose
+        // transform reports the identity translation — fine for the
+        // debug overlay to render zeros.
+        self.scene.get_player(leader).transform().borrow().position()
+    }
+
     pub fn load_scene(&mut self, scene_name: &str, block_name: &str) {
         let _ = self.scene_manager.pop_scene();
         self.scene =
