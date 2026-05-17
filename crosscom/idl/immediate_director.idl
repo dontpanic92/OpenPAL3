@@ -47,6 +47,13 @@ interface IUiHost: IUnknown {
     void group(IAction body);
     void style_alpha(float alpha, IAction body);
 
+    // Push a font for the duration of `body` and pop it afterwards.
+    // `font_idx` selects from the host's font table; out-of-range
+    // indices fall back to the default (index 0). Use this to render
+    // a whole subtree (e.g. a debug overlay) at a non-default size
+    // without sprinkling `text_with_font` over every leaf widget.
+    void with_font(int font_idx, IAction body);
+
     // tab_item: body runs only while the tab is selected; the close
     // flag is reported as the return value (true == user requested
     // close on this frame).

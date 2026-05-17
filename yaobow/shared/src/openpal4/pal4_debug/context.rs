@@ -39,18 +39,13 @@ pub struct Pal4DebugContextInner {
     leader_pos: Cell<[f32; 3]>,
     delta_time: Cell<f32>,
     fps: Cell<f32>,
+    bsp_visible: Cell<bool>,
+    nav_mesh_visible: Cell<bool>,
 }
 
 impl Pal4DebugContextInner {
     pub fn new() -> Rc<Self> {
-        Rc::new(Self {
-            scene_name: RefCell::new(String::new()),
-            block_name: RefCell::new(String::new()),
-            leader_index: Cell::new(0),
-            leader_pos: Cell::new([0.0; 3]),
-            delta_time: Cell::new(0.0),
-            fps: Cell::new(0.0),
-        })
+        Rc::new(Self::default())
     }
 
     pub fn set_snapshot(&self, snap: Pal4DebugSnapshot) {
@@ -60,6 +55,19 @@ impl Pal4DebugContextInner {
         self.leader_pos.set(snap.leader_pos);
         self.delta_time.set(snap.delta_time);
         self.fps.set(snap.fps);
+    }
+
+    /// `&self`-safe accessor for the BSP-visibility toggle. Read by
+    /// the director each frame so it can fan the flag out to
+    /// `Pal4AppContext::set_bsp_visible`.
+    pub fn bsp_visible(&self) -> bool {
+        self.bsp_visible.get()
+    }
+
+    /// Same idea as [`Pal4DebugContextInner::bsp_visible`], for the
+    /// floor + wall (nav-mesh) overlay geometry.
+    pub fn nav_mesh_visible(&self) -> bool {
+        self.nav_mesh_visible.get()
     }
 }
 
@@ -72,6 +80,10 @@ impl Default for Pal4DebugContextInner {
             leader_pos: Cell::new([0.0; 3]),
             delta_time: Cell::new(0.0),
             fps: Cell::new(0.0),
+            // BSP renders by default (matches pre-toggle behaviour);
+            // nav-mesh is hidden until the developer flips it on.
+            bsp_visible: Cell::new(true),
+            nav_mesh_visible: Cell::new(false),
         }
     }
 }
@@ -128,6 +140,22 @@ impl IPal4DebugContextImpl for Pal4DebugContext {
 
     fn fps(&self) -> f32 {
         self.inner.fps.get()
+    }
+
+    fn bsp_visible(&self) -> bool {
+        self.inner.bsp_visible.get()
+    }
+
+    fn set_bsp_visible(&self, v: bool) {
+        self.inner.bsp_visible.set(v);
+    }
+
+    fn nav_mesh_visible(&self) -> bool {
+        self.inner.nav_mesh_visible.get()
+    }
+
+    fn set_nav_mesh_visible(&self, v: bool) {
+        self.inner.nav_mesh_visible.set(v);
     }
 }
 

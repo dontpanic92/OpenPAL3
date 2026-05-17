@@ -351,6 +351,20 @@ impl Pal4AppContext {
         self.leader
     }
 
+    /// Forward the PAL4 debug overlay's BSP-visibility toggle to the
+    /// current `Pal4Scene`. The director calls this each frame with
+    /// the script-supplied flag, so scene reloads pick up the latest
+    /// state without extra wiring.
+    pub fn set_bsp_visible(&mut self, visible: bool) {
+        self.scene.set_bsp_visible(visible);
+    }
+
+    /// Same idea as [`Pal4AppContext::set_bsp_visible`] but for the
+    /// floor + wall nav-mesh overlay geometry.
+    pub fn set_nav_mesh_visible(&mut self, visible: bool) {
+        self.scene.set_nav_mesh_visible(visible);
+    }
+
     /// `&self`-safe leader position lookup for diagnostics overlays.
     /// Returns `Vec3::new(0.0, 0.0, 0.0)` while the scene hasn't been
     /// loaded (e.g. before the first `load_scene` call).

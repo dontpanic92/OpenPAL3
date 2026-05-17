@@ -181,7 +181,11 @@ impl AssetLoader {
         Ok(GobFile::read(&mut reader)?)
     }
 
-    pub fn load_scene(&self, scene_name: &str, block_name: &str) -> anyhow::Result<ComRc<IScene>> {
+    pub fn load_scene(
+        &self,
+        scene_name: &str,
+        block_name: &str,
+    ) -> anyhow::Result<(ComRc<IScene>, ComRc<IEntity>)> {
         let path = format!(
             "/gamedata/PALWorld/{}/{}/{}.bsp",
             scene_name, block_name, block_name,
@@ -200,10 +204,10 @@ impl AssetLoader {
             },
         );
 
-        scene.add_entity(entity);
+        scene.add_entity(entity.clone());
 
         println!("Loaded scene: {} {}", scene_name, block_name);
-        Ok(scene)
+        Ok((scene, entity))
     }
 
     pub fn try_load_scene_sky(&self, scene_name: &str, block_name: &str) -> Option<ComRc<IEntity>> {

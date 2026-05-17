@@ -154,7 +154,7 @@ impl IUiHostImpl for ImguiUiHost {
             let [w, h] = f.scaled_size(w, h);
             f.ui
                 .window(title)
-                .size([w, h], imgui::Condition::Always)
+                .size([w, h], imgui::Condition::FirstUseEver)
                 .flags(imgui::WindowFlags::from_bits_truncate(flags as u32))
                 .build(|| {
                     body.invoke();
@@ -267,6 +267,19 @@ impl IUiHostImpl for ImguiUiHost {
     fn style_alpha(&self, alpha: f32, body: ComRc<IAction>) {
         with_frame("style_alpha", |f| {
             let token = f.ui.push_style_var(imgui::StyleVar::Alpha(alpha));
+            body.invoke();
+            token.pop();
+        });
+    }
+
+    fn with_font(&self, font_idx: i32, body: ComRc<IAction>) {
+        with_frame("with_font", |f| {
+            let font = f
+                .fonts
+                .get(font_idx as usize)
+                .copied()
+                .unwrap_or_else(|| f.ui.fonts().fonts()[0]);
+            let token = f.ui.push_font(font);
             body.invoke();
             token.pop();
         });

@@ -106,8 +106,19 @@ impl OpenPAL4Director {
         };
         self.fps_smoothed.set(fps);
 
-        let vm = self.vm.borrow();
-        let app = &vm.app_context;
+        // Fan the script-side overlay toggles out to the live scene
+        // before we snapshot, so the next overlay frame sees the
+        // result of any button press from the previous frame. Done
+        // per-frame so scene reloads pick up the current state with
+        // no extra wiring.
+        let bsp_visible = bundle.overlay_ctx_inner.bsp_visible();
+        let nav_mesh_visible = bundle.overlay_ctx_inner.nav_mesh_visible();
+
+        let mut vm = self.vm.borrow_mut();
+        let app = vm.app_context_mut();
+        app.set_bsp_visible(bsp_visible);
+        app.set_nav_mesh_visible(nav_mesh_visible);
+
         let pos = app.leader_pos();
         bundle.overlay_ctx_inner.set_snapshot(super::pal4_debug::Pal4DebugSnapshot {
             scene_name: app.scene_name().to_string(),

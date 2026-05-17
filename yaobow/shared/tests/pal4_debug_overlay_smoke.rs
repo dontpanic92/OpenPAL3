@@ -87,4 +87,82 @@ fn pal4_debug_overlay_round_trips_through_p7() {
             "expected block_name in text calls, got {:?}", texts);
     assert!(texts.iter().any(|t| t.contains("#2")),
             "expected leader_index in text calls, got {:?}", texts);
+
+    // Toggle buttons must appear, with labels reflecting the default
+    // host-side state (BSP on, nav-mesh off).
+    let buttons: Vec<String> = calls
+        .iter()
+        .filter_map(|c| match c {
+            UiCall::Button { label, .. } => Some(label.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(buttons.iter().any(|b| b.starts_with("BSP:") && b.contains("ON")),
+            "expected BSP toggle button defaulting to ON, got {:?}", buttons);
+    assert!(buttons.iter().any(|b| b.starts_with("NavMesh:") && b.contains("OFF")),
+            "expected NavMesh toggle button defaulting to OFF, got {:?}", buttons);
+}
+
+/// The script-side toggle buttons must round-trip through
+/// `IPal4DebugContext` to mutate the host's `Pal4DebugContextInner`
+/// flags. Pre-seed `RecordingUiHost::button_results` with the exact
+/// labels we expect the script to emit while at default state (BSP
+/// on, NavMesh off) and assert the flags flipped after `render`.
+#[test]
+fn pal4_debug_overlay_toggles_flip_host_state() {
+    let host = ScriptHost::new();
+    host.add_binding("pal4_debug", PAL4_DEBUG_P7);
+    host.add_binding("pal4_debug_overlay", OVERLAY_P7);
+    host.load_source(MAIN_P7).expect("pal4_debug_main.p7 must compile");
+
+    let (ctx_inner, ctx_com) = create_context();
+
+    let ctx_handle = host.intern(ctx_com.clone());
+    let ctx_box = host
+        .foreign_box(
+            "shared.openpal4.comdef.pal4_debug.IPal4DebugContext",
+            ctx_handle,
+        )
+        .expect("IPal4DebugContext foreign_box must build");
+    let overlay_data = host
+        .call_returning_data("init", vec![ctx_box])
+        .expect("init() must succeed");
+
+    let runtime_handle = {
+        let mut out = None;
+        <ScriptHost as RuntimeAccess>::with_ctx(&host, &mut |_ctx| {
+            let h = with_services(|s| s.runtime_handle())
+                .expect("with_services in scope");
+            out = Some(h);
+        });
+        out.expect("RuntimeAccess ran body")
+    };
+    let overlay = wrap_overlay(&runtime_handle, overlay_data)
+        .expect("wrap_overlay must succeed");
+
+    // Press the BSP button only. Default: BSP on (label "ON") →
+    // expect bsp_visible to flip to false after this render.
+    let (recorder, ui_com) = RecordingUiHost::create();
+    recorder
+        .button_results
+        .borrow_mut()
+        .insert("BSP:      ON".into(), true);
+    overlay.render(ui_com, 0.016, ctx_com.clone());
+    assert!(!ctx_inner.bsp_visible(),
+            "BSP flag should have been toggled to false");
+    assert!(!ctx_inner.nav_mesh_visible(),
+            "NavMesh flag should remain false (no press)");
+
+    // Now press only NavMesh. State at start of this render: BSP off
+    // (post previous toggle), NavMesh off. Label: "NavMesh:  OFF".
+    let (recorder2, ui_com2) = RecordingUiHost::create();
+    recorder2
+        .button_results
+        .borrow_mut()
+        .insert("NavMesh:  OFF".into(), true);
+    overlay.render(ui_com2, 0.016, ctx_com);
+    assert!(!ctx_inner.bsp_visible(),
+            "BSP flag should stay false after NavMesh press");
+    assert!(ctx_inner.nav_mesh_visible(),
+            "NavMesh flag should have been toggled to true");
 }

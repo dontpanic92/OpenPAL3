@@ -62,11 +62,18 @@ pub struct Pal4Scene {
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
     pub(crate) triggers: Vec<Rc<SceneEventTrigger>>,
     pub(crate) uv_anim: UvAnimDriver,
+    // Handles captured at load time so the PAL4 debug overlay can flip
+    // their visibility at runtime. `bsp_entity` is the BSP "world" root
+    // returned by `AssetLoader::load_scene`. `floor_entity` /
+    // `wall_entity` are the per-block collision meshes that used to be
+    // gated by compile-time `SHOW_FLOOR` / `SHOW_WALL` constants — they
+    // are now always added to the scene but start hidden.
+    pub(crate) bsp_entity: Option<ComRc<IEntity>>,
+    pub(crate) floor_entity: Option<ComRc<IEntity>>,
+    pub(crate) wall_entity: Option<ComRc<IEntity>>,
 }
 
 const SHOW_TRIGGER_POINT: bool = false;
-const SHOW_FLOOR: bool = false;
-const SHOW_WALL: bool = false;
 
 impl Pal4Scene {
     const ID_YUN_TIANHE: usize = 0;
@@ -90,6 +97,9 @@ impl Pal4Scene {
             module: None,
             triggers: vec![],
             uv_anim: UvAnimDriver::new(),
+            bsp_entity: None,
+            floor_entity: None,
+            wall_entity: None,
         }
     }
 
@@ -105,7 +115,7 @@ impl Pal4Scene {
         scene_name: &str,
         block_name: &str,
     ) -> anyhow::Result<Self> {
-        let scene = asset_loader.load_scene(scene_name, block_name)?;
+        let (scene, bsp_entity) = asset_loader.load_scene(scene_name, block_name)?;
 
         if !cfg!(vita) {
             let clip = asset_loader.try_load_scene_clip(scene_name, block_name);
@@ -148,16 +158,19 @@ impl Pal4Scene {
         let wall = asset_loader.load_scene_wall(scene_name, block_name);
         let ray_caster = create_floor_wall_ray_caster(floor.clone(), wall.clone());
 
-        if SHOW_FLOOR {
-            if let Some(floor) = floor {
-                scene.add_entity(floor);
-            }
+        // Always add floor + wall so the PAL4 debug overlay can toggle
+        // them on at runtime. They default to hidden — matches the old
+        // SHOW_FLOOR / SHOW_WALL = false behaviour.
+        if let Some(floor) = floor.as_ref() {
+            floor.set_visible(false);
+            floor.set_enabled(false);
+            scene.add_entity(floor.clone());
         }
 
-        if SHOW_WALL {
-            if let Some(wall) = wall {
-                scene.add_entity(wall);
-            }
+        if let Some(wall) = wall.as_ref() {
+            wall.set_visible(false);
+            wall.set_enabled(false);
+            scene.add_entity(wall.clone());
         }
 
         let players = [
@@ -323,6 +336,9 @@ impl Pal4Scene {
             module: Some(module),
             triggers,
             uv_anim,
+            bsp_entity: Some(bsp_entity),
+            floor_entity: floor,
+            wall_entity: wall,
         })
     }
 
@@ -396,6 +412,30 @@ impl Pal4Scene {
             Self::ID_LIU_MENGLI => Player::LiuMengli,
             Self::ID_MURONG_ZIYING => Player::MurongZiying,
             _ => unreachable!(),
+        }
+    }
+
+    /// Toggle the BSP "world" geometry. No-op on the empty scene
+    /// (`Pal4Scene::new_empty`) since `bsp_entity` is `None` there.
+    pub fn set_bsp_visible(&self, visible: bool) {
+        if let Some(e) = self.bsp_entity.as_ref() {
+            e.set_visible(visible);
+            e.set_enabled(visible);
+        }
+    }
+
+    /// Toggle the floor + wall (nav-mesh) collision geometry. These
+    /// entities are always added to the scene at load time but start
+    /// hidden — flipping them on is a developer aid for inspecting
+    /// the walkable surfaces the actor controller raycasts against.
+    pub fn set_nav_mesh_visible(&self, visible: bool) {
+        if let Some(e) = self.floor_entity.as_ref() {
+            e.set_visible(visible);
+            e.set_enabled(visible);
+        }
+        if let Some(e) = self.wall_entity.as_ref() {
+            e.set_visible(visible);
+            e.set_enabled(visible);
         }
     }
 }

@@ -37,6 +37,7 @@ pub enum UiCall {
     TreeNode { label: String },
     Group,
     StyleAlpha { alpha: f32 },
+    WithFont { font_idx: i32 },
     TabItem { label: String, closable: bool },
     SameLine,
     Dummy { w: f32, h: f32 },
@@ -143,6 +144,11 @@ impl IUiHostImpl for HostFacade {
     fn style_alpha(&self, alpha: f32, body: ComRc<IAction>) {
         self.inner.record(UiCall::StyleAlpha { alpha });
         invoke_body("style_alpha", &self.inner, body);
+    }
+
+    fn with_font(&self, font_idx: i32, body: ComRc<IAction>) {
+        self.inner.record(UiCall::WithFont { font_idx });
+        invoke_body("with_font", &self.inner, body);
     }
 
     fn tab_item(&self, label: &str, closable: bool, body: ComRc<IAction>) -> bool {
