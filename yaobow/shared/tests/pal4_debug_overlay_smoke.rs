@@ -13,7 +13,7 @@
 
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 use radiance_scripting::{with_services, RuntimeAccess, ScriptHost};
-use shared::openpal4::debug::{create_context, wrap_overlay, Pal4DebugSnapshot, PAL4_DEBUG_P7};
+use shared::openpal4::pal4_debug::{create_context, wrap_overlay, Pal4DebugSnapshot, PAL4_DEBUG_P7};
 
 const MAIN_P7: &str = include_str!("../../yaobow/scripts/pal4_debug_main.p7");
 const OVERLAY_P7: &str = include_str!("../../yaobow/scripts/pal4_debug_overlay.p7");

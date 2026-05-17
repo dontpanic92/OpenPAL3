@@ -22,8 +22,8 @@ use radiance::radiance::CoreRadianceEngine;
 use radiance_scripting::{
     with_services, RuntimeAccess, RuntimeHandle, ScriptHost,
 };
-use shared::openpal4::debug::{create_context, wrap_overlay, Pal4DebugContextInner};
-use shared::openpal4::debug::PAL4_DEBUG_P7;
+use shared::openpal4::pal4_debug::{create_context, wrap_overlay, Pal4DebugContextInner};
+use shared::openpal4::pal4_debug::PAL4_DEBUG_P7;
 
 use crate::openpal4::director_bundle::Pal4DebugBootstrap;
 use crate::openpal4::script_source::{register_pal4_debug_modules, PAL4_DEBUG_MAIN_P7};

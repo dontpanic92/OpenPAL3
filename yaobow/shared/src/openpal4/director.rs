@@ -24,7 +24,7 @@ use super::{
         pal4_debug::{IPal4DebugContext, IPal4DebugOverlay},
         IOpenPAL4DirectorImpl,
     },
-    debug::Pal4DebugContextInner,
+    pal4_debug::Pal4DebugContextInner,
     scripting::create_script_vm,
 };
 
@@ -109,7 +109,7 @@ impl OpenPAL4Director {
         let vm = self.vm.borrow();
         let app = &vm.app_context;
         let pos = app.leader_pos();
-        bundle.overlay_ctx_inner.set_snapshot(super::debug::Pal4DebugSnapshot {
+        bundle.overlay_ctx_inner.set_snapshot(super::pal4_debug::Pal4DebugSnapshot {
             scene_name: app.scene_name().to_string(),
             block_name: app.block_name().to_string(),
             leader_index: app.leader() as i32,

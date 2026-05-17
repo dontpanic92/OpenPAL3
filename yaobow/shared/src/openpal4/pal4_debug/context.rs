@@ -1,0 +1,141 @@
+//! Host-side ComObject backing `IPal4DebugContext`.
+//!
+//! The owning [`OpenPAL4Director`](crate::openpal4::director::OpenPAL4Director)
+//! refreshes the snapshot once per `render_im` (via
+//! [`Pal4DebugContextInner::set_snapshot`]) before invoking the script
+//! overlay. The `Pal4DebugContext` ComObject delegates every IDL
+//! getter to the shared `Rc<Pal4DebugContextInner>`, so the host
+//! keeps a typed Rust handle for snapshot writes while the script
+//! sees a plain `box<IPal4DebugContext>`.
+
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
+use crosscom::ComRc;
+
+use crate::openpal4::comdef::pal4_debug::{IPal4DebugContext, IPal4DebugContextImpl};
+
+/// Frame-local snapshot copied from `Pal4AppContext` before each
+/// script `render` call. Plain data — no engine handles — so the
+/// script-visible context object stays cheap to update and is not
+/// invalidated by scene transitions.
+#[derive(Clone, Debug, Default)]
+pub struct Pal4DebugSnapshot {
+    pub scene_name: String,
+    pub block_name: String,
+    pub leader_index: i32,
+    pub leader_pos: [f32; 3],
+    pub delta_time: f32,
+    pub fps: f32,
+}
+
+/// Interior-mutable state shared between the typed Rust handle (used
+/// by the director's `render_im` to push per-frame data) and the COM
+/// wrapper that the script sees as a `box<IPal4DebugContext>`.
+pub struct Pal4DebugContextInner {
+    scene_name: RefCell<String>,
+    block_name: RefCell<String>,
+    leader_index: Cell<i32>,
+    leader_pos: Cell<[f32; 3]>,
+    delta_time: Cell<f32>,
+    fps: Cell<f32>,
+}
+
+impl Pal4DebugContextInner {
+    pub fn new() -> Rc<Self> {
+        Rc::new(Self {
+            scene_name: RefCell::new(String::new()),
+            block_name: RefCell::new(String::new()),
+            leader_index: Cell::new(0),
+            leader_pos: Cell::new([0.0; 3]),
+            delta_time: Cell::new(0.0),
+            fps: Cell::new(0.0),
+        })
+    }
+
+    pub fn set_snapshot(&self, snap: Pal4DebugSnapshot) {
+        *self.scene_name.borrow_mut() = snap.scene_name;
+        *self.block_name.borrow_mut() = snap.block_name;
+        self.leader_index.set(snap.leader_index);
+        self.leader_pos.set(snap.leader_pos);
+        self.delta_time.set(snap.delta_time);
+        self.fps.set(snap.fps);
+    }
+}
+
+impl Default for Pal4DebugContextInner {
+    fn default() -> Self {
+        Self {
+            scene_name: RefCell::new(String::new()),
+            block_name: RefCell::new(String::new()),
+            leader_index: Cell::new(0),
+            leader_pos: Cell::new([0.0; 3]),
+            delta_time: Cell::new(0.0),
+            fps: Cell::new(0.0),
+        }
+    }
+}
+
+/// COM wrapper: every interface call delegates to the shared inner.
+pub struct Pal4DebugContext {
+    inner: Rc<Pal4DebugContextInner>,
+}
+
+ComObject_Pal4DebugContext!(super::Pal4DebugContext);
+
+impl Pal4DebugContext {
+    pub fn new(inner: Rc<Pal4DebugContextInner>) -> Self {
+        Self { inner }
+    }
+}
+
+impl IPal4DebugContextImpl for Pal4DebugContext {
+    fn scene_name(&self) -> &str {
+        // SAFETY: the generated FFI thunk copies the returned bytes into
+        // a freshly-allocated C buffer before this scope unwinds, so
+        // extending the `Ref<String>` borrow to `&self` is sound for the
+        // duration of the synchronous getter return path. The
+        // `RefCell` is only mutated by `set_snapshot`, which is never
+        // re-entered from inside a getter call.
+        let r = self.inner.scene_name.borrow();
+        unsafe { std::mem::transmute::<&str, &str>(r.as_str()) }
+    }
+
+    fn block_name(&self) -> &str {
+        let r = self.inner.block_name.borrow();
+        unsafe { std::mem::transmute::<&str, &str>(r.as_str()) }
+    }
+
+    fn leader_index(&self) -> std::os::raw::c_int {
+        self.inner.leader_index.get()
+    }
+
+    fn leader_pos_x(&self) -> f32 {
+        self.inner.leader_pos.get()[0]
+    }
+
+    fn leader_pos_y(&self) -> f32 {
+        self.inner.leader_pos.get()[1]
+    }
+
+    fn leader_pos_z(&self) -> f32 {
+        self.inner.leader_pos.get()[2]
+    }
+
+    fn delta_time(&self) -> f32 {
+        self.inner.delta_time.get()
+    }
+
+    fn fps(&self) -> f32 {
+        self.inner.fps.get()
+    }
+}
+
+/// Construct both the typed Rust handle (so the director can call
+/// `set_snapshot`) and the COM pointer (so the script bootstrap can
+/// box it via `ScriptHost::foreign_box`).
+pub fn create_context() -> (Rc<Pal4DebugContextInner>, ComRc<IPal4DebugContext>) {
+    let inner = Pal4DebugContextInner::new();
+    let com = ComRc::from_object(Pal4DebugContext::new(inner.clone()));
+    (inner, com)
+}
