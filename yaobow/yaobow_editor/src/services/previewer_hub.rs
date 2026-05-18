@@ -351,6 +351,7 @@ fn load_dff(
                 texture_resolver: &Pal4TextureResolver {},
                 keep_right_to_render_only: false,
                 force_unique_materials: false,
+                ignore_root_frame_translation: false,
             },
         )
     } else if game_type == GameType::PAL4 {
@@ -367,6 +368,7 @@ fn load_dff(
                 texture_resolver: &Pal4TextureResolver {},
                 keep_right_to_render_only: false,
                 force_unique_materials: false,
+                ignore_root_frame_translation: false,
             },
         );
 

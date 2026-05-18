@@ -292,7 +292,11 @@ impl Pal4Scene {
                             CoreEntity::create(object_name.clone(), false)
                         });
 
-                    entity.set_visible(true);
+                    // Honor the `PAL4-GameObject-object-hide` flag: when set,
+                    // the entity is placed in the scene but starts invisible.
+                    // Scripts can later reveal it via the `giGOB*` API.
+                    let initially_hidden = entry.is_initially_hidden();
+                    entity.set_visible(!initially_hidden);
                     entity.set_enabled(true);
 
                     let scale = entry

@@ -15,8 +15,8 @@ pub struct[pal4_debug.IPal4DebugOverlay] Pal4DebugOverlay(
         dt: float,
         ctx: box<pal4_debug.IPal4DebugContext>,
     ) -> int {
-        let _ = ui.window("PAL4 Debug (`)", 320.0, 260.0, 0, () => {
-            let _ = ui.with_font(1, () => {
+        let _ = ui.with_font(1, () => {
+            let _ = ui.window("PAL4 Debug (`)", 320.0, 260.0, 0, () => {
                 let _ = ui.text(f"Scene: {ctx.scene_name()}");
                 let _ = ui.text(f"Block: {ctx.block_name()}");
                 let _ = ui.text(f"Leader: #{ctx.leader_index()}");

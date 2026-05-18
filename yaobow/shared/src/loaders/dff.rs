@@ -36,6 +36,17 @@ pub struct DffLoaderConfig<'a> {
     /// Default `false` so non-animated DFFs keep benefiting from the
     /// cache.
     pub force_unique_materials: bool,
+    /// When `true`, the translation column of every clump-root frame
+    /// (`parent == -1`) is forced to zero before being applied to the
+    /// frame's entity. PAL4 game-object DFFs bake a small "world-rest"
+    /// pivot into the root frame; the original engine binds geometry
+    /// directly at the caller-supplied world position and ignores the
+    /// pivot, so without this flag meshes end up at
+    /// `entry.position + R·frames[0].pos` — a small, mostly-vertical
+    /// gap. Actor/world/water DFFs do not have this pivot and should
+    /// leave the flag `false`. Frame *rotation* is untouched so
+    /// authored axis conventions are preserved.
+    pub ignore_root_frame_translation: bool,
 }
 
 impl<'a> DffLoaderConfig<'a> {
@@ -45,6 +56,7 @@ impl<'a> DffLoaderConfig<'a> {
             texture_resolver,
             keep_right_to_render_only: false,
             force_unique_materials: false,
+            ignore_root_frame_translation: false,
         }
     }
 }
@@ -131,10 +143,23 @@ fn load_clump(
     let entities: Vec<(ComRc<IEntity>, Option<ComRc<IEntity>>)> = chunk
         .frames
         .iter()
-        .map(|f| {
+        .enumerate()
+        .map(|(i, f)| {
             let entity =
                 CoreEntity::create(f.name().unwrap_or(format!("{}_frame", parent.name())), true);
-            let m = create_matrix(f);
+            let mut m = create_matrix(f);
+            // For clump-root frames, optionally strip the translation
+            // column. PAL4 game-object DFFs bake a small world-rest
+            // pivot into the root frame that the original engine
+            // ignores (geometry binds directly at the caller-supplied
+            // world position). See `DffLoaderConfig::ignore_root_frame_translation`.
+            if config.ignore_root_frame_translation
+                && frame_attachment(f.parent, i) == FrameAttachment::ClumpRoot
+            {
+                m.floats_mut()[0][3] = 0.;
+                m.floats_mut()[1][3] = 0.;
+                m.floats_mut()[2][3] = 0.;
+            }
             entity
                 .transform()
                 .as_ref()

@@ -90,7 +90,29 @@ impl AssetLoader {
         file_name: &str,
     ) -> Option<ComRc<IEntity>> {
         let path = format!("/{}{}.dff", folder, file_name).replace("\\", "/");
-        self.try_load_dff(path, object_name.to_string())
+        // PAL4 game-object DFFs bake a small world-rest pivot into
+        // their root frame that the original engine discards. Without
+        // this, geometry sits a few units off from the GOB-authored
+        // position (mostly a vertical gap). See
+        // `DffLoaderConfig::ignore_root_frame_translation`.
+        let config = DffLoaderConfig {
+            texture_resolver: &self.texture_resolver,
+            keep_right_to_render_only: false,
+            force_unique_materials: false,
+            ignore_root_frame_translation: true,
+        };
+        if self.vfs.exists(&path) {
+            Some(create_entity_from_dff_model(
+                &self.component_factory,
+                &self.vfs,
+                path.clone(),
+                object_name.to_string(),
+                true,
+                &config,
+            ))
+        } else {
+            None
+        }
     }
 
     pub fn load_actor(
@@ -110,6 +132,7 @@ impl AssetLoader {
                 texture_resolver: &self.texture_resolver,
                 keep_right_to_render_only: true,
                 force_unique_materials: false,
+                ignore_root_frame_translation: false,
             },
         );
 
@@ -201,6 +224,7 @@ impl AssetLoader {
                 texture_resolver: &self.texture_resolver,
                 keep_right_to_render_only: false,
                 force_unique_materials: false,
+                ignore_root_frame_translation: false,
             },
         );
 
@@ -246,12 +270,11 @@ impl AssetLoader {
     }
 
     /// Try to load the optional `<block>_water.dff` (animated water
-    /// surface). Mirrors `try_load_scene_clip` / `try_load_scene_sky` —
-    /// returns `None` for scenes that don't ship a water mesh.
+    /// surface). Mirrors `try_load_scene_clip` / `try_load_scene_sky` �?    /// returns `None` for scenes that don't ship a water mesh.
     ///
     /// The on-disk layout for PAL4 water assets isn't uniform across
-    /// scene categories (M-series → `/gamedata/scenedata/...`, Q-series
-    /// → `/gamedata/{scene}/q01/{block}/...`, combat → `/gamedata/
+    /// scene categories (M-series �?`/gamedata/scenedata/...`, Q-series
+    /// �?`/gamedata/{scene}/q01/{block}/...`, combat �?`/gamedata/
     /// PALWorld/CombatWorld/...`), so this method probes several
     /// plausible candidates and loads the first that exists.
     pub fn try_load_scene_water(
@@ -276,6 +299,7 @@ impl AssetLoader {
                 // transform doesn't leak onto unrelated geometry that
                 // happens to share the same texture+params.
                 force_unique_materials: true,
+                ignore_root_frame_translation: false,
             },
         );
         Some(entity)
@@ -283,7 +307,7 @@ impl AssetLoader {
 
     /// Try to load the UV-animation dictionary sibling of the water mesh
     /// (`<block>_water.uva`). Returns `None` if the file is missing or
-    /// fails to parse — water surfaces without a `.uva` render statically
+    /// fails to parse �?water surfaces without a `.uva` render statically
     /// with identity UVs.
     pub fn try_load_scene_water_uva(
         &self,
@@ -333,7 +357,7 @@ impl AssetLoader {
     /// most→least likely based on observed disk layouts:
     ///
     /// 1. `/gamedata/PALWorld/{scene}/{block}/{block}_water.<ext>`
-    ///    (mirrors `_clip.dff` / `_sky.dff` — combat scenes)
+    ///    (mirrors `_clip.dff` / `_sky.dff` �?combat scenes)
     /// 2. `/gamedata/{scene}/q01/{block}/{block}_water.<ext>`
     ///    (Q-series quest layout: Q01_water lives at this shape)
     /// 3. `/gamedata/{scene}/{block_lower}/{block}/{block}_water.<ext>`
@@ -341,7 +365,7 @@ impl AssetLoader {
     /// 4. `/gamedata/scenedata/{scene}/{block}/{block}_water.<ext>`
     ///    (M-series scenedata layout, parallel to `_floor.dff`)
     /// 5. `/gamedata/ui2/ui/uiWorld/{block_lower}/{block}_water.<ext>`
-    ///    (UI worlds — BJ_water, ZJM_water live here)
+    ///    (UI worlds �?BJ_water, ZJM_water live here)
     fn water_candidate_paths(
         &self,
         scene_name: &str,
@@ -370,6 +394,7 @@ impl AssetLoader {
                     texture_resolver: &self.texture_resolver,
                     keep_right_to_render_only: false,
                     force_unique_materials: false,
+                    ignore_root_frame_translation: false,
                 },
             );
 
