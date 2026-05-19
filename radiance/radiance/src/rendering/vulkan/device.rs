@@ -244,6 +244,29 @@ impl Device {
         }
     }
 
+    pub fn cmd_blit_image(
+        &self,
+        command_buffer: CommandBuffer,
+        src_image: Image,
+        src_image_layout: ImageLayout,
+        dst_image: Image,
+        dst_image_layout: ImageLayout,
+        regions: &[ash::vk::ImageBlit],
+        filter: ash::vk::Filter,
+    ) {
+        unsafe {
+            self.device.cmd_blit_image(
+                command_buffer,
+                src_image,
+                src_image_layout,
+                dst_image,
+                dst_image_layout,
+                regions,
+                filter,
+            )
+        }
+    }
+
     pub fn cmd_begin_render_pass(
         &self,
         command_buffer: CommandBuffer,

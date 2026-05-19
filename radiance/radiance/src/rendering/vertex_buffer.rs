@@ -292,14 +292,15 @@ impl VertexBuffer {
         self.layout.components
     }
 
-    /// Returns the midpoint of the axis-aligned bounding box of the
-    /// vertex positions, or `[0.0; 3]` if the buffer carries no positions
-    /// or is empty. Used as a coarse per-render-object sort key for the
-    /// transparent bucket; cheap (single linear pass at construction
-    /// time) and stable across draws.
-    pub fn aabb_centroid(&self) -> [f32; 3] {
+    /// Returns the inclusive axis-aligned bounding box of the vertex
+    /// positions in local space as `(min, max)`, or `None` when the
+    /// buffer has no positions or is empty. This is the underlying
+    /// data behind [`Self::aabb_centroid`]; expose it directly so
+    /// callers (e.g. the frustum culler) can recover the full extent
+    /// rather than just the midpoint.
+    pub fn aabb_min_max(&self) -> Option<([f32; 3], [f32; 3])> {
         if self.count == 0 || !self.layout.components.contains(VertexComponents::POSITION) {
-            return [0.0, 0.0, 0.0];
+            return None;
         }
 
         let first = self.position(0).unwrap();
@@ -324,6 +325,18 @@ impl VertexBuffer {
             }
         }
 
+        Some((min, max))
+    }
+
+    /// Returns the midpoint of the axis-aligned bounding box of the
+    /// vertex positions, or `[0.0; 3]` if the buffer carries no positions
+    /// or is empty. Used as a coarse per-render-object sort key for the
+    /// transparent bucket; cheap (single linear pass at construction
+    /// time) and stable across draws.
+    pub fn aabb_centroid(&self) -> [f32; 3] {
+        let Some((min, max)) = self.aabb_min_max() else {
+            return [0.0, 0.0, 0.0];
+        };
         [
             0.5 * (min[0] + max[0]),
             0.5 * (min[1] + max[1]),

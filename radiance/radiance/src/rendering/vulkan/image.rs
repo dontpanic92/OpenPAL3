@@ -14,20 +14,36 @@ pub struct Image {
     format: vk::Format,
     width: u32,
     height: u32,
+    mip_levels: u32,
 }
 
 impl Image {
+    /// Compute a full mipmap chain length for a 2D image. `floor(log2(max(w, h))) + 1`.
+    pub fn full_mip_levels(width: u32, height: u32) -> u32 {
+        let m = width.max(height).max(1);
+        32 - m.leading_zeros()
+    }
+
+    /// Color texture image with a configurable mip count. The mip 0
+    /// `width`/`height` is the supplied texture size; subsequent mip
+    /// levels are half-sized down to 1×1. `TRANSFER_SRC` is included so
+    /// `VulkanTexture::from_buffer` can blit between levels to generate
+    /// the chain inside its existing one-shot command buffer.
     pub fn new_color_image(
         allocator: &Rc<vk_mem::Allocator>,
         tex_width: u32,
         tex_height: u32,
+        mip_levels: u32,
     ) -> Result<Self, Box<dyn Error>> {
         Self::new(
             allocator,
             tex_width,
             tex_height,
             vk::Format::R8G8B8A8_UNORM,
-            vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+            vk::ImageUsageFlags::TRANSFER_SRC
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::SAMPLED,
+            mip_levels,
         )
     }
 
@@ -45,6 +61,7 @@ impl Image {
             tex_height,
             vk::Format::R8G8B8A8_UNORM,
             vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+            1,
         )
     }
 
@@ -73,6 +90,7 @@ impl Image {
             tex_height,
             format,
             vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            1,
         )
     }
 
@@ -82,6 +100,10 @@ impl Image {
 
     pub fn height(&self) -> u32 {
         self.height
+    }
+
+    pub fn mip_levels(&self) -> u32 {
+        self.mip_levels
     }
 
     pub fn vk_image(&self) -> vk::Image {
@@ -108,10 +130,37 @@ impl Image {
     /// barriers + copies into a single one-shot submit (e.g.
     /// `VulkanTexture::from_buffer`, which would otherwise pay 3
     /// `vkQueueSubmit` + 3 `vkQueueWaitIdle`s per texture upload).
+    ///
+    /// Operates on the full mip range. For per-level transitions during
+    /// mip generation use [`Self::record_transit_layout_range`].
     pub fn record_transit_layout(
         &mut self,
         old_layout: vk::ImageLayout,
         new_layout: vk::ImageLayout,
+        device: &Rc<super::device::Device>,
+        command_buffer: &vk::CommandBuffer,
+    ) {
+        self.record_transit_layout_range(
+            old_layout,
+            new_layout,
+            0,
+            self.mip_levels,
+            device,
+            command_buffer,
+        );
+    }
+
+    /// Record a layout transition for a sub-range of mip levels
+    /// `[base_mip, base_mip + level_count)`. Required by the mipmap
+    /// blit ladder in `VulkanTexture::from_buffer` which transitions
+    /// the source level to `TRANSFER_SRC_OPTIMAL` then to
+    /// `SHADER_READ_ONLY_OPTIMAL` independently of the dst level.
+    pub fn record_transit_layout_range(
+        &mut self,
+        old_layout: vk::ImageLayout,
+        new_layout: vk::ImageLayout,
+        base_mip: u32,
+        level_count: u32,
         device: &Rc<super::device::Device>,
         command_buffer: &vk::CommandBuffer,
     ) {
@@ -141,6 +190,10 @@ impl Image {
                     vk::AccessFlags::TRANSFER_WRITE,
                     vk::PipelineStageFlags::TRANSFER,
                 ),
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL => (
+                    vk::AccessFlags::TRANSFER_READ,
+                    vk::PipelineStageFlags::TRANSFER,
+                ),
                 _ => panic!("unsupported transfer source layout: {:?}", old_layout),
             }
         };
@@ -149,6 +202,10 @@ impl Image {
             match new_layout {
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL => (
                     vk::AccessFlags::TRANSFER_WRITE,
+                    vk::PipelineStageFlags::TRANSFER,
+                ),
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL => (
+                    vk::AccessFlags::TRANSFER_READ,
                     vk::PipelineStageFlags::TRANSFER,
                 ),
                 vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => (
@@ -173,8 +230,8 @@ impl Image {
             .subresource_range(
                 vk::ImageSubresourceRange::default()
                     .aspect_mask(aspect_mask)
-                    .level_count(1)
-                    .base_mip_level(0)
+                    .level_count(level_count)
+                    .base_mip_level(base_mip)
                     .base_array_layer(0)
                     .layer_count(1),
             )
@@ -189,6 +246,64 @@ impl Image {
             &[],
             &[barrier],
         )
+    }
+
+    /// Record a `vkCmdBlitImage` downsample of mip `src_level` (full
+    /// extent `(src_w, src_h)`) into mip `dst_level` (`(dst_w, dst_h)`)
+    /// with `LINEAR` filtering. The caller is responsible for
+    /// transitioning `src_level` to `TRANSFER_SRC_OPTIMAL` and
+    /// `dst_level` to `TRANSFER_DST_OPTIMAL` before this call.
+    pub fn record_blit_mip(
+        &mut self,
+        src_level: u32,
+        src_w: i32,
+        src_h: i32,
+        dst_level: u32,
+        dst_w: i32,
+        dst_h: i32,
+        device: &Rc<super::device::Device>,
+        command_buffer: &vk::CommandBuffer,
+    ) {
+        let blit = vk::ImageBlit::default()
+            .src_offsets([
+                vk::Offset3D { x: 0, y: 0, z: 0 },
+                vk::Offset3D {
+                    x: src_w,
+                    y: src_h,
+                    z: 1,
+                },
+            ])
+            .src_subresource(
+                vk::ImageSubresourceLayers::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .mip_level(src_level)
+                    .base_array_layer(0)
+                    .layer_count(1),
+            )
+            .dst_offsets([
+                vk::Offset3D { x: 0, y: 0, z: 0 },
+                vk::Offset3D {
+                    x: dst_w,
+                    y: dst_h,
+                    z: 1,
+                },
+            ])
+            .dst_subresource(
+                vk::ImageSubresourceLayers::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .mip_level(dst_level)
+                    .base_array_layer(0)
+                    .layer_count(1),
+            );
+        device.cmd_blit_image(
+            *command_buffer,
+            self.image,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            self.image,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            &[blit],
+            vk::Filter::LINEAR,
+        );
     }
 
     pub fn copy_from(
@@ -244,7 +359,9 @@ impl Image {
         tex_height: u32,
         format: vk::Format,
         usage: vk::ImageUsageFlags,
+        mip_levels: u32,
     ) -> Result<Self, Box<dyn Error>> {
+        let mip_levels = mip_levels.max(1);
         let create_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(
@@ -253,7 +370,7 @@ impl Image {
                     .height(tex_height)
                     .depth(1),
             )
-            .mip_levels(1)
+            .mip_levels(mip_levels)
             .array_layers(1)
             .format(format)
             .tiling(vk::ImageTiling::OPTIMAL)
@@ -276,6 +393,7 @@ impl Image {
             format,
             width: tex_width,
             height: tex_height,
+            mip_levels,
         })
     }
 

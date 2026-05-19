@@ -174,13 +174,14 @@ impl RenderingEngine for VulkanRenderingEngine {
         });
 
         // Build opaque / cutout / transparent buckets (mirrors `render_objects`).
-        let (camera_world, camera_view, camera_proj) = {
+        let (camera_world, camera_view, camera_proj, camera_frustum) = {
             let camera = scene.camera();
             let m = camera.transform().matrix();
             (
                 [m[0][3], m[1][3], m[2][3]],
                 Mat44::inversed(camera.transform().matrix()),
                 *camera.projection_matrix(),
+                camera.frustum(),
             )
         };
         let rc: Vec<(Rc<RenderingComponent>, Mat44)> = entities
@@ -198,6 +199,13 @@ impl RenderingEngine for VulkanRenderingEngine {
             let m = world.floats();
             for (ro_idx, ro) in rendering.render_objects().iter().enumerate() {
                 if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
+                    if let Some((lmin, lmax)) = vro.local_aabb() {
+                        let (wmin, wmax) =
+                            crate::math::transform_aabb(lmin, lmax, world);
+                        if !crate::math::aabb_visible(wmin, wmax, &camera_frustum) {
+                            continue;
+                        }
+                    }
                     match vro.material().key().blend {
                         BlendMode::Opaque => opaque.push(vro),
                         BlendMode::AlphaTest => cutout.push(vro),
@@ -610,6 +618,7 @@ impl VulkanRenderingEngine {
             let m = camera.transform().matrix();
             [m[0][3], m[1][3], m[2][3]]
         };
+        let frustum = camera.frustum();
         let rc: Vec<(Rc<RenderingComponent>, Mat44)> = entities
             .iter()
             .filter_map(|e| {
@@ -622,10 +631,32 @@ impl VulkanRenderingEngine {
         let mut cutout: Vec<&VulkanRenderObject> = vec![];
         // (dist_sq, entity_idx, ro_idx, ro)
         let mut transparent: Vec<(f32, usize, usize, &VulkanRenderObject)> = vec![];
+        #[cfg(debug_assertions)]
+        let mut culled_count: usize = 0;
+        #[cfg(debug_assertions)]
+        let mut total_count: usize = 0;
         for (entity_idx, (rendering, world)) in rc.iter().enumerate() {
             let m = world.floats();
             for (ro_idx, ro) in rendering.render_objects().iter().enumerate() {
                 if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
+                    #[cfg(debug_assertions)]
+                    {
+                        total_count += 1;
+                    }
+                    // Frustum reject. Render objects without a known
+                    // local AABB (e.g. backends or callers that don't
+                    // track bounds) fall through to "always visible".
+                    if let Some((lmin, lmax)) = vro.local_aabb() {
+                        let (wmin, wmax) =
+                            crate::math::transform_aabb(lmin, lmax, world);
+                        if !crate::math::aabb_visible(wmin, wmax, &frustum) {
+                            #[cfg(debug_assertions)]
+                            {
+                                culled_count += 1;
+                            }
+                            continue;
+                        }
+                    }
                     match vro.material().key().blend {
                         BlendMode::Opaque => opaque.push(vro),
                         BlendMode::AlphaTest => cutout.push(vro),
@@ -649,6 +680,13 @@ impl VulkanRenderingEngine {
                 }
             }
         }
+        #[cfg(debug_assertions)]
+        log::trace!(
+            "frustum cull: drew {} / {} render objects ({} culled)",
+            total_count - culled_count,
+            total_count,
+            culled_count,
+        );
         // Back-to-front: farthest from the camera first. Tie-break by
         // loader-supplied order (entity index, then render-object index)
         // so equal-distance siblings draw in a deterministic, file-defined

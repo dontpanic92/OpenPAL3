@@ -18,6 +18,16 @@ pub struct Camera {
     far_clip: f32,
 }
 
+/// Six-plane world-space view frustum.
+///
+/// Planes are stored as `[nx, ny, nz, d]` with the inside-positive
+/// convention `n · p + d >= 0`. Normals are unit-length so `d` is
+/// a signed distance (units = world space).
+#[derive(Copy, Clone, Debug)]
+pub struct Frustum {
+    pub planes: [[f32; 4]; 6],
+}
+
 impl Camera {
     pub fn new() -> Self {
         Self::new_with_params(30. * std::f32::consts::PI / 180., 4. / 3., 10., 100000.)
@@ -69,6 +79,71 @@ impl Camera {
 
     pub fn projection_matrix(&self) -> &Mat44 {
         &self.projection
+    }
+
+    /// Build a six-plane view frustum in world space from the camera's
+    /// current view + projection. Each plane is stored as
+    /// `[nx, ny, nz, d]` with the inside-positive convention
+    /// `n · p + d >= 0` after normalization.
+    ///
+    /// Planes are extracted from `proj * view` using the Gribb-Hartmann
+    /// method. The engine's projection puts the near plane at NDC
+    /// `z = -1` (OpenGL convention — see `generate_projection_matrix`)
+    /// so the near plane is `row3 + row2`; switching the projection
+    /// to Vulkan `[0, 1]` NDC later would mean using `row2` alone
+    /// here.
+    pub fn frustum(&self) -> Frustum {
+        let view = Mat44::inversed(&self.transform.matrix());
+        let m = Mat44::multiplied(&self.projection, &view);
+        let r = m.floats();
+
+        // Row order: [left, right, bottom, top, near, far].
+        let raw = [
+            [
+                r[3][0] + r[0][0],
+                r[3][1] + r[0][1],
+                r[3][2] + r[0][2],
+                r[3][3] + r[0][3],
+            ],
+            [
+                r[3][0] - r[0][0],
+                r[3][1] - r[0][1],
+                r[3][2] - r[0][2],
+                r[3][3] - r[0][3],
+            ],
+            [
+                r[3][0] + r[1][0],
+                r[3][1] + r[1][1],
+                r[3][2] + r[1][2],
+                r[3][3] + r[1][3],
+            ],
+            [
+                r[3][0] - r[1][0],
+                r[3][1] - r[1][1],
+                r[3][2] - r[1][2],
+                r[3][3] - r[1][3],
+            ],
+            [
+                r[3][0] + r[2][0],
+                r[3][1] + r[2][1],
+                r[3][2] + r[2][2],
+                r[3][3] + r[2][3],
+            ],
+            [
+                r[3][0] - r[2][0],
+                r[3][1] - r[2][1],
+                r[3][2] - r[2][2],
+                r[3][3] - r[2][3],
+            ],
+        ];
+
+        let mut planes = [[0.0f32; 4]; 6];
+        for (i, p) in raw.iter().enumerate() {
+            let len = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
+            let inv = if len > f32::EPSILON { 1.0 / len } else { 1.0 };
+            planes[i] = [p[0] * inv, p[1] * inv, p[2] * inv, p[3] * inv];
+        }
+        Frustum { planes }
     }
 
     fn update_projection_matrix(&mut self) {

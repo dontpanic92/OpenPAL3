@@ -195,7 +195,7 @@ pub fn create_image_views(
 ) -> VkResult<Vec<ImageView>> {
     images
         .iter()
-        .map(|image| ImageView::new_color_image_view(device.clone(), *image, format.format))
+        .map(|image| ImageView::new_color_image_view(device.clone(), *image, format.format, 1))
         .collect()
 }
 

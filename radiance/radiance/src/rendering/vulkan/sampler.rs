@@ -35,16 +35,19 @@ fn vk_address(a: AddressMode) -> vk::SamplerAddressMode {
 }
 
 impl Sampler {
-    /// Create a Vulkan sampler matching the cross-backend `SamplerDef`.
+    /// Create a Vulkan sampler matching the cross-backend `SamplerDef`,
+    /// with a `max_lod` derived from the bound texture's mip count.
     ///
     /// Anisotropy is enabled (max 16) only when both filters are
     /// `Linear` — Vulkan validation requires `samplerAnisotropy` to be
-    /// disabled when either filter is `NEAREST`. The mipmap LOD range
-    /// is pinned to `[0, 0]` because `VulkanTexture` does not generate
-    /// mip levels yet; the field is still threaded through so the
-    /// chosen mipmap mode takes effect once mip generation lands.
-    pub fn new(device: Rc<Device>, def: &SamplerDef) -> VkResult<Self> {
+    /// disabled when either filter is `NEAREST`. `min_lod` is pinned
+    /// to 0; `max_lod` is `(mip_levels - 1) as f32` so single-level
+    /// textures (`mip_levels = 1`) keep the legacy `max_lod = 0`
+    /// behaviour and multi-level textures get the full chain.
+    pub fn new(device: Rc<Device>, def: &SamplerDef, mip_levels: u32) -> VkResult<Self> {
         let anisotropy = def.uses_anisotropy();
+        let mip_levels = mip_levels.max(1);
+        let max_lod = (mip_levels - 1) as f32;
         let sampler_info = vk::SamplerCreateInfo::default()
             .mag_filter(vk_filter(def.mag_filter))
             .min_filter(vk_filter(def.min_filter))
@@ -60,7 +63,7 @@ impl Sampler {
             .mipmap_mode(vk_mip_mode(def.mipmap_mode))
             .mip_lod_bias(0.)
             .min_lod(0.)
-            .max_lod(0.);
+            .max_lod(max_lod);
         let sampler = device.create_sampler(&sampler_info)?;
         Ok(Self {
             device: device.clone(),
@@ -79,16 +82,17 @@ impl Drop for Sampler {
     }
 }
 
-/// Process-wide cache of `vk::Sampler` objects keyed by `SamplerDef`.
+/// Process-wide cache of `vk::Sampler` objects keyed by
+/// `(SamplerDef, mip_levels)`.
 ///
-/// Two materials that ask for the same RW sampler config (or the
-/// shared default LINEAR/REPEAT used by every legacy call site) will
-/// share a single GPU sampler. Lookups are O(1) per material binding;
-/// the `RefCell` is fine because Vulkan resource creation always runs
-/// on the rendering thread.
+/// Two materials that ask for the same RW sampler config and bind
+/// textures with the same mip count share a single GPU sampler.
+/// `max_lod` is derived from the mip count so a sampler for a
+/// 1-level texture (`max_lod = 0`) is distinct from one for a
+/// full mip chain (`max_lod > 0`).
 pub struct VulkanSamplerCache {
     device: Rc<Device>,
-    samplers: RefCell<HashMap<SamplerDef, Rc<Sampler>>>,
+    samplers: RefCell<HashMap<(SamplerDef, u32), Rc<Sampler>>>,
 }
 
 impl VulkanSamplerCache {
@@ -99,19 +103,33 @@ impl VulkanSamplerCache {
         }
     }
 
-    pub fn get_or_create(&self, def: &SamplerDef) -> Rc<Sampler> {
-        if let Some(s) = self.samplers.borrow().get(def) {
+    /// Return a sampler for `def` whose `max_lod` matches `mip_levels`.
+    /// Callers that pass a texture-attached sampler should use the
+    /// texture's `mip_levels()` here; samplers that don't bind to a
+    /// mipmapped image (e.g. imgui, render-target previews) should
+    /// pass `1`.
+    pub fn get_or_create_for(&self, def: &SamplerDef, mip_levels: u32) -> Rc<Sampler> {
+        let mip_levels = mip_levels.max(1);
+        let key = (*def, mip_levels);
+        if let Some(s) = self.samplers.borrow().get(&key) {
             return s.clone();
         }
         let sampler = Rc::new(
-            Sampler::new(self.device.clone(), def)
+            Sampler::new(self.device.clone(), def, mip_levels)
                 .expect("failed to create vk::Sampler from SamplerDef"),
         );
-        self.samplers.borrow_mut().insert(*def, sampler.clone());
+        self.samplers.borrow_mut().insert(key, sampler.clone());
         sampler
     }
 
+    /// Convenience wrapper: get a sampler matching `def` for a
+    /// non-mipmapped binding. Equivalent to
+    /// `get_or_create_for(def, 1)`.
+    pub fn get_or_create(&self, def: &SamplerDef) -> Rc<Sampler> {
+        self.get_or_create_for(def, 1)
+    }
+
     pub fn default_sampler(&self) -> Rc<Sampler> {
-        self.get_or_create(&SamplerDef::DEFAULT)
+        self.get_or_create_for(&SamplerDef::DEFAULT, 1)
     }
 }

@@ -294,6 +294,7 @@ fn build_attachments(
         device.clone(),
         color_image.vk_image(),
         color_image.vk_format(),
+        color_image.mip_levels(),
     )?;
     let depth_image = Image::new_depth_image(instance, physical_device, allocator, width, height)?;
     let depth_view = ImageView::new_depth_image_view(

@@ -1,9 +1,11 @@
+mod aabb;
 mod mat;
 mod quaternion;
 mod rect;
 mod transform;
 mod vec;
 
+pub use aabb::{aabb_visible, transform_aabb};
 pub use mat::Mat44;
 pub use quaternion::Quaternion;
 pub use rect::Rect;

@@ -14,8 +14,9 @@ impl ImageView {
         device: Rc<Device>,
         image: vk::Image,
         format: vk::Format,
+        mip_levels: u32,
     ) -> VkResult<Self> {
-        Self::new(device, image, format, vk::ImageAspectFlags::COLOR)
+        Self::new(device, image, format, vk::ImageAspectFlags::COLOR, mip_levels)
     }
 
     pub fn new_depth_image_view(
@@ -23,7 +24,7 @@ impl ImageView {
         image: vk::Image,
         format: vk::Format,
     ) -> VkResult<Self> {
-        Self::new(device, image, format, vk::ImageAspectFlags::DEPTH)
+        Self::new(device, image, format, vk::ImageAspectFlags::DEPTH, 1)
     }
 
     pub fn vk_image_view(&self) -> vk::ImageView {
@@ -35,6 +36,7 @@ impl ImageView {
         image: vk::Image,
         format: vk::Format,
         aspect_mask: vk::ImageAspectFlags,
+        mip_levels: u32,
     ) -> VkResult<Self> {
         let component_mapping = vk::ComponentMapping::default()
             .a(vk::ComponentSwizzle::IDENTITY)
@@ -46,7 +48,7 @@ impl ImageView {
             .base_array_layer(0)
             .layer_count(1)
             .base_mip_level(0)
-            .level_count(1);
+            .level_count(mip_levels.max(1));
         let create_info = vk::ImageViewCreateInfo::default()
             .format(format)
             .image(image)

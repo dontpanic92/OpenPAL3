@@ -52,7 +52,7 @@ impl VulkanMaterial {
             .iter()
             .map(|t| t.name().to_string())
             .collect();
-        let textures = def
+        let textures: Vec<Rc<VulkanTexture>> = def
             .textures()
             .iter()
             .map(|t| {
@@ -61,10 +61,19 @@ impl VulkanMaterial {
                 })
             })
             .collect();
+        // Pair each sampler with its bound texture's mip count so
+        // `max_lod = mip_levels - 1` covers the chain generated in
+        // `VulkanTexture::from_buffer`. Falls back to `mip_levels = 1`
+        // when textures/samplers are mismatched in length (legacy
+        // callers occasionally set fewer samplers than textures).
         let samplers = def
             .samplers()
             .iter()
-            .map(|s| descriptor_manager.sampler_cache().get_or_create(s))
+            .enumerate()
+            .map(|(i, s)| {
+                let mips = textures.get(i).map(|t| t.mip_levels()).unwrap_or(1);
+                descriptor_manager.sampler_cache().get_or_create_for(s, mips)
+            })
             .collect();
 
         let gpu_params = MaterialParamsGpu::from_params(def.params());

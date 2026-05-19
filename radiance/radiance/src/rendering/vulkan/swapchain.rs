@@ -266,24 +266,21 @@ impl SwapChain {
         //   3. Transparent (AlphaBlend/Additive/Multiply: depth-write off) —
         //      drawn in the order received (caller back-to-front-sorts);
         //      neighboring objects sharing a material are still grouped.
-        self.draw_bucket_grouped(
+        //
+        // Set 0 (per-frame UBO) is bound exactly once below — it has no
+        // dynamic offset and identical layout across every material's
+        // pipeline layout, so a single bind is valid for the whole frame.
+        // See `draw_groups` for the set 1/2/3 rebind cadence.
+        self.bind_per_frame_set_if_any(
             command_buffer,
+            per_frame_descriptor_set,
             opaque_objects,
-            per_frame_descriptor_set,
-            dub_manager,
-        );
-        self.draw_bucket_grouped(
-            command_buffer,
             cutout_objects,
-            per_frame_descriptor_set,
-            dub_manager,
-        );
-        self.draw_bucket_ordered(
-            command_buffer,
             transparent_objects,
-            per_frame_descriptor_set,
-            dub_manager,
         );
+        self.draw_bucket_grouped(command_buffer, opaque_objects, dub_manager);
+        self.draw_bucket_grouped(command_buffer, cutout_objects, dub_manager);
+        self.draw_bucket_ordered(command_buffer, transparent_objects, dub_manager);
 
         self.imgui
             .as_ref()
@@ -364,24 +361,16 @@ impl SwapChain {
             crate::math::Rect::new(0., 0., extent.width as f32, extent.height as f32),
         );
 
-        self.draw_bucket_grouped(
+        self.bind_per_frame_set_if_any(
             command_buffer,
+            per_frame_descriptor_set,
             opaque_objects,
-            per_frame_descriptor_set,
-            dub_manager,
-        );
-        self.draw_bucket_grouped(
-            command_buffer,
             cutout_objects,
-            per_frame_descriptor_set,
-            dub_manager,
-        );
-        self.draw_bucket_ordered(
-            command_buffer,
             transparent_objects,
-            per_frame_descriptor_set,
-            dub_manager,
         );
+        self.draw_bucket_grouped(command_buffer, opaque_objects, dub_manager);
+        self.draw_bucket_grouped(command_buffer, cutout_objects, dub_manager);
+        self.draw_bucket_ordered(command_buffer, transparent_objects, dub_manager);
 
         self.device.cmd_end_render_pass(command_buffer);
         self.device.end_command_buffer(command_buffer)?;
@@ -389,11 +378,51 @@ impl SwapChain {
         Ok(())
     }
 
+    /// Bind the per-frame descriptor set (set = 0) exactly once for the
+    /// upcoming buckets, using the first available material's pipeline
+    /// layout. Set 0 has no dynamic offset and every pipeline layout
+    /// produced by `DescriptorManager` uses the same layout for set 0,
+    /// so this binding stays valid for every subsequent pipeline /
+    /// descriptor-set bind in the same command buffer (Vulkan §14.2.2
+    /// "Pipeline Layout Compatibility for set 0").
+    ///
+    /// If every bucket is empty we skip the bind entirely — there's
+    /// nothing to draw and no pipeline layout to borrow.
+    fn bind_per_frame_set_if_any(
+        &mut self,
+        command_buffer: vk::CommandBuffer,
+        per_frame_descriptor_set: vk::DescriptorSet,
+        opaque: &[&VulkanRenderObject],
+        cutout: &[&VulkanRenderObject],
+        transparent: &[&VulkanRenderObject],
+    ) {
+        let first = opaque
+            .first()
+            .or_else(|| cutout.first())
+            .or_else(|| transparent.first());
+        let Some(obj) = first else {
+            return;
+        };
+        // Make sure the pipeline (and therefore its pipeline_layout)
+        // exists before we borrow its layout for the set-0 bind.
+        self.pipeline_manager
+            .create_pipeline_if_not_exist(obj.material());
+        let pipeline = self.pipeline_manager.get_pipeline(obj.material().key());
+        let layout = pipeline.pipeline_layout().vk_pipeline_layout();
+        self.device.cmd_bind_descriptor_sets(
+            command_buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            layout,
+            0,
+            &[per_frame_descriptor_set],
+            &[],
+        );
+    }
+
     fn draw_bucket_grouped(
         &mut self,
         command_buffer: vk::CommandBuffer,
         objects: &[&VulkanRenderObject],
-        per_frame_descriptor_set: vk::DescriptorSet,
         dub_manager: &DynamicUniformBufferManager,
     ) {
         let mut material_index: std::collections::HashMap<MaterialKey, usize> =
@@ -412,20 +441,13 @@ impl SwapChain {
                 groups.push(vec![obj]);
             }
         }
-        self.draw_groups(
-            command_buffer,
-            &materials,
-            &groups,
-            per_frame_descriptor_set,
-            dub_manager,
-        );
+        self.draw_groups(command_buffer, &materials, &groups, dub_manager);
     }
 
     fn draw_bucket_ordered(
         &mut self,
         command_buffer: vk::CommandBuffer,
         objects: &[&VulkanRenderObject],
-        per_frame_descriptor_set: vk::DescriptorSet,
         dub_manager: &DynamicUniformBufferManager,
     ) {
         // Preserve caller-supplied order; only consolidate consecutive
@@ -446,29 +468,47 @@ impl SwapChain {
                 groups.last_mut().unwrap().push(obj);
             }
         }
-        self.draw_groups(
-            command_buffer,
-            &materials,
-            &groups,
-            per_frame_descriptor_set,
-            dub_manager,
-        );
+        self.draw_groups(command_buffer, &materials, &groups, dub_manager);
     }
 
+    /// Inner-loop draw helper. Assumes set 0 (per-frame) has already
+    /// been bound by `bind_per_frame_set_if_any` and remains valid for
+    /// the whole render pass.
+    ///
+    /// Rebind cadence:
+    ///   - **Pipeline**: once per group (each group shares one
+    ///     `MaterialKey` ⇒ one pipeline).
+    ///   - **Set 3** (per-material UBO): only when the
+    ///     `VulkanMaterial` pointer changes inside a group. Multiple
+    ///     distinct materials can share the same `MaterialKey`
+    ///     (PAL4 water UV animation forces unique materials per
+    ///     animated object via `make_unique`), so we re-bind set 3
+    ///     against this object's own material.
+    ///   - **Sets 1 + 2** (dub + per-object): bound together every
+    ///     draw with `firstSet = 1`, `descriptorSetCount = 2` and the
+    ///     dub's dynamic offset. Set 1's descriptor type is
+    ///     `UNIFORM_BUFFER_DYNAMIC` so the offset must be supplied
+    ///     per draw.
+    ///   - **Vertex / index buffers**: skipped when the previous
+    ///     object used the same `vk::Buffer` handle.
     fn draw_groups(
         &mut self,
         command_buffer: vk::CommandBuffer,
         materials: &[*const super::material::VulkanMaterial],
         groups: &[Vec<&VulkanRenderObject>],
-        per_frame_descriptor_set: vk::DescriptorSet,
         dub_manager: &DynamicUniformBufferManager,
     ) {
+        let mut last_material_ptr: *const super::material::VulkanMaterial = std::ptr::null();
+        let mut last_vertex_buffer: vk::Buffer = vk::Buffer::null();
+        let mut last_index_buffer: vk::Buffer = vk::Buffer::null();
+
         for (index, object_group) in groups.iter().enumerate() {
             // SAFETY: each pointer originates from `obj.material()` whose
             // lifetime is bound to `objects` (still on the stack of the
             // caller's `record_command_buffers` invocation).
-            let material = unsafe { &*materials[index] };
-            let pipeline = self.pipeline_manager.get_pipeline(material.key());
+            let group_material = unsafe { &*materials[index] };
+            let pipeline = self.pipeline_manager.get_pipeline(group_material.key());
+            let pipeline_layout = pipeline.pipeline_layout().vk_pipeline_layout();
 
             self.device.cmd_bind_pipeline(
                 command_buffer,
@@ -476,21 +516,31 @@ impl SwapChain {
                 pipeline.vk_pipeline(),
             );
 
+            // A new pipeline can disturb sets 2/3 bound under a previous
+            // pipeline layout if its set-2 layout differs. We always
+            // rebind set 2 + set 3 below for the first object of the
+            // group, so just clear the trackers.
+            last_material_ptr = std::ptr::null();
+
             for object in object_group {
                 let vertex_buffer = object.vertex_buffer();
                 let index_buffer = object.index_buffer();
-                self.device.cmd_bind_vertex_buffers(
-                    command_buffer,
-                    0,
-                    &[vertex_buffer.vk_buffer()],
-                    &[0],
-                );
-                self.device.cmd_bind_index_buffer(
-                    command_buffer,
-                    index_buffer.vk_buffer(),
-                    0,
-                    vk::IndexType::UINT32,
-                );
+                let vb = vertex_buffer.vk_buffer();
+                let ib = index_buffer.vk_buffer();
+                if vb != last_vertex_buffer {
+                    self.device
+                        .cmd_bind_vertex_buffers(command_buffer, 0, &[vb], &[0]);
+                    last_vertex_buffer = vb;
+                }
+                if ib != last_index_buffer {
+                    self.device.cmd_bind_index_buffer(
+                        command_buffer,
+                        ib,
+                        0,
+                        vk::IndexType::UINT32,
+                    );
+                    last_index_buffer = ib;
+                }
 
                 // `MaterialKey`-grouping above only consolidates pipeline
                 // state (program/blend/depth/cull). Multiple distinct
@@ -503,17 +553,26 @@ impl SwapChain {
                 // other render object sharing the key — typically every
                 // textured opaque mesh in the scene.
                 let object_material = object.material();
+                let object_material_ptr =
+                    object_material as *const super::material::VulkanMaterial;
+                if object_material_ptr != last_material_ptr {
+                    self.device.cmd_bind_descriptor_sets(
+                        command_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        pipeline_layout,
+                        3,
+                        &[object_material.material_params_descriptor_set()],
+                        &[],
+                    );
+                    last_material_ptr = object_material_ptr;
+                }
+
                 self.device.cmd_bind_descriptor_sets(
                     command_buffer,
                     vk::PipelineBindPoint::GRAPHICS,
-                    pipeline.pipeline_layout().vk_pipeline_layout(),
-                    0,
-                    &[
-                        per_frame_descriptor_set,
-                        dub_manager.descriptor_set(),
-                        object.vk_descriptor_set(),
-                        object_material.material_params_descriptor_set(),
-                    ],
+                    pipeline_layout,
+                    1,
+                    &[dub_manager.descriptor_set(), object.vk_descriptor_set()],
                     &[dub_manager.get_offset(object.dub_index()) as u32],
                 );
                 self.device.cmd_draw_indexed(
@@ -526,6 +585,9 @@ impl SwapChain {
                 );
             }
         }
+
+        // Suppress unused warning when no draws happened.
+        let _ = last_material_ptr;
     }
 }
 

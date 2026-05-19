@@ -14,6 +14,19 @@ pub trait RenderObject: downcast_rs::Downcast {
         [0.0, 0.0, 0.0]
     }
 
+    /// Local-space axis-aligned bounding box `(min, max)` of the
+    /// render object's vertex positions, or `None` if the backend
+    /// doesn't track it. Used by the engine-side frustum culler to
+    /// reject offscreen render objects before bucketing.
+    ///
+    /// Returning `None` is the conservative "always visible" choice
+    /// — backends that don't compute bounds (or render objects built
+    /// from synthetic / dynamic geometry where bounds would lie) keep
+    /// being drawn unconditionally, matching pre-culling behaviour.
+    fn local_aabb(&self) -> Option<([f32; 3], [f32; 3])> {
+        None
+    }
+
     /// Re-upload the underlying material's UV affine
     /// (`scale = (sx, sy)`, `offset = (tx, ty)`) so the vertex shader's
     /// `uv = inTexCoord * scale + offset` produces the requested

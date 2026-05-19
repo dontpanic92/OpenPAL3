@@ -24,6 +24,7 @@ pub struct VulkanRenderObject {
     per_object_descriptor_set: vk::DescriptorSet,
     dub_index: usize,
     local_centroid: [f32; 3],
+    local_aabb: Option<([f32; 3], [f32; 3])>,
 }
 
 impl RenderObject for VulkanRenderObject {
@@ -37,6 +38,10 @@ impl RenderObject for VulkanRenderObject {
 
     fn local_centroid(&self) -> [f32; 3] {
         self.local_centroid
+    }
+
+    fn local_aabb(&self) -> Option<([f32; 3], [f32; 3])> {
+        self.local_aabb
     }
 
     fn set_uv_xform(&self, scale: [f32; 2], offset: [f32; 2]) {
@@ -85,7 +90,16 @@ impl VulkanRenderObject {
             descriptor_manager.allocate_per_object_descriptor_set(&material)?;
         let dub_index = dub_manager.allocate_buffer();
 
-        let local_centroid = vertices.aabb_centroid();
+        let local_aabb = vertices.aabb_min_max();
+        let local_centroid = local_aabb
+            .map(|(min, max)| {
+                [
+                    0.5 * (min[0] + max[0]),
+                    0.5 * (min[1] + max[1]),
+                    0.5 * (min[2] + max[2]),
+                ]
+            })
+            .unwrap_or([0.0, 0.0, 0.0]);
 
         Ok(Self {
             vertices: RefCell::new(vertices),
@@ -100,6 +114,7 @@ impl VulkanRenderObject {
             dub_index,
             descriptor_manager: descriptor_manager.clone(),
             local_centroid,
+            local_aabb,
         })
     }
 
