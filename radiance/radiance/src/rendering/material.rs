@@ -49,6 +49,13 @@ pub enum CullMode {
 pub struct MaterialParams {
     pub tint: [f32; 4],
     pub alpha_ref: f32,
+    /// Per-material scalar uploaded to the fragment shader as
+    /// `MaterialParamsGpu.misc.y`. Currently consumed only by
+    /// `lightmap_texture.frag` as the baked-lighting intensity
+    /// (PAL4's `_ltMap.cfg` `intensity` field). `1.0` is the neutral
+    /// pass-through value; defaults to `1.0` for all materials so
+    /// non-lightmap shaders are unaffected.
+    pub intensity: f32,
     pub uv_scale: [f32; 2],
     pub uv_offset: [f32; 2],
 }
@@ -67,6 +74,7 @@ impl Default for MaterialParams {
             // black-fringe regression on PAL4 cloth assets where there
             // was no opaque geometry behind the cloth's fringe).
             alpha_ref: 0.004,
+            intensity: 1.0,
             uv_scale: [1.0, 1.0],
             uv_offset: [0.0, 0.0],
         }
@@ -203,6 +211,18 @@ impl MaterialDef {
     /// `make_unique`.
     pub fn with_debug_name(mut self, name: impl Into<String>) -> Self {
         self.debug_name = name.into();
+        self
+    }
+
+    /// Override the per-material `MaterialParams` on an existing
+    /// `MaterialDef`. Used by loaders that learn the parameters (e.g.
+    /// a per-scene `tint`) after the underlying `MaterialDef` is
+    /// constructed by a shared builder. Note: `params` *is* part of
+    /// `MaterialIdentity`, so two materials whose textures match but
+    /// whose params differ are cached as separate backend materials
+    /// automatically — no need to also call `make_unique`.
+    pub fn with_params(mut self, params: MaterialParams) -> Self {
+        self.params = params;
         self
     }
 

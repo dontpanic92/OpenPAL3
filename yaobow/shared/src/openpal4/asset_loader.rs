@@ -11,7 +11,7 @@ use crosscom::ComRc;
 use fileformats::{
     binrw::BinRead,
     npc::NpcInfoFile,
-    pal4::{cam::CameraDataFile, evf::EvfFile, gob::GobFile},
+    pal4::{cam::CameraDataFile, evf::EvfFile, gob::GobFile, ltmap::LtMapCfg},
     rwbs::uva::UvAnimDict,
 };
 use mini_fs::{MiniFs, StoreExt};
@@ -100,6 +100,7 @@ impl AssetLoader {
             keep_right_to_render_only: false,
             force_unique_materials: false,
             ignore_root_frame_translation: true,
+            bsp_lightmap_tint: None,
         };
         if self.vfs.exists(&path) {
             Some(create_entity_from_dff_model(
@@ -133,6 +134,7 @@ impl AssetLoader {
                 keep_right_to_render_only: true,
                 force_unique_materials: false,
                 ignore_root_frame_translation: false,
+                bsp_lightmap_tint: None,
             },
         );
 
@@ -214,6 +216,37 @@ impl AssetLoader {
             scene_name, block_name, block_name,
         );
 
+        // Per-scene lightmap modulation (`<block>_ltMap.cfg`). The
+        // baked lightmap path itself is *always* engaged on PAL4 BSPs
+        // (every BSP material's `texture.name` is a `*LightingMap`; the
+        // paired `*DiffuseMap.dds` is derived by string substitution),
+        // so we pass an identity `[1, 1, 1, 1]` tint when the scene
+        // doesn't ship a `_ltMap.cfg`. With a config, the bake itself
+        // is shared across day/night variants (Q01 ↔ Q01Y reference
+        // the same `*LightingMap.dds`) — `_ltMap.cfg` is the only knob
+        // that differs. Stamping the tint into `MaterialParams.tint`
+        // is enough — `MaterialIdentity` already includes params, so
+        // distinct tints yield distinct backend materials without
+        // `make_unique`.
+        let (ltmap, has_cfg) = match self.try_load_scene_ltmap(scene_name, block_name) {
+            Some(c) => (c, true),
+            None => (LtMapCfg::IDENTITY, false),
+        };
+        log::debug!(
+            "[ltmap] {}/{}: tint={:?} intensity={} (cfg={})",
+            scene_name,
+            block_name,
+            ltmap.tint,
+            ltmap.intensity,
+            if has_cfg { "found" } else { "missing→identity" },
+        );
+        let bsp_lightmap_tint = Some([
+            ltmap.tint[0],
+            ltmap.tint[1],
+            ltmap.tint[2],
+            ltmap.intensity,
+        ]);
+
         let scene = CoreScene::create();
         let entity = create_entity_from_bsp_model(
             &self.component_factory,
@@ -225,6 +258,7 @@ impl AssetLoader {
                 keep_right_to_render_only: false,
                 force_unique_materials: false,
                 ignore_root_frame_translation: false,
+                bsp_lightmap_tint,
             },
         );
 
@@ -232,6 +266,41 @@ impl AssetLoader {
 
         println!("Loaded scene: {} {}", scene_name, block_name);
         Ok((scene, entity))
+    }
+
+    /// Try to load the optional `<block>_ltMap.cfg` — a 16-byte
+    /// per-scene lightmap modulation config (RGB tint + scalar
+    /// intensity) consumed by the BSP `TexturedLightmap` material path.
+    /// See `fileformats::pal4::ltmap` and `generated/ltmap.md`.
+    ///
+    /// Returns `None` when the scene does not ship one; callers should
+    /// fall back to identity modulation (white tint, full intensity).
+    pub fn try_load_scene_ltmap(&self, scene_name: &str, block_name: &str) -> Option<LtMapCfg> {
+        let path = format!(
+            "/gamedata/PALWorld/{}/{}/{}_ltMap.cfg",
+            scene_name, block_name, block_name,
+        );
+
+        if !self.vfs.exists(&path) {
+            return None;
+        }
+        let data = self.vfs.read_to_end(&path).ok()?;
+        match LtMapCfg::read(&mut Cursor::new(data)) {
+            Ok(cfg) => {
+                log::debug!(
+                    "[ltmap] {}/{}: tint={:?} intensity={}",
+                    scene_name,
+                    block_name,
+                    cfg.tint,
+                    cfg.intensity
+                );
+                Some(cfg)
+            }
+            Err(e) => {
+                log::error!("[ltmap] failed to parse {}: {}", path, e);
+                None
+            }
+        }
     }
 
     pub fn try_load_scene_sky(&self, scene_name: &str, block_name: &str) -> Option<ComRc<IEntity>> {
@@ -300,6 +369,7 @@ impl AssetLoader {
                 // happens to share the same texture+params.
                 force_unique_materials: true,
                 ignore_root_frame_translation: false,
+                bsp_lightmap_tint: None,
             },
         );
         Some(entity)
@@ -395,6 +465,7 @@ impl AssetLoader {
                     keep_right_to_render_only: false,
                     force_unique_materials: false,
                     ignore_root_frame_translation: false,
+                    bsp_lightmap_tint: None,
                 },
             );
 

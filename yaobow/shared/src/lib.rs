@@ -129,6 +129,8 @@ lazy_static::lazy_static! {
         keep_right_to_render_only: true,
         force_unique_materials: false,
         ignore_root_frame_translation: false,
+
+        bsp_lightmap_tint: None,
     };
 
     static ref PAL5_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
@@ -136,6 +138,8 @@ lazy_static::lazy_static! {
         keep_right_to_render_only: false,
         force_unique_materials: false,
         ignore_root_frame_translation: false,
+
+        bsp_lightmap_tint: None,
     };
 
     static ref SWD5_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
@@ -143,5 +147,7 @@ lazy_static::lazy_static! {
         keep_right_to_render_only: false,
         force_unique_materials: false,
         ignore_root_frame_translation: false,
+
+        bsp_lightmap_tint: None,
     };
 }

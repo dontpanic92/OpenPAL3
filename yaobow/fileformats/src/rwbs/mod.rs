@@ -58,6 +58,12 @@ impl ChunkType {
     pub const PLUGIN_USERDATA: Self = Self(0x11f);
     pub const PLUGIN_BINMESH: Self = Self(0x50e);
 
+    /// PAL4's custom per-material "lightmap" plugin. The body is a
+    /// 6-u32 preamble (`4, 4, 1, 3, 1, 6` in every bundled BSP) followed
+    /// by a standard RW `TEXTURE` chunk naming the baked atlas
+    /// (`*LightingMap`). Parsed by `extension::LightMapPlugin`.
+    pub const PLUGIN_LIGHTMAP: Self = Self(0x120);
+
     pub const PLUGIN_NODENAME: Self = Self(0x0253f2fe);
 }
 

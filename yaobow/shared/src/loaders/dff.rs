@@ -47,6 +47,20 @@ pub struct DffLoaderConfig<'a> {
     /// leave the flag `false`. Frame *rotation* is untouched so
     /// authored axis conventions are preserved.
     pub ignore_root_frame_translation: bool,
+    /// Per-scene lightmap modulation, packed as
+    /// `[tint.r, tint.g, tint.b, intensity]` (from
+    /// `<block>_ltMap.cfg`). Used only by the BSP loader path: when
+    /// `Some`, materials whose `texture.name` contains the substring
+    /// `"LightingMap"` are upgraded to the `TexturedLightmap` shader
+    /// (`LightMapMaterialDef` with `[lightmap, diffuse]` textures and
+    /// the BSP's second UV set), and the value is stamped into
+    /// `MaterialParams.tint` so `lightmap_texture.frag`'s
+    /// `rgb * mat.tint.rgb * mat.tint.a` modulates the bake by the
+    /// per-scene mood (e.g. `Q01` day vs `Q01Y` night). The diffuse
+    /// texture is the same path with `"LightingMap"` substituted for
+    /// `"DiffuseMap"`, matching the on-disk pairing convention. Default
+    /// `None` so DFF callers and non-PAL4 BSPs are unaffected.
+    pub bsp_lightmap_tint: Option<[f32; 4]>,
 }
 
 impl<'a> DffLoaderConfig<'a> {
@@ -57,6 +71,7 @@ impl<'a> DffLoaderConfig<'a> {
             keep_right_to_render_only: false,
             force_unique_materials: false,
             ignore_root_frame_translation: false,
+            bsp_lightmap_tint: None,
         }
     }
 }
@@ -290,6 +305,7 @@ fn load_clump(
             &path,
             config.texture_resolver,
             config.force_unique_materials,
+            config.bsp_lightmap_tint,
         );
     }
 }
@@ -322,6 +338,7 @@ fn create_geometry(
     path: &Path,
     texture_resolver: &dyn TextureResolver,
     force_unique_materials: bool,
+    bsp_lightmap_tint: Option<[f32; 4]>,
 ) {
     if geometry.morph_targets.len() == 0 {
         return;
@@ -463,6 +480,7 @@ fn create_geometry(
         path,
         texture_resolver,
         force_unique_materials,
+        bsp_lightmap_tint,
     );
 }
 
@@ -479,6 +497,7 @@ pub(crate) fn create_geometry_internal(
     path: &Path,
     texture_resolver: &dyn TextureResolver,
     force_unique_materials: bool,
+    bsp_lightmap_tint: Option<[f32; 4]>,
 ) {
     let mut r_vertices = vec![];
     // let mut r_normals = vec![];
@@ -514,7 +533,17 @@ pub(crate) fn create_geometry_internal(
                 // alpha-cutout (binary) from alpha-blended (graded). See
                 // `detect_blend` below.
                 let md = if let Some(texture) = material.texture.as_ref() {
-                    load_material_texture(texture, vfs, path.as_ref(), texture_resolver)
+                    if let Some(tint) = bsp_lightmap_tint {
+                        if let Some(md) = load_lightmap_material_pair(
+                            material, tint, vfs, path.as_ref(), texture_resolver,
+                        ) {
+                            md
+                        } else {
+                            load_material_texture(texture, vfs, path.as_ref(), texture_resolver)
+                        }
+                    } else {
+                        load_material_texture(texture, vfs, path.as_ref(), texture_resolver)
+                    }
                 } else {
                     log::debug!("no texture info for material {:?}", path);
                     radiance::rendering::SimpleMaterialDef::create2("missing", None)
@@ -549,11 +578,41 @@ pub(crate) fn create_geometry_internal(
     let r_geometries = material_to_indices
         .into_iter()
         .map(|(_, v)| {
-            // TODO: Optimize this
+            // Per-material vertex layout: a material's shader expects a
+            // specific subset of vertex components, and the buffer
+            // stride is derived from the texcoord-set count passed to
+            // `Geometry::new`. PAL4 BSP sectors carry both UV sets, so
+            // the same `r_texcoords` would otherwise force a
+            // 2-UV-set stride on every material — including those whose
+            // shader (`TexturedNoLight`) only declares one UV input,
+            // shifting every vertex attribute and rendering the mesh
+            // as garbage. Slice down to the leading UV set for any
+            // material whose shader doesn't declare `TEXCOORD2`, and
+            // duplicate UV0 into UV1 in the reverse pathological case
+            // (lightmap material on a sector that ships only one UV
+            // set) so the GPU still reads a well-formed stride.
+            let needs_second_uv = matches!(
+                v.material.program(),
+                radiance::rendering::ShaderProgram::TexturedLightmap
+            );
+            let single = [r_texcoords[0].clone()];
+            let duplicated;
+            let geom_texcoords: &[Vec<radiance::components::mesh::TexCoord>] = if needs_second_uv {
+                if r_texcoords.len() >= 2 {
+                    &r_texcoords
+                } else {
+                    duplicated = [r_texcoords[0].clone(), r_texcoords[0].clone()];
+                    &duplicated
+                }
+            } else if r_texcoords.len() <= 1 {
+                &r_texcoords
+            } else {
+                &single
+            };
             radiance::components::mesh::Geometry::new(
                 &r_vertices,
                 None,
-                &r_texcoords,
+                geom_texcoords,
                 v.indices,
                 v.material,
             )
@@ -801,17 +860,92 @@ fn load_material_texture(
 /// `VulkanTexture` learns to build mip chains the `mipmap_mode` carried
 /// on `SamplerDef` already takes effect (see
 /// `radiance/.../vulkan/sampler.rs`).
+/// Build a PAL4 BSP lightmap material: textures = `[lightmap,
+/// diffuse]`, shader = `TexturedLightmap`, sampler taken from the BSP
+/// material's RW Texture metadata, `MaterialParams.tint` stamped with
+/// the scene's `_ltMap.cfg` modulation (`[r, g, b, intensity]`).
+///
+/// In PAL4 BSPs the lightmap atlas texture name lives in a custom
+/// material-level extension (RW chunk type `0x120`) — see
+/// `extension::LightMapPlugin`. The material's primary `texture.name`
+/// holds the diffuse (e.g. `"fz01"`); the lightmap atlas is e.g.
+/// `"Cylinder1746LightingMap"`. Returns `None` when the material does
+/// not advertise a lightmap; callers should fall back to the
+/// diffuse-only path in that case.
+///
+/// Sampler & UV channel notes:
+/// - The diffuse uses its own sampler (`rw_sampler_def(diffuse)`) — it
+///   is usually tiled (`AddressMode::Repeat`) on PAL4 surfaces.
+/// - The lightmap atlas **must** clamp on both axes: an atlas's
+///   charted regions are surrounded by black bleed, and any sampling
+///   outside `[0, 1]` produces the "black tile" artefact that PAL4
+///   BSPs are prone to under `Repeat`. We start from the lightmap's
+///   own filter mode (parsed from its `0x120` `TEXTURE` chunk) and
+///   override the address modes to `Clamp`.
+/// - The fragment shader (`lightmap_texture.frag`) samples
+///   `texSampler[0]` (lightmap) with the *secondary* UV and
+///   `texSampler[1]` (diffuse) with the *primary* UV; the texture
+///   vector is therefore `[lightmap, diffuse]`.
+fn load_lightmap_material_pair(
+    material: &fileformats::rwbs::material::Material,
+    tint: [f32; 4],
+    vfs: &MiniFs,
+    model_path: &Path,
+    texture_resolver: &dyn TextureResolver,
+) -> Option<MaterialDef> {
+    let diffuse = material.texture.as_ref()?;
+    let lightmap = material.lightmap.as_ref()?;
+
+    let diffuse_sampler = rw_sampler_def(diffuse);
+    let lightmap_sampler = SamplerDef::with_address_uv(
+        rw_filter_mode(lightmap.filter_mode),
+        AddressMode::Clamp,
+        AddressMode::Clamp,
+    );
+    let model_path_buf = model_path.to_path_buf();
+
+    let mut params = radiance::rendering::MaterialParams::default();
+    // `tint[0..3]` is the per-scene RGB modulation from `_ltMap.cfg`;
+    // `tint[3]` carries the intensity, which the shader samples from
+    // `MaterialParams.misc.y`. The tint vec4's `.a` lane stays at
+    // `1.0` so the shader's premultiplied-alpha invariant
+    // (`outColor.a = color.a * tint.a`) is preserved.
+    params.tint = [tint[0], tint[1], tint[2], 1.0];
+    params.intensity = tint[3];
+
+    let md = radiance::rendering::LightMapMaterialDef::create_with_samplers(
+        vec![&lightmap.name, &diffuse.name],
+        |name| {
+            let data = texture_resolver.resolve_texture(vfs, &model_path_buf, name);
+            if data.is_none() {
+                log::warn!(
+                    "[ltmap] failed to resolve texture {} for {:?}",
+                    name,
+                    model_path_buf
+                );
+            }
+            data.map(std::io::Cursor::new)
+        },
+        vec![lightmap_sampler, diffuse_sampler],
+    );
+
+    Some(md.with_params(params))
+}
+
 fn rw_sampler_def(texture: &fileformats::rwbs::material::Texture) -> SamplerDef {
-    let filter = match texture.filter_mode {
-        1 | 3 => FilterMode::Nearest,
-        2 | 4 | 5 | 6 => FilterMode::Linear,
-        _ => FilterMode::Linear,
-    };
     SamplerDef::with_address_uv(
-        filter,
+        rw_filter_mode(texture.filter_mode),
         rw_address_mode(texture.address_mode_u),
         rw_address_mode(texture.address_mode_v),
     )
+}
+
+fn rw_filter_mode(mode: u32) -> FilterMode {
+    match mode {
+        1 | 3 => FilterMode::Nearest,
+        2 | 4 | 5 | 6 => FilterMode::Linear,
+        _ => FilterMode::Linear,
+    }
 }
 
 fn rw_address_mode(mode: u32) -> AddressMode {

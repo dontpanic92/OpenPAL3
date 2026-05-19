@@ -6,7 +6,8 @@ use serde::Serialize;
 
 use crate::rwbs::{check_ty, extension::Extension, ChunkHeader, ChunkType};
 
-use super::extension::UserData;#[derive(Debug, Serialize, Clone, Default)]
+use super::extension::UserData;
+#[derive(Debug, Serialize, Clone, Default)]
 pub struct Texture {
     pub filter_mode: u32,
     pub address_mode_u: u32,
@@ -67,6 +68,14 @@ pub struct Material {
     /// (`crate::rwbs::uva::UvAnimDict::find`). `None` for materials
     /// without the entry (the typical case for non-water materials).
     pub userdata_name: Option<String>,
+    /// Baked lightmap atlas texture parsed from the material's `0x120`
+    /// EXTENSION chunk (`extension::LightMapPlugin`). The texture's
+    /// `name` is the atlas (e.g. `"Cylinder1746LightingMap"`); pair it
+    /// with the material's primary `texture` (the diffuse, e.g.
+    /// `"fz01"`) and sample the atlas with the geometry's secondary UV
+    /// set. `None` for materials without a baked lightmap (typical for
+    /// actors and effects that don't ship through the scene BSP).
+    pub lightmap: Option<Texture>,
 }
 
 impl Material {
@@ -100,6 +109,7 @@ impl Material {
         // patch and isn't needed for any downstream consumer today).
         let extensions = Extension::read_data(cursor, header.length, 0)?;
         let userdata_name = userdata_name_from_extensions(&extensions);
+        let lightmap = lightmap_from_extensions(&extensions);
 
         Ok(Self {
             unknown,
@@ -110,7 +120,15 @@ impl Material {
             specular,
             diffuse,
             userdata_name,
+            lightmap,
         })
+    }
+
+    /// Convenience accessor: returns just the lightmap atlas's texture
+    /// name when the material has one. Kept for call sites that don't
+    /// need the full `Texture` (filter mode, address modes, mask).
+    pub fn lightmap_name(&self) -> Option<&str> {
+        self.lightmap.as_ref().map(|t| t.name.as_str())
     }
 }
 
@@ -121,6 +139,21 @@ fn userdata_name_from_extensions(extensions: &[Extension]) -> Option<String> {
                 if let Some(UserData::String(s)) = items.first() {
                     return Some(s.clone());
                 }
+            }
+        }
+    }
+    None
+}
+
+/// Pick the lightmap atlas `Texture` out of a material's EXTENSION
+/// block. PAL4 materials ship at most one `0x120` plugin per material;
+/// if multiple are present (not observed in any shipped BSP) we use
+/// the first.
+fn lightmap_from_extensions(extensions: &[Extension]) -> Option<Texture> {
+    for ext in extensions {
+        if let Extension::LightMapPlugin(plugin) = ext {
+            if let Some(tex) = &plugin.texture {
+                return Some(tex.clone());
             }
         }
     }
@@ -206,7 +239,6 @@ mod _private {
 mod tests {
     use super::*;
     use std::io::Cursor;
-
     fn write_header(buf: &mut Vec<u8>, ty: u32, length: u32) {
         buf.extend(&ty.to_le_bytes());
         buf.extend(&length.to_le_bytes());
@@ -282,6 +314,196 @@ mod tests {
         let mut cursor = Cursor::new(body);
         let mat = Material::read(&mut cursor).expect("parse material");
         assert!(mat.userdata_name.is_none());
+        assert!(mat.lightmap.is_none());
+    }
+
+    /// Synthesize a PAL4-style material whose EXTENSION block contains
+    /// a custom `0x120` lightmap plugin with the observed 6-u32
+    /// preamble (`4, 4, 1, 3, 1, 6`) followed by a standard RW
+    /// TEXTURE chunk naming `"Cylinder1746LightingMap"`. Verifies
+    /// `Material::lightmap_name` extracts it.
+    #[test]
+    fn material_extracts_lightmap_name_from_0x120_plugin() {
+        // Inner TEXTURE chunk: STRUCT(filter modes) + STRING(name) +
+        // STRING(mask="") + EXTENSION(empty).
+        let mut tex_body: Vec<u8> = Vec::new();
+        write_header(&mut tex_body, ChunkType::STRUCT.0, 4);
+        tex_body.extend(&0x1106u32.to_le_bytes()); // filter/addr modes
+        let name = b"Cylinder1746LightingMap\0";
+        write_header(&mut tex_body, ChunkType::STRING.0, name.len() as u32);
+        tex_body.extend(name);
+        // mask name (empty), 4-byte aligned to "\0\0\0\0"
+        write_header(&mut tex_body, ChunkType::STRING.0, 4);
+        tex_body.extend(&[0u8; 4]);
+        write_header(&mut tex_body, ChunkType::EXTENSION.0, 0);
+
+        let mut texture_chunk: Vec<u8> = Vec::new();
+        write_header(&mut texture_chunk, ChunkType::TEXTURE.0, tex_body.len() as u32);
+        texture_chunk.extend(&tex_body);
+
+        // 0x120 body: 6-u32 preamble + TEXTURE chunk.
+        let mut plugin_body: Vec<u8> = Vec::new();
+        for v in [4u32, 4, 1, 3, 1, 6] {
+            plugin_body.extend(&v.to_le_bytes());
+        }
+        plugin_body.extend(&texture_chunk);
+
+        let mut plugin_chunk: Vec<u8> = Vec::new();
+        write_header(&mut plugin_chunk, 0x120, plugin_body.len() as u32);
+        plugin_chunk.extend(&plugin_body);
+
+        // MATERIAL: STRUCT (untextured) + EXTENSION containing the
+        // 0x120 plugin only.
+        let mut body: Vec<u8> = Vec::new();
+        write_header(&mut body, ChunkType::STRUCT.0, 7 * 4);
+        body.extend(&0u32.to_le_bytes());
+        body.extend(&0u32.to_le_bytes());
+        body.extend(&0u32.to_le_bytes());
+        body.extend(&0u32.to_le_bytes()); // textured=false
+        body.extend(&0f32.to_le_bytes());
+        body.extend(&0f32.to_le_bytes());
+        body.extend(&0f32.to_le_bytes());
+        write_header(&mut body, ChunkType::EXTENSION.0, plugin_chunk.len() as u32);
+        body.extend(&plugin_chunk);
+
+        let mut cursor = Cursor::new(body);
+        let mat = Material::read(&mut cursor).expect("parse material");
+        assert_eq!(
+            mat.lightmap_name(),
+            Some("Cylinder1746LightingMap")
+        );
+        let lm = mat.lightmap.as_ref().expect("typed lightmap parsed");
+        // Filter / address-mode lanes come from the nested TEXTURE
+        // chunk's STRUCT preamble (`0x1106` in the fixture).
+        assert_eq!(lm.filter_mode, 0x1106 & 0xff);
+        assert_eq!(lm.address_mode_u, (0x1106 & 0x0f00) >> 8);
+        assert_eq!(lm.address_mode_v, (0x1106 & 0xf000) >> 12);
+        assert_eq!(lm.mask_name, "");
+    }
+
+    /// Verify the typed `LightMapPlugin` survives a non-default filter
+    /// / address mode in the nested TEXTURE chunk so we know the
+    /// sampler metadata round-trips for downstream callers.
+    #[test]
+    fn material_lightmap_carries_sampler_metadata() {
+        // Filter = 4 (linear-mip-nearest), addr_u = 3 (clamp), addr_v
+        // = 1 (repeat) — encoded as `(v << 12) | (u << 8) | filter`.
+        let modes: u32 = (1u32 << 12) | (3u32 << 8) | 0x04;
+        let mut tex_body: Vec<u8> = Vec::new();
+        write_header(&mut tex_body, ChunkType::STRUCT.0, 4);
+        tex_body.extend(&modes.to_le_bytes());
+        let name = b"AtlasA\0";
+        write_header(&mut tex_body, ChunkType::STRING.0, name.len() as u32);
+        tex_body.extend(name);
+        write_header(&mut tex_body, ChunkType::STRING.0, 4);
+        tex_body.extend(&[0u8; 4]);
+        write_header(&mut tex_body, ChunkType::EXTENSION.0, 0);
+
+        let mut texture_chunk: Vec<u8> = Vec::new();
+        write_header(&mut texture_chunk, ChunkType::TEXTURE.0, tex_body.len() as u32);
+        texture_chunk.extend(&tex_body);
+
+        let mut plugin_body: Vec<u8> = Vec::new();
+        for v in [4u32, 4, 1, 3, 1, 6] {
+            plugin_body.extend(&v.to_le_bytes());
+        }
+        plugin_body.extend(&texture_chunk);
+
+        let mut plugin_chunk: Vec<u8> = Vec::new();
+        write_header(&mut plugin_chunk, 0x120, plugin_body.len() as u32);
+        plugin_chunk.extend(&plugin_body);
+
+        let mut body: Vec<u8> = Vec::new();
+        write_header(&mut body, ChunkType::STRUCT.0, 7 * 4);
+        for _ in 0..4 { body.extend(&0u32.to_le_bytes()); }
+        body.extend(&0f32.to_le_bytes());
+        body.extend(&0f32.to_le_bytes());
+        body.extend(&0f32.to_le_bytes());
+        write_header(&mut body, ChunkType::EXTENSION.0, plugin_chunk.len() as u32);
+        body.extend(&plugin_chunk);
+
+        let mut cursor = Cursor::new(body);
+        let mat = Material::read(&mut cursor).expect("parse material");
+        let lm = mat.lightmap.as_ref().expect("lightmap parsed");
+        assert_eq!(lm.name, "AtlasA");
+        assert_eq!(lm.filter_mode, 4);
+        assert_eq!(lm.address_mode_u, 3);
+        assert_eq!(lm.address_mode_v, 1);
+    }
+
+    /// Regression for the real-world panic observed loading PAL4
+    /// scene `Q01.bsp`: a `0x120` chunk whose preamble is NOT the
+    /// synthetic `[4,4,1,3,1,6]` u32 layout but contains arbitrary
+    /// bytes (and possibly an embedded `7F`-looking byte that the
+    /// previous strict parser mis-read as a TEXTURE-chunk type and
+    /// then failed `check_ty!(_, TEXTURE)`). The current scanner
+    /// must skip the preamble and still find the real TEXTURE chunk.
+    #[test]
+    fn material_lightmap_robust_to_preamble_drift() {
+        // Inner TEXTURE chunk.
+        let mut tex_body: Vec<u8> = Vec::new();
+        write_header(&mut tex_body, ChunkType::STRUCT.0, 4);
+        tex_body.extend(&0x1106u32.to_le_bytes());
+        let name = b"AtlasZ\0";
+        write_header(&mut tex_body, ChunkType::STRING.0, name.len() as u32);
+        tex_body.extend(name);
+        write_header(&mut tex_body, ChunkType::STRING.0, 4);
+        tex_body.extend(&[0u8; 4]);
+        write_header(&mut tex_body, ChunkType::EXTENSION.0, 0);
+        let mut texture_chunk: Vec<u8> = Vec::new();
+        write_header(&mut texture_chunk, ChunkType::TEXTURE.0, tex_body.len() as u32);
+        texture_chunk.extend(&tex_body);
+
+        // Arbitrary 8-u32 preamble whose lanes include 0x7F (the
+        // value the production panic logged as the would-be TEXTURE
+        // chunk type when the parser assumed a fixed 6-u32 preamble).
+        let mut plugin_body: Vec<u8> = Vec::new();
+        for v in [0u32, 0x7F, 1, 0, 3, 1, 0, 0] {
+            plugin_body.extend(&v.to_le_bytes());
+        }
+        plugin_body.extend(&texture_chunk);
+
+        let mut plugin_chunk: Vec<u8> = Vec::new();
+        write_header(&mut plugin_chunk, 0x120, plugin_body.len() as u32);
+        plugin_chunk.extend(&plugin_body);
+
+        let mut body: Vec<u8> = Vec::new();
+        write_header(&mut body, ChunkType::STRUCT.0, 7 * 4);
+        for _ in 0..4 { body.extend(&0u32.to_le_bytes()); }
+        body.extend(&0f32.to_le_bytes());
+        body.extend(&0f32.to_le_bytes());
+        body.extend(&0f32.to_le_bytes());
+        write_header(&mut body, ChunkType::EXTENSION.0, plugin_chunk.len() as u32);
+        body.extend(&plugin_chunk);
+
+        let mut cursor = Cursor::new(body);
+        let mat = Material::read(&mut cursor).expect("parse must not panic on preamble drift");
+        let lm = mat.lightmap.as_ref().expect("texture still recovered");
+        assert_eq!(lm.name, "AtlasZ");
+    }
+
+    /// A `0x120` chunk whose body has no embedded TEXTURE chunk must
+    /// not abort the BSP loader — `Material::lightmap` simply becomes
+    /// `None`.
+    #[test]
+    fn material_lightmap_missing_texture_is_none_not_error() {
+        let plugin_body: Vec<u8> = vec![0xAA; 24];
+        let mut plugin_chunk: Vec<u8> = Vec::new();
+        write_header(&mut plugin_chunk, 0x120, plugin_body.len() as u32);
+        plugin_chunk.extend(&plugin_body);
+
+        let mut body: Vec<u8> = Vec::new();
+        write_header(&mut body, ChunkType::STRUCT.0, 7 * 4);
+        for _ in 0..4 { body.extend(&0u32.to_le_bytes()); }
+        body.extend(&0f32.to_le_bytes());
+        body.extend(&0f32.to_le_bytes());
+        body.extend(&0f32.to_le_bytes());
+        write_header(&mut body, ChunkType::EXTENSION.0, plugin_chunk.len() as u32);
+        body.extend(&plugin_chunk);
+
+        let mut cursor = Cursor::new(body);
+        let mat = Material::read(&mut cursor).expect("parse");
+        assert!(mat.lightmap.is_none());
     }
 
     #[test]

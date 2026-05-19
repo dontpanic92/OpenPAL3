@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::rwbs::{check_ty, ChunkHeader, ChunkType};
 
-use super::{plugins::hanim::HAnimPlugin, Matrix44f};
+use super::{material::Texture, plugins::hanim::HAnimPlugin, Matrix44f};
 
 #[derive(Debug, Serialize)]
 pub enum Extension {
@@ -17,6 +17,14 @@ pub enum Extension {
     UserDataPlugin(UserDataPlugin),
     NodeNamePlugin(NodeNamePlugin),
     BinMeshPlugin(BinMeshPlugin),
+    /// PAL4's per-material lightmap plugin (RW chunk `0x120`). Carries
+    /// the baked lightmap atlas as a standard RW `Texture` (the atlas
+    /// texture name, e.g. `"Cylinder1746LightingMap"`, lives in
+    /// `texture.name`). The plugin's body starts with a 6-u32 preamble
+    /// — observed values `4, 4, 1, 3, 1, 6` in every shipped PAL4 BSP
+    /// — preserved verbatim in `raw_preamble` so we can round-trip /
+    /// validate later if a new dialect appears.
+    LightMapPlugin(LightMapPlugin),
     UnknownPlugin(UnknownPlugin),
 }
 
@@ -61,6 +69,10 @@ impl Extension {
 
                 ChunkType::PLUGIN_BINMESH => {
                     Extension::BinMeshPlugin(BinMeshPlugin::read(cursor, ext_header)?)
+                }
+
+                ChunkType::PLUGIN_LIGHTMAP => {
+                    Extension::LightMapPlugin(LightMapPlugin::read(cursor, ext_header)?)
                 }
 
                 _ => Extension::UnknownPlugin(UnknownPlugin::read(cursor, ext_header)?),
@@ -292,16 +304,112 @@ impl BinMeshPlugin {
 
 #[derive(Debug, Serialize)]
 pub struct UnknownPlugin {
-    ty: ChunkType,
-    unknown: Vec<u8>,
+    pub ty: ChunkType,
+    pub data: Vec<u8>,
 }
 
 impl UnknownPlugin {
     pub fn read(cursor: &mut dyn Read, header: ChunkHeader) -> anyhow::Result<Self> {
-        let unknown = cursor.read_u8_vec(header.length as usize)?;
+        let data = cursor.read_u8_vec(header.length as usize)?;
         Ok(Self {
             ty: header.ty,
-            unknown,
+            data,
         })
+    }
+}
+
+/// PAL4's per-material lightmap plugin (RW chunk type `0x120`).
+///
+/// Body layout (observed but **not standardized** across PAL4 BSPs):
+///
+/// ```text
+/// u8[N]             preamble  (variable length; the synthetic test
+///                              fixture uses [4,4,1,3,1,6] u32s but
+///                              real PAL4 BSPs drift)
+/// ChunkHeader       TEXTURE chunk header (ty = 0x06)
+/// Texture body      STRUCT(modes) + STRING(name) + STRING(mask) +
+///                   EXTENSION(empty)
+/// ```
+///
+/// Because the preamble length / contents vary across exporter
+/// versions, we don't try to decode it structurally. Instead we read
+/// the whole chunk body into a buffer, scan it for a well-formed
+/// `TEXTURE` chunk header (`06 00 00 00`, with a length that fits
+/// inside the remaining buffer and an immediately-following `STRUCT`
+/// header), and parse the nested chunk via the standard `Texture::read`
+/// path. The opaque preamble bytes are preserved verbatim in
+/// `raw_preamble` for diagnostic round-tripping.
+///
+/// If no TEXTURE chunk is found (defensive — every shipped material
+/// we know of has one), `texture` is `None`. We never return `Err`
+/// for a parseable 0x120 chunk: missing/garbled bodies would otherwise
+/// take down the BSP loader for the whole scene.
+///
+/// Pair `texture.name` (e.g. `"Cylinder1746LightingMap"`) with the
+/// material's primary `Material::texture.name` (the diffuse, e.g.
+/// `"fz01"`) to sample the baked lightmap with the secondary UV set.
+#[derive(Debug, Serialize)]
+pub struct LightMapPlugin {
+    pub raw_preamble: Vec<u8>,
+    pub texture: Option<Texture>,
+}
+
+impl LightMapPlugin {
+    pub fn read(cursor: &mut dyn Read, header: ChunkHeader) -> anyhow::Result<Self> {
+        let body = cursor.read_u8_vec(header.length as usize)?;
+        let (raw_preamble, texture) = match Self::find_texture(&body) {
+            Some((offset, tex)) => (body[..offset].to_vec(), Some(tex)),
+            None => (body, None),
+        };
+        Ok(Self {
+            raw_preamble,
+            texture,
+        })
+    }
+
+    /// Scan `data` for the first well-formed nested RW `TEXTURE` chunk
+    /// and parse it via `Texture::read`. Returns the byte offset of
+    /// the chunk header (so the caller can preserve the preamble) and
+    /// the parsed `Texture` on success.
+    fn find_texture(data: &[u8]) -> Option<(usize, Texture)> {
+        use std::io::Cursor;
+        let n = data.len();
+        let mut i = 0usize;
+        while i + 12 <= n {
+            // TEXTURE chunk-header signature `[0x06, 0, 0, 0]` at u32
+            // alignment. PAL4 preambles are u32-aligned in every BSP
+            // we've seen, so we step in 4-byte increments.
+            if data[i] == 0x06
+                && data[i + 1] == 0
+                && data[i + 2] == 0
+                && data[i + 3] == 0
+            {
+                let len = u32::from_le_bytes([
+                    data[i + 4],
+                    data[i + 5],
+                    data[i + 6],
+                    data[i + 7],
+                ]) as usize;
+                let body_start = i + 12;
+                if body_start + len <= n && len >= 12 {
+                    // Validate the immediately-following STRUCT
+                    // header before committing to a full Texture::read
+                    // — minor preamble drift can produce a false
+                    // `06 00 00 00` match.
+                    if data[body_start] == 0x01
+                        && data[body_start + 1] == 0
+                        && data[body_start + 2] == 0
+                        && data[body_start + 3] == 0
+                    {
+                        let mut cur = Cursor::new(&data[body_start..body_start + len]);
+                        if let Ok(tex) = Texture::read(&mut cur) {
+                            return Some((i, tex));
+                        }
+                    }
+                }
+            }
+            i += 4;
+        }
+        None
     }
 }

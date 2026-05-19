@@ -10,9 +10,11 @@ layout(set = 1, binding = 0) uniform PerInstanceUbo {
     mat4 model;
 } perInstanceUbo;
 
-// Mirror of the per-material UBO from `lightmap_texture.frag`. Only the
-// primary UV channel is transformed — the lightmap channel
-// (`fragTexCoord2`) is intentionally static.
+// Mirror of the per-material UBO from `lightmap_texture.frag`. The
+// vert shader only transforms the primary UV (`fragTexCoord`, which
+// the frag shader uses for the diffuse texture). The lightmap UV
+// (`fragTexCoord2`, secondary) is forwarded untransformed because
+// baked atlases are pre-unwrapped.
 layout(set = 3, binding = 0) uniform MaterialParams {
     vec4 tint;
     vec4 misc;

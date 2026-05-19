@@ -113,6 +113,8 @@ impl AssetLoader {
                 keep_right_to_render_only: false,
                 force_unique_materials: false,
                 ignore_root_frame_translation: false,
+
+                bsp_lightmap_tint: None,
             },
         );
 

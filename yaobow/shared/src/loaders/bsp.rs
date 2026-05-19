@@ -109,8 +109,8 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
         texcoord_sets.push(t.clone());
     }
 
-    if let Some(_t) = &sector.texcoords2 {
-        // texcoord_sets.push(t.clone());
+    if let Some(t) = &sector.texcoords2 {
+        texcoord_sets.push(t.clone());
     }
 
     let child = CoreEntity::create(format!("{}_sub", entity.name()), true);
@@ -129,5 +129,6 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
         path.as_ref(),
         config.texture_resolver,
         config.force_unique_materials,
+        config.bsp_lightmap_tint,
     );
 }

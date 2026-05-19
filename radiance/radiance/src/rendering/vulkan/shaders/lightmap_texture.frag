@@ -14,17 +14,33 @@ layout(set = 2, binding = 0) uniform sampler2D texSampler[2];
 layout(set = 3, binding = 0) uniform MaterialParams {
     vec4 tint;
     vec4 misc;       // x = alpha_ref (only consulted when ALPHA_TEST is true)
-    vec4 uv_xform;   // reserved
+                     // y = lightmap intensity (`_ltMap.cfg`)
+    vec4 uv_xform;   // primary-UV xform (applied in vert)
 } mat;
 
+// UV channel assignment (matches `lightmap_texture.vert`):
+//
+//   fragTexCoord  ← primary UV (set 0)  → diffuse atlas tiling
+//   fragTexCoord2 ← secondary UV (set 1) → lightmap atlas
+//
+// Texture binding (`LightMapMaterialDef::create_with_samplers` builds
+// the vector as `[lightmap, diffuse]`):
+//
+//   texSampler[0] = lightmap atlas (must be sampled with fragTexCoord2)
+//   texSampler[1] = diffuse texture (must be sampled with fragTexCoord)
+//
+// Sampling the lightmap with the diffuse (primary) UV — as a previous
+// revision did — produced the well-known "black tile" artefact in PAL4
+// BSPs, because the tiled diffuse UV indexes the atlas outside the
+// charted regions.
 layout(location = 0) in vec2 fragTexCoord;
 layout(location = 1) in vec2 fragTexCoord2;
 
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    vec4 lightMap = texture(texSampler[0], fragTexCoord);
-    vec4 color = texture(texSampler[1], fragTexCoord2);
+    vec4 color    = texture(texSampler[1], fragTexCoord);
+    vec4 lightMap = texture(texSampler[0], fragTexCoord2);
     if (ALPHA_TEST && color.a < mat.misc.x) {
         discard;
     }
@@ -32,6 +48,6 @@ void main() {
     // `color.rgb` is premultiplied when the diffuse has transparency; the
     // lightmap factor and tint must therefore also be multiplied by
     // `mat.tint.a` to preserve the premultiplied invariant of the output.
-    vec3 rgb = (lightMap.rgb * 1.5 + 0.15) * color.rgb * mat.tint.rgb * mat.tint.a;
+    vec3 rgb = lightMap.rgb * mat.misc.y * color.rgb * mat.tint.rgb * mat.tint.a;
     outColor = vec4(rgb, color.a * mat.tint.a);
 }
