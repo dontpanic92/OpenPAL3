@@ -9,16 +9,16 @@ use crosscom::ComRc;
 use p7::interpreter::context::Data;
 use radiance::comdef::{IDirector, IDirectorImpl, ISceneManager};
 use radiance_scripting::comdef::services::{
-    IAppService, IAppServiceImpl, IAudioService, IConfigService, IConfigServiceImpl,
-    IGameRegistry, IHostContextImpl, IInputService, ITextureService, IVfsService,
+    IAppService, IAppServiceImpl, IAudioService, IConfigService, IConfigServiceImpl, IGameRegistry,
+    IHostContextImpl, IInputService, IRandomService, ITextureService, IVfsService,
 };
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
-use radiance_scripting::services::GameRegistry;
+use radiance_scripting::services::{GameRegistry, RandomService};
 use yaobow_editor::comdef::editor_services::{
     IEditorHostContext, IEditorHostContextImpl, IPreviewerHub, IPreviewerHubImpl,
 };
 use yaobow_editor::editor_bindings::EDITOR_SERVICES_P7;
-use yaobow_editor::script_source::{MAIN_P7, register_editor_modules};
+use yaobow_editor::script_source::{register_editor_modules, MAIN_P7};
 
 mod comdef {
     pub use radiance_scripting::comdef::*;
@@ -56,12 +56,7 @@ yaobow_editor::ComObject_ConfigService!(crate::StubConfigService);
 
 impl IConfigServiceImpl for StubConfigService {
     fn get_asset_path(&self, game: i32) -> &str {
-        let value = self
-            .paths
-            .borrow()
-            .get(&game)
-            .cloned()
-            .unwrap_or_default();
+        let value = self.paths.borrow().get(&game).cloned().unwrap_or_default();
         *self.last.borrow_mut() = value;
         unsafe { (*self.last.as_ptr()).as_str() }
     }
@@ -107,14 +102,17 @@ impl IHostContextImpl for TestHostContext {
     fn app(&self) -> ComRc<IAppService> {
         self.app.clone()
     }
-    fn config(&self) -> ComRc<IConfigService> {
-        self.config.clone()
+    fn random(&self) -> ComRc<IRandomService> {
+        RandomService::create()
     }
 }
 
 impl IEditorHostContextImpl for TestHostContext {
     fn previewers(&self) -> ComRc<IPreviewerHub> {
         self.previewers.clone()
+    }
+    fn config(&self) -> ComRc<IConfigService> {
+        self.config.clone()
     }
     fn new_render_target(
         &self,
@@ -144,16 +142,28 @@ impl IPreviewerHubImpl for StubPreviewerHub {
         *self.last.borrow_mut() = String::new();
         unsafe { (*self.last.as_ptr()).as_str() }
     }
-    fn open_image(&self, _vfs_path: &str) -> Option<ComRc<yaobow_editor::comdef::editor_services::IImageHandle>> {
+    fn open_image(
+        &self,
+        _vfs_path: &str,
+    ) -> Option<ComRc<yaobow_editor::comdef::editor_services::IImageHandle>> {
         None
     }
-    fn open_audio(&self, _vfs_path: &str) -> Option<ComRc<yaobow_editor::comdef::editor_services::IAudioHandle>> {
+    fn open_audio(
+        &self,
+        _vfs_path: &str,
+    ) -> Option<ComRc<yaobow_editor::comdef::editor_services::IAudioHandle>> {
         None
     }
-    fn open_video(&self, _vfs_path: &str) -> Option<ComRc<yaobow_editor::comdef::editor_services::IVideoHandle>> {
+    fn open_video(
+        &self,
+        _vfs_path: &str,
+    ) -> Option<ComRc<yaobow_editor::comdef::editor_services::IVideoHandle>> {
         None
     }
-    fn open_model(&self, _vfs_path: &str) -> Option<ComRc<yaobow_editor::comdef::editor_services::IModelHandle>> {
+    fn open_model(
+        &self,
+        _vfs_path: &str,
+    ) -> Option<ComRc<yaobow_editor::comdef::editor_services::IModelHandle>> {
         None
     }
 }
@@ -240,11 +250,7 @@ fn welcome_script_render_im_emits_window_centered_with_game_table() {
         .expect("ui_host foreign box");
 
     env.runtime
-        .call_method_void(
-            director,
-            "render_im",
-            vec![ui_box, Data::Float(0.0)],
-        )
+        .call_method_void(director, "render_im", vec![ui_box, Data::Float(0.0)])
         .expect("welcome.p7 render_im should run");
 
     let calls = recorder.calls.borrow().clone();

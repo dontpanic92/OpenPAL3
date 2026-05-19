@@ -189,11 +189,7 @@ impl ScriptHost {
         let name = name.into();
         let source = source.into();
         self.with_inner(|inner| {
-            if let Some(existing) = inner
-                .extra_bindings
-                .iter_mut()
-                .find(|(n, _)| *n == name)
-            {
+            if let Some(existing) = inner.extra_bindings.iter_mut().find(|(n, _)| *n == name) {
                 existing.1 = source;
             } else {
                 inner.extra_bindings.push((name, source));
@@ -273,6 +269,10 @@ impl ScriptHost {
         self.with_inner(|inner| inner.host.ctx.has_function(name))
     }
 
+    pub fn has_module_function(&self, module_path: &str, name: &str) -> bool {
+        self.with_inner(|inner| inner.host.ctx.has_module_function(module_path, name))
+    }
+
     pub fn with_ctx<R>(&self, body: impl FnOnce(&Context) -> R) -> R {
         self.with_inner(|inner| body(&inner.host.ctx))
     }
@@ -299,6 +299,39 @@ impl ScriptHost {
             current_frame_stack_pop(inner).ok_or_else(|| {
                 HostError::message(format!(
                     "function '{name}' returned no value (stack depth before call {depth})"
+                ))
+            })
+        })
+    }
+
+    pub fn call_module_void(
+        &self,
+        module_path: &str,
+        name: &str,
+        args: Vec<Data>,
+    ) -> Result<(), HostError> {
+        self.with_inner(|inner| {
+            let depth = current_frame_stack_len(inner);
+            Self::call_module_inner(inner, module_path, name, args)?;
+            if current_frame_stack_len(inner) > depth {
+                let _ = current_frame_stack_pop(inner);
+            }
+            Ok(())
+        })
+    }
+
+    pub fn call_module_returning_data(
+        &self,
+        module_path: &str,
+        name: &str,
+        args: Vec<Data>,
+    ) -> Result<Data, HostError> {
+        self.with_inner(|inner| {
+            let depth = current_frame_stack_len(inner);
+            Self::call_module_inner(inner, module_path, name, args)?;
+            current_frame_stack_pop(inner).ok_or_else(|| {
+                HostError::message(format!(
+                    "function '{module_path}.{name}' returned no value (stack depth before call {depth})"
                 ))
             })
         })
@@ -374,6 +407,29 @@ impl ScriptHost {
                 "script function '{name}' is not defined in the loaded package"
             )));
         }
+        Self::call_module_inner_unchecked(inner, "$root", name, args)
+    }
+
+    fn call_module_inner(
+        inner: &mut Inner,
+        module_path: &str,
+        name: &str,
+        args: Vec<Data>,
+    ) -> Result<(), HostError> {
+        if !inner.host.ctx.has_module_function(module_path, name) {
+            return Err(HostError::message(format!(
+                "script function '{module_path}.{name}' is not defined in the loaded package"
+            )));
+        }
+        Self::call_module_inner_unchecked(inner, module_path, name, args)
+    }
+
+    fn call_module_inner_unchecked(
+        inner: &mut Inner,
+        module_path: &str,
+        name: &str,
+        args: Vec<Data>,
+    ) -> Result<(), HostError> {
         let host = &mut inner.host;
         std::panic::catch_unwind(AssertUnwindSafe(|| {
             let P7HostContext { ctx, services } = host;
@@ -389,7 +445,7 @@ impl ScriptHost {
             scope(services, || {
                 scope_context(ctx, || {
                     with_context(|ctx| {
-                        ctx.push_function(name, args);
+                        ctx.push_module_function(module_path, name, args);
                         ctx.resume()
                     })
                     .map_err(|err| {
@@ -401,8 +457,15 @@ impl ScriptHost {
                 })
             })
         }))
-        .map_err(|_| HostError::message(format!("script function '{name}' panicked")))?
-        .map_err(|err| HostError::message(format!("script function '{name}' failed: {:?}", err)))
+        .map_err(|_| {
+            HostError::message(format!("script function '{module_path}.{name}' panicked"))
+        })?
+        .map_err(|err| {
+            HostError::message(format!(
+                "script function '{module_path}.{name}' failed: {:?}",
+                err
+            ))
+        })
     }
 
     fn call_method_inner(
@@ -485,7 +548,12 @@ fn current_frame_stack_len(inner: &Inner) -> usize {
 }
 
 fn current_frame_stack_pop(inner: &mut Inner) -> Option<Data> {
-    inner.host.ctx.stack.last_mut().and_then(|frame| frame.stack.pop())
+    inner
+        .host
+        .ctx
+        .stack
+        .last_mut()
+        .and_then(|frame| frame.stack.pop())
 }
 
 fn binding_provider(extra: &[(String, String)]) -> Box<dyn ModuleProvider> {
@@ -497,6 +565,10 @@ fn binding_provider(extra: &[(String, String)]) -> Box<dyn ModuleProvider> {
     provider.add_module(
         "scripting".to_string(),
         include_str!(concat!(env!("OUT_DIR"), "/scripting.p7")).to_string(),
+    );
+    provider.add_module(
+        "scripting_services".to_string(),
+        include_str!(concat!(env!("OUT_DIR"), "/scripting_services.p7")).to_string(),
     );
     provider.add_module(
         "editor_services".to_string(),

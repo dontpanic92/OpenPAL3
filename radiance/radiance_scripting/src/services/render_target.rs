@@ -34,7 +34,10 @@ impl ScriptedRenderTarget {
     pub fn create(
         target: Box<dyn EngineRenderTarget>,
         cache: Rc<RefCell<ImguiTextureCache>>,
-    ) -> (ComRc<IRenderTarget>, Rc<RefCell<Box<dyn EngineRenderTarget>>>) {
+    ) -> (
+        ComRc<IRenderTarget>,
+        Rc<RefCell<Box<dyn EngineRenderTarget>>>,
+    ) {
         let com_id = next_handle_com_id();
         let tex_id = TextureId::new(target.imgui_texture_id() as usize);
         let pending_forgets = {

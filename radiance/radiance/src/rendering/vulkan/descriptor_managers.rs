@@ -28,8 +28,7 @@ pub struct DescriptorManager {
     texture_layout: vk::DescriptorSetLayout,
     per_frame_layout: vk::DescriptorSetLayout,
     per_material_params_layout: vk::DescriptorSetLayout,
-    per_material_layouts:
-        Arc<Mutex<HashMap<PerMaterialLayoutKey, vk::DescriptorSetLayout>>>,
+    per_material_layouts: Arc<Mutex<HashMap<PerMaterialLayoutKey, vk::DescriptorSetLayout>>>,
     dub_descriptor_manager: DynamicUniformBufferDescriptorManager,
     sampler_cache: VulkanSamplerCache,
 }
@@ -125,10 +124,7 @@ impl DescriptorManager {
     /// Allocates a `COMBINED_IMAGE_SAMPLER` descriptor set bound to the
     /// given `image_view` with the default sampler. Used by render targets
     /// to register their color image with `imgui-rs-vulkan-renderer`.
-    pub fn create_image_view_descriptor_set(
-        &self,
-        image_view: vk::ImageView,
-    ) -> vk::DescriptorSet {
+    pub fn create_image_view_descriptor_set(&self, image_view: vk::ImageView) -> vk::DescriptorSet {
         let sampler = self.sampler_cache.default_sampler();
         let set = self.allocate_texture_descriptor_set().unwrap();
         let image_info = [vk::DescriptorImageInfo {
@@ -317,9 +313,7 @@ impl DescriptorManager {
         device.create_descriptor_pool(&create_info)
     }
 
-    fn create_per_material_params_descriptor_pool(
-        device: &Device,
-    ) -> VkResult<vk::DescriptorPool> {
+    fn create_per_material_params_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
         let uniform_pool_size = vk::DescriptorPoolSize::default()
             .descriptor_count(MAX_DESCRIPTOR_COUNT)
             .ty(vk::DescriptorType::UNIFORM_BUFFER);
@@ -355,8 +349,7 @@ impl DescriptorManager {
         &self,
         material: &VulkanMaterial,
     ) -> vk::DescriptorSetLayout {
-        let key: PerMaterialLayoutKey =
-            (material.key().program, material.textures().len() as u32);
+        let key: PerMaterialLayoutKey = (material.key().program, material.textures().len() as u32);
         let mut per_material_layouts = self.per_material_layouts.lock().unwrap();
         if !per_material_layouts.contains_key(&key) {
             let layout = Self::create_descriptor_set_layout(

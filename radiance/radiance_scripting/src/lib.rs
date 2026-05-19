@@ -20,7 +20,10 @@ pub mod proxies;
 pub mod runtime;
 pub mod services;
 
-pub use proxies::{wrap_director, wrap_im_director, ImguiImmediateDirectorPump};
+pub use proxies::{
+    install_imgui_pump, install_imgui_pump_with_cache, wrap_director, wrap_im_director,
+    ImguiImmediateDirectorPump,
+};
 pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};
 pub use services::HostContext;
 

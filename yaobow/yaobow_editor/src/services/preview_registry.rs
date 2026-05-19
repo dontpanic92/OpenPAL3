@@ -74,7 +74,10 @@ impl PreviewState {
         if tw > 0 && th > 0 {
             camera.set_aspect(tw as f32 / th as f32);
         }
-        camera.transform_mut().set_position(&eye).look_at(&orbit.focus);
+        camera
+            .transform_mut()
+            .set_position(&eye)
+            .look_at(&orbit.focus);
     }
 }
 

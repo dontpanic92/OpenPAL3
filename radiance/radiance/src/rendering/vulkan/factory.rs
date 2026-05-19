@@ -63,7 +63,11 @@ impl MaterialIdentity {
     fn from(def: &MaterialDef) -> Self {
         Self {
             key: def.key(),
-            texture_names: def.textures().iter().map(|t| t.name().to_string()).collect(),
+            texture_names: def
+                .textures()
+                .iter()
+                .map(|t| t.name().to_string())
+                .collect(),
             params: MaterialParamsBits::from(def.params()),
             unique_nonce: def.unique_nonce(),
         }

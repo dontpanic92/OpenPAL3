@@ -625,7 +625,14 @@ mod tests {
         write_u32(&mut buf, GobObjectType::EFFECT);
 
         // entry
-        write_entry_header(&mut buf, "Jeffect001", "gamedata\\PALObject\\MC\\", "MC", "MC1", 2);
+        write_entry_header(
+            &mut buf,
+            "Jeffect001",
+            "gamedata\\PALObject\\MC\\",
+            "MC",
+            "MC1",
+            2,
+        );
         // properties (region 1)
         write_i32_prop(&mut buf, GobFixedProperty::HIDE, 0);
         write_i32_prop(&mut buf, GobFixedProperty::STORE, 1);
@@ -666,7 +673,14 @@ mod tests {
         write_u32(&mut buf, 1);
         write_u32(&mut buf, GobObjectType::MACHINE);
 
-        write_entry_header(&mut buf, "item101", "gamedata\\PALObject\\OM07\\", "OM07", "xb", 1);
+        write_entry_header(
+            &mut buf,
+            "item101",
+            "gamedata\\PALObject\\OM07\\",
+            "OM07",
+            "xb",
+            1,
+        );
         write_i32_prop(&mut buf, GobFixedProperty::HIDE, 0);
         write_i32_prop(&mut buf, "PAL4-GameObject-Parameters", 0);
         write_i32_prop(&mut buf, GobParameterBlock::MACHINE, 1);
@@ -702,7 +716,14 @@ mod tests {
         write_u32(&mut buf, 1);
         write_u32(&mut buf, GobObjectType::MARKER);
 
-        write_entry_header(&mut buf, "marker001", "gamedata\\PALObject\\JDumy\\", "JDumy", "jg", 1);
+        write_entry_header(
+            &mut buf,
+            "marker001",
+            "gamedata\\PALObject\\JDumy\\",
+            "JDumy",
+            "jg",
+            1,
+        );
         write_i32_prop(&mut buf, GobFixedProperty::HIDE, 0);
         write_i32_prop(&mut buf, "PAL4-GameObject-Parameters", 0);
         // NOTE: no terminator and no parameters — EOF marks end-of-region.

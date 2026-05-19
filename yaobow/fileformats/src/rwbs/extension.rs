@@ -379,17 +379,9 @@ impl LightMapPlugin {
             // TEXTURE chunk-header signature `[0x06, 0, 0, 0]` at u32
             // alignment. PAL4 preambles are u32-aligned in every BSP
             // we've seen, so we step in 4-byte increments.
-            if data[i] == 0x06
-                && data[i + 1] == 0
-                && data[i + 2] == 0
-                && data[i + 3] == 0
-            {
-                let len = u32::from_le_bytes([
-                    data[i + 4],
-                    data[i + 5],
-                    data[i + 6],
-                    data[i + 7],
-                ]) as usize;
+            if data[i] == 0x06 && data[i + 1] == 0 && data[i + 2] == 0 && data[i + 3] == 0 {
+                let len = u32::from_le_bytes([data[i + 4], data[i + 5], data[i + 6], data[i + 7]])
+                    as usize;
                 let body_start = i + 12;
                 if body_start + len <= n && len >= 12 {
                     // Validate the immediately-following STRUCT

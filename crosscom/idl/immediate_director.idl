@@ -47,6 +47,17 @@ interface IUiHost: IUnknown {
     void group(IAction body);
     void style_alpha(float alpha, IAction body);
 
+    // Push an imgui style color for the duration of `body` and pop
+    // it on exit. `slot` matches the `imgui::StyleColor` enum values
+    // exposed by imgui-rs:
+    //   0 = Text                         21 = Button
+    //   2 = WindowBg                     22 = ButtonHovered
+    //                                    23 = ButtonActive
+    // Out-of-range slots are clamped to `Text`. Multiple nested
+    // calls compose as stacked pushes; ordering matches the begin/end
+    // pairing imgui-rs's RAII tokens enforce.
+    void style_color(int slot, float r, float g, float b, float a, IAction body);
+
     // Push a font for the duration of `body` and pop it afterwards.
     // `font_idx` selects from the host's font table; out-of-range
     // indices fall back to the default (index 0). Use this to render
@@ -64,6 +75,29 @@ interface IUiHost: IUnknown {
     void same_line();
     void dummy(float w, float h);
     void spacer(float w, float h);
+
+    // Absolute cursor positioning inside the current window's
+    // content region, in script (logical) pixels. The host applies
+    // `dpi_scale` internally. Pair `set_cursor_pos(x, y)` with the
+    // immediately-following widget call (e.g. `image`, `text`,
+    // `button`) to draw at a fixed location — needed for screens
+    // (like the yaobow title page) that build their own layout
+    // arithmetic instead of relying on imgui auto-flow.
+    void set_cursor_pos(float x, float y);
+    float cursor_pos_x();
+    float cursor_pos_y();
+
+    // Total display size (in logical/script pixels) of the imgui
+    // viewport, i.e. `ui.io().display_size / dpi_scale`. Useful for
+    // fullscreen layouts that compute their own 16:9 letterboxing.
+    int display_size_x();
+    int display_size_y();
+
+    // Measure a string under the currently-active font, returned in
+    // script (logical) pixels. Used by the title page to size the
+    // "press any key" blinking text and centre it inside its pane.
+    float calc_text_size_x(&str s);
+    float calc_text_size_y(&str s);
 
     // Advance to the next column inside the most recently opened
     // `table(...)` body. Cells in an imgui table do not auto-advance;
@@ -129,6 +163,15 @@ interface IUiHost: IUnknown {
     float mouse_drag_delta_y(int button);
     void reset_mouse_drag_delta(int button);
     float mouse_wheel();
+
+    // Aggregate "is any keyboard key OR mouse button currently held
+    // down this frame" — the imgui-io equivalent of
+    // `keys_down.iter().any(|&k| k) || mouse_down.iter().any(|&k| k)`.
+    // Title screens that wait for "press any key to continue" read
+    // this once per frame; tracking edge transitions (the press →
+    // release → next-press sequence the legacy code used) is left to
+    // the script.
+    bool any_key_or_mouse_down();
 
     // Available content region of the current container, in scaled
     // pixels. Useful when sizing widgets (e.g. an offscreen render

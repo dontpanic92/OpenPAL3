@@ -86,21 +86,17 @@ fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path:
     };
 
     if texture_paths.len() == 1 {
-        SimpleMaterialDef::create(
-            texture_paths[0].to_str().unwrap(),
-            |name| vfs.open(name).ok(),
-        )
+        SimpleMaterialDef::create(texture_paths[0].to_str().unwrap(), |name| {
+            vfs.open(name).ok()
+        })
         .with_blend(blend)
     } else {
         let textures: Vec<_> = texture_paths.iter().map(|p| p.to_str().unwrap()).collect();
-        LightMapMaterialDef::create(
-            textures,
-            |name| {
-                PathBuf::from(name)
-                    .file_stem()
-                    .and_then(|_| vfs.open(name).ok())
-            },
-        )
+        LightMapMaterialDef::create(textures, |name| {
+            PathBuf::from(name)
+                .file_stem()
+                .and_then(|_| vfs.open(name).ok())
+        })
         .with_blend(blend)
     }
 }

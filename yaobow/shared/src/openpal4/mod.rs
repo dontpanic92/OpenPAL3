@@ -14,8 +14,8 @@ pub mod comdef {
     }
 }
 pub mod actor;
-pub mod pal4_debug;
 pub mod director;
+pub mod pal4_debug;
 pub mod scene;
 pub mod scripting;
 pub mod uv_anim;

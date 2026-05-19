@@ -1,4 +1,4 @@
-﻿//! Phase 3 (B1b) end-to-end test for the runtime-typed CCW factory.
+//! Phase 3 (B1b) end-to-end test for the runtime-typed CCW factory.
 //!
 //! Validates that `crosscom_protosept::wrap_proto::<I>(handle, data)`
 //! produces a Rust `ComRc<I>` whose vtable thunks dispatch back into
@@ -328,7 +328,10 @@ fn idirlike_null_update_returns_null_pointer() {
     ACTIVATIONS.lock().unwrap().clear();
 
     let mut ctx = Context::new();
-    ctx.register_host_function("test.record_activation".to_string(), record_activation_host_fn);
+    ctx.register_host_function(
+        "test.record_activation".to_string(),
+        record_activation_host_fn,
+    );
     let module = p7::compile(DIRLIKE_SCRIPT.to_string()).expect("compile");
     ctx.load_module(module);
     ctx.push_function("make_dir", vec![Data::Int(5), Data::Int(0)]);
@@ -354,7 +357,10 @@ fn idirlike_some_update_returns_a_new_ccw_thats_independently_invokable() {
     ACTIVATIONS.lock().unwrap().clear();
 
     let mut ctx = Context::new();
-    ctx.register_host_function("test.record_activation".to_string(), record_activation_host_fn);
+    ctx.register_host_function(
+        "test.record_activation".to_string(),
+        record_activation_host_fn,
+    );
     let module = p7::compile(DIRLIKE_SCRIPT.to_string()).expect("compile");
     ctx.load_module(module);
     ctx.push_function("make_dir", vec![Data::Int(3), Data::Int(1)]); // return_self=true
@@ -417,10 +423,7 @@ fn wrap_proto_for_unregistered_uuid_errors_loudly() {
 
     // Now with a live runtime: registry lookup should fail.
     let mut ctx = Context::new();
-    let module = p7::compile(
-        r#"pub fn make_box() -> int { 0 }"#.to_string(),
-    )
-    .expect("compile");
+    let module = p7::compile(r#"pub fn make_box() -> int { 0 }"#.to_string()).expect("compile");
     ctx.load_module(module);
     let runtime = TestRuntime::new(ctx);
     let handle = RuntimeHandle::from_rc(&runtime);

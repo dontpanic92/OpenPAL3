@@ -2,6 +2,7 @@ pub mod audio;
 pub mod game_registry;
 pub mod input;
 pub mod perf_overlay;
+pub mod random;
 pub mod render_target;
 pub mod texture;
 pub mod texture_cache;
@@ -21,8 +22,8 @@ use radiance::input::InputEngine;
 use radiance::rendering::ComponentFactory;
 
 use crate::comdef::services::{
-    IAppService, IAudioService, IConfigService, IGameRegistry, IHostContext, IHostContextImpl,
-    IInputService, ITextureService, IVfsService,
+    IAppService, IAudioService, IGameRegistry, IHostContext, IHostContextImpl, IInputService,
+    IRandomService, ITextureService, IVfsService,
 };
 
 pub struct HostContext {
@@ -33,7 +34,7 @@ pub struct HostContext {
     input: ComRc<IInputService>,
     games: ComRc<IGameRegistry>,
     app: ComRc<IAppService>,
-    config: ComRc<IConfigService>,
+    random: ComRc<IRandomService>,
 }
 
 ComObject_HostContext!(super::HostContext);
@@ -47,7 +48,6 @@ impl HostContext {
         input: ComRc<IInputService>,
         games: ComRc<IGameRegistry>,
         app: ComRc<IAppService>,
-        config: ComRc<IConfigService>,
     ) -> ComRc<IHostContext> {
         ComRc::from_object(Self {
             scene_manager,
@@ -57,7 +57,7 @@ impl HostContext {
             input,
             games,
             app,
-            config,
+            random: RandomService::create(),
         })
     }
 
@@ -68,7 +68,6 @@ impl HostContext {
         vfs: Rc<MiniFs>,
         input: Rc<RefCell<dyn InputEngine>>,
         app: ComRc<IAppService>,
-        config: ComRc<IConfigService>,
     ) -> ComRc<IHostContext> {
         Self::new(
             scene_manager,
@@ -78,7 +77,6 @@ impl HostContext {
             InputService::create(input),
             GameRegistry::create(),
             app,
-            config,
         )
     }
 }
@@ -105,8 +103,8 @@ impl IHostContextImpl for HostContext {
     fn app(&self) -> ComRc<IAppService> {
         self.app.clone()
     }
-    fn config(&self) -> ComRc<IConfigService> {
-        self.config.clone()
+    fn random(&self) -> ComRc<IRandomService> {
+        self.random.clone()
     }
 }
 
@@ -114,6 +112,7 @@ pub use audio::{AudioService, AudioSource};
 pub use game_registry::GameRegistry;
 pub use input::InputService;
 pub use perf_overlay::PerfOverlay;
+pub use random::RandomService;
 pub use render_target::ScriptedRenderTarget;
 pub use texture::{Texture, TextureService};
 pub use texture_cache::ImguiTextureCache;

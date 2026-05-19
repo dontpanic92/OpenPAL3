@@ -198,9 +198,7 @@ impl RenderingEngine for VulkanRenderingEngine {
                     match vro.material().key().blend {
                         BlendMode::Opaque => opaque.push(vro),
                         BlendMode::AlphaTest => cutout.push(vro),
-                        BlendMode::AlphaBlend
-                        | BlendMode::Additive
-                        | BlendMode::Multiply => {
+                        BlendMode::AlphaBlend | BlendMode::Additive | BlendMode::Multiply => {
                             let c = vro.local_centroid();
                             let wx = m[0][0] * c[0] + m[0][1] * c[1] + m[0][2] * c[2] + m[0][3];
                             let wy = m[1][0] * c[0] + m[1][1] * c[1] + m[1][2] * c[2] + m[1][3];
@@ -208,7 +206,12 @@ impl RenderingEngine for VulkanRenderingEngine {
                             let dx = wx - camera_world[0];
                             let dy = wy - camera_world[1];
                             let dz = wz - camera_world[2];
-                            transparent.push((dx * dx + dy * dy + dz * dz, entity_idx, ro_idx, vro));
+                            transparent.push((
+                                dx * dx + dy * dy + dz * dz,
+                                entity_idx,
+                                ro_idx,
+                                vro,
+                            ));
                         }
                     }
                 }
@@ -595,8 +598,7 @@ impl VulkanRenderingEngine {
         // count.
         let prev_fence = self.images_in_flight[image_index as usize];
         if prev_fence != vk::Fence::null() {
-            self.device
-                .wait_for_fences(&[prev_fence], true, u64::MAX)?;
+            self.device.wait_for_fences(&[prev_fence], true, u64::MAX)?;
         }
         self.images_in_flight[image_index as usize] = self.in_flight_fences[frame];
 
@@ -628,9 +630,7 @@ impl VulkanRenderingEngine {
                     match vro.material().key().blend {
                         BlendMode::Opaque => opaque.push(vro),
                         BlendMode::AlphaTest => cutout.push(vro),
-                        BlendMode::AlphaBlend
-                        | BlendMode::Additive
-                        | BlendMode::Multiply => {
+                        BlendMode::AlphaBlend | BlendMode::Additive | BlendMode::Multiply => {
                             let c = vro.local_centroid();
                             // Affine transform: world_pos = M * [c, 1].
                             let wx = m[0][0] * c[0] + m[0][1] * c[1] + m[0][2] * c[2] + m[0][3];
@@ -639,7 +639,12 @@ impl VulkanRenderingEngine {
                             let dx = wx - camera_world[0];
                             let dy = wy - camera_world[1];
                             let dz = wz - camera_world[2];
-                            transparent.push((dx * dx + dy * dy + dz * dz, entity_idx, ro_idx, vro));
+                            transparent.push((
+                                dx * dx + dy * dy + dz * dz,
+                                entity_idx,
+                                ro_idx,
+                                vro,
+                            ));
                         }
                     }
                 }
@@ -710,8 +715,7 @@ impl VulkanRenderingEngine {
             // the fence in the signaled state on every error path that
             // returns before reaching this submit, so we don't deadlock
             // a future frame that waits on an unsignaled fence.
-            self.device
-                .reset_fences(&[self.in_flight_fences[frame]])?;
+            self.device.reset_fences(&[self.in_flight_fences[frame]])?;
             self.device
                 .queue_submit(self.queue, &[submit_info], self.in_flight_fences[frame])?;
         }

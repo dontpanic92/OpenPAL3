@@ -157,11 +157,7 @@ impl UvAnimDriver {
 /// interpolated UV transform. All other render objects (and non-Vulkan
 /// backends whose `RenderObject::set_uv_xform` is a no-op) are left
 /// untouched.
-fn apply_uv_xform_recursive(
-    entity: &ComRc<IEntity>,
-    t: f32,
-    anims: &HashMap<String, NamedAnim>,
-) {
+fn apply_uv_xform_recursive(entity: &ComRc<IEntity>, t: f32, anims: &HashMap<String, NamedAnim>) {
     if let Some(rc) = entity.get_rendering_component() {
         for obj in rc.render_objects() {
             let Some(name) = obj.material_debug_name() else {

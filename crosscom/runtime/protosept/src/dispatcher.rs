@@ -355,7 +355,13 @@ fn classify_foreign_box(
                     other
                 ))
             })?;
-            classify_script_impl_arg(ctx, box_idx, generation, concrete_type_id, origin_module_idx)
+            classify_script_impl_arg(
+                ctx,
+                box_idx,
+                generation,
+                concrete_type_id,
+                origin_module_idx,
+            )
         }
     }
 }

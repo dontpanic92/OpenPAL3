@@ -1,0 +1,546 @@
+// Yaobow title-selection page (immediate-mode protosept port).
+// Visual parity port of the legacy `yaobow/src/application/director.rs`:
+//
+//   * fullscreen window with a 0..2s..5s alpha ramp;
+//   * left pane: logo + "press any key" blinking underline (4.6s
+//     hold, then 0.4s show / 1.6s hide cycle), animating into a
+//     game-button list once any input is detected and released;
+//   * right pane: GIF outline animation (16s window, 2s cross-fade)
+//     until the user hovers a game, at which point a random preview
+//     JPG for that game is shown;
+//   * version string in the bottom-left (small font, grey).
+//
+// Selecting a game writes the intent slot which `update` drains via
+// `host.app().open_game(ordinal)` — the matching `YaobowAppService`
+// records the choice into the existing `Rc<RefCell<Option<GameType>>>`
+// that `YaobowApplicationLoader::on_updating` polls on the next tick.
+
+import radiance;
+import scripting_services;
+import immediate_director;
+import yaobow_services;
+import title_consts;
+
+let PROMPT_FIRST_TIME: int = 0;
+let PROMPT_BLINKING: int = 1;
+let PROMPT_AWAITING_RELEASE: int = 2;
+let PROMPT_SHOWING_LIST: int = 3;
+
+let OUTLINE_FIRST_TIME: int = 0;
+let OUTLINE_PLAYING: int = 1;
+let OUTLINE_WAITING: int = 2;
+
+let PIC_OUTLINE: int = 0;
+let PIC_SHOWING: int = 1;
+
+let NO_HOVER: int = -1;
+
+let PAL3_COUNT: int = 7;
+let PAL4_COUNT: int = 4;
+
+pub proto IDirectorLifecycle {
+    fn deactivate(self: ref<IDirectorLifecycle>);
+}
+
+// Preview pictures are *lazy-loaded* into a single slot on hover
+// change. Storing them eagerly in `array<?box<T>>` would require
+// pushing `?box<T>` values, which the current p7 typechecker can't
+// resolve (`SemanticError(TypeNotFound { name: "?box<proto(N)>" })`
+// when the optional-box element type goes through the proto
+// resolver). One slot dodges the push path entirely — assignment to
+// `arr[0]` of an already-`?box<T>` value works fine.
+
+pub struct[immediate_director.IImmediateDirector, IDirectorLifecycle] TitleDirector(
+    pub host: box<yaobow_services.IYaobowAppContext>,
+    pub bgm: ?box<scripting_services.IAudioSource>,
+    pub logo: ?box<scripting_services.ITexture>,
+    pub logo_w: int,
+    pub logo_h: int,
+    pub outlines: ?box<scripting_services.IGifAnimation>,
+    pub current_pic: box<array<?box<scripting_services.ITexture>>>,
+    pub time: box<array<float>>,
+    pub prompt_phase: box<array<int>>,
+    pub prompt_time: box<array<float>>,
+    pub outline_phase: box<array<int>>,
+    pub outline_frame: box<array<int>>,
+    pub outline_frame_time: box<array<float>>,
+    pub outline_remaining: box<array<float>>,
+    pub hovered_game: box<array<int>>,
+    pub current_pic_game: box<array<int>>,
+    pub current_pic_index: box<array<int>>,
+    pub pic_state: box<array<int>>,
+    pub intent: box<array<int>>,
+    pub intent_arg: box<array<int>>,
+) {
+    pub fn activate(self: ref<Self>) -> int {
+        if self.bgm != null {
+            let _ = self.bgm!.play(1);
+        }
+        self.time[0] = 0.0;
+        self.prompt_phase[0] = PROMPT_FIRST_TIME;
+        self.prompt_time[0] = title_consts.UNDERLINE_FIRST_TIME_WAITING;
+        self.outline_phase[0] = OUTLINE_FIRST_TIME;
+        self.outline_frame[0] = 0;
+        self.outline_frame_time[0] = 0.0;
+        self.outline_remaining[0] = title_consts.UNDERLINE_FIRST_TIME_WAITING;
+        self.hovered_game[0] = NO_HOVER;
+        self.current_pic_game[0] = NO_HOVER;
+        self.current_pic_index[0] = 0;
+        self.pic_state[0] = PIC_OUTLINE;
+        self.intent[0] = title_consts.INTENT_NONE;
+        self.intent_arg[0] = 0;
+        0
+    }
+
+    pub fn deactivate(self: ref<Self>) {
+        if self.bgm != null {
+            let _ = self.bgm!.stop();
+        }
+    }
+
+    pub fn render_im(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        dt: float,
+    ) -> int {
+        let _ = ui.style_color(
+            title_consts.SC_WINDOW_BG,
+            title_consts.BG_R, title_consts.BG_G, title_consts.BG_B, title_consts.BG_A,
+            () => {
+                let _ = ui.window_fullscreen("##yaobow_title", 0, () => {
+                    self.render_inner(ui, dt);
+                });
+            },
+        );
+        0
+    }
+
+    pub fn render_inner(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        dt: float,
+    ) {
+        let display_w = ui.display_size_x() as float;
+        let display_h = ui.display_size_y() as float;
+        let unit_w = display_w / 16.0;
+        let unit_h = display_h / 9.0;
+        let mut unit = unit_w;
+        if unit_h < unit { unit = unit_h; }
+        let central_w = unit * 16.0;
+        let central_h = unit * 9.0;
+        let central_x = (display_w - central_w) * 0.5;
+        let central_y = (display_h - central_h) * 0.5;
+        let left_ratio = 0.4;
+
+        let t = self.time[0];
+        let alpha = compute_fade_alpha(t);
+        self.time[0] = t + dt;
+
+        let _ = ui.style_alpha(alpha, () => {
+            let logo_cx = central_w * left_ratio * 0.5 + central_x;
+            let logo_cy = central_h * 0.2 + central_y;
+            let logo_w = central_w * 0.4;
+            let logo_h = central_h * 0.3;
+            self.draw_logo(ui, logo_cx, logo_cy, logo_w, logo_h);
+
+            let list_cx = logo_cx;
+            let list_cy = central_h * 0.65 + central_y;
+            let list_w = logo_w;
+            let list_h = central_h * 0.7;
+            self.render_prompt(ui, dt, list_cx, list_cy, list_w, list_h);
+
+            let pic_cx = central_w * (left_ratio + (1.0 - left_ratio) * 0.5) + central_x;
+            let pic_cy = central_h * 0.5 + central_y;
+            let pic_w = central_w * (1.0 - left_ratio);
+            let pic_h = central_h;
+            self.render_right_pane(ui, dt, pic_cx, pic_cy, pic_w, pic_h);
+        });
+
+        self.draw_version(ui);
+    }
+
+    pub fn draw_logo(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        cx: float, cy: float, w: float, h: float,
+    ) {
+        if self.logo == null { return; }
+        draw_fitted_image(
+            ui,
+            self.logo!.imgui_id(),
+            self.logo_w as float,
+            self.logo_h as float,
+            cx, cy, w, h,
+        );
+    }
+
+    pub fn render_prompt(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        dt: float,
+        cx: float, cy: float, w: float, h: float,
+    ) {
+        let phase = self.prompt_phase[0];
+        if phase == PROMPT_SHOWING_LIST {
+            self.draw_game_list(ui, cx, cy, w, h);
+            return;
+        }
+        let text_a = "按下任意键继续";
+        let text_b = "按下任意键继续_";
+        let text_w = ui.calc_text_size_x(text_b);
+        let text_h = ui.calc_text_size_y(text_b);
+        let _ = ui.style_color(
+            title_consts.SC_TEXT, 0.0, 0.0, 0.0, 1.0, () => {
+                self.draw_prompt_text(ui, dt, cx, cy, text_w, text_h, text_a, text_b);
+            },
+        );
+        if self.prompt_phase[0] == PROMPT_AWAITING_RELEASE {
+            if ui.any_key_or_mouse_down() == 0 {
+                self.hovered_game[0] = title_consts.GAME_PAL3;
+                self.prompt_phase[0] = PROMPT_SHOWING_LIST;
+            }
+        }
+    }
+
+    pub fn draw_prompt_text(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        dt: float,
+        cx: float, cy: float, text_w: float, text_h: float,
+        text_a: string, text_b: string,
+    ) {
+        let phase = self.prompt_phase[0];
+        if phase == PROMPT_FIRST_TIME {
+            let _ = ui.set_cursor_pos(cx - text_w * 0.5, cy - text_h * 0.5);
+            let _ = ui.text(text_a);
+            let t = self.prompt_time[0] - dt;
+            if t < 0.0 {
+                self.prompt_phase[0] = PROMPT_BLINKING;
+                self.prompt_time[0] = -t;
+            } else {
+                self.prompt_time[0] = t;
+            }
+            if ui.any_key_or_mouse_down() != 0 {
+                self.prompt_phase[0] = PROMPT_AWAITING_RELEASE;
+            }
+        } else if phase == PROMPT_BLINKING {
+            let cycle = title_consts.UNDERLINE_MARGIN_TIME + title_consts.UNDERLINE_SHOW_TIME;
+            let mut t = self.prompt_time[0];
+            while t > cycle {
+                t = t - cycle;
+            }
+            let _ = ui.set_cursor_pos(cx - text_w * 0.5, cy - text_h * 0.5);
+            if t > title_consts.UNDERLINE_MARGIN_TIME {
+                let _ = ui.text(text_b);
+            } else {
+                let _ = ui.text(text_a);
+            }
+            self.prompt_time[0] = t + dt;
+            if ui.any_key_or_mouse_down() != 0 {
+                self.prompt_phase[0] = PROMPT_AWAITING_RELEASE;
+            }
+        }
+    }
+
+    pub fn draw_game_list(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        cx: float, cy: float, w: float, h: float,
+    ) {
+        let item_w = w;
+        let item_x = cx - item_w * 0.5;
+        let item_h = 60.0;
+        let all_h = item_h * 2.0;
+        let y = cy - all_h * 0.5;
+        let _ = ui.style_color(
+            title_consts.SC_BUTTON, 0.0, 0.0, 0.0, 0.0, () => {
+                let _ = ui.style_color(
+                    title_consts.SC_BUTTON_HOVERED, 0.0, 0.0, 0.0, 0.0, () => {
+                        let _ = ui.style_color(
+                            title_consts.SC_BUTTON_ACTIVE, 0.0, 0.0, 0.0, 0.0, () => {
+                                self.draw_game_button(ui, title_consts.GAME_PAL3, item_x, y, item_w, item_h);
+                                let y2 = y + item_h;
+                                self.draw_game_button(ui, title_consts.GAME_PAL4, item_x, y2, item_w, item_h);
+                            },
+                        );
+                    },
+                );
+            },
+        );
+    }
+
+    pub fn draw_game_button(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        ordinal: int, x: float, y: float, w: float, h: float,
+    ) {
+        let label = game_full_name(ordinal);
+        let _ = ui.set_cursor_pos(x, y);
+        if self.hovered_game[0] != ordinal {
+            let _ = ui.style_color(
+                title_consts.SC_TEXT, 0.5, 0.5, 0.5, 1.0, () => {
+                    self.submit_game_button(ui, label, w, h, ordinal);
+                },
+            );
+        } else {
+            self.submit_game_button(ui, label, w, h, ordinal);
+        }
+    }
+
+    pub fn submit_game_button(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        label: string, w: float, h: float, ordinal: int,
+    ) {
+        if ui.button(label, w, h) != 0 {
+            self.intent[0] = title_consts.INTENT_OPEN_GAME;
+            self.intent_arg[0] = ordinal;
+        }
+        if ui.is_item_hovered() != 0 {
+            self.hovered_game[0] = ordinal;
+        }
+    }
+
+    pub fn render_right_pane(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        dt: float,
+        cx: float, cy: float, w: float, h: float,
+    ) {
+        if self.hovered_game[0] != NO_HOVER {
+            self.pic_state[0] = PIC_SHOWING;
+        }
+        if self.pic_state[0] == PIC_OUTLINE {
+            self.render_outline(ui, dt, cx, cy, w, h);
+        } else {
+            self.render_hovered_pic(ui, cx, cy, w, h);
+        }
+    }
+
+    pub fn render_outline(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        dt: float,
+        cx: float, cy: float, w: float, h: float,
+    ) {
+        let h70 = h * 0.7;
+        let phase = self.outline_phase[0];
+        if phase == OUTLINE_PLAYING {
+            if self.outlines != null {
+                let anim = self.outlines!;
+                let frame_id = self.outline_frame[0];
+                let frame = anim.frame_at(frame_id);
+                let fw = frame.width() as float;
+                let fh = frame.height() as float;
+                let remaining = self.outline_remaining[0];
+                let mut a = 1.0;
+                if remaining < title_consts.OUTLINE_FADE_TIME {
+                    a = remaining / title_consts.OUTLINE_FADE_TIME;
+                } else if remaining > title_consts.OUTLINE_SHOW_TIME - title_consts.OUTLINE_FADE_TIME {
+                    a = (title_consts.OUTLINE_SHOW_TIME - remaining) / title_consts.OUTLINE_FADE_TIME;
+                }
+                let _ = ui.style_alpha(a, () => {
+                    draw_fitted_image(ui, frame.imgui_id(), fw, fh, cx, cy, w, h70);
+                });
+            }
+        }
+
+        if phase == OUTLINE_FIRST_TIME {
+            let t = self.outline_remaining[0] - dt;
+            if t < 0.0 {
+                self.outline_phase[0] = OUTLINE_WAITING;
+                self.outline_remaining[0] = title_consts.OUTLINE_MARGIN_TIME;
+            } else {
+                self.outline_remaining[0] = t;
+            }
+        } else if phase == OUTLINE_PLAYING {
+            if self.outlines != null {
+                let anim = self.outlines!;
+                let n_frames = anim.frame_count();
+                let frame_id = self.outline_frame[0];
+                let delay_ms = anim.delay_ms(frame_id);
+                let delay_s = (delay_ms as float) / 1000.0;
+                let mut ft = self.outline_frame_time[0] + dt;
+                if ft >= delay_s {
+                    ft = ft - delay_s;
+                    let mut next = frame_id + 1;
+                    if next >= n_frames { next = 0; }
+                    self.outline_frame[0] = next;
+                }
+                self.outline_frame_time[0] = ft;
+            }
+            let remaining = self.outline_remaining[0] - dt;
+            if remaining < 0.0 {
+                self.outline_phase[0] = OUTLINE_WAITING;
+                self.outline_remaining[0] = title_consts.OUTLINE_MARGIN_TIME;
+            } else {
+                self.outline_remaining[0] = remaining;
+            }
+        } else if phase == OUTLINE_WAITING {
+            let t = self.outline_remaining[0] - dt;
+            if t < 0.0 {
+                self.outline_phase[0] = OUTLINE_PLAYING;
+                self.outline_frame[0] = 0;
+                self.outline_frame_time[0] = -t;
+                self.outline_remaining[0] = title_consts.OUTLINE_SHOW_TIME;
+            } else {
+                self.outline_remaining[0] = t;
+            }
+        }
+    }
+
+    pub fn render_hovered_pic(
+        self: ref<Self>,
+        ui: box<immediate_director.IUiHost>,
+        cx: float, cy: float, w: float, h: float,
+    ) {
+        let hovered = self.hovered_game[0];
+        if hovered == NO_HOVER { return; }
+        if self.current_pic_game[0] != hovered {
+            let count = pic_count(hovered);
+            let r = self.host.random().next_int(count);
+            self.current_pic_game[0] = hovered;
+            self.current_pic_index[0] = r;
+            // Lazy-load the chosen preview into the 1-elem slot.
+            // Assigning a `?box<T>` value to `arr[0]` of the same
+            // type is a straight assignment — no widening involved.
+            let path = pic_path(hovered, r);
+            self.current_pic[0] = self.host.textures().load_png(path);
+        }
+        let slot = self.current_pic[0];
+        if slot == null { return; }
+        let tex = slot!;
+        draw_fitted_image(
+            ui,
+            tex.imgui_id(),
+            tex.width() as float,
+            tex.height() as float,
+            cx, cy, w, h,
+        );
+    }
+
+    pub fn draw_version(self: ref<Self>, ui: box<immediate_director.IUiHost>) {
+        let _ = ui.style_color(
+            title_consts.SC_TEXT, 0.5, 0.5, 0.5, 1.0, () => {
+                let h = ui.display_size_y() as float;
+                let _ = ui.set_cursor_pos(5.0, h - 24.0);
+                let _ = ui.text_with_font(title_consts.FONT_SMALL, "妖弓主程序 build-dev");
+            },
+        );
+    }
+
+    pub fn update(
+        self: ref<Self>,
+        dt: float,
+    ) -> ?box<radiance.IDirector> {
+        let code = self.intent[0];
+        let arg = self.intent_arg[0];
+        self.intent[0] = title_consts.INTENT_NONE;
+        self.intent_arg[0] = 0;
+        if code == title_consts.INTENT_OPEN_GAME {
+            let next = self.host.app().open_game(arg);
+            if next != null {
+                return next;
+            }
+        }
+        return null;
+    }
+}
+
+pub fn make_title_director(
+    host: box<yaobow_services.IYaobowAppContext>,
+) -> box<immediate_director.IImmediateDirector> {
+    let bgm = host.audio().load("/music/Grace.ogg", 1);
+    let logo = host.textures().load_png("/images/yaobow.png");
+    let mut logo_w: int = 0;
+    let mut logo_h: int = 0;
+    if logo != null {
+        logo_w = logo!.width();
+        logo_h = logo!.height();
+    }
+    let outlines = host.textures().load_gif_animation("/images/title/outlines/1.gif");
+
+    // 1-elem nullable-texture slot. Seed via a deliberate-miss load
+    // so we get a `?box<T>` value to put into the array literal —
+    // `[null]` alone fails type inference because p7 doesn't widen
+    // null into `?box<scripting_services.ITexture>` without a sample
+    // of the element type.
+    let initial_pic: array<?box<scripting_services.ITexture>> =
+        [host.textures().load_png("")];
+
+    let time_arr: array<float> = [0.0];
+    let prompt_phase: array<int> = [PROMPT_FIRST_TIME];
+    let prompt_time: array<float> = [title_consts.UNDERLINE_FIRST_TIME_WAITING];
+    let outline_phase: array<int> = [OUTLINE_FIRST_TIME];
+    let outline_frame: array<int> = [0];
+    let outline_frame_time: array<float> = [0.0];
+    let outline_remaining: array<float> = [title_consts.UNDERLINE_FIRST_TIME_WAITING];
+    let hovered: array<int> = [NO_HOVER];
+    let current_pic_game: array<int> = [NO_HOVER];
+    let current_pic_index: array<int> = [0];
+    let pic_state: array<int> = [PIC_OUTLINE];
+    let intent: array<int> = [title_consts.INTENT_NONE];
+    let intent_arg: array<int> = [0];
+    return box(TitleDirector(
+        host, bgm, logo, logo_w, logo_h, outlines, box(initial_pic),
+        box(time_arr), box(prompt_phase), box(prompt_time),
+        box(outline_phase), box(outline_frame), box(outline_frame_time), box(outline_remaining),
+        box(hovered), box(current_pic_game), box(current_pic_index), box(pic_state),
+        box(intent), box(intent_arg),
+    )) as box<immediate_director.IImmediateDirector>;
+}
+
+fn compute_fade_alpha(t: float) -> float {
+    if t < title_consts.FADE_HOLD_END {
+        return 0.0;
+    }
+    if t < title_consts.FADE_RAMP_END {
+        return (t - title_consts.FADE_HOLD_END)
+            / (title_consts.FADE_RAMP_END - title_consts.FADE_HOLD_END);
+    }
+    return 1.0;
+}
+
+fn draw_fitted_image(
+    ui: box<immediate_director.IUiHost>,
+    texture_id: int,
+    src_w: float,
+    src_h: float,
+    cx: float,
+    cy: float,
+    max_w: float,
+    max_h: float,
+) {
+    if src_w <= 0.0 || src_h <= 0.0 { return; }
+    let mut scale = max_w / src_w;
+    let h_scale = max_h / src_h;
+    if h_scale < scale { scale = h_scale; }
+    let target_w = src_w * scale;
+    let target_h = src_h * scale;
+    let _ = ui.set_cursor_pos(cx - target_w * 0.5, cy - target_h * 0.5);
+    let _ = ui.image(texture_id, target_w, target_h);
+}
+
+fn game_full_name(ordinal: int) -> string {
+    if ordinal == title_consts.GAME_PAL3 { return "仙剑奇侠传三"; }
+    if ordinal == title_consts.GAME_PAL4 { return "仙剑奇侠传四"; }
+    return "";
+}
+
+fn pic_count(ordinal: int) -> int {
+    if ordinal == title_consts.GAME_PAL3 { return PAL3_COUNT; }
+    if ordinal == title_consts.GAME_PAL4 { return PAL4_COUNT; }
+    return 0;
+}
+
+fn pic_path(ordinal: int, index: int) -> string {
+    let folder = pic_folder(ordinal);
+    let n = index + 1;
+    return f"/images/title/{folder}/{n}.jpg";
+}
+
+fn pic_folder(ordinal: int) -> string {
+    if ordinal == title_consts.GAME_PAL3 { return "pal3"; }
+    if ordinal == title_consts.GAME_PAL4 { return "pal4"; }
+    return "pal3";
+}

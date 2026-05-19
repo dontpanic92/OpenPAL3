@@ -137,12 +137,7 @@ impl MaterialParamsGpu {
         Self {
             tint: p.tint,
             misc: [p.alpha_ref, p.intensity, 0.0, 0.0],
-            uv_xform: [
-                p.uv_scale[0],
-                p.uv_scale[1],
-                p.uv_offset[0],
-                p.uv_offset[1],
-            ],
+            uv_xform: [p.uv_scale[0], p.uv_scale[1], p.uv_offset[0], p.uv_offset[1]],
         }
     }
 }

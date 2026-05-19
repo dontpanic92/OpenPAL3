@@ -1,6 +1,4 @@
-use std::cell::RefCell;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use crosscom::ComRc;
 use packfs::init_virtual_fs;
@@ -8,13 +6,10 @@ use radiance::{
     application::Application,
     comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
 };
-use radiance_scripting::comdef::immediate_director::IUiHost;
-use radiance_scripting::services::ui_host::ImguiUiHost;
-use radiance_scripting::services::ImguiTextureCache;
-use radiance_scripting::ImguiImmediateDirectorPump;
+use radiance_scripting::install_imgui_pump;
 use shared::openpal4::{asset_loader::AssetLoader, director::OpenPAL4Director};
 
-use super::debug_bootstrap;
+use crate::script_source::YaobowScriptProject;
 
 pub struct OpenPal4ApplicationLoader {
     app: ComRc<IApplication>,
@@ -43,14 +38,15 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
             vfs,
         );
 
-        // Bootstrap the protosept-authored debug overlay before the
-        // director is constructed; the resulting bundle is handed to
-        // the director so its `render_im` can dispatch into the
-        // script-side overlay each frame.
+        // Create the PAL4 debug-overlay session before the director is
+        // constructed; the resulting bundle is handed to the director
+        // so its `render_im` can dispatch into the script-side overlay
+        // each frame. `YaobowScriptProject::install` is idempotent —
+        // if the title bootstrap already installed the project, this
+        // call just returns the cached `Rc<YaobowScriptProject>`.
         let debug = {
-            let engine_rc = self.app.engine();
-            let engine = engine_rc.borrow();
-            debug_bootstrap::install(&engine)
+            let project = YaobowScriptProject::install(&self.app);
+            project.make_pal4_debug_bundle()
         };
 
         let director = OpenPAL4Director::new(
@@ -62,31 +58,16 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
             audio_engine,
             task_manager,
         );
-        director.set_debug_bundle(debug.bundle);
+        director.set_debug_bundle(debug);
         let director_com: ComRc<radiance::comdef::IDirector> = ComRc::from_object(director);
         scene_manager.set_director(director_com);
 
-        // Install the imgui immediate-mode pump on the engine so
+        // Install the engine-side imgui pump so
         // `OpenPAL4Director::render_im` fires inside the imgui frame
         // scope each tick. The texture cache is wired even though the
         // v1 debug overlay only emits text — keeps parity with the
         // editor's pump and future-proofs `ui.image(...)` from script.
-        let textures = Rc::new(RefCell::new(ImguiTextureCache::new(component_factory)));
-        let ui_host: ComRc<IUiHost> = ImguiUiHost::create();
-        let engine_rc = self.app.engine();
-        let engine = engine_rc.borrow();
-        let pump = Rc::new(ImguiImmediateDirectorPump::new(
-            engine.ui_manager(),
-            textures,
-            ui_host,
-        ));
-        engine.clear_immediate_director_pump();
-        engine.set_immediate_director_pump(pump);
-
-        // Hold onto the ScriptHost Rc; the engine also keeps it via
-        // `ScriptHost::install`, so dropping ours here is fine, but we
-        // forget it explicitly to make the lifetime intent obvious.
-        let _ = debug.host;
+        let _ = install_imgui_pump(&self.app);
     }
 
     fn on_unloading(&self) {}

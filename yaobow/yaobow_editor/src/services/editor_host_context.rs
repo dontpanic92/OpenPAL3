@@ -14,11 +14,11 @@ use radiance::input::InputEngine;
 use radiance::rendering::{ComponentFactory, RenderingEngine};
 use radiance_scripting::comdef::services::{
     IAppService, IAudioService, IConfigService, IGameRegistry, IHostContext, IInputService,
-    IRenderTarget, ITextureService, IVfsService,
+    IRandomService, IRenderTarget, ITextureService, IVfsService,
 };
 use radiance_scripting::services::{
-    AudioService, GameRegistry, ImguiTextureCache, InputService, ScriptedRenderTarget,
-    TextureService, VfsService,
+    AudioService, GameRegistry, ImguiTextureCache, InputService, RandomService,
+    ScriptedRenderTarget, TextureService, VfsService,
 };
 
 use crate::comdef::editor_services::{IEditorHostContext, IEditorHostContextImpl, IPreviewerHub};
@@ -36,6 +36,7 @@ pub struct EditorHostContext {
     input: ComRc<IInputService>,
     games: ComRc<IGameRegistry>,
     app: ComRc<IAppService>,
+    random: ComRc<IRandomService>,
     config: ComRc<IConfigService>,
     previewers: ComRc<IPreviewerHub>,
 
@@ -61,11 +62,9 @@ impl EditorHostContext {
         rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
     ) -> ComRc<IEditorHostContext> {
         let vfs = Rc::new(MiniFs::new(false));
-        let asset_loader =
-            DevToolsAssetLoader::Pal3(Rc::new(shared::openpal3::asset_manager::AssetManager::new(
-                factory.clone(),
-                vfs.clone(),
-            )));
+        let asset_loader = DevToolsAssetLoader::Pal3(Rc::new(
+            shared::openpal3::asset_manager::AssetManager::new(factory.clone(), vfs.clone()),
+        ));
         let preview_registry = Rc::new(PreviewRegistry::new());
         let previewers = PreviewerHub::create(
             vfs.clone(),
@@ -155,6 +154,7 @@ impl EditorHostContext {
             input: InputService::create(input),
             games: GameRegistry::create(),
             app,
+            random: RandomService::create(),
             config,
             previewers,
             factory,
@@ -187,14 +187,18 @@ impl IHostContextImpl for EditorHostContext {
     fn app(&self) -> ComRc<IAppService> {
         self.app.clone()
     }
-    fn config(&self) -> ComRc<IConfigService> {
-        self.config.clone()
+    fn random(&self) -> ComRc<IRandomService> {
+        self.random.clone()
     }
 }
 
 impl IEditorHostContextImpl for EditorHostContext {
     fn previewers(&self) -> ComRc<IPreviewerHub> {
         self.previewers.clone()
+    }
+
+    fn config(&self) -> ComRc<IConfigService> {
+        self.config.clone()
     }
 
     fn new_render_target(&self, w: i32, h: i32) -> ComRc<IRenderTarget> {

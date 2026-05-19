@@ -7,9 +7,7 @@ use std::cell::UnsafeCell;
 use std::rc::Rc;
 
 use crosscom::ComInterface;
-use crosscom_protosept::{
-    register_crosscom_iaction, wrap_proto, RuntimeAccess, RuntimeHandle,
-};
+use crosscom_protosept::{register_crosscom_iaction, wrap_proto, RuntimeAccess, RuntimeHandle};
 use p7::interpreter::context::{Context, Data};
 
 const SOURCE: &str = r#"

@@ -74,8 +74,7 @@ impl ImmediateDirectorPump for ImguiImmediateDirectorPump {
         let ui = self.ui_manager.ui();
         let fonts: Vec<imgui::FontId> = ui.fonts().fonts().to_vec();
         let mut tex = self.textures.borrow_mut();
-        let mut frame =
-            ImguiFrameState::new(ui, &mut *tex, &fonts, self.ui_manager.dpi_scale());
+        let mut frame = ImguiFrameState::new(ui, &mut *tex, &fonts, self.ui_manager.dpi_scale());
         with_imgui_frame(&mut frame, || {
             let render_im_start = std::time::Instant::now();
             im.render_im(self.ui_host.clone(), dt);

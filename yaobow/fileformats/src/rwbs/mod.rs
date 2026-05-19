@@ -368,7 +368,6 @@ pub fn read_anm(data: &[u8]) -> anyhow::Result<Vec<AnmAction>> {
     Ok(anim)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::FormatFlag;

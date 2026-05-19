@@ -121,10 +121,26 @@ mod tests {
 
     fn make_frame(extensions: Vec<Extension>) -> Frame {
         Frame {
-            right: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
-            up: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
-            at: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
-            pos: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
+            right: Vec3f {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            up: Vec3f {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            at: Vec3f {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            pos: Vec3f {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
             parent: -1,
             matrix_flags: 0,
             extensions,

@@ -96,10 +96,7 @@ thread_local! {
 /// Install `frame` as the active per-frame state for the duration of
 /// `body`. Nested calls are stacked: the previous pointer is restored
 /// on exit (including on panic via the RAII guard).
-pub fn with_imgui_frame<'a, R>(
-    frame: &mut ImguiFrameState<'a>,
-    body: impl FnOnce() -> R,
-) -> R {
+pub fn with_imgui_frame<'a, R>(frame: &mut ImguiFrameState<'a>, body: impl FnOnce() -> R) -> R {
     // SAFETY: we lifetime-erase the frame for the thread-local but
     // restore the previous value on scope exit (Guard::drop), so the
     // erased pointer never outlives the borrow.
@@ -152,8 +149,7 @@ impl IUiHostImpl for ImguiUiHost {
     fn window(&self, title: &str, w: f32, h: f32, flags: i32, body: ComRc<IAction>) {
         with_frame("window", |f| {
             let [w, h] = f.scaled_size(w, h);
-            f.ui
-                .window(title)
+            f.ui.window(title)
                 .size([w, h], imgui::Condition::FirstUseEver)
                 .flags(imgui::WindowFlags::from_bits_truncate(flags as u32))
                 .build(|| {
@@ -168,8 +164,7 @@ impl IUiHostImpl for ImguiUiHost {
             let [display_w, display_h] = f.ui.io().display_size;
             let cx = (display_w - w) / 2.0;
             let cy = (display_h - h) / 2.0;
-            f.ui
-                .window(title)
+            f.ui.window(title)
                 .size([w, h], imgui::Condition::Always)
                 .position([cx, cy], imgui::Condition::Always)
                 .movable(false)
@@ -192,13 +187,11 @@ impl IUiHostImpl for ImguiUiHost {
                 | imgui::WindowFlags::NO_SCROLLBAR
                 | imgui::WindowFlags::NO_SCROLL_WITH_MOUSE;
             let extra = imgui::WindowFlags::from_bits_truncate(flags as u32);
-            let pad_token = f
-                .ui
-                .push_style_var(imgui::StyleVar::WindowPadding([0.0, 0.0]));
+            let pad_token =
+                f.ui.push_style_var(imgui::StyleVar::WindowPadding([0.0, 0.0]));
             let rounding_token = f.ui.push_style_var(imgui::StyleVar::WindowRounding(0.0));
             let border_token = f.ui.push_style_var(imgui::StyleVar::WindowBorderSize(0.0));
-            f.ui
-                .window(title)
+            f.ui.window(title)
                 .position([0.0, 0.0], imgui::Condition::Always)
                 .size(display, imgui::Condition::Always)
                 .flags(chrome | extra)
@@ -357,6 +350,10 @@ impl IUiHostImpl for ImguiUiHost {
             let id = f.textures.borrow_mut().resolve(texture_com_id as i64);
             match id {
                 Some(texture_id) => imgui::Image::new(texture_id, [w, h]).build(f.ui),
+                None if texture_com_id >= 0 => {
+                    imgui::Image::new(imgui::TextureId::new(texture_com_id as usize), [w, h])
+                        .build(f.ui)
+                }
                 None => f.ui.text("[missing texture]"),
             }
         });
@@ -367,7 +364,14 @@ impl IUiHostImpl for ImguiUiHost {
             if src_w <= 0.0 || src_h <= 0.0 {
                 return;
             }
-            let Some(texture_id) = f.textures.borrow_mut().resolve(texture_com_id as i64) else {
+            let texture_id = f
+                .textures
+                .borrow_mut()
+                .resolve(texture_com_id as i64)
+                .or_else(|| {
+                    (texture_com_id >= 0).then(|| imgui::TextureId::new(texture_com_id as usize))
+                });
+            let Some(texture_id) = texture_id else {
                 f.ui.text("[missing texture]");
                 return;
             };
@@ -464,8 +468,10 @@ impl IUiHostImpl for ImguiUiHost {
     }
 
     fn mouse_down(&self, button: i32) -> bool {
-        with_frame("mouse_down", |f| f.ui.is_mouse_down(map_mouse_button(button)))
-            .unwrap_or(false)
+        with_frame("mouse_down", |f| {
+            f.ui.is_mouse_down(map_mouse_button(button))
+        })
+        .unwrap_or(false)
     }
 
     fn mouse_drag_delta_x(&self, button: i32) -> f32 {
@@ -499,7 +505,11 @@ impl IUiHostImpl for ImguiUiHost {
             // widgets accept sizes; the value is meant to be fed back
             // into `image(...)` (which scales it via `scaled_size`) or
             // `IRenderTarget.resize(int, int)`.
-            let logical = if f.dpi_scale > 0.0 { w / f.dpi_scale } else { w };
+            let logical = if f.dpi_scale > 0.0 {
+                w / f.dpi_scale
+            } else {
+                w
+            };
             logical.max(0.0) as i32
         })
         .unwrap_or(0)
@@ -508,10 +518,131 @@ impl IUiHostImpl for ImguiUiHost {
     fn content_region_avail_y(&self) -> i32 {
         with_frame("content_region_avail_y", |f| {
             let [_, h] = f.ui.content_region_avail();
-            let logical = if f.dpi_scale > 0.0 { h / f.dpi_scale } else { h };
+            let logical = if f.dpi_scale > 0.0 {
+                h / f.dpi_scale
+            } else {
+                h
+            };
             logical.max(0.0) as i32
         })
         .unwrap_or(0)
+    }
+
+    fn style_color(&self, slot: i32, r: f32, g: f32, b: f32, a: f32, body: ComRc<IAction>) {
+        with_frame("style_color", |f| {
+            let token = f.ui.push_style_color(map_style_color(slot), [r, g, b, a]);
+            body.invoke();
+            token.pop();
+        });
+    }
+
+    fn set_cursor_pos(&self, x: f32, y: f32) {
+        let _ = with_frame("set_cursor_pos", |f| {
+            // Mirror the `scaled_size` convention used by other
+            // widgets: positive values are script-logical pixels
+            // multiplied by `dpi_scale`; non-positive values pass
+            // through unchanged so callers can emit imgui sentinels
+            // like 0.0 or negative offsets if needed.
+            let sx = scale_script_dimension(x, f.dpi_scale);
+            let sy = scale_script_dimension(y, f.dpi_scale);
+            f.ui.set_cursor_pos([sx, sy]);
+        });
+    }
+
+    fn cursor_pos_x(&self) -> f32 {
+        with_frame("cursor_pos_x", |f| {
+            let [x, _] = f.ui.cursor_pos();
+            if f.dpi_scale > 0.0 {
+                x / f.dpi_scale
+            } else {
+                x
+            }
+        })
+        .unwrap_or(0.0)
+    }
+
+    fn cursor_pos_y(&self) -> f32 {
+        with_frame("cursor_pos_y", |f| {
+            let [_, y] = f.ui.cursor_pos();
+            if f.dpi_scale > 0.0 {
+                y / f.dpi_scale
+            } else {
+                y
+            }
+        })
+        .unwrap_or(0.0)
+    }
+
+    fn display_size_x(&self) -> i32 {
+        with_frame("display_size_x", |f| {
+            let [w, _] = f.ui.io().display_size;
+            let logical = if f.dpi_scale > 0.0 {
+                w / f.dpi_scale
+            } else {
+                w
+            };
+            logical.max(0.0) as i32
+        })
+        .unwrap_or(0)
+    }
+
+    fn display_size_y(&self) -> i32 {
+        with_frame("display_size_y", |f| {
+            let [_, h] = f.ui.io().display_size;
+            let logical = if f.dpi_scale > 0.0 {
+                h / f.dpi_scale
+            } else {
+                h
+            };
+            logical.max(0.0) as i32
+        })
+        .unwrap_or(0)
+    }
+
+    fn calc_text_size_x(&self, s: &str) -> f32 {
+        with_frame("calc_text_size_x", |f| {
+            let [w, _] = f.ui.calc_text_size(s);
+            if f.dpi_scale > 0.0 {
+                w / f.dpi_scale
+            } else {
+                w
+            }
+        })
+        .unwrap_or(0.0)
+    }
+
+    fn calc_text_size_y(&self, s: &str) -> f32 {
+        with_frame("calc_text_size_y", |f| {
+            let [_, h] = f.ui.calc_text_size(s);
+            if f.dpi_scale > 0.0 {
+                h / f.dpi_scale
+            } else {
+                h
+            }
+        })
+        .unwrap_or(0.0)
+    }
+
+    fn any_key_or_mouse_down(&self) -> bool {
+        with_frame("any_key_or_mouse_down", |f| {
+            let io = f.ui.io();
+            io.keys_down.iter().any(|&k| k) || io.mouse_down.iter().any(|&k| k)
+        })
+        .unwrap_or(false)
+    }
+}
+
+fn map_style_color(slot: i32) -> imgui::StyleColor {
+    // Mirror the IDL's documented mapping. Restricted to the slots
+    // the title-page port actually needs; out-of-range values fall
+    // back to `Text` so a script typo can't take down the renderer.
+    match slot {
+        0 => imgui::StyleColor::Text,
+        2 => imgui::StyleColor::WindowBg,
+        21 => imgui::StyleColor::Button,
+        22 => imgui::StyleColor::ButtonHovered,
+        23 => imgui::StyleColor::ButtonActive,
+        _ => imgui::StyleColor::Text,
     }
 }
 

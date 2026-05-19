@@ -46,8 +46,7 @@ fn ensure_registered() {
     GUARD.get_or_init(|| {
         let _ = register_proto_ccw(ProtoSpec {
             uuid: IImmediateDirector::INTERFACE_ID,
-            type_tag:
-                "radiance_scripting.comdef.immediate_director.IImmediateDirector".into(),
+            type_tag: "radiance_scripting.comdef.immediate_director.IImmediateDirector".into(),
             methods: vec![
                 MethodSpec {
                     name: "activate".into(),
@@ -66,8 +65,7 @@ fn ensure_registered() {
                     name: "render_im".into(),
                     args: vec![
                         ArgKind::Foreign {
-                            type_tag:
-                                "radiance_scripting.comdef.immediate_director.IUiHost".into(),
+                            type_tag: "radiance_scripting.comdef.immediate_director.IUiHost".into(),
                             uuid: IUiHost::INTERFACE_ID,
                         },
                         ArgKind::Float,

@@ -38,8 +38,7 @@ fn ensure_registered() {
                 name: "render".into(),
                 args: vec![
                     ArgKind::Foreign {
-                        type_tag:
-                            "radiance_scripting.comdef.immediate_director.IUiHost".into(),
+                        type_tag: "radiance_scripting.comdef.immediate_director.IUiHost".into(),
                         uuid: IUiHost::INTERFACE_ID,
                     },
                     ArgKind::Float,

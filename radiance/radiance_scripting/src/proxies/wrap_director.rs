@@ -31,10 +31,7 @@ use radiance::comdef::IDirector;
 /// Rust-side `ComRc<IDirector>` backed by the runtime-typed CCW
 /// factory. On final release, the CCW invokes the script's
 /// `deactivate()` method (if defined) before unrooting.
-pub fn wrap_director(
-    handle: &RuntimeHandle,
-    data: Data,
-) -> Result<ComRc<IDirector>, HostError> {
+pub fn wrap_director(handle: &RuntimeHandle, data: Data) -> Result<ComRc<IDirector>, HostError> {
     ensure_idirector_registered();
     wrap_proto::<IDirector>(handle, data)
 }

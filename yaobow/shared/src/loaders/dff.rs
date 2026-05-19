@@ -175,11 +175,7 @@ fn load_clump(
                 m.floats_mut()[1][3] = 0.;
                 m.floats_mut()[2][3] = 0.;
             }
-            entity
-                .transform()
-                .as_ref()
-                .borrow_mut()
-                .set_matrix(m);
+            entity.transform().as_ref().borrow_mut().set_matrix(m);
             let bone = if let Some(hanim) = f.hanim_plugin() {
                 let bone =
                     CoreEntity::create(format!("{}_bone", f.name().unwrap_or_default()), false);
@@ -523,7 +519,10 @@ pub(crate) fn create_geometry_internal(
     }
 
     for t in triangles {
-        let group_idx = match material_to_indices.iter().position(|(m, _)| *m == t.material) {
+        let group_idx = match material_to_indices
+            .iter()
+            .position(|(m, _)| *m == t.material)
+        {
             Some(idx) => idx,
             None => {
                 let material = &materials[t.material as usize];
@@ -535,7 +534,11 @@ pub(crate) fn create_geometry_internal(
                 let md = if let Some(texture) = material.texture.as_ref() {
                     if let Some(tint) = bsp_lightmap_tint {
                         if let Some(md) = load_lightmap_material_pair(
-                            material, tint, vfs, path.as_ref(), texture_resolver,
+                            material,
+                            tint,
+                            vfs,
+                            path.as_ref(),
+                            texture_resolver,
                         ) {
                             md
                         } else {
@@ -1004,7 +1007,6 @@ fn apply_mask_alpha(main: &mut image::RgbaImage, mask: &image::RgbaImage) {
     }
 }
 
-
 #[cfg(test)]
 mod hierarchy_tests {
     use super::*;
@@ -1012,10 +1014,26 @@ mod hierarchy_tests {
 
     fn make_test_frame(parent: i32, matrix_flags: u32) -> Frame {
         Frame {
-            right: Vec3f { x: 1.0, y: 0.0, z: 0.0 },
-            up: Vec3f { x: 0.0, y: 1.0, z: 0.0 },
-            at: Vec3f { x: 0.0, y: 0.0, z: 1.0 },
-            pos: Vec3f { x: 0.0, y: 0.0, z: 0.0 },
+            right: Vec3f {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            up: Vec3f {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            at: Vec3f {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            pos: Vec3f {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
             parent,
             matrix_flags,
             extensions: vec![],

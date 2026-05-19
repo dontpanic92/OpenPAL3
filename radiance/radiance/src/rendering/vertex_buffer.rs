@@ -307,9 +307,21 @@ impl VertexBuffer {
         let mut max = min;
         for i in 1..self.count {
             let p = self.position(i).unwrap();
-            if p.x < min[0] { min[0] = p.x; } else if p.x > max[0] { max[0] = p.x; }
-            if p.y < min[1] { min[1] = p.y; } else if p.y > max[1] { max[1] = p.y; }
-            if p.z < min[2] { min[2] = p.z; } else if p.z > max[2] { max[2] = p.z; }
+            if p.x < min[0] {
+                min[0] = p.x;
+            } else if p.x > max[0] {
+                max[0] = p.x;
+            }
+            if p.y < min[1] {
+                min[1] = p.y;
+            } else if p.y > max[1] {
+                max[1] = p.y;
+            }
+            if p.z < min[2] {
+                min[2] = p.z;
+            } else if p.z > max[2] {
+                max[2] = p.z;
+            }
         }
 
         [

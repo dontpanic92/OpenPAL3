@@ -65,7 +65,10 @@ fn script_calls_ui_host_methods_and_invokes_closure_body() {
     let (recorder, ui_com) = RecordingUiHost::create();
     let com_id = host.intern(ui_com);
     let ui_box = host
-        .foreign_box("radiance_scripting.comdef.immediate_director.IUiHost", com_id)
+        .foreign_box(
+            "radiance_scripting.comdef.immediate_director.IUiHost",
+            com_id,
+        )
         .expect("ui foreign box");
 
     host.call_returning_data("entry", vec![ui_box])
@@ -96,7 +99,10 @@ fn sam_closure_captures_outer_let_bindings() {
     let (recorder, ui_com) = RecordingUiHost::create();
     let com_id = host.intern(ui_com);
     let ui_box = host
-        .foreign_box("radiance_scripting.comdef.immediate_director.IUiHost", com_id)
+        .foreign_box(
+            "radiance_scripting.comdef.immediate_director.IUiHost",
+            com_id,
+        )
         .expect("ui foreign box");
 
     host.call_returning_data("entry", vec![ui_box])
@@ -131,7 +137,10 @@ fn button_return_value_propagates_to_script() {
         .insert("go".to_string(), true);
     let com_id = host.intern(ui_com);
     let ui_box = host
-        .foreign_box("radiance_scripting.comdef.immediate_director.IUiHost", com_id)
+        .foreign_box(
+            "radiance_scripting.comdef.immediate_director.IUiHost",
+            com_id,
+        )
         .expect("ui foreign box");
 
     let result = host
@@ -158,7 +167,10 @@ fn unclicked_button_returns_zero() {
     let (_recorder, ui_com) = RecordingUiHost::create();
     let com_id = host.intern(ui_com);
     let ui_box = host
-        .foreign_box("radiance_scripting.comdef.immediate_director.IUiHost", com_id)
+        .foreign_box(
+            "radiance_scripting.comdef.immediate_director.IUiHost",
+            com_id,
+        )
         .expect("ui foreign box");
 
     let result = host

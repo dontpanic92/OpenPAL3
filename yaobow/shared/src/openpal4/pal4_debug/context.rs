@@ -1,12 +1,11 @@
 //! Host-side ComObject backing `IPal4DebugContext`.
 //!
 //! The owning [`OpenPAL4Director`](crate::openpal4::director::OpenPAL4Director)
-//! refreshes the snapshot once per `render_im` (via
-//! [`Pal4DebugContextInner::set_snapshot`]) before invoking the script
-//! overlay. The `Pal4DebugContext` ComObject delegates every IDL
-//! getter to the shared `Rc<Pal4DebugContextInner>`, so the host
-//! keeps a typed Rust handle for snapshot writes while the script
-//! sees a plain `box<IPal4DebugContext>`.
+//! refreshes the snapshot once per `render_im` before invoking the
+//! script overlay. The `Pal4DebugContext` ComObject delegates every IDL
+//! getter to the shared [`Pal4DebugState`], so the host keeps a typed
+//! Rust handle for snapshot writes while the script sees a plain
+//! `box<IPal4DebugContext>`.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -29,10 +28,11 @@ pub struct Pal4DebugSnapshot {
     pub fps: f32,
 }
 
-/// Interior-mutable state shared between the typed Rust handle (used
-/// by the director's `render_im` to push per-frame data) and the COM
-/// wrapper that the script sees as a `box<IPal4DebugContext>`.
-pub struct Pal4DebugContextInner {
+/// PAL4-debug-session state shared between the typed Rust handle
+/// (used by the director's `render_im` to push per-frame data) and
+/// the COM wrapper that the script sees as a
+/// `box<IPal4DebugContext>`.
+pub struct Pal4DebugState {
     scene_name: RefCell<String>,
     block_name: RefCell<String>,
     leader_index: Cell<i32>,
@@ -43,7 +43,7 @@ pub struct Pal4DebugContextInner {
     nav_mesh_visible: Cell<bool>,
 }
 
-impl Pal4DebugContextInner {
+impl Pal4DebugState {
     pub fn new() -> Rc<Self> {
         Rc::new(Self::default())
     }
@@ -64,14 +64,14 @@ impl Pal4DebugContextInner {
         self.bsp_visible.get()
     }
 
-    /// Same idea as [`Pal4DebugContextInner::bsp_visible`], for the
-    /// floor + wall (nav-mesh) overlay geometry.
+    /// Same idea as [`Pal4DebugState::bsp_visible`], for the floor +
+    /// wall (nav-mesh) overlay geometry.
     pub fn nav_mesh_visible(&self) -> bool {
         self.nav_mesh_visible.get()
     }
 }
 
-impl Default for Pal4DebugContextInner {
+impl Default for Pal4DebugState {
     fn default() -> Self {
         Self {
             scene_name: RefCell::new(String::new()),
@@ -90,14 +90,14 @@ impl Default for Pal4DebugContextInner {
 
 /// COM wrapper: every interface call delegates to the shared inner.
 pub struct Pal4DebugContext {
-    inner: Rc<Pal4DebugContextInner>,
+    state: Rc<Pal4DebugState>,
 }
 
 ComObject_Pal4DebugContext!(super::Pal4DebugContext);
 
 impl Pal4DebugContext {
-    pub fn new(inner: Rc<Pal4DebugContextInner>) -> Self {
-        Self { inner }
+    pub fn new(state: Rc<Pal4DebugState>) -> Self {
+        Self { state }
     }
 }
 
@@ -109,61 +109,65 @@ impl IPal4DebugContextImpl for Pal4DebugContext {
         // duration of the synchronous getter return path. The
         // `RefCell` is only mutated by `set_snapshot`, which is never
         // re-entered from inside a getter call.
-        let r = self.inner.scene_name.borrow();
+        let r = self.state.scene_name.borrow();
         unsafe { std::mem::transmute::<&str, &str>(r.as_str()) }
     }
 
     fn block_name(&self) -> &str {
-        let r = self.inner.block_name.borrow();
+        let r = self.state.block_name.borrow();
         unsafe { std::mem::transmute::<&str, &str>(r.as_str()) }
     }
 
     fn leader_index(&self) -> std::os::raw::c_int {
-        self.inner.leader_index.get()
+        self.state.leader_index.get()
     }
 
     fn leader_pos_x(&self) -> f32 {
-        self.inner.leader_pos.get()[0]
+        self.state.leader_pos.get()[0]
     }
 
     fn leader_pos_y(&self) -> f32 {
-        self.inner.leader_pos.get()[1]
+        self.state.leader_pos.get()[1]
     }
 
     fn leader_pos_z(&self) -> f32 {
-        self.inner.leader_pos.get()[2]
+        self.state.leader_pos.get()[2]
     }
 
     fn delta_time(&self) -> f32 {
-        self.inner.delta_time.get()
+        self.state.delta_time.get()
     }
 
     fn fps(&self) -> f32 {
-        self.inner.fps.get()
+        self.state.fps.get()
     }
 
     fn bsp_visible(&self) -> bool {
-        self.inner.bsp_visible.get()
+        self.state.bsp_visible.get()
     }
 
     fn set_bsp_visible(&self, v: bool) {
-        self.inner.bsp_visible.set(v);
+        self.state.bsp_visible.set(v);
     }
 
     fn nav_mesh_visible(&self) -> bool {
-        self.inner.nav_mesh_visible.get()
+        self.state.nav_mesh_visible.get()
     }
 
     fn set_nav_mesh_visible(&self, v: bool) {
-        self.inner.nav_mesh_visible.set(v);
+        self.state.nav_mesh_visible.set(v);
     }
 }
 
-/// Construct both the typed Rust handle (so the director can call
-/// `set_snapshot`) and the COM pointer (so the script bootstrap can
-/// box it via `ScriptHost::foreign_box`).
-pub fn create_context() -> (Rc<Pal4DebugContextInner>, ComRc<IPal4DebugContext>) {
-    let inner = Pal4DebugContextInner::new();
-    let com = ComRc::from_object(Pal4DebugContext::new(inner.clone()));
-    (inner, com)
+/// PAL4 debug overlay session boundary: native code updates `state`,
+/// script sees `context`.
+pub struct Pal4DebugSession {
+    pub state: Rc<Pal4DebugState>,
+    pub context: ComRc<IPal4DebugContext>,
+}
+
+pub fn create_debug_session() -> Pal4DebugSession {
+    let state = Pal4DebugState::new();
+    let context = ComRc::from_object(Pal4DebugContext::new(state.clone()));
+    Pal4DebugSession { state, context }
 }

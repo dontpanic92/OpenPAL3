@@ -1,26 +1,9 @@
-#![allow(unused_variables)]
-#![allow(dead_code)]
+//! Thin binary entry point. All app logic lives in `yaobow_lib`.
 
-#[macro_use]
-mod comdef {
-    include!(concat!(env!("OUT_DIR"), "/yaobow_comdef.rs"));
-}
-use application::run_title_selection;
-use opengujian::run_opengujian;
-use openpal3::run_openpal3;
-use openpal4::run_openpal4;
-use openpal5::run_openpal5;
-use openswd5::run_openswd5;
-use playground::run_test;
 use shared::video::register_opengb_video_decoders;
-
-mod application;
-mod opengujian;
-mod openpal3;
-mod openpal4;
-mod openpal5;
-mod openswd5;
-mod playground;
+use yaobow_lib::{
+    run_opengujian, run_openpal3, run_openpal4, run_openpal5, run_openswd5, run_title_selection,
+};
 
 pub fn main() {
     radiance::application::Application::set_panic_hook();
@@ -39,27 +22,13 @@ pub fn main() {
             run_title_selection();
         } else {
             match args[1].as_str() {
-                "--pal3" => {
-                    run_openpal3();
-                }
-                "--pal4" => {
-                    run_openpal4();
-                }
-                "--pal5" => {
-                    run_openpal5();
-                }
-                "--pal5q" => {
-                    run_openpal5();
-                }
-                "--swd5" => {
-                    run_openswd5();
-                }
-                "--gujian" => {
-                    run_opengujian();
-                }
-                "--test" => {
-                    run_test();
-                }
+                "--pal3" => run_openpal3(),
+                "--pal4" => run_openpal4(),
+                "--pal5" => run_openpal5(),
+                "--pal5q" => run_openpal5(),
+                "--swd5" => run_openswd5(),
+                "--gujian" => run_opengujian(),
+                "--test" => {}
                 &_ => {}
             }
         }

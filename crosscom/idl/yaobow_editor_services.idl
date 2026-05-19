@@ -82,6 +82,12 @@ class PreviewerHub: IPreviewerHub {}
 interface IEditorHostContext: IHostContext {
     IPreviewerHub previewers();
 
+    // Editor settings surface. Lives on `IEditorHostContext` (not
+    // `IHostContext`) because only the editor's welcome/settings
+    // pages need an in-place asset-path UI — yaobow's title page
+    // does not surface a settings dialog.
+    IConfigService config();
+
     // Allocate a fresh offscreen render target. Used by `PreviewSession`
     // to render a private preview scene into an imgui-sampleable texture.
     IRenderTarget new_render_target(int w, int h);

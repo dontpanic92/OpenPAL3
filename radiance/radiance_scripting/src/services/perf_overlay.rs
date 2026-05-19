@@ -41,7 +41,12 @@ impl Default for PerfOverlay {
 impl PerfOverlay {
     pub fn new() -> Self {
         let enabled = std::env::var(ENV_FLAG)
-            .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .map(|v| {
+                matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
             .unwrap_or(false);
         Self {
             enabled,

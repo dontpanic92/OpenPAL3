@@ -4,10 +4,11 @@ fn main() {
     generate_p7("crosscom.idl", "crosscom.p7");
     generate_pair("scripting.idl", "scripting_comdef.rs", "scripting.p7");
     generate_pair(
-        "editor_services.idl",
+        "scripting_services.idl",
         "services_comdef.rs",
-        "editor_services.p7",
+        "scripting_services.p7",
     );
+    generate_p7("editor_services.idl", "editor_services.p7");
     generate_pair(
         "immediate_director.idl",
         "immediate_director_comdef.rs",

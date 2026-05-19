@@ -374,7 +374,11 @@ impl Pal4AppContext {
         // helper still returns the placeholder entity slot, whose
         // transform reports the identity translation — fine for the
         // debug overlay to render zeros.
-        self.scene.get_player(leader).transform().borrow().position()
+        self.scene
+            .get_player(leader)
+            .transform()
+            .borrow()
+            .position()
     }
 
     pub fn load_scene(&mut self, scene_name: &str, block_name: &str) {

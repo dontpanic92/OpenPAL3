@@ -338,7 +338,11 @@ mod tests {
         write_header(&mut tex_body, ChunkType::EXTENSION.0, 0);
 
         let mut texture_chunk: Vec<u8> = Vec::new();
-        write_header(&mut texture_chunk, ChunkType::TEXTURE.0, tex_body.len() as u32);
+        write_header(
+            &mut texture_chunk,
+            ChunkType::TEXTURE.0,
+            tex_body.len() as u32,
+        );
         texture_chunk.extend(&tex_body);
 
         // 0x120 body: 6-u32 preamble + TEXTURE chunk.
@@ -368,10 +372,7 @@ mod tests {
 
         let mut cursor = Cursor::new(body);
         let mat = Material::read(&mut cursor).expect("parse material");
-        assert_eq!(
-            mat.lightmap_name(),
-            Some("Cylinder1746LightingMap")
-        );
+        assert_eq!(mat.lightmap_name(), Some("Cylinder1746LightingMap"));
         let lm = mat.lightmap.as_ref().expect("typed lightmap parsed");
         // Filter / address-mode lanes come from the nested TEXTURE
         // chunk's STRUCT preamble (`0x1106` in the fixture).
@@ -400,7 +401,11 @@ mod tests {
         write_header(&mut tex_body, ChunkType::EXTENSION.0, 0);
 
         let mut texture_chunk: Vec<u8> = Vec::new();
-        write_header(&mut texture_chunk, ChunkType::TEXTURE.0, tex_body.len() as u32);
+        write_header(
+            &mut texture_chunk,
+            ChunkType::TEXTURE.0,
+            tex_body.len() as u32,
+        );
         texture_chunk.extend(&tex_body);
 
         let mut plugin_body: Vec<u8> = Vec::new();
@@ -415,7 +420,9 @@ mod tests {
 
         let mut body: Vec<u8> = Vec::new();
         write_header(&mut body, ChunkType::STRUCT.0, 7 * 4);
-        for _ in 0..4 { body.extend(&0u32.to_le_bytes()); }
+        for _ in 0..4 {
+            body.extend(&0u32.to_le_bytes());
+        }
         body.extend(&0f32.to_le_bytes());
         body.extend(&0f32.to_le_bytes());
         body.extend(&0f32.to_le_bytes());
@@ -451,7 +458,11 @@ mod tests {
         tex_body.extend(&[0u8; 4]);
         write_header(&mut tex_body, ChunkType::EXTENSION.0, 0);
         let mut texture_chunk: Vec<u8> = Vec::new();
-        write_header(&mut texture_chunk, ChunkType::TEXTURE.0, tex_body.len() as u32);
+        write_header(
+            &mut texture_chunk,
+            ChunkType::TEXTURE.0,
+            tex_body.len() as u32,
+        );
         texture_chunk.extend(&tex_body);
 
         // Arbitrary 8-u32 preamble whose lanes include 0x7F (the
@@ -469,7 +480,9 @@ mod tests {
 
         let mut body: Vec<u8> = Vec::new();
         write_header(&mut body, ChunkType::STRUCT.0, 7 * 4);
-        for _ in 0..4 { body.extend(&0u32.to_le_bytes()); }
+        for _ in 0..4 {
+            body.extend(&0u32.to_le_bytes());
+        }
         body.extend(&0f32.to_le_bytes());
         body.extend(&0f32.to_le_bytes());
         body.extend(&0f32.to_le_bytes());
@@ -494,7 +507,9 @@ mod tests {
 
         let mut body: Vec<u8> = Vec::new();
         write_header(&mut body, ChunkType::STRUCT.0, 7 * 4);
-        for _ in 0..4 { body.extend(&0u32.to_le_bytes()); }
+        for _ in 0..4 {
+            body.extend(&0u32.to_le_bytes());
+        }
         body.extend(&0f32.to_le_bytes());
         body.extend(&0f32.to_le_bytes());
         body.extend(&0f32.to_le_bytes());

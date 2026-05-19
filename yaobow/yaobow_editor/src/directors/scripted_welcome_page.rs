@@ -13,11 +13,9 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 use radiance::comdef::{IApplication, IDirector};
-use radiance_scripting::comdef::immediate_director::IUiHost;
-use radiance_scripting::services::ui_host::ImguiUiHost;
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::{
-    with_services, wrap_im_director, ImguiImmediateDirectorPump, RuntimeAccess, RuntimeHandle,
+    install_imgui_pump_with_cache, with_services, wrap_im_director, RuntimeAccess, RuntimeHandle,
     ScriptHost,
 };
 use shared::config::YaobowConfig;
@@ -94,20 +92,12 @@ impl ScriptedWelcomePage {
             .query_interface::<IDirector>()
             .expect("IImmediateDirector must QI to IDirector");
 
-        // Install the engine-side pump (Phase 5 D1/D2/D3) so
-        // `CoreRadianceEngine::update` invokes `render_im` inside
-        // the imgui frame scope each tick.
-        let engine_rc = app.engine();
-        let engine = engine_rc.borrow();
-        let ui_manager = engine.ui_manager();
-        let ui_host: ComRc<IUiHost> = ImguiUiHost::create();
-        let pump = Rc::new(ImguiImmediateDirectorPump::new(
-            ui_manager,
-            textures,
-            ui_host,
-        ));
-        engine.clear_immediate_director_pump();
-        engine.set_immediate_director_pump(pump);
+        // Install the engine-side pump so `CoreRadianceEngine::update`
+        // invokes `render_im` inside the imgui frame scope each tick.
+        // Sharing the same `textures` cache with subsequent director
+        // swaps (`AppService::open_game`) keeps previewer com_ids
+        // resolvable across pages.
+        install_imgui_pump_with_cache(&app, textures);
 
         director
     }

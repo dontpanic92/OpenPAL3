@@ -19,8 +19,8 @@ use radiance_scripting::services::texture_cache::next_handle_com_id;
 use radiance_scripting::services::{ImguiTextureCache, ScriptedRenderTarget};
 
 use crate::comdef::editor_services::{
-    IAudioHandle, IAudioHandleImpl, IImageHandle, IImageHandleImpl, IModelHandle,
-    IModelHandleImpl, IPreviewSession, IPreviewSessionImpl, IVideoHandle, IVideoHandleImpl,
+    IAudioHandle, IAudioHandleImpl, IImageHandle, IImageHandleImpl, IModelHandle, IModelHandleImpl,
+    IPreviewSession, IPreviewSessionImpl, IVideoHandle, IVideoHandleImpl,
 };
 use crate::services::preview_registry::{tick_orbit, OrbitState, PreviewRegistry, PreviewState};
 

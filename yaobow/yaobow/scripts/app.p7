@@ -1,0 +1,30 @@
+// Yaobow app-level script project root. This is the only root source
+// loaded into the app-lifetime ScriptHost. It exposes one public
+// `init()` that returns a rooted app object; feature entrypoints live
+// behind methods on that object — all declared in IDL via
+// `yaobow_services.IYaobowScriptApp`.
+
+import immediate_director;
+import pal4_debug;
+import pal4_debug_overlay;
+import title;
+import yaobow_services;
+
+pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
+    pub ctx: box<yaobow_services.IYaobowAppContext>,
+) {
+    pub fn make_title_director(self: ref<Self>) -> box<immediate_director.IImmediateDirector> {
+        return title.make_title_director(self.ctx);
+    }
+
+    pub fn make_pal4_debug_overlay(
+        self: ref<Self>,
+        ctx: box<pal4_debug.IPal4DebugContext>,
+    ) -> box<pal4_debug.IPal4DebugOverlay> {
+        return pal4_debug_overlay.make_overlay(ctx);
+    }
+}
+
+pub fn init(ctx: box<yaobow_services.IYaobowAppContext>) -> box<yaobow_services.IYaobowScriptApp> {
+    return box(YaobowScriptApp(ctx)) as box<yaobow_services.IYaobowScriptApp>;
+}

@@ -1,6 +1,8 @@
-mod director;
 
-use std::{cell::RefCell, rc::Rc};
+pub mod yaobow_app_context;
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crosscom::ComRc;
 use radiance::{
@@ -8,18 +10,18 @@ use radiance::{
     comdef::{IApplication, IApplicationLoaderComponent, IComponent, IComponentImpl},
     scene::CoreScene,
 };
+use radiance_scripting::install_imgui_pump;
 use shared::{config::YaobowConfig, GameType};
 
+use crate::script_source::YaobowScriptProject;
 use crate::{
     openpal3::OpenPal3ApplicationLoader, openpal4::application::OpenPal4ApplicationLoader,
 };
 
-use self::director::TitleSelectionDirector;
-
 pub struct YaobowApplicationLoader {
     app: ComRc<IApplication>,
     config: YaobowConfig,
-    selected_game: Rc<RefCell<Option<GameType>>>,
+    selected_game: RefCell<Option<Rc<RefCell<Option<GameType>>>>>,
 }
 
 ComObject_YaobowApplicationLoader!(super::YaobowApplicationLoader);
@@ -27,31 +29,31 @@ ComObject_YaobowApplicationLoader!(super::YaobowApplicationLoader);
 impl IComponentImpl for YaobowApplicationLoader {
     fn on_loading(&self) {
         self.app.set_title("妖弓 - Project Yaobow");
-        let audio = self.app.engine().borrow().audio_engine();
-        let dpi_scale = self.app.dpi_scale();
-        let factory = self.app.engine().borrow().rendering_component_factory();
-        let input = self.app.engine().borrow().input_engine();
-        let ui = self.app.engine().borrow().ui_manager();
 
-        let director = TitleSelectionDirector::new(
-            factory,
-            audio,
-            input,
-            ui,
-            self.selected_game.clone(),
-            dpi_scale,
-        );
+        let project = YaobowScriptProject::install(&self.app);
+        self.selected_game.replace(Some(project.selected_game()));
+
+        let director = project
+            .make_title_director_as_director()
+            .expect("initial script director must be created");
+
+        let _ = install_imgui_pump(&self.app);
+
         let scene_manager = self.app.engine().borrow().scene_manager().clone();
-        scene_manager.set_director(ComRc::from_object(director));
+        scene_manager.set_director(director);
         scene_manager.push_scene(CoreScene::create());
     }
 
-    fn on_updating(&self, delta_sec: f32) {
-        if self.selected_game.borrow().is_none() {
+    fn on_updating(&self, _delta_sec: f32) {
+        let slot = self.selected_game.borrow();
+        let Some(slot) = slot.as_ref() else {
+            return;
+        };
+        if slot.borrow().is_none() {
             return;
         }
 
-        let game = self.selected_game.borrow().unwrap();
+        let game = slot.borrow().unwrap();
         let asset_path = self.config.asset_path_for(game).to_string();
         let loader = create_loader(game, self.app.clone(), asset_path)
             .query_interface::<IComponent>()
@@ -59,7 +61,7 @@ impl IComponentImpl for YaobowApplicationLoader {
 
         loader.on_loading();
 
-        self.selected_game.replace(None);
+        slot.replace(None);
     }
 
     fn on_unloading(&self) {}
@@ -70,7 +72,7 @@ impl YaobowApplicationLoader {
         Self {
             app,
             config: YaobowConfig::load(),
-            selected_game: Rc::new(RefCell::new(None)),
+            selected_game: RefCell::new(None),
         }
     }
 }

@@ -25,8 +25,8 @@ use radiance_scripting::services::ImguiTextureCache;
 use shared::loaders::anm::load_anm;
 use shared::loaders::smp::load_smp;
 use shared::openpal3::loaders::{
-    cvd_loader::cvd_load_from_file, nav_loader::nav_load_from_file,
-    sce_loader::sce_load_from_file, scn_loader::scn_load_from_file,
+    cvd_loader::cvd_load_from_file, nav_loader::nav_load_from_file, sce_loader::sce_load_from_file,
+    scn_loader::scn_load_from_file,
 };
 use shared::GameType;
 

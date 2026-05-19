@@ -143,7 +143,10 @@ fn drop_outside_scope_clears_external_root() {
 
     // Confirm the root is currently occupied.
     runtime.with_ctx_mut(|ctx| {
-        assert!(ctx.external_root(0).is_some(), "wrap_proto must have rooted");
+        assert!(
+            ctx.external_root(0).is_some(),
+            "wrap_proto must have rooted"
+        );
     });
 
     // Drop with no surrounding scope_context. The CCW's `Drop` must
@@ -170,7 +173,10 @@ fn drop_after_runtime_drop_is_safe() {
     let action = wrap_proto::<crosscom::IAction>(&handle, action_data).expect("wrap_proto IAction");
 
     drop(runtime);
-    assert!(handle.is_dangling(), "Weak upgrade should fail after runtime drop");
+    assert!(
+        handle.is_dangling(),
+        "Weak upgrade should fail after runtime drop"
+    );
 
     // This must not panic / abort / segfault.
     drop(action);
@@ -187,7 +193,10 @@ fn invoke_after_runtime_drop_is_silent_noop() {
     let action = wrap_proto::<crosscom::IAction>(&handle, action_data).expect("wrap_proto IAction");
 
     drop(runtime);
-    assert!(handle.is_dangling(), "Weak upgrade should fail after runtime drop");
+    assert!(
+        handle.is_dangling(),
+        "Weak upgrade should fail after runtime drop"
+    );
 
     // Must not panic; must not append to RECORDED (the thunk early-
     // returns when `try_with_ctx` yields None).

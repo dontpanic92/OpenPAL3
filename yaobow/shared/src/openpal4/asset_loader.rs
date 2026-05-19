@@ -238,14 +238,14 @@ impl AssetLoader {
             block_name,
             ltmap.tint,
             ltmap.intensity,
-            if has_cfg { "found" } else { "missing→identity" },
+            if has_cfg {
+                "found"
+            } else {
+                "missing→identity"
+            },
         );
-        let bsp_lightmap_tint = Some([
-            ltmap.tint[0],
-            ltmap.tint[1],
-            ltmap.tint[2],
-            ltmap.intensity,
-        ]);
+        let bsp_lightmap_tint =
+            Some([ltmap.tint[0], ltmap.tint[1], ltmap.tint[2], ltmap.intensity]);
 
         let scene = CoreScene::create();
         let entity = create_entity_from_bsp_model(
@@ -436,19 +436,29 @@ impl AssetLoader {
     ///    (M-series scenedata layout, parallel to `_floor.dff`)
     /// 5. `/gamedata/ui2/ui/uiWorld/{block_lower}/{block}_water.<ext>`
     ///    (UI worlds �?BJ_water, ZJM_water live here)
-    fn water_candidate_paths(
-        &self,
-        scene_name: &str,
-        block_name: &str,
-        ext: &str,
-    ) -> Vec<String> {
+    fn water_candidate_paths(&self, scene_name: &str, block_name: &str, ext: &str) -> Vec<String> {
         let bl = block_name.to_lowercase();
         vec![
-            format!("/gamedata/PALWorld/{}/{}/{}_water.{}", scene_name, block_name, block_name, ext),
-            format!("/gamedata/{}/q01/{}/{}_water.{}", scene_name, block_name, block_name, ext),
-            format!("/gamedata/{}/{}/{}/{}_water.{}", scene_name, bl, block_name, block_name, ext),
-            format!("/gamedata/scenedata/{}/{}/{}_water.{}", scene_name, block_name, block_name, ext),
-            format!("/gamedata/ui2/ui/uiWorld/{}/{}_water.{}", bl, block_name, ext),
+            format!(
+                "/gamedata/PALWorld/{}/{}/{}_water.{}",
+                scene_name, block_name, block_name, ext
+            ),
+            format!(
+                "/gamedata/{}/q01/{}/{}_water.{}",
+                scene_name, block_name, block_name, ext
+            ),
+            format!(
+                "/gamedata/{}/{}/{}/{}_water.{}",
+                scene_name, bl, block_name, block_name, ext
+            ),
+            format!(
+                "/gamedata/scenedata/{}/{}/{}_water.{}",
+                scene_name, block_name, block_name, ext
+            ),
+            format!(
+                "/gamedata/ui2/ui/uiWorld/{}/{}_water.{}",
+                bl, block_name, ext
+            ),
         ]
     }
 

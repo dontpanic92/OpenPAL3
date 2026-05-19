@@ -9,11 +9,12 @@
 pub mod context;
 pub mod wrap_overlay;
 
-pub use context::{create_context, Pal4DebugContext, Pal4DebugContextInner, Pal4DebugSnapshot};
+pub use context::{
+    create_debug_session, Pal4DebugContext, Pal4DebugSession, Pal4DebugSnapshot, Pal4DebugState,
+};
 pub use wrap_overlay::wrap_overlay;
 
 /// p7 binding source generated from `pal4_debug.idl`. Hosts must
 /// register this with `ScriptHost::add_binding("pal4_debug", ...)`
 /// before loading any script that `import pal4_debug;`.
-pub const PAL4_DEBUG_P7: &str =
-    include_str!(concat!(env!("OUT_DIR"), "/shared_pal4_debug.p7"));
+pub const PAL4_DEBUG_P7: &str = include_str!(concat!(env!("OUT_DIR"), "/shared_pal4_debug.p7"));

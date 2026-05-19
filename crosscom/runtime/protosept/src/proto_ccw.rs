@@ -308,9 +308,8 @@ fn build_registered_proto(spec: ProtoSpec) -> Result<RegisteredProto, HostError>
     let leaked_vtable: &'static [*const c_void] = Box::leak(boxed_vtable);
     let vtable_ptr = leaked_vtable.as_ptr();
 
-    let release_method: Option<&'static str> = spec
-        .release_method
-        .map(|s| &*Box::leak(s.into_boxed_str()));
+    let release_method: Option<&'static str> =
+        spec.release_method.map(|s| &*Box::leak(s.into_boxed_str()));
     let additional_query_uuids: &'static [[u8; 16]] =
         Box::leak(spec.additional_query_uuids.into_boxed_slice());
 
@@ -379,7 +378,11 @@ unsafe extern "system" fn proto_query_interface(
     let bytes = *guid.as_bytes();
     if bytes == IUnknown::INTERFACE_ID
         || bytes == ccw.payload.iface_uuid
-        || ccw.payload.additional_query_uuids.iter().any(|u| *u == bytes)
+        || ccw
+            .payload
+            .additional_query_uuids
+            .iter()
+            .any(|u| *u == bytes)
     {
         *retval = this;
         proto_add_ref(this);
@@ -646,9 +649,8 @@ unsafe fn dispatch_method(
     let method_name = userdata.method_name.clone();
     let ret_kind = userdata.ret.clone();
     let arg_kinds = userdata.args.clone();
-    let arg_slot_ptrs: Vec<*const c_void> = (0..userdata.args.len())
-        .map(|i| *args.add(1 + i))
-        .collect();
+    let arg_slot_ptrs: Vec<*const c_void> =
+        (0..userdata.args.len()).map(|i| *args.add(1 + i)).collect();
 
     let outcome = ccw
         .payload
@@ -798,8 +800,7 @@ fn classify_optional_foreign_return(
         Err(_) => return DispatchOutcome::OptionalForeign(Some(data)),
     };
     if let Data::Foreign {
-        handle: com_handle,
-        ..
+        handle: com_handle, ..
     } = payload
     {
         // Bypass wrap_proto: fetch the ComObjectTable entry's raw COM
@@ -878,10 +879,7 @@ unsafe fn marshal_arg_in(
                 // Undo the add_ref baked into intern() so a failed
                 // alloc doesn't leak the handle.
                 let _ = with_services(|s| s.com_table_mut().release(handle_id));
-                HostError::message(format!(
-                    "alloc_foreign('{}') failed: {:?}",
-                    type_tag, e
-                ))
+                HostError::message(format!("alloc_foreign('{}') failed: {:?}", type_tag, e))
             })
         }
     }

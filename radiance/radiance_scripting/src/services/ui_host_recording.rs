@@ -28,30 +28,91 @@ use crate::comdef::immediate_director::{IUiHost, IUiHostImpl};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiCall {
-    Window { title: String, w: f32, h: f32, flags: i32 },
-    WindowCentered { title: String, w: f32, h: f32 },
-    WindowFullscreen { title: String, flags: i32 },
-    ChildWindow { id: String, w: f32, h: f32 },
-    Table { id: String, cols: i32 },
-    TabBar { id: String },
-    TreeNode { label: String },
+    Window {
+        title: String,
+        w: f32,
+        h: f32,
+        flags: i32,
+    },
+    WindowCentered {
+        title: String,
+        w: f32,
+        h: f32,
+    },
+    WindowFullscreen {
+        title: String,
+        flags: i32,
+    },
+    ChildWindow {
+        id: String,
+        w: f32,
+        h: f32,
+    },
+    Table {
+        id: String,
+        cols: i32,
+    },
+    TabBar {
+        id: String,
+    },
+    TreeNode {
+        label: String,
+    },
     Group,
-    StyleAlpha { alpha: f32 },
-    WithFont { font_idx: i32 },
-    TabItem { label: String, closable: bool },
+    StyleAlpha {
+        alpha: f32,
+    },
+    WithFont {
+        font_idx: i32,
+    },
+    TabItem {
+        label: String,
+        closable: bool,
+    },
     SameLine,
-    Dummy { w: f32, h: f32 },
-    Spacer { w: f32, h: f32 },
+    Dummy {
+        w: f32,
+        h: f32,
+    },
+    Spacer {
+        w: f32,
+        h: f32,
+    },
     TableNextColumn,
     Text(String),
-    TextWithFont { font_idx: i32, s: String },
-    Button { label: String, w: f32, h: f32 },
-    Image { texture_com_id: i32, w: f32, h: f32 },
-    ImageFit { texture_com_id: i32, src_w: f32, src_h: f32 },
-    MultilineText { content: String, w: f32, h: f32 },
-    TreeLeaf { label: String },
-    ListClipped { count: i32 },
-    TreeNodeOpen { label: String },
+    TextWithFont {
+        font_idx: i32,
+        s: String,
+    },
+    Button {
+        label: String,
+        w: f32,
+        h: f32,
+    },
+    Image {
+        texture_com_id: i32,
+        w: f32,
+        h: f32,
+    },
+    ImageFit {
+        texture_com_id: i32,
+        src_w: f32,
+        src_h: f32,
+    },
+    MultilineText {
+        content: String,
+        w: f32,
+        h: f32,
+    },
+    TreeLeaf {
+        label: String,
+    },
+    ListClipped {
+        count: i32,
+    },
+    TreeNodeOpen {
+        label: String,
+    },
     TreePop,
     BodyEnter(&'static str),
     BodyExit(&'static str),
@@ -98,31 +159,46 @@ fn invoke_body(label: &'static str, host: &RecordingUiHost, body: ComRc<IAction>
 
 impl IUiHostImpl for HostFacade {
     fn window(&self, title: &str, w: f32, h: f32, flags: i32, body: ComRc<IAction>) {
-        self.inner
-            .record(UiCall::Window { title: title.into(), w, h, flags });
+        self.inner.record(UiCall::Window {
+            title: title.into(),
+            w,
+            h,
+            flags,
+        });
         invoke_body("window", &self.inner, body);
     }
 
     fn window_centered(&self, title: &str, w: f32, h: f32, body: ComRc<IAction>) {
-        self.inner
-            .record(UiCall::WindowCentered { title: title.into(), w, h });
+        self.inner.record(UiCall::WindowCentered {
+            title: title.into(),
+            w,
+            h,
+        });
         invoke_body("window_centered", &self.inner, body);
     }
 
     fn window_fullscreen(&self, title: &str, flags: i32, body: ComRc<IAction>) {
-        self.inner
-            .record(UiCall::WindowFullscreen { title: title.into(), flags });
+        self.inner.record(UiCall::WindowFullscreen {
+            title: title.into(),
+            flags,
+        });
         invoke_body("window_fullscreen", &self.inner, body);
     }
 
     fn child_window(&self, id: &str, w: f32, h: f32, body: ComRc<IAction>) {
-        self.inner
-            .record(UiCall::ChildWindow { id: id.into(), w, h });
+        self.inner.record(UiCall::ChildWindow {
+            id: id.into(),
+            w,
+            h,
+        });
         invoke_body("child_window", &self.inner, body);
     }
 
     fn table(&self, id: &str, cols: i32, body: ComRc<IAction>) {
-        self.inner.record(UiCall::Table { id: id.into(), cols });
+        self.inner.record(UiCall::Table {
+            id: id.into(),
+            cols,
+        });
         invoke_body("table", &self.inner, body);
     }
 
@@ -132,7 +208,9 @@ impl IUiHostImpl for HostFacade {
     }
 
     fn tree_node(&self, label: &str, body: ComRc<IAction>) {
-        self.inner.record(UiCall::TreeNode { label: label.into() });
+        self.inner.record(UiCall::TreeNode {
+            label: label.into(),
+        });
         invoke_body("tree_node", &self.inner, body);
     }
 
@@ -152,8 +230,10 @@ impl IUiHostImpl for HostFacade {
     }
 
     fn tab_item(&self, label: &str, closable: bool, body: ComRc<IAction>) -> bool {
-        self.inner
-            .record(UiCall::TabItem { label: label.into(), closable });
+        self.inner.record(UiCall::TabItem {
+            label: label.into(),
+            closable,
+        });
         invoke_body("tab_item", &self.inner, body);
         self.inner
             .tab_item_results
@@ -184,13 +264,18 @@ impl IUiHostImpl for HostFacade {
     }
 
     fn text_with_font(&self, font_idx: i32, s: &str) {
-        self.inner
-            .record(UiCall::TextWithFont { font_idx, s: s.into() });
+        self.inner.record(UiCall::TextWithFont {
+            font_idx,
+            s: s.into(),
+        });
     }
 
     fn button(&self, label: &str, w: f32, h: f32) -> bool {
-        self.inner
-            .record(UiCall::Button { label: label.into(), w, h });
+        self.inner.record(UiCall::Button {
+            label: label.into(),
+            w,
+            h,
+        });
         self.inner
             .button_results
             .borrow()
@@ -200,22 +285,33 @@ impl IUiHostImpl for HostFacade {
     }
 
     fn image(&self, texture_com_id: i32, w: f32, h: f32) {
-        self.inner
-            .record(UiCall::Image { texture_com_id, w, h });
+        self.inner.record(UiCall::Image {
+            texture_com_id,
+            w,
+            h,
+        });
     }
 
     fn image_fit(&self, texture_com_id: i32, src_w: f32, src_h: f32) {
-        self.inner
-            .record(UiCall::ImageFit { texture_com_id, src_w, src_h });
+        self.inner.record(UiCall::ImageFit {
+            texture_com_id,
+            src_w,
+            src_h,
+        });
     }
 
     fn multiline_text(&self, content: &str, w: f32, h: f32) {
-        self.inner
-            .record(UiCall::MultilineText { content: content.into(), w, h });
+        self.inner.record(UiCall::MultilineText {
+            content: content.into(),
+            w,
+            h,
+        });
     }
 
     fn tree_leaf(&self, label: &str) -> bool {
-        self.inner.record(UiCall::TreeLeaf { label: label.into() });
+        self.inner.record(UiCall::TreeLeaf {
+            label: label.into(),
+        });
         self.inner
             .tree_leaf_results
             .borrow()
@@ -238,8 +334,9 @@ impl IUiHostImpl for HostFacade {
     }
 
     fn tree_node_open(&self, label: &str) -> bool {
-        self.inner
-            .record(UiCall::TreeNodeOpen { label: label.into() });
+        self.inner.record(UiCall::TreeNodeOpen {
+            label: label.into(),
+        });
         self.inner
             .tree_node_open_results
             .borrow()
@@ -277,5 +374,30 @@ impl IUiHostImpl for HostFacade {
     }
     fn content_region_avail_y(&self) -> i32 {
         0
+    }
+    fn style_color(&self, _slot: i32, _r: f32, _g: f32, _b: f32, _a: f32, body: ComRc<IAction>) {
+        invoke_body("style_color", &self.inner, body);
+    }
+    fn set_cursor_pos(&self, _x: f32, _y: f32) {}
+    fn cursor_pos_x(&self) -> f32 {
+        0.0
+    }
+    fn cursor_pos_y(&self) -> f32 {
+        0.0
+    }
+    fn display_size_x(&self) -> i32 {
+        0
+    }
+    fn display_size_y(&self) -> i32 {
+        0
+    }
+    fn calc_text_size_x(&self, _s: &str) -> f32 {
+        0.0
+    }
+    fn calc_text_size_y(&self, _s: &str) -> f32 {
+        0.0
+    }
+    fn any_key_or_mouse_down(&self) -> bool {
+        false
     }
 }

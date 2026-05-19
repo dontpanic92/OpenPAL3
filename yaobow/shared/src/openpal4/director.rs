@@ -24,18 +24,18 @@ use super::{
         pal4_debug::{IPal4DebugContext, IPal4DebugOverlay},
         IOpenPAL4DirectorImpl,
     },
-    pal4_debug::Pal4DebugContextInner,
+    pal4_debug::Pal4DebugState,
     scripting::create_script_vm,
 };
 
 /// Bundle of script-side handles the director uses to drive the
 /// protosept debug overlay each frame. Set by the application loader
-/// after [`super::debug::create_context`] + the bootstrap script have
+/// after PAL4 debug session creation + the bootstrap script have
 /// run; the director only reads from this bundle inside `render_im`.
 pub struct Pal4DebugBundle {
     pub overlay: ComRc<IPal4DebugOverlay>,
     pub overlay_ctx: ComRc<IPal4DebugContext>,
-    pub overlay_ctx_inner: Rc<Pal4DebugContextInner>,
+    pub debug_state: Rc<Pal4DebugState>,
 }
 
 pub struct OpenPAL4Director {
@@ -93,11 +93,17 @@ impl OpenPAL4Director {
 
     fn refresh_debug_snapshot(&self, delta_sec: f32) {
         let bundle_ref = self.debug.borrow();
-        let Some(bundle) = bundle_ref.as_ref() else { return };
+        let Some(bundle) = bundle_ref.as_ref() else {
+            return;
+        };
 
         // Exponential moving average so the FPS readout doesn't strobe
         // on jittery frames. alpha tuned to roughly half a second.
-        let inst_fps = if delta_sec > 1e-4 { 1.0 / delta_sec } else { 0.0 };
+        let inst_fps = if delta_sec > 1e-4 {
+            1.0 / delta_sec
+        } else {
+            0.0
+        };
         let prev = self.fps_smoothed.get();
         let fps = if prev <= 0.0 {
             inst_fps
@@ -111,8 +117,8 @@ impl OpenPAL4Director {
         // result of any button press from the previous frame. Done
         // per-frame so scene reloads pick up the current state with
         // no extra wiring.
-        let bsp_visible = bundle.overlay_ctx_inner.bsp_visible();
-        let nav_mesh_visible = bundle.overlay_ctx_inner.nav_mesh_visible();
+        let bsp_visible = bundle.debug_state.bsp_visible();
+        let nav_mesh_visible = bundle.debug_state.nav_mesh_visible();
 
         let mut vm = self.vm.borrow_mut();
         let app = vm.app_context_mut();
@@ -120,14 +126,16 @@ impl OpenPAL4Director {
         app.set_nav_mesh_visible(nav_mesh_visible);
 
         let pos = app.leader_pos();
-        bundle.overlay_ctx_inner.set_snapshot(super::pal4_debug::Pal4DebugSnapshot {
-            scene_name: app.scene_name().to_string(),
-            block_name: app.block_name().to_string(),
-            leader_index: app.leader() as i32,
-            leader_pos: [pos.x, pos.y, pos.z],
-            delta_time: delta_sec,
-            fps,
-        });
+        bundle
+            .debug_state
+            .set_snapshot(super::pal4_debug::Pal4DebugSnapshot {
+                scene_name: app.scene_name().to_string(),
+                block_name: app.block_name().to_string(),
+                leader_index: app.leader() as i32,
+                leader_pos: [pos.x, pos.y, pos.z],
+                delta_time: delta_sec,
+                fps,
+            });
     }
 
     fn poll_tilde(&self) -> bool {
@@ -203,7 +211,9 @@ impl IImmediateDirectorImpl for OpenPAL4Director {
         // back into host services that touch the director).
         let (overlay, ctx) = {
             let bundle_ref = self.debug.borrow();
-            let Some(bundle) = bundle_ref.as_ref() else { return };
+            let Some(bundle) = bundle_ref.as_ref() else {
+                return;
+            };
             (bundle.overlay.clone(), bundle.overlay_ctx.clone())
         };
         overlay.render(ui, dt, ctx);

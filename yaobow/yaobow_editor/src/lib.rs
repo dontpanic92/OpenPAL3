@@ -16,7 +16,10 @@ pub mod comdef {
     // `editor_bindings::EDITOR_SERVICES_P7`).
     #[macro_use]
     pub mod editor_services {
-        include!(concat!(env!("OUT_DIR"), "/yaobow_editor_services_comdef.rs"));
+        include!(concat!(
+            env!("OUT_DIR"),
+            "/yaobow_editor_services_comdef.rs"
+        ));
     }
 }
 

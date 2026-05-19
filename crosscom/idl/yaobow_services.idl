@@ -1,0 +1,30 @@
+// Foreign service surface for the yaobow main app. The root script
+// receives one app-lifetime context at `app.p7:init(ctx)` and feature
+// modules reuse that context instead of receiving page-specific
+// service bundles from Rust.
+
+module(rust) yaobow::comdef::yaobow_services;
+
+import crosscom.idl;
+import radiance.idl;
+import scripting_services.idl;
+import immediate_director.idl;
+import pal4_debug.idl;
+
+[uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a01)]
+interface IYaobowAppContext: IHostContext {
+}
+[uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a02)]
+class YaobowAppContext: IYaobowAppContext {}
+
+// App-lifetime script root. The Yaobow protosept project's `app.p7`
+// conforms a single struct to this proto; Rust holds the rooted
+// instance and asks it to materialise per-feature surfaces (title
+// director, PAL4 debug overlay, …).
+[uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a04)]
+interface IYaobowScriptApp: IUnknown {
+    IImmediateDirector make_title_director();
+    IPal4DebugOverlay make_pal4_debug_overlay(IPal4DebugContext ctx);
+}
+[uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a05)]
+class YaobowScriptApp: IYaobowScriptApp {}

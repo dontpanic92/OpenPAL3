@@ -2,9 +2,6 @@ use self::application::OpenPal4ApplicationLoader;
 use shared::{config::YaobowConfig, GameType};
 
 pub mod application;
-pub mod debug_bootstrap;
-pub mod director_bundle;
-pub mod script_source;
 
 pub fn run_openpal4() {
     #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]

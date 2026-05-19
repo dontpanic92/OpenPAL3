@@ -3,12 +3,10 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 use radiance::comdef::{IApplication, IDirector};
-use radiance_scripting::comdef::immediate_director::IUiHost;
 use radiance_scripting::comdef::services::{IAppService, IAppServiceImpl};
-use radiance_scripting::services::ui_host::ImguiUiHost;
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::{
-    with_services, wrap_im_director, ImguiImmediateDirectorPump, RuntimeAccess, RuntimeHandle,
+    install_imgui_pump_with_cache, with_services, wrap_im_director, RuntimeAccess, RuntimeHandle,
     ScriptHost,
 };
 use shared::config::YaobowConfig;
@@ -82,30 +80,34 @@ impl IAppServiceImpl for AppService {
         let factory = self.app.engine().borrow().rendering_component_factory();
         let raw_vfs = packfs::init_virtual_fs(&asset_path, pkg_key);
         let asset_loader = match game {
-            GameType::PAL4 => DevToolsAssetLoader::Pal4(
-                shared::openpal4::asset_loader::AssetLoader::new(
+            GameType::PAL4 => {
+                DevToolsAssetLoader::Pal4(shared::openpal4::asset_loader::AssetLoader::new(
                     factory.clone(),
                     self.app.engine().borrow().input_engine(),
                     raw_vfs,
-                ),
-            ),
+                ))
+            }
             GameType::PAL5 => DevToolsAssetLoader::Pal5(
                 shared::openpal5::asset_loader::AssetLoader::new(factory.clone(), Rc::new(raw_vfs)),
             ),
-            GameType::SWD5 | GameType::SWDHC | GameType::SWDCF => DevToolsAssetLoader::Swd5(
-                shared::openswd5::asset_loader::AssetLoader::new(
+            GameType::SWD5 | GameType::SWDHC | GameType::SWDCF => {
+                DevToolsAssetLoader::Swd5(shared::openswd5::asset_loader::AssetLoader::new(
                     factory.clone(),
                     Rc::new(raw_vfs),
                     game,
-                ),
-            ),
+                ))
+            }
             _ => DevToolsAssetLoader::Pal3(Rc::new(
-                shared::openpal3::asset_manager::AssetManager::new(factory.clone(), Rc::new(raw_vfs)),
+                shared::openpal3::asset_manager::AssetManager::new(
+                    factory.clone(),
+                    Rc::new(raw_vfs),
+                ),
             )),
         };
         let vfs_rc = asset_loader.vfs_rc();
 
-        self.app.set_title(&format!("妖弓编辑器 - {}", game.app_name()));
+        self.app
+            .set_title(&format!("妖弓编辑器 - {}", game.app_name()));
 
         let engine = self.app.engine();
         let engine = engine.borrow();
@@ -155,14 +157,8 @@ impl IAppServiceImpl for AppService {
         let im = wrap_im_director(&runtime_handle, director_data).ok()?;
         let director: ComRc<IDirector> = im.query_interface::<IDirector>()?;
 
-        let ui_host: ComRc<IUiHost> = ImguiUiHost::create();
-        let pump = Rc::new(ImguiImmediateDirectorPump::new(
-            engine.ui_manager(),
-            self.textures.clone(),
-            ui_host,
-        ));
-        engine.clear_immediate_director_pump();
-        engine.set_immediate_director_pump(pump);
+        drop(engine);
+        install_imgui_pump_with_cache(&self.app, self.textures.clone());
 
         Some(director)
     }

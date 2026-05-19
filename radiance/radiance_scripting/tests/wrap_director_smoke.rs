@@ -69,9 +69,7 @@ fn record_event_host_fn(ctx: &mut Context) -> Result<(), RuntimeError> {
     }
 }
 
-fn host_runtime_handle(
-    host: &std::rc::Rc<ScriptHost>,
-) -> crosscom_protosept::RuntimeHandle {
+fn host_runtime_handle(host: &std::rc::Rc<ScriptHost>) -> crosscom_protosept::RuntimeHandle {
     // Re-enter the runtime via the same path the dispatcher uses to
     // pull a RuntimeHandle out of the active services bundle.
     let mut out: Option<crosscom_protosept::RuntimeHandle> = None;

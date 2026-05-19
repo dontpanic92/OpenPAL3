@@ -63,10 +63,7 @@ impl Device {
                         e
                     );
                     device
-                        .create_pipeline_cache(
-                            &ash::vk::PipelineCacheCreateInfo::default(),
-                            None,
-                        )
+                        .create_pipeline_cache(&ash::vk::PipelineCacheCreateInfo::default(), None)
                         .unwrap_or(PipelineCache::null())
                 }
             }
@@ -469,7 +466,12 @@ impl Device {
         unsafe { self.device.destroy_fence(fence, None) }
     }
 
-    pub fn wait_for_fences(&self, fences: &[Fence], wait_all: bool, timeout_ns: u64) -> VkResult<()> {
+    pub fn wait_for_fences(
+        &self,
+        fences: &[Fence],
+        wait_all: bool,
+        timeout_ns: u64,
+    ) -> VkResult<()> {
         unsafe { self.device.wait_for_fences(fences, wait_all, timeout_ns) }
     }
 

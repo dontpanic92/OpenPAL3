@@ -208,7 +208,7 @@ mod tests {
         b.extend(&4u32.to_le_bytes());
         b.extend(&0x1C020065u32.to_le_bytes());
         b.extend(&1u32.to_le_bytes()); // num_anims
-        // --- ANIM_ANIMATION (0x1B) header, body=152 bytes.
+                                       // --- ANIM_ANIMATION (0x1B) header, body=152 bytes.
         b.extend(&0x1Bu32.to_le_bytes());
         b.extend(&152u32.to_le_bytes());
         b.extend(&0x1C020065u32.to_le_bytes());
@@ -226,7 +226,7 @@ mod tests {
         b.extend(&vec![0u8; UV_ANIM_NAME_LEN - name.len()]);
         // 96 bytes of keyframe blob, byte-for-byte from the sample.
         b.extend(&[0u8; 36]); // body 56..91 — all zeros (32 + the 4 bytes that used to be "duration")
-        // body 92..119 (28 bytes)
+                              // body 92..119 (28 bytes)
         b.extend(&0u32.to_le_bytes());
         b.extend(&(-0.0f32).to_le_bytes());
         b.extend(&1.0f32.to_le_bytes());
@@ -261,7 +261,11 @@ mod tests {
     #[test]
     fn parses_bj_water_dictionary() {
         let bytes = bj_water_bytes();
-        assert_eq!(bytes.len(), 192, "bj_water_bytes must reproduce the sample size");
+        assert_eq!(
+            bytes.len(),
+            192,
+            "bj_water_bytes must reproduce the sample size"
+        );
         let dict = UvAnimDict::read_from_bytes(&bytes).expect("parse BJ_water.uva");
         assert_eq!(dict.animations.len(), 1);
         let a = &dict.animations[0];
@@ -270,7 +274,11 @@ mod tests {
         assert_eq!(a.num_frames, 2);
         assert_eq!(a.flags, 0);
         // Duration in observed PAL4 samples = 0x42055556 as f32 = 100/3.
-        assert!((a.duration - 33.333_332).abs() < 1e-3, "duration={}", a.duration);
+        assert!(
+            (a.duration - 33.333_332).abs() < 1e-3,
+            "duration={}",
+            a.duration
+        );
         assert_eq!(a.name, "StdMat[ 1711 ]-[ 130 ]");
         // 152 anim body − 16 header − 4 duration − 4 reserved − 32 name = 96.
         assert_eq!(a.raw_keyframes.len(), 96);

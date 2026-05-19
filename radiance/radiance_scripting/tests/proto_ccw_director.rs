@@ -114,7 +114,10 @@ fn idirector_activate_and_null_update_round_trip() {
 
     let host = ScriptHost::new();
     host.with_ctx_mut(|ctx| {
-        ctx.register_host_function("test.record_director_event".to_string(), record_event_host_fn);
+        ctx.register_host_function(
+            "test.record_director_event".to_string(),
+            record_event_host_fn,
+        );
     });
     host.load_source(SCRIPT).expect("load_source");
 
@@ -154,7 +157,10 @@ fn idirector_update_returning_some_recursively_wraps() {
 
     let host = ScriptHost::new();
     host.with_ctx_mut(|ctx| {
-        ctx.register_host_function("test.record_director_event".to_string(), record_event_host_fn);
+        ctx.register_host_function(
+            "test.record_director_event".to_string(),
+            record_event_host_fn,
+        );
     });
     host.load_source(SCRIPT).expect("load_source");
 

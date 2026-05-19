@@ -78,9 +78,7 @@ fn record_event_host_fn(ctx: &mut Context) -> Result<(), RuntimeError> {
     }
 }
 
-fn host_runtime_handle(
-    host: &std::rc::Rc<ScriptHost>,
-) -> crosscom_protosept::RuntimeHandle {
+fn host_runtime_handle(host: &std::rc::Rc<ScriptHost>) -> crosscom_protosept::RuntimeHandle {
     let mut out: Option<crosscom_protosept::RuntimeHandle> = None;
     <ScriptHost as crosscom_protosept::RuntimeAccess>::with_ctx(host, &mut |_ctx| {
         let h = crosscom_protosept::with_services(|s| s.runtime_handle())
@@ -142,9 +140,7 @@ fn dispatch_render_im_forwards_to_script_and_recording_ui_host() {
         .expect("make_im");
     let handle = host_runtime_handle(&host);
     let im: ComRc<IImmediateDirector> = wrap_im_director(&handle, data).expect("wrap_im_director");
-    let as_director: ComRc<IDirector> = im
-        .query_interface::<IDirector>()
-        .expect("QI to IDirector");
+    let as_director: ComRc<IDirector> = im.query_interface::<IDirector>().expect("QI to IDirector");
 
     // Build a RecordingUiHost and drive the script's render_im
     // through the pump's headless dispatch helper. The script's
@@ -212,6 +208,8 @@ pub fn make_plain(seed: int) -> box<radiance.IDirector> {
 
     let (_recorder, ui_host) = RecordingUiHost::create();
     let fired = ImguiImmediateDirectorPump::dispatch_render_im(&director, &ui_host, 0.016);
-    assert!(!fired, "QI to IImmediateDirector must fail for a plain IDirector");
+    assert!(
+        !fired,
+        "QI to IImmediateDirector must fail for a plain IDirector"
+    );
 }
-

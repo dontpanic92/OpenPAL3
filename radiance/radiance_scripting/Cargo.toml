@@ -18,6 +18,7 @@ mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
 image = "0.23.0"
 imgui = { workspace = true }
 log = "0.4"
+rand = "0.8.3"
 uuid = "0.8"
 
 [build-dependencies]

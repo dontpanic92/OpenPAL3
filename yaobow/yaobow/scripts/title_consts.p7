@@ -1,0 +1,48 @@
+// Timing + layout constants for the yaobow title page. Ported 1:1
+// from the legacy `yaobow/src/application/director.rs` so visual
+// parity is straightforward to audit.
+
+// Underline blink for "press any key to continue".
+pub let UNDERLINE_FIRST_TIME_WAITING: float = 4.6;
+pub let UNDERLINE_SHOW_TIME: float = 0.4;
+pub let UNDERLINE_MARGIN_TIME: float = 1.6;
+
+// Outline animation pacing.
+pub let OUTLINE_FADE_TIME: float = 2.0;
+// Both = (UNDERLINE_SHOW_TIME + UNDERLINE_MARGIN_TIME) * 8 in legacy
+// code; baked here because p7 doesn't have constexpr arithmetic.
+pub let OUTLINE_MARGIN_TIME: float = 16.0;
+pub let OUTLINE_SHOW_TIME: float = 16.0;
+
+// Master fade-in: 0..2s held at alpha 0, 2..5s linear ramp to alpha 1,
+// after 5s normal rendering.
+pub let FADE_HOLD_END: float = 2.0;
+pub let FADE_RAMP_END: float = 5.0;
+
+// Background colour of the main pane (cream).
+pub let BG_R: float = 0.94509804;
+pub let BG_G: float = 0.9411765;
+pub let BG_B: float = 0.92941177;
+pub let BG_A: float = 1.0;
+
+// Imgui style-color slots the title page uses. Numeric values match
+// `immediate_director.IUiHost.style_color`'s documented mapping.
+pub let SC_TEXT: int = 0;
+pub let SC_WINDOW_BG: int = 2;
+pub let SC_BUTTON: int = 21;
+pub let SC_BUTTON_HOVERED: int = 22;
+pub let SC_BUTTON_ACTIVE: int = 23;
+
+// Font slots (see `radiance/src/imgui/mod.rs`: index 0 = default
+// 28px, index 1 = small 18px).
+pub let FONT_DEFAULT: int = 0;
+pub let FONT_SMALL: int = 1;
+
+// Game ordinals exposed to `IAppService.open_game`. Match
+// `application/mod.rs::create_loader` (PAL3=0, PAL4=1).
+pub let GAME_PAL3: int = 0;
+pub let GAME_PAL4: int = 1;
+
+// Intent codes written by render_im, consumed by update.
+pub let INTENT_NONE: int = 0;
+pub let INTENT_OPEN_GAME: int = 1;

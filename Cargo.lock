@@ -3293,6 +3293,7 @@ dependencies = [
  "p7",
  "radiance",
  "radiance_editor",
+ "rand",
  "uuid 0.8.2",
 ]
 
@@ -5308,6 +5309,7 @@ dependencies = [
  "ndk 0.5.0",
  "ndk-glue",
  "ndk-sys 0.3.0",
+ "p7",
  "packfs",
  "radiance",
  "radiance_scripting",

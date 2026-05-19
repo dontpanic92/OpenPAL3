@@ -20,9 +20,5 @@ pub trait RenderingEngine {
     /// Should be called *before* `render` within the same frame; the
     /// backend is free to chain submissions via semaphores so the swapchain
     /// pass observes finished offscreen content.
-    fn render_scene_to_target(
-        &mut self,
-        scene: ComRc<IScene>,
-        target: &mut dyn RenderTarget,
-    );
+    fn render_scene_to_target(&mut self, scene: ComRc<IScene>, target: &mut dyn RenderTarget);
 }

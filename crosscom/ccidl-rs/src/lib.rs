@@ -1746,10 +1746,8 @@ mod tests {
 
     #[test]
     fn transitive_imports_chain_a_to_b_to_c() {
-        let tmp = std::env::temp_dir().join(format!(
-            "ccidl-transitive-chain-{}",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("ccidl-transitive-chain-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
 
@@ -1810,10 +1808,8 @@ mod tests {
 
     #[test]
     fn transitive_imports_diamond_dedupes() {
-        let tmp = std::env::temp_dir().join(format!(
-            "ccidl-transitive-diamond-{}",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("ccidl-transitive-diamond-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
 

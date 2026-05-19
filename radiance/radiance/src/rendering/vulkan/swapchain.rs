@@ -6,11 +6,11 @@ use super::pipeline_manager::PipelineManager;
 use super::render_object::VulkanRenderObject;
 use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
 use super::{adhoc_command_runner::AdhocCommandRunner, device::Device};
-use crate::rendering::MaterialKey;
 use super::{
     buffer::{Buffer, BufferType},
     instance::Instance,
 };
+use crate::rendering::MaterialKey;
 use crate::scene::Viewport;
 use crate::{imgui::ImguiFrame, rendering::vulkan::imgui::ImguiRenderer};
 use ash::prelude::VkResult;
@@ -266,9 +266,24 @@ impl SwapChain {
         //   3. Transparent (AlphaBlend/Additive/Multiply: depth-write off) —
         //      drawn in the order received (caller back-to-front-sorts);
         //      neighboring objects sharing a material are still grouped.
-        self.draw_bucket_grouped(command_buffer, opaque_objects, per_frame_descriptor_set, dub_manager);
-        self.draw_bucket_grouped(command_buffer, cutout_objects, per_frame_descriptor_set, dub_manager);
-        self.draw_bucket_ordered(command_buffer, transparent_objects, per_frame_descriptor_set, dub_manager);
+        self.draw_bucket_grouped(
+            command_buffer,
+            opaque_objects,
+            per_frame_descriptor_set,
+            dub_manager,
+        );
+        self.draw_bucket_grouped(
+            command_buffer,
+            cutout_objects,
+            per_frame_descriptor_set,
+            dub_manager,
+        );
+        self.draw_bucket_ordered(
+            command_buffer,
+            transparent_objects,
+            per_frame_descriptor_set,
+            dub_manager,
+        );
 
         self.imgui
             .as_ref()
@@ -349,9 +364,24 @@ impl SwapChain {
             crate::math::Rect::new(0., 0., extent.width as f32, extent.height as f32),
         );
 
-        self.draw_bucket_grouped(command_buffer, opaque_objects, per_frame_descriptor_set, dub_manager);
-        self.draw_bucket_grouped(command_buffer, cutout_objects, per_frame_descriptor_set, dub_manager);
-        self.draw_bucket_ordered(command_buffer, transparent_objects, per_frame_descriptor_set, dub_manager);
+        self.draw_bucket_grouped(
+            command_buffer,
+            opaque_objects,
+            per_frame_descriptor_set,
+            dub_manager,
+        );
+        self.draw_bucket_grouped(
+            command_buffer,
+            cutout_objects,
+            per_frame_descriptor_set,
+            dub_manager,
+        );
+        self.draw_bucket_ordered(
+            command_buffer,
+            transparent_objects,
+            per_frame_descriptor_set,
+            dub_manager,
+        );
 
         self.device.cmd_end_render_pass(command_buffer);
         self.device.end_command_buffer(command_buffer)?;
@@ -382,7 +412,13 @@ impl SwapChain {
                 groups.push(vec![obj]);
             }
         }
-        self.draw_groups(command_buffer, &materials, &groups, per_frame_descriptor_set, dub_manager);
+        self.draw_groups(
+            command_buffer,
+            &materials,
+            &groups,
+            per_frame_descriptor_set,
+            dub_manager,
+        );
     }
 
     fn draw_bucket_ordered(
@@ -410,7 +446,13 @@ impl SwapChain {
                 groups.last_mut().unwrap().push(obj);
             }
         }
-        self.draw_groups(command_buffer, &materials, &groups, per_frame_descriptor_set, dub_manager);
+        self.draw_groups(
+            command_buffer,
+            &materials,
+            &groups,
+            per_frame_descriptor_set,
+            dub_manager,
+        );
     }
 
     fn draw_groups(
