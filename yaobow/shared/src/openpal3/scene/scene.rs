@@ -210,11 +210,7 @@ impl ScnScene {
                     continue;
                 }
 
-                return Some(
-                    role_model
-                        .unwrap()
-                        .with_inner::<RoleController, _, _>(|r| r.proc_id() as u32),
-                );
+                return Some(role_model.unwrap().inner::<RoleController>().proc_id() as u32);
             }
         }
 
@@ -531,10 +527,11 @@ impl ScnScene {
                     .query_interface::<IRoleController>()
                     .unwrap();
                 if role.sce_proc_id != 0 {
-                    role_controller.with_inner::<RoleController, _, _>(|rc| {
+                    {
+                        let rc = role_controller.inner::<RoleController>();
                         rc.set_active(true);
                         rc.set_proc_id(role.sce_proc_id as i32);
-                    });
+                    };
                 }
 
                 entities.push(entity);

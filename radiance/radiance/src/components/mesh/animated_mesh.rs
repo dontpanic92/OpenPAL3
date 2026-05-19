@@ -351,6 +351,7 @@ pub trait IAnimatedMeshComponentExt {
 
 impl IAnimatedMeshComponentExt for ComRc<crate::comdef::IAnimatedMeshComponent> {
     fn morph_animation_state(&self) -> MorphAnimationState {
-        self.with_inner::<AnimatedMeshComponent, _, _>(|c| c.morph_animation_state())
+        self.inner::<AnimatedMeshComponent>()
+            .morph_animation_state()
     }
 }

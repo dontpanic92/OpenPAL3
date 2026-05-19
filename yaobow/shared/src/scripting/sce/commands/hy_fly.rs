@@ -31,7 +31,7 @@ impl SceCommand for SceCommandHyFly {
             self.position_y,
             self.position_z,
         ));
-        role_controller.with_inner::<RoleController, _, _>(|r| r.idle());
+        role_controller.inner::<RoleController>().idle();
         true
     }
 }

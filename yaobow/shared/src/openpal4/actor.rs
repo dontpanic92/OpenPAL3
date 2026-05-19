@@ -168,13 +168,15 @@ pub trait IPal4ActorAnimationControllerExt {
 
 impl IPal4ActorAnimationControllerExt for ComRc<IPal4ActorAnimationController> {
     fn set_default(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>) {
-        self.with_inner::<Pal4ActorAnimationController, _, _>(|c| c.set_default(keyframes, events))
+        self.inner::<Pal4ActorAnimationController>()
+            .set_default(keyframes, events)
     }
     fn play(&self, animation: Pal4ActorAnimation, config: Pal4ActorAnimationConfig) {
-        self.with_inner::<Pal4ActorAnimationController, _, _>(|c| c.play(animation, config))
+        self.inner::<Pal4ActorAnimationController>()
+            .play(animation, config)
     }
     fn current(&self) -> Pal4ActorAnimation {
-        self.with_inner::<Pal4ActorAnimationController, _, _>(|c| c.current())
+        self.inner::<Pal4ActorAnimationController>().current()
     }
     fn play_animation(
         &self,
@@ -182,9 +184,10 @@ impl IPal4ActorAnimationControllerExt for ComRc<IPal4ActorAnimationController> {
         events: Vec<AnimationEvent>,
         config: Pal4ActorAnimationConfig,
     ) {
-        self.with_inner::<Pal4ActorAnimationController, _, _>(|c| {
+        {
+            let c = self.inner::<Pal4ActorAnimationController>();
             c.play_animation(keyframes, events, config)
-        })
+        }
     }
 }
 
@@ -318,14 +321,14 @@ impl Pal4ActorControllerInner {
         self.camera_rotation =
             get_camera_rotation(self.input.clone(), self.camera_rotation, delta_sec);
         self.camera_height = get_camera_height(self.input.clone(), self.camera_height, delta_sec);
-        self.scene
-            .camera()
-            .borrow_mut()
-            .transform_mut()
-            .set_position(&Vec3::new(300., self.camera_height, 300.))
-            .rotate_axis_angle(&Vec3::UP, self.camera_rotation)
-            .translate(&target_position)
-            .look_at(&target_position);
+        {
+            let mut c = self.scene.camera_mut();
+            c.transform_mut()
+                .set_position(&Vec3::new(300., self.camera_height, 300.))
+                .rotate_axis_angle(&Vec3::UP, self.camera_rotation)
+                .translate(&target_position)
+                .look_at(&target_position);
+        };
     }
 }
 

@@ -147,11 +147,11 @@ pub trait IApplicationExt {
 
 impl IApplicationExt for ComRc<crate::comdef::IApplication> {
     fn set_title(&self, title: &str) {
-        self.with_inner::<Application, _, _>(|a| a.set_title(title))
+        self.inner::<Application>().set_title(title)
     }
 
     fn engine(&self) -> Rc<RefCell<CoreRadianceEngine>> {
-        self.with_inner::<Application, _, _>(|a| a.engine())
+        self.inner::<Application>().engine()
     }
 }
 

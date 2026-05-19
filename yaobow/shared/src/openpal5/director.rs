@@ -26,20 +26,11 @@ ComObject_OpenPAL5Director!(super::OpenPAL5Director);
 
 impl IDirectorImpl for OpenPAL5Director {
     fn activate(&self) {
-        self.scene_manager
-            .scene()
-            .unwrap()
-            .camera()
-            .borrow_mut()
+        let scene = self.scene_manager.scene().unwrap();
+        scene
+            .camera_mut()
             .transform_mut()
-            .set_position(&Vec3::new(5500.0, 612.1155, 2500.0));
-
-        self.scene_manager
-            .scene()
-            .unwrap()
-            .camera()
-            .borrow_mut()
-            .transform_mut()
+            .set_position(&Vec3::new(5500.0, 612.1155, 2500.0))
             .look_at(&Vec3::new(4319.2227, 612.1155, 1708.5408));
     }
 

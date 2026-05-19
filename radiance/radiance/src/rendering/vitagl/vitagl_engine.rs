@@ -47,11 +47,10 @@ impl RenderingEngine for VitaGLRenderingEngine {
         }
 
         let (view, proj) = {
-            let c = scene.camera();
-            let camera = c.borrow();
+            let camera = scene.camera();
             let view = Mat44::inversed(camera.transform().matrix());
-            let proj = camera.projection_matrix();
-            (view, *proj)
+            let proj = *camera.projection_matrix();
+            (view, proj)
         };
 
         let rc: Vec<_> = scene

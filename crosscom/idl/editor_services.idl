@@ -85,8 +85,6 @@ interface IVfsService: IUnknown {
     void toggle_expanded(&str vfs_path);
     int command_id(&str vfs_path);
     &str command_path(int command_id);
-    [internal(), rust()]
-    Vec<u8> read_bytes_internal(&str vfs_path);
 }
 [uuid(f19e19aa-9568-4021-ae47-7658426780f2)]
 class VfsService: IVfsService {}

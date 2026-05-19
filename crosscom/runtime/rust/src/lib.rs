@@ -53,28 +53,26 @@ impl<TComInterface: ComInterface> ComRc<TComInterface> {
         }
     }
 
-    /// Run `f` with a borrow of the inner Rust value of the underlying
-    /// CCW, projected as the concrete class `C`. The borrow given to
-    /// `f` is tied to `&self`, so it cannot outlive the `ComRc`. This
-    /// is the sound replacement for the legacy
-    /// `fn get(&self) -> &'static T { unsafe { &*(self as *const _) } }`
-    /// pattern: lifetime is no longer laundered.
+    /// Project the CCW back to the concrete inner Rust value `C`.
     ///
-    /// SAFETY-CONSCIOUS CONVENTION: the caller must ensure `C` is the
+    /// The returned `&C` borrow is tied to `&self` (the `ComRc` borrow),
+    /// so it cannot outlive the `ComRc`: the borrow checker enforces
+    /// what the legacy `unsafe { &*(self as *const _) }` cast laundered
+    /// away. While `&self` is borrowed, the strong refcount stays ≥ 1,
+    /// so the heap CCW remains allocated; the inner field address is
+    /// stable inside a `#[repr(C)]` CCW; and no engine code ever
+    /// exposes `&mut Inner` (interior mutability uses `RefCell`/`Cell`
+    /// fields inside `C`).
+    ///
+    /// SAFETY-CONSCIOUS CONVENTION: the caller asserts `C` is the
     /// concrete class that actually backs this `ComRc`. Calling
-    /// `with_inner::<WrongClass>(...)` reinterprets unrelated CCW
-    /// memory as `WrongClass::CcwType` and is UB. In practice this
-    /// reflects the existing "I know what class implements this
-    /// interface" invariant that the previous `'static` cast already
-    /// relied on, just made explicit via the type parameter `C`.
-    pub fn with_inner<C, F, R>(&self, f: F) -> R
-    where
-        C: ComObject,
-        F: FnOnce(&C) -> R,
-    {
+    /// `inner::<WrongClass>()` reinterprets unrelated CCW memory as
+    /// `WrongClass::CcwType` and is UB — same precondition as the
+    /// legacy `'static` cast.
+    pub fn inner<C: ComObject>(&self) -> &C {
         unsafe {
             let ccw = crate::get_object::<C::CcwType>(self.this as *const *const c_void);
-            f(C::ccw_inner(&*ccw))
+            C::ccw_inner(&*ccw)
         }
     }
 }

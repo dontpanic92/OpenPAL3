@@ -321,13 +321,14 @@ pub trait IArmatureComponentExt {
 
 impl IArmatureComponentExt for ComRc<crate::comdef::IArmatureComponent> {
     fn set_animation(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>) {
-        self.with_inner::<ArmatureComponent, _, _>(|c| c.set_animation(keyframes, events))
+        self.inner::<ArmatureComponent>()
+            .set_animation(keyframes, events)
     }
     fn animation_state(&self) -> AnimationState {
-        self.with_inner::<ArmatureComponent, _, _>(|c| c.animation_state())
+        self.inner::<ArmatureComponent>().animation_state()
     }
     fn bones(&self) -> Vec<ComRc<IEntity>> {
-        self.with_inner::<ArmatureComponent, _, _>(|c| c.bones())
+        self.inner::<ArmatureComponent>().bones()
     }
 }
 
@@ -466,13 +467,13 @@ pub trait IHAnimBoneComponentExt {
 
 impl IHAnimBoneComponentExt for ComRc<crate::comdef::IHAnimBoneComponent> {
     fn set_keyframes(&self, keyframes: Vec<AnimKeyFrame>) {
-        self.with_inner::<HAnimBoneComponent, _, _>(|c| c.set_keyframes(keyframes))
+        self.inner::<HAnimBoneComponent>().set_keyframes(keyframes)
     }
     fn set_bond_pose(&self, matrix: Mat44) {
-        self.with_inner::<HAnimBoneComponent, _, _>(|c| c.set_bond_pose(matrix))
+        self.inner::<HAnimBoneComponent>().set_bond_pose(matrix)
     }
     fn bond_pose(&self) -> Mat44 {
-        self.with_inner::<HAnimBoneComponent, _, _>(|c| c.bond_pose())
+        self.inner::<HAnimBoneComponent>().bond_pose()
     }
 }
 

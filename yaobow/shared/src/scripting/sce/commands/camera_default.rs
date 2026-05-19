@@ -18,11 +18,9 @@ impl SceCommand for SceCommandCameraDefault {
         _delta_sec: f32,
     ) -> bool {
         let target = Vec3::new(0., 0., 0.);
-        scene_manager
-            .scene()
-            .unwrap()
-            .camera()
-            .borrow_mut()
+        let scene = scene_manager.scene().unwrap();
+        scene
+            .camera_mut()
             .transform_mut()
             .set_position(&Vec3::new(300., 200., 300.))
             .look_at(&target);

@@ -112,6 +112,6 @@ pub trait ISceneManagerExt {
 
 impl ISceneManagerExt for ComRc<crate::comdef::ISceneManager> {
     fn scenes(&self) -> Vec<ComRc<IScene>> {
-        self.with_inner::<DefaultSceneManager, _, _>(|sm| sm.scenes())
+        self.inner::<DefaultSceneManager>().scenes()
     }
 }

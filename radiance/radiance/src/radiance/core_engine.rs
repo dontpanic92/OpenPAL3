@@ -194,8 +194,7 @@ impl CoreRadianceEngine {
         if let Some(s) = scene {
             let mut rendering_engine = self.rendering_engine.as_ref().borrow_mut();
             let viewport = {
-                let c = s.camera();
-                let mut camera = c.borrow_mut();
+                let mut camera = s.camera_mut();
                 match camera.viewport() {
                     Viewport::FullExtent(_) => {
                         let extent = rendering_engine.view_extent();

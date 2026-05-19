@@ -102,11 +102,7 @@ pub fn get_moving_direction(input: Rc<RefCell<dyn InputEngine>>, scene: ComRc<IS
     local_direction = Vec3::add(&local_direction, &Vec3::new(left_x, 0., 0.));
     local_direction.normalize();
 
-    let camera_mat = {
-        let camera = scene.camera();
-        let camera = camera.borrow();
-        camera.transform().matrix().clone()
-    };
+    let camera_mat = scene.camera().transform().matrix().clone();
 
     let mut world_direction_mat = Mat44::new_zero();
     world_direction_mat[0][3] = local_direction.x;

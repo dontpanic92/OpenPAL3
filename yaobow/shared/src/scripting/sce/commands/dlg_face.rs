@@ -27,16 +27,17 @@ impl SceCommand for SceCommandDlgFace {
         } else {
             self._id
         };
-        let role_entity = _scene_manager
-            .scn_scene()
-            .unwrap()
-            .with_inner::<crate::openpal3::scene::ScnScene, _, _>(|s| {
-                s.get_role_entity(_resolved_role_id)
-            })
-            .unwrap();
+        let role_entity = {
+            let scn = _scene_manager.scn_scene().unwrap();
+            let s = scn.inner::<crate::openpal3::scene::ScnScene>();
+            s.get_role_entity(_resolved_role_id)
+        }
+        .unwrap();
         let role_name = RoleController::get_role_controller(role_entity.clone())
             .unwrap()
-            .with_inner::<RoleController, _, _>(|r| r.model_name().to_owned());
+            .inner::<RoleController>()
+            .model_name()
+            .to_owned();
         state
             .dialog_box()
             .set_avator(&role_name, &self.face_name, self.left_or_right);

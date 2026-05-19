@@ -152,7 +152,7 @@ impl Pal4Scene {
             }
         }
 
-        scene.camera().borrow_mut().set_fov43(45_f32.to_radians());
+        scene.camera_mut().set_fov43(45_f32.to_radians());
 
         let floor = asset_loader.load_scene_floor(scene_name, block_name);
         let wall = asset_loader.load_scene_wall(scene_name, block_name);
@@ -482,22 +482,20 @@ fn add_mesh(ray_caster: &mut RayCaster, entity: ComRc<IEntity>) {
     if let Some(mesh) = mesh {
         let mesh = mesh.query_interface::<IStaticMeshComponent>().unwrap();
         let entity_position = entity.world_transform().position();
-        mesh.with_inner::<radiance::components::mesh::static_mesh::StaticMeshComponent, _, _>(
-            |mesh| {
-                let geometries = mesh.get_geometries();
-                for geometry in geometries {
-                    let v = geometry
-                        .vertices
-                        .to_position_vec()
-                        .into_iter()
-                        .map(|v| Vec3::add(&entity_position, &v))
-                        .collect();
+        let mesh_inner =
+            mesh.inner::<radiance::components::mesh::static_mesh::StaticMeshComponent>();
+        let geometries = mesh_inner.get_geometries();
+        for geometry in geometries {
+            let v = geometry
+                .vertices
+                .to_position_vec()
+                .into_iter()
+                .map(|v| Vec3::add(&entity_position, &v))
+                .collect();
 
-                    let i = geometry.indices.clone();
-                    ray_caster.add_mesh(v, i);
-                }
-            },
-        );
+            let i = geometry.indices.clone();
+            ray_caster.add_mesh(v, i);
+        }
     }
 }
 

@@ -9,10 +9,7 @@ use crate::{
 };
 
 use super::Camera;
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 
 struct SceneComponentEntry {
     component: ComRc<IComponent>,
@@ -23,7 +20,7 @@ pub struct CoreScene {
     active: bool,
     visible: bool,
     entities: RefCell<Vec<ComRc<IEntity>>>,
-    camera: Rc<RefCell<Camera>>,
+    camera: RefCell<Camera>,
     components: DashMap<Uuid, SceneComponentEntry>,
     loaded: Cell<bool>,
 }
@@ -36,7 +33,7 @@ impl CoreScene {
             active: true,
             visible: true,
             entities: RefCell::new(vec![]),
-            camera: Rc::new(RefCell::new(Camera::new())),
+            camera: RefCell::new(Camera::new()),
             components: DashMap::new(),
             loaded: Cell::new(false),
         }
@@ -118,8 +115,12 @@ impl CoreScene {
         entities
     }
 
-    pub fn camera(&self) -> Rc<RefCell<Camera>> {
-        self.camera.clone()
+    pub fn camera(&self) -> Ref<'_, Camera> {
+        self.camera.borrow()
+    }
+
+    pub fn camera_mut(&self) -> RefMut<'_, Camera> {
+        self.camera.borrow_mut()
     }
 }
 
@@ -130,24 +131,35 @@ pub trait ISceneExt {
     fn root_entities(&self) -> Vec<ComRc<IEntity>>;
     fn entities(&self) -> Vec<ComRc<IEntity>>;
     fn visible_entities(&self) -> Vec<ComRc<IEntity>>;
-    fn camera(&self) -> Rc<RefCell<Camera>>;
+
+    /// Borrow the scene's `Camera`. The returned `Ref` lifetime is
+    /// tied to `&self`, so the camera handle cannot outlive the
+    /// `ComRc<IScene>` borrow. The camera is engine-internal and is
+    /// never handed out as an `Rc<RefCell<…>>`.
+    fn camera(&self) -> Ref<'_, Camera>;
+
+    /// Mutable counterpart to [`camera`].
+    fn camera_mut(&self) -> RefMut<'_, Camera>;
 }
 
 impl ISceneExt for ComRc<IScene> {
     fn remove_entities_by_name(&self, name: &str) -> Vec<ComRc<IEntity>> {
-        self.with_inner::<CoreScene, _, _>(|s| s.remove_entities_by_name(name))
+        self.inner::<CoreScene>().remove_entities_by_name(name)
     }
     fn root_entities(&self) -> Vec<ComRc<IEntity>> {
-        self.with_inner::<CoreScene, _, _>(|s| s.root_entities())
+        self.inner::<CoreScene>().root_entities()
     }
     fn entities(&self) -> Vec<ComRc<IEntity>> {
-        self.with_inner::<CoreScene, _, _>(|s| s.entities())
+        self.inner::<CoreScene>().entities()
     }
     fn visible_entities(&self) -> Vec<ComRc<IEntity>> {
-        self.with_inner::<CoreScene, _, _>(|s| s.visible_entities())
+        self.inner::<CoreScene>().visible_entities()
     }
-    fn camera(&self) -> Rc<RefCell<Camera>> {
-        self.with_inner::<CoreScene, _, _>(|s| s.camera())
+    fn camera(&self) -> Ref<'_, Camera> {
+        self.inner::<CoreScene>().camera()
+    }
+    fn camera_mut(&self) -> RefMut<'_, Camera> {
+        self.inner::<CoreScene>().camera_mut()
     }
 }
 

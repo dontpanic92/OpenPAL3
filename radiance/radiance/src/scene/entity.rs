@@ -140,28 +140,30 @@ pub trait IEntityExt {
 
 impl IEntityExt for ComRc<IEntity> {
     fn name(&self) -> String {
-        self.with_inner::<CoreEntity, _, _>(|e| e.name())
+        self.inner::<CoreEntity>().name()
     }
     fn set_name(&self, name: &str) {
-        self.with_inner::<CoreEntity, _, _>(|e| e.set_name(name))
+        self.inner::<CoreEntity>().set_name(name)
     }
     fn transform(&self) -> Rc<RefCell<Transform>> {
-        self.with_inner::<CoreEntity, _, _>(|e| e.transform())
+        self.inner::<CoreEntity>().transform()
     }
     fn world_transform(&self) -> Transform {
-        self.with_inner::<CoreEntity, _, _>(|e| e.world_transform())
+        self.inner::<CoreEntity>().world_transform()
     }
     fn update_world_transform(&self, parent_transform: &Transform) {
-        self.with_inner::<CoreEntity, _, _>(|e| e.update_world_transform(parent_transform))
+        self.inner::<CoreEntity>()
+            .update_world_transform(parent_transform)
     }
     fn children(&self) -> Vec<ComRc<IEntity>> {
-        self.with_inner::<CoreEntity, _, _>(|e| e.children())
+        self.inner::<CoreEntity>().children()
     }
     fn get_rendering_component(&self) -> Option<Rc<RenderingComponent>> {
-        self.with_inner::<CoreEntity, _, _>(|e| e.get_rendering_component())
+        self.inner::<CoreEntity>().get_rendering_component()
     }
     fn set_rendering_component(&self, component: Option<Rc<RenderingComponent>>) {
-        self.with_inner::<CoreEntity, _, _>(|e| e.set_rendering_component(component))
+        self.inner::<CoreEntity>()
+            .set_rendering_component(component)
     }
 }
 

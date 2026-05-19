@@ -19,11 +19,10 @@ impl SceCommand for SceCommandCameraMove {
         _delta_sec: f32,
     ) -> bool {
         let scene = scene_manager.scene().unwrap();
-        scene
-            .camera()
-            .borrow_mut()
-            .transform_mut()
-            .set_position(&self.position);
+        {
+            let mut c = scene.camera_mut();
+            c.transform_mut().set_position(&self.position);
+        };
 
         return true;
     }

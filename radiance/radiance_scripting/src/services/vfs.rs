@@ -104,11 +104,11 @@ fn join_vfs_path(parent: &str, name: &str) -> String {
     }
 }
 
-impl IVfsServiceImpl for VfsService {
-    fn exists(&self, vfs_path: &str) -> bool {
-        self.vfs.open(vfs_path).is_ok()
-    }
-
+impl VfsService {
+    /// Read the full contents of `vfs_path` into a buffer. Engine-internal:
+    /// the IDL surface intentionally does not expose this because every
+    /// caller is Rust; scripts read via streaming-friendly methods like
+    /// `byte_len` plus future range readers.
     fn read_bytes_internal(&self, vfs_path: &str) -> Vec<u8> {
         let Ok(file) = self.vfs.open(vfs_path) else {
             return Vec::new();
@@ -119,6 +119,12 @@ impl IVfsServiceImpl for VfsService {
         } else {
             Vec::new()
         }
+    }
+}
+
+impl IVfsServiceImpl for VfsService {
+    fn exists(&self, vfs_path: &str) -> bool {
+        self.vfs.open(vfs_path).is_ok()
     }
 
     fn byte_len(&self, vfs_path: &str) -> i32 {

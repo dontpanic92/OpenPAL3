@@ -23,11 +23,7 @@ impl SceCommand for SceCommandLoadScene {
     ) -> bool {
         let last_scene = scene_manager.scn_scene();
         let cpk_changed = last_scene
-            .and_then(|s| {
-                Some(s.with_inner::<crate::openpal3::scene::ScnScene, _, _>(|s| {
-                    s.name() != &self.name
-                }))
-            })
+            .and_then(|s| Some(s.inner::<crate::openpal3::scene::ScnScene>().name() != &self.name))
             .or(Some(true))
             .unwrap();
 
@@ -35,7 +31,7 @@ impl SceCommand for SceCommandLoadScene {
         scene_manager.push_scene(state.asset_mgr().load_scn(&self.name, &self.sub_name));
         let e = scene_manager.get_resolved_role(state, -1).unwrap();
         let r = RoleController::get_role_controller(e.clone()).unwrap();
-        r.with_inner::<RoleController, _, _>(|r| r.set_active(true));
+        r.inner::<RoleController>().set_active(true);
 
         state
             .global_state_mut()

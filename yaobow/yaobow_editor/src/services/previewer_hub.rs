@@ -281,10 +281,11 @@ fn load_mv3(
     );
     if let Ok(anim) = anim {
         if let Some(controller) = RoleController::get_role_controller(entity.clone()) {
-            controller.with_inner::<shared::openpal3::scene::RoleController, _, _>(|c| {
+            {
+                let c = controller.inner::<shared::openpal3::scene::RoleController>();
                 c.play_anim_mesh("preview".to_string(), anim, RoleAnimationRepeatMode::Loop);
                 c.set_active(true);
-            });
+            };
         }
     }
     Some((text, entity))

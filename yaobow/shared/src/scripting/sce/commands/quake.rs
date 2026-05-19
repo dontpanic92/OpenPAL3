@@ -16,7 +16,7 @@ pub struct SceCommandQuake {
 impl SceCommand for SceCommandQuake {
     fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, _state: &mut SceState) {
         let scene = scene_manager.scene().unwrap();
-        self.original_position = scene.camera().borrow().transform().position();
+        self.original_position = scene.camera().transform().position();
     }
 
     fn update(
@@ -30,19 +30,17 @@ impl SceCommand for SceCommandQuake {
         let mut cam_pos = self.original_position;
         cam_pos.y += self.amplitude * (1. - 2. * rand::random::<f32>());
 
-        scene
-            .camera()
-            .borrow_mut()
-            .transform_mut()
-            .set_position(&cam_pos);
+        {
+            let mut c = scene.camera_mut();
+            c.transform_mut().set_position(&cam_pos);
+        };
 
         self.spent += _delta_sec;
         if self.spent > self.duration {
-            scene
-                .camera()
-                .borrow_mut()
-                .transform_mut()
-                .set_position(&self.original_position);
+            {
+                let mut c = scene.camera_mut();
+                c.transform_mut().set_position(&self.original_position);
+            };
             true
         } else {
             false

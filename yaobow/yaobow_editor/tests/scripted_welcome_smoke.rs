@@ -19,10 +19,6 @@ impl IVfsServiceImpl for StubVfs {
         true
     }
 
-    fn read_bytes_internal(&self, _vfs_path: &str) -> Vec<u8> {
-        Vec::new()
-    }
-
     fn byte_len(&self, _vfs_path: &str) -> i32 {
         0
     }

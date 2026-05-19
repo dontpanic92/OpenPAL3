@@ -44,22 +44,18 @@ impl OpenPal3DebugLayer {
             ui.text(format!("Fps: {}", fps));
             let scene = self.scene_manager.scn_scene();
             if let Some(s) = scene {
-                let (name, sub_name) =
-                    s.with_inner::<shared::openpal3::scene::ScnScene, _, _>(|s| {
-                        (s.name().to_owned(), s.sub_name().to_owned())
-                    });
+                let s_inner = s.inner::<shared::openpal3::scene::ScnScene>();
+                let name = s_inner.name().to_owned();
+                let sub_name = s_inner.sub_name().to_owned();
                 ui.text(format!("Scene: {} {}", name, sub_name));
             }
 
             let coord = self.scene_manager.director().as_ref().and_then(|d| {
                 d.query_interface::<IAdventureDirector>().and_then(|adv| {
-                    let state_role = adv
-                        .with_inner::<shared::openpal3::directors::AdventureDirector, _, _>(
-                            |adv| {
-                                self.scene_manager
-                                    .get_resolved_role(adv.sce_vm().state(), -1)
-                            },
-                        );
+                    let adv_inner = adv.inner::<shared::openpal3::directors::AdventureDirector>();
+                    let state_role = self
+                        .scene_manager
+                        .get_resolved_role(adv_inner.sce_vm().state(), -1);
                     state_role.map(|e| e.transform().borrow().position())
                 })
             });
@@ -76,33 +72,28 @@ impl OpenPal3DebugLayer {
         TabItem::new("Nav").build(ui, || {
             if let Some(d) = scene_manager.director().as_ref() {
                 if let Some(director) = d.query_interface::<IAdventureDirector>() {
-                    director.with_inner::<shared::openpal3::directors::AdventureDirector, _, _>(
-                        |d| {
-                            let mut sce_vm = d.sce_vm_mut();
-                            let pass_through = sce_vm.global_state_mut().pass_through_wall_mut();
-                            ui.checkbox("无视地形", pass_through);
+                    let d_inner =
+                        director.inner::<shared::openpal3::directors::AdventureDirector>();
+                    let mut sce_vm = d_inner.sce_vm_mut();
+                    let pass_through = sce_vm.global_state_mut().pass_through_wall_mut();
+                    ui.checkbox("无视地形", pass_through);
 
-                            if let Some(s) = scene_manager.scn_scene() {
-                                if ui.button("切换地图层") {
-                                    let layer_count = s
-                                        .with_inner::<shared::openpal3::scene::ScnScene, _, _>(
-                                            |s| s.nav().layer_count(),
-                                        );
-                                    if layer_count > 1 {
-                                        if let Some(role) =
-                                            scene_manager.get_resolved_role(sce_vm.state(), -1)
-                                        {
-                                            let r =
-                                                RoleController::get_role_controller(role).unwrap();
-                                            r.with_inner::<RoleController, _, _>(|r| {
-                                                r.switch_nav_layer()
-                                            });
-                                        }
-                                    }
+                    if let Some(s) = scene_manager.scn_scene() {
+                        if ui.button("切换地图层") {
+                            let layer_count = s
+                                .inner::<shared::openpal3::scene::ScnScene>()
+                                .nav()
+                                .layer_count();
+                            if layer_count > 1 {
+                                if let Some(role) =
+                                    scene_manager.get_resolved_role(sce_vm.state(), -1)
+                                {
+                                    let r = RoleController::get_role_controller(role).unwrap();
+                                    r.inner::<RoleController>().switch_nav_layer();
                                 }
                             }
-                        },
-                    );
+                        }
+                    }
                 }
             }
 
@@ -111,28 +102,28 @@ impl OpenPal3DebugLayer {
                     Some(s) => s,
                     None => return,
                 };
-                let layer_count = scn.with_inner::<shared::openpal3::scene::ScnScene, _, _>(|s| {
-                    s.nav().layer_count()
-                });
+                let layer_count = scn
+                    .inner::<shared::openpal3::scene::ScnScene>()
+                    .nav()
+                    .layer_count();
                 for layer in 0..layer_count {
                     TabItem::new(&format!("Layer {}", layer)).build(ui, || {
                         let current_nav_coord = coord.as_ref().map(|c| {
-                            scn.with_inner::<shared::openpal3::scene::ScnScene, _, _>(|s| {
-                                s.scene_coord_to_nav_coord(layer, c)
-                            })
+                            scn.inner::<shared::openpal3::scene::ScnScene>()
+                                .scene_coord_to_nav_coord(layer, c)
                         });
 
                         ui.text(format!("Nav Coord: {:?}", &current_nav_coord));
 
                         if let Some(nav_coord) = current_nav_coord {
-                            let height =
-                                scn.with_inner::<shared::openpal3::scene::ScnScene, _, _>(|s| {
-                                    s.get_height(layer, nav_coord)
-                                });
+                            let height = scn
+                                .inner::<shared::openpal3::scene::ScnScene>()
+                                .get_height(layer, nav_coord);
                             ui.text(format!("Height: {:?}", &height));
                         }
 
-                        let text = scn.with_inner::<shared::openpal3::scene::ScnScene, _, _>(|s| {
+                        let text = {
+                            let s = scn.inner::<shared::openpal3::scene::ScnScene>();
                             let size = s.nav().get_map_size(layer);
                             let mut text = "".to_string();
                             for j in 0..size.1 {
@@ -163,7 +154,7 @@ impl OpenPal3DebugLayer {
                             }
 
                             text
-                        });
+                        };
 
                         InputTextMultiline::new(
                             ui,
@@ -183,9 +174,9 @@ impl OpenPal3DebugLayer {
         TabItem::new("Sce").build(ui, || {
             if let Some(d) = scene_manager.director().as_ref() {
                 if let Some(d) = d.query_interface::<IAdventureDirector>() {
-                    d.with_inner::<shared::openpal3::directors::AdventureDirector, _, _>(|d| {
-                        d.sce_vm_mut().render_debug(scene_manager.clone(), ui);
-                    });
+                    d.inner::<shared::openpal3::directors::AdventureDirector>()
+                        .sce_vm_mut()
+                        .render_debug(scene_manager.clone(), ui);
                 }
             }
         });

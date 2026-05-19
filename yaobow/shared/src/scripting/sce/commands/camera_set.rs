@@ -22,17 +22,17 @@ impl SceCommand for SceCommandCameraSet {
     ) -> bool {
         let scene = scene_manager.scene().unwrap();
         let target = Vec3::add(
-            &scene.camera().borrow().transform().position(),
+            &scene.camera().transform().position(),
             &Vec3::new(0., 0., -1.),
         );
-        scene
-            .camera()
-            .borrow_mut()
-            .transform_mut()
-            .look_at(&target)
-            .set_position(&self.position)
-            .rotate_axis_angle_local(&Vec3::UP, self.y_rot)
-            .rotate_axis_angle_local(&Vec3::new(1., 0., 0.), self.x_rot);
+        {
+            let mut c = scene.camera_mut();
+            c.transform_mut()
+                .look_at(&target)
+                .set_position(&self.position)
+                .rotate_axis_angle_local(&Vec3::UP, self.y_rot)
+                .rotate_axis_angle_local(&Vec3::new(1., 0., 0.), self.x_rot);
+        };
 
         return true;
     }

@@ -477,12 +477,14 @@ impl Pal4AppContext {
                 let look_at = camera_data.get_look_at();
                 log::debug!("camera_data: {:?} {:?}", position, look_at);
                 // if camera_data.is_instant() {
-                let camera = self.scene_manager.scene().unwrap().camera();
-                let mut camera = camera.borrow_mut();
-                camera
-                    .transform_mut()
-                    .set_position(&Vec3::new(position[0], position[1], position[2]))
-                    .look_at(&Vec3::new(look_at[0], look_at[1], look_at[2]));
+                {
+                    let scene = self.scene_manager.scene().unwrap();
+                    scene
+                        .camera_mut()
+                        .transform_mut()
+                        .set_position(&Vec3::new(position[0], position[1], position[2]))
+                        .look_at(&Vec3::new(look_at[0], look_at[1], look_at[2]));
+                }
                 // } else {
 
                 // }

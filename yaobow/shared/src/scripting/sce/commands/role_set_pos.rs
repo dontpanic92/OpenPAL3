@@ -28,13 +28,10 @@ impl SceCommand for SceCommandRoleSetPos {
                 .get_resolved_role(state, self.role_id)
                 .unwrap();
             let role_controller = RoleController::get_role_controller(role).unwrap();
-            let nav_layer = role_controller.with_inner::<RoleController, _, _>(|r| r.nav_layer());
-            scene_manager
-                .scn_scene()
-                .unwrap()
-                .with_inner::<crate::openpal3::scene::ScnScene, _, _>(|s| {
-                    s.nav_coord_to_scene_coord(nav_layer, self.nav_x, self.nav_z)
-                })
+            let nav_layer = role_controller.inner::<RoleController>().nav_layer();
+            let scn = scene_manager.scn_scene().unwrap();
+            let s = scn.inner::<crate::openpal3::scene::ScnScene>();
+            s.nav_coord_to_scene_coord(nav_layer, self.nav_x, self.nav_z)
         };
 
         let role = scene_manager

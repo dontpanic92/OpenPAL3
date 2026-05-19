@@ -23,7 +23,7 @@ impl SceCommand for SceCommandCameraRotate {
         _delta_sec: f32,
     ) -> bool {
         let scene = scene_manager.scene().unwrap();
-        let cam_rot = scene.camera().borrow().transform().euler();
+        let cam_rot = scene.camera().transform().euler();
 
         let left = (self.duration - self.spent).abs();
         let (x_rot, y_rot) = if left > Transform::EPS {
@@ -42,12 +42,12 @@ impl SceCommand for SceCommandCameraRotate {
             return true;
         };
 
-        scene
-            .camera()
-            .borrow_mut()
-            .transform_mut()
-            .rotate_axis_angle(&Vec3::UP, -x_rot)
-            .rotate_axis_angle(&Vec3::EAST, -y_rot);
+        {
+            let mut c = scene.camera_mut();
+            c.transform_mut()
+                .rotate_axis_angle(&Vec3::UP, -x_rot)
+                .rotate_axis_angle(&Vec3::EAST, -y_rot);
+        };
 
         self.spent += _delta_sec;
         self.spent > self.duration

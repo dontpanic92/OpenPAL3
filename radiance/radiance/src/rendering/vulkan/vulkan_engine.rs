@@ -20,7 +20,7 @@ use crate::{
 use ash::ext::debug_utils::Instance as DebugUtils;
 use ash::{vk, Entry};
 use crosscom::ComRc;
-use std::cell::Ref;
+
 use std::ptr;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -110,9 +110,9 @@ impl RenderingEngine for VulkanRenderingEngine {
             }
         });
 
-        match self.render_objects(scene.camera().borrow(), entities, viewport, ui_frame) {
-            Ok(()) => (),
-            Err(err) => println!("{}", err),
+        let result = self.render_objects(&scene.camera(), entities, viewport, ui_frame);
+        if let Err(err) = result {
+            println!("{}", err);
         }
     }
 
@@ -174,11 +174,14 @@ impl RenderingEngine for VulkanRenderingEngine {
         });
 
         // Build opaque / cutout / transparent buckets (mirrors `render_objects`).
-        let camera_ref = scene.camera();
-        let camera = camera_ref.borrow();
-        let camera_world = {
+        let (camera_world, camera_view, camera_proj) = {
+            let camera = scene.camera();
             let m = camera.transform().matrix();
-            [m[0][3], m[1][3], m[2][3]]
+            (
+                [m[0][3], m[1][3], m[2][3]],
+                Mat44::inversed(camera.transform().matrix()),
+                *camera.projection_matrix(),
+            )
         };
         let rc: Vec<(Rc<RenderingComponent>, Mat44)> = entities
             .iter()
@@ -227,11 +230,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             transparent.into_iter().map(|(_, _, _, ro)| ro).collect();
 
         // Update target's per-frame UBO with the scene's camera.
-        let ubo = {
-            let view = Mat44::inversed(camera.transform().matrix());
-            let proj = camera.projection_matrix();
-            PerFrameUniformBuffer::new(&view, proj)
-        };
+        let ubo = PerFrameUniformBuffer::new(&camera_view, &camera_proj);
         target.uniform_buffer_mut().copy_memory_from(&[ubo]);
 
         // Record + submit the offscreen pass.
@@ -558,7 +557,7 @@ impl VulkanRenderingEngine {
 
     fn render_objects(
         &mut self,
-        camera: Ref<Camera>,
+        camera: &Camera,
         entities: Vec<ComRc<IEntity>>,
         viewport: Viewport,
         ui_frame: ImguiFrame,

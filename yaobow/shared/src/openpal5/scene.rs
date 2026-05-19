@@ -17,7 +17,7 @@ impl Pal5Scene {
 
     pub fn load(asset_loader: &AssetLoader, scene_name: &str) -> anyhow::Result<Self> {
         let scene = CoreScene::create();
-        scene.camera().borrow_mut().set_fov43(45_f32.to_radians());
+        scene.camera_mut().set_fov43(45_f32.to_radians());
 
         let nod = asset_loader.load_map_nod(scene_name)?;
 
