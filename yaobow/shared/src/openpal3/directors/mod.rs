@@ -15,18 +15,13 @@ pub trait SceneManagerExtensions {
     fn scn_scene(&self) -> Option<ComRc<IScnSceneComponent>>;
 
     fn get_resolved_role(&self, state: &SceState, role_id: i32) -> Option<ComRc<IEntity>> {
-        let _resolved_role_id = if role_id == -1 {
-            state.global_state().role_controlled()
-        } else {
-            role_id
-        };
+        let resolved = resolve_role_id(state, role_id);
         self.scn_scene()
             .unwrap()
-            .get()
-            .get_role_entity(resolve_role_id(state, role_id))
+            .with_inner::<crate::openpal3::scene::ScnScene, _, _>(|s| s.get_role_entity(resolved))
     }
 
-    fn resolve_role_do<T, F: Fn(ComRc<IEntity>, ComRc<IRoleController>) -> T>(
+    fn resolve_role_do<T, F: Fn(ComRc<IEntity>, &RoleController) -> T>(
         &self,
         state: &SceState,
         role_id: i32,
@@ -35,14 +30,14 @@ pub trait SceneManagerExtensions {
         let role = self.get_resolved_role(state, role_id);
         if let Some(r) = role {
             let role_model = RoleController::get_role_controller(r.clone()).unwrap();
-            Some(action(r, role_model))
+            Some(role_model.with_inner::<RoleController, _, _>(|rc| action(r, rc)))
         } else {
             log::error!("Cannot find role {}", role_id);
             None
         }
     }
 
-    fn resolve_role_mut_do<T, F: Fn(ComRc<IEntity>, ComRc<IRoleController>) -> T>(
+    fn resolve_role_mut_do<T, F: Fn(ComRc<IEntity>, &RoleController) -> T>(
         &self,
         state: &SceState,
         role_id: i32,
@@ -51,7 +46,7 @@ pub trait SceneManagerExtensions {
         let role = self.get_resolved_role(state, role_id);
         if let Some(r) = role {
             let role_model = RoleController::get_role_controller(r.clone()).unwrap();
-            Some(action(r, role_model))
+            Some(role_model.with_inner::<RoleController, _, _>(|rc| action(r, rc)))
         } else {
             log::error!("Cannot find role {}", role_id);
             None

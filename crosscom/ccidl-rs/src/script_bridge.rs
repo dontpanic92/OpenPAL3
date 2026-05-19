@@ -130,9 +130,7 @@ impl<'a> ScriptBridgeGen<'a> {
             if base.name == interface.name {
                 continue;
             }
-            if base.lang_flag("protosept", "scriptable")
-                && dep_seen.insert(base.name.clone())
-            {
+            if base.lang_flag("protosept", "scriptable") && dep_seen.insert(base.name.clone()) {
                 deps.push(*base);
             }
         }
@@ -163,7 +161,9 @@ impl<'a> ScriptBridgeGen<'a> {
         out.push_str(&format!(
             "\n#[allow(non_snake_case, dead_code)]\npub fn {register_fn}() {{\n",
         ));
-        out.push_str("    static GUARD: ::std::sync::OnceLock<()> = ::std::sync::OnceLock::new();\n");
+        out.push_str(
+            "    static GUARD: ::std::sync::OnceLock<()> = ::std::sync::OnceLock::new();\n",
+        );
         out.push_str("    GUARD.get_or_init(|| {\n");
         for dep in &deps {
             let dep_snake = pascal_to_snake_drop_leading_i(&dep.name);
@@ -226,10 +226,7 @@ impl<'a> ScriptBridgeGen<'a> {
 
     /// All public methods of `iname`, walking bases the same way
     /// `protosept.rs` does. Returns (origin_interface_name, method).
-    fn collect_public_methods(
-        &self,
-        iname: &str,
-    ) -> Result<Vec<(String, crate::Method)>, Error> {
+    fn collect_public_methods(&self, iname: &str) -> Result<Vec<(String, crate::Method)>, Error> {
         let interface = self.find_interface(iname)?;
         let mut methods: Vec<(String, crate::Method)> = Vec::new();
         if let Some(base_name) = interface.bases.first() {
@@ -296,10 +293,7 @@ impl<'a> ScriptBridgeGen<'a> {
     }
 
     fn interface_rust_path(&self, interface: &Interface) -> String {
-        let module = interface
-            .module
-            .as_ref()
-            .unwrap_or(&self.current_module);
+        let module = interface.module.as_ref().unwrap_or(&self.current_module);
         self.path_for(&module.module_name, &interface.name)
     }
 
@@ -346,11 +340,12 @@ impl<'a> ScriptBridgeGen<'a> {
     }
 
     fn interface_type_tag(&self, interface: &Interface) -> String {
-        let module = interface
-            .module
-            .as_ref()
-            .unwrap_or(&self.current_module);
-        format!("{}.{}", module.module_name.replace("::", "."), interface.name)
+        let module = interface.module.as_ref().unwrap_or(&self.current_module);
+        format!(
+            "{}.{}",
+            module.module_name.replace("::", "."),
+            interface.name
+        )
     }
 
     /// Build the args and ret literals for a method. Errors out
@@ -455,7 +450,10 @@ impl<'a> ScriptBridgeGen<'a> {
 
 pub(crate) fn pascal_to_snake_drop_leading_i(name: &str) -> String {
     let body: &str = if name.starts_with('I')
-        && name.chars().nth(1).map_or(false, |c| c.is_ascii_uppercase())
+        && name
+            .chars()
+            .nth(1)
+            .map_or(false, |c| c.is_ascii_uppercase())
     {
         &name[1..]
     } else {

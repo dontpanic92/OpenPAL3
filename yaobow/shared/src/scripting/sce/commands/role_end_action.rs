@@ -20,15 +20,15 @@ impl SceCommand for SceCommandRoleEndAction {
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {
-        let rc = scene_manager
-            .resolve_role_mut_do(state, self.role_id, |_, r| r.get())
-            .unwrap();
+        scene_manager
+            .resolve_role_mut_do(state, self.role_id, |_, rc| {
+                if rc.state() == RoleState::AnimationHolding {
+                    rc.continue_anim();
+                }
 
-        if rc.state() == RoleState::AnimationHolding {
-            rc.continue_anim();
-        }
-
-        rc.state() == RoleState::Idle || rc.state() == RoleState::AnimationFinished
+                rc.state() == RoleState::Idle || rc.state() == RoleState::AnimationFinished
+            })
+            .unwrap()
     }
 }
 

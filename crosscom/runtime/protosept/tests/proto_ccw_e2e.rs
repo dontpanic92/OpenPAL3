@@ -439,7 +439,6 @@ fn wrap_proto_for_unregistered_uuid_errors_loudly() {
     );
 }
 
-
 // Silence unused-c_long warnings on platforms where c_int == c_long.
 #[allow(dead_code)]
 fn _anchor() {

@@ -20,10 +20,7 @@ use crate::scripting::angelscript::ScriptVm;
 use super::{
     app_context::Pal4AppContext,
     asset_loader::AssetLoader,
-    comdef::{
-        pal4_debug::{IPal4DebugContext, IPal4DebugOverlay},
-        IOpenPAL4DirectorImpl,
-    },
+    comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay},
     pal4_debug::Pal4DebugState,
     scripting::create_script_vm,
 };
@@ -145,12 +142,6 @@ impl OpenPAL4Director {
         let prev = self.debug_prev_tilde.get();
         self.debug_prev_tilde.set(pressed);
         pressed && !prev
-    }
-}
-
-impl IOpenPAL4DirectorImpl for OpenPAL4Director {
-    fn get(&self) -> &'static crate::openpal4::director::OpenPAL4Director {
-        unsafe { &*(self as *const _) }
     }
 }
 

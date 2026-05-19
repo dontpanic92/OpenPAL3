@@ -481,21 +481,23 @@ fn add_mesh(ray_caster: &mut RayCaster, entity: ComRc<IEntity>) {
     let mesh = entity.get_component(IStaticMeshComponent::uuid());
     if let Some(mesh) = mesh {
         let mesh = mesh.query_interface::<IStaticMeshComponent>().unwrap();
-        let mesh = mesh.get();
-        let geometries = mesh.get_geometries();
         let entity_position = entity.world_transform().position();
+        mesh.with_inner::<radiance::components::mesh::static_mesh::StaticMeshComponent, _, _>(
+            |mesh| {
+                let geometries = mesh.get_geometries();
+                for geometry in geometries {
+                    let v = geometry
+                        .vertices
+                        .to_position_vec()
+                        .into_iter()
+                        .map(|v| Vec3::add(&entity_position, &v))
+                        .collect();
 
-        for geometry in geometries {
-            let v = geometry
-                .vertices
-                .to_position_vec()
-                .into_iter()
-                .map(|v| Vec3::add(&entity_position, &v))
-                .collect();
-
-            let i = geometry.indices.clone();
-            ray_caster.add_mesh(v, i);
-        }
+                    let i = geometry.indices.clone();
+                    ray_caster.add_mesh(v, i);
+                }
+            },
+        );
     }
 }
 

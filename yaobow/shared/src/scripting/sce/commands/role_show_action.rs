@@ -27,8 +27,8 @@ impl SceCommand for SceCommandRoleShowAction {
         };
 
         let _ = scene_manager.resolve_role_mut_do(state, self.role_id, |_, r| {
-            r.get().set_active(true);
-            r.get().play_anim(&self.action_name, repeat);
+            r.set_active(true);
+            r.play_anim(&self.action_name, repeat);
         });
     }
 
@@ -39,14 +39,14 @@ impl SceCommand for SceCommandRoleShowAction {
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {
-        let rc = scene_manager
-            .resolve_role_do(state, self.role_id, |_, r| r.get())
-            .unwrap();
-        let s = rc.state();
-
-        s == RoleState::Idle
-            || s == RoleState::AnimationFinished
-            || s == RoleState::AnimationHolding
+        scene_manager
+            .resolve_role_do(state, self.role_id, |_, r| {
+                let s = r.state();
+                s == RoleState::Idle
+                    || s == RoleState::AnimationFinished
+                    || s == RoleState::AnimationHolding
+            })
+            .unwrap()
     }
 }
 

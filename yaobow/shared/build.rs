@@ -51,9 +51,13 @@ fn generate_p7(idl_file: &str, out_file: &str) {
 fn generate_script_bridge(idl_file: &str, out_file: &str) {
     let idl_path = idl_path(idl_file);
     let out_path = out_path(out_file);
-    let dependencies =
-        crosscom_ccidl::generate_script_bridge_to_file(&idl_path, &out_path, "shared", "script_bridges")
-            .unwrap_or_else(|err| panic!("Failed to generate bridge {}: {}", out_file, err));
+    let dependencies = crosscom_ccidl::generate_script_bridge_to_file(
+        &idl_path,
+        &out_path,
+        "shared",
+        "script_bridges",
+    )
+    .unwrap_or_else(|err| panic!("Failed to generate bridge {}: {}", out_file, err));
 
     for dependency in dependencies {
         println!("cargo:rerun-if-changed={}", dependency.display());

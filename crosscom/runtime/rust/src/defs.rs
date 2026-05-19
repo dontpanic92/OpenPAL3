@@ -222,6 +222,10 @@ IObjectArray: crosscom::IObjectArray {
                 &*(this as *const Self::CcwType)
             }
         }
+
+        fn ccw_inner(ccw: &Self::CcwType) -> &Self {
+            &ccw.inner
+        }
     }
 }
     }
@@ -429,6 +433,10 @@ IAction: crosscom::IAction {
                 let this = this.offset(-(crosscom::offset_of!(ActionCcw, inner) as isize));
                 &*(this as *const Self::CcwType)
             }
+        }
+
+        fn ccw_inner(ccw: &Self::CcwType) -> &Self {
+            &ccw.inner
         }
     }
 }
@@ -639,6 +647,10 @@ IIntAction: crosscom::IIntAction {
                 &*(this as *const Self::CcwType)
             }
         }
+
+        fn ccw_inner(ccw: &Self::CcwType) -> &Self {
+            &ccw.inner
+        }
     }
 }
     }
@@ -848,6 +860,10 @@ IFloatAction: crosscom::IFloatAction {
                 &*(this as *const Self::CcwType)
             }
         }
+
+        fn ccw_inner(ccw: &Self::CcwType) -> &Self {
+            &ccw.inner
+        }
     }
 }
     }
@@ -1056,6 +1072,10 @@ IStrAction: crosscom::IStrAction {
                 let this = this.offset(-(crosscom::offset_of!(StrActionCcw, inner) as isize));
                 &*(this as *const Self::CcwType)
             }
+        }
+
+        fn ccw_inner(ccw: &Self::CcwType) -> &Self {
+            &ccw.inner
         }
     }
 }

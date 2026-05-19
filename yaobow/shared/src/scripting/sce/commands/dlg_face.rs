@@ -30,13 +30,13 @@ impl SceCommand for SceCommandDlgFace {
         let role_entity = _scene_manager
             .scn_scene()
             .unwrap()
-            .get()
-            .get_role_entity(_resolved_role_id)
+            .with_inner::<crate::openpal3::scene::ScnScene, _, _>(|s| {
+                s.get_role_entity(_resolved_role_id)
+            })
             .unwrap();
         let role_name = RoleController::get_role_controller(role_entity.clone())
             .unwrap()
-            .get()
-            .model_name();
+            .with_inner::<RoleController, _, _>(|r| r.model_name().to_owned());
         state
             .dialog_box()
             .set_avator(&role_name, &self.face_name, self.left_or_right);

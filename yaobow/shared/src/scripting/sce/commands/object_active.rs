@@ -24,8 +24,9 @@ impl SceCommand for SceCommandObjectActive {
         if let Some(e) = scene_manager
             .scn_scene()
             .unwrap()
-            .get()
-            .get_root_object(self.object_id)
+            .with_inner::<crate::openpal3::scene::ScnScene, _, _>(|s| {
+                s.get_root_object(self.object_id)
+            })
         {
             e.set_visible(self.active != 0);
         }

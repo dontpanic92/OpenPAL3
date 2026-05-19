@@ -19,9 +19,9 @@ impl SceCommand for SceCommandRolePathTo {
     fn initialize(&mut self, scene_manager: ComRc<ISceneManager>, state: &mut SceState) {
         let _role = scene_manager.resolve_role_mut_do(state, self.role_id, |_e, r| {
             if self.run == 1 {
-                r.get().run();
+                r.run();
             } else {
-                r.get().walk();
+                r.walk();
             }
         });
     }
@@ -45,12 +45,13 @@ impl SceCommand for SceCommandRolePathTo {
         let role_controller = RoleController::get_role_controller(role.unwrap()).unwrap();
 
         let to = {
-            let scene = scene_manager.scn_scene().unwrap().get();
-            scene.nav_coord_to_scene_coord(
-                role_controller.get().nav_layer(),
-                self.nav_x,
-                self.nav_z,
-            )
+            let nav_layer = role_controller.with_inner::<RoleController, _, _>(|r| r.nav_layer());
+            scene_manager
+                .scn_scene()
+                .unwrap()
+                .with_inner::<crate::openpal3::scene::ScnScene, _, _>(|s| {
+                    s.nav_coord_to_scene_coord(nav_layer, self.nav_x, self.nav_z)
+                })
         };
 
         let role = scene_manager
@@ -86,7 +87,7 @@ impl SceCommand for SceCommandRolePathTo {
             .set_position(&new_position);
 
         if completed {
-            role_controller.get().idle();
+            role_controller.with_inner::<RoleController, _, _>(|r| r.idle());
         }
         completed
     }

@@ -618,6 +618,10 @@ macro_rules! ComObject_Test {
                         &*(this as *const Self::CcwType)
                     }
                 }
+
+                fn ccw_inner(ccw: &Self::CcwType) -> &Self {
+                    &ccw.inner
+                }
             }
         }
     };

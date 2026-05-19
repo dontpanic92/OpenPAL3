@@ -1,5 +1,5 @@
 use crate::openpal3::asset_manager::AssetManager;
-use crate::openpal3::comdef::{IRoleController, IRoleControllerImpl};
+use crate::openpal3::comdef::IRoleController;
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use dashmap::mapref::one::Ref;
@@ -286,12 +286,6 @@ impl RoleController {
         self.animations
             .get(&*self.active_anim_name.borrow())
             .unwrap()
-    }
-}
-
-impl IRoleControllerImpl for RoleController {
-    fn get(&self) -> &'static RoleController {
-        unsafe { &*(self as *const _) }
     }
 }
 

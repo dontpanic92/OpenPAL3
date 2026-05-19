@@ -135,7 +135,10 @@ pub fn generate_script_bridge(
         .file_stem()
         .and_then(|s| s.to_str())
         .ok_or_else(|| {
-            Error::Generate(format!("cannot derive IDL stem from {}", idl_path.display()))
+            Error::Generate(format!(
+                "cannot derive IDL stem from {}",
+                idl_path.display()
+            ))
         })?
         .to_string();
 
@@ -770,7 +773,8 @@ struct RustGen {
 }
 
 impl RustGen {
-    fn new(mut unit: CrossComIdl) -> Result<Self, Error> {        let current_module = rust_module(&unit)?.clone();
+    fn new(mut unit: CrossComIdl) -> Result<Self, Error> {
+        let current_module = rust_module(&unit)?.clone();
         let mut symbols = HashMap::new();
 
         for item in &mut unit.items {
@@ -983,6 +987,10 @@ mod {name}_crosscom_impl {{
                 let this = this.offset(-({crosscom}::offset_of!({name}Ccw, inner) as isize));
                 &*(this as *const Self::CcwType)
             }}
+        }}
+
+        fn ccw_inner(ccw: &Self::CcwType) -> &Self {{
+            &ccw.inner
         }}
     }}
 }}
@@ -1965,10 +1973,13 @@ mod tests {
         "#;
         let unit = parse_source(src).unwrap();
         let by_name = |n: &str| {
-            unit.items.iter().find_map(|item| match item {
-                Item::Interface(i) if i.name == n => Some(i),
-                _ => None,
-            }).unwrap()
+            unit.items
+                .iter()
+                .find_map(|item| match item {
+                    Item::Interface(i) if i.name == n => Some(i),
+                    _ => None,
+                })
+                .unwrap()
         };
 
         let scripted = by_name("IScripted");
@@ -2003,9 +2014,7 @@ mod tests {
             process_imports(&idl_dir.join(file), &mut unit).unwrap();
             let found = unit.items.iter().any(|item| match item {
                 Item::Interface(i) => {
-                    i.name == iface
-                        && !i.codegen_ignore()
-                        && i.lang_flag("protosept", "scriptable")
+                    i.name == iface && !i.codegen_ignore() && i.lang_flag("protosept", "scriptable")
                 }
                 _ => false,
             });

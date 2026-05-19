@@ -6,7 +6,6 @@ use std::{
 use crate::{
     openpal3::{
         asset_manager::AssetManager,
-        comdef::IAdventureDirectorImpl,
         directors::SceneManagerExtensions,
         scene::{LadderTestResult, RoleController},
         states::{global_state::GlobalState, persistent_state::PersistentState},
@@ -106,12 +105,11 @@ impl AdventureDirector {
         let role_entity = scene_manager
             .scn_scene()
             .unwrap()
-            .get()
-            .get_role_entity(0)
+            .with_inner::<crate::openpal3::scene::ScnScene, _, _>(|s| s.get_role_entity(0))
             .unwrap();
 
         let role = RoleController::get_role_controller(role_entity.clone()).unwrap();
-        role.get().set_active(true);
+        role.with_inner::<RoleController, _, _>(|r| r.set_active(true));
         role_entity
             .transform()
             .borrow_mut()
@@ -171,12 +169,6 @@ impl IDirectorImpl for AdventureDirector {
     fn deactivate(&self) {}
 }
 
-impl IAdventureDirectorImpl for AdventureDirector {
-    fn get(&self) -> &'static AdventureDirector {
-        unsafe { &*(self as *const _) }
-    }
-}
-
 struct AdventureDirectorProps {
     input_engine: Rc<RefCell<dyn InputEngine>>,
     scene_manager: ComRc<ISceneManager>,
@@ -218,20 +210,25 @@ impl AdventureDirectorProps {
         let role_controller = RoleController::get_role_controller(role.clone()).unwrap();
         let mut position = role.transform().borrow().position();
 
-        let scene = scene_manager.scn_scene().unwrap().get();
+        let nav_layer = role_controller.with_inner::<RoleController, _, _>(|r| r.nav_layer());
         let speed = 175.;
         let mut target_position = Vec3::add(
             &position,
             &Vec3::scalar_mul(speed * delta_sec, &moving_direction),
         );
-        let target_nav_coord =
-            scene.scene_coord_to_nav_coord(role_controller.get().nav_layer(), &target_position);
-        let height = scene.get_height(role_controller.get().nav_layer(), target_nav_coord);
-        target_position.y = height;
-        let distance_to_border = scene.get_distance_to_border_by_scene_coord(
-            role_controller.get().nav_layer(),
-            &target_position,
+        let (target_nav_coord, height, distance_to_border) = scene_manager
+            .scn_scene()
+            .unwrap()
+            .with_inner::<crate::openpal3::scene::ScnScene, _, _>(
+            |scene| {
+                let tnc = scene.scene_coord_to_nav_coord(nav_layer, &target_position);
+                let h = scene.get_height(nav_layer, tnc);
+                let d = scene.get_distance_to_border_by_scene_coord(nav_layer, &target_position);
+                (tnc, h, d)
+            },
         );
+        let _ = target_nav_coord;
+        target_position.y = height;
 
         let role = scene_manager
             .get_resolved_role(self.sce_vm.state(), -1)
@@ -240,7 +237,7 @@ impl AdventureDirectorProps {
             && (self.sce_vm.global_state().pass_through_wall()
                 || distance_to_border > std::f32::EPSILON)
         {
-            role_controller.get().run();
+            role_controller.with_inner::<RoleController, _, _>(|r| r.run());
             let look_at = Vec3::new(target_position.x, position.y, target_position.z);
             role.transform()
                 .borrow_mut()
@@ -254,7 +251,7 @@ impl AdventureDirectorProps {
 
             position = target_position
         } else {
-            role_controller.get().idle();
+            role_controller.with_inner::<RoleController, _, _>(|r| r.idle());
         }
 
         scene_manager
@@ -296,16 +293,26 @@ impl AdventureDirectorProps {
                 .get_resolved_role(self.sce_vm.state(), -1)
                 .unwrap();
             let r = RoleController::get_role_controller(role.clone()).unwrap();
-            (role.transform().borrow().position(), r.get().nav_layer())
+            (
+                role.transform().borrow().position(),
+                r.with_inner::<RoleController, _, _>(|r| r.nav_layer()),
+            )
         };
 
-        let scene = self.scene_manager.scn_scene().unwrap().get();
-        if let Some(proc_id) = scene.test_nav_trigger(nav_layer, &position) {
+        let scene_rc = self.scene_manager.scn_scene().unwrap();
+        let proc_id_opt = scene_rc.with_inner::<crate::openpal3::scene::ScnScene, _, _>(|s| {
+            s.test_nav_trigger(nav_layer, &position)
+        });
+        if let Some(proc_id) = proc_id_opt {
             debug!("New proc triggerd by nav: {}", proc_id);
             self.sce_vm.call_proc(proc_id);
         }
 
-        if scene.test_nav_layer_trigger(nav_layer, &position) {
+        let nav_layer_triggered =
+            scene_rc.with_inner::<crate::openpal3::scene::ScnScene, _, _>(|s| {
+                s.test_nav_layer_trigger(nav_layer, &position)
+            });
+        if nav_layer_triggered {
             if !self.layer_switch_triggered {
                 let layer = {
                     let e = self
@@ -313,14 +320,16 @@ impl AdventureDirectorProps {
                         .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap();
                     let r = RoleController::get_role_controller(e).unwrap();
-                    r.get().nav_layer()
+                    r.with_inner::<RoleController, _, _>(|r| r.nav_layer())
                 };
                 let new_layer = (layer + 1) % 2;
 
                 let mut test_coord = position;
                 let mut d = 0.0;
                 for _i in 0..50 {
-                    d = scene.get_distance_to_border_by_scene_coord(new_layer, &test_coord);
+                    d = scene_rc.with_inner::<crate::openpal3::scene::ScnScene, _, _>(|s| {
+                        s.get_distance_to_border_by_scene_coord(new_layer, &test_coord)
+                    });
                     if d > 0.0 {
                         break;
                     }
@@ -334,7 +343,7 @@ impl AdventureDirectorProps {
                         .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap();
                     let r = RoleController::get_role_controller(e).unwrap();
-                    r.get().switch_nav_layer();
+                    r.with_inner::<RoleController, _, _>(|r| r.switch_nav_layer());
                     self.scene_manager
                         .get_resolved_role(self.sce_vm.state(), -1)
                         .unwrap()
@@ -351,18 +360,26 @@ impl AdventureDirectorProps {
         let input = self.input_engine.borrow_mut();
         if input.get_key_state(Key::F).pressed() || input.get_key_state(Key::GamePadEast).pressed()
         {
-            if let Some(proc_id) = scene
-                .test_aabb_trigger(&position)
-                .or_else(|| scene.test_item_trigger(&position))
-                .or_else(|| {
-                    scene.test_role_trigger(&position, self.sce_vm.global_state().role_controlled())
-                })
-            {
+            let trigger_proc_id =
+                scene_rc.with_inner::<crate::openpal3::scene::ScnScene, _, _>(|scene| {
+                    scene
+                        .test_aabb_trigger(&position)
+                        .or_else(|| scene.test_item_trigger(&position))
+                        .or_else(|| {
+                            scene.test_role_trigger(
+                                &position,
+                                self.sce_vm.global_state().role_controlled(),
+                            )
+                        })
+                });
+            if let Some(proc_id) = trigger_proc_id {
                 debug!("New proc triggerd: {}", proc_id);
                 self.sce_vm.call_proc(proc_id);
             }
 
-            let result = scene.test_ladder(nav_layer, &position);
+            let result = scene_rc.with_inner::<crate::openpal3::scene::ScnScene, _, _>(|scene| {
+                scene.test_ladder(nav_layer, &position)
+            });
             match result {
                 Some(LadderTestResult::NewPosition((new_layer, new_position))) => {
                     debug!(
@@ -376,7 +393,7 @@ impl AdventureDirectorProps {
                             .get_resolved_role(self.sce_vm.state(), -1)
                             .unwrap();
                         let r = RoleController::get_role_controller(e).unwrap();
-                        r.get().switch_nav_layer();
+                        r.with_inner::<RoleController, _, _>(|r| r.switch_nav_layer());
                     }
 
                     self.scene_manager

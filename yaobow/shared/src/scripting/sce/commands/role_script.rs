@@ -26,7 +26,7 @@ impl SceCommand for SceCommandRoleScript {
             .unwrap();
 
         let role_controller = RoleController::get_role_controller(role).unwrap();
-        role_controller.get().set_proc_id(self.proc_id);
+        role_controller.with_inner::<RoleController, _, _>(|r| r.set_proc_id(self.proc_id));
         true
     }
 }

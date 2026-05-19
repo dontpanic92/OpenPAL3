@@ -14,7 +14,6 @@ use crate::scripting::lua50_32::Lua5032Vm;
 
 use super::{
     asset_loader::AssetLoader,
-    comdef::IOpenSWD5DirectorImpl,
     scripting::{create_lua_vm, SWD5Context},
 };
 
@@ -68,10 +67,4 @@ impl IDirectorImpl for OpenSWD5Director {
     }
 
     fn deactivate(&self) {}
-}
-
-impl IOpenSWD5DirectorImpl for OpenSWD5Director {
-    fn get(&self) -> &'static crate::openswd5::director::OpenSWD5Director {
-        unsafe { &*(self as *const _) }
-    }
 }

@@ -8,8 +8,6 @@ use radiance::{
     utils::free_view::FreeViewController,
 };
 
-use super::comdef::IOpenPAL5DirectorImpl;
-
 pub struct OpenPAL5Director {
     scene_manager: ComRc<ISceneManager>,
     control: FreeViewController,
@@ -53,10 +51,4 @@ impl IDirectorImpl for OpenPAL5Director {
     }
 
     fn deactivate(&self) {}
-}
-
-impl IOpenPAL5DirectorImpl for OpenPAL5Director {
-    fn get(&self) -> &'static crate::openpal5::director::OpenPAL5Director {
-        unsafe { &*(self as *const _) }
-    }
 }

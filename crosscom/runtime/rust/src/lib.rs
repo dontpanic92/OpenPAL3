@@ -52,6 +52,31 @@ impl<TComInterface: ComInterface> ComRc<TComInterface> {
                 .expect("Failed to create ComRc: Interface not found")
         }
     }
+
+    /// Run `f` with a borrow of the inner Rust value of the underlying
+    /// CCW, projected as the concrete class `C`. The borrow given to
+    /// `f` is tied to `&self`, so it cannot outlive the `ComRc`. This
+    /// is the sound replacement for the legacy
+    /// `fn get(&self) -> &'static T { unsafe { &*(self as *const _) } }`
+    /// pattern: lifetime is no longer laundered.
+    ///
+    /// SAFETY-CONSCIOUS CONVENTION: the caller must ensure `C` is the
+    /// concrete class that actually backs this `ComRc`. Calling
+    /// `with_inner::<WrongClass>(...)` reinterprets unrelated CCW
+    /// memory as `WrongClass::CcwType` and is UB. In practice this
+    /// reflects the existing "I know what class implements this
+    /// interface" invariant that the previous `'static` cast already
+    /// relied on, just made explicit via the type parameter `C`.
+    pub fn with_inner<C, F, R>(&self, f: F) -> R
+    where
+        C: ComObject,
+        F: FnOnce(&C) -> R,
+    {
+        unsafe {
+            let ccw = crate::get_object::<C::CcwType>(self.this as *const *const c_void);
+            f(C::ccw_inner(&*ccw))
+        }
+    }
 }
 
 unsafe impl<T: ComInterface> Send for ComRc<T> {}
@@ -133,10 +158,18 @@ pub trait ComInterface {
     const INTERFACE_ID: [u8; 16];
 }
 
-pub trait ComObject {
+pub trait ComObject: Sized {
     type CcwType;
     fn create_ccw(self) -> Self::CcwType;
     fn get_ccw(&self) -> &Self::CcwType;
+
+    /// Project a borrowed CCW back to its inner Rust value.
+    ///
+    /// SAFETY: the caller asserts the referenced CCW is well-formed
+    /// and belongs to this class. The returned reference's lifetime
+    /// is tied to the CCW borrow, so callers reached via
+    /// [`ComRc::with_inner`] are sound by construction.
+    fn ccw_inner(ccw: &Self::CcwType) -> &Self;
 }
 
 #[repr(C)]
