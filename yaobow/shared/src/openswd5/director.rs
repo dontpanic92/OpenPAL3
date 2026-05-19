@@ -66,6 +66,8 @@ impl IDirectorImpl for OpenSWD5Director {
 
         None
     }
+
+    fn deactivate(&self) {}
 }
 
 impl IOpenSWD5DirectorImpl for OpenSWD5Director {

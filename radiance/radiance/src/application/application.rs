@@ -7,31 +7,56 @@ use crate::comdef::{IApplicationImpl, IComponent, IComponentContainerImpl};
 use crate::constants;
 use crate::radiance;
 use crate::radiance::CoreRadianceEngine;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Instant;
+
+struct AppComponentEntry {
+    component: ComRc<IComponent>,
+    loaded: bool,
+}
 
 pub struct Application {
     radiance_engine: Rc<RefCell<CoreRadianceEngine>>,
     platform: Rc<RefCell<Platform>>,
-    components: DashMap<Uuid, ComRc<IComponent>>,
+    components: Rc<DashMap<Uuid, AppComponentEntry>>,
+    loaded: Cell<bool>,
 }
 
 ComObject_Application!(super::Application);
 
 impl IComponentContainerImpl for Application {
     fn add_component(&self, uuid: uuid::Uuid, component: ComRc<IComponent>) -> () {
-        self.components.insert(uuid, component);
+        // Mirror Entity/Scene: fire on_loading immediately if the
+        // application is already initialised; otherwise defer to
+        // `initialize`.
+        let fire_now = self.loaded.get();
+        if fire_now {
+            component.on_loading();
+        }
+        self.components.insert(
+            uuid,
+            AppComponentEntry {
+                component,
+                loaded: fire_now,
+            },
+        );
     }
 
     fn get_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
-        self.components
-            .get(&uuid)
-            .and_then(|c| Some(c.value().clone()))
+        self.components.get(&uuid).map(|e| e.component.clone())
     }
 
     fn remove_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
-        self.components.remove(&uuid).and_then(|c| Some(c.1))
+        let entry = self.components.remove(&uuid).map(|(_, e)| e);
+        if let Some(e) = entry {
+            if e.loaded {
+                e.component.on_unloading();
+            }
+            Some(e.component)
+        } else {
+            None
+        }
     }
 }
 
@@ -39,8 +64,25 @@ impl IApplicationImpl for Application {
     fn initialize(&self) {
         self.platform.borrow_mut().initialize();
 
-        for c in self.components.clone() {
-            c.1.on_loading()
+        if self.loaded.get() {
+            return;
+        }
+        self.loaded.set(true);
+
+        let uuids: Vec<Uuid> = self.components.iter().map(|kv| *kv.key()).collect();
+        for uuid in uuids {
+            let component = {
+                let mut entry = match self.components.get_mut(&uuid) {
+                    Some(e) => e,
+                    None => continue,
+                };
+                if entry.loaded {
+                    continue;
+                }
+                entry.loaded = true;
+                entry.component.clone()
+            };
+            component.on_loading();
         }
     }
 
@@ -59,12 +101,19 @@ impl IApplicationImpl for Application {
                 continue;
             }*/
 
-            for c in &components {
-                c.on_updating(elapsed);
+            for kv in components.iter() {
+                kv.value().component.on_updating(elapsed);
             }
 
             engine.borrow().update(elapsed);
         });
+
+        // On platforms where `run_event_loop` returns cleanly (Vita,
+        // Windows native), give the application a chance to fire
+        // `on_unloading` on its loaded components before Drop tears
+        // everything down. Platforms whose event loop never returns
+        // (winit on desktop) rely on Drop instead.
+        self.shutdown();
     }
 
     fn set_title(&self, title: &str) {
@@ -90,7 +139,31 @@ impl Application {
                     .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE),
             )),
             platform: Rc::new(RefCell::new(platform)),
-            components: DashMap::new(),
+            components: Rc::new(DashMap::new()),
+            loaded: Cell::new(false),
+        }
+    }
+
+    /// Fire `on_unloading` on every component that received
+    /// `on_loading`, exactly once. Idempotent and safe to call from
+    /// both the run-loop exit path and `Drop`.
+    pub fn shutdown(&self) {
+        if !self.loaded.get() {
+            return;
+        }
+        self.loaded.set(false);
+
+        let uuids: Vec<Uuid> = self.components.iter().map(|kv| *kv.key()).collect();
+        let mut to_unload: Vec<ComRc<IComponent>> = Vec::new();
+        for uuid in uuids {
+            if let Some((_, entry)) = self.components.remove(&uuid) {
+                if entry.loaded {
+                    to_unload.push(entry.component);
+                }
+            }
+        }
+        for c in to_unload {
+            c.on_unloading();
         }
     }
 
@@ -101,5 +174,11 @@ impl Application {
             log::error!("{}", &msg);
             Platform::show_error_dialog(crate::constants::STR_SORRY_DIALOG_TITLE, &msg);
         }));
+    }
+}
+
+impl Drop for Application {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }

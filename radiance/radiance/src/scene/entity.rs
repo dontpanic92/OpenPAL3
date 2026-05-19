@@ -4,13 +4,19 @@ use uuid::Uuid;
 use crate::comdef::{IComponent, IComponentContainerImpl, IEntity, IEntityImpl};
 use crate::math::{Mat44, Transform};
 use crate::rendering::RenderingComponent;
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::Rc;
 
+struct ComponentEntry {
+    component: ComRc<IComponent>,
+    loaded: bool,
+}
+
 pub struct CoreEntity {
     transform: Rc<RefCell<Transform>>,
-    components: RefCell<HashMap<Uuid, ComRc<IComponent>>>,
+    components: RefCell<HashMap<Uuid, ComponentEntry>>,
+    loaded: Cell<bool>,
     props: RefCell<CoreEntityProps>,
 }
 
@@ -39,6 +45,7 @@ impl CoreEntity {
         Self {
             transform: Rc::new(RefCell::new(Transform::new())),
             components: RefCell::new(HashMap::new()),
+            loaded: Cell::new(false),
             props: RefCell::new(CoreEntityProps {
                 name,
                 world_transform: Transform::new(),
@@ -70,29 +77,38 @@ impl CoreEntity {
 
 impl IComponentContainerImpl for CoreEntity {
     fn add_component(&self, uuid: uuid::Uuid, component: crosscom::ComRc<IComponent>) -> () {
-        component.on_loading();
-        self.components.borrow_mut().insert(uuid, component);
+        // Fire on_loading immediately only if the entity itself is
+        // already loaded; otherwise defer to `IEntity::load`. This
+        // makes on_loading exactly-once per (component, entity)
+        // regardless of attach-vs-load ordering.
+        let fire_now = self.loaded.get();
+        if fire_now {
+            component.on_loading();
+        }
+        self.components.borrow_mut().insert(
+            uuid,
+            ComponentEntry {
+                component,
+                loaded: fire_now,
+            },
+        );
     }
 
     fn get_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
         self.components
             .borrow()
             .get(&uuid)
-            .and_then(|c| Some(c.clone()))
+            .map(|e| e.component.clone())
     }
 
     fn remove_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
-        let component = self
-            .components
-            .borrow_mut()
-            .remove(&uuid)
-            .and_then(|c| Some(c));
-
-        if let Some(c) = &component {
-            c.on_unloading();
+        let entry = self.components.borrow_mut().remove(&uuid);
+        if let Some(e) = &entry {
+            if e.loaded {
+                e.component.on_unloading();
+            }
         }
-
-        component
+        entry.map(|e| e.component)
     }
 }
 
@@ -106,28 +122,63 @@ impl IEntityImpl for CoreEntity {
     }
 
     fn load(&self) -> crosscom::Void {
+        // Idempotent: a second load() call after the entity is
+        // already loaded is a no-op. Newly-added components/children
+        // that joined after the first load() were already loaded on
+        // attach (see add_component / attach) so there's nothing to
+        // fire here either.
+        if self.loaded.get() {
+            return;
+        }
+
+        // Flip the flag *before* dispatching so re-entrant
+        // `add_component` calls from inside an `on_loading` impl see
+        // the entity as loaded and fire on_loading themselves.
+        self.loaded.set(true);
+
         for e in self.props().children.clone() {
             e.load();
         }
 
-        let components = self.components.borrow().clone();
-        for c in components.values() {
-            c.on_loading()
+        // Snapshot uuids first so we don't hold the components
+        // RefCell across the on_loading call (an on_loading impl may
+        // re-enter add_component).
+        let uuids: Vec<Uuid> = self.components.borrow().keys().copied().collect();
+        for uuid in uuids {
+            let component = {
+                let mut comps = self.components.borrow_mut();
+                let entry = comps.get_mut(&uuid).expect("entry just snapshotted");
+                if entry.loaded {
+                    continue;
+                }
+                entry.loaded = true;
+                entry.component.clone()
+            };
+            component.on_loading();
         }
     }
 
     fn unload(&self) -> () {
+        if !self.loaded.get() {
+            return;
+        }
+        self.loaded.set(false);
+
         for e in self.props().children.clone() {
             e.unload();
         }
 
-        let components = self.components.borrow().clone();
-        for c in components.values() {
-            c.on_unloading()
+        let entries: Vec<ComRc<IComponent>> = self
+            .components
+            .borrow_mut()
+            .drain()
+            .filter_map(|(_uuid, e)| if e.loaded { Some(e.component) } else { None })
+            .collect();
+        for c in entries {
+            c.on_unloading();
         }
 
         self.props_mut().children.clear();
-        self.components.borrow_mut().clear();
     }
 
     fn update(&self, delta_sec: f32) -> crosscom::Void {
@@ -139,8 +190,13 @@ impl IEntityImpl for CoreEntity {
             e.update(delta_sec);
         }
 
-        let components = self.components.borrow().clone();
-        for c in components.values() {
+        let components: Vec<ComRc<IComponent>> = self
+            .components
+            .borrow()
+            .values()
+            .map(|e| e.component.clone())
+            .collect();
+        for c in components {
             c.on_updating(delta_sec);
         }
     }
@@ -190,6 +246,11 @@ impl IEntityImpl for CoreEntity {
     }
 
     fn attach(&self, child: ComRc<IEntity>) -> () {
+        // Mirror add_component's exactly-once contract: if the parent
+        // is loaded, the new child must also be loaded immediately.
+        if self.loaded.get() {
+            child.load();
+        }
         self.props_mut().children.push(child);
     }
 

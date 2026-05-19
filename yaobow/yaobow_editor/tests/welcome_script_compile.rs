@@ -32,6 +32,7 @@ impl IDirectorImpl for StubDirector {
     fn update(&self, _delta_sec: f32) -> Option<ComRc<IDirector>> {
         None
     }
+    fn deactivate(&self) {}
 }
 
 struct RecordingAppService {

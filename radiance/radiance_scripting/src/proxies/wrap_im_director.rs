@@ -4,12 +4,13 @@
 //! CCW factory in `crosscom-protosept`.
 //!
 //! Mirrors [`crate::wrap_director`] but registers the
-//! `IImmediateDirector` proto (activate + update + render_im) with
-//! `additional_query_uuids: [IDirector::INTERFACE_ID]` so the
-//! returned ComRc can be QI'd back to `ComRc<IDirector>` and passed
-//! to engine APIs like `ISceneManager::set_director`.
+//! `IImmediateDirector` proto (activate + update + deactivate +
+//! render_im) with `additional_query_uuids: [IDirector::INTERFACE_ID]`
+//! so the returned ComRc can be QI'd back to `ComRc<IDirector>` and
+//! passed to engine APIs like `ISceneManager::set_director`.
 //!
-//! The release hook calls the script-side `deactivate()` method.
+//! `deactivate` dispatches through the normal proto-vtable thunk;
+//! the engine calls it explicitly when the director is replaced.
 
 use std::sync::OnceLock;
 
@@ -62,6 +63,11 @@ fn ensure_registered() {
                     },
                 },
                 MethodSpec {
+                    name: "deactivate".into(),
+                    args: vec![],
+                    ret: RetKind::Void,
+                },
+                MethodSpec {
                     name: "render_im".into(),
                     args: vec![
                         ArgKind::Foreign {
@@ -73,7 +79,7 @@ fn ensure_registered() {
                     ret: RetKind::Void,
                 },
             ],
-            release_method: Some("deactivate".into()),
+            release_method: None,
             additional_query_uuids: vec![IDirector::INTERFACE_ID],
         });
     });

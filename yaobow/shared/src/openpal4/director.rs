@@ -189,6 +189,8 @@ impl IDirectorImpl for OpenPAL4Director {
 
         None
     }
+
+    fn deactivate(&self) {}
 }
 
 impl IImmediateDirectorImpl for OpenPAL4Director {

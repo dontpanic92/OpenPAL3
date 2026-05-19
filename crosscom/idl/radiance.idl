@@ -2,6 +2,27 @@ module(rust) radiance::comdef;
 
 import crosscom.idl;
 
+// `IComponent` is the lifecycle interface attached to entities,
+// scenes, and the application. Its three hooks are driven by the
+// owning container (`IEntity`, `IScene`, `IApplication`) with an
+// exactly-once-per-(component, container) contract:
+//
+//   * `on_loading` fires exactly once when the component first
+//     becomes active inside its container. If the component is
+//     added before the container is loaded, the call is deferred
+//     until the container's own `load`/`initialize` runs; if it is
+//     added after the container is already loaded, the call fires
+//     immediately on attach.
+//   * `on_updating` fires per-frame between `on_loading` and
+//     `on_unloading` while the container is active.
+//   * `on_unloading` fires exactly once when the component is
+//     removed or the container is unloaded. Implementations should
+//     release engine resources here rather than relying on `Drop`,
+//     which has no engine context and can be delayed by ComRc
+//     cycles.
+//
+// Containers are responsible for the exactly-once guarantee;
+// component implementations may treat the hooks as fire-once.
 [uuid(03748ce3-689d-4325-b1de-59de516b576b)]
 interface IComponent: IUnknown {
     void on_loading();
@@ -9,6 +30,12 @@ interface IComponent: IUnknown {
     void on_unloading();
 }
 
+// `IComponentContainer` owns a UUID-keyed set of `IComponent`s.
+// Concrete implementations (`IEntity`, `IScene`, `IApplication`)
+// drive the exactly-once lifecycle contract above: `add_component`
+// fires `on_loading` if the container is already loaded;
+// `remove_component` fires `on_unloading` if the component had been
+// loaded.
 [uuid(b875bf54-8c4c-4926-a2bd-6ad6f7038cfe)]
 interface IComponentContainer: IUnknown {
     void add_component(UUID uuid, IComponent component);
@@ -18,7 +45,18 @@ interface IComponentContainer: IUnknown {
 
 [uuid(fd2f7f28-c3ea-442c-a6dc-18e370de001a)]
 interface IApplication: IComponentContainer {
+    // `initialize` runs platform setup and fires `on_loading` on
+    // every application-level component that has not yet been
+    // loaded. Components added after this call receive `on_loading`
+    // immediately on `add_component`.
     void initialize();
+
+    // `run` enters the platform event loop and dispatches per-frame
+    // `on_updating` to every component. When the event loop exits
+    // cleanly (Vita, Windows native), the implementation fires
+    // `on_unloading` on every loaded component before returning.
+    // On platforms whose event loop never returns (winit-on-desktop),
+    // `on_unloading` falls back to `Drop` instead.
     void run();
 
     [internal(), rust()]
@@ -38,11 +76,20 @@ interface IApplicationLoaderComponent: IComponent {}
 
 [uuid(27e705f1-d035-4e91-8735-3a006fab870d)]
 interface IScene: IComponentContainer {
+    // `load` / `unload` are idempotent and obey the same
+    // exactly-once-per-(component, container) contract as
+    // `IEntity::load` / `IEntity::unload`, applied to both
+    // scene-level components and all attached entities (recursively).
     void load();
     bool visible();
     void update(float delta_sec);
 
     void unload();
+
+    // `add_entity` registers a new entity. If the scene is already
+    // loaded, the entity is loaded immediately (its components
+    // receive `on_loading`); otherwise loading is deferred to the
+    // next `load` call.
     void add_entity(IEntity entity);
 
     [internal(), rust()]
@@ -72,7 +119,24 @@ interface IEntity: IComponentContainer {
     [internal(), rust()]
     crosscom::Void set_name(&str name);
 
+    // `load` is idempotent: calling it twice in a row is a no-op.
+    // It fires `on_loading` on every component attached to this
+    // entity (and recursively on every child entity) that has not
+    // yet seen `on_loading`. Components attached after `load`
+    // returns receive `on_loading` immediately on attach (via
+    // `add_component` / `attach`); components attached before
+    // `load` receive it when `load` runs. Either way, each
+    // (component, entity) pair sees `on_loading` exactly once
+    // between successive `load`/`unload` cycles.
     void load();
+
+    // `unload` is idempotent. It fires `on_unloading` on every
+    // currently-loaded component and recursively unloads child
+    // entities, then clears the children list. Components remain
+    // attached to the entity after unload only if they were never
+    // loaded; in practice scenes always pair `load`/`unload` and
+    // entity removal flows through `IScene::pop_scene` /
+    // `remove_entities_by_name`, which call `unload`.
     void unload();
     void update(float delta_sec);
     
@@ -100,6 +164,9 @@ interface IEntity: IComponentContainer {
     [internal(), rust()]
     crosscom::Void set_rendering_component(Option<std::rc::Rc<radiance::rendering::RenderingComponent>> component);
 
+    // `attach` adds a child entity. If this entity is already
+    // loaded, the child is loaded immediately (matching the
+    // exactly-once contract of `IComponent::on_loading`).
     void attach(IEntity child);
 }
 
@@ -128,8 +195,27 @@ class AnimatedMeshComponent: IAnimatedMeshComponent {}
 
 [uuid(6dedae32-8339-482e-9f66-c30d557cacb4)]
 interface IDirector: IUnknown {
+    // Called by `ISceneManager` exactly once, immediately after the
+    // director is installed (via `set_director` or as a transition
+    // result returned from another director's `update`). Pairs with
+    // `deactivate`.
     void activate();
+
+    // Per-frame tick. Returning `Some(next)` is a transition request:
+    // the scene manager will call `deactivate` on `self`, then
+    // `activate` on `next`, then drop the last reference to `self`.
+    // Returning `None` leaves `self` installed for another frame.
     IDirector? update(float delta_sec);
+
+    // Called by `ISceneManager` exactly once, immediately before the
+    // director is replaced (by `set_director`, `unset_director`, a
+    // transition from `update`, or scene-manager shutdown). The
+    // director is still installed when this fires; the next director
+    // (if any) has not yet been activated. Implementations release
+    // engine resources, unregister observers, etc. here rather than
+    // relying on `Drop`, which has no engine context and may be
+    // delayed by ComRc cycles.
+    void deactivate();
 }
 
 [uuid(a12c44d5-f5bc-4268-bd00-ab3b6270a829)]

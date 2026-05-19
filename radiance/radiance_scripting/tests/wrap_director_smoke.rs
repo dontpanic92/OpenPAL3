@@ -1,17 +1,13 @@
 //! Phase 4 (B2 + B4): integration test for the `wrap_director`
 //! convenience helper. Confirms that a `ComRc<IDirector>` obtained
-//! via `wrap_director` invokes activate/update on the script side
-//! and fires the script's `deactivate()` (via the proto_ccw release
-//! hook) when the ComRc is dropped.
+//! via `wrap_director` invokes activate/update/deactivate on the
+//! script side.
 //!
-//! Per the Phase 4 release-hook constraint
-//! ([`ProtoSpec::release_method`](`crosscom_protosept::ProtoSpec`)),
-//! the script's struct must conform to a proto declaring
-//! `deactivate`. The Rust-side engine interface `radiance.IDirector`
-//! does not declare it, so this test introduces an auxiliary
-//! script-only proto `IDirectorLifecycle` with `deactivate`, and the
-//! script struct conforms to both `radiance.IDirector` (for vtable
-//! shape) and `IDirectorLifecycle` (for the deactivate hook).
+//! With the lifetime refactor, `deactivate` is a first-class method
+//! on `radiance.IDirector` (declared in `radiance.idl`) and is fired
+//! explicitly by `ISceneManager` rather than implicitly by the
+//! proto_ccw `release_method` hook. The test calls `deactivate()`
+//! directly to verify the wrap_director CCW dispatches it correctly.
 
 use std::sync::Mutex;
 
@@ -27,11 +23,7 @@ import radiance;
 @intrinsic(name="wd_test.record_event")
 fn record_event(seed: int, event: int);
 
-pub proto IDirectorLifecycle {
-    fn deactivate(self: ref<IDirectorLifecycle>);
-}
-
-struct[radiance.IDirector, IDirectorLifecycle] StubDir(
+struct[radiance.IDirector] StubDir(
     seed: int,
 ) {
     pub fn activate(self: ref<Self>) -> int {
@@ -42,8 +34,9 @@ struct[radiance.IDirector, IDirectorLifecycle] StubDir(
         record_event(self.seed, 2);
         return null;
     }
-    pub fn deactivate(self: ref<Self>) {
+    pub fn deactivate(self: ref<Self>) -> int {
         record_event(self.seed, 3);
+        0
     }
 }
 
@@ -106,18 +99,27 @@ fn wrap_director_runs_activate_update_and_fires_deactivate_on_drop() {
     assert_eq!(
         *EVENTS.lock().unwrap(),
         vec![(42, 1), (42, 2)],
-        "activate then update recorded before drop"
+        "activate then update recorded before deactivate"
     );
 
-    // Dropping the ComRc<IDirector> fires the release hook, which
-    // dispatches `deactivate()` through the auxiliary
-    // IDirectorLifecycle proto the script struct conforms to.
+    // deactivate is now a regular IDirector method (declared in
+    // radiance.idl). The CCW dispatches it through the normal
+    // proto-vtable path; dropping the ComRc afterwards no longer
+    // fires it again.
+    director.deactivate();
+
+    assert_eq!(
+        *EVENTS.lock().unwrap(),
+        vec![(42, 1), (42, 2), (42, 3)],
+        "deactivate fired via explicit method call"
+    );
+
     drop(director);
 
     assert_eq!(
         *EVENTS.lock().unwrap(),
         vec![(42, 1), (42, 2), (42, 3)],
-        "deactivate fired on final ComRc drop via release hook"
+        "drop must not re-fire deactivate (release_method retired)"
     );
 }
 

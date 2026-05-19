@@ -94,4 +94,6 @@ impl IDirectorImpl for MainPageDirector {
         style.pop();
         None
     }
+
+    fn deactivate(&self) {}
 }

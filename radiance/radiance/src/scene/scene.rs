@@ -8,14 +8,23 @@ use crate::{
 };
 
 use super::Camera;
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
+
+struct SceneComponentEntry {
+    component: ComRc<IComponent>,
+    loaded: bool,
+}
 
 pub struct CoreScene {
     active: bool,
     visible: bool,
     entities: RefCell<Vec<ComRc<IEntity>>>,
     camera: Rc<RefCell<Camera>>,
-    components: DashMap<Uuid, ComRc<IComponent>>,
+    components: DashMap<Uuid, SceneComponentEntry>,
+    loaded: Cell<bool>,
 }
 
 ComObject_Scene!(super::CoreScene);
@@ -28,6 +37,7 @@ impl CoreScene {
             entities: RefCell::new(vec![]),
             camera: Rc::new(RefCell::new(Camera::new())),
             components: DashMap::new(),
+            loaded: Cell::new(false),
         }
     }
 
@@ -62,8 +72,27 @@ impl CoreScene {
 
 impl ISceneImpl for CoreScene {
     fn load(&self) {
-        for c in self.components.clone() {
-            c.1.on_loading()
+        if self.loaded.get() {
+            return;
+        }
+        self.loaded.set(true);
+
+        // Snapshot uuids so we can mutate the DashMap entries while
+        // dispatching on_loading (an impl may re-enter add_component).
+        let uuids: Vec<Uuid> = self.components.iter().map(|kv| *kv.key()).collect();
+        for uuid in uuids {
+            let component = {
+                let mut entry = match self.components.get_mut(&uuid) {
+                    Some(e) => e,
+                    None => continue,
+                };
+                if entry.loaded {
+                    continue;
+                }
+                entry.loaded = true;
+                entry.component.clone()
+            };
+            component.on_loading();
         }
 
         for entity in self.entities.borrow().clone() {
@@ -86,8 +115,13 @@ impl ISceneImpl for CoreScene {
             e.update_world_transform(&Transform::new());
         }
 
-        for c in self.components.clone() {
-            c.1.on_updating(delta_sec)
+        let components: Vec<ComRc<IComponent>> = self
+            .components
+            .iter()
+            .map(|kv| kv.value().component.clone())
+            .collect();
+        for c in components {
+            c.on_updating(delta_sec);
         }
     }
 
@@ -96,15 +130,40 @@ impl ISceneImpl for CoreScene {
     }
 
     fn unload(&self) {
+        if !self.loaded.get() {
+            return;
+        }
+        self.loaded.set(false);
+
         for e in self.entities.borrow().clone() {
             e.unload();
         }
 
         self.entities.borrow_mut().clear();
-        self.components.clear();
+
+        // Drain components while firing on_unloading on the ones we
+        // actually fired on_loading on.
+        let uuids: Vec<Uuid> = self.components.iter().map(|kv| *kv.key()).collect();
+        let mut to_unload: Vec<ComRc<IComponent>> = Vec::new();
+        for uuid in uuids {
+            if let Some((_, entry)) = self.components.remove(&uuid) {
+                if entry.loaded {
+                    to_unload.push(entry.component);
+                }
+            }
+        }
+        for c in to_unload {
+            c.on_unloading();
+        }
     }
 
     fn add_entity(&self, entity: ComRc<IEntity>) {
+        // If the scene is already loaded, the new entity must be
+        // loaded immediately to keep the exactly-once-per-(component,
+        // container) contract.
+        if self.loaded.get() {
+            entity.load();
+        }
         self.entities.borrow_mut().push(entity);
     }
 
@@ -118,6 +177,14 @@ impl ISceneImpl for CoreScene {
                 self.entities.borrow_mut().remove(i);
             } else {
                 i += 1;
+            }
+        }
+
+        // Unload removed entities to fire on_unloading on their
+        // components symmetrically with the add path.
+        if self.loaded.get() {
+            for e in &entities {
+                e.unload();
             }
         }
 
@@ -155,16 +222,32 @@ impl ISceneImpl for CoreScene {
 
 impl IComponentContainerImpl for CoreScene {
     fn add_component(&self, uuid: uuid::Uuid, component: crosscom::ComRc<IComponent>) -> () {
-        self.components.insert(uuid, component);
+        let fire_now = self.loaded.get();
+        if fire_now {
+            component.on_loading();
+        }
+        self.components.insert(
+            uuid,
+            SceneComponentEntry {
+                component,
+                loaded: fire_now,
+            },
+        );
     }
 
     fn get_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
-        self.components
-            .get(&uuid)
-            .and_then(|c| Some(c.value().clone()))
+        self.components.get(&uuid).map(|e| e.component.clone())
     }
 
     fn remove_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
-        self.components.remove(&uuid).and_then(|c| Some(c.1))
+        let entry = self.components.remove(&uuid).map(|(_, e)| e);
+        if let Some(e) = entry {
+            if e.loaded {
+                e.component.on_unloading();
+            }
+            Some(e.component)
+        } else {
+            None
+        }
     }
 }

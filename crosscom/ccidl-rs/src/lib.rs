@@ -1624,10 +1624,14 @@ mod tests {
                 }
             })
             .collect();
-        // IDirector's IDL declares (in order): activate, update.
+        // IDirector's IDL declares (in order): activate, update,
+        // deactivate. Activate/update precede deactivate; the
+        // deactivate slot is fixed at the end so engine code and
+        // proto_ccw vtables can rely on a stable index for the
+        // lifecycle hook.
         assert_eq!(
             methods,
-            vec!["activate", "update"],
+            vec!["activate", "update", "deactivate"],
             "IDirector method order changed (vtable slots would shift)"
         );
 

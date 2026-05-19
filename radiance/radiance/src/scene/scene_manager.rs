@@ -18,17 +18,36 @@ impl DefaultSceneManager {
             scenes: RefCell::new(vec![]),
         }
     }
+
+    /// Single funnel for every director transition. Fires
+    /// `deactivate` on the previously-installed director (if any)
+    /// *before* the new director's `activate` runs and *before* the
+    /// old ComRc is released. Callers that just want to clear the
+    /// director pass `None`.
+    fn replace_director(&self, new: Option<ComRc<IDirector>>) {
+        // Snapshot the old binding out of the RefCell first so a
+        // `deactivate` impl that re-enters the scene manager (e.g.
+        // pushes/pops scenes during shutdown) sees a consistent
+        // "no director currently installed" state.
+        let old = self.director.replace(None);
+        if let Some(old) = old {
+            old.deactivate();
+        }
+
+        if let Some(n) = new {
+            n.activate();
+            self.director.replace(Some(n));
+        }
+    }
 }
 
 impl ISceneManagerImpl for DefaultSceneManager {
     fn update(&self, delta_sec: f32) {
         let d = self.director.borrow().clone();
         if let Some(d) = d {
-            let director = d.clone();
-            let new_director = director.update(delta_sec);
-            if let Some(d) = new_director {
-                d.activate();
-                self.director.replace(Some(d));
+            let new_director = d.update(delta_sec);
+            if let Some(new) = new_director {
+                self.replace_director(Some(new));
             }
         }
 
@@ -50,8 +69,7 @@ impl ISceneManagerImpl for DefaultSceneManager {
     }
 
     fn set_director(&self, director: ComRc<IDirector>) {
-        director.activate();
-        self.director.replace(Some(director));
+        self.replace_director(Some(director));
     }
 
     fn push_scene(&self, scene: ComRc<IScene>) {
@@ -73,7 +91,7 @@ impl ISceneManagerImpl for DefaultSceneManager {
     }
 
     fn unset_director(&self) {
-        self.director.replace(None);
+        self.replace_director(None);
     }
 }
 

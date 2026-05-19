@@ -114,4 +114,6 @@ impl IDirectorImpl for MainMenuDirector {
             None
         }
     }
+
+    fn deactivate(&self) {}
 }

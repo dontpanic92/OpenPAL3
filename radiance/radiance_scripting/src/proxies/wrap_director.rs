@@ -8,14 +8,13 @@
 //! coexists with explicit `register_proto_ccw` callers — first
 //! registration wins).
 //!
-//! The registered spec carries `release_method: Some("deactivate")`,
-//! so the final release of a `ComRc<IDirector>` returned here
-//! invokes the script-side `deactivate()` method before unrooting
-//! and dropping the CCW. This mirrors
-//! [`crate::ScriptedImmediateDirector`]'s `Drop` behaviour, letting
-//! later phases substitute a `wrap_director` ComRc into
-//! `SceneManager::set_director` without losing deactivation
-//! semantics.
+//! `deactivate` is a first-class method on `IDirector` (declared in
+//! `radiance.idl`); the registered spec dispatches it through the
+//! normal proto-vtable thunk, the same way `activate` and `update`
+//! are dispatched. `ISceneManager` is the sole party that invokes
+//! `deactivate`, exactly once, before the old director's last
+//! reference is released. No `release_method` is registered — drop
+//! is now pure unrooting.
 
 use std::sync::OnceLock;
 
@@ -29,8 +28,10 @@ use radiance::comdef::IDirector;
 
 /// Reverse-wrap a script-side `box<radiance.IDirector>` as a
 /// Rust-side `ComRc<IDirector>` backed by the runtime-typed CCW
-/// factory. On final release, the CCW invokes the script's
-/// `deactivate()` method (if defined) before unrooting.
+/// factory. Activate/update/deactivate dispatch through the
+/// proto-vtable thunk; the engine (`ISceneManager`) drives the
+/// lifecycle explicitly. Dropping the returned ComRc only releases
+/// references — it does not invoke any script method.
 pub fn wrap_director(handle: &RuntimeHandle, data: Data) -> Result<ComRc<IDirector>, HostError> {
     ensure_idirector_registered();
     wrap_proto::<IDirector>(handle, data)
@@ -66,8 +67,13 @@ pub(crate) fn ensure_idirector_registered() {
                         uuid: IDirector::INTERFACE_ID,
                     },
                 },
+                MethodSpec {
+                    name: "deactivate".into(),
+                    args: vec![],
+                    ret: RetKind::Void,
+                },
             ],
-            release_method: Some("deactivate".into()),
+            release_method: None,
             additional_query_uuids: vec![],
         });
     });

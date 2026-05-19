@@ -51,6 +51,8 @@ impl IDirectorImpl for OpenPAL5Director {
 
         None
     }
+
+    fn deactivate(&self) {}
 }
 
 impl IOpenPAL5DirectorImpl for OpenPAL5Director {

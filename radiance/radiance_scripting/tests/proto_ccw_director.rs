@@ -98,8 +98,13 @@ fn ensure_director_registered() {
                     uuid: IDirector::INTERFACE_ID,
                 },
             },
+            MethodSpec {
+                name: "deactivate".into(),
+                args: vec![],
+                ret: RetKind::Void,
+            },
         ],
-        release_method: Some("deactivate".into()),
+        release_method: None,
         additional_query_uuids: vec![],
     })
     .expect("register radiance.IDirector");

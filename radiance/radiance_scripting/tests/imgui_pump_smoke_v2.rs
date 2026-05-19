@@ -28,11 +28,7 @@ import immediate_director;
 @intrinsic(name="imp_test.record_event")
 fn record_event(seed: int, event: int);
 
-pub proto IDirectorLifecycle {
-    fn deactivate(self: ref<IDirectorLifecycle>);
-}
-
-struct[immediate_director.IImmediateDirector, IDirectorLifecycle] StubIm(
+struct[immediate_director.IImmediateDirector] StubIm(
     seed: int,
 ) {
     pub fn activate(self: ref<Self>) -> int {
@@ -51,8 +47,9 @@ struct[immediate_director.IImmediateDirector, IDirectorLifecycle] StubIm(
         record_event(self.seed, 4);
         0
     }
-    pub fn deactivate(self: ref<Self>) {
+    pub fn deactivate(self: ref<Self>) -> int {
         record_event(self.seed, 3);
+        0
     }
 }
 
@@ -117,11 +114,17 @@ fn wrap_im_director_round_trips_qi_to_idirector() {
 
     assert_eq!(*EVENTS.lock().unwrap(), vec![(11, 1), (11, 2)]);
 
-    // Drop both ComRcs and confirm deactivate fires once (single
-    // CCW with two outstanding ComRc strong refs collapsed to zero).
+    // Drop both ComRcs without first calling deactivate; the release
+    // hook no longer fires anything (release_method retired in
+    // favour of explicit `IDirector::deactivate()` dispatch by
+    // `ISceneManager`).
     drop(as_director);
     drop(im);
-    assert_eq!(*EVENTS.lock().unwrap(), vec![(11, 1), (11, 2), (11, 3)]);
+    assert_eq!(
+        *EVENTS.lock().unwrap(),
+        vec![(11, 1), (11, 2)],
+        "drop does not invoke deactivate; SceneManager owns that call"
+    );
 }
 
 #[test]
@@ -181,14 +184,10 @@ import radiance;
 @intrinsic(name="imp_test.record_event")
 fn record_event(seed: int, event: int);
 
-pub proto IDirectorLifecycle {
-    fn deactivate(self: ref<IDirectorLifecycle>);
-}
-
-struct[radiance.IDirector, IDirectorLifecycle] PlainDir(seed: int) {
+struct[radiance.IDirector] PlainDir(seed: int) {
     pub fn activate(self: ref<Self>) -> int { record_event(self.seed, 1); 0 }
     pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> { return null; }
-    pub fn deactivate(self: ref<Self>) { record_event(self.seed, 3); }
+    pub fn deactivate(self: ref<Self>) -> int { record_event(self.seed, 3); 0 }
 }
 
 pub fn make_plain(seed: int) -> box<radiance.IDirector> {

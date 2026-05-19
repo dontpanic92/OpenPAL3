@@ -167,6 +167,8 @@ impl IDirectorImpl for AdventureDirector {
     fn update(&self, delta_sec: f32) -> Option<ComRc<IDirector>> {
         self.props_mut().do_update(delta_sec)
     }
+
+    fn deactivate(&self) {}
 }
 
 impl IAdventureDirectorImpl for AdventureDirector {
