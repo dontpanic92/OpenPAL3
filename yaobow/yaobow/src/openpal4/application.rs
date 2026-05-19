@@ -4,7 +4,7 @@ use crosscom::ComRc;
 use packfs::init_virtual_fs;
 use radiance::{
     application::Application,
-    comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
+    comdef::{IApplication, IApplicationExt, IApplicationLoaderComponent, IComponentImpl},
 };
 use radiance_scripting::install_imgui_pump;
 use shared::openpal4::{asset_loader::AssetLoader, director::OpenPAL4Director};

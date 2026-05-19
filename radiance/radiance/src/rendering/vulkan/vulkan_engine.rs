@@ -9,7 +9,7 @@ use super::{
     factory::VulkanComponentFactory,
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
-use crate::comdef::{IEntity, IScene};
+use crate::comdef::{IEntity, IEntityExt, IScene, ISceneExt};
 use crate::math::Mat44;
 use crate::rendering::{BlendMode, RenderObject, RenderingComponent};
 use crate::scene::{Camera, Viewport};

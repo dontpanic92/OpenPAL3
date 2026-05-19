@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crosscom::ComRc;
-use radiance::comdef::{IApplication, IDirector};
+use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::{
     install_imgui_pump_with_cache, with_services, wrap_im_director, RuntimeAccess, RuntimeHandle,

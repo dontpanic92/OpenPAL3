@@ -2,6 +2,7 @@ use crosscom::ComRc;
 use dashmap::DashMap;
 use uuid::Uuid;
 
+use super::entity::IEntityExt;
 use crate::{
     comdef::{IComponent, IComponentContainerImpl, IEntity, IScene, ISceneImpl},
     math::Transform,
@@ -67,6 +68,86 @@ impl CoreScene {
                 Self::collect_visible_entities(e, entities);
             }
         }
+    }
+
+    // ---- inherent counterparts of formerly-IDL accessors ----
+
+    pub fn remove_entities_by_name(&self, name: &str) -> Vec<ComRc<IEntity>> {
+        let mut entities = vec![];
+        let mut i = 0;
+        while i < self.entities.borrow().len() {
+            let e = self.entities.borrow()[i].clone();
+            if e.name() == name {
+                entities.push(e.clone());
+                self.entities.borrow_mut().remove(i);
+            } else {
+                i += 1;
+            }
+        }
+
+        // Unload removed entities to fire on_unloading on their
+        // components symmetrically with the add path.
+        if self.loaded.get() {
+            for e in &entities {
+                e.unload();
+            }
+        }
+
+        entities
+    }
+
+    pub fn root_entities(&self) -> Vec<ComRc<IEntity>> {
+        self.entities.borrow().clone()
+    }
+
+    pub fn entities(&self) -> Vec<ComRc<IEntity>> {
+        let mut entities = vec![];
+        for e in self.entities.borrow().clone() {
+            Self::collect_entities(e, &mut entities);
+        }
+        entities
+    }
+
+    pub fn visible_entities(&self) -> Vec<ComRc<IEntity>> {
+        let mut entities = vec![];
+        for e in self.entities.borrow().clone() {
+            if e.visible() {
+                Self::collect_visible_entities(e, &mut entities);
+            }
+        }
+        entities
+    }
+
+    pub fn camera(&self) -> Rc<RefCell<Camera>> {
+        self.camera.clone()
+    }
+}
+
+/// Extension trait exposing `CoreScene`'s formerly-IDL accessors on a
+/// `ComRc<IScene>` handle.
+pub trait ISceneExt {
+    fn remove_entities_by_name(&self, name: &str) -> Vec<ComRc<IEntity>>;
+    fn root_entities(&self) -> Vec<ComRc<IEntity>>;
+    fn entities(&self) -> Vec<ComRc<IEntity>>;
+    fn visible_entities(&self) -> Vec<ComRc<IEntity>>;
+    fn camera(&self) -> Rc<RefCell<Camera>>;
+}
+
+impl ISceneExt for ComRc<IScene> {
+    fn remove_entities_by_name(&self, name: &str) -> Vec<ComRc<IEntity>> {
+        self.with_inner::<CoreScene, _, _>(|s| s.remove_entities_by_name(name))
+    }
+    fn root_entities(&self) -> Vec<ComRc<IEntity>> {
+        self.with_inner::<CoreScene, _, _>(|s| s.root_entities())
+    }
+    fn entities(&self) -> Vec<ComRc<IEntity>> {
+        self.with_inner::<CoreScene, _, _>(|s| s.entities())
+    }
+    fn visible_entities(&self) -> Vec<ComRc<IEntity>> {
+        self.with_inner::<CoreScene, _, _>(|s| s.visible_entities())
+    }
+    fn camera(&self) -> Rc<RefCell<Camera>> {
+        self.with_inner::<CoreScene, _, _>(|s| s.camera())
     }
 }
 
@@ -165,58 +246,6 @@ impl ISceneImpl for CoreScene {
             entity.load();
         }
         self.entities.borrow_mut().push(entity);
-    }
-
-    fn remove_entities_by_name(&self, name: &str) -> Vec<crosscom::ComRc<crate::comdef::IEntity>> {
-        let mut entities = vec![];
-        let mut i = 0;
-        while i < self.entities.borrow().len() {
-            let e = self.entities.borrow()[i].clone();
-            if e.name() == name {
-                entities.push(e.clone());
-                self.entities.borrow_mut().remove(i);
-            } else {
-                i += 1;
-            }
-        }
-
-        // Unload removed entities to fire on_unloading on their
-        // components symmetrically with the add path.
-        if self.loaded.get() {
-            for e in &entities {
-                e.unload();
-            }
-        }
-
-        entities
-    }
-
-    fn root_entities(&self) -> Vec<ComRc<IEntity>> {
-        self.entities.borrow().clone()
-    }
-
-    fn entities(&self) -> Vec<ComRc<IEntity>> {
-        let mut entities = vec![];
-        for e in self.entities.borrow().clone() {
-            Self::collect_entities(e, &mut entities);
-        }
-
-        entities
-    }
-
-    fn visible_entities(&self) -> Vec<crosscom::ComRc<crate::comdef::IEntity>> {
-        let mut entities = vec![];
-        for e in self.entities.borrow().clone() {
-            if e.visible() {
-                Self::collect_visible_entities(e, &mut entities);
-            }
-        }
-
-        entities
-    }
-
-    fn camera(&self) -> Rc<RefCell<Camera>> {
-        self.camera.clone()
     }
 }
 

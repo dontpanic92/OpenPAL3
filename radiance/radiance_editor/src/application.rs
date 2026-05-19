@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 
 use crosscom::ComRc;
 use radiance::{
-    comdef::{IApplication, IComponentImpl, IDirector},
+    comdef::{IApplication, IApplicationExt, IComponentImpl, IDirector},
     scene::CoreScene,
 };
 

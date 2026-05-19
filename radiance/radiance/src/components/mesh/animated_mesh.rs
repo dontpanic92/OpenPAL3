@@ -6,7 +6,7 @@ use std::{
 use crosscom::ComRc;
 
 use crate::{
-    comdef::{IAnimatedMeshComponentImpl, IComponentImpl, IEntity},
+    comdef::{IAnimatedMeshComponentImpl, IComponentImpl, IEntity, IEntityExt},
     math::{Vec2, Vec3},
     rendering::{ComponentFactory, VertexBuffer, VertexComponents},
 };
@@ -327,15 +327,30 @@ impl IComponentImpl for AnimatedMeshComponent {
 }
 
 impl IAnimatedMeshComponentImpl for AnimatedMeshComponent {
-    fn morph_animation_state(&self) -> crate::components::mesh::MorphAnimationState {
-        self.props().morph_animation_state
-    }
-
     fn play(&self, replay: bool) -> () {
         if replay {
             self.reset_morph_last_time();
             self.reset_morph_hold();
         }
         self.props_mut().morph_animation_state = MorphAnimationState::Playing;
+    }
+}
+
+impl AnimatedMeshComponent {
+    /// Inherent counterpart to the formerly-IDL `morph_animation_state`.
+    /// Access from a `ComRc<IAnimatedMeshComponent>` via
+    /// [`IAnimatedMeshComponentExt`].
+    pub fn morph_animation_state(&self) -> MorphAnimationState {
+        self.props().morph_animation_state
+    }
+}
+
+pub trait IAnimatedMeshComponentExt {
+    fn morph_animation_state(&self) -> MorphAnimationState;
+}
+
+impl IAnimatedMeshComponentExt for ComRc<crate::comdef::IAnimatedMeshComponent> {
+    fn morph_animation_state(&self) -> MorphAnimationState {
+        self.with_inner::<AnimatedMeshComponent, _, _>(|c| c.morph_animation_state())
     }
 }

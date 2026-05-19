@@ -1,5 +1,6 @@
 use crosscom::ComRc;
 use radiance::comdef::IApplication;
+use radiance::comdef::IApplicationExt;
 use shared::ydirs;
 
 static DEFAULT_IMGUI_INI_CONTENT: &'static str = include_str!("../ini/imgui.ini");

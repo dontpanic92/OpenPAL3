@@ -19,6 +19,12 @@ impl DefaultSceneManager {
         }
     }
 
+    /// Inherent counterpart to the formerly-IDL `scenes`. Access from
+    /// a `ComRc<ISceneManager>` via [`ISceneManagerExt`].
+    pub fn scenes(&self) -> Vec<ComRc<IScene>> {
+        self.scenes.borrow().clone()
+    }
+
     /// Single funnel for every director transition. Fires
     /// `deactivate` on the previously-installed director (if any)
     /// *before* the new director's `activate` runs and *before* the
@@ -60,10 +66,6 @@ impl ISceneManagerImpl for DefaultSceneManager {
         self.scenes.borrow().last().and_then(|x| Some(x.clone()))
     }
 
-    fn scenes(&self) -> Vec<ComRc<IScene>> {
-        self.scenes.borrow().clone()
-    }
-
     fn director(&self) -> Option<ComRc<IDirector>> {
         self.director.borrow().clone()
     }
@@ -99,5 +101,17 @@ impl Drop for DefaultSceneManager {
     fn drop(&mut self) {
         self.unload_all_scenes();
         self.unset_director();
+    }
+}
+
+/// Extension trait exposing `DefaultSceneManager`'s formerly-IDL
+/// accessors on a `ComRc<ISceneManager>` handle.
+pub trait ISceneManagerExt {
+    fn scenes(&self) -> Vec<ComRc<IScene>>;
+}
+
+impl ISceneManagerExt for ComRc<crate::comdef::ISceneManager> {
+    fn scenes(&self) -> Vec<ComRc<IScene>> {
+        self.with_inner::<DefaultSceneManager, _, _>(|sm| sm.scenes())
     }
 }

@@ -4,7 +4,7 @@ use mini_fs::MiniFs;
 use super::immediate_pump::ImmediateDirectorPump;
 use super::ui_manager::UiManager;
 use super::{DebugLayer, TaskManager};
-use crate::comdef::ISceneManager;
+use crate::comdef::{ISceneExt, ISceneManager};
 use crate::rendering::{self, RenderingEngine};
 use crate::{
     audio::AudioEngine,

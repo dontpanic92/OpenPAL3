@@ -18,7 +18,7 @@ use crosscom::ComRc;
 use log::debug;
 use radiance::{
     audio::AudioEngine,
-    comdef::{IDirector, IDirectorImpl, ISceneManager},
+    comdef::{IDirector, IDirectorImpl, IEntityExt, ISceneExt, ISceneManager},
     input::{InputEngine, Key},
     math::Vec3,
     radiance::UiManager,

@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crosscom::ComRc;
-use radiance::comdef::{IApplication, IDirector};
+use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance_scripting::comdef::services::{IAppService, IAppServiceImpl};
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::{

@@ -38,6 +38,7 @@ use std::collections::HashMap;
 use crosscom::ComRc;
 use fileformats::rwbs::uva::{UvAnim, UvAnimDict, UV_ANIM_VUB_MAGIC};
 use radiance::comdef::IEntity;
+use radiance::comdef::IEntityExt;
 
 /// One decoded UV keyframe.
 #[derive(Copy, Clone, Debug)]

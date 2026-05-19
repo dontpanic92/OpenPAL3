@@ -116,16 +116,42 @@ impl IApplicationImpl for Application {
         self.shutdown();
     }
 
-    fn set_title(&self, title: &str) {
+    fn dpi_scale(&self) -> f32 {
+        self.platform.borrow().dpi_scale()
+    }
+}
+
+impl Application {
+    /// Inherent counterpart to the formerly-IDL `set_title`. Access from
+    /// a `ComRc<IApplication>` via the [`IApplicationExt`] trait.
+    pub fn set_title(&self, title: &str) {
         self.platform.borrow().set_title(title);
     }
 
-    fn engine(&self) -> Rc<RefCell<CoreRadianceEngine>> {
+    /// Inherent counterpart to the formerly-IDL `engine`. Access from
+    /// a `ComRc<IApplication>` via the [`IApplicationExt`] trait.
+    pub fn engine(&self) -> Rc<RefCell<CoreRadianceEngine>> {
         self.radiance_engine.clone()
     }
+}
 
-    fn dpi_scale(&self) -> f32 {
-        self.platform.borrow().dpi_scale()
+/// Extension trait that exposes `Application`'s engine-internal
+/// accessors on a `ComRc<IApplication>` handle. These methods used to
+/// live on the IDL via `[internal(), rust()]` shims; they are now
+/// pure-Rust inherent methods on `Application`, surfaced here for
+/// callers that only have a `ComRc<IApplication>`.
+pub trait IApplicationExt {
+    fn set_title(&self, title: &str);
+    fn engine(&self) -> Rc<RefCell<CoreRadianceEngine>>;
+}
+
+impl IApplicationExt for ComRc<crate::comdef::IApplication> {
+    fn set_title(&self, title: &str) {
+        self.with_inner::<Application, _, _>(|a| a.set_title(title))
+    }
+
+    fn engine(&self) -> Rc<RefCell<CoreRadianceEngine>> {
+        self.with_inner::<Application, _, _>(|a| a.engine())
     }
 }
 

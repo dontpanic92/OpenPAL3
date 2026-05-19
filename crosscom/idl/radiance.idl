@@ -59,12 +59,6 @@ interface IApplication: IComponentContainer {
     // `on_unloading` falls back to `Drop` instead.
     void run();
 
-    [internal(), rust()]
-    crosscom::Void set_title(&str title);
-
-    [internal(), rust()]
-    std::rc::Rc<std::cell::RefCell<radiance::radiance::CoreRadianceEngine>> engine();
-
     float dpi_scale();
 }
 
@@ -91,21 +85,6 @@ interface IScene: IComponentContainer {
     // receive `on_loading`); otherwise loading is deferred to the
     // next `load` call.
     void add_entity(IEntity entity);
-
-    [internal(), rust()]
-    Vec<crosscom::ComRc<radiance::comdef::IEntity>> remove_entities_by_name(&str name);
-
-    [internal(), rust()]
-    Vec<crosscom::ComRc<radiance::comdef::IEntity>> entities();
-
-    [internal(), rust()]
-    Vec<crosscom::ComRc<radiance::comdef::IEntity>> visible_entities();
-
-    [internal(), rust()]
-    Vec<crosscom::ComRc<radiance::comdef::IEntity>> root_entities();
-    
-    [internal(), rust()]
-    std::rc::Rc<std::cell::RefCell<radiance::scene::Camera>> camera();
 }
 
 [uuid(ce8fc80c-ce9e-4a44-92e5-043c06fef776)]
@@ -113,12 +92,6 @@ class Scene: IScene {}
 
 [uuid(95099190-580e-439f-be36-8d1345cf4dec)]
 interface IEntity: IComponentContainer {
-    [internal(), rust()]
-    String name();
-
-    [internal(), rust()]
-    crosscom::Void set_name(&str name);
-
     // `load` is idempotent: calling it twice in a row is a no-op.
     // It fires `on_loading` on every component attached to this
     // entity (and recursively on every child entity) that has not
@@ -139,30 +112,12 @@ interface IEntity: IComponentContainer {
     // `remove_entities_by_name`, which call `unload`.
     void unload();
     void update(float delta_sec);
-    
-    [internal(), rust()]
-    std::rc::Rc<std::cell::RefCell<radiance::math::Transform>> transform();
 
-    [internal(), rust()]
-    radiance::math::Transform world_transform();
-
-    [internal(), rust()]
-    crosscom::Void update_world_transform(&radiance::math::Transform parent_transform);
-
-    [internal(), rust()]
-    Vec<crosscom::ComRc<radiance::comdef::IEntity>> children();
-    
     bool visible();
     void set_visible(bool visible);
 
     bool enabled();
     void set_enabled(bool enabled);
-
-    [internal(), rust()]
-    Option<std::rc::Rc<radiance::rendering::RenderingComponent>> get_rendering_component();
-
-    [internal(), rust()]
-    crosscom::Void set_rendering_component(Option<std::rc::Rc<radiance::rendering::RenderingComponent>> component);
 
     // `attach` adds a child entity. If this entity is already
     // loaded, the child is loaded immediately (matching the
@@ -182,9 +137,6 @@ class StaticMeshComponent: IStaticMeshComponent {}
 
 [uuid(5c56adbc-bc22-4275-b99a-09973a3ffff0)]
 interface IAnimatedMeshComponent: IComponent {
-    [internal(), rust()]
-    radiance::components::mesh::MorphAnimationState morph_animation_state();
-
     void play(bool replay);
 }
 
@@ -221,9 +173,6 @@ interface ISceneManager: IUnknown {
     void update(float delta_sec);
     IScene? scene();
 
-    [internal(), rust()]
-    Vec<crosscom::ComRc<radiance::comdef::IScene>> scenes();
-
     IDirector? director();
     void set_director(IDirector director);
     void push_scene(IScene scene);
@@ -237,21 +186,12 @@ class SceneManager: ISceneManager {}
 
 [uuid(cad476ee-990b-4ffe-af1b-02eac152e66e)]
 interface IArmatureComponent: IComponent {
-    [internal(), rust()]
-    crosscom::Void set_animation(Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>> keyframes, Vec<radiance::components::mesh::event::AnimationEvent> events);
-
     void clear_animation();
     void set_looping(bool looping);
 
     void play();
     void pause();
     void stop();
-
-    [internal(), rust()]
-    radiance::components::mesh::skinned_mesh::AnimationState animation_state();
-
-    [internal(), rust()]
-    Vec<crosscom::ComRc<radiance::comdef::IEntity>> bones();
 
     void add_animation_event_observer(IAnimationEventObserver observer);
 }
@@ -267,15 +207,6 @@ class SkinnedMeshComponent: ISkinnedMeshComponent {}
 
 [uuid(1b4b89da-94cb-4dd8-a1e1-493763f14ee3)]
 interface IHAnimBoneComponent: IComponent {
-    [internal(), rust()]
-    crosscom::Void set_keyframes(Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame> keyframes);
-
-    [internal(), rust()]
-    crosscom::Void set_bond_pose(radiance::math::Mat44 matrix);
-    
-    [internal(), rust()]
-    radiance::math::Mat44 bond_pose();
-
     void reset_timestamp();
 }
 
@@ -284,6 +215,5 @@ class HAnimBoneComponent: IHAnimBoneComponent {}
 
 [uuid(55c4060c-91ab-4373-9139-84293c1fc66f)]
 interface IAnimationEventObserver: IUnknown {
-    [internal(), rust()]
-    crosscom::Void on_animation_event(&str event_name);
+    void on_animation_event(&str event_name);
 }

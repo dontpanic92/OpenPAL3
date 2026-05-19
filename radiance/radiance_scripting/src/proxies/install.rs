@@ -19,6 +19,7 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 use radiance::comdef::IApplication;
+use radiance::comdef::IApplicationExt;
 
 use crate::comdef::immediate_director::IUiHost;
 use crate::services::ui_host::ImguiUiHost;

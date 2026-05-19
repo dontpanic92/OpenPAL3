@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crosscom::ComRc;
 use radiance::{
-    comdef::{IDirector, IDirectorImpl, ISceneManager},
+    comdef::{IDirector, IDirectorImpl, ISceneExt, ISceneManager},
     input::InputEngine,
     math::Vec3,
     utils::free_view::FreeViewController,

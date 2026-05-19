@@ -35,7 +35,10 @@ use crate::{
     scripting::angelscript::ScriptModule,
 };
 
-use super::{actor::Pal4ActorAnimationController, comdef::IPal4ActorAnimationController};
+use super::{
+    actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimationController},
+    comdef::IPal4ActorAnimationController,
+};
 
 pub struct AssetLoader {
     vfs: Rc<MiniFs>,

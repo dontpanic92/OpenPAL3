@@ -10,6 +10,7 @@ use mini_fs::{MiniFs, StoreExt};
 use radiance::{comdef::IEntity, rendering::ComponentFactory, scene::CoreEntity};
 
 use super::dff::DffLoaderConfig;
+use radiance::comdef::IEntityExt;
 
 pub fn create_entity_from_bsp_model<P: AsRef<Path>>(
     component_factory: &Rc<dyn ComponentFactory>,

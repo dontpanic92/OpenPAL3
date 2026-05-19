@@ -1,7 +1,10 @@
 use crate::scripting::sce::{SceCommand, SceState};
 use crosscom::ComRc;
 use imgui::Ui;
-use radiance::{comdef::ISceneManager, math::Vec3};
+use radiance::{
+    comdef::{ISceneExt, ISceneManager},
+    math::Vec3,
+};
 
 #[derive(Debug, Clone)]
 pub struct SceCommandCameraDefault {}

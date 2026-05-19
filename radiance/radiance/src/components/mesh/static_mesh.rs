@@ -8,6 +8,7 @@ use crate::{
 };
 
 use super::Geometry;
+use crate::comdef::IEntityExt;
 
 pub struct StaticMeshComponent {
     entity: ComRc<IEntity>,

@@ -86,7 +86,7 @@ impl IVfsServiceImpl for StubVfs {
 #[test]
 fn scripted_welcome_page_module_compiles() {
     use crosscom::ComRc;
-    use radiance::comdef::{IApplication, IDirector};
+    use radiance::comdef::{IApplication, IApplicationExt, IDirector};
     use yaobow_editor::directors::ScriptedWelcomePage;
 
     let _create: fn(ComRc<IApplication>) -> ComRc<IDirector> = ScriptedWelcomePage::create;

@@ -4,7 +4,7 @@ use crosscom::ComRc;
 use packfs::init_virtual_fs;
 use radiance::{
     application::Application,
-    comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl},
+    comdef::{IApplication, IApplicationExt, IApplicationLoaderComponent, IComponentImpl},
 };
 use shared::openpal5::{asset_loader::AssetLoader, director::OpenPAL5Director, scene::Pal5Scene};
 

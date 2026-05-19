@@ -318,7 +318,9 @@ fn load_dff(
     use radiance::comdef::{IArmatureComponent, IComponent};
     use shared::loaders::dff::{create_entity_from_dff_model, DffLoaderConfig};
     use shared::loaders::Pal4TextureResolver;
-    use shared::openpal4::actor::{Pal4ActorAnimationConfig, Pal4ActorAnimationController};
+    use shared::openpal4::actor::{
+        IPal4ActorAnimationControllerExt, Pal4ActorAnimationConfig, Pal4ActorAnimationController,
+    };
     use shared::openpal4::comdef::IPal4ActorAnimationController;
 
     let ext = path

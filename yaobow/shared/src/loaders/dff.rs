@@ -23,6 +23,7 @@ use radiance::{
 };
 
 use super::TextureResolver;
+use radiance::comdef::{IEntityExt, IHAnimBoneComponentExt};
 
 pub struct DffLoaderConfig<'a> {
     pub texture_resolver: &'a dyn TextureResolver,

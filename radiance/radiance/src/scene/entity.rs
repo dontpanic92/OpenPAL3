@@ -73,6 +73,96 @@ impl CoreEntity {
             .position(|e| e.name() == name)
             .and_then(|p| Some(self.props_mut().children.remove(p)))
     }
+
+    // ---- inherent counterparts of the formerly-IDL accessors ----
+    //
+    // These methods previously lived on `IEntity` via `[internal(),
+    // rust()]` shims. They are now pure-Rust inherent methods on
+    // `CoreEntity`; callers holding a `ComRc<IEntity>` reach them via
+    // the [`IEntityExt`] extension trait.
+
+    pub fn name(&self) -> String {
+        self.props().name.clone()
+    }
+
+    pub fn set_name(&self, name: &str) {
+        self.props_mut().name = name.to_owned();
+    }
+
+    pub fn transform(&self) -> Rc<RefCell<Transform>> {
+        self.transform.clone()
+    }
+
+    pub fn world_transform(&self) -> Transform {
+        self.props().world_transform.clone()
+    }
+
+    pub fn update_world_transform(&self, parent_transform: &Transform) {
+        let mut props = self.props_mut();
+
+        props.world_transform.set_matrix(Mat44::multiplied(
+            parent_transform.matrix(),
+            self.transform.borrow().matrix(),
+        ));
+
+        for e in &props.children {
+            e.update_world_transform(&props.world_transform);
+        }
+    }
+
+    pub fn children(&self) -> Vec<ComRc<IEntity>> {
+        self.props().children.clone()
+    }
+
+    pub fn get_rendering_component(&self) -> Option<Rc<RenderingComponent>> {
+        self.props().rendering_component.clone()
+    }
+
+    pub fn set_rendering_component(&self, component: Option<Rc<RenderingComponent>>) {
+        self.props_mut().rendering_component = component;
+    }
+}
+
+/// Extension trait that re-exposes `CoreEntity`'s formerly-IDL
+/// accessors on a `ComRc<IEntity>` handle. Method names match the
+/// previous IDL surface so existing callers compile unchanged once
+/// they import this trait (re-exported from `radiance::comdef`).
+pub trait IEntityExt {
+    fn name(&self) -> String;
+    fn set_name(&self, name: &str);
+    fn transform(&self) -> Rc<RefCell<Transform>>;
+    fn world_transform(&self) -> Transform;
+    fn update_world_transform(&self, parent_transform: &Transform);
+    fn children(&self) -> Vec<ComRc<IEntity>>;
+    fn get_rendering_component(&self) -> Option<Rc<RenderingComponent>>;
+    fn set_rendering_component(&self, component: Option<Rc<RenderingComponent>>);
+}
+
+impl IEntityExt for ComRc<IEntity> {
+    fn name(&self) -> String {
+        self.with_inner::<CoreEntity, _, _>(|e| e.name())
+    }
+    fn set_name(&self, name: &str) {
+        self.with_inner::<CoreEntity, _, _>(|e| e.set_name(name))
+    }
+    fn transform(&self) -> Rc<RefCell<Transform>> {
+        self.with_inner::<CoreEntity, _, _>(|e| e.transform())
+    }
+    fn world_transform(&self) -> Transform {
+        self.with_inner::<CoreEntity, _, _>(|e| e.world_transform())
+    }
+    fn update_world_transform(&self, parent_transform: &Transform) {
+        self.with_inner::<CoreEntity, _, _>(|e| e.update_world_transform(parent_transform))
+    }
+    fn children(&self) -> Vec<ComRc<IEntity>> {
+        self.with_inner::<CoreEntity, _, _>(|e| e.children())
+    }
+    fn get_rendering_component(&self) -> Option<Rc<RenderingComponent>> {
+        self.with_inner::<CoreEntity, _, _>(|e| e.get_rendering_component())
+    }
+    fn set_rendering_component(&self, component: Option<Rc<RenderingComponent>>) {
+        self.with_inner::<CoreEntity, _, _>(|e| e.set_rendering_component(component))
+    }
 }
 
 impl IComponentContainerImpl for CoreEntity {
@@ -113,14 +203,6 @@ impl IComponentContainerImpl for CoreEntity {
 }
 
 impl IEntityImpl for CoreEntity {
-    fn name(&self) -> String {
-        self.props().name.clone()
-    }
-
-    fn set_name(&self, name: &str) -> crosscom::Void {
-        self.props_mut().name = name.to_owned();
-    }
-
     fn load(&self) -> crosscom::Void {
         // Idempotent: a second load() call after the entity is
         // already loaded is a no-op. Newly-added components/children
@@ -201,48 +283,12 @@ impl IEntityImpl for CoreEntity {
         }
     }
 
-    fn transform(&self) -> Rc<RefCell<crate::math::Transform>> {
-        self.transform.clone()
-    }
-
-    fn world_transform(&self) -> crate::math::Transform {
-        self.props().world_transform.clone()
-    }
-
-    fn update_world_transform(&self, parent_transform: &crate::math::Transform) -> crosscom::Void {
-        let mut props = self.props_mut();
-
-        props.world_transform.set_matrix(Mat44::multiplied(
-            parent_transform.matrix(),
-            self.transform.borrow().matrix(),
-        ));
-
-        for e in &props.children {
-            e.update_world_transform(&props.world_transform);
-        }
-    }
-
-    fn children(&self) -> Vec<ComRc<IEntity>> {
-        self.props().children.clone()
-    }
-
     fn visible(&self) -> bool {
         self.props().visible
     }
 
     fn set_visible(&self, visible: bool) -> () {
         self.props_mut().visible = visible;
-    }
-
-    fn get_rendering_component(&self) -> Option<Rc<crate::rendering::RenderingComponent>> {
-        self.props().rendering_component.clone()
-    }
-
-    fn set_rendering_component(
-        &self,
-        component: Option<Rc<crate::rendering::RenderingComponent>>,
-    ) -> crosscom::Void {
-        self.props_mut().rendering_component = component;
     }
 
     fn attach(&self, child: ComRc<IEntity>) -> () {

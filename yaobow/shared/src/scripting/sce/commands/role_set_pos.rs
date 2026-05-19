@@ -5,6 +5,7 @@ use crate::{
 
 use crosscom::ComRc;
 use imgui::Ui;
+use radiance::comdef::IEntityExt;
 use radiance::comdef::ISceneManager;
 
 #[derive(Debug, Clone)]

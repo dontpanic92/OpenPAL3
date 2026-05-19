@@ -6,7 +6,9 @@ use std::rc::Rc;
 use crosscom::ComRc;
 use radiance::{
     application::Application,
-    comdef::{IApplication, IApplicationLoaderComponent, IComponent, IComponentImpl},
+    comdef::{
+        IApplication, IApplicationExt, IApplicationLoaderComponent, IComponent, IComponentImpl,
+    },
     scene::CoreScene,
 };
 use radiance_scripting::install_imgui_pump;

@@ -10,6 +10,7 @@ use radiance::{
 };
 
 use crate::ui::window_content_rect;
+use radiance::comdef::{IEntityExt, ISceneExt};
 
 pub struct SceneEditView {
     input: Rc<RefCell<dyn InputEngine>>,

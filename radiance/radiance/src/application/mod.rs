@@ -15,4 +15,4 @@ pub use vita::Platform;
 #[cfg(windows)]
 pub use windows::Platform;
 
-pub use application::Application;
+pub use application::{Application, IApplicationExt};

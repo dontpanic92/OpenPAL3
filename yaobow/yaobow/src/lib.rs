@@ -32,7 +32,7 @@ pub mod script_source {
 
     use crosscom::ComRc;
     use p7::interpreter::context::Data;
-    use radiance::comdef::{IApplication, IDirector};
+    use radiance::comdef::{IApplication, IApplicationExt, IDirector};
     use radiance::radiance::CoreRadianceEngine;
     use radiance_scripting::comdef::immediate_director::IImmediateDirector;
     use radiance_scripting::{

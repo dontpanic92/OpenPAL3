@@ -1,6 +1,7 @@
 use crate::scripting::sce::{SceCommand, SceState};
 use crosscom::ComRc;
 use imgui::Ui;
+use radiance::comdef::ISceneExt;
 use radiance::comdef::ISceneManager;
 use radiance::math::Vec3;
 

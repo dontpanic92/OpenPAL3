@@ -15,7 +15,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 use crosscom::ComRc;
-use radiance::comdef::IScene;
+use radiance::comdef::{IScene, ISceneExt};
 use radiance::math::Vec3;
 use radiance::rendering::{RenderTarget as EngineRenderTarget, RenderingEngine};
 

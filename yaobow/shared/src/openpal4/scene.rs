@@ -9,7 +9,7 @@ use fileformats::pal4::{
     gob::{GobCommonProperties, GobFile, GobObjectType},
 };
 use radiance::{
-    comdef::{IEntity, IScene, IStaticMeshComponent},
+    comdef::{IEntity, IEntityExt, IScene, ISceneExt, IStaticMeshComponent},
     input::InputEngine,
     math::{Transform, Vec3},
     scene::{CoreEntity, CoreScene},

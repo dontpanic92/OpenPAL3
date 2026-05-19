@@ -3,8 +3,8 @@ use std::{cell::RefCell, rc::Rc};
 use crosscom::ComRc;
 use radiance::{
     comdef::{
-        IAnimationEventObserver, IAnimationEventObserverImpl, IArmatureComponent, IComponentImpl,
-        IEntity, IScene,
+        IAnimationEventObserver, IAnimationEventObserverImpl, IArmatureComponent,
+        IArmatureComponentExt, IComponentImpl, IEntity, IEntityExt, IScene, ISceneExt,
     },
     components::mesh::{
         event::AnimationEvent,
@@ -74,7 +74,30 @@ impl Pal4ActorAnimationController {
 }
 
 impl IPal4ActorAnimationControllerImpl for Pal4ActorAnimationController {
-    fn play_animation(
+    fn unhold(&self) {
+        self.animation_config
+            .replace(Pal4ActorAnimationConfig::OneTime);
+        self.armature.play();
+    }
+
+    fn animation_completed(&self) -> bool {
+        self.armature.animation_state() == AnimationState::Stopped
+    }
+
+    fn play_default(&self) {
+        self.play_animation(
+            self.default_keyframes.borrow().clone(),
+            self.default_events.borrow().clone(),
+            Pal4ActorAnimationConfig::Looping,
+        );
+
+        self.current.replace(Pal4ActorAnimation::Idle);
+    }
+}
+
+impl Pal4ActorAnimationController {
+    /// Inherent counterpart to the formerly-IDL `play_animation`.
+    pub fn play_animation(
         &self,
         keyframes: Vec<Vec<AnimKeyFrame>>,
         events: Vec<AnimationEvent>,
@@ -93,40 +116,14 @@ impl IPal4ActorAnimationControllerImpl for Pal4ActorAnimationController {
         self.current.replace(Pal4ActorAnimation::Unknown);
     }
 
-    fn unhold(&self) {
-        self.animation_config
-            .replace(Pal4ActorAnimationConfig::OneTime);
-        self.armature.play();
-    }
-
-    fn animation_completed(&self) -> bool {
-        self.armature.animation_state() == AnimationState::Stopped
-    }
-
-    fn set_default(
-        &self,
-        keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
-        events: Vec<radiance::components::mesh::event::AnimationEvent>,
-    ) -> crosscom::Void {
+    /// Inherent counterpart to the formerly-IDL `set_default`.
+    pub fn set_default(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>) {
         self.default_keyframes.replace(keyframes);
         self.default_events.replace(events);
     }
 
-    fn play_default(&self) {
-        self.play_animation(
-            self.default_keyframes.borrow().clone(),
-            self.default_events.borrow().clone(),
-            Pal4ActorAnimationConfig::Looping,
-        );
-
-        self.current.replace(Pal4ActorAnimation::Idle);
-    }
-
-    fn play(
-        &self,
-        animation: crate::openpal4::actor::Pal4ActorAnimation,
-        config: crate::openpal4::actor::Pal4ActorAnimationConfig,
-    ) {
+    /// Inherent counterpart to the formerly-IDL `play`.
+    pub fn play(&self, animation: Pal4ActorAnimation, config: Pal4ActorAnimationConfig) {
         let anim = match animation {
             Pal4ActorAnimation::Walk => self.asset_loader.load_animation(&self.actor_name, "C02"),
             Pal4ActorAnimation::Run => self.asset_loader.load_run_animation(&self.actor_name),
@@ -149,8 +146,45 @@ impl IPal4ActorAnimationControllerImpl for Pal4ActorAnimationController {
         }
     }
 
-    fn current(&self) -> crate::openpal4::actor::Pal4ActorAnimation {
+    /// Inherent counterpart to the formerly-IDL `current`.
+    pub fn current(&self) -> Pal4ActorAnimation {
         self.current.borrow().clone()
+    }
+}
+
+/// Extension trait exposing `Pal4ActorAnimationController`'s formerly-IDL
+/// accessors on a `ComRc<IPal4ActorAnimationController>` handle.
+pub trait IPal4ActorAnimationControllerExt {
+    fn set_default(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>);
+    fn play(&self, animation: Pal4ActorAnimation, config: Pal4ActorAnimationConfig);
+    fn current(&self) -> Pal4ActorAnimation;
+    fn play_animation(
+        &self,
+        keyframes: Vec<Vec<AnimKeyFrame>>,
+        events: Vec<AnimationEvent>,
+        config: Pal4ActorAnimationConfig,
+    );
+}
+
+impl IPal4ActorAnimationControllerExt for ComRc<IPal4ActorAnimationController> {
+    fn set_default(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>) {
+        self.with_inner::<Pal4ActorAnimationController, _, _>(|c| c.set_default(keyframes, events))
+    }
+    fn play(&self, animation: Pal4ActorAnimation, config: Pal4ActorAnimationConfig) {
+        self.with_inner::<Pal4ActorAnimationController, _, _>(|c| c.play(animation, config))
+    }
+    fn current(&self) -> Pal4ActorAnimation {
+        self.with_inner::<Pal4ActorAnimationController, _, _>(|c| c.current())
+    }
+    fn play_animation(
+        &self,
+        keyframes: Vec<Vec<AnimKeyFrame>>,
+        events: Vec<AnimationEvent>,
+        config: Pal4ActorAnimationConfig,
+    ) {
+        self.with_inner::<Pal4ActorAnimationController, _, _>(|c| {
+            c.play_animation(keyframes, events, config)
+        })
     }
 }
 

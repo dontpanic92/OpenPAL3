@@ -4,7 +4,7 @@ use crosscom::ComRc;
 use imgui::{InputTextMultiline, TabBar, TabItem, Ui};
 use radiance::{
     application::utils::FpsCounter,
-    comdef::ISceneManager,
+    comdef::{IEntityExt, ISceneManager},
     input::{InputEngine, Key},
     math::Vec3,
     radiance::{DebugLayer, UiManager},

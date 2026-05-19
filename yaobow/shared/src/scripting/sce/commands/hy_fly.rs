@@ -1,6 +1,7 @@
 use crosscom::ComRc;
 use imgui::Ui;
 use radiance::comdef::ISceneManager;
+use radiance::comdef::{IEntityExt, ISceneExt};
 use radiance::math::Vec3;
 
 use crate::{

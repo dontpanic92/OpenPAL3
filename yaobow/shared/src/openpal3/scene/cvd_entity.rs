@@ -5,7 +5,7 @@ use crate::openpal3::loaders::cvd_loader::{
 };
 use crosscom::ComRc;
 use mini_fs::{MiniFs, StoreExt};
-use radiance::comdef::{IComponentImpl, IEntity};
+use radiance::comdef::{IComponentImpl, IEntity, IEntityExt};
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{
     ComponentFactory, MaterialDef, SimpleMaterialDef, VertexBuffer, VertexComponents,

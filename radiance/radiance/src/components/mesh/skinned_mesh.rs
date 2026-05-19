@@ -19,6 +19,7 @@ use super::{
     event::{AnimationEvent, AnimationEventManager},
     Geometry,
 };
+use crate::comdef::IEntityExt;
 
 pub struct SkinnedMeshComponent {
     entity: ComRc<IEntity>,
@@ -244,7 +245,42 @@ impl ArmatureComponent {
 }
 
 impl IArmatureComponentImpl for ArmatureComponent {
-    fn set_animation(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>) {
+    fn clear_animation(&self) {
+        self.animation_state.replace(AnimationState::NoAnimation);
+        for b in &self.bones {
+            b.get_component(IHAnimBoneComponent::uuid())
+                .unwrap()
+                .query_interface::<IHAnimBoneComponent>()
+                .unwrap()
+                .set_keyframes(vec![]);
+        }
+    }
+
+    fn set_looping(&self, looping: bool) {
+        self.animation_looping.replace(looping);
+    }
+
+    fn add_animation_event_observer(&self, observer: ComRc<IAnimationEventObserver>) {
+        self.event_manager.borrow_mut().add_observer(observer);
+    }
+
+    fn play(&self) {
+        self.animation_state.replace(AnimationState::Playing);
+    }
+
+    fn pause(&self) {
+        self.animation_state.replace(AnimationState::Paused);
+    }
+
+    fn stop(&self) {
+        self.animation_state.replace(AnimationState::Stopped);
+        self.reset_animation_state();
+    }
+}
+
+impl ArmatureComponent {
+    /// Inherent counterpart to the formerly-IDL `set_animation`.
+    pub fn set_animation(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>) {
         let mut animation_length = 0.;
         for (bone, kf) in self.bones.iter().zip(keyframes) {
             let kf_animation_length = kf.last().unwrap().timestamp;
@@ -264,44 +300,34 @@ impl IArmatureComponentImpl for ArmatureComponent {
         self.event_manager.borrow_mut().set_events(events);
     }
 
-    fn clear_animation(&self) {
-        self.animation_state.replace(AnimationState::NoAnimation);
-        for b in &self.bones {
-            b.get_component(IHAnimBoneComponent::uuid())
-                .unwrap()
-                .query_interface::<IHAnimBoneComponent>()
-                .unwrap()
-                .set_keyframes(vec![]);
-        }
-    }
-
-    fn set_looping(&self, looping: bool) {
-        self.animation_looping.replace(looping);
-    }
-
-    fn animation_state(&self) -> AnimationState {
+    /// Inherent counterpart to the formerly-IDL `animation_state`.
+    pub fn animation_state(&self) -> AnimationState {
         *self.animation_state.borrow()
     }
 
-    fn bones(&self) -> Vec<ComRc<IEntity>> {
+    /// Inherent counterpart to the formerly-IDL `bones`.
+    pub fn bones(&self) -> Vec<ComRc<IEntity>> {
         self.bones.clone()
     }
+}
 
-    fn add_animation_event_observer(&self, observer: ComRc<IAnimationEventObserver>) {
-        self.event_manager.borrow_mut().add_observer(observer);
+/// Extension trait exposing `ArmatureComponent`'s formerly-IDL
+/// accessors on a `ComRc<IArmatureComponent>` handle.
+pub trait IArmatureComponentExt {
+    fn set_animation(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>);
+    fn animation_state(&self) -> AnimationState;
+    fn bones(&self) -> Vec<ComRc<IEntity>>;
+}
+
+impl IArmatureComponentExt for ComRc<crate::comdef::IArmatureComponent> {
+    fn set_animation(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>) {
+        self.with_inner::<ArmatureComponent, _, _>(|c| c.set_animation(keyframes, events))
     }
-
-    fn play(&self) {
-        self.animation_state.replace(AnimationState::Playing);
+    fn animation_state(&self) -> AnimationState {
+        self.with_inner::<ArmatureComponent, _, _>(|c| c.animation_state())
     }
-
-    fn pause(&self) {
-        self.animation_state.replace(AnimationState::Paused);
-    }
-
-    fn stop(&self) {
-        self.animation_state.replace(AnimationState::Stopped);
-        self.reset_animation_state();
+    fn bones(&self) -> Vec<ComRc<IEntity>> {
+        self.with_inner::<ArmatureComponent, _, _>(|c| c.bones())
     }
 }
 
@@ -407,21 +433,46 @@ impl HAnimBoneComponent {
 }
 
 impl IHAnimBoneComponentImpl for HAnimBoneComponent {
-    fn set_keyframes(&self, keyframes: Vec<AnimKeyFrame>) {
+    fn reset_timestamp(&self) {
+        self.props.borrow_mut().last_time = 0.;
+    }
+}
+
+impl HAnimBoneComponent {
+    /// Inherent counterpart to the formerly-IDL `set_keyframes`.
+    pub fn set_keyframes(&self, keyframes: Vec<AnimKeyFrame>) {
         self.props.borrow_mut().max_time = keyframes.last().unwrap().timestamp;
         self.props.borrow_mut().frames = keyframes;
     }
 
-    fn set_bond_pose(&self, matrix: Mat44) {
+    /// Inherent counterpart to the formerly-IDL `set_bond_pose`.
+    pub fn set_bond_pose(&self, matrix: Mat44) {
         self.props.borrow_mut().bond_pose = matrix;
     }
 
-    fn bond_pose(&self) -> Mat44 {
+    /// Inherent counterpart to the formerly-IDL `bond_pose`.
+    pub fn bond_pose(&self) -> Mat44 {
         self.props.borrow().bond_pose.clone()
     }
+}
 
-    fn reset_timestamp(&self) {
-        self.props.borrow_mut().last_time = 0.;
+/// Extension trait exposing `HAnimBoneComponent`'s formerly-IDL
+/// accessors on a `ComRc<IHAnimBoneComponent>` handle.
+pub trait IHAnimBoneComponentExt {
+    fn set_keyframes(&self, keyframes: Vec<AnimKeyFrame>);
+    fn set_bond_pose(&self, matrix: Mat44);
+    fn bond_pose(&self) -> Mat44;
+}
+
+impl IHAnimBoneComponentExt for ComRc<crate::comdef::IHAnimBoneComponent> {
+    fn set_keyframes(&self, keyframes: Vec<AnimKeyFrame>) {
+        self.with_inner::<HAnimBoneComponent, _, _>(|c| c.set_keyframes(keyframes))
+    }
+    fn set_bond_pose(&self, matrix: Mat44) {
+        self.with_inner::<HAnimBoneComponent, _, _>(|c| c.set_bond_pose(matrix))
+    }
+    fn bond_pose(&self) -> Mat44 {
+        self.with_inner::<HAnimBoneComponent, _, _>(|c| c.bond_pose())
     }
 }
 

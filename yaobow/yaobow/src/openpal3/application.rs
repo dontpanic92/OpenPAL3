@@ -3,7 +3,9 @@ use super::main_menu_director;
 
 use crosscom::ComRc;
 use radiance::application::Application;
-use radiance::comdef::{IApplication, IApplicationLoaderComponent, IComponentImpl};
+use radiance::comdef::{
+    IApplication, IApplicationExt, IApplicationLoaderComponent, IComponentImpl,
+};
 use shared::openpal3::asset_manager::AssetManager;
 use std::path::PathBuf;
 use std::rc::Rc;

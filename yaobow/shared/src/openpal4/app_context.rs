@@ -4,7 +4,7 @@ use crosscom::ComRc;
 use fileformats::pal4::cam::CameraDataFile;
 use radiance::{
     audio::AudioEngine,
-    comdef::{IEntity, ISceneManager},
+    comdef::{IEntity, IEntityExt, ISceneExt, ISceneManager},
     input::InputEngine,
     math::Vec3,
     radiance::{TaskHandle, TaskManager, UiManager},
@@ -15,7 +15,7 @@ use radiance::{
 use crate::ui::dialog_box::{AvatarPosition, DialogBox};
 
 use super::{
-    actor::{Pal4ActorAnimation, Pal4ActorAnimationConfig},
+    actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimation, Pal4ActorAnimationConfig},
     asset_loader::AssetLoader,
     comdef::IPal4ActorController,
     scene::Pal4Scene,

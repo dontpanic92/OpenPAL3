@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crosscom::ComRc;
 use imgui::{Condition, Image, TextureId, Ui};
 use radiance::{
-    comdef::IScene,
+    comdef::{IScene, ISceneExt},
     input::{Axis, InputEngine, Key},
     math::{Mat44, Vec3},
     rendering::VideoPlayer,

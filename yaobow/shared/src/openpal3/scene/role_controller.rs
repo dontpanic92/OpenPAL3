@@ -6,7 +6,10 @@ use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
 use fileformats::mv3::{read_mv3, Mv3Model};
 use mini_fs::{MiniFs, StoreExt};
-use radiance::comdef::{IAnimatedMeshComponent, IComponent, IComponentImpl, IEntity};
+use radiance::comdef::{
+    IAnimatedMeshComponent, IAnimatedMeshComponentExt, IComponent, IComponentImpl, IEntity,
+    IEntityExt,
+};
 use radiance::components::mesh::{
     AnimatedMeshComponent, Geometry, MorphAnimationState, MorphTarget, TexCoord,
 };

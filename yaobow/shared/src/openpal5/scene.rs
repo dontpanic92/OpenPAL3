@@ -2,6 +2,7 @@ use crosscom::ComRc;
 use radiance::{comdef::IScene, math::Vec3, scene::CoreScene};
 
 use super::asset_loader::AssetLoader;
+use radiance::comdef::{IEntityExt, ISceneExt};
 
 pub struct Pal5Scene {
     pub scene: ComRc<IScene>,

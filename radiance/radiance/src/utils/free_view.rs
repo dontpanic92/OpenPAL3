@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crosscom::ComRc;
 
 use crate::{
-    comdef::IScene,
+    comdef::{IScene, ISceneExt},
     input::{InputEngine, Key},
     math::Vec3,
 };

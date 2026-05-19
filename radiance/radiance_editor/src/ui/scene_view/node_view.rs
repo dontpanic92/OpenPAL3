@@ -1,6 +1,6 @@
 use crosscom::ComRc;
 use imgui::{Condition, Ui};
-use radiance::comdef::{IEntity, ISceneManager};
+use radiance::comdef::{IEntity, IEntityExt, ISceneExt, ISceneManager};
 
 pub struct NodeView {}
 

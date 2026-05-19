@@ -1,7 +1,7 @@
 use crosscom::ComRc;
 use radiance::{
     application::Application,
-    comdef::{IApplication, IApplicationLoaderComponent},
+    comdef::{IApplication, IApplicationExt, IApplicationLoaderComponent},
 };
 use radiance_editor::{application, director};
 

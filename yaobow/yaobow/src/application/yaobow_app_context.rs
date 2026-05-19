@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 use mini_fs::{LocalFs, MiniFs, ZipFs};
-use radiance::comdef::{IApplication, IDirector, ISceneManager};
+use radiance::comdef::{IApplication, IApplicationExt, IDirector, ISceneManager};
 use radiance_scripting::comdef::services::{
     IAppService, IAppServiceImpl, IAudioService, IGameRegistry, IHostContextImpl, IInputService,
     IRandomService, ITextureService, IVfsService,
