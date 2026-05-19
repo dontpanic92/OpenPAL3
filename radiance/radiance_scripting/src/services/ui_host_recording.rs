@@ -400,4 +400,22 @@ impl IUiHostImpl for HostFacade {
     fn any_key_or_mouse_down(&self) -> bool {
         false
     }
+    fn dock_space(&self, _root_id: &str, body: crosscom::ComRc<crosscom::IAction>) {
+        body.invoke();
+    }
+    fn window_docked(&self, _title: &str, body: crosscom::ComRc<crosscom::IAction>) {
+        body.invoke();
+    }
+    fn dock_layout_once(
+        &self,
+        _root_id: &str,
+        _left_window: &str,
+        _right_window: &str,
+        _bottom_window: &str,
+        _center_window: &str,
+        _left_ratio: f32,
+        _right_ratio: f32,
+        _bottom_ratio: f32,
+    ) {
+    }
 }

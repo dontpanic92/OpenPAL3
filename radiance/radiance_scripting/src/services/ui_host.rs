@@ -26,6 +26,7 @@
 //! `invoke` already surface to `eprintln!` in `proto_ccw.rs`.
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 
 use crosscom::{ComRc, IAction};
 
@@ -135,13 +136,20 @@ fn with_frame<R>(label: &str, body: impl FnOnce(&ImguiFrameState<'_>) -> R) -> O
 /// Stateless production `IUiHost` ComObject. Construct once per
 /// scripting session and intern via `ScriptHost::intern` so scripts
 /// can hold a stable `box<IUiHost>` handle across frames.
-pub struct ImguiUiHost;
+pub struct ImguiUiHost {
+    /// Tracks which `dock_layout_once(root_id, ...)` invocations have
+    /// already seeded their dock-builder layout this session, so the
+    /// helper is idempotent when scripts call it every frame.
+    dock_layouts_built: RefCell<HashSet<String>>,
+}
 
 ComObject_UiHost!(super::ImguiUiHost);
 
 impl ImguiUiHost {
     pub fn create() -> ComRc<IUiHost> {
-        ComRc::<IUiHost>::from_object(ImguiUiHost)
+        ComRc::<IUiHost>::from_object(ImguiUiHost {
+            dock_layouts_built: RefCell::new(HashSet::new()),
+        })
     }
 }
 
@@ -629,6 +637,163 @@ impl IUiHostImpl for ImguiUiHost {
             io.keys_down.iter().any(|&k| k) || io.mouse_down.iter().any(|&k| k)
         })
         .unwrap_or(false)
+    }
+
+    fn dock_space(&self, root_id: &str, body: ComRc<IAction>) {
+        with_frame("dock_space", |f| {
+            let display = f.ui.io().display_size;
+            let pad_token =
+                f.ui.push_style_var(imgui::StyleVar::WindowPadding([0.0, 0.0]));
+            let rounding_token = f.ui.push_style_var(imgui::StyleVar::WindowRounding(0.0));
+            let border_token = f.ui.push_style_var(imgui::StyleVar::WindowBorderSize(0.0));
+            let flags = imgui::WindowFlags::NO_TITLE_BAR
+                | imgui::WindowFlags::NO_COLLAPSE
+                | imgui::WindowFlags::NO_RESIZE
+                | imgui::WindowFlags::NO_MOVE
+                | imgui::WindowFlags::NO_BRING_TO_FRONT_ON_FOCUS
+                | imgui::WindowFlags::NO_NAV_FOCUS
+                | imgui::WindowFlags::NO_DOCKING;
+            f.ui.window(&format!("##{}_host", root_id))
+                .position([0.0, 0.0], imgui::Condition::Always)
+                .size(display, imgui::Condition::Always)
+                .flags(flags)
+                .build(|| {
+                    // Push WindowBg=transparent for the dockspace call only,
+                    // mirroring `radiance_editor::MainPageDirector` so the
+                    // central node stays see-through even when populated.
+                    let bg_token =
+                        f.ui.push_style_color(imgui::StyleColor::WindowBg, [0.0, 0.0, 0.0, 0.0]);
+                    let id = dock_string_id(root_id);
+                    unsafe {
+                        imgui::sys::igDockSpace(
+                            id,
+                            imgui::sys::ImVec2::new(0.0, 0.0),
+                            imgui::sys::ImGuiDockNodeFlags::from_le(
+                                imgui::sys::ImGuiDockNodeFlags_PassthruCentralNode as i32,
+                            ),
+                            ::std::ptr::null::<imgui::sys::ImGuiWindowClass>(),
+                        );
+                    }
+                    bg_token.pop();
+                    body.invoke();
+                });
+            border_token.pop();
+            rounding_token.pop();
+            pad_token.pop();
+        });
+    }
+
+    fn window_docked(&self, title: &str, body: ComRc<IAction>) {
+        with_frame("window_docked", |f| {
+            f.ui.window(title).build(|| {
+                body.invoke();
+            });
+        });
+    }
+
+    fn dock_layout_once(
+        &self,
+        root_id: &str,
+        left_window: &str,
+        right_window: &str,
+        bottom_window: &str,
+        center_window: &str,
+        left_ratio: f32,
+        right_ratio: f32,
+        bottom_ratio: f32,
+    ) {
+        // Idempotent: only seed the layout the first time we see this root_id.
+        {
+            let mut built = self.dock_layouts_built.borrow_mut();
+            if built.contains(root_id) {
+                return;
+            }
+            built.insert(root_id.to_string());
+        }
+        // Defer to imgui-sys's dock builder. We split off Left first,
+        // then Right, then Bottom from the remaining centre node so the
+        // ratios are taken with respect to the shrinking centre region.
+        // This matches the typical 4-pane editor layout.
+        let root = dock_string_id(root_id);
+        let size = with_frame("dock_layout_once.size", |f| f.ui.io().display_size)
+            .unwrap_or([1280.0, 720.0]);
+        unsafe {
+            imgui::sys::igDockBuilderRemoveNode(root);
+            imgui::sys::igDockBuilderAddNode(
+                root,
+                imgui::sys::ImGuiDockNodeFlags::from_le(
+                    imgui::sys::ImGuiDockNodeFlags_DockSpace as i32,
+                ),
+            );
+            imgui::sys::igDockBuilderSetNodeSize(
+                root,
+                imgui::sys::ImVec2::new(size[0], size[1]),
+            );
+
+            let mut left_id: imgui::sys::ImGuiID = 0;
+            let mut center_after_left: imgui::sys::ImGuiID = 0;
+            imgui::sys::igDockBuilderSplitNode(
+                root,
+                imgui::sys::ImGuiDir_Left,
+                left_ratio.clamp(0.05, 0.9),
+                &mut left_id,
+                &mut center_after_left,
+            );
+
+            let mut right_id: imgui::sys::ImGuiID = 0;
+            let mut center_after_right: imgui::sys::ImGuiID = 0;
+            // Ratio is relative to the remaining centre node, so scale
+            // the user-provided fraction-of-total by 1/(1-left_ratio).
+            let remaining_after_left = (1.0 - left_ratio).max(0.05);
+            let right_rel = (right_ratio / remaining_after_left).clamp(0.05, 0.9);
+            imgui::sys::igDockBuilderSplitNode(
+                center_after_left,
+                imgui::sys::ImGuiDir_Right,
+                right_rel,
+                &mut right_id,
+                &mut center_after_right,
+            );
+
+            let mut bottom_id: imgui::sys::ImGuiID = 0;
+            let mut center_id: imgui::sys::ImGuiID = 0;
+            let remaining_centre = remaining_after_left * (1.0 - right_rel).max(0.05);
+            let bottom_rel = if remaining_centre > 0.0 {
+                (bottom_ratio / remaining_centre).clamp(0.05, 0.9)
+            } else {
+                0.25
+            };
+            imgui::sys::igDockBuilderSplitNode(
+                center_after_right,
+                imgui::sys::ImGuiDir_Down,
+                bottom_rel,
+                &mut bottom_id,
+                &mut center_id,
+            );
+
+            dock_window(left_window, left_id);
+            dock_window(right_window, right_id);
+            dock_window(bottom_window, bottom_id);
+            dock_window(center_window, center_id);
+
+            imgui::sys::igDockBuilderFinish(root);
+        }
+    }
+}
+
+fn dock_string_id(s: &str) -> imgui::sys::ImGuiID {
+    unsafe {
+        let p = s.as_ptr() as *const std::os::raw::c_char;
+        imgui::sys::igGetID_StrStr(p, p.add(s.len()))
+    }
+}
+
+fn dock_window(name: &str, node_id: imgui::sys::ImGuiID) {
+    if name.is_empty() {
+        return;
+    }
+    let cstr = std::ffi::CString::new(name).unwrap_or_else(|_| std::ffi::CString::new("##").unwrap());
+    unsafe {
+        imgui::sys::igDockBuilderDockWindow(cstr.as_ptr(), node_id);
     }
 }
 

@@ -13,6 +13,17 @@ pub let CONTENT_KIND_AUDIO: int = 3;
 pub let CONTENT_KIND_VIDEO: int = 4;
 pub let CONTENT_KIND_MODEL: int = 5;
 pub let CONTENT_KIND_STRUCTURED: int = 6;
+pub let CONTENT_KIND_SCENE: int = 7;
+
+// Dock layout: the four panels rendered by `main_editor.p7` under the
+// fullscreen dockspace. Window titles are stable across frames so
+// `dock_layout_once` can seed an initial layout that survives drag/
+// resize by the user.
+pub let DOCK_ROOT: string = "yaobow_main_dock";
+pub let DOCK_WINDOW_RESOURCES: string = "资源";
+pub let DOCK_WINDOW_VIEWPORT: string = "视图";
+pub let DOCK_WINDOW_INSPECTOR: string = "属性";
+pub let DOCK_WINDOW_OUTLINE: string = "层级";
 
 pub let CLOSE_CMD_BASE: int = 200000;
 pub let MODEL_PREVIEW_CMD_BASE: int = 300000;

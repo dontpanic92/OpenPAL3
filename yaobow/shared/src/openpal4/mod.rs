@@ -17,5 +17,6 @@ pub mod actor;
 pub mod director;
 pub mod pal4_debug;
 pub mod scene;
+pub mod scene_editor_access;
 pub mod scripting;
 pub mod uv_anim;

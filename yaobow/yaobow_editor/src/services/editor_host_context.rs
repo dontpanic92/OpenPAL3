@@ -73,6 +73,7 @@ impl EditorHostContext {
             factory.clone(),
             audio_engine.clone(),
             scene_manager.clone(),
+            input.clone(),
             cache.clone(),
             preview_registry.clone(),
         );
@@ -114,6 +115,7 @@ impl EditorHostContext {
             factory.clone(),
             audio_engine.clone(),
             scene_manager.clone(),
+            input.clone(),
             cache.clone(),
             preview_registry.clone(),
         );

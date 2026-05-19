@@ -1,0 +1,34 @@
+// Inspector panel: queries `IScenePreviewSession.inspector_for(sel)`
+// every frame and lays out the returned (key, value) pairs in a
+// two-column table. Read-only — no edit widgets in v1.
+
+import yaobow_editor_services;
+import immediate_director;
+
+pub fn render_inspector_im(
+    ui: box<immediate_director.IUiHost>,
+    session: ?box<yaobow_editor_services.IScenePreviewSession>,
+) {
+    if session == null {
+        let _ = ui.text("当前没有打开的场景。");
+        return;
+    }
+    let s = session!;
+    let sel = s.selection();
+    if sel < 0 {
+        let _ = ui.text("在“层级”面板中选择一个节点以查看属性。");
+        return;
+    }
+    let view = s.inspector_for(sel);
+    let n = view.field_count();
+    let _ = ui.table("##inspector_fields", 2, () => {
+        let mut i = 0;
+        while i < n {
+            let _ = ui.table_next_column();
+            let _ = ui.text(view.field_key(i));
+            let _ = ui.table_next_column();
+            let _ = ui.text(view.field_value(i));
+            i = i + 1;
+        }
+    });
+}

@@ -150,6 +150,35 @@ interface IUiHost: IUnknown {
     bool tree_node_open(&str label);
     void tree_pop();
 
+    // --- Docking ------------------------------------------------------
+    // Emit a fullscreen host window with an `igDockSpace` filling it,
+    // running `body` inside so dockable child windows in the body
+    // register with the dockspace. Matches `radiance_editor`'s
+    // `MainPageDirector` pattern: pushes a transparent `WindowBg` for
+    // the duration of `igDockSpace()` so the central node stays
+    // see-through when populated.
+    void dock_space(&str root_id, IAction body);
+
+    // Open a regular dockable imgui window. Default flags; the user
+    // (or `dock_layout_once`) can dock it into the active dockspace.
+    void window_docked(&str title, IAction body);
+
+    // One-shot layout helper. The first call for `root_id` builds a
+    // 4-pane layout (Left | Center | Right with a Bottom strip under
+    // the Center) and docks the named windows into each region.
+    // Subsequent calls are no-ops, so the script can call it every
+    // frame inside `dock_space`'s body without rebuilding the layout.
+    // Ratios are fractions of the dockspace's total extent.
+    void dock_layout_once(
+        &str root_id,
+        &str left_window,
+        &str right_window,
+        &str bottom_window,
+        &str center_window,
+        float left_ratio,
+        float right_ratio,
+        float bottom_ratio);
+
     // --- Mouse query ---------------------------------------------------
     // Reflect the imgui state of the *last* item submitted (typically
     // the just-drawn `image(...)`). Plus per-frame mouse deltas the

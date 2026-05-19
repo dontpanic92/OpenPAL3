@@ -18,6 +18,9 @@ pub const SIBLING_MODULES: &[(&str, &str)] = &[
     ("welcome", include_str!("../scripts/welcome.p7")),
     ("content_tabs", include_str!("../scripts/content_tabs.p7")),
     ("resource_tree", include_str!("../scripts/resource_tree.p7")),
+    ("resources_panel", include_str!("../scripts/resources_panel.p7")),
+    ("scene_outline", include_str!("../scripts/scene_outline.p7")),
+    ("inspector", include_str!("../scripts/inspector.p7")),
     ("main_editor", include_str!("../scripts/main_editor.p7")),
 ];
 

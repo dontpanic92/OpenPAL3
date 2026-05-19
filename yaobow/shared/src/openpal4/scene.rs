@@ -350,6 +350,16 @@ impl Pal4Scene {
         self.players[player_id].clone()
     }
 
+    /// Consume the wrapper and return only its inner `ComRc<IScene>`.
+    /// Used by the editor's read-only scene preview, which needs the
+    /// loaded scene but none of the gameplay-side fields. The dropped
+    /// fields (NPCs, GOB objects, events, …) hold entities that the
+    /// scene itself already retains via `add_entity`, so they stay
+    /// alive for the lifetime of the returned `IScene`.
+    pub fn into_inner_scene(self) -> ComRc<IScene> {
+        self.scene
+    }
+
     pub fn get_npc(&self, name: &str) -> Option<ComRc<IEntity>> {
         self.npcs.iter().find(|npc| name == npc.name()).cloned()
     }

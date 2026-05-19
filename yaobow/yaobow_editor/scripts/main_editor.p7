@@ -1,15 +1,16 @@
-// Main editor page (immediate-mode, H4 of generated/plan.md): a left
-// pane VFS tree and a right pane tab bar of content previewers, both
-// driven by `immediate_director.IUiHost` calls inside `render_im`. Cross-frame
-// intents (clicked tree leaves, close requests, model-preview
-// requests) travel through `box<array<...>>` slots that `update`
-// drains.
+// Main editor page: docked four-pane layout (Resources | Viewport |
+// Inspector + Outline) built on the IUiHost docking surface. Cross-
+// frame intents (tree picks, tab closes, preview opens) flow through
+// the same `box<array<...>>` slots the legacy tab-bar layout used.
 
 import radiance;
 import yaobow_editor_services;
 import immediate_director;
 import content_tabs;
 import resource_tree;
+import resources_panel;
+import scene_outline;
+import inspector;
 import editor_consts;
 
 pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditorDirector(
@@ -19,32 +20,62 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
     pub picks: box<array<string>>,
     pub close_intents: box<array<int>>,
     pub preview_intents: box<array<int>>,
+    pub active_close_cmd: box<array<int>>,
+    pub resources_state: box<resources_panel.ResourcesPanelState>,
 ) {
     pub fn activate(self: ref<Self>) -> int { 0 }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
     pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
-        let _ = ui.window_fullscreen("##editor_root", 0, () => {
-            let _ = ui.child_window("##editor_tree", 320.0, 0.0, () => {
-                resource_tree.render_resource_tree_im(ui, self.host.vfs(), self.picks);
-            });
-            let _ = ui.same_line();
-            let _ = ui.child_window("##editor_content", 0.0, 0.0, () => {
-                let _ = ui.tab_bar("##editor_tab_bar", () => {
-                    let mut i = 0;
-                    while i < self.tabs.len() {
-                        let t = ref(self.tabs[i]);
-                        let close_cmd = t.close_cmd;
-                        let closed = ui.tab_item(t.label, 1, () => {
-                            content_tabs.render_tab_body_im(ui, t, self.preview_intents);
-                        });
-                        if closed != 0 {
-                            self.close_intents.push(close_cmd);
-                        }
-                        i = i + 1;
+        let _ = ui.dock_space(editor_consts.DOCK_ROOT, () => {
+            // Seed the initial four-pane layout exactly once.
+            let _ = ui.dock_layout_once(
+                editor_consts.DOCK_ROOT,
+                editor_consts.DOCK_WINDOW_RESOURCES,
+                editor_consts.DOCK_WINDOW_INSPECTOR,
+                editor_consts.DOCK_WINDOW_OUTLINE,
+                editor_consts.DOCK_WINDOW_VIEWPORT,
+                0.22, 0.24, 0.30);
+        });
+
+        // Resources panel.
+        let _ = ui.window_docked(editor_consts.DOCK_WINDOW_RESOURCES, () => {
+            resources_panel.render_resources_panel_im(
+                ui, self.host, self.resources_state, self.picks);
+        });
+
+        // Viewport panel — content tab bar lives here, in the centre
+        // dock node by default.
+        let _ = ui.window_docked(editor_consts.DOCK_WINDOW_VIEWPORT, () => {
+            let _ = ui.tab_bar("##editor_tab_bar", () => {
+                let mut i = 0;
+                while i < self.tabs.len() {
+                    let t = ref(self.tabs[i]);
+                    let close_cmd = t.close_cmd;
+                    let active_slot = self.active_close_cmd;
+                    let closed = ui.tab_item(t.label, 1, () => {
+                        active_slot[0] = close_cmd;
+                        content_tabs.render_tab_body_im(ui, t, self.preview_intents);
+                    });
+                    if closed != 0 {
+                        self.close_intents.push(close_cmd);
                     }
-                });
+                    i = i + 1;
+                }
             });
+        });
+
+        // Resolve the currently-active scene tab (if any) for the
+        // outline + inspector panels.
+        let scene_session = active_scene_session(self.tabs, self.active_close_cmd[0]);
+        let scene_handle = active_scene_handle(self.tabs, self.active_close_cmd[0]);
+
+        let _ = ui.window_docked(editor_consts.DOCK_WINDOW_OUTLINE, () => {
+            scene_outline.render_scene_outline_im(ui, scene_session, scene_handle);
+        });
+
+        let _ = ui.window_docked(editor_consts.DOCK_WINDOW_INSPECTOR, () => {
+            inspector.render_inspector_im(ui, scene_session);
         });
         0
     }
@@ -87,15 +118,10 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
         }
         self.close_intents.clear();
 
-        // Open preview sessions for model tabs whose "Preview" button
-        // was pressed this frame. `set_preview_session_for_close_cmd`
-        // mutates the owning tab via indexed assignment — not legal
-        // through the `ref<ContentTab>` capture inside `render_im`.
-        //
-        // Single-active editor policy: when a new preview opens, close
-        // any other tab's existing session. The host registry holds
-        // weak refs so closing here drops the strong ref and lets the
-        // backend reclaim GPU resources.
+        // Open preview sessions for model / scene tabs whose Preview
+        // button was pressed this frame. Single-active editor policy:
+        // when a new preview opens, close any other tab's existing
+        // session so the backend reclaims GPU resources.
         let mut m = 0;
         while m < self.preview_intents.len() {
             close_other_preview_sessions(self.tabs, self.preview_intents[m]);
@@ -131,6 +157,7 @@ pub fn make_main_editor_director(
     let picks: array<string> = [];
     let close_intents: array<int> = [];
     let preview_intents: array<int> = [];
+    let active: array<int> = [0];
     return box(MainEditorDirector(
         host,
         box(tabs),
@@ -138,6 +165,8 @@ pub fn make_main_editor_director(
         box(picks),
         box(close_intents),
         box(preview_intents),
+        box(active),
+        box(resources_panel.make_resources_state()),
     )) as box<radiance.IDirector>;
 }
 
@@ -162,6 +191,9 @@ fn set_preview_session_for_close_cmd(
             if tabs[i].model_handle != null {
                 let h = tabs[i].model_handle!;
                 tabs[i].preview_session = h.open_preview();
+            } else if tabs[i].scene_handle != null {
+                let h = tabs[i].scene_handle!;
+                tabs[i].scene_session = h.open_preview();
             }
             return;
         }
@@ -169,10 +201,6 @@ fn set_preview_session_for_close_cmd(
     }
 }
 
-// Single-active editor policy: drop preview sessions on tabs *other*
-// than the one whose `close_cmd` is opening a new preview this frame.
-// The dropped sessions release their offscreen targets back to the
-// backend.
 fn close_other_preview_sessions(
     tabs: box<array<content_tabs.ContentTab>>,
     keep_close_cmd: int,
@@ -185,7 +213,46 @@ fn close_other_preview_sessions(
                 let _ = s.close();
                 tabs[i].preview_session = null;
             }
+            if tabs[i].scene_session != null {
+                let s = tabs[i].scene_session!;
+                let _ = s.close();
+                tabs[i].scene_session = null;
+            }
         }
         i = i + 1;
     }
+}
+
+fn active_scene_session(
+    tabs: box<array<content_tabs.ContentTab>>,
+    active_close_cmd: int,
+) -> ?box<yaobow_editor_services.IScenePreviewSession> {
+    let mut i = 0;
+    while i < tabs.len() {
+        if tabs[i].close_cmd == active_close_cmd {
+            if tabs[i].scene_session != null {
+                return tabs[i].scene_session;
+            }
+            return null;
+        }
+        i = i + 1;
+    }
+    return null;
+}
+
+fn active_scene_handle(
+    tabs: box<array<content_tabs.ContentTab>>,
+    active_close_cmd: int,
+) -> ?box<yaobow_editor_services.ISceneHandle> {
+    let mut i = 0;
+    while i < tabs.len() {
+        if tabs[i].close_cmd == active_close_cmd {
+            if tabs[i].scene_handle != null {
+                return tabs[i].scene_handle;
+            }
+            return null;
+        }
+        i = i + 1;
+    }
+    return null;
 }

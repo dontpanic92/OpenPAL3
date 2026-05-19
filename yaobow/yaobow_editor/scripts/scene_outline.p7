@@ -1,0 +1,60 @@
+// Scene Outline: walks the active scene tab's `IScenePreviewSession`
+// node tree and renders an indented list. Clicking a row calls
+// `session.set_selection(id)`; the Inspector panel queries
+// `session.inspector_for(selection())` next frame.
+//
+// Outline rebuilds its parent → children index once per render because
+// the node tree is small (a few hundred entries at most for PAL4) and
+// the data is immutable for the session's lifetime.
+
+import yaobow_editor_services;
+import immediate_director;
+
+pub fn render_scene_outline_im(
+    ui: box<immediate_director.IUiHost>,
+    session: ?box<yaobow_editor_services.IScenePreviewSession>,
+    snapshot: ?box<yaobow_editor_services.ISceneHandle>,
+) {
+    if session == null || snapshot == null {
+        let _ = ui.text("当前没有打开的场景。");
+        return;
+    }
+    let s = session!;
+    let h = snapshot!;
+    let n = h.node_count();
+    let sel = s.selection();
+
+    // Flat indented list: indent depth = walk parent chain until -1.
+    let mut i = 0;
+    while i < n {
+        let depth = compute_depth(h, i);
+        let label = make_label(h, i, depth, sel);
+        if ui.tree_leaf(label) != 0 {
+            let _ = s.set_selection(i);
+        }
+        i = i + 1;
+    }
+}
+
+fn compute_depth(h: box<yaobow_editor_services.ISceneHandle>, id: int) -> int {
+    let mut d = 0;
+    let mut cur = id;
+    while h.node_parent(cur) >= 0 {
+        cur = h.node_parent(cur);
+        d = d + 1;
+        if d > 64 { return d; }
+    }
+    return d;
+}
+
+fn make_label(h: box<yaobow_editor_services.ISceneHandle>, id: int, depth: int, sel: int) -> string {
+    let name = h.node_name(id);
+    let bullet = if id == sel { "● " } else { "○ " };
+    let mut indent = "";
+    let mut j = 0;
+    while j < depth {
+        indent = f"{indent}  ";
+        j = j + 1;
+    }
+    return f"{indent}{bullet}{name}";
+}

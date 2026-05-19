@@ -31,10 +31,13 @@ use shared::openpal3::loaders::{
 use shared::GameType;
 
 use crate::comdef::editor_services::{
-    IAudioHandle, IImageHandle, IModelHandle, IPreviewerHub, IPreviewerHubImpl, IVideoHandle,
+    IAudioHandle, IImageHandle, IModelHandle, IPreviewerHub, IPreviewerHubImpl, IResourceManager,
+    ISceneHandle, IVideoHandle,
 };
 use crate::directors::DevToolsAssetLoader;
 use crate::services::handles::{AudioHandle, ImageHandle, ModelHandle, VideoHandle};
+use crate::services::resource_manager::ResourceManager;
+use crate::services::scene_handle::SceneHandle;
 
 // PreviewKind enum (mirrors the comment in yaobow_editor_services.idl).
 const KIND_UNSUPPORTED: i32 = 0;
@@ -52,8 +55,10 @@ pub struct PreviewerHub {
     factory: Rc<dyn ComponentFactory>,
     audio_engine: Rc<dyn AudioEngine>,
     scene_manager: ComRc<ISceneManager>,
+    input: Rc<RefCell<dyn radiance::input::InputEngine>>,
     cache: Rc<RefCell<ImguiTextureCache>>,
     preview_registry: Rc<crate::services::preview_registry::PreviewRegistry>,
+    resources: RefCell<Option<ComRc<IResourceManager>>>,
     last_string: RefCell<String>,
 }
 
@@ -67,6 +72,7 @@ impl PreviewerHub {
         factory: Rc<dyn ComponentFactory>,
         audio_engine: Rc<dyn AudioEngine>,
         scene_manager: ComRc<ISceneManager>,
+        input: Rc<RefCell<dyn radiance::input::InputEngine>>,
         cache: Rc<RefCell<ImguiTextureCache>>,
         preview_registry: Rc<crate::services::preview_registry::PreviewRegistry>,
     ) -> ComRc<IPreviewerHub> {
@@ -77,8 +83,10 @@ impl PreviewerHub {
             factory,
             audio_engine,
             scene_manager,
+            input,
             cache,
             preview_registry,
+            resources: RefCell::new(None),
             last_string: RefCell::new(String::new()),
         })
     }
@@ -250,6 +258,30 @@ impl IPreviewerHubImpl for PreviewerHub {
             self.cache.clone(),
             self.preview_registry.clone(),
         ))
+    }
+
+    fn open_scene(&self, vfs_path: &str) -> Option<ComRc<ISceneHandle>> {
+        // PAL4 only in v1: the underlying `Pal4Scene::load` is the
+        // single scene-loading path the editor calls; other games keep
+        // their existing per-file previewers untouched.
+        let pal4 = self.asset_loader.pal4()?;
+        SceneHandle::try_create_pal4(
+            vfs_path,
+            &pal4,
+            self.input.clone(),
+            self.factory.clone(),
+            self.cache.clone(),
+            self.preview_registry.clone(),
+        )
+    }
+
+    fn resources(&self) -> ComRc<IResourceManager> {
+        if let Some(r) = self.resources.borrow().as_ref() {
+            return r.clone();
+        }
+        let r = ResourceManager::create(self.vfs.clone());
+        *self.resources.borrow_mut() = Some(r.clone());
+        r
     }
 }
 

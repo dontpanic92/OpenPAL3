@@ -20,31 +20,47 @@ pub struct ContentTab(
     pub video_handle: ?box<yaobow_editor_services.IVideoHandle>,
     pub model_handle: ?box<yaobow_editor_services.IModelHandle>,
     pub preview_session: ?box<yaobow_editor_services.IPreviewSession>,
+    pub scene_handle: ?box<yaobow_editor_services.ISceneHandle>,
+    pub scene_session: ?box<yaobow_editor_services.IScenePreviewSession>,
 );
 
 fn make_text_tab(label: string, close_cmd: int, content: string, kind: int) -> ContentTab {
-    ContentTab(label, close_cmd, kind, content, null, null, null, null, null)
+    ContentTab(label, close_cmd, kind, content, null, null, null, null, null, null, null)
 }
 
 fn make_image_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IImageHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_IMAGE, "", handle, null, null, null, null)
+    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_IMAGE, "", handle, null, null, null, null, null, null)
 }
 
 fn make_audio_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IAudioHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_AUDIO, "", null, handle, null, null, null)
+    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_AUDIO, "", null, handle, null, null, null, null, null)
 }
 
 fn make_video_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IVideoHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_VIDEO, "", null, null, handle, null, null)
+    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_VIDEO, "", null, null, handle, null, null, null, null)
 }
 
 fn make_model_tab(label: string, close_cmd: int, content: string, handle: box<yaobow_editor_services.IModelHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_MODEL, content, null, null, null, handle, null)
+    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_MODEL, content, null, null, null, handle, null, null, null)
+}
+
+fn make_scene_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.ISceneHandle>) -> ContentTab {
+    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_SCENE, "", null, null, null, null, null, handle, null)
 }
 
 // Returns null if the path could not be opened (unsupported extension or
 // loader failure). Caller pushes the value only when non-null.
 pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: string, close_cmd: int) -> ?ContentTab {
+    // Try the multi-entity scene path first (PAL4-only in v1). If the
+    // hub recognizes it as a scene, open the dedicated scene tab; the
+    // model previewer would otherwise fight the same `.bsp` path and
+    // load a static, isolated BSP without its sibling skybox/water/
+    // floor/NPCs/objects.
+    let scene = hub.open_scene(path);
+    if scene != null {
+        return make_scene_tab(path, close_cmd, scene!);
+    }
+
     let kind = hub.classify(path);
     if kind == editor_consts.CONTENT_KIND_TEXT {
         return make_text_tab(path, close_cmd, hub.open_text(path), editor_consts.CONTENT_KIND_TEXT);
@@ -187,6 +203,51 @@ pub fn render_tab_body_im(
                 preview_intents.push(tab.close_cmd);
             }
             let _ = ui.multiline_text(tab.text_content, -1.0, -1.0);
+        }
+        return;
+    }
+    if tab.kind == editor_consts.CONTENT_KIND_SCENE {
+        if tab.scene_session != null {
+            let s = tab.scene_session!;
+            let t = s.target();
+            let avail_w = ui.content_region_avail_x();
+            let avail_h = ui.content_region_avail_y();
+            let target_w = if avail_w >= 1 { avail_w } else { 1 };
+            let target_h = if avail_h >= 1 { avail_h } else { 1 };
+            let _ = t.resize(target_w, target_h);
+            let _ = ui.image(t.texture_id(), target_w as float, target_h as float);
+
+            let hovered = ui.is_item_hovered();
+            let left = ui.mouse_down(0);
+            let right = ui.mouse_down(1);
+            let mut dx = 0.0;
+            let mut dy = 0.0;
+            let mut buttons = 0;
+            if hovered != 0 && left != 0 {
+                dx = ui.mouse_drag_delta_x(0);
+                dy = ui.mouse_drag_delta_y(0);
+                ui.reset_mouse_drag_delta(0);
+                buttons = buttons | 1;
+            }
+            if hovered != 0 && right != 0 {
+                let rdx = ui.mouse_drag_delta_x(1);
+                let rdy = ui.mouse_drag_delta_y(1);
+                ui.reset_mouse_drag_delta(1);
+                if rdx != 0.0 || rdy != 0.0 {
+                    dx = dx + rdx;
+                    dy = dy + rdy;
+                }
+                buttons = buttons | 2;
+            }
+            let wheel = if hovered != 0 { ui.mouse_wheel() } else { 0.0 };
+            if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
+                let _ = s.tick_camera(dx, dy, wheel, buttons);
+            }
+        } else {
+            if ui.button("打开场景预览", 160.0, 24.0) != 0 {
+                preview_intents.push(tab.close_cmd);
+            }
+            let _ = ui.text("场景未打开。点击按钮启动离屏渲染。");
         }
         return;
     }

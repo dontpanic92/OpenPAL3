@@ -1,0 +1,82 @@
+// Resources panel: dual view over the editor's mounted VFS. The
+// upstream tree view (today's `resource_tree.render_resource_tree_im`)
+// stays available verbatim; the category view buckets every file by
+// extension via the host-side `IResourceManager` and applies a simple
+// case-insensitive substring filter.
+//
+// Both views share the same `picks: box<array<string>>` slot that
+// `main_editor.update` drains every frame to open content tabs.
+
+import yaobow_editor_services;
+import immediate_director;
+import resource_tree;
+
+pub struct ResourcesPanelState(
+    pub filter: box<array<string>>,
+    pub view_mode: box<array<int>>,
+);
+
+pub fn make_resources_state() -> ResourcesPanelState {
+    let f: array<string> = [""];
+    let v: array<int> = [0];
+    return ResourcesPanelState(box(f), box(v));
+}
+
+pub fn render_resources_panel_im(
+    ui: box<immediate_director.IUiHost>,
+    host: box<yaobow_editor_services.IEditorHostContext>,
+    state: box<ResourcesPanelState>,
+    picks: box<array<string>>,
+) {
+    let _ = ui.tab_bar("##resources_tabs", () => {
+        let _ = ui.tab_item("文件树", 0, () => {
+            state.view_mode[0] = 0;
+            resource_tree.render_resource_tree_im(ui, host.vfs(), picks);
+        });
+        let _ = ui.tab_item("分类", 0, () => {
+            state.view_mode[0] = 1;
+            render_category_view(ui, host.previewers().resources(), state.filter, picks);
+        });
+    });
+}
+
+fn render_category_view(
+    ui: box<immediate_director.IUiHost>,
+    rm: box<yaobow_editor_services.IResourceManager>,
+    filter: box<array<string>>,
+    picks: box<array<string>>,
+) {
+    // Filter text — for v1 we present current value + a "clear" button.
+    // A full editable widget would need a new IUiHost surface; keep the
+    // friction low here and accept the current value at render time.
+    let f = filter[0];
+    let _ = ui.text(f"过滤器: {f}");
+    let _ = ui.same_line();
+    if ui.button("清除", 60.0, 22.0) != 0 {
+        filter[0] = "";
+    }
+
+    let n = rm.category_count();
+    let mut i = 0;
+    while i < n {
+        let name = rm.category_name(i);
+        let count = rm.category_entry_count(i, f);
+        let label = f"{name} ({count})";
+        if ui.tree_node_open(label) != 0 {
+            // Each category can hold thousands of files; submit row
+            // bodies through the imgui list clipper so we only pay the
+            // crosscom roundtrip for rows actually scrolled into view.
+            let cat_idx = i;
+            let cat_filter = f;
+            let _ = ui.list_clipped(count, () => {
+                let row = ui.list_clipped_index();
+                let path = rm.category_entry_path(cat_idx, cat_filter, row);
+                if ui.tree_leaf(path) != 0 {
+                    picks.push(path);
+                }
+            });
+            ui.tree_pop();
+        }
+        i = i + 1;
+    }
+}

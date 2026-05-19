@@ -74,9 +74,78 @@ interface IPreviewerHub: IUnknown {
     IAudioHandle? open_audio(&str vfs_path);
     IVideoHandle? open_video(&str vfs_path);
     IModelHandle? open_model(&str vfs_path);
+
+    // Try to interpret `vfs_path` as a scene the editor can open as a
+    // multi-entity preview (e.g. PAL4 `.bsp` / `.gob` blocks). Returns
+    // null for any path the hub cannot classify as a scene; the caller
+    // should fall back to `open_model` / other previewers.
+    ISceneHandle? open_scene(&str vfs_path);
+
+    // Lazy category index over the VFS. Built on first call and
+    // cached for the hub's lifetime.
+    IResourceManager resources();
 }
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0c)]
 class PreviewerHub: IPreviewerHub {}
+
+// Read-only category-based browser over the editor's MiniFs. Categories
+// are buckets keyed by extension (scenes, models, textures, audio,
+// video, scripts, data, other). Built lazily on first method call.
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c10)]
+interface IResourceManager: IUnknown {
+    int category_count();
+    &str category_name(int idx);
+    int category_entry_count(int idx, &str filter);
+    &str category_entry_path(int idx, &str filter, int row);
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c11)]
+class ResourceManager: IResourceManager {}
+
+// Read-only multi-entity scene preview. The handle exposes a flat
+// node tree (parent-pointer encoding) the outline panel walks, and
+// builds an `IScenePreviewSession` whose offscreen target the
+// viewport samples like the existing `IPreviewSession`.
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c12)]
+interface ISceneHandle: IUnknown {
+    IScenePreviewSession open_preview();
+
+    int node_count();
+    int node_parent(int id);
+    &str node_name(int id);
+    int node_kind(int id);
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c13)]
+class SceneHandle: ISceneHandle {}
+
+// Extends `IPreviewSession` semantics with selection + gizmo + an
+// on-demand inspector view of the selected node. Read-only — no
+// mutation paths are exposed.
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c14)]
+interface IScenePreviewSession: IUnknown {
+    void close();
+    IRenderTarget target();
+    void tick_camera(float dx, float dy, float wheel, int buttons);
+
+    void set_selection(int node_id);
+    int selection();
+    void set_gizmo_visible(int axes, int aabb, int pivot);
+
+    IInspectorView inspector_for(int node_id);
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c15)]
+class ScenePreviewSession: IScenePreviewSession {}
+
+// Read-only key/value snapshot of a scene node. Inspector script
+// queries it once per frame from the current selection and renders
+// rows via `IUiHost.table`.
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c16)]
+interface IInspectorView: IUnknown {
+    int field_count();
+    &str field_key(int i);
+    &str field_value(int i);
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c17)]
+class InspectorView: IInspectorView {}
 
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0d)]
 interface IEditorHostContext: IHostContext {
