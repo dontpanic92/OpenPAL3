@@ -9,6 +9,19 @@ pub type StaticStr = &'static str;
 
 pub struct ComRc<TComInterface: ComInterface> {
     this: *const TComInterface,
+    /// Make `ComRc` explicitly `!Send` and `!Sync`.
+    ///
+    /// Concrete `ComObject` CCWs almost universally use `RefCell` /
+    /// `Cell` for interior mutability, which is not `Sync`. Since
+    /// `ComRc` derefs to the interface and lets callers invoke
+    /// methods, allowing a `ComRc` to cross threads would let another
+    /// thread reach that non-`Sync` state via the vtable. The atomic
+    /// `add_ref` / `release` refcount is necessary but not sufficient
+    /// for thread safety, so the type opts out at the marker level.
+    /// If a genuinely thread-safe interface is ever introduced, it
+    /// should opt back in via a dedicated marker trait rather than a
+    /// blanket impl on `ComRc<T>`.
+    _not_send_sync: PhantomData<*const ()>,
 }
 
 impl<TComInterface: ComInterface> ComRc<TComInterface> {
@@ -77,8 +90,6 @@ impl<TComInterface: ComInterface> ComRc<TComInterface> {
     }
 }
 
-unsafe impl<T: ComInterface> Send for ComRc<T> {}
-
 #[repr(transparent)]
 pub struct RawPointer(pub *const *const c_void);
 
@@ -86,6 +97,7 @@ impl<TComInterface: ComInterface> From<*const *const c_void> for ComRc<TComInter
     fn from(raw: *const *const c_void) -> Self {
         Self {
             this: raw as *const TComInterface,
+            _not_send_sync: PhantomData,
         }
     }
 }
@@ -97,6 +109,7 @@ impl<TComInterface: ComInterface> From<RawPointer> for Option<ComRc<TComInterfac
         } else {
             Some(ComRc::<TComInterface> {
                 this: raw.0 as *const TComInterface,
+                _not_send_sync: PhantomData,
             })
         }
     }
@@ -140,6 +153,7 @@ impl<TComInterface: ComInterface> Clone for ComRc<TComInterface> {
 
         Self {
             this: self.this.clone(),
+            _not_send_sync: PhantomData,
         }
     }
 }
@@ -318,3 +332,31 @@ impl<TComInterface: ComInterface> From<ObjectArray<TComInterface>> for *const *c
         arr.array.into()
     }
 }
+
+/// Compile-time assertion that `ComRc<T>` is neither `Send` nor `Sync`.
+///
+/// Uses the "ambiguous impl" trick: if `ComRc<IUnknown>` ever gained a
+/// `Send` (or `Sync`) impl again — directly or transitively — the call
+/// inside `_assert_com_rc_not_send_sync` would become ambiguous and the
+/// crate would fail to compile. This is a deliberate guard rail
+/// against re-introducing a blanket `unsafe impl Send for ComRc<T>`.
+#[doc(hidden)]
+#[allow(dead_code)]
+const _: () = {
+    trait AmbiguousIfSend<A> {
+        fn some_item() {}
+    }
+    impl<T: ?Sized> AmbiguousIfSend<()> for T {}
+    impl<T: ?Sized + Send> AmbiguousIfSend<u8> for T {}
+
+    trait AmbiguousIfSync<A> {
+        fn some_item() {}
+    }
+    impl<T: ?Sized> AmbiguousIfSync<()> for T {}
+    impl<T: ?Sized + Sync> AmbiguousIfSync<u8> for T {}
+
+    fn _assert_com_rc_not_send_sync() {
+        <ComRc<IUnknown> as AmbiguousIfSend<_>>::some_item();
+        <ComRc<IUnknown> as AmbiguousIfSync<_>>::some_item();
+    }
+};
