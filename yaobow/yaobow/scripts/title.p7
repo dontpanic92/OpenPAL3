@@ -38,11 +38,7 @@ let NO_HOVER: int = -1;
 let PAL3_COUNT: int = 7;
 let PAL4_COUNT: int = 4;
 
-pub proto IDirectorLifecycle {
-    fn deactivate(self: ref<IDirectorLifecycle>);
-}
-
-// Preview pictures are *lazy-loaded* into a single slot on hover
+// Preview picturesare *lazy-loaded* into a single slot on hover
 // change. Storing them eagerly in `array<?box<T>>` would require
 // pushing `?box<T>` values, which the current p7 typechecker can't
 // resolve (`SemanticError(TypeNotFound { name: "?box<proto(N)>" })`
@@ -50,7 +46,7 @@ pub proto IDirectorLifecycle {
 // resolver). One slot dodges the push path entirely — assignment to
 // `arr[0]` of an already-`?box<T>` value works fine.
 
-pub struct[immediate_director.IImmediateDirector, IDirectorLifecycle] TitleDirector(
+pub struct[immediate_director.IImmediateDirector] TitleDirector(
     pub host: box<yaobow_services.IYaobowAppContext>,
     pub bgm: ?box<scripting_services.IAudioSource>,
     pub logo: ?box<scripting_services.ITexture>,
@@ -92,10 +88,11 @@ pub struct[immediate_director.IImmediateDirector, IDirectorLifecycle] TitleDirec
         0
     }
 
-    pub fn deactivate(self: ref<Self>) {
+    pub fn deactivate(self: ref<Self>) -> int {
         if self.bgm != null {
             let _ = self.bgm!.stop();
         }
+        0
     }
 
     pub fn render_im(
