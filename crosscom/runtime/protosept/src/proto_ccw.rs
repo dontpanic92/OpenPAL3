@@ -62,24 +62,6 @@ pub struct ProtoSpec {
     /// Stable name used in diagnostics (e.g. `"radiance.comdef.IDirector"`).
     pub type_tag: String,
     pub methods: Vec<MethodSpec>,
-    /// Optional script-side method name invoked on final CCW
-    /// release (when `proto_release` decrements the refcount to
-    /// zero). The method is called with zero args; any return is
-    /// discarded. Fires *before* the script handle is unrooted and
-    /// the CCW Box is freed. If the runtime is already gone at
-    /// release time, the hook silently no-ops.
-    ///
-    /// **Constraint:** the method name must be declared on at least
-    /// one of the protocols the script's `struct[...]` conforms to
-    /// — p7's `push_proto_method` resolves via the conforming-proto
-    /// vtable and cannot reach struct-only methods. If the method
-    /// isn't found at release time, the hook logs and no-ops; the
-    /// CCW is still freed.
-    ///
-    /// Used by [`crate::wrap_proto`] consumers (e.g.
-    /// `radiance_scripting::wrap_director`) to mirror lifecycle
-    /// hooks that hand-rolled CCWs implemented via `Drop`.
-    pub release_method: Option<String>,
     /// Additional interface UUIDs that the CCW's `query_interface`
     /// thunk should accept in addition to IUnknown and the primary
     /// `uuid`. Used to honour interface inheritance — e.g. for
@@ -138,9 +120,10 @@ pub enum RetKind {
 ///
 /// **Idempotent** — re-registering an already-known UUID is a silent
 /// no-op (the first registration wins). This lets convenience
-/// wrappers (such as `radiance_scripting::wrap_director`) lazily
-/// register their target interface without conflicting with callers
-/// that registered it explicitly at startup.
+/// wrappers (such as the auto-generated `wrap_director` /
+/// `wrap_immediate_director` in `radiance_scripting::script_bridges`)
+/// lazily register their target interface without conflicting with
+/// callers that registered it explicitly at startup.
 pub fn register_proto_ccw(spec: ProtoSpec) -> Result<(), HostError> {
     validate_spec(&spec)?;
     let mut reg = registry().lock().expect("proto_ccw registry poisoned");
@@ -180,7 +163,6 @@ pub fn register_crosscom_iaction() {
             args: vec![],
             ret: RetKind::Void,
         }],
-        release_method: None,
         additional_query_uuids: vec![],
     });
 }
@@ -221,9 +203,6 @@ struct RegisteredProto {
     /// of crosscom-generated vtable structs makes this layout-
     /// compatible.
     vtable_ptr: *const *const c_void,
-    /// `'static` copy of `ProtoSpec::release_method`, set when the
-    /// proto is registered with a non-None release hook.
-    release_method: Option<&'static str>,
     /// `'static` slice (via `Box::leak`) of additional QI UUIDs the
     /// CCW should accept, copied from
     /// [`ProtoSpec::additional_query_uuids`] at registration time.
@@ -274,7 +253,6 @@ fn build_registered_proto(spec: ProtoSpec) -> Result<RegisteredProto, HostError>
     for method in &spec.methods {
         let cif = build_cif_for(method);
         let userdata: Box<MethodUserdata> = Box::new(MethodUserdata {
-            iface_uuid: spec.uuid,
             iface_type_tag: spec.type_tag.clone(),
             method_name: method.name.clone(),
             args: method.args.clone(),
@@ -308,8 +286,6 @@ fn build_registered_proto(spec: ProtoSpec) -> Result<RegisteredProto, HostError>
     let leaked_vtable: &'static [*const c_void] = Box::leak(boxed_vtable);
     let vtable_ptr = leaked_vtable.as_ptr();
 
-    let release_method: Option<&'static str> =
-        spec.release_method.map(|s| &*Box::leak(s.into_boxed_str()));
     let additional_query_uuids: &'static [[u8; 16]] =
         Box::leak(spec.additional_query_uuids.into_boxed_slice());
 
@@ -317,7 +293,6 @@ fn build_registered_proto(spec: ProtoSpec) -> Result<RegisteredProto, HostError>
         uuid: spec.uuid,
         type_tag: spec.type_tag,
         vtable_ptr,
-        release_method,
         additional_query_uuids,
     })
 }
@@ -403,54 +378,16 @@ unsafe extern "system" fn proto_release(this: *const *const c_void) -> c_long {
     let ccw_ref = &*(this as *const ProtoCcw);
     let prev = ccw_ref.ref_count.fetch_sub(1, Ordering::SeqCst);
     if prev == 1 {
-        // Drop the CCW. Fire the release hook (if registered)
-        // *before* unrooting so the receiver is still live for the
-        // dispatch, then unroot and drop the Box. Each step
-        // tolerates a runtime that has already been dropped.
+        // Drop the CCW: unroot the script handle and free the Box.
+        // Tolerate a runtime that has already been dropped.
         let ccw_box: Box<ProtoCcw> = Box::from_raw(this as *mut ProtoCcw);
-        let release_method = release_method_for(ccw_box.payload.iface_uuid);
-        let root_idx = ccw_box.payload.root_idx;
-        if let Some(method) = release_method {
-            let _ = ccw_box.payload.handle.try_with_ctx(|ctx| {
-                invoke_release_hook(ctx, root_idx, method);
-            });
-        }
         let _ = ccw_box
             .payload
             .handle
-            .try_with_ctx(|ctx| ctx.remove_external_root(root_idx));
+            .try_with_ctx(|ctx| ctx.remove_external_root(ccw_box.payload.root_idx));
         drop(ccw_box);
     }
     (prev - 1) as c_long
-}
-
-fn release_method_for(uuid: [u8; 16]) -> Option<&'static str> {
-    registry()
-        .lock()
-        .expect("proto_ccw registry poisoned")
-        .get(&uuid)
-        .and_then(|r| r.release_method)
-}
-
-fn invoke_release_hook(ctx: &mut Context, root_idx: usize, method: &str) {
-    let receiver = match ctx.external_root(root_idx) {
-        Some(r) => r,
-        None => return,
-    };
-    if let Err(e) = ctx.push_proto_method(receiver, method, Vec::new()) {
-        eprintln!(
-            "proto_release: push_proto_method('{}') failed: {:?}",
-            method, e
-        );
-        return;
-    }
-    if let Err(e) = ctx.resume() {
-        eprintln!("proto_release: resume('{}') failed: {:?}", method, e);
-        return;
-    }
-    if let Ok(frame) = ctx.stack_frame_mut() {
-        let _ = frame.stack.pop();
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -511,7 +448,6 @@ fn wrap_proto_raw(
 // ---------------------------------------------------------------------------
 
 struct MethodUserdata {
-    iface_uuid: [u8; 16],
     iface_type_tag: String,
     method_name: String,
     args: Vec<ArgKind>,

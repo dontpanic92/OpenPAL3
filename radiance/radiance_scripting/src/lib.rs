@@ -16,14 +16,31 @@ pub mod comdef {
     }
 }
 
+/// Auto-generated script bridges from `[protosept(scriptable)]` IDLs.
+/// Each submodule exposes `register_<i>_proto()` and `wrap_<i>()`.
+pub mod script_bridges {
+    pub mod crosscom {
+        include!(concat!(env!("OUT_DIR"), "/crosscom_bridge.rs"));
+    }
+    pub mod radiance {
+        include!(concat!(env!("OUT_DIR"), "/radiance_bridge.rs"));
+    }
+    pub mod immediate_director {
+        include!(concat!(env!("OUT_DIR"), "/immediate_director_bridge.rs"));
+    }
+}
+
 pub mod proxies;
 pub mod runtime;
 pub mod services;
 
 pub use proxies::{
-    install_imgui_pump, install_imgui_pump_with_cache, wrap_director, wrap_im_director,
-    ImguiImmediateDirectorPump,
+    install_imgui_pump, install_imgui_pump_with_cache, ImguiImmediateDirectorPump,
 };
+// Auto-generated bridges re-exported under the historical names so
+// callers don't need to know where the codegen lives.
+pub use script_bridges::immediate_director::wrap_immediate_director as wrap_im_director;
+pub use script_bridges::radiance::wrap_director;
 pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};
 pub use services::HostContext;
 

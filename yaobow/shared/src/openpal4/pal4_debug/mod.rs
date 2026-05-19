@@ -7,12 +7,13 @@
 //! frame.
 
 pub mod context;
-pub mod wrap_overlay;
 
 pub use context::{
     create_debug_session, Pal4DebugContext, Pal4DebugSession, Pal4DebugSnapshot, Pal4DebugState,
 };
-pub use wrap_overlay::wrap_overlay;
+// Auto-generated reverse-wrap helper, re-exported under the historical
+// name.
+pub use crate::script_bridges::pal4_debug::wrap_pal4_debug_overlay as wrap_overlay;
 
 /// p7 binding source generated from `pal4_debug.idl`. Hosts must
 /// register this with `ScriptHost::add_binding("pal4_debug", ...)`

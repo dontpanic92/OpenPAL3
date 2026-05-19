@@ -13,6 +13,7 @@ fn main() {
     // and the p7 binding source consumed by `ScriptHost::add_binding`.
     generate_comdef("pal4_debug.idl", "shared_pal4_debug_comdef.rs");
     generate_p7("pal4_debug.idl", "shared_pal4_debug.p7");
+    generate_script_bridge("pal4_debug.idl", "shared_pal4_debug_bridge.rs");
 }
 
 fn idl_path(idl_file: &str) -> PathBuf {
@@ -41,6 +42,18 @@ fn generate_p7(idl_file: &str, out_file: &str) {
     let out_path = out_path(out_file);
     let dependencies = crosscom_ccidl::generate_protosept_to_file(&idl_path, &out_path)
         .unwrap_or_else(|err| panic!("Failed to generate {}: {}", out_file, err));
+
+    for dependency in dependencies {
+        println!("cargo:rerun-if-changed={}", dependency.display());
+    }
+}
+
+fn generate_script_bridge(idl_file: &str, out_file: &str) {
+    let idl_path = idl_path(idl_file);
+    let out_path = out_path(out_file);
+    let dependencies =
+        crosscom_ccidl::generate_script_bridge_to_file(&idl_path, &out_path, "shared", "script_bridges")
+            .unwrap_or_else(|err| panic!("Failed to generate bridge {}: {}", out_file, err));
 
     for dependency in dependencies {
         println!("cargo:rerun-if-changed={}", dependency.display());

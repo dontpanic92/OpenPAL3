@@ -193,7 +193,7 @@ interface IAnimatedMeshComponent: IComponent {
 [uuid(c1502819-57d7-45d2-a160-13d803e4fc48)]
 class AnimatedMeshComponent: IAnimatedMeshComponent {}
 
-[uuid(6dedae32-8339-482e-9f66-c30d557cacb4)]
+[uuid(6dedae32-8339-482e-9f66-c30d557cacb4), protosept(scriptable)]
 interface IDirector: IUnknown {
     // Called by `ISceneManager` exactly once, immediately after the
     // director is installed (via `set_director` or as a transition

@@ -114,10 +114,9 @@ fn wrap_im_director_round_trips_qi_to_idirector() {
 
     assert_eq!(*EVENTS.lock().unwrap(), vec![(11, 1), (11, 2)]);
 
-    // Drop both ComRcs without first calling deactivate; the release
-    // hook no longer fires anything (release_method retired in
-    // favour of explicit `IDirector::deactivate()` dispatch by
-    // `ISceneManager`).
+    // Drop both ComRcs without first calling deactivate; no implicit
+    // release hook fires (lifecycle is now driven explicitly by
+    // `ISceneManager::deactivate()`).
     drop(as_director);
     drop(im);
     assert_eq!(

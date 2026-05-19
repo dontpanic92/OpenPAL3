@@ -5,8 +5,8 @@
 //!
 //! With the lifetime refactor, `deactivate` is a first-class method
 //! on `radiance.IDirector` (declared in `radiance.idl`) and is fired
-//! explicitly by `ISceneManager` rather than implicitly by the
-//! proto_ccw `release_method` hook. The test calls `deactivate()`
+//! explicitly by `ISceneManager` rather than implicitly by any
+//! proto_ccw release-hook. The test calls `deactivate()`
 //! directly to verify the wrap_director CCW dispatches it correctly.
 
 use std::sync::Mutex;
@@ -75,7 +75,7 @@ fn host_runtime_handle(host: &std::rc::Rc<ScriptHost>) -> crosscom_protosept::Ru
 }
 
 #[test]
-fn wrap_director_runs_activate_update_and_fires_deactivate_on_drop() {
+fn wrap_director_runs_activate_update_and_dispatches_explicit_deactivate() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     EVENTS.lock().unwrap().clear();
 
@@ -119,7 +119,7 @@ fn wrap_director_runs_activate_update_and_fires_deactivate_on_drop() {
     assert_eq!(
         *EVENTS.lock().unwrap(),
         vec![(42, 1), (42, 2), (42, 3)],
-        "drop must not re-fire deactivate (release_method retired)"
+        "drop must not re-fire deactivate (no implicit release hook)"
     );
 }
 

@@ -3,6 +3,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 mod protosept;
+mod script_bridge;
 
 pub struct GeneratedUnit {
     pub source: String,
@@ -97,6 +98,70 @@ pub fn generate_protosept_to_file(
     output_path: impl AsRef<Path>,
 ) -> Result<Vec<PathBuf>, Error> {
     let generated = generate_protosept(idl_path)?;
+    std::fs::write(output_path.as_ref(), generated.source).map_err(|source| Error::Io {
+        path: output_path.as_ref().to_path_buf(),
+        source,
+    })?;
+    Ok(generated.dependencies)
+}
+
+/// Generate the Rust *script bridge* for the given IDL.
+///
+/// For each interface marked `[protosept(scriptable)]`, the bridge emits
+/// `register_<i>_proto()` and `wrap_<i>()` helpers that delegate to
+/// `crosscom-protosept`.
+///
+/// * `consumer_crate` is the name of the Rust crate that will `include!`
+///   the emitted file. Interfaces declared in that crate's IDLs are
+///   referenced via `crate::<module>::<I>`; everything else uses
+///   absolute external-crate paths (`::<crate>::<module>::<I>`).
+/// * `bridge_root` is the path *inside* the consumer crate where bridge
+///   modules live (e.g. `"script_bridges"`). Cross-IDL dependency calls
+///   are emitted as
+///   `crate::<bridge_root>::<imported_idl_stem>::register_<dep>_proto()`.
+///   The consumer must arrange its module layout to match this
+///   convention.
+pub fn generate_script_bridge(
+    idl_path: impl AsRef<Path>,
+    consumer_crate: &str,
+    bridge_root: &str,
+) -> Result<GeneratedUnit, Error> {
+    let idl_path = idl_path.as_ref();
+    let mut dependencies = Vec::new();
+    let mut visited = HashSet::new();
+    collect_dependencies(idl_path, &mut visited, &mut dependencies)?;
+
+    let local_stem = idl_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| {
+            Error::Generate(format!("cannot derive IDL stem from {}", idl_path.display()))
+        })?
+        .to_string();
+
+    let mut unit = parse_file(idl_path)?;
+    process_imports(idl_path, &mut unit)?;
+    // RustGen normalises local interfaces' `module` field. Replicate
+    // that step so the script-bridge emitter can compute Rust paths
+    // for locally-declared interfaces without a special case.
+    let unit = RustGen::new(unit)?.into_unit();
+    let source = script_bridge::generate(&unit, consumer_crate, bridge_root, &local_stem)?;
+
+    Ok(GeneratedUnit {
+        source,
+        dependencies,
+    })
+}
+
+/// Convenience wrapper around [`generate_script_bridge`] that writes the
+/// result to `output_path`.
+pub fn generate_script_bridge_to_file(
+    idl_path: impl AsRef<Path>,
+    output_path: impl AsRef<Path>,
+    consumer_crate: &str,
+    bridge_root: &str,
+) -> Result<Vec<PathBuf>, Error> {
+    let generated = generate_script_bridge(idl_path, consumer_crate, bridge_root)?;
     std::fs::write(output_path.as_ref(), generated.source).map_err(|source| Error::Io {
         path: output_path.as_ref().to_path_buf(),
         source,
@@ -315,6 +380,20 @@ impl Interface {
             .filter(|method| !method.attrs.contains_key("internal"))
             .cloned()
             .collect()
+    }
+
+    /// True if this interface declares the given flag inside a
+    /// language-scoped attribute group, e.g. `[protosept(scriptable)]`
+    /// returns `true` for `lang_flag("protosept", "scriptable")`.
+    /// The value of `lang(...)` is treated as a comma-separated list
+    /// of flags (`flag` or `flag=value`); whitespace is ignored.
+    pub(crate) fn lang_flag(&self, lang: &str, flag: &str) -> bool {
+        let Some(raw) = self.attrs.get(lang) else {
+            return false;
+        };
+        raw.split(',')
+            .map(str::trim)
+            .any(|tok| tok == flag || tok.split('=').next().map(str::trim) == Some(flag))
     }
 }
 
@@ -691,8 +770,7 @@ struct RustGen {
 }
 
 impl RustGen {
-    fn new(mut unit: CrossComIdl) -> Result<Self, Error> {
-        let current_module = rust_module(&unit)?.clone();
+    fn new(mut unit: CrossComIdl) -> Result<Self, Error> {        let current_module = rust_module(&unit)?.clone();
         let mut symbols = HashMap::new();
 
         for item in &mut unit.items {
@@ -717,6 +795,13 @@ impl RustGen {
             symbols,
             crosscom_module_name: "crosscom".to_string(),
         })
+    }
+
+    /// Consume the `RustGen` and return its (now module-normalised)
+    /// IDL unit. Used by `generate_script_bridge` to share the same
+    /// module-resolution logic without re-running it.
+    fn into_unit(self) -> CrossComIdl {
+        self.unit
     }
 
     fn gen(&self) -> Result<String, Error> {
@@ -1860,5 +1945,71 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn lang_scoped_attribute_parses_and_lang_flag_reports_membership() {
+        let src = r#"
+            module(rust) demo::langattrs;
+
+            [uuid(00000000-0000-0000-0000-000000000010), protosept(scriptable)]
+            interface IScripted: IUnknown { void invoke(); }
+
+            [uuid(00000000-0000-0000-0000-000000000011),
+             protosept(scriptable, host_only)]
+            interface IMulti: IUnknown { void noop(); }
+
+            [uuid(00000000-0000-0000-0000-000000000012),
+             csharp(internal_only)]
+            interface IPlain: IUnknown { void noop(); }
+        "#;
+        let unit = parse_source(src).unwrap();
+        let by_name = |n: &str| {
+            unit.items.iter().find_map(|item| match item {
+                Item::Interface(i) if i.name == n => Some(i),
+                _ => None,
+            }).unwrap()
+        };
+
+        let scripted = by_name("IScripted");
+        assert!(scripted.lang_flag("protosept", "scriptable"));
+        assert!(!scripted.lang_flag("protosept", "host_only"));
+        assert!(!scripted.lang_flag("csharp", "scriptable"));
+
+        let multi = by_name("IMulti");
+        assert!(multi.lang_flag("protosept", "scriptable"));
+        assert!(multi.lang_flag("protosept", "host_only"));
+
+        // Unknown language scopes are parsed but ignored by other lang
+        // queries.
+        let plain = by_name("IPlain");
+        assert!(!plain.lang_flag("protosept", "scriptable"));
+        assert!(plain.lang_flag("csharp", "internal_only"));
+    }
+
+    #[test]
+    fn protosept_scriptable_attribute_is_present_on_known_idl_interfaces() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let idl_dir = manifest_dir.join("..").join("idl");
+        // Each entry: (idl file, interface name).
+        let expected = [
+            ("crosscom.idl", "IAction"),
+            ("radiance.idl", "IDirector"),
+            ("immediate_director.idl", "IImmediateDirector"),
+            ("pal4_debug.idl", "IPal4DebugOverlay"),
+        ];
+        for (file, iface) in expected {
+            let mut unit = parse_file(&idl_dir.join(file)).unwrap();
+            process_imports(&idl_dir.join(file), &mut unit).unwrap();
+            let found = unit.items.iter().any(|item| match item {
+                Item::Interface(i) => {
+                    i.name == iface
+                        && !i.codegen_ignore()
+                        && i.lang_flag("protosept", "scriptable")
+                }
+                _ => false,
+            });
+            assert!(found, "{file}::{iface} should be [protosept(scriptable)]");
+        }
     }
 }

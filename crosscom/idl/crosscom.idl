@@ -23,7 +23,7 @@ class ObjectArray: IObjectArray {}
 // one of these via a per-language SAM-coercion rule; the crosscom layer
 // itself stays unaware of "closures" as a concept.
 
-[uuid(5a8b1d3f-7a26-4d4b-9c41-1e9b4f0a0c01)]
+[uuid(5a8b1d3f-7a26-4d4b-9c41-1e9b4f0a0c01), protosept(scriptable)]
 interface IAction: IUnknown {
     void invoke();
 }

@@ -23,7 +23,8 @@
 //   step that the engine pumps inside its imgui frame scope. Scripts
 //   may implement this directly via `struct[radiance.IImmediateDirector]`,
 //   and the resulting `box<IImmediateDirector>` is reverse-wrapped to
-//   `ComRc<IDirector>` via `radiance_scripting::wrap_im_director`.
+//   `ComRc<IDirector>` via the auto-generated `wrap_immediate_director`
+//   (re-exported as `radiance_scripting::wrap_im_director`).
 
 module(rust) radiance_scripting::comdef::immediate_director;
 
@@ -190,7 +191,7 @@ class UiHost: IUiHost {}
 // engine inside its imgui frame scope (Phase D of director.md); the
 // inherited `IDirector::activate` / `IDirector::update` remain the
 // activation/transition contract.
-[uuid(3cc6ab2c-0d00-499f-b59f-7e9d63abb136)]
+[uuid(3cc6ab2c-0d00-499f-b59f-7e9d63abb136), protosept(scriptable)]
 interface IImmediateDirector: IDirector {
     void render_im(IUiHost ui, float dt);
 }

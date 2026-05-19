@@ -131,7 +131,6 @@ fn register_counter() {
                 ret: RetKind::Int,
             },
         ],
-        release_method: None,
         additional_query_uuids: vec![],
     });
     // Idempotent: subsequent calls return Err("already registered"),
@@ -306,7 +305,6 @@ fn register_dirlike() {
                 },
             },
         ],
-        release_method: None,
         additional_query_uuids: vec![],
     });
 }
@@ -441,178 +439,6 @@ fn wrap_proto_for_unregistered_uuid_errors_loudly() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Release hook (Phase 4 B4): a proto with `release_method` fires the
-// named script method on final CCW release.
-// ---------------------------------------------------------------------------
-
-const ICLOSEABLE_UUID: [u8; 16] = [
-    0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33,
-];
-
-#[repr(C)]
-struct ICloseableVtbl {
-    iunk: IUnknownVirtualTable,
-    ping: unsafe extern "system" fn(this: *const *const c_void),
-}
-
-#[repr(C)]
-struct ICloseableInst {
-    vtable: *const ICloseableVtbl,
-}
-
-impl ComInterface for ICloseableInst {
-    const INTERFACE_ID: [u8; 16] = ICLOSEABLE_UUID;
-}
-
-const CLOSEABLE_SCRIPT: &str = r#"
-@foreign(dispatcher="com.invoke", finalizer="com.release",
-         type_tag="test.ICloseable",
-         uuid="33333333-3333-3333-3333-333333333333")
-pub proto ICloseable {
-    fn ping(self: ref<ICloseable>);
-    // `on_close` is declared as part of the proto so `push_proto_method`
-    // can find it during the release hook dispatch. This is a Phase 4
-    // requirement documented on `ProtoSpec::release_method`.
-    fn on_close(self: ref<ICloseable>);
-}
-
-@intrinsic(name="test.closeable_record")
-fn closeable_record(seed: int, event: int);
-
-struct[ICloseable] Closeable(
-    seed: int,
-) {
-    pub fn ping(self: ref<Self>) {
-        closeable_record(self.seed, 1);
-    }
-    pub fn on_close(self: ref<Self>) {
-        closeable_record(self.seed, 2);
-    }
-}
-
-pub fn make_closeable(seed: int) -> box<ICloseable> {
-    let c = box(Closeable(seed));
-    c as box<ICloseable>
-}
-"#;
-
-static CLOSEABLE_LOG: Mutex<Vec<(i64, i64)>> = Mutex::new(Vec::new());
-
-fn closeable_record_host_fn(ctx: &mut Context) -> Result<(), p7::errors::RuntimeError> {
-    let frame = ctx.stack_frame_mut()?;
-    let event = frame.stack.pop().expect("event");
-    let seed = frame.stack.pop().expect("seed");
-    match (seed, event) {
-        (Data::Int(s), Data::Int(e)) => {
-            CLOSEABLE_LOG.lock().unwrap().push((s, e));
-            Ok(())
-        }
-        other => panic!("expected (int, int), got {:?}", other),
-    }
-}
-
-fn register_closeable() {
-    let _ = register_proto_ccw(ProtoSpec {
-        uuid: ICLOSEABLE_UUID,
-        type_tag: "test.ICloseable".into(),
-        methods: vec![MethodSpec {
-            name: "ping".into(),
-            args: vec![],
-            ret: RetKind::Void,
-        }],
-        release_method: Some("on_close".into()),
-        additional_query_uuids: vec![],
-    });
-}
-
-fn build_closeable_test_ctx(seed: i64) -> (Rc<TestRuntime>, Data) {
-    let mut ctx = Context::new();
-    ctx.register_host_function(
-        "test.closeable_record".to_string(),
-        closeable_record_host_fn,
-    );
-    let module = p7::compile(CLOSEABLE_SCRIPT.to_string()).expect("compile");
-    ctx.load_module(module);
-    ctx.push_function("make_closeable", vec![Data::Int(seed)]);
-    ctx.resume().expect("make_closeable ran");
-    let data = ctx.stack[0].stack.pop().expect("returned box");
-    (TestRuntime::new(ctx), data)
-}
-
-#[test]
-fn release_hook_fires_on_final_drop() {
-    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    register_closeable();
-    CLOSEABLE_LOG.lock().unwrap().clear();
-
-    let (runtime, data) = build_closeable_test_ctx(42);
-    let handle = RuntimeHandle::from_rc(&runtime);
-    let inst: ComRc<ICloseableInst> = wrap_proto(&handle, data).expect("wrap_proto");
-
-    // Drop without calling ping; release_method should still fire.
-    drop(inst);
-    assert_eq!(
-        *CLOSEABLE_LOG.lock().unwrap(),
-        vec![(42, 2)],
-        "on_close fired exactly once on final drop"
-    );
-    runtime.with_ctx_mut(|ctx| {
-        assert!(
-            ctx.external_root(0).is_none(),
-            "root cleared after release hook + unroot"
-        );
-    });
-}
-
-#[test]
-fn release_hook_fires_after_method_invocations() {
-    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    register_closeable();
-    CLOSEABLE_LOG.lock().unwrap().clear();
-
-    let (runtime, data) = build_closeable_test_ctx(7);
-    let handle = RuntimeHandle::from_rc(&runtime);
-    let inst: ComRc<ICloseableInst> = wrap_proto(&handle, data).expect("wrap_proto");
-
-    unsafe {
-        let this = &*inst as *const ICloseableInst as *const *const c_void;
-        ((*(*inst).vtable).ping)(this);
-        ((*(*inst).vtable).ping)(this);
-    }
-    drop(inst);
-
-    assert_eq!(
-        *CLOSEABLE_LOG.lock().unwrap(),
-        vec![(7, 1), (7, 1), (7, 2)],
-        "ping ping then on_close"
-    );
-}
-
-#[test]
-fn release_hook_silent_noop_after_runtime_drop() {
-    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    register_closeable();
-    let before = CLOSEABLE_LOG.lock().unwrap().len();
-
-    let (runtime, data) = build_closeable_test_ctx(99);
-    let handle = RuntimeHandle::from_rc(&runtime);
-    let inst: ComRc<ICloseableInst> = wrap_proto(&handle, data).expect("wrap_proto");
-
-    drop(runtime);
-    assert!(handle.is_dangling(), "runtime gone");
-
-    // Final drop must not panic, and must not record an on_close
-    // because the runtime can't dispatch it.
-    drop(inst);
-    let after = CLOSEABLE_LOG.lock().unwrap().clone();
-    // The slice past `before` must not contain a (99, _) entry
-    // attributable to this test's release hook.
-    assert!(
-        !after[before..].iter().any(|(s, _)| *s == 99),
-        "no on_close should record when runtime is gone; got {after:?}"
-    );
-}
 
 // Silence unused-c_long warnings on platforms where c_int == c_long.
 #[allow(dead_code)]

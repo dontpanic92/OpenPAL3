@@ -8,9 +8,10 @@
 //   getters below.
 //
 // * `IPal4DebugOverlay` — script-implemented. A p7 struct conforms
-//   to this proto directly (no Rust wrapper). The reverse-wrap
-//   helper in `shared::openpal4::debug::wrap_overlay` turns the
-//   `box<...>` returned from the bootstrap script into a
+//   to this proto directly (no Rust wrapper). The auto-generated
+//   `wrap_pal4_debug_overlay` helper (re-exported as `wrap_overlay`
+//   from `shared::openpal4::pal4_debug`) turns the `box<...>`
+//   returned from the bootstrap script into a
 //   `ComRc<IPal4DebugOverlay>` the director can call each frame.
 
 module(rust) shared::openpal4::comdef::pal4_debug;
@@ -39,7 +40,7 @@ interface IPal4DebugContext: IUnknown {
 [uuid(9c1b6f70-1f7a-4d31-9b6a-2e9d4a8e0b02)]
 class Pal4DebugContext: IPal4DebugContext {}
 
-[uuid(9c1b6f70-1f7a-4d31-9b6a-2e9d4a8e0b03)]
+[uuid(9c1b6f70-1f7a-4d31-9b6a-2e9d4a8e0b03), protosept(scriptable)]
 interface IPal4DebugOverlay: IUnknown {
     void render(IUiHost ui, float dt, IPal4DebugContext ctx);
 }

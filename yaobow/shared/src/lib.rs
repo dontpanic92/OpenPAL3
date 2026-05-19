@@ -11,6 +11,12 @@ pub mod openpal5;
 pub mod openswd5;
 pub mod playground;
 pub mod scripting;
+/// Auto-generated script bridges from `[protosept(scriptable)]` IDLs.
+pub mod script_bridges {
+    pub mod pal4_debug {
+        include!(concat!(env!("OUT_DIR"), "/shared_pal4_debug_bridge.rs"));
+    }
+}
 pub mod ui;
 pub mod utils;
 pub mod video;

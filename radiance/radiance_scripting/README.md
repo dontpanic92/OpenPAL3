@@ -29,8 +29,10 @@ director swap is a return value from `update`.
    `radiance_scripting::ImguiImmediateDirectorPump` is the production
    implementation: it parks `ImguiFrameState` around each per-frame
    `render_im(ui, dt)` call inside the engine's imgui scope.
-6. **`deactivate` fires on final ComRc release** through the CCW's
-   release-method hook (`ProtoSpec::release_method = Some("deactivate")`).
+6. **`deactivate` fires as a first-class `IDirector` method** declared in
+   `radiance.idl`, invoked exactly once by `ISceneManager` before the old
+   director is replaced. Dropping the final `ComRc<IDirector>` is pure
+   unrooting — no implicit release-hook dispatch.
 7. **Hot reload is not supported.** p7's `load_module` is append-only, and
    `ScriptHost::reload` (which would discard and rebuild interpreter state)
    cannot run inside a script call without panicking on `RefCell` reentry.
@@ -56,8 +58,7 @@ The canonical adapter shape lives in `yaobow_editor/scripts/editor_consts.p7`.
 | --- | --- |
 | `src/runtime.rs` | `ScriptHost`, `ScriptDirectorHandle`, `RuntimeServices` |
 | `src/proxies/imgui_pump.rs` | `ImguiImmediateDirectorPump` (production pump) |
-| `src/proxies/wrap_director.rs` | `wrap_director` (plain `IDirector`) convenience |
-| `src/proxies/wrap_im_director.rs` | `wrap_im_director` (`IImmediateDirector`) convenience |
+| `src/script_bridges/` (auto-generated) | `wrap_director` / `wrap_immediate_director` / `register_*_proto` from `[protosept(scriptable)]` IDLs |
 | `src/services/` | `HostContext`, `GameRegistry`, `InputService`, `AudioService`, `TextureService`, `VfsService`, `ImguiUiHost`, `RecordingUiHost`, `TextureResolver` |
 | `tests/runtime_smoke.rs` | `ScriptHost` lifecycle round-trips |
 | `tests/services_smoke.rs` | Typed host-service contracts |

@@ -104,7 +104,6 @@ fn ensure_director_registered() {
                 ret: RetKind::Void,
             },
         ],
-        release_method: None,
         additional_query_uuids: vec![],
     })
     .expect("register radiance.IDirector");
