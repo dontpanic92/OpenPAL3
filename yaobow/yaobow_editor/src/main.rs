@@ -1,6 +1,6 @@
 use crosscom::ComRc;
 use radiance::application::Application;
-use radiance::comdef::{IApplication, IApplicationExt, IApplicationLoaderComponent};
+use radiance::comdef::{IApplication, IApplicationLoaderComponent};
 use radiance_editor::application::EditorApplicationLoader;
 use shared::GameType;
 use yaobow_editor::config;

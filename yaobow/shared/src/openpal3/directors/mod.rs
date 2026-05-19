@@ -6,10 +6,7 @@ use radiance::comdef::{IEntity, ISceneManager};
 
 use crate::scripting::sce::SceState;
 
-use super::{
-    comdef::{IRoleController, IScnSceneComponent},
-    scene::RoleController,
-};
+use super::{comdef::IScnSceneComponent, scene::RoleController};
 
 pub trait SceneManagerExtensions {
     fn scn_scene(&self) -> Option<ComRc<IScnSceneComponent>>;
