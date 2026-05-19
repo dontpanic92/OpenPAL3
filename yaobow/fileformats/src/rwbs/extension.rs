@@ -348,6 +348,14 @@ impl UnknownPlugin {
 /// Pair `texture.name` (e.g. `"Cylinder1746LightingMap"`) with the
 /// material's primary `Material::texture.name` (the diffuse, e.g.
 /// `"fz01"`) to sample the baked lightmap with the secondary UV set.
+///
+/// Note: PAL4 DFFs also occasionally carry a 0x120 chunk, but only at
+/// the *atomic* level (sky/water/trans scene blocks) and with a
+/// degenerate body of just `[0x01, 0, 0, 0]` and no embedded TEXTURE
+/// — i.e. a per-atomic flag, not a material lightmap atlas reference.
+/// Material-level lightmap plugins (the kind this struct primarily
+/// models) appear only on BSP materials in shipped PAL4 data; no DFF
+/// material has been observed with one.
 #[derive(Debug, Serialize)]
 pub struct LightMapPlugin {
     pub raw_preamble: Vec<u8>,

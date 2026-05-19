@@ -348,8 +348,15 @@ fn create_geometry(
     let vertices = geometry.morph_targets[0].vertices.as_ref().unwrap();
     let normals = geometry.morph_targets[0].normals.as_ref();
     let triangles = &geometry.triangles;
+    // Preserve *all* UV sets the DFF ships, not just UV0. PAL4 DFFs
+    // are single-UV in practice, but a future format/game (or a fan
+    // mod) could ship a 2-UV DFF and the lightmap path in
+    // `create_geometry_internal` is already wired to consume a
+    // secondary set when the caller passes a `bsp_lightmap_tint` and
+    // the material carries a `LightMapPlugin`. Dropping UV1 here used
+    // to silently disable that path for DFFs.
     let texcoord_sets = if geometry.texcoord_sets.len() >= 1 {
-        vec![geometry.texcoord_sets[0].clone()]
+        geometry.texcoord_sets.clone()
     } else {
         vec![vertices.iter().map(|_| TexCoord { u: 0., v: 0. }).collect()]
     };
