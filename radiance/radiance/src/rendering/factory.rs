@@ -1,8 +1,8 @@
 use imgui::TextureId;
 
 use super::{
-    texture::TextureDef, MaterialDef, RenderObject, RenderTarget, RenderingComponent, Texture,
-    VertexBuffer, VideoPlayer,
+    texture::TextureDef, MaterialDef, RenderObjectHandle, RenderTarget, RenderingComponent,
+    Texture, VertexBuffer, VideoPlayer,
 };
 
 pub trait ComponentFactory {
@@ -25,10 +25,9 @@ pub trait ComponentFactory {
         indices: Vec<u32>,
         material_def: &MaterialDef,
         host_dynamic: bool,
-    ) -> Box<dyn RenderObject>;
+    ) -> RenderObjectHandle;
 
-    fn create_rendering_component(&self, objects: Vec<Box<dyn RenderObject>>)
-        -> RenderingComponent;
+    fn create_rendering_component(&self, objects: Vec<RenderObjectHandle>) -> RenderingComponent;
 
     fn create_video_player(&self) -> Box<VideoPlayer>;
 

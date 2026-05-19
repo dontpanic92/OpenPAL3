@@ -283,7 +283,7 @@ impl AnimatedMeshComponent {
         let objects = rc.render_objects();
 
         for i in 0..objects.len() {
-            let ro = &objects[i];
+            let ro = objects[i].as_dyn();
             ro.update_vertices(&|vb: RefMut<VertexBuffer>| {
                 self.update_morph_target(timestamp, i, vb);
             });

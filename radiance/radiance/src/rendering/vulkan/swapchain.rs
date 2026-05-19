@@ -204,9 +204,9 @@ impl SwapChain {
     pub fn record_command_buffers(
         &mut self,
         image_index: usize,
-        opaque_objects: &[&VulkanRenderObject],
-        cutout_objects: &[&VulkanRenderObject],
-        transparent_objects: &[&VulkanRenderObject],
+        opaque_objects: &[Rc<VulkanRenderObject>],
+        cutout_objects: &[Rc<VulkanRenderObject>],
+        transparent_objects: &[Rc<VulkanRenderObject>],
         dub_manager: &DynamicUniformBufferManager,
         viewport: Viewport,
         ui_frame: ImguiFrame,
@@ -309,9 +309,9 @@ impl SwapChain {
         framebuffer: vk::Framebuffer,
         extent: vk::Extent2D,
         per_frame_descriptor_set: vk::DescriptorSet,
-        opaque_objects: &[&VulkanRenderObject],
-        cutout_objects: &[&VulkanRenderObject],
-        transparent_objects: &[&VulkanRenderObject],
+        opaque_objects: &[Rc<VulkanRenderObject>],
+        cutout_objects: &[Rc<VulkanRenderObject>],
+        transparent_objects: &[Rc<VulkanRenderObject>],
         dub_manager: &DynamicUniformBufferManager,
     ) -> Result<(), vk::Result> {
         let begin_info = vk::CommandBufferBeginInfo::default()
@@ -392,9 +392,9 @@ impl SwapChain {
         &mut self,
         command_buffer: vk::CommandBuffer,
         per_frame_descriptor_set: vk::DescriptorSet,
-        opaque: &[&VulkanRenderObject],
-        cutout: &[&VulkanRenderObject],
-        transparent: &[&VulkanRenderObject],
+        opaque: &[Rc<VulkanRenderObject>],
+        cutout: &[Rc<VulkanRenderObject>],
+        transparent: &[Rc<VulkanRenderObject>],
     ) {
         let first = opaque
             .first()
@@ -422,23 +422,23 @@ impl SwapChain {
     fn draw_bucket_grouped(
         &mut self,
         command_buffer: vk::CommandBuffer,
-        objects: &[&VulkanRenderObject],
+        objects: &[Rc<VulkanRenderObject>],
         dub_manager: &DynamicUniformBufferManager,
     ) {
         let mut material_index: std::collections::HashMap<MaterialKey, usize> =
             std::collections::HashMap::new();
         let mut materials: Vec<*const super::material::VulkanMaterial> = vec![];
-        let mut groups: Vec<Vec<&VulkanRenderObject>> = vec![];
+        let mut groups: Vec<Vec<Rc<VulkanRenderObject>>> = vec![];
         for obj in objects {
             let key = *obj.material().key();
             if let Some(&idx) = material_index.get(&key) {
-                groups[idx].push(obj);
+                groups[idx].push(obj.clone());
             } else {
                 material_index.insert(key, materials.len());
                 self.pipeline_manager
                     .create_pipeline_if_not_exist(obj.material());
                 materials.push(obj.material() as *const _);
-                groups.push(vec![obj]);
+                groups.push(vec![obj.clone()]);
             }
         }
         self.draw_groups(command_buffer, &materials, &groups, dub_manager);
@@ -447,14 +447,14 @@ impl SwapChain {
     fn draw_bucket_ordered(
         &mut self,
         command_buffer: vk::CommandBuffer,
-        objects: &[&VulkanRenderObject],
+        objects: &[Rc<VulkanRenderObject>],
         dub_manager: &DynamicUniformBufferManager,
     ) {
         // Preserve caller-supplied order; only consolidate consecutive
         // objects that share a MaterialKey. Required for back-to-front
         // correctness on translucent geometry.
         let mut materials: Vec<*const super::material::VulkanMaterial> = vec![];
-        let mut groups: Vec<Vec<&VulkanRenderObject>> = vec![];
+        let mut groups: Vec<Vec<Rc<VulkanRenderObject>>> = vec![];
         let mut last_key: Option<MaterialKey> = None;
         for obj in objects {
             let key = *obj.material().key();
@@ -462,10 +462,10 @@ impl SwapChain {
                 self.pipeline_manager
                     .create_pipeline_if_not_exist(obj.material());
                 materials.push(obj.material() as *const _);
-                groups.push(vec![obj]);
+                groups.push(vec![obj.clone()]);
                 last_key = Some(key);
             } else {
-                groups.last_mut().unwrap().push(obj);
+                groups.last_mut().unwrap().push(obj.clone());
             }
         }
         self.draw_groups(command_buffer, &materials, &groups, dub_manager);
@@ -495,7 +495,7 @@ impl SwapChain {
         &mut self,
         command_buffer: vk::CommandBuffer,
         materials: &[*const super::material::VulkanMaterial],
-        groups: &[Vec<&VulkanRenderObject>],
+        groups: &[Vec<Rc<VulkanRenderObject>>],
         dub_manager: &DynamicUniformBufferManager,
     ) {
         let mut last_material_ptr: *const super::material::VulkanMaterial = std::ptr::null();

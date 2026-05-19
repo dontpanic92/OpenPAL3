@@ -3235,7 +3235,6 @@ dependencies = [
  "crosscom",
  "crosscom-ccidl",
  "dashmap",
- "downcast-rs",
  "gilrs",
  "hound",
  "image 0.23.14",

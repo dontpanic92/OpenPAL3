@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use imgui::TextureId;
 
 use crate::rendering::{
-    ComponentFactory, MaterialDef, RenderObject, RenderingComponent, Shader, ShaderProgram,
+    ComponentFactory, MaterialDef, RenderObjectHandle, RenderingComponent, Shader, ShaderProgram,
     Texture, TextureDef, VertexBuffer, VideoPlayer,
 };
 
@@ -49,19 +49,18 @@ impl ComponentFactory for VitaGLComponentFactory {
         indices: Vec<u32>,
         material_def: &MaterialDef,
         host_dynamic: bool,
-    ) -> Box<dyn RenderObject> {
+    ) -> RenderObjectHandle {
         let material = Rc::new(VitaGLMaterial::new(
             material_def,
             self.create_shader(material_def.shader()),
         ));
-        let x =
-            Box::new(VitaGLRenderObject::new(vertices, indices, material, host_dynamic).unwrap());
-        x
+        let vro = Rc::new(VitaGLRenderObject::new(vertices, indices, material, host_dynamic).unwrap());
+        RenderObjectHandle::from_vitagl(vro)
     }
 
     fn create_rendering_component(
         &self,
-        objects: Vec<Box<dyn RenderObject>>,
+        objects: Vec<RenderObjectHandle>,
     ) -> RenderingComponent {
         let mut component = RenderingComponent::new();
         for o in objects {

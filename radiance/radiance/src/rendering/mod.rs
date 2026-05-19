@@ -25,7 +25,7 @@ pub use material::{
     MaterialKey, MaterialParams, SimpleMaterialDef,
 };
 pub use platform::Window;
-pub use render_object::RenderObject;
+pub use render_object::{RenderObject, RenderObjectHandle};
 pub use render_target::RenderTarget;
 pub use rendering_component::RenderingComponent;
 pub use sampler::{AddressMode, FilterMode, MipmapMode, SamplerDef};

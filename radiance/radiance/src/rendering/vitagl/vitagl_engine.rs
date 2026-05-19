@@ -61,26 +61,20 @@ impl RenderingEngine for VitaGLRenderingEngine {
                     .and_then(|c| Some((c, e.world_transform().matrix().clone())))
             })
             .collect();
-        let r_objects: Vec<&VitaGLRenderObject> = rc
+        let r_objects: Vec<std::rc::Rc<VitaGLRenderObject>> = rc
             .iter()
-            .map(|(c, m)| {
+            .flat_map(|(c, m)| {
                 let m = m.clone();
-                c.render_objects().iter().map(move |o| (o, m))
-            })
-            .flatten()
-            .filter_map(|(c, m)| {
-                c.downcast_ref::<VitaGLRenderObject>()
-                    .and_then(|c| Some((c, m)))
-            })
-            .map(|(c, m)| {
-                c.set_model_matrix(m);
-                c
+                c.vitagl_render_objects().iter().map(move |vro| {
+                    vro.set_model_matrix(m.clone());
+                    vro.clone()
+                })
             })
             .collect();
 
         let mut objects_by_material = vec![];
-        for obj in r_objects {
-            objects_by_material.push((obj.material(), vec![obj]));
+        for obj in &r_objects {
+            objects_by_material.push((obj.material(), vec![obj.clone()]));
         }
         for (material, objects) in objects_by_material {
             unsafe {

@@ -81,6 +81,20 @@ pub struct VulkanRenderingEngine {
     /// the next swapchain submit must wait on before sampling. Populated
     /// by `render_scene_to_target`, drained by `render`.
     pending_offscreen_waits: Vec<vk::Semaphore>,
+
+    // Per-frame scratch storage. Hoisted onto the engine so each pass
+    // reuses the prior frame's capacity instead of allocating a fresh
+    // `Vec` for every extraction — addresses the per-frame allocator
+    // churn flagged in `generated/engine_analysis.md` ("Render extraction
+    // allocates and downcasts every frame"). Each pass calls `clear()`
+    // on these at entry; the `Rc<VulkanRenderObject>` clones are cheap
+    // (single non-atomic refcount bump) and avoid the storage-borrow
+    // lifetime problem that `&VulkanRenderObject` would create.
+    scratch_components: Vec<(Rc<RenderingComponent>, Mat44)>,
+    scratch_opaque: Vec<Rc<VulkanRenderObject>>,
+    scratch_cutout: Vec<Rc<VulkanRenderObject>>,
+    scratch_transparent: Vec<(f32, usize, usize, Rc<VulkanRenderObject>)>,
+    scratch_transparent_ordered: Vec<Rc<VulkanRenderObject>>,
 }
 
 impl RenderingEngine for VulkanRenderingEngine {
@@ -97,14 +111,14 @@ impl RenderingEngine for VulkanRenderingEngine {
 
         let entities = scene.visible_entities();
 
+        // Update the dynamic UBO with each visible render object's world
+        // transform. Iterates the backend-typed view on RenderingComponent,
+        // so no per-RO downcast is needed.
         self.dub_manager().update_do(|updater| {
             for entity in &entities {
                 if let Some(rc) = entity.get_rendering_component() {
-                    let objects = rc.render_objects();
-                    for ro in objects {
-                        if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
-                            updater(vro.dub_index(), entity.world_transform().matrix());
-                        }
+                    for vro in rc.vulkan_render_objects() {
+                        updater(vro.dub_index(), entity.world_transform().matrix());
                     }
                 }
             }
@@ -136,7 +150,7 @@ impl RenderingEngine for VulkanRenderingEngine {
         scene: ComRc<IScene>,
         target: &mut dyn crate::rendering::RenderTarget,
     ) {
-        let target = match target.downcast_mut::<super::render_target::VulkanRenderTarget>() {
+        let target = match target.as_vulkan_mut() {
             Some(t) => t,
             None => {
                 log::warn!("render_scene_to_target: target is not a VulkanRenderTarget");
@@ -144,16 +158,13 @@ impl RenderingEngine for VulkanRenderingEngine {
             }
         };
 
-        let swapchain = match self.swapchain.as_mut() {
-            Some(s) => s,
-            None => {
-                // No swapchain yet means no command pool / pipeline cache
-                // wired up; defer until the first `render` call recreates
-                // the swapchain. The script-level previewer will retry on
-                // the next frame.
-                return;
-            }
-        };
+        if self.swapchain.is_none() {
+            // No swapchain yet means no command pool / pipeline cache
+            // wired up; defer until the first `render` call recreates
+            // the swapchain. The script-level previewer will retry on
+            // the next frame.
+            return;
+        }
 
         let entities = scene.visible_entities();
 
@@ -164,78 +175,31 @@ impl RenderingEngine for VulkanRenderingEngine {
         dub_manager.update_do(|updater| {
             for entity in &entities {
                 if let Some(rc) = entity.get_rendering_component() {
-                    for ro in rc.render_objects() {
-                        if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
-                            updater(vro.dub_index(), entity.world_transform().matrix());
-                        }
+                    for vro in rc.vulkan_render_objects() {
+                        updater(vro.dub_index(), entity.world_transform().matrix());
                     }
                 }
             }
         });
 
         // Build opaque / cutout / transparent buckets (mirrors `render_objects`).
-        let (camera_world, camera_view, camera_proj, camera_frustum) = {
+        let (camera_view, camera_proj) = {
             let camera = scene.camera();
-            let m = camera.transform().matrix();
             (
-                [m[0][3], m[1][3], m[2][3]],
                 Mat44::inversed(camera.transform().matrix()),
                 *camera.projection_matrix(),
-                camera.frustum(),
             )
         };
-        let rc: Vec<(Rc<RenderingComponent>, Mat44)> = entities
-            .iter()
-            .filter_map(|e| {
-                let r = e.get_rendering_component()?;
-                Some((r, e.world_transform().matrix().clone()))
-            })
-            .collect();
 
-        let mut opaque: Vec<&VulkanRenderObject> = vec![];
-        let mut cutout: Vec<&VulkanRenderObject> = vec![];
-        let mut transparent: Vec<(f32, usize, usize, &VulkanRenderObject)> = vec![];
-        for (entity_idx, (rendering, world)) in rc.iter().enumerate() {
-            let m = world.floats();
-            for (ro_idx, ro) in rendering.render_objects().iter().enumerate() {
-                if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
-                    if let Some((lmin, lmax)) = vro.local_aabb() {
-                        let (wmin, wmax) =
-                            crate::math::transform_aabb(lmin, lmax, world);
-                        if !crate::math::aabb_visible(wmin, wmax, &camera_frustum) {
-                            continue;
-                        }
-                    }
-                    match vro.material().key().blend {
-                        BlendMode::Opaque => opaque.push(vro),
-                        BlendMode::AlphaTest => cutout.push(vro),
-                        BlendMode::AlphaBlend | BlendMode::Additive | BlendMode::Multiply => {
-                            let c = vro.local_centroid();
-                            let wx = m[0][0] * c[0] + m[0][1] * c[1] + m[0][2] * c[2] + m[0][3];
-                            let wy = m[1][0] * c[0] + m[1][1] * c[1] + m[1][2] * c[2] + m[1][3];
-                            let wz = m[2][0] * c[0] + m[2][1] * c[1] + m[2][2] * c[2] + m[2][3];
-                            let dx = wx - camera_world[0];
-                            let dy = wy - camera_world[1];
-                            let dz = wz - camera_world[2];
-                            transparent.push((
-                                dx * dx + dy * dy + dz * dz,
-                                entity_idx,
-                                ro_idx,
-                                vro,
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-        transparent.sort_by(|a, b| {
-            b.0.partial_cmp(&a.0)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then(a.1.cmp(&b.1))
-                .then(a.2.cmp(&b.2))
-        });
-        let transparent_ordered: Vec<&VulkanRenderObject> =
-            transparent.into_iter().map(|(_, _, _, ro)| ro).collect();
+        Self::bucketize_visible(
+            &entities,
+            &scene.camera(),
+            &mut self.scratch_components,
+            &mut self.scratch_opaque,
+            &mut self.scratch_cutout,
+            &mut self.scratch_transparent,
+            &mut self.scratch_transparent_ordered,
+        );
 
         // Update target's per-frame UBO with the scene's camera.
         let ubo = PerFrameUniformBuffer::new(&camera_view, &camera_proj);
@@ -249,15 +213,16 @@ impl RenderingEngine for VulkanRenderingEngine {
         let target_descriptor = target.per_frame_descriptor_set();
         let target_semaphore = target.vk_render_finished_semaphore();
 
+        let swapchain = self.swapchain.as_mut().unwrap();
         if let Err(e) = swapchain.record_to_external_framebuffer(
             target_cmd,
             target_rp,
             target_fb,
             target_extent,
             target_descriptor,
-            &opaque,
-            &cutout,
-            &transparent_ordered,
+            &self.scratch_opaque,
+            &self.scratch_cutout,
+            &self.scratch_transparent_ordered,
             &dub_manager,
         ) {
             log::warn!("offscreen record failed: {:?}", e);
@@ -465,6 +430,11 @@ impl VulkanRenderingEngine {
             current_frame: 0,
             imgui,
             pending_offscreen_waits: Vec::new(),
+            scratch_components: Vec::new(),
+            scratch_opaque: Vec::new(),
+            scratch_cutout: Vec::new(),
+            scratch_transparent: Vec::new(),
+            scratch_transparent_ordered: Vec::new(),
         };
 
         return Ok(vulkan);
@@ -614,98 +584,22 @@ impl VulkanRenderingEngine {
         // ordinal so transparent sorting can compute per-object centroid
         // distance against the camera (instead of per-entity, which
         // would tie every sub-mesh of a single dff together).
-        let camera_world = {
-            let m = camera.transform().matrix();
-            [m[0][3], m[1][3], m[2][3]]
-        };
-        let frustum = camera.frustum();
-        let rc: Vec<(Rc<RenderingComponent>, Mat44)> = entities
-            .iter()
-            .filter_map(|e| {
-                let r = e.get_rendering_component()?;
-                Some((r, e.world_transform().matrix().clone()))
-            })
-            .collect();
-
-        let mut opaque: Vec<&VulkanRenderObject> = vec![];
-        let mut cutout: Vec<&VulkanRenderObject> = vec![];
-        // (dist_sq, entity_idx, ro_idx, ro)
-        let mut transparent: Vec<(f32, usize, usize, &VulkanRenderObject)> = vec![];
-        #[cfg(debug_assertions)]
-        let mut culled_count: usize = 0;
-        #[cfg(debug_assertions)]
-        let mut total_count: usize = 0;
-        for (entity_idx, (rendering, world)) in rc.iter().enumerate() {
-            let m = world.floats();
-            for (ro_idx, ro) in rendering.render_objects().iter().enumerate() {
-                if let Some(vro) = ro.downcast_ref::<VulkanRenderObject>() {
-                    #[cfg(debug_assertions)]
-                    {
-                        total_count += 1;
-                    }
-                    // Frustum reject. Render objects without a known
-                    // local AABB (e.g. backends or callers that don't
-                    // track bounds) fall through to "always visible".
-                    if let Some((lmin, lmax)) = vro.local_aabb() {
-                        let (wmin, wmax) =
-                            crate::math::transform_aabb(lmin, lmax, world);
-                        if !crate::math::aabb_visible(wmin, wmax, &frustum) {
-                            #[cfg(debug_assertions)]
-                            {
-                                culled_count += 1;
-                            }
-                            continue;
-                        }
-                    }
-                    match vro.material().key().blend {
-                        BlendMode::Opaque => opaque.push(vro),
-                        BlendMode::AlphaTest => cutout.push(vro),
-                        BlendMode::AlphaBlend | BlendMode::Additive | BlendMode::Multiply => {
-                            let c = vro.local_centroid();
-                            // Affine transform: world_pos = M * [c, 1].
-                            let wx = m[0][0] * c[0] + m[0][1] * c[1] + m[0][2] * c[2] + m[0][3];
-                            let wy = m[1][0] * c[0] + m[1][1] * c[1] + m[1][2] * c[2] + m[1][3];
-                            let wz = m[2][0] * c[0] + m[2][1] * c[1] + m[2][2] * c[2] + m[2][3];
-                            let dx = wx - camera_world[0];
-                            let dy = wy - camera_world[1];
-                            let dz = wz - camera_world[2];
-                            transparent.push((
-                                dx * dx + dy * dy + dz * dz,
-                                entity_idx,
-                                ro_idx,
-                                vro,
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-        #[cfg(debug_assertions)]
-        log::trace!(
-            "frustum cull: drew {} / {} render objects ({} culled)",
-            total_count - culled_count,
-            total_count,
-            culled_count,
+        Self::bucketize_visible(
+            &entities,
+            camera,
+            &mut self.scratch_components,
+            &mut self.scratch_opaque,
+            &mut self.scratch_cutout,
+            &mut self.scratch_transparent,
+            &mut self.scratch_transparent_ordered,
         );
-        // Back-to-front: farthest from the camera first. Tie-break by
-        // loader-supplied order (entity index, then render-object index)
-        // so equal-distance siblings draw in a deterministic, file-defined
-        // sequence rather than a hash-randomized one.
-        transparent.sort_by(|a, b| {
-            b.0.partial_cmp(&a.0)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then(a.1.cmp(&b.1))
-                .then(a.2.cmp(&b.2))
-        });
-        let transparent_ordered: Vec<&VulkanRenderObject> =
-            transparent.into_iter().map(|(_, _, _, ro)| ro).collect();
 
         let command_buffer = swapchain!()
             .record_command_buffers(
                 image_index as usize,
-                &opaque,
-                &cutout,
-                &transparent_ordered,
+                &self.scratch_opaque,
+                &self.scratch_cutout,
+                &self.scratch_transparent_ordered,
                 &dub_manager,
                 viewport,
                 ui_frame,
@@ -803,6 +697,111 @@ impl VulkanRenderingEngine {
                 self.surface.unwrap(),
             )
         }
+    }
+
+    /// Walk the visible entity list once, collecting rendering components +
+    /// world matrices into `components_out`, then filter each
+    /// `VulkanRenderObject` through frustum culling and bucket the
+    /// survivors into `opaque_out` / `cutout_out` / `transparent_out`
+    /// by `BlendMode`. The transparent bucket is sorted back-to-front
+    /// using camera distance + a stable tie-break, then projected into
+    /// `transparent_ordered_out` for the renderer.
+    ///
+    /// Every output Vec is `clear()`ed (capacity retained) before
+    /// population, so callers should pass the engine's persistent
+    /// scratch fields to avoid per-frame allocations.
+    fn bucketize_visible(
+        entities: &[ComRc<IEntity>],
+        camera: &Camera,
+        components_out: &mut Vec<(Rc<RenderingComponent>, Mat44)>,
+        opaque_out: &mut Vec<Rc<VulkanRenderObject>>,
+        cutout_out: &mut Vec<Rc<VulkanRenderObject>>,
+        transparent_out: &mut Vec<(f32, usize, usize, Rc<VulkanRenderObject>)>,
+        transparent_ordered_out: &mut Vec<Rc<VulkanRenderObject>>,
+    ) {
+        components_out.clear();
+        opaque_out.clear();
+        cutout_out.clear();
+        transparent_out.clear();
+        transparent_ordered_out.clear();
+
+        for entity in entities {
+            if let Some(rc) = entity.get_rendering_component() {
+                components_out.push((rc, entity.world_transform().matrix().clone()));
+            }
+        }
+
+        let camera_world = {
+            let m = camera.transform().matrix();
+            [m[0][3], m[1][3], m[2][3]]
+        };
+        let frustum = camera.frustum();
+
+        #[cfg(debug_assertions)]
+        let mut culled_count: usize = 0;
+        #[cfg(debug_assertions)]
+        let mut total_count: usize = 0;
+        for (entity_idx, (rendering, world)) in components_out.iter().enumerate() {
+            let m = world.floats();
+            for (ro_idx, vro) in rendering.vulkan_render_objects().iter().enumerate() {
+                #[cfg(debug_assertions)]
+                {
+                    total_count += 1;
+                }
+                // Frustum reject. Render objects without a known
+                // local AABB (e.g. backends or callers that don't
+                // track bounds) fall through to "always visible".
+                if let Some((lmin, lmax)) = vro.local_aabb() {
+                    let (wmin, wmax) = crate::math::transform_aabb(lmin, lmax, world);
+                    if !crate::math::aabb_visible(wmin, wmax, &frustum) {
+                        #[cfg(debug_assertions)]
+                        {
+                            culled_count += 1;
+                        }
+                        continue;
+                    }
+                }
+                match vro.material().key().blend {
+                    BlendMode::Opaque => opaque_out.push(vro.clone()),
+                    BlendMode::AlphaTest => cutout_out.push(vro.clone()),
+                    BlendMode::AlphaBlend | BlendMode::Additive | BlendMode::Multiply => {
+                        let c = vro.local_centroid();
+                        // Affine transform: world_pos = M * [c, 1].
+                        let wx = m[0][0] * c[0] + m[0][1] * c[1] + m[0][2] * c[2] + m[0][3];
+                        let wy = m[1][0] * c[0] + m[1][1] * c[1] + m[1][2] * c[2] + m[1][3];
+                        let wz = m[2][0] * c[0] + m[2][1] * c[1] + m[2][2] * c[2] + m[2][3];
+                        let dx = wx - camera_world[0];
+                        let dy = wy - camera_world[1];
+                        let dz = wz - camera_world[2];
+                        transparent_out.push((
+                            dx * dx + dy * dy + dz * dz,
+                            entity_idx,
+                            ro_idx,
+                            vro.clone(),
+                        ));
+                    }
+                }
+            }
+        }
+        #[cfg(debug_assertions)]
+        log::trace!(
+            "frustum cull: drew {} / {} render objects ({} culled)",
+            total_count - culled_count,
+            total_count,
+            culled_count,
+        );
+
+        // Back-to-front: farthest from the camera first. Tie-break by
+        // loader-supplied order (entity index, then render-object index)
+        // so equal-distance siblings draw in a deterministic, file-defined
+        // sequence rather than a hash-randomized one.
+        transparent_out.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.1.cmp(&b.1))
+                .then(a.2.cmp(&b.2))
+        });
+        transparent_ordered_out.extend(transparent_out.iter().map(|(_, _, _, ro)| ro.clone()));
     }
 }
 

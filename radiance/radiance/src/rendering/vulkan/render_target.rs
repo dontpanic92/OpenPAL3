@@ -238,6 +238,10 @@ impl RenderTarget for VulkanRenderTarget {
     fn imgui_texture_id(&self) -> u64 {
         self.imgui_texture_id.id() as u64
     }
+
+    fn as_vulkan_mut(&mut self) -> Option<&mut VulkanRenderTarget> {
+        Some(self)
+    }
 }
 
 impl Drop for VulkanRenderTarget {

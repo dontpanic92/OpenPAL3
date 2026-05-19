@@ -4,12 +4,10 @@ use std::sync::{Arc, Mutex, RwLock};
 use image::RgbaImage;
 use lru::LruCache;
 
-pub trait Texture: downcast_rs::Downcast {
+pub trait Texture {
     fn width(&self) -> u32;
     fn height(&self) -> u32;
 }
-
-downcast_rs::impl_downcast!(Texture);
 
 /// Coarse description of a texture's alpha channel, used by loaders that
 /// can't otherwise tell whether a material should be opaque, alpha-tested

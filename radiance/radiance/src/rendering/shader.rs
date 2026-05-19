@@ -1,10 +1,8 @@
 use super::VertexComponents;
 
-pub trait Shader: downcast_rs::Downcast {
+pub trait Shader {
     fn name(&self) -> &str;
 }
-
-downcast_rs::impl_downcast!(Shader);
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub enum ShaderProgram {

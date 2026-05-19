@@ -161,6 +161,7 @@ impl UvAnimDriver {
 fn apply_uv_xform_recursive(entity: &ComRc<IEntity>, t: f32, anims: &HashMap<String, NamedAnim>) {
     if let Some(rc) = entity.get_rendering_component() {
         for obj in rc.render_objects() {
+            let obj = obj.as_dyn();
             let Some(name) = obj.material_debug_name() else {
                 continue;
             };

@@ -190,7 +190,7 @@ impl IComponentImpl for SkinnedMeshComponent {
         let objects = rc.render_objects();
 
         if objects.len() > 0 {
-            let ro = &objects[0];
+            let ro = objects[0].as_dyn();
             ro.update_vertices(&|vb: RefMut<VertexBuffer>| {
                 self.update_vertex_buffer(vb);
             });

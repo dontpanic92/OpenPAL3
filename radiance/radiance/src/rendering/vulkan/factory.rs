@@ -11,7 +11,7 @@ use super::{
 use crate::rendering::VideoPlayer;
 use crate::rendering::{
     factory::ComponentFactory, texture::TextureDef, MaterialDef, MaterialKey, MaterialParams,
-    RenderObject, RenderingComponent, Texture, VertexBuffer,
+    RenderObjectHandle, RenderingComponent, Texture, VertexBuffer,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -141,9 +141,9 @@ impl ComponentFactory for VulkanComponentFactory {
         indices: Vec<u32>,
         material_def: &MaterialDef,
         host_dynamic: bool,
-    ) -> Box<dyn RenderObject> {
+    ) -> RenderObjectHandle {
         let material = self.get_or_create_material(material_def);
-        let x = Box::new(
+        let vro = Rc::new(
             VulkanRenderObject::new(
                 vertices,
                 indices,
@@ -156,12 +156,12 @@ impl ComponentFactory for VulkanComponentFactory {
             )
             .unwrap(),
         );
-        x
+        RenderObjectHandle::from_vulkan(vro)
     }
 
     fn create_rendering_component(
         &self,
-        objects: Vec<Box<dyn RenderObject>>,
+        objects: Vec<RenderObjectHandle>,
     ) -> RenderingComponent {
         let mut component = RenderingComponent::new();
         for o in objects {

@@ -1,8 +1,9 @@
 use std::cell::RefMut;
+use std::rc::Rc;
 
 use super::VertexBuffer;
 
-pub trait RenderObject: downcast_rs::Downcast {
+pub trait RenderObject {
     fn update_vertices(&self, updater: &dyn Fn(RefMut<VertexBuffer>));
 
     /// Coarse local-space sort key for translucent draws — typically the
@@ -61,4 +62,87 @@ pub trait RenderObject: downcast_rs::Downcast {
     }
 }
 
-downcast_rs::impl_downcast!(RenderObject);
+/// Owning handle to a render object that pairs the cross-backend trait
+/// object view with an optional backend-typed `Rc` to the same underlying
+/// instance.
+///
+/// The factory constructs one of these per render object at *insertion*
+/// time, so the rendering engine can iterate backend-typed handles in the
+/// per-frame draw loop without ever calling `downcast_ref`. Mirrors how
+/// `VulkanMaterial` already holds `Rc<VulkanShader>` / `Vec<Rc<VulkanTexture>>`
+/// directly rather than going through `dyn Shader` / `dyn Texture`.
+///
+/// The `dyn_view` field stays in sync with the backend-typed slot — both
+/// reference the same heap allocation — so polymorphic callers like
+/// `UvAnimDriver` keep working unchanged through [`Self::as_dyn`].
+pub struct RenderObjectHandle {
+    dyn_view: Rc<dyn RenderObject>,
+    #[cfg(vulkan)]
+    vulkan: Option<Rc<super::vulkan::VulkanRenderObject>>,
+    #[cfg(vitagl)]
+    vitagl: Option<Rc<super::vitagl::VitaGLRenderObject>>,
+}
+
+impl RenderObjectHandle {
+    /// Construct a handle from a backend-erased `Rc<dyn RenderObject>`.
+    /// Backends that don't have a typed-handle pathway (test doubles)
+    /// use this; the engine then has no typed view available for these
+    /// handles.
+    pub fn from_dyn(obj: Rc<dyn RenderObject>) -> Self {
+        Self {
+            dyn_view: obj,
+            #[cfg(vulkan)]
+            vulkan: None,
+            #[cfg(vitagl)]
+            vitagl: None,
+        }
+    }
+
+    /// Construct a handle from a typed `Rc<VulkanRenderObject>`. The
+    /// trait-object view shares the same allocation, so polymorphic
+    /// readers and the engine's typed iteration both see the same
+    /// underlying object.
+    #[cfg(vulkan)]
+    pub fn from_vulkan(obj: Rc<super::vulkan::VulkanRenderObject>) -> Self {
+        Self {
+            dyn_view: obj.clone(),
+            vulkan: Some(obj),
+            #[cfg(vitagl)]
+            vitagl: None,
+        }
+    }
+
+    /// Construct a handle from a typed `Rc<VitaGLRenderObject>`. See
+    /// [`Self::from_vulkan`] for the design rationale; this is the
+    /// symmetric VitaGL constructor.
+    #[cfg(vitagl)]
+    pub fn from_vitagl(obj: Rc<super::vitagl::VitaGLRenderObject>) -> Self {
+        Self {
+            dyn_view: obj.clone(),
+            #[cfg(vulkan)]
+            vulkan: None,
+            vitagl: Some(obj),
+        }
+    }
+
+    /// Borrow as the cross-backend trait surface. Used by callers that
+    /// only need the neutral trait methods (`update_vertices`,
+    /// `material_debug_name`, `set_uv_xform`, …).
+    pub fn as_dyn(&self) -> &dyn RenderObject {
+        &*self.dyn_view
+    }
+
+    /// Borrow the backend-typed handle, when present. The Vulkan
+    /// rendering engine uses this in its per-frame loop instead of
+    /// downcasting through `Any`.
+    #[cfg(vulkan)]
+    pub fn as_vulkan(&self) -> Option<&Rc<super::vulkan::VulkanRenderObject>> {
+        self.vulkan.as_ref()
+    }
+
+    /// VitaGL counterpart to [`Self::as_vulkan`].
+    #[cfg(vitagl)]
+    pub fn as_vitagl(&self) -> Option<&Rc<super::vitagl::VitaGLRenderObject>> {
+        self.vitagl.as_ref()
+    }
+}

@@ -14,9 +14,7 @@
 //! `imgui::TextureId` value here; the scripting bridge forwards it to
 //! `ui.image(...)` without inspection.
 
-use downcast_rs::{impl_downcast, Downcast};
-
-pub trait RenderTarget: Downcast {
+pub trait RenderTarget {
     /// Current target extent in pixels.
     fn extent(&self) -> (u32, u32);
 
@@ -31,6 +29,17 @@ pub trait RenderTarget: Downcast {
     /// Encodes an `imgui::TextureId` on backends that use imgui-rs (Vulkan
     /// today).
     fn imgui_texture_id(&self) -> u64;
-}
 
-impl_downcast!(RenderTarget);
+    /// Borrow as the backend-typed `VulkanRenderTarget`. Returns `None`
+    /// on non-Vulkan backends. Lets `VulkanRenderingEngine::render_scene_to_target`
+    /// recover the concrete type without going through `Any` /
+    /// `downcast_rs` — mirrors the `RenderObjectHandle::as_vulkan` pattern
+    /// on render objects.
+    ///
+    /// Default implementation returns `None`, so non-Vulkan backends and
+    /// host test doubles don't need to override.
+    #[cfg(vulkan)]
+    fn as_vulkan_mut(&mut self) -> Option<&mut super::vulkan::VulkanRenderTarget> {
+        None
+    }
+}
