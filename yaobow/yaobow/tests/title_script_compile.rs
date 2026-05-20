@@ -18,7 +18,8 @@ use radiance_scripting::comdef::services::{
 };
 use radiance_scripting::services::{GameRegistry, RandomService};
 use radiance_scripting::{
-    with_services, wrap_im_director, RuntimeAccess, RuntimeHandle, ScriptHost,
+    register_immediate_director_proto, with_services, wrap_director, RuntimeAccess, RuntimeHandle,
+    ScriptHost,
 };
 use yaobow_lib::comdef::yaobow_services::{IYaobowAppContext, IYaobowAppContextImpl};
 use yaobow_lib::script_source::{
@@ -158,6 +159,7 @@ fn script_package_rejects_duplicate_modules() {
 
 #[test]
 fn title_script_init_loads_with_imported_bindings() {
+    register_immediate_director_proto();
     let open_calls = Rc::new(RefCell::new(Vec::new()));
     let app = ComRc::<IAppService>::from_object(RecordingAppService {
         open_calls: open_calls.clone(),
@@ -187,11 +189,11 @@ fn title_script_init_loads_with_imported_bindings() {
         .call_method_returning_data(app_data, "make_title_director", Vec::new())
         .expect("yaobow title director creation should succeed");
     let handle = host_runtime_handle(&runtime);
-    let im: ComRc<IImmediateDirector> =
-        wrap_im_director(&handle, director_data).expect("wrap_im_director should succeed");
-    let director: ComRc<IDirector> = im
-        .query_interface::<IDirector>()
-        .expect("IImmediateDirector should QI to IDirector");
+    let director: ComRc<IDirector> =
+        wrap_director(&handle, director_data).expect("wrap_director should succeed");
+    let im: ComRc<IImmediateDirector> = director
+        .query_interface::<IImmediateDirector>()
+        .expect("title director should expose IImmediateDirector via fat CCW");
     director.activate();
     assert!(director.update(0.016).is_none());
     drop(director);
@@ -230,9 +232,9 @@ fn app_script_creates_title_then_pal4_debug_in_one_runtime() {
         .call_method_returning_data(app_data, "make_title_director", Vec::new())
         .expect("title director creation should succeed");
     let handle = host_runtime_handle(&runtime);
-    let im: ComRc<IImmediateDirector> =
-        wrap_im_director(&handle, title_data).expect("wrap_im_director should succeed");
-    drop(im);
+    let title_director: ComRc<IDirector> =
+        wrap_director(&handle, title_data).expect("wrap_director should succeed");
+    drop(title_director);
 
     let session = shared::openpal4::pal4_debug::create_debug_session();
     let ctx_id = runtime.intern(session.context);

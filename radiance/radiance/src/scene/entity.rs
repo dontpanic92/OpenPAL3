@@ -116,7 +116,8 @@ impl CoreEntity {
 
     fn apply_or_queue_attach_child(&self, child: ComRc<IEntity>) {
         if self.mutations.is_iterating() {
-            self.mutations.enqueue(EntityPendingChange::AttachChild(child));
+            self.mutations
+                .enqueue(EntityPendingChange::AttachChild(child));
             return;
         }
 

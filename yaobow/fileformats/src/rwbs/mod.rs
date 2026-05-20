@@ -19,12 +19,10 @@ use common::read_ext::ReadExt;
 use serde::Serialize;
 use world::World;
 
-/**
- * RWBS formats details:
- *      https://helco.github.io/zzdocs/resources/
- *      https://gtamods.com/wiki/
- *      https://rwsreader.sourceforge.net/
- */
+// RWBS formats details:
+//      https://helco.github.io/zzdocs/resources/
+//      https://gtamods.com/wiki/
+//      https://rwsreader.sourceforge.net/
 
 #[binrw]
 #[brw(little)]

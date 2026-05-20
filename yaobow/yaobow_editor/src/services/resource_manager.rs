@@ -8,6 +8,7 @@
 //! us, so a one-time scan is sufficient.
 
 use std::cell::RefCell;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -69,7 +70,20 @@ impl ResourceManager {
                 continue;
             };
             for entry in entries.flatten() {
-                let name = entry.name.to_string_lossy().to_string();
+                // Some MiniFs stores (notably `LocalFs`) return entry
+                // names relative to the *store root* rather than to
+                // the queried directory — e.g. listing "/scene/Q01"
+                // yields entries named "scene/Q01/Q01.scn". Joining
+                // those raw against `dir` doubles the prefix and
+                // produces broken paths (`/scene/Q01/scene/Q01/...`).
+                // Mirror `VfsService::entry_display_name` and keep
+                // just the basename so the resulting paths line up
+                // with what the rest of the editor (vfs + previewer
+                // hub) actually opens.
+                let name = display_name(&entry.name);
+                if name.is_empty() {
+                    continue;
+                }
                 let child = join_path(&dir, &name);
                 match entry.kind {
                     EntryKind::Dir => stack.push(child),
@@ -109,6 +123,18 @@ fn join_path(dir: &Path, name: &str) -> PathBuf {
     } else {
         PathBuf::from(format!("{}/{}", d.trim_end_matches('/'), name))
     }
+}
+
+/// Reduce a raw `mini_fs::Entry::name` to a basename. Some store
+/// implementations populate `name` with the path relative to the
+/// store root rather than the queried directory; trimming to the
+/// last path component keeps the resource browser aligned with the
+/// vfs path scheme everywhere else in the editor.
+fn display_name(raw: &OsStr) -> String {
+    let path = PathBuf::from(raw);
+    path.file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| raw.to_string_lossy().to_string())
 }
 
 impl IResourceManagerImpl for ResourceManager {
@@ -159,9 +185,59 @@ fn count_matches(bucket: &[String], filter: &str) -> usize {
 
 fn nth_match(bucket: &[String], filter: &str, row: usize) -> Option<String> {
     let f = filter.to_lowercase();
-    bucket
-        .iter()
-        .filter(|p| matches(p, &f))
-        .nth(row)
-        .cloned()
+    bucket.iter().filter(|p| matches(p, &f)).nth(row).cloned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+    use std::fs;
+
+    #[test]
+    fn display_name_strips_path_prefix() {
+        // LocalFs returns entry names relative to the store root,
+        // e.g. "scene/Q01/Q01.scn" when listing "/scene/Q01". The
+        // helper must reduce that to just "Q01.scn".
+        assert_eq!(
+            display_name(&OsString::from("scene/Q01/Q01.scn")),
+            "Q01.scn"
+        );
+        assert_eq!(display_name(&OsString::from("Q01.scn")), "Q01.scn");
+        assert_eq!(display_name(&OsString::from("scene")), "scene");
+    }
+
+    #[test]
+    fn category_index_emits_clean_paths_for_nested_localfs() {
+        // Regression: walking a MiniFs(LocalFs) tree previously
+        // produced doubled prefixes like
+        // "/scene/Q01/scene/Q01/Q01.scn" because entry names from
+        // LocalFs are relative to the store root, not the queried
+        // directory. The browser ended up listing paths the rest
+        // of the editor could not open.
+        let root =
+            std::env::temp_dir().join(format!("yaobow_editor_rm_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("scene/Q01")).unwrap();
+        fs::write(root.join("scene/Q01/Q01.scn"), b"").unwrap();
+        fs::write(root.join("root.txt"), b"").unwrap();
+
+        let vfs = Rc::new(mini_fs::MiniFs::new(false).mount("/", mini_fs::LocalFs::new(&root)));
+        let rm = ResourceManager::create(vfs);
+
+        let scenes_idx = CATEGORIES.iter().position(|c| *c == "Scenes").unwrap() as i32;
+        assert_eq!(rm.category_entry_count(scenes_idx, ""), 1);
+        assert_eq!(
+            rm.category_entry_path(scenes_idx, "", 0).to_string(),
+            "/scene/Q01/Q01.scn"
+        );
+
+        let data_idx = CATEGORIES.iter().position(|c| *c == "Data").unwrap() as i32;
+        assert_eq!(
+            rm.category_entry_path(data_idx, "", 0).to_string(),
+            "/root.txt"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
 }

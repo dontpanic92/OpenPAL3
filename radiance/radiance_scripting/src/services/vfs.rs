@@ -177,7 +177,33 @@ impl IVfsServiceImpl for VfsService {
         if let Some(is_dir) = self.path_is_dir.borrow().get(vfs_path) {
             return *is_dir;
         }
-        self.vfs.entries(Path::new(vfs_path)).is_ok()
+        // `MiniFs::entries_path` always returns `Ok(...)` — including
+        // for files and non-existent paths — so we cannot distinguish
+        // files from directories with a direct `entries(...).is_ok()`
+        // probe. Resolve via the parent listing instead: walking the
+        // parent through `sorted_entries(...)` populates `path_is_dir`
+        // for every sibling, after which the cache lookup tells us
+        // exactly what kind this path is. Falling back to `false`
+        // here is the safe choice — picks pointing at a real
+        // directory will still expand the next time the tree view
+        // surfaces them through its own listing, while picks pointing
+        // at files no longer get silently swallowed by the editor's
+        // "expand on click" branch.
+        let path = Path::new(vfs_path);
+        let parent = path
+            .parent()
+            .and_then(|p| p.to_str())
+            .filter(|p| !p.is_empty())
+            .unwrap_or("/");
+        if vfs_path == "/" || path.file_name().is_none() {
+            return true;
+        }
+        self.sorted_entries(parent);
+        self.path_is_dir
+            .borrow()
+            .get(vfs_path)
+            .copied()
+            .unwrap_or(false)
     }
 
     fn is_expanded(&self, vfs_path: &str) -> bool {
@@ -211,5 +237,42 @@ impl IVfsServiceImpl for VfsService {
             .and_then(|idx| self.command_paths.borrow().get(idx).cloned())
             .unwrap_or_default();
         self.set_last_string(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn is_dir_distinguishes_files_from_directories_without_prior_listing() {
+        // Regression: `MiniFs::entries_path` always returns `Ok(...)`,
+        // even for files, so the old `entries(...).is_ok()` probe
+        // reported every uncached path as a directory. The editor's
+        // category-view leaves never pre-populated the cache, so
+        // clicking them silently routed into the "toggle_expanded"
+        // directory branch instead of opening a content tab.
+        let root =
+            std::env::temp_dir().join(format!("yaobow_vfs_is_dir_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("scene/Q01")).unwrap();
+        fs::write(root.join("scene/Q01/Q01.bsp"), b"").unwrap();
+
+        let mini = mini_fs::MiniFs::new(false).mount("/", mini_fs::LocalFs::new(&root));
+        let vfs = VfsService::create(Rc::new(mini));
+        let service = vfs
+            .query_interface::<crate::comdef::services::IVfsService>()
+            .unwrap();
+
+        // File path — never previously listed.
+        assert_eq!(service.is_dir("/scene/Q01/Q01.bsp"), false);
+        // Directory path — never previously listed.
+        assert_eq!(service.is_dir("/scene/Q01"), true);
+        // Subsequent calls still return the same answers via cache.
+        assert_eq!(service.is_dir("/scene/Q01/Q01.bsp"), false);
+        assert_eq!(service.is_dir("/scene/Q01"), true);
+
+        let _ = fs::remove_dir_all(&root);
     }
 }

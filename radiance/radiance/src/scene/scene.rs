@@ -96,7 +96,8 @@ impl CoreScene {
 
     fn apply_or_queue_add_entity(&self, entity: ComRc<IEntity>) {
         if self.mutations.is_iterating() {
-            self.mutations.enqueue(ScenePendingChange::AddEntity(entity));
+            self.mutations
+                .enqueue(ScenePendingChange::AddEntity(entity));
         } else {
             if self.loaded.get() {
                 entity.load();
@@ -149,7 +150,8 @@ impl CoreScene {
             if was_loaded {
                 component.on_unloading();
             }
-            self.mutations.enqueue(ScenePendingChange::RemoveComponent(uuid));
+            self.mutations
+                .enqueue(ScenePendingChange::RemoveComponent(uuid));
             Some(component)
         } else {
             let entry = self.components.shift_remove(uuid)?;
@@ -277,7 +279,8 @@ impl ISceneImpl for CoreScene {
             let entity = self.entities.borrow()[i].clone();
             entity.update_world_transform(&Transform::new());
         }
-        self.components.dispatch_each(|component| component.on_updating(delta_sec));
+        self.components
+            .dispatch_each(|component| component.on_updating(delta_sec));
         drop(guard);
         if !self.mutations.is_iterating() {
             self.drain_pending();

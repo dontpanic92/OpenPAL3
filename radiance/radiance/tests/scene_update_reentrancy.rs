@@ -131,7 +131,8 @@ fn make_recording_component(
     hooks: ComponentHooks,
 ) -> ComRc<IComponent> {
     let component = Box::new(RecordingComponent {
-        vtable: &RECORDING_COMPONENT_VTBL as *const StubComponentVtbl as *const IComponentVirtualTable,
+        vtable: &RECORDING_COMPONENT_VTBL as *const StubComponentVtbl
+            as *const IComponentVirtualTable,
         refcount: Cell::new(1),
         state: Rc::new(RecordingState {
             name,
@@ -241,8 +242,14 @@ fn entity_update_remove_component_during_dispatch_is_deferred_but_unload_is_sync
     let recorded = snapshot(&events);
     assert_eq!(count(&recorded, Event::Unloading("B")), 1);
     assert_eq!(count(&recorded, Event::Updating("B")), 0);
-    assert!(position(&recorded, Event::Marker("before-remove")) < position(&recorded, Event::Unloading("B")));
-    assert!(position(&recorded, Event::Unloading("B")) < position(&recorded, Event::Marker("after-remove")));
+    assert!(
+        position(&recorded, Event::Marker("before-remove"))
+            < position(&recorded, Event::Unloading("B"))
+    );
+    assert!(
+        position(&recorded, Event::Unloading("B"))
+            < position(&recorded, Event::Marker("after-remove"))
+    );
     assert!(entity.get_component(uuid_b).is_none());
 }
 
@@ -311,7 +318,9 @@ fn entity_same_uuid_re_add_silently_overwrites_no_on_unloading_fired() {
     let recorded = snapshot(&events);
     assert_eq!(count(&recorded, Event::Unloading("A")), 0);
     assert_eq!(count(&recorded, Event::Loading("B")), 1);
-    let current = entity.get_component(uuid_x).expect("replacement component missing");
+    let current = entity
+        .get_component(uuid_x)
+        .expect("replacement component missing");
     assert_eq!(current.ptr_value(), component_b.ptr_value());
 }
 

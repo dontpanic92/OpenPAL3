@@ -1,6 +1,6 @@
 mod camera;
-pub(crate) mod mutation;
 mod entity;
+pub(crate) mod mutation;
 mod scene;
 mod scene_manager;
 

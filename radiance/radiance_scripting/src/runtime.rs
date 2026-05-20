@@ -147,6 +147,7 @@ impl ScriptHost {
             runtime_handle: OnceCell::new(),
         });
         Self::install_runtime_handle(&host);
+        Self::register_built_in_protos();
         host
     }
 
@@ -159,7 +160,23 @@ impl ScriptHost {
             runtime_handle: OnceCell::new(),
         });
         Self::install_runtime_handle(&host);
+        Self::register_built_in_protos();
         host
+    }
+
+    /// Eagerly register every ProtoSpec that this crate's bridge
+    /// codegen knows about. Without this, the per-bridge `register_*`
+    /// helpers are only triggered lazily by their `wrap_*` siblings —
+    /// which works as long as every caller wraps via the most-derived
+    /// helper. With the fat-CCW factory, callers may wrap as
+    /// `wrap_director` and still want QI to a derived interface
+    /// (`IImmediateDirector`) backed by the script struct's
+    /// conformance list. Eager registration ensures the registry
+    /// already knows about the derived interface at wrap time so the
+    /// fat CCW gets a real slot for it.
+    fn register_built_in_protos() {
+        crate::script_bridges::immediate_director::register_immediate_director_proto();
+        crate::script_bridges::radiance::register_director_proto();
     }
 
     /// Wire a `Weak<ScriptHost>` into the inner [`RuntimeServices`] so

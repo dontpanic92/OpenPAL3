@@ -39,8 +39,10 @@
 //! that reference them error loudly so Phase B5 can extend coverage
 //! incrementally.
 
+use std::alloc::{alloc, dealloc, Layout};
 use std::collections::HashMap;
 use std::ffi::{c_void, CStr};
+use std::mem::size_of;
 use std::os::raw::{c_char, c_float, c_int, c_long};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -193,27 +195,48 @@ pub fn wrap_proto_unknown(
 // Registry internals
 // ---------------------------------------------------------------------------
 
+/// Blueprint for re-instantiating a per-interface vtable at a
+/// specific slot index. The QI/AddRef/Release thunks are global —
+/// only the leading `offset` field and a fresh per-slot prefix
+/// allocation differ between slot indices.
+struct VtableBlueprint {
+    /// Pre-built shared method code pointers (length == methods.len()).
+    method_codes: &'static [*const c_void],
+}
+
+// SAFETY: VtableBlueprint stores raw fn pointers to leaked closures.
+// All reads are wait-free after publication via the registry mutex.
+unsafe impl Send for VtableBlueprint {}
+unsafe impl Sync for VtableBlueprint {}
+
 struct RegisteredProto {
     uuid: [u8; 16],
     #[allow(dead_code)]
     type_tag: String,
-    /// Per-interface vtable as a flat array of fn pointers, leaked
-    /// for `'static` lifetime. Length is `3 + methods.len()`. Cast
-    /// to `*const I::VirtualTable` at handout time; the `#[repr(C)]`
-    /// of crosscom-generated vtable structs makes this layout-
-    /// compatible.
-    vtable_ptr: *const *const c_void,
+    blueprint: VtableBlueprint,
     /// `'static` slice (via `Box::leak`) of additional QI UUIDs the
-    /// CCW should accept, copied from
-    /// [`ProtoSpec::additional_query_uuids`] at registration time.
+    /// CCW slot should accept in addition to its primary `uuid`. Used
+    /// for IDL inheritance (e.g. IImmediateDirector → IDirector) where
+    /// the parent interface's vtable is a structural prefix of the
+    /// child's.
     additional_query_uuids: &'static [[u8; 16]],
+    /// Lazily-minted per-slot-index vtables. Each entry is a leaked
+    /// `[isize, *const c_void, ...]` allocation whose stored pointer
+    /// (one slot past `offset`) is what the CCW writes into its
+    /// interface slot.
+    slot_vtables: Mutex<HashMap<usize, SlotVtablePtr>>,
 }
 
-// SAFETY: `RegisteredProto` only stores immutable pointers to leaked,
-// initialise-once data: the vtable's contents are `'static` fn
-// pointers + raw addresses of leaked `Closure` / `MethodUserdata`
-// allocations. Reads are wait-free and serialised by the registry's
-// `Mutex` on the write side.
+/// Wrapper so we can store a raw pointer in a HashMap and still get
+/// the right `Send`/`Sync` bounds; the pointer is to leaked memory
+/// that lives for the program's lifetime.
+#[derive(Copy, Clone)]
+struct SlotVtablePtr(*const *const c_void);
+unsafe impl Send for SlotVtablePtr {}
+unsafe impl Sync for SlotVtablePtr {}
+
+// SAFETY: see SlotVtablePtr / VtableBlueprint comments — all stored
+// pointers are leaked, immutable after publication.
 unsafe impl Send for RegisteredProto {}
 unsafe impl Sync for RegisteredProto {}
 
@@ -245,11 +268,12 @@ fn validate_spec(spec: &ProtoSpec) -> Result<(), HostError> {
 }
 
 fn build_registered_proto(spec: ProtoSpec) -> Result<RegisteredProto, HostError> {
-    let mut vtable: Vec<*const c_void> = Vec::with_capacity(3 + spec.methods.len());
-    vtable.push(proto_query_interface as *const c_void);
-    vtable.push(proto_add_ref as *const c_void);
-    vtable.push(proto_release as *const c_void);
-
+    // Build the per-method libffi closures once. Each closure is
+    // shared across every slot index — only the leading `offset`
+    // changes per slot, and the QI/AddRef/Release thunks at the head
+    // of the vtable are themselves global fn pointers (their bodies
+    // recover the CCW base via the offset field).
+    let mut method_codes: Vec<*const c_void> = Vec::with_capacity(spec.methods.len());
     for method in &spec.methods {
         let cif = build_cif_for(method);
         let userdata: Box<MethodUserdata> = Box::new(MethodUserdata {
@@ -258,43 +282,69 @@ fn build_registered_proto(spec: ProtoSpec) -> Result<RegisteredProto, HostError>
             args: method.args.clone(),
             ret: method.ret.clone(),
         });
-        // Leak the userdata for `'static` lifetime; the `Closure`
-        // captures `&'static MethodUserdata`.
         let userdata_ptr: &'static MethodUserdata = Box::leak(userdata);
 
-        // Pick a callback whose `R` matches the C-ABI return slot
-        // size. libffi writes `*result` based on the Cif's return
-        // type, but our Rust closure type still has to match.
         let closure = match method.ret {
             RetKind::Void => Closure::new(cif, method_thunk_void, userdata_ptr),
             RetKind::Int | RetKind::Bool => Closure::new(cif, method_thunk_int, userdata_ptr),
             RetKind::Float => Closure::new(cif, method_thunk_float, userdata_ptr),
             RetKind::OptionalForeign { .. } => Closure::new(cif, method_thunk_ptr, userdata_ptr),
         };
-        // Leak the closure too; `code_ptr()` only stays valid as
-        // long as the `Closure` lives.
-        let code: *const c_void = unsafe { *closure.code_ptr() } as *const c_void;
+        let code: *const c_void = *closure.code_ptr() as *const c_void;
         let leaked: &'static Closure<'static> = Box::leak(Box::new(closure));
-        // Reference `leaked` so the leak is visible if anything
-        // structural changes later; the pointer itself is what we
-        // need.
         let _ = leaked;
-        vtable.push(code);
+        method_codes.push(code);
     }
-
-    let boxed_vtable: Box<[*const c_void]> = vtable.into_boxed_slice();
-    let leaked_vtable: &'static [*const c_void] = Box::leak(boxed_vtable);
-    let vtable_ptr = leaked_vtable.as_ptr();
+    let method_codes: &'static [*const c_void] = Box::leak(method_codes.into_boxed_slice());
 
     let additional_query_uuids: &'static [[u8; 16]] =
         Box::leak(spec.additional_query_uuids.into_boxed_slice());
 
-    Ok(RegisteredProto {
+    let registered = RegisteredProto {
         uuid: spec.uuid,
         type_tag: spec.type_tag,
-        vtable_ptr,
+        blueprint: VtableBlueprint { method_codes },
         additional_query_uuids,
-    })
+        slot_vtables: Mutex::new(HashMap::new()),
+    };
+    // Pre-mint slot 0 so the common single-interface wrap path never
+    // touches the per-spec mutex.
+    let _ = mint_slot_vtable(&registered, 0);
+    Ok(registered)
+}
+
+/// Mint (or look up) the vtable for `slot_index` on `proto`. The
+/// returned pointer points one slot past the leading `offset` field,
+/// matching the C-ABI shape every consumer expects.
+fn mint_slot_vtable(proto: &RegisteredProto, slot_index: usize) -> *const *const c_void {
+    {
+        let map = proto.slot_vtables.lock().expect("slot_vtables poisoned");
+        if let Some(p) = map.get(&slot_index) {
+            return p.0;
+        }
+    }
+    // Slow path: build the [offset, qi, add_ref, release, methods...]
+    // allocation and cache it. The leading offset is the negated slot
+    // index (in *const c_void units) — identical convention to
+    // `crosscom::get_object` (which uses `*const isize` strides equal
+    // to a pointer-width).
+    let mut buf: Vec<*const c_void> = Vec::with_capacity(4 + proto.blueprint.method_codes.len());
+    // SAFETY: writing an isize into a `*const c_void` slot is valid;
+    // both are pointer-width on every platform crosscom supports.
+    buf.push((-(slot_index as isize)) as *const c_void);
+    buf.push(proto_query_interface as *const c_void);
+    buf.push(proto_add_ref as *const c_void);
+    buf.push(proto_release as *const c_void);
+    for &code in proto.blueprint.method_codes {
+        buf.push(code);
+    }
+    let leaked: &'static [*const c_void] = Box::leak(buf.into_boxed_slice());
+    // The slot stored in the CCW (and the vtable pointer reported to
+    // consumers) is `&leaked[1]` — one slot past the `offset` header.
+    let vtable_ptr = unsafe { leaked.as_ptr().add(1) };
+
+    let mut map = proto.slot_vtables.lock().expect("slot_vtables poisoned");
+    map.entry(slot_index).or_insert(SlotVtablePtr(vtable_ptr)).0
 }
 
 fn build_cif_for(method: &MethodSpec) -> Cif {
@@ -321,71 +371,161 @@ fn build_cif_for(method: &MethodSpec) -> Cif {
 }
 
 // ---------------------------------------------------------------------------
-// ProtoCcw + IUnknown thunks
+// Fat CCW layout
 // ---------------------------------------------------------------------------
-
+//
+// Each CCW is a manually-allocated buffer with a fixed-size header
+// followed by `num_slots` inline vtable-pointer slots. The
+// vtable-pointer at slot K is what consumers receive as the
+// interface `this` pointer; the slot's *stored* pointer references
+// a per-(uuid, slot_index) global allocation whose leading `offset
+// = -K` field lets [`recover_ccw_base`] walk back to slot 0 from
+// any slot pointer.
+//
+// ```text
+//   offset 0:                       [ CcwHeader { ref_count, num_slots, payload } ]
+//   offset sizeof(CcwHeader):       [ slot_0_vtable_ptr ]
+//   offset sizeof(CcwHeader)+ptr:   [ slot_1_vtable_ptr ]
+//   ...
+// ```
+//
+// Layout invariant: `slot_0_addr - sizeof::<CcwHeader>() ==
+// header_addr`. Both are produced by the same [`ccw_layout`] helper
+// so dealloc never disagrees with alloc.
 #[repr(C)]
-struct ProtoCcw {
-    /// `*const *const c_void` cast of the per-interface vtable.
-    /// First field, matching every crosscom `Ixxx { vtable: ... }`
-    /// shape.
-    vtable: *const *const c_void,
+struct CcwHeader {
     ref_count: AtomicU32,
+    num_slots: usize,
     payload: ProtoCcwPayload,
 }
 
 struct ProtoCcwPayload {
-    iface_uuid: [u8; 16],
     root_idx: usize,
     handle: RuntimeHandle,
-    /// Copy of the registered proto's additional QI UUIDs. Stored
-    /// per CCW so `proto_query_interface` is lock-free on the hot
-    /// path of any engine that QIs the active director every frame.
+    /// Per-slot interface metadata, in declaration order. `slots[k]`
+    /// describes the interface backing slot K of the CCW.
+    slots: Box<[SlotInfo]>,
+}
+
+struct SlotInfo {
+    uuid: [u8; 16],
     additional_query_uuids: &'static [[u8; 16]],
 }
+
+/// `(layout, slot_offset_bytes)`. `slot_offset_bytes` is the byte
+/// offset from the allocation start to slot 0; the header sits at
+/// offset 0 and slots start right after it (with alignment padding
+/// folded in by `Layout::extend`).
+fn ccw_layout(num_slots: usize) -> (Layout, usize) {
+    let header = Layout::new::<CcwHeader>();
+    let slots = Layout::array::<*const c_void>(num_slots).expect("ccw slot array layout");
+    let (combined, slot_offset) = header.extend(slots).expect("ccw extend");
+    (combined.pad_to_align(), slot_offset)
+}
+
+unsafe fn ccw_slot_array_base(alloc_ptr: *const u8, slot_offset: usize) -> *const *const c_void {
+    alloc_ptr.add(slot_offset) as *const *const c_void
+}
+
+unsafe fn ccw_slot_ptr(
+    slot_array_base: *const *const c_void,
+    slot_index: usize,
+) -> *const *const c_void {
+    slot_array_base.add(slot_index)
+}
+
+/// Walk back from any interface `this` pointer (a `*const *const c_void`
+/// pointing at a slot in the CCW) to slot 0 — the start of the
+/// slot array. Mirrors `crosscom::get_object`: the slot's vtable
+/// pointer is preceded by an `isize` offset (in *const c_void slots)
+/// that, applied to the interface pointer, lands on slot 0.
+unsafe fn recover_slot0_addr(this: *const *const c_void) -> *const *const c_void {
+    let vtable_ptr = *(this as *const *const isize);
+    let offset = *vtable_ptr.offset(-1);
+    this.offset(offset)
+}
+
+/// Recover the CcwHeader from any interface `this` pointer. The
+/// slot array starts immediately after the header (per [`ccw_layout`]),
+/// so the header sits at `slot0_addr - sizeof::<CcwHeader>()`.
+unsafe fn recover_header<'a>(this: *const *const c_void) -> &'a CcwHeader {
+    let slot0 = recover_slot0_addr(this);
+    let header_addr = (slot0 as *const u8).sub(size_of::<CcwHeader>()) as *const CcwHeader;
+    &*header_addr
+}
+
+unsafe fn recover_header_addr(this: *const *const c_void) -> *const CcwHeader {
+    let slot0 = recover_slot0_addr(this);
+    (slot0 as *const u8).sub(size_of::<CcwHeader>()) as *const CcwHeader
+}
+
+// ---------------------------------------------------------------------------
+// IUnknown thunks (operate on any slot of the fat CCW)
+// ---------------------------------------------------------------------------
+
+// The old ProtoCcw / duplicate ProtoCcwPayload definitions are gone;
+// the fat layout above is the single source of truth.
 
 unsafe extern "system" fn proto_query_interface(
     this: *const *const c_void,
     guid: uuid::Uuid,
     retval: &mut *const *const c_void,
 ) -> c_long {
-    let ccw = &*(this as *const ProtoCcw);
+    let header = recover_header(this);
+    let slot0 = recover_slot0_addr(this);
     let bytes = *guid.as_bytes();
-    if bytes == IUnknown::INTERFACE_ID
-        || bytes == ccw.payload.iface_uuid
-        || ccw
-            .payload
-            .additional_query_uuids
-            .iter()
-            .any(|u| *u == bytes)
-    {
-        *retval = this;
-        proto_add_ref(this);
-        ResultCode::Ok as c_long
-    } else {
-        *retval = std::ptr::null();
-        ResultCode::ENoInterface as c_long
+
+    if bytes == IUnknown::INTERFACE_ID {
+        // IUnknown is conventionally satisfied via slot 0.
+        *retval = slot0;
+        proto_add_ref(slot0);
+        return ResultCode::Ok as c_long;
     }
+
+    // Walk slots in declaration order; first match wins. Each slot's
+    // own UUID and its (vtable-layout-compatible) additional QI list
+    // are eligible. The returned pointer is the slot pointer — i.e.
+    // an interface pointer with the right vtable for the requested
+    // interface, including the slot's offset prefix.
+    for (i, slot) in header.payload.slots.iter().enumerate() {
+        if slot.uuid == bytes || slot.additional_query_uuids.iter().any(|u| *u == bytes) {
+            let slot_ptr = slot0.add(i);
+            *retval = slot_ptr;
+            proto_add_ref(slot_ptr);
+            return ResultCode::Ok as c_long;
+        }
+    }
+
+    *retval = std::ptr::null();
+    ResultCode::ENoInterface as c_long
 }
 
 unsafe extern "system" fn proto_add_ref(this: *const *const c_void) -> c_long {
-    let ccw = &*(this as *const ProtoCcw);
-    let prev = ccw.ref_count.fetch_add(1, Ordering::SeqCst);
+    let header = recover_header(this);
+    let prev = header.ref_count.fetch_add(1, Ordering::SeqCst);
     (prev + 1) as c_long
 }
 
 unsafe extern "system" fn proto_release(this: *const *const c_void) -> c_long {
-    let ccw_ref = &*(this as *const ProtoCcw);
-    let prev = ccw_ref.ref_count.fetch_sub(1, Ordering::SeqCst);
+    let header_addr = recover_header_addr(this);
+    let prev = (*header_addr).ref_count.fetch_sub(1, Ordering::SeqCst);
     if prev == 1 {
-        // Drop the CCW: unroot the script handle and free the Box.
-        // Tolerate a runtime that has already been dropped.
-        let ccw_box: Box<ProtoCcw> = Box::from_raw(this as *mut ProtoCcw);
-        let _ = ccw_box
-            .payload
+        // Drop the CCW: read out num_slots + payload, unroot the
+        // script handle, drop the payload (handle + slots Box), and
+        // dealloc the entire buffer with the same Layout used at
+        // alloc time.
+        let num_slots = (*header_addr).num_slots;
+        let (layout, _slot_offset) = ccw_layout(num_slots);
+        // Move out the payload (Drop-runs the RuntimeHandle clone +
+        // slots Box). `read` is safe because no other reference to
+        // the header survives past this point — ref_count just hit
+        // zero.
+        let payload = std::ptr::read(&(*header_addr).payload);
+        let _ = payload
             .handle
-            .try_with_ctx(|ctx| ctx.remove_external_root(ccw_box.payload.root_idx));
-        drop(ccw_box);
+            .try_with_ctx(|ctx| ctx.remove_external_root(payload.root_idx));
+        drop(payload);
+        dealloc(header_addr as *mut u8, layout);
     }
     (prev - 1) as c_long
 }
@@ -397,7 +537,7 @@ unsafe extern "system" fn proto_release(this: *const *const c_void) -> c_long {
 fn wrap_proto_raw(
     handle: &RuntimeHandle,
     data: Data,
-    uuid: [u8; 16],
+    requested_uuid: [u8; 16],
 ) -> Result<*const *const c_void, HostError> {
     match data {
         Data::ProtoBoxRef { .. } | Data::BoxRef { .. } => {}
@@ -413,34 +553,184 @@ fn wrap_proto_raw(
             "wrap_proto called with a dangling RuntimeHandle",
         ));
     }
-    let (vtable_ptr, additional_query_uuids) = {
+
+    // Resolve the slot list. For `ProtoBoxRef`, we consult the
+    // script struct's `conforming_to` to enumerate every interface
+    // the impl supports — that's what gives QI to sibling interfaces
+    // its real (vtable-distinct) backing. For `BoxRef` (no
+    // conformance info), the slot list is just the requested UUID.
+    let mut slot_uuids = collect_slot_uuids(handle, &data);
+    // Always ensure the requested UUID is satisfiable. If the
+    // conformance list doesn't include it (e.g. the script struct
+    // conforms to a DIFFERENT registered proto but the caller asked
+    // for IUnknown's well-known UUID, or the IDL ret type is a
+    // sub/super-interface accessible via additional_query_uuids),
+    // probe via additional_query_uuids first; only if nothing
+    // matches do we append the requested UUID as a fresh slot.
+    let need_extra_slot = !slot_uuids.iter().any(|u| {
+        if *u == requested_uuid {
+            return true;
+        }
+        if let Ok(reg) = registry().lock() {
+            if let Some(p) = reg.get(u) {
+                return p.additional_query_uuids.contains(&requested_uuid);
+            }
+        }
+        false
+    });
+    if need_extra_slot {
+        // Prepend so the requested UUID is the "primary" slot. Drop
+        // unregistered UUIDs from the rest of the list as we go;
+        // they have no vtable to give us anyway.
+        let mut combined = Vec::with_capacity(slot_uuids.len() + 1);
+        combined.push(requested_uuid);
+        combined.extend(slot_uuids.into_iter());
+        slot_uuids = combined;
+    }
+
+    // Snapshot each slot's RegisteredProto pieces in a single lock
+    // acquisition. Unregistered tags are dropped silently — they're
+    // a script-side conformance declaration that the host hasn't
+    // bridged yet, and exposing them as QI-success would hand out a
+    // vtable that doesn't exist.
+    struct SlotPlan {
+        uuid: [u8; 16],
+        vtable_ptr: *const *const c_void,
+        additional_query_uuids: &'static [[u8; 16]],
+    }
+    let mut plans: Vec<SlotPlan> = Vec::with_capacity(slot_uuids.len());
+    {
         let reg = registry().lock().expect("proto_ccw registry poisoned");
-        let r = reg.get(&uuid).ok_or_else(|| {
+        for uuid in &slot_uuids {
+            if plans.iter().any(|p| p.uuid == *uuid) {
+                // De-dupe: the same interface can legitimately appear
+                // in both the conformance list and as the requested
+                // UUID. One slot is enough.
+                continue;
+            }
+            let Some(proto) = reg.get(uuid) else {
+                if *uuid == requested_uuid {
+                    return Err(HostError::message(format!(
+                        "wrap_proto: no ProtoSpec registered for interface UUID {:?}; \
+                         call register_proto_ccw before wrapping",
+                        uuid
+                    )));
+                }
+                continue;
+            };
+            let slot_index = plans.len();
+            let vtable_ptr = mint_slot_vtable(proto, slot_index);
+            plans.push(SlotPlan {
+                uuid: *uuid,
+                vtable_ptr,
+                additional_query_uuids: proto.additional_query_uuids,
+            });
+        }
+    }
+
+    // Pick the slot that satisfies the requested UUID. With
+    // first-match-wins, this is the first slot whose own UUID equals
+    // the request OR whose additional_query_uuids contains it. The
+    // need_extra_slot logic above guarantees at least one such slot
+    // exists.
+    let selected_slot = plans
+        .iter()
+        .position(|p| {
+            p.uuid == requested_uuid || p.additional_query_uuids.contains(&requested_uuid)
+        })
+        .ok_or_else(|| {
             HostError::message(format!(
-                "wrap_proto: no ProtoSpec registered for interface UUID {:?}; \
-                 call register_proto_ccw before wrapping",
-                uuid
+                "wrap_proto: no slot satisfies requested UUID {:?} after planning",
+                requested_uuid
             ))
         })?;
-        (r.vtable_ptr, r.additional_query_uuids)
-    };
 
+    // Allocate the CCW buffer with the fat layout.
+    let num_slots = plans.len();
+    let (layout, slot_offset) = ccw_layout(num_slots);
+    // SAFETY: layout has non-zero size (CcwHeader is non-empty).
+    let alloc_ptr = unsafe { alloc(layout) };
+    if alloc_ptr.is_null() {
+        std::alloc::handle_alloc_error(layout);
+    }
+
+    // Root the script data once for the whole CCW.
     let root_idx = handle
         .try_with_ctx(|ctx| ctx.add_external_root(data.clone()))
-        .ok_or_else(|| HostError::message("wrap_proto: runtime gone before rooting"))?;
+        .ok_or_else(|| {
+            // SAFETY: we never published the alloc; dealloc with the
+            // same layout is sound.
+            unsafe { dealloc(alloc_ptr, layout) };
+            HostError::message("wrap_proto: runtime gone before rooting")
+        })?;
 
-    let ccw = Box::new(ProtoCcw {
-        vtable: vtable_ptr,
-        ref_count: AtomicU32::new(1),
-        payload: ProtoCcwPayload {
-            iface_uuid: uuid,
-            root_idx,
-            handle: handle.clone(),
-            additional_query_uuids,
-        },
-    });
-    let raw = Box::into_raw(ccw) as *const *const c_void;
-    Ok(raw)
+    // Build the per-slot metadata Box before writing into the
+    // buffer; that way a panic during allocation surfaces as a
+    // Rust panic rather than corrupted memory.
+    let slots_box: Box<[SlotInfo]> = plans
+        .iter()
+        .map(|p| SlotInfo {
+            uuid: p.uuid,
+            additional_query_uuids: p.additional_query_uuids,
+        })
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+
+    // Initialise the header in-place.
+    unsafe {
+        let header_addr = alloc_ptr as *mut CcwHeader;
+        std::ptr::write(
+            header_addr,
+            CcwHeader {
+                ref_count: AtomicU32::new(1),
+                num_slots,
+                payload: ProtoCcwPayload {
+                    root_idx,
+                    handle: handle.clone(),
+                    slots: slots_box,
+                },
+            },
+        );
+
+        // Write each slot's vtable pointer into the slot array.
+        let slot_array_base = ccw_slot_array_base(alloc_ptr, slot_offset);
+        for (i, plan) in plans.iter().enumerate() {
+            std::ptr::write(
+                slot_array_base.add(i) as *mut *const *const c_void,
+                plan.vtable_ptr,
+            );
+        }
+
+        Ok(ccw_slot_ptr(slot_array_base, selected_slot))
+    }
+}
+
+/// Collect every foreign-tagged proto UUID that the script-side
+/// struct backing `data` conforms to, in declaration order. Empty
+/// for non-proto boxes (plain `BoxRef`) — those carry no
+/// conformance information.
+fn collect_slot_uuids(handle: &RuntimeHandle, data: &Data) -> Vec<[u8; 16]> {
+    let (concrete_type_id, origin_module_idx) = match data {
+        Data::ProtoBoxRef {
+            concrete_type_id,
+            origin_module_idx,
+            ..
+        } => (*concrete_type_id, *origin_module_idx),
+        _ => return Vec::new(),
+    };
+
+    handle
+        .try_with_ctx(|ctx| {
+            ctx.struct_foreign_proto_tags(origin_module_idx as usize, concrete_type_id)
+                .into_iter()
+                .filter_map(|tag| {
+                    ctx.foreign_uuid(tag)
+                        .and_then(|s| uuid::Uuid::parse_str(s).ok())
+                        .map(|u| *u.as_bytes())
+                })
+                .collect::<Vec<[u8; 16]>>()
+        })
+        .unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -529,8 +819,8 @@ unsafe extern "C" fn method_thunk_ptr(
                 // recursive wrap uses the same runtime.
                 let this_slot = *args.add(0);
                 let this_pp = *(this_slot as *const *const *const c_void);
-                let ccw = &*(this_pp as *const ProtoCcw);
-                match wrap_proto_unknown(&ccw.payload.handle, data, uuid) {
+                let header = recover_header(this_pp);
+                match wrap_proto_unknown(&header.payload.handle, data, uuid) {
                     Ok(rc) => {
                         // ComRc -> raw pointer. ComRc::into_raw consumes the
                         // ref count; we transfer the strong ref to the caller.
@@ -573,7 +863,7 @@ unsafe fn dispatch_method(
     // read the actual value.
     let this_slot = *args.add(0);
     let this_pp = *(this_slot as *const *const *const c_void);
-    let ccw = &*(this_pp as *const ProtoCcw);
+    let header = recover_header(this_pp);
 
     // Re-enter the runtime *first*: marshalling `Foreign` args uses
     // `with_services` which requires the host services scope to be
@@ -581,14 +871,14 @@ unsafe fn dispatch_method(
     // installs `scope` + `scope_context` for the duration of the
     // closure, which is exactly what marshalling and the subsequent
     // `push_proto_method`/`resume` both need.
-    let root_idx = ccw.payload.root_idx;
+    let root_idx = header.payload.root_idx;
     let method_name = userdata.method_name.clone();
     let ret_kind = userdata.ret.clone();
     let arg_kinds = userdata.args.clone();
     let arg_slot_ptrs: Vec<*const c_void> =
         (0..userdata.args.len()).map(|i| *args.add(1 + i)).collect();
 
-    let outcome = ccw
+    let outcome = header
         .payload
         .handle
         .try_with_ctx(|ctx| {

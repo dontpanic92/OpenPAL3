@@ -53,10 +53,7 @@ impl ComponentFactory for MockFactory {
         panic!("not used by texture cache smoke test")
     }
 
-    fn create_rendering_component(
-        &self,
-        _objects: Vec<RenderObjectHandle>,
-    ) -> RenderingComponent {
+    fn create_rendering_component(&self, _objects: Vec<RenderObjectHandle>) -> RenderingComponent {
         RenderingComponent::new()
     }
 

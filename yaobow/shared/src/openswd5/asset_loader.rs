@@ -116,7 +116,7 @@ impl AssetLoader {
 
                 bsp_lightmap_tint: None,
             },
-        );
+        )?;
 
         let scene = CoreScene::create();
         scene.add_entity(dff);

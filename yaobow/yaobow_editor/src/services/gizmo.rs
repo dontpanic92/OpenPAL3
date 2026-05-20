@@ -12,8 +12,8 @@
 use std::rc::Rc;
 
 use crosscom::ComRc;
-use radiance::comdef::{IEntity, IEntityExt, IScene};
 use radiance::comdef::ISceneExt;
+use radiance::comdef::{IEntity, IEntityExt, IScene};
 use radiance::debug;
 use radiance::math::Vec3;
 use radiance::rendering::ComponentFactory;
@@ -52,11 +52,7 @@ impl Gizmo {
             let r = 1.0;
             let along = axis_dir;
             let p = |a: f32, dx: f32, dy: f32, dz: f32| {
-                Vec3::new(
-                    along.x * a + dx,
-                    along.y * a + dy,
-                    along.z * a + dz,
-                )
+                Vec3::new(along.x * a + dx, along.y * a + dy, along.z * a + dz)
             };
             let verts = vec![
                 p(-l, -r, -r, 0.),

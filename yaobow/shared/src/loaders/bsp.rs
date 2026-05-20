@@ -1,5 +1,6 @@
 use std::{io::Read, path::Path, rc::Rc};
 
+use anyhow::Context;
 use crosscom::ComRc;
 use fileformats::rwbs::{
     material::Material,
@@ -18,11 +19,11 @@ pub fn create_entity_from_bsp_model<P: AsRef<Path>>(
     path: P,
     name: String,
     config: &DffLoaderConfig,
-) -> ComRc<IEntity> {
+) -> anyhow::Result<ComRc<IEntity>> {
     let entity = CoreEntity::create(name, true);
-    load_bsp_model(entity.clone(), component_factory, vfs, path, config);
+    load_bsp_model(entity.clone(), component_factory, vfs, path, config)?;
 
-    entity
+    Ok(entity)
 }
 
 fn load_bsp_model<P: AsRef<Path>>(
@@ -31,10 +32,14 @@ fn load_bsp_model<P: AsRef<Path>>(
     vfs: &MiniFs,
     path: P,
     config: &DffLoaderConfig,
-) {
+) -> anyhow::Result<()> {
     let mut data = vec![];
-    let _ = vfs.open(&path).unwrap().read_to_end(&mut data).unwrap();
-    let chunks = read_bsp(&data).unwrap();
+    vfs.open(&path)
+        .with_context(|| format!("opening BSP {}", path.as_ref().display()))?
+        .read_to_end(&mut data)
+        .with_context(|| format!("reading BSP {}", path.as_ref().display()))?;
+    let chunks =
+        read_bsp(&data).with_context(|| format!("parsing BSP {}", path.as_ref().display()))?;
     if !chunks.is_empty() {
         create_geometries(
             entity,
@@ -46,6 +51,7 @@ fn load_bsp_model<P: AsRef<Path>>(
             config,
         );
     }
+    Ok(())
 }
 
 fn create_geometries<P: AsRef<Path>>(

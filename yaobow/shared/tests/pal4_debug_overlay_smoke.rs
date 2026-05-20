@@ -67,12 +67,35 @@ fn pal4_debug_overlay_round_trips_through_p7() {
     overlay.render(ui_com, 0.016, session.context);
 
     let calls = recorder.calls.borrow().clone();
-    // First call must be the outer window. The body is invoked
-    // between BodyEnter/BodyExit markers by RecordingUiHost.
+    // The script wraps its window in `ui.with_font(1, ...)`, so the
+    // first recorded call is the font scope; the window opens
+    // inside its body. Assert the expected nesting: WithFont first,
+    // a Window somewhere in the recorded sequence, and the Window
+    // sits inside the with_font body (i.e. between
+    // BodyEnter("with_font") and BodyExit("with_font")).
     assert!(
-        matches!(calls.first(), Some(UiCall::Window { .. })),
-        "first call should be ui.window, got {:?}",
+        matches!(calls.first(), Some(UiCall::WithFont { font_idx: 1 })),
+        "first call should be ui.with_font(1, ...), got {:?}",
         calls.first()
+    );
+    let with_font_enter = calls
+        .iter()
+        .position(|c| matches!(c, UiCall::BodyEnter("with_font")))
+        .expect("BodyEnter('with_font') must appear");
+    let with_font_exit = calls
+        .iter()
+        .position(|c| matches!(c, UiCall::BodyExit("with_font")))
+        .expect("BodyExit('with_font') must appear");
+    let window_pos = calls
+        .iter()
+        .position(|c| matches!(c, UiCall::Window { .. }))
+        .expect("ui.window call must appear inside the with_font scope");
+    assert!(
+        window_pos > with_font_enter && window_pos < with_font_exit,
+        "ui.window must be nested inside the with_font body; saw window at {} but with_font spans [{}, {}]",
+        window_pos,
+        with_font_enter,
+        with_font_exit
     );
 
     // Body must have produced text calls echoing the snapshot fields.

@@ -22,6 +22,7 @@ use radiance::comdef::IApplication;
 use radiance::comdef::IApplicationExt;
 
 use crate::comdef::immediate_director::IUiHost;
+use crate::script_bridges::immediate_director::register_immediate_director_proto;
 use crate::services::ui_host::ImguiUiHost;
 use crate::services::ImguiTextureCache;
 use crate::ImguiImmediateDirectorPump;
@@ -42,6 +43,14 @@ pub fn install_imgui_pump_with_cache(
     app: &ComRc<IApplication>,
     textures: Rc<RefCell<ImguiTextureCache>>,
 ) {
+    // Register the IImmediateDirector ProtoSpec before any script
+    // wrap might surface a struct conforming to it. The fat-CCW
+    // wrap path consults the registry to decide whether a slot is
+    // backable; without this, `struct[IImmediateDirector] X`
+    // wrapped as IDirector would QI-miss on IImmediateDirector and
+    // silently disable `render_im`.
+    register_immediate_director_proto();
+
     let engine_rc = app.engine();
     let engine = engine_rc.borrow();
     let ui_host: ComRc<IUiHost> = ImguiUiHost::create();

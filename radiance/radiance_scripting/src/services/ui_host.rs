@@ -725,10 +725,7 @@ impl IUiHostImpl for ImguiUiHost {
                     imgui::sys::ImGuiDockNodeFlags_DockSpace as i32,
                 ),
             );
-            imgui::sys::igDockBuilderSetNodeSize(
-                root,
-                imgui::sys::ImVec2::new(size[0], size[1]),
-            );
+            imgui::sys::igDockBuilderSetNodeSize(root, imgui::sys::ImVec2::new(size[0], size[1]));
 
             let mut left_id: imgui::sys::ImGuiID = 0;
             let mut center_after_left: imgui::sys::ImGuiID = 0;
@@ -791,7 +788,8 @@ fn dock_window(name: &str, node_id: imgui::sys::ImGuiID) {
     if name.is_empty() {
         return;
     }
-    let cstr = std::ffi::CString::new(name).unwrap_or_else(|_| std::ffi::CString::new("##").unwrap());
+    let cstr =
+        std::ffi::CString::new(name).unwrap_or_else(|_| std::ffi::CString::new("##").unwrap());
     unsafe {
         imgui::sys::igDockBuilderDockWindow(cstr.as_ptr(), node_id);
     }

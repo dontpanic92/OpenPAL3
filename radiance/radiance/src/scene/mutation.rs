@@ -97,7 +97,13 @@ impl ComponentBag {
         self.components
             .borrow_mut()
             .drain(..)
-            .filter_map(|(_, entry)| if entry.loaded { Some(entry.component) } else { None })
+            .filter_map(|(_, entry)| {
+                if entry.loaded {
+                    Some(entry.component)
+                } else {
+                    None
+                }
+            })
             .collect()
     }
 
@@ -305,9 +311,13 @@ mod tests {
         on_unloading: component_on_unloading,
     };
 
-    fn make_recording_component(name: &'static str, events: Rc<RefCell<Vec<Event>>>) -> ComRc<IComponent> {
+    fn make_recording_component(
+        name: &'static str,
+        events: Rc<RefCell<Vec<Event>>>,
+    ) -> ComRc<IComponent> {
         let component = Box::new(RecordingComponent {
-            vtable: &RECORDING_COMPONENT_VTBL as *const StubComponentVtbl as *const IComponentVirtualTable,
+            vtable: &RECORDING_COMPONENT_VTBL as *const StubComponentVtbl
+                as *const IComponentVirtualTable,
             refcount: Cell::new(1),
             state: Rc::new(RecordingState {
                 name,
@@ -385,8 +395,16 @@ mod tests {
     fn component_bag_dispatch_each_skips_pending_removal() {
         let bag = ComponentBag::new();
         let events = Rc::new(RefCell::new(Vec::new()));
-        bag.insert(test_uuid(1), make_recording_component("keep", events.clone()), true);
-        bag.insert(test_uuid(2), make_recording_component("skip", events.clone()), true);
+        bag.insert(
+            test_uuid(1),
+            make_recording_component("keep", events.clone()),
+            true,
+        );
+        bag.insert(
+            test_uuid(2),
+            make_recording_component("skip", events.clone()),
+            true,
+        );
         bag.mark_pending_removal(test_uuid(2));
 
         bag.dispatch_each(|component| component.on_updating(0.0));
@@ -400,8 +418,16 @@ mod tests {
         let events = Rc::new(RefCell::new(Vec::new()));
         let first = test_uuid(1);
         let second = test_uuid(2);
-        bag.insert(first, make_recording_component("first", events.clone()), false);
-        bag.insert(second, make_recording_component("second", events.clone()), false);
+        bag.insert(
+            first,
+            make_recording_component("first", events.clone()),
+            false,
+        );
+        bag.insert(
+            second,
+            make_recording_component("second", events.clone()),
+            false,
+        );
 
         bag.load_all();
 
@@ -454,7 +480,9 @@ mod tests {
         bag.insert(uuid, make_recording_component("a", events.clone()), true);
         bag.insert(uuid, make_recording_component("b", events.clone()), true);
 
-        let component = bag.get(uuid).expect("component should exist after overwrite");
+        let component = bag
+            .get(uuid)
+            .expect("component should exist after overwrite");
         component.on_unloading();
 
         assert_eq!(snapshot(&events), vec![Event::Unloading("b")]);

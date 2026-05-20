@@ -1,5 +1,6 @@
 use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
 
+use anyhow::Context;
 use crosscom::ComRc;
 use fileformats::rwbs::{
     clump::Clump, extension::Extension, frame::Frame, material::Material, read_dff, Matrix44f,
@@ -84,12 +85,16 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
     name: String,
     visible: bool,
     config: &DffLoaderConfig,
-) -> ComRc<IEntity> {
+) -> anyhow::Result<ComRc<IEntity>> {
     let entity = CoreEntity::create(name, visible);
 
     let mut data = vec![];
-    let _ = vfs.open(&path).unwrap().read_to_end(&mut data).unwrap();
-    let chunks = read_dff(&data).unwrap();
+    vfs.open(&path)
+        .with_context(|| format!("opening DFF {}", path.as_ref().display()))?
+        .read_to_end(&mut data)
+        .with_context(|| format!("reading DFF {}", path.as_ref().display()))?;
+    let chunks =
+        read_dff(&data).with_context(|| format!("parsing DFF {}", path.as_ref().display()))?;
     for chunk in chunks {
         load_clump(
             chunk,
@@ -101,7 +106,7 @@ pub fn create_entity_from_dff_model<P: AsRef<Path>>(
         );
     }
 
-    entity
+    Ok(entity)
 }
 
 struct HAnimBone {

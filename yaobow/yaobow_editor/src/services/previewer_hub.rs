@@ -389,6 +389,14 @@ fn load_dff(
                 bsp_lightmap_tint: None,
             },
         )
+        .map_err(|e| {
+            log::warn!(
+                "load_mv3/dff preview failed for {}: {:#}",
+                path.display(),
+                e
+            )
+        })
+        .ok()?
     } else if game_type == GameType::PAL4 {
         let folder_path = path.parent()?;
         let actor_name = folder_path.file_name()?.to_str()?;
@@ -396,7 +404,7 @@ fn load_dff(
         let entity = create_entity_from_dff_model(
             &asset_loader.component_factory(),
             vfs,
-            dff_path,
+            dff_path.clone(),
             "preview".to_string(),
             true,
             &DffLoaderConfig {
@@ -407,7 +415,15 @@ fn load_dff(
 
                 bsp_lightmap_tint: None,
             },
-        );
+        )
+        .map_err(|e| {
+            log::warn!(
+                "PAL4 actor DFF preview failed for {}: {:#}",
+                dff_path.display(),
+                e
+            )
+        })
+        .ok()?;
 
         let armature = entity
             .get_component(IArmatureComponent::uuid())?
@@ -447,7 +463,9 @@ fn load_bsp(
         path,
         "preview".to_string(),
         game_type.dff_loader_config()?,
-    );
+    )
+    .map_err(|e| log::warn!("BSP preview failed for {}: {:#}", path.display(), e))
+    .ok()?;
     Some((text, entity))
 }
 

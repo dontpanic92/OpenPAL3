@@ -2,11 +2,11 @@
 //!
 //! Loads the composed editor script, wires the `EditorHostContext`,
 //! calls `init(host)`, and reverse-wraps the returned director box
-//! via [`wrap_im_director`] into a `ComRc<IImmediateDirector>`. The
-//! Phase 5 [`ImguiImmediateDirectorPump`] is installed on the
-//! engine so `CoreRadianceEngine::update` drives `render_im` inside
-//! the imgui frame scope. The QI'd `ComRc<IDirector>` is handed
-//! back to the caller for `SceneManager::set_director`.
+//! via [`wrap_director`] into a `ComRc<IDirector>`. The fat CCW
+//! backs both `IDirector` and `IImmediateDirector` from a single
+//! wrap call, so the engine's [`ImguiImmediateDirectorPump`] (set up
+//! via [`install_imgui_pump_with_cache`]) can QI the same director
+//! to drive its `render_im` step inside the imgui frame scope.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -15,7 +15,7 @@ use crosscom::ComRc;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::{
-    install_imgui_pump_with_cache, with_services, wrap_im_director, RuntimeAccess, RuntimeHandle,
+    install_imgui_pump_with_cache, with_services, wrap_director, RuntimeAccess, RuntimeHandle,
     ScriptHost,
 };
 use shared::config::YaobowConfig;
@@ -83,14 +83,15 @@ impl ScriptedWelcomePage {
             .expect("welcome script init must succeed");
 
         // Reverse-wrap the script-side `box<radiance.IImmediateDirector>`
-        // through the runtime-typed CCW factory. The resulting ComRc
-        // QIs back to `ComRc<IDirector>` for SceneManager.
+        // through the runtime-typed CCW factory. The fat CCW gives us
+        // both `IDirector` (for `SceneManager::set_director`) and
+        // `IImmediateDirector` (for the imgui pump) from a single
+        // `wrap_director` call, because the script struct's
+        // `conforming_to` list backs every advertised interface with
+        // its own slot.
         let runtime_handle = host_runtime_handle(&host);
-        let im = wrap_im_director(&runtime_handle, director_data)
-            .expect("wrap_im_director must succeed");
-        let director: ComRc<IDirector> = im
-            .query_interface::<IDirector>()
-            .expect("IImmediateDirector must QI to IDirector");
+        let director: ComRc<IDirector> =
+            wrap_director(&runtime_handle, director_data).expect("wrap_director must succeed");
 
         // Install the engine-side pump so `CoreRadianceEngine::update`
         // invokes `render_im` inside the imgui frame scope each tick.

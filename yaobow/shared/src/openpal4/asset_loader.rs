@@ -106,14 +106,16 @@ impl AssetLoader {
             bsp_lightmap_tint: None,
         };
         if self.vfs.exists(&path) {
-            Some(create_entity_from_dff_model(
+            create_entity_from_dff_model(
                 &self.component_factory,
                 &self.vfs,
                 path.clone(),
                 object_name.to_string(),
                 true,
                 &config,
-            ))
+            )
+            .map_err(|e| log::warn!("load_object: failed to load DFF {}: {:#}", path, e))
+            .ok()
         } else {
             None
         }
@@ -139,7 +141,7 @@ impl AssetLoader {
                 ignore_root_frame_translation: false,
                 bsp_lightmap_tint: None,
             },
-        );
+        )?;
 
         let armature = entity
             .get_component(IArmatureComponent::uuid())
@@ -263,7 +265,7 @@ impl AssetLoader {
                 ignore_root_frame_translation: false,
                 bsp_lightmap_tint,
             },
-        );
+        )?;
 
         scene.add_entity(entity.clone());
 
@@ -374,7 +376,9 @@ impl AssetLoader {
                 ignore_root_frame_translation: false,
                 bsp_lightmap_tint: None,
             },
-        );
+        )
+        .map_err(|e| log::warn!("try_load_scene_water: failed to load {}: {:#}", path, e))
+        .ok()?;
         Some(entity)
     }
 
@@ -467,7 +471,7 @@ impl AssetLoader {
 
     fn try_load_dff(&self, path: String, object_name: String) -> Option<ComRc<IEntity>> {
         if self.vfs.exists(&path) {
-            let entity = create_entity_from_dff_model(
+            create_entity_from_dff_model(
                 &self.component_factory,
                 &self.vfs,
                 path.clone(),
@@ -480,9 +484,9 @@ impl AssetLoader {
                     ignore_root_frame_translation: false,
                     bsp_lightmap_tint: None,
                 },
-            );
-
-            Some(entity)
+            )
+            .map_err(|e| log::warn!("try_load_dff: failed to load {}: {:#}", path, e))
+            .ok()
         } else {
             None
         }

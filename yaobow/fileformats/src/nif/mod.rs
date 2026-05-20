@@ -15,10 +15,8 @@ use self::{
     header::NiHeader,
 };
 
-/**
- * Reference:
- *      https://github.com/niftools/nifskope
- */
+// Reference:
+//      https://github.com/niftools/nifskope
 
 #[binwrite]
 #[bw(little)]

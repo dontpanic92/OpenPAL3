@@ -54,7 +54,7 @@ impl AssetLoader {
 
     pub fn load_model(&self, model_path: &str) -> anyhow::Result<ComRc<IEntity>> {
         let model_path = format!("/Model/{}", model_path);
-        let entity = create_entity_from_dff_model(
+        create_entity_from_dff_model(
             &self.component_factory,
             &self.vfs,
             model_path.clone(),
@@ -68,8 +68,7 @@ impl AssetLoader {
 
                 bsp_lightmap_tint: None,
             },
-        );
-        Ok(entity)
+        )
     }
 }
 

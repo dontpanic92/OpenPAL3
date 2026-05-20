@@ -36,7 +36,7 @@ pub mod script_source {
     use radiance::radiance::CoreRadianceEngine;
     use radiance_scripting::comdef::immediate_director::IImmediateDirector;
     use radiance_scripting::{
-        with_services, wrap_im_director, RuntimeAccess, RuntimeHandle, ScriptDirectorHandle,
+        with_services, wrap_director, RuntimeAccess, RuntimeHandle, ScriptDirectorHandle,
         ScriptHost,
     };
     use shared::openpal4::comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay};
@@ -241,14 +241,17 @@ pub mod script_source {
         }
 
         pub fn make_title_director(&self) -> Result<ComRc<IImmediateDirector>, String> {
-            let director = self.call_app_method("make_title_director", Vec::new())?;
-            wrap_im_director(&self.runtime_handle(), director).map_err(|err| format!("{err:?}"))
+            // Fat CCW supports QI for every interface the script
+            // struct conforms to; wrap as IDirector and QI to
+            // IImmediateDirector.
+            let d = self.make_title_director_as_director()?;
+            d.query_interface::<IImmediateDirector>()
+                .ok_or_else(|| "title director did not implement IImmediateDirector".to_string())
         }
 
         pub fn make_title_director_as_director(&self) -> Result<ComRc<IDirector>, String> {
-            self.make_title_director()?
-                .query_interface::<IDirector>()
-                .ok_or_else(|| "IImmediateDirector did not implement IDirector".to_string())
+            let director = self.call_app_method("make_title_director", Vec::new())?;
+            wrap_director(&self.runtime_handle(), director).map_err(|err| format!("{err:?}"))
         }
 
         pub fn make_pal4_debug_overlay(

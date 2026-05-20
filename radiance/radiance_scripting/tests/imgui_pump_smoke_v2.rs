@@ -1,12 +1,13 @@
-//! Phase 5 (D1/D2/D3): smoke test for `wrap_im_director` and the
+//! Smoke tests for the runtime-typed CCW factory's fat-CCW behaviour
+//! for IDirector + IImmediateDirector aggregation, and the
 //! `ImguiImmediateDirectorPump::dispatch_render_im` helper.
 //!
 //! Drives a script-side
 //! `struct[immediate_director.IImmediateDirector, IDirectorLifecycle] StubIm`
 //! through:
-//!  - `wrap_im_director(handle, data) -> ComRc<IImmediateDirector>`,
-//!  - QI back to `ComRc<IDirector>` (validates Phase 5's
-//!    `additional_query_uuids` field),
+//!  - `wrap_director(handle, data) -> ComRc<IDirector>`,
+//!  - QI to `ComRc<IImmediateDirector>` (validates the fat-CCW slot
+//!    for the derived interface),
 //!  - `dispatch_render_im(&director, &recording_ui_host, dt)`
 //!    invoking the script's `render_im` which forwards to the
 //!    `RecordingUiHost`.
@@ -19,7 +20,9 @@ use p7::interpreter::context::{Context, Data};
 use radiance::comdef::IDirector;
 use radiance_scripting::comdef::immediate_director::IImmediateDirector;
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
-use radiance_scripting::{wrap_im_director, ImguiImmediateDirectorPump, ScriptHost};
+use radiance_scripting::{
+    register_immediate_director_proto, wrap_director, ImguiImmediateDirectorPump, ScriptHost,
+};
 
 const SCRIPT: &str = r#"
 import radiance;
@@ -86,9 +89,10 @@ fn host_runtime_handle(host: &std::rc::Rc<ScriptHost>) -> crosscom_protosept::Ru
 }
 
 #[test]
-fn wrap_im_director_round_trips_qi_to_idirector() {
+fn wrap_director_round_trips_qi_to_immediate_director() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     EVENTS.lock().unwrap().clear();
+    register_immediate_director_proto();
 
     let host = ScriptHost::new();
     host.with_ctx_mut(|ctx| {
@@ -100,12 +104,10 @@ fn wrap_im_director_round_trips_qi_to_idirector() {
         .call_returning_data("make_im", vec![Data::Int(11)])
         .expect("make_im");
     let handle = host_runtime_handle(&host);
-    let im: ComRc<IImmediateDirector> = wrap_im_director(&handle, data).expect("wrap_im_director");
-
-    // QI to IDirector (validates additional_query_uuids).
-    let as_director: ComRc<IDirector> = im
-        .query_interface::<IDirector>()
-        .expect("QI IImmediateDirector -> IDirector");
+    let as_director: ComRc<IDirector> = wrap_director(&handle, data).expect("wrap_director");
+    let im: ComRc<IImmediateDirector> = as_director
+        .query_interface::<IImmediateDirector>()
+        .expect("QI IDirector -> IImmediateDirector via fat CCW");
 
     // Drive activate + update via the QI'd IDirector ComRc.
     as_director.activate(); // (11, 1)
@@ -130,6 +132,7 @@ fn wrap_im_director_round_trips_qi_to_idirector() {
 fn dispatch_render_im_forwards_to_script_and_recording_ui_host() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     EVENTS.lock().unwrap().clear();
+    register_immediate_director_proto();
 
     let host = ScriptHost::new();
     host.with_ctx_mut(|ctx| {
@@ -141,8 +144,10 @@ fn dispatch_render_im_forwards_to_script_and_recording_ui_host() {
         .call_returning_data("make_im", vec![Data::Int(7)])
         .expect("make_im");
     let handle = host_runtime_handle(&host);
-    let im: ComRc<IImmediateDirector> = wrap_im_director(&handle, data).expect("wrap_im_director");
-    let as_director: ComRc<IDirector> = im.query_interface::<IDirector>().expect("QI to IDirector");
+    let as_director: ComRc<IDirector> = wrap_director(&handle, data).expect("wrap_director");
+    let im: ComRc<IImmediateDirector> = as_director
+        .query_interface::<IImmediateDirector>()
+        .expect("QI IDirector -> IImmediateDirector via fat CCW");
 
     // Build a RecordingUiHost and drive the script's render_im
     // through the pump's headless dispatch helper. The script's
@@ -210,4 +215,78 @@ pub fn make_plain(seed: int) -> box<radiance.IDirector> {
         !fired,
         "QI to IImmediateDirector must fail for a plain IDirector"
     );
+}
+
+/// Regression: when a script-side struct conforms to both
+/// `IImmediateDirector` and `IDirector` but the dispatcher marshals
+/// it through an `IDirector?`-typed return (the upstream IDL shape of
+/// `IDirector::update`), the resulting CCW must still QI to
+/// `IImmediateDirector`. Otherwise the engine's immediate-mode pump
+/// QI-misses on the transition and the screen goes black.
+#[test]
+fn idirector_update_returning_im_director_qis_to_immediate() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    EVENTS.lock().unwrap().clear();
+    register_immediate_director_proto();
+
+    let host = ScriptHost::new();
+    host.with_ctx_mut(|ctx| {
+        ctx.register_host_function("imp_test.record_event".to_string(), record_event_host_fn);
+    });
+    host.load_source(
+        r#"
+import radiance;
+import immediate_director;
+
+@intrinsic(name="imp_test.record_event")
+fn record_event(seed: int, event: int);
+
+struct[immediate_director.IImmediateDirector, radiance.IDirector] NextIm(seed: int) {
+    pub fn activate(self: ref<Self>) -> int { record_event(self.seed, 1); 0 }
+    pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> { return null; }
+    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
+        ui.text("next");
+        record_event(self.seed, 4);
+        0
+    }
+    pub fn deactivate(self: ref<Self>) -> int { record_event(self.seed, 3); 0 }
+}
+
+struct[radiance.IDirector] WelcomeLike(next_seed: int) {
+    pub fn activate(self: ref<Self>) -> int { 0 }
+    pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
+        let n = box(NextIm(self.next_seed));
+        return n as box<radiance.IDirector>;
+    }
+    pub fn deactivate(self: ref<Self>) -> int { 0 }
+}
+
+pub fn make_welcome(seed: int) -> box<radiance.IDirector> {
+    let d = box(WelcomeLike(seed));
+    d as box<radiance.IDirector>
+}
+"#,
+    )
+    .expect("load");
+
+    let data = host
+        .call_returning_data("make_welcome", vec![Data::Int(42)])
+        .expect("make_welcome");
+    let handle = host_runtime_handle(&host);
+    let welcome: ComRc<IDirector> =
+        radiance_scripting::wrap_director(&handle, data).expect("wrap_director");
+
+    // Drive update; the script returns a NextIm wrapped as
+    // box<radiance.IDirector>. Without the most-derived-uuid upgrade,
+    // QI to IImmediateDirector here returns None and the pump silently
+    // bails (black screen). With the fix, the upgrade picks
+    // IImmediateDirector because NextIm conforms to it.
+    let next = welcome.update(0.016).expect("transition expected");
+    let (_recorder, ui_host) = RecordingUiHost::create();
+    let fired = ImguiImmediateDirectorPump::dispatch_render_im(&next, &ui_host, 0.016);
+    assert!(
+        fired,
+        "transitioned director must QI to IImmediateDirector for the pump to render"
+    );
+    assert_eq!(*EVENTS.lock().unwrap(), vec![(42, 4)]);
 }

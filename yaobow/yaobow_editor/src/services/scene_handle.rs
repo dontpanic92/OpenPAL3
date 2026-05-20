@@ -50,10 +50,10 @@ impl SceneHandle {
     /// load it via `Pal4Scene::load`. Returns `None` when the path
     /// doesn't match the `/gamedata/PALWorld/<scene>/<block>/<block>.bsp`
     /// convention, when the asset loader isn't a PAL4 loader, or when
-    /// loading fails or panics (the upstream BSP loader still uses
-    /// `unwrap()` on sibling-asset lookups, so a missing texture/
-    /// lightmap will panic — we catch that here so a misclick can't
-    /// crash the editor).
+    /// loading fails with a recoverable error (e.g. missing BSP, parse
+    /// failure, missing sibling asset). Loader-side I/O is now fully
+    /// `Result`-based, so a misclicked BSP propagates a normal error
+    /// up here without ever tripping the host's panic hook.
     pub fn try_create_pal4(
         vfs_path: &str,
         loader: &Rc<Pal4AssetLoader>,
@@ -65,33 +65,14 @@ impl SceneHandle {
         let (scene_name, block_name) = parse_pal4_scene_path(vfs_path)?;
 
         use shared::openpal4::scene::Pal4Scene;
-        // `Pal4Scene::load` returns `anyhow::Result` for the recoverable
-        // failures but panics on upstream `.unwrap()` paths (e.g.
-        // `loaders::bsp::load_bsp_model` -> `vfs.open(...).unwrap()`).
-        // Catch both so a misclicked BSP never tears down the host.
-        let loader_clone = loader.clone();
-        let input_clone = input.clone();
-        let scene_name_clone = scene_name.clone();
-        let block_name_clone = block_name.clone();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-            Pal4Scene::load(&loader_clone, input_clone, &scene_name_clone, &block_name_clone)
-        }));
-        let pal4_scene = match result {
-            Ok(Ok(s)) => s,
-            Ok(Err(e)) => {
+        let pal4_scene = match Pal4Scene::load(loader, input, &scene_name, &block_name) {
+            Ok(s) => s,
+            Err(e) => {
                 log::warn!(
-                    "SceneHandle: failed to load PAL4 scene {}/{}: {}",
+                    "SceneHandle: failed to load PAL4 scene {}/{}: {:#}",
                     scene_name,
                     block_name,
                     e
-                );
-                return None;
-            }
-            Err(_) => {
-                log::warn!(
-                    "SceneHandle: PAL4 loader panicked on scene {}/{} (missing sibling assets?)",
-                    scene_name,
-                    block_name,
                 );
                 return None;
             }
@@ -239,11 +220,7 @@ fn compute_initial_framing(scene: &ComRc<IScene>) -> (Vec3, f32) {
     // so we at least frame *something* instead of dropping back to
     // origin (where the scene is rarely centred).
     let (min, max) = if aabb_count > 0 {
-        log::info!(
-            "SceneHandle: AABB union min={:?} max={:?}",
-            min,
-            max
-        );
+        log::info!("SceneHandle: AABB union min={:?} max={:?}", min, max);
         (min, max)
     } else if entity_count > 0 {
         log::info!(
@@ -316,15 +293,7 @@ fn accumulate_entity_aabb(
         }
     }
     for child in entity.children() {
-        accumulate_entity_aabb(
-            &child,
-            min,
-            max,
-            aabb_count,
-            entity_count,
-            pos_min,
-            pos_max,
-        );
+        accumulate_entity_aabb(&child, min, max, aabb_count, entity_count, pos_min, pos_max);
     }
 }
 
@@ -562,7 +531,10 @@ impl InspectorView {
                 let t = transform.borrow();
                 let p = t.position();
                 let e = t.euler();
-                f.push(("position".to_string(), format!("{:.3}, {:.3}, {:.3}", p.x, p.y, p.z)));
+                f.push((
+                    "position".to_string(),
+                    format!("{:.3}, {:.3}, {:.3}", p.x, p.y, p.z),
+                ));
                 f.push((
                     "rotation_euler_deg".to_string(),
                     format!("{:.1}, {:.1}, {:.1}", e.x, e.y, e.z),

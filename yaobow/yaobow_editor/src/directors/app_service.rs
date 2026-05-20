@@ -6,7 +6,7 @@ use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance_scripting::comdef::services::{IAppService, IAppServiceImpl};
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::{
-    install_imgui_pump_with_cache, with_services, wrap_im_director, RuntimeAccess, RuntimeHandle,
+    install_imgui_pump_with_cache, with_services, wrap_director, RuntimeAccess, RuntimeHandle,
     ScriptHost,
 };
 use shared::config::YaobowConfig;
@@ -149,13 +149,12 @@ impl IAppServiceImpl for AppService {
             .call_returning_data("init_main_editor", vec![host_box])
             .ok()?;
 
-        // Reverse-wrap via the Phase 5 runtime-typed CCW factory
-        // and install (re-install) the imgui pump for the new
-        // director. Sharing the same `textures` cache the welcome
-        // bootstrap built keeps previewer com_ids resolvable.
+        // Reverse-wrap via the runtime-typed CCW factory. The fat
+        // CCW gives both `IDirector` (for `SceneManager`) and
+        // `IImmediateDirector` (for the imgui pump) from a single
+        // wrap, so we don't need a follow-up QI.
         let runtime_handle = host_runtime_handle(&self.script_host);
-        let im = wrap_im_director(&runtime_handle, director_data).ok()?;
-        let director: ComRc<IDirector> = im.query_interface::<IDirector>()?;
+        let director: ComRc<IDirector> = wrap_director(&runtime_handle, director_data).ok()?;
 
         drop(engine);
         install_imgui_pump_with_cache(&self.app, self.textures.clone());
