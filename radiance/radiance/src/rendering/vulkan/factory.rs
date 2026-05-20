@@ -159,10 +159,7 @@ impl ComponentFactory for VulkanComponentFactory {
         RenderObjectHandle::from_vulkan(vro)
     }
 
-    fn create_rendering_component(
-        &self,
-        objects: Vec<RenderObjectHandle>,
-    ) -> RenderingComponent {
+    fn create_rendering_component(&self, objects: Vec<RenderObjectHandle>) -> RenderingComponent {
         let mut component = RenderingComponent::new();
         for o in objects {
             component.push_render_object(o);

@@ -1,19 +1,22 @@
 use crosscom::ComRc;
-use dashmap::DashMap;
 use uuid::Uuid;
 
-use super::entity::IEntityExt;
+use super::{
+    entity::IEntityExt,
+    mutation::{ComponentBag, MutationQueue},
+    Camera,
+};
 use crate::{
     comdef::{IComponent, IComponentContainerImpl, IEntity, IScene, ISceneImpl},
     math::Transform,
 };
-
-use super::Camera;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 
-struct SceneComponentEntry {
-    component: ComRc<IComponent>,
-    loaded: bool,
+enum ScenePendingChange {
+    AddEntity(ComRc<IEntity>),
+    RemoveEntitiesByName(String),
+    AddComponent(Uuid, ComRc<IComponent>),
+    RemoveComponent(Uuid),
 }
 
 pub struct CoreScene {
@@ -21,8 +24,9 @@ pub struct CoreScene {
     visible: bool,
     entities: RefCell<Vec<ComRc<IEntity>>>,
     camera: RefCell<Camera>,
-    components: DashMap<Uuid, SceneComponentEntry>,
+    components: ComponentBag,
     loaded: Cell<bool>,
+    mutations: MutationQueue<ScenePendingChange>,
 }
 
 ComObject_Scene!(super::CoreScene);
@@ -34,8 +38,9 @@ impl CoreScene {
             visible: true,
             entities: RefCell::new(vec![]),
             camera: RefCell::new(Camera::new()),
-            components: DashMap::new(),
+            components: ComponentBag::new(),
             loaded: Cell::new(false),
+            mutations: MutationQueue::new(),
         }
     }
 
@@ -67,9 +72,7 @@ impl CoreScene {
         }
     }
 
-    // ---- inherent counterparts of formerly-IDL accessors ----
-
-    pub fn remove_entities_by_name(&self, name: &str) -> Vec<ComRc<IEntity>> {
+    fn do_remove_entities_by_name_immediate(&self, name: &str) -> Vec<ComRc<IEntity>> {
         let mut entities = vec![];
         let mut i = 0;
         while i < self.entities.borrow().len() {
@@ -82,8 +85,6 @@ impl CoreScene {
             }
         }
 
-        // Unload removed entities to fire on_unloading on their
-        // components symmetrically with the add path.
         if self.loaded.get() {
             for e in &entities {
                 e.unload();
@@ -91,6 +92,93 @@ impl CoreScene {
         }
 
         entities
+    }
+
+    fn apply_or_queue_add_entity(&self, entity: ComRc<IEntity>) {
+        if self.mutations.is_iterating() {
+            self.mutations.enqueue(ScenePendingChange::AddEntity(entity));
+        } else {
+            if self.loaded.get() {
+                entity.load();
+            }
+            self.entities.borrow_mut().push(entity);
+        }
+    }
+
+    fn apply_or_queue_remove_entities_by_name(&self, name: &str) -> Vec<ComRc<IEntity>> {
+        if self.mutations.is_iterating() {
+            let entities: Vec<_> = self
+                .entities
+                .borrow()
+                .iter()
+                .filter(|entity| entity.name() == name)
+                .cloned()
+                .collect();
+            if entities.is_empty() {
+                return entities;
+            }
+
+            // Defer both the structural removal and entity.unload(). Unlike
+            // component removal, unloading immediately would tear down the
+            // entity's components before its already-snapshotted update work
+            // finishes later in the current tick.
+            self.mutations
+                .enqueue(ScenePendingChange::RemoveEntitiesByName(name.to_string()));
+            entities
+        } else {
+            self.do_remove_entities_by_name_immediate(name)
+        }
+    }
+
+    fn apply_or_queue_add_component(&self, uuid: Uuid, component: ComRc<IComponent>) {
+        let fire_now = self.loaded.get();
+        if fire_now {
+            component.on_loading();
+        }
+        if self.mutations.is_iterating() {
+            self.mutations
+                .enqueue(ScenePendingChange::AddComponent(uuid, component));
+        } else {
+            self.components.insert(uuid, component, fire_now);
+        }
+    }
+
+    fn apply_or_queue_remove_component(&self, uuid: Uuid) -> Option<ComRc<IComponent>> {
+        if self.mutations.is_iterating() {
+            let (component, was_loaded) = self.components.mark_pending_removal(uuid)?;
+            if was_loaded {
+                component.on_unloading();
+            }
+            self.mutations.enqueue(ScenePendingChange::RemoveComponent(uuid));
+            Some(component)
+        } else {
+            let entry = self.components.shift_remove(uuid)?;
+            if entry.loaded {
+                entry.component.on_unloading();
+            }
+            Some(entry.component)
+        }
+    }
+
+    fn drain_pending(&self) {
+        self.mutations.drain(|change| match change {
+            ScenePendingChange::AddEntity(entity) => self.apply_or_queue_add_entity(entity),
+            ScenePendingChange::RemoveEntitiesByName(name) => {
+                self.do_remove_entities_by_name_immediate(&name);
+            }
+            ScenePendingChange::AddComponent(uuid, component) => {
+                self.apply_or_queue_add_component(uuid, component);
+            }
+            ScenePendingChange::RemoveComponent(uuid) => {
+                self.components.shift_remove(uuid);
+            }
+        });
+    }
+
+    // ---- inherent counterparts of formerly-IDL accessors ----
+
+    pub fn remove_entities_by_name(&self, name: &str) -> Vec<ComRc<IEntity>> {
+        self.apply_or_queue_remove_entities_by_name(name)
     }
 
     pub fn root_entities(&self) -> Vec<ComRc<IEntity>> {
@@ -169,25 +257,7 @@ impl ISceneImpl for CoreScene {
             return;
         }
         self.loaded.set(true);
-
-        // Snapshot uuids so we can mutate the DashMap entries while
-        // dispatching on_loading (an impl may re-enter add_component).
-        let uuids: Vec<Uuid> = self.components.iter().map(|kv| *kv.key()).collect();
-        for uuid in uuids {
-            let component = {
-                let mut entry = match self.components.get_mut(&uuid) {
-                    Some(e) => e,
-                    None => continue,
-                };
-                if entry.loaded {
-                    continue;
-                }
-                entry.loaded = true;
-                entry.component.clone()
-            };
-            component.on_loading();
-        }
-
+        self.components.load_all();
         for entity in self.entities.borrow().clone() {
             entity.load();
         }
@@ -197,24 +267,20 @@ impl ISceneImpl for CoreScene {
         if !self.active {
             return;
         }
-
-        let entities = self.entities.borrow().clone();
-
-        for e in &entities {
-            e.update(delta_sec);
+        let guard = self.mutations.iter_guard();
+        let entities_len = self.entities.borrow().len();
+        for i in 0..entities_len {
+            let entity = self.entities.borrow()[i].clone();
+            entity.update(delta_sec);
         }
-
-        for e in &entities {
-            e.update_world_transform(&Transform::new());
+        for i in 0..entities_len {
+            let entity = self.entities.borrow()[i].clone();
+            entity.update_world_transform(&Transform::new());
         }
-
-        let components: Vec<ComRc<IComponent>> = self
-            .components
-            .iter()
-            .map(|kv| kv.value().component.clone())
-            .collect();
-        for c in components {
-            c.on_updating(delta_sec);
+        self.components.dispatch_each(|component| component.on_updating(delta_sec));
+        drop(guard);
+        if !self.mutations.is_iterating() {
+            self.drain_pending();
         }
     }
 
@@ -227,68 +293,31 @@ impl ISceneImpl for CoreScene {
             return;
         }
         self.loaded.set(false);
-
         for e in self.entities.borrow().clone() {
             e.unload();
         }
-
         self.entities.borrow_mut().clear();
-
-        // Drain components while firing on_unloading on the ones we
-        // actually fired on_loading on.
-        let uuids: Vec<Uuid> = self.components.iter().map(|kv| *kv.key()).collect();
-        let mut to_unload: Vec<ComRc<IComponent>> = Vec::new();
-        for uuid in uuids {
-            if let Some((_, entry)) = self.components.remove(&uuid) {
-                if entry.loaded {
-                    to_unload.push(entry.component);
-                }
-            }
-        }
-        for c in to_unload {
+        let unloading = self.components.drain_loaded_for_unload();
+        for c in unloading {
             c.on_unloading();
         }
     }
 
     fn add_entity(&self, entity: ComRc<IEntity>) {
-        // If the scene is already loaded, the new entity must be
-        // loaded immediately to keep the exactly-once-per-(component,
-        // container) contract.
-        if self.loaded.get() {
-            entity.load();
-        }
-        self.entities.borrow_mut().push(entity);
+        self.apply_or_queue_add_entity(entity);
     }
 }
 
 impl IComponentContainerImpl for CoreScene {
-    fn add_component(&self, uuid: uuid::Uuid, component: crosscom::ComRc<IComponent>) -> () {
-        let fire_now = self.loaded.get();
-        if fire_now {
-            component.on_loading();
-        }
-        self.components.insert(
-            uuid,
-            SceneComponentEntry {
-                component,
-                loaded: fire_now,
-            },
-        );
+    fn add_component(&self, uuid: uuid::Uuid, component: crosscom::ComRc<IComponent>) {
+        self.apply_or_queue_add_component(uuid, component);
     }
 
     fn get_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
-        self.components.get(&uuid).map(|e| e.component.clone())
+        self.components.get(uuid)
     }
 
     fn remove_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
-        let entry = self.components.remove(&uuid).map(|(_, e)| e);
-        if let Some(e) = entry {
-            if e.loaded {
-                e.component.on_unloading();
-            }
-            Some(e.component)
-        } else {
-            None
-        }
+        self.apply_or_queue_remove_component(uuid)
     }
 }

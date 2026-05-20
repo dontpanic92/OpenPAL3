@@ -16,7 +16,13 @@ impl ImageView {
         format: vk::Format,
         mip_levels: u32,
     ) -> VkResult<Self> {
-        Self::new(device, image, format, vk::ImageAspectFlags::COLOR, mip_levels)
+        Self::new(
+            device,
+            image,
+            format,
+            vk::ImageAspectFlags::COLOR,
+            mip_levels,
+        )
     }
 
     pub fn new_depth_image_view(

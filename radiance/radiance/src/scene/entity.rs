@@ -5,18 +5,22 @@ use crate::comdef::{IComponent, IComponentContainerImpl, IEntity, IEntityImpl};
 use crate::math::{Mat44, Transform};
 use crate::rendering::RenderingComponent;
 use std::cell::{Cell, Ref, RefCell, RefMut};
-use std::collections::HashMap;
 use std::rc::Rc;
 
-struct ComponentEntry {
-    component: ComRc<IComponent>,
-    loaded: bool,
+use super::mutation::{ComponentBag, MutationQueue};
+
+enum EntityPendingChange {
+    AddComponent(Uuid, ComRc<IComponent>),
+    RemoveComponent(Uuid),
+    AttachChild(ComRc<IEntity>),
+    DetachFirstByName(String),
 }
 
 pub struct CoreEntity {
     transform: Rc<RefCell<Transform>>,
-    components: RefCell<HashMap<Uuid, ComponentEntry>>,
+    components: ComponentBag,
     loaded: Cell<bool>,
+    mutations: MutationQueue<EntityPendingChange>,
     props: RefCell<CoreEntityProps>,
 }
 
@@ -44,8 +48,9 @@ impl CoreEntity {
     pub fn new(name: String, visible: bool) -> Self {
         Self {
             transform: Rc::new(RefCell::new(Transform::new())),
-            components: RefCell::new(HashMap::new()),
+            components: ComponentBag::new(),
             loaded: Cell::new(false),
+            mutations: MutationQueue::new(),
             props: RefCell::new(CoreEntityProps {
                 name,
                 world_transform: Transform::new(),
@@ -66,12 +71,87 @@ impl CoreEntity {
         self.props.borrow_mut()
     }
 
-    pub fn detach_first(&mut self, name: &str) -> Option<ComRc<IEntity>> {
-        self.props()
-            .children
-            .iter()
-            .position(|e| e.name() == name)
-            .and_then(|p| Some(self.props_mut().children.remove(p)))
+    pub fn detach_first(&self, name: &str) -> Option<ComRc<IEntity>> {
+        self.apply_or_queue_detach_first_by_name(name)
+    }
+
+    fn detach_first_immediate(&self, name: &str) -> Option<ComRc<IEntity>> {
+        let position = {
+            let props = self.props();
+            props.children.iter().position(|e| e.name() == name)
+        };
+        position.map(|p| self.props_mut().children.remove(p))
+    }
+
+    fn attach_child_immediate(&self, child: ComRc<IEntity>) {
+        self.props_mut().children.push(child);
+    }
+
+    fn apply_or_queue_add_component(&self, uuid: Uuid, component: ComRc<IComponent>) {
+        if self.mutations.is_iterating() {
+            self.mutations
+                .enqueue(EntityPendingChange::AddComponent(uuid, component));
+        } else {
+            self.components.insert(uuid, component, self.loaded.get());
+        }
+    }
+
+    fn apply_or_queue_remove_component(&self, uuid: Uuid) -> Option<ComRc<IComponent>> {
+        if self.mutations.is_iterating() {
+            let (component, was_loaded) = self.components.mark_pending_removal(uuid)?;
+            if was_loaded {
+                component.on_unloading();
+            }
+            self.mutations
+                .enqueue(EntityPendingChange::RemoveComponent(uuid));
+            Some(component)
+        } else {
+            let entry = self.components.shift_remove(uuid)?;
+            if entry.loaded {
+                entry.component.on_unloading();
+            }
+            Some(entry.component)
+        }
+    }
+
+    fn apply_or_queue_attach_child(&self, child: ComRc<IEntity>) {
+        if self.mutations.is_iterating() {
+            self.mutations.enqueue(EntityPendingChange::AttachChild(child));
+            return;
+        }
+
+        self.attach_child_immediate(child);
+    }
+
+    fn apply_or_queue_detach_first_by_name(&self, name: &str) -> Option<ComRc<IEntity>> {
+        if self.mutations.is_iterating() {
+            let child = {
+                let props = self.props();
+                props.children.iter().find(|e| e.name() == name).cloned()
+            };
+            if child.is_some() {
+                self.mutations
+                    .enqueue(EntityPendingChange::DetachFirstByName(name.to_owned()));
+            }
+            return child;
+        }
+
+        self.detach_first_immediate(name)
+    }
+
+    fn drain_pending(&self) {
+        self.mutations.drain(|change| match change {
+            EntityPendingChange::AddComponent(uuid, component) => {
+                self.components.insert(uuid, component, self.loaded.get())
+            }
+            EntityPendingChange::RemoveComponent(uuid) => {
+                self.components.shift_remove(uuid);
+            }
+            EntityPendingChange::AttachChild(child) => self.attach_child_immediate(child),
+            EntityPendingChange::DetachFirstByName(name) => {
+                let _ = self.detach_first_immediate(&name);
+            }
+        });
     }
 
     // ---- inherent counterparts of the formerly-IDL accessors ----
@@ -177,69 +257,31 @@ impl IComponentContainerImpl for CoreEntity {
         if fire_now {
             component.on_loading();
         }
-        self.components.borrow_mut().insert(
-            uuid,
-            ComponentEntry {
-                component,
-                loaded: fire_now,
-            },
-        );
+        self.apply_or_queue_add_component(uuid, component);
     }
 
     fn get_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
-        self.components
-            .borrow()
-            .get(&uuid)
-            .map(|e| e.component.clone())
+        self.components.get(uuid)
     }
 
     fn remove_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
-        let entry = self.components.borrow_mut().remove(&uuid);
-        if let Some(e) = &entry {
-            if e.loaded {
-                e.component.on_unloading();
-            }
-        }
-        entry.map(|e| e.component)
+        self.apply_or_queue_remove_component(uuid)
     }
 }
 
 impl IEntityImpl for CoreEntity {
     fn load(&self) -> crosscom::Void {
-        // Idempotent: a second load() call after the entity is
-        // already loaded is a no-op. Newly-added components/children
-        // that joined after the first load() were already loaded on
-        // attach (see add_component / attach) so there's nothing to
-        // fire here either.
         if self.loaded.get() {
             return;
         }
 
-        // Flip the flag *before* dispatching so re-entrant
-        // `add_component` calls from inside an `on_loading` impl see
-        // the entity as loaded and fire on_loading themselves.
         self.loaded.set(true);
 
         for e in self.props().children.clone() {
             e.load();
         }
 
-        // Snapshot uuids first so we don't hold the components
-        // RefCell across the on_loading call (an on_loading impl may
-        // re-enter add_component).
-        let uuids: Vec<Uuid> = self.components.borrow().keys().copied().collect();
-        for uuid in uuids {
-            let component = {
-                let mut comps = self.components.borrow_mut();
-                let entry = comps.get_mut(&uuid).expect("entry just snapshotted");
-                if entry.loaded {
-                    continue;
-                }
-                entry.loaded = true;
-                entry.component.clone()
-            };
-            component.on_loading();
-        }
+        self.components.load_all();
     }
 
     fn unload(&self) -> () {
@@ -252,13 +294,8 @@ impl IEntityImpl for CoreEntity {
             e.unload();
         }
 
-        let entries: Vec<ComRc<IComponent>> = self
-            .components
-            .borrow_mut()
-            .drain()
-            .filter_map(|(_uuid, e)| if e.loaded { Some(e.component) } else { None })
-            .collect();
-        for c in entries {
+        let unloading = self.components.drain_loaded_for_unload();
+        for c in unloading {
             c.on_unloading();
         }
 
@@ -270,18 +307,17 @@ impl IEntityImpl for CoreEntity {
             return;
         }
 
-        for e in self.props().children.clone() {
-            e.update(delta_sec);
+        let guard = self.mutations.iter_guard();
+        let children_len = self.props().children.len();
+        for i in 0..children_len {
+            let child = { self.props().children[i].clone() };
+            child.update(delta_sec);
         }
-
-        let components: Vec<ComRc<IComponent>> = self
-            .components
-            .borrow()
-            .values()
-            .map(|e| e.component.clone())
-            .collect();
-        for c in components {
-            c.on_updating(delta_sec);
+        self.components
+            .dispatch_each(|component| component.on_updating(delta_sec));
+        drop(guard);
+        if !self.mutations.is_iterating() {
+            self.drain_pending();
         }
     }
 
@@ -299,7 +335,7 @@ impl IEntityImpl for CoreEntity {
         if self.loaded.get() {
             child.load();
         }
-        self.props_mut().children.push(child);
+        self.apply_or_queue_attach_child(child);
     }
 
     fn enabled(&self) -> bool {

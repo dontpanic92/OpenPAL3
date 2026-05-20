@@ -133,16 +133,7 @@ impl VulkanTexture {
                     dev,
                     cb,
                 );
-                image.record_blit_mip(
-                    level - 1,
-                    src_w,
-                    src_h,
-                    level,
-                    dst_w,
-                    dst_h,
-                    dev,
-                    cb,
-                );
+                image.record_blit_mip(level - 1, src_w, src_h, level, dst_w, dst_h, dev, cb);
                 image.record_transit_layout_range(
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,

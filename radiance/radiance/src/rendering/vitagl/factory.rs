@@ -54,14 +54,12 @@ impl ComponentFactory for VitaGLComponentFactory {
             material_def,
             self.create_shader(material_def.shader()),
         ));
-        let vro = Rc::new(VitaGLRenderObject::new(vertices, indices, material, host_dynamic).unwrap());
+        let vro =
+            Rc::new(VitaGLRenderObject::new(vertices, indices, material, host_dynamic).unwrap());
         RenderObjectHandle::from_vitagl(vro)
     }
 
-    fn create_rendering_component(
-        &self,
-        objects: Vec<RenderObjectHandle>,
-    ) -> RenderingComponent {
+    fn create_rendering_component(&self, objects: Vec<RenderObjectHandle>) -> RenderingComponent {
         let mut component = RenderingComponent::new();
         for o in objects {
             component.push_render_object(o);

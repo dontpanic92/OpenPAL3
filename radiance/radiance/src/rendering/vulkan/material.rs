@@ -72,7 +72,9 @@ impl VulkanMaterial {
             .enumerate()
             .map(|(i, s)| {
                 let mips = textures.get(i).map(|t| t.mip_levels()).unwrap_or(1);
-                descriptor_manager.sampler_cache().get_or_create_for(s, mips)
+                descriptor_manager
+                    .sampler_cache()
+                    .get_or_create_for(s, mips)
             })
             .collect();
 

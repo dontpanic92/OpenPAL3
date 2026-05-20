@@ -533,12 +533,8 @@ impl SwapChain {
                     last_vertex_buffer = vb;
                 }
                 if ib != last_index_buffer {
-                    self.device.cmd_bind_index_buffer(
-                        command_buffer,
-                        ib,
-                        0,
-                        vk::IndexType::UINT32,
-                    );
+                    self.device
+                        .cmd_bind_index_buffer(command_buffer, ib, 0, vk::IndexType::UINT32);
                     last_index_buffer = ib;
                 }
 
@@ -553,8 +549,7 @@ impl SwapChain {
                 // other render object sharing the key — typically every
                 // textured opaque mesh in the scene.
                 let object_material = object.material();
-                let object_material_ptr =
-                    object_material as *const super::material::VulkanMaterial;
+                let object_material_ptr = object_material as *const super::material::VulkanMaterial;
                 if object_material_ptr != last_material_ptr {
                     self.device.cmd_bind_descriptor_sets(
                         command_buffer,

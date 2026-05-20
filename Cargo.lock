@@ -3242,6 +3242,7 @@ dependencies = [
  "imgui-rs-vitagl-renderer",
  "imgui-rs-vulkan-renderer",
  "imgui-winit-support",
+ "indexmap",
  "lazy_static",
  "lewton",
  "log",

@@ -12,6 +12,7 @@ bitflags = "1.2.1"
 cfg-if = "1"
 crosscom = { path = "../../crosscom/runtime/rust" }
 dashmap = "5.1.0"
+indexmap = "2"
 hound = "3.4.0"
 symphonia = {version = "0.5", features = ["all"] }
 image = "0.23.0"
