@@ -53,11 +53,11 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
                     let t = ref(self.tabs[i]);
                     let close_cmd = t.close_cmd;
                     let active_slot = self.active_close_cmd;
-                    let closed = ui.tab_item(t.label, 1, () => {
+                    let closed = ui.tab_item(t.label, true, () => {
                         active_slot[0] = close_cmd;
                         content_tabs.render_tab_body_im(ui, t, self.preview_intents);
                     });
-                    if closed != 0 {
+                    if closed {
                         self.close_intents.push(close_cmd);
                     }
                     i = i + 1;
@@ -93,7 +93,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
         while p < self.picks.len() {
             let path = self.picks[p];
             let vfs = self.host.vfs();
-            if vfs.is_dir(path) != 0 {
+            if vfs.is_dir(path) {
                 let _ = vfs.toggle_expanded(path);
             } else {
                 self.next_close_cmd[0] = self.next_close_cmd[0] + 1;

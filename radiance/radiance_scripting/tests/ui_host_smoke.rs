@@ -51,8 +51,8 @@ pub fn entry(ui: box<immediate_director.IUiHost>) -> int {
 const BUTTON_RETURN_SOURCE: &str = r#"
 import immediate_director;
 
-pub fn entry(ui: box<immediate_director.IUiHost>) -> int {
-    let pressed: int = ui.button("go", 80.0, 24.0);
+pub fn entry(ui: box<immediate_director.IUiHost>) -> bool {
+    let pressed: bool = ui.button("go", 80.0, 24.0);
     pressed
 }
 "#;
@@ -177,4 +177,28 @@ fn unclicked_button_returns_zero() {
         .call_returning_data("entry", vec![ui_box])
         .expect("entry runs");
     assert_eq!(format!("{:?}", result), "Int(0)");
+}
+
+/// Annotating a `bool`-returning IDL method's result as `int` must fail to
+/// compile now that the bridge surface is first-class bool. Guards against
+/// regressing to the old `IUiHost::button -> int` shape.
+#[test]
+fn bool_return_does_not_coerce_to_int() {
+    let host = ScriptHost::new();
+    let src = r#"
+import immediate_director;
+
+pub fn entry(ui: box<immediate_director.IUiHost>) -> int {
+    let pressed: int = ui.button("nope", 80.0, 24.0);
+    pressed
+}
+"#;
+    let err = host
+        .load_source(src)
+        .expect_err("expected a type-check failure");
+    let msg = format!("{:?}", err);
+    assert!(
+        msg.contains("bool") && msg.contains("int"),
+        "expected bool/int mismatch, got: {msg}",
+    );
 }

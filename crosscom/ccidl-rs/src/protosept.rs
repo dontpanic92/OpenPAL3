@@ -25,7 +25,7 @@
 //! | IDL          | Protosept |
 //! | ------------ | --------- |
 //! | `void`       | `int`     |
-//! | `bool`       | `int`     |
+//! | `bool`       | `bool`    |
 //! | `int` / `long` / `longlong` / `byte` | `int` |
 //! | `float`      | `float`   |
 //! | `UUID`       | `string`  |
@@ -362,7 +362,7 @@ impl ProtoseptGen {
 fn primitive_protosept(idl_ty: &str) -> Option<&'static str> {
     match idl_ty {
         "void" => Some("int"),
-        "bool" => Some("int"),
+        "bool" => Some("bool"),
         "int" | "long" | "longlong" | "byte" => Some("int"),
         "float" => Some("float"),
         "UUID" => Some("string"),

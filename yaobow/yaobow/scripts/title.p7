@@ -70,7 +70,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 ) {
     pub fn activate(self: ref<Self>) -> int {
         if self.bgm != null {
-            let _ = self.bgm!.play(1);
+            let _ = self.bgm!.play(true);
         }
         self.time[0] = 0.0;
         self.prompt_phase[0] = PROMPT_FIRST_TIME;
@@ -192,7 +192,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
             },
         );
         if self.prompt_phase[0] == PROMPT_AWAITING_RELEASE {
-            if ui.any_key_or_mouse_down() == 0 {
+            if !ui.any_key_or_mouse_down() {
                 self.hovered_game[0] = title_consts.GAME_PAL3;
                 self.prompt_phase[0] = PROMPT_SHOWING_LIST;
             }
@@ -217,7 +217,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
             } else {
                 self.prompt_time[0] = t;
             }
-            if ui.any_key_or_mouse_down() != 0 {
+            if ui.any_key_or_mouse_down() {
                 self.prompt_phase[0] = PROMPT_AWAITING_RELEASE;
             }
         } else if phase == PROMPT_BLINKING {
@@ -233,7 +233,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
                 let _ = ui.text(text_a);
             }
             self.prompt_time[0] = t + dt;
-            if ui.any_key_or_mouse_down() != 0 {
+            if ui.any_key_or_mouse_down() {
                 self.prompt_phase[0] = PROMPT_AWAITING_RELEASE;
             }
         }
@@ -289,11 +289,11 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
         ui: box<immediate_director.IUiHost>,
         label: string, w: float, h: float, ordinal: int,
     ) {
-        if ui.button(label, w, h) != 0 {
+        if ui.button(label, w, h) {
             self.intent[0] = title_consts.INTENT_OPEN_GAME;
             self.intent_arg[0] = ordinal;
         }
-        if ui.is_item_hovered() != 0 {
+        if ui.is_item_hovered() {
             self.hovered_game[0] = ordinal;
         }
     }

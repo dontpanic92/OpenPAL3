@@ -130,7 +130,7 @@ pub fn render_tab_body_im(
             let h = tab.audio_handle!;
             let label = if h.state() == 1 { "Pause" } else { "Play" };
             let _ = ui.text(f"Audio: {tab.label}");
-            if ui.button(label, 80.0, 24.0) != 0 {
+            if ui.button(label, 80.0, 24.0) {
                 let _ = h.toggle();
             }
         } else {
@@ -143,7 +143,7 @@ pub fn render_tab_body_im(
             let h = tab.video_handle!;
             let label = if h.state() == 1 { "Pause" } else { "Play" };
             let _ = ui.text(f"Video: {tab.label}");
-            if ui.button(label, 80.0, 24.0) != 0 {
+            if ui.button(label, 80.0, 24.0) {
                 let _ = h.toggle();
             }
             let _ = ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
@@ -178,13 +178,13 @@ pub fn render_tab_body_im(
             let mut dx = 0.0;
             let mut dy = 0.0;
             let mut buttons = 0;
-            if hovered != 0 && left != 0 {
+            if hovered && left {
                 dx = ui.mouse_drag_delta_x(0);
                 dy = ui.mouse_drag_delta_y(0);
                 ui.reset_mouse_drag_delta(0);
                 buttons = buttons | 1;
             }
-            if hovered != 0 && right != 0 {
+            if hovered && right {
                 let rdx = ui.mouse_drag_delta_x(1);
                 let rdy = ui.mouse_drag_delta_y(1);
                 ui.reset_mouse_drag_delta(1);
@@ -194,12 +194,12 @@ pub fn render_tab_body_im(
                 }
                 buttons = buttons | 2;
             }
-            let wheel = if hovered != 0 { ui.mouse_wheel() } else { 0.0 };
+            let wheel = if hovered { ui.mouse_wheel() } else { 0.0 };
             if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
                 let _ = s.tick_camera(dx, dy, wheel, buttons);
             }
         } else {
-            if ui.button("Preview", 100.0, 24.0) != 0 {
+            if ui.button("Preview", 100.0, 24.0) {
                 preview_intents.push(tab.close_cmd);
             }
             let _ = ui.multiline_text(tab.text_content, -1.0, -1.0);
@@ -223,13 +223,13 @@ pub fn render_tab_body_im(
             let mut dx = 0.0;
             let mut dy = 0.0;
             let mut buttons = 0;
-            if hovered != 0 && left != 0 {
+            if hovered && left {
                 dx = ui.mouse_drag_delta_x(0);
                 dy = ui.mouse_drag_delta_y(0);
                 ui.reset_mouse_drag_delta(0);
                 buttons = buttons | 1;
             }
-            if hovered != 0 && right != 0 {
+            if hovered && right {
                 let rdx = ui.mouse_drag_delta_x(1);
                 let rdy = ui.mouse_drag_delta_y(1);
                 ui.reset_mouse_drag_delta(1);
@@ -239,12 +239,12 @@ pub fn render_tab_body_im(
                 }
                 buttons = buttons | 2;
             }
-            let wheel = if hovered != 0 { ui.mouse_wheel() } else { 0.0 };
+            let wheel = if hovered { ui.mouse_wheel() } else { 0.0 };
             if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
                 let _ = s.tick_camera(dx, dy, wheel, buttons);
             }
         } else {
-            if ui.button("打开场景预览", 160.0, 24.0) != 0 {
+            if ui.button("打开场景预览", 160.0, 24.0) {
                 preview_intents.push(tab.close_cmd);
             }
             let _ = ui.text("场景未打开。点击按钮启动离屏渲染。");

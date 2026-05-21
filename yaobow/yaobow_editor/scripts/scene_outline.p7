@@ -29,7 +29,7 @@ pub fn render_scene_outline_im(
     while i < n {
         let depth = compute_depth(h, i);
         let label = make_label(h, i, depth, sel);
-        if ui.tree_leaf(label) != 0 {
+        if ui.tree_leaf(label) {
             let _ = s.set_selection(i);
         }
         i = i + 1;

@@ -26,15 +26,13 @@ pub struct[pal4_debug.IPal4DebugOverlay] Pal4DebugOverlay(
                 let _ = ui.text(f"dt:    {ctx.delta_time() * 1000.0} ms");
                 let _ = ui.text(f"FPS:   {ctx.fps()}");
 
-                // IUiHost / IPal4DebugContext bools cross the IDL → p7
-                // bridge as `int` (1 / 0). We mirror the editor's
-                // `if ui.button(...) != 0` idiom for press detection and
-                // flip the host-side flag by negating against zero.
-                if ui.button(f"BSP:      {on_off(ctx.bsp_visible())}", 0.0, 0.0) != 0 {
-                    let _ = ctx.set_bsp_visible(if ctx.bsp_visible() != 0 { 0 } else { 1 });
+                // IUiHost / IPal4DebugContext bools flow through the IDL → p7
+                // bridge as first-class `bool` (see generated p7.md §3.1.2).
+                if ui.button(f"BSP:      {on_off(ctx.bsp_visible())}", 0.0, 0.0) {
+                    let _ = ctx.set_bsp_visible(!ctx.bsp_visible());
                 }
-                if ui.button(f"NavMesh:  {on_off(ctx.nav_mesh_visible())}", 0.0, 0.0) != 0 {
-                    let _ = ctx.set_nav_mesh_visible(if ctx.nav_mesh_visible() != 0 { 0 } else { 1 });
+                if ui.button(f"NavMesh:  {on_off(ctx.nav_mesh_visible())}", 0.0, 0.0) {
+                    let _ = ctx.set_nav_mesh_visible(!ctx.nav_mesh_visible());
                 }
             });
         });
@@ -42,8 +40,8 @@ pub struct[pal4_debug.IPal4DebugOverlay] Pal4DebugOverlay(
     }
 }
 
-fn on_off(b: int) -> string {
-    if b != 0 { return "ON"; }
+fn on_off(b: bool) -> string {
+    if b { return "ON"; }
     return "OFF";
 }
 

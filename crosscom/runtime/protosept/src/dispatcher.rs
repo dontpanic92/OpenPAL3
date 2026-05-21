@@ -497,6 +497,7 @@ fn ret_kind_of(rt: &HostReturnTy) -> RetKind {
     match rt {
         HostReturnTy::Void => RetKind::Void,
         HostReturnTy::Int => RetKind::Long,
+        HostReturnTy::Bool => RetKind::Long,
         HostReturnTy::Float => RetKind::Float,
         HostReturnTy::String => RetKind::Pointer,
         HostReturnTy::Foreign { .. } => RetKind::Pointer,
@@ -627,6 +628,7 @@ fn pop_int(ctx: &mut Context, what: &str) -> Result<i64, RuntimeError> {
 ///   [4, type_tag]     → Foreign { type_tag }
 ///   [5, inner]        → Optional(inner)
 ///   [6, inner]        → Array(inner)
+///   [7]               → Bool
 fn pop_return_ty(ctx: &mut Context) -> Result<HostReturnTy, RuntimeError> {
     let top = ctx
         .stack_frame_mut()?
@@ -678,6 +680,7 @@ fn decode_return_ty(data: Data) -> Result<HostReturnTy, RuntimeError> {
         6 => HostReturnTy::Array(Box::new(decode_return_ty(iter.next().ok_or_else(
             || RuntimeError::Other("pop_return_ty: Array missing inner".into()),
         )?)?)),
+        7 => HostReturnTy::Bool,
         other => {
             return Err(RuntimeError::Other(format!(
                 "pop_return_ty: unknown variant tag {}",
@@ -702,6 +705,15 @@ fn push_return(ctx: &mut Context, rt: &HostReturnTy, raw: RawReturn) -> Result<(
         }
         (HostReturnTy::Int, RawReturn::Long(v)) => {
             ctx.stack_frame_mut()?.stack.push(Data::Int(v as i64));
+            Ok(())
+        }
+        (HostReturnTy::Bool, RawReturn::Long(v)) => {
+            // C ABI for IDL `bool` is c_int (see ccidl-rs type_map); the
+            // CIF reads the integer return register as c_long. Normalize
+            // to a canonical 0/1 so script code observes the p7 `bool`
+            // representation regardless of any high-bits noise.
+            let normalized = if (v as c_int) != 0 { 1 } else { 0 };
+            ctx.stack_frame_mut()?.stack.push(Data::Int(normalized));
             Ok(())
         }
         (HostReturnTy::Float, RawReturn::Float(v)) => {
@@ -732,6 +744,13 @@ fn push_return(ctx: &mut Context, rt: &HostReturnTy, raw: RawReturn) -> Result<(
                 ctx.stack_frame_mut()?
                     .stack
                     .push(Data::Some(Rc::new(Data::Int(v as i64))));
+                Ok(())
+            }
+            (HostReturnTy::Bool, RawReturn::Long(v)) => {
+                let normalized = if (v as c_int) != 0 { 1 } else { 0 };
+                ctx.stack_frame_mut()?
+                    .stack
+                    .push(Data::Some(Rc::new(Data::Int(normalized))));
                 Ok(())
             }
             (HostReturnTy::Float, RawReturn::Float(v)) => {
@@ -833,6 +852,8 @@ mod tests {
                 type_tag: p7::intern::InternedString::from("a.b.IFoo"),
             },
             HostReturnTy::Optional(Box::new(HostReturnTy::Int)),
+            HostReturnTy::Optional(Box::new(HostReturnTy::Bool)),
+            HostReturnTy::Bool,
             HostReturnTy::Array(Box::new(HostReturnTy::Foreign {
                 type_tag: p7::intern::InternedString::from("a.b.IBar"),
             })),
@@ -848,6 +869,7 @@ mod tests {
     fn ret_kind_classification() {
         assert_eq!(ret_kind_of(&HostReturnTy::Void), RetKind::Void);
         assert_eq!(ret_kind_of(&HostReturnTy::Int), RetKind::Long);
+        assert_eq!(ret_kind_of(&HostReturnTy::Bool), RetKind::Long);
         assert_eq!(ret_kind_of(&HostReturnTy::Float), RetKind::Float);
         assert_eq!(
             ret_kind_of(&HostReturnTy::Foreign {

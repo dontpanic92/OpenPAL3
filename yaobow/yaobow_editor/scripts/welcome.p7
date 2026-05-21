@@ -74,7 +74,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
                 let _ = ui.dummy(0.0, 0.0);
             });
             let _ = ui.dummy(0.0, 16.0);
-            if ui.button("设置", 120.0, 24.0) != 0 {
+            if ui.button("设置", 120.0, 24.0) {
                 self.intent[0] = INTENT_OPEN_SETTINGS;
             }
         });
@@ -84,7 +84,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
     pub fn render_game_cell(self: ref<Self>, ui: box<immediate_director.IUiHost>, ordinal: int) {
         let name = welcome_game_name(self, ordinal);
         let label = f"运行《{name}》编辑器";
-        if ui.button(label, -1.0, 60.0) != 0 {
+        if ui.button(label, -1.0, 60.0) {
             self.intent[0] = INTENT_OPEN_GAME;
             self.intent_arg[0] = ordinal;
         }
@@ -156,11 +156,11 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
             let _ = ui.dummy(0.0, 16.0);
             let _ = ui.table("settings.footer", 2, () => {
                 let _ = ui.table_next_column();
-                if ui.button("保存并返回", 200.0, 32.0) != 0 {
+                if ui.button("保存并返回", 200.0, 32.0) {
                     self.intent[0] = INTENT_SAVE_AND_RETURN;
                 }
                 let _ = ui.table_next_column();
-                if ui.button("取消", 200.0, 32.0) != 0 {
+                if ui.button("取消", 200.0, 32.0) {
                     self.intent[0] = INTENT_CANCEL;
                 }
             });
@@ -175,12 +175,12 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
         let cfg = self.host.config();
         let _ = ui.text(path_label(cfg.get_asset_path(ordinal)));
         let _ = ui.table_next_column();
-        if ui.button(f"选择...##pick_{ordinal}", 100.0, 24.0) != 0 {
+        if ui.button(f"选择...##pick_{ordinal}", 100.0, 24.0) {
             self.intent[0] = INTENT_PICK_FOLDER;
             self.intent_arg[0] = ordinal;
         }
         let _ = ui.table_next_column();
-        if ui.button(f"清除##clear_{ordinal}", 80.0, 24.0) != 0 {
+        if ui.button(f"清除##clear_{ordinal}", 80.0, 24.0) {
             self.intent[0] = INTENT_CLEAR_PATH;
             self.intent_arg[0] = ordinal;
         }

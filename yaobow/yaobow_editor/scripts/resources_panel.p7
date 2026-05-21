@@ -29,11 +29,11 @@ pub fn render_resources_panel_im(
     picks: box<array<string>>,
 ) {
     let _ = ui.tab_bar("##resources_tabs", () => {
-        let _ = ui.tab_item("文件树", 0, () => {
+        let _ = ui.tab_item("文件树", false, () => {
             state.view_mode[0] = 0;
             resource_tree.render_resource_tree_im(ui, host.vfs(), picks);
         });
-        let _ = ui.tab_item("分类", 0, () => {
+        let _ = ui.tab_item("分类", false, () => {
             state.view_mode[0] = 1;
             render_category_view(ui, host.previewers().resources(), state.filter, picks);
         });
@@ -52,7 +52,7 @@ fn render_category_view(
     let f = filter[0];
     let _ = ui.text(f"过滤器: {f}");
     let _ = ui.same_line();
-    if ui.button("清除", 60.0, 22.0) != 0 {
+    if ui.button("清除", 60.0, 22.0) {
         filter[0] = "";
     }
 
@@ -62,7 +62,7 @@ fn render_category_view(
         let name = rm.category_name(i);
         let count = rm.category_entry_count(i, f);
         let label = f"{name} ({count})";
-        if ui.tree_node_open(label) != 0 {
+        if ui.tree_node_open(label) {
             // Each category can hold thousands of files; submit row
             // bodies through the imgui list clipper so we only pay the
             // crosscom roundtrip for rows actually scrolled into view.
@@ -71,7 +71,7 @@ fn render_category_view(
             let _ = ui.list_clipped(count, () => {
                 let row = ui.list_clipped_index();
                 let path = rm.category_entry_path(cat_idx, cat_filter, row);
-                if ui.tree_leaf(path) != 0 {
+                if ui.tree_leaf(path) {
                     picks.push(path);
                 }
             });
