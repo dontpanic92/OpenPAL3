@@ -16,7 +16,7 @@ pub fn render_scene_outline_im(
     snapshot: ?box<yaobow_editor_services.ISceneHandle>,
 ) {
     if session == null || snapshot == null {
-        let _ = ui.text("当前没有打开的场景。");
+        ui.text("当前没有打开的场景。");
         return;
     }
     let s = session!;
@@ -30,7 +30,7 @@ pub fn render_scene_outline_im(
         let depth = compute_depth(h, i);
         let label = make_label(h, i, depth, sel);
         if ui.tree_leaf(label) {
-            let _ = s.set_selection(i);
+            s.set_selection(i);
         }
         i = i + 1;
     }

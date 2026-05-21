@@ -67,7 +67,7 @@ fn render_tree_dir(
     let files = total - dirs;
     let leaf_base = dirs;
     let leaf_path = path;
-    let _ = ui.list_clipped(files, () => {
+    ui.list_clipped(files, () => {
         let k = ui.list_clipped_index();
         let name = vfs.entry_name(leaf_path, leaf_base + k);
         let child_path = join_tree_path(leaf_path, name);

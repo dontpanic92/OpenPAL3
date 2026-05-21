@@ -27,9 +27,9 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
     pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
-        let _ = ui.dock_space(editor_consts.DOCK_ROOT, () => {
+        ui.dock_space(editor_consts.DOCK_ROOT, () => {
             // Seed the initial four-pane layout exactly once.
-            let _ = ui.dock_layout_once(
+            ui.dock_layout_once(
                 editor_consts.DOCK_ROOT,
                 editor_consts.DOCK_WINDOW_RESOURCES,
                 editor_consts.DOCK_WINDOW_INSPECTOR,
@@ -39,15 +39,15 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
         });
 
         // Resources panel.
-        let _ = ui.window_docked(editor_consts.DOCK_WINDOW_RESOURCES, () => {
+        ui.window_docked(editor_consts.DOCK_WINDOW_RESOURCES, () => {
             resources_panel.render_resources_panel_im(
                 ui, self.host, self.resources_state, self.picks);
         });
 
         // Viewport panel — content tab bar lives here, in the centre
         // dock node by default.
-        let _ = ui.window_docked(editor_consts.DOCK_WINDOW_VIEWPORT, () => {
-            let _ = ui.tab_bar("##editor_tab_bar", () => {
+        ui.window_docked(editor_consts.DOCK_WINDOW_VIEWPORT, () => {
+            ui.tab_bar("##editor_tab_bar", () => {
                 let mut i = 0;
                 while i < self.tabs.len() {
                     let t = ref(self.tabs[i]);
@@ -70,11 +70,11 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
         let scene_session = active_scene_session(self.tabs, self.active_close_cmd[0]);
         let scene_handle = active_scene_handle(self.tabs, self.active_close_cmd[0]);
 
-        let _ = ui.window_docked(editor_consts.DOCK_WINDOW_OUTLINE, () => {
+        ui.window_docked(editor_consts.DOCK_WINDOW_OUTLINE, () => {
             scene_outline.render_scene_outline_im(ui, scene_session, scene_handle);
         });
 
-        let _ = ui.window_docked(editor_consts.DOCK_WINDOW_INSPECTOR, () => {
+        ui.window_docked(editor_consts.DOCK_WINDOW_INSPECTOR, () => {
             inspector.render_inspector_im(ui, scene_session);
         });
         0
@@ -86,7 +86,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
     ) -> ?box<radiance.IDirector> {
         // Drive offscreen preview passes for any active sessions BEFORE
         // the next imgui frame samples their color textures.
-        let _ = self.host.render_pending_previews();
+        self.host.render_pending_previews();
 
         // Open new tabs for clicked tree leaves.
         let mut p = 0;
@@ -94,7 +94,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
             let path = self.picks[p];
             let vfs = self.host.vfs();
             if vfs.is_dir(path) {
-                let _ = vfs.toggle_expanded(path);
+                vfs.toggle_expanded(path);
             } else {
                 self.next_close_cmd[0] = self.next_close_cmd[0] + 1;
                 let tab = content_tabs.open_content_tab(
@@ -136,7 +136,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
             let t = ref(self.tabs[i]);
             if t.kind == editor_consts.CONTENT_KIND_AUDIO && t.audio_handle != null {
                 let h = t.audio_handle!;
-                let _ = h.update();
+                h.update();
             }
             i = i + 1;
         }
@@ -210,12 +210,12 @@ fn close_other_preview_sessions(
         if tabs[i].close_cmd != keep_close_cmd {
             if tabs[i].preview_session != null {
                 let s = tabs[i].preview_session!;
-                let _ = s.close();
+                s.close();
                 tabs[i].preview_session = null;
             }
             if tabs[i].scene_session != null {
                 let s = tabs[i].scene_session!;
-                let _ = s.close();
+                s.close();
                 tabs[i].scene_session = null;
             }
         }

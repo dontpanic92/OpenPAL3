@@ -113,15 +113,15 @@ pub fn render_tab_body_im(
     preview_intents: box<array<int>>,
 ) {
     if tab.kind == editor_consts.CONTENT_KIND_TEXT || tab.kind == editor_consts.CONTENT_KIND_STRUCTURED {
-        let _ = ui.multiline_text(tab.text_content, -1.0, -1.0);
+        ui.multiline_text(tab.text_content, -1.0, -1.0);
         return;
     }
     if tab.kind == editor_consts.CONTENT_KIND_IMAGE {
         if tab.image_handle != null {
             let h = tab.image_handle!;
-            let _ = ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
+            ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
         } else {
-            let _ = ui.text("Unable to load image");
+            ui.text("Unable to load image");
         }
         return;
     }
@@ -129,12 +129,12 @@ pub fn render_tab_body_im(
         if tab.audio_handle != null {
             let h = tab.audio_handle!;
             let label = if h.state() == 1 { "Pause" } else { "Play" };
-            let _ = ui.text(f"Audio: {tab.label}");
+            ui.text(f"Audio: {tab.label}");
             if ui.button(label, 80.0, 24.0) {
-                let _ = h.toggle();
+                h.toggle();
             }
         } else {
-            let _ = ui.text("Unable to load audio");
+            ui.text("Unable to load audio");
         }
         return;
     }
@@ -142,13 +142,13 @@ pub fn render_tab_body_im(
         if tab.video_handle != null {
             let h = tab.video_handle!;
             let label = if h.state() == 1 { "Pause" } else { "Play" };
-            let _ = ui.text(f"Video: {tab.label}");
+            ui.text(f"Video: {tab.label}");
             if ui.button(label, 80.0, 24.0) {
-                let _ = h.toggle();
+                h.toggle();
             }
-            let _ = ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
+            ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
         } else {
-            let _ = ui.text("Video format not supported");
+            ui.text("Video format not supported");
         }
         return;
     }
@@ -164,8 +164,8 @@ pub fn render_tab_body_im(
             let avail_h = ui.content_region_avail_y();
             let target_w = if avail_w >= 1 { avail_w } else { 1 };
             let target_h = if avail_h >= 1 { avail_h } else { 1 };
-            let _ = t.resize(target_w, target_h);
-            let _ = ui.image(t.texture_id(), target_w as float, target_h as float);
+            t.resize(target_w, target_h);
+            ui.image(t.texture_id(), target_w as float, target_h as float);
 
             // Orbit/pan/zoom: cumulative drag deltas come from imgui, so
             // read + reset every frame to get incremental motion. We
@@ -196,13 +196,13 @@ pub fn render_tab_body_im(
             }
             let wheel = if hovered { ui.mouse_wheel() } else { 0.0 };
             if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
-                let _ = s.tick_camera(dx, dy, wheel, buttons);
+                s.tick_camera(dx, dy, wheel, buttons);
             }
         } else {
             if ui.button("Preview", 100.0, 24.0) {
                 preview_intents.push(tab.close_cmd);
             }
-            let _ = ui.multiline_text(tab.text_content, -1.0, -1.0);
+            ui.multiline_text(tab.text_content, -1.0, -1.0);
         }
         return;
     }
@@ -214,8 +214,8 @@ pub fn render_tab_body_im(
             let avail_h = ui.content_region_avail_y();
             let target_w = if avail_w >= 1 { avail_w } else { 1 };
             let target_h = if avail_h >= 1 { avail_h } else { 1 };
-            let _ = t.resize(target_w, target_h);
-            let _ = ui.image(t.texture_id(), target_w as float, target_h as float);
+            t.resize(target_w, target_h);
+            ui.image(t.texture_id(), target_w as float, target_h as float);
 
             let hovered = ui.is_item_hovered();
             let left = ui.mouse_down(0);
@@ -241,15 +241,15 @@ pub fn render_tab_body_im(
             }
             let wheel = if hovered { ui.mouse_wheel() } else { 0.0 };
             if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
-                let _ = s.tick_camera(dx, dy, wheel, buttons);
+                s.tick_camera(dx, dy, wheel, buttons);
             }
         } else {
             if ui.button("打开场景预览", 160.0, 24.0) {
                 preview_intents.push(tab.close_cmd);
             }
-            let _ = ui.text("场景未打开。点击按钮启动离屏渲染。");
+            ui.text("场景未打开。点击按钮启动离屏渲染。");
         }
         return;
     }
-    let _ = ui.text("Unsupported preview");
+    ui.text("Unsupported preview");
 }

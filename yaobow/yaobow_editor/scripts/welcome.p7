@@ -38,42 +38,42 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
     pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
-        let _ = ui.window_centered("妖弓编辑器", 720.0, 480.0, () => {
-            let _ = ui.text_with_font(0, "妖弓编辑器");
-            let _ = ui.dummy(0.0, 24.0);
-            let _ = ui.table("welcome.games", 3, () => {
-                let _ = ui.table_next_column();
+        ui.window_centered("妖弓编辑器", 720.0, 480.0, () => {
+            ui.text_with_font(0, "妖弓编辑器");
+            ui.dummy(0.0, 24.0);
+            ui.table("welcome.games", 3, () => {
+                ui.table_next_column();
                 self.render_game_cell(ui, 0);
-                let _ = ui.table_next_column();
+                ui.table_next_column();
                 self.render_game_cell(ui, 8);
-                let _ = ui.table_next_column();
+                ui.table_next_column();
                 self.render_game_cell(ui, 5);
-                let _ = ui.table_next_column();
+                ui.table_next_column();
                 self.render_game_cell(ui, 1);
-                let _ = ui.table_next_column();
+                ui.table_next_column();
                 self.render_game_cell(ui, 9);
-                let _ = ui.table_next_column();
+                ui.table_next_column();
                 self.render_game_cell(ui, 6);
-                let _ = ui.table_next_column();
+                ui.table_next_column();
                 self.render_game_cell(ui, 2);
-                let _ = ui.table_next_column();
-                let _ = ui.dummy(0.0, 0.0);
-                let _ = ui.table_next_column();
+                ui.table_next_column();
+                ui.dummy(0.0, 0.0);
+                ui.table_next_column();
                 self.render_game_cell(ui, 7);
-                let _ = ui.table_next_column();
+                ui.table_next_column();
                 self.render_game_cell(ui, 3);
-                let _ = ui.table_next_column();
-                let _ = ui.dummy(0.0, 0.0);
-                let _ = ui.table_next_column();
-                let _ = ui.dummy(0.0, 0.0);
-                let _ = ui.table_next_column();
+                ui.table_next_column();
+                ui.dummy(0.0, 0.0);
+                ui.table_next_column();
+                ui.dummy(0.0, 0.0);
+                ui.table_next_column();
                 self.render_game_cell(ui, 4);
-                let _ = ui.table_next_column();
-                let _ = ui.dummy(0.0, 0.0);
-                let _ = ui.table_next_column();
-                let _ = ui.dummy(0.0, 0.0);
+                ui.table_next_column();
+                ui.dummy(0.0, 0.0);
+                ui.table_next_column();
+                ui.dummy(0.0, 0.0);
             });
-            let _ = ui.dummy(0.0, 16.0);
+            ui.dummy(0.0, 16.0);
             if ui.button("设置", 120.0, 24.0) {
                 self.intent[0] = INTENT_OPEN_SETTINGS;
             }
@@ -138,10 +138,10 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
     pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
-        let _ = ui.window_centered("游戏路径设置", 820.0, 560.0, () => {
-            let _ = ui.text_with_font(0, "游戏资源路径设置");
-            let _ = ui.dummy(0.0, 12.0);
-            let _ = ui.table("settings.rows", 4, () => {
+        ui.window_centered("游戏路径设置", 820.0, 560.0, () => {
+            ui.text_with_font(0, "游戏资源路径设置");
+            ui.dummy(0.0, 12.0);
+            ui.table("settings.rows", 4, () => {
                 self.render_settings_row(ui, 0);
                 self.render_settings_row(ui, 1);
                 self.render_settings_row(ui, 2);
@@ -153,13 +153,13 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
                 self.render_settings_row(ui, 8);
                 self.render_settings_row(ui, 9);
             });
-            let _ = ui.dummy(0.0, 16.0);
-            let _ = ui.table("settings.footer", 2, () => {
-                let _ = ui.table_next_column();
+            ui.dummy(0.0, 16.0);
+            ui.table("settings.footer", 2, () => {
+                ui.table_next_column();
                 if ui.button("保存并返回", 200.0, 32.0) {
                     self.intent[0] = INTENT_SAVE_AND_RETURN;
                 }
-                let _ = ui.table_next_column();
+                ui.table_next_column();
                 if ui.button("取消", 200.0, 32.0) {
                     self.intent[0] = INTENT_CANCEL;
                 }
@@ -169,17 +169,17 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
     }
 
     pub fn render_settings_row(self: ref<Self>, ui: box<immediate_director.IUiHost>, ordinal: int) {
-        let _ = ui.table_next_column();
-        let _ = ui.text(settings_game_name(self, ordinal));
-        let _ = ui.table_next_column();
+        ui.table_next_column();
+        ui.text(settings_game_name(self, ordinal));
+        ui.table_next_column();
         let cfg = self.host.config();
-        let _ = ui.text(path_label(cfg.get_asset_path(ordinal)));
-        let _ = ui.table_next_column();
+        ui.text(path_label(cfg.get_asset_path(ordinal)));
+        ui.table_next_column();
         if ui.button(f"选择...##pick_{ordinal}", 100.0, 24.0) {
             self.intent[0] = INTENT_PICK_FOLDER;
             self.intent_arg[0] = ordinal;
         }
-        let _ = ui.table_next_column();
+        ui.table_next_column();
         if ui.button(f"清除##clear_{ordinal}", 80.0, 24.0) {
             self.intent[0] = INTENT_CLEAR_PATH;
             self.intent_arg[0] = ordinal;
@@ -197,7 +197,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
 
         let cfg = self.host.config();
         if code == INTENT_SAVE_AND_RETURN {
-            let _ = cfg.save();
+            cfg.save();
             return make_welcome_director(self.host, self.games, self.names);
         }
         if code == INTENT_CANCEL {

@@ -40,7 +40,7 @@ pub let VIDEO_TOGGLE_CMD_BASE: int = 500000;
 // "Debug" fallback window.
 pub struct[immediate_director.IImmediateDirector, radiance.IDirector] HostDirectorIm(pub inner: box<radiance.IDirector>) {
     pub fn activate(self: ref<Self>) -> int {
-        let _ = self.inner.activate();
+        self.inner.activate();
         0
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }

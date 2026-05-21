@@ -70,7 +70,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 ) {
     pub fn activate(self: ref<Self>) -> int {
         if self.bgm != null {
-            let _ = self.bgm!.play(true);
+            self.bgm!.play(true);
         }
         self.time[0] = 0.0;
         self.prompt_phase[0] = PROMPT_FIRST_TIME;
@@ -90,7 +90,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 
     pub fn deactivate(self: ref<Self>) -> int {
         if self.bgm != null {
-            let _ = self.bgm!.stop();
+            self.bgm!.stop();
         }
         0
     }
@@ -100,11 +100,11 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
         ui: box<immediate_director.IUiHost>,
         dt: float,
     ) -> int {
-        let _ = ui.style_color(
+        ui.style_color(
             title_consts.SC_WINDOW_BG,
             title_consts.BG_R, title_consts.BG_G, title_consts.BG_B, title_consts.BG_A,
             () => {
-                let _ = ui.window_fullscreen("##yaobow_title", 0, () => {
+                ui.window_fullscreen("##yaobow_title", 0, () => {
                     self.render_inner(ui, dt);
                 });
             },
@@ -133,7 +133,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
         let alpha = compute_fade_alpha(t);
         self.time[0] = t + dt;
 
-        let _ = ui.style_alpha(alpha, () => {
+        ui.style_alpha(alpha, () => {
             let logo_cx = central_w * left_ratio * 0.5 + central_x;
             let logo_cy = central_h * 0.2 + central_y;
             let logo_w = central_w * 0.4;
@@ -186,7 +186,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
         let text_b = "按下任意键继续_";
         let text_w = ui.calc_text_size_x(text_b);
         let text_h = ui.calc_text_size_y(text_b);
-        let _ = ui.style_color(
+        ui.style_color(
             title_consts.SC_TEXT, 0.0, 0.0, 0.0, 1.0, () => {
                 self.draw_prompt_text(ui, dt, cx, cy, text_w, text_h, text_a, text_b);
             },
@@ -208,8 +208,8 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
     ) {
         let phase = self.prompt_phase[0];
         if phase == PROMPT_FIRST_TIME {
-            let _ = ui.set_cursor_pos(cx - text_w * 0.5, cy - text_h * 0.5);
-            let _ = ui.text(text_a);
+            ui.set_cursor_pos(cx - text_w * 0.5, cy - text_h * 0.5);
+            ui.text(text_a);
             let t = self.prompt_time[0] - dt;
             if t < 0.0 {
                 self.prompt_phase[0] = PROMPT_BLINKING;
@@ -226,11 +226,11 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
             while t > cycle {
                 t = t - cycle;
             }
-            let _ = ui.set_cursor_pos(cx - text_w * 0.5, cy - text_h * 0.5);
+            ui.set_cursor_pos(cx - text_w * 0.5, cy - text_h * 0.5);
             if t > title_consts.UNDERLINE_MARGIN_TIME {
-                let _ = ui.text(text_b);
+                ui.text(text_b);
             } else {
-                let _ = ui.text(text_a);
+                ui.text(text_a);
             }
             self.prompt_time[0] = t + dt;
             if ui.any_key_or_mouse_down() {
@@ -249,11 +249,11 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
         let item_h = 60.0;
         let all_h = item_h * 2.0;
         let y = cy - all_h * 0.5;
-        let _ = ui.style_color(
+        ui.style_color(
             title_consts.SC_BUTTON, 0.0, 0.0, 0.0, 0.0, () => {
-                let _ = ui.style_color(
+                ui.style_color(
                     title_consts.SC_BUTTON_HOVERED, 0.0, 0.0, 0.0, 0.0, () => {
-                        let _ = ui.style_color(
+                        ui.style_color(
                             title_consts.SC_BUTTON_ACTIVE, 0.0, 0.0, 0.0, 0.0, () => {
                                 self.draw_game_button(ui, title_consts.GAME_PAL3, item_x, y, item_w, item_h);
                                 let y2 = y + item_h;
@@ -272,9 +272,9 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
         ordinal: int, x: float, y: float, w: float, h: float,
     ) {
         let label = game_full_name(ordinal);
-        let _ = ui.set_cursor_pos(x, y);
+        ui.set_cursor_pos(x, y);
         if self.hovered_game[0] != ordinal {
-            let _ = ui.style_color(
+            ui.style_color(
                 title_consts.SC_TEXT, 0.5, 0.5, 0.5, 1.0, () => {
                     self.submit_game_button(ui, label, w, h, ordinal);
                 },
@@ -336,7 +336,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
                 } else if remaining > title_consts.OUTLINE_SHOW_TIME - title_consts.OUTLINE_FADE_TIME {
                     a = (title_consts.OUTLINE_SHOW_TIME - remaining) / title_consts.OUTLINE_FADE_TIME;
                 }
-                let _ = ui.style_alpha(a, () => {
+                ui.style_alpha(a, () => {
                     draw_fitted_image(ui, frame.imgui_id(), fw, fh, cx, cy, w, h70);
                 });
             }
@@ -417,11 +417,11 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
     }
 
     pub fn draw_version(self: ref<Self>, ui: box<immediate_director.IUiHost>) {
-        let _ = ui.style_color(
+        ui.style_color(
             title_consts.SC_TEXT, 0.5, 0.5, 0.5, 1.0, () => {
                 let h = ui.display_size_y() as float;
-                let _ = ui.set_cursor_pos(5.0, h - 24.0);
-                let _ = ui.text_with_font(title_consts.FONT_SMALL, "妖弓主程序 build-dev");
+                ui.set_cursor_pos(5.0, h - 24.0);
+                ui.text_with_font(title_consts.FONT_SMALL, "妖弓主程序 build-dev");
             },
         );
     }
@@ -514,8 +514,8 @@ fn draw_fitted_image(
     if h_scale < scale { scale = h_scale; }
     let target_w = src_w * scale;
     let target_h = src_h * scale;
-    let _ = ui.set_cursor_pos(cx - target_w * 0.5, cy - target_h * 0.5);
-    let _ = ui.image(texture_id, target_w, target_h);
+    ui.set_cursor_pos(cx - target_w * 0.5, cy - target_h * 0.5);
+    ui.image(texture_id, target_w, target_h);
 }
 
 fn game_full_name(ordinal: int) -> string {
