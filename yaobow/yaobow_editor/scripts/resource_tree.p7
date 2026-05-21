@@ -48,15 +48,13 @@ fn render_tree_dir(
     // form skips the closure entirely; collapsed subdirs cost only
     // a crosscom call + imgui submission, and only the truly-open
     // subdir pays the recursion cost.
-    let mut i = 0;
-    while i < dirs {
+    for i in builtin.Range(0, dirs) {
         let name = vfs.entry_name(path, i);
         if ui.tree_node_open(name) {
             let expanded_path = join_tree_path(path, name);
             render_tree_dir(ui, vfs, expanded_path, picks);
             ui.tree_pop();
         }
-        i = i + 1;
     }
 
     // File leaves come after the subdir prefix; there can be

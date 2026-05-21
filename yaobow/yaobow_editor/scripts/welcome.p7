@@ -241,23 +241,19 @@ fn make_settings_director(
 }
 
 fn welcome_game_name(d: ref<WelcomeDirector>, ordinal: int) -> string {
-    let mut i = 0;
-    while i < d.games.len() {
-        if d.games[i] == ordinal {
+    for i, g in d.games {
+        if g == ordinal {
             return d.names[i];
         }
-        i = i + 1;
     }
     ""
 }
 
 fn settings_game_name(d: ref<SettingsDirector>, ordinal: int) -> string {
-    let mut i = 0;
-    while i < d.games.len() {
-        if d.games[i] == ordinal {
+    for i, g in d.games {
+        if g == ordinal {
             return d.names[i];
         }
-        i = i + 1;
     }
     ""
 }

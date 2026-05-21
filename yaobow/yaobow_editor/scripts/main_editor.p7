@@ -48,9 +48,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
         // dock node by default.
         ui.window_docked(editor_consts.DOCK_WINDOW_VIEWPORT, () => {
             ui.tab_bar("##editor_tab_bar", () => {
-                let mut i = 0;
-                while i < self.tabs.len() {
-                    let t = ref(self.tabs[i]);
+                for t in self.tabs {
                     let close_cmd = t.close_cmd;
                     let active_slot = self.active_close_cmd;
                     let closed = ui.tab_item(t.label, true, () => {
@@ -60,7 +58,6 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
                     if closed {
                         self.close_intents.push(close_cmd);
                     }
-                    i = i + 1;
                 }
             });
         });
@@ -89,9 +86,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
         self.host.render_pending_previews();
 
         // Open new tabs for clicked tree leaves.
-        let mut p = 0;
-        while p < self.picks.len() {
-            let path = self.picks[p];
+        for path in self.picks {
             let vfs = self.host.vfs();
             if vfs.is_dir(path) {
                 vfs.toggle_expanded(path);
@@ -106,15 +101,12 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
                     self.tabs.push(tab!);
                 }
             }
-            p = p + 1;
         }
         self.picks.clear();
 
         // Close tabs whose tab_item reported a close click this frame.
-        let mut c = 0;
-        while c < self.close_intents.len() {
-            close_tab_by_close_cmd(self.tabs, self.close_intents[c]);
-            c = c + 1;
+        for c in self.close_intents {
+            close_tab_by_close_cmd(self.tabs, c);
         }
         self.close_intents.clear();
 
@@ -122,23 +114,18 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
         // button was pressed this frame. Single-active editor policy:
         // when a new preview opens, close any other tab's existing
         // session so the backend reclaims GPU resources.
-        let mut m = 0;
-        while m < self.preview_intents.len() {
-            close_other_preview_sessions(self.tabs, self.preview_intents[m]);
-            set_preview_session_for_close_cmd(self.tabs, self.preview_intents[m]);
-            m = m + 1;
+        for m in self.preview_intents {
+            close_other_preview_sessions(self.tabs, m);
+            set_preview_session_for_close_cmd(self.tabs, m);
         }
         self.preview_intents.clear();
 
         // Per-frame audio handle pump.
-        let mut i = 0;
-        while i < self.tabs.len() {
-            let t = ref(self.tabs[i]);
+        for t in self.tabs {
             if t.kind == editor_consts.CONTENT_KIND_AUDIO && t.audio_handle != null {
                 let h = t.audio_handle!;
                 h.update();
             }
-            i = i + 1;
         }
 
         return empty_transitions();
@@ -171,13 +158,11 @@ pub fn make_main_editor_director(
 }
 
 fn close_tab_by_close_cmd(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {
-    let mut i = 0;
-    while i < tabs.len() {
-        if tabs[i].close_cmd == close_cmd {
+    for i, t in tabs {
+        if t.close_cmd == close_cmd {
             tabs.remove(i);
             return;
         }
-        i = i + 1;
     }
 }
 
@@ -185,9 +170,8 @@ fn set_preview_session_for_close_cmd(
     tabs: box<array<content_tabs.ContentTab>>,
     close_cmd: int,
 ) {
-    let mut i = 0;
-    while i < tabs.len() {
-        if tabs[i].close_cmd == close_cmd {
+    for i, t in tabs {
+        if t.close_cmd == close_cmd {
             if tabs[i].model_handle != null {
                 let h = tabs[i].model_handle!;
                 tabs[i].preview_session = h.open_preview();
@@ -197,7 +181,6 @@ fn set_preview_session_for_close_cmd(
             }
             return;
         }
-        i = i + 1;
     }
 }
 
@@ -205,9 +188,8 @@ fn close_other_preview_sessions(
     tabs: box<array<content_tabs.ContentTab>>,
     keep_close_cmd: int,
 ) {
-    let mut i = 0;
-    while i < tabs.len() {
-        if tabs[i].close_cmd != keep_close_cmd {
+    for i, t in tabs {
+        if t.close_cmd != keep_close_cmd {
             if tabs[i].preview_session != null {
                 let s = tabs[i].preview_session!;
                 s.close();
@@ -219,7 +201,6 @@ fn close_other_preview_sessions(
                 tabs[i].scene_session = null;
             }
         }
-        i = i + 1;
     }
 }
 
@@ -227,15 +208,13 @@ fn active_scene_session(
     tabs: box<array<content_tabs.ContentTab>>,
     active_close_cmd: int,
 ) -> ?box<yaobow_editor_services.IScenePreviewSession> {
-    let mut i = 0;
-    while i < tabs.len() {
-        if tabs[i].close_cmd == active_close_cmd {
-            if tabs[i].scene_session != null {
-                return tabs[i].scene_session;
+    for t in tabs {
+        if t.close_cmd == active_close_cmd {
+            if t.scene_session != null {
+                return t.scene_session;
             }
             return null;
         }
-        i = i + 1;
     }
     return null;
 }
@@ -244,15 +223,13 @@ fn active_scene_handle(
     tabs: box<array<content_tabs.ContentTab>>,
     active_close_cmd: int,
 ) -> ?box<yaobow_editor_services.ISceneHandle> {
-    let mut i = 0;
-    while i < tabs.len() {
-        if tabs[i].close_cmd == active_close_cmd {
-            if tabs[i].scene_handle != null {
-                return tabs[i].scene_handle;
+    for t in tabs {
+        if t.close_cmd == active_close_cmd {
+            if t.scene_handle != null {
+                return t.scene_handle;
             }
             return null;
         }
-        i = i + 1;
     }
     return null;
 }

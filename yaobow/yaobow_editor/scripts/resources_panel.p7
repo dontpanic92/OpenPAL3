@@ -57,8 +57,7 @@ fn render_category_view(
     }
 
     let n = rm.category_count();
-    let mut i = 0;
-    while i < n {
+    for i in builtin.Range(0, n) {
         let name = rm.category_name(i);
         let count = rm.category_entry_count(i, f);
         let label = f"{name} ({count})";
@@ -77,6 +76,5 @@ fn render_category_view(
             });
             ui.tree_pop();
         }
-        i = i + 1;
     }
 }
