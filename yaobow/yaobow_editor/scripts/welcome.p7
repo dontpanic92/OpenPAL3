@@ -23,16 +23,24 @@ let INTENT_CANCEL: int = 4;
 let INTENT_PICK_FOLDER: int = 5;
 let INTENT_CLEAR_PATH: int = 6;
 
+// Single-frame intent slot shared by both directors. Methods receive
+// `self: ref<Self>` (matching IDirector/IImmediateDirector), so per-frame
+// scratch state lives behind a `box<IntentCell>` field — boxed-struct field
+// assignment (§10.2) lets `render_im` write `self.state.intent = …` directly.
+pub struct IntentCell(
+    pub intent: int,
+    pub intent_arg: int,
+);
+
 pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
-    pub intent: box<array<int>>,
-    pub intent_arg: box<array<int>>,
+    pub state: box<IntentCell>,
 ) {
     pub fn activate(self: ref<Self>) -> int {
-        self.intent[0] = INTENT_NONE;
-        self.intent_arg[0] = 0;
+        self.state.intent = INTENT_NONE;
+        self.state.intent_arg = 0;
         0
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
@@ -75,7 +83,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
             });
             ui.dummy(0.0, 16.0);
             if ui.button("设置", 120.0, 24.0) {
-                self.intent[0] = INTENT_OPEN_SETTINGS;
+                self.state.intent = INTENT_OPEN_SETTINGS;
             }
         });
         0
@@ -85,8 +93,8 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
         let name = welcome_game_name(self, ordinal);
         let label = f"运行《{name}》编辑器";
         if ui.button(label, -1.0, 60.0) {
-            self.intent[0] = INTENT_OPEN_GAME;
-            self.intent_arg[0] = ordinal;
+            self.state.intent = INTENT_OPEN_GAME;
+            self.state.intent_arg = ordinal;
         }
     }
 
@@ -94,10 +102,10 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
         self: ref<Self>,
         dt: float,
     ) -> ?box<radiance.IDirector> {
-        let code = self.intent[0];
-        let arg = self.intent_arg[0];
-        self.intent[0] = INTENT_NONE;
-        self.intent_arg[0] = 0;
+        let code = self.state.intent;
+        let arg = self.state.intent_arg;
+        self.state.intent = INTENT_NONE;
+        self.state.intent_arg = 0;
 
         if code == INTENT_OPEN_SETTINGS {
             return make_settings_director(self.host, self.games, self.names);
@@ -127,12 +135,11 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
-    pub intent: box<array<int>>,
-    pub intent_arg: box<array<int>>,
+    pub state: box<IntentCell>,
 ) {
     pub fn activate(self: ref<Self>) -> int {
-        self.intent[0] = INTENT_NONE;
-        self.intent_arg[0] = 0;
+        self.state.intent = INTENT_NONE;
+        self.state.intent_arg = 0;
         0
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
@@ -157,11 +164,11 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
             ui.table("settings.footer", 2, () => {
                 ui.table_next_column();
                 if ui.button("保存并返回", 200.0, 32.0) {
-                    self.intent[0] = INTENT_SAVE_AND_RETURN;
+                    self.state.intent = INTENT_SAVE_AND_RETURN;
                 }
                 ui.table_next_column();
                 if ui.button("取消", 200.0, 32.0) {
-                    self.intent[0] = INTENT_CANCEL;
+                    self.state.intent = INTENT_CANCEL;
                 }
             });
         });
@@ -176,13 +183,13 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
         ui.text(path_label(cfg.get_asset_path(ordinal)));
         ui.table_next_column();
         if ui.button(f"选择...##pick_{ordinal}", 100.0, 24.0) {
-            self.intent[0] = INTENT_PICK_FOLDER;
-            self.intent_arg[0] = ordinal;
+            self.state.intent = INTENT_PICK_FOLDER;
+            self.state.intent_arg = ordinal;
         }
         ui.table_next_column();
         if ui.button(f"清除##clear_{ordinal}", 80.0, 24.0) {
-            self.intent[0] = INTENT_CLEAR_PATH;
-            self.intent_arg[0] = ordinal;
+            self.state.intent = INTENT_CLEAR_PATH;
+            self.state.intent_arg = ordinal;
         }
     }
 
@@ -190,10 +197,10 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
         self: ref<Self>,
         dt: float,
     ) -> ?box<radiance.IDirector> {
-        let code = self.intent[0];
-        let arg = self.intent_arg[0];
-        self.intent[0] = INTENT_NONE;
-        self.intent_arg[0] = 0;
+        let code = self.state.intent;
+        let arg = self.state.intent_arg;
+        self.state.intent = INTENT_NONE;
+        self.state.intent_arg = 0;
 
         let cfg = self.host.config();
         if code == INTENT_SAVE_AND_RETURN {
@@ -223,9 +230,7 @@ pub fn make_welcome_director(
     games: box<array<int>>,
     names: box<array<string>>,
 ) -> box<radiance.IDirector> {
-    let intent: array<int> = [INTENT_NONE];
-    let intent_arg: array<int> = [0];
-    return box(WelcomeDirector(host, games, names, box(intent), box(intent_arg)))
+    return box(WelcomeDirector(host, games, names, box(IntentCell(INTENT_NONE, 0))))
         as box<radiance.IDirector>;
 }
 
@@ -234,9 +239,7 @@ fn make_settings_director(
     games: box<array<int>>,
     names: box<array<string>>,
 ) -> box<radiance.IDirector> {
-    let intent: array<int> = [INTENT_NONE];
-    let intent_arg: array<int> = [0];
-    return box(SettingsDirector(host, games, names, box(intent), box(intent_arg)))
+    return box(SettingsDirector(host, games, names, box(IntentCell(INTENT_NONE, 0))))
         as box<radiance.IDirector>;
 }
 

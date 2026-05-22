@@ -24,7 +24,7 @@ pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<radianc
     let names = box(names_arr);
     let n = registry.count();
 
-    for i in builtin.Range(0, n) {
+    for i in Range(0, n) {
         let ordinal = registry.game_at(i);
         games.push(ordinal);
         names.push(registry.full_name(ordinal));

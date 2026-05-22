@@ -22,13 +22,11 @@ pub fn render_inspector_im(
     let view = s.inspector_for(sel);
     let n = view.field_count();
     ui.table("##inspector_fields", 2, () => {
-        let mut i = 0;
-        while i < n {
+        for i in Range(0, n) {
             ui.table_next_column();
             ui.text(view.field_key(i));
             ui.table_next_column();
             ui.text(view.field_value(i));
-            i = i + 1;
         }
     });
 }

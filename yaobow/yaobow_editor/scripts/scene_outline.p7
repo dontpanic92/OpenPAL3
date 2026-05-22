@@ -25,7 +25,7 @@ pub fn render_scene_outline_im(
     let sel = s.selection();
 
     // Flat indented list: indent depth = walk parent chain until -1.
-    for i in builtin.Range(0, n) {
+    for i in Range(0, n) {
         let depth = compute_depth(h, i);
         let label = make_label(h, i, depth, sel);
         if ui.tree_leaf(label) {
@@ -49,10 +49,8 @@ fn make_label(h: box<yaobow_editor_services.ISceneHandle>, id: int, depth: int, 
     let name = h.node_name(id);
     let bullet = if id == sel { "● " } else { "○ " };
     let mut indent = "";
-    let mut j = 0;
-    while j < depth {
+    for _k in Range(0, depth) {
         indent = f"{indent}  ";
-        j = j + 1;
     }
     return f"{indent}{bullet}{name}";
 }

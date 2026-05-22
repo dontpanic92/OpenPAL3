@@ -12,14 +12,12 @@ import immediate_director;
 import resource_tree;
 
 pub struct ResourcesPanelState(
-    pub filter: box<array<string>>,
-    pub view_mode: box<array<int>>,
+    pub filter: string,
+    pub view_mode: int,
 );
 
 pub fn make_resources_state() -> ResourcesPanelState {
-    let f: array<string> = [""];
-    let v: array<int> = [0];
-    return ResourcesPanelState(box(f), box(v));
+    return ResourcesPanelState("", 0);
 }
 
 pub fn render_resources_panel_im(
@@ -30,12 +28,12 @@ pub fn render_resources_panel_im(
 ) {
     ui.tab_bar("##resources_tabs", () => {
         ui.tab_item("文件树", false, () => {
-            state.view_mode[0] = 0;
+            state.view_mode = 0;
             resource_tree.render_resource_tree_im(ui, host.vfs(), picks);
         });
         ui.tab_item("分类", false, () => {
-            state.view_mode[0] = 1;
-            render_category_view(ui, host.previewers().resources(), state.filter, picks);
+            state.view_mode = 1;
+            render_category_view(ui, host.previewers().resources(), state, picks);
         });
     });
 }
@@ -43,21 +41,21 @@ pub fn render_resources_panel_im(
 fn render_category_view(
     ui: box<immediate_director.IUiHost>,
     rm: box<yaobow_editor_services.IResourceManager>,
-    filter: box<array<string>>,
+    state: box<ResourcesPanelState>,
     picks: box<array<string>>,
 ) {
     // Filter text — for v1 we present current value + a "clear" button.
     // A full editable widget would need a new IUiHost surface; keep the
     // friction low here and accept the current value at render time.
-    let f = filter[0];
+    let f = state.filter;
     ui.text(f"过滤器: {f}");
     ui.same_line();
     if ui.button("清除", 60.0, 22.0) {
-        filter[0] = "";
+        state.filter = "";
     }
 
     let n = rm.category_count();
-    for i in builtin.Range(0, n) {
+    for i in Range(0, n) {
         let name = rm.category_name(i);
         let count = rm.category_entry_count(i, f);
         let label = f"{name} ({count})";
