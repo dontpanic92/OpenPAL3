@@ -8,6 +8,14 @@ pub trait Shader {
 pub enum ShaderProgram {
     TexturedNoLight,
     TexturedLightmap,
+    /// Per-vertex Y-gradient. Used by the PAL4 nav-mesh floor/wall
+    /// debug visualization: the fragment color is `mix(low, high, t)`
+    /// where `t = (worldY - y_min) / (y_max - y_min)`. Parameters are
+    /// carried through the shared `MaterialParams` UBO via field-reuse
+    /// (see `GradientYMaterialDef`). Texture binding is a single 1×1
+    /// white dummy so the existing per-material descriptor-set plumbing
+    /// (which expects ≥ 1 texture) keeps working unchanged.
+    GradientY,
 }
 
 pub(crate) struct ShaderProgramData {

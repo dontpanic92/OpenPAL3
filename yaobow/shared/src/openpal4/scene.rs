@@ -12,6 +12,7 @@ use radiance::{
     comdef::{IEntity, IEntityExt, IScene, ISceneExt, IStaticMeshComponent},
     input::InputEngine,
     math::{Transform, Vec3},
+    rendering::GradientYMaterialDef,
     scene::{CoreEntity, CoreScene},
     utils::ray_casting::RayCaster,
 };
@@ -157,6 +158,31 @@ impl Pal4Scene {
         let floor = asset_loader.load_scene_floor(scene_name, block_name);
         let wall = asset_loader.load_scene_wall(scene_name, block_name);
         let ray_caster = create_floor_wall_ray_caster(floor.clone(), wall.clone());
+
+        // Compute the union world-Y range across floor + wall geometry,
+        // then replace each `Geometry.material` with a
+        // `GradientYMaterialDef` so when the PAL4 debug overlay reveals
+        // the nav-mesh it renders as a blue-(low)→red-(high) vertical
+        // heatmap. Must happen before `scene.add_entity` because the
+        // entity's `StaticMeshComponent::on_loading` (fired during the
+        // add) snapshots `Geometry.material` into the render objects.
+        let mut y_lo = f32::INFINITY;
+        let mut y_hi = f32::NEG_INFINITY;
+        for entity_opt in [floor.as_ref(), wall.as_ref()].iter().copied() {
+            if let Some(e) = entity_opt {
+                if let Some((lo, hi)) = entity_world_y_range(e) {
+                    y_lo = y_lo.min(lo);
+                    y_hi = y_hi.max(hi);
+                }
+            }
+        }
+        if y_lo.is_finite() && y_hi.is_finite() && y_hi > y_lo {
+            for entity_opt in [floor.as_ref(), wall.as_ref()].iter().copied() {
+                if let Some(e) = entity_opt {
+                    apply_gradient_material(e, y_lo, y_hi);
+                }
+            }
+        }
 
         // Always add floor + wall so the PAL4 debug overlay can toggle
         // them on at runtime. They default to hidden — matches the old
@@ -495,7 +521,7 @@ fn add_mesh(ray_caster: &mut RayCaster, entity: ComRc<IEntity>) {
         let mesh_inner =
             mesh.inner::<radiance::components::mesh::static_mesh::StaticMeshComponent>();
         let geometries = mesh_inner.get_geometries();
-        for geometry in geometries {
+        for geometry in geometries.iter() {
             let v = geometry
                 .vertices
                 .to_position_vec()
@@ -505,6 +531,67 @@ fn add_mesh(ray_caster: &mut RayCaster, entity: ComRc<IEntity>) {
 
             let i = geometry.indices.clone();
             ray_caster.add_mesh(v, i);
+        }
+    }
+}
+
+/// Walk an entity and its children, returning the `(min, max)` world-Y
+/// across every vertex of every `IStaticMeshComponent` found, or
+/// `None` if the entity tree contains no static meshes. Mirrors the
+/// traversal in [`add_mesh`] but accumulates Y bounds instead of
+/// feeding a ray caster.
+fn entity_world_y_range(entity: &ComRc<IEntity>) -> Option<(f32, f32)> {
+    let mut lo = f32::INFINITY;
+    let mut hi = f32::NEG_INFINITY;
+    accumulate_y_range(entity, &mut lo, &mut hi);
+    if lo.is_finite() && hi.is_finite() && hi >= lo {
+        Some((lo, hi))
+    } else {
+        None
+    }
+}
+
+fn accumulate_y_range(entity: &ComRc<IEntity>, lo: &mut f32, hi: &mut f32) {
+    for child in entity.children() {
+        accumulate_y_range(&child, lo, hi);
+    }
+
+    if let Some(mesh) = entity.get_component(IStaticMeshComponent::uuid()) {
+        let mesh = mesh.query_interface::<IStaticMeshComponent>().unwrap();
+        let entity_y = entity.world_transform().position().y;
+        let mesh_inner =
+            mesh.inner::<radiance::components::mesh::static_mesh::StaticMeshComponent>();
+        let geometries = mesh_inner.get_geometries();
+        for geometry in geometries.iter() {
+            for v in geometry.vertices.to_position_vec() {
+                let y = entity_y + v.y;
+                if y < *lo {
+                    *lo = y;
+                }
+                if y > *hi {
+                    *hi = y;
+                }
+            }
+        }
+    }
+}
+
+/// Walk an entity tree and replace every `Geometry.material` on every
+/// `IStaticMeshComponent` with a `GradientYMaterialDef` keyed on
+/// `[y_min, y_max]`. Must be called before the owning entity is added
+/// to a scene (see `StaticMeshComponent::replace_material`).
+fn apply_gradient_material(entity: &ComRc<IEntity>, y_min: f32, y_max: f32) {
+    for child in entity.children() {
+        apply_gradient_material(&child, y_min, y_max);
+    }
+
+    if let Some(mesh) = entity.get_component(IStaticMeshComponent::uuid()) {
+        let mesh = mesh.query_interface::<IStaticMeshComponent>().unwrap();
+        let mesh_inner =
+            mesh.inner::<radiance::components::mesh::static_mesh::StaticMeshComponent>();
+        let count = mesh_inner.geometry_count();
+        for i in 0..count {
+            mesh_inner.replace_material(i, GradientYMaterialDef::create(y_min, y_max));
         }
     }
 }

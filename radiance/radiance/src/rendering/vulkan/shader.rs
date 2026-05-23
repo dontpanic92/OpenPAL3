@@ -135,6 +135,10 @@ static LIGHTMAP_TEXTURE_VERT: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/lightmap_texture.vert.spv"));
 static LIGHTMAP_TEXTURE_FRAG: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/lightmap_texture.frag.spv"));
+static GRADIENT_Y_VERT: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/gradient_y.vert.spv"));
+static GRADIENT_Y_FRAG: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/gradient_y.frag.spv"));
 
 fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
     match shader {
@@ -149,6 +153,15 @@ fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
             LIGHTMAP_TEXTURE_VERT,
             LIGHTMAP_TEXTURE_FRAG,
             VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2,
+        ),
+        ShaderProgram::GradientY => ShaderProgramData::new(
+            "gradient_y",
+            GRADIENT_Y_VERT,
+            GRADIENT_Y_FRAG,
+            // Keep the texcoord input slot so the buffer stride matches
+            // the floor/wall DFFs (which always ship UV0). The shader
+            // itself ignores `inTexCoord`.
+            VertexComponents::POSITION | VertexComponents::TEXCOORD,
         ),
     }
 }

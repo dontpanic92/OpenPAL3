@@ -125,6 +125,12 @@ fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
             include_bytes!("shaders/lightmap_texture.frag"),
             VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2,
         ),
+        ShaderProgram::GradientY => ShaderProgramData::new(
+            "GradientY",
+            include_bytes!("shaders/gradient_y.vert"),
+            include_bytes!("shaders/gradient_y.frag"),
+            VertexComponents::POSITION | VertexComponents::TEXCOORD,
+        ),
     }
 }
 

@@ -503,3 +503,71 @@ impl LightMapMaterialDef {
             .build()
     }
 }
+
+/// Per-vertex Y-gradient material. Used by the PAL4 nav-mesh
+/// floor/wall debug visualization: every fragment's color is
+/// `mix(low, high, t)` where `t = (worldY − y_min) / (y_max − y_min)`.
+///
+/// Parameters are encoded into the shared [`MaterialParams`] UBO via
+/// field-reuse (so the renderer's existing per-material UBO upload
+/// path keeps working unchanged):
+///
+/// | UBO slot         | CPU `MaterialParams` field | Meaning              |
+/// |------------------|----------------------------|----------------------|
+/// | `tint.rgb`       | `tint[0..3]`               | high color (Y == max)|
+/// | `tint.a`         | `tint[3]`                  | `y_max`              |
+/// | `misc.x`         | `alpha_ref`                | unused (kept 0)      |
+/// | `misc.y`         | `intensity`                | `y_min`              |
+/// | `uv_xform.xy`    | `uv_scale`                 | low color R, G       |
+/// | `uv_xform.z`     | `uv_offset[0]`             | low color B          |
+/// | `uv_xform.w`     | `uv_offset[1]`             | unused (kept 0)      |
+///
+/// A 1×1 white dummy texture is bound at `texSampler[0]` so the
+/// renderer's per-material descriptor layout (keyed on
+/// `textures().len()`) doesn't need a zero-texture special case. The
+/// fragment shader never samples it.
+pub struct GradientYMaterialDef;
+
+impl GradientYMaterialDef {
+    /// Build a gradient material with the default blue (low) → red
+    /// (high) heatmap colors over `[y_min, y_max]` (world-space Y).
+    pub fn create(y_min: f32, y_max: f32) -> MaterialDef {
+        Self::create_with_colors(y_min, y_max, [0.0, 0.0, 1.0], [1.0, 0.0, 0.0])
+    }
+
+    /// Build a gradient material with caller-supplied low/high RGB
+    /// colors. `low` is the color at `y_min`, `high` at `y_max`.
+    pub fn create_with_colors(
+        y_min: f32,
+        y_max: f32,
+        low: [f32; 3],
+        high: [f32; 3],
+    ) -> MaterialDef {
+        let dummy = TextureStore::get_or_update("__gradient_y_dummy", || {
+            // 1×1 white opaque pixel — never sampled, only present so
+            // the per-material descriptor layout has textures().len() == 1.
+            Some(image::RgbaImage::from_pixel(
+                1,
+                1,
+                image::Rgba([255, 255, 255, 255]),
+            ))
+        });
+
+        let params = MaterialParams {
+            tint: [high[0], high[1], high[2], y_max],
+            alpha_ref: 0.0,
+            intensity: y_min,
+            uv_scale: [low[0], low[1]],
+            uv_offset: [low[2], 0.0],
+        };
+
+        MaterialDef::builder(ShaderProgram::GradientY)
+            .debug_name("gradient_y_material")
+            .textures(vec![dummy])
+            // Order matters: `blend()` clobbers `alpha_ref`, so set the
+            // mode first and then stamp the encoded params.
+            .blend(BlendMode::Opaque)
+            .params(params)
+            .build()
+    }
+}
