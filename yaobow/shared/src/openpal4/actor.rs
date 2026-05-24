@@ -216,39 +216,62 @@ pub enum Pal4ActorAnimationConfig {
     PauseOnHold,
 }
 
-struct Pal4ActorControllerInner {
+/// Per-scene collision/input state shared by every party member's
+/// `Pal4ActorController` wrapper. There is exactly one of these per
+/// loaded `Pal4Scene`; the per-entity wrappers (one on each of the
+/// four player entities) hold a `Rc<RefCell<…>>` to this and only
+/// the wrapper whose `player_id` matches `current_leader` actually
+/// drives the update on its own entity each frame.
+///
+/// This indirection is what makes the floor/wall raycast follow the
+/// active leader after `set_leader` switches party members or after
+/// a scene reload — both the `ray_caster` and the `event_triggers`
+/// are bound to the *current* scene, and the wrapper on the new
+/// leader entity is the one that ticks.
+pub struct Pal4ActorControllerInner {
     input: Rc<RefCell<dyn InputEngine>>,
-    entity: ComRc<IEntity>,
     scene: ComRc<IScene>,
     ray_caster: RayCaster,
     event_triggers: Vec<Rc<SceneEventTrigger>>,
-    lock_control: bool,
+    locked: bool,
     camera_rotation: f32,
     camera_height: f32,
+    current_leader: usize,
 }
 
 impl Pal4ActorControllerInner {
-    fn new(
+    pub(crate) fn new(
         input: Rc<RefCell<dyn InputEngine>>,
-        entity: ComRc<IEntity>,
         scene: ComRc<IScene>,
         ray_caster: RayCaster,
         event_triggers: Vec<Rc<SceneEventTrigger>>,
     ) -> Self {
         Self {
             input,
-            entity,
             scene,
             ray_caster,
             event_triggers,
-            lock_control: true,
+            locked: true,
             camera_rotation: 0.,
             camera_height: 300.,
+            current_leader: 0,
         }
     }
 
-    fn update(&mut self, delta_sec: f32) {
-        if self.lock_control {
+    pub(crate) fn set_current_leader(&mut self, leader: usize) {
+        self.current_leader = leader;
+    }
+
+    pub(crate) fn current_leader(&self) -> usize {
+        self.current_leader
+    }
+
+    pub(crate) fn set_locked(&mut self, locked: bool) {
+        self.locked = locked;
+    }
+
+    fn update(&mut self, entity: ComRc<IEntity>, delta_sec: f32) {
+        if self.locked {
             return;
         }
 
@@ -256,7 +279,7 @@ impl Pal4ActorControllerInner {
         const STEP_HEIGHT: f32 = 10.;
         const TRIGGER_HEIGHT: f32 = 10.;
 
-        let current_position = self.entity.transform().borrow().position();
+        let current_position = entity.transform().borrow().position();
         let direction = get_moving_direction(self.input.clone(), self.scene.clone());
 
         let target_position = Vec3::add(
@@ -287,8 +310,7 @@ impl Pal4ActorControllerInner {
         );
 
         if let Some(p) = p {
-            let animation_controller = self
-                .entity
+            let animation_controller = entity
                 .get_component(IPal4ActorAnimationController::uuid())
                 .unwrap()
                 .query_interface::<IPal4ActorAnimationController>()
@@ -300,7 +322,7 @@ impl Pal4ActorControllerInner {
                     target_position.z,
                 );
                 let look_at = Vec3::new(current_position.x, target_position.y, current_position.z);
-                self.entity
+                entity
                     .transform()
                     .borrow_mut()
                     .set_position(&target_position)
@@ -358,28 +380,31 @@ fn get_camera_height(
     height
 }
 
+/// Per-entity wrapper attached to each of the four player entities
+/// in a `Pal4Scene`. Each wrapper points at the shared
+/// `Pal4ActorControllerInner` for the current scene; only the
+/// wrapper whose `player_id` matches `inner.current_leader` actually
+/// ticks. This guarantees that whichever party member is the active
+/// leader receives the correct floor/wall collision against the
+/// scene's freshly-built `RayCaster`.
 pub struct Pal4ActorController {
-    inner: RefCell<Pal4ActorControllerInner>,
+    inner: Rc<RefCell<Pal4ActorControllerInner>>,
+    entity: ComRc<IEntity>,
+    player_id: usize,
 }
 
 ComObject_Pal4ActorController!(super::Pal4ActorController);
 
 impl Pal4ActorController {
     pub fn create(
-        input: Rc<RefCell<dyn InputEngine>>,
+        inner: Rc<RefCell<Pal4ActorControllerInner>>,
         entity: ComRc<IEntity>,
-        scene: ComRc<IScene>,
-        event_triggers: Vec<Rc<SceneEventTrigger>>,
-        ray_caster: RayCaster,
+        player_id: usize,
     ) -> Pal4ActorController {
         Self {
-            inner: RefCell::new(Pal4ActorControllerInner::new(
-                input,
-                entity,
-                scene,
-                ray_caster,
-                event_triggers,
-            )),
+            inner,
+            entity,
+            player_id,
         }
     }
 }
@@ -388,7 +413,12 @@ impl IComponentImpl for Pal4ActorController {
     fn on_loading(&self) {}
 
     fn on_updating(&self, delta_sec: f32) {
-        self.inner.borrow_mut().update(delta_sec);
+        let is_leader = self.inner.borrow().current_leader() == self.player_id;
+        if is_leader {
+            self.inner
+                .borrow_mut()
+                .update(self.entity.clone(), delta_sec);
+        }
     }
 
     fn on_unloading(&self) {}
@@ -396,6 +426,6 @@ impl IComponentImpl for Pal4ActorController {
 
 impl IPal4ActorControllerImpl for Pal4ActorController {
     fn lock_control(&self, lock: bool) -> () {
-        self.inner.borrow_mut().lock_control = lock;
+        self.inner.borrow_mut().set_locked(lock);
     }
 }

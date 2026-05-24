@@ -233,10 +233,28 @@ impl AssetLoader {
         // is enough — `MaterialIdentity` already includes params, so
         // distinct tints yield distinct backend materials without
         // `make_unique`.
-        let (ltmap, has_cfg) = match self.try_load_scene_ltmap(scene_name, block_name) {
+        let (mut ltmap, has_cfg) = match self.try_load_scene_ltmap(scene_name, block_name) {
             Some(c) => (c, true),
             None => (LtMapCfg::IDENTITY, false),
         };
+        // Some PAL4 `_ltMap.cfg` files ship with `intensity = 0` (e.g.
+        // `M01/1/1_ltMap.cfg`). The lightmap shader multiplies its
+        // output by `MaterialParams.intensity` (UBO `misc.y`), so a
+        // literal zero blacks out the entire BSP and the world mesh
+        // "vanishes". Treat zero as a sentinel meaning "intensity
+        // disabled — use the identity multiplier 1.0" so the
+        // unmodulated lightmap survives the multiply. The RGB tint is
+        // intentionally left untouched (a tint of `[0, 0, 0]` would
+        // similarly zero the output, but we have not observed that in
+        // shipped data; revisit if it ever surfaces).
+        if ltmap.intensity == 0.0 {
+            log::warn!(
+                "[ltmap] {}/{}: cfg intensity is 0; treating as 1.0 to avoid black BSP",
+                scene_name,
+                block_name,
+            );
+            ltmap.intensity = 1.0;
+        }
         log::debug!(
             "[ltmap] {}/{}: tint={:?} intensity={} (cfg={})",
             scene_name,

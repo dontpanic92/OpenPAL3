@@ -560,6 +560,28 @@ pub(crate) fn create_geometry_internal(
                     } else {
                         load_material_texture(texture, vfs, path.as_ref(), texture_resolver)
                     }
+                } else if let (Some(tint), Some(_)) =
+                    (bsp_lightmap_tint, material.lightmap.as_ref())
+                {
+                    // PAL4 BSPs occasionally ship materials with NO
+                    // primary diffuse `texture` chunk, only a
+                    // `LightMapPlugin` (`*LightingMap`) — i.e. the
+                    // baked lightmap atlas is the surface's only color
+                    // source (typical for cave/wall sectors where the
+                    // material was authored as lightmap-only). Build a
+                    // `LightMapMaterialDef` with a white dummy diffuse
+                    // so `(lightMap * 1.5 + 0.15) * white * tint`
+                    // renders the lightmap straight through. Without
+                    // this branch we fell to the `missing`-texture
+                    // placeholder below and rendered 1+ fan-shaped
+                    // pure-black triangle clusters on cave walls.
+                    load_lightmap_only_material(
+                        material,
+                        tint,
+                        vfs,
+                        path.as_ref(),
+                        texture_resolver,
+                    )
                 } else {
                     log::debug!("no texture info for material {:?}", path);
                     radiance::rendering::SimpleMaterialDef::create2("missing", None)
@@ -617,6 +639,11 @@ pub(crate) fn create_geometry_internal(
                 if r_texcoords.len() >= 2 {
                     &r_texcoords
                 } else {
+                    log::warn!(
+                        "[ltmap] lightmap material with only {} UV set(s) for {:?}; duplicating UV0 → UV1 (lightmap will sample diffuse atlas coords and likely look wrong)",
+                        r_texcoords.len(),
+                        path,
+                    );
                     duplicated = [r_texcoords[0].clone(), r_texcoords[0].clone()];
                     &duplicated
                 }
@@ -946,6 +973,65 @@ fn load_lightmap_material_pair(
     );
 
     Some(md.with_params(params))
+}
+
+/// Lightmap-only PAL4 BSP material: same as
+/// [`load_lightmap_material_pair`] but the primary diffuse slot is
+/// bound to the `radiance_assets` white fallback texture, because the
+/// material has no `texture` chunk — its only color information lives
+/// in the `LightMapPlugin` atlas. Used for BSP sectors whose material
+/// list ships lightmap-only entries (observed in M01 cave walls). The
+/// resulting material renders as `(lightMap * 1.5 + 0.15) * white *
+/// tint * intensity`, i.e. the baked atlas straight through the
+/// per-scene `_ltMap.cfg` modulation.
+fn load_lightmap_only_material(
+    material: &fileformats::rwbs::material::Material,
+    tint: [f32; 4],
+    vfs: &MiniFs,
+    model_path: &Path,
+    texture_resolver: &dyn TextureResolver,
+) -> MaterialDef {
+    let lightmap = match material.lightmap.as_ref() {
+        Some(lm) => lm,
+        None => {
+            return radiance::rendering::SimpleMaterialDef::create2("missing", None);
+        }
+    };
+
+    let lightmap_sampler = SamplerDef::with_address_uv(
+        rw_filter_mode(lightmap.filter_mode),
+        AddressMode::Clamp,
+        AddressMode::Clamp,
+    );
+    // Diffuse slot uses a sentinel name so `LightMapMaterialDef` falls
+    // back to `radiance_assets::TEXTURE_WHITE_TEXTURE_FILE` (its
+    // built-in white dummy).
+    let diffuse_sampler = SamplerDef::default();
+    let model_path_buf = model_path.to_path_buf();
+
+    let mut params = radiance::rendering::MaterialParams::default();
+    params.tint = [tint[0], tint[1], tint[2], 1.0];
+    params.intensity = tint[3];
+
+    // The white-fallback dummy name must NOT alias a real on-disk
+    // texture; use a path that's guaranteed not to exist in the VFS so
+    // `get_reader` returns `None` and `LightMapMaterialDef::create*`
+    // falls back to its built-in white texture asset.
+    let white_dummy = "__lightmap_only_white__";
+
+    let md = radiance::rendering::LightMapMaterialDef::create_with_samplers(
+        vec![&lightmap.name, white_dummy],
+        |name| {
+            if name == white_dummy {
+                return None;
+            }
+            let data = texture_resolver.resolve_texture(vfs, &model_path_buf, name);
+            data.map(std::io::Cursor::new)
+        },
+        vec![lightmap_sampler, diffuse_sampler],
+    );
+
+    md.with_params(params)
 }
 
 fn rw_sampler_def(texture: &fileformats::rwbs::material::Texture) -> SamplerDef {

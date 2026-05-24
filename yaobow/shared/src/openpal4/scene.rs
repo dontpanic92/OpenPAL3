@@ -11,7 +11,7 @@ use fileformats::pal4::{
 use radiance::{
     comdef::{IEntity, IEntityExt, IScene, ISceneExt, IStaticMeshComponent},
     input::InputEngine,
-    math::{Transform, Vec3},
+    math::{Mat44, Transform, Vec3},
     rendering::GradientYMaterialDef,
     scene::{CoreEntity, CoreScene},
     utils::ray_casting::RayCaster,
@@ -20,7 +20,7 @@ use radiance::{
 use crate::scripting::angelscript::ScriptModule;
 
 use super::{
-    actor::Pal4ActorController,
+    actor::{Pal4ActorController, Pal4ActorControllerInner},
     asset_loader::{self, AssetLoader},
     comdef::{IPal4ActorAnimationController, IPal4ActorController},
     uv_anim::UvAnimDriver,
@@ -72,6 +72,12 @@ pub struct Pal4Scene {
     pub(crate) bsp_entity: Option<ComRc<IEntity>>,
     pub(crate) floor_entity: Option<ComRc<IEntity>>,
     pub(crate) wall_entity: Option<ComRc<IEntity>>,
+    /// Shared collision/input state attached as `Pal4ActorController`
+    /// to every player entity. `None` for the empty placeholder scene
+    /// returned by `new_empty`. The controller wrapper on each player
+    /// holds a clone of this `Rc`; the one whose `player_id` matches
+    /// `current_leader` is the only one that ticks. See `set_active_leader`.
+    pub(crate) controller_inner: Option<Rc<RefCell<Pal4ActorControllerInner>>>,
 }
 
 const SHOW_TRIGGER_POINT: bool = false;
@@ -101,6 +107,7 @@ impl Pal4Scene {
             bsp_entity: None,
             floor_entity: None,
             wall_entity: None,
+            controller_inner: None,
         }
     }
 
@@ -157,6 +164,24 @@ impl Pal4Scene {
 
         let floor = asset_loader.load_scene_floor(scene_name, block_name);
         let wall = asset_loader.load_scene_wall(scene_name, block_name);
+        if floor.is_none() {
+            log::warn!(
+                "Pal4Scene::load: missing floor mesh for scene='{}' block='{}'. \
+                 Floor collision raycast will be empty for this block; the \
+                 active leader may freeze in place or fall through geometry.",
+                scene_name,
+                block_name
+            );
+        }
+        if wall.is_none() {
+            log::warn!(
+                "Pal4Scene::load: missing wall mesh for scene='{}' block='{}'. \
+                 Wall collision raycast will be empty for this block; the \
+                 active leader may walk through walls.",
+                scene_name,
+                block_name
+            );
+        }
         let ray_caster = create_floor_wall_ray_caster(floor.clone(), wall.clone());
 
         // Compute the union world-Y range across floor + wall geometry,
@@ -243,15 +268,25 @@ impl Pal4Scene {
             }));
         }
 
-        let controller = Pal4ActorController::create(
+        // One shared collision/input state, attached as a per-entity
+        // wrapper to every player. Only the wrapper whose `player_id`
+        // matches the current leader actually drives movement — but
+        // the wrappers are owned by their respective entities, so
+        // `set_leader` immediately rebinds collision to whichever
+        // party member is now active (no controller-stuck-on-player0
+        // staleness when switching leaders mid-scene).
+        let controller_inner = Rc::new(RefCell::new(Pal4ActorControllerInner::new(
             input,
-            players[0].clone(),
             scene.clone(),
-            triggers.clone(),
             ray_caster,
-        );
+            triggers.clone(),
+        )));
 
-        players[0].add_component(IPal4ActorController::uuid(), ComRc::from_object(controller));
+        for (i, p) in players.iter().enumerate() {
+            let wrapper =
+                Pal4ActorController::create(controller_inner.clone(), p.clone(), i);
+            p.add_component(IPal4ActorController::uuid(), ComRc::from_object(wrapper));
+        }
 
         for p in &players {
             scene.add_entity(p.clone());
@@ -369,11 +404,24 @@ impl Pal4Scene {
             bsp_entity: Some(bsp_entity),
             floor_entity: floor,
             wall_entity: wall,
+            controller_inner: Some(controller_inner),
         })
     }
 
     pub fn get_player(&self, player_id: usize) -> ComRc<IEntity> {
         self.players[player_id].clone()
+    }
+
+    /// Notify the per-scene `Pal4ActorControllerInner` which player
+    /// is now the active leader. After this call, only the
+    /// `Pal4ActorController` wrapper on `players[player_id]` will
+    /// tick movement/collision; the other three wrappers stay
+    /// dormant. No-op on the placeholder scene returned by
+    /// `new_empty` (which has no players with controllers).
+    pub fn set_active_leader(&self, player_id: usize) {
+        if let Some(inner) = &self.controller_inner {
+            inner.borrow_mut().set_current_leader(player_id);
+        }
     }
 
     /// Consume the wrapper and return only its inner `ComRc<IScene>`.
@@ -517,7 +565,14 @@ fn add_mesh(ray_caster: &mut RayCaster, entity: ComRc<IEntity>) {
     let mesh = entity.get_component(IStaticMeshComponent::uuid());
     if let Some(mesh) = mesh {
         let mesh = mesh.query_interface::<IStaticMeshComponent>().unwrap();
-        let entity_position = entity.world_transform().position();
+        // Bake the entity's *full* world transform (translation +
+        // rotation + scale) into every vertex. The previous version
+        // only added `entity.world_transform().position()`, which
+        // silently dropped any rotation/scale on nested floor/wall
+        // sub-entities and produced mis-placed collision triangles
+        // (= invisible walls / fall-throughs on affected blocks).
+        let world_transform = entity.world_transform();
+        let world_matrix = *world_transform.matrix();
         let mesh_inner =
             mesh.inner::<radiance::components::mesh::static_mesh::StaticMeshComponent>();
         let geometries = mesh_inner.get_geometries();
@@ -526,13 +581,25 @@ fn add_mesh(ray_caster: &mut RayCaster, entity: ComRc<IEntity>) {
                 .vertices
                 .to_position_vec()
                 .into_iter()
-                .map(|v| Vec3::add(&entity_position, &v))
+                .map(|v| transform_point(&world_matrix, &v))
                 .collect();
 
             let i = geometry.indices.clone();
             ray_caster.add_mesh(v, i);
         }
     }
+}
+
+/// Multiply a row-major 4x4 affine matrix by a point `(x, y, z, 1)`
+/// and return the resulting 3D point. Used by [`add_mesh`] so the
+/// `RayCaster` sees triangles in world space, regardless of which
+/// child entity in the floor/wall tree they originated from.
+fn transform_point(m: &Mat44, p: &Vec3) -> Vec3 {
+    Vec3::new(
+        m[0][0] * p.x + m[0][1] * p.y + m[0][2] * p.z + m[0][3],
+        m[1][0] * p.x + m[1][1] * p.y + m[1][2] * p.z + m[1][3],
+        m[2][0] * p.x + m[2][1] * p.y + m[2][2] * p.z + m[2][3],
+    )
 }
 
 /// Walk an entity and its children, returning the `(min, max)` world-Y

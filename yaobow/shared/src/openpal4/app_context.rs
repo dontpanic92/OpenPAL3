@@ -162,6 +162,12 @@ impl Pal4AppContext {
     pub fn set_leader(&mut self, leader: i32) {
         self.leader = leader as usize;
         self.enable_player(self.leader, true);
+        // Route the (single) per-scene actor controller to the new
+        // leader's entity. Without this, the previous leader's
+        // controller would keep ticking floor/wall raycasts against
+        // its own (now hidden) entity — manifesting as "invisible
+        // walls" or "phasing through walls" after a leader switch.
+        self.scene.set_active_leader(self.leader);
     }
 
     pub fn set_player_pos(&mut self, player: i32, pos: &Vec3) {

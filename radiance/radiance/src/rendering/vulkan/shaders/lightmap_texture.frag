@@ -48,6 +48,23 @@ void main() {
     // `color.rgb` is premultiplied when the diffuse has transparency; the
     // lightmap factor and tint must therefore also be multiplied by
     // `mat.tint.a` to preserve the premultiplied invariant of the output.
-    vec3 rgb = lightMap.rgb * mat.misc.y * color.rgb * mat.tint.rgb * mat.tint.a;
+    //
+    // The lightmap itself is remapped as `lightMap * 1.5 + 0.15` to match
+    // the shipped PAL4 renderer (see `pal4/ltmap.rs` doc-comment): this
+    // gives a 0.15 ambient floor so dark-corner lightmap samples don't
+    // collapse to pure black, and a 1.5 gain so well-lit samples reach
+    // full brightness. Without the `+ 0.15` floor, baked shadows
+    // produced a hard black-to-color gradient across faces.
+    // The lightmap itself is remapped as `lightMap * 1.5 + 0.3` to match
+    // the shipped PAL4 renderer's ambient look (see `pal4/ltmap.rs`
+    // doc-comment for the canonical formula). The shipped formula uses
+    // a `+ 0.15` floor; we use `+ 0.3` because the canonical 0.15 leaves
+    // many baked-dark or under-baked atlas texels producing pure-black
+    // faces in cave/wall geometry (e.g. M01/1). The 1.5 gain so well-lit
+    // samples reach full brightness remains unchanged. Without the
+    // higher floor, baked shadows produced a hard black-to-color
+    // gradient across affected faces.
+    vec3 lm = lightMap.rgb * 1.5 + 0.3;
+    vec3 rgb = lm * mat.misc.y * color.rgb * mat.tint.rgb * mat.tint.a;
     outColor = vec4(rgb, color.a * mat.tint.a);
 }
