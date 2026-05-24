@@ -39,12 +39,14 @@ pub struct Pal4AppContext {
     actdrop: ActDrop,
     voice_task: Option<Rc<TaskHandle>>,
     camera_data: Option<CameraDataFile>,
+    camera_run: Option<CameraRun>,
     scene_name: String,
     block_name: String,
     leader: usize,
     player_locked: bool,
 
     moving_entities: HashMap<ActorId, MovingEntity>,
+    rotating_entities: HashMap<ActorId, RotatingEntity>,
 }
 
 impl Pal4AppContext {
@@ -72,6 +74,7 @@ impl Pal4AppContext {
             actdrop: ActDrop::new(),
             voice_task: None,
             camera_data: None,
+            camera_run: None,
             scene_name: String::new(),
             block_name: String::new(),
             leader: 0,
@@ -79,12 +82,15 @@ impl Pal4AppContext {
             dialog_box: DialogBox::new(ui),
             player_locked: true,
             moving_entities: HashMap::new(),
+            rotating_entities: HashMap::new(),
         }
     }
 
     pub fn update(&mut self, delta_sec: f32) {
         self.actdrop.update(self.ui.ui(), delta_sec);
         self.update_moving_entities(delta_sec);
+        self.update_rotating_entities(delta_sec);
+        self.tick_camera_run(delta_sec);
         // Drive water UV animation each frame (PAL4 water surfaces).
         self.scene.tick_uv_anim(delta_sec);
     }
@@ -142,6 +148,120 @@ impl Pal4AppContext {
         }
 
         entities
+    }
+
+    fn update_rotating_entities(&mut self, delta_sec: f32) {
+        // PAL4 cutscene turns feel natural at about half a turn per second.
+        const ROTATE_DEG_PER_SEC: f32 = 180.0;
+
+        if self.rotating_entities.is_empty() {
+            return;
+        }
+
+        let step = ROTATE_DEG_PER_SEC * delta_sec;
+        let entities = std::mem::take(&mut self.rotating_entities);
+        let mut to_finish = Vec::new();
+        let mut kept = HashMap::new();
+
+        for (id, mut rot) in entities.into_iter() {
+            let delta = wrap_deg(rot.target_deg - rot.current_deg);
+            log::debug!(
+                "rotate {:?}: current={:.2} target={:.2} delta={:.2} step={:.2}",
+                id,
+                rot.current_deg,
+                rot.target_deg,
+                delta,
+                step
+            );
+
+            let snap = delta.abs() <= step.max(0.0001);
+            rot.current_deg = if snap {
+                rot.target_deg
+            } else {
+                rot.current_deg + step.copysign(delta)
+            };
+
+            // `look_at` orients the entity so its forward (matrix column 2)
+            // equals `pos - target`. To face direction `(sin yaw, 0, cos yaw)`
+            // — matching what `set_player_ang(yaw)` produces via
+            // `rotate_axis_angle_local(UP, yaw)` — the look_at target must
+            // be `pos - (sin yaw, 0, cos yaw)`.
+            let pos = rot.entity.transform().borrow().position();
+            let yaw_rad = rot.current_deg.to_radians();
+            let target = Vec3::new(
+                pos.x - yaw_rad.sin(),
+                pos.y,
+                pos.z - yaw_rad.cos(),
+            );
+            rot.entity
+                .transform()
+                .borrow_mut()
+                .set_position(&pos)
+                .look_at(&target);
+
+            if snap {
+                to_finish.push(id);
+            } else {
+                kept.insert(id, rot);
+            }
+        }
+
+        self.rotating_entities = kept;
+
+        for id in to_finish {
+            match &id {
+                ActorId::Player(player) => {
+                    self.player_play_animation(*player as i32, Pal4ActorAnimation::Idle);
+                }
+                ActorId::Npc(name) => {
+                    self.npc_play_animation(name, Pal4ActorAnimation::Idle);
+                }
+            }
+        }
+    }
+
+    pub fn player_rotate_to(&mut self, player: i32, target_deg: f32) {
+        let mapped = self.map_player(player);
+        let entity = self.scene.get_player(mapped);
+
+        let current_deg = yaw_from_transform(&entity);
+        self.player_play_animation(player, Pal4ActorAnimation::Walk);
+        self.rotating_entities.insert(
+            ActorId::Player(mapped),
+            RotatingEntity {
+                entity,
+                current_deg,
+                target_deg,
+            },
+        );
+    }
+
+    pub fn player_rotating(&self, player: i32) -> bool {
+        let mapped = self.map_player(player);
+        self.rotating_entities
+            .contains_key(&ActorId::Player(mapped))
+    }
+
+    pub fn npc_rotate_to(&mut self, name: &str, target_deg: f32) {
+        let Some(entity) = self.scene.get_npc(name) else {
+            return;
+        };
+
+        let current_deg = yaw_from_transform(&entity);
+        self.npc_play_animation(name, Pal4ActorAnimation::Walk);
+        self.rotating_entities.insert(
+            ActorId::Npc(name.to_string()),
+            RotatingEntity {
+                entity,
+                current_deg,
+                target_deg,
+            },
+        );
+    }
+
+    pub fn npc_rotating(&self, name: &str) -> bool {
+        self.rotating_entities
+            .contains_key(&ActorId::Npc(name.to_string()))
     }
 
     pub fn event_triggered(&mut self, _delta_sec: f32) -> Option<String> {
@@ -267,6 +387,66 @@ impl Pal4AppContext {
             .transform()
             .borrow_mut()
             .look_at(target);
+    }
+
+    /// Yaw-only look-at for an actor: ignores the vertical component
+    /// so actors don't tilt up/down when "facing" another actor whose
+    /// pivot is at a different height. Used by the `giPlayerFaceTo*`
+    /// / `giNpcFaceTo*` script functions.
+    pub fn face_player_to_pos(&mut self, player: i32, target: &Vec3) {
+        let player = self.map_player(player);
+        let entity = self.scene.get_player(player);
+        let pos = entity.transform().borrow().position();
+        let look_at = Vec3::new(target.x, pos.y, target.z);
+        entity.transform().borrow_mut().look_at(&look_at);
+    }
+
+    pub fn face_npc_to_pos(&mut self, name: &str, target: &Vec3) {
+        if let Some(entity) = self.scene.get_npc(name) {
+            let pos = entity.transform().borrow().position();
+            let look_at = Vec3::new(target.x, pos.y, target.z);
+            entity.transform().borrow_mut().look_at(&look_at);
+        }
+    }
+
+    pub fn npc_pos(&self, name: &str) -> Option<Vec3> {
+        self.scene
+            .get_npc(name)
+            .map(|e| e.transform().borrow().position())
+    }
+
+    pub fn npc_set_pos(&mut self, name: &str, pos: &Vec3) {
+        if let Some(entity) = self.scene.get_npc(name) {
+            entity.transform().borrow_mut().set_position(pos);
+        }
+    }
+
+    pub fn npc_set_ang(&mut self, name: &str, ang: f32) {
+        if let Some(entity) = self.scene.get_npc(name) {
+            entity
+                .transform()
+                .borrow_mut()
+                .clear_rotation()
+                .rotate_axis_angle_local(&Vec3::UP, ang.to_radians());
+        }
+    }
+
+    /// Resolve the position of either a player slot (0-3, or -1 for the
+    /// current leader) or — used by the few script functions that lump
+    /// player/npc anchors together — fall back to `(0,0,0)`.
+    pub fn camera_position(&self) -> Vec3 {
+        self.scene_manager
+            .scene()
+            .map(|s| s.camera().transform().position())
+            .unwrap_or_else(|| Vec3::new(0.0, 0.0, 0.0))
+    }
+
+    /// Camera orientation in degrees (`Vec3 { x: pitch, y: yaw, z: roll }`).
+    pub fn camera_euler_deg(&self) -> Vec3 {
+        self.scene_manager
+            .scene()
+            .map(|s| s.camera().transform().euler())
+            .unwrap_or_else(|| Vec3::new(0.0, 0.0, 0.0))
     }
 
     pub fn lock_player(&mut self, lock: bool) {
@@ -452,6 +632,12 @@ impl Pal4AppContext {
         }
     }
 
+    pub fn stop_all_sounds(&mut self) {
+        for (_, task) in self.sound_tasks.drain() {
+            task.stop();
+        }
+    }
+
     pub fn play_voice(&mut self, name: &str) -> anyhow::Result<()> {
         self.stop_voice();
 
@@ -475,26 +661,157 @@ impl Pal4AppContext {
     }
 
     pub fn run_camera(&mut self, name: &str) {
-        log::debug!("run_camera: {}", name);
-        if let Some(data) = &self.camera_data {
-            let camera_data = data.get_camera_data(name);
-            if let Some(camera_data) = camera_data {
-                let position = camera_data.get_position();
-                let look_at = camera_data.get_look_at();
-                log::debug!("camera_data: {:?} {:?}", position, look_at);
-                // if camera_data.is_instant() {
-                {
-                    let scene = self.scene_manager.scene().unwrap();
-                    scene
-                        .camera_mut()
-                        .transform_mut()
-                        .set_position(&Vec3::new(position[0], position[1], position[2]))
-                        .look_at(&Vec3::new(look_at[0], look_at[1], look_at[2]));
-                }
-                // } else {
+        self.start_camera_run(name);
+    }
 
-                // }
+    /// Begin a (possibly multi-frame) camera animation. Returns true if an
+    /// async animation is now in flight; false if the camera was snapped
+    /// (instant flag, missing data, or fewer than 2 keyframes).
+    pub fn start_camera_run(&mut self, name: &str) -> bool {
+        log::debug!("start_camera_run: {}", name);
+        let Some(data) = self.camera_data.as_ref() else {
+            return false;
+        };
+        let Some(camera_data) = data.get_camera_data(name) else {
+            log::warn!("Requested camera data '{}' not found", name);
+            return false;
+        };
+
+        let look_at_arr = camera_data.get_look_at();
+        let look_at = Vec3::new(look_at_arr[0], look_at_arr[1], look_at_arr[2]);
+        let mut keyframes: Vec<Vec3> = camera_data
+            .keyframes()
+            .into_iter()
+            .map(|k| Vec3::new(k[0], k[1], k[2]))
+            .collect();
+
+        let snap_to = |ctx: &Pal4AppContext, pos: Vec3| {
+            if let Some(scene) = ctx.scene_manager.scene() {
+                scene
+                    .camera_mut()
+                    .transform_mut()
+                    .set_position(&pos)
+                    .look_at(&look_at);
             }
+        };
+
+        if keyframes.is_empty() {
+            self.camera_run = None;
+            return false;
+        }
+
+        let raw_duration = camera_data.duration();
+
+        if camera_data.is_instant() || raw_duration <= 0.0 {
+            snap_to(self, *keyframes.last().unwrap());
+            self.camera_run = None;
+            return false;
+        }
+
+        // PAL4 cam entries often record only the destination keyframe; in that
+        // case treat the camera's current position as the implicit start.
+        if keyframes.len() < 2 {
+            let current_pos = self
+                .scene_manager
+                .scene()
+                .map(|s| s.camera_mut().transform_mut().position())
+                .unwrap_or_else(|| Vec3::new(0.0, 0.0, 0.0));
+            keyframes.insert(0, current_pos);
+        }
+
+        // Build per-segment arc lengths along the polyline.
+        let mut segment_lengths = Vec::with_capacity(keyframes.len() - 1);
+        let mut total_length = 0.0_f32;
+        for w in keyframes.windows(2) {
+            let len = Vec3::sub(&w[1], &w[0]).norm();
+            segment_lengths.push(len);
+            total_length += len;
+        }
+
+        let duration = raw_duration;
+
+        log::debug!(
+            "start_camera_run: name={} keyframes={} total_len={:.2} duration={:.2}s instant={} debug_fields={:?}",
+            name,
+            keyframes.len(),
+            total_length,
+            duration,
+            camera_data.is_instant(),
+            camera_data.debug_fields()
+        );
+
+        // Snap look-at to target immediately and place the camera at the
+        // start of the polyline so the lerp animates visibly.
+        if let Some(scene) = self.scene_manager.scene() {
+            scene
+                .camera_mut()
+                .transform_mut()
+                .set_position(&keyframes[0])
+                .look_at(&look_at);
+        }
+
+        self.camera_run = Some(CameraRun {
+            waypoints: keyframes,
+            segment_lengths,
+            total_length,
+            look_at,
+            elapsed: 0.0,
+            duration,
+        });
+        true
+    }
+
+    pub fn camera_running(&self) -> bool {
+        self.camera_run.is_some()
+    }
+
+    fn tick_camera_run(&mut self, delta_sec: f32) {
+        let Some(run) = self.camera_run.as_mut() else {
+            return;
+        };
+
+        run.elapsed += delta_sec;
+        let last = *run.waypoints.last().unwrap();
+        let look_at = run.look_at;
+
+        let position = if run.elapsed >= run.duration || run.total_length <= 0.0 {
+            last
+        } else {
+            // Walk segments until we find the one containing the current arc length.
+            let target_len = (run.elapsed / run.duration) * run.total_length;
+            let mut acc = 0.0_f32;
+            let mut pos = last;
+            for (i, seg_len) in run.segment_lengths.iter().enumerate() {
+                if target_len <= acc + *seg_len || i == run.segment_lengths.len() - 1 {
+                    let local = if *seg_len > 0.0 {
+                        ((target_len - acc) / *seg_len).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    };
+                    let a = run.waypoints[i];
+                    let b = run.waypoints[i + 1];
+                    pos = Vec3::new(
+                        a.x + (b.x - a.x) * local,
+                        a.y + (b.y - a.y) * local,
+                        a.z + (b.z - a.z) * local,
+                    );
+                    break;
+                }
+                acc += *seg_len;
+            }
+            pos
+        };
+
+        if let Some(scene) = self.scene_manager.scene() {
+            scene
+                .camera_mut()
+                .transform_mut()
+                .set_position(&position)
+                .look_at(&look_at);
+        }
+
+        if run.elapsed >= run.duration {
+            self.camera_run = None;
         }
     }
 
@@ -565,4 +882,44 @@ struct MovingEntity {
     entity: ComRc<IEntity>,
     target: Vec3,
     run: bool,
+}
+
+struct RotatingEntity {
+    entity: ComRc<IEntity>,
+    current_deg: f32,
+    target_deg: f32,
+}
+
+struct CameraRun {
+    waypoints: Vec<Vec3>,
+    segment_lengths: Vec<f32>,
+    total_length: f32,
+    look_at: Vec3,
+    elapsed: f32,
+    duration: f32,
+}
+
+/// Wrap an angular delta in degrees into the (-180, 180] range so we always
+/// rotate via the shortest arc.
+fn wrap_deg(mut d: f32) -> f32 {
+    while d > 180.0 {
+        d -= 360.0;
+    }
+    while d <= -180.0 {
+        d += 360.0;
+    }
+    d
+}
+
+/// Recover the yaw (degrees) that `look_at(pos + (sin yaw, 0, cos yaw))`
+/// would produce, by reading the forward column of the transform matrix.
+/// `Transform::euler()` does NOT return yaw in `.y` — its Y component is
+/// the X-axis rotation in this codebase's decomposition.
+fn yaw_from_transform(entity: &ComRc<IEntity>) -> f32 {
+    let t = entity.transform();
+    let m = t.borrow();
+    let mat = m.matrix();
+    let fx = mat[0][2];
+    let fz = mat[2][2];
+    fx.atan2(fz).to_degrees()
 }

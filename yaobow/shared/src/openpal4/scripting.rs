@@ -1082,22 +1082,28 @@ fn camera_ctrl_yprd(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionS
 }
 
 fn camera_get_dist(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<f32>(1.0);
+    let cam = vm.app_context.camera_position();
+    let target = vm.app_context.leader_pos();
+    let dist = Vec3::sub(&cam, &target).norm();
+    vm.stack_push::<f32>(dist);
     Pal4FunctionState::Completed
 }
 
 fn camera_get_yaw(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<f32>(1.0);
+    let e = vm.app_context.camera_euler_deg();
+    vm.stack_push::<f32>(e.y);
     Pal4FunctionState::Completed
 }
 
 fn camera_get_pitch(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<f32>(1.0);
+    let e = vm.app_context.camera_euler_deg();
+    vm.stack_push::<f32>(e.x);
     Pal4FunctionState::Completed
 }
 
 fn camera_get_roll(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<f32>(1.0);
+    let e = vm.app_context.camera_euler_deg();
+    vm.stack_push::<f32>(e.z);
     Pal4FunctionState::Completed
 }
 
@@ -1148,7 +1154,8 @@ fn player_set_leader(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 }
 
 fn player_set_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player_id: i32, _is_visible: i32);
+    as_params!(vm, player_id: i32, is_visible: i32);
+    vm.app_context.enable_player(player_id as usize, is_visible != 0);
     Pal4FunctionState::Completed
 }
 
@@ -1238,8 +1245,15 @@ fn set_minimap_expmode(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functi
 }
 
 fn get_randnum(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_min:i32,_max:i32);
-    vm.stack_push::<i32>(1);
+    as_params!(vm, min: i32, max: i32);
+    use rand::Rng;
+    let (lo, hi) = if min <= max { (min, max) } else { (max, min) };
+    let v = if lo == hi {
+        lo
+    } else {
+        rand::thread_rng().gen_range(lo..=hi)
+    };
+    vm.stack_push::<i32>(v);
     Pal4FunctionState::Completed
 }
 
@@ -1293,12 +1307,17 @@ fn del_property(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
 }
 
 fn player_in_team(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_is_in_team:i32);
+    as_params!(vm, player_id: i32, _is_in_team: i32);
+    // Best-effort: until a real party-membership table exists, treat
+    // "in team" as "make the slot visible". Mirrors what enable_player
+    // does for `giPlayerSetLeader`. Persistent team state still TODO.
+    vm.app_context.enable_player(player_id as usize, true);
     Pal4FunctionState::Completed
 }
 
 fn player_out_team(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_is_in_team:i32);
+    as_params!(vm, player_id: i32, _is_in_team: i32);
+    vm.app_context.enable_player(player_id as usize, false);
     Pal4FunctionState::Completed
 }
 
@@ -1327,7 +1346,7 @@ fn player_set_attr(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSt
 }
 
 fn player_get_leader(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<i32>(1);
+    vm.stack_push::<i32>(vm.app_context.leader() as i32);
     Pal4FunctionState::Completed
 }
 
@@ -1357,7 +1376,9 @@ fn add_equipment(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionStat
 }
 
 fn player_current_set_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _is_visible: i32);
+    as_params!(vm, is_visible: i32);
+    let leader = vm.app_context.leader();
+    vm.app_context.enable_player(leader, is_visible != 0);
     Pal4FunctionState::Completed
 }
 
@@ -1478,8 +1499,8 @@ fn sound_2d_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionStat
     Pal4FunctionState::Completed
 }
 
-fn sound_2d_stop(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    log::warn!("sound_2d_stop is not implemented");
+fn sound_2d_stop(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    vm.app_context.stop_all_sounds();
     Pal4FunctionState::Completed
 }
 
@@ -1772,17 +1793,20 @@ fn get_property_numb(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 }
 
 fn player_current_get_pos_x(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<f32>(1.0);
+    let p = vm.app_context.get_player_pos(-1);
+    vm.stack_push::<f32>(p.x);
     Pal4FunctionState::Completed
 }
 
 fn player_current_get_pos_y(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<f32>(1.0);
+    let p = vm.app_context.get_player_pos(-1);
+    vm.stack_push::<f32>(p.y);
     Pal4FunctionState::Completed
 }
 
 fn player_current_get_pos_z(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<f32>(1.0);
+    let p = vm.app_context.get_player_pos(-1);
+    vm.stack_push::<f32>(p.z);
     Pal4FunctionState::Completed
 }
 
@@ -1811,12 +1835,17 @@ fn is_night_time(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionStat
 }
 
 fn player_set_pos_rot(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player_id: i32, _x: f32, _y: f32, _z: f32, _rot: f32);
+    as_params!(vm, player_id: i32, x: f32, y: f32, z: f32, rot: f32);
+    vm.app_context.set_player_pos(player_id, &Vec3::new(x, y, z));
+    vm.app_context.set_player_ang(player_id, rot);
     Pal4FunctionState::Completed
 }
 
 fn player_set_pos_rot_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player_file_str: i32, _x: f32, _y: f32, _z: f32, _rot: f32);
+    as_params!(vm, npc_str: i32, x: f32, y: f32, z: f32, rot: f32);
+    let name = get_str(vm, npc_str as usize).unwrap_or_default();
+    vm.app_context.npc_set_pos(&name, &Vec3::new(x, y, z));
+    vm.app_context.npc_set_ang(&name, rot);
     Pal4FunctionState::Completed
 }
 
@@ -2098,7 +2127,8 @@ fn player_current_end_action(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal
 }
 
 fn player_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32);
+    as_params!(vm, player_id: i32, x: f32, y: f32, z: f32);
+    vm.app_context.set_player_pos(player_id, &Vec3::new(x, y, z));
     Pal4FunctionState::Completed
 }
 
@@ -2117,7 +2147,8 @@ fn player_set_rot(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn player_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_ang:f32);
+    as_params!(vm, player_id: i32, ang: f32);
+    vm.app_context.set_player_ang(player_id, ang);
     Pal4FunctionState::Completed
 }
 
@@ -2130,19 +2161,36 @@ fn player_current_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Fun
 }
 
 fn player_face_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player1_id:i32,_player2_id:i32,_face_to_player :i32);
+    as_params!(vm, player1_id: i32, player2_id: i32, _sync: i32);
+    let target = vm.app_context.get_player_pos(player2_id);
+    vm.app_context.face_player_to_pos(player1_id, &target);
     Pal4FunctionState::Completed
 }
 
 fn player_set_dir(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, player_id: i32, direction: f32, _sync :i32);
+    as_params!(vm, player_id: i32, direction: f32, sync: i32);
 
-    vm.app_context.player_set_direction(player_id, direction);
-    Pal4FunctionState::Completed
+    vm.app_context.player_rotate_to(player_id, direction);
+
+    if sync == 1 && vm.app_context.player_rotating(player_id) {
+        Pal4FunctionState::Yield(Box::new(move |vm, _| {
+            if vm.app_context.player_rotating(player_id) {
+                ContinuationState::Loop
+            } else {
+                ContinuationState::Completed
+            }
+        }))
+    } else {
+        Pal4FunctionState::Completed
+    }
 }
 
 fn player_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_npc_file_str:i32,_face_to_npc :i32);
+    as_params!(vm, player_id: i32, npc_str: i32, _sync: i32);
+    let name = get_str(vm, npc_str as usize).unwrap_or_default();
+    if let Some(target) = vm.app_context.npc_pos(&name) {
+        vm.app_context.face_player_to_pos(player_id, &target);
+    }
     Pal4FunctionState::Completed
 }
 
@@ -2163,7 +2211,8 @@ fn player_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionStat
 }
 
 fn player_current_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_x:f32,_y:f32,_z:f32,_walk_to :i32);
+    as_params!(vm, x: f32, y: f32, z: f32, _walk_to: i32);
+    vm.app_context.player_to(-1, &Vec3::new(x, y, z), false);
     Pal4FunctionState::Completed
 }
 
@@ -2183,12 +2232,18 @@ fn player_blend_in(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSt
 }
 
 fn player_face_to_current_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_face_to_current_player :i32);
+    as_params!(vm, player_id: i32, _sync: i32);
+    let target = vm.app_context.get_player_pos(-1);
+    vm.app_context.face_player_to_pos(player_id, &target);
     Pal4FunctionState::Completed
 }
 
 fn current_player_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32,_face_to_npc :i32);
+    as_params!(vm, npc_str: i32, _sync: i32);
+    let name = get_str(vm, npc_str as usize).unwrap_or_default();
+    if let Some(target) = vm.app_context.npc_pos(&name) {
+        vm.app_context.face_player_to_pos(-1, &target);
+    }
     Pal4FunctionState::Completed
 }
 
@@ -2259,27 +2314,59 @@ fn npc_end_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn npc_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32);
+    as_params!(vm, npc_str: i32, x: f32, y: f32, z: f32);
+    let name = get_str(vm, npc_str as usize).unwrap_or_default();
+    vm.app_context.npc_set_pos(&name, &Vec3::new(x, y, z));
     Pal4FunctionState::Completed
 }
 
 fn npc_set_rot(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _rot_file_str: i32);
+    as_params!(vm, npc_str: i32, rot_str: i32);
+    // PAL4 passes a string token resolved via lookup tables we don't
+    // model yet. Forward numeric literals; otherwise leave the
+    // rotation untouched.
+    if let Some(s) = get_str(vm, rot_str as usize) {
+        if let Ok(ang) = s.trim().parse::<f32>() {
+            let name = get_str(vm, npc_str as usize).unwrap_or_default();
+            vm.app_context.npc_set_ang(&name, ang);
+        }
+    }
     Pal4FunctionState::Completed
 }
 
 fn npc_set_dir(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _dir: f32, _set_dir: i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, npc_str: i32, direction: f32, sync: i32);
+    let name = get_str(vm, npc_str as usize).unwrap_or_default();
+    vm.app_context.npc_rotate_to(&name, direction);
+
+    if sync == 1 && vm.app_context.npc_rotating(&name) {
+        Pal4FunctionState::Yield(Box::new(move |vm, _| {
+            if vm.app_context.npc_rotating(&name) {
+                ContinuationState::Loop
+            } else {
+                ContinuationState::Completed
+            }
+        }))
+    } else {
+        Pal4FunctionState::Completed
+    }
 }
 
 fn npc_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc1_file_str: i32, _npc2_file_str: i32, _face_to_npc: i32);
+    as_params!(vm, npc1_str: i32, npc2_str: i32, _sync: i32);
+    let name1 = get_str(vm, npc1_str as usize).unwrap_or_default();
+    let name2 = get_str(vm, npc2_str as usize).unwrap_or_default();
+    if let Some(target) = vm.app_context.npc_pos(&name2) {
+        vm.app_context.face_npc_to_pos(&name1, &target);
+    }
     Pal4FunctionState::Completed
 }
 
 fn npc_face_to_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _player_id: i32, _face_to_player: i32);
+    as_params!(vm, npc_str: i32, player_id: i32, _sync: i32);
+    let name = get_str(vm, npc_str as usize).unwrap_or_default();
+    let target = vm.app_context.get_player_pos(player_id);
+    vm.app_context.face_npc_to_pos(&name, &target);
     Pal4FunctionState::Completed
 }
 
@@ -2294,7 +2381,10 @@ fn npc_blend_in(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
 }
 
 fn npc_face_to_current_player(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32,_face_to_current_player :i32);
+    as_params!(vm, npc_str: i32, _sync: i32);
+    let name = get_str(vm, npc_str as usize).unwrap_or_default();
+    let target = vm.app_context.get_player_pos(-1);
+    vm.app_context.face_npc_to_pos(&name, &target);
     Pal4FunctionState::Completed
 }
 
@@ -2328,7 +2418,9 @@ fn npc_end_move(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
 }
 
 fn npc_set_ang(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32,_ang:f32);
+    as_params!(vm, npc_str: i32, ang: f32);
+    let name = get_str(vm, npc_str as usize).unwrap_or_default();
+    vm.app_context.npc_set_ang(&name, ang);
     Pal4FunctionState::Completed
 }
 
@@ -2347,23 +2439,45 @@ fn camera_prepare(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn camera_run_single(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, camera_data: i32, _sync: i32);
+    as_params!(vm, camera_data: i32, sync: i32);
     let name = get_str(vm, camera_data as usize).unwrap();
 
-    vm.app_context.run_camera(&name);
+    let running = vm.app_context.start_camera_run(&name);
 
     vm.stack_push::<i32>(1);
-    Pal4FunctionState::Completed
+
+    if sync == 1 && running {
+        Pal4FunctionState::Yield(Box::new(move |vm, _| {
+            if vm.app_context.camera_running() {
+                ContinuationState::Loop
+            } else {
+                ContinuationState::Completed
+            }
+        }))
+    } else {
+        Pal4FunctionState::Completed
+    }
 }
 
 fn camera_run_circle(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_run_circle :i32);
+    log::warn!("giCameraRunCircle: not implemented");
     vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
 
-fn camera_wait(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    Pal4FunctionState::Completed
+fn camera_wait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    if vm.app_context.camera_running() {
+        Pal4FunctionState::Yield(Box::new(move |vm, _| {
+            if vm.app_context.camera_running() {
+                ContinuationState::Loop
+            } else {
+                ContinuationState::Completed
+            }
+        }))
+    } else {
+        Pal4FunctionState::Completed
+    }
 }
 
 fn flash_out_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {

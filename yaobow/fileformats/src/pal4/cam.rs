@@ -36,7 +36,7 @@ pub struct CameraData {
     unknown_i2: i32,
     unknown_f1: f32,
     unknown_i3: i32,
-    speed: f32,
+    duration: f32,
     is_instant: i32,
     unknown_i5: i32,
     data: Pal4NodeSection,
@@ -56,11 +56,39 @@ impl CameraData {
         ]
     }
 
-    pub fn speed(&self) -> f32 {
-        self.speed
+    pub fn keyframes(&self) -> Vec<[f32; 3]> {
+        let Some(root) = self.data.root.as_ref() else {
+            return Vec::new();
+        };
+        root.children
+            .iter()
+            .filter_map(|child| {
+                let p = &child.properties;
+                Some([p.get(0)?.f32()?, p.get(1)?.f32()?, p.get(2)?.f32()?])
+            })
+            .collect()
+    }
+
+    pub fn duration(&self) -> f32 {
+        self.duration
     }
 
     pub fn is_instant(&self) -> bool {
         self.is_instant != 0
+    }
+
+    /// Returns the raw integer/float fields whose exact semantics are still
+    /// unknown. Useful for debugging camera-data parsing (the field interpreted
+    /// as `duration` is currently a best guess).
+    pub fn debug_fields(&self) -> (i32, i32, f32, i32, f32, i32, i32) {
+        (
+            self.unknown_i1,
+            self.unknown_i2,
+            self.unknown_f1,
+            self.unknown_i3,
+            self.duration,
+            self.is_instant,
+            self.unknown_i5,
+        )
     }
 }
