@@ -21,10 +21,10 @@ use radiance_scripting::{
 use shared::config::YaobowConfig;
 
 use crate::directors::app_service::AppService;
-use crate::directors::config_service::ConfigService;
 use crate::editor_bindings::EDITOR_SERVICES_P7;
 use crate::script_source::{register_editor_modules, MAIN_P7};
 use crate::services::editor_host_context::EditorHostContext;
+use shared::config_service::ConfigService;
 
 pub struct ScriptedWelcomePage;
 

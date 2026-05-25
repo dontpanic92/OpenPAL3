@@ -22,8 +22,8 @@ use radiance::input::InputEngine;
 use radiance::rendering::ComponentFactory;
 
 use crate::comdef::services::{
-    IAppService, IAudioService, IGameRegistry, IHostContext, IHostContextImpl, IInputService,
-    IRandomService, ITextureService, IVfsService,
+    IAppService, IAudioService, IConfigService, IGameRegistry, IHostContext, IHostContextImpl,
+    IInputService, IRandomService, ITextureService, IVfsService,
 };
 
 pub struct HostContext {
@@ -35,6 +35,7 @@ pub struct HostContext {
     games: ComRc<IGameRegistry>,
     app: ComRc<IAppService>,
     random: ComRc<IRandomService>,
+    config: ComRc<IConfigService>,
 }
 
 ComObject_HostContext!(super::HostContext);
@@ -48,6 +49,7 @@ impl HostContext {
         input: ComRc<IInputService>,
         games: ComRc<IGameRegistry>,
         app: ComRc<IAppService>,
+        config: ComRc<IConfigService>,
     ) -> ComRc<IHostContext> {
         ComRc::from_object(Self {
             scene_manager,
@@ -58,6 +60,7 @@ impl HostContext {
             games,
             app,
             random: RandomService::create(),
+            config,
         })
     }
 
@@ -68,6 +71,7 @@ impl HostContext {
         vfs: Rc<MiniFs>,
         input: Rc<RefCell<dyn InputEngine>>,
         app: ComRc<IAppService>,
+        config: ComRc<IConfigService>,
     ) -> ComRc<IHostContext> {
         Self::new(
             scene_manager,
@@ -77,6 +81,7 @@ impl HostContext {
             InputService::create(input),
             GameRegistry::create(),
             app,
+            config,
         )
     }
 }
@@ -105,6 +110,9 @@ impl IHostContextImpl for HostContext {
     }
     fn random(&self) -> ComRc<IRandomService> {
         self.random.clone()
+    }
+    fn config(&self) -> ComRc<IConfigService> {
+        self.config.clone()
     }
 }
 

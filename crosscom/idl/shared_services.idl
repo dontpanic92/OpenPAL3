@@ -1,0 +1,13 @@
+// Shared scripting-service classes registered inside the `shared` crate.
+//
+// This IDL exists purely so the `ComObject_*!` macros for any IConfigService
+// (and future shared services) are generated in `shared`, satisfying the
+// orphan rule when `shared::config_service::ConfigService` calls them.
+
+module(rust) shared::comdef::shared_services;
+
+import crosscom.idl;
+import scripting_services.idl;
+
+[uuid(8c4d50aa-3b07-4a32-9d20-2e0b2f7c0020)]
+class ConfigService: IConfigService {}

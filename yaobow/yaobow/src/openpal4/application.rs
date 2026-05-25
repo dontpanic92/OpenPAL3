@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use crosscom::ComRc;
 use packfs::init_virtual_fs;
@@ -7,6 +9,7 @@ use radiance::{
     comdef::{IApplication, IApplicationExt, IApplicationLoaderComponent, IComponentImpl},
 };
 use radiance_scripting::install_imgui_pump;
+use shared::config::YaobowConfig;
 use shared::openpal4::{asset_loader::AssetLoader, director::OpenPAL4Director};
 
 use crate::script_source::YaobowScriptProject;
@@ -44,15 +47,10 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
         // each frame. `YaobowScriptProject::install` is idempotent —
         // if the title bootstrap already installed the project, this
         // call just returns the cached `Rc<YaobowScriptProject>`.
-        let debug = {
-            let project = YaobowScriptProject::install(&self.app);
-            project.make_pal4_debug_bundle()
-        };
-
-        let actor_controller_factory = {
-            let project = YaobowScriptProject::install(&self.app);
-            project.actor_controller_factory()
-        };
+        let config = Rc::new(RefCell::new(YaobowConfig::load()));
+        let project = YaobowScriptProject::install(&self.app, config);
+        let debug = project.make_pal4_debug_bundle();
+        let actor_controller_factory = project.actor_controller_factory();
 
         let director = OpenPAL4Director::new(
             component_factory.clone(),

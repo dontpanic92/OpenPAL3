@@ -117,23 +117,21 @@ class GameRegistry: IGameRegistry {}
 [uuid(302fd52d-e93d-45e3-bfb3-719b94f2b215)]
 interface IAppService: IUnknown {
     IDirector? open_game(int ordinal);
+    void exit();
 }
 [uuid(8c4d50aa-3b07-4a32-9d20-2e0b2f7c0003)]
 class AppService: IAppService {}
 
 [uuid(8c4d50aa-3b07-4a32-9d20-2e0b2f7c0001)]
 interface IConfigService: IUnknown {
-    &str get_asset_path(int game);
-    void set_asset_path(int game, &str path);
+    &str get_asset_path(&str config_key);
+    void set_asset_path(&str config_key, &str path);
     bool save();
     void reload();
     &str pick_folder(&str initial);
 }
 
 // Cross-cutting RNG utility surfaced through `IHostContext.random()`.
-// Lives in scripting_services (not on a per-app context) so any
-// future scripted feature can grab a uniform integer without going
-// through `IYaobowAppContext` / `IEditorHostContext` extensions.
 [uuid(8c4d50aa-3b07-4a32-9d20-2e0b2f7c0010)]
 interface IRandomService: IUnknown {
     // Uniformly random integer in [0, max). Returns 0 if max <= 0.
@@ -152,6 +150,17 @@ interface IHostContext: IUnknown {
     IGameRegistry games();
     IAppService app();
     IRandomService random();
+    IConfigService config();
 }
 [uuid(e7c264f9-fea1-472f-9d47-468a6dec9331)]
 class HostContext: IHostContext {}
+
+// Empty conforming class so radiance_scripting's own `ImguiUiHost` /
+// `HostFacade` Rust types can mint a `ComRc<IUiHost>` via the locally
+// generated `ComObject_UiHost!` macro. The `IUiHost` interface itself
+// lives in `radiance.idl`; this class is just the ComObject vehicle
+// that owns the macro expansion in this crate (the macro's
+// `use crate as radiance_scripting;` requires the macro to be generated
+// in the same crate it's invoked from).
+[uuid(7d3c8a44-58f1-4d12-9c4b-1a2f9c0e0d02)]
+class UiHost: IUiHost {}

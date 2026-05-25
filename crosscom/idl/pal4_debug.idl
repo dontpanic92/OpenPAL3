@@ -18,7 +18,6 @@ module(rust) shared::openpal4::comdef::pal4_debug;
 
 import crosscom.idl;
 import radiance.idl;
-import immediate_director.idl;
 
 [uuid(9c1b6f70-1f7a-4d31-9b6a-2e9d4a8e0b01)]
 interface IPal4DebugContext: IUnknown {

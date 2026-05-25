@@ -4,7 +4,7 @@
 //!
 //! Per-frame work:
 //! 1. QI the supplied director to
-//!    [`IImmediateDirector`](crate::comdef::immediate_director::IImmediateDirector).
+//!    [`IImmediateDirector`](radiance::comdef::IImmediateDirector).
 //!    Silent skip if the active director is not immediate-mode.
 //! 2. Park an [`ImguiFrameState`](crate::services::ui_host::ImguiFrameState)
 //!    around the script call so `ImguiUiHost` can issue real imgui-rs
@@ -19,10 +19,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crosscom::ComRc;
-use radiance::comdef::IDirector;
+use radiance::comdef::{IDirector, IImmediateDirector, IUiHost};
 use radiance::radiance::{ImmediateDirectorPump, UiManager};
 
-use crate::comdef::immediate_director::{IImmediateDirector, IUiHost};
 use crate::services::ui_host::{with_imgui_frame, ImguiFrameState};
 use crate::services::{ImguiTextureCache, PerfOverlay};
 

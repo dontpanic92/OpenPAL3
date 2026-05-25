@@ -8,7 +8,7 @@
 // `ComRc<IImmediateDirector>`. The runtime-typed CCW factory
 // dispatches `activate`/`update`/`render_im` via the script struct's
 // `conforming_to` set, so the box's static type at the p7 level
-// doesn't need to be `box<immediate_director.IImmediateDirector>`
+// doesn't need to be `box<radiance.IImmediateDirector>`
 // — the underlying struct conforming to that proto is what counts.
 
 import radiance;

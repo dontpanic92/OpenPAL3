@@ -175,7 +175,7 @@ impl ScriptHost {
     /// already knows about the derived interface at wrap time so the
     /// fat CCW gets a real slot for it.
     fn register_built_in_protos() {
-        crate::script_bridges::immediate_director::register_immediate_director_proto();
+        crate::script_bridges::radiance::register_immediate_director_proto();
         crate::script_bridges::radiance::register_director_proto();
     }
 
@@ -580,20 +580,8 @@ fn binding_provider(extra: &[(String, String)]) -> Box<dyn ModuleProvider> {
         include_str!(concat!(env!("OUT_DIR"), "/crosscom.p7")).to_string(),
     );
     provider.add_module(
-        "scripting".to_string(),
-        include_str!(concat!(env!("OUT_DIR"), "/scripting.p7")).to_string(),
-    );
-    provider.add_module(
         "scripting_services".to_string(),
         include_str!(concat!(env!("OUT_DIR"), "/scripting_services.p7")).to_string(),
-    );
-    provider.add_module(
-        "editor_services".to_string(),
-        include_str!(concat!(env!("OUT_DIR"), "/editor_services.p7")).to_string(),
-    );
-    provider.add_module(
-        "immediate_director".to_string(),
-        include_str!(concat!(env!("OUT_DIR"), "/immediate_director.p7")).to_string(),
     );
     provider.add_module(
         "radiance".to_string(),

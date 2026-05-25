@@ -11,10 +11,10 @@ use radiance_scripting::{
 };
 use shared::config::YaobowConfig;
 
-use crate::directors::config_service::ConfigService;
 use crate::directors::DevToolsAssetLoader;
 use crate::services::editor_host_context::EditorHostContext;
 use crate::GameType;
+use shared::config_service::ConfigService;
 
 pub struct AppService {
     app: ComRc<IApplication>,
@@ -161,6 +161,10 @@ impl IAppServiceImpl for AppService {
 
         Some(director)
     }
+
+    fn exit(&self) {
+        self.app.request_exit();
+    }
 }
 
 fn host_runtime_handle(host: &Rc<ScriptHost>) -> RuntimeHandle {
@@ -174,17 +178,6 @@ fn host_runtime_handle(host: &Rc<ScriptHost>) -> RuntimeHandle {
 }
 
 fn game_from_ordinal(ordinal: i32) -> Option<GameType> {
-    match ordinal {
-        0 => Some(GameType::PAL3),
-        1 => Some(GameType::PAL3A),
-        2 => Some(GameType::PAL4),
-        3 => Some(GameType::PAL5),
-        4 => Some(GameType::PAL5Q),
-        5 => Some(GameType::SWD5),
-        6 => Some(GameType::SWDHC),
-        7 => Some(GameType::SWDCF),
-        8 => Some(GameType::Gujian),
-        9 => Some(GameType::Gujian2),
-        _ => None,
-    }
+    radiance_scripting::services::game_registry::ordinal_to_config_key(ordinal)
+        .and_then(GameType::from_config_key)
 }

@@ -1,7 +1,13 @@
-//! Implementation of `IConfigService` exposed to p7 scripts.
+//! Canonical `IConfigService` exposed to p7 scripts.
 //!
-//! Wraps a shared `Rc<RefCell<YaobowConfig>>` so the welcome page, settings
-//! page, and host can all observe and mutate the same in-memory state.
+//! Both `yaobow` and `yaobow_editor` use this one impl — the IDL class
+//! is declared in `crosscom/idl/shared_services.idl`, so the
+//! `ComObject_ConfigService!` macro is generated in `shared` and the
+//! orphan rule is satisfied here.
+//!
+//! The interface is keyed by `&str config_key` (matching
+//! `GameType::config_key()`); ordinal axes belong to `IGameRegistry`,
+//! not to the config surface.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -9,8 +15,9 @@ use std::rc::Rc;
 use crosscom::ComRc;
 
 use radiance_scripting::comdef::services::{IConfigService, IConfigServiceImpl};
-use shared::config::YaobowConfig;
-use shared::GameType;
+
+use crate::config::YaobowConfig;
+use crate::GameType;
 
 pub struct ConfigService {
     config: Rc<RefCell<YaobowConfig>>,
@@ -26,41 +33,24 @@ impl ConfigService {
             last_string: RefCell::new(String::new()),
         })
     }
-
-    fn game_from_ordinal(ordinal: i32) -> Option<GameType> {
-        match ordinal {
-            0 => Some(GameType::PAL3),
-            1 => Some(GameType::PAL3A),
-            2 => Some(GameType::PAL4),
-            3 => Some(GameType::PAL5),
-            4 => Some(GameType::PAL5Q),
-            5 => Some(GameType::SWD5),
-            6 => Some(GameType::SWDHC),
-            7 => Some(GameType::SWDCF),
-            8 => Some(GameType::Gujian),
-            9 => Some(GameType::Gujian2),
-            _ => None,
-        }
-    }
 }
 
 impl IConfigServiceImpl for ConfigService {
-    fn get_asset_path(&self, game: i32) -> &str {
-        let value = match Self::game_from_ordinal(game) {
+    fn get_asset_path(&self, config_key: &str) -> &str {
+        let value = match GameType::from_config_key(config_key) {
             Some(g) => self.config.borrow().asset_path_for(g).to_string(),
             None => String::new(),
         };
         *self.last_string.borrow_mut() = value;
-        // SAFETY: read the String through RefCell::as_ptr to obtain a borrow
-        // tied to &self rather than to the (already-dropped) RefMut guard.
-        // The codegen copies the &str into a CString immediately on return,
-        // and the dispatcher is single-threaded, so the slice cannot be
-        // mutated before that copy completes.
+        // SAFETY: the returned slice points at `last_string`. The
+        // dispatcher copies it into a CString synchronously before any
+        // subsequent call can mutate `last_string`, and the runtime is
+        // single-threaded.
         unsafe { (*self.last_string.as_ptr()).as_str() }
     }
 
-    fn set_asset_path(&self, game: i32, path: &str) {
-        if let Some(g) = Self::game_from_ordinal(game) {
+    fn set_asset_path(&self, config_key: &str, path: &str) {
+        if let Some(g) = GameType::from_config_key(config_key) {
             self.config.borrow_mut().set_asset_path(g, path.to_string());
         }
     }

@@ -57,8 +57,8 @@ struct ScriptBridgeGen<'a> {
     consumer_crate: String,
     bridge_root: String,
     /// Filename stem of the IDL we're generating for (e.g.
-    /// `immediate_director` for `immediate_director.idl`). Used as
-    /// the local bridge module name in the consumer crate.
+    /// `radiance` for `radiance.idl`). Used as the local bridge
+    /// module name in the consumer crate.
     local_bridge_stem: String,
 }
 

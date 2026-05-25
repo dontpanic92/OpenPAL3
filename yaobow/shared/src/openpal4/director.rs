@@ -4,6 +4,7 @@ use std::{
 };
 
 use crosscom::ComRc;
+use radiance::comdef::{IImmediateDirectorImpl, IUiHost};
 use radiance::{
     audio::AudioEngine,
     comdef::{IDirectorImpl, ISceneManager},
@@ -13,7 +14,6 @@ use radiance::{
     scene::CoreScene,
     utils::free_view::FreeViewController,
 };
-use radiance_scripting::comdef::immediate_director::{IImmediateDirectorImpl, IUiHost};
 
 use crate::scripting::angelscript::ScriptVm;
 

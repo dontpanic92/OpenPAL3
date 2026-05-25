@@ -1,19 +1,30 @@
 mod font;
 mod screen;
 
-pub struct Platform {}
+pub struct Platform {
+    quit_requested: std::rc::Rc<std::cell::Cell<bool>>,
+}
 
 impl Platform {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            quit_requested: std::rc::Rc::new(std::cell::Cell::new(false)),
+        }
     }
 
     pub fn initialize(&mut self) {}
 
     pub fn run_event_loop<F: FnMut()>(&self, mut update_engine: F) {
         loop {
+            if self.quit_requested.get() {
+                break;
+            }
             update_engine();
         }
+    }
+
+    pub fn request_exit(&self) {
+        self.quit_requested.set(true);
     }
 
     pub fn set_title(&self, _: &str) {}

@@ -9,19 +9,18 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crosscom::{ComRc, IObjectArray};
+use radiance::comdef::IImmediateDirector;
 use radiance::comdef::{IDirector, ISceneManager};
-use radiance_scripting::comdef::immediate_director::IImmediateDirector;
 use radiance_scripting::comdef::services::{
-    IAppService, IAppServiceImpl, IAudioService, IAudioServiceImpl, IGameRegistry, IGifAnimation,
-    IHostContextImpl, IInputService, IRandomService, ITexture, ITextureService,
-    ITextureServiceImpl, IVfsService,
+    IAppService, IAppServiceImpl, IAudioService, IAudioServiceImpl, IConfigService, IGameRegistry,
+    IGifAnimation, IHostContext, IHostContextImpl, IInputService, IRandomService, ITexture,
+    ITextureService, ITextureServiceImpl, IVfsService,
 };
 use radiance_scripting::services::{GameRegistry, RandomService};
 use radiance_scripting::{
     register_immediate_director_proto, with_services, wrap_director, RuntimeAccess, RuntimeHandle,
     ScriptHost,
 };
-use yaobow_lib::comdef::yaobow_services::{IYaobowAppContext, IYaobowAppContextImpl};
 use yaobow_lib::script_source::{
     register_yaobow_project, validate_package, ScriptModule, ScriptPackage, APP_P7,
 };
@@ -47,6 +46,8 @@ impl IAppServiceImpl for RecordingAppService {
         self.open_calls.borrow_mut().push(ordinal);
         None
     }
+
+    fn exit(&self) {}
 }
 
 struct StubAudioService;
@@ -83,6 +84,7 @@ impl ITextureServiceImpl for StubTextureService {
 
 struct TestHostContext {
     app: ComRc<IAppService>,
+    config: ComRc<IConfigService>,
 }
 
 fn host_runtime_handle(host: &Rc<ScriptHost>) -> RuntimeHandle {
@@ -121,9 +123,15 @@ impl IHostContextImpl for TestHostContext {
     fn random(&self) -> ComRc<IRandomService> {
         RandomService::create()
     }
+    fn config(&self) -> ComRc<IConfigService> {
+        self.config.clone()
+    }
 }
 
-impl IYaobowAppContextImpl for TestHostContext {}
+fn make_test_config() -> ComRc<IConfigService> {
+    let cfg = Rc::new(RefCell::new(shared::config::YaobowConfig::default()));
+    shared::config_service::ConfigService::create(cfg)
+}
 
 #[test]
 fn title_script_compiles() {
@@ -164,7 +172,10 @@ fn title_script_init_loads_with_imported_bindings() {
     let app = ComRc::<IAppService>::from_object(RecordingAppService {
         open_calls: open_calls.clone(),
     });
-    let app_ctx = ComRc::<IYaobowAppContext>::from_object(TestHostContext { app });
+    let app_ctx = ComRc::<IHostContext>::from_object(TestHostContext {
+        app,
+        config: make_test_config(),
+    });
 
     let runtime = ScriptHost::new();
     register_yaobow_project(&runtime);
@@ -174,10 +185,10 @@ fn title_script_init_loads_with_imported_bindings() {
     let app_ctx_id = runtime.intern(app_ctx);
     let app_ctx_box = runtime
         .foreign_box(
-            "yaobow.comdef.yaobow_services.IYaobowAppContext",
+            "radiance_scripting.comdef.services.IHostContext",
             app_ctx_id,
         )
-        .expect("IYaobowAppContext foreign box must construct");
+        .expect("IHostContext foreign box must construct");
     let app_data = runtime
         .call_returning_data("init", vec![app_ctx_box])
         .expect("yaobow app init should succeed");
@@ -206,7 +217,10 @@ fn app_script_creates_title_then_pal4_debug_in_one_runtime() {
     let app = ComRc::<IAppService>::from_object(RecordingAppService {
         open_calls: open_calls.clone(),
     });
-    let app_ctx = ComRc::<IYaobowAppContext>::from_object(TestHostContext { app });
+    let app_ctx = ComRc::<IHostContext>::from_object(TestHostContext {
+        app,
+        config: make_test_config(),
+    });
 
     let runtime = ScriptHost::new();
     register_yaobow_project(&runtime);
@@ -216,10 +230,10 @@ fn app_script_creates_title_then_pal4_debug_in_one_runtime() {
     let app_ctx_id = runtime.intern(app_ctx);
     let app_ctx_box = runtime
         .foreign_box(
-            "yaobow.comdef.yaobow_services.IYaobowAppContext",
+            "radiance_scripting.comdef.services.IHostContext",
             app_ctx_id,
         )
-        .expect("IYaobowAppContext foreign box must construct");
+        .expect("IHostContext foreign box must construct");
     let app_data = runtime
         .call_returning_data("init", vec![app_ctx_box])
         .expect("yaobow app init should succeed");

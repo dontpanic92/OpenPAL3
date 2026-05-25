@@ -1,7 +1,6 @@
 //! Cross-cutting RNG service surfaced through `IHostContext.random()`.
 //! Uniform integer in [0, max); returns 0 if max <= 0. Backed by
-//! `rand::random::<u32>()` to match the previous per-app
-//! `IYaobowAppContext.random_int` semantics.
+//! `rand::random::<u32>()`.
 
 use crosscom::ComRc;
 

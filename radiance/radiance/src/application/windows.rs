@@ -19,6 +19,7 @@ pub struct Platform {
     hwnd: HWND,
     dpi_scale: f32,
     msg_callbacks: Vec<MessageCallback>,
+    quit_requested: std::rc::Rc<std::cell::Cell<bool>>,
 }
 
 impl Platform {
@@ -36,6 +37,7 @@ impl Platform {
             hwnd,
             dpi_scale,
             msg_callbacks: vec![],
+            quit_requested: std::rc::Rc::new(std::cell::Cell::new(false)),
         }
     }
 
@@ -97,12 +99,19 @@ impl Platform {
 
     pub fn run_event_loop<F: FnMut()>(&self, mut update_engine: F) {
         loop {
+            if self.quit_requested.get() {
+                break;
+            }
             if !self.process_message() {
                 break;
             }
 
             update_engine();
         }
+    }
+
+    pub fn request_exit(&self) {
+        self.quit_requested.set(true);
     }
 
     pub fn hinstance(&self) -> HINSTANCE {

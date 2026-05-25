@@ -3,7 +3,7 @@
 //! `ImguiImmediateDirectorPump::dispatch_render_im` helper.
 //!
 //! Drives a script-side
-//! `struct[immediate_director.IImmediateDirector, IDirectorLifecycle] StubIm`
+//! `struct[radiance.IImmediateDirector, IDirectorLifecycle] StubIm`
 //! through:
 //!  - `wrap_director(handle, data) -> ComRc<IDirector>`,
 //!  - QI to `ComRc<IImmediateDirector>` (validates the fat-CCW slot
@@ -18,7 +18,7 @@ use crosscom::ComRc;
 use p7::errors::RuntimeError;
 use p7::interpreter::context::{Context, Data};
 use radiance::comdef::IDirector;
-use radiance_scripting::comdef::immediate_director::IImmediateDirector;
+use radiance::comdef::IImmediateDirector;
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 use radiance_scripting::{
     register_immediate_director_proto, wrap_director, ImguiImmediateDirectorPump, ScriptHost,
@@ -26,12 +26,12 @@ use radiance_scripting::{
 
 const SCRIPT: &str = r#"
 import radiance;
-import immediate_director;
+import radiance;
 
 @intrinsic(name="imp_test.record_event")
 fn record_event(seed: int, event: int);
 
-struct[immediate_director.IImmediateDirector] StubIm(
+struct[radiance.IImmediateDirector] StubIm(
     seed: int,
 ) {
     pub fn activate(self: ref<Self>) -> int {
@@ -42,7 +42,7 @@ struct[immediate_director.IImmediateDirector] StubIm(
         record_event(self.seed, 2);
         return null;
     }
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
+    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         // Forward a single recognisable call to the UI host so the
         // RecordingUiHost picks it up. `text` is the simplest leaf
         // method we can verify.
@@ -56,9 +56,9 @@ struct[immediate_director.IImmediateDirector] StubIm(
     }
 }
 
-pub fn make_im(seed: int) -> box<immediate_director.IImmediateDirector> {
+pub fn make_im(seed: int) -> box<radiance.IImmediateDirector> {
     let d = box(StubIm(seed));
-    d as box<immediate_director.IImmediateDirector>
+    d as box<radiance.IImmediateDirector>
 }
 "#;
 
@@ -236,15 +236,15 @@ fn idirector_update_returning_im_director_qis_to_immediate() {
     host.load_source(
         r#"
 import radiance;
-import immediate_director;
+import radiance;
 
 @intrinsic(name="imp_test.record_event")
 fn record_event(seed: int, event: int);
 
-struct[immediate_director.IImmediateDirector, radiance.IDirector] NextIm(seed: int) {
+struct[radiance.IImmediateDirector, radiance.IDirector] NextIm(seed: int) {
     pub fn activate(self: ref<Self>) -> int { record_event(self.seed, 1); 0 }
     pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> { return null; }
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
+    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.text("next");
         record_event(self.seed, 4);
         0

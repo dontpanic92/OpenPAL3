@@ -3,6 +3,11 @@ use loaders::{dff::DffLoaderConfig, Pal4TextureResolver};
 use crate::loaders::{Pal5TextureResolver, Swd5TextureResolver};
 
 pub mod config;
+#[macro_use]
+pub mod comdef {
+    include!(concat!(env!("OUT_DIR"), "/shared_services_comdef.rs"));
+}
+pub mod config_service;
 pub mod exporters;
 pub mod loaders;
 pub mod openpal3;

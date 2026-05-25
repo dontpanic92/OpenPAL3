@@ -192,15 +192,14 @@ impl IHostContextImpl for EditorHostContext {
     fn random(&self) -> ComRc<IRandomService> {
         self.random.clone()
     }
+    fn config(&self) -> ComRc<IConfigService> {
+        self.config.clone()
+    }
 }
 
 impl IEditorHostContextImpl for EditorHostContext {
     fn previewers(&self) -> ComRc<IPreviewerHub> {
         self.previewers.clone()
-    }
-
-    fn config(&self) -> ComRc<IConfigService> {
-        self.config.clone()
     }
 
     fn new_render_target(&self, w: i32, h: i32) -> ComRc<IRenderTarget> {

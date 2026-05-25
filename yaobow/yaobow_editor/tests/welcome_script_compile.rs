@@ -2,15 +2,14 @@
 //! module-provider as production, and exercises the typed host services
 //! (`IAppService`, `IConfigService`) the welcome flow depends on.
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use crosscom::ComRc;
 use p7::interpreter::context::Data;
 use radiance::comdef::{IDirector, IDirectorImpl, ISceneManager};
 use radiance_scripting::comdef::services::{
-    IAppService, IAppServiceImpl, IAudioService, IConfigService, IConfigServiceImpl, IGameRegistry,
-    IHostContextImpl, IInputService, IRandomService, ITextureService, IVfsService,
+    IAppService, IAppServiceImpl, IAudioService, IConfigService, IGameRegistry, IHostContextImpl,
+    IInputService, IRandomService, ITextureService, IVfsService,
 };
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 use radiance_scripting::services::{GameRegistry, RandomService};
@@ -26,7 +25,7 @@ mod comdef {
 }
 
 struct StubDirector;
-radiance_scripting::ComObject_ScriptedDirector!(crate::StubDirector);
+yaobow_editor::ComObject_StubDirector!(crate::StubDirector);
 impl IDirectorImpl for StubDirector {
     fn activate(&self) {}
     fn update(&self, _delta_sec: f32) -> Option<ComRc<IDirector>> {
@@ -46,31 +45,8 @@ impl IAppServiceImpl for RecordingAppService {
         self.open_calls.borrow_mut().push(ordinal);
         Some(ComRc::from_object(StubDirector))
     }
-}
 
-struct StubConfigService {
-    paths: Rc<RefCell<HashMap<i32, String>>>,
-    last: RefCell<String>,
-}
-
-yaobow_editor::ComObject_ConfigService!(crate::StubConfigService);
-
-impl IConfigServiceImpl for StubConfigService {
-    fn get_asset_path(&self, game: i32) -> &str {
-        let value = self.paths.borrow().get(&game).cloned().unwrap_or_default();
-        *self.last.borrow_mut() = value;
-        unsafe { (*self.last.as_ptr()).as_str() }
-    }
-    fn set_asset_path(&self, game: i32, path: &str) {
-        self.paths.borrow_mut().insert(game, path.to_string());
-    }
-    fn save(&self) -> bool {
-        true
-    }
-    fn reload(&self) {}
-    fn pick_folder(&self, _initial: &str) -> &str {
-        ""
-    }
+    fn exit(&self) {}
 }
 
 struct TestHostContext {
@@ -106,14 +82,14 @@ impl IHostContextImpl for TestHostContext {
     fn random(&self) -> ComRc<IRandomService> {
         RandomService::create()
     }
+    fn config(&self) -> ComRc<IConfigService> {
+        self.config.clone()
+    }
 }
 
 impl IEditorHostContextImpl for TestHostContext {
     fn previewers(&self) -> ComRc<IPreviewerHub> {
         self.previewers.clone()
-    }
-    fn config(&self) -> ComRc<IConfigService> {
-        self.config.clone()
     }
     fn new_render_target(
         &self,
@@ -185,7 +161,7 @@ struct TestEnv {
     runtime: Rc<radiance_scripting::ScriptHost>,
     handle: radiance_scripting::ScriptDirectorHandle,
     open_calls: Rc<RefCell<Vec<i32>>>,
-    config_paths: Rc<RefCell<HashMap<i32, String>>>,
+    config: Rc<RefCell<shared::config::YaobowConfig>>,
 }
 
 fn init_runtime(source: &str) -> Result<TestEnv, crosscom_protosept::HostError> {
@@ -193,11 +169,8 @@ fn init_runtime(source: &str) -> Result<TestEnv, crosscom_protosept::HostError> 
     let app = ComRc::<IAppService>::from_object(RecordingAppService {
         open_calls: open_calls.clone(),
     });
-    let config_paths = Rc::new(RefCell::new(HashMap::new()));
-    let config = ComRc::<IConfigService>::from_object(StubConfigService {
-        paths: config_paths.clone(),
-        last: RefCell::new(String::new()),
-    });
+    let config_storage = Rc::new(RefCell::new(shared::config::YaobowConfig::default()));
+    let config = shared::config_service::ConfigService::create(config_storage.clone());
     let previewers = ComRc::<IPreviewerHub>::from_object(StubPreviewerHub {
         last: std::cell::RefCell::new(String::new()),
     });
@@ -222,7 +195,7 @@ fn init_runtime(source: &str) -> Result<TestEnv, crosscom_protosept::HostError> 
         runtime,
         handle,
         open_calls,
-        config_paths,
+        config: config_storage,
     })
 }
 
@@ -256,10 +229,7 @@ fn welcome_script_render_im_emits_window_centered_with_game_table() {
     let ui_com_id = env.runtime.intern(ui_com);
     let ui_box = env
         .runtime
-        .foreign_box(
-            "radiance_scripting.comdef.immediate_director.IUiHost",
-            ui_com_id,
-        )
+        .foreign_box("radiance.comdef.IUiHost", ui_com_id)
         .expect("ui_host foreign box");
 
     env.runtime
@@ -324,10 +294,7 @@ fn welcome_script_settings_button_routes_to_settings_director() {
     let ui_com_id = env.runtime.intern(ui_com);
     let ui_box = env
         .runtime
-        .foreign_box(
-            "radiance_scripting.comdef.immediate_director.IUiHost",
-            ui_com_id,
-        )
+        .foreign_box("radiance.comdef.IUiHost", ui_com_id)
         .expect("ui_host foreign box");
 
     env.runtime
@@ -360,10 +327,7 @@ fn welcome_script_no_click_yields_no_transition() {
     let ui_com_id = env.runtime.intern(ui_com);
     let ui_box = env
         .runtime
-        .foreign_box(
-            "radiance_scripting.comdef.immediate_director.IUiHost",
-            ui_com_id,
-        )
+        .foreign_box("radiance.comdef.IUiHost", ui_com_id)
         .expect("ui_host foreign box");
 
     env.runtime
@@ -383,9 +347,9 @@ fn welcome_script_no_click_yields_no_transition() {
 #[test]
 fn welcome_script_game_button_with_configured_path_calls_open_game() {
     let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
-    env.config_paths
+    env.config
         .borrow_mut()
-        .insert(0, "/tmp/openpal3".to_string());
+        .set_asset_path(shared::GameType::PAL3, "/tmp/openpal3".to_string());
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -398,10 +362,7 @@ fn welcome_script_game_button_with_configured_path_calls_open_game() {
     let ui_com_id = env.runtime.intern(ui_com);
     let ui_box = env
         .runtime
-        .foreign_box(
-            "radiance_scripting.comdef.immediate_director.IUiHost",
-            ui_com_id,
-        )
+        .foreign_box("radiance.comdef.IUiHost", ui_com_id)
         .expect("ui_host foreign box");
 
     env.runtime
@@ -436,10 +397,7 @@ fn welcome_script_render_im_update_survives_repeated_frames() {
             .expect("welcome director should be rooted");
         let ui_box = env
             .runtime
-            .foreign_box(
-                "radiance_scripting.comdef.immediate_director.IUiHost",
-                ui_com_id,
-            )
+            .foreign_box("radiance.comdef.IUiHost", ui_com_id)
             .expect("ui_host foreign box");
         env.runtime
             .call_method_void(
@@ -465,9 +423,10 @@ fn welcome_script_game_button_with_configured_path_returns_open_game_director() 
     // Here open_game's stub returns a plain `StubDirector`, so we
     // just verify the transition value is the foreign box itself.
     let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
-    env.config_paths
+    let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
+    env.config
         .borrow_mut()
-        .insert(0, "/tmp/openpal3".to_string());
+        .set_asset_path(shared::GameType::PAL3, "/tmp/openpal3".to_string());
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -480,10 +439,7 @@ fn welcome_script_game_button_with_configured_path_returns_open_game_director() 
     let ui_com_id = env.runtime.intern(ui_com);
     let ui_box = env
         .runtime
-        .foreign_box(
-            "radiance_scripting.comdef.immediate_director.IUiHost",
-            ui_com_id,
-        )
+        .foreign_box("radiance.comdef.IUiHost", ui_com_id)
         .expect("ui_host foreign box");
     env.runtime
         .call_method_void(

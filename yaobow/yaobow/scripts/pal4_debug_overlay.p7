@@ -4,14 +4,14 @@
 // while the overlay is toggled on, so we don't gate visibility here.
 
 import pal4_debug;
-import immediate_director;
+import radiance;
 
 pub struct[pal4_debug.IPal4DebugOverlay] Pal4DebugOverlay(
     pub ctx_ref: box<pal4_debug.IPal4DebugContext>,
 ) {
     pub fn render(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         dt: float,
         ctx: box<pal4_debug.IPal4DebugContext>,
     ) -> int {

@@ -2,17 +2,10 @@ use std::path::PathBuf;
 
 fn main() {
     generate_p7("crosscom.idl", "crosscom.p7");
-    generate_pair("scripting.idl", "scripting_comdef.rs", "scripting.p7");
     generate_pair(
         "scripting_services.idl",
         "services_comdef.rs",
         "scripting_services.p7",
-    );
-    generate_p7("editor_services.idl", "editor_services.p7");
-    generate_pair(
-        "immediate_director.idl",
-        "immediate_director_comdef.rs",
-        "immediate_director.p7",
     );
     generate_p7("radiance.idl", "radiance.p7");
     generate_p7("editor.idl", "editor.p7");
@@ -24,7 +17,6 @@ fn main() {
     // a single crate-local module.
     generate_script_bridge("crosscom.idl", "crosscom_bridge.rs");
     generate_script_bridge("radiance.idl", "radiance_bridge.rs");
-    generate_script_bridge("immediate_director.idl", "immediate_director_bridge.rs");
     generate_script_bridge("scripting_services.idl", "scripting_services_bridge.rs");
 }
 

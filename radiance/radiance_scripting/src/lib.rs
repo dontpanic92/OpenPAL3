@@ -1,18 +1,8 @@
 #[macro_use]
 pub mod comdef {
     #[macro_use]
-    pub mod scripting {
-        include!(concat!(env!("OUT_DIR"), "/scripting_comdef.rs"));
-    }
-
-    #[macro_use]
     pub mod services {
         include!(concat!(env!("OUT_DIR"), "/services_comdef.rs"));
-    }
-
-    #[macro_use]
-    pub mod immediate_director {
-        include!(concat!(env!("OUT_DIR"), "/immediate_director_comdef.rs"));
     }
 }
 
@@ -24,9 +14,6 @@ pub mod script_bridges {
     }
     pub mod radiance {
         include!(concat!(env!("OUT_DIR"), "/radiance_bridge.rs"));
-    }
-    pub mod immediate_director {
-        include!(concat!(env!("OUT_DIR"), "/immediate_director_bridge.rs"));
     }
     pub mod scripting_services {
         include!(concat!(env!("OUT_DIR"), "/scripting_services_bridge.rs"));
@@ -41,8 +28,7 @@ pub use proxies::{install_imgui_pump, install_imgui_pump_with_cache, ImguiImmedi
 // Auto-generated bridges re-exported under the historical names so
 // callers don't need to know where the codegen lives.
 pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};
-pub use script_bridges::immediate_director::register_immediate_director_proto;
-pub use script_bridges::radiance::wrap_director;
+pub use script_bridges::radiance::{register_immediate_director_proto, wrap_director};
 pub use services::HostContext;
 
 /// Re-export of the radiance-side `wrap_ray_caster` so callers

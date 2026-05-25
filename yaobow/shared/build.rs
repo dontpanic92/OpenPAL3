@@ -10,6 +10,7 @@ fn main() {
     generate_script_bridge("openpal4.idl", "shared_openpal4_bridge.rs");
     generate_comdef("openpal5.idl", "shared_openpal5_comdef.rs");
     generate_comdef("openswd5.idl", "shared_openswd5_comdef.rs");
+    generate_comdef("shared_services.idl", "shared_services_comdef.rs");
 
     // PAL4 debug overlay bridge: emit both the Rust ComObject scaffolding
     // and the p7 binding source consumed by `ScriptHost::add_binding`.

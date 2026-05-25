@@ -119,6 +119,10 @@ impl IApplicationImpl for Application {
     fn dpi_scale(&self) -> f32 {
         self.platform.borrow().dpi_scale()
     }
+
+    fn request_exit(&self) {
+        self.platform.borrow().request_exit();
+    }
 }
 
 impl Application {

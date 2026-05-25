@@ -14,61 +14,61 @@ const GAMES: &[GameInfo] = &[
     GameInfo {
         ordinal: 0,
         full_name: "仙剑奇侠传三",
-        config_key: "OpenPAL3",
+        config_key: "pal3",
         default_asset_path: "F:\\SteamLibrary\\steamapps\\common\\PAL3",
     },
     GameInfo {
         ordinal: 1,
         full_name: "仙剑奇侠传三外传",
-        config_key: "OpenPAL3A",
+        config_key: "pal3a",
         default_asset_path: "F:\\SteamLibrary\\steamapps\\common\\PAL3A",
     },
     GameInfo {
         ordinal: 2,
         full_name: "仙剑奇侠传四",
-        config_key: "OpenPAL4",
+        config_key: "pal4",
         default_asset_path: "F:\\SteamLibrary\\steamapps\\common\\PAL4",
     },
     GameInfo {
         ordinal: 3,
         full_name: "仙剑奇侠传五",
-        config_key: "OpenPAL5",
+        config_key: "pal5",
         default_asset_path: "F:\\PAL5\\",
     },
     GameInfo {
         ordinal: 4,
         full_name: "仙剑奇侠传五前传",
-        config_key: "OpenPAL5Q",
+        config_key: "pal5q",
         default_asset_path: "F:\\PAL5Q\\",
     },
     GameInfo {
         ordinal: 5,
         full_name: "轩辕剑五",
-        config_key: "OpenSWD5",
+        config_key: "swd5",
         default_asset_path: "F:\\SteamLibrary\\steamapps\\common\\SWD5",
     },
     GameInfo {
         ordinal: 6,
         full_name: "轩辕剑外传 汉之云",
-        config_key: "OpenSWDHC",
+        config_key: "swdhc",
         default_asset_path: "F:\\SteamLibrary\\steamapps\\common\\SWDHC",
     },
     GameInfo {
         ordinal: 7,
         full_name: "轩辕剑外传 云之遥",
-        config_key: "OpenSWDCF",
+        config_key: "swdcf",
         default_asset_path: "F:\\SteamLibrary\\steamapps\\common\\SWDCF",
     },
     GameInfo {
         ordinal: 8,
         full_name: "古剑奇谭",
-        config_key: "OpenGujian",
+        config_key: "gujian",
         default_asset_path: "F:\\SteamLibrary\\steamapps\\common\\Gujian",
     },
     GameInfo {
         ordinal: 9,
         full_name: "古剑奇谭二",
-        config_key: "OpenGujian2",
+        config_key: "gujian2",
         default_asset_path: "F:\\SteamLibrary\\steamapps\\common\\Gujian2",
     },
 ];
@@ -105,4 +105,12 @@ impl IGameRegistryImpl for GameRegistry {
 
 fn find(ordinal: i32) -> Option<&'static GameInfo> {
     GAMES.iter().find(|game| game.ordinal == ordinal)
+}
+
+/// Translate the canonical script-facing ordinal to the config key
+/// understood by `IConfigService` / `shared::GameType::from_config_key`.
+///
+/// Single source of truth — both `yaobow` and `yaobow_editor` use this.
+pub fn ordinal_to_config_key(ordinal: i32) -> Option<&'static str> {
+    find(ordinal).map(|g| g.config_key)
 }

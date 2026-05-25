@@ -5,7 +5,6 @@
 
 import radiance;
 import yaobow_editor_services;
-import immediate_director;
 import content_tabs;
 import resource_tree;
 import resources_panel;
@@ -18,7 +17,7 @@ pub struct MainEditorState(
     pub active_close_cmd: int,
 );
 
-pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditorDirector(
+pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub tabs: box<array<content_tabs.ContentTab>>,
     pub picks: box<array<string>>,
@@ -30,7 +29,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
     pub fn activate(self: ref<Self>) -> int { 0 }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
+    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.dock_space(editor_consts.DOCK_ROOT, () => {
             // Seed the initial four-pane layout exactly once.
             ui.dock_layout_once(

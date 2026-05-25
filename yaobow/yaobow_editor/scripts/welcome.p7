@@ -1,6 +1,6 @@
 // Welcome and Settings screens, immediate-mode.
-// Both directors implement `immediate_director.IImmediateDirector` and call
-// `immediate_director.IUiHost` methods directly. Button presses
+// Both directors implement `radiance.IImmediateDirector` and call
+// `radiance.IUiHost` methods directly. Button presses
 // surface as boolean returns from `ui.button(...)`; the legacy
 // `command_id` / `dispatch(cmd)` round-trip is gone.
 //
@@ -9,9 +9,8 @@
 // side single-threaded and re-entrancy-safe.
 
 import radiance;
-import editor_services;
+import scripting_services;
 import yaobow_editor_services;
-import immediate_director;
 import editor_consts;
 
 // Intent codes written by render_im, consumed by update. Modelled as
@@ -37,7 +36,7 @@ pub struct IntentCell(
     pub intent_arg: int,
 );
 
-pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDirector(
+pub struct[radiance.IImmediateDirector, radiance.IDirector] WelcomeDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
@@ -50,7 +49,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
+    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.window_centered("妖弓编辑器", 720.0, 480.0, () => {
             ui.text_with_font(0, "妖弓编辑器");
             ui.dummy(0.0, 24.0);
@@ -94,7 +93,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
         0
     }
 
-    pub fn render_game_cell(self: ref<Self>, ui: box<immediate_director.IUiHost>, ordinal: int) {
+    pub fn render_game_cell(self: ref<Self>, ui: box<radiance.IUiHost>, ordinal: int) {
         let name = welcome_game_name(self, ordinal);
         let label = f"运行《{name}》编辑器";
         if ui.button(label, -1.0, 60.0) {
@@ -118,7 +117,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
             },
             Intent.OpenGame => {
                 let cfg = self.host.config();
-                if cfg.get_asset_path(arg) == "" {
+                if cfg.get_asset_path(self.host.games().config_key(arg)) == "" {
                     return make_settings_director(self.host, self.games, self.names);
                 }
                 let next = self.host.app().open_game(arg);
@@ -133,17 +132,17 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
                     return next!;
                 }
             },
-            Intent.None
-            | Intent.SaveAndReturn
-            | Intent.Cancel
-            | Intent.PickFolder
-            | Intent.ClearPath => {},
+            Intent.None => {},
+            Intent.SaveAndReturn => {},
+            Intent.Cancel => {},
+            Intent.PickFolder => {},
+            Intent.ClearPath => {},
         }
         return null;
     }
 }
 
-pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDirector(
+pub struct[radiance.IImmediateDirector, radiance.IDirector] SettingsDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
@@ -156,7 +155,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int {
+    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.window_centered("游戏路径设置", 820.0, 560.0, () => {
             ui.text_with_font(0, "游戏资源路径设置");
             ui.dummy(0.0, 12.0);
@@ -187,12 +186,12 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
         0
     }
 
-    pub fn render_settings_row(self: ref<Self>, ui: box<immediate_director.IUiHost>, ordinal: int) {
+    pub fn render_settings_row(self: ref<Self>, ui: box<radiance.IUiHost>, ordinal: int) {
         ui.table_next_column();
         ui.text(settings_game_name(self, ordinal));
         ui.table_next_column();
         let cfg = self.host.config();
-        ui.text(path_label(cfg.get_asset_path(ordinal)));
+        ui.text(path_label(cfg.get_asset_path(self.host.games().config_key(ordinal))));
         ui.table_next_column();
         if ui.button(f"选择...##pick_{ordinal}", 100.0, 24.0) {
             self.state.intent = Intent.PickFolder;
@@ -225,18 +224,18 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
                 return make_welcome_director(self.host, self.games, self.names);
             },
             Intent.PickFolder => {
-                let current = cfg.get_asset_path(arg);
+                let current = cfg.get_asset_path(self.host.games().config_key(arg));
                 let picked = cfg.pick_folder(current);
                 if picked != "" {
-                    cfg.set_asset_path(arg, picked);
+                    cfg.set_asset_path(self.host.games().config_key(arg), picked);
                 }
             },
             Intent.ClearPath => {
-                cfg.set_asset_path(arg, "");
+                cfg.set_asset_path(self.host.games().config_key(arg), "");
             },
-            Intent.None
-            | Intent.OpenSettings
-            | Intent.OpenGame => {},
+            Intent.None => {},
+            Intent.OpenSettings => {},
+            Intent.OpenGame => {},
         }
         return null;
     }

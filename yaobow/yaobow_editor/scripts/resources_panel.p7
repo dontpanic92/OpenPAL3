@@ -8,7 +8,7 @@
 // `main_editor.update` drains every frame to open content tabs.
 
 import yaobow_editor_services;
-import immediate_director;
+import radiance;
 import resource_tree;
 
 pub struct ResourcesPanelState(
@@ -21,7 +21,7 @@ pub fn make_resources_state() -> ResourcesPanelState {
 }
 
 pub fn render_resources_panel_im(
-    ui: box<immediate_director.IUiHost>,
+    ui: box<radiance.IUiHost>,
     host: box<yaobow_editor_services.IEditorHostContext>,
     state: box<ResourcesPanelState>,
     picks: box<array<string>>,
@@ -39,7 +39,7 @@ pub fn render_resources_panel_im(
 }
 
 fn render_category_view(
-    ui: box<immediate_director.IUiHost>,
+    ui: box<radiance.IUiHost>,
     rm: box<yaobow_editor_services.IResourceManager>,
     state: box<ResourcesPanelState>,
     picks: box<array<string>>,

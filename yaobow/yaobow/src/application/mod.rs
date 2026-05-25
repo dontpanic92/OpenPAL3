@@ -21,7 +21,7 @@ use crate::{
 
 pub struct YaobowApplicationLoader {
     app: ComRc<IApplication>,
-    config: YaobowConfig,
+    config: Rc<RefCell<YaobowConfig>>,
     selected_game: RefCell<Option<Rc<RefCell<Option<GameType>>>>>,
 }
 
@@ -31,7 +31,7 @@ impl IComponentImpl for YaobowApplicationLoader {
     fn on_loading(&self) {
         self.app.set_title("妖弓 - Project Yaobow");
 
-        let project = YaobowScriptProject::install(&self.app);
+        let project = YaobowScriptProject::install(&self.app, self.config.clone());
         self.selected_game.replace(Some(project.selected_game()));
 
         let director = project
@@ -55,7 +55,7 @@ impl IComponentImpl for YaobowApplicationLoader {
         }
 
         let game = slot.borrow().unwrap();
-        let asset_path = self.config.asset_path_for(game).to_string();
+        let asset_path = self.config.borrow().asset_path_for(game).to_string();
         let loader = create_loader(game, self.app.clone(), asset_path)
             .query_interface::<IComponent>()
             .unwrap();
@@ -72,7 +72,7 @@ impl YaobowApplicationLoader {
     pub fn new(app: ComRc<IApplication>) -> Self {
         Self {
             app,
-            config: YaobowConfig::load(),
+            config: Rc::new(RefCell::new(YaobowConfig::load())),
             selected_game: RefCell::new(None),
         }
     }

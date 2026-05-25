@@ -1,5 +1,4 @@
 pub mod app_service;
-pub mod config_service;
 pub mod scripted_welcome_page;
 
 use std::rc::Rc;

@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 fn main() {
-    generate_comdef("yaobow_editor.idl", "yaobow_editor_comdef.rs");
     generate_pair(
         "yaobow_editor_services.idl",
         "yaobow_editor_services_comdef.rs",

@@ -13,6 +13,7 @@ pub struct Platform {
     window: Rc<Window>,
     dpi_scale: f32,
     msg_callbacks: Rc<RefCell<Vec<MessageCallback>>>,
+    quit_requested: Rc<Cell<bool>>,
 }
 
 impl Platform {
@@ -29,6 +30,7 @@ impl Platform {
             dpi_scale: window.scale_factor() as f32,
             msg_callbacks: Rc::new(RefCell::new(vec![])),
             window: Rc::new(window),
+            quit_requested: Rc::new(Cell::new(false)),
         }
     }
 
@@ -50,8 +52,13 @@ impl Platform {
         let window = self.window.clone();
         let msg_callbacks = self.msg_callbacks.clone();
         let event_loop = self.event_loop.take().unwrap();
+        let quit_requested = self.quit_requested.clone();
         let mut active = true;
         let _ = event_loop.run(move |event, window_target| {
+            if quit_requested.get() {
+                window_target.exit();
+                return;
+            }
             for cb in msg_callbacks.borrow().iter() {
                 cb(&event);
             }
@@ -98,5 +105,9 @@ impl Platform {
 
     pub fn set_title(&self, title: &str) {
         self.window.set_title(title);
+    }
+
+    pub fn request_exit(&self) {
+        self.quit_requested.set(true);
     }
 }

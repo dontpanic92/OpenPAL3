@@ -30,8 +30,8 @@ use std::collections::HashSet;
 
 use crosscom::{ComRc, IAction};
 
-use crate::comdef::immediate_director::{IUiHost, IUiHostImpl};
 use crate::services::texture_resolver::TextureResolver;
+use radiance::comdef::{IUiHost, IUiHostImpl};
 
 /// Per-frame backing state shared by every `IUiHost` call. Constructed
 /// by the renderer for the duration of a single `render` traversal

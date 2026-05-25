@@ -77,12 +77,12 @@ fn runtime_calls_script_owned_director_methods() {
         .load_source(
             r#"
 import radiance;
-import immediate_director;
+import radiance;
 
-pub struct[immediate_director.IImmediateDirector, radiance.IDirector] First(pub trigger: box<array<int>>) {
+pub struct[radiance.IImmediateDirector, radiance.IDirector] First(pub trigger: box<array<int>>) {
     pub fn activate(self: ref<Self>) -> int { 0 }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int { 0 }
+    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
     pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
         if self.trigger[0] != 0 {
             self.trigger[0] = 0;
@@ -92,10 +92,10 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] First(pub 
     }
 }
 
-pub struct[immediate_director.IImmediateDirector, radiance.IDirector] Second() {
+pub struct[radiance.IImmediateDirector, radiance.IDirector] Second() {
     pub fn activate(self: ref<Self>) -> int { 0 }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
-    pub fn render_im(self: ref<Self>, ui: box<immediate_director.IUiHost>, dt: float) -> int { 0 }
+    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
     pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
         return null;
     }
@@ -105,9 +105,9 @@ fn make_second() -> box<radiance.IDirector> {
     return box(Second()) as box<radiance.IDirector>;
 }
 
-pub fn init() -> box<immediate_director.IImmediateDirector> {
+pub fn init() -> box<radiance.IImmediateDirector> {
     let trigger: array<int> = [1];
-    return box(First(box(trigger))) as box<immediate_director.IImmediateDirector>;
+    return box(First(box(trigger))) as box<radiance.IImmediateDirector>;
 }
 "#,
         )

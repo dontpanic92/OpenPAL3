@@ -7,7 +7,7 @@
 // owning tab's `preview_session` field).
 
 import yaobow_editor_services;
-import immediate_director;
+import radiance;
 import editor_consts;
 
 pub struct ContentTab(
@@ -102,8 +102,8 @@ pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: st
         // Scene is handled by the early `hub.open_scene(path)` fast path
         // above; the classifier never tags `.bsp`/`.scn` as Scene today
         // (it maps them to Model/Structured), so this arm is defensive.
-        editor_consts.ContentKind.Scene
-        | editor_consts.ContentKind.Unsupported => {},
+        editor_consts.ContentKind.Scene => {},
+        editor_consts.ContentKind.Unsupported => {},
     }
     return null;
 }
@@ -115,13 +115,16 @@ pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: st
 // the owning tab via indexed array assignment — not legal through a
 // `ref<ContentTab>` capture).
 pub fn render_tab_body_im(
-    ui: box<immediate_director.IUiHost>,
+    ui: box<radiance.IUiHost>,
     tab: ref<ContentTab>,
     preview_intents: box<array<int>>,
 ) {
     match tab.kind {
-        editor_consts.ContentKind.Text
-        | editor_consts.ContentKind.Structured => {
+        editor_consts.ContentKind.Text => {
+            ui.multiline_text(tab.text_content, -1.0, -1.0);
+            return;
+        },
+        editor_consts.ContentKind.Structured => {
             ui.multiline_text(tab.text_content, -1.0, -1.0);
             return;
         },

@@ -17,8 +17,6 @@
 
 import radiance;
 import scripting_services;
-import immediate_director;
-import yaobow_services;
 import title_consts;
 
 let PROMPT_FIRST_TIME: int = 0;
@@ -61,8 +59,8 @@ pub struct TitleState(
     pub current_pic: ?box<scripting_services.ITexture>,
 );
 
-pub struct[immediate_director.IImmediateDirector] TitleDirector(
-    pub host: box<yaobow_services.IYaobowAppContext>,
+pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
+    pub host: box<scripting_services.IHostContext>,
     pub bgm: ?box<scripting_services.IAudioSource>,
     pub logo: ?box<scripting_services.ITexture>,
     pub logo_w: int,
@@ -74,19 +72,6 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
         if self.bgm != null {
             self.bgm!.play(true);
         }
-        self.state.time = 0.0;
-        self.state.prompt_phase = PROMPT_FIRST_TIME;
-        self.state.prompt_time = title_consts.UNDERLINE_FIRST_TIME_WAITING;
-        self.state.outline_phase = OUTLINE_FIRST_TIME;
-        self.state.outline_frame = 0;
-        self.state.outline_frame_time = 0.0;
-        self.state.outline_remaining = title_consts.UNDERLINE_FIRST_TIME_WAITING;
-        self.state.hovered_game = NO_HOVER;
-        self.state.current_pic_game = NO_HOVER;
-        self.state.current_pic_index = 0;
-        self.state.pic_state = PIC_OUTLINE;
-        self.state.intent = title_consts.INTENT_NONE;
-        self.state.intent_arg = 0;
         0
     }
 
@@ -99,7 +84,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 
     pub fn render_im(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         dt: float,
     ) -> int {
         ui.style_color(
@@ -116,7 +101,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 
     pub fn render_inner(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         dt: float,
     ) {
         let display_w = ui.display_size_x() as float;
@@ -160,7 +145,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 
     pub fn draw_logo(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         cx: float, cy: float, w: float, h: float,
     ) {
         if self.logo == null { return; }
@@ -175,7 +160,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 
     pub fn render_prompt(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         dt: float,
         cx: float, cy: float, w: float, h: float,
     ) {
@@ -203,7 +188,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 
     pub fn draw_prompt_text(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         dt: float,
         cx: float, cy: float, text_w: float, text_h: float,
         text_a: string, text_b: string,
@@ -243,13 +228,13 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 
     pub fn draw_game_list(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         cx: float, cy: float, w: float, h: float,
     ) {
         let item_w = w;
         let item_x = cx - item_w * 0.5;
         let item_h = 60.0;
-        let all_h = item_h * 2.0;
+            let all_h = item_h * 4.0;
         let y = cy - all_h * 0.5;
         ui.style_color(
             title_consts.SC_BUTTON, 0.0, 0.0, 0.0, 0.0, () => {
@@ -260,40 +245,56 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
                                 self.draw_game_button(ui, title_consts.GAME_PAL3, item_x, y, item_w, item_h);
                                 let y2 = y + item_h;
                                 self.draw_game_button(ui, title_consts.GAME_PAL4, item_x, y2, item_w, item_h);
-                            },
-                        );
-                    },
-                );
-            },
-        );
-    }
+                                    let y3 = y2 + item_h;
+                                    self.draw_game_button(ui, title_consts.MENU_SETTINGS, item_x, y3, item_w, item_h);
+                                    let y4 = y3 + item_h;
+                                    self.draw_game_button(ui, title_consts.MENU_EXIT, item_x, y4, item_w, item_h);
+                                },
+                            );
+                        },
+                    );
+                },
+            );
+        }
 
     pub fn draw_game_button(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         ordinal: int, x: float, y: float, w: float, h: float,
     ) {
         let label = game_full_name(ordinal);
         ui.set_cursor_pos(x, y);
         if self.state.hovered_game != ordinal {
             ui.style_color(
-                title_consts.SC_TEXT, 0.5, 0.5, 0.5, 1.0, () => {
+                title_consts.SC_TEXT, 0.3, 0.3, 0.3, 1.0, () => {
                     self.submit_game_button(ui, label, w, h, ordinal);
                 },
             );
         } else {
-            self.submit_game_button(ui, label, w, h, ordinal);
+            ui.style_color(
+                title_consts.SC_TEXT, 0.75, 0.75, 0.75, 1.0, () => {
+                    self.submit_game_button(ui, label, w, h, ordinal);
+                },
+            );
         }
     }
 
     pub fn submit_game_button(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         label: string, w: float, h: float, ordinal: int,
     ) {
         if ui.button(label, w, h) {
-            self.state.intent = title_consts.INTENT_OPEN_GAME;
-            self.state.intent_arg = ordinal;
+            if ordinal == title_consts.MENU_SETTINGS {
+                self.state.intent = title_consts.INTENT_OPEN_SETTINGS;
+                self.state.intent_arg = 0;
+            } else if ordinal == title_consts.MENU_EXIT {
+                self.state.intent = title_consts.INTENT_EXIT;
+                self.state.intent_arg = 0;
+            } else {
+                self.state.intent = title_consts.INTENT_OPEN_GAME;
+                self.state.intent_arg = ordinal;
+            }
         }
         if ui.is_item_hovered() {
             self.state.hovered_game = ordinal;
@@ -302,7 +303,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 
     pub fn render_right_pane(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         dt: float,
         cx: float, cy: float, w: float, h: float,
     ) {
@@ -318,7 +319,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 
     pub fn render_outline(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         dt: float,
         cx: float, cy: float, w: float, h: float,
     ) {
@@ -390,11 +391,12 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
 
     pub fn render_hovered_pic(
         self: ref<Self>,
-        ui: box<immediate_director.IUiHost>,
+        ui: box<radiance.IUiHost>,
         cx: float, cy: float, w: float, h: float,
     ) {
         let hovered = self.state.hovered_game;
         if hovered == NO_HOVER { return; }
+        if hovered != title_consts.GAME_PAL3 && hovered != title_consts.GAME_PAL4 { return; }
         if self.state.current_pic_game != hovered {
             let count = pic_count(hovered);
             let r = self.host.random().next_int(count);
@@ -416,7 +418,7 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
         );
     }
 
-    pub fn draw_version(self: ref<Self>, ui: box<immediate_director.IUiHost>) {
+    pub fn draw_version(self: ref<Self>, ui: box<radiance.IUiHost>) {
         ui.style_color(
             title_consts.SC_TEXT, 0.5, 0.5, 0.5, 1.0, () => {
                 let h = ui.display_size_y() as float;
@@ -435,18 +437,28 @@ pub struct[immediate_director.IImmediateDirector] TitleDirector(
         self.state.intent = title_consts.INTENT_NONE;
         self.state.intent_arg = 0;
         if code == title_consts.INTENT_OPEN_GAME {
+            let cfg = self.host.config();
+            if cfg.get_asset_path(self.host.games().config_key(arg)) == "" {
+                return make_settings_director(self.host);
+            }
             let next = self.host.app().open_game(arg);
             if next != null {
                 return next;
             }
+        }
+        if code == title_consts.INTENT_OPEN_SETTINGS {
+            return make_settings_director(self.host);
+        }
+        if code == title_consts.INTENT_EXIT {
+            self.host.app().exit();
         }
         return null;
     }
 }
 
 pub fn make_title_director(
-    host: box<yaobow_services.IYaobowAppContext>,
-) -> box<immediate_director.IImmediateDirector> {
+    host: box<scripting_services.IHostContext>,
+) -> box<radiance.IImmediateDirector> {
     let bgm = host.audio().load("/music/Grace.ogg", 1);
     let logo = host.textures().load_png("/images/yaobow.png");
     let mut logo_w: int = 0;
@@ -474,7 +486,173 @@ pub fn make_title_director(
         null,                                           // current_pic
     ));
     return box(TitleDirector(host, bgm, logo, logo_w, logo_h, outlines, state))
-        as box<immediate_director.IImmediateDirector>;
+        as box<radiance.IImmediateDirector>;
+}
+
+// ---------------------------------------------------------------------------
+// Settings page reachable from the title list (menu item 设置 or auto-
+// triggered when the user picks a game with no configured asset path).
+// Mirrors the editor's `SettingsDirector` but limited to the two games
+// the title page currently surfaces.
+
+pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirector(
+    pub host: box<scripting_services.IHostContext>,
+    pub state: box<TitleSettingsState>,
+) {
+    pub fn activate(self: ref<Self>) -> int {
+        self.state.intent = title_consts.INTENT_NONE;
+        self.state.intent_arg = 0;
+        0
+    }
+    pub fn deactivate(self: ref<Self>) -> int { 0 }
+
+    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+        ui.style_color(
+            title_consts.SC_WINDOW_BG,
+            title_consts.BG_R, title_consts.BG_G, title_consts.BG_B, title_consts.BG_A,
+            () => {
+                ui.window_centered("游戏路径设置", 820.0, 360.0, () => {
+                    ui.style_color(title_consts.SC_TEXT, 0.1, 0.1, 0.1, 1.0, () => {
+                        ui.text_with_font(title_consts.FONT_DEFAULT, "游戏资源路径设置");
+                        ui.dummy(0.0, 12.0);
+                        ui.with_font(title_consts.FONT_SMALL, () => {
+                            ui.table("title.settings.rows", 4, () => {
+                                self.render_row(ui, title_consts.GAME_PAL3);
+                                self.render_row(ui, title_consts.GAME_PAL4);
+                            });
+                            ui.dummy(0.0, 16.0);
+                            ui.table("title.settings.footer", 2, () => {
+                                ui.table_next_column();
+                                if ui.button("保存并返回", 200.0, 32.0) {
+                                    self.state.intent = title_consts.INTENT_SAVE_AND_RETURN;
+                                }
+                                ui.table_next_column();
+                                if ui.button("取消", 200.0, 32.0) {
+                                    self.state.intent = title_consts.INTENT_CANCEL;
+                                }
+                            });
+                        });
+                    });
+                });
+            },
+        );
+        0
+    }
+
+    pub fn render_row(self: ref<Self>, ui: box<radiance.IUiHost>, ordinal: int) {
+        ui.table_next_column();
+        ui.text(settings_game_name(ordinal));
+        ui.table_next_column();
+        let cfg = self.host.config();
+        ui.text(path_label(cfg.get_asset_path(self.host.games().config_key(ordinal))));
+        ui.table_next_column();
+        if ui.button(f"选择...##title_pick_{ordinal}", 100.0, 24.0) {
+            self.state.intent = title_consts.INTENT_PICK_FOLDER;
+            self.state.intent_arg = ordinal;
+        }
+        ui.table_next_column();
+        if ui.button(f"清除##title_clear_{ordinal}", 80.0, 24.0) {
+            self.state.intent = title_consts.INTENT_CLEAR_PATH;
+            self.state.intent_arg = ordinal;
+        }
+    }
+
+    pub fn update(
+        self: ref<Self>,
+        dt: float,
+    ) -> ?box<radiance.IDirector> {
+        let code = self.state.intent;
+        let arg = self.state.intent_arg;
+        self.state.intent = title_consts.INTENT_NONE;
+        self.state.intent_arg = 0;
+
+        let cfg = self.host.config();
+        if code == title_consts.INTENT_SAVE_AND_RETURN {
+            cfg.save();
+            return make_title_director_as_director(self.host);
+        }
+        if code == title_consts.INTENT_CANCEL {
+            cfg.reload();
+            return make_title_director_as_director(self.host);
+        }
+        if code == title_consts.INTENT_PICK_FOLDER {
+            let current = cfg.get_asset_path(self.host.games().config_key(arg));
+            let picked = cfg.pick_folder(current);
+            if picked != "" {
+                cfg.set_asset_path(self.host.games().config_key(arg), picked);
+            }
+        }
+        if code == title_consts.INTENT_CLEAR_PATH {
+            cfg.set_asset_path(self.host.games().config_key(arg), "");
+        }
+        return null;
+    }
+}
+
+pub struct TitleSettingsState(
+    pub intent: int,
+    pub intent_arg: int,
+);
+
+fn make_settings_director(
+    host: box<scripting_services.IHostContext>,
+) -> box<radiance.IDirector> {
+    return box(TitleSettingsDirector(host, box(TitleSettingsState(title_consts.INTENT_NONE, 0))))
+        as box<radiance.IDirector>;
+}
+
+// Re-entry to the title page after saving/cancelling settings. The
+// returned director satisfies `radiance.IDirector`; the engine's imgui
+// pump will QI to `IImmediateDirector` and call `render_im`.
+fn make_title_director_as_director(
+    host: box<scripting_services.IHostContext>,
+) -> ?box<radiance.IDirector> {
+    let bgm = host.audio().load("/music/Grace.ogg", 1);
+    let logo = host.textures().load_png("/images/yaobow.png");
+    let mut logo_w: int = 0;
+    let mut logo_h: int = 0;
+    if logo != null {
+        logo_w = logo!.width();
+        logo_h = logo!.height();
+    }
+    let outlines = host.textures().load_gif_animation("/images/title/outlines/1.gif");
+
+    let state = box(TitleState(
+        0.0,
+        PROMPT_FIRST_TIME,
+        title_consts.UNDERLINE_FIRST_TIME_WAITING,
+        OUTLINE_FIRST_TIME,
+        0,
+        0.0,
+        title_consts.UNDERLINE_FIRST_TIME_WAITING,
+        NO_HOVER,
+        NO_HOVER,
+        0,
+        PIC_OUTLINE,
+        title_consts.INTENT_NONE,
+        0,
+        null,
+    ));
+    // The list is already showing because the user came from the title
+    // page; jump directly to it instead of replaying the press-any-key
+    // intro.
+    state.prompt_phase = PROMPT_SHOWING_LIST;
+    state.hovered_game = title_consts.GAME_PAL3;
+    state.time = title_consts.FADE_RAMP_END;
+    let d = box(TitleDirector(host, bgm, logo, logo_w, logo_h, outlines, state))
+        as box<radiance.IDirector>;
+    return d;
+}
+
+fn settings_game_name(ordinal: int) -> string {
+    if ordinal == title_consts.GAME_PAL3 { return "仙剑奇侠传三"; }
+    if ordinal == title_consts.GAME_PAL4 { return "仙剑奇侠传四"; }
+    return "";
+}
+
+fn path_label(p: string) -> string {
+    if p == "" { return "(未设置)"; }
+    return p;
 }
 
 fn compute_fade_alpha(t: float) -> float {
@@ -489,7 +667,7 @@ fn compute_fade_alpha(t: float) -> float {
 }
 
 fn draw_fitted_image(
-    ui: box<immediate_director.IUiHost>,
+    ui: box<radiance.IUiHost>,
     texture_id: int,
     src_w: float,
     src_h: float,
@@ -511,6 +689,8 @@ fn draw_fitted_image(
 fn game_full_name(ordinal: int) -> string {
     if ordinal == title_consts.GAME_PAL3 { return "仙剑奇侠传三"; }
     if ordinal == title_consts.GAME_PAL4 { return "仙剑奇侠传四"; }
+    if ordinal == title_consts.MENU_SETTINGS { return "设置"; }
+    if ordinal == title_consts.MENU_EXIT { return "离开游戏"; }
     return "";
 }
 

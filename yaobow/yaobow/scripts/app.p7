@@ -4,20 +4,19 @@
 // behind methods on that object — all declared in IDL via
 // `yaobow_services.IYaobowScriptApp`.
 
-import immediate_director;
+import radiance;
 import pal4_debug;
 import pal4_debug_overlay;
 import openpal4;
-import radiance;
 import scripting_services;
 import actor_controller;
 import title;
 import yaobow_services;
 
 pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
-    pub ctx: box<yaobow_services.IYaobowAppContext>,
+    pub ctx: box<scripting_services.IHostContext>,
 ) {
-    pub fn make_title_director(self: ref<Self>) -> box<immediate_director.IImmediateDirector> {
+    pub fn make_title_director(self: ref<Self>) -> box<radiance.IImmediateDirector> {
         return title.make_title_director(self.ctx);
     }
 
@@ -52,6 +51,6 @@ pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
     }
 }
 
-pub fn init(ctx: box<yaobow_services.IYaobowAppContext>) -> box<yaobow_services.IYaobowScriptApp> {
+pub fn init(ctx: box<scripting_services.IHostContext>) -> box<yaobow_services.IYaobowScriptApp> {
     return box(YaobowScriptApp(ctx)) as box<yaobow_services.IYaobowScriptApp>;
 }

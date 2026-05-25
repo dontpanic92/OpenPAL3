@@ -1617,7 +1617,6 @@ mod tests {
             "radiance.idl",
             "test.idl",
             "yaobow.idl",
-            "yaobow_editor.idl",
         ] {
             let generated = generate(idl_dir.join(idl_name)).unwrap();
             assert!(!generated.source.is_empty(), "{idl_name}");
@@ -1635,7 +1634,6 @@ mod tests {
             "radiance.idl",
             "test.idl",
             "yaobow.idl",
-            "yaobow_editor.idl",
             "openpal3.idl",
             "openpal4.idl",
             "openpal5.idl",
@@ -2032,7 +2030,7 @@ mod tests {
         let expected = [
             ("crosscom.idl", "IAction"),
             ("radiance.idl", "IDirector"),
-            ("immediate_director.idl", "IImmediateDirector"),
+            ("radiance.idl", "IImmediateDirector"),
             ("pal4_debug.idl", "IPal4DebugOverlay"),
         ];
         for (file, iface) in expected {

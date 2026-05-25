@@ -32,10 +32,11 @@ pub mod script_source {
 
     use crosscom::ComRc;
     use p7::interpreter::context::Data;
-    use radiance::comdef::{IApplication, IApplicationExt, IDirector};
-    use radiance::comdef::{ICameraControl, IEntity, IRayCaster};
+    use radiance::comdef::{
+        IApplication, IApplicationExt, ICameraControl, IDirector, IEntity, IImmediateDirector,
+        IRayCaster,
+    };
     use radiance::radiance::CoreRadianceEngine;
-    use radiance_scripting::comdef::immediate_director::IImmediateDirector;
     use radiance_scripting::comdef::services::IInputService;
     use radiance_scripting::{
         with_services, wrap_director, RuntimeAccess, RuntimeHandle, ScriptDirectorHandle,
@@ -51,7 +52,7 @@ pub mod script_source {
     use shared::GameType;
 
     use crate::application::yaobow_app_context::YaobowAppContext;
-    use crate::comdef::yaobow_services::IYaobowAppContext;
+    use radiance_scripting::comdef::services::IHostContext;
 
     /// p7 binding source for `yaobow_services.idl`. Register it with
     /// `ScriptHost::add_binding("yaobow_services", YAOBOW_SERVICES_P7)`
@@ -195,23 +196,26 @@ pub mod script_source {
         /// the `selected_game` slot internally, so callers no longer
         /// build their own context. Idempotent — every subsequent call
         /// from any feature (PAL3/PAL4/…) returns the same project.
-        pub fn install(app: &ComRc<IApplication>) -> Rc<Self> {
+        pub fn install(
+            app: &ComRc<IApplication>,
+            config: Rc<RefCell<shared::config::YaobowConfig>>,
+        ) -> Rc<Self> {
             let engine_rc = app.engine();
             let engine = engine_rc.borrow();
             Self::install_inner(&engine, || {
                 let selected_game: Rc<RefCell<Option<GameType>>> = Rc::new(RefCell::new(None));
-                let app_ctx = YaobowAppContext::create(app.clone(), selected_game.clone());
+                let app_ctx = YaobowAppContext::create(app.clone(), selected_game.clone(), config);
                 (app_ctx, selected_game)
             })
         }
 
         /// Lower-level installer used by tests and integration paths
-        /// that build a custom `IYaobowAppContext` (e.g. with stub
+        /// that build a custom `IHostContext` (e.g. with stub
         /// services). The supplied `selected_game` slot is exposed via
         /// [`Self::selected_game`].
         pub fn install_with_context(
             engine: &CoreRadianceEngine,
-            app_ctx: ComRc<IYaobowAppContext>,
+            app_ctx: ComRc<IHostContext>,
             selected_game: Rc<RefCell<Option<GameType>>>,
         ) -> Rc<Self> {
             Self::install_inner(engine, || (app_ctx, selected_game))
@@ -219,7 +223,7 @@ pub mod script_source {
 
         fn install_inner<F>(engine: &CoreRadianceEngine, build_ctx: F) -> Rc<Self>
         where
-            F: FnOnce() -> (ComRc<IYaobowAppContext>, Rc<RefCell<Option<GameType>>>),
+            F: FnOnce() -> (ComRc<IHostContext>, Rc<RefCell<Option<GameType>>>),
         {
             engine.get_or_insert_service(|| {
                 let host = ScriptHost::install(engine);
@@ -228,10 +232,10 @@ pub mod script_source {
                 let app_ctx_id = host.intern(app_ctx);
                 let app_ctx_box = host
                     .foreign_box(
-                        "yaobow.comdef.yaobow_services.IYaobowAppContext",
+                        "radiance_scripting.comdef.services.IHostContext",
                         app_ctx_id,
                     )
-                    .expect("IYaobowAppContext foreign box must construct");
+                    .expect("IHostContext foreign box must construct");
                 let app_data = host
                     .call_returning_data("init", vec![app_ctx_box])
                     .expect("yaobow app script init must succeed");

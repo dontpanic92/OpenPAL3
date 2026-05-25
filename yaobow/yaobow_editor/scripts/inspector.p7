@@ -3,10 +3,10 @@
 // two-column table. Read-only — no edit widgets in v1.
 
 import yaobow_editor_services;
-import immediate_director;
+import radiance;
 
 pub fn render_inspector_im(
-    ui: box<immediate_director.IUiHost>,
+    ui: box<radiance.IUiHost>,
     session: ?box<yaobow_editor_services.IScenePreviewSession>,
 ) {
     if session == null {

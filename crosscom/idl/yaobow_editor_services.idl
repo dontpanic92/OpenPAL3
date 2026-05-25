@@ -2,7 +2,7 @@ module(rust) yaobow_editor::comdef::editor_services;
 
 import crosscom.idl;
 import radiance.idl;
-import editor_services.idl;
+import scripting_services.idl;
 
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c01)]
 interface IImageHandle: IUnknown {
@@ -151,12 +151,6 @@ class InspectorView: IInspectorView {}
 interface IEditorHostContext: IHostContext {
     IPreviewerHub previewers();
 
-    // Editor settings surface. Lives on `IEditorHostContext` (not
-    // `IHostContext`) because only the editor's welcome/settings
-    // pages need an in-place asset-path UI — yaobow's title page
-    // does not surface a settings dialog.
-    IConfigService config();
-
     // Allocate a fresh offscreen render target. Used by `PreviewSession`
     // to render a private preview scene into an imgui-sampleable texture.
     IRenderTarget new_render_target(int w, int h);
@@ -168,3 +162,9 @@ interface IEditorHostContext: IHostContext {
 }
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0e)]
 class EditorHostContext: IEditorHostContext {}
+
+// Test-fixture conforming class so integration tests can mint a
+// `ComRc<IDirector>` from a plain Rust struct via
+// `ComObject_StubDirector!`. Production code does not use this.
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c18)]
+class StubDirector: IDirector {}

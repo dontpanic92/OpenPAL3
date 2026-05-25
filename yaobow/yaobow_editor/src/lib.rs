@@ -1,7 +1,5 @@
 #[macro_use]
 pub mod comdef {
-    include!(concat!(env!("OUT_DIR"), "/yaobow_editor_comdef.rs"));
-
     // Mirror radiance_scripting's services namespace so cross-crate uses of
     // `radiance_scripting::ComObject_*!` macros (which expand `use crate as
     // radiance_scripting`) can resolve `radiance_scripting::comdef::services::*`

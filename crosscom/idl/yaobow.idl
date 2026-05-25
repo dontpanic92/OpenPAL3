@@ -2,6 +2,7 @@ module(rust) yaobow::comdef;
 
 import crosscom.idl;
 import radiance.idl;
+import scripting_services.idl;
 
 [uuid(e0618113-5cf2-4562-ba93-ffd35d36c7f3)]
 class OpenPal3ApplicationLoaderComponent: IApplicationLoaderComponent {}
@@ -17,9 +18,6 @@ class OpenSwd5ApplicationLoaderComponent: IApplicationLoaderComponent {}
 
 [uuid(9492ea12-f90d-4909-9dbb-7d16a0df716d)]
 class YaobowApplicationLoader: IApplicationLoaderComponent {}
-
-[uuid(0542eaa7-3ff7-44c0-9558-1ff9258f665c)]
-class TitleSelectionDirector: IDirector {}
 
 [uuid(06c84916-355f-46a2-a61d-4e9caab8abe8)]
 class MainMenuDirector: IDirector {}
