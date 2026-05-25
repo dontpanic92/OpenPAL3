@@ -23,7 +23,7 @@ import crosscom.idl;
 //
 // Containers are responsible for the exactly-once guarantee;
 // component implementations may treat the hooks as fire-once.
-[uuid(03748ce3-689d-4325-b1de-59de516b576b)]
+[uuid(03748ce3-689d-4325-b1de-59de516b576b), protosept(scriptable)]
 interface IComponent: IUnknown {
     void on_loading();
     void on_updating(float delta_sec);
@@ -123,6 +123,17 @@ interface IEntity: IComponentContainer {
     // loaded, the child is loaded immediately (matching the
     // exactly-once contract of `IComponent::on_loading`).
     void attach(IEntity child);
+
+    // World-space position accessors. These read/write the entity's
+    // `Transform` directly — scripts use these in place of the Rust
+    // `entity.transform().borrow_mut()` flow, which can't be
+    // exposed through the foreign-proto bridge.
+    float position_x();
+    float position_y();
+    float position_z();
+    void set_position(float x, float y, float z);
+    void look_at(float x, float y, float z);
+    void set_position_and_look_at(float px, float py, float pz, float lx, float ly, float lz);
 }
 
 [uuid(66d51e1e-3f46-4fe2-a0dc-6183edf7c063)]
@@ -217,3 +228,44 @@ class HAnimBoneComponent: IHAnimBoneComponent {}
 interface IAnimationEventObserver: IUnknown {
     void on_animation_event(&str event_name);
 }
+
+// `IRayCaster` exposes axis-aligned ray-casting against a triangle
+// mesh collider set as a scriptable proto. The host implementation
+// wraps a `RayCaster` (radiance::utils::ray_casting::RayCaster) and
+// surfaces only the cast helpers the script side actually needs.
+//
+// The single method exposed today is the downward (NY-direction)
+// floor cast used by PAL4's actor controller: returns the distance
+// from `(ox, oy, oz)` to the first hit triangle along `-Y`, or
+// `null` when nothing is below the origin.
+[uuid(77d1815c-7042-4e4c-b849-440c75363dec)]
+interface IRayCaster: IUnknown {
+    float? cast_aa_ny(float ox, float oy, float oz);
+}
+
+[uuid(509149f3-51fc-4faa-ac3a-f84ca272c506)]
+class ScriptRayCaster: IRayCaster {}
+
+// `ICameraControl` exposes the scene camera's writable transform +
+// orthonormal basis to scripts. The host implementation wraps the
+// scene's `Camera::transform`, applying the same `set_position` /
+// `look_at` operations that Rust callers would.
+//
+// `forward_*` / `right_*` return the camera-local axes as
+// world-space unit vectors so script-side movement math (e.g. the
+// PAL4 player controller's camera-relative WASD walking) can stay
+// out of the host.
+[uuid(55f53f18-79ee-4ded-8c0d-d0b25387a69b)]
+interface ICameraControl: IUnknown {
+    void set_position(float x, float y, float z);
+    void look_at(float x, float y, float z);
+    float forward_x();
+    float forward_y();
+    float forward_z();
+    float right_x();
+    float right_y();
+    float right_z();
+}
+
+[uuid(d9b4c3f7-bd44-4cde-8fa8-8e1adec786b3)]
+class SceneCameraControl: ICameraControl {}

@@ -9,22 +9,46 @@ use fileformats::pal4::{
     gob::{GobCommonProperties, GobFile, GobObjectType},
 };
 use radiance::{
-    comdef::{IEntity, IEntityExt, IScene, ISceneExt, IStaticMeshComponent},
+    comdef::{
+        ICameraControl, IEntity, IEntityExt, IRayCaster, IScene, ISceneExt, IStaticMeshComponent,
+    },
     input::InputEngine,
     math::{Mat44, Transform, Vec3},
     rendering::GradientYMaterialDef,
-    scene::{CoreEntity, CoreScene},
-    utils::ray_casting::RayCaster,
+    scene::{wrap_scene_camera, CoreEntity, CoreScene},
+    utils::ray_casting::{wrap_ray_caster, RayCaster},
 };
+use radiance_scripting::{comdef::services::IInputService, services::InputService};
 
 use crate::scripting::angelscript::ScriptModule;
 
 use super::{
-    actor::{Pal4ActorController, Pal4ActorControllerInner},
     asset_loader::{self, AssetLoader},
-    comdef::{IPal4ActorAnimationController, IPal4ActorController},
+    comdef::{IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext},
+    game_context::Pal4GameContext,
     uv_anim::UvAnimDriver,
 };
+
+/// Factory abstraction supplied by the runtime (yaobow) at PAL4 boot.
+/// Mints a single party-wide `IPal4ActorController` that receives all
+/// four party-member entities + animation handles plus the shared
+/// engine surface. The runtime attaches the returned component to a
+/// synthetic "party root" entity that parents the four players, so a
+/// single controller drives the active leader each frame instead of
+/// four self-gating wrappers sharing scene state. Editor previews pass
+/// `None` for the factory and the scene loads without any per-player
+/// controller component attached.
+pub trait Pal4ActorControllerFactory {
+    fn make_actor_controller(
+        &self,
+        game_ctx: ComRc<IPal4GameContext>,
+        input: ComRc<IInputService>,
+        entities: [ComRc<IEntity>; 4],
+        anims: [ComRc<IPal4ActorAnimationController>; 4],
+        camera: ComRc<ICameraControl>,
+        ray_caster: ComRc<IRayCaster>,
+    ) -> ComRc<IPal4ActorController>;
+}
 
 pub enum Player {
     YunTianhe,
@@ -72,12 +96,17 @@ pub struct Pal4Scene {
     pub(crate) bsp_entity: Option<ComRc<IEntity>>,
     pub(crate) floor_entity: Option<ComRc<IEntity>>,
     pub(crate) wall_entity: Option<ComRc<IEntity>>,
-    /// Shared collision/input state attached as `Pal4ActorController`
-    /// to every player entity. `None` for the empty placeholder scene
-    /// returned by `new_empty`. The controller wrapper on each player
-    /// holds a clone of this `Rc`; the one whose `player_id` matches
-    /// `current_leader` is the only one that ticks. See `set_active_leader`.
-    pub(crate) controller_inner: Option<Rc<RefCell<Pal4ActorControllerInner>>>,
+    /// Engine-owned `Pal4GameContext` CCW shared with the four
+    /// scripted `Pal4ActorController` wrappers. `set_active_leader`
+    /// writes through this so the actor controllers observe the new
+    /// leader index via `IPal4GameContext::current_leader()`. `None`
+    /// on the placeholder scene returned by `new_empty`.
+    pub(crate) game_context: Option<ComRc<IPal4GameContext>>,
+    /// Single party-wide actor controller component attached to the
+    /// synthetic party-root entity that parents the four players.
+    /// `None` on the placeholder scene returned by `new_empty` and
+    /// when no `actor_controller_factory` was installed.
+    pub(crate) actor_controller: Option<ComRc<IPal4ActorController>>,
 }
 
 const SHOW_TRIGGER_POINT: bool = false;
@@ -107,7 +136,8 @@ impl Pal4Scene {
             bsp_entity: None,
             floor_entity: None,
             wall_entity: None,
-            controller_inner: None,
+            game_context: None,
+            actor_controller: None,
         }
     }
 
@@ -122,6 +152,7 @@ impl Pal4Scene {
         input: Rc<RefCell<dyn InputEngine>>,
         scene_name: &str,
         block_name: &str,
+        actor_controller_factory: Option<&Rc<dyn Pal4ActorControllerFactory>>,
     ) -> anyhow::Result<Self> {
         let (scene, bsp_entity) = asset_loader.load_scene(scene_name, block_name)?;
 
@@ -268,29 +299,52 @@ impl Pal4Scene {
             }));
         }
 
-        // One shared collision/input state, attached as a per-entity
-        // wrapper to every player. Only the wrapper whose `player_id`
-        // matches the current leader actually drives movement — but
-        // the wrappers are owned by their respective entities, so
-        // `set_leader` immediately rebinds collision to whichever
-        // party member is now active (no controller-stuck-on-player0
-        // staleness when switching leaders mid-scene).
-        let controller_inner = Rc::new(RefCell::new(Pal4ActorControllerInner::new(
-            input,
-            scene.clone(),
-            ray_caster,
-            triggers.clone(),
-        )));
+        // Build engine-side scriptable handles once per scene; share
+        // them across all four actor controllers. The same `ray_caster`
+        // backs both the per-frame floor/wall probes (via `IRayCaster`)
+        // and `IPal4GameContext::check_event_triggers` could in
+        // principle reach it too, but triggers carry their own caster
+        // per `SceneEventTrigger`.
+        let ray_caster_rc = Rc::new(ray_caster);
+        let game_context = Pal4GameContext::create(triggers.clone());
 
-        for (i, p) in players.iter().enumerate() {
-            let wrapper =
-                Pal4ActorController::create(controller_inner.clone(), p.clone(), i);
-            p.add_component(IPal4ActorController::uuid(), ComRc::from_object(wrapper));
-        }
+        let actor_controller = if let Some(factory) = actor_controller_factory {
+            let input_service = InputService::create(input.clone());
+            let camera_ctrl = wrap_scene_camera(scene.clone());
+            let ray_caster_wrapped = wrap_ray_caster(ray_caster_rc.clone());
+            let anims: [ComRc<IPal4ActorAnimationController>; 4] = std::array::from_fn(|i| {
+                players[i]
+                    .get_component(IPal4ActorAnimationController::uuid())
+                    .and_then(|c| c.query_interface::<IPal4ActorAnimationController>())
+                    .expect("player must carry an IPal4ActorAnimationController component")
+            });
+            let controller = factory.make_actor_controller(
+                game_context.clone(),
+                input_service.clone(),
+                players.clone(),
+                anims,
+                camera_ctrl.clone(),
+                ray_caster_wrapped.clone(),
+            );
+            let component = controller
+                .query_interface::<radiance::comdef::IComponent>()
+                .expect("scripted Pal4PartyController must QI to IComponent");
 
-        for p in &players {
-            scene.add_entity(p.clone());
-        }
+            // Party root entity owns the four players as children and
+            // hosts the single controller component.
+            let party_root = CoreEntity::create("PartyRoot".to_string(), true);
+            for p in &players {
+                party_root.attach(p.clone());
+            }
+            party_root.add_component(IPal4ActorController::uuid(), component);
+            scene.add_entity(party_root);
+            Some(controller)
+        } else {
+            for p in &players {
+                scene.add_entity(p.clone());
+            }
+            None
+        };
 
         let npc_info = asset_loader.load_npc_info(scene_name, block_name)?;
         let mut npcs = vec![];
@@ -404,7 +458,8 @@ impl Pal4Scene {
             bsp_entity: Some(bsp_entity),
             floor_entity: floor,
             wall_entity: wall,
-            controller_inner: Some(controller_inner),
+            game_context: Some(game_context),
+            actor_controller,
         })
     }
 
@@ -412,15 +467,19 @@ impl Pal4Scene {
         self.players[player_id].clone()
     }
 
-    /// Notify the per-scene `Pal4ActorControllerInner` which player
-    /// is now the active leader. After this call, only the
-    /// `Pal4ActorController` wrapper on `players[player_id]` will
-    /// tick movement/collision; the other three wrappers stay
-    /// dormant. No-op on the placeholder scene returned by
-    /// `new_empty` (which has no players with controllers).
+    /// Single party-wide actor controller, or `None` for the empty
+    /// scene / when no factory was installed.
+    pub fn actor_controller(&self) -> Option<ComRc<IPal4ActorController>> {
+        self.actor_controller.clone()
+    }
+
+    /// Update the engine-side `Pal4GameContext`'s active leader index.
+    /// Script-side actor controllers read this via
+    /// `IPal4GameContext::current_leader()` and self-gate per-frame.
+    /// No-op on the placeholder scene returned by `new_empty`.
     pub fn set_active_leader(&self, player_id: usize) {
-        if let Some(inner) = &self.controller_inner {
-            inner.borrow_mut().set_current_leader(player_id);
+        if let Some(ctx) = &self.game_context {
+            ctx.inner::<Pal4GameContext>().set_current_leader(player_id);
         }
     }
 

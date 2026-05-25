@@ -65,7 +65,7 @@ impl SceneHandle {
         let (scene_name, block_name) = parse_pal4_scene_path(vfs_path)?;
 
         use shared::openpal4::scene::Pal4Scene;
-        let pal4_scene = match Pal4Scene::load(loader, input, &scene_name, &block_name) {
+        let pal4_scene = match Pal4Scene::load(loader, input, &scene_name, &block_name, None) {
             Ok(s) => s,
             Err(e) => {
                 log::warn!(

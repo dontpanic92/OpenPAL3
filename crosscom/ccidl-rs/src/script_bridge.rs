@@ -428,6 +428,11 @@ impl<'a> ScriptBridgeGen<'a> {
 
         if let Some(inner) = trimmed.strip_suffix('?') {
             let inner = inner.trim();
+            // Nullable primitive: `?float` → OptionalFloat with NaN
+            // sentinel on the C ABI. The runtime decodes NaN → null.
+            if inner == "float" {
+                return Ok("::crosscom_protosept::RetKind::OptionalFloat".to_string());
+            }
             if let Some(iface) = self.referenced_interface(inner)? {
                 let path = self.interface_rust_path(iface);
                 let tag = self.interface_type_tag(iface);

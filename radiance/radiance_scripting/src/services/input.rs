@@ -42,6 +42,24 @@ impl IInputServiceImpl for InputService {
         // The current InputEngine trait exposes keys and axes but no mouse position.
         0.0
     }
+
+    fn axis(&self, axis_code: i32) -> f32 {
+        self.input
+            .borrow()
+            .get_axis_state(axis_from_i32(axis_code))
+            .value()
+    }
+}
+
+fn axis_from_i32(axis_code: i32) -> radiance::input::Axis {
+    use radiance::input::Axis;
+    match axis_code {
+        0 => Axis::LeftStickX,
+        1 => Axis::LeftStickY,
+        2 => Axis::RightStickX,
+        3 => Axis::RightStickY,
+        _ => Axis::Unknown,
+    }
 }
 
 fn key_from_i32(keycode: i32) -> Key {

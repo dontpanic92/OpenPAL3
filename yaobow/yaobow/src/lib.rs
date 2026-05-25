@@ -33,14 +33,21 @@ pub mod script_source {
     use crosscom::ComRc;
     use p7::interpreter::context::Data;
     use radiance::comdef::{IApplication, IApplicationExt, IDirector};
+    use radiance::comdef::{ICameraControl, IEntity, IRayCaster};
     use radiance::radiance::CoreRadianceEngine;
     use radiance_scripting::comdef::immediate_director::IImmediateDirector;
+    use radiance_scripting::comdef::services::IInputService;
     use radiance_scripting::{
         with_services, wrap_director, RuntimeAccess, RuntimeHandle, ScriptDirectorHandle,
         ScriptHost,
     };
+    use shared::openpal4::actor_controller_script::wrap_actor_controller;
     use shared::openpal4::comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay};
+    use shared::openpal4::comdef::{
+        IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext,
+    };
     use shared::openpal4::pal4_debug::wrap_overlay;
+    use shared::openpal4::scene::Pal4ActorControllerFactory;
     use shared::GameType;
 
     use crate::application::yaobow_app_context::YaobowAppContext;
@@ -54,6 +61,8 @@ pub mod script_source {
 
     pub const APP_P7: &str = include_str!("../scripts/app.p7");
     pub const PAL4_DEBUG_P7: &str = shared::openpal4::pal4_debug::PAL4_DEBUG_P7;
+    pub const ACTOR_CONTROLLER_P7: &str =
+        shared::openpal4::actor_controller_script::ACTOR_CONTROLLER_P7;
 
     #[derive(Clone, Copy)]
     pub struct ScriptModule {
@@ -77,6 +86,10 @@ pub mod script_source {
             name: "pal4_debug",
             source: PAL4_DEBUG_P7,
         },
+        ScriptModule {
+            name: "openpal4",
+            source: shared::openpal4::actor_controller_script::OPENPAL4_P7,
+        },
     ];
 
     /// Sibling modules referenced by `app.p7`. The first element is
@@ -94,6 +107,10 @@ pub mod script_source {
         ScriptModule {
             name: "pal4_debug_overlay",
             source: include_str!("../scripts/pal4_debug_overlay.p7"),
+        },
+        ScriptModule {
+            name: "actor_controller",
+            source: ACTOR_CONTROLLER_P7,
         },
     ];
 
@@ -270,6 +287,90 @@ pub mod script_source {
             wrap_overlay(&self.runtime_handle(), overlay).map_err(|err| format!("{err:?}"))
         }
 
+        /// Mint a scripted party-wide `IPal4ActorController` covering
+        /// all four party members. Calls
+        /// `app.make_actor_controller(game_ctx, input, entity_0..3,
+        /// anim_0..3, camera, ray_caster)` — interns each ComRc,
+        /// invokes the script method, reverse-wraps the returned p7 box
+        /// back into a `ComRc<IPal4ActorController>`.
+        pub fn make_actor_controller(
+            &self,
+            game_ctx: ComRc<IPal4GameContext>,
+            input: ComRc<IInputService>,
+            entities: [ComRc<IEntity>; 4],
+            anims: [ComRc<IPal4ActorAnimationController>; 4],
+            camera: ComRc<ICameraControl>,
+            ray_caster: ComRc<IRayCaster>,
+        ) -> Result<ComRc<IPal4ActorController>, String> {
+            let game_ctx_box =
+                self.intern_box("shared.openpal4.comdef.IPal4GameContext", game_ctx)?;
+            let input_box =
+                self.intern_box("radiance_scripting.comdef.services.IInputService", input)?;
+            let [e0, e1, e2, e3] = entities;
+            let entity_0_box = self.intern_box("radiance.comdef.IEntity", e0)?;
+            let entity_1_box = self.intern_box("radiance.comdef.IEntity", e1)?;
+            let entity_2_box = self.intern_box("radiance.comdef.IEntity", e2)?;
+            let entity_3_box = self.intern_box("radiance.comdef.IEntity", e3)?;
+            let [a0, a1, a2, a3] = anims;
+            let anim_0_box =
+                self.intern_box("shared.openpal4.comdef.IPal4ActorAnimationController", a0)?;
+            let anim_1_box =
+                self.intern_box("shared.openpal4.comdef.IPal4ActorAnimationController", a1)?;
+            let anim_2_box =
+                self.intern_box("shared.openpal4.comdef.IPal4ActorAnimationController", a2)?;
+            let anim_3_box =
+                self.intern_box("shared.openpal4.comdef.IPal4ActorAnimationController", a3)?;
+            let camera_box = self.intern_box("radiance.comdef.ICameraControl", camera)?;
+            let ray_caster_box = self.intern_box("radiance.comdef.IRayCaster", ray_caster)?;
+            let controller = self.call_app_method(
+                "make_actor_controller",
+                vec![
+                    game_ctx_box,
+                    input_box,
+                    entity_0_box,
+                    entity_1_box,
+                    entity_2_box,
+                    entity_3_box,
+                    anim_0_box,
+                    anim_1_box,
+                    anim_2_box,
+                    anim_3_box,
+                    camera_box,
+                    ray_caster_box,
+                ],
+            )?;
+            wrap_actor_controller(&self.runtime_handle(), controller)
+                .map_err(|err| format!("{err:?}"))
+        }
+
+        /// Intern a `ComRc<I>` and wrap it as a script foreign-box
+        /// argument. The `type_tag` must match the IDL-derived module
+        /// path used in the script bridge (e.g.
+        /// `radiance.comdef.IEntity`).
+        fn intern_box<I>(
+            &self,
+            type_tag: &str,
+            rc: ComRc<I>,
+        ) -> Result<p7::interpreter::context::Data, String>
+        where
+            I: ::crosscom::ComInterface + 'static,
+        {
+            let id = self.host.intern(rc);
+            self.host
+                .foreign_box(type_tag, id)
+                .map_err(|err| format!("{err:?}"))
+        }
+
+        /// Builds an `Rc<dyn Pal4ActorControllerFactory>` suitable for
+        /// `Pal4AppContext::set_actor_controller_factory`. The factory
+        /// keeps a strong `Rc<YaobowScriptProject>` so the script host
+        /// stays installed for the controllers' lifetime.
+        pub fn actor_controller_factory(self: &Rc<Self>) -> Rc<dyn Pal4ActorControllerFactory> {
+            Rc::new(YaobowActorControllerFactory {
+                project: self.clone(),
+            })
+        }
+
         /// One-shot helper for PAL4: builds a fresh debug session
         /// (Rust-side context + state) and asks the script app to
         /// create the overlay against it. Returns the bundle the
@@ -303,6 +404,29 @@ pub mod script_source {
                 out = Some(h);
             });
             out.expect("RuntimeAccess::with_ctx ran body")
+        }
+    }
+
+    /// `Pal4ActorControllerFactory` impl that defers to a
+    /// `YaobowScriptProject`. Held as `Rc<dyn …>` by `Pal4AppContext`
+    /// so the script host stays alive for every minted controller.
+    struct YaobowActorControllerFactory {
+        project: Rc<YaobowScriptProject>,
+    }
+
+    impl Pal4ActorControllerFactory for YaobowActorControllerFactory {
+        fn make_actor_controller(
+            &self,
+            game_ctx: ComRc<IPal4GameContext>,
+            input: ComRc<IInputService>,
+            entities: [ComRc<IEntity>; 4],
+            anims: [ComRc<IPal4ActorAnimationController>; 4],
+            camera: ComRc<ICameraControl>,
+            ray_caster: ComRc<IRayCaster>,
+        ) -> ComRc<IPal4ActorController> {
+            self.project
+                .make_actor_controller(game_ctx, input, entities, anims, camera, ray_caster)
+                .expect("scripted Pal4PartyController creation must succeed")
         }
     }
 }

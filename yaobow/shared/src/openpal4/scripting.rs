@@ -1155,7 +1155,8 @@ fn player_set_leader(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 
 fn player_set_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, is_visible: i32);
-    vm.app_context.enable_player(player_id as usize, is_visible != 0);
+    vm.app_context
+        .enable_player(player_id as usize, is_visible != 0);
     Pal4FunctionState::Completed
 }
 
@@ -1836,7 +1837,8 @@ fn is_night_time(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionStat
 
 fn player_set_pos_rot(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, x: f32, y: f32, z: f32, rot: f32);
-    vm.app_context.set_player_pos(player_id, &Vec3::new(x, y, z));
+    vm.app_context
+        .set_player_pos(player_id, &Vec3::new(x, y, z));
     vm.app_context.set_player_ang(player_id, rot);
     Pal4FunctionState::Completed
 }
@@ -2128,7 +2130,8 @@ fn player_current_end_action(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal
 
 fn player_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, x: f32, y: f32, z: f32);
-    vm.app_context.set_player_pos(player_id, &Vec3::new(x, y, z));
+    vm.app_context
+        .set_player_pos(player_id, &Vec3::new(x, y, z));
     Pal4FunctionState::Completed
 }
 

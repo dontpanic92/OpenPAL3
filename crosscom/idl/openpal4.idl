@@ -17,15 +17,53 @@ interface IPal4ActorAnimationController: IComponent {
 
     void unhold();
     bool animation_completed();
+
+    // Script-facing animation bridge. `anim` follows
+    // `Pal4ActorAnimation` (0 Idle, 1 Walk, 2 Run, 3 Unknown).
+    // `config` follows `Pal4ActorAnimationConfig`
+    // (0 OneTime, 1 Looping, 2 PauseOnHold). The companion
+    // `current_id()` reads back the active animation as an int.
+    void play_by_id(int anim, int config);
+    int current_id();
 }
 
 [uuid(e262bcd6-41fd-4cfd-a2fd-7376421b6ae5)]
 class Pal4ActorAnimationController: IPal4ActorAnimationController, IAnimationEventObserver {}
 
-[uuid(9ccfa4a1-16f9-483c-95d8-6095fbf24e09)]
+[uuid(9ccfa4a1-16f9-483c-95d8-6095fbf24e09), protosept(scriptable)]
 interface IPal4ActorController : IComponent {
     void lock_control(bool lock);
 }
 
 [uuid(0687035c-b5f3-47e1-9e4a-80fbf57b3a7c)]
 class Pal4ActorController: IPal4ActorController {}
+
+// Host-implemented PAL4 game context handed to scripted controllers.
+// Exposes only the truly PAL4-specific surface: the current party
+// leader index (engine-driven via `Pal4AppContext::set_leader`) and
+// per-scene event-trigger dispatch (walks the scene's
+// `SceneEventTrigger` list and invokes each one's check callback).
+//
+// Everything else the player controller needs — input, ray casting,
+// camera, the leader entity, animation — flows in through the
+// generic scriptable engine protos (`IInputService`, `IRayCaster`,
+// `ICameraControl`, `IEntity`, `IPal4ActorAnimationController`)
+// at controller-construction time, not through this object.
+[uuid(0687035c-b5f3-47e1-9e4a-80fbf57b3a7d)]
+interface IPal4GameContext: IUnknown {
+    // Current party-leader index (0..=3). Set by the engine via
+    // `Pal4AppContext::set_leader`; only the actor controller whose
+    // `player_id` matches drives input.
+    int current_leader();
+
+    // Walks every `SceneEventTrigger` registered for the current
+    // scene, dispatching each one's check callback with the
+    // pre-movement origin + per-frame movement vector.
+    void check_event_triggers(
+        float ox, float oy, float oz,
+        float mx, float my, float mz);
+}
+
+[uuid(0687035c-b5f3-47e1-9e4a-80fbf57b3a7e)]
+class Pal4GameContext: IPal4GameContext {}
+

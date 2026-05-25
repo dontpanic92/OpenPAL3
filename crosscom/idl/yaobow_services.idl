@@ -10,6 +10,7 @@ import radiance.idl;
 import scripting_services.idl;
 import immediate_director.idl;
 import pal4_debug.idl;
+import openpal4.idl;
 
 [uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a01)]
 interface IYaobowAppContext: IHostContext {
@@ -25,6 +26,19 @@ class YaobowAppContext: IYaobowAppContext {}
 interface IYaobowScriptApp: IUnknown {
     IImmediateDirector make_title_director();
     IPal4DebugOverlay make_pal4_debug_overlay(IPal4DebugContext ctx);
+    IPal4ActorController make_actor_controller(
+        IPal4GameContext game_ctx,
+        IInputService input,
+        IEntity entity_0,
+        IEntity entity_1,
+        IEntity entity_2,
+        IEntity entity_3,
+        IPal4ActorAnimationController anim_0,
+        IPal4ActorAnimationController anim_1,
+        IPal4ActorAnimationController anim_2,
+        IPal4ActorAnimationController anim_3,
+        ICameraControl camera,
+        IRayCaster ray_caster);
 }
 [uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a05)]
 class YaobowScriptApp: IYaobowScriptApp {}

@@ -17,8 +17,7 @@ use crate::ui::dialog_box::{AvatarPosition, DialogBox};
 use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimation, Pal4ActorAnimationConfig},
     asset_loader::AssetLoader,
-    comdef::IPal4ActorController,
-    scene::Pal4Scene,
+    scene::{Pal4ActorControllerFactory, Pal4Scene},
 };
 
 pub struct Pal4AppContext {
@@ -47,6 +46,13 @@ pub struct Pal4AppContext {
 
     moving_entities: HashMap<ActorId, MovingEntity>,
     rotating_entities: HashMap<ActorId, RotatingEntity>,
+
+    /// Factory for the scripted `IPal4ActorController` component. `None`
+    /// until the application bootstrap calls
+    /// [`set_actor_controller_factory`]; when `None`, `load_scene`
+    /// loads scenes without per-player controllers (e.g. before the
+    /// script project is installed).
+    actor_controller_factory: Option<Rc<dyn Pal4ActorControllerFactory>>,
 }
 
 impl Pal4AppContext {
@@ -83,7 +89,16 @@ impl Pal4AppContext {
             player_locked: true,
             moving_entities: HashMap::new(),
             rotating_entities: HashMap::new(),
+            actor_controller_factory: None,
         }
+    }
+
+    /// Install the scripted `IPal4ActorController` factory. Subsequent
+    /// `load_scene` calls hand the factory to `Pal4Scene::load`, which
+    /// attaches a freshly minted controller component to each player
+    /// entity. Idempotent; replaces any previous factory.
+    pub fn set_actor_controller_factory(&mut self, factory: Rc<dyn Pal4ActorControllerFactory>) {
+        self.actor_controller_factory = Some(factory);
     }
 
     pub fn update(&mut self, delta_sec: f32) {
@@ -165,15 +180,6 @@ impl Pal4AppContext {
 
         for (id, mut rot) in entities.into_iter() {
             let delta = wrap_deg(rot.target_deg - rot.current_deg);
-            log::debug!(
-                "rotate {:?}: current={:.2} target={:.2} delta={:.2} step={:.2}",
-                id,
-                rot.current_deg,
-                rot.target_deg,
-                delta,
-                step
-            );
-
             let snap = delta.abs() <= step.max(0.0001);
             rot.current_deg = if snap {
                 rot.target_deg
@@ -188,11 +194,7 @@ impl Pal4AppContext {
             // be `pos - (sin yaw, 0, cos yaw)`.
             let pos = rot.entity.transform().borrow().position();
             let yaw_rad = rot.current_deg.to_radians();
-            let target = Vec3::new(
-                pos.x - yaw_rad.sin(),
-                pos.y,
-                pos.z - yaw_rad.cos(),
-            );
+            let target = Vec3::new(pos.x - yaw_rad.sin(), pos.y, pos.z - yaw_rad.cos());
             rot.entity
                 .transform()
                 .borrow_mut()
@@ -451,13 +453,9 @@ impl Pal4AppContext {
 
     pub fn lock_player(&mut self, lock: bool) {
         self.player_locked = lock;
-        self.scene
-            .get_player(self.leader)
-            .get_component(IPal4ActorController::uuid())
-            .unwrap()
-            .query_interface::<IPal4ActorController>()
-            .unwrap()
-            .lock_control(lock);
+        if let Some(ctrl) = self.scene.actor_controller() {
+            ctrl.lock_control(lock);
+        }
     }
 
     pub fn set_player_ang(&mut self, player: i32, ang: f32) {
@@ -569,8 +567,14 @@ impl Pal4AppContext {
 
     pub fn load_scene(&mut self, scene_name: &str, block_name: &str) {
         let _ = self.scene_manager.pop_scene();
-        self.scene =
-            Pal4Scene::load(&self.loader, self.input.clone(), scene_name, block_name).unwrap();
+        self.scene = Pal4Scene::load(
+            &self.loader,
+            self.input.clone(),
+            scene_name,
+            block_name,
+            self.actor_controller_factory.as_ref(),
+        )
+        .unwrap();
         self.scene_manager.push_scene(self.scene.scene.clone());
 
         self.scene_name = scene_name.to_string();

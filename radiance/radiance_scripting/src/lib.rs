@@ -28,6 +28,9 @@ pub mod script_bridges {
     pub mod immediate_director {
         include!(concat!(env!("OUT_DIR"), "/immediate_director_bridge.rs"));
     }
+    pub mod scripting_services {
+        include!(concat!(env!("OUT_DIR"), "/scripting_services_bridge.rs"));
+    }
 }
 
 pub mod proxies;
@@ -41,6 +44,12 @@ pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};
 pub use script_bridges::immediate_director::register_immediate_director_proto;
 pub use script_bridges::radiance::wrap_director;
 pub use services::HostContext;
+
+/// Re-export of the radiance-side `wrap_ray_caster` so callers
+/// already pulling in `radiance_scripting` don't need to know that
+/// the host impl lives in the `radiance` crate.
+pub use radiance::scene::wrap_scene_camera;
+pub use radiance::utils::ray_casting::wrap_ray_caster;
 
 // Re-export crosscom-protosept primitives that editor bootstrap code
 // uses (RuntimeHandle, RuntimeAccess, with_services). Keeps the

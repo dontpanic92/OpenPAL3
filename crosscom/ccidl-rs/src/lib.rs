@@ -1170,6 +1170,9 @@ pub const GLOBAL_{base}VirtualTable_CCW_FOR_{class_name}: {module}::{base}Virtua
             let ret_mapping = if method.ret_ty == "&str" || method.ret_ty == "string" {
                 "std::ffi::CString::new(ret).unwrap().into_raw() as *const std::os::raw::c_char"
                     .to_string()
+            } else if method.ret_ty.trim() == "float?" {
+                // NaN-as-None sentinel on the C ABI.
+                "match ret { Some(v) => v, None => f32::NAN }".to_string()
             } else {
                 "ret.into()".to_string()
             };
@@ -1446,6 +1449,11 @@ pub {signature} {{
         if method.ret_ty == "&str" || method.ret_ty == "string" {
             return "std::ffi::CString::new(ret).unwrap().into_raw() as *const std::os::raw::c_char".to_string();
         }
+        // `?float` uses NaN as the absence sentinel on the C ABI;
+        // the safe wrapper recovers `Option<f32>` here.
+        if method.ret_ty.trim() == "float?" {
+            return "if ret.is_nan() { None } else { Some(ret) }".to_string();
+        }
         match type_map(&method.ret_ty).and_then(|mapped| mapped.2) {
             Some(conversion) => format!("ret{conversion}"),
             None => "ret.into()".to_string(),
@@ -1475,8 +1483,17 @@ pub {signature} {{
         let is_out = attrs.iter().any(|attr| attr == "out");
         if idl_ty.ends_with("[]") {
             Ok("*const *const std::os::raw::c_void".to_string())
-        } else if idl_ty.ends_with('?') {
-            Ok("crosscom::RawPointer".to_string())
+        } else if let Some(inner) = idl_ty.strip_suffix('?') {
+            let inner = inner.trim();
+            // Nullable primitives travel by-value with a sentinel:
+            // float? uses NaN-as-None on the C ABI. The safe wrapper
+            // checks `is_nan()` to recover the Rust `Option<f32>`.
+            if inner == "float" {
+                Ok("std::os::raw::c_float".to_string())
+            } else {
+                // Nullable interface: nullable pointer.
+                Ok("crosscom::RawPointer".to_string())
+            }
         } else if let Some((raw, _, _)) = type_map(idl_ty) {
             Ok(raw.to_string())
         } else if self.interface_symbol(idl_ty)?.is_some() {
@@ -1500,7 +1517,16 @@ pub {signature} {{
                 ));
             }
         } else if let Some(inner_idl_ty) = idl_ty.strip_suffix('?') {
-            if let Some(interface) = self.interface_symbol(inner_idl_ty)? {
+            let inner = inner_idl_ty.trim();
+            // Nullable primitive: emit `Option<T>` for the safe Rust
+            // surface. Currently limited to `float?` — extend here
+            // (and in `map_raw_type` / `gen_ret_ty_convert` /
+            // `gen_param_ty_convert`) when new nullable primitives
+            // are needed.
+            if inner == "float" {
+                return Ok("Option<f32>".to_string());
+            }
+            if let Some(interface) = self.interface_symbol(inner)? {
                 let module = &interface.module.as_ref().unwrap().module_name;
                 return Ok(format!(
                     "Option<crosscom::ComRc<{}::{}>>",

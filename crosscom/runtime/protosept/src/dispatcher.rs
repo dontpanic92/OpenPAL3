@@ -754,9 +754,16 @@ fn push_return(ctx: &mut Context, rt: &HostReturnTy, raw: RawReturn) -> Result<(
                 Ok(())
             }
             (HostReturnTy::Float, RawReturn::Float(v)) => {
-                ctx.stack_frame_mut()?
-                    .stack
-                    .push(Data::Some(Rc::new(Data::Float(v as f64))));
+                // `?float` uses NaN as the absence sentinel on the C
+                // ABI (matches ccidl-rs comdef gen). Decode NaN here
+                // back to `Data::Null` so scripts observe the proper
+                // option shape.
+                let pushed = if v.is_nan() {
+                    Data::Null
+                } else {
+                    Data::Some(Rc::new(Data::Float(v as f64)))
+                };
+                ctx.stack_frame_mut()?.stack.push(pushed);
                 Ok(())
             }
             (other_inner, _) => Err(RuntimeError::Other(format!(

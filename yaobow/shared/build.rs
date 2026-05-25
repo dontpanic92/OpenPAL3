@@ -6,6 +6,8 @@ fn main() {
     features::enable_features();
     generate_comdef("openpal3.idl", "shared_openpal3_comdef.rs");
     generate_comdef("openpal4.idl", "shared_openpal4_comdef.rs");
+    generate_p7("openpal4.idl", "shared_openpal4.p7");
+    generate_script_bridge("openpal4.idl", "shared_openpal4_bridge.rs");
     generate_comdef("openpal5.idl", "shared_openpal5_comdef.rs");
     generate_comdef("openswd5.idl", "shared_openswd5_comdef.rs");
 

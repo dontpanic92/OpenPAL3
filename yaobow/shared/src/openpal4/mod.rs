@@ -14,7 +14,9 @@ pub mod comdef {
     }
 }
 pub mod actor;
+pub mod actor_controller_script;
 pub mod director;
+pub mod game_context;
 pub mod pal4_debug;
 pub mod scene;
 pub mod scene_editor_access;

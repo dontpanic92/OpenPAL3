@@ -2,7 +2,7 @@ use crosscom::ComRc;
 use uuid::Uuid;
 
 use crate::comdef::{IComponent, IComponentContainerImpl, IEntity, IEntityImpl};
-use crate::math::{Mat44, Transform};
+use crate::math::{Mat44, Transform, Vec3};
 use crate::rendering::RenderingComponent;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::rc::Rc;
@@ -345,5 +345,34 @@ impl IEntityImpl for CoreEntity {
 
     fn set_enabled(&self, enabled: bool) -> () {
         self.props_mut().enabled = enabled;
+    }
+
+    fn position_x(&self) -> f32 {
+        self.transform.borrow().position().x
+    }
+
+    fn position_y(&self) -> f32 {
+        self.transform.borrow().position().y
+    }
+
+    fn position_z(&self) -> f32 {
+        self.transform.borrow().position().z
+    }
+
+    fn set_position(&self, x: f32, y: f32, z: f32) -> () {
+        self.transform
+            .borrow_mut()
+            .set_position(&Vec3::new(x, y, z));
+    }
+
+    fn look_at(&self, x: f32, y: f32, z: f32) -> () {
+        self.transform.borrow_mut().look_at(&Vec3::new(x, y, z));
+    }
+
+    fn set_position_and_look_at(&self, px: f32, py: f32, pz: f32, lx: f32, ly: f32, lz: f32) -> () {
+        self.transform
+            .borrow_mut()
+            .set_position(&Vec3::new(px, py, pz))
+            .look_at(&Vec3::new(lx, ly, lz));
     }
 }

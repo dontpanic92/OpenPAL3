@@ -7,6 +7,10 @@
 import immediate_director;
 import pal4_debug;
 import pal4_debug_overlay;
+import openpal4;
+import radiance;
+import scripting_services;
+import actor_controller;
 import title;
 import yaobow_services;
 
@@ -22,6 +26,29 @@ pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
         ctx: box<pal4_debug.IPal4DebugContext>,
     ) -> box<pal4_debug.IPal4DebugOverlay> {
         return pal4_debug_overlay.make_overlay(ctx);
+    }
+
+    pub fn make_actor_controller(
+        self: ref<Self>,
+        game_ctx: box<openpal4.IPal4GameContext>,
+        input: box<scripting_services.IInputService>,
+        entity_0: box<radiance.IEntity>,
+        entity_1: box<radiance.IEntity>,
+        entity_2: box<radiance.IEntity>,
+        entity_3: box<radiance.IEntity>,
+        anim_0: box<openpal4.IPal4ActorAnimationController>,
+        anim_1: box<openpal4.IPal4ActorAnimationController>,
+        anim_2: box<openpal4.IPal4ActorAnimationController>,
+        anim_3: box<openpal4.IPal4ActorAnimationController>,
+        camera: box<radiance.ICameraControl>,
+        ray_caster: box<radiance.IRayCaster>,
+    ) -> box<openpal4.IPal4ActorController> {
+        return actor_controller.make_actor_controller(
+            game_ctx, input,
+            entity_0, entity_1, entity_2, entity_3,
+            anim_0, anim_1, anim_2, anim_3,
+            camera, ray_caster,
+        );
     }
 }
 

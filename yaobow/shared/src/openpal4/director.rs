@@ -88,6 +88,19 @@ impl OpenPAL4Director {
         *self.debug.borrow_mut() = Some(bundle);
     }
 
+    /// Install the scripted `IPal4ActorController` factory on the
+    /// underlying `Pal4AppContext`. Must be called before the first
+    /// `load_scene` for the controllers to attach.
+    pub fn set_actor_controller_factory(
+        &self,
+        factory: Rc<dyn super::scene::Pal4ActorControllerFactory>,
+    ) {
+        self.vm
+            .borrow_mut()
+            .app_context_mut()
+            .set_actor_controller_factory(factory);
+    }
+
     fn refresh_debug_snapshot(&self, delta_sec: f32) {
         let bundle_ref = self.debug.borrow();
         let Some(bundle) = bundle_ref.as_ref() else {

@@ -95,6 +95,10 @@ interface IInputService: IUnknown {
     bool key_pressed(int keycode);
     float mouse_x();
     float mouse_y();
+    // Axis value in [-1.0, 1.0]. Axis codes mirror
+    // `radiance::input::Axis`: LeftStickX=0, LeftStickY=1,
+    // RightStickX=2, RightStickY=3.
+    float axis(int axis_code);
 }
 [uuid(0993f2d2-6b91-4bbb-92ac-acd5e3ee94c4)]
 class InputService: IInputService {}

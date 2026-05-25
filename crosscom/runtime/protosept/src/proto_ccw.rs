@@ -112,6 +112,12 @@ pub enum RetKind {
         type_tag: String,
         uuid: [u8; 16],
     },
+    /// `float?` primitive return. C-ABI is a single `c_float`; the
+    /// `NaN` bit-pattern is the absence sentinel (mirrors the comdef
+    /// gen `Option<f32> ↔ f32::NAN` convention). On dispatch the
+    /// libffi thunk writes `f32::NAN` when the script returns
+    /// `Data::Null` and the actual value otherwise.
+    OptionalFloat,
 }
 
 /// Register an interface so [`wrap_proto`] can produce CCWs of it.
@@ -258,7 +264,8 @@ fn validate_spec(spec: &ProtoSpec) -> Result<(), HostError> {
             | RetKind::Int
             | RetKind::Float
             | RetKind::Bool
-            | RetKind::OptionalForeign { .. } => {}
+            | RetKind::OptionalForeign { .. }
+            | RetKind::OptionalFloat => {}
         }
         // Re-asserting the type names is intentionally exhaustive so a
         // future variant addition forces an update here.
@@ -287,7 +294,9 @@ fn build_registered_proto(spec: ProtoSpec) -> Result<RegisteredProto, HostError>
         let closure = match method.ret {
             RetKind::Void => Closure::new(cif, method_thunk_void, userdata_ptr),
             RetKind::Int | RetKind::Bool => Closure::new(cif, method_thunk_int, userdata_ptr),
-            RetKind::Float => Closure::new(cif, method_thunk_float, userdata_ptr),
+            RetKind::Float | RetKind::OptionalFloat => {
+                Closure::new(cif, method_thunk_float, userdata_ptr)
+            }
             RetKind::OptionalForeign { .. } => Closure::new(cif, method_thunk_ptr, userdata_ptr),
         };
         let code: *const c_void = *closure.code_ptr() as *const c_void;
@@ -363,7 +372,7 @@ fn build_cif_for(method: &MethodSpec) -> Cif {
     let ret_type = match &method.ret {
         RetKind::Void => Type::void(),
         RetKind::Int => Type::c_int(),
-        RetKind::Float => Type::f32(),
+        RetKind::Float | RetKind::OptionalFloat => Type::f32(),
         RetKind::Bool => Type::c_int(),
         RetKind::OptionalForeign { .. } => Type::pointer(),
     };
@@ -762,6 +771,8 @@ enum DispatchOutcome {
     /// build a CCW on top of a CCW and fail script-method dispatch)
     /// and pass the underlying COM pointer through directly.
     OptionalForeignRaw(*const *const c_void),
+    /// `float?` return: `None` is sent over the C ABI as `NaN`.
+    OptionalFloat(Option<f32>),
     Error(HostError),
 }
 
@@ -795,6 +806,8 @@ unsafe extern "C" fn method_thunk_float(
 ) {
     match dispatch_method(args, userdata) {
         DispatchOutcome::Float(f) => *result = f as c_float,
+        DispatchOutcome::OptionalFloat(Some(v)) => *result = v,
+        DispatchOutcome::OptionalFloat(None) => *result = f32::NAN,
         DispatchOutcome::Error(_) | _ => *result = 0.0,
     }
 }
@@ -957,6 +970,21 @@ fn invoke_script_method(
             Some(Data::Float(f)) => DispatchOutcome::Float(f),
             other => DispatchOutcome::Error(HostError::message(format!(
                 "{}: expected Float return, got {:?}",
+                method_name, other
+            ))),
+        },
+        RetKind::OptionalFloat => match frame.stack.pop() {
+            Some(Data::Null) => DispatchOutcome::OptionalFloat(None),
+            Some(Data::Some(inner)) => match &*inner {
+                Data::Float(f) => DispatchOutcome::OptionalFloat(Some(*f as f32)),
+                other => DispatchOutcome::Error(HostError::message(format!(
+                    "{}: expected ?Float inner Float, got {:?}",
+                    method_name, other
+                ))),
+            },
+            Some(Data::Float(f)) => DispatchOutcome::OptionalFloat(Some(f as f32)),
+            other => DispatchOutcome::Error(HostError::message(format!(
+                "{}: expected OptionalFloat return, got {:?}",
                 method_name, other
             ))),
         },

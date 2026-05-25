@@ -49,6 +49,11 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
             project.make_pal4_debug_bundle()
         };
 
+        let actor_controller_factory = {
+            let project = YaobowScriptProject::install(&self.app);
+            project.actor_controller_factory()
+        };
+
         let director = OpenPAL4Director::new(
             component_factory.clone(),
             loader,
@@ -59,6 +64,7 @@ impl IComponentImpl for OpenPal4ApplicationLoader {
             task_manager,
         );
         director.set_debug_bundle(debug);
+        director.set_actor_controller_factory(actor_controller_factory);
         let director_com: ComRc<radiance::comdef::IDirector> = ComRc::from_object(director);
         scene_manager.set_director(director_com);
 

@@ -1,0 +1,269 @@
+// Protosept implementation of `openpal4.IPal4ActorController`.
+//
+// One controller drives the entire party: it is attached as a component
+// to a synthetic "party root" entity that parents the four player
+// entities. Each frame, the controller looks up the current leader index
+// (`game_ctx.current_leader()`) and dispatches movement/animation work
+// to that slot's entity + animation handle. The other three slots sit
+// idle (the engine's per-entity animation/render still runs on its own).
+//
+// Engine surface flows in through generic scriptable engine protos:
+//   - `radiance.IEntity`                              actor transform
+//   - `radiance.ICameraControl`                       camera transform + basis
+//   - `radiance.IRayCaster`                           floor raycast
+//   - `scripting_services.IInputService`              keyboard + gamepad axes
+//   - `openpal4.IPal4ActorAnimationController`        per-actor animation
+//   - `openpal4.IPal4GameContext`                     leader index + event triggers
+//
+// Mutable scene-wide state (`locked`, `camera_rotation`, `camera_height`)
+// lives in a `box<Pal4PartyMutState>` cell because the `IPal4ActorController`
+// proto methods are `ref<Self>` and a `ref<Self>` receiver cannot mutate
+// own non-box fields directly.
+
+import openpal4;
+import radiance;
+import scripting_services;
+
+// ----- Keycode + axis constants (mirror `radiance_scripting::services::input`).
+
+let KEY_A: int = 1;
+let KEY_D: int = 4;
+let KEY_S: int = 19;
+let KEY_W: int = 23;
+
+let KEY_LEFT: int = 39;
+let KEY_UP: int = 40;
+let KEY_RIGHT: int = 41;
+let KEY_DOWN: int = 42;
+let KEY_DPAD_UP: int = 47;
+let KEY_DPAD_DOWN: int = 48;
+let KEY_DPAD_LEFT: int = 49;
+let KEY_DPAD_RIGHT: int = 50;
+
+let AXIS_LX: int = 0;
+let AXIS_LY: int = 1;
+let AXIS_RX: int = 2;
+
+// ----- Tunables (mirror the original Rust controller).
+
+let SPEED: float = 175.0;
+let STEP_HEIGHT: float = 10.0;
+let TRIGGER_HEIGHT: float = 10.0;
+let CAMERA_ROTATE_SPEED: float = 1.5;
+let CAMERA_HEIGHT_SPEED: float = 100.0;
+let DEADZONE: float = 0.1;
+let TAU: float = 6.283185307179586;
+
+let ANIM_IDLE: int = 0;
+let ANIM_RUN: int = 2;
+let ANIM_CFG_LOOPING: int = 1;
+
+// ----- Mutable cell -------------------------------------------------------
+//
+// Held inside `box<>` so `ref<Self>` proto methods can still mutate.
+
+pub struct Pal4PartyMutState(
+    pub locked: bool,
+    pub camera_rotation: float,
+    pub camera_height: float,
+) {}
+
+// ----- Party controller ---------------------------------------------------
+
+pub struct[openpal4.IPal4ActorController] Pal4PartyController(
+    pub game_ctx: box<openpal4.IPal4GameContext>,
+    pub input: box<scripting_services.IInputService>,
+    pub entity_0: box<radiance.IEntity>,
+    pub entity_1: box<radiance.IEntity>,
+    pub entity_2: box<radiance.IEntity>,
+    pub entity_3: box<radiance.IEntity>,
+    pub anim_0: box<openpal4.IPal4ActorAnimationController>,
+    pub anim_1: box<openpal4.IPal4ActorAnimationController>,
+    pub anim_2: box<openpal4.IPal4ActorAnimationController>,
+    pub anim_3: box<openpal4.IPal4ActorAnimationController>,
+    pub camera: box<radiance.ICameraControl>,
+    pub ray_caster: box<radiance.IRayCaster>,
+    pub state: box<Pal4PartyMutState>,
+) {
+    pub fn on_loading(self: ref<Self>) -> int {
+        0
+    }
+
+    pub fn on_unloading(self: ref<Self>) -> int {
+        0
+    }
+
+    pub fn lock_control(self: ref<Self>, lock: bool) -> int {
+        self.state.locked = lock;
+        0
+    }
+
+    pub fn on_updating(self: ref<Self>, delta_sec: float) -> int {
+        if self.state.locked {
+            return 0;
+        }
+
+        let leader: int = self.game_ctx.current_leader();
+        if leader < 0 {
+            return 0;
+        }
+        if leader > 3 {
+            return 0;
+        }
+        let entity: box<radiance.IEntity> = match leader {
+            0 => self.entity_0,
+            1 => self.entity_1,
+            2 => self.entity_2,
+            _ => self.entity_3,
+        };
+        let anim: box<openpal4.IPal4ActorAnimationController> = match leader {
+            0 => self.anim_0,
+            1 => self.anim_1,
+            2 => self.anim_2,
+            _ => self.anim_3,
+        };
+
+        let cx: float = entity.position_x();
+        let cy: float = entity.position_y();
+        let cz: float = entity.position_z();
+
+        // --- Build local movement direction from arrow keys / DPad / left stick.
+        let mut lx: float = 0.0;
+        let mut lz: float = 0.0;
+        if self.input.key_down(KEY_UP)         { lz = lz - 1.0; }
+        if self.input.key_down(KEY_DPAD_UP)    { lz = lz - 1.0; }
+        if self.input.key_down(KEY_DOWN)       { lz = lz + 1.0; }
+        if self.input.key_down(KEY_DPAD_DOWN)  { lz = lz + 1.0; }
+        if self.input.key_down(KEY_LEFT)       { lx = lx - 1.0; }
+        if self.input.key_down(KEY_DPAD_LEFT)  { lx = lx - 1.0; }
+        if self.input.key_down(KEY_RIGHT)      { lx = lx + 1.0; }
+        if self.input.key_down(KEY_DPAD_RIGHT) { lx = lx + 1.0; }
+
+        let raw_lx: float = self.input.axis(AXIS_LX);
+        if raw_lx > DEADZONE  { lx = lx + raw_lx; }
+        if raw_lx < -DEADZONE { lx = lx + raw_lx; }
+        let raw_ly: float = self.input.axis(AXIS_LY);
+        if raw_ly > DEADZONE  { lz = lz - raw_ly; }
+        if raw_ly < -DEADZONE { lz = lz - raw_ly; }
+
+        let local_mag_sq: float = lx * lx + lz * lz;
+        if local_mag_sq > 0.0 {
+            let local_mag: float = sqrt(local_mag_sq);
+            lx = lx / local_mag;
+            lz = lz / local_mag;
+        }
+
+        let rxw: float = self.camera.right_x();
+        let rzw: float = self.camera.right_z();
+        let fxw: float = self.camera.forward_x();
+        let fzw: float = self.camera.forward_z();
+        let mut dx: float = rxw * lx + fxw * lz;
+        let mut dz: float = rzw * lx + fzw * lz;
+        let world_mag_sq: float = dx * dx + dz * dz;
+        if world_mag_sq > 0.0 {
+            let world_mag: float = sqrt(world_mag_sq);
+            dx = dx / world_mag;
+            dz = dz / world_mag;
+        }
+
+        let tx: float = cx + SPEED * delta_sec * dx;
+        let ty: float = cy;
+        let tz: float = cz + SPEED * delta_sec * dz;
+
+        let mx: float = tx - cx;
+        let my: float = ty - cy;
+        let mz: float = tz - cz;
+
+        self.game_ctx.check_event_triggers(cx, cy + TRIGGER_HEIGHT, cz, mx, my, mz);
+
+        let ray_y: float = ty + STEP_HEIGHT;
+        let depth_opt: ?float = self.ray_caster.cast_aa_ny(tx, ray_y, tz);
+        if depth_opt != null {
+            let depth: float = depth_opt!;
+            let new_y: float = ty + STEP_HEIGHT - depth;
+            let dir_sq: float = dx * dx + dz * dz;
+            if dir_sq > 0.25 {
+                entity.set_position_and_look_at(
+                    tx, new_y, tz,
+                    cx, new_y, cz,
+                );
+                if anim.current_id() != ANIM_RUN {
+                    anim.play_by_id(ANIM_RUN, ANIM_CFG_LOOPING);
+                }
+            } else {
+                if anim.current_id() != ANIM_IDLE {
+                    anim.play_by_id(ANIM_IDLE, ANIM_CFG_LOOPING);
+                }
+            }
+        }
+
+        // --- Camera rotation: A/D keys + RightStickX. Wrapped to [0, 2π).
+        let mut rotation: float = self.state.camera_rotation;
+        if self.input.key_down(KEY_A) {
+            rotation = rotation - CAMERA_ROTATE_SPEED * delta_sec;
+        }
+        if self.input.key_down(KEY_D) {
+            rotation = rotation + CAMERA_ROTATE_SPEED * delta_sec;
+        }
+        let raw_rx: float = self.input.axis(AXIS_RX);
+        if raw_rx > DEADZONE {
+            rotation = rotation - CAMERA_ROTATE_SPEED * delta_sec * raw_rx;
+        }
+        if raw_rx < -DEADZONE {
+            rotation = rotation - CAMERA_ROTATE_SPEED * delta_sec * raw_rx;
+        }
+        if rotation < 0.0 {
+            rotation = rotation + TAU;
+        }
+        if rotation > TAU {
+            rotation = rotation - TAU;
+        }
+        self.state.camera_rotation = rotation;
+
+        // --- Camera height: W/S keys.
+        let mut height: float = self.state.camera_height;
+        if self.input.key_down(KEY_W) {
+            height = height + CAMERA_HEIGHT_SPEED * delta_sec;
+        }
+        if self.input.key_down(KEY_S) {
+            height = height - CAMERA_HEIGHT_SPEED * delta_sec;
+        }
+        self.state.camera_height = height;
+
+        // --- Camera composition (see original Rust transform chain).
+        let cr: float = cos(rotation);
+        let sr: float = sin(rotation);
+        let cam_x: float = 300.0 * (cr + sr) + tx;
+        let cam_y: float = height + ty;
+        let cam_z: float = 300.0 * (cr - sr) + tz;
+        self.camera.set_position(cam_x, cam_y, cam_z);
+        self.camera.look_at(tx, ty, tz);
+
+        0
+    }
+}
+
+// ----- Factory ------------------------------------------------------------
+
+pub fn make_actor_controller(
+    game_ctx: box<openpal4.IPal4GameContext>,
+    input: box<scripting_services.IInputService>,
+    entity_0: box<radiance.IEntity>,
+    entity_1: box<radiance.IEntity>,
+    entity_2: box<radiance.IEntity>,
+    entity_3: box<radiance.IEntity>,
+    anim_0: box<openpal4.IPal4ActorAnimationController>,
+    anim_1: box<openpal4.IPal4ActorAnimationController>,
+    anim_2: box<openpal4.IPal4ActorAnimationController>,
+    anim_3: box<openpal4.IPal4ActorAnimationController>,
+    camera: box<radiance.ICameraControl>,
+    ray_caster: box<radiance.IRayCaster>,
+) -> box<openpal4.IPal4ActorController> {
+    box(Pal4PartyController(
+        game_ctx, input,
+        entity_0, entity_1, entity_2, entity_3,
+        anim_0, anim_1, anim_2, anim_3,
+        camera, ray_caster,
+        box(Pal4PartyMutState(true, 0.0, 300.0)),
+    )) as box<openpal4.IPal4ActorController>
+}

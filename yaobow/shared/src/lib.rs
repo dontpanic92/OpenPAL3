@@ -16,6 +16,17 @@ pub mod script_bridges {
     pub mod pal4_debug {
         include!(concat!(env!("OUT_DIR"), "/shared_pal4_debug_bridge.rs"));
     }
+    pub mod openpal4 {
+        include!(concat!(env!("OUT_DIR"), "/shared_openpal4_bridge.rs"));
+    }
+    // Re-export the cross-IDL bridges that `openpal4` depends on so
+    // the codegen-emitted `crate::script_bridges::radiance::...`
+    // paths resolve. The actual bridge code lives in the
+    // `radiance_scripting` crate; we just publish it at the same
+    // local path the generator assumes.
+    pub mod radiance {
+        pub use radiance_scripting::script_bridges::radiance::*;
+    }
 }
 pub mod ui;
 pub mod utils;

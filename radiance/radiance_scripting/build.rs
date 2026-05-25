@@ -25,6 +25,7 @@ fn main() {
     generate_script_bridge("crosscom.idl", "crosscom_bridge.rs");
     generate_script_bridge("radiance.idl", "radiance_bridge.rs");
     generate_script_bridge("immediate_director.idl", "immediate_director_bridge.rs");
+    generate_script_bridge("scripting_services.idl", "scripting_services_bridge.rs");
 }
 
 fn idl_path(idl_file: &str) -> PathBuf {

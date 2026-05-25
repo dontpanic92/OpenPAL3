@@ -1,6 +1,9 @@
 use crate::math::Vec3;
 
 mod mesh;
+mod script;
+
+pub use script::{wrap_ray_caster, ScriptRayCaster};
 
 pub struct RayCaster {
     colliders: Vec<mesh::Mesh>,
