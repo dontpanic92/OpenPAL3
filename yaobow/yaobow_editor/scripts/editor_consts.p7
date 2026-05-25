@@ -7,13 +7,37 @@
 import radiance;
 import immediate_director;
 
-pub let CONTENT_KIND_TEXT: int = 1;
-pub let CONTENT_KIND_IMAGE: int = 2;
-pub let CONTENT_KIND_AUDIO: int = 3;
-pub let CONTENT_KIND_VIDEO: int = 4;
-pub let CONTENT_KIND_MODEL: int = 5;
-pub let CONTENT_KIND_STRUCTURED: int = 6;
-pub let CONTENT_KIND_SCENE: int = 7;
+// Enum mirror of the int kinds returned by `IPreviewerHub.classify`.
+// `classify_kind(raw)` is the sole int→enum bridge at the IDL
+// boundary; every script-side consumer (ContentTab.kind, render
+// dispatch, audio pump checks) carries `ContentKind` directly.
+// Dispatch with `match` so the compiler keeps every consumer
+// exhaustive (spec §9.6.4). Variant ordinals MUST stay aligned with
+// the literal mapping in `classify_kind` below and with
+// `classify_path` in `previewer_hub.rs`.
+pub enum ContentKind(
+    Unsupported,  // 0
+    Text,         // 1
+    Image,        // 2
+    Audio,        // 3
+    Video,        // 4
+    Model,        // 5
+    Structured,   // 6
+    Scene,        // 7
+);
+
+pub fn classify_kind(raw: int) -> ContentKind {
+    match raw {
+        1 => ContentKind.Text,
+        2 => ContentKind.Image,
+        3 => ContentKind.Audio,
+        4 => ContentKind.Video,
+        5 => ContentKind.Model,
+        6 => ContentKind.Structured,
+        7 => ContentKind.Scene,
+        _ => ContentKind.Unsupported,
+    }
+}
 
 // Dock layout: the four panels rendered by `main_editor.p7` under the
 // fullscreen dockspace. Window titles are stable across frames so

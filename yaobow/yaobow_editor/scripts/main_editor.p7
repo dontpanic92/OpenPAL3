@@ -125,7 +125,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] MainEditor
 
         // Per-frame audio handle pump.
         for t in self.tabs {
-            if t.kind == editor_consts.CONTENT_KIND_AUDIO && t.audio_handle != null {
+            if t.kind == editor_consts.ContentKind.Audio && t.audio_handle != null {
                 let h = t.audio_handle!;
                 h.update();
             }

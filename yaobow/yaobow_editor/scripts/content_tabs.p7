@@ -13,7 +13,7 @@ import editor_consts;
 pub struct ContentTab(
     pub label: string,
     pub close_cmd: int,
-    pub kind: int,
+    pub kind: editor_consts.ContentKind,
     pub text_content: string,
     pub image_handle: ?box<yaobow_editor_services.IImageHandle>,
     pub audio_handle: ?box<yaobow_editor_services.IAudioHandle>,
@@ -24,28 +24,28 @@ pub struct ContentTab(
     pub scene_session: ?box<yaobow_editor_services.IScenePreviewSession>,
 );
 
-fn make_text_tab(label: string, close_cmd: int, content: string, kind: int) -> ContentTab {
+fn make_text_tab(label: string, close_cmd: int, content: string, kind: editor_consts.ContentKind) -> ContentTab {
     ContentTab(label, close_cmd, kind, content, null, null, null, null, null, null, null)
 }
 
 fn make_image_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IImageHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_IMAGE, "", handle, null, null, null, null, null, null)
+    ContentTab(label, close_cmd, editor_consts.ContentKind.Image, "", handle, null, null, null, null, null, null)
 }
 
 fn make_audio_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IAudioHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_AUDIO, "", null, handle, null, null, null, null, null)
+    ContentTab(label, close_cmd, editor_consts.ContentKind.Audio, "", null, handle, null, null, null, null, null)
 }
 
 fn make_video_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IVideoHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_VIDEO, "", null, null, handle, null, null, null, null)
+    ContentTab(label, close_cmd, editor_consts.ContentKind.Video, "", null, null, handle, null, null, null, null)
 }
 
 fn make_model_tab(label: string, close_cmd: int, content: string, handle: box<yaobow_editor_services.IModelHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_MODEL, content, null, null, null, handle, null, null, null)
+    ContentTab(label, close_cmd, editor_consts.ContentKind.Model, content, null, null, null, handle, null, null, null)
 }
 
 fn make_scene_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.ISceneHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.CONTENT_KIND_SCENE, "", null, null, null, null, null, handle, null)
+    ContentTab(label, close_cmd, editor_consts.ContentKind.Scene, "", null, null, null, null, null, handle, null)
 }
 
 // Returns null if the path could not be opened (unsupported extension or
@@ -61,42 +61,49 @@ pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: st
         return make_scene_tab(path, close_cmd, scene!);
     }
 
-    let kind = hub.classify(path);
-    if kind == editor_consts.CONTENT_KIND_TEXT {
-        return make_text_tab(path, close_cmd, hub.open_text(path), editor_consts.CONTENT_KIND_TEXT);
-    }
-    if kind == editor_consts.CONTENT_KIND_STRUCTURED {
-        return make_text_tab(path, close_cmd, hub.dump_structured(path), editor_consts.CONTENT_KIND_STRUCTURED);
-    }
-    if kind == editor_consts.CONTENT_KIND_IMAGE {
-        let h = hub.open_image(path);
-        if h != null {
-            return make_image_tab(path, close_cmd, h!);
-        }
-        return null;
-    }
-    if kind == editor_consts.CONTENT_KIND_AUDIO {
-        let h = hub.open_audio(path);
-        if h != null {
-            return make_audio_tab(path, close_cmd, h!);
-        }
-        return null;
-    }
-    if kind == editor_consts.CONTENT_KIND_VIDEO {
-        let h = hub.open_video(path);
-        if h != null {
-            return make_video_tab(path, close_cmd, h!);
-        }
-        return null;
-    }
-    if kind == editor_consts.CONTENT_KIND_MODEL {
-        let h = hub.open_model(path);
-        if h != null {
-            let handle = h!;
-            let dump = handle.text_dump();
-            return make_model_tab(path, close_cmd, dump, handle);
-        }
-        return null;
+    let kind = editor_consts.classify_kind(hub.classify(path));
+    match kind {
+        editor_consts.ContentKind.Text => {
+            return make_text_tab(path, close_cmd, hub.open_text(path), editor_consts.ContentKind.Text);
+        },
+        editor_consts.ContentKind.Structured => {
+            return make_text_tab(path, close_cmd, hub.dump_structured(path), editor_consts.ContentKind.Structured);
+        },
+        editor_consts.ContentKind.Image => {
+            let h = hub.open_image(path);
+            if h != null {
+                return make_image_tab(path, close_cmd, h!);
+            }
+            return null;
+        },
+        editor_consts.ContentKind.Audio => {
+            let h = hub.open_audio(path);
+            if h != null {
+                return make_audio_tab(path, close_cmd, h!);
+            }
+            return null;
+        },
+        editor_consts.ContentKind.Video => {
+            let h = hub.open_video(path);
+            if h != null {
+                return make_video_tab(path, close_cmd, h!);
+            }
+            return null;
+        },
+        editor_consts.ContentKind.Model => {
+            let h = hub.open_model(path);
+            if h != null {
+                let handle = h!;
+                let dump = handle.text_dump();
+                return make_model_tab(path, close_cmd, dump, handle);
+            }
+            return null;
+        },
+        // Scene is handled by the early `hub.open_scene(path)` fast path
+        // above; the classifier never tags `.bsp`/`.scn` as Scene today
+        // (it maps them to Model/Structured), so this arm is defensive.
+        editor_consts.ContentKind.Scene
+        | editor_consts.ContentKind.Unsupported => {},
     }
     return null;
 }
@@ -112,144 +119,150 @@ pub fn render_tab_body_im(
     tab: ref<ContentTab>,
     preview_intents: box<array<int>>,
 ) {
-    if tab.kind == editor_consts.CONTENT_KIND_TEXT || tab.kind == editor_consts.CONTENT_KIND_STRUCTURED {
-        ui.multiline_text(tab.text_content, -1.0, -1.0);
-        return;
-    }
-    if tab.kind == editor_consts.CONTENT_KIND_IMAGE {
-        if tab.image_handle != null {
-            let h = tab.image_handle!;
-            ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
-        } else {
-            ui.text("Unable to load image");
-        }
-        return;
-    }
-    if tab.kind == editor_consts.CONTENT_KIND_AUDIO {
-        if tab.audio_handle != null {
-            let h = tab.audio_handle!;
-            let label = if h.state() == 1 { "Pause" } else { "Play" };
-            ui.text(f"Audio: {tab.label}");
-            if ui.button(label, 80.0, 24.0) {
-                h.toggle();
-            }
-        } else {
-            ui.text("Unable to load audio");
-        }
-        return;
-    }
-    if tab.kind == editor_consts.CONTENT_KIND_VIDEO {
-        if tab.video_handle != null {
-            let h = tab.video_handle!;
-            let label = if h.state() == 1 { "Pause" } else { "Play" };
-            ui.text(f"Video: {tab.label}");
-            if ui.button(label, 80.0, 24.0) {
-                h.toggle();
-            }
-            ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
-        } else {
-            ui.text("Video format not supported");
-        }
-        return;
-    }
-    if tab.kind == editor_consts.CONTENT_KIND_MODEL {
-        if tab.preview_session != null {
-            // Embedded offscreen preview. Fit the offscreen target to
-            // the tab's remaining content region every frame so the
-            // image fills the tab and stays correctly aspected; the
-            // target's `resize` is a no-op when the size is unchanged.
-            let s = tab.preview_session!;
-            let t = s.target();
-            let avail_w = ui.content_region_avail_x();
-            let avail_h = ui.content_region_avail_y();
-            let target_w = if avail_w >= 1 { avail_w } else { 1 };
-            let target_h = if avail_h >= 1 { avail_h } else { 1 };
-            t.resize(target_w, target_h);
-            ui.image(t.texture_id(), target_w as float, target_h as float);
-
-            // Orbit/pan/zoom: cumulative drag deltas come from imgui, so
-            // read + reset every frame to get incremental motion. We
-            // collect deltas only while the user is interacting over
-            // the offscreen image to avoid hijacking input meant for
-            // surrounding widgets.
-            let hovered = ui.is_item_hovered();
-            let left = ui.mouse_down(0);
-            let right = ui.mouse_down(1);
-            let mut dx = 0.0;
-            let mut dy = 0.0;
-            let mut buttons = 0;
-            if hovered && left {
-                dx = ui.mouse_drag_delta_x(0);
-                dy = ui.mouse_drag_delta_y(0);
-                ui.reset_mouse_drag_delta(0);
-                buttons = buttons | 1;
-            }
-            if hovered && right {
-                let rdx = ui.mouse_drag_delta_x(1);
-                let rdy = ui.mouse_drag_delta_y(1);
-                ui.reset_mouse_drag_delta(1);
-                if rdx != 0.0 || rdy != 0.0 {
-                    dx = dx + rdx;
-                    dy = dy + rdy;
-                }
-                buttons = buttons | 2;
-            }
-            let wheel = if hovered { ui.mouse_wheel() } else { 0.0 };
-            if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
-                s.tick_camera(dx, dy, wheel, buttons);
-            }
-        } else {
-            if ui.button("Preview", 100.0, 24.0) {
-                preview_intents.push(tab.close_cmd);
-            }
+    match tab.kind {
+        editor_consts.ContentKind.Text
+        | editor_consts.ContentKind.Structured => {
             ui.multiline_text(tab.text_content, -1.0, -1.0);
-        }
-        return;
-    }
-    if tab.kind == editor_consts.CONTENT_KIND_SCENE {
-        if tab.scene_session != null {
-            let s = tab.scene_session!;
-            let t = s.target();
-            let avail_w = ui.content_region_avail_x();
-            let avail_h = ui.content_region_avail_y();
-            let target_w = if avail_w >= 1 { avail_w } else { 1 };
-            let target_h = if avail_h >= 1 { avail_h } else { 1 };
-            t.resize(target_w, target_h);
-            ui.image(t.texture_id(), target_w as float, target_h as float);
-
-            let hovered = ui.is_item_hovered();
-            let left = ui.mouse_down(0);
-            let right = ui.mouse_down(1);
-            let mut dx = 0.0;
-            let mut dy = 0.0;
-            let mut buttons = 0;
-            if hovered && left {
-                dx = ui.mouse_drag_delta_x(0);
-                dy = ui.mouse_drag_delta_y(0);
-                ui.reset_mouse_drag_delta(0);
-                buttons = buttons | 1;
+            return;
+        },
+        editor_consts.ContentKind.Image => {
+            if tab.image_handle != null {
+                let h = tab.image_handle!;
+                ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
+            } else {
+                ui.text("Unable to load image");
             }
-            if hovered && right {
-                let rdx = ui.mouse_drag_delta_x(1);
-                let rdy = ui.mouse_drag_delta_y(1);
-                ui.reset_mouse_drag_delta(1);
-                if rdx != 0.0 || rdy != 0.0 {
-                    dx = dx + rdx;
-                    dy = dy + rdy;
+            return;
+        },
+        editor_consts.ContentKind.Audio => {
+            if tab.audio_handle != null {
+                let h = tab.audio_handle!;
+                let label = if h.state() == 1 { "Pause" } else { "Play" };
+                ui.text(f"Audio: {tab.label}");
+                if ui.button(label, 80.0, 24.0) {
+                    h.toggle();
                 }
-                buttons = buttons | 2;
+            } else {
+                ui.text("Unable to load audio");
             }
-            let wheel = if hovered { ui.mouse_wheel() } else { 0.0 };
-            if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
-                s.tick_camera(dx, dy, wheel, buttons);
+            return;
+        },
+        editor_consts.ContentKind.Video => {
+            if tab.video_handle != null {
+                let h = tab.video_handle!;
+                let label = if h.state() == 1 { "Pause" } else { "Play" };
+                ui.text(f"Video: {tab.label}");
+                if ui.button(label, 80.0, 24.0) {
+                    h.toggle();
+                }
+                ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
+            } else {
+                ui.text("Video format not supported");
             }
-        } else {
-            if ui.button("打开场景预览", 160.0, 24.0) {
-                preview_intents.push(tab.close_cmd);
+            return;
+        },
+        editor_consts.ContentKind.Model => {
+            if tab.preview_session != null {
+                // Embedded offscreen preview. Fit the offscreen target to
+                // the tab's remaining content region every frame so the
+                // image fills the tab and stays correctly aspected; the
+                // target's `resize` is a no-op when the size is unchanged.
+                let s = tab.preview_session!;
+                let t = s.target();
+                let avail_w = ui.content_region_avail_x();
+                let avail_h = ui.content_region_avail_y();
+                let target_w = if avail_w >= 1 { avail_w } else { 1 };
+                let target_h = if avail_h >= 1 { avail_h } else { 1 };
+                t.resize(target_w, target_h);
+                ui.image(t.texture_id(), target_w as float, target_h as float);
+
+                // Orbit/pan/zoom: cumulative drag deltas come from imgui, so
+                // read + reset every frame to get incremental motion. We
+                // collect deltas only while the user is interacting over
+                // the offscreen image to avoid hijacking input meant for
+                // surrounding widgets.
+                let hovered = ui.is_item_hovered();
+                let left = ui.mouse_down(0);
+                let right = ui.mouse_down(1);
+                let mut dx = 0.0;
+                let mut dy = 0.0;
+                let mut buttons = 0;
+                if hovered && left {
+                    dx = ui.mouse_drag_delta_x(0);
+                    dy = ui.mouse_drag_delta_y(0);
+                    ui.reset_mouse_drag_delta(0);
+                    buttons = buttons | 1;
+                }
+                if hovered && right {
+                    let rdx = ui.mouse_drag_delta_x(1);
+                    let rdy = ui.mouse_drag_delta_y(1);
+                    ui.reset_mouse_drag_delta(1);
+                    if rdx != 0.0 || rdy != 0.0 {
+                        dx = dx + rdx;
+                        dy = dy + rdy;
+                    }
+                    buttons = buttons | 2;
+                }
+                let wheel = if hovered { ui.mouse_wheel() } else { 0.0 };
+                if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
+                    s.tick_camera(dx, dy, wheel, buttons);
+                }
+            } else {
+                if ui.button("Preview", 100.0, 24.0) {
+                    preview_intents.push(tab.close_cmd);
+                }
+                ui.multiline_text(tab.text_content, -1.0, -1.0);
             }
-            ui.text("场景未打开。点击按钮启动离屏渲染。");
-        }
-        return;
+            return;
+        },
+        editor_consts.ContentKind.Scene => {
+            if tab.scene_session != null {
+                let s = tab.scene_session!;
+                let t = s.target();
+                let avail_w = ui.content_region_avail_x();
+                let avail_h = ui.content_region_avail_y();
+                let target_w = if avail_w >= 1 { avail_w } else { 1 };
+                let target_h = if avail_h >= 1 { avail_h } else { 1 };
+                t.resize(target_w, target_h);
+                ui.image(t.texture_id(), target_w as float, target_h as float);
+
+                let hovered = ui.is_item_hovered();
+                let left = ui.mouse_down(0);
+                let right = ui.mouse_down(1);
+                let mut dx = 0.0;
+                let mut dy = 0.0;
+                let mut buttons = 0;
+                if hovered && left {
+                    dx = ui.mouse_drag_delta_x(0);
+                    dy = ui.mouse_drag_delta_y(0);
+                    ui.reset_mouse_drag_delta(0);
+                    buttons = buttons | 1;
+                }
+                if hovered && right {
+                    let rdx = ui.mouse_drag_delta_x(1);
+                    let rdy = ui.mouse_drag_delta_y(1);
+                    ui.reset_mouse_drag_delta(1);
+                    if rdx != 0.0 || rdy != 0.0 {
+                        dx = dx + rdx;
+                        dy = dy + rdy;
+                    }
+                    buttons = buttons | 2;
+                }
+                let wheel = if hovered { ui.mouse_wheel() } else { 0.0 };
+                if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
+                    s.tick_camera(dx, dy, wheel, buttons);
+                }
+            } else {
+                if ui.button("打开场景预览", 160.0, 24.0) {
+                    preview_intents.push(tab.close_cmd);
+                }
+                ui.text("场景未打开。点击按钮启动离屏渲染。");
+            }
+            return;
+        },
+        editor_consts.ContentKind.Unsupported => {
+            ui.text("Unsupported preview");
+            return;
+        },
     }
-    ui.text("Unsupported preview");
 }

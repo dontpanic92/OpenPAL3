@@ -14,21 +14,26 @@ import yaobow_editor_services;
 import immediate_director;
 import editor_consts;
 
-// Intent codes written by render_im, consumed by update.
-let INTENT_NONE: int = 0;
-let INTENT_OPEN_SETTINGS: int = 1;
-let INTENT_OPEN_GAME: int = 2;
-let INTENT_SAVE_AND_RETURN: int = 3;
-let INTENT_CANCEL: int = 4;
-let INTENT_PICK_FOLDER: int = 5;
-let INTENT_CLEAR_PATH: int = 6;
+// Intent codes written by render_im, consumed by update. Modelled as
+// an enum so the dispatchers in `update` get compile-time exhaustiveness
+// (spec §9.6.4) — adding a new intent now forces every consumer to
+// handle it.
+pub enum Intent(
+    None,
+    OpenSettings,
+    OpenGame,
+    SaveAndReturn,
+    Cancel,
+    PickFolder,
+    ClearPath,
+);
 
 // Single-frame intent slot shared by both directors. Methods receive
 // `self: ref<Self>` (matching IDirector/IImmediateDirector), so per-frame
 // scratch state lives behind a `box<IntentCell>` field — boxed-struct field
 // assignment (§10.2) lets `render_im` write `self.state.intent = …` directly.
 pub struct IntentCell(
-    pub intent: int,
+    pub intent: Intent,
     pub intent_arg: int,
 );
 
@@ -39,7 +44,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
     pub state: box<IntentCell>,
 ) {
     pub fn activate(self: ref<Self>) -> int {
-        self.state.intent = INTENT_NONE;
+        self.state.intent = Intent.None;
         self.state.intent_arg = 0;
         0
     }
@@ -83,7 +88,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
             });
             ui.dummy(0.0, 16.0);
             if ui.button("设置", 120.0, 24.0) {
-                self.state.intent = INTENT_OPEN_SETTINGS;
+                self.state.intent = Intent.OpenSettings;
             }
         });
         0
@@ -93,7 +98,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
         let name = welcome_game_name(self, ordinal);
         let label = f"运行《{name}》编辑器";
         if ui.button(label, -1.0, 60.0) {
-            self.state.intent = INTENT_OPEN_GAME;
+            self.state.intent = Intent.OpenGame;
             self.state.intent_arg = ordinal;
         }
     }
@@ -104,28 +109,35 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] WelcomeDir
     ) -> ?box<radiance.IDirector> {
         let code = self.state.intent;
         let arg = self.state.intent_arg;
-        self.state.intent = INTENT_NONE;
+        self.state.intent = Intent.None;
         self.state.intent_arg = 0;
 
-        if code == INTENT_OPEN_SETTINGS {
-            return make_settings_director(self.host, self.games, self.names);
-        }
-        if code == INTENT_OPEN_GAME {
-            let cfg = self.host.config();
-            if cfg.get_asset_path(arg) == "" {
+        match code {
+            Intent.OpenSettings => {
                 return make_settings_director(self.host, self.games, self.names);
-            }
-            let next = self.host.app().open_game(arg);
-            if next != null {
-                // `open_game` returns a `ComRc<IDirector>` produced
-                // by `wrap_im_director` (the QI'd view of the
-                // script-side MainEditorDirector). Hand it back to
-                // the engine directly; the pump's QI to
-                // IImmediateDirector will succeed and drive
-                // MainEditorDirector.render_im inside the imgui
-                // frame scope.
-                return next!;
-            }
+            },
+            Intent.OpenGame => {
+                let cfg = self.host.config();
+                if cfg.get_asset_path(arg) == "" {
+                    return make_settings_director(self.host, self.games, self.names);
+                }
+                let next = self.host.app().open_game(arg);
+                if next != null {
+                    // `open_game` returns a `ComRc<IDirector>` produced
+                    // by `wrap_im_director` (the QI'd view of the
+                    // script-side MainEditorDirector). Hand it back to
+                    // the engine directly; the pump's QI to
+                    // IImmediateDirector will succeed and drive
+                    // MainEditorDirector.render_im inside the imgui
+                    // frame scope.
+                    return next!;
+                }
+            },
+            Intent.None
+            | Intent.SaveAndReturn
+            | Intent.Cancel
+            | Intent.PickFolder
+            | Intent.ClearPath => {},
         }
         return null;
     }
@@ -138,7 +150,7 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
     pub state: box<IntentCell>,
 ) {
     pub fn activate(self: ref<Self>) -> int {
-        self.state.intent = INTENT_NONE;
+        self.state.intent = Intent.None;
         self.state.intent_arg = 0;
         0
     }
@@ -164,11 +176,11 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
             ui.table("settings.footer", 2, () => {
                 ui.table_next_column();
                 if ui.button("保存并返回", 200.0, 32.0) {
-                    self.state.intent = INTENT_SAVE_AND_RETURN;
+                    self.state.intent = Intent.SaveAndReturn;
                 }
                 ui.table_next_column();
                 if ui.button("取消", 200.0, 32.0) {
-                    self.state.intent = INTENT_CANCEL;
+                    self.state.intent = Intent.Cancel;
                 }
             });
         });
@@ -183,12 +195,12 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
         ui.text(path_label(cfg.get_asset_path(ordinal)));
         ui.table_next_column();
         if ui.button(f"选择...##pick_{ordinal}", 100.0, 24.0) {
-            self.state.intent = INTENT_PICK_FOLDER;
+            self.state.intent = Intent.PickFolder;
             self.state.intent_arg = ordinal;
         }
         ui.table_next_column();
         if ui.button(f"清除##clear_{ordinal}", 80.0, 24.0) {
-            self.state.intent = INTENT_CLEAR_PATH;
+            self.state.intent = Intent.ClearPath;
             self.state.intent_arg = ordinal;
         }
     }
@@ -199,27 +211,32 @@ pub struct[immediate_director.IImmediateDirector, radiance.IDirector] SettingsDi
     ) -> ?box<radiance.IDirector> {
         let code = self.state.intent;
         let arg = self.state.intent_arg;
-        self.state.intent = INTENT_NONE;
+        self.state.intent = Intent.None;
         self.state.intent_arg = 0;
 
         let cfg = self.host.config();
-        if code == INTENT_SAVE_AND_RETURN {
-            cfg.save();
-            return make_welcome_director(self.host, self.games, self.names);
-        }
-        if code == INTENT_CANCEL {
-            cfg.reload();
-            return make_welcome_director(self.host, self.games, self.names);
-        }
-        if code == INTENT_PICK_FOLDER {
-            let current = cfg.get_asset_path(arg);
-            let picked = cfg.pick_folder(current);
-            if picked != "" {
-                cfg.set_asset_path(arg, picked);
-            }
-        }
-        if code == INTENT_CLEAR_PATH {
-            cfg.set_asset_path(arg, "");
+        match code {
+            Intent.SaveAndReturn => {
+                cfg.save();
+                return make_welcome_director(self.host, self.games, self.names);
+            },
+            Intent.Cancel => {
+                cfg.reload();
+                return make_welcome_director(self.host, self.games, self.names);
+            },
+            Intent.PickFolder => {
+                let current = cfg.get_asset_path(arg);
+                let picked = cfg.pick_folder(current);
+                if picked != "" {
+                    cfg.set_asset_path(arg, picked);
+                }
+            },
+            Intent.ClearPath => {
+                cfg.set_asset_path(arg, "");
+            },
+            Intent.None
+            | Intent.OpenSettings
+            | Intent.OpenGame => {},
         }
         return null;
     }
@@ -230,7 +247,7 @@ pub fn make_welcome_director(
     games: box<array<int>>,
     names: box<array<string>>,
 ) -> box<radiance.IDirector> {
-    return box(WelcomeDirector(host, games, names, box(IntentCell(INTENT_NONE, 0))))
+    return box(WelcomeDirector(host, games, names, box(IntentCell(Intent.None, 0))))
         as box<radiance.IDirector>;
 }
 
@@ -239,7 +256,7 @@ fn make_settings_director(
     games: box<array<int>>,
     names: box<array<string>>,
 ) -> box<radiance.IDirector> {
-    return box(SettingsDirector(host, games, names, box(IntentCell(INTENT_NONE, 0))))
+    return box(SettingsDirector(host, games, names, box(IntentCell(Intent.None, 0))))
         as box<radiance.IDirector>;
 }
 
