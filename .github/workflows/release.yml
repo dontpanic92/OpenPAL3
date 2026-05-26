@@ -1,0 +1,166 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      VCPKG_ROOT: C:\vcpkg
+      VCPKG_FEATURE_FLAGS: manifests
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ''
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $vulkanSdkVersion = "1.4.304.0"
+          mkdir temp
+          Invoke-WebRequest https://sdk.lunarg.com/sdk/download/$vulkanSdkVersion/windows/VulkanSDK-$vulkanSdkVersion-Installer.exe -OutFile ./temp/vulkan_sdk.exe
+          ./temp/vulkan_sdk.exe in --da --al -c
+          ls C:\VulkanSDK
+      - name: Cache ffmpeg
+        uses: actions/cache@v3
+        with:
+          path: vcpkg_installed
+          key: ${{ runner.os }}-build-ffmpeg
+      - name: Install ffmpeg
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet=x64-windows-static-md --x-manifest-root="$env:GITHUB_WORKSPACE" --x-install-root="$env:GITHUB_WORKSPACE\vcpkg_installed"
+      - name: Build Yaobow
+        shell: pwsh
+        run: |
+          $vulkanSdkVersion = "1.4.304.0"
+          $env:Path += ";C:\VulkanSDK\${vulkanSdkVersion}\Bin"
+          cargo build --workspace --release --verbose
+      - name: Zip Packaging
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          mkdir target/release/yaobow
+          cp target/release/yaobow.exe target/release/yaobow
+          cp target/release/yaobow_editor.exe target/release/yaobow
+          7z a -tzip "target/yaobow-$tag-windows-x86_64.zip" target/release/yaobow
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yaobow-windows-x86_64
+          path: target/yaobow-${{ github.ref_name }}-windows-x86_64.zip
+          if-no-files-found: error
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ''
+      - name: Install Deps
+        run: |
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/lunarg.gpg
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+          sudo apt update
+          sudo apt install nasm vulkan-sdk libudev-dev
+      - name: Cache ffmpeg
+        uses: actions/cache@v3
+        with:
+          path: vcpkg_installed
+          key: ${{ runner.os }}-build-ffmpeg
+      - name: Install ffmpeg
+        run: |
+          vcpkg install --triplet=x64-linux
+      - name: Build
+        run: cargo build --workspace --release --verbose
+      - name: AppImage Packaging
+        run: |
+          cd target
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir
+          cp ../packaging/AppImage/* ./AppDir/
+          cp ./release/yaobow ./AppDir/usr/bin/
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
+      - name: Rename AppImage
+        run: |
+          cd target
+          mv yaobow*.AppImage "yaobow-${{ github.ref_name }}-linux-x86_64.AppImage"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yaobow-linux-x86_64
+          path: target/yaobow-${{ github.ref_name }}-linux-x86_64.AppImage
+          if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-latest
+    env:
+      VCPKG_FEATURE_FLAGS: manifests
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ''
+      - name: Install Deps
+        run: |
+          brew install nasm molten-vk vulkan-headers vulkan-loader shaderc
+      - name: Cache ffmpeg
+        uses: actions/cache@v3
+        with:
+          path: vcpkg_installed
+          key: ${{ runner.os }}-build-ffmpeg
+      - name: Install ffmpeg
+        run: |
+          vcpkg install --triplet=arm64-osx
+      - name: Build
+        run: cargo build --workspace --release --verbose
+      - name: Zip Packaging
+        run: |
+          tag="${{ github.ref_name }}"
+          mkdir -p target/release/yaobow
+          cp target/release/yaobow target/release/yaobow_editor target/release/yaobow/
+          ditto -c -k --sequesterRsrc target/release/yaobow "target/yaobow-${tag}-macos-arm64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yaobow-macos-arm64
+          path: target/yaobow-${{ github.ref_name }}-macos-arm64.zip
+          if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-linux, build-macos]
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Create draft GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: dist/**/*
