@@ -11,6 +11,31 @@ fn utf16_z<T: AsRef<str>>(s: T) -> Vec<u16> {
         .collect()
 }
 
+/// Dynamically resolve a function from a system DLL.
+///
+/// `dll_name` and `proc_name` must be NUL-terminated. Returns `None` if the
+/// DLL cannot be loaded or the export is missing — used so we can call
+/// Windows-version-gated APIs without preventing the binary from loading on
+/// older OS versions.
+unsafe fn load_proc<F: Copy>(dll_name: &str, proc_name: &str) -> Option<F> {
+    debug_assert!(dll_name.ends_with('\0'));
+    debug_assert!(proc_name.ends_with('\0'));
+    debug_assert_eq!(
+        std::mem::size_of::<F>(),
+        std::mem::size_of::<winapi::shared::minwindef::FARPROC>()
+    );
+    let dll_w: Vec<u16> = dll_name.encode_utf16().collect();
+    let module = libloaderapi::LoadLibraryW(dll_w.as_ptr());
+    if module.is_null() {
+        return None;
+    }
+    let addr = libloaderapi::GetProcAddress(module, proc_name.as_ptr() as *const i8);
+    if addr.is_null() {
+        return None;
+    }
+    Some(std::mem::transmute_copy::<_, F>(&addr))
+}
+
 const WM_CLOSE_WINDOW: u32 = winuser::WM_USER + 1;
 pub type MessageCallback = Box<dyn Fn(&winuser::MSG)>;
 
@@ -134,10 +159,43 @@ impl Platform {
     }
 
     fn set_dpi_awareness() {
+        // Resolve DPI-awareness APIs at runtime so the binary still loads on
+        // Windows 7/8/8.1/early-10, which lack SetProcessDpiAwarenessContext.
         unsafe {
-            winuser::SetProcessDpiAwarenessContext(
-                winapi::shared::windef::DPI_AWARENESS_CONTEXT_SYSTEM_AWARE,
-            );
+            // 1. user32!SetProcessDpiAwarenessContext (Windows 10, 1607+)
+            type SetProcessDpiAwarenessContextFn =
+                unsafe extern "system" fn(isize) -> i32;
+            const DPI_AWARENESS_CONTEXT_SYSTEM_AWARE: isize = -2;
+            if let Some(f) = load_proc::<SetProcessDpiAwarenessContextFn>(
+                "user32.dll\0",
+                "SetProcessDpiAwarenessContext\0",
+            ) {
+                if f(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE) != 0 {
+                    return;
+                }
+            }
+
+            // 2. shcore!SetProcessDpiAwareness (Windows 8.1+)
+            type SetProcessDpiAwarenessFn = unsafe extern "system" fn(u32) -> i32;
+            const PROCESS_SYSTEM_DPI_AWARE: u32 = 1;
+            const S_OK: i32 = 0;
+            if let Some(f) = load_proc::<SetProcessDpiAwarenessFn>(
+                "shcore.dll\0",
+                "SetProcessDpiAwareness\0",
+            ) {
+                if f(PROCESS_SYSTEM_DPI_AWARE) == S_OK {
+                    return;
+                }
+            }
+
+            // 3. user32!SetProcessDPIAware (Windows Vista/7)
+            type SetProcessDpiAwareFn = unsafe extern "system" fn() -> i32;
+            if let Some(f) = load_proc::<SetProcessDpiAwareFn>(
+                "user32.dll\0",
+                "SetProcessDPIAware\0",
+            ) {
+                let _ = f();
+            }
         }
     }
 
