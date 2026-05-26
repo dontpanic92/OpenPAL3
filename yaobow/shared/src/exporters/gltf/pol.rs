@@ -5,16 +5,23 @@
 //! `PolMesh` gets its own scene node. Vertex attributes come straight
 //! out of `PolVertex`, mirroring the OBJ exporter's selection rules:
 //!
-//! * Use `tex_coord2` when `TEXCOORD2` is present, else `tex_coord`.
-//!   The OBJ exporter additionally flips V (`1 - v`) for Blender
-//!   compatibility; glTF specifies top-left UV origin so we pass V
-//!   through unchanged.
+//! * Always emit `tex_coord` (the primary UV set) as `TEXCOORD_0`.
+//!   In PAL3 lightmapped meshes the secondary `tex_coord2` set is the
+//!   *lightmap* UV (see `vulkan/shaders/lightmap_texture.frag`:
+//!   `texSampler[0]`=lightmap sampled with `fragTexCoord2`,
+//!   `texSampler[1]`=diffuse sampled with `fragTexCoord`). Since the
+//!   glTF exporter only embeds the diffuse texture, pairing it with
+//!   `tex_coord2` would sample the diffuse at lightmap coordinates and
+//!   produce visibly wrong UVs. glTF specifies a top-left UV origin
+//!   (same as PAL3/D3D) so V is passed through unchanged — no `1 - v`
+//!   flip like the OBJ exporter needs for Blender.
 //! * `material_info.texture_names.last()` selects the diffuse
-//!   texture — same rule as `pol_obj_exporter`.
+//!   texture — for a 2-texture lightmap material the file order is
+//!   `[lightmap, diffuse]`, so `.last()` is the diffuse.
 
 use std::path::Path;
 
-use fileformats::pol::{PolFile, PolMesh, PolVertexComponents};
+use fileformats::pol::{PolFile, PolMesh};
 use gltf_json::accessor::Type as AccType;
 use gltf_json::mesh::{Primitive, Semantic};
 use gltf_json::validation::Checked;
@@ -99,7 +106,6 @@ pub fn export_pol_to_glb(
 }
 
 fn extract_attrs(mesh: &PolMesh) -> (Vec<[f32; 3]>, Vec<[f32; 2]>) {
-    let use_uv2 = mesh.vertex_type.has(PolVertexComponents::TEXCOORD2);
     let positions: Vec<[f32; 3]> = mesh
         .vertices
         .iter()
@@ -108,14 +114,7 @@ fn extract_attrs(mesh: &PolMesh) -> (Vec<[f32; 3]>, Vec<[f32; 2]>) {
     let uvs: Vec<[f32; 2]> = mesh
         .vertices
         .iter()
-        .map(|v| {
-            let uv = if use_uv2 {
-                v.tex_coord2.as_ref().unwrap_or(&v.tex_coord)
-            } else {
-                &v.tex_coord
-            };
-            [uv.u, uv.v]
-        })
+        .map(|v| [v.tex_coord.u, v.tex_coord.v])
         .collect();
     (positions, uvs)
 }

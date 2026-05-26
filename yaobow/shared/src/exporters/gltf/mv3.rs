@@ -1,21 +1,30 @@
-//! `mv3` (animated single-mesh role models) → glTF.
+//! `mv3` (animated role models) → glTF.
 //!
-//! Each remaining frame becomes a **morph target** carrying
+//! A PAL3 mv3 file can carry **multiple models** (e.g. body + head),
+//! each with its own texture and its own set of meshes. The exporter
+//! emits one glTF `Mesh` (= one scene node) per `(model, mesh)` pair
+//! so head textures don't end up painted on the body.
+//!
+//! Each remaining frame of a model becomes a **morph target** carrying
 //! `POSITION` deltas relative to frame 0. A single STEP-interpolated
-//! `weights` animation channel cycles a one-hot weight vector across
-//! the frames, so the result snaps to the original per-frame timing
-//! the same way the engine does. (`Animation.sampler.input` is given
-//! in seconds derived from the engine's `4580 ticks/sec`
+//! `weights` animation channel per node cycles a one-hot weight vector
+//! across the frames, so the result snaps to the original per-frame
+//! timing the same way the engine does. (`Animation.sampler.input` is
+//! given in seconds derived from the engine's `4580 ticks/sec`
 //! constant — see `create_animated_mesh_from_mv3`.)
 //!
 //! Vertex/UV expansion mirrors `create_geometry_frames`: each
 //! `(position_index, texcoord_index)` pair becomes one glTF vertex,
-//! deduped via a hash map.
+//! deduped via a hash map. The engine flips V (`-v`) when uploading
+//! mv3 texcoords to the GPU because the original PAL3 mv3 UVs were
+//! authored with an OpenGL-style bottom-left origin; glTF (and our
+//! re-encoded PNG textures) use a top-left origin, so we apply the
+//! same `1 - v` flip here to match what the engine renders.
 
 use std::collections::HashMap;
 use std::path::Path;
 
-use fileformats::mv3::{Mv3File, Mv3Model};
+use fileformats::mv3::{Mv3File, Mv3Mesh, Mv3Model};
 use gltf_json::accessor::Type as AccType;
 use gltf_json::animation::{Channel, Property, Sampler, Target};
 use gltf_json::material::PbrBaseColorFactor;
@@ -46,107 +55,182 @@ pub fn export_mv3_to_glb(
 
     let model_dir = model_path.parent().unwrap_or_else(|| Path::new(""));
 
-    // ---- Material: one per-model, textured if a name is present. ----
-    let texture_name = mv3.textures.get(0).and_then(|t| t.names.get(0)).and_then(|n| n.to_string().ok());
-    let material_idx = build_material(&mut b, vfs, model_dir, texture_name.as_deref());
+    // Build one Mesh+Node per (model, mesh) pair so each part can
+    // carry its own texture and its own morph-weights animation. PAL3
+    // role mv3 files routinely split body + head into separate models
+    // with separate textures; collapsing them onto a single primitive
+    // would paint the wrong texture (e.g. head atlas) onto every part.
+    let mut root_children: Vec<gltf_json::Index<Node>> = Vec::new();
+    let mut animation_channels: Vec<Channel> = Vec::new();
+    let mut animation_samplers: Vec<Sampler> = Vec::new();
+    let mut shared_time_acc: Option<gltf_json::Index<gltf_json::Accessor>> = None;
 
-    // ---- Geometry: dedupe (pos_idx, uv_idx) like the engine does. ----
-    let model = &mv3.models[0];
-    let frame_count = model.frame_count as usize;
-    if frame_count == 0 {
-        anyhow::bail!("mv3 model has zero frames");
+    for (model_index, model) in mv3.models.iter().enumerate() {
+        let frame_count = model.frame_count as usize;
+        if frame_count == 0 || model.meshes.is_empty() {
+            continue;
+        }
+
+        // Texture selection mirrors `create_animated_mesh_from_mv3`:
+        // pick textures[model_index] if it exists, else fall back to
+        // textures[0]. Empty texture list → untextured material.
+        let texture_index = if (model_index as u32) < mv3.texture_count {
+            model_index
+        } else {
+            0
+        };
+        let texture_name = mv3
+            .textures
+            .get(texture_index)
+            .and_then(|t| t.names.get(0))
+            .and_then(|n| n.to_string().ok());
+        let material_idx = build_material(&mut b, vfs, model_dir, texture_name.as_deref());
+
+        for mesh_index in 0..model.mesh_count as usize {
+            let mesh = &model.meshes[mesh_index];
+            let (indices, expanded_per_frame, uvs) = expand_mv3_mesh(model, mesh);
+            if uvs.is_empty() || indices.is_empty() {
+                continue;
+            }
+            let vertex_count = uvs.len();
+
+            let position_acc = b.push_f32_accessor(
+                &flatten_vec3(&expanded_per_frame[0]),
+                AccType::Vec3,
+                true,
+            );
+            let uv_acc = b.push_f32_accessor(&flatten_vec2(&uvs), AccType::Vec2, false);
+            let indices_acc = b.push_u32_indices(&indices);
+
+            let base = &expanded_per_frame[0];
+            let mut morph_targets: Vec<MorphTarget> =
+                Vec::with_capacity(frame_count.saturating_sub(1));
+            for frame_index in 1..frame_count {
+                let frame = &expanded_per_frame[frame_index];
+                let deltas: Vec<[f32; 3]> = (0..vertex_count)
+                    .map(|i| {
+                        [
+                            frame[i][0] - base[i][0],
+                            frame[i][1] - base[i][1],
+                            frame[i][2] - base[i][2],
+                        ]
+                    })
+                    .collect();
+                let acc = b.push_f32_accessor(&flatten_vec3(&deltas), AccType::Vec3, true);
+                morph_targets.push(MorphTarget {
+                    positions: Some(acc),
+                    normals: None,
+                    tangents: None,
+                });
+            }
+
+            let mut attributes = std::collections::BTreeMap::new();
+            attributes.insert(Checked::Valid(Semantic::Positions), position_acc);
+            attributes.insert(Checked::Valid(Semantic::TexCoords(0)), uv_acc);
+
+            let target_count = morph_targets.len();
+            let primitive = Primitive {
+                attributes,
+                indices: Some(indices_acc),
+                material: Some(material_idx),
+                mode: Checked::Valid(gltf_json::mesh::Mode::Triangles),
+                targets: if morph_targets.is_empty() {
+                    None
+                } else {
+                    Some(morph_targets)
+                },
+                extensions: Default::default(),
+                extras: Default::default(),
+            };
+
+            let mesh_idx = b.root.push(Mesh {
+                primitives: vec![primitive],
+                weights: if target_count == 0 {
+                    None
+                } else {
+                    Some(vec![0.0; target_count])
+                },
+                extensions: Default::default(),
+                extras: Default::default(),
+            });
+            let node_idx = b.root.push(Node {
+                mesh: Some(mesh_idx),
+                ..Node::default()
+            });
+            root_children.push(node_idx);
+
+            if target_count > 0 {
+                // Reuse one shared time accessor across every channel —
+                // all (model, mesh) pairs in a PAL3 mv3 file share the
+                // same per-frame timeline (`models[0].frames`).
+                let time_acc = match shared_time_acc {
+                    Some(acc) => acc,
+                    None => {
+                        let times: Vec<f32> = model
+                            .frames
+                            .iter()
+                            .map(|f| f.timestamp as f32 / MV3_TICKS_PER_SECOND)
+                            .collect();
+                        let acc = b.push_f32_accessor(&times, AccType::Scalar, true);
+                        shared_time_acc = Some(acc);
+                        acc
+                    }
+                };
+                let mut weights = vec![0.0f32; frame_count * target_count];
+                for k in 1..frame_count {
+                    weights[k * target_count + (k - 1)] = 1.0;
+                }
+                let output_acc = b.push_f32_accessor(&weights, AccType::Scalar, false);
+                let sampler_idx = animation_samplers.len() as u32;
+                animation_samplers.push(Sampler {
+                    input: time_acc,
+                    interpolation: Checked::Valid(gltf_json::animation::Interpolation::Step),
+                    output: output_acc,
+                    extensions: Default::default(),
+                    extras: Default::default(),
+                });
+                animation_channels.push(Channel {
+                    sampler: gltf_json::Index::new(sampler_idx),
+                    target: Target {
+                        node: node_idx,
+                        path: Checked::Valid(Property::MorphTargetWeights),
+                        extensions: Default::default(),
+                        extras: Default::default(),
+                    },
+                    extensions: Default::default(),
+                    extras: Default::default(),
+                });
+            }
+        }
     }
 
-    let (indices, expanded_per_frame, uvs) = expand_mv3_geometry(model);
-    let vertex_count = uvs.len();
-
-    // ---- Base mesh (frame 0) ----
-    let position_acc = b.push_f32_accessor(
-        &flatten_vec3(&expanded_per_frame[0]),
-        AccType::Vec3,
-        true, // POSITION requires min/max
-    );
-    let uv_acc = b.push_f32_accessor(&flatten_vec2(&uvs), AccType::Vec2, false);
-    let indices_acc = b.push_u32_indices(&indices);
-
-    // ---- Morph targets: POSITION deltas vs frame 0 ----
-    let base = &expanded_per_frame[0];
-    let mut morph_targets: Vec<MorphTarget> = Vec::with_capacity(frame_count.saturating_sub(1));
-    for frame_index in 1..frame_count {
-        let frame = &expanded_per_frame[frame_index];
-        let deltas: Vec<[f32; 3]> = (0..vertex_count)
-            .map(|i| {
-                [
-                    frame[i][0] - base[i][0],
-                    frame[i][1] - base[i][1],
-                    frame[i][2] - base[i][2],
-                ]
-            })
-            .collect();
-        // POSITION morph-target accessors also need min/max per spec.
-        let acc = b.push_f32_accessor(&flatten_vec3(&deltas), AccType::Vec3, true);
-        morph_targets.push(MorphTarget {
-            positions: Some(acc),
-            normals: None,
-            tangents: None,
-        });
+    if root_children.is_empty() {
+        anyhow::bail!("mv3 produced no exportable geometry");
     }
 
-    // ---- Primitive ----
-    let mut attributes = std::collections::BTreeMap::new();
-    attributes.insert(Checked::Valid(Semantic::Positions), position_acc);
-    attributes.insert(Checked::Valid(Semantic::TexCoords(0)), uv_acc);
-
-    let primitive = Primitive {
-        attributes,
-        indices: Some(indices_acc),
-        material: Some(material_idx),
-        mode: Checked::Valid(gltf_json::mesh::Mode::Triangles),
-        targets: if morph_targets.is_empty() {
-            None
-        } else {
-            Some(morph_targets)
-        },
-        extensions: Default::default(),
-        extras: Default::default(),
-    };
-
-    let target_count = frame_count.saturating_sub(1);
-    let mesh_idx = b.root.push(Mesh {
-        primitives: vec![primitive],
-        weights: if target_count == 0 {
-            None
-        } else {
-            Some(vec![0.0; target_count])
-        },
-        extensions: Default::default(),
-        extras: Default::default(),
-    });
-
-    // ---- Node + Scene ----
-    let node_idx = b.root.push(Node {
-        mesh: Some(mesh_idx),
-        ..Node::default()
-    });
     let scene_idx = b.root.push(Scene {
-        nodes: vec![node_idx],
+        nodes: root_children,
         extensions: Default::default(),
         extras: Default::default(),
     });
     b.root.scene = Some(scene_idx);
 
-    // ---- Animation (only if we have at least one morph target) ----
-    if target_count > 0 {
-        build_morph_animation(&mut b, node_idx, target_count, &model.frames);
+    if !animation_channels.is_empty() {
+        b.root.push(gltf_json::Animation {
+            channels: animation_channels,
+            samplers: animation_samplers,
+            extensions: Default::default(),
+            extras: Default::default(),
+        });
     }
 
     b.pack()
 }
 
-fn expand_mv3_geometry(
+fn expand_mv3_mesh(
     model: &Mv3Model,
+    mesh: &Mv3Mesh,
 ) -> (Vec<u32>, Vec<Vec<[f32; 3]>>, Vec<[f32; 2]>) {
-    let mesh = &model.meshes[0];
     let frame_count = model.frame_count as usize;
     let mut indices: Vec<u32> = Vec::new();
     let mut positions_per_frame: Vec<Vec<[f32; 3]>> = vec![Vec::new(); frame_count];
@@ -166,8 +250,16 @@ fn expand_mv3_geometry(
                         v.z as f32 * MV3_VERTEX_SCALE,
                     ]);
                 }
+                // V flip: engine uploads `-v` (see
+                // `create_geometry_frames` in role_controller.rs)
+                // because mv3 UVs are authored with OpenGL bottom-left
+                // origin. glTF + our re-encoded textures are top-left;
+                // emit `1 - v` so the sampled image matches the engine
+                // (and stays in [0, 1] for DCC tools, unlike a bare
+                // `-v` that only happens to work under REPEAT wrap).
                 let uv = if (j as u32) < model.texcoord_count {
-                    [model.texcoords[j as usize].u, model.texcoords[j as usize].v]
+                    let t = &model.texcoords[j as usize];
+                    [t.u, 1.0 - t.v]
                 } else {
                     [0.0, 0.0]
                 };
@@ -181,59 +273,8 @@ fn expand_mv3_geometry(
     (indices, positions_per_frame, uvs)
 }
 
-/// Build a STEP-interpolated `weights` animation that snaps to each
-/// `Mv3Frame.timestamp`. One-hot weight rows mean: at sample _k_,
-/// morph target _k-1_ is fully active (and target 0 == frame 1, since
-/// frame 0 is the base pose).
-fn build_morph_animation(
-    b: &mut GlbBuilder,
-    node_idx: gltf_json::Index<Node>,
-    target_count: usize,
-    frames: &[fileformats::mv3::Mv3Frame],
-) {
-    let frame_count = frames.len();
-    debug_assert_eq!(frame_count, target_count + 1);
-
-    let times: Vec<f32> = frames
-        .iter()
-        .map(|f| f.timestamp as f32 / MV3_TICKS_PER_SECOND)
-        .collect();
-
-    // Flat [frame_count * target_count] row-major one-hot table.
-    // Frame 0 = base pose → all-zero row. Frame k>0 → 1.0 on target k-1.
-    let mut weights = vec![0.0f32; frame_count * target_count];
-    for k in 1..frame_count {
-        weights[k * target_count + (k - 1)] = 1.0;
-    }
-
-    let input_acc = b.push_f32_accessor(&times, AccType::Scalar, true);
-    let output_acc = b.push_f32_accessor(&weights, AccType::Scalar, false);
-
-    let sampler = Sampler {
-        input: input_acc,
-        interpolation: Checked::Valid(gltf_json::animation::Interpolation::Step),
-        output: output_acc,
-        extensions: Default::default(),
-        extras: Default::default(),
-    };
-    let channel = Channel {
-        sampler: gltf_json::Index::new(0),
-        target: Target {
-            node: node_idx,
-            path: Checked::Valid(Property::MorphTargetWeights),
-            extensions: Default::default(),
-            extras: Default::default(),
-        },
-        extensions: Default::default(),
-        extras: Default::default(),
-    };
-    b.root.push(gltf_json::Animation {
-        channels: vec![channel],
-        samplers: vec![sampler],
-        extensions: Default::default(),
-        extras: Default::default(),
-    });
-}
+// (per-mesh morph-weight animation channels are appended inline in
+// `export_mv3_to_glb`; no separate helper is needed.)
 
 pub(super) fn build_material(
     b: &mut GlbBuilder,
