@@ -17,6 +17,7 @@ use shared::{config::YaobowConfig, GameType};
 use crate::script_source::YaobowScriptProject;
 use crate::{
     openpal3::OpenPal3ApplicationLoader, openpal4::application::OpenPal4ApplicationLoader,
+    openswd5::application::OpenSwd5ApplicationLoader,
 };
 
 pub struct YaobowApplicationLoader {
@@ -86,6 +87,7 @@ fn create_loader(
     match game {
         GameType::PAL3 => OpenPal3ApplicationLoader::create(app, &asset_path),
         GameType::PAL4 => OpenPal4ApplicationLoader::create(app, asset_path),
+        GameType::SWDHC => OpenSwd5ApplicationLoader::create(app, asset_path),
         _ => unimplemented!(),
     }
 }

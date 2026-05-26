@@ -39,9 +39,10 @@ pub let FONT_DEFAULT: int = 0;
 pub let FONT_SMALL: int = 1;
 
 // Game ordinals exposed to `IAppService.open_game`. Canonical
-// `IGameRegistry` ordinals — PAL3=0, PAL4=2 (PAL3A=1 is unused).
+// `IGameRegistry` ordinals — PAL3=0, PAL4=2, SWDHC=6.
 pub let GAME_PAL3: int = 0;
 pub let GAME_PAL4: int = 2;
+pub let GAME_SWDHC: int = 6;
 
 // Intent codes written by render_im, consumed by update.
 pub let INTENT_NONE: int = 0;

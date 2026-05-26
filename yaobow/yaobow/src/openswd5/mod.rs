@@ -1,7 +1,7 @@
 use self::application::OpenSwd5ApplicationLoader;
 use shared::{config::YaobowConfig, GameType};
 
-mod application;
+pub mod application;
 
 pub fn run_openswd5() {
     #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
