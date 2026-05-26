@@ -3,9 +3,11 @@
 // `session.set_selection(id)`; the Inspector panel queries
 // `session.inspector_for(selection())` next frame.
 //
-// Outline rebuilds its parent → children index once per render because
-// the node tree is small (a few hundred entries at most for PAL4) and
-// the data is immutable for the session's lifetime.
+// Rows are funnelled through `ui.list_clipped(count, body)` (backed by
+// `ImGuiListClipper`) so only the rows actually scrolled into view pay
+// the per-row crosscom + imgui submission cost, plus the per-row
+// `compute_depth` parent-chain walk. `tree_leaf` is a constant-height
+// single widget, which satisfies the clipper contract.
 
 import yaobow_editor_services;
 import radiance;
@@ -25,13 +27,16 @@ pub fn render_scene_outline_im(
     let sel = s.selection();
 
     // Flat indented list: indent depth = walk parent chain until -1.
-    for i in Range(0, n) {
+    // Body reads its row index via ui.list_clipped_index(); only the
+    // visible window is submitted each frame.
+    ui.list_clipped(n, () => {
+        let i = ui.list_clipped_index();
         let depth = compute_depth(h, i);
         let label = make_label(h, i, depth, sel);
         if ui.tree_leaf(label) {
             s.set_selection(i);
         }
-    }
+    });
 }
 
 fn compute_depth(h: box<yaobow_editor_services.ISceneHandle>, id: int) -> int {
