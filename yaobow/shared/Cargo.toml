@@ -23,6 +23,7 @@ dashmap = "5.1.0"
 dyn-clone = "1.0.1"
 encoding = "0.2.33"
 fileformats = { path = "../fileformats" }
+gltf-json = "1.4"
 image = "0.23.0"
 imgui = { workspace = true }
 itertools = "0"
@@ -48,6 +49,9 @@ uuid = "0.8"
 wavefront_obj = "5.1.0"
 xxtea = "0.2.0"
 shellexpand = "3.1"
+
+[dev-dependencies]
+serde_json = "1.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-glue = "0.5.0"

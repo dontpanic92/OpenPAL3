@@ -251,12 +251,14 @@ impl IPreviewerHubImpl for PreviewerHub {
             "pol" => load_pol(&self.vfs, &path, &self.asset_loader)?,
             _ => return None,
         };
+        let glb_exporter = build_glb_exporter(self.vfs.clone(), &path, &ext);
         Some(ModelHandle::create(
             text,
             entity,
             self.factory.clone(),
             self.cache.clone(),
             self.preview_registry.clone(),
+            glb_exporter,
         ))
     }
 
@@ -486,4 +488,29 @@ fn load_pol(
         true,
     );
     Some((text, entity))
+}
+
+fn build_glb_exporter(
+    vfs: Rc<MiniFs>,
+    path: &Path,
+    ext: &str,
+) -> Option<Box<dyn Fn() -> anyhow::Result<Vec<u8>>>> {
+    use shared::exporters::gltf::{export_cvd_to_glb, export_mv3_to_glb, export_pol_to_glb};
+    let path_buf = path.to_path_buf();
+    match ext {
+        "mv3" => Some(Box::new(move || {
+            let mv3 = read_mv3(&mut BufReader::new(vfs.open(&path_buf)?))?;
+            export_mv3_to_glb(&mv3, &vfs, &path_buf)
+        })),
+        "pol" => Some(Box::new(move || {
+            let pol = read_pol(&mut BufReader::new(vfs.open(&path_buf)?))?;
+            export_pol_to_glb(&pol, &vfs, &path_buf)
+        })),
+        "cvd" => Some(Box::new(move || {
+            let cvd = cvd_load_from_file(&vfs, &path_buf)
+                .map_err(|e| anyhow::anyhow!("cvd load failed: {:?}", e))?;
+            export_cvd_to_glb(&cvd, &vfs, &path_buf)
+        })),
+        _ => None,
+    }
 }

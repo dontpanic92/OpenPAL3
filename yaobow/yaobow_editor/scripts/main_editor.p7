@@ -55,7 +55,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
                     let close_cmd = t.close_cmd;
                     let closed = ui.tab_item(t.label, true, () => {
                         self.state.active_close_cmd = close_cmd;
-                        content_tabs.render_tab_body_im(ui, t, self.preview_intents);
+                        content_tabs.render_tab_body_im(ui, t, self.preview_intents, self.host);
                     });
                     if closed {
                         self.close_intents.push(close_cmd);

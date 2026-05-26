@@ -129,6 +129,12 @@ interface IConfigService: IUnknown {
     bool save();
     void reload();
     &str pick_folder(&str initial);
+
+    // Show a "save file" dialog and return the chosen absolute path
+    // (empty string if cancelled). `default_name` pre-fills the
+    // suggested filename in the dialog; `ext_filter` is a single
+    // extension (e.g. "glb") used to build the dialog's type filter.
+    &str pick_save_file(&str initial, &str default_name, &str ext_filter);
 }
 
 // Cross-cutting RNG utility surfaced through `IHostContext.random()`.

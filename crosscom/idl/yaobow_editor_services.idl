@@ -61,6 +61,12 @@ interface IModelHandle: IUnknown {
     &str text_dump();
 
     IPreviewSession open_preview();
+
+    // Export the model as a single-file glTF binary (`.glb`) at
+    // `output_path`. Returns true on success. Implementations may
+    // return false if the underlying format has no glTF exporter yet
+    // (e.g. dff/anm/bsp).
+    bool export_glb(&str output_path);
 }
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0a)]
 class ModelHandle: IModelHandle {}

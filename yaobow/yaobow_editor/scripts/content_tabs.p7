@@ -118,6 +118,7 @@ pub fn render_tab_body_im(
     ui: box<radiance.IUiHost>,
     tab: ref<ContentTab>,
     preview_intents: box<array<int>>,
+    host: box<yaobow_editor_services.IEditorHostContext>,
 ) {
     match tab.kind {
         editor_consts.ContentKind.Text => {
@@ -213,6 +214,16 @@ pub fn render_tab_body_im(
             } else {
                 if ui.button("Preview", 100.0, 24.0) {
                     preview_intents.push(tab.close_cmd);
+                }
+                if tab.model_handle != null {
+                    ui.same_line();
+                    if ui.button("Export glTF", 120.0, 24.0) {
+                        let cfg = host.config();
+                        let path = cfg.pick_save_file("", "", "glb");
+                        if path != "" {
+                            tab.model_handle!.export_glb(path);
+                        }
+                    }
                 }
                 ui.multiline_text(tab.text_content, -1.0, -1.0);
             }

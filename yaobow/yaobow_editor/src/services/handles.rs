@@ -264,6 +264,7 @@ pub struct ModelHandle {
     cache: Rc<RefCell<ImguiTextureCache>>,
     registry: Rc<PreviewRegistry>,
     last_string: RefCell<String>,
+    glb_exporter: Option<Box<dyn Fn() -> anyhow::Result<Vec<u8>>>>,
 }
 
 ComObject_ModelHandle!(super::ModelHandle);
@@ -275,6 +276,7 @@ impl ModelHandle {
         factory: Rc<dyn ComponentFactory>,
         cache: Rc<RefCell<ImguiTextureCache>>,
         registry: Rc<PreviewRegistry>,
+        glb_exporter: Option<Box<dyn Fn() -> anyhow::Result<Vec<u8>>>>,
     ) -> ComRc<IModelHandle> {
         ComRc::from_object(Self {
             text_dump,
@@ -283,6 +285,7 @@ impl ModelHandle {
             cache,
             registry,
             last_string: RefCell::new(String::new()),
+            glb_exporter,
         })
     }
 }
@@ -324,5 +327,26 @@ impl IModelHandleImpl for ModelHandle {
         self.registry.register(&state);
 
         PreviewSession::create(state, target_com)
+    }
+
+    fn export_glb(&self, output_path: &str) -> bool {
+        let Some(exporter) = self.glb_exporter.as_ref() else {
+            log::warn!("export_glb called on a model without an exporter");
+            return false;
+        };
+        let bytes = match exporter() {
+            Ok(b) => b,
+            Err(e) => {
+                log::warn!("glb export failed: {:#}", e);
+                return false;
+            }
+        };
+        match std::fs::write(output_path, &bytes) {
+            Ok(()) => true,
+            Err(e) => {
+                log::warn!("writing {} failed: {}", output_path, e);
+                false
+            }
+        }
     }
 }

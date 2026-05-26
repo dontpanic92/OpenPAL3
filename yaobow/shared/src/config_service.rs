@@ -74,6 +74,13 @@ impl IConfigServiceImpl for ConfigService {
         *self.last_string.borrow_mut() = picked;
         unsafe { (*self.last_string.as_ptr()).as_str() }
     }
+
+    fn pick_save_file(&self, initial: &str, default_name: &str, ext_filter: &str) -> &str {
+        let picked = pick_save_file_native(initial, default_name, ext_filter);
+        *self.last_string.borrow_mut() = picked;
+        // SAFETY: see ConfigService::get_asset_path.
+        unsafe { (*self.last_string.as_ptr()).as_str() }
+    }
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
@@ -95,5 +102,50 @@ fn pick_folder_native(initial: &str) -> String {
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 fn pick_folder_native(_initial: &str) -> String {
+    String::new()
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn pick_save_file_native(initial: &str, default_name: &str, ext_filter: &str) -> String {
+    use native_dialog::FileDialogBuilder;
+    let mut dialog = FileDialogBuilder::default();
+    if !initial.is_empty() {
+        dialog = dialog.set_location(initial);
+    }
+    if !default_name.is_empty() {
+        dialog = dialog.set_filename(default_name);
+    }
+    if !ext_filter.is_empty() {
+        // Single-extension filter matches the editor's only caller
+        // today ("glb"); the description doubles as the dropdown
+        // label and is harmless when it duplicates the extension.
+        dialog = dialog.add_filter(ext_filter, &[ext_filter]);
+    }
+    let result = match dialog.save_single_file().show() {
+        Ok(Some(path)) => path.to_string_lossy().to_string(),
+        Ok(None) => String::new(),
+        Err(e) => {
+            log::warn!("save-file picker failed: {}", e);
+            String::new()
+        }
+    };
+    // Some platforms / desktop environments do not append the
+    // selected extension automatically. Always normalize so callers
+    // get a deterministic suffix.
+    if !result.is_empty() && !ext_filter.is_empty() {
+        let needs_ext = std::path::Path::new(&result)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| !e.eq_ignore_ascii_case(ext_filter))
+            .unwrap_or(true);
+        if needs_ext {
+            return format!("{}.{}", result, ext_filter);
+        }
+    }
+    result
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+fn pick_save_file_native(_initial: &str, _default_name: &str, _ext_filter: &str) -> String {
     String::new()
 }
