@@ -141,9 +141,10 @@ jobs:
       - name: Zip Packaging
         run: |
           tag="${{ github.ref_name }}"
-          mkdir -p target/release/yaobow
-          cp target/release/yaobow target/release/yaobow_editor target/release/yaobow/
-          ditto -c -k --sequesterRsrc target/release/yaobow "target/yaobow-${tag}-macos-arm64.zip"
+          rm -rf target/yaobow-pkg
+          mkdir -p target/yaobow-pkg/yaobow
+          cp target/release/yaobow target/release/yaobow_editor target/yaobow-pkg/yaobow/
+          ditto -c -k --sequesterRsrc target/yaobow-pkg/yaobow "target/yaobow-${tag}-macos-arm64.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: yaobow-macos-arm64
