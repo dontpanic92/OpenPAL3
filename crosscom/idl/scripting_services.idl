@@ -99,6 +99,16 @@ interface IInputService: IUnknown {
     // `radiance::input::Axis`: LeftStickX=0, LeftStickY=1,
     // RightStickX=2, RightStickY=3.
     float axis(int axis_code);
+    // Mouse buttons. Button codes mirror `radiance::input::MouseButton`:
+    // Left=0, Right=1, Middle=2.
+    bool mouse_button_down(int button);
+    bool mouse_button_pressed(int button);
+    // Cursor motion accumulated this frame, in raw screen pixels.
+    float mouse_delta_x();
+    float mouse_delta_y();
+    // Wheel ticks accumulated this frame. One detent ≈ 1.0; positive
+    // values scroll away from the user.
+    float mouse_wheel();
 }
 [uuid(0993f2d2-6b91-4bbb-92ac-acd5e3ee94c4)]
 class InputService: IInputService {}

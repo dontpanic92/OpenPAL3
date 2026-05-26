@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crosscom::ComRc;
-use radiance::input::{InputEngine, Key};
+use radiance::input::{InputEngine, Key, MouseButton};
 
 use crate::comdef::services::{IInputService, IInputServiceImpl};
 
@@ -48,6 +48,41 @@ impl IInputServiceImpl for InputService {
             .borrow()
             .get_axis_state(axis_from_i32(axis_code))
             .value()
+    }
+
+    fn mouse_button_down(&self, button: i32) -> bool {
+        self.input
+            .borrow()
+            .get_mouse_button_state(mouse_button_from_i32(button))
+            .is_down()
+    }
+
+    fn mouse_button_pressed(&self, button: i32) -> bool {
+        self.input
+            .borrow()
+            .get_mouse_button_state(mouse_button_from_i32(button))
+            .pressed()
+    }
+
+    fn mouse_delta_x(&self) -> f32 {
+        self.input.borrow().get_mouse_delta().0
+    }
+
+    fn mouse_delta_y(&self) -> f32 {
+        self.input.borrow().get_mouse_delta().1
+    }
+
+    fn mouse_wheel(&self) -> f32 {
+        self.input.borrow().get_mouse_wheel()
+    }
+}
+
+fn mouse_button_from_i32(button: i32) -> MouseButton {
+    match button {
+        0 => MouseButton::Left,
+        1 => MouseButton::Right,
+        2 => MouseButton::Middle,
+        _ => MouseButton::Unknown,
     }
 }
 

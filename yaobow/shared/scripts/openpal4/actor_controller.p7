@@ -28,21 +28,16 @@ import scripting_services;
 
 let KEY_A: int = 1;
 let KEY_D: int = 4;
+let KEY_E: int = 5;
+let KEY_Q: int = 17;
 let KEY_S: int = 19;
 let KEY_W: int = 23;
-
-let KEY_LEFT: int = 39;
-let KEY_UP: int = 40;
-let KEY_RIGHT: int = 41;
-let KEY_DOWN: int = 42;
-let KEY_DPAD_UP: int = 47;
-let KEY_DPAD_DOWN: int = 48;
-let KEY_DPAD_LEFT: int = 49;
-let KEY_DPAD_RIGHT: int = 50;
 
 let AXIS_LX: int = 0;
 let AXIS_LY: int = 1;
 let AXIS_RX: int = 2;
+
+let MOUSE_RIGHT: int = 1;
 
 // ----- Tunables (mirror the original Rust controller).
 
@@ -50,9 +45,18 @@ let SPEED: float = 175.0;
 let STEP_HEIGHT: float = 10.0;
 let TRIGGER_HEIGHT: float = 10.0;
 let CAMERA_ROTATE_SPEED: float = 1.5;
-let CAMERA_HEIGHT_SPEED: float = 100.0;
 let DEADZONE: float = 0.1;
 let TAU: float = 6.283185307179586;
+
+// Mouse / wheel tunables. Pixel-relative drag sensitivities are per
+// pixel of raw cursor delta; wheel step is per detent (one notch).
+let MOUSE_YAW_SENS: float = 0.005;
+let MOUSE_PITCH_SENS: float = 1.0;
+let WHEEL_DISTANCE_STEP: float = 30.0;
+let MIN_DIST: float = 100.0;
+let MAX_DIST: float = 800.0;
+let MIN_HEIGHT: float = 50.0;
+let MAX_HEIGHT: float = 600.0;
 
 let ANIM_IDLE: int = 0;
 let ANIM_RUN: int = 2;
@@ -66,6 +70,7 @@ pub struct Pal4PartyMutState(
     pub locked: bool,
     pub camera_rotation: float,
     pub camera_height: float,
+    pub camera_distance: float,
 ) {}
 
 // ----- Party controller ---------------------------------------------------
@@ -127,17 +132,13 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
         let cy: float = entity.position_y();
         let cz: float = entity.position_z();
 
-        // --- Build local movement direction from arrow keys / DPad / left stick.
+        // --- Build local movement direction from WASD / left stick.
         let mut lx: float = 0.0;
         let mut lz: float = 0.0;
-        if self.input.key_down(KEY_UP)         { lz = lz - 1.0; }
-        if self.input.key_down(KEY_DPAD_UP)    { lz = lz - 1.0; }
-        if self.input.key_down(KEY_DOWN)       { lz = lz + 1.0; }
-        if self.input.key_down(KEY_DPAD_DOWN)  { lz = lz + 1.0; }
-        if self.input.key_down(KEY_LEFT)       { lx = lx - 1.0; }
-        if self.input.key_down(KEY_DPAD_LEFT)  { lx = lx - 1.0; }
-        if self.input.key_down(KEY_RIGHT)      { lx = lx + 1.0; }
-        if self.input.key_down(KEY_DPAD_RIGHT) { lx = lx + 1.0; }
+        if self.input.key_down(KEY_W) { lz = lz - 1.0; }
+        if self.input.key_down(KEY_S) { lz = lz + 1.0; }
+        if self.input.key_down(KEY_A) { lx = lx - 1.0; }
+        if self.input.key_down(KEY_D) { lx = lx + 1.0; }
 
         let raw_lx: float = self.input.axis(AXIS_LX);
         if raw_lx > DEADZONE  { lx = lx + raw_lx; }
@@ -197,13 +198,13 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
             }
         }
 
-        // --- Camera rotation: A/D keys + RightStickX. Wrapped to [0, 2π).
+        // --- Camera rotation: Q/E keys + RightStickX + RMB-drag X.
         let mut rotation: float = self.state.camera_rotation;
-        if self.input.key_down(KEY_A) {
-            rotation = rotation - CAMERA_ROTATE_SPEED * delta_sec;
-        }
-        if self.input.key_down(KEY_D) {
+        if self.input.key_down(KEY_Q) {
             rotation = rotation + CAMERA_ROTATE_SPEED * delta_sec;
+        }
+        if self.input.key_down(KEY_E) {
+            rotation = rotation - CAMERA_ROTATE_SPEED * delta_sec;
         }
         let raw_rx: float = self.input.axis(AXIS_RX);
         if raw_rx > DEADZONE {
@@ -211,6 +212,12 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
         }
         if raw_rx < -DEADZONE {
             rotation = rotation - CAMERA_ROTATE_SPEED * delta_sec * raw_rx;
+        }
+        let dragging: bool = self.input.mouse_button_down(MOUSE_RIGHT);
+        if dragging {
+            // Mouse deltas are already per-frame; no dt scaling.
+            let dmx: float = self.input.mouse_delta_x();
+            rotation = rotation - dmx * MOUSE_YAW_SENS;
         }
         if rotation < 0.0 {
             rotation = rotation + TAU;
@@ -220,22 +227,30 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
         }
         self.state.camera_rotation = rotation;
 
-        // --- Camera height: W/S keys.
+        // --- Camera height: RMB-drag Y.
         let mut height: float = self.state.camera_height;
-        if self.input.key_down(KEY_W) {
-            height = height + CAMERA_HEIGHT_SPEED * delta_sec;
+        if dragging {
+            let dmy: float = self.input.mouse_delta_y();
+            height = height + dmy * MOUSE_PITCH_SENS;
         }
-        if self.input.key_down(KEY_S) {
-            height = height - CAMERA_HEIGHT_SPEED * delta_sec;
-        }
+        if height < MIN_HEIGHT { height = MIN_HEIGHT; }
+        if height > MAX_HEIGHT { height = MAX_HEIGHT; }
         self.state.camera_height = height;
+
+        // --- Camera distance: mouse wheel (positive wheel = zoom in).
+        let mut distance: float = self.state.camera_distance;
+        let wheel: float = self.input.mouse_wheel();
+        distance = distance - wheel * WHEEL_DISTANCE_STEP;
+        if distance < MIN_DIST { distance = MIN_DIST; }
+        if distance > MAX_DIST { distance = MAX_DIST; }
+        self.state.camera_distance = distance;
 
         // --- Camera composition (see original Rust transform chain).
         let cr: float = cos(rotation);
         let sr: float = sin(rotation);
-        let cam_x: float = 300.0 * (cr + sr) + tx;
+        let cam_x: float = distance * (cr + sr) + tx;
         let cam_y: float = height + ty;
-        let cam_z: float = 300.0 * (cr - sr) + tz;
+        let cam_z: float = distance * (cr - sr) + tz;
         self.camera.set_position(cam_x, cam_y, cam_z);
         self.camera.look_at(tx, ty, tz);
 
@@ -264,6 +279,6 @@ pub fn make_actor_controller(
         entity_0, entity_1, entity_2, entity_3,
         anim_0, anim_1, anim_2, anim_3,
         camera, ray_caster,
-        box(Pal4PartyMutState(true, 0.0, 300.0)),
+        box(Pal4PartyMutState(true, 0.0, 300.0, 300.0)),
     )) as box<openpal4.IPal4ActorController>
 }

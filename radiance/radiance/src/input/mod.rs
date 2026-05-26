@@ -3,12 +3,41 @@ pub use engine::CoreInputEngine;
 mod engine;
 mod gamepad;
 mod keyboard;
+mod mouse;
 
 use std::{cell::RefCell, rc::Rc};
 
 pub trait InputEngine {
     fn get_key_state(&self, key: Key) -> KeyState;
     fn get_axis_state(&self, axis: Axis) -> AxisState;
+
+    /// State of a mouse button (`Left`, `Right`, `Middle`). Defaults to
+    /// "up" on platforms that don't surface mouse events.
+    fn get_mouse_button_state(&self, _button: MouseButton) -> KeyState {
+        KeyState::new(false, false, false)
+    }
+
+    /// Cursor motion accumulated since the previous engine `update()`,
+    /// in raw screen pixels. `(0.0, 0.0)` when the platform doesn't
+    /// expose mouse motion.
+    fn get_mouse_delta(&self) -> (f32, f32) {
+        (0.0, 0.0)
+    }
+
+    /// Mouse wheel ticks accumulated since the previous engine
+    /// `update()`. Normalized so one detent of a typical wheel reports
+    /// `1.0` (positive = scroll up / away from the user).
+    fn get_mouse_wheel(&self) -> f32 {
+        0.0
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum MouseButton {
+    Left = 0,
+    Right,
+    Middle,
+    Unknown,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
