@@ -27,11 +27,13 @@ jobs:
         run: |
           brew install nasm molten-vk vulkan-headers vulkan-loader shaderc
       - name: Cache ffmpeg
+        id: cache-ffmpeg
         uses: actions/cache@v3
         with:
           path: vcpkg_installed
-          key: ${{ runner.os }}-build-ffmpeg
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
       - name: Install ffmpeg
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         run: |
           vcpkg install --triplet=arm64-osx
       - name: Build

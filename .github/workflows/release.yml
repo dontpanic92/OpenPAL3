@@ -32,11 +32,13 @@ jobs:
           ./temp/vulkan_sdk.exe in --da --al -c
           ls C:\VulkanSDK
       - name: Cache ffmpeg
+        id: cache-ffmpeg
         uses: actions/cache@v3
         with:
           path: vcpkg_installed
-          key: ${{ runner.os }}-build-ffmpeg
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
       - name: Install ffmpeg
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet=x64-windows-static-md --x-manifest-root="$env:GITHUB_WORKSPACE" --x-install-root="$env:GITHUB_WORKSPACE\vcpkg_installed"
@@ -78,11 +80,13 @@ jobs:
           sudo apt update
           sudo apt install nasm vulkan-sdk libudev-dev
       - name: Cache ffmpeg
+        id: cache-ffmpeg
         uses: actions/cache@v3
         with:
           path: vcpkg_installed
-          key: ${{ runner.os }}-build-ffmpeg
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
       - name: Install ffmpeg
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         run: |
           vcpkg install --triplet=x64-linux
       - name: Build
@@ -123,11 +127,13 @@ jobs:
         run: |
           brew install nasm molten-vk vulkan-headers vulkan-loader shaderc
       - name: Cache ffmpeg
+        id: cache-ffmpeg
         uses: actions/cache@v3
         with:
           path: vcpkg_installed
-          key: ${{ runner.os }}-build-ffmpeg
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
       - name: Install ffmpeg
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         run: |
           vcpkg install --triplet=arm64-osx
       - name: Build

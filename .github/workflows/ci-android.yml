@@ -38,11 +38,13 @@ jobs:
       - name: Set NDK_HOME env
         run: echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
       - name: Cache ffmpeg
+        id: cache-ffmpeg
         uses: actions/cache@v3
         with:
           path: vcpkg_installed
-          key: ${{ runner.os }}-android-build-ffmpeg
+          key: ${{ runner.os }}-android-vcpkg-${{ hashFiles('vcpkg.json') }}
       - name: Install ffmpeg
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         run: |
           vcpkg install --triplet=arm64-android
           tree vcpkg_installed

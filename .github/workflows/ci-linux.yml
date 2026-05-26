@@ -28,11 +28,13 @@ jobs:
           sudo apt update
           sudo apt install nasm vulkan-sdk libudev-dev
       - name: Cache ffmpeg
+        id: cache-ffmpeg
         uses: actions/cache@v3
         with:
           path: vcpkg_installed
-          key: ${{ runner.os }}-build-ffmpeg
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
       - name: Install ffmpeg
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         run: |
           vcpkg install --triplet=x64-linux
       - name: Build
