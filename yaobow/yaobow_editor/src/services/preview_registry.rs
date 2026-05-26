@@ -13,6 +13,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
+use std::time::Instant;
 
 use crosscom::ComRc;
 use radiance::comdef::{IScene, ISceneExt};
@@ -86,7 +87,20 @@ impl PreviewState {
 #[derive(Default)]
 pub struct PreviewRegistry {
     sessions: RefCell<Vec<Weak<PreviewState>>>,
+    /// Wall-clock timestamp of the previous `render_all` tick. Used to
+    /// derive a per-frame `delta_sec` for `IScene::update`, which is
+    /// what drives `IComponent::on_updating` for animation components
+    /// (e.g. mv3 morph animation via `RoleController`). Reset to
+    /// `None` whenever the registry has no live sessions so the next
+    /// session starts at dt=0 instead of jumping by the accumulated
+    /// idle time.
+    last_tick: Cell<Option<Instant>>,
 }
+
+/// Upper bound for the per-frame preview tick. Clamps long pauses
+/// (alt-tab, debugger break, first frame after a reopen) so animations
+/// don't jump several seconds in one step.
+const MAX_PREVIEW_DELTA_SEC: f32 = 0.1;
 
 impl PreviewRegistry {
     pub fn new() -> Self {
@@ -98,8 +112,22 @@ impl PreviewRegistry {
     }
 
     /// Drive each live state's offscreen pass via the rendering engine.
-    /// Compacts the internal Vec by dropping dead weak refs.
+    /// Compacts the internal Vec by dropping dead weak refs. Also
+    /// ticks each scene with a wall-clock derived `delta_sec` so
+    /// animation components advance — the gameplay path does this via
+    /// `CoreRadianceEngine::update -> scene_manager.update`, which the
+    /// offscreen preview path deliberately bypasses.
     pub fn render_all(&self, engine: &mut dyn RenderingEngine) {
+        let now = Instant::now();
+        let delta_sec = match self.last_tick.get() {
+            Some(prev) => {
+                let dt = now.duration_since(prev).as_secs_f32();
+                dt.clamp(0.0, MAX_PREVIEW_DELTA_SEC)
+            }
+            None => 0.0,
+        };
+        self.last_tick.set(Some(now));
+
         let mut survivors: Vec<Weak<PreviewState>> = Vec::new();
         let snapshot: Vec<Weak<PreviewState>> = self.sessions.borrow().clone();
         for weak in snapshot {
@@ -109,13 +137,21 @@ impl PreviewRegistry {
             if state.closed.get() {
                 continue;
             }
+            state.scene.update(delta_sec);
             state.apply_camera();
             let mut target = state.target.borrow_mut();
             engine.render_scene_to_target(state.scene.clone(), target.as_mut());
             // Keep tracking — strong refs elsewhere keep it alive.
             survivors.push(Rc::downgrade(&state));
         }
+        let empty = survivors.is_empty();
         *self.sessions.borrow_mut() = survivors;
+        if empty {
+            // No live sessions: drop the timestamp so the next opened
+            // preview tab gets dt=0 on its first frame instead of a
+            // jump proportional to the idle period.
+            self.last_tick.set(None);
+        }
     }
 }
 

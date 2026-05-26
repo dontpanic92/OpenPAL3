@@ -292,36 +292,61 @@ fn load_mv3(
     path: &Path,
     asset_loader: &DevToolsAssetLoader,
 ) -> Option<(String, ComRc<IEntity>)> {
+    use radiance::scene::CoreEntity;
+    use shared::openpal3::comdef::IRoleController;
     use shared::openpal3::scene::{
-        create_animated_mesh_from_mv3, create_mv3_entity, RoleAnimationRepeatMode, RoleController,
+        create_animated_mesh_from_mv3, RoleAnimationRepeatMode, RoleController,
     };
+
     let text = read_mv3(&mut BufReader::new(vfs.open(path).ok()?))
         .map(|f| jsonify(&f))
         .unwrap_or_else(|_| "Unsupported".to_string());
 
-    let entity = create_mv3_entity(
-        asset_loader.pal3()?.clone(),
-        "101",
-        "preview",
-        "preview".to_string(),
-        true,
-    )
-    .ok()?;
-    let anim = create_animated_mesh_from_mv3(
+    // Build a fresh preview entity whose sole IAnimatedMeshComponent is
+    // the user-selected mv3. The previous version reused
+    // `create_mv3_entity("101", "preview", ...)`, but role 101 has no
+    // "preview" action, so `RoleController::new` fell back to
+    // `c01.mv3` and set `idle_anim_name = "c01"`. After we added the
+    // user's mv3 under `IAnimatedMeshComponent::uuid()`, the very next
+    // `entity.load()` walked components: `RoleController::on_loading`
+    // saw `is_active && idle_anim_name == "c01"` and called
+    // `idle()` -> `play_anim("c01")` -> `entity.add_component(...)`
+    // with the *role-101* c01 anim, clobbering the user's mv3. The
+    // preview therefore always animated whatever c01 was, on top of
+    // whatever rendering geometry happened to be set last by the
+    // chain of `set_morph_targets -> load_geometries` calls
+    // `new_from_idle_animation` triggers for walking/running.
+    //
+    // Construct the controller directly via
+    // `new_from_idle_animation` with `idle_anim_name == "preview"`
+    // and the user's anim pre-registered, so the on-load `idle()`
+    // call re-plays the same animation we want and `role_name`
+    // points at a non-existent role (so walking/running probes find
+    // nothing and don't pull in unrelated mv3 data).
+    let factory = asset_loader.component_factory();
+    let entity = CoreEntity::create("preview".to_string(), true);
+    let anim =
+        create_animated_mesh_from_mv3(entity.clone(), &factory, asset_loader.vfs(), path).ok()?;
+
+    let asset_mgr = asset_loader.pal3()?.clone();
+    let controller = RoleController::new_from_idle_animation(
         entity.clone(),
-        &asset_loader.component_factory(),
-        asset_loader.vfs(),
-        path,
+        asset_mgr,
+        "__preview__",
+        "preview",
+        anim.clone(),
     );
-    if let Ok(anim) = anim {
-        if let Some(controller) = RoleController::get_role_controller(entity.clone()) {
-            {
-                let c = controller.inner::<shared::openpal3::scene::RoleController>();
-                c.play_anim_mesh("preview".to_string(), anim, RoleAnimationRepeatMode::Loop);
-                c.set_active(true);
-            };
-        }
+    entity.add_component(
+        IRoleController::uuid(),
+        crosscom::ComRc::from_object(controller),
+    );
+
+    if let Some(controller) = RoleController::get_role_controller(entity.clone()) {
+        let c = controller.inner::<RoleController>();
+        c.play_anim_mesh("preview".to_string(), anim, RoleAnimationRepeatMode::Loop);
+        c.set_active(true);
     }
+
     Some((text, entity))
 }
 
