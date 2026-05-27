@@ -23,6 +23,7 @@ pub enum ContentKind(
     Model,        // 5
     Structured,   // 6
     Scene,        // 7
+    UiLayout,     // 8
 );
 
 pub fn classify_kind(raw: int) -> ContentKind {
@@ -34,6 +35,7 @@ pub fn classify_kind(raw: int) -> ContentKind {
         5 => ContentKind.Model,
         6 => ContentKind.Structured,
         7 => ContentKind.Scene,
+        8 => ContentKind.UiLayout,
         _ => ContentKind.Unsupported,
     }
 }

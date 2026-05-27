@@ -149,6 +149,12 @@ impl IPreviewerHubImpl for StubPreviewerHub {
     ) -> Option<ComRc<yaobow_editor::comdef::editor_services::ISceneHandle>> {
         None
     }
+    fn open_ui_layout(
+        &self,
+        _vfs_path: &str,
+    ) -> Option<ComRc<yaobow_editor::comdef::editor_services::IUiLayoutHandle>> {
+        None
+    }
     fn resources(&self) -> ComRc<yaobow_editor::comdef::editor_services::IResourceManager> {
         // Not exercised by welcome-script tests; create a dummy via the
         // production constructor over an empty VFS.

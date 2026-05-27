@@ -9,6 +9,7 @@ use mini_fs::MiniFs;
 
 pub mod anm;
 pub mod bsp;
+pub mod cegui;
 pub mod dff;
 pub mod smp;
 

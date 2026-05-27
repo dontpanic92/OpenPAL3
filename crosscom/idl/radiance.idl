@@ -378,6 +378,16 @@ interface IUiHost: IUnknown {
     bool button(&str label, float w, float h);
     void image(int texture_com_id, float w, float h);
     void image_fit(int texture_com_id, float src_w, float src_h);
+
+    // Blit a sub-region of a texture atlas at the current imgui cursor
+    // position. `u0,v0` is the top-left and `u1,v1` the bottom-right
+    // of the region in normalised [0,1] texture coordinates. Used by
+    // the editor's PAL4 UI-layout previewer to draw each CEGUI
+    // imageset image without uploading per-region copies; the entire
+    // imageset PNG is uploaded once and every `<Image>` rect in the
+    // .imageset definition becomes a `(u0,v0,u1,v1)` slice.
+    void image_uv(int texture_com_id, float w, float h,
+                  float u0, float v0, float u1, float v1);
     void multiline_text(&str content, float w, float h);
     bool tree_leaf(&str label);
 

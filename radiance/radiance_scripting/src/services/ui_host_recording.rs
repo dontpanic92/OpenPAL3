@@ -99,6 +99,15 @@ pub enum UiCall {
         src_w: f32,
         src_h: f32,
     },
+    ImageUv {
+        texture_com_id: i32,
+        w: f32,
+        h: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+    },
     MultilineText {
         content: String,
         w: f32,
@@ -297,6 +306,27 @@ impl IUiHostImpl for HostFacade {
             texture_com_id,
             src_w,
             src_h,
+        });
+    }
+
+    fn image_uv(
+        &self,
+        texture_com_id: i32,
+        w: f32,
+        h: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+    ) {
+        self.inner.record(UiCall::ImageUv {
+            texture_com_id,
+            w,
+            h,
+            u0,
+            v0,
+            u1,
+            v1,
         });
     }
 

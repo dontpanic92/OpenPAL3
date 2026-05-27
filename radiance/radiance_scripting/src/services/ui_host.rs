@@ -398,6 +398,36 @@ impl IUiHostImpl for ImguiUiHost {
         });
     }
 
+    fn image_uv(
+        &self,
+        texture_com_id: i32,
+        w: f32,
+        h: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+    ) {
+        let _ = with_frame("image_uv", |f| {
+            let [w, h] = f.scaled_size(w, h);
+            let id = f.textures.borrow_mut().resolve(texture_com_id as i64);
+            let texture_id = match id {
+                Some(id) => id,
+                None if texture_com_id >= 0 => {
+                    imgui::TextureId::new(texture_com_id as usize)
+                }
+                None => {
+                    f.ui.text("[missing texture]");
+                    return;
+                }
+            };
+            imgui::Image::new(texture_id, [w, h])
+                .uv0([u0, v0])
+                .uv1([u1, v1])
+                .build(f.ui);
+        });
+    }
+
     fn multiline_text(&self, content: &str, w: f32, h: f32) {
         let _ = with_frame("multiline_text", |f| {
             let n = f.multiline_counter.get();

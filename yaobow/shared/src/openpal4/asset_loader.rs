@@ -5,7 +5,6 @@ use std::{
     rc::Rc,
 };
 
-use anyhow::anyhow;
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
 use fileformats::{
@@ -632,77 +631,36 @@ fn load_portraits_single(
     portraits: &mut HashMap<String, ImageSetImage>,
     sprite_cache: &mut HashMap<String, Rc<Sprite>>,
 ) -> anyhow::Result<()> {
-    let data = vfs.read_to_end(imageset)?;
-    let content = String::from_utf8_lossy(&data);
-    let root = roxmltree::Document::parse(&content)?;
-    let root = root.root_element();
-    let image_file = root
-        .attribute("Imagefile")
-        .ok_or(anyhow!("Missing Imagefile attribute in root node"))?;
-    let image_file = image_file.replace('\\', "/");
-    let image_file = if !image_file.starts_with(&['/', '\\']) {
-        format!("/{}", image_file)
-    } else {
-        image_file.to_string()
-    };
+    use crate::loaders::cegui::imageset as cegui_imageset;
 
-    for image in root
-        .children()
-        .filter(|n| n.is_element() && n.tag_name().name() == "Image")
-    {
-        let mut read_node = || -> anyhow::Result<()> {
-            let name = image
-                .attribute("Name")
-                .ok_or(anyhow!("Missing Name in image node"))?
-                .to_lowercase();
-            let x = image
-                .attribute("XPos")
-                .ok_or(anyhow!("Missing XPos in image node"))?
-                .parse::<u32>()?;
-            let y = image
-                .attribute("YPos")
-                .ok_or(anyhow!("Missing YPos in image node"))?
-                .parse::<u32>()?;
-            let width = image
-                .attribute("Width")
-                .ok_or(anyhow!("Missing Width in image node"))?
-                .parse::<u32>()?;
-            let height = image
-                .attribute("Height")
-                .ok_or(anyhow!("Missing Height in image node"))?
-                .parse::<u32>()?;
+    let parsed = cegui_imageset::load_imageset(vfs, imageset)?;
+    let image_file = parsed.image_path.clone();
 
-            let sprite = sprite_cache
-                .entry(image_file.clone())
-                .or_insert_with(|| {
-                    let image = {
-                        let buf = vfs.read_to_end(&image_file).unwrap();
-                        image::load_from_memory_with_format(&buf, image::ImageFormat::Png)
-                            .unwrap()
-                            .to_rgba8()
-                    };
-                    Rc::new(Sprite::load_from_image(image, component_factory.as_ref()))
-                })
-                .clone();
-            portraits.insert(
-                name.clone(),
-                ImageSetImage {
-                    name,
-                    x,
-                    y,
-                    width,
-                    height,
-                    sprite,
-                },
-            );
-
-            Ok(())
-        };
-
-        let ret = read_node();
-        if let Err(e) = ret {
-            log::error!("load portrait node failed: {:?}", e);
-        }
+    for (_, rect) in &parsed.images {
+        let sprite = sprite_cache
+            .entry(image_file.clone())
+            .or_insert_with(|| {
+                let image = {
+                    let buf = vfs.read_to_end(&image_file).unwrap();
+                    image::load_from_memory_with_format(&buf, image::ImageFormat::Png)
+                        .unwrap()
+                        .to_rgba8()
+                };
+                Rc::new(Sprite::load_from_image(image, component_factory.as_ref()))
+            })
+            .clone();
+        let key = rect.name.to_lowercase();
+        portraits.insert(
+            key.clone(),
+            ImageSetImage {
+                name: key,
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+                sprite,
+            },
+        );
     }
 
     Ok(())

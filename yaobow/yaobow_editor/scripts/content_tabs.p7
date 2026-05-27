@@ -22,30 +22,35 @@ pub struct ContentTab(
     pub preview_session: ?box<yaobow_editor_services.IPreviewSession>,
     pub scene_handle: ?box<yaobow_editor_services.ISceneHandle>,
     pub scene_session: ?box<yaobow_editor_services.IScenePreviewSession>,
+    pub ui_layout_handle: ?box<yaobow_editor_services.IUiLayoutHandle>,
 );
 
 fn make_text_tab(label: string, close_cmd: int, content: string, kind: editor_consts.ContentKind) -> ContentTab {
-    ContentTab(label, close_cmd, kind, content, null, null, null, null, null, null, null)
+    ContentTab(label, close_cmd, kind, content, null, null, null, null, null, null, null, null)
 }
 
 fn make_image_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IImageHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.ContentKind.Image, "", handle, null, null, null, null, null, null)
+    ContentTab(label, close_cmd, editor_consts.ContentKind.Image, "", handle, null, null, null, null, null, null, null)
 }
 
 fn make_audio_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IAudioHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.ContentKind.Audio, "", null, handle, null, null, null, null, null)
+    ContentTab(label, close_cmd, editor_consts.ContentKind.Audio, "", null, handle, null, null, null, null, null, null)
 }
 
 fn make_video_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IVideoHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.ContentKind.Video, "", null, null, handle, null, null, null, null)
+    ContentTab(label, close_cmd, editor_consts.ContentKind.Video, "", null, null, handle, null, null, null, null, null)
 }
 
 fn make_model_tab(label: string, close_cmd: int, content: string, handle: box<yaobow_editor_services.IModelHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.ContentKind.Model, content, null, null, null, handle, null, null, null)
+    ContentTab(label, close_cmd, editor_consts.ContentKind.Model, content, null, null, null, handle, null, null, null, null)
 }
 
 fn make_scene_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.ISceneHandle>) -> ContentTab {
-    ContentTab(label, close_cmd, editor_consts.ContentKind.Scene, "", null, null, null, null, null, handle, null)
+    ContentTab(label, close_cmd, editor_consts.ContentKind.Scene, "", null, null, null, null, null, handle, null, null)
+}
+
+fn make_ui_layout_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IUiLayoutHandle>) -> ContentTab {
+    ContentTab(label, close_cmd, editor_consts.ContentKind.UiLayout, "", null, null, null, null, null, null, null, handle)
 }
 
 // Returns null if the path could not be opened (unsupported extension or
@@ -96,6 +101,13 @@ pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: st
                 let handle = h!;
                 let dump = handle.text_dump();
                 return make_model_tab(path, close_cmd, dump, handle);
+            }
+            return null;
+        },
+        editor_consts.ContentKind.UiLayout => {
+            let h = hub.open_ui_layout(path);
+            if h != null {
+                return make_ui_layout_tab(path, close_cmd, h!);
             }
             return null;
         },
@@ -271,6 +283,107 @@ pub fn render_tab_body_im(
                     preview_intents.push(tab.close_cmd);
                 }
                 ui.text("场景未打开。点击按钮启动离屏渲染。");
+            }
+            return;
+        },
+        editor_consts.ContentKind.UiLayout => {
+            if tab.ui_layout_handle != null {
+                let h = tab.ui_layout_handle!;
+                let native_w = h.native_width() as float;
+                let native_h = h.native_height() as float;
+                let avail_w = ui.content_region_avail_x() as float;
+                let avail_h = ui.content_region_avail_y() as float;
+                if native_w > 0.0 && native_h > 0.0 && avail_w > 0.0 && avail_h > 0.0 {
+                    // Fit the native canvas into the available content
+                    // region preserving aspect ratio.
+                    let sx = avail_w / native_w;
+                    let sy = avail_h / native_h;
+                    let scale = if sx < sy { sx } else { sy };
+                    let drawn_w = native_w * scale;
+                    let drawn_h = native_h * scale;
+                    let origin_x = ui.cursor_pos_x() + (avail_w - drawn_w) * 0.5;
+                    let origin_y = ui.cursor_pos_y() + (avail_h - drawn_h) * 0.5;
+
+                    let n = h.draw_count();
+                    for i in Range(0, n) {
+                        let cx = origin_x + h.draw_x(i) * scale;
+                        let cy = origin_y + h.draw_y(i) * scale;
+                        let cw = h.draw_w(i) * scale;
+                        let ch = h.draw_h(i) * scale;
+                        if cw <= 0.0 || ch <= 0.0 {
+                            continue;
+                        }
+                        let tex = h.draw_texture_com_id(i);
+                        let mut hovered = false;
+                        let mut pressed = false;
+                        // 0 is the "no texture" sentinel from
+                        // `StateImage::empty` on the host side; real
+                        // handle com_ids are always negative (see
+                        // radiance_scripting::services::texture_cache::
+                        // next_handle_com_id), and external imgui
+                        // texture-id passthroughs are always positive.
+                        if tex != 0 {
+                            ui.set_cursor_pos(cx, cy);
+                            ui.image_uv(
+                                tex,
+                                cw,
+                                ch,
+                                h.draw_u0(i),
+                                h.draw_v0(i),
+                                h.draw_u1(i),
+                                h.draw_v1(i),
+                            );
+                            if h.draw_is_interactive(i) {
+                                hovered = ui.is_item_hovered();
+                                pressed = hovered && ui.mouse_down(0);
+                            }
+                            // Overlay alternate-state imagery on top.
+                            // Press takes priority over hover; if neither
+                            // alt image is configured, the base stays.
+                            if pressed {
+                                let pt = h.draw_pressed_texture_com_id(i);
+                                if pt != 0 {
+                                    ui.set_cursor_pos(cx, cy);
+                                    ui.image_uv(
+                                        pt,
+                                        cw,
+                                        ch,
+                                        h.draw_pressed_u0(i),
+                                        h.draw_pressed_v0(i),
+                                        h.draw_pressed_u1(i),
+                                        h.draw_pressed_v1(i),
+                                    );
+                                }
+                            } else {
+                                if hovered {
+                                    let ht = h.draw_hover_texture_com_id(i);
+                                    if ht != 0 {
+                                        ui.set_cursor_pos(cx, cy);
+                                        ui.image_uv(
+                                            ht,
+                                            cw,
+                                            ch,
+                                            h.draw_hover_u0(i),
+                                            h.draw_hover_v0(i),
+                                            h.draw_hover_u1(i),
+                                            h.draw_hover_v1(i),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        // Render the widget's text label (if any)
+                        // anchored at the top-left of its rect. Imgui's
+                        // default editor font handles CJK glyphs, so
+                        // Chinese / English text both render fine.
+                        if h.draw_has_text(i) {
+                            ui.set_cursor_pos(cx, cy);
+                            ui.text(h.draw_text(i));
+                        }
+                    }
+                }
+            } else {
+                ui.text("UI 布局加载失败");
             }
             return;
         },

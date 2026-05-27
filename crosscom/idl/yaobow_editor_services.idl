@@ -71,6 +71,85 @@ interface IModelHandle: IUnknown {
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0a)]
 class ModelHandle: IModelHandle {}
 
+// Read-only handle to a parsed CEGUI-style UI layout (PAL4 `<GUILayout>`
+// XML under `gamedata/ui2/ui/layouts/`). The host parses the layout +
+// every referenced `.imageset`, uploads each imageset PNG to the imgui
+// texture cache once, and exposes a flat pre-order draw list (with
+// `AlwaysOnTop` children moved to the back) that the script-side tab
+// renderer iterates with `ui.image_uv(...)`. `window_*` accessors
+// surface the tree metadata for the inspector / debug dump.
+//
+// v1 (M1) covers static composition only: each `<Window>` with an
+// `Image` property emits exactly one draw cmd. Widget chrome via
+// `.looknfeel` (M2) and text/font rendering via `.font` + `.scheme`
+// (M3) extend the same draw list and accessor surface; no IDL change
+// is expected for those milestones.
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c19)]
+interface IUiLayoutHandle: IUnknown {
+    // Native canvas size as declared by the imagesets referenced by
+    // the layout (PAL4 always uses 800x600). The script renderer
+    // fits this 1:1 box into the available content region.
+    int native_width();
+    int native_height();
+
+    // JSON dump of the parsed layout tree for the inspector tab.
+    &str text_dump();
+
+    // Flat draw list. Each index `i` in `[0, draw_count())` is a
+    // single image quad at `(draw_x, draw_y)` with size
+    // `(draw_w, draw_h)` (in native pixels), sampling the texture
+    // identified by `draw_texture_com_id(i)` between `(u0,v0)` and
+    // `(u1,v1)` UV. Ordering is the desired draw order (back-to-front).
+    int draw_count();
+    int draw_window_id(int i);
+    float draw_x(int i);
+    float draw_y(int i);
+    float draw_w(int i);
+    float draw_h(int i);
+    int draw_texture_com_id(int i);
+    float draw_u0(int i);
+    float draw_v0(int i);
+    float draw_u1(int i);
+    float draw_v1(int i);
+
+    // Alternate-state image slots (M2/M3). `-1` for `texture_com_id`
+    // means the state is not configured; the script renderer should
+    // skip the overlay in that case.
+    int draw_hover_texture_com_id(int i);
+    float draw_hover_u0(int i);
+    float draw_hover_v0(int i);
+    float draw_hover_u1(int i);
+    float draw_hover_v1(int i);
+    int draw_pressed_texture_com_id(int i);
+    float draw_pressed_u0(int i);
+    float draw_pressed_v0(int i);
+    float draw_pressed_u1(int i);
+    float draw_pressed_v1(int i);
+    int draw_disabled_texture_com_id(int i);
+    float draw_disabled_u0(int i);
+    float draw_disabled_v0(int i);
+    float draw_disabled_u1(int i);
+    float draw_disabled_v1(int i);
+
+    // True if the draw cmd corresponds to an interactive widget
+    // (Button, Checkbox, ...) whose hover/press visuals should be
+    // driven by mouse input over the rect.
+    bool draw_is_interactive(int i);
+
+    // Per-window text label (M3). Empty string when the source window
+    // has no `Text` property.
+    &str draw_text(int i);
+    bool draw_has_text(int i);
+
+    // Window-tree metadata, indexed in pre-order traversal of the
+    // original XML (independent of the draw-list ordering above).
+    int window_count();
+    &str window_name(int i);
+    &str window_type(int i);
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c1a)]
+class UiLayoutHandle: IUiLayoutHandle {}
+
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0b)]
 interface IPreviewerHub: IUnknown {
     int classify(&str vfs_path);
@@ -86,6 +165,14 @@ interface IPreviewerHub: IUnknown {
     // null for any path the hub cannot classify as a scene; the caller
     // should fall back to `open_model` / other previewers.
     ISceneHandle? open_scene(&str vfs_path);
+
+    // Parse a `<GUILayout>` XML file and return a draw-list handle.
+    // Returns null for any path the hub cannot classify as a layout
+    // (`classify` returns KIND_UI_LAYOUT). The handle owns its
+    // uploaded imageset textures for its lifetime; dropping it
+    // releases them via the same pending-forget queue
+    // `ImageHandle`/`VideoHandle` use.
+    IUiLayoutHandle? open_ui_layout(&str vfs_path);
 
     // Lazy category index over the VFS. Built on first call and
     // cached for the hub's lifetime.

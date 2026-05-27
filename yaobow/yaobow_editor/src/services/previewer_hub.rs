@@ -32,14 +32,16 @@ use shared::GameType;
 
 use crate::comdef::editor_services::{
     IAudioHandle, IImageHandle, IModelHandle, IPreviewerHub, IPreviewerHubImpl, IResourceManager,
-    ISceneHandle, IVideoHandle,
+    ISceneHandle, IUiLayoutHandle, IVideoHandle,
 };
 use crate::directors::DevToolsAssetLoader;
-use crate::services::handles::{AudioHandle, ImageHandle, ModelHandle, VideoHandle};
+use crate::services::handles::{AudioHandle, ImageHandle, ModelHandle, UiLayoutHandle, VideoHandle};
 use crate::services::resource_manager::ResourceManager;
 use crate::services::scene_handle::SceneHandle;
 
 // PreviewKind enum (mirrors the comment in yaobow_editor_services.idl).
+// Keep ordinals aligned with `ContentKind` in
+// `yaobow_editor/scripts/editor_consts.p7::ContentKind`.
 const KIND_UNSUPPORTED: i32 = 0;
 const KIND_TEXT: i32 = 1;
 const KIND_IMAGE: i32 = 2;
@@ -47,6 +49,10 @@ const KIND_AUDIO: i32 = 3;
 const KIND_VIDEO: i32 = 4;
 const KIND_MODEL: i32 = 5;
 const KIND_STRUCTURED: i32 = 6;
+// Ordinal 7 is reserved for `Scene` in the script-side enum (it's
+// never returned by `classify_path` today — scenes go through
+// `open_scene` ahead of classify in `open_content_tab`).
+const KIND_UI_LAYOUT: i32 = 8;
 
 pub struct PreviewerHub {
     vfs: Rc<MiniFs>,
@@ -114,7 +120,43 @@ fn classify_path(path: &str) -> i32 {
         Some("bik") => KIND_VIDEO,
         Some("mv3" | "cvd" | "dff" | "anm" | "bsp" | "pol") => KIND_MODEL,
         Some("scn" | "nav" | "sce" | "nod") => KIND_STRUCTURED,
+        // .xml is content-classified separately: see `classify_xml` —
+        // a `<GUILayout>` root tags the file as KIND_UI_LAYOUT, all
+        // other .xml files fall through to KIND_UNSUPPORTED.
         _ => KIND_UNSUPPORTED,
+    }
+}
+
+/// Peek the first ~512 bytes of an .xml file and return KIND_UI_LAYOUT
+/// when the root element is `<GUILayout>`. Returns KIND_UNSUPPORTED
+/// otherwise. Cheap: the open + small read costs <1ms on local disk
+/// and is only triggered on the explicit click that opens the file.
+fn classify_xml(vfs: &mini_fs::MiniFs, path: &str) -> i32 {
+    use std::io::Read;
+    let mut file = match vfs.open(path) {
+        Ok(f) => f,
+        Err(e) => {
+            log::info!(
+                "classify_xml: vfs.open({}) failed: {} — treating as Unsupported",
+                path,
+                e
+            );
+            return KIND_UNSUPPORTED;
+        }
+    };
+    let mut buf = [0u8; 512];
+    let n = file.read(&mut buf).unwrap_or(0);
+    let is_layout = shared::loaders::cegui::layout::looks_like_gui_layout(&buf[..n]);
+    log::info!(
+        "classify_xml({}): read {} bytes, is_gui_layout={}",
+        path,
+        n,
+        is_layout
+    );
+    if is_layout {
+        KIND_UI_LAYOUT
+    } else {
+        KIND_UNSUPPORTED
     }
 }
 
@@ -124,7 +166,16 @@ fn jsonify<T: ?Sized + serde::Serialize>(t: &T) -> String {
 
 impl IPreviewerHubImpl for PreviewerHub {
     fn classify(&self, vfs_path: &str) -> i32 {
-        classify_path(vfs_path)
+        let kind = classify_path(vfs_path);
+        if kind != KIND_UNSUPPORTED {
+            return kind;
+        }
+        // Fall back to a content peek for `.xml`: PAL4 ships its UI
+        // layouts as `<GUILayout>` XML under `gamedata/ui2/ui/layouts/`.
+        if extension(vfs_path).as_deref() == Some("xml") {
+            return classify_xml(&self.vfs, vfs_path);
+        }
+        KIND_UNSUPPORTED
     }
 
     fn open_text(&self, vfs_path: &str) -> &str {
@@ -275,6 +326,30 @@ impl IPreviewerHubImpl for PreviewerHub {
             self.cache.clone(),
             self.preview_registry.clone(),
         )
+    }
+
+    fn open_ui_layout(&self, vfs_path: &str) -> Option<ComRc<IUiLayoutHandle>> {
+        log::info!("open_ui_layout({}): begin", vfs_path);
+        // Only accept files our classifier flagged as <GUILayout>.
+        // Saves the parser the bother of failing on, say, an unrelated
+        // .scheme XML the user may right-click.
+        let kind = self.classify(vfs_path);
+        if kind != KIND_UI_LAYOUT {
+            log::info!(
+                "open_ui_layout({}): classify returned {} (not KIND_UI_LAYOUT={}), aborting",
+                vfs_path,
+                kind,
+                KIND_UI_LAYOUT
+            );
+            return None;
+        }
+        let h = UiLayoutHandle::try_create(&self.vfs, vfs_path, self.cache.clone());
+        log::info!(
+            "open_ui_layout({}): result={}",
+            vfs_path,
+            if h.is_some() { "ok" } else { "None" }
+        );
+        h
     }
 
     fn resources(&self) -> ComRc<IResourceManager> {
