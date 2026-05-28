@@ -36,13 +36,18 @@ let NO_HOVER: int = -1;
 let PAL3_COUNT: int = 7;
 let PAL4_COUNT: int = 4;
 
-// Per-frame mutable state. The director methods are bridged via the
-// `IImmediateDirector` proto, so they receive `self: ref<Self>` — direct
-// `ref mut self` is not available. Holding the mutable scratch as a
-// `state: box<TitleState>` field lets `self.state.x = …` work via
-// boxed-struct field assignment (§10.2) without per-field single-element
-// `box<array<T>>` cells.
-pub struct TitleState(
+// Per-frame mutable state. With the readonly axis removed from p7, `ref self`
+// methods (such as those bridged via the `IImmediateDirector` proto) may now
+// mutate fields directly, so the previous `state: box<TitleState>` workaround
+// is no longer required. The per-frame scratch lives as plain fields on
+// `TitleDirector`.
+pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
+    pub host: box<scripting_services.IHostContext>,
+    pub bgm: ?box<scripting_services.IAudioSource>,
+    pub logo: ?box<scripting_services.ITexture>,
+    pub logo_w: int,
+    pub logo_h: int,
+    pub outlines: ?box<scripting_services.IGifAnimation>,
     pub time: float,
     pub prompt_phase: int,
     pub prompt_time: float,
@@ -57,16 +62,6 @@ pub struct TitleState(
     pub intent: int,
     pub intent_arg: int,
     pub current_pic: ?box<scripting_services.ITexture>,
-);
-
-pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
-    pub host: box<scripting_services.IHostContext>,
-    pub bgm: ?box<scripting_services.IAudioSource>,
-    pub logo: ?box<scripting_services.ITexture>,
-    pub logo_w: int,
-    pub logo_h: int,
-    pub outlines: ?box<scripting_services.IGifAnimation>,
-    pub state: box<TitleState>,
 ) {
     pub fn activate(self: ref<Self>) -> int {
         if self.bgm != null {
@@ -116,9 +111,9 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
         let central_y = (display_h - central_h) * 0.5;
         let left_ratio = 0.4;
 
-        let t = self.state.time;
+        let t = self.time;
         let alpha = compute_fade_alpha(t);
-        self.state.time = t + dt;
+        self.time = t + dt;
 
         ui.style_alpha(alpha, () => {
             let logo_cx = central_w * left_ratio * 0.5 + central_x;
@@ -164,7 +159,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
         dt: float,
         cx: float, cy: float, w: float, h: float,
     ) {
-        let phase = self.state.prompt_phase;
+        let phase = self.prompt_phase;
         if phase == PROMPT_SHOWING_LIST {
             self.draw_game_list(ui, cx, cy, w, h);
             return;
@@ -178,10 +173,10 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
                 self.draw_prompt_text(ui, dt, cx, cy, text_w, text_h, text_a, text_b);
             },
         );
-        if self.state.prompt_phase == PROMPT_AWAITING_RELEASE {
+        if self.prompt_phase == PROMPT_AWAITING_RELEASE {
             if !ui.any_key_or_mouse_down() {
-                self.state.hovered_game = title_consts.GAME_PAL3;
-                self.state.prompt_phase = PROMPT_SHOWING_LIST;
+                self.hovered_game = title_consts.GAME_PAL3;
+                self.prompt_phase = PROMPT_SHOWING_LIST;
             }
         }
     }
@@ -193,23 +188,23 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
         cx: float, cy: float, text_w: float, text_h: float,
         text_a: string, text_b: string,
     ) {
-        let phase = self.state.prompt_phase;
+        let phase = self.prompt_phase;
         if phase == PROMPT_FIRST_TIME {
             ui.set_cursor_pos(cx - text_w * 0.5, cy - text_h * 0.5);
             ui.text(text_a);
-            let t = self.state.prompt_time - dt;
+            let t = self.prompt_time - dt;
             if t < 0.0 {
-                self.state.prompt_phase = PROMPT_BLINKING;
-                self.state.prompt_time = -t;
+                self.prompt_phase = PROMPT_BLINKING;
+                self.prompt_time = -t;
             } else {
-                self.state.prompt_time = t;
+                self.prompt_time = t;
             }
             if ui.any_key_or_mouse_down() {
-                self.state.prompt_phase = PROMPT_AWAITING_RELEASE;
+                self.prompt_phase = PROMPT_AWAITING_RELEASE;
             }
         } else if phase == PROMPT_BLINKING {
             let cycle = title_consts.UNDERLINE_MARGIN_TIME + title_consts.UNDERLINE_SHOW_TIME;
-            let mut t = self.state.prompt_time;
+            let mut t = self.prompt_time;
             while t > cycle {
                 t = t - cycle;
             }
@@ -219,9 +214,9 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
             } else {
                 ui.text(text_a);
             }
-            self.state.prompt_time = t + dt;
+            self.prompt_time = t + dt;
             if ui.any_key_or_mouse_down() {
-                self.state.prompt_phase = PROMPT_AWAITING_RELEASE;
+                self.prompt_phase = PROMPT_AWAITING_RELEASE;
             }
         }
     }
@@ -266,7 +261,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
     ) {
         let label = game_full_name(ordinal);
         ui.set_cursor_pos(x, y);
-        if self.state.hovered_game != ordinal {
+        if self.hovered_game != ordinal {
             ui.style_color(
                 title_consts.SC_TEXT, 0.3, 0.3, 0.3, 1.0, () => {
                     self.submit_game_button(ui, label, w, h, ordinal);
@@ -288,18 +283,18 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
     ) {
         if ui.button(label, w, h) {
             if ordinal == title_consts.MENU_SETTINGS {
-                self.state.intent = title_consts.INTENT_OPEN_SETTINGS;
-                self.state.intent_arg = 0;
+                self.intent = title_consts.INTENT_OPEN_SETTINGS;
+                self.intent_arg = 0;
             } else if ordinal == title_consts.MENU_EXIT {
-                self.state.intent = title_consts.INTENT_EXIT;
-                self.state.intent_arg = 0;
+                self.intent = title_consts.INTENT_EXIT;
+                self.intent_arg = 0;
             } else {
-                self.state.intent = title_consts.INTENT_OPEN_GAME;
-                self.state.intent_arg = ordinal;
+                self.intent = title_consts.INTENT_OPEN_GAME;
+                self.intent_arg = ordinal;
             }
         }
         if ui.is_item_hovered() {
-            self.state.hovered_game = ordinal;
+            self.hovered_game = ordinal;
         }
     }
 
@@ -309,10 +304,10 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
         dt: float,
         cx: float, cy: float, w: float, h: float,
     ) {
-        if self.state.hovered_game != NO_HOVER {
-            self.state.pic_state = PIC_SHOWING;
+        if self.hovered_game != NO_HOVER {
+            self.pic_state = PIC_SHOWING;
         }
-        if self.state.pic_state == PIC_OUTLINE {
+        if self.pic_state == PIC_OUTLINE {
             self.render_outline(ui, dt, cx, cy, w, h);
         } else {
             self.render_hovered_pic(ui, cx, cy, w, h);
@@ -326,15 +321,15 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
         cx: float, cy: float, w: float, h: float,
     ) {
         let h70 = h * 0.7;
-        let phase = self.state.outline_phase;
+        let phase = self.outline_phase;
         if phase == OUTLINE_PLAYING {
             if self.outlines != null {
                 let anim = self.outlines!;
-                let frame_id = self.state.outline_frame;
+                let frame_id = self.outline_frame;
                 let frame = anim.frame_at(frame_id);
                 let fw = frame.width() as float;
                 let fh = frame.height() as float;
-                let remaining = self.state.outline_remaining;
+                let remaining = self.outline_remaining;
                 let mut a = 1.0;
                 if remaining < title_consts.OUTLINE_FADE_TIME {
                     a = remaining / title_consts.OUTLINE_FADE_TIME;
@@ -348,45 +343,45 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
         }
 
         if phase == OUTLINE_FIRST_TIME {
-            let t = self.state.outline_remaining - dt;
+            let t = self.outline_remaining - dt;
             if t < 0.0 {
-                self.state.outline_phase = OUTLINE_WAITING;
-                self.state.outline_remaining = title_consts.OUTLINE_MARGIN_TIME;
+                self.outline_phase = OUTLINE_WAITING;
+                self.outline_remaining = title_consts.OUTLINE_MARGIN_TIME;
             } else {
-                self.state.outline_remaining = t;
+                self.outline_remaining = t;
             }
         } else if phase == OUTLINE_PLAYING {
             if self.outlines != null {
                 let anim = self.outlines!;
                 let n_frames = anim.frame_count();
-                let frame_id = self.state.outline_frame;
+                let frame_id = self.outline_frame;
                 let delay_ms = anim.delay_ms(frame_id);
                 let delay_s = (delay_ms as float) / 1000.0;
-                let mut ft = self.state.outline_frame_time + dt;
+                let mut ft = self.outline_frame_time + dt;
                 if ft >= delay_s {
                     ft = ft - delay_s;
                     let mut next = frame_id + 1;
                     if next >= n_frames { next = 0; }
-                    self.state.outline_frame = next;
+                    self.outline_frame = next;
                 }
-                self.state.outline_frame_time = ft;
+                self.outline_frame_time = ft;
             }
-            let remaining = self.state.outline_remaining - dt;
+            let remaining = self.outline_remaining - dt;
             if remaining < 0.0 {
-                self.state.outline_phase = OUTLINE_WAITING;
-                self.state.outline_remaining = title_consts.OUTLINE_MARGIN_TIME;
+                self.outline_phase = OUTLINE_WAITING;
+                self.outline_remaining = title_consts.OUTLINE_MARGIN_TIME;
             } else {
-                self.state.outline_remaining = remaining;
+                self.outline_remaining = remaining;
             }
         } else if phase == OUTLINE_WAITING {
-            let t = self.state.outline_remaining - dt;
+            let t = self.outline_remaining - dt;
             if t < 0.0 {
-                self.state.outline_phase = OUTLINE_PLAYING;
-                self.state.outline_frame = 0;
-                self.state.outline_frame_time = -t;
-                self.state.outline_remaining = title_consts.OUTLINE_SHOW_TIME;
+                self.outline_phase = OUTLINE_PLAYING;
+                self.outline_frame = 0;
+                self.outline_frame_time = -t;
+                self.outline_remaining = title_consts.OUTLINE_SHOW_TIME;
             } else {
-                self.state.outline_remaining = t;
+                self.outline_remaining = t;
             }
         }
     }
@@ -396,19 +391,19 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
         ui: box<radiance.IUiHost>,
         cx: float, cy: float, w: float, h: float,
     ) {
-        let hovered = self.state.hovered_game;
+        let hovered = self.hovered_game;
         if hovered == NO_HOVER { return; }
         if hovered != title_consts.GAME_PAL3 && hovered != title_consts.GAME_PAL4 { return; }
-        if self.state.current_pic_game != hovered {
+        if self.current_pic_game != hovered {
             let count = pic_count(hovered);
             let r = self.host.random().next_int(count);
-            self.state.current_pic_game = hovered;
-            self.state.current_pic_index = r;
+            self.current_pic_game = hovered;
+            self.current_pic_index = r;
             // Lazy-load the chosen preview into the state slot.
             let path = pic_path(hovered, r);
-            self.state.current_pic = self.host.textures().load_png(path);
+            self.current_pic = self.host.textures().load_png(path);
         }
-        let slot = self.state.current_pic;
+        let slot = self.current_pic;
         if slot == null { return; }
         let tex = slot!;
         draw_fitted_image(
@@ -434,10 +429,10 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
         self: ref<Self>,
         dt: float,
     ) -> ?box<radiance.IDirector> {
-        let code = self.state.intent;
-        let arg = self.state.intent_arg;
-        self.state.intent = title_consts.INTENT_NONE;
-        self.state.intent_arg = 0;
+        let code = self.intent;
+        let arg = self.intent_arg;
+        self.intent = title_consts.INTENT_NONE;
+        self.intent_arg = 0;
         if code == title_consts.INTENT_OPEN_GAME {
             let cfg = self.host.config();
             if cfg.get_asset_path(self.host.games().config_key(arg)) == "" {
@@ -471,7 +466,8 @@ pub fn make_title_director(
     }
     let outlines = host.textures().load_gif_animation("/images/title/outlines/1.gif");
 
-    let state = box(TitleState(
+    return box(TitleDirector(
+        host, bgm, logo, logo_w, logo_h, outlines,
         0.0,                                            // time
         PROMPT_FIRST_TIME,                              // prompt_phase
         title_consts.UNDERLINE_FIRST_TIME_WAITING,      // prompt_time
@@ -486,9 +482,7 @@ pub fn make_title_director(
         title_consts.INTENT_NONE,                       // intent
         0,                                              // intent_arg
         null,                                           // current_pic
-    ));
-    return box(TitleDirector(host, bgm, logo, logo_w, logo_h, outlines, state))
-        as box<radiance.IImmediateDirector>;
+    )) as box<radiance.IImmediateDirector>;
 }
 
 // ---------------------------------------------------------------------------
@@ -499,11 +493,12 @@ pub fn make_title_director(
 
 pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirector(
     pub host: box<scripting_services.IHostContext>,
-    pub state: box<TitleSettingsState>,
+    pub intent: int,
+    pub intent_arg: int,
 ) {
     pub fn activate(self: ref<Self>) -> int {
-        self.state.intent = title_consts.INTENT_NONE;
-        self.state.intent_arg = 0;
+        self.intent = title_consts.INTENT_NONE;
+        self.intent_arg = 0;
         0
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
@@ -527,11 +522,11 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirecto
                             ui.table("title.settings.footer", 2, () => {
                                 ui.table_next_column();
                                 if ui.button("保存并返回", 200.0, 32.0) {
-                                    self.state.intent = title_consts.INTENT_SAVE_AND_RETURN;
+                                    self.intent = title_consts.INTENT_SAVE_AND_RETURN;
                                 }
                                 ui.table_next_column();
                                 if ui.button("取消", 200.0, 32.0) {
-                                    self.state.intent = title_consts.INTENT_CANCEL;
+                                    self.intent = title_consts.INTENT_CANCEL;
                                 }
                             });
                         });
@@ -550,13 +545,13 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirecto
         ui.text(path_label(cfg.get_asset_path(self.host.games().config_key(ordinal))));
         ui.table_next_column();
         if ui.button(f"选择...##title_pick_{ordinal}", 100.0, 24.0) {
-            self.state.intent = title_consts.INTENT_PICK_FOLDER;
-            self.state.intent_arg = ordinal;
+            self.intent = title_consts.INTENT_PICK_FOLDER;
+            self.intent_arg = ordinal;
         }
         ui.table_next_column();
         if ui.button(f"清除##title_clear_{ordinal}", 80.0, 24.0) {
-            self.state.intent = title_consts.INTENT_CLEAR_PATH;
-            self.state.intent_arg = ordinal;
+            self.intent = title_consts.INTENT_CLEAR_PATH;
+            self.intent_arg = ordinal;
         }
     }
 
@@ -564,10 +559,10 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirecto
         self: ref<Self>,
         dt: float,
     ) -> ?box<radiance.IDirector> {
-        let code = self.state.intent;
-        let arg = self.state.intent_arg;
-        self.state.intent = title_consts.INTENT_NONE;
-        self.state.intent_arg = 0;
+        let code = self.intent;
+        let arg = self.intent_arg;
+        self.intent = title_consts.INTENT_NONE;
+        self.intent_arg = 0;
 
         let cfg = self.host.config();
         if code == title_consts.INTENT_SAVE_AND_RETURN {
@@ -592,15 +587,10 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirecto
     }
 }
 
-pub struct TitleSettingsState(
-    pub intent: int,
-    pub intent_arg: int,
-);
-
 fn make_settings_director(
     host: box<scripting_services.IHostContext>,
 ) -> box<radiance.IDirector> {
-    return box(TitleSettingsDirector(host, box(TitleSettingsState(title_consts.INTENT_NONE, 0))))
+    return box(TitleSettingsDirector(host, title_consts.INTENT_NONE, 0))
         as box<radiance.IDirector>;
 }
 
@@ -620,30 +610,26 @@ fn make_title_director_as_director(
     }
     let outlines = host.textures().load_gif_animation("/images/title/outlines/1.gif");
 
-    let state = box(TitleState(
-        0.0,
-        PROMPT_FIRST_TIME,
-        title_consts.UNDERLINE_FIRST_TIME_WAITING,
-        OUTLINE_FIRST_TIME,
-        0,
-        0.0,
-        title_consts.UNDERLINE_FIRST_TIME_WAITING,
-        NO_HOVER,
-        NO_HOVER,
-        0,
-        PIC_OUTLINE,
-        title_consts.INTENT_NONE,
-        0,
-        null,
-    ));
     // The list is already showing because the user came from the title
     // page; jump directly to it instead of replaying the press-any-key
     // intro.
-    state.prompt_phase = PROMPT_SHOWING_LIST;
-    state.hovered_game = title_consts.GAME_PAL3;
-    state.time = title_consts.FADE_RAMP_END;
-    let d = box(TitleDirector(host, bgm, logo, logo_w, logo_h, outlines, state))
-        as box<radiance.IDirector>;
+    let d = box(TitleDirector(
+        host, bgm, logo, logo_w, logo_h, outlines,
+        title_consts.FADE_RAMP_END,                     // time
+        PROMPT_SHOWING_LIST,                            // prompt_phase
+        title_consts.UNDERLINE_FIRST_TIME_WAITING,      // prompt_time
+        OUTLINE_FIRST_TIME,                             // outline_phase
+        0,                                              // outline_frame
+        0.0,                                            // outline_frame_time
+        title_consts.UNDERLINE_FIRST_TIME_WAITING,      // outline_remaining
+        title_consts.GAME_PAL3,                         // hovered_game
+        NO_HOVER,                                       // current_pic_game
+        0,                                              // current_pic_index
+        PIC_OUTLINE,                                    // pic_state
+        title_consts.INTENT_NONE,                       // intent
+        0,                                              // intent_arg
+        null,                                           // current_pic
+    )) as box<radiance.IDirector>;
     return d;
 }
 

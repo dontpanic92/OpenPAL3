@@ -15,10 +15,9 @@
 //   - `openpal4.IPal4ActorAnimationController`        per-actor animation
 //   - `openpal4.IPal4GameContext`                     leader index + event triggers
 //
-// Mutable scene-wide state (`locked`, `camera_rotation`, `camera_height`)
-// lives in a `box<Pal4PartyMutState>` cell because the `IPal4ActorController`
-// proto methods are `ref<Self>` and a `ref<Self>` receiver cannot mutate
-// own non-box fields directly.
+// Mutable scene-wide state (`locked`, `camera_rotation`, `camera_height`,
+// `camera_distance`) is stored as flat fields on `Pal4PartyController`.
+// `ref<Self>` receivers mutate them directly.
 
 import openpal4;
 import radiance;
@@ -62,17 +61,6 @@ let ANIM_IDLE: int = 0;
 let ANIM_RUN: int = 2;
 let ANIM_CFG_LOOPING: int = 1;
 
-// ----- Mutable cell -------------------------------------------------------
-//
-// Held inside `box<>` so `ref<Self>` proto methods can still mutate.
-
-pub struct Pal4PartyMutState(
-    pub locked: bool,
-    pub camera_rotation: float,
-    pub camera_height: float,
-    pub camera_distance: float,
-) {}
-
 // ----- Party controller ---------------------------------------------------
 
 pub struct[openpal4.IPal4ActorController] Pal4PartyController(
@@ -88,7 +76,10 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
     pub anim_3: box<openpal4.IPal4ActorAnimationController>,
     pub camera: box<radiance.ICameraControl>,
     pub ray_caster: box<radiance.IRayCaster>,
-    pub state: box<Pal4PartyMutState>,
+    pub locked: bool,
+    pub camera_rotation: float,
+    pub camera_height: float,
+    pub camera_distance: float,
 ) {
     pub fn on_loading(self: ref<Self>) -> int {
         0
@@ -99,12 +90,12 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
     }
 
     pub fn lock_control(self: ref<Self>, lock: bool) -> int {
-        self.state.locked = lock;
+        self.locked = lock;
         0
     }
 
     pub fn on_updating(self: ref<Self>, delta_sec: float) -> int {
-        if self.state.locked {
+        if self.locked {
             return 0;
         }
 
@@ -199,7 +190,7 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
         }
 
         // --- Camera rotation: Q/E keys + RightStickX + RMB-drag X.
-        let mut rotation: float = self.state.camera_rotation;
+        let mut rotation: float = self.camera_rotation;
         if self.input.key_down(KEY_Q) {
             rotation = rotation + CAMERA_ROTATE_SPEED * delta_sec;
         }
@@ -225,25 +216,25 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
         if rotation > TAU {
             rotation = rotation - TAU;
         }
-        self.state.camera_rotation = rotation;
+        self.camera_rotation = rotation;
 
         // --- Camera height: RMB-drag Y.
-        let mut height: float = self.state.camera_height;
+        let mut height: float = self.camera_height;
         if dragging {
             let dmy: float = self.input.mouse_delta_y();
             height = height + dmy * MOUSE_PITCH_SENS;
         }
         if height < MIN_HEIGHT { height = MIN_HEIGHT; }
         if height > MAX_HEIGHT { height = MAX_HEIGHT; }
-        self.state.camera_height = height;
+        self.camera_height = height;
 
         // --- Camera distance: mouse wheel (positive wheel = zoom in).
-        let mut distance: float = self.state.camera_distance;
+        let mut distance: float = self.camera_distance;
         let wheel: float = self.input.mouse_wheel();
         distance = distance - wheel * WHEEL_DISTANCE_STEP;
         if distance < MIN_DIST { distance = MIN_DIST; }
         if distance > MAX_DIST { distance = MAX_DIST; }
-        self.state.camera_distance = distance;
+        self.camera_distance = distance;
 
         // --- Camera composition (see original Rust transform chain).
         let cr: float = cos(rotation);
@@ -279,6 +270,6 @@ pub fn make_actor_controller(
         entity_0, entity_1, entity_2, entity_3,
         anim_0, anim_1, anim_2, anim_3,
         camera, ray_caster,
-        box(Pal4PartyMutState(true, 0.0, 300.0, 300.0)),
+        true, 0.0, 300.0, 300.0,
     )) as box<openpal4.IPal4ActorController>
 }

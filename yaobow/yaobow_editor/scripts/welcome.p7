@@ -27,24 +27,16 @@ pub enum Intent(
     ClearPath,
 );
 
-// Single-frame intent slot shared by both directors. Methods receive
-// `self: ref<Self>` (matching IDirector/IImmediateDirector), so per-frame
-// scratch state lives behind a `box<IntentCell>` field — boxed-struct field
-// assignment (§10.2) lets `render_im` write `self.state.intent = …` directly.
-pub struct IntentCell(
-    pub intent: Intent,
-    pub intent_arg: int,
-);
-
 pub struct[radiance.IImmediateDirector, radiance.IDirector] WelcomeDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
-    pub state: box<IntentCell>,
+    pub intent: Intent,
+    pub intent_arg: int,
 ) {
     pub fn activate(self: ref<Self>) -> int {
-        self.state.intent = Intent.None;
-        self.state.intent_arg = 0;
+        self.intent = Intent.None;
+        self.intent_arg = 0;
         0
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
@@ -87,7 +79,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] WelcomeDirector(
             });
             ui.dummy(0.0, 16.0);
             if ui.button("设置", 120.0, 24.0) {
-                self.state.intent = Intent.OpenSettings;
+                self.intent = Intent.OpenSettings;
             }
         });
         0
@@ -97,8 +89,8 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] WelcomeDirector(
         let name = welcome_game_name(self, ordinal);
         let label = f"运行《{name}》编辑器";
         if ui.button(label, -1.0, 60.0) {
-            self.state.intent = Intent.OpenGame;
-            self.state.intent_arg = ordinal;
+            self.intent = Intent.OpenGame;
+            self.intent_arg = ordinal;
         }
     }
 
@@ -106,10 +98,10 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] WelcomeDirector(
         self: ref<Self>,
         dt: float,
     ) -> ?box<radiance.IDirector> {
-        let code = self.state.intent;
-        let arg = self.state.intent_arg;
-        self.state.intent = Intent.None;
-        self.state.intent_arg = 0;
+        let code = self.intent;
+        let arg = self.intent_arg;
+        self.intent = Intent.None;
+        self.intent_arg = 0;
 
         match code {
             Intent.OpenSettings => {
@@ -146,11 +138,12 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] SettingsDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
-    pub state: box<IntentCell>,
+    pub intent: Intent,
+    pub intent_arg: int,
 ) {
     pub fn activate(self: ref<Self>) -> int {
-        self.state.intent = Intent.None;
-        self.state.intent_arg = 0;
+        self.intent = Intent.None;
+        self.intent_arg = 0;
         0
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
@@ -175,11 +168,11 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] SettingsDirector(
             ui.table("settings.footer", 2, () => {
                 ui.table_next_column();
                 if ui.button("保存并返回", 200.0, 32.0) {
-                    self.state.intent = Intent.SaveAndReturn;
+                    self.intent = Intent.SaveAndReturn;
                 }
                 ui.table_next_column();
                 if ui.button("取消", 200.0, 32.0) {
-                    self.state.intent = Intent.Cancel;
+                    self.intent = Intent.Cancel;
                 }
             });
         });
@@ -194,13 +187,13 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] SettingsDirector(
         ui.text(path_label(cfg.get_asset_path(self.host.games().config_key(ordinal))));
         ui.table_next_column();
         if ui.button(f"选择...##pick_{ordinal}", 100.0, 24.0) {
-            self.state.intent = Intent.PickFolder;
-            self.state.intent_arg = ordinal;
+            self.intent = Intent.PickFolder;
+            self.intent_arg = ordinal;
         }
         ui.table_next_column();
         if ui.button(f"清除##clear_{ordinal}", 80.0, 24.0) {
-            self.state.intent = Intent.ClearPath;
-            self.state.intent_arg = ordinal;
+            self.intent = Intent.ClearPath;
+            self.intent_arg = ordinal;
         }
     }
 
@@ -208,10 +201,10 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] SettingsDirector(
         self: ref<Self>,
         dt: float,
     ) -> ?box<radiance.IDirector> {
-        let code = self.state.intent;
-        let arg = self.state.intent_arg;
-        self.state.intent = Intent.None;
-        self.state.intent_arg = 0;
+        let code = self.intent;
+        let arg = self.intent_arg;
+        self.intent = Intent.None;
+        self.intent_arg = 0;
 
         let cfg = self.host.config();
         match code {
@@ -246,7 +239,7 @@ pub fn make_welcome_director(
     games: box<array<int>>,
     names: box<array<string>>,
 ) -> box<radiance.IDirector> {
-    return box(WelcomeDirector(host, games, names, box(IntentCell(Intent.None, 0))))
+    return box(WelcomeDirector(host, games, names, Intent.None, 0))
         as box<radiance.IDirector>;
 }
 
@@ -255,7 +248,7 @@ fn make_settings_director(
     games: box<array<int>>,
     names: box<array<string>>,
 ) -> box<radiance.IDirector> {
-    return box(SettingsDirector(host, games, names, box(IntentCell(Intent.None, 0))))
+    return box(SettingsDirector(host, games, names, Intent.None, 0))
         as box<radiance.IDirector>;
 }
 

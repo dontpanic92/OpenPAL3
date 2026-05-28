@@ -12,18 +12,14 @@ import scene_outline;
 import inspector;
 import editor_consts;
 
-pub struct MainEditorState(
-    pub next_close_cmd: int,
-    pub active_close_cmd: int,
-);
-
 pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub tabs: box<array<content_tabs.ContentTab>>,
     pub picks: box<array<string>>,
     pub close_intents: box<array<int>>,
     pub preview_intents: box<array<int>>,
-    pub state: box<MainEditorState>,
+    pub next_close_cmd: int,
+    pub active_close_cmd: int,
     pub resources_state: box<resources_panel.ResourcesPanelState>,
 ) {
     pub fn activate(self: ref<Self>) -> int { 0 }
@@ -54,7 +50,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
                 for t in self.tabs {
                     let close_cmd = t.close_cmd;
                     let closed = ui.tab_item(t.label, true, () => {
-                        self.state.active_close_cmd = close_cmd;
+                        self.active_close_cmd = close_cmd;
                         content_tabs.render_tab_body_im(ui, t, self.preview_intents, self.host);
                     });
                     if closed {
@@ -66,8 +62,8 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
 
         // Resolve the currently-active scene tab (if any) for the
         // outline + inspector panels.
-        let scene_session = active_scene_session(self.tabs, self.state.active_close_cmd);
-        let scene_handle = active_scene_handle(self.tabs, self.state.active_close_cmd);
+        let scene_session = active_scene_session(self.tabs, self.active_close_cmd);
+        let scene_handle = active_scene_handle(self.tabs, self.active_close_cmd);
 
         ui.window_docked(editor_consts.DOCK_WINDOW_OUTLINE, () => {
             scene_outline.render_scene_outline_im(ui, scene_session, scene_handle);
@@ -93,11 +89,11 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
             if vfs.is_dir(path) {
                 vfs.toggle_expanded(path);
             } else {
-                self.state.next_close_cmd = self.state.next_close_cmd + 1;
+                self.next_close_cmd = self.next_close_cmd + 1;
                 let tab = content_tabs.open_content_tab(
                     self.host.previewers(),
                     path,
-                    editor_consts.CLOSE_CMD_BASE + self.state.next_close_cmd,
+                    editor_consts.CLOSE_CMD_BASE + self.next_close_cmd,
                 );
                 if tab != null {
                     self.tabs.push(tab!);
@@ -151,7 +147,8 @@ pub fn make_main_editor_director(
         box(picks),
         box(close_intents),
         box(preview_intents),
-        box(MainEditorState(0, 0)),
+        0,
+        0,
         box(resources_panel.make_resources_state()),
     )) as box<radiance.IDirector>;
 }
