@@ -35,7 +35,9 @@ use crate::comdef::editor_services::{
     ISceneHandle, IUiLayoutHandle, IVideoHandle,
 };
 use crate::directors::DevToolsAssetLoader;
-use crate::services::handles::{AudioHandle, ImageHandle, ModelHandle, UiLayoutHandle, VideoHandle};
+use crate::services::handles::{
+    AudioHandle, ImageHandle, ModelHandle, UiLayoutHandle, VideoHandle,
+};
 use crate::services::resource_manager::ResourceManager;
 use crate::services::scene_handle::SceneHandle;
 

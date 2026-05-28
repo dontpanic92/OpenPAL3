@@ -71,11 +71,7 @@ impl ComponentFactory for MockFactory {
     fn create_video_player(&self) -> Box<VideoPlayer> {
         Box::new(VideoPlayer::new())
     }
-    fn create_render_target(
-        &self,
-        _: u32,
-        _: u32,
-    ) -> Box<dyn radiance::rendering::RenderTarget> {
+    fn create_render_target(&self, _: u32, _: u32) -> Box<dyn radiance::rendering::RenderTarget> {
         unimplemented!()
     }
 }
@@ -135,10 +131,7 @@ fn live_pal4_combat_main_window_produces_draws() {
     let nh = h.native_height();
     let dc = h.draw_count();
     let wc = h.window_count();
-    eprintln!(
-        "handle: native={}x{}, draws={}, windows={}",
-        nw, nh, dc, wc
-    );
+    eprintln!("handle: native={}x{}, draws={}, windows={}", nw, nh, dc, wc);
     assert!(nw > 0 && nh > 0);
     assert!(wc > 0);
     assert!(

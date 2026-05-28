@@ -163,8 +163,7 @@ impl Platform {
         // Windows 7/8/8.1/early-10, which lack SetProcessDpiAwarenessContext.
         unsafe {
             // 1. user32!SetProcessDpiAwarenessContext (Windows 10, 1607+)
-            type SetProcessDpiAwarenessContextFn =
-                unsafe extern "system" fn(isize) -> i32;
+            type SetProcessDpiAwarenessContextFn = unsafe extern "system" fn(isize) -> i32;
             const DPI_AWARENESS_CONTEXT_SYSTEM_AWARE: isize = -2;
             if let Some(f) = load_proc::<SetProcessDpiAwarenessContextFn>(
                 "user32.dll\0",
@@ -179,10 +178,9 @@ impl Platform {
             type SetProcessDpiAwarenessFn = unsafe extern "system" fn(u32) -> i32;
             const PROCESS_SYSTEM_DPI_AWARE: u32 = 1;
             const S_OK: i32 = 0;
-            if let Some(f) = load_proc::<SetProcessDpiAwarenessFn>(
-                "shcore.dll\0",
-                "SetProcessDpiAwareness\0",
-            ) {
+            if let Some(f) =
+                load_proc::<SetProcessDpiAwarenessFn>("shcore.dll\0", "SetProcessDpiAwareness\0")
+            {
                 if f(PROCESS_SYSTEM_DPI_AWARE) == S_OK {
                     return;
                 }
@@ -190,10 +188,9 @@ impl Platform {
 
             // 3. user32!SetProcessDPIAware (Windows Vista/7)
             type SetProcessDpiAwareFn = unsafe extern "system" fn() -> i32;
-            if let Some(f) = load_proc::<SetProcessDpiAwareFn>(
-                "user32.dll\0",
-                "SetProcessDPIAware\0",
-            ) {
+            if let Some(f) =
+                load_proc::<SetProcessDpiAwareFn>("user32.dll\0", "SetProcessDPIAware\0")
+            {
                 let _ = f();
             }
         }

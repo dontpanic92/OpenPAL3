@@ -94,11 +94,8 @@ pub fn export_mv3_to_glb(
             }
             let vertex_count = uvs.len();
 
-            let position_acc = b.push_f32_accessor(
-                &flatten_vec3(&expanded_per_frame[0]),
-                AccType::Vec3,
-                true,
-            );
+            let position_acc =
+                b.push_f32_accessor(&flatten_vec3(&expanded_per_frame[0]), AccType::Vec3, true);
             let uv_acc = b.push_f32_accessor(&flatten_vec2(&uvs), AccType::Vec2, false);
             let indices_acc = b.push_u32_indices(&indices);
 

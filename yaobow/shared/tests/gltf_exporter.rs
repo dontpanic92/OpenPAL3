@@ -45,9 +45,27 @@ fn parse_glb_json(bytes: &[u8]) -> serde_json::Value {
 fn make_mv3(frame_count: u32) -> Mv3File {
     let vertices_for_frame = |scale: i16| {
         vec![
-            Mv3Vertex { x: 0, y: 0, z: 0, normal_phi: 0, normal_theta: 0 },
-            Mv3Vertex { x: 100 + scale, y: 0, z: 0, normal_phi: 0, normal_theta: 0 },
-            Mv3Vertex { x: 0, y: 100 + scale, z: 0, normal_phi: 0, normal_theta: 0 },
+            Mv3Vertex {
+                x: 0,
+                y: 0,
+                z: 0,
+                normal_phi: 0,
+                normal_theta: 0,
+            },
+            Mv3Vertex {
+                x: 100 + scale,
+                y: 0,
+                z: 0,
+                normal_phi: 0,
+                normal_theta: 0,
+            },
+            Mv3Vertex {
+                x: 0,
+                y: 100 + scale,
+                z: 0,
+                normal_phi: 0,
+                normal_theta: 0,
+            },
         ]
     };
     let frames: Vec<Mv3Frame> = (0..frame_count)
@@ -133,12 +151,20 @@ fn mv3_single_frame_exporter_skips_animation() {
         .expect("export_mv3_to_glb succeeds");
     let v = parse_glb_json(&bytes);
     assert!(
-        v.get("animations").and_then(|a| a.as_array()).map(|a| a.len()).unwrap_or(0) == 0,
+        v.get("animations")
+            .and_then(|a| a.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0)
+            == 0,
         "single-frame mv3 should not emit animations",
     );
     let prim = &v["meshes"][0]["primitives"][0];
     assert!(
-        prim.get("targets").and_then(|t| t.as_array()).map(|a| a.len()).unwrap_or(0) == 0,
+        prim.get("targets")
+            .and_then(|t| t.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0)
+            == 0,
         "single-frame mv3 should have no morph targets",
     );
 }

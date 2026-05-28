@@ -251,7 +251,10 @@ mod tests {
         assert_eq!(imageset.images.len(), 2);
 
         let client = imageset.get("clientbrush").expect("clientbrush");
-        assert_eq!((client.x, client.y, client.width, client.height), (2, 2, 64, 64));
+        assert_eq!(
+            (client.x, client.y, client.width, client.height),
+            (2, 2, 64, 64)
+        );
 
         // Case-insensitive lookup.
         assert!(imageset.get("ClientBrush").is_some());
@@ -267,7 +270,10 @@ mod tests {
 
     #[test]
     fn normalises_paths() {
-        assert_eq!(normalise_vfs_path("gamedata\\ui\\x.png"), "/gamedata/ui/x.png");
+        assert_eq!(
+            normalise_vfs_path("gamedata\\ui\\x.png"),
+            "/gamedata/ui/x.png"
+        );
         assert_eq!(normalise_vfs_path("/already/abs.png"), "/already/abs.png");
         assert_eq!(normalise_vfs_path("a/b"), "/a/b");
     }

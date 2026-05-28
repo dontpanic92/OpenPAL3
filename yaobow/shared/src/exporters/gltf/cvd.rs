@@ -22,8 +22,7 @@ use gltf_json::{Mesh, Node, Scene};
 use mini_fs::MiniFs;
 
 use crate::openpal3::loaders::cvd_loader::{
-    CvdFile, CvdMesh, CvdModelNode, CvdPositionKeyFrames, CvdRotationKeyFrames,
-    CvdScaleKeyFrames,
+    CvdFile, CvdMesh, CvdModelNode, CvdPositionKeyFrames, CvdRotationKeyFrames, CvdScaleKeyFrames,
 };
 
 use super::glb::GlbBuilder;

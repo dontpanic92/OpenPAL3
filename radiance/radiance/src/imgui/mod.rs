@@ -39,25 +39,8 @@ impl ImguiContext {
         context.style_mut().scale_all_sizes(platform.dpi_scale());
         #[cfg(not(vita))]
         {
-            context.fonts().add_font(&[FontSource::TtfData {
-                data: radiance_assets::FONT_SOURCE_HAN_SERIF,
-                size_pixels: 28. * platform.dpi_scale(),
-                config: Some(FontConfig {
-                    rasterizer_multiply: 1.75,
-                    glyph_ranges: FontGlyphRanges::chinese_full(),
-                    ..FontConfig::default()
-                }),
-            }]);
-
-            context.fonts().add_font(&[FontSource::TtfData {
-                data: radiance_assets::FONT_SOURCE_HAN_SERIF,
-                size_pixels: 18. * platform.dpi_scale(),
-                config: Some(FontConfig {
-                    rasterizer_multiply: 1.75,
-                    glyph_ranges: FontGlyphRanges::chinese_full(),
-                    ..FontConfig::default()
-                }),
-            }]);
+            add_font_with_lucide(&mut context, 28. * platform.dpi_scale());
+            add_font_with_lucide(&mut context, 18. * platform.dpi_scale());
         }
 
         #[cfg(vita)]
@@ -106,6 +89,36 @@ impl ImguiContext {
         let io = context.io_mut();
         io.update_delta_time(std::time::Duration::from_secs_f32(delta_sec));
     }
+}
+
+#[cfg(not(vita))]
+fn add_font_with_lucide(context: &mut Context, size_pixels: f32) {
+    // imgui-rs flips `MergeMode` for every FontSource after the first
+    // in a single `add_font` call. Listing Source Han Serif first and
+    // Lucide second merges Lucide PUA glyphs into the same font slot,
+    // so editor scripts can interpolate icons directly into widget
+    // labels. `glyph_min_advance_x` keeps each icon a fixed square
+    // next to the surrounding CJK text.
+    context.fonts().add_font(&[
+        FontSource::TtfData {
+            data: radiance_assets::FONT_SOURCE_HAN_SERIF,
+            size_pixels,
+            config: Some(FontConfig {
+                rasterizer_multiply: 1.75,
+                glyph_ranges: FontGlyphRanges::chinese_full(),
+                ..FontConfig::default()
+            }),
+        },
+        FontSource::TtfData {
+            data: radiance_assets::FONT_LUCIDE,
+            size_pixels,
+            config: Some(FontConfig {
+                glyph_ranges: FontGlyphRanges::from_slice(&[0xE000, 0xF8FF, 0]),
+                glyph_min_advance_x: size_pixels,
+                ..FontConfig::default()
+            }),
+        },
+    ]);
 }
 
 pub struct ImguiFrame {

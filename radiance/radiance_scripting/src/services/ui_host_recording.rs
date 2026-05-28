@@ -309,16 +309,7 @@ impl IUiHostImpl for HostFacade {
         });
     }
 
-    fn image_uv(
-        &self,
-        texture_com_id: i32,
-        w: f32,
-        h: f32,
-        u0: f32,
-        v0: f32,
-        u1: f32,
-        v1: f32,
-    ) {
+    fn image_uv(&self, texture_com_id: i32, w: f32, h: f32, u0: f32, v0: f32, u1: f32, v1: f32) {
         self.inner.record(UiCall::ImageUv {
             texture_com_id,
             w,

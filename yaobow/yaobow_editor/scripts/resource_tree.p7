@@ -21,6 +21,7 @@
 
 import scripting_services;
 import radiance;
+import icons;
 
 fn join_tree_path(parent: string, name: string) -> string {
     if parent == "/" {
@@ -50,7 +51,8 @@ fn render_tree_dir(
     // subdir pays the recursion cost.
     for i in Range(0, dirs) {
         let name = vfs.entry_name(path, i);
-        if ui.tree_node_open(name) {
+        let label = f"{icons.ICON_FOLDER}  {name}";
+        if ui.tree_node_open(label) {
             let expanded_path = join_tree_path(path, name);
             render_tree_dir(ui, vfs, expanded_path, picks);
             ui.tree_pop();
@@ -69,7 +71,8 @@ fn render_tree_dir(
         let k = ui.list_clipped_index();
         let name = vfs.entry_name(leaf_path, leaf_base + k);
         let child_path = join_tree_path(leaf_path, name);
-        if ui.tree_leaf(name) {
+        let label = f"{icons.ICON_FILE}  {name}";
+        if ui.tree_leaf(label) {
             picks.push(child_path);
         }
     });

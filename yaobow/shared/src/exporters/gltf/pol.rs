@@ -58,10 +58,7 @@ pub fn export_pol_to_glb(
             }
             let index_acc = b.push_u32_indices(&indices);
 
-            let texture_name = mat_info
-                .texture_names
-                .last()
-                .and_then(|n| n.as_str().ok());
+            let texture_name = mat_info.texture_names.last().and_then(|n| n.as_str().ok());
             let material_idx = build_material(&mut b, vfs, model_dir, texture_name.as_deref());
 
             let mut attributes = std::collections::BTreeMap::new();

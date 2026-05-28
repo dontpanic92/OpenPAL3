@@ -528,7 +528,9 @@ impl UiLayoutHandle {
                     let com_id = next_handle_com_id();
                     {
                         let mut c = cache.borrow_mut();
-                        if c.upload_pixels(com_id, &rgba.into_raw(), tex_w, tex_h).is_none() {
+                        if c.upload_pixels(com_id, &rgba.into_raw(), tex_w, tex_h)
+                            .is_none()
+                        {
                             log::warn!(
                                 "imageset {} texture upload failed for layout {}",
                                 set_name,
@@ -688,16 +690,28 @@ impl IUiLayoutHandleImpl for UiLayoutHandle {
             .unwrap_or(0)
     }
     fn draw_hover_u0(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.hover.u0).unwrap_or(0.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.hover.u0)
+            .unwrap_or(0.0)
     }
     fn draw_hover_v0(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.hover.v0).unwrap_or(0.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.hover.v0)
+            .unwrap_or(0.0)
     }
     fn draw_hover_u1(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.hover.u1).unwrap_or(1.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.hover.u1)
+            .unwrap_or(1.0)
     }
     fn draw_hover_v1(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.hover.v1).unwrap_or(1.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.hover.v1)
+            .unwrap_or(1.0)
     }
     fn draw_pressed_texture_com_id(&self, i: i32) -> i32 {
         self.draws
@@ -706,16 +720,28 @@ impl IUiLayoutHandleImpl for UiLayoutHandle {
             .unwrap_or(0)
     }
     fn draw_pressed_u0(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.pressed.u0).unwrap_or(0.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.pressed.u0)
+            .unwrap_or(0.0)
     }
     fn draw_pressed_v0(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.pressed.v0).unwrap_or(0.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.pressed.v0)
+            .unwrap_or(0.0)
     }
     fn draw_pressed_u1(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.pressed.u1).unwrap_or(1.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.pressed.u1)
+            .unwrap_or(1.0)
     }
     fn draw_pressed_v1(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.pressed.v1).unwrap_or(1.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.pressed.v1)
+            .unwrap_or(1.0)
     }
     fn draw_disabled_texture_com_id(&self, i: i32) -> i32 {
         self.draws
@@ -724,16 +750,28 @@ impl IUiLayoutHandleImpl for UiLayoutHandle {
             .unwrap_or(0)
     }
     fn draw_disabled_u0(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.disabled.u0).unwrap_or(0.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.disabled.u0)
+            .unwrap_or(0.0)
     }
     fn draw_disabled_v0(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.disabled.v0).unwrap_or(0.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.disabled.v0)
+            .unwrap_or(0.0)
     }
     fn draw_disabled_u1(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.disabled.u1).unwrap_or(1.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.disabled.u1)
+            .unwrap_or(1.0)
     }
     fn draw_disabled_v1(&self, i: i32) -> f32 {
-        self.draws.get(i as usize).map(|d| d.disabled.v1).unwrap_or(1.0)
+        self.draws
+            .get(i as usize)
+            .map(|d| d.disabled.v1)
+            .unwrap_or(1.0)
     }
     fn draw_is_interactive(&self, i: i32) -> bool {
         self.draws
@@ -936,11 +974,7 @@ fn is_interactive_widget(window_type: &str) -> bool {
     )
 }
 
-fn uv_for(
-    rect: &cegui_imageset::ImagesetImage,
-    tex_w: u32,
-    tex_h: u32,
-) -> (f32, f32, f32, f32) {
+fn uv_for(rect: &cegui_imageset::ImagesetImage, tex_w: u32, tex_h: u32) -> (f32, f32, f32, f32) {
     let tw = tex_w.max(1) as f32;
     let th = tex_h.max(1) as f32;
     (
@@ -1008,11 +1042,7 @@ impl ImagesetIndex {
         }
     }
 
-    fn load(
-        &mut self,
-        vfs: &MiniFs,
-        set_name: &str,
-    ) -> anyhow::Result<(Imageset, Vec<u8>)> {
+    fn load(&mut self, vfs: &MiniFs, set_name: &str) -> anyhow::Result<(Imageset, Vec<u8>)> {
         // 1) Direct filename match.
         let lower = set_name.to_lowercase();
         let candidates = [
@@ -1059,11 +1089,7 @@ impl ImagesetIndex {
             self.scanned = true;
         }
         if let Some(p) = self.name_to_path.get(&lower) {
-            log::debug!(
-                "ImagesetIndex::load({}): dir-scan hit -> {}",
-                set_name,
-                p
-            );
+            log::debug!("ImagesetIndex::load({}): dir-scan hit -> {}", set_name, p);
             let (imageset, png) = cegui_imageset::load_imageset_with_atlas(vfs, p)?;
             return Ok((imageset, png));
         }
@@ -1112,8 +1138,7 @@ impl ImagesetIndex {
             let Ok(imageset) = cegui_imageset::parse_imageset_bytes(&bytes) else {
                 continue;
             };
-            self.name_to_path
-                .insert(imageset.name.to_lowercase(), path);
+            self.name_to_path.insert(imageset.name.to_lowercase(), path);
             hits += 1;
         }
         log::info!(

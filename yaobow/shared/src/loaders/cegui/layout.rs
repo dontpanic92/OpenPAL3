@@ -191,11 +191,7 @@ fn read_area(node: roxmltree::Node) -> UnifiedAreaRect {
         .unwrap_or_default()
 }
 
-fn read_window(
-    node: roxmltree::Node,
-    parent: Option<u32>,
-    out: &mut Vec<Window>,
-) -> u32 {
+fn read_window(node: roxmltree::Node, parent: Option<u32>, out: &mut Vec<Window>) -> u32 {
     let id = out.len() as u32;
     let window_type = node
         .attribute("Type")
@@ -515,14 +511,35 @@ mod tests {
 
     #[test]
     fn parse_unified_area_rect_robust() {
-        let rect = parse_unified_area_rect(
-            "{{0.5,1.0},{0,2},{1,3},{1,4}}",
-        )
-        .expect("parse");
-        assert_eq!(rect.left, UnifiedDim { scale: 0.5, offset: 1.0 });
-        assert_eq!(rect.top, UnifiedDim { scale: 0.0, offset: 2.0 });
-        assert_eq!(rect.right, UnifiedDim { scale: 1.0, offset: 3.0 });
-        assert_eq!(rect.bottom, UnifiedDim { scale: 1.0, offset: 4.0 });
+        let rect = parse_unified_area_rect("{{0.5,1.0},{0,2},{1,3},{1,4}}").expect("parse");
+        assert_eq!(
+            rect.left,
+            UnifiedDim {
+                scale: 0.5,
+                offset: 1.0
+            }
+        );
+        assert_eq!(
+            rect.top,
+            UnifiedDim {
+                scale: 0.0,
+                offset: 2.0
+            }
+        );
+        assert_eq!(
+            rect.right,
+            UnifiedDim {
+                scale: 1.0,
+                offset: 3.0
+            }
+        );
+        assert_eq!(
+            rect.bottom,
+            UnifiedDim {
+                scale: 1.0,
+                offset: 4.0
+            }
+        );
 
         // Wrong number of dims should error.
         assert!(parse_unified_area_rect("{0,0}").is_err());
