@@ -389,22 +389,29 @@ impl Pal4Scene {
             let object_name = entry.file_name.to_string();
             let folder = entry.folder.to_string();
             let file_name = entry.file_name.to_string();
+            // Scripts address game objects by the GOB entry's logical `name`
+            // (e.g. via `giSetObjectVisible`), not by the mesh file name. Use
+            // it for the entity name so `Pal4Scene::get_object` can find it,
+            // mirroring how NPCs are named by `npc.name`. Fall back to the
+            // file name if the logical name is missing.
+            let logical_name = entry.name.to_string().ok();
             match (object_name, folder, file_name) {
                 (Ok(object_name), Ok(folder), Ok(file_name)) => {
                     if object_type == GobObjectType::EFFECT {
                         continue;
                     }
 
+                    let entity_name = logical_name.unwrap_or_else(|| object_name.clone());
                     let entity = asset_loader
-                        .load_object(&object_name, &folder, &file_name)
+                        .load_object(&entity_name, &folder, &file_name)
                         .unwrap_or_else(|| {
                             log::error!(
                                 "Cannot load object: {:?} {:?} {:?}",
-                                object_name,
+                                entity_name,
                                 folder,
                                 file_name
                             );
-                            CoreEntity::create(object_name.clone(), false)
+                            CoreEntity::create(entity_name.clone(), false)
                         });
 
                     // Honor the `PAL4-GameObject-object-hide` flag: when set,
@@ -495,6 +502,13 @@ impl Pal4Scene {
 
     pub fn get_npc(&self, name: &str) -> Option<ComRc<IEntity>> {
         self.npcs.iter().find(|npc| name == npc.name()).cloned()
+    }
+
+    pub fn get_object(&self, name: &str) -> Option<ComRc<IEntity>> {
+        self.objects
+            .iter()
+            .find(|object| name == object.name())
+            .cloned()
     }
 
     pub fn get_player_controller(&self, player_id: usize) -> ComRc<IPal4ActorAnimationController> {

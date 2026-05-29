@@ -317,6 +317,14 @@ impl Pal4AppContext {
         }
     }
 
+    pub fn enable_object(&mut self, object: &str, enable: bool) {
+        let object = self.scene.get_object(object);
+        if let Some(object) = object {
+            object.set_visible(enable);
+            object.set_enabled(enable);
+        }
+    }
+
     pub fn get_player_pos(&mut self, player: i32) -> Vec3 {
         let player = self.map_player(player);
 

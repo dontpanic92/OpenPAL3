@@ -1293,7 +1293,11 @@ fn start_combat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
 }
 
 fn set_object_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_object_name:i32,_is_visible:i32);
+    as_params!(vm, object_name: i32, is_visible: i32);
+
+    let object_name = get_str(vm, object_name as usize).unwrap_or_default();
+    vm.app_context.enable_object(&object_name, is_visible != 0);
+
     Pal4FunctionState::Completed
 }
 
@@ -2120,12 +2124,22 @@ fn player_end_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 }
 
 fn player_current_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _action_file_str:i32,_action_id:i32,_do_action :i32);
+    as_params!(vm, action_str: i32, flag: i32, _sync: i32);
+
+    let action = get_str(vm, action_str as usize).unwrap();
+    vm.app_context.player_do_action(-1, &action, flag);
+
     Pal4FunctionState::Completed
 }
 
-fn player_current_end_action(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    Pal4FunctionState::Completed
+fn player_current_end_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
+        if vm.app_context.player_act_completed(-1) {
+            ContinuationState::Completed
+        } else {
+            ContinuationState::Loop
+        }
+    }))
 }
 
 fn player_set_pos(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
@@ -2220,7 +2234,10 @@ fn player_current_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Fun
 }
 
 fn player_back_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_x:f32,_y:f32,_z:f32,_back_to :i32);
+    as_params!(vm, player_id:i32, x:f32, y:f32, z:f32, _back_to :i32);
+
+    vm.app_context
+        .player_to(player_id, &Vec3::new(x, y, z), false);
     Pal4FunctionState::Completed
 }
 
@@ -2259,7 +2276,8 @@ fn player_do_action_repeat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Fu
 }
 
 fn player_end_action_repeat(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32);
+    as_params!(vm, player_id: i32);
+    vm.app_context.player_unhold_act(player_id);
     Pal4FunctionState::Completed
 }
 
@@ -2302,7 +2320,10 @@ fn npc_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 }
 
 fn npc_back_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _x: f32, _y: f32, _z: f32, _back_to: i32);
+    as_params!(vm, npc_file_str: i32, x: f32, y: f32, z: f32, _back_to: i32);
+
+    let npc_name = get_str(vm, npc_file_str as usize).unwrap();
+    vm.app_context.npc_to(&npc_name, &Vec3::new(x, y, z), false);
     Pal4FunctionState::Completed
 }
 
