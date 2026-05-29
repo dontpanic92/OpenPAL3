@@ -151,6 +151,11 @@ fn add_font_with_lucide(context: &mut Context, size_pixels: f32) {
             config: Some(FontConfig {
                 rasterizer_multiply: 1.75,
                 glyph_ranges: FontGlyphRanges::chinese_full(),
+                // Source Han Serif renders slightly low within the line box,
+                // so nudge it up a touch (negative y = up) for vertical
+                // centering. Scales with the font size, which the caller has
+                // already DPI-scaled.
+                glyph_offset: [0.0, -size_pixels * 0.06],
                 ..FontConfig::default()
             }),
         },
@@ -160,6 +165,13 @@ fn add_font_with_lucide(context: &mut Context, size_pixels: f32) {
             config: Some(FontConfig {
                 glyph_ranges: FontGlyphRanges::from_slice(&[0xE000, 0xF8FF, 0]),
                 glyph_min_advance_x: size_pixels,
+                // Lucide glyphs are authored on a metrics box whose baseline
+                // sits higher than Source Han Serif, so without this nudge the
+                // merged icons render above the surrounding text line. Push
+                // them down by a fraction of the font size (scales for every
+                // size add_font_with_lucide is called with, already DPI-scaled
+                // by the caller) to share the text baseline.
+                glyph_offset: [0.0, size_pixels * 0.12],
                 ..FontConfig::default()
             }),
         },
