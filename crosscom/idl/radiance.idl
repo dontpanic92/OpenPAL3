@@ -389,6 +389,29 @@ interface IUiHost: IUnknown {
     void image_uv(int texture_com_id, float w, float h,
                   float u0, float v0, float u1, float v1);
     void multiline_text(&str content, float w, float h);
+
+    // Register read-only text under a caller-unique `key` (e.g. a
+    // content tab's close command). The full string crosses the FFI
+    // boundary only on this call, so callers MUST invoke it once when
+    // the content changes — never every frame. The host keeps a copy
+    // and precomputes per-line byte offsets so `show_text_buffer` is
+    // O(visible lines) regardless of content size.
+    void set_text_buffer(int key, &str content);
+
+    // Render a previously-registered text buffer with a clipped,
+    // scrollable, read-only line viewer. Returns false (rendering
+    // nothing) when `key` is unknown — the caller should then call
+    // `set_text_buffer(key, ...)` once and retry. Cheap to call every
+    // frame: per-frame cost is bounded by the viewport height, not by
+    // the content length, and no large string crosses the FFI boundary.
+    bool show_text_buffer(int key, float w, float h);
+
+    // Copy a registered text buffer's full content to the system
+    // clipboard. No-op if `key` is unknown. The string stays host-side
+    // (it never crosses back over the FFI boundary), so this is cheap
+    // even for multi-MB buffers.
+    void copy_text_buffer(int key);
+
     bool tree_leaf(&str label);
 
     // Render only the rows of a large flat list that are actually

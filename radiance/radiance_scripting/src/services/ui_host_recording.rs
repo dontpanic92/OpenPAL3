@@ -113,6 +113,18 @@ pub enum UiCall {
         w: f32,
         h: f32,
     },
+    SetTextBuffer {
+        key: i32,
+        content: String,
+    },
+    ShowTextBuffer {
+        key: i32,
+        w: f32,
+        h: f32,
+    },
+    CopyTextBuffer {
+        key: i32,
+    },
     TreeLeaf {
         label: String,
     },
@@ -336,6 +348,25 @@ impl IUiHostImpl for HostFacade {
             w,
             h,
         });
+    }
+
+    fn set_text_buffer(&self, key: i32, content: &str) {
+        self.inner.record(UiCall::SetTextBuffer {
+            key,
+            content: content.into(),
+        });
+    }
+
+    fn show_text_buffer(&self, key: i32, w: f32, h: f32) -> bool {
+        self.inner.record(UiCall::ShowTextBuffer { key, w, h });
+        // Report the key as unknown so a script under test calls
+        // `set_text_buffer` and the recorded stream still captures the
+        // text content (matching the real host's first-frame behaviour).
+        false
+    }
+
+    fn copy_text_buffer(&self, key: i32) {
+        self.inner.record(UiCall::CopyTextBuffer { key });
     }
 
     fn tree_leaf(&self, label: &str) -> bool {

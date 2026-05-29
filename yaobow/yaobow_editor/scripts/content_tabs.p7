@@ -126,6 +126,19 @@ pub fn open_content_tab(hub: box<yaobow_editor_services.IPreviewerHub>, path: st
 // director's `update` opens the actual preview session (which mutates
 // the owning tab via indexed array assignment — not legal through a
 // `ref<ContentTab>` capture).
+fn render_text_buffer_with_copy(ui: box<radiance.IUiHost>, key: int, content: string) {
+    if ui.button("Copy", 80.0, 24.0) {
+        ui.copy_text_buffer(key);
+    }
+    // Register the (possibly large) text with the host once, then render
+    // it every frame by key. `content` is only read on the registration
+    // frame, so the big string never crosses the FFI boundary per frame.
+    if !ui.show_text_buffer(key, -1.0, -1.0) {
+        ui.set_text_buffer(key, content);
+        ui.show_text_buffer(key, -1.0, -1.0);
+    }
+}
+
 pub fn render_tab_body_im(
     ui: box<radiance.IUiHost>,
     tab: ref<ContentTab>,
@@ -134,11 +147,11 @@ pub fn render_tab_body_im(
 ) {
     match tab.kind {
         editor_consts.ContentKind.Text => {
-            ui.multiline_text(tab.text_content, -1.0, -1.0);
+            render_text_buffer_with_copy(ui, tab.close_cmd, tab.text_content);
             return;
         },
         editor_consts.ContentKind.Structured => {
-            ui.multiline_text(tab.text_content, -1.0, -1.0);
+            render_text_buffer_with_copy(ui, tab.close_cmd, tab.text_content);
             return;
         },
         editor_consts.ContentKind.Image => {
@@ -237,7 +250,14 @@ pub fn render_tab_body_im(
                         }
                     }
                 }
-                ui.multiline_text(tab.text_content, -1.0, -1.0);
+                ui.same_line();
+                if ui.button("Copy", 80.0, 24.0) {
+                    ui.copy_text_buffer(tab.close_cmd);
+                }
+                if !ui.show_text_buffer(tab.close_cmd, -1.0, -1.0) {
+                    ui.set_text_buffer(tab.close_cmd, tab.text_content);
+                    ui.show_text_buffer(tab.close_cmd, -1.0, -1.0);
+                }
             }
             return;
         },

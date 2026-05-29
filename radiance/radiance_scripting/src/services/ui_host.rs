@@ -26,7 +26,7 @@
 //! `invoke` already surface to `eprintln!` in `proto_ccw.rs`.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crosscom::{ComRc, IAction};
 
@@ -175,6 +175,85 @@ fn with_frame<R>(label: &str, body: impl FnOnce(&ImguiFrameState<'_>) -> R) -> O
     Some(body(unsafe { &*(raw as *const ImguiFrameState<'_>) }))
 }
 
+/// A registered read-only text buffer owned by the host. The content is
+/// copied in once (via `set_text_buffer`) and the per-line byte ranges
+/// are precomputed, so each `show_text_buffer` frame only pays for the
+/// lines a clipper scrolls into view.
+struct TextBuffer {
+    content: String,
+    /// `(start, end)` byte offsets per line; `end` excludes the trailing
+    /// `\r`/`\n`. Indexed by line number for O(1) clipper lookups.
+    line_ranges: Vec<(u32, u32)>,
+    /// Monotonic stamp of the last `set`/`show`, used to evict the
+    /// least-recently-shown buffer when the registry is full.
+    last_shown: u64,
+}
+
+/// Keyed registry of read-only text buffers for `set_text_buffer` /
+/// `show_text_buffer`. Bounded by `TEXT_BUFFER_CAP`; the least-recently
+/// shown buffer is evicted when a new key is inserted at capacity, so
+/// closed content tabs do not accumulate.
+#[derive(Default)]
+struct TextBufferRegistry {
+    buffers: HashMap<i32, TextBuffer>,
+    tick: u64,
+}
+
+/// Upper bound on simultaneously-registered text buffers. A handful of
+/// content tabs are open at once in practice; this is generous headroom.
+const TEXT_BUFFER_CAP: usize = 64;
+
+/// Split `content` into per-line `(start, end)` byte ranges, dropping the
+/// trailing `\r` of any CRLF pair so it does not render as a stray glyph.
+/// Mirrors `str::split('\n')` (a trailing newline yields a final empty
+/// line). This is O(content length) and is the work we cache so it runs
+/// only when a buffer's text changes, never per frame.
+fn compute_line_ranges(content: &str, out: &mut Vec<(u32, u32)>) {
+    out.clear();
+    let bytes = content.as_bytes();
+    let mut start = 0usize;
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'\n' {
+            let mut end = i;
+            if end > start && bytes[end - 1] == b'\r' {
+                end -= 1;
+            }
+            out.push((start as u32, end as u32));
+            start = i + 1;
+        }
+    }
+    let mut end = bytes.len();
+    if end > start && bytes[end - 1] == b'\r' {
+        end -= 1;
+    }
+    out.push((start as u32, end as u32));
+}
+
+/// Render `content` as a read-only, scrollable line viewer inside a child
+/// window, submitting only the lines an `ImGuiListClipper` scrolls into
+/// view. `ranges` are the precomputed per-line byte offsets.
+fn render_clipped_lines(
+    f: &ImguiFrameState<'_>,
+    id: &str,
+    w: f32,
+    h: f32,
+    content: &str,
+    ranges: &[(u32, u32)],
+) {
+    f.ui
+        .child_window(id)
+        .size([w, h])
+        .flags(imgui::WindowFlags::HORIZONTAL_SCROLLBAR)
+        .build(|| {
+            let clipper = imgui::ListClipper::new(ranges.len() as i32);
+            let tok = clipper.begin(f.ui);
+            for row in tok.iter() {
+                let (s, e) = ranges[row as usize];
+                f.ui.text(&content[s as usize..e as usize]);
+            }
+        });
+}
+
 /// Stateless production `IUiHost` ComObject. Construct once per
 /// scripting session and intern via `ScriptHost::intern` so scripts
 /// can hold a stable `box<IUiHost>` handle across frames.
@@ -183,6 +262,9 @@ pub struct ImguiUiHost {
     /// already seeded their dock-builder layout this session, so the
     /// helper is idempotent when scripts call it every frame.
     dock_layouts_built: RefCell<HashSet<String>>,
+    /// Keyed read-only text buffers for `set_text_buffer` /
+    /// `show_text_buffer` (see `TextBufferRegistry`).
+    text_buffers: RefCell<TextBufferRegistry>,
 }
 
 ComObject_UiHost!(super::ImguiUiHost);
@@ -191,6 +273,7 @@ impl ImguiUiHost {
     pub fn create() -> ComRc<IUiHost> {
         ComRc::<IUiHost>::from_object(ImguiUiHost {
             dock_layouts_built: RefCell::new(HashSet::new()),
+            text_buffers: RefCell::new(TextBufferRegistry::default()),
         })
     }
 }
@@ -465,10 +548,91 @@ impl IUiHostImpl for ImguiUiHost {
             f.multiline_counter.set(n + 1);
             let id = format!("##ui_host_multi_{}", n);
             let [w, h] = f.scaled_size(w, h);
-            let mut buf = content.to_string();
-            imgui::InputTextMultiline::new(f.ui, &id, &mut buf, [w, h])
-                .read_only(true)
-                .build();
+            // Uncached read-only viewer: recomputes line offsets every
+            // frame, so it is O(content length) per frame and only
+            // suitable for small/transient text. For large or persistent
+            // content (file dumps, logs, structured JSON) callers MUST
+            // use `set_text_buffer` (once) + `show_text_buffer` (per
+            // frame) instead — that path keeps the big string off the
+            // per-frame FFI boundary and caches the line offsets.
+            radiance::perf::time("editor.multiline_text_us", || {
+                let mut ranges = Vec::new();
+                compute_line_ranges(content, &mut ranges);
+                render_clipped_lines(f, &id, w, h, content, &ranges);
+            });
+        });
+    }
+
+    fn set_text_buffer(&self, key: i32, content: &str) {
+        // Copies the (possibly multi-MB) string across the FFI boundary
+        // once and precomputes its line offsets. Scripts call this only
+        // when a buffer's content changes — never per frame — so this
+        // O(content length) work happens once per open/switch, not per
+        // frame.
+        radiance::perf::time("editor.text_buffer_set_us", || {
+            let mut reg = self.text_buffers.borrow_mut();
+            reg.tick += 1;
+            let tick = reg.tick;
+
+            // Evict the least-recently-shown buffer before inserting a
+            // brand-new key at capacity, so closed tabs don't pile up.
+            if !reg.buffers.contains_key(&key) && reg.buffers.len() >= TEXT_BUFFER_CAP {
+                if let Some(victim) = reg
+                    .buffers
+                    .iter()
+                    .min_by_key(|(_, b)| b.last_shown)
+                    .map(|(k, _)| *k)
+                {
+                    reg.buffers.remove(&victim);
+                }
+            }
+
+            let entry = reg.buffers.entry(key).or_insert_with(|| TextBuffer {
+                content: String::new(),
+                line_ranges: Vec::new(),
+                last_shown: tick,
+            });
+            if entry.content.as_str() != content {
+                entry.content.clear();
+                entry.content.push_str(content);
+                compute_line_ranges(&entry.content, &mut entry.line_ranges);
+            }
+            entry.last_shown = tick;
+        });
+    }
+
+    fn show_text_buffer(&self, key: i32, w: f32, h: f32) -> bool {
+        with_frame("show_text_buffer", |f| {
+            let n = f.multiline_counter.get();
+            f.multiline_counter.set(n + 1);
+            let id = format!("##ui_host_textbuf_{}", n);
+            let [w, h] = f.scaled_size(w, h);
+            radiance::perf::time("editor.text_buffer_show_us", || {
+                let mut reg = self.text_buffers.borrow_mut();
+                reg.tick += 1;
+                let tick = reg.tick;
+                if let Some(buf) = reg.buffers.get_mut(&key) {
+                    buf.last_shown = tick;
+                    render_clipped_lines(f, &id, w, h, &buf.content, &buf.line_ranges);
+                    true
+                } else {
+                    false
+                }
+            })
+        })
+        .unwrap_or(false)
+    }
+
+    fn copy_text_buffer(&self, key: i32) {
+        // The clipped viewer renders non-selectable `ui.text` lines (the
+        // trade-off for O(visible-lines) rendering), so this is how the
+        // user copies the full content. The buffer is already host-side,
+        // so nothing large crosses the FFI boundary.
+        let _ = with_frame("copy_text_buffer", |f| {
+            let reg = self.text_buffers.borrow();
+            if let Some(buf) = reg.buffers.get(&key) {
+                f.ui.set_clipboard_text(&buf.content);
+            }
         });
     }
 
