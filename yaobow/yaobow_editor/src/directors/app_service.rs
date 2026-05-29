@@ -120,7 +120,10 @@ impl IAppServiceImpl for AppService {
             self.script_host.clone(),
             self.textures.clone(),
         );
-        let cfg_service = ConfigService::create(self.config.clone());
+        let cfg_service = ConfigService::create_with_imgui(
+            self.config.clone(),
+            Some(engine.ui_manager().imgui_context()),
+        );
 
         let host_ctx = EditorHostContext::create_for_game(
             engine.scene_manager(),

@@ -12,6 +12,7 @@ import radiance;
 import scripting_services;
 import yaobow_editor_services;
 import editor_consts;
+import theme_menu;
 
 // Intent codes written by render_im, consumed by update. Modelled as
 // an enum so the dispatchers in `update` get compile-time exhaustiveness
@@ -42,6 +43,10 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] WelcomeDirector(
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
     pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+        ui.main_menu_bar(() => {
+            theme_menu.render_theme_menu(ui, self.host.config());
+        });
+
         ui.window_centered("妖弓编辑器", 720.0, 480.0, () => {
             ui.text_with_font(0, "妖弓编辑器");
             ui.dummy(0.0, 24.0);

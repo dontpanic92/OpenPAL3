@@ -145,6 +145,22 @@ interface IConfigService: IUnknown {
     // suggested filename in the dialog; `ext_filter` is a single
     // extension (e.g. "glb") used to build the dialog's type filter.
     &str pick_save_file(&str initial, &str default_name, &str ext_filter);
+
+    // Theme name persisted under `config_key` (recognised keys are
+    // "yaobow" and "editor"). Empty string means "use the built-in
+    // default". Pair with `apply_theme` to also push it to the live UI.
+    &str get_theme(&str config_key);
+    void set_theme(&str config_key, &str name);
+
+    // Apply `name` to the live imgui context. Persistence is separate —
+    // callers usually do `set_theme(...); apply_theme(...); save();`.
+    // Unknown names fall back to the built-in default.
+    void apply_theme(&str name);
+
+    // Names of every embedded theme, addressed by index. Order matches
+    // `available_theme_count()`; out-of-range indices return "".
+    int available_theme_count();
+    &str available_theme_at(int index);
 }
 
 // Cross-cutting RNG utility surfaced through `IHostContext.random()`.

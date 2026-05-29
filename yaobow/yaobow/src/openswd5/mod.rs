@@ -14,5 +14,6 @@ pub fn run_openswd5() {
 
     let app = OpenSwd5ApplicationLoader::create_application(asset_path);
     app.initialize();
+    shared::theme_runtime::apply_runtime_theme(&app);
     app.run();
 }

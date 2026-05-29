@@ -476,6 +476,25 @@ interface IUiHost: IUnknown {
     // the script.
     bool any_key_or_mouse_down();
 
+    // --- Menus --------------------------------------------------------
+    // Top-of-viewport menu bar (`igBeginMainMenuBar` / `igEndMainMenuBar`).
+    // `body` typically calls `menu(...)` to register each top-level entry.
+    // The bar is emitted outside the dockspace so it remains visible
+    // regardless of the dock layout.
+    void main_menu_bar(IAction body);
+
+    // A clickable top-level or nested menu. `body` runs only when the
+    // menu is open; nest `menu(...)` calls for submenus and finish with
+    // `menu_item(...)` leaves.
+    void menu(&str label, IAction body);
+
+    // Menu leaf. `selected` controls whether a checkmark is shown next
+    // to the label (used to indicate the currently-active option in
+    // radio-style menus such as `View > Theme`). Returns true on the
+    // frame the item is clicked.
+    bool menu_item(&str label, bool selected);
+
+    // --- Content region ----------------------------------------------
     // Available content region of the current container, in scaled
     // pixels. Useful when sizing widgets (e.g. an offscreen render
     // target's `ui.image(...)`) to fill the remaining space. Returned

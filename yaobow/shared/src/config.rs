@@ -14,10 +14,26 @@ pub struct GameConfig {
     pub asset_path: String,
 }
 
+/// Per-app UI preferences. Currently just the imgui theme name.
+/// Empty string means "use the built-in default".
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct UiConfig {
+    #[serde(default)]
+    pub theme: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct YaobowConfig {
     #[serde(default)]
     pub game: BTreeMap<String, GameConfig>,
+
+    /// UI preferences for the `yaobow` game runtime.
+    #[serde(default)]
+    pub yaobow: UiConfig,
+
+    /// UI preferences for the `yaobow_editor`.
+    #[serde(default)]
+    pub editor: UiConfig,
 }
 
 impl YaobowConfig {
@@ -96,6 +112,26 @@ impl YaobowConfig {
             .or_insert_with(GameConfig::default)
             .asset_path = path;
     }
+
+    /// Theme name for the given `config_key`. Recognised keys are `"yaobow"`
+    /// and `"editor"`; any other key yields an empty string (callers should
+    /// treat empty as "use the built-in default").
+    pub fn theme_for(&self, config_key: &str) -> &str {
+        match config_key {
+            "yaobow" => &self.yaobow.theme,
+            "editor" => &self.editor.theme,
+            _ => "",
+        }
+    }
+
+    /// Persist a theme choice under `config_key`. Unknown keys are ignored.
+    pub fn set_theme(&mut self, config_key: &str, theme: String) {
+        match config_key {
+            "yaobow" => self.yaobow.theme = theme,
+            "editor" => self.editor.theme = theme,
+            _ => log::warn!("ignoring set_theme for unknown config_key '{}'", config_key),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -150,5 +186,26 @@ mod tests {
         with_env_override(&p, || {
             assert_eq!(YaobowConfig::config_path(), p);
         });
+    }
+
+    #[test]
+    fn theme_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("yaobow-cfg-test-th-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("yaobow.toml");
+        with_env_override(&path, || {
+            let mut cfg = YaobowConfig::default();
+            cfg.set_theme("editor", "blender_dark".to_string());
+            cfg.set_theme("yaobow", "yaobow".to_string());
+            cfg.set_theme("unknown", "ignored".to_string());
+            cfg.save().unwrap();
+
+            let loaded = YaobowConfig::load();
+            assert_eq!(loaded.theme_for("editor"), "blender_dark");
+            assert_eq!(loaded.theme_for("yaobow"), "yaobow");
+            assert_eq!(loaded.theme_for("unknown"), "");
+        });
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

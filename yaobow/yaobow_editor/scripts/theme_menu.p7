@@ -1,0 +1,26 @@
+// View > Theme submenu. Reads the available themes and the current
+// editor theme via IConfigService, lets the user pick one, persists the
+// choice, and pushes the new theme to the live imgui context. Called
+// from inside `ui.main_menu_bar(...)` on both the welcome page and the
+// docked main editor.
+
+import radiance;
+import scripting_services;
+
+pub fn render_theme_menu(ui: box<radiance.IUiHost>, config: box<scripting_services.IConfigService>) {
+    ui.menu("View", () => {
+        ui.menu("Theme", () => {
+            let current = config.get_theme("editor");
+            let count = config.available_theme_count();
+            for i in Range(0, count) {
+                let name = config.available_theme_at(i);
+                let selected = name == current;
+                if ui.menu_item(name, selected) {
+                    config.set_theme("editor", name);
+                    config.apply_theme(name);
+                    config.save();
+                }
+            }
+        });
+    });
+}

@@ -4,7 +4,11 @@ mod clipboard;
 mod platform;
 mod theme;
 
-use self::theme::setup_theme;
+pub use self::theme::{available_themes, menu_item_padding, DEFAULT_THEME};
+
+use self::theme::{
+    apply_theme as apply_named_theme, resolve_theme_name, scale_menu_item_padding,
+};
 
 use crate::application::Platform;
 use imgui::*;
@@ -28,15 +32,20 @@ impl FontIndex {
 pub struct ImguiContext {
     context: Rc<RefCell<Context>>,
     platform: Rc<RefCell<ImguiPlatform>>,
+    dpi_scale: f32,
+    current_theme: RefCell<String>,
+    pending_theme: RefCell<Option<String>>,
 }
 
 impl ImguiContext {
     pub fn new(platform: &mut Platform) -> Self {
         let mut context = Context::create();
         context.set_ini_filename(None);
-        setup_theme(&mut context);
+        let applied = apply_named_theme(&mut context, DEFAULT_THEME);
 
-        context.style_mut().scale_all_sizes(platform.dpi_scale());
+        let dpi_scale = platform.dpi_scale();
+        context.style_mut().scale_all_sizes(dpi_scale);
+        scale_menu_item_padding(dpi_scale);
         #[cfg(not(vita))]
         {
             add_font_with_lucide(&mut context, 28. * platform.dpi_scale());
@@ -64,7 +73,40 @@ impl ImguiContext {
 
         let context = Rc::new(RefCell::new(context));
         let platform = ImguiPlatform::new(context.clone(), platform);
-        Self { context, platform }
+        Self {
+            context,
+            platform,
+            dpi_scale,
+            current_theme: RefCell::new(applied.to_string()),
+            pending_theme: RefCell::new(None),
+        }
+    }
+
+    /// Request a theme switch. The actual style mutation is deferred to
+    /// the next `draw_ui` so callers reached from inside the current
+    /// imgui frame (e.g. a script-driven menu item) don't re-enter the
+    /// `Context` borrow that `draw_ui` holds. Returns the name that
+    /// will be applied (falls back to [`DEFAULT_THEME`] on unknown
+    /// names).
+    pub fn apply_theme(&self, name: &str) -> &'static str {
+        let resolved = resolve_theme_name(name);
+        *self.pending_theme.borrow_mut() = Some(resolved.to_string());
+        resolved
+    }
+
+    fn drain_pending_theme(&self, context: &mut Context) {
+        let pending = self.pending_theme.borrow_mut().take();
+        if let Some(name) = pending {
+            let applied = apply_named_theme(context, &name);
+            context.style_mut().scale_all_sizes(self.dpi_scale);
+            scale_menu_item_padding(self.dpi_scale);
+            *self.current_theme.borrow_mut() = applied.to_string();
+        }
+    }
+
+    /// Name of the theme currently applied to this context.
+    pub fn current_theme(&self) -> String {
+        self.current_theme.borrow().clone()
     }
 
     pub fn draw_ui<F: FnOnce(&Ui)>(&self, delta_sec: f32, draw: F) -> ImguiFrame {
@@ -72,6 +114,9 @@ impl ImguiContext {
         self.platform.borrow_mut().new_frame();
 
         let mut context = self.context.borrow_mut();
+        // Apply any theme switch requested from the previous frame
+        // before `frame()` snapshots the style for the new draw pass.
+        self.drain_pending_theme(&mut context);
         let ui = context.frame();
         self.platform.borrow_mut().prepare_render(ui);
 

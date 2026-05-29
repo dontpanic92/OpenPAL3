@@ -94,6 +94,48 @@ thread_local! {
     static FRAME: Cell<*mut ImguiFrameState<'static>> = const { Cell::new(std::ptr::null_mut()) };
 }
 
+/// Extra width (in scaled pixels) added to dropdown menu popups, taken
+/// from the active theme's `menuItemPadding` (`x` component). `None` /
+/// non-positive means "no extra width".
+///
+/// imgui sizes vertical menu items to their text columns (`min_w`) with
+/// `SpanAvailWidth`, and the menu popup is `AlwaysAutoResize`, so the
+/// only way to make items visually wider (Blender-style, with the
+/// highlight extending past the label) is to widen the popup itself and
+/// let the `SpanAvailWidth` selectables fill it.
+fn menu_popup_extra_width() -> Option<f32> {
+    radiance::imgui::menu_item_padding()
+        .map(|[x, _]| x)
+        .filter(|x| *x > 0.0)
+}
+
+/// imgui window size-constraint callback: adds the caller-provided extra
+/// width (a `*const f32` in `UserData`) to the popup's desired width.
+unsafe extern "C" fn add_popup_extra_width(data: *mut imgui::sys::ImGuiSizeCallbackData) {
+    let extra = *((*data).UserData as *const f32);
+    (*data).DesiredSize.x += extra;
+}
+
+/// Queue a size constraint that widens the next window (the popup a menu
+/// is about to open) by `*extra` pixels. `extra` must stay alive across
+/// the following `begin_menu` call, during which imgui invokes the
+/// callback synchronously. When the menu does not open, imgui clears the
+/// queued constraint itself, so this never leaks onto an unrelated
+/// window.
+fn widen_next_menu_popup(extra: &f32) {
+    unsafe {
+        imgui::sys::igSetNextWindowSizeConstraints(
+            imgui::sys::ImVec2 { x: 0.0, y: 0.0 },
+            imgui::sys::ImVec2 {
+                x: f32::MAX,
+                y: f32::MAX,
+            },
+            Some(add_popup_extra_width),
+            extra as *const f32 as *mut std::os::raw::c_void,
+        );
+    }
+}
+
 /// Install `frame` as the active per-frame state for the duration of
 /// `body`. Nested calls are stacked: the previous pointer is restored
 /// on exit (including on panic via the RAII guard).
@@ -660,7 +702,23 @@ impl IUiHostImpl for ImguiUiHost {
 
     fn dock_space(&self, root_id: &str, body: ComRc<IAction>) {
         with_frame("dock_space", |f| {
-            let display = f.ui.io().display_size;
+            // Use the main viewport's *work* area (pos/size) rather than
+            // the raw display size: imgui shrinks the work region to
+            // exclude the main menu bar (and any other viewport-level
+            // decorations), so the dockspace no longer sits on top of
+            // `main_menu_bar`. Falls back to the full display when the
+            // viewport pointer is unexpectedly null.
+            let (pos, size) = unsafe {
+                let vp = imgui::sys::igGetMainViewport();
+                if vp.is_null() {
+                    let d = f.ui.io().display_size;
+                    ([0.0, 0.0], d)
+                } else {
+                    let work_pos = (*vp).WorkPos;
+                    let work_size = (*vp).WorkSize;
+                    ([work_pos.x, work_pos.y], [work_size.x, work_size.y])
+                }
+            };
             let pad_token =
                 f.ui.push_style_var(imgui::StyleVar::WindowPadding([0.0, 0.0]));
             let rounding_token = f.ui.push_style_var(imgui::StyleVar::WindowRounding(0.0));
@@ -673,8 +731,8 @@ impl IUiHostImpl for ImguiUiHost {
                 | imgui::WindowFlags::NO_NAV_FOCUS
                 | imgui::WindowFlags::NO_DOCKING;
             f.ui.window(&format!("##{}_host", root_id))
-                .position([0.0, 0.0], imgui::Condition::Always)
-                .size(display, imgui::Condition::Always)
+                .position(pos, imgui::Condition::Always)
+                .size(size, imgui::Condition::Always)
                 .flags(flags)
                 .build(|| {
                     // Push WindowBg=transparent for the dockspace call only,
@@ -793,6 +851,174 @@ impl IUiHostImpl for ImguiUiHost {
 
             imgui::sys::igDockBuilderFinish(root);
         }
+    }
+
+    fn main_menu_bar(&self, body: ComRc<IAction>) {
+        with_frame("main_menu_bar", |f| {
+            f.ui.main_menu_bar(|| {
+                body.invoke();
+            });
+        });
+    }
+
+    fn menu(&self, label: &str, body: ComRc<IAction>) {
+        with_frame("menu", |f| {
+            // Same rounded-highlight trick as `menu_item`: imgui's
+            // `BeginMenu` paints its hover/open highlight via Selectable
+            // (rounding hardcoded to 0). Suppress that flat rect by
+            // pushing the header colors transparent for the duration of
+            // the `begin_menu` call, then render our own rounded
+            // background into a draw-list channel positioned behind the
+            // label text.
+            let (hovered_col, active_col, sel_col, rounding) = unsafe {
+                let style = f.ui.style();
+                (
+                    style.colors[imgui::StyleColor::HeaderHovered as usize],
+                    style.colors[imgui::StyleColor::HeaderActive as usize],
+                    style.colors[imgui::StyleColor::Header as usize],
+                    style.frame_rounding,
+                )
+            };
+            let transparent = [0.0_f32, 0.0, 0.0, 0.0];
+            let h_tok = f
+                .ui
+                .push_style_color(imgui::StyleColor::HeaderHovered, transparent);
+            let ha_tok = f
+                .ui
+                .push_style_color(imgui::StyleColor::HeaderActive, transparent);
+            let hd_tok = f.ui.push_style_color(imgui::StyleColor::Header, transparent);
+
+            // Widen the popup this menu is about to open so its
+            // `SpanAvailWidth` items fill a larger area (Blender-style,
+            // with the highlight extending past the label). Affects only
+            // the child popup window, never the menu-bar entry itself, so
+            // top-level *File* / *View* entries keep their natural width.
+            // `popup_extra` must outlive the `begin_menu` call below.
+            let popup_extra = menu_popup_extra_width().unwrap_or(0.0);
+            if popup_extra > 0.0 {
+                widen_next_menu_popup(&popup_extra);
+            }
+
+            // Acquire the draw list, run `begin_menu` inside a
+            // channel-split so we can paint a rounded bg behind the
+            // label, then drop the `DrawListMut` *before* invoking the
+            // body. imgui-rs guards `get_window_draw_list` with a
+            // global single-instance lock; the body may open a nested
+            // menu that needs to acquire the same lock for its own
+            // rounded highlight, so holding the outer one across the
+            // body call would panic.
+            let token_opt: Option<imgui::MenuToken<'_>> = {
+                let dl = f.ui.get_window_draw_list();
+                let mut token: Option<imgui::MenuToken<'_>> = None;
+                dl.channels_split(2, |splitter| {
+                    splitter.set_current(1); // foreground: label text
+                    token = f.ui.begin_menu(label);
+                    let hovered = f.ui.is_item_hovered();
+                    let held = f.ui.is_item_active();
+                    let opened = token.is_some();
+                    if hovered || opened {
+                        let col = if held && hovered {
+                            active_col
+                        } else if hovered {
+                            hovered_col
+                        } else {
+                            sel_col
+                        };
+                        let min = f.ui.item_rect_min();
+                        let max = f.ui.item_rect_max();
+                        splitter.set_current(0); // background fill
+                        dl.add_rect(min, max, col)
+                            .rounding(rounding)
+                            .filled(true)
+                            .build();
+                    }
+                });
+                token
+            };
+
+            // Pop the transparent overrides *before* running the body
+            // so any nested `menu_item`/`menu` inside the open popup
+            // snapshots the real header colors when drawing their own
+            // rounded highlights.
+            hd_tok.pop();
+            ha_tok.pop();
+            h_tok.pop();
+
+            if token_opt.is_some() {
+                body.invoke();
+            }
+            // `token_opt` drops here, calling EndMenu.
+        });
+    }
+
+    fn menu_item(&self, label: &str, selected: bool) -> bool {
+        with_frame("menu_item", |f| {
+            // imgui's Selectable (used by MenuItem) hardcodes rounding=0
+            // in its RenderFrame call, so the standard `HeaderHovered`
+            // highlight is always a flat rectangle. To get a rounded
+            // pill we suppress the built-in fill (push header colors to
+            // fully transparent) and paint our own rounded rect into a
+            // background draw-list channel before the text+checkmark go
+            // into the foreground channel.
+            let (hovered_col, active_col, sel_col, rounding) = unsafe {
+                let style = f.ui.style();
+                (
+                    style.colors[imgui::StyleColor::HeaderHovered as usize],
+                    style.colors[imgui::StyleColor::HeaderActive as usize],
+                    style.colors[imgui::StyleColor::Header as usize],
+                    style.frame_rounding,
+                )
+            };
+
+            let transparent = [0.0_f32, 0.0, 0.0, 0.0];
+            let h_tok = f
+                .ui
+                .push_style_color(imgui::StyleColor::HeaderHovered, transparent);
+            let ha_tok = f
+                .ui
+                .push_style_color(imgui::StyleColor::HeaderActive, transparent);
+            let hd_tok = f.ui.push_style_color(imgui::StyleColor::Header, transparent);
+
+            let mut activated = false;
+            let dl = f.ui.get_window_draw_list();
+            dl.channels_split(2, |splitter| {
+                splitter.set_current(1); // foreground: text + checkmark
+                activated = f
+                    .ui
+                    .menu_item_config(label)
+                    .selected(selected)
+                    .build();
+
+                let hovered = f.ui.is_item_hovered();
+                let held = f.ui.is_item_active();
+                if hovered || selected {
+                    let col = if held && hovered {
+                        active_col
+                    } else if hovered {
+                        hovered_col
+                    } else {
+                        sel_col
+                    };
+                    // The selectable uses `SpanAvailWidth`, so its rect
+                    // already fills the (theme-widened) popup; the pill
+                    // follows it automatically.
+                    let min = f.ui.item_rect_min();
+                    let max = f.ui.item_rect_max();
+                    splitter.set_current(0); // background
+                    dl.add_rect(min, max, col)
+                        .rounding(rounding)
+                        .filled(true)
+                        .build();
+                }
+            });
+
+            hd_tok.pop();
+            ha_tok.pop();
+            h_tok.pop();
+
+            activated
+        })
+        .unwrap_or(false)
     }
 }
 

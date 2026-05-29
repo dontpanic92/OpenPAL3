@@ -16,6 +16,7 @@ pub mod openpal5;
 pub mod openswd5;
 pub mod playground;
 pub mod scripting;
+pub mod theme_runtime;
 /// Auto-generated script bridges from `[protosept(scriptable)]` IDLs.
 pub mod script_bridges {
     pub mod pal4_debug {

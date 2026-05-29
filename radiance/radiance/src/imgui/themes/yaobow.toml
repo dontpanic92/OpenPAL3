@@ -12,6 +12,7 @@ childBorderSize = 1.0
 popupRounding = 4.0
 popupBorderSize = 1.0
 framePadding = [20.0, 3.0]
+menuItemPadding = [90.0, 0.0]
 frameRounding = 4.0
 frameBorderSize = 0.0
 itemSpacing = [6.0, 4.0]

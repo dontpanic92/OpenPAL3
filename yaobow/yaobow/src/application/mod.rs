@@ -105,5 +105,6 @@ pub fn create_application() -> ComRc<IApplication> {
 pub fn run_title_selection() {
     let app = create_application();
     app.initialize();
+    shared::theme_runtime::apply_runtime_theme(&app);
     app.run();
 }

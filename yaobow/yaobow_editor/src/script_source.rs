@@ -16,6 +16,7 @@ pub const MAIN_P7: &str = include_str!("../scripts/main.p7");
 pub const SIBLING_MODULES: &[(&str, &str)] = &[
     ("editor_consts", include_str!("../scripts/editor_consts.p7")),
     ("icons", include_str!(concat!(env!("OUT_DIR"), "/icons.p7"))),
+    ("theme_menu", include_str!("../scripts/theme_menu.p7")),
     ("welcome", include_str!("../scripts/welcome.p7")),
     ("content_tabs", include_str!("../scripts/content_tabs.p7")),
     ("resource_tree", include_str!("../scripts/resource_tree.p7")),

@@ -123,6 +123,14 @@ pub enum UiCall {
         label: String,
     },
     TreePop,
+    MainMenuBar,
+    Menu {
+        label: String,
+    },
+    MenuItem {
+        label: String,
+        selected: bool,
+    },
     BodyEnter(&'static str),
     BodyExit(&'static str),
 }
@@ -134,6 +142,7 @@ pub struct RecordingUiHost {
     pub tab_item_results: RefCell<std::collections::HashMap<String, bool>>,
     pub tree_leaf_results: RefCell<std::collections::HashMap<String, bool>>,
     pub tree_node_open_results: RefCell<std::collections::HashMap<String, bool>>,
+    pub menu_item_results: RefCell<std::collections::HashMap<String, bool>>,
 }
 
 impl RecordingUiHost {
@@ -438,5 +447,27 @@ impl IUiHostImpl for HostFacade {
         _right_ratio: f32,
         _bottom_ratio: f32,
     ) {
+    }
+    fn main_menu_bar(&self, body: crosscom::ComRc<crosscom::IAction>) {
+        self.inner.record(UiCall::MainMenuBar);
+        invoke_body("main_menu_bar", &self.inner, body);
+    }
+    fn menu(&self, label: &str, body: crosscom::ComRc<crosscom::IAction>) {
+        self.inner.record(UiCall::Menu {
+            label: label.into(),
+        });
+        invoke_body("menu", &self.inner, body);
+    }
+    fn menu_item(&self, label: &str, selected: bool) -> bool {
+        self.inner.record(UiCall::MenuItem {
+            label: label.into(),
+            selected,
+        });
+        self.inner
+            .menu_item_results
+            .borrow()
+            .get(label)
+            .copied()
+            .unwrap_or(false)
     }
 }

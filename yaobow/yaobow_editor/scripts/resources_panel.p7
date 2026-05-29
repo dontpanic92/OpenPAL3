@@ -29,7 +29,9 @@ pub fn render_resources_panel_im(
     ui.tab_bar("##resources_tabs", () => {
         ui.tab_item("文件树", false, () => {
             state.view_mode = 0;
-            resource_tree.render_resource_tree_im(ui, host.vfs(), picks);
+            ui.child_window("##resources_tree_child", 0.0, 0.0, () => {
+                resource_tree.render_resource_tree_im(ui, host.vfs(), picks);
+            });
         });
         ui.tab_item("分类", false, () => {
             state.view_mode = 1;
@@ -55,24 +57,26 @@ fn render_category_view(
     }
 
     let n = rm.category_count();
-    for i in Range(0, n) {
-        let name = rm.category_name(i);
-        let count = rm.category_entry_count(i, f);
-        let label = f"{name} ({count})";
-        if ui.tree_node_open(label) {
-            // Each category can hold thousands of files; submit row
-            // bodies through the imgui list clipper so we only pay the
-            // crosscom roundtrip for rows actually scrolled into view.
-            let cat_idx = i;
-            let cat_filter = f;
-            ui.list_clipped(count, () => {
-                let row = ui.list_clipped_index();
-                let path = rm.category_entry_path(cat_idx, cat_filter, row);
-                if ui.tree_leaf(path) {
-                    picks.push(path);
-                }
-            });
-            ui.tree_pop();
+    ui.child_window("##resources_category_child", 0.0, 0.0, () => {
+        for i in Range(0, n) {
+            let name = rm.category_name(i);
+            let count = rm.category_entry_count(i, f);
+            let label = f"{name} ({count})";
+            if ui.tree_node_open(label) {
+                // Each category can hold thousands of files; submit row
+                // bodies through the imgui list clipper so we only pay the
+                // crosscom roundtrip for rows actually scrolled into view.
+                let cat_idx = i;
+                let cat_filter = f;
+                ui.list_clipped(count, () => {
+                    let row = ui.list_clipped_index();
+                    let path = rm.category_entry_path(cat_idx, cat_filter, row);
+                    if ui.tree_leaf(path) {
+                        picks.push(path);
+                    }
+                });
+                ui.tree_pop();
+            }
         }
-    }
+    });
 }

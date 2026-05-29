@@ -14,6 +14,7 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 
+use radiance::imgui::{available_themes, ImguiContext};
 use radiance_scripting::comdef::services::{IConfigService, IConfigServiceImpl};
 
 use crate::config::YaobowConfig;
@@ -21,6 +22,9 @@ use crate::GameType;
 
 pub struct ConfigService {
     config: Rc<RefCell<YaobowConfig>>,
+    /// Optional handle to the live imgui context so script-driven theme
+    /// changes can be applied immediately. Headless tests pass `None`.
+    imgui: Option<Rc<ImguiContext>>,
     last_string: RefCell<String>,
 }
 
@@ -28,8 +32,19 @@ ComObject_ConfigService!(super::ConfigService);
 
 impl ConfigService {
     pub fn create(config: Rc<RefCell<YaobowConfig>>) -> ComRc<IConfigService> {
+        Self::create_with_imgui(config, None)
+    }
+
+    /// Variant that also wires the live `ImguiContext`, enabling
+    /// `apply_theme` to push a theme to the running UI. Pass `None` from
+    /// headless tests.
+    pub fn create_with_imgui(
+        config: Rc<RefCell<YaobowConfig>>,
+        imgui: Option<Rc<ImguiContext>>,
+    ) -> ComRc<IConfigService> {
         ComRc::from_object(Self {
             config,
+            imgui,
             last_string: RefCell::new(String::new()),
         })
     }
@@ -78,6 +93,49 @@ impl IConfigServiceImpl for ConfigService {
     fn pick_save_file(&self, initial: &str, default_name: &str, ext_filter: &str) -> &str {
         let picked = pick_save_file_native(initial, default_name, ext_filter);
         *self.last_string.borrow_mut() = picked;
+        // SAFETY: see ConfigService::get_asset_path.
+        unsafe { (*self.last_string.as_ptr()).as_str() }
+    }
+
+    fn get_theme(&self, config_key: &str) -> &str {
+        let value = self.config.borrow().theme_for(config_key).to_string();
+        *self.last_string.borrow_mut() = value;
+        // SAFETY: see ConfigService::get_asset_path.
+        unsafe { (*self.last_string.as_ptr()).as_str() }
+    }
+
+    fn set_theme(&self, config_key: &str, name: &str) {
+        self.config
+            .borrow_mut()
+            .set_theme(config_key, name.to_string());
+    }
+
+    fn apply_theme(&self, name: &str) {
+        match &self.imgui {
+            Some(ctx) => {
+                ctx.apply_theme(name);
+            }
+            None => log::debug!(
+                "apply_theme('{}') ignored: ConfigService has no ImguiContext",
+                name
+            ),
+        }
+    }
+
+    fn available_theme_count(&self) -> i32 {
+        available_themes().count() as i32
+    }
+
+    fn available_theme_at(&self, index: i32) -> &str {
+        let value = if index < 0 {
+            String::new()
+        } else {
+            available_themes()
+                .nth(index as usize)
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        };
+        *self.last_string.borrow_mut() = value;
         // SAFETY: see ConfigService::get_asset_path.
         unsafe { (*self.last_string.as_ptr()).as_str() }
     }

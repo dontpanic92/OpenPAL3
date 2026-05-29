@@ -11,6 +11,7 @@ import resources_panel;
 import scene_outline;
 import inspector;
 import editor_consts;
+import theme_menu;
 
 pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
@@ -26,6 +27,10 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
     pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+        ui.main_menu_bar(() => {
+            theme_menu.render_theme_menu(ui, self.host.config());
+        });
+
         ui.dock_space(editor_consts.DOCK_ROOT, () => {
             // Seed the initial four-pane layout exactly once.
             ui.dock_layout_once(

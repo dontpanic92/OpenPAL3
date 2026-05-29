@@ -45,6 +45,7 @@ fn main() {
     );
 
     config::init_imgui_ini(&app);
+    config::init_theme(&app);
 
     app.initialize();
     app.run();

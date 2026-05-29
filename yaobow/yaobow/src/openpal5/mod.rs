@@ -14,5 +14,6 @@ pub fn run_openpal5() {
 
     let app = OpenPal5ApplicationLoader::create_application(asset_path);
     app.initialize();
+    shared::theme_runtime::apply_runtime_theme(&app);
     app.run();
 }

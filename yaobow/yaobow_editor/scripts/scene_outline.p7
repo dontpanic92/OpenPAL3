@@ -28,14 +28,18 @@ pub fn render_scene_outline_im(
 
     // Flat indented list: indent depth = walk parent chain until -1.
     // Body reads its row index via ui.list_clipped_index(); only the
-    // visible window is submitted each frame.
-    ui.list_clipped(n, () => {
-        let i = ui.list_clipped_index();
-        let depth = compute_depth(h, i);
-        let label = make_label(h, i, depth, sel);
-        if ui.tree_leaf(label) {
-            s.set_selection(i);
-        }
+    // visible window is submitted each frame. Wrapped in a child_window
+    // so the darker `ChildBg` paints behind the outliner, matching
+    // Blender's outliner-vs-panel contrast.
+    ui.child_window("##scene_outline_child", 0.0, 0.0, () => {
+        ui.list_clipped(n, () => {
+            let i = ui.list_clipped_index();
+            let depth = compute_depth(h, i);
+            let label = make_label(h, i, depth, sel);
+            if ui.tree_leaf(label) {
+                s.set_selection(i);
+            }
+        });
     });
 }
 

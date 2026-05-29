@@ -243,15 +243,21 @@ fn welcome_script_render_im_emits_window_centered_with_game_table() {
         .expect("welcome.p7 render_im should run");
 
     let calls = recorder.calls.borrow().clone();
-    // Outer window centered + body + game table opened with 3 columns.
+    // The render now starts with a `main_menu_bar` (theme picker); the
+    // centred welcome window follows. Find the first `WindowCentered`
+    // rather than requiring it be the literal first call.
+    let centered = calls
+        .iter()
+        .find(|c| matches!(c, UiCall::WindowCentered { .. }))
+        .expect("welcome render_im should emit a WindowCentered");
     assert!(
         matches!(
-            calls.first(),
-            Some(UiCall::WindowCentered { title, w, h })
+            centered,
+            UiCall::WindowCentered { title, w, h }
                 if title == "妖弓编辑器" && *w == 720.0 && *h == 480.0
         ),
-        "expected WindowCentered at start, got: {:?}",
-        calls.first()
+        "unexpected WindowCentered: {:?}",
+        centered
     );
     let table = calls
         .iter()
