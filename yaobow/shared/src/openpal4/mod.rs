@@ -20,5 +20,6 @@ pub mod game_context;
 pub mod pal4_debug;
 pub mod scene;
 pub mod scene_editor_access;
+pub mod states;
 pub mod scripting;
 pub mod uv_anim;

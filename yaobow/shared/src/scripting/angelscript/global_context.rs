@@ -76,6 +76,20 @@ impl<TAppContext: 'static> ScriptGlobalContext<TAppContext> {
         self.vars[index] = data;
     }
 
+    /// Snapshot all shared global variables. Used by the PAL4 save
+    /// system to persist cross-scene story-plot flags.
+    pub fn globals_snapshot(&self) -> Vec<u32> {
+        self.vars.clone()
+    }
+
+    /// Restore previously snapshotted global variables. Only as many
+    /// slots as currently exist are overwritten, so a save taken with
+    /// a different `vars` length still loads safely.
+    pub fn restore_globals(&mut self, globals: &[u32]) {
+        let len = self.vars.len().min(globals.len());
+        self.vars[..len].copy_from_slice(&globals[..len]);
+    }
+
     fn system_functions() -> Vec<ScriptGlobalFunction<TAppContext>> {
         vec![
             ScriptGlobalFunction::new("ArrayObjectConstructor_Generic", Box::new(not_implemented)),

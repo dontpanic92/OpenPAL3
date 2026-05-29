@@ -23,6 +23,7 @@ use super::{
     comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay},
     pal4_debug::Pal4DebugState,
     scripting::create_script_vm,
+    states::persistent_state::Pal4PersistentState,
 };
 
 /// Bundle of script-side handles the director uses to drive the
@@ -156,6 +157,110 @@ impl OpenPAL4Director {
         self.debug_prev_tilde.set(pressed);
         pressed && !prev
     }
+
+    /// Persist the current game state to `slot` as JSON. Snapshots the
+    /// shared angelscript globals (story-plot flags) plus the live
+    /// scene/block/leader/position so a later load resumes at the same
+    /// point. Negative slots are ignored by `Pal4PersistentState::save`.
+    pub fn save_state(&self, slot: i32) {
+        let mut vm = self.vm.borrow_mut();
+        let globals = vm.g.borrow().globals_snapshot();
+
+        let app = vm.app_context_mut();
+        let pos = app.leader_pos();
+        let scene = app.scene_name().to_string();
+        let block = app.block_name().to_string();
+        let leader = app.leader();
+
+        let state = app.persistent_state_mut();
+        state.set_script_globals(globals);
+        state.set_scene(scene, block);
+        state.set_leader(leader);
+        state.set_position(Some(pos));
+        state.save(slot);
+    }
+
+    /// Restore game state from `slot`, reloading the saved scene and
+    /// repositioning the leader. No-ops (with a log) when the slot file
+    /// is missing or malformed.
+    pub fn load_state(&self, slot: i32) {
+        let app_name = self
+            .vm
+            .borrow()
+            .app_context()
+            .persistent_state()
+            .app_name()
+            .to_string();
+
+        let state = match Pal4PersistentState::load(&app_name, slot) {
+            Ok(state) => state,
+            Err(e) => {
+                log::error!("Cannot load save slot {}: {}", slot, e);
+                return;
+            }
+        };
+
+        let scene = state.scene_name().to_string();
+        let block = state.block_name().to_string();
+        let leader = state.leader();
+        let pos = state.position();
+        let globals = state.script_globals().to_vec();
+
+        let mut vm = self.vm.borrow_mut();
+        vm.g.borrow_mut().restore_globals(&globals);
+
+        let app = vm.app_context_mut();
+        app.set_persistent_state(state);
+
+        if !scene.is_empty() {
+            app.load_scene(&scene, &block);
+            app.set_leader(leader as i32);
+            if let Some(pos) = pos {
+                app.set_player_pos(leader as i32, &pos);
+            }
+        }
+
+        log::info!("Game loaded from slot {}", slot);
+    }
+
+    /// Slot-based save/load via number-key hotkeys (mirrors OpenPAL3's
+    /// `test_save`): Num1-Num4 load slots 1-4, Num5-Num8 save slots
+    /// 1-4. Each `pressed()` is edge-triggered so a held key fires once.
+    fn poll_save_load_hotkeys(&self) {
+        let (save_slot, load_slot) = {
+            let vm = self.vm.borrow();
+            let input = vm.app_context.input.borrow();
+            let save_slot = if input.get_key_state(Key::Num5).pressed() {
+                1
+            } else if input.get_key_state(Key::Num6).pressed() {
+                2
+            } else if input.get_key_state(Key::Num7).pressed() {
+                3
+            } else if input.get_key_state(Key::Num8).pressed() {
+                4
+            } else {
+                -1
+            };
+            let load_slot = if input.get_key_state(Key::Num1).pressed() {
+                1
+            } else if input.get_key_state(Key::Num2).pressed() {
+                2
+            } else if input.get_key_state(Key::Num3).pressed() {
+                3
+            } else if input.get_key_state(Key::Num4).pressed() {
+                4
+            } else {
+                -1
+            };
+            (save_slot, load_slot)
+        };
+
+        if save_slot >= 0 {
+            self.save_state(save_slot);
+        } else if load_slot >= 0 {
+            self.load_state(load_slot);
+        }
+    }
 }
 
 impl IDirectorImpl for OpenPAL4Director {
@@ -169,6 +274,8 @@ impl IDirectorImpl for OpenPAL4Director {
 
     fn update(&self, delta_sec: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
         self.vm.borrow_mut().app_context_mut().update(delta_sec);
+
+        self.poll_save_load_hotkeys();
 
         if self.vm.borrow().context.is_none() {
             let function = self

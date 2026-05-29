@@ -1062,7 +1062,25 @@ fn imm_end(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
-fn new_game(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+/// Resolve a script-supplied player id to a persistent-state party
+/// slot. `-1` means "current leader", matching `Pal4AppContext`'s own
+/// `map_player` convention.
+fn map_player_slot(vm: &ScriptVm<Pal4AppContext>, player_id: i32) -> usize {
+    if player_id < 0 {
+        vm.app_context.leader()
+    } else {
+        player_id as usize
+    }
+}
+
+fn new_game(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    // Start from a clean slate so a fresh playthrough doesn't inherit
+    // money / inventory / plot flags from a previous session.
+    let app_name = vm.app_context.persistent_state().app_name().to_string();
+    vm.app_context
+        .set_persistent_state(crate::openpal4::states::persistent_state::Pal4PersistentState::new(
+            app_name,
+        ));
     Pal4FunctionState::Completed
 }
 
@@ -1313,16 +1331,17 @@ fn del_property(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
 
 fn player_in_team(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, _is_in_team: i32);
-    // Best-effort: until a real party-membership table exists, treat
-    // "in team" as "make the slot visible". Mirrors what enable_player
-    // does for `giPlayerSetLeader`. Persistent team state still TODO.
-    vm.app_context.enable_player(player_id as usize, true);
+    let slot = map_player_slot(vm, player_id);
+    vm.app_context.persistent_state_mut().set_in_team(slot, true);
+    vm.app_context.enable_player(slot, true);
     Pal4FunctionState::Completed
 }
 
 fn player_out_team(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, _is_in_team: i32);
-    vm.app_context.enable_player(player_id as usize, false);
+    let slot = map_player_slot(vm, player_id);
+    vm.app_context.persistent_state_mut().set_in_team(slot, false);
+    vm.app_context.enable_player(slot, false);
     Pal4FunctionState::Completed
 }
 
@@ -1356,12 +1375,20 @@ fn player_get_leader(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 }
 
 fn set_player_level(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player_id: i32, _level: i32);
+    as_params!(vm, player_id: i32, level: i32);
+    let slot = map_player_slot(vm, player_id);
+    vm.app_context
+        .persistent_state_mut()
+        .set_player_level(slot, level);
     Pal4FunctionState::Completed
 }
 
 fn add_player_equip(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player_id: i32, _equip_id: i32);
+    as_params!(vm, player_id: i32, equip_id: i32);
+    let slot = map_player_slot(vm, player_id);
+    vm.app_context
+        .persistent_state_mut()
+        .add_player_equip(slot, equip_id);
     Pal4FunctionState::Completed
 }
 
@@ -1371,12 +1398,24 @@ fn open_movie_flag(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSt
 }
 
 fn add_quest_complete_percentage(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _percentage: i32);
+    as_params!(vm, percentage: i32);
+    vm.app_context
+        .persistent_state_mut()
+        .add_quest_percentage(percentage);
     Pal4FunctionState::Completed
 }
 
 fn add_equipment(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _equipment_id: i32, _is_add: i32);
+    as_params!(vm, equipment_id: i32, is_add: i32);
+    if is_add != 0 {
+        vm.app_context
+            .persistent_state_mut()
+            .add_equipment(equipment_id, 1);
+    } else {
+        vm.app_context
+            .persistent_state_mut()
+            .remove_equipment(equipment_id, 1);
+    }
     Pal4FunctionState::Completed
 }
 
@@ -1387,17 +1426,23 @@ fn player_current_set_visible(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal
     Pal4FunctionState::Completed
 }
 
-fn set_full_hp(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn set_full_hp(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    let leader = vm.app_context.leader();
+    vm.app_context.persistent_state_mut().set_full_hp(leader);
     Pal4FunctionState::Completed
 }
 
-fn set_full_mp(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn set_full_mp(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    let leader = vm.app_context.leader();
+    vm.app_context.persistent_state_mut().set_full_mp(leader);
     Pal4FunctionState::Completed
 }
 
 fn get_player_level(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _player_id: i32);
-    vm.stack_push::<i32>(1);
+    as_params!(vm, player_id: i32);
+    let slot = map_player_slot(vm, player_id);
+    let level = vm.app_context.persistent_state().player_level(slot);
+    vm.stack_push::<i32>(level);
     Pal4FunctionState::Completed
 }
 
@@ -1564,7 +1609,11 @@ fn show_hint(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 }
 
 fn player_add_skill(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_player_id:i32,_skill_id:i32,_add_skill:i32);
+    as_params!(vm, player_id: i32, skill_id: i32, _add_skill: i32);
+    let slot = map_player_slot(vm, player_id);
+    vm.app_context
+        .persistent_state_mut()
+        .add_skill(slot, skill_id);
     Pal4FunctionState::Completed
 }
 
@@ -1736,12 +1785,14 @@ fn script_clear_ctx_but_current(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> 
 }
 
 fn add_money(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _money_amount: i32, _add_money: i32);
+    as_params!(vm, money_amount: i32, _add_money: i32);
+    vm.app_context.persistent_state_mut().add_money(money_amount);
     Pal4FunctionState::Completed
 }
 
 fn pay_money(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _money_amount: i32, _pay_money: i32);
+    as_params!(vm, money_amount: i32, _pay_money: i32);
+    vm.app_context.persistent_state_mut().pay_money(money_amount);
     Pal4FunctionState::Completed
 }
 
@@ -1866,7 +1917,8 @@ fn player_forbiden_skill(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Func
 }
 
 fn get_money(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<i32>(1);
+    let money = vm.app_context.persistent_state().money();
+    vm.stack_push::<i32>(money);
     Pal4FunctionState::Completed
 }
 
@@ -1898,13 +1950,19 @@ fn gob_reset(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 }
 
 fn check_equip_in_inventory(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_equip_id:i32);
-    vm.stack_push::<i32>(1);
+    as_params!(vm, equip_id: i32);
+    let has = vm.app_context.persistent_state().has_equipment(equip_id);
+    vm.stack_push::<i32>(if has { 1 } else { 0 });
     Pal4FunctionState::Completed
 }
 
 fn remove_equipment(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_equip_id:i32,_remove_equip :i32);
+    as_params!(vm, equip_id: i32, remove_equip: i32);
+    if remove_equip != 0 {
+        vm.app_context
+            .persistent_state_mut()
+            .remove_equipment(equip_id, 1);
+    }
     Pal4FunctionState::Completed
 }
 

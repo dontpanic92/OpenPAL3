@@ -18,6 +18,7 @@ use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimation, Pal4ActorAnimationConfig},
     asset_loader::AssetLoader,
     scene::{Pal4ActorControllerFactory, Pal4Scene},
+    states::persistent_state::Pal4PersistentState,
 };
 
 pub struct Pal4AppContext {
@@ -46,6 +47,12 @@ pub struct Pal4AppContext {
 
     moving_entities: HashMap<ActorId, MovingEntity>,
     rotating_entities: HashMap<ActorId, RotatingEntity>,
+
+    /// Serializable PAL4 game progress (money, party, inventory,
+    /// story flags). Mutated by the scripted game-state functions in
+    /// `openpal4::scripting` and persisted by the director's
+    /// save/load orchestration.
+    persistent_state: Pal4PersistentState,
 
     /// Factory for the scripted `IPal4ActorController` component. `None`
     /// until the application bootstrap calls
@@ -90,6 +97,7 @@ impl Pal4AppContext {
             moving_entities: HashMap::new(),
             rotating_entities: HashMap::new(),
             actor_controller_factory: None,
+            persistent_state: Pal4PersistentState::new("OpenPAL4".to_string()),
         }
     }
 
@@ -541,6 +549,21 @@ impl Pal4AppContext {
 
     pub fn leader(&self) -> usize {
         self.leader
+    }
+
+    pub fn persistent_state(&self) -> &Pal4PersistentState {
+        &self.persistent_state
+    }
+
+    pub fn persistent_state_mut(&mut self) -> &mut Pal4PersistentState {
+        &mut self.persistent_state
+    }
+
+    /// Overwrite the entire persistent state (used when loading a
+    /// save slot). Caller is responsible for any follow-up scene
+    /// reload / leader restore.
+    pub fn set_persistent_state(&mut self, state: Pal4PersistentState) {
+        self.persistent_state = state;
     }
 
     /// Forward the PAL4 debug overlay's BSP-visibility toggle to the
