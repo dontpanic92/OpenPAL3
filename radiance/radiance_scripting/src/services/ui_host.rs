@@ -376,7 +376,12 @@ impl IUiHostImpl for ImguiUiHost {
 
     fn tree_node(&self, label: &str, body: ComRc<IAction>) {
         with_frame("tree_node", |f| {
-            if let Some(_node) = f.ui.tree_node_config(label).push() {
+            if let Some(_node) = f
+                .ui
+                .tree_node_config(label)
+                .flags(imgui::TreeNodeFlags::SPAN_FULL_WIDTH)
+                .push()
+            {
                 body.invoke();
             }
         });
@@ -641,6 +646,7 @@ impl IUiHostImpl for ImguiUiHost {
             let _node = f
                 .ui
                 .tree_node_config(label)
+                .flags(imgui::TreeNodeFlags::SPAN_FULL_WIDTH)
                 .leaf(true)
                 .selected(selected)
                 .push();
@@ -679,7 +685,11 @@ impl IUiHostImpl for ImguiUiHost {
 
     fn tree_node_open(&self, label: &str) -> bool {
         with_frame("tree_node_open", |f| {
-            let token = f.ui.tree_node_config(label).push();
+            let token = f
+                .ui
+                .tree_node_config(label)
+                .flags(imgui::TreeNodeFlags::SPAN_FULL_WIDTH)
+                .push();
             let is_open = token.is_some();
             // Defuse the RAII drop guard: the matching `tree_pop`
             // (called by the script after rendering the body) issues
