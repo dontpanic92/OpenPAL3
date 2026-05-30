@@ -744,12 +744,16 @@ pub struct SceneEventTrigger {
 
 impl SceneEventTrigger {
     pub fn check(&self, origin: &Vec3, direction: &Vec3) {
+        // `cast_ray` returns the parametric distance `t` along `direction`
+        // (hit point = origin + t * direction). The movement crosses the
+        // trigger this frame iff the hit lies within the segment, i.e.
+        // `t <= 1.0`. The lower bound (`t > EPSILON`) is enforced by
+        // `cast_ray` itself.
         let hit = self.ray_caster.cast_ray(origin, direction);
-        let distance = Vec3::norm(direction);
 
         self.triggered.set(false);
-        if let Some(p) = hit {
-            if p < distance {
+        if let Some(t) = hit {
+            if t <= 1.0 {
                 self.triggered.set(true);
             }
         }
@@ -769,7 +773,6 @@ fn create_trigger_ray_caster(trigger: Vec<Vec3>) -> RayCaster {
     let mut ray_caster = RayCaster::new();
     match trigger.len() {
         4 => {
-            println!("trigger: {:?}", trigger);
             ray_caster.add_mesh(trigger, PLANE_TRIGGER_INDICES.clone());
         }
         8 => {
