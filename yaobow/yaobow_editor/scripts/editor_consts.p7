@@ -50,6 +50,33 @@ pub let DOCK_WINDOW_VIEWPORT: string = "视图";
 pub let DOCK_WINDOW_INSPECTOR: string = "属性";
 pub let DOCK_WINDOW_OUTLINE: string = "层级";
 
+// Editor top-level layout selector. The menu bar exposes a row of tab
+// buttons (right-aligned) that toggle between these two layouts.
+//   - Assets: resource list (left) | single preview pane (right).
+//   - Scene:  inspector (right) over a left column split into a scene
+//             view (hierarchy | main scene render) on top and an
+//             Assets-style resource | preview strip on the bottom.
+pub enum EditorLayout(
+    Assets,  // 0
+    Scene,   // 1
+);
+
+// Assets layout dock ids/titles. Window titles carry a `##assets`
+// id-suffix so the same display name can coexist with the Scene
+// layout's windows without imgui dock-node conflicts (a window docks
+// into a single node at a time, keyed by its full id string).
+pub let DOCK_ROOT_ASSETS: string = "yaobow_assets_dock";
+pub let DOCK_WIN_ASSETS_RESOURCES: string = "资源##assets";
+pub let DOCK_WIN_ASSETS_PREVIEW: string = "预览##assets";
+
+// Scene layout dock ids/titles.
+pub let DOCK_ROOT_SCENE: string = "yaobow_scene_dock";
+pub let DOCK_WIN_SCENE_INSPECTOR: string = "属性##scene";
+pub let DOCK_WIN_SCENE_HIERARCHY: string = "层级##scene";
+pub let DOCK_WIN_SCENE_VIEW: string = "场景##scene";
+pub let DOCK_WIN_SCENE_RESOURCES: string = "资源##scene";
+pub let DOCK_WIN_SCENE_PREVIEW: string = "预览##scene";
+
 pub let CLOSE_CMD_BASE: int = 200000;
 pub let MODEL_PREVIEW_CMD_BASE: int = 300000;
 pub let AUDIO_TOGGLE_CMD_BASE: int = 400000;

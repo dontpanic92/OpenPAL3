@@ -475,6 +475,38 @@ interface IUiHost: IUnknown {
         float right_ratio,
         float bottom_ratio);
 
+    // One-shot 2-pane layout helper used by the editor's "Assets"
+    // layout: a single left/right split docking `left_window` and
+    // `right_window`. `left_ratio` is the left pane's fraction of the
+    // total width. Idempotent per `root_id`, like `dock_layout_once`.
+    void dock_layout_assets_once(
+        &str root_id,
+        &str left_window,
+        &str right_window,
+        float left_ratio);
+
+    // One-shot nested layout helper used by the editor's "Scene"
+    // layout. Splits the dockspace into five regions:
+    //   - right: `inspector_window` (`right_ratio` of total width)
+    //   - the remaining left column is split top/bottom (`bottom_ratio`
+    //     is the bottom strip's fraction of that column):
+    //       - top is split left/right: `hierarchy_window` |
+    //         `scene_view_window` (`hierarchy_ratio` of the top width)
+    //       - bottom is split left/right: `resource_window` |
+    //         `preview_window` (`resource_ratio` of the bottom width)
+    // Idempotent per `root_id`, like `dock_layout_once`.
+    void dock_layout_scene_once(
+        &str root_id,
+        &str inspector_window,
+        &str hierarchy_window,
+        &str scene_view_window,
+        &str resource_window,
+        &str preview_window,
+        float right_ratio,
+        float bottom_ratio,
+        float hierarchy_ratio,
+        float resource_ratio);
+
     // --- Mouse query ---------------------------------------------------
     // Reflect the imgui state of the *last* item submitted (typically
     // the just-drawn `image(...)`). Plus per-frame mouse deltas the

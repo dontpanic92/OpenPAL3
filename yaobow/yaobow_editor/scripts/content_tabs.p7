@@ -45,7 +45,7 @@ fn make_model_tab(label: string, close_cmd: int, content: string, handle: box<ya
     ContentTab(label, close_cmd, editor_consts.ContentKind.Model, content, null, null, null, handle, null, null, null, null)
 }
 
-fn make_scene_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.ISceneHandle>) -> ContentTab {
+pub fn make_scene_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.ISceneHandle>) -> ContentTab {
     ContentTab(label, close_cmd, editor_consts.ContentKind.Scene, "", null, null, null, null, null, handle, null, null)
 }
 
@@ -139,10 +139,55 @@ fn render_text_buffer_with_copy(ui: box<radiance.IUiHost>, key: int, content: st
     }
 }
 
+// Render the offscreen scene preview (image + orbit/pan/zoom camera
+// controls) for an open scene session. Used by `main_editor`'s main
+// scene view region in the Scene layout.
+pub fn render_scene_offscreen_im(
+    ui: box<radiance.IUiHost>,
+    session: box<yaobow_editor_services.IScenePreviewSession>,
+) {
+    let s = session;
+    let t = s.target();
+    let avail_w = ui.content_region_avail_x();
+    let avail_h = ui.content_region_avail_y();
+    let target_w = if avail_w >= 1 { avail_w } else { 1 };
+    let target_h = if avail_h >= 1 { avail_h } else { 1 };
+    t.resize(target_w, target_h);
+    ui.image(t.texture_id(), target_w as float, target_h as float);
+
+    let hovered = ui.is_item_hovered();
+    let left = ui.mouse_down(0);
+    let right = ui.mouse_down(1);
+    let mut dx = 0.0;
+    let mut dy = 0.0;
+    let mut buttons = 0;
+    if hovered && left {
+        dx = ui.mouse_drag_delta_x(0);
+        dy = ui.mouse_drag_delta_y(0);
+        ui.reset_mouse_drag_delta(0);
+        buttons = buttons | 1;
+    }
+    if hovered && right {
+        let rdx = ui.mouse_drag_delta_x(1);
+        let rdy = ui.mouse_drag_delta_y(1);
+        ui.reset_mouse_drag_delta(1);
+        if rdx != 0.0 || rdy != 0.0 {
+            dx = dx + rdx;
+            dy = dy + rdy;
+        }
+        buttons = buttons | 2;
+    }
+    let wheel = if hovered { ui.mouse_wheel() } else { 0.0 };
+    if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
+        s.tick_camera(dx, dy, wheel, buttons);
+    }
+}
+
 pub fn render_tab_body_im(
     ui: box<radiance.IUiHost>,
     tab: ref<ContentTab>,
     preview_intents: box<array<int>>,
+    scene_open_intents: box<array<int>>,
     host: box<yaobow_editor_services.IEditorHostContext>,
 ) {
     match tab.kind {
@@ -262,47 +307,15 @@ pub fn render_tab_body_im(
             return;
         },
         editor_consts.ContentKind.Scene => {
-            if tab.scene_session != null {
-                let s = tab.scene_session!;
-                let t = s.target();
-                let avail_w = ui.content_region_avail_x();
-                let avail_h = ui.content_region_avail_y();
-                let target_w = if avail_w >= 1 { avail_w } else { 1 };
-                let target_h = if avail_h >= 1 { avail_h } else { 1 };
-                t.resize(target_w, target_h);
-                ui.image(t.texture_id(), target_w as float, target_h as float);
-
-                let hovered = ui.is_item_hovered();
-                let left = ui.mouse_down(0);
-                let right = ui.mouse_down(1);
-                let mut dx = 0.0;
-                let mut dy = 0.0;
-                let mut buttons = 0;
-                if hovered && left {
-                    dx = ui.mouse_drag_delta_x(0);
-                    dy = ui.mouse_drag_delta_y(0);
-                    ui.reset_mouse_drag_delta(0);
-                    buttons = buttons | 1;
-                }
-                if hovered && right {
-                    let rdx = ui.mouse_drag_delta_x(1);
-                    let rdy = ui.mouse_drag_delta_y(1);
-                    ui.reset_mouse_drag_delta(1);
-                    if rdx != 0.0 || rdy != 0.0 {
-                        dx = dx + rdx;
-                        dy = dy + rdy;
-                    }
-                    buttons = buttons | 2;
-                }
-                let wheel = if hovered { ui.mouse_wheel() } else { 0.0 };
-                if dx != 0.0 || dy != 0.0 || wheel != 0.0 {
-                    s.tick_camera(dx, dy, wheel, buttons);
-                }
-            } else {
-                if ui.button("打开场景预览", 160.0, 24.0) {
-                    preview_intents.push(tab.close_cmd);
-                }
-                ui.text("场景未打开。点击按钮启动离屏渲染。");
+            // In the single preview pane a scene asset never renders its
+            // offscreen view in place; instead it offers a button that
+            // routes it into the dedicated main scene view (and switches
+            // to the Scene layout). The actual offscreen render lives in
+            // `render_scene_offscreen_im`, driven by `main_editor` for
+            // the active scene tab.
+            ui.text(f"场景: {tab.label}");
+            if ui.button("在场景视图中打开", 200.0, 24.0) {
+                scene_open_intents.push(tab.close_cmd);
             }
             return;
         },

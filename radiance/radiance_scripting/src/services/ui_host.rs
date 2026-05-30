@@ -1017,6 +1017,137 @@ impl IUiHostImpl for ImguiUiHost {
         }
     }
 
+    fn dock_layout_assets_once(
+        &self,
+        root_id: &str,
+        left_window: &str,
+        right_window: &str,
+        left_ratio: f32,
+    ) {
+        {
+            let mut built = self.dock_layouts_built.borrow_mut();
+            if built.contains(root_id) {
+                return;
+            }
+            built.insert(root_id.to_string());
+        }
+        let root = dock_string_id(root_id);
+        let size = with_frame("dock_layout_assets_once.size", |f| f.ui.io().display_size)
+            .unwrap_or([1280.0, 720.0]);
+        unsafe {
+            imgui::sys::igDockBuilderRemoveNode(root);
+            imgui::sys::igDockBuilderAddNode(
+                root,
+                imgui::sys::ImGuiDockNodeFlags::from_le(
+                    imgui::sys::ImGuiDockNodeFlags_DockSpace as i32,
+                ),
+            );
+            imgui::sys::igDockBuilderSetNodeSize(root, imgui::sys::ImVec2::new(size[0], size[1]));
+
+            let mut left_id: imgui::sys::ImGuiID = 0;
+            let mut right_id: imgui::sys::ImGuiID = 0;
+            imgui::sys::igDockBuilderSplitNode(
+                root,
+                imgui::sys::ImGuiDir_Left,
+                left_ratio.clamp(0.05, 0.95),
+                &mut left_id,
+                &mut right_id,
+            );
+
+            dock_window(left_window, left_id);
+            dock_window(right_window, right_id);
+
+            imgui::sys::igDockBuilderFinish(root);
+        }
+    }
+
+    fn dock_layout_scene_once(
+        &self,
+        root_id: &str,
+        inspector_window: &str,
+        hierarchy_window: &str,
+        scene_view_window: &str,
+        resource_window: &str,
+        preview_window: &str,
+        right_ratio: f32,
+        bottom_ratio: f32,
+        hierarchy_ratio: f32,
+        resource_ratio: f32,
+    ) {
+        {
+            let mut built = self.dock_layouts_built.borrow_mut();
+            if built.contains(root_id) {
+                return;
+            }
+            built.insert(root_id.to_string());
+        }
+        let root = dock_string_id(root_id);
+        let size = with_frame("dock_layout_scene_once.size", |f| f.ui.io().display_size)
+            .unwrap_or([1280.0, 720.0]);
+        unsafe {
+            imgui::sys::igDockBuilderRemoveNode(root);
+            imgui::sys::igDockBuilderAddNode(
+                root,
+                imgui::sys::ImGuiDockNodeFlags::from_le(
+                    imgui::sys::ImGuiDockNodeFlags_DockSpace as i32,
+                ),
+            );
+            imgui::sys::igDockBuilderSetNodeSize(root, imgui::sys::ImVec2::new(size[0], size[1]));
+
+            // 1) Split the inspector off to the right.
+            let mut right_id: imgui::sys::ImGuiID = 0;
+            let mut left_col: imgui::sys::ImGuiID = 0;
+            imgui::sys::igDockBuilderSplitNode(
+                root,
+                imgui::sys::ImGuiDir_Right,
+                right_ratio.clamp(0.05, 0.9),
+                &mut right_id,
+                &mut left_col,
+            );
+
+            // 2) Split the left column into top (scene view) / bottom.
+            let mut bottom_id: imgui::sys::ImGuiID = 0;
+            let mut top_id: imgui::sys::ImGuiID = 0;
+            imgui::sys::igDockBuilderSplitNode(
+                left_col,
+                imgui::sys::ImGuiDir_Down,
+                bottom_ratio.clamp(0.05, 0.9),
+                &mut bottom_id,
+                &mut top_id,
+            );
+
+            // 3) Split the top into hierarchy (left) / main scene view (right).
+            let mut hierarchy_id: imgui::sys::ImGuiID = 0;
+            let mut scene_view_id: imgui::sys::ImGuiID = 0;
+            imgui::sys::igDockBuilderSplitNode(
+                top_id,
+                imgui::sys::ImGuiDir_Left,
+                hierarchy_ratio.clamp(0.05, 0.9),
+                &mut hierarchy_id,
+                &mut scene_view_id,
+            );
+
+            // 4) Split the bottom into resource (left) / preview (right).
+            let mut resource_id: imgui::sys::ImGuiID = 0;
+            let mut preview_id: imgui::sys::ImGuiID = 0;
+            imgui::sys::igDockBuilderSplitNode(
+                bottom_id,
+                imgui::sys::ImGuiDir_Left,
+                resource_ratio.clamp(0.05, 0.9),
+                &mut resource_id,
+                &mut preview_id,
+            );
+
+            dock_window(inspector_window, right_id);
+            dock_window(hierarchy_window, hierarchy_id);
+            dock_window(scene_view_window, scene_view_id);
+            dock_window(resource_window, resource_id);
+            dock_window(preview_window, preview_id);
+
+            imgui::sys::igDockBuilderFinish(root);
+        }
+    }
+
     fn main_menu_bar(&self, body: ComRc<IAction>) {
         with_frame("main_menu_bar", |f| {
             f.ui.main_menu_bar(|| {

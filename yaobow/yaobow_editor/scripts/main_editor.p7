@@ -1,7 +1,14 @@
-// Main editor page: docked four-pane layout (Resources | Viewport |
-// Inspector + Outline) built on the IUiHost docking surface. Cross-
-// frame intents (tree picks, tab closes, preview opens) flow through
-// the same `box<array<...>>` slots the legacy tab-bar layout used.
+// Main editor page: two switchable docked layouts driven from a row of
+// tab buttons on the right of the menu bar.
+//
+//   - Assets layout: resource list (left) | single preview pane (right).
+//     Clicking a resource *replaces* the single preview (no new tab).
+//   - Scene layout: inspector (right) over a left column that is split
+//     into a scene view (hierarchy | main scene render) on top and an
+//     Assets-style resource | preview strip on the bottom.
+//
+// Cross-frame intents (tree picks, model-preview, open-in-scene-view)
+// flow through `box<array<...>>` slots drained by `update`.
 
 import radiance;
 import yaobow_editor_services;
@@ -13,15 +20,24 @@ import inspector;
 import editor_consts;
 import theme_menu;
 
+// Mutable UI state held behind a `box<>` so `ref<Self>` methods (and the
+// closures/helpers they spawn) can mutate it directly.
+pub struct EditorUiState(
+    pub layout: editor_consts.EditorLayout,
+    pub next_cmd: int,
+);
+
 pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
-    pub tabs: box<array<content_tabs.ContentTab>>,
+    // Single shared preview pane: holds 0 or 1 ContentTab.
+    pub preview: box<array<content_tabs.ContentTab>>,
+    // Active scene loaded into the Scene layout's main scene view: 0 or 1.
+    pub scene_tab: box<array<content_tabs.ContentTab>>,
     pub picks: box<array<string>>,
-    pub close_intents: box<array<int>>,
     pub preview_intents: box<array<int>>,
-    pub next_close_cmd: int,
-    pub active_close_cmd: int,
+    pub scene_open_intents: box<array<int>>,
     pub resources_state: box<resources_panel.ResourcesPanelState>,
+    pub state: box<EditorUiState>,
 ) {
     pub fn activate(self: ref<Self>) -> int { 0 }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
@@ -29,54 +45,17 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
     pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.main_menu_bar(() => {
             theme_menu.render_theme_menu(ui, self.host.config());
+            render_layout_tabs(ui, self);
         });
 
-        ui.dock_space(editor_consts.DOCK_ROOT, () => {
-            // Seed the initial four-pane layout exactly once.
-            ui.dock_layout_once(
-                editor_consts.DOCK_ROOT,
-                editor_consts.DOCK_WINDOW_RESOURCES,
-                editor_consts.DOCK_WINDOW_INSPECTOR,
-                editor_consts.DOCK_WINDOW_OUTLINE,
-                editor_consts.DOCK_WINDOW_VIEWPORT,
-                0.22, 0.24, 0.30);
-        });
-
-        // Resources panel.
-        ui.window_docked(editor_consts.DOCK_WINDOW_RESOURCES, () => {
-            resources_panel.render_resources_panel_im(
-                ui, self.host, self.resources_state, self.picks);
-        });
-
-        // Viewport panel — content tab bar lives here, in the centre
-        // dock node by default.
-        ui.window_docked(editor_consts.DOCK_WINDOW_VIEWPORT, () => {
-            ui.tab_bar("##editor_tab_bar", () => {
-                for t in self.tabs {
-                    let close_cmd = t.close_cmd;
-                    let closed = ui.tab_item(t.label, true, () => {
-                        self.active_close_cmd = close_cmd;
-                        content_tabs.render_tab_body_im(ui, t, self.preview_intents, self.host);
-                    });
-                    if closed {
-                        self.close_intents.push(close_cmd);
-                    }
-                }
-            });
-        });
-
-        // Resolve the currently-active scene tab (if any) for the
-        // outline + inspector panels.
-        let scene_session = active_scene_session(self.tabs, self.active_close_cmd);
-        let scene_handle = active_scene_handle(self.tabs, self.active_close_cmd);
-
-        ui.window_docked(editor_consts.DOCK_WINDOW_OUTLINE, () => {
-            scene_outline.render_scene_outline_im(ui, scene_session, scene_handle);
-        });
-
-        ui.window_docked(editor_consts.DOCK_WINDOW_INSPECTOR, () => {
-            inspector.render_inspector_im(ui, scene_session);
-        });
+        match self.state.layout {
+            editor_consts.EditorLayout.Assets => {
+                render_assets_layout(ui, self);
+            },
+            editor_consts.EditorLayout.Scene => {
+                render_scene_layout(ui, self);
+            },
+        }
         0
     }
 
@@ -88,43 +67,40 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
         // the next imgui frame samples their color textures.
         self.host.render_pending_previews();
 
-        // Open new tabs for clicked tree leaves.
+        // Resolve clicked tree leaves into the single preview pane.
         for path in self.picks {
             let vfs = self.host.vfs();
             if vfs.is_dir(path) {
                 vfs.toggle_expanded(path);
             } else {
-                self.next_close_cmd = self.next_close_cmd + 1;
+                self.state.next_cmd = self.state.next_cmd + 1;
                 let tab = content_tabs.open_content_tab(
                     self.host.previewers(),
                     path,
-                    editor_consts.CLOSE_CMD_BASE + self.next_close_cmd,
+                    editor_consts.CLOSE_CMD_BASE + self.state.next_cmd,
                 );
                 if tab != null {
-                    self.tabs.push(tab!);
+                    set_preview(self.preview, tab!);
                 }
             }
         }
         self.picks.clear();
 
-        // Close tabs whose tab_item reported a close click this frame.
-        for c in self.close_intents {
-            close_tab_by_close_cmd(self.tabs, c);
-        }
-        self.close_intents.clear();
-
-        // Open preview sessions for model / scene tabs whose Preview
-        // button was pressed this frame. Single-active editor policy:
-        // when a new preview opens, close any other tab's existing
-        // session so the backend reclaims GPU resources.
+        // Open offscreen model previews for the preview pane.
         for m in self.preview_intents {
-            close_other_preview_sessions(self.tabs, m);
-            set_preview_session_for_close_cmd(self.tabs, m);
+            open_model_preview(self.preview, m);
         }
         self.preview_intents.clear();
 
-        // Per-frame audio handle pump.
-        for t in self.tabs {
+        // Route scene assets into the main scene view and switch layout.
+        for c in self.scene_open_intents {
+            open_scene_in_view(self.preview, self.scene_tab, c);
+            self.state.layout = editor_consts.EditorLayout.Scene;
+        }
+        self.scene_open_intents.clear();
+
+        // Per-frame audio handle pump for the active preview.
+        for t in self.preview {
             if t.kind == editor_consts.ContentKind.Audio && t.audio_handle != null {
                 let h = t.audio_handle!;
                 h.update();
@@ -139,98 +115,219 @@ fn empty_transitions() -> ?box<radiance.IDirector> {
     return null;
 }
 
+// Right-aligned layout selector rendered inside `main_menu_bar`.
+fn render_layout_tabs(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) {
+    let assets_label = "资源浏览";
+    let scene_label = "场景编辑";
+    let pad = 28.0;
+    let w_assets = ui.calc_text_size_x(assets_label) + pad;
+    let w_scene = ui.calc_text_size_x(scene_label) + pad;
+    let avail = ui.content_region_avail_x() as float;
+    let here = ui.cursor_pos_x();
+    let start_x = here + avail - (w_assets + w_scene);
+    if start_x > here {
+        ui.set_cursor_pos(start_x, ui.cursor_pos_y());
+    }
+
+    let is_assets = dir.state.layout == editor_consts.EditorLayout.Assets;
+    if ui.menu_item(assets_label, is_assets) {
+        dir.state.layout = editor_consts.EditorLayout.Assets;
+    }
+    let is_scene = dir.state.layout == editor_consts.EditorLayout.Scene;
+    if ui.menu_item(scene_label, is_scene) {
+        dir.state.layout = editor_consts.EditorLayout.Scene;
+    }
+}
+
+fn render_assets_layout(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) {
+    ui.dock_space(editor_consts.DOCK_ROOT_ASSETS, () => {
+        ui.dock_layout_assets_once(
+            editor_consts.DOCK_ROOT_ASSETS,
+            editor_consts.DOCK_WIN_ASSETS_RESOURCES,
+            editor_consts.DOCK_WIN_ASSETS_PREVIEW,
+            0.28);
+    });
+
+    ui.window_docked(editor_consts.DOCK_WIN_ASSETS_RESOURCES, () => {
+        resources_panel.render_resources_panel_im(
+            ui, dir.host, dir.resources_state, dir.picks);
+    });
+
+    ui.window_docked(editor_consts.DOCK_WIN_ASSETS_PREVIEW, () => {
+        render_preview_pane(ui, dir);
+    });
+}
+
+fn render_scene_layout(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) {
+    ui.dock_space(editor_consts.DOCK_ROOT_SCENE, () => {
+        ui.dock_layout_scene_once(
+            editor_consts.DOCK_ROOT_SCENE,
+            editor_consts.DOCK_WIN_SCENE_INSPECTOR,
+            editor_consts.DOCK_WIN_SCENE_HIERARCHY,
+            editor_consts.DOCK_WIN_SCENE_VIEW,
+            editor_consts.DOCK_WIN_SCENE_RESOURCES,
+            editor_consts.DOCK_WIN_SCENE_PREVIEW,
+            0.24, 0.45, 0.25, 0.5);
+    });
+
+    let scene_session = scene_slot_session(dir.scene_tab);
+    let scene_handle = scene_slot_handle(dir.scene_tab);
+
+    ui.window_docked(editor_consts.DOCK_WIN_SCENE_INSPECTOR, () => {
+        inspector.render_inspector_im(ui, scene_session);
+    });
+
+    ui.window_docked(editor_consts.DOCK_WIN_SCENE_HIERARCHY, () => {
+        scene_outline.render_scene_outline_im(ui, scene_session, scene_handle);
+    });
+
+    ui.window_docked(editor_consts.DOCK_WIN_SCENE_VIEW, () => {
+        render_main_scene_view(ui, dir.scene_tab);
+    });
+
+    ui.window_docked(editor_consts.DOCK_WIN_SCENE_RESOURCES, () => {
+        resources_panel.render_resources_panel_im(
+            ui, dir.host, dir.resources_state, dir.picks);
+    });
+
+    ui.window_docked(editor_consts.DOCK_WIN_SCENE_PREVIEW, () => {
+        render_preview_pane(ui, dir);
+    });
+}
+
+fn render_preview_pane(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) {
+    let mut any = false;
+    for t in dir.preview {
+        any = true;
+        content_tabs.render_tab_body_im(
+            ui, t, dir.preview_intents, dir.scene_open_intents, dir.host);
+    }
+    if !any {
+        ui.text("选择左侧的资源以预览。");
+    }
+}
+
+fn render_main_scene_view(
+    ui: box<radiance.IUiHost>,
+    slot: box<array<content_tabs.ContentTab>>,
+) {
+    let mut any = false;
+    for t in slot {
+        any = true;
+        if t.scene_session != null {
+            content_tabs.render_scene_offscreen_im(ui, t.scene_session!);
+        } else {
+            ui.text("场景加载中…");
+        }
+    }
+    if !any {
+        ui.text("未打开场景。在下方资源中选择一个场景，然后点击“在场景视图中打开”。");
+    }
+}
+
 pub fn make_main_editor_director(
     host: box<yaobow_editor_services.IEditorHostContext>,
 ) -> box<radiance.IDirector> {
-    let tabs: array<content_tabs.ContentTab> = [];
+    let preview: array<content_tabs.ContentTab> = [];
+    let scene_tab: array<content_tabs.ContentTab> = [];
     let picks: array<string> = [];
-    let close_intents: array<int> = [];
     let preview_intents: array<int> = [];
+    let scene_open_intents: array<int> = [];
     return box(MainEditorDirector(
         host,
-        box(tabs),
+        box(preview),
+        box(scene_tab),
         box(picks),
-        box(close_intents),
         box(preview_intents),
-        0,
-        0,
+        box(scene_open_intents),
         box(resources_panel.make_resources_state()),
+        box(EditorUiState(editor_consts.EditorLayout.Assets, 0)),
     )) as box<radiance.IDirector>;
 }
 
-fn close_tab_by_close_cmd(tabs: box<array<content_tabs.ContentTab>>, close_cmd: int) {
-    for i, t in tabs {
-        if t.close_cmd == close_cmd {
-            tabs.remove(i);
+// Replace the single preview, closing any sessions the previous preview
+// held so the backend reclaims GPU resources.
+fn set_preview(
+    slot: box<array<content_tabs.ContentTab>>,
+    tab: content_tabs.ContentTab,
+) {
+    close_slot_sessions(slot);
+    slot.clear();
+    slot.push(tab);
+}
+
+fn close_slot_sessions(slot: box<array<content_tabs.ContentTab>>) {
+    for i, t in slot {
+        if slot[i].preview_session != null {
+            let s = slot[i].preview_session!;
+            s.close();
+            slot[i].preview_session = null;
+        }
+        if slot[i].scene_session != null {
+            let s = slot[i].scene_session!;
+            s.close();
+            slot[i].scene_session = null;
+        }
+    }
+}
+
+fn open_model_preview(slot: box<array<content_tabs.ContentTab>>, close_cmd: int) {
+    for i, t in slot {
+        if slot[i].close_cmd == close_cmd {
+            if slot[i].model_handle != null {
+                let h = slot[i].model_handle!;
+                slot[i].preview_session = h.open_preview();
+            }
             return;
         }
     }
 }
 
-fn set_preview_session_for_close_cmd(
-    tabs: box<array<content_tabs.ContentTab>>,
+// Move a scene asset (currently in the preview slot) into the main scene
+// view: open a fresh scene session and seed the scene slot. The preview
+// slot keeps its own scene tab (button only) for re-triggering.
+fn open_scene_in_view(
+    preview: box<array<content_tabs.ContentTab>>,
+    scene_slot: box<array<content_tabs.ContentTab>>,
     close_cmd: int,
 ) {
-    for i, t in tabs {
-        if t.close_cmd == close_cmd {
-            if tabs[i].model_handle != null {
-                let h = tabs[i].model_handle!;
-                tabs[i].preview_session = h.open_preview();
-            } else if tabs[i].scene_handle != null {
-                let h = tabs[i].scene_handle!;
-                tabs[i].scene_session = h.open_preview();
+    for i, t in preview {
+        if preview[i].close_cmd == close_cmd {
+            if preview[i].scene_handle != null {
+                let handle = preview[i].scene_handle!;
+                let sess = handle.open_preview();
+                let label = preview[i].label;
+                close_slot_sessions(scene_slot);
+                scene_slot.clear();
+                let new_tab = content_tabs.make_scene_tab(label, close_cmd, handle);
+                scene_slot.push(new_tab);
+                scene_slot[0].scene_session = sess;
             }
             return;
         }
     }
 }
 
-fn close_other_preview_sessions(
-    tabs: box<array<content_tabs.ContentTab>>,
-    keep_close_cmd: int,
-) {
-    for i, t in tabs {
-        if t.close_cmd != keep_close_cmd {
-            if tabs[i].preview_session != null {
-                let s = tabs[i].preview_session!;
-                s.close();
-                tabs[i].preview_session = null;
-            }
-            if tabs[i].scene_session != null {
-                let s = tabs[i].scene_session!;
-                s.close();
-                tabs[i].scene_session = null;
-            }
-        }
-    }
-}
-
-fn active_scene_session(
-    tabs: box<array<content_tabs.ContentTab>>,
-    active_close_cmd: int,
+fn scene_slot_session(
+    slot: box<array<content_tabs.ContentTab>>,
 ) -> ?box<yaobow_editor_services.IScenePreviewSession> {
-    for t in tabs {
-        if t.close_cmd == active_close_cmd {
-            if t.scene_session != null {
-                return t.scene_session;
-            }
-            return null;
+    for t in slot {
+        if t.scene_session != null {
+            return t.scene_session;
         }
+        return null;
     }
     return null;
 }
 
-fn active_scene_handle(
-    tabs: box<array<content_tabs.ContentTab>>,
-    active_close_cmd: int,
+fn scene_slot_handle(
+    slot: box<array<content_tabs.ContentTab>>,
 ) -> ?box<yaobow_editor_services.ISceneHandle> {
-    for t in tabs {
-        if t.close_cmd == active_close_cmd {
-            if t.scene_handle != null {
-                return t.scene_handle;
-            }
-            return null;
+    for t in slot {
+        if t.scene_handle != null {
+            return t.scene_handle;
         }
+        return null;
     }
     return null;
 }

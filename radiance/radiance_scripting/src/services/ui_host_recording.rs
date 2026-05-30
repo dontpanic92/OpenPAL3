@@ -479,6 +479,28 @@ impl IUiHostImpl for HostFacade {
         _bottom_ratio: f32,
     ) {
     }
+    fn dock_layout_assets_once(
+        &self,
+        _root_id: &str,
+        _left_window: &str,
+        _right_window: &str,
+        _left_ratio: f32,
+    ) {
+    }
+    fn dock_layout_scene_once(
+        &self,
+        _root_id: &str,
+        _inspector_window: &str,
+        _hierarchy_window: &str,
+        _scene_view_window: &str,
+        _resource_window: &str,
+        _preview_window: &str,
+        _right_ratio: f32,
+        _bottom_ratio: f32,
+        _hierarchy_ratio: f32,
+        _resource_ratio: f32,
+    ) {
+    }
     fn main_menu_bar(&self, body: crosscom::ComRc<crosscom::IAction>) {
         self.inner.record(UiCall::MainMenuBar);
         invoke_body("main_menu_bar", &self.inner, body);
