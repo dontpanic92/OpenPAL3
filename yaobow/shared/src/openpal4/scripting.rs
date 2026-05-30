@@ -2277,34 +2277,70 @@ fn player_face_to_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functio
     Pal4FunctionState::Completed
 }
 
+fn wait_player_move(
+    vm: &mut ScriptVm<Pal4AppContext>,
+    player_id: i32,
+    sync: i32,
+) -> Pal4FunctionState {
+    if sync == 1 && vm.app_context.player_moving(player_id) {
+        Pal4FunctionState::Yield(Box::new(move |vm, _| {
+            if vm.app_context.player_moving(player_id) {
+                ContinuationState::Loop
+            } else {
+                ContinuationState::Completed
+            }
+        }))
+    } else {
+        Pal4FunctionState::Completed
+    }
+}
+
+fn wait_npc_move(
+    vm: &mut ScriptVm<Pal4AppContext>,
+    npc_name: String,
+    sync: i32,
+) -> Pal4FunctionState {
+    if sync == 1 && vm.app_context.npc_moving(&npc_name) {
+        Pal4FunctionState::Yield(Box::new(move |vm, _| {
+            if vm.app_context.npc_moving(&npc_name) {
+                ContinuationState::Loop
+            } else {
+                ContinuationState::Completed
+            }
+        }))
+    } else {
+        Pal4FunctionState::Completed
+    }
+}
+
 fn player_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, player_id:i32, x:f32, y:f32, z:f32, _walk_to :i32);
+    as_params!(vm, player_id:i32, x:f32, y:f32, z:f32, sync:i32);
 
     vm.app_context
         .player_to(player_id, &Vec3::new(x, y, z), false);
-    Pal4FunctionState::Completed
+    wait_player_move(vm, player_id, sync)
 }
 
 fn player_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, player_id:i32, x:f32, y:f32, z:f32, _run_to :i32);
+    as_params!(vm, player_id:i32, x:f32, y:f32, z:f32, sync:i32);
 
     vm.app_context
         .player_to(player_id, &Vec3::new(x, y, z), true);
-    Pal4FunctionState::Completed
+    wait_player_move(vm, player_id, sync)
 }
 
 fn player_current_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, x: f32, y: f32, z: f32, _walk_to: i32);
+    as_params!(vm, x: f32, y: f32, z: f32, sync: i32);
     vm.app_context.player_to(-1, &Vec3::new(x, y, z), false);
-    Pal4FunctionState::Completed
+    wait_player_move(vm, -1, sync)
 }
 
 fn player_back_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, player_id:i32, x:f32, y:f32, z:f32, _back_to :i32);
+    as_params!(vm, player_id:i32, x:f32, y:f32, z:f32, sync:i32);
 
     vm.app_context
         .player_to(player_id, &Vec3::new(x, y, z), false);
-    Pal4FunctionState::Completed
+    wait_player_move(vm, player_id, sync)
 }
 
 fn player_blend_out(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
@@ -2370,27 +2406,27 @@ fn current_player_end_move(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4F
 }
 
 fn npc_walk_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, npc_file_str: i32, x: f32, y: f32, z: f32, _walk_to: i32);
+    as_params!(vm, npc_file_str: i32, x: f32, y: f32, z: f32, sync: i32);
 
     let npc_name = get_str(vm, npc_file_str as usize).unwrap();
     vm.app_context.npc_to(&npc_name, &Vec3::new(x, y, z), false);
-    Pal4FunctionState::Completed
+    wait_npc_move(vm, npc_name, sync)
 }
 
 fn npc_run_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, npc_file_str: i32, x: f32, y: f32, z: f32, _run_to: i32);
+    as_params!(vm, npc_file_str: i32, x: f32, y: f32, z: f32, sync: i32);
 
     let npc_name = get_str(vm, npc_file_str as usize).unwrap();
     vm.app_context.npc_to(&npc_name, &Vec3::new(x, y, z), true);
-    Pal4FunctionState::Completed
+    wait_npc_move(vm, npc_name, sync)
 }
 
 fn npc_back_to(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, npc_file_str: i32, x: f32, y: f32, z: f32, _back_to: i32);
+    as_params!(vm, npc_file_str: i32, x: f32, y: f32, z: f32, sync: i32);
 
     let npc_name = get_str(vm, npc_file_str as usize).unwrap();
     vm.app_context.npc_to(&npc_name, &Vec3::new(x, y, z), false);
-    Pal4FunctionState::Completed
+    wait_npc_move(vm, npc_name, sync)
 }
 
 fn npc_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
