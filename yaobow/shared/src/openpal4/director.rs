@@ -48,7 +48,19 @@ pub struct OpenPAL4Director {
     debug_visible: Cell<bool>,
     debug_prev_tilde: Cell<bool>,
     fps_smoothed: Cell<f32>,
+
+    // Perf-metric display throttle: the FPS/dt readouts are republished
+    // only every `DEBUG_METRIC_INTERVAL_SEC` so they stay legible. The
+    // EMA above keeps updating every frame; these only gate the values
+    // copied into the overlay snapshot.
+    debug_metric_accum: Cell<f32>,
+    fps_display: Cell<f32>,
+    dt_display: Cell<f32>,
 }
+
+/// How often the debug overlay republishes the FPS / frame-time
+/// readouts. Tuned so the numbers are readable rather than strobing.
+const DEBUG_METRIC_INTERVAL_SEC: f32 = 0.5;
 
 ComObject_OpenPAL4Director!(super::OpenPAL4Director);
 
@@ -78,6 +90,9 @@ impl OpenPAL4Director {
             debug_visible: Cell::new(false),
             debug_prev_tilde: Cell::new(false),
             fps_smoothed: Cell::new(0.0),
+            debug_metric_accum: Cell::new(0.0),
+            fps_display: Cell::new(0.0),
+            dt_display: Cell::new(0.0),
         }
     }
 
@@ -123,6 +138,24 @@ impl OpenPAL4Director {
         };
         self.fps_smoothed.set(fps);
 
+        // Throttle the *displayed* FPS / frame-time. The EMA above runs
+        // every frame for accuracy, but we only republish the readout
+        // every `DEBUG_METRIC_INTERVAL_SEC` so the numbers are legible.
+        // Seed on the first frame so the overlay isn't blank until the
+        // first interval elapses.
+        if self.fps_display.get() <= 0.0 {
+            self.fps_display.set(fps);
+            self.dt_display.set(delta_sec);
+        }
+        let accum = self.debug_metric_accum.get() + delta_sec;
+        if accum >= DEBUG_METRIC_INTERVAL_SEC {
+            self.fps_display.set(fps);
+            self.dt_display.set(delta_sec);
+            self.debug_metric_accum.set(accum - DEBUG_METRIC_INTERVAL_SEC);
+        } else {
+            self.debug_metric_accum.set(accum);
+        }
+
         // Fan the script-side overlay toggles out to the live scene
         // before we snapshot, so the next overlay frame sees the
         // result of any button press from the previous frame. Done
@@ -144,8 +177,8 @@ impl OpenPAL4Director {
                 block_name: app.block_name().to_string(),
                 leader_index: app.leader() as i32,
                 leader_pos: [pos.x, pos.y, pos.z],
-                delta_time: delta_sec,
-                fps,
+                delta_time: self.dt_display.get(),
+                fps: self.fps_display.get(),
             });
     }
 
