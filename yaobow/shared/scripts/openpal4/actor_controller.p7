@@ -40,12 +40,30 @@ let MOUSE_RIGHT: int = 1;
 
 // ----- Tunables (mirror the original Rust controller).
 
-let SPEED: float = 175.0;
+let SPEED: float = 225.0;
 let STEP_HEIGHT: float = 10.0;
 let TRIGGER_HEIGHT: float = 10.0;
 let CAMERA_ROTATE_SPEED: float = 1.5;
 let DEADZONE: float = 0.1;
 let TAU: float = 6.283185307179586;
+
+// ----- Smooth-movement tunables.
+//
+// TURN_RATE: max body turn speed in radians/sec when reorienting toward the
+//   desired heading (shortest arc). Larger = snappier turns.
+// ACCEL / DECEL: speed ramp rates in units/sec^2. DECEL is a touch quicker so
+//   the character settles promptly when keys release while still gliding.
+// MOVE_EPSILON: speed below which the actor is treated as stopped (idle anim,
+//   no heading update).
+// TURN_PIVOT_DOT: alignment (cos angle between heading and desired direction)
+//   below which forward speed is fully cut so the actor pivots in place during
+//   sharp turns instead of arcing sideways. Between this and 1.0 the forward
+//   speed scales smoothly with alignment.
+let TURN_RATE: float = 14.0;
+let ACCEL: float = 1200.0;
+let DECEL: float = 1500.0;
+let MOVE_EPSILON: float = 0.01;
+let TURN_PIVOT_DOT: float = 0.1;
 
 // Mouse / wheel tunables. Pixel-relative drag sensitivities are per
 // pixel of raw cursor delta; wheel step is per detent (one notch).
@@ -80,6 +98,14 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
     pub camera_rotation: float,
     pub camera_height: float,
     pub camera_distance: float,
+    // Smoothed movement state: current heading unit vector the body is turning
+    // toward, and current scalar speed (ramped via ACCEL/DECEL). `facing_seeded`
+    // becomes true after the first real input so the initial heading snaps once
+    // instead of sweeping from an arbitrary default.
+    pub facing_x: float,
+    pub facing_z: float,
+    pub facing_seeded: bool,
+    pub speed: float,
 ) {
     pub fn on_loading(self: ref<Self>) -> int {
         0
@@ -158,9 +184,77 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
             dz = dz / world_mag;
         }
 
-        let tx: float = cx + SPEED * delta_sec * dx;
+        let has_input: bool = world_mag_sq > 0.0;
+
+        // --- Smooth turning: rotate the current heading toward the desired
+        // input direction by at most TURN_RATE*dt (shortest arc). p7 has no
+        // atan2, so this is done with 2D vector rotation: dot gives cos of the
+        // remaining angle, cross gives the turn direction.
+        let mut fx: float = self.facing_x;
+        let mut fz: float = self.facing_z;
+        if has_input {
+            if !self.facing_seeded {
+                fx = dx;
+                fz = dz;
+                self.facing_seeded = true;
+            } else {
+                let max_step: float = TURN_RATE * delta_sec;
+                let cos_step: float = cos(max_step);
+                let dot: float = fx * dx + fz * dz;
+                if dot >= cos_step {
+                    // Remaining angle is within one step: snap to target.
+                    fx = dx;
+                    fz = dz;
+                } else {
+                    let cross: float = fx * dz - fz * dx;
+                    let sgn: float = if cross >= 0.0 { 1.0 } else { -1.0 };
+                    let sa: float = sgn * sin(max_step);
+                    let rfx: float = fx * cos_step - fz * sa;
+                    let rfz: float = fx * sa + fz * cos_step;
+                    let rmag: float = sqrt(rfx * rfx + rfz * rfz);
+                    if rmag > 0.0 {
+                        fx = rfx / rmag;
+                        fz = rfz / rmag;
+                    }
+                }
+            }
+            self.facing_x = fx;
+            self.facing_z = fz;
+        }
+
+        // --- Forward gate: scale target speed by how aligned the (smoothed)
+        // heading is with the desired direction. When the heading is far off
+        // (e.g. a left->right reversal), the gate drops to 0 so the actor
+        // pivots in place instead of arcing sideways through the perpendicular.
+        let mut forward_gate: float = 0.0;
+        if has_input {
+            let align: float = fx * dx + fz * dz;
+            if align > TURN_PIVOT_DOT {
+                forward_gate = (align - TURN_PIVOT_DOT) / (1.0 - TURN_PIVOT_DOT);
+                if forward_gate > 1.0 { forward_gate = 1.0; }
+            }
+        }
+
+        // --- Speed ramp (accelerate toward gated target, decelerate to a stop).
+        let mut speed: float = self.speed;
+        let target_speed: float = SPEED * forward_gate;
+        if speed < target_speed {
+            speed = speed + ACCEL * delta_sec;
+            if speed > target_speed { speed = target_speed; }
+        } else {
+            speed = speed - DECEL * delta_sec;
+            if speed < target_speed { speed = target_speed; }
+        }
+        self.speed = speed;
+
+        // --- Move along the (smoothed) heading at the ramped speed. Using the
+        // heading rather than raw input lets the actor coast to a stop along
+        // its last direction after the keys are released.
+        let moving: bool = speed > MOVE_EPSILON;
+        let step: float = speed * delta_sec;
+        let tx: float = cx + step * fx;
         let ty: float = cy;
-        let tz: float = cz + SPEED * delta_sec * dz;
+        let tz: float = cz + step * fz;
 
         let mx: float = tx - cx;
         let my: float = ty - cy;
@@ -168,24 +262,25 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
 
         self.game_ctx.check_event_triggers(cx, cy + TRIGGER_HEIGHT, cz, mx, my, mz);
 
-        let ray_y: float = ty + STEP_HEIGHT;
-        let depth_opt: ?float = self.ray_caster.cast_aa_ny(tx, ray_y, tz);
-        if depth_opt != null {
-            let depth: float = depth_opt!;
-            let new_y: float = ty + STEP_HEIGHT - depth;
-            let dir_sq: float = dx * dx + dz * dz;
-            if dir_sq > 0.25 {
+        if moving {
+            let ray_y: float = ty + STEP_HEIGHT;
+            let depth_opt: ?float = self.ray_caster.cast_aa_ny(tx, ray_y, tz);
+            if depth_opt != null {
+                let depth: float = depth_opt!;
+                let new_y: float = ty + STEP_HEIGHT - depth;
+                // Look back along the heading (forward ~= -heading), preserving
+                // the original look convention while using the smoothed facing.
                 entity.set_position_and_look_at(
                     tx, new_y, tz,
-                    cx, new_y, cz,
+                    tx - fx, new_y, tz - fz,
                 );
                 if anim.current_id() != ANIM_RUN {
                     anim.play_by_id(ANIM_RUN, ANIM_CFG_LOOPING);
                 }
-            } else {
-                if anim.current_id() != ANIM_IDLE {
-                    anim.play_by_id(ANIM_IDLE, ANIM_CFG_LOOPING);
-                }
+            }
+        } else {
+            if anim.current_id() != ANIM_IDLE {
+                anim.play_by_id(ANIM_IDLE, ANIM_CFG_LOOPING);
             }
         }
 
@@ -271,5 +366,6 @@ pub fn make_actor_controller(
         anim_0, anim_1, anim_2, anim_3,
         camera, ray_caster,
         true, 0.0, 300.0, 300.0,
+        0.0, 1.0, false, 0.0,
     )) as box<openpal4.IPal4ActorController>
 }
