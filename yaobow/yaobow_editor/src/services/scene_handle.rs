@@ -111,6 +111,11 @@ impl SceneHandle {
     }
 
     fn set_last(&self, s: String) -> &str {
+        let s = if s.contains('\0') {
+            s.replace('\0', "")
+        } else {
+            s
+        };
         *self.last_string.borrow_mut() = s;
         unsafe { (*self.last_string.as_ptr()).as_str() }
     }
@@ -550,6 +555,11 @@ impl InspectorView {
     }
 
     fn set_last(&self, s: String) -> &str {
+        let s = if s.contains('\0') {
+            s.replace('\0', "")
+        } else {
+            s
+        };
         *self.last_string.borrow_mut() = s;
         unsafe { (*self.last_string.as_ptr()).as_str() }
     }

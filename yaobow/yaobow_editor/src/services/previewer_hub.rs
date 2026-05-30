@@ -100,6 +100,14 @@ impl PreviewerHub {
     }
 
     fn set_last(&self, s: String) -> &str {
+        // Strip interior NUL bytes: binary blobs decoded as text (e.g. PAL
+        // `.cfg` files) can contain `\0`, which would make the codegen
+        // `CString::new` on the COM boundary fail with `NulError` and panic.
+        let s = if s.contains('\0') {
+            s.replace('\0', "")
+        } else {
+            s
+        };
         *self.last_string.borrow_mut() = s;
         // SAFETY: see ConfigService::get_asset_path — single-threaded
         // script/UI path; codegen copies the &str into a CString immediately.
