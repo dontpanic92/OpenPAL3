@@ -412,7 +412,11 @@ interface IUiHost: IUnknown {
     // even for multi-MB buffers.
     void copy_text_buffer(int key);
 
-    bool tree_leaf(&str label);
+    // Render a tree leaf (a clickable, childless list row). `selected`
+    // draws imgui's persistent selected-row highlight so callers can mark
+    // the active/opened item like a normal file list (distinct from the
+    // transient hover highlight). Returns true on the frame it's clicked.
+    bool tree_leaf(&str label, bool selected);
 
     // Render only the rows of a large flat list that are actually
     // visible in the current scroll region, using `ImGuiListClipper`.

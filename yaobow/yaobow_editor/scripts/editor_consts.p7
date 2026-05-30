@@ -67,7 +67,10 @@ pub enum EditorLayout(
 // into a single node at a time, keyed by its full id string).
 pub let DOCK_ROOT_ASSETS: string = "yaobow_assets_dock";
 pub let DOCK_WIN_ASSETS_RESOURCES: string = "资源##assets";
-pub let DOCK_WIN_ASSETS_PREVIEW: string = "预览##assets";
+// Preview window uses a `###` id so the displayed title can carry the
+// previewed file name ("预览 - {filename}") while the docking id (the
+// text after `###`) stays stable across frames.
+pub let DOCK_WIN_ASSETS_PREVIEW: string = "预览###preview_assets";
 
 // Scene layout dock ids/titles.
 pub let DOCK_ROOT_SCENE: string = "yaobow_scene_dock";
@@ -75,7 +78,7 @@ pub let DOCK_WIN_SCENE_INSPECTOR: string = "属性##scene";
 pub let DOCK_WIN_SCENE_HIERARCHY: string = "层级##scene";
 pub let DOCK_WIN_SCENE_VIEW: string = "场景##scene";
 pub let DOCK_WIN_SCENE_RESOURCES: string = "资源##scene";
-pub let DOCK_WIN_SCENE_PREVIEW: string = "预览##scene";
+pub let DOCK_WIN_SCENE_PREVIEW: string = "预览###preview_scene";
 
 pub let CLOSE_CMD_BASE: int = 200000;
 pub let MODEL_PREVIEW_CMD_BASE: int = 300000;

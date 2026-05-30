@@ -25,17 +25,18 @@ pub fn render_resources_panel_im(
     host: box<yaobow_editor_services.IEditorHostContext>,
     state: box<ResourcesPanelState>,
     picks: box<array<string>>,
+    selected_path: string,
 ) {
     ui.tab_bar("##resources_tabs", () => {
         ui.tab_item("文件树", false, () => {
             state.view_mode = 0;
             ui.child_window("##resources_tree_child", 0.0, 0.0, () => {
-                resource_tree.render_resource_tree_im(ui, host.vfs(), picks);
+                resource_tree.render_resource_tree_im(ui, host.vfs(), picks, selected_path);
             });
         });
         ui.tab_item("分类", false, () => {
             state.view_mode = 1;
-            render_category_view(ui, host.previewers().resources(), state, picks);
+            render_category_view(ui, host.previewers().resources(), state, picks, selected_path);
         });
     });
 }
@@ -45,6 +46,7 @@ fn render_category_view(
     rm: box<yaobow_editor_services.IResourceManager>,
     state: box<ResourcesPanelState>,
     picks: box<array<string>>,
+    selected_path: string,
 ) {
     // Filter text — for v1 we present current value + a "clear" button.
     // A full editable widget would need a new IUiHost surface; keep the
@@ -71,7 +73,7 @@ fn render_category_view(
                 ui.list_clipped(count, () => {
                     let row = ui.list_clipped_index();
                     let path = rm.category_entry_path(cat_idx, cat_filter, row);
-                    if ui.tree_leaf(path) {
+                    if ui.tree_leaf(path, path == selected_path) {
                         picks.push(path);
                     }
                 });

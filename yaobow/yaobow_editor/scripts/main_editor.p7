@@ -150,10 +150,10 @@ fn render_assets_layout(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>)
 
     ui.window_docked(editor_consts.DOCK_WIN_ASSETS_RESOURCES, () => {
         resources_panel.render_resources_panel_im(
-            ui, dir.host, dir.resources_state, dir.picks);
+            ui, dir.host, dir.resources_state, dir.picks, preview_selected_path(dir.preview));
     });
 
-    ui.window_docked(editor_consts.DOCK_WIN_ASSETS_PREVIEW, () => {
+    ui.window_docked(preview_window_title(editor_consts.DOCK_WIN_ASSETS_PREVIEW, dir.preview), () => {
         render_preview_pane(ui, dir);
     });
 }
@@ -187,12 +187,50 @@ fn render_scene_layout(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) 
 
     ui.window_docked(editor_consts.DOCK_WIN_SCENE_RESOURCES, () => {
         resources_panel.render_resources_panel_im(
-            ui, dir.host, dir.resources_state, dir.picks);
+            ui, dir.host, dir.resources_state, dir.picks, preview_selected_path(dir.preview));
     });
 
-    ui.window_docked(editor_consts.DOCK_WIN_SCENE_PREVIEW, () => {
+    ui.window_docked(preview_window_title(editor_consts.DOCK_WIN_SCENE_PREVIEW, dir.preview), () => {
         render_preview_pane(ui, dir);
     });
+}
+
+// Returns the vfs path of the currently-open preview tab (its label),
+// or "" when nothing is open. Used to mark the active item in the
+// resource panel views.
+fn preview_selected_path(preview: box<array<content_tabs.ContentTab>>) -> string {
+    for t in preview {
+        return t.label;
+    }
+    return "";
+}
+
+// Last path component (file name) of a vfs path, e.g. "/a/b/c.pol" -> "c.pol".
+fn path_basename(path: string) -> string {
+    let parts = path.split("/");
+    let n = parts.len();
+    if n == 0 {
+        return path;
+    }
+    return parts[n - 1];
+}
+
+// Builds the preview window's title. `base` is a `"display###id"` string;
+// the `###id` suffix is preserved so the dock node stays stable while the
+// visible label becomes "预览 - {filename}" when a file is open.
+fn preview_window_title(base: string, preview: box<array<content_tabs.ContentTab>>) -> string {
+    let path = preview_selected_path(preview);
+    if path == "" {
+        return base;
+    }
+    let parts = base.split("###");
+    if parts.len() != 2 {
+        return base;
+    }
+    let name = path_basename(path);
+    let prefix = parts[0];
+    let id = parts[1];
+    return f"{prefix} - {name}###{id}";
 }
 
 fn render_preview_pane(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) {

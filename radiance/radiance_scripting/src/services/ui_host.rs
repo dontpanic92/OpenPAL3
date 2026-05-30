@@ -636,9 +636,14 @@ impl IUiHostImpl for ImguiUiHost {
         });
     }
 
-    fn tree_leaf(&self, label: &str) -> bool {
+    fn tree_leaf(&self, label: &str, selected: bool) -> bool {
         with_frame("tree_leaf", |f| {
-            let _node = f.ui.tree_node_config(label).leaf(true).push();
+            let _node = f
+                .ui
+                .tree_node_config(label)
+                .leaf(true)
+                .selected(selected)
+                .push();
             f.ui.is_item_clicked()
         })
         .unwrap_or(false)

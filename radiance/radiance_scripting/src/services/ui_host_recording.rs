@@ -127,6 +127,7 @@ pub enum UiCall {
     },
     TreeLeaf {
         label: String,
+        selected: bool,
     },
     ListClipped {
         count: i32,
@@ -369,9 +370,10 @@ impl IUiHostImpl for HostFacade {
         self.inner.record(UiCall::CopyTextBuffer { key });
     }
 
-    fn tree_leaf(&self, label: &str) -> bool {
+    fn tree_leaf(&self, label: &str, selected: bool) -> bool {
         self.inner.record(UiCall::TreeLeaf {
             label: label.into(),
+            selected,
         });
         self.inner
             .tree_leaf_results
