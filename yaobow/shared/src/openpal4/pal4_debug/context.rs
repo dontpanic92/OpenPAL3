@@ -41,6 +41,7 @@ pub struct Pal4DebugState {
     fps: Cell<f32>,
     bsp_visible: Cell<bool>,
     nav_mesh_visible: Cell<bool>,
+    fast_forward: Cell<bool>,
 }
 
 impl Pal4DebugState {
@@ -69,6 +70,13 @@ impl Pal4DebugState {
     pub fn nav_mesh_visible(&self) -> bool {
         self.nav_mesh_visible.get()
     }
+
+    /// `&self`-safe accessor for the plot fast-forward toggle. Read by
+    /// the director each frame so it can fan the flag out to
+    /// `Pal4AppContext::set_fast_forward`.
+    pub fn fast_forward(&self) -> bool {
+        self.fast_forward.get()
+    }
 }
 
 impl Default for Pal4DebugState {
@@ -84,6 +92,9 @@ impl Default for Pal4DebugState {
             // nav-mesh is hidden until the developer flips it on.
             bsp_visible: Cell::new(true),
             nav_mesh_visible: Cell::new(false),
+            // Fast-forward is opt-in: the plot plays at normal speed
+            // until the developer flips it on.
+            fast_forward: Cell::new(false),
         }
     }
 }
@@ -156,6 +167,14 @@ impl IPal4DebugContextImpl for Pal4DebugContext {
 
     fn set_nav_mesh_visible(&self, v: bool) {
         self.state.nav_mesh_visible.set(v);
+    }
+
+    fn fast_forward(&self) -> bool {
+        self.state.fast_forward.get()
+    }
+
+    fn set_fast_forward(&self, v: bool) {
+        self.state.fast_forward.set(v);
     }
 }
 

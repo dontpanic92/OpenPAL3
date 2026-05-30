@@ -2093,8 +2093,8 @@ fn wait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, time: f64);
 
     let mut time = time as f32;
-    Pal4FunctionState::Yield(Box::new(move |_vm, delta_sec| {
-        if time <= 0.0 {
+    Pal4FunctionState::Yield(Box::new(move |vm, delta_sec| {
+        if time <= 0.0 || vm.app_context().fast_forward() {
             ContinuationState::Completed
         } else {
             time = time - delta_sec;
@@ -2126,13 +2126,21 @@ fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
         let ui = &vm.app_context().ui;
         presenter.update(&vm.app_context.dialog_box, delta_sec);
 
+        let fast = vm.app_context().fast_forward();
         let input = vm.app_context().input.clone();
         let input = input.borrow();
-        let completed = ui.ui().is_mouse_released(MouseButton::Left)
+        let completed = fast
+            || ui.ui().is_mouse_released(MouseButton::Left)
             || input.get_key_state(Key::GamePadEast).pressed()
             || input.get_key_state(Key::GamePadSouth).pressed()
             || input.get_key_state(Key::Space).pressed();
         if completed {
+            drop(input);
+            // Cut any in-flight voice line so fast-forwarding through a
+            // dialog run doesn't stack overlapping samples.
+            if fast {
+                vm.app_context.stop_voice();
+            }
             vm.app_context
                 .dialog_box
                 .set_avatar(None, AvatarPosition::Left);
@@ -2530,7 +2538,7 @@ fn camera_run_single(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 
     if sync == 1 && running {
         Pal4FunctionState::Yield(Box::new(move |vm, _| {
-            if vm.app_context.camera_running() {
+            if vm.app_context.camera_running() && !vm.app_context().fast_forward() {
                 ContinuationState::Loop
             } else {
                 ContinuationState::Completed
@@ -2551,7 +2559,7 @@ fn camera_run_circle(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 fn camera_wait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     if vm.app_context.camera_running() {
         Pal4FunctionState::Yield(Box::new(move |vm, _| {
-            if vm.app_context.camera_running() {
+            if vm.app_context.camera_running() && !vm.app_context().fast_forward() {
                 ContinuationState::Loop
             } else {
                 ContinuationState::Completed
@@ -2570,6 +2578,10 @@ fn flash_out_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSt
 
     if sync == 1 {
         Pal4FunctionState::Yield(Box::new(move |vm, _| {
+            if vm.app_context().fast_forward() {
+                vm.app_context.set_actdrop(InterpValue::new(1., 1., 0.));
+                return ContinuationState::Completed;
+            }
             if vm.app_context.get_actdrop().current() == 1. {
                 ContinuationState::Completed
             } else {
@@ -2589,6 +2601,10 @@ fn flash_in_black(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 
     if sync == 1 {
         Pal4FunctionState::Yield(Box::new(move |vm, _| {
+            if vm.app_context().fast_forward() {
+                vm.app_context.set_actdrop(InterpValue::new(0., 0., 0.));
+                return ContinuationState::Completed;
+            }
             if vm.app_context.get_actdrop().current() == 0. {
                 ContinuationState::Completed
             } else {

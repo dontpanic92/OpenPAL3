@@ -163,11 +163,13 @@ impl OpenPAL4Director {
         // no extra wiring.
         let bsp_visible = bundle.debug_state.bsp_visible();
         let nav_mesh_visible = bundle.debug_state.nav_mesh_visible();
+        let fast_forward = bundle.debug_state.fast_forward();
 
         let mut vm = self.vm.borrow_mut();
         let app = vm.app_context_mut();
         app.set_bsp_visible(bsp_visible);
         app.set_nav_mesh_visible(nav_mesh_visible);
+        app.set_fast_forward(fast_forward);
 
         let pos = app.leader_pos();
         bundle

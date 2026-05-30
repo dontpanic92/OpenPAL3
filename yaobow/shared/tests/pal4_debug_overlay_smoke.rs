@@ -145,6 +145,13 @@ fn pal4_debug_overlay_round_trips_through_p7() {
         "expected NavMesh toggle button defaulting to OFF, got {:?}",
         buttons
     );
+    assert!(
+        buttons
+            .iter()
+            .any(|b| b.starts_with("FastFwd:") && b.contains("OFF")),
+        "expected FastFwd toggle button defaulting to OFF, got {:?}",
+        buttons
+    );
 }
 
 /// The script-side toggle buttons must round-trip through
@@ -206,7 +213,7 @@ fn pal4_debug_overlay_toggles_flip_host_state() {
         .button_results
         .borrow_mut()
         .insert("NavMesh:  OFF".into(), true);
-    overlay.render(ui_com2, 0.016, session.context);
+    overlay.render(ui_com2, 0.016, session.context.clone());
     assert!(
         !session.state.bsp_visible(),
         "BSP flag should stay false after NavMesh press"
@@ -214,5 +221,18 @@ fn pal4_debug_overlay_toggles_flip_host_state() {
     assert!(
         session.state.nav_mesh_visible(),
         "NavMesh flag should have been toggled to true"
+    );
+
+    // Finally press only FastFwd. State: fast-forward off by default →
+    // expect it to flip to true after this render.
+    let (recorder3, ui_com3) = RecordingUiHost::create();
+    recorder3
+        .button_results
+        .borrow_mut()
+        .insert("FastFwd:  OFF".into(), true);
+    overlay.render(ui_com3, 0.016, session.context);
+    assert!(
+        session.state.fast_forward(),
+        "FastFwd flag should have been toggled to true"
     );
 }

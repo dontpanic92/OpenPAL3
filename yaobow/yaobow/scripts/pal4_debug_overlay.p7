@@ -34,6 +34,9 @@ pub struct[pal4_debug.IPal4DebugOverlay] Pal4DebugOverlay(
                 if ui.button(f"NavMesh:  {on_off(ctx.nav_mesh_visible())}", 0.0, 0.0) {
                     ctx.set_nav_mesh_visible(!ctx.nav_mesh_visible());
                 }
+                if ui.button(f"FastFwd:  {on_off(ctx.fast_forward())}", 0.0, 0.0) {
+                    ctx.set_fast_forward(!ctx.fast_forward());
+                }
             });
         });
         0

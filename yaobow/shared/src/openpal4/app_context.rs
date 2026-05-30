@@ -1,4 +1,8 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    rc::Rc,
+};
 
 use crosscom::ComRc;
 use fileformats::pal4::cam::CameraDataFile;
@@ -44,6 +48,12 @@ pub struct Pal4AppContext {
     block_name: String,
     leader: usize,
     player_locked: bool,
+
+    /// Plot fast-forward toggle, driven by the PAL4 debug overlay.
+    /// `Cell` so the `&self` script continuations (giWait / giTalk /
+    /// camera waits) can read it while the director writes it via
+    /// `set_fast_forward` once per frame.
+    fast_forward: Cell<bool>,
 
     moving_entities: HashMap<ActorId, MovingEntity>,
     rotating_entities: HashMap<ActorId, RotatingEntity>,
@@ -94,6 +104,7 @@ impl Pal4AppContext {
             scene: Pal4Scene::new_empty(),
             dialog_box: DialogBox::new(ui),
             player_locked: true,
+            fast_forward: Cell::new(false),
             moving_entities: HashMap::new(),
             rotating_entities: HashMap::new(),
             actor_controller_factory: None,
@@ -578,6 +589,21 @@ impl Pal4AppContext {
     /// floor + wall nav-mesh overlay geometry.
     pub fn set_nav_mesh_visible(&mut self, visible: bool) {
         self.scene.set_nav_mesh_visible(visible);
+    }
+
+    /// Push the PAL4 debug overlay's plot fast-forward toggle. The
+    /// director fans this in each frame; the script wait/dialog/camera
+    /// continuations read it via [`Pal4AppContext::fast_forward`] to
+    /// short-circuit to completion.
+    pub fn set_fast_forward(&mut self, fast_forward: bool) {
+        self.fast_forward.set(fast_forward);
+    }
+
+    /// `&self`-safe read of the plot fast-forward toggle, used from
+    /// inside the script global-function continuations (which only
+    /// borrow `app_context` immutably).
+    pub fn fast_forward(&self) -> bool {
+        self.fast_forward.get()
     }
 
     /// `&self`-safe leader position lookup for diagnostics overlays.

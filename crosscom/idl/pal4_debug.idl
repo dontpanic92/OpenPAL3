@@ -34,6 +34,9 @@ interface IPal4DebugContext: IUnknown {
     void set_bsp_visible(bool v);
     bool nav_mesh_visible();
     void set_nav_mesh_visible(bool v);
+
+    bool fast_forward();
+    void set_fast_forward(bool v);
 }
 
 [uuid(9c1b6f70-1f7a-4d31-9b6a-2e9d4a8e0b02)]
