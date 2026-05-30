@@ -1077,10 +1077,9 @@ fn new_game(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     // Start from a clean slate so a fresh playthrough doesn't inherit
     // money / inventory / plot flags from a previous session.
     let app_name = vm.app_context.persistent_state().app_name().to_string();
-    vm.app_context
-        .set_persistent_state(crate::openpal4::states::persistent_state::Pal4PersistentState::new(
-            app_name,
-        ));
+    vm.app_context.set_persistent_state(
+        crate::openpal4::states::persistent_state::Pal4PersistentState::new(app_name),
+    );
     Pal4FunctionState::Completed
 }
 
@@ -1332,7 +1331,9 @@ fn del_property(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
 fn player_in_team(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, _is_in_team: i32);
     let slot = map_player_slot(vm, player_id);
-    vm.app_context.persistent_state_mut().set_in_team(slot, true);
+    vm.app_context
+        .persistent_state_mut()
+        .set_in_team(slot, true);
     vm.app_context.enable_player(slot, true);
     Pal4FunctionState::Completed
 }
@@ -1340,7 +1341,9 @@ fn player_in_team(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 fn player_out_team(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, _is_in_team: i32);
     let slot = map_player_slot(vm, player_id);
-    vm.app_context.persistent_state_mut().set_in_team(slot, false);
+    vm.app_context
+        .persistent_state_mut()
+        .set_in_team(slot, false);
     vm.app_context.enable_player(slot, false);
     Pal4FunctionState::Completed
 }
@@ -1786,13 +1789,17 @@ fn script_clear_ctx_but_current(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> 
 
 fn add_money(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, money_amount: i32, _add_money: i32);
-    vm.app_context.persistent_state_mut().add_money(money_amount);
+    vm.app_context
+        .persistent_state_mut()
+        .add_money(money_amount);
     Pal4FunctionState::Completed
 }
 
 fn pay_money(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, money_amount: i32, _pay_money: i32);
-    vm.app_context.persistent_state_mut().pay_money(money_amount);
+    vm.app_context
+        .persistent_state_mut()
+        .pay_money(money_amount);
     Pal4FunctionState::Completed
 }
 
@@ -2105,12 +2112,20 @@ fn wait(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 
 fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, str: i32);
-    let voice = vm.stack_peek::<i32>();
 
-    if let Some(voice) = voice {
+    // Voice support is distribution-dependent: voiced PAL4 builds push an extra
+    // string-handle argument (the voice file name) after the dialog text, while
+    // voice-less builds push only the text. The VM keeps no per-call parameter
+    // frame (`fp` is a fixed constant, only `sp` moves), so the two layouts
+    // cannot be told apart structurally. We detect the voice argument
+    // heuristically: peek the next value and only consume it when it is a live
+    // string handle on the heap. This keeps the stack balanced on voiced builds
+    // (no leak) without over-popping the caller's data on voice-less builds.
+    if let Some(voice) = vm.stack_peek::<i32>() {
         let voice_name = vm.heap.get(voice as usize).cloned().flatten();
         if let Some(voice_name) = voice_name {
             if voice_name.len() == 5 && voice_name.starts_with("4") {
+                vm.stack_pop::<i32>();
                 if let Err(e) = vm.app_context.play_voice(&voice_name) {
                     log::debug!("Play voice failed: {}", e);
                 }

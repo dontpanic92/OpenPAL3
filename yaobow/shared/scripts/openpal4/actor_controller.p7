@@ -40,7 +40,7 @@ let MOUSE_RIGHT: int = 1;
 
 // ----- Tunables (mirror the original Rust controller).
 
-let SPEED: float = 225.0;
+let SPEED: float = 200.0;
 let STEP_HEIGHT: float = 10.0;
 let TRIGGER_HEIGHT: float = 10.0;
 let CAMERA_ROTATE_SPEED: float = 1.5;

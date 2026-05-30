@@ -44,6 +44,11 @@ pub struct ScriptVm<TAppContext: 'static> {
     r1: u32,
     r2: u32,
 
+    /// Set when a stack access goes out of bounds. The execution loop
+    /// checks this and aborts the current script gracefully instead of
+    /// letting an out-of-bounds index panic and crash the whole game.
+    faulted: std::cell::Cell<bool>,
+
     yield_func: Vec<GlobalFunctionContinuation<TAppContext>>,
     pub(crate) imm: bool,
 }
@@ -74,6 +79,8 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             stack: vec![0; Self::DEFAULT_STACK_SIZE],
             sp: Self::DEFAULT_STACK_SIZE,
             fp: Self::DEFAULT_STACK_SIZE,
+
+            faulted: std::cell::Cell::new(false),
 
             imm: true,
         };
@@ -143,6 +150,21 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     pub fn execute(&mut self, delta_sec: f32) {
         loop {
             if self.context.is_none() {
+                return;
+            }
+
+            if self.faulted.get() {
+                log::error!(
+                    "AngelScript VM aborting script after stack fault in fn={} (sp={} fp={}); \
+                     clearing execution context to keep the game running.",
+                    self.current_fn_name(),
+                    self.sp,
+                    self.fp,
+                );
+                self.faulted.set(false);
+                self.context = None;
+                self.call_stack.clear();
+                self.yield_func.clear();
                 return;
             }
 
@@ -330,6 +352,43 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         }
     }
 
+    fn as_trace_enabled() -> bool {
+        static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *FLAG.get_or_init(|| {
+            std::env::var("YAOBOW_AS_TRACE")
+                .map(|v| !v.is_empty() && v != "0")
+                .unwrap_or(false)
+        })
+    }
+
+    fn current_fn_name(&self) -> String {
+        match self.context.as_ref() {
+            Some(ctx) => {
+                let module = ctx.module.borrow();
+                module
+                    .functions
+                    .get(ctx.function_index)
+                    .map(|f| f.name.clone())
+                    .unwrap_or_else(|| format!("#<{}>", ctx.function_index))
+            }
+            None => "<none>".to_string(),
+        }
+    }
+
+    #[cold]
+    fn dump_stack_context(&self, op: &str, pos: usize, size: usize) {
+        log::error!(
+            "AngelScript VM stack out-of-bounds during {op}: pos={pos} size={size} \
+             stack_len={} sp={} fp={} fn={} pc={} call_depth={}",
+            self.stack.len(),
+            self.sp,
+            self.fp,
+            self.current_fn_name(),
+            self.context.as_ref().map(|c| c.pc).unwrap_or(0),
+            self.call_stack.len(),
+        );
+    }
+
     fn read_inst(&mut self, function: &ScriptFunction) -> u8 {
         let inst = function.inst[self.context.as_ref().unwrap().pc];
         self.context.as_mut().unwrap().pc += 4;
@@ -422,6 +481,16 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     fn call(&mut self, function: u32) {
+        if Self::as_trace_enabled() {
+            log::info!(
+                "[as] call fn#{} from {} sp={} fp={} depth={}",
+                function,
+                self.current_fn_name(),
+                self.sp,
+                self.fp,
+                self.call_stack.len(),
+            );
+        }
         let module = self.context.as_ref().unwrap().module.clone();
         self.set_function(module, function as usize);
     }
@@ -443,11 +512,37 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
     fn callsys(&mut self, function: i32) {
         let index = -function - 1;
+        let trace = Self::as_trace_enabled();
+        let (name, sp_before) = if trace {
+            let name = self
+                .g
+                .borrow()
+                .functions()
+                .get(index as usize)
+                .map(|f| f.name.clone())
+                .unwrap_or_else(|| format!("#<{}>", index));
+            (name, self.sp)
+        } else {
+            (String::new(), 0)
+        };
         let context = self.g.clone();
         let context = context.borrow();
         match context.call_function(self, index as usize) {
             super::GlobalFunctionState::Yield(cont) => self.yield_func.push(cont),
             super::GlobalFunctionState::Completed => {}
+        }
+        drop(context);
+        if trace {
+            log::info!(
+                "[as] callsys {} idx={} sp {}->{} delta={} fp={} robj={}",
+                name,
+                index,
+                sp_before,
+                self.sp,
+                self.sp as i64 - sp_before as i64,
+                self.fp,
+                self.robj,
+            );
         }
     }
 
@@ -483,6 +578,16 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     fn ret(&mut self, param_size: u16) {
+        if Self::as_trace_enabled() {
+            log::info!(
+                "[as] ret from {} param_size={} sp={} fp={} depth={}",
+                self.current_fn_name(),
+                param_size,
+                self.sp,
+                self.fp,
+                self.call_stack.len(),
+            );
+        }
         let func = self.call_stack.pop();
         self.context = func;
 
@@ -490,6 +595,16 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     fn jmp(&mut self, offset: i32) {
+        if offset < 0 && Self::as_trace_enabled() {
+            let target = self.context.as_ref().unwrap().pc.wrapping_add(offset as usize);
+            log::info!(
+                "[as] backjmp fn={} target_pc={} sp={} fp={}",
+                self.current_fn_name(),
+                target,
+                self.sp,
+                self.fp,
+            );
+        }
         self.context.as_mut().unwrap().pc += offset as usize;
     }
 
@@ -923,6 +1038,12 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
     #[inline]
     unsafe fn write_stack<T>(&mut self, pos: usize, data: T) {
+        let size = std::mem::size_of::<T>();
+        if pos >= self.stack.len() || size > self.stack.len() - pos {
+            self.dump_stack_context("write_stack", pos, size);
+            self.faulted.set(true);
+            return;
+        }
         if std::mem::size_of::<T>() == 8 {
             let data_bytes: &[u8; 8] = std::mem::transmute(&data as *const _ as *const u8);
             for i in 0..8 {
@@ -935,6 +1056,12 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
     #[inline]
     unsafe fn read_stack<T: Copy>(&self, pos: usize) -> T {
+        let size = std::mem::size_of::<T>();
+        if pos >= self.stack.len() || size > self.stack.len() - pos {
+            self.dump_stack_context("read_stack", pos, size);
+            self.faulted.set(true);
+            return std::mem::zeroed();
+        }
         if std::mem::size_of::<T>() == 8 {
             let mut data_bytes = [0u8; 8];
             for i in 0..8 {
