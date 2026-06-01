@@ -239,6 +239,19 @@ pub struct StateSnapshot {
     pub paused: bool,
     /// `None` when no script is currently executing.
     pub current_script_fn: Option<String>,
+    /// `true` while the AngelScript VM has a call on its stack
+    /// (typically a cutscene / event handler). Stays `true` across
+    /// `Yield` waits where [`Self::current_script_fn`] may not be
+    /// observable. External drivers should treat `script_running` as
+    /// the authoritative "engine is busy with a scripted sequence"
+    /// signal.
+    #[serde(default)]
+    pub script_running: bool,
+    /// `true` while a `play_movie()` call is driving the video
+    /// player. Set independently of `script_running` so agents can
+    /// distinguish "movie cutscene" from "scripted dialogue".
+    #[serde(default)]
+    pub movie_playing: bool,
     pub fps: f32,
     pub dt: f32,
 }

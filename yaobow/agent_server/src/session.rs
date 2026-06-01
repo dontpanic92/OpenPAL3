@@ -109,6 +109,8 @@ impl AgentSession for NullAgentSession {
             fast_forward: false,
             paused: false,
             current_script_fn: None,
+            script_running: false,
+            movie_playing: false,
             fps: 0.0,
             dt: 0.0,
         }

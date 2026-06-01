@@ -9,7 +9,7 @@ use crate::{
         not_implemented, ContinuationState, GlobalFunctionContinuation, GlobalFunctionState,
         ScriptGlobalContext, ScriptGlobalFunction, ScriptVm,
     },
-    ui::dialog_box::{AvatarPosition, DialogBoxPresenter},
+    ui::dialog_box::DialogBoxPresenter,
     utils,
 };
 
@@ -2156,9 +2156,10 @@ fn talk(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
             if fast {
                 vm.app_context.stop_voice();
             }
-            vm.app_context
-                .dialog_box
-                .set_avatar(None, AvatarPosition::Left);
+            // Reset text + avatar so the agent state snapshot and any
+            // future debug overlay stop reporting the just-dismissed
+            // line as if it were still on-screen.
+            vm.app_context.dialog_box.close();
             ContinuationState::Completed
         } else {
             ContinuationState::Loop
@@ -2708,6 +2709,7 @@ fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Yield(Box::new(move |vm, _| {
         let ui = vm.app_context.ui.clone();
 
+        let fast = vm.app_context().fast_forward();
         let movie_skipped = {
             let input = vm.app_context().input.borrow();
             input.get_key_state(Key::Escape).pressed()
@@ -2715,7 +2717,7 @@ fn play_movie(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
         };
 
         let video_player = vm.app_context.video_player();
-        if movie_skipped {
+        if movie_skipped || fast {
             video_player.stop();
             return ContinuationState::Completed;
         }

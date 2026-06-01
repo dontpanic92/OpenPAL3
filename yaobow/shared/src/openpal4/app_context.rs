@@ -585,13 +585,23 @@ impl Pal4AppContext {
     /// `DialogBox` type.
     pub fn dialog_snapshot(&self) -> DialogStateSnapshot {
         DialogStateSnapshot {
-            open: self.dialog_box.has_avatar(),
+            open: self.dialog_box.is_active(),
             text: self.dialog_box.text().to_string(),
             avatar: match self.dialog_box.avatar_position() {
                 AvatarPosition::Left => DialogAvatarSide::Left,
                 AvatarPosition::Right => DialogAvatarSide::Right,
             },
         }
+    }
+
+    /// `&self`-safe accessor for the currently playing movie state.
+    /// Returns `true` while a `play_movie()` script call has the video
+    /// player in `Playing`/`Paused`, `false` once it has stopped (or no
+    /// movie has been played yet). Surfaced through the agent
+    /// `/v1/state` snapshot so external drivers can wait on movies.
+    pub fn movie_playing(&self) -> bool {
+        use radiance::video::VideoStreamState;
+        self.video_player.get_state() != VideoStreamState::Stopped
     }
 
     /// Per-slot party snapshot (level/HP/MP/in-team). Returned in

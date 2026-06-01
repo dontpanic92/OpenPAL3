@@ -110,14 +110,34 @@ impl AgentLogSink {
         }
     }
 
+    /// Stash this sink in a process-global slot and return the leaked
+    /// `&'static` reference, **without** registering it as the global
+    /// [`log`] logger. Used when the host wants to fan records into
+    /// this sink alongside another logger (e.g. `simple_logger`) via
+    /// its own tee adapter — the tee installs itself, then forwards
+    /// each record to the leaked sink via [`Self::record_external`].
+    ///
+    /// Subsequent calls return the previously stored sink (the new
+    /// instance is dropped). Pair with [`Self::global`] from other
+    /// crates that need a handle to the live sink.
+    pub fn leak(self) -> &'static AgentLogSink {
+        STORED.get_or_init(|| self)
+    }
+
+    /// Read-only access to the process-global sink installed by an
+    /// earlier [`Self::install`] / [`Self::leak`] call. Returns
+    /// `None` when no sink has been stashed yet.
+    pub fn global() -> Option<&'static AgentLogSink> {
+        STORED.get()
+    }
+
     /// Install this sink as the global [`log`] logger. Returns
     /// `Err(_)` if a logger is already installed (the host's
     /// `simple_logger` install runs first when the binary boots; in
     /// that case callers should fall back to a passive sink that the
     /// host explicitly forwards into).
     pub fn install(self) -> Result<&'static AgentLogSink, log::SetLoggerError> {
-        static INSTALLED: OnceLock<AgentLogSink> = OnceLock::new();
-        let leaked = INSTALLED.get_or_init(|| self);
+        let leaked = self.leak();
         log::set_logger(leaked).map(|()| {
             log::set_max_level(leaked.max_level);
             leaked
@@ -140,6 +160,12 @@ impl AgentLogSink {
         ring.push(level, target.to_string(), message.to_string());
     }
 }
+
+/// Process-global slot for the leaked sink. Shared by every crate
+/// that calls [`AgentLogSink::leak`] / [`AgentLogSink::global`] /
+/// [`AgentLogSink::install`], so a tee installed by the binary and a
+/// passive lookup from `application.rs` see the same instance.
+static STORED: OnceLock<AgentLogSink> = OnceLock::new();
 
 impl Log for AgentLogSink {
     fn enabled(&self, metadata: &Metadata<'_>) -> bool {

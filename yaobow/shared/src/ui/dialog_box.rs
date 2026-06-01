@@ -11,6 +11,13 @@ pub struct DialogBox {
     avatar_position: AvatarPosition,
     height_factor: f32,
     text: String,
+    /// `true` while a `talk()` continuation is actively driving this
+    /// dialog box (i.e. text is being shown and we're waiting for the
+    /// player to advance). Set by [`Self::set_text`] and cleared by
+    /// [`Self::close`] from the talk continuation tail. External
+    /// observers (the agent server, debug overlays) read it via
+    /// [`Self::is_active`] to decide whether a dialog is on-screen.
+    active: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -27,11 +34,31 @@ impl DialogBox {
             avatar_position: AvatarPosition::Left,
             height_factor: 0.2,
             text: "".to_string(),
+            active: false,
         }
     }
 
     pub fn set_text(&mut self, text: &str) {
         self.text = text.replacen("：", "：\n", 1);
+        self.active = true;
+    }
+
+    /// Mark the dialog as dismissed and clear the rendered text + any
+    /// avatar portrait. Called by the `talk()` continuation tail so the
+    /// "is a dialog on-screen" signal flips back to `false` and the
+    /// last-shown line stops leaking into the agent state snapshot.
+    pub fn close(&mut self) {
+        self.active = false;
+        self.text.clear();
+        self.avatar = None;
+        self.avatar_position = AvatarPosition::Left;
+    }
+
+    /// `true` while a `talk()` continuation is driving this dialog
+    /// (text set + waiting for advance input). Used by the agent
+    /// server's `DialogSnapshot.open` field.
+    pub fn is_active(&self) -> bool {
+        self.active
     }
 
     pub fn set_avatar(&mut self, avatar: Option<ImageSetImage>, position: AvatarPosition) {
@@ -40,16 +67,18 @@ impl DialogBox {
     }
 
     /// Currently displayed dialog text. Empty when no `talk()` has run
-    /// yet. Note that the legacy `talk` continuation does *not* clear
-    /// the text on completion — only the avatar is reset — so callers
-    /// that need a strict "open / closed" signal should pair this with
-    /// [`Self::has_avatar`].
+    /// yet or when the last `talk()` continuation has dismissed the
+    /// box via [`Self::close`].
     pub fn text(&self) -> &str {
         &self.text
     }
 
-    /// `true` while an avatar portrait is attached to the dialog
-    /// (proxy for "dialog is actively in front of the player").
+    /// `true` while an avatar portrait is attached to the dialog.
+    /// Independent of [`Self::is_active`] because a `talk()` can run
+    /// without a portrait (narration); use `is_active` for "is a
+    /// dialog on-screen" and `has_avatar` for "should the avatar
+    /// slot render".
+    #[allow(dead_code)]
     pub fn has_avatar(&self) -> bool {
         self.avatar.is_some()
     }

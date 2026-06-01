@@ -95,6 +95,8 @@ fn every_response_roundtrips() {
             fast_forward: false,
             paused: true,
             current_script_fn: Some("q01_01_main".into()),
+            script_running: true,
+            movie_playing: false,
             fps: 60.0,
             dt: 0.0167,
         }),

@@ -215,20 +215,34 @@ impl OpenPal4ApplicationLoader {
 
 /// Lazy-install a single global `AgentLogSink` so multiple boots in
 /// the same process (e.g. integration tests) share the same ring
-/// buffer instead of fighting over `log::set_logger`.
+/// buffer instead of fighting over `log::set_logger`. When the
+/// binary's `init_logger` already leaked a sink into the global slot
+/// (the production path), we just return that handle.
 fn install_global_log_sink() -> Option<&'static AgentLogSink> {
     static SINK: OnceLock<&'static AgentLogSink> = OnceLock::new();
     if let Some(s) = SINK.get() {
         return Some(*s);
     }
+
+    // Production path: the binary's `init_logger` already created a
+    // sink and installed a tee logger pointing at it. Reuse that
+    // exact instance so `/v1/log/tail` reads from the buffer that
+    // every `log::*!` macro is writing to.
+    if let Some(existing) = AgentLogSink::global() {
+        let _ = SINK.set(existing);
+        return Some(existing);
+    }
+
+    // Fallback for in-process integration tests that never call
+    // `init_logger`: install our own logger.
     match AgentLogSink::new(4096).install() {
         Ok(s) => {
             let _ = SINK.set(s);
             Some(s)
         }
         Err(_) => {
-            // The host already installed `simple_logger`; the agent
-            // log endpoint will return an empty page in that case.
+            // The host already installed a third-party logger that
+            // does not forward into us; nothing we can do here.
             log::warn!("agent_server: global logger already installed; /v1/log/tail will be empty");
             None
         }

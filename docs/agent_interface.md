@@ -38,7 +38,7 @@ appropriate HTTP status:
 
 | Method | Path                                | Description |
 | ------ | ----------------------------------- | ----------- |
-| `GET`  | `/v1/state`                         | Full snapshot: scene/block, leader pos, party HP/MP, money, dialog, fps, pause flag, current script function. |
+| `GET`  | `/v1/state`                         | Full snapshot: scene/block, leader pos, party HP/MP, money, dialog, fps, pause flag, `script_running`, `movie_playing`, current script function. |
 | `GET`  | `/v1/log/tail?after_seq=N&n=M`      | Ring-buffered log records since `after_seq`. The `dropped` flag warns when records were evicted before the caller polled. |
 | `GET`  | `/v1/screenshot`                    | **Binary `image/png`** of the most recently presented swapchain frame (includes UI). Response carries `X-Screenshot-Width` / `X-Screenshot-Height` headers. Returns **501** when no frame has been presented yet, when the swapchain format is unsupported, or in headless builds without a presentable surface. |
 
@@ -61,7 +61,7 @@ naturally goes back to `up` next frame. `down` / `up` are sticky.
 | `POST` | `/v1/time/pause`                    | _(empty body)_ — freeze the simulation                |
 | `POST` | `/v1/time/resume`                   | _(empty body)_ — drop pending step budget, resume     |
 | `POST` | `/v1/time/step`                     | `{"frames":60,"dt":0.0167}` (`dt` optional)           |
-| `POST` | `/v1/time/fast_forward`             | `{"on":true}` — skips scripted `giWait` / dialog waits |
+| `POST` | `/v1/time/fast_forward`             | `{"on":true}` — skips scripted `giWait`, dialog waits, and movie playback |
 
 `step` is only honoured when the simulation is paused. The director
 runs one fixed-step frame per real frame of pending budget; long-
@@ -105,6 +105,8 @@ $ curl -s http://127.0.0.1:8765/v1/state | jq
     "fast_forward": false,
     "paused": false,
     "current_script_fn": "q01_01_main",
+    "script_running": true,
+    "movie_playing": false,
     "fps": 59.7,
     "dt": 0.01672
   }

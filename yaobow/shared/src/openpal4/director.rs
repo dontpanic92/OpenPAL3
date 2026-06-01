@@ -709,6 +709,8 @@ impl OpenPAL4Director {
         let frame = bridge.as_ref().map(|b| b.frame.get()).unwrap_or(0);
 
         let current_script_fn = vm.current_function_name();
+        let script_running = current_script_fn.is_some();
+        let movie_playing = app.movie_playing();
 
         StateSnapshot {
             frame,
@@ -727,6 +729,8 @@ impl OpenPAL4Director {
             fast_forward: app.fast_forward(),
             paused,
             current_script_fn,
+            script_running,
+            movie_playing,
             fps,
             dt,
         }
