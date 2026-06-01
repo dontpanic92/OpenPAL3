@@ -52,6 +52,29 @@ pub enum AgentCommand {
     Screenshot,
     /// Invoke a whitelisted `gi*` script function with literal args.
     ScriptEval(ScriptEvalParams),
+    /// List the EVF event triggers for the currently loaded block,
+    /// with their handler function names and world-space bounding
+    /// boxes. Lets an automation driver answer "what scripted
+    /// transitions exist right here?" without re-parsing EVF.
+    GetSceneTriggers,
+    /// List the GOB objects and NPCs for the currently loaded block,
+    /// including the per-object `research_function` (the script fired
+    /// by an "Examine" action). The complement of [`Self::GetSceneTriggers`]
+    /// — between the two an agent has every plot-pushing surface in
+    /// the current block.
+    GetSceneObjects,
+    /// Read a (windowed) slice of the AngelScript shared globals.
+    /// Story-plot flags live here; diffing this between actions is
+    /// the canonical "did the plot advance?" signal.
+    GetScriptGlobals(ScriptGlobalsParams),
+    /// Fire an EVF trigger by name as if the leader had walked into
+    /// it: routes through the same `set_function_by_name2` path the
+    /// engine uses on a real trigger collision.
+    FireSceneTrigger(NameParams),
+    /// Fire a GOB entry's `research_function` as if the player had
+    /// pressed "Examine" on it. Returns `bad_request {no_handler}`
+    /// when the entry has no examine callback.
+    InteractObject(NameParams),
 }
 
 /// Top-level agent response. Mirrors [`AgentCommand`] roughly but with
@@ -70,6 +93,12 @@ pub enum AgentResponse {
     Screenshot(ScreenshotResponse),
     /// Result of [`AgentCommand::ScriptEval`].
     Script(ScriptEvalResponse),
+    /// Snapshot reply for [`AgentCommand::GetSceneTriggers`].
+    SceneTriggers(SceneTriggersResponse),
+    /// Snapshot reply for [`AgentCommand::GetSceneObjects`].
+    SceneObjects(SceneObjectsResponse),
+    /// Snapshot reply for [`AgentCommand::GetScriptGlobals`].
+    ScriptGlobals(ScriptGlobalsResponse),
     /// Operation failed.
     Error(AgentError),
 }
@@ -302,6 +331,101 @@ pub enum AgentErrorKind {
     Unauthorized,
     /// Anything else. Maps to HTTP 500.
     Internal,
+}
+
+/// Generic `{ "name": "…" }` payload used by direct-fire commands
+/// ([`AgentCommand::FireSceneTrigger`] / [`AgentCommand::InteractObject`]).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NameParams {
+    pub name: String,
+}
+
+/// Optional window over the global-variable array.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct ScriptGlobalsParams {
+    /// First index to include (default 0).
+    #[serde(default)]
+    pub start: usize,
+    /// Hard cap on returned slots. `None` returns everything from
+    /// `start` to the end.
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+/// One EVF trigger.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerEntry {
+    /// EVF-side trigger name (e.g. `"ev01"`).
+    pub name: String,
+    /// Script function fired on collision.
+    pub function: String,
+    /// World-space centroid (mean of the vertex centers).
+    pub center: [f32; 3],
+    /// World-space half-extents derived from the vertex AABB.
+    pub half_size: [f32; 3],
+    /// `"box"` for 8-vertex triggers, `"plane"` for 4-vertex, `"other"`
+    /// for the few EVF entries the engine itself skips. Agents
+    /// should generally ignore `"other"` triggers — the live engine
+    /// doesn't build collision for them.
+    pub shape: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SceneTriggersResponse {
+    pub scene: String,
+    pub block: String,
+    pub triggers: Vec<TriggerEntry>,
+}
+
+/// One NPC entry (loaded from `*.npc`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NpcEntry {
+    /// Logical NPC name (the key scripts pass to `giSetNpcVisible`).
+    pub name: String,
+    /// Live world-space position of the NPC entity. Reflects script
+    /// teleports / animations rather than the load-time position.
+    pub position: [f32; 3],
+    /// `true` while the entity is visible (live, not just default).
+    pub visible: bool,
+}
+
+/// One GOB object entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObjectEntry {
+    /// Logical object name (the key scripts pass to
+    /// `giSetObjectVisible`).
+    pub name: String,
+    /// Coarse object kind (`generic`/`action`/`get_item`/…) from
+    /// `GobObjectType::name`, or `"unknown"`.
+    pub kind: String,
+    /// Live world-space position of the object entity.
+    pub position: [f32; 3],
+    /// `true` while the entity is currently visible.
+    pub visible: bool,
+    /// Script function called on "Examine", or empty string if the
+    /// entry has no interaction handler.
+    pub research_function: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SceneObjectsResponse {
+    pub scene: String,
+    pub block: String,
+    pub npcs: Vec<NpcEntry>,
+    pub objects: Vec<ObjectEntry>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ScriptGlobalsResponse {
+    /// Total length of the underlying global array (independent of
+    /// `start`/`limit` window). Lets clients detect a size change
+    /// (e.g. after a module reload).
+    pub len: usize,
+    /// Index of the first returned slot.
+    pub start: usize,
+    /// Returned slots; `globals[i]` corresponds to global index
+    /// `start + i`.
+    pub globals: Vec<u32>,
 }
 
 impl AgentError {

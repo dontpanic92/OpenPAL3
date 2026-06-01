@@ -15,6 +15,7 @@ members = [
     "yaobow/yaobow",
     "yaobow/yaobow_editor",
     "tools/pol_exporter",
+    "tools/pal4_plot_dump",
 #   "tools/asdebug",
 #   "tools/dbexp",
     "tools/repacker",

@@ -41,6 +41,9 @@ appropriate HTTP status:
 | `GET`  | `/v1/state`                         | Full snapshot: scene/block, leader pos, party HP/MP, money, dialog, fps, pause flag, `script_running`, `movie_playing`, current script function. |
 | `GET`  | `/v1/log/tail?after_seq=N&n=M`      | Ring-buffered log records since `after_seq`. The `dropped` flag warns when records were evicted before the caller polled. |
 | `GET`  | `/v1/screenshot`                    | **Binary `image/png`** of the most recently presented swapchain frame (includes UI). Response carries `X-Screenshot-Width` / `X-Screenshot-Height` headers. Returns **501** when no frame has been presented yet, when the swapchain format is unsupported, or in headless builds without a presentable surface. |
+| `GET`  | `/v1/scene/triggers`                | EVF event triggers for the currently loaded block: `{name, function, center, half_size, shape}`. `shape` is `"box"` (8 vertices), `"plane"` (4 vertices), or `"other"` — `"other"` triggers are skipped by the live engine but still surfaced here for inspection. |
+| `GET`  | `/v1/scene/objects`                 | GOB objects + NPCs for the current block. Each object carries `{name, kind, position, visible, research_function}`; each NPC carries `{name, position, visible}`. `position` reflects live world-space (post script teleports), not load-time values. |
+| `GET`  | `/v1/script/globals?start=N&limit=M`| Window over the AngelScript shared-globals array (story-plot flags). Response is `{len, start, globals}`. `len` is the full underlying array size; clients diff `globals[]` between actions to detect plot progression. |
 
 ### Control
 
@@ -50,6 +53,8 @@ appropriate HTTP status:
 | `POST` | `/v1/input/axis`                    | `{"axis":"LeftStickX","value":-1.0}`                  |
 | `POST` | `/v1/player/teleport`               | `{"player":0,"pos":[x,y,z]}`                          |
 | `POST` | `/v1/dialog/advance`                | _(empty body)_ — synthesises a `Space` tap            |
+| `POST` | `/v1/scene/fire_trigger`            | `{"name":"ev01"}` — fires the matching EVF trigger's script function as if the leader had walked into it. **409** while a script is already running; **400** when the name is unknown or has no bound function. |
+| `POST` | `/v1/object/interact`               | `{"name":"npc_lingsha"}` — fires a GOB entry's `research_function` (its "Examine" handler). **400** with `{"kind":"bad_request"}` when the entry has no examine handler. |
 
 `action: "tap"` emits one frame of `pressed + released + is_down` and
 naturally goes back to `up` next frame. `down` / `up` are sticky.
@@ -170,6 +175,48 @@ while True:
         print(rec["level"], rec["target"], rec["msg"])
     time.sleep(0.5)
 ```
+
+### Pushing the plot from a Python driver
+
+The observability + direct-fire endpoints are designed so an automation
+driver can advance the game without solving navigation. The recipe is:
+
+1. Read `/v1/state` to learn the current `scene` / `block`.
+2. Pair that with the **static plot catalog** (see
+   `docs/pal4_plot_catalog.md`) to pick the next trigger to fire.
+3. `POST /v1/scene/fire_trigger` (or `/v1/object/interact`) to invoke
+   the handler directly — no teleport / pathfinding needed.
+4. Diff `/v1/script/globals` before vs after the call. If nothing
+   moved, the catalog's `fns[..].reads` for the fired function tells
+   you which globals gate it — that's the prerequisite plot flag the
+   agent needs to satisfy elsewhere.
+
+```python
+def fire_next_trigger():
+    state = get("/v1/state")["data"]
+    scene, block = state["scene"], state["block"]
+    triggers = get("/v1/scene/triggers")["data"]["triggers"]
+    if not triggers:
+        return False
+    pre = get("/v1/script/globals")["data"]["globals"]
+    name = triggers[0]["name"]  # in practice: pick from the catalog
+    post("/v1/scene/fire_trigger", {"name": name})
+    # Let the engine run a few frames so the handler can settle.
+    time.sleep(0.5)
+    post_globals = get("/v1/script/globals")["data"]["globals"]
+    moved = [(i, a, b) for i, (a, b) in enumerate(zip(pre, post_globals)) if a != b]
+    print(f"fired {name}; globals changed: {moved}")
+    return bool(moved)
+```
+
+> **Reachability is *out of scope* for the agent surface.** We assume
+> "if the catalog lists a trigger in the current block, the agent may
+> fire it directly". Real prerequisites (closed bridges, story flags)
+> show up as "fired but no globals moved" — the agent's job is to
+> consult the static catalog to discover the gating handler, not to
+> solve navigation. A future patch may add path-following on top of
+> `/v1/player/teleport` + synthetic input for cases that genuinely
+> need it.
 
 ## Security
 

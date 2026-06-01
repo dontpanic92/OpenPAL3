@@ -32,8 +32,9 @@ use tiny_http::{Header, Method, Request, Response, Server};
 use crate::log_sink::{AgentLogSink, LogRecord};
 use crate::protocol::{
     AgentCommand, AgentError, AgentErrorKind, AgentResponse, AxisInputParams, FastForwardParams,
-    KeyInputParams, LogRecordPayload, LogTailParams, LogTailResponse, ScreenshotResponse,
-    ScriptEvalParams, SlotParams, StepTimeParams, TeleportParams,
+    KeyInputParams, LogRecordPayload, LogTailParams, LogTailResponse, NameParams,
+    ScreenshotResponse, ScriptEvalParams, ScriptGlobalsParams, SlotParams, StepTimeParams,
+    TeleportParams,
 };
 use crate::queue::{AgentCommandQueue, AgentEnvelope};
 
@@ -223,10 +224,18 @@ fn handle_request(
         return;
     }
 
-    // Convenience endpoints: GET /v1/state, GET /v1/screenshot.
+    // Convenience endpoints: GET /v1/state, GET /v1/screenshot,
+    // GET /v1/scene/{triggers,objects}, GET /v1/script/globals.
     let command = match (method.clone(), url.as_str()) {
         (Method::Get, "/v1/state") => Ok(AgentCommand::GetState),
         (Method::Get, "/v1/screenshot") => Ok(AgentCommand::Screenshot),
+        (Method::Get, "/v1/scene/triggers") => Ok(AgentCommand::GetSceneTriggers),
+        (Method::Get, "/v1/scene/objects") => Ok(AgentCommand::GetSceneObjects),
+        (Method::Get, url_str) if url_str.starts_with("/v1/script/globals") => {
+            parse_script_globals_query(url_str)
+                .map(AgentCommand::GetScriptGlobals)
+                .map_err(AgentError::bad_request)
+        }
         (Method::Post, _) => parse_post_command(&url, &mut req),
         _ => Err(AgentError::bad_request(format!(
             "unsupported route: {method} {url}"
@@ -375,6 +384,8 @@ fn parse_post_command(url: &str, req: &mut Request) -> Result<AgentCommand, Agen
         "/v1/save" => AgentCommand::SaveSlot(parse::<SlotParams>(&body)?),
         "/v1/load" => AgentCommand::LoadSlot(parse::<SlotParams>(&body)?),
         "/v1/script/eval" => AgentCommand::ScriptEval(parse::<ScriptEvalParams>(&body)?),
+        "/v1/scene/fire_trigger" => AgentCommand::FireSceneTrigger(parse::<NameParams>(&body)?),
+        "/v1/object/interact" => AgentCommand::InteractObject(parse::<NameParams>(&body)?),
         _ => {
             return Err(AgentError::bad_request(format!(
                 "unknown POST route: {url}"
@@ -419,6 +430,25 @@ fn parse_log_tail_query(url: &str) -> Result<LogTailParams, String> {
         }
     }
     Ok(LogTailParams { after_seq, n })
+}
+
+fn parse_script_globals_query(url: &str) -> Result<ScriptGlobalsParams, String> {
+    let q = url.split_once('?').map(|(_, q)| q).unwrap_or("");
+    let mut start: usize = 0;
+    let mut limit: Option<usize> = None;
+    for pair in q.split('&').filter(|s| !s.is_empty()) {
+        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+        match k {
+            "start" => {
+                start = v.parse().map_err(|e| format!("start: {e}"))?;
+            }
+            "limit" => {
+                limit = Some(v.parse().map_err(|e| format!("limit: {e}"))?);
+            }
+            _ => {}
+        }
+    }
+    Ok(ScriptGlobalsParams { start, limit })
 }
 
 fn build_log_tail_response(
@@ -512,5 +542,19 @@ mod tests {
         let p = parse_log_tail_query("/v1/log/tail").unwrap();
         assert_eq!(p.after_seq, 0);
         assert_eq!(p.n, None);
+    }
+
+    #[test]
+    fn parse_script_globals_query_basic() {
+        let p = parse_script_globals_query("/v1/script/globals?start=8&limit=32").unwrap();
+        assert_eq!(p.start, 8);
+        assert_eq!(p.limit, Some(32));
+    }
+
+    #[test]
+    fn parse_script_globals_query_defaults() {
+        let p = parse_script_globals_query("/v1/script/globals").unwrap();
+        assert_eq!(p.start, 0);
+        assert_eq!(p.limit, None);
     }
 }

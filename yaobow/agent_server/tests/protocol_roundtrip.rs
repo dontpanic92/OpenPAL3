@@ -3,8 +3,9 @@
 use agent_server::protocol::{
     AgentCommand, AgentError, AgentErrorKind, AgentResponse, AxisInputParams, DialogSnapshot,
     FastForwardParams, KeyAction, KeyInputParams, LogRecordPayload, LogTailParams, LogTailResponse,
-    PartyMember, ScreenshotResponse, ScriptEvalParams, ScriptEvalResponse, SlotParams,
-    StateSnapshot, StepTimeParams, TeleportParams,
+    NameParams, NpcEntry, ObjectEntry, PartyMember, SceneObjectsResponse, SceneTriggersResponse,
+    ScreenshotResponse, ScriptEvalParams, ScriptEvalResponse, ScriptGlobalsParams,
+    ScriptGlobalsResponse, SlotParams, StateSnapshot, StepTimeParams, TeleportParams, TriggerEntry,
 };
 
 fn roundtrip_command(cmd: &AgentCommand) {
@@ -59,6 +60,22 @@ fn every_command_roundtrips() {
         AgentCommand::ScriptEval(ScriptEvalParams {
             function: "giAddMoney".into(),
             args: vec![serde_json::json!(100)],
+        }),
+        AgentCommand::GetSceneTriggers,
+        AgentCommand::GetSceneObjects,
+        AgentCommand::GetScriptGlobals(ScriptGlobalsParams {
+            start: 0,
+            limit: None,
+        }),
+        AgentCommand::GetScriptGlobals(ScriptGlobalsParams {
+            start: 4,
+            limit: Some(16),
+        }),
+        AgentCommand::FireSceneTrigger(NameParams {
+            name: "ev01".into(),
+        }),
+        AgentCommand::InteractObject(NameParams {
+            name: "npc_lingsha".into(),
         }),
     ];
     for c in &cases {
@@ -120,6 +137,38 @@ fn every_response_roundtrips() {
         AgentResponse::Script(ScriptEvalResponse {
             function: "giAddMoney".into(),
             result: Some(serde_json::json!(null)),
+        }),
+        AgentResponse::SceneTriggers(SceneTriggersResponse {
+            scene: "q01".into(),
+            block: "01".into(),
+            triggers: vec![TriggerEntry {
+                name: "ev01".into(),
+                function: "q01_01_to_q01_02".into(),
+                center: [1.0, 2.0, 3.0],
+                half_size: [5.0, 5.0, 5.0],
+                shape: "box".into(),
+            }],
+        }),
+        AgentResponse::SceneObjects(SceneObjectsResponse {
+            scene: "q01".into(),
+            block: "01".into(),
+            npcs: vec![NpcEntry {
+                name: "lingsha".into(),
+                position: [0.0, 0.0, 0.0],
+                visible: true,
+            }],
+            objects: vec![ObjectEntry {
+                name: "chest1".into(),
+                kind: "get_item".into(),
+                position: [10.0, 0.0, 5.0],
+                visible: true,
+                research_function: "q01_01_examine_chest".into(),
+            }],
+        }),
+        AgentResponse::ScriptGlobals(ScriptGlobalsResponse {
+            len: 256,
+            start: 0,
+            globals: vec![1, 2, 3, 4],
         }),
         AgentResponse::Error(AgentError {
             kind: AgentErrorKind::Conflict,

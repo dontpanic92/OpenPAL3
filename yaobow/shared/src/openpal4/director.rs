@@ -5,11 +5,12 @@ use std::{
 
 use agent_server::protocol::{
     AgentCommand, AgentError, AgentResponse, AxisInputParams, DialogSnapshot, FastForwardParams,
-    KeyAction, KeyInputParams, PartyMember, ScreenshotResponse, ScriptEvalParams, StateSnapshot,
-    StepTimeParams, TeleportParams,
+    KeyAction, KeyInputParams, NameParams, NpcEntry, ObjectEntry, PartyMember, ScreenshotResponse,
+    ScriptEvalParams, ScriptGlobalsParams, ScriptGlobalsResponse, SceneObjectsResponse,
+    SceneTriggersResponse, StateSnapshot, StepTimeParams, TeleportParams, TriggerEntry,
 };
 use crosscom::ComRc;
-use radiance::comdef::{IImmediateDirectorImpl, IUiHost};
+use radiance::comdef::{IEntityExt, IImmediateDirectorImpl, IUiHost};
 use radiance::math::Vec3;
 use radiance::{
     audio::AudioEngine,
@@ -521,6 +522,11 @@ impl OpenPAL4Director {
             }
             AgentCommand::Screenshot => self.handle_screenshot(),
             AgentCommand::ScriptEval(params) => self.handle_script_eval(params),
+            AgentCommand::GetSceneTriggers => self.handle_get_scene_triggers(),
+            AgentCommand::GetSceneObjects => self.handle_get_scene_objects(),
+            AgentCommand::GetScriptGlobals(params) => self.handle_get_script_globals(params),
+            AgentCommand::FireSceneTrigger(params) => self.handle_fire_scene_trigger(params),
+            AgentCommand::InteractObject(params) => self.handle_interact_object(params),
             // `AgentCommand` is `#[non_exhaustive]` so future
             // additions don't break older sessions; until they're
             // wired here we fail closed with a clear error.
@@ -677,6 +683,219 @@ impl OpenPAL4Director {
         .also_record(&params)
     }
 
+    /// Snapshot the EVF event triggers for the currently loaded
+    /// block. Returns an empty list with `scene`/`block` = `""` while
+    /// the placeholder scene is active.
+    fn handle_get_scene_triggers(&self) -> AgentResponse {
+        let vm = self.vm.borrow();
+        let app = vm.app_context();
+
+        let triggers = app
+            .scene
+            .events
+            .iter()
+            .map(|event| {
+                let (center, half_size) = trigger_bounds(event);
+                let shape = match event.vertex_count {
+                    4 => "plane",
+                    8 => "box",
+                    _ => "other",
+                };
+                TriggerEntry {
+                    name: event.name.to_string().unwrap_or_default(),
+                    function: event
+                        .function
+                        .function
+                        .to_string()
+                        .unwrap_or_default(),
+                    center,
+                    half_size,
+                    shape: shape.to_string(),
+                }
+            })
+            .collect();
+
+        AgentResponse::SceneTriggers(SceneTriggersResponse {
+            scene: app.scene_name().to_string(),
+            block: app.block_name().to_string(),
+            triggers,
+        })
+    }
+
+    /// Snapshot the GOB objects + NPCs for the currently loaded
+    /// block, with each entry's live world-space position.
+    fn handle_get_scene_objects(&self) -> AgentResponse {
+        let vm = self.vm.borrow();
+        let app = vm.app_context();
+
+        let npcs = app
+            .scene
+            .npcs
+            .iter()
+            .map(|entity| {
+                let pos = entity.world_transform().position();
+                NpcEntry {
+                    name: entity.name(),
+                    position: [pos.x, pos.y, pos.z],
+                    visible: entity.visible(),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let objects = match app.scene.objects_gob.as_ref() {
+            Some(gob) => gob
+                .entries
+                .iter()
+                .enumerate()
+                .map(|(i, entry)| {
+                    let name = entry.name.to_string().unwrap_or_default();
+                    let kind = gob
+                        .header
+                        .object_types
+                        .get(i)
+                        .and_then(|t| {
+                            fileformats::pal4::gob::GobObjectType::name(*t)
+                        })
+                        .unwrap_or("unknown")
+                        .to_string();
+                    let research_function =
+                        entry.research_function.to_string().unwrap_or_default();
+                    // Prefer the live entity position (scripts may have
+                    // moved or hidden the object), fall back to the
+                    // GOB load-time position for entries we never
+                    // instantiated (EFFECT entries, failed loads).
+                    let (position, visible) = match app.scene.get_object(&name) {
+                        Some(entity) => {
+                            let p = entity.world_transform().position();
+                            ([p.x, p.y, p.z], entity.visible())
+                        }
+                        None => (entry.position, false),
+                    };
+                    ObjectEntry {
+                        name,
+                        kind,
+                        position,
+                        visible,
+                        research_function,
+                    }
+                })
+                .collect(),
+            None => Vec::new(),
+        };
+
+        AgentResponse::SceneObjects(SceneObjectsResponse {
+            scene: app.scene_name().to_string(),
+            block: app.block_name().to_string(),
+            npcs,
+            objects,
+        })
+    }
+
+    /// Return a window over the shared AngelScript globals. The
+    /// underlying array doesn't change size at runtime, so `len` is
+    /// stable per module load; clients diff `globals[]` to detect
+    /// plot progression.
+    fn handle_get_script_globals(&self, params: ScriptGlobalsParams) -> AgentResponse {
+        let vm = self.vm.borrow();
+        let snap = vm.g.borrow().globals_snapshot();
+        let len = snap.len();
+        let start = params.start.min(len);
+        let end = match params.limit {
+            Some(limit) => start.saturating_add(limit).min(len),
+            None => len,
+        };
+        AgentResponse::ScriptGlobals(ScriptGlobalsResponse {
+            len,
+            start,
+            globals: snap[start..end].to_vec(),
+        })
+    }
+
+    /// Fire an EVF trigger by name. Reuses the engine's own
+    /// `set_function_by_name2` path so the script side is identical
+    /// to a real collision.
+    fn handle_fire_scene_trigger(&self, params: NameParams) -> AgentResponse {
+        if self.vm.borrow().current_function_name().is_some() {
+            return AgentResponse::err(AgentError::conflict(
+                "a script is currently running; wait for it to finish before firing a trigger",
+            ));
+        }
+        let (module, fn_name) = {
+            let vm = self.vm.borrow();
+            let app = vm.app_context();
+            let Some(module) = app.scene.module.clone() else {
+                return AgentResponse::err(AgentError::conflict(
+                    "no scene is loaded; load a block before firing triggers",
+                ));
+            };
+            let Some(event) = app
+                .scene
+                .events
+                .iter()
+                .find(|e| e.name.to_string().ok().as_deref() == Some(params.name.as_str()))
+            else {
+                return AgentResponse::err(AgentError::bad_request(format!(
+                    "unknown trigger name: {}",
+                    params.name
+                )));
+            };
+            let fn_name = event.function.function.to_string().unwrap_or_default();
+            if fn_name.is_empty() {
+                return AgentResponse::err(AgentError::bad_request(format!(
+                    "trigger {} has no script function bound",
+                    params.name
+                )));
+            }
+            (module, fn_name)
+        };
+        self.vm.borrow_mut().set_function_by_name2(module, &fn_name);
+        AgentResponse::Ok
+    }
+
+    /// Fire a GOB entry's `research_function` as if the player had
+    /// pressed "Examine" on it.
+    fn handle_interact_object(&self, params: NameParams) -> AgentResponse {
+        if self.vm.borrow().current_function_name().is_some() {
+            return AgentResponse::err(AgentError::conflict(
+                "a script is currently running; wait for it to finish before interacting",
+            ));
+        }
+        let (module, fn_name) = {
+            let vm = self.vm.borrow();
+            let app = vm.app_context();
+            let Some(module) = app.scene.module.clone() else {
+                return AgentResponse::err(AgentError::conflict(
+                    "no scene is loaded; load a block before interacting with objects",
+                ));
+            };
+            let Some(gob) = app.scene.objects_gob.as_ref() else {
+                return AgentResponse::err(AgentError::conflict(
+                    "no GOB loaded for the current block",
+                ));
+            };
+            let Some(entry) = gob
+                .entries
+                .iter()
+                .find(|e| e.name.to_string().ok().as_deref() == Some(params.name.as_str()))
+            else {
+                return AgentResponse::err(AgentError::bad_request(format!(
+                    "unknown object name: {}",
+                    params.name
+                )));
+            };
+            let fn_name = entry.research_function.to_string().unwrap_or_default();
+            if fn_name.is_empty() {
+                return AgentResponse::err(AgentError::bad_request(format!(
+                    "object {} has no examine handler (research_function is empty)",
+                    params.name
+                )));
+            }
+            (module, fn_name)
+        };
+        self.vm.borrow_mut().set_function_by_name2(module, &fn_name);
+        AgentResponse::Ok
+    }
+
     fn build_state_snapshot(&self) -> StateSnapshot {
         let bridge = self.agent.borrow().clone();
         let vm = self.vm.borrow();
@@ -749,4 +968,40 @@ impl AgentResponseExt for AgentResponse {
         log::debug!("agent: script_eval unsupported for {}", params.function);
         self
     }
+}
+
+/// Compute a `(center, half_size)` bounding pair for an EVF event's
+/// trigger volume by AABB-ing the vertex centers. Mirrors the engine's
+/// own "skip if not 4 or 8 vertices" rule for ray-caster construction
+/// (the bounds are still returned even for `other` shapes so an agent
+/// can see the raw data — it just won't be collidable).
+fn trigger_bounds(event: &fileformats::pal4::evf::EvfEvent) -> ([f32; 3], [f32; 3]) {
+    if event.vertices.is_empty() {
+        return ([0.0; 3], [0.0; 3]);
+    }
+    let first = &event.vertices[0];
+    let mut min = [first.center.x as f32, first.center.y as f32, first.center.z as f32];
+    let mut max = min;
+    for v in event.vertices.iter().skip(1) {
+        let p = [v.center.x as f32, v.center.y as f32, v.center.z as f32];
+        for i in 0..3 {
+            if p[i] < min[i] {
+                min[i] = p[i];
+            }
+            if p[i] > max[i] {
+                max[i] = p[i];
+            }
+        }
+    }
+    let center = [
+        (min[0] + max[0]) * 0.5,
+        (min[1] + max[1]) * 0.5,
+        (min[2] + max[2]) * 0.5,
+    ];
+    let half_size = [
+        (max[0] - min[0]) * 0.5,
+        (max[1] - min[1]) * 0.5,
+        (max[2] - min[2]) * 0.5,
+    ];
+    (center, half_size)
 }
