@@ -4,13 +4,29 @@ use imgui::{Condition, Ui};
 use radiance::radiance::UiManager;
 
 use crate::openpal4::asset_loader::ImageSetImage;
+use crate::ui::dialog_markup::{self, Segment};
+
+/// Widget-default text colour used both as the fallback for runs that
+/// aren't wrapped in any `<colour>` tag and as the placeholder for every
+/// `<dcN>` palette lookup. See [`dialog_markup::parse`] for the rationale
+/// — once the dialog widget's CEGUI `TextColours` palette is wired
+/// through, the per-`dcN` lookup will replace this placeholder.
+const DEFAULT_TEXT_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
 pub struct DialogBox {
     ui: Rc<UiManager>,
     avatar: Option<ImageSetImage>,
     avatar_position: AvatarPosition,
     height_factor: f32,
-    text: String,
+    /// Parsed coloured runs of the current line. Rendered by
+    /// [`DialogBoxPresenter`] via a per-character layout loop so each
+    /// segment renders in its own colour while still wrapping inside
+    /// the dialog window.
+    segments: Vec<Segment>,
+    /// Tag-stripped form of the current line, returned by
+    /// [`Self::text`] and consumed by the agent snapshot so external
+    /// observers see clean text without having to parse markup.
+    visible_text: String,
     /// `true` while a `talk()` continuation is actively driving this
     /// dialog box (i.e. text is being shown and we're waiting for the
     /// player to advance). Set by [`Self::set_text`] and cleared by
@@ -33,13 +49,16 @@ impl DialogBox {
             avatar: None,
             avatar_position: AvatarPosition::Left,
             height_factor: 0.2,
-            text: "".to_string(),
+            segments: Vec::new(),
+            visible_text: String::new(),
             active: false,
         }
     }
 
     pub fn set_text(&mut self, text: &str) {
-        self.text = text.replacen("：", "：\n", 1);
+        let with_break = insert_speaker_break(text);
+        self.segments = dialog_markup::parse(&with_break, DEFAULT_TEXT_COLOR);
+        self.visible_text = dialog_markup::strip(&with_break);
         self.active = true;
     }
 
@@ -49,7 +68,8 @@ impl DialogBox {
     /// last-shown line stops leaking into the agent state snapshot.
     pub fn close(&mut self) {
         self.active = false;
-        self.text.clear();
+        self.segments.clear();
+        self.visible_text.clear();
         self.avatar = None;
         self.avatar_position = AvatarPosition::Left;
     }
@@ -66,11 +86,14 @@ impl DialogBox {
         self.avatar_position = position;
     }
 
-    /// Currently displayed dialog text. Empty when no `talk()` has run
-    /// yet or when the last `talk()` continuation has dismissed the
-    /// box via [`Self::close`].
+    /// Currently displayed dialog text, **with PAL4 markup tags
+    /// stripped** (so e.g. `<colour>` / `<dcN>` runs collapse to their
+    /// visible text). Empty when no `talk()` has run yet or when the
+    /// last `talk()` continuation has dismissed the box via
+    /// [`Self::close`]. Used by the agent snapshot to feed
+    /// `/v1/state.dialog.text` a clean, automation-friendly string.
     pub fn text(&self) -> &str {
-        &self.text
+        &self.visible_text
     }
 
     /// `true` while an avatar portrait is attached to the dialog.
@@ -86,6 +109,25 @@ impl DialogBox {
     pub fn avatar_position(&self) -> AvatarPosition {
         self.avatar_position
     }
+}
+
+/// Insert a newline after the first speaker-name colon (`：`) so the
+/// speaker's name appears on its own line above the dialog body, as the
+/// original CEGUI presentation did. The transform is idempotent: if the
+/// raw payload already has `：\n`, we don't double-space.
+fn insert_speaker_break(text: &str) -> String {
+    if let Some(idx) = text.find('：') {
+        let after = idx + '：'.len_utf8();
+        let already_has_break = text[after..].chars().next() == Some('\n');
+        if !already_has_break {
+            let mut out = String::with_capacity(text.len() + 1);
+            out.push_str(&text[..after]);
+            out.push('\n');
+            out.push_str(&text[after..]);
+            return out;
+        }
+    }
+    text.to_string()
 }
 
 pub struct DialogBoxPresenter;
@@ -126,14 +168,14 @@ impl DialogBoxPresenter {
             (10., avatar_size[0] + 10.)
         };
 
+        let wrap_width = (dialog_width - text_margins.0 - text_margins.1).max(1.0);
+
         basic_dlg_box(ui, "dlg_box")
             .draw_background(true)
             .position([dialog_x, dialog_y], Condition::Always)
             .size([dialog_width, dialog_height], Condition::Always)
             .build(|| {
-                let _ = ui.push_text_wrap_pos_with_pos(dialog_width - text_margins.1);
-                ui.set_cursor_pos([text_margins.0, 0.]);
-                ui.text_wrapped(&dialog_box.text);
+                render_segments(ui, &dialog_box.segments, text_margins.0, wrap_width);
             });
 
         if let Some(avatar) = &dialog_box.avatar {
@@ -174,6 +216,44 @@ impl DialogBoxPresenter {
     }
 }
 
+/// Render coloured segments using a per-character layout loop:
+///
+/// * Each character is measured with `calc_text_size`; we break to a
+///   new line whenever the next character would exceed `wrap_width`,
+///   or whenever the source text contains a literal `\n`.
+/// * Coloured runs are emitted via `text_colored` so each segment
+///   renders in its own RGBA. Adjacent characters are positioned by
+///   setting the cursor explicitly, so item-spacing style settings
+///   can't introduce gaps between adjacent glyphs.
+/// * Per-character breaking is appropriate for PAL4's CJK-heavy
+///   dialog: every CJK glyph is a valid break point, and ASCII runs
+///   still wrap (without word boundaries — acceptable here).
+fn render_segments(ui: &Ui, segments: &[Segment], margin_x: f32, wrap_width: f32) {
+    let line_height = ui.text_line_height();
+    let mut line_x = 0.0_f32;
+    let mut line_y = 0.0_f32;
+
+    let mut buf = [0u8; 4];
+    for segment in segments {
+        for ch in segment.text.chars() {
+            if ch == '\n' {
+                line_x = 0.0;
+                line_y += line_height;
+                continue;
+            }
+            let s: &str = ch.encode_utf8(&mut buf);
+            let [w, _] = ui.calc_text_size(s);
+            if line_x > 0.0 && line_x + w > wrap_width {
+                line_x = 0.0;
+                line_y += line_height;
+            }
+            ui.set_cursor_pos([margin_x + line_x, line_y]);
+            ui.text_colored(segment.color, s);
+            line_x += w;
+        }
+    }
+}
+
 fn basic_dlg_box<'a>(ui: &'a Ui, name: &'static str) -> imgui::Window<'a, 'a, &'static str> {
     ui.window(name)
         .collapsible(false)
@@ -182,4 +262,33 @@ fn basic_dlg_box<'a>(ui: &'a Ui, name: &'static str) -> imgui::Window<'a, 'a, &'
         .movable(false)
         .focused(false)
         .no_decoration()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::insert_speaker_break;
+
+    #[test]
+    fn inserts_newline_after_speaker_colon() {
+        assert_eq!(insert_speaker_break("云天河：abc"), "云天河：\nabc");
+    }
+
+    #[test]
+    fn idempotent_when_break_already_present() {
+        assert_eq!(insert_speaker_break("云天河：\nabc"), "云天河：\nabc");
+    }
+
+    #[test]
+    fn no_change_when_no_full_width_colon() {
+        assert_eq!(insert_speaker_break("plain narration"), "plain narration");
+    }
+
+    #[test]
+    fn only_first_colon_gets_a_break() {
+        assert_eq!(
+            insert_speaker_break("a：b：c"),
+            "a：\nb：c",
+            "only the speaker-name colon (first one) should split"
+        );
+    }
 }

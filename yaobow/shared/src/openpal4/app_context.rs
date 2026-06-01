@@ -582,7 +582,10 @@ impl Pal4AppContext {
     /// Neutral, dependency-free snapshot of the currently displayed
     /// dialog. Consumed by the agent-server adapter (and any future
     /// debug UI) without forcing every reader to import the imgui
-    /// `DialogBox` type.
+    /// `DialogBox` type. The `text` field is the **markup-stripped**
+    /// visible form (PAL4 `<colour>` / `<dcN>` tags removed), so
+    /// `/v1/state.dialog.text` consumers don't need to parse the raw
+    /// CEGUI markup themselves.
     pub fn dialog_snapshot(&self) -> DialogStateSnapshot {
         DialogStateSnapshot {
             open: self.dialog_box.is_active(),
