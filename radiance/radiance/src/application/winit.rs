@@ -1,3 +1,4 @@
+#[cfg(target_os = "android")]
 use log::debug;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -53,7 +54,16 @@ impl Platform {
         let msg_callbacks = self.msg_callbacks.clone();
         let event_loop = self.event_loop.take().unwrap();
         let quit_requested = self.quit_requested.clone();
+
+        // `active` only flips on Android, where `Suspended` means the OS has
+        // destroyed our rendering surface and we genuinely cannot draw. On
+        // desktop (Linux/macOS) the game keeps simulating and rendering even
+        // when another window has focus — losing focus does not pause us.
+        #[cfg(target_os = "android")]
         let mut active = true;
+        #[cfg(not(target_os = "android"))]
+        let active = true;
+
         let _ = event_loop.run(move |event, window_target| {
             if quit_requested.get() {
                 window_target.exit();
@@ -80,19 +90,15 @@ impl Platform {
                         update_engine();
                     }
                 }
+                #[cfg(target_os = "android")]
                 Event::Suspended => {
                     debug!("Suspended");
                     active = false;
                 }
+                #[cfg(target_os = "android")]
                 Event::Resumed => {
                     debug!("Resumed");
                     active = true;
-                }
-                Event::WindowEvent {
-                    event: WindowEvent::Focused(focused),
-                    ..
-                } => {
-                    active = focused;
                 }
                 _ => (),
             }
