@@ -218,6 +218,31 @@ def fire_next_trigger():
 > `/v1/player/teleport` + synthetic input for cases that genuinely
 > need it.
 
+## Known limitations / RE signals
+
+OpenPAL3 is an active **reverse-engineering** project. Many file
+formats, AngelScript opcodes, and per-game scripted side-effects are
+still being mapped out from the original binaries. To keep that
+mapping honest, the agent surface treats **process death as a
+discovery signal, not a bug to suppress**:
+
+* Script / asset *load* failures (`.csb`, `.gob`, `.npc`, `.dff`, …)
+  intentionally panic. Canonical examples:
+  `yaobow/shared/src/openpal4/asset_loader.rs::load_script_module`
+  (`ScriptModule::read_from_buffer(...).unwrap()`) and
+  `yaobow/shared/src/openpal4/app_context.rs::load_scene`
+  (`Pal4Scene::load(...).unwrap()`).
+* Script *parse* and *VM execute* failures (unknown opcodes,
+  unimplemented `gi*` sysfns, stack underflow) likewise panic via
+  `unimplemented!()` / `.unwrap()` rather than logging-and-continuing.
+
+When an agent run trips one of these, that's a successful discovery
+of unknown content. Do **not** swallow the error behind a logged
+`anyhow::Result` — file a bug with the panicking input so the format
+or sysfn can be added properly. The agent server itself is robust to
+the game thread dying (the OS reaps the listener with it); restart
+yaobow and resume the run from a save slot.
+
 ## Security
 
 * The default bind is `127.0.0.1`; non-loopback binds **require** a

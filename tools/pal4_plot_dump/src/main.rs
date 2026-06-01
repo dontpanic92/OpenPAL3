@@ -80,6 +80,13 @@ struct Catalog {
     sysfn_count: usize,
     global_count: usize,
     scenes: BTreeMap<String, Scene>,
+    /// Reverse index "to advance global[i] to value V, fire one of
+    /// these triggers" — see the `Plot advancement` section of
+    /// `docs/pal4_plot_catalog.md`. Built from the per-trigger /
+    /// per-research_function call-graph closure (`TriggerSummary.writes`).
+    /// Keys are stringified slot indices (JSON object keys are
+    /// strings); values are sorted by `(scene, block, trigger, fn)`.
+    plot_index: BTreeMap<String, Vec<PlotIndexEntry>>,
 }
 
 #[derive(Serialize, Default)]
@@ -95,6 +102,13 @@ struct Scene {
     /// from this scene's module. Aggregated at scene level for the
     /// same reason as `fns`.
     transitions: Vec<Transition>,
+    /// Set when a `.csb` parsed cleanly but carried no `*_init`
+    /// fns — i.e. the scene is reachable from elsewhere via
+    /// `giArenaLoad` but doesn't define its own playable blocks
+    /// (worldMap, M02, …). Lets agents following the transition
+    /// list see *something* under the scene key instead of nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
 }
 
 #[derive(Serialize, Default)]
@@ -112,6 +126,11 @@ struct Trigger {
     center: [f32; 3],
     half_size: [f32; 3],
     shape: &'static str,
+    /// Aggregated call-graph closure starting from `function`. See
+    /// `TriggerSummary` for field semantics; flattened inline here so
+    /// agents only need to inspect one struct per trigger.
+    #[serde(flatten)]
+    summary: TriggerSummary,
 }
 
 #[derive(Serialize)]
@@ -127,9 +146,15 @@ struct Object {
     kind: &'static str,
     position: [f32; 3],
     research_function: String,
+    /// Same call-graph closure as `Trigger.summary`, computed from
+    /// `research_function` when it's non-empty. Empty `TriggerSummary`
+    /// (no called_fns / no reads / no writes / no transitions) when
+    /// the entry has no examine handler.
+    #[serde(flatten)]
+    summary: TriggerSummary,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct Transition {
     /// `[scene, block]` of the destination, when both literals were
     /// recovered. Lone-literal cases (only scene OR only block) are
@@ -142,13 +167,76 @@ struct Transition {
 
 #[derive(Serialize, Default)]
 struct FunctionSummary {
+    /// Shared-global slot indices read by this fn (decoded from
+    /// negative `Rdga4` indices via `(-index - 1)`; positive indices
+    /// reference module-local globals and are *not* part of the plot
+    /// vector, so they are skipped).
     reads: Vec<u32>,
-    writes: Vec<u32>,
+    /// Shared-global writes. `value` is `Some(v)` when the value
+    /// stored is a literal `Set4 v` / `PushZero` immediately preceding
+    /// the `Movga4` — i.e. when the catalog can prove what the fn
+    /// writes. `None` when the value is computed (read from another
+    /// global, arithmetic, function return, …).
+    writes: Vec<ValueWrite>,
     /// Distinct sysfn names called in this function, in encounter
     /// order. Useful for spotting `giNewArenaLoad`, `giPlayMov`,
     /// `giTalk`, … patterns at a glance.
     sysfns: Vec<String>,
+    /// Distinct module-local function names called via `Call`
+    /// (opcode 12). Used to seed the per-trigger closure walker.
+    calls: Vec<String>,
 }
+
+/// A single concrete write to a shared global.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+struct ValueWrite {
+    global: u32,
+    value: Option<i32>,
+}
+
+/// Aggregated view of the call-graph closure starting from a trigger's
+/// entry fn (or an object's `research_function`). All fields are the
+/// union over the reachable fn set, computed by BFS-following `Call`
+/// edges within the same module (capped at `CALL_CLOSURE_DEPTH` fns to
+/// bound runtime — the catalog is a planning hint, not a simulator).
+#[derive(Serialize, Default)]
+struct TriggerSummary {
+    /// Fn names visited during the closure walk, in BFS order.
+    /// Always non-empty when a handler exists; first entry is the
+    /// entry fn itself.
+    called_fns: Vec<String>,
+    /// Union of `FunctionSummary.reads` across `called_fns`.
+    reads: Vec<u32>,
+    /// Union of `FunctionSummary.writes` across `called_fns`,
+    /// deduped by `(global, value)`.
+    writes: Vec<ValueWrite>,
+    /// `[scene, block]` destinations reachable via a `giArenaLoad`
+    /// somewhere in the closure (deduped).
+    transitions: Vec<[String; 2]>,
+}
+
+/// One row of `Catalog.plot_index` — answers "this trigger advances
+/// `global[i]` to value `v`". `trigger` is `None` for entries seeded
+/// from a fn that no live trigger references (init handlers, scripted
+/// cutscenes invoked only by other fns); chase the `fn` field through
+/// the per-scene `transitions` / `fns` tables to find a fireable
+/// ancestor.
+#[derive(Serialize, Clone, Debug)]
+struct PlotIndexEntry {
+    value: Option<i32>,
+    scene: String,
+    block: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trigger: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    object: Option<String>,
+    r#fn: String,
+}
+
+/// BFS depth cap for the per-trigger call-graph closure. PAL4 trigger
+/// handlers chain at most 3–4 deep in practice; 16 leaves plenty of
+/// headroom while bounding worst-case fan-out on weird modules.
+const CALL_CLOSURE_DEPTH: usize = 16;
 
 // ---- main ---------------------------------------------------------------
 
@@ -179,30 +267,45 @@ fn main() -> Result<()> {
     // on demand via `AssetLoader::load_script_module(scene_name)`.
     // We process every per-scene module so the catalog covers every
     // scene without the agent having to know the file layout.
-    let script_dir = root.join("gamedata").join("script");
-    let mut module_files: Vec<(String, std::path::PathBuf)> = Vec::new();
-    for entry in std::fs::read_dir(&script_dir)
-        .with_context(|| format!("read_dir {}", script_dir.display()))?
-    {
+    //
+    // List the modules through the *vfs*, not the host filesystem —
+    // PAL4 ships scripts inside `script.cpk` on Steam (and Origin),
+    // so requiring an extracted `gamedata/script/` would lock the
+    // dumper to one specific install layout. `mini_fs::Store`'s
+    // `entries_path` walks the same merged store the engine uses, so
+    // the dumper works on either layout.
+    let mut module_files: Vec<String> = Vec::new();
+    let script_dir = std::path::Path::new("/gamedata/script");
+    let entries = <mini_fs::MiniFs as mini_fs::Store>::entries_path(&vfs, script_dir)
+        .with_context(|| format!("list vfs {}", script_dir.display()))?;
+    for entry in entries {
         let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref()
-            != Some("csb")
-        {
+        if !matches!(entry.kind, mini_fs::EntryKind::File) {
             continue;
         }
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_string())
-            .unwrap_or_default();
+        // `Entry.name` is store-dependent: CpkFs hands back just the
+        // basename ("Q10.csb"), while LocalFs hands back the relative
+        // path from the mount root ("gamedata\script\Q10.csb"). Strip
+        // back to the file_name in either case so the subsequent
+        // `/gamedata/script/<stem>.csb` build is correct on both
+        // layouts.
+        let basename = std::path::Path::new(&entry.name)
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| entry.name.to_string_lossy().into_owned());
+        let lower = basename.to_ascii_lowercase();
+        if !lower.ends_with(".csb") {
+            continue;
+        }
+        let stem = basename[..basename.len() - 4].to_string();
         if stem.is_empty() {
             continue;
         }
-        module_files.push((stem, path));
+        module_files.push(stem);
     }
-    module_files.sort_by(|a, b| a.0.cmp(&b.0));
-    eprintln!("Found {} script modules in {}", module_files.len(), script_dir.display());
+    module_files.sort();
+    module_files.dedup();
+    eprintln!("Found {} script modules under vfs {}", module_files.len(), script_dir.display());
 
     // The bootstrap module sets the canonical `global_count` for the
     // header. Other modules are per-scene and may carry their own
@@ -214,15 +317,38 @@ fn main() -> Result<()> {
         sysfn_count: sysfns.len(),
         global_count: 0,
         scenes: BTreeMap::new(),
+        plot_index: BTreeMap::new(),
     };
 
-    for (stem, path) in &module_files {
-        let bytes = std::fs::read(path)
-            .with_context(|| format!("read {}", path.display()))?;
+    for stem in &module_files {
+        let vfs_path = format!("/gamedata/script/{}.csb", stem);
+        let bytes = match vfs.read_to_end(&vfs_path) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("WARN: read {} failed: {:#}", vfs_path, e);
+                continue;
+            }
+        };
         let module = match ScriptModule::read_from_buffer(&bytes) {
             Ok(m) => m,
             Err(e) => {
-                eprintln!("WARN: parse {} failed: {:#}", path.display(), e);
+                eprintln!("WARN: parse {} failed: {:#}", vfs_path, e);
+                // Still surface the scene so agents following a
+                // transition list see *something* under
+                // `scenes.<name>` instead of nothing. M02 is the
+                // canonical example: 5855 bytes, fails to parse,
+                // but reachable via giArenaLoad from q01.func1007.
+                let scene_name = stem.to_ascii_lowercase();
+                catalog.scenes.insert(
+                    scene_name,
+                    Scene {
+                        note: Some(format!(
+                            "parse failure: {} — scene reachable via giArenaLoad but its script is unavailable",
+                            e
+                        )),
+                        ..Scene::default()
+                    },
+                );
                 continue;
             }
         };
@@ -253,18 +379,6 @@ fn main() -> Result<()> {
             continue;
         }
 
-        // Discover (scene, block) pairs inside this module.
-        let mut blocks: BTreeMap<String, ()> = BTreeMap::new();
-        for func in module.functions.iter() {
-            if let Some((_scene, block)) = parse_init_name(&func.name) {
-                blocks.insert(block.to_string(), ());
-            }
-        }
-        if blocks.is_empty() {
-            eprintln!("    no `*_init` fns in {} — skipped", stem);
-            continue;
-        }
-
         // The on-disk filename is the canonical scene name (lowercased
         // to match the directory layout under `gamedata/scenedata/`).
         let scene_name = stem.to_ascii_lowercase();
@@ -287,8 +401,42 @@ fn main() -> Result<()> {
             scene_out.fns.insert(func.name.clone(), summary);
         }
 
+        // Discover (scene, block) pairs inside this module.
+        let mut blocks: BTreeMap<String, ()> = BTreeMap::new();
+        for func in module.functions.iter() {
+            if let Some((_scene, block)) = parse_init_name(&func.name) {
+                blocks.insert(block.to_string(), ());
+            }
+        }
+        if blocks.is_empty() {
+            // Still emit a stub so agents following the per-scene
+            // transition list have *something* to land on under
+            // `scenes.<name>` — the scene is reachable via giArenaLoad
+            // from another module (worldMap, M02, …), it just doesn't
+            // define playable blocks of its own.
+            eprintln!(
+                "    no `*_init` fns in {} — emitting stub (fns/transitions only)",
+                stem
+            );
+            scene_out.note = Some(
+                "no *_init fns; reachable only via giArenaLoad from another module".to_string(),
+            );
+            catalog.scenes.insert(scene_name, scene_out);
+            continue;
+        }
+
+        // Snapshot transitions before iterating blocks so each block's
+        // build can borrow them read-only.
+        let scene_transitions_snapshot = scene_out.transitions.clone();
         for (block_name, _) in &blocks {
-            match build_block(&vfs, &module, &scene_name, block_name) {
+            match build_block(
+                &vfs,
+                &module,
+                &scene_name,
+                block_name,
+                &scene_out.fns,
+                &scene_transitions_snapshot,
+            ) {
                 Ok(block) => {
                     scene_out.blocks.insert(block_name.clone(), block);
                 }
@@ -306,12 +454,14 @@ fn main() -> Result<()> {
     }
 
     catalog.global_count = bootstrap_global_count;
+    build_plot_index(&mut catalog);
     eprintln!(
-        "Catalog: {} scenes / {} blocks / {} sysfns / {} globals (bootstrap)",
+        "Catalog: {} scenes / {} blocks / {} sysfns / {} globals (bootstrap) / {} plot_index entries",
         catalog.scenes.len(),
         catalog.scenes.values().map(|s| s.blocks.len()).sum::<usize>(),
         catalog.sysfn_count,
-        catalog.global_count
+        catalog.global_count,
+        catalog.plot_index.values().map(|v| v.len()).sum::<usize>(),
     );
 
     let file = File::create(&cli.out).with_context(|| format!("create {}", cli.out.display()))?;
@@ -332,16 +482,20 @@ fn build_block(
     module: &ScriptModule,
     scene: &str,
     block: &str,
+    fns: &BTreeMap<String, FunctionSummary>,
+    scene_transitions: &[Transition],
 ) -> Result<Block> {
     let entry_fn = format!("{}_{}_init", scene, block);
 
-    let triggers = load_evf(vfs, scene, block).map(build_triggers).unwrap_or_default();
+    let triggers = load_evf(vfs, scene, block)
+        .map(|evf| build_triggers(evf, fns, scene_transitions))
+        .unwrap_or_default();
     let (npcs, npc_err) = match load_npc_info(vfs, scene, block) {
         Ok(n) => (build_npcs(&n), None),
         Err(e) => (Vec::new(), Some(e)),
     };
     let (objects, obj_err) = match load_gob(vfs, scene, block) {
-        Ok(g) => (build_objects(&g), None),
+        Ok(g) => (build_objects(&g, fns, scene_transitions), None),
         Err(e) => (Vec::new(), Some(e)),
     };
     if let Some(e) = npc_err {
@@ -391,7 +545,11 @@ fn load_npc_info(vfs: &mini_fs::MiniFs, scene: &str, block: &str) -> Result<NpcI
     Ok(NpcInfoFile::read(&mut std::io::Cursor::new(bytes))?)
 }
 
-fn build_triggers(evf: EvfFile) -> Vec<Trigger> {
+fn build_triggers(
+    evf: EvfFile,
+    fns: &BTreeMap<String, FunctionSummary>,
+    scene_transitions: &[Transition],
+) -> Vec<Trigger> {
     evf.events
         .into_iter()
         .map(|event| {
@@ -401,16 +559,19 @@ fn build_triggers(evf: EvfFile) -> Vec<Trigger> {
                 _ => "other",
             };
             let (center, half_size) = trigger_bounds(&event);
+            let function = event
+                .function
+                .function
+                .to_string()
+                .unwrap_or_default();
+            let summary = build_trigger_summary(&function, fns, scene_transitions);
             Trigger {
                 name: event.name.to_string().unwrap_or_default(),
-                function: event
-                    .function
-                    .function
-                    .to_string()
-                    .unwrap_or_default(),
+                function,
                 center,
                 half_size,
                 shape,
+                summary,
             }
         })
         .collect()
@@ -462,7 +623,11 @@ fn build_npcs(info: &NpcInfoFile) -> Vec<Npc> {
         .collect()
 }
 
-fn build_objects(gob: &GobFile) -> Vec<Object> {
+fn build_objects(
+    gob: &GobFile,
+    fns: &BTreeMap<String, FunctionSummary>,
+    scene_transitions: &[Transition],
+) -> Vec<Object> {
     gob.entries
         .iter()
         .enumerate()
@@ -473,14 +638,17 @@ fn build_objects(gob: &GobFile) -> Vec<Object> {
                 .get(i)
                 .and_then(|t| GobObjectType::name(*t))
                 .unwrap_or("unknown");
+            let research_function = entry
+                .research_function
+                .to_string()
+                .unwrap_or_default();
+            let summary = build_trigger_summary(&research_function, fns, scene_transitions);
             Object {
                 name: entry.name.to_string().unwrap_or_default(),
                 kind,
                 position: entry.position,
-                research_function: entry
-                    .research_function
-                    .to_string()
-                    .unwrap_or_default(),
+                research_function,
+                summary,
             }
         })
         .collect()
@@ -505,6 +673,7 @@ fn walk_function(
     let mut summary = FunctionSummary::default();
     let mut stack: Vec<Abs> = Vec::with_capacity(8);
     let mut sysfn_seen: BTreeMap<String, ()> = BTreeMap::new();
+    let mut call_seen: BTreeMap<String, ()> = BTreeMap::new();
 
     // PAL4 scripts marshal a `giArenaLoad(scn, block, data, show)` call
     // through three string locals (one per string arg) plus the int
@@ -545,22 +714,54 @@ fn walk_function(
                 stack.clear();
             }
             AsInst::Rdga4 { index } => {
-                if *index >= 0 {
-                    let i = *index as u32;
-                    if !summary.reads.contains(&i) {
-                        summary.reads.push(i);
+                // Shared globals (the ones in /v1/script/globals and
+                // the ones Pal4PersistentState serialises) are encoded
+                // as -(slot + 1) — see ScriptVm::rdga4 in
+                // yaobow/shared/src/scripting/angelscript/vm.rs:514.
+                // Positive indices reference *module-local* globals
+                // and are not part of the plot vector; skip those.
+                if *index < 0 {
+                    let slot = (-*index - 1) as u32;
+                    if !summary.reads.contains(&slot) {
+                        summary.reads.push(slot);
                     }
                 }
+                // Reading a global pushes its value onto the operand
+                // stack; we can't track the runtime value, so clear.
                 stack.clear();
+                last_str_slot = None;
             }
             AsInst::Movga4 { index } => {
-                if *index >= 0 {
-                    let i = *index as u32;
-                    if !summary.writes.contains(&i) {
-                        summary.writes.push(i);
+                if *index < 0 {
+                    let slot = (-*index - 1) as u32;
+                    // Peek the top-of-stack *before* clearing: if it's
+                    // a literal we just pushed (Set4 / PushZero), we
+                    // know exactly what value the fn writes. Otherwise
+                    // the value is computed and we record `None`.
+                    let value = match stack.last() {
+                        Some(Abs::Int(v)) => Some(*v),
+                        _ => None,
+                    };
+                    let entry = ValueWrite { global: slot, value };
+                    if !summary.writes.contains(&entry) {
+                        summary.writes.push(entry);
                     }
                 }
                 stack.clear();
+                last_str_slot = None;
+            }
+            AsInst::Call { function } => {
+                let name = module
+                    .functions
+                    .get(*function as usize)
+                    .map(|f| f.name.clone())
+                    .unwrap_or_else(|| format!("?call{}", function));
+                if !call_seen.contains_key(&name) {
+                    call_seen.insert(name.clone(), ());
+                    summary.calls.push(name);
+                }
+                stack.clear();
+                last_str_slot = None;
             }
             AsInst::CallSys { function_index } => {
                 // The AS VM encodes sysfn ordinals as `-(idx) - 1`
@@ -619,6 +820,145 @@ fn walk_function(
     summary
 }
 
+// ---- per-trigger closure ------------------------------------------------
+
+/// BFS the intra-module call graph starting from `entry_fn`, unioning
+/// `FunctionSummary` fields and `giArenaLoad` destinations across every
+/// reachable fn. Bounded by `CALL_CLOSURE_DEPTH` fns total (not depth)
+/// to keep runtime predictable on weird modules.
+fn build_trigger_summary(
+    entry_fn: &str,
+    fns: &BTreeMap<String, FunctionSummary>,
+    scene_transitions: &[Transition],
+) -> TriggerSummary {
+    let mut summary = TriggerSummary::default();
+    if entry_fn.is_empty() || !fns.contains_key(entry_fn) {
+        return summary;
+    }
+
+    let mut visited: BTreeMap<String, ()> = BTreeMap::new();
+    let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();
+    queue.push_back(entry_fn.to_string());
+    visited.insert(entry_fn.to_string(), ());
+
+    while let Some(name) = queue.pop_front() {
+        if summary.called_fns.len() >= CALL_CLOSURE_DEPTH {
+            break;
+        }
+        summary.called_fns.push(name.clone());
+        let Some(fs) = fns.get(&name) else { continue };
+
+        for r in &fs.reads {
+            if !summary.reads.contains(r) {
+                summary.reads.push(*r);
+            }
+        }
+        for w in &fs.writes {
+            if !summary.writes.contains(w) {
+                summary.writes.push(w.clone());
+            }
+        }
+        for callee in &fs.calls {
+            if !visited.contains_key(callee) {
+                visited.insert(callee.clone(), ());
+                queue.push_back(callee.clone());
+            }
+        }
+        for t in scene_transitions {
+            if t.via_fn == name {
+                let pair = t.to.clone();
+                if !summary.transitions.contains(&pair) {
+                    summary.transitions.push(pair);
+                }
+            }
+        }
+    }
+
+    summary
+}
+
+// ---- plot_index ---------------------------------------------------------
+
+/// Build `Catalog.plot_index` from the per-trigger / per-object closure
+/// `writes`. Entries are sorted by `(scene, block, trigger.unwrap_or(""),
+/// object.unwrap_or(""), fn)` so successive runs of the dumper produce
+/// stable diffs.
+fn build_plot_index(catalog: &mut Catalog) {
+    let mut index: BTreeMap<String, Vec<PlotIndexEntry>> = BTreeMap::new();
+
+    for (scene_name, scene) in &catalog.scenes {
+        for (block_name, block) in &scene.blocks {
+            for trig in &block.triggers {
+                if trig.function.is_empty() {
+                    continue;
+                }
+                for w in &trig.summary.writes {
+                    index
+                        .entry(w.global.to_string())
+                        .or_default()
+                        .push(PlotIndexEntry {
+                            value: w.value,
+                            scene: scene_name.clone(),
+                            block: block_name.clone(),
+                            trigger: Some(trig.name.clone()),
+                            object: None,
+                            r#fn: trig.function.clone(),
+                        });
+                }
+            }
+            for obj in &block.objects {
+                if obj.research_function.is_empty() {
+                    continue;
+                }
+                for w in &obj.summary.writes {
+                    index
+                        .entry(w.global.to_string())
+                        .or_default()
+                        .push(PlotIndexEntry {
+                            value: w.value,
+                            scene: scene_name.clone(),
+                            block: block_name.clone(),
+                            trigger: None,
+                            object: Some(obj.name.clone()),
+                            r#fn: obj.research_function.clone(),
+                        });
+                }
+            }
+        }
+    }
+
+    for entries in index.values_mut() {
+        entries.sort_by(|a, b| {
+            (
+                &a.scene,
+                &a.block,
+                a.trigger.as_deref().unwrap_or(""),
+                a.object.as_deref().unwrap_or(""),
+                &a.r#fn,
+                a.value,
+            )
+                .cmp(&(
+                    &b.scene,
+                    &b.block,
+                    b.trigger.as_deref().unwrap_or(""),
+                    b.object.as_deref().unwrap_or(""),
+                    &b.r#fn,
+                    b.value,
+                ))
+        });
+        entries.dedup_by(|a, b| {
+            a.scene == b.scene
+                && a.block == b.block
+                && a.trigger == b.trigger
+                && a.object == b.object
+                && a.r#fn == b.r#fn
+                && a.value == b.value
+        });
+    }
+
+    catalog.plot_index = index;
+}
+
 fn parse_init_name(name: &str) -> Option<(&str, &str)> {
     let body = name.strip_suffix("_init")?;
     let (scene, block) = body.rsplit_once('_')?;
@@ -649,5 +989,111 @@ mod tests {
     fn parse_init_name_rejects_non_init() {
         assert_eq!(parse_init_name("q01_01_main"), None);
         assert_eq!(parse_init_name("setup_init"), None); // no scene/block split
+    }
+
+    fn fn_with_writes(writes: Vec<(u32, Option<i32>)>) -> FunctionSummary {
+        FunctionSummary {
+            reads: vec![],
+            writes: writes
+                .into_iter()
+                .map(|(global, value)| ValueWrite { global, value })
+                .collect(),
+            sysfns: vec![],
+            calls: vec![],
+        }
+    }
+
+    fn fn_with_calls(calls: Vec<&str>) -> FunctionSummary {
+        FunctionSummary {
+            reads: vec![],
+            writes: vec![],
+            sysfns: vec![],
+            calls: calls.into_iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn closure_unions_reads_writes_calls_and_transitions() {
+        // entry -> child -> leaf; entry sets g[5]=1, leaf sets g[7]=Some(2)
+        // and a giArenaLoad-derived transition lives on `leaf`.
+        let mut fns: BTreeMap<String, FunctionSummary> = BTreeMap::new();
+        let mut entry = fn_with_calls(vec!["child"]);
+        entry.writes.push(ValueWrite { global: 5, value: Some(1) });
+        entry.reads.push(3);
+        fns.insert("entry".into(), entry);
+        let mut child = fn_with_calls(vec!["leaf"]);
+        child.reads.push(11);
+        fns.insert("child".into(), child);
+        let leaf = fn_with_writes(vec![(7, Some(2))]);
+        fns.insert("leaf".into(), leaf);
+        let transitions = vec![Transition {
+            to: ["q02".into(), "Q01".into()],
+            via_fn: "leaf".into(),
+        }];
+
+        let s = build_trigger_summary("entry", &fns, &transitions);
+
+        assert_eq!(s.called_fns, vec!["entry", "child", "leaf"]);
+        assert!(s.reads.contains(&3) && s.reads.contains(&11));
+        assert!(s.writes.contains(&ValueWrite { global: 5, value: Some(1) }));
+        assert!(s.writes.contains(&ValueWrite { global: 7, value: Some(2) }));
+        assert_eq!(s.transitions, vec![["q02".to_string(), "Q01".to_string()]]);
+    }
+
+    #[test]
+    fn closure_empty_for_missing_fn() {
+        let fns: BTreeMap<String, FunctionSummary> = BTreeMap::new();
+        let s = build_trigger_summary("does_not_exist", &fns, &[]);
+        assert!(s.called_fns.is_empty());
+        assert!(s.reads.is_empty());
+        assert!(s.writes.is_empty());
+        assert!(s.transitions.is_empty());
+    }
+
+    #[test]
+    fn closure_is_dedup_and_terminates_on_cycle() {
+        // a -> b -> a (cycle): closure must include {a, b} exactly once and return.
+        let mut fns: BTreeMap<String, FunctionSummary> = BTreeMap::new();
+        fns.insert("a".into(), fn_with_calls(vec!["b"]));
+        fns.insert("b".into(), fn_with_calls(vec!["a"]));
+        let s = build_trigger_summary("a", &fns, &[]);
+        assert_eq!(s.called_fns, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn plot_index_groups_by_global_and_dedupes() {
+        let mut catalog = Catalog {
+            version: 1,
+            sysfn_count: 0,
+            global_count: 0,
+            scenes: BTreeMap::new(),
+            plot_index: BTreeMap::new(),
+        };
+
+        let mut scene = Scene::default();
+        scene.fns.insert("f1".into(), fn_with_writes(vec![(5, Some(1))]));
+        let mut block = Block::default();
+        let trig_summary = build_trigger_summary("f1", &scene.fns, &[]);
+        block.triggers.push(Trigger {
+            name: "ev01".into(),
+            function: "f1".into(),
+            center: [0.0; 3],
+            half_size: [0.0; 3],
+            shape: "plane",
+            summary: trig_summary,
+        });
+        scene.blocks.insert("01".into(), block);
+        catalog.scenes.insert("q01".into(), scene);
+
+        build_plot_index(&mut catalog);
+
+        let entries = catalog.plot_index.get("5").expect("global 5 not indexed");
+        assert_eq!(entries.len(), 1);
+        let e = &entries[0];
+        assert_eq!(e.value, Some(1));
+        assert_eq!(e.scene, "q01");
+        assert_eq!(e.block, "01");
+        assert_eq!(e.trigger.as_deref(), Some("ev01"));
+        assert_eq!(e.r#fn, "f1");
     }
 }
