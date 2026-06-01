@@ -31,8 +31,7 @@ impl YaobowAppContext {
         let vfs = load_app_vfs();
         let app_service: ComRc<IAppService> = YaobowAppService::create(app.clone(), selected_game);
         let imgui_ctx = engine.ui_manager().imgui_context();
-        let config_service =
-            ConfigService::create_with_imgui(config, Some(imgui_ctx));
+        let config_service = ConfigService::create_with_imgui(config, Some(imgui_ctx));
 
         HostContext::create(
             engine.scene_manager(),

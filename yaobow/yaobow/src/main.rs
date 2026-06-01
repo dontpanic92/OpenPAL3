@@ -2,7 +2,8 @@
 
 use shared::video::register_opengb_video_decoders;
 use yaobow_lib::{
-    run_opengujian, run_openpal3, run_openpal4, run_openpal5, run_openswd5, run_title_selection,
+    run_opengujian, run_openpal3, run_openpal4, run_openpal4_with_agent, run_openpal5,
+    run_openswd5, run_title_selection, Pal4AgentBootOptions,
 };
 
 pub fn main() {
@@ -23,7 +24,14 @@ pub fn main() {
         } else {
             match args[1].as_str() {
                 "--pal3" => run_openpal3(),
-                "--pal4" => run_openpal4(),
+                "--pal4" => {
+                    let agent = parse_agent_args(&args[2..]);
+                    if agent.is_some() {
+                        run_openpal4_with_agent(agent);
+                    } else {
+                        run_openpal4();
+                    }
+                }
                 "--pal5" => run_openpal5(),
                 "--pal5q" => run_openpal5(),
                 "--swd5" => run_openswd5(),
@@ -33,6 +41,38 @@ pub fn main() {
             }
         }
     }
+}
+
+/// Parse the `--agent-port`, `--agent-bind`, `--agent-token` flags out
+/// of the command-line tail. Returns `None` when no `--agent-port` is
+/// present; otherwise an [`Pal4AgentBootOptions`] ready for
+/// [`run_openpal4_with_agent`].
+fn parse_agent_args(extra: &[String]) -> Option<Pal4AgentBootOptions> {
+    let mut port: Option<u16> = None;
+    let mut bind: Option<std::net::IpAddr> = None;
+    let mut token: Option<String> = None;
+
+    let mut iter = extra.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--agent-port" => {
+                port = iter.next().and_then(|s| s.parse().ok());
+            }
+            "--agent-bind" => {
+                bind = iter.next().and_then(|s| s.parse().ok());
+            }
+            "--agent-token" => {
+                token = iter.next().cloned();
+            }
+            _ => {}
+        }
+    }
+
+    let port = port?;
+    let mut opts = Pal4AgentBootOptions::loopback(port);
+    opts.bind_ip = bind;
+    opts.token = token;
+    Some(opts)
 }
 
 fn init_logger() {

@@ -240,8 +240,7 @@ fn render_clipped_lines(
     content: &str,
     ranges: &[(u32, u32)],
 ) {
-    f.ui
-        .child_window(id)
+    f.ui.child_window(id)
         .size([w, h])
         .flags(imgui::WindowFlags::HORIZONTAL_SCROLLBAR)
         .build(|| {
@@ -376,11 +375,10 @@ impl IUiHostImpl for ImguiUiHost {
 
     fn tree_node(&self, label: &str, body: ComRc<IAction>) {
         with_frame("tree_node", |f| {
-            if let Some(_node) = f
-                .ui
-                .tree_node_config(label)
-                .flags(imgui::TreeNodeFlags::SPAN_FULL_WIDTH)
-                .push()
+            if let Some(_node) =
+                f.ui.tree_node_config(label)
+                    .flags(imgui::TreeNodeFlags::SPAN_FULL_WIDTH)
+                    .push()
             {
                 body.invoke();
             }
@@ -643,13 +641,12 @@ impl IUiHostImpl for ImguiUiHost {
 
     fn tree_leaf(&self, label: &str, selected: bool) -> bool {
         with_frame("tree_leaf", |f| {
-            let _node = f
-                .ui
-                .tree_node_config(label)
-                .flags(imgui::TreeNodeFlags::SPAN_FULL_WIDTH)
-                .leaf(true)
-                .selected(selected)
-                .push();
+            let _node =
+                f.ui.tree_node_config(label)
+                    .flags(imgui::TreeNodeFlags::SPAN_FULL_WIDTH)
+                    .leaf(true)
+                    .selected(selected)
+                    .push();
             f.ui.is_item_clicked()
         })
         .unwrap_or(false)
@@ -685,11 +682,10 @@ impl IUiHostImpl for ImguiUiHost {
 
     fn tree_node_open(&self, label: &str) -> bool {
         with_frame("tree_node_open", |f| {
-            let token = f
-                .ui
-                .tree_node_config(label)
-                .flags(imgui::TreeNodeFlags::SPAN_FULL_WIDTH)
-                .push();
+            let token =
+                f.ui.tree_node_config(label)
+                    .flags(imgui::TreeNodeFlags::SPAN_FULL_WIDTH)
+                    .push();
             let is_open = token.is_some();
             // Defuse the RAII drop guard: the matching `tree_pop`
             // (called by the script after rendering the body) issues
@@ -1190,13 +1186,12 @@ impl IUiHostImpl for ImguiUiHost {
                 )
             };
             let transparent = [0.0_f32, 0.0, 0.0, 0.0];
-            let h_tok = f
-                .ui
-                .push_style_color(imgui::StyleColor::HeaderHovered, transparent);
-            let ha_tok = f
-                .ui
-                .push_style_color(imgui::StyleColor::HeaderActive, transparent);
-            let hd_tok = f.ui.push_style_color(imgui::StyleColor::Header, transparent);
+            let h_tok =
+                f.ui.push_style_color(imgui::StyleColor::HeaderHovered, transparent);
+            let ha_tok =
+                f.ui.push_style_color(imgui::StyleColor::HeaderActive, transparent);
+            let hd_tok =
+                f.ui.push_style_color(imgui::StyleColor::Header, transparent);
 
             // Widen the popup this menu is about to open so its
             // `SpanAvailWidth` items fill a larger area (Blender-style,
@@ -1281,23 +1276,18 @@ impl IUiHostImpl for ImguiUiHost {
             };
 
             let transparent = [0.0_f32, 0.0, 0.0, 0.0];
-            let h_tok = f
-                .ui
-                .push_style_color(imgui::StyleColor::HeaderHovered, transparent);
-            let ha_tok = f
-                .ui
-                .push_style_color(imgui::StyleColor::HeaderActive, transparent);
-            let hd_tok = f.ui.push_style_color(imgui::StyleColor::Header, transparent);
+            let h_tok =
+                f.ui.push_style_color(imgui::StyleColor::HeaderHovered, transparent);
+            let ha_tok =
+                f.ui.push_style_color(imgui::StyleColor::HeaderActive, transparent);
+            let hd_tok =
+                f.ui.push_style_color(imgui::StyleColor::Header, transparent);
 
             let mut activated = false;
             let dl = f.ui.get_window_draw_list();
             dl.channels_split(2, |splitter| {
                 splitter.set_current(1); // foreground: text + checkmark
-                activated = f
-                    .ui
-                    .menu_item_config(label)
-                    .selected(selected)
-                    .build();
+                activated = f.ui.menu_item_config(label).selected(selected).build();
 
                 let hovered = f.ui.is_item_hovered();
                 let held = f.ui.is_item_active();

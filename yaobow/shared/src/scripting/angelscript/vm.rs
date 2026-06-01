@@ -115,6 +115,18 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         }
     }
 
+    /// Name of the function the VM is currently executing, if any.
+    /// `None` when the VM is idle between scripts (e.g. waiting for
+    /// the director to load the next entry).
+    pub fn current_function_name(&self) -> Option<String> {
+        let ctx = self.context.as_ref()?;
+        let module = ctx.module.borrow();
+        module
+            .functions
+            .get(ctx.function_index)
+            .map(|f| f.name.clone())
+    }
+
     pub fn stack_peek<T: std::marker::Copy>(&mut self) -> Option<T> {
         if self.sp < self.stack.len() - std::mem::size_of::<T>() {
             let ret: T = unsafe { self.read_stack(self.sp) };
@@ -596,7 +608,12 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
     fn jmp(&mut self, offset: i32) {
         if offset < 0 && Self::as_trace_enabled() {
-            let target = self.context.as_ref().unwrap().pc.wrapping_add(offset as usize);
+            let target = self
+                .context
+                .as_ref()
+                .unwrap()
+                .pc
+                .wrapping_add(offset as usize);
             log::info!(
                 "[as] backjmp fn={} target_pc={} sp={} fp={}",
                 self.current_fn_name(),

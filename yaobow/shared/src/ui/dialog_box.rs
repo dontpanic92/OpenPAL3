@@ -38,6 +38,25 @@ impl DialogBox {
         self.avatar = avatar;
         self.avatar_position = position;
     }
+
+    /// Currently displayed dialog text. Empty when no `talk()` has run
+    /// yet. Note that the legacy `talk` continuation does *not* clear
+    /// the text on completion — only the avatar is reset — so callers
+    /// that need a strict "open / closed" signal should pair this with
+    /// [`Self::has_avatar`].
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// `true` while an avatar portrait is attached to the dialog
+    /// (proxy for "dialog is actively in front of the player").
+    pub fn has_avatar(&self) -> bool {
+        self.avatar.is_some()
+    }
+
+    pub fn avatar_position(&self) -> AvatarPosition {
+        self.avatar_position
+    }
 }
 
 pub struct DialogBoxPresenter;

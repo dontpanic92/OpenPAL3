@@ -70,10 +70,7 @@ pub fn resolve_theme_name(name: &str) -> &'static str {
 
 /// Returns the embedded TOML source for `name`, or `None` if unknown.
 fn theme_source(name: &str) -> Option<&'static str> {
-    THEMES
-        .iter()
-        .find(|(n, _)| *n == name)
-        .map(|(_, src)| *src)
+    THEMES.iter().find(|(n, _)| *n == name).map(|(_, src)| *src)
 }
 
 /// Apply the named theme to `context`. Falls back to [`DEFAULT_THEME`] if the
@@ -319,7 +316,12 @@ fn parse_rgba(value: &Value) -> Option<[f32; 4]> {
     if parts.len() != 4 {
         return None;
     }
-    Some([parts[0] / 255.0, parts[1] / 255.0, parts[2] / 255.0, parts[3]])
+    Some([
+        parts[0] / 255.0,
+        parts[1] / 255.0,
+        parts[2] / 255.0,
+        parts[3],
+    ])
 }
 
 #[cfg(test)]

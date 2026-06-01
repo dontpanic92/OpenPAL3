@@ -1,9 +1,11 @@
 pub use engine::CoreInputEngine;
+pub use synthetic::SyntheticInputBridge;
 
 mod engine;
 mod gamepad;
 mod keyboard;
 mod mouse;
+mod synthetic;
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -103,6 +105,86 @@ pub enum Key {
     GamePadDPadLeft,
     GamePadDPadRight,
     Unknown,
+}
+
+impl Key {
+    /// Case-insensitive parse of a [`Key`] from its Rust identifier
+    /// (e.g. `"F"`, `"space"`, `"GamePadEast"`). Returns `None` (not
+    /// `Key::Unknown`) for unrecognized names so callers can surface a
+    /// real error.
+    pub fn from_name(name: &str) -> Option<Self> {
+        let n = name.trim();
+        if n.is_empty() {
+            return None;
+        }
+        Some(match n.to_ascii_lowercase().as_str() {
+            "space" => Self::Space,
+            "a" => Self::A,
+            "b" => Self::B,
+            "c" => Self::C,
+            "d" => Self::D,
+            "e" => Self::E,
+            "f" => Self::F,
+            "g" => Self::G,
+            "h" => Self::H,
+            "i" => Self::I,
+            "j" => Self::J,
+            "k" => Self::K,
+            "l" => Self::L,
+            "m" => Self::M,
+            "n" => Self::N,
+            "o" => Self::O,
+            "p" => Self::P,
+            "q" => Self::Q,
+            "r" => Self::R,
+            "s" => Self::S,
+            "t" => Self::T,
+            "u" => Self::U,
+            "v" => Self::V,
+            "w" => Self::W,
+            "x" => Self::X,
+            "y" => Self::Y,
+            "z" => Self::Z,
+            "num1" | "1" => Self::Num1,
+            "num2" | "2" => Self::Num2,
+            "num3" | "3" => Self::Num3,
+            "num4" | "4" => Self::Num4,
+            "num5" | "5" => Self::Num5,
+            "num6" | "6" => Self::Num6,
+            "num7" | "7" => Self::Num7,
+            "num8" | "8" => Self::Num8,
+            "num9" | "9" => Self::Num9,
+            "num0" | "0" => Self::Num0,
+            "tilde" | "~" | "`" => Self::Tilde,
+            "escape" | "esc" => Self::Escape,
+            "left" => Self::Left,
+            "up" => Self::Up,
+            "right" => Self::Right,
+            "down" => Self::Down,
+            "gamepadeast" => Self::GamePadEast,
+            "gamepadsouth" => Self::GamePadSouth,
+            "gamepadwest" => Self::GamePadWest,
+            "gamepadnorth" => Self::GamePadNorth,
+            "gamepaddpadup" => Self::GamePadDPadUp,
+            "gamepaddpaddown" => Self::GamePadDPadDown,
+            "gamepaddpadleft" => Self::GamePadDPadLeft,
+            "gamepaddpadright" => Self::GamePadDPadRight,
+            _ => return None,
+        })
+    }
+}
+
+impl Axis {
+    /// Case-insensitive parse of an [`Axis`] from its Rust identifier.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name.trim().to_ascii_lowercase().as_str() {
+            "leftstickx" => Self::LeftStickX,
+            "leftsticky" => Self::LeftStickY,
+            "rightstickx" => Self::RightStickX,
+            "rightsticky" => Self::RightStickY,
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

@@ -6,6 +6,7 @@ members = [
     "radiance/radiance",
     "radiance/radiance_editor",
     "radiance/radiance_scripting",
+    "yaobow/agent_server",
     "yaobow/common",
     "yaobow/fileformats",
     "yaobow/macros",

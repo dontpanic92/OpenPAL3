@@ -32,6 +32,9 @@ pub struct SwapChain {
     framebuffers: Vec<vk::Framebuffer>,
     command_buffers: Vec<vk::CommandBuffer>,
     capabilities: vk::SurfaceCapabilitiesKHR,
+    /// Surface format the swapchain was created with. Stored so the
+    /// readback path can inspect it without re-querying the surface.
+    format: vk::SurfaceFormatKHR,
     pipeline_manager: PipelineManager,
     render_pass: vk::RenderPass,
     imgui: Option<Rc<RefCell<ImguiRenderer>>>,
@@ -150,6 +153,7 @@ impl SwapChain {
             framebuffers,
             command_buffers,
             capabilities,
+            format,
             pipeline_manager,
             render_pass,
             imgui: None,
@@ -167,6 +171,27 @@ impl SwapChain {
 
     pub fn images_len(&self) -> usize {
         self.images.len()
+    }
+
+    /// Read-only access to a swapchain image handle. Used by the
+    /// rendering engine's `capture_last_frame` to record a transfer
+    /// from the most recently presented image into a staging buffer.
+    pub fn image(&self, index: usize) -> vk::Image {
+        self.images[index]
+    }
+
+    /// Surface format the swapchain was created with (carries the
+    /// pixel format the readback path needs to interpret).
+    pub fn format(&self) -> vk::SurfaceFormatKHR {
+        self.format
+    }
+
+    /// Current swapchain image extent in pixels. Mirrors the
+    /// capabilities snapshot taken at creation; window resizes
+    /// recreate the swapchain so this stays accurate for the
+    /// lifetime of a single `SwapChain` instance.
+    pub fn image_extent(&self) -> vk::Extent2D {
+        self.capabilities.current_extent
     }
 
     pub fn acquire_next_image(

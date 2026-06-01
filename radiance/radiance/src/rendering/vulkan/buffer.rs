@@ -48,6 +48,22 @@ impl Buffer {
         Ok(staging_buffer)
     }
 
+    /// Allocate a host-visible staging buffer destined for `TRANSFER_DST`
+    /// — the GPU writes into it (e.g. `vkCmdCopyImageToBuffer` for
+    /// framebuffer readback) and the CPU reads via [`Self::read_into_vec`].
+    pub fn new_staging_dst(
+        allocator: &Rc<vk_mem::Allocator>,
+        byte_count: usize,
+    ) -> Result<Self, Box<dyn Error>> {
+        Self::new_buffer(
+            allocator,
+            1,
+            byte_count,
+            vk::BufferUsageFlags::TRANSFER_DST,
+            vk_mem::MemoryUsage::AutoPreferHost,
+        )
+    }
+
     pub fn new_dynamic_buffer_with_data<T>(
         allocator: &Rc<vk_mem::Allocator>,
         buffer_type: BufferType,
@@ -190,7 +206,7 @@ impl Buffer {
         });
     }
 
-    pub fn map_memory_do<F: Fn(*mut u8)>(&mut self, action: F) {
+    pub fn map_memory_do<F: FnMut(*mut u8)>(&mut self, mut action: F) {
         let dst = unsafe { self.allocator.map_memory(&mut self.allocation).unwrap() };
 
         if dst == std::ptr::null_mut() {
@@ -202,6 +218,19 @@ impl Buffer {
         unsafe {
             self.allocator.unmap_memory(&mut self.allocation);
         }
+    }
+
+    /// Map the buffer, copy `size` bytes from the mapping into a
+    /// fresh `Vec<u8>`, then unmap. Caller is responsible for ensuring
+    /// any GPU writes targeting the buffer have completed (typically
+    /// by routing through `AdhocCommandRunner` or waiting on the
+    /// device) before calling.
+    pub fn read_into_vec(&mut self, size: usize) -> Vec<u8> {
+        let mut out = vec![0u8; size];
+        self.map_memory_do(|src| unsafe {
+            std::ptr::copy_nonoverlapping(src, out.as_mut_ptr(), size);
+        });
+        out
     }
 }
 

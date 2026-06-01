@@ -82,6 +82,12 @@ pub struct VulkanRenderingEngine {
     /// by `render_scene_to_target`, drained by `render`.
     pending_offscreen_waits: Vec<vk::Semaphore>,
 
+    /// Swapchain image index that was most recently `present`ed. `None`
+    /// until the first successful present — read by `capture_last_frame`
+    /// to know which swapchain image holds the user-visible pixels. Reset
+    /// on swapchain drop (the new swapchain's image indexing is fresh).
+    last_presented_image_index: Option<u32>,
+
     // Per-frame scratch storage. Hoisted onto the engine so each pass
     // reuses the prior frame's capacity instead of allocating a fresh
     // `Vec` for every extraction — addresses the per-frame allocator
@@ -243,6 +249,170 @@ impl RenderingEngine for VulkanRenderingEngine {
         }
 
         self.pending_offscreen_waits.push(target_semaphore);
+    }
+
+    fn capture_last_frame(&mut self) -> Option<crate::rendering::CapturedFrame> {
+        // Pre-flight: bail without device wait when there's nothing to
+        // read back. Headless boots and post-`drop_swapchain` states
+        // hit this fast-path and return `None`.
+        let image_index = self.last_presented_image_index?;
+        let swapchain = self.swapchain.as_ref()?;
+
+        let extent = swapchain.image_extent();
+        let format = swapchain.format();
+        let image = swapchain.image(image_index as usize);
+
+        if extent.width == 0 || extent.height == 0 {
+            log::debug!("capture_last_frame: zero-extent swapchain image");
+            return None;
+        }
+
+        // Determine pixel layout. We only support the two 8-bit color
+        // formats actually picked by `creation_helpers::get_format` on
+        // every platform we ship — anything exotic returns `None` with
+        // a debug log so callers can surface a 501.
+        let bgra_needs_swap = match format.format {
+            vk::Format::R8G8B8A8_UNORM | vk::Format::R8G8B8A8_SRGB => false,
+            vk::Format::B8G8R8A8_UNORM | vk::Format::B8G8R8A8_SRGB => true,
+            other => {
+                log::debug!(
+                    "capture_last_frame: unsupported swapchain format {:?}",
+                    other
+                );
+                return None;
+            }
+        };
+
+        let width = extent.width;
+        let height = extent.height;
+        let byte_count = (width as usize) * (height as usize) * 4;
+
+        // Allocate the host-visible staging buffer. `Uniform` would be
+        // semantically wrong, so call the low-level constructor with
+        // `TRANSFER_DST` usage directly. `MemoryUsage::AutoPreferHost`
+        // gives us a mapped + host-coherent allocation.
+        let allocator = self.allocator.as_ref()?.clone();
+        let mut staging = match super::buffer::Buffer::new_staging_dst(&allocator, byte_count) {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("capture_last_frame: staging buffer alloc failed: {e}");
+                return None;
+            }
+        };
+
+        // Block until every in-flight frame is done so the swapchain
+        // image is safe to read. Coarse, but fine for an off-the-hot-
+        // path one-shot like this.
+        self.device.wait_idle();
+
+        // Record + submit the readback in a single one-shot command
+        // buffer: PRESENT_SRC_KHR → TRANSFER_SRC_OPTIMAL → copy →
+        // PRESENT_SRC_KHR.
+        let copy_extent = vk::Extent3D {
+            width,
+            height,
+            depth: 1,
+        };
+        let buffer_handle = staging.vk_buffer();
+
+        let submit_result = self
+            .adhoc_command_runner
+            .run_commands_one_shot(|device, &cb| {
+                let subresource = vk::ImageSubresourceRange::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .base_mip_level(0)
+                    .level_count(1)
+                    .base_array_layer(0)
+                    .layer_count(1);
+
+                let to_transfer_src = vk::ImageMemoryBarrier::default()
+                    .src_access_mask(vk::AccessFlags::MEMORY_READ)
+                    .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
+                    .old_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                    .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .image(image)
+                    .subresource_range(subresource);
+
+                device.cmd_pipeline_barrier(
+                    cb,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[to_transfer_src],
+                );
+
+                let copy_region = vk::BufferImageCopy::default()
+                    .buffer_offset(0)
+                    .buffer_row_length(0)
+                    .buffer_image_height(0)
+                    .image_subresource(
+                        vk::ImageSubresourceLayers::default()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .mip_level(0)
+                            .base_array_layer(0)
+                            .layer_count(1),
+                    )
+                    .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+                    .image_extent(copy_extent);
+
+                unsafe {
+                    device.vk_device().cmd_copy_image_to_buffer(
+                        cb,
+                        image,
+                        vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                        buffer_handle,
+                        &[copy_region],
+                    );
+                }
+
+                let back_to_present = vk::ImageMemoryBarrier::default()
+                    .src_access_mask(vk::AccessFlags::TRANSFER_READ)
+                    .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                    .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+                    .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .image(image)
+                    .subresource_range(subresource);
+
+                device.cmd_pipeline_barrier(
+                    cb,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[back_to_present],
+                );
+            });
+
+        if let Err(e) = submit_result {
+            log::error!("capture_last_frame: command submit failed: {e}");
+            return None;
+        }
+
+        // The one-shot runner queue-wait-idles before returning, so
+        // the staging buffer is safe to read here.
+        let mut rgba = staging.read_into_vec(byte_count);
+
+        if bgra_needs_swap {
+            // BGRA → RGBA in place. Done in-CPU instead of via a
+            // shader because the cost is negligible for one-off
+            // screenshots and avoids touching pipeline cache.
+            for px in rgba.chunks_exact_mut(4) {
+                px.swap(0, 2);
+            }
+        }
+
+        Some(crate::rendering::CapturedFrame {
+            width,
+            height,
+            rgba,
+        })
     }
 }
 
@@ -430,6 +600,7 @@ impl VulkanRenderingEngine {
             current_frame: 0,
             imgui,
             pending_offscreen_waits: Vec::new(),
+            last_presented_image_index: None,
             scratch_components: Vec::new(),
             scratch_opaque: Vec::new(),
             scratch_cutout: Vec::new(),
@@ -657,7 +828,13 @@ impl VulkanRenderingEngine {
             let ret = swapchain!().present(image_index, self.queue, &wait_semaphores);
 
             match ret {
-                Ok(false) => (),
+                Ok(false) => {
+                    // Track the just-presented image so capture_last_frame
+                    // can read it back. We deliberately don't update on
+                    // suboptimal (Ok(true)) / out-of-date errors below
+                    // because the swapchain is about to be dropped.
+                    self.last_presented_image_index = Some(image_index);
+                }
                 Ok(true) => self.drop_swapchain(),
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.drop_swapchain(),
                 Err(x) => return Err(Box::new(x) as Box<dyn Error>),
@@ -677,6 +854,10 @@ impl VulkanRenderingEngine {
     fn drop_swapchain(&mut self) {
         self.device.wait_idle();
         self.swapchain = None;
+        // Indices into the old swapchain's image vec are meaningless
+        // for the next one; clear so capture_last_frame doesn't try to
+        // read a stale slot.
+        self.last_presented_image_index = None;
     }
 
     /// If any offscreen render submits were queued but the swapchain pass

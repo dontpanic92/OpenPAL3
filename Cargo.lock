@@ -57,6 +57,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent_server"
+version = "0.1.0"
+dependencies = [
+ "image 0.23.14",
+ "log",
+ "serde",
+ "serde_json",
+ "tiny_http",
+]
+
+[[package]]
 name = "ahash"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -542,6 +553,12 @@ checksum = "1a48563284b67c003ba0fb7243c87fab68885e1532c605704228a80238512e31"
 name = "chlorine"
 version = "1.0.10"
 source = "git+https://github.com/dontpanic92/chlorine?branch=yaobow#d7b11620e614c45285fecb465550acf9f8e2c902"
+
+[[package]]
+name = "chunked_transfer"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e4de3bc4ea267985becf712dc6d9eed8b04c953b3fcfb339ebc87acd9804901"
 
 [[package]]
 name = "ciborium"
@@ -1639,6 +1656,12 @@ name = "hound"
 version = "3.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62adaabb884c94955b19907d60019f4e145d091c75345379e70d1ee696f7854f"
+
+[[package]]
+name = "httpdate"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "humantime"
@@ -3758,6 +3781,7 @@ dependencies = [
 name = "shared"
 version = "0.1.0"
 dependencies = [
+ "agent_server",
  "anyhow",
  "byteorder",
  "cfg_aliases",
@@ -4303,6 +4327,18 @@ dependencies = [
  "arrayref",
  "bytemuck",
  "strict-num",
+]
+
+[[package]]
+name = "tiny_http"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "389915df6413a2e74fb181895f933386023c71110878cd0825588928e64cdc82"
+dependencies = [
+ "ascii",
+ "chunked_transfer",
+ "httpdate",
+ "log",
 ]
 
 [[package]]
@@ -5355,6 +5391,7 @@ dependencies = [
 name = "yaobow"
 version = "0.1.0"
 dependencies = [
+ "agent_server",
  "anyhow",
  "byteorder",
  "cfg_aliases",

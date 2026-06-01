@@ -4,6 +4,19 @@ use super::{ComponentFactory, RenderTarget};
 use crate::{comdef::IScene, imgui::ImguiFrame, scene::Viewport};
 use std::rc::Rc;
 
+/// Raw CPU-side copy of the most recently presented framebuffer.
+/// Always packed as 8-bit RGBA in linear row-major order with no
+/// padding between rows. The agent server's HTTP transport encodes
+/// this as PNG on its own thread so the game thread isn't blocked on
+/// compression.
+#[derive(Debug, Clone)]
+pub struct CapturedFrame {
+    pub width: u32,
+    pub height: u32,
+    /// `width * height * 4` bytes, RGBA8.
+    pub rgba: Vec<u8>,
+}
+
 pub trait RenderingEngine {
     fn begin_frame(&mut self);
     fn end_frame(&mut self);
@@ -21,4 +34,18 @@ pub trait RenderingEngine {
     /// backend is free to chain submissions via semaphores so the swapchain
     /// pass observes finished offscreen content.
     fn render_scene_to_target(&mut self, scene: ComRc<IScene>, target: &mut dyn RenderTarget);
+
+    /// Read back the most recently *presented* swapchain image into a
+    /// CPU-mapped RGBA buffer. Returns `None` when no frame has been
+    /// presented yet, the backend lacks a presentable surface
+    /// (headless / pre-init), or the swapchain format is not a
+    /// supported 8-bit color format.
+    ///
+    /// Cost: the default Vulkan implementation submits a one-shot
+    /// command buffer and `vkDeviceWaitIdle`s. Intended for occasional
+    /// one-off captures (debug screenshots, agent-server requests),
+    /// not per-frame use.
+    fn capture_last_frame(&mut self) -> Option<CapturedFrame> {
+        None
+    }
 }

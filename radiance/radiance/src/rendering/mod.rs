@@ -18,7 +18,7 @@ mod vulkan;
 #[cfg(vitagl)]
 mod vitagl;
 
-pub use engine::RenderingEngine;
+pub use engine::{CapturedFrame, RenderingEngine};
 pub use factory::ComponentFactory;
 pub use material::{
     BlendMode, CullMode, DepthMode, GradientYMaterialDef, LightMapMaterialDef, MaterialDef,

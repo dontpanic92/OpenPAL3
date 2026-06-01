@@ -6,9 +6,7 @@ mod theme;
 
 pub use self::theme::{available_themes, menu_item_padding, DEFAULT_THEME};
 
-use self::theme::{
-    apply_theme as apply_named_theme, resolve_theme_name, scale_menu_item_padding,
-};
+use self::theme::{apply_theme as apply_named_theme, resolve_theme_name, scale_menu_item_padding};
 
 use crate::application::Platform;
 use imgui::*;

@@ -18,6 +18,35 @@ use radiance::{
 
 use crate::ui::dialog_box::{AvatarPosition, DialogBox};
 
+/// Dependency-free dialog snapshot used by external observers
+/// (debug overlays, the agent server). Avoids forcing every reader of
+/// `Pal4AppContext` to import imgui-tied dialog types.
+#[derive(Debug, Clone)]
+pub struct DialogStateSnapshot {
+    pub open: bool,
+    pub text: String,
+    pub avatar: DialogAvatarSide,
+}
+
+/// Which side the dialog avatar portrait is currently anchored to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DialogAvatarSide {
+    Left,
+    Right,
+}
+
+/// Per-slot party snapshot used by `Pal4AppContext::party_snapshot`.
+#[derive(Debug, Clone, Default)]
+pub struct PartySnapshot {
+    pub slot: usize,
+    pub level: i32,
+    pub hp: i32,
+    pub max_hp: i32,
+    pub mp: i32,
+    pub max_mp: i32,
+    pub in_team: bool,
+}
+
 use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimation, Pal4ActorAnimationConfig},
     asset_loader::AssetLoader,
@@ -548,6 +577,44 @@ impl Pal4AppContext {
             .borrow_mut()
             .clear_rotation()
             .rotate_axis_angle_local(&Vec3::UP, direction * std::f32::consts::PI / 180.0);
+    }
+
+    /// Neutral, dependency-free snapshot of the currently displayed
+    /// dialog. Consumed by the agent-server adapter (and any future
+    /// debug UI) without forcing every reader to import the imgui
+    /// `DialogBox` type.
+    pub fn dialog_snapshot(&self) -> DialogStateSnapshot {
+        DialogStateSnapshot {
+            open: self.dialog_box.has_avatar(),
+            text: self.dialog_box.text().to_string(),
+            avatar: match self.dialog_box.avatar_position() {
+                AvatarPosition::Left => DialogAvatarSide::Left,
+                AvatarPosition::Right => DialogAvatarSide::Right,
+            },
+        }
+    }
+
+    /// Per-slot party snapshot (level/HP/MP/in-team). Returned in
+    /// `slot`-ascending order so consumers can index by position.
+    pub fn party_snapshot(&self) -> Vec<PartySnapshot> {
+        let mut out = Vec::with_capacity(crate::openpal4::states::persistent_state::PLAYER_COUNT);
+        for slot in 0..crate::openpal4::states::persistent_state::PLAYER_COUNT {
+            let p = self
+                .persistent_state
+                .player(slot)
+                .cloned()
+                .unwrap_or_default();
+            out.push(PartySnapshot {
+                slot,
+                level: p.level,
+                hp: p.hp,
+                max_hp: p.max_hp,
+                mp: p.mp,
+                max_mp: p.max_mp,
+                in_team: p.in_team,
+            });
+        }
+        out
     }
 
     pub fn scene_name(&self) -> &str {

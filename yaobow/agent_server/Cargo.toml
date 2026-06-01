@@ -1,0 +1,18 @@
+[package]
+name = "agent_server"
+version = "0.1.0"
+authors = ["dontpanic <lishengqiu.hit@gmail.com>"]
+edition = "2021"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+image = { version = "0.23", default-features = false, features = ["png"] }
+log = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tiny_http = { version = "0.12", default-features = false }
+
+[dev-dependencies]
+serde_json = "1.0"

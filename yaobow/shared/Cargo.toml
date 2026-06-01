@@ -11,6 +11,7 @@ crate-type = [ "rlib" ]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+agent_server = { path = "../agent_server" }
 anyhow = "1.0"
 byteorder = "1.3.4"
 cipher = "0.4.2"

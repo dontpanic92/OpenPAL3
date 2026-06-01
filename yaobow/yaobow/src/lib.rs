@@ -445,7 +445,8 @@ pub mod openswd5;
 pub use application::run_title_selection;
 pub use opengujian::run_opengujian;
 pub use openpal3::run_openpal3;
-pub use openpal4::run_openpal4;
+pub use openpal4::application::AgentBootOptions as Pal4AgentBootOptions;
+pub use openpal4::{run_openpal4, run_openpal4_with_agent};
 pub use openpal5::run_openpal5;
 pub use openswd5::run_openswd5;
 

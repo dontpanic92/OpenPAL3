@@ -55,8 +55,7 @@ impl ScriptedWelcomePage {
             textures.clone(),
         );
         let imgui_ctx = app.engine().borrow().ui_manager().imgui_context();
-        let config_service =
-            ConfigService::create_with_imgui(config.clone(), Some(imgui_ctx));
+        let config_service = ConfigService::create_with_imgui(config.clone(), Some(imgui_ctx));
 
         let host_ctx = {
             let engine = app.engine();
