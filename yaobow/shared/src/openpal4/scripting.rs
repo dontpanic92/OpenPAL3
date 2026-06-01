@@ -2213,7 +2213,7 @@ fn player_current_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4F
     Pal4FunctionState::Completed
 }
 
-fn player_current_end_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+fn player_current_end_action(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
         if vm.app_context.player_act_completed(-1) {
             ContinuationState::Completed

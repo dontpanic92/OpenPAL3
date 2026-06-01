@@ -12,7 +12,6 @@
 use std::rc::Rc;
 
 use crosscom::ComRc;
-use radiance::comdef::ISceneExt;
 use radiance::comdef::{IEntity, IEntityExt, IScene};
 use radiance::debug;
 use radiance::math::Vec3;

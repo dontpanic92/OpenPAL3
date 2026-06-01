@@ -5,8 +5,8 @@ use std::{
 
 use agent_server::protocol::{
     AgentCommand, AgentError, AgentResponse, AxisInputParams, DialogSnapshot, FastForwardParams,
-    KeyAction, KeyInputParams, PartyMember, ScreenshotResponse, ScriptEvalParams, SlotParams,
-    StateSnapshot, StepTimeParams, TeleportParams,
+    KeyAction, KeyInputParams, PartyMember, ScreenshotResponse, ScriptEvalParams, StateSnapshot,
+    StepTimeParams, TeleportParams,
 };
 use crosscom::ComRc;
 use radiance::comdef::{IImmediateDirectorImpl, IUiHost};
