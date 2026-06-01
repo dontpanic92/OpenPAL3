@@ -1,0 +1,12 @@
+[package]
+name = "csb_inspect"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+common = { path = "../../yaobow/common" }
+mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+packfs = { path = "../../yaobow/packfs" }
+shared = { path = "../../yaobow/shared" }

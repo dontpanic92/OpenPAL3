@@ -1006,6 +1006,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "csb_inspect"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "common",
+ "mini-fs",
+ "packfs",
+ "shared",
+]
+
+[[package]]
 name = "cursor-icon"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
