@@ -1102,25 +1102,25 @@ fn camera_get_dist(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSt
     let cam = vm.app_context.camera_position();
     let target = vm.app_context.leader_pos();
     let dist = Vec3::sub(&cam, &target).norm();
-    vm.stack_push::<f32>(dist);
+    vm.set_ret_value(dist);
     Pal4FunctionState::Completed
 }
 
 fn camera_get_yaw(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     let e = vm.app_context.camera_euler_deg();
-    vm.stack_push::<f32>(e.y);
+    vm.set_ret_value(e.y);
     Pal4FunctionState::Completed
 }
 
 fn camera_get_pitch(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     let e = vm.app_context.camera_euler_deg();
-    vm.stack_push::<f32>(e.x);
+    vm.set_ret_value(e.x);
     Pal4FunctionState::Completed
 }
 
 fn camera_get_roll(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     let e = vm.app_context.camera_euler_deg();
-    vm.stack_push::<f32>(e.z);
+    vm.set_ret_value(e.z);
     Pal4FunctionState::Completed
 }
 
@@ -1158,7 +1158,7 @@ fn arena_hint(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState 
 
 fn arena_come_from_here(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, _arena_name: i32, _come_from_here_name: i32);
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
@@ -1234,7 +1234,7 @@ fn camera_set_mode(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSt
 
 fn get_goods_open_condition(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_goods_id:i32);
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
@@ -1271,7 +1271,7 @@ fn get_randnum(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState 
     } else {
         rand::thread_rng().gen_range(lo..=hi)
     };
-    vm.stack_push::<i32>(v);
+    vm.set_ret_value(v);
     Pal4FunctionState::Completed
 }
 
@@ -1373,7 +1373,7 @@ fn player_set_attr(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSt
 }
 
 fn player_get_leader(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<i32>(vm.app_context.leader() as i32);
+    vm.set_ret_value(vm.app_context.leader() as i32);
     Pal4FunctionState::Completed
 }
 
@@ -1445,7 +1445,7 @@ fn get_player_level(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionS
     as_params!(vm, player_id: i32);
     let slot = map_player_slot(vm, player_id);
     let level = vm.app_context.persistent_state().player_level(slot);
-    vm.stack_push::<i32>(level);
+    vm.set_ret_value(level);
     Pal4FunctionState::Completed
 }
 
@@ -1494,7 +1494,7 @@ fn bgm_config_set_music(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Funct
 
 fn bgm_config_is_in_area(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_file_str:i32);
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
@@ -1531,7 +1531,7 @@ fn world_map_set_state(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functi
 }
 
 fn get_puzzle_game_result(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
@@ -1545,7 +1545,7 @@ fn sound_2d_play(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionStat
 
     let name = get_str(vm, name_str as usize).unwrap();
     match vm.app_context.play_sound(&name) {
-        Ok(id) => vm.stack_push::<i32>(id),
+        Ok(id) => vm.set_ret_value(id),
         Err(e) => log::error!("Failed to play sound: {}", e),
     }
 
@@ -1660,19 +1660,19 @@ fn player_garb1(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState
 
 fn get_visible_object(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_obj_file_str:i32);
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
 fn get_visible_monster(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_monster_file_str:i32);
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
 fn check_pack_property(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_property_id:i32,_property_value:i32);
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
@@ -1697,8 +1697,25 @@ fn grant_magic_system(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functio
 }
 
 fn check_magic_mastered(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _magic_id: i32);
-    vm.stack_push::<i32>(1);
+    // PAL4's `giCheckMagicMastered` is emitted with NO operand-stack
+    // args and the return value is consumed via the `Rret4` opcode
+    // (which copies the AS `r1` return register onto the stack).
+    // See M01/func2004 disasm at pc=0x61bc:
+    //
+    //   61bc: CallSys -161   ; giCheckMagicMastered
+    //   61c4: Rret4           ; push r1 onto stack
+    //   61c8: Ub              ; zero-extend low byte
+    //   61cc: Jnz off=228     ; if non-zero, exit the magic-tutorial loop
+    //
+    // We hard-code "mastered" (return 1) so the loop exits
+    // immediately and the plot can progress past the magic-grant
+    // sequence in M01/1 without us having to implement the magic
+    // tutorial UI. The prior implementation popped a phantom arg
+    // and `stack_push`ed 1 — but the script never read the
+    // stack, just r1 (which stayed 0), so the loop ran forever
+    // showing the same dialog. See CLAUDE.md AS calling-convention
+    // notes.
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
@@ -1712,7 +1729,7 @@ fn select_dialog_add_item(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Fun
 
 fn select_dialog_get_last_select(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     let choice = vm.app_context_mut().take_dialog_choice();
-    vm.stack_push::<i32>(choice);
+    vm.set_ret_value(choice);
     Pal4FunctionState::Completed
 }
 
@@ -1856,25 +1873,25 @@ fn npc_reset_emotion(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 
 fn get_property_numb(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_property_id:i32);
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
 fn player_current_get_pos_x(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     let p = vm.app_context.get_player_pos(-1);
-    vm.stack_push::<f32>(p.x);
+    vm.set_ret_value(p.x);
     Pal4FunctionState::Completed
 }
 
 fn player_current_get_pos_y(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     let p = vm.app_context.get_player_pos(-1);
-    vm.stack_push::<f32>(p.y);
+    vm.set_ret_value(p.y);
     Pal4FunctionState::Completed
 }
 
 fn player_current_get_pos_z(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     let p = vm.app_context.get_player_pos(-1);
-    vm.stack_push::<f32>(p.z);
+    vm.set_ret_value(p.z);
     Pal4FunctionState::Completed
 }
 
@@ -1889,7 +1906,7 @@ fn show_inn_dialog(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSt
 }
 
 fn get_inn_dialog_result(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
@@ -1898,7 +1915,7 @@ fn player_take_a_rest(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functi
 }
 
 fn is_night_time(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
@@ -1930,7 +1947,7 @@ fn player_forbiden_skill(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Func
 
 fn get_money(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     let money = vm.app_context.persistent_state().money();
-    vm.stack_push::<i32>(money);
+    vm.set_ret_value(money);
     Pal4FunctionState::Completed
 }
 
@@ -1948,7 +1965,7 @@ fn show_quest_dialog(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 }
 
 fn get_quest_dialog_result(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
@@ -1964,7 +1981,7 @@ fn gob_reset(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
 fn check_equip_in_inventory(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, equip_id: i32);
     let has = vm.app_context.persistent_state().has_equipment(equip_id);
-    vm.stack_push::<i32>(if has { 1 } else { 0 });
+    vm.set_ret_value(if has { 1 } else { 0 });
     Pal4FunctionState::Completed
 }
 
@@ -2013,7 +2030,7 @@ fn add_player_favor(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionS
 
 fn get_pal_test_result(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_test_id:i32);
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
@@ -2059,7 +2076,7 @@ fn player_detach_effect(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Funct
 
 fn common_dialog_get_last_select(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     let choice = vm.app_context_mut().take_dialog_choice();
-    vm.stack_push::<i32>(choice);
+    vm.set_ret_value(choice);
     Pal4FunctionState::Completed
 }
 
@@ -2090,7 +2107,7 @@ fn set_full_rage(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn ui_timer_get_save_data(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 
@@ -2594,9 +2611,9 @@ fn camera_prepare(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 
     if let Err(e) = vm.app_context.prepare_camera(&file_name) {
         log::error!("camera prepare failed: {}", e);
-        vm.stack_push::<i32>(0);
+        vm.set_ret_value(0);
     } else {
-        vm.stack_push::<i32>(1);
+        vm.set_ret_value(1);
     }
 
     Pal4FunctionState::Completed
@@ -2608,7 +2625,7 @@ fn camera_run_single(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 
     let running = vm.app_context.start_camera_run(&name);
 
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
 
     if sync == 1 && running {
         Pal4FunctionState::Yield(Box::new(move |vm, _| {
@@ -2626,7 +2643,7 @@ fn camera_run_single(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Function
 fn camera_run_circle(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm,_run_circle :i32);
     log::warn!("giCameraRunCircle: not implemented");
-    vm.stack_push::<i32>(1);
+    vm.set_ret_value(1);
     Pal4FunctionState::Completed
 }
 

@@ -197,6 +197,42 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         unsafe { self.write_stack(self.sp, ret) };
     }
 
+    /// Set the AS "return register" (`r1`) to a value of any
+    /// 4-byte-or-less `Copy` type (`i32`, `u32`, `f32`, `u8`, …).
+    ///
+    /// PAL4's bytecode emits sysfn returns as `CallSys ; Rret4`
+    /// (or eventually `Rret8`, though no PAL4 module uses the
+    /// 8-byte form). `Rret4` pushes `r1` onto the operand stack
+    /// — so a sysfn that wants its return value to be readable
+    /// by the script must write `r1` here. **Pushing onto the
+    /// operand stack directly (`stack_push`) does not work for
+    /// PAL4: the script never reads the stack after a sysfn
+    /// call, and the stale push leaks the operand stack until
+    /// it eventually underflows.** See AS calling-convention
+    /// notes in CLAUDE.md.
+    ///
+    /// We tile the supplied bytes into the low end of `r1`
+    /// (little-endian on every Rust target we support), zero-
+    /// extending if `T` is smaller than 4 bytes. The `Sret8` /
+    /// `Rret8` pair is unused by PAL4 so we don't provide an
+    /// `r2` setter.
+    pub fn set_ret_value<T: std::marker::Copy>(&mut self, value: T) {
+        let size = std::mem::size_of::<T>();
+        assert!(
+            size <= std::mem::size_of::<u32>(),
+            "set_ret_value: T must fit in the 4-byte AS r1 register"
+        );
+        let mut buf: u32 = 0;
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                &value as *const T as *const u8,
+                &mut buf as *mut u32 as *mut u8,
+                size,
+            );
+        }
+        self.r1 = buf;
+    }
+
     pub fn push_object(&mut self, object: String) -> usize {
         for i in 0..self.heap.len() {
             if self.heap[i].is_none() {
