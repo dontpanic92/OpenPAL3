@@ -1,0 +1,3 @@
+# pal4_planner only depends on the Python stdlib.
+# Listed here for clarity / future-proofing — there is currently
+# nothing to install.

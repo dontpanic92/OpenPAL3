@@ -23,6 +23,7 @@ pub mod log_sink;
 pub mod protocol;
 pub mod queue;
 pub mod session;
+pub mod trace_sink;
 pub mod transport;
 
 pub use log_sink::{AgentLogSink, LogRecord};
@@ -32,4 +33,5 @@ pub use protocol::{
 };
 pub use queue::{AgentCommandConsumer, AgentCommandQueue, AgentEnvelope};
 pub use session::{AgentSession, NullAgentSession};
+pub use trace_sink::{AgentTraceSink, TraceDrainResult, DEFAULT_TRACE_CAPACITY};
 pub use transport::{AgentServer, AgentServerConfig};

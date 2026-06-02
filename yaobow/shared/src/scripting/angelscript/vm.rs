@@ -6,6 +6,7 @@ use super::debug::{DebugIpcClient, Notification, Request};
 use super::{
     global_context::{GlobalFunctionContinuation, ScriptGlobalContext},
     module::{ScriptFunction, ScriptModule},
+    trace::{BranchKind, GlobalScope, TraceEvent, TraceEventKind, TraceSink},
 };
 
 #[derive(Clone)]
@@ -51,6 +52,17 @@ pub struct ScriptVm<TAppContext: 'static> {
 
     yield_func: Vec<GlobalFunctionContinuation<TAppContext>>,
     pub(crate) imm: bool,
+
+    /// Optional execution-trace sink. `None` is the unobserved (zero-
+    /// overhead) default. When set, the VM emits a [`TraceEvent`] for
+    /// every branch / sysfn call / global read or write — see
+    /// `super::trace` for the event reference and the agent-server
+    /// integration.
+    trace_sink: Option<Rc<dyn TraceSink>>,
+    /// Monotonic counter for [`TraceEvent::seq`]. Allocated only
+    /// when a sink is installed; held in a `Cell` so the read-only
+    /// emit path doesn't need `&mut self`.
+    trace_seq: std::cell::Cell<u64>,
 }
 
 impl<TAppContext: 'static> ScriptVm<TAppContext> {
@@ -83,6 +95,9 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             faulted: std::cell::Cell::new(false),
 
             imm: true,
+
+            trace_sink: None,
+            trace_seq: std::cell::Cell::new(0),
         };
 
         vm.debug_update_module();
@@ -125,6 +140,41 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             .functions
             .get(ctx.function_index)
             .map(|f| f.name.clone())
+    }
+
+    /// Install (or replace) the execution-trace sink.
+    ///
+    /// The hot-path cost while a sink is active is one indirect call
+    /// per recorded event plus one `Cell` increment for the
+    /// monotonic sequence number. Pass `None` to disable tracing —
+    /// the interpreter loop short-circuits on the [`Option`] check.
+    pub fn set_trace_sink(&mut self, sink: Option<Rc<dyn TraceSink>>) {
+        self.trace_sink = sink;
+    }
+
+    /// True once a sink has been installed via
+    /// [`Self::set_trace_sink`]. Useful for assertions in tests.
+    pub fn has_trace_sink(&self) -> bool {
+        self.trace_sink.is_some()
+    }
+
+    /// Emit a trace event. Inlined and self-no-op when the sink is
+    /// absent so the unobserved path is a single `Option::is_none`.
+    #[inline]
+    pub(crate) fn trace(&self, kind: TraceEventKind) {
+        if let Some(sink) = self.trace_sink.as_ref() {
+            let seq = self.trace_seq.get();
+            self.trace_seq.set(seq.wrapping_add(1));
+            sink.record(TraceEvent { seq, kind });
+        }
+    }
+
+    /// True when a trace sink is active. Lets opcode handlers skip
+    /// the auxiliary work needed to assemble an event (e.g. looking
+    /// up sysfn names) when nobody will read it.
+    #[inline]
+    pub(crate) fn trace_enabled(&self) -> bool {
+        self.trace_sink.is_some()
     }
 
     pub fn stack_peek<T: std::marker::Copy>(&mut self) -> Option<T> {
@@ -343,6 +393,11 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
                 107 => command!(muli: f32, rhs: f32),
                 108 => {
                     // Suspend
+                    if self.trace_enabled() {
+                        let fn_name = self.current_fn_name();
+                        let pc = self.context.as_ref().map(|c| c.pc).unwrap_or(0);
+                        self.trace(TraceEventKind::Suspend { fn_name, pc });
+                    }
                     return;
                 }
                 109 => command!(alloc, this: i32, index: i32),
@@ -505,6 +560,14 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         }
         let module = self.context.as_ref().unwrap().module.clone();
         self.set_function(module, function as usize);
+        if self.trace_enabled() {
+            let name = self.current_fn_name();
+            self.trace(TraceEventKind::FnEnter {
+                name,
+                function_index: function as usize,
+                depth: self.call_stack.len(),
+            });
+        }
     }
 
     fn callbnd(&mut self, function: u32) {
@@ -516,6 +579,17 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             let index = -offset - 1;
             let context = self.g.clone();
             let data = context.borrow().get_global(index as usize);
+            if self.trace_enabled() {
+                let fn_name = self.current_fn_name();
+                let pc = self.context.as_ref().map(|c| c.pc).unwrap_or(0);
+                self.trace(TraceEventKind::GlobalRead {
+                    fn_name,
+                    pc,
+                    scope: GlobalScope::Shared,
+                    slot: index as u32,
+                    value: data,
+                });
+            }
             self.set4(data);
         } else {
             unimplemented!("Global memory not supported yet");
@@ -524,8 +598,10 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
     fn callsys(&mut self, function: i32) {
         let index = -function - 1;
-        let trace = Self::as_trace_enabled();
-        let (name, sp_before) = if trace {
+        let trace_log = Self::as_trace_enabled();
+        let trace_sink = self.trace_enabled();
+        let pc = self.context.as_ref().map(|c| c.pc).unwrap_or(0);
+        let (name, sp_before) = if trace_log || trace_sink {
             let name = self
                 .g
                 .borrow()
@@ -537,6 +613,11 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         } else {
             (String::new(), 0)
         };
+        let caller_fn = if trace_sink {
+            self.current_fn_name()
+        } else {
+            String::new()
+        };
         let context = self.g.clone();
         let context = context.borrow();
         match context.call_function(self, index as usize) {
@@ -544,7 +625,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             super::GlobalFunctionState::Completed => {}
         }
         drop(context);
-        if trace {
+        if trace_log {
             log::info!(
                 "[as] callsys {} idx={} sp {}->{} delta={} fp={} robj={}",
                 name,
@@ -555,6 +636,19 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
                 self.fp,
                 self.robj,
             );
+        }
+        if trace_sink {
+            let sp_after = self.sp;
+            let r1_after = self.r1;
+            self.trace(TraceEventKind::CallSys {
+                fn_name: caller_fn,
+                pc,
+                sysfn_index: index as usize,
+                sysfn_name: name,
+                sp_before,
+                sp_after,
+                r1_after,
+            });
         }
     }
 
@@ -600,10 +694,65 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
                 self.call_stack.len(),
             );
         }
+        if self.trace_enabled() {
+            let name = self.current_fn_name();
+            // `call_stack` holds parent frames only; the active
+            // frame about to be popped lives in `self.context`.
+            // Reporting `call_stack.len()` therefore gives the
+            // depth of the frame that's leaving.
+            let depth = self.call_stack.len();
+            self.trace(TraceEventKind::FnExit { name, depth });
+        }
         let func = self.call_stack.pop();
         self.context = func;
 
         self.sp -= param_size as usize;
+    }
+
+    fn jz(&mut self, offset: i32) {
+        unsafe {
+            let data: i32 = self.read_stack(self.sp);
+            self.sp += 4;
+            let taken = data == 0;
+            if self.trace_enabled() {
+                let fn_name = self.current_fn_name();
+                let pc = self.context.as_ref().map(|c| c.pc).unwrap_or(0);
+                self.trace(TraceEventKind::Branch {
+                    fn_name,
+                    pc,
+                    kind: BranchKind::Jz,
+                    operand: data,
+                    offset,
+                    taken,
+                });
+            }
+            if taken {
+                self.jmp(offset);
+            }
+        }
+    }
+
+    fn jnz(&mut self, offset: i32) {
+        unsafe {
+            let data: i32 = self.read_stack(self.sp);
+            self.sp += 4;
+            let taken = data != 0;
+            if self.trace_enabled() {
+                let fn_name = self.current_fn_name();
+                let pc = self.context.as_ref().map(|c| c.pc).unwrap_or(0);
+                self.trace(TraceEventKind::Branch {
+                    fn_name,
+                    pc,
+                    kind: BranchKind::Jnz,
+                    operand: data,
+                    offset,
+                    taken,
+                });
+            }
+            if taken {
+                self.jmp(offset);
+            }
+        }
     }
 
     fn jmp(&mut self, offset: i32) {
@@ -623,26 +772,6 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             );
         }
         self.context.as_mut().unwrap().pc += offset as usize;
-    }
-
-    fn jz(&mut self, offset: i32) {
-        unsafe {
-            let data: i32 = self.read_stack(self.sp);
-            self.sp += 4;
-            if data == 0 {
-                self.jmp(offset);
-            }
-        }
-    }
-
-    fn jnz(&mut self, offset: i32) {
-        unsafe {
-            let data: i32 = self.read_stack(self.sp);
-            self.sp += 4;
-            if data != 0 {
-                self.jmp(offset);
-            }
-        }
     }
 
     fn tz(&mut self) {
@@ -927,19 +1056,19 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     fn js_jgez(&mut self, offset: i32) {
-        self.j(offset, |data| data >= 0);
+        self.j_traced(offset, BranchKind::JsJgez, |data| data >= 0);
     }
 
     fn jns_jlz(&mut self, offset: i32) {
-        self.j(offset, |data| data < 0);
+        self.j_traced(offset, BranchKind::JnsJlz, |data| data < 0);
     }
 
     fn jp_jlez(&mut self, offset: i32) {
-        self.j(offset, |data| data <= 0);
+        self.j_traced(offset, BranchKind::JpJlez, |data| data <= 0);
     }
 
     fn jnp_jgz(&mut self, offset: i32) {
-        self.j(offset, |data| data > 0);
+        self.j_traced(offset, BranchKind::JnpJgz, |data| data > 0);
     }
 
     fn cmpi<T: Copy + PartialOrd>(&mut self, rhs: T) {
@@ -980,14 +1109,31 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     fn pga(&mut self, index: i32) {
-        let data = if index > 0 {
+        let (data, scope, slot) = if index > 0 {
             let context = self.context.as_ref().unwrap();
             let module = context.module.borrow();
-            module.globals[index as usize]
+            (
+                module.globals[index as usize],
+                GlobalScope::Module,
+                index as u32,
+            )
         } else {
             let context = self.g.borrow();
-            context.get_global((-index - 1) as usize)
+            let slot = (-index - 1) as u32;
+            (context.get_global(slot as usize), GlobalScope::Shared, slot)
         };
+
+        if self.trace_enabled() {
+            let fn_name = self.current_fn_name();
+            let pc = self.context.as_ref().map(|c| c.pc).unwrap_or(0);
+            self.trace(TraceEventKind::GlobalRead {
+                fn_name,
+                pc,
+                scope,
+                slot,
+                value: data,
+            });
+        }
 
         self.sp -= 4;
 
@@ -999,14 +1145,29 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     fn movga4(&mut self, index: i32) {
         let data: u32 = unsafe { self.read_stack(self.sp) };
 
-        if index > 0 {
+        let (scope, slot) = if index > 0 {
             let context = self.context.as_mut().unwrap();
             let mut module = context.module.borrow_mut();
             module.globals[index as usize] = data;
+            (GlobalScope::Module, index as u32)
         } else {
             let mut context = self.g.borrow_mut();
-            context.set_global((-index - 1) as usize, data);
+            let slot = (-index - 1) as u32;
+            context.set_global(slot as usize, data);
+            (GlobalScope::Shared, slot)
         };
+
+        if self.trace_enabled() {
+            let fn_name = self.current_fn_name();
+            let pc = self.context.as_ref().map(|c| c.pc).unwrap_or(0);
+            self.trace(TraceEventKind::GlobalWrite {
+                fn_name,
+                pc,
+                scope,
+                slot,
+                value: data,
+            });
+        }
 
         self.sp += 4;
     }
@@ -1024,10 +1185,23 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     #[inline]
-    fn j<F: Fn(i32) -> bool>(&mut self, offset: i32, f: F) {
+    fn j_traced<F: Fn(i32) -> bool>(&mut self, offset: i32, kind: BranchKind, f: F) {
         unsafe {
             let data: i32 = self.read_stack(self.sp);
-            if f(data) {
+            let taken = f(data);
+            if self.trace_enabled() {
+                let fn_name = self.current_fn_name();
+                let pc = self.context.as_ref().map(|c| c.pc).unwrap_or(0);
+                self.trace(TraceEventKind::Branch {
+                    fn_name,
+                    pc,
+                    kind,
+                    operand: data,
+                    offset,
+                    taken,
+                });
+            }
+            if taken {
                 self.context.as_mut().unwrap().pc += offset as usize;
             }
         }
@@ -1179,5 +1353,173 @@ pub(crate) mod data_read {
     pub(crate) fn u64(inst: &[u8], pc: &mut usize) -> u64 {
         *pc += 8;
         (&inst[*pc - 8..*pc]).read_u64::<LittleEndian>().unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use super::super::module::{ScriptFunction, ScriptModule};
+    use super::super::trace::{
+        test_support::VecSink, BranchKind, GlobalScope, TraceEventKind, TraceSink,
+    };
+    use super::super::ScriptGlobalContext;
+    use super::ScriptVm;
+
+    /// Build a 4-byte-aligned opcode header (opcode byte + 3 pad).
+    fn op(code: u8) -> [u8; 4] {
+        [code, 0, 0, 0]
+    }
+
+    /// Concatenate raw-byte instruction fragments into a `Vec<u8>`
+    /// matching the encoding `ScriptVm::execute` expects.
+    fn assemble(parts: &[&[u8]]) -> Vec<u8> {
+        let mut v = Vec::new();
+        for p in parts {
+            v.extend_from_slice(p);
+        }
+        v
+    }
+
+    fn build_vm(inst: Vec<u8>) -> ScriptVm<()> {
+        let function = ScriptFunction::test_function("test_main", inst);
+        let module = ScriptModule::test_module(vec![function]);
+        let g = Rc::new(RefCell::new(ScriptGlobalContext::<()>::new()));
+        ScriptVm::new(g, Rc::new(RefCell::new(module)), 0, ())
+    }
+
+    #[test]
+    fn no_sink_records_nothing_observable() {
+        // Set4 42; Movga4 -1 (write to shared global 0); Suspend.
+        let inst = assemble(&[
+            &op(2),
+            &42u32.to_le_bytes(),
+            &op(100),
+            &(-1i32).to_le_bytes(),
+            &op(108),
+        ]);
+        let mut vm = build_vm(inst);
+        assert!(!vm.has_trace_sink());
+        vm.execute(0.0);
+        // Effect on global must still happen even without a sink.
+        assert_eq!(vm.g.borrow().get_global(0), 42);
+    }
+
+    #[test]
+    fn global_write_event_carries_slot_and_value() {
+        // Set4 11400; Movga4 -3 (write shared global slot 2); Suspend.
+        let inst = assemble(&[
+            &op(2),
+            &11_400u32.to_le_bytes(),
+            &op(100),
+            &(-3i32).to_le_bytes(),
+            &op(108),
+        ]);
+        let mut vm = build_vm(inst);
+        let sink = Rc::new(VecSink::new());
+        vm.set_trace_sink(Some(sink.clone() as Rc<dyn TraceSink>));
+        vm.execute(0.0);
+
+        let events = sink.snapshot();
+        // Sequence numbers monotonic from 0.
+        for (i, ev) in events.iter().enumerate() {
+            assert_eq!(ev.seq, i as u64, "seq must be monotonic");
+        }
+
+        // Expect at minimum: GlobalWrite{Shared, slot=2, value=11400}
+        // and a trailing Suspend, in that order.
+        let mut write_seen = false;
+        let mut suspend_seen = false;
+        for ev in &events {
+            match &ev.kind {
+                TraceEventKind::GlobalWrite {
+                    scope: GlobalScope::Shared,
+                    slot,
+                    value,
+                    ..
+                } => {
+                    assert_eq!(*slot, 2);
+                    assert_eq!(*value, 11_400);
+                    write_seen = true;
+                }
+                TraceEventKind::Suspend { .. } => {
+                    assert!(write_seen, "Suspend must follow the GlobalWrite");
+                    suspend_seen = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(write_seen, "missing GlobalWrite event: {:?}", events);
+        assert!(suspend_seen, "missing Suspend event: {:?}", events);
+    }
+
+    #[test]
+    fn global_read_event_carries_observed_value() {
+        // Pre-seed shared global 1 with 99.
+        // Pga -2 (read global slot 1 -> stack); Suspend.
+        let inst = assemble(&[&op(65), &(-2i32).to_le_bytes(), &op(108)]);
+        let mut vm = build_vm(inst);
+        vm.g.borrow_mut().set_global(1, 99);
+        let sink = Rc::new(VecSink::new());
+        vm.set_trace_sink(Some(sink.clone() as Rc<dyn TraceSink>));
+        vm.execute(0.0);
+
+        let events = sink.snapshot();
+        let read = events
+            .iter()
+            .find_map(|ev| match &ev.kind {
+                TraceEventKind::GlobalRead {
+                    scope: GlobalScope::Shared,
+                    slot,
+                    value,
+                    ..
+                } => Some((*slot, *value)),
+                _ => None,
+            })
+            .expect("missing GlobalRead event");
+        assert_eq!(read, (1, 99));
+    }
+
+    #[test]
+    fn jz_branch_records_operand_and_taken() {
+        // Two runs of:
+        //   Set4 <flag>; Jz <offset>; Suspend; Ret 0;
+        // - flag=0 -> taken=true, jumps past Suspend into Ret so
+        //   the VM unwinds cleanly to idle.
+        // - flag=1 -> taken=false, falls through into Suspend.
+        // Either way the sink should record exactly one Jz Branch
+        // event with the correct operand and `taken` flag.
+        for &(flag, expected_taken) in &[(0u32, true), (1u32, false)] {
+            let inst = assemble(&[
+                &op(2),
+                &flag.to_le_bytes(),
+                &op(15), // Jz
+                &4i32.to_le_bytes(), // offset = 4 bytes => skips Suspend
+                &op(108),            // Suspend (terminates non-taken path)
+                &op(13),             // Ret
+                &0u16.to_le_bytes(), // param_size = 0
+            ]);
+            let mut vm = build_vm(inst);
+            let sink = Rc::new(VecSink::new());
+            vm.set_trace_sink(Some(sink.clone() as Rc<dyn TraceSink>));
+            vm.execute(0.0);
+
+            let branches: Vec<_> = sink
+                .snapshot()
+                .into_iter()
+                .filter_map(|ev| match ev.kind {
+                    TraceEventKind::Branch {
+                        kind, operand, taken, ..
+                    } => Some((kind, operand, taken)),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(branches.len(), 1, "flag={}: {:?}", flag, branches);
+            assert_eq!(branches[0].0, BranchKind::Jz);
+            assert_eq!(branches[0].1, flag as i32);
+            assert_eq!(branches[0].2, expected_taken, "flag={}", flag);
+        }
     }
 }

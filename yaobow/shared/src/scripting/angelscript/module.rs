@@ -154,6 +154,42 @@ impl ScriptFunction {
         })
     }
 
+    /// Minimal `ScriptFunction` constructor for VM unit tests.
+    ///
+    /// Real functions are deserialised from PAL4 `.csb` modules; this
+    /// helper synthesises one with just enough scaffolding to feed a
+    /// `ScriptVm` for opcode-level testing. The instruction stream
+    /// (`inst`) is the only behaviourally-relevant field.
+    #[cfg(test)]
+    pub(crate) fn test_function(name: &str, inst: Vec<u8>) -> Self {
+        let stub_type = ScriptDataType {
+            flag: 0,
+            unknown: 0,
+            type_ref: ScriptTypeReference {
+                name: String::new(),
+            },
+            unknown2: 0,
+            unknown3: 0,
+            unknown4: 0,
+            unknown5: 0,
+        };
+        Self {
+            name: name.to_string(),
+            ret_type: stub_type.clone(),
+            param_types: Vec::new(),
+            unknown_dword1: 0,
+            inst,
+            inst2: Vec::new(),
+            type_refs: Vec::new(),
+            dword_with_type_ref: Vec::new(),
+            unknown_dword: 0,
+            type_ref: ScriptTypeReference {
+                name: String::new(),
+            },
+            dword_vec: Vec::new(),
+        }
+    }
+
     fn read_instructions(
         cursor: &mut Cursor<&[u8]>,
         total_size: usize,
@@ -439,7 +475,7 @@ impl ScriptModule {
         Ok(Self {
             type_defs,
             type_refs,
-            named_global_count,
+            named_global_count: named_globals_count,
             globals,
             module_loading,
             module_unloading,
@@ -448,6 +484,28 @@ impl ScriptModule {
             astruct_vec2,
             named_globals,
         })
+    }
+
+    /// Minimal `ScriptModule` constructor for VM unit tests.
+    ///
+    /// Wraps a list of pre-built [`ScriptFunction`]s (typically made
+    /// via [`ScriptFunction::test_function`]) into an
+    /// otherwise-empty module suitable for `ScriptVm::new`.
+    #[cfg(test)]
+    pub(crate) fn test_module(functions: Vec<ScriptFunction>) -> Self {
+        let stub_fn = ScriptFunction::test_function("", Vec::new());
+        Self {
+            type_defs: Vec::new(),
+            type_refs: Vec::new(),
+            named_global_count: 0,
+            globals: Vec::new(),
+            module_loading: stub_fn.clone(),
+            module_unloading: stub_fn,
+            functions: functions.into_iter().map(std::sync::Arc::new).collect(),
+            strings: Vec::new(),
+            astruct_vec2: Vec::new(),
+            named_globals: Vec::new(),
+        }
     }
 }
 

@@ -28,9 +28,16 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use agent_server::{AgentCommandConsumer, AgentCommandQueue};
+use agent_server::protocol::{
+    TraceBranchKind, TraceEventKindPayload, TraceEventPayload, TraceGlobalScope,
+};
+use agent_server::{AgentCommandConsumer, AgentCommandQueue, AgentTraceSink};
 use radiance::input::SyntheticInputBridge;
 use radiance::rendering::RenderingEngine;
+
+use crate::scripting::angelscript::{
+    BranchKind, GlobalScope, TraceEvent, TraceEventKind, TraceSink,
+};
 
 /// Default per-frame delta used by `/v1/time/step` when the caller
 /// doesn't provide one — matches the engine's nominal 60 Hz target.
@@ -58,6 +65,18 @@ pub struct Pal4AgentBridge {
     /// holds / axes injected via `/v1/input/*` are visible to the
     /// scripts that poll `input.get_key_state(...)`.
     pub input_bridge: Rc<std::cell::RefCell<SyntheticInputBridge>>,
+
+    /// Execution-trace ring shared with the VM via
+    /// [`AgentTraceAdapter`]. Lives in the bridge so the director's
+    /// `TraceStart` / `TraceStop` / `TraceDrain` handlers can poke
+    /// it without going through the VM.
+    pub trace_sink: Rc<AgentTraceSink>,
+
+    /// VM-side trace adapter installed on `ScriptVm` whenever
+    /// [`Self::trace_sink`] is actively capturing. Held in a `Cell`-
+    /// less `Rc` because installation happens at most a handful of
+    /// times per session (start/stop), not in the hot path.
+    pub trace_adapter: Rc<AgentTraceAdapter>,
 
     /// Optional handle to the live rendering engine. When present, the
     /// director's `/v1/screenshot` handler reads back the last
@@ -98,10 +117,14 @@ impl Pal4AgentBridge {
     /// consumers.
     pub fn new(input_bridge: Rc<std::cell::RefCell<SyntheticInputBridge>>) -> Self {
         let (queue, consumer) = AgentCommandQueue::new();
+        let trace_sink = Rc::new(AgentTraceSink::with_default_capacity());
+        let trace_adapter = Rc::new(AgentTraceAdapter::new(trace_sink.clone()));
         Self {
             queue,
             consumer: std::cell::RefCell::new(Some(consumer)),
             input_bridge,
+            trace_sink,
+            trace_adapter,
             rendering_engine: std::cell::RefCell::new(None),
             frame: Cell::new(0),
             paused: Cell::new(false),
@@ -127,5 +150,137 @@ impl Pal4AgentBridge {
         } else {
             DEFAULT_STEP_DT
         }
+    }
+}
+
+/// VM-side trace sink that forwards every [`TraceEvent`] into the
+/// agent-server's [`AgentTraceSink`] ring buffer.
+///
+/// Construct one via [`AgentTraceAdapter::new`] and install it on
+/// `ScriptVm::set_trace_sink` via a `Rc<dyn TraceSink>` coercion.
+/// The conversion is a straight one-to-one mapping; field renames
+/// (e.g. `usize` → `u32` for the JSON wire form) happen here so the
+/// VM-side enum stays free of agent-server concerns.
+pub struct AgentTraceAdapter {
+    sink: Rc<AgentTraceSink>,
+}
+
+impl AgentTraceAdapter {
+    pub fn new(sink: Rc<AgentTraceSink>) -> Self {
+        Self { sink }
+    }
+
+    pub fn sink(&self) -> &AgentTraceSink {
+        &self.sink
+    }
+}
+
+impl TraceSink for AgentTraceAdapter {
+    fn record(&self, event: TraceEvent) {
+        // The ring buffer assigns its own monotonic seq; the
+        // VM-side seq is ignored on the wire. The payload's `seq`
+        // field is overwritten by `AgentTraceSink::push`.
+        self.sink.push(TraceEventPayload {
+            seq: event.seq,
+            kind: convert_kind(event.kind),
+        });
+    }
+}
+
+fn convert_kind(kind: TraceEventKind) -> TraceEventKindPayload {
+    match kind {
+        TraceEventKind::FnEnter {
+            name,
+            function_index,
+            depth,
+        } => TraceEventKindPayload::FnEnter {
+            name,
+            function_index: function_index as u32,
+            depth: depth as u32,
+        },
+        TraceEventKind::FnExit { name, depth } => TraceEventKindPayload::FnExit {
+            name,
+            depth: depth as u32,
+        },
+        TraceEventKind::Branch {
+            fn_name,
+            pc,
+            kind,
+            operand,
+            offset,
+            taken,
+        } => TraceEventKindPayload::Branch {
+            fn_name,
+            pc: pc as u32,
+            branch: convert_branch(kind),
+            operand,
+            offset,
+            taken,
+        },
+        TraceEventKind::CallSys {
+            fn_name,
+            pc,
+            sysfn_index,
+            sysfn_name,
+            sp_before,
+            sp_after,
+            r1_after,
+        } => TraceEventKindPayload::CallSys {
+            fn_name,
+            pc: pc as u32,
+            sysfn_index: sysfn_index as u32,
+            sysfn_name,
+            sp_before: sp_before as u32,
+            sp_after: sp_after as u32,
+            r1_after,
+        },
+        TraceEventKind::GlobalRead {
+            fn_name,
+            pc,
+            scope,
+            slot,
+            value,
+        } => TraceEventKindPayload::GlobalRead {
+            fn_name,
+            pc: pc as u32,
+            scope: convert_scope(scope),
+            slot,
+            value,
+        },
+        TraceEventKind::GlobalWrite {
+            fn_name,
+            pc,
+            scope,
+            slot,
+            value,
+        } => TraceEventKindPayload::GlobalWrite {
+            fn_name,
+            pc: pc as u32,
+            scope: convert_scope(scope),
+            slot,
+            value,
+        },
+        TraceEventKind::Suspend { fn_name, pc } => TraceEventKindPayload::Suspend {
+            fn_name,
+            pc: pc as u32,
+        },
+    }
+}
+
+fn convert_branch(kind: BranchKind) -> TraceBranchKind {
+    match kind {
+        BranchKind::Jz => TraceBranchKind::Jz,
+        BranchKind::Jnz => TraceBranchKind::Jnz,
+        BranchKind::JsJgez => TraceBranchKind::JsJgez,
+        BranchKind::JnsJlz => TraceBranchKind::JnsJlz,
+        BranchKind::JpJlez => TraceBranchKind::JpJlez,
+        BranchKind::JnpJgz => TraceBranchKind::JnpJgz,
+    }
+}
+
+fn convert_scope(scope: GlobalScope) -> TraceGlobalScope {
+    match scope {
+        GlobalScope::Shared => TraceGlobalScope::Shared,
+        GlobalScope::Module => TraceGlobalScope::Module,
     }
 }

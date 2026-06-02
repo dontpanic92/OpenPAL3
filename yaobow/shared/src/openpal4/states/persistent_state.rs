@@ -244,6 +244,13 @@ impl Pal4PersistentState {
         self.inventory.get(&equip_id).copied().unwrap_or(0)
     }
 
+    /// Read-only iterator over `(equipment_id, count)` pairs in the
+    /// inventory. Order is unspecified — callers that need a stable
+    /// layout (e.g. for `/v1/state` snapshots) should sort.
+    pub fn inventory_iter(&self) -> impl Iterator<Item = (&i32, &i32)> {
+        self.inventory.iter()
+    }
+
     // --- Scene / leader / position ------------------------------------
 
     pub fn leader(&self) -> usize {

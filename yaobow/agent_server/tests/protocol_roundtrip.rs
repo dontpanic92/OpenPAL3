@@ -71,8 +71,11 @@ fn every_command_roundtrips() {
             start: 4,
             limit: Some(16),
         }),
-        AgentCommand::FireSceneTrigger(NameParams {
+        AgentCommand::FireSceneTrigger(agent_server::protocol::FireTriggerParams {
             name: "ev01".into(),
+            wait_until_idle: false,
+            collect_trace: false,
+            timeout_ms: None,
         }),
         AgentCommand::InteractObject(NameParams {
             name: "npc_lingsha".into(),
@@ -108,6 +111,7 @@ fn every_response_roundtrips() {
                 open: true,
                 text: "hi".into(),
                 avatar: "left".into(),
+                choices: vec!["yes".into(), "no".into()],
             },
             fast_forward: false,
             paused: true,
@@ -116,6 +120,7 @@ fn every_response_roundtrips() {
             movie_playing: false,
             fps: 60.0,
             dt: 0.0167,
+            inventory: vec![agent_server::protocol::InventoryEntry { id: 101, count: 3 }],
         }),
         AgentResponse::Log(LogTailResponse {
             next_seq: 7,

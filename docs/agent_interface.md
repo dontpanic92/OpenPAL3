@@ -38,12 +38,13 @@ appropriate HTTP status:
 
 | Method | Path                                | Description |
 | ------ | ----------------------------------- | ----------- |
-| `GET`  | `/v1/state`                         | Full snapshot: scene/block, leader pos, party HP/MP, money, dialog, fps, pause flag, `script_running`, `movie_playing`, current script function. |
+| `GET`  | `/v1/state`                         | Full snapshot: scene/block, leader pos, party HP/MP, money, dialog (text + open + avatar + `choices[]`), `inventory[]`, fps, pause flag, `script_running`, `movie_playing`, current script function. |
 | `GET`  | `/v1/log/tail?after_seq=N&n=M`      | Ring-buffered log records since `after_seq`. The `dropped` flag warns when records were evicted before the caller polled. |
 | `GET`  | `/v1/screenshot`                    | **Binary `image/png`** of the most recently presented swapchain frame (includes UI). Response carries `X-Screenshot-Width` / `X-Screenshot-Height` headers. Returns **501** when no frame has been presented yet, when the swapchain format is unsupported, or in headless builds without a presentable surface. |
 | `GET`  | `/v1/scene/triggers`                | EVF event triggers for the currently loaded block: `{name, function, center, half_size, shape}`. `shape` is `"box"` (8 vertices), `"plane"` (4 vertices), or `"other"` — `"other"` triggers are skipped by the live engine but still surfaced here for inspection. |
 | `GET`  | `/v1/scene/objects`                 | GOB objects + NPCs for the current block. Each object carries `{name, kind, position, visible, research_function}`; each NPC carries `{name, position, visible}`. `position` reflects live world-space (post script teleports), not load-time values. |
 | `GET`  | `/v1/script/globals?start=N&limit=M`| Window over the AngelScript shared-globals array (story-plot flags). Response is `{len, start, globals}`. `len` is the full underlying array size; clients diff `globals[]` between actions to detect plot progression. |
+| `GET`  | `/v1/script/trace/drain?after_seq=N&n=M` | Drain buffered VM execution-trace events with `seq > after_seq`. Capped at `n` per call (default 1024). Response is `{next_seq, dropped, capturing, events}`; see the **Trace** section below for the event reference. Streamed via repeated drains using the returned `next_seq` cursor. |
 
 ### Control
 
@@ -53,7 +54,8 @@ appropriate HTTP status:
 | `POST` | `/v1/input/axis`                    | `{"axis":"LeftStickX","value":-1.0}`                  |
 | `POST` | `/v1/player/teleport`               | `{"player":0,"pos":[x,y,z]}`                          |
 | `POST` | `/v1/dialog/advance`                | _(empty body)_ — synthesises a `Space` tap            |
-| `POST` | `/v1/scene/fire_trigger`            | `{"name":"ev01"}` — fires the matching EVF trigger's script function as if the leader had walked into it. **409** while a script is already running; **400** when the name is unknown or has no bound function. |
+| `POST` | `/v1/dialog/choose`                 | `{"index":N}` — buffer a 1-based choice index for the next `giSelectDialogGetLastSelect` / `giCommonDialogGetLastSelect` call. See `/v1/state.dialog.choices` for the available items. |
+| `POST` | `/v1/scene/fire_trigger`            | `{"name":"ev01"}` (legacy) **or** `{"name":"ev01", "wait_until_idle":true, "collect_trace":true, "timeout_ms":5000}`. With `wait_until_idle` set the dispatcher defers the response until the VM becomes idle for two consecutive frames (or `timeout_ms` elapses); the reply then carries `{settled, waited_frames, trace_seq_start, trace_seq_end, current_script_fn}` so the caller can drain just this fire's trace events without races. **409** while a script is already running; **400** when the name is unknown or has no bound function. |
 | `POST` | `/v1/object/interact`               | `{"name":"npc_lingsha"}` — fires a GOB entry's `research_function` (its "Examine" handler). **400** with `{"kind":"bad_request"}` when the entry has no examine handler. |
 
 `action: "tap"` emits one frame of `pressed + released + is_down` and
@@ -66,7 +68,7 @@ naturally goes back to `up` next frame. `down` / `up` are sticky.
 | `POST` | `/v1/time/pause`                    | _(empty body)_ — freeze the simulation                |
 | `POST` | `/v1/time/resume`                   | _(empty body)_ — drop pending step budget, resume     |
 | `POST` | `/v1/time/step`                     | `{"frames":60,"dt":0.0167}` (`dt` optional)           |
-| `POST` | `/v1/time/fast_forward`             | `{"on":true}` — skips scripted `giWait`, dialog waits, and movie playback |
+| `POST` | `/v1/time/fast_forward`             | `{"on":true}` — skips scripted `giWait`, dialog waits, and movie playback. While enabled, scripted movement/rotation tweens are also accelerated so wait-for-motion continuations (`player_end_move`, `npc_end_move`, `player_set_dir { sync = 1 }`, …) complete in a single frame. |
 
 `step` is only honoured when the simulation is paused. The director
 runs one fixed-step frame per real frame of pending budget; long-
@@ -79,6 +81,32 @@ time, so issue `fast_forward` if you want a hard skip.
 | ------ | ----------------------------------- | ----------------------------- |
 | `POST` | `/v1/save`                          | `{"slot":1}` — slot file under `<save_dir>/OpenPAL4/Save/<slot>.json` |
 | `POST` | `/v1/load`                          | `{"slot":1}` — restore the named slot                                  |
+
+### Trace
+
+| Method | Path                                | Body                                                  |
+| ------ | ----------------------------------- | ----------------------------------------------------- |
+| `POST` | `/v1/script/trace/start`            | `{}` (use defaults) or `{"reset":true, "capacity":65536}`. Arms the VM-side `TraceSink`; subsequent VM activity is recorded into a bounded ring buffer for [`/v1/script/trace/drain`](#observe) to read. |
+| `POST` | `/v1/script/trace/stop`             | _(empty body)_ — stop recording. Buffered events remain drainable until evicted by the next `start { reset }`. |
+
+The drain endpoint returns events in the following shape (one item
+per `events[]`):
+
+```jsonc
+{ "seq": 123,
+  "kind": {
+    "type": "branch" | "call_sys" | "global_read" | "global_write"
+          | "fn_enter" | "fn_exit" | "suspend",
+    // type-specific fields...
+  }
+}
+```
+
+Notable variants for plot-progression analysis:
+
+- `branch` — `{fn_name, pc, branch ("jz" | "jnz" | "js_jgez" | ...), operand, offset, taken}`. The `taken` outcome paired with the predicate that fed it (the preceding `global_read` / `call_sys`) is how the planner identifies "which gate failed" on an unproductive fire.
+- `call_sys` — `{fn_name, pc, sysfn_index, sysfn_name, sp_before, sp_after, r1_after}`. `r1_after` carries the legacy `gi*` ABI's return value, so `giHasItem` etc. are observable here.
+- `global_read` / `global_write` — `{fn_name, pc, scope ("shared" | "module"), slot, value}`. Shared-globals match the array exposed via `/v1/script/globals`.
 
 ### Script eval
 

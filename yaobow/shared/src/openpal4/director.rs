@@ -5,9 +5,10 @@ use std::{
 
 use agent_server::protocol::{
     AgentCommand, AgentError, AgentResponse, AxisInputParams, DialogSnapshot, FastForwardParams,
-    KeyAction, KeyInputParams, NameParams, NpcEntry, ObjectEntry, PartyMember, ScreenshotResponse,
-    ScriptEvalParams, ScriptGlobalsParams, ScriptGlobalsResponse, SceneObjectsResponse,
-    SceneTriggersResponse, StateSnapshot, StepTimeParams, TeleportParams, TriggerEntry,
+    FireTriggerParams, KeyAction, KeyInputParams, NameParams, NpcEntry, ObjectEntry, PartyMember,
+    ScreenshotResponse, ScriptEvalParams, ScriptGlobalsParams, ScriptGlobalsResponse,
+    SceneObjectsResponse, SceneTriggersResponse, StateSnapshot, StepTimeParams, TeleportParams,
+    TriggerEntry,
 };
 use crosscom::ComRc;
 use radiance::comdef::{IEntityExt, IImmediateDirectorImpl, IUiHost};
@@ -71,11 +72,42 @@ pub struct OpenPAL4Director {
     /// synthetic input overlay, and mirrors fps / dt into the bridge
     /// for `GET /v1/state`.
     agent: RefCell<Option<Rc<Pal4AgentBridge>>>,
+
+    /// In-flight `fire_trigger { wait_until_idle: true }` requests
+    /// whose dispatcher took ownership of the [`AgentEnvelope`] and
+    /// will reply once the VM settles (or the configured timeout
+    /// elapses). Polled once per `update` after the VM has ticked.
+    /// Always empty when no agent bridge is installed.
+    pending_fires: RefCell<Vec<PendingFire>>,
 }
 
 /// How often the debug overlay republishes the FPS / frame-time
 /// readouts. Tuned so the numbers are readable rather than strobing.
 const DEBUG_METRIC_INTERVAL_SEC: f32 = 0.5;
+
+/// Number of consecutive idle frames a deferred fire must observe
+/// before the dispatcher declares it "settled". Rides out the
+/// momentary blip between two scripted continuations (e.g. talk →
+/// camera pan → NPC walk) so the planner sees a truly quiescent VM.
+const IDLE_SETTLE_FRAMES: u32 = 2;
+/// Default timeout (ms) for a `fire_trigger { wait_until_idle }` call.
+const DEFAULT_FIRE_TIMEOUT_MS: u64 = 5_000;
+/// Hard cap (ms) on the same — prevents a buggy planner from pinning
+/// game-thread memory for the full agent reply window.
+const MAX_FIRE_TIMEOUT_MS: u64 = 30_000;
+
+/// One in-flight `fire_trigger { wait_until_idle: true }` request.
+/// Held in [`OpenPAL4Director::pending_fires`] until the VM settles
+/// or the deadline expires.
+struct PendingFire {
+    env: agent_server::AgentEnvelope,
+    name: String,
+    collect_trace: bool,
+    start_seq: u64,
+    waited_frames: u32,
+    idle_streak: u32,
+    max_frames: u32,
+}
 
 ComObject_OpenPAL4Director!(super::OpenPAL4Director);
 
@@ -109,6 +141,7 @@ impl OpenPAL4Director {
             fps_display: Cell::new(0.0),
             dt_display: Cell::new(0.0),
             agent: RefCell::new(None),
+            pending_fires: RefCell::new(Vec::new()),
         }
     }
 
@@ -374,6 +407,12 @@ impl IDirectorImpl for OpenPAL4Director {
 
         self.vm.borrow_mut().execute(effective_dt);
 
+        // Reply to any deferred `fire_trigger { wait_until_idle }`
+        // calls now that the VM has had its tick this frame. Done
+        // after `execute` so the settle observation sees the latest
+        // VM state.
+        self.poll_pending_fires();
+
         /*if !self.vm.borrow().app_context().player_locked {
             self.control
                 .update(scene_manager.scene().unwrap(), delta_sec)
@@ -439,10 +478,128 @@ impl OpenPAL4Director {
         }
 
         for env in envelopes {
+            // FireSceneTrigger with `wait_until_idle` is special-
+            // cased here so the dispatcher can stash the envelope
+            // and reply across frames once the VM settles. Every
+            // other command (and FireSceneTrigger with the legacy
+            // immediate semantics) goes through the sync path.
+            if let agent_server::protocol::AgentCommand::FireSceneTrigger(params) = &env.command {
+                if params.wait_until_idle {
+                    self.begin_pending_fire(params.clone(), env);
+                    continue;
+                }
+            }
             let cmd = env.command.clone();
             let response = self.dispatch_agent_command(cmd);
             env.reply(response);
         }
+    }
+
+    /// Poll the deferred-reply queue and ship responses for any
+    /// fires that have settled or timed out. Called once per
+    /// `update` *after* the VM tick so the latest VM state is
+    /// observable here.
+    fn poll_pending_fires(&self) {
+        let bridge = match self.agent.borrow().clone() {
+            Some(b) => b,
+            None => return,
+        };
+        let mut keep: Vec<PendingFire> = Vec::new();
+        let drained = std::mem::take(&mut *self.pending_fires.borrow_mut());
+        let vm = self.vm.borrow();
+        let now_seq = bridge.trace_sink.drain(u64::MAX, 0).next_seq;
+        let script_idle = vm.context.is_none();
+        drop(vm);
+        for mut pf in drained {
+            pf.waited_frames = pf.waited_frames.saturating_add(1);
+            // Require `idle_settle_frames` consecutive idle frames
+            // before declaring "settled". This rides out the racy
+            // window between two scripted continuations (e.g. talk
+            // -> camera pan -> NPC walk) so the planner observes a
+            // truly quiescent state, not a momentary blip.
+            if script_idle {
+                pf.idle_streak = pf.idle_streak.saturating_add(1);
+            } else {
+                pf.idle_streak = 0;
+            }
+            let timed_out = pf.waited_frames >= pf.max_frames;
+            let settled = pf.idle_streak >= IDLE_SETTLE_FRAMES;
+            if settled || timed_out {
+                let trace_seq_start = if pf.collect_trace {
+                    Some(pf.start_seq)
+                } else {
+                    None
+                };
+                let trace_seq_end = if pf.collect_trace {
+                    Some(now_seq)
+                } else {
+                    None
+                };
+                let current_fn = self.vm.borrow().current_function_name();
+                let response =
+                    AgentResponse::FireTrigger(agent_server::protocol::FireTriggerResponse {
+                        name: pf.name,
+                        settled,
+                        trace_seq_start,
+                        trace_seq_end,
+                        waited_frames: pf.waited_frames,
+                        current_script_fn: current_fn,
+                    });
+                pf.env.reply(response);
+            } else {
+                keep.push(pf);
+            }
+        }
+        *self.pending_fires.borrow_mut() = keep;
+    }
+
+    /// Kick off the script and stash the envelope for the
+    /// deferred-reply poll. Failure modes (no scene, unknown
+    /// trigger, currently-running script) short-circuit with an
+    /// immediate reply.
+    fn begin_pending_fire(
+        &self,
+        params: agent_server::protocol::FireTriggerParams,
+        env: agent_server::AgentEnvelope,
+    ) {
+        let bridge = match self.agent.borrow().clone() {
+            Some(b) => b,
+            None => {
+                env.reply(AgentResponse::err(AgentError::internal(
+                    "agent bridge unset while firing trigger",
+                )));
+                return;
+            }
+        };
+        // Snapshot the trace cursor *before* dispatch so the planner
+        // can drain just this fire's events.
+        let start_seq = bridge.trace_sink.drain(u64::MAX, 0).next_seq;
+        let immediate = self.handle_fire_scene_trigger(params.clone());
+        // If the fire failed synchronously (unknown trigger, etc.)
+        // bail with that error rather than queueing a settle.
+        match &immediate {
+            AgentResponse::Ok => {}
+            _ => {
+                env.reply(immediate);
+                return;
+            }
+        }
+        let timeout = params
+            .timeout_ms
+            .map(|ms| ms.min(MAX_FIRE_TIMEOUT_MS))
+            .unwrap_or(DEFAULT_FIRE_TIMEOUT_MS);
+        // Convert ms to frames at the engine's nominal tick rate so
+        // the deadline travels in lockstep with `update`. Round up.
+        let max_frames = (timeout.saturating_mul(60) + 999) / 1000;
+        self.pending_fires.borrow_mut().push(PendingFire {
+            env,
+            name: params.name,
+            collect_trace: params.collect_trace,
+            start_seq,
+            waited_frames: 0,
+            idle_streak: 0,
+            max_frames: max_frames as u32,
+        });
     }
 
     /// Compute `(should_advance, effective_dt)` honouring the agent
@@ -527,6 +684,16 @@ impl OpenPAL4Director {
             AgentCommand::GetScriptGlobals(params) => self.handle_get_script_globals(params),
             AgentCommand::FireSceneTrigger(params) => self.handle_fire_scene_trigger(params),
             AgentCommand::InteractObject(params) => self.handle_interact_object(params),
+            AgentCommand::TraceStart(params) => self.handle_trace_start(params),
+            AgentCommand::TraceStop => self.handle_trace_stop(),
+            AgentCommand::TraceDrain(params) => self.handle_trace_drain(params),
+            AgentCommand::ChooseDialog(params) => {
+                self.vm
+                    .borrow_mut()
+                    .app_context_mut()
+                    .buffer_dialog_choice(params.index);
+                AgentResponse::Ok
+            }
             // `AgentCommand` is `#[non_exhaustive]` so future
             // additions don't break older sessions; until they're
             // wired here we fail closed with a clear error.
@@ -814,7 +981,7 @@ impl OpenPAL4Director {
     /// Fire an EVF trigger by name. Reuses the engine's own
     /// `set_function_by_name2` path so the script side is identical
     /// to a real collision.
-    fn handle_fire_scene_trigger(&self, params: NameParams) -> AgentResponse {
+    fn handle_fire_scene_trigger(&self, params: FireTriggerParams) -> AgentResponse {
         if self.vm.borrow().current_function_name().is_some() {
             return AgentResponse::err(AgentError::conflict(
                 "a script is currently running; wait for it to finish before firing a trigger",
@@ -896,6 +1063,62 @@ impl OpenPAL4Director {
         AgentResponse::Ok
     }
 
+    /// Begin capturing the VM execution trace. Installs the agent
+    /// bridge's [`AgentTraceAdapter`] on the script VM (idempotent —
+    /// re-installation replaces the previous sink with the same one)
+    /// and arms the underlying ring buffer.
+    fn handle_trace_start(
+        &self,
+        params: agent_server::protocol::TraceStartParams,
+    ) -> AgentResponse {
+        let Some(bridge) = self.agent.borrow().clone() else {
+            return AgentResponse::err(AgentError::internal(
+                "agent bridge unset while starting trace",
+            ));
+        };
+        bridge.trace_sink.start(params.reset, params.capacity);
+        // Install the adapter as the VM's trace sink. Cheap, but only
+        // needed once per session — subsequent starts only need to
+        // re-arm the ring buffer.
+        let adapter: std::rc::Rc<dyn crate::scripting::angelscript::TraceSink> =
+            bridge.trace_adapter.clone();
+        self.vm.borrow_mut().set_trace_sink(Some(adapter));
+        AgentResponse::Ok
+    }
+
+    /// Stop capturing. The buffered events remain drainable until
+    /// the ring evicts them or a subsequent [`Self::handle_trace_start`]
+    /// resets the buffer.
+    fn handle_trace_stop(&self) -> AgentResponse {
+        let Some(bridge) = self.agent.borrow().clone() else {
+            return AgentResponse::err(AgentError::internal(
+                "agent bridge unset while stopping trace",
+            ));
+        };
+        bridge.trace_sink.stop();
+        AgentResponse::Ok
+    }
+
+    /// Drain buffered trace events with `seq > after_seq`.
+    fn handle_trace_drain(
+        &self,
+        params: agent_server::protocol::TraceDrainParams,
+    ) -> AgentResponse {
+        let Some(bridge) = self.agent.borrow().clone() else {
+            return AgentResponse::err(AgentError::internal(
+                "agent bridge unset while draining trace",
+            ));
+        };
+        let n = params.n.unwrap_or(1024);
+        let result = bridge.trace_sink.drain(params.after_seq, n);
+        AgentResponse::TraceDrain(agent_server::protocol::TraceDrainResponse {
+            next_seq: result.next_seq,
+            dropped: result.dropped,
+            capturing: bridge.trace_sink.is_capturing(),
+            events: result.events,
+        })
+    }
+
     fn build_state_snapshot(&self) -> StateSnapshot {
         let bridge = self.agent.borrow().clone();
         let vm = self.vm.borrow();
@@ -930,6 +1153,12 @@ impl OpenPAL4Director {
         let current_script_fn = vm.current_function_name();
         let script_running = current_script_fn.is_some();
         let movie_playing = app.movie_playing();
+        let inventory = app
+            .inventory_snapshot()
+            .into_iter()
+            .filter(|(_, count)| *count > 0)
+            .map(|(id, count)| agent_server::protocol::InventoryEntry { id, count })
+            .collect();
 
         StateSnapshot {
             frame,
@@ -944,6 +1173,7 @@ impl OpenPAL4Director {
                 open: dialog.open,
                 text: dialog.text,
                 avatar: avatar_str.to_string(),
+                choices: app.dialog_choices().to_vec(),
             },
             fast_forward: app.fast_forward(),
             paused,
@@ -952,6 +1182,7 @@ impl OpenPAL4Director {
             movie_playing,
             fps,
             dt,
+            inventory,
         }
     }
 }

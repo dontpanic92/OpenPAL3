@@ -70,11 +70,37 @@ pub enum AgentCommand {
     /// Fire an EVF trigger by name as if the leader had walked into
     /// it: routes through the same `set_function_by_name2` path the
     /// engine uses on a real trigger collision.
-    FireSceneTrigger(NameParams),
+    ///
+    /// Accepts both the legacy `{name}` body and the richer
+    /// [`FireTriggerParams`] shape with optional `wait_until_idle` /
+    /// `collect_trace` / `timeout_ms` fields. The two are
+    /// JSON-compatible thanks to `#[serde(default)]` on the new
+    /// fields.
+    FireSceneTrigger(FireTriggerParams),
     /// Fire a GOB entry's `research_function` as if the player had
     /// pressed "Examine" on it. Returns `bad_request {no_handler}`
     /// when the entry has no examine callback.
     InteractObject(NameParams),
+    /// Start capturing the AngelScript VM execution trace into the
+    /// agent-server ring buffer. Idempotent — re-calling while
+    /// already capturing keeps the existing buffer.
+    TraceStart(TraceStartParams),
+    /// Stop capturing. Already-buffered events remain drainable via
+    /// [`Self::TraceDrain`] until they are evicted or the buffer is
+    /// reset by another [`Self::TraceStart`].
+    TraceStop,
+    /// Read a windowed slice of buffered trace events with
+    /// `seq > after_seq`. Mirrors the [`LogTail`](Self::LogTail)
+    /// pattern: the response carries a `next_seq` cursor and a
+    /// `dropped` flag that warns when records were evicted before
+    /// the caller polled.
+    TraceDrain(TraceDrainParams),
+    /// Buffer a choice index for the next
+    /// `giSelectDialogGetLastSelect` /
+    /// `giCommonDialogGetLastSelect` call. The buffered choice is
+    /// consumed by the next dialog read; supply a fresh choice
+    /// before every menu fire.
+    ChooseDialog(DialogChooseParams),
 }
 
 /// Top-level agent response. Mirrors [`AgentCommand`] roughly but with
@@ -99,6 +125,12 @@ pub enum AgentResponse {
     SceneObjects(SceneObjectsResponse),
     /// Snapshot reply for [`AgentCommand::GetScriptGlobals`].
     ScriptGlobals(ScriptGlobalsResponse),
+    /// Reply for [`AgentCommand::FireSceneTrigger`] when the caller
+    /// asked for `wait_until_idle` / `collect_trace`. Legacy plain
+    /// fire-and-return calls still resolve to [`Self::Ok`].
+    FireTrigger(FireTriggerResponse),
+    /// Snapshot reply for [`AgentCommand::TraceDrain`].
+    TraceDrain(TraceDrainResponse),
     /// Operation failed.
     Error(AgentError),
 }
@@ -283,6 +315,22 @@ pub struct StateSnapshot {
     pub movie_playing: bool,
     pub fps: f32,
     pub dt: f32,
+    /// Player inventory as `{id, count}` pairs, sorted by `id`
+    /// for deterministic rendering. Empty `Vec` is the canonical
+    /// "no items" state, not a missing field.
+    #[serde(default)]
+    pub inventory: Vec<InventoryEntry>,
+}
+
+/// One inventory line item in [`StateSnapshot::inventory`].
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct InventoryEntry {
+    /// Equipment / item ID — the same value the script-side
+    /// `giAddEquip` / `giHasEquip` family of sysfns operate on.
+    pub id: i32,
+    /// Number of copies held. Always `> 0`; entries with `0` count
+    /// are pruned at snapshot time.
+    pub count: i32,
 }
 
 /// Per-party-member subset of [`StateSnapshot`].
@@ -305,6 +353,11 @@ pub struct DialogSnapshot {
     pub text: String,
     /// `"left"`, `"right"`, or `""` when no avatar.
     pub avatar: String,
+    /// Items queued for the next select-dialog (`giSelectDialogAddItem`).
+    /// Empty `Vec` is the canonical "no choices available" state.
+    /// The planner picks one via `POST /v1/dialog/choose {index}`.
+    #[serde(default)]
+    pub choices: Vec<String>,
 }
 
 /// Error envelope. Used both as a JSON body and to choose the HTTP
@@ -334,10 +387,80 @@ pub enum AgentErrorKind {
 }
 
 /// Generic `{ "name": "…" }` payload used by direct-fire commands
-/// ([`AgentCommand::FireSceneTrigger`] / [`AgentCommand::InteractObject`]).
+/// (kept for backward compatibility / [`AgentCommand::InteractObject`]).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NameParams {
     pub name: String,
+}
+
+/// Body shape accepted by `POST /v1/scene/fire_trigger`. Strict
+/// superset of [`NameParams`]: a JSON `{ "name": "X" }` body parses
+/// into this with the new fields defaulted, so older clients still
+/// work unchanged.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FireTriggerParams {
+    pub name: String,
+    /// When `true`, the director defers the response until the VM
+    /// becomes idle (`script_running == false` for the
+    /// `idle_settle_frames` window) or until `timeout_ms` elapses.
+    /// Solves the gdiff race described in `generated/issues.md` A1
+    /// — the planner can read globals / scene state in the reply
+    /// frame and know the fire has fully settled.
+    #[serde(default)]
+    pub wait_until_idle: bool,
+    /// When `true` (and `wait_until_idle` is set), the response also
+    /// carries the trace-ring cursor range produced by the fire so
+    /// callers can drain just this fire's events.
+    #[serde(default)]
+    pub collect_trace: bool,
+    /// Maximum wait when `wait_until_idle` is set. Defaults to
+    /// 5_000 ms; capped at 30_000 ms server-side.
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+impl From<NameParams> for FireTriggerParams {
+    fn from(p: NameParams) -> Self {
+        Self {
+            name: p.name,
+            wait_until_idle: false,
+            collect_trace: false,
+            timeout_ms: None,
+        }
+    }
+}
+
+/// Reply for [`AgentCommand::FireSceneTrigger`] with
+/// `wait_until_idle = true`. The legacy plain-fire path still
+/// returns [`AgentResponse::Ok`].
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FireTriggerResponse {
+    /// The name that was fired (echoed for client correlation).
+    pub name: String,
+    /// `true` when the VM became idle on its own within the
+    /// timeout; `false` when the timeout elapsed and the fire is
+    /// still in progress (the response is still safe to read — it
+    /// just means the trace may grow further).
+    pub settled: bool,
+    /// Lowest trace-ring `seq` produced by this fire (the cursor
+    /// the planner should pass as `after_seq` to
+    /// `/v1/script/trace/drain` to read only this fire's events).
+    /// `None` when `collect_trace` was not requested or no trace
+    /// sink was capturing.
+    #[serde(default)]
+    pub trace_seq_start: Option<u64>,
+    /// Highest trace-ring `seq` produced so far (exclusive upper
+    /// bound). `None` under the same conditions as
+    /// [`Self::trace_seq_start`].
+    #[serde(default)]
+    pub trace_seq_end: Option<u64>,
+    /// Number of game-thread frames the dispatcher waited before
+    /// returning. Useful for diagnosing long-running fires.
+    pub waited_frames: u32,
+    /// Name of the script function the VM is currently executing,
+    /// or `None` if idle.
+    #[serde(default)]
+    pub current_script_fn: Option<String>,
 }
 
 /// Optional window over the global-variable array.
@@ -470,3 +593,148 @@ impl AgentResponse {
         Self::Error(err)
     }
 }
+
+// ---- trace types --------------------------------------------------------
+//
+// Mirrors the VM-side `TraceEvent` from
+// `yaobow/shared/src/scripting/angelscript/trace.rs`. The agent_server
+// crate intentionally redefines them here (rather than depending on
+// `shared`) so the protocol stays free of game-specific code.
+
+/// Parameters for [`AgentCommand::TraceStart`].
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct TraceStartParams {
+    /// Ring-buffer capacity (max retained events). `None` keeps the
+    /// adapter's default (typically 65_536).
+    #[serde(default)]
+    pub capacity: Option<usize>,
+    /// When `true`, reset the buffer + sequence counter at start.
+    /// Default `true` — the common use case is "begin a fresh
+    /// capture window".
+    #[serde(default = "default_reset_on_start")]
+    pub reset: bool,
+}
+
+fn default_reset_on_start() -> bool {
+    true
+}
+
+/// Parameters for [`AgentCommand::TraceDrain`].
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct TraceDrainParams {
+    /// Return only events with `seq > after_seq`. Defaults to 0.
+    #[serde(default)]
+    pub after_seq: u64,
+    /// Cap on returned events. Defaults to 1024 server-side.
+    #[serde(default)]
+    pub n: Option<usize>,
+}
+
+/// Response payload for [`AgentCommand::TraceDrain`].
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TraceDrainResponse {
+    /// Cursor for the next call (highest `seq` issued + 1).
+    pub next_seq: u64,
+    /// `true` when the ring evicted records the caller hadn't
+    /// observed yet — the planner should resync (e.g. by widening
+    /// its `after_seq` window or restarting capture).
+    pub dropped: bool,
+    /// `true` while the underlying VM sink is actively recording.
+    pub capturing: bool,
+    pub events: Vec<TraceEventPayload>,
+}
+
+/// One trace event in transit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraceEventPayload {
+    /// Monotonic sequence assigned by the VM at emission time.
+    pub seq: u64,
+    pub kind: TraceEventKindPayload,
+}
+
+/// Payload-side mirror of the VM `TraceEventKind`. Serde uses an
+/// internally-tagged shape (`{"type": "...", ...}`) so JSON readers
+/// can dispatch on `type` without external tags getting in the way
+/// of typed clients.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TraceEventKindPayload {
+    FnEnter {
+        name: String,
+        function_index: u32,
+        depth: u32,
+    },
+    FnExit {
+        name: String,
+        depth: u32,
+    },
+    Branch {
+        fn_name: String,
+        pc: u32,
+        branch: TraceBranchKind,
+        operand: i32,
+        offset: i32,
+        taken: bool,
+    },
+    CallSys {
+        fn_name: String,
+        pc: u32,
+        sysfn_index: u32,
+        sysfn_name: String,
+        sp_before: u32,
+        sp_after: u32,
+        r1_after: u32,
+    },
+    GlobalRead {
+        fn_name: String,
+        pc: u32,
+        scope: TraceGlobalScope,
+        slot: u32,
+        value: u32,
+    },
+    GlobalWrite {
+        fn_name: String,
+        pc: u32,
+        scope: TraceGlobalScope,
+        slot: u32,
+        value: u32,
+    },
+    Suspend {
+        fn_name: String,
+        pc: u32,
+    },
+}
+
+/// Wire form of the VM `BranchKind`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TraceBranchKind {
+    Jz,
+    Jnz,
+    JsJgez,
+    JnsJlz,
+    JpJlez,
+    JnpJgz,
+}
+
+/// Wire form of the VM `GlobalScope`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TraceGlobalScope {
+    /// Shared "plot-flag" global (the array exposed via
+    /// [`AgentCommand::GetScriptGlobals`]).
+    Shared,
+    /// Module-local global. PAL4 scripts almost never touch these
+    /// — observed writes here are an RE signal worth surfacing.
+    Module,
+}
+
+/// Parameters for [`AgentCommand::ChooseDialog`].
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct DialogChooseParams {
+    /// 1-based choice index, matching the legacy
+    /// `giSelectDialogGetLastSelect` return convention. Pass `1` to
+    /// pick the first item explicitly (also the implicit default).
+    pub index: i32,
+}
+

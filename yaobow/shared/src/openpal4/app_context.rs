@@ -28,6 +28,18 @@ pub struct DialogStateSnapshot {
     pub avatar: DialogAvatarSide,
 }
 
+/// Multiplier applied to the per-frame movement / rotation tween dt
+/// when `Pal4AppContext::fast_forward()` is true. The value is large
+/// enough that the per-frame step always exceeds the remaining
+/// distance / angle so the snap-to-target paths inside
+/// `update_moving_entities_` / `update_rotating_entities` fire on
+/// the first tick after `npc_to` / `player_walk_to` enqueues the
+/// move — making wait-for-motion script continuations
+/// (`npc_end_move`, `player_end_move`, `player_set_dir { sync = 1 }`,
+/// …) effectively zero-cost under fast-forward.
+const MOTION_FAST_FORWARD_SCALE: f32 = 1_000.0;
+
+
 /// Which side the dialog avatar portrait is currently anchored to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DialogAvatarSide {
@@ -99,6 +111,22 @@ pub struct Pal4AppContext {
     /// loads scenes without per-player controllers (e.g. before the
     /// script project is installed).
     actor_controller_factory: Option<Rc<dyn Pal4ActorControllerFactory>>,
+
+    /// Items the active script has queued for the next
+    /// `giShowSelectDialog` / `giShowCommonDialogInSelectMode`.
+    /// Populated by `giSelectDialogAddItem`; cleared when the
+    /// matching `giSelectDialogGetLastSelect` /
+    /// `giCommonDialogGetLastSelect` returns the choice.
+    ///
+    /// Surfaced via `/v1/state.dialog.choices` so the planner can
+    /// see the available options before picking via
+    /// `/v1/dialog/choose`.
+    pending_dialog_choices: Vec<String>,
+    /// Choice index to return from the next `*_get_last_select`
+    /// call. `None` ≡ "use the default (1)" — the legacy stubbed
+    /// behaviour. Consumed (taken) on the next read so each fire
+    /// must set it again.
+    next_dialog_choice: Cell<Option<i32>>,
 }
 
 impl Pal4AppContext {
@@ -138,6 +166,8 @@ impl Pal4AppContext {
             rotating_entities: HashMap::new(),
             actor_controller_factory: None,
             persistent_state: Pal4PersistentState::new("OpenPAL4".to_string()),
+            pending_dialog_choices: Vec::new(),
+            next_dialog_choice: Cell::new(None),
         }
     }
 
@@ -151,8 +181,25 @@ impl Pal4AppContext {
 
     pub fn update(&mut self, delta_sec: f32) {
         self.actdrop.update(self.ui.ui(), delta_sec);
-        self.update_moving_entities(delta_sec);
-        self.update_rotating_entities(delta_sec);
+        // When fast-forward is active we accelerate the movement /
+        // rotation tweens so wait-for-motion script continuations
+        // (player_end_move, npc_end_move, player_set_dir { sync = 1 },
+        // etc.) finish in a single tick. The scale is chosen large
+        // enough that the per-frame step always exceeds the
+        // remaining distance / angle, triggering the snap-to-target
+        // path in the inner loops.
+        //
+        // Camera runs and UV animations stay on real time so visuals
+        // don't go pathological if a fast-forwarded scene is paused
+        // partway through (the planner can still see the visual
+        // state in `/v1/screenshot`).
+        let motion_dt = if self.fast_forward.get() {
+            delta_sec * MOTION_FAST_FORWARD_SCALE
+        } else {
+            delta_sec
+        };
+        self.update_moving_entities(motion_dt);
+        self.update_rotating_entities(motion_dt);
         self.tick_camera_run(delta_sec);
         // Drive water UV animation each frame (PAL4 water surfaces).
         self.scene.tick_uv_anim(delta_sec);
@@ -628,6 +675,48 @@ impl Pal4AppContext {
             });
         }
         out
+    }
+
+    /// Snapshot of the player's inventory as `(equipment_id, count)`
+    /// pairs. Sorted by `equipment_id` for deterministic client
+    /// rendering; an empty `Vec` here is the canonical "no items"
+    /// state, not an error.
+    pub fn inventory_snapshot(&self) -> Vec<(i32, i32)> {
+        let mut out: Vec<(i32, i32)> = self
+            .persistent_state
+            .inventory_iter()
+            .map(|(id, count)| (*id, *count))
+            .collect();
+        out.sort_by_key(|(id, _)| *id);
+        out
+    }
+
+    /// Items queued for the next select-dialog. See the field doc
+    /// on [`Self::pending_dialog_choices`] for the lifecycle.
+    pub fn dialog_choices(&self) -> &[String] {
+        &self.pending_dialog_choices
+    }
+
+    /// Append one item to the pending dialog-choice list. Called
+    /// from the `giSelectDialogAddItem` sysfn handler.
+    pub fn push_dialog_choice(&mut self, item: String) {
+        self.pending_dialog_choices.push(item);
+    }
+
+    /// Buffer a choice for the next `*_get_last_select` call.
+    /// Wired to `/v1/dialog/choose`. The value is consumed on the
+    /// next read (so each pick lasts for exactly one dialog).
+    pub fn buffer_dialog_choice(&self, index: i32) {
+        self.next_dialog_choice.set(Some(index));
+    }
+
+    /// Take the buffered choice (or default to `1`) and clear the
+    /// pending-items list. Called from the `*_get_last_select`
+    /// sysfn handlers.
+    pub fn take_dialog_choice(&mut self) -> i32 {
+        let choice = self.next_dialog_choice.take().unwrap_or(1);
+        self.pending_dialog_choices.clear();
+        choice
     }
 
     pub fn scene_name(&self) -> &str {

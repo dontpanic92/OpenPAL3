@@ -1702,12 +1702,16 @@ fn check_magic_mastered(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Funct
 }
 
 fn select_dialog_add_item(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_item_file_str:i32);
+    as_params!(vm, item_file_str: i32);
+    if let Some(item) = get_str(vm, item_file_str as usize) {
+        vm.app_context_mut().push_dialog_choice(item);
+    }
     Pal4FunctionState::Completed
 }
 
 fn select_dialog_get_last_select(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<i32>(1);
+    let choice = vm.app_context_mut().take_dialog_choice();
+    vm.stack_push::<i32>(choice);
     Pal4FunctionState::Completed
 }
 
@@ -2053,7 +2057,8 @@ fn player_detach_effect(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Funct
 }
 
 fn common_dialog_get_last_select(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    vm.stack_push::<i32>(1);
+    let choice = vm.app_context_mut().take_dialog_choice();
+    vm.stack_push::<i32>(choice);
     Pal4FunctionState::Completed
 }
 

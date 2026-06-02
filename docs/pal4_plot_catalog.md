@@ -50,12 +50,27 @@ be checked in.
       "blocks": {
         "<block>": {
           "entry_fn": "<scene>_<block>_init" | null,
+          // NEW — set to `true` for blocks that don't appear in
+          // any `*_init` enumeration but are referenced via a
+          // recorded `transitions` entry from another block.
+          // Triggers/objects/npcs are empty for these — consumers
+          // should fall back to live `/v1/scene/triggers` data
+          // once the engine actually loads the block. Defaults
+          // to `false` and is omitted from compact output.
+          "synthesized": true,
           "triggers": [{
             "name":      "ev01",
             "function":  "q01_01_to_q01_02",
             "center":    [x, y, z],
             "half_size": [hx, hy, hz],
             "shape":     "box" | "plane" | "other",
+            // NEW — coarse classification distinguishing real
+            // script triggers from collision / camera-helper
+            // volumes. `"wall"` ⇔ `function == ""` *and*
+            // `shape == "other"`; everything else is `"trigger"`.
+            // The live engine itself skips `"wall"` entries when
+            // building collision, so agents should too.
+            "kind":      "trigger" | "wall",
             // NEW — call-graph closure aggregated across `function`
             // and every fn it Call's transitively (BFS, capped at
             // CALL_CLOSURE_DEPTH=16 fns). See "Trigger / object

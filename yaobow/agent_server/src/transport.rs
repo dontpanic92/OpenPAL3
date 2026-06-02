@@ -32,9 +32,9 @@ use tiny_http::{Header, Method, Request, Response, Server};
 use crate::log_sink::{AgentLogSink, LogRecord};
 use crate::protocol::{
     AgentCommand, AgentError, AgentErrorKind, AgentResponse, AxisInputParams, FastForwardParams,
-    KeyInputParams, LogRecordPayload, LogTailParams, LogTailResponse, NameParams,
-    ScreenshotResponse, ScriptEvalParams, ScriptGlobalsParams, SlotParams, StepTimeParams,
-    TeleportParams,
+    FireTriggerParams, KeyInputParams, LogRecordPayload, LogTailParams, LogTailResponse,
+    NameParams, ScreenshotResponse, ScriptEvalParams, ScriptGlobalsParams, SlotParams,
+    StepTimeParams, TeleportParams, TraceDrainParams, TraceStartParams,
 };
 use crate::queue::{AgentCommandQueue, AgentEnvelope};
 
@@ -225,7 +225,8 @@ fn handle_request(
     }
 
     // Convenience endpoints: GET /v1/state, GET /v1/screenshot,
-    // GET /v1/scene/{triggers,objects}, GET /v1/script/globals.
+    // GET /v1/scene/{triggers,objects}, GET /v1/script/globals,
+    // GET /v1/script/trace/drain.
     let command = match (method.clone(), url.as_str()) {
         (Method::Get, "/v1/state") => Ok(AgentCommand::GetState),
         (Method::Get, "/v1/screenshot") => Ok(AgentCommand::Screenshot),
@@ -234,6 +235,11 @@ fn handle_request(
         (Method::Get, url_str) if url_str.starts_with("/v1/script/globals") => {
             parse_script_globals_query(url_str)
                 .map(AgentCommand::GetScriptGlobals)
+                .map_err(AgentError::bad_request)
+        }
+        (Method::Get, url_str) if url_str.starts_with("/v1/script/trace/drain") => {
+            parse_trace_drain_query(url_str)
+                .map(AgentCommand::TraceDrain)
                 .map_err(AgentError::bad_request)
         }
         (Method::Post, _) => parse_post_command(&url, &mut req),
@@ -384,8 +390,24 @@ fn parse_post_command(url: &str, req: &mut Request) -> Result<AgentCommand, Agen
         "/v1/save" => AgentCommand::SaveSlot(parse::<SlotParams>(&body)?),
         "/v1/load" => AgentCommand::LoadSlot(parse::<SlotParams>(&body)?),
         "/v1/script/eval" => AgentCommand::ScriptEval(parse::<ScriptEvalParams>(&body)?),
-        "/v1/scene/fire_trigger" => AgentCommand::FireSceneTrigger(parse::<NameParams>(&body)?),
+        "/v1/scene/fire_trigger" => {
+            AgentCommand::FireSceneTrigger(parse::<FireTriggerParams>(&body)?)
+        }
         "/v1/object/interact" => AgentCommand::InteractObject(parse::<NameParams>(&body)?),
+        // `body` is optional for TraceStart — accept an empty body
+        // as "use defaults". Otherwise parse as TraceStartParams.
+        "/v1/script/trace/start" => {
+            let params = if body.trim().is_empty() {
+                TraceStartParams::default()
+            } else {
+                parse::<TraceStartParams>(&body)?
+            };
+            AgentCommand::TraceStart(params)
+        }
+        "/v1/script/trace/stop" => AgentCommand::TraceStop,
+        "/v1/dialog/choose" => AgentCommand::ChooseDialog(parse::<
+            crate::protocol::DialogChooseParams,
+        >(&body)?),
         _ => {
             return Err(AgentError::bad_request(format!(
                 "unknown POST route: {url}"
@@ -449,6 +471,27 @@ fn parse_script_globals_query(url: &str) -> Result<ScriptGlobalsParams, String> 
         }
     }
     Ok(ScriptGlobalsParams { start, limit })
+}
+
+/// Query-string parser for `GET /v1/script/trace/drain?after_seq=N&n=M`.
+/// Both parameters are optional and mirror `parse_log_tail_query`.
+fn parse_trace_drain_query(url: &str) -> Result<TraceDrainParams, String> {
+    let q = url.split_once('?').map(|(_, q)| q).unwrap_or("");
+    let mut after_seq: u64 = 0;
+    let mut n: Option<usize> = None;
+    for pair in q.split('&').filter(|s| !s.is_empty()) {
+        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+        match k {
+            "after_seq" => {
+                after_seq = v.parse().map_err(|e| format!("after_seq: {e}"))?;
+            }
+            "n" => {
+                n = Some(v.parse().map_err(|e| format!("n: {e}"))?);
+            }
+            _ => {}
+        }
+    }
+    Ok(TraceDrainParams { after_seq, n })
 }
 
 fn build_log_tail_response(

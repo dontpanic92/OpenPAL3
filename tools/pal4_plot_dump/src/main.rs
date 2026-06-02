@@ -117,6 +117,15 @@ struct Block {
     triggers: Vec<Trigger>,
     npcs: Vec<Npc>,
     objects: Vec<Object>,
+    /// `true` when this block entry was synthesised because some
+    /// other block's `transitions` referenced `(scene, block)` but
+    /// no `*_init` fn produced an entry. The block's
+    /// `triggers/npcs/objects` are intentionally empty — consumers
+    /// should fall back to live `/v1/scene/triggers` data once the
+    /// engine actually loads the block. Resolves the "missing
+    /// blocks" half of issue C1 in `generated/issues.md`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    synthesized: bool,
 }
 
 #[derive(Serialize)]
@@ -126,6 +135,13 @@ struct Trigger {
     center: [f32; 3],
     half_size: [f32; 3],
     shape: &'static str,
+    /// Coarse classification: `"trigger"` for entries with a bound
+    /// script function, `"wall"` for collision / camera-helper
+    /// volumes (empty function + `shape == "other"`). The live
+    /// engine itself skips `"wall"` entries when building collision
+    /// — agents should use this field rather than re-deriving the
+    /// same heuristic on the consumer side.
+    kind: &'static str,
     /// Aggregated call-graph closure starting from `function`. See
     /// `TriggerSummary` for field semantics; flattened inline here so
     /// agents only need to inspect one struct per trigger.
@@ -454,6 +470,7 @@ fn main() -> Result<()> {
     }
 
     catalog.global_count = bootstrap_global_count;
+    synthesise_missing_blocks(&mut catalog);
     build_plot_index(&mut catalog);
     eprintln!(
         "Catalog: {} scenes / {} blocks / {} sysfns / {} globals (bootstrap) / {} plot_index entries",
@@ -515,6 +532,7 @@ fn build_block(
         triggers,
         npcs,
         objects,
+        synthesized: false,
     })
 }
 
@@ -565,12 +583,21 @@ fn build_triggers(
                 .to_string()
                 .unwrap_or_default();
             let summary = build_trigger_summary(&function, fns, scene_transitions);
+            let kind: &'static str = if function.is_empty() && shape == "other" {
+                // Empty function + non-trigger shape = collision /
+                // camera-helper volume (issue C4). The live engine
+                // skips these; tag them so consumers can too.
+                "wall"
+            } else {
+                "trigger"
+            };
             Trigger {
                 name: event.name.to_string().unwrap_or_default(),
                 function,
                 center,
                 half_size,
                 shape,
+                kind,
                 summary,
             }
         })
@@ -877,6 +904,61 @@ fn build_trigger_summary(
     summary
 }
 
+// ---- block synthesis ----------------------------------------------------
+
+/// Add stub entries to `Catalog.scenes` for every `(scene, block)`
+/// pair some other block's recorded `transitions` references but no
+/// `*_init` discovery surfaced. Resolves the "missing blocks" half
+/// of issue C1 from `generated/issues.md` — without this, agents
+/// chasing the catalog's own transition list dead-end on, e.g.,
+/// `Q01/N03` (which is reachable via `Q01/Q01/ev_Q01_Q01_6` but had
+/// no `Q01_N03_init` fn to discover it from).
+///
+/// Synthesised blocks set `synthesized: true` and have empty
+/// `triggers/npcs/objects` vectors; consumers should fall back to
+/// live `/v1/scene/triggers` data once the engine actually loads
+/// the block.
+fn synthesise_missing_blocks(catalog: &mut Catalog) {
+    // Snapshot every referenced (scene, block) pair before
+    // mutating the catalog, so the loop's reads don't race the
+    // writes.
+    let mut needed: Vec<(String, String)> = Vec::new();
+    for (_, scene) in &catalog.scenes {
+        for (_, block) in &scene.blocks {
+            for trig in &block.triggers {
+                for dest in &trig.summary.transitions {
+                    needed.push((dest[0].clone(), dest[1].clone()));
+                }
+            }
+        }
+    }
+    let mut added = 0usize;
+    for (scn, blk) in needed {
+        // Existing scene keys are lower-cased (see `let scene_name
+        // = stem.to_ascii_lowercase()` at the discovery sites);
+        // match that so we don't create case-split duplicates.
+        let scn = scn.to_ascii_lowercase();
+        let scene = catalog
+            .scenes
+            .entry(scn.clone())
+            .or_insert_with(Scene::default);
+        if scene.blocks.contains_key(&blk) {
+            continue;
+        }
+        scene.blocks.insert(
+            blk.clone(),
+            Block {
+                synthesized: true,
+                ..Block::default()
+            },
+        );
+        added += 1;
+    }
+    if added > 0 {
+        eprintln!("Synthesised {} stub block(s) from transitions", added);
+    }
+}
+
 // ---- plot_index ---------------------------------------------------------
 
 /// Build `Catalog.plot_index` from the per-trigger / per-object closure
@@ -1080,6 +1162,7 @@ mod tests {
             center: [0.0; 3],
             half_size: [0.0; 3],
             shape: "plane",
+            kind: "trigger",
             summary: trig_summary,
         });
         scene.blocks.insert("01".into(), block);

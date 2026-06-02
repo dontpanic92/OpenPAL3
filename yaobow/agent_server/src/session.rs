@@ -113,6 +113,7 @@ impl AgentSession for NullAgentSession {
             movie_playing: false,
             fps: 0.0,
             dt: 0.0,
+            inventory: Vec::new(),
         }
     }
 }
