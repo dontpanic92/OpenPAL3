@@ -73,7 +73,10 @@ impl IPal4ActorAnimationControllerImpl for Pal4ActorAnimationController {
     }
 
     fn animation_completed(&self) -> bool {
-        self.armature.animation_state() == AnimationState::Stopped
+        matches!(
+            self.armature.animation_state(),
+            AnimationState::Stopped | AnimationState::NoAnimation
+        )
     }
 
     fn play_default(&self) {

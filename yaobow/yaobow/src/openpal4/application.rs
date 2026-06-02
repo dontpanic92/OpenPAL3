@@ -29,6 +29,13 @@ pub struct AgentBootOptions {
     pub bind_ip: Option<std::net::IpAddr>,
     /// Bearer token. Required for non-loopback binds.
     pub token: Option<String>,
+    /// Per-request HTTP reply timeout. The transport returns HTTP 500
+    /// with `"game thread did not reply within {dur:?}"` if the
+    /// game-side handler doesn't reply in time. `None` keeps the
+    /// crate default (5 s). Long PAL4 fires routinely take 6–10 s
+    /// even with fast-forward; pass `Some(Duration::from_secs(30))`
+    /// or similar when driving the planner.
+    pub reply_timeout: Option<std::time::Duration>,
 }
 
 impl AgentBootOptions {
@@ -37,6 +44,7 @@ impl AgentBootOptions {
             port,
             bind_ip: None,
             token: None,
+            reply_timeout: None,
         }
     }
 }
@@ -260,6 +268,9 @@ fn start_agent_server(
     }
     if let Some(token) = opts.token.clone() {
         config = config.with_token(token);
+    }
+    if let Some(reply_timeout) = opts.reply_timeout {
+        config = config.with_reply_timeout(reply_timeout);
     }
     AgentServer::start(config, &bridge.queue, log_sink)
 }

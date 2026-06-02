@@ -305,6 +305,16 @@ impl ArmatureComponent {
         *self.animation_state.borrow()
     }
 
+    /// Debug accessor: current playback position.
+    pub fn animation_tick(&self) -> f32 {
+        *self.animation_tick.borrow()
+    }
+
+    /// Debug accessor: total length of the loaded animation in seconds.
+    pub fn animation_length(&self) -> f32 {
+        *self.animation_length.borrow()
+    }
+
     /// Inherent counterpart to the formerly-IDL `bones`.
     pub fn bones(&self) -> Vec<ComRc<IEntity>> {
         self.bones.clone()

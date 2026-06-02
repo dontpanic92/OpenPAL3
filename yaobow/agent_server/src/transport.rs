@@ -85,6 +85,22 @@ impl AgentServerConfig {
         Ok(self)
     }
 
+    /// Override the per-request reply timeout. The transport returns
+    /// HTTP 500 with `"game thread did not reply within {dur:?}"` if
+    /// the game-side handler doesn't reply in time. Bumping this past
+    /// the default 5 s is needed for long fires (e.g. PAL4 dialog +
+    /// camera cutscenes routinely take 6–10 s of game-clock even with
+    /// fast-forward). The cap is intentionally permissive — the
+    /// per-fire side has its own
+    /// [`FireTriggerParams::timeout_ms`] (`director.rs::MAX_FIRE_TIMEOUT_MS = 30_000`)
+    /// that bounds how long the game thread will wait before
+    /// declaring its own deadline; this cap just needs to comfortably
+    /// exceed that.
+    pub fn with_reply_timeout(mut self, reply_timeout: Duration) -> Self {
+        self.reply_timeout = reply_timeout;
+        self
+    }
+
     fn requires_token(&self) -> bool {
         !self.bind.ip().is_loopback() && self.token.is_none()
     }

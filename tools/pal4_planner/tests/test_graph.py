@@ -48,6 +48,70 @@ def test_gate_inference_pairs_global_read_with_branch():
     assert g.slot_or_sysfn == "0"
     assert g.observed_value == 10_300
     assert g.taken is False
+    # No cmp_literal_lookup => inferred_required_value stays None.
+    assert g.inferred_required_value is None
+
+
+def test_gate_inference_uses_cmp_literal_lookup():
+    """With a catalog-derived cmp_literal_lookup, the gate row
+    carries the static RHS literal `V` recovered from
+    `pal4_plot.json` (issue D2)."""
+    events = [
+        _ev(1, FnEnter(name="func2013", function_index=0, depth=1)),
+        _ev(
+            2,
+            GlobalRead(
+                fn_name="func2013", pc=18, scope="shared", slot=0, value=10_201
+            ),
+        ),
+        _ev(
+            3,
+            Branch(
+                fn_name="func2013",
+                pc=34,
+                branch="jnz",
+                operand=1,
+                offset=352,
+                taken=True,
+            ),
+        ),
+        _ev(4, FnExit(name="func2013", depth=1)),
+    ]
+
+    def lookup(fn, pc):
+        # Mirrors `Catalog.cmp_literal("Q01", "func2013", 34)` → 160_500.
+        if fn == "func2013" and pc == 34:
+            return 160_500
+        return None
+
+    gates = derive_gates_from_trace(events, cmp_literal_lookup=lookup)
+    assert len(gates) == 1
+    g = gates[0]
+    assert g.observed_value == 10_201
+    assert g.inferred_required_value == 160_500
+    assert g.taken is True
+
+
+def test_gate_inference_leaves_required_none_when_lookup_misses():
+    events = [
+        _ev(1, FnEnter(name="f", function_index=0, depth=1)),
+        _ev(2, GlobalRead(fn_name="f", pc=8, scope="shared", slot=0, value=42)),
+        _ev(
+            3,
+            Branch(
+                fn_name="f",
+                pc=16,
+                branch="jz",
+                operand=42,
+                offset=8,
+                taken=False,
+            ),
+        ),
+    ]
+
+    gates = derive_gates_from_trace(events, cmp_literal_lookup=lambda *_: None)
+    assert len(gates) == 1
+    assert gates[0].inferred_required_value is None
 
 
 def test_gate_inference_pairs_callsys_with_branch():

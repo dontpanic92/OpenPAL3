@@ -57,14 +57,15 @@ pub fn main() {
     }
 }
 
-/// Parse the `--agent-port`, `--agent-bind`, `--agent-token` flags out
-/// of the command-line tail. Returns `None` when no `--agent-port` is
-/// present; otherwise an [`Pal4AgentBootOptions`] ready for
-/// [`run_openpal4_with_agent`].
+/// Parse the `--agent-port`, `--agent-bind`, `--agent-token`,
+/// `--agent-reply-timeout-secs` flags out of the command-line tail.
+/// Returns `None` when no `--agent-port` is present; otherwise an
+/// [`Pal4AgentBootOptions`] ready for [`run_openpal4_with_agent`].
 fn parse_agent_args(extra: &[String]) -> Option<Pal4AgentBootOptions> {
     let mut port: Option<u16> = None;
     let mut bind: Option<std::net::IpAddr> = None;
     let mut token: Option<String> = None;
+    let mut reply_timeout: Option<std::time::Duration> = None;
 
     let mut iter = extra.iter();
     while let Some(arg) = iter.next() {
@@ -78,6 +79,15 @@ fn parse_agent_args(extra: &[String]) -> Option<Pal4AgentBootOptions> {
             "--agent-token" => {
                 token = iter.next().cloned();
             }
+            "--agent-reply-timeout-secs" => {
+                reply_timeout = iter
+                    .next()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    // Cap at 60 s — beyond that something is wrong on
+                    // the game side and we want to surface a 500
+                    // rather than hold the HTTP connection forever.
+                    .map(|secs| std::time::Duration::from_secs(secs.min(60)));
+            }
             _ => {}
         }
     }
@@ -86,6 +96,7 @@ fn parse_agent_args(extra: &[String]) -> Option<Pal4AgentBootOptions> {
     let mut opts = Pal4AgentBootOptions::loopback(port);
     opts.bind_ip = bind;
     opts.token = token;
+    opts.reply_timeout = reply_timeout;
     Some(opts)
 }
 

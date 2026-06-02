@@ -7,6 +7,21 @@ particular the new VM **execution-trace** stream
 (`/v1/script/trace/*`) — to *push* the plot reliably instead of
 guessing which trigger to fire next.
 
+## Plot advancement is trigger-driven
+
+The planner **only** advances the plot by firing triggers and
+interacting with objects — never by writing script globals directly.
+When a fire is a no-op because a gating predicate failed, the planner
+looks up the gating slot in the catalog's `plot_index` reverse index
+and chains a prerequisite fire that writes the needed value. The full
+rationale (every plot flag carries scripted side-effects — camera
+moves, party swaps, item awards, music, save bookkeeping — that
+direct writes would bypass and desync) lives in
+[`docs/pal4_plot_catalog.md`](pal4_plot_catalog.md#plot-advancement-not-set-the-flag).
+
+There is intentionally no `/v1/script/eval` or
+`/v1/script/globals/set` endpoint, and the planner does not need one.
+
 ## Why concolic
 
 Static analysis (the `tools/pal4_plot_dump`-generated

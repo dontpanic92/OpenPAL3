@@ -53,7 +53,7 @@ import json
 import sqlite3
 import time
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional
 
 from .trace import (
     Branch,
@@ -187,9 +187,12 @@ class Graph:
         globals_after: List[int],
         transitioned_to: Optional[tuple[str, str]],
         trace: Iterable[TraceEvent],
+        cmp_literal_lookup: Optional[CmpLiteralLookup] = None,
     ) -> int:
         events = list(trace)
-        gates = derive_gates_from_trace(events)
+        gates = derive_gates_from_trace(
+            events, cmp_literal_lookup=cmp_literal_lookup
+        )
         with self._transaction() as cur:
             cur.execute(
                 """
@@ -242,6 +245,49 @@ class Graph:
                 )
             return int(fire_id)
 
+    def record_interact(
+        self,
+        scene: str,
+        block: str,
+        object_name: str,
+        globals_before: Optional[List[int]] = None,
+        globals_after: Optional[List[int]] = None,
+    ) -> int:
+        """Persist an object-interact step so the planner's dedup set
+        (`fires_in`) reflects it. The stored `name` is prefixed with
+        `obj:` to match the key `ExplorePlanner.pick` uses for
+        already-fired lookup (`obj_key = f"obj:{name}"`).
+
+        We don't have an `interact` trace cursor on the agent server
+        today, so `trace=[]` here; the planner's interest in this
+        record is purely dedup + provenance. Fixes `progress_issues.md#B3`.
+        """
+        with self._transaction() as cur:
+            cur.execute(
+                """
+                INSERT INTO fires (
+                    started_at, scene, block, name, fn,
+                    settled, waited_frames,
+                    transitioned_to_scene, transitioned_to_block,
+                    globals_before_json, globals_after_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    time.time(),
+                    scene,
+                    block,
+                    f"obj:{object_name}",
+                    "",  # no fn — interact dispatches via research_function dynamically
+                    1,
+                    0,
+                    None,
+                    None,
+                    json.dumps(globals_before) if globals_before is not None else None,
+                    json.dumps(globals_after) if globals_after is not None else None,
+                ),
+            )
+            return int(cur.lastrowid)
+
     # ---- reads ----------------------------------------------------------
 
     def last_fire(self) -> Optional[FireRecord]:
@@ -254,12 +300,55 @@ class Graph:
             return None
         return FireRecord(*row[:5], bool(row[5]), int(row[6]), row[7], row[8])
 
-    def fires_in(self, scene: str, block: str) -> List[FireRecord]:
+    def fires_in(
+        self,
+        scene: str,
+        block: str,
+        current_globals: Optional[List[int]] = None,
+    ) -> List[FireRecord]:
+        """Return previously-recorded fires in `(scene, block)`.
+
+        When `current_globals` is `None`, returns every settled fire
+        (used by goal-seek's "have we ever succeeded with this
+        writer?" ranking).
+
+        When `current_globals` is provided, returns only fires that
+        were **pure no-ops in this state** — i.e. fires whose
+        recorded `globals_after_json` equals `current_globals` AND
+        which produced no transition out of the block. Those are
+        the only fires worth deduping from the planner's
+        perspective: a fire that *transitioned* under the current
+        globals is interesting to re-do because the transition's
+        downstream effect may now differ, and a fire whose
+        `globals_after` differs from the live state is by
+        definition stale (the world has moved on since).
+        """
+        if current_globals is None:
+            rows = self.conn.execute(
+                "SELECT id, scene, block, name, fn, settled, waited_frames, "
+                "transitioned_to_scene, transitioned_to_block "
+                "FROM fires WHERE scene = ? AND block = ? ORDER BY id",
+                (scene, block),
+            ).fetchall()
+            return [FireRecord(*r[:5], bool(r[5]), int(r[6]), r[7], r[8]) for r in rows]
+        # Filter on stored globals_after. A fire dedupes if its
+        # observed effect on globals matches the current live state:
+        # re-firing would just reproduce the same outcome. Triggers
+        # whose `globals_after` no longer matches the live state
+        # are by definition stale (the world has moved on) and
+        # remain fireable. Transitioning triggers are deduped
+        # under their observed-state condition too — re-navigating
+        # to the same destination under the same globals lands us
+        # in the same place we already explored, so it's a no-op
+        # from the planner's perspective.
+        wanted = json.dumps(list(current_globals))
         rows = self.conn.execute(
             "SELECT id, scene, block, name, fn, settled, waited_frames, "
             "transitioned_to_scene, transitioned_to_block "
-            "FROM fires WHERE scene = ? AND block = ? ORDER BY id",
-            (scene, block),
+            "FROM fires WHERE scene = ? AND block = ? "
+            "AND globals_after_json = ? "
+            "ORDER BY id",
+            (scene, block, wanted),
         ).fetchall()
         return [FireRecord(*r[:5], bool(r[5]), int(r[6]), r[7], r[8]) for r in rows]
 
@@ -290,7 +379,19 @@ class Graph:
 
 # ---- gate inference -----------------------------------------------------
 
-def derive_gates_from_trace(events: List[TraceEvent]) -> List[GateRecord]:
+# Callable signature: `(fn_name, pc) -> Optional[int]`. Used by
+# `derive_gates_from_trace` to look up the per-fn RHS literal
+# `pal4_plot_dump` recovered. The trace already carries `(fn_name, pc)`
+# on every Branch event, so the planner can wire this with a closure
+# over `Catalog.cmp_literal(scene, fn, pc)` once it knows the scene of
+# the fire — see `drive.cmd_explore`.
+CmpLiteralLookup = Callable[[str, int], Optional[int]]
+
+
+def derive_gates_from_trace(
+    events: List[TraceEvent],
+    cmp_literal_lookup: Optional[CmpLiteralLookup] = None,
+) -> List[GateRecord]:
     """Extract `(predicate, observed value, branch outcome)` triples
     from a fire's trace.
 
@@ -301,21 +402,24 @@ def derive_gates_from_trace(events: List[TraceEvent]) -> List[GateRecord]:
     and the planner needs to learn "to satisfy this fire, item N must
     be in the inventory".
 
-    `inferred_required_value` is set when the observed branch didn't
-    take and we can guess what value would have flipped it. For
-    `jz`/`jnz` against a global, the flip-value is simply `observed
-    != current` — we record `None` (caller must search the gate
-    catalog for a write that lands the desired value). For sysfn
-    predicates we record `None` too — the planner uses
-    `slot_or_sysfn` as the key to search for a "writer" trigger.
+    When `cmp_literal_lookup` is provided (typically a closure over
+    `Catalog.cmp_literal(scene, fn, pc)`), the function populates
+    `inferred_required_value` for global gates from the static
+    walker's per-`(fn, pc)` `cmp_literals` map. The trace's
+    `Branch.operand` is the *comparison result* (0 / 1 for Jz/Jnz),
+    not the RHS literal, so the literal must come from the static
+    catalog. For sysfn gates we still record `None` — the planner
+    uses `slot_or_sysfn` as the key to search for a "writer" trigger.
     """
     gates: List[GateRecord] = []
-    n = len(events)
     for i, ev in enumerate(events):
         kind = ev.kind
         if isinstance(kind, GlobalRead):
             partner = _find_next_branch(events, i + 1, kind.fn_name)
             if partner is not None:
+                inferred = None
+                if cmp_literal_lookup is not None:
+                    inferred = cmp_literal_lookup(partner.fn_name, partner.pc)
                 gates.append(
                     GateRecord(
                         fire_id=-1,  # filled in by record_fire
@@ -323,7 +427,7 @@ def derive_gates_from_trace(events: List[TraceEvent]) -> List[GateRecord]:
                         slot_or_sysfn=str(kind.slot),
                         observed_value=int(kind.value),
                         taken=partner.taken,
-                        inferred_required_value=None,
+                        inferred_required_value=inferred,
                     )
                 )
         elif isinstance(kind, CallSys):

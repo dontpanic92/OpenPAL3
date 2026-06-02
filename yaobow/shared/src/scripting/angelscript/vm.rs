@@ -771,7 +771,14 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
                 self.fp,
             );
         }
-        self.context.as_mut().unwrap().pc += offset as usize;
+        // `offset` is a signed byte-offset relative to the
+        // post-fetch pc. Use `wrapping_add` after casting through
+        // `usize` so backward jumps (negative offsets) don't
+        // overflow the unsigned pc — sufficient because pc is
+        // bounded by the instruction-buffer length and the AS
+        // assembler emits in-bounds offsets.
+        let ctx = self.context.as_mut().unwrap();
+        ctx.pc = ctx.pc.wrapping_add(offset as usize);
     }
 
     fn tz(&mut self) {

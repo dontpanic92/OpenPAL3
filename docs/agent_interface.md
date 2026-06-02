@@ -112,7 +112,7 @@ Notable variants for plot-progression analysis:
 
 | Method | Path                                | Notes                                                 |
 | ------ | ----------------------------------- | ----------------------------------------------------- |
-| `POST` | `/v1/script/eval`                   | **501** until the per-function `gi*` whitelist lands. |
+| `POST` | `/v1/script/eval`                   | **501 — intentional.** Plot advancement is trigger-driven; see [`docs/pal4_plot_catalog.md`](pal4_plot_catalog.md#plot-advancement-not-set-the-flag). The stub stays for future read-only inspector use cases. |
 
 ## Examples
 
@@ -276,8 +276,9 @@ yaobow and resume the run from a save slot.
 * The default bind is `127.0.0.1`; non-loopback binds **require** a
   bearer token (`AgentServerConfig::with_token`).
 * No filesystem endpoints, no arbitrary code eval. `/v1/script/eval`
-  is gated on a per-function whitelist that will land in a follow-up
-  alongside the JSON ↔ AngelScript marshalling code.
+  is intentionally 501 — plot advancement is trigger-driven (see
+  [`docs/pal4_plot_catalog.md`](pal4_plot_catalog.md#plot-advancement-not-set-the-flag)),
+  and there is no `/v1/script/globals/set` endpoint either.
 * The server does not respond to non-`/v1/...` URLs; unknown routes
   return `400 bad_request`.
 
@@ -316,7 +317,5 @@ per-game bridges that drain the same queue.
   windowed mode covers every other endpoint today, **including
   `/v1/screenshot`** which transparently returns 501 in headless
   builds (no presentable surface to capture).
-* `script-eval` whitelist: needs a JSON ↔ AngelScript stack
-  marshaller; staged as its own patch with dedicated tests.
 * MCP wrapper: trivial follow-up — it's just a client of these HTTP
   endpoints.

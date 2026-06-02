@@ -41,7 +41,7 @@ be checked in.
 
 ```jsonc
 {
-  "version": 1,
+  "version": 2,
   "sysfn_count": <usize>,       // size of the openpal4 sysfn ordinal table
   "global_count": <usize>,      // size of script.csb's globals array
   "scenes": {
@@ -111,7 +111,23 @@ be checked in.
           "reads":  [<shared-global slot>, ...],
           "writes": [{"global": <slot>, "value": <i32> | null}, ...],
           "sysfns": ["giArenaReady", "giTalk", ...],
-          "calls":  ["funcNNNN", ...]   // intra-module Call targets
+          "calls":  ["funcNNNN", ...],  // intra-module Call targets
+          // NEW (v2) — recovered RHS literals for `Jz` / `Jnz`
+          // gates that follow the standard
+          //   `Rdga4 slot ; Cmpii { rhs: V } ; Jcc`
+          // or
+          //   `Rdga4 slot ; Set4 V ; Subi|Cmpi ; Jcc`
+          // pattern. Map key is the **PC the trace reports** for
+          // the `Jcc` (= instruction-address + 8 bytes for the
+          // opcode + i32 offset operand), matching
+          // `TraceEvent::Branch.pc`. Value is the literal V or
+          // `null` when the RHS was computed. Used by the planner
+          // to populate `gates.inferred_required_value` without
+          // re-reading the bytecode at agent-runtime.
+          //
+          // Omitted (and absent in compact output) when the fn
+          // contains no gate-shaped predicates.
+          "cmp_literals": {"<branch_pc>": <i32> | null, ...}
         }
       },
       "transitions": [{
@@ -158,6 +174,7 @@ be checked in.
 | `fns[..].writes[].value`    | Top-of-operand-stack literal observed at the `Movga4` site: a recent `Set4 v` / `PushZero`. When the value is computed (returned from a sysfn, read from another global, etc.) the slot still records the write with `value: null`. |
 | `fns[..].sysfns`            | Distinct `CallSys` indices resolved through `openpal4::scripting::create_context().functions()` (so the table stays in sync with the live game). |
 | `fns[..].calls`             | Distinct intra-module `Call { function }` targets, resolved against `module.functions[function].name`. Seeds the per-trigger closure walker. |
+| `fns[..].cmp_literals`      | **NEW (v2).** RHS literal `V` from `g[slot] cmp V` gate predicates, keyed by the PC the live trace reports for the conditional jump (`instruction_addr + 8` bytes — 4 for the opcode, 4 for the i32 offset operand). Handles both the short form (`Cmpii { rhs: V } ; Jcc`) and the long form (`Set4 V ; Subi|Cmpi ; Jcc`). `null` when the RHS was computed (read from another global, etc.). |
 | `triggers[..]` closure      | BFS from `function` over `fns[..].calls`, unioning `reads` / `writes` and any `transitions` whose `via_fn` was visited. Capped at `CALL_CLOSURE_DEPTH = 16` fns total. |
 | `objects[..]` closure       | Same as triggers, seeded from `research_function`. Empty when the entry has no examine handler. |
 | `plot_index`                | Inverted from every `triggers[..].writes` and `objects[..].writes` across the catalog, keyed by `global` slot, deduped on `(scene, block, trigger, object, fn, value)`. |

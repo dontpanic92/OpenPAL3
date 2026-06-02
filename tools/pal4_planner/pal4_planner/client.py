@@ -200,20 +200,45 @@ class Client:
             )
         return None
 
-    def fire_trigger_sync(self, name: str, timeout_ms: int = 5000) -> FireResult:
+    def fire_trigger_sync(
+        self,
+        name: str,
+        timeout_ms: int = 5000,
+        wait_idle_timeout_sec: float = 120.0,
+    ) -> FireResult:
         """Convenience: fire-and-wait-and-trace.
 
         Equivalent to `fire_trigger(name, wait_until_idle=True,
         collect_trace=True, timeout_ms=...)` but raises when the
         engine returns a non-fire-trigger response (e.g. an immediate
         error). The planner uses this for every step.
+
+        The agent server's HTTP transport has its own per-request
+        `reply_timeout` (default 5 s; raise it via the
+        `--agent-reply-timeout-secs` server-side CLI flag) that is
+        **independent** of `timeout_ms`. If the server-side reply
+        timeout fires before the fire completes, the transport
+        returns HTTP 500 with `"game thread did not reply within
+        Ns"`. We treat that as "engine still busy", poll
+        `/v1/state` until `script_running == false` (bounded by
+        `wait_idle_timeout_sec`), then synthesise a `FireResult` so
+        the caller can still observe the fire's effect via the
+        trace-drain cursor + globals diff. See `progress_issues.md#B2`.
         """
-        result = self.fire_trigger(
-            name,
-            wait_until_idle=True,
-            collect_trace=True,
-            timeout_ms=timeout_ms,
-        )
+        try:
+            result = self.fire_trigger(
+                name,
+                wait_until_idle=True,
+                collect_trace=True,
+                timeout_ms=timeout_ms,
+            )
+        except AgentError as e:
+            if _looks_like_reply_timeout(e):
+                return self._wait_for_fire_completion(
+                    name,
+                    wait_idle_timeout_sec=wait_idle_timeout_sec,
+                )
+            raise
         if result is None:
             raise AgentError(
                 500,
@@ -222,8 +247,77 @@ class Client:
             )
         return result
 
+    def _wait_for_fire_completion(
+        self,
+        name: str,
+        wait_idle_timeout_sec: float,
+    ) -> FireResult:
+        """Recovery path for `fire_trigger_sync` when the HTTP transport
+        timed out before the engine finished. Polls `/v1/state` for
+        `script_running == false`, then returns a synthesised
+        `FireResult` carrying `settled=True` and `waited_frames=0`.
+
+        The trace cursor in the returned result is `None` because we
+        no longer know the seq range the server would have reported.
+        Callers that need the trace should `trace_drain` themselves
+        from whatever cursor they had before the fire.
+        """
+        deadline = time.monotonic() + max(0.0, wait_idle_timeout_sec)
+        poll_interval = 0.25
+        while True:
+            try:
+                state = self.state()
+            except AgentError:
+                state = {}
+            if not bool(state.get("script_running", True)):
+                return FireResult(
+                    name=name,
+                    settled=True,
+                    trace_seq_start=None,
+                    trace_seq_end=None,
+                    waited_frames=0,
+                    current_script_fn=None,
+                )
+            if time.monotonic() >= deadline:
+                raise AgentError(
+                    500,
+                    "internal",
+                    f"fire_trigger {name!r}: server reply timed out "
+                    f"and engine did not idle within {wait_idle_timeout_sec}s",
+                )
+            time.sleep(poll_interval)
+
     def interact(self, name: str) -> None:
         self._retry_409("POST", "/v1/object/interact", {"name": name})
+
+    def wait_for_idle(self, timeout_sec: float = 30.0) -> bool:
+        """Poll `/v1/state` until `script_running == False` (and
+        `movie_playing == False`), bounded by `timeout_sec`. Returns
+        `True` when the engine idles, `False` on timeout.
+
+        Used as the asynchronous-equivalent of
+        `fire_trigger_sync`'s built-in waiting for operations whose
+        completion the agent server doesn't currently block on
+        (`/v1/object/interact`). PAL4 object research handlers can
+        run multi-second dialog + camera + giArenaLoad sequences;
+        callers that read `globals()` immediately after `interact()`
+        without this wait will observe stale values.
+        """
+        deadline = time.monotonic() + max(0.0, timeout_sec)
+        poll_interval = 0.05
+        while True:
+            try:
+                state = self.state()
+            except AgentError:
+                state = {}
+            if not bool(state.get("script_running", True)) and not bool(
+                state.get("movie_playing", False)
+            ):
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(poll_interval)
+            poll_interval = min(poll_interval * 1.5, 0.5)
 
     def teleport(self, player: int, pos: tuple[float, float, float]) -> None:
         self._request(
@@ -237,3 +331,14 @@ class Client:
 
     def load(self, slot: int) -> None:
         self._request("POST", "/v1/load", {"slot": slot})
+
+
+def _looks_like_reply_timeout(e: AgentError) -> bool:
+    """Heuristic for `transport.rs::RecvTimeoutError::Timeout`:
+    `AgentErrorKind::Internal` with the canonical message
+    `"game thread did not reply within {dur:?}"`. Used by
+    `Client.fire_trigger_sync` to convert this specific failure into
+    a polling-recovery instead of a hard exception."""
+    if e.status != 500 or e.kind != "internal":
+        return False
+    return "did not reply" in (e.message or "")

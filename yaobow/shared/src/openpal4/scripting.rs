@@ -1697,6 +1697,7 @@ fn grant_magic_system(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functio
 }
 
 fn check_magic_mastered(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    as_params!(vm, _magic_id: i32);
     vm.stack_push::<i32>(1);
     Pal4FunctionState::Completed
 }
@@ -2201,6 +2202,19 @@ fn player_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionS
 fn player_end_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32);
 
+    // PAL4 cutscenes pair `giPlayerDoAction(_, _, -1)` (which
+    // starts an animation in `PauseOnHold` mode — playback
+    // pauses at the "hold" event marker) with a later
+    // `giPlayerEndAction(_)` that semantically means "release
+    // any pending hold and wait for the animation to finish
+    // playing out". The retail engine implicitly unholds; if we
+    // don't, scripts wedge at the first unbalanced
+    // PauseOnHold/EndAction pair (very common in M01 / Q01
+    // dialog scenes — see `progress notes #M01-wedge`). Issue
+    // the unhold up front so the continuation can observe a
+    // natural Stopped state.
+    vm.app_context.player_unhold_act(player_id);
+
     Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
         if vm.app_context.player_act_completed(player_id) {
             ContinuationState::Completed
@@ -2221,6 +2235,9 @@ fn player_current_do_action(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4F
 
 fn player_current_end_action(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
+        // Mirror `player_end_action`'s implicit unhold for the
+        // current leader. See that function for the rationale.
+        vm.app_context.player_unhold_act(-1);
         if vm.app_context.player_act_completed(-1) {
             ContinuationState::Completed
         } else {

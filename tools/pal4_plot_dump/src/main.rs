@@ -74,6 +74,12 @@ struct Cli {
 
 // ---- output schema ------------------------------------------------------
 
+/// Schema version recorded in the catalog's top-level `version` field.
+/// Bump on every shape-breaking change so downstream loaders can
+/// detect stale dumps. v2 adds `fns[..].cmp_literals` for gate-
+/// predicate inference; see `docs/pal4_plot_catalog.md`.
+const CATALOG_VERSION: u32 = 2;
+
 #[derive(Serialize, Default)]
 struct Catalog {
     version: u32,
@@ -201,6 +207,17 @@ struct FunctionSummary {
     /// Distinct module-local function names called via `Call`
     /// (opcode 12). Used to seed the per-trigger closure walker.
     calls: Vec<String>,
+    /// Recovered "RHS literal" for `Jz` / `Jnz` instructions that
+    /// follow the standard `Rdga4 slot ; Set4 V ; Subi|Cmpi ; Jcc`
+    /// gate pattern. Map key is the **PC of the `Jcc` instruction**
+    /// (matches `TraceEvent::Branch.pc`); value is the literal `V`
+    /// the script compared the global against, or `None` when the
+    /// RHS was computed. Lets the planner populate
+    /// `gates.inferred_required_value` without re-reading the
+    /// bytecode at agent-runtime. See `docs/pal4_planner.md`
+    /// "Gate inference".
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    cmp_literals: BTreeMap<u32, Option<i32>>,
 }
 
 /// A single concrete write to a shared global.
@@ -329,7 +346,7 @@ fn main() -> Result<()> {
     let mut bootstrap_global_count = 0usize;
 
     let mut catalog = Catalog {
-        version: 1,
+        version: CATALOG_VERSION,
         sysfn_count: sysfns.len(),
         global_count: 0,
         scenes: BTreeMap::new(),
@@ -690,6 +707,96 @@ enum Abs {
     Str(u16),
 }
 
+/// Scan a function's disassembly for `g[slot] cmp V` gate predicates
+/// and return a map from **trace-visible PC** → recovered RHS literal.
+///
+/// PAL4's AngelScript bytecode encodes gates in two shapes:
+///
+/// ```text
+///   Rdga4 -(slot+1)              // push g[slot]
+///   Cmpii { rhs: V }             // pop, push (g[slot] - V) sign-result
+///   Jz off  |  Jnz off           // branch on the result
+/// ```
+///
+/// …or the long form…
+///
+/// ```text
+///   Rdga4 -(slot+1)
+///   Set4 V   |  PushZero
+///   Subi     |  Cmpi
+///   Jz off   |  Jnz off
+/// ```
+///
+/// We track both with a single 3-state pipeline. Any instruction that
+/// isn't part of the recognised sequence resets the state machine so a
+/// stale `Set4` from earlier in the function can't be paired with a
+/// much later branch.
+///
+/// The map key is the PC `TraceEvent::Branch.pc` reports — that's
+/// `instruction.addr + 8` for `Jz`/`Jnz` (4-byte opcode + 4-byte i32
+/// offset operand fetched by `ScriptVm::read_inst` and
+/// `data_read::i32` before the handler is invoked in
+/// `yaobow/shared/src/scripting/angelscript/vm.rs`). Value is the
+/// literal `V`, or `None` when the RHS was computed (e.g. read from
+/// another global).
+fn extract_cmp_literals(insts: &[AsInstInstance]) -> BTreeMap<u32, Option<i32>> {
+    enum GateState {
+        Idle,
+        AfterRdga4,
+        AfterCmp(Option<i32>),
+    }
+    let mut state = GateState::Idle;
+    // Long-form scratch: when we see `Rdga4 ; Set4 V` we stash V here
+    // and confirm it on the following `Subi`/`Cmpi`. Reset on any
+    // out-of-pattern instruction.
+    let mut pending_lit: Option<i32> = None;
+    let mut out = BTreeMap::new();
+
+    for inst in insts {
+        state = match (&state, &inst.inst) {
+            (_, AsInst::Rdga4 { index }) if *index < 0 => {
+                pending_lit = None;
+                GateState::AfterRdga4
+            }
+            // Short form: compare-immediate folds the literal into the
+            // opcode itself.
+            (GateState::AfterRdga4, AsInst::Cmpii { rhs })
+            | (GateState::AfterRdga4, AsInst::Subii { rhs }) => {
+                GateState::AfterCmp(Some(*rhs))
+            }
+            (GateState::AfterRdga4, AsInst::Cmpiui { rhs }) => {
+                GateState::AfterCmp(Some(*rhs as i32))
+            }
+            // Long form: a separate literal push followed by Subi/Cmpi.
+            (GateState::AfterRdga4, AsInst::Set4 { data }) => {
+                pending_lit = Some(*data as i32);
+                GateState::AfterRdga4
+            }
+            (GateState::AfterRdga4, AsInst::PushZero) => {
+                pending_lit = Some(0);
+                GateState::AfterRdga4
+            }
+            (GateState::AfterRdga4, AsInst::Subi)
+            | (GateState::AfterRdga4, AsInst::Cmpi) => {
+                let v = pending_lit.take();
+                GateState::AfterCmp(v)
+            }
+            (GateState::AfterCmp(v), AsInst::Jz { .. })
+            | (GateState::AfterCmp(v), AsInst::Jnz { .. }) => {
+                let trace_pc = inst.addr + 8;
+                out.entry(trace_pc).or_insert(*v);
+                pending_lit = None;
+                GateState::Idle
+            }
+            _ => {
+                pending_lit = None;
+                GateState::Idle
+            }
+        };
+    }
+    out
+}
+
 fn walk_function(
     insts: &[AsInstInstance],
     module: &ScriptModule,
@@ -720,6 +827,8 @@ fn walk_function(
     // one before it is `block`.
     let mut last_str_slot: Option<(u16, i16)> = None; // (string_idx, param_index) just after string@
     let mut recent_writes: Vec<u16> = Vec::with_capacity(4); // string-table indices of last few StoreObj writes
+
+    summary.cmp_literals = extract_cmp_literals(insts);
 
     for inst in insts {
         match &inst.inst {
@@ -1082,6 +1191,7 @@ mod tests {
                 .collect(),
             sysfns: vec![],
             calls: vec![],
+            cmp_literals: BTreeMap::new(),
         }
     }
 
@@ -1091,6 +1201,7 @@ mod tests {
             writes: vec![],
             sysfns: vec![],
             calls: calls.into_iter().map(|s| s.to_string()).collect(),
+            cmp_literals: BTreeMap::new(),
         }
     }
 
@@ -1145,7 +1256,7 @@ mod tests {
     #[test]
     fn plot_index_groups_by_global_and_dedupes() {
         let mut catalog = Catalog {
-            version: 1,
+            version: CATALOG_VERSION,
             sysfn_count: 0,
             global_count: 0,
             scenes: BTreeMap::new(),
@@ -1178,5 +1289,53 @@ mod tests {
         assert_eq!(e.block, "01");
         assert_eq!(e.trigger.as_deref(), Some("ev01"));
         assert_eq!(e.r#fn, "f1");
+    }
+
+    /// `extract_cmp_literals` must recover the RHS literal from both
+    /// forms of the AS gate pattern, keyed by the trace-visible PC
+    /// (`addr + 8` — opcode is 4 bytes, the offset operand another 4).
+    #[test]
+    fn extract_cmp_literals_short_and_long_form() {
+        // `addr` values chosen so the (addr + 8) keys are easy to spot.
+        let insts = vec![
+            // Short form: Rdga4 ; Cmpii { rhs: 11400 } ; Jnz off
+            // Branch at addr=0x10 → trace pc=0x18.
+            AsInstInstance { addr: 0x00, inst: AsInst::Rdga4 { index: -1 } },
+            AsInstInstance { addr: 0x08, inst: AsInst::Cmpii { rhs: 11_400 } },
+            AsInstInstance { addr: 0x10, inst: AsInst::Jnz { offset: 100 } },
+            // Long form: Rdga4 ; Set4 V ; Subi ; Jz off
+            AsInstInstance { addr: 0x20, inst: AsInst::Rdga4 { index: -1 } },
+            AsInstInstance { addr: 0x28, inst: AsInst::Set4 { data: 10_600 } },
+            AsInstInstance { addr: 0x30, inst: AsInst::Subi },
+            AsInstInstance { addr: 0x38, inst: AsInst::Jz { offset: 50 } },
+            // Pattern broken by an unrelated CallSys: must NOT
+            // attribute a stale literal to this Jcc.
+            AsInstInstance { addr: 0x50, inst: AsInst::Rdga4 { index: -1 } },
+            AsInstInstance { addr: 0x58, inst: AsInst::CallSys { function_index: -100 } },
+            AsInstInstance { addr: 0x60, inst: AsInst::Jnz { offset: 4 } },
+            // PushZero-as-RHS short cut: Rdga4 ; PushZero ; Cmpi ; Jz
+            AsInstInstance { addr: 0x70, inst: AsInst::Rdga4 { index: -1 } },
+            AsInstInstance { addr: 0x78, inst: AsInst::PushZero },
+            AsInstInstance { addr: 0x80, inst: AsInst::Cmpi },
+            AsInstInstance { addr: 0x88, inst: AsInst::Jz { offset: 8 } },
+        ];
+
+        let lits = extract_cmp_literals(&insts);
+        assert_eq!(lits.get(&0x18), Some(&Some(11_400)));
+        assert_eq!(lits.get(&0x40), Some(&Some(10_600)));
+        assert_eq!(lits.get(&0x68), None);
+        assert_eq!(lits.get(&0x90), Some(&Some(0)));
+    }
+
+    /// Positive-index `Rdga4` references module-local globals (not
+    /// part of the plot vector) and must not trigger gate recognition.
+    #[test]
+    fn extract_cmp_literals_skips_module_local_rdga4() {
+        let insts = vec![
+            AsInstInstance { addr: 0x00, inst: AsInst::Rdga4 { index: 3 } },
+            AsInstInstance { addr: 0x08, inst: AsInst::Cmpii { rhs: 1 } },
+            AsInstInstance { addr: 0x10, inst: AsInst::Jnz { offset: 8 } },
+        ];
+        assert!(extract_cmp_literals(&insts).is_empty());
     }
 }
