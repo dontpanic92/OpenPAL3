@@ -375,10 +375,14 @@ def build_parser() -> argparse.ArgumentParser:
     explore.add_argument(
         "--fire-timeout-ms",
         type=int,
-        default=20_000,
+        default=180_000,
         help="server-side per-fire timeout (ms); bounded by the engine's "
-        "MAX_FIRE_TIMEOUT_MS (30s). Note: this is independent of the "
-        "HTTP transport's reply_timeout — start the server with "
+        "MAX_FIRE_TIMEOUT_MS (180s). Long PAL4 cutscenes (M01 magic "
+        "tutorial, Q01 dialog scenes) routinely chain dozens of "
+        "giPlayerDoAction/giPlayerEndAction pairs with 4-8s "
+        "animations each — fast-forward only affects `giWait`, not "
+        "animation playback. Note: this is independent of the HTTP "
+        "transport's reply_timeout — start the server with "
         "--agent-reply-timeout-secs to raise the HTTP side past 5s.",
     )
     explore.add_argument(

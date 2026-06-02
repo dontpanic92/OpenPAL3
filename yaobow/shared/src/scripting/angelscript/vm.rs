@@ -233,6 +233,27 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         self.r1 = buf;
     }
 
+    /// Aborts the currently-executing script by clearing the
+    /// execution context and call stack, the same way the stack-fault
+    /// recovery path does in `execute()`. Use this from a sysfn
+    /// handler when continuing would cascade into a panic — e.g.
+    /// `giArenaLoad` failing means the surrounding cutscene's
+    /// follow-up `giPlayer*` calls would dereference actors in a
+    /// scene that was never loaded. Leaves the VM ready to accept a
+    /// fresh `set_function*` call (the agent server / trigger
+    /// dispatch / next `giArenaLoad` will re-enter naturally).
+    pub fn abort_script(&mut self) {
+        log::warn!(
+            "AngelScript VM script aborted from sysfn handler (fn={} sp={} fp={})",
+            self.current_fn_name(),
+            self.sp,
+            self.fp,
+        );
+        self.context = None;
+        self.call_stack.clear();
+        self.yield_func.clear();
+    }
+
     pub fn push_object(&mut self, object: String) -> usize {
         for i in 0..self.heap.len() {
             if self.heap[i].is_none() {
@@ -1278,14 +1299,13 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             self.faulted.set(true);
             return;
         }
-        if std::mem::size_of::<T>() == 8 {
-            let data_bytes: &[u8; 8] = std::mem::transmute(&data as *const _ as *const u8);
-            for i in 0..8 {
-                self.stack[pos + i] = data_bytes[i];
-            }
-        } else {
-            *(&mut self.stack[pos] as *mut u8 as *mut T) = data;
-        }
+        // Use `ptr::write_unaligned` rather than `*ptr = data` because
+        // `self.stack` is a `Vec<u8>` and `pos` may land at any
+        // alignment. Rust ≥1.87 enforces alignment preconditions on
+        // raw-pointer deref, which previously silently worked but now
+        // panics with "misaligned pointer dereference" (e.g. an i32
+        // store at sp=0x...f). Same fix applies in `read_stack`.
+        std::ptr::write_unaligned(self.stack.as_mut_ptr().add(pos) as *mut T, data);
     }
 
     #[inline]
@@ -1296,16 +1316,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             self.faulted.set(true);
             return std::mem::zeroed();
         }
-        if std::mem::size_of::<T>() == 8 {
-            let mut data_bytes = [0u8; 8];
-            for i in 0..8 {
-                data_bytes[i] = self.stack[pos + i];
-            }
-
-            *(&data_bytes as *const u8 as *const T)
-        } else {
-            *(&self.stack[pos] as *const u8 as *const T)
-        }
+        std::ptr::read_unaligned(self.stack.as_ptr().add(pos) as *const T)
     }
 
     fn debug_update_module(&mut self) {

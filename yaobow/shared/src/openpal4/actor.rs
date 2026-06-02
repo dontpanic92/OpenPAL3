@@ -67,12 +67,39 @@ impl Pal4ActorAnimationController {
 
 impl IPal4ActorAnimationControllerImpl for Pal4ActorAnimationController {
     fn unhold(&self) {
+        // Release a `PauseOnHold` action so it plays through its
+        // remaining keyframes and naturally stops. PAL4's retail
+        // semantics for the post-hold tail are *one-shot* — when
+        // the script calls `giPlayerUnHoldAct` (or implicitly via
+        // `giPlayerEndAction`) it expects the actor to finish the
+        // action and return to whatever the default is, NOT to
+        // start looping the tail. Force `armature.set_looping(false)`
+        // alongside the state flip so an inadvertent earlier
+        // `set_looping(true)` (e.g. a default-idle taken on the
+        // shared armature) doesn't keep the controller in a
+        // perpetual reset → reset → ... cycle. See M01/func2004
+        // wedge investigation.
         self.animation_config
             .replace(Pal4ActorAnimationConfig::OneTime);
+        self.armature.set_looping(false);
         self.armature.play();
     }
 
     fn animation_completed(&self) -> bool {
+        // A Looping armature has no natural completion point — its
+        // tick wraps back to 0 every `length` seconds. Reporting
+        // "not completed" would wedge the script forever. Treat
+        // any looping (or already-finished) state as "done";
+        // playback continues visually but `giPlayerEndAction`
+        // returns immediately. See actor.rs:unhold for the matching
+        // unhold-side guard and the M01 wedge notes.
+        if self
+            .armature
+            .inner::<radiance::components::mesh::skinned_mesh::ArmatureComponent>()
+            .animation_looping()
+        {
+            return true;
+        }
         matches!(
             self.armature.animation_state(),
             AnimationState::Stopped | AnimationState::NoAnimation

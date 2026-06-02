@@ -315,6 +315,16 @@ impl ArmatureComponent {
         *self.animation_length.borrow()
     }
 
+    /// Whether the armature is currently configured to restart the
+    /// animation when its tick exceeds `animation_length` (the
+    /// alternative is to `stop()`). The flag is set by
+    /// [`Self::set_looping`] and consulted by [`Self::on_updating`].
+    /// Exposed so script-side controllers can avoid waiting for a
+    /// looping animation to "finish" — by definition it never will.
+    pub fn animation_looping(&self) -> bool {
+        *self.animation_looping.borrow()
+    }
+
     /// Inherent counterpart to the formerly-IDL `bones`.
     pub fn bones(&self) -> Vec<ComRc<IEntity>> {
         self.bones.clone()

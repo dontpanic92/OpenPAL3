@@ -93,8 +93,12 @@ const IDLE_SETTLE_FRAMES: u32 = 2;
 /// Default timeout (ms) for a `fire_trigger { wait_until_idle }` call.
 const DEFAULT_FIRE_TIMEOUT_MS: u64 = 5_000;
 /// Hard cap (ms) on the same — prevents a buggy planner from pinning
-/// game-thread memory for the full agent reply window.
-const MAX_FIRE_TIMEOUT_MS: u64 = 30_000;
+/// game-thread memory for the full agent reply window. PAL4 cutscenes
+/// in M01/Q01 routinely chain 30+ `giPlayerDoAction` /
+/// `giPlayerEndAction` pairs; with multiple actors each running 4-8s
+/// animations the total cutscene length can exceed 2 minutes even
+/// with fast-forward (`giWait` is the only sysfn fast-forward affects).
+const MAX_FIRE_TIMEOUT_MS: u64 = 180_000;
 
 /// One in-flight `fire_trigger { wait_until_idle: true }` request.
 /// Held in [`OpenPAL4Director::pending_fires`] until the VM settles
@@ -311,7 +315,16 @@ impl OpenPAL4Director {
         app.set_persistent_state(state);
 
         if !scene.is_empty() {
-            app.load_scene(&scene, &block);
+            if let Err(err) = app.load_scene(&scene, &block) {
+                log::error!(
+                    "OpenPAL4Director::load_state: failed to load scene='{}' block='{}': {:?}; \
+                     save-load partially restored (globals + leader applied, scene not changed)",
+                    scene,
+                    block,
+                    err
+                );
+                return;
+            }
             app.set_leader(leader as i32);
             if let Some(pos) = pos {
                 app.set_player_pos(leader as i32, &pos);

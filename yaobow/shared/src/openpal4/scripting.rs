@@ -1136,7 +1136,29 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
     let scn = get_str(vm, scn_str as usize).unwrap();
     let block = get_str(vm, block_str as usize).unwrap();
 
-    vm.app_context.load_scene(&scn, &block);
+    // If the target scene fails to load (e.g. an EVF/GOB/NPC binary
+    // parse error in a scene the engine hasn't been fully validated
+    // against), keep the current scene and SKIP setting the new
+    // `<scene>_<block>_init` entry function. Calling
+    // `set_function_by_name2` against the old scene's module with a
+    // name from the new scene would resolve to an arbitrary slot
+    // (or fail) and crash the VM on the next opcode. Better to stay
+    // in the current scene's continuation and let the cutscene
+    // either retry or wedge gracefully — the agent server stays
+    // alive either way.
+    if let Err(err) = vm.app_context.load_scene(&scn, &block) {
+        log::error!(
+            "giArenaLoad: failed to load scene='{}' block='{}': {:?}; \
+             aborting current script to prevent cascading panics in \
+             follow-up giPlayer* calls (the agent server / planner can \
+             re-drive from the current scene)",
+            scn,
+            block,
+            err
+        );
+        vm.abort_script();
+        return Pal4FunctionState::Completed;
+    }
 
     let module = vm.app_context.scene.module.clone().unwrap();
     vm.set_function_by_name2(module, &format!("{}_{}_init", scn, block));

@@ -208,6 +208,9 @@ impl Pal4Node {
 #[brw(little)]
 #[derive(Debug)]
 pub enum Pal4NodeProperty {
+    #[br(magic(1u32))]
+    Int(Pal4NodePropertyValue<i32>),
+
     #[br(magic(2u32))]
     Float(Pal4NodePropertyValue<f32>),
 
@@ -218,8 +221,17 @@ pub enum Pal4NodeProperty {
 impl Pal4NodeProperty {
     pub fn name(&self) -> &SizedString {
         match self {
+            Self::Int(v) => &v.name,
             Self::Float(v) => &v.name,
             Self::String(v) => &v.name,
+        }
+    }
+
+    pub fn i32(&self) -> Option<i32> {
+        if let Self::Int(v) = self {
+            Some(v.value)
+        } else {
+            None
         }
     }
 

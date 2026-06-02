@@ -791,16 +791,16 @@ impl Pal4AppContext {
             .position()
     }
 
-    pub fn load_scene(&mut self, scene_name: &str, block_name: &str) {
+    pub fn load_scene(&mut self, scene_name: &str, block_name: &str) -> anyhow::Result<()> {
         let _ = self.scene_manager.pop_scene();
-        self.scene = Pal4Scene::load(
+        let scene = Pal4Scene::load(
             &self.loader,
             self.input.clone(),
             scene_name,
             block_name,
             self.actor_controller_factory.as_ref(),
-        )
-        .unwrap();
+        )?;
+        self.scene = scene;
         self.scene_manager.push_scene(self.scene.scene.clone());
 
         self.scene_name = scene_name.to_string();
@@ -808,6 +808,7 @@ impl Pal4AppContext {
 
         self.set_leader(self.leader as i32);
         self.lock_player(self.player_locked);
+        Ok(())
     }
 
     pub fn start_play_movie(&mut self, name: &str) -> Option<(u32, u32)> {

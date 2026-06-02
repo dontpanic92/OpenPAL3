@@ -113,9 +113,30 @@ impl VulkanShader {
         device: &Rc<Device>,
         code: &[u8],
     ) -> Result<vk::ShaderModule, Box<dyn Error>> {
-        let code_u32 =
-            unsafe { std::slice::from_raw_parts::<u32>(code.as_ptr().cast(), code.len() / 4) };
-        let create_info = vk::ShaderModuleCreateInfo::default().code(code_u32);
+        // SPIR-V is a stream of 32-bit words. `include_bytes!` only
+        // guarantees byte alignment, so re-interpreting the buffer
+        // in place as `&[u32]` can panic on the new (1.87+)
+        // `slice::from_raw_parts` alignment check whenever the
+        // linker happens to place the bytes at a non-`u32`-aligned
+        // address (intermittent crash at startup on macOS). Copy
+        // into an owned `Vec<u32>` — guaranteed `u32`-aligned —
+        // before handing to `ShaderModuleCreateInfo`. The cost is a
+        // few KB per shader at startup, paid once.
+        assert!(
+            code.len() % std::mem::size_of::<u32>() == 0,
+            "SPIR-V blob length must be a multiple of 4 bytes",
+        );
+        let mut code_u32: Vec<u32> = vec![0; code.len() / 4];
+        // SAFETY: dst is u32-aligned (Vec); src is any-aligned u8.
+        // copy_nonoverlapping does not require alignment of src.
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                code.as_ptr(),
+                code_u32.as_mut_ptr().cast::<u8>(),
+                code.len(),
+            );
+        }
+        let create_info = vk::ShaderModuleCreateInfo::default().code(&code_u32);
         Ok(device.create_shader_module(&create_info)?)
     }
 }
