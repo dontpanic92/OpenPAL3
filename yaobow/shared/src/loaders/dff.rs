@@ -555,7 +555,23 @@ pub(crate) fn create_geometry_internal(
                         ) {
                             md
                         } else {
-                            load_material_texture(texture, vfs, path.as_ref(), texture_resolver)
+                            // BSP material with a diffuse but no
+                            // `LightMapPlugin` (rare PAL4 case). PAL4
+                            // BSP diffuses ship with scene-generic
+                            // names (`s01`, `s01b`, …) that would
+                            // otherwise collide in the process-wide
+                            // `TextureStore` LRU across scenes; use
+                            // the scoped loader so each scene's
+                            // diffuse atlas gets its own
+                            // `TextureDef`. See
+                            // `load_lightmap_material_pair` for the
+                            // same rationale on the lightmap key.
+                            load_bsp_material_texture_scoped(
+                                texture,
+                                vfs,
+                                path.as_ref(),
+                                texture_resolver,
+                            )
                         }
                     } else {
                         load_material_texture(texture, vfs, path.as_ref(), texture_resolver)
@@ -879,6 +895,97 @@ fn load_material_texture(
     )
 }
 
+/// Build a `TextureStore` cache key that is unique per BSP scene/block
+/// for a PAL4 BSP-resident texture. PAL4 ships scene-local baked
+/// atlases (lightmaps + diffuses) with intentionally generic names
+/// (e.g. `Object01LightingMap`, `s01`); the process-wide
+/// `TextureStore` LRU is keyed only on the bare name, so two scenes
+/// that ship same-named atlases would silently share a single
+/// `TextureDef`/GPU texture — UVs correct, atlas wrong. Namespacing
+/// the key by the BSP's `model_path` (and a 2-letter slot tag so the
+/// lightmap and diffuse can never alias one another) gives each scene
+/// its own cache entry. Format:
+///     pal4-bsp:<slot>:<model_path>:<bare_name>
+/// The `<slot>` tag is one of `"lm"` (lightmap atlas) or `"df"`
+/// (diffuse) for `LightMapMaterialDef`, or `"dx"` for the
+/// diffuse-only BSP fall-through; pick something stable so a future
+/// reader can grep for it.
+fn pal4_bsp_texture_key(model_path: &Path, slot: &str, name: &str) -> String {
+    format!("pal4-bsp:{}:{}:{}", slot, model_path.display(), name)
+}
+
+/// `load_material_texture` for PAL4 BSP diffuse-only materials (the
+/// rare BSP case where `material.texture.is_some()` but
+/// `material.lightmap.is_none()`). Same `SimpleMaterialDef` shape as
+/// `load_material_texture` but the texture cache key is namespaced
+/// per-scene via [`pal4_bsp_texture_key`]. Composite (mask) diffuses
+/// follow the same scheme for the `composite_name` and the two
+/// constituent textures.
+fn load_bsp_material_texture_scoped(
+    texture: &fileformats::rwbs::material::Texture,
+    vfs: &MiniFs,
+    model_path: &Path,
+    texture_resolver: &dyn TextureResolver,
+) -> MaterialDef {
+    let sampler = rw_sampler_def(texture);
+    if texture.mask_name.is_empty() {
+        let bare = texture.name.clone();
+        let key = pal4_bsp_texture_key(model_path, "dx", &bare);
+        let model_path_buf = model_path.to_path_buf();
+        return radiance::rendering::SimpleMaterialDef::create_with_sampler(
+            &key,
+            move |_name| {
+                let data = texture_resolver.resolve_texture(vfs, &model_path_buf, &bare);
+                if data.is_none() {
+                    log::warn!(
+                        "Failed to resolve texture {} for {:?}",
+                        bare,
+                        model_path_buf
+                    );
+                }
+                data.map(std::io::Cursor::new)
+            },
+            sampler,
+        );
+    }
+
+    let main_name = texture.name.clone();
+    let mask_name = texture.mask_name.clone();
+    let composite_bare = format!("{}|{}", main_name, mask_name);
+    let composite_key = pal4_bsp_texture_key(model_path, "dx", &composite_bare);
+    let model_path_buf = model_path.to_path_buf();
+    radiance::rendering::SimpleMaterialDef::create_with_image_and_sampler(
+        &composite_key,
+        {
+            let main = decode_texture(vfs, &model_path_buf, &main_name, texture_resolver);
+            let mask = decode_texture(vfs, &model_path_buf, &mask_name, texture_resolver);
+            match (main, mask) {
+                (Some(mut main), Some(mask)) => {
+                    apply_mask_alpha(&mut main, &mask);
+                    Some(main)
+                }
+                (Some(main), None) => {
+                    log::warn!(
+                        "Failed to resolve mask {} for {:?}; using diffuse alpha as-is",
+                        mask_name,
+                        model_path_buf
+                    );
+                    Some(main)
+                }
+                (None, _) => {
+                    log::warn!(
+                        "Failed to resolve texture {} for {:?}",
+                        main_name,
+                        model_path_buf
+                    );
+                    None
+                }
+            }
+        },
+        sampler,
+    )
+}
+
 /// Build a cross-backend `SamplerDef` from the raw RenderWare
 /// `Texture::filter_mode / address_mode_u / address_mode_v` fields
 /// parsed in `fileformats/src/rwbs/material.rs`.
@@ -956,14 +1063,35 @@ fn load_lightmap_material_pair(
     params.tint = [tint[0], tint[1], tint[2], 1.0];
     params.intensity = tint[3];
 
+    // PAL4 ships scene-local baked atlases with intentionally generic
+    // names (e.g. `Object01LightingMap`, `s01`). `TextureStore` is a
+    // process-wide LRU keyed *only* on texture name, so the second
+    // scene that mentions a colliding atlas would silently reuse the
+    // first scene's pixels — UVs correct, atlas wrong. Namespace both
+    // keys by the BSP's `model_path` so each scene gets its own
+    // `TextureDef`/GPU texture. The `get_reader` closure receives the
+    // scoped key and maps it back to the bare texture name before
+    // calling the on-disk resolver (which keys lookup on
+    // `model_path.parent() / bare_name`).
+    let lightmap_name = lightmap.name.clone();
+    let diffuse_name = diffuse.name.clone();
+    let lightmap_key = pal4_bsp_texture_key(model_path, "lm", &lightmap_name);
+    let diffuse_key = pal4_bsp_texture_key(model_path, "df", &diffuse_name);
+
+    let lightmap_key_for_closure = lightmap_key.clone();
     let md = radiance::rendering::LightMapMaterialDef::create_with_samplers(
-        vec![&lightmap.name, &diffuse.name],
-        |name| {
-            let data = texture_resolver.resolve_texture(vfs, &model_path_buf, name);
+        vec![&lightmap_key, &diffuse_key],
+        |key| {
+            let bare = if key == lightmap_key_for_closure {
+                lightmap_name.as_str()
+            } else {
+                diffuse_name.as_str()
+            };
+            let data = texture_resolver.resolve_texture(vfs, &model_path_buf, bare);
             if data.is_none() {
                 log::warn!(
                     "[ltmap] failed to resolve texture {} for {:?}",
-                    name,
+                    bare,
                     model_path_buf
                 );
             }
@@ -1019,13 +1147,29 @@ fn load_lightmap_only_material(
     // falls back to its built-in white texture asset.
     let white_dummy = "__lightmap_only_white__";
 
+    // Same scoping rationale as `load_lightmap_material_pair`: namespace
+    // the lightmap atlas key by `model_path` so per-scene baked atlases
+    // with colliding names (M01/1 vs Q01 both ship `Object01LightingMap`)
+    // get distinct `TextureDef`s in the global `TextureStore` LRU.
+    // The diffuse slot is the shared white-sentinel; it intentionally
+    // stays a non-namespaced constant so all lightmap-only materials
+    // across all scenes share the single built-in white texture.
+    let lightmap_name = lightmap.name.clone();
+    let lightmap_key = pal4_bsp_texture_key(model_path, "lm", &lightmap_name);
+    let lightmap_key_for_closure = lightmap_key.clone();
+
     let md = radiance::rendering::LightMapMaterialDef::create_with_samplers(
-        vec![&lightmap.name, white_dummy],
-        |name| {
-            if name == white_dummy {
+        vec![&lightmap_key, white_dummy],
+        |key| {
+            if key == white_dummy {
                 return None;
             }
-            let data = texture_resolver.resolve_texture(vfs, &model_path_buf, name);
+            let bare = if key == lightmap_key_for_closure {
+                lightmap_name.as_str()
+            } else {
+                key
+            };
+            let data = texture_resolver.resolve_texture(vfs, &model_path_buf, bare);
             data.map(std::io::Cursor::new)
         },
         vec![lightmap_sampler, diffuse_sampler],
@@ -1103,6 +1247,143 @@ fn apply_mask_alpha(main: &mut image::RgbaImage, mask: &image::RgbaImage) {
             let luma = ((mp.0[0] as u16 + mp.0[1] as u16 + mp.0[2] as u16) / 3) as u8;
             main.get_pixel_mut(x, y).0[3] = luma;
         }
+    }
+}
+
+#[cfg(test)]
+mod lightmap_cache_key_tests {
+    //! PAL4 BSP texture-cache isolation: two scenes that ship same-named
+    //! baked atlases (e.g. M01/1 and Q01/Q01 both bundle a
+    //! `Object01LightingMap.dds`) must NOT alias one another in the
+    //! process-wide `TextureStore` LRU. The atlases are different bakes
+    //! and aliasing them produces the well-known "lightmap looks wrong
+    //! on part of the mesh" artefact (correct UVs, wrong atlas).
+    //!
+    //! This is a pure-Rust unit test — no real PAL4 assets required —
+    //! using a synthetic in-memory PNG resolver.
+    use super::*;
+    use fileformats::rwbs::material::{Material as RwMaterial, Texture as RwTexture};
+    use std::path::PathBuf;
+
+    /// 1x1 RGBA PNG, encoded once and shared across the synthetic
+    /// resolver callbacks. The actual pixel value doesn't matter — only
+    /// the cache key does.
+    fn one_by_one_png() -> Vec<u8> {
+        let img = image::RgbaImage::from_pixel(1, 1, image::Rgba([255, 255, 255, 255]));
+        let dynamic = image::DynamicImage::ImageRgba8(img);
+        let mut buf = std::io::Cursor::new(Vec::new());
+        dynamic
+            .write_to(&mut buf, image::ImageFormat::Png)
+            .expect("encode synthetic png");
+        buf.into_inner()
+    }
+
+    /// Resolver that always returns the same 1×1 PNG regardless of
+    /// path or texture name. Sufficient for cache-key tests because
+    /// `LightMapMaterialDef`/`SimpleMaterialDef` only call the
+    /// resolver on cache misses; what we're verifying is the key
+    /// shape, not the bytes.
+    struct ConstResolver(Vec<u8>);
+    impl TextureResolver for ConstResolver {
+        fn resolve_texture(
+            &self,
+            _vfs: &MiniFs,
+            _model_path: &Path,
+            _name: &str,
+        ) -> Option<Vec<u8>> {
+            Some(self.0.clone())
+        }
+    }
+
+    fn make_material(diffuse_name: &str, lightmap_name: &str) -> RwMaterial {
+        RwMaterial {
+            texture: Some(RwTexture {
+                name: diffuse_name.to_string(),
+                ..RwTexture::default()
+            }),
+            lightmap: Some(RwTexture {
+                name: lightmap_name.to_string(),
+                ..RwTexture::default()
+            }),
+            ..RwMaterial::default()
+        }
+    }
+
+    #[test]
+    fn texture_key_is_unique_per_model_path_and_slot() {
+        // Same bare atlas name, different model_path → different keys.
+        let a = pal4_bsp_texture_key(
+            Path::new("/gamedata/PALWorld/Q01/Q01/Q01.bsp"),
+            "lm",
+            "Object01LightingMap",
+        );
+        let b = pal4_bsp_texture_key(
+            Path::new("/gamedata/PALWorld/M01/1/1.bsp"),
+            "lm",
+            "Object01LightingMap",
+        );
+        assert_ne!(a, b, "same atlas name across two scenes must hash distinctly");
+
+        // Different slot → different key even at the same model_path.
+        let lm = pal4_bsp_texture_key(Path::new("/foo/bar.bsp"), "lm", "s01");
+        let df = pal4_bsp_texture_key(Path::new("/foo/bar.bsp"), "df", "s01");
+        assert_ne!(lm, df, "slot tag must disambiguate lightmap vs diffuse");
+
+        // Bare name participates verbatim — useful for grep/debug.
+        assert!(a.contains("Object01LightingMap"));
+        assert!(a.contains("Q01"));
+    }
+
+    #[test]
+    fn lightmap_pair_uses_per_scene_keys_for_collision() {
+        // Two scenes that ship same-named atlases. The MaterialDefs
+        // they produce must reference DISTINCT `TextureDef`s (distinct
+        // `Arc<TextureDef>` and distinct cache-key strings) so the
+        // global `TextureStore` LRU keeps them separate.
+        let vfs = MiniFs::new(false);
+        let resolver = ConstResolver(one_by_one_png());
+        let material = make_material("s01b", "Object01LightingMap");
+        let tint = [1.0_f32, 1.0, 1.0, 1.0];
+
+        let path_q01 = PathBuf::from("/gamedata/PALWorld/Q01/Q01/Q01.bsp");
+        let path_m01 = PathBuf::from("/gamedata/PALWorld/M01/1/1.bsp");
+
+        let md_q01 = load_lightmap_material_pair(&material, tint, &vfs, &path_q01, &resolver)
+            .expect("lightmap pair for Q01");
+        let md_m01 = load_lightmap_material_pair(&material, tint, &vfs, &path_m01, &resolver)
+            .expect("lightmap pair for M01");
+
+        // Texture order is `[lightmap, diffuse]` per
+        // `LightMapMaterialDef::create_with_samplers`.
+        assert_eq!(md_q01.textures().len(), 2);
+        assert_eq!(md_m01.textures().len(), 2);
+
+        let lm_q01 = md_q01.textures()[0].name();
+        let lm_m01 = md_m01.textures()[0].name();
+        assert_ne!(
+            lm_q01, lm_m01,
+            "Q01 and M01 lightmap atlases must have distinct TextureStore keys"
+        );
+        assert!(lm_q01.contains("Q01"), "Q01 key should encode its scene path: {}", lm_q01);
+        assert!(lm_m01.contains("M01"), "M01 key should encode its scene path: {}", lm_m01);
+        assert!(
+            lm_q01.contains("Object01LightingMap"),
+            "scoped key should still surface the bare atlas name: {}",
+            lm_q01,
+        );
+
+        // And the diffuse slot is similarly scene-scoped (so `s01b`
+        // doesn't collide either).
+        let df_q01 = md_q01.textures()[1].name();
+        let df_m01 = md_m01.textures()[1].name();
+        assert_ne!(df_q01, df_m01, "diffuse keys must also be scene-scoped");
+
+        // Different Arc identity → genuinely separate TextureDef
+        // entries in the global store.
+        assert!(
+            !std::sync::Arc::ptr_eq(&md_q01.textures()[0], &md_m01.textures()[0]),
+            "Q01 and M01 lightmap atlases must NOT share an Arc<TextureDef>"
+        );
     }
 }
 
