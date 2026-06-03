@@ -15,7 +15,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use common::store_ext::StoreExt2;
 use packfs::init_virtual_fs;
-use shared::scripting::angelscript::ScriptModule;
+use shared::scripting::angelscript::{disasm, ScriptModule};
 
 #[derive(Parser)]
 #[command(about = "Diagnose PAL4 .csb parse failures")]
@@ -45,6 +45,22 @@ struct Cli {
     /// Window radius for the byte-context dump on failure.
     #[arg(long, default_value_t = 32)]
     context: usize,
+
+    /// When set, disassemble the named function in each --file module
+    /// and print its instructions (addr + opcode + operands). Useful
+    /// for understanding gating conditions that `pal4_plot_dump`'s
+    /// abstract walker doesn't capture (jns/js/jp/jnp branches, fns
+    /// called inside conditional blocks the cmp_literal extractor
+    /// skips).
+    #[arg(long)]
+    disasm: Option<String>,
+
+    /// List functions in each --file module by their module-index
+    /// (the integer `Call { function: N }` refers to). Useful when
+    /// reading a disassembly's `Call`/`CallBnd` to figure out which
+    /// script function the VM hands control to.
+    #[arg(long)]
+    list_functions: bool,
 }
 
 const KNOWN_FAILING: &[&str] = &["M02", "M07", "M09", "M16", "Q04", "Q05", "Q11"];
@@ -125,6 +141,15 @@ fn main() -> Result<()> {
                 if cli.histogram {
                     print_histogram(&module);
                 }
+                if cli.list_functions {
+                    eprintln!("  function table ({} entries):", module.functions.len());
+                    for (i, f) in module.functions.iter().enumerate() {
+                        eprintln!("    [{}] {}", i, f.name);
+                    }
+                }
+                if let Some(target_fn) = &cli.disasm {
+                    print_disasm(&module, target_fn);
+                }
             }
             Err(e) => {
                 failures += 1;
@@ -162,6 +187,27 @@ fn print_histogram(module: &ScriptModule) {
         if n > 0 {
             eprintln!("    0x{:02x} ({:3}) -> {}", op, op, n);
         }
+    }
+}
+
+fn print_disasm(module: &ScriptModule, target_fn: &str) {
+    let Some(func) = module.functions.iter().find(|f| f.name == target_fn) else {
+        eprintln!("  disasm: function {} not found in module", target_fn);
+        eprintln!(
+            "  available: {}",
+            module
+                .functions
+                .iter()
+                .map(|f| f.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        return;
+    };
+    let insts = disasm(func);
+    eprintln!("  disasm of {} ({} bytes):", target_fn, func.inst.len());
+    for inst in insts {
+        eprintln!("    {:04x}  {:?}", inst.addr, inst.inst);
     }
 }
 

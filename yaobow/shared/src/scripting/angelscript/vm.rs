@@ -1120,19 +1120,34 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     fn js_jgez(&mut self, offset: i32) {
-        self.j_traced(offset, BranchKind::JsJgez, |data| data >= 0);
+        // Opcode 91 is `Js` (AngelScript "jump if signed"): fire the
+        // branch when the comparison result on top of stack is `< 0`.
+        // The pair-name `js_jgez` is preserved for backwards-compat
+        // with the externalised trace `BranchKind` (`docs/agent_interface.md`)
+        // — the predicate matches upstream AngelScript's `asBC_JS`
+        // (`l_bc` advances on `value < 0`).
+        self.j_traced(offset, BranchKind::JsJgez, |data| data < 0);
     }
 
     fn jns_jlz(&mut self, offset: i32) {
-        self.j_traced(offset, BranchKind::JnsJlz, |data| data < 0);
+        // Opcode 92 is `Jns` (AngelScript "jump if not signed"):
+        // fire the branch when the comparison result is `>= 0`. Pair
+        // name retained for trace compatibility — see `js_jgez`.
+        self.j_traced(offset, BranchKind::JnsJlz, |data| data >= 0);
     }
 
     fn jp_jlez(&mut self, offset: i32) {
-        self.j_traced(offset, BranchKind::JpJlez, |data| data <= 0);
+        // Opcode 93 is `Jp` (AngelScript "jump if positive"): fire
+        // the branch when the comparison result is `> 0`. Pair name
+        // retained for trace compatibility.
+        self.j_traced(offset, BranchKind::JpJlez, |data| data > 0);
     }
 
     fn jnp_jgz(&mut self, offset: i32) {
-        self.j_traced(offset, BranchKind::JnpJgz, |data| data > 0);
+        // Opcode 94 is `Jnp` (AngelScript "jump if not positive"):
+        // fire the branch when the comparison result is `<= 0`. Pair
+        // name retained for trace compatibility.
+        self.j_traced(offset, BranchKind::JnpJgz, |data| data <= 0);
     }
 
     fn cmpi<T: Copy + PartialOrd>(&mut self, rhs: T) {
@@ -1251,7 +1266,19 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     #[inline]
     fn j_traced<F: Fn(i32) -> bool>(&mut self, offset: i32, kind: BranchKind, f: F) {
         unsafe {
+            // PAL4's AngelScript variant places the result of the
+            // preceding `Cmpii` / `Cmpi` / `Subi` on the operand
+            // stack (upstream AS uses `m_regs.valueRegister`
+            // instead). The conditional jump consumes that result,
+            // so `sp` has to advance past it the same way `jz` /
+            // `jnz` do above (line ~772, ~795). Forgetting the
+            // advance leaks 4 bytes per `Js`/`Jns`/`Jp`/`Jnp` and
+            // shifts every subsequent push downwards on the operand
+            // stack — eventually causing arg-marshalling mismatches
+            // in `string@` / `CallSys` and bizarre underflow
+            // panics in long-running scripts.
             let data: i32 = self.read_stack(self.sp);
+            self.sp += 4;
             let taken = f(data);
             if self.trace_enabled() {
                 let fn_name = self.current_fn_name();
@@ -1575,5 +1602,154 @@ mod tests {
             assert_eq!(branches[0].1, flag as i32);
             assert_eq!(branches[0].2, expected_taken, "flag={}", flag);
         }
+    }
+
+    /// Boundary-case coverage for the signed conditional jumps
+    /// (`Js`/`Jns`/`Jp`/`Jnp` — opcodes 91..=94). Each one is fed
+    /// the three salient operand values (`-1`, `0`, `+1`) and the
+    /// expected `taken` outcome is asserted against upstream
+    /// AngelScript semantics (`as_context.cpp`):
+    ///   * `Js`  → taken iff `data < 0`
+    ///   * `Jns` → taken iff `data >= 0`
+    ///   * `Jp`  → taken iff `data > 0`
+    ///   * `Jnp` → taken iff `data <= 0`
+    /// Regression coverage for the long-latent inversion bug where
+    /// each helper checked the opposite condition and PAL4
+    /// `q01/func1001`'s plot-progression chain dead-ended (PLOT
+    /// BLOCK B unreachable, blocking the "return home with 古玉"
+    /// scene). Also asserts the sink records exactly one Branch
+    /// event per jump so the agent-trace consumer stays in sync.
+    #[test]
+    fn signed_jumps_match_upstream_angelscript_semantics() {
+        let cases: &[(u8, BranchKind, &str, &[(i32, bool)])] = &[
+            (
+                91,
+                BranchKind::JsJgez,
+                "Js",
+                &[(-1, true), (0, false), (1, false)],
+            ),
+            (
+                92,
+                BranchKind::JnsJlz,
+                "Jns",
+                &[(-1, false), (0, true), (1, true)],
+            ),
+            (
+                93,
+                BranchKind::JpJlez,
+                "Jp",
+                &[(-1, false), (0, false), (1, true)],
+            ),
+            (
+                94,
+                BranchKind::JnpJgz,
+                "Jnp",
+                &[(-1, true), (0, true), (1, false)],
+            ),
+        ];
+        for &(opcode, expected_kind, name, vectors) in cases {
+            for &(operand, expected_taken) in vectors {
+                let inst = assemble(&[
+                    &op(2),
+                    &operand.to_le_bytes(),
+                    &op(opcode),
+                    &4i32.to_le_bytes(),
+                    &op(108),
+                    &op(13),
+                    &0u16.to_le_bytes(),
+                ]);
+                let mut vm = build_vm(inst);
+                let sink = Rc::new(VecSink::new());
+                vm.set_trace_sink(Some(sink.clone() as Rc<dyn TraceSink>));
+                vm.execute(0.0);
+
+                let branches: Vec<_> = sink
+                    .snapshot()
+                    .into_iter()
+                    .filter_map(|ev| match ev.kind {
+                        TraceEventKind::Branch {
+                            kind, operand, taken, ..
+                        } => Some((kind, operand, taken)),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(
+                    branches.len(),
+                    1,
+                    "{} operand={}: {:?}",
+                    name,
+                    operand,
+                    branches
+                );
+                assert_eq!(branches[0].0, expected_kind, "{} operand={}", name, operand);
+                assert_eq!(branches[0].1, operand, "{} operand={}", name, operand);
+                assert_eq!(
+                    branches[0].2, expected_taken,
+                    "{} operand={} expected taken={}",
+                    name, operand, expected_taken
+                );
+            }
+        }
+    }
+
+    /// `Jz`/`Jnz` pop their operand off the stack (vm.rs ~770/793)
+    /// — `Js`/`Jns`/`Jp`/`Jnp` must do the same. Without that
+    /// `sp += 4` the comparison result accumulates on the operand
+    /// stack and shifts every subsequent push downwards, corrupting
+    /// `string@`/`CallSys` arg marshalling. We construct a tiny
+    /// program that pushes a sentinel before the jump and a `Set4`
+    /// after; the sentinel must be reachable at the SAME stack
+    /// slot the post-`Set4` value occupies after the jump consumes
+    /// its operand. We sample stack depth via `Cmpii` + `Jz`: the
+    /// second branch's `operand` reads the value at the new `sp`,
+    /// which equals the sentinel iff the signed jump popped.
+    #[test]
+    fn signed_jumps_pop_operand_off_stack() {
+        // Layout (operand `1` is `Js`-NOT-taken so the jump is a
+        // pure stack-pop):
+        //   Set4 sentinel(0x1234abcd)  ; push sentinel
+        //   Set4 1                     ; push +1 as jump operand
+        //   Js +0                      ; pops +1 (taken=false: data<0)
+        //   Cmpii 0x1234abcd           ; pops sentinel; pushes 0 (eq)
+        //   Jz +4                      ; pops 0, taken=true -> skips Suspend
+        //   Suspend
+        //   Ret 0
+        const SENTINEL: i32 = 0x1234abcdu32 as i32;
+        let inst = assemble(&[
+            &op(2),
+            &SENTINEL.to_le_bytes(),
+            &op(2),
+            &1i32.to_le_bytes(),
+            &op(91),
+            &0i32.to_le_bytes(),
+            &op(95),
+            &SENTINEL.to_le_bytes(),
+            &op(15),
+            &4i32.to_le_bytes(),
+            &op(108),
+            &op(13),
+            &0u16.to_le_bytes(),
+        ]);
+        let mut vm = build_vm(inst);
+        let sink = Rc::new(VecSink::new());
+        vm.set_trace_sink(Some(sink.clone() as Rc<dyn TraceSink>));
+        vm.execute(0.0);
+
+        let branches: Vec<_> = sink
+            .snapshot()
+            .into_iter()
+            .filter_map(|ev| match ev.kind {
+                TraceEventKind::Branch {
+                    kind, operand, taken, ..
+                } => Some((kind, operand, taken)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(branches.len(), 2, "{:?}", branches);
+        // Js consumed the +1 operand without taking.
+        assert_eq!(branches[0], (BranchKind::JsJgez, 1, false));
+        // If Js popped, Cmpii then compared the sentinel against
+        // itself and pushed 0, so the following Jz fires.
+        assert_eq!(branches[1], (BranchKind::Jz, 0, true));
     }
 }

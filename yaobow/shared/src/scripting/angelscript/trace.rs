@@ -124,17 +124,28 @@ pub enum TraceEventKind {
 }
 
 /// Kind of conditional jump.
+///
+/// PAL4's AngelScript dialect places the comparison result (typically
+/// from `Cmpii`/`Cmpi`/`Subi`) on the operand stack rather than in a
+/// dedicated value register; every jump variant below consumes it.
+/// The pair names are historical and reflect early uncertainty about
+/// the dialect's preferred mnemonic — the parenthesised predicate is
+/// authoritative and matches upstream AngelScript
+/// (`asBC_JZ`/`asBC_JNZ`/`asBC_JS`/`asBC_JNS`/`asBC_JP`/`asBC_JNP`
+/// in `as_context.cpp`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BranchKind {
+    /// `Jz`: branch taken when the comparison result `== 0`.
     Jz,
+    /// `Jnz`: branch taken when the comparison result `!= 0`.
     Jnz,
-    /// Composite "jump if sign / jump if greater-or-equal-zero".
+    /// `Js` (a.k.a. "Jlz"): branch taken when the comparison result `< 0`.
     JsJgez,
-    /// Composite "jump if not-sign / jump if less-than-zero".
+    /// `Jns` (a.k.a. "Jgez"): branch taken when the comparison result `>= 0`.
     JnsJlz,
-    /// Composite "jump if positive / jump if less-or-equal-zero".
+    /// `Jp` (a.k.a. "Jgz"): branch taken when the comparison result `> 0`.
     JpJlez,
-    /// Composite "jump if not-positive / jump if greater-than-zero".
+    /// `Jnp` (a.k.a. "Jlez"): branch taken when the comparison result `<= 0`.
     JnpJgz,
 }
 
