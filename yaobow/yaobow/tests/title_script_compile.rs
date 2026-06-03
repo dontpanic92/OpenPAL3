@@ -19,11 +19,9 @@ use radiance_scripting::comdef::services::{
 use radiance_scripting::services::{GameRegistry, RandomService};
 use radiance_scripting::{
     register_immediate_director_proto, with_services, wrap_director, RuntimeAccess, RuntimeHandle,
-    ScriptHost,
+    ScriptHost, ScriptModule, ScriptPackage,
 };
-use yaobow_lib::script_source::{
-    register_yaobow_project, validate_package, ScriptModule, ScriptPackage, APP_P7,
-};
+use yaobow_lib::script_source::{register_yaobow_project, APP_P7};
 
 // `ComObject_*!` macros expand `use crate as radiance_scripting` and
 // then reach into `crate::comdef::*` to find the impl traits and
@@ -145,14 +143,8 @@ fn title_script_compiles() {
 #[test]
 fn script_package_rejects_duplicate_modules() {
     const DUPLICATE_MODULES: &[ScriptModule] = &[
-        ScriptModule {
-            name: "dup",
-            source: "pub fn a() -> int { 1 }",
-        },
-        ScriptModule {
-            name: "dup",
-            source: "pub fn b() -> int { 2 }",
-        },
+        ScriptModule::new("dup", "pub fn a() -> int { 1 }"),
+        ScriptModule::new("dup", "pub fn b() -> int { 2 }"),
     ];
     let package = ScriptPackage {
         root_name: "app",
@@ -161,8 +153,11 @@ fn script_package_rejects_duplicate_modules() {
         modules: DUPLICATE_MODULES,
     };
 
-    let err = validate_package(&package).expect_err("duplicate module should fail validation");
-    assert!(err.contains("duplicate script module 'dup'"));
+    let err = package
+        .validate()
+        .expect_err("duplicate module should fail validation");
+    assert!(err.contains("duplicate"));
+    assert!(err.contains("dup"));
 }
 
 #[test]

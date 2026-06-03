@@ -175,8 +175,9 @@ impl ScriptHost {
     /// already knows about the derived interface at wrap time so the
     /// fat CCW gets a real slot for it.
     fn register_built_in_protos() {
-        crate::script_bridges::radiance::register_immediate_director_proto();
-        crate::script_bridges::radiance::register_director_proto();
+        crate::script_bridges::radiance::register_all_protos();
+        crate::script_bridges::scripting_services::register_all_protos();
+        crate::script_bridges::crosscom::register_all_protos();
     }
 
     /// Wire a `Weak<ScriptHost>` into the inner [`RuntimeServices`] so
@@ -249,6 +250,24 @@ impl ScriptHost {
 
     pub fn intern<I: ComInterface + 'static>(&self, rc: ComRc<I>) -> i64 {
         self.with_inner(|inner| inner.host.services.com_table_mut().intern(rc))
+    }
+
+    /// Returns a clone of the [`RuntimeHandle`] cached on this host.
+    ///
+    /// The handle is installed exactly once by [`Self::new`] /
+    /// [`Self::install`] (and re-stamped into the services bundle by
+    /// [`Self::reload`]), so calling this on a fully-constructed
+    /// `Rc<ScriptHost>` always returns a live, non-dangling handle.
+    ///
+    /// This is the canonical way for host code to obtain a
+    /// `RuntimeHandle` for the auto-generated `wrap_<i>` helpers,
+    /// replacing the older `<ScriptHost as RuntimeAccess>::with_ctx` +
+    /// `with_services(|s| s.runtime_handle())` round-trip.
+    pub fn runtime_handle(&self) -> RuntimeHandle {
+        self.runtime_handle
+            .get()
+            .cloned()
+            .expect("runtime_handle should be installed by ScriptHost::new/install")
     }
 
     pub fn foreign_box(&self, type_tag: &str, handle: i64) -> Result<Data, HostError> {

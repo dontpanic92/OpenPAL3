@@ -5,10 +5,7 @@ use crosscom::ComRc;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance_scripting::comdef::services::{IAppService, IAppServiceImpl};
 use radiance_scripting::services::ImguiTextureCache;
-use radiance_scripting::{
-    install_imgui_pump_with_cache, with_services, wrap_director, RuntimeAccess, RuntimeHandle,
-    ScriptHost,
-};
+use radiance_scripting::{install_imgui_pump_with_cache, wrap_director, ScriptHost};
 use shared::config::YaobowConfig;
 
 use crate::directors::DevToolsAssetLoader;
@@ -156,7 +153,7 @@ impl IAppServiceImpl for AppService {
         // CCW gives both `IDirector` (for `SceneManager`) and
         // `IImmediateDirector` (for the imgui pump) from a single
         // wrap, so we don't need a follow-up QI.
-        let runtime_handle = host_runtime_handle(&self.script_host);
+        let runtime_handle = self.script_host.runtime_handle();
         let director: ComRc<IDirector> = wrap_director(&runtime_handle, director_data).ok()?;
 
         drop(engine);
@@ -168,16 +165,6 @@ impl IAppServiceImpl for AppService {
     fn exit(&self) {
         self.app.request_exit();
     }
-}
-
-fn host_runtime_handle(host: &Rc<ScriptHost>) -> RuntimeHandle {
-    let mut out = None;
-    <ScriptHost as RuntimeAccess>::with_ctx(host, &mut |_ctx| {
-        let h = with_services(|s| s.runtime_handle())
-            .expect("with_services inside RuntimeAccess scope");
-        out = Some(h);
-    });
-    out.expect("RuntimeAccess::with_ctx ran body")
 }
 
 fn game_from_ordinal(ordinal: i32) -> Option<GameType> {

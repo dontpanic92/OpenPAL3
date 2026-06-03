@@ -15,16 +15,21 @@ use crosscom::ComRc;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::{
-    install_imgui_pump_with_cache, with_services, wrap_director, RuntimeAccess, RuntimeHandle,
-    ScriptHost,
+    bootstrap_script_root, install_imgui_pump_with_cache, wrap_director, ScriptHost,
 };
 use shared::config::YaobowConfig;
 
 use crate::directors::app_service::AppService;
-use crate::editor_bindings::EDITOR_SERVICES_P7;
-use crate::script_source::{register_editor_modules, MAIN_P7};
+use crate::script_source::EDITOR_PACKAGE;
 use crate::services::editor_host_context::EditorHostContext;
 use shared::config_service::ConfigService;
+
+/// `type_tag` for the editor-specific `IEditorHostContext`. Hard-coded
+/// until per-interface tag codegen lands (step 5 of the script-source
+/// refactor). Mirrors the generated `<crate>.comdef.<module>.<Iface>`
+/// shape that `crosscom_protosept::interface_type_tag` produces.
+const EDITOR_HOST_CONTEXT_TYPE_TAG: &str =
+    "yaobow_editor.comdef.editor_services.IEditorHostContext";
 
 pub struct ScriptedWelcomePage;
 
@@ -37,14 +42,6 @@ impl ScriptedWelcomePage {
             let engine = engine.borrow();
             ScriptHost::install(&engine)
         };
-
-        // Register editor-only IDL bindings + each sibling .p7 module.
-        // All add_binding registrations survive ScriptHost::reload.
-        host.add_binding("yaobow_editor_services", EDITOR_SERVICES_P7);
-        register_editor_modules(&host);
-
-        host.load_source(MAIN_P7)
-            .expect("editor script must load successfully");
 
         let textures = build_texture_cache(&app);
 
@@ -72,16 +69,20 @@ impl ScriptedWelcomePage {
             )
         };
 
-        let host_id = host.intern(host_ctx);
-        let host_box = host
-            .foreign_box(
-                "yaobow_editor.comdef.editor_services.IEditorHostContext",
-                host_id,
-            )
-            .expect("IEditorHostContext foreign box must construct");
-        let director_data = host
-            .call_returning_data("init", vec![host_box])
-            .expect("welcome script init must succeed");
+        // Register every IDL binding + sibling .p7 module declared in
+        // EDITOR_PACKAGE, compile main.p7 if not already loaded,
+        // intern the host context, then call `init(host)` on the root
+        // module. The `bootstrap_script_root` helper unifies the
+        // ensure_loaded → intern → foreign_box → call pipeline so we
+        // don't repeat it in each per-binary bootstrap.
+        let director_data = bootstrap_script_root(
+            &host,
+            &EDITOR_PACKAGE,
+            host_ctx,
+            EDITOR_HOST_CONTEXT_TYPE_TAG,
+            "init",
+        )
+        .expect("welcome script init must succeed");
 
         // Reverse-wrap the script-side `box<radiance.IImmediateDirector>`
         // through the runtime-typed CCW factory. The fat CCW gives us
@@ -90,7 +91,7 @@ impl ScriptedWelcomePage {
         // `wrap_director` call, because the script struct's
         // `conforming_to` list backs every advertised interface with
         // its own slot.
-        let runtime_handle = host_runtime_handle(&host);
+        let runtime_handle = host.runtime_handle();
         let director: ComRc<IDirector> =
             wrap_director(&runtime_handle, director_data).expect("wrap_director must succeed");
 
@@ -108,16 +109,4 @@ impl ScriptedWelcomePage {
 fn build_texture_cache(app: &ComRc<IApplication>) -> Rc<RefCell<ImguiTextureCache>> {
     let factory = app.engine().borrow().rendering_component_factory();
     Rc::new(RefCell::new(ImguiTextureCache::new(factory)))
-}
-
-/// Pull a `RuntimeHandle` out of the `ScriptHost`'s services bundle
-/// by entering its `RuntimeAccess` scope once.
-fn host_runtime_handle(host: &Rc<ScriptHost>) -> RuntimeHandle {
-    let mut out = None;
-    <ScriptHost as RuntimeAccess>::with_ctx(host, &mut |_ctx| {
-        let h = with_services(|s| s.runtime_handle())
-            .expect("with_services inside RuntimeAccess scope");
-        out = Some(h);
-    });
-    out.expect("RuntimeAccess::with_ctx ran body")
 }

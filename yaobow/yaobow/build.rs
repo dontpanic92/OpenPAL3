@@ -6,10 +6,11 @@ mod features;
 fn main() {
     features::enable_features();
     generate_comdef("yaobow.idl", "yaobow_comdef.rs");
-    generate_pair(
+    generate_triple(
         "yaobow_services.idl",
         "yaobow_services_comdef.rs",
         "yaobow_services.p7",
+        "yaobow_services_bridge.rs",
     );
     let _ = EmitBuilder::builder().all_git().emit();
 
@@ -47,6 +48,28 @@ fn generate_pair(idl_file: &str, rust_out: &str, p7_out: &str) {
     let out = out_path(p7_out);
     let dependencies = crosscom_ccidl::generate_protosept_to_file(&idl, &out)
         .unwrap_or_else(|err| panic!("Failed to generate {}: {}", p7_out, err));
+    for dependency in dependencies {
+        println!("cargo:rerun-if-changed={}", dependency.display());
+    }
+}
+
+/// Like [`generate_pair`] but also emits the script bridge
+/// (`*_bridge.rs`) that turns `[protosept(scriptable)]` /
+/// `[protosept(script_app_root)]` interfaces into typed Rust glue
+/// (register/wrap/intern helpers and `<I>Client` types). The bridge
+/// is `include!()`d under `crate::script_bridges::yaobow_services`
+/// in `src/lib.rs`.
+fn generate_triple(idl_file: &str, rust_out: &str, p7_out: &str, bridge_out: &str) {
+    generate_pair(idl_file, rust_out, p7_out);
+    let idl = idl_path(idl_file);
+    let out = out_path(bridge_out);
+    let dependencies = crosscom_ccidl::generate_script_bridge_to_file(
+        &idl,
+        &out,
+        "yaobow",
+        "script_bridges",
+    )
+    .unwrap_or_else(|err| panic!("Failed to generate bridge {}: {}", bridge_out, err));
     for dependency in dependencies {
         println!("cargo:rerun-if-changed={}", dependency.display());
     }

@@ -22,6 +22,7 @@ pub mod script_bridges {
 
 pub mod proxies;
 pub mod runtime;
+pub mod script_package;
 pub mod services;
 
 pub use proxies::{install_imgui_pump, install_imgui_pump_with_cache, ImguiImmediateDirectorPump};
@@ -29,6 +30,7 @@ pub use proxies::{install_imgui_pump, install_imgui_pump_with_cache, ImguiImmedi
 // callers don't need to know where the codegen lives.
 pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};
 pub use script_bridges::radiance::{register_immediate_director_proto, wrap_director};
+pub use script_package::{bootstrap_script_root, ScriptModule, ScriptPackage, HOST_CONTEXT_TYPE_TAG};
 pub use services::HostContext;
 
 /// Re-export of the radiance-side `wrap_ray_caster` so callers

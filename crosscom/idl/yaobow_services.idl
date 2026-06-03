@@ -15,7 +15,7 @@ import openpal4.idl;
 // conforms a single struct to this proto; Rust holds the rooted
 // instance and asks it to materialise per-feature surfaces (title
 // director, PAL4 debug overlay, …).
-[uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a04)]
+[uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a04), protosept(script_app_root)]
 interface IYaobowScriptApp: IUnknown {
     IImmediateDirector make_title_director();
     IPal4DebugOverlay make_pal4_debug_overlay(IPal4DebugContext ctx);

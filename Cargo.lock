@@ -5520,6 +5520,7 @@ dependencies = [
  "common",
  "crosscom",
  "crosscom-ccidl",
+ "crosscom-protosept",
  "fileformats",
  "image 0.23.14",
  "imgui",
