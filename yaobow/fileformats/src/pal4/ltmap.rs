@@ -7,11 +7,32 @@
 //! (`Q01` vs `Q01Y`, `N02` vs `N02Y`, …). See `generated/ltmap.md` for
 //! the full reverse-engineering write-up.
 //!
-//! The shipped renderer consumes this as
-//! `final = (lightMap * 1.5 + 0.15) * diffuse * tint.rgb * intensity`
-//! — i.e. it fits straight into the existing `lightmap_texture.frag`
-//! per-material UBO once `MaterialParams.tint` is set to
-//! `[r, g, b, intensity]`.
+//! The shipped renderer's canonical formula is
+//! `final = (lightMap * 1.5 + 0.15) * diffuse * tint.rgb * intensity`,
+//! but yaobow applies it as
+//! `final = (lightMap * 1.5 * intensity + 0.3) * diffuse * tint.rgb`
+//! in `lightmap_texture.frag`. Two deviations from the canonical form:
+//!
+//! * The ambient floor (`+ 0.3`, vs canonical `+ 0.15`) is raised, and
+//!   pulled *outside* the `intensity` multiply, so scenes whose
+//!   intensity is small (most of the PAL4 corpus sits in `[0.04, 0.5]`;
+//!   `m01/2` ships `0.04`, every `q04` cave block sits in
+//!   `[0.04, 0.51]`) retain a visible diffuse contribution rather than
+//!   collapsing to pure black at the multiply. Surveys across all
+//!   shipped `<block>_ltMap.cfg` files showed that scaling the
+//!   ambient floor by the shipped intensities reproduces the
+//!   user-reported "scene is very dark" symptom on `Q04` and `m01/2`.
+//! * The `+ 0.3` (vs canonical `+ 0.15`) floor was raised in an
+//!   earlier pass for the cave/wall dark-corner case (M01 caves)
+//!   where the canonical `0.15` left baked-dark atlas texels
+//!   pure-black.
+//!
+//! These two changes work together: pulling the floor outside the
+//! multiply only helps if the floor is large enough to remain visible
+//! after multiplying by `tint.rgb * diffuse.rgb`. The combined behavior
+//! matches the user-perceived original-game brightness on the dark
+//! scenes (Q04, m01/2) without washing out daylight scenes (Q01:
+//! intensity `0.76`) or night variants (Q01Y: intensity `0.40`).
 
 use std::io::Read;
 

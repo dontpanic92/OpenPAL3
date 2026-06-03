@@ -49,22 +49,28 @@ void main() {
     // lightmap factor and tint must therefore also be multiplied by
     // `mat.tint.a` to preserve the premultiplied invariant of the output.
     //
-    // The lightmap itself is remapped as `lightMap * 1.5 + 0.15` to match
-    // the shipped PAL4 renderer (see `pal4/ltmap.rs` doc-comment): this
-    // gives a 0.15 ambient floor so dark-corner lightmap samples don't
-    // collapse to pure black, and a 1.5 gain so well-lit samples reach
-    // full brightness. Without the `+ 0.15` floor, baked shadows
-    // produced a hard black-to-color gradient across faces.
-    // The lightmap itself is remapped as `lightMap * 1.5 + 0.3` to match
-    // the shipped PAL4 renderer's ambient look (see `pal4/ltmap.rs`
-    // doc-comment for the canonical formula). The shipped formula uses
-    // a `+ 0.15` floor; we use `+ 0.3` because the canonical 0.15 leaves
-    // many baked-dark or under-baked atlas texels producing pure-black
-    // faces in cave/wall geometry (e.g. M01/1). The 1.5 gain so well-lit
-    // samples reach full brightness remains unchanged. Without the
-    // higher floor, baked shadows produced a hard black-to-color
-    // gradient across affected faces.
-    vec3 lm = lightMap.rgb * 1.5 + 0.3;
-    vec3 rgb = lm * mat.misc.y * color.rgb * mat.tint.rgb * mat.tint.a;
+    // The lightmap is remapped as `lightMap * 1.5 * intensity + 0.3` —
+    // i.e. the baked-light contribution (`lightMap * 1.5`) is scaled by
+    // the per-scene `_ltMap.cfg` `intensity` (UBO `misc.y`), but the
+    // ambient floor (`+ 0.3`) is *not*. The shipped formula doc-comment
+    // (`pal4/ltmap.rs`) writes the canonical form as
+    // `(lightMap * 1.5 + 0.15) * intensity`, but in practice the
+    // PAL4 corpus ships intensities in the low end (most blocks are
+    // `[0.05, 0.5]`, Q04 caves `[0.04, 0.51]`, m01/2 = `0.04`), and
+    // multiplying the ambient floor by such a small `intensity`
+    // collapses the visible-but-dim ambient down to a pure-black
+    // baseline. Pulling the floor outside the multiply keeps the
+    // intensity term doing what its name promises — dimming the *light*
+    // — while guaranteeing every surface retains a visible diffuse
+    // contribution. The floor itself is `0.3` (vs the canonical `0.15`)
+    // for the cave/wall dark-corner case from M01/1; the gain (`1.5`)
+    // is unchanged.
+    //
+    // For non-PAL4 callers `mat.misc.y` is the `MaterialParams::default`
+    // `intensity = 1.0` (set in `radiance/.../material.rs`), so this
+    // shader degenerates to `lightMap * 1.5 + 0.3` as before for any
+    // path that doesn't stamp a per-scene `_ltMap.cfg` intensity.
+    vec3 lm = lightMap.rgb * 1.5 * mat.misc.y + 0.3;
+    vec3 rgb = lm * color.rgb * mat.tint.rgb * mat.tint.a;
     outColor = vec4(rgb, color.a * mat.tint.a);
 }

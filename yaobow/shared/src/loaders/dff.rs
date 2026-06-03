@@ -586,11 +586,12 @@ pub(crate) fn create_geometry_internal(
                     // source (typical for cave/wall sectors where the
                     // material was authored as lightmap-only). Build a
                     // `LightMapMaterialDef` with a white dummy diffuse
-                    // so `(lightMap * 1.5 + 0.15) * white * tint`
-                    // renders the lightmap straight through. Without
-                    // this branch we fell to the `missing`-texture
-                    // placeholder below and rendered 1+ fan-shaped
-                    // pure-black triangle clusters on cave walls.
+                    // so `(lightMap * 1.5 * intensity + 0.3) * white *
+                    // tint` renders the lightmap straight through.
+                    // Without this branch we fell to the `missing`-
+                    // texture placeholder below and rendered 1+
+                    // fan-shaped pure-black triangle clusters on cave
+                    // walls.
                     load_lightmap_only_material(
                         material,
                         tint,
@@ -1109,9 +1110,11 @@ fn load_lightmap_material_pair(
 /// material has no `texture` chunk — its only color information lives
 /// in the `LightMapPlugin` atlas. Used for BSP sectors whose material
 /// list ships lightmap-only entries (observed in M01 cave walls). The
-/// resulting material renders as `(lightMap * 1.5 + 0.15) * white *
-/// tint * intensity`, i.e. the baked atlas straight through the
-/// per-scene `_ltMap.cfg` modulation.
+/// resulting material renders as `(lightMap * 1.5 * intensity + 0.3) *
+/// white * tint`, i.e. the baked atlas straight through the per-scene
+/// `_ltMap.cfg` modulation. (The ambient floor `+ 0.3` is intentionally
+/// kept outside the `intensity` multiply — see
+/// `radiance/.../lightmap_texture.frag` for the rationale.)
 fn load_lightmap_only_material(
     material: &fileformats::rwbs::material::Material,
     tint: [f32; 4],
