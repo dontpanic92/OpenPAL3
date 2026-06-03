@@ -341,3 +341,66 @@ def test_goal_seek_excludes_computed_rhs_when_value_set():
         assert "ev_computed" in triggers_all
 
         g.close()
+
+
+def test_goal_seek_refuses_backward_target():
+    """If `globals[slot]` is already strictly greater than the
+    requested `value`, `push_toward` must refuse rather than
+    enumerate writers (PAL4 plot flags are monotonic; "going back"
+    is meaningless and would waste max_writers attempts on writers
+    that all immediately reload). Result has success=False with a
+    clear note so the explore loop can fall back to a forward
+    target."""
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        catalog = _build_catalog(tmp)
+        g = Graph(tmp / "db.sqlite")
+        initial = list(INITIAL_GLOBALS)
+        initial[0] = 11_400  # already past 10_201 etc.
+        client = MockClient(initial_globals=initial)
+        planner = GoalSeekPlanner(catalog, g, client)
+        # Try to push back to a value below the live state.
+        result = planner.push_toward(slot=0, value=10_201)
+        assert result.success is False
+        assert result.writer is None
+        assert result.observed_before == 11_400
+        assert result.observed_after == 11_400
+        # No save/fire/load cycle should be issued.
+        assert client.calls == []
+        joined = " | ".join(result.notes)
+        assert "already past" in joined
+        g.close()
+
+
+def test_goal_seek_value_none_filters_to_forward_writers():
+    """When called with `value=None` (the fallback "advance the
+    slot by any amount" mode), `push_toward` must skip writers
+    landing values <= current — those would be backward or no-op
+    moves. value=None writers (computed RHS) survive."""
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        catalog = _build_catalog(tmp)
+        g = Graph(tmp / "db.sqlite")
+        initial = list(INITIAL_GLOBALS)
+        initial[0] = 11_400  # at the catalog's highest concrete writer.
+        client = MockClient(initial_globals=initial)
+        # No programmed writes — every candidate will be a no-op so
+        # `push_toward` will try until exhausted.
+        planner = GoalSeekPlanner(catalog, g, client)
+        result = planner.push_toward(slot=0, value=None)
+        # The 11_400 and 10_300 writers are <= current and must be
+        # filtered before any save/load cycle. The only survivor is
+        # `ev_computed` (value=None, computed RHS).
+        joined = " | ".join(result.notes)
+        assert "ev_M01_1_5=11400" not in joined
+        assert "ev_no_path=11400" not in joined
+        assert "ev_local_writer=10300" not in joined
+        # The computed-RHS writer is the only one that should be
+        # tried (and it will fail — MockClient doesn't programme it
+        # to actually move globals).
+        names = [c[1] for c in client.calls if c[0] == "fire"]
+        # ev_computed has no transitions/path, so it's just fired
+        # directly in q01/Q01. The path planner returns [] meaning
+        # "already at target block".
+        assert names == ["ev_computed"], names
+        g.close()

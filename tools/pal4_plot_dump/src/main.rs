@@ -441,6 +441,21 @@ fn main() -> Result<()> {
                 blocks.insert(block.to_string(), ());
             }
         }
+        // Also discover blocks via outgoing transitions to this scene
+        // (e.g. Q01/Q01#ev_Q01_Q01_1 transitions to Q01/N02 even
+        // though no `Q01_N02_init` fn exists in the module). The
+        // EVF/GOB files live on disk under
+        // `gamedata/scenedata/<scene>/<block>/` — `build_block` will
+        // pick them up just like for init-discovered blocks. This
+        // closes the gap that previously left N02/N03/Q01Y as empty
+        // "synthesized" stubs even when their scene data was present
+        // on disk; without these the planner can't see, e.g., the
+        // trigger in Q01/N02 that writes g[0]=11500.
+        for tr in &scene_out.transitions {
+            if tr.to[0].eq_ignore_ascii_case(&scene_name) {
+                blocks.entry(tr.to[1].clone()).or_insert(());
+            }
+        }
         if blocks.is_empty() {
             // Still emit a stub so agents following the per-scene
             // transition list have *something* to land on under

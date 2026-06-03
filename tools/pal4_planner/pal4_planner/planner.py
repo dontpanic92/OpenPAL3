@@ -402,6 +402,43 @@ class GoalSeekPlanner:
                 notes=[f"globals[{slot}] already == {value}; nothing to do"],
             )
 
+        # PAL4 plot flags are monotonically non-decreasing. If the
+        # caller asks us to push toward a value we've already moved
+        # past, every recorded writer for that exact value would
+        # require the engine to "go back" — which the trigger system
+        # cannot do. Refuse early so the explore loop can pick a
+        # different (forward) target instead of grinding through
+        # max_writers attempts that all immediately reload.
+        if (
+            value is not None
+            and observed_before is not None
+            and observed_before > value
+        ):
+            return GoalSeekResult(
+                success=False,
+                writer=None,
+                steps_taken=[],
+                observed_before=observed_before,
+                observed_after=observed_before,
+                notes=[
+                    f"globals[{slot}] = {observed_before} is already past "
+                    f"target {value}; refusing to push backward "
+                    "(plot flags are monotonically non-decreasing). "
+                    "Caller should pick a forward target instead."
+                ],
+            )
+
+        # When the caller doesn't pin a specific value (fallback
+        # path from `_latest_blocking_gate`), restrict to writers
+        # whose recorded value is strictly forward of the live
+        # global. value=None writers (computed RHS, ~30 % of the
+        # index) survive — we can't statically prove their direction.
+        if value is None and observed_before is not None:
+            writers = [
+                w for w in writers
+                if w.value is None or w.value > observed_before
+            ]
+
         # Read current state once for path planning.
         state = self.client.state()
         cur_scene = state.get("scene", "") or ""

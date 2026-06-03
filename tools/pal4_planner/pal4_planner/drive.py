@@ -138,8 +138,18 @@ def _latest_blocking_gate(
             return False
         return current_globals[slot] == req
 
+    def already_past(slot: int, req: int) -> bool:
+        # PAL4 plot flags are monotonically non-decreasing; a gate
+        # whose required value is below the current live value is no
+        # longer blocking us (we advanced past it via some other
+        # path). Trying to "push back" to that value is nonsense and
+        # would burn writer attempts in GoalSeekPlanner.
+        if current_globals is None or slot >= len(current_globals):
+            return False
+        return current_globals[slot] > req
+
     # Prefer (slot, value) gates with at least one fireable writer
-    # that we haven't already satisfied.
+    # that we haven't already satisfied or moved past.
     for slot_str, observed, _taken, required in rows:
         if required is None or required == observed:
             continue
@@ -149,6 +159,8 @@ def _latest_blocking_gate(
         except (TypeError, ValueError):
             continue
         if already_satisfied(slot, req):
+            continue
+        if already_past(slot, req):
             continue
         if catalog is None or catalog.plot_index_for(slot, req):
             return (slot, req)
@@ -220,6 +232,27 @@ def cmd_explore(args: argparse.Namespace) -> int:
             result = goal_seek.push_toward(slot=slot, value=value)
             for note in result.notes:
                 print(f"  {note}")
+            # If the specific (slot, value) target failed (no writer,
+            # unreachable, or all writers no-oped), fall back to
+            # "any forward writer for this slot". The static catalog
+            # over-approximates `value` because the abstract walker
+            # records every literal Set4+Movga4 even when the gate
+            # guarding it is unreachable in practice (notable example:
+            # `q01/func2004` writes g[0]=11500 but is gated on
+            # g[0]==11400 inside a deeper-dispatch path that itself
+            # requires g[0]>11400 — contradictory). The value=None
+            # path enumerates all slot writers, filtered to those
+            # strictly forward of the live value (see
+            # `GoalSeekPlanner.push_toward`), letting the planner try
+            # the next plot tier instead of giving up.
+            if not result.success and value is not None:
+                print(
+                    f"  retrying with value=None to enumerate any "
+                    f"forward writer for slot {slot}"
+                )
+                result = goal_seek.push_toward(slot=slot, value=None)
+                for note in result.notes:
+                    print(f"  {note}")
             if not result.success:
                 print(
                     f"[step {step}] goal-seek failed: no plot-pushable writer "

@@ -574,7 +574,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     fn movsf4(&mut self, index: u16) {
         unsafe {
             let pos = self.fp - index as usize * 4;
-            let data: u32 = self.read_stack(pos);
+            let data: u32 = self.read_stack(self.sp);
             self.write_stack(pos, data);
             self.sp += 4;
         }

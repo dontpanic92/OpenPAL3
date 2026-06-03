@@ -82,6 +82,23 @@ pub struct Pal4Scene {
     pub(crate) players: [ComRc<IEntity>; 4],
     pub(crate) npcs: Vec<ComRc<IEntity>>,
     pub(crate) objects: Vec<ComRc<IEntity>>,
+    /// World-space XZ axis-aligned bounding boxes for each entry in
+    /// `objects`, computed once at scene load. `(min_x, max_x, min_z,
+    /// max_z)`; `None` when the object's entity tree contains no
+    /// static mesh (e.g. invisible spawn markers).
+    ///
+    /// Used by [`Pal4Scene::test_interaction`] to decide whether the
+    /// player is "near" an interactable GOB. The naive point-distance
+    /// check against `entry.position` is wrong for any GOB whose
+    /// authored anchor is offset from the visible mesh — most
+    /// notably the ladders in Q01/Q01, where the anchor sits in the
+    /// middle of the slope but the mesh extends ~150 units in Y and
+    /// ~250 units in XZ. After the climb-down handler teleports the
+    /// player to the bottom of the slope, they end up 264 XZ units
+    /// from the anchor — well beyond the 60-unit `trigger_distance`
+    /// — even though they're physically right next to the visible
+    /// ladder, so the F-key climb-up interaction would never fire.
+    pub(crate) objects_xz_aabbs: Vec<Option<(f32, f32, f32, f32)>>,
     pub(crate) objects_gob: Option<GobFile>,
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
@@ -128,6 +145,7 @@ impl Pal4Scene {
             ],
             npcs: vec![],
             objects: vec![],
+            objects_xz_aabbs: vec![],
             objects_gob: None,
             events: vec![],
             module: None,
@@ -456,7 +474,28 @@ impl Pal4Scene {
             scene,
             players,
             npcs,
-            objects,
+            objects: objects.clone(),
+            objects_xz_aabbs: objects
+                .iter()
+                .map(|e| {
+                    // Force the cached `world_transform` to be
+                    // recomputed against an identity parent BEFORE
+                    // walking the mesh. Without this, every child
+                    // entity in the loaded DFF still has its initial
+                    // identity world matrix (radiance lazily
+                    // propagates transforms via scene ticks, but
+                    // `Pal4Scene::load` runs before the first tick),
+                    // so `entity_world_xz_aabb` would return an AABB
+                    // in mesh-LOCAL space — centred near the origin
+                    // — and the player at world (710, _, 864) was
+                    // measured at ~1119 units from it, well beyond
+                    // any radius. The floor / wall ray casters
+                    // already do this same explicit propagation
+                    // (see `create_floor_wall_ray_caster`).
+                    e.update_world_transform(&Transform::new());
+                    entity_world_xz_aabb(e)
+                })
+                .collect(),
             objects_gob: Some(gob),
             events: events.events,
             module: Some(module),
@@ -551,14 +590,75 @@ impl Pal4Scene {
         }
 
         let position = self.players[leader].world_transform().position();
-        let mut min_distance = 99999.;
+        let mut min_distance = f32::INFINITY;
         let mut min_function = None;
 
         for (i, object) in self.objects.iter().enumerate() {
             let entry = &self.objects_gob.as_ref().unwrap().entries[i];
-            let distance = Vec3::norm(&Vec3::sub(&object.world_transform().position(), &position));
-            if distance < 50. && distance < min_distance && entry.research_function != "" {
-                min_distance = distance;
+            if entry.research_function == "" {
+                continue;
+            }
+
+            // Horizontal (XZ) distance from the player to the
+            // closest point on the object's bounding rect — or to
+            // the entry's anchor when no mesh AABB is available
+            // (invisible markers). The Y axis is ignored on
+            // purpose: tall objects like ladders/staircases anchor
+            // their GOB origin at one end of the climb path while
+            // the player stands at the other end. The original
+            // engine scopes the interaction prompt by horizontal
+            // proximity for exactly this reason; vertical
+            // separation is handled by the research handler
+            // itself (`func1012`/`func1013` re-snap the player
+            // onto the destination point once invoked).
+            //
+            // Using the *mesh* AABB rather than the anchor matters
+            // for the Q01/Q01 ladder #2: its anchor is in the
+            // middle of the slope, but the bottom climb-down
+            // teleport target ends up ~264 XZ units from the
+            // anchor — well outside the entry's 60-unit
+            // `trigger_distance` — even though the player is
+            // physically next to the visible ladder.
+            let xz_dist = match self.objects_xz_aabbs.get(i).and_then(|a| a.as_ref()) {
+                Some(&(min_x, max_x, min_z, max_z)) => {
+                    let dx = if position.x < min_x {
+                        min_x - position.x
+                    } else if position.x > max_x {
+                        position.x - max_x
+                    } else {
+                        0.0
+                    };
+                    let dz = if position.z < min_z {
+                        min_z - position.z
+                    } else if position.z > max_z {
+                        position.z - max_z
+                    } else {
+                        0.0
+                    };
+                    (dx * dx + dz * dz).sqrt()
+                }
+                None => {
+                    let opos = object.world_transform().position();
+                    let dx = opos.x - position.x;
+                    let dz = opos.z - position.z;
+                    (dx * dx + dz * dz).sqrt()
+                }
+            };
+
+            // Use the GOB entry's `trigger_distance` as a slack
+            // padding on top of the AABB (defaults to ~60.0 in the
+            // shipped data; sound emitters use ~600.0 but they
+            // don't have a `research_function` so they're filtered
+            // above). Fall back to 50.0 if zero so pathological
+            // data doesn't make every object interactive at
+            // infinity.
+            let radius = if entry.trigger_distance > 0.0 {
+                entry.trigger_distance
+            } else {
+                50.0
+            };
+            if xz_dist < radius && xz_dist < min_distance {
+                min_distance = xz_dist;
                 min_function = Some(entry.research_function.to_string().unwrap());
             }
         }
@@ -710,6 +810,69 @@ fn accumulate_y_range(entity: &ComRc<IEntity>, lo: &mut f32, hi: &mut f32) {
                 }
                 if y > *hi {
                     *hi = y;
+                }
+            }
+        }
+    }
+}
+
+/// Walk an entity tree and return the world-space XZ axis-aligned
+/// bounding box `(min_x, max_x, min_z, max_z)` across every vertex of
+/// every `IStaticMeshComponent` found, or `None` when the tree has no
+/// static mesh. Used by [`Pal4Scene::test_interaction`] so the F-key
+/// interaction prompt fires when the player is next to the visible
+/// mesh, regardless of where the GOB entry's anchor point sits
+/// relative to it (PAL4 ladders anchor in the middle of the slope but
+/// the climb handler teleports the player to one of the end points,
+/// far from the anchor).
+fn entity_world_xz_aabb(entity: &ComRc<IEntity>) -> Option<(f32, f32, f32, f32)> {
+    let mut min_x = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut min_z = f32::INFINITY;
+    let mut max_z = f32::NEG_INFINITY;
+    accumulate_xz_aabb(entity, &mut min_x, &mut max_x, &mut min_z, &mut max_z);
+    if min_x.is_finite() && max_x.is_finite() && max_x >= min_x && max_z >= min_z {
+        Some((min_x, max_x, min_z, max_z))
+    } else {
+        None
+    }
+}
+
+fn accumulate_xz_aabb(
+    entity: &ComRc<IEntity>,
+    min_x: &mut f32,
+    max_x: &mut f32,
+    min_z: &mut f32,
+    max_z: &mut f32,
+) {
+    for child in entity.children() {
+        accumulate_xz_aabb(&child, min_x, max_x, min_z, max_z);
+    }
+
+    if let Some(mesh) = entity.get_component(IStaticMeshComponent::uuid()) {
+        let mesh = mesh.query_interface::<IStaticMeshComponent>().unwrap();
+        // Bake the full world transform (translation + rotation +
+        // scale) into each vertex, mirroring `add_mesh` — the
+        // entity's `set_position` carries translation but rotation
+        // / scale on child sub-frames is otherwise dropped.
+        let world_matrix = *entity.world_transform().matrix();
+        let mesh_inner =
+            mesh.inner::<radiance::components::mesh::static_mesh::StaticMeshComponent>();
+        let geometries = mesh_inner.get_geometries();
+        for geometry in geometries.iter() {
+            for v in geometry.vertices.to_position_vec() {
+                let w = transform_point(&world_matrix, &v);
+                if w.x < *min_x {
+                    *min_x = w.x;
+                }
+                if w.x > *max_x {
+                    *max_x = w.x;
+                }
+                if w.z < *min_z {
+                    *min_z = w.z;
+                }
+                if w.z > *max_z {
+                    *max_z = w.z;
                 }
             }
         }
