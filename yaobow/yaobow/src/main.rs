@@ -5,7 +5,7 @@ use log::{Level, LevelFilter, Log, Metadata, Record};
 use shared::video::register_opengb_video_decoders;
 use yaobow_lib::{
     run_opengujian, run_openpal3, run_openpal4, run_openpal4_with_agent, run_openpal5,
-    run_openswd5, run_title_selection, Pal4AgentBootOptions,
+    run_openpal5q, run_openswd5, run_title_selection, Pal4AgentBootOptions,
 };
 
 pub fn main() {
@@ -47,7 +47,7 @@ pub fn main() {
                     }
                 }
                 "--pal5" => run_openpal5(),
-                "--pal5q" => run_openpal5(),
+                "--pal5q" => run_openpal5q(),
                 "--swd5" => run_openswd5(),
                 "--gujian" => run_opengujian(),
                 "--test" => {}

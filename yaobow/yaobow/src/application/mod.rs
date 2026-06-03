@@ -81,13 +81,13 @@ impl IComponentImpl for YaobowApplicationLoader {
         // PAL5 is driven by the protosept orchestrator
         // (`yaobow/yaobow/scripts/openpal5.p7::launch`); every other
         // game still goes through the legacy `create_loader` path.
-        let success = if game == GameType::PAL5 {
+        let success = if game == GameType::PAL5 || game == GameType::PAL5Q {
             let project = self
                 .project
                 .borrow()
                 .clone()
                 .expect("YaobowScriptProject must be installed before per-game launch");
-            match launch_openpal5_via_script(&project, self.app.clone(), asset_path) {
+            match launch_openpal5_via_script(&project, self.app.clone(), game, asset_path) {
                 Ok(()) => true,
                 Err(err) => {
                     log::warn!(
@@ -160,8 +160,8 @@ fn launch_game(
     asset_path: String,
     project: &Rc<YaobowScriptProject>,
 ) {
-    if game == GameType::PAL5 {
-        if let Err(err) = launch_openpal5_via_script(project, app, asset_path) {
+    if game == GameType::PAL5 || game == GameType::PAL5Q {
+        if let Err(err) = launch_openpal5_via_script(project, app, game, asset_path) {
             log::warn!("openpal5 direct-boot script failed: {err}");
         }
         return;
@@ -183,10 +183,11 @@ fn launch_game(
 fn launch_openpal5_via_script(
     project: &Rc<YaobowScriptProject>,
     app: ComRc<IApplication>,
+    game: GameType,
     asset_path: String,
 ) -> Result<(), String> {
     let factory = app.engine().borrow().rendering_component_factory();
-    let ctx = Pal5Context::create(asset_path, factory);
+    let ctx = Pal5Context::create(game, asset_path, factory);
     project.launch_pal5(ctx)
 }
 
@@ -228,12 +229,22 @@ pub fn run_title_selection() {
 /// `initial_game = Some(GameType::PAL5)` so the title page is
 /// skipped and the protosept-driven PAL5 launch fires immediately on
 /// first `on_loading`.
-///
-/// `--pal5q` is wired to call this same helper to preserve the
-/// pre-existing aliasing — PAL5Q-specific asset routing is a
-/// follow-up.
 pub fn run_openpal5() {
-    let app = create_application_for_game(GameType::PAL5);
+    run_pal5_family(GameType::PAL5);
+}
+
+/// CLI direct-entry for `--pal5q`. Mirrors `run_openpal5` but boots
+/// as `GameType::PAL5Q` so `Pal5Context` threads the correct
+/// `.pkg` decryption key (`GameType::pkg_key()`) into
+/// `packfs::init_virtual_fs` and the per-game asset path / save dir
+/// resolve via the right `config_key`.
+pub fn run_openpal5q() {
+    run_pal5_family(GameType::PAL5Q);
+}
+
+fn run_pal5_family(game: GameType) {
+    debug_assert!(matches!(game, GameType::PAL5 | GameType::PAL5Q));
+    let app = create_application_for_game(game);
     app.initialize();
     shared::theme_runtime::apply_runtime_theme(&app);
     app.run();

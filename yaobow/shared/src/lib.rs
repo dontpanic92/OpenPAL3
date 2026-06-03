@@ -133,6 +133,19 @@ impl GameType {
         }
     }
 
+    /// Decryption key used by `packfs::init_virtual_fs` for `.pkg`
+    /// archives shipped by certain games. `None` for games that
+    /// either don't use `.pkg` at all or whose `.pkg` files are not
+    /// encrypted. Single source of truth — both the `yaobow` binary
+    /// (per-game launch path) and `yaobow_editor` consume this.
+    pub fn pkg_key(&self) -> Option<&'static str> {
+        match self {
+            GameType::PAL5 => Some("Y%H^uz6i"),
+            GameType::PAL5Q => Some("L#Z^zyjq"),
+            _ => None,
+        }
+    }
+
     pub fn all() -> &'static [GameType] {
         &[
             GameType::PAL3,

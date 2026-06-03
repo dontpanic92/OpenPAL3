@@ -364,7 +364,7 @@ pub mod openpal3;
 pub mod openpal4;
 pub mod openswd5;
 
-pub use application::run_openpal5;
+pub use application::{run_openpal5, run_openpal5q};
 pub use application::run_title_selection;
 pub use opengujian::run_opengujian;
 pub use openpal3::run_openpal3;

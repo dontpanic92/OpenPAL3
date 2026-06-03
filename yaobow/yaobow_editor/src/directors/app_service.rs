@@ -69,11 +69,7 @@ impl IAppServiceImpl for AppService {
         }
 
         // Build a per-game vfs and asset loader.
-        let pkg_key = match game {
-            GameType::PAL5 => Some("Y%H^uz6i"),
-            GameType::PAL5Q => Some("L#Z^zyjq"),
-            _ => None,
-        };
+        let pkg_key = game.pkg_key();
         let factory = self.app.engine().borrow().rendering_component_factory();
         let raw_vfs = packfs::init_virtual_fs(&asset_path, pkg_key);
         let asset_loader = match game {
