@@ -53,7 +53,13 @@ impl AssetLoader {
     }
 
     pub fn load_model(&self, model_path: &str) -> anyhow::Result<ComRc<IEntity>> {
-        let model_path = format!("/Model/{}", model_path);
+        // PAL5's `role_*.bin` stores Windows backslash separators in
+        // `file_path`; normalise to forward slashes so downstream log
+        // lines (and `Pal5TextureResolver`'s path math) see a uniform
+        // POSIX path. `packfs::pkg::pkg_archive::open` re-normalises
+        // `/` → `\` internally, so the pkg lookup for the `.dff`
+        // itself keeps working unchanged.
+        let model_path = format!("/Model/{}", model_path.replace('\\', "/"));
         create_entity_from_dff_model(
             &self.component_factory,
             &self.vfs,
