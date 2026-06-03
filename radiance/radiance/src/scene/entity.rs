@@ -308,14 +308,40 @@ impl IEntityImpl for CoreEntity {
             return;
         }
 
-        let guard = self.mutations.iter_guard();
-        let children_len = self.props().children.len();
-        for i in 0..children_len {
-            let child = { self.props().children[i].clone() };
-            child.update(delta_sec);
+        // Fast path for leaf entities with no work to do. Skinned
+        // mesh bones are the canonical example: each bone is an
+        // entity with no components and no children, just a
+        // transform — they exist solely as scene-graph anchors for
+        // `update_world_transform`. PAL4's Q04C hub block has
+        // ~14K such entities (4 party + 40+ NPCs × ~50 bones
+        // each, plus GOB anchors). Without this short-circuit the
+        // per-frame walk pays an `iter_guard`, a `dispatch_each`
+        // call (which does its own `len() == 0` check after
+        // borrowing the components map), and a drain check for
+        // every one of them.
+        //
+        // `components.is_empty()` and `props().children.is_empty()`
+        // are both single `RefCell::borrow()` + Vec/IndexMap
+        // emptiness check — cheaper than the full guard +
+        // dispatch path they're replacing.
+        let has_components = !self.components.is_empty();
+        let has_children = !self.props().children.is_empty();
+        if !has_components && !has_children {
+            return;
         }
-        self.components
-            .dispatch_each(|component| component.on_updating(delta_sec));
+
+        let guard = self.mutations.iter_guard();
+        if has_children {
+            let children_len = self.props().children.len();
+            for i in 0..children_len {
+                let child = { self.props().children[i].clone() };
+                child.update(delta_sec);
+            }
+        }
+        if has_components {
+            self.components
+                .dispatch_each(|component| component.on_updating(delta_sec));
+        }
         drop(guard);
         if !self.mutations.is_iterating() {
             self.drain_pending();

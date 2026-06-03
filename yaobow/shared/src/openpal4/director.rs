@@ -384,10 +384,13 @@ impl IDirectorImpl for OpenPAL4Director {
     }
 
     fn update(&self, delta_sec: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
+        let _timer = radiance::perf::timer("pal4.director.update_total_ns");
         // 1. Drain any agent commands queued by the HTTP listener.
         //    Done first so `pause` / `step` / `input` requests take
         //    effect on this same tick.
-        self.drain_agent_commands();
+        radiance::perf::time("pal4.director.drain_agent_total_ns", || {
+            self.drain_agent_commands();
+        });
 
         // 2. Decide whether this real frame actually advances the
         //    simulation. Pause + zero pending steps = full freeze
@@ -405,11 +408,15 @@ impl IDirectorImpl for OpenPAL4Director {
         self.poll_save_load_hotkeys();
 
         if self.vm.borrow().context.is_none() {
-            let function = self
-                .vm
-                .borrow_mut()
-                .app_context_mut()
-                .event_triggered(effective_dt);
+            let function = radiance::perf::time(
+                "pal4.director.event_triggered_total_ns",
+                || {
+                    self.vm
+                        .borrow_mut()
+                        .app_context_mut()
+                        .event_triggered(effective_dt)
+                },
+            );
             if let Some(function) = function {
                 let module = self.vm.borrow().app_context.scene.module.clone().unwrap();
                 self.vm

@@ -32,6 +32,10 @@ impl ComponentBag {
         }
     }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        self.components.borrow().is_empty()
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.components.borrow().len()
     }

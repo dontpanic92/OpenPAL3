@@ -271,14 +271,19 @@ impl ISceneImpl for CoreScene {
         }
         let guard = self.mutations.iter_guard();
         let entities_len = self.entities.borrow().len();
-        for i in 0..entities_len {
-            let entity = self.entities.borrow()[i].clone();
-            entity.update(delta_sec);
-        }
-        for i in 0..entities_len {
-            let entity = self.entities.borrow()[i].clone();
-            entity.update_world_transform(&Transform::new());
-        }
+        crate::perf::gauge("scene.root_entities", entities_len as u64);
+        crate::perf::time("scene.entity_update_total_ns", || {
+            for i in 0..entities_len {
+                let entity = self.entities.borrow()[i].clone();
+                entity.update(delta_sec);
+            }
+        });
+        crate::perf::time("scene.entity_world_transform_total_ns", || {
+            for i in 0..entities_len {
+                let entity = self.entities.borrow()[i].clone();
+                entity.update_world_transform(&Transform::new());
+            }
+        });
         self.components
             .dispatch_each(|component| component.on_updating(delta_sec));
         drop(guard);
