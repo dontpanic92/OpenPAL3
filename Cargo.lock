@@ -3064,6 +3064,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "pal4_gob_inspect"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "common",
+ "fileformats",
+ "mini-fs",
+ "packfs",
+]
+
+[[package]]
 name = "pal4_plot_dump"
 version = "0.1.0"
 dependencies = [

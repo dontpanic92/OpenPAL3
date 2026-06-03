@@ -538,6 +538,20 @@ mod tests {
 
     use super::*;
 
+    /// Sentinel: lock the three GOB tag values that
+    /// `Pal4Scene::load` skips rendering for (non-visual entries
+    /// whose mesh field is always a placeholder per
+    /// `tools/pal4_gob_inspect`). A drift on any of these would
+    /// silently re-enable hundreds of unwanted entities — pin them
+    /// so a future renumbering / reordering edit fails the test
+    /// instead of regressing the runtime.
+    #[test]
+    fn non_visual_tag_constants_are_pinned() {
+        assert_eq!(GobObjectType::SOUND, 3);
+        assert_eq!(GobObjectType::EFFECT, 8);
+        assert_eq!(GobObjectType::MARKER, 9);
+    }
+
     /// Helper: emit a `SizedString` (u32 length + UTF-8/GBK bytes).
     fn write_string(buf: &mut Vec<u8>, s: &str) {
         let bytes = s.as_bytes();

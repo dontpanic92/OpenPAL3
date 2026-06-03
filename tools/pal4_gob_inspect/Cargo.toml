@@ -1,0 +1,12 @@
+[package]
+name = "pal4_gob_inspect"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+common = { path = "../../yaobow/common" }
+fileformats = { path = "../../yaobow/fileformats" }
+mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+packfs = { path = "../../yaobow/packfs" }

@@ -433,11 +433,43 @@ impl Pal4Scene {
             let logical_name = entry.name.to_string().ok();
             match (object_name, folder, file_name) {
                 (Ok(object_name), Ok(folder), Ok(file_name)) => {
-                    if object_type == GobObjectType::EFFECT {
+                    let entity_name = logical_name.unwrap_or_else(|| object_name.clone());
+
+                    // Skip rendering for the GOB tags that are
+                    // non-visual by design — the mesh field on
+                    // these entries is just a placement preview the
+                    // level editor needed on disk, never a
+                    // renderable. Confirmed empirically against the
+                    // full PAL4 corpus via `tools/pal4_gob_inspect`:
+                    //
+                    //   tag 3  SOUND   303/303 entries use placeholder MC
+                    //   tag 8  EFFECT  1058/1058 use ZZA/MC/JDumy/H_065
+                    //   tag 9  MARKER  57/57 use JDumy/MC
+                    //
+                    // These entries are not added to `objects`, so
+                    // `Pal4Scene::get_object` returns `None` for
+                    // them — consistent with how the original
+                    // EFFECT-only branch behaved, and scripts have
+                    // always accommodated that.
+                    //
+                    // Note: a handful of tag-5 MACHINE entries also
+                    // ship placeholder meshes (MC/JDumy) as
+                    // state-machine anchors. We intentionally do
+                    // **not** filter on mesh name here — most of
+                    // those are already covered by the explicit
+                    // HIDE flag (4 of 5 corpus-wide `HIDE=1`
+                    // entries are MACHINE), and speculatively
+                    // hiding the rest risks suppressing real
+                    // designer intent. Add a dedicated case if a
+                    // specific MACHINE entry surfaces as
+                    // incorrectly visible.
+                    if matches!(
+                        object_type,
+                        GobObjectType::EFFECT | GobObjectType::SOUND | GobObjectType::MARKER
+                    ) {
                         continue;
                     }
 
-                    let entity_name = logical_name.unwrap_or_else(|| object_name.clone());
                     let entity = asset_loader
                         .load_object(&entity_name, &folder, &file_name)
                         .unwrap_or_else(|| {
