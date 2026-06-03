@@ -165,6 +165,10 @@ impl IAppServiceImpl for AppService {
     fn exit(&self) {
         self.app.request_exit();
     }
+
+    fn set_title(&self, title: &str) {
+        self.app.set_title(title);
+    }
 }
 
 fn game_from_ordinal(ordinal: i32) -> Option<GameType> {

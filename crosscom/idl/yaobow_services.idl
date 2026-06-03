@@ -10,6 +10,7 @@ import radiance.idl;
 import scripting_services.idl;
 import pal4_debug.idl;
 import openpal4.idl;
+import openpal5.idl;
 
 // App-lifetime script root. The Yaobow protosept project's `app.p7`
 // conforms a single struct to this proto; Rust holds the rooted
@@ -32,6 +33,16 @@ interface IYaobowScriptApp: IUnknown {
         IPal4ActorAnimationController anim_3,
         ICameraControl camera,
         IRayCaster ray_caster);
+
+    // OpenPAL5 launch entry. The Rust caller constructs an
+    // `IPal5Context` carrying the PAL5-specific state (asset path +
+    // component factory used internally by the AssetLoader); the
+    // script orchestrator (`yaobow/yaobow/scripts/openpal5.p7`)
+    // drives the launch sequence through the canonical
+    // `IHostContext` services: set title, build the default scene,
+    // push it onto the scene manager, install a script-implemented
+    // free-view director.
+    void launch_openpal5(IPal5Context ctx);
 }
 [uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a05)]
 class YaobowScriptApp: IYaobowScriptApp {}

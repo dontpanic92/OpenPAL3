@@ -9,6 +9,8 @@ fn main() {
     generate_p7("openpal4.idl", "shared_openpal4.p7");
     generate_script_bridge("openpal4.idl", "shared_openpal4_bridge.rs");
     generate_comdef("openpal5.idl", "shared_openpal5_comdef.rs");
+    generate_p7("openpal5.idl", "shared_openpal5.p7");
+    generate_script_bridge("openpal5.idl", "shared_openpal5_bridge.rs");
     generate_comdef("openswd5.idl", "shared_openswd5_comdef.rs");
     generate_comdef("shared_services.idl", "shared_services_comdef.rs");
 

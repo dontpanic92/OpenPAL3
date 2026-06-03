@@ -128,6 +128,11 @@ class GameRegistry: IGameRegistry {}
 interface IAppService: IUnknown {
     IDirector? open_game(int ordinal);
     void exit();
+
+    // Sets the platform window title. Lets per-game launch scripts
+    // (e.g. `openpal5.p7::launch`) re-brand the live application
+    // without a Rust-side per-game `IApplicationLoaderComponent`.
+    void set_title(&str title);
 }
 [uuid(8c4d50aa-3b07-4a32-9d20-2e0b2f7c0003)]
 class AppService: IAppService {}

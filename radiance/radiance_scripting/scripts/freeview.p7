@@ -1,0 +1,86 @@
+// Generic FreeView camera controller, ported 1:1 from the Rust
+// `radiance::utils::free_view::FreeViewController`. Drives the
+// active scene camera each frame from WASD/QE/arrow input:
+//
+//   * WASD — translate forward/back/left/right in the camera's
+//     local frame (so movement follows the current orientation).
+//   * Q/E  — translate up/down in world space.
+//   * arrows — yaw around UP (Left/Right) and pitch around EAST
+//     (Up/Down).
+//
+// Stateless: every observable knob lives on the camera transform
+// itself, so the script-side wrapper (e.g. a per-game
+// `struct[radiance.IDirector]` that pumps `update` each frame) only
+// needs to hold a reference to the host context. SPEED and
+// ROTATE_SPEED match the Rust source.
+
+import radiance;
+import scripting_services;
+
+// Movement / rotation rates (units per second).
+pub let SPEED: float = 500.0;
+pub let ROTATE_SPEED: float = 1.0;
+
+// Keycodes mirror `radiance::input::Key` discriminants — see
+// `radiance/radiance_scripting/src/services/input.rs::key_from_i32`
+// for the canonical mapping.
+pub let KEY_A: int = 1;
+pub let KEY_D: int = 4;
+pub let KEY_E: int = 5;
+pub let KEY_Q: int = 17;
+pub let KEY_S: int = 19;
+pub let KEY_W: int = 23;
+pub let KEY_LEFT: int = 39;
+pub let KEY_UP: int = 40;
+pub let KEY_RIGHT: int = 41;
+pub let KEY_DOWN: int = 42;
+
+pub fn update(
+    camera: box<radiance.ICameraControl>,
+    input: box<scripting_services.IInputService>,
+    delta_sec: float,
+) {
+    // WASD: build a local-frame direction vector and translate_local
+    // through the camera. Matches the Rust impl's `Vec3::FRONT` /
+    // `Vec3::EAST` convention (FRONT = (0, 0, -1), EAST = (1, 0, 0)).
+    let mut mx: float = 0.0;
+    let mut mz: float = 0.0;
+    if input.key_down(KEY_W) { mz = mz - 1.0; }
+    if input.key_down(KEY_S) { mz = mz + 1.0; }
+    if input.key_down(KEY_A) { mx = mx - 1.0; }
+    if input.key_down(KEY_D) { mx = mx + 1.0; }
+    let len_sq = mx * mx + mz * mz;
+    if len_sq > 0.0 {
+        let inv_len = 1.0 / sqrt(len_sq);
+        let step = SPEED * delta_sec;
+        camera.translate_local(mx * inv_len * step, 0.0, mz * inv_len * step);
+    }
+
+    // Q/E: vertical translation in world space.
+    let mut vy: float = 0.0;
+    if input.key_down(KEY_Q) { vy = vy + 1.0; }
+    if input.key_down(KEY_E) { vy = vy - 1.0; }
+    if vy != 0.0 {
+        camera.translate(0.0, vy * SPEED * delta_sec, 0.0);
+    }
+
+    // Arrows: per-frame yaw + pitch deltas applied as composed
+    // local-axis rotations. The Rust impl wraps yaw/pitch into
+    // [0, 2π) before applying; since the deltas are
+    // ROTATE_SPEED * delta_sec (always tiny), the wrap is a no-op
+    // for the camera and we skip it here.
+    let mut yaw: float = 0.0;
+    let mut pitch: float = 0.0;
+    if input.key_down(KEY_LEFT) { yaw = yaw + ROTATE_SPEED * delta_sec; }
+    if input.key_down(KEY_RIGHT) { yaw = yaw - ROTATE_SPEED * delta_sec; }
+    if input.key_down(KEY_UP) { pitch = pitch + ROTATE_SPEED * delta_sec; }
+    if input.key_down(KEY_DOWN) { pitch = pitch - ROTATE_SPEED * delta_sec; }
+    if yaw != 0.0 {
+        // Vec3::UP = (0, 1, 0).
+        camera.rotate_axis_angle_local(0.0, 1.0, 0.0, yaw);
+    }
+    if pitch != 0.0 {
+        // Vec3::EAST = (1, 0, 0).
+        camera.rotate_axis_angle_local(1.0, 0.0, 0.0, pitch);
+    }
+}

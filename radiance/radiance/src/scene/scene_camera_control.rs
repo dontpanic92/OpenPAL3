@@ -58,6 +58,27 @@ impl ICameraControlImpl for SceneCameraControl {
     fn right_z(&self) -> f32 {
         self.scene.camera().transform().matrix()[2][0]
     }
+
+    fn translate_local(&self, dx: f32, dy: f32, dz: f32) {
+        self.scene
+            .camera_mut()
+            .transform_mut()
+            .translate_local(&Vec3::new(dx, dy, dz));
+    }
+
+    fn translate(&self, dx: f32, dy: f32, dz: f32) {
+        self.scene
+            .camera_mut()
+            .transform_mut()
+            .translate(&Vec3::new(dx, dy, dz));
+    }
+
+    fn rotate_axis_angle_local(&self, ax: f32, ay: f32, az: f32, radian: f32) {
+        self.scene
+            .camera_mut()
+            .transform_mut()
+            .rotate_axis_angle_local(&Vec3::new(ax, ay, az), radian);
+    }
 }
 
 /// Convenience wrapper mirroring the `wrap_<i>` family from the

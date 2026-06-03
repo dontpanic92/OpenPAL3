@@ -8,6 +8,8 @@ import radiance;
 import pal4_debug;
 import pal4_debug_overlay;
 import openpal4;
+import openpal5;
+import openpal5_launcher;
 import scripting_services;
 import actor_controller;
 import title;
@@ -48,6 +50,14 @@ pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
             anim_0, anim_1, anim_2, anim_3,
             camera, ray_caster,
         );
+    }
+
+    pub fn launch_openpal5(
+        self: ref<Self>,
+        ctx: box<openpal5.IPal5Context>,
+    ) -> int {
+        openpal5_launcher.launch(self.ctx, ctx);
+        return 0;
     }
 }
 

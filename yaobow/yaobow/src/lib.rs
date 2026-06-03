@@ -48,6 +48,10 @@ pub mod script_bridges {
         pub use shared::script_bridges::openpal4::*;
     }
 
+    pub mod openpal5 {
+        pub use shared::script_bridges::openpal5::*;
+    }
+
     pub mod pal4_debug {
         pub use shared::script_bridges::pal4_debug::*;
     }
@@ -81,6 +85,7 @@ pub mod script_source {
         IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext,
     };
     use shared::openpal4::scene::Pal4ActorControllerFactory;
+    use shared::openpal5::comdef::IPal5Context;
     use shared::GameType;
 
     use crate::application::yaobow_app_context::YaobowAppContext;
@@ -97,6 +102,13 @@ pub mod script_source {
     pub const PAL4_DEBUG_P7: &str = shared::openpal4::pal4_debug::PAL4_DEBUG_P7;
     pub const ACTOR_CONTROLLER_P7: &str =
         shared::openpal4::actor_controller_script::ACTOR_CONTROLLER_P7;
+    /// p7 binding source generated from `openpal5.idl`. Imported as
+    /// `openpal5` from the script-side `openpal5_launcher` module.
+    pub const OPENPAL5_P7: &str = shared::openpal5::OPENPAL5_P7;
+    /// Hand-written protosept orchestrator for the OpenPAL5 launch
+    /// sequence. Registered as `openpal5_launcher` to avoid colliding
+    /// with the IDL-generated `openpal5` binding.
+    pub const OPENPAL5_LAUNCHER_P7: &str = include_str!("../scripts/openpal5.p7");
 
     pub const IDL_BINDINGS: &[ScriptModule] = &[
         ScriptModule::new("yaobow_services", YAOBOW_SERVICES_P7),
@@ -105,6 +117,7 @@ pub mod script_source {
             "openpal4",
             shared::openpal4::actor_controller_script::OPENPAL4_P7,
         ),
+        ScriptModule::new("openpal5", OPENPAL5_P7),
     ];
 
     /// Sibling modules referenced by `app.p7`.
@@ -116,6 +129,11 @@ pub mod script_source {
             include_str!("../scripts/pal4_debug_overlay.p7"),
         ),
         ScriptModule::new("actor_controller", ACTOR_CONTROLLER_P7),
+        // Generic FreeView controller from `radiance_scripting`. Used
+        // by `openpal5_launcher` for the WASD camera director; any
+        // future per-game launcher can import it the same way.
+        ScriptModule::new("freeview", radiance_scripting::FREEVIEW_P7),
+        ScriptModule::new("openpal5_launcher", OPENPAL5_LAUNCHER_P7),
     ];
 
     pub const YAOBOW_PACKAGE: ScriptPackage = ScriptPackage {
@@ -296,6 +314,24 @@ pub mod script_source {
                 debug_state: session.state,
             }
         }
+
+        /// Drives the protosept-authored OpenPAL5 launch sequence.
+        /// The script side
+        /// (`yaobow/yaobow/scripts/openpal5.p7::launch`) takes over
+        /// from the legacy `OpenPal5ApplicationLoader::on_loading`:
+        /// it sets the application title via `host.app().set_title`,
+        /// builds the default scene via the PAL5 context's
+        /// `load_default_scene`, pushes it onto the scene manager,
+        /// positions the camera, and installs a script-implemented
+        /// FreeView director. Returns `Err(...)` if the script-side
+        /// call failed (e.g. the host could not re-deref the rooted
+        /// app handle); the caller logs and leaves the title
+        /// director in place.
+        pub fn launch_pal5(&self, ctx: ComRc<IPal5Context>) -> Result<(), String> {
+            self.client
+                .launch_openpal5(ctx)
+                .map_err(|err| format!("{err:?}"))
+        }
     }
 
     /// `Pal4ActorControllerFactory` impl that defers to a
@@ -326,15 +362,14 @@ pub mod application;
 pub mod opengujian;
 pub mod openpal3;
 pub mod openpal4;
-pub mod openpal5;
 pub mod openswd5;
 
+pub use application::run_openpal5;
 pub use application::run_title_selection;
 pub use opengujian::run_opengujian;
 pub use openpal3::run_openpal3;
 pub use openpal4::application::AgentBootOptions as Pal4AgentBootOptions;
 pub use openpal4::{run_openpal4, run_openpal4_with_agent};
-pub use openpal5::run_openpal5;
 pub use openswd5::run_openswd5;
 
 #[cfg_attr(target_os = "android", ndk_glue::main(backtrace = "on"))]

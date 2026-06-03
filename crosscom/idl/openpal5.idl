@@ -3,9 +3,28 @@ module(rust) shared::openpal5::comdef;
 import crosscom.idl;
 import radiance.idl;
 
-[uuid(1c4589d1-769a-4fdc-aac9-16744e4a88b0)]
-interface IOpenPAL5Director: IDirector {
+// PAL5-specific launch context handed to the protosept orchestrator
+// (`yaobow/yaobow/scripts/openpal5.p7`). Holds ONLY pal5-specific
+// state: the asset path (per-game) and the rendering component
+// factory the `AssetLoader` needs internally. Generic concerns
+// (set_title, scene-manager access, camera control, input) flow
+// through the canonical `IHostContext` / `IAppService` surface the
+// script already has via `host` — no need to re-export them here.
+//
+// Mirrors the role `IPal4DebugContext` plays for the PAL4 debug
+// overlay: a Rust-implemented data sink the script consumes through
+// the generated `intern_pal5_context_arg` helper. NOT marked
+// `[protosept(scriptable)]` — the script never implements this
+// interface, it only calls into it.
+[uuid(6ee620da-5e1d-4db5-b299-0da5f0ca8017)]
+interface IPal5Context: IUnknown {
+    // Builds the per-launch vfs, instantiates the `AssetLoader`, and
+    // returns the default scene (`Pal5Scene::load(..., "kuangfengzhai")`).
+    // `null` on failure (file missing, parse error, …). The script
+    // checks the return value and aborts the launch on `null` rather
+    // than mutating the scene stack with a broken scene.
+    IScene? load_default_scene();
 }
 
-[uuid(985261df-d055-48e5-a3e2-fd06f70c71df)]
-class OpenPAL5Director: IOpenPAL5Director {}
+[uuid(6a831a82-fbe2-4d6a-b2da-c086a090d78f)]
+class Pal5Context: IPal5Context {}

@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use crate::comdef::{IDirector, IScene, ISceneManagerImpl};
+use crate::comdef::{ICameraControl, IDirector, IScene, ISceneManagerImpl};
 
 use crosscom::ComRc;
 
@@ -94,6 +94,14 @@ impl ISceneManagerImpl for DefaultSceneManager {
 
     fn unset_director(&self) {
         self.replace_director(None);
+    }
+
+    fn camera(&self) -> Option<ComRc<ICameraControl>> {
+        // Mints a fresh `ICameraControl` ComRc each call via the
+        // existing `wrap_scene_camera` helper, which routes every
+        // call through `Scene::camera_mut().transform_mut()`. Returns
+        // `None` when no scene is on the stack.
+        self.scene().map(crate::scene::wrap_scene_camera)
     }
 }
 

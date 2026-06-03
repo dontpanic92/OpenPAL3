@@ -47,6 +47,8 @@ impl IAppServiceImpl for RecordingAppService {
     }
 
     fn exit(&self) {}
+
+    fn set_title(&self, _title: &str) {}
 }
 
 struct TestHostContext {

@@ -197,6 +197,18 @@ interface ISceneManager: IUnknown {
     IScene? pop_scene();
     void unload_all_scenes();
     void unset_director();
+
+    // Convenience accessor returning a writable view of the current
+    // scene's camera. `None` when the scene stack is empty. Backed by
+    // the existing `radiance::scene::wrap_scene_camera(scene)` helper,
+    // so each call mints a fresh `ICameraControl` ComRc that routes
+    // through `Scene::camera_mut().transform_mut()`.
+    //
+    // Lets script-side directors (e.g. the p7
+    // `OpenPal5Director::update` walking a FreeViewController) drive
+    // the camera without needing the host to thread an
+    // `ICameraControl` parameter into every director constructor.
+    ICameraControl? camera();
 }
 
 [uuid(c598eeb6-4ef5-498c-95b7-d06486b69f32)]
@@ -272,6 +284,26 @@ interface ICameraControl: IUnknown {
     float right_x();
     float right_y();
     float right_z();
+
+    // Frame-local translation: `(dx, dy, dz)` is interpreted in the
+    // camera's local frame and rotated through the camera's current
+    // orientation before being added to its world position. Matches
+    // `radiance::math::Transform::translate_local` — used by the p7
+    // FreeView controller's WASD movement.
+    void translate_local(float dx, float dy, float dz);
+
+    // World-space translation: `(dx, dy, dz)` is added to the
+    // camera's world position with no rotation applied. Matches
+    // `radiance::math::Transform::translate` — used by the p7
+    // FreeView controller's Q/E vertical movement.
+    void translate(float dx, float dy, float dz);
+
+    // Composes a rotation of `radian` around the local axis
+    // `(ax, ay, az)` (must be a unit vector) onto the camera's
+    // current orientation. Matches
+    // `radiance::math::Transform::rotate_axis_angle_local` — used
+    // by the p7 FreeView controller's arrow-key yaw/pitch.
+    void rotate_axis_angle_local(float ax, float ay, float az, float radian);
 }
 
 [uuid(d9b4c3f7-bd44-4cde-8fa8-8e1adec786b3)]

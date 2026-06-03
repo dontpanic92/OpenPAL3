@@ -33,6 +33,14 @@ pub use script_bridges::radiance::{register_immediate_director_proto, wrap_direc
 pub use script_package::{bootstrap_script_root, ScriptModule, ScriptPackage, HOST_CONTEXT_TYPE_TAG};
 pub use services::HostContext;
 
+/// Generic FreeView camera controller, 1:1 port of
+/// `radiance::utils::free_view::FreeViewController` into protosept.
+/// Register with `ScriptHost::add_binding("freeview", FREEVIEW_P7)`
+/// so per-game launch scripts can `import freeview;` and call
+/// `freeview.update(camera, input, delta_sec)` each frame from a
+/// `struct[radiance.IDirector]` they own.
+pub const FREEVIEW_P7: &str = include_str!("../scripts/freeview.p7");
+
 /// Re-export of the radiance-side `wrap_ray_caster` so callers
 /// already pulling in `radiance_scripting` don't need to know that
 /// the host impl lives in the `radiance` crate.
