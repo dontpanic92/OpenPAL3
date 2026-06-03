@@ -229,7 +229,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
         let item_w = w;
         let item_x = cx - item_w * 0.5;
         let item_h = 60.0;
-            let all_h = item_h * 5.0;
+            let all_h = item_h * 6.0;
         let y = cy - all_h * 0.5;
         ui.style_color(
             title_consts.SC_BUTTON, 0.0, 0.0, 0.0, 0.0, () => {
@@ -241,11 +241,13 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
                                 let y2 = y + item_h;
                                 self.draw_game_button(ui, title_consts.GAME_PAL4, item_x, y2, item_w, item_h);
                                     let y3 = y2 + item_h;
-                                    self.draw_game_button(ui, title_consts.GAME_SWDHC, item_x, y3, item_w, item_h);
+                                    self.draw_game_button(ui, title_consts.GAME_PAL5, item_x, y3, item_w, item_h);
                                     let y4 = y3 + item_h;
-                                    self.draw_game_button(ui, title_consts.MENU_SETTINGS, item_x, y4, item_w, item_h);
+                                    self.draw_game_button(ui, title_consts.GAME_SWDHC, item_x, y4, item_w, item_h);
                                     let y5 = y4 + item_h;
-                                    self.draw_game_button(ui, title_consts.MENU_EXIT, item_x, y5, item_w, item_h);
+                                    self.draw_game_button(ui, title_consts.MENU_SETTINGS, item_x, y5, item_w, item_h);
+                                    let y6 = y5 + item_h;
+                                    self.draw_game_button(ui, title_consts.MENU_EXIT, item_x, y6, item_w, item_h);
                                 },
                             );
                         },
@@ -516,6 +518,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirecto
                             ui.table("title.settings.rows", 4, () => {
                                 self.render_row(ui, title_consts.GAME_PAL3);
                                 self.render_row(ui, title_consts.GAME_PAL4);
+                                self.render_row(ui, title_consts.GAME_PAL5);
                                 self.render_row(ui, title_consts.GAME_SWDHC);
                             });
                             ui.dummy(0.0, 16.0);
@@ -636,6 +639,7 @@ fn make_title_director_as_director(
 fn settings_game_name(ordinal: int) -> string {
     if ordinal == title_consts.GAME_PAL3 { return "仙剑奇侠传三"; }
     if ordinal == title_consts.GAME_PAL4 { return "仙剑奇侠传四"; }
+    if ordinal == title_consts.GAME_PAL5 { return "仙剑奇侠传五"; }
     if ordinal == title_consts.GAME_SWDHC { return "轩辕剑外传 汉之云"; }
     return "";
 }
@@ -679,6 +683,7 @@ fn draw_fitted_image(
 fn game_full_name(ordinal: int) -> string {
     if ordinal == title_consts.GAME_PAL3 { return "仙剑奇侠传三"; }
     if ordinal == title_consts.GAME_PAL4 { return "仙剑奇侠传四"; }
+    if ordinal == title_consts.GAME_PAL5 { return "仙剑奇侠传五"; }
     if ordinal == title_consts.GAME_SWDHC { return "轩辕剑外传 汉之云"; }
     if ordinal == title_consts.MENU_SETTINGS { return "设置"; }
     if ordinal == title_consts.MENU_EXIT { return "离开游戏"; }
