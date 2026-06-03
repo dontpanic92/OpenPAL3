@@ -248,6 +248,7 @@ fn handle_request(
         (Method::Get, "/v1/screenshot") => Ok(AgentCommand::Screenshot),
         (Method::Get, "/v1/scene/triggers") => Ok(AgentCommand::GetSceneTriggers),
         (Method::Get, "/v1/scene/objects") => Ok(AgentCommand::GetSceneObjects),
+        (Method::Get, "/v1/perf") => Ok(AgentCommand::GetPerfMetrics),
         (Method::Get, url_str) if url_str.starts_with("/v1/script/globals") => {
             parse_script_globals_query(url_str)
                 .map(AgentCommand::GetScriptGlobals)

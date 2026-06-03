@@ -102,6 +102,15 @@ impl DynamicUniformBufferManager {
         usage[id] = false;
     }
 
+    /// Number of UBO slots currently marked in-use. Walks the usage
+    /// bitmask (O(pool_size)), so cheap-but-not-free — callers should
+    /// only invoke this once per frame at most. Returns a snapshot;
+    /// concurrent allocations or releases will not be observed.
+    pub fn allocated_slots(&self) -> usize {
+        let usage = self.usage.lock().unwrap();
+        usage.iter().filter(|&&u| u).count()
+    }
+
     fn allocate_dynamic_buffer(
         allocator: &Rc<vk_mem::Allocator>,
         min_alignment: u64,

@@ -115,22 +115,37 @@ impl RenderingEngine for VulkanRenderingEngine {
             return;
         }
 
-        let entities = scene.visible_entities();
+        let entities = crate::perf::time(
+            "vulkan.render.collect_visible_entities_total_ns",
+            || scene.visible_entities(),
+        );
+        crate::perf::gauge("vulkan.render.visible_entities", entities.len() as u64);
 
         // Update the dynamic UBO with each visible render object's world
         // transform. Iterates the backend-typed view on RenderingComponent,
         // so no per-RO downcast is needed.
-        self.dub_manager().update_do(|updater| {
-            for entity in &entities {
-                if let Some(rc) = entity.get_rendering_component() {
-                    for vro in rc.vulkan_render_objects() {
-                        updater(vro.dub_index(), entity.world_transform().matrix());
+        let updated_vros = std::cell::Cell::new(0u64);
+        crate::perf::time("vulkan.render.ubo_update_total_ns", || {
+            self.dub_manager().update_do(|updater| {
+                for entity in &entities {
+                    if let Some(rc) = entity.get_rendering_component() {
+                        for vro in rc.vulkan_render_objects() {
+                            updater(vro.dub_index(), entity.world_transform().matrix());
+                            updated_vros.set(updated_vros.get() + 1);
+                        }
                     }
                 }
-            }
+            });
         });
+        crate::perf::gauge("vulkan.render.updated_vros", updated_vros.get());
+        crate::perf::gauge(
+            "vulkan.dub.allocated_slots",
+            self.dub_manager().allocated_slots() as u64,
+        );
 
-        let result = self.render_objects(&scene.camera(), entities, viewport, ui_frame);
+        let result = crate::perf::time("vulkan.render.objects_total_ns", || {
+            self.render_objects(&scene.camera(), entities, viewport, ui_frame)
+        });
         if let Err(err) = result {
             println!("{}", err);
         }
@@ -918,27 +933,19 @@ impl VulkanRenderingEngine {
         };
         let frustum = camera.frustum();
 
-        #[cfg(debug_assertions)]
-        let mut culled_count: usize = 0;
-        #[cfg(debug_assertions)]
-        let mut total_count: usize = 0;
+        let mut culled_count: u64 = 0;
+        let mut total_count: u64 = 0;
         for (entity_idx, (rendering, world)) in components_out.iter().enumerate() {
             let m = world.floats();
             for (ro_idx, vro) in rendering.vulkan_render_objects().iter().enumerate() {
-                #[cfg(debug_assertions)]
-                {
-                    total_count += 1;
-                }
+                total_count += 1;
                 // Frustum reject. Render objects without a known
                 // local AABB (e.g. backends or callers that don't
                 // track bounds) fall through to "always visible".
                 if let Some((lmin, lmax)) = vro.local_aabb() {
                     let (wmin, wmax) = crate::math::transform_aabb(lmin, lmax, world);
                     if !crate::math::aabb_visible(wmin, wmax, &frustum) {
-                        #[cfg(debug_assertions)]
-                        {
-                            culled_count += 1;
-                        }
+                        culled_count += 1;
                         continue;
                     }
                 }
@@ -964,6 +971,14 @@ impl VulkanRenderingEngine {
                 }
             }
         }
+        crate::perf::gauge("vulkan.render.total_vros", total_count);
+        crate::perf::gauge("vulkan.render.culled_vros", culled_count);
+        crate::perf::gauge("vulkan.render.opaque_draws", opaque_out.len() as u64);
+        crate::perf::gauge("vulkan.render.cutout_draws", cutout_out.len() as u64);
+        crate::perf::gauge(
+            "vulkan.render.transparent_draws",
+            transparent_out.len() as u64,
+        );
         #[cfg(debug_assertions)]
         log::trace!(
             "frustum cull: drew {} / {} render objects ({} culled)",

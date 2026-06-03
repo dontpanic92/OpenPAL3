@@ -85,6 +85,7 @@ fn every_command_roundtrips() {
             scene: "M02".into(),
             block: "1".into(),
         }),
+        AgentCommand::GetPerfMetrics,
     ];
     for c in &cases {
         roundtrip_command(c);
@@ -180,6 +181,27 @@ fn every_response_roundtrips() {
             len: 256,
             start: 0,
             globals: vec![1, 2, 3, 4],
+        }),
+        AgentResponse::PerfMetrics(agent_server::protocol::PerfMetricsResponse {
+            enabled: true,
+            metrics: vec![
+                agent_server::protocol::PerfMetric::Timing {
+                    name: "engine.scene_render_total_ns".into(),
+                    calls: 600,
+                    avg_ns: 1_000_000,
+                    max_ns: 5_000_000,
+                },
+                agent_server::protocol::PerfMetric::Counter {
+                    name: "engine.scene_update_total_ns".into(),
+                    frame: 120,
+                    total: 7_200,
+                },
+                agent_server::protocol::PerfMetric::Gauge {
+                    name: "vulkan.dub.allocated_slots".into(),
+                    last: 1487,
+                    max: 14523,
+                },
+            ],
         }),
         AgentResponse::Error(AgentError {
             kind: AgentErrorKind::Conflict,

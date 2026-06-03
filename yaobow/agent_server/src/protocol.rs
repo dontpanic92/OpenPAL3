@@ -107,6 +107,14 @@ pub enum AgentCommand {
     /// suspended in a `Yield` and will not idle until a choice is
     /// supplied. Consumed on the next continuation tick.
     ChooseWorldMap(WorldMapChooseParams),
+    /// Snapshot every `radiance::perf` metric tracked on the game
+    /// thread (timings, counters, gauges). Returned as a flat
+    /// `Vec<{name, kind, …}>`; the agent then diffs successive
+    /// snapshots to derive per-window rates. Always callable even
+    /// when `OPENPAL3_PERF` is disabled at boot (returns an empty
+    /// list in that case so callers don't have to special-case
+    /// the disabled path).
+    GetPerfMetrics,
 }
 
 /// Top-level agent response. Mirrors [`AgentCommand`] roughly but with
@@ -137,6 +145,8 @@ pub enum AgentResponse {
     FireTrigger(FireTriggerResponse),
     /// Snapshot reply for [`AgentCommand::TraceDrain`].
     TraceDrain(TraceDrainResponse),
+    /// Snapshot reply for [`AgentCommand::GetPerfMetrics`].
+    PerfMetrics(PerfMetricsResponse),
     /// Operation failed.
     Error(AgentError),
 }
@@ -762,4 +772,47 @@ pub struct WorldMapChooseParams {
     /// second argument to `giArenaLoad`.
     pub block: String,
 }
+
+/// Snapshot of `radiance::perf` registry, returned by
+/// [`AgentCommand::GetPerfMetrics`].
+///
+/// `enabled = false` ⇒ the engine was launched without
+/// `OPENPAL3_PERF=1` (or equivalent). All recorded `metrics` will
+/// be empty in that case so callers can detect "instrumentation
+/// inactive" vs "no metrics recorded yet".
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PerfMetricsResponse {
+    /// `true` if `radiance::perf::enabled()` is `true` on the game
+    /// thread (i.e. the `OPENPAL3_PERF` env var was set at boot).
+    pub enabled: bool,
+    /// One entry per metric name currently tracked. Sorted
+    /// alphabetically by name to make diffs trivial for callers.
+    pub metrics: Vec<PerfMetric>,
+}
+
+/// One metric in [`PerfMetricsResponse::metrics`]. Discriminated by
+/// `kind` so a single JSON envelope can carry timings, counters, and
+/// gauges without a wrapper-per-kind explosion on the wire.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PerfMetric {
+    /// `radiance::perf::time()` / `radiance::perf::timer()` output.
+    /// `avg_ns` is `total_ns / calls`; `max_ns` is the worst single
+    /// call observed since boot.
+    Timing {
+        name: String,
+        calls: u64,
+        avg_ns: u64,
+        max_ns: u64,
+    },
+    /// `radiance::perf::count()` output. `frame` is the count
+    /// accumulated since the last `perf::flush_frame()` (resets
+    /// every `OPENPAL3_PERF_INTERVAL` frames when configured),
+    /// `total` is the lifetime sum.
+    Counter { name: String, frame: u64, total: u64 },
+    /// `radiance::perf::gauge()` output. `last` is the most recent
+    /// recorded value; `max` is the highest value seen since boot.
+    Gauge { name: String, last: u64, max: u64 },
+}
+
 

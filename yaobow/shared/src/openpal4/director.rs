@@ -6,9 +6,9 @@ use std::{
 use agent_server::protocol::{
     AgentCommand, AgentError, AgentResponse, AxisInputParams, DialogSnapshot, FastForwardParams,
     FireTriggerParams, KeyAction, KeyInputParams, NameParams, NpcEntry, ObjectEntry, PartyMember,
-    ScreenshotResponse, ScriptEvalParams, ScriptGlobalsParams, ScriptGlobalsResponse,
-    SceneObjectsResponse, SceneTriggersResponse, StateSnapshot, StepTimeParams, TeleportParams,
-    TriggerEntry,
+    PerfMetric, PerfMetricsResponse, ScreenshotResponse, ScriptEvalParams, ScriptGlobalsParams,
+    ScriptGlobalsResponse, SceneObjectsResponse, SceneTriggersResponse, StateSnapshot,
+    StepTimeParams, TeleportParams, TriggerEntry,
 };
 use crosscom::ComRc;
 use radiance::comdef::{IEntityExt, IImmediateDirectorImpl, IUiHost};
@@ -418,7 +418,9 @@ impl IDirectorImpl for OpenPAL4Director {
             }
         }
 
-        self.vm.borrow_mut().execute(effective_dt);
+        radiance::perf::time("pal4.vm.execute_total_ns", || {
+            self.vm.borrow_mut().execute(effective_dt);
+        });
 
         // Reply to any deferred `fire_trigger { wait_until_idle }`
         // calls now that the VM has had its tick this frame. Done
@@ -714,6 +716,7 @@ impl OpenPAL4Director {
                     .buffer_world_map_choice(params.scene, params.block);
                 AgentResponse::Ok
             }
+            AgentCommand::GetPerfMetrics => self.handle_get_perf_metrics(),
             // `AgentCommand` is `#[non_exhaustive]` so future
             // additions don't break older sessions; until they're
             // wired here we fail closed with a clear error.
@@ -1136,6 +1139,45 @@ impl OpenPAL4Director {
             dropped: result.dropped,
             capturing: bridge.trace_sink.is_capturing(),
             events: result.events,
+        })
+    }
+
+    fn handle_get_perf_metrics(&self) -> AgentResponse {
+        // `radiance::perf::snapshot()` reads the thread_local metrics
+        // registry, so this must run on the game thread — which is
+        // exactly where agent commands dispatch. When perf is disabled
+        // at boot the snapshot is empty; the response's `enabled`
+        // field lets the agent distinguish that from "enabled but
+        // nothing recorded yet".
+        let entries = radiance::perf::snapshot();
+        let metrics = entries
+            .into_iter()
+            .map(|(name, snapshot)| match snapshot {
+                radiance::perf::MetricSnapshot::Timing {
+                    calls,
+                    avg_ns,
+                    max_ns,
+                } => PerfMetric::Timing {
+                    name: name.to_string(),
+                    calls,
+                    avg_ns,
+                    max_ns,
+                },
+                radiance::perf::MetricSnapshot::Counter { frame, total } => PerfMetric::Counter {
+                    name: name.to_string(),
+                    frame,
+                    total,
+                },
+                radiance::perf::MetricSnapshot::Gauge { last, max } => PerfMetric::Gauge {
+                    name: name.to_string(),
+                    last,
+                    max,
+                },
+            })
+            .collect();
+        AgentResponse::PerfMetrics(PerfMetricsResponse {
+            enabled: radiance::perf::enabled(),
+            metrics,
         })
     }
 

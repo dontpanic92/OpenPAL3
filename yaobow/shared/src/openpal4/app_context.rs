@@ -193,6 +193,15 @@ impl Pal4AppContext {
     }
 
     pub fn update(&mut self, delta_sec: f32) {
+        let _timer = radiance::perf::timer("pal4.app_context.update_total_ns");
+        radiance::perf::gauge(
+            "pal4.app_context.moving_entities",
+            self.moving_entities.len() as u64,
+        );
+        radiance::perf::gauge(
+            "pal4.app_context.rotating_entities",
+            self.rotating_entities.len() as u64,
+        );
         self.actdrop.update(self.ui.ui(), delta_sec);
         // When fast-forward is active we accelerate the movement /
         // rotation tweens so wait-for-motion script continuations
