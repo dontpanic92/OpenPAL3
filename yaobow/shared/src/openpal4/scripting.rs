@@ -2857,8 +2857,48 @@ fn show_tutorial(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionStat
     Pal4FunctionState::Completed
 }
 
-fn show_world_map(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    Pal4FunctionState::Completed
+fn show_world_map(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
+    // The world map is a destination picker: the script blocks on it
+    // until the player clicks one of the unlocked icons, which fires
+    // a function from `worldMap.csb` that calls `giArenaLoad`.
+    //
+    // We model it as a continuation that polls `take_world_map_choice`.
+    // The caller (planner via `POST /v1/world_map/choose`, or a real
+    // user via a future on-screen map UI) buffers a `(scene, block)`
+    // pair; the continuation consumes it on the next tick and performs
+    // the giArenaLoad equivalent inline so the surrounding script can
+    // continue with its post-map cleanup (e.g. `giPlayerUnLock`) in
+    // the new scene's frame budget. See the symmetry with the
+    // dialog-choice plumbing — the world map is exactly the same idea
+    // with a `(scene, block)` payload instead of an `i32` index.
+    vm.app_context.open_world_map();
+    Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
+        let Some((scene, block)) = vm.app_context.take_world_map_choice() else {
+            return ContinuationState::Loop;
+        };
+
+        // Same error-handling story as `arena_load`: if the requested
+        // scene fails to load (broken EVF/GOB on disk, typo'd choice
+        // from the agent, ...) abort the surrounding script rather
+        // than letting it run `giPlayer*` calls against a half-loaded
+        // scene and panic.
+        if let Err(err) = vm.app_context.load_scene(&scene, &block) {
+            log::error!(
+                "giShowWorldMap: failed to load scene='{}' block='{}': {:?}; \
+                 aborting current script to prevent cascading panics in \
+                 follow-up giPlayer* calls",
+                scene,
+                block,
+                err
+            );
+            vm.abort_script();
+            return ContinuationState::Completed;
+        }
+
+        let module = vm.app_context.scene.module.clone().unwrap();
+        vm.set_function_by_name2(module, &format!("{}_{}_init", scene, block));
+        ContinuationState::Completed
+    }))
 }
 
 fn gob_scale(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {

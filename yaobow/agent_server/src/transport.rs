@@ -424,6 +424,9 @@ fn parse_post_command(url: &str, req: &mut Request) -> Result<AgentCommand, Agen
         "/v1/dialog/choose" => AgentCommand::ChooseDialog(parse::<
             crate::protocol::DialogChooseParams,
         >(&body)?),
+        "/v1/world_map/choose" => AgentCommand::ChooseWorldMap(parse::<
+            crate::protocol::WorldMapChooseParams,
+        >(&body)?),
         _ => {
             return Err(AgentError::bad_request(format!(
                 "unknown POST route: {url}"

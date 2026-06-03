@@ -80,6 +80,11 @@ fn every_command_roundtrips() {
         AgentCommand::InteractObject(NameParams {
             name: "npc_lingsha".into(),
         }),
+        AgentCommand::ChooseDialog(agent_server::protocol::DialogChooseParams { index: 2 }),
+        AgentCommand::ChooseWorldMap(agent_server::protocol::WorldMapChooseParams {
+            scene: "M02".into(),
+            block: "1".into(),
+        }),
     ];
     for c in &cases {
         roundtrip_command(c);
@@ -121,6 +126,7 @@ fn every_response_roundtrips() {
             fps: 60.0,
             dt: 0.0167,
             inventory: vec![agent_server::protocol::InventoryEntry { id: 101, count: 3 }],
+            world_map_open: true,
         }),
         AgentResponse::Log(LogTailResponse {
             next_seq: 7,

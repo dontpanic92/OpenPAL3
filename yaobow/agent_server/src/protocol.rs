@@ -101,6 +101,12 @@ pub enum AgentCommand {
     /// consumed by the next dialog read; supply a fresh choice
     /// before every menu fire.
     ChooseDialog(DialogChooseParams),
+    /// Buffer a `(scene, block)` destination for the next
+    /// `giShowWorldMap` continuation tick. Surfaced via
+    /// `/v1/state.world_map_open`; while open, the script is
+    /// suspended in a `Yield` and will not idle until a choice is
+    /// supplied. Consumed on the next continuation tick.
+    ChooseWorldMap(WorldMapChooseParams),
 }
 
 /// Top-level agent response. Mirrors [`AgentCommand`] roughly but with
@@ -320,6 +326,14 @@ pub struct StateSnapshot {
     /// "no items" state, not a missing field.
     #[serde(default)]
     pub inventory: Vec<InventoryEntry>,
+    /// `true` while a `giShowWorldMap` continuation is waiting for
+    /// a destination pick. When `true`, `script_running` will also
+    /// be `true` (the VM is suspended in the Yield) — fire
+    /// [`AgentCommand::ChooseWorldMap`] to unblock. While the map
+    /// is open the engine accepts no other trigger fires until the
+    /// continuation completes.
+    #[serde(default)]
+    pub world_map_open: bool,
 }
 
 /// One inventory line item in [`StateSnapshot::inventory`].
@@ -736,5 +750,16 @@ pub struct DialogChooseParams {
     /// `giSelectDialogGetLastSelect` return convention. Pass `1` to
     /// pick the first item explicitly (also the implicit default).
     pub index: i32,
+}
+
+/// Parameters for [`AgentCommand::ChooseWorldMap`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorldMapChooseParams {
+    /// Destination scene name (case-sensitive, e.g. `"M02"`,
+    /// `"Q01"`). Mirrors the first argument to `giArenaLoad`.
+    pub scene: String,
+    /// Destination block name (e.g. `"1"`, `"N01"`). Mirrors the
+    /// second argument to `giArenaLoad`.
+    pub block: String,
 }
 

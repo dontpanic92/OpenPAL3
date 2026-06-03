@@ -707,6 +707,13 @@ impl OpenPAL4Director {
                     .buffer_dialog_choice(params.index);
                 AgentResponse::Ok
             }
+            AgentCommand::ChooseWorldMap(params) => {
+                self.vm
+                    .borrow()
+                    .app_context()
+                    .buffer_world_map_choice(params.scene, params.block);
+                AgentResponse::Ok
+            }
             // `AgentCommand` is `#[non_exhaustive]` so future
             // additions don't break older sessions; until they're
             // wired here we fail closed with a clear error.
@@ -1196,6 +1203,7 @@ impl OpenPAL4Director {
             fps,
             dt,
             inventory,
+            world_map_open: app.world_map_open(),
         }
     }
 }

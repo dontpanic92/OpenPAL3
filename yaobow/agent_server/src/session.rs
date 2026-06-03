@@ -114,6 +114,7 @@ impl AgentSession for NullAgentSession {
             fps: 0.0,
             dt: 0.0,
             inventory: Vec::new(),
+            world_map_open: false,
         }
     }
 }

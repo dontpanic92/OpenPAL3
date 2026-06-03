@@ -127,6 +127,17 @@ pub struct Pal4AppContext {
     /// behaviour. Consumed (taken) on the next read so each fire
     /// must set it again.
     next_dialog_choice: Cell<Option<i32>>,
+    /// `true` while a `giShowWorldMap` continuation is waiting for a
+    /// destination pick. Surfaced via `/v1/state.world_map_open` so
+    /// the planner knows it must `POST /v1/world_map/choose` before
+    /// the script can advance. Cleared when the buffered choice is
+    /// consumed by the continuation.
+    world_map_open: Cell<bool>,
+    /// Buffered world-map destination as `(scene, block)`. Set by
+    /// `/v1/world_map/choose`, consumed by the `giShowWorldMap`
+    /// continuation which then performs the equivalent of
+    /// `giArenaLoad(scene, block, "", 0)`. `None` ≡ "no choice yet".
+    world_map_choice: RefCell<Option<(String, String)>>,
 }
 
 impl Pal4AppContext {
@@ -168,6 +179,8 @@ impl Pal4AppContext {
             persistent_state: Pal4PersistentState::new("OpenPAL4".to_string()),
             pending_dialog_choices: Vec::new(),
             next_dialog_choice: Cell::new(None),
+            world_map_open: Cell::new(false),
+            world_map_choice: RefCell::new(None),
         }
     }
 
@@ -716,6 +729,39 @@ impl Pal4AppContext {
     pub fn take_dialog_choice(&mut self) -> i32 {
         let choice = self.next_dialog_choice.take().unwrap_or(1);
         self.pending_dialog_choices.clear();
+        choice
+    }
+
+    /// `true` while a `giShowWorldMap` continuation is waiting for a
+    /// destination pick. Surfaced via `/v1/state.world_map_open` so
+    /// external drivers know they must `POST /v1/world_map/choose`
+    /// before the script can advance.
+    pub fn world_map_open(&self) -> bool {
+        self.world_map_open.get()
+    }
+
+    /// Mark the world map as open (called by `giShowWorldMap`'s
+    /// continuation entry). Idempotent.
+    pub fn open_world_map(&self) {
+        self.world_map_open.set(true);
+    }
+
+    /// Buffer a `(scene, block)` destination for the next world-map
+    /// continuation tick. Wired to `/v1/world_map/choose`. Consumed
+    /// on the next tick — agents must re-supply a choice for each
+    /// `giShowWorldMap` prompt.
+    pub fn buffer_world_map_choice(&self, scene: String, block: String) {
+        *self.world_map_choice.borrow_mut() = Some((scene, block));
+    }
+
+    /// Take the buffered world-map choice (if any) and mark the
+    /// world map closed. Returning `None` ≡ "still waiting, keep
+    /// looping". Called from the `giShowWorldMap` continuation.
+    pub fn take_world_map_choice(&self) -> Option<(String, String)> {
+        let choice = self.world_map_choice.borrow_mut().take();
+        if choice.is_some() {
+            self.world_map_open.set(false);
+        }
         choice
     }
 
