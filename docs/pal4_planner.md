@@ -152,13 +152,23 @@ CLI also accepts `--base-url`, `--token`, `--db`, `--catalog`.
 - The current planner is single-step / explore-only. Goal-seek BFS
   + save/load backtracking are queued (see the matching todos in
   the session plan).
-- Battles, mini-games, and `giMenu` choice trees are not yet
+- **Battles**, mini-games, and `giMenu` choice trees are not yet
   modelled in the gate database — the planner correctly identifies
   these as "stuck" but cannot resolve them. `/v1/dialog/choose` is
   already wired for `giSelectDialogGetLastSelect` /
   `giCommonDialogGetLastSelect`, so menu-driven progression is
   possible from the agent surface; only the planner's choice
   exploration is missing.
+- **World-map prompts** (`giShowWorldMap`) are handled
+  automatically: when a trigger's static catalog `called_fns` lists
+  `giShowWorldMap` and it has a single predicted transition, the
+  planner pre-buffers the destination via `POST
+  /v1/world_map/choose` before firing. The script's `Yield`
+  continuation consumes the choice on its next tick and performs
+  the equivalent of `giArenaLoad`. See
+  [`docs/agent_interface.md`](agent_interface.md) — the
+  `/v1/world_map/choose` endpoint and `/v1/state.world_map_open`
+  flag.
 - Object names that are purely numeric (e.g. `"1"`, `"2"`) are
   skipped by the fallback — they almost never correspond to
   plot-pushing entities and the planner avoids them to keep the

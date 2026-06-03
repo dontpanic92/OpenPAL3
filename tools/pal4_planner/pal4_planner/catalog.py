@@ -161,7 +161,15 @@ class Catalog:
                         )
                     except (TypeError, ValueError):
                         continue
-                scn_fns[fn_name] = {"cmp_literals": cmp_lits}
+                # Carry the static walker's per-fn sysfn list through
+                # so the planner can detect functions that prompt the
+                # user for a world-map destination (`giShowWorldMap`)
+                # and pre-buffer the choice before firing the trigger.
+                sysfns = list((fn_body or {}).get("sysfns") or [])
+                scn_fns[fn_name] = {
+                    "cmp_literals": cmp_lits,
+                    "sysfns": sysfns,
+                }
             self.fns[scn_key] = scn_fns
         # Second pass: synthesise stub blocks for transitions that
         # reference (scene, block) pairs we don't have entries for.
@@ -338,6 +346,19 @@ class Catalog:
         if fn_body is None:
             return None
         return fn_body.get("cmp_literals", {}).get(int(pc))
+
+    def fn_calls_sysfn(self, scene: str, fn: str, sysfn: str) -> bool:
+        """`True` when the static walker recorded `sysfn` in the
+        catalog's per-function sysfn list for `(scene, fn)`. Used to
+        detect functions that block on a user prompt the planner
+        knows how to satisfy (e.g. `giShowWorldMap`)."""
+        scn_fns = self.fns.get(scene.lower())
+        if scn_fns is None:
+            return False
+        fn_body = scn_fns.get(fn)
+        if fn_body is None:
+            return False
+        return sysfn in (fn_body.get("sysfns") or [])
 
     def trigger(
         self, scene: str, block: str, name: str

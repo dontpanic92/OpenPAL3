@@ -298,6 +298,38 @@ def cmd_explore(args: argparse.Namespace) -> int:
             continue
 
         globals_before = client.globals()
+
+        # If the trigger's catalog fn is known to call `giShowWorldMap`
+        # AND has a predicted scene-transition, pre-buffer the choice
+        # so the script's `giShowWorldMap` continuation can consume
+        # it on its first tick and perform the equivalent of
+        # `giArenaLoad` inline. Without this, the script wedges in
+        # the Yield until the planner pokes /v1/world_map/choose —
+        # but that path is hard to coordinate with the synchronous
+        # `fire_trigger_sync` (the server blocks the HTTP reply until
+        # `script_running == false`). Pre-buffering is harmless: the
+        # buffered choice is one-shot and only consumed by an actual
+        # `giShowWorldMap` call, so triggers that don't show the map
+        # leave the buffer untouched (we clear stale entries after
+        # the fire below).
+        if (
+            cand.catalog_trigger
+            and cand.catalog_trigger.function
+            and catalog.fn_calls_sysfn(
+                scene, cand.catalog_trigger.function, "giShowWorldMap"
+            )
+            and cand.catalog_trigger.transitions
+        ):
+            dest_scene, dest_block = cand.catalog_trigger.transitions[0]
+            print(
+                f"  world_map: pre-buffering destination "
+                f"{dest_scene}/{dest_block} for {cand.name!r}"
+            )
+            try:
+                client.world_map_choose(dest_scene, dest_block)
+            except AgentError as e:
+                print(f"  world_map_choose failed: {e}")
+
         try:
             result = client.fire_trigger_sync(cand.name, timeout_ms=args.fire_timeout_ms)
         except AgentError as e:

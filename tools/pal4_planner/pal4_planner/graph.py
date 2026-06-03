@@ -363,6 +363,28 @@ class Graph:
             for seq, kind, payload in rows
         ]
 
+    def visited_blocks(self) -> set:
+        """Set of every `(scene, block)` the planner has been in
+        according to recorded fires — i.e. the union of `(scene,
+        block)` we fired *from* and `(transitioned_to_scene,
+        transitioned_to_block)` we transitioned *to*. Used by the
+        explorer to penalise "leave" triggers that would regress
+        to an already-visited block instead of pushing into a
+        never-visited one.
+
+        `(scene, block)` keys preserve the engine's case so callers
+        should compare against `state.scene` / `state.block` (also
+        engine-cased) without lowercasing.
+        """
+        rows = self.conn.execute(
+            "SELECT scene, block FROM fires "
+            "UNION "
+            "SELECT transitioned_to_scene, transitioned_to_block FROM fires "
+            "WHERE transitioned_to_scene IS NOT NULL "
+            "  AND transitioned_to_block IS NOT NULL"
+        ).fetchall()
+        return {(s, b) for s, b in rows if s and b}
+
     def reset(self) -> None:
         with self._transaction() as cur:
             cur.executescript(

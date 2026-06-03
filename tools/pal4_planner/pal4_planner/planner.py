@@ -61,6 +61,7 @@ class ExplorePlanner:
             for rec in self.graph.fires_in(scene, block, current_globals=current_globals)
             if rec.settled
         }
+        visited = self.graph.visited_blocks()
         # Catalog-aware scoring for live triggers + interactive objects.
         candidates: List[Candidate] = []
         cat_blk = self.catalog.block(scene, block)
@@ -80,7 +81,12 @@ class ExplorePlanner:
             if not t.get("function", ""):
                 continue
             score = _score_trigger(
-                ct, scene, block, current_globals=current_globals, catalog=self.catalog
+                ct,
+                scene,
+                block,
+                current_globals=current_globals,
+                catalog=self.catalog,
+                visited=visited,
             )
             candidates.append(
                 Candidate(kind="trigger", name=name, score=score, catalog_trigger=ct)
@@ -97,7 +103,12 @@ class ExplorePlanner:
                 continue
             co = cat_objects.get(name)
             score = _score_object(
-                co, scene, block, current_globals=current_globals, catalog=self.catalog
+                co,
+                scene,
+                block,
+                current_globals=current_globals,
+                catalog=self.catalog,
+                visited=visited,
             )
             candidates.append(
                 Candidate(kind="object", name=name, score=score, catalog_trigger=None)
@@ -154,41 +165,54 @@ def _score_trigger(
     block: str,
     current_globals: Optional[List[int]] = None,
     catalog: Optional[Catalog] = None,
+    visited: Optional[set] = None,
 ) -> int:
     if ct is None:
         return 1  # live but uncatalogued — fallback exploration value
     if ct.is_wall():
         return -1  # never pick wall/camera triggers
-    leave = sum(
-        1
-        for (s, b) in ct.transitions
-        if s.lower() != scene.lower() or b != block
-    )
-    stay = sum(
-        1
-        for (s, b) in ct.transitions
-        if s.lower() == scene.lower() and b == block
-    )
+    visited = visited or set()
+    leave_forward = 0
+    leave_backward = 0
+    stay = 0
+    for (s, b) in ct.transitions:
+        same_block = s.lower() == scene.lower() and b == block
+        if same_block:
+            stay += 1
+        elif (s, b) in visited:
+            leave_backward += 1
+        else:
+            leave_forward += 1
     has_known_writes = 1 if any(w.value is not None for w in ct.writes) else 0
     plot_relevance = len(ct.reads) + sum(1 for w in ct.writes if w.value is not None)
     gate_bonus = _gate_satisfaction_bonus(
         ct.function, ct.reads, current_globals, catalog, scene
     )
     # Tiers, highest first:
-    #   gate_bonus  (5000) — gate from cmp_literals matches live globals,
-    #                        so the trigger body will actually run.
-    #   has_writes  (1000) — trigger writes a plot flag; firing it can
-    #                        advance globals even without a recognized
-    #                        gate (e.g. unconditional writers).
-    #   leave       (100)  — transitions out of the current block; useful
-    #                        navigation but less likely to be a plot beat.
-    #   plot/stay   (5)    — fine-grained tiebreakers.
-    #   constant    (10)   — baseline so catalogued triggers outrank
-    #                        the `ct is None` fallback (which scores 1).
+    #   gate_bonus      (5000) — gate from cmp_literals matches live globals,
+    #                            so the trigger body will actually run.
+    #   has_writes      (1000) — trigger writes a plot flag; firing it can
+    #                            advance globals even without a recognized
+    #                            gate (e.g. unconditional writers).
+    #   leave_forward   (100)  — transitions to a never-visited block; the
+    #                            most likely "push the plot forward" move.
+    #   leave_backward  (3)    — transitions only to blocks we've already
+    #                            been in; useful as a last-resort
+    #                            navigation step but a strong signal we're
+    #                            about to regress (e.g. M02/1's
+    #                            `ev_M02_1_4` that just bounces back to
+    #                            Q01/Q01 without firing M02 plot beats).
+    #                            Kept *strictly less* than the per-fn
+    #                            constant (10) so a never-tried object in
+    #                            the same block outscores the regression.
+    #   plot/stay       (5)    — fine-grained tiebreakers.
+    #   constant        (10)   — baseline so catalogued triggers outrank
+    #                            the `ct is None` fallback (which scores 1).
     return (
         5000 * gate_bonus
         + 1000 * has_known_writes
-        + 100 * leave
+        + 100 * leave_forward
+        + 3 * leave_backward
         + 5 * plot_relevance
         + 5 * stay
         + 10
@@ -201,6 +225,7 @@ def _score_object(
     block: str,
     current_globals: Optional[List[int]] = None,
     catalog: Optional[Catalog] = None,
+    visited: Optional[set] = None,
 ) -> int:
     """Symmetric to `_score_trigger` for interactive GOB objects.
 
@@ -211,22 +236,34 @@ def _score_object(
     """
     if co is None:
         return 1  # live but uncatalogued
-    leave = sum(
-        1
-        for (s, b) in co.transitions
-        if s.lower() != scene.lower() or b != block
-    )
+    visited = visited or set()
+    leave_forward = 0
+    leave_backward = 0
+    for (s, b) in co.transitions:
+        same_block = s.lower() == scene.lower() and b == block
+        if same_block:
+            continue
+        if (s, b) in visited:
+            leave_backward += 1
+        else:
+            leave_forward += 1
     has_known_writes = 1 if any(w.value is not None for w in co.writes) else 0
     plot_relevance = sum(1 for w in co.writes if w.value is not None) + len(co.reads)
     gate_bonus = _gate_satisfaction_bonus(
         co.research_function, co.reads, current_globals, catalog, scene
     )
-    if leave == 0 and plot_relevance == 0 and gate_bonus == 0:
+    if (
+        leave_forward == 0
+        and leave_backward == 0
+        and plot_relevance == 0
+        and gate_bonus == 0
+    ):
         return 2
     return (
         2500 * gate_bonus
         + 500 * has_known_writes
-        + 100 * leave
+        + 100 * leave_forward
+        + 3 * leave_backward
         + 5 * plot_relevance
         + 5
     )

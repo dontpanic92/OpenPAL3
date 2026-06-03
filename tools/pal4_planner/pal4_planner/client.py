@@ -173,6 +173,21 @@ class Client:
     def dialog_choose(self, index: int) -> None:
         self._request("POST", "/v1/dialog/choose", {"index": index})
 
+    def world_map_choose(self, scene: str, block: str) -> None:
+        """Pick a destination on an open world map prompt.
+
+        Wired to `POST /v1/world_map/choose`. The buffered choice is
+        consumed by the next `giShowWorldMap` continuation tick, which
+        performs the equivalent of `giArenaLoad(scene, block, "", 0)`
+        and lets the surrounding script (e.g. `func1007`'s
+        `giPlayerUnLock`) continue in the freshly-loaded scene.
+        """
+        self._request(
+            "POST",
+            "/v1/world_map/choose",
+            {"scene": scene, "block": block},
+        )
+
     def fire_trigger(
         self,
         name: str,
