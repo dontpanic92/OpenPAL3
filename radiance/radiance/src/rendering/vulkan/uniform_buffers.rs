@@ -24,19 +24,41 @@ pub struct DynamicUniformBufferManager {
 }
 
 impl DynamicUniformBufferManager {
+    /// Per-instance UBO pool size. Each [`VulkanRenderObject`] takes
+    /// one slot and releases it on drop, so the cap is roughly
+    /// `max_render_objects_live_at_any_one_moment`.
+    ///
+    /// PAL4 scenes are big (~1500 render objects each), and during
+    /// the brief window where a new scene is built before the old
+    /// `Pal4Scene` is dropped, two scenes' worth of UBOs are live
+    /// simultaneously. With the previous cap of 10240 the planner
+    /// reliably reached ~7 scene transitions before the
+    /// `allocate_buffer` panic — small enough that PAL4 chapter
+    /// progression hit the wall mid-plot (e.g. Q01 → M01 → M02 →
+    /// Q02 → M03 → Q03 panicked on the Q03 BSP load).
+    ///
+    /// 65536 gives us headroom for the full PAL4 playthrough and
+    /// still costs only ~16 MB of GPU memory (each slot is
+    /// `min_uniform_buffer_offset_alignment` ≈ 256 bytes). The
+    /// underlying leak (something is holding the old `Pal4Scene`'s
+    /// entities longer than expected) is unfixed; this is a
+    /// pragmatic cap bump, not a real fix.
+    const POOL_SIZE: u32 = 65536;
+
     pub fn new(
         allocator: &Rc<vk_mem::Allocator>,
         descriptor_manager: &DynamicUniformBufferDescriptorManager,
         min_alignment: u64,
     ) -> Self {
-        let (alignment, buffer) = Self::allocate_dynamic_buffer(allocator, min_alignment, 10240);
+        let (alignment, buffer) =
+            Self::allocate_dynamic_buffer(allocator, min_alignment, Self::POOL_SIZE);
         let descriptor_set = descriptor_manager.allocate_descriptor_sets(&buffer);
 
         Self {
             descriptor_set,
             alignment,
             buffer: RefCell::new(buffer),
-            usage: Mutex::new(vec![false; 10240]),
+            usage: Mutex::new(vec![false; Self::POOL_SIZE as usize]),
         }
     }
 

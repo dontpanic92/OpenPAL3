@@ -6,7 +6,7 @@ use crate::utils::{Pal4NodeSection, SizedString};
 
 #[binrw]
 #[brw(little)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct NpcInfoFile {
     count: u32,
 

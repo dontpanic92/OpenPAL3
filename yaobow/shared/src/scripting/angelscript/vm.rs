@@ -66,7 +66,19 @@ pub struct ScriptVm<TAppContext: 'static> {
 }
 
 impl<TAppContext: 'static> ScriptVm<TAppContext> {
-    const DEFAULT_STACK_SIZE: usize = 1024;
+    /// Per-VM stack capacity in bytes. The legacy default was 1024,
+    /// but PAL4 scripts genuinely allocate large local-variable
+    /// frames in late-game cutscenes (Q04 onward) and the operand
+    /// stack regularly approaches a few KB during deep call chains.
+    /// Underrunning panics with `attempt to subtract with overflow`
+    /// in `str()`/`set4()`/etc. when `sp` is already at 0.
+    ///
+    /// 64 KB matches upstream AngelScript's default initial stack
+    /// per context and gives substantial headroom for the planner's
+    /// long-running fire-many-triggers sessions. Memory cost is
+    /// trivial (one Vec<u8> per VM, and PAL4 only ever has one VM
+    /// alive at a time).
+    const DEFAULT_STACK_SIZE: usize = 64 * 1024;
 
     pub fn new(
         g: Rc<RefCell<ScriptGlobalContext<TAppContext>>>,
@@ -464,8 +476,8 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
                 113 => unimplemented!("byte code 113 - getobj"),
                 114 => unimplemented!("byte code 114 - refcpy"),
                 115 => self.checkref(),
-                116 => unimplemented!("byte code 116 - rd1"),
-                117 => unimplemented!("byte code 117 - rd2"),
+                116 => self.rd1(),
+                117 => self.rd2(),
                 118 => command!(getobjref, offset: i16),
                 119 => unimplemented!("byte code 119 - getref"),
                 120 => unimplemented!("byte code 120 - swap48"),
@@ -539,6 +551,30 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
             let pos: u32 = self.read_stack(self.sp);
             let data: u32 = self.read_stack(pos as usize);
             self.write_stack(self.sp, data);
+        }
+    }
+
+    /// `Rd1` / `Rd2` — variable-width reads matching `Rd4`'s pattern.
+    /// Reads a 1/2-byte value from the address held in stack[sp]
+    /// and overwrites that stack slot with the zero-extended u32.
+    /// PAL4 emits `Rd1` after `giGetVisibleObject` and similar
+    /// sysfns that return a single-byte bool / count; without an
+    /// implementation the VM panics with "byte code 116 - rd1"
+    /// the moment any script tries to inspect such a return value
+    /// (first observed when the planner reached M07/1).
+    fn rd1(&mut self) {
+        unsafe {
+            let pos: u32 = self.read_stack(self.sp);
+            let data: u8 = self.read_stack(pos as usize);
+            self.write_stack::<u32>(self.sp, data as u32);
+        }
+    }
+
+    fn rd2(&mut self) {
+        unsafe {
+            let pos: u32 = self.read_stack(self.sp);
+            let data: u16 = self.read_stack(pos as usize);
+            self.write_stack::<u32>(self.sp, data as u32);
         }
     }
 
@@ -632,25 +668,37 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     fn rdga4(&mut self, offset: i32) {
-        if offset < 0 {
+        // See `pga` for the index encoding. Tolerant fallback so that
+        // unrecognised module globals evaluate to 0 instead of
+        // crashing the engine.
+        let (data, scope, slot) = if offset < 0 {
             let index = -offset - 1;
             let context = self.g.clone();
-            let data = context.borrow().get_global(index as usize);
-            if self.trace_enabled() {
-                let fn_name = self.current_fn_name();
-                let pc = self.context.as_ref().map(|c| c.pc).unwrap_or(0);
-                self.trace(TraceEventKind::GlobalRead {
-                    fn_name,
-                    pc,
-                    scope: GlobalScope::Shared,
-                    slot: index as u32,
-                    value: data,
-                });
-            }
-            self.set4(data);
+            let value = context
+                .borrow()
+                .vars
+                .get(index as usize)
+                .copied()
+                .unwrap_or(0);
+            (value, GlobalScope::Shared, index as u32)
         } else {
-            unimplemented!("Global memory not supported yet");
+            let context = self.context.as_ref().unwrap();
+            let module = context.module.borrow();
+            let value = module.globals.get(offset as usize).copied().unwrap_or(0);
+            (value, GlobalScope::Module, offset as u32)
+        };
+        if self.trace_enabled() {
+            let fn_name = self.current_fn_name();
+            let pc = self.context.as_ref().map(|c| c.pc).unwrap_or(0);
+            self.trace(TraceEventKind::GlobalRead {
+                fn_name,
+                pc,
+                scope,
+                slot,
+                value: data,
+            });
         }
+        self.set4(data);
     }
 
     fn callsys(&mut self, function: i32) {
@@ -1188,18 +1236,38 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     fn pga(&mut self, index: i32) {
+        // PAL4's bytecode encodes shared engine globals as **negative**
+        // indices (`-(slot + 1)` so that slot 0 ↔ -1, slot 1 ↔ -2, …)
+        // and module-local globals as **positive** indices. `index ==
+        // 0` is ambiguous in this scheme: if treated as the negative
+        // branch it underflows to `-1 as u32 == u32::MAX` and the
+        // shared-global Vec (capacity 48) panics with an OOB. We
+        // observed this at M07/8 where some scripted `Pga(0)` reached
+        // get_global with u32::MAX. Treat `index == 0` as "module
+        // slot 0" (the most common interpretation; if the module
+        // didn't ship any globals we just read 0 / write into a
+        // freshly-grown slot — the failure mode for an unrecognised
+        // global is "evaluate to 0", not "crash the engine").
         let (data, scope, slot) = if index > 0 {
             let context = self.context.as_ref().unwrap();
             let module = context.module.borrow();
-            (
-                module.globals[index as usize],
-                GlobalScope::Module,
-                index as u32,
-            )
+            let idx = index as usize;
+            let value = module.globals.get(idx).copied().unwrap_or(0);
+            (value, GlobalScope::Module, index as u32)
+        } else if index == 0 {
+            let context = self.context.as_ref().unwrap();
+            let module = context.module.borrow();
+            let value = module.globals.first().copied().unwrap_or(0);
+            (value, GlobalScope::Module, 0)
         } else {
             let context = self.g.borrow();
             let slot = (-index - 1) as u32;
-            (context.get_global(slot as usize), GlobalScope::Shared, slot)
+            let value = context
+                .vars
+                .get(slot as usize)
+                .copied()
+                .unwrap_or(0);
+            (value, GlobalScope::Shared, slot)
         };
 
         if self.trace_enabled() {
@@ -1224,11 +1292,27 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     fn movga4(&mut self, index: i32) {
         let data: u32 = unsafe { self.read_stack(self.sp) };
 
+        // See `pga` for the index encoding. We mirror its tolerance:
+        // `index == 0` writes to module slot 0 (growing the Vec if
+        // necessary), not to shared slot u32::MAX (which would OOB
+        // the 48-slot vars Vec and crash the engine).
         let (scope, slot) = if index > 0 {
             let context = self.context.as_mut().unwrap();
             let mut module = context.module.borrow_mut();
-            module.globals[index as usize] = data;
+            let idx = index as usize;
+            if module.globals.len() <= idx {
+                module.globals.resize(idx + 1, 0);
+            }
+            module.globals[idx] = data;
             (GlobalScope::Module, index as u32)
+        } else if index == 0 {
+            let context = self.context.as_mut().unwrap();
+            let mut module = context.module.borrow_mut();
+            if module.globals.is_empty() {
+                module.globals.push(0);
+            }
+            module.globals[0] = data;
+            (GlobalScope::Module, 0)
         } else {
             let mut context = self.g.borrow_mut();
             let slot = (-index - 1) as u32;

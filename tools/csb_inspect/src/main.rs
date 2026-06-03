@@ -61,6 +61,22 @@ struct Cli {
     /// script function the VM hands control to.
     #[arg(long)]
     list_functions: bool,
+
+    /// List the module's string-literal table by index. The literal
+    /// at index N is what `Str { index: N }` pushes onto the operand
+    /// stack — combine with `--disasm` to recover concrete strings
+    /// (scene names, dialog text, etc.) without re-disassembling.
+    #[arg(long)]
+    list_strings: bool,
+
+    /// Probe whether the given VFS path resolves. Repeatable. Useful
+    /// for verifying that the on-disk asset tree carries every
+    /// (scene, block) the .csb scripts reference — e.g. `M02/3`'s
+    /// `/gamedata/PALWorld/M02/3/3.bsp` was missing from the shipped
+    /// cpk in some PAL4 distributions, causing `giArenaLoad` to
+    /// abort the script when reached from `LinkObj01`.
+    #[arg(long)]
+    probe: Vec<String>,
 }
 
 const KNOWN_FAILING: &[&str] = &["M02", "M07", "M09", "M16", "Q04", "Q05", "Q11"];
@@ -73,6 +89,59 @@ fn main() -> Result<()> {
         .with_context(|| format!("resolve --root {}", cli.root.display()))?;
     eprintln!("Mounting PAL4 vfs from {}", root.display());
     let vfs = init_virtual_fs(&root, None);
+
+    if !cli.probe.is_empty() {
+        for path in &cli.probe {
+            // Best-effort directory listing via mini-fs's
+            // `entries_path`. Falls through to a single-file read
+            // on listing failure (typical for individual files).
+            let trimmed = path.trim_end_matches('/');
+            let p = Path::new(trimmed);
+            match <mini_fs::MiniFs as mini_fs::Store>::entries_path(&vfs, p) {
+                Ok(entries) => {
+                    let mut names: Vec<String> = Vec::new();
+                    let mut had_err = false;
+                    for entry in entries {
+                        match entry {
+                            Ok(e) => {
+                                let basename = std::path::Path::new(&e.name)
+                                    .file_name()
+                                    .map(|s| s.to_string_lossy().into_owned())
+                                    .unwrap_or_else(|| e.name.to_string_lossy().into_owned());
+                                let kind = match e.kind {
+                                    mini_fs::EntryKind::File => "F",
+                                    mini_fs::EntryKind::Dir => "D",
+                                };
+                                names.push(format!("{} {}", kind, basename));
+                            }
+                            Err(_) => {
+                                had_err = true;
+                            }
+                        }
+                    }
+                    if names.is_empty() && had_err {
+                        // entries() iterator surfaced no usable rows
+                        // — fall through to the single-file read so
+                        // we still report something useful.
+                    } else {
+                        names.sort();
+                        names.dedup();
+                        eprintln!("PROBE DIR {} ({} entries):", path, names.len());
+                        for n in &names {
+                            eprintln!("  {}", n);
+                        }
+                        continue;
+                    }
+                }
+                Err(_) => {}
+            }
+            match vfs.read_to_end(p) {
+                Ok(b) => eprintln!("PROBE OK  {} ({} bytes)", path, b.len()),
+                Err(e) => eprintln!("PROBE MISS {}: {}", path, e),
+            }
+        }
+        return Ok(());
+    }
 
     let mut stems: Vec<String> = if !cli.file.is_empty() {
         cli.file.clone()
@@ -145,6 +214,12 @@ fn main() -> Result<()> {
                     eprintln!("  function table ({} entries):", module.functions.len());
                     for (i, f) in module.functions.iter().enumerate() {
                         eprintln!("    [{}] {}", i, f.name);
+                    }
+                }
+                if cli.list_strings {
+                    eprintln!("  string table ({} entries):", module.strings.len());
+                    for (i, s) in module.strings.iter().enumerate() {
+                        eprintln!("    [{}] {:?}", i, s);
                     }
                 }
                 if let Some(target_fn) = &cli.disasm {

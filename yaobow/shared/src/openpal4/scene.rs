@@ -4,6 +4,7 @@ use std::{
 };
 
 use crosscom::ComRc;
+use fileformats::npc::NpcInfoFile;
 use fileformats::pal4::{
     evf::EvfEvent,
     gob::{GobCommonProperties, GobFile, GobObjectType},
@@ -364,7 +365,24 @@ impl Pal4Scene {
             None
         };
 
-        let npc_info = asset_loader.load_npc_info(scene_name, block_name)?;
+        // `npcInfo.npc` is optional on disk — some PAL4 blocks don't
+        // ship one (e.g. `scenedata/M02/3/` has no `npcInfo.npc`).
+        // Treat a missing/unreadable file as "no NPCs" instead of
+        // failing the whole scene load, which would `?` out of
+        // `giArenaLoad` and abort the surrounding cutscene.
+        let npc_info = match asset_loader.load_npc_info(scene_name, block_name) {
+            Ok(info) => info,
+            Err(e) => {
+                log::warn!(
+                    "Pal4Scene::load: npcInfo.npc missing/unreadable for \
+                     scene='{}' block='{}' ({:#}); proceeding with no NPCs",
+                    scene_name,
+                    block_name,
+                    e
+                );
+                NpcInfoFile::default()
+            }
+        };
         let mut npcs = vec![];
         for npc in &npc_info.data {
             let actor_name = npc.model_name.to_string();
