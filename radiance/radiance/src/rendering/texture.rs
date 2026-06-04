@@ -28,14 +28,14 @@ pub enum AlphaKind {
 /// bands). Counting only pixels squarely in the mid range cleanly
 /// separates truly translucent surfaces (cloth, fog, glass — typical
 /// graded scores of 0.4–1.0) from mostly-binary cutout atlases (PAL4
-/// `wujian-*` interior props — typical graded scores below 0.07).
+/// `wujian-*` interior props — typical graded scores below 0.001).
 ///
 /// Without this guard, mostly-opaque cutout atlases end up rendered
 /// with depth-write off, alpha-0 atlas texels stop being discarded, and
 /// the next opaque draw behind them shows through the surface — the
 /// "see through the table via the cloth's alpha" symptom on PAL4
 /// indoor scenes.
-const BLEND_PIXEL_FRACTION: f32 = 0.07;
+const BLEND_PIXEL_FRACTION: f32 = 0.001;
 
 pub struct TextureDef {
     name: String,
