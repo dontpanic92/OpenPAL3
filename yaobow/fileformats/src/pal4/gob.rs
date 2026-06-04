@@ -324,6 +324,32 @@ impl GobEntry {
             _ => None,
         })
     }
+
+    /// Convenience accessor for `PAL4-GameObject-sound-name` (SOUND tag,
+    /// see [`GobSoundProperty::NAME`]). Returns the raw `.wav` stem
+    /// (without extension), or `None` if absent / non-string / empty.
+    pub fn sound_name(&self) -> Option<String> {
+        let s = self.get_parameter(GobSoundProperty::NAME)?.value_string()?;
+        if s.is_empty() {
+            None
+        } else {
+            Some(s.to_string())
+        }
+    }
+
+    /// Convenience accessor for `PAL4-GameObject-sound-mintime` in
+    /// seconds. Returns `None` if absent or non-f32. Caller is
+    /// responsible for clamping NaN / negative / near-zero values.
+    pub fn sound_min_time(&self) -> Option<f32> {
+        self.get_parameter(GobSoundProperty::MIN_TIME)?.value_f32()
+    }
+
+    /// Convenience accessor for `PAL4-GameObject-sound-maxtime` in
+    /// seconds. Returns `None` if absent or non-f32. Caller is
+    /// responsible for clamping NaN / negative / `max < min`.
+    pub fn sound_max_time(&self) -> Option<f32> {
+        self.get_parameter(GobSoundProperty::MAX_TIME)?.value_f32()
+    }
 }
 
 #[binrw::parser(reader, endian)]
@@ -746,6 +772,66 @@ mod tests {
         let gob = GobFile::read(&mut cursor).expect("EOF terminator must be tolerated");
         assert_eq!(gob.entries.len(), 1);
         assert!(gob.entries[0].parameters.is_empty());
+    }
+
+    /// SOUND tag (3): convenience accessors round-trip the
+    /// `(name, mintime, maxtime)` triple used by the ambient-emitter
+    /// driver. Empty / missing fields yield `None` so callers can
+    /// skip the entry without falling back on placeholder data.
+    #[test]
+    fn sound_accessors_round_trip() {
+        let mut buf = Vec::<u8>::new();
+        write_u32(&mut buf, 2);
+        write_u32(&mut buf, GobObjectType::SOUND);
+        write_u32(&mut buf, GobObjectType::SOUND);
+
+        // Entry 0: well-formed SOUND emitter.
+        write_entry_header(
+            &mut buf,
+            "sound001",
+            "gamedata\\PALObject\\MC\\",
+            "MC",
+            "mc",
+            1,
+        );
+        write_i32_prop(&mut buf, GobFixedProperty::HIDE, 0);
+        write_i32_prop(&mut buf, "PAL4-GameObject-Parameters", 0);
+        write_i32_prop(&mut buf, GobParameterBlock::SOUND, 3);
+        write_str_prop(&mut buf, GobSoundProperty::NAME, "WA01");
+        write_f32_prop(&mut buf, GobSoundProperty::MIN_TIME, 8.5);
+        write_f32_prop(&mut buf, GobSoundProperty::MAX_TIME, 24.0);
+        write_u32(&mut buf, 0);
+
+        // Entry 1: missing NAME (empty string) — accessor must
+        // return None so the load-time emitter walk skips it
+        // rather than scheduling a `play_sound("")` call.
+        write_entry_header(
+            &mut buf,
+            "sound002",
+            "gamedata\\PALObject\\MC\\",
+            "MC",
+            "mc",
+            1,
+        );
+        write_i32_prop(&mut buf, GobFixedProperty::HIDE, 0);
+        write_i32_prop(&mut buf, "PAL4-GameObject-Parameters", 0);
+        write_i32_prop(&mut buf, GobParameterBlock::SOUND, 1);
+        write_str_prop(&mut buf, GobSoundProperty::NAME, "");
+        write_u32(&mut buf, 0);
+
+        let mut cursor = Cursor::new(buf);
+        let gob = GobFile::read(&mut cursor).expect("parse synthetic sound entries");
+        assert_eq!(gob.entries.len(), 2);
+
+        let e0 = &gob.entries[0];
+        assert_eq!(e0.sound_name().as_deref(), Some("WA01"));
+        assert_eq!(e0.sound_min_time(), Some(8.5));
+        assert_eq!(e0.sound_max_time(), Some(24.0));
+
+        let e1 = &gob.entries[1];
+        assert_eq!(e1.sound_name(), None);
+        assert_eq!(e1.sound_min_time(), None);
+        assert_eq!(e1.sound_max_time(), None);
     }
 
     /// Developer-local round-trip against a real install of the game.

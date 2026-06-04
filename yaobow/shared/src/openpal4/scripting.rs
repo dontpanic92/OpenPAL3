@@ -1823,7 +1823,12 @@ fn gob_detach_from_npc(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functi
 }
 
 fn gob_set_position(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _gob_file_str: i32, _x: f32, _y: f32, _z: f32);
+    as_params!(vm, name_str: i32, x: f32, y: f32, z: f32);
+
+    let name = get_str(vm, name_str as usize).unwrap_or_default();
+    if !vm.app_context.scene.set_object_position(&name, x, y, z) {
+        log::warn!("giGOBSetPosition: unknown object '{}'", name);
+    }
     Pal4FunctionState::Completed
 }
 
@@ -1996,7 +2001,12 @@ fn reset_player_to_jump_start(_: &str, _vm: &mut ScriptVm<Pal4AppContext>) -> Pa
 }
 
 fn gob_reset(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm,_gob_file_str:i32);
+    as_params!(vm, name_str: i32);
+
+    let name = get_str(vm, name_str as usize).unwrap_or_default();
+    if !vm.app_context.scene.reset_object(&name) {
+        log::warn!("giGOBReset: unknown object '{}'", name);
+    }
     Pal4FunctionState::Completed
 }
 
@@ -2848,7 +2858,23 @@ fn show_select_dialog(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4Functio
     Pal4FunctionState::Completed
 }
 fn gob_movment(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _gob_file_str: i32, _x: f32, _y: f32, _z: f32, _rot: f32, _movment: i32);
+    // V1: snap (position, yaw). The original engine likely glides
+    // over multiple frames; the dominant cutscene pattern brackets
+    // `giGOBMovment` with a `giWait`, so an instant snap reads
+    // visually as "the prop moved during the wait" — wrong in
+    // motion, correct in steady state. A tweened version is a
+    // follow-up. The trailing `_movment` int is a movement-style
+    // id (snap / walk / run) that v1 ignores.
+    as_params!(vm, name_str: i32, x: f32, y: f32, z: f32, rot: f32, _movment: i32);
+
+    let name = get_str(vm, name_str as usize).unwrap_or_default();
+    if !vm
+        .app_context
+        .scene
+        .set_object_position_and_yaw(&name, x, y, z, rot)
+    {
+        log::warn!("giGOBMovment: unknown object '{}'", name);
+    }
     Pal4FunctionState::Completed
 }
 
@@ -2902,7 +2928,21 @@ fn show_world_map(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
 }
 
 fn gob_scale(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
-    as_params!(vm, _gob_file_str: i32, _x_scale: f32, _y_scale: f32, _scale_gob: i32);
+    // V1: snap (xy scale). Original script API exposes only two
+    // axes; Z is set to the same factor as X because PAL4 props
+    // are y-up so the depth dimension correlates with width far
+    // more than height. Rebuilds the matrix from identity so the
+    // scale is absolute rather than multiplied onto a prior call.
+    as_params!(vm, name_str: i32, x_scale: f32, y_scale: f32, _scale_gob: i32);
+
+    let name = get_str(vm, name_str as usize).unwrap_or_default();
+    if !vm
+        .app_context
+        .scene
+        .set_object_scale_xy(&name, x_scale, y_scale)
+    {
+        log::warn!("giGOBScale: unknown object '{}'", name);
+    }
     Pal4FunctionState::Completed
 }
 

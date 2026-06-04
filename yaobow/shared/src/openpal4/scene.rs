@@ -99,7 +99,45 @@ pub struct Pal4Scene {
     /// from the anchor — well beyond the 60-unit `trigger_distance`
     /// — even though they're physically right next to the visible
     /// ladder, so the F-key climb-up interaction would never fire.
+    ///
+    /// Slots are set back to `None` whenever a `giGOB*` script
+    /// function mutates the corresponding object's transform —
+    /// `test_interaction` then falls back to anchor-based distance
+    /// for that entry, which is correct (if slightly less precise)
+    /// after the move.
     pub(crate) objects_xz_aabbs: Vec<Option<(f32, f32, f32, f32)>>,
+    /// Lockstep mapping `objects[i] -> GobFile::entries[index]`.
+    /// `objects` only contains *visible* and *marker* entries, while
+    /// `objects_gob` retains the full corpus; this Vec lets code
+    /// (e.g. `test_interaction`, `gob_movement_metadata`) recover
+    /// the GOB entry that authored a loaded entity. Pre-lockstep
+    /// indexing — `entries[i]` keyed on the `objects` loop index —
+    /// silently consulted the wrong GOB whenever any SOUND / EFFECT
+    /// was skipped before a GENERIC interactable in the same block.
+    pub(crate) objects_gob_indices: Vec<usize>,
+    /// Per-object original `Transform` matrix captured at scene
+    /// load, in lockstep with `objects`. Used by `giGOBReset` to
+    /// restore the entity to its authored placement after any
+    /// number of `giGOBSetPosition` / `giGOBMovment` / `giGOBScale`
+    /// calls.
+    ///
+    /// We snapshot the full `Mat44` (rather than decomposed
+    /// `(pos, rot, scale)`) to sidestep two traps: (a) the
+    /// load-time transform chain uses `scale_local` and
+    /// `rotate_axis_angle_local` which are multiplicative on top of
+    /// whatever state the matrix is in, so decomposing and
+    /// reapplying them re-orders ops with no guaranteed round-trip;
+    /// (b) `Transform::euler` is singular at gimbal lock and can't
+    /// round-trip all rotations cleanly.
+    pub(crate) objects_initial_transforms: Vec<Mat44>,
+    /// Per-scene ambient sound emitters (GOB tag 3). Driven each
+    /// frame by [`Pal4Scene::tick_sound_emitters`] which schedules
+    /// random replays in `[min_time, max_time]` while the active
+    /// leader is within `trigger_distance` XZ of the emitter's
+    /// position. The audio engine is mono with no positional API,
+    /// so distance gating is binary: in-range → fire, out-of-range
+    /// → don't fire (already-playing instances continue).
+    pub(crate) sound_emitters: Vec<SceneSoundEmitter>,
     pub(crate) objects_gob: Option<GobFile>,
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
@@ -127,6 +165,62 @@ pub struct Pal4Scene {
     pub(crate) actor_controller: Option<ComRc<IPal4ActorController>>,
 }
 
+/// Per-frame state for one GOB-authored ambient sound emitter (tag 3).
+///
+/// `trigger_distance_sq` is pre-squared so the per-frame distance
+/// gate compares with `Vec3::xz_dist_sq(...)` — no `sqrt` in the
+/// per-emitter inner loop.
+pub(crate) struct SceneSoundEmitter {
+    pub(crate) name: String,
+    pub(crate) position: Vec3,
+    pub(crate) min_time: f32,
+    pub(crate) max_time: f32,
+    pub(crate) trigger_distance_sq: f32,
+    pub(crate) next_play_in_sec: f32,
+}
+
+/// Floor for SOUND mintime/maxtime values. Source data ships with
+/// values in the 5–30 s range; this guard exists only to defend
+/// against malformed or zero/NaN/negative entries that would
+/// otherwise burst-fire `play_sound` every frame.
+const MIN_SOUND_INTERVAL_SEC: f32 = 0.1;
+
+/// Fallback `trigger_distance` for SOUND emitters whose entry has
+/// an explicit zero (rare in the corpus, but defending against it
+/// at load time avoids a per-frame near-zero comparison that would
+/// silently disable the emitter).
+const DEFAULT_SOUND_TRIGGER_DISTANCE: f32 = 600.0;
+
+/// Sanitise a SOUND emitter's `min_time` / `max_time` parameters to
+/// a sane real-time interval. Returns `(min, max)` with both values
+/// finite, non-negative, ≥ `MIN_SOUND_INTERVAL_SEC`, and
+/// `max >= min`. Exposed at module level so it can be unit-tested
+/// independently of any scene load.
+pub(crate) fn sanitise_sound_interval(min_time: f32, max_time: f32) -> (f32, f32) {
+    fn clean(v: f32) -> f32 {
+        if v.is_nan() || v < MIN_SOUND_INTERVAL_SEC {
+            MIN_SOUND_INTERVAL_SEC
+        } else {
+            v
+        }
+    }
+    let min = clean(min_time);
+    let max = clean(max_time).max(min);
+    (min, max)
+}
+
+/// Draw a uniform sample in `[lo, hi]`. Returns `lo` when `hi == lo`
+/// (avoids `rand`'s panic on empty ranges) and clamps any inverted
+/// inputs.
+fn uniform(lo: f32, hi: f32) -> f32 {
+    use rand::Rng;
+    if hi <= lo {
+        lo
+    } else {
+        rand::thread_rng().gen_range(lo..=hi)
+    }
+}
+
 const SHOW_TRIGGER_POINT: bool = false;
 
 impl Pal4Scene {
@@ -147,6 +241,9 @@ impl Pal4Scene {
             npcs: vec![],
             objects: vec![],
             objects_xz_aabbs: vec![],
+            objects_gob_indices: vec![],
+            objects_initial_transforms: vec![],
+            sound_emitters: vec![],
             objects_gob: None,
             events: vec![],
             module: None,
@@ -418,6 +515,9 @@ impl Pal4Scene {
         }
 
         let mut objects = vec![];
+        let mut objects_gob_indices: Vec<usize> = vec![];
+        let mut objects_initial_transforms: Vec<Mat44> = vec![];
+        let mut sound_emitters: Vec<SceneSoundEmitter> = vec![];
         let gob = asset_loader.load_gob(scene_name, block_name)?;
 
         for (i, entry) in gob.entries.iter().enumerate() {
@@ -431,6 +531,39 @@ impl Pal4Scene {
             // mirroring how NPCs are named by `npc.name`. Fall back to the
             // file name if the logical name is missing.
             let logical_name = entry.name.to_string().ok();
+
+            // Build an ambient sound emitter for SOUND-tag entries; we
+            // do this before the visible-entity skip so the emitter
+            // bookkeeping is independent of the rendering path. Entries
+            // missing any of (name, min_time, max_time) are silently
+            // dropped — `tools/pal4_gob_inspect` confirms the corpus
+            // ships them all populated.
+            if object_type == GobObjectType::SOUND {
+                if let (Some(name), Some(min_t), Some(max_t)) =
+                    (entry.sound_name(), entry.sound_min_time(), entry.sound_max_time())
+                {
+                    let (min_time, max_time) = sanitise_sound_interval(min_t, max_t);
+                    let trigger_distance = if entry.trigger_distance > 0.0 {
+                        entry.trigger_distance
+                    } else {
+                        DEFAULT_SOUND_TRIGGER_DISTANCE
+                    };
+                    // First-fire phase ∈ [0, max_time] (NOT [min, max])
+                    // staggers dense scenes — many corpus emitters have
+                    // identical `(min, max)` so a [min, max] initial
+                    // draw lock-steps every emitter in the block.
+                    let next_play_in_sec = uniform(0.0, max_time);
+                    sound_emitters.push(SceneSoundEmitter {
+                        name,
+                        position: Vec3::from(entry.position),
+                        min_time,
+                        max_time,
+                        trigger_distance_sq: trigger_distance * trigger_distance,
+                        next_play_in_sec,
+                    });
+                }
+            }
+
             match (object_name, folder, file_name) {
                 (Ok(object_name), Ok(folder), Ok(file_name)) => {
                     let entity_name = logical_name.unwrap_or_else(|| object_name.clone());
@@ -446,11 +579,14 @@ impl Pal4Scene {
                     //   tag 8  EFFECT  1058/1058 use ZZA/MC/JDumy/H_065
                     //   tag 9  MARKER  57/57 use JDumy/MC
                     //
-                    // These entries are not added to `objects`, so
-                    // `Pal4Scene::get_object` returns `None` for
-                    // them — consistent with how the original
-                    // EFFECT-only branch behaved, and scripts have
-                    // always accommodated that.
+                    // MARKER entries are now loaded as INVISIBLE
+                    // empty entities (no mesh) so script lookups via
+                    // `Pal4Scene::get_object(name)` resolve them and
+                    // `giGOB*` mutators (set_position, movment,
+                    // reset, scale) have something to act on.
+                    // SOUND / EFFECT remain skipped — SOUND drives
+                    // its own emitter list above, EFFECT needs a
+                    // particle subsystem we don't have yet.
                     //
                     // Note: a handful of tag-5 MACHINE entries also
                     // ship placeholder meshes (MC/JDumy) as
@@ -463,29 +599,40 @@ impl Pal4Scene {
                     // designer intent. Add a dedicated case if a
                     // specific MACHINE entry surfaces as
                     // incorrectly visible.
-                    if matches!(
-                        object_type,
-                        GobObjectType::EFFECT | GobObjectType::SOUND | GobObjectType::MARKER
-                    ) {
+                    if matches!(object_type, GobObjectType::EFFECT | GobObjectType::SOUND) {
                         continue;
                     }
 
-                    let entity = asset_loader
-                        .load_object(&entity_name, &folder, &file_name)
-                        .unwrap_or_else(|| {
-                            log::error!(
-                                "Cannot load object: {:?} {:?} {:?}",
-                                entity_name,
-                                folder,
-                                file_name
-                            );
-                            CoreEntity::create(entity_name.clone(), false)
-                        });
+                    let entity = if object_type == GobObjectType::MARKER {
+                        // Pure script anchor — no mesh, no children.
+                        // `set_visible(false)` would normally also
+                        // disable rendering for downstream cameras,
+                        // but markers don't render anything anyway;
+                        // we keep `set_enabled(true)` so scene
+                        // updates still tick through the entity (in
+                        // case a future feature attaches a component
+                        // that needs per-frame work).
+                        CoreEntity::create(entity_name.clone(), true)
+                    } else {
+                        asset_loader
+                            .load_object(&entity_name, &folder, &file_name)
+                            .unwrap_or_else(|| {
+                                log::error!(
+                                    "Cannot load object: {:?} {:?} {:?}",
+                                    entity_name,
+                                    folder,
+                                    file_name
+                                );
+                                CoreEntity::create(entity_name.clone(), false)
+                            })
+                    };
 
                     // Honor the `PAL4-GameObject-object-hide` flag: when set,
                     // the entity is placed in the scene but starts invisible.
                     // Scripts can later reveal it via the `giGOB*` API.
-                    let initially_hidden = entry.is_initially_hidden();
+                    // Markers are always invisible — they have no mesh.
+                    let initially_hidden =
+                        object_type == GobObjectType::MARKER || entry.is_initially_hidden();
                     entity.set_visible(!initially_hidden);
                     entity.set_enabled(true);
 
@@ -503,7 +650,15 @@ impl Pal4Scene {
                         .rotate_axis_angle_local(&Vec3::EAST, entry.rotation[0].to_radians())
                         .set_position(&Vec3::from(entry.position));
 
+                    // Snapshot the *full* matrix AFTER the load-time
+                    // chain so `giGOBReset` can restore it byte-exact
+                    // regardless of any subsequent rotate / scale /
+                    // translate composition.
+                    let initial_matrix = *entity.transform().borrow().matrix();
+
                     objects.push(entity.clone());
+                    objects_gob_indices.push(i);
+                    objects_initial_transforms.push(initial_matrix);
 
                     scene.add_entity(entity);
                 }
@@ -513,6 +668,28 @@ impl Pal4Scene {
                         object_name,
                         folder,
                         file_name
+                    );
+                }
+            }
+        }
+
+        // Surface name collisions in the loaded `objects` set:
+        // `get_object` returns the first match, so a duplicate
+        // silently masks every later same-named entry. Log once at
+        // load time so a future regression shows up in the logs
+        // instead of being chased through scripts.
+        {
+            use std::collections::HashSet;
+            let mut seen = HashSet::new();
+            for entity in &objects {
+                let name = entity.name();
+                if !seen.insert(name.clone()) {
+                    log::warn!(
+                        "Pal4Scene::load: duplicate object name '{}' in scene='{}' block='{}'; \
+                         `get_object` will return the first occurrence",
+                        name,
+                        scene_name,
+                        block_name
                     );
                 }
             }
@@ -546,6 +723,9 @@ impl Pal4Scene {
                     entity_world_xz_aabb(e)
                 })
                 .collect(),
+            objects_gob_indices,
+            objects_initial_transforms,
+            sound_emitters,
             objects_gob: Some(gob),
             events: events.events,
             module: Some(module),
@@ -644,7 +824,14 @@ impl Pal4Scene {
         let mut min_function = None;
 
         for (i, object) in self.objects.iter().enumerate() {
-            let entry = &self.objects_gob.as_ref().unwrap().entries[i];
+            // Pre-lockstep this used `entries[i]`, but `objects`
+            // skips SOUND / EFFECT (and historically MARKER) so the
+            // index could land on the wrong GOB any time a sound /
+            // effect appeared before a GENERIC interactable. The
+            // lockstep `objects_gob_indices[i]` recovers the
+            // authored entry.
+            let gob_index = self.objects_gob_indices[i];
+            let entry = &self.objects_gob.as_ref().unwrap().entries[gob_index];
             if entry.research_function == "" {
                 continue;
             }
@@ -748,6 +935,147 @@ impl Pal4Scene {
             e.set_visible(visible);
             e.set_enabled(visible);
         }
+    }
+
+    /// Index lookup for `objects` by logical name. Returns the
+    /// position of the first match (mirrors `get_object`'s
+    /// first-match-wins semantics) so callers can index into the
+    /// parallel `objects_xz_aabbs` /
+    /// `objects_initial_transforms` Vecs.
+    fn object_index_by_name(&self, name: &str) -> Option<usize> {
+        self.objects.iter().position(|o| o.name() == name)
+    }
+
+    /// Set an object's local position to `(x, y, z)` and invalidate
+    /// its cached `objects_xz_aabbs` slot so the interaction probe
+    /// falls back to anchor-distance for this entry from now on.
+    /// Returns `true` on hit, `false` on miss; warns are the
+    /// caller's responsibility (so the script-side stub can attach
+    /// the function name).
+    pub fn set_object_position(&mut self, name: &str, x: f32, y: f32, z: f32) -> bool {
+        let Some(idx) = self.object_index_by_name(name) else {
+            return false;
+        };
+        self.objects[idx]
+            .transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(x, y, z));
+        if let Some(slot) = self.objects_xz_aabbs.get_mut(idx) {
+            *slot = None;
+        }
+        true
+    }
+
+    /// Snap an object's position AND its Y-axis (yaw) rotation. The
+    /// yaw is set absolutely: the matrix is rebuilt from the
+    /// snapshotted initial transform's rotation, with the new yaw
+    /// composed onto an identity rotation. This avoids the
+    /// accumulation trap where repeated `rotate_axis_angle_local`
+    /// calls compound rather than overwrite.
+    ///
+    /// `rot_deg` rotates around `Vec3::UP` (y-axis); this matches
+    /// how PAL4 props are placed.
+    pub fn set_object_position_and_yaw(
+        &mut self,
+        name: &str,
+        x: f32,
+        y: f32,
+        z: f32,
+        rot_deg: f32,
+    ) -> bool {
+        let Some(idx) = self.object_index_by_name(name) else {
+            return false;
+        };
+        let xform = self.objects[idx].transform();
+        let mut t = xform.borrow_mut();
+        t.clear_rotation();
+        t.rotate_axis_angle_local(&Vec3::UP, rot_deg.to_radians());
+        t.set_position(&Vec3::new(x, y, z));
+        drop(t);
+        if let Some(slot) = self.objects_xz_aabbs.get_mut(idx) {
+            *slot = None;
+        }
+        true
+    }
+
+    /// Set an object's local scale to `(x_scale, y_scale, x_scale)`
+    /// (Z reuses `x_scale` because the script API exposes only two
+    /// axes and PAL4 props are y-up). Rotation is preserved as
+    /// identity afterwards because we rebuild the matrix from
+    /// scratch — the only correct way to make this an *absolute*
+    /// scale rather than multiplying onto an already-scaled state.
+    /// Position is preserved.
+    pub fn set_object_scale_xy(&mut self, name: &str, x_scale: f32, y_scale: f32) -> bool {
+        let Some(idx) = self.object_index_by_name(name) else {
+            return false;
+        };
+        let xform = self.objects[idx].transform();
+        let mut t = xform.borrow_mut();
+        let pos = t.position();
+        t.set_matrix(Mat44::new_identity());
+        t.scale_local(&Vec3::new(x_scale, y_scale, x_scale));
+        t.set_position(&pos);
+        drop(t);
+        if let Some(slot) = self.objects_xz_aabbs.get_mut(idx) {
+            *slot = None;
+        }
+        true
+    }
+
+    /// Restore an object's transform to its load-time snapshot in
+    /// `objects_initial_transforms`. Invalidates the cached AABB
+    /// too — the load-time AABB was sampled against the same
+    /// matrix, but recomputing it from the snapshot is more work
+    /// than just letting the interaction probe fall back to the
+    /// anchor.
+    pub fn reset_object(&mut self, name: &str) -> bool {
+        let Some(idx) = self.object_index_by_name(name) else {
+            return false;
+        };
+        let saved = self.objects_initial_transforms[idx];
+        self.objects[idx].transform().borrow_mut().set_matrix(saved);
+        if let Some(slot) = self.objects_xz_aabbs.get_mut(idx) {
+            *slot = None;
+        }
+        true
+    }
+
+    /// Per-frame ambient-sound emitter tick. Decrements each
+    /// emitter's countdown; on expiry re-rolls a fresh interval
+    /// from `[min_time, max_time]` AND, when the leader is within
+    /// the emitter's `trigger_distance`, queues the emitter's WAV
+    /// name in the returned Vec. The caller (`Pal4AppContext`)
+    /// drains the Vec into `play_sound`.
+    ///
+    /// Timing decisions (see plan.md "Rubber-duck adjustments"):
+    /// (1) we re-roll the timer regardless of distance — freezing
+    /// would let a long out-of-range stay queue up dozens of
+    /// expired timers that all fire on re-entry; (2) the first
+    /// fire used a `[0, max_time]` phase rather than `[min, max]`
+    /// to stagger dense scenes where every emitter shares the
+    /// same period; (3) gating is binary because the audio engine
+    /// is mono.
+    ///
+    /// Active OpenAL sources from prior fires are NOT preempted —
+    /// they finish naturally, which matches the engine's mono
+    /// behaviour for one-shot ambient sounds.
+    pub fn tick_sound_emitters(&mut self, leader_pos: Vec3, delta_sec: f32) -> Vec<String> {
+        let mut to_play = Vec::new();
+        for emitter in &mut self.sound_emitters {
+            emitter.next_play_in_sec -= delta_sec;
+            if emitter.next_play_in_sec > 0.0 {
+                continue;
+            }
+            emitter.next_play_in_sec = uniform(emitter.min_time, emitter.max_time);
+
+            let dx = leader_pos.x - emitter.position.x;
+            let dz = leader_pos.z - emitter.position.z;
+            let dist_sq = dx * dx + dz * dz;
+            if dist_sq <= emitter.trigger_distance_sq {
+                to_play.push(emitter.name.clone());
+            }
+        }
+        to_play
     }
 }
 
@@ -995,4 +1323,206 @@ fn create_trigger_ray_caster(trigger: Vec<Vec3>) -> RayCaster {
     }
 
     ray_caster
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_emitter(min: f32, max: f32, trigger_dist: f32, next_play: f32) -> SceneSoundEmitter {
+        SceneSoundEmitter {
+            name: "WA01".to_string(),
+            position: Vec3::new(0.0, 0.0, 0.0),
+            min_time: min,
+            max_time: max,
+            trigger_distance_sq: trigger_dist * trigger_dist,
+            next_play_in_sec: next_play,
+        }
+    }
+
+    fn make_scene_with_emitters(emitters: Vec<SceneSoundEmitter>) -> Pal4Scene {
+        let mut s = Pal4Scene::new_empty();
+        s.sound_emitters = emitters;
+        s
+    }
+
+    /// Pin clamping behaviour at the SOUND-emitter boundary: any of
+    /// NaN, negative, zero, or near-zero must round-trip to at least
+    /// MIN_SOUND_INTERVAL_SEC, and max must never fall below min.
+    /// Without this floor a single corrupt entry would burst-fire
+    /// `play_sound` every frame.
+    #[test]
+    fn sanitise_sound_interval_clamps_bad_inputs() {
+        assert_eq!(sanitise_sound_interval(5.0, 10.0), (5.0, 10.0));
+        // max < min → clamp max up to min
+        assert_eq!(sanitise_sound_interval(10.0, 3.0), (10.0, 10.0));
+        // zero / negative → floored
+        let (lo, hi) = sanitise_sound_interval(0.0, 0.0);
+        assert!(lo >= MIN_SOUND_INTERVAL_SEC && hi >= MIN_SOUND_INTERVAL_SEC && hi >= lo);
+        let (lo, hi) = sanitise_sound_interval(-5.0, -1.0);
+        assert!(lo >= MIN_SOUND_INTERVAL_SEC && hi >= MIN_SOUND_INTERVAL_SEC && hi >= lo);
+        // NaN
+        let (lo, hi) = sanitise_sound_interval(f32::NAN, f32::NAN);
+        assert!(lo >= MIN_SOUND_INTERVAL_SEC && hi >= MIN_SOUND_INTERVAL_SEC && hi >= lo);
+    }
+
+    /// In-range emitter whose timer expires this tick must surface
+    /// in the returned Vec exactly once.
+    #[test]
+    fn sound_emitter_fires_when_leader_in_range() {
+        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 600.0, 0.05)]);
+        let to_play = s.tick_sound_emitters(Vec3::new(10.0, 0.0, 10.0), 0.1);
+        assert_eq!(to_play, vec!["WA01".to_string()]);
+        // Timer was re-rolled (min==max=5s, so exactly 5s).
+        assert!((s.sound_emitters[0].next_play_in_sec - 5.0).abs() < 1e-4);
+    }
+
+    /// Out-of-range emitter still re-rolls its timer on expiry — if
+    /// we froze the timer instead, all expired emitters would burst-
+    /// fire the moment the leader re-entered the area.
+    #[test]
+    fn sound_emitter_silent_when_leader_out_of_range_but_timer_resets() {
+        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 600.0, 0.05)]);
+        // 1000 XZ units away with trigger_distance = 600.
+        let to_play = s.tick_sound_emitters(Vec3::new(1000.0, 0.0, 0.0), 0.1);
+        assert!(to_play.is_empty(), "out of range, must not fire");
+        assert!((s.sound_emitters[0].next_play_in_sec - 5.0).abs() < 1e-4, "timer must reset");
+    }
+
+    /// Emitter whose timer is still in flight must not fire — the
+    /// per-frame countdown is the only source of new plays.
+    #[test]
+    fn sound_emitter_does_not_fire_before_expiry() {
+        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 600.0, 1.0)]);
+        let to_play = s.tick_sound_emitters(Vec3::new(0.0, 0.0, 0.0), 0.1);
+        assert!(to_play.is_empty());
+        // Timer ticked down but did not reset.
+        assert!((s.sound_emitters[0].next_play_in_sec - 0.9).abs() < 1e-4);
+    }
+
+    /// Vec3-distance-squared comparison correctness: a leader sitting
+    /// exactly on the trigger boundary should be considered in range
+    /// (≤, not <), and a hair beyond should not.
+    #[test]
+    fn sound_emitter_distance_boundary_is_inclusive() {
+        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 100.0, 0.0)]);
+        // Exactly on the boundary
+        let to_play = s.tick_sound_emitters(Vec3::new(100.0, 0.0, 0.0), 0.0);
+        assert_eq!(to_play.len(), 1, "boundary must be inclusive");
+
+        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 100.0, 0.0)]);
+        // Just beyond
+        let to_play = s.tick_sound_emitters(Vec3::new(100.1, 0.0, 0.0), 0.0);
+        assert!(to_play.is_empty(), "just beyond must not fire");
+    }
+
+    /// Reset after a set-position call must restore the snapshot
+    /// matrix exactly. Locks the `Mat44` round-trip used by
+    /// `giGOBReset` so a future change to scale/clear_rotation
+    /// ordering does not silently lose the load-time placement.
+    #[test]
+    fn reset_object_restores_initial_transform() {
+        let mut s = Pal4Scene::new_empty();
+        let entity = CoreEntity::create("marker001".to_string(), true);
+        entity.transform().borrow_mut().set_position(&Vec3::new(10.0, 20.0, 30.0));
+        let snap = *entity.transform().borrow().matrix();
+        s.objects.push(entity);
+        s.objects_gob_indices.push(0);
+        s.objects_initial_transforms.push(snap);
+        s.objects_xz_aabbs.push(None);
+
+        // Mutate then reset.
+        assert!(s.set_object_position("marker001", 1.0, 2.0, 3.0));
+        let p = s.objects[0].transform().borrow().position();
+        assert!((p.x - 1.0).abs() < 1e-4 && (p.y - 2.0).abs() < 1e-4 && (p.z - 3.0).abs() < 1e-4);
+        assert!(s.reset_object("marker001"));
+        let p = s.objects[0].transform().borrow().position();
+        assert!(
+            (p.x - 10.0).abs() < 1e-4 && (p.y - 20.0).abs() < 1e-4 && (p.z - 30.0).abs() < 1e-4,
+            "reset must restore position, got {:?}",
+            p,
+        );
+    }
+
+    /// Position-and-yaw mutation must NOT accumulate yaw across
+    /// repeated calls — a script issuing `giGOBMovment(..., rot=90)`
+    /// three times in a row must end at 90°, not 270°. This is the
+    /// invariant `clear_rotation()` exists to enforce; we verify it
+    /// behaviourally rather than reading euler back (which is
+    /// singular at gimbal lock).
+    #[test]
+    fn set_object_position_and_yaw_does_not_accumulate() {
+        let mut s = Pal4Scene::new_empty();
+        let entity = CoreEntity::create("door001".to_string(), true);
+        let snap = *entity.transform().borrow().matrix();
+        s.objects.push(entity);
+        s.objects_gob_indices.push(0);
+        s.objects_initial_transforms.push(snap);
+        s.objects_xz_aabbs.push(None);
+
+        // Call three times with the same yaw; the resulting
+        // rotation matrix must equal a single yaw=90 application.
+        for _ in 0..3 {
+            assert!(s.set_object_position_and_yaw("door001", 0.0, 0.0, 0.0, 90.0));
+        }
+        let m_repeat = *s.objects[0].transform().borrow().matrix();
+
+        // Reset and apply once.
+        s.reset_object("door001");
+        assert!(s.set_object_position_and_yaw("door001", 0.0, 0.0, 0.0, 90.0));
+        let m_once = *s.objects[0].transform().borrow().matrix();
+
+        // Rotational submatrices must match.
+        for r in 0..3 {
+            for c in 0..3 {
+                assert!(
+                    (m_repeat[r][c] - m_once[r][c]).abs() < 1e-4,
+                    "yaw accumulated: m_repeat[{r}][{c}]={} vs m_once[{r}][{c}]={}",
+                    m_repeat[r][c],
+                    m_once[r][c],
+                );
+            }
+        }
+    }
+
+    /// AABB cache must be invalidated after any transform mutation
+    /// so `test_interaction` does not consult a stale rectangle for
+    /// a moved interactable.
+    #[test]
+    fn aabb_is_invalidated_after_transform_mutators() {
+        let mut s = Pal4Scene::new_empty();
+        let entity = CoreEntity::create("crate001".to_string(), true);
+        let snap = *entity.transform().borrow().matrix();
+        s.objects.push(entity);
+        s.objects_gob_indices.push(0);
+        s.objects_initial_transforms.push(snap);
+        s.objects_xz_aabbs.push(Some((0.0, 1.0, 0.0, 1.0)));
+
+        assert!(s.set_object_position("crate001", 5.0, 0.0, 5.0));
+        assert!(s.objects_xz_aabbs[0].is_none(), "AABB must be cleared on set_position");
+
+        s.objects_xz_aabbs[0] = Some((0.0, 1.0, 0.0, 1.0));
+        assert!(s.set_object_position_and_yaw("crate001", 0.0, 0.0, 0.0, 30.0));
+        assert!(s.objects_xz_aabbs[0].is_none(), "AABB must be cleared on movement");
+
+        s.objects_xz_aabbs[0] = Some((0.0, 1.0, 0.0, 1.0));
+        assert!(s.set_object_scale_xy("crate001", 2.0, 2.0));
+        assert!(s.objects_xz_aabbs[0].is_none(), "AABB must be cleared on scale");
+
+        s.objects_xz_aabbs[0] = Some((0.0, 1.0, 0.0, 1.0));
+        assert!(s.reset_object("crate001"));
+        assert!(s.objects_xz_aabbs[0].is_none(), "AABB must be cleared on reset");
+    }
+
+    /// Mutators must return `false` (and log) for unknown names
+    /// rather than panicking — PAL4 scripts cross-reference names
+    /// across blocks all the time.
+    #[test]
+    fn mutators_return_false_on_unknown_name() {
+        let mut s = Pal4Scene::new_empty();
+        assert!(!s.set_object_position("nope", 0.0, 0.0, 0.0));
+        assert!(!s.set_object_position_and_yaw("nope", 0.0, 0.0, 0.0, 0.0));
+        assert!(!s.set_object_scale_xy("nope", 1.0, 1.0));
+        assert!(!s.reset_object("nope"));
+    }
 }

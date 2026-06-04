@@ -225,6 +225,30 @@ impl Pal4AppContext {
         self.tick_camera_run(delta_sec);
         // Drive water UV animation each frame (PAL4 water surfaces).
         self.scene.tick_uv_anim(delta_sec);
+
+        // Tick ambient SOUND emitters (GOB tag 3). We use real
+        // `delta_sec` rather than `motion_dt` deliberately: fast-
+        // forward is a debug / planner convenience that compresses
+        // wait loops, but if we scaled audio retrigger intervals
+        // by the same factor every ambient emitter in the scene
+        // would burst-fire on each fast-forwarded frame. Fire-and-
+        // forget plays land in `sound_tasks` so `gi2DSoundStop` (→
+        // `stop_all_sounds`) still tears them down for scripted
+        // SFX cleanup. A WAV that started just before a scene swap
+        // continues to play on its OpenAL source until it finishes
+        // — same carry-over behaviour as the existing music /
+        // voice paths.
+        let leader_pos = self
+            .scene
+            .get_player(self.leader)
+            .world_transform()
+            .position();
+        let to_play = self.scene.tick_sound_emitters(leader_pos, delta_sec);
+        for name in to_play {
+            if let Err(e) = self.play_sound(&name) {
+                log::warn!("ambient sound emitter '{}' failed: {:#}", name, e);
+            }
+        }
     }
 
     fn update_moving_entities(&mut self, delta_sec: f32) {
