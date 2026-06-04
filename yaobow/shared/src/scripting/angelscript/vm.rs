@@ -1199,13 +1199,34 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
     }
 
     fn cmpi<T: Copy + PartialOrd>(&mut self, rhs: T) {
+        // PAL4's `Cmpii` / `Cmpi` (opcodes 95/96/103) pops `lhs` from
+        // the operand stack and writes back `sign(lhs - rhs)`. The
+        // result is then consumed by a following `Js`/`Jns`/`Jp`/`Jnp`
+        // (or `Jz`/`Jnz`), so the arithmetic semantics here must
+        // match upstream AngelScript's `asBC_CMPIi` (`as_context.cpp`)
+        // and our own `js_jgez/jns_jlz/jp_jlez/jnp_jgz` predicates:
+        //
+        //   * `lhs <  rhs` → `-1`
+        //   * `lhs == rhs` →  `0`
+        //   * `lhs >  rhs` → `+1`
+        //
+        // This used to be sign-inverted (`rhs > data → +1`). At the
+        // time the conditional-jump helpers were *also* inverted, so
+        // the two errors cancelled out for `Cmpii + Jcc` chains. When
+        // commit a5e694f restored the jumps to the upstream predicates
+        // (locked by `signed_jumps_match_upstream_angelscript_semantics`),
+        // `Cmpii` was left upside-down and gates like
+        // `q01/func1001`'s "shared[0] < 11400" plot guard started
+        // taking the wrong leg — sending the party from Q01/Q01 to
+        // Q01/N02 immediately after the first plot instead of back to
+        // Q01/N01 on the fresh-save plot path.
         unsafe {
             let data: T = self.read_stack(self.sp);
             self.write_stack(
                 self.sp,
-                if rhs.gt(&data) {
+                if data.gt(&rhs) {
                     1
-                } else if data.gt(&rhs) {
+                } else if rhs.gt(&data) {
                     -1
                 } else {
                     0
@@ -1835,5 +1856,235 @@ mod tests {
         // If Js popped, Cmpii then compared the sentinel against
         // itself and pushed 0, so the following Jz fires.
         assert_eq!(branches[1], (BranchKind::Jz, 0, true));
+    }
+
+    /// `Cmpii` (opcode 95 / 96 / 103) must write back `sign(lhs - rhs)`
+    /// matching upstream AngelScript (`asBC_CMPIi` in
+    /// `as_context.cpp`) — i.e. `-1` when `lhs < rhs`, `0` on equal,
+    /// `+1` when `lhs > rhs`. The conditional-jump helpers
+    /// (`Js<0`/`Jns>=0`/`Jp>0`/`Jnp<=0`, locked by
+    /// `signed_jumps_match_upstream_angelscript_semantics`) consume
+    /// that result directly, so a sign inversion here de-syncs every
+    /// `Cmpii + Jcc` gate in the shipped PAL4 scripts.
+    ///
+    /// Regression coverage for the Q01/Q01 → Q01/N01 plot-return bug:
+    /// `q01/func1001`'s entry gate is `Rdga4 -1 ; Cmpii 11400 ; Jns
+    /// +N`, and with a fresh save (`shared[0] == 0`) it MUST fall
+    /// through to Path A (`arena_load Q01/N01`). Pre-fix `Cmpii`
+    /// returned `+1` for `0 < 11400`, the `Jns >= 0` predicate took
+    /// the wrong leg, and the party landed in `Q01/N02` instead.
+    #[test]
+    fn cmpi_matches_upstream_angelscript_semantics() {
+        // Run `Set4 lhs ; Cmpii(opcode) rhs ; Js +N ; Suspend ; Ret`
+        // and inspect the recorded `Js` Branch event. `Js` is taken
+        // iff cmpi pushed `-1`; the trace's `operand` field is the
+        // raw value popped, so we get both "taken" and "operand"
+        // assertions for free.
+        struct Case {
+            opcode: u8, // 95 = i32, 96 = u32, 103 = f32
+            name: &'static str,
+            lhs: [u8; 4],
+            rhs: [u8; 4],
+            expected_sign: i32,
+        }
+        let cases = [
+            // i32 — the case that broke Q01.
+            Case {
+                opcode: 95,
+                name: "i32 lhs<rhs",
+                lhs: 0i32.to_le_bytes(),
+                rhs: 11_400i32.to_le_bytes(),
+                expected_sign: -1,
+            },
+            Case {
+                opcode: 95,
+                name: "i32 lhs==rhs",
+                lhs: 11_400i32.to_le_bytes(),
+                rhs: 11_400i32.to_le_bytes(),
+                expected_sign: 0,
+            },
+            Case {
+                opcode: 95,
+                name: "i32 lhs>rhs",
+                lhs: 11_500i32.to_le_bytes(),
+                rhs: 11_400i32.to_le_bytes(),
+                expected_sign: 1,
+            },
+            // i32 with negative operands — guards against accidental
+            // unsigned comparison.
+            Case {
+                opcode: 95,
+                name: "i32 negative lhs<rhs",
+                lhs: (-5i32).to_le_bytes(),
+                rhs: 3i32.to_le_bytes(),
+                expected_sign: -1,
+            },
+            Case {
+                opcode: 95,
+                name: "i32 lhs>negative rhs",
+                lhs: 3i32.to_le_bytes(),
+                rhs: (-5i32).to_le_bytes(),
+                expected_sign: 1,
+            },
+            // u32 — same numeric outcome but exercises the
+            // monomorphisation specialised on the unsigned generic.
+            Case {
+                opcode: 96,
+                name: "u32 lhs<rhs",
+                lhs: 0u32.to_le_bytes(),
+                rhs: 11_400u32.to_le_bytes(),
+                expected_sign: -1,
+            },
+            Case {
+                opcode: 96,
+                name: "u32 lhs>rhs",
+                lhs: 11_500u32.to_le_bytes(),
+                rhs: 11_400u32.to_le_bytes(),
+                expected_sign: 1,
+            },
+            // f32 — covers float Cmpi (opcode 103) used by camera /
+            // movement scripts.
+            Case {
+                opcode: 103,
+                name: "f32 lhs<rhs",
+                lhs: 1.5f32.to_le_bytes(),
+                rhs: 2.5f32.to_le_bytes(),
+                expected_sign: -1,
+            },
+            Case {
+                opcode: 103,
+                name: "f32 lhs==rhs",
+                lhs: 2.5f32.to_le_bytes(),
+                rhs: 2.5f32.to_le_bytes(),
+                expected_sign: 0,
+            },
+            Case {
+                opcode: 103,
+                name: "f32 lhs>rhs",
+                lhs: 3.0f32.to_le_bytes(),
+                rhs: 2.5f32.to_le_bytes(),
+                expected_sign: 1,
+            },
+        ];
+
+        for case in &cases {
+            let inst = assemble(&[
+                &op(2),
+                &case.lhs,
+                &op(case.opcode),
+                &case.rhs,
+                &op(91), // Js
+                &4i32.to_le_bytes(),
+                &op(108), // Suspend
+                &op(13),
+                &0u16.to_le_bytes(),
+            ]);
+            let mut vm = build_vm(inst);
+            let sink = Rc::new(VecSink::new());
+            vm.set_trace_sink(Some(sink.clone() as Rc<dyn TraceSink>));
+            vm.execute(0.0);
+
+            let branches: Vec<_> = sink
+                .snapshot()
+                .into_iter()
+                .filter_map(|ev| match ev.kind {
+                    TraceEventKind::Branch {
+                        kind, operand, taken, ..
+                    } => Some((kind, operand, taken)),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                branches.len(),
+                1,
+                "{}: expected exactly one Js branch, got {:?}",
+                case.name,
+                branches
+            );
+            let (kind, operand, taken) = branches[0];
+            assert_eq!(kind, BranchKind::JsJgez, "{}", case.name);
+            assert_eq!(
+                operand, case.expected_sign,
+                "{}: cmpi pushed wrong sign",
+                case.name
+            );
+            assert_eq!(
+                taken,
+                case.expected_sign < 0,
+                "{}: Js predicate disagrees with cmpi result",
+                case.name
+            );
+        }
+    }
+
+    /// End-to-end regression for the Q01/Q01 → Q01/N01 plot-return
+    /// bug. Models the actual entry gate of `q01/func1001`:
+    ///
+    /// ```text
+    /// Rdga4 -1            ; push shared[0]
+    /// Cmpii 11400         ; push sign(shared[0] - 11400)
+    /// Jns +N              ; if shared[0] >= 11400, jump to PATH_B
+    /// Set4 PATH_A         ; push PATH_A marker
+    /// Jmp +M              ; skip past PATH_B Set4
+    /// Set4 PATH_B         ; Jns target
+    /// Movga4 -2           ; pop top -> shared[1] (post-execute inspection)
+    /// Suspend             ; yield with context intact
+    /// ```
+    ///
+    /// We assert that with `shared[0] == 0` we land in PATH_A (the
+    /// "send the party back to Q01/N01" leg), and with
+    /// `shared[0] == 11400` / `11500` we land in PATH_B (the "advance
+    /// to Q01/N02" leg). The exact `Rdga4 -1 ; Cmpii 11400 ; Jns +N`
+    /// triplet is the entry gate of `q01.csb::func1001` as dumped by
+    /// `pal4_plot_dump --debug-fn func1001`; the same shape guards
+    /// every Q01 plot transition.
+    #[test]
+    fn q01_func1001_gate_routes_low_plot_to_path_a() {
+        const PATH_A: u32 = 0xA0A0_A0A0;
+        const PATH_B: u32 = 0xB0B0_B0B0;
+
+        // Byte offsets (each Set4 / Cmpii / Jcc / Jmp / Rdga4 / Movga4
+        // is 8 bytes; Suspend is 4):
+        //   0x00..0x08  Rdga4 -1
+        //   0x08..0x10  Cmpii 11400
+        //   0x10..0x18  Jns +16   ; post-fetch pc = 0x18, target = 0x28
+        //   0x18..0x20  Set4 PATH_A
+        //   0x20..0x28  Jmp  +8   ; post-fetch pc = 0x28, target = 0x30
+        //   0x28..0x30  Set4 PATH_B           (Jns target)
+        //   0x30..0x38  Movga4 -2             (Jmp target / Path A fall-through)
+        //   0x38..0x3c  Suspend
+        let assemble_program = || -> Vec<u8> {
+            assemble(&[
+                &op(99),
+                &(-1i32).to_le_bytes(),
+                &op(95),
+                &11_400i32.to_le_bytes(),
+                &op(92),
+                &16i32.to_le_bytes(),
+                &op(2),
+                &PATH_A.to_le_bytes(),
+                &op(14),
+                &8i32.to_le_bytes(),
+                &op(2),
+                &PATH_B.to_le_bytes(),
+                &op(100),
+                &(-2i32).to_le_bytes(),
+                &op(108),
+            ])
+        };
+
+        let cases = [(0i32, PATH_A), (11_400, PATH_B), (11_500, PATH_B)];
+        for &(plot_state, expected_marker) in &cases {
+            let mut vm = build_vm(assemble_program());
+            vm.g.borrow_mut().set_global(0, plot_state as u32);
+            vm.execute(0.0);
+
+            let chosen = vm.g.borrow().get_global(1);
+            assert_eq!(
+                chosen, expected_marker,
+                "shared[0]={} should route to marker 0x{:08X}, got 0x{:08X}",
+                plot_state, expected_marker, chosen
+            );
+        }
     }
 }
