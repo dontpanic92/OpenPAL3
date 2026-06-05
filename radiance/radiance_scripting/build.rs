@@ -18,6 +18,8 @@ fn main() {
     generate_script_bridge("crosscom.idl", "crosscom_bridge.rs");
     generate_script_bridge("radiance.idl", "radiance_bridge.rs");
     generate_script_bridge("scripting_services.idl", "scripting_services_bridge.rs");
+
+    pack_script_bundle();
 }
 
 fn idl_path(idl_file: &str) -> PathBuf {
@@ -74,4 +76,28 @@ fn generate_script_bridge(idl_file: &str, out_file: &str) {
     for dependency in dependencies {
         println!("cargo:rerun-if-changed={}", dependency.display());
     }
+}
+
+/// Pack `scripts/` (currently just `freeview.p7`) into
+/// `OUT_DIR/radiance_scripting.ypk`. Loaded at runtime by
+/// `radiance_scripting::script_bundle()`.
+///
+/// Module-bundle package (no root) — this crate doesn't own a
+/// `script_app_root`; it just contributes the `freeview` sibling module
+/// that per-game launchers `import freeview;`.
+fn pack_script_bundle() {
+    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let scripts_dir = manifest_dir.join("scripts");
+    let out = out_path("radiance_scripting.ypk");
+
+    script_package::pack(
+        &script_package::PackInput {
+            scripts_dir: &scripts_dir,
+            root_entry: None,
+            root_name: None,
+            extra_files: &[],
+        },
+        &out,
+    )
+    .unwrap_or_else(|err| panic!("Failed to pack radiance_scripting scripts: {err}"));
 }

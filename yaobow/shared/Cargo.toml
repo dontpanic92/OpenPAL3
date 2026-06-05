@@ -76,3 +76,4 @@ native-dialog = "0.9"
 [build-dependencies]
 cfg_aliases = "0.2"
 crosscom-ccidl = { path = "../../crosscom/ccidl-rs" }
+script-package = { path = "../../radiance/script-package", features = ["build"] }

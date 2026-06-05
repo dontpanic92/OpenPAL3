@@ -7,6 +7,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crosscom::{ComRc, IObjectArray};
 use radiance::comdef::IImmediateDirector;
@@ -18,10 +19,10 @@ use radiance_scripting::comdef::services::{
 };
 use radiance_scripting::services::{GameRegistry, RandomService};
 use radiance_scripting::{
-    RuntimeAccess, RuntimeHandle, ScriptHost, ScriptModule, ScriptPackage,
+    OwnedScriptModule, OwnedScriptPackage, RuntimeAccess, RuntimeHandle, ScriptHost,
     register_immediate_director_proto, with_services, wrap_director,
 };
-use yaobow_lib::script_source::{APP_P7, register_yaobow_project};
+use yaobow_lib::script_source::package;
 
 // `ComObject_*!` macros expand `use crate as radiance_scripting` and
 // then reach into `crate::comdef::*` to find the impl traits and
@@ -136,23 +137,24 @@ fn make_test_config() -> ComRc<IConfigService> {
 #[test]
 fn title_script_compiles() {
     let runtime = ScriptHost::new();
-    register_yaobow_project(&runtime);
-    runtime
-        .load_source(APP_P7)
+    package()
+        .ensure_loaded(&runtime, "init")
         .expect("yaobow app script should compile");
 }
 
 #[test]
 fn script_package_rejects_duplicate_modules() {
-    const DUPLICATE_MODULES: &[ScriptModule] = &[
-        ScriptModule::new("dup", "pub fn a() -> int { 1 }"),
-        ScriptModule::new("dup", "pub fn b() -> int { 2 }"),
-    ];
-    let package = ScriptPackage {
-        root_name: "app",
-        root_source: "pub fn init() -> int { 0 }",
-        idl_bindings: &[],
-        modules: DUPLICATE_MODULES,
+    fn module(name: &str, src: &str) -> OwnedScriptModule {
+        OwnedScriptModule::new(name.to_string(), src.to_string())
+    }
+    let package = OwnedScriptPackage {
+        root_name: Some("app".to_string()),
+        root_source: Some(Arc::<str>::from("pub fn init() -> int { 0 }")),
+        idl_bindings: vec![],
+        modules: vec![
+            module("dup", "pub fn a() -> int { 1 }"),
+            module("dup", "pub fn b() -> int { 2 }"),
+        ],
     };
 
     let err = package
@@ -175,9 +177,8 @@ fn title_script_init_loads_with_imported_bindings() {
     });
 
     let runtime = ScriptHost::new();
-    register_yaobow_project(&runtime);
-    runtime
-        .load_source(APP_P7)
+    package()
+        .ensure_loaded(&runtime, "init")
         .expect("yaobow app script should compile");
     let app_ctx_id = runtime.intern(app_ctx);
     let app_ctx_box = runtime
@@ -220,9 +221,8 @@ fn app_script_creates_title_then_pal4_debug_in_one_runtime() {
     });
 
     let runtime = ScriptHost::new();
-    register_yaobow_project(&runtime);
-    runtime
-        .load_source(APP_P7)
+    package()
+        .ensure_loaded(&runtime, "init")
         .expect("yaobow app script should compile");
     let app_ctx_id = runtime.intern(app_ctx);
     let app_ctx_box = runtime

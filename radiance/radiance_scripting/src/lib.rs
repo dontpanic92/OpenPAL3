@@ -31,17 +31,35 @@ pub use proxies::{ImguiImmediateDirectorPump, install_imgui_pump, install_imgui_
 pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};
 pub use script_bridges::radiance::{register_immediate_director_proto, wrap_director};
 pub use script_package::{
-    HOST_CONTEXT_TYPE_TAG, ScriptModule, ScriptPackage, bootstrap_script_root,
+    HOST_CONTEXT_TYPE_TAG, OwnedScriptModule, OwnedScriptPackage, bootstrap_script_root,
 };
 pub use services::HostContext;
 
-/// Generic FreeView camera controller, 1:1 port of
-/// `radiance::utils::free_view::FreeViewController` into protosept.
-/// Register with `ScriptHost::add_binding("freeview", FREEVIEW_P7)`
-/// so per-game launch scripts can `import freeview;` and call
-/// `freeview.update(camera, input, delta_sec)` each frame from a
-/// `struct[radiance.IDirector]` they own.
-pub const FREEVIEW_P7: &str = include_str!("../scripts/freeview.p7");
+// Re-export the manifest types so downstream crates don't need their
+// own dependency on `script-package` for runtime use.
+pub use ::script_package::{ManifestEntry, PACKAGE_MANIFEST_ENTRY, PackageManifest};
+
+/// In-binary `.ypk` script bundle produced by `build.rs` from
+/// `scripts/`. Currently carries `freeview.p7`. Decoded once on first
+/// access by [`script_bundle()`].
+const SCRIPT_BUNDLE_YPK: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/radiance_scripting.ypk"));
+
+/// Engine-side script bundle (currently the generic FreeView camera
+/// controller). App-level packages (`yaobow::package()`,
+/// `yaobow_editor::package()`) compose this in via
+/// [`OwnedScriptPackage::merge`] so per-game launchers can
+/// `import freeview;`.
+pub fn script_bundle() -> std::sync::Arc<OwnedScriptPackage> {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<std::sync::Arc<OwnedScriptPackage>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            OwnedScriptPackage::from_ypk_bytes(SCRIPT_BUNDLE_YPK)
+                .expect("radiance_scripting.ypk bundled by build.rs must decode")
+        })
+        .clone()
+}
 
 /// Re-export of the radiance-side `wrap_ray_caster` so callers
 /// already pulling in `radiance_scripting` don't need to know that

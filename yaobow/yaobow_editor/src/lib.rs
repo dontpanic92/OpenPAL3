@@ -9,9 +9,10 @@ pub mod comdef {
     }
 
     // Editor-only foreign service interfaces (PreviewerHub, handles,
-    // EditorHostContext). Generated from `yaobow_editor_services.idl` and
-    // exposed to scripts via the matching `.p7` binding (see
-    // `editor_bindings::EDITOR_SERVICES_P7`).
+    // EditorHostContext). Generated from `yaobow_editor_services.idl`.
+    // The matching `.p7` binding is packed into the editor script
+    // bundle by `build.rs` and registered automatically via
+    // `script_source::register_editor_modules`.
     #[macro_use]
     pub mod editor_services {
         include!(concat!(
@@ -19,14 +20,6 @@ pub mod comdef {
             "/yaobow_editor_services_comdef.rs"
         ));
     }
-}
-
-pub mod editor_bindings {
-    /// p7 binding source for `yaobow_editor_services.idl`. Register it with
-    /// `ScriptHost::add_binding("yaobow_editor_services", EDITOR_SERVICES_P7)`
-    /// before loading any editor script that imports this module.
-    pub const EDITOR_SERVICES_P7: &str =
-        include_str!(concat!(env!("OUT_DIR"), "/yaobow_editor_services.p7"));
 }
 
 pub mod config;

@@ -14,7 +14,7 @@
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 use radiance_scripting::{RuntimeAccess, ScriptHost, with_services};
 use shared::openpal4::pal4_debug::{
-    PAL4_DEBUG_P7, Pal4DebugSnapshot, create_debug_session, wrap_overlay,
+    Pal4DebugSnapshot, create_debug_session, wrap_overlay,
 };
 
 const OVERLAY_P7: &str = include_str!("../../yaobow/scripts/pal4_debug_overlay.p7");
@@ -22,7 +22,9 @@ const OVERLAY_P7: &str = include_str!("../../yaobow/scripts/pal4_debug_overlay.p
 #[test]
 fn pal4_debug_overlay_round_trips_through_p7() {
     let host = ScriptHost::new();
-    host.add_binding("pal4_debug", PAL4_DEBUG_P7);
+    // Register the entire shared script bundle so `pal4_debug` and
+    // all the other generated IDL bindings are available to scripts.
+    shared::script_bundle().register_bindings(&host);
     host.load_source(OVERLAY_P7)
         .expect("pal4_debug_overlay.p7 must compile");
 
@@ -162,7 +164,7 @@ fn pal4_debug_overlay_round_trips_through_p7() {
 #[test]
 fn pal4_debug_overlay_toggles_flip_host_state() {
     let host = ScriptHost::new();
-    host.add_binding("pal4_debug", PAL4_DEBUG_P7);
+    shared::script_bundle().register_bindings(&host);
     host.load_source(OVERLAY_P7)
         .expect("pal4_debug_overlay.p7 must compile");
 

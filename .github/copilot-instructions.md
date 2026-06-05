@@ -100,7 +100,7 @@ The `yaobow` binary picks a game via CLI flag (`--pal3`, `--pal4`, …); with no
 
 * Source files live alongside each crate's Rust code: `yaobow/yaobow/scripts/*.p7`, `yaobow/yaobow_editor/scripts/*.p7`. They are loaded via `include_str!` and registered with `ScriptHost::add_binding(name, src)` before `load_source`.
 * Top-level exported constants use `pub let NAME: type = value;` — there is **no `pub const`** in p7.
-* `import <module>;` resolves against the names registered via `add_binding`. IDL-derived bindings (e.g. `radiance`, `yaobow_services`) are auto-generated; sibling p7 modules are listed in each crate's `ScriptPackage` (see `yaobow/yaobow/src/lib.rs::YAOBOW_PACKAGE`).
+* `import <module>;` resolves against the names registered via `add_binding`. IDL-derived bindings (e.g. `radiance`, `yaobow_services`) are auto-generated; sibling p7 modules are packed into each crate's `<crate>.ypk` at build time (`scripts/` + extra OUT_DIR files via `radiance/script-package`) and accessed at runtime via the crate's `script_bundle()` / `package()` function (see `yaobow/yaobow/src/lib.rs::script_source::package`).
 * Language reference: `radiance/protosept/specs/protosept-language.md`.
 
 ## PAL4 agent server (test/automation surface)

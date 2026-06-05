@@ -48,6 +48,29 @@ pub mod utils;
 pub mod video;
 pub mod ydirs;
 
+/// In-binary `.ypk` script bundle produced by `build.rs` from
+/// `scripts/` + the codegen-derived IDL p7s. Decoded once on first
+/// access by [`script_bundle()`].
+const SCRIPT_BUNDLE_YPK: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/shared_scripts.ypk"));
+
+/// Module-bundle script package contributed by `shared`. Carries the
+/// codegen-derived IDL bindings (`openpal3`, `openpal4`, `openpal5`,
+/// `openswd5`, `pal4_debug`) plus hand-written sibling modules like
+/// `actor_controller`. App-level packages (`yaobow::package()`,
+/// `yaobow_editor::package()`) compose this in via
+/// [`radiance_scripting::OwnedScriptPackage::merge`].
+pub fn script_bundle() -> std::sync::Arc<radiance_scripting::OwnedScriptPackage> {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<std::sync::Arc<radiance_scripting::OwnedScriptPackage>> =
+        OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            radiance_scripting::OwnedScriptPackage::from_ypk_bytes(SCRIPT_BUNDLE_YPK)
+                .expect("shared_scripts.ypk bundled by build.rs must decode")
+        })
+        .clone()
+}
+
 #[derive(Copy, Clone, PartialEq)]
 pub enum GameType {
     PAL3,

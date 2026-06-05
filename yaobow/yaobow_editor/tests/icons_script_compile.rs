@@ -13,7 +13,6 @@
 //!     (e.g. bad escapes, identifier collisions);
 //!   - upstream Lucide renames that drop an icon we care about.
 
-use yaobow_editor::editor_bindings::EDITOR_SERVICES_P7;
 use yaobow_editor::script_source::register_editor_modules;
 
 const PROBE_SRC: &str = r#"
@@ -35,7 +34,6 @@ pub fn settings_icon() -> string {
 #[test]
 fn icons_module_compiles_and_exposes_known_glyphs() {
     let runtime = radiance_scripting::ScriptHost::new();
-    runtime.add_binding("yaobow_editor_services", EDITOR_SERVICES_P7);
     register_editor_modules(&runtime);
     runtime
         .load_source(PROBE_SRC)

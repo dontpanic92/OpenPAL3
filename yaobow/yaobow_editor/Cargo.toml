@@ -36,6 +36,7 @@ xxtea = "0.2.0"
 
 [build-dependencies]
 crosscom-ccidl = { path = "../../crosscom/ccidl-rs" }
+script-package = { path = "../../radiance/script-package", features = ["build"] }
 serde_json = "1.0"
 
 [dev-dependencies]

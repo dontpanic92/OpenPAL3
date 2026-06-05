@@ -8,6 +8,7 @@ fn main() {
         "yaobow_editor_services.p7",
     );
     generate_lucide_icons_module();
+    pack_script_bundle();
 }
 
 fn generate_comdef(idl_file: &str, out_file: &str) {
@@ -120,4 +121,45 @@ fn lucide_name_to_ident(name: &str) -> String {
         s.insert(0, '_');
     }
     s
+}
+
+/// Pack `scripts/*.p7` + generated `yaobow_editor_services.p7` +
+/// generated `icons.p7` (both from `OUT_DIR`) into
+/// `OUT_DIR/yaobow_editor.ypk`. Root = `main` (i.e. `main.p7` is the
+/// `script_app_root` the editor loads). `yaobow_editor_services`
+/// registers as an idl_binding; everything else (including `icons`)
+/// goes in as a module so script imports stay identical.
+fn pack_script_bundle() {
+    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let scripts_dir = manifest_dir.join("scripts");
+    let out = out_path("yaobow_editor.ypk");
+
+    let services_path = out_path("yaobow_editor_services.p7");
+    let icons_path = out_path("icons.p7");
+
+    let extra_files = [
+        script_package::ExtraFile {
+            source_path: services_path.as_path(),
+            virtual_entry: "yaobow_editor_services.p7",
+            module_name: "yaobow_editor_services",
+            kind: script_package::ModuleKind::IdlBinding,
+        },
+        script_package::ExtraFile {
+            source_path: icons_path.as_path(),
+            virtual_entry: "icons.p7",
+            module_name: "icons",
+            kind: script_package::ModuleKind::Module,
+        },
+    ];
+
+    script_package::pack(
+        &script_package::PackInput {
+            scripts_dir: &scripts_dir,
+            root_entry: Some("main.p7"),
+            root_name: Some("main"),
+            extra_files: &extra_files,
+        },
+        &out,
+    )
+    .unwrap_or_else(|err| panic!("Failed to pack yaobow_editor scripts: {err}"));
 }

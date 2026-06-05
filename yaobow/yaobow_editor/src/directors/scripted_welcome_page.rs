@@ -20,7 +20,7 @@ use radiance_scripting::{
 use shared::config::YaobowConfig;
 
 use crate::directors::app_service::AppService;
-use crate::script_source::EDITOR_PACKAGE;
+use crate::script_source::package;
 use crate::services::editor_host_context::EditorHostContext;
 use shared::config_service::ConfigService;
 
@@ -70,14 +70,15 @@ impl ScriptedWelcomePage {
         };
 
         // Register every IDL binding + sibling .p7 module declared in
-        // EDITOR_PACKAGE, compile main.p7 if not already loaded,
-        // intern the host context, then call `init(host)` on the root
-        // module. The `bootstrap_script_root` helper unifies the
-        // ensure_loaded → intern → foreign_box → call pipeline so we
-        // don't repeat it in each per-binary bootstrap.
+        // the editor script package, compile main.p7 if not already
+        // loaded, intern the host context, then call `init(host)` on
+        // the root module. The `bootstrap_script_root` helper
+        // unifies the ensure_loaded → intern → foreign_box → call
+        // pipeline so we don't repeat it in each per-binary bootstrap.
+        let editor_pkg = package();
         let director_data = bootstrap_script_root(
             &host,
-            &EDITOR_PACKAGE,
+            &editor_pkg,
             host_ctx,
             EDITOR_HOST_CONTEXT_TYPE_TAG,
             "init",

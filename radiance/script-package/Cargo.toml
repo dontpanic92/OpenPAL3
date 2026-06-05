@@ -1,0 +1,24 @@
+[package]
+name = "script-package"
+version = "0.1.0"
+edition = "2024"
+description = "Manifest + packer for protosept script ypk bundles."
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+# Enables the build-script-facing API: directory walking, manifest assembly,
+# and a slim YpkWriter so build.rs callers don't need the full `radiance`
+# crate (Vulkan/imgui/audio) as a build-dependency.
+build = ["dep:walkdir", "dep:binrw", "dep:zstd", "dep:xxhash-rust"]
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+walkdir = { version = "2", optional = true }
+binrw = { version = "0.11", optional = true }
+zstd = { version = "0.13", optional = true }
+xxhash-rust = { version = "0.8", features = ["xxh3"], optional = true }

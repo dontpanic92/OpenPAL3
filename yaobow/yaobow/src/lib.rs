@@ -15,7 +15,8 @@ pub mod comdef {
 
     // Generated comdef for the title-page foreign service surface
     // (`crosscom/idl/yaobow_services.idl`). Paired with the p7 binding
-    // exposed via `script_source::YAOBOW_SERVICES_P7`.
+    // bundled into the yaobow script package at build time and
+    // surfaced through `script_source::package()`.
     #[macro_use]
     pub mod yaobow_services {
         include!(concat!(env!("OUT_DIR"), "/yaobow_services_comdef.rs"));
@@ -73,6 +74,7 @@ pub mod script_source {
 
     use std::cell::RefCell;
     use std::rc::{Rc, Weak};
+    use std::sync::{Arc, OnceLock};
 
     use crosscom::ComRc;
     use radiance::comdef::{
@@ -81,7 +83,9 @@ pub mod script_source {
     };
     use radiance::radiance::CoreRadianceEngine;
     use radiance_scripting::comdef::services::IInputService;
-    use radiance_scripting::{ScriptHost, ScriptModule, ScriptPackage, bootstrap_script_root};
+    use radiance_scripting::{
+        OwnedScriptPackage, ScriptHost, bootstrap_script_root,
+    };
     use shared::openpal4::comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay};
     use shared::openpal4::comdef::{
         IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext,
@@ -96,86 +100,50 @@ pub mod script_source {
     use crate::openpal3::Pal3Service;
     use crate::script_bridges::yaobow_services::IYaobowScriptAppClient;
 
-    /// p7 binding source for `yaobow_services.idl`. Register it with
-    /// `ScriptHost::add_binding("yaobow_services", YAOBOW_SERVICES_P7)`
-    /// before loading any yaobow script that imports the module.
-    pub const YAOBOW_SERVICES_P7: &str =
-        include_str!(concat!(env!("OUT_DIR"), "/yaobow_services.p7"));
+    /// In-binary `.ypk` produced by `build.rs` from `scripts/*.p7` +
+    /// the codegen-derived `yaobow_services.p7`. Decoded once and then
+    /// composed with the `shared` and `radiance_scripting` module
+    /// bundles via [`OwnedScriptPackage::merge`].
+    const YAOBOW_YPK: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/yaobow.ypk"));
 
-    pub const APP_P7: &str = include_str!("../scripts/app.p7");
-    pub const PAL4_DEBUG_P7: &str = shared::openpal4::pal4_debug::PAL4_DEBUG_P7;
-    pub const ACTOR_CONTROLLER_P7: &str =
-        shared::openpal4::actor_controller_script::ACTOR_CONTROLLER_P7;
-    /// p7 binding source generated from `openpal3.idl`. Imported as
-    /// `openpal3` by any script that references `IPal3Service`.
-    pub const OPENPAL3_P7: &str = shared::openpal3::OPENPAL3_P7;
-    /// p7 binding source generated from `openpal5.idl`. Imported as
-    /// `openpal5` from the script-side launcher modules.
-    pub const OPENPAL5_P7: &str = shared::openpal5::OPENPAL5_P7;
-    /// p7 binding source generated from `openswd5.idl`. Imported as
-    /// `openswd5` from the script-side launcher modules.
-    pub const SWD5_P7: &str = shared::openswd5::SWD5_P7;
-    /// Hand-written protosept orchestrator for the OpenPAL5 launch.
-    /// Defines the script-side `OpenPal5Director` struct and the
-    /// `make_pal5_director` helper used by both title.p7 (script
-    /// dispatch) and `app.p7::make_pal5_director` (Rust direct-boot
-    /// entry).
-    pub const OPENPAL5_DIRECTOR_P7: &str = include_str!("../scripts/openpal5_director.p7");
-
-    pub const IDL_BINDINGS: &[ScriptModule] = &[
-        ScriptModule::new("yaobow_services", YAOBOW_SERVICES_P7),
-        ScriptModule::new("pal4_debug", PAL4_DEBUG_P7),
-        ScriptModule::new(
-            "openpal4",
-            shared::openpal4::actor_controller_script::OPENPAL4_P7,
-        ),
-        ScriptModule::new("openpal3", OPENPAL3_P7),
-        ScriptModule::new("openpal5", OPENPAL5_P7),
-        ScriptModule::new("openswd5", SWD5_P7),
-    ];
-
-    /// Sibling modules referenced by `app.p7`.
-    pub const SIBLING_MODULES: &[ScriptModule] = &[
-        ScriptModule::new("title_consts", include_str!("../scripts/title_consts.p7")),
-        ScriptModule::new("title", include_str!("../scripts/title.p7")),
-        ScriptModule::new(
-            "pal4_debug_overlay",
-            include_str!("../scripts/pal4_debug_overlay.p7"),
-        ),
-        ScriptModule::new("actor_controller", ACTOR_CONTROLLER_P7),
-        // Generic FreeView controller from `radiance_scripting`. Used
-        // by `openpal5_director` for the WASD camera director; any
-        // future per-game launcher can import it the same way.
-        ScriptModule::new("freeview", radiance_scripting::FREEVIEW_P7),
-        ScriptModule::new("openpal5_director", OPENPAL5_DIRECTOR_P7),
-    ];
-
-    pub const YAOBOW_PACKAGE: ScriptPackage = ScriptPackage {
-        root_name: "app",
-        root_source: APP_P7,
-        idl_bindings: IDL_BINDINGS,
-        modules: SIBLING_MODULES,
-    };
-
-    /// Registers every sibling module with `host` via `add_binding`.
-    /// After this, callers load `APP_P7` to compile the app root.
-    /// Bindings survive `ScriptHost::reload`, but a host that fully
-    /// recreates its `ScriptHost` must call this again.
-    pub fn register_yaobow_modules(host: &ScriptHost) {
-        for module in YAOBOW_PACKAGE.modules {
-            host.add_binding(module.name, module.source);
-        }
+    /// The fully-composed yaobow script package — yaobow's own bundle
+    /// merged with `shared::script_bundle()` and
+    /// `radiance_scripting::script_bundle()` so app.p7 can `import
+    /// openpal4`, `import freeview`, etc. without copying those
+    /// sources into yaobow.ypk.
+    ///
+    /// Cached for the binary's lifetime; subsequent calls return the
+    /// same `Arc<OwnedScriptPackage>` instance.
+    pub fn package() -> Arc<OwnedScriptPackage> {
+        static CACHE: OnceLock<Arc<OwnedScriptPackage>> = OnceLock::new();
+        CACHE
+            .get_or_init(|| {
+                let own = OwnedScriptPackage::from_ypk_bytes(YAOBOW_YPK)
+                    .expect("yaobow.ypk bundled by build.rs must decode");
+                OwnedScriptPackage::merge(
+                    &[
+                        own,
+                        shared::script_bundle(),
+                        radiance_scripting::script_bundle(),
+                    ],
+                    &[],
+                )
+            })
+            .clone()
     }
 
+    /// Validates and registers every IDL binding + sibling module from
+    /// [`package()`] on `host`. Idempotent — re-registering the same
+    /// name simply replaces the previous source.
     pub fn register_yaobow_project(host: &ScriptHost) {
-        YAOBOW_PACKAGE
-            .validate()
+        let pkg = package();
+        pkg.validate()
             .expect("yaobow script package manifest must be valid");
-        YAOBOW_PACKAGE.register_bindings(host);
+        pkg.register_bindings(host);
     }
 
     pub fn ensure_yaobow_project_loaded(host: &ScriptHost) {
-        YAOBOW_PACKAGE
+        package()
             .ensure_loaded(host, "init")
             .expect("yaobow app script project must load successfully");
     }
@@ -249,9 +217,10 @@ pub mod script_source {
             let host_ctx_for_init = host_ctx.clone();
             let project: Rc<Self> = engine.get_or_insert_service(move || {
                 let host = ScriptHost::install(engine);
+                let pkg = package();
                 let app_data = bootstrap_script_root(
                     &host,
-                    &YAOBOW_PACKAGE,
+                    &pkg,
                     host_ctx_for_init,
                     YAOBOW_HOST_CONTEXT_TYPE_TAG,
                     "init",

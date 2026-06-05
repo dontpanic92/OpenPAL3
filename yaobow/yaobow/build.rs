@@ -19,6 +19,8 @@ fn main() {
         "android" => println!("cargo:rustc-link-lib=OpenSLES"),
         _ => (),
     };
+
+    pack_script_bundle();
 }
 
 fn idl_path(idl_file: &str) -> PathBuf {
@@ -69,4 +71,34 @@ fn generate_triple(idl_file: &str, rust_out: &str, p7_out: &str, bridge_out: &st
     for dependency in dependencies {
         println!("cargo:rerun-if-changed={}", dependency.display());
     }
+}
+
+/// Pack `scripts/*.p7` + the generated `yaobow_services.p7` into
+/// `OUT_DIR/yaobow.ypk`. Root = `app` (`app.p7`). The merged package
+/// composed at runtime via `OwnedScriptPackage::merge` pulls in the
+/// `shared` and `radiance_scripting` module-bundles, so this build
+/// step only needs to ship yaobow-owned sources.
+fn pack_script_bundle() {
+    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let scripts_dir = manifest_dir.join("scripts");
+    let out = out_path("yaobow.ypk");
+
+    let services_path = out_path("yaobow_services.p7");
+    let extra_files = [script_package::ExtraFile {
+        source_path: services_path.as_path(),
+        virtual_entry: "yaobow_services.p7",
+        module_name: "yaobow_services",
+        kind: script_package::ModuleKind::IdlBinding,
+    }];
+
+    script_package::pack(
+        &script_package::PackInput {
+            scripts_dir: &scripts_dir,
+            root_entry: Some("app.p7"),
+            root_name: Some("app"),
+            extra_files: &extra_files,
+        },
+        &out,
+    )
+    .unwrap_or_else(|err| panic!("Failed to pack yaobow scripts: {err}"));
 }
