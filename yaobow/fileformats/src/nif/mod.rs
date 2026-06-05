@@ -7,7 +7,7 @@ use std::{
     io::{Cursor, Read, Seek, Write},
 };
 
-use binrw::{binrw, binwrite, meta::ReadEndian, BinRead, BinResult, BinWrite, Endian};
+use binrw::{BinRead, BinResult, BinWrite, Endian, binrw, binwrite, meta::ReadEndian};
 
 use self::{
     blocks::{NiBlocks, NiBlocksArgs, NiObjectArgs},

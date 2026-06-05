@@ -39,9 +39,9 @@
 //! that reference them error loudly so Phase B5 can extend coverage
 //! incrementally.
 
-use std::alloc::{alloc, dealloc, Layout};
+use std::alloc::{Layout, alloc, dealloc};
 use std::collections::HashMap;
-use std::ffi::{c_void, CStr};
+use std::ffi::{CStr, c_void};
 use std::mem::size_of;
 use std::os::raw::{c_char, c_float, c_int, c_long};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -51,7 +51,7 @@ use crosscom::{ComInterface, ComRc, IUnknown, ResultCode};
 use libffi::middle::{Cif, Closure, Type};
 use p7::interpreter::context::{Context, Data};
 
-use crate::{with_services, HostError, RuntimeHandle};
+use crate::{HostError, RuntimeHandle, with_services};
 
 // ---------------------------------------------------------------------------
 // Public surface
@@ -433,14 +433,14 @@ fn ccw_layout(num_slots: usize) -> (Layout, usize) {
 }
 
 unsafe fn ccw_slot_array_base(alloc_ptr: *const u8, slot_offset: usize) -> *const *const c_void {
-    alloc_ptr.add(slot_offset) as *const *const c_void
+    unsafe { alloc_ptr.add(slot_offset) as *const *const c_void }
 }
 
 unsafe fn ccw_slot_ptr(
     slot_array_base: *const *const c_void,
     slot_index: usize,
 ) -> *const *const c_void {
-    slot_array_base.add(slot_index)
+    unsafe { slot_array_base.add(slot_index) }
 }
 
 /// Walk back from any interface `this` pointer (a `*const *const c_void`
@@ -449,23 +449,29 @@ unsafe fn ccw_slot_ptr(
 /// pointer is preceded by an `isize` offset (in *const c_void slots)
 /// that, applied to the interface pointer, lands on slot 0.
 unsafe fn recover_slot0_addr(this: *const *const c_void) -> *const *const c_void {
-    let vtable_ptr = *(this as *const *const isize);
-    let offset = *vtable_ptr.offset(-1);
-    this.offset(offset)
+    unsafe {
+        let vtable_ptr = *(this as *const *const isize);
+        let offset = *vtable_ptr.offset(-1);
+        this.offset(offset)
+    }
 }
 
 /// Recover the CcwHeader from any interface `this` pointer. The
 /// slot array starts immediately after the header (per [`ccw_layout`]),
 /// so the header sits at `slot0_addr - sizeof::<CcwHeader>()`.
 unsafe fn recover_header<'a>(this: *const *const c_void) -> &'a CcwHeader {
-    let slot0 = recover_slot0_addr(this);
-    let header_addr = (slot0 as *const u8).sub(size_of::<CcwHeader>()) as *const CcwHeader;
-    &*header_addr
+    unsafe {
+        let slot0 = recover_slot0_addr(this);
+        let header_addr = (slot0 as *const u8).sub(size_of::<CcwHeader>()) as *const CcwHeader;
+        &*header_addr
+    }
 }
 
 unsafe fn recover_header_addr(this: *const *const c_void) -> *const CcwHeader {
-    let slot0 = recover_slot0_addr(this);
-    (slot0 as *const u8).sub(size_of::<CcwHeader>()) as *const CcwHeader
+    unsafe {
+        let slot0 = recover_slot0_addr(this);
+        (slot0 as *const u8).sub(size_of::<CcwHeader>()) as *const CcwHeader
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -480,63 +486,69 @@ unsafe extern "system" fn proto_query_interface(
     guid: uuid::Uuid,
     retval: &mut *const *const c_void,
 ) -> c_long {
-    let header = recover_header(this);
-    let slot0 = recover_slot0_addr(this);
-    let bytes = *guid.as_bytes();
+    unsafe {
+        let header = recover_header(this);
+        let slot0 = recover_slot0_addr(this);
+        let bytes = *guid.as_bytes();
 
-    if bytes == IUnknown::INTERFACE_ID {
-        // IUnknown is conventionally satisfied via slot 0.
-        *retval = slot0;
-        proto_add_ref(slot0);
-        return ResultCode::Ok as c_long;
-    }
-
-    // Walk slots in declaration order; first match wins. Each slot's
-    // own UUID and its (vtable-layout-compatible) additional QI list
-    // are eligible. The returned pointer is the slot pointer — i.e.
-    // an interface pointer with the right vtable for the requested
-    // interface, including the slot's offset prefix.
-    for (i, slot) in header.payload.slots.iter().enumerate() {
-        if slot.uuid == bytes || slot.additional_query_uuids.iter().any(|u| *u == bytes) {
-            let slot_ptr = slot0.add(i);
-            *retval = slot_ptr;
-            proto_add_ref(slot_ptr);
+        if bytes == IUnknown::INTERFACE_ID {
+            // IUnknown is conventionally satisfied via slot 0.
+            *retval = slot0;
+            proto_add_ref(slot0);
             return ResultCode::Ok as c_long;
         }
-    }
 
-    *retval = std::ptr::null();
-    ResultCode::ENoInterface as c_long
+        // Walk slots in declaration order; first match wins. Each slot's
+        // own UUID and its (vtable-layout-compatible) additional QI list
+        // are eligible. The returned pointer is the slot pointer — i.e.
+        // an interface pointer with the right vtable for the requested
+        // interface, including the slot's offset prefix.
+        for (i, slot) in header.payload.slots.iter().enumerate() {
+            if slot.uuid == bytes || slot.additional_query_uuids.iter().any(|u| *u == bytes) {
+                let slot_ptr = slot0.add(i);
+                *retval = slot_ptr;
+                proto_add_ref(slot_ptr);
+                return ResultCode::Ok as c_long;
+            }
+        }
+
+        *retval = std::ptr::null();
+        ResultCode::ENoInterface as c_long
+    }
 }
 
 unsafe extern "system" fn proto_add_ref(this: *const *const c_void) -> c_long {
-    let header = recover_header(this);
-    let prev = header.ref_count.fetch_add(1, Ordering::SeqCst);
-    (prev + 1) as c_long
+    unsafe {
+        let header = recover_header(this);
+        let prev = header.ref_count.fetch_add(1, Ordering::SeqCst);
+        (prev + 1) as c_long
+    }
 }
 
 unsafe extern "system" fn proto_release(this: *const *const c_void) -> c_long {
-    let header_addr = recover_header_addr(this);
-    let prev = (*header_addr).ref_count.fetch_sub(1, Ordering::SeqCst);
-    if prev == 1 {
-        // Drop the CCW: read out num_slots + payload, unroot the
-        // script handle, drop the payload (handle + slots Box), and
-        // dealloc the entire buffer with the same Layout used at
-        // alloc time.
-        let num_slots = (*header_addr).num_slots;
-        let (layout, _slot_offset) = ccw_layout(num_slots);
-        // Move out the payload (Drop-runs the RuntimeHandle clone +
-        // slots Box). `read` is safe because no other reference to
-        // the header survives past this point — ref_count just hit
-        // zero.
-        let payload = std::ptr::read(&(*header_addr).payload);
-        let _ = payload
-            .handle
-            .try_with_ctx(|ctx| ctx.remove_external_root(payload.root_idx));
-        drop(payload);
-        dealloc(header_addr as *mut u8, layout);
+    unsafe {
+        let header_addr = recover_header_addr(this);
+        let prev = (*header_addr).ref_count.fetch_sub(1, Ordering::SeqCst);
+        if prev == 1 {
+            // Drop the CCW: read out num_slots + payload, unroot the
+            // script handle, drop the payload (handle + slots Box), and
+            // dealloc the entire buffer with the same Layout used at
+            // alloc time.
+            let num_slots = (*header_addr).num_slots;
+            let (layout, _slot_offset) = ccw_layout(num_slots);
+            // Move out the payload (Drop-runs the RuntimeHandle clone +
+            // slots Box). `read` is safe because no other reference to
+            // the header survives past this point — ref_count just hit
+            // zero.
+            let payload = std::ptr::read(&(*header_addr).payload);
+            let _ = payload
+                .handle
+                .try_with_ctx(|ctx| ctx.remove_external_root(payload.root_idx));
+            drop(payload);
+            dealloc(header_addr as *mut u8, layout);
+        }
+        (prev - 1) as c_long
     }
-    (prev - 1) as c_long
 }
 
 // ---------------------------------------------------------------------------
@@ -782,7 +794,9 @@ unsafe extern "C" fn method_thunk_void(
     args: *const *const c_void,
     userdata: &MethodUserdata,
 ) {
-    let _ = dispatch_method(args, userdata);
+    unsafe {
+        let _ = dispatch_method(args, userdata);
+    }
 }
 
 unsafe extern "C" fn method_thunk_int(
@@ -791,10 +805,12 @@ unsafe extern "C" fn method_thunk_int(
     args: *const *const c_void,
     userdata: &MethodUserdata,
 ) {
-    match dispatch_method(args, userdata) {
-        DispatchOutcome::Int(i) => *result = i as c_int,
-        DispatchOutcome::Bool(b) => *result = b as c_int,
-        DispatchOutcome::Error(_) | _ => *result = 0,
+    unsafe {
+        match dispatch_method(args, userdata) {
+            DispatchOutcome::Int(i) => *result = i as c_int,
+            DispatchOutcome::Bool(b) => *result = b as c_int,
+            DispatchOutcome::Error(_) | _ => *result = 0,
+        }
     }
 }
 
@@ -804,11 +820,13 @@ unsafe extern "C" fn method_thunk_float(
     args: *const *const c_void,
     userdata: &MethodUserdata,
 ) {
-    match dispatch_method(args, userdata) {
-        DispatchOutcome::Float(f) => *result = f as c_float,
-        DispatchOutcome::OptionalFloat(Some(v)) => *result = v,
-        DispatchOutcome::OptionalFloat(None) => *result = f32::NAN,
-        DispatchOutcome::Error(_) | _ => *result = 0.0,
+    unsafe {
+        match dispatch_method(args, userdata) {
+            DispatchOutcome::Float(f) => *result = f as c_float,
+            DispatchOutcome::OptionalFloat(Some(v)) => *result = v,
+            DispatchOutcome::OptionalFloat(None) => *result = f32::NAN,
+            DispatchOutcome::Error(_) | _ => *result = 0.0,
+        }
     }
 }
 
@@ -818,50 +836,52 @@ unsafe extern "C" fn method_thunk_ptr(
     args: *const *const c_void,
     userdata: &MethodUserdata,
 ) {
-    let outcome = dispatch_method(args, userdata);
-    *result = std::ptr::null();
-    match outcome {
-        DispatchOutcome::OptionalForeign(inner) => {
-            if let Some(data) = inner {
-                // Recursive wrap_proto_unknown for the returned box.
-                let uuid = match &userdata.ret {
-                    RetKind::OptionalForeign { uuid, .. } => *uuid,
-                    _ => return,
-                };
-                // Re-read the CCW's RuntimeHandle from args[0] so the
-                // recursive wrap uses the same runtime.
-                let this_slot = *args.add(0);
-                let this_pp = *(this_slot as *const *const *const c_void);
-                let header = recover_header(this_pp);
-                match wrap_proto_unknown(&header.payload.handle, data, uuid) {
-                    Ok(rc) => {
-                        // ComRc -> raw pointer. ComRc::into_raw consumes the
-                        // ref count; we transfer the strong ref to the caller.
-                        let raw: *const *const c_void = rc.into_raw();
-                        *result = raw as *const c_void;
-                    }
-                    Err(err) => {
-                        eprintln!(
-                            "method_thunk_ptr: recursive wrap_proto failed for '{}': {}",
-                            userdata.method_name, err
-                        );
+    unsafe {
+        let outcome = dispatch_method(args, userdata);
+        *result = std::ptr::null();
+        match outcome {
+            DispatchOutcome::OptionalForeign(inner) => {
+                if let Some(data) = inner {
+                    // Recursive wrap_proto_unknown for the returned box.
+                    let uuid = match &userdata.ret {
+                        RetKind::OptionalForeign { uuid, .. } => *uuid,
+                        _ => return,
+                    };
+                    // Re-read the CCW's RuntimeHandle from args[0] so the
+                    // recursive wrap uses the same runtime.
+                    let this_slot = *args.add(0);
+                    let this_pp = *(this_slot as *const *const *const c_void);
+                    let header = recover_header(this_pp);
+                    match wrap_proto_unknown(&header.payload.handle, data, uuid) {
+                        Ok(rc) => {
+                            // ComRc -> raw pointer. ComRc::into_raw consumes the
+                            // ref count; we transfer the strong ref to the caller.
+                            let raw: *const *const c_void = rc.into_raw();
+                            *result = raw as *const c_void;
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "method_thunk_ptr: recursive wrap_proto failed for '{}': {}",
+                                userdata.method_name, err
+                            );
+                        }
                     }
                 }
             }
+            DispatchOutcome::OptionalForeignRaw(raw) => {
+                // Script returned a foreign-carrier box that wraps a real
+                // Rust ComObject. Pass its raw COM pointer through; the
+                // engine sees the underlying ComObject directly.
+                *result = raw as *const c_void;
+            }
+            DispatchOutcome::Error(err) => {
+                eprintln!(
+                    "method_thunk_ptr: dispatch '{}.{}' failed: {}",
+                    userdata.iface_type_tag, userdata.method_name, err
+                );
+            }
+            _ => {}
         }
-        DispatchOutcome::OptionalForeignRaw(raw) => {
-            // Script returned a foreign-carrier box that wraps a real
-            // Rust ComObject. Pass its raw COM pointer through; the
-            // engine sees the underlying ComObject directly.
-            *result = raw as *const c_void;
-        }
-        DispatchOutcome::Error(err) => {
-            eprintln!(
-                "method_thunk_ptr: dispatch '{}.{}' failed: {}",
-                userdata.iface_type_tag, userdata.method_name, err
-            );
-        }
-        _ => {}
     }
 }
 
@@ -869,50 +889,52 @@ unsafe fn dispatch_method(
     args: *const *const c_void,
     userdata: &MethodUserdata,
 ) -> DispatchOutcome {
-    // libffi passes `args` as an array of slot pointers. args.add(i)
-    // points to the i-th element of that array, and *args.add(i) is
-    // the slot pointer itself (a `*const c_void` pointing at the
-    // arg's storage). Dereference once more with the right type to
-    // read the actual value.
-    let this_slot = *args.add(0);
-    let this_pp = *(this_slot as *const *const *const c_void);
-    let header = recover_header(this_pp);
+    unsafe {
+        // libffi passes `args` as an array of slot pointers. args.add(i)
+        // points to the i-th element of that array, and *args.add(i) is
+        // the slot pointer itself (a `*const c_void` pointing at the
+        // arg's storage). Dereference once more with the right type to
+        // read the actual value.
+        let this_slot = *args.add(0);
+        let this_pp = *(this_slot as *const *const *const c_void);
+        let header = recover_header(this_pp);
 
-    // Re-enter the runtime *first*: marshalling `Foreign` args uses
-    // `with_services` which requires the host services scope to be
-    // active. `RuntimeAccess::with_ctx` (implemented on `ScriptHost`)
-    // installs `scope` + `scope_context` for the duration of the
-    // closure, which is exactly what marshalling and the subsequent
-    // `push_proto_method`/`resume` both need.
-    let root_idx = header.payload.root_idx;
-    let method_name = userdata.method_name.clone();
-    let ret_kind = userdata.ret.clone();
-    let arg_kinds = userdata.args.clone();
-    let arg_slot_ptrs: Vec<*const c_void> =
-        (0..userdata.args.len()).map(|i| *args.add(1 + i)).collect();
+        // Re-enter the runtime *first*: marshalling `Foreign` args uses
+        // `with_services` which requires the host services scope to be
+        // active. `RuntimeAccess::with_ctx` (implemented on `ScriptHost`)
+        // installs `scope` + `scope_context` for the duration of the
+        // closure, which is exactly what marshalling and the subsequent
+        // `push_proto_method`/`resume` both need.
+        let root_idx = header.payload.root_idx;
+        let method_name = userdata.method_name.clone();
+        let ret_kind = userdata.ret.clone();
+        let arg_kinds = userdata.args.clone();
+        let arg_slot_ptrs: Vec<*const c_void> =
+            (0..userdata.args.len()).map(|i| *args.add(1 + i)).collect();
 
-    let outcome = header
-        .payload
-        .handle
-        .try_with_ctx(|ctx| {
-            // Marshal args inside the scope so `with_services` works
-            // for any `Foreign` arg that needs to intern its ComRc,
-            // and so `ctx.alloc_foreign` can wrap interned handles
-            // into proper `box<F>` ProtoBoxRefs.
-            let mut marshalled: Vec<Data> = Vec::with_capacity(arg_kinds.len());
-            for (i, kind) in arg_kinds.iter().enumerate() {
-                let slot_ptr = arg_slot_ptrs[i];
-                match marshal_arg_in(ctx, kind, slot_ptr) {
-                    Ok(d) => marshalled.push(d),
-                    Err(err) => return DispatchOutcome::Error(err),
+        let outcome = header
+            .payload
+            .handle
+            .try_with_ctx(|ctx| {
+                // Marshal args inside the scope so `with_services` works
+                // for any `Foreign` arg that needs to intern its ComRc,
+                // and so `ctx.alloc_foreign` can wrap interned handles
+                // into proper `box<F>` ProtoBoxRefs.
+                let mut marshalled: Vec<Data> = Vec::with_capacity(arg_kinds.len());
+                for (i, kind) in arg_kinds.iter().enumerate() {
+                    let slot_ptr = arg_slot_ptrs[i];
+                    match marshal_arg_in(ctx, kind, slot_ptr) {
+                        Ok(d) => marshalled.push(d),
+                        Err(err) => return DispatchOutcome::Error(err),
+                    }
                 }
-            }
-            invoke_script_method(ctx, root_idx, &method_name, marshalled, &ret_kind)
-        })
-        .unwrap_or(DispatchOutcome::Error(HostError::message(
-            "runtime dropped before method dispatch",
-        )));
-    outcome
+                invoke_script_method(ctx, root_idx, &method_name, marshalled, &ret_kind)
+            })
+            .unwrap_or(DispatchOutcome::Error(HostError::message(
+                "runtime dropped before method dispatch",
+            )));
+        outcome
+    }
 }
 
 fn invoke_script_method(
@@ -1081,60 +1103,63 @@ unsafe fn marshal_arg_in(
     kind: &ArgKind,
     slot_ptr: *const c_void,
 ) -> Result<Data, HostError> {
-    match kind {
-        ArgKind::Int => {
-            let p = slot_ptr as *const c_int;
-            Ok(Data::Int(*p as i64))
-        }
-        ArgKind::Float => {
-            let p = slot_ptr as *const c_float;
-            Ok(Data::Float(*p as f64))
-        }
-        ArgKind::Bool => {
-            let p = slot_ptr as *const c_int;
-            Ok(Data::Int(if *p != 0 { 1 } else { 0 }))
-        }
-        ArgKind::Str => {
-            let p = slot_ptr as *const *const c_char;
-            let raw = *p;
-            if raw.is_null() {
-                Ok(Data::string(""))
-            } else {
-                let s = CStr::from_ptr(raw).to_string_lossy().into_owned();
-                Ok(Data::string(s))
+    unsafe {
+        match kind {
+            ArgKind::Int => {
+                let p = slot_ptr as *const c_int;
+                Ok(Data::Int(*p as i64))
             }
-        }
-        ArgKind::Foreign { type_tag, .. } => {
-            let p = slot_ptr as *const *const *const c_void;
-            let com_ptr: *const *const c_void = *p;
-            if com_ptr.is_null() {
-                return Err(HostError::message(format!(
-                    "Foreign arg for '{}' is null",
-                    type_tag
-                )));
+            ArgKind::Float => {
+                let p = slot_ptr as *const c_float;
+                Ok(Data::Float(*p as f64))
             }
-            let unk_vtbl = *(com_ptr as *const *const crosscom::IUnknownVirtualTable);
-            let guid = uuid::Uuid::from_bytes(IUnknown::INTERFACE_ID);
-            let mut raw_unk: *const *const c_void = std::ptr::null();
-            let hr = ((*unk_vtbl).query_interface)(com_ptr as *const c_void, guid, &mut raw_unk);
-            if hr != 0 || raw_unk.is_null() {
-                return Err(HostError::message(format!(
-                    "Foreign arg for '{}' did not expose IUnknown (hr={})",
-                    type_tag, hr
-                )));
+            ArgKind::Bool => {
+                let p = slot_ptr as *const c_int;
+                Ok(Data::Int(if *p != 0 { 1 } else { 0 }))
             }
-            let unk_rc = ComRc::<IUnknown>::from_raw_pointer(raw_unk);
-            let handle_id = with_services(|s| s.com_table_mut().intern(unk_rc))?;
-            // Wrap the interned handle as a `box<F>` ProtoBoxRef so
-            // the script's parameter receives a proper foreign box
-            // (not a bare `Data::Foreign`, which p7's `push_proto_method`
-            // would not box-wrap).
-            ctx.alloc_foreign(type_tag, handle_id).map_err(|e| {
-                // Undo the add_ref baked into intern() so a failed
-                // alloc doesn't leak the handle.
-                let _ = with_services(|s| s.com_table_mut().release(handle_id));
-                HostError::message(format!("alloc_foreign('{}') failed: {:?}", type_tag, e))
-            })
+            ArgKind::Str => {
+                let p = slot_ptr as *const *const c_char;
+                let raw = *p;
+                if raw.is_null() {
+                    Ok(Data::string(""))
+                } else {
+                    let s = CStr::from_ptr(raw).to_string_lossy().into_owned();
+                    Ok(Data::string(s))
+                }
+            }
+            ArgKind::Foreign { type_tag, .. } => {
+                let p = slot_ptr as *const *const *const c_void;
+                let com_ptr: *const *const c_void = *p;
+                if com_ptr.is_null() {
+                    return Err(HostError::message(format!(
+                        "Foreign arg for '{}' is null",
+                        type_tag
+                    )));
+                }
+                let unk_vtbl = *(com_ptr as *const *const crosscom::IUnknownVirtualTable);
+                let guid = uuid::Uuid::from_bytes(IUnknown::INTERFACE_ID);
+                let mut raw_unk: *const *const c_void = std::ptr::null();
+                let hr =
+                    ((*unk_vtbl).query_interface)(com_ptr as *const c_void, guid, &mut raw_unk);
+                if hr != 0 || raw_unk.is_null() {
+                    return Err(HostError::message(format!(
+                        "Foreign arg for '{}' did not expose IUnknown (hr={})",
+                        type_tag, hr
+                    )));
+                }
+                let unk_rc = ComRc::<IUnknown>::from_raw_pointer(raw_unk);
+                let handle_id = with_services(|s| s.com_table_mut().intern(unk_rc))?;
+                // Wrap the interned handle as a `box<F>` ProtoBoxRef so
+                // the script's parameter receives a proper foreign box
+                // (not a bare `Data::Foreign`, which p7's `push_proto_method`
+                // would not box-wrap).
+                ctx.alloc_foreign(type_tag, handle_id).map_err(|e| {
+                    // Undo the add_ref baked into intern() so a failed
+                    // alloc doesn't leak the handle.
+                    let _ = with_services(|s| s.com_table_mut().release(handle_id));
+                    HostError::message(format!("alloc_foreign('{}') failed: {:?}", type_tag, e))
+                })
+            }
         }
     }
 }

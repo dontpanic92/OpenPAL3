@@ -7,10 +7,10 @@ mod module;
 pub mod trace;
 mod vm;
 
-pub use disassembler::{disasm, AsInst, AsInstInstance};
+pub use disassembler::{AsInst, AsInstInstance, disasm};
 pub use global_context::{
-    not_implemented, ContinuationState, GlobalFunctionContinuation, GlobalFunctionState,
-    ScriptGlobalContext, ScriptGlobalFunction,
+    ContinuationState, GlobalFunctionContinuation, GlobalFunctionState, ScriptGlobalContext,
+    ScriptGlobalFunction, not_implemented,
 };
 pub use module::ScriptModule;
 pub use trace::{BranchKind, GlobalScope, TraceEvent, TraceEventKind, TraceSink};

@@ -1,6 +1,6 @@
 use std::ffi::CString;
 
-use crate::rendering::{shader::ShaderProgramData, Shader, ShaderProgram, VertexComponents};
+use crate::rendering::{Shader, ShaderProgram, VertexComponents, shader::ShaderProgramData};
 
 pub struct VitaGLShader {
     name: String,

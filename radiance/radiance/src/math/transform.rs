@@ -1,5 +1,5 @@
 use super::mat::Mat44;
-use super::{vec::Vec3, Quaternion};
+use super::{Quaternion, vec::Vec3};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

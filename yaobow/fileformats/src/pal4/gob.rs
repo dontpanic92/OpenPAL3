@@ -4,7 +4,7 @@ use binrw::{BinRead, BinResult};
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use crate::utils::{parse_sized_string, SizedString};
+use crate::utils::{SizedString, parse_sized_string};
 
 #[derive(Debug, BinRead, Serialize)]
 #[brw(little)]

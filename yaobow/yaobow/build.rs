@@ -63,13 +63,9 @@ fn generate_triple(idl_file: &str, rust_out: &str, p7_out: &str, bridge_out: &st
     generate_pair(idl_file, rust_out, p7_out);
     let idl = idl_path(idl_file);
     let out = out_path(bridge_out);
-    let dependencies = crosscom_ccidl::generate_script_bridge_to_file(
-        &idl,
-        &out,
-        "yaobow",
-        "script_bridges",
-    )
-    .unwrap_or_else(|err| panic!("Failed to generate bridge {}: {}", bridge_out, err));
+    let dependencies =
+        crosscom_ccidl::generate_script_bridge_to_file(&idl, &out, "yaobow", "script_bridges")
+            .unwrap_or_else(|err| panic!("Failed to generate bridge {}: {}", bridge_out, err));
     for dependency in dependencies {
         println!("cargo:rerun-if-changed={}", dependency.display());
     }

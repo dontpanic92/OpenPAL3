@@ -1,5 +1,5 @@
-use shared::openpal4::launch::AgentBootOptions;
 use shared::GameType;
+use shared::openpal4::launch::AgentBootOptions;
 
 use crate::application::{boot_for, run_app};
 

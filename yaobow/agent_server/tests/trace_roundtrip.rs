@@ -11,8 +11,8 @@
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -38,10 +38,7 @@ impl Drop for TraceWorker {
     }
 }
 
-fn spawn_trace_worker(
-    consumer: AgentCommandConsumer,
-    sink: Arc<AgentTraceSink>,
-) -> TraceWorker {
+fn spawn_trace_worker(consumer: AgentCommandConsumer, sink: Arc<AgentTraceSink>) -> TraceWorker {
     let stop = Arc::new(AtomicBool::new(false));
     let stop_w = stop.clone();
     let join = thread::Builder::new()

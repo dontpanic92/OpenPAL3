@@ -17,10 +17,13 @@ use yaobow_editor::comdef::editor_services::{
     IEditorHostContext, IEditorHostContextImpl, IPreviewerHub, IPreviewerHubImpl,
 };
 use yaobow_editor::editor_bindings::EDITOR_SERVICES_P7;
-use yaobow_editor::script_source::{register_editor_modules, MAIN_P7};
+use yaobow_editor::script_source::{MAIN_P7, register_editor_modules};
 
 mod comdef {
-    pub use radiance_scripting::comdef::*;
+    // `radiance_scripting::comdef` only contains `services`; `yaobow_editor::comdef`
+    // already re-exports the same `services` namespace (plus `editor_services`),
+    // so taking the editor-side glob alone avoids the `services` ambiguous-import
+    // future-incompat warning.
     pub use yaobow_editor::comdef::*;
 }
 
@@ -436,7 +439,6 @@ fn welcome_script_game_button_with_configured_path_returns_open_game_director() 
     // its `render_im` via QI (when it conforms to IImmediateDirector).
     // Here open_game's stub returns a plain `StubDirector`, so we
     // just verify the transition value is the foreign box itself.
-    let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     let env = init_runtime(MAIN_P7).expect("welcome.p7 init should load");
     env.config
         .borrow_mut()

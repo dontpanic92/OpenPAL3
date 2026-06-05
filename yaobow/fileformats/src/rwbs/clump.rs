@@ -3,7 +3,7 @@ use std::io::Read;
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use crate::rwbs::{check_ty, extension::Extension, ChunkHeader, ChunkType};
+use crate::rwbs::{ChunkHeader, ChunkType, check_ty, extension::Extension};
 
 use super::{atomic::Atomic, frame::Frame, geometry::Geometry};
 

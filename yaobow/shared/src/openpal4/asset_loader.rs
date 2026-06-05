@@ -25,11 +25,11 @@ use radiance::{
 
 use crate::{
     loaders::{
+        Pal4TextureResolver,
         anm::{load_amf, load_anm},
         bsp::create_entity_from_bsp_model,
-        dff::{create_entity_from_dff_model, DffLoaderConfig},
+        dff::{DffLoaderConfig, create_entity_from_dff_model},
         smp::load_smp,
-        Pal4TextureResolver,
     },
     scripting::angelscript::ScriptModule,
 };
@@ -42,6 +42,9 @@ use super::{
 pub struct AssetLoader {
     vfs: Rc<MiniFs>,
     component_factory: Rc<dyn ComponentFactory>,
+    // Reserved for asset-side input wiring (e.g., portrait-driven inputs);
+    // currently held to keep the lifetime symmetric with other PAL4 loaders.
+    #[allow(dead_code)]
     input: Rc<RefCell<dyn InputEngine>>,
     texture_resolver: Pal4TextureResolver,
     portraits: HashMap<String, ImageSetImage>,

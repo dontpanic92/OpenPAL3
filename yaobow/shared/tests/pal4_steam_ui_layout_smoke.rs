@@ -17,11 +17,7 @@ use shared::loaders::cegui::{
 
 fn steam_pal4_root() -> Option<PathBuf> {
     let p = PathBuf::from(r"F:\SteamLibrary\steamapps\common\Chinese Paladin 4");
-    if p.is_dir() {
-        Some(p)
-    } else {
-        None
-    }
+    if p.is_dir() { Some(p) } else { None }
 }
 
 fn classify_xml(vfs: &mini_fs::MiniFs, path: &str) -> bool {

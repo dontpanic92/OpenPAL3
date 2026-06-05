@@ -27,7 +27,7 @@
 
 use std::collections::HashMap;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use common::store_ext::StoreExt2;
 use mini_fs::MiniFs;
 

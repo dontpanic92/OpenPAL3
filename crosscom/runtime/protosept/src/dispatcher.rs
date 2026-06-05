@@ -32,13 +32,13 @@
 //! libffi-rs's `Cif::call::<R>` is generic over the Rust return type
 //! at the call site.
 
-use std::ffi::{c_char, c_float, c_long, c_void, CString};
+use std::ffi::{CString, c_char, c_float, c_long, c_void};
 use std::os::raw::c_int;
 use std::rc::Rc;
 
 use crate::proto_ccw::wrap_proto_unknown;
-use crate::{with_services, ComObjectTable};
-use libffi::middle::{arg, Arg, Cif, CodePtr, Type};
+use crate::{ComObjectTable, with_services};
+use libffi::middle::{Arg, Cif, CodePtr, Type, arg};
 use p7::errors::RuntimeError;
 use p7::interpreter::context::{Context, Data};
 use p7::semantic::HostReturnTy;

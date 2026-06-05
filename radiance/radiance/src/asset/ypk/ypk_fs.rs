@@ -72,9 +72,7 @@ impl Store for YpkFs {
                     // cases (the first observation sticks for that
                     // child name; subsequent loops for the same dir
                     // are no-ops).
-                    children
-                        .entry(child.to_string())
-                        .or_insert(EntryKind::Dir);
+                    children.entry(child.to_string()).or_insert(EntryKind::Dir);
                 }
             }
         }
@@ -91,4 +89,3 @@ impl Store for YpkFs {
         Ok(Entries::new(collected.into_iter()))
     }
 }
-

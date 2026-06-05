@@ -20,9 +20,9 @@
 // exposes the body reader as a concrete `&mut dyn Read` whose inherent
 // methods cover what we need.
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, Sender};
-use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -422,16 +422,16 @@ fn parse_post_command(url: &str, req: &mut Request) -> Result<AgentCommand, Agen
             AgentCommand::TraceStart(params)
         }
         "/v1/script/trace/stop" => AgentCommand::TraceStop,
-        "/v1/dialog/choose" => AgentCommand::ChooseDialog(parse::<
-            crate::protocol::DialogChooseParams,
-        >(&body)?),
-        "/v1/world_map/choose" => AgentCommand::ChooseWorldMap(parse::<
-            crate::protocol::WorldMapChooseParams,
-        >(&body)?),
+        "/v1/dialog/choose" => {
+            AgentCommand::ChooseDialog(parse::<crate::protocol::DialogChooseParams>(&body)?)
+        }
+        "/v1/world_map/choose" => {
+            AgentCommand::ChooseWorldMap(parse::<crate::protocol::WorldMapChooseParams>(&body)?)
+        }
         _ => {
             return Err(AgentError::bad_request(format!(
                 "unknown POST route: {url}"
-            )))
+            )));
         }
     };
 

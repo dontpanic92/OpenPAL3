@@ -47,8 +47,10 @@ pub unsafe extern "system" fn debug_callback(
     p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _p_user_data: *mut c_void,
 ) -> vk::Bool32 {
-    let message = CStr::from_ptr((*p_callback_data).p_message);
-    println!("validation layer: {:?}", message);
+    unsafe {
+        let message = CStr::from_ptr((*p_callback_data).p_message);
+        println!("validation layer: {:?}", message);
 
-    vk::FALSE
+        vk::FALSE
+    }
 }

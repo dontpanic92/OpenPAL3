@@ -1,6 +1,6 @@
 use super::device::Device;
 use crate::rendering::vertex_buffer::{VertexComponents, VertexComponentsLayout};
-use crate::rendering::{shader::ShaderProgramData, Shader, ShaderProgram};
+use crate::rendering::{Shader, ShaderProgram, shader::ShaderProgramData};
 use ash::vk;
 use std::error::Error;
 use std::rc::Rc;

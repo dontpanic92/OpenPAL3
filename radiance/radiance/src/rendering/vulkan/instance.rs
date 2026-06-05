@@ -1,7 +1,7 @@
 use super::creation_helpers;
 use ash::{
-    vk::{PhysicalDevice, PhysicalDeviceProperties},
     Entry,
+    vk::{PhysicalDevice, PhysicalDeviceProperties},
 };
 use std::rc::Rc;
 

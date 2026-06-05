@@ -15,10 +15,7 @@
 //!   4. NpcInfo `default_visible` distribution and dump of NPCs
 //!      with `default_visible == 0`.
 
-use std::{
-    collections::BTreeMap,
-    path::PathBuf,
-};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -26,9 +23,7 @@ use common::store_ext::StoreExt2;
 use fileformats::{
     binrw::BinRead,
     npc::NpcInfoFile,
-    pal4::gob::{
-        GobFile, GobFixedProperty, GobObjectType, GobProperty,
-    },
+    pal4::gob::{GobFile, GobFixedProperty, GobObjectType, GobProperty},
 };
 use packfs::init_virtual_fs;
 
@@ -56,9 +51,8 @@ fn main() -> Result<()> {
 
     let mut blocks: Vec<(String, String)> = Vec::new();
     let scenedata = std::path::Path::new("/gamedata/scenedata");
-    let scene_entries =
-        <mini_fs::MiniFs as mini_fs::Store>::entries_path(&vfs, scenedata)
-            .with_context(|| format!("list {}", scenedata.display()))?;
+    let scene_entries = <mini_fs::MiniFs as mini_fs::Store>::entries_path(&vfs, scenedata)
+        .with_context(|| format!("list {}", scenedata.display()))?;
     for entry in scene_entries {
         let entry = entry?;
         if !matches!(entry.kind, mini_fs::EntryKind::Dir) {
@@ -118,85 +112,76 @@ fn main() -> Result<()> {
     for (scene, block) in &blocks {
         let gob_path = format!("/gamedata/scenedata/{}/{}/GameObjs.gob", scene, block);
         match vfs.read_to_end(&gob_path) {
-            Ok(bytes) => {
-                match GobFile::read(&mut std::io::Cursor::new(bytes)) {
-                    Ok(gob) => {
-                        for (i, entry) in gob.entries.iter().enumerate() {
-                            let tag = gob
-                                .header
-                                .object_types
-                                .get(i)
-                                .copied()
-                                .unwrap_or(u32::MAX);
-                            let mesh = entry
-                                .file_name
-                                .to_string()
-                                .unwrap_or_else(|_| "<bad-utf8>".to_string());
-                            *tag_mesh_counts
-                                .entry(tag)
-                                .or_default()
-                                .entry(mesh.clone())
-                                .or_default() += 1;
-                            *active_counts.entry(entry.active).or_default() += 1;
-                            for (i, slot) in flag_counts.iter_mut().enumerate() {
-                                *slot.entry(entry.flags[i]).or_default() += 1;
-                            }
+            Ok(bytes) => match GobFile::read(&mut std::io::Cursor::new(bytes)) {
+                Ok(gob) => {
+                    for (i, entry) in gob.entries.iter().enumerate() {
+                        let tag = gob.header.object_types.get(i).copied().unwrap_or(u32::MAX);
+                        let mesh = entry
+                            .file_name
+                            .to_string()
+                            .unwrap_or_else(|_| "<bad-utf8>".to_string());
+                        *tag_mesh_counts
+                            .entry(tag)
+                            .or_default()
+                            .entry(mesh.clone())
+                            .or_default() += 1;
+                        *active_counts.entry(entry.active).or_default() += 1;
+                        for (i, slot) in flag_counts.iter_mut().enumerate() {
+                            *slot.entry(entry.flags[i]).or_default() += 1;
+                        }
 
-                            let object_name = entry
-                                .name
-                                .to_string()
-                                .unwrap_or_else(|_| "<bad-utf8>".to_string());
+                        let object_name = entry
+                            .name
+                            .to_string()
+                            .unwrap_or_else(|_| "<bad-utf8>".to_string());
 
-                            if let Some(hide) = entry
-                                .get_property(GobFixedProperty::HIDE)
-                                .and_then(|p| p.value_i32())
-                            {
-                                *hide_counts.entry(hide).or_default() += 1;
-                                if hide != 0 {
-                                    hide_entries.push((
-                                        scene.clone(),
-                                        block.clone(),
-                                        object_name.clone(),
-                                        tag,
-                                        hide,
-                                    ));
-                                }
-                            }
-                            if let Some(ad) = entry
-                                .get_property(GobFixedProperty::AUTO_DISAPPEAR)
-                                .and_then(|p| p.value_i32())
-                            {
-                                *auto_disappear_counts.entry(ad).or_default() += 1;
-                                if ad != 0 {
-                                    auto_dis_entries.push((
-                                        scene.clone(),
-                                        block.clone(),
-                                        object_name.clone(),
-                                        tag,
-                                        ad,
-                                    ));
-                                }
-                            }
-
-                            if let Some(vf) = entry.get_property(GobFixedProperty::VALIDFOR) {
-                                let repr = ValidforRepr::from_property(vf);
-                                let key = repr.to_canonical_string();
-                                *validfor_value_counts
-                                    .entry(key.clone())
-                                    .or_default() += 1;
-                                validfor_entries.push((
+                        if let Some(hide) = entry
+                            .get_property(GobFixedProperty::HIDE)
+                            .and_then(|p| p.value_i32())
+                        {
+                            *hide_counts.entry(hide).or_default() += 1;
+                            if hide != 0 {
+                                hide_entries.push((
                                     scene.clone(),
                                     block.clone(),
                                     object_name.clone(),
                                     tag,
-                                    repr,
+                                    hide,
                                 ));
                             }
                         }
+                        if let Some(ad) = entry
+                            .get_property(GobFixedProperty::AUTO_DISAPPEAR)
+                            .and_then(|p| p.value_i32())
+                        {
+                            *auto_disappear_counts.entry(ad).or_default() += 1;
+                            if ad != 0 {
+                                auto_dis_entries.push((
+                                    scene.clone(),
+                                    block.clone(),
+                                    object_name.clone(),
+                                    tag,
+                                    ad,
+                                ));
+                            }
+                        }
+
+                        if let Some(vf) = entry.get_property(GobFixedProperty::VALIDFOR) {
+                            let repr = ValidforRepr::from_property(vf);
+                            let key = repr.to_canonical_string();
+                            *validfor_value_counts.entry(key.clone()).or_default() += 1;
+                            validfor_entries.push((
+                                scene.clone(),
+                                block.clone(),
+                                object_name.clone(),
+                                tag,
+                                repr,
+                            ));
+                        }
                     }
-                    Err(e) => eprintln!("WARN: parse {} failed: {:#}", gob_path, e),
                 }
-            }
+                Err(e) => eprintln!("WARN: parse {} failed: {:#}", gob_path, e),
+            },
             Err(_) => gob_missing += 1,
         }
 
@@ -224,10 +209,7 @@ fn main() -> Result<()> {
     }
 
     println!("== summary ==");
-    println!(
-        "  blocks scanned : {}",
-        blocks.len()
-    );
+    println!("  blocks scanned : {}", blocks.len());
     println!(
         "  gob missing    : {}    npc missing    : {}",
         gob_missing, npc_missing
@@ -257,7 +239,10 @@ fn main() -> Result<()> {
     }
     println!("  NPC default_visible : {:?}", npc_default_visible_counts);
 
-    println!("\n== unique VALIDFOR values ({} distinct) ==", validfor_value_counts.len());
+    println!(
+        "\n== unique VALIDFOR values ({} distinct) ==",
+        validfor_value_counts.len()
+    );
     let mut sorted_vf: Vec<(&String, &usize)> = validfor_value_counts.iter().collect();
     sorted_vf.sort_by(|a, b| b.1.cmp(a.1));
     for (val, count) in &sorted_vf {

@@ -39,8 +39,8 @@ pub mod proto_ccw;
 pub use adapter::{MinimalServices, P7HostContext};
 pub use dispatcher::install_com_dispatcher;
 pub use proto_ccw::{
-    is_proto_registered, register_crosscom_iaction, register_proto_ccw, wrap_proto,
-    wrap_proto_unknown, ArgKind, MethodSpec, ProtoSpec, RetKind,
+    ArgKind, MethodSpec, ProtoSpec, RetKind, is_proto_registered, register_crosscom_iaction,
+    register_proto_ccw, wrap_proto, wrap_proto_unknown,
 };
 
 // ---------------------------------------------------------------------------
@@ -553,11 +553,11 @@ mod tests {
     #[test]
     fn id_encode_decode_roundtrip() {
         for slot in [0usize, 1, 17, 255, 65535, 70_000] {
-            for gen in [0u32, 1, 7, 1_000_000, 0x7fff_ffff] {
-                let id = ComObjectId::encode(slot, gen);
+            for r#gen in [0u32, 1, 7, 1_000_000, 0x7fff_ffff] {
+                let id = ComObjectId::encode(slot, r#gen);
                 let (s, g) = ComObjectId::decode(id).unwrap();
                 assert_eq!(s, slot);
-                assert_eq!(g, gen);
+                assert_eq!(g, r#gen);
                 assert!(id >= 0, "encoded id should be non-negative");
             }
         }

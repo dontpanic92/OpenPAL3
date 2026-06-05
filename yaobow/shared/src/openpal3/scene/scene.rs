@@ -129,10 +129,10 @@ impl ScnScene {
     }
 
     fn test_coord_in_bound(coord: (i32, i32), boundary: ((i32, i32), (i32, i32))) -> bool {
-        coord.0 >= boundary.0 .0
-            && coord.1 >= boundary.0 .1
-            && coord.0 <= boundary.1 .0
-            && coord.1 <= boundary.1 .1
+        coord.0 >= boundary.0.0
+            && coord.1 >= boundary.0.1
+            && coord.0 <= boundary.1.0
+            && coord.1 <= boundary.1.1
     }
 
     pub fn test_nav_layer_trigger(&self, layer: usize, coord: &Vec3) -> bool {
@@ -327,7 +327,7 @@ impl ScnScene {
 
     fn test_sphere_aabb(s: &Vec3, r: f32, aabb1: &Vec3, aabb2: &Vec3) -> bool {
         macro_rules! dist_sqr {
-            ($s: expr, $min: expr, $max: expr) => {
+            ($s: expr_2021, $min: expr_2021, $max: expr_2021) => {
                 if $s < $min {
                     ($min - $s) * ($min - $s)
                 } else if $s > $max {
@@ -384,24 +384,32 @@ impl ScnScene {
             let visible = obj.node_type != 17 && obj.node_type != 25;
             if obj.node_type != 37 && obj.node_type != 43 && obj.name.len() != 0 {
                 if obj.name.as_bytes()[0] as char == '_' {
-                    if let Some(p) = self.asset_mgr.load_scn_pol(
+                    match self.asset_mgr.load_scn_pol(
                         &self.cpk_name,
                         &self.scn_file.scn_base_name,
                         &obj.name,
                         self.scn_file.is_night,
                         obj.index,
                     ) {
-                        entity = Some(p);
-                    } else if let Some(c) = self.asset_mgr.load_scn_cvd(
-                        &self.cpk_name,
-                        &self.scn_file.scn_base_name,
-                        &obj.name,
-                        self.scn_file.is_night,
-                        obj.index,
-                    ) {
-                        entity = Some(c);
-                    } else {
-                        log::error!("Cannot load object: {}", obj.name);
+                        Some(p) => {
+                            entity = Some(p);
+                        }
+                        _ => {
+                            match self.asset_mgr.load_scn_cvd(
+                                &self.cpk_name,
+                                &self.scn_file.scn_base_name,
+                                &obj.name,
+                                self.scn_file.is_night,
+                                obj.index,
+                            ) {
+                                Some(c) => {
+                                    entity = Some(c);
+                                }
+                                _ => {
+                                    log::error!("Cannot load object: {}", obj.name);
+                                }
+                            }
+                        }
                     }
                 } else if obj.name.to_lowercase().ends_with(".pol") {
                     entity = Some(

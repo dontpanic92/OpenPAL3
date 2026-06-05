@@ -9,7 +9,7 @@
 pub mod context;
 
 pub use context::{
-    create_debug_session, Pal4DebugContext, Pal4DebugSession, Pal4DebugSnapshot, Pal4DebugState,
+    Pal4DebugContext, Pal4DebugSession, Pal4DebugSnapshot, Pal4DebugState, create_debug_session,
 };
 // Auto-generated reverse-wrap helper, re-exported under the historical
 // name.

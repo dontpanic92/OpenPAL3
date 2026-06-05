@@ -21,15 +21,11 @@
 //! Anything more complex flushes the stack; we'd rather emit an empty
 //! `transitions` list than a false one.
 
-use std::{
-    collections::BTreeMap,
-    fs::File,
-    io::BufWriter,
-    path::PathBuf,
-};
+use std::{collections::BTreeMap, fs::File, io::BufWriter, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use common::store_ext::StoreExt2;
 use fileformats::{
     binrw::BinRead,
     npc::NpcInfoFile,
@@ -38,13 +34,12 @@ use fileformats::{
         gob::{GobFile, GobObjectType},
     },
 };
-use common::store_ext::StoreExt2;
 use packfs::init_virtual_fs;
 use serde::Serialize;
 use shared::{
     openpal4::{app_context::Pal4AppContext, scripting::create_context},
     scripting::angelscript::{
-        disasm, AsInst, AsInstInstance, ScriptGlobalContext, ScriptGlobalFunction, ScriptModule,
+        AsInst, AsInstInstance, ScriptGlobalContext, ScriptGlobalFunction, ScriptModule, disasm,
     },
 };
 
@@ -338,7 +333,11 @@ fn main() -> Result<()> {
     }
     module_files.sort();
     module_files.dedup();
-    eprintln!("Found {} script modules under vfs {}", module_files.len(), script_dir.display());
+    eprintln!(
+        "Found {} script modules under vfs {}",
+        module_files.len(),
+        script_dir.display()
+    );
 
     // The bootstrap module sets the canonical `global_count` for the
     // header. Other modules are per-scene and may carry their own
@@ -403,7 +402,10 @@ fn main() -> Result<()> {
             for func in module.functions.iter() {
                 if func.name.contains(needle) {
                     eprintln!("--- {} :: {} ---", stem, func.name);
-                    eprintln!("strings[..16]: {:?}", &module.strings[..16.min(module.strings.len())]);
+                    eprintln!(
+                        "strings[..16]: {:?}",
+                        &module.strings[..16.min(module.strings.len())]
+                    );
                     for inst in disasm(func) {
                         eprintln!("{:04x}: {:?}", inst.addr, inst.inst);
                     }
@@ -496,9 +498,7 @@ fn main() -> Result<()> {
                 }
             }
         }
-        catalog
-            .scenes
-            .insert(scene_name, scene_out);
+        catalog.scenes.insert(scene_name, scene_out);
     }
 
     catalog.global_count = bootstrap_global_count;
@@ -507,7 +507,11 @@ fn main() -> Result<()> {
     eprintln!(
         "Catalog: {} scenes / {} blocks / {} sysfns / {} globals (bootstrap) / {} plot_index entries",
         catalog.scenes.len(),
-        catalog.scenes.values().map(|s| s.blocks.len()).sum::<usize>(),
+        catalog
+            .scenes
+            .values()
+            .map(|s| s.blocks.len())
+            .sum::<usize>(),
         catalog.sysfn_count,
         catalog.global_count,
         catalog.plot_index.values().map(|v| v.len()).sum::<usize>(),
@@ -554,10 +558,7 @@ fn build_block(
         eprintln!("    gob missing for {}/{}: {:#}", scene, block, e);
     }
 
-    let entry_fn_present = module
-        .functions
-        .iter()
-        .any(|f| f.name == entry_fn);
+    let entry_fn_present = module.functions.iter().any(|f| f.name == entry_fn);
 
     Ok(Block {
         entry_fn: entry_fn_present.then(|| entry_fn),
@@ -569,28 +570,19 @@ fn build_block(
 }
 
 fn load_evf(vfs: &mini_fs::MiniFs, scene: &str, block: &str) -> Result<EvfFile> {
-    let path = format!(
-        "/gamedata/scenedata/{}/{}/{}.evf",
-        scene, block, block
-    );
+    let path = format!("/gamedata/scenedata/{}/{}/{}.evf", scene, block, block);
     let bytes = vfs.read_to_end(&path)?;
     Ok(EvfFile::read(&mut std::io::Cursor::new(bytes))?)
 }
 
 fn load_gob(vfs: &mini_fs::MiniFs, scene: &str, block: &str) -> Result<GobFile> {
-    let path = format!(
-        "/gamedata/scenedata/{}/{}/GameObjs.gob",
-        scene, block
-    );
+    let path = format!("/gamedata/scenedata/{}/{}/GameObjs.gob", scene, block);
     let bytes = vfs.read_to_end(&path)?;
     Ok(GobFile::read(&mut std::io::Cursor::new(bytes))?)
 }
 
 fn load_npc_info(vfs: &mini_fs::MiniFs, scene: &str, block: &str) -> Result<NpcInfoFile> {
-    let path = format!(
-        "/gamedata/scenedata/{}/{}/npcInfo.npc",
-        scene, block
-    );
+    let path = format!("/gamedata/scenedata/{}/{}/npcInfo.npc", scene, block);
     let bytes = vfs.read_to_end(&path)?;
     Ok(NpcInfoFile::read(&mut std::io::Cursor::new(bytes))?)
 }
@@ -609,11 +601,7 @@ fn build_triggers(
                 _ => "other",
             };
             let (center, half_size) = trigger_bounds(&event);
-            let function = event
-                .function
-                .function
-                .to_string()
-                .unwrap_or_default();
+            let function = event.function.function.to_string().unwrap_or_default();
             let summary = build_trigger_summary(&function, fns, scene_transitions);
             let kind: &'static str = if function.is_empty() && shape == "other" {
                 // Empty function + non-trigger shape = collision /
@@ -697,10 +685,7 @@ fn build_objects(
                 .get(i)
                 .and_then(|t| GobObjectType::name(*t))
                 .unwrap_or("unknown");
-            let research_function = entry
-                .research_function
-                .to_string()
-                .unwrap_or_default();
+            let research_function = entry.research_function.to_string().unwrap_or_default();
             let summary = build_trigger_summary(&research_function, fns, scene_transitions);
             Object {
                 name: entry.name.to_string().unwrap_or_default(),
@@ -776,9 +761,7 @@ fn extract_cmp_literals(insts: &[AsInstInstance]) -> BTreeMap<u32, Option<i32>> 
             // Short form: compare-immediate folds the literal into the
             // opcode itself.
             (GateState::AfterRdga4, AsInst::Cmpii { rhs })
-            | (GateState::AfterRdga4, AsInst::Subii { rhs }) => {
-                GateState::AfterCmp(Some(*rhs))
-            }
+            | (GateState::AfterRdga4, AsInst::Subii { rhs }) => GateState::AfterCmp(Some(*rhs)),
             (GateState::AfterRdga4, AsInst::Cmpiui { rhs }) => {
                 GateState::AfterCmp(Some(*rhs as i32))
             }
@@ -791,8 +774,7 @@ fn extract_cmp_literals(insts: &[AsInstInstance]) -> BTreeMap<u32, Option<i32>> 
                 pending_lit = Some(0);
                 GateState::AfterRdga4
             }
-            (GateState::AfterRdga4, AsInst::Subi)
-            | (GateState::AfterRdga4, AsInst::Cmpi) => {
+            (GateState::AfterRdga4, AsInst::Subi) | (GateState::AfterRdga4, AsInst::Cmpi) => {
                 let v = pending_lit.take();
                 GateState::AfterCmp(v)
             }
@@ -893,7 +875,10 @@ fn walk_function(
                         Some(Abs::Int(v)) => Some(*v),
                         _ => None,
                     };
-                    let entry = ValueWrite { global: slot, value };
+                    let entry = ValueWrite {
+                        global: slot,
+                        value,
+                    };
                     if !summary.writes.contains(&entry) {
                         summary.writes.push(entry);
                     }
@@ -1171,9 +1156,7 @@ fn parse_init_name(name: &str) -> Option<(&str, &str)> {
     if scene.is_empty() || block.is_empty() {
         return None;
     }
-    if !scene
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    if !scene.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         || !block.chars().all(|c| c.is_ascii_alphanumeric())
     {
         return None;
@@ -1226,7 +1209,10 @@ mod tests {
         // and a giArenaLoad-derived transition lives on `leaf`.
         let mut fns: BTreeMap<String, FunctionSummary> = BTreeMap::new();
         let mut entry = fn_with_calls(vec!["child"]);
-        entry.writes.push(ValueWrite { global: 5, value: Some(1) });
+        entry.writes.push(ValueWrite {
+            global: 5,
+            value: Some(1),
+        });
         entry.reads.push(3);
         fns.insert("entry".into(), entry);
         let mut child = fn_with_calls(vec!["leaf"]);
@@ -1243,8 +1229,14 @@ mod tests {
 
         assert_eq!(s.called_fns, vec!["entry", "child", "leaf"]);
         assert!(s.reads.contains(&3) && s.reads.contains(&11));
-        assert!(s.writes.contains(&ValueWrite { global: 5, value: Some(1) }));
-        assert!(s.writes.contains(&ValueWrite { global: 7, value: Some(2) }));
+        assert!(s.writes.contains(&ValueWrite {
+            global: 5,
+            value: Some(1)
+        }));
+        assert!(s.writes.contains(&ValueWrite {
+            global: 7,
+            value: Some(2)
+        }));
         assert_eq!(s.transitions, vec![["q02".to_string(), "Q01".to_string()]]);
     }
 
@@ -1279,7 +1271,9 @@ mod tests {
         };
 
         let mut scene = Scene::default();
-        scene.fns.insert("f1".into(), fn_with_writes(vec![(5, Some(1))]));
+        scene
+            .fns
+            .insert("f1".into(), fn_with_writes(vec![(5, Some(1))]));
         let mut block = Block::default();
         let trig_summary = build_trigger_summary("f1", &scene.fns, &[]);
         block.triggers.push(Trigger {
@@ -1315,24 +1309,68 @@ mod tests {
         let insts = vec![
             // Short form: Rdga4 ; Cmpii { rhs: 11400 } ; Jnz off
             // Branch at addr=0x10 → trace pc=0x18.
-            AsInstInstance { addr: 0x00, inst: AsInst::Rdga4 { index: -1 } },
-            AsInstInstance { addr: 0x08, inst: AsInst::Cmpii { rhs: 11_400 } },
-            AsInstInstance { addr: 0x10, inst: AsInst::Jnz { offset: 100 } },
+            AsInstInstance {
+                addr: 0x00,
+                inst: AsInst::Rdga4 { index: -1 },
+            },
+            AsInstInstance {
+                addr: 0x08,
+                inst: AsInst::Cmpii { rhs: 11_400 },
+            },
+            AsInstInstance {
+                addr: 0x10,
+                inst: AsInst::Jnz { offset: 100 },
+            },
             // Long form: Rdga4 ; Set4 V ; Subi ; Jz off
-            AsInstInstance { addr: 0x20, inst: AsInst::Rdga4 { index: -1 } },
-            AsInstInstance { addr: 0x28, inst: AsInst::Set4 { data: 10_600 } },
-            AsInstInstance { addr: 0x30, inst: AsInst::Subi },
-            AsInstInstance { addr: 0x38, inst: AsInst::Jz { offset: 50 } },
+            AsInstInstance {
+                addr: 0x20,
+                inst: AsInst::Rdga4 { index: -1 },
+            },
+            AsInstInstance {
+                addr: 0x28,
+                inst: AsInst::Set4 { data: 10_600 },
+            },
+            AsInstInstance {
+                addr: 0x30,
+                inst: AsInst::Subi,
+            },
+            AsInstInstance {
+                addr: 0x38,
+                inst: AsInst::Jz { offset: 50 },
+            },
             // Pattern broken by an unrelated CallSys: must NOT
             // attribute a stale literal to this Jcc.
-            AsInstInstance { addr: 0x50, inst: AsInst::Rdga4 { index: -1 } },
-            AsInstInstance { addr: 0x58, inst: AsInst::CallSys { function_index: -100 } },
-            AsInstInstance { addr: 0x60, inst: AsInst::Jnz { offset: 4 } },
+            AsInstInstance {
+                addr: 0x50,
+                inst: AsInst::Rdga4 { index: -1 },
+            },
+            AsInstInstance {
+                addr: 0x58,
+                inst: AsInst::CallSys {
+                    function_index: -100,
+                },
+            },
+            AsInstInstance {
+                addr: 0x60,
+                inst: AsInst::Jnz { offset: 4 },
+            },
             // PushZero-as-RHS short cut: Rdga4 ; PushZero ; Cmpi ; Jz
-            AsInstInstance { addr: 0x70, inst: AsInst::Rdga4 { index: -1 } },
-            AsInstInstance { addr: 0x78, inst: AsInst::PushZero },
-            AsInstInstance { addr: 0x80, inst: AsInst::Cmpi },
-            AsInstInstance { addr: 0x88, inst: AsInst::Jz { offset: 8 } },
+            AsInstInstance {
+                addr: 0x70,
+                inst: AsInst::Rdga4 { index: -1 },
+            },
+            AsInstInstance {
+                addr: 0x78,
+                inst: AsInst::PushZero,
+            },
+            AsInstInstance {
+                addr: 0x80,
+                inst: AsInst::Cmpi,
+            },
+            AsInstInstance {
+                addr: 0x88,
+                inst: AsInst::Jz { offset: 8 },
+            },
         ];
 
         let lits = extract_cmp_literals(&insts);
@@ -1347,9 +1385,18 @@ mod tests {
     #[test]
     fn extract_cmp_literals_skips_module_local_rdga4() {
         let insts = vec![
-            AsInstInstance { addr: 0x00, inst: AsInst::Rdga4 { index: 3 } },
-            AsInstInstance { addr: 0x08, inst: AsInst::Cmpii { rhs: 1 } },
-            AsInstInstance { addr: 0x10, inst: AsInst::Jnz { offset: 8 } },
+            AsInstInstance {
+                addr: 0x00,
+                inst: AsInst::Rdga4 { index: 3 },
+            },
+            AsInstInstance {
+                addr: 0x08,
+                inst: AsInst::Cmpii { rhs: 1 },
+            },
+            AsInstInstance {
+                addr: 0x10,
+                inst: AsInst::Jnz { offset: 8 },
+            },
         ];
         assert!(extract_cmp_literals(&insts).is_empty());
     }

@@ -39,7 +39,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::{rust_module, CrossComIdl, Error, Interface, Item, Module, Symbol};
+use crate::{CrossComIdl, Error, Interface, Item, Module, Symbol, rust_module};
 
 pub(crate) fn generate(
     unit: &CrossComIdl,
@@ -47,7 +47,7 @@ pub(crate) fn generate(
     bridge_root: &str,
     local_bridge_stem: &str,
 ) -> Result<String, Error> {
-    ScriptBridgeGen::new(unit, consumer_crate, bridge_root, local_bridge_stem)?.gen()
+    ScriptBridgeGen::new(unit, consumer_crate, bridge_root, local_bridge_stem)?.r#gen()
 }
 
 struct ScriptBridgeGen<'a> {
@@ -91,7 +91,7 @@ impl<'a> ScriptBridgeGen<'a> {
         })
     }
 
-    fn gen(&self) -> Result<String, Error> {
+    fn r#gen(&self) -> Result<String, Error> {
         let mut local_scriptable: Vec<&Interface> = Vec::new();
         let mut local_app_roots: Vec<&Interface> = Vec::new();
         let mut local_intern_targets: Vec<&Interface> = Vec::new();
@@ -304,7 +304,7 @@ impl<'a> ScriptBridgeGen<'a> {
                          int/long/longlong/byte, float, and string are currently allowed",
                         m = method.name,
                         ty = p.ty,
-                    )))
+                    )));
                 }
             };
             intern_lines.push_str(&lit);
@@ -347,9 +347,7 @@ impl<'a> ScriptBridgeGen<'a> {
                 if trimmed_ret.ends_with('?') {
                     // OptionalForeign: wrap_<i> currently returns
                     // Err(...) on Null. Translate that to Ok(None).
-                    out.push_str(
-                        "        let h = self.host.runtime_handle();\n",
-                    );
+                    out.push_str("        let h = self.host.runtime_handle();\n");
                     out.push_str(&format!(
                         "        match {wrap_path}(&h, result) {{\n            \
                          Ok(rc) => Ok(Some(rc)),\n            \
@@ -364,9 +362,7 @@ impl<'a> ScriptBridgeGen<'a> {
                          }}\n"
                     ));
                 } else {
-                    out.push_str(
-                        "        let h = self.host.runtime_handle();\n",
-                    );
+                    out.push_str("        let h = self.host.runtime_handle();\n");
                     out.push_str(&format!("        {wrap_path}(&h, result)\n"));
                 }
             } else {

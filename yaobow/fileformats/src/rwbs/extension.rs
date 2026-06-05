@@ -2,12 +2,12 @@ use std::{collections::HashMap, io::Read};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
-use encoding::{types::Encoding, DecoderTrap};
+use encoding::{DecoderTrap, types::Encoding};
 use serde::Serialize;
 
-use crate::rwbs::{check_ty, ChunkHeader, ChunkType};
+use crate::rwbs::{ChunkHeader, ChunkType, check_ty};
 
-use super::{material::Texture, plugins::hanim::HAnimPlugin, Matrix44f};
+use super::{Matrix44f, material::Texture, plugins::hanim::HAnimPlugin};
 
 #[derive(Debug, Serialize)]
 pub enum Extension {

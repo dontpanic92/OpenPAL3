@@ -212,24 +212,17 @@ mod pal5_texture_tests {
             Path::new("/Model/BuildingP5\\zhiwu\\zw_shulin_07.dff"),
             "zw_shugan02",
         );
-        assert_eq!(
-            got,
-            vec![p("/Texture/BuildingP5/zhiwu/zw_shugan02.dds")]
-        );
+        assert_eq!(got, vec![p("/Texture/BuildingP5/zhiwu/zw_shugan02.dds")]);
     }
 
     #[test]
     fn jiemian_dff_uses_xianjianwu_short_circuit() {
         // The UI front-end model maps to `/Texture/load/xianjianwu/`
         // regardless of where the `jiemian.dff` lives.
-        let backslash = pal5_texture_candidates(
-            Path::new("/Model/UI\\frontend\\jiemian.dff"),
-            "title_logo",
-        );
-        let forward = pal5_texture_candidates(
-            Path::new("/Model/UI/frontend/jiemian.dff"),
-            "title_logo",
-        );
+        let backslash =
+            pal5_texture_candidates(Path::new("/Model/UI\\frontend\\jiemian.dff"), "title_logo");
+        let forward =
+            pal5_texture_candidates(Path::new("/Model/UI/frontend/jiemian.dff"), "title_logo");
         let expected = vec![p("/Texture/load/xianjianwu/title_logo.dds")];
         assert_eq!(backslash, expected);
         assert_eq!(forward, expected);

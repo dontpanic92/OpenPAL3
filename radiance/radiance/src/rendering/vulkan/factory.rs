@@ -10,8 +10,8 @@ use super::{
 };
 use crate::rendering::VideoPlayer;
 use crate::rendering::{
-    factory::ComponentFactory, texture::TextureDef, MaterialDef, MaterialKey, MaterialParams,
-    RenderObjectHandle, RenderingComponent, Texture, VertexBuffer,
+    MaterialDef, MaterialKey, MaterialParams, RenderObjectHandle, RenderingComponent, Texture,
+    VertexBuffer, factory::ComponentFactory, texture::TextureDef,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;

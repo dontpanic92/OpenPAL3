@@ -15,8 +15,12 @@ pub struct ScriptTypeDefinition {
 
 impl ScriptTypeDefinition {
     fn read(cursor: &mut Cursor<&[u8]>) -> anyhow::Result<Self> {
-        let name = read_string(cursor)
-            .with_context(|| format!("reading ScriptTypeDefinition.name at {:#x}", cursor.position()))?;
+        let name = read_string(cursor).with_context(|| {
+            format!(
+                "reading ScriptTypeDefinition.name at {:#x}",
+                cursor.position()
+            )
+        })?;
 
         Ok(Self { name })
     }
@@ -29,8 +33,12 @@ pub struct ScriptTypeReference {
 
 impl ScriptTypeReference {
     fn read(cursor: &mut Cursor<&[u8]>) -> anyhow::Result<Self> {
-        let name = read_string(cursor)
-            .with_context(|| format!("reading ScriptTypeReference.name at {:#x}", cursor.position()))?;
+        let name = read_string(cursor).with_context(|| {
+            format!(
+                "reading ScriptTypeReference.name at {:#x}",
+                cursor.position()
+            )
+        })?;
 
         Ok(Self { name })
     }
@@ -108,16 +116,27 @@ impl ScriptFunction {
         let mut param_types = vec![];
 
         for p in 0..param_count {
-            param_types.push(
-                ScriptDataType::read(cursor)
-                    .with_context(|| format!("fn '{}' param_types[{}] at {:#x}", name, p, cursor.position()))?,
-            );
+            param_types.push(ScriptDataType::read(cursor).with_context(|| {
+                format!(
+                    "fn '{}' param_types[{}] at {:#x}",
+                    name,
+                    p,
+                    cursor.position()
+                )
+            })?);
         }
 
         let unknown_dword1 = cursor.read_u32_le()?;
         let count2 = cursor.read_u32_le()?;
-        let (inst, inst2) = Self::read_instructions(cursor, count2 as usize, &name)
-            .with_context(|| format!("fn '{}' instructions ({} bytes declared, starts at {:#x})", name, count2, cursor.position()))?;
+        let (inst, inst2) =
+            Self::read_instructions(cursor, count2 as usize, &name).with_context(|| {
+                format!(
+                    "fn '{}' instructions ({} bytes declared, starts at {:#x})",
+                    name,
+                    count2,
+                    cursor.position()
+                )
+            })?;
         let type_ref_count = cursor.read_u32_le()? as usize;
 
         let mut type_refs = vec![];
@@ -201,8 +220,12 @@ impl ScriptFunction {
 
         while i < total_size {
             let inst_offset = cursor.position();
-            let inst = cursor.read_u8()
-                .with_context(|| format!("fn '{}' opcode byte at module-offset {:#x} (inst-byte {}/{})", fn_name, inst_offset, i, total_size))?;
+            let inst = cursor.read_u8().with_context(|| {
+                format!(
+                    "fn '{}' opcode byte at module-offset {:#x} (inst-byte {}/{})",
+                    fn_name, inst_offset, i, total_size
+                )
+            })?;
             instructions[i] = inst;
             let inst_len = INST_LENGTH[inst as usize];
             // Catch unknown opcodes structurally — INST_LENGTH = 0
@@ -338,8 +361,7 @@ impl ScriptModule {
         let mut type_defs = vec![];
         for t in 0..type_def_count {
             type_defs.push(
-                ScriptTypeDefinition::read(cursor)
-                    .with_context(|| format!("type_defs[{}]", t))?,
+                ScriptTypeDefinition::read(cursor).with_context(|| format!("type_defs[{}]", t))?,
             );
         }
 
@@ -347,8 +369,7 @@ impl ScriptModule {
         let mut type_refs = vec![];
         for t in 0..type_ref_count {
             type_refs.push(
-                ScriptTypeReference::read(cursor)
-                    .with_context(|| format!("type_refs[{}]", t))?,
+                ScriptTypeReference::read(cursor).with_context(|| format!("type_refs[{}]", t))?,
             );
         }
 
@@ -401,11 +422,7 @@ impl ScriptModule {
                 .read_exact(&mut pad)
                 .with_context(|| format!("named_globals[{}].pad8", i))?;
             if pad != [0u8; 8] {
-                anyhow::bail!(
-                    "named_globals[{}]: expected 8 zero bytes, got {:?}",
-                    i,
-                    pad
-                );
+                anyhow::bail!("named_globals[{}]: expected 8 zero bytes, got {:?}", i, pad);
             }
             let index = cursor
                 .read_u32_le()
@@ -423,9 +440,7 @@ impl ScriptModule {
 
         // Duplicate count terminator. Always present in the file
         // (including the empty-block case where it's the only word).
-        let count_dup = cursor
-            .read_u32_le()
-            .context("named_globals count_dup")?;
+        let count_dup = cursor.read_u32_le().context("named_globals count_dup")?;
         if count_dup as usize != named_globals_count {
             anyhow::bail!(
                 "named_globals: expected count_dup = {}, got {}",
@@ -448,19 +463,15 @@ impl ScriptModule {
         let astruct_count1 = cursor.read_u32_le()? as usize;
         let mut functions = vec![];
         for f in 0..astruct_count1 {
-            functions.push(Arc::new(
-                ScriptFunction::read(cursor)
-                    .with_context(|| format!("functions[{}] (of {})", f, astruct_count1))?,
-            ));
+            functions.push(Arc::new(ScriptFunction::read(cursor).with_context(
+                || format!("functions[{}] (of {})", f, astruct_count1),
+            )?));
         }
 
         let string_count = cursor.read_u32_le()? as usize;
         let mut strings = vec![];
         for s in 0..string_count {
-            strings.push(
-                read_string(cursor)
-                    .with_context(|| format!("strings[{}]", s))?,
-            );
+            strings.push(read_string(cursor).with_context(|| format!("strings[{}]", s))?);
         }
 
         let astruct_count2 = cursor.read_u32_le()? as usize;
@@ -576,7 +587,9 @@ mod tests {
                 return;
             }
         };
-        let script_dir = std::path::PathBuf::from(&root).join("gamedata").join("script");
+        let script_dir = std::path::PathBuf::from(&root)
+            .join("gamedata")
+            .join("script");
         let entries = match std::fs::read_dir(&script_dir) {
             Ok(it) => it,
             Err(e) => panic!(
@@ -592,7 +605,10 @@ mod tests {
         for entry in entries {
             let entry = entry.unwrap();
             let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase())
+            if path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_ascii_lowercase())
                 != Some("csb".to_string())
             {
                 continue;
@@ -657,12 +673,20 @@ mod tests {
                 );
             }
         }
-        assert!(total > 0, "no .csb modules found under {}", script_dir.display());
+        assert!(
+            total > 0,
+            "no .csb modules found under {}",
+            script_dir.display()
+        );
         assert!(
             named_global_modules >= 7,
             "expected at least 7 modules with named_global_count > 0 (M02, M07, M09, M16, Q04, Q05, Q11); found {}",
             named_global_modules,
         );
-        assert!(saw_q04, "Q04.csb was not found under {}", script_dir.display());
+        assert!(
+            saw_q04,
+            "Q04.csb was not found under {}",
+            script_dir.display()
+        );
     }
 }

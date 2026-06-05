@@ -15,8 +15,8 @@ use radiance::{
 };
 use radiance_scripting::install_imgui_pump;
 use shared::openpal4::agent::Pal4AgentBridge;
-use shared::openpal4::launch::{install_global_log_sink, start_agent_server, AgentBootOptions};
-use shared::{config::YaobowConfig, GameType};
+use shared::openpal4::launch::{AgentBootOptions, install_global_log_sink, start_agent_server};
+use shared::{GameType, config::YaobowConfig};
 
 use crate::comdef::yaobow_services::IYaobowHostContext;
 use crate::script_source::YaobowScriptProject;

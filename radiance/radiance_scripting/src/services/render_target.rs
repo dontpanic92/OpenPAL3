@@ -15,7 +15,7 @@ use imgui::TextureId;
 use radiance::rendering::RenderTarget as EngineRenderTarget;
 
 use crate::comdef::services::{IRenderTarget, IRenderTargetImpl};
-use crate::services::texture_cache::{next_handle_com_id, ImguiTextureCache};
+use crate::services::texture_cache::{ImguiTextureCache, next_handle_com_id};
 
 pub struct ScriptedRenderTarget {
     inner: Rc<RefCell<Box<dyn EngineRenderTarget>>>,

@@ -1,4 +1,4 @@
-use binrw::{binrw, NullString};
+use binrw::{NullString, binrw};
 
 use super::Sized32Big5String;
 

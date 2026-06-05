@@ -1,5 +1,5 @@
-use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
+use dashmap::mapref::one::Ref;
 
 use crate::math::*;
 

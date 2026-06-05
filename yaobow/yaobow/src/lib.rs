@@ -81,9 +81,7 @@ pub mod script_source {
     };
     use radiance::radiance::CoreRadianceEngine;
     use radiance_scripting::comdef::services::IInputService;
-    use radiance_scripting::{
-        bootstrap_script_root, ScriptHost, ScriptModule, ScriptPackage,
-    };
+    use radiance_scripting::{ScriptHost, ScriptModule, ScriptPackage, bootstrap_script_root};
     use shared::openpal4::comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay};
     use shared::openpal4::comdef::{
         IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext,
@@ -91,7 +89,9 @@ pub mod script_source {
     use shared::openpal4::scene::Pal4ActorControllerFactory;
     use shared::openpal4::service::Pal4ScriptHooks;
 
-    use crate::application::yaobow_host_context::{YaobowHostContext, YAOBOW_HOST_CONTEXT_TYPE_TAG};
+    use crate::application::yaobow_host_context::{
+        YAOBOW_HOST_CONTEXT_TYPE_TAG, YaobowHostContext,
+    };
     use crate::comdef::yaobow_services::IYaobowHostContext;
     use crate::openpal3::Pal3Service;
     use crate::script_bridges::yaobow_services::IYaobowScriptAppClient;
@@ -218,14 +218,8 @@ pub mod script_source {
             );
             let swd5 = shared::openswd5::service::Swd5Service::create(app.clone());
 
-            let host_ctx = YaobowHostContext::create(
-                app.clone(),
-                config,
-                pal3,
-                pal4.clone(),
-                pal5,
-                swd5,
-            );
+            let host_ctx =
+                YaobowHostContext::create(app.clone(), config, pal3, pal4.clone(), pal5, swd5);
 
             Self::install_inner(&engine, host_ctx, Some(pal4))
         }
@@ -273,9 +267,7 @@ pub mod script_source {
 
             if let Some(pal4) = pal4_service {
                 pal4.inner::<shared::openpal4::service::Pal4Service>()
-                    .set_script_hooks(
-                        Rc::downgrade(&project) as Weak<dyn Pal4ScriptHooks>,
-                    );
+                    .set_script_hooks(Rc::downgrade(&project) as Weak<dyn Pal4ScriptHooks>);
             }
 
             project
@@ -428,8 +420,8 @@ pub mod openpal4;
 pub mod openswd5;
 
 pub use application::{
-    boot_for, create_application, resolve_asset_path, run_app, run_openpal5, run_openpal5q,
-    run_title_selection, BootOptions,
+    BootOptions, boot_for, create_application, resolve_asset_path, run_app, run_openpal5,
+    run_openpal5q, run_title_selection,
 };
 pub use opengujian::run_opengujian;
 pub use openpal3::run_openpal3;

@@ -4,7 +4,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use crate::rwbs::{check_ty, ChunkHeader, ChunkType, FormatFlag, TexCoord, Triangle, Vec3f};
+use crate::rwbs::{ChunkHeader, ChunkType, FormatFlag, TexCoord, Triangle, Vec3f, check_ty};
 
 use super::{extension::Extension, material::Material};
 

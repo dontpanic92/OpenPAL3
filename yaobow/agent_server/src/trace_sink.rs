@@ -64,8 +64,8 @@ impl Ring {
         let next = self.next_seq;
         // A caller fell behind only if the lowest stored seq is past
         // their cursor (i.e. they missed the [after_seq+1 ..] prefix).
-        let dropped = self.dropped
-            && self.events.front().map_or(0, |e| e.seq) > after_seq.saturating_add(1);
+        let dropped =
+            self.dropped && self.events.front().map_or(0, |e| e.seq) > after_seq.saturating_add(1);
 
         for ev in &self.events {
             if ev.seq <= after_seq {
@@ -164,12 +164,6 @@ impl AgentTraceSink {
     pub fn drain(&self, after_seq: u64, n: usize) -> TraceDrainResult {
         let mut ring = self.ring.lock().expect("trace ring poisoned");
         ring.drain(after_seq, n)
-    }
-
-    /// Snapshot of the highest seq emitted so far (for tests).
-    #[cfg(test)]
-    pub(crate) fn next_seq(&self) -> u64 {
-        self.ring.lock().unwrap().next_seq
     }
 }
 

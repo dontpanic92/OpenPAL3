@@ -236,10 +236,7 @@ impl AssetManager {
         Ok(bytes)
     }
 
-    pub fn read_to_end_from_gbk<P: AsRef<Path>>(
-        &self,
-        path: P,
-    ) -> Result<String, Box<dyn Error>> {
+    pub fn read_to_end_from_gbk<P: AsRef<Path>>(&self, path: P) -> Result<String, Box<dyn Error>> {
         let data = self.read_to_end(path)?;
         Ok(encoding::all::GBK.decode(&data, DecoderTrap::Ignore)?)
     }

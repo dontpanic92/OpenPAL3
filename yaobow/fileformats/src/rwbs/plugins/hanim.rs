@@ -1,6 +1,6 @@
 use std::io::{Cursor, Read};
 
-use binrw::{binrw, BinRead};
+use binrw::{BinRead, binrw};
 use common::read_ext::ReadExt;
 use serde::Serialize;
 

@@ -12,7 +12,7 @@ pub mod world;
 
 use std::io::{Cursor, Read};
 
-use binrw::{binrw, BinRead, BinResult};
+use binrw::{BinRead, BinResult, binrw};
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use clump::Clump;
 use common::read_ext::ReadExt;
@@ -294,7 +294,7 @@ pub enum RwbsReadError {
 }
 
 macro_rules! check_ty {
-    ($actual: expr, $expected: expr) => {
+    ($actual: expr_2021, $expected: expr_2021) => {
         if $expected != $actual {
             return Err(crate::rwbs::RwbsReadError::IncorrectChunkFormat(
                 $actual.0,

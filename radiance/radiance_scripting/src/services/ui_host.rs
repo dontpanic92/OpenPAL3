@@ -112,8 +112,10 @@ fn menu_popup_extra_width() -> Option<f32> {
 /// imgui window size-constraint callback: adds the caller-provided extra
 /// width (a `*const f32` in `UserData`) to the popup's desired width.
 unsafe extern "C" fn add_popup_extra_width(data: *mut imgui::sys::ImGuiSizeCallbackData) {
-    let extra = *((*data).UserData as *const f32);
-    (*data).DesiredSize.x += extra;
+    unsafe {
+        let extra = *((*data).UserData as *const f32);
+        (*data).DesiredSize.x += extra;
+    }
 }
 
 /// Queue a size constraint that widens the next window (the popup a menu

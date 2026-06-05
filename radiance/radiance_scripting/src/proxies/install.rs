@@ -21,10 +21,10 @@ use crosscom::ComRc;
 use radiance::comdef::IApplication;
 use radiance::comdef::IApplicationExt;
 
-use crate::script_bridges::radiance::register_immediate_director_proto;
-use crate::services::ui_host::ImguiUiHost;
-use crate::services::ImguiTextureCache;
 use crate::ImguiImmediateDirectorPump;
+use crate::script_bridges::radiance::register_immediate_director_proto;
+use crate::services::ImguiTextureCache;
+use crate::services::ui_host::ImguiUiHost;
 use radiance::comdef::IUiHost;
 
 /// Install a fresh imgui pump on the engine and return the texture

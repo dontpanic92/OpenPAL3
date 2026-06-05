@@ -4,8 +4,8 @@ use agent_server::AgentLogSink;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use shared::video::register_opengb_video_decoders;
 use yaobow_lib::{
-    run_opengujian, run_openpal3, run_openpal4, run_openpal4_with_agent, run_openpal5,
-    run_openpal5q, run_openswd5, run_title_selection, Pal4AgentBootOptions,
+    Pal4AgentBootOptions, run_opengujian, run_openpal3, run_openpal4, run_openpal4_with_agent,
+    run_openpal5, run_openpal5q, run_openswd5, run_title_selection,
 };
 
 pub fn main() {
@@ -179,5 +179,5 @@ fn _force_level_imports() {
 }
 
 #[used]
-#[export_name = "_newlib_heap_size_user"]
+#[unsafe(export_name = "_newlib_heap_size_user")]
 pub static _NEWLIB_HEAP_SIZE_USER: u32 = 216 * 1024 * 1024;

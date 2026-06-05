@@ -22,8 +22,8 @@ use p7::errors::RuntimeError;
 use p7::interpreter::context::Context;
 use radiance::comdef::{IComponent, IEntity};
 use radiance::scene::CoreEntity;
-use radiance_scripting::script_bridges::radiance::wrap_component;
 use radiance_scripting::ScriptHost;
+use radiance_scripting::script_bridges::radiance::wrap_component;
 
 const SCRIPT: &str = r#"
 import radiance;

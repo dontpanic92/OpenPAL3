@@ -25,12 +25,14 @@ pub mod runtime;
 pub mod script_package;
 pub mod services;
 
-pub use proxies::{install_imgui_pump, install_imgui_pump_with_cache, ImguiImmediateDirectorPump};
+pub use proxies::{ImguiImmediateDirectorPump, install_imgui_pump, install_imgui_pump_with_cache};
 // Auto-generated bridges re-exported under the historical names so
 // callers don't need to know where the codegen lives.
 pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};
 pub use script_bridges::radiance::{register_immediate_director_proto, wrap_director};
-pub use script_package::{bootstrap_script_root, ScriptModule, ScriptPackage, HOST_CONTEXT_TYPE_TAG};
+pub use script_package::{
+    HOST_CONTEXT_TYPE_TAG, ScriptModule, ScriptPackage, bootstrap_script_root,
+};
 pub use services::HostContext;
 
 /// Generic FreeView camera controller, 1:1 port of
@@ -52,6 +54,6 @@ pub use radiance::utils::ray_casting::wrap_ray_caster;
 // dependency surface for `yaobow_editor` minimal — it can pull
 // everything it needs from this crate.
 pub use crosscom_protosept::{
-    register_proto_ccw, with_services, ArgKind, MethodSpec, ProtoSpec, RetKind, RuntimeAccess,
-    RuntimeHandle,
+    ArgKind, MethodSpec, ProtoSpec, RetKind, RuntimeAccess, RuntimeHandle, register_proto_ccw,
+    with_services,
 };

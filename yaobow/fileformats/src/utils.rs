@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use binrw::{binrw, BinRead, BinResult, BinWrite};
+use binrw::{BinRead, BinResult, BinWrite, binrw};
 use common::read_ext::FileReadError;
 use encoding::{DecoderTrap, Encoding};
 use serde::Serialize;

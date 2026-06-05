@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{DeriveInput, parse_macro_input};
 
 #[proc_macro_derive(NiObjectType, attributes(prop))]
 pub fn ni_object_type(input: TokenStream) -> TokenStream {

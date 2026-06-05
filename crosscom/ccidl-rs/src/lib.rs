@@ -47,7 +47,7 @@ pub fn generate(idl_path: impl AsRef<Path>) -> Result<GeneratedUnit, Error> {
 
     let mut unit = parse_file(idl_path)?;
     process_imports(idl_path, &mut unit)?;
-    let source = RustGen::new(unit)?.gen()?;
+    let source = RustGen::new(unit)?.r#gen()?;
 
     Ok(GeneratedUnit {
         source,
@@ -583,7 +583,7 @@ impl<'a> Parser<'a> {
                 other => {
                     return Err(format!(
                         "expected ',' or ']' in attributes, found {other:?}"
-                    ))
+                    ));
                 }
             }
         }
@@ -808,7 +808,7 @@ impl RustGen {
         self.unit
     }
 
-    fn gen(&self) -> Result<String, Error> {
+    fn r#gen(&self) -> Result<String, Error> {
         let mut out = String::new();
         out.push_str(&format!(
             "#[allow(unused_imports)]\nuse crate as {};\n",
@@ -864,7 +864,7 @@ impl RustGen {
                 return Err(Error::Generate(format!(
                     "cannot have more than one parent for interface: {}",
                     interface.name
-                )))
+                )));
             }
         }
 
@@ -891,7 +891,7 @@ impl RustGen {
                 return Err(Error::Generate(format!(
                     "cannot have more than one parent for interface: {}",
                     interface.name
-                )))
+                )));
             }
         }
         ifaces.push(interface.clone());
@@ -942,30 +942,30 @@ mod {name}_crosscom_impl {{
         this: *const *const std::os::raw::c_void,
         guid: uuid::Uuid,
         retval: &mut *const *const std::os::raw::c_void,
-    ) -> std::os::raw::c_long {{
+    ) -> std::os::raw::c_long {{ unsafe {{
         let object = {crosscom}::get_object::<{name}Ccw>(this);
         match guid.as_bytes() {{
             {query_interface_branches}
             _ => {crosscom}::ResultCode::ENoInterface as std::os::raw::c_long,
         }}
-    }}
+    }} }}
 
-    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {{
+    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {{ unsafe {{
         let object = {crosscom}::get_object::<{name}Ccw>(this);
         let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         (previous + 1) as std::os::raw::c_long
-    }}
+    }} }}
 
-    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {{
+    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {{ unsafe {{
         let object = {crosscom}::get_object::<{name}Ccw>(this);
 
         let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
         if previous - 1 == 0 {{
-            Box::from_raw(object as *mut {name}Ccw);
+            let _ = Box::from_raw(object as *mut {name}Ccw);
         }}
 
         (previous - 1) as std::os::raw::c_long
-    }}
+    }} }}
 
     {raw_methods}
 
@@ -1178,12 +1178,12 @@ pub const GLOBAL_{base}VirtualTable_CCW_FOR_{class_name}: {module}::{base}Virtua
             };
             Ok(format!(
                 r#"
-    unsafe extern "system" fn {method_name}(this: *const *const std::os::raw::c_void{raw_params}) -> {raw_ret} {{
+    unsafe extern "system" fn {method_name}(this: *const *const std::os::raw::c_void{raw_params}) -> {raw_ret} {{ unsafe {{
         {param_mapping}
         let __crosscom_object = {crosscom}::get_object::<{class_name}Ccw>(this);
         let ret = (*__crosscom_object).inner{field_name}.{method_name}({call_args});
         {ret_mapping}
-    }}
+    }} }}
 "#,
                 method_name = method.name,
                 crosscom = self.crosscom_module_name,

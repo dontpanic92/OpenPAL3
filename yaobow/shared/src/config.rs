@@ -143,9 +143,11 @@ mod tests {
 
     fn with_env_override<T>(path: &std::path::Path, f: impl FnOnce() -> T) -> T {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        std::env::set_var(ENV_OVERRIDE, path);
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var(ENV_OVERRIDE, path) };
         let r = f();
-        std::env::remove_var(ENV_OVERRIDE);
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::remove_var(ENV_OVERRIDE) };
         r
     }
 

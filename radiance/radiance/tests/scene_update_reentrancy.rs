@@ -50,67 +50,79 @@ unsafe extern "system" fn component_qi(
     guid: Uuid,
     retval: &mut *const *const c_void,
 ) -> c_long {
-    let bytes = *guid.as_bytes();
-    if bytes == IUnknown::INTERFACE_ID || bytes == IComponent::INTERFACE_ID {
-        *retval = this as *const *const c_void;
-        component_addref(*retval);
-        0
-    } else {
-        *retval = std::ptr::null();
-        -1
+    unsafe {
+        let bytes = *guid.as_bytes();
+        if bytes == IUnknown::INTERFACE_ID || bytes == IComponent::INTERFACE_ID {
+            *retval = this as *const *const c_void;
+            component_addref(*retval);
+            0
+        } else {
+            *retval = std::ptr::null();
+            -1
+        }
     }
 }
 
 unsafe extern "system" fn component_addref(this: *const *const c_void) -> c_long {
-    let component = &*(this as *const RecordingComponent);
-    let prev = component.refcount.get();
-    component.refcount.set(prev + 1);
-    (prev + 1) as c_long
+    unsafe {
+        let component = &*(this as *const RecordingComponent);
+        let prev = component.refcount.get();
+        component.refcount.set(prev + 1);
+        (prev + 1) as c_long
+    }
 }
 
 unsafe extern "system" fn component_release(this: *const *const c_void) -> c_long {
-    let component = &*(this as *const RecordingComponent);
-    let prev = component.refcount.get();
-    component.refcount.set(prev - 1);
-    if prev == 1 {
-        drop(Box::from_raw(this as *mut RecordingComponent));
+    unsafe {
+        let component = &*(this as *const RecordingComponent);
+        let prev = component.refcount.get();
+        component.refcount.set(prev - 1);
+        if prev == 1 {
+            drop(Box::from_raw(this as *mut RecordingComponent));
+        }
+        (prev - 1) as c_long
     }
-    (prev - 1) as c_long
 }
 
 unsafe extern "system" fn component_on_loading(this: *const *const c_void) {
-    let component = &*(this as *const RecordingComponent);
-    component
-        .state
-        .events
-        .borrow_mut()
-        .push(Event::Loading(component.state.name));
-    if let Some(hook) = component.state.hooks.borrow_mut().on_loading.as_mut() {
-        hook();
+    unsafe {
+        let component = &*(this as *const RecordingComponent);
+        component
+            .state
+            .events
+            .borrow_mut()
+            .push(Event::Loading(component.state.name));
+        if let Some(hook) = component.state.hooks.borrow_mut().on_loading.as_mut() {
+            hook();
+        }
     }
 }
 
 unsafe extern "system" fn component_on_updating(this: *const *const c_void, delta_sec: f32) {
-    let component = &*(this as *const RecordingComponent);
-    component
-        .state
-        .events
-        .borrow_mut()
-        .push(Event::Updating(component.state.name));
-    if let Some(hook) = component.state.hooks.borrow_mut().on_updating.as_mut() {
-        hook(delta_sec);
+    unsafe {
+        let component = &*(this as *const RecordingComponent);
+        component
+            .state
+            .events
+            .borrow_mut()
+            .push(Event::Updating(component.state.name));
+        if let Some(hook) = component.state.hooks.borrow_mut().on_updating.as_mut() {
+            hook(delta_sec);
+        }
     }
 }
 
 unsafe extern "system" fn component_on_unloading(this: *const *const c_void) {
-    let component = &*(this as *const RecordingComponent);
-    component
-        .state
-        .events
-        .borrow_mut()
-        .push(Event::Unloading(component.state.name));
-    if let Some(hook) = component.state.hooks.borrow_mut().on_unloading.as_mut() {
-        hook();
+    unsafe {
+        let component = &*(this as *const RecordingComponent);
+        component
+            .state
+            .events
+            .borrow_mut()
+            .push(Event::Unloading(component.state.name));
+        if let Some(hook) = component.state.hooks.borrow_mut().on_unloading.as_mut() {
+            hook();
+        }
     }
 }
 

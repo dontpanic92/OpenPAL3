@@ -14,8 +14,8 @@ use std::sync::Mutex;
 
 use crosscom::{ComInterface, ComRc, IUnknownVirtualTable};
 use crosscom_protosept::{
-    register_proto_ccw, wrap_proto, ArgKind, MethodSpec, ProtoSpec, RetKind, RuntimeAccess,
-    RuntimeHandle,
+    ArgKind, MethodSpec, ProtoSpec, RetKind, RuntimeAccess, RuntimeHandle, register_proto_ccw,
+    wrap_proto,
 };
 use p7::interpreter::context::{Context, Data};
 
@@ -153,25 +153,31 @@ fn register_both() {
 }
 
 unsafe fn call_foo(inst: &IFooInst) -> c_int {
-    let this = inst as *const IFooInst as *const *const c_void;
-    ((*inst.vtable).foo)(this)
+    unsafe {
+        let this = inst as *const IFooInst as *const *const c_void;
+        ((*inst.vtable).foo)(this)
+    }
 }
 
 unsafe fn call_bar(inst: &IBarInst, n: c_int) -> c_int {
-    let this = inst as *const IBarInst as *const *const c_void;
-    ((*inst.vtable).bar)(this, n)
+    unsafe {
+        let this = inst as *const IBarInst as *const *const c_void;
+        ((*inst.vtable).bar)(this, n)
+    }
 }
 
 unsafe fn qi_to_ibar(foo: &IFooInst) -> Option<ComRc<IBarInst>> {
-    let foo_this = foo as *const IFooInst as *const *const c_void;
-    let unk = *(foo_this as *const *const IUnknownVirtualTable);
-    let guid = uuid::Uuid::from_bytes(IBAR_UUID);
-    let mut out: *const *const c_void = std::ptr::null();
-    let hr = ((*unk).query_interface)(foo_this as *const c_void, guid, &mut out);
-    if hr == 0 && !out.is_null() {
-        Some(ComRc::<IBarInst>::from_raw_pointer(out))
-    } else {
-        None
+    unsafe {
+        let foo_this = foo as *const IFooInst as *const *const c_void;
+        let unk = *(foo_this as *const *const IUnknownVirtualTable);
+        let guid = uuid::Uuid::from_bytes(IBAR_UUID);
+        let mut out: *const *const c_void = std::ptr::null();
+        let hr = ((*unk).query_interface)(foo_this as *const c_void, guid, &mut out);
+        if hr == 0 && !out.is_null() {
+            Some(ComRc::<IBarInst>::from_raw_pointer(out))
+        } else {
+            None
+        }
     }
 }
 

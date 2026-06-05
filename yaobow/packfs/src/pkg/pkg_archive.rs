@@ -4,8 +4,8 @@ use std::{
 };
 
 use byteorder::ReadBytesExt;
-use common::read_ext::ReadExt;
 use common::SeekRead;
+use common::read_ext::ReadExt;
 use encoding::Encoding;
 
 use crate::memory_file::MemoryFile;
@@ -154,7 +154,7 @@ impl PkgFolderEntry {
                 for entry in &self.children {
                     match entry {
                         PkgEntry::File(_) => {
-                            return Err(std::io::Error::from(std::io::ErrorKind::NotADirectory))
+                            return Err(std::io::Error::from(std::io::ErrorKind::NotADirectory));
                         }
                         PkgEntry::Folder(f) => {
                             if f.name.as_str() == component.as_os_str().to_str().unwrap() {

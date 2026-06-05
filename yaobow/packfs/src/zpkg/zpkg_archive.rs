@@ -1,7 +1,7 @@
 use std::{io::Cursor, path::Path};
 
-use common::read_ext::ReadExt;
 use common::SeekRead;
+use common::read_ext::ReadExt;
 
 use crate::{memory_file::MemoryFile, plain_fs::PlainArchive};
 

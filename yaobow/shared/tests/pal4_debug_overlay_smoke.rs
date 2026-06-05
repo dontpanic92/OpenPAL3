@@ -12,9 +12,9 @@
 //! Mirrors the editor's `wrap_director_smoke` / `ui_host_smoke` recipe.
 
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
-use radiance_scripting::{with_services, RuntimeAccess, ScriptHost};
+use radiance_scripting::{RuntimeAccess, ScriptHost, with_services};
 use shared::openpal4::pal4_debug::{
-    create_debug_session, wrap_overlay, Pal4DebugSnapshot, PAL4_DEBUG_P7,
+    PAL4_DEBUG_P7, Pal4DebugSnapshot, create_debug_session, wrap_overlay,
 };
 
 const OVERLAY_P7: &str = include_str!("../../yaobow/scripts/pal4_debug_overlay.p7");

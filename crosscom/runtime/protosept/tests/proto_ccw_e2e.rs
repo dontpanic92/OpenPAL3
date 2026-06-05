@@ -19,10 +19,10 @@ use std::os::raw::{c_float, c_int, c_long};
 use std::rc::Rc;
 use std::sync::Mutex;
 
-use crosscom::{ComInterface, ComRc, IUnknown, IUnknownVirtualTable};
+use crosscom::{ComInterface, ComRc, IUnknownVirtualTable};
 use crosscom_protosept::{
-    register_proto_ccw, wrap_proto, ArgKind, MethodSpec, ProtoSpec, RetKind, RuntimeAccess,
-    RuntimeHandle,
+    ArgKind, MethodSpec, ProtoSpec, RetKind, RuntimeAccess, RuntimeHandle, register_proto_ccw,
+    wrap_proto,
 };
 use p7::interpreter::context::{Context, Data};
 
@@ -310,13 +310,17 @@ fn register_dirlike() {
 }
 
 unsafe fn director_activate(d: &IDirLikeInst) {
-    let this = d as *const IDirLikeInst as *const *const c_void;
-    ((*d.vtable).activate)(this);
+    unsafe {
+        let this = d as *const IDirLikeInst as *const *const c_void;
+        ((*d.vtable).activate)(this);
+    }
 }
 
 unsafe fn director_update_returning_raw(d: &IDirLikeInst, dt: f32) -> *const c_void {
-    let this = d as *const IDirLikeInst as *const *const c_void;
-    ((*d.vtable).update)(this, dt)
+    unsafe {
+        let this = d as *const IDirLikeInst as *const *const c_void;
+        ((*d.vtable).update)(this, dt)
+    }
 }
 
 #[test]

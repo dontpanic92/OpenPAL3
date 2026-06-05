@@ -28,7 +28,7 @@ use crate::comdef::editor_services::{
     IPreviewSession, IPreviewSessionImpl, IUiLayoutHandle, IUiLayoutHandleImpl, IVideoHandle,
     IVideoHandleImpl,
 };
-use crate::services::preview_registry::{tick_orbit, OrbitState, PreviewRegistry, PreviewState};
+use crate::services::preview_registry::{OrbitState, PreviewRegistry, PreviewState, tick_orbit};
 
 // ---------------------------------------------------------------------------
 // Image

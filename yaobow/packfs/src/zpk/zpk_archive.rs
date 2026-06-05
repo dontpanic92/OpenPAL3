@@ -4,9 +4,9 @@ use std::{
 };
 
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
-use cipher::{generic_array::GenericArray, BlockDecrypt, KeyInit};
-use common::read_ext::ReadExt;
+use cipher::{BlockDecrypt, KeyInit, generic_array::GenericArray};
 use common::SeekRead;
+use common::read_ext::ReadExt;
 
 use crate::{memory_file::MemoryFile, plain_fs::PlainArchive};
 
@@ -161,6 +161,9 @@ pub struct ZpkEntry {
     pub compression_type: u8,
     pub offset: u32,
     pub original_size: u32,
+    // Header schema field kept for completeness; current loader pulls the
+    // payload by `original_size` only.
+    #[allow(dead_code)]
     pub packed_size: u32,
 }
 

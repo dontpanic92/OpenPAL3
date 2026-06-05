@@ -5,12 +5,12 @@ use crosscom::ComRc;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance_scripting::comdef::services::{IAppService, IAppServiceImpl};
 use radiance_scripting::services::ImguiTextureCache;
-use radiance_scripting::{install_imgui_pump_with_cache, wrap_director, ScriptHost};
+use radiance_scripting::{ScriptHost, install_imgui_pump_with_cache, wrap_director};
 use shared::config::YaobowConfig;
 
+use crate::GameType;
 use crate::directors::DevToolsAssetLoader;
 use crate::services::editor_host_context::EditorHostContext;
-use crate::GameType;
 use shared::config_service::ConfigService;
 
 pub struct AppService {

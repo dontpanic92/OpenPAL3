@@ -5,7 +5,7 @@ use imgui::TextureId;
 use crate::{
     audio::AudioEngine,
     utils::SeekRead,
-    video::{create_stream, Codec, VideoStream, VideoStreamState},
+    video::{Codec, VideoStream, VideoStreamState, create_stream},
 };
 
 use super::ComponentFactory;

@@ -27,10 +27,10 @@ use packfs::init_virtual_fs;
 use radiance::comdef::{IApplication, IApplicationExt, IScene};
 use radiance::rendering::ComponentFactory;
 
+use crate::GameType;
 use crate::openpal5::asset_loader::AssetLoader;
 use crate::openpal5::comdef::{IPal5Service, IPal5ServiceImpl};
 use crate::openpal5::scene::Pal5Scene;
-use crate::GameType;
 
 /// Default scene baked into the legacy `OpenPal5ApplicationLoader`.
 const DEFAULT_SCENE_NAME: &str = "kuangfengzhai";
@@ -84,11 +84,10 @@ impl IPal5ServiceImpl for Pal5Service {
             PathBuf::from(asset_path)
         };
         let asset_path_str = asset_path.to_str()?;
-        let game = radiance_scripting::services::game_registry::ordinal_to_config_key(
-            game_ordinal as i32,
-        )
-        .and_then(GameType::from_config_key)
-        .unwrap_or(GameType::PAL5);
+        let game =
+            radiance_scripting::services::game_registry::ordinal_to_config_key(game_ordinal as i32)
+                .and_then(GameType::from_config_key)
+                .unwrap_or(GameType::PAL5);
         let vfs = init_virtual_fs(asset_path_str, game.pkg_key());
         let loader = AssetLoader::new(self.component_factory.clone(), Rc::new(vfs));
         match Pal5Scene::load(&loader, DEFAULT_SCENE_NAME) {

@@ -1,9 +1,8 @@
 use std::io::Cursor;
 
 use binrw::{
-    binrw,
+    BinRead, BinResult, BinWrite, NamedArgs, binrw,
     meta::{ReadEndian, WriteEndian},
-    BinRead, BinResult, BinWrite, NamedArgs,
 };
 use common::read_ext::ReadExt;
 use dashmap::DashMap;

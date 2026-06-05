@@ -3,7 +3,7 @@ use std::io::SeekFrom;
 use byteorder::{LittleEndian, ReadBytesExt};
 use common::read_ext::ReadExt;
 
-use crate::utils::{to_big5_string, SeekRead};
+use crate::utils::{SeekRead, to_big5_string};
 
 #[derive(Debug)]
 pub struct MapsData {

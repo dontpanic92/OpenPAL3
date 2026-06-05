@@ -431,65 +431,71 @@ macro_rules! ComObject_Test {
                 guid: uuid::Uuid,
                 retval: &mut *const *const std::os::raw::c_void,
             ) -> std::os::raw::c_long {
-                let object = crosscom::get_object::<TestCcw>(this);
-                match guid.as_bytes() {
-                    &crosscom::IUnknown::INTERFACE_ID => {
-                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
-                        add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as std::os::raw::c_long
-                    }
+                unsafe {
+                    let object = crosscom::get_object::<TestCcw>(this);
+                    match guid.as_bytes() {
+                        &crosscom::IUnknown::INTERFACE_ID => {
+                            *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                            add_ref(object as *const *const std::os::raw::c_void);
+                            crosscom::ResultCode::Ok as std::os::raw::c_long
+                        }
 
-                    &test::crosscom_gen::ITest::INTERFACE_ID => {
-                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
-                        add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as std::os::raw::c_long
-                    }
+                        &test::crosscom_gen::ITest::INTERFACE_ID => {
+                            *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                            add_ref(object as *const *const std::os::raw::c_void);
+                            crosscom::ResultCode::Ok as std::os::raw::c_long
+                        }
 
-                    &test::crosscom_gen::ITest2::INTERFACE_ID => {
-                        *retval = (object as *const *const std::os::raw::c_void).offset(0);
-                        add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as std::os::raw::c_long
-                    }
+                        &test::crosscom_gen::ITest2::INTERFACE_ID => {
+                            *retval = (object as *const *const std::os::raw::c_void).offset(0);
+                            add_ref(object as *const *const std::os::raw::c_void);
+                            crosscom::ResultCode::Ok as std::os::raw::c_long
+                        }
 
-                    &test::crosscom_gen::ITest3::INTERFACE_ID => {
-                        *retval = (object as *const *const std::os::raw::c_void).offset(2);
-                        add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as std::os::raw::c_long
-                    }
+                        &test::crosscom_gen::ITest3::INTERFACE_ID => {
+                            *retval = (object as *const *const std::os::raw::c_void).offset(2);
+                            add_ref(object as *const *const std::os::raw::c_void);
+                            crosscom::ResultCode::Ok as std::os::raw::c_long
+                        }
 
-                    &test::crosscom_gen::ITest4::INTERFACE_ID => {
-                        *retval = (object as *const *const std::os::raw::c_void).offset(3);
-                        add_ref(object as *const *const std::os::raw::c_void);
-                        crosscom::ResultCode::Ok as std::os::raw::c_long
-                    }
+                        &test::crosscom_gen::ITest4::INTERFACE_ID => {
+                            *retval = (object as *const *const std::os::raw::c_void).offset(3);
+                            add_ref(object as *const *const std::os::raw::c_void);
+                            crosscom::ResultCode::Ok as std::os::raw::c_long
+                        }
 
-                    _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
+                        _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
+                    }
                 }
             }
 
             unsafe extern "system" fn add_ref(
                 this: *const *const std::os::raw::c_void,
             ) -> std::os::raw::c_long {
-                let object = crosscom::get_object::<TestCcw>(this);
-                let previous = (*object)
-                    .ref_count
-                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                (previous + 1) as std::os::raw::c_long
+                unsafe {
+                    let object = crosscom::get_object::<TestCcw>(this);
+                    let previous = (*object)
+                        .ref_count
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    (previous + 1) as std::os::raw::c_long
+                }
             }
 
             unsafe extern "system" fn release(
                 this: *const *const std::os::raw::c_void,
             ) -> std::os::raw::c_long {
-                let object = crosscom::get_object::<TestCcw>(this);
+                unsafe {
+                    let object = crosscom::get_object::<TestCcw>(this);
 
-                let previous = (*object)
-                    .ref_count
-                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-                if previous - 1 == 0 {
-                    Box::from_raw(object as *mut TestCcw);
+                    let previous = (*object)
+                        .ref_count
+                        .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                    if previous - 1 == 0 {
+                        Box::from_raw(object as *mut TestCcw);
+                    }
+
+                    (previous - 1) as std::os::raw::c_long
                 }
-
-                (previous - 1) as std::os::raw::c_long
             }
 
             unsafe extern "system" fn mul(
@@ -497,35 +503,43 @@ macro_rules! ComObject_Test {
                 a: std::os::raw::c_int,
                 b: std::os::raw::c_float,
             ) -> std::os::raw::c_float {
-                let a: std::os::raw::c_int = a.into();
-                let b: f32 = b.into();
+                unsafe {
+                    let a: std::os::raw::c_int = a.into();
+                    let b: f32 = b.into();
 
-                let object = crosscom::get_object::<TestCcw>(this);
-                (*object).inner.mul(a.into(), b.into()).into()
+                    let object = crosscom::get_object::<TestCcw>(this);
+                    (*object).inner.mul(a.into(), b.into()).into()
+                }
             }
 
             unsafe extern "system" fn test(
                 this: *const *const std::os::raw::c_void,
             ) -> std::os::raw::c_int {
-                let object = crosscom::get_object::<TestCcw>(this);
-                (*object).inner.test().into()
+                unsafe {
+                    let object = crosscom::get_object::<TestCcw>(this);
+                    (*object).inner.test().into()
+                }
             }
 
             unsafe extern "system" fn echo(
                 this: *const *const std::os::raw::c_void,
                 a: std::os::raw::c_int,
             ) -> std::os::raw::c_int {
-                let a: std::os::raw::c_int = a.into();
+                unsafe {
+                    let a: std::os::raw::c_int = a.into();
 
-                let object = crosscom::get_object::<TestCcw>(this);
-                (*object).inner.echo(a.into()).into()
+                    let object = crosscom::get_object::<TestCcw>(this);
+                    (*object).inner.echo(a.into()).into()
+                }
             }
 
             unsafe extern "system" fn get(
                 this: *const *const std::os::raw::c_void,
             ) -> *const *const std::os::raw::c_void {
-                let object = crosscom::get_object::<TestCcw>(this);
-                (*object).inner.get().into()
+                unsafe {
+                    let object = crosscom::get_object::<TestCcw>(this);
+                    (*object).inner.get().into()
+                }
             }
 
             #[allow(non_upper_case_globals)]

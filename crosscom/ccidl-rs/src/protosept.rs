@@ -41,13 +41,13 @@
 use std::collections::HashMap;
 
 use crate::{
-    parse_uuid_bytes, rust_module, CrossComIdl, Error, Interface, Item, Method, Module, Symbol,
+    CrossComIdl, Error, Interface, Item, Method, Module, Symbol, parse_uuid_bytes, rust_module,
 };
 
 /// Top-level entry point: generate a protosept source file from a parsed IDL
 /// unit (which must already have its imports processed).
 pub(crate) fn generate(unit: CrossComIdl) -> Result<String, Error> {
-    ProtoseptGen::new(unit)?.gen()
+    ProtoseptGen::new(unit)?.r#gen()
 }
 
 struct ProtoseptGen {
@@ -86,7 +86,7 @@ impl ProtoseptGen {
         })
     }
 
-    fn gen(&self) -> Result<String, Error> {
+    fn r#gen(&self) -> Result<String, Error> {
         let mut out = String::new();
         out.push_str(&format!(
             "// Auto-generated from IDL by crosscom-ccidl. Do not edit.\n\

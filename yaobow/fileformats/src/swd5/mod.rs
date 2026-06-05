@@ -26,12 +26,12 @@ pub struct SizedBig5StringT<
 }
 
 impl<
-        T: for<'a> BinRead<Args<'a> = ()>
-            + for<'a> BinWrite<Args<'a> = ()>
-            + std::fmt::Debug
-            + Into<u32>
-            + Copy,
-    > SizedBig5StringT<T>
+    T: for<'a> BinRead<Args<'a> = ()>
+        + for<'a> BinWrite<Args<'a> = ()>
+        + std::fmt::Debug
+        + Into<u32>
+        + Copy,
+> SizedBig5StringT<T>
 {
     pub fn to_string(&self) -> String {
         encoding::all::BIG5_2003
@@ -41,12 +41,12 @@ impl<
 }
 
 impl<
-        T: for<'a> BinRead<Args<'a> = ()>
-            + for<'a> BinWrite<Args<'a> = ()>
-            + std::fmt::Debug
-            + Into<u32>
-            + Copy,
-    > Serialize for SizedBig5StringT<T>
+    T: for<'a> BinRead<Args<'a> = ()>
+        + for<'a> BinWrite<Args<'a> = ()>
+        + std::fmt::Debug
+        + Into<u32>
+        + Copy,
+> Serialize for SizedBig5StringT<T>
 {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let s = encoding::all::BIG5_2003

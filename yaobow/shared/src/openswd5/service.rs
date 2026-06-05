@@ -16,10 +16,10 @@ use packfs::init_virtual_fs;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance::scene::CoreScene;
 
+use crate::GameType;
 use crate::openswd5::asset_loader::AssetLoader;
 use crate::openswd5::comdef::{ISwd5Service, ISwd5ServiceImpl};
 use crate::openswd5::director::OpenSWD5Director;
-use crate::GameType;
 
 pub struct Swd5Service {
     app: ComRc<IApplication>,
@@ -39,11 +39,10 @@ impl ISwd5ServiceImpl for Swd5Service {
         asset_path: &str,
         game_ordinal: std::os::raw::c_int,
     ) -> ComRc<IDirector> {
-        let game = radiance_scripting::services::game_registry::ordinal_to_config_key(
-            game_ordinal as i32,
-        )
-        .and_then(GameType::from_config_key)
-        .unwrap_or(GameType::SWDHC);
+        let game =
+            radiance_scripting::services::game_registry::ordinal_to_config_key(game_ordinal as i32)
+                .and_then(GameType::from_config_key)
+                .unwrap_or(GameType::SWDHC);
 
         let engine_rc = self.app.engine();
         let engine = engine_rc.borrow();

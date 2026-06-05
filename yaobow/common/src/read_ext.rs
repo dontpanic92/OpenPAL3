@@ -1,5 +1,5 @@
 use byteorder::{LittleEndian, ReadBytesExt};
-use encoding::{types::Encoding, DecoderTrap};
+use encoding::{DecoderTrap, types::Encoding};
 use std::io::Read;
 
 #[derive(thiserror::Error, Debug)]

@@ -36,7 +36,7 @@
 use std::collections::HashMap;
 
 use crosscom::ComRc;
-use fileformats::rwbs::uva::{UvAnim, UvAnimDict, UV_ANIM_VUB_MAGIC};
+use fileformats::rwbs::uva::{UV_ANIM_VUB_MAGIC, UvAnim, UvAnimDict};
 use radiance::comdef::IEntity;
 use radiance::comdef::IEntityExt;
 

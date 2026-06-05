@@ -22,7 +22,7 @@ use crosscom::ComRc;
 use radiance::comdef::{IDirector, IImmediateDirector, IUiHost};
 use radiance::radiance::{ImmediateDirectorPump, UiManager};
 
-use crate::services::ui_host::{with_imgui_frame, ImguiFrameState};
+use crate::services::ui_host::{ImguiFrameState, with_imgui_frame};
 use crate::services::{ImguiTextureCache, PerfOverlay};
 
 pub struct ImguiImmediateDirectorPump {

@@ -5,8 +5,8 @@ use common::read_ext::ReadExt;
 use serde::Serialize;
 
 use crate::rwbs::{
-    check_ty, extension::Extension, ChunkHeader, ChunkType, FormatFlag, Normal, PrelitColor,
-    TexCoord, Triangle, Vec3f,
+    ChunkHeader, ChunkType, FormatFlag, Normal, PrelitColor, TexCoord, Triangle, Vec3f, check_ty,
+    extension::Extension,
 };
 
 #[derive(Debug, Serialize)]

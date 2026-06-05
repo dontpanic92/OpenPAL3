@@ -18,10 +18,10 @@ use radiance_scripting::comdef::services::{
 };
 use radiance_scripting::services::{GameRegistry, RandomService};
 use radiance_scripting::{
-    register_immediate_director_proto, with_services, wrap_director, RuntimeAccess, RuntimeHandle,
-    ScriptHost, ScriptModule, ScriptPackage,
+    RuntimeAccess, RuntimeHandle, ScriptHost, ScriptModule, ScriptPackage,
+    register_immediate_director_proto, with_services, wrap_director,
 };
-use yaobow_lib::script_source::{register_yaobow_project, APP_P7};
+use yaobow_lib::script_source::{APP_P7, register_yaobow_project};
 
 // `ComObject_*!` macros expand `use crate as radiance_scripting` and
 // then reach into `crate::comdef::*` to find the impl traits and

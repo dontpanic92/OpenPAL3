@@ -3,9 +3,9 @@ use super::{
     descriptor_set_layout::DescriptorSetLayout, device::Device, sampler::VulkanSamplerCache,
     texture::VulkanTexture,
 };
+use crate::rendering::ShaderProgram;
 use crate::rendering::vulkan::material::VulkanMaterial;
 use crate::rendering::vulkan::uniform_buffers::{MaterialParamsGpu, PerFrameUniformBuffer};
-use crate::rendering::ShaderProgram;
 use ash::prelude::VkResult;
 use ash::vk;
 use std::collections::HashMap;

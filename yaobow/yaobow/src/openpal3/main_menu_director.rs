@@ -75,7 +75,7 @@ impl IDirectorImpl for MainMenuDirector {
             .collapsible(false)
             .always_auto_resize(true);
 
-        if let Some(Some(director)) = window.build(|| {
+        match window.build(|| {
             if ui.button("开始游戏") {
                 return Some(ComRc::from_object(AdventureDirector::new(
                     "OpenPAL3",
@@ -109,9 +109,8 @@ impl IDirectorImpl for MainMenuDirector {
                 None
             }
         }) {
-            Some(director)
-        } else {
-            None
+            Some(Some(director)) => Some(director),
+            _ => None,
         }
     }
 

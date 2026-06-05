@@ -26,11 +26,11 @@ use radiance::{
 };
 
 use crate::{
-    loaders::{
-        dff::{create_entity_from_dff_model, DffLoaderConfig},
-        Swd5TextureResolver,
-    },
     GameType,
+    loaders::{
+        Swd5TextureResolver,
+        dff::{DffLoaderConfig, create_entity_from_dff_model},
+    },
 };
 
 pub struct AssetLoader {

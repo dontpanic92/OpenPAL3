@@ -16,7 +16,7 @@
 //! M2's surface complete and gives the inspector view something
 //! human-readable for the file.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use common::store_ext::StoreExt2;
 use mini_fs::MiniFs;
 use serde::Serialize;

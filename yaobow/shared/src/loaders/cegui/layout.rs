@@ -20,7 +20,7 @@
 //! All other properties are preserved verbatim in `Window::properties`
 //! so the inspector view (and M2/M3) can read them without re-parsing.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use common::store_ext::StoreExt2;
 use mini_fs::MiniFs;
 use serde::Serialize;

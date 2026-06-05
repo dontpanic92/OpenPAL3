@@ -1,6 +1,6 @@
 use byteorder::{LittleEndian, ReadBytesExt};
-use common::read_ext::ReadExt;
 use common::SeekRead;
+use common::read_ext::ReadExt;
 use encoding::Encoding;
 use std::{
     cell::RefCell,
@@ -145,12 +145,15 @@ impl CpkArchive {
         for (_, cpk_entry) in &crc_to_cpk_entry {
             if cpk_entry.borrow().raw_entry.father_crc == 0 {
                 root.add_child(cpk_entry);
-            } else if let Some(parent_entry) =
-                crc_to_cpk_entry.get(&cpk_entry.borrow().raw_entry.father_crc)
-            {
-                parent_entry.borrow_mut().add_child(cpk_entry);
             } else {
-                // Orphan entries.. ignore them
+                match crc_to_cpk_entry.get(&cpk_entry.borrow().raw_entry.father_crc) {
+                    Some(parent_entry) => {
+                        parent_entry.borrow_mut().add_child(cpk_entry);
+                    }
+                    _ => {
+                        // Orphan entries.. ignore them
+                    }
+                }
             }
         }
 

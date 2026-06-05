@@ -129,7 +129,7 @@ mod ObjectArray_crosscom_impl {
         this: *const *const std::os::raw::c_void,
         guid: uuid::Uuid,
         retval: &mut *const *const std::os::raw::c_void,
-    ) -> std::os::raw::c_long {
+    ) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<ObjectArrayCcw>(this);
         match guid.as_bytes() {
             
@@ -147,15 +147,15 @@ mod ObjectArray_crosscom_impl {
 
             _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
         }
-    }
+    }}
 
-    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<ObjectArrayCcw>(this);
         let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         (previous + 1) as std::os::raw::c_long
-    }
+    }}
 
-    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<ObjectArrayCcw>(this);
 
         let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
@@ -164,23 +164,23 @@ mod ObjectArray_crosscom_impl {
         }
 
         (previous - 1) as std::os::raw::c_long
-    }
+    }}
 
     
-    unsafe extern "system" fn len(this: *const *const std::os::raw::c_void) -> std::os::raw::c_int {
+    unsafe extern "system" fn len(this: *const *const std::os::raw::c_void) -> std::os::raw::c_int { unsafe {
         
         let __crosscom_object = crosscom::get_object::<ObjectArrayCcw>(this);
         let ret = (*__crosscom_object).inner.len();
         ret.into()
-    }
+    }}
 
-    unsafe extern "system" fn get(this: *const *const std::os::raw::c_void, index: std::os::raw::c_int) -> *const *const std::os::raw::c_void {
+    unsafe extern "system" fn get(this: *const *const std::os::raw::c_void, index: std::os::raw::c_int) -> *const *const std::os::raw::c_void { unsafe {
         let index: std::os::raw::c_int = index.into();
 
         let __crosscom_object = crosscom::get_object::<ObjectArrayCcw>(this);
         let ret = (*__crosscom_object).inner.get(index.into());
         ret.into()
-    }
+    }}
 
 
     

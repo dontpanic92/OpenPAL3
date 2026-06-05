@@ -16,8 +16,8 @@ use radiance::{
     input::InputEngine,
     math::{Mat44, Transform, Vec3},
     rendering::GradientYMaterialDef,
-    scene::{wrap_scene_camera, CoreEntity, CoreScene},
-    utils::ray_casting::{wrap_ray_caster, RayCaster},
+    scene::{CoreEntity, CoreScene, wrap_scene_camera},
+    utils::ray_casting::{RayCaster, wrap_ray_caster},
 };
 use radiance_scripting::{comdef::services::IInputService, services::InputService};
 
@@ -539,9 +539,11 @@ impl Pal4Scene {
             // dropped — `tools/pal4_gob_inspect` confirms the corpus
             // ships them all populated.
             if object_type == GobObjectType::SOUND {
-                if let (Some(name), Some(min_t), Some(max_t)) =
-                    (entry.sound_name(), entry.sound_min_time(), entry.sound_max_time())
-                {
+                if let (Some(name), Some(min_t), Some(max_t)) = (
+                    entry.sound_name(),
+                    entry.sound_min_time(),
+                    entry.sound_max_time(),
+                ) {
                     let (min_time, max_time) = sanitise_sound_interval(min_t, max_t);
                     let trigger_distance = if entry.trigger_distance > 0.0 {
                         entry.trigger_distance
@@ -1386,7 +1388,10 @@ mod tests {
         // 1000 XZ units away with trigger_distance = 600.
         let to_play = s.tick_sound_emitters(Vec3::new(1000.0, 0.0, 0.0), 0.1);
         assert!(to_play.is_empty(), "out of range, must not fire");
-        assert!((s.sound_emitters[0].next_play_in_sec - 5.0).abs() < 1e-4, "timer must reset");
+        assert!(
+            (s.sound_emitters[0].next_play_in_sec - 5.0).abs() < 1e-4,
+            "timer must reset"
+        );
     }
 
     /// Emitter whose timer is still in flight must not fire — the
@@ -1424,7 +1429,10 @@ mod tests {
     fn reset_object_restores_initial_transform() {
         let mut s = Pal4Scene::new_empty();
         let entity = CoreEntity::create("marker001".to_string(), true);
-        entity.transform().borrow_mut().set_position(&Vec3::new(10.0, 20.0, 30.0));
+        entity
+            .transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(10.0, 20.0, 30.0));
         let snap = *entity.transform().borrow().matrix();
         s.objects.push(entity);
         s.objects_gob_indices.push(0);
@@ -1499,19 +1507,31 @@ mod tests {
         s.objects_xz_aabbs.push(Some((0.0, 1.0, 0.0, 1.0)));
 
         assert!(s.set_object_position("crate001", 5.0, 0.0, 5.0));
-        assert!(s.objects_xz_aabbs[0].is_none(), "AABB must be cleared on set_position");
+        assert!(
+            s.objects_xz_aabbs[0].is_none(),
+            "AABB must be cleared on set_position"
+        );
 
         s.objects_xz_aabbs[0] = Some((0.0, 1.0, 0.0, 1.0));
         assert!(s.set_object_position_and_yaw("crate001", 0.0, 0.0, 0.0, 30.0));
-        assert!(s.objects_xz_aabbs[0].is_none(), "AABB must be cleared on movement");
+        assert!(
+            s.objects_xz_aabbs[0].is_none(),
+            "AABB must be cleared on movement"
+        );
 
         s.objects_xz_aabbs[0] = Some((0.0, 1.0, 0.0, 1.0));
         assert!(s.set_object_scale_xy("crate001", 2.0, 2.0));
-        assert!(s.objects_xz_aabbs[0].is_none(), "AABB must be cleared on scale");
+        assert!(
+            s.objects_xz_aabbs[0].is_none(),
+            "AABB must be cleared on scale"
+        );
 
         s.objects_xz_aabbs[0] = Some((0.0, 1.0, 0.0, 1.0));
         assert!(s.reset_object("crate001"));
-        assert!(s.objects_xz_aabbs[0].is_none(), "AABB must be cleared on reset");
+        assert!(
+            s.objects_xz_aabbs[0].is_none(),
+            "AABB must be cleared on reset"
+        );
     }
 
     /// Mutators must return `false` (and log) for unknown names

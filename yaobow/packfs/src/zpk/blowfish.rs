@@ -18,10 +18,10 @@
 
 pub use cipher;
 
-use byteorder::{ByteOrder, BE, LE};
+use byteorder::{BE, ByteOrder, LE};
 use cipher::{
-    consts::{U56, U8},
     AlgorithmName, BlockCipher, InvalidLength, Key, KeyInit, KeySizeUser,
+    consts::{U8, U56},
 };
 use core::fmt;
 use core::marker::PhantomData;

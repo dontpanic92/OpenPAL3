@@ -159,11 +159,7 @@ impl ScriptPackage {
     /// Panics on validation failure — script packages are static and
     /// invalid manifests are programmer errors caught by the
     /// dedicated `package_validates` test in each consuming crate.
-    pub fn ensure_loaded(
-        &self,
-        host: &ScriptHost,
-        loaded_sentinel: &str,
-    ) -> Result<(), HostError> {
+    pub fn ensure_loaded(&self, host: &ScriptHost, loaded_sentinel: &str) -> Result<(), HostError> {
         self.validate().unwrap_or_else(|err| {
             panic!(
                 "script package '{}' manifest invalid: {err}",

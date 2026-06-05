@@ -1,4 +1,4 @@
-use loaders::{dff::DffLoaderConfig, Pal4TextureResolver};
+use loaders::{Pal4TextureResolver, dff::DffLoaderConfig};
 
 use crate::loaders::{Pal5TextureResolver, Swd5TextureResolver};
 

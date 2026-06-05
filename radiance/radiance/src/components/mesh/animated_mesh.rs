@@ -11,7 +11,7 @@ use crate::{
     rendering::{ComponentFactory, VertexBuffer, VertexComponents},
 };
 
-use super::{morph_target::MorphTarget, Geometry, TexCoord};
+use super::{Geometry, TexCoord, morph_target::MorphTarget};
 
 pub struct AnimatedMeshComponent {
     entity: ComRc<IEntity>,

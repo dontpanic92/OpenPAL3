@@ -15,7 +15,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use common::store_ext::StoreExt2;
 use packfs::init_virtual_fs;
-use shared::scripting::angelscript::{disasm, ScriptModule};
+use shared::scripting::angelscript::{ScriptModule, disasm};
 
 #[derive(Parser)]
 #[command(about = "Diagnose PAL4 .csb parse failures")]
@@ -150,9 +150,8 @@ fn main() -> Result<()> {
     } else {
         let mut v = Vec::new();
         let script_dir = Path::new("/gamedata/script");
-        let entries =
-            <mini_fs::MiniFs as mini_fs::Store>::entries_path(&vfs, script_dir)
-                .with_context(|| format!("list {}", script_dir.display()))?;
+        let entries = <mini_fs::MiniFs as mini_fs::Store>::entries_path(&vfs, script_dir)
+            .with_context(|| format!("list {}", script_dir.display()))?;
         for entry in entries {
             let entry = entry?;
             if !matches!(entry.kind, mini_fs::EntryKind::File) {
@@ -239,7 +238,11 @@ fn main() -> Result<()> {
         }
     }
 
-    eprintln!("\n--- summary: {}/{} modules failed ---", failures, stems.len());
+    eprintln!(
+        "\n--- summary: {}/{} modules failed ---",
+        failures,
+        stems.len()
+    );
     if failures > 0 {
         std::process::exit(1);
     }
@@ -322,7 +325,11 @@ fn dump_context(bytes: &[u8], off: u64, radius: usize) {
                 let b = bytes[i];
                 let marker = if i == off { '>' } else { ' ' };
                 hex.push_str(&format!("{}{:02x}", marker, b));
-                ascii.push(if (0x20..0x7f).contains(&b) { b as char } else { '.' });
+                ascii.push(if (0x20..0x7f).contains(&b) {
+                    b as char
+                } else {
+                    '.'
+                });
             } else {
                 hex.push_str("   ");
                 ascii.push(' ');

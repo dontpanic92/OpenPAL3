@@ -14,12 +14,15 @@ use crate::scripting::lua50_32::Lua5032Vm;
 
 use super::{
     asset_loader::AssetLoader,
-    scripting::{create_lua_vm, SWD5Context},
+    scripting::{SWD5Context, create_lua_vm},
 };
 
 pub struct OpenSWD5Director {
     vm: Lua5032Vm<SWD5Context>,
     context: Rc<RefCell<SWD5Context>>,
+    // Reserved for free-fly camera control wiring; kept to preserve the
+    // controller's lifetime even though no path drives it yet.
+    #[allow(dead_code)]
     control: FreeViewController,
 }
 

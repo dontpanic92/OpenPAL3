@@ -39,7 +39,6 @@ pub struct DialogStateSnapshot {
 /// …) effectively zero-cost under fast-forward.
 const MOTION_FAST_FORWARD_SCALE: f32 = 1_000.0;
 
-
 /// Which side the dialog avatar portrait is currently anchored to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DialogAvatarSide {

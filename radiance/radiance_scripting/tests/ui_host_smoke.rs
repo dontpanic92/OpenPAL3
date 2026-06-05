@@ -20,8 +20,8 @@
 //! 4. `button` returns `bool` (encoded as `int 0/1` across the C ABI)
 //!    so scripts can branch on click.
 
-use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 use radiance_scripting::ScriptHost;
+use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 
 const NO_CAPTURE_SOURCE: &str = r#"
 import radiance;

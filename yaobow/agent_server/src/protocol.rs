@@ -809,10 +809,12 @@ pub enum PerfMetric {
     /// accumulated since the last `perf::flush_frame()` (resets
     /// every `OPENPAL3_PERF_INTERVAL` frames when configured),
     /// `total` is the lifetime sum.
-    Counter { name: String, frame: u64, total: u64 },
+    Counter {
+        name: String,
+        frame: u64,
+        total: u64,
+    },
     /// `radiance::perf::gauge()` output. `last` is the most recent
     /// recorded value; `max` is the highest value seen since boot.
     Gauge { name: String, last: u64, max: u64 },
 }
-
-

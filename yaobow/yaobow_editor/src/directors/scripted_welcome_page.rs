@@ -15,7 +15,7 @@ use crosscom::ComRc;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::{
-    bootstrap_script_root, install_imgui_pump_with_cache, wrap_director, ScriptHost,
+    ScriptHost, bootstrap_script_root, install_imgui_pump_with_cache, wrap_director,
 };
 use shared::config::YaobowConfig;
 

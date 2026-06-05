@@ -49,8 +49,7 @@ use crate::comdef::yaobow_services::{IYaobowHostContext, IYaobowHostContextImpl}
 /// produced by `crosscom_protosept::interface_type_tag` from
 /// `module(rust) yaobow::comdef::yaobow_services` + the interface
 /// name `IYaobowHostContext`.
-pub const YAOBOW_HOST_CONTEXT_TYPE_TAG: &str =
-    "yaobow.comdef.yaobow_services.IYaobowHostContext";
+pub const YAOBOW_HOST_CONTEXT_TYPE_TAG: &str = "yaobow.comdef.yaobow_services.IYaobowHostContext";
 
 // ---------------------------------------------------------------------------
 // YaobowHostContext (the real ComObject)

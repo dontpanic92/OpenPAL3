@@ -5,11 +5,10 @@ use common::read_ext::ReadExt;
 use serde::Serialize;
 
 use super::{
-    check_ty,
+    ChunkHeader, ChunkType, FormatFlag, Vec3f, check_ty,
     extension::Extension,
     material::Material,
     sector::{AtomicSector, PlaneSector, Sector},
-    ChunkHeader, ChunkType, FormatFlag, Vec3f,
 };
 
 #[derive(Debug, Serialize)]

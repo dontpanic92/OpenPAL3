@@ -7,10 +7,10 @@ use ash::khr::surface::Instance as Surface;
 use ash::khr::swapchain::Device as Swapchain;
 use ash::prelude::VkResult;
 use ash::vk::{
-    make_api_version, Extent2D, PhysicalDevice, PresentModeKHR, SurfaceCapabilitiesKHR,
-    SurfaceFormatKHR, SurfaceKHR, SwapchainKHR,
+    Extent2D, PhysicalDevice, PresentModeKHR, SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR,
+    SwapchainKHR, make_api_version,
 };
-use ash::{vk, Device, Entry, Instance};
+use ash::{Device, Entry, Instance, vk};
 use std::error::Error;
 use std::ffi::CString;
 use std::os::raw::c_char;

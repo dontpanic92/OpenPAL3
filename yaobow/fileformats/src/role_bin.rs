@@ -1,4 +1,4 @@
-use binrw::{binrw, NullString};
+use binrw::{NullString, binrw};
 
 #[binrw]
 #[brw(little, magic = 0x87654321u32)]

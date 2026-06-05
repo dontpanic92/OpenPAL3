@@ -1,9 +1,9 @@
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
-use encoding::{types::Encoding, DecoderTrap};
+use encoding::{DecoderTrap, types::Encoding};
 use ini::Ini;
-use mini_fs::prelude::*;
 use mini_fs::MiniFs;
+use mini_fs::prelude::*;
 use radiance::comdef::{IAnimatedMeshComponent, IEntity, IScene};
 use radiance::rendering::ComponentFactory;
 use radiance::scene::CoreScene;
@@ -13,16 +13,16 @@ use std::path::PathBuf;
 use std::{io, rc::Rc};
 
 use super::comdef::IScnSceneComponent;
-use super::loaders::nav_loader::nav_load_from_file;
 use super::loaders::nav_loader::NavFile;
+use super::loaders::nav_loader::nav_load_from_file;
 use super::loaders::pol::create_entity_from_pol_model;
-use super::loaders::sce_loader::sce_load_from_file;
 use super::loaders::sce_loader::SceFile;
+use super::loaders::sce_loader::sce_load_from_file;
 use super::loaders::scn_loader::scn_load_from_file;
+use super::scene::ScnScene;
 use super::scene::create_animated_mesh_from_mv3;
 use super::scene::create_entity_from_cvd_model;
 use super::scene::create_mv3_entity;
-use super::scene::ScnScene;
 
 pub struct AssetManager {
     factory: Rc<dyn ComponentFactory>,

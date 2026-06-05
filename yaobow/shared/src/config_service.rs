@@ -14,11 +14,11 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 
-use radiance::imgui::{available_themes, ImguiContext};
+use radiance::imgui::{ImguiContext, available_themes};
 use radiance_scripting::comdef::services::{IConfigService, IConfigServiceImpl};
 
-use crate::config::YaobowConfig;
 use crate::GameType;
+use crate::config::YaobowConfig;
 
 pub struct ConfigService {
     config: Rc<RefCell<YaobowConfig>>,

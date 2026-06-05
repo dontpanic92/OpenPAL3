@@ -2,7 +2,7 @@ use crate::scripting::sce::{SceCommand, SceState};
 use crosscom::ComRc;
 use imgui::Ui;
 use radiance::comdef::ISceneManager;
-use rand::{rngs::ThreadRng, Rng};
+use rand::{Rng, rngs::ThreadRng};
 
 #[derive(Debug, Clone)]
 pub struct SceCommandRnd {

@@ -13,7 +13,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use chardet::detect;
 use common::store_ext::StoreExt2;
 use crosscom::ComRc;
-use encoding::{label::encoding_from_whatwg_label, DecoderTrap};
+use encoding::{DecoderTrap, label::encoding_from_whatwg_label};
 use fileformats::{binrw::BinRead, mv3::read_mv3, nod::NodFile, pol::read_pol, rwbs};
 use image::ImageFormat;
 use mini_fs::{MiniFs, StoreExt};
@@ -22,13 +22,13 @@ use radiance::comdef::{IEntity, ISceneManager};
 use radiance::rendering::ComponentFactory;
 use radiance::video::Codec as VideoCodec;
 use radiance_scripting::services::ImguiTextureCache;
+use shared::GameType;
 use shared::loaders::anm::load_anm;
 use shared::loaders::smp::load_smp;
 use shared::openpal3::loaders::{
     cvd_loader::cvd_load_from_file, nav_loader::nav_load_from_file, sce_loader::sce_load_from_file,
     scn_loader::scn_load_from_file,
 };
-use shared::GameType;
 
 use crate::comdef::editor_services::{
     IAudioHandle, IImageHandle, IModelHandle, IPreviewerHub, IPreviewerHubImpl, IResourceManager,
@@ -62,6 +62,10 @@ pub struct PreviewerHub {
     game_type: GameType,
     factory: Rc<dyn ComponentFactory>,
     audio_engine: Rc<dyn AudioEngine>,
+    // Held to keep the scene manager rooted alongside the hub; the hub
+    // delegates scene reads through the resources handle rather than touching
+    // this field directly.
+    #[allow(dead_code)]
     scene_manager: ComRc<ISceneManager>,
     input: Rc<RefCell<dyn radiance::input::InputEngine>>,
     cache: Rc<RefCell<ImguiTextureCache>>,
@@ -380,7 +384,7 @@ fn load_mv3(
     use radiance::scene::CoreEntity;
     use shared::openpal3::comdef::IRoleController;
     use shared::openpal3::scene::{
-        create_animated_mesh_from_mv3, RoleAnimationRepeatMode, RoleController,
+        RoleAnimationRepeatMode, RoleController, create_animated_mesh_from_mv3,
     };
 
     let text = read_mv3(&mut BufReader::new(vfs.open(path).ok()?))
@@ -461,8 +465,8 @@ fn load_dff(
     game_type: GameType,
 ) -> Option<(String, ComRc<IEntity>)> {
     use radiance::comdef::{IArmatureComponent, IComponent};
-    use shared::loaders::dff::{create_entity_from_dff_model, DffLoaderConfig};
     use shared::loaders::Pal4TextureResolver;
+    use shared::loaders::dff::{DffLoaderConfig, create_entity_from_dff_model};
     use shared::openpal4::actor::{
         IPal4ActorAnimationControllerExt, Pal4ActorAnimationConfig, Pal4ActorAnimationController,
     };

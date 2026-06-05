@@ -105,7 +105,7 @@ impl AtpFile {
 }
 
 macro_rules! read_data {
-    ($struct_name: expr, $cursor: ident, $length: ident, $item_length: ident, $($index: expr => $action: expr, )*) => {
+    ($struct_name: expr_2021, $cursor: ident, $length: ident, $item_length: ident, $($index: expr_2021 => $action: expr_2021, )*) => {
         let mut cur_length = 0;
         while cur_length < $length {
             $item_length = $cursor.read_u32_le()?;

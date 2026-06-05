@@ -3,7 +3,7 @@ use crate::math::Vec3;
 mod mesh;
 mod script;
 
-pub use script::{wrap_ray_caster, ScriptRayCaster};
+pub use script::{ScriptRayCaster, wrap_ray_caster};
 
 pub struct RayCaster {
     colliders: Vec<mesh::Mesh>,
@@ -33,11 +33,7 @@ impl RayCaster {
             }
         }
 
-        if hit {
-            Some(min_distance)
-        } else {
-            None
-        }
+        if hit { Some(min_distance) } else { None }
     }
 
     pub fn cast_ray(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<f32> {
@@ -53,11 +49,7 @@ impl RayCaster {
             }
         }
 
-        if hit {
-            Some(min_distance)
-        } else {
-            None
-        }
+        if hit { Some(min_distance) } else { None }
     }
 }
 

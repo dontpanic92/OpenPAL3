@@ -4,7 +4,7 @@ mod clipboard;
 mod platform;
 mod theme;
 
-pub use self::theme::{available_themes, menu_item_padding, DEFAULT_THEME};
+pub use self::theme::{DEFAULT_THEME, available_themes, menu_item_padding};
 
 use self::theme::{apply_theme as apply_named_theme, resolve_theme_name, scale_menu_item_padding};
 
@@ -63,10 +63,13 @@ impl ImguiContext {
 
         context.io_mut().config_flags |= imgui::ConfigFlags::DOCKING_ENABLE;
 
-        if let Some(backend) = clipboard::init() {
-            context.set_clipboard_backend(backend);
-        } else {
-            log::error!("Failed to initialize clipboard support");
+        match clipboard::init() {
+            Some(backend) => {
+                context.set_clipboard_backend(backend);
+            }
+            _ => {
+                log::error!("Failed to initialize clipboard support");
+            }
         }
 
         let context = Rc::new(RefCell::new(context));

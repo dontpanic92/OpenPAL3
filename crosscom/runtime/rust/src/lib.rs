@@ -243,10 +243,12 @@ impl IUnknown {
 }
 
 pub unsafe fn get_object<T>(this: *const *const c_void) -> *const T {
-    let vtable = *(this as *const *const isize);
-    let vtable_ccw = vtable.offset(-1);
-    let offset = *vtable_ccw;
-    this.offset(offset) as *const T
+    unsafe {
+        let vtable = *(this as *const *const isize);
+        let vtable_ccw = vtable.offset(-1);
+        let offset = *vtable_ccw;
+        this.offset(offset) as *const T
+    }
 }
 
 pub type HResult = c_long;

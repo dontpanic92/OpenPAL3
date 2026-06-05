@@ -1,6 +1,6 @@
 use super::{
-    decoders::{Decoder, OggDecoder, Samples, SymphoniaDecoder, WavDecoder},
     AudioCustomDecoderSource, AudioMemorySource, Codec,
+    decoders::{Decoder, OggDecoder, Samples, SymphoniaDecoder, WavDecoder},
 };
 use super::{AudioEngine, AudioSource, AudioSourceState};
 use alto::{Alto, AltoResult, Context, Mono, Source, Stereo};

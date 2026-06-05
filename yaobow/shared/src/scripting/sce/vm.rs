@@ -3,7 +3,7 @@ use crate::openpal3::loaders::sce_loader::SceFile;
 use crate::openpal3::states::global_state::GlobalState;
 use crate::scripting::sce::SceCommandDebug;
 
-use super::{commands::*, SceCommand, SceState};
+use super::{SceCommand, SceState, commands::*};
 use crosscom::ComRc;
 use encoding::{DecoderTrap, Encoding};
 use imgui::*;

@@ -1283,11 +1283,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         } else {
             let context = self.g.borrow();
             let slot = (-index - 1) as u32;
-            let value = context
-                .vars
-                .get(slot as usize)
-                .copied()
-                .unwrap_or(0);
+            let value = context.vars.get(slot as usize).copied().unwrap_or(0);
             (value, GlobalScope::Shared, slot)
         };
 
@@ -1425,30 +1421,34 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
 
     #[inline]
     unsafe fn write_stack<T>(&mut self, pos: usize, data: T) {
-        let size = std::mem::size_of::<T>();
-        if pos >= self.stack.len() || size > self.stack.len() - pos {
-            self.dump_stack_context("write_stack", pos, size);
-            self.faulted.set(true);
-            return;
+        unsafe {
+            let size = std::mem::size_of::<T>();
+            if pos >= self.stack.len() || size > self.stack.len() - pos {
+                self.dump_stack_context("write_stack", pos, size);
+                self.faulted.set(true);
+                return;
+            }
+            // Use `ptr::write_unaligned` rather than `*ptr = data` because
+            // `self.stack` is a `Vec<u8>` and `pos` may land at any
+            // alignment. Rust ≥1.87 enforces alignment preconditions on
+            // raw-pointer deref, which previously silently worked but now
+            // panics with "misaligned pointer dereference" (e.g. an i32
+            // store at sp=0x...f). Same fix applies in `read_stack`.
+            std::ptr::write_unaligned(self.stack.as_mut_ptr().add(pos) as *mut T, data);
         }
-        // Use `ptr::write_unaligned` rather than `*ptr = data` because
-        // `self.stack` is a `Vec<u8>` and `pos` may land at any
-        // alignment. Rust ≥1.87 enforces alignment preconditions on
-        // raw-pointer deref, which previously silently worked but now
-        // panics with "misaligned pointer dereference" (e.g. an i32
-        // store at sp=0x...f). Same fix applies in `read_stack`.
-        std::ptr::write_unaligned(self.stack.as_mut_ptr().add(pos) as *mut T, data);
     }
 
     #[inline]
     unsafe fn read_stack<T: Copy>(&self, pos: usize) -> T {
-        let size = std::mem::size_of::<T>();
-        if pos >= self.stack.len() || size > self.stack.len() - pos {
-            self.dump_stack_context("read_stack", pos, size);
-            self.faulted.set(true);
-            return std::mem::zeroed();
+        unsafe {
+            let size = std::mem::size_of::<T>();
+            if pos >= self.stack.len() || size > self.stack.len() - pos {
+                self.dump_stack_context("read_stack", pos, size);
+                self.faulted.set(true);
+                return std::mem::zeroed();
+            }
+            std::ptr::read_unaligned(self.stack.as_ptr().add(pos) as *const T)
         }
-        std::ptr::read_unaligned(self.stack.as_ptr().add(pos) as *const T)
     }
 
     fn debug_update_module(&mut self) {
@@ -1547,11 +1547,11 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    use super::super::ScriptGlobalContext;
     use super::super::module::{ScriptFunction, ScriptModule};
     use super::super::trace::{
-        test_support::VecSink, BranchKind, GlobalScope, TraceEventKind, TraceSink,
+        BranchKind, GlobalScope, TraceEventKind, TraceSink, test_support::VecSink,
     };
-    use super::super::ScriptGlobalContext;
     use super::ScriptVm;
 
     /// Build a 4-byte-aligned opcode header (opcode byte + 3 pad).
@@ -1681,7 +1681,7 @@ mod tests {
             let inst = assemble(&[
                 &op(2),
                 &flag.to_le_bytes(),
-                &op(15), // Jz
+                &op(15),             // Jz
                 &4i32.to_le_bytes(), // offset = 4 bytes => skips Suspend
                 &op(108),            // Suspend (terminates non-taken path)
                 &op(13),             // Ret
@@ -1697,7 +1697,10 @@ mod tests {
                 .into_iter()
                 .filter_map(|ev| match ev.kind {
                     TraceEventKind::Branch {
-                        kind, operand, taken, ..
+                        kind,
+                        operand,
+                        taken,
+                        ..
                     } => Some((kind, operand, taken)),
                     _ => None,
                 })
@@ -1773,7 +1776,10 @@ mod tests {
                     .into_iter()
                     .filter_map(|ev| match ev.kind {
                         TraceEventKind::Branch {
-                            kind, operand, taken, ..
+                            kind,
+                            operand,
+                            taken,
+                            ..
                         } => Some((kind, operand, taken)),
                         _ => None,
                     })
@@ -1845,7 +1851,10 @@ mod tests {
             .into_iter()
             .filter_map(|ev| match ev.kind {
                 TraceEventKind::Branch {
-                    kind, operand, taken, ..
+                    kind,
+                    operand,
+                    taken,
+                    ..
                 } => Some((kind, operand, taken)),
                 _ => None,
             })
@@ -1989,7 +1998,10 @@ mod tests {
                 .into_iter()
                 .filter_map(|ev| match ev.kind {
                     TraceEventKind::Branch {
-                        kind, operand, taken, ..
+                        kind,
+                        operand,
+                        taken,
+                        ..
                     } => Some((kind, operand, taken)),
                     _ => None,
                 })

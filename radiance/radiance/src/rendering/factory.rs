@@ -1,8 +1,8 @@
 use imgui::TextureId;
 
 use super::{
-    texture::TextureDef, MaterialDef, RenderObjectHandle, RenderTarget, RenderingComponent,
-    Texture, VertexBuffer, VideoPlayer,
+    MaterialDef, RenderObjectHandle, RenderTarget, RenderingComponent, Texture, VertexBuffer,
+    VideoPlayer, texture::TextureDef,
 };
 
 pub trait ComponentFactory {

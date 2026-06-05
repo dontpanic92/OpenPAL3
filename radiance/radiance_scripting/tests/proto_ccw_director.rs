@@ -17,7 +17,7 @@ use std::sync::Mutex;
 
 use crosscom::{ComInterface, ComRc};
 use crosscom_protosept::{
-    register_proto_ccw, with_services, wrap_proto, ArgKind, MethodSpec, ProtoSpec, RetKind,
+    ArgKind, MethodSpec, ProtoSpec, RetKind, register_proto_ccw, with_services, wrap_proto,
 };
 use p7::errors::RuntimeError;
 use p7::interpreter::context::Context;

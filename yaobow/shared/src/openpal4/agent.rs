@@ -145,11 +145,7 @@ impl Pal4AgentBridge {
     /// convention on [`Self::requested_dt`].
     pub fn effective_step_dt(&self) -> f32 {
         let dt = self.requested_dt.get();
-        if dt > 0.0 {
-            dt
-        } else {
-            DEFAULT_STEP_DT
-        }
+        if dt > 0.0 { dt } else { DEFAULT_STEP_DT }
     }
 }
 

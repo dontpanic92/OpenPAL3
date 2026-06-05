@@ -13,8 +13,8 @@ use winit::event::Event;
 use crate::application::Platform;
 
 use super::{
-    gamepad::GamepadInput, keyboard::KeyboardInput, mouse::MouseInput, Axis, AxisState,
-    InputEngine, InputEngineInternal, Key, KeyState, MouseButton,
+    Axis, AxisState, InputEngine, InputEngineInternal, Key, KeyState, MouseButton,
+    gamepad::GamepadInput, keyboard::KeyboardInput, mouse::MouseInput,
 };
 
 pub struct CoreInputEngine {

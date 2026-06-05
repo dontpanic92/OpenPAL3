@@ -5,6 +5,9 @@ use encoding::{DecoderTrap, Encoding};
 use lua50_32_sys::lua_State;
 
 pub struct Lua5032Vm<TContext> {
+    // The Lua VM keeps raw pointers into this buffer; the field must stay
+    // alive for the lifetime of `lua` even though no Rust code reads it.
+    #[allow(dead_code)]
     lib: Vec<u8>,
     lua: *mut lua_State,
     thread: *mut lua_State,

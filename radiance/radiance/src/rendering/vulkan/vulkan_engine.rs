@@ -18,7 +18,7 @@ use crate::{
     rendering::{ComponentFactory, RenderingEngine, Window},
 };
 use ash::ext::debug_utils::Instance as DebugUtils;
-use ash::{vk, Entry};
+use ash::{Entry, vk};
 use crosscom::ComRc;
 
 use std::ptr;
@@ -115,10 +115,9 @@ impl RenderingEngine for VulkanRenderingEngine {
             return;
         }
 
-        let entities = crate::perf::time(
-            "vulkan.render.collect_visible_entities_total_ns",
-            || scene.visible_entities(),
-        );
+        let entities = crate::perf::time("vulkan.render.collect_visible_entities_total_ns", || {
+            scene.visible_entities()
+        });
         crate::perf::gauge("vulkan.render.visible_entities", entities.len() as u64);
 
         // Update the dynamic UBO with each visible render object's world

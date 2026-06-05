@@ -176,11 +176,7 @@ fn parse_colour_attrs(attrs: &str) -> [f32; 4] {
     let (mut r, mut g, mut b, mut a) = (0u32, 0u32, 0u32, 255u32);
     for token in attrs.split_whitespace() {
         if let Some((key, value)) = token.split_once('=') {
-            let value: u32 = value
-                .trim_matches('"')
-                .parse()
-                .unwrap_or(0)
-                .min(255);
+            let value: u32 = value.trim_matches('"').parse().unwrap_or(0).min(255);
             match key.trim().to_ascii_lowercase().as_str() {
                 "red" | "r" => r = value,
                 "green" | "g" => g = value,
@@ -299,10 +295,7 @@ mod tests {
     #[test]
     fn strip_removes_known_tags_only() {
         let raw = "云天河：\n<colour red=255 green=187 blue=0 alpha=255>先回房拿弓，</colour><dc0>再去石沉溪洞猎山猪～</dc0>";
-        assert_eq!(
-            strip(raw),
-            "云天河：\n先回房拿弓，再去石沉溪洞猎山猪～"
-        );
+        assert_eq!(strip(raw), "云天河：\n先回房拿弓，再去石沉溪洞猎山猪～");
     }
 
     #[test]

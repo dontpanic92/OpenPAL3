@@ -6,8 +6,8 @@ use radiance::{input::Key, math::Vec3, utils::interp_value::InterpValue, video::
 use crate::{
     as_params,
     scripting::angelscript::{
-        not_implemented, ContinuationState, GlobalFunctionContinuation, GlobalFunctionState,
-        ScriptGlobalContext, ScriptGlobalFunction, ScriptVm,
+        ContinuationState, GlobalFunctionState, ScriptGlobalContext, ScriptGlobalFunction,
+        ScriptVm, not_implemented,
     },
     ui::dialog_box::DialogBoxPresenter,
     utils,
@@ -16,7 +16,6 @@ use crate::{
 use super::app_context::Pal4AppContext;
 
 type Pal4FunctionState = GlobalFunctionState<Pal4AppContext>;
-type Pal4Continuation = GlobalFunctionContinuation<Pal4AppContext>;
 
 pub fn create_script_vm(app_context: Pal4AppContext) -> ScriptVm<Pal4AppContext> {
     let module = app_context.loader.load_script_module("script").unwrap();
@@ -2641,11 +2640,14 @@ fn camera_prepare(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
     as_params!(vm, file_str: i32);
     let file_name = get_str(vm, file_str as usize).unwrap();
 
-    if let Err(e) = vm.app_context.prepare_camera(&file_name) {
-        log::error!("camera prepare failed: {}", e);
-        vm.set_ret_value(0);
-    } else {
-        vm.set_ret_value(1);
+    match vm.app_context.prepare_camera(&file_name) {
+        Err(e) => {
+            log::error!("camera prepare failed: {}", e);
+            vm.set_ret_value(0);
+        }
+        _ => {
+            vm.set_ret_value(1);
+        }
     }
 
     Pal4FunctionState::Completed

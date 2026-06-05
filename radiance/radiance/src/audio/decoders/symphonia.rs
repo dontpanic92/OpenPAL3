@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use symphonia::core::{
     audio::SampleBuffer,
-    codecs::{Decoder, DecoderOptions, CODEC_TYPE_NULL},
+    codecs::{CODEC_TYPE_NULL, Decoder, DecoderOptions},
     errors::Error,
     formats::{FormatOptions, FormatReader, SeekMode, SeekTo},
     io::MediaSourceStream,

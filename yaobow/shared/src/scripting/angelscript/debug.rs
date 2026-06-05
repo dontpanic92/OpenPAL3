@@ -1,6 +1,6 @@
 use std::io::{BufReader, Read, Write};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use interprocess::local_socket::LocalSocketStream;
 use serde::{Deserialize, Serialize};

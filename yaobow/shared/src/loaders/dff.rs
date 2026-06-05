@@ -3,8 +3,8 @@ use std::{collections::HashMap, io::Read, path::Path, rc::Rc};
 use anyhow::Context;
 use crosscom::ComRc;
 use fileformats::rwbs::{
-    clump::Clump, extension::Extension, frame::Frame, material::Material, read_dff, Matrix44f,
-    TexCoord, Triangle, Vec3f,
+    Matrix44f, TexCoord, Triangle, Vec3f, clump::Clump, extension::Extension, frame::Frame,
+    material::Material, read_dff,
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
@@ -13,8 +13,8 @@ use radiance::{
         IStaticMeshComponent,
     },
     components::mesh::{
-        skinned_mesh::{ArmatureComponent, HAnimBoneComponent, SkinnedMeshComponent},
         StaticMeshComponent,
+        skinned_mesh::{ArmatureComponent, HAnimBoneComponent, SkinnedMeshComponent},
     },
     math::{Mat44, Vec3},
     rendering::{
@@ -546,32 +546,33 @@ pub(crate) fn create_geometry_internal(
                 // `detect_blend` below.
                 let md = if let Some(texture) = material.texture.as_ref() {
                     if let Some(tint) = bsp_lightmap_tint {
-                        if let Some(md) = load_lightmap_material_pair(
+                        match load_lightmap_material_pair(
                             material,
                             tint,
                             vfs,
                             path.as_ref(),
                             texture_resolver,
                         ) {
-                            md
-                        } else {
-                            // BSP material with a diffuse but no
-                            // `LightMapPlugin` (rare PAL4 case). PAL4
-                            // BSP diffuses ship with scene-generic
-                            // names (`s01`, `s01b`, …) that would
-                            // otherwise collide in the process-wide
-                            // `TextureStore` LRU across scenes; use
-                            // the scoped loader so each scene's
-                            // diffuse atlas gets its own
-                            // `TextureDef`. See
-                            // `load_lightmap_material_pair` for the
-                            // same rationale on the lightmap key.
-                            load_bsp_material_texture_scoped(
-                                texture,
-                                vfs,
-                                path.as_ref(),
-                                texture_resolver,
-                            )
+                            Some(md) => md,
+                            _ => {
+                                // BSP material with a diffuse but no
+                                // `LightMapPlugin` (rare PAL4 case). PAL4
+                                // BSP diffuses ship with scene-generic
+                                // names (`s01`, `s01b`, …) that would
+                                // otherwise collide in the process-wide
+                                // `TextureStore` LRU across scenes; use
+                                // the scoped loader so each scene's
+                                // diffuse atlas gets its own
+                                // `TextureDef`. See
+                                // `load_lightmap_material_pair` for the
+                                // same rationale on the lightmap key.
+                                load_bsp_material_texture_scoped(
+                                    texture,
+                                    vfs,
+                                    path.as_ref(),
+                                    texture_resolver,
+                                )
+                            }
                         }
                     } else {
                         load_material_texture(texture, vfs, path.as_ref(), texture_resolver)
@@ -1325,7 +1326,10 @@ mod lightmap_cache_key_tests {
             "lm",
             "Object01LightingMap",
         );
-        assert_ne!(a, b, "same atlas name across two scenes must hash distinctly");
+        assert_ne!(
+            a, b,
+            "same atlas name across two scenes must hash distinctly"
+        );
 
         // Different slot → different key even at the same model_path.
         let lm = pal4_bsp_texture_key(Path::new("/foo/bar.bsp"), "lm", "s01");
@@ -1367,8 +1371,16 @@ mod lightmap_cache_key_tests {
             lm_q01, lm_m01,
             "Q01 and M01 lightmap atlases must have distinct TextureStore keys"
         );
-        assert!(lm_q01.contains("Q01"), "Q01 key should encode its scene path: {}", lm_q01);
-        assert!(lm_m01.contains("M01"), "M01 key should encode its scene path: {}", lm_m01);
+        assert!(
+            lm_q01.contains("Q01"),
+            "Q01 key should encode its scene path: {}",
+            lm_q01
+        );
+        assert!(
+            lm_m01.contains("M01"),
+            "M01 key should encode its scene path: {}",
+            lm_m01
+        );
         assert!(
             lm_q01.contains("Object01LightingMap"),
             "scoped key should still surface the bare atlas name: {}",

@@ -1,7 +1,7 @@
 use crate::openpal3::comdef::ICvdModel;
 use crate::openpal3::loaders::cvd_loader::{
-    cvd_load_from_file, CvdMaterial, CvdModelNode, CvdPositionKeyFrames, CvdRotationKeyFrames,
-    CvdScaleKeyFrames, CvdVertex,
+    CvdMaterial, CvdModelNode, CvdPositionKeyFrames, CvdRotationKeyFrames, CvdScaleKeyFrames,
+    CvdVertex, cvd_load_from_file,
 };
 use crosscom::ComRc;
 use mini_fs::{MiniFs, StoreExt};

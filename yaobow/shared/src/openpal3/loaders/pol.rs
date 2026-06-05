@@ -1,5 +1,5 @@
 use crosscom::ComRc;
-use fileformats::pol::{read_pol, PolMaterialInfo, PolTriangle, PolVertex};
+use fileformats::pol::{PolMaterialInfo, PolTriangle, PolVertex, read_pol};
 use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::{IEntity, IStaticMeshComponent};
 use radiance::components::mesh::{Geometry, StaticMeshComponent, TexCoord};

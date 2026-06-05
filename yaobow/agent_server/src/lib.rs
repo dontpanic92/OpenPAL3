@@ -33,5 +33,5 @@ pub use protocol::{
 };
 pub use queue::{AgentCommandConsumer, AgentCommandQueue, AgentEnvelope};
 pub use session::{AgentSession, NullAgentSession};
-pub use trace_sink::{AgentTraceSink, TraceDrainResult, DEFAULT_TRACE_CAPACITY};
+pub use trace_sink::{AgentTraceSink, DEFAULT_TRACE_CAPACITY, TraceDrainResult};
 pub use transport::{AgentServer, AgentServerConfig};

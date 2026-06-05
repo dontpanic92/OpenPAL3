@@ -65,32 +65,38 @@ unsafe extern "system" fn stub_qi(
     guid: uuid::Uuid,
     retval: &mut *const *const c_void,
 ) -> c_long {
-    let bytes = *guid.as_bytes();
-    if bytes == IUnknown::INTERFACE_ID || bytes == IDirector::INTERFACE_ID {
-        *retval = this as *const *const c_void;
-        stub_addref(*retval);
-        0
-    } else {
-        *retval = std::ptr::null();
-        -1
+    unsafe {
+        let bytes = *guid.as_bytes();
+        if bytes == IUnknown::INTERFACE_ID || bytes == IDirector::INTERFACE_ID {
+            *retval = this as *const *const c_void;
+            stub_addref(*retval);
+            0
+        } else {
+            *retval = std::ptr::null();
+            -1
+        }
     }
 }
 
 unsafe extern "system" fn stub_addref(this: *const *const c_void) -> c_long {
-    let d = &*(this as *const StubDirector);
-    let prev = d.refcount.get();
-    d.refcount.set(prev + 1);
-    (prev + 1) as c_long
+    unsafe {
+        let d = &*(this as *const StubDirector);
+        let prev = d.refcount.get();
+        d.refcount.set(prev + 1);
+        (prev + 1) as c_long
+    }
 }
 
 unsafe extern "system" fn stub_release(this: *const *const c_void) -> c_long {
-    let d = &*(this as *const StubDirector);
-    let prev = d.refcount.get();
-    d.refcount.set(prev - 1);
-    if prev == 1 {
-        drop(Box::from_raw(this as *mut StubDirector));
+    unsafe {
+        let d = &*(this as *const StubDirector);
+        let prev = d.refcount.get();
+        d.refcount.set(prev - 1);
+        if prev == 1 {
+            drop(Box::from_raw(this as *mut StubDirector));
+        }
+        (prev - 1) as c_long
     }
-    (prev - 1) as c_long
 }
 
 unsafe extern "system" fn stub_activate(_this: *const *const c_void) {}

@@ -26,7 +26,7 @@ use std::io::Read;
 use common::read_ext::ReadExt;
 use serde::Serialize;
 
-use crate::rwbs::{check_ty, ChunkHeader, ChunkType};
+use crate::rwbs::{ChunkHeader, ChunkType, check_ty};
 
 /// Fixed-width name field carried by each `RpUVAnim` entry. Verified
 /// against every PAL4 `.uva` sample (`Q01`, `Q01Y`, `BJ`, `ZJM` waters).
@@ -208,7 +208,7 @@ mod tests {
         b.extend(&4u32.to_le_bytes());
         b.extend(&0x1C020065u32.to_le_bytes());
         b.extend(&1u32.to_le_bytes()); // num_anims
-                                       // --- ANIM_ANIMATION (0x1B) header, body=152 bytes.
+        // --- ANIM_ANIMATION (0x1B) header, body=152 bytes.
         b.extend(&0x1Bu32.to_le_bytes());
         b.extend(&152u32.to_le_bytes());
         b.extend(&0x1C020065u32.to_le_bytes());
@@ -226,7 +226,7 @@ mod tests {
         b.extend(&vec![0u8; UV_ANIM_NAME_LEN - name.len()]);
         // 96 bytes of keyframe blob, byte-for-byte from the sample.
         b.extend(&[0u8; 36]); // body 56..91 — all zeros (32 + the 4 bytes that used to be "duration")
-                              // body 92..119 (28 bytes)
+        // body 92..119 (28 bytes)
         b.extend(&0u32.to_le_bytes());
         b.extend(&(-0.0f32).to_le_bytes());
         b.extend(&1.0f32.to_le_bytes());

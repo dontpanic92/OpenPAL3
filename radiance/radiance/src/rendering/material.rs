@@ -2,7 +2,7 @@ use image::ImageFormat;
 
 use crate::rendering::texture::TextureStore;
 
-use super::{sampler::SamplerDef, texture::TextureDef, ShaderProgram};
+use super::{ShaderProgram, sampler::SamplerDef, texture::TextureDef};
 use std::{io::Read, sync::Arc};
 
 /// Color-blend mode for a material. Today every variant maps to a distinct
@@ -385,18 +385,18 @@ impl SimpleMaterialDef {
         get_reader: impl FnOnce(&str) -> Option<R>,
         sampler: SamplerDef,
     ) -> MaterialDef {
-        let texture = TextureStore::get_or_update(texture_name, || {
-            if let Some(mut r) = get_reader(texture_name) {
-                let mut buf = Vec::new();
-                r.read_to_end(&mut buf).unwrap();
-                image::load_from_memory(&buf)
-                    .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
-                    .and_then(|img| Ok(img.to_rgba8()))
-                    .ok()
-            } else {
-                None
-            }
-        });
+        let texture =
+            TextureStore::get_or_update(texture_name, || match get_reader(texture_name) {
+                Some(mut r) => {
+                    let mut buf = Vec::new();
+                    r.read_to_end(&mut buf).unwrap();
+                    image::load_from_memory(&buf)
+                        .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
+                        .and_then(|img| Ok(img.to_rgba8()))
+                        .ok()
+                }
+                _ => None,
+            });
 
         Self::create_internal(texture, sampler)
     }

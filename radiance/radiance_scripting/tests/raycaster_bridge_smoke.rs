@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use p7::interpreter::context::Data;
 use radiance::math::Vec3;
-use radiance::utils::ray_casting::{wrap_ray_caster, RayCaster};
+use radiance::utils::ray_casting::{RayCaster, wrap_ray_caster};
 use radiance_scripting::ScriptHost;
 
 const SCRIPT: &str = r#"

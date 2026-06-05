@@ -2,9 +2,9 @@ use crosscom::ComRc;
 use uuid::Uuid;
 
 use super::{
+    Camera,
     entity::IEntityExt,
     mutation::{ComponentBag, MutationQueue},
-    Camera,
 };
 use crate::{
     comdef::{IComponent, IComponentContainerImpl, IEntity, IScene, ISceneImpl},

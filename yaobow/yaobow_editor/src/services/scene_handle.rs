@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use crosscom::ComRc;
 use radiance::comdef::{IEntity, IEntityExt, IScene, ISceneExt};
-use radiance::math::{transform_aabb, Vec3};
+use radiance::math::{Vec3, transform_aabb};
 use radiance::rendering::ComponentFactory;
 use radiance_scripting::comdef::services::IRenderTarget;
 use radiance_scripting::services::{ImguiTextureCache, ScriptedRenderTarget};
@@ -22,7 +22,7 @@ use crate::comdef::editor_services::{
     IScenePreviewSessionImpl,
 };
 use crate::services::gizmo::Gizmo;
-use crate::services::preview_registry::{tick_orbit, OrbitState, PreviewRegistry, PreviewState};
+use crate::services::preview_registry::{OrbitState, PreviewRegistry, PreviewState, tick_orbit};
 use shared::openpal4::asset_loader::AssetLoader as Pal4AssetLoader;
 
 /// Flat-node-tree representation of the loaded scene. `nodes[i].parent`

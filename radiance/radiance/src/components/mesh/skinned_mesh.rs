@@ -16,8 +16,8 @@ use crate::{
 };
 
 use super::{
-    event::{AnimationEvent, AnimationEventManager},
     Geometry,
+    event::{AnimationEvent, AnimationEventManager},
 };
 use crate::comdef::IEntityExt;
 
@@ -199,6 +199,9 @@ impl IComponentImpl for SkinnedMeshComponent {
 }
 
 pub struct ArmatureComponent {
+    // Held so the armature owns a refcount on the entity it's attached to;
+    // dropping this field would change the entity's ownership graph.
+    #[allow(dead_code)]
     entity: ComRc<IEntity>,
     root_bone: ComRc<IEntity>,
     bones: Vec<ComRc<IEntity>>,
@@ -381,6 +384,9 @@ impl IComponentImpl for ArmatureComponent {
 
 pub struct HAnimBoneComponent {
     entity: ComRc<IEntity>,
+    // Stable bone id from the source asset, kept for diagnostics and future
+    // lookup use even though no current path reads it.
+    #[allow(dead_code)]
     id: u32,
     props: RefCell<HAnimBoneProps>,
 }

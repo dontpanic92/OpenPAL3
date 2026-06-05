@@ -11,8 +11,8 @@ use mini_fs::MiniFs;
 use radiance::{comdef::IEntity, rendering::ComponentFactory};
 
 use crate::loaders::{
-    dff::{create_entity_from_dff_model, DffLoaderConfig},
     Pal5TextureResolver,
+    dff::{DffLoaderConfig, create_entity_from_dff_model},
 };
 
 pub struct AssetLoader {

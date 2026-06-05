@@ -157,8 +157,8 @@ fn dropping_script_host_with_outstanding_action_is_safe() {
     // invocation.
     drop(host);
     CAPTURED.with(|c| c.borrow_mut().clear()); // release the static's strong ref to `captured`'s sibling
-                                               // `captured` is the only remaining strong ref; the inner Weak
-                                               // should fail to upgrade.
+    // `captured` is the only remaining strong ref; the inner Weak
+    // should fail to upgrade.
 
     // Invoking on a dead runtime: thunk no-ops.
     captured.invoke();

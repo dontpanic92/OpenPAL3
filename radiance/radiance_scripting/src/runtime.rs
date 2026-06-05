@@ -30,8 +30,8 @@ use std::rc::Rc;
 
 use crosscom::{ComInterface, ComRc};
 use crosscom_protosept::{
-    install_com_dispatcher, scope, scope_context, with_context, ComObjectTable, HostError,
-    HostServices, P7HostContext, RuntimeAccess, RuntimeHandle,
+    ComObjectTable, HostError, HostServices, P7HostContext, RuntimeAccess, RuntimeHandle,
+    install_com_dispatcher, scope, scope_context, with_context,
 };
 use p7::interpreter::context::{Context, Data};
 use p7::{InMemoryModuleProvider, ModuleProvider};

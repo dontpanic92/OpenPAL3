@@ -1,4 +1,4 @@
-use tomcrypt_sys::{ltc_cipher_descriptor, Symmetric_key};
+use tomcrypt_sys::{Symmetric_key, ltc_cipher_descriptor};
 
 pub struct Cipher {
     key_len: usize,

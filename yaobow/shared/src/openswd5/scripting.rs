@@ -492,6 +492,9 @@ struct StoryMsg {
 }
 
 struct TalkMsg {
+    // Speaker name parsed from the script; not currently displayed but
+    // preserved for future dialog rendering.
+    #[allow(dead_code)]
     name: String,
     text: String,
 }

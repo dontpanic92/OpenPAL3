@@ -6,9 +6,9 @@ use std::{
 use agent_server::protocol::{
     AgentCommand, AgentError, AgentResponse, AxisInputParams, DialogSnapshot, FastForwardParams,
     FireTriggerParams, KeyAction, KeyInputParams, NameParams, NpcEntry, ObjectEntry, PartyMember,
-    PerfMetric, PerfMetricsResponse, ScreenshotResponse, ScriptEvalParams, ScriptGlobalsParams,
-    ScriptGlobalsResponse, SceneObjectsResponse, SceneTriggersResponse, StateSnapshot,
-    StepTimeParams, TeleportParams, TriggerEntry,
+    PerfMetric, PerfMetricsResponse, SceneObjectsResponse, SceneTriggersResponse,
+    ScreenshotResponse, ScriptEvalParams, ScriptGlobalsParams, ScriptGlobalsResponse,
+    StateSnapshot, StepTimeParams, TeleportParams, TriggerEntry,
 };
 use crosscom::ComRc;
 use radiance::comdef::{IEntityExt, IImmediateDirectorImpl, IUiHost};
@@ -408,15 +408,12 @@ impl IDirectorImpl for OpenPAL4Director {
         self.poll_save_load_hotkeys();
 
         if self.vm.borrow().context.is_none() {
-            let function = radiance::perf::time(
-                "pal4.director.event_triggered_total_ns",
-                || {
-                    self.vm
-                        .borrow_mut()
-                        .app_context_mut()
-                        .event_triggered(effective_dt)
-                },
-            );
+            let function = radiance::perf::time("pal4.director.event_triggered_total_ns", || {
+                self.vm
+                    .borrow_mut()
+                    .app_context_mut()
+                    .event_triggered(effective_dt)
+            });
             if let Some(function) = function {
                 let module = self.vm.borrow().app_context.scene.module.clone().unwrap();
                 self.vm
@@ -835,7 +832,7 @@ impl OpenPAL4Director {
             None => {
                 return AgentResponse::err(AgentError::internal(
                     "agent bridge unset while dispatching screenshot",
-                ))
+                ));
             }
         };
 
@@ -845,7 +842,7 @@ impl OpenPAL4Director {
             None => {
                 return AgentResponse::err(AgentError::not_implemented(
                     "no rendering engine wired to the agent bridge (headless build)",
-                ))
+                ));
             }
         };
 
@@ -900,11 +897,7 @@ impl OpenPAL4Director {
                 };
                 TriggerEntry {
                     name: event.name.to_string().unwrap_or_default(),
-                    function: event
-                        .function
-                        .function
-                        .to_string()
-                        .unwrap_or_default(),
+                    function: event.function.function.to_string().unwrap_or_default(),
                     center,
                     half_size,
                     shape: shape.to_string(),
@@ -950,13 +943,10 @@ impl OpenPAL4Director {
                         .header
                         .object_types
                         .get(i)
-                        .and_then(|t| {
-                            fileformats::pal4::gob::GobObjectType::name(*t)
-                        })
+                        .and_then(|t| fileformats::pal4::gob::GobObjectType::name(*t))
                         .unwrap_or("unknown")
                         .to_string();
-                    let research_function =
-                        entry.research_function.to_string().unwrap_or_default();
+                    let research_function = entry.research_function.to_string().unwrap_or_default();
                     // Prefer the live entity position (scripts may have
                     // moved or hidden the object), fall back to the
                     // GOB load-time position for entries we never
@@ -1281,7 +1271,11 @@ fn trigger_bounds(event: &fileformats::pal4::evf::EvfEvent) -> ([f32; 3], [f32; 
         return ([0.0; 3], [0.0; 3]);
     }
     let first = &event.vertices[0];
-    let mut min = [first.center.x as f32, first.center.y as f32, first.center.z as f32];
+    let mut min = [
+        first.center.x as f32,
+        first.center.y as f32,
+        first.center.z as f32,
+    ];
     let mut max = min;
     for v in event.vertices.iter().skip(1) {
         let p = [v.center.x as f32, v.center.y as f32, v.center.z as f32];

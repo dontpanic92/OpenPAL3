@@ -21,7 +21,7 @@ use radiance::comdef::IDirector;
 use radiance::comdef::IImmediateDirector;
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 use radiance_scripting::{
-    register_immediate_director_proto, wrap_director, ImguiImmediateDirectorPump, ScriptHost,
+    ImguiImmediateDirectorPump, ScriptHost, register_immediate_director_proto, wrap_director,
 };
 
 const SCRIPT: &str = r#"

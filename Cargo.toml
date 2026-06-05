@@ -22,7 +22,7 @@ members = [
 #   "tools/dbexp",
     "tools/repacker",
 ]
-resolver = "2"
+resolver = "3"
 
 [workspace.dependencies]
 imgui = { version = "0.12", features = ["docking", "tables-api"] }

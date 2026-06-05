@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use binrw::{binrw, BinRead, BinWrite};
+use binrw::{BinRead, BinWrite, binrw};
 use mini_fs::File;
 
 use crate::asset::file::{MemoryFile, StreamingFile};

@@ -24,8 +24,8 @@ use std::{
     ops::Add,
     rc::Rc,
     sync::{
-        mpsc::{channel, Sender},
         Arc, Mutex, RwLock, Weak,
+        mpsc::{Sender, channel},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -58,6 +58,9 @@ lazy_static! {
 }
 
 pub struct InitResult {
+    // Stream duration in stream timebase units; reported by ffmpeg but not
+    // consumed by the current playback path.
+    #[allow(dead_code)]
     pub duration: i64,
     pub size: (u32, u32),
 }
@@ -517,16 +520,17 @@ impl radiance::audio::Decoder for AudioFFmpegDecoder {
 }
 
 fn get_source_frame(video: &mut VideoStreamData) -> Result<(VideoFrame, u32), LoopState> {
-    let (packet, loop_count) = if let Some(packet) = video.stream.packet_queue.pop_front() {
-        match packet {
+    let (packet, loop_count) = match video.stream.packet_queue.pop_front() {
+        Some(packet) => match packet {
             PacketData::Packet(p, l) => (p, l),
             PacketData::Flush => {
                 video.stream.decoder.as_video().flush();
                 return get_source_frame(video);
             }
+        },
+        _ => {
+            return Err(LoopState::Sleep(NO_PACKET_SLEEP));
         }
-    } else {
-        return Err(LoopState::Sleep(NO_PACKET_SLEEP));
     };
     let decoder = video.stream.decoder.as_video();
     let mut frame = VideoFrame::empty();
@@ -585,33 +589,35 @@ fn scale_source_frame(
 }
 
 fn play_video(video: &mut VideoStreamData) -> LoopState {
-    let (rgb_frame, loop_count) = if let Some(frame) = video.scaled_frame.take() {
-        frame
-    } else {
-        // no texture frame available, get one from a source frame
-        let (source_frame, loop_count) = if let Some(frame) = video.source_frame.take() {
-            frame
-        } else {
-            // no source frame available either, decode a new one
-            match get_source_frame(video) {
-                Ok(frame) => frame,
+    let (rgb_frame, loop_count) = match video.scaled_frame.take() {
+        Some(frame) => frame,
+        _ => {
+            // no texture frame available, get one from a source frame
+            let (source_frame, loop_count) = match video.source_frame.take() {
+                Some(frame) => frame,
+                _ => {
+                    // no source frame available either, decode a new one
+                    match get_source_frame(video) {
+                        Ok(frame) => frame,
+                        Err(state) => return state,
+                    }
+                }
+            };
+            // store size for external access
+            if let Some(tx) = video.size_sender.take() {
+                tx.send((source_frame.width(), source_frame.height()))
+                    .unwrap();
+            }
+
+            // always use the original frame size and only let sws_scale convert pixel format
+            // it's recommended to do actual scaling with hardware acceleration
+            video.target_size = (source_frame.width(), source_frame.height());
+
+            // scale frame to texture size and pixel format
+            match scale_source_frame(video, &source_frame) {
+                Ok(frame) => (frame, loop_count),
                 Err(state) => return state,
             }
-        };
-        // store size for external access
-        if let Some(tx) = video.size_sender.take() {
-            tx.send((source_frame.width(), source_frame.height()))
-                .unwrap();
-        }
-
-        // always use the original frame size and only let sws_scale convert pixel format
-        // it's recommended to do actual scaling with hardware acceleration
-        video.target_size = (source_frame.width(), source_frame.height());
-
-        // scale frame to texture size and pixel format
-        match scale_source_frame(video, &source_frame) {
-            Ok(frame) => (frame, loop_count),
-            Err(state) => return state,
         }
     };
 
@@ -683,18 +689,21 @@ unsafe impl Send for ResamplingContext {}
 
 fn get_audio_source_frames(audio: &mut AudioStreamData) -> Result<Vec<AudioFrame>, LoopState> {
     // Get a packet from the packet queue.
-    let (packet, _loop_count) = if let Some(packet) = audio.stream.packet_queue.pop_front() {
-        // Check what we found in the packet queue.
-        match packet {
-            PacketData::Packet(p, l) => (p, l),
-            PacketData::Flush => {
-                // Flush the decoder and return the next source frame.
-                audio.stream.decoder.as_audio().flush();
-                return get_audio_source_frames(audio);
+    let (packet, _loop_count) = match audio.stream.packet_queue.pop_front() {
+        Some(packet) => {
+            // Check what we found in the packet queue.
+            match packet {
+                PacketData::Packet(p, l) => (p, l),
+                PacketData::Flush => {
+                    // Flush the decoder and return the next source frame.
+                    audio.stream.decoder.as_audio().flush();
+                    return get_audio_source_frames(audio);
+                }
             }
         }
-    } else {
-        return Err(LoopState::Sleep(NO_PACKET_SLEEP));
+        _ => {
+            return Err(LoopState::Sleep(NO_PACKET_SLEEP));
+        }
     };
     // Decode this packet into one or more frames.
     let decoder = audio.stream.decoder.as_audio();
@@ -788,17 +797,18 @@ fn play_audio(audio: &mut AudioStreamData) -> LoopState {
     }
 
     // No resampled frame available, calculate a new one.
-    let source_frame = if let Some(frame) = audio.source_frames.pop_front() {
-        frame
-    } else {
-        // No source frame available, so decode a new one.
-        let frames = match get_audio_source_frames(audio) {
-            Ok(frames) => frames,
-            Err(state) => return state,
-        };
-        // Store the frames.
-        audio.source_frames.extend(frames);
-        audio.source_frames.pop_front().unwrap()
+    let source_frame = match audio.source_frames.pop_front() {
+        Some(frame) => frame,
+        _ => {
+            // No source frame available, so decode a new one.
+            let frames = match get_audio_source_frames(audio) {
+                Ok(frames) => frames,
+                Err(state) => return state,
+            };
+            // Store the frames.
+            audio.source_frames.extend(frames);
+            audio.source_frames.pop_front().unwrap()
+        }
     };
 
     let resampled_frames_len = audio.output_stream.resampled_frames.lock().unwrap().len();

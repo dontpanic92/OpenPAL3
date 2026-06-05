@@ -15,7 +15,7 @@ use crosscom::ComRc;
 use p7::errors::RuntimeError;
 use p7::interpreter::context::Context;
 use radiance::comdef::IDirector;
-use radiance_scripting::{wrap_director, ScriptHost};
+use radiance_scripting::{ScriptHost, wrap_director};
 
 const SCRIPT: &str = r#"
 import radiance;

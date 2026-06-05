@@ -2,7 +2,7 @@ use super::adhoc_command_runner::AdhocCommandRunner;
 use super::buffer::Buffer;
 use super::error::VulkanBackendError;
 use ash::prelude::VkResult;
-use ash::{vk, Instance};
+use ash::{Instance, vk};
 use std::error::Error;
 use std::rc::Rc;
 use vk_mem::Alloc;
