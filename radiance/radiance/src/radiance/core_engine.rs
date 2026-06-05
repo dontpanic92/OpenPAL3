@@ -1,9 +1,9 @@
 use crosscom::ComRc;
-use mini_fs::MiniFs;
 
 use super::immediate_pump::ImmediateDirectorPump;
 use super::ui_manager::UiManager;
 use super::{DebugLayer, TaskManager};
+use crate::asset::AssetManager;
 use crate::comdef::{ISceneExt, ISceneManager};
 use crate::rendering::{self, RenderingEngine};
 use crate::{
@@ -23,7 +23,13 @@ pub struct CoreRadianceEngine {
     input_engine: Rc<RefCell<dyn InputEngineInternal>>,
     ui_manager: Rc<UiManager>,
     scene_manager: ComRc<ISceneManager>,
-    virtual_fs: Rc<RefCell<MiniFs>>,
+    /// Engine-owned asset / virtual-filesystem handle. Replaces the
+    /// previous `Rc<RefCell<MiniFs>>` field that was dead code (no
+    /// caller ever read it). App boot installs a fully-mounted
+    /// `AssetManager` via [`CoreRadianceEngine::set_assets`] — until
+    /// then this is an empty case-insensitive AssetManager so
+    /// `assets()` always has something safe to return.
+    assets: Rc<AssetManager>,
     task_manager: Rc<TaskManager>,
     services: RefCell<HashMap<TypeId, Rc<dyn Any>>>,
     debug_layer: Option<Box<dyn DebugLayer>>,
@@ -47,7 +53,7 @@ impl CoreRadianceEngine {
             input_engine,
             ui_manager,
             scene_manager,
-            virtual_fs: Rc::new(RefCell::new(MiniFs::new(false))),
+            assets: AssetManager::new(),
             task_manager: Rc::new(TaskManager::new()),
             services: RefCell::new(HashMap::new()),
             debug_layer: None,
@@ -74,8 +80,19 @@ impl CoreRadianceEngine {
         self.input_engine.borrow().as_input_engine()
     }
 
-    pub fn virtual_fs(&self) -> Rc<RefCell<MiniFs>> {
-        self.virtual_fs.clone()
+    /// Engine-owned asset manager. Replaces the legacy `virtual_fs()`
+    /// accessor (dead code, zero callers, removed). App boot can swap
+    /// in a fully-mounted manager via [`Self::set_assets`].
+    pub fn assets(&self) -> Rc<AssetManager> {
+        self.assets.clone()
+    }
+
+    /// Install a fully-mounted `AssetManager` — call this from app
+    /// boot after building the manager from
+    /// `packfs::init_virtual_fs(...)` (wrap the resulting `MiniFs`
+    /// with `AssetManager::from_mini_fs(...)`).
+    pub fn set_assets(&mut self, assets: Rc<AssetManager>) {
+        self.assets = assets;
     }
 
     pub fn set_debug_layer(&mut self, debug_layer: Box<dyn DebugLayer>) {

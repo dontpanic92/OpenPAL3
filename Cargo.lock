@@ -3038,7 +3038,6 @@ name = "packfs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "binrw 0.11.3",
  "byteorder",
  "cfg_aliases",
  "cipher",
@@ -3052,15 +3051,14 @@ dependencies = [
  "mini-fs",
  "minilzo-rs",
  "miniz_oxide 0.7.4",
+ "radiance",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tomcrypt-sys",
  "uuid 0.8.2",
  "xtea",
- "xxhash-rust",
  "xxtea",
- "zstd",
 ]
 
 [[package]]
@@ -3422,6 +3420,7 @@ dependencies = [
  "ash",
  "ash-window",
  "backtrace",
+ "binrw 0.11.3",
  "bitflags 1.3.2",
  "cc",
  "cfg-if 1.0.4",
@@ -3429,6 +3428,7 @@ dependencies = [
  "crosscom",
  "crosscom-ccidl",
  "dashmap",
+ "encoding",
  "gilrs",
  "hound",
  "image 0.23.14",
@@ -3454,6 +3454,8 @@ dependencies = [
  "vk-mem",
  "winapi",
  "winit",
+ "xxhash-rust",
+ "zstd",
 ]
 
 [[package]]

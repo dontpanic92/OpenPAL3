@@ -16,6 +16,7 @@ pub mod comdef {
     pub use crate::scene::{IEntityExt, ISceneExt, ISceneManagerExt};
 }
 pub mod application;
+pub mod asset;
 pub mod audio;
 pub mod components;
 pub mod debug;

@@ -1,5 +1,6 @@
-mod ypk_archive;
-mod ypk_fs;
+//! `.ypk` types — moved to `radiance::asset::ypk` so the engine can
+//! consume them without depending on `packfs`. This module is a
+//! source-compatibility re-export shim; new callers should prefer
+//! `radiance::asset::ypk` directly.
 
-pub use ypk_archive::{YpkArchive, YpkWriter};
-pub use ypk_fs::YpkFs;
+pub use radiance::asset::ypk::{YpkArchive, YpkFs, YpkWriter};

@@ -1,15 +1,16 @@
 use std::{
     collections::HashMap,
+    convert::TryFrom,
     io::{Cursor, Write},
     ops::DerefMut,
     sync::{Arc, Mutex},
 };
 
 use binrw::{binrw, BinRead, BinWrite};
-use common::{SeekRead, SeekWrite};
 use mini_fs::File;
 
-use crate::{memory_file::MemoryFile, streaming_file::StreamingFile};
+use crate::asset::file::{MemoryFile, StreamingFile};
+use crate::asset::seek_traits::{SeekRead, SeekWrite};
 
 pub struct YpkArchive {
     reader: Arc<Mutex<dyn SeekRead + Send + Sync>>,
@@ -121,6 +122,19 @@ pub struct YpkEntry {
     is_compressed: u32,
     original_size: u32,
     actual_size: u32,
+}
+
+impl YpkEntry {
+    /// Stored path, decoded as UTF-8. Paths are normalised at write
+    /// time (forward slashes, no leading `/` or `.`), so this is a
+    /// directory-component-separable path string.
+    pub fn name(&self) -> &str {
+        // YPK paths are written as `name_for_hash.as_bytes()` from
+        // `normorlize_path` output, which is pure ASCII for legal
+        // file paths. `from_utf8_lossy` keeps directory walks alive
+        // on the off-chance a non-UTF8 byte slipped in.
+        std::str::from_utf8(&self.name).unwrap_or("")
+    }
 }
 
 pub struct YpkWriter {
