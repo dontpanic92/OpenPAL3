@@ -15,4 +15,4 @@ pub use vita::Platform;
 #[cfg(windows)]
 pub use windows::Platform;
 
-pub use application::{Application, IApplicationExt};
+pub use application::{Application, EngineReadyCallback, IApplicationExt};

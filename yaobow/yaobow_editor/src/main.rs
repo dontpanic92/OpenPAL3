@@ -1,6 +1,6 @@
 use crosscom::ComRc;
 use radiance::application::Application;
-use radiance::comdef::{IApplication, IApplicationLoaderComponent};
+use radiance::comdef::{IApplication, IApplicationExt, IApplicationLoaderComponent};
 use radiance_editor::application::EditorApplicationLoader;
 use shared::GameType;
 use yaobow_editor::config;
@@ -36,16 +36,29 @@ fn main() {
     }
 
     let app = ComRc::<IApplication>::from_object(Application::new());
+
+    // imgui ini + theme need the engine but must land BEFORE the
+    // loader's `on_loading` so ScriptedWelcomePage::create sees a
+    // configured imgui context. Register as engine-ready callbacks;
+    // they fire on the first run-loop tick after the first-resumed
+    // bootstrap, ahead of any component on_loading.
+    {
+        let app2 = app.clone();
+        app.add_engine_ready_callback(Box::new(move || {
+            config::init_imgui_ini(&app2);
+            config::init_theme(&app2);
+        }));
+    }
+
     app.add_component(
         IApplicationLoaderComponent::uuid(),
         ComRc::from_object(EditorApplicationLoader::new(
             app.clone(),
-            ScriptedWelcomePage::create(app.clone()),
+            // Welcome-page construction reads the engine — defer it
+            // to `on_loading` (post-resumed) via the factory closure.
+            Box::new(|app| ScriptedWelcomePage::create(app)),
         )),
     );
-
-    config::init_imgui_ini(&app);
-    config::init_theme(&app);
 
     app.initialize();
     app.run();

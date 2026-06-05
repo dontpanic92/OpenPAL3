@@ -1,4 +1,5 @@
 use std::borrow::BorrowMut;
+use std::cell::RefCell;
 
 use crosscom::ComRc;
 use radiance::{
@@ -6,10 +7,18 @@ use radiance::{
     scene::CoreScene,
 };
 
+/// Factory closure that builds the initial editor director once the
+/// engine is ready. Invoked from `on_loading` (i.e. AFTER the
+/// first-resumed engine bootstrap), so the closure can freely call
+/// `app.engine()`.
+pub type DirectorFactory = Box<dyn FnOnce(ComRc<IApplication>) -> ComRc<IDirector>>;
+
 pub struct EditorApplicationLoader {
-    // plugin_create: Option<Box<dyn Fn(ComRc<IApplication>) -> SceneViewPlugins>>,
     app: ComRc<IApplication>,
-    director: ComRc<IDirector>,
+    /// Director factory, consumed on first `on_loading`. Wrapped in
+    /// `RefCell<Option<…>>` so the `IComponentImpl::on_loading(&self)`
+    /// signature can `take()` the closure without `&mut self`.
+    director_factory: RefCell<Option<DirectorFactory>>,
 }
 
 ComObject_EditorApplicationLoaderComponent!(super::EditorApplicationLoader);
@@ -33,6 +42,13 @@ impl IComponentImpl for EditorApplicationLoader {
             )[1]
         };
 
+        let factory = self
+            .director_factory
+            .borrow_mut()
+            .take()
+            .expect("EditorApplicationLoader::on_loading fired without a director factory");
+        let director = factory(self.app.clone());
+
         self.app
             .engine()
             .borrow()
@@ -42,7 +58,7 @@ impl IComponentImpl for EditorApplicationLoader {
             .engine()
             .borrow()
             .scene_manager()
-            .set_director(self.director.clone());
+            .set_director(director);
     }
 
     fn on_unloading(&self) {}
@@ -51,7 +67,10 @@ impl IComponentImpl for EditorApplicationLoader {
 }
 
 impl EditorApplicationLoader {
-    pub fn new(app: ComRc<IApplication>, director: ComRc<IDirector>) -> Self {
-        Self { app, director }
+    pub fn new(app: ComRc<IApplication>, director_factory: DirectorFactory) -> Self {
+        Self {
+            app,
+            director_factory: RefCell::new(Some(director_factory)),
+        }
     }
 }

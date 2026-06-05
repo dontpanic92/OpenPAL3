@@ -307,7 +307,19 @@ pub fn create_application(opts: BootOptions) -> ComRc<IApplication> {
 pub fn run_app(opts: BootOptions) {
     let app = create_application(opts);
     app.initialize();
-    shared::theme_runtime::apply_runtime_theme(&app);
+
+    // The runtime theme reads the engine's imgui context, so it can't
+    // run until first-resumed has bootstrapped the engine. Register
+    // as an engine-ready callback — it fires on the first run-loop
+    // tick after the bootstrap, before any component on_loading
+    // (and hence before any rendering).
+    {
+        let app2 = app.clone();
+        app.add_engine_ready_callback(Box::new(move || {
+            shared::theme_runtime::apply_runtime_theme(&app2);
+        }));
+    }
+
     app.run();
 }
 

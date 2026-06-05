@@ -30,7 +30,7 @@ pub fn create_radiance_engine(
 
     #[cfg(vulkan)]
     let rendering_engine = Rc::new(RefCell::new(crate::rendering::VulkanRenderingEngine::new(
-        window,
+        &window,
         &ui_manager.imgui_context(),
     )?));
 
