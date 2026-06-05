@@ -52,6 +52,10 @@ pub mod script_bridges {
         pub use shared::script_bridges::openpal5::*;
     }
 
+    pub mod openswd5 {
+        pub use shared::script_bridges::openswd5::*;
+    }
+
     pub mod pal4_debug {
         pub use shared::script_bridges::pal4_debug::*;
     }
@@ -68,7 +72,7 @@ pub mod script_source {
     //! flag; we just hold the typed client and forward.
 
     use std::cell::RefCell;
-    use std::rc::Rc;
+    use std::rc::{Rc, Weak};
 
     use crosscom::ComRc;
     use radiance::comdef::{
@@ -78,19 +82,19 @@ pub mod script_source {
     use radiance::radiance::CoreRadianceEngine;
     use radiance_scripting::comdef::services::IInputService;
     use radiance_scripting::{
-        bootstrap_script_root, ScriptHost, ScriptModule, ScriptPackage, HOST_CONTEXT_TYPE_TAG,
+        bootstrap_script_root, ScriptHost, ScriptModule, ScriptPackage,
     };
     use shared::openpal4::comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay};
     use shared::openpal4::comdef::{
         IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext,
     };
     use shared::openpal4::scene::Pal4ActorControllerFactory;
-    use shared::openpal5::comdef::IPal5Context;
-    use shared::GameType;
+    use shared::openpal4::service::Pal4ScriptHooks;
 
-    use crate::application::yaobow_app_context::YaobowAppContext;
+    use crate::application::yaobow_host_context::{YaobowHostContext, YAOBOW_HOST_CONTEXT_TYPE_TAG};
+    use crate::comdef::yaobow_services::IYaobowHostContext;
+    use crate::openpal3::Pal3Service;
     use crate::script_bridges::yaobow_services::IYaobowScriptAppClient;
-    use radiance_scripting::comdef::services::IHostContext;
 
     /// p7 binding source for `yaobow_services.idl`. Register it with
     /// `ScriptHost::add_binding("yaobow_services", YAOBOW_SERVICES_P7)`
@@ -102,13 +106,21 @@ pub mod script_source {
     pub const PAL4_DEBUG_P7: &str = shared::openpal4::pal4_debug::PAL4_DEBUG_P7;
     pub const ACTOR_CONTROLLER_P7: &str =
         shared::openpal4::actor_controller_script::ACTOR_CONTROLLER_P7;
+    /// p7 binding source generated from `openpal3.idl`. Imported as
+    /// `openpal3` by any script that references `IPal3Service`.
+    pub const OPENPAL3_P7: &str = shared::openpal3::OPENPAL3_P7;
     /// p7 binding source generated from `openpal5.idl`. Imported as
-    /// `openpal5` from the script-side `openpal5_launcher` module.
+    /// `openpal5` from the script-side launcher modules.
     pub const OPENPAL5_P7: &str = shared::openpal5::OPENPAL5_P7;
-    /// Hand-written protosept orchestrator for the OpenPAL5 launch
-    /// sequence. Registered as `openpal5_launcher` to avoid colliding
-    /// with the IDL-generated `openpal5` binding.
-    pub const OPENPAL5_LAUNCHER_P7: &str = include_str!("../scripts/openpal5.p7");
+    /// p7 binding source generated from `openswd5.idl`. Imported as
+    /// `openswd5` from the script-side launcher modules.
+    pub const SWD5_P7: &str = shared::openswd5::SWD5_P7;
+    /// Hand-written protosept orchestrator for the OpenPAL5 launch.
+    /// Defines the script-side `OpenPal5Director` struct and the
+    /// `make_pal5_director` helper used by both title.p7 (script
+    /// dispatch) and `app.p7::make_pal5_director` (Rust direct-boot
+    /// entry).
+    pub const OPENPAL5_DIRECTOR_P7: &str = include_str!("../scripts/openpal5_director.p7");
 
     pub const IDL_BINDINGS: &[ScriptModule] = &[
         ScriptModule::new("yaobow_services", YAOBOW_SERVICES_P7),
@@ -117,7 +129,9 @@ pub mod script_source {
             "openpal4",
             shared::openpal4::actor_controller_script::OPENPAL4_P7,
         ),
+        ScriptModule::new("openpal3", OPENPAL3_P7),
         ScriptModule::new("openpal5", OPENPAL5_P7),
+        ScriptModule::new("openswd5", SWD5_P7),
     ];
 
     /// Sibling modules referenced by `app.p7`.
@@ -130,10 +144,10 @@ pub mod script_source {
         ),
         ScriptModule::new("actor_controller", ACTOR_CONTROLLER_P7),
         // Generic FreeView controller from `radiance_scripting`. Used
-        // by `openpal5_launcher` for the WASD camera director; any
+        // by `openpal5_director` for the WASD camera director; any
         // future per-game launcher can import it the same way.
         ScriptModule::new("freeview", radiance_scripting::FREEVIEW_P7),
-        ScriptModule::new("openpal5_launcher", OPENPAL5_LAUNCHER_P7),
+        ScriptModule::new("openpal5_director", OPENPAL5_DIRECTOR_P7),
     ];
 
     pub const YAOBOW_PACKAGE: ScriptPackage = ScriptPackage {
@@ -168,55 +182,84 @@ pub mod script_source {
 
     /// App-lifetime owner of the script host + the rooted script-side
     /// `box<IYaobowScriptApp>` (via the auto-generated typed client).
-    /// Cached as an engine service so every per-game loader
-    /// (PAL3/PAL4/…) sees the same instance.
+    /// Cached as an engine service so every per-game loader sees the
+    /// same instance.
+    ///
+    /// Also implements [`Pal4ScriptHooks`] so `Pal4Service` can mint
+    /// the script-side PAL4 debug overlay + actor controller during
+    /// `create_director`. The link from `Pal4Service` back to the
+    /// project is a [`Weak`] to keep the project ↔ host-context ↔
+    /// service ownership graph acyclic.
     pub struct YaobowScriptProject {
         client: Rc<IYaobowScriptAppClient>,
-        selected_game: Rc<RefCell<Option<GameType>>>,
+        host_context: ComRc<IYaobowHostContext>,
     }
 
     impl YaobowScriptProject {
-        /// App-lifetime install. Constructs the `YaobowAppContext` and
-        /// the `selected_game` slot internally, so callers no longer
-        /// build their own context. Idempotent — every subsequent call
-        /// from any feature (PAL3/PAL4/…) returns the same project.
+        /// App-lifetime install. Builds the per-game services
+        /// (`Pal3Service`, `Pal4Service`, `Pal5Service`, `Swd5Service`),
+        /// wraps them in a `YaobowHostContext`, and hands that to the
+        /// script root's `init`. Idempotent — every subsequent call
+        /// from any feature returns the same project.
         pub fn install(
             app: &ComRc<IApplication>,
             config: Rc<RefCell<shared::config::YaobowConfig>>,
         ) -> Rc<Self> {
             let engine_rc = app.engine();
             let engine = engine_rc.borrow();
-            Self::install_inner(&engine, || {
-                let selected_game: Rc<RefCell<Option<GameType>>> = Rc::new(RefCell::new(None));
-                let app_ctx = YaobowAppContext::create(app.clone(), selected_game.clone(), config);
-                (app_ctx, selected_game)
-            })
+
+            // Build per-game services. The PAL4 agent bridge + script
+            // hooks are set later (after `YaobowScriptProject` exists).
+            let pal3 = Pal3Service::create(app.clone());
+            let pal4 = shared::openpal4::service::Pal4Service::create(app.clone());
+            let pal5 = shared::openpal5::service::Pal5Service::create(
+                app.clone(),
+                engine.rendering_component_factory(),
+            );
+            let swd5 = shared::openswd5::service::Swd5Service::create(app.clone());
+
+            let host_ctx = YaobowHostContext::create(
+                app.clone(),
+                config,
+                pal3,
+                pal4.clone(),
+                pal5,
+                swd5,
+            );
+
+            Self::install_inner(&engine, host_ctx, Some(pal4))
         }
 
-        /// Lower-level installer used by tests and integration paths
-        /// that build a custom `IHostContext` (e.g. with stub
-        /// services). The supplied `selected_game` slot is exposed via
-        /// [`Self::selected_game`].
+        /// Lower-level installer used by tests + integration paths
+        /// that build a custom `IYaobowHostContext` (e.g. with stub
+        /// services). When `pal4_service` is `None`, the
+        /// `Pal4ScriptHooks` setter is skipped — tests that don't
+        /// exercise PAL4 launch can leave it unset.
         pub fn install_with_context(
             engine: &CoreRadianceEngine,
-            app_ctx: ComRc<IHostContext>,
-            selected_game: Rc<RefCell<Option<GameType>>>,
+            host_ctx: ComRc<IYaobowHostContext>,
+            pal4_service: Option<ComRc<shared::openpal4::comdef::IPal4Service>>,
         ) -> Rc<Self> {
-            Self::install_inner(engine, || (app_ctx, selected_game))
+            Self::install_inner(engine, host_ctx, pal4_service)
         }
 
-        fn install_inner<F>(engine: &CoreRadianceEngine, build_ctx: F) -> Rc<Self>
-        where
-            F: FnOnce() -> (ComRc<IHostContext>, Rc<RefCell<Option<GameType>>>),
-        {
-            engine.get_or_insert_service(|| {
+        fn install_inner(
+            engine: &CoreRadianceEngine,
+            host_ctx: ComRc<IYaobowHostContext>,
+            pal4_service: Option<ComRc<shared::openpal4::comdef::IPal4Service>>,
+        ) -> Rc<Self> {
+            // Capture the host_ctx for the get_or_insert_service
+            // closure (only used on first install). After install
+            // returns the strong Rc, wire Pal4Service hooks if
+            // pal4_service was supplied — idempotent on re-install.
+            let host_ctx_for_init = host_ctx.clone();
+            let project: Rc<Self> = engine.get_or_insert_service(move || {
                 let host = ScriptHost::install(engine);
-                let (app_ctx, selected_game) = build_ctx();
                 let app_data = bootstrap_script_root(
                     &host,
                     &YAOBOW_PACKAGE,
-                    app_ctx,
-                    HOST_CONTEXT_TYPE_TAG,
+                    host_ctx_for_init,
+                    YAOBOW_HOST_CONTEXT_TYPE_TAG,
                     "init",
                 )
                 .expect("yaobow app script init must succeed");
@@ -224,22 +267,30 @@ pub mod script_source {
                 let client = IYaobowScriptAppClient::new(host, app);
                 Self {
                     client,
-                    selected_game,
+                    host_context: host_ctx,
                 }
-            })
+            });
+
+            if let Some(pal4) = pal4_service {
+                pal4.inner::<shared::openpal4::service::Pal4Service>()
+                    .set_script_hooks(
+                        Rc::downgrade(&project) as Weak<dyn Pal4ScriptHooks>,
+                    );
+            }
+
+            project
+        }
+
+        /// The `IYaobowHostContext` that was handed to the script
+        /// root's `init`. Used by `YaobowApplicationLoader` to reach
+        /// the per-game services (`pal3`, `pal4`, `pal5`, `swd5`)
+        /// during direct-boot.
+        pub fn host_context(&self) -> ComRc<IYaobowHostContext> {
+            self.host_context.clone()
         }
 
         pub fn host(&self) -> Rc<ScriptHost> {
             self.client.host().clone()
-        }
-
-        /// The shared `Rc<RefCell<Option<GameType>>>` slot. Title-side
-        /// `IAppService.open_game(ordinal)` writes this slot; the
-        /// `YaobowApplicationLoader::on_updating` poll reads and
-        /// clears it on the next tick to swap the active per-game
-        /// loader.
-        pub fn selected_game(&self) -> Rc<RefCell<Option<GameType>>> {
-            self.selected_game.clone()
         }
 
         pub fn make_title_director(&self) -> Result<ComRc<IImmediateDirector>, String> {
@@ -315,22 +366,28 @@ pub mod script_source {
             }
         }
 
-        /// Drives the protosept-authored OpenPAL5 launch sequence.
-        /// The script side
-        /// (`yaobow/yaobow/scripts/openpal5.p7::launch`) takes over
-        /// from the legacy `OpenPal5ApplicationLoader::on_loading`:
-        /// it sets the application title via `host.app().set_title`,
-        /// builds the default scene via the PAL5 context's
-        /// `load_default_scene`, pushes it onto the scene manager,
-        /// positions the camera, and installs a script-implemented
-        /// FreeView director. Returns `Err(...)` if the script-side
-        /// call failed (e.g. the host could not re-deref the rooted
-        /// app handle); the caller logs and leaves the title
-        /// director in place.
-        pub fn launch_pal5(&self, ctx: ComRc<IPal5Context>) -> Result<(), String> {
+        /// Drives the PAL5 launch via the script-side
+        /// `app.p7::make_pal5_director`. The script:
+        ///  1. Calls `host.pal5().load_default_scene(path, ord)`.
+        ///  2. Pushes the returned scene onto the scene manager.
+        ///  3. Calls `host.pal5().position_camera_default()`.
+        ///  4. Returns a boxed `OpenPal5Director` script struct.
+        ///
+        /// Used by Rust direct-boot (`--pal5`); title-page selection
+        /// goes through the same script entry directly.
+        pub fn make_pal5_director(
+            &self,
+            asset_path: &str,
+            game_ordinal: i32,
+        ) -> Result<ComRc<IDirector>, String> {
             self.client
-                .launch_openpal5(ctx)
-                .map_err(|err| format!("{err:?}"))
+                .make_pal5_director(asset_path, game_ordinal)
+                .map_err(|err| format!("{err:?}"))?
+                .ok_or_else(|| {
+                    format!(
+                        "make_pal5_director returned null (likely missing PAL5 assets at {asset_path})"
+                    )
+                })
         }
     }
 
@@ -356,6 +413,12 @@ pub mod script_source {
                 .expect("scripted Pal4PartyController creation must succeed")
         }
     }
+
+    impl Pal4ScriptHooks for YaobowScriptProject {
+        fn make_pal4_debug_bundle(&self) -> shared::openpal4::director::Pal4DebugBundle {
+            YaobowScriptProject::make_pal4_debug_bundle(self)
+        }
+    }
 }
 
 pub mod application;
@@ -364,8 +427,10 @@ pub mod openpal3;
 pub mod openpal4;
 pub mod openswd5;
 
-pub use application::{run_openpal5, run_openpal5q};
-pub use application::run_title_selection;
+pub use application::{
+    boot_for, create_application, resolve_asset_path, run_app, run_openpal5, run_openpal5q,
+    run_title_selection, BootOptions,
+};
 pub use opengujian::run_opengujian;
 pub use openpal3::run_openpal3;
 pub use openpal4::application::AgentBootOptions as Pal4AgentBootOptions;

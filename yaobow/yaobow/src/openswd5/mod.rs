@@ -1,19 +1,13 @@
-use self::application::OpenSwd5ApplicationLoader;
-use shared::{config::YaobowConfig, GameType};
+use shared::GameType;
 
-pub mod application;
+use crate::application::{boot_for, run_app};
 
 pub fn run_openswd5() {
-    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-    let asset_path = YaobowConfig::load()
-        .asset_path_for(GameType::SWD5)
-        .to_string();
-
-    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
-    let asset_path = String::new();
-
-    let app = OpenSwd5ApplicationLoader::create_application(asset_path);
-    app.initialize();
-    shared::theme_runtime::apply_runtime_theme(&app);
-    app.run();
+    // Preserve the legacy quirk: read the SWD5 asset path but
+    // dispatch as SWDHC. `boot_for(SWDHC)` resolves via
+    // `YaobowConfig::asset_path_for(SWDHC)` first, then falls back
+    // to the hardcoded SWDHC dev path. Historically `run_openswd5`
+    // read the SWD5 config key directly; if that distinction
+    // matters for your install, set the SWDHC key instead.
+    run_app(boot_for(GameType::SWDHC));
 }

@@ -9,13 +9,58 @@ import crosscom.idl;
 import radiance.idl;
 import scripting_services.idl;
 import pal4_debug.idl;
+import openpal3.idl;
 import openpal4.idl;
 import openpal5.idl;
+import openswd5.idl;
+
+// Yaobow-specific extension of `IHostContext` that adds per-game
+// service getters. The script side receives `box<IYaobowHostContext>`
+// at `app.p7::init(ctx)` time; per-game launch dispatch in `title.p7`
+// uses these getters to construct the next director.
+//
+// `IHostContext`'s generic getters (scene_manager, audio, vfs, input,
+// config, …) inherit through and are usable on the same box via
+// crosscom interface inheritance — same pattern as
+// `IEditorHostContext: IHostContext` in yaobow_editor.
+//
+// Per-game services are app-lifetime singletons constructed during
+// `YaobowApplicationLoader::on_loading` and exposed here. PAL4's
+// service holds the agent-bridge slot (the `AgentServer` HTTP
+// listener itself stays on the application loader for deterministic
+// teardown — see plan_v2 rubber-duck finding C).
+[uuid(f5a0434b-8f1e-411b-9392-073e3db56785)]
+interface IYaobowHostContext: IHostContext {
+    IPal3Service pal3();
+    IPal4Service pal4();
+    IPal5Service pal5();
+    ISwd5Service swd5();
+}
+
+[uuid(bf7e30e9-e6b6-4002-b4d8-ce2e22d52c1b)]
+class YaobowHostContext: IYaobowHostContext {}
+
+// Conforming class for `IPal3Service` (interface lives in
+// `openpal3.idl`). Declared here so the `ComObject_Pal3Service!`
+// macro generates in `yaobow_lib`, where the PAL3 director
+// construction (`MainMenuDirector`, `OpenPal3DebugLayer`,
+// `sce_proc_hooks`) currently lives. The other per-game service
+// classes (Pal4Service / Pal5Service / Swd5Service) live in `shared`
+// alongside their interfaces because their director construction is
+// already in `shared`.
+[uuid(8e9d29c2-e60b-4a03-b816-27f1f6a02d63)]
+class Pal3Service: IPal3Service {}
 
 // App-lifetime script root. The Yaobow protosept project's `app.p7`
 // conforms a single struct to this proto; Rust holds the rooted
 // instance and asks it to materialise per-feature surfaces (title
 // director, PAL4 debug overlay, …).
+//
+// Phase 2: this interface now contains only **factories** for
+// genuinely script-implemented objects. Per-game launch happens
+// directly via `host.palX().create_director()` (Rust services) or
+// via this `make_pal5_director` factory (because PAL5's director
+// stays script-built). No more `launch_*` side-effect methods.
 [uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a04), protosept(script_app_root)]
 interface IYaobowScriptApp: IUnknown {
     IImmediateDirector make_title_director();
@@ -34,15 +79,13 @@ interface IYaobowScriptApp: IUnknown {
         ICameraControl camera,
         IRayCaster ray_caster);
 
-    // OpenPAL5 launch entry. The Rust caller constructs an
-    // `IPal5Context` carrying the PAL5-specific state (asset path +
-    // component factory used internally by the AssetLoader); the
-    // script orchestrator (`yaobow/yaobow/scripts/openpal5.p7`)
-    // drives the launch sequence through the canonical
-    // `IHostContext` services: set title, build the default scene,
-    // push it onto the scene manager, install a script-implemented
-    // free-view director.
-    void launch_openpal5(IPal5Context ctx);
+    // PAL5 launch factory. Used both from `title.p7` (script-side
+    // dispatch on click) and from Rust direct boot (`run_openpal5`).
+    // Internally delegates to the `openpal5_director` module so the
+    // factory body has one source of truth. `game_ordinal`
+    // discriminates PAL5 vs PAL5Q (pkg key). Returns `null` when
+    // the scene fails to load (e.g. missing asset path).
+    IDirector? make_pal5_director(&str asset_path, int game_ordinal);
 }
 [uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a05)]
 class YaobowScriptApp: IYaobowScriptApp {}

@@ -3,20 +3,27 @@
 // `init()` that returns a rooted app object; feature entrypoints live
 // behind methods on that object — all declared in IDL via
 // `yaobow_services.IYaobowScriptApp`.
+//
+// Phase 2: the app root has been trimmed to pure factories
+// (`make_title_director`, `make_pal4_debug_overlay`,
+// `make_actor_controller`, `make_pal5_director`). Per-game launches
+// happen via per-game services (`host.pal4()`, `host.swd5()`, …)
+// directly from title.p7; the script root is no longer involved in
+// the launch dispatch path.
 
 import radiance;
 import pal4_debug;
 import pal4_debug_overlay;
 import openpal4;
 import openpal5;
-import openpal5_launcher;
+import openpal5_director;
 import scripting_services;
+import yaobow_services;
 import actor_controller;
 import title;
-import yaobow_services;
 
 pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
-    pub ctx: box<scripting_services.IHostContext>,
+    pub ctx: box<yaobow_services.IYaobowHostContext>,
 ) {
     pub fn make_title_director(self: ref<Self>) -> box<radiance.IImmediateDirector> {
         return title.make_title_director(self.ctx);
@@ -52,15 +59,23 @@ pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
         );
     }
 
-    pub fn launch_openpal5(
+    // PAL5 launch factory. Used by Rust direct-boot (`run_openpal5`)
+    // — title-page selection calls `openpal5_director.make_pal5_director`
+    // directly, but this entry exists so Rust can mint the script-side
+    // director without needing a script-level reference to the
+    // `openpal5_director` module. The body delegates to the same
+    // module function so behaviour is identical to title dispatch.
+    pub fn make_pal5_director(
         self: ref<Self>,
-        ctx: box<openpal5.IPal5Context>,
-    ) -> int {
-        openpal5_launcher.launch(self.ctx, ctx);
-        return 0;
+        asset_path: string,
+        game_ordinal: int,
+    ) -> ?box<radiance.IDirector> {
+        return openpal5_director.make_pal5_director(
+            self.ctx, self.ctx.pal5(), asset_path, game_ordinal,
+        );
     }
 }
 
-pub fn init(ctx: box<scripting_services.IHostContext>) -> box<yaobow_services.IYaobowScriptApp> {
+pub fn init(ctx: box<yaobow_services.IYaobowHostContext>) -> box<yaobow_services.IYaobowScriptApp> {
     return box(YaobowScriptApp(ctx)) as box<yaobow_services.IYaobowScriptApp>;
 }

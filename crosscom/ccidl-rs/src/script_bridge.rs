@@ -295,7 +295,7 @@ impl<'a> ScriptBridgeGen<'a> {
                     "        let {ident}_box = ::p7::interpreter::context::Data::Float({ident} as f64);\n",
                 ),
                 "&str" | "string" => format!(
-                    "        let {ident}_box = ::p7::interpreter::context::Data::String(::std::string::String::from({ident}));\n",
+                    "        let {ident}_box = ::p7::interpreter::context::Data::String(::std::string::String::from({ident}).into());\n",
                 ),
                 _ => {
                     return Err(Error::Generate(format!(

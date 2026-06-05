@@ -5,6 +5,8 @@ mod features;
 fn main() {
     features::enable_features();
     generate_comdef("openpal3.idl", "shared_openpal3_comdef.rs");
+    generate_p7("openpal3.idl", "shared_openpal3.p7");
+    generate_script_bridge("openpal3.idl", "shared_openpal3_bridge.rs");
     generate_comdef("openpal4.idl", "shared_openpal4_comdef.rs");
     generate_p7("openpal4.idl", "shared_openpal4.p7");
     generate_script_bridge("openpal4.idl", "shared_openpal4_bridge.rs");
@@ -12,6 +14,8 @@ fn main() {
     generate_p7("openpal5.idl", "shared_openpal5.p7");
     generate_script_bridge("openpal5.idl", "shared_openpal5_bridge.rs");
     generate_comdef("openswd5.idl", "shared_openswd5_comdef.rs");
+    generate_p7("openswd5.idl", "shared_openswd5.p7");
+    generate_script_bridge("openswd5.idl", "shared_openswd5_bridge.rs");
     generate_comdef("shared_services.idl", "shared_services_comdef.rs");
 
     // PAL4 debug overlay bridge: emit both the Rust ComObject scaffolding

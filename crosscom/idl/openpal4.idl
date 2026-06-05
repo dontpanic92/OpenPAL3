@@ -66,3 +66,26 @@ interface IPal4GameContext: IUnknown {
 [uuid(0687035c-b5f3-47e1-9e4a-80fbf57b3a7e)]
 class Pal4GameContext: IPal4GameContext {}
 
+// PAL4 launch service — phase-2 single-source-of-truth for PAL4
+// director construction. Singleton-per-app installed by
+// `YaobowApplicationLoader` and exposed via
+// `IYaobowHostContext.pal4()`. `create_director(asset_path)` builds
+// a complete PAL4 director (asset loader, AS VM, agent-bridge
+// wiring if the loader pre-stocked it, debug-overlay bundle, actor
+// controller).
+//
+// The `AgentServer` HTTP listener itself stays owned by
+// `YaobowApplicationLoader` for the app lifetime; `Pal4Service` only
+// holds a `RefCell<Option<Rc<Pal4AgentBridge>>>` that the loader
+// sets at boot when `--pal4 --agent-port` was passed. The service
+// also holds a `Weak<YaobowScriptProject>` (not Rc) so the
+// project↔host-context↔per-game-service ownership graph stays
+// acyclic.
+[uuid(60e42ff1-613a-4b0a-93c0-eada0bd0f9dd)]
+interface IPal4Service: IUnknown {
+    IDirector create_director(&str asset_path);
+}
+
+[uuid(956d18ea-cffe-47f6-9458-ddb3b087110f)]
+class Pal4Service: IPal4Service {}
+

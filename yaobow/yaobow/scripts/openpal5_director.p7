@@ -1,0 +1,66 @@
+// Protosept-side PAL5 launch + director.
+//
+// Phase 2 replacement for the old `openpal5.p7` (deleted): the
+// per-frame WASD camera director stays in script (it's only 4 lines
+// of actual logic), but per-launch setup (vfs init, scene load,
+// camera positioning) moves to the Rust-side `IPal5Service`. This
+// module knits the two together:
+//
+//   * `OpenPal5Director` — the script-side `radiance.IDirector`
+//     struct, drives the active scene camera each frame via the
+//     generic `freeview` controller.
+//   * `make_pal5_director` — top-level factory called from
+//     `title.p7`'s click handler (during normal play) and from
+//     `app.p7::make_pal5_director` (for Rust direct-boot via
+//     `--pal5`). Loads + pushes the default scene, positions the
+//     camera, boxes the director, returns it.
+//
+// IMPORTANT (safety): this factory does NOT call
+// `host.scene_manager().set_director(...)`. The caller decides how
+// the director is installed:
+//   - Title-page selection returns the director from `update()` so
+//     the engine performs a single swap.
+//   - Rust direct-boot calls `set_director` from `on_loading`, which
+//     is outside any active director update.
+// Calling `set_director` from this script (which runs inside title
+// `update()` during normal play) would trigger the double-swap
+// hazard documented in `DefaultSceneManager::update`.
+
+import radiance;
+import scripting_services;
+import yaobow_services;
+import openpal5;
+import freeview;
+
+pub struct[radiance.IDirector] OpenPal5Director(
+    pub host: box<yaobow_services.IYaobowHostContext>,
+) {
+    pub fn activate(self: ref<Self>) -> int { 0 }
+
+    pub fn update(self: ref<Self>, delta_sec: float) -> ?box<radiance.IDirector> {
+        let cam = self.host.scene_manager().camera();
+        if cam != null {
+            freeview.update(cam!, self.host.input(), delta_sec);
+        }
+        return null;
+    }
+
+    pub fn deactivate(self: ref<Self>) -> int { 0 }
+}
+
+pub fn make_pal5_director(
+    host: box<yaobow_services.IYaobowHostContext>,
+    pal5: box<openpal5.IPal5Service>,
+    asset_path: string,
+    game_ordinal: int,
+) -> ?box<radiance.IDirector> {
+    let scene = pal5.load_default_scene(asset_path, game_ordinal);
+    if scene == null {
+        return null;
+    }
+    host.scene_manager().push_scene(scene!);
+    pal5.position_camera_default();
+
+    let d = box(OpenPal5Director(host)) as box<radiance.IDirector>;
+    return d;
+}

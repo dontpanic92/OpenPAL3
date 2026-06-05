@@ -3,28 +3,26 @@ module(rust) shared::openpal5::comdef;
 import crosscom.idl;
 import radiance.idl;
 
-// PAL5-specific launch context handed to the protosept orchestrator
-// (`yaobow/yaobow/scripts/openpal5.p7`). Holds ONLY pal5-specific
-// state: the asset path (per-game) and the rendering component
-// factory the `AssetLoader` needs internally. Generic concerns
-// (set_title, scene-manager access, camera control, input) flow
-// through the canonical `IHostContext` / `IAppService` surface the
-// script already has via `host` — no need to re-export them here.
+// PAL5 launch service. PAL5's director stays script-implemented
+// (the small `OpenPal5Director` in `openpal5_director.p7` is just a
+// thin freeview camera driver — too small to bother Rust-ifying).
+// So `IPal5Service` exposes data + setup helpers the script needs:
 //
-// Mirrors the role `IPal4DebugContext` plays for the PAL4 debug
-// overlay: a Rust-implemented data sink the script consumes through
-// the generated `intern_pal5_context_arg` helper. NOT marked
-// `[protosept(scriptable)]` — the script never implements this
-// interface, it only calls into it.
-[uuid(6ee620da-5e1d-4db5-b299-0da5f0ca8017)]
-interface IPal5Context: IUnknown {
-    // Builds the per-launch vfs, instantiates the `AssetLoader`, and
-    // returns the default scene (`Pal5Scene::load(..., "kuangfengzhai")`).
-    // `null` on failure (file missing, parse error, …). The script
-    // checks the return value and aborts the launch on `null` rather
-    // than mutating the scene stack with a broken scene.
-    IScene? load_default_scene();
+//   * `load_default_scene` returns the scene the script will push.
+//   * `position_camera_default` sets the camera to the entry pose
+//     (replaces the INITIAL_POS / INITIAL_LOOK constants previously
+//     hard-coded in the script).
+//
+// The script-side `openpal5_director.make_pal5_director(host, path, ord)`
+// helper calls these + boxes the script director + returns it.
+//
+// `game_ordinal` is needed because PAL5 and PAL5Q ship different `.pkg`
+// decryption keys (see `GameType::pkg_key`).
+[uuid(57fa39fc-df8d-469e-9704-60848580343c)]
+interface IPal5Service: IUnknown {
+    IScene? load_default_scene(&str asset_path, int game_ordinal);
+    void position_camera_default();
 }
 
-[uuid(6a831a82-fbe2-4d6a-b2da-c086a090d78f)]
-class Pal5Context: IPal5Context {}
+[uuid(23cec375-5ad3-42e9-8f0e-7147c5329804)]
+class Pal5Service: IPal5Service {}

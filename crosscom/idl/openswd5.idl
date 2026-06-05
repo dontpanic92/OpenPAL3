@@ -9,3 +9,16 @@ interface IOpenSWD5Director: IDirector {
 
 [uuid(ca7de830-4aeb-4538-bacb-34d7d5614392)]
 class OpenSWD5Director: IOpenSWD5Director {}
+
+// SWD5-family launch service. Singleton-per-app installed by
+// `YaobowApplicationLoader`. `create_director` accepts both the
+// asset path and the `game_ordinal` (passed through to
+// `Swd5TextureResolver` + asset-table selection) so the same service
+// handles SWD5 / SWDHC / SWDCF without per-game subclassing.
+[uuid(64b879ec-b291-4cf1-ac6f-9e1452d6ca9c)]
+interface ISwd5Service: IUnknown {
+    IDirector create_director(&str asset_path, int game_ordinal);
+}
+
+[uuid(4da9d3e6-e4d8-4e54-be7d-5c7297e242b3)]
+class Swd5Service: ISwd5Service {}

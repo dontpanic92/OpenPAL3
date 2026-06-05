@@ -25,8 +25,14 @@ pub mod script_bridges {
     pub mod openpal4 {
         include!(concat!(env!("OUT_DIR"), "/shared_openpal4_bridge.rs"));
     }
+    pub mod openpal3 {
+        include!(concat!(env!("OUT_DIR"), "/shared_openpal3_bridge.rs"));
+    }
     pub mod openpal5 {
         include!(concat!(env!("OUT_DIR"), "/shared_openpal5_bridge.rs"));
+    }
+    pub mod openswd5 {
+        include!(concat!(env!("OUT_DIR"), "/shared_openswd5_bridge.rs"));
     }
     // Re-export the cross-IDL bridges that `openpal4` depends on so
     // the codegen-emitted `crate::script_bridges::radiance::...`

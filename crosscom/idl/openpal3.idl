@@ -29,3 +29,24 @@ interface IAdventureDirector: IDirector {
 
 [uuid(0ac488a6-7d94-4b1d-ae37-8d9365005c7d)]
 class AdventureDirector: IAdventureDirector {}
+
+// PAL3 launch service. Mirrors IPal4Service / ISwd5Service: a host-side
+// COM object that knows how to construct a PAL3 director (asset manager,
+// debug-layer install on the engine, MainMenuDirector). The director
+// returned via `IDirector` is opaque to the script — the script just
+// installs it on the scene manager (during normal play by returning it
+// from update(), or during direct-boot from Rust via on_loading).
+//
+// Not marked `[protosept(scriptable)]` — the script only calls into it.
+//
+// The conforming `class Pal3Service` lives in `yaobow_services.idl`
+// (and is implemented in `yaobow_lib`), not here, because the PAL3
+// director construction lives in `yaobow_lib::openpal3` and pulling it
+// into `shared` would require relocating four files. The interface
+// itself lives here so `IPal3Service` can be referenced symmetrically
+// from `IYaobowHostContext.pal3()`.
+[uuid(0c3ea732-4091-46a2-8ef1-79be6acaec77)]
+interface IPal3Service: IUnknown {
+    IDirector create_director(&str asset_path);
+}
+

@@ -17,6 +17,12 @@
 
 import radiance;
 import scripting_services;
+import yaobow_services;
+import openpal5;
+import openpal3;
+import openpal4;
+import openswd5;
+import openpal5_director;
 import title_consts;
 
 let PROMPT_FIRST_TIME: int = 0;
@@ -42,7 +48,7 @@ let PAL4_COUNT: int = 4;
 // is no longer required. The per-frame scratch lives as plain fields on
 // `TitleDirector`.
 pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
-    pub host: box<scripting_services.IHostContext>,
+    pub host: box<yaobow_services.IYaobowHostContext>,
     pub bgm: ?box<scripting_services.IAudioSource>,
     pub logo: ?box<scripting_services.ITexture>,
     pub logo_w: int,
@@ -437,12 +443,26 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
         self.intent_arg = 0;
         if code == title_consts.INTENT_OPEN_GAME {
             let cfg = self.host.config();
-            if cfg.get_asset_path(self.host.games().config_key(arg)) == "" {
+            let key = self.host.games().config_key(arg);
+            let path = cfg.get_asset_path(key);
+            if path == "" {
                 return make_settings_director(self.host);
             }
-            let next = self.host.app().open_game(arg);
-            if next != null {
-                return next;
+            // Per-game dispatch — single source of truth for which
+            // service builds which game's director. Rust never sees
+            // the ordinal during the swap (engine just gets the
+            // returned director and installs it once).
+            if arg == title_consts.GAME_PAL3 {
+                return self.host.pal3().create_director(path);
+            }
+            if arg == title_consts.GAME_PAL4 {
+                return self.host.pal4().create_director(path);
+            }
+            if arg == title_consts.GAME_PAL5 {
+                return openpal5_director.make_pal5_director(self.host, self.host.pal5(), path, arg);
+            }
+            if arg == title_consts.GAME_SWDHC {
+                return self.host.swd5().create_director(path, arg);
             }
         }
         if code == title_consts.INTENT_OPEN_SETTINGS {
@@ -456,7 +476,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
 }
 
 pub fn make_title_director(
-    host: box<scripting_services.IHostContext>,
+    host: box<yaobow_services.IYaobowHostContext>,
 ) -> box<radiance.IImmediateDirector> {
     let bgm = host.audio().load("/music/Grace.ogg", 1);
     let logo = host.textures().load_png("/images/yaobow.png");
@@ -494,7 +514,7 @@ pub fn make_title_director(
 // the title page currently surfaces.
 
 pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirector(
-    pub host: box<scripting_services.IHostContext>,
+    pub host: box<yaobow_services.IYaobowHostContext>,
     pub intent: int,
     pub intent_arg: int,
 ) {
@@ -591,7 +611,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirecto
 }
 
 fn make_settings_director(
-    host: box<scripting_services.IHostContext>,
+    host: box<yaobow_services.IYaobowHostContext>,
 ) -> box<radiance.IDirector> {
     return box(TitleSettingsDirector(host, title_consts.INTENT_NONE, 0))
         as box<radiance.IDirector>;
@@ -601,7 +621,7 @@ fn make_settings_director(
 // returned director satisfies `radiance.IDirector`; the engine's imgui
 // pump will QI to `IImmediateDirector` and call `render_im`.
 fn make_title_director_as_director(
-    host: box<scripting_services.IHostContext>,
+    host: box<yaobow_services.IYaobowHostContext>,
 ) -> ?box<radiance.IDirector> {
     let bgm = host.audio().load("/music/Grace.ogg", 1);
     let logo = host.textures().load_png("/images/yaobow.png");

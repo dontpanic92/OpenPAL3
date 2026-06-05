@@ -1,7 +1,15 @@
-use self::application::{AgentBootOptions, OpenPal4ApplicationLoader};
-use shared::{config::YaobowConfig, GameType};
+use shared::openpal4::launch::AgentBootOptions;
+use shared::GameType;
 
-pub mod application;
+use crate::application::{boot_for, run_app};
+
+/// Re-export the boot options type at the `crate::openpal4::application` path
+/// historically used by `yaobow_lib`. The struct itself now lives in
+/// `shared::openpal4::launch` (just the agent-boot helpers; PAL4
+/// director construction moved to `shared::openpal4::service`).
+pub mod application {
+    pub use shared::openpal4::launch::AgentBootOptions;
+}
 
 pub fn run_openpal4() {
     run_openpal4_with_agent(None);
@@ -10,24 +18,5 @@ pub fn run_openpal4() {
 /// Variant of [`run_openpal4`] that boots the embedded agent server
 /// alongside the game. `agent: None` is equivalent to the original.
 pub fn run_openpal4_with_agent(agent: Option<AgentBootOptions>) {
-    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-    let asset_path = YaobowConfig::load()
-        .asset_path_for(GameType::PAL4)
-        .to_string();
-
-    #[cfg(target_os = "android")]
-    let asset_path = "/sdcard/Games/PAL4".to_string();
-
-    #[cfg(vita)]
-    let asset_path = String::new();
-
-    let app = match agent {
-        Some(opts) => {
-            OpenPal4ApplicationLoader::create_application_with_agent(asset_path, "OpenPAL4", opts)
-        }
-        None => OpenPal4ApplicationLoader::create_application(asset_path, "OpenPAL4"),
-    };
-    app.initialize();
-    shared::theme_runtime::apply_runtime_theme(&app);
-    app.run();
+    run_app(boot_for(GameType::PAL4).with_agent_opts_opt(agent));
 }

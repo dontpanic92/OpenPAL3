@@ -3,8 +3,8 @@ pub mod asset_loader;
 pub mod comdef {
     include!(concat!(env!("OUT_DIR"), "/shared_openpal5_comdef.rs"));
 }
-pub mod context;
 pub mod scene;
+pub mod service;
 
 /// p7 binding source generated from `openpal5.idl`. Hosts must
 /// register this with `ScriptHost::add_binding("openpal5", ...)`
