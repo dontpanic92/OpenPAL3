@@ -30,12 +30,17 @@ impl ImguiPlatform {
             window,
         }));
 
-        let imgui_platform_clone = imgui_platform.clone();
-        platform.add_message_callback(Box::new(move |event| {
-            imgui_platform_clone
+        let window_clone = imgui_platform.clone();
+        platform.add_window_event_callback(Box::new(move |window_id, event| {
+            window_clone
                 .as_ref()
                 .borrow_mut()
-                .handle_event(&event);
+                .handle_window_event(window_id, event);
+        }));
+
+        let about_clone = imgui_platform.clone();
+        platform.add_about_to_wait_callback(Box::new(move || {
+            about_clone.as_ref().borrow_mut().on_about_to_wait();
         }));
 
         imgui_platform
@@ -58,44 +63,57 @@ impl ImguiPlatform {
         self.window.request_redraw();
     }
 
-    fn handle_event(&mut self, event: &Event<()>) {
+    fn on_about_to_wait(&mut self) {
         let mut context = self.context.as_ref().borrow_mut();
         let io = context.io_mut();
-        match event {
-            Event::AboutToWait => {
-                self.prepare_frame(io);
-            }
+        self.prepare_frame(io);
+    }
 
-            Event::WindowEvent {
-                event:
-                    WindowEvent::Touch(Touch {
-                        phase,
-                        location: PhysicalPosition { x, y },
-                        id: 0,
-                        ..
-                    }),
+    fn handle_window_event(&mut self, window_id: winit::window::WindowId, event: &WindowEvent) {
+        let mut context = self.context.as_ref().borrow_mut();
+        let io = context.io_mut();
+
+        // Re-emit a single-finger Touch as a synthetic mouse so imgui
+        // (which doesn't have first-class touch support in this
+        // version) receives a pointer position + click.
+        if let WindowEvent::Touch(Touch {
+            phase,
+            location: PhysicalPosition { x, y },
+            id: 0,
+            ..
+        }) = event
+        {
+            io.mouse_pos = [*x as f32, *y as f32];
+            let state = match *phase {
+                TouchPhase::Started => ElementState::Pressed,
+                TouchPhase::Moved => ElementState::Pressed,
+                TouchPhase::Ended => ElementState::Released,
+                TouchPhase::Cancelled => ElementState::Released,
+            };
+            let synthetic: Event<()> = Event::WindowEvent {
+                event: WindowEvent::MouseInput {
+                    device_id: DeviceId::dummy(),
+                    state,
+                    button: MouseButton::Left,
+                },
                 window_id,
-            } => {
-                io.mouse_pos = [*x as f32, *y as f32];
-                let state = match *phase {
-                    TouchPhase::Started => ElementState::Pressed,
-                    TouchPhase::Moved => ElementState::Pressed,
-                    TouchPhase::Ended => ElementState::Released,
-                    TouchPhase::Cancelled => ElementState::Released,
-                };
-                let mouse_input: Event<()> = Event::WindowEvent {
-                    event: WindowEvent::MouseInput {
-                        device_id: DeviceId::dummy(),
-                        state,
-                        button: MouseButton::Left,
-                    },
-                    window_id: *window_id,
-                };
-                self.winit_platform
-                    .handle_event(io, &self.window, &mouse_input);
-            }
-            event => self.winit_platform.handle_event(io, &self.window, event),
+            };
+            self.winit_platform
+                .handle_event(io, &self.window, &synthetic);
+            return;
         }
+
+        // imgui-winit-support 0.13's public API only exposes
+        // `handle_event`, which dispatches based on `Event::WindowEvent`
+        // matching the attached window. Wrap our per-kind callback
+        // payload in a synthetic `Event::WindowEvent` so imgui sees it
+        // as before.
+        let wrapped: Event<()> = Event::WindowEvent {
+            event: event.clone(),
+            window_id,
+        };
+        self.winit_platform
+            .handle_event(io, &self.window, &wrapped);
     }
 
     fn update_display_size(&self, window: &Window) {

@@ -7,9 +7,6 @@ use std::{
 #[cfg(windows)]
 use winapi::um::winuser;
 
-#[cfg(any(linux, macos, android))]
-use winit::event::Event;
-
 use crate::application::Platform;
 
 use super::{
@@ -75,26 +72,46 @@ impl CoreInputEngine {
     }
 
     fn append_message_callback_to(_self: Rc<RefCell<Self>>, platform: &mut Platform) {
-        #[cfg(any(windows, linux, macos, android))]
+        #[cfg(windows)]
         platform.add_message_callback(Box::new(move |msg| {
             _self.borrow_mut().message_callback(msg)
         }));
+
+        #[cfg(any(linux, macos, android))]
+        {
+            let window_self = _self.clone();
+            platform.add_window_event_callback(Box::new(move |_window_id, event| {
+                let mut me = window_self.borrow_mut();
+                let CoreInputEngine {
+                    last_key_states,
+                    last_mouse_button_states,
+                    last_mouse_wheel,
+                    keyboard,
+                    mouse,
+                    ..
+                } = &mut *me;
+                keyboard.process_window_event(last_key_states, event);
+                mouse.process_window_event(last_mouse_button_states, last_mouse_wheel, event);
+            }));
+
+            let device_self = _self;
+            platform.add_device_event_callback(Box::new(move |_device_id, event| {
+                let mut me = device_self.borrow_mut();
+                let CoreInputEngine {
+                    last_key_states,
+                    last_mouse_delta,
+                    keyboard,
+                    mouse,
+                    ..
+                } = &mut *me;
+                keyboard.process_device_event(last_key_states, event);
+                mouse.process_device_event(last_mouse_delta, event);
+            }));
+        }
     }
 
     #[cfg(windows)]
     fn message_callback(&mut self, msg: &winuser::MSG) {
-        self.keyboard
-            .process_message(&mut self.last_key_states, msg);
-        self.mouse.process_message(
-            &mut self.last_mouse_button_states,
-            &mut self.last_mouse_delta,
-            &mut self.last_mouse_wheel,
-            msg,
-        );
-    }
-
-    #[cfg(any(linux, macos, android))]
-    fn message_callback(&mut self, msg: &Event<()>) {
         self.keyboard
             .process_message(&mut self.last_key_states, msg);
         self.mouse.process_message(

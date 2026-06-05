@@ -1,7 +1,6 @@
 use crate::input::{KeyState, MouseButton};
 use winit::event::{
-    DeviceEvent, ElementState, Event, MouseButton as WinitMouseButton, MouseScrollDelta,
-    WindowEvent,
+    DeviceEvent, ElementState, MouseButton as WinitMouseButton, MouseScrollDelta, WindowEvent,
 };
 
 // Approximate pixel-equivalent for one wheel "line" so script-side
@@ -15,25 +14,26 @@ impl MouseInput {
         Self
     }
 
-    pub fn process_message(
+    /// Drain a `DeviceEvent` for mouse motion. winit delivers raw
+    /// motion via the device path (not tied to a window).
+    pub fn process_device_event(&mut self, delta: &mut (f32, f32), event: &DeviceEvent) {
+        if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
+            delta.0 += *dx as f32;
+            delta.1 += *dy as f32;
+        }
+    }
+
+    /// Drain a `WindowEvent` for mouse-button + wheel input. Both flow
+    /// through the window path so they only fire while our window is
+    /// focused, which matches the script expectation.
+    pub fn process_window_event(
         &mut self,
         button_states: &mut [KeyState],
-        delta: &mut (f32, f32),
         wheel: &mut f32,
-        event: &Event<()>,
+        event: &WindowEvent,
     ) {
         match event {
-            Event::DeviceEvent {
-                event: DeviceEvent::MouseMotion { delta: (dx, dy) },
-                ..
-            } => {
-                delta.0 += *dx as f32;
-                delta.1 += *dy as f32;
-            }
-            Event::WindowEvent {
-                event: WindowEvent::MouseInput { state, button, .. },
-                ..
-            } => {
+            WindowEvent::MouseInput { state, button, .. } => {
                 let mapped = match button {
                     WinitMouseButton::Left => MouseButton::Left,
                     WinitMouseButton::Right => MouseButton::Right,
@@ -46,10 +46,7 @@ impl MouseInput {
                 let down = matches!(state, ElementState::Pressed);
                 set_button(button_states, mapped, down);
             }
-            Event::WindowEvent {
-                event: WindowEvent::MouseWheel { delta: scroll, .. },
-                ..
-            } => {
+            WindowEvent::MouseWheel { delta: scroll, .. } => {
                 let ticks = match scroll {
                     MouseScrollDelta::LineDelta(_, y) => *y,
                     // Convert raw pixels into wheel-detent-equivalents so

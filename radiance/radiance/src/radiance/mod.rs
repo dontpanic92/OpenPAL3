@@ -39,19 +39,18 @@ pub fn create_radiance_engine(
 
     #[cfg(target_os = "android")]
     {
-        use winit::event::Event;
+        use crate::application::winit::LifecycleEvent;
         let rendering_engine_clone = rendering_engine.clone();
         let w = window.clone();
-        platform.add_message_callback(Box::new(move |event| {
+        platform.add_lifecycle_callback(Box::new(move |event| {
             let mut rendering_engine = rendering_engine_clone.borrow_mut();
             match event {
-                Event::Suspended => {
+                LifecycleEvent::Suspended => {
                     rendering_engine.drop_surface();
                 }
-                Event::Resumed => {
+                LifecycleEvent::Resumed => {
                     rendering_engine.recreate_surface(&w).unwrap();
                 }
-                _ => (),
             }
         }));
     }
