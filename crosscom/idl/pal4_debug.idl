@@ -15,6 +15,7 @@
 //   `ComRc<IPal4DebugOverlay>` the director can call each frame.
 
 module(rust) shared::openpal4::comdef::pal4_debug;
+module(protosept) shared.pal4_debug;
 
 import crosscom.idl;
 import radiance.idl;

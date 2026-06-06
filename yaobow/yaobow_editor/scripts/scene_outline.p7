@@ -9,7 +9,7 @@
 // `compute_depth` parent-chain walk. `tree_leaf` is a constant-height
 // single widget, which satisfies the clipper contract.
 
-import yaobow_editor_services;
+import yaobow_editor.yaobow_editor_services;
 import radiance;
 
 pub fn render_scene_outline_im(

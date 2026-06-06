@@ -11,8 +11,8 @@ pub mod comdef {
     // Editor-only foreign service interfaces (PreviewerHub, handles,
     // EditorHostContext). Generated from `yaobow_editor_services.idl`.
     // The matching `.p7` binding is packed into the editor script
-    // bundle by `build.rs` and registered automatically via
-    // `script_source::register_editor_modules`.
+    // bundle by `build.rs` and surfaced through the script VFS via
+    // `script_source::mount_scripts`.
     #[macro_use]
     pub mod editor_services {
         include!(concat!(

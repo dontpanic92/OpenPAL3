@@ -10,9 +10,9 @@
 
 import radiance;
 import scripting_services;
-import yaobow_editor_services;
-import editor_consts;
-import theme_menu;
+import yaobow_editor.yaobow_editor_services;
+import yaobow_editor.editor_consts;
+import yaobow_editor.theme_menu;
 
 // Intent codes written by render_im, consumed by update. Modelled as
 // an enum so the dispatchers in `update` get compile-time exhaustiveness

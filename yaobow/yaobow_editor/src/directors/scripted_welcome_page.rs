@@ -12,15 +12,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crosscom::ComRc;
+use radiance::asset::AssetManager;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::{
-    ScriptHost, bootstrap_script_root, install_imgui_pump_with_cache, wrap_director,
+    ScriptHost, bootstrap_script_root_from_path, install_imgui_pump_with_cache, wrap_director,
 };
 use shared::config::YaobowConfig;
 
 use crate::directors::app_service::AppService;
-use crate::script_source::package;
+use crate::script_source::mount_scripts;
 use crate::services::editor_host_context::EditorHostContext;
 use shared::config_service::ConfigService;
 
@@ -69,16 +70,15 @@ impl ScriptedWelcomePage {
             )
         };
 
-        // Register every IDL binding + sibling .p7 module declared in
-        // the editor script package, compile main.p7 if not already
-        // loaded, intern the host context, then call `init(host)` on
-        // the root module. The `bootstrap_script_root` helper
-        // unifies the ensure_loaded → intern → foreign_box → call
-        // pipeline so we don't repeat it in each per-binary bootstrap.
-        let editor_pkg = package();
-        let director_data = bootstrap_script_root(
+        // Install the dedicated script `AssetManager` so the
+        // VFS-backed `ModuleProvider` can resolve every
+        // `import <crate>.<module>;` lookup, then load the editor's
+        // root via `bootstrap_script_root_from_path`.
+        let assets = build_editor_script_assets();
+        host.set_script_assets(assets);
+        let director_data = bootstrap_script_root_from_path(
             &host,
-            &editor_pkg,
+            "/yaobow_editor/main.p7",
             host_ctx,
             EDITOR_HOST_CONTEXT_TYPE_TAG,
             "init",
@@ -110,4 +110,18 @@ impl ScriptedWelcomePage {
 fn build_texture_cache(app: &ComRc<IApplication>) -> Rc<RefCell<ImguiTextureCache>> {
     let factory = app.engine().borrow().rendering_component_factory();
     Rc::new(RefCell::new(ImguiTextureCache::new(factory)))
+}
+
+/// Builds the dedicated script `AssetManager` used by the editor
+/// binary: engine bindings + `radiance_scripting` + `shared` + this
+/// crate's own ypk. Scripts resolve cross-crate imports through this
+/// VFS (`import shared.openpal3;`, `import yaobow_editor.welcome;`,
+/// …).
+fn build_editor_script_assets() -> Rc<AssetManager> {
+    let assets = AssetManager::new();
+    radiance_scripting::mount_engine_bindings(&assets);
+    radiance_scripting::mount_scripts(&assets);
+    shared::mount_scripts(&assets);
+    mount_scripts(&assets);
+    assets
 }

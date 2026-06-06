@@ -12,15 +12,15 @@
 // the launch dispatch path.
 
 import radiance;
-import pal4_debug;
-import pal4_debug_overlay;
-import openpal4;
-import openpal5;
-import openpal5_director;
+import shared.pal4_debug;
+import yaobow.pal4_debug_overlay;
+import shared.openpal4;
+import shared.openpal5;
+import yaobow.openpal5_director;
 import scripting_services;
-import yaobow_services;
-import actor_controller;
-import title;
+import yaobow.yaobow_services;
+import shared.openpal4.actor_controller;
+import yaobow.title;
 
 pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
     pub ctx: box<yaobow_services.IYaobowHostContext>,
@@ -64,7 +64,7 @@ pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
     // directly, but this entry exists so Rust can mint the script-side
     // director without needing a script-level reference to the
     // `openpal5_director` module. The body delegates to the same
-    // module function so behaviour is identical to title dispatch.
+    // module function so behaviour is identical to yaobow.title dispatch.
     pub fn make_pal5_director(
         self: ref<Self>,
         asset_path: string,

@@ -1,7 +1,7 @@
 //! End-to-end guard for the script-package writer + reader contract:
-//! the build-time `script_package::pack` writes a `.ypk` that the
-//! engine's canonical `radiance::asset::ypk::YpkArchive` can decode
-//! into the manifest entries `OwnedScriptPackage` expects.
+//! the build-time `script_package::pack` writes a `.ypk` whose layout
+//! the engine's canonical `radiance::asset::ypk::YpkArchive` (mounted
+//! via `AssetManager::mount_ypk_bytes`) can decode.
 //!
 //! `script-package` vendors its own `YpkWriter` so build scripts don't
 //! drag in the full `radiance` crate. This test guards against wire-
@@ -10,8 +10,8 @@
 use std::fs;
 use std::path::PathBuf;
 
-use radiance_scripting::script_package::OwnedScriptPackage;
-use script_package::{ExtraFile, ModuleKind, PackInput, pack};
+use radiance::asset::AssetManager;
+use script_package::{ExtraFile, PackInput, pack};
 
 fn unique_tmp(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
@@ -25,11 +25,15 @@ fn unique_tmp(name: &str) -> PathBuf {
 fn script_package_round_trips_via_radiance_ypk_archive() {
     let scripts_dir = unique_tmp("src");
     let _ = fs::remove_dir_all(&scripts_dir);
-    fs::create_dir_all(scripts_dir.join("idl")).unwrap();
+    fs::create_dir_all(scripts_dir.join("openpal4")).unwrap();
 
     fs::write(scripts_dir.join("app.p7"), "pub fn init() -> int { 1 }").unwrap();
     fs::write(scripts_dir.join("title.p7"), "// title module").unwrap();
-    fs::write(scripts_dir.join("idl").join("svc.p7"), "// idl binding").unwrap();
+    fs::write(
+        scripts_dir.join("openpal4").join("actor_controller.p7"),
+        "// nested actor",
+    )
+    .unwrap();
 
     let extra_path = unique_tmp("extra.p7");
     fs::write(&extra_path, "// generated binding").unwrap();
@@ -41,13 +45,9 @@ fn script_package_round_trips_via_radiance_ypk_archive() {
     pack(
         &PackInput {
             scripts_dir: &scripts_dir,
-            root_entry: Some("app.p7"),
-            root_name: Some("app"),
             extra_files: &[ExtraFile {
                 source_path: &extra_path,
-                virtual_entry: "extra/svc_gen.p7",
-                module_name: "svc_gen",
-                kind: ModuleKind::IdlBinding,
+                virtual_entry: "svc_gen.p7",
             }],
         },
         &ypk_path,
@@ -55,29 +55,33 @@ fn script_package_round_trips_via_radiance_ypk_archive() {
     .unwrap();
 
     // Read every byte of the produced ypk into a Vec, then leak it as
-    // `&'static [u8]` so we can feed it through `from_ypk_bytes` (which
-    // takes `&'static [u8]` because at runtime the bytes come from
-    // `include_bytes!`).
+    // `&'static [u8]` so we can feed it through `mount_ypk_bytes`
+    // (which expects `&'static [u8]` because at runtime the bytes come
+    // from `include_bytes!`).
     let bytes = fs::read(&ypk_path).unwrap();
     let leaked: &'static [u8] = Box::leak(bytes.into_boxed_slice());
 
-    let pkg = OwnedScriptPackage::from_ypk_bytes(leaked).expect("decode");
-    assert_eq!(pkg.root_name.as_deref(), Some("app"));
-    assert_eq!(
-        pkg.root_source.as_deref().map(|s| s.to_string()),
-        Some("pub fn init() -> int { 1 }".to_string())
-    );
+    let assets = AssetManager::new();
+    assets.mount_ypk_bytes("/pkg", leaked).unwrap();
 
-    let module_names: Vec<&str> = pkg.modules.iter().map(|m| m.name.as_str()).collect();
-    assert_eq!(module_names, vec!["title"]);
     assert_eq!(
-        pkg.modules[0].source.as_ref(),
-        "// title module"
+        assets.read_to_end("/pkg/app.p7").unwrap(),
+        b"pub fn init() -> int { 1 }".to_vec()
     );
-
-    let idl_names: Vec<&str> = pkg.idl_bindings.iter().map(|m| m.name.as_str()).collect();
-    // BTreeMap-backed manifest -> alphabetic.
-    assert_eq!(idl_names, vec!["svc", "svc_gen"]);
+    assert_eq!(
+        assets.read_to_end("/pkg/title.p7").unwrap(),
+        b"// title module".to_vec()
+    );
+    assert_eq!(
+        assets
+            .read_to_end("/pkg/openpal4/actor_controller.p7")
+            .unwrap(),
+        b"// nested actor".to_vec()
+    );
+    assert_eq!(
+        assets.read_to_end("/pkg/svc_gen.p7").unwrap(),
+        b"// generated binding".to_vec()
+    );
 
     let _ = fs::remove_file(&extra_path);
     let _ = fs::remove_dir_all(&scripts_dir);

@@ -1,4 +1,5 @@
 module(rust) yaobow_editor::comdef::editor_services;
+module(protosept) yaobow_editor.yaobow_editor_services;
 
 import crosscom.idl;
 import radiance.idl;

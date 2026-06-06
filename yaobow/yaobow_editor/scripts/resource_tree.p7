@@ -21,7 +21,7 @@
 
 import scripting_services;
 import radiance;
-import icons;
+import yaobow_editor.icons;
 
 fn join_tree_path(parent: string, name: string) -> string {
     if parent == "/" {

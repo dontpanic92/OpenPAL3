@@ -3,7 +3,7 @@
 //
 //   - Assets layout: resource list (left) | single preview pane (right).
 //     Clicking a resource *replaces* the single preview (no new tab).
-//   - Scene layout: inspector (right) over a left column that is split
+//   - Scene layout: yaobow_editor.inspector (right) over a left column that is split
 //     into a scene view (hierarchy | main scene render) on top and an
 //     Assets-style resource | preview strip on the bottom.
 //
@@ -11,14 +11,14 @@
 // flow through `box<array<...>>` slots drained by `update`.
 
 import radiance;
-import yaobow_editor_services;
-import content_tabs;
-import resource_tree;
-import resources_panel;
-import scene_outline;
-import inspector;
-import editor_consts;
-import theme_menu;
+import yaobow_editor.yaobow_editor_services;
+import yaobow_editor.content_tabs;
+import yaobow_editor.resource_tree;
+import yaobow_editor.resources_panel;
+import yaobow_editor.scene_outline;
+import yaobow_editor.inspector;
+import yaobow_editor.editor_consts;
+import yaobow_editor.theme_menu;
 
 // Mutable UI state held behind a `box<>` so `ref<Self>` methods (and the
 // closures/helpers they spawn) can mutate it directly.

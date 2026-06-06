@@ -272,18 +272,32 @@ fn process_imports(idl_path: &Path, unit: &mut CrossComIdl) -> Result<(), Error>
     let mut visited: HashSet<PathBuf> = HashSet::new();
     visited.insert(root_canon);
 
+    let root_dir = idl_path
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .to_path_buf();
+
+    // Pre-pass: for every direct import, look up the imported IDL's
+    // `module(protosept) X;` declaration (if any) and stash it on the
+    // Import struct so the p7 emitter can write `import X;` with the
+    // VFS-aware qualified path. Without this, the emitter falls back
+    // to the file stem (legacy single-segment shape).
+    for imp in unit.imports.iter_mut() {
+        let import_path = root_dir.join(&imp.file_name);
+        let canon = import_path.canonicalize().map_err(|source| Error::Io {
+            path: import_path.clone(),
+            source,
+        })?;
+        let import_unit = parse_file(&canon)?;
+        if let Some(module) = protosept_module(&import_unit) {
+            imp.protosept_module = Some(module.module_name.clone());
+        }
+    }
+
     let mut queue: Vec<(PathBuf, String)> = unit
         .imports
         .iter()
-        .map(|imp| {
-            (
-                idl_path
-                    .parent()
-                    .unwrap_or_else(|| Path::new(""))
-                    .to_path_buf(),
-                imp.file_name.clone(),
-            )
-        })
+        .map(|imp| (root_dir.clone(), imp.file_name.clone()))
         .collect();
 
     let mut seen_items: HashSet<(String, String)> = HashSet::new();
@@ -338,7 +352,6 @@ fn process_imports(idl_path: &Path, unit: &mut CrossComIdl) -> Result<(), Error>
 
     Ok(())
 }
-
 #[derive(Clone, Debug)]
 pub(crate) struct CrossComIdl {
     pub items: Vec<Item>,
@@ -349,6 +362,11 @@ pub(crate) struct CrossComIdl {
 #[derive(Clone, Debug)]
 pub(crate) struct Import {
     pub file_name: String,
+    /// Optional p7 module path the imported IDL declares via
+    /// `module(protosept) X;`. Populated by `process_imports` when
+    /// the imported IDL carries the directive; left `None` for
+    /// engine bindings without an explicit protosept module name.
+    pub protosept_module: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -468,7 +486,10 @@ impl<'a> Parser<'a> {
                 self.skip_ws();
                 let file_name = self.read_until(';')?.trim().to_string();
                 self.expect_char(';')?;
-                imports.push(Import { file_name });
+                imports.push(Import {
+                    file_name,
+                    protosept_module: None,
+                });
             } else if self.consume("interface") {
                 items.push(Item::Interface(self.parse_interface(attrs)?));
             } else if self.consume("class") {
@@ -758,6 +779,20 @@ pub(crate) fn rust_module(unit: &CrossComIdl) -> Result<&Module, Error> {
         .iter()
         .find(|module| module.module_lang == "rust")
         .ok_or_else(|| Error::Generate("IDL file does not declare a rust module".to_string()))
+}
+
+/// Look up the optional `module(protosept) X;` directive.
+///
+/// When present, `X` is the dotted p7 module path scripts use to
+/// `import X;` (e.g. `shared.pal4_debug`) and the path the
+/// VFS-backed `ScriptVfsProvider` resolves to `/X.p7` on the script
+/// `AssetManager`. When absent, the p7 emitter falls back to the
+/// imported IDL file's stem — matches the historical single-segment
+/// import shape for engine bindings and tests.
+pub(crate) fn protosept_module(unit: &CrossComIdl) -> Option<&Module> {
+    unit.modules
+        .iter()
+        .find(|module| module.module_lang == "protosept")
 }
 
 #[derive(Clone)]

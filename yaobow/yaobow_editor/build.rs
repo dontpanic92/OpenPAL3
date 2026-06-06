@@ -141,22 +141,16 @@ fn pack_script_bundle() {
         script_package::ExtraFile {
             source_path: services_path.as_path(),
             virtual_entry: "yaobow_editor_services.p7",
-            module_name: "yaobow_editor_services",
-            kind: script_package::ModuleKind::IdlBinding,
         },
         script_package::ExtraFile {
             source_path: icons_path.as_path(),
             virtual_entry: "icons.p7",
-            module_name: "icons",
-            kind: script_package::ModuleKind::Module,
         },
     ];
 
     script_package::pack(
         &script_package::PackInput {
             scripts_dir: &scripts_dir,
-            root_entry: Some("main.p7"),
-            root_name: Some("main"),
             extra_files: &extra_files,
         },
         &out,

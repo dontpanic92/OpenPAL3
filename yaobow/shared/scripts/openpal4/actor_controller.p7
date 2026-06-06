@@ -19,7 +19,7 @@
 // `camera_distance`) is stored as flat fields on `Pal4PartyController`.
 // `ref<Self>` receivers mutate them directly.
 
-import openpal4;
+import shared.openpal4;
 import radiance;
 import scripting_services;
 

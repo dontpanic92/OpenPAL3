@@ -17,13 +17,13 @@
 
 import radiance;
 import scripting_services;
-import yaobow_services;
-import openpal5;
-import openpal3;
-import openpal4;
-import openswd5;
-import openpal5_director;
-import title_consts;
+import yaobow.yaobow_services;
+import shared.openpal5;
+import shared.openpal3;
+import shared.openpal4;
+import shared.openswd5;
+import yaobow.openpal5_director;
+import yaobow.title_consts;
 
 let PROMPT_FIRST_TIME: int = 0;
 let PROMPT_BLINKING: int = 1;
@@ -508,10 +508,10 @@ pub fn make_title_director(
 }
 
 // ---------------------------------------------------------------------------
-// Settings page reachable from the title list (menu item 设置 or auto-
+// Settings page reachable from the yaobow.title list (menu item 设置 or auto-
 // triggered when the user picks a game with no configured asset path).
 // Mirrors the editor's `SettingsDirector` but limited to the two games
-// the title page currently surfaces.
+// the yaobow.title page currently surfaces.
 
 pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirector(
     pub host: box<yaobow_services.IYaobowHostContext>,
@@ -617,7 +617,7 @@ fn make_settings_director(
         as box<radiance.IDirector>;
 }
 
-// Re-entry to the title page after saving/cancelling settings. The
+// Re-entry to the yaobow.title page after saving/cancelling settings. The
 // returned director satisfies `radiance.IDirector`; the engine's imgui
 // pump will QI to `IImmediateDirector` and call `render_im`.
 fn make_title_director_as_director(
@@ -633,7 +633,7 @@ fn make_title_director_as_director(
     }
     let outlines = host.textures().load_gif_animation("/images/title/outlines/1.gif");
 
-    // The list is already showing because the user came from the title
+    // The list is already showing because the user came from the yaobow.title
     // page; jump directly to it instead of replaying the press-any-key
     // intro.
     let d = box(TitleDirector(

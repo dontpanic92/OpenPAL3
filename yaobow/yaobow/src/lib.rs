@@ -74,7 +74,6 @@ pub mod script_source {
 
     use std::cell::RefCell;
     use std::rc::{Rc, Weak};
-    use std::sync::{Arc, OnceLock};
 
     use crosscom::ComRc;
     use radiance::comdef::{
@@ -83,9 +82,7 @@ pub mod script_source {
     };
     use radiance::radiance::CoreRadianceEngine;
     use radiance_scripting::comdef::services::IInputService;
-    use radiance_scripting::{
-        OwnedScriptPackage, ScriptHost, bootstrap_script_root,
-    };
+    use radiance_scripting::{ScriptHost, bootstrap_script_root_from_path};
     use shared::openpal4::comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay};
     use shared::openpal4::comdef::{
         IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext,
@@ -101,51 +98,32 @@ pub mod script_source {
     use crate::script_bridges::yaobow_services::IYaobowScriptAppClient;
 
     /// In-binary `.ypk` produced by `build.rs` from `scripts/*.p7` +
-    /// the codegen-derived `yaobow_services.p7`. Decoded once and then
-    /// composed with the `shared` and `radiance_scripting` module
-    /// bundles via [`OwnedScriptPackage::merge`].
+    /// the codegen-derived `yaobow_services.p7`. Mounted at `/yaobow/`
+    /// on the script `AssetManager` by [`mount_scripts`].
     const YAOBOW_YPK: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/yaobow.ypk"));
 
-    /// The fully-composed yaobow script package — yaobow's own bundle
-    /// merged with `shared::script_bundle()` and
-    /// `radiance_scripting::script_bundle()` so app.p7 can `import
-    /// openpal4`, `import freeview`, etc. without copying those
-    /// sources into yaobow.ypk.
-    ///
-    /// Cached for the binary's lifetime; subsequent calls return the
-    /// same `Arc<OwnedScriptPackage>` instance.
-    pub fn package() -> Arc<OwnedScriptPackage> {
-        static CACHE: OnceLock<Arc<OwnedScriptPackage>> = OnceLock::new();
-        CACHE
-            .get_or_init(|| {
-                let own = OwnedScriptPackage::from_ypk_bytes(YAOBOW_YPK)
-                    .expect("yaobow.ypk bundled by build.rs must decode");
-                OwnedScriptPackage::merge(
-                    &[
-                        own,
-                        shared::script_bundle(),
-                        radiance_scripting::script_bundle(),
-                    ],
-                    &[],
-                )
-            })
-            .clone()
+    /// Mounts this crate's `yaobow.ypk` at `/yaobow/` on the script
+    /// `AssetManager`, so scripts can `import yaobow.title;`,
+    /// `import yaobow.yaobow_services;`, etc. and the app root
+    /// resolves at `/yaobow/app.p7`.
+    pub fn mount_scripts(assets: &radiance::asset::AssetManager) {
+        assets
+            .mount_ypk_bytes("/yaobow", YAOBOW_YPK)
+            .expect("yaobow.ypk must mount");
     }
 
-    /// Validates and registers every IDL binding + sibling module from
-    /// [`package()`] on `host`. Idempotent — re-registering the same
-    /// name simply replaces the previous source.
-    pub fn register_yaobow_project(host: &ScriptHost) {
-        let pkg = package();
-        pkg.validate()
-            .expect("yaobow script package manifest must be valid");
-        pkg.register_bindings(host);
-    }
-
-    pub fn ensure_yaobow_project_loaded(host: &ScriptHost) {
-        package()
-            .ensure_loaded(host, "init")
-            .expect("yaobow app script project must load successfully");
+    /// Construct the dedicated script `AssetManager` used by the
+    /// yaobow binary: engine bindings + every contributing crate's
+    /// ypk mounted under its prefix.
+    pub fn install_script_assets() -> Rc<radiance::asset::AssetManager> {
+        let assets = radiance::asset::AssetManager::new();
+        radiance_scripting::mount_engine_bindings(&assets);
+        radiance_scripting::mount_scripts(&assets);
+        shared::mount_scripts(&assets);
+        mount_scripts(&assets);
+        // yaobow_editor mounts only when the editor binary is in use;
+        // the title-selector / per-game launcher path doesn't need it.
+        assets
     }
 
     /// App-lifetime owner of the script host + the rooted script-side
@@ -217,10 +195,15 @@ pub mod script_source {
             let host_ctx_for_init = host_ctx.clone();
             let project: Rc<Self> = engine.get_or_insert_service(move || {
                 let host = ScriptHost::install(engine);
-                let pkg = package();
-                let app_data = bootstrap_script_root(
+                // Install the dedicated script `AssetManager` so the
+                // VFS-backed `ModuleProvider` can resolve every
+                // `import <crate>.<module>;` lookup. Idempotent —
+                // `set_script_assets` replaces the previous handle, so
+                // tests that hot-swap the asset graph stay safe.
+                host.set_script_assets(install_script_assets());
+                let app_data = bootstrap_script_root_from_path(
                     &host,
-                    &pkg,
+                    "/yaobow/app.p7",
                     host_ctx_for_init,
                     YAOBOW_HOST_CONTEXT_TYPE_TAG,
                     "init",

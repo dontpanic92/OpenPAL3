@@ -74,10 +74,12 @@ fn generate_triple(idl_file: &str, rust_out: &str, p7_out: &str, bridge_out: &st
 }
 
 /// Pack `scripts/*.p7` + the generated `yaobow_services.p7` into
-/// `OUT_DIR/yaobow.ypk`. Root = `app` (`app.p7`). The merged package
-/// composed at runtime via `OwnedScriptPackage::merge` pulls in the
-/// `shared` and `radiance_scripting` module-bundles, so this build
-/// step only needs to ship yaobow-owned sources.
+/// `OUT_DIR/yaobow.ypk`. Mounted at `/yaobow/` on the dedicated
+/// script `AssetManager` by `yaobow_lib::script_source::mount_scripts`.
+///
+/// The IDL codegen emits fully-qualified imports directly, driven by
+/// each IDL's `module(protosept) X;` directive — no build-time
+/// rewrite needed here.
 fn pack_script_bundle() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let scripts_dir = manifest_dir.join("scripts");
@@ -87,15 +89,11 @@ fn pack_script_bundle() {
     let extra_files = [script_package::ExtraFile {
         source_path: services_path.as_path(),
         virtual_entry: "yaobow_services.p7",
-        module_name: "yaobow_services",
-        kind: script_package::ModuleKind::IdlBinding,
     }];
 
     script_package::pack(
         &script_package::PackInput {
             scripts_dir: &scripts_dir,
-            root_entry: Some("app.p7"),
-            root_name: Some("app"),
             extra_files: &extra_files,
         },
         &out,

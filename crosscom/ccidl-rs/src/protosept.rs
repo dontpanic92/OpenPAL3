@@ -94,17 +94,23 @@ impl ProtoseptGen {
             module = self.current_module.module_name
         ));
 
-        // Emit `import` directives for every imported IDL file. We assume
-        // the consumer has placed the generated .p7 files alongside each
-        // other under a common protosept package, with each IDL file named
-        // `foo.idl` producing a module accessible as `foo.*`. Consumers that
-        // use a different layout can post-process the import lines.
+        // Emit `import` directives for every imported IDL file. We
+        // prefer the imported IDL's `module(protosept) X;` declaration
+        // when present (see `process_imports` pre-pass), which lets the
+        // emitted p7 directly target the VFS-aware module path that
+        // `ScriptVfsProvider` resolves. Engine bindings without an
+        // explicit `module(protosept)` line fall back to the file
+        // stem, matching the legacy single-segment shape.
         for import in &self.unit.imports {
-            let module_stem = import
-                .file_name
-                .strip_suffix(".idl")
-                .unwrap_or(&import.file_name);
-            out.push_str(&format!("import {module_stem};\n"));
+            let module_name = match import.protosept_module.as_deref() {
+                Some(name) => name.to_string(),
+                None => import
+                    .file_name
+                    .strip_suffix(".idl")
+                    .unwrap_or(&import.file_name)
+                    .to_string(),
+            };
+            out.push_str(&format!("import {module_name};\n"));
         }
         if !self.unit.imports.is_empty() {
             out.push('\n');

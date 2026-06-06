@@ -2,40 +2,21 @@
 //!
 //! `scripts/` and the generated bindings (`yaobow_editor_services.p7`,
 //! `icons.p7`) are packed at build time by `build.rs` into
-//! `OUT_DIR/yaobow_editor.ypk` and exposed through [`package()`]. The
-//! resulting [`OwnedScriptPackage`] is `register_bindings`-ed onto a
-//! `ScriptHost` and the root `main.p7` is `load_source`-d via
-//! `OwnedScriptPackage::ensure_loaded`.
+//! `OUT_DIR/yaobow_editor.ypk`. [`mount_scripts`] publishes the bytes
+//! into a dedicated script `AssetManager` at `/yaobow_editor/`, so
+//! scripts can `import yaobow_editor.welcome;`,
+//! `import yaobow_editor.icons;`, etc. and the editor app root
+//! resolves at `/yaobow_editor/main.p7`.
 
-use std::sync::{Arc, OnceLock};
+use radiance::asset::AssetManager;
 
-use radiance_scripting::{OwnedScriptPackage, ScriptHost};
-
-/// In-binary `.ypk` produced by `build.rs`. Decoded once on first call
-/// to [`package()`].
+/// In-binary `.ypk` produced by `build.rs`.
 const EDITOR_YPK: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/yaobow_editor.ypk"));
 
-/// Lazily-decoded editor script package. Cached for the lifetime of
-/// the binary so all callers share the same `Arc<OwnedScriptPackage>`.
-pub fn package() -> Arc<OwnedScriptPackage> {
-    static CACHE: OnceLock<Arc<OwnedScriptPackage>> = OnceLock::new();
-    CACHE
-        .get_or_init(|| {
-            OwnedScriptPackage::from_ypk_bytes(EDITOR_YPK)
-                .expect("yaobow_editor.ypk bundled by build.rs must decode")
-        })
-        .clone()
+/// Mounts this crate's `yaobow_editor.ypk` at `/yaobow_editor/` on
+/// the script `AssetManager`.
+pub fn mount_scripts(assets: &AssetManager) {
+    assets
+        .mount_ypk_bytes("/yaobow_editor", EDITOR_YPK)
+        .expect("yaobow_editor.ypk must mount");
 }
-
-/// Registers every IDL binding and sibling module from [`package()`]
-/// on `host`. After this call, `host.load_source(package().root_source)`
-/// can compile `main.p7`. Bindings survive `ScriptHost::reload`, but a
-/// host that fully recreates its `ScriptHost` must call this again.
-pub fn register_editor_modules(host: &ScriptHost) {
-    let pkg = package();
-    pkg.validate()
-        .expect("editor script package manifest must be valid");
-    pkg.register_bindings(host);
-}
-
-

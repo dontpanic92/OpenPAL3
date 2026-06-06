@@ -3817,8 +3817,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "binrw 0.11.3",
- "serde",
- "serde_json",
  "walkdir",
  "xxhash-rust",
  "zstd",

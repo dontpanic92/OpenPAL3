@@ -22,15 +22,15 @@
 //     the engine performs a single swap.
 //   - Rust direct-boot calls `set_director` from `on_loading`, which
 //     is outside any active director update.
-// Calling `set_director` from this script (which runs inside title
+// Calling `set_director` from this script (which runs inside yaobow.title
 // `update()` during normal play) would trigger the double-swap
 // hazard documented in `DefaultSceneManager::update`.
 
 import radiance;
 import scripting_services;
-import yaobow_services;
-import openpal5;
-import freeview;
+import yaobow.yaobow_services;
+import shared.openpal5;
+import radiance_scripting.freeview;
 
 pub struct[radiance.IDirector] OpenPal5Director(
     pub host: box<yaobow_services.IYaobowHostContext>,

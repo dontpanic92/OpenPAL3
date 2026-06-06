@@ -4,6 +4,7 @@
 // receiving page-specific service bundles from Rust.
 
 module(rust) yaobow::comdef::yaobow_services;
+module(protosept) yaobow.yaobow_services;
 
 import crosscom.idl;
 import radiance.idl;

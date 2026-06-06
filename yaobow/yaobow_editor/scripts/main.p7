@@ -12,9 +12,9 @@
 // — the underlying struct conforming to that proto is what counts.
 
 import radiance;
-import yaobow_editor_services;
-import welcome;
-import main_editor;
+import yaobow_editor.yaobow_editor_services;
+import yaobow_editor.welcome;
+import yaobow_editor.main_editor;
 
 pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<radiance.IDirector> {
     let registry = host.games();

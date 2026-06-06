@@ -53,7 +53,7 @@ pub let DOCK_WINDOW_OUTLINE: string = "层级";
 // Editor top-level layout selector. The menu bar exposes a row of tab
 // buttons (right-aligned) that toggle between these two layouts.
 //   - Assets: resource list (left) | single preview pane (right).
-//   - Scene:  inspector (right) over a left column split into a scene
+//   - Scene:  yaobow_editor.inspector (right) over a left column split into a scene
 //             view (hierarchy | main scene render) on top and an
 //             Assets-style resource | preview strip on the bottom.
 pub enum EditorLayout(
@@ -67,7 +67,7 @@ pub enum EditorLayout(
 // into a single node at a time, keyed by its full id string).
 pub let DOCK_ROOT_ASSETS: string = "yaobow_assets_dock";
 pub let DOCK_WIN_ASSETS_RESOURCES: string = "资源##assets";
-// Preview window uses a `###` id so the displayed title can carry the
+// Preview window uses a `###` id so the displayed yaobow.title can carry the
 // previewed file name ("预览 - {filename}") while the docking id (the
 // text after `###`) stays stable across frames.
 pub let DOCK_WIN_ASSETS_PREVIEW: string = "预览###preview_assets";
@@ -87,7 +87,7 @@ pub let VIDEO_TOGGLE_CMD_BASE: int = 500000;
 
 // Bridges a Rust-side `box<radiance.IDirector>` (which renders via its
 // own `update`) into the `radiance.IImmediateDirector` proto so the
-// immediate-mode welcome page can transition into a Rust-driven
+// immediate-mode yaobow_editor.welcome page can transition into a Rust-driven
 // director without the engine seeing the proto seam. `render_im` is a
 // no-op: the wrapped inner Rust director draws its own window from
 // its `update`; returning a real widget here would emit an orphan

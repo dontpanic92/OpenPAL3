@@ -1,7 +1,7 @@
 // View > Theme submenu. Reads the available themes and the current
 // editor theme via IConfigService, lets the user pick one, persists the
 // choice, and pushes the new theme to the live imgui context. Called
-// from inside `ui.main_menu_bar(...)` on both the welcome page and the
+// from inside `ui.main_menu_bar(...)` on both the yaobow_editor.welcome page and the
 // docked main editor.
 
 import radiance;

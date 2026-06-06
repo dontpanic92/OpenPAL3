@@ -20,6 +20,7 @@ fn main() {
     generate_script_bridge("scripting_services.idl", "scripting_services_bridge.rs");
 
     pack_script_bundle();
+    pack_engine_bindings();
 }
 
 fn idl_path(idl_file: &str) -> PathBuf {
@@ -79,12 +80,9 @@ fn generate_script_bridge(idl_file: &str, out_file: &str) {
 }
 
 /// Pack `scripts/` (currently just `freeview.p7`) into
-/// `OUT_DIR/radiance_scripting.ypk`. Loaded at runtime by
-/// `radiance_scripting::script_bundle()`.
-///
-/// Module-bundle package (no root) — this crate doesn't own a
-/// `script_app_root`; it just contributes the `freeview` sibling module
-/// that per-game launchers `import freeview;`.
+/// `OUT_DIR/radiance_scripting.ypk`. Mounted at
+/// `/radiance_scripting/` on the script `AssetManager` by
+/// `radiance_scripting::mount_scripts`.
 fn pack_script_bundle() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let scripts_dir = manifest_dir.join("scripts");
@@ -93,11 +91,62 @@ fn pack_script_bundle() {
     script_package::pack(
         &script_package::PackInput {
             scripts_dir: &scripts_dir,
-            root_entry: None,
-            root_name: None,
             extra_files: &[],
         },
         &out,
     )
     .unwrap_or_else(|err| panic!("Failed to pack radiance_scripting scripts: {err}"));
+}
+
+/// Pack the four codegen-derived engine bindings (`crosscom.p7`,
+/// `scripting_services.p7`, `radiance.p7`, `editor.p7` from
+/// `OUT_DIR`) into `OUT_DIR/engine_bindings.ypk`. Mounted at the
+/// script `AssetManager` root (`/`) by
+/// [`crate::mount_engine_bindings`] so scripts keep saying
+/// `import radiance;`, `import crosscom;`, etc.
+fn pack_engine_bindings() {
+    let out = out_path("engine_bindings.ypk");
+    let stage = out_path("__engine_bindings_stage");
+
+    // Build a persistent empty staging directory for `pack` (it
+    // requires scripts_dir to exist). Do NOT recreate it on every
+    // build — the packer emits `rerun-if-changed=<scripts_dir>`, and
+    // a freshly mtimed directory would cause an endless rebuild
+    // loop. Create it only if missing.
+    if !stage.exists() {
+        std::fs::create_dir_all(&stage).unwrap();
+    }
+
+    let crosscom = out_path("crosscom.p7");
+    let scripting_services = out_path("scripting_services.p7");
+    let radiance = out_path("radiance.p7");
+    let editor = out_path("editor.p7");
+
+    let extras = [
+        script_package::ExtraFile {
+            source_path: crosscom.as_path(),
+            virtual_entry: "crosscom.p7",
+        },
+        script_package::ExtraFile {
+            source_path: scripting_services.as_path(),
+            virtual_entry: "scripting_services.p7",
+        },
+        script_package::ExtraFile {
+            source_path: radiance.as_path(),
+            virtual_entry: "radiance.p7",
+        },
+        script_package::ExtraFile {
+            source_path: editor.as_path(),
+            virtual_entry: "editor.p7",
+        },
+    ];
+
+    script_package::pack(
+        &script_package::PackInput {
+            scripts_dir: &stage,
+            extra_files: &extras,
+        },
+        &out,
+    )
+    .unwrap_or_else(|err| panic!("Failed to pack engine bindings: {err}"));
 }

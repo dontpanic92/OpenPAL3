@@ -6,9 +6,9 @@
 // owning director's `update` (model preview, since it mutates the
 // owning tab's `preview_session` field).
 
-import yaobow_editor_services;
+import yaobow_editor.yaobow_editor_services;
 import radiance;
-import editor_consts;
+import yaobow_editor.editor_consts;
 
 pub struct ContentTab(
     pub label: string,

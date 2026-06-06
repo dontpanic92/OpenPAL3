@@ -78,41 +78,42 @@ fn generate_script_bridge(idl_file: &str, out_file: &str) {
 /// Pack `scripts/` (currently `openpal4/actor_controller.p7`) plus the
 /// five codegen-derived IDL p7s (`shared_openpal{3,4,5}.p7`,
 /// `shared_openswd5.p7`, `shared_pal4_debug.p7` from `OUT_DIR`) into
-/// `OUT_DIR/shared_scripts.ypk`. The bundle is module-only (no root);
-/// the IDL p7s register as `idl_bindings` so app-owned modules can
-/// `import openpal3;` etc.
+/// `OUT_DIR/shared_scripts.ypk`. The codegen files are stored under
+/// flat names (`openpal3.p7`, `openpal4.p7`, etc.) so that, once the
+/// ypk is mounted at `/shared/` on the script `AssetManager`, scripts
+/// resolve `import shared.openpal3;` -> `/shared/openpal3.p7`.
+///
+/// The IDL codegen emits fully-qualified imports directly, driven by
+/// each IDL's `module(protosept) shared.X;` directive — no build-time
+/// rewrite needed.
 fn pack_script_bundle() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let scripts_dir = manifest_dir.join("scripts");
     let out = out_path("shared_scripts.ypk");
 
+    // (OUT_DIR file name, virtual entry inside the ypk).
     let extras = [
-        ("shared_openpal3.p7", "openpal3"),
-        ("shared_openpal4.p7", "openpal4"),
-        ("shared_openpal5.p7", "openpal5"),
-        ("shared_openswd5.p7", "openswd5"),
-        ("shared_pal4_debug.p7", "pal4_debug"),
+        ("shared_openpal3.p7", "openpal3.p7"),
+        ("shared_openpal4.p7", "openpal4.p7"),
+        ("shared_openpal5.p7", "openpal5.p7"),
+        ("shared_openswd5.p7", "openswd5.p7"),
+        ("shared_pal4_debug.p7", "pal4_debug.p7"),
     ];
 
-    // Stable storage for the absolute paths the ExtraFile borrows.
     let extra_paths: Vec<PathBuf> = extras.iter().map(|(file, _)| out_path(file)).collect();
 
     let extra_files: Vec<script_package::ExtraFile<'_>> = extras
         .iter()
         .zip(extra_paths.iter())
-        .map(|((file, module), path)| script_package::ExtraFile {
+        .map(|((_, virtual_entry), path)| script_package::ExtraFile {
             source_path: path.as_path(),
-            virtual_entry: file,
-            module_name: module,
-            kind: script_package::ModuleKind::IdlBinding,
+            virtual_entry,
         })
         .collect();
 
     script_package::pack(
         &script_package::PackInput {
             scripts_dir: &scripts_dir,
-            root_entry: None,
-            root_name: None,
             extra_files: &extra_files,
         },
         &out,

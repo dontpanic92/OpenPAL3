@@ -16,16 +16,19 @@ use radiance_scripting::services::{GameRegistry, RandomService};
 use yaobow_editor::comdef::editor_services::{
     IEditorHostContext, IEditorHostContextImpl, IPreviewerHub, IPreviewerHubImpl,
 };
-use yaobow_editor::script_source::{package, register_editor_modules};
+use yaobow_editor::script_source::mount_scripts as mount_editor_scripts;
 
-/// Helper: clone the root source out of the editor script package.
-/// Lets tests keep feeding the raw `main.p7` text into
-/// `ScriptHost::load_source`.
-fn main_p7() -> std::sync::Arc<str> {
-    package()
-        .root_source
-        .clone()
-        .expect("editor script package must have a root source")
+/// Helper: build the dedicated script `AssetManager` used by editor
+/// tests (engine bindings + radiance_scripting + shared + this
+/// crate's editor ypk). Mirrors the production wiring in
+/// `scripted_welcome_page::build_editor_script_assets`.
+fn build_test_assets() -> std::rc::Rc<radiance::asset::AssetManager> {
+    let assets = radiance::asset::AssetManager::new();
+    radiance_scripting::mount_engine_bindings(&assets);
+    radiance_scripting::mount_scripts(&assets);
+    shared::mount_scripts(&assets);
+    mount_editor_scripts(&assets);
+    assets
 }
 
 mod comdef {
@@ -184,7 +187,9 @@ struct TestEnv {
     config: Rc<RefCell<shared::config::YaobowConfig>>,
 }
 
-fn init_runtime(source: &str) -> Result<TestEnv, crosscom_protosept::HostError> {
+fn init_runtime_from_path(
+    root_path: &str,
+) -> Result<TestEnv, crosscom_protosept::HostError> {
     let open_calls = Rc::new(RefCell::new(Vec::new()));
     let app = ComRc::<IAppService>::from_object(RecordingAppService {
         open_calls: open_calls.clone(),
@@ -196,9 +201,8 @@ fn init_runtime(source: &str) -> Result<TestEnv, crosscom_protosept::HostError> 
     });
 
     let runtime = radiance_scripting::ScriptHost::new();
-    
-    register_editor_modules(&runtime);
-    runtime.load_source(source)?;
+    runtime.set_script_assets(build_test_assets());
+    runtime.load_source_from_path(root_path)?;
     let host_ctx = ComRc::<IEditorHostContext>::from_object(TestHostContext {
         app,
         config,
@@ -219,28 +223,31 @@ fn init_runtime(source: &str) -> Result<TestEnv, crosscom_protosept::HostError> 
     })
 }
 
-fn init_script(source: &str) -> Result<(), crosscom_protosept::HostError> {
-    init_runtime(source).map(|_| ())
+fn init_runtime() -> Result<TestEnv, crosscom_protosept::HostError> {
+    init_runtime_from_path("/yaobow_editor/main.p7")
+}
+
+fn init_script() -> Result<(), crosscom_protosept::HostError> {
+    init_runtime().map(|_| ())
 }
 
 #[test]
 fn welcome_script_compiles() {
     let runtime = radiance_scripting::ScriptHost::new();
-    
-    register_editor_modules(&runtime);
+    runtime.set_script_assets(build_test_assets());
     runtime
-        .load_source(&main_p7())
+        .load_source_from_path("/yaobow_editor/main.p7")
         .expect("editor script should compile");
 }
 
 #[test]
 fn welcome_script_init_loads_with_imported_bindings() {
-    init_script(&main_p7()).expect("editor script init should load");
+    init_script().expect("editor script init should load");
 }
 
 #[test]
 fn welcome_script_render_im_emits_window_centered_with_game_table() {
-    let env = init_runtime(&main_p7()).expect("editor script init should load");
+    let env = init_runtime().expect("editor script init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -293,7 +300,7 @@ fn welcome_script_render_im_emits_window_centered_with_game_table() {
 
 #[test]
 fn welcome_script_update_returns_empty_transition_list() {
-    let env = init_runtime(&main_p7()).expect("welcome.p7 init should load");
+    let env = init_runtime().expect("welcome.p7 init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -307,7 +314,7 @@ fn welcome_script_update_returns_empty_transition_list() {
 
 #[test]
 fn welcome_script_settings_button_routes_to_settings_director() {
-    let env = init_runtime(&main_p7()).expect("welcome.p7 init should load");
+    let env = init_runtime().expect("welcome.p7 init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -344,7 +351,7 @@ fn welcome_script_settings_button_routes_to_settings_director() {
 
 #[test]
 fn welcome_script_no_click_yields_no_transition() {
-    let env = init_runtime(&main_p7()).expect("welcome.p7 init should load");
+    let env = init_runtime().expect("welcome.p7 init should load");
     let director = env
         .runtime
         .deref_handle(env.handle)
@@ -372,7 +379,7 @@ fn welcome_script_no_click_yields_no_transition() {
 
 #[test]
 fn welcome_script_game_button_with_configured_path_calls_open_game() {
-    let env = init_runtime(&main_p7()).expect("welcome.p7 init should load");
+    let env = init_runtime().expect("welcome.p7 init should load");
     env.config
         .borrow_mut()
         .set_asset_path(shared::GameType::PAL3, "/tmp/openpal3".to_string());
@@ -413,7 +420,7 @@ fn welcome_script_game_button_with_configured_path_calls_open_game() {
 
 #[test]
 fn welcome_script_render_im_update_survives_repeated_frames() {
-    let env = init_runtime(&main_p7()).expect("welcome.p7 init should load");
+    let env = init_runtime().expect("welcome.p7 init should load");
     let (_recorder, ui_com) = RecordingUiHost::create();
     let ui_com_id = env.runtime.intern(ui_com);
     for _ in 0..200 {
@@ -448,7 +455,7 @@ fn welcome_script_game_button_with_configured_path_returns_open_game_director() 
     // its `render_im` via QI (when it conforms to IImmediateDirector).
     // Here open_game's stub returns a plain `StubDirector`, so we
     // just verify the transition value is the foreign box itself.
-    let env = init_runtime(&main_p7()).expect("welcome.p7 init should load");
+    let env = init_runtime().expect("welcome.p7 init should load");
     env.config
         .borrow_mut()
         .set_asset_path(shared::GameType::PAL3, "/tmp/openpal3".to_string());

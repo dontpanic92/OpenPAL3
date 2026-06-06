@@ -2,7 +2,7 @@
 // every frame and lays out the returned (key, value) pairs in a
 // two-column table. Read-only — no edit widgets in v1.
 
-import yaobow_editor_services;
+import yaobow_editor.yaobow_editor_services;
 import radiance;
 
 pub fn render_inspector_im(

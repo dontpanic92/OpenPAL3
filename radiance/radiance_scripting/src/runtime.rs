@@ -71,20 +71,28 @@ struct Inner {
     host: P7HostContext<RuntimeServices>,
     epoch: u64,
     extra_bindings: Vec<(String, String)>,
+    /// Dedicated script `AssetManager` consulted by the VFS-backed
+    /// [`ModuleProvider`]. Set by `set_script_assets`; survives
+    /// `reload`.
+    script_assets: Option<Rc<radiance::asset::AssetManager>>,
 }
 
 impl Inner {
     fn fresh() -> Self {
-        Self::with_bindings(Vec::new())
+        Self::with_state(Vec::new(), None)
     }
 
-    fn with_bindings(extra_bindings: Vec<(String, String)>) -> Self {
+    fn with_state(
+        extra_bindings: Vec<(String, String)>,
+        script_assets: Option<Rc<radiance::asset::AssetManager>>,
+    ) -> Self {
         let mut host = P7HostContext::new(RuntimeServices::default());
         install_com_dispatcher(&mut host.ctx);
         Self {
             host,
             epoch: 0,
             extra_bindings,
+            script_assets,
         }
     }
 }
@@ -215,9 +223,42 @@ impl ScriptHost {
         });
     }
 
+    /// Install (or replace) the dedicated script `AssetManager` that
+    /// the VFS-backed `ModuleProvider` consults for `import` lookups.
+    /// Survives [`reload`](Self::reload). Hosts that intend to compile
+    /// real scripts must call this before [`load_source`] /
+    /// [`load_source_from_path`] so cross-crate imports resolve.
+    pub fn set_script_assets(&self, assets: Rc<radiance::asset::AssetManager>) {
+        self.with_inner(|inner| {
+            inner.script_assets = Some(assets);
+        });
+    }
+
+    /// Read `path` from the installed script `AssetManager` (set via
+    /// [`set_script_assets`]) and compile it as the host's root
+    /// source via [`load_source`]. Typical use: pass the absolute
+    /// path of a `[script_app_root]` source — e.g. `/yaobow/app.p7`.
+    pub fn load_source_from_path(&self, path: &str) -> Result<(), HostError> {
+        let assets = self
+            .with_inner(|inner| inner.script_assets.clone())
+            .ok_or_else(|| {
+                HostError::message(
+                    "ScriptHost::load_source_from_path requires set_script_assets first",
+                )
+            })?;
+        let bytes = assets
+            .read_to_end(std::path::Path::new(path))
+            .map_err(|err| HostError::message(format!("read {path}: {err}")))?;
+        let source = String::from_utf8(bytes)
+            .map_err(|err| HostError::message(format!("invalid utf-8 in {path}: {err}")))?;
+        self.load_source(&source)
+    }
+
     pub fn load_source(&self, source: &str) -> Result<(), HostError> {
-        let extra = self.with_inner(|inner| inner.extra_bindings.clone());
-        let module = p7::compile_with_provider(source.to_string(), binding_provider(&extra))
+        let (extra, script_assets) =
+            self.with_inner(|inner| (inner.extra_bindings.clone(), inner.script_assets.clone()));
+        let provider = binding_provider(&extra, script_assets);
+        let module = p7::compile_with_provider(source.to_string(), provider)
             .map_err(|err| HostError::message(format!("p7 compile failed: {:?}", err)))?;
         self.with_inner(|inner| inner.host.ctx.load_module(module));
         Ok(())
@@ -227,7 +268,8 @@ impl ScriptHost {
     /// ComObject, then re-initialises a fresh interpreter. Any
     /// `ScriptDirectorHandle` outstanding from before the call is silently
     /// invalidated by an epoch bump. Extra binding modules registered via
-    /// `add_binding` are preserved.
+    /// `add_binding` and the script `AssetManager` installed via
+    /// [`set_script_assets`] are preserved.
     ///
     /// Must NOT be called while a script is executing (i.e. from within a
     /// host service invoked by p7) — there is no static check enforcing this,
@@ -237,7 +279,8 @@ impl ScriptHost {
         self.next_epoch.set(new_epoch);
         self.with_inner(|inner| {
             let extra = std::mem::take(&mut inner.extra_bindings);
-            *inner = Inner::with_bindings(extra);
+            let assets = inner.script_assets.clone();
+            *inner = Inner::with_state(extra, assets);
             inner.epoch = new_epoch;
             // The fresh `Inner` carries a dangling runtime_handle in
             // its services bundle. Re-stamp the original Weak so
@@ -592,7 +635,22 @@ fn current_frame_stack_pop(inner: &mut Inner) -> Option<Data> {
         .and_then(|frame| frame.stack.pop())
 }
 
-fn binding_provider(extra: &[(String, String)]) -> Box<dyn ModuleProvider> {
+/// Build the `ModuleProvider` used by [`ScriptHost::load_source`].
+///
+/// Resolution order:
+///
+/// 1. Modules registered via [`ScriptHost::add_binding`] (`extra`).
+/// 2. The dedicated script `AssetManager` installed via
+///    [`ScriptHost::set_script_assets`] (if any), routed through
+///    [`ScriptVfsProvider`]: `import a.b.c;` -> `/a/b/c.p7`.
+/// 3. The four hard-coded engine bindings (`crosscom`,
+///    `scripting_services`, `radiance`, `editor`) — kept as a
+///    fallback so trivial compile tests can construct a `ScriptHost`
+///    without bothering with `install_script_assets`.
+fn binding_provider(
+    extra: &[(String, String)],
+    script_assets: Option<Rc<radiance::asset::AssetManager>>,
+) -> Box<dyn ModuleProvider> {
     let mut provider = InMemoryModuleProvider::new();
     provider.add_module(
         "crosscom".to_string(),
@@ -613,5 +671,34 @@ fn binding_provider(extra: &[(String, String)]) -> Box<dyn ModuleProvider> {
     for (name, source) in extra {
         provider.add_module(name.clone(), source.clone());
     }
-    Box::new(provider)
+
+    match script_assets {
+        Some(assets) => Box::new(LayeredProvider {
+            primary: Rc::new(provider),
+            fallback: crate::script_vfs::ScriptVfsProvider::new(assets),
+        }),
+        None => Box::new(provider),
+    }
+}
+
+/// Two-layer `ModuleProvider`: consult `primary` first, fall through
+/// to `fallback`. Used to layer the in-memory engine bindings on top
+/// of the VFS-backed script root so `import radiance;` short-circuits
+/// the asset-manager lookup.
+#[derive(Clone)]
+struct LayeredProvider {
+    primary: Rc<InMemoryModuleProvider>,
+    fallback: crate::script_vfs::ScriptVfsProvider,
+}
+
+impl ModuleProvider for LayeredProvider {
+    fn load_module(&self, module_path: &str) -> Option<String> {
+        self.primary
+            .load_module(module_path)
+            .or_else(|| self.fallback.load_module(module_path))
+    }
+
+    fn clone_boxed(&self) -> Box<dyn ModuleProvider> {
+        Box::new(self.clone())
+    }
 }

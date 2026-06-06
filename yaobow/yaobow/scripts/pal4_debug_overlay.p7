@@ -3,7 +3,7 @@
 // `render` is invoked by `OpenPAL4Director::render_im` (Rust) only
 // while the overlay is toggled on, so we don't gate visibility here.
 
-import pal4_debug;
+import shared.pal4_debug;
 import radiance;
 
 pub struct[pal4_debug.IPal4DebugOverlay] Pal4DebugOverlay(

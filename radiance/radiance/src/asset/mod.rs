@@ -182,6 +182,20 @@ impl AssetManager {
         Ok(())
     }
 
+    /// In-memory variant of [`AssetManager::mount_ypk`]. Mounts a ypk
+    /// served straight from a `'static` byte slice (typically an
+    /// `include_bytes!`-shipped script bundle) — no filesystem I/O.
+    /// Used by the script `AssetManager` to surface ypks packed at
+    /// build time.
+    pub fn mount_ypk_bytes<V>(&self, vfs_path: V, bytes: &'static [u8]) -> anyhow::Result<()>
+    where
+        V: Into<PathBuf>,
+    {
+        let store = YpkFs::from_bytes(bytes)?;
+        self.mutate_vfs(|vfs| vfs.mount(vfs_path.into(), store));
+        Ok(())
+    }
+
     pub fn mount_store<S, T, V>(&self, vfs_path: V, store: S)
     where
         S: Store<File = T> + 'static,
@@ -316,6 +330,41 @@ mod tests {
         assert!(!assets.exists("/bundle/does/not/exist"));
 
         let _ = fs::remove_file(&ypk_path);
+    }
+
+    #[test]
+    fn mount_ypk_bytes_serves_in_memory_archive() {
+        // Build a ypk on disk via YpkWriter, then read the bytes back
+        // into memory and leak them as &'static [u8] (matching the
+        // include_bytes! shape used by script bundles). Mount via
+        // mount_ypk_bytes and read back through read_to_end.
+        let ypk_path = unique_tmp("mem_bundle.ypk");
+        let _ = fs::remove_file(&ypk_path);
+        {
+            let f = fs::File::create(&ypk_path).unwrap();
+            let writer: Box<dyn SeekWrite> = Box::new(f);
+            let mut ypk = YpkWriter::new(writer).unwrap();
+            ypk.write_file("a.p7", b"// a.p7 source").unwrap();
+            ypk.write_file("sub/b.p7", b"// nested module").unwrap();
+            ypk.finish().unwrap();
+        }
+        let bytes = fs::read(&ypk_path).unwrap();
+        let _ = fs::remove_file(&ypk_path);
+        let leaked: &'static [u8] = Box::leak(bytes.into_boxed_slice());
+
+        let assets = AssetManager::new();
+        assets.mount_ypk_bytes("/mem", leaked).unwrap();
+
+        assert!(assets.exists("/mem/a.p7"));
+        assert_eq!(
+            assets.read_to_end("/mem/a.p7").unwrap(),
+            b"// a.p7 source".to_vec()
+        );
+        assert_eq!(
+            assets.read_to_end("/mem/sub/b.p7").unwrap(),
+            b"// nested module".to_vec()
+        );
+        assert!(!assets.exists("/mem/missing.p7"));
     }
 
     #[test]

@@ -3,6 +3,7 @@ use std::{
     cell::RefCell,
     collections::BTreeMap,
     ffi::OsString,
+    io::Cursor,
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -17,6 +18,17 @@ impl YpkFs {
     pub fn new<P: AsRef<Path>>(ypk_path: P) -> anyhow::Result<YpkFs> {
         let file = std::fs::File::open(ypk_path.as_ref())?;
         let archive = RefCell::new(YpkArchive::load(Arc::new(Mutex::new(file)))?);
+        Ok(YpkFs { archive })
+    }
+
+    /// In-memory variant of [`YpkFs::new`]. Wraps `bytes` in a
+    /// `Cursor` so the ypk can be served straight from an
+    /// `include_bytes!`-shipped blob without touching the file
+    /// system — used by [`crate::asset::AssetManager::mount_ypk_bytes`]
+    /// for embedded script bundles.
+    pub fn from_bytes(bytes: &'static [u8]) -> anyhow::Result<YpkFs> {
+        let cursor = Cursor::new(bytes);
+        let archive = RefCell::new(YpkArchive::load(Arc::new(Mutex::new(cursor)))?);
         Ok(YpkFs { archive })
     }
 }

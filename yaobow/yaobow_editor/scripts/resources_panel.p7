@@ -7,9 +7,9 @@
 // Both views share the same `picks: box<array<string>>` slot that
 // `main_editor.update` drains every frame to open content tabs.
 
-import yaobow_editor_services;
+import yaobow_editor.yaobow_editor_services;
 import radiance;
-import resource_tree;
+import yaobow_editor.resource_tree;
 
 pub struct ResourcesPanelState(
     pub filter: string,

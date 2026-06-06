@@ -13,18 +13,25 @@
 
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 use radiance_scripting::{RuntimeAccess, ScriptHost, with_services};
-use shared::openpal4::pal4_debug::{
-    Pal4DebugSnapshot, create_debug_session, wrap_overlay,
-};
+use shared::openpal4::pal4_debug::{Pal4DebugSnapshot, create_debug_session, wrap_overlay};
 
 const OVERLAY_P7: &str = include_str!("../../yaobow/scripts/pal4_debug_overlay.p7");
+
+/// Helper: build a fresh `AssetManager` with the engine bindings +
+/// shared script bundle mounted, so the overlay source resolves its
+/// `import shared.pal4_debug;` etc. through the VFS-backed module
+/// provider.
+fn build_test_assets() -> std::rc::Rc<radiance::asset::AssetManager> {
+    let assets = radiance::asset::AssetManager::new();
+    radiance_scripting::mount_engine_bindings(&assets);
+    shared::mount_scripts(&assets);
+    assets
+}
 
 #[test]
 fn pal4_debug_overlay_round_trips_through_p7() {
     let host = ScriptHost::new();
-    // Register the entire shared script bundle so `pal4_debug` and
-    // all the other generated IDL bindings are available to scripts.
-    shared::script_bundle().register_bindings(&host);
+    host.set_script_assets(build_test_assets());
     host.load_source(OVERLAY_P7)
         .expect("pal4_debug_overlay.p7 must compile");
 
@@ -164,7 +171,7 @@ fn pal4_debug_overlay_round_trips_through_p7() {
 #[test]
 fn pal4_debug_overlay_toggles_flip_host_state() {
     let host = ScriptHost::new();
-    shared::script_bundle().register_bindings(&host);
+    host.set_script_assets(build_test_assets());
     host.load_source(OVERLAY_P7)
         .expect("pal4_debug_overlay.p7 must compile");
 

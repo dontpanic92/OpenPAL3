@@ -79,6 +79,18 @@ impl IVfsServiceImpl for StubVfs {
     }
 }
 
+/// Helper: build the dedicated script `AssetManager` used by these
+/// smoke tests (engine bindings + radiance_scripting + shared + the
+/// editor ypk). Mirrors `scripted_welcome_page::build_editor_script_assets`.
+fn build_test_assets() -> std::rc::Rc<radiance::asset::AssetManager> {
+    let assets = radiance::asset::AssetManager::new();
+    radiance_scripting::mount_engine_bindings(&assets);
+    radiance_scripting::mount_scripts(&assets);
+    shared::mount_scripts(&assets);
+    yaobow_editor::script_source::mount_scripts(&assets);
+    assets
+}
+
 #[test]
 fn scripted_welcome_page_module_compiles() {
     use crosscom::ComRc;
@@ -91,8 +103,9 @@ fn scripted_welcome_page_module_compiles() {
 #[test]
 fn welcome_scripts_compile_with_shared_ui_module() {
     let runtime = radiance_scripting::ScriptHost::new();
-    yaobow_editor::script_source::package()
-        .ensure_loaded(&runtime, "init")
+    runtime.set_script_assets(build_test_assets());
+    runtime
+        .load_source_from_path("/yaobow_editor/main.p7")
         .expect("editor script compiles");
 }
 
@@ -102,8 +115,9 @@ fn welcome_runtime_can_create_resource_tree_root() {
     use radiance_scripting::comdef::services::IVfsService;
 
     let runtime = radiance_scripting::ScriptHost::new();
-    yaobow_editor::script_source::package()
-        .ensure_loaded(&runtime, "init")
+    runtime.set_script_assets(build_test_assets());
+    runtime
+        .load_source_from_path("/yaobow_editor/main.p7")
         .expect("editor script compiles");
     let vfs = ComRc::<IVfsService>::from_object(StubVfs {
         last_string: RefCell::new(String::new()),

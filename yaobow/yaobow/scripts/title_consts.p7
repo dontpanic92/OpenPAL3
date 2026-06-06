@@ -1,4 +1,4 @@
-// Timing + layout constants for the yaobow title page. Ported 1:1
+// Timing + layout constants for the yaobow yaobow.title page. Ported 1:1
 // from the legacy `yaobow/src/application/director.rs` so visual
 // parity is straightforward to audit.
 
@@ -25,7 +25,7 @@ pub let BG_G: float = 0.9411765;
 pub let BG_B: float = 0.92941177;
 pub let BG_A: float = 1.0;
 
-// Imgui style-color slots the title page uses. Numeric values match
+// Imgui style-color slots the yaobow.title page uses. Numeric values match
 // `radiance.IUiHost.style_color`'s documented mapping.
 pub let SC_TEXT: int = 0;
 pub let SC_WINDOW_BG: int = 2;
@@ -55,7 +55,7 @@ pub let INTENT_CANCEL: int = 5;
 pub let INTENT_PICK_FOLDER: int = 6;
 pub let INTENT_CLEAR_PATH: int = 7;
 
-// Sentinel ordinals for non-game entries in the title list. Distinct
+// Sentinel ordinals for non-game entries in the yaobow.title list. Distinct
 // from GAME_PAL3/GAME_PAL4 so the OPEN_GAME path can never receive a
 // menu sentinel by accident.
 pub let MENU_SETTINGS: int = 100;

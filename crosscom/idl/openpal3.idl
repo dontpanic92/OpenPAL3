@@ -1,4 +1,5 @@
 module(rust) shared::openpal3::comdef;
+module(protosept) shared.openpal3;
 
 import crosscom.idl;
 import radiance.idl;
