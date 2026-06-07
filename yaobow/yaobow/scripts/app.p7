@@ -17,6 +17,7 @@ import yaobow.pal4_debug_overlay;
 import shared.openpal4;
 import shared.openpal5;
 import yaobow.openpal5_director;
+import yaobow.openpal4_start_menu;
 import scripting_services;
 import yaobow.yaobow_services;
 import shared.openpal4.actor_controller;
@@ -59,7 +60,7 @@ pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
         );
     }
 
-    // PAL5 launch factory. Used by Rust direct-boot (`run_openpal5`)
+    // PAL4 launch factory. Used by Rust direct-boot (`run_openpal5`)
     // — title-page selection calls `openpal5_director.make_pal5_director`
     // directly, but this entry exists so Rust can mint the script-side
     // director without needing a script-level reference to the
@@ -73,6 +74,19 @@ pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
         return openpal5_director.make_pal5_director(
             self.ctx, self.ctx.pal5(), asset_path, game_ordinal,
         );
+    }
+
+    // PAL4 start-menu factory. Rust's `Pal4Service::create_director`
+    // delegates here so the engine still calls
+    // `host.pal4().create_director(path)` to enter PAL4, but lands
+    // on the script-built start menu first. The menu's New Game
+    // handler swaps itself for the story director via
+    // `host.pal4().create_story_director(path)`.
+    pub fn make_pal4_start_menu(
+        self: ref<Self>,
+        asset_path: string,
+    ) -> box<radiance.IImmediateDirector> {
+        return openpal4_start_menu.make_pal4_start_menu(self.ctx, asset_path);
     }
 }
 

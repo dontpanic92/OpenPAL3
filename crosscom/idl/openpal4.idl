@@ -3,6 +3,7 @@ module(protosept) shared.openpal4;
 
 import crosscom.idl;
 import radiance.idl;
+import scripting_services.idl;
 
 [uuid(f3d7f0fd-20ca-450c-bd66-ad019b984a54)]
 interface IOpenPAL4Director: IDirector {
@@ -70,10 +71,20 @@ class Pal4GameContext: IPal4GameContext {}
 // PAL4 launch service — phase-2 single-source-of-truth for PAL4
 // director construction. Singleton-per-app installed by
 // `YaobowApplicationLoader` and exposed via
-// `IYaobowHostContext.pal4()`. `create_director(asset_path)` builds
-// a complete PAL4 director (asset loader, AS VM, agent-bridge
-// wiring if the loader pre-stocked it, debug-overlay bundle, actor
-// controller).
+// `IYaobowHostContext.pal4()`.
+//
+// `create_director(asset_path)` now returns the **start-menu**
+// director (script-built via the `IYaobowScriptApp.make_pal4_start_menu`
+// hook). The menu's "New Game" handler swaps itself for the full
+// story director via `create_story_director(asset_path)`, which
+// holds the old construction body (asset loader, AS VM, agent
+// bridge wiring, debug bundle, actor controller).
+//
+// `open_layout(vfs_path)` mints an `IUiLayoutHandle` against the
+// per-launch vfs that `create_director` already mounted. Used by
+// the start-menu director to render `MainWindow.xml`. Returns null
+// when the per-launch vfs hasn't been installed yet (i.e. before
+// `create_director` ran) or the path doesn't resolve / parse.
 //
 // The `AgentServer` HTTP listener itself stays owned by
 // `YaobowApplicationLoader` for the app lifetime; `Pal4Service` only
@@ -85,6 +96,38 @@ class Pal4GameContext: IPal4GameContext {}
 [uuid(60e42ff1-613a-4b0a-93c0-eada0bd0f9dd)]
 interface IPal4Service: IUnknown {
     IDirector create_director(&str asset_path);
+    IDirector create_story_director(&str asset_path);
+    IUiLayoutHandle? open_layout(&str vfs_path);
+
+    // Build a fresh CoreScene containing the ZJM start-menu backdrop:
+    // ZJM.bsp + ZJM_water.dff + ZJM_trans.dff under
+    // `/gamedata/ui/uiWorld/zjm/`, plus their paired `.uva`
+    // animations registered on a private `UvAnimDriver` owned by
+    // `Pal4Service`. The menu director pushes the returned scene,
+    // positions the scene camera itself (via the generic
+    // `ICameraControl` reachable from `IHostContext.scene_manager`),
+    // and calls `tick_menu` each frame; `unload_menu_scene` clears
+    // the driver slot on deactivate so the story director starts on
+    // a clean state. Returns null when the per-launch vfs is not
+    // mounted yet or the BSP cannot be loaded.
+    IScene? load_menu_scene();
+
+    // Tick the menu's UV animations. No-op when `load_menu_scene`
+    // has not been called (or `unload_menu_scene` cleared the slot).
+    void tick_menu(float delta_sec);
+
+    // Drop the stocked menu `UvAnimDriver`. Idempotent.
+    void unload_menu_scene();
+
+    // PAL4-specific BGM loader. Reads
+    // `/gamedata/Music/<music_name>.smp` from the per-launch vfs,
+    // unwraps the embedded `CpkArchive` entry, XXTEA-decrypts the
+    // payload, and mints an `IAudioSource` whose decoder is fed the
+    // resulting MP3 bytes. Returns null when the per-launch vfs is
+    // not mounted, the file is missing, or decryption fails. The
+    // returned source is auto-ticked by the engine just like every
+    // other `IAudioSource`.
+    IAudioSource? load_music(&str music_name);
 }
 
 [uuid(956d18ea-cffe-47f6-9458-ddb3b087110f)]

@@ -362,6 +362,24 @@ pub mod script_source {
         fn make_pal4_debug_bundle(&self) -> shared::openpal4::director::Pal4DebugBundle {
             YaobowScriptProject::make_pal4_debug_bundle(self)
         }
+
+        fn make_pal4_start_menu(&self, asset_path: &str) -> Option<ComRc<IDirector>> {
+            match self.client.make_pal4_start_menu(asset_path) {
+                Ok(imm) => match imm.query_interface::<IDirector>() {
+                    Some(d) => Some(d),
+                    None => {
+                        log::warn!(
+                            "make_pal4_start_menu: returned IImmediateDirector did not expose IDirector"
+                        );
+                        None
+                    }
+                },
+                Err(err) => {
+                    log::warn!("make_pal4_start_menu failed for {asset_path}: {err:?}");
+                    None
+                }
+            }
+        }
     }
 }
 

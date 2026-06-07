@@ -14,6 +14,15 @@ pub enum Codec {
 pub trait AudioEngine {
     fn create_source(&self) -> Box<dyn AudioMemorySource>;
     fn create_custom_decoder_source(&self) -> Box<dyn AudioCustomDecoderSource>;
+
+    /// Per-frame tick. The engine implementation walks every live
+    /// source it has minted and forwards the tick (e.g. unqueues
+    /// drained OpenAL streaming buffers, feeds fresh decoded samples,
+    /// honours looping at EOF). Default impl is a no-op so stub /
+    /// test backends don't need to be aware of it; the production
+    /// `OpenAlAudioEngine` overrides it. `CoreRadianceEngine::update`
+    /// drives this once per frame.
+    fn update(&self, _delta_sec: f32) {}
 }
 
 #[derive(PartialEq, Copy, Clone, Debug)]

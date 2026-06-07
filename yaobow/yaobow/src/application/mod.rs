@@ -128,15 +128,18 @@ impl IComponentImpl for YaobowApplicationLoader {
         let project = YaobowScriptProject::install(&self.app, self.config.clone());
         self.project.replace(Some(project.clone()));
 
-        // Hook the scripted actor-controller factory into Pal4Service
-        // now that the project exists. Done unconditionally so a
-        // later title-page PAL4 selection also picks it up.
+        // Hook the scripted actor-controller factory + imgui texture
+        // cache into Pal4Service now that the project exists. Done
+        // unconditionally so a later title-page PAL4 selection also
+        // picks them up.
         let host_ctx = project.host_context();
         let pal4 = host_ctx.pal4();
         pal4.inner::<shared::openpal4::service::Pal4Service>()
             .set_actor_controller_factory(project.actor_controller_factory());
 
-        let _ = install_imgui_pump(&self.app);
+        let texture_cache = install_imgui_pump(&self.app);
+        pal4.inner::<shared::openpal4::service::Pal4Service>()
+            .set_texture_cache(texture_cache);
 
         let scene_manager = self.app.engine().borrow().scene_manager().clone();
 

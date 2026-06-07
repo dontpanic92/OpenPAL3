@@ -11,3 +11,12 @@ import scripting_services.idl;
 
 [uuid(8c4d50aa-3b07-4a32-9d20-2e0b2f7c0020)]
 class ConfigService: IConfigService {}
+
+// Concrete class for the runtime `IUiLayoutHandle` (interface lives in
+// scripting_services.idl). Lands here so the auto-generated
+// `ComObject_UiLayoutHandle!` macro resolves to `shared`, where the Rust
+// impl lives in `shared::loaders::cegui::ui_layout_handle`. Both PAL4's
+// runtime start-menu director and the editor's UI-layout previewer mint
+// instances through `UiLayoutHandle::try_create`.
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c1a)]
+class UiLayoutHandle: IUiLayoutHandle {}

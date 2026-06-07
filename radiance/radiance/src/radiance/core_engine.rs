@@ -168,6 +168,7 @@ impl CoreRadianceEngine {
 
         let scene_manager = self.scene_manager.clone();
         let task_manager = self.task_manager.clone();
+        let audio_engine = self.audio_engine.clone();
         let debug_layer = self.debug_layer.as_ref();
         // Snapshot the pump out of the RefCell *before* entering
         // the ui_manager closure so a pump impl that re-enters
@@ -194,6 +195,10 @@ impl CoreRadianceEngine {
                 scene_update_start.elapsed().as_nanos() as u64,
             );
             task_manager.update(delta_sec);
+            // Pump the audio engine once per frame so streaming
+            // OpenAL sources (BGM, sound effects) keep their decode
+            // queues fed without per-caller bookkeeping.
+            audio_engine.update(delta_sec);
 
             if let Some(dl) = debug_layer {
                 dl.update(delta_sec);

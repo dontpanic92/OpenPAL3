@@ -169,7 +169,7 @@ impl IPreviewerHubImpl for StubPreviewerHub {
     fn open_ui_layout(
         &self,
         _vfs_path: &str,
-    ) -> Option<ComRc<yaobow_editor::comdef::editor_services::IUiLayoutHandle>> {
+    ) -> Option<ComRc<yaobow_editor::comdef::services::IUiLayoutHandle>> {
         None
     }
     fn resources(&self) -> ComRc<yaobow_editor::comdef::editor_services::IResourceManager> {

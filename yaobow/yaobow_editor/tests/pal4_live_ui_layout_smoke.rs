@@ -22,7 +22,7 @@ use radiance::rendering::{
     VertexBuffer, VideoPlayer,
 };
 use radiance_scripting::services::ImguiTextureCache;
-use yaobow_editor::comdef::editor_services::IUiLayoutHandle;
+use yaobow_editor::comdef::services::IUiLayoutHandle;
 use yaobow_editor::services::handles::UiLayoutHandle;
 
 struct DummyTexture;

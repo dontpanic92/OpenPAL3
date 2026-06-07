@@ -7,6 +7,7 @@
 // owning tab's `preview_session` field).
 
 import yaobow_editor.yaobow_editor_services;
+import scripting_services;
 import radiance;
 import yaobow_editor.editor_consts;
 
@@ -22,7 +23,7 @@ pub struct ContentTab(
     pub preview_session: ?box<yaobow_editor_services.IPreviewSession>,
     pub scene_handle: ?box<yaobow_editor_services.ISceneHandle>,
     pub scene_session: ?box<yaobow_editor_services.IScenePreviewSession>,
-    pub ui_layout_handle: ?box<yaobow_editor_services.IUiLayoutHandle>,
+    pub ui_layout_handle: ?box<scripting_services.IUiLayoutHandle>,
 );
 
 fn make_text_tab(label: string, close_cmd: int, content: string, kind: editor_consts.ContentKind) -> ContentTab {
@@ -49,7 +50,7 @@ pub fn make_scene_tab(label: string, close_cmd: int, handle: box<yaobow_editor_s
     ContentTab(label, close_cmd, editor_consts.ContentKind.Scene, "", null, null, null, null, null, handle, null, null)
 }
 
-fn make_ui_layout_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IUiLayoutHandle>) -> ContentTab {
+fn make_ui_layout_tab(label: string, close_cmd: int, handle: box<scripting_services.IUiLayoutHandle>) -> ContentTab {
     ContentTab(label, close_cmd, editor_consts.ContentKind.UiLayout, "", null, null, null, null, null, null, null, handle)
 }
 

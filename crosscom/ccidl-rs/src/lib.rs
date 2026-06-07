@@ -1802,7 +1802,7 @@ mod tests {
             .collect();
         // ISceneManager's IDL declares (in order): update, scene, director,
         // set_director, push_scene, pop_scene, unload_all_scenes,
-        // unset_director.
+        // unset_director, camera.
         assert_eq!(
             methods,
             vec![
@@ -1814,6 +1814,7 @@ mod tests {
                 "pop_scene",
                 "unload_all_scenes",
                 "unset_director",
+                "camera",
             ],
             "ISceneManager method order changed (vtable slots would shift)"
         );

@@ -1,0 +1,275 @@
+// PAL4 start-menu director. Renders `/gamedata/ui/layouts/MainWindow.xml`
+// from the per-launch vfs (the host's `Pal4Service::open_layout`
+// mounts it during `create_director`), plays the menu BGM, and
+// transitions to the story director on "New Game". Other buttons
+// (Load Game, Options, Movie, About, ...) render but are no-ops in
+// v1 — the original game's startup menu is recreated visually but
+// only the New Game / Exit paths are wired.
+
+import radiance;
+import scripting_services;
+import yaobow.yaobow_services;
+
+// Layout-relative button names (exact `Name=...` attributes from
+// `MainWindow.xml`'s `<Window Type="OiramLook/Button" ...>` nodes).
+let BTN_NEW_GAME: string  = "BtnNewGame";
+let BTN_EXIT: string      = "BtnExit";
+
+// Intent codes drained once per `update`.
+let INTENT_NONE: int      = 0;
+let INTENT_NEW_GAME: int  = 1;
+let INTENT_EXIT: int      = 2;
+
+let NO_PRESS: int         = -1;
+
+// PAL4 start-menu camera pose. Hardcoded — the original game's
+// AngelScript boot positions the camera once before the menu fades
+// in. Tune these constants by visual inspection against the live
+// render.
+let MENU_CAM_POS_X: float = 0.0;
+let MENU_CAM_POS_Y: float = 320.0;
+let MENU_CAM_POS_Z: float = 800.0;
+let MENU_CAM_LOOK_X: float = 0.0;
+let MENU_CAM_LOOK_Y: float = 320.0;
+let MENU_CAM_LOOK_Z: float = 0.0;
+
+// imgui WindowFlags::NoBackground (bit 7). Lets the engine's 3D
+// scene render below the fullscreen imgui window holding the menu
+// composition. Without this the imgui background colour blocks the
+// ZJM backdrop.
+let IMGUI_NO_BACKGROUND: int = 128;
+
+// PAL4 start-menu BGM. PAL4 ships music as encrypted SMP files in
+// `/gamedata/Music/`; `host.pal4().load_music(name)` handles the
+// CPK-unwrap + XXTEA-decrypt + MP3-decode pipeline and returns an
+// IAudioSource ready to play. "p01-1" is PAL4 OST track 1 (the
+// title theme variant); edit to taste.
+let MENU_BGM_NAME: string = "p01-1";
+let MENU_LAYOUT_PATH: string = "/gamedata/ui/layouts/MainWindow.xml";
+
+pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirector(
+    pub host: box<yaobow_services.IYaobowHostContext>,
+    pub asset_path: string,
+    pub layout: ?box<scripting_services.IUiLayoutHandle>,
+    pub bgm: ?box<scripting_services.IAudioSource>,
+    // window_id (matches `IUiLayoutHandle.draw_window_id(i)`) currently
+    // being pressed by the user, or `NO_PRESS` if the mouse button is
+    // not held down on any interactive widget. Reset on release.
+    pub pressed_window_id: int,
+    pub intent: int,
+    // True once `activate()` has successfully pushed the ZJM
+    // backdrop scene; `deactivate()` pops + unloads only when set
+    // so a failure to load assets degrades to a still-functional
+    // 2D-only menu instead of corrupting the scene stack.
+    pub scene_pushed: bool,
+) {
+    pub fn activate(self: ref<Self>) -> int {
+        if self.bgm != null {
+            self.bgm!.play(true);
+        }
+        let scene = self.host.pal4().load_menu_scene();
+        if scene != null {
+            self.host.scene_manager().push_scene(scene!);
+            // Position the active scene camera now that the menu
+            // scene is on top of the stack. `scene_manager().camera()`
+            // resolves to the freshly-pushed scene's camera.
+            let cam = self.host.scene_manager().camera();
+            if cam != null {
+                cam!.set_position(MENU_CAM_POS_X, MENU_CAM_POS_Y, MENU_CAM_POS_Z);
+                cam!.look_at(MENU_CAM_LOOK_X, MENU_CAM_LOOK_Y, MENU_CAM_LOOK_Z);
+            }
+            self.scene_pushed = true;
+        }
+        0
+    }
+
+    pub fn deactivate(self: ref<Self>) -> int {
+        if self.scene_pushed {
+            self.host.scene_manager().pop_scene();
+            self.host.pal4().unload_menu_scene();
+            self.scene_pushed = false;
+        }
+        if self.bgm != null {
+            self.bgm!.stop();
+        }
+        0
+    }
+
+    pub fn render_im(
+        self: ref<Self>,
+        ui: box<radiance.IUiHost>,
+        dt: float,
+    ) -> int {
+        if self.bgm != null {
+            self.bgm!.update();
+        }
+        // Drive the menu's UV animations (ZJM_water / ZJM_trans) so
+        // the backdrop's water surface moves in real time.
+        self.host.pal4().tick_menu(dt);
+
+        // Fullscreen imgui window with no background so the ZJM
+        // scene rendered below it shows through.
+        ui.window_fullscreen("##pal4_start_menu", IMGUI_NO_BACKGROUND, () => {
+            self.render_inner(ui);
+        });
+        0
+    }
+
+    pub fn render_inner(self: ref<Self>, ui: box<radiance.IUiHost>) {
+        if self.layout == null {
+            ui.style_color(0, 1.0, 1.0, 1.0, 1.0, () => {
+                ui.set_cursor_pos(20.0, 20.0);
+                ui.text("PAL4 start menu: layout MainWindow.xml not found.");
+            });
+            return;
+        }
+
+        let h = self.layout!;
+        let native_w = h.native_width() as float;
+        let native_h = h.native_height() as float;
+        let avail_w = ui.display_size_x() as float;
+        let avail_h = ui.display_size_y() as float;
+        if native_w <= 0.0 || native_h <= 0.0 || avail_w <= 0.0 || avail_h <= 0.0 {
+            return;
+        }
+
+        // Fit the layout's native canvas into the available area
+        // preserving aspect ratio (letterbox).
+        let sx = avail_w / native_w;
+        let sy = avail_h / native_h;
+        let scale = if sx < sy { sx } else { sy };
+        let drawn_w = native_w * scale;
+        let drawn_h = native_h * scale;
+        let origin_x = (avail_w - drawn_w) * 0.5;
+        let origin_y = (avail_h - drawn_h) * 0.5;
+
+        let n = h.draw_count();
+        let mut released_window_id: int = NO_PRESS;
+        let was_pressed = self.pressed_window_id;
+        let mouse_held = ui.mouse_down(0);
+
+        for i in Range(0, n) {
+            let cx = origin_x + h.draw_x(i) * scale;
+            let cy = origin_y + h.draw_y(i) * scale;
+            let cw = h.draw_w(i) * scale;
+            let ch = h.draw_h(i) * scale;
+            if cw <= 0.0 || ch <= 0.0 {
+                continue;
+            }
+            let tex = h.draw_texture_com_id(i);
+            let mut hovered = false;
+            let mut pressed_now = false;
+            if tex != 0 {
+                ui.set_cursor_pos(cx, cy);
+                ui.image_uv(
+                    tex, cw, ch,
+                    h.draw_u0(i), h.draw_v0(i),
+                    h.draw_u1(i), h.draw_v1(i),
+                );
+                if h.draw_is_interactive(i) {
+                    hovered = ui.is_item_hovered();
+                    pressed_now = hovered && mouse_held;
+                }
+                // Overlay alternate-state imagery on top. Press takes
+                // priority over hover; if neither alt image is
+                // configured, the base stays.
+                let wid = h.draw_window_id(i);
+                if pressed_now || (was_pressed == wid && mouse_held && hovered) {
+                    let pt = h.draw_pressed_texture_com_id(i);
+                    if pt != 0 {
+                        ui.set_cursor_pos(cx, cy);
+                        ui.image_uv(
+                            pt, cw, ch,
+                            h.draw_pressed_u0(i), h.draw_pressed_v0(i),
+                            h.draw_pressed_u1(i), h.draw_pressed_v1(i),
+                        );
+                    }
+                } else {
+                    if hovered {
+                        let ht = h.draw_hover_texture_com_id(i);
+                        if ht != 0 {
+                            ui.set_cursor_pos(cx, cy);
+                            ui.image_uv(
+                                ht, cw, ch,
+                                h.draw_hover_u0(i), h.draw_hover_v0(i),
+                                h.draw_hover_u1(i), h.draw_hover_v1(i),
+                            );
+                        }
+                    }
+                }
+
+                // Click latch: remember the first interactive widget
+                // pressed this frame; fire on release if the cursor
+                // is still hovering it.
+                if pressed_now && was_pressed == NO_PRESS {
+                    self.pressed_window_id = wid;
+                }
+                if was_pressed == wid && !mouse_held && hovered {
+                    released_window_id = wid;
+                }
+            }
+        }
+
+        // Drain mouse-up: clear the press latch and dispatch the
+        // matching widget's intent.
+        if !mouse_held {
+            self.pressed_window_id = NO_PRESS;
+        }
+        if released_window_id != NO_PRESS {
+            self.dispatch_click(h, released_window_id);
+        }
+    }
+
+    pub fn dispatch_click(
+        self: ref<Self>,
+        h: box<scripting_services.IUiLayoutHandle>,
+        window_id: int,
+    ) {
+        // window_id is the global pre-order index into the layout
+        // tree; reuse `window_name(i)` to recognise the button.
+        let name = h.window_name(window_id);
+        if name == BTN_NEW_GAME {
+            self.intent = INTENT_NEW_GAME;
+            return;
+        }
+        if name == BTN_EXIT {
+            self.intent = INTENT_EXIT;
+            return;
+        }
+        // BtnLoadGame / BtnMovie / BtnInfomation / BtnAboutPal /
+        // BtnQuest / BtnPicture are intentionally inert in v1.
+    }
+
+    pub fn update(
+        self: ref<Self>,
+        dt: float,
+    ) -> ?box<radiance.IDirector> {
+        let code = self.intent;
+        self.intent = INTENT_NONE;
+        if code == INTENT_NEW_GAME {
+            // Hand the engine the story director; the engine swaps
+            // us out and our `deactivate()` releases the BGM + layout
+            // (the latter unrefs its imageset atlases on drop).
+            return self.host.pal4().create_story_director(self.asset_path);
+        }
+        if code == INTENT_EXIT {
+            self.host.app().exit();
+        }
+        return null;
+    }
+}
+
+pub fn make_pal4_start_menu(
+    host: box<yaobow_services.IYaobowHostContext>,
+    asset_path: string,
+) -> box<radiance.IImmediateDirector> {
+    // `open_layout` may return null when PAL4 assets aren't installed
+    // at this path. We still construct the menu director — it renders
+    // a fallback "layout not found" message and keeps Exit/back-to-
+    // story wired so the user can recover.
+    let layout = host.pal4().open_layout(MENU_LAYOUT_PATH);
+    let bgm = host.pal4().load_music(MENU_BGM_NAME);
+    return box(Pal4StartMenuDirector(
+        host, asset_path, layout, bgm, NO_PRESS, INTENT_NONE, false,
+    )) as box<radiance.IImmediateDirector>;
+}

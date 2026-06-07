@@ -4,19 +4,57 @@ use super::{
 };
 use super::{AudioEngine, AudioSource, AudioSourceState};
 use alto::{Alto, AltoResult, Context, Mono, Source, Stereo};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, Weak};
 
 pub struct OpenAlAudioEngine {
     context: Arc<Context>,
+    /// Every source minted by this engine. The engine `update`
+    /// (called once per frame from `CoreRadianceEngine::update`)
+    /// walks this list, drops dead entries, and ticks each live one
+    /// so streaming OpenAL queues stay fed without per-caller
+    /// bookkeeping. Mirrors the FMOD / Wwise pattern of one
+    /// engine-level pump.
+    ///
+    /// Stored behind `Arc<Mutex<...>>` (not `Rc<RefCell<...>>`)
+    /// because the public `AudioSource` trait requires `Send + Sync`
+    /// — the video player ships its audio source to a background
+    /// thread.
+    sources: Mutex<Vec<Weak<dyn OpenAlSourceTickable>>>,
 }
 
 impl AudioEngine for OpenAlAudioEngine {
     fn create_source(&self) -> Box<dyn AudioMemorySource> {
-        Box::new(OpenAlAudioMemorySource::new(self.context.clone()))
+        let inner = Arc::new(Mutex::new(OpenAlAudioMemorySource::new(
+            self.context.clone(),
+        )));
+        self.sources
+            .lock()
+            .unwrap()
+            .push(Arc::downgrade(&inner) as Weak<dyn OpenAlSourceTickable>);
+        Box::new(EngineOwnedMemorySource { inner })
     }
 
     fn create_custom_decoder_source(&self) -> Box<dyn AudioCustomDecoderSource> {
-        Box::new(OpenAlAudioCustomDecoderSource::new(self.context.clone()))
+        let inner = Arc::new(Mutex::new(OpenAlAudioCustomDecoderSource::new(
+            self.context.clone(),
+        )));
+        self.sources
+            .lock()
+            .unwrap()
+            .push(Arc::downgrade(&inner) as Weak<dyn OpenAlSourceTickable>);
+        Box::new(EngineOwnedCustomDecoderSource { inner })
+    }
+
+    fn update(&self, _delta_sec: f32) {
+        let mut sources = self.sources.lock().unwrap();
+        sources.retain(|weak| {
+            if let Some(strong) = weak.upgrade() {
+                strong.tick();
+                true
+            } else {
+                false
+            }
+        });
     }
 }
 
@@ -26,7 +64,35 @@ impl OpenAlAudioEngine {
         let device = alto.open(None).unwrap();
         let context = Arc::new(device.new_context(None).unwrap());
 
-        Self { context }
+        Self {
+            context,
+            sources: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+/// Internal trait the engine uses to tick a source through its
+/// `Mutex` without naming the underlying `OpenAlAudioSource<T>`
+/// phantom-marker generic.
+///
+/// **Re-entrancy contract:** a source's `update()` MUST NOT call
+/// back into `AudioEngine::create_source` /
+/// `create_custom_decoder_source` — that would re-lock
+/// `OpenAlAudioEngine::sources` mid-tick. OpenAL update paths do
+/// not need to spawn sources, so this invariant is trivially upheld
+/// today. The engine also uses `try_lock` on each source so a
+/// transient borrow elsewhere (the video player's audio thread
+/// poking the source on its own cadence) doesn't block the main
+/// thread — the next frame's tick picks it up.
+trait OpenAlSourceTickable: Send + Sync {
+    fn tick(&self);
+}
+
+impl<T: Send + Sync + 'static> OpenAlSourceTickable for Mutex<OpenAlAudioSource<T>> {
+    fn tick(&self) {
+        if let Ok(mut s) = self.try_lock() {
+            s.update();
+        }
     }
 }
 
@@ -192,6 +258,81 @@ type OpenAlAudioCustomDecoderSource = OpenAlAudioSource<_CustomDecoderSource>;
 impl AudioCustomDecoderSource for OpenAlAudioCustomDecoderSource {
     fn set_decoder(&mut self, reader: Box<dyn super::decoders::Decoder>) {
         self.decoder = Some(reader);
+    }
+}
+
+/// Caller-visible handle returned from `AudioEngine::create_source`.
+/// Forwards every `AudioSource` / `AudioMemorySource` call to the
+/// `Arc<Mutex<OpenAlAudioSource<_MemorySource>>>` that
+/// `OpenAlAudioEngine` keeps a `Weak` of — so when this handle
+/// drops, the engine's `Weak::upgrade()` starts returning `None` and
+/// the engine tick stops touching the source automatically.
+struct EngineOwnedMemorySource {
+    inner: Arc<Mutex<OpenAlAudioMemorySource>>,
+}
+
+impl AudioSource for EngineOwnedMemorySource {
+    fn update(&mut self) {
+        self.inner.lock().unwrap().update();
+    }
+    fn play(&mut self, looping: bool) {
+        self.inner.lock().unwrap().play(looping);
+    }
+    fn restart(&mut self) {
+        self.inner.lock().unwrap().restart();
+    }
+    fn pause(&mut self) {
+        self.inner.lock().unwrap().pause();
+    }
+    fn resume(&mut self) {
+        self.inner.lock().unwrap().resume();
+    }
+    fn stop(&mut self) {
+        self.inner.lock().unwrap().stop();
+    }
+    fn state(&self) -> AudioSourceState {
+        self.inner.lock().unwrap().state()
+    }
+}
+
+impl AudioMemorySource for EngineOwnedMemorySource {
+    fn set_data(&mut self, data: Vec<u8>, codec_hint: Codec) {
+        self.inner.lock().unwrap().set_data(data, codec_hint);
+    }
+}
+
+/// Sibling of [`EngineOwnedMemorySource`] for custom-decoder sources.
+struct EngineOwnedCustomDecoderSource {
+    inner: Arc<Mutex<OpenAlAudioCustomDecoderSource>>,
+}
+
+impl AudioSource for EngineOwnedCustomDecoderSource {
+    fn update(&mut self) {
+        self.inner.lock().unwrap().update();
+    }
+    fn play(&mut self, looping: bool) {
+        self.inner.lock().unwrap().play(looping);
+    }
+    fn restart(&mut self) {
+        self.inner.lock().unwrap().restart();
+    }
+    fn pause(&mut self) {
+        self.inner.lock().unwrap().pause();
+    }
+    fn resume(&mut self) {
+        self.inner.lock().unwrap().resume();
+    }
+    fn stop(&mut self) {
+        self.inner.lock().unwrap().stop();
+    }
+    fn state(&self) -> AudioSourceState {
+        self.inner.lock().unwrap().state()
+    }
+}
+
+impl AudioCustomDecoderSource for EngineOwnedCustomDecoderSource {
+    fn set_decoder(&mut self, reader: Box<dyn super::decoders::Decoder>) {
+        self.inner.lock().unwrap().set_decoder(reader);
     }
 }
 
