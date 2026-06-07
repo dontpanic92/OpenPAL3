@@ -142,23 +142,41 @@ impl IApplicationImpl for Application {
             }
         };
 
-        // Take the event loop + build the adapter in a tight scope so
-        // the `Rc<RefCell<Platform>>` borrows are released BEFORE
-        // `event_loop.run_app` blocks. This matters because the
-        // first-resumed `WindowReadyCallback` re-borrows the platform
-        // (`platform.borrow_mut()`) to call `create_radiance_engine`,
-        // which registers additional input/imgui/lifecycle callbacks.
-        // Holding an outer borrow here would trigger a
-        // `RefCell already borrowed` panic.
-        let (event_loop, mut adapter) = {
-            let p = self.platform.borrow();
-            let event_loop = p.take_event_loop();
-            let adapter = p.build_app_handler(tick);
-            (event_loop, adapter)
-        };
-        let _ = event_loop.run_app(&mut adapter);
+        #[cfg(any(linux, macos, android))]
+        {
+            // Take the event loop + build the adapter in a tight scope so
+            // the `Rc<RefCell<Platform>>` borrows are released BEFORE
+            // `event_loop.run_app` blocks. This matters because the
+            // first-resumed `WindowReadyCallback` re-borrows the platform
+            // (`platform.borrow_mut()`) to call `create_radiance_engine`,
+            // which registers additional input/imgui/lifecycle callbacks.
+            // Holding an outer borrow here would trigger a
+            // `RefCell already borrowed` panic.
+            let (event_loop, mut adapter) = {
+                let p = self.platform.borrow();
+                let event_loop = p.take_event_loop();
+                let adapter = p.build_app_handler(tick);
+                (event_loop, adapter)
+            };
+            let _ = event_loop.run_app(&mut adapter);
+        }
 
-        // On platforms where `run_app` returns cleanly (Vita,
+        #[cfg(windows)]
+        {
+            // The legacy Win32 Platform has no first-resumed concept —
+            // the window already exists by the time `Platform::new`
+            // returns. Bootstrap the engine inline so `engine_ready`
+            // is true before the first tick, then drive the Win32
+            // message pump.
+            Self::bootstrap_engine(
+                &self.platform,
+                &self.radiance_engine,
+                &self.engine_ready,
+            );
+            self.platform.borrow().run_event_loop(tick);
+        }
+
+        // On platforms where the event loop returns cleanly (Vita,
         // Windows native), give the application a chance to fire
         // `on_unloading` on its loaded components before Drop tears
         // everything down. Platforms whose event loop never returns
@@ -324,8 +342,8 @@ impl Application {
         let engine_ready_callbacks: Rc<RefCell<Vec<EngineReadyCallback>>> =
             Rc::new(RefCell::new(vec![]));
 
-        // First-resumed bootstrap. The closure captures the platform
-        // Rc and re-borrows it mutably here to call
+        // First-resumed bootstrap (winit-only). The closure captures
+        // the platform Rc and re-borrows it mutably here to call
         // `create_radiance_engine`, which reads
         // `platform.get_window()` (the live window the adapter just
         // created) and registers input/imgui/android-lifecycle
@@ -335,24 +353,31 @@ impl Application {
         // `platform.borrow()` is held when `event_loop.run_app`
         // blocks — otherwise the borrow_mut here would panic. See
         // `Application::run`'s scoped block.
-        let platform_for_hook = platform.clone();
-        let radiance_engine_for_hook = radiance_engine.clone();
-        let engine_ready_for_hook = engine_ready.clone();
-        platform
-            .borrow_mut()
-            .set_window_ready_callback(Box::new(move |_window| {
-                let engine = radiance::create_radiance_engine(
-                    &mut platform_for_hook.borrow_mut(),
-                )
-                .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE);
-                *radiance_engine_for_hook.borrow_mut() = Some(Rc::new(RefCell::new(engine)));
-                engine_ready_for_hook.set(true);
-                // engine_ready_callbacks + component on_loadings are
-                // drained by the run-loop tick — see
-                // `Application::perform_drain_if_ready`. The first
-                // tick happens before any redraw, so the drain is
-                // imperceptible to game/script code.
-            }));
+        //
+        // On Windows the legacy Win32 Platform has no first-resumed
+        // hook; the window already exists by the time `Platform::new`
+        // returns, so `Application::run` bootstraps the engine inline
+        // via `bootstrap_engine` and skips this registration entirely.
+        #[cfg(any(linux, macos, android))]
+        {
+            let platform_for_hook = platform.clone();
+            let radiance_engine_for_hook = radiance_engine.clone();
+            let engine_ready_for_hook = engine_ready.clone();
+            platform
+                .borrow_mut()
+                .set_window_ready_callback(Box::new(move |_window| {
+                    Self::bootstrap_engine(
+                        &platform_for_hook,
+                        &radiance_engine_for_hook,
+                        &engine_ready_for_hook,
+                    );
+                    // engine_ready_callbacks + component on_loadings are
+                    // drained by the run-loop tick — see
+                    // `Application::perform_drain_if_ready`. The first
+                    // tick happens before any redraw, so the drain is
+                    // imperceptible to game/script code.
+                }));
+        }
 
         Self {
             radiance_engine,
@@ -363,6 +388,23 @@ impl Application {
             engine_ready_callbacks,
             engine_ready,
         }
+    }
+
+    /// Create the rendering engine for the live window and fill the
+    /// `radiance_engine` slot, flipping `engine_ready` to `true`.
+    /// Called from the winit `WindowReadyCallback` (after first
+    /// resumed) on Linux/macOS/Android, and inline from
+    /// `Application::run` on Windows (where the window exists from
+    /// `Platform::new` onward).
+    fn bootstrap_engine(
+        platform: &Rc<RefCell<Platform>>,
+        radiance_engine: &Rc<RefCell<Option<Rc<RefCell<CoreRadianceEngine>>>>>,
+        engine_ready: &Rc<Cell<bool>>,
+    ) {
+        let engine = radiance::create_radiance_engine(&mut platform.borrow_mut())
+            .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE);
+        *radiance_engine.borrow_mut() = Some(Rc::new(RefCell::new(engine)));
+        engine_ready.set(true);
     }
 
     /// Fire `on_unloading` on every component that received

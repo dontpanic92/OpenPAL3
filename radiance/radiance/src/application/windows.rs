@@ -25,15 +25,20 @@ unsafe fn load_proc<F: Copy>(dll_name: &str, proc_name: &str) -> Option<F> {
         std::mem::size_of::<winapi::shared::minwindef::FARPROC>()
     );
     let dll_w: Vec<u16> = dll_name.encode_utf16().collect();
-    let module = libloaderapi::LoadLibraryW(dll_w.as_ptr());
-    if module.is_null() {
-        return None;
+    // SAFETY: caller passes NUL-terminated names; both Win32 calls accept
+    // pointers to NUL-terminated buffers, and `transmute_copy` is safe
+    // because the function-pointer size is debug-asserted to match FARPROC.
+    unsafe {
+        let module = libloaderapi::LoadLibraryW(dll_w.as_ptr());
+        if module.is_null() {
+            return None;
+        }
+        let addr = libloaderapi::GetProcAddress(module, proc_name.as_ptr() as *const i8);
+        if addr.is_null() {
+            return None;
+        }
+        Some(std::mem::transmute_copy::<_, F>(&addr))
     }
-    let addr = libloaderapi::GetProcAddress(module, proc_name.as_ptr() as *const i8);
-    if addr.is_null() {
-        return None;
-    }
-    Some(std::mem::transmute_copy::<_, F>(&addr))
 }
 
 const WM_CLOSE_WINDOW: u32 = winuser::WM_USER + 1;
