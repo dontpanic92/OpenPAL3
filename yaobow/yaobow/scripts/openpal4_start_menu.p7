@@ -9,6 +9,7 @@
 import radiance;
 import scripting_services;
 import yaobow.yaobow_services;
+import radiance_scripting.freeview;
 
 // Layout-relative button names (exact `Name=...` attributes from
 // `MainWindow.xml`'s `<Window Type="OiramLook/Button" ...>` nodes).
@@ -108,6 +109,14 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
         // Drive the menu's UV animations (ZJM_water / ZJM_trans) so
         // the backdrop's water surface moves in real time.
         self.host.pal4().tick_menu(dt);
+
+        // Debug aid: drive the menu scene camera with the generic
+        // FreeView controller (WASD move, Q/E up/down, arrows look)
+        // so the ZJM lotus backdrop can be inspected from any angle.
+        let cam = self.host.scene_manager().camera();
+        if cam != null {
+            freeview.update(cam!, self.host.input(), dt);
+        }
 
         // Fullscreen imgui window with no background so the ZJM
         // scene rendered below it shows through.

@@ -41,6 +41,22 @@ pub enum CullMode {
     None,
 }
 
+/// Default depth mode implied by a blend mode.
+///
+/// Translucent surfaces (`AlphaBlend`/`Additive`/`Multiply`) must test depth
+/// but **not** write it, so overlapping translucent draws never occlude one
+/// another through the depth buffer — their visual order is governed purely by
+/// the renderer's back-to-front draw order + blending. Opaque and cutout
+/// (`AlphaTest`) surfaces keep `TestWrite` so they populate the depth buffer
+/// normally. `with_blend` / `blend` apply this automatically; an explicit
+/// `with_depth` / `.depth` after the blend call overrides it.
+fn depth_for_blend(blend: BlendMode) -> DepthMode {
+    match blend {
+        BlendMode::Opaque | BlendMode::AlphaTest => DepthMode::TestWrite,
+        BlendMode::AlphaBlend | BlendMode::Additive | BlendMode::Multiply => DepthMode::TestOnly,
+    }
+}
+
 /// Per-material parameters that, once a per-material UBO is wired up, will
 /// be uploaded to the fragment shader. For now the values are carried
 /// through the material model but consumed only as documentation: the
@@ -193,6 +209,15 @@ impl MaterialDef {
             BlendMode::AlphaTest => 0.004,
             _ => 0.0,
         };
+        // Translucent surfaces must test depth but not write it, so they
+        // never occlude each other (or geometry behind them) through the
+        // depth buffer — their visual order comes purely from the
+        // renderer's back-to-front draw order + blending. Without this,
+        // an alpha-blended mesh writes depth and a farther translucent
+        // mesh drawn afterwards fails the `LESS` test and disappears.
+        // Opaque/cutout keep `TestWrite`. Call `with_depth(...)` after
+        // `with_blend(...)` to override this default.
+        self.depth = depth_for_blend(blend);
         self
     }
 
@@ -325,6 +350,10 @@ impl MaterialDefBuilder {
             BlendMode::AlphaTest => 0.004,
             _ => 0.0,
         };
+        // Translucent surfaces test depth but don't write it (see
+        // `MaterialDef::with_blend`); opaque/cutout keep `TestWrite`.
+        // Call `.depth(...)` after `.blend(...)` to override.
+        self.depth = depth_for_blend(blend);
         self
     }
 
