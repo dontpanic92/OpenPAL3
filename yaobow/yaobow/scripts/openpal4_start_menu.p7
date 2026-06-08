@@ -26,12 +26,13 @@ let NO_PRESS: int         = -1;
 // AngelScript boot positions the camera once before the menu fades
 // in. Tune these constants by visual inspection against the live
 // render.
-let MENU_CAM_POS_X: float = 0.0;
-let MENU_CAM_POS_Y: float = 320.0;
-let MENU_CAM_POS_Z: float = 800.0;
-let MENU_CAM_LOOK_X: float = 0.0;
-let MENU_CAM_LOOK_Y: float = 320.0;
+let MENU_CAM_POS_X: float = 20.0;
+let MENU_CAM_POS_Y: float = 280.0;
+let MENU_CAM_POS_Z: float = 550.0;
+let MENU_CAM_LOOK_X: float = 20.0;
+let MENU_CAM_LOOK_Y: float = 370.0;
 let MENU_CAM_LOOK_Z: float = 0.0;
+let MENU_CAM_FOV: float = 60.0;
 
 // imgui WindowFlags::NoBackground (bit 7). Lets the engine's 3D
 // scene render below the fullscreen imgui window holding the menu
@@ -77,6 +78,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
             if cam != null {
                 cam!.set_position(MENU_CAM_POS_X, MENU_CAM_POS_Y, MENU_CAM_POS_Z);
                 cam!.look_at(MENU_CAM_LOOK_X, MENU_CAM_LOOK_Y, MENU_CAM_LOOK_Z);
+                cam!.set_fov(to_radians(MENU_CAM_FOV));
             }
             self.scene_pushed = true;
         }

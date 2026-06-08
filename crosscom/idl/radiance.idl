@@ -304,6 +304,14 @@ interface ICameraControl: IUnknown {
     // `radiance::math::Transform::rotate_axis_angle_local` — used
     // by the p7 FreeView controller's arrow-key yaw/pitch.
     void rotate_axis_angle_local(float ax, float ay, float az, float radian);
+
+    // Sets the camera's 4:3-reference vertical field of view in
+    // radians. Routes straight to `radiance::scene::Camera::set_fov43`
+    // so the projection matrix is regenerated immediately. Aspect
+    // is handled by the engine (current viewport ratio) and is not
+    // exposed here. Append-only at the end of the interface to keep
+    // existing vtable slots stable.
+    void set_fov(float radian);
 }
 
 [uuid(d9b4c3f7-bd44-4cde-8fa8-8e1adec786b3)]

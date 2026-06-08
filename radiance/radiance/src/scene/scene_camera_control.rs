@@ -79,6 +79,10 @@ impl ICameraControlImpl for SceneCameraControl {
             .transform_mut()
             .rotate_axis_angle_local(&Vec3::new(ax, ay, az), radian);
     }
+
+    fn set_fov(&self, radian: f32) {
+        self.scene.camera_mut().set_fov43(radian);
+    }
 }
 
 /// Convenience wrapper mirroring the `wrap_<i>` family from the
