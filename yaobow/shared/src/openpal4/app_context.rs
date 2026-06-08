@@ -7,11 +7,11 @@ use std::{
 use crosscom::ComRc;
 use fileformats::pal4::cam::CameraDataFile;
 use radiance::{
-    audio::AudioEngine,
+    audio::{AudioEngine, AudioMemorySource, AudioSourceState},
     comdef::{IEntity, IEntityExt, ISceneExt, ISceneManager},
     input::InputEngine,
     math::Vec3,
-    radiance::{TaskHandle, TaskManager, UiManager},
+    radiance::{TaskManager, UiManager},
     rendering::{ComponentFactory, VideoPlayer},
     utils::{act_drop::ActDrop, interp_value::InterpValue},
 };
@@ -77,11 +77,23 @@ pub struct Pal4AppContext {
     component_factory: Rc<dyn ComponentFactory>,
     audio_engine: Rc<dyn AudioEngine>,
     video_player: Box<VideoPlayer>,
-    bgm_task: Option<Rc<TaskHandle>>,
-    sound_tasks: HashMap<i32, Rc<TaskHandle>>,
+    /// Currently playing background music. The engine auto-ticks the
+    /// underlying source via its weak-source list, so we only need to
+    /// keep the handle alive here. Dropping it (in `stop_bgm` / on
+    /// `play_bgm` re-issue) immediately tears down the OpenAL source —
+    /// this is what guarantees we can't stack overlapping BGMs.
+    bgm_source: Option<Box<dyn AudioMemorySource>>,
+    /// Live one-shot sound effects (`gi2DSoundPlay`). Each slot owns
+    /// its own source; the slot is reclaimed when the source reports
+    /// `Stopped` (auto-prune at the start of `play_sound`) or when the
+    /// script explicitly stops it via `gi2DSoundStop[ID]`.
+    sound_sources: HashMap<i32, Box<dyn AudioMemorySource>>,
     sound_id: i32,
     actdrop: ActDrop,
-    voice_task: Option<Rc<TaskHandle>>,
+    /// Active voice line. Same lifetime contract as `bgm_source` —
+    /// dropping the handle stops the voice immediately, so
+    /// fast-forwarding through a dialog run can't stack voice samples.
+    voice_source: Option<Box<dyn AudioMemorySource>>,
     camera_data: Option<CameraDataFile>,
     camera_run: Option<CameraRun>,
     scene_name: String,
@@ -158,11 +170,11 @@ impl Pal4AppContext {
             component_factory: component_factory.clone(),
             audio_engine,
             video_player: component_factory.create_video_player(),
-            bgm_task: None,
-            sound_tasks: HashMap::new(),
+            bgm_source: None,
+            sound_sources: HashMap::new(),
             sound_id: 0,
             actdrop: ActDrop::new(),
-            voice_task: None,
+            voice_source: None,
             camera_data: None,
             camera_run: None,
             scene_name: String::new(),
@@ -231,7 +243,7 @@ impl Pal4AppContext {
         // wait loops, but if we scaled audio retrigger intervals
         // by the same factor every ambient emitter in the scene
         // would burst-fire on each fast-forwarded frame. Fire-and-
-        // forget plays land in `sound_tasks` so `gi2DSoundStop` (→
+        // forget plays land in `sound_sources` so `gi2DSoundStop` (→
         // `stop_all_sounds`) still tears them down for scripted
         // SFX cleanup. A WAV that started just before a scene swap
         // continues to play on its OpenAL source until it finishes
@@ -905,6 +917,9 @@ impl Pal4AppContext {
     }
 
     pub fn play_bgm(&mut self, name: &str) -> anyhow::Result<()> {
+        // Drop the previous source before allocating the new one, so
+        // even if the load below fails we still have stopped the old
+        // track and we never hold two BGM sources simultaneously.
         self.stop_bgm();
 
         let data = self.loader.load_music(name)?;
@@ -912,52 +927,53 @@ impl Pal4AppContext {
         source.set_data(data, radiance::audio::Codec::Mp3);
         source.play(true);
 
-        self.bgm_task = Some(self.task_manager.run_generic(move |_| {
-            source.update();
-            false
-        }));
+        self.bgm_source = Some(source);
 
         Ok(())
     }
 
     pub fn stop_bgm(&mut self) {
-        if let Some(task) = &self.bgm_task {
-            task.stop();
+        if let Some(mut source) = self.bgm_source.take() {
+            source.stop();
         }
     }
 
     pub fn play_sound(&mut self, name: &str) -> anyhow::Result<i32> {
-        self.sound_tasks.retain(|_, v| !v.is_finished());
+        // Reclaim slots whose WAV has finished playing on its own so
+        // ambient SOUND emitters that fire every few seconds don't
+        // grow `sound_sources` unboundedly.
+        self.sound_sources
+            .retain(|_, s| s.state() != AudioSourceState::Stopped);
 
         let id = self.find_next_sound_id();
-        let task = self.play_sound_internal(name, radiance::audio::Codec::Wav)?;
-        self.sound_tasks.insert(id, task);
+        let source = self.play_sound_internal(name, radiance::audio::Codec::Wav)?;
+        self.sound_sources.insert(id, source);
         Ok(id)
     }
 
     pub fn stop_sound(&mut self, id: i32) {
-        if let Some(task) = self.sound_tasks.remove(&id) {
-            task.stop();
+        if let Some(mut source) = self.sound_sources.remove(&id) {
+            source.stop();
         }
     }
 
     pub fn stop_all_sounds(&mut self) {
-        for (_, task) in self.sound_tasks.drain() {
-            task.stop();
+        for (_, mut source) in self.sound_sources.drain() {
+            source.stop();
         }
     }
 
     pub fn play_voice(&mut self, name: &str) -> anyhow::Result<()> {
         self.stop_voice();
 
-        let task = self.play_sound_internal(name, radiance::audio::Codec::Mp3)?;
-        self.voice_task = Some(task);
+        let source = self.play_sound_internal(name, radiance::audio::Codec::Mp3)?;
+        self.voice_source = Some(source);
         Ok(())
     }
 
     pub fn stop_voice(&mut self) {
-        if let Some(task) = &self.voice_task {
-            task.stop();
+        if let Some(mut source) = self.voice_source.take() {
+            source.stop();
         }
     }
 
@@ -1137,7 +1153,7 @@ impl Pal4AppContext {
     }
 
     fn find_next_sound_id(&mut self) -> i32 {
-        while self.sound_tasks.contains_key(&self.sound_id) {
+        while self.sound_sources.contains_key(&self.sound_id) {
             self.sound_id += 1;
             if self.sound_id == 10000 {
                 self.sound_id = 0;
@@ -1151,7 +1167,7 @@ impl Pal4AppContext {
         &mut self,
         name: &str,
         codec: radiance::audio::Codec,
-    ) -> anyhow::Result<Rc<TaskHandle>> {
+    ) -> anyhow::Result<Box<dyn AudioMemorySource>> {
         let ext = if codec == radiance::audio::Codec::Mp3 {
             "mp3"
         } else {
@@ -1163,12 +1179,7 @@ impl Pal4AppContext {
         source.set_data(data, codec);
         source.play(false);
 
-        let task = self.task_manager.run_generic(move |_| {
-            source.update();
-            source.state() == radiance::audio::AudioSourceState::Stopped
-        });
-
-        Ok(task)
+        Ok(source)
     }
 
     #[inline]
