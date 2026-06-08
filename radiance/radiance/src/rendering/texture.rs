@@ -20,22 +20,31 @@ pub enum AlphaKind {
     Blend,
 }
 
-/// Fraction of pixels that must carry mid-range alpha
-/// (`32..=223`) before we call a texture `Blend` rather than `Cutout`.
-/// DDS BC1/BC3 decoders introduce a small amount of intermediate alpha
-/// at the boundaries of binary-alpha source textures, but those edge
-/// pixels cluster very close to `0` and `255` (the 1..32 and 224..254
-/// bands). Counting only pixels squarely in the mid range cleanly
-/// separates truly translucent surfaces (cloth, fog, glass — typical
-/// graded scores of 0.4–1.0) from mostly-binary cutout atlases (PAL4
-/// `wujian-*` interior props — typical graded scores below 0.001).
+/// Minimum fraction of mid-range-alpha (`32..=223`) pixels for a texture
+/// to *qualify* as truly translucent (`Blend`). A genuinely see-through
+/// surface — water, fog, glass, ghosts — carries graded alpha across a
+/// large share of its area (PAL4 `y02` water ≈ 0.43, `yun02` cloud ≈
+/// 0.85). A solid surface that merely has anti-aliased / cutout edges
+/// carries only a sliver of graded pixels (PAL4 lotus `zjtai*` ≈
+/// 0.001–0.013) and must NOT be treated as translucent — it has to keep
+/// depth-write on so it self-occludes correctly.
 ///
-/// Without this guard, mostly-opaque cutout atlases end up rendered
-/// with depth-write off, alpha-0 atlas texels stop being discarded, and
-/// the next opaque draw behind them shows through the surface — the
-/// "see through the table via the cloth's alpha" symptom on PAL4
-/// indoor scenes.
-const BLEND_PIXEL_FRACTION: f32 = 0.001;
+/// The previous threshold (0.001) was far too low: it swept binary-alpha
+/// cutout atlases with merely soft edges into the depth-write-off `Blend`
+/// bucket. That both reintroduced the "see through the table via the
+/// cloth's alpha" symptom AND, once translucent draws stopped writing
+/// depth, destroyed self-occlusion within concave solid meshes (the PAL4
+/// start-menu lotus, whose brown bowl composited in the wrong order).
+const BLEND_GRADED_FRACTION_MIN: f32 = 0.05;
+
+/// A texture that is predominantly fully-opaque (alpha == 255) is a solid
+/// surface, never a translucent one, regardless of a few graded edge
+/// texels. Genuine translucent surfaces have almost no fully-opaque
+/// pixels (PAL4 `y02`/`yun02` ≈ 0.0 opaque), whereas the lotus cutout
+/// atlases are 0.66–0.88 opaque. Requiring the opaque fraction to be
+/// below this ceiling — in addition to [`BLEND_GRADED_FRACTION_MIN`] —
+/// guards the classification from both directions.
+const BLEND_OPAQUE_FRACTION_MAX: f32 = 0.5;
 
 pub struct TextureDef {
     name: String,
@@ -106,7 +115,17 @@ fn classify_alpha(image: Option<&RgbaImage>) -> AlphaKind {
         return AlphaKind::Opaque;
     }
 
-    if (graded_count as f32) / (total as f32) >= BLEND_PIXEL_FRACTION {
+    let total_f = total as f32;
+    let graded_fraction = graded_count as f32 / total_f;
+    let opaque_fraction = (total - non_opaque_count) as f32 / total_f;
+
+    // A surface is genuinely translucent (`Blend`, depth-write OFF) only
+    // when graded alpha covers a substantial share of it AND it is not
+    // predominantly solid. Solid surfaces with cutout holes or merely
+    // soft anti-aliased edges fall through to `Cutout` (depth-write ON)
+    // so they self-occlude; fully-opaque ones to `Opaque`.
+    if graded_fraction >= BLEND_GRADED_FRACTION_MIN && opaque_fraction <= BLEND_OPAQUE_FRACTION_MAX
+    {
         AlphaKind::Blend
     } else if non_opaque_count > 0 {
         AlphaKind::Cutout
@@ -176,5 +195,66 @@ impl TextureStore {
             store.put(name.to_string(), t.clone());
             t
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::Rgba;
+
+    /// Build a 64x64 RGBA image whose alpha channel matches the requested
+    /// pixel fractions: `opaque` pixels at alpha 255, `transparent` at 0,
+    /// and the remainder at a mid-range "graded" value (128).
+    fn image_with_alpha(opaque: f32, transparent: f32) -> RgbaImage {
+        let (w, h) = (64u32, 64u32);
+        let total = (w * h) as f32;
+        let n_opaque = (opaque * total).round() as u32;
+        let n_transparent = (transparent * total).round() as u32;
+        let mut img = RgbaImage::new(w, h);
+        let mut i = 0u32;
+        for px in img.pixels_mut() {
+            let a = if i < n_opaque {
+                255
+            } else if i < n_opaque + n_transparent {
+                0
+            } else {
+                128
+            };
+            *px = Rgba([200, 180, 120, a]);
+            i += 1;
+        }
+        img
+    }
+
+    #[test]
+    fn fully_opaque_is_opaque() {
+        let img = image_with_alpha(1.0, 0.0);
+        assert_eq!(classify_alpha(Some(&img)), AlphaKind::Opaque);
+    }
+
+    #[test]
+    fn solid_surface_with_cutout_holes_is_cutout() {
+        // Mirrors PAL4 lotus `zjtai3-1`: ~66% opaque, ~31% transparent,
+        // ~1% graded edges. Must NOT be Blend — it has to keep depth-write
+        // on so the concave bowl self-occludes.
+        let img = image_with_alpha(0.665, 0.32);
+        assert_eq!(classify_alpha(Some(&img)), AlphaKind::Cutout);
+    }
+
+    #[test]
+    fn mostly_opaque_soft_edged_surface_is_cutout() {
+        // Mirrors PAL4 lotus `zjtai4-4`: ~88% opaque, no fully-transparent
+        // texels, a sliver of graded edges.
+        let img = image_with_alpha(0.883, 0.0);
+        assert_eq!(classify_alpha(Some(&img)), AlphaKind::Cutout);
+    }
+
+    #[test]
+    fn genuinely_translucent_surface_is_blend() {
+        // Mirrors PAL4 water `y02` / cloud `yun02`: ~0% opaque, large
+        // graded fraction. Must stay Blend (depth-write off).
+        let img = image_with_alpha(0.0, 0.045);
+        assert_eq!(classify_alpha(Some(&img)), AlphaKind::Blend);
     }
 }
