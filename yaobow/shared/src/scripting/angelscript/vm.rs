@@ -142,6 +142,15 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         }
     }
 
+    /// Abandon whatever function the VM is currently running (and any
+    /// suspended callers) and return to the idle state. Used by
+    /// save-load to cancel the new-game opening script so the director
+    /// can drive the restored scene's triggers instead.
+    pub fn reset_to_idle(&mut self) {
+        self.context = None;
+        self.call_stack.clear();
+    }
+
     /// Name of the function the VM is currently executing, if any.
     /// `None` when the VM is idle between scripts (e.g. waiting for
     /// the director to load the next entry).

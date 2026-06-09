@@ -97,7 +97,36 @@ class Pal4GameContext: IPal4GameContext {}
 interface IPal4Service: IUnknown {
     IDirector create_director(&str asset_path);
     IDirector create_story_director(&str asset_path);
+
+    // Like `create_story_director`, but queues a load of save `slot`
+    // (1-based, matching the JSON slot files under
+    // `<save_dir>/OpenPAL4/Save/<slot>.json`) onto the fresh story
+    // director. The load is applied on the director's first advancing
+    // `update` (the same lifecycle point as the in-game save/load
+    // hotkeys), so the saved scene/block/leader/position and the
+    // story-plot script globals are restored before play resumes.
+    // A missing or corrupt slot is non-fatal: the story director is
+    // still returned (the load no-ops with a log), so the start menu's
+    // load screen never dead-ends.
+    IDirector create_story_director_from_save(&str asset_path, int slot);
+
     IUiLayoutHandle? open_layout(&str vfs_path);
+
+    // Number of save slots surfaced by the start-menu load screen.
+    // Fixed at 4 to mirror the in-game Num1-Num4 / Num5-Num8 hotkey
+    // slots.
+    int save_slot_count();
+
+    // True when `<save_dir>/OpenPAL4/Save/<slot>.json` exists and
+    // deserializes into a `Pal4PersistentState`. Drives whether the
+    // load screen renders the slot as selectable.
+    bool save_slot_exists(int slot);
+
+    // Display-ready load-screen row label for save `slot`, e.g.
+    // "Slot 1 - m02/3 - Quest 42%" for a populated slot or
+    // "Slot 1 - (empty)" for a missing/unreadable one. ASCII only
+    // (the PAL4 menu font has no CJK glyphs).
+    &str save_slot_summary(int slot);
 
     // Build a fresh CoreScene containing the ZJM start-menu backdrop:
     // ZJM.bsp + ZJM_water.dff + ZJM_trans.dff under

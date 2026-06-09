@@ -10,7 +10,7 @@ use radiance::{
     audio::{AudioEngine, AudioMemorySource, AudioSourceState},
     comdef::{IEntity, IEntityExt, ISceneExt, ISceneManager},
     input::InputEngine,
-    math::Vec3,
+    math::{Transform, Vec3},
     radiance::{TaskManager, UiManager},
     rendering::{ComponentFactory, VideoPlayer},
     utils::{act_drop::ActDrop, interp_value::InterpValue},
@@ -611,11 +611,39 @@ impl Pal4AppContext {
             .unwrap_or_else(|| Vec3::new(0.0, 0.0, 0.0))
     }
 
+    /// Full camera transform (position + orientation) of the active
+    /// scene, or `None` when no scene is loaded. Used by save-load to
+    /// snapshot the exact view.
+    pub fn camera_transform(&self) -> Option<Transform> {
+        self.scene_manager
+            .scene()
+            .map(|s| s.camera().transform().clone())
+    }
+
+    /// Restore the active scene camera to `transform`. No-op when no
+    /// scene is loaded. The gameplay camera is static between cinematic
+    /// camera runs, so this faithfully reinstates a saved view.
+    pub fn set_camera_transform(&mut self, transform: &Transform) {
+        if let Some(scene) = self.scene_manager.scene() {
+            scene
+                .camera_mut()
+                .transform_mut()
+                .set_matrix(transform.matrix().clone());
+        }
+    }
+
     pub fn lock_player(&mut self, lock: bool) {
         self.player_locked = lock;
         if let Some(ctrl) = self.scene.actor_controller() {
             ctrl.lock_control(lock);
         }
+    }
+
+    /// Whether player input control is currently locked (e.g. during a
+    /// scripted cutscene). Snapshotted by save-load so a restored game
+    /// resumes with the same controllability.
+    pub fn is_player_locked(&self) -> bool {
+        self.player_locked
     }
 
     pub fn set_player_ang(&mut self, player: i32, ang: f32) {
@@ -879,6 +907,13 @@ impl Pal4AppContext {
             .transform()
             .borrow()
             .position()
+    }
+
+    /// Leader facing direction in degrees, matching the convention of
+    /// `player_set_direction` (yaw about world-up). Used by save-load
+    /// to restore the exact orientation the player was standing in.
+    pub fn leader_direction(&self) -> f32 {
+        yaw_from_transform(&self.scene.get_player(self.leader))
     }
 
     pub fn load_scene(&mut self, scene_name: &str, block_name: &str) -> anyhow::Result<()> {

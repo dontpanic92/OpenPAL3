@@ -1,10 +1,15 @@
 // PAL4 start-menu director. Renders `/gamedata/ui/layouts/MainWindow.xml`
 // from the per-launch vfs (the host's `Pal4Service::open_layout`
 // mounts it during `create_director`), plays the menu BGM, and
-// transitions to the story director on "New Game". Other buttons
-// (Load Game, Options, Movie, About, ...) render but are no-ops in
-// v1 — the original game's startup menu is recreated visually but
-// only the New Game / Exit paths are wired.
+// transitions to the story director on "New Game".
+//
+// "Load Game" swaps the rendered layout to the original
+// `/gamedata/ui/layouts/loadWindow.xml` and lists the existing JSON
+// save slots (1-4). Picking a populated slot boots the story director
+// with that save pre-loaded via
+// `host.pal4().create_story_director_from_save(asset_path, slot)`; a
+// Back/Cancel control returns to the main menu. Other buttons
+// (Options, Movie, About, ...) render but are no-ops.
 
 import radiance;
 import scripting_services;
@@ -15,13 +20,20 @@ import radiance_scripting.freeview;
 // `MainWindow.xml`'s `<Window Type="OiramLook/Button" ...>` nodes).
 let BTN_NEW_GAME: string  = "BtnNewGame";
 let BTN_EXIT: string      = "BtnExit";
+let BTN_LOAD_GAME: string = "BtnLoadGame";
 
 // Intent codes drained once per `update`.
 let INTENT_NONE: int      = 0;
 let INTENT_NEW_GAME: int  = 1;
 let INTENT_EXIT: int      = 2;
+let INTENT_LOAD: int      = 3;
+
+// Which layout the menu is currently presenting.
+let MODE_MAIN: int        = 0;
+let MODE_LOAD: int        = 1;
 
 let NO_PRESS: int         = -1;
+let NO_SLOT: int          = -1;
 
 // PAL4 start-menu camera pose. Hardcoded — the original game's
 // AngelScript boot positions the camera once before the menu fades
@@ -48,11 +60,40 @@ let IMGUI_NO_BACKGROUND: int = 128;
 // title theme variant); edit to taste.
 let MENU_BGM_NAME: string = "p01-1";
 let MENU_LAYOUT_PATH: string = "/gamedata/ui/layouts/MainWindow.xml";
+let LOAD_LAYOUT_PATH: string = "/gamedata/ui/layouts/loadWindow.xml";
+
+// Name of the load layout's central save-panel background window.
+// Our clickable slot rows are anchored inside this window's rect so
+// they sit over the original save-list area. Falls back to a centred
+// region of the native canvas when the window is absent.
+let LOAD_PANEL_WINDOW: string = "SaveWindowzhong";
+
+// Slot-list overlay layout, in the load layout's native pixel space.
+// `LOAD_LIST_INSET` pads the panel rect; rows are evenly distributed.
+let LOAD_LIST_INSET: float = 24.0;
+
+// Classify a clicked load-screen widget by its layout `Name=...`.
+// loadWindow.xml's back control is `BtnClose`; the `BtnLoad0..9`
+// buttons are *page* selectors (labelled "1~10".."91~100") for the
+// original game's 100-slot list, and the actual saves live in a
+// dynamic `List` (MultiColumnList) widget our flat image renderer
+// can't populate. So on the load screen we treat every layout button
+// except the back control as inert and present our own clickable slot
+// list overlaid on the central save panel (see `render_slot_list`).
+fn is_back_name(name: string) -> bool {
+    return name.contains("Back") || name.contains("back")
+        || name.contains("Return") || name.contains("Cancel")
+        || name.contains("Close") || name.contains("Esc")
+        || name.contains("Exit");
+}
 
 pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirector(
     pub host: box<yaobow_services.IYaobowHostContext>,
     pub asset_path: string,
     pub layout: ?box<scripting_services.IUiLayoutHandle>,
+    // loadWindow.xml, rendered while `mode == MODE_LOAD`. Null when
+    // the asset is missing — "Load Game" then stays inert.
+    pub load_layout: ?box<scripting_services.IUiLayoutHandle>,
     pub bgm: ?box<scripting_services.IAudioSource>,
     // window_id (matches `IUiLayoutHandle.draw_window_id(i)`) currently
     // being pressed by the user, or `NO_PRESS` if the mouse button is
@@ -64,6 +105,14 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
     // so a failure to load assets degrades to a still-functional
     // 2D-only menu instead of corrupting the scene stack.
     pub scene_pushed: bool,
+    // MODE_MAIN or MODE_LOAD — selects which layout is presented.
+    pub mode: int,
+    // Save slot carried by a pending INTENT_LOAD, or NO_SLOT.
+    pub load_slot: int,
+    // Slot row currently held down in the load-screen overlay, or
+    // NO_SLOT. Mirrors `pressed_window_id` but for our synthetic
+    // (non-layout) slot list. Reset on mouse release.
+    pub pressed_slot: int,
 ) {
     pub fn activate(self: ref<Self>) -> int {
         if self.bgm != null {
@@ -121,21 +170,36 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
         // Fullscreen imgui window with no background so the ZJM
         // scene rendered below it shows through.
         ui.window_fullscreen("##pal4_start_menu", IMGUI_NO_BACKGROUND, () => {
-            self.render_inner(ui);
+            if self.mode == MODE_LOAD {
+                if self.load_layout != null {
+                    self.render_inner(ui, self.load_layout!);
+                    self.render_slot_list(ui, self.load_layout!);
+                } else {
+                    self.render_missing(ui, "PAL4 load menu: layout loadWindow.xml not found.");
+                }
+            } else {
+                if self.layout != null {
+                    self.render_inner(ui, self.layout!);
+                } else {
+                    self.render_missing(ui, "PAL4 start menu: layout MainWindow.xml not found.");
+                }
+            }
         });
         0
     }
 
-    pub fn render_inner(self: ref<Self>, ui: box<radiance.IUiHost>) {
-        if self.layout == null {
-            ui.style_color(0, 1.0, 1.0, 1.0, 1.0, () => {
-                ui.set_cursor_pos(20.0, 20.0);
-                ui.text("PAL4 start menu: layout MainWindow.xml not found.");
-            });
-            return;
-        }
+    pub fn render_missing(self: ref<Self>, ui: box<radiance.IUiHost>, msg: string) {
+        ui.style_color(0, 1.0, 1.0, 1.0, 1.0, () => {
+            ui.set_cursor_pos(20.0, 20.0);
+            ui.text(msg);
+        });
+    }
 
-        let h = self.layout!;
+    pub fn render_inner(
+        self: ref<Self>,
+        ui: box<radiance.IUiHost>,
+        h: box<scripting_services.IUiLayoutHandle>,
+    ) {
         let native_w = h.native_width() as float;
         let native_h = h.native_height() as float;
         let avail_w = ui.display_size_x() as float;
@@ -231,6 +295,94 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
         }
     }
 
+    // Overlay our JSON save slots (1..save_slot_count) as a clickable
+    // text list on top of the load layout. The original `loadWindow`
+    // shows saves in a dynamic MultiColumnList our flat image renderer
+    // can't populate, so we anchor a simple row list inside the
+    // central save panel (`LOAD_PANEL_WINDOW`) and drive the load from
+    // there. Populated rows are clickable; empty rows render greyed.
+    pub fn render_slot_list(
+        self: ref<Self>,
+        ui: box<radiance.IUiHost>,
+        h: box<scripting_services.IUiLayoutHandle>,
+    ) {
+        let native_w = h.native_width() as float;
+        let native_h = h.native_height() as float;
+        let avail_w = ui.display_size_x() as float;
+        let avail_h = ui.display_size_y() as float;
+        if native_w <= 0.0 || native_h <= 0.0 || avail_w <= 0.0 || avail_h <= 0.0 {
+            return;
+        }
+        let sx = avail_w / native_w;
+        let sy = avail_h / native_h;
+        let scale = if sx < sy { sx } else { sy };
+        let origin_x = (avail_w - native_w * scale) * 0.5;
+        let origin_y = (avail_h - native_h * scale) * 0.5;
+
+        // Locate the central save-panel rect (native px) to anchor the
+        // row list; fall back to a centred region if it's absent.
+        let mut ax = native_w * 0.25;
+        let mut ay = native_h * 0.30;
+        let mut aw = native_w * 0.50;
+        let mut ah = native_h * 0.40;
+        let n = h.draw_count();
+        for i in Range(0, n) {
+            let wid = h.draw_window_id(i);
+            if h.window_name(wid) == LOAD_PANEL_WINDOW {
+                ax = h.draw_x(i);
+                ay = h.draw_y(i);
+                aw = h.draw_w(i);
+                ah = h.draw_h(i);
+            }
+        }
+
+        let slot_count = self.host.pal4().save_slot_count();
+        if slot_count <= 0 {
+            return;
+        }
+        let inner_h = ah - LOAD_LIST_INSET * 2.0;
+        let row_h = inner_h / (slot_count as float);
+        let row_x = origin_x + (ax + LOAD_LIST_INSET) * scale;
+
+        let mouse_held = ui.mouse_down(0);
+        let was_pressed = self.pressed_slot;
+        let mut released_slot: int = NO_SLOT;
+
+        for idx in Range(0, slot_count) {
+            let slot = idx + 1;
+            let exists = self.host.pal4().save_slot_exists(slot);
+            let label = self.host.pal4().save_slot_summary(slot);
+            let row_native_y = ay + LOAD_LIST_INSET + (idx as float) * row_h;
+            let row_y = origin_y + row_native_y * scale;
+            ui.set_cursor_pos(row_x, row_y);
+            // Populated rows render white, empty rows greyed out.
+            if exists {
+                ui.style_color(0, 1.0, 1.0, 1.0, 1.0, () => {
+                    ui.text(label);
+                });
+                let hovered = ui.is_item_hovered();
+                if hovered && mouse_held && was_pressed == NO_SLOT {
+                    self.pressed_slot = slot;
+                }
+                if was_pressed == slot && !mouse_held && hovered {
+                    released_slot = slot;
+                }
+            } else {
+                ui.style_color(0, 0.5, 0.5, 0.5, 1.0, () => {
+                    ui.text(label);
+                });
+            }
+        }
+
+        if !mouse_held {
+            self.pressed_slot = NO_SLOT;
+        }
+        if released_slot != NO_SLOT {
+            self.load_slot = released_slot;
+            self.intent = INTENT_LOAD;
+        }
+    }
+
     pub fn dispatch_click(
         self: ref<Self>,
         h: box<scripting_services.IUiLayoutHandle>,
@@ -239,6 +391,19 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
         // window_id is the global pre-order index into the layout
         // tree; reuse `window_name(i)` to recognise the button.
         let name = h.window_name(window_id);
+
+        if self.mode == MODE_LOAD {
+            if is_back_name(name) {
+                self.mode = MODE_MAIN;
+                self.pressed_window_id = NO_PRESS;
+                return;
+            }
+            // BtnLoad0..9 are page selectors for the original 100-slot
+            // list; we don't paginate (only 4 JSON slots), so they're
+            // inert. Save selection is handled by `render_slot_list`.
+            return;
+        }
+
         if name == BTN_NEW_GAME {
             self.intent = INTENT_NEW_GAME;
             return;
@@ -247,8 +412,16 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
             self.intent = INTENT_EXIT;
             return;
         }
-        // BtnLoadGame / BtnMovie / BtnInfomation / BtnAboutPal /
-        // BtnQuest / BtnPicture are intentionally inert in v1.
+        if name == BTN_LOAD_GAME {
+            // Switch to the load screen only when its layout loaded;
+            // otherwise the button is inert.
+            if self.load_layout != null {
+                self.mode = MODE_LOAD;
+            }
+            return;
+        }
+        // BtnMovie / BtnInfomation / BtnAboutPal / BtnQuest /
+        // BtnPicture are intentionally inert.
     }
 
     pub fn update(
@@ -262,6 +435,13 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
             // us out and our `deactivate()` releases the BGM + layout
             // (the latter unrefs its imageset atlases on drop).
             return self.host.pal4().create_story_director(self.asset_path);
+        }
+        if code == INTENT_LOAD {
+            // Boot the story director with the chosen save queued; it
+            // applies the load on its first advancing update.
+            return self.host.pal4().create_story_director_from_save(
+                self.asset_path, self.load_slot,
+            );
         }
         if code == INTENT_EXIT {
             self.host.app().exit();
@@ -277,10 +457,14 @@ pub fn make_pal4_start_menu(
     // `open_layout` may return null when PAL4 assets aren't installed
     // at this path. We still construct the menu director — it renders
     // a fallback "layout not found" message and keeps Exit/back-to-
-    // story wired so the user can recover.
+    // story wired so the user can recover. The load layout is opened
+    // up front (cheap; just parses + uploads its atlases) so "Load
+    // Game" can switch to it without a per-click load.
     let layout = host.pal4().open_layout(MENU_LAYOUT_PATH);
+    let load_layout = host.pal4().open_layout(LOAD_LAYOUT_PATH);
     let bgm = host.pal4().load_music(MENU_BGM_NAME);
     return box(Pal4StartMenuDirector(
-        host, asset_path, layout, bgm, NO_PRESS, INTENT_NONE, false,
+        host, asset_path, layout, load_layout, bgm,
+        NO_PRESS, INTENT_NONE, false, MODE_MAIN, NO_SLOT, NO_SLOT,
     )) as box<radiance.IImmediateDirector>;
 }

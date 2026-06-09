@@ -79,6 +79,13 @@ pub struct OpenPAL4Director {
     /// elapses). Polled once per `update` after the VM has ticked.
     /// Always empty when no agent bridge is installed.
     pending_fires: RefCell<Vec<PendingFire>>,
+
+    /// Save slot queued by the start-menu load screen
+    /// (`Pal4Service::create_story_director_from_save`). Applied via
+    /// [`load_state`] on the first advancing `update`, then cleared,
+    /// so the saved scene/leader/position and story-plot globals are
+    /// restored before play begins. `None` for a fresh New Game.
+    pending_load_slot: Cell<Option<i32>>,
 }
 
 /// How often the debug overlay republishes the FPS / frame-time
@@ -146,6 +153,7 @@ impl OpenPAL4Director {
             dt_display: Cell::new(0.0),
             agent: RefCell::new(None),
             pending_fires: RefCell::new(Vec::new()),
+            pending_load_slot: Cell::new(None),
         }
     }
 
@@ -155,6 +163,13 @@ impl OpenPAL4Director {
     /// pick up any commands the HTTP listener has queued.
     pub fn set_agent_bridge(&self, bridge: Rc<Pal4AgentBridge>) {
         *self.agent.borrow_mut() = Some(bridge);
+    }
+
+    /// Queue a save-slot load to be applied on the first advancing
+    /// `update`. Used by `Pal4Service::create_story_director_from_save`
+    /// so the start-menu load screen can boot directly into a save.
+    pub fn set_pending_load_slot(&self, slot: i32) {
+        self.pending_load_slot.set(Some(slot));
     }
 
     /// Borrow the installed agent bridge for read-only inspection.
@@ -270,15 +285,21 @@ impl OpenPAL4Director {
 
         let app = vm.app_context_mut();
         let pos = app.leader_pos();
+        let dir = app.leader_direction();
         let scene = app.scene_name().to_string();
         let block = app.block_name().to_string();
         let leader = app.leader();
+        let camera = app.camera_transform();
+        let player_locked = app.is_player_locked();
 
         let state = app.persistent_state_mut();
         state.set_script_globals(globals);
         state.set_scene(scene, block);
         state.set_leader(leader);
         state.set_position(Some(pos));
+        state.set_direction(Some(dir));
+        state.set_camera(camera);
+        state.set_player_locked(player_locked);
         state.save(slot);
     }
 
@@ -306,6 +327,9 @@ impl OpenPAL4Director {
         let block = state.block_name().to_string();
         let leader = state.leader();
         let pos = state.position();
+        let dir = state.direction();
+        let camera = state.camera().cloned();
+        let player_locked = state.player_locked();
         let globals = state.script_globals().to_vec();
 
         let mut vm = self.vm.borrow_mut();
@@ -329,6 +353,20 @@ impl OpenPAL4Director {
             if let Some(pos) = pos {
                 app.set_player_pos(leader as i32, &pos);
             }
+            if let Some(dir) = dir {
+                app.player_set_direction(leader as i32, dir);
+            }
+            // Restore the exact camera view last, after the scene (and
+            // its fresh default camera) is in place. Older saves with
+            // no camera snapshot keep the scene default.
+            if let Some(camera) = camera {
+                app.set_camera_transform(&camera);
+            }
+            // Re-apply the saved control-lock state to the new scene's
+            // actor controller. Without this the player stays locked at
+            // the app-context default (locked), since we cancelled the
+            // new-game opening script that would normally unlock it.
+            app.lock_player(player_locked);
         }
 
         log::info!("Game loaded from slot {}", slot);
@@ -404,6 +442,23 @@ impl IDirectorImpl for OpenPAL4Director {
         }
 
         self.vm.borrow_mut().app_context_mut().update(effective_dt);
+
+        // Apply a pending start-menu "Load Game" selection on the
+        // first advancing frame, before any new-game script triggers.
+        // Done here (not in `activate`) so the VM + scene stack are
+        // ready, matching the in-game save/load hotkey path below.
+        //
+        // The story VM boots with the new-game opening script
+        // (function index 0) already queued, so after restoring the
+        // save we must cancel it — otherwise it executes below and
+        // overrides the loaded scene, dropping the player into a fresh
+        // new game. Resetting the VM to idle lets `event_triggered`
+        // drive the restored scene's triggers, exactly like an
+        // in-game (idle) save load.
+        if let Some(slot) = self.pending_load_slot.take() {
+            self.load_state(slot);
+            self.vm.borrow_mut().reset_to_idle();
+        }
 
         self.poll_save_load_hotkeys();
 

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use radiance::math::Transform;
 use radiance::math::Vec3;
 use serde::{Deserialize, Serialize};
 
@@ -66,6 +67,23 @@ pub struct Pal4PersistentState {
     block_name: String,
     #[serde(default)]
     position: Option<Vec3>,
+    /// Leader facing direction (degrees, yaw about world-up) at save
+    /// time, restored alongside `position` so the player stands facing
+    /// the same way. `None` in older saves.
+    #[serde(default)]
+    direction: Option<f32>,
+    /// Whether player control was locked (cutscene) at save time.
+    /// Defaults to `false` for older saves, which were always taken
+    /// during free movement, so they remain controllable after load.
+    #[serde(default)]
+    player_locked: bool,
+    /// Full camera transform (position + orientation) at save time, so
+    /// a load restores the exact view. `None` in older saves (and when
+    /// no scene camera exists), in which case the loaded scene keeps
+    /// its default camera. The PAL4 gameplay camera is static between
+    /// cinematic camera runs, so persisting the transform is exact.
+    #[serde(default)]
+    camera: Option<Transform>,
     #[serde(default)]
     players: HashMap<usize, PlayerState>,
     /// Inventory / owned equipment as item-id -> count.
@@ -78,6 +96,10 @@ pub struct Pal4PersistentState {
 }
 
 impl Pal4PersistentState {
+    /// Number of save slots surfaced by the start-menu load screen.
+    /// Mirrors the in-game Num1-Num4 / Num5-Num8 save/load hotkeys.
+    pub const SLOT_COUNT: i32 = 4;
+
     pub fn new(app_name: String) -> Self {
         let mut players = HashMap::new();
         for slot in 0..PLAYER_COUNT {
@@ -92,6 +114,9 @@ impl Pal4PersistentState {
             scene_name: String::new(),
             block_name: String::new(),
             position: None,
+            camera: None,
+            direction: None,
+            player_locked: false,
             players,
             inventory: HashMap::new(),
             script_globals: Vec::new(),
@@ -112,6 +137,30 @@ impl Pal4PersistentState {
         let content = std::fs::read_to_string(path)?;
         let state = serde_json::from_str(&content)?;
         Ok(state)
+    }
+
+    /// Read a save slot for display purposes only. Returns `None` when
+    /// the slot file is missing or malformed (the start-menu load
+    /// screen renders such slots as empty / non-selectable).
+    pub fn peek(app_name: &str, slot: i32) -> Option<Self> {
+        Self::load(app_name, slot).ok()
+    }
+
+    /// Short human-readable one-line summary of this save for the load
+    /// screen: scene/block location plus quest completion. Falls back
+    /// to a generic label when no scene was recorded.
+    pub fn summary(&self) -> String {
+        if self.scene_name.is_empty() {
+            return format!("Quest {}%", self.quest_percentage);
+        }
+        if self.block_name.is_empty() {
+            format!("{} - Quest {}%", self.scene_name, self.quest_percentage)
+        } else {
+            format!(
+                "{}/{} - Quest {}%",
+                self.scene_name, self.block_name, self.quest_percentage
+            )
+        }
     }
 
     /// Persist this state to the given slot. Negative slots are
@@ -282,6 +331,30 @@ impl Pal4PersistentState {
         self.position = position;
     }
 
+    pub fn direction(&self) -> Option<f32> {
+        self.direction
+    }
+
+    pub fn set_direction(&mut self, direction: Option<f32>) {
+        self.direction = direction;
+    }
+
+    pub fn player_locked(&self) -> bool {
+        self.player_locked
+    }
+
+    pub fn set_player_locked(&mut self, locked: bool) {
+        self.player_locked = locked;
+    }
+
+    pub fn camera(&self) -> Option<&Transform> {
+        self.camera.as_ref()
+    }
+
+    pub fn set_camera(&mut self, camera: Option<Transform>) {
+        self.camera = camera;
+    }
+
     // --- Script globals (story plot) ----------------------------------
 
     pub fn script_globals(&self) -> &[u32] {
@@ -290,5 +363,66 @@ impl Pal4PersistentState {
 
     pub fn set_script_globals(&mut self, globals: Vec<u32>) {
         self.script_globals = globals;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summary_with_scene_and_block() {
+        let mut state = Pal4PersistentState::new("OpenPAL4".to_string());
+        state.set_scene("m01".to_string(), "1".to_string());
+        state.add_quest_percentage(42);
+        assert_eq!(state.summary(), "m01/1 - Quest 42%");
+    }
+
+    #[test]
+    fn summary_with_scene_no_block() {
+        let mut state = Pal4PersistentState::new("OpenPAL4".to_string());
+        state.set_scene("m01".to_string(), String::new());
+        assert_eq!(state.summary(), "m01 - Quest 0%");
+    }
+
+    #[test]
+    fn summary_without_scene() {
+        let state = Pal4PersistentState::new("OpenPAL4".to_string());
+        assert_eq!(state.summary(), "Quest 0%");
+    }
+
+    #[test]
+    fn camera_transform_survives_json_round_trip() {
+        let mut transform = Transform::new();
+        transform
+            .set_position(&Vec3::new(12.0, 34.0, 56.0))
+            .look_at(&Vec3::new(0.0, 5.0, 0.0));
+
+        let mut state = Pal4PersistentState::new("OpenPAL4".to_string());
+        state.set_camera(Some(transform.clone()));
+
+        let json = serde_json::to_string(&state).unwrap();
+        let restored: Pal4PersistentState = serde_json::from_str(&json).unwrap();
+
+        let restored_cam = restored.camera().expect("camera persisted");
+        // The full 4x4 matrix (position + orientation) must match
+        // exactly so the loaded view is identical to the saved one.
+        let a = restored_cam.matrix();
+        let b = transform.matrix();
+        for r in 0..4 {
+            for c in 0..4 {
+                assert_eq!(a[r][c], b[r][c], "matrix mismatch at [{}][{}]", r, c);
+            }
+        }
+    }
+
+    #[test]
+    fn camera_defaults_to_none_for_legacy_saves() {
+        // A save JSON without the `camera` field (older format) must
+        // still deserialize, leaving the camera unset so the loaded
+        // scene keeps its default view.
+        let json = r#"{"app_name":"OpenPAL4","scene_name":"m01","block_name":"1"}"#;
+        let state: Pal4PersistentState = serde_json::from_str(json).unwrap();
+        assert!(state.camera().is_none());
     }
 }

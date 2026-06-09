@@ -53,9 +53,16 @@ use crate::openpal4::asset_loader::AssetLoader;
 use crate::openpal4::comdef::{IPal4Service, IPal4ServiceImpl};
 use crate::openpal4::director::OpenPAL4Director;
 use crate::openpal4::scene::Pal4ActorControllerFactory;
+use crate::openpal4::states::persistent_state::Pal4PersistentState;
 use crate::openpal4::uv_anim::UvAnimDriver;
 use common::store_ext::StoreExt2;
 use fileformats::rwbs::uva::UvAnimDict;
+
+/// PAL4 save namespace. Matches the `app_name` baked into
+/// `Pal4AppContext::new` (`persistent_state.rs` writes slots under
+/// `<save_dir>/<app_name>/Save/`), so the start-menu load screen
+/// reads the same slot files the in-game save hotkeys write.
+const PAL4_APP_NAME: &str = "OpenPAL4";
 
 /// Trait the script project exposes for `Pal4Service` to mint the
 /// PAL4 debug overlay bundle and the start-menu director during
@@ -121,6 +128,11 @@ pub struct Pal4Service {
     /// frame, cleared by `unload_menu_scene`. `None` outside the
     /// menu's active window.
     menu_uv_anim: RefCell<Option<UvAnimDriver>>,
+
+    /// Reusable scratch buffer backing `save_slot_summary`'s `&str`
+    /// return. The accessor refreshes it then returns a pointer into
+    /// it; codegen copies into a CString immediately.
+    summary_scratch: RefCell<String>,
 }
 
 ComObject_Pal4Service!(super::Pal4Service);
@@ -139,6 +151,7 @@ impl Pal4Service {
             launch_vfs: RefCell::new(None),
             texture_cache: RefCell::new(None),
             menu_uv_anim: RefCell::new(None),
+            summary_scratch: RefCell::new(String::new()),
         })
     }
 
@@ -224,6 +237,119 @@ impl IPal4ServiceImpl for Pal4Service {
     }
 
     fn create_story_director(&self, asset_path: &str) -> ComRc<IDirector> {
+        ComRc::<IDirector>::from_object(self.build_story_director(asset_path))
+    }
+
+    fn create_story_director_from_save(&self, asset_path: &str, slot: i32) -> ComRc<IDirector> {
+        let director = self.build_story_director(asset_path);
+        director.set_pending_load_slot(slot);
+        ComRc::<IDirector>::from_object(director)
+    }
+
+    fn save_slot_count(&self) -> i32 {
+        Pal4PersistentState::SLOT_COUNT
+    }
+
+    fn save_slot_exists(&self, slot: i32) -> bool {
+        Pal4PersistentState::peek(PAL4_APP_NAME, slot).is_some()
+    }
+
+    fn save_slot_summary(&self, slot: i32) -> &str {
+        // Full, display-ready row label for the load screen's slot
+        // list. ASCII only — the PAL4 menu imgui font has no CJK
+        // glyphs. Populated slots show their scene/quest summary;
+        // empty slots are explicitly marked so the row still renders.
+        let label = match Pal4PersistentState::peek(PAL4_APP_NAME, slot) {
+            Some(state) => format!("Slot {} - {}", slot, state.summary()),
+            None => format!("Slot {} - (empty)", slot),
+        };
+        *self.summary_scratch.borrow_mut() = label;
+        unsafe { (*self.summary_scratch.as_ptr()).as_str() }
+    }
+    fn open_layout(&self, vfs_path: &str) -> Option<ComRc<IUiLayoutHandle>> {
+        let cache = self.texture_cache.borrow().clone()?;
+        let vfs_slot = self.launch_vfs.borrow();
+        let (_, vfs) = vfs_slot.as_ref()?;
+        // Sanity-check: the file should look like a CEGUI layout
+        // before we incur the (cheap) parse + atlas upload cost.
+        if let Ok(bytes) = vfs.read_to_end(vfs_path) {
+            if !cegui_layout::looks_like_gui_layout(&bytes) {
+                log::warn!(
+                    "Pal4Service::open_layout({vfs_path}): file does not look like <GUILayout>"
+                );
+                return None;
+            }
+        }
+        UiLayoutHandle::try_create(vfs, vfs_path, cache)
+    }
+
+    fn load_menu_scene(&self) -> Option<ComRc<IScene>> {
+        let vfs_slot = self.launch_vfs.borrow();
+        let (_, vfs) = vfs_slot.as_ref()?;
+        let engine_rc = self.app.engine();
+        let component_factory = engine_rc.borrow().rendering_component_factory();
+        drop(engine_rc);
+
+        match load_zjm_world(&component_factory, vfs) {
+            Ok((scene, driver)) => {
+                *self.menu_uv_anim.borrow_mut() = Some(driver);
+                Some(scene)
+            }
+            Err(err) => {
+                log::warn!("Pal4Service::load_menu_scene: {:#}", err);
+                None
+            }
+        }
+    }
+
+    fn tick_menu(&self, delta_sec: f32) {
+        if let Some(driver) = self.menu_uv_anim.borrow_mut().as_mut() {
+            driver.tick(delta_sec);
+        }
+    }
+
+    fn unload_menu_scene(&self) {
+        self.menu_uv_anim.borrow_mut().take();
+    }
+
+    fn load_music(&self, music_name: &str) -> Option<ComRc<IAudioSource>> {
+        let vfs_slot = self.launch_vfs.borrow();
+        let (_, vfs) = vfs_slot.as_ref()?;
+        let path = format!("/gamedata/Music/{}.smp", music_name);
+        let raw = match vfs.read_to_end(&path) {
+            Ok(b) => b,
+            Err(err) => {
+                log::warn!("Pal4Service::load_music({music_name}): {path} not found: {err}");
+                return None;
+            }
+        };
+        let decrypted = match crate::loaders::smp::load_smp(raw) {
+            Ok(d) => d,
+            Err(err) => {
+                log::warn!(
+                    "Pal4Service::load_music({music_name}): smp decrypt failed: {err:#}"
+                );
+                return None;
+            }
+        };
+
+        let engine_rc = self.app.engine();
+        let audio_engine = engine_rc.borrow().audio_engine();
+        drop(engine_rc);
+
+        let mut source = audio_engine.create_source();
+        source.set_data(decrypted, Codec::Mp3);
+        Some(ScriptAudioSource::create(source))
+    }
+}
+
+impl Pal4Service {
+    /// Construct (but do not wrap) the full PAL4 story director: asset
+    /// loader, AngelScript VM, agent bridge, debug bundle, and actor
+    /// controller factory. Shared by `create_story_director` and
+    /// `create_story_director_from_save`; the latter sets a pending
+    /// load slot on the returned director before wrapping it.
+    fn build_story_director(&self, asset_path: &str) -> OpenPAL4Director {
         let hooks = self
             .script_hooks
             .borrow()
@@ -302,83 +428,7 @@ impl IPal4ServiceImpl for Pal4Service {
         // the cached slot so a later restart cleanly remounts.
         self.launch_vfs.borrow_mut().take();
 
-        ComRc::<IDirector>::from_object(director)
-    }
-
-    fn open_layout(&self, vfs_path: &str) -> Option<ComRc<IUiLayoutHandle>> {
-        let cache = self.texture_cache.borrow().clone()?;
-        let vfs_slot = self.launch_vfs.borrow();
-        let (_, vfs) = vfs_slot.as_ref()?;
-        // Sanity-check: the file should look like a CEGUI layout
-        // before we incur the (cheap) parse + atlas upload cost.
-        if let Ok(bytes) = vfs.read_to_end(vfs_path) {
-            if !cegui_layout::looks_like_gui_layout(&bytes) {
-                log::warn!(
-                    "Pal4Service::open_layout({vfs_path}): file does not look like <GUILayout>"
-                );
-                return None;
-            }
-        }
-        UiLayoutHandle::try_create(vfs, vfs_path, cache)
-    }
-
-    fn load_menu_scene(&self) -> Option<ComRc<IScene>> {
-        let vfs_slot = self.launch_vfs.borrow();
-        let (_, vfs) = vfs_slot.as_ref()?;
-        let engine_rc = self.app.engine();
-        let component_factory = engine_rc.borrow().rendering_component_factory();
-        drop(engine_rc);
-
-        match load_zjm_world(&component_factory, vfs) {
-            Ok((scene, driver)) => {
-                *self.menu_uv_anim.borrow_mut() = Some(driver);
-                Some(scene)
-            }
-            Err(err) => {
-                log::warn!("Pal4Service::load_menu_scene: {:#}", err);
-                None
-            }
-        }
-    }
-
-    fn tick_menu(&self, delta_sec: f32) {
-        if let Some(driver) = self.menu_uv_anim.borrow_mut().as_mut() {
-            driver.tick(delta_sec);
-        }
-    }
-
-    fn unload_menu_scene(&self) {
-        self.menu_uv_anim.borrow_mut().take();
-    }
-
-    fn load_music(&self, music_name: &str) -> Option<ComRc<IAudioSource>> {
-        let vfs_slot = self.launch_vfs.borrow();
-        let (_, vfs) = vfs_slot.as_ref()?;
-        let path = format!("/gamedata/Music/{}.smp", music_name);
-        let raw = match vfs.read_to_end(&path) {
-            Ok(b) => b,
-            Err(err) => {
-                log::warn!("Pal4Service::load_music({music_name}): {path} not found: {err}");
-                return None;
-            }
-        };
-        let decrypted = match crate::loaders::smp::load_smp(raw) {
-            Ok(d) => d,
-            Err(err) => {
-                log::warn!(
-                    "Pal4Service::load_music({music_name}): smp decrypt failed: {err:#}"
-                );
-                return None;
-            }
-        };
-
-        let engine_rc = self.app.engine();
-        let audio_engine = engine_rc.borrow().audio_engine();
-        drop(engine_rc);
-
-        let mut source = audio_engine.create_source();
-        source.set_data(decrypted, Codec::Mp3);
-        Some(ScriptAudioSource::create(source))
+        director
     }
 }
 
