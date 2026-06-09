@@ -125,7 +125,7 @@ pub struct MaterialDef {
     ///
     /// Required for materials that get mutated at runtime — e.g. PAL4
     /// water materials whose UV transform is animated by
-    /// `UvAnimDriver`. Without this, the per-material UBO would be
+    /// `UvAnimationComponent`. Without this, the per-material UBO would be
     /// shared with any non-animated material that happens to use the
     /// same texture, leaking the UV scroll onto unrelated geometry like
     /// grass / leaves / hair.
@@ -256,7 +256,7 @@ impl MaterialDef {
     /// sharing one through the texture/params cache. Use this for
     /// materials that will be mutated at runtime (e.g. PAL4 water
     /// surfaces whose UV affine is updated each frame by
-    /// `UvAnimDriver`). Idempotent — calling it again replaces the
+    /// `UvAnimationComponent`). Idempotent — calling it again replaces the
     /// existing nonce with a fresh one.
     pub fn make_unique(mut self) -> Self {
         use std::sync::atomic::{AtomicU64, Ordering};

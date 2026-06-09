@@ -27,7 +27,7 @@ use super::{
     asset_loader::{self, AssetLoader},
     comdef::{IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext},
     game_context::Pal4GameContext,
-    uv_anim::UvAnimDriver,
+    uv_anim::attach_uv_anim,
 };
 
 /// Factory abstraction supplied by the runtime (yaobow) at PAL4 boot.
@@ -142,7 +142,6 @@ pub struct Pal4Scene {
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
     pub(crate) triggers: Vec<Rc<SceneEventTrigger>>,
-    pub(crate) uv_anim: UvAnimDriver,
     // Handles captured at load time so the PAL4 debug overlay can flip
     // their visibility at runtime. `bsp_entity` is the BSP "world" root
     // returned by `AssetLoader::load_scene`. `floor_entity` /
@@ -248,19 +247,12 @@ impl Pal4Scene {
             events: vec![],
             module: None,
             triggers: vec![],
-            uv_anim: UvAnimDriver::new(),
             bsp_entity: None,
             floor_entity: None,
             wall_entity: None,
             game_context: None,
             actor_controller: None,
         }
-    }
-
-    /// Drive UV animation each frame for water (and any other entity
-    /// registered with the driver). No-op when no animation is bound.
-    pub fn tick_uv_anim(&mut self, delta_sec: f32) {
-        self.uv_anim.tick(delta_sec);
     }
 
     pub fn load(
@@ -291,8 +283,8 @@ impl Pal4Scene {
 
         // Optional water surface (PAL4 scenes that ship a `_water.dff`,
         // e.g. Q01/q01/Q01, Q01/q01/Q01Y). The sibling `_water.uva`
-        // drives per-frame UV animation via `UvAnimDriver`.
-        let mut uv_anim = UvAnimDriver::new();
+        // drives per-frame UV animation via a self-ticking
+        // `UvAnimationComponent` attached to the water entity.
         let water = asset_loader.try_load_scene_water(scene_name, block_name);
         if let Some(water) = water {
             scene.add_entity(water.clone());
@@ -303,7 +295,7 @@ impl Pal4Scene {
                     block_name,
                     dict.animations.len()
                 );
-                uv_anim.register_water_entity(water, &dict);
+                attach_uv_anim(&water, &dict);
             }
         }
 
@@ -732,7 +724,6 @@ impl Pal4Scene {
             events: events.events,
             module: Some(module),
             triggers,
-            uv_anim,
             bsp_entity: Some(bsp_entity),
             floor_entity: floor,
             wall_entity: wall,

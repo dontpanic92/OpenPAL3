@@ -37,7 +37,17 @@ use crate::{
 use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimationController},
     comdef::IPal4ActorAnimationController,
+    uv_anim::attach_uv_anim,
 };
+
+// Vfs paths inside the per-launch PAL4 vfs (ui.cpk mounts at
+// `/gamedata/ui/`) for the ZJM start-menu backdrop.
+const ZJM_BSP_PATH: &str = "/gamedata/ui/uiWorld/zjm/ZJM.bsp";
+const ZJM_WATER_DFF: &str = "/gamedata/ui/uiWorld/zjm/ZJM_water.dff";
+const ZJM_WATER_UVA: &str = "/gamedata/ui/uiWorld/zjm/ZJM_water.uva";
+const ZJM_TRANS_DFF: &str = "/gamedata/ui/uiWorld/zjm/ZJM_trans.dff";
+const ZJM_TRANS_UVA: &str = "/gamedata/ui/uiWorld/zjm/ZJM_trans.uva";
+
 
 pub struct AssetLoader {
     vfs: Rc<MiniFs>,
@@ -77,6 +87,124 @@ impl AssetLoader {
 
     pub fn vfs_rc(&self) -> Rc<MiniFs> {
         self.vfs.clone()
+    }
+
+    /// Build the ZJM start-menu backdrop scene: BSP + optional water +
+    /// optional translucent overlay, with self-ticking UV-animation
+    /// components wired onto the animated surfaces. Returns `None` only
+    /// when the BSP itself can't be loaded; missing water / trans / uva
+    /// overlays are treated as optional and only logged.
+    ///
+    /// The returned scene self-animates once pushed — the engine ticks
+    /// the attached `UvAnimationComponent`s each frame while the scene
+    /// is active, so the caller only has to push it.
+    pub fn load_menu_scene(&self) -> Option<ComRc<IScene>> {
+        match self.load_zjm_world() {
+            Ok(scene) => Some(scene),
+            Err(err) => {
+                log::warn!("AssetLoader::load_menu_scene: {:#}", err);
+                None
+            }
+        }
+    }
+
+    /// Build the ZJM start-menu scene. Returns `Err` only when the BSP
+    /// itself can't be loaded; missing water / trans / uva files are
+    /// optional and only logged at debug.
+    fn load_zjm_world(&self) -> anyhow::Result<ComRc<IScene>> {
+        // BSP: identity lightmap tint — UI worlds don't ship a
+        // `_ltMap.cfg`. `bsp_lightmap_tint = None` falls back to the
+        // identity-modulation path inside the BSP material builder.
+        let bsp_config = DffLoaderConfig {
+            texture_resolver: &self.texture_resolver,
+            keep_right_to_render_only: false,
+            force_unique_materials: false,
+            ignore_root_frame_translation: false,
+            bsp_lightmap_tint: None,
+        };
+        let bsp = create_entity_from_bsp_model(
+            &self.component_factory,
+            &self.vfs,
+            ZJM_BSP_PATH,
+            "zjm_world".to_string(),
+            &bsp_config,
+        )?;
+
+        let scene = CoreScene::create();
+        scene.add_entity(bsp);
+
+        // Water / trans DFFs are loaded with `force_unique_materials =
+        // true` so per-frame UV xform mutations don't bleed into
+        // unrelated geometry sharing a material key.
+        let overlay_config = DffLoaderConfig {
+            texture_resolver: &self.texture_resolver,
+            keep_right_to_render_only: false,
+            force_unique_materials: true,
+            ignore_root_frame_translation: false,
+            bsp_lightmap_tint: None,
+        };
+        self.attach_uv_overlay(
+            &scene,
+            ZJM_WATER_DFF,
+            ZJM_WATER_UVA,
+            "zjm_water",
+            &overlay_config,
+        );
+        self.attach_uv_overlay(
+            &scene,
+            ZJM_TRANS_DFF,
+            ZJM_TRANS_UVA,
+            "zjm_trans",
+            &overlay_config,
+        );
+
+        Ok(scene)
+    }
+
+    /// Optionally load `dff_path` as a UV-animated overlay and wire its
+    /// sibling `uva_path`'s self-ticking component. Missing files are
+    /// logged at debug and skipped — the start menu degrades gracefully
+    /// to BSP-only if a Steam install ever ships without these assets.
+    fn attach_uv_overlay(
+        &self,
+        scene: &ComRc<IScene>,
+        dff_path: &str,
+        uva_path: &str,
+        name: &str,
+        config: &DffLoaderConfig<'_>,
+    ) {
+        let entity = match create_entity_from_dff_model(
+            &self.component_factory,
+            &self.vfs,
+            dff_path,
+            name.to_string(),
+            true,
+            config,
+        ) {
+            Ok(e) => e,
+            Err(err) => {
+                log::debug!("load_menu_scene: optional menu overlay {dff_path} missing: {err:#}");
+                return;
+            }
+        };
+        scene.add_entity(entity.clone());
+
+        let Ok(uva_bytes) = self.vfs.read_to_end(uva_path) else {
+            log::debug!("load_menu_scene: menu overlay {dff_path} has no sibling {uva_path}");
+            return;
+        };
+        match UvAnimDict::read_from_bytes(&uva_bytes) {
+            Ok(dict) => {
+                log::info!(
+                    "load_menu_scene: {name} loaded with {} UV animation(s) from {uva_path}",
+                    dict.animations.len()
+                );
+                attach_uv_anim(&entity, &dict);
+            }
+            Err(err) => {
+                log::warn!("load_menu_scene: failed to parse {uva_path}: {err}");
+            }
+        }
     }
 
     pub fn load_script_module(&self, scene: &str) -> anyhow::Result<Rc<RefCell<ScriptModule>>> {
@@ -388,7 +516,7 @@ impl AssetLoader {
             &DffLoaderConfig {
                 texture_resolver: &self.texture_resolver,
                 keep_right_to_render_only: false,
-                // Water materials are mutated per-frame by UvAnimDriver.
+                // Water materials are mutated per-frame by a UvAnimationComponent.
                 // Opt them out of the shared material cache so the UV
                 // transform doesn't leak onto unrelated geometry that
                 // happens to share the same texture+params.

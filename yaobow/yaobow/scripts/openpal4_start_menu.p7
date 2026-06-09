@@ -118,9 +118,9 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
         if self.bgm != null {
             self.bgm!.play(true);
         }
-        let scene = self.host.pal4().load_menu_scene();
-        if scene != null {
-            self.host.scene_manager().push_scene(scene!);
+        let menu_scene = self.host.pal4().load_menu_scene();
+        if menu_scene != null {
+            self.host.scene_manager().push_scene(menu_scene!);
             // Position the active scene camera now that the menu
             // scene is on top of the stack. `scene_manager().camera()`
             // resolves to the freshly-pushed scene's camera.
@@ -138,7 +138,6 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
     pub fn deactivate(self: ref<Self>) -> int {
         if self.scene_pushed {
             self.host.scene_manager().pop_scene();
-            self.host.pal4().unload_menu_scene();
             self.scene_pushed = false;
         }
         if self.bgm != null {
@@ -155,9 +154,6 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
         if self.bgm != null {
             self.bgm!.update();
         }
-        // Drive the menu's UV animations (ZJM_water / ZJM_trans) so
-        // the backdrop's water surface moves in real time.
-        self.host.pal4().tick_menu(dt);
 
         // Debug aid: drive the menu scene camera with the generic
         // FreeView controller (WASD move, Q/E up/down, arrows look)

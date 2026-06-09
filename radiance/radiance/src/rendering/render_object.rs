@@ -53,7 +53,7 @@ pub trait RenderObject {
 
     /// Returns the underlying material's first texture name, when
     /// available. Diagnostic-only — exposed so debug overlays and the
-    /// PAL4 `UvAnimDriver` inventory dump can answer questions like
+    /// PAL4 `UvAnimationComponent` inventory dump can answer questions like
     /// "what texture does material `Material #6662332` actually use?"
     /// (water? foliage?). Default `None` for backends that don't track
     /// material textures distinctly.
@@ -74,7 +74,7 @@ pub trait RenderObject {
 ///
 /// The `dyn_view` field stays in sync with the backend-typed slot — both
 /// reference the same heap allocation — so polymorphic callers like
-/// `UvAnimDriver` keep working unchanged through [`Self::as_dyn`].
+/// `UvAnimationComponent` keep working unchanged through [`Self::as_dyn`].
 pub struct RenderObjectHandle {
     dyn_view: Rc<dyn RenderObject>,
     #[cfg(vulkan)]

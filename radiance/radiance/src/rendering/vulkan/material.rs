@@ -118,7 +118,7 @@ impl VulkanMaterial {
 
     /// Per-binding texture names captured from the source `MaterialDef`
     /// at construction time. Exposed so callers (e.g. the PAL4
-    /// `UvAnimDriver` inventory dump) can answer "what texture does
+    /// `UvAnimationComponent` inventory dump) can answer "what texture does
     /// material X use?" without needing the original `MaterialDef`.
     pub fn texture_names(&self) -> &[String] {
         &self.texture_names

@@ -12,6 +12,13 @@ use crate::ydirs;
 /// `openpal4::scene`.
 pub const PLAYER_COUNT: usize = 4;
 
+/// PAL4 save namespace. Save slots live under
+/// `<save_dir>/<PAL4_APP_NAME>/Save/<slot>.json`. Single source of
+/// truth shared by `Pal4AppContext` (which seeds a fresh
+/// `Pal4PersistentState` with it) and `Pal4Service` (whose start-menu
+/// load screen peeks the same slot files).
+pub const PAL4_APP_NAME: &str = "OpenPAL4";
+
 /// Per-player progression record. All fields default so older save
 /// files (or partially populated states) still deserialize cleanly.
 #[derive(Debug, Clone, Serialize, Deserialize)]

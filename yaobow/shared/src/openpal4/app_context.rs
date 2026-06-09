@@ -62,7 +62,7 @@ use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimation, Pal4ActorAnimationConfig},
     asset_loader::AssetLoader,
     scene::{Pal4ActorControllerFactory, Pal4Scene},
-    states::persistent_state::Pal4PersistentState,
+    states::persistent_state::{PAL4_APP_NAME, Pal4PersistentState},
 };
 
 pub struct Pal4AppContext {
@@ -187,7 +187,7 @@ impl Pal4AppContext {
             moving_entities: HashMap::new(),
             rotating_entities: HashMap::new(),
             actor_controller_factory: None,
-            persistent_state: Pal4PersistentState::new("OpenPAL4".to_string()),
+            persistent_state: Pal4PersistentState::new(PAL4_APP_NAME.to_string()),
             pending_dialog_choices: Vec::new(),
             next_dialog_choice: Cell::new(None),
             world_map_open: Cell::new(false),
@@ -234,8 +234,6 @@ impl Pal4AppContext {
         self.update_moving_entities(motion_dt);
         self.update_rotating_entities(motion_dt);
         self.tick_camera_run(delta_sec);
-        // Drive water UV animation each frame (PAL4 water surfaces).
-        self.scene.tick_uv_anim(delta_sec);
 
         // Tick ambient SOUND emitters (GOB tag 3). We use real
         // `delta_sec` rather than `motion_dt` deliberately: fast-

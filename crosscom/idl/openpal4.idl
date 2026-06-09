@@ -128,25 +128,16 @@ interface IPal4Service: IUnknown {
     // (the PAL4 menu font has no CJK glyphs).
     &str save_slot_summary(int slot);
 
-    // Build a fresh CoreScene containing the ZJM start-menu backdrop:
+    // Build a fresh `CoreScene` containing the ZJM start-menu backdrop:
     // ZJM.bsp + ZJM_water.dff + ZJM_trans.dff under
-    // `/gamedata/ui/uiWorld/zjm/`, plus their paired `.uva`
-    // animations registered on a private `UvAnimDriver` owned by
-    // `Pal4Service`. The menu director pushes the returned scene,
-    // positions the scene camera itself (via the generic
-    // `ICameraControl` reachable from `IHostContext.scene_manager`),
-    // and calls `tick_menu` each frame; `unload_menu_scene` clears
-    // the driver slot on deactivate so the story director starts on
-    // a clean state. Returns null when the per-launch vfs is not
-    // mounted yet or the BSP cannot be loaded.
+    // `/gamedata/ui/uiWorld/zjm/`, with the paired `.uva` animations
+    // wired onto the animated surfaces as self-ticking
+    // `UvAnimationComponent`s. The menu director just pushes the
+    // returned scene; the engine animates it each frame while it is the
+    // active scene, and popping it on deactivate tears it down so the
+    // story director starts clean. Returns null when the per-launch vfs
+    // is not mounted yet or the BSP cannot be loaded.
     IScene? load_menu_scene();
-
-    // Tick the menu's UV animations. No-op when `load_menu_scene`
-    // has not been called (or `unload_menu_scene` cleared the slot).
-    void tick_menu(float delta_sec);
-
-    // Drop the stocked menu `UvAnimDriver`. Idempotent.
-    void unload_menu_scene();
 
     // PAL4-specific BGM loader. Reads
     // `/gamedata/Music/<music_name>.smp` from the per-launch vfs,

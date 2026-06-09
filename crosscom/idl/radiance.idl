@@ -153,6 +153,21 @@ interface IStaticMeshComponent: IComponent {
 [uuid(aa9cfbdc-59a2-4e9e-9280-f77d52e79494)]
 class StaticMeshComponent: IStaticMeshComponent {}
 
+// `IUvAnimationComponent` drives a per-frame UV-affine transform
+// (scale / offset) on the render objects of its owning entity whose
+// material debug-name matches one of the animations it was built
+// with. It self-ticks via `IComponent::on_updating` — the owning
+// container (scene/entity) dispatches the per-frame update — so no
+// external driver has to hold or tick it. The keyframe specs are
+// decoded by the caller (e.g. a game-specific `.uva` decoder) and
+// handed in at construction.
+[uuid(4cf87859-1f99-48d1-8476-6f24d5ec3164)]
+interface IUvAnimationComponent: IComponent {
+}
+
+[uuid(008ae95a-9b01-43d3-98fb-63d5b23be6b5)]
+class UvAnimationComponent: IUvAnimationComponent {}
+
 [uuid(5c56adbc-bc22-4275-b99a-09973a3ffff0)]
 interface IAnimatedMeshComponent: IComponent {
     void play(bool replay);

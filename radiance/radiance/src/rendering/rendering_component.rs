@@ -6,7 +6,7 @@ use super::RenderObjectHandle;
 /// Holds two parallel views of the same underlying objects:
 ///
 /// - `objects` — every handle, regardless of backend. Used by polymorphic
-///   trait-method consumers (`UvAnimDriver`, the morph animator, the
+///   trait-method consumers (`UvAnimationComponent`, the morph animator, the
 ///   skinned-mesh updater) through [`Self::render_objects`].
 /// - `vulkan_objects` — backend-typed `Rc<VulkanRenderObject>` clones
 ///   populated by the Vulkan factory at insertion time, so the rendering
