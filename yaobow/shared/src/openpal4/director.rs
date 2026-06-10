@@ -195,7 +195,7 @@ impl OpenPAL4Director {
     /// `load_scene` for the controllers to attach.
     pub fn set_actor_controller_factory(
         &self,
-        factory: Rc<dyn super::scene::Pal4ActorControllerFactory>,
+        factory: ComRc<super::comdef::IPal4ScriptFactory>,
     ) {
         self.vm
             .borrow_mut()

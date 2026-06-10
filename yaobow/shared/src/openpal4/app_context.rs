@@ -61,7 +61,8 @@ pub struct PartySnapshot {
 use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimation, Pal4ActorAnimationConfig},
     asset_loader::AssetLoader,
-    scene::{Pal4ActorControllerFactory, Pal4Scene},
+    comdef::IPal4ScriptFactory,
+    scene::Pal4Scene,
     session::Pal4Session,
     states::persistent_state::Pal4PersistentState,
 };
@@ -121,7 +122,7 @@ pub struct Pal4AppContext {
     /// [`set_actor_controller_factory`]; when `None`, `load_scene`
     /// loads scenes without per-player controllers (e.g. before the
     /// script project is installed).
-    actor_controller_factory: Option<Rc<dyn Pal4ActorControllerFactory>>,
+    actor_controller_factory: Option<ComRc<IPal4ScriptFactory>>,
 
     /// Items the active script has queued for the next
     /// `giShowSelectDialog` / `giShowCommonDialogInSelectMode`.
@@ -201,7 +202,7 @@ impl Pal4AppContext {
     /// `load_scene` calls hand the factory to `Pal4Scene::load`, which
     /// attaches a freshly minted controller component to each player
     /// entity. Idempotent; replaces any previous factory.
-    pub fn set_actor_controller_factory(&mut self, factory: Rc<dyn Pal4ActorControllerFactory>) {
+    pub fn set_actor_controller_factory(&mut self, factory: ComRc<IPal4ScriptFactory>) {
         self.actor_controller_factory = Some(factory);
     }
 

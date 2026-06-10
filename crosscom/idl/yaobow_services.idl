@@ -52,33 +52,23 @@ class YaobowHostContext: IYaobowHostContext {}
 [uuid(8e9d29c2-e60b-4a03-b816-27f1f6a02d63)]
 class Pal3Service: IPal3Service {}
 
-// App-lifetime script root. The Yaobow protosept project's `app.p7`
-// conforms a single struct to this proto; Rust holds the rooted
-// instance and asks it to materialise per-feature surfaces (title
-// director, PAL4 debug overlay, …).
+// App-lifetime script factory. The Yaobow protosept project's `app.p7`
+// conforms a single struct to this proto; Rust reverse-wraps the rooted
+// instance into a `ComRc<IYaobowScriptApp>` (via `wrap_yaobow_script_app`)
+// and asks it to materialise per-feature surfaces (title director, PAL4
+// debug overlay, …) through the COM vtable.
 //
-// Phase 2: this interface now contains only **factories** for
-// genuinely script-implemented objects. Per-game launch happens
-// directly via `host.palX().create_director()` (Rust services) or
-// via this `make_pal5_director` factory (because PAL5's director
-// stays script-built). No more `launch_*` side-effect methods.
-[uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a04), protosept(script_app_root)]
+// This interface contains only **factories** for genuinely
+// script-implemented objects. Per-game launch happens directly via
+// `host.palX().create_director()` (Rust services) or via this
+// `make_pal5_director` factory (because PAL5's director stays
+// script-built). No more `launch_*` side-effect methods.
+//
+// Marked `scriptable` (not a special app-root): it is reverse-wrapped
+// and dispatched exactly like any other scriptable interface.
+[uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a04), protosept(scriptable)]
 interface IYaobowScriptApp: IUnknown {
     IImmediateDirector make_title_director();
-    IPal4DebugOverlay make_pal4_debug_overlay(IPal4DebugContext ctx);
-    IPal4ActorController make_actor_controller(
-        IPal4GameContext game_ctx,
-        IInputService input,
-        IEntity entity_0,
-        IEntity entity_1,
-        IEntity entity_2,
-        IEntity entity_3,
-        IPal4ActorAnimationController anim_0,
-        IPal4ActorAnimationController anim_1,
-        IPal4ActorAnimationController anim_2,
-        IPal4ActorAnimationController anim_3,
-        ICameraControl camera,
-        IRayCaster ray_caster);
 
     // PAL5 launch factory. Used both from `title.p7` (script-side
     // dispatch on click) and from Rust direct boot (`run_openpal5`).
@@ -86,31 +76,13 @@ interface IYaobowScriptApp: IUnknown {
     // factory body has one source of truth. `game_ordinal`
     // discriminates PAL5 vs PAL5Q (pkg key). Returns `null` when
     // the scene fails to load (e.g. missing asset path).
+    //
+    // The PAL4 factories (`make_pal4_start_menu`,
+    // `make_pal4_debug_overlay`, `make_actor_controller`) live on
+    // `openpal4.IPal4ScriptFactory` instead — they are PAL4 domain
+    // surfaces consumed by `shared::openpal4::Pal4Service`, which can
+    // only reference a `shared`-owned interface.
     IDirector? make_pal5_director(&str asset_path, int game_ordinal);
-
-    // PAL4 start-menu factory. Built script-side because the menu's
-    // visual composition + button-press state machine is pure UI
-    // logic that matches the editor's CEGUI previewer pattern. The
-    // Rust `Pal4Service::create_director` delegates here so the
-    // engine still calls `host.pal4().create_director(path)` and
-    // receives a director (start menu now; the menu's New Game
-    // handler hands the engine a story director via
-    // `host.pal4().enter_new_game(path)` on the next update).
-    //
-    // Non-optional return: if the CEGUI layout fails to load the
-    // menu director still mounts and renders a fallback message
-    // (with Exit + fallback to story director still wired). The
-    // `IImmediateDirector?` shape would tickle a codegen wrap bug
-    // around `Data::Some(ProtoBoxRef)` — see `make_pal5_director`
-    // pattern in the same IDL for the optional-return shape that is
-    // safe today.
-    //
-    // Returns `IImmediateDirector` (not `IDirector`) because the
-    // script struct conforms to both `[IImmediateDirector, IDirector]`
-    // — same dual-proto pattern as `TitleDirector`. The Rust caller
-    // (`YaobowScriptProject::make_pal4_start_menu`) `query_interface`s
-    // it to `IDirector` before handing back to `Pal4Service`.
-    IImmediateDirector make_pal4_start_menu(&str asset_path);
 }
 [uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a05)]
 class YaobowScriptApp: IYaobowScriptApp {}

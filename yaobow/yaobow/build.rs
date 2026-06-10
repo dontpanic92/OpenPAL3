@@ -56,10 +56,9 @@ fn generate_pair(idl_file: &str, rust_out: &str, p7_out: &str) {
 }
 
 /// Like [`generate_pair`] but also emits the script bridge
-/// (`*_bridge.rs`) that turns `[protosept(scriptable)]` /
-/// `[protosept(script_app_root)]` interfaces into typed Rust glue
-/// (register/wrap/intern helpers and `<I>Client` types). The bridge
-/// is `include!()`d under `crate::script_bridges::yaobow_services`
+/// (`*_bridge.rs`) that turns `[protosept(scriptable)]` interfaces into
+/// the `register_<i>_proto` / `wrap_<i>` reverse-wrap helpers. The
+/// bridge is `include!()`d under `crate::script_bridges::yaobow_services`
 /// in `src/lib.rs`.
 fn generate_triple(idl_file: &str, rust_out: &str, p7_out: &str, bridge_out: &str) {
     generate_pair(idl_file, rust_out, p7_out);

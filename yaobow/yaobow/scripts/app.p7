@@ -23,7 +23,7 @@ import yaobow.yaobow_services;
 import shared.openpal4.actor_controller;
 import yaobow.title;
 
-pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
+pub struct[yaobow_services.IYaobowScriptApp, openpal4.IPal4ScriptFactory] YaobowScriptApp(
     pub ctx: box<yaobow_services.IYaobowHostContext>,
 ) {
     pub fn make_title_director(self: ref<Self>) -> box<radiance.IImmediateDirector> {

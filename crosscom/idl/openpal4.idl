@@ -4,6 +4,7 @@ module(protosept) shared.openpal4;
 import crosscom.idl;
 import radiance.idl;
 import scripting_services.idl;
+import pal4_debug.idl;
 
 [uuid(f3d7f0fd-20ca-450c-bd66-ad019b984a54)]
 interface IOpenPAL4Director: IDirector {
@@ -38,6 +39,43 @@ interface IPal4ActorController : IComponent {
 
 [uuid(0687035c-b5f3-47e1-9e4a-80fbf57b3a7c)]
 class Pal4ActorController: IPal4ActorController {}
+
+// Script-implemented factory for the PAL4 launch surface. The yaobow
+// `app.p7` struct conforms to this (in addition to
+// `yaobow_services.IYaobowScriptApp`); `shared`'s `Pal4Service` holds
+// one `ComRc<IPal4ScriptFactory>` (QI'd from the app factory) and calls
+// these straight through the COM vtable — no Rust-side hook traits.
+// Lives in `openpal4.idl` (not `yaobow_services.idl`) because all three
+// are PAL4 domain surfaces that `shared` owns and must reference.
+[uuid(7a3e1c20-5d44-4b8e-9f12-0a6b3c8d2e44), protosept(scriptable)]
+interface IPal4ScriptFactory: IUnknown {
+    IPal4ActorController make_actor_controller(
+        IPal4GameContext game_ctx,
+        IInputService input,
+        IEntity entity_0,
+        IEntity entity_1,
+        IEntity entity_2,
+        IEntity entity_3,
+        IPal4ActorAnimationController anim_0,
+        IPal4ActorAnimationController anim_1,
+        IPal4ActorAnimationController anim_2,
+        IPal4ActorAnimationController anim_3,
+        ICameraControl camera,
+        IRayCaster ray_caster);
+
+    // Scripted PAL4 start-menu director. Returns `IImmediateDirector`
+    // (the menu struct conforms to both `IImmediateDirector` and
+    // `IDirector`); `Pal4Service::build_start_menu` QIs to `IDirector`.
+    IImmediateDirector make_pal4_start_menu(&str asset_path);
+
+    // Scripted PAL4 debug overlay built against a host-supplied
+    // `IPal4DebugContext`. `Pal4Service` assembles the surrounding
+    // `Pal4DebugBundle` (Rust-side session + state) around it.
+    IPal4DebugOverlay make_pal4_debug_overlay(IPal4DebugContext ctx);
+}
+
+[uuid(b6f4d2a8-3c91-4e07-8a55-1d2e9f0c7b63)]
+class Pal4ScriptFactory: IPal4ScriptFactory {}
 
 // Host-implemented PAL4 game context handed to scripted controllers.
 // Exposes only the truly PAL4-specific surface: the current party

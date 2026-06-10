@@ -8,7 +8,8 @@ use crosscom::ComRc;
 use radiance::{
     application::Application,
     comdef::{
-        IApplication, IApplicationExt, IApplicationLoaderComponent, IComponentImpl, ISceneManager,
+        IApplication, IApplicationExt, IApplicationLoaderComponent, IComponentImpl, IDirector,
+        ISceneManager,
     },
     input::SyntheticInputBridge,
     scene::CoreScene,
@@ -18,8 +19,8 @@ use shared::openpal4::agent::Pal4AgentBridge;
 use shared::openpal4::launch::{AgentBootOptions, install_global_log_sink, start_agent_server};
 use shared::{GameType, config::YaobowConfig};
 
-use crate::comdef::yaobow_services::IYaobowHostContext;
-use crate::script_source::YaobowScriptProject;
+use crate::comdef::yaobow_services::{IYaobowHostContext, IYaobowScriptApp};
+use crate::script_source::install_script_factory;
 
 /// Single boot-option bundle for the yaobow application. Replaces
 /// the previous family of `create_application_*` / `run_*` variants
@@ -90,9 +91,11 @@ impl BootOptions {
 /// The yaobow application loader (phase 2 — direct script handoff).
 ///
 /// Responsibilities:
-///  1. Install the `YaobowScriptProject` (which bootstraps the
-///     `IYaobowHostContext` carrying the per-game services and the
-///     rooted script app).
+///  1. Call `install_script_factory` (which builds the per-game
+///     services + `IYaobowHostContext`, bootstraps + reverse-wraps the
+///     script app, and installs the PAL4 `IPal4ScriptFactory` on
+///     `Pal4Service`); the loader holds the returned factory +
+///     host-context handles.
 ///  2. Install the imgui pump (so script-side directors' `render_im`
 ///     fires inside the imgui frame scope).
 ///  3. Configure `Pal4Service` with the agent bridge (if
@@ -109,7 +112,13 @@ impl BootOptions {
 pub struct YaobowApplicationLoader {
     app: ComRc<IApplication>,
     config: Rc<RefCell<YaobowConfig>>,
-    project: RefCell<Option<Rc<YaobowScriptProject>>>,
+    /// The reverse-wrapped script app factory (`make_title_director`,
+    /// `make_pal5_director`). Held for the loader lifetime so the script
+    /// box stays rooted. Set in `on_loading`.
+    factory: RefCell<Option<ComRc<IYaobowScriptApp>>>,
+    /// The canonical host context, used to reach the per-game services.
+    /// Set in `on_loading`.
+    host_context: RefCell<Option<ComRc<IYaobowHostContext>>>,
     initial_game: Option<GameType>,
     initial_asset_path: RefCell<Option<String>>,
     initial_agent_opts: RefCell<Option<AgentBootOptions>>,
@@ -125,18 +134,15 @@ impl IComponentImpl for YaobowApplicationLoader {
     fn on_loading(&self) {
         self.app.set_title("妖弓 - Project Yaobow");
 
-        let project = YaobowScriptProject::install(&self.app, self.config.clone());
-        self.project.replace(Some(project.clone()));
+        // Bootstrap the script root. This also QIs the script's PAL4
+        // factory surface and installs it on `Pal4Service`.
+        let (factory, host_context) =
+            install_script_factory(&self.app, self.config.clone());
+        self.factory.replace(Some(factory.clone()));
+        self.host_context.replace(Some(host_context.clone()));
 
-        // Hook the scripted actor-controller factory + imgui texture
-        // cache into Pal4Service now that the project exists. Done
-        // unconditionally so a later title-page PAL4 selection also
-        // picks them up.
-        let host_ctx = project.host_context();
-        let pal4 = host_ctx.pal4();
-        pal4.inner::<shared::openpal4::service::Pal4Service>()
-            .set_actor_controller_factory(project.actor_controller_factory());
-
+        // Hook the imgui texture cache into Pal4Service.
+        let pal4 = host_context.pal4();
         let texture_cache = install_imgui_pump(&self.app);
         pal4.inner::<shared::openpal4::service::Pal4Service>()
             .set_texture_cache(texture_cache);
@@ -153,19 +159,33 @@ impl IComponentImpl for YaobowApplicationLoader {
                     .borrow()
                     .clone()
                     .unwrap_or_else(|| self.config.borrow().asset_path_for(game).to_string());
-                if let Err(err) = self.direct_boot(game, asset_path, &project, &scene_manager) {
+                if let Err(err) =
+                    self.direct_boot(game, asset_path, &factory, &host_context, &scene_manager)
+                {
                     log::warn!(
                         "direct-boot launch for {} failed: {err}; falling back to title",
                         game.app_name()
                     );
-                    self.install_title_director(&scene_manager, &project);
+                    self.install_title_director(&scene_manager, &factory);
                 }
             }
-            None => self.install_title_director(&scene_manager, &project),
+            None => self.install_title_director(&scene_manager, &factory),
         }
     }
 
-    fn on_unloading(&self) {}
+    fn on_unloading(&self) {
+        // Break the strong reference cycle (Pal4Service → script factory
+        // → script box → host context → Pal4Service) at teardown, then
+        // drop the loader's own handles so the whole graph releases.
+        if let Some(host_context) = self.host_context.borrow().as_ref() {
+            host_context
+                .pal4()
+                .inner::<shared::openpal4::service::Pal4Service>()
+                .clear_script_factory();
+        }
+        self.factory.replace(None);
+        self.host_context.replace(None);
+    }
 
     /// Drives the PAL4 app-lifetime **single agent dispatcher** each
     /// frame: it is the sole drainer of the agent command queue in every
@@ -175,9 +195,8 @@ impl IComponentImpl for YaobowApplicationLoader {
     /// (`--pal4 --agent-port`). Runs before `engine.update` so commands
     /// land before the active director ticks its VM this frame.
     fn on_updating(&self, delta_sec: f32) {
-        if let Some(project) = self.project.borrow().as_ref() {
-            project
-                .host_context()
+        if let Some(host_context) = self.host_context.borrow().as_ref() {
+            host_context
                 .pal4()
                 .inner::<shared::openpal4::service::Pal4Service>()
                 .pump_agent(delta_sec);
@@ -190,7 +209,8 @@ impl YaobowApplicationLoader {
         Self {
             app,
             config: Rc::new(RefCell::new(YaobowConfig::load())),
-            project: RefCell::new(None),
+            factory: RefCell::new(None),
+            host_context: RefCell::new(None),
             initial_game: None,
             initial_asset_path: RefCell::new(None),
             initial_agent_opts: RefCell::new(None),
@@ -207,10 +227,11 @@ impl YaobowApplicationLoader {
     fn install_title_director(
         &self,
         scene_manager: &ComRc<ISceneManager>,
-        project: &Rc<YaobowScriptProject>,
+        factory: &ComRc<IYaobowScriptApp>,
     ) {
-        let director = project
-            .make_title_director_as_director()
+        let director = factory
+            .make_title_director()
+            .query_interface::<IDirector>()
             .expect("initial script director must be created");
         scene_manager.set_director(director);
         scene_manager.push_scene(CoreScene::create());
@@ -224,20 +245,25 @@ impl YaobowApplicationLoader {
         &self,
         game: GameType,
         asset_path: String,
-        project: &Rc<YaobowScriptProject>,
+        factory: &ComRc<IYaobowScriptApp>,
+        host_ctx: &ComRc<IYaobowHostContext>,
         scene_manager: &ComRc<ISceneManager>,
     ) -> Result<(), String> {
-        let host_ctx = project.host_context();
-
         let director = match game {
             GameType::PAL3 => host_ctx.pal3().create_director(&asset_path),
             GameType::PAL4 => {
-                self.boot_pal4_agent_if_requested(&host_ctx)?;
+                self.boot_pal4_agent_if_requested(host_ctx)?;
                 host_ctx.pal4().create_director(&asset_path)
             }
             GameType::PAL5 | GameType::PAL5Q => {
                 let game_ordinal = ordinal_for_game(game);
-                project.make_pal5_director(&asset_path, game_ordinal)?
+                factory
+                    .make_pal5_director(&asset_path, game_ordinal)
+                    .ok_or_else(|| {
+                        format!(
+                            "make_pal5_director returned null (likely missing PAL5 assets at {asset_path})"
+                        )
+                    })?
             }
             GameType::SWD5 | GameType::SWDHC | GameType::SWDCF => {
                 let game_ordinal = ordinal_for_game(game);

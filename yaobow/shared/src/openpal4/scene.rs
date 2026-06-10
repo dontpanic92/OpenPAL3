@@ -10,47 +10,37 @@ use fileformats::pal4::{
     gob::{GobCommonProperties, GobFile, GobObjectType},
 };
 use radiance::{
-    comdef::{
-        ICameraControl, IEntity, IEntityExt, IRayCaster, IScene, ISceneExt, IStaticMeshComponent,
-    },
+    comdef::{IEntity, IEntityExt, IScene, ISceneExt, IStaticMeshComponent},
     input::InputEngine,
     math::{Mat44, Transform, Vec3},
     rendering::GradientYMaterialDef,
     scene::{CoreEntity, CoreScene, wrap_scene_camera},
     utils::ray_casting::{RayCaster, wrap_ray_caster},
 };
-use radiance_scripting::{comdef::services::IInputService, services::InputService};
+use radiance_scripting::services::InputService;
 
 use crate::scripting::angelscript::ScriptModule;
 
 use super::{
     asset_loader::{self, AssetLoader},
-    comdef::{IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext},
+    comdef::{
+        IPal4ActorAnimationController, IPal4ActorController, IPal4ScriptFactory,
+        IPal4GameContext,
+    },
     game_context::Pal4GameContext,
     uv_anim::attach_uv_anim,
 };
 
-/// Factory abstraction supplied by the runtime (yaobow) at PAL4 boot.
-/// Mints a single party-wide `IPal4ActorController` that receives all
-/// four party-member entities + animation handles plus the shared
-/// engine surface. The runtime attaches the returned component to a
-/// synthetic "party root" entity that parents the four players, so a
-/// single controller drives the active leader each frame instead of
-/// four self-gating wrappers sharing scene state. Editor previews pass
-/// `None` for the factory and the scene loads without any per-player
-/// controller component attached.
-pub trait Pal4ActorControllerFactory {
-    fn make_actor_controller(
-        &self,
-        game_ctx: ComRc<IPal4GameContext>,
-        input: ComRc<IInputService>,
-        entities: [ComRc<IEntity>; 4],
-        anims: [ComRc<IPal4ActorAnimationController>; 4],
-        camera: ComRc<ICameraControl>,
-        ray_caster: ComRc<IRayCaster>,
-    ) -> ComRc<IPal4ActorController>;
-}
-
+/// Factory abstraction supplied by the runtime (yaobow) at PAL4 boot:
+/// the script app's `IPal4ScriptFactory` COM interface (the
+/// yaobow `app.p7` struct conforms to it), which `shared` calls
+/// straight through the COM vtable. Mints a single party-wide
+/// `IPal4ActorController` covering all four party-member entities +
+/// animation handles plus the shared engine surface; the runtime
+/// attaches the returned component to a synthetic "party root" entity
+/// that parents the four players, so a single controller drives the
+/// active leader each frame. Editor previews pass `None` and the scene
+/// loads without any per-player controller component attached.
 pub enum Player {
     YunTianhe,
     HanLingsha,
@@ -260,7 +250,7 @@ impl Pal4Scene {
         input: Rc<RefCell<dyn InputEngine>>,
         scene_name: &str,
         block_name: &str,
-        actor_controller_factory: Option<&Rc<dyn Pal4ActorControllerFactory>>,
+        actor_controller_factory: Option<&ComRc<IPal4ScriptFactory>>,
     ) -> anyhow::Result<Self> {
         let (scene, bsp_entity) = asset_loader.load_scene(scene_name, block_name)?;
 
@@ -426,11 +416,19 @@ impl Pal4Scene {
                     .and_then(|c| c.query_interface::<IPal4ActorAnimationController>())
                     .expect("player must carry an IPal4ActorAnimationController component")
             });
+            let [e0, e1, e2, e3] = players.clone();
+            let [a0, a1, a2, a3] = anims;
             let controller = factory.make_actor_controller(
                 game_context.clone(),
                 input_service.clone(),
-                players.clone(),
-                anims,
+                e0,
+                e1,
+                e2,
+                e3,
+                a0,
+                a1,
+                a2,
+                a3,
                 camera_ctrl.clone(),
                 ray_caster_wrapped.clone(),
             );

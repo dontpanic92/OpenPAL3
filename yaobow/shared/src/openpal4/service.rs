@@ -6,19 +6,19 @@
 //!  * its AssetLoader bound to the per-launch vfs
 //!  * the agent bridge attached (if the loader pre-stocked one via
 //!    [`Pal4Service::set_agent_bridge`])
-//!  * the debug-overlay bundle attached (script-built via the
-//!    `YaobowScriptProject`'s `make_pal4_debug_bundle`)
-//!  * the actor controller factory attached (script-built)
+//!  * the debug-overlay bundle attached (assembled here around the
+//!    script-built overlay from [`Pal4Service::set_script_factory`])
+//!  * the actor controller factory attached (the same script factory)
 //!
 //! ## Ownership graph
 //!
-//! `Pal4Service` is held by `YaobowHostContext` which is interned into
-//! the script via `foreign_box`. The script root receives the host
-//! context as `box<IYaobowHostContext>`. `YaobowScriptProject` is held
-//! as an engine service. To avoid a Rc cycle
-//! (`YaobowScriptProject` → `ScriptHost` → `ComObjectTable` →
-//! `YaobowHostContext` → `Pal4Service` → `YaobowScriptProject`), the
-//! reference back to the project here is a [`Weak`].
+//! `Pal4Service` is held by `YaobowHostContext`, which is interned into
+//! the script via `foreign_box`. The single `script_factory`
+//! (`ComRc<IPal4ScriptFactory>`, QI'd from the reverse-wrapped app
+//! root) is the script's PAL4 factory surface. Holding it forms a
+//! strong cycle (`Pal4Service` → script CCW → script box → host context
+//! → `Pal4Service`); `YaobowApplicationLoader::on_unloading` calls
+//! [`Pal4Service::clear_script_factory`] to break it at teardown.
 //!
 //! ## Agent server lifetime
 //!
@@ -30,7 +30,7 @@
 //! rubber-duck (finding A).
 
 use std::cell::RefCell;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 use crosscom::ComRc;
 use agent_server::protocol::{
@@ -49,10 +49,12 @@ use crate::loaders::cegui::layout as cegui_layout;
 use crate::loaders::cegui::ui_layout_handle::UiLayoutHandle;
 use crate::openpal4::agent::Pal4AgentBridge;
 use crate::openpal4::asset_loader::AssetLoader;
-use crate::openpal4::comdef::{IOpenPAL4Director, IPal4Service, IPal4ServiceImpl};
-use crate::openpal4::director::OpenPAL4Director;
+use crate::openpal4::comdef::{
+    IOpenPAL4Director, IPal4ScriptFactory, IPal4Service, IPal4ServiceImpl,
+};
+use crate::openpal4::director::{OpenPAL4Director, Pal4DebugBundle};
 use crate::openpal4::modes::{self, Pal4ModeIntent, Pal4ModeKind, Pal4ModeFactory, Pal4ModeRegistry};
-use crate::openpal4::scene::Pal4ActorControllerFactory;
+use crate::openpal4::pal4_debug::create_debug_session;
 use crate::openpal4::session::Pal4Session;
 use crate::openpal4::states::persistent_state::{PAL4_APP_NAME, Pal4PersistentState};
 use common::store_ext::StoreExt2;
@@ -61,50 +63,17 @@ use common::store_ext::StoreExt2;
 /// `openpal4::states::persistent_state::PAL4_APP_NAME` so the service
 /// and `Pal4AppContext` agree on the slot directory.
 
-
-/// Trait the script project exposes for `Pal4Service` to mint the
-/// PAL4 debug overlay bundle and the start-menu director during
-/// launch. Decouples `shared::openpal4::service` from
-/// `yaobow_lib::script_source` so `shared` doesn't need to know about
-/// `YaobowScriptProject`.
-///
-/// `yaobow_lib::script_source::YaobowScriptProject` implements this
-/// trait; the service holds it as `Weak<dyn Pal4ScriptHooks>` to
-/// break the project↔host-context↔service Rc cycle.
-///
-/// The actor-controller factory is NOT part of this trait — it
-/// needs `Rc<YaobowScriptProject>` to clone the project into each
-/// minted controller, which doesn't fit the `&self` trait shape.
-/// Instead, `YaobowApplicationLoader` calls
-/// [`Pal4Service::set_actor_controller_factory`] explicitly after
-/// the script project is installed.
-pub trait Pal4ScriptHooks {
-    fn make_pal4_debug_bundle(&self) -> crate::openpal4::director::Pal4DebugBundle;
-
-    /// Build the script-side PAL4 start-menu director against the
-    /// per-launch `asset_path` (already stocked into the service's
-    /// vfs slot — the script reaches the vfs via
-    /// `host.pal4().open_layout(...)`). Returns `None` when the
-    /// menu's layout / imagesets can't be loaded (e.g. PAL4 not
-    /// installed at this path).
-    fn make_pal4_start_menu(&self, asset_path: &str) -> Option<ComRc<IDirector>>;
-}
-
 pub struct Pal4Service {
     app: ComRc<IApplication>,
     agent_bridge: RefCell<Option<Rc<Pal4AgentBridge>>>,
-    /// Weak ref to the yaobow script project (for minting the debug
-    /// overlay). Set after construction via
-    /// [`Pal4Service::set_script_hooks`] because the project itself
-    /// depends on the host context (which holds this service)
-    /// existing first. Wrapped in `Option` because `Weak::new()`
-    /// cannot mint a `Weak<dyn Trait>` without a concrete starting
-    /// value on stable Rust.
-    script_hooks: RefCell<Option<Weak<dyn Pal4ScriptHooks>>>,
-    /// Scripted actor-controller factory. Set explicitly by
-    /// `YaobowApplicationLoader` after the script project is
-    /// installed. Cloned into each constructed director.
-    actor_controller_factory: RefCell<Option<Rc<dyn Pal4ActorControllerFactory>>>,
+    /// The script app's PAL4 factory (`make_actor_controller`,
+    /// `make_pal4_start_menu`, `make_pal4_debug_overlay`). Set after
+    /// construction by `YaobowApplicationLoader` (QI'd from the
+    /// reverse-wrapped app factory) because the script root itself
+    /// depends on the host context (which holds this service) existing
+    /// first. Cloned into each constructed story director for actor
+    /// controllers; called directly for the start menu + debug overlay.
+    script_factory: RefCell<Option<ComRc<IPal4ScriptFactory>>>,
 
     /// App-lifetime `AssetLoader` for PAL4. Built lazily by
     /// `loader_for` on the first `create_director` (mounting the vfs and
@@ -163,8 +132,7 @@ impl Pal4Service {
         ComRc::from_object(Self {
             app,
             agent_bridge: RefCell::new(None),
-            script_hooks: RefCell::new(None),
-            actor_controller_factory: RefCell::new(None),
+            script_factory: RefCell::new(None),
             launch_loader: RefCell::new(None),
             texture_cache: RefCell::new(None),
             summary_scratch: RefCell::new(String::new()),
@@ -210,19 +178,36 @@ impl Pal4Service {
         *slot = Some(bridge);
     }
 
-    /// Install the script-project hook. Called by
-    /// `YaobowApplicationLoader::on_loading` after
-    /// `YaobowScriptProject::install` returns.
-    pub fn set_script_hooks(&self, hooks: Weak<dyn Pal4ScriptHooks>) {
-        *self.script_hooks.borrow_mut() = Some(hooks);
+    /// Install the script app's PAL4 factory (QI'd from the
+    /// reverse-wrapped app root). Called by
+    /// `YaobowApplicationLoader::on_loading` after the script root is
+    /// installed. Used for the start menu, debug overlay, and actor
+    /// controllers.
+    pub fn set_script_factory(&self, factory: ComRc<IPal4ScriptFactory>) {
+        *self.script_factory.borrow_mut() = Some(factory);
     }
 
-    /// Install the scripted actor-controller factory. Called by
-    /// `YaobowApplicationLoader::on_loading` after the script project
-    /// is installed.
-    pub fn set_actor_controller_factory(&self, factory: Rc<dyn Pal4ActorControllerFactory>) {
-        *self.actor_controller_factory.borrow_mut() = Some(factory);
+    /// Drop the held script factory, breaking the
+    /// service↔host-context↔script-CCW reference cycle at teardown.
+    /// Called by `YaobowApplicationLoader::on_unloading`.
+    pub fn clear_script_factory(&self) {
+        *self.script_factory.borrow_mut() = None;
     }
+
+    /// Assemble a fresh PAL4 debug bundle: a Rust-side debug session
+    /// (context + state) plus the script-built overlay against it.
+    /// Returns `None` when no script factory is installed.
+    fn build_debug_bundle(&self) -> Option<Pal4DebugBundle> {
+        let factory = self.script_factory.borrow().clone()?;
+        let session = create_debug_session();
+        let overlay = factory.make_pal4_debug_overlay(session.context.clone());
+        Some(Pal4DebugBundle {
+            overlay,
+            overlay_ctx: session.context,
+            debug_state: session.state,
+        })
+    }
+
     /// Returns the app-lifetime PAL4 `AssetLoader`, mounting + caching
     /// it on first use. Every subsequent call returns the same cached
     /// `Rc<AssetLoader>` regardless of `asset_path` (which is invariant
@@ -728,23 +713,23 @@ impl Pal4Service {
         // menu can call `host.pal4().open_layout("/gamedata/ui/...")`.
         let _ = self.loader_for(asset_path);
 
-        let hooks = self
-            .script_hooks
-            .borrow()
-            .as_ref()
-            .and_then(|w| w.upgrade())
-            .expect(
-                "Pal4Service::build_start_menu called before YaobowScriptProject was installed \
-                 (or after it was dropped). The YaobowApplicationLoader must call \
-                 Pal4Service::set_script_hooks after installing the script project.",
-            );
+        let factory = self.script_factory.borrow().clone().expect(
+            "Pal4Service::build_start_menu called before the script factory was installed \
+             (or after it was cleared). YaobowApplicationLoader must call \
+             Pal4Service::set_script_factory after installing the script root.",
+        );
 
-        match hooks.make_pal4_start_menu(asset_path) {
-            Some(menu) => menu,
+        // The menu struct conforms to both `IImmediateDirector` and
+        // `IDirector`; QI the immediate variant to the director the
+        // scene manager expects. On a null/failed menu the fat CCW
+        // still QIs, but we fall back to a story director defensively.
+        let menu = factory.make_pal4_start_menu(asset_path);
+        match menu.query_interface::<IDirector>() {
+            Some(director) => director,
             None => {
                 log::warn!(
-                    "Pal4Service::build_start_menu: scripted start menu failed to build for {}; \
-                     falling back to story director",
+                    "Pal4Service::build_start_menu: scripted start menu did not expose IDirector \
+                     for {}; falling back to story director",
                     asset_path
                 );
                 ComRc::<IDirector>::from_object(self.build_story_director(asset_path))
@@ -765,15 +750,6 @@ impl Pal4Service {
         // Without this, a second playthrough in the same process would
         // inherit the previous one's session state.
         self.reset_session();
-
-        let hooks = self
-            .script_hooks
-            .borrow()
-            .as_ref()
-            .and_then(|w| w.upgrade())
-            .expect(
-                "Pal4Service::enter_new_game called before YaobowScriptProject was installed",
-            );
 
         let engine_rc = self.app.engine();
         let engine = engine_rc.borrow();
@@ -819,8 +795,10 @@ impl Pal4Service {
             self.session_handle(),
         );
 
-        director.set_debug_bundle(hooks.make_pal4_debug_bundle());
-        if let Some(factory) = self.actor_controller_factory.borrow().clone() {
+        if let Some(bundle) = self.build_debug_bundle() {
+            director.set_debug_bundle(bundle);
+        }
+        if let Some(factory) = self.script_factory.borrow().clone() {
             director.set_actor_controller_factory(factory);
         }
 

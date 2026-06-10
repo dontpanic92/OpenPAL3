@@ -19,8 +19,9 @@ use radiance_scripting::comdef::services::{
 use radiance_scripting::services::{GameRegistry, RandomService};
 use radiance_scripting::{
     RuntimeAccess, RuntimeHandle, ScriptHost, register_immediate_director_proto, with_services,
-    wrap_director,
 };
+use yaobow_lib::comdef::yaobow_services::IYaobowScriptApp;
+use yaobow_lib::script_bridges::yaobow_services::wrap_yaobow_script_app;
 use yaobow_lib::script_source::install_script_assets;
 
 /// Helper: build a fresh `ScriptHost` with the dedicated script
@@ -173,23 +174,21 @@ fn title_script_init_loads_with_imported_bindings() {
     let app_data = runtime
         .call_returning_data("init", vec![app_ctx_box])
         .expect("yaobow app init should succeed");
-    let app_handle = runtime.root(app_data);
-    let app_data = runtime
-        .deref_handle(app_handle)
-        .expect("yaobow app root should stay live");
-    let director_data = runtime
-        .call_method_returning_data(app_data, "make_title_director", Vec::new())
-        .expect("yaobow title director creation should succeed");
+    // Reverse-wrap the app root into a real `ComRc<IYaobowScriptApp>`
+    // (the production path) and call its factory method through the COM
+    // vtable — no manual `call_method_returning_data` name-dispatch.
     let handle = host_runtime_handle(&runtime);
-    let director: ComRc<IDirector> =
-        wrap_director(&handle, director_data).expect("wrap_director should succeed");
-    let im: ComRc<IImmediateDirector> = director
-        .query_interface::<IImmediateDirector>()
-        .expect("title director should expose IImmediateDirector via fat CCW");
+    let factory: ComRc<IYaobowScriptApp> =
+        wrap_yaobow_script_app(&handle, app_data).expect("wrap_yaobow_script_app should succeed");
+    let im: ComRc<IImmediateDirector> = factory.make_title_director();
+    let director: ComRc<IDirector> = im
+        .query_interface::<IDirector>()
+        .expect("title director should expose IDirector via fat CCW");
     director.activate();
     assert!(director.update(0.016).is_none());
     drop(director);
     drop(im);
+    drop(factory);
 }
 
 #[test]
@@ -214,31 +213,24 @@ fn app_script_creates_title_then_pal4_debug_in_one_runtime() {
     let app_data = runtime
         .call_returning_data("init", vec![app_ctx_box])
         .expect("yaobow app init should succeed");
-    let app_handle = runtime.root(app_data);
-
-    let app_data = runtime
-        .deref_handle(app_handle)
-        .expect("yaobow app root should stay live");
-    let title_data = runtime
-        .call_method_returning_data(app_data, "make_title_director", Vec::new())
-        .expect("title director creation should succeed");
+    // One reverse-wrapped factory drives both make_* calls through the
+    // COM vtable. The `IPal4DebugContext` arg is passed as a plain
+    // `ComRc` — the proto-CCW marshals it into a foreign box per the
+    // registered ProtoSpec, so no manual intern/foreign_box is needed.
+    // Register the shared PAL4 factory proto so the fat CCW exposes a QI
+    // slot for it (the app struct conforms to it in addition to
+    // `IYaobowScriptApp`).
+    shared::script_bridges::openpal4::register_pal4_script_factory_proto();
     let handle = host_runtime_handle(&runtime);
-    let title_director: ComRc<IDirector> =
-        wrap_director(&handle, title_data).expect("wrap_director should succeed");
+    let factory: ComRc<IYaobowScriptApp> =
+        wrap_yaobow_script_app(&handle, app_data).expect("wrap_yaobow_script_app should succeed");
+
+    let title_director: ComRc<IImmediateDirector> = factory.make_title_director();
     drop(title_director);
 
+    let pal4_factory = factory
+        .query_interface::<shared::openpal4::comdef::IPal4ScriptFactory>()
+        .expect("app struct must conform to IPal4ScriptFactory");
     let session = shared::openpal4::pal4_debug::create_debug_session();
-    let ctx_id = runtime.intern(session.context);
-    let ctx_box = runtime
-        .foreign_box(
-            "shared.openpal4.comdef.pal4_debug.IPal4DebugContext",
-            ctx_id,
-        )
-        .expect("IPal4DebugContext foreign box must construct");
-    let app_data = runtime
-        .deref_handle(app_handle)
-        .expect("yaobow app root should stay live");
-    runtime
-        .call_method_returning_data(app_data, "make_pal4_debug_overlay", vec![ctx_box])
-        .expect("PAL4 debug overlay creation should succeed");
+    let _overlay = pal4_factory.make_pal4_debug_overlay(session.context);
 }

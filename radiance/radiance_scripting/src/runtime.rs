@@ -182,10 +182,19 @@ impl ScriptHost {
     /// conformance list. Eager registration ensures the registry
     /// already knows about the derived interface at wrap time so the
     /// fat CCW gets a real slot for it.
+    ///
+    /// The set is listed explicitly (rather than via a generated
+    /// `register_all_protos` aggregator) so the script-bridge codegen
+    /// only emits the per-interface `register_<i>_proto` / `wrap_<i>`
+    /// pair. Keep in sync with the `[protosept(scriptable)]` interfaces
+    /// in `crosscom.idl` / `radiance.idl` / `scripting_services.idl`.
     fn register_built_in_protos() {
-        crate::script_bridges::radiance::register_all_protos();
-        crate::script_bridges::scripting_services::register_all_protos();
-        crate::script_bridges::crosscom::register_all_protos();
+        crate::script_bridges::crosscom::register_action_proto();
+        crate::script_bridges::radiance::register_component_proto();
+        crate::script_bridges::radiance::register_director_proto();
+        crate::script_bridges::radiance::register_immediate_director_proto();
+        // scripting_services.idl declares no [protosept(scriptable)]
+        // interfaces, so it has nothing to eagerly register.
     }
 
     /// Wire a `Weak<ScriptHost>` into the inner [`RuntimeServices`] so
@@ -237,7 +246,7 @@ impl ScriptHost {
     /// Read `path` from the installed script `AssetManager` (set via
     /// [`set_script_assets`]) and compile it as the host's root
     /// source via [`load_source`]. Typical use: pass the absolute
-    /// path of a `[script_app_root]` source — e.g. `/yaobow/app.p7`.
+    /// path of an app-root p7 source — e.g. `/yaobow/app.p7`.
     pub fn load_source_from_path(&self, path: &str) -> Result<(), HostError> {
         let assets = self
             .with_inner(|inner| inner.script_assets.clone())

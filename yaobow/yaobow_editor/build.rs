@@ -126,7 +126,7 @@ fn lucide_name_to_ident(name: &str) -> String {
 /// Pack `scripts/*.p7` + generated `yaobow_editor_services.p7` +
 /// generated `icons.p7` (both from `OUT_DIR`) into
 /// `OUT_DIR/yaobow_editor.ypk`. Root = `main` (i.e. `main.p7` is the
-/// `script_app_root` the editor loads). `yaobow_editor_services`
+/// app-root script the editor loads). `yaobow_editor_services`
 /// registers as an idl_binding; everything else (including `icons`)
 /// goes in as a module so script imports stay identical.
 fn pack_script_bundle() {

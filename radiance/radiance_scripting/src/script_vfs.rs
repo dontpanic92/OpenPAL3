@@ -30,7 +30,7 @@ use radiance::asset::AssetManager;
 use crate::runtime::ScriptHost;
 
 /// `type_tag` for the canonical `IHostContext` foreign-box used by
-/// `[script_app_root]` packages whose `init` takes the radiance
+/// app-root p7 packages whose `init` takes the radiance
 /// host context. App-specific contexts (e.g. `IEditorHostContext`)
 /// have their own tag — pass it explicitly to
 /// [`bootstrap_script_root_from_path`].
