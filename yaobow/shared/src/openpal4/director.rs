@@ -4,11 +4,10 @@ use std::{
 };
 
 use agent_server::protocol::{
-    AgentCommand, AgentError, AgentResponse, AxisInputParams, DialogSnapshot, FastForwardParams,
-    FireTriggerParams, KeyAction, KeyInputParams, NameParams, NpcEntry, ObjectEntry, PartyMember,
-    PerfMetric, PerfMetricsResponse, SceneObjectsResponse, SceneTriggersResponse,
-    ScreenshotResponse, ScriptEvalParams, ScriptGlobalsParams, ScriptGlobalsResponse,
-    StateSnapshot, StepTimeParams, TeleportParams, TriggerEntry,
+    AgentCommand, AgentError, AgentResponse, DialogSnapshot, FastForwardParams, FireTriggerParams,
+    NameParams, NpcEntry, ObjectEntry, PartyMember, SceneObjectsResponse, SceneTriggersResponse,
+    ScriptEvalParams, ScriptGlobalsParams, ScriptGlobalsResponse, StateSnapshot, TeleportParams,
+    TriggerEntry,
 };
 use crosscom::ComRc;
 use radiance::comdef::{IEntityExt, IImmediateDirectorImpl, IUiHost};
@@ -16,7 +15,7 @@ use radiance::math::Vec3;
 use radiance::{
     audio::AudioEngine,
     comdef::{IDirectorImpl, ISceneManager},
-    input::{Axis, InputEngine, Key},
+    input::{InputEngine, Key},
     radiance::{TaskManager, UiManager},
     rendering::ComponentFactory,
     scene::CoreScene,
@@ -32,7 +31,7 @@ use super::{
     comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay},
     pal4_debug::Pal4DebugState,
     scripting::create_script_vm,
-    states::persistent_state::Pal4PersistentState,
+    session::Pal4Session,
 };
 
 /// Bundle of script-side handles the director uses to drive the
@@ -81,7 +80,7 @@ pub struct OpenPAL4Director {
     pending_fires: RefCell<Vec<PendingFire>>,
 
     /// Save slot queued by the start-menu load screen
-    /// (`Pal4Service::create_story_director_from_save`). Applied via
+    /// (`Pal4Service::enter_load_game`). Applied via
     /// [`load_state`] on the first advancing `update`, then cleared,
     /// so the saved scene/leader/position and story-plot globals are
     /// restored before play begins. `None` for a fresh New Game.
@@ -131,7 +130,12 @@ impl OpenPAL4Director {
         input: Rc<RefCell<dyn InputEngine>>,
         audio: Rc<dyn AudioEngine>,
         task_manager: Rc<TaskManager>,
+        session: Rc<RefCell<Pal4Session>>,
     ) -> Self {
+        // The session is the app-lifetime, Rc-shared playthrough state
+        // owned by `Pal4Service`; this director just holds a clone of
+        // the handle in its context, so the same session is observed by
+        // every mode and by app-lifetime code (the agent dispatcher).
         let app_context = Pal4AppContext::new(
             component_factory,
             loader,
@@ -140,6 +144,7 @@ impl OpenPAL4Director {
             input.clone(),
             audio,
             task_manager,
+            session,
         );
         Self {
             vm: RefCell::new(create_script_vm(app_context)),
@@ -166,7 +171,7 @@ impl OpenPAL4Director {
     }
 
     /// Queue a save-slot load to be applied on the first advancing
-    /// `update`. Used by `Pal4Service::create_story_director_from_save`
+    /// `update`. Used by `Pal4Service::enter_load_game`
     /// so the start-menu load screen can boot directly into a save.
     pub fn set_pending_load_slot(&self, slot: i32) {
         self.pending_load_slot.set(Some(slot));
@@ -276,97 +281,73 @@ impl OpenPAL4Director {
     }
 
     /// Persist the current game state to `slot` as JSON. Snapshots the
-    /// shared angelscript globals (story-plot flags) plus the live
-    /// scene/block/leader/position so a later load resumes at the same
-    /// point. Negative slots are ignored by `Pal4PersistentState::save`.
+    /// shared angelscript globals (story-plot flags) plus the leader's
+    /// live position / facing and camera so a later load resumes at the
+    /// same point. Scene / block / leader / player-locked already live
+    /// in the session (its single source of truth — see
+    /// `Pal4AppContext`), so they are persisted automatically. Negative
+    /// slots are ignored by `Pal4PersistentState::save`.
     pub fn save_state(&self, slot: i32) {
         let mut vm = self.vm.borrow_mut();
         let globals = vm.g.borrow().globals_snapshot();
 
         let app = vm.app_context_mut();
-        let pos = app.leader_pos();
-        let dir = app.leader_direction();
-        let scene = app.scene_name().to_string();
-        let block = app.block_name().to_string();
-        let leader = app.leader();
+        let position = Some(app.leader_pos());
+        let direction = Some(app.leader_direction());
         let camera = app.camera_transform();
-        let player_locked = app.is_player_locked();
 
-        let state = app.persistent_state_mut();
-        state.set_script_globals(globals);
-        state.set_scene(scene, block);
-        state.set_leader(leader);
-        state.set_position(Some(pos));
-        state.set_direction(Some(dir));
-        state.set_camera(camera);
-        state.set_player_locked(player_locked);
-        state.save(slot);
+        app.session_mut()
+            .save_runtime(slot, position, direction, camera, globals);
     }
 
     /// Restore game state from `slot`, reloading the saved scene and
     /// repositioning the leader. No-ops (with a log) when the slot file
     /// is missing or malformed.
     pub fn load_state(&self, slot: i32) {
-        let app_name = self
-            .vm
-            .borrow()
-            .app_context()
-            .persistent_state()
-            .app_name()
-            .to_string();
+        let mut vm = self.vm.borrow_mut();
 
-        let state = match Pal4PersistentState::load(&app_name, slot) {
-            Ok(state) => state,
+        let loaded = vm.app_context_mut().session_mut().load_slot(slot);
+        let snapshot = match loaded {
+            Ok(snapshot) => snapshot,
             Err(e) => {
                 log::error!("Cannot load save slot {}: {}", slot, e);
                 return;
             }
         };
 
-        let scene = state.scene_name().to_string();
-        let block = state.block_name().to_string();
-        let leader = state.leader();
-        let pos = state.position();
-        let dir = state.direction();
-        let camera = state.camera().cloned();
-        let player_locked = state.player_locked();
-        let globals = state.script_globals().to_vec();
-
-        let mut vm = self.vm.borrow_mut();
-        vm.g.borrow_mut().restore_globals(&globals);
+        vm.g.borrow_mut().restore_globals(&snapshot.script_globals);
 
         let app = vm.app_context_mut();
-        app.set_persistent_state(state);
 
-        if !scene.is_empty() {
-            if let Err(err) = app.load_scene(&scene, &block) {
+        if !snapshot.scene_name.is_empty() {
+            if let Err(err) = app.load_scene(&snapshot.scene_name, &snapshot.block_name) {
                 log::error!(
                     "OpenPAL4Director::load_state: failed to load scene='{}' block='{}': {:?}; \
                      save-load partially restored (globals + leader applied, scene not changed)",
-                    scene,
-                    block,
+                    snapshot.scene_name,
+                    snapshot.block_name,
                     err
                 );
                 return;
             }
-            app.set_leader(leader as i32);
-            if let Some(pos) = pos {
-                app.set_player_pos(leader as i32, &pos);
+            app.set_leader(snapshot.leader as i32);
+            if let Some(pos) = snapshot.position {
+                app.set_player_pos(snapshot.leader as i32, &pos);
             }
-            if let Some(dir) = dir {
-                app.player_set_direction(leader as i32, dir);
+            if let Some(dir) = snapshot.direction {
+                app.player_set_direction(snapshot.leader as i32, dir);
             }
             // Restore the exact camera view last, after the scene (and
             // its fresh default camera) is in place. Older saves with
             // no camera snapshot keep the scene default.
-            if let Some(camera) = camera {
+            if let Some(camera) = snapshot.camera {
                 app.set_camera_transform(&camera);
             }
             // Re-apply the saved control-lock state to the new scene's
             // actor controller. Without this the player stays locked at
             // the app-context default (locked), since we cancelled the
             // new-game opening script that would normally unlock it.
-            app.lock_player(player_locked);
+            app.lock_player(snapshot.player_locked);
         }
 
         log::info!("Game loaded from slot {}", slot);
@@ -423,21 +404,21 @@ impl IDirectorImpl for OpenPAL4Director {
 
     fn update(&self, delta_sec: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
         let _timer = radiance::perf::timer("pal4.director.update_total_ns");
-        // 1. Drain any agent commands queued by the HTTP listener.
-        //    Done first so `pause` / `step` / `input` requests take
-        //    effect on this same tick.
-        radiance::perf::time("pal4.director.drain_agent_total_ns", || {
-            self.drain_agent_commands();
-        });
+        // Agent commands were already drained this frame by the
+        // app-lifetime `Pal4AgentDispatcher` in `on_updating` (which
+        // runs before this `update`), so `pause` / `step` / `input` /
+        // `fire_trigger` requests are already applied here. This
+        // director only owns the post-VM settle (`poll_pending_fires`)
+        // and the per-frame agent bookkeeping (`end_agent_frame`).
 
-        // 2. Decide whether this real frame actually advances the
-        //    simulation. Pause + zero pending steps = full freeze
-        //    (input bridge still ticks so a held key set just before
-        //    pause stays sensible; that's handled below).
+        // Decide whether this real frame actually advances the
+        // simulation. Pause + zero pending steps = full freeze
+        // (input bridge still ticks so a held key set just before
+        // pause stays sensible; that's handled below).
         let (advance, effective_dt) = self.compute_effective_dt(delta_sec);
 
         if !advance {
-            self.end_agent_frame(delta_sec);
+            self.end_agent_frame();
             return None;
         }
 
@@ -492,12 +473,35 @@ impl IDirectorImpl for OpenPAL4Director {
                 .update(scene_manager.scene().unwrap(), delta_sec)
         }*/
 
-        self.end_agent_frame(effective_dt);
+        self.end_agent_frame();
 
         None
     }
 
-    fn deactivate(&self) {}
+    fn deactivate(&self) {
+        // Fail any in-flight deferred `fire_trigger { wait_until_idle }`
+        // replies: this director is being torn down (e.g. an agent
+        // `new_game` / `load`), so their VM will never settle. Reply each
+        // with a clear error instead of letting the reply channels drop
+        // to a generic "channel disconnected" 500.
+        let pending = std::mem::take(&mut *self.pending_fires.borrow_mut());
+        for pf in pending {
+            pf.env.reply(AgentResponse::err(AgentError::conflict(
+                "mode changed before trigger settled",
+            )));
+        }
+
+        // Nothing else to do for the agent surface: the app-lifetime
+        // `Pal4AgentDispatcher` looks up the active director from the
+        // `SceneManager` each frame, so once this director is no longer
+        // installed the dispatcher automatically falls back to the
+        // ambient (menu) command set — no flag to clear.
+        //
+        // Nothing to do for the session either: it is owned at app
+        // lifetime by `Pal4Service` via a shared `Rc` handle. Dropping
+        // this director just drops its handle clone; the session lives
+        // on, so a future mode resumes the same state.
+    }
 }
 
 impl IImmediateDirectorImpl for OpenPAL4Director {
@@ -536,37 +540,25 @@ impl IImmediateDirectorImpl for OpenPAL4Director {
 // `None`) and runs exactly as before.
 
 impl OpenPAL4Director {
-    /// Drain every command queued by the HTTP listener since the last
-    /// frame, dispatching each into `dispatch_agent_command` and
-    /// shipping the response back. Safe to call when no bridge is
-    /// installed — returns immediately.
-    fn drain_agent_commands(&self) {
-        let bridge = match self.agent.borrow().clone() {
-            Some(b) => b,
-            None => return,
-        };
-
-        let mut envelopes = Vec::new();
-        if let Some(consumer) = bridge.consumer.borrow().as_ref() {
-            consumer.drain(|env| envelopes.push(env));
-        }
-
-        for env in envelopes {
-            // FireSceneTrigger with `wait_until_idle` is special-
-            // cased here so the dispatcher can stash the envelope
-            // and reply across frames once the VM settles. Every
-            // other command (and FireSceneTrigger with the legacy
-            // immediate semantics) goes through the sync path.
-            if let agent_server::protocol::AgentCommand::FireSceneTrigger(params) = &env.command {
-                if params.wait_until_idle {
-                    self.begin_pending_fire(params.clone(), env);
-                    continue;
-                }
+    /// Handle one agent command envelope with full story-mode
+    /// capabilities (VM, scene, app_context). The app-lifetime
+    /// [`Pal4AgentDispatcher`](crate::openpal4::service::Pal4Service::pump_agent)
+    /// drains the queue once per frame (in `on_updating`, before this
+    /// director's `update`) and calls this for each envelope when the
+    /// active director is a story director. `FireSceneTrigger` with
+    /// `wait_until_idle` is special-cased into the cross-frame settle
+    /// queue (replied by [`Self::poll_pending_fires`] after the VM
+    /// ticks); every other command replies synchronously here.
+    pub fn handle_agent_envelope(&self, env: agent_server::AgentEnvelope) {
+        if let agent_server::protocol::AgentCommand::FireSceneTrigger(params) = &env.command {
+            if params.wait_until_idle {
+                self.begin_pending_fire(params.clone(), env);
+                return;
             }
-            let cmd = env.command.clone();
-            let response = self.dispatch_agent_command(cmd);
-            env.reply(response);
         }
+        let cmd = env.command.clone();
+        let response = self.dispatch_agent_command(cmd);
+        env.reply(response);
     }
 
     /// Poll the deferred-reply queue and ship responses for any
@@ -677,63 +669,42 @@ impl OpenPAL4Director {
     }
 
     /// Compute `(should_advance, effective_dt)` honouring the agent
-    /// pause / step machinery. The two callers (`update` real path and
-    /// `end_agent_frame`-only path) share this so the semantics are
-    /// in one place.
+    /// pause / step machinery. The policy itself lives on
+    /// [`Pal4AgentBridge::effective_dt`] (generic, mode-agnostic); this
+    /// just applies it, or runs at the real rate when no agent bridge
+    /// is installed.
     fn compute_effective_dt(&self, delta_sec: f32) -> (bool, f32) {
-        let Some(bridge) = self.agent.borrow().clone() else {
-            return (true, delta_sec);
-        };
-
-        if !bridge.paused.get() {
-            return (true, delta_sec);
-        }
-
-        let pending = bridge.requested_steps.get();
-        if pending == 0 {
-            return (false, 0.0);
-        }
-
-        bridge.requested_steps.set(pending - 1);
-        (true, bridge.effective_step_dt())
+        self.agent
+            .borrow()
+            .as_ref()
+            .map_or((true, delta_sec), |bridge| bridge.effective_dt(delta_sec))
     }
 
-    /// Tail-end of every `update` tick: roll the synthetic input
-    /// bridge, advance the frame counter, mirror fps/dt into the
-    /// agent bridge so `/v1/state` reads the latest values without
-    /// extra borrows.
-    fn end_agent_frame(&self, dt: f32) {
-        let Some(bridge) = self.agent.borrow().clone() else {
-            return;
-        };
-        bridge.input_bridge.borrow().end_frame();
-        bridge.frame.set(bridge.frame.get().saturating_add(1));
-        bridge.dt_display.set(dt);
-        // Mirror smoothed FPS using the same EMA the debug overlay
-        // uses, so the two readouts stay coherent.
-        let inst_fps = if dt > 1e-4 { 1.0 / dt } else { 0.0 };
-        let prev = self.fps_smoothed.get();
-        let fps = if prev <= 0.0 {
-            inst_fps
-        } else {
-            prev * 0.9 + inst_fps * 0.1
-        };
-        self.fps_smoothed.set(fps);
-        bridge.fps_display.set(fps);
+    /// Tail-end of every story `update` tick: clear the synthetic-input
+    /// edges now that the VM / scripts / actor controllers have polled
+    /// input for the frame. The frame-counter / fps / dt **telemetry**
+    /// is published separately (once per frame, for every mode) by the
+    /// app-lifetime dispatcher via
+    /// [`Pal4AgentBridge::publish_frame_telemetry`] — only the
+    /// input-edge clear has to stay here, because it must run *after*
+    /// this director ticks its VM.
+    fn end_agent_frame(&self) {
+        if let Some(bridge) = self.agent.borrow().as_ref() {
+            bridge.input_bridge.borrow().end_frame();
+        }
     }
 
-    /// Single switchboard for every [`AgentCommand`]. Runs on the game
-    /// thread; safe to borrow `self.vm` / `self.agent`.
+    /// Switchboard for the **VM / scene** agent commands — the ones that
+    /// need the running script VM, the live scene, or `Pal4AppContext`.
+    /// Bridge-only commands (input, time control, screenshot, perf, log)
+    /// are handled upstream by the app-lifetime `Pal4AgentDispatcher`
+    /// (`Pal4Service::dispatch_bridge_command`) and never reach here.
+    /// Runs on the game thread; safe to borrow `self.vm` / `self.agent`.
     fn dispatch_agent_command(&self, command: AgentCommand) -> AgentResponse {
         match command {
             AgentCommand::GetState => AgentResponse::State(self.build_state_snapshot()),
-            AgentCommand::KeyInput(params) => self.handle_key_input(params),
-            AgentCommand::AxisInput(params) => self.handle_axis_input(params),
             AgentCommand::TeleportPlayer(params) => self.handle_teleport(params),
             AgentCommand::AdvanceDialog => self.handle_advance_dialog(),
-            AgentCommand::PauseTime => self.handle_pause(true),
-            AgentCommand::ResumeTime => self.handle_pause(false),
-            AgentCommand::StepTime(params) => self.handle_step(params),
             AgentCommand::FastForward(params) => self.handle_fast_forward(params),
             AgentCommand::SaveSlot(params) => {
                 self.save_state(params.slot);
@@ -743,15 +714,6 @@ impl OpenPAL4Director {
                 self.load_state(params.slot);
                 AgentResponse::Ok
             }
-            AgentCommand::LogTail(_) => {
-                // Log tailing is served directly by the transport
-                // layer from the global log sink; we should never see
-                // one of these on the game thread.
-                AgentResponse::err(AgentError::internal(
-                    "log_tail must not be queued; served by transport",
-                ))
-            }
-            AgentCommand::Screenshot => self.handle_screenshot(),
             AgentCommand::ScriptEval(params) => self.handle_script_eval(params),
             AgentCommand::GetSceneTriggers => self.handle_get_scene_triggers(),
             AgentCommand::GetSceneObjects => self.handle_get_scene_objects(),
@@ -775,51 +737,14 @@ impl OpenPAL4Director {
                     .buffer_world_map_choice(params.scene, params.block);
                 AgentResponse::Ok
             }
-            AgentCommand::GetPerfMetrics => self.handle_get_perf_metrics(),
-            // `AgentCommand` is `#[non_exhaustive]` so future
-            // additions don't break older sessions; until they're
-            // wired here we fail closed with a clear error.
+            // Bridge-only commands (input / time / screenshot / perf /
+            // log) are handled by the dispatcher and never routed here;
+            // `AgentCommand` is also `#[non_exhaustive]`. Either way we
+            // fail closed with a clear error.
             _ => AgentResponse::err(AgentError::not_implemented(
                 "command not implemented by the PAL4 session",
             )),
         }
-    }
-
-    fn handle_key_input(&self, params: KeyInputParams) -> AgentResponse {
-        let Some(bridge) = self.agent.borrow().clone() else {
-            return AgentResponse::err(AgentError::internal(
-                "agent bridge unset while dispatching key input",
-            ));
-        };
-        let Some(key) = Key::from_name(&params.key) else {
-            return AgentResponse::err(AgentError::bad_request(format!(
-                "unknown key name: {}",
-                params.key
-            )));
-        };
-        let synthetic = bridge.input_bridge.borrow();
-        match params.action {
-            KeyAction::Down => synthetic.press_down(key),
-            KeyAction::Up => synthetic.release(key),
-            KeyAction::Tap => synthetic.tap(key),
-        }
-        AgentResponse::Ok
-    }
-
-    fn handle_axis_input(&self, params: AxisInputParams) -> AgentResponse {
-        let Some(bridge) = self.agent.borrow().clone() else {
-            return AgentResponse::err(AgentError::internal(
-                "agent bridge unset while dispatching axis input",
-            ));
-        };
-        let Some(axis) = Axis::from_name(&params.axis) else {
-            return AgentResponse::err(AgentError::bad_request(format!(
-                "unknown axis name: {}",
-                params.axis
-            )));
-        };
-        bridge.input_bridge.borrow().set_axis(axis, params.value);
-        AgentResponse::Ok
     }
 
     fn handle_teleport(&self, params: TeleportParams) -> AgentResponse {
@@ -841,82 +766,12 @@ impl OpenPAL4Director {
         AgentResponse::Ok
     }
 
-    fn handle_pause(&self, paused: bool) -> AgentResponse {
-        let Some(bridge) = self.agent.borrow().clone() else {
-            return AgentResponse::err(AgentError::internal("agent bridge unset"));
-        };
-        bridge.paused.set(paused);
-        if !paused {
-            // Resuming clears any leftover step budget so the game
-            // doesn't double-tick.
-            bridge.requested_steps.set(0);
-        }
-        AgentResponse::Ok
-    }
-
-    fn handle_step(&self, params: StepTimeParams) -> AgentResponse {
-        let Some(bridge) = self.agent.borrow().clone() else {
-            return AgentResponse::err(AgentError::internal("agent bridge unset"));
-        };
-        if !bridge.paused.get() {
-            return AgentResponse::err(AgentError::conflict(
-                "must pause time before requesting fixed-step frames",
-            ));
-        }
-        if params.frames == 0 {
-            return AgentResponse::Ok;
-        }
-        bridge
-            .requested_steps
-            .set(bridge.requested_steps.get().saturating_add(params.frames));
-        bridge.requested_dt.set(params.dt.unwrap_or(0.0).max(0.0));
-        AgentResponse::Ok
-    }
-
     fn handle_fast_forward(&self, params: FastForwardParams) -> AgentResponse {
         self.vm
             .borrow_mut()
             .app_context_mut()
             .set_fast_forward(params.on);
         AgentResponse::Ok
-    }
-
-    fn handle_screenshot(&self) -> AgentResponse {
-        let bridge = match self.agent.borrow().clone() {
-            Some(b) => b,
-            None => {
-                return AgentResponse::err(AgentError::internal(
-                    "agent bridge unset while dispatching screenshot",
-                ));
-            }
-        };
-
-        let engine_handle = bridge.rendering_engine.borrow().clone();
-        let engine = match engine_handle {
-            Some(e) => e,
-            None => {
-                return AgentResponse::err(AgentError::not_implemented(
-                    "no rendering engine wired to the agent bridge (headless build)",
-                ));
-            }
-        };
-
-        let captured = engine.borrow_mut().capture_last_frame();
-        match captured {
-            Some(frame) => AgentResponse::Screenshot(ScreenshotResponse {
-                width: frame.width,
-                height: frame.height,
-                encoded: true,
-                rgba: frame.rgba,
-            }),
-            None => {
-                // Empty payload — the transport's `respond_screenshot`
-                // converts an empty ScreenshotResponse into a 501 with
-                // a descriptive message, so we stay consistent with
-                // every other "screenshot unavailable" path.
-                AgentResponse::Screenshot(ScreenshotResponse::default())
-            }
-        }
     }
 
     fn handle_script_eval(&self, params: ScriptEvalParams) -> AgentResponse {
@@ -1191,45 +1046,6 @@ impl OpenPAL4Director {
             dropped: result.dropped,
             capturing: bridge.trace_sink.is_capturing(),
             events: result.events,
-        })
-    }
-
-    fn handle_get_perf_metrics(&self) -> AgentResponse {
-        // `radiance::perf::snapshot()` reads the thread_local metrics
-        // registry, so this must run on the game thread — which is
-        // exactly where agent commands dispatch. When perf is disabled
-        // at boot the snapshot is empty; the response's `enabled`
-        // field lets the agent distinguish that from "enabled but
-        // nothing recorded yet".
-        let entries = radiance::perf::snapshot();
-        let metrics = entries
-            .into_iter()
-            .map(|(name, snapshot)| match snapshot {
-                radiance::perf::MetricSnapshot::Timing {
-                    calls,
-                    avg_ns,
-                    max_ns,
-                } => PerfMetric::Timing {
-                    name: name.to_string(),
-                    calls,
-                    avg_ns,
-                    max_ns,
-                },
-                radiance::perf::MetricSnapshot::Counter { frame, total } => PerfMetric::Counter {
-                    name: name.to_string(),
-                    frame,
-                    total,
-                },
-                radiance::perf::MetricSnapshot::Gauge { last, max } => PerfMetric::Gauge {
-                    name: name.to_string(),
-                    last,
-                    max,
-                },
-            })
-            .collect();
-        AgentResponse::PerfMetrics(PerfMetricsResponse {
-            enabled: radiance::perf::enabled(),
-            metrics,
         })
     }
 

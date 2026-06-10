@@ -1,5 +1,5 @@
 use std::{
-    cell::{Cell, RefCell},
+    cell::{Cell, Ref, RefCell, RefMut},
     collections::HashMap,
     rc::Rc,
 };
@@ -62,7 +62,8 @@ use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimation, Pal4ActorAnimationConfig},
     asset_loader::AssetLoader,
     scene::{Pal4ActorControllerFactory, Pal4Scene},
-    states::persistent_state::{PAL4_APP_NAME, Pal4PersistentState},
+    session::Pal4Session,
+    states::persistent_state::Pal4PersistentState,
 };
 
 pub struct Pal4AppContext {
@@ -96,10 +97,6 @@ pub struct Pal4AppContext {
     voice_source: Option<Box<dyn AudioMemorySource>>,
     camera_data: Option<CameraDataFile>,
     camera_run: Option<CameraRun>,
-    scene_name: String,
-    block_name: String,
-    leader: usize,
-    player_locked: bool,
 
     /// Plot fast-forward toggle, driven by the PAL4 debug overlay.
     /// `Cell` so the `&self` script continuations (giWait / giTalk /
@@ -110,11 +107,14 @@ pub struct Pal4AppContext {
     moving_entities: HashMap<ActorId, MovingEntity>,
     rotating_entities: HashMap<ActorId, RotatingEntity>,
 
-    /// Serializable PAL4 game progress (money, party, inventory,
-    /// story flags). Mutated by the scripted game-state functions in
-    /// `openpal4::scripting` and persisted by the director's
-    /// save/load orchestration.
-    persistent_state: Pal4PersistentState,
+    /// Shared handle to the playthrough session — the single source of
+    /// truth for durable game state (scene/block/leader/player_locked,
+    /// money, party, inventory, story globals, save/load). Owned at app
+    /// lifetime by `Pal4Service` and cloned into the active director's
+    /// context, so the session survives mode switches and is reachable
+    /// from app-lifetime code (the agent dispatcher). Accessors below
+    /// hand out `Ref`/`RefMut` guards over it.
+    session: Rc<RefCell<Pal4Session>>,
 
     /// Factory for the scripted `IPal4ActorController` component. `None`
     /// until the application bootstrap calls
@@ -160,7 +160,13 @@ impl Pal4AppContext {
         input: Rc<RefCell<dyn InputEngine>>,
         audio_engine: Rc<dyn AudioEngine>,
         task_manager: Rc<TaskManager>,
+        session: Rc<RefCell<Pal4Session>>,
     ) -> Self {
+        // Scene/block/leader/player_locked are owned solely by the
+        // session (single source of truth, shared by Rc handle). A
+        // fresh session already starts control-locked via
+        // `Pal4PersistentState::new`, and a loaded save carries its own
+        // lock state; nothing to seed here.
         Self {
             loader,
             scene_manager,
@@ -177,17 +183,13 @@ impl Pal4AppContext {
             voice_source: None,
             camera_data: None,
             camera_run: None,
-            scene_name: String::new(),
-            block_name: String::new(),
-            leader: 0,
             scene: Pal4Scene::new_empty(),
             dialog_box: DialogBox::new(ui),
-            player_locked: true,
             fast_forward: Cell::new(false),
             moving_entities: HashMap::new(),
             rotating_entities: HashMap::new(),
             actor_controller_factory: None,
-            persistent_state: Pal4PersistentState::new(PAL4_APP_NAME.to_string()),
+            session,
             pending_dialog_choices: Vec::new(),
             next_dialog_choice: Cell::new(None),
             world_map_open: Cell::new(false),
@@ -249,7 +251,7 @@ impl Pal4AppContext {
         // voice paths.
         let leader_pos = self
             .scene
-            .get_player(self.leader)
+            .get_player(self.session.borrow().state().leader())
             .world_transform()
             .position();
         let to_play = self.scene.tick_sound_emitters(leader_pos, delta_sec);
@@ -417,10 +419,11 @@ impl Pal4AppContext {
     }
 
     pub fn event_triggered(&mut self, _delta_sec: f32) -> Option<String> {
+        let leader = self.session.borrow().state().leader();
         self.scene
             .test_event_triggers()
             .and_then(|event| event.function.function.to_string().ok())
-            .or_else(|| self.scene.test_interaction(self.input.clone(), self.leader))
+            .or_else(|| self.scene.test_interaction(self.input.clone(), leader))
     }
 
     pub fn set_actdrop(&mut self, darkness: InterpValue<f32>) {
@@ -432,14 +435,15 @@ impl Pal4AppContext {
     }
 
     pub fn set_leader(&mut self, leader: i32) {
-        self.leader = leader as usize;
-        self.enable_player(self.leader, true);
+        let leader = leader as usize;
+        self.session.borrow_mut().state_mut().set_leader(leader);
+        self.enable_player(leader, true);
         // Route the (single) per-scene actor controller to the new
         // leader's entity. Without this, the previous leader's
         // controller would keep ticking floor/wall raycasts against
         // its own (now hidden) entity — manifesting as "invisible
         // walls" or "phasing through walls" after a leader switch.
-        self.scene.set_active_leader(self.leader);
+        self.scene.set_active_leader(leader);
     }
 
     pub fn set_player_pos(&mut self, player: i32, pos: &Vec3) {
@@ -631,7 +635,7 @@ impl Pal4AppContext {
     }
 
     pub fn lock_player(&mut self, lock: bool) {
-        self.player_locked = lock;
+        self.session.borrow_mut().state_mut().set_player_locked(lock);
         if let Some(ctrl) = self.scene.actor_controller() {
             ctrl.lock_control(lock);
         }
@@ -641,7 +645,7 @@ impl Pal4AppContext {
     /// scripted cutscene). Snapshotted by save-load so a restored game
     /// resumes with the same controllability.
     pub fn is_player_locked(&self) -> bool {
-        self.player_locked
+        self.session.borrow().state().player_locked()
     }
 
     pub fn set_player_ang(&mut self, player: i32, ang: f32) {
@@ -743,7 +747,9 @@ impl Pal4AppContext {
         let mut out = Vec::with_capacity(crate::openpal4::states::persistent_state::PLAYER_COUNT);
         for slot in 0..crate::openpal4::states::persistent_state::PLAYER_COUNT {
             let p = self
-                .persistent_state
+                .session
+                .borrow()
+                .state()
                 .player(slot)
                 .cloned()
                 .unwrap_or_default();
@@ -766,7 +772,9 @@ impl Pal4AppContext {
     /// state, not an error.
     pub fn inventory_snapshot(&self) -> Vec<(i32, i32)> {
         let mut out: Vec<(i32, i32)> = self
-            .persistent_state
+            .session
+            .borrow()
+            .state()
             .inventory_iter()
             .map(|(id, count)| (*id, *count))
             .collect();
@@ -835,31 +843,57 @@ impl Pal4AppContext {
         choice
     }
 
-    pub fn scene_name(&self) -> &str {
-        &self.scene_name
+    pub fn scene_name(&self) -> Ref<'_, str> {
+        Ref::map(self.session.borrow(), |s| s.state().scene_name())
     }
 
-    pub fn block_name(&self) -> &str {
-        &self.block_name
+    pub fn block_name(&self) -> Ref<'_, str> {
+        Ref::map(self.session.borrow(), |s| s.state().block_name())
     }
 
     pub fn leader(&self) -> usize {
-        self.leader
+        self.session.borrow().state().leader()
     }
 
-    pub fn persistent_state(&self) -> &Pal4PersistentState {
-        &self.persistent_state
+    /// Shared, read-only view of the durable persistent state. Returns a
+    /// `Ref` guard over the shared session; keep it to a single
+    /// statement so it drops before any later `*_mut` borrow (the
+    /// `RefCell` enforces this at runtime).
+    pub fn persistent_state(&self) -> Ref<'_, Pal4PersistentState> {
+        Ref::map(self.session.borrow(), |s| s.state())
     }
 
-    pub fn persistent_state_mut(&mut self) -> &mut Pal4PersistentState {
-        &mut self.persistent_state
+    /// Mutable view of the durable persistent state. Returns a `RefMut`
+    /// guard; `&self` (not `&mut self`) because the `RefCell` mediates
+    /// exclusivity. Must not be held across another borrow of the
+    /// session.
+    pub fn persistent_state_mut(&self) -> RefMut<'_, Pal4PersistentState> {
+        RefMut::map(self.session.borrow_mut(), |s| s.state_mut())
     }
 
-    /// Overwrite the entire persistent state (used when loading a
-    /// save slot). Caller is responsible for any follow-up scene
-    /// reload / leader restore.
-    pub fn set_persistent_state(&mut self, state: Pal4PersistentState) {
-        self.persistent_state = state;
+    /// Overwrite the entire persistent state (used when loading a save
+    /// slot / `giNewGame`). Caller is responsible for any follow-up
+    /// scene reload / leader restore.
+    pub fn set_persistent_state(&self, state: Pal4PersistentState) {
+        self.session.borrow_mut().replace_state(state);
+    }
+
+    /// Clone the shared session handle (app-lifetime owner: `Pal4Service`).
+    pub fn session_handle(&self) -> Rc<RefCell<Pal4Session>> {
+        self.session.clone()
+    }
+
+    /// Borrow the playthrough [`Pal4Session`] — the mode-agnostic owner
+    /// of the durable game state and its save/load policy.
+    pub fn session(&self) -> Ref<'_, Pal4Session> {
+        self.session.borrow()
+    }
+
+    /// Mutable borrow of the playthrough [`Pal4Session`]. The director's
+    /// save/load orchestration drives `Pal4Session::save_runtime` /
+    /// `Pal4Session::load_slot` through this.
+    pub fn session_mut(&self) -> RefMut<'_, Pal4Session> {
+        self.session.borrow_mut()
     }
 
     /// Forward the PAL4 debug overlay's BSP-visibility toggle to the
@@ -895,7 +929,7 @@ impl Pal4AppContext {
     /// Returns `Vec3::new(0.0, 0.0, 0.0)` while the scene hasn't been
     /// loaded (e.g. before the first `load_scene` call).
     pub fn leader_pos(&self) -> Vec3 {
-        let leader = self.leader;
+        let leader = self.session.borrow().state().leader();
         // `Pal4Scene::get_player` is `&self`. On an empty scene the
         // helper still returns the placeholder entity slot, whose
         // transform reports the identity translation — fine for the
@@ -911,7 +945,7 @@ impl Pal4AppContext {
     /// `player_set_direction` (yaw about world-up). Used by save-load
     /// to restore the exact orientation the player was standing in.
     pub fn leader_direction(&self) -> f32 {
-        yaw_from_transform(&self.scene.get_player(self.leader))
+        yaw_from_transform(&self.scene.get_player(self.session.borrow().state().leader()))
     }
 
     pub fn load_scene(&mut self, scene_name: &str, block_name: &str) -> anyhow::Result<()> {
@@ -926,11 +960,15 @@ impl Pal4AppContext {
         self.scene = scene;
         self.scene_manager.push_scene(self.scene.scene.clone());
 
-        self.scene_name = scene_name.to_string();
-        self.block_name = block_name.to_string();
+        self.session
+            .borrow_mut()
+            .state_mut()
+            .set_scene(scene_name.to_string(), block_name.to_string());
 
-        self.set_leader(self.leader as i32);
-        self.lock_player(self.player_locked);
+        let leader = self.session.borrow().state().leader();
+        let player_locked = self.session.borrow().state().player_locked();
+        self.set_leader(leader as i32);
+        self.lock_player(player_locked);
         Ok(())
     }
 
@@ -1011,9 +1049,11 @@ impl Pal4AppContext {
     }
 
     pub fn prepare_camera(&mut self, name: &str) -> anyhow::Result<()> {
-        let data = self
-            .loader
-            .load_camera_data(name, &self.scene_name, &self.block_name)?;
+        let data = self.loader.load_camera_data(
+            name,
+            self.session.borrow().state().scene_name(),
+            self.session.borrow().state().block_name(),
+        )?;
         self.camera_data = Some(data);
         Ok(())
     }
@@ -1218,7 +1258,7 @@ impl Pal4AppContext {
     #[inline]
     fn map_player(&self, player: i32) -> usize {
         if player == -1 {
-            self.leader
+            self.session.borrow().state().leader()
         } else {
             player as usize
         }

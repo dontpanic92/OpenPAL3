@@ -147,6 +147,55 @@ impl Pal4AgentBridge {
         let dt = self.requested_dt.get();
         if dt > 0.0 { dt } else { DEFAULT_STEP_DT }
     }
+
+    /// Pause / single-step **policy** — the generic time-control rule
+    /// the agent surface enforces, kept on the bridge so **any** mode
+    /// (story now, battle later) can gate its own simulation tick
+    /// through it instead of re-implementing it.
+    ///
+    /// Returns `(advance, effective_dt)`:
+    /// * not paused → `(true, delta_sec)` (run at the real frame rate);
+    /// * paused with no pending steps → `(false, 0.0)` (freeze — the
+    ///   caller must skip its simulation tick this frame);
+    /// * paused with pending steps → consumes one step and returns
+    ///   `(true, effective_step_dt())` (advance exactly one fixed step).
+    ///
+    /// Enforcement stays with the caller (only the component that ticks
+    /// the simulation can skip/scale its own tick); this method owns
+    /// only the decision.
+    pub fn effective_dt(&self, delta_sec: f32) -> (bool, f32) {
+        if !self.paused.get() {
+            return (true, delta_sec);
+        }
+        let pending = self.requested_steps.get();
+        if pending == 0 {
+            return (false, 0.0);
+        }
+        self.requested_steps.set(pending - 1);
+        (true, self.effective_step_dt())
+    }
+
+    /// Per-frame agent **telemetry** published once per frame in every
+    /// mode by the app-lifetime dispatcher: advance the monotonic frame
+    /// counter and publish the latest `dt` / smoothed FPS for
+    /// `/v1/state`. Self-contained on the bridge (the EMA state is
+    /// `fps_display` itself), so it does not depend on any director.
+    ///
+    /// Note: this does **not** clear synthetic-input edges — that must
+    /// run *after* the active mode polls input for the frame, so it
+    /// stays with the caller that owns the input-polling tick.
+    pub fn publish_frame_telemetry(&self, dt: f32) {
+        self.frame.set(self.frame.get().saturating_add(1));
+        self.dt_display.set(dt);
+        let inst_fps = if dt > 1e-4 { 1.0 / dt } else { 0.0 };
+        let prev = self.fps_display.get();
+        let fps = if prev <= 0.0 {
+            inst_fps
+        } else {
+            prev * 0.9 + inst_fps * 0.1
+        };
+        self.fps_display.set(fps);
+    }
 }
 
 /// VM-side trace sink that forwards every [`TraceEvent`] into the

@@ -79,9 +79,14 @@ pub struct Pal4PersistentState {
     /// the same way. `None` in older saves.
     #[serde(default)]
     direction: Option<f32>,
-    /// Whether player control was locked (cutscene) at save time.
-    /// Defaults to `false` for older saves, which were always taken
-    /// during free movement, so they remain controllable after load.
+    /// Whether player control is locked (cutscene). A brand-new
+    /// playthrough starts **locked** (`Pal4PersistentState::new` sets
+    /// `true`) so the new-game intro plays out before the player gets
+    /// control — this is the single source of truth, honoured both at
+    /// `Pal4AppContext` construction and by the `giNewGame` reset.
+    /// The `#[serde(default)]` is independent and yields `false` for
+    /// older saves that lack the field (they were always taken during
+    /// free movement, so they remain controllable after load).
     #[serde(default)]
     player_locked: bool,
     /// Full camera transform (position + orientation) at save time, so
@@ -123,7 +128,11 @@ impl Pal4PersistentState {
             position: None,
             camera: None,
             direction: None,
-            player_locked: false,
+            // A fresh playthrough starts control-locked so the new-game
+            // opening cutscene runs before the player gets control. The
+            // serde default for this field stays `false` (older saves
+            // without it were taken during free movement).
+            player_locked: true,
             players,
             inventory: HashMap::new(),
             script_globals: Vec::new(),
@@ -431,5 +440,25 @@ mod tests {
         let json = r#"{"app_name":"OpenPAL4","scene_name":"m01","block_name":"1"}"#;
         let state: Pal4PersistentState = serde_json::from_str(json).unwrap();
         assert!(state.camera().is_none());
+    }
+
+    #[test]
+    fn new_game_starts_player_locked() {
+        // A fresh playthrough must start control-locked so the new-game
+        // opening cutscene runs before the player gets control. This is
+        // also the value `giNewGame` resets to (it calls `new`).
+        let state = Pal4PersistentState::new("OpenPAL4".to_string());
+        assert!(state.player_locked());
+    }
+
+    #[test]
+    fn legacy_save_without_player_locked_deserializes_unlocked() {
+        // The `new()` default (locked) must NOT leak into deserialization:
+        // older saves that predate the `player_locked` field were taken
+        // during free movement, so the serde default keeps them
+        // controllable (`false`) after load.
+        let json = r#"{"app_name":"OpenPAL4","scene_name":"m01","block_name":"1"}"#;
+        let state: Pal4PersistentState = serde_json::from_str(json).unwrap();
+        assert!(!state.player_locked());
     }
 }

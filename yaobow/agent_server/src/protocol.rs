@@ -115,6 +115,19 @@ pub enum AgentCommand {
     /// list in that case so callers don't have to special-case
     /// the disabled path).
     GetPerfMetrics,
+
+    /// Start a fresh story playthrough (New Game) — replaces the active
+    /// director with the PAL4 story director. Handled by the app-lifetime
+    /// dispatcher (which owns the `SceneManager`); works from the start
+    /// menu or as a restart from story.
+    EnterNewGame,
+
+    /// Load a saved playthrough into the story director (Load Game).
+    /// Like [`Self::EnterNewGame`] but boots directly into save `slot`.
+    EnterLoadGame(SlotParams),
+
+    /// Quit the application.
+    ExitGame,
 }
 
 /// Top-level agent response. Mirrors [`AgentCommand`] roughly but with

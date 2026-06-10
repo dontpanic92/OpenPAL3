@@ -76,7 +76,7 @@ class Pal4GameContext: IPal4GameContext {}
 // `create_director(asset_path)` now returns the **start-menu**
 // director (script-built via the `IYaobowScriptApp.make_pal4_start_menu`
 // hook). The menu's "New Game" handler swaps itself for the full
-// story director via `create_story_director(asset_path)`, which
+// story director via `enter_new_game(asset_path)`, which
 // holds the old construction body (asset loader, AS VM, agent
 // bridge wiring, debug bundle, actor controller).
 //
@@ -96,9 +96,9 @@ class Pal4GameContext: IPal4GameContext {}
 [uuid(60e42ff1-613a-4b0a-93c0-eada0bd0f9dd)]
 interface IPal4Service: IUnknown {
     IDirector create_director(&str asset_path);
-    IDirector create_story_director(&str asset_path);
+    IDirector enter_new_game(&str asset_path);
 
-    // Like `create_story_director`, but queues a load of save `slot`
+    // Like `enter_new_game`, but queues a load of save `slot`
     // (1-based, matching the JSON slot files under
     // `<save_dir>/OpenPAL4/Save/<slot>.json`) onto the fresh story
     // director. The load is applied on the director's first advancing
@@ -108,7 +108,7 @@ interface IPal4Service: IUnknown {
     // A missing or corrupt slot is non-fatal: the story director is
     // still returned (the load no-ops with a log), so the start menu's
     // load screen never dead-ends.
-    IDirector create_story_director_from_save(&str asset_path, int slot);
+    IDirector enter_load_game(&str asset_path, int slot);
 
     IUiLayoutHandle? open_layout(&str vfs_path);
 

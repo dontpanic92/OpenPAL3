@@ -428,6 +428,9 @@ fn parse_post_command(url: &str, req: &mut Request) -> Result<AgentCommand, Agen
         "/v1/world_map/choose" => {
             AgentCommand::ChooseWorldMap(parse::<crate::protocol::WorldMapChooseParams>(&body)?)
         }
+        "/v1/menu/new_game" => AgentCommand::EnterNewGame,
+        "/v1/menu/load" => AgentCommand::EnterLoadGame(parse::<SlotParams>(&body)?),
+        "/v1/menu/exit" => AgentCommand::ExitGame,
         _ => {
             return Err(AgentError::bad_request(format!(
                 "unknown POST route: {url}"

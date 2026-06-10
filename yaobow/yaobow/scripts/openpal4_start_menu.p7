@@ -7,7 +7,7 @@
 // `/gamedata/ui/layouts/loadWindow.xml` and lists the existing JSON
 // save slots (1-4). Picking a populated slot boots the story director
 // with that save pre-loaded via
-// `host.pal4().create_story_director_from_save(asset_path, slot)`; a
+// `host.pal4().enter_load_game(asset_path, slot)`; a
 // Back/Cancel control returns to the main menu. Other buttons
 // (Options, Movie, About, ...) render but are no-ops.
 
@@ -430,12 +430,12 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
             // Hand the engine the story director; the engine swaps
             // us out and our `deactivate()` releases the BGM + layout
             // (the latter unrefs its imageset atlases on drop).
-            return self.host.pal4().create_story_director(self.asset_path);
+            return self.host.pal4().enter_new_game(self.asset_path);
         }
         if code == INTENT_LOAD {
             // Boot the story director with the chosen save queued; it
             // applies the load on its first advancing update.
-            return self.host.pal4().create_story_director_from_save(
+            return self.host.pal4().enter_load_game(
                 self.asset_path, self.load_slot,
             );
         }

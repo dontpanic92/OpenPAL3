@@ -167,10 +167,22 @@ impl IComponentImpl for YaobowApplicationLoader {
 
     fn on_unloading(&self) {}
 
-    /// Empty after phase 2 — per-game dispatch happens script-side
-    /// via `title.p7`'s click handler returning the next director
-    /// from its `update()`. No more `selected_game` slot polling.
-    fn on_updating(&self, _delta_sec: f32) {}
+    /// Drives the PAL4 app-lifetime **single agent dispatcher** each
+    /// frame: it is the sole drainer of the agent command queue in every
+    /// mode, delegating to the active `OpenPAL4Director` in story mode
+    /// (resolved from the `SceneManager`) and answering the mode-agnostic
+    /// subset otherwise. No-op unless a PAL4 agent bridge was installed
+    /// (`--pal4 --agent-port`). Runs before `engine.update` so commands
+    /// land before the active director ticks its VM this frame.
+    fn on_updating(&self, delta_sec: f32) {
+        if let Some(project) = self.project.borrow().as_ref() {
+            project
+                .host_context()
+                .pal4()
+                .inner::<shared::openpal4::service::Pal4Service>()
+                .pump_agent(delta_sec);
+        }
+    }
 }
 
 impl YaobowApplicationLoader {

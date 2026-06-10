@@ -95,7 +95,7 @@ interface IYaobowScriptApp: IUnknown {
     // engine still calls `host.pal4().create_director(path)` and
     // receives a director (start menu now; the menu's New Game
     // handler hands the engine a story director via
-    // `host.pal4().create_story_director(path)` on the next update).
+    // `host.pal4().enter_new_game(path)` on the next update).
     //
     // Non-optional return: if the CEGUI layout fails to load the
     // menu director still mounts and renders a fallback message

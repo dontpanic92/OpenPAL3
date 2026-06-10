@@ -33,9 +33,13 @@ use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 use crosscom::ComRc;
+use agent_server::protocol::{
+    AgentCommand, AgentError, AgentResponse, AxisInputParams, KeyAction, KeyInputParams, PerfMetric,
+    PerfMetricsResponse, ScreenshotResponse, StateSnapshot, StepTimeParams,
+};
 use packfs::init_virtual_fs;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector, IScene};
-use radiance::input::{InputEngine, SyntheticInputBridge};
+use radiance::input::{Axis, InputEngine, Key, SyntheticInputBridge};
 use radiance::audio::Codec;
 use radiance_scripting::comdef::services::{IAudioSource, IUiLayoutHandle};
 use radiance_scripting::services::ImguiTextureCache;
@@ -45,9 +49,11 @@ use crate::loaders::cegui::layout as cegui_layout;
 use crate::loaders::cegui::ui_layout_handle::UiLayoutHandle;
 use crate::openpal4::agent::Pal4AgentBridge;
 use crate::openpal4::asset_loader::AssetLoader;
-use crate::openpal4::comdef::{IPal4Service, IPal4ServiceImpl};
+use crate::openpal4::comdef::{IOpenPAL4Director, IPal4Service, IPal4ServiceImpl};
 use crate::openpal4::director::OpenPAL4Director;
+use crate::openpal4::modes::{self, Pal4ModeIntent, Pal4ModeKind, Pal4ModeFactory, Pal4ModeRegistry};
 use crate::openpal4::scene::Pal4ActorControllerFactory;
+use crate::openpal4::session::Pal4Session;
 use crate::openpal4::states::persistent_state::{PAL4_APP_NAME, Pal4PersistentState};
 use common::store_ext::StoreExt2;
 
@@ -123,6 +129,27 @@ pub struct Pal4Service {
     /// return. The accessor refreshes it then returns a pointer into
     /// it; codegen copies into a CString immediately.
     summary_scratch: RefCell<String>,
+
+    /// The PAL4 mode-factory registry — the single extension point for
+    /// the game-mode graph. Pre-populated with the built-in start-menu
+    /// and story factories; `route` dispatches every
+    /// [`Pal4ModeIntent`](crate::openpal4::modes::Pal4ModeIntent)
+    /// through it. Future modes (e.g. battle) register a factory here
+    /// instead of editing the router. Wrapped in `RefCell` so
+    /// [`Pal4Service::register_mode`] can extend it after construction.
+    mode_registry: RefCell<Pal4ModeRegistry>,
+
+    /// App-lifetime owner of the playthrough [`Pal4Session`], shared by
+    /// `Rc` handle. Cloned into every story director's context (so the
+    /// session survives mode switches) and reachable from app-lifetime
+    /// code such as the agent dispatcher. `reset_session` starts a fresh
+    /// playthrough (New Game / return to title).
+    session: Rc<RefCell<Pal4Session>>,
+
+    /// The PAL4 asset path captured on the first `loader_for`. Lets the
+    /// app-lifetime mode-control commands (`/v1/menu/new_game` etc.)
+    /// rebuild the story director without the agent supplying a path.
+    launch_asset_path: RefCell<Option<String>>,
 }
 
 ComObject_Pal4Service!(super::Pal4Service);
@@ -141,7 +168,24 @@ impl Pal4Service {
             launch_loader: RefCell::new(None),
             texture_cache: RefCell::new(None),
             summary_scratch: RefCell::new(String::new()),
+            mode_registry: RefCell::new(Pal4ModeRegistry::with_builtins()),
+            session: Rc::new(RefCell::new(Pal4Session::new())),
+            launch_asset_path: RefCell::new(None),
         })
+    }
+
+    /// Clone the shared session handle. Used by `build_story_director`
+    /// to seed the director's context, and (Phase 8) by the app-lifetime
+    /// agent dispatcher to read/write session state without a director.
+    pub fn session_handle(&self) -> Rc<RefCell<Pal4Session>> {
+        self.session.clone()
+    }
+
+    /// Start a fresh playthrough — replace the shared session in place
+    /// so every existing handle observes the reset. Called when a new
+    /// playthrough begins (New Game) or the player returns to title.
+    pub fn reset_session(&self) {
+        *self.session.borrow_mut() = Pal4Session::new();
     }
 
     /// Install the imgui texture cache so `open_layout` can upload
@@ -213,48 +257,363 @@ impl Pal4Service {
         let vfs = init_virtual_fs(asset_path, None);
         let loader = AssetLoader::new(component_factory, input_engine, vfs);
         *self.launch_loader.borrow_mut() = Some(loader.clone());
+        // Remember the launch asset path so app-lifetime mode-control
+        // commands (`/v1/menu/new_game` etc.) can rebuild the story
+        // director without the agent having to supply a path.
+        *self.launch_asset_path.borrow_mut() = Some(asset_path.to_string());
         loader
+    }
+
+    /// App-lifetime **single agent dispatcher**. Driven once per frame
+    /// by `YaobowApplicationLoader::on_updating` (which runs *before*
+    /// the active director's `update`), it is the **sole drainer** of
+    /// the agent command queue in every mode.
+    ///
+    /// Routing: it looks up the currently-installed director from the
+    /// `SceneManager` and, if it is an `OpenPAL4Director` (story mode,
+    /// detected via `query_interface::<IOpenPAL4Director>()`), delegates
+    /// each envelope to the director's full, VM-backed
+    /// [`OpenPAL4Director::handle_agent_envelope`] — including the
+    /// cross-frame `fire_trigger { wait_until_idle }` settle, which the
+    /// director still replies to from its post-VM `poll_pending_fires`.
+    /// Otherwise (start menu / title / any non-story mode) it answers
+    /// the mode-agnostic subset itself (`GetState` with a minimal "no
+    /// active playthrough" snapshot, `Screenshot` of the 3D backdrop)
+    /// and rejects gameplay commands with a clear `not_implemented`.
+    ///
+    /// In story mode the per-frame agent bookkeeping (frame counter /
+    /// fps / synthetic-input edges) is done by the director's
+    /// `end_agent_frame`; in non-story modes this method does it.
+    pub fn pump_agent(&self, delta_sec: f32) {
+        let bridge = match self.agent_bridge.borrow().as_ref() {
+            Some(b) => b.clone(),
+            None => return,
+        };
+
+        // Lazily wire the rendering engine so `/v1/screenshot` works
+        // before any story director has set it on the bridge.
+        if bridge.rendering_engine.borrow().is_none() {
+            let engine = self.app.engine().borrow().rendering_engine();
+            bridge.set_rendering_engine(engine);
+        }
+
+        // Drain the queue once (single drainer for all modes).
+        let mut envelopes = Vec::new();
+        if let Some(consumer) = bridge.consumer.borrow().as_ref() {
+            consumer.drain(|env| envelopes.push(env));
+        }
+
+        let scene_manager = self.app.engine().borrow().scene_manager().clone();
+
+        for env in envelopes {
+            if Self::is_bridge_command(&env.command) {
+                // App-lifetime / bridge-only commands (input, time
+                // control, screenshot, perf, log) are handled here in
+                // *both* modes — they never need the VM, so there is one
+                // implementation and no menu/story asymmetry.
+                let response = self.dispatch_bridge_command(&bridge, env.command.clone());
+                env.reply(response);
+            } else if Self::is_mode_control_command(&env.command) {
+                // Mode-control commands (new_game / load / exit) install
+                // the next director via the `SceneManager`. Handled here
+                // because the dispatcher — not any director — owns the
+                // mode graph; lets the agent drive transitions directly.
+                let response = self.dispatch_mode_control(&scene_manager, env.command.clone());
+                env.reply(response);
+            } else if let Some(story) = Self::active_story_director(&scene_manager) {
+                // VM / scene commands: delegate to the active story
+                // director (it owns the reply, including the deferred
+                // `fire_trigger { wait_until_idle }` settle). Resolved
+                // fresh per command so a preceding mode-control command
+                // in the same batch is observed.
+                story
+                    .inner::<OpenPAL4Director>()
+                    .handle_agent_envelope(env);
+            } else {
+                // VM / scene command with no active playthrough: answer
+                // the menu subset (`GetState` minimal) or reject.
+                let response = Self::dispatch_menu_command(&bridge, env.command.clone());
+                env.reply(response);
+            }
+        }
+
+        // Per-frame agent telemetry (frame counter + dt/fps) is generic
+        // and published here once per frame for **every** mode.
+        bridge.publish_frame_telemetry(delta_sec);
+
+        // The synthetic-input edge clear must run *after* the active
+        // mode polls input for the frame. In story mode the director's
+        // `end_agent_frame` does it (after its VM tick, which happens in
+        // `engine.update`, i.e. after this `on_updating`); here we do it
+        // only when no story director is installed (re-resolved, since a
+        // mode-control command this frame may have just installed one).
+        if Self::active_story_director(&scene_manager).is_none() {
+            bridge.input_bridge.borrow().end_frame();
+        }
+    }
+
+    /// Resolve the currently-installed director and downcast to the
+    /// concrete story director, or `None` when the active mode is not a
+    /// story director (start menu / title / none).
+    fn active_story_director(
+        scene_manager: &ComRc<radiance::comdef::ISceneManager>,
+    ) -> Option<ComRc<IOpenPAL4Director>> {
+        scene_manager
+            .director()
+            .and_then(|d| d.query_interface::<IOpenPAL4Director>())
+    }
+
+    /// Whether `command` drives a mode transition (handled by the
+    /// dispatcher via the `SceneManager`, in any mode).
+    fn is_mode_control_command(command: &AgentCommand) -> bool {
+        matches!(
+            command,
+            AgentCommand::EnterNewGame
+                | AgentCommand::EnterLoadGame(_)
+                | AgentCommand::ExitGame
+        )
+    }
+
+    /// Install the next director (or quit) for a mode-control command.
+    /// Uses the launch asset path captured by `loader_for`, so the agent
+    /// supplies no path. `set_director` runs the outgoing director's
+    /// `deactivate` synchronously; the dispatcher holds no engine borrow
+    /// here (the `scene_manager` handle was cloned out earlier).
+    fn dispatch_mode_control(
+        &self,
+        scene_manager: &ComRc<radiance::comdef::ISceneManager>,
+        command: AgentCommand,
+    ) -> AgentResponse {
+        if let AgentCommand::ExitGame = command {
+            self.app.request_exit();
+            return AgentResponse::Ok;
+        }
+
+        let asset_path = match self.launch_asset_path.borrow().clone() {
+            Some(p) => p,
+            None => {
+                return AgentResponse::err(AgentError::internal(
+                    "PAL4 launch asset path not set yet (no playthrough has been mounted)",
+                ));
+            }
+        };
+
+        let intent = match command {
+            AgentCommand::EnterNewGame => Pal4ModeIntent::Story { asset_path },
+            AgentCommand::EnterLoadGame(params) => Pal4ModeIntent::StoryFromSave {
+                asset_path,
+                slot: params.slot,
+            },
+            _ => {
+                return AgentResponse::err(AgentError::internal(
+                    "dispatch_mode_control called with a non-mode-control command",
+                ));
+            }
+        };
+
+        let director = modes::route(self, intent);
+        scene_manager.set_director(director);
+        AgentResponse::Ok
+    }
+
+    /// Commands that need only the app-lifetime [`Pal4AgentBridge`] (or
+    /// global state) and never the VM / scene — handled by the
+    /// dispatcher itself in every mode.
+    fn is_bridge_command(command: &AgentCommand) -> bool {
+        matches!(
+            command,
+            AgentCommand::KeyInput(_)
+                | AgentCommand::AxisInput(_)
+                | AgentCommand::PauseTime
+                | AgentCommand::ResumeTime
+                | AgentCommand::StepTime(_)
+                | AgentCommand::Screenshot
+                | AgentCommand::LogTail(_)
+                | AgentCommand::GetPerfMetrics
+        )
+    }
+
+    /// Switchboard for the [`Self::is_bridge_command`] set. These all
+    /// operate purely on the agent bridge (synthetic input, pause/step
+    /// cells, rendering engine) or global `radiance::perf`, so they live
+    /// here rather than in the story director.
+    fn dispatch_bridge_command(
+        &self,
+        bridge: &Pal4AgentBridge,
+        command: AgentCommand,
+    ) -> AgentResponse {
+        match command {
+            AgentCommand::KeyInput(params) => Self::handle_key_input(bridge, params),
+            AgentCommand::AxisInput(params) => Self::handle_axis_input(bridge, params),
+            AgentCommand::PauseTime => Self::handle_pause(bridge, true),
+            AgentCommand::ResumeTime => Self::handle_pause(bridge, false),
+            AgentCommand::StepTime(params) => Self::handle_step(bridge, params),
+            AgentCommand::Screenshot => Self::dispatch_screenshot(bridge),
+            AgentCommand::GetPerfMetrics => Self::handle_get_perf_metrics(),
+            AgentCommand::LogTail(_) => AgentResponse::err(AgentError::internal(
+                "log_tail must not be queued; served by transport",
+            )),
+            _ => AgentResponse::err(AgentError::internal(
+                "dispatch_bridge_command called with a non-bridge command",
+            )),
+        }
+    }
+
+    /// Menu / non-story switchboard for VM-needing commands: answers the
+    /// mode-agnostic `GetState` with a minimal "no active playthrough"
+    /// snapshot and rejects everything else.
+    fn dispatch_menu_command(bridge: &Pal4AgentBridge, command: AgentCommand) -> AgentResponse {
+        match command {
+            AgentCommand::GetState => AgentResponse::State(StateSnapshot {
+                frame: bridge.frame.get(),
+                paused: bridge.paused.get(),
+                fps: bridge.fps_display.get(),
+                dt: bridge.dt_display.get(),
+                script_running: false,
+                movie_playing: false,
+                ..Default::default()
+            }),
+            _ => AgentResponse::err(AgentError::not_implemented(
+                "command not available outside story mode (no active PAL4 playthrough)",
+            )),
+        }
+    }
+
+    fn handle_key_input(bridge: &Pal4AgentBridge, params: KeyInputParams) -> AgentResponse {
+        let Some(key) = Key::from_name(&params.key) else {
+            return AgentResponse::err(AgentError::bad_request(format!(
+                "unknown key name: {}",
+                params.key
+            )));
+        };
+        let synthetic = bridge.input_bridge.borrow();
+        match params.action {
+            KeyAction::Down => synthetic.press_down(key),
+            KeyAction::Up => synthetic.release(key),
+            KeyAction::Tap => synthetic.tap(key),
+        }
+        AgentResponse::Ok
+    }
+
+    fn handle_axis_input(bridge: &Pal4AgentBridge, params: AxisInputParams) -> AgentResponse {
+        let Some(axis) = Axis::from_name(&params.axis) else {
+            return AgentResponse::err(AgentError::bad_request(format!(
+                "unknown axis name: {}",
+                params.axis
+            )));
+        };
+        bridge.input_bridge.borrow().set_axis(axis, params.value);
+        AgentResponse::Ok
+    }
+
+    fn handle_pause(bridge: &Pal4AgentBridge, paused: bool) -> AgentResponse {
+        bridge.paused.set(paused);
+        if !paused {
+            // Resuming clears any leftover step budget so the game
+            // doesn't double-tick.
+            bridge.requested_steps.set(0);
+        }
+        AgentResponse::Ok
+    }
+
+    fn handle_step(bridge: &Pal4AgentBridge, params: StepTimeParams) -> AgentResponse {
+        if !bridge.paused.get() {
+            return AgentResponse::err(AgentError::conflict(
+                "must pause time before requesting fixed-step frames",
+            ));
+        }
+        if params.frames == 0 {
+            return AgentResponse::Ok;
+        }
+        bridge
+            .requested_steps
+            .set(bridge.requested_steps.get().saturating_add(params.frames));
+        bridge.requested_dt.set(params.dt.unwrap_or(0.0).max(0.0));
+        AgentResponse::Ok
+    }
+
+    fn handle_get_perf_metrics() -> AgentResponse {
+        // `radiance::perf::snapshot()` reads the thread_local metrics
+        // registry, so this must run on the game thread — which is where
+        // the dispatcher pumps. When perf is disabled at boot the
+        // snapshot is empty; the response's `enabled` field lets the
+        // agent distinguish that from "enabled but nothing recorded yet".
+        let entries = radiance::perf::snapshot();
+        let metrics = entries
+            .into_iter()
+            .map(|(name, snapshot)| match snapshot {
+                radiance::perf::MetricSnapshot::Timing {
+                    calls,
+                    avg_ns,
+                    max_ns,
+                } => PerfMetric::Timing {
+                    name: name.to_string(),
+                    calls,
+                    avg_ns,
+                    max_ns,
+                },
+                radiance::perf::MetricSnapshot::Counter { frame, total } => PerfMetric::Counter {
+                    name: name.to_string(),
+                    frame,
+                    total,
+                },
+                radiance::perf::MetricSnapshot::Gauge { last, max } => PerfMetric::Gauge {
+                    name: name.to_string(),
+                    last,
+                    max,
+                },
+            })
+            .collect();
+        AgentResponse::PerfMetrics(PerfMetricsResponse {
+            enabled: radiance::perf::enabled(),
+            metrics,
+        })
+    }
+
+    fn dispatch_screenshot(bridge: &Pal4AgentBridge) -> AgentResponse {
+        let engine = match bridge.rendering_engine.borrow().clone() {
+            Some(e) => e,
+            None => return AgentResponse::Screenshot(ScreenshotResponse::default()),
+        };
+        match engine.borrow_mut().capture_last_frame() {
+            Some(frame) => AgentResponse::Screenshot(ScreenshotResponse {
+                width: frame.width,
+                height: frame.height,
+                encoded: true,
+                rgba: frame.rgba,
+            }),
+            None => AgentResponse::Screenshot(ScreenshotResponse::default()),
+        }
     }
 }
 
 impl IPal4ServiceImpl for Pal4Service {
     fn create_director(&self, asset_path: &str) -> ComRc<IDirector> {
-        // Mount the per-launch asset loader now so the script-side
-        // menu can call `host.pal4().open_layout("/gamedata/ui/...")`.
-        let _ = self.loader_for(asset_path);
-
-        let hooks = self
-            .script_hooks
-            .borrow()
-            .as_ref()
-            .and_then(|w| w.upgrade())
-            .expect(
-                "Pal4Service::create_director called before YaobowScriptProject was installed \
-                 (or after it was dropped). The YaobowApplicationLoader must call \
-                 Pal4Service::set_script_hooks after installing the script project.",
-            );
-
-        match hooks.make_pal4_start_menu(asset_path) {
-            Some(menu) => menu,
-            None => {
-                log::warn!(
-                    "Pal4Service::create_director: scripted start menu failed to build for {}; \
-                     falling back to story director",
-                    asset_path
-                );
-                self.create_story_director(asset_path)
-            }
-        }
+        modes::route(
+            self,
+            Pal4ModeIntent::StartMenu {
+                asset_path: asset_path.to_string(),
+            },
+        )
     }
 
-    fn create_story_director(&self, asset_path: &str) -> ComRc<IDirector> {
-        ComRc::<IDirector>::from_object(self.build_story_director(asset_path))
+    fn enter_new_game(&self, asset_path: &str) -> ComRc<IDirector> {
+        modes::route(
+            self,
+            Pal4ModeIntent::Story {
+                asset_path: asset_path.to_string(),
+            },
+        )
     }
 
-    fn create_story_director_from_save(&self, asset_path: &str, slot: i32) -> ComRc<IDirector> {
-        let director = self.build_story_director(asset_path);
-        director.set_pending_load_slot(slot);
-        ComRc::<IDirector>::from_object(director)
+    fn enter_load_game(&self, asset_path: &str, slot: i32) -> ComRc<IDirector> {
+        modes::route(
+            self,
+            Pal4ModeIntent::StoryFromSave {
+                asset_path: asset_path.to_string(),
+                slot,
+            },
+        )
     }
 
     fn save_slot_count(&self) -> i32 {
@@ -324,19 +683,96 @@ impl IPal4ServiceImpl for Pal4Service {
 }
 
 impl Pal4Service {
-    /// Construct (but do not wrap) the full PAL4 story director: asset
-    /// loader, AngelScript VM, agent bridge, debug bundle, and actor
-    /// controller factory. Shared by `create_story_director` and
-    /// `create_story_director_from_save`; the latter sets a pending
-    /// load slot on the returned director before wrapping it.
-    fn build_story_director(&self, asset_path: &str) -> OpenPAL4Director {
+    /// Register (or replace) the director factory for `kind` in the
+    /// mode registry. The boot-time extension hook for new PAL4 game
+    /// modes (e.g. a future battle director): call this once instead of
+    /// editing the router or adding a bespoke service method.
+    pub fn register_mode(&self, kind: Pal4ModeKind, factory: Pal4ModeFactory) {
+        self.mode_registry.borrow_mut().register(kind, factory);
+    }
+
+    /// Dispatch a [`Pal4ModeIntent`] through the mode registry to build
+    /// the concrete director. Called by [`modes::route`]. Falls back to
+    /// a fresh story director if the intent's kind has no registered
+    /// factory — which can only happen if the built-ins were
+    /// deliberately replaced, so it is logged loudly.
+    pub(crate) fn build_mode(&self, intent: Pal4ModeIntent) -> ComRc<IDirector> {
+        let asset_path = match &intent {
+            Pal4ModeIntent::StartMenu { asset_path }
+            | Pal4ModeIntent::Story { asset_path }
+            | Pal4ModeIntent::StoryFromSave { asset_path, .. } => asset_path.clone(),
+        };
+        let kind = intent.kind();
+        match self.mode_registry.borrow().build(self, intent) {
+            Some(director) => director,
+            None => {
+                log::warn!(
+                    "Pal4Service::build_mode: no factory registered for {:?}; \
+                     falling back to a fresh story director",
+                    kind
+                );
+                ComRc::<IDirector>::from_object(self.build_story_director(&asset_path))
+            }
+        }
+    }
+
+    /// Build the scripted PAL4 start-menu director. Mounts the
+    /// per-launch asset loader first so the script-side menu can call
+    /// `host.pal4().open_layout("/gamedata/ui/...")`, then asks the
+    /// script project's `make_pal4_start_menu` hook to build it. Falls
+    /// back to a fresh story director when the scripted menu can't be
+    /// built (e.g. PAL4 assets missing at this path). Called by the
+    /// mode router for [`Pal4ModeIntent::StartMenu`].
+    pub(crate) fn build_start_menu(&self, asset_path: &str) -> ComRc<IDirector> {
+        // Mount the per-launch asset loader now so the script-side
+        // menu can call `host.pal4().open_layout("/gamedata/ui/...")`.
+        let _ = self.loader_for(asset_path);
+
         let hooks = self
             .script_hooks
             .borrow()
             .as_ref()
             .and_then(|w| w.upgrade())
             .expect(
-                "Pal4Service::create_story_director called before YaobowScriptProject was installed",
+                "Pal4Service::build_start_menu called before YaobowScriptProject was installed \
+                 (or after it was dropped). The YaobowApplicationLoader must call \
+                 Pal4Service::set_script_hooks after installing the script project.",
+            );
+
+        match hooks.make_pal4_start_menu(asset_path) {
+            Some(menu) => menu,
+            None => {
+                log::warn!(
+                    "Pal4Service::build_start_menu: scripted start menu failed to build for {}; \
+                     falling back to story director",
+                    asset_path
+                );
+                ComRc::<IDirector>::from_object(self.build_story_director(asset_path))
+            }
+        }
+    }
+
+    /// Construct (but do not wrap) the full PAL4 story director: asset
+    /// loader, AngelScript VM, agent bridge, debug bundle, and actor
+    /// controller factory. Called by the mode router for
+    /// [`Pal4ModeIntent::Story`] / [`Pal4ModeIntent::StoryFromSave`];
+    /// the latter sets a pending load slot on the returned director
+    /// before wrapping it.
+    pub(crate) fn build_story_director(&self, asset_path: &str) -> OpenPAL4Director {
+        // Every menu → story entry begins a fresh playthrough: reset the
+        // shared session so a New Game starts clean (and a Load Game then
+        // overwrites it via the director's pending-load on first update).
+        // Without this, a second playthrough in the same process would
+        // inherit the previous one's session state.
+        self.reset_session();
+
+        let hooks = self
+            .script_hooks
+            .borrow()
+            .as_ref()
+            .and_then(|w| w.upgrade())
+            .expect(
+                "Pal4Service::enter_new_game called before YaobowScriptProject was installed",
             );
 
         let engine_rc = self.app.engine();
@@ -380,6 +816,7 @@ impl Pal4Service {
             input_engine,
             audio_engine,
             task_manager,
+            self.session_handle(),
         );
 
         director.set_debug_bundle(hooks.make_pal4_debug_bundle());

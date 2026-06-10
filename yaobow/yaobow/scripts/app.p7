@@ -81,7 +81,7 @@ pub struct[yaobow_services.IYaobowScriptApp] YaobowScriptApp(
     // `host.pal4().create_director(path)` to enter PAL4, but lands
     // on the script-built start menu first. The menu's New Game
     // handler swaps itself for the story director via
-    // `host.pal4().create_story_director(path)`.
+    // `host.pal4().enter_new_game(path)`.
     pub fn make_pal4_start_menu(
         self: ref<Self>,
         asset_path: string,
