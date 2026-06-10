@@ -443,6 +443,154 @@ fn wrap_proto_for_unregistered_uuid_errors_loudly() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Non-optional Foreign return (RetKind::Foreign)
+//
+// Exercises the new `RetKind::Foreign` path: a method that returns a
+// **non-optional** `box<F>`. Confirms the libffi ptr thunk recursively
+// reverse-wraps the returned script struct into a fresh CCW (never
+// null on success) and that the result is independently invokable.
+// ---------------------------------------------------------------------------
+
+const IMAKER_UUID: [u8; 16] = [
+    0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33,
+];
+const ITARGET_UUID: [u8; 16] = [
+    0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
+];
+
+#[repr(C)]
+struct IMakerVtbl {
+    iunk: IUnknownVirtualTable,
+    spawn: unsafe extern "system" fn(this: *const *const c_void, seed: c_int) -> *const c_void,
+}
+
+#[repr(C)]
+struct IMakerInst {
+    vtable: *const IMakerVtbl,
+}
+
+impl ComInterface for IMakerInst {
+    const INTERFACE_ID: [u8; 16] = IMAKER_UUID;
+}
+
+#[repr(C)]
+struct ITargetVtbl {
+    iunk: IUnknownVirtualTable,
+    ping: unsafe extern "system" fn(this: *const *const c_void) -> c_int,
+}
+
+#[repr(C)]
+struct ITargetInst {
+    vtable: *const ITargetVtbl,
+}
+
+impl ComInterface for ITargetInst {
+    const INTERFACE_ID: [u8; 16] = ITARGET_UUID;
+}
+
+const MAKER_SCRIPT: &str = r#"
+@foreign(dispatcher="com.invoke", finalizer="com.release",
+         type_tag="test.IMakerLike",
+         uuid="33333333-3333-3333-3333-333333333333")
+pub proto IMakerLike {
+    fn spawn(self: ref<IMakerLike>, seed: int) -> box<ITargetLike>;
+}
+
+@foreign(dispatcher="com.invoke", finalizer="com.release",
+         type_tag="test.ITargetLike",
+         uuid="44444444-4444-4444-4444-444444444444")
+pub proto ITargetLike {
+    fn ping(self: ref<ITargetLike>) -> int;
+}
+
+struct[ITargetLike] Target(
+    value: int,
+) {
+    pub fn ping(self: ref<Self>) -> int { self.value }
+}
+
+struct[IMakerLike] Maker() {
+    pub fn spawn(self: ref<Self>, seed: int) -> box<ITargetLike> {
+        let t = box(Target(seed));
+        t as box<ITargetLike>
+    }
+}
+
+pub fn make_maker() -> box<IMakerLike> {
+    let m = box(Maker());
+    m as box<IMakerLike>
+}
+"#;
+
+fn register_maker() {
+    let _ = register_proto_ccw(ProtoSpec {
+        uuid: ITARGET_UUID,
+        type_tag: "test.ITargetLike".into(),
+        methods: vec![MethodSpec {
+            name: "ping".into(),
+            args: vec![],
+            ret: RetKind::Int,
+        }],
+        additional_query_uuids: vec![],
+    });
+    let _ = register_proto_ccw(ProtoSpec {
+        uuid: IMAKER_UUID,
+        type_tag: "test.IMakerLike".into(),
+        methods: vec![MethodSpec {
+            name: "spawn".into(),
+            args: vec![ArgKind::Int],
+            ret: RetKind::Foreign {
+                type_tag: "test.ITargetLike".into(),
+                uuid: ITARGET_UUID,
+            },
+        }],
+        additional_query_uuids: vec![],
+    });
+}
+
+unsafe fn maker_spawn_returning_raw(m: &IMakerInst, seed: i32) -> *const c_void {
+    unsafe {
+        let this = m as *const IMakerInst as *const *const c_void;
+        ((*m.vtable).spawn)(this, seed)
+    }
+}
+
+unsafe fn target_ping(t: &ITargetInst) -> i32 {
+    unsafe {
+        let this = t as *const ITargetInst as *const *const c_void;
+        ((*t.vtable).ping)(this)
+    }
+}
+
+#[test]
+fn imaker_spawn_returns_nonnull_invokable_ccw() {
+    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    register_maker();
+
+    let mut ctx = Context::new();
+    let module = p7::compile(MAKER_SCRIPT.to_string()).expect("compile");
+    ctx.load_module(module);
+    ctx.push_function("make_maker", vec![]);
+    ctx.resume().expect("make_maker ran");
+    let maker_data = ctx.stack[0].stack.pop().expect("returned box");
+
+    let runtime = TestRuntime::new(ctx);
+    let handle = RuntimeHandle::from_rc(&runtime);
+    let maker: ComRc<IMakerInst> = wrap_proto(&handle, maker_data).expect("wrap_proto");
+
+    unsafe {
+        let raw = maker_spawn_returning_raw(&maker, 42);
+        assert!(
+            !raw.is_null(),
+            "non-optional Foreign return must never be null on success"
+        );
+        let target: ComRc<ITargetInst> = ComRc::<ITargetInst>::from_raw_pointer(raw as _);
+        assert_eq!(target_ping(&target), 42, "spawned target must carry seed");
+        drop(target);
+    }
+}
+
 // Silence unused-c_long warnings on platforms where c_int == c_long.
 #[allow(dead_code)]
 fn _anchor() {

@@ -33,7 +33,7 @@
 //! `tests/proto_ccw_e2e.rs`:
 //!
 //! - Arguments: `Int`, `Float`, `Bool`, `Str`, `Foreign`.
-//! - Returns:   `Void`, `Int`, `Float`, `Bool`, `OptionalForeign`.
+//! - Returns:   `Void`, `Int`, `Float`, `Bool`, `Foreign`, `OptionalForeign`.
 //!
 //! Arrays and structs are intentionally unsupported; registrations
 //! that reference them error loudly so Phase B5 can extend coverage
@@ -104,6 +104,16 @@ pub enum RetKind {
     Int,
     Float,
     Bool,
+    /// `F` (non-optional) interface return. C-ABI is a
+    /// `*const *const c_void`; the script's returned box is recursively
+    /// reverse-wrapped via [`wrap_proto_unknown`] using the spec keyed
+    /// by `uuid`. Unlike [`RetKind::OptionalForeign`], a `null` / absent
+    /// script return is a hard error (the non-optional contract), and
+    /// the C-ABI never yields a null pointer on success.
+    Foreign {
+        type_tag: String,
+        uuid: [u8; 16],
+    },
     /// `F?` interface return. C-ABI is a `*const *const c_void`;
     /// `Null` maps to `null`, otherwise the script's returned box is
     /// recursively reverse-wrapped via [`wrap_proto_unknown`] using
@@ -265,6 +275,7 @@ fn validate_spec(spec: &ProtoSpec) -> Result<(), HostError> {
             | RetKind::Float
             | RetKind::Bool
             | RetKind::OptionalForeign { .. }
+            | RetKind::Foreign { .. }
             | RetKind::OptionalFloat => {}
         }
         // Re-asserting the type names is intentionally exhaustive so a
@@ -297,7 +308,9 @@ fn build_registered_proto(spec: ProtoSpec) -> Result<RegisteredProto, HostError>
             RetKind::Float | RetKind::OptionalFloat => {
                 Closure::new(cif, method_thunk_float, userdata_ptr)
             }
-            RetKind::OptionalForeign { .. } => Closure::new(cif, method_thunk_ptr, userdata_ptr),
+            RetKind::OptionalForeign { .. } | RetKind::Foreign { .. } => {
+                Closure::new(cif, method_thunk_ptr, userdata_ptr)
+            }
         };
         let code: *const c_void = *closure.code_ptr() as *const c_void;
         let leaked: &'static Closure<'static> = Box::leak(Box::new(closure));
@@ -374,7 +387,7 @@ fn build_cif_for(method: &MethodSpec) -> Cif {
         RetKind::Int => Type::c_int(),
         RetKind::Float | RetKind::OptionalFloat => Type::f32(),
         RetKind::Bool => Type::c_int(),
-        RetKind::OptionalForeign { .. } => Type::pointer(),
+        RetKind::OptionalForeign { .. } | RetKind::Foreign { .. } => Type::pointer(),
     };
     Cif::new(arg_types.into_iter(), ret_type)
 }
@@ -845,6 +858,7 @@ unsafe extern "C" fn method_thunk_ptr(
                     // Recursive wrap_proto_unknown for the returned box.
                     let uuid = match &userdata.ret {
                         RetKind::OptionalForeign { uuid, .. } => *uuid,
+                        RetKind::Foreign { uuid, .. } => *uuid,
                         _ => return,
                     };
                     // Re-read the CCW's RuntimeHandle from args[0] so the
@@ -1022,23 +1036,40 @@ fn invoke_script_method(
             Some(Data::Some(inner)) => {
                 // `inner: Rc<Data>`; clone the inner Data out (the
                 // recursive wrap_proto will root it again).
-                classify_optional_foreign_return(ctx, (*inner).clone(), *ret_uuid)
+                classify_foreign_return(ctx, (*inner).clone(), *ret_uuid)
             }
             Some(d @ Data::ProtoBoxRef { .. }) | Some(d @ Data::BoxRef { .. }) => {
                 // Tolerate bare-box returns (the script's `return self` /
                 // `return some_box` pattern); director.md A2 flags this
                 // as an explicit p7 ergonomic gap.
-                classify_optional_foreign_return(ctx, d, *ret_uuid)
+                classify_foreign_return(ctx, d, *ret_uuid)
             }
             other => DispatchOutcome::Error(HostError::message(format!(
                 "{}: expected OptionalForeign return, got {:?}",
                 method_name, other
             ))),
         },
+        RetKind::Foreign { uuid: ret_uuid, .. } => match frame.stack.pop() {
+            // Non-optional: a null / absent return violates the contract.
+            Some(Data::Null) => DispatchOutcome::Error(HostError::message(format!(
+                "{}: non-optional foreign return was null",
+                method_name
+            ))),
+            Some(Data::Some(inner)) => classify_foreign_return(ctx, (*inner).clone(), *ret_uuid),
+            Some(d @ Data::ProtoBoxRef { .. }) | Some(d @ Data::BoxRef { .. }) => {
+                classify_foreign_return(ctx, d, *ret_uuid)
+            }
+            other => DispatchOutcome::Error(HostError::message(format!(
+                "{}: expected Foreign return, got {:?}",
+                method_name, other
+            ))),
+        },
     }
 }
 
-/// Classify the inner value of an `?box<F>` return:
+/// Classify the inner value of an `box<F>` / `?box<F>` return (used by
+/// both [`RetKind::Foreign`] and [`RetKind::OptionalForeign`] — the
+/// optionality is resolved by the caller before this point):
 ///
 /// * If the underlying box wraps a foreign carrier (i.e. a
 ///   `Data::Foreign{type_tag, handle, ...}` payload in the box heap),
@@ -1054,7 +1085,7 @@ fn invoke_script_method(
 /// * Otherwise the box is a script-side struct conforming to the
 ///   target proto; return `OptionalForeign(Some(data))` so the libffi
 ///   thunk recursively builds a CCW around it.
-fn classify_optional_foreign_return(
+fn classify_foreign_return(
     ctx: &mut Context,
     data: Data,
     ret_uuid: [u8; 16],
