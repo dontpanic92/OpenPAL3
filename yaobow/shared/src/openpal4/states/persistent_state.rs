@@ -14,7 +14,7 @@ pub const PLAYER_COUNT: usize = 4;
 
 /// PAL4 save namespace. Save slots live under
 /// `<save_dir>/<PAL4_APP_NAME>/Save/<slot>.json`. Single source of
-/// truth shared by `Pal4AppContext` (which seeds a fresh
+/// truth shared by `Pal4VmContext` (which seeds a fresh
 /// `Pal4PersistentState` with it) and `Pal4Service` (whose start-menu
 /// load screen peeks the same slot files).
 pub const PAL4_APP_NAME: &str = "OpenPAL4";
@@ -83,7 +83,7 @@ pub struct Pal4PersistentState {
     /// playthrough starts **locked** (`Pal4PersistentState::new` sets
     /// `true`) so the new-game intro plays out before the player gets
     /// control — this is the single source of truth, honoured both at
-    /// `Pal4AppContext` construction and by the `giNewGame` reset.
+    /// `Pal4VmContext` construction and by the `giNewGame` reset.
     /// The `#[serde(default)]` is independent and yields `false` for
     /// older saves that lack the field (they were always taken during
     /// free movement, so they remain controllable after load).

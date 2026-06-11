@@ -1,6 +1,6 @@
 use eframe::egui::{self};
 use shared::{
-    openpal4::app_context::Pal4AppContext,
+    openpal4::vm_context::Pal4VmContext,
     scripting::angelscript::{AsInst, AsInstInstance, ScriptGlobalContext, ScriptModule},
 };
 
@@ -35,7 +35,7 @@ pub fn show_objects(ui: &mut egui::Ui, objects: &[Option<String>]) {
 pub fn get_note(
     inst: &AsInstInstance,
     module: &ScriptModule,
-    context: &ScriptGlobalContext<Pal4AppContext>,
+    context: &ScriptGlobalContext<Pal4VmContext>,
 ) -> Option<String> {
     let note = match inst.inst {
         AsInst::CallSys { function_index } => Some(

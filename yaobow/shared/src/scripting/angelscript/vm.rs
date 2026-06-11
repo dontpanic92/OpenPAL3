@@ -27,7 +27,7 @@ impl ScriptFunctionContext {
 }
 
 pub struct ScriptVm<TAppContext: 'static> {
-    pub(crate) app_context: TAppContext,
+    pub(crate) vm_context: TAppContext,
     pub(crate) g: Rc<RefCell<ScriptGlobalContext<TAppContext>>>,
     pub(crate) context: Option<ScriptFunctionContext>,
 
@@ -84,10 +84,10 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         g: Rc<RefCell<ScriptGlobalContext<TAppContext>>>,
         module: Rc<RefCell<ScriptModule>>,
         function_index: usize,
-        app_context: TAppContext,
+        vm_context: TAppContext,
     ) -> Self {
         let mut vm = Self {
-            app_context,
+            vm_context,
             g,
             context: Some(ScriptFunctionContext::new(module, function_index)),
             call_stack: vec![],
@@ -116,12 +116,12 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         vm
     }
 
-    pub fn app_context(&self) -> &TAppContext {
-        &self.app_context
+    pub fn vm_context(&self) -> &TAppContext {
+        &self.vm_context
     }
 
-    pub fn app_context_mut(&mut self) -> &mut TAppContext {
-        &mut self.app_context
+    pub fn vm_context_mut(&mut self) -> &mut TAppContext {
+        &mut self.vm_context
     }
 
     pub fn set_function(&mut self, module: Rc<RefCell<ScriptModule>>, index: usize) {

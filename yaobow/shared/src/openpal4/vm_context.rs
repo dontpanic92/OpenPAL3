@@ -11,7 +11,7 @@ use radiance::{
     comdef::{IEntity, IEntityExt, ISceneExt, ISceneManager},
     input::InputEngine,
     math::{Transform, Vec3},
-    radiance::{TaskManager, UiManager},
+    radiance::{UiManager},
     rendering::{ComponentFactory, VideoPlayer},
     utils::{act_drop::ActDrop, interp_value::InterpValue},
 };
@@ -20,7 +20,7 @@ use crate::ui::dialog_box::{AvatarPosition, DialogBox};
 
 /// Dependency-free dialog snapshot used by external observers
 /// (debug overlays, the agent server). Avoids forcing every reader of
-/// `Pal4AppContext` to import imgui-tied dialog types.
+/// `Pal4VmContext` to import imgui-tied dialog types.
 #[derive(Debug, Clone)]
 pub struct DialogStateSnapshot {
     pub open: bool,
@@ -29,7 +29,7 @@ pub struct DialogStateSnapshot {
 }
 
 /// Multiplier applied to the per-frame movement / rotation tween dt
-/// when `Pal4AppContext::fast_forward()` is true. The value is large
+/// when `Pal4VmContext::fast_forward()` is true. The value is large
 /// enough that the per-frame step always exceeds the remaining
 /// distance / angle so the snap-to-target paths inside
 /// `update_moving_entities_` / `update_rotating_entities` fire on
@@ -46,7 +46,7 @@ pub enum DialogAvatarSide {
     Right,
 }
 
-/// Per-slot party snapshot used by `Pal4AppContext::party_snapshot`.
+/// Per-slot party snapshot used by `Pal4VmContext::party_snapshot`.
 #[derive(Debug, Clone, Default)]
 pub struct PartySnapshot {
     pub slot: usize,
@@ -67,12 +67,11 @@ use super::{
     states::persistent_state::Pal4PersistentState,
 };
 
-pub struct Pal4AppContext {
+pub struct Pal4VmContext {
     pub(crate) loader: Rc<AssetLoader>,
     pub(crate) scene_manager: ComRc<ISceneManager>,
     pub(crate) ui: Rc<UiManager>,
     pub(crate) input: Rc<RefCell<dyn InputEngine>>,
-    pub(crate) task_manager: Rc<TaskManager>,
     pub(crate) scene: Pal4Scene,
     pub(crate) dialog_box: DialogBox,
 
@@ -109,12 +108,19 @@ pub struct Pal4AppContext {
     rotating_entities: HashMap<ActorId, RotatingEntity>,
 
     /// Shared handle to the playthrough session — the single source of
-    /// truth for durable game state (scene/block/leader/player_locked,
-    /// money, party, inventory, story globals, save/load). Owned at app
-    /// lifetime by `Pal4Service` and cloned into the active director's
-    /// context, so the session survives mode switches and is reachable
-    /// from app-lifetime code (the agent dispatcher). Accessors below
-    /// hand out `Ref`/`RefMut` guards over it.
+    /// truth for **durable** game state (scene/block/leader/player_locked,
+    /// money, party, inventory, story globals, save/load) **and** for
+    /// **transient cross-frame coordination** channels (`world_map_*`,
+    /// `pending_dialog_choice`, `pending_scene_load`,
+    /// `deferred_load_*`) that the agent dispatcher, loading-overlay
+    /// driver, and VM all need to touch — see
+    /// [`Pal4SessionTransient`](super::session::Pal4SessionTransient).
+    ///
+    /// Owned at app lifetime by `Pal4Service` and cloned into the
+    /// active director's context, so the session survives mode
+    /// switches and is reachable from app-lifetime code (the agent
+    /// dispatcher). Accessors below hand out `Ref`/`RefMut` guards
+    /// over it.
     session: Rc<RefCell<Pal4Session>>,
 
     /// Factory for the scripted `IPal4ActorController` component. `None`
@@ -123,54 +129,9 @@ pub struct Pal4AppContext {
     /// loads scenes without per-player controllers (e.g. before the
     /// script project is installed).
     actor_controller_factory: Option<ComRc<IPal4ScriptFactory>>,
-
-    /// Items the active script has queued for the next
-    /// `giShowSelectDialog` / `giShowCommonDialogInSelectMode`.
-    /// Populated by `giSelectDialogAddItem`; cleared when the
-    /// matching `giSelectDialogGetLastSelect` /
-    /// `giCommonDialogGetLastSelect` returns the choice.
-    ///
-    /// Surfaced via `/v1/state.dialog.choices` so the planner can
-    /// see the available options before picking via
-    /// `/v1/dialog/choose`.
-    pending_dialog_choices: Vec<String>,
-    /// Choice index to return from the next `*_get_last_select`
-    /// call. `None` ≡ "use the default (1)" — the legacy stubbed
-    /// behaviour. Consumed (taken) on the next read so each fire
-    /// must set it again.
-    next_dialog_choice: Cell<Option<i32>>,
-    /// `true` while a `giShowWorldMap` continuation is waiting for a
-    /// destination pick. Surfaced via `/v1/state.world_map_open` so
-    /// the planner knows it must `POST /v1/world_map/choose` before
-    /// the script can advance. Cleared when the buffered choice is
-    /// consumed by the continuation.
-    world_map_open: Cell<bool>,
-    /// Buffered world-map destination as `(scene, block)`. Set by
-    /// `/v1/world_map/choose`, consumed by the `giShowWorldMap`
-    /// continuation which then performs the equivalent of
-    /// `giArenaLoad(scene, block, "", 0)`. `None` ≡ "no choice yet".
-    world_map_choice: RefCell<Option<(String, String)>>,
-
-    /// Deferred scene-transition request, set by callers that want
-    /// the loading overlay to cover the synchronous `load_scene`
-    /// rather than blocking the game thread mid-frame. The director
-    /// drains this via [`take_pending_scene_load`] in its `update()`
-    /// once the overlay reports `LOAD_READY`. `None` ≡ no transition
-    /// in flight (the synchronous `load_scene` path is unaffected).
-    pending_scene_load: RefCell<Option<(String, String)>>,
-    /// `true` once the most recent deferred load (popped from
-    /// [`pending_scene_load`]) has been applied via `load_scene`.
-    /// Read-on-take by the scripted continuations so they only
-    /// resume after the new scene is fully loaded.
-    last_deferred_load_succeeded: Cell<bool>,
-    /// Generation counter incremented on each successful deferred
-    /// load. Continuations capture the generation when they yield
-    /// and resume only once it has advanced — independent of the
-    /// scene name so re-entering the same scene also unblocks.
-    deferred_load_generation: Cell<u64>,
 }
 
-impl Pal4AppContext {
+impl Pal4VmContext {
     pub fn new(
         component_factory: Rc<dyn ComponentFactory>,
         loader: Rc<AssetLoader>,
@@ -178,7 +139,6 @@ impl Pal4AppContext {
         ui: Rc<UiManager>,
         input: Rc<RefCell<dyn InputEngine>>,
         audio_engine: Rc<dyn AudioEngine>,
-        task_manager: Rc<TaskManager>,
         session: Rc<RefCell<Pal4Session>>,
     ) -> Self {
         // Scene/block/leader/player_locked are owned solely by the
@@ -190,7 +150,6 @@ impl Pal4AppContext {
             loader,
             scene_manager,
             ui: ui.clone(),
-            task_manager,
             input,
             component_factory: component_factory.clone(),
             audio_engine,
@@ -209,13 +168,6 @@ impl Pal4AppContext {
             rotating_entities: HashMap::new(),
             actor_controller_factory: None,
             session,
-            pending_dialog_choices: Vec::new(),
-            next_dialog_choice: Cell::new(None),
-            world_map_open: Cell::new(false),
-            world_map_choice: RefCell::new(None),
-            pending_scene_load: RefCell::new(None),
-            last_deferred_load_succeeded: Cell::new(false),
-            deferred_load_generation: Cell::new(0),
         }
     }
 
@@ -807,67 +759,6 @@ impl Pal4AppContext {
         out
     }
 
-    /// Items queued for the next select-dialog. See the field doc
-    /// on [`Self::pending_dialog_choices`] for the lifecycle.
-    pub fn dialog_choices(&self) -> &[String] {
-        &self.pending_dialog_choices
-    }
-
-    /// Append one item to the pending dialog-choice list. Called
-    /// from the `giSelectDialogAddItem` sysfn handler.
-    pub fn push_dialog_choice(&mut self, item: String) {
-        self.pending_dialog_choices.push(item);
-    }
-
-    /// Buffer a choice for the next `*_get_last_select` call.
-    /// Wired to `/v1/dialog/choose`. The value is consumed on the
-    /// next read (so each pick lasts for exactly one dialog).
-    pub fn buffer_dialog_choice(&self, index: i32) {
-        self.next_dialog_choice.set(Some(index));
-    }
-
-    /// Take the buffered choice (or default to `1`) and clear the
-    /// pending-items list. Called from the `*_get_last_select`
-    /// sysfn handlers.
-    pub fn take_dialog_choice(&mut self) -> i32 {
-        let choice = self.next_dialog_choice.take().unwrap_or(1);
-        self.pending_dialog_choices.clear();
-        choice
-    }
-
-    /// `true` while a `giShowWorldMap` continuation is waiting for a
-    /// destination pick. Surfaced via `/v1/state.world_map_open` so
-    /// external drivers know they must `POST /v1/world_map/choose`
-    /// before the script can advance.
-    pub fn world_map_open(&self) -> bool {
-        self.world_map_open.get()
-    }
-
-    /// Mark the world map as open (called by `giShowWorldMap`'s
-    /// continuation entry). Idempotent.
-    pub fn open_world_map(&self) {
-        self.world_map_open.set(true);
-    }
-
-    /// Buffer a `(scene, block)` destination for the next world-map
-    /// continuation tick. Wired to `/v1/world_map/choose`. Consumed
-    /// on the next tick — agents must re-supply a choice for each
-    /// `giShowWorldMap` prompt.
-    pub fn buffer_world_map_choice(&self, scene: String, block: String) {
-        *self.world_map_choice.borrow_mut() = Some((scene, block));
-    }
-
-    /// Take the buffered world-map choice (if any) and mark the
-    /// world map closed. Returning `None` ≡ "still waiting, keep
-    /// looping". Called from the `giShowWorldMap` continuation.
-    pub fn take_world_map_choice(&self) -> Option<(String, String)> {
-        let choice = self.world_map_choice.borrow_mut().take();
-        if choice.is_some() {
-            self.world_map_open.set(false);
-        }
-        choice
-    }
-
     pub fn scene_name(&self) -> Ref<'_, str> {
         Ref::map(self.session.borrow(), |s| s.state().scene_name())
     }
@@ -929,7 +820,7 @@ impl Pal4AppContext {
         self.scene.set_bsp_visible(visible);
     }
 
-    /// Same idea as [`Pal4AppContext::set_bsp_visible`] but for the
+    /// Same idea as [`Pal4VmContext::set_bsp_visible`] but for the
     /// floor + wall nav-mesh overlay geometry.
     pub fn set_nav_mesh_visible(&mut self, visible: bool) {
         self.scene.set_nav_mesh_visible(visible);
@@ -937,7 +828,7 @@ impl Pal4AppContext {
 
     /// Push the PAL4 debug overlay's plot fast-forward toggle. The
     /// director fans this in each frame; the script wait/dialog/camera
-    /// continuations read it via [`Pal4AppContext::fast_forward`] to
+    /// continuations read it via [`Pal4VmContext::fast_forward`] to
     /// short-circuit to completion.
     pub fn set_fast_forward(&mut self, fast_forward: bool) {
         self.fast_forward.set(fast_forward);
@@ -999,68 +890,6 @@ impl Pal4AppContext {
         self.set_leader(leader as i32);
         self.lock_player(player_locked);
         Ok(())
-    }
-
-    /// Arm a deferred scene transition. The [`OpenPAL4Director`]
-    /// drains this on the next `update()` once the loading overlay
-    /// has rendered, then calls [`take_pending_scene_load`] and runs
-    /// `load_scene` synchronously while the overlay is still on
-    /// screen. Callers (`giArenaLoad`, `giShowWorldMap`,
-    /// `OpenPAL4Director::load_state`) `Yield` a continuation that
-    /// resumes once [`take_deferred_load_completion`] reports the
-    /// generation has advanced. An overlapping request replaces the
-    /// previous one — only the most recently requested transition
-    /// runs.
-    pub fn request_scene_load(&self, scene_name: &str, block_name: &str) {
-        *self.pending_scene_load.borrow_mut() =
-            Some((scene_name.to_string(), block_name.to_string()));
-    }
-
-    /// True when a deferred scene transition has been armed but not
-    /// yet drained.
-    pub fn has_pending_scene_load(&self) -> bool {
-        self.pending_scene_load.borrow().is_some()
-    }
-
-    /// Peek at the pending (scene, block) without draining it.
-    /// Used by [`OpenPAL4Director::drive_loading_overlay`] to arm
-    /// the loading overlay's state machine with the same names the
-    /// continuation will see; the actual drain still happens via
-    /// [`take_pending_scene_load`] when the overlay flips to
-    /// `LOAD_READY`.
-    pub fn peek_pending_scene_load(&self) -> Option<(String, String)> {
-        self.pending_scene_load.borrow().clone()
-    }
-
-    /// Drain the pending transition, returning `(scene, block)` for
-    /// the director to feed to `load_scene`. Returns `None` if no
-    /// transition is armed.
-    pub fn take_pending_scene_load(&self) -> Option<(String, String)> {
-        self.pending_scene_load.borrow_mut().take()
-    }
-
-    /// Bump the generation + success flag after a deferred
-    /// `load_scene` finishes. Continuations watching for completion
-    /// resume once the generation has advanced past the value they
-    /// captured when yielding.
-    pub fn note_deferred_load_finished(&self, succeeded: bool) {
-        self.last_deferred_load_succeeded.set(succeeded);
-        self.deferred_load_generation
-            .set(self.deferred_load_generation.get().wrapping_add(1));
-    }
-
-    /// Current deferred-load generation. Capture this at yield-time
-    /// and re-read each tick; once it has advanced, the load is
-    /// done.
-    pub fn deferred_load_generation(&self) -> u64 {
-        self.deferred_load_generation.get()
-    }
-
-    /// Whether the most recent deferred load succeeded. Continuations
-    /// use this to decide between resuming on the new scene's init
-    /// fn vs. aborting the surrounding script.
-    pub fn last_deferred_load_succeeded(&self) -> bool {
-        self.last_deferred_load_succeeded.get()
     }
 
     pub fn start_play_movie(&mut self, name: &str) -> Option<(u32, u32)> {
@@ -1174,7 +1003,7 @@ impl Pal4AppContext {
             .map(|k| Vec3::new(k[0], k[1], k[2]))
             .collect();
 
-        let snap_to = |ctx: &Pal4AppContext, pos: Vec3| {
+        let snap_to = |ctx: &Pal4VmContext, pos: Vec3| {
             if let Some(scene) = ctx.scene_manager.scene() {
                 scene
                     .camera_mut()

@@ -32,7 +32,7 @@ impl Pal4GameContext {
     }
 
     /// Engine-side setter for the active party leader. Called by
-    /// `Pal4AppContext::set_leader`. Script reads via
+    /// `Pal4VmContext::set_leader`. Script reads via
     /// `IPal4GameContext::current_leader()`.
     pub fn set_current_leader(&self, leader: usize) {
         self.current_leader.set(leader);

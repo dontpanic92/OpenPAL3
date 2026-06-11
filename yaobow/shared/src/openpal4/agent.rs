@@ -8,7 +8,7 @@
 //!   thread (inside [`OpenPAL4Director::update`]).
 //! * A [`SyntheticInputBridge`] that overlays agent-driven key / axis
 //!   events on top of the real input engine. Replaces the `input`
-//!   handle handed to `Pal4AppContext` so every consumer (scripts,
+//!   handle handed to `Pal4VmContext` so every consumer (scripts,
 //!   actor controllers, the director itself) sees the merged view.
 //! * A small bag of [`Cell`](std::cell::Cell)s exposing pause /
 //!   fixed-step / fps state to the director and back.
@@ -16,7 +16,7 @@
 //! `Pal4AgentBridge` is *only* state — the actual command dispatch
 //! (`AgentCommand -> AgentResponse`) lives in
 //! [`super::director::dispatch_agent_command`] so it can call into the
-//! director's `vm` / `Pal4AppContext` without an extra interior-
+//! director's `vm` / `Pal4VmContext` without an extra interior-
 //! mutability hop.
 //!
 //! ## Threading
@@ -61,7 +61,7 @@ pub struct Pal4AgentBridge {
     /// agent state.
     pub consumer: std::cell::RefCell<Option<AgentCommandConsumer>>,
 
-    /// Synthetic-input overlay handed to `Pal4AppContext` so taps /
+    /// Synthetic-input overlay handed to `Pal4VmContext` so taps /
     /// holds / axes injected via `/v1/input/*` are visible to the
     /// scripts that poll `input.get_key_state(...)`.
     pub input_bridge: Rc<std::cell::RefCell<SyntheticInputBridge>>,
@@ -113,7 +113,7 @@ pub struct Pal4AgentBridge {
 impl Pal4AgentBridge {
     /// Construct a fresh bridge wrapping `input_bridge`. The caller
     /// is responsible for sharing the same `Rc<RefCell<...>>` with
-    /// `Pal4AppContext` so injected input actually reaches script
+    /// `Pal4VmContext` so injected input actually reaches script
     /// consumers.
     pub fn new(input_bridge: Rc<std::cell::RefCell<SyntheticInputBridge>>) -> Self {
         let (queue, consumer) = AgentCommandQueue::new();

@@ -1034,7 +1034,7 @@ impl Pal4Scene {
     /// emitter's countdown; on expiry re-rolls a fresh interval
     /// from `[min_time, max_time]` AND, when the leader is within
     /// the emitter's `trigger_distance`, queues the emitter's WAV
-    /// name in the returned Vec. The caller (`Pal4AppContext`)
+    /// name in the returned Vec. The caller (`Pal4VmContext`)
     /// drains the Vec into `play_sound`.
     ///
     /// Timing decisions (see plan.md "Rubber-duck adjustments"):

@@ -37,7 +37,7 @@ use fileformats::{
 use packfs::init_virtual_fs;
 use serde::Serialize;
 use shared::{
-    openpal4::{app_context::Pal4AppContext, scripting::create_context},
+    openpal4::{vm_context::Pal4VmContext, scripting::create_context},
     scripting::angelscript::{
         AsInst, AsInstInstance, ScriptGlobalContext, ScriptGlobalFunction, ScriptModule, disasm,
     },
@@ -281,11 +281,11 @@ fn main() -> Result<()> {
     // Sysfn ordinal table comes from the same registration that the
     // live game uses — keeps the catalog in sync without a parallel
     // hard-coded list. Independent of which per-scene module we walk.
-    let ctx: ScriptGlobalContext<Pal4AppContext> = create_context();
+    let ctx: ScriptGlobalContext<Pal4VmContext> = create_context();
     let sysfns: Vec<String> = ctx
         .functions()
         .iter()
-        .map(|f: &ScriptGlobalFunction<Pal4AppContext>| f.name.clone())
+        .map(|f: &ScriptGlobalFunction<Pal4VmContext>| f.name.clone())
         .collect();
     eprintln!("Sysfn table: {} entries", sysfns.len());
 

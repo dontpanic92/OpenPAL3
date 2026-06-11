@@ -26,7 +26,7 @@ use crate::scripting::angelscript::ScriptVm;
 
 use super::{
     agent::Pal4AgentBridge,
-    app_context::{DialogAvatarSide, Pal4AppContext},
+    vm_context::{DialogAvatarSide, Pal4VmContext},
     asset_loader::AssetLoader,
     comdef::IPal4LoadingOverlay,
     comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay},
@@ -46,7 +46,7 @@ pub struct Pal4DebugBundle {
 }
 
 pub struct OpenPAL4Director {
-    vm: RefCell<ScriptVm<Pal4AppContext>>,
+    vm: RefCell<ScriptVm<Pal4VmContext>>,
     #[allow(dead_code)]
     control: FreeViewController,
 
@@ -157,25 +157,24 @@ impl OpenPAL4Director {
         ui: Rc<UiManager>,
         input: Rc<RefCell<dyn InputEngine>>,
         audio: Rc<dyn AudioEngine>,
-        task_manager: Rc<TaskManager>,
+        _task_manager: Rc<TaskManager>,
         session: Rc<RefCell<Pal4Session>>,
     ) -> Self {
         // The session is the app-lifetime, Rc-shared playthrough state
         // owned by `Pal4Service`; this director just holds a clone of
         // the handle in its context, so the same session is observed by
         // every mode and by app-lifetime code (the agent dispatcher).
-        let app_context = Pal4AppContext::new(
+        let vm_context = Pal4VmContext::new(
             component_factory,
             loader,
             scene_manager,
             ui,
             input.clone(),
             audio,
-            task_manager,
             session,
         );
         Self {
-            vm: RefCell::new(create_script_vm(app_context)),
+            vm: RefCell::new(create_script_vm(vm_context)),
             control: FreeViewController::new(input),
             debug: RefCell::new(None),
             debug_visible: Cell::new(false),
@@ -240,12 +239,12 @@ impl OpenPAL4Director {
     }
 
     /// Install the scripted `IPal4ActorController` factory on the
-    /// underlying `Pal4AppContext`. Must be called before the first
+    /// underlying `Pal4VmContext`. Must be called before the first
     /// `load_scene` for the controllers to attach.
     pub fn set_actor_controller_factory(&self, factory: ComRc<super::comdef::IPal4ScriptFactory>) {
         self.vm
             .borrow_mut()
-            .app_context_mut()
+            .vm_context_mut()
             .set_actor_controller_factory(factory);
     }
 
@@ -299,7 +298,7 @@ impl OpenPAL4Director {
         let fast_forward = bundle.debug_state.fast_forward();
 
         let mut vm = self.vm.borrow_mut();
-        let app = vm.app_context_mut();
+        let app = vm.vm_context_mut();
         app.set_bsp_visible(bsp_visible);
         app.set_nav_mesh_visible(nav_mesh_visible);
         app.set_fast_forward(fast_forward);
@@ -319,7 +318,7 @@ impl OpenPAL4Director {
 
     fn poll_tilde(&self) -> bool {
         let vm = self.vm.borrow();
-        let input = vm.app_context.input.borrow();
+        let input = vm.vm_context.input.borrow();
         let pressed = input.get_key_state(Key::Tilde).pressed();
         let prev = self.debug_prev_tilde.get();
         self.debug_prev_tilde.set(pressed);
@@ -331,13 +330,13 @@ impl OpenPAL4Director {
     /// live position / facing and camera so a later load resumes at the
     /// same point. Scene / block / leader / player-locked already live
     /// in the session (its single source of truth — see
-    /// `Pal4AppContext`), so they are persisted automatically. Negative
+    /// `Pal4VmContext`), so they are persisted automatically. Negative
     /// slots are ignored by `Pal4PersistentState::save`.
     pub fn save_state(&self, slot: i32) {
         let mut vm = self.vm.borrow_mut();
         let globals = vm.g.borrow().globals_snapshot();
 
-        let app = vm.app_context_mut();
+        let app = vm.vm_context_mut();
         let position = Some(app.leader_pos());
         let direction = Some(app.leader_direction());
         let camera = app.camera_transform();
@@ -361,7 +360,7 @@ impl OpenPAL4Director {
     pub fn load_state(&self, slot: i32) {
         let mut vm = self.vm.borrow_mut();
 
-        let loaded = vm.app_context_mut().session_mut().load_slot(slot);
+        let loaded = vm.vm_context_mut().session_mut().load_slot(slot);
         let snapshot = match loaded {
             Ok(snapshot) => snapshot,
             Err(e) => {
@@ -382,8 +381,9 @@ impl OpenPAL4Director {
         // to the legacy synchronous flow so non-protosept callers
         // (tests, headless harnesses) still work.
         if self.loading_overlay().is_some() {
-            let app = vm.app_context_mut();
-            app.request_scene_load(&snapshot.scene_name, &snapshot.block_name);
+            vm.vm_context()
+                .session()
+                .request_scene_load(&snapshot.scene_name, &snapshot.block_name);
             drop(vm);
             *self.pending_load_apply.borrow_mut() = Some(PendingLoadApply {
                 slot,
@@ -392,7 +392,7 @@ impl OpenPAL4Director {
             return;
         }
 
-        let app = vm.app_context_mut();
+        let app = vm.vm_context_mut();
         if let Err(err) = app.load_scene(&snapshot.scene_name, &snapshot.block_name) {
             log::error!(
                 "OpenPAL4Director::load_state: failed to load scene='{}' block='{}': {:?}; \
@@ -419,7 +419,7 @@ impl OpenPAL4Director {
     /// (it requires a `&mut ScriptVm`, which the deferred path
     /// already has open).
     fn apply_loaded_snapshot_inner(
-        app: &mut Pal4AppContext,
+        app: &mut Pal4VmContext,
         snapshot: &super::session::RuntimeSnapshot,
     ) {
         app.set_leader(snapshot.leader as i32);
@@ -465,7 +465,7 @@ impl OpenPAL4Director {
         // the overlay's job is to react to whatever flavour set the
         // pending request.
         if !overlay.is_active() {
-            let pending = self.vm.borrow().app_context.peek_pending_scene_load();
+            let pending = self.vm.borrow().vm_context.session().peek_pending_scene_load();
             if let Some((scene, block)) = pending {
                 overlay.request(&scene, &block);
             }
@@ -482,10 +482,10 @@ impl OpenPAL4Director {
         // the snapshot) or a scripted scene transition.
         if let Some(apply) = self.pending_load_apply.borrow_mut().take() {
             let mut vm = self.vm.borrow_mut();
-            let app = vm.app_context_mut();
+            let app = vm.vm_context_mut();
             // Consume the pending request to keep the two paths in
             // lockstep — either flavour drains it.
-            let _ = app.take_pending_scene_load();
+            let _ = app.session().take_pending_scene_load();
             let result = app.load_scene(&apply.snapshot.scene_name, &apply.snapshot.block_name);
             let succeeded = match result {
                 Ok(()) => {
@@ -504,7 +504,7 @@ impl OpenPAL4Director {
                     false
                 }
             };
-            app.note_deferred_load_finished(succeeded);
+            app.session().note_deferred_load_finished(succeeded);
             // Save-load always resets the VM to idle so the new-game
             // opening script (function index 0) doesn't fire on top
             // of the restored scene. Mirrors the legacy boot-from-
@@ -518,10 +518,10 @@ impl OpenPAL4Director {
             return;
         }
 
-        let pending = self.vm.borrow().app_context.take_pending_scene_load();
+        let pending = self.vm.borrow().vm_context.session().take_pending_scene_load();
         if let Some((scene, block)) = pending {
             let mut vm = self.vm.borrow_mut();
-            let app = vm.app_context_mut();
+            let app = vm.vm_context_mut();
             let succeeded = match app.load_scene(&scene, &block) {
                 Ok(()) => true,
                 Err(err) => {
@@ -536,7 +536,7 @@ impl OpenPAL4Director {
                     false
                 }
             };
-            app.note_deferred_load_finished(succeeded);
+            app.session().note_deferred_load_finished(succeeded);
             drop(vm);
             overlay.notify_load_complete();
             return;
@@ -554,7 +554,7 @@ impl OpenPAL4Director {
     fn poll_save_load_hotkeys(&self) {
         let (save_slot, load_slot) = {
             let vm = self.vm.borrow();
-            let input = vm.app_context.input.borrow();
+            let input = vm.vm_context.input.borrow();
             let save_slot = if input.get_key_state(Key::Num5).pressed() {
                 1
             } else if input.get_key_state(Key::Num6).pressed() {
@@ -592,7 +592,7 @@ impl IDirectorImpl for OpenPAL4Director {
     fn activate(&self) {
         self.vm
             .borrow()
-            .app_context
+            .vm_context
             .scene_manager
             .push_scene(CoreScene::create());
     }
@@ -617,7 +617,7 @@ impl IDirectorImpl for OpenPAL4Director {
             return None;
         }
 
-        self.vm.borrow_mut().app_context_mut().update(effective_dt);
+        self.vm.borrow_mut().vm_context_mut().update(effective_dt);
 
         // Apply a pending start-menu "Load Game" selection on the
         // first advancing frame, before any new-game script triggers.
@@ -648,11 +648,11 @@ impl IDirectorImpl for OpenPAL4Director {
             let function = radiance::perf::time("pal4.director.event_triggered_total_ns", || {
                 self.vm
                     .borrow_mut()
-                    .app_context_mut()
+                    .vm_context_mut()
                     .event_triggered(effective_dt)
             });
             if let Some(function) = function {
-                let module = self.vm.borrow().app_context.scene.module.clone().unwrap();
+                let module = self.vm.borrow().vm_context.scene.module.clone().unwrap();
                 self.vm
                     .borrow_mut()
                     .set_function_by_name2(module, &function);
@@ -669,7 +669,7 @@ impl IDirectorImpl for OpenPAL4Director {
         // VM state.
         self.poll_pending_fires();
 
-        /*if !self.vm.borrow().app_context().player_locked {
+        /*if !self.vm.borrow().vm_context().player_locked {
             self.control
                 .update(scene_manager.scene().unwrap(), delta_sec)
         }*/
@@ -905,7 +905,7 @@ impl OpenPAL4Director {
     }
 
     /// Switchboard for the **VM / scene** agent commands — the ones that
-    /// need the running script VM, the live scene, or `Pal4AppContext`.
+    /// need the running script VM, the live scene, or `Pal4VmContext`.
     /// Bridge-only commands (input, time control, screenshot, perf, log)
     /// are handled upstream by the app-lifetime `Pal4AgentDispatcher`
     /// (`Pal4Service::dispatch_bridge_command`) and never reach here.
@@ -933,19 +933,16 @@ impl OpenPAL4Director {
             AgentCommand::TraceStart(params) => self.handle_trace_start(params),
             AgentCommand::TraceStop => self.handle_trace_stop(),
             AgentCommand::TraceDrain(params) => self.handle_trace_drain(params),
-            AgentCommand::ChooseDialog(params) => {
-                self.vm
-                    .borrow_mut()
-                    .app_context_mut()
-                    .buffer_dialog_choice(params.index);
-                AgentResponse::Ok
-            }
-            AgentCommand::ChooseWorldMap(params) => {
-                self.vm
-                    .borrow()
-                    .app_context()
-                    .buffer_world_map_choice(params.scene, params.block);
-                AgentResponse::Ok
+            AgentCommand::ChooseDialog(_) | AgentCommand::ChooseWorldMap(_) => {
+                // Session-only commands are now dispatched by
+                // `Pal4Service::pump_agent` directly to the shared
+                // session via interior mutability — no director hop.
+                // If one reaches the director it means the dispatcher
+                // classified incorrectly; reply with a clear error
+                // rather than silently dropping.
+                AgentResponse::err(AgentError::internal(
+                    "session command unexpectedly routed to story director",
+                ))
             }
             // Bridge-only commands (input / time / screenshot / perf /
             // log) are handled by the dispatcher and never routed here;
@@ -959,7 +956,7 @@ impl OpenPAL4Director {
 
     fn handle_teleport(&self, params: TeleportParams) -> AgentResponse {
         let mut vm = self.vm.borrow_mut();
-        vm.app_context_mut().set_player_pos(
+        vm.vm_context_mut().set_player_pos(
             params.player,
             &Vec3::new(params.pos[0], params.pos[1], params.pos[2]),
         );
@@ -979,7 +976,7 @@ impl OpenPAL4Director {
     fn handle_fast_forward(&self, params: FastForwardParams) -> AgentResponse {
         self.vm
             .borrow_mut()
-            .app_context_mut()
+            .vm_context_mut()
             .set_fast_forward(params.on);
         AgentResponse::Ok
     }
@@ -1002,7 +999,7 @@ impl OpenPAL4Director {
     /// the placeholder scene is active.
     fn handle_get_scene_triggers(&self) -> AgentResponse {
         let vm = self.vm.borrow();
-        let app = vm.app_context();
+        let app = vm.vm_context();
 
         let triggers = app
             .scene
@@ -1036,7 +1033,7 @@ impl OpenPAL4Director {
     /// block, with each entry's live world-space position.
     fn handle_get_scene_objects(&self) -> AgentResponse {
         let vm = self.vm.borrow();
-        let app = vm.app_context();
+        let app = vm.vm_context();
 
         let npcs = app
             .scene
@@ -1129,7 +1126,7 @@ impl OpenPAL4Director {
         }
         let (module, fn_name) = {
             let vm = self.vm.borrow();
-            let app = vm.app_context();
+            let app = vm.vm_context();
             let Some(module) = app.scene.module.clone() else {
                 return AgentResponse::err(AgentError::conflict(
                     "no scene is loaded; load a block before firing triggers",
@@ -1169,7 +1166,7 @@ impl OpenPAL4Director {
         }
         let (module, fn_name) = {
             let vm = self.vm.borrow();
-            let app = vm.app_context();
+            let app = vm.vm_context();
             let Some(module) = app.scene.module.clone() else {
                 return AgentResponse::err(AgentError::conflict(
                     "no scene is loaded; load a block before interacting with objects",
@@ -1262,7 +1259,7 @@ impl OpenPAL4Director {
     fn build_state_snapshot(&self) -> StateSnapshot {
         let bridge = self.agent.borrow().clone();
         let vm = self.vm.borrow();
-        let app = vm.app_context();
+        let app = vm.vm_context();
         let dialog = app.dialog_snapshot();
 
         let avatar_str = match dialog.avatar {
@@ -1313,7 +1310,7 @@ impl OpenPAL4Director {
                 open: dialog.open,
                 text: dialog.text,
                 avatar: avatar_str.to_string(),
-                choices: app.dialog_choices().to_vec(),
+                choices: app.session().dialog_choices(),
             },
             fast_forward: app.fast_forward(),
             paused,
@@ -1323,7 +1320,7 @@ impl OpenPAL4Director {
             fps,
             dt,
             inventory,
-            world_map_open: app.world_map_open(),
+            world_map_open: app.session().world_map_open(),
         }
     }
 }

@@ -63,7 +63,7 @@ use common::store_ext::StoreExt2;
 
 /// PAL4 save namespace lives in
 /// `openpal4::states::persistent_state::PAL4_APP_NAME` so the service
-/// and `Pal4AppContext` agree on the slot directory.
+/// and `Pal4VmContext` agree on the slot directory.
 
 pub struct Pal4Service {
     app: ComRc<IApplication>,
@@ -300,6 +300,15 @@ impl Pal4Service {
                 // implementation and no menu/story asymmetry.
                 let response = self.dispatch_bridge_command(&bridge, env.command.clone());
                 env.reply(response);
+            } else if Self::is_session_command(&env.command) {
+                // Session-only commands (dialog / world-map choice
+                // buffering) write straight to the shared session via
+                // interior mutability — no director or VM required.
+                // This lets an agent pre-stage a choice even if no
+                // story director is currently active (e.g. queuing
+                // the first dialog reply while the start-menu is up).
+                let response = self.dispatch_session_command(env.command.clone());
+                env.reply(response);
             } else if Self::is_mode_control_command(&env.command) {
                 // Mode-control commands (new_game / load / exit) install
                 // the next director via the `SceneManager`. Handled here
@@ -414,6 +423,35 @@ impl Pal4Service {
                 | AgentCommand::LogTail(_)
                 | AgentCommand::GetPerfMetrics
         )
+    }
+
+    /// Commands that write into the shared playthrough session
+    /// (`Pal4SessionTransient`) via interior mutability — no VM or
+    /// director needed.
+    fn is_session_command(command: &AgentCommand) -> bool {
+        matches!(
+            command,
+            AgentCommand::ChooseDialog(_) | AgentCommand::ChooseWorldMap(_)
+        )
+    }
+
+    /// Switchboard for [`Self::is_session_command`]. Writes go
+    /// directly to `self.session` (shared `Rc<RefCell>`); the next
+    /// active story director observes them through the same handle.
+    fn dispatch_session_command(&self, command: AgentCommand) -> AgentResponse {
+        match command {
+            AgentCommand::ChooseDialog(params) => {
+                self.session.borrow().buffer_dialog_choice(params.index);
+                AgentResponse::Ok
+            }
+            AgentCommand::ChooseWorldMap(params) => {
+                self.session
+                    .borrow()
+                    .buffer_world_map_choice(params.scene, params.block);
+                AgentResponse::Ok
+            }
+            _ => unreachable!("dispatch_session_command called with non-session command"),
+        }
     }
 
     /// Switchboard for the [`Self::is_bridge_command`] set. These all

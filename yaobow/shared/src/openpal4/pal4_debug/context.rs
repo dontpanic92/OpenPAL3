@@ -14,7 +14,7 @@ use crosscom::ComRc;
 
 use crate::openpal4::comdef::pal4_debug::{IPal4DebugContext, IPal4DebugContextImpl};
 
-/// Frame-local snapshot copied from `Pal4AppContext` before each
+/// Frame-local snapshot copied from `Pal4VmContext` before each
 /// script `render` call. Plain data — no engine handles — so the
 /// script-visible context object stays cheap to update and is not
 /// invalidated by scene transitions.
@@ -60,7 +60,7 @@ impl Pal4DebugState {
 
     /// `&self`-safe accessor for the BSP-visibility toggle. Read by
     /// the director each frame so it can fan the flag out to
-    /// `Pal4AppContext::set_bsp_visible`.
+    /// `Pal4VmContext::set_bsp_visible`.
     pub fn bsp_visible(&self) -> bool {
         self.bsp_visible.get()
     }
@@ -73,7 +73,7 @@ impl Pal4DebugState {
 
     /// `&self`-safe accessor for the plot fast-forward toggle. Read by
     /// the director each frame so it can fan the flag out to
-    /// `Pal4AppContext::set_fast_forward`.
+    /// `Pal4VmContext::set_fast_forward`.
     pub fn fast_forward(&self) -> bool {
         self.fast_forward.get()
     }

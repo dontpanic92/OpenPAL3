@@ -1,4 +1,4 @@
-pub mod app_context;
+pub mod vm_context;
 pub mod asset_loader;
 #[macro_use]
 pub mod comdef {
