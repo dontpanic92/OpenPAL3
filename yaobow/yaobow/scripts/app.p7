@@ -14,6 +14,7 @@
 import radiance;
 import shared.pal4_debug;
 import yaobow.openpal4.debug_overlay;
+import yaobow.openpal4.loading_overlay;
 import shared.openpal4;
 import shared.openpal5;
 import yaobow.openpal5.director;
@@ -35,6 +36,12 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal4.IPal4ScriptFactory] Yaobow
         ctx: box<pal4_debug.IPal4DebugContext>,
     ) -> box<pal4_debug.IPal4DebugOverlay> {
         return debug_overlay.make_overlay(ctx);
+    }
+
+    pub fn make_pal4_loading_overlay(
+        self: ref<Self>,
+    ) -> box<openpal4.IPal4LoadingOverlay> {
+        return loading_overlay.make_loading_overlay(self.ctx);
     }
 
     pub fn make_actor_controller(

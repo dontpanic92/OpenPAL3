@@ -150,6 +150,24 @@ pub struct Pal4AppContext {
     /// continuation which then performs the equivalent of
     /// `giArenaLoad(scene, block, "", 0)`. `None` ≡ "no choice yet".
     world_map_choice: RefCell<Option<(String, String)>>,
+
+    /// Deferred scene-transition request, set by callers that want
+    /// the loading overlay to cover the synchronous `load_scene`
+    /// rather than blocking the game thread mid-frame. The director
+    /// drains this via [`take_pending_scene_load`] in its `update()`
+    /// once the overlay reports `LOAD_READY`. `None` ≡ no transition
+    /// in flight (the synchronous `load_scene` path is unaffected).
+    pending_scene_load: RefCell<Option<(String, String)>>,
+    /// `true` once the most recent deferred load (popped from
+    /// [`pending_scene_load`]) has been applied via `load_scene`.
+    /// Read-on-take by the scripted continuations so they only
+    /// resume after the new scene is fully loaded.
+    last_deferred_load_succeeded: Cell<bool>,
+    /// Generation counter incremented on each successful deferred
+    /// load. Continuations capture the generation when they yield
+    /// and resume only once it has advanced — independent of the
+    /// scene name so re-entering the same scene also unblocks.
+    deferred_load_generation: Cell<u64>,
 }
 
 impl Pal4AppContext {
@@ -195,6 +213,9 @@ impl Pal4AppContext {
             next_dialog_choice: Cell::new(None),
             world_map_open: Cell::new(false),
             world_map_choice: RefCell::new(None),
+            pending_scene_load: RefCell::new(None),
+            last_deferred_load_succeeded: Cell::new(false),
+            deferred_load_generation: Cell::new(0),
         }
     }
 
@@ -978,6 +999,68 @@ impl Pal4AppContext {
         self.set_leader(leader as i32);
         self.lock_player(player_locked);
         Ok(())
+    }
+
+    /// Arm a deferred scene transition. The [`OpenPAL4Director`]
+    /// drains this on the next `update()` once the loading overlay
+    /// has rendered, then calls [`take_pending_scene_load`] and runs
+    /// `load_scene` synchronously while the overlay is still on
+    /// screen. Callers (`giArenaLoad`, `giShowWorldMap`,
+    /// `OpenPAL4Director::load_state`) `Yield` a continuation that
+    /// resumes once [`take_deferred_load_completion`] reports the
+    /// generation has advanced. An overlapping request replaces the
+    /// previous one — only the most recently requested transition
+    /// runs.
+    pub fn request_scene_load(&self, scene_name: &str, block_name: &str) {
+        *self.pending_scene_load.borrow_mut() =
+            Some((scene_name.to_string(), block_name.to_string()));
+    }
+
+    /// True when a deferred scene transition has been armed but not
+    /// yet drained.
+    pub fn has_pending_scene_load(&self) -> bool {
+        self.pending_scene_load.borrow().is_some()
+    }
+
+    /// Peek at the pending (scene, block) without draining it.
+    /// Used by [`OpenPAL4Director::drive_loading_overlay`] to arm
+    /// the loading overlay's state machine with the same names the
+    /// continuation will see; the actual drain still happens via
+    /// [`take_pending_scene_load`] when the overlay flips to
+    /// `LOAD_READY`.
+    pub fn peek_pending_scene_load(&self) -> Option<(String, String)> {
+        self.pending_scene_load.borrow().clone()
+    }
+
+    /// Drain the pending transition, returning `(scene, block)` for
+    /// the director to feed to `load_scene`. Returns `None` if no
+    /// transition is armed.
+    pub fn take_pending_scene_load(&self) -> Option<(String, String)> {
+        self.pending_scene_load.borrow_mut().take()
+    }
+
+    /// Bump the generation + success flag after a deferred
+    /// `load_scene` finishes. Continuations watching for completion
+    /// resume once the generation has advanced past the value they
+    /// captured when yielding.
+    pub fn note_deferred_load_finished(&self, succeeded: bool) {
+        self.last_deferred_load_succeeded.set(succeeded);
+        self.deferred_load_generation
+            .set(self.deferred_load_generation.get().wrapping_add(1));
+    }
+
+    /// Current deferred-load generation. Capture this at yield-time
+    /// and re-read each tick; once it has advanced, the load is
+    /// done.
+    pub fn deferred_load_generation(&self) -> u64 {
+        self.deferred_load_generation.get()
+    }
+
+    /// Whether the most recent deferred load succeeded. Continuations
+    /// use this to decide between resuming on the new scene's init
+    /// fn vs. aborting the surrounding script.
+    pub fn last_deferred_load_succeeded(&self) -> bool {
+        self.last_deferred_load_succeeded.get()
     }
 
     pub fn start_play_movie(&mut self, name: &str) -> Option<(u32, u32)> {

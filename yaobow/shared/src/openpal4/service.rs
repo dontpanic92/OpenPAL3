@@ -797,7 +797,15 @@ impl Pal4Service {
             director.set_debug_bundle(bundle);
         }
         if let Some(factory) = self.script_factory.borrow().clone() {
-            director.set_actor_controller_factory(factory);
+            director.set_actor_controller_factory(factory.clone());
+            // The loading overlay is built per-launch (it captures
+            // the host context for lazy `open_layout`) and survives
+            // for the director's lifetime. Mirrors the debug-bundle
+            // path: silently degrade to the legacy synchronous
+            // `load_scene` flow if no script factory is installed
+            // (e.g. headless test harness).
+            let overlay = factory.make_pal4_loading_overlay();
+            director.set_loading_overlay(overlay);
         }
 
         if let Some(bridge) = agent_bridge {

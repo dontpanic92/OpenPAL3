@@ -72,10 +72,56 @@ interface IPal4ScriptFactory: IUnknown {
     // `IPal4DebugContext`. `Pal4Service` assembles the surrounding
     // `Pal4DebugBundle` (Rust-side session + state) around it.
     IPal4DebugOverlay make_pal4_debug_overlay(IPal4DebugContext ctx);
+
+    // Scripted PAL4 loading overlay. Renders
+    // `/gamedata/ui/layouts/loading.xml` while a scene transition is
+    // pending so the synchronous `Pal4Scene::load` is hidden behind a
+    // fullscreen layout. `OpenPAL4Director` owns the resulting box
+    // and drives it from `update` / `render_im`.
+    IPal4LoadingOverlay make_pal4_loading_overlay();
 }
 
 [uuid(b6f4d2a8-3c91-4e07-8a55-1d2e9f0c7b63)]
 class Pal4ScriptFactory: IPal4ScriptFactory {}
+
+// Scripted PAL4 loading overlay. Mirrors the `IPal4DebugOverlay`
+// pattern: a `[protosept(scriptable)]` interface implemented by a p7
+// struct, called every frame from Rust while a scene transition is
+// being hidden behind the loading layout. The state machine + frame
+// counter live in p7; the Rust director only drives:
+//
+//   1. `request(scene, block)` arms a fresh transition,
+//   2. each `update()` calls `tick(dt)` and acts on the returned
+//      phase (LOAD_READY → call host.pal4().request_scene_load
+//      having already happened in step 1; the director performs the
+//      actual `app.load_scene` synchronously this frame),
+//   3. each `render_im` calls `render(ui, dt)` while `is_active()`
+//      reports true so the loading layout paints over the frozen
+//      scene.
+//
+// Phase codes returned from `tick`:
+//   0 = LOAD_IDLE       no transition pending
+//   1 = LOAD_PAINTING   overlay drawn but load not yet kicked
+//   2 = LOAD_READY      caller must call `app.load_scene` this tick
+//   3 = LOAD_HOLDING    load done, overlay holding minimum duration
+//   4 = LOAD_DONE       overlay dismissed this tick (clears on read)
+//
+// `notify_load_complete` is called by the director immediately after
+// performing the synchronous `app.load_scene`, so the overlay can
+// transition `READY -> HOLDING` and start its dismissal timer.
+[uuid(2c5b9d10-7f48-4e6b-9f3c-1d8e0a4b5c6d), protosept(scriptable)]
+interface IPal4LoadingOverlay: IUnknown {
+    void request(&str scene_name, &str block_name);
+    int  tick(float dt);
+    void notify_load_complete();
+    bool is_active();
+    void cancel();
+
+    void render(IUiHost ui, float dt);
+}
+
+[uuid(2c5b9d10-7f48-4e6b-9f3c-1d8e0a4b5c6e)]
+class Pal4LoadingOverlay: IPal4LoadingOverlay {}
 
 // Host-implemented PAL4 game context handed to scripted controllers.
 // Exposes only the truly PAL4-specific surface: the current party

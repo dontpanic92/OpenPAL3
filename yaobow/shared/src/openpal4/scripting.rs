@@ -1129,11 +1129,49 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionState {
         scn_str: i32,
         block_str: i32,
         _data_str: i32,
-        _show_loading: i32
+        show_loading: i32
     );
 
     let scn = get_str(vm, scn_str as usize).unwrap();
     let block = get_str(vm, block_str as usize).unwrap();
+
+    // When the script asked for a loading screen, defer the
+    // synchronous `Pal4Scene::load` to the director's overlay-driven
+    // path: request the load, yield a continuation that waits for
+    // the overlay's generation counter to advance, then wire up the
+    // next scene's `<scn>_<block>_init` entry once the load lands.
+    // Without `show_loading` (or when no overlay is installed —
+    // detected post-yield by the generation never advancing within
+    // the first tick), fall back to the legacy synchronous path so
+    // headless / no-protosept builds keep working.
+    if show_loading != 0 {
+        let baseline = vm.app_context.deferred_load_generation();
+        vm.app_context.request_scene_load(&scn, &block);
+        let scn_owned = scn.clone();
+        let block_owned = block.clone();
+        return Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
+            if vm.app_context.deferred_load_generation() == baseline {
+                return ContinuationState::Loop;
+            }
+            // The director performed the load (success or failure) —
+            // on failure, abort the surrounding script so follow-up
+            // `giPlayer*` ops don't run against a half-loaded scene.
+            if !vm.app_context.last_deferred_load_succeeded() {
+                log::error!(
+                    "giArenaLoad: deferred load_scene failed for scene='{}' \
+                     block='{}'; aborting current script to prevent cascading \
+                     panics.",
+                    scn_owned,
+                    block_owned
+                );
+                vm.abort_script();
+                return ContinuationState::Completed;
+            }
+            let module = vm.app_context.scene.module.clone().unwrap();
+            vm.set_function_by_name2(module, &format!("{}_{}_init", scn_owned, block_owned));
+            ContinuationState::Completed
+        }));
+    }
 
     // If the target scene fails to load (e.g. an EVF/GOB/NPC binary
     // parse error in a scene the engine hasn't been fully validated
@@ -2900,32 +2938,69 @@ fn show_world_map(_: &str, vm: &mut ScriptVm<Pal4AppContext>) -> Pal4FunctionSta
     // dialog-choice plumbing — the world map is exactly the same idea
     // with a `(scene, block)` payload instead of an `i32` index.
     vm.app_context.open_world_map();
+
+    // Two-phase continuation: first wait for the agent / player to
+    // pick a destination, then arm the loading overlay and wait for
+    // the deferred load to land. Kept in the same closure so we
+    // share captures without re-yielding.
+    enum WorldMapPhase {
+        WaitChoice,
+        WaitLoad {
+            baseline: u64,
+            scene: String,
+            block: String,
+        },
+    }
+
+    let mut phase = WorldMapPhase::WaitChoice;
     Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
-        let Some((scene, block)) = vm.app_context.take_world_map_choice() else {
-            return ContinuationState::Loop;
-        };
-
-        // Same error-handling story as `arena_load`: if the requested
-        // scene fails to load (broken EVF/GOB on disk, typo'd choice
-        // from the agent, ...) abort the surrounding script rather
-        // than letting it run `giPlayer*` calls against a half-loaded
-        // scene and panic.
-        if let Err(err) = vm.app_context.load_scene(&scene, &block) {
-            log::error!(
-                "giShowWorldMap: failed to load scene='{}' block='{}': {:?}; \
-                 aborting current script to prevent cascading panics in \
-                 follow-up giPlayer* calls",
-                scene,
-                block,
-                err
-            );
-            vm.abort_script();
-            return ContinuationState::Completed;
+        loop {
+            match &phase {
+                WorldMapPhase::WaitChoice => {
+                    let Some((scene, block)) = vm.app_context.take_world_map_choice() else {
+                        return ContinuationState::Loop;
+                    };
+                    // Same error-handling story as `arena_load`:
+                    // route the world-map hop through the overlay
+                    // (always a long-distance load) and on
+                    // load-failure abort the surrounding script.
+                    let baseline = vm.app_context.deferred_load_generation();
+                    vm.app_context.request_scene_load(&scene, &block);
+                    phase = WorldMapPhase::WaitLoad {
+                        baseline,
+                        scene,
+                        block,
+                    };
+                    // Fall through to the next match iteration so we
+                    // observe the deferred-load generation right
+                    // away (cheap; just one Cell read).
+                    continue;
+                }
+                WorldMapPhase::WaitLoad {
+                    baseline,
+                    scene,
+                    block,
+                } => {
+                    if vm.app_context.deferred_load_generation() == *baseline {
+                        return ContinuationState::Loop;
+                    }
+                    if !vm.app_context.last_deferred_load_succeeded() {
+                        log::error!(
+                            "giShowWorldMap: deferred load_scene failed for \
+                             scene='{}' block='{}'; aborting current script.",
+                            scene,
+                            block
+                        );
+                        vm.abort_script();
+                        return ContinuationState::Completed;
+                    }
+                    let module = vm.app_context.scene.module.clone().unwrap();
+                    let next_fn = format!("{}_{}_init", scene, block);
+                    vm.set_function_by_name2(module, &next_fn);
+                    return ContinuationState::Completed;
+                }
+            }
         }
-
-        let module = vm.app_context.scene.module.clone().unwrap();
-        vm.set_function_by_name2(module, &format!("{}_{}_init", scene, block));
-        ContinuationState::Completed
     }))
 }
 

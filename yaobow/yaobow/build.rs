@@ -84,6 +84,12 @@ fn pack_script_bundle() {
     let scripts_dir = manifest_dir.join("scripts");
     let out = out_path("yaobow.ypk");
 
+    // Track every file under scripts/ so editing or adding a p7
+    // module re-runs `pack` (without this, cargo never re-emits the
+    // ypk after a script-only change and the binary keeps loading
+    // the stale bundle).
+    emit_rerun_if_changed_recursive(&scripts_dir);
+
     let services_path = out_path("yaobow_services.p7");
     let extra_files = [script_package::ExtraFile {
         source_path: services_path.as_path(),
@@ -98,4 +104,19 @@ fn pack_script_bundle() {
         &out,
     )
     .unwrap_or_else(|err| panic!("Failed to pack yaobow scripts: {err}"));
+}
+
+fn emit_rerun_if_changed_recursive(dir: &std::path::Path) {
+    println!("cargo:rerun-if-changed={}", dir.display());
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            emit_rerun_if_changed_recursive(&path);
+        } else {
+            println!("cargo:rerun-if-changed={}", path.display());
+        }
+    }
 }

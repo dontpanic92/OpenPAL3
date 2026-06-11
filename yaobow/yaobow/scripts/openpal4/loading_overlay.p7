@@ -1,0 +1,238 @@
+// PAL4 loading overlay (protosept implementation of
+// `openpal4.IPal4LoadingOverlay`). Renders
+// `/gamedata/ui/layouts/loading.xml` while a scene transition is in
+// progress so the synchronous `Pal4Scene::load` is hidden behind a
+// fullscreen layout instead of a frozen game frame.
+//
+// State machine, driven cooperatively by the Rust director:
+//
+//   LOAD_IDLE       no transition pending; render/tick no-op
+//   LOAD_PAINTING   `request` armed a transition; we must draw the
+//                   layout at least once before the synchronous load
+//                   blocks the game thread, so the player sees the
+//                   loading screen rather than a black freeze frame
+//   LOAD_READY      one paint frame elapsed; the director should
+//                   call `app.load_scene` this tick and then
+//                   `notify_load_complete()` so we move to HOLDING
+//   LOAD_HOLDING    load done; overlay holds for MIN_HOLD_SECS so
+//                   sub-100ms loads don't strobe in/out
+//   LOAD_DONE       overlay dismissed this tick (clears on read)
+//
+// Reported visually as `heitiao` (fullscreen black background) +
+// `blanklightfull`/`ImgMask` (progress bar) + `juaner` (scroll
+// graphic) — pure image blits, no interactivity.
+
+import radiance;
+import scripting_services;
+import yaobow.yaobow_services;
+import shared.openpal4;
+
+// Layout path on the per-launch PAL4 vfs.
+let LOADING_LAYOUT_PATH: string = "/gamedata/ui/layouts/loading.xml";
+
+// Phase enum exposed to the Rust director via `tick()` return value.
+// Keep these in sync with the comment in `openpal4.idl`.
+let LOAD_IDLE:     int = 0;
+let LOAD_PAINTING: int = 1;
+let LOAD_READY:    int = 2;
+let LOAD_HOLDING:  int = 3;
+let LOAD_DONE:     int = 4;
+
+// imgui WindowFlags::NoBackground (bit 7). The loading layout's
+// `heitiao` (black) covers the whole canvas already, so we don't
+// want imgui's own window background drawing over our composition.
+let IMGUI_NO_BACKGROUND: int = 128;
+
+// Minimum on-screen duration after the load finishes. Avoids the
+// loading screen blinking in and out for cheap < 100 ms loads.
+let MIN_HOLD_SECS: float = 0.5;
+
+// Fallback PAINTING timeout: if `render_im` never fires (headless
+// pump, an agent `/v1/time/step` burst that runs many `update`s
+// per real frame, ...) we still want the deferred load to land.
+// After this many seconds of accumulated tick-dt without a paint
+// frame, force the LOAD_READY transition so the load isn't wedged.
+let PAINT_TIMEOUT_SECS: float = 0.1;
+
+pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
+    pub host: box<yaobow_services.IYaobowHostContext>,
+    pub layout: ?box<scripting_services.IUiLayoutHandle>,
+    pub phase: int,
+    pub hold_remaining: float,
+    pub frames_drawn: int,
+    pub paint_elapsed: float,
+    pub pending_scene: string,
+    pub pending_block: string,
+) {
+    pub fn request(self: ref<Self>, scene_name: string, block_name: string) -> int {
+        if self.layout == null {
+            // Lazy-open: deferred until first `request` so a launch
+            // with broken/missing PAL4 assets can still construct the
+            // overlay (the director's `is_active` check then keeps
+            // the no-overlay synchronous path alive).
+            self.layout = self.host.pal4().open_layout(LOADING_LAYOUT_PATH);
+        }
+        self.pending_scene = scene_name;
+        self.pending_block = block_name;
+        self.frames_drawn = 0;
+        self.paint_elapsed = 0.0;
+        self.hold_remaining = MIN_HOLD_SECS;
+        self.phase = LOAD_PAINTING;
+        0
+    }
+
+    pub fn tick(self: ref<Self>, dt: float) -> int {
+        if self.phase == LOAD_IDLE {
+            return LOAD_IDLE;
+        }
+
+        if self.phase == LOAD_PAINTING {
+            // Need at least one rendered frame before we let the
+            // director kick the synchronous load. `render` increments
+            // `frames_drawn`; if `render_im` never fires (no imgui
+            // pump, headless, agent `/v1/time/step` burst), bypass
+            // after `PAINT_TIMEOUT_SECS` of accumulated tick-dt so
+            // the load isn't wedged forever.
+            self.paint_elapsed = self.paint_elapsed + dt;
+            if self.frames_drawn >= 1
+                || self.paint_elapsed >= PAINT_TIMEOUT_SECS
+                || self.layout == null {
+                self.phase = LOAD_READY;
+                return LOAD_READY;
+            }
+            return LOAD_PAINTING;
+        }
+
+        if self.phase == LOAD_READY {
+            // Director observed READY last tick; if it didn't call
+            // `notify_load_complete()` yet (e.g. a one-frame
+            // dispatcher delay), keep returning READY so the load
+            // doesn't get silently dropped.
+            return LOAD_READY;
+        }
+
+        if self.phase == LOAD_HOLDING {
+            self.hold_remaining = self.hold_remaining - dt;
+            if self.hold_remaining <= 0.0 {
+                self.phase = LOAD_DONE;
+                return LOAD_DONE;
+            }
+            return LOAD_HOLDING;
+        }
+
+        // LOAD_DONE — caller reads once, then we self-reset.
+        self.phase = LOAD_IDLE;
+        self.pending_scene = "";
+        self.pending_block = "";
+        LOAD_IDLE
+    }
+
+    pub fn notify_load_complete(self: ref<Self>) -> int {
+        // Director has finished the synchronous `app.load_scene`.
+        // Move into the hold phase so the overlay stays up for at
+        // least `MIN_HOLD_SECS` before dismissing.
+        if self.phase == LOAD_READY {
+            self.phase = LOAD_HOLDING;
+            self.hold_remaining = MIN_HOLD_SECS;
+        }
+        0
+    }
+
+    pub fn is_active(self: ref<Self>) -> bool {
+        return self.phase != LOAD_IDLE;
+    }
+
+    pub fn cancel(self: ref<Self>) -> int {
+        self.phase = LOAD_IDLE;
+        self.pending_scene = "";
+        self.pending_block = "";
+        self.frames_drawn = 0;
+        self.hold_remaining = 0.0;
+        0
+    }
+
+    pub fn render(
+        self: ref<Self>,
+        ui: box<radiance.IUiHost>,
+        dt: float,
+    ) -> int {
+        if self.phase == LOAD_IDLE {
+            return 0;
+        }
+
+        // Fullscreen window with no imgui background — `heitiao` in
+        // the layout owns the entire canvas.
+        ui.window_fullscreen("##pal4_loading", IMGUI_NO_BACKGROUND, () => {
+            if self.layout != null {
+                self.render_layout(ui, self.layout!);
+            }
+        });
+
+        // Track that we've made it to the screen at least once.
+        // Saturated so the counter doesn't wrap on a long hold phase.
+        if self.frames_drawn < 1000 {
+            self.frames_drawn = self.frames_drawn + 1;
+        }
+        0
+    }
+
+    pub fn render_layout(
+        self: ref<Self>,
+        ui: box<radiance.IUiHost>,
+        h: box<scripting_services.IUiLayoutHandle>,
+    ) {
+        let native_w = h.native_width() as float;
+        let native_h = h.native_height() as float;
+        let avail_w = ui.display_size_x() as float;
+        let avail_h = ui.display_size_y() as float;
+        if native_w <= 0.0 || native_h <= 0.0 || avail_w <= 0.0 || avail_h <= 0.0 {
+            return;
+        }
+
+        // Letterbox-fit: preserve aspect ratio, centre on the
+        // available area. Same maths as `start_menu.p7::render_inner`
+        // (minus the interactive branches — loading is pure imagery).
+        let sx = avail_w / native_w;
+        let sy = avail_h / native_h;
+        let scale = if sx < sy { sx } else { sy };
+        let drawn_w = native_w * scale;
+        let drawn_h = native_h * scale;
+        let origin_x = (avail_w - drawn_w) * 0.5;
+        let origin_y = (avail_h - drawn_h) * 0.5;
+
+        let n = h.draw_count();
+        for i in Range(0, n) {
+            let cx = origin_x + h.draw_x(i) * scale;
+            let cy = origin_y + h.draw_y(i) * scale;
+            let cw = h.draw_w(i) * scale;
+            let ch = h.draw_h(i) * scale;
+            if cw <= 0.0 || ch <= 0.0 {
+                continue;
+            }
+            let tex = h.draw_texture_com_id(i);
+            if tex != 0 {
+                ui.set_cursor_pos(cx, cy);
+                ui.image_uv(
+                    tex, cw, ch,
+                    h.draw_u0(i), h.draw_v0(i),
+                    h.draw_u1(i), h.draw_v1(i),
+                );
+            }
+        }
+    }
+}
+
+pub fn make_loading_overlay(
+    host: box<yaobow_services.IYaobowHostContext>,
+) -> box<openpal4.IPal4LoadingOverlay> {
+    return box(Pal4LoadingOverlayImpl(
+        host,
+        null,
+        LOAD_IDLE,
+        0.0,
+        0,
+        0.0,
+        "",
+        "",
+    ));
+}
