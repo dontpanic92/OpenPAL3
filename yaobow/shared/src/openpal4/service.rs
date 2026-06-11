@@ -50,7 +50,7 @@ use crate::loaders::cegui::ui_layout_handle::UiLayoutHandle;
 use crate::openpal4::agent::Pal4AgentBridge;
 use crate::openpal4::asset_loader::AssetLoader;
 use crate::openpal4::comdef::{
-    IOpenPAL4Director, IPal4ScriptFactory, IPal4Service, IPal4ServiceImpl,
+    IOpenPAL4Director, IPal4LoadingOverlay, IPal4ScriptFactory, IPal4Service, IPal4ServiceImpl,
 };
 use crate::openpal4::director::{OpenPAL4Director, Pal4DebugBundle};
 use crate::openpal4::modes::{
@@ -121,6 +121,18 @@ pub struct Pal4Service {
     /// app-lifetime mode-control commands (`/v1/menu/new_game` etc.)
     /// rebuild the story director without the agent supplying a path.
     launch_asset_path: RefCell<Option<String>>,
+
+    /// App-lifetime cache of the script-built loading overlay, shared
+    /// across every `Pal4TransitionDirector` for the launch. Built
+    /// (and **pre-warmed**) by [`prepare_loading_overlay`] the first
+    /// time a story director or transition needs it. Pre-warming
+    /// matters because the overlay's `request` lazily calls
+    /// `open_layout("/gamedata/ui/layouts/loading.xml")` which uploads
+    /// two imageset atlases (~3-4 s on first call); doing that
+    /// up-front means the very first `Pal4TransitionDirector::activate`
+    /// returns immediately and the loading layout paints on the next
+    /// frame instead of after a multi-second freeze.
+    loading_overlay: RefCell<Option<ComRc<IPal4LoadingOverlay>>>,
 }
 
 ComObject_Pal4Service!(super::Pal4Service);
@@ -141,6 +153,7 @@ impl Pal4Service {
             mode_registry: RefCell::new(Pal4ModeRegistry::with_builtins()),
             session: Rc::new(RefCell::new(Pal4Session::new())),
             launch_asset_path: RefCell::new(None),
+            loading_overlay: RefCell::new(None),
         })
     }
 
@@ -194,6 +207,40 @@ impl Pal4Service {
     /// Called by `YaobowApplicationLoader::on_unloading`.
     pub fn clear_script_factory(&self) {
         *self.script_factory.borrow_mut() = None;
+        // Drop the cached overlay too — its script-side struct holds
+        // a `host_context` ComRc, which keeps the script CCW alive.
+        *self.loading_overlay.borrow_mut() = None;
+    }
+
+    /// App-lifetime, idempotent: build the loading overlay (one
+    /// instance per launch) and pre-warm its layout so the first
+    /// transition activates immediately. Returns the cached overlay
+    /// on every subsequent call. `None` when no script factory is
+    /// installed (e.g. headless test harness) — callers must then
+    /// fall back to the synchronous `load_scene` path.
+    ///
+    /// The pre-warm: `request("", "")` triggers the lazy
+    /// `open_layout("/gamedata/ui/layouts/loading.xml")` which
+    /// parses the layout and uploads two imageset atlases (~3-4 s
+    /// of synchronous work on first call). Doing this once at
+    /// menu-build time hides the cost behind the menu's own
+    /// first-time asset loads (`MainWindow.xml`, `loadWindow.xml`),
+    /// rather than blocking the game thread for several seconds on
+    /// the first `Pal4TransitionDirector::activate`. `cancel()`
+    /// resets the overlay's internal state to IDLE so the warm-up
+    /// is invisible.
+    pub(crate) fn prepare_loading_overlay(&self) -> Option<ComRc<IPal4LoadingOverlay>> {
+        if let Some(overlay) = self.loading_overlay.borrow().clone() {
+            return Some(overlay);
+        }
+        let factory = self.script_factory.borrow().clone()?;
+        let overlay = factory.make_pal4_loading_overlay();
+        // Pre-warm: arm the state machine (triggers lazy
+        // `open_layout`), then cancel to leave it IDLE.
+        overlay.request("", "");
+        overlay.cancel();
+        *self.loading_overlay.borrow_mut() = Some(overlay.clone());
+        Some(overlay)
     }
 
     /// Assemble a fresh PAL4 debug bundle: a Rust-side debug session
@@ -755,6 +802,15 @@ impl Pal4Service {
              Pal4Service::set_script_factory after installing the script root.",
         );
 
+        // Pre-warm the loading overlay alongside the menu's own
+        // first-time asset loads (MainWindow.xml / loadWindow.xml).
+        // Without this, the very first `Pal4TransitionDirector::activate`
+        // would block the game thread for ~3-4 s on the lazy
+        // `open_layout("/gamedata/ui/layouts/loading.xml")` and the
+        // user would see the menu frozen for that whole window
+        // before the loading layout finally appears.
+        let _ = self.prepare_loading_overlay();
+
         // The menu struct conforms to both `IImmediateDirector` and
         // `IDirector`; QI the immediate variant to the director the
         // scene manager expects. On a null/failed menu the fat CCW
@@ -836,13 +892,14 @@ impl Pal4Service {
         }
         if let Some(factory) = self.script_factory.borrow().clone() {
             director.set_actor_controller_factory(factory.clone());
-            // The loading overlay is built per-launch (it captures
-            // the host context for lazy `open_layout`) and survives
-            // for the director's lifetime. Mirrors the debug-bundle
-            // path: silently degrade to the legacy synchronous
-            // `load_scene` flow if no script factory is installed
-            // (e.g. headless test harness).
-            let overlay = factory.make_pal4_loading_overlay();
+        }
+        // The loading overlay is built per-launch (it captures the
+        // host context for lazy `open_layout`) and pre-warmed once;
+        // every story director gets a clone of the same overlay.
+        // Silently degrade to the legacy synchronous `load_scene`
+        // flow when no script factory is installed (e.g. headless
+        // test harness).
+        if let Some(overlay) = self.prepare_loading_overlay() {
             director.set_loading_overlay(overlay);
         }
 

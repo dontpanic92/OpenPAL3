@@ -37,7 +37,7 @@ pub struct DialogStateSnapshot {
 /// move — making wait-for-motion script continuations
 /// (`npc_end_move`, `player_end_move`, `player_set_dir { sync = 1 }`,
 /// …) effectively zero-cost under fast-forward.
-const MOTION_FAST_FORWARD_SCALE: f32 = 1_000.0;
+pub(crate) const MOTION_FAST_FORWARD_SCALE: f32 = 1_000.0;
 
 /// Which side the dialog avatar portrait is currently anchored to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +72,17 @@ pub struct Pal4VmContext {
     pub(crate) scene_manager: ComRc<ISceneManager>,
     pub(crate) ui: Rc<UiManager>,
     pub(crate) input: Rc<RefCell<dyn InputEngine>>,
-    pub(crate) scene: Pal4Scene,
+    /// Shared handle to the live `Pal4Scene`. The authoritative owner
+    /// is [`OpenPAL4Director`](super::director::OpenPAL4Director) — it
+    /// constructs the `Rc<RefCell<Pal4Scene>>` and hands clones to
+    /// `Pal4VmContext` (for script syscalls) and to
+    /// [`Pal4TransitionDirector`](super::transition::Pal4TransitionDirector)
+    /// (so scene swaps overwrite the same cell). Borrowing rules: each
+    /// syscall takes one short-lived `borrow()`/`borrow_mut()` —
+    /// `Pal4Scene` methods that return values return owned
+    /// `ComRc<IEntity>` clones, so the scene borrow can drop before
+    /// follow-up entity operations.
+    pub(crate) scene: Rc<RefCell<Pal4Scene>>,
     pub(crate) dialog_box: DialogBox,
 
     component_factory: Rc<dyn ComponentFactory>,
@@ -104,8 +114,16 @@ pub struct Pal4VmContext {
     /// `set_fast_forward` once per frame.
     fast_forward: Cell<bool>,
 
-    moving_entities: HashMap<ActorId, MovingEntity>,
-    rotating_entities: HashMap<ActorId, RotatingEntity>,
+    /// Shared per-player walk/run targets. Authoritative owner is
+    /// [`OpenPAL4Director`](super::director::OpenPAL4Director) —
+    /// `Pal4VmContext` holds a clone of the cell so syscall setters
+    /// can register/observe targets. The director's per-frame tick
+    /// drains the map, advances each entity, and writes the
+    /// continuing entries back.
+    moving_entities: Rc<RefCell<HashMap<ActorId, MovingEntity>>>,
+    /// Shared per-actor yaw-rotation targets. Same ownership model as
+    /// [`moving_entities`].
+    rotating_entities: Rc<RefCell<HashMap<ActorId, RotatingEntity>>>,
 
     /// Shared handle to the playthrough session — the single source of
     /// truth for **durable** game state (scene/block/leader/player_locked,
@@ -140,6 +158,9 @@ impl Pal4VmContext {
         input: Rc<RefCell<dyn InputEngine>>,
         audio_engine: Rc<dyn AudioEngine>,
         session: Rc<RefCell<Pal4Session>>,
+        scene: Rc<RefCell<Pal4Scene>>,
+        moving_entities: Rc<RefCell<HashMap<ActorId, MovingEntity>>>,
+        rotating_entities: Rc<RefCell<HashMap<ActorId, RotatingEntity>>>,
     ) -> Self {
         // Scene/block/leader/player_locked are owned solely by the
         // session (single source of truth, shared by Rc handle). A
@@ -161,11 +182,11 @@ impl Pal4VmContext {
             voice_source: None,
             camera_data: None,
             camera_run: None,
-            scene: Pal4Scene::new_empty(),
+            scene,
             dialog_box: DialogBox::new(ui),
             fast_forward: Cell::new(false),
-            moving_entities: HashMap::new(),
-            rotating_entities: HashMap::new(),
+            moving_entities,
+            rotating_entities,
             actor_controller_factory: None,
             session,
         }
@@ -179,56 +200,56 @@ impl Pal4VmContext {
         self.actor_controller_factory = Some(factory);
     }
 
+    /// Read-only access to the installed actor-controller factory.
+    /// Used by [`Pal4TransitionDirector`] when loading a fresh
+    /// `Pal4Scene` so the new player entities get the same scripted
+    /// controller the previous scene used.
+    pub fn actor_controller_factory(&self) -> Option<&ComRc<IPal4ScriptFactory>> {
+        self.actor_controller_factory.as_ref()
+    }
+
     pub fn update(&mut self, delta_sec: f32) {
         let _timer = radiance::perf::timer("pal4.app_context.update_total_ns");
         radiance::perf::gauge(
             "pal4.app_context.moving_entities",
-            self.moving_entities.len() as u64,
+            self.moving_entities.borrow().len() as u64,
         );
         radiance::perf::gauge(
             "pal4.app_context.rotating_entities",
-            self.rotating_entities.len() as u64,
+            self.rotating_entities.borrow().len() as u64,
         );
         self.actdrop.update(self.ui.ui(), delta_sec);
-        // When fast-forward is active we accelerate the movement /
-        // rotation tweens so wait-for-motion script continuations
-        // (player_end_move, npc_end_move, player_set_dir { sync = 1 },
-        // etc.) finish in a single tick. The scale is chosen large
-        // enough that the per-frame step always exceeds the
-        // remaining distance / angle, triggering the snap-to-target
-        // path in the inner loops.
-        //
-        // Camera runs and UV animations stay on real time so visuals
-        // don't go pathological if a fast-forwarded scene is paused
-        // partway through (the planner can still see the visual
+        // Motion / rotation tweens are ticked by `OpenPAL4Director::update`
+        // (it owns the authoritative `Rc<RefCell<_>>` cells and can call
+        // back into `Pal4VmContext` for the `*_play_animation` completion
+        // hooks). Camera runs and UV animations stay on real time so
+        // visuals don't go pathological if a fast-forwarded scene is
+        // paused partway through (the planner can still see the visual
         // state in `/v1/screenshot`).
-        let motion_dt = if self.fast_forward.get() {
-            delta_sec * MOTION_FAST_FORWARD_SCALE
-        } else {
-            delta_sec
-        };
-        self.update_moving_entities(motion_dt);
-        self.update_rotating_entities(motion_dt);
         self.tick_camera_run(delta_sec);
 
         // Tick ambient SOUND emitters (GOB tag 3). We use real
-        // `delta_sec` rather than `motion_dt` deliberately: fast-
-        // forward is a debug / planner convenience that compresses
-        // wait loops, but if we scaled audio retrigger intervals
-        // by the same factor every ambient emitter in the scene
-        // would burst-fire on each fast-forwarded frame. Fire-and-
-        // forget plays land in `sound_sources` so `gi2DSoundStop` (→
-        // `stop_all_sounds`) still tears them down for scripted
-        // SFX cleanup. A WAV that started just before a scene swap
-        // continues to play on its OpenAL source until it finishes
-        // — same carry-over behaviour as the existing music /
+        // `delta_sec` rather than the fast-forward-scaled motion dt
+        // deliberately: fast-forward is a debug / planner convenience
+        // that compresses wait loops, but if we scaled audio retrigger
+        // intervals by the same factor every ambient emitter in the
+        // scene would burst-fire on each fast-forwarded frame.
+        // Fire-and-forget plays land in `sound_sources` so
+        // `gi2DSoundStop` (→ `stop_all_sounds`) still tears them down
+        // for scripted SFX cleanup. A WAV that started just before a
+        // scene swap continues to play on its OpenAL source until it
+        // finishes — same carry-over behaviour as the existing music /
         // voice paths.
         let leader_pos = self
             .scene
+            .borrow()
             .get_player(self.session.borrow().state().leader())
             .world_transform()
             .position();
-        let to_play = self.scene.tick_sound_emitters(leader_pos, delta_sec);
+        let to_play = self
+            .scene
+            .borrow_mut()
+            .tick_sound_emitters(leader_pos, delta_sec);
         for name in to_play {
             if let Err(e) = self.play_sound(&name) {
                 log::warn!("ambient sound emitter '{}' failed: {:#}", name, e);
@@ -236,125 +257,13 @@ impl Pal4VmContext {
         }
     }
 
-    fn update_moving_entities(&mut self, delta_sec: f32) {
-        let moving_entities = std::mem::take(&mut self.moving_entities);
-        self.moving_entities = self.update_moving_entities_(moving_entities, delta_sec);
-    }
-
-    fn update_moving_entities_(
-        &mut self,
-        mut entities: HashMap<ActorId, MovingEntity>,
-        delta_sec: f32,
-    ) -> HashMap<ActorId, MovingEntity> {
-        let mut to_remove = Vec::new();
-
-        const RUN_SPEED: f32 = 150.;
-        const WALK_SPEED: f32 = 75.;
-
-        for (id, entity) in entities.iter() {
-            let pos = entity.entity.transform().borrow().position();
-            let target = entity.target;
-            let speed = if entity.run { RUN_SPEED } else { WALK_SPEED };
-
-            let moving_distance = speed * delta_sec;
-            let diff = Vec3::sub(&target, &pos);
-            let distance = diff.norm();
-            if distance < moving_distance {
-                entity.entity.transform().borrow_mut().set_position(&target);
-                to_remove.push(id.clone());
-            } else {
-                let direction = Vec3::normalized(&diff);
-                let new_pos = Vec3::add(&pos, &Vec3::scalar_mul(moving_distance, &direction));
-                let look_at = Vec3::new(pos.x, new_pos.y, pos.z);
-                entity
-                    .entity
-                    .transform()
-                    .borrow_mut()
-                    .set_position(&new_pos)
-                    .look_at(&look_at);
-            }
-        }
-
-        for id in to_remove {
-            match &id {
-                ActorId::Player(player) => {
-                    self.player_play_animation(*player as i32, Pal4ActorAnimation::Idle);
-                }
-                ActorId::Npc(name) => {
-                    self.npc_play_animation(name, Pal4ActorAnimation::Idle);
-                }
-            }
-
-            entities.remove(&id);
-        }
-
-        entities
-    }
-
-    fn update_rotating_entities(&mut self, delta_sec: f32) {
-        // PAL4 cutscene turns feel natural at about half a turn per second.
-        const ROTATE_DEG_PER_SEC: f32 = 180.0;
-
-        if self.rotating_entities.is_empty() {
-            return;
-        }
-
-        let step = ROTATE_DEG_PER_SEC * delta_sec;
-        let entities = std::mem::take(&mut self.rotating_entities);
-        let mut to_finish = Vec::new();
-        let mut kept = HashMap::new();
-
-        for (id, mut rot) in entities.into_iter() {
-            let delta = wrap_deg(rot.target_deg - rot.current_deg);
-            let snap = delta.abs() <= step.max(0.0001);
-            rot.current_deg = if snap {
-                rot.target_deg
-            } else {
-                rot.current_deg + step.copysign(delta)
-            };
-
-            // `look_at` orients the entity so its forward (matrix column 2)
-            // equals `pos - target`. To face direction `(sin yaw, 0, cos yaw)`
-            // — matching what `set_player_ang(yaw)` produces via
-            // `rotate_axis_angle_local(UP, yaw)` — the look_at target must
-            // be `pos - (sin yaw, 0, cos yaw)`.
-            let pos = rot.entity.transform().borrow().position();
-            let yaw_rad = rot.current_deg.to_radians();
-            let target = Vec3::new(pos.x - yaw_rad.sin(), pos.y, pos.z - yaw_rad.cos());
-            rot.entity
-                .transform()
-                .borrow_mut()
-                .set_position(&pos)
-                .look_at(&target);
-
-            if snap {
-                to_finish.push(id);
-            } else {
-                kept.insert(id, rot);
-            }
-        }
-
-        self.rotating_entities = kept;
-
-        for id in to_finish {
-            match &id {
-                ActorId::Player(player) => {
-                    self.player_play_animation(*player as i32, Pal4ActorAnimation::Idle);
-                }
-                ActorId::Npc(name) => {
-                    self.npc_play_animation(name, Pal4ActorAnimation::Idle);
-                }
-            }
-        }
-    }
-
     pub fn player_rotate_to(&mut self, player: i32, target_deg: f32) {
         let mapped = self.map_player(player);
-        let entity = self.scene.get_player(mapped);
+        let entity = self.scene.borrow().get_player(mapped);
 
         let current_deg = yaw_from_transform(&entity);
         self.player_play_animation(player, Pal4ActorAnimation::Walk);
-        self.rotating_entities.insert(
+        self.rotating_entities.borrow_mut().insert(
             ActorId::Player(mapped),
             RotatingEntity {
                 entity,
@@ -367,17 +276,18 @@ impl Pal4VmContext {
     pub fn player_rotating(&self, player: i32) -> bool {
         let mapped = self.map_player(player);
         self.rotating_entities
+            .borrow()
             .contains_key(&ActorId::Player(mapped))
     }
 
     pub fn npc_rotate_to(&mut self, name: &str, target_deg: f32) {
-        let Some(entity) = self.scene.get_npc(name) else {
+        let Some(entity) = self.scene.borrow().get_npc(name) else {
             return;
         };
 
         let current_deg = yaw_from_transform(&entity);
         self.npc_play_animation(name, Pal4ActorAnimation::Walk);
-        self.rotating_entities.insert(
+        self.rotating_entities.borrow_mut().insert(
             ActorId::Npc(name.to_string()),
             RotatingEntity {
                 entity,
@@ -389,15 +299,17 @@ impl Pal4VmContext {
 
     pub fn npc_rotating(&self, name: &str) -> bool {
         self.rotating_entities
+            .borrow()
             .contains_key(&ActorId::Npc(name.to_string()))
     }
 
     pub fn event_triggered(&mut self, _delta_sec: f32) -> Option<String> {
         let leader = self.session.borrow().state().leader();
-        self.scene
+        let scene = self.scene.borrow();
+        let from_trigger = scene
             .test_event_triggers()
-            .and_then(|event| event.function.function.to_string().ok())
-            .or_else(|| self.scene.test_interaction(self.input.clone(), leader))
+            .and_then(|event| event.function.function.to_string().ok());
+        from_trigger.or_else(|| scene.test_interaction(self.input.clone(), leader))
     }
 
     pub fn set_actdrop(&mut self, darkness: InterpValue<f32>) {
@@ -417,7 +329,7 @@ impl Pal4VmContext {
         // controller would keep ticking floor/wall raycasts against
         // its own (now hidden) entity — manifesting as "invisible
         // walls" or "phasing through walls" after a leader switch.
-        self.scene.set_active_leader(leader);
+        self.scene.borrow().set_active_leader(leader);
     }
 
     pub fn set_player_pos(&mut self, player: i32, pos: &Vec3) {
@@ -425,6 +337,7 @@ impl Pal4VmContext {
         self.enable_player(player, true);
 
         self.scene
+            .borrow()
             .get_player(player)
             .transform()
             .borrow_mut()
@@ -432,13 +345,13 @@ impl Pal4VmContext {
     }
 
     pub fn enable_player(&mut self, player: usize, enable: bool) {
-        let player = self.scene.get_player(player);
+        let player = self.scene.borrow().get_player(player);
         player.set_visible(enable);
         player.set_enabled(enable);
     }
 
     pub fn enable_npc(&mut self, npc: &str, enable: bool) {
-        let npc = self.scene.get_npc(npc);
+        let npc = self.scene.borrow().get_npc(npc);
         if let Some(npc) = npc {
             npc.set_visible(enable);
             npc.set_enabled(enable);
@@ -446,7 +359,7 @@ impl Pal4VmContext {
     }
 
     pub fn enable_object(&mut self, object: &str, enable: bool) {
-        let object = self.scene.get_object(object);
+        let object = self.scene.borrow().get_object(object);
         if let Some(object) = object {
             object.set_visible(enable);
             object.set_enabled(enable);
@@ -457,6 +370,7 @@ impl Pal4VmContext {
         let player = self.map_player(player);
 
         self.scene
+            .borrow()
             .get_player(player)
             .transform()
             .borrow()
@@ -465,7 +379,7 @@ impl Pal4VmContext {
 
     pub fn player_to(&mut self, player: i32, target: &Vec3, run: bool) {
         let mapped_player = self.map_player(player);
-        let entity = self.scene.get_player(mapped_player);
+        let entity = self.scene.borrow().get_player(mapped_player);
 
         let moving_entity = MovingEntity {
             entity,
@@ -481,16 +395,19 @@ impl Pal4VmContext {
 
         self.player_play_animation(player, animation);
         self.moving_entities
+            .borrow_mut()
             .insert(ActorId::Player(mapped_player), moving_entity);
     }
 
     pub fn player_moving(&mut self, player: i32) -> bool {
         let player = self.map_player(player);
-        self.moving_entities.contains_key(&ActorId::Player(player))
+        self.moving_entities
+            .borrow()
+            .contains_key(&ActorId::Player(player))
     }
 
     pub fn npc_to(&mut self, name: &str, target: &Vec3, run: bool) {
-        let entity = self.scene.get_npc(name);
+        let entity = self.scene.borrow().get_npc(name);
         if entity.is_none() {
             return;
         }
@@ -509,11 +426,13 @@ impl Pal4VmContext {
 
         self.npc_play_animation(name, animation);
         self.moving_entities
+            .borrow_mut()
             .insert(ActorId::Npc(name.to_string()), moving_entity);
     }
 
     pub fn npc_moving(&mut self, name: &str) -> bool {
         self.moving_entities
+            .borrow()
             .contains_key(&ActorId::Npc(name.to_string()))
     }
 
@@ -521,6 +440,7 @@ impl Pal4VmContext {
         let player = self.map_player(player);
 
         self.scene
+            .borrow()
             .get_player(player)
             .transform()
             .borrow_mut()
@@ -533,14 +453,14 @@ impl Pal4VmContext {
     /// / `giNpcFaceTo*` script functions.
     pub fn face_player_to_pos(&mut self, player: i32, target: &Vec3) {
         let player = self.map_player(player);
-        let entity = self.scene.get_player(player);
+        let entity = self.scene.borrow().get_player(player);
         let pos = entity.transform().borrow().position();
         let look_at = Vec3::new(target.x, pos.y, target.z);
         entity.transform().borrow_mut().look_at(&look_at);
     }
 
     pub fn face_npc_to_pos(&mut self, name: &str, target: &Vec3) {
-        if let Some(entity) = self.scene.get_npc(name) {
+        if let Some(entity) = self.scene.borrow().get_npc(name) {
             let pos = entity.transform().borrow().position();
             let look_at = Vec3::new(target.x, pos.y, target.z);
             entity.transform().borrow_mut().look_at(&look_at);
@@ -549,18 +469,19 @@ impl Pal4VmContext {
 
     pub fn npc_pos(&self, name: &str) -> Option<Vec3> {
         self.scene
+            .borrow()
             .get_npc(name)
             .map(|e| e.transform().borrow().position())
     }
 
     pub fn npc_set_pos(&mut self, name: &str, pos: &Vec3) {
-        if let Some(entity) = self.scene.get_npc(name) {
+        if let Some(entity) = self.scene.borrow().get_npc(name) {
             entity.transform().borrow_mut().set_position(pos);
         }
     }
 
     pub fn npc_set_ang(&mut self, name: &str, ang: f32) {
-        if let Some(entity) = self.scene.get_npc(name) {
+        if let Some(entity) = self.scene.borrow().get_npc(name) {
             entity
                 .transform()
                 .borrow_mut()
@@ -613,7 +534,7 @@ impl Pal4VmContext {
             .borrow_mut()
             .state_mut()
             .set_player_locked(lock);
-        if let Some(ctrl) = self.scene.actor_controller() {
+        if let Some(ctrl) = self.scene.borrow().actor_controller() {
             ctrl.lock_control(lock);
         }
     }
@@ -629,6 +550,7 @@ impl Pal4VmContext {
         let player = self.map_player(player);
 
         self.scene
+            .borrow()
             .get_player(player)
             .transform()
             .borrow_mut()
@@ -638,7 +560,7 @@ impl Pal4VmContext {
 
     pub fn player_do_action(&mut self, player: i32, action: &str, flag: i32) {
         let player = self.map_player(player);
-        let metadata = self.scene.get_player_metadata(player);
+        let metadata = self.scene.borrow().get_player_metadata(player);
         let anm = self.loader.load_anm(metadata.actor_name(), action).unwrap();
         let events = self.loader.load_amf(metadata.actor_name(), action);
 
@@ -651,6 +573,7 @@ impl Pal4VmContext {
         };
 
         self.scene
+            .borrow()
             .get_player_controller(player)
             .play_animation(anm, events, config);
     }
@@ -658,24 +581,27 @@ impl Pal4VmContext {
     pub fn player_play_animation(&mut self, player: i32, animation: Pal4ActorAnimation) {
         let player = self.map_player(player);
         self.scene
+            .borrow()
             .get_player_controller(player)
             .play(animation, Pal4ActorAnimationConfig::Looping);
     }
 
     pub fn npc_play_animation(&mut self, name: &str, animation: Pal4ActorAnimation) {
         self.scene
+            .borrow()
             .get_npc_controller(name)
             .map(|controller| controller.play(animation, Pal4ActorAnimationConfig::Looping));
     }
 
     pub fn player_unhold_act(&mut self, player: i32) {
         let player = self.map_player(player);
-        self.scene.get_player_controller(player).unhold();
+        self.scene.borrow().get_player_controller(player).unhold();
     }
 
     pub fn player_act_completed(&mut self, player: i32) -> bool {
         let player = self.map_player(player);
         self.scene
+            .borrow()
             .get_player_controller(player)
             .animation_completed()
     }
@@ -683,6 +609,7 @@ impl Pal4VmContext {
     pub fn player_set_direction(&mut self, player: i32, direction: f32) {
         let player = self.map_player(player);
         self.scene
+            .borrow()
             .get_player(player)
             .transform()
             .borrow_mut()
@@ -817,13 +744,13 @@ impl Pal4VmContext {
     /// the script-supplied flag, so scene reloads pick up the latest
     /// state without extra wiring.
     pub fn set_bsp_visible(&mut self, visible: bool) {
-        self.scene.set_bsp_visible(visible);
+        self.scene.borrow().set_bsp_visible(visible);
     }
 
     /// Same idea as [`Pal4VmContext::set_bsp_visible`] but for the
     /// floor + wall nav-mesh overlay geometry.
     pub fn set_nav_mesh_visible(&mut self, visible: bool) {
-        self.scene.set_nav_mesh_visible(visible);
+        self.scene.borrow().set_nav_mesh_visible(visible);
     }
 
     /// Push the PAL4 debug overlay's plot fast-forward toggle. The
@@ -851,6 +778,7 @@ impl Pal4VmContext {
         // transform reports the identity translation — fine for the
         // debug overlay to render zeros.
         self.scene
+            .borrow()
             .get_player(leader)
             .transform()
             .borrow()
@@ -864,32 +792,9 @@ impl Pal4VmContext {
         yaw_from_transform(
             &self
                 .scene
+                .borrow()
                 .get_player(self.session.borrow().state().leader()),
         )
-    }
-
-    pub fn load_scene(&mut self, scene_name: &str, block_name: &str) -> anyhow::Result<()> {
-        let _ = self.scene_manager.pop_scene();
-        let scene = Pal4Scene::load(
-            &self.loader,
-            self.input.clone(),
-            scene_name,
-            block_name,
-            self.actor_controller_factory.as_ref(),
-        )?;
-        self.scene = scene;
-        self.scene_manager.push_scene(self.scene.scene.clone());
-
-        self.session
-            .borrow_mut()
-            .state_mut()
-            .set_scene(scene_name.to_string(), block_name.to_string());
-
-        let leader = self.session.borrow().state().leader();
-        let player_locked = self.session.borrow().state().player_locked();
-        self.set_leader(leader as i32);
-        self.lock_player(player_locked);
-        Ok(())
     }
 
     pub fn start_play_movie(&mut self, name: &str) -> Option<(u32, u32)> {
@@ -1186,21 +1091,21 @@ impl Pal4VmContext {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-enum ActorId {
+pub enum ActorId {
     Player(usize),
     Npc(String),
 }
 
-struct MovingEntity {
-    entity: ComRc<IEntity>,
-    target: Vec3,
-    run: bool,
+pub struct MovingEntity {
+    pub(crate) entity: ComRc<IEntity>,
+    pub(crate) target: Vec3,
+    pub(crate) run: bool,
 }
 
-struct RotatingEntity {
-    entity: ComRc<IEntity>,
-    current_deg: f32,
-    target_deg: f32,
+pub struct RotatingEntity {
+    pub(crate) entity: ComRc<IEntity>,
+    pub(crate) current_deg: f32,
+    pub(crate) target_deg: f32,
 }
 
 struct CameraRun {
@@ -1214,7 +1119,7 @@ struct CameraRun {
 
 /// Wrap an angular delta in degrees into the (-180, 180] range so we always
 /// rotate via the shortest arc.
-fn wrap_deg(mut d: f32) -> f32 {
+pub(crate) fn wrap_deg(mut d: f32) -> f32 {
     while d > 180.0 {
         d -= 360.0;
     }

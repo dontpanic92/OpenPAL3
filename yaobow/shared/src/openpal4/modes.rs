@@ -24,7 +24,10 @@ use std::collections::HashMap;
 use crosscom::ComRc;
 use radiance::comdef::IDirector;
 
-use super::service::Pal4Service;
+use super::{
+    service::Pal4Service,
+    transition::{Pal4TransitionAction, Pal4TransitionDirector},
+};
 
 /// Typed PAL4 mode graph. Each variant is one way to enter a game
 /// mode; [`route`] turns it into the director the scene manager
@@ -99,12 +102,86 @@ impl Pal4ModeRegistry {
             Box::new(
                 |service: &Pal4Service, intent: Pal4ModeIntent| match intent {
                     Pal4ModeIntent::Story { asset_path } => {
-                        ComRc::<IDirector>::from_object(service.build_story_director(&asset_path))
+                        let story = service.build_story_director(&asset_path);
+                        let vm = story.vm_handle();
+                        let overlay = story.loading_overlay_template();
+                        let story_rc = ComRc::<IDirector>::from_object(story);
+                        match overlay {
+                            Some(overlay) => {
+                                let transition = Pal4TransitionDirector::new(
+                                    overlay,
+                                    vm,
+                                    story_rc,
+                                    Pal4TransitionAction::EnterStoryNew,
+                                );
+                                ComRc::<IDirector>::from_object(transition)
+                            }
+                            // No overlay (e.g. headless test build) →
+                            // install the story director directly so
+                            // the legacy synchronous flow still works.
+                            None => story_rc,
+                        }
                     }
                     Pal4ModeIntent::StoryFromSave { asset_path, slot } => {
-                        let director = service.build_story_director(&asset_path);
-                        director.set_pending_load_slot(slot);
-                        ComRc::<IDirector>::from_object(director)
+                        let story = service.build_story_director(&asset_path);
+                        let vm = story.vm_handle();
+                        let overlay = story.loading_overlay_template();
+
+                        // Drain the snapshot up-front so the transition
+                        // director can apply it synchronously on its
+                        // Loading phase. On failure (missing/corrupt
+                        // slot) we still hand off to the story director;
+                        // since `load_slot` is atomic on failure, the
+                        // session's scene_name stays at its prior value
+                        // (empty for a fresh session) — the director's
+                        // `activate` then naturally falls back to the
+                        // new-game opening kick.
+                        let snapshot = vm
+                            .borrow_mut()
+                            .vm_context_mut()
+                            .session_mut()
+                            .load_slot(slot)
+                            .map_err(|e| {
+                                log::error!(
+                                    "Pal4ModeRegistry::StoryFromSave: cannot load slot \
+                                     {}: {}",
+                                    slot,
+                                    e
+                                );
+                            })
+                            .ok();
+
+                        let story_rc = ComRc::<IDirector>::from_object(story);
+
+                        match (overlay, snapshot) {
+                            (Some(overlay), Some(snapshot)) => {
+                                let transition = Pal4TransitionDirector::new(
+                                    overlay,
+                                    vm,
+                                    story_rc,
+                                    Pal4TransitionAction::EnterStoryFromSave {
+                                        snapshot,
+                                        slot,
+                                    },
+                                );
+                                ComRc::<IDirector>::from_object(transition)
+                            }
+                            // No snapshot: cannot load (the
+                            // failure was already logged by
+                            // `load_slot`). Fall through to the
+                            // story director; its activate sees an
+                            // idle VM + empty scene_name and kicks
+                            // a fresh New Game.
+                            (Some(_), None) => story_rc,
+                            // No overlay (e.g. headless test
+                            // harness): install the story director
+                            // directly. With a valid snapshot, the
+                            // legacy fallback is the agent
+                            // `LoadSlot` command, which calls
+                            // `OpenPAL4Director::load_state`
+                            // synchronously.
+                            (None, _) => story_rc,
+                        }
                     }
                     other => unreachable_intent(Pal4ModeKind::Story, &other),
                 },

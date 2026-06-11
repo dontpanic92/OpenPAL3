@@ -26,14 +26,20 @@ use crate::scripting::angelscript::ScriptVm;
 
 use super::{
     agent::Pal4AgentBridge,
-    vm_context::{DialogAvatarSide, Pal4VmContext},
     asset_loader::AssetLoader,
     comdef::IPal4LoadingOverlay,
     comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay},
     pal4_debug::Pal4DebugState,
+    scene::Pal4Scene,
     scripting::create_script_vm,
-    session::Pal4Session,
+    session::{Pal4Session, RuntimeSnapshot},
+    vm_context::{
+        ActorId, DialogAvatarSide, MOTION_FAST_FORWARD_SCALE, MovingEntity, Pal4VmContext,
+        RotatingEntity, wrap_deg,
+    },
 };
+
+use std::collections::HashMap;
 
 /// Bundle of script-side handles the director uses to drive the
 /// protosept debug overlay each frame. Set by the application loader
@@ -46,7 +52,7 @@ pub struct Pal4DebugBundle {
 }
 
 pub struct OpenPAL4Director {
-    vm: RefCell<ScriptVm<Pal4VmContext>>,
+    vm: Rc<RefCell<ScriptVm<Pal4VmContext>>>,
     #[allow(dead_code)]
     control: FreeViewController,
 
@@ -80,39 +86,29 @@ pub struct OpenPAL4Director {
     /// Always empty when no agent bridge is installed.
     pending_fires: RefCell<Vec<PendingFire>>,
 
-    /// Save slot queued by the start-menu load screen
-    /// (`Pal4Service::enter_load_game`). Applied via
-    /// [`load_state`] on the first advancing `update`, then cleared,
-    /// so the saved scene/leader/position and story-plot globals are
-    /// restored before play begins. `None` for a fresh New Game.
-    pending_load_slot: Cell<Option<i32>>,
+    /// Script-built loading overlay template, handed to each
+    /// in-game `Pal4TransitionDirector` we mint from `update`. The
+    /// overlay's `request()` resets its internal state, so the same
+    /// instance is safely reused across many transitions. `None`
+    /// when the script project has not installed an overlay yet
+    /// (e.g. no-protosept build target / headless test harness); in
+    /// that case the in-game transition falls back to a synchronous
+    /// `load_scene` (and the player sees the legacy freeze-frame).
+    loading_overlay: RefCell<Option<ComRc<IPal4LoadingOverlay>>>,
 
-    /// Script-built loading overlay. `None` when the script project
-    /// hasn't installed one yet (e.g. early bootstrap or
-    /// no-protosept build target); in that case the synchronous
-    /// `load_scene` path is used and the player sees the usual
-    /// freeze-frame stutter. Driven from `update` (`tick` / scene
-    /// load on `LOAD_READY`) and `render_im` (paint while
-    /// `is_active`).
-    loading: RefCell<Option<ComRc<IPal4LoadingOverlay>>>,
-
-    /// Post-`load_scene` fan-out queued by a deferred save-load. The
-    /// director arms it inside `pre_apply_load_state`, then runs the
-    /// closure once the overlay reports `LOAD_READY` and the
-    /// underlying `load_scene` has finished. Always `None` for the
-    /// scripted scene-transition path (no fan-out is needed there).
-    pending_load_apply: RefCell<Option<PendingLoadApply>>,
-}
-
-/// Per-`load_state` continuation: the post-`load_scene` settle that
-/// restores leader / position / direction / camera and resets the VM
-/// to idle. Constructed inside [`OpenPAL4Director::pre_apply_load_state`]
-/// from a freshly deserialised [`RuntimeSnapshot`], then drained once
-/// the overlay reports `LOAD_READY` and the director has run
-/// `app.load_scene` for the saved `(scene, block)`.
-struct PendingLoadApply {
-    slot: i32,
-    snapshot: super::session::RuntimeSnapshot,
+    /// Authoritative owner of the live `Pal4Scene`. Cloned handles
+    /// are shared with `Pal4VmContext` (for script syscalls) and
+    /// with each emitted `Pal4TransitionDirector` (for scene swaps).
+    scene: Rc<RefCell<Pal4Scene>>,
+    /// Authoritative owner of per-actor walk/run targets. The
+    /// director's `update` drains this map each frame, advances
+    /// each entity, fires `Pal4ActorAnimation::Idle` on completion,
+    /// and writes the still-moving entries back. Cloned into
+    /// `Pal4VmContext` so syscall setters can register targets.
+    moving_entities: Rc<RefCell<HashMap<ActorId, MovingEntity>>>,
+    /// Authoritative owner of per-actor yaw-rotation targets. Same
+    /// ownership model as [`moving_entities`].
+    rotating_entities: Rc<RefCell<HashMap<ActorId, RotatingEntity>>>,
 }
 
 /// How often the debug overlay republishes the FPS / frame-time
@@ -164,6 +160,15 @@ impl OpenPAL4Director {
         // owned by `Pal4Service`; this director just holds a clone of
         // the handle in its context, so the same session is observed by
         // every mode and by app-lifetime code (the agent dispatcher).
+        //
+        // The director also owns the three "live world" cells (scene +
+        // motion / rotation registries). Their handles are cloned into
+        // `Pal4VmContext` so script syscalls reach them, and into each
+        // `Pal4TransitionDirector` we emit so scene swaps overwrite
+        // the same cell.
+        let scene = Rc::new(RefCell::new(Pal4Scene::new_empty()));
+        let moving_entities = Rc::new(RefCell::new(HashMap::new()));
+        let rotating_entities = Rc::new(RefCell::new(HashMap::new()));
         let vm_context = Pal4VmContext::new(
             component_factory,
             loader,
@@ -172,9 +177,12 @@ impl OpenPAL4Director {
             input.clone(),
             audio,
             session,
+            scene.clone(),
+            moving_entities.clone(),
+            rotating_entities.clone(),
         );
         Self {
-            vm: RefCell::new(create_script_vm(vm_context)),
+            vm: Rc::new(RefCell::new(create_script_vm(vm_context))),
             control: FreeViewController::new(input),
             debug: RefCell::new(None),
             debug_visible: Cell::new(false),
@@ -185,9 +193,10 @@ impl OpenPAL4Director {
             dt_display: Cell::new(0.0),
             agent: RefCell::new(None),
             pending_fires: RefCell::new(Vec::new()),
-            pending_load_slot: Cell::new(None),
-            loading: RefCell::new(None),
-            pending_load_apply: RefCell::new(None),
+            loading_overlay: RefCell::new(None),
+            scene,
+            moving_entities,
+            rotating_entities,
         }
     }
 
@@ -199,35 +208,174 @@ impl OpenPAL4Director {
         *self.agent.borrow_mut() = Some(bridge);
     }
 
-    /// Queue a save-slot load to be applied on the first advancing
-    /// `update`. Used by `Pal4Service::enter_load_game`
-    /// so the start-menu load screen can boot directly into a save.
-    pub fn set_pending_load_slot(&self, slot: i32) {
-        self.pending_load_slot.set(Some(slot));
+    /// Shared `Rc` handle to the underlying `ScriptVm`. Cloned by
+    /// [`Pal4TransitionDirector`] so the transition can call
+    /// `vm_context_mut().load_scene(...)` while the story director
+    /// is suspended (not installed). The story director only borrows
+    /// `vm` during its own `update` / `render_im`, so while the
+    /// transition is the active director there are no concurrent
+    /// borrows.
+    pub fn vm_handle(&self) -> Rc<RefCell<ScriptVm<Pal4VmContext>>> {
+        self.vm.clone()
     }
 
-    /// Install the script-built loading overlay. Idempotent —
-    /// passing a new overlay replaces the previous one.
-    /// `Pal4Service::build_story_director` calls this with the
-    /// `ComRc<IPal4LoadingOverlay>` minted by
-    /// `IPal4ScriptFactory::make_pal4_loading_overlay`. Without it
-    /// the scripted scene-transition path falls back to a
-    /// synchronous `load_scene` (and the player sees the usual
-    /// freeze-frame stutter).
+    /// Install the loading overlay template used by every in-game
+    /// `Pal4TransitionDirector` this director hands out. Idempotent;
+    /// the last call wins. Called by `Pal4Service::build_story_director`
+    /// with the overlay minted by
+    /// `IPal4ScriptFactory::make_pal4_loading_overlay`.
     pub fn set_loading_overlay(&self, overlay: ComRc<IPal4LoadingOverlay>) {
-        *self.loading.borrow_mut() = Some(overlay);
+        *self.loading_overlay.borrow_mut() = Some(overlay);
     }
 
-    /// Borrow the installed loading overlay if any. The overlay is
-    /// cloned out of the `RefCell` so the caller can re-enter
-    /// scripts safely (the script may call back into host services).
-    fn loading_overlay(&self) -> Option<ComRc<IPal4LoadingOverlay>> {
-        self.loading.borrow().clone()
+    /// Clone of the installed overlay template, if any. Consumed by
+    /// `transition::build_in_game_transition` so each transition
+    /// holds its own `ComRc` to the same overlay object.
+    pub fn loading_overlay_template(&self) -> Option<ComRc<IPal4LoadingOverlay>> {
+        self.loading_overlay.borrow().clone()
     }
 
     /// Borrow the installed agent bridge for read-only inspection.
     pub fn agent_bridge(&self) -> Option<Rc<Pal4AgentBridge>> {
         self.agent.borrow().clone()
+    }
+
+    /// Clone of the live `Pal4Scene` cell. Used by
+    /// [`Pal4TransitionDirector`] so scene swaps overwrite the same
+    /// cell the syscall surface reads from.
+    pub fn scene_cell(&self) -> Rc<RefCell<Pal4Scene>> {
+        self.scene.clone()
+    }
+
+    /// Per-frame walk/run tween tick. Drains `moving_entities`,
+    /// advances each entry, snaps the entity to its target when
+    /// within step distance and queues a follow-up
+    /// `Pal4ActorAnimation::Idle`, and writes the still-moving
+    /// entries back. Called from `update` before `vm.execute` so
+    /// continuations observing `player_moving` see this frame's
+    /// state.
+    fn tick_moving_entities(&self, delta_sec: f32) {
+        use crate::openpal4::actor::Pal4ActorAnimation;
+        const RUN_SPEED: f32 = 150.;
+        const WALK_SPEED: f32 = 75.;
+
+        let mut entities = std::mem::take(&mut *self.moving_entities.borrow_mut());
+        let mut to_remove = Vec::new();
+        for (id, entity) in entities.iter() {
+            let pos = entity.entity.transform().borrow().position();
+            let target = entity.target;
+            let speed = if entity.run { RUN_SPEED } else { WALK_SPEED };
+
+            let moving_distance = speed * delta_sec;
+            let diff = Vec3::sub(&target, &pos);
+            let distance = diff.norm();
+            if distance < moving_distance {
+                entity.entity.transform().borrow_mut().set_position(&target);
+                to_remove.push(id.clone());
+            } else {
+                let direction = Vec3::normalized(&diff);
+                let new_pos = Vec3::add(&pos, &Vec3::scalar_mul(moving_distance, &direction));
+                let look_at = Vec3::new(pos.x, new_pos.y, pos.z);
+                entity
+                    .entity
+                    .transform()
+                    .borrow_mut()
+                    .set_position(&new_pos)
+                    .look_at(&look_at);
+            }
+        }
+
+        for id in &to_remove {
+            entities.remove(id);
+        }
+        // Write the still-moving entries back BEFORE calling into the
+        // VM context for the completion animation hooks (they
+        // observe `moving_entities` via `Pal4VmContext::player_moving`
+        // / `npc_moving`).
+        *self.moving_entities.borrow_mut() = entities;
+
+        for id in to_remove {
+            match id {
+                ActorId::Player(player) => {
+                    self.vm
+                        .borrow_mut()
+                        .vm_context_mut()
+                        .player_play_animation(player as i32, Pal4ActorAnimation::Idle);
+                }
+                ActorId::Npc(name) => {
+                    self.vm
+                        .borrow_mut()
+                        .vm_context_mut()
+                        .npc_play_animation(&name, Pal4ActorAnimation::Idle);
+                }
+            }
+        }
+    }
+
+    /// Per-frame yaw-rotation tween tick. Same structure as
+    /// [`tick_moving_entities`].
+    fn tick_rotating_entities(&self, delta_sec: f32) {
+        use crate::openpal4::actor::Pal4ActorAnimation;
+        // PAL4 cutscene turns feel natural at about half a turn per second.
+        const ROTATE_DEG_PER_SEC: f32 = 180.0;
+
+        if self.rotating_entities.borrow().is_empty() {
+            return;
+        }
+
+        let step = ROTATE_DEG_PER_SEC * delta_sec;
+        let entities = std::mem::take(&mut *self.rotating_entities.borrow_mut());
+        let mut to_finish = Vec::new();
+        let mut kept = HashMap::new();
+
+        for (id, mut rot) in entities.into_iter() {
+            let delta = wrap_deg(rot.target_deg - rot.current_deg);
+            let snap = delta.abs() <= step.max(0.0001);
+            rot.current_deg = if snap {
+                rot.target_deg
+            } else {
+                rot.current_deg + step.copysign(delta)
+            };
+
+            // `look_at` orients the entity so its forward (matrix column 2)
+            // equals `pos - target`. To face direction `(sin yaw, 0, cos yaw)`
+            // — matching what `set_player_ang(yaw)` produces via
+            // `rotate_axis_angle_local(UP, yaw)` — the look_at target must
+            // be `pos - (sin yaw, 0, cos yaw)`.
+            let pos = rot.entity.transform().borrow().position();
+            let yaw_rad = rot.current_deg.to_radians();
+            let target = Vec3::new(pos.x - yaw_rad.sin(), pos.y, pos.z - yaw_rad.cos());
+            rot.entity
+                .transform()
+                .borrow_mut()
+                .set_position(&pos)
+                .look_at(&target);
+
+            if snap {
+                to_finish.push(id);
+            } else {
+                kept.insert(id, rot);
+            }
+        }
+
+        *self.rotating_entities.borrow_mut() = kept;
+
+        for id in to_finish {
+            match id {
+                ActorId::Player(player) => {
+                    self.vm
+                        .borrow_mut()
+                        .vm_context_mut()
+                        .player_play_animation(player as i32, Pal4ActorAnimation::Idle);
+                }
+                ActorId::Npc(name) => {
+                    self.vm
+                        .borrow_mut()
+                        .vm_context_mut()
+                        .npc_play_animation(&name, Pal4ActorAnimation::Idle);
+                }
+            }
+        }
     }
 
     /// Install the protosept-authored debug overlay. Idempotent —
@@ -346,17 +494,15 @@ impl OpenPAL4Director {
     }
 
     /// Restore game state from `slot`, reloading the saved scene and
-    /// repositioning the leader. No-ops (with a log) when the slot file
-    /// is missing or malformed.
+    /// repositioning the leader synchronously. No-ops (with a log)
+    /// when the slot file is missing or malformed.
     ///
-    /// When a loading overlay is installed this routes through the
-    /// overlay's freeze: the deserialised snapshot is staged in
-    /// [`pending_load_apply`] and the actual `app.load_scene` +
-    /// post-load fan-out (set_leader / position / direction / camera
-    /// / `reset_to_idle`) runs from `update()` once the overlay
-    /// reports `LOAD_READY`. Without an overlay the work runs
-    /// synchronously here (the old behaviour) so test paths and
-    /// no-protosept builds still load correctly.
+    /// This is the **synchronous fallback** used by no-protosept
+    /// builds (tests, headless harnesses) and the in-game number-key
+    /// hotkey loader. The user-facing menu → Load Game path
+    /// instead routes through [`Pal4TransitionDirector`] so the
+    /// loading layout covers the synchronous `load_scene` blocking
+    /// window.
     pub fn load_state(&self, slot: i32) {
         let mut vm = self.vm.borrow_mut();
 
@@ -375,25 +521,16 @@ impl OpenPAL4Director {
             log::info!("Game loaded from slot {} (no scene to restore)", slot);
             return;
         }
+        // Release the mutable VM borrow before `swap_pal4_scene` —
+        // it re-borrows internally to read handles + apply the
+        // leader/lock fan-out.
+        drop(vm);
 
-        // If we have an overlay, defer the scene-load + fan-out to
-        // the overlay-driven path in update(). Otherwise fall back
-        // to the legacy synchronous flow so non-protosept callers
-        // (tests, headless harnesses) still work.
-        if self.loading_overlay().is_some() {
-            vm.vm_context()
-                .session()
-                .request_scene_load(&snapshot.scene_name, &snapshot.block_name);
-            drop(vm);
-            *self.pending_load_apply.borrow_mut() = Some(PendingLoadApply {
-                slot,
-                snapshot,
-            });
-            return;
-        }
-
-        let app = vm.vm_context_mut();
-        if let Err(err) = app.load_scene(&snapshot.scene_name, &snapshot.block_name) {
+        if let Err(err) = super::transition::swap_pal4_scene(
+            &self.vm,
+            &snapshot.scene_name,
+            &snapshot.block_name,
+        ) {
             log::error!(
                 "OpenPAL4Director::load_state: failed to load scene='{}' block='{}': {:?}; \
                  save-load partially restored (globals + leader applied, scene not changed)",
@@ -403,24 +540,27 @@ impl OpenPAL4Director {
             );
             return;
         }
-        Self::apply_loaded_snapshot_inner(app, &snapshot);
-        // Match the overlay path: clear any queued script (the
-        // boot-from-save case still has the new-game opening
-        // function at index 0 queued by `create_script_vm`; the
-        // hotkey-load case is already idle).
-        vm.reset_to_idle();
+        let mut vm = self.vm.borrow_mut();
+        Self::apply_snapshot(vm.vm_context_mut(), &snapshot);
+        // The VM may have been mid-script when the user pressed the
+        // F-key load hotkey. Abandon the in-flight script (and any
+        // pending Yield continuations) so it does not resume against
+        // the freshly restored scene. The next agent / trigger /
+        // `giArenaLoad` re-enters naturally.
+        vm.abort_script();
         log::info!("Game loaded from slot {}", slot);
     }
 
-    /// Post-`load_scene` fan-out shared by the deferred (overlay)
-    /// and synchronous save-load paths. Restores leader / position /
-    /// direction / camera and re-asserts the saved player-lock
-    /// state. Caller is responsible for the `vm.reset_to_idle()`
-    /// (it requires a `&mut ScriptVm`, which the deferred path
-    /// already has open).
-    fn apply_loaded_snapshot_inner(
+    /// Post-`load_scene` fan-out shared by every save-load path
+    /// (synchronous fallback in [`load_state`] and the asynchronous
+    /// [`Pal4TransitionDirector::run_load`] path). Restores leader /
+    /// position / direction / camera and re-asserts the saved
+    /// player-lock state. Caller is responsible for cancelling any
+    /// in-flight script via `vm.abort_script()` (it requires a
+    /// `&mut ScriptVm`).
+    pub(crate) fn apply_snapshot(
         app: &mut Pal4VmContext,
-        snapshot: &super::session::RuntimeSnapshot,
+        snapshot: &RuntimeSnapshot,
     ) {
         app.set_leader(snapshot.leader as i32);
         if let Some(pos) = snapshot.position {
@@ -440,112 +580,6 @@ impl OpenPAL4Director {
         // the app-context default (locked), since we cancelled the
         // new-game opening script that would normally unlock it.
         app.lock_player(snapshot.player_locked);
-    }
-
-    /// Drive the loading overlay one tick. Performs the deferred
-    /// `app.load_scene` (and the queued save-load fan-out, if any)
-    /// when the overlay reports `LOAD_READY`. Called once per
-    /// advancing `update` near the top, *before* `vm.execute`, so
-    /// continuations watching for the load-generation bump observe
-    /// the result on the same frame.
-    fn drive_loading_overlay(&self, dt: f32) {
-        let Some(overlay) = self.loading_overlay() else {
-            return;
-        };
-        // Phase codes mirror `loading_overlay.p7`:
-        //   0 IDLE, 1 PAINTING, 2 READY, 3 HOLDING, 4 DONE.
-        const LOAD_READY: i32 = 2;
-
-        // Bridge: scripted scene transitions (`giArenaLoad`,
-        // `giShowWorldMap`) arm a pending load on the app context;
-        // surface that to the overlay so its state machine paints
-        // the layout before we kick the synchronous `load_scene`.
-        // Save-load (`pending_load_apply`) drives this exact path
-        // via `load_state` so save-load arming is automatic too —
-        // the overlay's job is to react to whatever flavour set the
-        // pending request.
-        if !overlay.is_active() {
-            let pending = self.vm.borrow().vm_context.session().peek_pending_scene_load();
-            if let Some((scene, block)) = pending {
-                overlay.request(&scene, &block);
-            }
-        }
-
-        let phase = overlay.tick(dt);
-        if phase != LOAD_READY {
-            return;
-        }
-
-        // The overlay only flips to READY when `request` armed a
-        // deferred scene-load. Drain whichever flavour is pending —
-        // a save-load apply (which carries its own (scene,block) in
-        // the snapshot) or a scripted scene transition.
-        if let Some(apply) = self.pending_load_apply.borrow_mut().take() {
-            let mut vm = self.vm.borrow_mut();
-            let app = vm.vm_context_mut();
-            // Consume the pending request to keep the two paths in
-            // lockstep — either flavour drains it.
-            let _ = app.session().take_pending_scene_load();
-            let result = app.load_scene(&apply.snapshot.scene_name, &apply.snapshot.block_name);
-            let succeeded = match result {
-                Ok(()) => {
-                    Self::apply_loaded_snapshot_inner(app, &apply.snapshot);
-                    true
-                }
-                Err(err) => {
-                    log::error!(
-                        "OpenPAL4Director::drive_loading_overlay: deferred save-load failed \
-                         scene='{}' block='{}': {:?}; save-load partially restored \
-                         (globals + leader applied, scene not changed)",
-                        apply.snapshot.scene_name,
-                        apply.snapshot.block_name,
-                        err
-                    );
-                    false
-                }
-            };
-            app.session().note_deferred_load_finished(succeeded);
-            // Save-load always resets the VM to idle so the new-game
-            // opening script (function index 0) doesn't fire on top
-            // of the restored scene. Mirrors the legacy boot-from-
-            // save flow.
-            vm.reset_to_idle();
-            drop(vm);
-            overlay.notify_load_complete();
-            if succeeded {
-                log::info!("Game loaded from slot {} (via loading overlay)", apply.slot);
-            }
-            return;
-        }
-
-        let pending = self.vm.borrow().vm_context.session().take_pending_scene_load();
-        if let Some((scene, block)) = pending {
-            let mut vm = self.vm.borrow_mut();
-            let app = vm.vm_context_mut();
-            let succeeded = match app.load_scene(&scene, &block) {
-                Ok(()) => true,
-                Err(err) => {
-                    log::error!(
-                        "OpenPAL4Director::drive_loading_overlay: deferred load_scene \
-                         failed scene='{}' block='{}': {:?}; aborting the surrounding \
-                         script to keep the VM safe.",
-                        scene,
-                        block,
-                        err
-                    );
-                    false
-                }
-            };
-            app.session().note_deferred_load_finished(succeeded);
-            drop(vm);
-            overlay.notify_load_complete();
-            return;
-        }
-
-        // READY without a pending request — racy `cancel`, or the
-        // request was withdrawn. Tell the overlay so it starts its
-        // dismissal timer rather than staying stuck.
-        overlay.notify_load_complete();
     }
 
     /// Slot-based save/load via number-key hotkeys (mirrors OpenPAL3's
@@ -590,11 +624,47 @@ impl OpenPAL4Director {
 
 impl IDirectorImpl for OpenPAL4Director {
     fn activate(&self) {
-        self.vm
-            .borrow()
-            .vm_context
-            .scene_manager
-            .push_scene(CoreScene::create());
+        // Idempotent: only push the placeholder Core scene if the
+        // scene stack is empty. When the transition director hands
+        // control back after an in-game `giArenaLoad`, the scene
+        // stack already carries the freshly loaded `Pal4Scene`
+        // (load_scene pops + pushes), so a second push here would
+        // shadow it with an empty scene and the world would render
+        // black.
+        let scene_manager = self.vm.borrow().vm_context.scene_manager.clone();
+        if scene_manager.scene().is_none() {
+            scene_manager.push_scene(CoreScene::create());
+        }
+
+        // Explicit new-game kick. The VM is constructed idle by
+        // `create_script_vm`; this director decides at activate-time
+        // whether to enqueue the opening script. Conditions:
+        //   1. VM has no active context and no suspended callers
+        //      (`is_idle`) — never trample a running script.
+        //   2. Session reports an empty scene name — i.e. no
+        //      save snapshot has populated the scene yet, so this is
+        //      a brand-new playthrough rather than a resumed one.
+        // The transition director's `EnterStoryFromSave` action
+        // restores the snapshot (which writes `scene_name`) BEFORE
+        // re-installing this director, so the second condition holds
+        // only for fresh new games.
+        let mut vm = self.vm.borrow_mut();
+        if vm.is_idle() {
+            let session_has_scene = !vm
+                .vm_context
+                .session()
+                .state()
+                .scene_name()
+                .is_empty();
+            if !session_has_scene {
+                let module = vm
+                    .vm_context
+                    .loader
+                    .load_script_module("script")
+                    .unwrap();
+                vm.set_function(module, 0);
+            }
+        }
     }
 
     fn update(&self, delta_sec: f32) -> Option<crosscom::ComRc<radiance::comdef::IDirector>> {
@@ -617,32 +687,23 @@ impl IDirectorImpl for OpenPAL4Director {
             return None;
         }
 
+        // Tick motion / rotation tweens *before* the VM updates so a
+        // continuation that observes `player_moving == false` this
+        // frame sees the state the tween produced on the *previous*
+        // frame's render. Fast-forward is read from the VM context
+        // since it lives on `Pal4VmContext` (it's plot-VM-state,
+        // toggled by the debug overlay).
+        let motion_dt = if self.vm.borrow().vm_context.fast_forward() {
+            effective_dt * MOTION_FAST_FORWARD_SCALE
+        } else {
+            effective_dt
+        };
+        self.tick_moving_entities(motion_dt);
+        self.tick_rotating_entities(motion_dt);
+
         self.vm.borrow_mut().vm_context_mut().update(effective_dt);
 
-        // Apply a pending start-menu "Load Game" selection on the
-        // first advancing frame, before any new-game script triggers.
-        // Done here (not in `activate`) so the VM + scene stack are
-        // ready, matching the in-game save/load hotkey path below.
-        //
-        // The story VM boots with the new-game opening script
-        // (function index 0) already queued, so after restoring the
-        // save we must cancel it — otherwise it executes below and
-        // overrides the loaded scene, dropping the player into a fresh
-        // new game. `load_state` handles `reset_to_idle` on both
-        // paths (overlay-deferred via `drive_loading_overlay`, or
-        // synchronous when no overlay is installed).
-        if let Some(slot) = self.pending_load_slot.take() {
-            self.load_state(slot);
-        }
-
         self.poll_save_load_hotkeys();
-
-        // Drive the loading overlay: ticks the state machine, and on
-        // LOAD_READY performs the deferred `load_scene` (and any
-        // queued save-load fan-out) so the overlay's paint frame has
-        // gone out before the synchronous load blocks the game
-        // thread.
-        self.drive_loading_overlay(effective_dt);
 
         if self.vm.borrow().context.is_none() {
             let function = radiance::perf::time("pal4.director.event_triggered_total_ns", || {
@@ -652,7 +713,15 @@ impl IDirectorImpl for OpenPAL4Director {
                     .event_triggered(effective_dt)
             });
             if let Some(function) = function {
-                let module = self.vm.borrow().vm_context.scene.module.clone().unwrap();
+                let module = self
+                    .vm
+                    .borrow()
+                    .vm_context
+                    .scene
+                    .borrow()
+                    .module
+                    .clone()
+                    .unwrap();
                 self.vm
                     .borrow_mut()
                     .set_function_by_name2(module, &function);
@@ -675,6 +744,17 @@ impl IDirectorImpl for OpenPAL4Director {
         }*/
 
         self.end_agent_frame();
+
+        // Scripted scene transition (`giArenaLoad`, `giShowWorldMap`)
+        // armed `session.pending_scene_load` during `vm.execute`.
+        // Hand control to a `Pal4TransitionDirector` so the loading
+        // layout covers the synchronous `load_scene` blocking window;
+        // it returns us back here (same ComRc) on Done so the VM
+        // continuations watching the load-generation bump observe
+        // the result without losing state.
+        if self.vm.borrow().vm_context.session().has_pending_scene_load() {
+            return Some(super::transition::build_in_game_transition(self));
+        }
 
         None
     }
@@ -707,15 +787,6 @@ impl IDirectorImpl for OpenPAL4Director {
 
 impl IImmediateDirectorImpl for OpenPAL4Director {
     fn render_im(&self, ui: ComRc<IUiHost>, dt: f32) {
-        // Loading overlay first so it paints below the debug HUD
-        // (the debug overlay is a small floating window in the
-        // corner — useful to keep visible during a load).
-        if let Some(overlay) = self.loading_overlay() {
-            if overlay.is_active() {
-                overlay.render(ui.clone(), dt);
-            }
-        }
-
         // Tilde edge-detect → toggle visibility. Done in Rust (rather
         // than in script) so the script overlay stays oblivious to the
         // input engine: it only needs to know "render me when called".
@@ -1000,9 +1071,9 @@ impl OpenPAL4Director {
     fn handle_get_scene_triggers(&self) -> AgentResponse {
         let vm = self.vm.borrow();
         let app = vm.vm_context();
+        let scene = app.scene.borrow();
 
-        let triggers = app
-            .scene
+        let triggers = scene
             .events
             .iter()
             .map(|event| {
@@ -1021,6 +1092,7 @@ impl OpenPAL4Director {
                 }
             })
             .collect();
+        drop(scene);
 
         AgentResponse::SceneTriggers(SceneTriggersResponse {
             scene: app.scene_name().to_string(),
@@ -1034,9 +1106,9 @@ impl OpenPAL4Director {
     fn handle_get_scene_objects(&self) -> AgentResponse {
         let vm = self.vm.borrow();
         let app = vm.vm_context();
+        let scene = app.scene.borrow();
 
-        let npcs = app
-            .scene
+        let npcs = scene
             .npcs
             .iter()
             .map(|entity| {
@@ -1049,7 +1121,7 @@ impl OpenPAL4Director {
             })
             .collect::<Vec<_>>();
 
-        let objects = match app.scene.objects_gob.as_ref() {
+        let objects = match scene.objects_gob.as_ref() {
             Some(gob) => gob
                 .entries
                 .iter()
@@ -1068,7 +1140,7 @@ impl OpenPAL4Director {
                     // moved or hidden the object), fall back to the
                     // GOB load-time position for entries we never
                     // instantiated (EFFECT entries, failed loads).
-                    let (position, visible) = match app.scene.get_object(&name) {
+                    let (position, visible) = match scene.get_object(&name) {
                         Some(entity) => {
                             let p = entity.world_transform().position();
                             ([p.x, p.y, p.z], entity.visible())
@@ -1086,6 +1158,7 @@ impl OpenPAL4Director {
                 .collect(),
             None => Vec::new(),
         };
+        drop(scene);
 
         AgentResponse::SceneObjects(SceneObjectsResponse {
             scene: app.scene_name().to_string(),
@@ -1127,13 +1200,13 @@ impl OpenPAL4Director {
         let (module, fn_name) = {
             let vm = self.vm.borrow();
             let app = vm.vm_context();
-            let Some(module) = app.scene.module.clone() else {
+            let scene = app.scene.borrow();
+            let Some(module) = scene.module.clone() else {
                 return AgentResponse::err(AgentError::conflict(
                     "no scene is loaded; load a block before firing triggers",
                 ));
             };
-            let Some(event) = app
-                .scene
+            let Some(event) = scene
                 .events
                 .iter()
                 .find(|e| e.name.to_string().ok().as_deref() == Some(params.name.as_str()))
@@ -1167,12 +1240,13 @@ impl OpenPAL4Director {
         let (module, fn_name) = {
             let vm = self.vm.borrow();
             let app = vm.vm_context();
-            let Some(module) = app.scene.module.clone() else {
+            let scene = app.scene.borrow();
+            let Some(module) = scene.module.clone() else {
                 return AgentResponse::err(AgentError::conflict(
                     "no scene is loaded; load a block before interacting with objects",
                 ));
             };
-            let Some(gob) = app.scene.objects_gob.as_ref() else {
+            let Some(gob) = scene.objects_gob.as_ref() else {
                 return AgentResponse::err(AgentError::conflict(
                     "no GOB loaded for the current block",
                 ));

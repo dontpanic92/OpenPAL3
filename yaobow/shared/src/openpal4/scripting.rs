@@ -18,13 +18,11 @@ use super::vm_context::Pal4VmContext;
 type Pal4FunctionState = GlobalFunctionState<Pal4VmContext>;
 
 pub fn create_script_vm(vm_context: Pal4VmContext) -> ScriptVm<Pal4VmContext> {
-    let module = vm_context.loader.load_script_module("script").unwrap();
-    ScriptVm::new(
-        Rc::new(RefCell::new(create_context())),
-        module,
-        0,
-        vm_context,
-    )
+    // Start in the idle state. `OpenPAL4Director::activate` decides
+    // whether to kick the new-game opening (function index 0) or stay
+    // idle (boot-from-save, where the snapshot has already populated
+    // the session scene).
+    ScriptVm::new_idle(Rc::new(RefCell::new(create_context())), vm_context)
 }
 
 pub fn create_context() -> ScriptGlobalContext<Pal4VmContext> {
@@ -1135,72 +1133,43 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     let scn = get_str(vm, scn_str as usize).unwrap();
     let block = get_str(vm, block_str as usize).unwrap();
 
-    // When the script asked for a loading screen, defer the
-    // synchronous `Pal4Scene::load` to the director's overlay-driven
-    // path: request the load, yield a continuation that waits for
-    // the overlay's generation counter to advance, then wire up the
-    // next scene's `<scn>_<block>_init` entry once the load lands.
-    // Without `show_loading` (or when no overlay is installed —
-    // detected post-yield by the generation never advancing within
-    // the first tick), fall back to the legacy synchronous path so
-    // headless / no-protosept builds keep working.
-    if show_loading != 0 {
-        let baseline = vm.vm_context.session().deferred_load_generation();
-        vm.vm_context.session().request_scene_load(&scn, &block);
-        let scn_owned = scn.clone();
-        let block_owned = block.clone();
-        return Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
-            if vm.vm_context.session().deferred_load_generation() == baseline {
-                return ContinuationState::Loop;
-            }
-            // The director performed the load (success or failure) —
-            // on failure, abort the surrounding script so follow-up
-            // `giPlayer*` ops don't run against a half-loaded scene.
-            if !vm.vm_context.session().last_deferred_load_succeeded() {
-                log::error!(
-                    "giArenaLoad: deferred load_scene failed for scene='{}' \
-                     block='{}'; aborting current script to prevent cascading \
-                     panics.",
-                    scn_owned,
-                    block_owned
-                );
-                vm.abort_script();
-                return ContinuationState::Completed;
-            }
-            let module = vm.vm_context.scene.module.clone().unwrap();
-            vm.set_function_by_name2(module, &format!("{}_{}_init", scn_owned, block_owned));
-            ContinuationState::Completed
-        }));
-    }
-
-    // If the target scene fails to load (e.g. an EVF/GOB/NPC binary
-    // parse error in a scene the engine hasn't been fully validated
-    // against), keep the current scene and SKIP setting the new
-    // `<scene>_<block>_init` entry function. Calling
-    // `set_function_by_name2` against the old scene's module with a
-    // name from the new scene would resolve to an arbitrary slot
-    // (or fail) and crash the VM on the next opcode. Better to stay
-    // in the current scene's continuation and let the cutscene
-    // either retry or wedge gracefully — the agent server stays
-    // alive either way.
-    if let Err(err) = vm.vm_context.load_scene(&scn, &block) {
-        log::error!(
-            "giArenaLoad: failed to load scene='{}' block='{}': {:?}; \
-             aborting current script to prevent cascading panics in \
-             follow-up giPlayer* calls (the agent server / planner can \
-             re-drive from the current scene)",
-            scn,
-            block,
-            err
-        );
-        vm.abort_script();
-        return Pal4FunctionState::Completed;
-    }
-
-    let module = vm.vm_context.scene.module.clone().unwrap();
-    vm.set_function_by_name2(module, &format!("{}_{}_init", scn, block));
-
-    Pal4FunctionState::Completed
+    // All scene swaps route through the deferred path so the
+    // engine maintains a single invariant: pending_scene_load is
+    // armed → director observes it in `update()` → spawns a
+    // `Pal4TransitionDirector` that performs the swap during its
+    // Loading phase → bumps `deferred_load_generation` → this
+    // continuation resumes and wires up the `<scene>_<block>_init`
+    // entry function. `show_loading == 0` only changes whether the
+    // transition director paints overlay frames (silent → no
+    // PAINTING / HOLDING; just an inline scene swap inside the
+    // transition's Loading phase).
+    let silent = show_loading == 0;
+    let baseline = vm.vm_context.session().deferred_load_generation();
+    vm.vm_context.session().request_scene_load(&scn, &block, silent);
+    let scn_owned = scn.clone();
+    let block_owned = block.clone();
+    Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
+        if vm.vm_context.session().deferred_load_generation() == baseline {
+            return ContinuationState::Loop;
+        }
+        // The director performed the load (success or failure) —
+        // on failure, abort the surrounding script so follow-up
+        // `giPlayer*` ops don't run against a half-loaded scene.
+        if !vm.vm_context.session().last_deferred_load_succeeded() {
+            log::error!(
+                "giArenaLoad: deferred load_scene failed for scene='{}' \
+                 block='{}'; aborting current script to prevent cascading \
+                 panics.",
+                scn_owned,
+                block_owned
+            );
+            vm.abort_script();
+            return ContinuationState::Completed;
+        }
+        let module = vm.vm_context.scene.borrow().module.clone().unwrap();
+        vm.set_function_by_name2(module, &format!("{}_{}_init", scn_owned, block_owned));
+        ContinuationState::Completed
+    }))
 }
 
 fn arena_ready(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
@@ -1863,7 +1832,7 @@ fn gob_set_position(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionSt
     as_params!(vm, name_str: i32, x: f32, y: f32, z: f32);
 
     let name = get_str(vm, name_str as usize).unwrap_or_default();
-    if !vm.vm_context.scene.set_object_position(&name, x, y, z) {
+    if !vm.vm_context.scene.borrow_mut().set_object_position(&name, x, y, z) {
         log::warn!("giGOBSetPosition: unknown object '{}'", name);
     }
     Pal4FunctionState::Completed
@@ -2041,7 +2010,7 @@ fn gob_reset(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, name_str: i32);
 
     let name = get_str(vm, name_str as usize).unwrap_or_default();
-    if !vm.vm_context.scene.reset_object(&name) {
+    if !vm.vm_context.scene.borrow_mut().reset_object(&name) {
         log::warn!("giGOBReset: unknown object '{}'", name);
     }
     Pal4FunctionState::Completed
@@ -2911,6 +2880,7 @@ fn gob_movment(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     if !vm
         .vm_context
         .scene
+        .borrow_mut()
         .set_object_position_and_yaw(&name, x, y, z, rot)
     {
         log::warn!("giGOBMovment: unknown object '{}'", name);
@@ -2965,7 +2935,7 @@ fn show_world_map(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionStat
                     // (always a long-distance load) and on
                     // load-failure abort the surrounding script.
                     let baseline = vm.vm_context.session().deferred_load_generation();
-                    vm.vm_context.session().request_scene_load(&scene, &block);
+                    vm.vm_context.session().request_scene_load(&scene, &block, false);
                     phase = WorldMapPhase::WaitLoad {
                         baseline,
                         scene,
@@ -2994,7 +2964,7 @@ fn show_world_map(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionStat
                         vm.abort_script();
                         return ContinuationState::Completed;
                     }
-                    let module = vm.vm_context.scene.module.clone().unwrap();
+                    let module = vm.vm_context.scene.borrow().module.clone().unwrap();
                     let next_fn = format!("{}_{}_init", scene, block);
                     vm.set_function_by_name2(module, &next_fn);
                     return ContinuationState::Completed;
@@ -3016,6 +2986,7 @@ fn gob_scale(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     if !vm
         .vm_context
         .scene
+        .borrow_mut()
         .set_object_scale_xy(&name, x_scale, y_scale)
     {
         log::warn!("giGOBScale: unknown object '{}'", name);

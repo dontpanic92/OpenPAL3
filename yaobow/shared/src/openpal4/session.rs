@@ -88,6 +88,14 @@ pub struct Pal4SessionTransient {
     /// [`OpenPAL4Director::drive_loading_overlay`] drains this on
     /// LOAD_READY. `None` ≡ no transition in flight.
     pending_scene_load: RefCell<Option<(String, String)>>,
+    /// `true` if the most recent [`request_scene_load`] was tagged
+    /// silent (`giArenaLoad show_loading = 0` and similar). The
+    /// transition director reads this when minting the in-game
+    /// transition: silent transitions skip the painted
+    /// PAINTING / HOLDING overlay frames and run the scene swap
+    /// inline (still through the deferred-generation machinery so
+    /// VM continuations remain consistent across both flows).
+    pending_scene_load_silent: Cell<bool>,
     /// `true` once the most recent deferred load has been applied
     /// via `load_scene`. Read by the scripted continuations so they
     /// only resume after the new scene is fully loaded.
@@ -217,13 +225,29 @@ impl Pal4Session {
     /// resumes once [`deferred_load_generation`] advances. An
     /// overlapping request replaces the previous one — only the
     /// most recently requested transition runs.
-    pub fn request_scene_load(&self, scene_name: &str, block_name: &str) {
+    ///
+    /// `silent` requests bypass the painted PAINTING / HOLDING
+    /// overlay frames — the transition director still routes the
+    /// scene swap through its Loading phase (so VM continuations
+    /// see the generation bump and the scene cell update
+    /// atomically), but no loading layout is rendered. Used by
+    /// `giArenaLoad show_loading = 0`, where the original game
+    /// intends an instant swap.
+    pub fn request_scene_load(&self, scene_name: &str, block_name: &str, silent: bool) {
         *self.transient.pending_scene_load.borrow_mut() =
             Some((scene_name.to_string(), block_name.to_string()));
+        self.transient.pending_scene_load_silent.set(silent);
     }
 
     pub fn has_pending_scene_load(&self) -> bool {
         self.transient.pending_scene_load.borrow().is_some()
+    }
+
+    /// `true` iff the pending scene load was tagged silent (no
+    /// overlay frames). Read by [`super::transition::build_in_game_transition`]
+    /// when constructing the transition director.
+    pub fn pending_scene_load_silent(&self) -> bool {
+        self.transient.pending_scene_load_silent.get()
     }
 
     /// Peek at the pending (scene, block) without draining it.
@@ -236,7 +260,11 @@ impl Pal4Session {
     }
 
     pub fn take_pending_scene_load(&self) -> Option<(String, String)> {
-        self.transient.pending_scene_load.borrow_mut().take()
+        let drained = self.transient.pending_scene_load.borrow_mut().take();
+        if drained.is_some() {
+            self.transient.pending_scene_load_silent.set(false);
+        }
+        drained
     }
 
     /// Bump the generation + success flag after a deferred
@@ -475,7 +503,7 @@ mod tests {
         // Deferred scene load.
         let gen0 = session.deferred_load_generation();
         assert!(!session.has_pending_scene_load());
-        session.request_scene_load("Q01", "N01");
+        session.request_scene_load("Q01", "N01", false);
         assert!(session.has_pending_scene_load());
         assert_eq!(
             session.peek_pending_scene_load(),
@@ -506,7 +534,7 @@ mod tests {
         let mut session = Pal4Session::new();
         session.open_world_map();
         session.buffer_dialog_choice(3);
-        session.request_scene_load("m07", "1");
+        session.request_scene_load("m07", "1", false);
         session.note_deferred_load_finished(true);
         let gen_before = session.deferred_load_generation();
 

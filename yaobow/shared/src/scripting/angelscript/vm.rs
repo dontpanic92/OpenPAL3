@@ -86,10 +86,35 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         function_index: usize,
         vm_context: TAppContext,
     ) -> Self {
+        Self::new_inner(g, Some((module, function_index)), vm_context)
+    }
+
+    /// Construct a VM whose execution context starts out empty
+    /// (`context: None`, empty call stack). Callers install the
+    /// initial entry function later via [`set_function`] /
+    /// [`set_function_by_name2`] / [`set_function_by_index`].
+    ///
+    /// This is the right constructor for hosts that want to decide
+    /// whether to kick the new-game opening (e.g. on first activate)
+    /// versus stay idle (e.g. after restoring a saved game). Pairs
+    /// with [`is_idle`] for the "should I kick?" check.
+    pub fn new_idle(
+        g: Rc<RefCell<ScriptGlobalContext<TAppContext>>>,
+        vm_context: TAppContext,
+    ) -> Self {
+        Self::new_inner(g, None, vm_context)
+    }
+
+    fn new_inner(
+        g: Rc<RefCell<ScriptGlobalContext<TAppContext>>>,
+        entry: Option<(Rc<RefCell<ScriptModule>>, usize)>,
+        vm_context: TAppContext,
+    ) -> Self {
         let mut vm = Self {
             vm_context,
             g,
-            context: Some(ScriptFunctionContext::new(module, function_index)),
+            context: entry
+                .map(|(module, index)| ScriptFunctionContext::new(module, index)),
             call_stack: vec![],
             heap: vec![],
             r1: 0,
@@ -124,6 +149,15 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         &mut self.vm_context
     }
 
+    /// True iff the VM has no active execution context and no
+    /// suspended callers — i.e. it has either never been kicked or
+    /// the most recent script has fully completed. Hosts use this to
+    /// gate "install the new-game opening" logic so they don't
+    /// trample a running script.
+    pub fn is_idle(&self) -> bool {
+        self.context.is_none() && self.call_stack.is_empty()
+    }
+
     pub fn set_function(&mut self, module: Rc<RefCell<ScriptModule>>, index: usize) {
         if self.context.is_some() {
             self.call_stack.push(self.context.clone().unwrap());
@@ -140,15 +174,6 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
                 self.set_function(module.clone(), i)
             }
         }
-    }
-
-    /// Abandon whatever function the VM is currently running (and any
-    /// suspended callers) and return to the idle state. Used by
-    /// save-load to cancel the new-game opening script so the director
-    /// can drive the restored scene's triggers instead.
-    pub fn reset_to_idle(&mut self) {
-        self.context = None;
-        self.call_stack.clear();
     }
 
     /// Name of the function the VM is currently executing, if any.

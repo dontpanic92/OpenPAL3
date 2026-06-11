@@ -13,6 +13,22 @@ interface IOpenPAL4Director: IDirector {
 [uuid(981884a7-63e8-4ee1-96f1-6efd259ebe3b)]
 class OpenPAL4Director: IOpenPAL4Director, IImmediateDirector {}
 
+// Loading / mode-transition orchestrator. Single owner of every PAL4
+// scene transition (menu -> story, story -> in-game scene swap via
+// `giArenaLoad` / world map, and -- future -- story <-> battle).
+// Owns the loading overlay; the only callsite that synchronously
+// invokes `Pal4VmContext::load_scene`. On Done, returns the `next`
+// director (newly-built story for menu boots, or the suspended
+// source director resumed in place for round-trips), so all state
+// the source director carries (VM, continuations, scene stack) is
+// preserved by holding it as a `ComRc<IDirector>`.
+[uuid(7f1a0c20-94d8-4d11-9b62-3a0e6c5b1f44)]
+interface IPal4TransitionDirector: IDirector {
+}
+
+[uuid(2b5c0e10-3d4f-4a72-9c81-8f2a6b4d7e91)]
+class Pal4TransitionDirector: IPal4TransitionDirector, IImmediateDirector {}
+
 [uuid(f6d70031-86e7-4efa-b1c5-5196063441ea)]
 interface IPal4ActorAnimationController: IComponent {
     void play_default();

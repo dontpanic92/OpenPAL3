@@ -47,6 +47,15 @@ let IMGUI_NO_BACKGROUND: int = 128;
 // loading screen blinking in and out for cheap < 100 ms loads.
 let MIN_HOLD_SECS: float = 0.5;
 
+// Per-frame cap applied to `dt` while draining `MIN_HOLD_SECS`. The
+// synchronous `load_scene` inflates the next real frame's `dt` to
+// 1-2s; subtracting that raw `dt` would drain the hold in a single
+// tick. 1/30 keeps the on-screen dwell honest at any frame rate up
+// to 30 FPS. (The Rust-side `Pal4TransitionDirector` applies the
+// same clamp -- belt-and-braces in case anything still drives the
+// p7 overlay's state machine directly.)
+let HOLD_DT_CAP: float = 0.0333333;
+
 // Fallback PAINTING timeout: if `render_im` never fires (headless
 // pump, an agent `/v1/time/step` burst that runs many `update`s
 // per real frame, ...) we still want the deferred load to land.
@@ -112,7 +121,8 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         }
 
         if self.phase == LOAD_HOLDING {
-            self.hold_remaining = self.hold_remaining - dt;
+            let clamped: float = if dt > HOLD_DT_CAP { HOLD_DT_CAP } else { dt };
+            self.hold_remaining = self.hold_remaining - clamped;
             if self.hold_remaining <= 0.0 {
                 self.phase = LOAD_DONE;
                 return LOAD_DONE;
