@@ -1074,10 +1074,10 @@ mod {name}_crosscom_impl {{
             let module = &symbol.module.as_ref().unwrap().module_name;
             out.push_str(&format!(
                 r#"
-{base}: {module}::{base} {{
-    vtable: &GLOBAL_{base}VirtualTable_CCW_FOR_{class_name}.vtable
+{base}: unsafe {{ {module}::{base}::from_raw_vtable(
+    &GLOBAL_{base}VirtualTable_CCW_FOR_{class_name}.vtable
         as *const {module}::{base}VirtualTable,
-}},
+) }},
 "#,
                 class_name = class.name
             ));
@@ -1256,13 +1256,23 @@ pub struct {name}VirtualTableCcw {{
 #[repr(C)]
 #[allow(dead_code)]
 pub struct {name} {{
-    pub vtable: *const {name}VirtualTable,
+    vtable: *const {name}VirtualTable,
 }}
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
 impl {name} {{
+    #[doc(hidden)]
+    pub const unsafe fn from_raw_vtable(vtable: *const {name}VirtualTable) -> Self {{
+        Self {{ vtable }}
+    }}
+
+    #[doc(hidden)]
+    pub unsafe fn raw_vtable(&self) -> *const {name}VirtualTable {{
+        self.vtable
+    }}
+
     {safe_wrappers}
 
     pub fn uuid() -> uuid::Uuid {{

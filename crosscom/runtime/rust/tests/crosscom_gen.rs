@@ -26,13 +26,23 @@ pub struct ITestVirtualTableCcw {
 #[repr(C)]
 #[allow(dead_code)]
 pub struct ITest {
-    pub vtable: *const ITestVirtualTable,
+    vtable: *const ITestVirtualTable,
 }
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
 impl ITest {
+    #[doc(hidden)]
+    pub const unsafe fn from_raw_vtable(vtable: *const ITestVirtualTable) -> Self {
+        Self { vtable }
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn raw_vtable(&self) -> *const ITestVirtualTable {
+        self.vtable
+    }
+
     pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
         let this = self as *const ITest as *const *const std::os::raw::c_void;
         let mut raw = 0 as *const *const std::os::raw::c_void;
@@ -126,13 +136,23 @@ pub struct ITest2VirtualTableCcw {
 #[repr(C)]
 #[allow(dead_code)]
 pub struct ITest2 {
-    pub vtable: *const ITest2VirtualTable,
+    vtable: *const ITest2VirtualTable,
 }
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
 impl ITest2 {
+    #[doc(hidden)]
+    pub const unsafe fn from_raw_vtable(vtable: *const ITest2VirtualTable) -> Self {
+        Self { vtable }
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn raw_vtable(&self) -> *const ITest2VirtualTable {
+        self.vtable
+    }
+
     pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
         let this = self as *const ITest2 as *const *const std::os::raw::c_void;
         let mut raw = 0 as *const *const std::os::raw::c_void;
@@ -233,13 +253,23 @@ pub struct ITest3VirtualTableCcw {
 #[repr(C)]
 #[allow(dead_code)]
 pub struct ITest3 {
-    pub vtable: *const ITest3VirtualTable,
+    vtable: *const ITest3VirtualTable,
 }
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
 impl ITest3 {
+    #[doc(hidden)]
+    pub const unsafe fn from_raw_vtable(vtable: *const ITest3VirtualTable) -> Self {
+        Self { vtable }
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn raw_vtable(&self) -> *const ITest3VirtualTable {
+        self.vtable
+    }
+
     pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
         let this = self as *const ITest3 as *const *const std::os::raw::c_void;
         let mut raw = 0 as *const *const std::os::raw::c_void;
@@ -329,13 +359,23 @@ pub struct ITest4VirtualTableCcw {
 #[repr(C)]
 #[allow(dead_code)]
 pub struct ITest4 {
-    pub vtable: *const ITest4VirtualTable,
+    vtable: *const ITest4VirtualTable,
 }
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
 impl ITest4 {
+    #[doc(hidden)]
+    pub const unsafe fn from_raw_vtable(vtable: *const ITest4VirtualTable) -> Self {
+        Self { vtable }
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn raw_vtable(&self) -> *const ITest4VirtualTable {
+        self.vtable
+    }
+
     pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
         let this = self as *const ITest4 as *const *const std::os::raw::c_void;
         let mut raw = 0 as *const *const std::os::raw::c_void;
@@ -600,24 +640,32 @@ macro_rules! ComObject_Test {
 
                 fn create_ccw(self) -> Self::CcwType {
                     Self::CcwType {
-                        ITest2: test::crosscom_gen::ITest2 {
-                            vtable: &GLOBAL_ITest2VirtualTable_CCW_FOR_Test.vtable
-                                as *const test::crosscom_gen::ITest2VirtualTable,
+                        ITest2: unsafe {
+                            test::crosscom_gen::ITest2::from_raw_vtable(
+                                &GLOBAL_ITest2VirtualTable_CCW_FOR_Test.vtable
+                                    as *const test::crosscom_gen::ITest2VirtualTable,
+                            )
                         },
 
-                        ITest: test::crosscom_gen::ITest {
-                            vtable: &GLOBAL_ITestVirtualTable_CCW_FOR_Test.vtable
-                                as *const test::crosscom_gen::ITestVirtualTable,
+                        ITest: unsafe {
+                            test::crosscom_gen::ITest::from_raw_vtable(
+                                &GLOBAL_ITestVirtualTable_CCW_FOR_Test.vtable
+                                    as *const test::crosscom_gen::ITestVirtualTable,
+                            )
                         },
 
-                        ITest3: test::crosscom_gen::ITest3 {
-                            vtable: &GLOBAL_ITest3VirtualTable_CCW_FOR_Test.vtable
-                                as *const test::crosscom_gen::ITest3VirtualTable,
+                        ITest3: unsafe {
+                            test::crosscom_gen::ITest3::from_raw_vtable(
+                                &GLOBAL_ITest3VirtualTable_CCW_FOR_Test.vtable
+                                    as *const test::crosscom_gen::ITest3VirtualTable,
+                            )
                         },
 
-                        ITest4: test::crosscom_gen::ITest4 {
-                            vtable: &GLOBAL_ITest4VirtualTable_CCW_FOR_Test.vtable
-                                as *const test::crosscom_gen::ITest4VirtualTable,
+                        ITest4: unsafe {
+                            test::crosscom_gen::ITest4::from_raw_vtable(
+                                &GLOBAL_ITest4VirtualTable_CCW_FOR_Test.vtable
+                                    as *const test::crosscom_gen::ITest4VirtualTable,
+                            )
                         },
 
                         ref_count: std::sync::atomic::AtomicU32::new(0),

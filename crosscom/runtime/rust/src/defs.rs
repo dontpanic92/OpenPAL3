@@ -23,13 +23,23 @@ pub struct IObjectArrayVirtualTableCcw {
 #[repr(C)]
 #[allow(dead_code)]
 pub struct IObjectArray {
-    pub vtable: *const IObjectArrayVirtualTable,
+    vtable: *const IObjectArrayVirtualTable,
 }
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
 impl IObjectArray {
+    #[doc(hidden)]
+    pub const unsafe fn from_raw_vtable(vtable: *const IObjectArrayVirtualTable) -> Self {
+        Self { vtable }
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn raw_vtable(&self) -> *const IObjectArrayVirtualTable {
+        self.vtable
+    }
+
     
 pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
     let this = self as *const IObjectArray as *const *const std::os::raw::c_void;
@@ -147,24 +157,24 @@ mod ObjectArray_crosscom_impl {
 
             _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
         }
-    }}
+    } }
 
     unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<ObjectArrayCcw>(this);
         let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         (previous + 1) as std::os::raw::c_long
-    }}
+    } }
 
     unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<ObjectArrayCcw>(this);
 
         let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
         if previous - 1 == 0 {
-            Box::from_raw(object as *mut ObjectArrayCcw);
+            let _ = Box::from_raw(object as *mut ObjectArrayCcw);
         }
 
         (previous - 1) as std::os::raw::c_long
-    }}
+    } }
 
     
     unsafe extern "system" fn len(this: *const *const std::os::raw::c_void) -> std::os::raw::c_int { unsafe {
@@ -172,7 +182,7 @@ mod ObjectArray_crosscom_impl {
         let __crosscom_object = crosscom::get_object::<ObjectArrayCcw>(this);
         let ret = (*__crosscom_object).inner.len();
         ret.into()
-    }}
+    } }
 
     unsafe extern "system" fn get(this: *const *const std::os::raw::c_void, index: std::os::raw::c_int) -> *const *const std::os::raw::c_void { unsafe {
         let index: std::os::raw::c_int = index.into();
@@ -180,7 +190,7 @@ mod ObjectArray_crosscom_impl {
         let __crosscom_object = crosscom::get_object::<ObjectArrayCcw>(this);
         let ret = (*__crosscom_object).inner.get(index.into());
         ret.into()
-    }}
+    } }
 
 
     
@@ -205,10 +215,10 @@ pub const GLOBAL_IObjectArrayVirtualTable_CCW_FOR_ObjectArray: crosscom::IObject
         fn create_ccw(self) -> Self::CcwType {
             Self::CcwType {
                 
-IObjectArray: crosscom::IObjectArray {
-    vtable: &GLOBAL_IObjectArrayVirtualTable_CCW_FOR_ObjectArray.vtable
+IObjectArray: unsafe { crosscom::IObjectArray::from_raw_vtable(
+    &GLOBAL_IObjectArrayVirtualTable_CCW_FOR_ObjectArray.vtable
         as *const crosscom::IObjectArrayVirtualTable,
-},
+) },
 
                 ref_count: std::sync::atomic::AtomicU32::new(0),
                 inner: self,
@@ -254,13 +264,23 @@ pub struct IActionVirtualTableCcw {
 #[repr(C)]
 #[allow(dead_code)]
 pub struct IAction {
-    pub vtable: *const IActionVirtualTable,
+    vtable: *const IActionVirtualTable,
 }
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
 impl IAction {
+    #[doc(hidden)]
+    pub const unsafe fn from_raw_vtable(vtable: *const IActionVirtualTable) -> Self {
+        Self { vtable }
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn raw_vtable(&self) -> *const IActionVirtualTable {
+        self.vtable
+    }
+
     
 pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
     let this = self as *const IAction as *const *const std::os::raw::c_void;
@@ -350,7 +370,7 @@ mod Action_crosscom_impl {
         this: *const *const std::os::raw::c_void,
         guid: uuid::Uuid,
         retval: &mut *const *const std::os::raw::c_void,
-    ) -> std::os::raw::c_long {
+    ) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<ActionCcw>(this);
         match guid.as_bytes() {
             
@@ -368,32 +388,32 @@ mod Action_crosscom_impl {
 
             _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
         }
-    }
+    } }
 
-    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<ActionCcw>(this);
         let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         (previous + 1) as std::os::raw::c_long
-    }
+    } }
 
-    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<ActionCcw>(this);
 
         let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
         if previous - 1 == 0 {
-            Box::from_raw(object as *mut ActionCcw);
+            let _ = Box::from_raw(object as *mut ActionCcw);
         }
 
         (previous - 1) as std::os::raw::c_long
-    }
+    } }
 
     
-    unsafe extern "system" fn invoke(this: *const *const std::os::raw::c_void) -> () {
+    unsafe extern "system" fn invoke(this: *const *const std::os::raw::c_void) -> () { unsafe {
         
         let __crosscom_object = crosscom::get_object::<ActionCcw>(this);
         let ret = (*__crosscom_object).inner.invoke();
         ret.into()
-    }
+    } }
 
 
     
@@ -417,10 +437,10 @@ pub const GLOBAL_IActionVirtualTable_CCW_FOR_Action: crosscom::IActionVirtualTab
         fn create_ccw(self) -> Self::CcwType {
             Self::CcwType {
                 
-IAction: crosscom::IAction {
-    vtable: &GLOBAL_IActionVirtualTable_CCW_FOR_Action.vtable
+IAction: unsafe { crosscom::IAction::from_raw_vtable(
+    &GLOBAL_IActionVirtualTable_CCW_FOR_Action.vtable
         as *const crosscom::IActionVirtualTable,
-},
+) },
 
                 ref_count: std::sync::atomic::AtomicU32::new(0),
                 inner: self,
@@ -466,13 +486,23 @@ pub struct IIntActionVirtualTableCcw {
 #[repr(C)]
 #[allow(dead_code)]
 pub struct IIntAction {
-    pub vtable: *const IIntActionVirtualTable,
+    vtable: *const IIntActionVirtualTable,
 }
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
 impl IIntAction {
+    #[doc(hidden)]
+    pub const unsafe fn from_raw_vtable(vtable: *const IIntActionVirtualTable) -> Self {
+        Self { vtable }
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn raw_vtable(&self) -> *const IIntActionVirtualTable {
+        self.vtable
+    }
+
     
 pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
     let this = self as *const IIntAction as *const *const std::os::raw::c_void;
@@ -562,7 +592,7 @@ mod IntAction_crosscom_impl {
         this: *const *const std::os::raw::c_void,
         guid: uuid::Uuid,
         retval: &mut *const *const std::os::raw::c_void,
-    ) -> std::os::raw::c_long {
+    ) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<IntActionCcw>(this);
         match guid.as_bytes() {
             
@@ -580,33 +610,33 @@ mod IntAction_crosscom_impl {
 
             _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
         }
-    }
+    } }
 
-    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<IntActionCcw>(this);
         let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         (previous + 1) as std::os::raw::c_long
-    }
+    } }
 
-    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<IntActionCcw>(this);
 
         let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
         if previous - 1 == 0 {
-            Box::from_raw(object as *mut IntActionCcw);
+            let _ = Box::from_raw(object as *mut IntActionCcw);
         }
 
         (previous - 1) as std::os::raw::c_long
-    }
+    } }
 
     
-    unsafe extern "system" fn invoke(this: *const *const std::os::raw::c_void, value: std::os::raw::c_int) -> () {
+    unsafe extern "system" fn invoke(this: *const *const std::os::raw::c_void, value: std::os::raw::c_int) -> () { unsafe {
         let value: std::os::raw::c_int = value.into();
 
         let __crosscom_object = crosscom::get_object::<IntActionCcw>(this);
         let ret = (*__crosscom_object).inner.invoke(value.into());
         ret.into()
-    }
+    } }
 
 
     
@@ -630,10 +660,10 @@ pub const GLOBAL_IIntActionVirtualTable_CCW_FOR_IntAction: crosscom::IIntActionV
         fn create_ccw(self) -> Self::CcwType {
             Self::CcwType {
                 
-IIntAction: crosscom::IIntAction {
-    vtable: &GLOBAL_IIntActionVirtualTable_CCW_FOR_IntAction.vtable
+IIntAction: unsafe { crosscom::IIntAction::from_raw_vtable(
+    &GLOBAL_IIntActionVirtualTable_CCW_FOR_IntAction.vtable
         as *const crosscom::IIntActionVirtualTable,
-},
+) },
 
                 ref_count: std::sync::atomic::AtomicU32::new(0),
                 inner: self,
@@ -679,13 +709,23 @@ pub struct IFloatActionVirtualTableCcw {
 #[repr(C)]
 #[allow(dead_code)]
 pub struct IFloatAction {
-    pub vtable: *const IFloatActionVirtualTable,
+    vtable: *const IFloatActionVirtualTable,
 }
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
 impl IFloatAction {
+    #[doc(hidden)]
+    pub const unsafe fn from_raw_vtable(vtable: *const IFloatActionVirtualTable) -> Self {
+        Self { vtable }
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn raw_vtable(&self) -> *const IFloatActionVirtualTable {
+        self.vtable
+    }
+
     
 pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
     let this = self as *const IFloatAction as *const *const std::os::raw::c_void;
@@ -775,7 +815,7 @@ mod FloatAction_crosscom_impl {
         this: *const *const std::os::raw::c_void,
         guid: uuid::Uuid,
         retval: &mut *const *const std::os::raw::c_void,
-    ) -> std::os::raw::c_long {
+    ) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<FloatActionCcw>(this);
         match guid.as_bytes() {
             
@@ -793,33 +833,33 @@ mod FloatAction_crosscom_impl {
 
             _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
         }
-    }
+    } }
 
-    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<FloatActionCcw>(this);
         let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         (previous + 1) as std::os::raw::c_long
-    }
+    } }
 
-    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<FloatActionCcw>(this);
 
         let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
         if previous - 1 == 0 {
-            Box::from_raw(object as *mut FloatActionCcw);
+            let _ = Box::from_raw(object as *mut FloatActionCcw);
         }
 
         (previous - 1) as std::os::raw::c_long
-    }
+    } }
 
     
-    unsafe extern "system" fn invoke(this: *const *const std::os::raw::c_void, value: std::os::raw::c_float) -> () {
+    unsafe extern "system" fn invoke(this: *const *const std::os::raw::c_void, value: std::os::raw::c_float) -> () { unsafe {
         let value: f32 = value.into();
 
         let __crosscom_object = crosscom::get_object::<FloatActionCcw>(this);
         let ret = (*__crosscom_object).inner.invoke(value.into());
         ret.into()
-    }
+    } }
 
 
     
@@ -843,10 +883,10 @@ pub const GLOBAL_IFloatActionVirtualTable_CCW_FOR_FloatAction: crosscom::IFloatA
         fn create_ccw(self) -> Self::CcwType {
             Self::CcwType {
                 
-IFloatAction: crosscom::IFloatAction {
-    vtable: &GLOBAL_IFloatActionVirtualTable_CCW_FOR_FloatAction.vtable
+IFloatAction: unsafe { crosscom::IFloatAction::from_raw_vtable(
+    &GLOBAL_IFloatActionVirtualTable_CCW_FOR_FloatAction.vtable
         as *const crosscom::IFloatActionVirtualTable,
-},
+) },
 
                 ref_count: std::sync::atomic::AtomicU32::new(0),
                 inner: self,
@@ -892,13 +932,23 @@ pub struct IStrActionVirtualTableCcw {
 #[repr(C)]
 #[allow(dead_code)]
 pub struct IStrAction {
-    pub vtable: *const IStrActionVirtualTable,
+    vtable: *const IStrActionVirtualTable,
 }
 
 #[allow(dead_code)]
 #[allow(non_snake_case)]
 #[allow(unused)]
 impl IStrAction {
+    #[doc(hidden)]
+    pub const unsafe fn from_raw_vtable(vtable: *const IStrActionVirtualTable) -> Self {
+        Self { vtable }
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn raw_vtable(&self) -> *const IStrActionVirtualTable {
+        self.vtable
+    }
+
     
 pub fn query_interface<T: crosscom::ComInterface>(&self) -> Option<crosscom::ComRc<T>> {
     let this = self as *const IStrAction as *const *const std::os::raw::c_void;
@@ -988,7 +1038,7 @@ mod StrAction_crosscom_impl {
         this: *const *const std::os::raw::c_void,
         guid: uuid::Uuid,
         retval: &mut *const *const std::os::raw::c_void,
-    ) -> std::os::raw::c_long {
+    ) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<StrActionCcw>(this);
         match guid.as_bytes() {
             
@@ -1006,33 +1056,33 @@ mod StrAction_crosscom_impl {
 
             _ => crosscom::ResultCode::ENoInterface as std::os::raw::c_long,
         }
-    }
+    } }
 
-    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+    unsafe extern "system" fn add_ref(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<StrActionCcw>(this);
         let previous = (*object).ref_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         (previous + 1) as std::os::raw::c_long
-    }
+    } }
 
-    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long {
+    unsafe extern "system" fn release(this: *const *const std::os::raw::c_void) -> std::os::raw::c_long { unsafe {
         let object = crosscom::get_object::<StrActionCcw>(this);
 
         let previous = (*object).ref_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
         if previous - 1 == 0 {
-            Box::from_raw(object as *mut StrActionCcw);
+            let _ = Box::from_raw(object as *mut StrActionCcw);
         }
 
         (previous - 1) as std::os::raw::c_long
-    }
+    } }
 
     
-    unsafe extern "system" fn invoke(this: *const *const std::os::raw::c_void, value: *const std::os::raw::c_char) -> () {
+    unsafe extern "system" fn invoke(this: *const *const std::os::raw::c_void, value: *const std::os::raw::c_char) -> () { unsafe {
         let value: &str = unsafe { std::ffi::CStr::from_ptr(value).to_str().unwrap() };
 
         let __crosscom_object = crosscom::get_object::<StrActionCcw>(this);
         let ret = (*__crosscom_object).inner.invoke(value.into());
         ret.into()
-    }
+    } }
 
 
     
@@ -1056,10 +1106,10 @@ pub const GLOBAL_IStrActionVirtualTable_CCW_FOR_StrAction: crosscom::IStrActionV
         fn create_ccw(self) -> Self::CcwType {
             Self::CcwType {
                 
-IStrAction: crosscom::IStrAction {
-    vtable: &GLOBAL_IStrActionVirtualTable_CCW_FOR_StrAction.vtable
+IStrAction: unsafe { crosscom::IStrAction::from_raw_vtable(
+    &GLOBAL_IStrActionVirtualTable_CCW_FOR_StrAction.vtable
         as *const crosscom::IStrActionVirtualTable,
-},
+) },
 
                 ref_count: std::sync::atomic::AtomicU32::new(0),
                 inner: self,
