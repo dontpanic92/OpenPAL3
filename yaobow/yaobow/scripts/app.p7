@@ -13,15 +13,15 @@
 
 import radiance;
 import shared.pal4_debug;
-import yaobow.pal4_debug_overlay;
+import yaobow.openpal4.debug_overlay;
 import shared.openpal4;
 import shared.openpal5;
-import yaobow.openpal5_director;
-import yaobow.openpal4_start_menu;
+import yaobow.openpal5.director;
+import yaobow.openpal4.start_menu;
 import scripting_services;
 import yaobow.yaobow_services;
 import shared.openpal4.actor_controller;
-import yaobow.title;
+import yaobow.title.title;
 
 pub struct[yaobow_services.IYaobowScriptApp, openpal4.IPal4ScriptFactory] YaobowScriptApp(
     pub ctx: box<yaobow_services.IYaobowHostContext>,
@@ -34,7 +34,7 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal4.IPal4ScriptFactory] Yaobow
         self: ref<Self>,
         ctx: box<pal4_debug.IPal4DebugContext>,
     ) -> box<pal4_debug.IPal4DebugOverlay> {
-        return pal4_debug_overlay.make_overlay(ctx);
+        return debug_overlay.make_overlay(ctx);
     }
 
     pub fn make_actor_controller(
@@ -61,17 +61,17 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal4.IPal4ScriptFactory] Yaobow
     }
 
     // PAL4 launch factory. Used by Rust direct-boot (`run_openpal5`)
-    // — title-page selection calls `openpal5_director.make_pal5_director`
+    // — title-page selection calls `director.make_pal5_director`
     // directly, but this entry exists so Rust can mint the script-side
     // director without needing a script-level reference to the
-    // `openpal5_director` module. The body delegates to the same
+    // `director` module. The body delegates to the same
     // module function so behaviour is identical to yaobow.title dispatch.
     pub fn make_pal5_director(
         self: ref<Self>,
         asset_path: string,
         game_ordinal: int,
     ) -> ?box<radiance.IDirector> {
-        return openpal5_director.make_pal5_director(
+        return director.make_pal5_director(
             self.ctx, self.ctx.pal5(), asset_path, game_ordinal,
         );
     }
@@ -86,7 +86,7 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal4.IPal4ScriptFactory] Yaobow
         self: ref<Self>,
         asset_path: string,
     ) -> box<radiance.IImmediateDirector> {
-        return openpal4_start_menu.make_pal4_start_menu(self.ctx, asset_path);
+        return start_menu.make_pal4_start_menu(self.ctx, asset_path);
     }
 }
 

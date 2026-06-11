@@ -187,9 +187,7 @@ struct TestEnv {
     config: Rc<RefCell<shared::config::YaobowConfig>>,
 }
 
-fn init_runtime_from_path(
-    root_path: &str,
-) -> Result<TestEnv, crosscom_protosept::HostError> {
+fn init_runtime_from_path(root_path: &str) -> Result<TestEnv, crosscom_protosept::HostError> {
     let open_calls = Rc::new(RefCell::new(Vec::new()));
     let app = ComRc::<IAppService>::from_object(RecordingAppService {
         open_calls: open_calls.clone(),

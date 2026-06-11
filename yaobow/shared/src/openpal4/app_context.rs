@@ -636,7 +636,10 @@ impl Pal4AppContext {
     }
 
     pub fn lock_player(&mut self, lock: bool) {
-        self.session.borrow_mut().state_mut().set_player_locked(lock);
+        self.session
+            .borrow_mut()
+            .state_mut()
+            .set_player_locked(lock);
         if let Some(ctrl) = self.scene.actor_controller() {
             ctrl.lock_control(lock);
         }
@@ -946,7 +949,11 @@ impl Pal4AppContext {
     /// `player_set_direction` (yaw about world-up). Used by save-load
     /// to restore the exact orientation the player was standing in.
     pub fn leader_direction(&self) -> f32 {
-        yaw_from_transform(&self.scene.get_player(self.session.borrow().state().leader()))
+        yaw_from_transform(
+            &self
+                .scene
+                .get_player(self.session.borrow().state().leader()),
+        )
     }
 
     pub fn load_scene(&mut self, scene_name: &str, block_name: &str) -> anyhow::Result<()> {

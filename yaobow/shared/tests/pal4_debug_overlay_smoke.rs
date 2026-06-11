@@ -1,7 +1,7 @@
 //! End-to-end smoke test for the protosept-authored PAL4 debug overlay.
 //!
 //! Verifies that:
-//! 1. `pal4_debug_overlay.p7` parses and compiles against the generated
+//! 1. `debug_overlay.p7` parses and compiles against the generated
 //!    `pal4_debug.p7` binding.
 //! 2. `wrap_overlay` produces a working `ComRc<IPal4DebugOverlay>`.
 //! 3. Calling `overlay.render(ui, dt, ctx)` from Rust dispatches into
@@ -15,7 +15,7 @@ use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 use radiance_scripting::{RuntimeAccess, ScriptHost, with_services};
 use shared::openpal4::pal4_debug::{Pal4DebugSnapshot, create_debug_session, wrap_overlay};
 
-const OVERLAY_P7: &str = include_str!("../../yaobow/scripts/pal4_debug_overlay.p7");
+const OVERLAY_P7: &str = include_str!("../../yaobow/scripts/openpal4/debug_overlay.p7");
 
 /// Helper: build a fresh `AssetManager` with the engine bindings +
 /// shared script bundle mounted, so the overlay source resolves its
@@ -33,7 +33,7 @@ fn pal4_debug_overlay_round_trips_through_p7() {
     let host = ScriptHost::new();
     host.set_script_assets(build_test_assets());
     host.load_source(OVERLAY_P7)
-        .expect("pal4_debug_overlay.p7 must compile");
+        .expect("debug_overlay.p7 must compile");
 
     // Host-side debug context with a programmed snapshot the script
     // should echo back to us through `ctx.scene_name()` & friends.
@@ -173,7 +173,7 @@ fn pal4_debug_overlay_toggles_flip_host_state() {
     let host = ScriptHost::new();
     host.set_script_assets(build_test_assets());
     host.load_source(OVERLAY_P7)
-        .expect("pal4_debug_overlay.p7 must compile");
+        .expect("debug_overlay.p7 must compile");
 
     let session = create_debug_session();
 

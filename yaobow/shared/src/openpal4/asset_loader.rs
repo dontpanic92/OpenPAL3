@@ -48,7 +48,6 @@ const ZJM_WATER_UVA: &str = "/gamedata/ui/uiWorld/zjm/ZJM_water.uva";
 const ZJM_TRANS_DFF: &str = "/gamedata/ui/uiWorld/zjm/ZJM_trans.dff";
 const ZJM_TRANS_UVA: &str = "/gamedata/ui/uiWorld/zjm/ZJM_trans.uva";
 
-
 pub struct AssetLoader {
     vfs: Rc<MiniFs>,
     component_factory: Rc<dyn ComponentFactory>,

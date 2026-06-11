@@ -1,7 +1,10 @@
 pub mod yaobow_host_context;
 
 use std::cell::RefCell;
+use std::io::Cursor;
 use std::rc::Rc;
+
+use fileformats::{binrw::BinRead, npc::NpcInfoFile};
 
 use agent_server::AgentServer;
 use crosscom::ComRc;
@@ -18,6 +21,8 @@ use radiance_scripting::install_imgui_pump;
 use shared::openpal4::agent::Pal4AgentBridge;
 use shared::openpal4::launch::{AgentBootOptions, install_global_log_sink, start_agent_server};
 use shared::{GameType, config::YaobowConfig};
+
+pub type Pal4AgentBootOptions = AgentBootOptions;
 
 use crate::comdef::yaobow_services::{IYaobowHostContext, IYaobowScriptApp};
 use crate::script_source::install_script_factory;
@@ -136,8 +141,7 @@ impl IComponentImpl for YaobowApplicationLoader {
 
         // Bootstrap the script root. This also QIs the script's PAL4
         // factory surface and installs it on `Pal4Service`.
-        let (factory, host_context) =
-            install_script_factory(&self.app, self.config.clone());
+        let (factory, host_context) = install_script_factory(&self.app, self.config.clone());
         self.factory.replace(Some(factory.clone()));
         self.host_context.replace(Some(host_context.clone()));
 
@@ -434,4 +438,23 @@ pub fn run_openpal5() {
 
 pub fn run_openpal5q() {
     run_app(boot_for(GameType::PAL5Q));
+}
+
+pub fn run_openpal4() {
+    run_openpal4_with_agent(None);
+}
+
+pub fn run_openpal4_with_agent(agent: Option<AgentBootOptions>) {
+    run_app(boot_for(GameType::PAL4).with_agent_opts_opt(agent));
+}
+
+pub fn run_openswd5() {
+    run_app(boot_for(GameType::SWDHC));
+}
+
+pub fn run_opengujian() {
+    let data = std::fs::read("F:\\PAL4\\gamedata\\scenedata\\scenedata\\q01\\N01\\npcInfo.npc")
+        .expect("Gujian NPC info path must exist on this machine");
+    let cam = NpcInfoFile::read(&mut Cursor::new(data));
+    println!("cam: {:?}", cam);
 }

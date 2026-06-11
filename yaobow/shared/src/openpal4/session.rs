@@ -154,7 +154,9 @@ mod tests {
         // position/direction/camera/globals are scene-derived and
         // folded in by `save_runtime`.
         let mut session = Pal4Session::new();
-        session.state_mut().set_scene("m05".to_string(), "3".to_string());
+        session
+            .state_mut()
+            .set_scene("m05".to_string(), "3".to_string());
         session.state_mut().set_leader(2);
         session.state_mut().set_player_locked(true);
 
@@ -239,5 +241,3 @@ mod tests {
         handle.borrow_mut().state_mut().add_money(1);
     }
 }
-
-

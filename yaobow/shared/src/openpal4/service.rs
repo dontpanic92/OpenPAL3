@@ -32,15 +32,15 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crosscom::ComRc;
 use agent_server::protocol::{
-    AgentCommand, AgentError, AgentResponse, AxisInputParams, KeyAction, KeyInputParams, PerfMetric,
-    PerfMetricsResponse, ScreenshotResponse, StateSnapshot, StepTimeParams,
+    AgentCommand, AgentError, AgentResponse, AxisInputParams, KeyAction, KeyInputParams,
+    PerfMetric, PerfMetricsResponse, ScreenshotResponse, StateSnapshot, StepTimeParams,
 };
+use crosscom::ComRc;
 use packfs::init_virtual_fs;
+use radiance::audio::Codec;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector, IScene};
 use radiance::input::{Axis, InputEngine, Key, SyntheticInputBridge};
-use radiance::audio::Codec;
 use radiance_scripting::comdef::services::{IAudioSource, IUiLayoutHandle};
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::services::audio::AudioSource as ScriptAudioSource;
@@ -53,7 +53,9 @@ use crate::openpal4::comdef::{
     IOpenPAL4Director, IPal4ScriptFactory, IPal4Service, IPal4ServiceImpl,
 };
 use crate::openpal4::director::{OpenPAL4Director, Pal4DebugBundle};
-use crate::openpal4::modes::{self, Pal4ModeIntent, Pal4ModeKind, Pal4ModeFactory, Pal4ModeRegistry};
+use crate::openpal4::modes::{
+    self, Pal4ModeFactory, Pal4ModeIntent, Pal4ModeKind, Pal4ModeRegistry,
+};
 use crate::openpal4::pal4_debug::create_debug_session;
 use crate::openpal4::session::Pal4Session;
 use crate::openpal4::states::persistent_state::{PAL4_APP_NAME, Pal4PersistentState};
@@ -311,9 +313,7 @@ impl Pal4Service {
                 // `fire_trigger { wait_until_idle }` settle). Resolved
                 // fresh per command so a preceding mode-control command
                 // in the same batch is observed.
-                story
-                    .inner::<OpenPAL4Director>()
-                    .handle_agent_envelope(env);
+                story.inner::<OpenPAL4Director>().handle_agent_envelope(env);
             } else {
                 // VM / scene command with no active playthrough: answer
                 // the menu subset (`GetState` minimal) or reject.
@@ -353,9 +353,7 @@ impl Pal4Service {
     fn is_mode_control_command(command: &AgentCommand) -> bool {
         matches!(
             command,
-            AgentCommand::EnterNewGame
-                | AgentCommand::EnterLoadGame(_)
-                | AgentCommand::ExitGame
+            AgentCommand::EnterNewGame | AgentCommand::EnterLoadGame(_) | AgentCommand::ExitGame
         )
     }
 

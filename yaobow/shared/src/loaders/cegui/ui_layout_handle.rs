@@ -625,14 +625,20 @@ fn uv_for(rect: &cegui_imageset::ImagesetImage, tex_w: u32, tex_h: u32) -> (f32,
     // the single texel's centre on that axis instead.
     let (u0, u1) = if rect.width >= 2 {
         let ix = 0.5 / tw;
-        (rect.x as f32 / tw + ix, (rect.x + rect.width) as f32 / tw - ix)
+        (
+            rect.x as f32 / tw + ix,
+            (rect.x + rect.width) as f32 / tw - ix,
+        )
     } else {
         let c = (rect.x as f32 + 0.5) / tw;
         (c, c)
     };
     let (v0, v1) = if rect.height >= 2 {
         let iy = 0.5 / th;
-        (rect.y as f32 / th + iy, (rect.y + rect.height) as f32 / th - iy)
+        (
+            rect.y as f32 / th + iy,
+            (rect.y + rect.height) as f32 / th - iy,
+        )
     } else {
         let c = (rect.y as f32 + 0.5) / th;
         (c, c)
@@ -753,4 +759,3 @@ impl ImagesetIndex {
         }
     }
 }
-

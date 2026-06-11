@@ -37,8 +37,7 @@ pub use services::HostContext;
 /// `scripting_services.p7`, `radiance.p7`, `editor.p7`) produced by
 /// `build.rs`. Mounted at the script `AssetManager` root by
 /// [`mount_engine_bindings`].
-const ENGINE_BINDINGS_YPK: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/engine_bindings.ypk"));
+const ENGINE_BINDINGS_YPK: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/engine_bindings.ypk"));
 
 /// In-binary `.ypk` script bundle produced by `build.rs` from
 /// `scripts/`. Currently carries `freeview.p7`. Mounted at

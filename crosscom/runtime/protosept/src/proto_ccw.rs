@@ -1085,11 +1085,7 @@ fn invoke_script_method(
 /// * Otherwise the box is a script-side struct conforming to the
 ///   target proto; return `OptionalForeign(Some(data))` so the libffi
 ///   thunk recursively builds a CCW around it.
-fn classify_foreign_return(
-    ctx: &mut Context,
-    data: Data,
-    ret_uuid: [u8; 16],
-) -> DispatchOutcome {
+fn classify_foreign_return(ctx: &mut Context, data: Data, ret_uuid: [u8; 16]) -> DispatchOutcome {
     // Read the box payload from p7's box heap. Foreign carriers store
     // a `Data::Foreign` inside the box; script structs store a
     // struct heap reference. Only the former needs the pass-through.

@@ -178,20 +178,14 @@ pub mod script_source {
 }
 
 pub mod application;
-pub mod opengujian;
 pub mod openpal3;
-pub mod openpal4;
-pub mod openswd5;
 
 pub use application::{
-    BootOptions, boot_for, create_application, resolve_asset_path, run_app, run_openpal5,
-    run_openpal5q, run_title_selection,
+    BootOptions, Pal4AgentBootOptions, boot_for, create_application, resolve_asset_path, run_app,
+    run_opengujian, run_openpal4, run_openpal4_with_agent, run_openpal5, run_openpal5q,
+    run_openswd5, run_title_selection,
 };
-pub use opengujian::run_opengujian;
 pub use openpal3::run_openpal3;
-pub use openpal4::application::AgentBootOptions as Pal4AgentBootOptions;
-pub use openpal4::{run_openpal4, run_openpal4_with_agent};
-pub use openswd5::run_openswd5;
 
 #[cfg_attr(target_os = "android", ndk_glue::main(backtrace = "on"))]
 pub fn android_entry() {

@@ -112,8 +112,7 @@ impl ImguiPlatform {
             event: event.clone(),
             window_id,
         };
-        self.winit_platform
-            .handle_event(io, &self.window, &wrapped);
+        self.winit_platform.handle_event(io, &self.window, &wrapped);
     }
 
     fn update_display_size(&self, window: &Window) {

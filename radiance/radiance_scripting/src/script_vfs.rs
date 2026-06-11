@@ -217,5 +217,3 @@ mod tests {
         assert!(provider.load_module("foo.").is_none());
     }
 }
-
-

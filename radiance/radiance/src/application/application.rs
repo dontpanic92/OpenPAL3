@@ -168,11 +168,7 @@ impl IApplicationImpl for Application {
             // returns. Bootstrap the engine inline so `engine_ready`
             // is true before the first tick, then drive the Win32
             // message pump.
-            Self::bootstrap_engine(
-                &self.platform,
-                &self.radiance_engine,
-                &self.engine_ready,
-            );
+            Self::bootstrap_engine(&self.platform, &self.radiance_engine, &self.engine_ready);
             self.platform.borrow().run_event_loop(tick);
         }
 
@@ -328,7 +324,8 @@ impl IApplicationExt for ComRc<crate::comdef::IApplication> {
     }
 
     fn add_engine_ready_callback(&self, cb: EngineReadyCallback) {
-        self.inner::<Application>().enqueue_engine_ready_callback(cb);
+        self.inner::<Application>()
+            .enqueue_engine_ready_callback(cb);
     }
 }
 

@@ -359,4 +359,3 @@ impl IModelHandleImpl for ModelHandle {
 // the CEGUI parsers; both the PAL4 runtime start-menu director and the
 // editor previewer mint instances through `UiLayoutHandle::try_create`.
 pub use shared::loaders::cegui::ui_layout_handle::UiLayoutHandle;
-

@@ -24,8 +24,7 @@ use crate::scripting::angelscript::ScriptModule;
 use super::{
     asset_loader::{self, AssetLoader},
     comdef::{
-        IPal4ActorAnimationController, IPal4ActorController, IPal4ScriptFactory,
-        IPal4GameContext,
+        IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext, IPal4ScriptFactory,
     },
     game_context::Pal4GameContext,
     uv_anim::attach_uv_anim,

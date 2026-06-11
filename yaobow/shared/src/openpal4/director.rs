@@ -193,10 +193,7 @@ impl OpenPAL4Director {
     /// Install the scripted `IPal4ActorController` factory on the
     /// underlying `Pal4AppContext`. Must be called before the first
     /// `load_scene` for the controllers to attach.
-    pub fn set_actor_controller_factory(
-        &self,
-        factory: ComRc<super::comdef::IPal4ScriptFactory>,
-    ) {
+    pub fn set_actor_controller_factory(&self, factory: ComRc<super::comdef::IPal4ScriptFactory>) {
         self.vm
             .borrow_mut()
             .app_context_mut()
