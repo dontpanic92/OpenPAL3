@@ -11,16 +11,16 @@ use crosscom::ComRc;
 use radiance::audio::{AudioMemorySource, AudioSourceState};
 use radiance::comdef::IEntity;
 use radiance::math::Vec3;
-use radiance::rendering::{ComponentFactory, VideoPlayer};
+use radiance::rendering::ComponentFactory;
 use radiance::scene::CoreScene;
-use radiance::video::VideoStreamState;
+
 use radiance_scripting::comdef::services::IRenderTarget;
 use radiance_scripting::services::texture_cache::next_handle_com_id;
 use radiance_scripting::services::{ImguiTextureCache, ScriptedRenderTarget};
 
 use crate::comdef::editor_services::{
     IAudioHandle, IAudioHandleImpl, IImageHandle, IImageHandleImpl, IModelHandle, IModelHandleImpl,
-    IPreviewSession, IPreviewSessionImpl, IVideoHandle, IVideoHandleImpl,
+    IPreviewSession, IPreviewSessionImpl,
 };
 use crate::services::preview_registry::{OrbitState, PreviewRegistry, PreviewState, tick_orbit};
 
@@ -131,134 +131,11 @@ impl IAudioHandleImpl for AudioHandle {
 // ---------------------------------------------------------------------------
 // Video
 // ---------------------------------------------------------------------------
-
-pub struct VideoHandle {
-    player: RefCell<Box<VideoPlayer>>,
-    width: u32,
-    height: u32,
-    com_id: i64,
-    pending_forgets: Rc<RefCell<Vec<i64>>>,
-    /// Sink for per-frame texture-id updates. Pushed from
-    /// `texture_com_id` so the cache adopts the latest `TextureId`
-    /// on its next `&mut self` (which always precedes a `resolve` —
-    /// see `ImguiTextureCache::pending_external_updates`). Borrowing
-    /// the outer `Rc<RefCell<ImguiTextureCache>>` from
-    /// `texture_com_id` panics: the imgui pump holds it in
-    /// `borrow_mut()` for the whole frame.
-    pending_external_updates: Rc<RefCell<Vec<(i64, imgui::TextureId)>>>,
-    last_texture: RefCell<Option<imgui::TextureId>>,
-}
-
-ComObject_VideoHandle!(super::VideoHandle);
-
-impl VideoHandle {
-    pub fn create(
-        cache: Rc<RefCell<ImguiTextureCache>>,
-        player: Box<VideoPlayer>,
-        width: u32,
-        height: u32,
-    ) -> ComRc<IVideoHandle> {
-        let com_id = next_handle_com_id();
-        let (pending_forgets, pending_external_updates) = {
-            let c = cache.borrow();
-            (c.pending_forgets_sink(), c.pending_external_updates_sink())
-        };
-        ComRc::from_object(Self {
-            player: RefCell::new(player),
-            width,
-            height,
-            com_id,
-            pending_forgets,
-            pending_external_updates,
-            last_texture: RefCell::new(None),
-        })
-    }
-}
-
-impl Drop for VideoHandle {
-    fn drop(&mut self) {
-        // See `ImageHandle::Drop` — queue the cache removal because
-        // GC may fire this destructor mid-imgui-frame while the cache
-        // is held in `borrow_mut()` by the frame state.
-        self.pending_forgets.borrow_mut().push(self.com_id);
-    }
-}
-
-impl IVideoHandleImpl for VideoHandle {
-    fn toggle(&self) {
-        let mut player = self.player.borrow_mut();
-        if player.get_state() == VideoStreamState::Playing {
-            player.pause();
-        } else {
-            player.resume();
-        }
-    }
-
-    fn state(&self) -> i32 {
-        match self.player.borrow().get_state() {
-            VideoStreamState::Stopped => 0,
-            VideoStreamState::Playing => 1,
-            VideoStreamState::Paused => 2,
-        }
-    }
-
-    fn width(&self) -> i32 {
-        self.width as i32
-    }
-
-    fn height(&self) -> i32 {
-        self.height as i32
-    }
-
-    fn texture_com_id(&self) -> i32 {
-        // Pull a fresh imgui TextureId from the player every frame.
-        // We can't borrow `cache` here — the imgui pump holds it in
-        // `borrow_mut()` for the whole frame — so we push the mapping
-        // into the cache's external-update queue; the cache drains it
-        // on the next `&mut self` access, which always precedes a
-        // `resolve(com_id)` from `image*` widgets.
-        let mut last = self.last_texture.borrow_mut();
-        if let Some(id) = self.player.borrow_mut().get_texture(*last) {
-            if Some(id) != *last {
-                self.pending_external_updates
-                    .borrow_mut()
-                    .push((self.com_id, id));
-                *last = Some(id);
-            }
-        }
-        self.com_id as i32
-    }
-
-    fn duration_ms(&self) -> i32 {
-        // Saturate to i32 — UI bar uses i32 anyway and no preview clip
-        // approaches the 2.1B ms (~24-day) ceiling.
-        self.player.borrow().duration_ms().clamp(0, i32::MAX as i64) as i32
-    }
-
-    fn position_ms(&self) -> i32 {
-        self.player.borrow().position_ms().clamp(0, i32::MAX as i64) as i32
-    }
-
-    fn seek_ms(&self, ms: i32) {
-        self.player.borrow_mut().seek_ms(ms.max(0) as i64);
-    }
-
-    fn restart(&self) {
-        self.player.borrow_mut().restart();
-    }
-
-    fn stop(&self) {
-        self.player.borrow_mut().stop();
-    }
-
-    fn set_looping(&self, looping: bool) {
-        self.player.borrow_mut().set_looping(looping);
-    }
-
-    fn looping(&self) -> bool {
-        self.player.borrow().looping()
-    }
-}
+//
+// `VideoHandle` impl moved to `shared::loaders::video_handle` so the
+// PAL3 menu intro-movie path can reuse the same code. The editor
+// only re-exports the constructor below for `previewer_hub::open_video`.
+pub use shared::loaders::video_handle::VideoHandle;
 
 // ---------------------------------------------------------------------------
 // Model + Preview session

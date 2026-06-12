@@ -25,31 +25,10 @@ interface IAudioHandle: IUnknown {
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c04)]
 class AudioHandle: IAudioHandle {}
 
-[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c05)]
-interface IVideoHandle: IUnknown {
-    void toggle();
-    int state();
-    int width();
-    int height();
-    int texture_com_id();
-
-    // Total clip duration in milliseconds, 0 if unknown.
-    int duration_ms();
-    // Current playback position in milliseconds (within the current loop).
-    int position_ms();
-    // Seek to `ms` milliseconds. Clamped to `[0, duration_ms]`.
-    void seek_ms(int ms);
-    // Restart from the beginning. Works whether the stream is currently
-    // Playing, Paused, or Stopped (post-EOF for a non-looping stream).
-    void restart();
-    // Stop playback (post-stop the stream can be restarted via `restart`).
-    void stop();
-    // Toggle loop at runtime without re-opening.
-    void set_looping(bool looping);
-    bool looping();
-}
-[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c06)]
-class VideoHandle: IVideoHandle {}
+// `class VideoHandle` declaration moved to `shared_services.idl` so
+// `ComObject_VideoHandle!` generates in `shared` (its Rust impl lives
+// in `shared::loaders::video_handle`). Editor consumes both the
+// interface and the concrete class through the shared crates.
 
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c07)]
 interface IPreviewSession: IUnknown {

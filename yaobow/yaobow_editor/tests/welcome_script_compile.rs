@@ -151,7 +151,7 @@ impl IPreviewerHubImpl for StubPreviewerHub {
     fn open_video(
         &self,
         _vfs_path: &str,
-    ) -> Option<ComRc<yaobow_editor::comdef::editor_services::IVideoHandle>> {
+    ) -> Option<ComRc<yaobow_editor::comdef::services::IVideoHandle>> {
         None
     }
     fn open_model(

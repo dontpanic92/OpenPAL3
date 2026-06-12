@@ -44,6 +44,43 @@ interface IRenderTarget: IUnknown {
 [uuid(d6f4f7a1-7c4a-4f1f-9c2e-1b3a4d5e6f71)]
 class RenderTarget: IRenderTarget {}
 
+// Video playback handle. The Rust impl wraps a `Box<VideoPlayer>`
+// (engine factory) + an `ImguiTextureCache` slot — `texture_com_id`
+// re-binds the live GPU texture every call, so p7 can blit the
+// current frame via `ui.image_fit(h.texture_com_id(), w, h)`. Shared
+// across editor (preview tabs) and game (PAL3 intro movie).
+//
+// The concrete `class VideoHandle: IVideoHandle {}` lives in
+// `yaobow_editor_services.idl` (and is implemented in
+// `yaobow_editor::services::handles`); ports that need their own
+// concrete class declare it in their own IDL.
+//
+// State codes: 0 = Stopped, 1 = Playing, 2 = Paused (mirrors
+// `radiance::video::VideoStreamState`).
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c05), protosept(scriptable)]
+interface IVideoHandle: IUnknown {
+    void toggle();
+    int state();
+    int width();
+    int height();
+    int texture_com_id();
+
+    // Total clip duration in milliseconds, 0 if unknown.
+    int duration_ms();
+    // Current playback position in milliseconds (within the current loop).
+    int position_ms();
+    // Seek to `ms` milliseconds. Clamped to `[0, duration_ms]`.
+    void seek_ms(int ms);
+    // Restart from the beginning. Works whether the stream is currently
+    // Playing, Paused, or Stopped (post-EOF for a non-looping stream).
+    void restart();
+    // Stop playback (post-stop the stream can be restarted via `restart`).
+    void stop();
+    // Toggle loop at runtime without re-opening.
+    void set_looping(bool looping);
+    bool looping();
+}
+
 // Frame-by-frame GIF animation: pairs each frame's `ITexture` with
 // its `delay_ms`. Returned by `ITextureService.load_gif_animation`
 // so scripts (e.g. the yaobow title page's outline animation) can

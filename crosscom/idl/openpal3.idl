@@ -3,6 +3,7 @@ module(protosept) shared.openpal3;
 
 import crosscom.idl;
 import radiance.idl;
+import scripting_services.idl;
 
 [uuid(e11fe493-654a-4072-b883-a7ee1a35a24a)]
 interface IRoleController: IComponent {
@@ -89,6 +90,15 @@ interface IPal3Service: IUnknown {
     // "离开游戏" handler can quit without holding an `IApplication`
     // reference itself.
     void exit_app();
+
+    // Build a `IVideoHandle` playing `LOGO.bik` (loaded from the
+    // per-launch vfs via `AssetManager::load_movie_data`). Returns
+    // `null` after the first successful call per process — the
+    // service tracks an `intro_played` latch so re-entry into the
+    // menu (e.g. exit-to-menu from a future Adventure flow) skips
+    // the intro. The p7 menu director renders the resulting handle
+    // full-canvas until `state() == Stopped` or Esc is pressed.
+    IVideoHandle? play_intro_movie(&str asset_path);
 }
 
 // Sprite-atlas scene backing the PAL3 start menu. The p7 director

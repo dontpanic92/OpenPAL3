@@ -111,6 +111,17 @@ let YUN_COUNT: int = 18;
 // imgui WindowFlags::NoBackground (bit 7).
 let IMGUI_NO_BACKGROUND: int = 128;
 
+// Esc keycode, mirroring `radiance::input::Key::Escape`. Counted from
+// the start of the enum: Space=0, A..Z=1..26, Num1..Num0=27..36,
+// Tilde=37, Escape=38. Be sure to update this if Key's variants are
+// reordered. NOTE: actual ordinal verified at
+// `radiance/radiance/src/input/mod.rs` (Escape sits after Tilde).
+let KEY_ESCAPE: int = 38;
+
+// State code returned by `IVideoHandle.state()` — mirrors
+// `radiance::video::VideoStreamState`. 0=Stopped, 1=Playing, 2=Paused.
+let VIDEO_STATE_STOPPED: int = 0;
+
 // Sprite paths. Forward slashes + lowercase to match the scene's
 // canonical key form; `IPal3StartMenuScene` resolves either separator
 // style but lowercase is the on-disk casing.
@@ -195,14 +206,32 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
     pub cloud_y: box<array<float>>,
     pub cloud_speed: box<array<float>>,
     pub cloud_names: box<array<string>>,
+    // Intro LOGO.bik handle. Populated from
+    // `host.pal3().play_intro_movie(asset_path)` in the factory;
+    // null when the menu is re-entered (Pal3Service's intro_played
+    // latch is set) or when the movie is missing. While non-null,
+    // render_im paints the video full-canvas, the menu is hidden,
+    // and BGM/taiji animation are deferred. Esc OR stream-stopped
+    // sets this to null and starts BGM + resets taiji_t.
+    pub intro: ?box<scripting_services.IVideoHandle>,
     pub activated: bool,
 ) {
     pub fn activate(self: ref<Self>) -> int {
-        if self.scene != null {
-            self.scene!.play_bgm();
+        // When an intro movie is queued we postpone BGM start until
+        // the movie ends — otherwise the menu BGM overlaps with the
+        // logo's audio track. The render_im branch that drops `intro`
+        // takes care of `play_bgm` + `taiji_t = 0` at that point.
+        if self.intro == null {
+            if self.scene != null {
+                self.scene!.play_bgm();
+            }
+            self.taiji_t = 0.0;
+        } else {
+            // While the intro plays, the taiji ornaments stay closed
+            // (taiji_t = 0); they animate open once the menu becomes
+            // visible.
+            self.taiji_t = 0.0;
         }
-        // Replay the taiji-open animation from the closed position.
-        self.taiji_t = 0.0;
         self.closing = false;
         self.activated = true;
         0
@@ -270,8 +299,44 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
             }
         }
 
+        // Esc + stream-stopped detection while the intro plays. End
+        // the intro on either signal: drop the handle (frees the
+        // VideoPlayer + cache slot via Drop), kick BGM on, and reset
+        // taiji_t so the open animation plays once the menu paints.
+        if self.intro != null {
+            let v = self.intro!;
+            let stopped = v.state() == VIDEO_STATE_STOPPED;
+            let esc = self.host.input().key_pressed(KEY_ESCAPE);
+            if stopped || esc {
+                v.stop();
+                self.intro = null;
+                if self.scene != null {
+                    self.scene!.play_bgm();
+                }
+                self.taiji_t = 0.0;
+            }
+        }
+
         ui.window_fullscreen("##pal3_start_menu", IMGUI_NO_BACKGROUND, () => {
-            if self.scene == null {
+            if self.intro != null {
+                // Full-canvas video render — letterbox via image_fit
+                // so the source aspect is preserved against the imgui
+                // window's pixel extent.
+                let v = self.intro!;
+                let avail_w = ui.display_size_x() as float;
+                let avail_h = ui.display_size_y() as float;
+                let w = v.width() as float;
+                let h = v.height() as float;
+                if w > 0.0 && h > 0.0 {
+                    let sx = avail_w / w;
+                    let sy = avail_h / h;
+                    let scale = if sx < sy { sx } else { sy };
+                    let dw = w * scale;
+                    let dh = h * scale;
+                    ui.set_cursor_pos((avail_w - dw) * 0.5, (avail_h - dh) * 0.5);
+                    ui.image_uv(v.texture_com_id(), dw, dh, 0.0, 0.0, 1.0, 1.0);
+                }
+            } else if self.scene == null {
                 self.render_missing(ui);
             } else {
                 if self.mode == MODE_LOAD {
@@ -764,6 +829,11 @@ pub fn make_pal3_start_menu(
         // closing flag; false at boot, set true when 离开游戏 is clicked.
         false,
         cloud_x, cloud_y, cloud_speed, cloud_names,
+        // Intro LOGO.bik handle: null after the first menu show per
+        // process (Pal3Service.play_intro_movie's once-per-process
+        // latch). When non-null, render_im paints it full-canvas
+        // until Esc or end-of-stream.
+        host.pal3().play_intro_movie(asset_path),
         false,
     )) as box<radiance.IImmediateDirector>;
 }

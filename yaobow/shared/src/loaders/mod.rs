@@ -12,6 +12,7 @@ pub mod bsp;
 pub mod cegui;
 pub mod dff;
 pub mod smp;
+pub mod video_handle;
 
 pub trait TextureResolver: Send + Sync {
     fn resolve_texture(

@@ -20,3 +20,11 @@ class ConfigService: IConfigService {}
 // instances through `UiLayoutHandle::try_create`.
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c1a)]
 class UiLayoutHandle: IUiLayoutHandle {}
+
+// Concrete class for the runtime `IVideoHandle` (interface lives in
+// scripting_services.idl). Lands here so `ComObject_VideoHandle!`
+// resolves to `shared`; the Rust impl lives in
+// `shared::loaders::video_handle`. Used by the editor's preview tab
+// AND the PAL3 menu intro-movie path.
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c1b)]
+class VideoHandle: IVideoHandle {}

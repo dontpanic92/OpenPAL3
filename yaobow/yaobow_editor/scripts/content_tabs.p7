@@ -18,7 +18,7 @@ pub struct ContentTab(
     pub text_content: string,
     pub image_handle: ?box<yaobow_editor_services.IImageHandle>,
     pub audio_handle: ?box<yaobow_editor_services.IAudioHandle>,
-    pub video_handle: ?box<yaobow_editor_services.IVideoHandle>,
+    pub video_handle: ?box<scripting_services.IVideoHandle>,
     pub model_handle: ?box<yaobow_editor_services.IModelHandle>,
     pub preview_session: ?box<yaobow_editor_services.IPreviewSession>,
     pub scene_handle: ?box<yaobow_editor_services.ISceneHandle>,
@@ -38,7 +38,7 @@ fn make_audio_tab(label: string, close_cmd: int, handle: box<yaobow_editor_servi
     ContentTab(label, close_cmd, editor_consts.ContentKind.Audio, "", null, handle, null, null, null, null, null, null)
 }
 
-fn make_video_tab(label: string, close_cmd: int, handle: box<yaobow_editor_services.IVideoHandle>) -> ContentTab {
+fn make_video_tab(label: string, close_cmd: int, handle: box<scripting_services.IVideoHandle>) -> ContentTab {
     ContentTab(label, close_cmd, editor_consts.ContentKind.Video, "", null, null, handle, null, null, null, null, null)
 }
 

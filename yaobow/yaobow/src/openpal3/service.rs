@@ -25,7 +25,10 @@ use crosscom::ComRc;
 use packfs::init_virtual_fs;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance::scene::CoreScene;
+use radiance::video::Codec as VideoCodec;
+use radiance_scripting::comdef::services::IVideoHandle;
 use radiance_scripting::services::ImguiTextureCache;
+use shared::loaders::video_handle::VideoHandle;
 use shared::openpal3::asset_manager::AssetManager;
 use shared::openpal3::comdef::{
     IPal3ScriptFactory, IPal3Service, IPal3ServiceImpl, IPal3StartMenuScene,
@@ -72,6 +75,11 @@ pub struct Pal3Service {
     /// without aliasing the title director's update path.
     pending_debug_install: Cell<bool>,
     debug_layer_installed: Cell<bool>,
+    /// Once-per-process latch for the LOGO.bik intro. Set to true on
+    /// the first successful `play_intro_movie` call; subsequent calls
+    /// return `None` so re-entry into the start menu (e.g. exit-to-menu
+    /// from a future Adventure flow) skips the intro.
+    intro_played: Cell<bool>,
 }
 
 ComObject_Pal3Service!(super::Pal3Service);
@@ -86,6 +94,7 @@ impl Pal3Service {
             last_asset_path: RefCell::new(None),
             pending_debug_install: Cell::new(false),
             debug_layer_installed: Cell::new(false),
+            intro_played: Cell::new(false),
         })
     }
 
@@ -290,5 +299,31 @@ impl IPal3ServiceImpl for Pal3Service {
 
     fn exit_app(&self) {
         self.app.request_exit();
+    }
+
+    fn play_intro_movie(&self, asset_path: &str) -> Option<ComRc<IVideoHandle>> {
+        // Once-per-process: re-entry into the menu must skip the intro.
+        if self.intro_played.get() {
+            return None;
+        }
+        let cache = self.texture_cache.borrow().clone()?;
+        let asset_mgr = self.asset_manager_for(asset_path);
+        let engine_rc = self.app.engine();
+        let engine = engine_rc.borrow();
+        let component_factory = engine.rendering_component_factory();
+        let audio_engine = engine.audio_engine();
+        drop(engine);
+
+        let reader = asset_mgr.load_movie_data("LOGO");
+        let mut player = component_factory.create_video_player();
+        let size = player.play(
+            component_factory.clone(),
+            audio_engine,
+            reader,
+            VideoCodec::Bik,
+            false,
+        )?;
+        self.intro_played.set(true);
+        Some(VideoHandle::create(cache, player, size.0, size.1))
     }
 }

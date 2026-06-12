@@ -32,9 +32,9 @@ use shared::openpal3::loaders::{
 
 use crate::comdef::editor_services::{
     IAudioHandle, IImageHandle, IModelHandle, IPreviewerHub, IPreviewerHubImpl, IResourceManager,
-    ISceneHandle, IVideoHandle,
+    ISceneHandle,
 };
-use crate::comdef::services::IUiLayoutHandle;
+use crate::comdef::services::{IUiLayoutHandle, IVideoHandle};
 use crate::directors::DevToolsAssetLoader;
 use crate::services::handles::{
     AudioHandle, ImageHandle, ModelHandle, UiLayoutHandle, VideoHandle,
