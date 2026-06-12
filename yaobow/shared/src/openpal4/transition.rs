@@ -41,7 +41,7 @@ use crate::scripting::angelscript::ScriptVm;
 use super::{
     comdef::IPal4LoadingOverlay,
     director::OpenPAL4Director,
-    scene::Pal4Scene,
+    scene::{Pal4Scene, Pal4SceneLoader, StageProgress},
     session::RuntimeSnapshot,
     vm_context::Pal4VmContext,
 };
@@ -151,9 +151,196 @@ pub struct Pal4TransitionDirector {
     /// an instant swap, so the transition director still serves as
     /// the single owner of scene loads, but renders no overlay.
     silent: Cell<bool>,
+
+    /// Stepped scene-swap pumped one stage per non-silent Loading
+    /// tick. `None` until the first Loading tick (built from the
+    /// action then) or for `EnterStoryNew` which loads no scene.
+    swap: RefCell<Option<Pal4SceneSwap>>,
+
+    /// Post-load fan-out queued at action drain time so it can fire
+    /// after the (multi-tick) swap completes. Outlives `action`.
+    post_load: RefCell<PostLoadFanout>,
 }
 
 ComObject_Pal4TransitionDirector!(super::Pal4TransitionDirector);
+
+/// Post-load fan-out, queued when the action is drained at the
+/// transition's `Painting -> Loading` boundary so it can fire on the
+/// tick the multi-stage swap completes. Detangles drain (one-shot)
+/// from fan-out (deferred until after the stepped load).
+enum PostLoadFanout {
+    /// No scene was loaded (`EnterStoryNew`, or
+    /// `EnterStoryFromSave` with an empty saved scene) — nothing to
+    /// do after Loading. The transition still passes through the
+    /// PAINTING + HOLDING windows so director hand-off doesn't
+    /// flash a black frame.
+    None,
+    /// Restore the snapshot fan-out (leader / pos / dir / camera /
+    /// player-lock) after the swap completes, then log the load.
+    ApplySnapshot {
+        snapshot: Box<RuntimeSnapshot>,
+        slot: i32,
+    },
+    /// Bump the deferred-load generation so VM continuations
+    /// (`giArenaLoad`, `giShowWorldMap`) observing the previous
+    /// value resume on the next story tick. `succeeded` distinguishes
+    /// a clean swap from a logged-error swap; both bump the gen so
+    /// the surrounding script doesn't wedge.
+    BumpDeferredLoad,
+}
+
+/// Multi-tick staged version of [`swap_pal4_scene`]. Wraps the same
+/// pop-scene → load → install → session-state-set → leader/lock
+/// fan-out, but pumps the load through a [`Pal4SceneLoader`] one
+/// stage per `step()` call so the loading overlay's progress bar
+/// can advance between stages. The one-shot
+/// [`swap_pal4_scene`] is kept for callers that don't have a tick
+/// budget (silent transitions, F-key reload, editor previews).
+pub(crate) struct Pal4SceneSwap {
+    vm: Rc<RefCell<ScriptVm<Pal4VmContext>>>,
+    scene_name: String,
+    block_name: String,
+    // Lazily built on the first `step()` (after the pre-load
+    // pop-scene), then stepped to completion. Reset to `None` after
+    // the final install + fan-out.
+    loader: Option<Pal4SceneLoader>,
+    // Error from any stage, surfaced on the next `step()` so the
+    // transition can log + advance to Holding without leaving the
+    // overlay wedged.
+    error: Option<anyhow::Error>,
+    // Sticky: set true if any stage returned `Err`. Distinguishes
+    // a clean swap from a logged-error swap so `ChangeScene` can
+    // pass the right value to `note_deferred_load_finished`.
+    had_error: bool,
+    // True after the final install + session fan-out has run. The
+    // transition reads this to fire its post-load action.
+    finished: bool,
+}
+
+impl Pal4SceneSwap {
+    pub fn new(
+        vm: Rc<RefCell<ScriptVm<Pal4VmContext>>>,
+        scene_name: String,
+        block_name: String,
+    ) -> Self {
+        Self {
+            vm,
+            scene_name,
+            block_name,
+            loader: None,
+            error: None,
+            had_error: false,
+            finished: false,
+        }
+    }
+
+    /// Step one stage of the swap. The first call pops the outgoing
+    /// scene and builds the `Pal4SceneLoader`. Subsequent calls each
+    /// run one `Pal4SceneLoader::step()`. The final call installs the
+    /// new scene + session state and sets `finished`. Returns
+    /// `(fraction, finished)` where `fraction ∈ [0, 1]` is the
+    /// post-stage progress and `finished` becomes `true` exactly
+    /// once.
+    pub fn step(&mut self) -> (f32, bool) {
+        if self.finished {
+            return (1.0, true);
+        }
+        if let Some(err) = self.error.take() {
+            // Caller wanted to know about the error; advance to
+            // finished so it doesn't keep coming back.
+            log::error!(
+                "Pal4SceneSwap: load failed for scene='{}' block='{}': {:?}",
+                self.scene_name,
+                self.block_name,
+                err
+            );
+            self.finished = true;
+            return (1.0, true);
+        }
+
+        // First step: drain VM-context handles, pop the outgoing
+        // scene, build the loader. Counted as a stage so the bar
+        // advances visibly off zero.
+        if self.loader.is_none() {
+            let (asset_loader, input, scene_manager, factory) = {
+                let vm = self.vm.borrow();
+                let app = vm.vm_context();
+                (
+                    app.loader.clone(),
+                    app.input.clone(),
+                    app.scene_manager.clone(),
+                    app.actor_controller_factory().cloned(),
+                )
+            };
+            let _ = scene_manager.pop_scene();
+            self.loader = Some(Pal4SceneLoader::new(
+                asset_loader,
+                input,
+                self.scene_name.clone(),
+                self.block_name.clone(),
+                factory,
+            ));
+            // Report a small fraction so the bar moves immediately.
+            return (0.05, false);
+        }
+
+        let loader = self
+            .loader
+            .as_mut()
+            .expect("loader populated above");
+        let StageProgress { fraction, done } = loader.step();
+
+        match done {
+            None => (fraction, false),
+            Some(Err(err)) => {
+                self.error = Some(err);
+                self.had_error = true;
+                // Next step() will log + finish.
+                (fraction, false)
+            }
+            Some(Ok(scene)) => {
+                // Final stage: install the new scene into the
+                // engine, sync session state, re-apply leader/lock.
+                let scene_root = scene.scene.clone();
+                let (scene_manager, scene_cell, session) = {
+                    let vm = self.vm.borrow();
+                    let app = vm.vm_context();
+                    (
+                        app.scene_manager.clone(),
+                        app.scene.clone(),
+                        app.session_handle(),
+                    )
+                };
+                *scene_cell.borrow_mut() = scene;
+                scene_manager.push_scene(scene_root);
+
+                session
+                    .borrow_mut()
+                    .state_mut()
+                    .set_scene(self.scene_name.clone(), self.block_name.clone());
+
+                let (leader, player_locked) = {
+                    let session = session.borrow();
+                    let state = session.state();
+                    (state.leader(), state.player_locked())
+                };
+                let mut vm = self.vm.borrow_mut();
+                let app = vm.vm_context_mut();
+                app.set_leader(leader as i32);
+                app.lock_player(player_locked);
+
+                self.finished = true;
+                (1.0, true)
+            }
+        }
+    }
+
+    /// True iff any stage of the swap returned an `Err`. Inspect
+    /// after `finished` is true.
+    pub fn had_error(&self) -> bool {
+        self.had_error
+    }
+}
 
 impl Pal4TransitionDirector {
     pub fn new(
@@ -172,6 +359,8 @@ impl Pal4TransitionDirector {
             paint_elapsed: Cell::new(0.0),
             hold_remaining: Cell::new(MIN_HOLD_SECS),
             silent: Cell::new(false),
+            swap: RefCell::new(None),
+            post_load: RefCell::new(PostLoadFanout::None),
         }
     }
 
@@ -181,6 +370,107 @@ impl Pal4TransitionDirector {
     /// short-circuit PAINTING / HOLDING.
     pub fn set_silent(&self, silent: bool) {
         self.silent.set(silent);
+    }
+
+    /// Drain the queued action into the multi-tick `swap` +
+    /// `post_load` slots. Called once when Painting → Loading. After
+    /// this returns, `self.action` is empty; the Loading phase
+    /// pumps `self.swap` (if any) and on completion fires
+    /// `self.post_load`.
+    fn drain_action(&self) {
+        let action = match self.action.borrow_mut().take() {
+            Some(a) => a,
+            None => return,
+        };
+        match action {
+            Pal4TransitionAction::EnterStoryNew => {
+                // No scene load; PAINTING/HOLDING still run.
+                *self.post_load.borrow_mut() = PostLoadFanout::None;
+            }
+            Pal4TransitionAction::EnterStoryFromSave { snapshot, slot } => {
+                // Apply globals up-front so the swap inherits the
+                // restored VM state when it consults vm context.
+                self.vm
+                    .borrow_mut()
+                    .g
+                    .borrow_mut()
+                    .restore_globals(&snapshot.script_globals);
+
+                if snapshot.scene_name.is_empty() {
+                    log::info!(
+                        "Pal4TransitionDirector: load slot {} has no scene to restore",
+                        slot
+                    );
+                    *self.post_load.borrow_mut() = PostLoadFanout::None;
+                    return;
+                }
+
+                let scene_name = snapshot.scene_name.clone();
+                let block_name = snapshot.block_name.clone();
+                *self.swap.borrow_mut() =
+                    Some(Pal4SceneSwap::new(self.vm.clone(), scene_name, block_name));
+                *self.post_load.borrow_mut() = PostLoadFanout::ApplySnapshot {
+                    snapshot: Box::new(snapshot),
+                    slot,
+                };
+            }
+            Pal4TransitionAction::ChangeScene { scene, block } => {
+                let _ = self
+                    .vm
+                    .borrow()
+                    .vm_context
+                    .session()
+                    .take_pending_scene_load();
+                *self.swap.borrow_mut() =
+                    Some(Pal4SceneSwap::new(self.vm.clone(), scene, block));
+                *self.post_load.borrow_mut() = PostLoadFanout::BumpDeferredLoad;
+            }
+        }
+    }
+
+    /// Fire the queued post-load fan-out (call once after the swap
+    /// completes). For `ApplySnapshot` this restores the
+    /// leader/pos/dir/camera/player-lock state; for
+    /// `BumpDeferredLoad` it bumps the session's deferred-load
+    /// generation so suspended VM continuations resume.
+    fn run_post_load(&self) {
+        let fanout = std::mem::replace(&mut *self.post_load.borrow_mut(), PostLoadFanout::None);
+        let had_error = self
+            .swap
+            .borrow()
+            .as_ref()
+            .map(|s| s.had_error())
+            .unwrap_or(false);
+        match fanout {
+            PostLoadFanout::None => {}
+            PostLoadFanout::ApplySnapshot { snapshot, slot } => {
+                if !had_error {
+                    let mut vm = self.vm.borrow_mut();
+                    OpenPAL4Director::apply_snapshot(vm.vm_context_mut(), &snapshot);
+                    log::info!(
+                        "Game loaded from slot {} (via transition director)",
+                        slot
+                    );
+                } else {
+                    log::error!(
+                        "Pal4TransitionDirector::EnterStoryFromSave: load_scene \
+                         scene='{}' block='{}' failed; save state partially \
+                         restored (globals applied, scene not changed)",
+                        snapshot.scene_name,
+                        snapshot.block_name
+                    );
+                }
+            }
+            PostLoadFanout::BumpDeferredLoad => {
+                self.vm
+                    .borrow()
+                    .vm_context
+                    .session()
+                    .note_deferred_load_finished(!had_error);
+            }
+        }
+        // Drop the swap now that fan-out is done.
+        *self.swap.borrow_mut() = None;
     }
 
     /// Execute the queued action. Called once when the transition
@@ -416,10 +706,34 @@ impl IDirectorImpl for Pal4TransitionDirector {
             }
 
             TransitionPhase::Loading => {
-                self.run_load();
-                self.overlay.notify_load_complete();
-                self.hold_remaining.set(MIN_HOLD_SECS);
-                self.phase.set(TransitionPhase::Holding);
+                // First Loading tick: drain the action into
+                // `swap` + `post_load` so the multi-tick swap can
+                // begin. `EnterStoryNew` leaves `swap` empty and
+                // we fall straight through to Holding (one Loading
+                // tick of overlay time).
+                let needs_drain = self.action.borrow().is_some();
+                if needs_drain {
+                    self.drain_action();
+                }
+
+                let swap_finished = {
+                    let mut swap_slot = self.swap.borrow_mut();
+                    match swap_slot.as_mut() {
+                        Some(swap) => {
+                            let (frac, finished) = swap.step();
+                            self.overlay.set_progress(frac);
+                            finished
+                        }
+                        None => true,
+                    }
+                };
+
+                if swap_finished {
+                    self.run_post_load();
+                    self.overlay.notify_load_complete();
+                    self.hold_remaining.set(MIN_HOLD_SECS);
+                    self.phase.set(TransitionPhase::Holding);
+                }
                 None
             }
 

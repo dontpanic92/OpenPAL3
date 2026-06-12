@@ -133,6 +133,12 @@ interface IPal4LoadingOverlay: IUnknown {
     bool is_active();
     void cancel();
 
+    // Target progress in [0, 1]. The overlay eases its on-screen
+    // bar fill toward this value. Calls are monotone in practice
+    // (each stage of the transition raises the target), but the
+    // overlay does not enforce monotonicity.
+    void set_progress(float target);
+
     void render(IUiHost ui, float dt);
 }
 

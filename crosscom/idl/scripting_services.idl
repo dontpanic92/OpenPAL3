@@ -277,6 +277,18 @@ interface IUiLayoutHandle: IUnknown {
     &str draw_text(int i);
     bool draw_has_text(int i);
 
+    // Animated-sequence frames for `OiramLook/StaticSequence` windows
+    // carrying a `SegImage` property. `draw_frame_count(i)` returns 0
+    // for plain (non-sequence) draws; the script renderer falls back
+    // to the base image in that case. Frames are ordered by the
+    // numeric suffix of the imageset entry (`juaner1, juaner2, ...`).
+    int draw_frame_count(int i);
+    int draw_frame_texture_com_id(int i, int frame);
+    float draw_frame_u0(int i, int frame);
+    float draw_frame_v0(int i, int frame);
+    float draw_frame_u1(int i, int frame);
+    float draw_frame_v1(int i, int frame);
+
     // Window-tree metadata, indexed in pre-order traversal of the
     // original XML (independent of the draw-list ordering above).
     int window_count();

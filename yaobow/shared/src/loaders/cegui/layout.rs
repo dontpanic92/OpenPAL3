@@ -96,6 +96,11 @@ pub struct Window {
     pub visible: bool,
     pub disabled: bool,
     pub always_on_top: bool,
+    /// Prefix from `SegImage` property on `OiramLook/StaticSequence`
+    /// windows. The imageset is implied by this window's `Image`
+    /// property (or `olNormalImage`). Frames are then enumerated by
+    /// matching `<Image Name="<prefix>N"/>` entries in that imageset.
+    pub seg_image: Option<String>,
     /// All raw `<Property>` rows in document order, preserved for the
     /// inspector view and for M2/M3.
     pub properties: Vec<Property>,
@@ -170,6 +175,7 @@ pub fn parse_layout_str(content: &str) -> Result<LayoutFile> {
             visible: true,
             disabled: false,
             always_on_top: false,
+            seg_image: None,
             properties: Vec::new(),
             children: Vec::new(),
         });
@@ -216,6 +222,7 @@ fn read_window(node: roxmltree::Node, parent: Option<u32>, out: &mut Vec<Window>
         visible: true,
         disabled: false,
         always_on_top: false,
+        seg_image: None,
         properties: Vec::new(),
         children: Vec::new(),
     };
@@ -259,6 +266,12 @@ fn read_window(node: roxmltree::Node, parent: Option<u32>, out: &mut Vec<Window>
                     "Visible" => window.visible = parse_bool(&pvalue, true),
                     "Disabled" => window.disabled = parse_bool(&pvalue, false),
                     "AlwaysOnTop" => window.always_on_top = parse_bool(&pvalue, false),
+                    "SegImage" => {
+                        let trimmed = pvalue.trim();
+                        if !trimmed.is_empty() {
+                            window.seg_image = Some(trimmed.to_string());
+                        }
+                    }
                     _ => {}
                 }
                 window.properties.push(Property {

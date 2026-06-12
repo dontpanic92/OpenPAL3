@@ -63,6 +63,28 @@ impl Imageset {
     pub fn get(&self, name: &str) -> Option<&ImagesetImage> {
         self.images.get(&name.to_lowercase())
     }
+
+    /// Enumerate all images whose name starts with `prefix` followed by
+    /// one or more ASCII digits, ordered by the numeric suffix. The
+    /// match is case-insensitive (mirrors `get`). Used to resolve
+    /// `OiramLook/StaticSequence` frames (`juaner1, juaner2, ...`).
+    pub fn frames_with_prefix(&self, prefix: &str) -> Vec<&ImagesetImage> {
+        let prefix_lc = prefix.to_lowercase();
+        let mut hits: Vec<(u32, &ImagesetImage)> = self
+            .images
+            .iter()
+            .filter_map(|(name_lc, img)| {
+                let rest = name_lc.strip_prefix(&prefix_lc)?;
+                if rest.is_empty() || !rest.chars().all(|c| c.is_ascii_digit()) {
+                    return None;
+                }
+                let idx: u32 = rest.parse().ok()?;
+                Some((idx, img))
+            })
+            .collect();
+        hits.sort_by_key(|(idx, _)| *idx);
+        hits.into_iter().map(|(_, img)| img).collect()
+    }
 }
 
 /// Parse an imageset from in-memory XML bytes.

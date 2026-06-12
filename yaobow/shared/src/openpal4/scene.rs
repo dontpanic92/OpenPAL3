@@ -244,6 +244,14 @@ impl Pal4Scene {
         }
     }
 
+    /// Synchronous one-shot scene load — pumps a [`Pal4SceneLoader`]
+    /// to completion in one call. Preferred entry point for code
+    /// paths that don't have a tick budget to spend
+    /// (`OpenPAL4Director::load_state` F-key reload, the silent
+    /// `giArenaLoad show_loading = 0` flow, editor previews, etc.).
+    /// The `Pal4TransitionDirector` instead pumps `step()` one stage
+    /// per update tick so the loading overlay's progress bar can
+    /// advance between stages.
     pub fn load(
         asset_loader: &Rc<asset_loader::AssetLoader>,
         input: Rc<RefCell<dyn InputEngine>>,
@@ -251,21 +259,200 @@ impl Pal4Scene {
         block_name: &str,
         actor_controller_factory: Option<&ComRc<IPal4ScriptFactory>>,
     ) -> anyhow::Result<Self> {
-        let (scene, bsp_entity) = asset_loader.load_scene(scene_name, block_name)?;
+        let mut loader = Pal4SceneLoader::new(
+            asset_loader.clone(),
+            input,
+            scene_name.to_string(),
+            block_name.to_string(),
+            actor_controller_factory.cloned(),
+        );
+        loop {
+            let step = loader.step();
+            if let Some(result) = step.done {
+                return result;
+            }
+        }
+    }
+}
+
+/// Multi-tick staged loader for [`Pal4Scene`]. Each `step()` runs one
+/// coarse stage and returns the post-stage progress fraction in
+/// `[0, 1]`; on the last stage the constructed [`Pal4Scene`] is
+/// returned in `done`. Callers MUST pump `step()` until `done` is
+/// `Some(_)` — partial loaders leak the work done so far.
+///
+/// Stages (end fractions are reported targets, not measured wall-time):
+///
+/// | # | Work                                          | end frac |
+/// |---|-----------------------------------------------|----------|
+/// | 0 | `load_scene` (BSP) + scene root               | 0.20     |
+/// | 1 | sky / clip / water (+ UV anim) + camera fov   | 0.35     |
+/// | 2 | floor / wall meshes, ray caster, add to scene | 0.50     |
+/// | 3 | players, events, triggers, actor controller   | 0.70     |
+/// | 4 | NPCs                                          | 0.85     |
+/// | 5 | GOB objects                                   | 0.95     |
+/// | 6 | script module + finalize → `Pal4Scene`        | 1.00     |
+pub struct Pal4SceneLoader {
+    // Inputs cloned in at construction.
+    asset_loader: Rc<asset_loader::AssetLoader>,
+    input: Rc<RefCell<dyn InputEngine>>,
+    scene_name: String,
+    block_name: String,
+    actor_controller_factory: Option<ComRc<IPal4ScriptFactory>>,
+
+    // Stage cursor: index of the next stage to run. 0..=6 = pending,
+    // 7 = done (the constructed scene was already returned).
+    next_stage: u8,
+
+    // Accumulated state. `Option<T>` slots are populated by the
+    // stage that produces them and consumed by the finaliser.
+    scene: Option<ComRc<IScene>>,
+    bsp_entity: Option<ComRc<IEntity>>,
+    floor: Option<ComRc<IEntity>>,
+    wall: Option<ComRc<IEntity>>,
+    ray_caster_rc: Option<Rc<RayCaster>>,
+    players: Option<[ComRc<IEntity>; 4]>,
+    events: Vec<EvfEvent>,
+    triggers: Vec<Rc<SceneEventTrigger>>,
+    game_context: Option<ComRc<IPal4GameContext>>,
+    actor_controller: Option<ComRc<IPal4ActorController>>,
+    npcs: Vec<ComRc<IEntity>>,
+    objects: Vec<ComRc<IEntity>>,
+    objects_gob_indices: Vec<usize>,
+    objects_initial_transforms: Vec<Mat44>,
+    sound_emitters: Vec<SceneSoundEmitter>,
+    objects_gob: Option<GobFile>,
+    module: Option<Rc<RefCell<ScriptModule>>>,
+}
+
+/// One stage's outcome: the cumulative post-stage progress fraction
+/// and, on the final stage, the constructed scene (or the first
+/// stage error). When `done` is `None` callers should pump `step()`
+/// again on a later tick; when `done` is `Some(_)` the loader is
+/// exhausted.
+pub struct StageProgress {
+    pub fraction: f32,
+    pub done: Option<anyhow::Result<Pal4Scene>>,
+}
+
+impl Pal4SceneLoader {
+    pub fn new(
+        asset_loader: Rc<asset_loader::AssetLoader>,
+        input: Rc<RefCell<dyn InputEngine>>,
+        scene_name: String,
+        block_name: String,
+        actor_controller_factory: Option<ComRc<IPal4ScriptFactory>>,
+    ) -> Self {
+        Self {
+            asset_loader,
+            input,
+            scene_name,
+            block_name,
+            actor_controller_factory,
+            next_stage: 0,
+            scene: None,
+            bsp_entity: None,
+            floor: None,
+            wall: None,
+            ray_caster_rc: None,
+            players: None,
+            events: Vec::new(),
+            triggers: Vec::new(),
+            game_context: None,
+            actor_controller: None,
+            npcs: Vec::new(),
+            objects: Vec::new(),
+            objects_gob_indices: Vec::new(),
+            objects_initial_transforms: Vec::new(),
+            sound_emitters: Vec::new(),
+            objects_gob: None,
+            module: None,
+        }
+    }
+
+    /// Run exactly one stage and return the post-stage progress. On
+    /// the final stage the result is returned in `done`. After
+    /// `done.is_some()`, further calls return `done: None` with
+    /// `fraction: 1.0` to keep the contract honest if a caller pumps
+    /// once too many times.
+    pub fn step(&mut self) -> StageProgress {
+        let stage = self.next_stage;
+        if stage >= 7 {
+            return StageProgress { fraction: 1.0, done: None };
+        }
+        let result: Option<anyhow::Result<()>> = match stage {
+            0 => Some(self.stage_bsp()),
+            1 => Some(self.stage_sky_clip_water()),
+            2 => Some(self.stage_floor_wall()),
+            3 => Some(self.stage_players_events_controller()),
+            4 => Some(self.stage_npcs()),
+            5 => Some(self.stage_gob_objects()),
+            6 => {
+                // Finalise consumes the loader's state.
+                let r = self.stage_finalize();
+                self.next_stage = 7;
+                return StageProgress {
+                    fraction: 1.0,
+                    done: Some(r),
+                };
+            }
+            _ => unreachable!(),
+        };
+        self.next_stage = stage + 1;
+        let fraction = match stage {
+            0 => 0.20,
+            1 => 0.35,
+            2 => 0.50,
+            3 => 0.70,
+            4 => 0.85,
+            5 => 0.95,
+            _ => 1.0,
+        };
+        // Surface a stage error early as a `done: Some(Err(_))` so
+        // the caller can abort the transition. Stages that
+        // tolerate partial failure (NPCs, GOB) handle it inline and
+        // return `Ok(())` here.
+        if let Some(Err(e)) = result {
+            self.next_stage = 7;
+            return StageProgress {
+                fraction,
+                done: Some(Err(e)),
+            };
+        }
+        StageProgress { fraction, done: None }
+    }
+
+    fn stage_bsp(&mut self) -> anyhow::Result<()> {
+        let (scene, bsp_entity) = self
+            .asset_loader
+            .load_scene(&self.scene_name, &self.block_name)?;
+        self.scene = Some(scene);
+        self.bsp_entity = Some(bsp_entity);
+        Ok(())
+    }
+
+    fn stage_sky_clip_water(&mut self) -> anyhow::Result<()> {
+        let scene = self.scene.as_ref().expect("stage_bsp must run first");
 
         if !cfg!(vita) {
-            let clip = asset_loader.try_load_scene_clip(scene_name, block_name);
+            let clip = self
+                .asset_loader
+                .try_load_scene_clip(&self.scene_name, &self.block_name);
             if let Some(clip) = clip {
                 scene.add_entity(clip);
             }
         }
 
-        let clip_na = asset_loader.try_load_scene_clip_na(scene_name, block_name);
+        let clip_na = self
+            .asset_loader
+            .try_load_scene_clip_na(&self.scene_name, &self.block_name);
         if let Some(clip_na) = clip_na {
             scene.add_entity(clip_na);
         }
 
-        let skybox = asset_loader.try_load_scene_sky(scene_name, block_name);
+        let skybox = self
+            .asset_loader
+            .try_load_scene_sky(&self.scene_name, &self.block_name);
         if let Some(skybox) = skybox {
             scene.add_entity(skybox);
         }
@@ -274,14 +461,19 @@ impl Pal4Scene {
         // e.g. Q01/q01/Q01, Q01/q01/Q01Y). The sibling `_water.uva`
         // drives per-frame UV animation via a self-ticking
         // `UvAnimationComponent` attached to the water entity.
-        let water = asset_loader.try_load_scene_water(scene_name, block_name);
+        let water = self
+            .asset_loader
+            .try_load_scene_water(&self.scene_name, &self.block_name);
         if let Some(water) = water {
             scene.add_entity(water.clone());
-            if let Some(dict) = asset_loader.try_load_scene_water_uva(scene_name, block_name) {
+            if let Some(dict) = self
+                .asset_loader
+                .try_load_scene_water_uva(&self.scene_name, &self.block_name)
+            {
                 log::debug!(
                     "Loaded water UV-anim dict for {}/{}: {} animation(s)",
-                    scene_name,
-                    block_name,
+                    self.scene_name,
+                    self.block_name,
                     dict.animations.len()
                 );
                 attach_uv_anim(&water, &dict);
@@ -289,16 +481,25 @@ impl Pal4Scene {
         }
 
         scene.camera_mut().set_fov43(45_f32.to_radians());
+        Ok(())
+    }
 
-        let floor = asset_loader.load_scene_floor(scene_name, block_name);
-        let wall = asset_loader.load_scene_wall(scene_name, block_name);
+    fn stage_floor_wall(&mut self) -> anyhow::Result<()> {
+        let scene = self.scene.as_ref().expect("stage_bsp must run first");
+
+        let floor = self
+            .asset_loader
+            .load_scene_floor(&self.scene_name, &self.block_name);
+        let wall = self
+            .asset_loader
+            .load_scene_wall(&self.scene_name, &self.block_name);
         if floor.is_none() {
             log::warn!(
                 "Pal4Scene::load: missing floor mesh for scene='{}' block='{}'. \
                  Floor collision raycast will be empty for this block; the \
                  active leader may freeze in place or fall through geometry.",
-                scene_name,
-                block_name
+                self.scene_name,
+                self.block_name
             );
         }
         if wall.is_none() {
@@ -306,8 +507,8 @@ impl Pal4Scene {
                 "Pal4Scene::load: missing wall mesh for scene='{}' block='{}'. \
                  Wall collision raycast will be empty for this block; the \
                  active leader may walk through walls.",
-                scene_name,
-                block_name
+                self.scene_name,
+                self.block_name
             );
         }
         let ray_caster = create_floor_wall_ray_caster(floor.clone(), wall.clone());
@@ -340,26 +541,41 @@ impl Pal4Scene {
         // Always add floor + wall so the PAL4 debug overlay can toggle
         // them on at runtime. They default to hidden — matches the old
         // SHOW_FLOOR / SHOW_WALL = false behaviour.
-        if let Some(floor) = floor.as_ref() {
-            floor.set_visible(false);
-            floor.set_enabled(false);
-            scene.add_entity(floor.clone());
+        if let Some(f) = floor.as_ref() {
+            f.set_visible(false);
+            f.set_enabled(false);
+            scene.add_entity(f.clone());
+        }
+        if let Some(w) = wall.as_ref() {
+            w.set_visible(false);
+            w.set_enabled(false);
+            scene.add_entity(w.clone());
         }
 
-        if let Some(wall) = wall.as_ref() {
-            wall.set_visible(false);
-            wall.set_enabled(false);
-            scene.add_entity(wall.clone());
-        }
+        self.floor = floor;
+        self.wall = wall;
+        self.ray_caster_rc = Some(Rc::new(ray_caster));
+        Ok(())
+    }
+
+    fn stage_players_events_controller(&mut self) -> anyhow::Result<()> {
+        let scene = self.scene.as_ref().expect("stage_bsp must run first");
+        let ray_caster_rc = self
+            .ray_caster_rc
+            .as_ref()
+            .expect("stage_floor_wall must run first")
+            .clone();
 
         let players = [
-            load_player(asset_loader, Player::YunTianhe),
-            load_player(asset_loader, Player::HanLingsha),
-            load_player(asset_loader, Player::LiuMengli),
-            load_player(asset_loader, Player::MurongZiying),
+            load_player(&self.asset_loader, Player::YunTianhe),
+            load_player(&self.asset_loader, Player::HanLingsha),
+            load_player(&self.asset_loader, Player::LiuMengli),
+            load_player(&self.asset_loader, Player::MurongZiying),
         ];
 
-        let events = asset_loader.load_evf(scene_name, block_name)?;
+        let events = self
+            .asset_loader
+            .load_evf(&self.scene_name, &self.block_name)?;
 
         let mut triggers = vec![];
         for (i, event) in events.events.iter().enumerate() {
@@ -378,7 +594,7 @@ impl Pal4Scene {
             if SHOW_TRIGGER_POINT {
                 for point in &trigger {
                     let entity =
-                        radiance::debug::create_box_entity(asset_loader.component_factory());
+                        radiance::debug::create_box_entity(self.asset_loader.component_factory());
                     entity.transform().borrow_mut().set_position(point);
                     scene.add_entity(entity);
                 }
@@ -396,17 +612,10 @@ impl Pal4Scene {
             }));
         }
 
-        // Build engine-side scriptable handles once per scene; share
-        // them across all four actor controllers. The same `ray_caster`
-        // backs both the per-frame floor/wall probes (via `IRayCaster`)
-        // and `IPal4GameContext::check_event_triggers` could in
-        // principle reach it too, but triggers carry their own caster
-        // per `SceneEventTrigger`.
-        let ray_caster_rc = Rc::new(ray_caster);
         let game_context = Pal4GameContext::create(triggers.clone());
 
-        let actor_controller = if let Some(factory) = actor_controller_factory {
-            let input_service = InputService::create(input.clone());
+        let actor_controller = if let Some(factory) = self.actor_controller_factory.as_ref() {
+            let input_service = InputService::create(self.input.clone());
             let camera_ctrl = wrap_scene_camera(scene.clone());
             let ray_caster_wrapped = wrap_ray_caster(ray_caster_rc.clone());
             let anims: [ComRc<IPal4ActorAnimationController>; 4] = std::array::from_fn(|i| {
@@ -451,19 +660,33 @@ impl Pal4Scene {
             None
         };
 
+        self.players = Some(players);
+        self.events = events.events;
+        self.triggers = triggers;
+        self.game_context = Some(game_context);
+        self.actor_controller = actor_controller;
+        Ok(())
+    }
+
+    fn stage_npcs(&mut self) -> anyhow::Result<()> {
+        let scene = self.scene.as_ref().expect("stage_bsp must run first");
+
         // `npcInfo.npc` is optional on disk — some PAL4 blocks don't
         // ship one (e.g. `scenedata/M02/3/` has no `npcInfo.npc`).
         // Treat a missing/unreadable file as "no NPCs" instead of
         // failing the whole scene load, which would `?` out of
         // `giArenaLoad` and abort the surrounding cutscene.
-        let npc_info = match asset_loader.load_npc_info(scene_name, block_name) {
+        let npc_info = match self
+            .asset_loader
+            .load_npc_info(&self.scene_name, &self.block_name)
+        {
             Ok(info) => info,
             Err(e) => {
                 log::warn!(
                     "Pal4Scene::load: npcInfo.npc missing/unreadable for \
                      scene='{}' block='{}' ({:#}); proceeding with no NPCs",
-                    scene_name,
-                    block_name,
+                    self.scene_name,
+                    self.block_name,
                     e
                 );
                 NpcInfoFile::default()
@@ -474,7 +697,7 @@ impl Pal4Scene {
             let actor_name = npc.model_name.to_string();
             match actor_name {
                 Ok(actor_name) => {
-                    let entity = asset_loader.load_actor(
+                    let entity = self.asset_loader.load_actor(
                         npc.name.to_string().unwrap_or_default().as_str(),
                         actor_name.as_str(),
                         npc.get_default_act().as_deref(),
@@ -502,31 +725,31 @@ impl Pal4Scene {
                 }
             }
         }
+        self.npcs = npcs;
+        Ok(())
+    }
+
+    fn stage_gob_objects(&mut self) -> anyhow::Result<()> {
+        let scene = self.scene.as_ref().expect("stage_bsp must run first");
 
         let mut objects = vec![];
         let mut objects_gob_indices: Vec<usize> = vec![];
         let mut objects_initial_transforms: Vec<Mat44> = vec![];
         let mut sound_emitters: Vec<SceneSoundEmitter> = vec![];
-        let gob = asset_loader.load_gob(scene_name, block_name)?;
+        let gob = self
+            .asset_loader
+            .load_gob(&self.scene_name, &self.block_name)?;
 
         for (i, entry) in gob.entries.iter().enumerate() {
             let object_type = gob.header.object_types[i];
             let object_name = entry.file_name.to_string();
             let folder = entry.folder.to_string();
             let file_name = entry.file_name.to_string();
-            // Scripts address game objects by the GOB entry's logical `name`
-            // (e.g. via `giSetObjectVisible`), not by the mesh file name. Use
-            // it for the entity name so `Pal4Scene::get_object` can find it,
-            // mirroring how NPCs are named by `npc.name`. Fall back to the
-            // file name if the logical name is missing.
             let logical_name = entry.name.to_string().ok();
 
-            // Build an ambient sound emitter for SOUND-tag entries; we
-            // do this before the visible-entity skip so the emitter
-            // bookkeeping is independent of the rendering path. Entries
-            // missing any of (name, min_time, max_time) are silently
-            // dropped — `tools/pal4_gob_inspect` confirms the corpus
-            // ships them all populated.
+            // SOUND emitters: built independently of the visible-entity
+            // skip so emitter bookkeeping survives the rendering-path
+            // skip below.
             if object_type == GobObjectType::SOUND {
                 if let (Some(name), Some(min_t), Some(max_t)) = (
                     entry.sound_name(),
@@ -539,10 +762,6 @@ impl Pal4Scene {
                     } else {
                         DEFAULT_SOUND_TRIGGER_DISTANCE
                     };
-                    // First-fire phase ∈ [0, max_time] (NOT [min, max])
-                    // staggers dense scenes — many corpus emitters have
-                    // identical `(min, max)` so a [min, max] initial
-                    // draw lock-steps every emitter in the block.
                     let next_play_in_sec = uniform(0.0, max_time);
                     sound_emitters.push(SceneSoundEmitter {
                         name,
@@ -559,53 +778,14 @@ impl Pal4Scene {
                 (Ok(object_name), Ok(folder), Ok(file_name)) => {
                     let entity_name = logical_name.unwrap_or_else(|| object_name.clone());
 
-                    // Skip rendering for the GOB tags that are
-                    // non-visual by design — the mesh field on
-                    // these entries is just a placement preview the
-                    // level editor needed on disk, never a
-                    // renderable. Confirmed empirically against the
-                    // full PAL4 corpus via `tools/pal4_gob_inspect`:
-                    //
-                    //   tag 3  SOUND   303/303 entries use placeholder MC
-                    //   tag 8  EFFECT  1058/1058 use ZZA/MC/JDumy/H_065
-                    //   tag 9  MARKER  57/57 use JDumy/MC
-                    //
-                    // MARKER entries are now loaded as INVISIBLE
-                    // empty entities (no mesh) so script lookups via
-                    // `Pal4Scene::get_object(name)` resolve them and
-                    // `giGOB*` mutators (set_position, movment,
-                    // reset, scale) have something to act on.
-                    // SOUND / EFFECT remain skipped — SOUND drives
-                    // its own emitter list above, EFFECT needs a
-                    // particle subsystem we don't have yet.
-                    //
-                    // Note: a handful of tag-5 MACHINE entries also
-                    // ship placeholder meshes (MC/JDumy) as
-                    // state-machine anchors. We intentionally do
-                    // **not** filter on mesh name here — most of
-                    // those are already covered by the explicit
-                    // HIDE flag (4 of 5 corpus-wide `HIDE=1`
-                    // entries are MACHINE), and speculatively
-                    // hiding the rest risks suppressing real
-                    // designer intent. Add a dedicated case if a
-                    // specific MACHINE entry surfaces as
-                    // incorrectly visible.
                     if matches!(object_type, GobObjectType::EFFECT | GobObjectType::SOUND) {
                         continue;
                     }
 
                     let entity = if object_type == GobObjectType::MARKER {
-                        // Pure script anchor — no mesh, no children.
-                        // `set_visible(false)` would normally also
-                        // disable rendering for downstream cameras,
-                        // but markers don't render anything anyway;
-                        // we keep `set_enabled(true)` so scene
-                        // updates still tick through the entity (in
-                        // case a future feature attaches a component
-                        // that needs per-frame work).
                         CoreEntity::create(entity_name.clone(), true)
                     } else {
-                        asset_loader
+                        self.asset_loader
                             .load_object(&entity_name, &folder, &file_name)
                             .unwrap_or_else(|| {
                                 log::error!(
@@ -618,10 +798,6 @@ impl Pal4Scene {
                             })
                     };
 
-                    // Honor the `PAL4-GameObject-object-hide` flag: when set,
-                    // the entity is placed in the scene but starts invisible.
-                    // Scripts can later reveal it via the `giGOB*` API.
-                    // Markers are always invisible — they have no mesh.
                     let initially_hidden =
                         object_type == GobObjectType::MARKER || entry.is_initially_hidden();
                     entity.set_visible(!initially_hidden);
@@ -641,10 +817,6 @@ impl Pal4Scene {
                         .rotate_axis_angle_local(&Vec3::EAST, entry.rotation[0].to_radians())
                         .set_position(&Vec3::from(entry.position));
 
-                    // Snapshot the *full* matrix AFTER the load-time
-                    // chain so `giGOBReset` can restore it byte-exact
-                    // regardless of any subsequent rotate / scale /
-                    // translate composition.
                     let initial_matrix = *entity.transform().borrow().matrix();
 
                     objects.push(entity.clone());
@@ -664,11 +836,9 @@ impl Pal4Scene {
             }
         }
 
-        // Surface name collisions in the loaded `objects` set:
-        // `get_object` returns the first match, so a duplicate
-        // silently masks every later same-named entry. Log once at
-        // load time so a future regression shows up in the logs
-        // instead of being chased through scripts.
+        // Surface duplicate-name collisions in the loaded `objects` set
+        // (kept at end of stage so a future re-ordering of GOB
+        // processing doesn't lose the warning).
         {
             use std::collections::HashSet;
             let mut seen = HashSet::new();
@@ -679,56 +849,67 @@ impl Pal4Scene {
                         "Pal4Scene::load: duplicate object name '{}' in scene='{}' block='{}'; \
                          `get_object` will return the first occurrence",
                         name,
-                        scene_name,
-                        block_name
+                        self.scene_name,
+                        self.block_name
                     );
                 }
             }
         }
 
-        let module = asset_loader.load_script_module(scene_name)?;
+        self.objects = objects;
+        self.objects_gob_indices = objects_gob_indices;
+        self.objects_initial_transforms = objects_initial_transforms;
+        self.sound_emitters = sound_emitters;
+        self.objects_gob = Some(gob);
+        Ok(())
+    }
 
-        Ok(Self {
+    fn stage_finalize(&mut self) -> anyhow::Result<Pal4Scene> {
+        let module = self.asset_loader.load_script_module(&self.scene_name)?;
+        self.module = Some(module);
+
+        let scene = self.scene.take().expect("stage_bsp must run first");
+        let bsp_entity = self.bsp_entity.take();
+        let players = self
+            .players
+            .take()
+            .expect("stage_players_events_controller must run first");
+        let game_context = self
+            .game_context
+            .take()
+            .expect("stage_players_events_controller must run first");
+        let module = self.module.take().expect("just populated above");
+        let objects = std::mem::take(&mut self.objects);
+
+        Ok(Pal4Scene {
             scene,
             players,
-            npcs,
+            npcs: std::mem::take(&mut self.npcs),
             objects: objects.clone(),
             objects_xz_aabbs: objects
                 .iter()
                 .map(|e| {
-                    // Force the cached `world_transform` to be
-                    // recomputed against an identity parent BEFORE
-                    // walking the mesh. Without this, every child
-                    // entity in the loaded DFF still has its initial
-                    // identity world matrix (radiance lazily
-                    // propagates transforms via scene ticks, but
-                    // `Pal4Scene::load` runs before the first tick),
-                    // so `entity_world_xz_aabb` would return an AABB
-                    // in mesh-LOCAL space — centred near the origin
-                    // — and the player at world (710, _, 864) was
-                    // measured at ~1119 units from it, well beyond
-                    // any radius. The floor / wall ray casters
-                    // already do this same explicit propagation
-                    // (see `create_floor_wall_ray_caster`).
                     e.update_world_transform(&Transform::new());
                     entity_world_xz_aabb(e)
                 })
                 .collect(),
-            objects_gob_indices,
-            objects_initial_transforms,
-            sound_emitters,
-            objects_gob: Some(gob),
-            events: events.events,
+            objects_gob_indices: std::mem::take(&mut self.objects_gob_indices),
+            objects_initial_transforms: std::mem::take(&mut self.objects_initial_transforms),
+            sound_emitters: std::mem::take(&mut self.sound_emitters),
+            objects_gob: self.objects_gob.take(),
+            events: std::mem::take(&mut self.events),
             module: Some(module),
-            triggers,
-            bsp_entity: Some(bsp_entity),
-            floor_entity: floor,
-            wall_entity: wall,
+            triggers: std::mem::take(&mut self.triggers),
+            bsp_entity,
+            floor_entity: self.floor.take(),
+            wall_entity: self.wall.take(),
             game_context: Some(game_context),
-            actor_controller,
+            actor_controller: self.actor_controller.take(),
         })
     }
+}
 
+impl Pal4Scene {
     pub fn get_player(&self, player_id: usize) -> ComRc<IEntity> {
         self.players[player_id].clone()
     }

@@ -60,6 +60,11 @@ struct DrawCmd {
     hover: StateImage,
     pressed: StateImage,
     disabled: StateImage,
+    /// Frames for `OiramLook/StaticSequence` windows carrying a
+    /// `SegImage` property (e.g. PAL4 loading-screen `juaner` fairy:
+    /// 4 frames `juaner1..juaner4`). Empty for non-sequence draws —
+    /// the script renderer falls back to `base` in that case.
+    frames: Vec<StateImage>,
     /// `true` if any alt state is configured OR the widget type is a
     /// known interactive type (`OiramLook/Button`, etc.). The script
     /// renderer uses this to decide whether to query hover/click for
@@ -439,6 +444,48 @@ impl IUiLayoutHandleImpl for UiLayoutHandle {
             .map(|d| d.is_interactive)
             .unwrap_or(false)
     }
+
+    fn draw_frame_count(&self, i: i32) -> i32 {
+        self.draws
+            .get(i as usize)
+            .map(|d| d.frames.len() as i32)
+            .unwrap_or(0)
+    }
+    fn draw_frame_texture_com_id(&self, i: i32, frame: i32) -> i32 {
+        self.draws
+            .get(i as usize)
+            .and_then(|d| d.frames.get(frame as usize))
+            .map(|s| s.texture_com_id as i32)
+            .unwrap_or(0)
+    }
+    fn draw_frame_u0(&self, i: i32, frame: i32) -> f32 {
+        self.draws
+            .get(i as usize)
+            .and_then(|d| d.frames.get(frame as usize))
+            .map(|s| s.u0)
+            .unwrap_or(0.0)
+    }
+    fn draw_frame_v0(&self, i: i32, frame: i32) -> f32 {
+        self.draws
+            .get(i as usize)
+            .and_then(|d| d.frames.get(frame as usize))
+            .map(|s| s.v0)
+            .unwrap_or(0.0)
+    }
+    fn draw_frame_u1(&self, i: i32, frame: i32) -> f32 {
+        self.draws
+            .get(i as usize)
+            .and_then(|d| d.frames.get(frame as usize))
+            .map(|s| s.u1)
+            .unwrap_or(1.0)
+    }
+    fn draw_frame_v1(&self, i: i32, frame: i32) -> f32 {
+        self.draws
+            .get(i as usize)
+            .and_then(|d| d.frames.get(frame as usize))
+            .map(|s| s.v1)
+            .unwrap_or(1.0)
+    }
     fn draw_text(&self, i: i32) -> &str {
         let mut buf = self.text_scratch.borrow_mut();
         *buf = self
@@ -536,6 +583,7 @@ fn emit_draws(
         let is_interactive = is_interactive_widget(&window.window_type)
             || hover.texture_com_id != 0
             || pressed.texture_com_id != 0;
+        let frames = resolve_seg_frames(window, resolved_sets);
         draws.push(DrawCmd {
             window_id: window.id,
             x: ax,
@@ -546,6 +594,7 @@ fn emit_draws(
             hover,
             pressed,
             disabled,
+            frames,
             is_interactive,
             text: window.text.clone().unwrap_or_default(),
         });
@@ -560,6 +609,7 @@ fn emit_draws(
             hover: StateImage::empty(),
             pressed: StateImage::empty(),
             disabled: StateImage::empty(),
+            frames: Vec::new(),
             is_interactive: false,
             text: window.text.clone().unwrap_or_default(),
         });
@@ -599,6 +649,45 @@ fn resolve_state_image(
         u1,
         v1,
     })
+}
+
+/// Resolve `SegImage` frames for a `OiramLook/StaticSequence` window.
+/// The imageset is implied by the window's `Image` (or `olNormalImage`)
+/// property — same atlas as the placeholder base frame. Returns an
+/// empty `Vec` when no `SegImage` is set or the imageset can't be
+/// resolved (the renderer then falls back to the base image).
+fn resolve_seg_frames(
+    window: &Window,
+    resolved_sets: &HashMap<String, ResolvedSet>,
+) -> Vec<StateImage> {
+    let Some(prefix) = window.seg_image.as_ref() else {
+        return Vec::new();
+    };
+    let set_name = window
+        .image
+        .as_ref()
+        .or(window.overlay_normal_image.as_ref())
+        .map(|r| r.set.to_lowercase());
+    let Some(set_name) = set_name else {
+        return Vec::new();
+    };
+    let Some(set) = resolved_sets.get(&set_name) else {
+        return Vec::new();
+    };
+    set.imageset
+        .frames_with_prefix(prefix)
+        .into_iter()
+        .map(|rect| {
+            let (u0, v0, u1, v1) = uv_for(rect, set.tex_w, set.tex_h);
+            StateImage {
+                texture_com_id: set.com_id,
+                u0,
+                v0,
+                u1,
+                v1,
+            }
+        })
+        .collect()
 }
 
 fn is_interactive_widget(window_type: &str) -> bool {

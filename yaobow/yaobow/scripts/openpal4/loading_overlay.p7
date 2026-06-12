@@ -45,7 +45,7 @@ let IMGUI_NO_BACKGROUND: int = 128;
 
 // Minimum on-screen duration after the load finishes. Avoids the
 // loading screen blinking in and out for cheap < 100 ms loads.
-let MIN_HOLD_SECS: float = 0.5;
+let MIN_HOLD_SECS: float = 0.2;
 
 // Per-frame cap applied to `dt` while draining `MIN_HOLD_SECS`. The
 // synchronous `load_scene` inflates the next real frame's `dt` to
@@ -55,6 +55,23 @@ let MIN_HOLD_SECS: float = 0.5;
 // same clamp -- belt-and-braces in case anything still drives the
 // p7 overlay's state machine directly.)
 let HOLD_DT_CAP: float = 0.0333333;
+
+// Exponential easing rate for the progress bar (1/sec). Higher =
+// snappier follow of the `target_progress` step changes.
+let PROGRESS_EASE_RATE: float = 100.0;
+
+// Synthetic "creep" rate (units/sec) applied to `target_progress`
+// itself during PAINTING so the bar doesn't sit dead at 0 if the
+// host hasn't reported a milestone yet. Capped at 0.15 so real
+// staged set_progress() calls from the transition dominate as soon
+// as they start landing.
+let PROGRESS_CREEP_RATE: float = 0.5;
+let PROGRESS_CREEP_CEIL: float = 0.15;
+
+// Fairy (juaner) wing-flap cadence. 4 source frames cycled
+// ping-pong (1->2->3->4->3->2) so the wings rise and fall
+// continuously.
+let FAIRY_FPS: float = 8.0;
 
 // Fallback PAINTING timeout: if `render_im` never fires (headless
 // pump, an agent `/v1/time/step` burst that runs many `update`s
@@ -72,6 +89,13 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
     pub paint_elapsed: float,
     pub pending_scene: string,
     pub pending_block: string,
+    // Progress bar state (eased toward `target_progress`).
+    pub target_progress: float,
+    pub eased_progress: float,
+    // Fairy (juaner) frame animation.
+    pub fairy_t: float,
+    pub fairy_index: int,
+    pub fairy_dir: int,
 ) {
     pub fn request(self: ref<Self>, scene_name: string, block_name: string) -> int {
         if self.layout == null {
@@ -87,12 +111,60 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         self.paint_elapsed = 0.0;
         self.hold_remaining = MIN_HOLD_SECS;
         self.phase = LOAD_PAINTING;
+        self.target_progress = 0.05;
+        self.eased_progress = 0.0;
+        self.fairy_t = 0.0;
+        self.fairy_index = 0;
+        self.fairy_dir = 1;
+        0
+    }
+
+    pub fn set_progress(self: ref<Self>, target: float) -> int {
+        let t: float = if target < 0.0 { 0.0 } else if target > 1.0 { 1.0 } else { target };
+        if t > self.target_progress {
+            self.target_progress = t;
+        }
         0
     }
 
     pub fn tick(self: ref<Self>, dt: float) -> int {
         if self.phase == LOAD_IDLE {
             return LOAD_IDLE;
+        }
+
+        let clamped_dt: float = if dt > HOLD_DT_CAP { HOLD_DT_CAP } else { dt };
+
+        // Synthetic creep during PAINTING + READY so the bar moves
+        // even if the host hasn't reported a milestone yet.
+        if self.phase == LOAD_PAINTING || self.phase == LOAD_READY {
+            let creep: float = self.target_progress + PROGRESS_CREEP_RATE * clamped_dt;
+            let capped: float = if creep > PROGRESS_CREEP_CEIL { PROGRESS_CREEP_CEIL } else { creep };
+            if capped > self.target_progress {
+                self.target_progress = capped;
+            }
+        }
+
+        // Exponential ease toward `target_progress`.
+        let step: float = PROGRESS_EASE_RATE * clamped_dt;
+        let alpha: float = if step > 1.0 { 1.0 } else { step };
+        self.eased_progress = self.eased_progress + (self.target_progress - self.eased_progress) * alpha;
+
+        // Fairy frame cycler: ping-pong 1..frame_count..1 at FAIRY_FPS.
+        self.fairy_t = self.fairy_t + clamped_dt;
+        let period: float = 1.0 / FAIRY_FPS;
+        while self.fairy_t >= period {
+            self.fairy_t = self.fairy_t - period;
+            self.fairy_index = self.fairy_index + self.fairy_dir;
+            // Bounds checked at render time against actual frame
+            // count; here we just keep the index from running away
+            // when the source has the expected 4 frames.
+            if self.fairy_index >= 3 {
+                self.fairy_index = 3;
+                self.fairy_dir = -1;
+            } else if self.fairy_index <= 0 {
+                self.fairy_index = 0;
+                self.fairy_dir = 1;
+            }
         }
 
         if self.phase == LOAD_PAINTING {
@@ -121,8 +193,7 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         }
 
         if self.phase == LOAD_HOLDING {
-            let clamped: float = if dt > HOLD_DT_CAP { HOLD_DT_CAP } else { dt };
-            self.hold_remaining = self.hold_remaining - clamped;
+            self.hold_remaining = self.hold_remaining - clamped_dt;
             if self.hold_remaining <= 0.0 {
                 self.phase = LOAD_DONE;
                 return LOAD_DONE;
@@ -134,6 +205,8 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         self.phase = LOAD_IDLE;
         self.pending_scene = "";
         self.pending_block = "";
+        self.target_progress = 0.0;
+        self.eased_progress = 0.0;
         LOAD_IDLE
     }
 
@@ -145,6 +218,7 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
             self.phase = LOAD_HOLDING;
             self.hold_remaining = MIN_HOLD_SECS;
         }
+        self.target_progress = 1.0;
         0
     }
 
@@ -158,6 +232,11 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         self.pending_block = "";
         self.frames_drawn = 0;
         self.hold_remaining = 0.0;
+        self.target_progress = 0.0;
+        self.eased_progress = 0.0;
+        self.fairy_t = 0.0;
+        self.fairy_index = 0;
+        self.fairy_dir = 1;
         0
     }
 
@@ -168,6 +247,39 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
     ) -> int {
         if self.phase == LOAD_IDLE {
             return 0;
+        }
+
+        // Animation tick (transition.rs only calls render(), not
+        // tick(), so all per-frame animation work happens here).
+        let clamped_dt: float = if dt > HOLD_DT_CAP { HOLD_DT_CAP } else { dt };
+
+        // Synthetic creep so the bar moves before the host reports a
+        // milestone (covers the brief PAINTING window before the
+        // synchronous load blocks).
+        let creep: float = self.target_progress + PROGRESS_CREEP_RATE * clamped_dt;
+        let creep_cap: float = if creep > PROGRESS_CREEP_CEIL { PROGRESS_CREEP_CEIL } else { creep };
+        if creep_cap > self.target_progress {
+            self.target_progress = creep_cap;
+        }
+
+        // Exponential ease toward target_progress.
+        let step: float = PROGRESS_EASE_RATE * clamped_dt;
+        let alpha: float = if step > 1.0 { 1.0 } else { step };
+        self.eased_progress = self.eased_progress + (self.target_progress - self.eased_progress) * alpha;
+
+        // Fairy frame ping-pong at FAIRY_FPS.
+        self.fairy_t = self.fairy_t + clamped_dt;
+        let period: float = 1.0 / FAIRY_FPS;
+        while self.fairy_t >= period {
+            self.fairy_t = self.fairy_t - period;
+            self.fairy_index = self.fairy_index + self.fairy_dir;
+            if self.fairy_index >= 3 {
+                self.fairy_index = 3;
+                self.fairy_dir = -1;
+            } else if self.fairy_index <= 0 {
+                self.fairy_index = 0;
+                self.fairy_dir = 1;
+            }
         }
 
         // Fullscreen window with no imgui background — `heitiao` in
@@ -210,7 +322,24 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         let origin_x = (avail_w - drawn_w) * 0.5;
         let origin_y = (avail_h - drawn_h) * 0.5;
 
+        let progress: float = self.eased_progress;
+
+        // Pre-pass: locate the lit progress bar (`blanklightfull`) so
+        // the fairy's horizontal slide can track progress along the
+        // bar's actual screen-space extent (anything else is
+        // brittle if the layout coordinates change).
         let n = h.draw_count();
+        let mut bar_left: float = -1.0;
+        let mut bar_width: float = 0.0;
+        for i in Range(0, n) {
+            let win_id = h.draw_window_id(i);
+            if h.window_name(win_id) == "blanklightfull" {
+                bar_left = origin_x + h.draw_x(i) * scale;
+                bar_width = h.draw_w(i) * scale;
+                break;
+            }
+        }
+
         for i in Range(0, n) {
             let cx = origin_x + h.draw_x(i) * scale;
             let cy = origin_y + h.draw_y(i) * scale;
@@ -219,6 +348,65 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
             if cw <= 0.0 || ch <= 0.0 {
                 continue;
             }
+
+            // Identify the draw by its source window name so we can
+            // animate the progress mask and the fairy independently
+            // of layout coordinates.
+            let win_id = h.draw_window_id(i);
+            let win_name = h.window_name(win_id);
+
+            // Progress bar: `ImgMask` hides the un-lit portion of
+            // `blanklightfull`. Shrink its width from the right by
+            // `progress` so the lit area grows left-to-right; skip
+            // it entirely once full.
+            if win_name == "ImgMask" {
+                if progress >= 1.0 {
+                    continue;
+                }
+                let remaining: float = 1.0 - progress;
+                let new_cw: float = cw * remaining;
+                let new_cx: float = cx + (cw - new_cw);
+                let tex = h.draw_texture_com_id(i);
+                if tex != 0 && new_cw > 0.0 {
+                    ui.set_cursor_pos(new_cx, cy);
+                    ui.image_uv(
+                        tex, new_cw, ch,
+                        h.draw_u0(i), h.draw_v0(i),
+                        h.draw_u1(i), h.draw_v1(i),
+                    );
+                }
+                continue;
+            }
+
+            // Animated sequence (e.g. fairy `juaner`): pick a frame
+            // from the per-draw frame list when present. The fairy
+            // is the progress carriage — translate it horizontally
+            // so its centre tracks the leading edge of the lit bar.
+            let frame_count = h.draw_frame_count(i);
+            if frame_count > 0 {
+                let frame_idx: int =
+                    if self.fairy_index >= frame_count { frame_count - 1 }
+                    else if self.fairy_index < 0 { 0 }
+                    else { self.fairy_index };
+                let tex = h.draw_frame_texture_com_id(i, frame_idx);
+                if tex != 0 {
+                    let mut draw_x: float = cx;
+                    if bar_left >= 0.0 && bar_width > 0.0 {
+                        let leading_x: float = bar_left + progress * bar_width;
+                        draw_x = leading_x - cw * 0.5;
+                    }
+                    ui.set_cursor_pos(draw_x, cy);
+                    ui.image_uv(
+                        tex, cw, ch,
+                        h.draw_frame_u0(i, frame_idx),
+                        h.draw_frame_v0(i, frame_idx),
+                        h.draw_frame_u1(i, frame_idx),
+                        h.draw_frame_v1(i, frame_idx),
+                    );
+                }
+                continue;
+            }
+
             let tex = h.draw_texture_com_id(i);
             if tex != 0 {
                 ui.set_cursor_pos(cx, cy);
@@ -244,5 +432,10 @@ pub fn make_loading_overlay(
         0.0,
         "",
         "",
+        0.0,
+        0.0,
+        0.0,
+        0,
+        1,
     ));
 }
