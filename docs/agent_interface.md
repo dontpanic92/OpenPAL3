@@ -7,18 +7,25 @@ adapter, etc.). The server is opt-in via the `--agent-port` flag and
 loopback-bound by default — turn it off and the game runs exactly as
 before.
 
+The same flag is also supported on the PAL3 binary (`yaobow --pal3
+--agent-port 8765`). The wire protocol and transport are shared; the
+[PAL3 support matrix](#pal3-support) below lists which endpoints are
+fully implemented, partially supported, or `not_implemented` against the
+PAL3 binary.
+
 ## Boot
 
 ```bash
 # Default: bind 127.0.0.1:8765 with no token.
 yaobow --pal4 --agent-port 8765
+yaobow --pal3 --agent-port 8765   # PAL3 — same flag set, same protocol.
 
 # Explicit bind + bearer token (required for any non-loopback bind).
 yaobow --pal4 --agent-port 8765 --agent-bind 127.0.0.1 --agent-token hunter2
 ```
 
 The listener logs `agent_server: listening on http://127.0.0.1:8765 (PAL4)`
-once it's ready to accept requests.
+(or `(PAL3)`) once it's ready to accept requests.
 
 ## Endpoints
 
@@ -320,3 +327,76 @@ per-game bridges that drain the same queue.
   builds (no presentable surface to capture).
 * MCP wrapper: trivial follow-up — it's just a client of these HTTP
   endpoints.
+
+## PAL3 support
+
+The PAL3 binary (`yaobow --pal3 --agent-port N`) speaks the same wire
+protocol, but PAL3 has a smaller modeled gameplay surface than PAL4
+(no battle system, no inventory/HP/MP, no world-map prompt, no GOB
+`Examine` callback, and SCE bytecode instead of AngelScript). The
+unsupported endpoints return `{"type":"error","data":{"kind":
+"not_implemented","message":…}}` so external drivers can probe and
+fall back gracefully.
+
+### Snapshot field semantics (`/v1/state`)
+
+PAL3 maps the shared `StateSnapshot` shape to its own engine state.
+Differences from PAL4:
+
+| Field                | PAL3 value                                                  |
+| -------------------- | ----------------------------------------------------------- |
+| `scene`              | `PersistentState::scene_name()` (e.g. `"q01"`, `"m22"`)     |
+| `block`              | `PersistentState::sub_scene_name()` (PAL3's "sub-scene")    |
+| `leader`             | `GlobalState::role_controlled()`                            |
+| `leader_pos`         | Live transform of the resolved role entity                  |
+| `party`              | Always `[]` — PAL3 has no battle system in the OSS impl     |
+| `money`              | Always `0` (not modeled)                                    |
+| `quest_percentage`   | Always `0` (not modeled)                                    |
+| `inventory`          | Always `[]` (not modeled)                                   |
+| `dialog`             | Always default — PAL3's SCE dialog state is not yet exposed |
+| `world_map_open`     | Always `false` (PAL3 has no world map)                      |
+| `script_running`     | `true` when `!adv_input_enabled` or the SCE proc stack is non-empty |
+| `current_script_fn`  | Name of the proc on top of the SCE call stack, when running |
+| `movie_playing`      | Always `false` for now (no SceVm hook yet)                  |
+| `frame` / `fps` / `dt` / `paused` / `fast_forward` | Same as PAL4 (driven by the shared bridge) |
+
+### Endpoint matrix
+
+| Endpoint                              | PAL3 status        | Notes |
+| ------------------------------------- | ------------------ | ----- |
+| `GET  /v1/state`                      | **Supported**      | See snapshot semantics above |
+| `GET  /v1/log/tail`                   | **Supported**      | Transport-layer, game-agnostic |
+| `GET  /v1/screenshot`                 | **Supported**      | Reads back the last presented swapchain frame |
+| `POST /v1/input/key`, `/v1/input/axis` | **Supported**     | Routed through the synthetic-input bridge |
+| `POST /v1/time/pause` / `resume` / `step` | **Supported** | `AdventureDirector::update` honors `bridge.effective_dt` |
+| `POST /v1/time/fast_forward`          | **Partial**        | Flag is set on the bridge; SceVm doesn't yet read it (scripted `giWait`-equivalent waits still consume their own simulated time) |
+| `POST /v1/player/teleport`            | **Supported**      | Teleports `GlobalState::role_controlled` and mirrors to `PersistentState` |
+| `POST /v1/dialog/advance`             | **Supported**      | Synthesises a `Space` tap |
+| `POST /v1/dialog/choose`              | **not_implemented**| Deferred; needs an injection point in the SCE dialog system |
+| `POST /v1/save/slot`                  | **Supported**      | `PersistentState::save` |
+| `POST /v1/load/slot`                  | **Supported**      | Rebuilds the `AdventureDirector` from the slot (identical to `enter_load_game`) |
+| `GET  /v1/script/globals`             | **Supported**      | Dense window over `PersistentState::get_global(i16)` |
+| `POST /v1/enter_new_game` / `/enter_load_game` / `/exit_game` | **Supported** | Routed through `Pal3Service`; `--pal3 --agent-port` must have been the launch flag so the asset path is known |
+| `POST /v1/script/eval`                | **not_implemented**| PAL3 has no AngelScript VM |
+| `POST /v1/script/trace/*`             | **not_implemented**| No `SceVm` trace adapter yet |
+| `GET  /v1/scene/triggers` / `objects` | **not_implemented**| Deferred — PAL3 enumerates triggers as SCE proc entries, not EVF |
+| `POST /v1/scene/fire_trigger`         | **not_implemented**| Deferred — will route to `SceVm::call_proc_by_name` |
+| `POST /v1/object/interact`            | **not_implemented**| PAL3 has no GOB `research_function` analog |
+| `POST /v1/world_map/choose`           | **not_implemented**| PAL3 has no world-map prompt |
+| `GET  /v1/perf/metrics`               | **Supported**      | Shared with PAL4 (`radiance::perf` snapshot) |
+
+### Differences from PAL4 you should know about
+
+* **Mode-control**: PAL3 has no separate start-menu director that the
+  agent dispatcher must respect — the start menu is a scripted overlay
+  that hands off to `AdventureDirector` on click. `EnterNewGame` and
+  `EnterLoadGame` install a fresh adventure director directly on the
+  scene manager, skipping the menu.
+* **Save slots**: PAL3 uses slots 1..=4 (matching the legacy quick-save
+  layout). PAL4's slot range is wider — agents that wrap both should
+  probe `IPal3Service::save_slot_count` (or trust the documented `4`).
+* **`script_running` semantics**: PAL4 derives this from the
+  AngelScript VM call stack. PAL3 ORs the SCE proc stack with the
+  inverse of `adv_input_enabled`, so dialogues and movies (which
+  disable adv input) read as `script_running = true` even when the
+  underlying VM is in a `Yield` waiting for input.

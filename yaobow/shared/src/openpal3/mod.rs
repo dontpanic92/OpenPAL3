@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod asset_manager;
 #[macro_use]
 pub mod comdef {

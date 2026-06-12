@@ -18,8 +18,8 @@ use radiance::{
     scene::CoreScene,
 };
 use radiance_scripting::install_imgui_pump;
+use shared::agent_common::{AgentBootOptions, AgentBridge, install_global_log_sink, start_agent_server};
 use shared::openpal4::agent::Pal4AgentBridge;
-use shared::openpal4::launch::{AgentBootOptions, install_global_log_sink, start_agent_server};
 use shared::{GameType, config::YaobowConfig};
 
 pub type Pal4AgentBootOptions = AgentBootOptions;
@@ -212,6 +212,10 @@ impl IComponentImpl for YaobowApplicationLoader {
                 .inner::<crate::openpal3::Pal3Service>()
                 .pump_pre_update();
             host_context
+                .pal3()
+                .inner::<crate::openpal3::Pal3Service>()
+                .pump_agent(delta_sec);
+            host_context
                 .pal4()
                 .inner::<shared::openpal4::service::Pal4Service>()
                 .pump_agent(delta_sec);
@@ -265,7 +269,10 @@ impl YaobowApplicationLoader {
         scene_manager: &ComRc<ISceneManager>,
     ) -> Result<(), String> {
         let director = match game {
-            GameType::PAL3 => host_ctx.pal3().create_director(&asset_path),
+            GameType::PAL3 => {
+                self.boot_pal3_agent_if_requested(host_ctx)?;
+                host_ctx.pal3().create_director(&asset_path)
+            }
             GameType::PAL4 => {
                 self.boot_pal4_agent_if_requested(host_ctx)?;
                 host_ctx.pal4().create_director(&asset_path)
@@ -291,6 +298,35 @@ impl YaobowApplicationLoader {
         Ok(())
     }
 
+    /// Boot the agent server for PAL3 (mirrors
+    /// [`Self::boot_pal4_agent_if_requested`]). Builds a fresh
+    /// `AgentBridge`, starts the HTTP listener, and installs the
+    /// bridge on `Pal3Service` so the next
+    /// `create_adventure_director` plumbs synthetic input + pause
+    /// gating.
+    fn boot_pal3_agent_if_requested(
+        &self,
+        host_ctx: &ComRc<IYaobowHostContext>,
+    ) -> Result<(), String> {
+        let opts = match self.initial_agent_opts.borrow_mut().take() {
+            Some(opts) => opts,
+            None => return Ok(()),
+        };
+
+        let bridge = Self::build_agent_bridge_and_start(
+            &self.app,
+            &opts,
+            self.agent_server.borrow_mut(),
+            "PAL3",
+        )?;
+
+        host_ctx
+            .pal3()
+            .inner::<crate::openpal3::Pal3Service>()
+            .set_agent_bridge(bridge);
+        Ok(())
+    }
+
     /// Boot the PAL4 agent server (if `initial_agent_opts` is set)
     /// and install the bridge on `Pal4Service`. Called once at
     /// `on_loading` time when `--pal4 --agent-port` is in effect.
@@ -305,10 +341,10 @@ impl YaobowApplicationLoader {
 
         let real_input = self.app.engine().borrow().input_engine();
         let synth = Rc::new(RefCell::new(SyntheticInputBridge::new(real_input)));
-        let bridge = Rc::new(Pal4AgentBridge::new(synth));
+        let pal4_bridge = Rc::new(Pal4AgentBridge::new(synth));
 
         let log_sink = install_global_log_sink();
-        let server = start_agent_server(&opts, &bridge, log_sink)?;
+        let server = start_agent_server(&opts, &pal4_bridge.inner, log_sink)?;
         log::info!(
             "agent_server: listening on http://{} (PAL4)",
             server.local_addr()
@@ -318,8 +354,34 @@ impl YaobowApplicationLoader {
         host_ctx
             .pal4()
             .inner::<shared::openpal4::service::Pal4Service>()
-            .set_agent_bridge(bridge);
+            .set_agent_bridge(pal4_bridge);
         Ok(())
+    }
+
+    /// Construct a generic `AgentBridge` (game-agnostic) from the
+    /// real engine input, boot the HTTP listener against it, and
+    /// stash the listener handle in `self.agent_server`. Returns
+    /// the bridge so the caller can install it on the per-game
+    /// service. Used by [`Self::boot_pal3_agent_if_requested`].
+    fn build_agent_bridge_and_start(
+        app: &ComRc<IApplication>,
+        opts: &AgentBootOptions,
+        mut server_slot: std::cell::RefMut<'_, Option<AgentServer>>,
+        game_label: &str,
+    ) -> Result<Rc<AgentBridge>, String> {
+        let real_input = app.engine().borrow().input_engine();
+        let synth = Rc::new(RefCell::new(SyntheticInputBridge::new(real_input)));
+        let bridge = Rc::new(AgentBridge::new(synth));
+
+        let log_sink = install_global_log_sink();
+        let server = start_agent_server(opts, &bridge, log_sink)?;
+        log::info!(
+            "agent_server: listening on http://{} ({})",
+            server.local_addr(),
+            game_label
+        );
+        *server_slot = Some(server);
+        Ok(bridge)
     }
 }
 

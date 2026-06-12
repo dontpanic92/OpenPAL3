@@ -199,7 +199,7 @@ pub use application::{
     run_opengujian, run_openpal4, run_openpal4_with_agent, run_openpal5, run_openpal5q,
     run_openswd5, run_title_selection,
 };
-pub use openpal3::run_openpal3;
+pub use openpal3::{run_openpal3, run_openpal3_with_agent};
 
 #[cfg_attr(target_os = "android", ndk_glue::main(backtrace = "on"))]
 pub fn android_entry() {

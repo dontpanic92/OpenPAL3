@@ -21,17 +21,21 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use agent_server::{AgentCommand, AgentError, AgentResponse};
 use crosscom::ComRc;
 use packfs::init_virtual_fs;
-use radiance::comdef::{IApplication, IApplicationExt, IDirector};
+use radiance::comdef::{IApplication, IApplicationExt, IDirector, ISceneManager};
+use radiance::input::{InputEngine, SyntheticInputBridge};
 use radiance::scene::CoreScene;
 use radiance::video::Codec as VideoCodec;
 use radiance_scripting::comdef::services::IVideoHandle;
 use radiance_scripting::services::ImguiTextureCache;
+use shared::agent_common::AgentBridge;
 use shared::loaders::video_handle::VideoHandle;
+use shared::openpal3::agent::{Pal3DispatchCtx, dispatch_pal3_command};
 use shared::openpal3::asset_manager::AssetManager;
 use shared::openpal3::comdef::{
-    IPal3ScriptFactory, IPal3Service, IPal3ServiceImpl, IPal3StartMenuScene,
+    IAdventureDirector, IPal3ScriptFactory, IPal3Service, IPal3ServiceImpl, IPal3StartMenuScene,
 };
 use shared::openpal3::directors::AdventureDirector;
 use shared::openpal3::start_menu_scene::Pal3StartMenuScene;
@@ -80,6 +84,11 @@ pub struct Pal3Service {
     /// return `None` so re-entry into the start menu (e.g. exit-to-menu
     /// from a future Adventure flow) skips the intro.
     intro_played: Cell<bool>,
+    /// Agent-server bridge. `None` when no `--agent-port` flag was
+    /// passed; `Some(_)` enables [`Self::pump_agent`] and makes
+    /// every fresh `AdventureDirector` honor pause/step + see
+    /// synthetic input.
+    agent_bridge: RefCell<Option<Rc<AgentBridge>>>,
 }
 
 ComObject_Pal3Service!(super::Pal3Service);
@@ -95,6 +104,7 @@ impl Pal3Service {
             pending_debug_install: Cell::new(false),
             debug_layer_installed: Cell::new(false),
             intro_played: Cell::new(false),
+            agent_bridge: RefCell::new(None),
         })
     }
 
@@ -172,6 +182,164 @@ impl Pal3Service {
         }
     }
 
+    /// Install the agent bridge so the next `create_adventure_director`
+    /// / `load_adventure_director` plumbs synthetic input + pause/step
+    /// gating into the new director. Called once at boot by
+    /// `YaobowApplicationLoader` when `--pal3 --agent-port` is in
+    /// effect.
+    pub fn set_agent_bridge(&self, bridge: Rc<AgentBridge>) {
+        // Forward to any director already installed so a bridge
+        // attached mid-session takes effect immediately.
+        if let Some(adv) = self.active_adventure_director_owned() {
+            adv.inner::<AdventureDirector>().set_agent_bridge(bridge.clone());
+        }
+        *self.agent_bridge.borrow_mut() = Some(bridge);
+    }
+
+    /// Drain the agent-server command queue, dispatch each command
+    /// against PAL3 state, then publish frame telemetry and clear
+    /// synthetic-input edges. Called once per frame by
+    /// `YaobowApplicationLoader::on_updating` (before the engine
+    /// tick), so commands land before the active director runs.
+    pub fn pump_agent(&self, delta_sec: f32) {
+        let bridge = match self.agent_bridge.borrow().as_ref() {
+            Some(b) => b.clone(),
+            None => return,
+        };
+
+        // Lazily wire the rendering engine so `/v1/screenshot` works
+        // before any director has set it on the bridge.
+        if bridge.rendering_engine.borrow().is_none() {
+            let engine = self.app.engine().borrow().rendering_engine();
+            bridge.set_rendering_engine(engine);
+        }
+
+        // Drain the queue once (single drainer for this game).
+        let mut envelopes = Vec::new();
+        if let Some(consumer) = bridge.consumer.borrow().as_ref() {
+            consumer.drain(|env| envelopes.push(env));
+        }
+
+        let scene_manager = self.app.engine().borrow().scene_manager().clone();
+
+        for env in envelopes {
+            // Mode-control commands install the next director on the
+            // scene manager; routed here because the dispatcher (not
+            // any director) owns the mode graph.
+            if Self::is_mode_control_command(&env.command) {
+                let response = self.dispatch_mode_control(&scene_manager, env.command.clone());
+                env.reply(response);
+                continue;
+            }
+
+            let active = Self::active_adventure_director(&scene_manager);
+            let director_ref = active
+                .as_ref()
+                .map(|c| c.inner::<AdventureDirector>());
+            let ctx = Pal3DispatchCtx {
+                bridge: &bridge,
+                director: director_ref.as_deref(),
+                scene_manager: scene_manager.clone(),
+            };
+            let response = dispatch_pal3_command(&ctx, env.command.clone());
+            env.reply(response);
+        }
+
+        // Telemetry: always advance frame counter + publish dt/fps.
+        bridge.publish_frame_telemetry(delta_sec);
+
+        // Clear synthetic-input edges. We do it here unconditionally
+        // because PAL3's `AdventureDirector::update` runs *during*
+        // `engine.update`, which is *after* this `on_updating` hook.
+        // That means any tap injected this frame is observable by
+        // the director's input poll, and we clear at the start of
+        // the next frame's pump.
+        bridge.input_bridge.borrow().end_frame();
+    }
+
+    fn is_mode_control_command(command: &AgentCommand) -> bool {
+        matches!(
+            command,
+            AgentCommand::EnterNewGame
+                | AgentCommand::EnterLoadGame(_)
+                | AgentCommand::LoadSlot(_)
+                | AgentCommand::ExitGame
+        )
+    }
+
+    fn dispatch_mode_control(
+        &self,
+        scene_manager: &ComRc<ISceneManager>,
+        command: AgentCommand,
+    ) -> AgentResponse {
+        if let AgentCommand::ExitGame = command {
+            self.app.request_exit();
+            return AgentResponse::Ok;
+        }
+
+        let asset_path = match self.last_asset_path.borrow().clone() {
+            Some(p) => p,
+            None => {
+                return AgentResponse::err(AgentError::internal(
+                    "PAL3 launch asset path not set yet (no playthrough has been mounted)",
+                ));
+            }
+        };
+
+        let director = match command {
+            AgentCommand::EnterNewGame => self.create_adventure_director(&asset_path),
+            AgentCommand::EnterLoadGame(params) | AgentCommand::LoadSlot(params) => {
+                // PAL3 has no in-place state reload (PAL4-style); both
+                // EnterLoadGame and LoadSlot rebuild the adventure
+                // director from the slot file, mirroring what the menu
+                // does when the player picks a save.
+                match self.load_adventure_director(&asset_path, params.slot) {
+                    Some(d) => d,
+                    None => {
+                        return AgentResponse::err(AgentError::conflict(format!(
+                            "save slot {} is missing or could not be loaded",
+                            params.slot
+                        )));
+                    }
+                }
+            }
+            _ => {
+                return AgentResponse::err(AgentError::internal(
+                    "dispatch_mode_control called with a non-mode-control command",
+                ));
+            }
+        };
+        scene_manager.set_director(director);
+        AgentResponse::Ok
+    }
+
+    fn active_adventure_director(
+        scene_manager: &ComRc<ISceneManager>,
+    ) -> Option<ComRc<IAdventureDirector>> {
+        scene_manager
+            .director()
+            .and_then(|d| d.query_interface::<IAdventureDirector>())
+    }
+
+    fn active_adventure_director_owned(&self) -> Option<ComRc<IAdventureDirector>> {
+        let sm = self.app.engine().borrow().scene_manager().clone();
+        Self::active_adventure_director(&sm)
+    }
+
+    /// Resolve the `Rc<RefCell<dyn InputEngine>>` we should hand to
+    /// the next `AdventureDirector`: the agent's synthetic-input
+    /// bridge when present (so `/v1/input/*` reaches the director),
+    /// otherwise the real engine input.
+    fn input_engine_for_director(&self) -> Rc<RefCell<dyn InputEngine>> {
+        if let Some(bridge) = self.agent_bridge.borrow().as_ref() {
+            // Rc<RefCell<SyntheticInputBridge>> coerces to
+            // Rc<RefCell<dyn InputEngine>> at the binding site.
+            let synth: Rc<RefCell<SyntheticInputBridge>> = bridge.input_bridge.clone();
+            return synth;
+        }
+        self.app.engine().borrow().input_engine()
+    }
+
     fn sce_options() -> SceExecutionOptions {
         SceExecutionOptions {
             proc_hooks: vec![Box::new(SceRestHooks::new())],
@@ -232,11 +400,11 @@ impl IPal3ServiceImpl for Pal3Service {
         let asset_mgr = self.asset_manager_for(asset_path);
         let engine_rc = self.app.engine();
         let engine = engine_rc.borrow();
-        let input_engine = engine.input_engine();
         let audio_engine = engine.audio_engine();
         let scene_manager = engine.scene_manager().clone();
         let ui = engine.ui_manager();
         drop(engine);
+        let input_engine = self.input_engine_for_director();
 
         let adv = AdventureDirector::new(
             PAL3_APP_NAME,
@@ -247,6 +415,9 @@ impl IPal3ServiceImpl for Pal3Service {
             scene_manager,
             Some(Self::sce_options()),
         );
+        if let Some(bridge) = self.agent_bridge.borrow().as_ref() {
+            adv.set_agent_bridge(bridge.clone());
+        }
         ComRc::<IDirector>::from_object(adv)
     }
 
@@ -254,11 +425,11 @@ impl IPal3ServiceImpl for Pal3Service {
         let asset_mgr = self.asset_manager_for(asset_path);
         let engine_rc = self.app.engine();
         let engine = engine_rc.borrow();
-        let input_engine = engine.input_engine();
         let audio_engine = engine.audio_engine();
         let scene_manager = engine.scene_manager().clone();
         let ui = engine.ui_manager();
         drop(engine);
+        let input_engine = self.input_engine_for_director();
 
         let adv = AdventureDirector::load(
             PAL3_APP_NAME,
@@ -270,6 +441,9 @@ impl IPal3ServiceImpl for Pal3Service {
             Some(Self::sce_options()),
             slot,
         )?;
+        if let Some(bridge) = self.agent_bridge.borrow().as_ref() {
+            adv.set_agent_bridge(bridge.clone());
+        }
         Some(ComRc::<IDirector>::from_object(adv))
     }
 

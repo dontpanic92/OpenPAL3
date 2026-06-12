@@ -4,8 +4,8 @@ use agent_server::AgentLogSink;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use shared::video::register_opengb_video_decoders;
 use yaobow_lib::{
-    Pal4AgentBootOptions, run_opengujian, run_openpal3, run_openpal4, run_openpal4_with_agent,
-    run_openpal5, run_openpal5q, run_openswd5, run_title_selection,
+    Pal4AgentBootOptions, run_opengujian, run_openpal3, run_openpal3_with_agent, run_openpal4,
+    run_openpal4_with_agent, run_openpal5, run_openpal5q, run_openswd5, run_title_selection,
 };
 
 pub fn main() {
@@ -21,7 +21,9 @@ pub fn main() {
     #[cfg(not(vita))]
     {
         let args = std::env::args().collect::<Vec<String>>();
-        let agent_opts: Option<Pal4AgentBootOptions> = if args.len() > 2 && args[1] == "--pal4" {
+        let agent_opts: Option<Pal4AgentBootOptions> = if args.len() > 2
+            && (args[1] == "--pal3" || args[1] == "--pal4")
+        {
             parse_agent_args(&args[2..])
         } else {
             None
@@ -38,7 +40,13 @@ pub fn main() {
             run_title_selection();
         } else {
             match args[1].as_str() {
-                "--pal3" => run_openpal3(),
+                "--pal3" => {
+                    if agent_opts.is_some() {
+                        run_openpal3_with_agent(agent_opts);
+                    } else {
+                        run_openpal3();
+                    }
+                }
                 "--pal4" => {
                     if agent_opts.is_some() {
                         run_openpal4_with_agent(agent_opts);

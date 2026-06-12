@@ -24,6 +24,8 @@ use radiance::{
     radiance::UiManager,
 };
 
+use crate::agent_common::AgentBridge;
+
 pub struct AdventureDirector {
     props: RefCell<AdventureDirectorProps>,
 }
@@ -62,6 +64,7 @@ impl AdventureDirector {
                 sce_vm,
                 camera_rotation: 0.,
                 layer_switch_triggered: false,
+                agent_bridge: None,
             }),
         }
     }
@@ -145,6 +148,7 @@ impl AdventureDirector {
                 sce_vm,
                 camera_rotation: 0.,
                 layer_switch_triggered: false,
+                agent_bridge: None,
             }),
         })
     }
@@ -156,6 +160,58 @@ impl AdventureDirector {
     pub fn sce_vm_mut(&self) -> RefMut<'_, SceVm> {
         RefMut::map(self.props.borrow_mut(), |p| &mut p.sce_vm)
     }
+
+    /// Install the agent bridge so this director honors pause/step
+    /// and exposes its tick rate to `/v1/state`. Called by
+    /// `Pal3Service::set_agent_bridge` after the agent server is
+    /// booted (so menus exit and a fresh `AdventureDirector` gets the
+    /// bridge before its first tick).
+    pub fn set_agent_bridge(&self, bridge: Rc<AgentBridge>) {
+        self.props.borrow_mut().agent_bridge = Some(bridge);
+    }
+
+    /// Currently-installed bridge, if any. Used by `Pal3Service`'s
+    /// agent dispatcher to inspect/replace it when a new director is
+    /// pushed onto the scene manager.
+    pub fn agent_bridge(&self) -> Option<Rc<AgentBridge>> {
+        self.props.borrow().agent_bridge.clone()
+    }
+
+    /// Resolve the currently-controlled role entity (player slot
+    /// returned by `GlobalState::role_controlled`). `None` when no
+    /// scene is mounted or the role cannot be resolved.
+    pub fn controlled_role_position(&self) -> Option<Vec3> {
+        let p = self.props.borrow();
+        if p.scene_manager.scene().is_none() {
+            return None;
+        }
+        let role = p.scene_manager.get_resolved_role(p.sce_vm.state(), -1)?;
+        Some(role.transform().borrow().position())
+    }
+
+    /// Teleport the leader (the role returned by `role_controlled`)
+    /// to `pos`. Mirrors the agent server's `/v1/player/teleport`
+    /// semantics. Returns `false` when no scene/role is available.
+    pub fn teleport_controlled_role(&self, pos: Vec3) -> bool {
+        let p = self.props.borrow();
+        if p.scene_manager.scene().is_none() {
+            return false;
+        }
+        let role = match p.scene_manager.get_resolved_role(p.sce_vm.state(), -1) {
+            Some(r) => r,
+            None => return false,
+        };
+        role.transform().borrow_mut().set_position(&pos);
+        drop(p);
+        // Mirror to persistent state so a subsequent save records the
+        // teleported position.
+        let mut pm = self.props.borrow_mut();
+        pm.sce_vm
+            .global_state_mut()
+            .persistent_state_mut()
+            .set_position(pos);
+        true
+    }
 }
 
 impl IDirectorImpl for AdventureDirector {
@@ -164,7 +220,19 @@ impl IDirectorImpl for AdventureDirector {
     }
 
     fn update(&self, delta_sec: f32) -> Option<ComRc<IDirector>> {
-        self.props_mut().do_update(delta_sec)
+        // Honor `/v1/time/pause` + `/v1/time/step`: when an agent
+        // bridge is installed and we're paused with no pending steps,
+        // skip the entire SCE tick so movement, animations, and the
+        // VM all freeze in lockstep. Stepped frames use the
+        // bridge-provided fixed `dt`.
+        let effective_dt = match self.props.borrow().agent_bridge.as_ref() {
+            Some(bridge) => match bridge.effective_dt(delta_sec) {
+                (true, dt) => dt,
+                (false, _) => return None,
+            },
+            None => delta_sec,
+        };
+        self.props_mut().do_update(effective_dt)
     }
 
     fn deactivate(&self) {}
@@ -176,6 +244,10 @@ struct AdventureDirectorProps {
     sce_vm: SceVm,
     camera_rotation: f32,
     layer_switch_triggered: bool,
+    /// Agent-server bridge. `None` when the embedded HTTP listener
+    /// is not running; `Some(_)` gates pause/step + provides the
+    /// synthetic-input overlay backing `/v1/input/*`.
+    agent_bridge: Option<Rc<AgentBridge>>,
 }
 
 impl AdventureDirectorProps {

@@ -276,6 +276,12 @@ impl SceProcContext {
         self.dlgsel
     }
 
+    /// Numeric id of this procedure in the loaded `SceFile`. Used by
+    /// the agent server to surface the currently-executing proc.
+    pub fn proc_id(&self) -> u32 {
+        self.proc_id
+    }
+
     fn get_next_cmd(&mut self) -> Option<Box<dyn SceCommand>> {
         if self.proc_completed() {
             return None;
@@ -994,6 +1000,38 @@ impl SceExecutionContext {
 
     pub fn current_proc_context_mut(&mut self) -> &mut SceProcContext {
         self.proc_stack.last_mut().unwrap()
+    }
+
+    /// Whether any SCE procedure is currently executing (the proc stack is
+    /// non-empty). Read by the agent server for `/v1/state.script_running`.
+    pub fn is_running(&self) -> bool {
+        !self.proc_stack.is_empty()
+    }
+
+    /// Name of the SCE module currently being executed (e.g. `"q01"`,
+    /// `"init"`). Stable across the whole script's lifetime; flipped by
+    /// [`Self::set_sce`] when the engine switches scenes.
+    pub fn sce_name(&self) -> &str {
+        &self.sce_name
+    }
+
+    /// Numeric id of the proc on top of the call stack, when one is
+    /// running. Used by the agent server snapshot to surface the
+    /// "currently executing script function" the same way PAL4's
+    /// `current_script_fn` does for AngelScript.
+    pub fn current_proc_id(&self) -> Option<u32> {
+        self.proc_stack.last().map(|p| p.proc_id())
+    }
+
+    /// Name of the proc on top of the call stack, when one is running.
+    /// Resolved against the loaded `SceFile`'s header table.
+    pub fn current_proc_name(&self) -> Option<String> {
+        let proc_id = self.proc_stack.last()?.proc_id();
+        self.sce
+            .proc_headers
+            .iter()
+            .find(|h| h.id == proc_id)
+            .map(|h| h.name.clone())
     }
 
     pub fn get_next_cmd(&mut self, global_state: &mut GlobalState) -> Option<Box<dyn SceCommand>> {

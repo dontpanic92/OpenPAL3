@@ -1,113 +1,49 @@
 //! PAL4-specific [`agent_server`] adapter.
 //!
-//! Centralizes the cross-thread state that the embedded HTTP agent
-//! server needs to drive a running PAL4 session:
+//! Combines the shared, game-agnostic [`AgentBridge`] (queue,
+//! synthetic input, frame counters, pause/step cells, trace sink,
+//! rendering engine slot) with the PAL4-specific
+//! [`AgentTraceAdapter`] that forwards AngelScript-VM
+//! [`TraceEvent`]s into the shared `AgentTraceSink` ring buffer.
 //!
-//! * A [`AgentCommandQueue`] whose `Sender` is cloned into the HTTP
-//!   listener thread and whose `Receiver` is drained on the game
-//!   thread (inside [`OpenPAL4Director::update`]).
-//! * A [`SyntheticInputBridge`] that overlays agent-driven key / axis
-//!   events on top of the real input engine. Replaces the `input`
-//!   handle handed to `Pal4VmContext` so every consumer (scripts,
-//!   actor controllers, the director itself) sees the merged view.
-//! * A small bag of [`Cell`](std::cell::Cell)s exposing pause /
-//!   fixed-step / fps state to the director and back.
+//! `Pal4AgentBridge` exists purely to bolt the PAL4 trace adapter
+//! onto the shared bridge; it transparently delegates every other
+//! field via [`Deref`](std::ops::Deref).
 //!
-//! `Pal4AgentBridge` is *only* state — the actual command dispatch
-//! (`AgentCommand -> AgentResponse`) lives in
-//! [`super::director::dispatch_agent_command`] so it can call into the
-//! director's `vm` / `Pal4VmContext` without an extra interior-
-//! mutability hop.
-//!
-//! ## Threading
-//!
-//! Everything in this module that crosses the HTTP↔game boundary
-//! goes through `AgentCommandQueue` (which uses `std::sync::mpsc`).
-//! All `Rc<RefCell<...>>` handles stay on the game thread.
+//! Construct one via [`Pal4AgentBridge::new`] from the application
+//! loader; install it on `Pal4Service` via `set_agent_bridge`.
 
-use std::cell::Cell;
+use std::ops::Deref;
 use std::rc::Rc;
 
 use agent_server::protocol::{
     TraceBranchKind, TraceEventKindPayload, TraceEventPayload, TraceGlobalScope,
 };
-use agent_server::{AgentCommandConsumer, AgentCommandQueue, AgentTraceSink};
+use agent_server::AgentTraceSink;
 use radiance::input::SyntheticInputBridge;
-use radiance::rendering::RenderingEngine;
 
+use crate::agent_common::bridge::AgentBridge;
 use crate::scripting::angelscript::{
     BranchKind, GlobalScope, TraceEvent, TraceEventKind, TraceSink,
 };
 
-/// Default per-frame delta used by `/v1/time/step` when the caller
-/// doesn't provide one — matches the engine's nominal 60 Hz target.
-pub const DEFAULT_STEP_DT: f32 = 1.0 / 60.0;
+// Re-export the shared default so existing call-sites importing it
+// from this module keep compiling.
+pub use crate::agent_common::bridge::DEFAULT_STEP_DT;
 
-/// Cross-thread bundle of state the agent surface manipulates.
-///
-/// Held by the director as an `Option<Rc<Pal4AgentBridge>>` (the
-/// `None` arm covers the normal "no agent" build). When present, the
-/// HTTP listener thread is alive and the director runs the per-frame
-/// drain + pause / step machinery defined below.
+/// PAL4-flavoured [`AgentBridge`]: the shared bridge plus the
+/// AngelScript [`AgentTraceAdapter`]. Held by the director and
+/// `Pal4Service` as `Option<Rc<Pal4AgentBridge>>`.
 pub struct Pal4AgentBridge {
-    /// Producer half of the command pipe. Cloned into the HTTP
-    /// listener via [`crate::openpal4::director::OpenPAL4Director`]'s
-    /// boot path.
-    pub queue: AgentCommandQueue,
-
-    /// Consumer side, drained by the director once per `update`.
-    /// Stored in a `RefCell` so the borrowing director can take it
-    /// out for the brief drain window without re-entering its own
-    /// agent state.
-    pub consumer: std::cell::RefCell<Option<AgentCommandConsumer>>,
-
-    /// Synthetic-input overlay handed to `Pal4VmContext` so taps /
-    /// holds / axes injected via `/v1/input/*` are visible to the
-    /// scripts that poll `input.get_key_state(...)`.
-    pub input_bridge: Rc<std::cell::RefCell<SyntheticInputBridge>>,
-
-    /// Execution-trace ring shared with the VM via
-    /// [`AgentTraceAdapter`]. Lives in the bridge so the director's
-    /// `TraceStart` / `TraceStop` / `TraceDrain` handlers can poke
-    /// it without going through the VM.
-    pub trace_sink: Rc<AgentTraceSink>,
-
+    /// Shared, game-agnostic bridge state. Cloned freely; the
+    /// listener thread and the dispatcher both reach the queue /
+    /// trace sink through this.
+    pub inner: Rc<AgentBridge>,
     /// VM-side trace adapter installed on `ScriptVm` whenever
-    /// [`Self::trace_sink`] is actively capturing. Held in a `Cell`-
-    /// less `Rc` because installation happens at most a handful of
-    /// times per session (start/stop), not in the hot path.
+    /// `trace_sink` is actively capturing. Held in an `Rc` because
+    /// installation happens at most a handful of times per session
+    /// (start/stop), not in the hot path.
     pub trace_adapter: Rc<AgentTraceAdapter>,
-
-    /// Optional handle to the live rendering engine. When present, the
-    /// director's `/v1/screenshot` handler reads back the last
-    /// presented swapchain image via
-    /// [`RenderingEngine::capture_last_frame`]. `None` in tests that
-    /// don't spin up Vulkan and in headless boots that haven't wired
-    /// a readback-capable backend.
-    pub rendering_engine: std::cell::RefCell<Option<Rc<std::cell::RefCell<dyn RenderingEngine>>>>,
-
-    /// Monotonic frame counter — incremented exactly once per game
-    /// tick that actually advanced (real + stepped).
-    pub frame: Cell<u64>,
-
-    /// `true` while the director is in fixed-step mode (no automatic
-    /// advance per real frame; only `request_steps` ticks the world).
-    pub paused: Cell<bool>,
-
-    /// Remaining `step` frames requested by the latest
-    /// `/v1/time/step` command. Decremented by the director until it
-    /// hits zero.
-    pub requested_steps: Cell<u32>,
-
-    /// Per-frame `dt` to use for stepped frames. `0.0` ≡ "use
-    /// [`DEFAULT_STEP_DT`]".
-    pub requested_dt: Cell<f32>,
-
-    /// Latest published FPS / per-frame `dt`. Mirrors the values the
-    /// debug overlay already maintains; lets the agent snapshot
-    /// expose them without re-doing the smoothing math.
-    pub fps_display: Cell<f32>,
-    pub dt_display: Cell<f32>,
 }
 
 impl Pal4AgentBridge {
@@ -116,85 +52,19 @@ impl Pal4AgentBridge {
     /// `Pal4VmContext` so injected input actually reaches script
     /// consumers.
     pub fn new(input_bridge: Rc<std::cell::RefCell<SyntheticInputBridge>>) -> Self {
-        let (queue, consumer) = AgentCommandQueue::new();
-        let trace_sink = Rc::new(AgentTraceSink::with_default_capacity());
-        let trace_adapter = Rc::new(AgentTraceAdapter::new(trace_sink.clone()));
+        let inner = Rc::new(AgentBridge::new(input_bridge));
+        let trace_adapter = Rc::new(AgentTraceAdapter::new(inner.trace_sink.clone()));
         Self {
-            queue,
-            consumer: std::cell::RefCell::new(Some(consumer)),
-            input_bridge,
-            trace_sink,
+            inner,
             trace_adapter,
-            rendering_engine: std::cell::RefCell::new(None),
-            frame: Cell::new(0),
-            paused: Cell::new(false),
-            requested_steps: Cell::new(0),
-            requested_dt: Cell::new(0.0),
-            fps_display: Cell::new(0.0),
-            dt_display: Cell::new(0.0),
         }
     }
+}
 
-    /// Install the rendering-engine handle used by `/v1/screenshot`.
-    /// Idempotent — passing a new handle replaces the previous one.
-    pub fn set_rendering_engine(&self, engine: Rc<std::cell::RefCell<dyn RenderingEngine>>) {
-        *self.rendering_engine.borrow_mut() = Some(engine);
-    }
-
-    /// Effective per-step `dt`, accounting for the "0 means default"
-    /// convention on [`Self::requested_dt`].
-    pub fn effective_step_dt(&self) -> f32 {
-        let dt = self.requested_dt.get();
-        if dt > 0.0 { dt } else { DEFAULT_STEP_DT }
-    }
-
-    /// Pause / single-step **policy** — the generic time-control rule
-    /// the agent surface enforces, kept on the bridge so **any** mode
-    /// (story now, battle later) can gate its own simulation tick
-    /// through it instead of re-implementing it.
-    ///
-    /// Returns `(advance, effective_dt)`:
-    /// * not paused → `(true, delta_sec)` (run at the real frame rate);
-    /// * paused with no pending steps → `(false, 0.0)` (freeze — the
-    ///   caller must skip its simulation tick this frame);
-    /// * paused with pending steps → consumes one step and returns
-    ///   `(true, effective_step_dt())` (advance exactly one fixed step).
-    ///
-    /// Enforcement stays with the caller (only the component that ticks
-    /// the simulation can skip/scale its own tick); this method owns
-    /// only the decision.
-    pub fn effective_dt(&self, delta_sec: f32) -> (bool, f32) {
-        if !self.paused.get() {
-            return (true, delta_sec);
-        }
-        let pending = self.requested_steps.get();
-        if pending == 0 {
-            return (false, 0.0);
-        }
-        self.requested_steps.set(pending - 1);
-        (true, self.effective_step_dt())
-    }
-
-    /// Per-frame agent **telemetry** published once per frame in every
-    /// mode by the app-lifetime dispatcher: advance the monotonic frame
-    /// counter and publish the latest `dt` / smoothed FPS for
-    /// `/v1/state`. Self-contained on the bridge (the EMA state is
-    /// `fps_display` itself), so it does not depend on any director.
-    ///
-    /// Note: this does **not** clear synthetic-input edges — that must
-    /// run *after* the active mode polls input for the frame, so it
-    /// stays with the caller that owns the input-polling tick.
-    pub fn publish_frame_telemetry(&self, dt: f32) {
-        self.frame.set(self.frame.get().saturating_add(1));
-        self.dt_display.set(dt);
-        let inst_fps = if dt > 1e-4 { 1.0 / dt } else { 0.0 };
-        let prev = self.fps_display.get();
-        let fps = if prev <= 0.0 {
-            inst_fps
-        } else {
-            prev * 0.9 + inst_fps * 0.1
-        };
-        self.fps_display.set(fps);
+impl Deref for Pal4AgentBridge {
+    type Target = AgentBridge;
+    fn deref(&self) -> &AgentBridge {
+        &self.inner
     }
 }
 
