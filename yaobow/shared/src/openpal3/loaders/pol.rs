@@ -145,7 +145,19 @@ fn create_geometry(
     let texcoords = if texcoord2.is_empty() {
         vec![texcoord1]
     } else {
-        vec![texcoord1, texcoord2]
+        // PAL3 `.pol` 2-texture materials are stored as
+        // `texture_names = [lightmap, diffuse]` (verified by the
+        // `^L_*.bmp` lightmap-name prefix in scene archives), with
+        // `vert.tex_coord` carrying the **lightmap** UV and
+        // `vert.tex_coord2` carrying the **diffuse** UV. The
+        // `lightmap_texture.frag` shader (since commit f2c083a
+        // "Support bsp lightmap") expects the opposite convention —
+        // primary UV (`fragTexCoord`) → diffuse, secondary UV
+        // (`fragTexCoord2`) → lightmap atlas. We swap the channels
+        // here so PAL3 conforms to the shared shader without forcing
+        // a PAL3-specific shader variant. Single-texture materials
+        // (no `tex_coord2`) are unaffected.
+        vec![texcoord2, texcoord1]
     };
 
     Geometry::new(&vertices, None, &texcoords, indices, material)
