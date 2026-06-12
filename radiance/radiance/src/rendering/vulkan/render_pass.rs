@@ -34,6 +34,44 @@ impl RenderPass {
         )
     }
 
+    /// Render pass whose color attachment ends in
+    /// `TRANSFER_SRC_OPTIMAL` so the immediate next command can
+    /// `vkCmdBlitImage` it into the swapchain image without an
+    /// intermediate layout-transition barrier. Used by the
+    /// Logical-extent scene pass in `SwapChain` when
+    /// `SceneScaleMode::Logical` is active.
+    pub fn new_offscreen_blit_src(
+        device: Rc<Device>,
+        color_format: vk::Format,
+        depth_format: vk::Format,
+    ) -> Self {
+        Self::new_with_color_final_layout(
+            device,
+            color_format,
+            depth_format,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+        )
+    }
+
+    /// Render pass for an imgui-only pass that draws on top of an
+    /// already-populated swapchain image. Color attachment uses
+    /// `LOAD` op (preserve the underlying blit result),
+    /// `initial_layout = COLOR_ATTACHMENT_OPTIMAL` (caller barriers
+    /// from `TRANSFER_DST_OPTIMAL`), `final_layout = PRESENT_SRC_KHR`.
+    /// No depth attachment — imgui doesn't sample depth and skipping
+    /// the depth attach saves memory + recreate cost.
+    pub fn new_imgui_only(device: Rc<Device>, color_format: vk::Format) -> Self {
+        let render_pass = Self::create_imgui_only_render_pass(&device, color_format).unwrap();
+        Self {
+            device,
+            render_pass,
+        }
+    }
+
+    pub fn vk_render_pass(&self) -> vk::RenderPass {
+        self.render_pass
+    }
+
     fn new_with_color_final_layout(
         device: Rc<Device>,
         color_format: vk::Format,
@@ -43,15 +81,57 @@ impl RenderPass {
         let render_pass =
             Self::create_render_pass(&device, color_format, depth_format, color_final_layout)
                 .unwrap();
-
         Self {
             device,
             render_pass,
         }
     }
 
-    pub fn vk_render_pass(&self) -> vk::RenderPass {
-        self.render_pass
+    fn create_imgui_only_render_pass(
+        device: &Rc<Device>,
+        color_format: vk::Format,
+    ) -> VkResult<vk::RenderPass> {
+        let color_attachment = vk::AttachmentDescription::default()
+            .format(color_format)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::LOAD)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .initial_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR);
+
+        let color_attachment_reference = vk::AttachmentReference::default()
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .attachment(0);
+
+        let color_attachments = [color_attachment_reference];
+        let subpass_description = vk::SubpassDescription::default()
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+            .color_attachments(&color_attachments);
+
+        // External → subpass: wait for the prior blit (TRANSFER stage,
+        // TRANSFER_WRITE access) to finish before any color writes from
+        // imgui draws begin.
+        let subpass_dependency = vk::SubpassDependency::default()
+            .src_subpass(vk::SUBPASS_EXTERNAL)
+            .dst_subpass(0)
+            .src_stage_mask(vk::PipelineStageFlags::TRANSFER)
+            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .dst_access_mask(
+                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            );
+
+        let attachments = [color_attachment];
+        let subpasses = [subpass_description];
+        let dependencies = [subpass_dependency];
+        let render_pass_create_info = vk::RenderPassCreateInfo::default()
+            .attachments(&attachments)
+            .subpasses(&subpasses)
+            .dependencies(&dependencies);
+
+        device.create_render_pass(&render_pass_create_info)
     }
 
     fn create_render_pass(

@@ -17,6 +17,7 @@ use std::{cell::RefCell, error::Error, rc::Rc};
 
 pub fn create_radiance_engine(
     platform: &mut Platform,
+    options: crate::rendering::RenderingEngineOptions,
 ) -> Result<CoreRadianceEngine, Box<dyn Error>> {
     let ui_manager = Rc::new(UiManager::new(platform));
 
@@ -28,14 +29,32 @@ pub fn create_radiance_engine(
     #[cfg(any(linux, macos, android))]
     let window = platform.get_window();
 
+    // If the caller asked for Logical mode but did not supply an
+    // explicit extent, derive one from the live window. This keeps
+    // every host application from having to compute the same
+    // (physical / dpi_scale) value themselves.
+    #[allow(unused_mut)]
+    let mut options = options;
+    if matches!(
+        options.scene_scale_mode,
+        crate::rendering::SceneScaleMode::Logical
+    ) && options.logical_extent.is_none()
+    {
+        options.logical_extent = platform.logical_inner_extent();
+    }
+
     #[cfg(vulkan)]
     let rendering_engine = Rc::new(RefCell::new(crate::rendering::VulkanRenderingEngine::new(
         &window,
         &ui_manager.imgui_context(),
+        options,
     )?));
 
     #[cfg(vitagl)]
     let rendering_engine = Rc::new(RefCell::new(crate::rendering::VitaGLRenderingEngine::new()));
+
+    #[cfg(vitagl)]
+    let _ = options;
 
     #[cfg(target_os = "android")]
     {

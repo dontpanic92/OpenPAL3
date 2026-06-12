@@ -57,6 +57,13 @@ pub struct VulkanRenderingEngine {
     surface_entry: ash::khr::surface::Instance,
     debug_entry: ash::ext::debug_utils::Instance,
 
+    /// Logical scene-pass extent in pixels when
+    /// `SceneScaleMode::Logical` is configured at construction.
+    /// `None` for Native mode (the default). Stored so swapchain
+    /// recreation reuses the same value without re-querying the host
+    /// window.
+    logical_extent: Option<vk::Extent2D>,
+
     /// Per-in-flight-frame semaphores signaled by `acquire_next_image`
     /// (consumed by the matching submit's `wait_semaphores`).
     image_available_semaphores: [vk::Semaphore; MAX_FRAMES_IN_FLIGHT],
@@ -151,6 +158,11 @@ impl RenderingEngine for VulkanRenderingEngine {
     }
 
     fn view_extent(&self) -> (u32, u32) {
+        // In Logical mode the camera viewport / aspect must derive
+        // from the offscreen scene target, not the (HiDPI) swapchain.
+        if let Some(ext) = self.logical_extent.as_ref() {
+            return (ext.width, ext.height);
+        }
         (
             self.get_capabilities().unwrap().current_extent.width,
             self.get_capabilities().unwrap().current_extent.height,
@@ -434,6 +446,7 @@ impl VulkanRenderingEngine {
     pub fn new(
         window: &Window,
         imgui_context: &ImguiContext,
+        options: crate::rendering::RenderingEngineOptions,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let entry = unsafe { Rc::new(Entry::load().unwrap()) };
         let instance = Rc::new(Instance::new(entry.clone()));
@@ -499,6 +512,25 @@ impl VulkanRenderingEngine {
 
         let adhoc_command_runner =
             Rc::new(AdhocCommandRunner::new(device.clone(), command_pool, queue));
+        let logical_extent = match options.scene_scale_mode {
+            crate::rendering::SceneScaleMode::Logical => options.logical_extent.map(|(w, h)| {
+                vk::Extent2D {
+                    width: w.max(1),
+                    height: h.max(1),
+                }
+            }),
+            crate::rendering::SceneScaleMode::Native => None,
+        };
+        if matches!(
+            options.scene_scale_mode,
+            crate::rendering::SceneScaleMode::Logical
+        ) && logical_extent.is_none()
+        {
+            log::warn!(
+                "SceneScaleMode::Logical requested but no logical_extent supplied; \
+                 falling back to Native."
+            );
+        }
         let mut swapchain = SwapChain::new(
             &instance,
             device.clone(),
@@ -512,6 +544,7 @@ impl VulkanRenderingEngine {
             present_mode,
             &descriptor_manager,
             &adhoc_command_runner,
+            logical_extent,
         )
         .unwrap();
 
@@ -521,7 +554,7 @@ impl VulkanRenderingEngine {
             device.clone(),
             queue,
             command_pool,
-            swapchain.render_pass(),
+            swapchain.imgui_render_pass(),
             descriptor_manager.clone(),
             swapchain.images_len(),
             imgui_context,
@@ -620,6 +653,7 @@ impl VulkanRenderingEngine {
             scratch_cutout: Vec::new(),
             scratch_transparent: Vec::new(),
             scratch_transparent_ordered: Vec::new(),
+            logical_extent,
         };
 
         return Ok(vulkan);
@@ -696,11 +730,12 @@ impl VulkanRenderingEngine {
             self.present_mode,
             self.descriptor_manager(),
             &self.adhoc_command_runner,
+            self.logical_extent,
         )?;
         self.imgui
             .as_ref()
             .borrow_mut()
-            .set_render_pass(swapchain.render_pass())?;
+            .set_render_pass(swapchain.imgui_render_pass())?;
 
         swapchain.set_imgui(self.imgui.clone());
 

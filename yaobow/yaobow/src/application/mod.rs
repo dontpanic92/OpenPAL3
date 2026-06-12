@@ -337,7 +337,23 @@ fn ordinal_for_game(game: GameType) -> i32 {
 }
 
 pub fn create_application(opts: BootOptions) -> ComRc<IApplication> {
-    let app = ComRc::<IApplication>::from_object(Application::new());
+    // Read the user's persisted SceneScaleMode preference at boot and
+    // translate it into the radiance-side options. The actual logical
+    // extent is derived from the live window inside
+    // `create_radiance_engine` so the host doesn't have to plumb it.
+    let cfg = YaobowConfig::load();
+    let engine_options = radiance::rendering::RenderingEngineOptions {
+        scene_scale_mode: match cfg.scene_scale_mode() {
+            shared::config::SceneScaleMode::Native => {
+                radiance::rendering::SceneScaleMode::Native
+            }
+            shared::config::SceneScaleMode::Logical => {
+                radiance::rendering::SceneScaleMode::Logical
+            }
+        },
+        logical_extent: None,
+    };
+    let app = ComRc::<IApplication>::from_object(Application::with_options(engine_options));
     let mut loader = match opts.initial_game {
         Some(game) => YaobowApplicationLoader::new_with_initial_game(app.clone(), game),
         None => YaobowApplicationLoader::new(app.clone()),

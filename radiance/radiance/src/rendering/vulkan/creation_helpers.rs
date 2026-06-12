@@ -171,21 +171,14 @@ pub fn create_swapchain(
     format: SurfaceFormatKHR,
     present_mode: PresentModeKHR,
 ) -> VkResult<SwapchainKHR> {
-    let create_info = vk::SwapchainCreateInfoKHR::default()
-        .surface(surface)
-        .min_image_count(capabilities.min_image_count + 1)
-        .image_format(format.format)
-        .image_color_space(format.color_space)
-        .image_array_layers(1)
-        .image_extent(capabilities.current_extent)
-        .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
-        .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-        .pre_transform(capabilities.current_transform)
-        .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-        .present_mode(present_mode)
-        .clipped(true)
-        .old_swapchain(vk::SwapchainKHR::default());
-    unsafe { swapchain_device.create_swapchain(&create_info, None) }
+    create_swapchain_with_usage(
+        swapchain_device,
+        surface,
+        capabilities,
+        format,
+        present_mode,
+        vk::ImageUsageFlags::empty(),
+    )
 }
 
 pub fn create_image_views(
@@ -230,6 +223,61 @@ pub fn create_framebuffers(
             device.create_framebuffer(&create_info)
         })
         .collect()
+}
+
+/// Color-only framebuffers (no depth attachment) for use with the
+/// imgui-only render pass in `SceneScaleMode::Logical`. Each output
+/// framebuffer wraps exactly one swapchain image view.
+pub fn create_color_only_framebuffers(
+    device: &super::device::Device,
+    image_views: &Vec<ImageView>,
+    extent: &Extent2D,
+    render_pass: vk::RenderPass,
+) -> VkResult<Vec<vk::Framebuffer>> {
+    image_views
+        .iter()
+        .map(|view| {
+            let attachments = [view.vk_image_view()];
+            let create_info = vk::FramebufferCreateInfo::default()
+                .render_pass(render_pass)
+                .attachments(&attachments)
+                .layers(1)
+                .width(extent.width)
+                .height(extent.height);
+            device.create_framebuffer(&create_info)
+        })
+        .collect()
+}
+
+/// Variant of [`create_swapchain`] that lets the caller add extra
+/// usage flags beyond `COLOR_ATTACHMENT`. Used by the Logical-extent
+/// scene path, which needs `TRANSFER_DST` on swapchain images so the
+/// offscreen color result can be `vkCmdBlitImage`'d into them. Caller
+/// is responsible for verifying the flags against
+/// `surface_capabilities.supported_usage_flags`.
+pub fn create_swapchain_with_usage(
+    swapchain_device: &Swapchain,
+    surface: SurfaceKHR,
+    capabilities: SurfaceCapabilitiesKHR,
+    format: SurfaceFormatKHR,
+    present_mode: PresentModeKHR,
+    extra_usage: vk::ImageUsageFlags,
+) -> VkResult<SwapchainKHR> {
+    let create_info = vk::SwapchainCreateInfoKHR::default()
+        .surface(surface)
+        .min_image_count(capabilities.min_image_count + 1)
+        .image_format(format.format)
+        .image_color_space(format.color_space)
+        .image_array_layers(1)
+        .image_extent(capabilities.current_extent)
+        .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | extra_usage)
+        .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .pre_transform(capabilities.current_transform)
+        .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+        .present_mode(present_mode)
+        .clipped(true)
+        .old_swapchain(vk::SwapchainKHR::default());
+    unsafe { swapchain_device.create_swapchain(&create_info, None) }
 }
 
 fn enabled_layer_names() -> Vec<*const c_char> {

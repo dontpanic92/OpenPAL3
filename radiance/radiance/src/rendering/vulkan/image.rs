@@ -65,6 +65,21 @@ impl Image {
         )
     }
 
+    /// Variant of [`new_color_attachment_image`] that lets the caller
+    /// choose the pixel format and usage flags. Used by the Logical-
+    /// resolution scene path, which needs the offscreen color image to:
+    /// (a) match the swapchain's format so `vkCmdBlitImage` does not have
+    /// to format-convert, and (b) be usable as a transfer source.
+    pub fn new_color_attachment_image_with(
+        allocator: &Rc<vk_mem::Allocator>,
+        tex_width: u32,
+        tex_height: u32,
+        format: vk::Format,
+        usage: vk::ImageUsageFlags,
+    ) -> Result<Self, Box<dyn Error>> {
+        Self::new(allocator, tex_width, tex_height, format, usage, 1)
+    }
+
     pub fn new_depth_image(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,

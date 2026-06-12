@@ -39,3 +39,31 @@ pub use video_player::VideoPlayer;
 pub use vitagl::VitaGLRenderingEngine;
 #[cfg(vulkan)]
 pub use vulkan::VulkanRenderingEngine;
+
+/// Engine-side mirror of the user-facing `SceneScaleMode` flag. Lives
+/// here (rather than in the downstream `shared` crate) so the radiance
+/// engine has no upward dependency. The host application is expected
+/// to translate its user config into this enum at engine construction.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub enum SceneScaleMode {
+    /// Render the 3D scene at the physical swapchain extent. Default.
+    #[default]
+    Native,
+    /// Render the 3D scene at the supplied logical extent and upscale
+    /// (LINEAR blit) to the swapchain image. Imgui still renders at
+    /// the native swapchain extent.
+    Logical,
+}
+
+/// Rendering-engine construction options. Forwarded by
+/// `radiance::create_radiance_engine` into the active backend.
+#[derive(Copy, Clone, Debug, Default)]
+pub struct RenderingEngineOptions {
+    pub scene_scale_mode: SceneScaleMode,
+    /// Logical extent in pixels for `SceneScaleMode::Logical`. Must
+    /// be `Some` when `scene_scale_mode == Logical`; ignored
+    /// otherwise. The host application is responsible for deriving
+    /// this from its windowing system (e.g.
+    /// `window.inner_size() / scale_factor` on winit).
+    pub logical_extent: Option<(u32, u32)>,
+}

@@ -33,6 +33,12 @@ impl Platform {
         1.
     }
 
+    pub fn logical_inner_extent(&self) -> Option<(u32, u32)> {
+        // Vita has a fixed framebuffer; SceneScaleMode is not
+        // applicable on this backend.
+        None
+    }
+
     pub fn show_error_dialog(title: &str, msg: &str) {
         log::error!("panic: {}", msg);
 

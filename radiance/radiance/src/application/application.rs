@@ -54,6 +54,12 @@ pub struct Application {
     /// firing immediately, and by the run-loop tick to know when to
     /// run the one-shot drain.
     engine_ready: Rc<Cell<bool>>,
+    /// Rendering-engine construction options forwarded into
+    /// `radiance::create_radiance_engine` at first-resumed bootstrap.
+    /// Captured at `Application::with_options` time; defaults to a
+    /// Native-mode all-zero struct for the `Application::new()` path.
+    #[cfg_attr(any(linux, macos, android), allow(dead_code))]
+    engine_options: crate::rendering::RenderingEngineOptions,
 }
 
 ComObject_Application!(super::Application);
@@ -168,7 +174,12 @@ impl IApplicationImpl for Application {
             // returns. Bootstrap the engine inline so `engine_ready`
             // is true before the first tick, then drive the Win32
             // message pump.
-            Self::bootstrap_engine(&self.platform, &self.radiance_engine, &self.engine_ready);
+            Self::bootstrap_engine(
+                &self.platform,
+                &self.radiance_engine,
+                &self.engine_ready,
+                self.engine_options,
+            );
             self.platform.borrow().run_event_loop(tick);
         }
 
@@ -331,6 +342,10 @@ impl IApplicationExt for ComRc<crate::comdef::IApplication> {
 
 impl Application {
     pub fn new() -> Self {
+        Self::with_options(crate::rendering::RenderingEngineOptions::default())
+    }
+
+    pub fn with_options(options: crate::rendering::RenderingEngineOptions) -> Self {
         Self::set_panic_hook();
         let platform = Rc::new(RefCell::new(Platform::new()));
         let radiance_engine: Rc<RefCell<Option<Rc<RefCell<CoreRadianceEngine>>>>> =
@@ -360,6 +375,7 @@ impl Application {
             let platform_for_hook = platform.clone();
             let radiance_engine_for_hook = radiance_engine.clone();
             let engine_ready_for_hook = engine_ready.clone();
+            let options_for_hook = options;
             platform
                 .borrow_mut()
                 .set_window_ready_callback(Box::new(move |_window| {
@@ -367,6 +383,7 @@ impl Application {
                         &platform_for_hook,
                         &radiance_engine_for_hook,
                         &engine_ready_for_hook,
+                        options_for_hook,
                     );
                     // engine_ready_callbacks + component on_loadings are
                     // drained by the run-loop tick — see
@@ -384,6 +401,7 @@ impl Application {
             initialize_requested: Cell::new(false),
             engine_ready_callbacks,
             engine_ready,
+            engine_options: options,
         }
     }
 
@@ -397,8 +415,9 @@ impl Application {
         platform: &Rc<RefCell<Platform>>,
         radiance_engine: &Rc<RefCell<Option<Rc<RefCell<CoreRadianceEngine>>>>>,
         engine_ready: &Rc<Cell<bool>>,
+        options: crate::rendering::RenderingEngineOptions,
     ) {
-        let engine = radiance::create_radiance_engine(&mut platform.borrow_mut())
+        let engine = radiance::create_radiance_engine(&mut platform.borrow_mut(), options)
             .expect(constants::STR_FAILED_CREATE_RENDERING_ENGINE);
         *radiance_engine.borrow_mut() = Some(Rc::new(RefCell::new(engine)));
         engine_ready.set(true);

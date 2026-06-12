@@ -43,7 +43,19 @@ fn main() {
         };
     }
 
-    let app = ComRc::<IApplication>::from_object(Application::new());
+    let cfg = shared::config::YaobowConfig::load();
+    let engine_options = radiance::rendering::RenderingEngineOptions {
+        scene_scale_mode: match cfg.scene_scale_mode() {
+            shared::config::SceneScaleMode::Native => {
+                radiance::rendering::SceneScaleMode::Native
+            }
+            shared::config::SceneScaleMode::Logical => {
+                radiance::rendering::SceneScaleMode::Logical
+            }
+        },
+        logical_extent: None,
+    };
+    let app = ComRc::<IApplication>::from_object(Application::with_options(engine_options));
 
     // imgui ini + theme need the engine but must land BEFORE the
     // loader's `on_loading` so ScriptedWelcomePage::create sees a

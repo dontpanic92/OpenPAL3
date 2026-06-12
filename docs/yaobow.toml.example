@@ -12,6 +12,22 @@
 # Each [game.<id>] section holds per-game settings. Currently only
 # `asset_path` (the directory containing the original game install) is read.
 
+# [render] holds engine-wide rendering preferences shared by both
+# `yaobow` and `yaobow_editor`.
+#
+#   scene_scale_mode = "native"   # default; renders the 3D scene at
+#                                 # the physical swapchain extent
+#                                 # (sharpest, but pays the full HiDPI
+#                                 # fragment-shader cost on Retina /
+#                                 # 4K displays).
+#   scene_scale_mode = "logical"  # renders the 3D scene at the
+#                                 # window's logical extent and
+#                                 # upscales for presentation. Imgui
+#                                 # still renders at native, so UI
+#                                 # and text stay sharp.
+[render]
+scene_scale_mode = "native"
+
 [game.pal3]
 asset_path = "F:\\SteamLibrary\\steamapps\\common\\PAL3"
 

@@ -4,6 +4,7 @@ use super::image::Image;
 use super::image_view::ImageView;
 use super::pipeline_manager::PipelineManager;
 use super::render_object::VulkanRenderObject;
+use super::render_pass::RenderPass;
 use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
 use super::{adhoc_command_runner::AdhocCommandRunner, device::Device};
 use super::{
@@ -17,6 +18,178 @@ use ash::prelude::VkResult;
 use ash::vk;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+/// Optional auxiliary render path that draws the 3D scene at a lower
+/// (logical) resolution into an offscreen color image, then blits the
+/// result up to the acquired swapchain image (LINEAR filter) and lets
+/// imgui render at native swapchain resolution on top.
+///
+/// Owned by [`SwapChain`] when `SceneScaleMode::Logical` is active.
+/// Resources are per swapchain image so they pipeline cleanly with
+/// `MAX_FRAMES_IN_FLIGHT` and the per-image fence guard.
+struct LogicalRenderPath {
+    device: Rc<Device>,
+    logical_extent: vk::Extent2D,
+
+    /// Offscreen scene render pass. Final layout for the color
+    /// attachment is `TRANSFER_SRC_OPTIMAL` so the immediate next
+    /// command can blit it into the swapchain image without a manual
+    /// barrier.
+    offscreen_render_pass: RenderPass,
+    /// Imgui-only render pass that draws on top of the
+    /// already-populated swapchain image. Color attachment uses
+    /// `LOAD` op (preserve blit result), `initial_layout =
+    /// COLOR_ATTACHMENT_OPTIMAL` (caller barriers from
+    /// `TRANSFER_DST_OPTIMAL`), `final_layout = PRESENT_SRC_KHR`.
+    imgui_render_pass: RenderPass,
+
+    /// Per swapchain image. RAII through `Drop`.
+    _offscreen_color_images: Vec<Image>,
+    _offscreen_color_views: Vec<ImageView>,
+    _offscreen_depth_images: Vec<Image>,
+    _offscreen_depth_views: Vec<ImageView>,
+
+    /// Framebuffers for the offscreen scene pass — one per swapchain
+    /// image. Sized at `logical_extent`.
+    offscreen_framebuffers: Vec<vk::Framebuffer>,
+    /// Cached raw color image handles for `vkCmdBlitImage` source.
+    offscreen_color_image_handles: Vec<vk::Image>,
+    /// Framebuffers for the imgui-only pass — one per swapchain
+    /// image. Sized at swapchain `current_extent`.
+    imgui_framebuffers: Vec<vk::Framebuffer>,
+}
+
+impl LogicalRenderPath {
+    fn new(
+        instance: &Rc<Instance>,
+        device: Rc<Device>,
+        allocator: &Rc<vk_mem::Allocator>,
+        physical_device: vk::PhysicalDevice,
+        swapchain_format: vk::Format,
+        swapchain_image_views: &Vec<ImageView>,
+        swapchain_extent: vk::Extent2D,
+        logical_extent: vk::Extent2D,
+        command_runner: &Rc<AdhocCommandRunner>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let logical_extent = vk::Extent2D {
+            width: logical_extent.width.max(1),
+            height: logical_extent.height.max(1),
+        };
+
+        // Probe depth format once via a throw-away depth image (matches
+        // the swapchain's existing depth-format probing in `SwapChain::new`).
+        // Per-image depths are then created against the same format.
+        let probe_depth = Image::new_depth_image(
+            &instance.vk_instance(),
+            physical_device,
+            allocator,
+            logical_extent.width,
+            logical_extent.height,
+        )?;
+        let depth_format = probe_depth.vk_format();
+        drop(probe_depth);
+
+        let offscreen_render_pass =
+            RenderPass::new_offscreen_blit_src(device.clone(), swapchain_format, depth_format);
+        let imgui_render_pass = RenderPass::new_imgui_only(device.clone(), swapchain_format);
+
+        let image_count = swapchain_image_views.len();
+        let mut offscreen_color_images = Vec::with_capacity(image_count);
+        let mut offscreen_color_views = Vec::with_capacity(image_count);
+        let mut offscreen_depth_images = Vec::with_capacity(image_count);
+        let mut offscreen_depth_views = Vec::with_capacity(image_count);
+        let mut offscreen_framebuffers = Vec::with_capacity(image_count);
+        let mut offscreen_color_image_handles = Vec::with_capacity(image_count);
+
+        for _ in 0..image_count {
+            let mut color = Image::new_color_attachment_image_with(
+                allocator,
+                logical_extent.width,
+                logical_extent.height,
+                swapchain_format,
+                vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
+            )?;
+            // Transit once to UNDEFINED→COLOR_ATTACHMENT_OPTIMAL is not
+            // needed because the offscreen RP uses `initial_layout =
+            // UNDEFINED` (we clear on every frame). Leave the image in
+            // its default UNDEFINED state.
+            let _ = &mut color;
+
+            let color_view = ImageView::new_color_image_view(
+                device.clone(),
+                color.vk_image(),
+                swapchain_format,
+                1,
+            )?;
+
+            let mut depth = Image::new_depth_image(
+                &instance.vk_instance(),
+                physical_device,
+                allocator,
+                logical_extent.width,
+                logical_extent.height,
+            )?;
+            depth.transit_layout(
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                command_runner,
+            )?;
+            let depth_view = ImageView::new_depth_image_view(
+                device.clone(),
+                depth.vk_image(),
+                depth.vk_format(),
+            )?;
+
+            let attachments = [color_view.vk_image_view(), depth_view.vk_image_view()];
+            let fb_info = vk::FramebufferCreateInfo::default()
+                .render_pass(offscreen_render_pass.vk_render_pass())
+                .attachments(&attachments)
+                .layers(1)
+                .width(logical_extent.width)
+                .height(logical_extent.height);
+            let fb = device.create_framebuffer(&fb_info)?;
+
+            offscreen_color_image_handles.push(color.vk_image());
+            offscreen_color_images.push(color);
+            offscreen_color_views.push(color_view);
+            offscreen_depth_images.push(depth);
+            offscreen_depth_views.push(depth_view);
+            offscreen_framebuffers.push(fb);
+        }
+
+        let imgui_framebuffers = creation_helpers::create_color_only_framebuffers(
+            &device,
+            swapchain_image_views,
+            &swapchain_extent,
+            imgui_render_pass.vk_render_pass(),
+        )?;
+
+        Ok(Self {
+            device,
+            logical_extent,
+            offscreen_render_pass,
+            imgui_render_pass,
+            _offscreen_color_images: offscreen_color_images,
+            _offscreen_color_views: offscreen_color_views,
+            _offscreen_depth_images: offscreen_depth_images,
+            _offscreen_depth_views: offscreen_depth_views,
+            offscreen_framebuffers,
+            offscreen_color_image_handles,
+            imgui_framebuffers,
+        })
+    }
+}
+
+impl Drop for LogicalRenderPath {
+    fn drop(&mut self) {
+        for fb in self.offscreen_framebuffers.drain(..) {
+            self.device.destroy_framebuffer(fb);
+        }
+        for fb in self.imgui_framebuffers.drain(..) {
+            self.device.destroy_framebuffer(fb);
+        }
+    }
+}
 
 pub struct SwapChain {
     device: Rc<Device>,
@@ -39,6 +212,13 @@ pub struct SwapChain {
     render_pass: vk::RenderPass,
     imgui: Option<Rc<RefCell<ImguiRenderer>>>,
 
+    /// `Some` when `SceneScaleMode::Logical` is active. Holds the
+    /// offscreen scene target + dedicated imgui render pass + auxiliary
+    /// framebuffers used by `record_command_buffers`'s logical path.
+    /// `None` keeps the original Native path (scene + imgui combined
+    /// into one render pass).
+    logical: Option<LogicalRenderPath>,
+
     device_fn: ash::khr::swapchain::Device,
 }
 
@@ -56,6 +236,7 @@ impl SwapChain {
         present_mode: vk::PresentModeKHR,
         descriptor_manager: &Rc<DescriptorManager>,
         command_runner: &Rc<AdhocCommandRunner>,
+        logical_extent: Option<vk::Extent2D>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Make it at least 1x1 pixel for images
         capabilities.current_extent.width = capabilities.current_extent.width.max(1);
@@ -63,12 +244,33 @@ impl SwapChain {
 
         let device_fn =
             ash::khr::swapchain::Device::new(&instance.vk_instance(), &device.vk_device());
-        let handle = creation_helpers::create_swapchain(
+        // In Logical mode we blit into the swapchain image, which
+        // requires TRANSFER_DST usage. Verify the surface supports it
+        // before requesting; otherwise fall back to Native to avoid
+        // swapchain-creation failure on a restricted platform.
+        let want_transfer_dst = logical_extent.is_some();
+        let supports_transfer_dst = capabilities
+            .supported_usage_flags
+            .contains(vk::ImageUsageFlags::TRANSFER_DST);
+        let use_logical = want_transfer_dst && supports_transfer_dst;
+        if want_transfer_dst && !supports_transfer_dst {
+            log::warn!(
+                "SceneScaleMode::Logical requested but surface does not advertise \
+                 TRANSFER_DST usage; falling back to Native rendering."
+            );
+        }
+        let extra_usage = if use_logical {
+            vk::ImageUsageFlags::TRANSFER_DST
+        } else {
+            vk::ImageUsageFlags::empty()
+        };
+        let handle = creation_helpers::create_swapchain_with_usage(
             &device_fn,
             surface,
             capabilities,
             format,
             present_mode,
+            extra_usage,
         )?;
 
         let images = unsafe { device_fn.get_swapchain_images(handle)? };
@@ -139,6 +341,32 @@ impl SwapChain {
             device.allocate_command_buffers(&create_info)?
         };
 
+        let logical = if use_logical {
+            let ext = logical_extent.unwrap();
+            match LogicalRenderPath::new(
+                instance,
+                device.clone(),
+                allocator,
+                physical_device,
+                format.format,
+                &image_views,
+                capabilities.current_extent,
+                ext,
+                command_runner,
+            ) {
+                Ok(l) => Some(l),
+                Err(e) => {
+                    log::error!(
+                        "SceneScaleMode::Logical setup failed ({}); falling back to Native.",
+                        e
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             device,
             descriptor_manager: descriptor_manager.clone(),
@@ -157,12 +385,40 @@ impl SwapChain {
             pipeline_manager,
             render_pass,
             imgui: None,
+            logical,
             device_fn,
         })
     }
 
     pub fn render_pass(&self) -> vk::RenderPass {
         self.render_pass
+    }
+
+    /// Render pass the imgui renderer should be configured against. In
+    /// Native mode this matches `render_pass()` (the combined scene+ui
+    /// pass). In Logical mode this is the dedicated imgui-only render
+    /// pass that draws on top of the blitted scene.
+    pub fn imgui_render_pass(&self) -> vk::RenderPass {
+        match &self.logical {
+            Some(l) => l.imgui_render_pass.vk_render_pass(),
+            None => self.render_pass,
+        }
+    }
+
+    /// Logical scene extent in pixels when `SceneScaleMode::Logical` is
+    /// active; otherwise the swapchain `current_extent`. Exposed for
+    /// diagnostics / future callers.
+    #[allow(dead_code)]
+    pub fn scene_extent(&self) -> vk::Extent2D {
+        match &self.logical {
+            Some(l) => l.logical_extent,
+            None => self.capabilities.current_extent,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn is_logical_mode(&self) -> bool {
+        self.logical.is_some()
     }
 
     pub fn set_imgui(&mut self, imgui: Rc<RefCell<ImguiRenderer>>) {
@@ -237,7 +493,6 @@ impl SwapChain {
         ui_frame: ImguiFrame,
     ) -> Result<vk::CommandBuffer, vk::Result> {
         let command_buffer = self.command_buffers[image_index];
-        let framebuffer = self.framebuffers[image_index];
         let per_frame_descriptor_set = self.per_frame_descriptor_sets[image_index];
 
         let begin_info = vk::CommandBufferBeginInfo::default()
@@ -262,40 +517,146 @@ impl SwapChain {
                 },
             },
         ];
-        let render_pass_begin_info = vk::RenderPassBeginInfo::default()
-            .render_pass(self.pipeline_manager.render_pass().vk_render_pass())
-            .framebuffer(framebuffer)
+
+        if self.logical.is_some() {
+            self.record_logical_path(
+                command_buffer,
+                image_index,
+                per_frame_descriptor_set,
+                opaque_objects,
+                cutout_objects,
+                transparent_objects,
+                dub_manager,
+                viewport,
+                ui_frame,
+                &clear_values,
+            )?;
+        } else {
+            let framebuffer = self.framebuffers[image_index];
+            let render_pass_begin_info = vk::RenderPassBeginInfo::default()
+                .render_pass(self.pipeline_manager.render_pass().vk_render_pass())
+                .framebuffer(framebuffer)
+                .render_area(
+                    vk::Rect2D::default()
+                        .offset(vk::Offset2D::default().x(0).y(0))
+                        .extent(self.capabilities.current_extent),
+                )
+                .clear_values(&clear_values);
+
+            self.device.cmd_begin_render_pass(
+                command_buffer,
+                &render_pass_begin_info,
+                vk::SubpassContents::INLINE,
+            );
+
+            if let Viewport::CustomViewport(rect) = viewport {
+                self.device.cmd_set_viewport(command_buffer, rect);
+            } else if let Viewport::FullExtent(rect) = viewport {
+                self.device.cmd_set_viewport(command_buffer, rect);
+            }
+
+            // Three transparency buckets are submitted in order:
+            //   1. Opaque   (blend off, depth-write on) — grouped by MaterialKey
+            //      to minimize pipeline switches.
+            //   2. Cutout   (AlphaTest: blend off, discard) — same grouping.
+            //   3. Transparent (AlphaBlend/Additive/Multiply: depth-write off) —
+            //      drawn in the order received (caller back-to-front-sorts);
+            //      neighboring objects sharing a material are still grouped.
+            //
+            // Set 0 (per-frame UBO) is bound exactly once below — it has no
+            // dynamic offset and identical layout across every material's
+            // pipeline layout, so a single bind is valid for the whole frame.
+            // See `draw_groups` for the set 1/2/3 rebind cadence.
+            self.bind_per_frame_set_if_any(
+                command_buffer,
+                per_frame_descriptor_set,
+                opaque_objects,
+                cutout_objects,
+                transparent_objects,
+            );
+            self.draw_bucket_grouped(command_buffer, opaque_objects, dub_manager);
+            self.draw_bucket_grouped(command_buffer, cutout_objects, dub_manager);
+            self.draw_bucket_ordered(command_buffer, transparent_objects, dub_manager);
+
+            self.imgui
+                .as_ref()
+                .unwrap()
+                .borrow_mut()
+                .record_command_buffer(ui_frame, command_buffer);
+
+            self.device.cmd_end_render_pass(command_buffer);
+        }
+
+        self.device.end_command_buffer(command_buffer)?;
+
+        Ok(command_buffer)
+    }
+
+    /// Record a command buffer that renders `opaque`/`cutout`/`transparent`
+    /// objects into an externally-owned framebuffer (typically a
+    /// `VulkanRenderTarget`). No imgui pass; the caller decides the
+    /// Logical-mode recording: scene → offscreen (LINEAR-upscale-)
+    /// blit → swapchain → imgui on top. Caller has already begun the
+    /// command buffer; this method must NOT end it (the outer
+    /// `record_command_buffers` calls `end_command_buffer`).
+    #[allow(clippy::too_many_arguments)]
+    fn record_logical_path(
+        &mut self,
+        command_buffer: vk::CommandBuffer,
+        image_index: usize,
+        per_frame_descriptor_set: vk::DescriptorSet,
+        opaque_objects: &[Rc<VulkanRenderObject>],
+        cutout_objects: &[Rc<VulkanRenderObject>],
+        transparent_objects: &[Rc<VulkanRenderObject>],
+        dub_manager: &DynamicUniformBufferManager,
+        _viewport: Viewport,
+        ui_frame: ImguiFrame,
+        clear_values: &[vk::ClearValue],
+    ) -> Result<(), vk::Result> {
+        // SAFETY: caller only enters this branch when `self.logical`
+        // is `Some` (checked in `record_command_buffers`).
+        let logical = self.logical.as_ref().unwrap();
+        let logical_extent = logical.logical_extent;
+        let offscreen_fb = logical.offscreen_framebuffers[image_index];
+        let offscreen_rp = logical.offscreen_render_pass.vk_render_pass();
+        let offscreen_color = logical.offscreen_color_image_handles[image_index];
+        let imgui_fb = logical.imgui_framebuffers[image_index];
+        let imgui_rp = logical.imgui_render_pass.vk_render_pass();
+        let swapchain_image = self.images[image_index];
+        let swapchain_extent = self.capabilities.current_extent;
+
+        // ----- 1. Offscreen scene pass -----
+        let scene_begin = vk::RenderPassBeginInfo::default()
+            .render_pass(offscreen_rp)
+            .framebuffer(offscreen_fb)
             .render_area(
                 vk::Rect2D::default()
                     .offset(vk::Offset2D::default().x(0).y(0))
-                    .extent(self.capabilities.current_extent),
+                    .extent(logical_extent),
             )
-            .clear_values(&clear_values);
-
+            .clear_values(clear_values);
         self.device.cmd_begin_render_pass(
             command_buffer,
-            &render_pass_begin_info,
+            &scene_begin,
             vk::SubpassContents::INLINE,
         );
 
-        if let Viewport::CustomViewport(rect) = viewport {
-            self.device.cmd_set_viewport(command_buffer, rect);
-        } else if let Viewport::FullExtent(rect) = viewport {
-            self.device.cmd_set_viewport(command_buffer, rect);
-        }
+        // Viewport always covers the full logical extent. The camera's
+        // aspect / projection has already been set by `core_engine` to
+        // match `view_extent()`, which returns `logical_extent` in this
+        // mode — so we ignore the caller-supplied `Viewport::*` rect
+        // (which is itself derived from `view_extent()` and would just
+        // produce the same rect).
+        self.device.cmd_set_viewport(
+            command_buffer,
+            crate::math::Rect::new(
+                0.0,
+                0.0,
+                logical_extent.width as f32,
+                logical_extent.height as f32,
+            ),
+        );
 
-        // Three transparency buckets are submitted in order:
-        //   1. Opaque   (blend off, depth-write on) — grouped by MaterialKey
-        //      to minimize pipeline switches.
-        //   2. Cutout   (AlphaTest: blend off, discard) — same grouping.
-        //   3. Transparent (AlphaBlend/Additive/Multiply: depth-write off) —
-        //      drawn in the order received (caller back-to-front-sorts);
-        //      neighboring objects sharing a material are still grouped.
-        //
-        // Set 0 (per-frame UBO) is bound exactly once below — it has no
-        // dynamic offset and identical layout across every material's
-        // pipeline layout, so a single bind is valid for the whole frame.
-        // See `draw_groups` for the set 1/2/3 rebind cadence.
         self.bind_per_frame_set_if_any(
             command_buffer,
             per_frame_descriptor_set,
@@ -307,16 +668,123 @@ impl SwapChain {
         self.draw_bucket_grouped(command_buffer, cutout_objects, dub_manager);
         self.draw_bucket_ordered(command_buffer, transparent_objects, dub_manager);
 
+        self.device.cmd_end_render_pass(command_buffer);
+        // Offscreen color is now in TRANSFER_SRC_OPTIMAL (RP final
+        // layout). No barrier needed before blit.
+
+        // ----- 2. Transition swapchain image UNDEFINED → TRANSFER_DST_OPTIMAL -----
+        let color_subresource = vk::ImageSubresourceRange::default()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .base_mip_level(0)
+            .level_count(1)
+            .base_array_layer(0)
+            .layer_count(1);
+
+        let to_transfer_dst = vk::ImageMemoryBarrier::default()
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(swapchain_image)
+            .subresource_range(color_subresource);
+
+        self.device.cmd_pipeline_barrier(
+            command_buffer,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::DependencyFlags::empty(),
+            &[],
+            &[],
+            &[to_transfer_dst],
+        );
+
+        // ----- 3. Blit offscreen → swapchain (LINEAR upscale) -----
+        let src_offsets = [
+            vk::Offset3D { x: 0, y: 0, z: 0 },
+            vk::Offset3D {
+                x: logical_extent.width as i32,
+                y: logical_extent.height as i32,
+                z: 1,
+            },
+        ];
+        let dst_offsets = [
+            vk::Offset3D { x: 0, y: 0, z: 0 },
+            vk::Offset3D {
+                x: swapchain_extent.width as i32,
+                y: swapchain_extent.height as i32,
+                z: 1,
+            },
+        ];
+        let blit_subresource = vk::ImageSubresourceLayers::default()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .mip_level(0)
+            .base_array_layer(0)
+            .layer_count(1);
+        let blit = vk::ImageBlit::default()
+            .src_subresource(blit_subresource)
+            .dst_subresource(blit_subresource)
+            .src_offsets(src_offsets)
+            .dst_offsets(dst_offsets);
+
+        unsafe {
+            self.device.vk_device().cmd_blit_image(
+                command_buffer,
+                offscreen_color,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                swapchain_image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[blit],
+                vk::Filter::LINEAR,
+            );
+        }
+
+        // ----- 4. Transition swapchain image TRANSFER_DST → COLOR_ATTACHMENT_OPTIMAL -----
+        let to_color = vk::ImageMemoryBarrier::default()
+            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .dst_access_mask(
+                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            )
+            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(swapchain_image)
+            .subresource_range(color_subresource);
+        self.device.cmd_pipeline_barrier(
+            command_buffer,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            vk::DependencyFlags::empty(),
+            &[],
+            &[],
+            &[to_color],
+        );
+
+        // ----- 5. Imgui-only pass on swapchain image -----
+        let imgui_begin = vk::RenderPassBeginInfo::default()
+            .render_pass(imgui_rp)
+            .framebuffer(imgui_fb)
+            .render_area(
+                vk::Rect2D::default()
+                    .offset(vk::Offset2D::default().x(0).y(0))
+                    .extent(swapchain_extent),
+            );
+        // No clear values: LOAD op preserves the blit result.
+        self.device.cmd_begin_render_pass(
+            command_buffer,
+            &imgui_begin,
+            vk::SubpassContents::INLINE,
+        );
         self.imgui
             .as_ref()
             .unwrap()
             .borrow_mut()
             .record_command_buffer(ui_frame, command_buffer);
-
         self.device.cmd_end_render_pass(command_buffer);
-        self.device.end_command_buffer(command_buffer)?;
 
-        Ok(command_buffer)
+        Ok(())
     }
 
     /// Record a command buffer that renders `opaque`/`cutout`/`transparent`

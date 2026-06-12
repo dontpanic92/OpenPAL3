@@ -139,6 +139,18 @@ impl IConfigServiceImpl for ConfigService {
         // SAFETY: see ConfigService::get_asset_path.
         unsafe { (*self.last_string.as_ptr()).as_str() }
     }
+
+    fn get_scene_scale_mode(&self) -> &str {
+        let value = self.config.borrow().scene_scale_mode().as_str().to_string();
+        *self.last_string.borrow_mut() = value;
+        // SAFETY: see ConfigService::get_asset_path.
+        unsafe { (*self.last_string.as_ptr()).as_str() }
+    }
+
+    fn set_scene_scale_mode(&self, mode: &str) {
+        let parsed = crate::config::SceneScaleMode::from_str(mode);
+        self.config.borrow_mut().set_scene_scale_mode(parsed);
+    }
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]

@@ -530,7 +530,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirecto
             title_consts.SC_WINDOW_BG,
             title_consts.BG_R, title_consts.BG_G, title_consts.BG_B, title_consts.BG_A,
             () => {
-                ui.window_centered("游戏路径设置", 820.0, 360.0, () => {
+                ui.window_centered("游戏路径设置", 820.0, 460.0, () => {
                     ui.style_color(title_consts.SC_TEXT, 0.1, 0.1, 0.1, 1.0, () => {
                         ui.text_with_font(title_consts.FONT_DEFAULT, "游戏资源路径设置");
                         ui.dummy(0.0, 12.0);
@@ -542,6 +542,8 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirecto
                                 self.render_row(ui, title_consts.GAME_SWDHC);
                             });
                             ui.dummy(0.0, 16.0);
+                            self.render_render_settings(ui);
+                            ui.dummy(0.0, 8.0);
                             ui.table("title.settings.footer", 2, () => {
                                 ui.table_next_column();
                                 if ui.button("保存并返回", 200.0, 32.0) {
@@ -575,6 +577,30 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirecto
         if ui.button(f"清除##title_clear_{ordinal}", 80.0, 24.0) {
             self.intent = title_consts.INTENT_CLEAR_PATH;
             self.intent_arg = ordinal;
+        }
+    }
+
+    // Render-options block: scene scale mode toggle (Native vs Logical).
+    // Changes take effect on next launch — the engine reads
+    // `SceneScaleMode` once at startup and builds its swapchain
+    // accordingly; live-swapping render passes mid-frame is out of
+    // scope for v1.
+    pub fn render_render_settings(self: ref<Self>, ui: box<radiance.IUiHost>) {
+        let cfg = self.host.config();
+        let current = cfg.get_scene_scale_mode();
+        let is_logical = current == "logical";
+        ui.text("渲染选项");
+        ui.dummy(0.0, 4.0);
+        let new_logical = ui.checkbox(
+            "使用逻辑分辨率渲染 (H需重启生效)",
+            is_logical,
+        );
+        if new_logical != is_logical {
+            if new_logical {
+                cfg.set_scene_scale_mode("logical");
+            } else {
+                cfg.set_scene_scale_mode("native");
+            }
         }
     }
 

@@ -180,6 +180,21 @@ impl Platform {
         self.dpi_scale.get()
     }
 
+    /// Logical pixel extent of the window's inner client area. Returns
+    /// `None` before the first `resumed` (no window yet). On winit,
+    /// physical inner_size is divided by `scale_factor` to drop HiDPI
+    /// scaling — e.g. a 1280×960 window on a 2× Retina returns
+    /// `(1280, 960)`, while the underlying surface extent is 2560×1920.
+    pub fn logical_inner_extent(&self) -> Option<(u32, u32)> {
+        let window = self.window.borrow();
+        let window = window.as_ref()?;
+        let scale = self.dpi_scale.get().max(0.0001) as f64;
+        let physical = window.inner_size();
+        let w = ((physical.width as f64) / scale).round() as u32;
+        let h = ((physical.height as f64) / scale).round() as u32;
+        Some((w.max(1), h.max(1)))
+    }
+
     /// Set the window title. No-ops gracefully when called before the
     /// window exists (no current caller does, but the panic-free
     /// behaviour avoids surprises in tests / future callers).

@@ -22,6 +22,59 @@ pub struct UiConfig {
     pub theme: String,
 }
 
+/// Resolution at which the 3D scene is rasterized. `Native` (default)
+/// renders straight into the swapchain image (= physical pixels, so
+/// on HiDPI displays a 2× Retina pays ~4× the per-frame pixel cost).
+/// `Logical` renders the scene into an offscreen target sized to the
+/// window's logical extent and upscales it for presentation, keeping
+/// imgui at native resolution so UI/text stays sharp.
+///
+/// The runtime engine reads this on startup. Toggling at runtime
+/// requires the engine to rebuild its offscreen target; see the
+/// `IConfigService` setter for the hot-reload contract.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SceneScaleMode {
+    /// Render the scene at the physical swapchain extent (current
+    /// behavior; preserves the sharpest 3D image at the cost of
+    /// HiDPI fragment-shader work).
+    #[default]
+    Native,
+    /// Render the scene at the window's logical extent, then upscale
+    /// to the swapchain image. Trades some 3D sharpness for a large
+    /// fragment-cost reduction on HiDPI displays.
+    Logical,
+}
+
+impl SceneScaleMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SceneScaleMode::Native => "native",
+            SceneScaleMode::Logical => "logical",
+        }
+    }
+
+    /// Parses the snake_case forms persisted in TOML. Unknown values
+    /// fall back to `Native` so a typo in the config file never breaks
+    /// rendering.
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "logical" => SceneScaleMode::Logical,
+            _ => SceneScaleMode::Native,
+        }
+    }
+}
+
+/// Engine-wide rendering preferences. Stored under `[render]` in
+/// `yaobow.toml`.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct RenderConfig {
+    /// See [`SceneScaleMode`]. Defaults to `Native` to preserve the
+    /// historical behavior for existing installs.
+    #[serde(default)]
+    pub scene_scale_mode: SceneScaleMode,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct YaobowConfig {
     #[serde(default)]
@@ -34,6 +87,11 @@ pub struct YaobowConfig {
     /// UI preferences for the `yaobow_editor`.
     #[serde(default)]
     pub editor: UiConfig,
+
+    /// Rendering preferences shared by both the game runtime and the
+    /// editor previewer.
+    #[serde(default)]
+    pub render: RenderConfig,
 }
 
 impl YaobowConfig {
@@ -132,6 +190,19 @@ impl YaobowConfig {
             _ => log::warn!("ignoring set_theme for unknown config_key '{}'", config_key),
         }
     }
+
+    /// Current scene-render scale mode. See [`SceneScaleMode`].
+    pub fn scene_scale_mode(&self) -> SceneScaleMode {
+        self.render.scene_scale_mode
+    }
+
+    /// Persist a new scene-render scale mode. Callers are responsible
+    /// for triggering any engine-side recreate (typically through
+    /// `IConfigService::save` + a `restart-required` UX, or a future
+    /// engine hot-reload hook).
+    pub fn set_scene_scale_mode(&mut self, mode: SceneScaleMode) {
+        self.render.scene_scale_mode = mode;
+    }
 }
 
 #[cfg(test)]
@@ -207,6 +278,59 @@ mod tests {
             assert_eq!(loaded.theme_for("editor"), "blender_dark");
             assert_eq!(loaded.theme_for("yaobow"), "yaobow");
             assert_eq!(loaded.theme_for("unknown"), "");
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn scene_scale_mode_default_is_native() {
+        let cfg = YaobowConfig::default();
+        assert_eq!(cfg.scene_scale_mode(), SceneScaleMode::Native);
+    }
+
+    #[test]
+    fn scene_scale_mode_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("yaobow-cfg-test-ss-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("yaobow.toml");
+        with_env_override(&path, || {
+            let mut cfg = YaobowConfig::default();
+            cfg.set_scene_scale_mode(SceneScaleMode::Logical);
+            cfg.save().unwrap();
+
+            let loaded = YaobowConfig::load();
+            assert_eq!(loaded.scene_scale_mode(), SceneScaleMode::Logical);
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn scene_scale_mode_from_str_falls_back_to_native() {
+        assert_eq!(SceneScaleMode::from_str("native"), SceneScaleMode::Native);
+        assert_eq!(SceneScaleMode::from_str("logical"), SceneScaleMode::Logical);
+        assert_eq!(SceneScaleMode::from_str("garbage"), SceneScaleMode::Native);
+        assert_eq!(SceneScaleMode::from_str(""), SceneScaleMode::Native);
+    }
+
+    #[test]
+    fn scene_scale_mode_unknown_value_in_toml_falls_back_to_native() {
+        // Defensive: a corrupt or hand-edited TOML must not break
+        // rendering. serde would normally reject the unknown variant
+        // and zero the whole render section back to its default,
+        // which still yields `Native`. This pins that behavior.
+        let dir = std::env::temp_dir().join(format!("yaobow-cfg-test-ssbad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("yaobow.toml");
+        std::fs::write(
+            &path,
+            "[render]\nscene_scale_mode = \"definitely_not_a_mode\"\n",
+        )
+        .unwrap();
+        with_env_override(&path, || {
+            let loaded = YaobowConfig::load();
+            assert_eq!(loaded.scene_scale_mode(), SceneScaleMode::Native);
         });
         let _ = std::fs::remove_dir_all(&dir);
     }

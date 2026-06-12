@@ -156,6 +156,21 @@ impl Platform {
         self.dpi_scale
     }
 
+    /// Logical pixel extent of the window's inner client area. On
+    /// Win32 we divide the client rect by the cached DPI scale —
+    /// returns the same value as `size()` when scale is 1.0.
+    pub fn logical_inner_extent(&self) -> Option<(u32, u32)> {
+        let mut rc: winapi::shared::windef::RECT = unsafe { std::mem::zeroed() };
+        let ok = unsafe { winuser::GetClientRect(self.hwnd, &mut rc) };
+        if ok == 0 {
+            return None;
+        }
+        let scale = (self.dpi_scale as f64).max(0.0001);
+        let w = (((rc.right - rc.left) as f64) / scale).round() as u32;
+        let h = (((rc.bottom - rc.top) as f64) / scale).round() as u32;
+        Some((w.max(1), h.max(1)))
+    }
+
     pub fn set_title(&self, title: &str) {
         let title_w = utf16_z(title);
         unsafe {

@@ -203,6 +203,15 @@ interface IConfigService: IUnknown {
     // `available_theme_count()`; out-of-range indices return "".
     int available_theme_count();
     &str available_theme_at(int index);
+
+    // Scene-rendering scale mode persisted under `[render]` in
+    // `yaobow.toml`. Returned/accepted as the lowercase enum string
+    // ("native" or "logical"); other values silently behave as
+    // "native". The engine reads this value once at startup, so a
+    // change here only takes effect after the user restarts the
+    // application — pair with a "restart required" UI hint.
+    &str get_scene_scale_mode();
+    void set_scene_scale_mode(&str mode);
 }
 
 // Cross-cutting RNG utility surfaced through `IHostContext.random()`.
