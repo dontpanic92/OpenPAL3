@@ -3,6 +3,7 @@ use radiance::application::Application;
 use radiance::comdef::{IApplication, IApplicationExt, IApplicationLoaderComponent};
 use radiance_editor::application::EditorApplicationLoader;
 use shared::GameType;
+use shared::video::register_opengb_video_decoders;
 use yaobow_editor::config;
 use yaobow_editor::directors::ScriptedWelcomePage;
 
@@ -15,6 +16,13 @@ fn main() {
     let logger = logger.with_utc_timestamps();
 
     logger.init().unwrap();
+
+    // Register video codec decoders (Bik via ffmpeg) so the editor's
+    // `IPreviewerHub.open_video` can actually construct a stream;
+    // without this `radiance::video::create_stream` finds no entry in
+    // `VIDEO_DECODER_MAP` and clicking a `.bik` resource silently
+    // returns null.
+    register_opengb_video_decoders();
 
     // let mut line = String::new();
     // let stdin = std::io::stdin();

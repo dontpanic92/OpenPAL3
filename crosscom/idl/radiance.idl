@@ -431,6 +431,22 @@ interface IUiHost: IUnknown {
     void text(&str s);
     void text_with_font(int font_idx, &str s);
     bool button(&str label, float w, float h);
+
+    // Checkbox widget. Returns the (possibly modified) bool value for
+    // this frame. Stateless from the host's perspective — the script
+    // owns persistent state and feeds it in each frame.
+    bool checkbox(&str label, bool value);
+
+    // Integer slider. Returns the (possibly modified) value clamped to
+    // `[min, max]`. Set width via `set_next_item_width` beforehand to
+    // size the slider; otherwise imgui picks a default width.
+    int slider_int(&str label, int value, int min, int max);
+
+    // Sets the width of the next widget. Pass a negative value (e.g.
+    // -1.0) to expand to the available region. Affects exactly one
+    // subsequent leaf widget.
+    void set_next_item_width(float w);
+
     void image(int texture_com_id, float w, float h);
     void image_fit(int texture_com_id, float src_w, float src_h);
 

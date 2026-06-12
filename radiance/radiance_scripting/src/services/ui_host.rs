@@ -482,6 +482,32 @@ impl IUiHostImpl for ImguiUiHost {
         .unwrap_or(false)
     }
 
+    fn checkbox(&self, label: &str, value: bool) -> bool {
+        with_frame("checkbox", |f| {
+            let mut v = value;
+            f.ui.checkbox(label, &mut v);
+            v
+        })
+        .unwrap_or(value)
+    }
+
+    fn slider_int(&self, label: &str, value: i32, min: i32, max: i32) -> i32 {
+        with_frame("slider_int", |f| {
+            let (lo, hi) = if min <= max { (min, max) } else { (max, min) };
+            let mut v = value.clamp(lo, hi);
+            f.ui.slider_config(label, lo, hi).build(&mut v);
+            v
+        })
+        .unwrap_or(value)
+    }
+
+    fn set_next_item_width(&self, w: f32) {
+        let _ = with_frame("set_next_item_width", |f| {
+            let scaled = if w >= 0.0 { f.scaled_size(w, 0.0)[0] } else { w };
+            f.ui.set_next_item_width(scaled);
+        });
+    }
+
     fn image(&self, texture_com_id: i32, w: f32, h: f32) {
         let _ = with_frame("image", |f| {
             let [w, h] = f.scaled_size(w, h);

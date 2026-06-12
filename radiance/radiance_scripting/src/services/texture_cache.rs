@@ -30,6 +30,18 @@ pub struct ImguiTextureCache {
     /// the time any consumer observes the cache state, queued forgets
     /// have been applied.
     pending_forgets: Rc<RefCell<Vec<i64>>>,
+    /// External texture-id updates queued by handles that produce a
+    /// fresh `imgui::TextureId` every frame (e.g. `VideoHandle`) and
+    /// therefore can't borrow the cache directly from inside an
+    /// active imgui frame — the pump holds the outer
+    /// `Rc<RefCell<ImguiTextureCache>>` in `borrow_mut()` for the
+    /// whole frame, so any nested `cache.borrow_mut()` would panic.
+    /// Producers push `(com_id, texture_id)` here from their COM
+    /// methods; the cache drains the queue on its next `&mut self`
+    /// access — which always precedes a `resolve(com_id)` because
+    /// `image*` widgets call `resolve` through the same exclusive
+    /// borrow held by the pump.
+    pending_external_updates: Rc<RefCell<Vec<(i64, TextureId)>>>,
 }
 
 impl ImguiTextureCache {
@@ -38,6 +50,7 @@ impl ImguiTextureCache {
             factory,
             cache: HashMap::new(),
             pending_forgets: Rc::new(RefCell::new(Vec::new())),
+            pending_external_updates: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -50,7 +63,14 @@ impl ImguiTextureCache {
         self.pending_forgets.clone()
     }
 
-    fn drain_pending_forgets(&mut self) {
+    /// Shared queue handle for `set_external`-equivalent updates that
+    /// must happen mid-frame (when the cache is borrowed by the
+    /// imgui pump). See `pending_external_updates` field doc.
+    pub fn pending_external_updates_sink(&self) -> Rc<RefCell<Vec<(i64, TextureId)>>> {
+        self.pending_external_updates.clone()
+    }
+
+    fn drain_pending(&mut self) {
         // Take ownership of the queued ids before iterating so handlers
         // that drop other handles re-entrantly can append to the queue
         // without aliasing the iterator.
@@ -58,6 +78,21 @@ impl ImguiTextureCache {
         for id in to_forget {
             self.cache.remove(&id);
         }
+        let to_update: Vec<(i64, TextureId)> =
+            self.pending_external_updates.borrow_mut().drain(..).collect();
+        for (com_id, texture_id) in to_update {
+            self.cache.insert(
+                com_id,
+                CachedTexture {
+                    _texture: None,
+                    id: texture_id,
+                },
+            );
+        }
+    }
+
+    fn drain_pending_forgets(&mut self) {
+        self.drain_pending();
     }
 
     pub fn upload(&mut self, com_id: i64, tex: ComRc<ITexture>) -> Option<TextureId> {

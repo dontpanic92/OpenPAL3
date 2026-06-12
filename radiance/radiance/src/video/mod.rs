@@ -29,6 +29,38 @@ pub trait VideoStream {
 
     fn get_texture(&mut self, texture_id: Option<TextureId>) -> Option<TextureId>;
     fn get_state(&self) -> VideoStreamState;
+
+    /// Total duration in milliseconds, or 0 if unknown / not yet
+    /// initialized.
+    fn duration_ms(&self) -> i64 {
+        0
+    }
+
+    /// Current playback position in milliseconds within the current
+    /// loop. Returns 0 when not playing.
+    fn position_ms(&self) -> i64 {
+        0
+    }
+
+    /// Seek to `ms` milliseconds into the stream. Implementations may
+    /// clamp to `[0, duration_ms]`. No-op for streams that don't
+    /// support seeking.
+    fn seek_ms(&mut self, _ms: i64) {}
+
+    /// Toggle looping at runtime without re-opening the stream.
+    fn set_looping(&mut self, _looping: bool) {}
+
+    /// Whether the stream is configured to loop.
+    fn looping(&self) -> bool {
+        false
+    }
+
+    /// Restart from the beginning. Default implementation seeks to 0
+    /// and resumes.
+    fn restart(&mut self) {
+        self.seek_ms(0);
+        self.resume();
+    }
 }
 
 type DecoderConstructor = fn(Rc<dyn ComponentFactory>, Rc<dyn AudioEngine>) -> Box<dyn VideoStream>;

@@ -66,4 +66,34 @@ impl VideoPlayer {
             .and_then(|f| Some(f.get_state()))
             .unwrap_or(VideoStreamState::Stopped)
     }
+
+    pub fn duration_ms(&self) -> i64 {
+        self.stream.as_ref().map(|s| s.duration_ms()).unwrap_or(0)
+    }
+
+    pub fn position_ms(&self) -> i64 {
+        self.stream.as_ref().map(|s| s.position_ms()).unwrap_or(0)
+    }
+
+    pub fn seek_ms(&mut self, ms: i64) {
+        if let Some(s) = self.stream.as_mut() {
+            s.seek_ms(ms);
+        }
+    }
+
+    pub fn set_looping(&mut self, looping: bool) {
+        if let Some(s) = self.stream.as_mut() {
+            s.set_looping(looping);
+        }
+    }
+
+    pub fn looping(&self) -> bool {
+        self.stream.as_ref().map(|s| s.looping()).unwrap_or(false)
+    }
+
+    pub fn restart(&mut self) {
+        if let Some(s) = self.stream.as_mut() {
+            s.restart();
+        }
+    }
 }

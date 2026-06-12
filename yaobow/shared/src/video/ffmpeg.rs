@@ -291,6 +291,124 @@ impl VideoStream for VideoStreamFFmpeg {
         }
     }
 
+    fn duration_ms(&self) -> i64 {
+        self.time
+            .as_ref()
+            .map(|t| t.read().unwrap().duration)
+            .unwrap_or(0)
+    }
+
+    fn position_ms(&self) -> i64 {
+        let Some(time) = self.time.as_ref() else {
+            return 0;
+        };
+        let time = time.read().unwrap();
+        if time.duration <= 0 {
+            return 0;
+        }
+        // Respect the pause state if necessary.
+        let now = if let Some(paused) = time.paused {
+            paused
+        } else {
+            Instant::now()
+        };
+        if now <= time.start_time {
+            0
+        } else {
+            // Position within the current loop. duration is in ms.
+            now.duration_since(time.start_time).as_millis() as i64 % time.duration
+        }
+    }
+
+    fn looping(&self) -> bool {
+        self.time
+            .as_ref()
+            .map(|t| t.read().unwrap().looping)
+            .unwrap_or(self.looping)
+    }
+
+    fn set_looping(&mut self, looping: bool) {
+        self.looping = looping;
+        if let Some(time) = self.time.as_ref() {
+            let mut time = time.write().unwrap();
+            time.looping = looping;
+        }
+    }
+
+    fn seek_ms(&mut self, ms: i64) {
+        let Some(state) = self.video_state.as_ref() else {
+            return;
+        };
+        let Some(time_arc) = self.time.as_ref() else {
+            return;
+        };
+
+        let duration_ms = {
+            let t = time_arc.read().unwrap();
+            t.duration
+        };
+        if duration_ms <= 0 {
+            return;
+        }
+        let ms = ms.clamp(0, duration_ms);
+
+        let mut st = state.lock().unwrap();
+        // ffmpeg `Input::seek` expects timestamps in AV_TIME_BASE
+        // units (microseconds). Use a permissive range so libavformat
+        // can pick the closest valid seek point.
+        let target_us = ms * 1_000;
+        if let Err(err) = st.input.seek(target_us, i64::MIN..i64::MAX) {
+            warn!("seek_ms({}): ffmpeg seek failed: {:?}", ms, err);
+            return;
+        }
+
+        // Flush packet queues and signal the decoder threads to reset.
+        {
+            let mut video = st.video.lock().unwrap();
+            video.stream.packet_queue.clear();
+            video.stream.packet_queue.push_back(PacketData::Flush);
+            video.source_frame = None;
+            // Keep `scaled_frame` so the UI doesn't blank between the
+            // seek and the first post-seek decoded frame.
+        }
+        {
+            let mut audio = st.audio.lock().unwrap();
+            audio.stream.packet_queue.clear();
+            audio.stream.packet_queue.push_back(PacketData::Flush);
+        }
+
+        // Rebase the wall-clock origin so `position_ms` reports `ms`
+        // immediately. Clear `ended` so the player loop doesn't think
+        // the stream is over.
+        {
+            let mut time = time_arc.write().unwrap();
+            let now = Instant::now();
+            let dur = Duration::from_millis(ms as u64);
+            time.start_time = now.checked_sub(dur).unwrap_or(now);
+            if time.paused.is_some() {
+                time.paused = Some(now);
+            }
+            time.ended = None;
+        }
+    }
+
+    fn restart(&mut self) {
+        self.seek_ms(0);
+        if self.state == VideoStreamState::Paused {
+            self.resume();
+        } else if self.state == VideoStreamState::Stopped {
+            // After EOF the playback threads are still alive (the
+            // queue thread just sleeps when looping=false). Just flip
+            // back to Playing and clear any ended marker; the seek
+            // above already reset start_time and ended.
+            self.state = VideoStreamState::Playing;
+            if let Some(time) = self.time.as_ref() {
+                let mut time = time.write().unwrap();
+                time.play();
+            }
+        }
+    }
+
     fn get_texture(&mut self, texture_id: Option<TextureId>) -> Option<TextureId> {
         if let Some(video_state) = self.video_state.as_ref() {
             let video_state = video_state.lock().unwrap();
@@ -423,33 +541,6 @@ impl VideoStreamFFmpeg {
         self.video_state.replace(state);
 
         InitResult { duration, size }
-    }
-
-    pub fn set_looping(&self, looping: bool) {
-        if let Some(time) = self.time.as_ref() {
-            let mut time = time.write().unwrap();
-            time.looping = looping;
-        }
-    }
-
-    pub fn _get_position(&self) -> i64 {
-        if let Some(time) = self.time.as_ref() {
-            let time = time.read().unwrap();
-            // Respect the pause state if necessary.
-            let now = if let Some(paused) = time.paused {
-                paused
-            } else {
-                Instant::now()
-            };
-            if now <= time.start_time {
-                0
-            } else {
-                // Get only the position in the current loop.
-                now.duration_since(time.start_time).as_millis() as i64 % time.duration
-            }
-        } else {
-            0
-        }
     }
 
     fn _stop_threads(&mut self) {

@@ -32,6 +32,21 @@ interface IVideoHandle: IUnknown {
     int width();
     int height();
     int texture_com_id();
+
+    // Total clip duration in milliseconds, 0 if unknown.
+    int duration_ms();
+    // Current playback position in milliseconds (within the current loop).
+    int position_ms();
+    // Seek to `ms` milliseconds. Clamped to `[0, duration_ms]`.
+    void seek_ms(int ms);
+    // Restart from the beginning. Works whether the stream is currently
+    // Playing, Paused, or Stopped (post-EOF for a non-looping stream).
+    void restart();
+    // Stop playback (post-stop the stream can be restarted via `restart`).
+    void stop();
+    // Toggle loop at runtime without re-opening.
+    void set_looping(bool looping);
+    bool looping();
 }
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c06)]
 class VideoHandle: IVideoHandle {}

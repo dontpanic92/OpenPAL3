@@ -140,6 +140,17 @@ fn render_text_buffer_with_copy(ui: box<radiance.IUiHost>, key: int, content: st
     }
 }
 
+// Format a millisecond duration as `m:ss` (or `mm:ss` for >=10 min).
+// Used for the video preview seek bar readout.
+fn format_mmss(ms: int) -> string {
+    let safe = if ms < 0 { 0 } else { ms };
+    let total_sec = safe / 1000;
+    let m = total_sec / 60;
+    let s = total_sec % 60;
+    let s_str = if s < 10 { f"0{s}" } else { f"{s}" };
+    return f"{m}:{s_str}";
+}
+
 // Render the offscreen scene preview (image + orbit/pan/zoom camera
 // controls) for an open scene session. Used by `main_editor`'s main
 // scene view region in the Scene layout.
@@ -225,11 +236,48 @@ pub fn render_tab_body_im(
         editor_consts.ContentKind.Video => {
             if tab.video_handle != null {
                 let h = tab.video_handle!;
-                let label = if h.state() == 1 { "Pause" } else { "Play" };
+                let state = h.state();
+                // 0 = Stopped, 1 = Playing, 2 = Paused.
+                let label = if state == 1 { "Pause" } else { "Play" };
                 ui.text(f"Video: {tab.label}");
                 if ui.button(label, 80.0, 24.0) {
-                    h.toggle();
+                    if state == 0 {
+                        // Post-EOF for a non-looping clip: resume() is a no-op,
+                        // so route Play through restart() to seek back to 0
+                        // and resume playback.
+                        h.restart();
+                    } else {
+                        h.toggle();
+                    }
                 }
+                ui.same_line();
+                if ui.button("Stop", 80.0, 24.0) {
+                    h.stop();
+                }
+                ui.same_line();
+                let looping = h.looping();
+                let new_loop = ui.checkbox("Loop", looping);
+                if new_loop != looping {
+                    h.set_looping(new_loop);
+                }
+
+                // Seek bar + mm:ss / mm:ss readout. We pass the live
+                // position to the slider every frame; if the slider
+                // returns a different value the user is dragging, so
+                // seek to it. Rebased start_time on the host side keeps
+                // the next frame's `position_ms` consistent with the
+                // dragged value.
+                let dur = h.duration_ms();
+                let pos = h.position_ms();
+                if dur > 0 {
+                    ui.set_next_item_width(-1.0);
+                    let new_pos = ui.slider_int("##seek", pos, 0, dur);
+                    if new_pos != pos {
+                        h.seek_ms(new_pos);
+                    }
+                    ui.text(f"{format_mmss(pos)} / {format_mmss(dur)}");
+                }
+
                 ui.image_fit(h.texture_com_id(), h.width() as float, h.height() as float);
             } else {
                 ui.text("Video format not supported");

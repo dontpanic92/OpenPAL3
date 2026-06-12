@@ -89,6 +89,17 @@ pub enum UiCall {
         w: f32,
         h: f32,
     },
+    Checkbox {
+        label: String,
+        value: bool,
+    },
+    SliderInt {
+        label: String,
+        value: i32,
+        min: i32,
+        max: i32,
+    },
+    SetNextItemWidth(f32),
     Image {
         texture_com_id: i32,
         w: f32,
@@ -313,6 +324,28 @@ impl IUiHostImpl for HostFacade {
             .get(label)
             .copied()
             .unwrap_or(false)
+    }
+
+    fn checkbox(&self, label: &str, value: bool) -> bool {
+        self.inner.record(UiCall::Checkbox {
+            label: label.into(),
+            value,
+        });
+        value
+    }
+
+    fn slider_int(&self, label: &str, value: i32, min: i32, max: i32) -> i32 {
+        self.inner.record(UiCall::SliderInt {
+            label: label.into(),
+            value,
+            min,
+            max,
+        });
+        value
+    }
+
+    fn set_next_item_width(&self, w: f32) {
+        self.inner.record(UiCall::SetNextItemWidth(w));
     }
 
     fn image(&self, texture_com_id: i32, w: f32, h: f32) {
