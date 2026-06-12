@@ -46,8 +46,113 @@ class AdventureDirector: IAdventureDirector {}
 // into `shared` would require relocating four files. The interface
 // itself lives here so `IPal3Service` can be referenced symmetrically
 // from `IYaobowHostContext.pal3()`.
+//
+// `create_director(asset_path)` returns the **start-menu** director
+// (script-built via `IPal3ScriptFactory::make_pal3_start_menu`). The
+// menu's button handlers call back into this service to mint the
+// adventure director (`create_adventure_director` / `load_adventure_director`)
+// or to exit the app (`exit_app`).
 [uuid(0c3ea732-4091-46a2-8ef1-79be6acaec77)]
 interface IPal3Service: IUnknown {
     IDirector create_director(&str asset_path);
+
+    // Construct the PAL3 main story (`AdventureDirector`) at a fresh
+    // game state. The current scene is replaced and the OpenPAL3 init
+    // script runs from the top. Returned director is what the menu
+    // returns from its update() to swap itself out.
+    IDirector create_adventure_director(&str asset_path);
+
+    // Like `create_adventure_director`, but resumes from save slot
+    // `slot` (1-based, matching `<save_dir>/OpenPAL3/Save/<slot>`).
+    // Returns null when the slot is missing or fails to deserialize.
+    IDirector? load_adventure_director(&str asset_path, int slot);
+
+    // True when `<save_dir>/OpenPAL3/Save/<slot>` exists and the
+    // current save loader accepts it. Drives whether the load-menu
+    // overlay renders the slot as selectable.
+    bool save_slot_exists(int slot);
+
+    // Number of save slots surfaced by the load-menu overlay. Fixed at
+    // 4 to mirror the original PAL3 quick-save layout.
+    int save_slot_count();
+
+    // Build the PAL3 start-menu sprite scene: parses
+    // `ui\\UILib\\UI_opt.tli`, decodes every referenced atlas page,
+    // uploads them to the script texture cache, and pre-loads the menu
+    // BGM (`PI01`). The returned scriptable handle exposes per-sprite
+    // queries (com_id + UV sub-rect + native size) the p7 director
+    // uses to compose the menu. Returns null when the asset path's
+    // vfs cannot be mounted or the manifest is missing.
+    IPal3StartMenuScene? create_start_menu(&str asset_path);
+
+    // Forwarded to `IApplication::request_exit()` so the start menu's
+    // "离开游戏" handler can quit without holding an `IApplication`
+    // reference itself.
+    void exit_app();
 }
+
+// Sprite-atlas scene backing the PAL3 start menu. The p7 director
+// renders by querying this object per sprite and feeding the result
+// into `IUiHost.image_uv`.
+//
+// Sprite names are the logical paths from `ui\\UILib\\UI_opt.tli`,
+// looked up case-insensitively with either `\\` or `/` separators
+// (e.g. both `ui\\Menu\\beijing.tga` and `ui/menu/beijing.tga`
+// resolve to the same record). `has_sprite` reports whether a name
+// is present so the director can degrade gracefully when an atlas
+// entry is missing.
+//
+// `native_width`/`native_height` describe the canvas the original
+// PAL3 cover was authored in (800×600). The p7 director letterboxes
+// this canvas into the framebuffer; button positions are authored in
+// canvas pixels.
+//
+// `play_bgm` / `stop_bgm` drive the `PI01` MP3 source the scene owns;
+// `update_bgm` must be called every frame from `render_im` to keep
+// the streamer fed.
+[uuid(3e24de96-3575-44b1-9cdb-5f2efb9d76fe), protosept(scriptable)]
+interface IPal3StartMenuScene: IUnknown {
+    bool has_sprite(&str name);
+
+    // imgui texture cache com_id for the atlas page containing
+    // `name`, or 0 when the sprite is unknown / its atlas failed to
+    // upload.
+    int sprite_com_id(&str name);
+
+    float sprite_u0(&str name);
+    float sprite_v0(&str name);
+    float sprite_u1(&str name);
+    float sprite_v1(&str name);
+
+    // Native sub-rect size (atlas pixels). The p7 director multiplies
+    // by the canvas scale to get the on-screen size.
+    int sprite_w(&str name);
+    int sprite_h(&str name);
+
+    int native_width();
+    int native_height();
+
+    void play_bgm();
+    void stop_bgm();
+    void update_bgm();
+}
+
+[uuid(2005bb3c-19c0-43c8-8a15-39b8dd940e00)]
+class Pal3StartMenuScene: IPal3StartMenuScene {}
+
+// Script-implemented factory for the PAL3 launch surface. The yaobow
+// `app.p7` `YaobowScriptApp` conforms to this in addition to
+// `IPal4ScriptFactory`; `Pal3Service::create_director` QI's the host
+// app to this and calls `make_pal3_start_menu` straight through the
+// COM vtable.
+[uuid(210ea28f-d971-414b-9fba-d3e942cc0516), protosept(scriptable)]
+interface IPal3ScriptFactory: IUnknown {
+    // Scripted PAL3 start-menu director. Returns `IImmediateDirector`
+    // (the menu struct conforms to both `IImmediateDirector` and
+    // `IDirector`); `Pal3Service::create_director` QIs to `IDirector`.
+    IImmediateDirector make_pal3_start_menu(&str asset_path);
+}
+
+[uuid(4b76fb5a-25c0-4c83-9ed3-ffd5bf342856)]
+class Pal3ScriptFactory: IPal3ScriptFactory {}
 

@@ -145,9 +145,12 @@ impl IComponentImpl for YaobowApplicationLoader {
         self.factory.replace(Some(factory.clone()));
         self.host_context.replace(Some(host_context.clone()));
 
-        // Hook the imgui texture cache into Pal4Service.
+        // Hook the imgui texture cache into Pal3Service + Pal4Service.
+        let pal3 = host_context.pal3();
         let pal4 = host_context.pal4();
         let texture_cache = install_imgui_pump(&self.app);
+        pal3.inner::<crate::openpal3::Pal3Service>()
+            .set_texture_cache(texture_cache.clone());
         pal4.inner::<shared::openpal4::service::Pal4Service>()
             .set_texture_cache(texture_cache);
 
@@ -178,10 +181,14 @@ impl IComponentImpl for YaobowApplicationLoader {
     }
 
     fn on_unloading(&self) {
-        // Break the strong reference cycle (Pal4Service → script factory
-        // → script box → host context → Pal4Service) at teardown, then
+        // Break the strong reference cycle (Pal{3,4}Service → script factory
+        // → script box → host context → Pal{3,4}Service) at teardown, then
         // drop the loader's own handles so the whole graph releases.
         if let Some(host_context) = self.host_context.borrow().as_ref() {
+            host_context
+                .pal3()
+                .inner::<crate::openpal3::Pal3Service>()
+                .clear_script_factory();
             host_context
                 .pal4()
                 .inner::<shared::openpal4::service::Pal4Service>()
@@ -200,6 +207,10 @@ impl IComponentImpl for YaobowApplicationLoader {
     /// land before the active director ticks its VM this frame.
     fn on_updating(&self, delta_sec: f32) {
         if let Some(host_context) = self.host_context.borrow().as_ref() {
+            host_context
+                .pal3()
+                .inner::<crate::openpal3::Pal3Service>()
+                .pump_pre_update();
             host_context
                 .pal4()
                 .inner::<shared::openpal4::service::Pal4Service>()

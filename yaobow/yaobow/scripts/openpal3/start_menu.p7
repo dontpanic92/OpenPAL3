@@ -1,0 +1,769 @@
+// PAL3 start-menu director. Reads sprite metadata from the host
+// `IPal3StartMenuScene` (parsed from `ui\\UILib\\UI_opt.tli` and
+// indexed against atlas pages `1..11.tga|.dds`) and composes the
+// cover-art screen directly with `IUiHost.image_uv` — PAL3 ships no
+// CEGUI layouts, so screen positions are authored here in p7.
+//
+// Buttons functional in v1:
+//   * 前尘一梦 (`btn_qianchenyimeng`) — New Game
+//   * 旧的回忆 (`btn_jiudehuiyi`)     — Load Game (opens slot list)
+//   * 离开游戏 (`btn_likaiyouxi`)     — Exit
+// Inert in v1 (rendered for the cover-art layout):
+//   * 制作群 (`btn_zhizuoqun`), 新的故事 (`btn_xindegushi`),
+//     壁壁同游 (`btn_babitongyou`).
+//
+// Animation: clouds drift across the canvas, mountains parallax a few
+// pixels each, taiji discs are static for v1.
+
+import radiance;
+import scripting_services;
+import yaobow.yaobow_services;
+import shared.openpal3;
+
+// Intent codes drained once per `update`.
+let INTENT_NONE: int      = 0;
+let INTENT_NEW_GAME: int  = 1;
+let INTENT_EXIT: int      = 2;
+let INTENT_LOAD: int      = 3;
+
+let MODE_MAIN: int        = 0;
+let MODE_LOAD: int        = 1;
+
+let NO_PRESS: int         = -1;
+let NO_SLOT: int          = -1;
+
+// Hand-authored layout in the 800×600 native canvas, matched against
+// `generated/pal3_mainmenu.jpg`. The cover is a circular dial: 4 angled
+// rectangular buttons at the corners (225×153) and 2 vertical scroll
+// banners on the sides (128×256).
+//
+// Functional role mapping (per user's v1 scope):
+//   * xindegushi   (top-left)      — New Game ("新的故事" / new story)
+//   * jiudehuiyi   (top-right)     — Load Game ("旧的回忆" / old memories)
+//   * likaiyouxi   (bottom-right)  — Exit
+//   * qianchenyimeng (left scroll), babitongyou (right scroll),
+//     zhizuoqun   (bottom-left)    — render only (inert)
+// Button positions, indexed by **sprite name** rather than by role —
+// that mapping (which button is "New Game" etc.) lives only in
+// `dispatch_click`. Sprite dimensions noted for reference.
+let BTN_QIANCHENYIMENG_X: float = 60.0;  // left scroll, 128x256 (vertically centred)
+let BTN_QIANCHENYIMENG_Y: float = 172.0;
+let BTN_BABITONGYOU_X: float    = 582.0;  // right scroll, 128x256
+let BTN_BABITONGYOU_Y: float    = 172.0;
+let BTN_XINDEGUSHI_X: float     = 150.0;   // top-left, 225x153
+let BTN_XINDEGUSHI_Y: float     = 10.0;
+let BTN_JIUDEHUIYI_X: float     = 425.0;  // top-right, 225x153
+let BTN_JIUDEHUIYI_Y: float     = 10.0;
+let BTN_ZHIZUOQUN_X: float      = 150.0;   // bottom-left, 225x153
+let BTN_ZHIZUOQUN_Y: float      = 440.0;
+let BTN_LIKAIYOUXI_X: float     = 425.0;  // bottom-right, 225x153
+let BTN_LIKAIYOUXI_Y: float     = 440.0;
+
+// `ditu` is the full 800×600 sky/water background. `beijing` is the
+// 442×444 green dial frame painted over it (centered horizontally,
+// slightly offset down to leave room for the top buttons).
+let DITU_X: float               = 0.0;
+let DITU_Y: float               = 0.0;
+let BEIJING_X: float            = 179.0;
+let BEIJING_Y: float            = 80.0;
+// LOG0 (377×140) is the "仙剑奇侠传三" logo, centred in the dial.
+let LOG0_X: float               = 212.0;
+let LOG0_Y: float               = 230.0;
+
+// Taiji discs (334×439 each) are the rotating yin-yang ornaments.
+// In the original game they sit centred behind the dial frame so
+// only their inner edge is visible through `beijing`'s aperture as
+// they slowly rotate. v1 paints them statically and BELOW beijing
+// so they don't cover the dial frame.
+// Taiji "open" animation. The two yin-yang discs (334×439) start
+// near the dial centre — overlapping so they together cover the
+// dial aperture — and slide outward to the screen edges over
+// `TAIJI_ANIM_DURATION` seconds, like sliding doors revealing the
+// menu interior. Ease-out cubic for a smooth feel.
+//
+// Start positions: chosen so TaijiA's right edge meets TaijiB's
+// left edge a little past centre, covering the dial aperture.
+// End positions: far enough off-canvas that both discs fully clear
+// the dial frame (dial spans x ∈ [BEIJING_X, BEIJING_X+442]).
+let TAIJI_A_START_X: float      = 175.0;
+let TAIJI_A_END_X: float        = -175.0;
+let TAIJI_B_START_X: float      = 280.0;
+let TAIJI_B_END_X: float        = 620.0;
+let TAIJI_A_Y: float            = 80.0;
+let TAIJI_B_Y: float            = 80.0;
+let TAIJI_ANIM_DURATION: float  = 0.4;
+let TAIJI_WAIT_DURATION: float = 0.2;
+
+// Cloud band: 18 yun sprites (yun0..yun17) drifting right→left at
+// varied speeds across the sky band (y ≈ 100–250). Each cloud has
+// its own initial x, y, and speed authored in the table below.
+// Speeds are positive px/sec; each frame we advance cloud_x_<n> by
+// `-dt * speed` and wrap modulo (canvas_w + sprite_w) so clouds that
+// drift past the left edge re-enter from the right.
+//
+// Tuning aim: spread the 18 sprites so the screen is never empty,
+// vary speeds by ~3× so depth parallax reads, keep all Y in the
+// 100–250 band so they sit inside the dial aperture (the beijing
+// frame masks any pixel that wanders outside).
+
+let YUN_COUNT: int = 18;
+
+// imgui WindowFlags::NoBackground (bit 7).
+let IMGUI_NO_BACKGROUND: int = 128;
+
+// Sprite paths. Forward slashes + lowercase to match the scene's
+// canonical key form; `IPal3StartMenuScene` resolves either separator
+// style but lowercase is the on-disk casing.
+let SPR_BG: string              = "ui/menu/beijing.tga";
+let SPR_TAIJI_A: string         = "ui/menu/taijia.tga";
+let SPR_TAIJI_B: string         = "ui/menu/taijib.tga";
+let SPR_LOG0: string            = "ui/menu/log0.tga";
+let SPR_DITU: string            = "ui/menu/ditu.tga";
+
+// Yun cloud sprite path prefix. The per-cloud name is composed at
+// init as `SPR_YUN_PREFIX + int_to_str(i) + ".tga"` and cached in the
+// `cloud_names` array on the director so the per-frame render avoids
+// repeated string concatenation.
+let SPR_YUN_PREFIX: string      = "ui/menu/yun";
+
+// 3-state button sprite name templates. Suffix `0` is base, `1` is
+// hover, `2` is press. Some atlases only ship `0` + `2`; the scene
+// returns 0 for missing names and the renderer falls back.
+let BTN_QIANCHENYIMENG_BASE: string = "ui/menu/btn_qianchenyimeng";
+let BTN_JIUDEHUIYI_BASE: string     = "ui/menu/btn_jiudehuiyi";
+let BTN_XINDEGUSHI_BASE: string     = "ui/menu/btn_xindegushi";
+let BTN_BABITONGYOU_BASE: string    = "ui/menu/btn_babitongyou";
+let BTN_ZHIZUOQUN_BASE: string      = "ui/menu/btn_zhizuoqun";
+let BTN_LIKAIYOUXI_BASE: string     = "ui/menu/btn_likaiyouxi";
+
+// Load-mode overlay. PAL3's original load UI lives outside the cover
+// atlases — we paint a translucent panel over the cover and list the
+// available JSON save slots. Click a populated row to boot the
+// adventure director with that slot pre-loaded.
+let LOAD_PANEL_X: float         = 200.0;
+let LOAD_PANEL_Y: float         = 120.0;
+let LOAD_PANEL_W: float         = 400.0;
+let LOAD_PANEL_H: float         = 360.0;
+let LOAD_ROW_HEIGHT: float      = 50.0;
+let LOAD_ROW_INSET_Y: float     = 60.0;
+let LOAD_BACK_X: float          = 580.0;
+let LOAD_BACK_Y: float          = 470.0;
+
+// Numeric synthetic "window ids" used by `dispatch_click` so a single
+// press-latch slot can track any of the 6 cover buttons. One id per
+// sprite — the role mapping (which sprite is "New Game", etc.) is in
+// `dispatch_click`.
+let WID_QIANCHENYIMENG: int = 1;
+let WID_JIUDEHUIYI: int     = 2;
+let WID_XINDEGUSHI: int     = 3;
+let WID_BABITONGYOU: int    = 4;
+let WID_ZHIZUOQUN: int      = 5;
+let WID_LIKAIYOUXI: int     = 6;
+let WID_LOAD_BACK: int      = 100;
+
+pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirector(
+    pub host: box<yaobow_services.IYaobowHostContext>,
+    pub asset_path: string,
+    // Sprite catalogue + BGM. Null when the per-launch vfs cannot
+    // mount UI_opt.tli; the menu then degrades to a "missing assets"
+    // text screen but keeps Exit functional.
+    pub scene: ?box<openpal3.IPal3StartMenuScene>,
+    // Cover-button press latch; -1 == no widget held.
+    pub pressed_wid: int,
+    pub intent: int,
+    pub mode: int,
+    pub load_slot: int,
+    pub pressed_slot: int,
+    // Seconds since `activate()`; drives mountain parallax phase.
+    pub time_sec: float,
+    // Taiji "open" animation progress in seconds (0..TAIJI_ANIM_DURATION).
+    // Reset to 0 in `activate` so the animation replays each time the
+    // menu becomes the active director.
+    pub taiji_t: float,
+    // Closing animation flag. When true, `taiji_t` is driven downward
+    // each frame (reverse of the open animation, including the wait
+    // segment); on reaching 0 we fire `host.pal3().exit_app()`.
+    // Set by clicking 离开游戏 (likaiyouxi); the menu is otherwise
+    // inert while closing so further clicks don't queue intents.
+    pub closing: bool,
+    // Per-cloud parallel arrays, length YUN_COUNT. `cloud_x` is
+    // mutated each frame; `cloud_y`, `cloud_speed`, and `cloud_names`
+    // are read-only after init (boxed so they can be passed as
+    // mutable places into the per-frame update loop without copying).
+    // All four are initialised by `make_pal3_start_menu`.
+    pub cloud_x: box<array<float>>,
+    pub cloud_y: box<array<float>>,
+    pub cloud_speed: box<array<float>>,
+    pub cloud_names: box<array<string>>,
+    pub activated: bool,
+) {
+    pub fn activate(self: ref<Self>) -> int {
+        if self.scene != null {
+            self.scene!.play_bgm();
+        }
+        // Replay the taiji-open animation from the closed position.
+        self.taiji_t = 0.0;
+        self.closing = false;
+        self.activated = true;
+        0
+    }
+
+    pub fn deactivate(self: ref<Self>) -> int {
+        if self.scene != null {
+            self.scene!.stop_bgm();
+        }
+        self.activated = false;
+        0
+    }
+
+    pub fn render_im(
+        self: ref<Self>,
+        ui: box<radiance.IUiHost>,
+        dt: float,
+    ) -> int {
+        self.time_sec = self.time_sec + dt;
+        // Advance taiji-open animation, clamped to [0, duration]
+        // so the eased lerp stays at the end position once complete.
+        //
+        // Clamp the per-frame delta first: the engine reports the
+        // entire on_loading duration as the first frame's dt (several
+        // seconds for PAL3's atlas + MP3 decode), which without
+        // clamping would fast-forward the animation past completion
+        // before the user sees a single frame. 0.1 s matches the cap
+        // used by the editor's `PreviewRegistry::render_all`.
+        let anim_dt = if dt > 0.1 { 0.1 } else { dt };
+        if self.closing {
+            // Reverse the taiji-open animation: taiji_t decreases
+            // until it hits 0, which mirrors the original (wait
+            // segment included since the eased lerp is keyed off
+            // `taiji_t - TAIJI_WAIT_DURATION`).
+            if self.taiji_t > 0.0 {
+                self.taiji_t = self.taiji_t - anim_dt;
+                if self.taiji_t < 0.0 {
+                    self.taiji_t = 0.0;
+                }
+            }
+        } else {
+            if self.taiji_t < TAIJI_ANIM_DURATION {
+                self.taiji_t = self.taiji_t + anim_dt;
+                if self.taiji_t > TAIJI_ANIM_DURATION {
+                    self.taiji_t = TAIJI_ANIM_DURATION;
+                }
+            }
+        }
+        if self.scene != null {
+            self.scene!.update_bgm();
+        }
+
+        // Advance each yun cloud and wrap modulo
+        // `(canvas_w + sprite_w)`. Each cloud's x decreases by
+        // `dt * speed` so it drifts right→left; on wrap (x < -sprite_w)
+        // it re-enters from the right.
+        if self.scene != null {
+            let s = self.scene!;
+            let nat_w = s.native_width() as float;
+            for i in Range(0, YUN_COUNT) {
+                let sprite_w = s.sprite_w(self.cloud_names[i]) as float;
+                self.cloud_x[i] = advance_cloud(
+                    self.cloud_x[i], self.cloud_speed[i], anim_dt, nat_w, sprite_w,
+                );
+            }
+        }
+
+        ui.window_fullscreen("##pal3_start_menu", IMGUI_NO_BACKGROUND, () => {
+            if self.scene == null {
+                self.render_missing(ui);
+            } else {
+                if self.mode == MODE_LOAD {
+                    self.render_main(ui);
+                    self.render_load_overlay(ui);
+                } else {
+                    self.render_main(ui);
+                }
+            }
+        });
+        0
+    }
+
+    pub fn render_missing(self: ref<Self>, ui: box<radiance.IUiHost>) {
+        ui.style_color(0, 1.0, 1.0, 1.0, 1.0, () => {
+            ui.set_cursor_pos(20.0, 20.0);
+            ui.text("PAL3 start menu: UI_opt.tli not found in basedata.cpk.");
+            ui.set_cursor_pos(20.0, 50.0);
+            ui.text("Press the Exit hotkey (Esc / Alt+F4) to quit.");
+        });
+    }
+
+    pub fn render_main(self: ref<Self>, ui: box<radiance.IUiHost>) {
+        let s = self.scene!;
+        let nat_w = s.native_width() as float;
+        let nat_h = s.native_height() as float;
+        let avail_w = ui.display_size_x() as float;
+        let avail_h = ui.display_size_y() as float;
+        if nat_w <= 0.0 || nat_h <= 0.0 || avail_w <= 0.0 || avail_h <= 0.0 {
+            return;
+        }
+        let sx = avail_w / nat_w;
+        let sy = avail_h / nat_h;
+        let scale = if sx < sy { sx } else { sy };
+        let origin_x = (avail_w - nat_w * scale) * 0.5;
+        let origin_y = (avail_h - nat_h * scale) * 0.5;
+
+        self.draw_sprite(ui, SPR_BG, BEIJING_X, BEIJING_Y,
+                         origin_x, origin_y, scale);
+
+        let nat_w = s.native_width() as float;
+        let nat_h = s.native_height() as float;
+
+        // Sliding taiji discs. Eased lerp from START → END based on
+        // taiji_t. Drawn BEFORE ditu so once they fully slide outward
+        // they tuck behind the ornate frame and disappear cleanly.
+        // Clipped to canvas so the off-canvas tail does not bleed
+        // into the letterbox bars.
+        let mut tnorm = (self.taiji_t - TAIJI_WAIT_DURATION) / (TAIJI_ANIM_DURATION - TAIJI_WAIT_DURATION);
+        if tnorm > 1.0 { tnorm = 1.0; }
+        if tnorm < 0.0 { tnorm = 0.0; }
+        let inv = 1.0 - tnorm;
+        let eased = 1.0 - inv * inv;
+        let ax = TAIJI_A_START_X + (TAIJI_A_END_X - TAIJI_A_START_X) * eased;
+        let bx = TAIJI_B_START_X + (TAIJI_B_END_X - TAIJI_B_START_X) * eased;
+        self.draw_sprite_clipped(
+            ui, SPR_TAIJI_A, ax, TAIJI_A_Y,
+            origin_x, origin_y, scale, nat_w, nat_h,
+        );
+        self.draw_sprite_clipped(
+            ui, SPR_TAIJI_B, bx, TAIJI_B_Y,
+            origin_x, origin_y, scale, nat_w, nat_h,
+        );
+
+        for i in Range(0, YUN_COUNT) {
+            self.draw_sprite_clipped(
+                ui, self.cloud_names[i],
+                self.cloud_x[i], self.cloud_y[i],
+                origin_x, origin_y, scale,
+                nat_w, nat_h,
+            );
+        }
+
+        self.draw_sprite(ui, SPR_DITU, DITU_X, DITU_Y, origin_x, origin_y, scale);
+
+        self.draw_sprite(ui, SPR_LOG0, LOG0_X, LOG0_Y,
+                         origin_x, origin_y, scale);
+
+        let mouse_held = ui.mouse_down(0);
+        let was_pressed = self.pressed_wid;
+        let mut released: int = NO_PRESS;
+
+        released = self.button(ui, WID_QIANCHENYIMENG, BTN_QIANCHENYIMENG_BASE,
+                               BTN_QIANCHENYIMENG_X, BTN_QIANCHENYIMENG_Y,
+                               origin_x, origin_y, scale,
+                               mouse_held, was_pressed, released);
+        released = self.button(ui, WID_BABITONGYOU, BTN_BABITONGYOU_BASE,
+                               BTN_BABITONGYOU_X, BTN_BABITONGYOU_Y,
+                               origin_x, origin_y, scale,
+                               mouse_held, was_pressed, released);
+        released = self.button(ui, WID_XINDEGUSHI, BTN_XINDEGUSHI_BASE,
+                               BTN_XINDEGUSHI_X, BTN_XINDEGUSHI_Y,
+                               origin_x, origin_y, scale,
+                               mouse_held, was_pressed, released);
+        released = self.button(ui, WID_JIUDEHUIYI, BTN_JIUDEHUIYI_BASE,
+                               BTN_JIUDEHUIYI_X, BTN_JIUDEHUIYI_Y,
+                               origin_x, origin_y, scale,
+                               mouse_held, was_pressed, released);
+        released = self.button(ui, WID_ZHIZUOQUN, BTN_ZHIZUOQUN_BASE,
+                               BTN_ZHIZUOQUN_X, BTN_ZHIZUOQUN_Y,
+                               origin_x, origin_y, scale,
+                               mouse_held, was_pressed, released);
+        released = self.button(ui, WID_LIKAIYOUXI, BTN_LIKAIYOUXI_BASE,
+                               BTN_LIKAIYOUXI_X, BTN_LIKAIYOUXI_Y,
+                               origin_x, origin_y, scale,
+                               mouse_held, was_pressed, released);
+
+        if !mouse_held {
+            self.pressed_wid = NO_PRESS;
+        }
+        if released != NO_PRESS {
+            self.dispatch_click(released);
+        }
+    }
+
+    // Draw a single sprite by its canonical name. No-op when the
+    // scene doesn't know about it (e.g. the atlas failed to upload).
+    pub fn draw_sprite(
+        self: ref<Self>,
+        ui: box<radiance.IUiHost>,
+        name: string,
+        x: float, y: float,
+        origin_x: float, origin_y: float, scale: float,
+    ) {
+        let s = self.scene!;
+        if !s.has_sprite(name) { return; }
+        let com_id = s.sprite_com_id(name);
+        if com_id == 0 { return; }
+        let w = s.sprite_w(name) as float;
+        let h = s.sprite_h(name) as float;
+        if w <= 0.0 || h <= 0.0 { return; }
+        ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
+        ui.image_uv(com_id, w * scale, h * scale,
+                    s.sprite_u0(name), s.sprite_v0(name),
+                    s.sprite_u1(name), s.sprite_v1(name));
+    }
+
+    // Draw `name` at native (x, y), clipped to the canvas rect
+    // `[0, clip_w] × [0, clip_h]`. Used for sprites (e.g. the
+    // drifting yun clouds) that legitimately overhang the canvas
+    // edges while sliding in or out: we trim the draw rect and shift
+    // the UVs proportionally so `ui.image_uv` only paints inside the
+    // central canvas — keeping the letterbox bars clean — yet the
+    // sprite still appears to slide smoothly past the edge.
+    //
+    // No-op when the sprite is unknown, the atlas failed to upload,
+    // or the clipped rect is empty (fully off-canvas).
+    pub fn draw_sprite_clipped(
+        self: ref<Self>,
+        ui: box<radiance.IUiHost>,
+        name: string,
+        x: float, y: float,
+        origin_x: float, origin_y: float, scale: float,
+        clip_w: float, clip_h: float,
+    ) {
+        let s = self.scene!;
+        if !s.has_sprite(name) { return; }
+        let com_id = s.sprite_com_id(name);
+        if com_id == 0 { return; }
+        let w = s.sprite_w(name) as float;
+        let h = s.sprite_h(name) as float;
+        if w <= 0.0 || h <= 0.0 { return; }
+
+        // Per-edge trim in native pixels. clamp_min0 keeps each trim
+        // non-negative (no need to clip when the sprite is fully
+        // inside the canvas on that edge).
+        let left_trim = clamp_min0(0.0 - x);
+        let right_trim = clamp_min0(x + w - clip_w);
+        let top_trim = clamp_min0(0.0 - y);
+        let bot_trim = clamp_min0(y + h - clip_h);
+
+        let drawn_w = w - left_trim - right_trim;
+        let drawn_h = h - top_trim - bot_trim;
+        if drawn_w <= 0.0 || drawn_h <= 0.0 { return; }
+
+        // UV proportions of each trim into the source rect.
+        let u0 = s.sprite_u0(name);
+        let v0 = s.sprite_v0(name);
+        let u1 = s.sprite_u1(name);
+        let v1 = s.sprite_v1(name);
+        let u_range = u1 - u0;
+        let v_range = v1 - v0;
+        let u0p = u0 + (left_trim / w) * u_range;
+        let u1p = u1 - (right_trim / w) * u_range;
+        let v0p = v0 + (top_trim / h) * v_range;
+        let v1p = v1 - (bot_trim / h) * v_range;
+
+        ui.set_cursor_pos(
+            origin_x + (x + left_trim) * scale,
+            origin_y + (y + top_trim) * scale,
+        );
+        ui.image_uv(com_id, drawn_w * scale, drawn_h * scale, u0p, v0p, u1p, v1p);
+    }
+
+    // Render a 3-state button. `base` is the sprite path without the
+    // trailing state digit (e.g. "ui/menu/btn_qianchenyimeng"); we
+    // append `0`/`1`/`2` for normal/hover/press. Returns the input
+    // `released` value, possibly overwritten with this widget's id
+    // when the click latch fires on mouse release inside the rect.
+    pub fn button(
+        self: ref<Self>,
+        ui: box<radiance.IUiHost>,
+        wid: int,
+        base: string,
+        x: float, y: float,
+        origin_x: float, origin_y: float, scale: float,
+        mouse_held: bool, was_pressed: int, released: int,
+    ) -> int {
+        let s = self.scene!;
+        let normal = base + "0.tga";
+        if !s.has_sprite(normal) { return released; }
+        let w = s.sprite_w(normal) as float;
+        let h = s.sprite_h(normal) as float;
+        if w <= 0.0 || h <= 0.0 { return released; }
+
+        ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
+        ui.image_uv(s.sprite_com_id(normal), w * scale, h * scale,
+                    s.sprite_u0(normal), s.sprite_v0(normal),
+                    s.sprite_u1(normal), s.sprite_v1(normal));
+
+        let hovered = ui.is_item_hovered();
+        let pressed_now = hovered && mouse_held;
+
+        // Press takes priority over hover. Fall back to hover sprite,
+        // then to base if no alt state is shipped.
+        let press_name = base + "2.tga";
+        let hover_name = base + "1.tga";
+        if pressed_now || (was_pressed == wid && mouse_held && hovered) {
+            if s.has_sprite(press_name) {
+                ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
+                ui.image_uv(s.sprite_com_id(press_name), w * scale, h * scale,
+                            s.sprite_u0(press_name), s.sprite_v0(press_name),
+                            s.sprite_u1(press_name), s.sprite_v1(press_name));
+            }
+        } else {
+            if hovered && s.has_sprite(hover_name) {
+                ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
+                ui.image_uv(s.sprite_com_id(hover_name), w * scale, h * scale,
+                            s.sprite_u0(hover_name), s.sprite_v0(hover_name),
+                            s.sprite_u1(hover_name), s.sprite_v1(hover_name));
+            }
+        }
+
+        let mut out = released;
+        if pressed_now && was_pressed == NO_PRESS {
+            self.pressed_wid = wid;
+        }
+        if was_pressed == wid && !mouse_held && hovered {
+            out = wid;
+        }
+        return out;
+    }
+
+    // Load-mode overlay: dim the cover, list each save slot as a
+    // clickable text row, and offer a Back affordance.
+    pub fn render_load_overlay(self: ref<Self>, ui: box<radiance.IUiHost>) {
+        let s = self.scene!;
+        let nat_w = s.native_width() as float;
+        let nat_h = s.native_height() as float;
+        let avail_w = ui.display_size_x() as float;
+        let avail_h = ui.display_size_y() as float;
+        let sx = avail_w / nat_w;
+        let sy = avail_h / nat_h;
+        let scale = if sx < sy { sx } else { sy };
+        let origin_x = (avail_w - nat_w * scale) * 0.5;
+        let origin_y = (avail_h - nat_h * scale) * 0.5;
+
+        // Panel title.
+        ui.style_color(0, 1.0, 0.95, 0.7, 1.0, () => {
+            ui.set_cursor_pos(
+                origin_x + (LOAD_PANEL_X + 20.0) * scale,
+                origin_y + (LOAD_PANEL_Y + 8.0) * scale,
+            );
+            ui.text("== Load Game ==");
+        });
+
+        let slot_count = self.host.pal3().save_slot_count();
+        let mouse_held = ui.mouse_down(0);
+        let was_pressed_slot = self.pressed_slot;
+        let mut released_slot: int = NO_SLOT;
+
+        let mut idx: int = 0;
+        while idx < slot_count {
+            let slot = idx + 1;
+            let row_y = origin_y + (LOAD_PANEL_Y + LOAD_ROW_INSET_Y
+                                    + (idx as float) * LOAD_ROW_HEIGHT) * scale;
+            let row_x = origin_x + (LOAD_PANEL_X + 30.0) * scale;
+            ui.set_cursor_pos(row_x, row_y);
+            let exists = self.host.pal3().save_slot_exists(slot);
+            if exists {
+                ui.style_color(0, 1.0, 1.0, 1.0, 1.0, () => {
+                    ui.text("Slot " + int_to_str(slot));
+                });
+                let hovered = ui.is_item_hovered();
+                if hovered && mouse_held && was_pressed_slot == NO_SLOT {
+                    self.pressed_slot = slot;
+                }
+                if was_pressed_slot == slot && !mouse_held && hovered {
+                    released_slot = slot;
+                }
+            } else {
+                ui.style_color(0, 0.45, 0.45, 0.45, 1.0, () => {
+                    ui.text("Slot " + int_to_str(slot) + " - (empty)");
+                });
+            }
+            idx = idx + 1;
+        }
+
+        // Back affordance.
+        ui.set_cursor_pos(
+            origin_x + LOAD_BACK_X * scale,
+            origin_y + LOAD_BACK_Y * scale,
+        );
+        ui.style_color(0, 0.85, 0.85, 0.85, 1.0, () => {
+            ui.text("[ Back ]");
+        });
+        let back_hovered = ui.is_item_hovered();
+        let was_back = self.pressed_wid == WID_LOAD_BACK;
+        if back_hovered && mouse_held && self.pressed_wid == NO_PRESS {
+            self.pressed_wid = WID_LOAD_BACK;
+        }
+        if was_back && !mouse_held && back_hovered {
+            self.mode = MODE_MAIN;
+            self.pressed_wid = NO_PRESS;
+        }
+
+        if !mouse_held {
+            self.pressed_slot = NO_SLOT;
+        }
+        if released_slot != NO_SLOT {
+            self.load_slot = released_slot;
+            self.intent = INTENT_LOAD;
+            self.mode = MODE_MAIN;
+        }
+    }
+
+    pub fn dispatch_click(self: ref<Self>, wid: int) {
+        // Sprite → role mapping. xindegushi (新的故事) is the New Game
+        // trigger; jiudehuiyi (旧的回忆) opens the load list;
+        // likaiyouxi (离开游戏) exits. The other three sprites
+        // (qianchenyimeng, babitongyou, zhizuoqun) render with
+        // hover/press feedback but are intentionally inert in v1.
+        if wid == WID_XINDEGUSHI { self.intent = INTENT_NEW_GAME; return; }
+        if wid == WID_LIKAIYOUXI { self.intent = INTENT_EXIT;     return; }
+        if wid == WID_JIUDEHUIYI { self.mode = MODE_LOAD;         return; }
+    }
+
+    pub fn update(
+        self: ref<Self>,
+        dt: float,
+    ) -> ?box<radiance.IDirector> {
+        // Already closing: do not honour new intents; just fire
+        // exit_app once the reverse taiji animation has fully played.
+        if self.closing {
+            if self.taiji_t <= 0.0 {
+                self.host.pal3().exit_app();
+                // Latch so we don't repeatedly call exit_app while
+                // the engine shuts down across the next few frames.
+                self.closing = false;
+            }
+            self.intent = INTENT_NONE;
+            return null;
+        }
+
+        let code = self.intent;
+        self.intent = INTENT_NONE;
+        if code == INTENT_NEW_GAME {
+            return self.host.pal3().create_adventure_director(self.asset_path);
+        }
+        if code == INTENT_LOAD {
+            return self.host.pal3().load_adventure_director(self.asset_path, self.load_slot);
+        }
+        if code == INTENT_EXIT {
+            // Start the reverse-open animation. exit_app is fired
+            // from the closing branch above when taiji_t hits 0.
+            self.closing = true;
+        }
+        return null;
+    }
+}
+
+// Cheap stdlib-less integer-to-string for the load overlay slot
+// labels. p7's built-in `display.int` is available via `display.int(n)`
+// but is namespaced; this little helper keeps the call sites tidy.
+fn int_to_str(n: int) -> string {
+    // p7 supports `int.to_string()`-style intrinsics in newer builds;
+    // fall back to a tiny manual conversion that handles 0..9999 since
+    // we only ever format a single-digit slot number here.
+    if n == 0 { return "0"; }
+    let mut v = n;
+    let mut neg = false;
+    if v < 0 { neg = true; v = -v; }
+    let mut out: string = "";
+    while v > 0 {
+        let d = v - (v / 10) * 10;
+        let ch = digit(d);
+        out = ch + out;
+        v = v / 10;
+    }
+    if neg { out = "-" + out; }
+    return out;
+}
+
+fn digit(d: int) -> string {
+    if d == 0 { return "0"; }
+    if d == 1 { return "1"; }
+    if d == 2 { return "2"; }
+    if d == 3 { return "3"; }
+    if d == 4 { return "4"; }
+    if d == 5 { return "5"; }
+    if d == 6 { return "6"; }
+    if d == 7 { return "7"; }
+    if d == 8 { return "8"; }
+    return "9";
+}
+
+// Advance one cloud's x by `dt * speed` to the left (decreasing x),
+// wrapping the cloud's position through the full off-screen range
+// `[-sprite_w, nat_w]` so it can smoothly slide in/out across both
+// canvas edges. Painting inside the central canvas is enforced
+// separately by `draw_sprite_clipped` (UV-clipped to `[0, nat_w] ×
+// [0, nat_h]`), which is why the wrap range itself extends beyond
+// the canvas.
+fn advance_cloud(x: float, speed: float, dt: float, nat_w: float, sprite_w: float) -> float {
+    let span = nat_w + sprite_w;
+    if span <= 0.0 { return x; }
+    let mut nx = x - dt * speed;
+    while nx < -sprite_w {
+        nx = nx + span;
+    }
+    while nx > nat_w {
+        nx = nx - span;
+    }
+    return nx;
+}
+
+// max(t, 0.0). Avoids the boilerplate of a 3-line if/else at every
+// clip-trim call site in `draw_sprite_clipped`.
+fn clamp_min0(t: float) -> float {
+    if t > 0.0 { return t; }
+    return 0.0;
+}
+
+pub fn make_pal3_start_menu(
+    host: box<yaobow_services.IYaobowHostContext>,
+    asset_path: string,
+) -> box<radiance.IImmediateDirector> {
+    // `create_start_menu` returns null when the texture cache isn't
+    // wired yet or `UI_opt.tli` is missing — the director then renders
+    // a "missing assets" fallback so the user can still Exit.
+    let scene = host.pal3().create_start_menu(asset_path);
+
+    // Per-cloud config: parallel arrays of length YUN_COUNT. Authoring
+    // here keeps the (initial_x, y, speed, sprite name) layout in a
+    // single place; the per-frame loop reads by index. Speeds are
+    // positive px/sec; cloud_x decreases each frame (right→left only).
+    // Y values stay in the 100..250 sky band.
+    let cloud_x: box<array<float>> = box([
+        100.0, 480.0, 260.0, 720.0, 560.0, 360.0,
+         20.0, 200.0, 640.0, 300.0, 460.0, 760.0,
+        120.0, 580.0, 360.0,  80.0, 420.0, 680.0,
+    ]);
+    let cloud_y: box<array<float>> = box([
+        410.0, 340.0, 120.0, 360.0, 320.0, 130.0,
+        350.0, 300.0, 130.0, 130.0, 140.0, 135.0,
+        125.0, 110.0, 345.0, 125.0, 335.0, 410.0,
+    ]);
+    let cloud_speed: box<array<float>> = box([
+        42.0, 46.0, 42.0, 29.0, 38.0, 18.0,
+        24.0, 21.0, 55.0, 28.0, 23.0, 24.0,
+        39.0, 31.0, 27.0, 40.0, 35.0, 17.0,
+    ]);
+
+    // Sprite-name lookup keys, composed once at init so the per-frame
+    // render doesn't re-concatenate strings. The empty `[]` literal
+    // needs an annotated binding so the element type is known before
+    // it's boxed.
+    let empty_names: array<string> = [];
+    let cloud_names: box<array<string>> = box(empty_names);
+    for i in Range(0, YUN_COUNT) {
+        cloud_names.push(SPR_YUN_PREFIX + int_to_str(i) + ".tga");
+    }
+
+    return box(Pal3StartMenuDirector(
+        host, asset_path, scene,
+        NO_PRESS, INTENT_NONE, MODE_MAIN, NO_SLOT, NO_SLOT,
+        0.0,
+        // taiji_t (animation progress); also reset on every activate.
+        0.0,
+        // closing flag; false at boot, set true when 离开游戏 is clicked.
+        false,
+        cloud_x, cloud_y, cloud_speed, cloud_names,
+        false,
+    )) as box<radiance.IImmediateDirector>;
+}

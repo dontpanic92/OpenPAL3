@@ -18,6 +18,3 @@ class OpenSwd5ApplicationLoaderComponent: IApplicationLoaderComponent {}
 
 [uuid(9492ea12-f90d-4909-9dbb-7d16a0df716d)]
 class YaobowApplicationLoader: IApplicationLoaderComponent {}
-
-[uuid(06c84916-355f-46a2-a61d-4e9caab8abe8)]
-class MainMenuDirector: IDirector {}

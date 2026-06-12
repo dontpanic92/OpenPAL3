@@ -27,7 +27,7 @@ use shared::loaders::anm::load_anm;
 use shared::loaders::smp::load_smp;
 use shared::openpal3::loaders::{
     cvd_loader::cvd_load_from_file, nav_loader::nav_load_from_file, sce_loader::sce_load_from_file,
-    scn_loader::scn_load_from_file,
+    scn_loader::scn_load_from_file, tli::TliDict,
 };
 
 use crate::comdef::editor_services::{
@@ -134,7 +134,7 @@ fn classify_path(path: &str) -> i32 {
         Some("mp3" | "smp" | "wav" | "ogg") => KIND_AUDIO,
         Some("bik") => KIND_VIDEO,
         Some("mv3" | "cvd" | "dff" | "anm" | "bsp" | "pol") => KIND_MODEL,
-        Some("scn" | "nav" | "sce" | "nod") => KIND_STRUCTURED,
+        Some("scn" | "nav" | "sce" | "nod" | "tli") => KIND_STRUCTURED,
         // .xml is content-classified separately: see `classify_xml` —
         // a `<GUILayout>` root tags the file as KIND_UI_LAYOUT, all
         // other .xml files fall through to KIND_UNSUPPORTED.
@@ -228,6 +228,10 @@ impl IPreviewerHubImpl for PreviewerHub {
                 },
                 Err(e) => e.to_string(),
             },
+            Some("tli") => match self.vfs.read_to_end(&path) {
+                Ok(bytes) => jsonify(&TliDict::parse(&bytes)),
+                Err(e) => e.to_string(),
+            },
             _ => "Unsupported".to_string(),
         };
         self.set_last(text)
@@ -256,6 +260,17 @@ impl IPreviewerHubImpl for PreviewerHub {
             _ => image::load_from_memory(&bytes)
                 .or_else(|_| image::load_from_memory_with_format(&bytes, ImageFormat::Tga))
                 .ok()?,
+        };
+        // PAL3's `.dds` atlases are saved bottom-up (D3D9 convention)
+        // but the `image` crate's DXT decoder feeds bytes top-down with
+        // no flip. Apply the same fix-up the start-menu scene uses so
+        // editor previews of PAL3 UI atlases (e.g. `ui/UILib/10.dds`)
+        // match their TLI sprite coordinates. Game-specific scope: PAL3
+        // only — other games' DDS textures haven't shown this issue.
+        let dyn_image = if extension == "dds" && self.game_type == GameType::PAL3 {
+            dyn_image.flipv()
+        } else {
+            dyn_image
         };
         let rgba = dyn_image.to_rgba8();
         let (width, height) = rgba.dimensions();

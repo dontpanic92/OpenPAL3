@@ -3,6 +3,7 @@ pub mod nav_loader;
 pub mod pol;
 pub mod sce_loader;
 pub mod scn_loader;
+pub mod tli;
 
 fn calc_vertex_size(t: i32) -> usize {
     if t < 0 {

@@ -43,6 +43,10 @@ pub mod script_bridges {
         pub use radiance_scripting::script_bridges::crosscom::*;
     }
 
+    pub mod openpal3 {
+        pub use shared::script_bridges::openpal3::*;
+    }
+
     pub mod openpal4 {
         pub use shared::script_bridges::openpal4::*;
     }
@@ -137,7 +141,7 @@ pub mod script_source {
         );
         let swd5 = shared::openswd5::service::Swd5Service::create(app.clone());
         let host_context =
-            YaobowHostContext::create(app.clone(), config, pal3, pal4.clone(), pal5, swd5);
+            YaobowHostContext::create(app.clone(), config, pal3.clone(), pal4.clone(), pal5, swd5);
 
         let host = ScriptHost::install(&engine);
         // Install the dedicated script `AssetManager` so the VFS-backed
@@ -152,9 +156,11 @@ pub mod script_source {
         )
         .expect("yaobow app script init must succeed");
 
-        // The `app.p7` struct conforms to both `IYaobowScriptApp` and
-        // `openpal4.IPal4ScriptFactory`. Register the latter's ProtoSpec
-        // *before* wrapping so the fat CCW gets a real QI slot for it.
+        // The `app.p7` struct conforms to `IYaobowScriptApp`,
+        // `openpal3.IPal3ScriptFactory`, and `openpal4.IPal4ScriptFactory`.
+        // Register every conformed proto's ProtoSpec *before* wrapping
+        // so the fat CCW gets a real QI slot for each.
+        shared::script_bridges::openpal3::register_pal3_script_factory_proto();
         shared::script_bridges::openpal4::register_pal4_script_factory_proto();
         // Reverse-wrap the script app root as a real
         // `ComRc<IYaobowScriptApp>` (a proto-CCW). The CCW roots the
@@ -164,6 +170,14 @@ pub mod script_source {
             app_data,
         )
         .expect("reverse-wrap yaobow script app root must succeed");
+
+        // Hand the PAL3 factory surface to Pal3Service (QI to the
+        // shared `IPal3ScriptFactory` slot of the same fat CCW).
+        let pal3_factory = factory
+            .query_interface::<shared::openpal3::comdef::IPal3ScriptFactory>()
+            .expect("script app must conform to IPal3ScriptFactory");
+        pal3.inner::<crate::openpal3::Pal3Service>()
+            .set_script_factory(pal3_factory);
 
         // Hand the PAL4 factory surface to Pal4Service (QI to the
         // shared `IPal4ScriptFactory` slot of the same fat CCW).

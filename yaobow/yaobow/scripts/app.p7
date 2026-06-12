@@ -15,8 +15,10 @@ import radiance;
 import shared.pal4_debug;
 import yaobow.openpal4.debug_overlay;
 import yaobow.openpal4.loading_overlay;
+import shared.openpal3;
 import shared.openpal4;
 import shared.openpal5;
+import yaobow.openpal3.start_menu as pal3_start_menu;
 import yaobow.openpal5.director;
 import yaobow.openpal4.start_menu;
 import scripting_services;
@@ -24,7 +26,7 @@ import yaobow.yaobow_services;
 import shared.openpal4.actor_controller;
 import yaobow.title.title;
 
-pub struct[yaobow_services.IYaobowScriptApp, openpal4.IPal4ScriptFactory] YaobowScriptApp(
+pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpal4.IPal4ScriptFactory] YaobowScriptApp(
     pub ctx: box<yaobow_services.IYaobowHostContext>,
 ) {
     pub fn make_title_director(self: ref<Self>) -> box<radiance.IImmediateDirector> {
@@ -94,6 +96,18 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal4.IPal4ScriptFactory] Yaobow
         asset_path: string,
     ) -> box<radiance.IImmediateDirector> {
         return start_menu.make_pal4_start_menu(self.ctx, asset_path);
+    }
+
+    // PAL3 start-menu factory. `Pal3Service::create_director` calls
+    // this so launching PAL3 lands on the scripted cover-art menu;
+    // the menu's button handlers call back into the service
+    // (`create_adventure_director` / `load_adventure_director` /
+    // `exit_app`).
+    pub fn make_pal3_start_menu(
+        self: ref<Self>,
+        asset_path: string,
+    ) -> box<radiance.IImmediateDirector> {
+        return pal3_start_menu.make_pal3_start_menu(self.ctx, asset_path);
     }
 }
 

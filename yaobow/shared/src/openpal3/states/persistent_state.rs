@@ -5,6 +5,8 @@ use std::path::PathBuf;
 
 use crate::ydirs;
 
+pub const PAL3_APP_NAME: &str = "OpenPAL3";
+
 #[derive(Serialize, Deserialize)]
 pub struct PersistentState {
     app_name: String,

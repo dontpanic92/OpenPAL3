@@ -1,5 +1,4 @@
 mod debug_layer;
-mod main_menu_director;
 mod sce_proc_hooks;
 pub mod service;
 
