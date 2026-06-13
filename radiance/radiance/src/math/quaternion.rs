@@ -45,9 +45,21 @@ impl Quaternion {
     }
 
     pub fn slerp(q1: &Self, q2: &Self, pct: f32) -> Self {
-        let cos_theta = q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
-        if cos_theta.abs() > 0.999 {
-            return Self::lerp(q1, q2, pct);
+        let mut cos_theta = q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
+
+        // Quaternions `q` and `-q` encode the same rotation. When the dot
+        // product is negative the two keyframes sit on opposite hemispheres and
+        // a naive slerp interpolates the long way around (>180°), swinging the
+        // bone far from its intended pose and tearing that mesh part off. Flip
+        // one endpoint so we always travel the shortest arc.
+        let mut q2 = *q2;
+        if cos_theta < 0. {
+            q2 = Self::new(-q2.x, -q2.y, -q2.z, -q2.w);
+            cos_theta = -cos_theta;
+        }
+
+        if cos_theta > 0.999 {
+            return Self::lerp(q1, &q2, pct);
         }
 
         let theta = cos_theta.acos();
@@ -110,5 +122,59 @@ impl Quaternion {
         matrix[2][2] = 2. * (w2 + z2) - 1.;
 
         matrix
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::math::Vec3;
+
+    fn rotate(q: &Quaternion, v: &Vec3) -> Vec3 {
+        let m = q.to_rotate_matrix();
+        Vec3::new(
+            v.x * m[0][0] + v.y * m[0][1] + v.z * m[0][2],
+            v.x * m[1][0] + v.y * m[1][1] + v.z * m[1][2],
+            v.x * m[2][0] + v.y * m[2][1] + v.z * m[2][2],
+        )
+    }
+
+    #[test]
+    fn slerp_takes_shortest_arc_when_endpoints_are_double_covered() {
+        let z = Vec3::new(0., 0., 1.);
+        let q1 = Quaternion::from_axis_angle(&z, 0.2);
+        let q2 = Quaternion::from_axis_angle(&z, 0.6);
+        // Same rotation as q2 but the antipodal representation (negative dot
+        // with q1) — this is what used to trigger the long-way-around swing.
+        let q2_neg = Quaternion::new(-q2.x, -q2.y, -q2.z, -q2.w);
+
+        let mid = Quaternion::slerp(&q1, &q2_neg, 0.5);
+        // Halfway between 0.2 and 0.6 rad about Z = 0.4 rad.
+        let expected = Quaternion::from_axis_angle(&z, 0.4);
+
+        let v = Vec3::new(1., 0., 0.);
+        let got = rotate(&mid, &v);
+        let want = rotate(&expected, &v);
+        assert!(
+            (got.x - want.x).abs() < 1e-3
+                && (got.y - want.y).abs() < 1e-3
+                && (got.z - want.z).abs() < 1e-3,
+            "got {:?}, want {:?}",
+            got,
+            want,
+        );
+    }
+
+    #[test]
+    fn slerp_antipodal_identity_stays_identity() {
+        let id = Quaternion::new(0., 0., 0., 1.);
+        let neg_id = Quaternion::new(0., 0., 0., -1.);
+        let mid = Quaternion::slerp(&id, &neg_id, 0.5);
+        // Both represent no rotation; the blend must not blow up through zero.
+        let v = Vec3::new(1., 2., 3.);
+        let got = rotate(&mid, &v);
+        assert!((got.x - 1.).abs() < 1e-3);
+        assert!((got.y - 2.).abs() < 1e-3);
+        assert!((got.z - 3.).abs() < 1e-3);
     }
 }

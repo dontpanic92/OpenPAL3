@@ -298,6 +298,20 @@ impl ArmatureComponent {
                 .set_keyframes(kf);
         }
 
+        // Restart the clock for the new clip. Without this, every bone keeps
+        // the `last_time` left over from the previous animation, so the first
+        // rendered frame samples the freshly-installed keyframes at a stale
+        // (often end-of-clip) time and the whole model snaps to a wrong pose
+        // for one frame before the clock advances/loops back to the start.
+        self.animation_tick.replace(0.);
+        for b in &self.bones {
+            b.get_component(IHAnimBoneComponent::uuid())
+                .unwrap()
+                .query_interface::<IHAnimBoneComponent>()
+                .unwrap()
+                .reset_timestamp();
+        }
+
         self.animation_state.replace(AnimationState::Playing);
         self.animation_length.replace(animation_length);
         self.event_manager.borrow_mut().set_events(events);
@@ -400,36 +414,62 @@ struct HAnimBoneProps {
     max_time: f32,
 }
 
+/// Select the keyframe segment containing `time` and the interpolation factor
+/// within it.
+///
+/// Returns `(from_index, next_index, pct)` where `from_index` is the last
+/// keyframe at or before `time`, `next_index` is the following keyframe (or
+/// `from_index` itself at the end of the list), and `pct` is the clamped
+/// `[0, 1]` blend factor across the segment's *duration*.
+///
+/// Extracted as a pure function so the off-by-one / denominator behaviour can
+/// be unit-tested without an entity. `frames` is assumed non-empty and sorted
+/// by ascending `timestamp` (the loaders guarantee both).
+fn sample_frames(frames: &[AnimKeyFrame], time: f32) -> (usize, usize, f32) {
+    let from_index = frames
+        .iter()
+        .rposition(|t| t.timestamp <= time)
+        .unwrap_or(0);
+
+    let next_index = (from_index + 1).min(frames.len() - 1);
+
+    let from_ts = frames[from_index].timestamp;
+    let next_ts = frames[next_index].timestamp;
+    let segment = next_ts - from_ts;
+    let pct = if from_index == next_index || segment <= 0.0 {
+        0.
+    } else {
+        ((time - from_ts) / segment).clamp(0.0, 1.0)
+    };
+
+    (from_index, next_index, pct)
+}
+
 impl HAnimBoneProps {
     pub fn update(&mut self, entity: ComRc<IEntity>, delta_sec: f32) {
         self.last_time = self.last_time + delta_sec;
 
+        // Hold on the final keyframe once this bone runs out of keys instead of
+        // wrapping back to 0. Looping is the armature's responsibility: it
+        // resets *every* bone's timestamp together via `reset_animation_state`,
+        // which keeps all bones in phase. Wrapping here per-bone — using each
+        // bone's own `max_time`, which differs because bones have different
+        // keyframe counts/durations — desynced the skeleton and made the mesh
+        // appear to split into disconnected parts.
         if self.last_time > self.max_time {
-            self.last_time = 0.;
+            self.last_time = self.max_time;
         }
 
-        let frame_index = self
-            .frames
-            .iter()
-            .position(|t| t.timestamp > self.last_time)
-            .unwrap_or(0);
-
-        let next_frame_index = (frame_index + 1).min(self.frames.len() - 1);
-        let pct = if frame_index == next_frame_index {
-            0.
-        } else {
-            (self.last_time - self.frames[frame_index].timestamp)
-                / (self.frames[next_frame_index].timestamp)
-        };
+        let (from_index, next_frame_index, pct) = sample_frames(&self.frames, self.last_time);
 
         let rotation = Quaternion::slerp(
-            &self.frames[frame_index].rotation,
+            &self.frames[from_index].rotation,
             &self.frames[next_frame_index].rotation,
             pct,
         );
 
         let position = Vec3::lerp(
-            &self.frames[frame_index].position,
+            &self.frames[from_index].position,
             &self.frames[next_frame_index].position,
             pct,
         );
@@ -516,5 +556,88 @@ impl IComponentImpl for HAnimBoneComponent {
         self.props
             .borrow_mut()
             .update(self.entity.clone(), delta_sec);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::math::{Quaternion, Vec3};
+
+    fn kf(timestamp: f32) -> AnimKeyFrame {
+        AnimKeyFrame {
+            rotation: Quaternion::new(0., 0., 0., 1.),
+            position: Vec3::new(0., 0., 0.),
+            timestamp,
+        }
+    }
+
+    #[test]
+    fn sample_picks_segment_at_or_before_time() {
+        let frames = vec![kf(0.), kf(0.1), kf(0.2), kf(0.3)];
+        // 0.15 sits in the [0.1, 0.2] segment, half-way through.
+        let (from, next, pct) = sample_frames(&frames, 0.15);
+        assert_eq!((from, next), (1, 2));
+        assert!((pct - 0.5).abs() < 1e-6, "pct = {pct}");
+    }
+
+    #[test]
+    fn sample_pct_uses_segment_duration_not_abs_timestamp() {
+        // Non-uniform spacing: a 0.4-wide segment between 0.6 and 1.0.
+        let frames = vec![kf(0.), kf(0.6), kf(1.0)];
+        let (from, next, pct) = sample_frames(&frames, 0.8);
+        assert_eq!((from, next), (1, 2));
+        // (0.8 - 0.6) / (1.0 - 0.6) = 0.5, not 0.8 / 1.0.
+        assert!((pct - 0.5).abs() < 1e-6, "pct = {pct}");
+    }
+
+    #[test]
+    fn sample_clamps_at_and_past_end() {
+        let frames = vec![kf(0.), kf(0.1), kf(0.2)];
+        let (from, next, pct) = sample_frames(&frames, 0.2);
+        assert_eq!((from, next), (2, 2));
+        assert_eq!(pct, 0.0);
+
+        // Past the end (would only happen transiently) still clamps, never
+        // extrapolates.
+        let (from, next, pct) = sample_frames(&frames, 5.0);
+        assert_eq!((from, next), (2, 2));
+        assert_eq!(pct, 0.0);
+    }
+
+    #[test]
+    fn sample_before_first_keyframe_holds_first() {
+        let frames = vec![kf(0.5), kf(1.0)];
+        let (from, next, pct) = sample_frames(&frames, 0.0);
+        assert_eq!((from, next), (0, 1));
+        assert_eq!(pct, 0.0);
+    }
+
+    #[test]
+    fn sample_single_keyframe_holds() {
+        let frames = vec![kf(0.)];
+        let (from, next, pct) = sample_frames(&frames, 1.0);
+        assert_eq!((from, next), (0, 0));
+        assert_eq!(pct, 0.0);
+    }
+
+    #[test]
+    fn bones_of_different_length_stay_in_phase() {
+        // Two bones, different keyframe durations. At the same shared clock
+        // time they must agree on phase: the longer bone keeps interpolating
+        // while the shorter one holds its final pose, rather than wrapping and
+        // desyncing (the "broken into parts" bug).
+        let long = vec![kf(0.), kf(0.2), kf(0.4)];
+        let short = vec![kf(0.), kf(0.2)];
+
+        let t = 0.3;
+        let (lf, ln, lpct) = sample_frames(&long, t);
+        assert_eq!((lf, ln), (1, 2));
+        assert!((lpct - 0.5).abs() < 1e-6);
+
+        // Shorter bone is past its last keyframe: holds, never wraps to 0.
+        let (sf, sn, spct) = sample_frames(&short, t);
+        assert_eq!((sf, sn), (1, 1));
+        assert_eq!(spct, 0.0);
     }
 }
