@@ -213,9 +213,9 @@ impl CoreRadianceEngine {
         use crate::{math::Rect, scene::Viewport};
         let phase_start = std::time::Instant::now();
         let scene = self.scene_manager.scene();
-        if let Some(s) = scene {
-            let mut rendering_engine = self.rendering_engine.as_ref().borrow_mut();
-            let viewport = {
+        let mut rendering_engine = self.rendering_engine.as_ref().borrow_mut();
+        let viewport = match scene.as_ref() {
+            Some(s) => {
                 let mut camera = s.camera_mut();
                 match camera.viewport() {
                     Viewport::FullExtent(_) => {
@@ -234,10 +234,24 @@ impl CoreRadianceEngine {
                 }
 
                 camera.viewport()
-            };
+            }
+            None => {
+                // No scene on the stack: derive a full-extent viewport
+                // straight from the rendering engine so the present path
+                // still runs and any imgui output from a pure-script
+                // director reaches the swapchain.
+                let extent = rendering_engine.view_extent();
+                Viewport::FullExtent(Rect {
+                    x: 0.,
+                    y: 0.,
+                    width: extent.0 as f32,
+                    height: extent.1 as f32,
+                })
+            }
+        };
 
-            rendering_engine.render(s, viewport, ui_frame);
-        }
+        rendering_engine.render(scene, viewport, ui_frame);
+        drop(rendering_engine);
         crate::perf::count(
             "engine.scene_render_total_ns",
             phase_start.elapsed().as_nanos() as u64,

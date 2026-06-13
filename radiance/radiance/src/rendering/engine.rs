@@ -20,7 +20,12 @@ pub struct CapturedFrame {
 pub trait RenderingEngine {
     fn begin_frame(&mut self);
     fn end_frame(&mut self);
-    fn render(&mut self, scene: ComRc<IScene>, viewport: Viewport, ui_frame: ImguiFrame);
+    /// Record + present one frame. `scene` is optional so the engine can
+    /// keep the swapchain alive (and surface imgui output from pure-script
+    /// directors) even when no scene is on the stack. When `scene` is
+    /// `None`, backends should clear and present an imgui-only frame
+    /// using `viewport` (which the caller derives from `view_extent()`).
+    fn render(&mut self, scene: Option<ComRc<IScene>>, viewport: Viewport, ui_frame: ImguiFrame);
     fn view_extent(&self) -> (u32, u32);
     fn component_factory(&self) -> Rc<dyn ComponentFactory>;
 

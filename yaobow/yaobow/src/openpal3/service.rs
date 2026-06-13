@@ -26,7 +26,6 @@ use crosscom::ComRc;
 use packfs::init_virtual_fs;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector, ISceneManager};
 use radiance::input::{InputEngine, SyntheticInputBridge};
-use radiance::scene::CoreScene;
 use radiance::video::Codec as VideoCodec;
 use radiance_scripting::comdef::services::IVideoHandle;
 use radiance_scripting::services::ImguiTextureCache;
@@ -358,23 +357,6 @@ impl IPal3ServiceImpl for Pal3Service {
         // queue it for the next `pump_pre_update`.
         let _ = self.asset_manager_for(asset_path);
         self.pending_debug_install.set(true);
-
-        // The PAL3 start menu is a pure imgui overlay — it never
-        // pushes a 3D scene of its own. The engine's render loop is
-        // gated on `scene_manager.scene().is_some()`, so without at
-        // least one scene on the stack the imgui frame is built but
-        // never blitted to the framebuffer (blank window). When we
-        // come from the title director the title's scene is still
-        // installed; on `--pal3` direct boot the stack starts empty,
-        // so we push an empty `CoreScene` here. The adventure
-        // director replaces this with its real scene when the player
-        // hits New Game / Load.
-        let engine_rc = self.app.engine();
-        let scene_manager = engine_rc.borrow().scene_manager().clone();
-        drop(engine_rc);
-        if scene_manager.scene().is_none() {
-            scene_manager.push_scene(CoreScene::create());
-        }
 
         let factory = self.script_factory.borrow().clone().expect(
             "Pal3Service::create_director called before the script factory was installed \

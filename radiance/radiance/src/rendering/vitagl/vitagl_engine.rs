@@ -39,38 +39,39 @@ impl VitaGLRenderingEngine {
 }
 
 impl RenderingEngine for VitaGLRenderingEngine {
-    fn render(&mut self, scene: ComRc<IScene>, viewport: Viewport, ui_frame: ImguiFrame) {
+    fn render(&mut self, scene: Option<ComRc<IScene>>, viewport: Viewport, ui_frame: ImguiFrame) {
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             glEnable(GL_DEPTH_TEST);
             glDepthFunc(GL_LESS);
         }
 
-        let (view, proj) = {
-            let camera = scene.camera();
-            let view = Mat44::inversed(camera.transform().matrix());
-            let proj = *camera.projection_matrix();
-            (view, proj)
-        };
+        if let Some(scene) = scene {
+            let (view, proj) = {
+                let camera = scene.camera();
+                let view = Mat44::inversed(camera.transform().matrix());
+                let proj = *camera.projection_matrix();
+                (view, proj)
+            };
 
-        let rc: Vec<_> = scene
-            .visible_entities()
-            .iter()
-            .filter_map(|e| {
-                e.get_rendering_component()
-                    .and_then(|c| Some((c, e.world_transform().matrix().clone())))
-            })
-            .collect();
-        let r_objects: Vec<std::rc::Rc<VitaGLRenderObject>> = rc
-            .iter()
-            .flat_map(|(c, m)| {
-                let m = m.clone();
-                c.vitagl_render_objects().iter().map(move |vro| {
-                    vro.set_model_matrix(m.clone());
-                    vro.clone()
+            let rc: Vec<_> = scene
+                .visible_entities()
+                .iter()
+                .filter_map(|e| {
+                    e.get_rendering_component()
+                        .and_then(|c| Some((c, e.world_transform().matrix().clone())))
                 })
-            })
-            .collect();
+                .collect();
+            let r_objects: Vec<std::rc::Rc<VitaGLRenderObject>> = rc
+                .iter()
+                .flat_map(|(c, m)| {
+                    let m = m.clone();
+                    c.vitagl_render_objects().iter().map(move |vro| {
+                        vro.set_model_matrix(m.clone());
+                        vro.clone()
+                    })
+                })
+                .collect();
 
         let mut objects_by_material = vec![];
         for obj in &r_objects {
@@ -155,6 +156,7 @@ impl RenderingEngine for VitaGLRenderingEngine {
                     );
                 }
             }
+        }
         }
 
         unsafe {

@@ -111,7 +111,7 @@ pub struct VulkanRenderingEngine {
 }
 
 impl RenderingEngine for VulkanRenderingEngine {
-    fn render(&mut self, scene: ComRc<IScene>, viewport: Viewport, ui_frame: ImguiFrame) {
+    fn render(&mut self, scene: Option<ComRc<IScene>>, viewport: Viewport, ui_frame: ImguiFrame) {
         if self.surface.is_none() {
             self.drain_pending_offscreen();
             return;
@@ -122,9 +122,20 @@ impl RenderingEngine for VulkanRenderingEngine {
             return;
         }
 
-        let entities = crate::perf::time("vulkan.render.collect_visible_entities_total_ns", || {
-            scene.visible_entities()
-        });
+        // No scene on the stack: still record + present so imgui from
+        // pure-script directors reaches the swapchain. We pass an empty
+        // entity list and a default camera; record_command_buffers handles
+        // the empty 3D pass (just clears) and the imgui pass is independent.
+        let (entities, camera) = match scene.as_ref() {
+            Some(s) => {
+                let entities = crate::perf::time(
+                    "vulkan.render.collect_visible_entities_total_ns",
+                    || s.visible_entities(),
+                );
+                (entities, Some(s.camera()))
+            }
+            None => (Vec::new(), None),
+        };
         crate::perf::gauge("vulkan.render.visible_entities", entities.len() as u64);
 
         // Update the dynamic UBO with each visible render object's world
@@ -150,7 +161,7 @@ impl RenderingEngine for VulkanRenderingEngine {
         );
 
         let result = crate::perf::time("vulkan.render.objects_total_ns", || {
-            self.render_objects(&scene.camera(), entities, viewport, ui_frame)
+            self.render_objects(camera.as_ref().map(|c| &**c), entities, viewport, ui_frame)
         });
         if let Err(err) = result {
             println!("{}", err);
@@ -755,7 +766,7 @@ impl VulkanRenderingEngine {
 
     fn render_objects(
         &mut self,
-        camera: &Camera,
+        camera: Option<&Camera>,
         entities: Vec<ComRc<IEntity>>,
         viewport: Viewport,
         ui_frame: ImguiFrame,
@@ -804,15 +815,27 @@ impl VulkanRenderingEngine {
         // ordinal so transparent sorting can compute per-object centroid
         // distance against the camera (instead of per-entity, which
         // would tie every sub-mesh of a single dff together).
-        Self::bucketize_visible(
-            &entities,
-            camera,
-            &mut self.scratch_components,
-            &mut self.scratch_opaque,
-            &mut self.scratch_cutout,
-            &mut self.scratch_transparent,
-            &mut self.scratch_transparent_ordered,
-        );
+        //
+        // When there's no scene (camera is None) entities is empty, so
+        // skip bucketization entirely and clear the scratch buckets so
+        // the empty 3D pass just clears the framebuffer.
+        if let Some(cam) = camera {
+            Self::bucketize_visible(
+                &entities,
+                cam,
+                &mut self.scratch_components,
+                &mut self.scratch_opaque,
+                &mut self.scratch_cutout,
+                &mut self.scratch_transparent,
+                &mut self.scratch_transparent_ordered,
+            );
+        } else {
+            self.scratch_components.clear();
+            self.scratch_opaque.clear();
+            self.scratch_cutout.clear();
+            self.scratch_transparent.clear();
+            self.scratch_transparent_ordered.clear();
+        }
 
         let command_buffer = swapchain!()
             .record_command_buffers(
@@ -826,12 +849,22 @@ impl VulkanRenderingEngine {
             )
             .unwrap();
 
-        // Update Per-frame Uniform Buffers
+        // Update Per-frame Uniform Buffers. With no camera (scene-less
+        // imgui frame), substitute identity matrices — the empty
+        // 3D pass doesn't sample them anyway, but the UBO slot still
+        // needs valid data so descriptor binding doesn't trip
+        // validation.
         {
-            let ubo = {
-                let view = Mat44::inversed(camera.transform().matrix());
-                let proj = camera.projection_matrix();
-                PerFrameUniformBuffer::new(&view, proj)
+            let ubo = match camera {
+                Some(cam) => {
+                    let view = Mat44::inversed(cam.transform().matrix());
+                    let proj = cam.projection_matrix();
+                    PerFrameUniformBuffer::new(&view, proj)
+                }
+                None => {
+                    let identity = Mat44::new_identity();
+                    PerFrameUniformBuffer::new(&identity, &identity)
+                }
             };
 
             swapchain!().update_ubo(image_index as usize, &[ubo]);

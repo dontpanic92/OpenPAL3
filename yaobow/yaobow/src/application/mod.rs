@@ -15,7 +15,6 @@ use radiance::{
         ISceneManager,
     },
     input::SyntheticInputBridge,
-    scene::CoreScene,
 };
 use radiance_scripting::install_imgui_pump;
 use shared::agent_common::{AgentBootOptions, AgentBridge, install_global_log_sink, start_agent_server};
@@ -253,7 +252,6 @@ impl YaobowApplicationLoader {
             .query_interface::<IDirector>()
             .expect("initial script director must be created");
         scene_manager.set_director(director);
-        scene_manager.push_scene(CoreScene::create());
     }
 
     /// Direct-boot path for CLI flags. Calls into the matching
