@@ -834,6 +834,18 @@ impl Pal4VmContext {
         }
     }
 
+    pub fn pause_bgm(&mut self) {
+        if let Some(source) = self.bgm_source.as_mut() {
+            source.pause();
+        }
+    }
+
+    pub fn resume_bgm(&mut self) {
+        if let Some(source) = self.bgm_source.as_mut() {
+            source.resume();
+        }
+    }
+
     pub fn play_sound(&mut self, name: &str) -> anyhow::Result<i32> {
         // Reclaim slots whose WAV has finished playing on its own so
         // ambient SOUND emitters that fire every few seconds don't

@@ -1347,12 +1347,20 @@ fn set_object_visible(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Function
 }
 
 fn add_property(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_property_id:i32,_property_value:i32,_is_persistent:i32);
+    // PAL4 "property" (道具) maps to our persistent inventory.
+    // _is_persistent is always 1 in shipped scripts; ignore for now.
+    as_params!(vm, property_id: i32, property_value: i32, _is_persistent: i32);
+    vm.vm_context
+        .persistent_state_mut()
+        .add_equipment(property_id, property_value);
     Pal4FunctionState::Completed
 }
 
 fn del_property(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_property_id:i32,_property_value:i32,_is_persistent:i32);
+    as_params!(vm, property_id: i32, property_value: i32, _is_persistent: i32);
+    vm.vm_context
+        .persistent_state_mut()
+        .remove_equipment(property_id, property_value);
     Pal4FunctionState::Completed
 }
 
@@ -1549,7 +1557,11 @@ fn script_music_stop(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionS
 }
 
 fn arena_music_stop(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+    // No separate "arena music" channel yet; arena BGM rides the regular
+    // BGM source, so stopping the BGM gives the correct audible result.
+    // _fade_out ignored (audio backend lacks per-source fade).
     as_params!(vm, _fade_out: f32);
+    vm.vm_context.stop_bgm();
     Pal4FunctionState::Completed
 }
 
@@ -1687,20 +1699,38 @@ fn player_garb1(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState 
 }
 
 fn get_visible_object(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_obj_file_str:i32);
-    vm.set_ret_value(1);
+    as_params!(vm, obj_file_str: i32);
+    let name = get_str(vm, obj_file_str as usize).unwrap_or_default();
+    let visible = vm
+        .vm_context
+        .scene
+        .borrow()
+        .get_object(&name)
+        .map(|e| e.visible())
+        .unwrap_or(false);
+    vm.set_ret_value(if visible { 1 } else { 0 });
     Pal4FunctionState::Completed
 }
 
 fn get_visible_monster(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_monster_file_str:i32);
-    vm.set_ret_value(1);
+    as_params!(vm, monster_file_str: i32);
+    let name = get_str(vm, monster_file_str as usize).unwrap_or_default();
+    // Monsters are tracked alongside NPCs in the PAL4 scene.
+    let visible = vm
+        .vm_context
+        .scene
+        .borrow()
+        .get_npc(&name)
+        .map(|e| e.visible())
+        .unwrap_or(false);
+    vm.set_ret_value(if visible { 1 } else { 0 });
     Pal4FunctionState::Completed
 }
 
 fn check_pack_property(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_property_id:i32,_property_value:i32);
-    vm.set_ret_value(1);
+    as_params!(vm, property_id: i32, property_value: i32);
+    let count = vm.vm_context.persistent_state().equipment_count(property_id);
+    vm.set_ret_value(if count >= property_value { 1 } else { 0 });
     Pal4FunctionState::Completed
 }
 
@@ -1905,8 +1935,9 @@ fn npc_reset_emotion(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionS
 }
 
 fn get_property_numb(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_property_id:i32);
-    vm.set_ret_value(1);
+    as_params!(vm, property_id: i32);
+    let count = vm.vm_context.persistent_state().equipment_count(property_id);
+    vm.set_ret_value(count);
     Pal4FunctionState::Completed
 }
 
@@ -2149,11 +2180,13 @@ fn ui_timer_get_save_data(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Func
     Pal4FunctionState::Completed
 }
 
-fn script_music_pause(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+fn script_music_pause(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+    vm.vm_context.pause_bgm();
     Pal4FunctionState::Completed
 }
 
-fn script_music_resume(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+fn script_music_resume(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+    vm.vm_context.resume_bgm();
     Pal4FunctionState::Completed
 }
 
