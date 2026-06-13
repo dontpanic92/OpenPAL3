@@ -180,6 +180,30 @@ impl Pal4ActorAnimationController {
     pub fn current(&self) -> Pal4ActorAnimation {
         self.current.borrow().clone()
     }
+
+    /// Play a custom action by name (e.g. "C03"). Mirrors `play()` but
+    /// loads the keyframes and AMF events for `act_name` instead of a
+    /// hard-coded animation enum. Used by NPC scripts (`giNpcDoAction`
+    /// et al.); the player side goes through
+    /// `Pal4VmContext::player_do_action` which already does this
+    /// inline via the player metadata.
+    pub fn play_action(&self, act_name: &str, config: Pal4ActorAnimationConfig) {
+        match self.asset_loader.load_animation(&self.actor_name, act_name) {
+            Ok(anim) => {
+                self.play_animation(anim.keyframes, anim.events, config);
+                self.current.replace(Pal4ActorAnimation::Unknown);
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to load action '{}' for actor '{}': {:#}",
+                    act_name,
+                    self.actor_name,
+                    e
+                );
+                self.play_default();
+            }
+        }
+    }
 }
 
 /// Extension trait exposing `Pal4ActorAnimationController`'s formerly-IDL
@@ -187,6 +211,7 @@ impl Pal4ActorAnimationController {
 pub trait IPal4ActorAnimationControllerExt {
     fn set_default(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>);
     fn play(&self, animation: Pal4ActorAnimation, config: Pal4ActorAnimationConfig);
+    fn play_action(&self, act_name: &str, config: Pal4ActorAnimationConfig);
     fn current(&self) -> Pal4ActorAnimation;
     fn play_animation(
         &self,
@@ -204,6 +229,10 @@ impl IPal4ActorAnimationControllerExt for ComRc<IPal4ActorAnimationController> {
     fn play(&self, animation: Pal4ActorAnimation, config: Pal4ActorAnimationConfig) {
         self.inner::<Pal4ActorAnimationController>()
             .play(animation, config)
+    }
+    fn play_action(&self, act_name: &str, config: Pal4ActorAnimationConfig) {
+        self.inner::<Pal4ActorAnimationController>()
+            .play_action(act_name, config)
     }
     fn current(&self) -> Pal4ActorAnimation {
         self.inner::<Pal4ActorAnimationController>().current()

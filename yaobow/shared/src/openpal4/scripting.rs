@@ -1394,7 +1394,8 @@ fn camera_set_collide(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Function
     Pal4FunctionState::Completed
 }
 
-fn camera_seek_to_player(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+fn camera_seek_to_player(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
+    vm.vm_context.seek_camera_to_leader();
     Pal4FunctionState::Completed
 }
 
@@ -1496,7 +1497,9 @@ fn player_unhold_act(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionS
 }
 
 fn npc_unhold_act(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_file_str:i32);
+    as_params!(vm, file_str: i32);
+    let name = get_str(vm, file_str as usize).unwrap_or_default();
+    vm.vm_context.npc_unhold_act(&name);
     Pal4FunctionState::Completed
 }
 
@@ -2556,12 +2559,17 @@ fn npc_back_to(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
 }
 
 fn npc_do_action(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _action_file_str: i32, _action_id: i32, _do_action: i32);
+    as_params!(vm, npc_file_str: i32, action_file_str: i32, flag: i32, _sync: i32);
+    let name = get_str(vm, npc_file_str as usize).unwrap_or_default();
+    let action = get_str(vm, action_file_str as usize).unwrap_or_default();
+    vm.vm_context.npc_do_action(&name, &action, flag);
     Pal4FunctionState::Completed
 }
 
 fn npc_end_action(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _end_action: i32);
+    as_params!(vm, npc_file_str: i32, _end_action: i32);
+    let name = get_str(vm, npc_file_str as usize).unwrap_or_default();
+    vm.vm_context.npc_unhold_act(&name);
     Pal4FunctionState::Completed
 }
 
@@ -2641,17 +2649,24 @@ fn npc_face_to_current_player(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4
 }
 
 fn npc_reset_dir(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32);
+    as_params!(vm, npc_file_str: i32);
+    let name = get_str(vm, npc_file_str as usize).unwrap_or_default();
+    vm.vm_context.npc_set_ang(&name, 0.0);
     Pal4FunctionState::Completed
 }
 
 fn npc_do_action_repeat(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32,_action_file_str:i32);
+    as_params!(vm, npc_file_str: i32, action_file_str: i32);
+    let name = get_str(vm, npc_file_str as usize).unwrap_or_default();
+    let action = get_str(vm, action_file_str as usize).unwrap_or_default();
+    vm.vm_context.npc_do_action(&name, &action, 0);
     Pal4FunctionState::Completed
 }
 
 fn npc_end_action_repeat(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32);
+    as_params!(vm, npc_file_str: i32);
+    let name = get_str(vm, npc_file_str as usize).unwrap_or_default();
+    vm.vm_context.npc_unhold_act(&name);
     Pal4FunctionState::Completed
 }
 

@@ -529,6 +529,39 @@ impl Pal4VmContext {
         }
     }
 
+    /// Snap the active camera to the same orbital pose the in-game
+    /// party controller would maintain when the player has control: an
+    /// orbit offset (rotation, height, distance) around the leader,
+    /// then look at the leader. Implements `giCameraSeekToPlayer`
+    /// which scripts call after cinematics so the post-cutscene view
+    /// matches the controllable camera. The orbit constants here
+    /// mirror the defaults seeded in `shared/scripts/openpal4/actor_controller.p7`
+    /// (`rotation=0`, `height=300`, `distance=300`); when the player
+    /// regains control, the party controller overwrites these on the
+    /// next tick from its own state — so this is essentially a clean
+    /// transition pose for the locked / just-unlocked frame.
+    pub fn seek_camera_to_leader(&mut self) {
+        // Keep these in sync with the defaults in actor_controller.p7.
+        const ROTATION: f32 = 0.0;
+        const HEIGHT: f32 = 300.0;
+        const DISTANCE: f32 = 300.0;
+
+        let target = self.leader_pos();
+        let cr = ROTATION.cos();
+        let sr = ROTATION.sin();
+        let cam = Vec3::new(
+            DISTANCE * (cr + sr) + target.x,
+            HEIGHT + target.y,
+            DISTANCE * (cr - sr) + target.z,
+        );
+        if let Some(scene) = self.scene_manager.scene() {
+            let mut camera = scene.camera_mut();
+            let t = camera.transform_mut();
+            t.set_position(&cam);
+            t.look_at(&target);
+        }
+    }
+
     pub fn lock_player(&mut self, lock: bool) {
         self.session
             .borrow_mut()
@@ -591,6 +624,24 @@ impl Pal4VmContext {
             .borrow()
             .get_npc_controller(name)
             .map(|controller| controller.play(animation, Pal4ActorAnimationConfig::Looping));
+    }
+
+    pub fn npc_do_action(&mut self, name: &str, action: &str, flag: i32) {
+        let config = match flag {
+            -1 => Pal4ActorAnimationConfig::PauseOnHold,
+            0 => Pal4ActorAnimationConfig::Looping,
+            // TODO: >0 means playing n times
+            _ => Pal4ActorAnimationConfig::OneTime,
+        };
+        if let Some(controller) = self.scene.borrow().get_npc_controller(name) {
+            controller.play_action(action, config);
+        }
+    }
+
+    pub fn npc_unhold_act(&mut self, name: &str) {
+        if let Some(controller) = self.scene.borrow().get_npc_controller(name) {
+            controller.unhold();
+        }
     }
 
     pub fn player_unhold_act(&mut self, player: i32) {
