@@ -44,7 +44,7 @@ fn script_package_round_trips_via_radiance_ypk_archive() {
 
     pack(
         &PackInput {
-            scripts_dir: &scripts_dir,
+            scripts_dir: Some(&scripts_dir),
             extra_files: &[ExtraFile {
                 source_path: &extra_path,
                 virtual_entry: "svc_gen.p7",

@@ -90,7 +90,7 @@ fn pack_script_bundle() {
 
     script_package::pack(
         &script_package::PackInput {
-            scripts_dir: &scripts_dir,
+            scripts_dir: Some(&scripts_dir),
             extra_files: &[],
         },
         &out,
@@ -143,7 +143,7 @@ fn pack_engine_bindings() {
 
     script_package::pack(
         &script_package::PackInput {
-            scripts_dir: &stage,
+            scripts_dir: Some(&stage),
             extra_files: &extras,
         },
         &out,

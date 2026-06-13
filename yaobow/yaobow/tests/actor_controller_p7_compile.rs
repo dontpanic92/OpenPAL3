@@ -13,9 +13,10 @@ fn actor_controller_p7_compiles() {
     let assets = radiance::asset::AssetManager::new();
     radiance_scripting::mount_engine_bindings(&assets);
     shared::mount_scripts(&assets);
+    yaobow_lib::script_source::mount_scripts(&assets);
 
     let host = ScriptHost::new();
     host.set_script_assets(assets);
-    host.load_source_from_path("/shared/openpal4/actor_controller.p7")
+    host.load_source_from_path("/yaobow/openpal4/actor_controller.p7")
         .expect("actor_controller.p7 must compile against the shared.openpal4 binding");
 }

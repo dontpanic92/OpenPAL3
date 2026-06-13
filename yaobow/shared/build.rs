@@ -75,8 +75,7 @@ fn generate_script_bridge(idl_file: &str, out_file: &str) {
     }
 }
 
-/// Pack `scripts/` (currently `openpal4/actor_controller.p7`) plus the
-/// five codegen-derived IDL p7s (`shared_openpal{3,4,5}.p7`,
+/// Pack the five codegen-derived IDL p7s (`shared_openpal{3,4,5}.p7`,
 /// `shared_openswd5.p7`, `shared_pal4_debug.p7` from `OUT_DIR`) into
 /// `OUT_DIR/shared_scripts.ypk`. The codegen files are stored under
 /// flat names (`openpal3.p7`, `openpal4.p7`, etc.) so that, once the
@@ -87,8 +86,12 @@ fn generate_script_bridge(idl_file: &str, out_file: &str) {
 /// each IDL's `module(protosept) shared.X;` directive — no build-time
 /// rewrite needed.
 fn pack_script_bundle() {
-    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let scripts_dir = manifest_dir.join("scripts");
+    // `shared` has no authored scripts: `actor_controller.p7` moved to
+    // the `yaobow` crate, leaving only codegen-derived IDL p7s from
+    // `OUT_DIR`. Pass `scripts_dir: None` so no on-disk directory is
+    // required — the bundle is built from `extra_files` alone. When
+    // new shared-authored scripts land, create `shared/scripts/` and
+    // flip this back to `Some(&scripts_dir)`.
     let out = out_path("shared_scripts.ypk");
 
     // (OUT_DIR file name, virtual entry inside the ypk).
@@ -113,7 +116,7 @@ fn pack_script_bundle() {
 
     script_package::pack(
         &script_package::PackInput {
-            scripts_dir: &scripts_dir,
+            scripts_dir: None,
             extra_files: &extra_files,
         },
         &out,

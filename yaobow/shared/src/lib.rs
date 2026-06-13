@@ -55,7 +55,7 @@ const SCRIPT_BUNDLE_YPK: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/share
 
 /// Mounts this crate's `shared_scripts.ypk` at `/shared/` on the
 /// script `AssetManager`, so scripts can `import shared.openpal4;`,
-/// `import shared.openpal4.actor_controller;`, etc.
+/// `import shared.openpal3;`, `import shared.pal4_debug;`, etc.
 pub fn mount_scripts(assets: &radiance::asset::AssetManager) {
     assets
         .mount_ypk_bytes("/shared", SCRIPT_BUNDLE_YPK)

@@ -535,7 +535,7 @@ impl Pal4VmContext {
     /// then look at the leader. Implements `giCameraSeekToPlayer`
     /// which scripts call after cinematics so the post-cutscene view
     /// matches the controllable camera. The orbit constants here
-    /// mirror the defaults seeded in `shared/scripts/openpal4/actor_controller.p7`
+    /// mirror the defaults seeded in `yaobow/yaobow/scripts/openpal4/actor_controller.p7`
     /// (`rotation=0`, `height=300`, `distance=300`); when the player
     /// regains control, the party controller overwrites these on the
     /// next tick from its own state — so this is essentially a clean

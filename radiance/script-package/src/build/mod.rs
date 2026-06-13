@@ -23,8 +23,11 @@ pub struct ExtraFile<'a> {
 
 /// Input to [`pack`].
 pub struct PackInput<'a> {
-    /// Directory to walk recursively for `*.p7` files.
-    pub scripts_dir: &'a Path,
+    /// Directory to walk recursively for `*.p7` files. Use `None`
+    /// when the crate has no authored scripts to walk and the ypk
+    /// should be built from `extra_files` alone (e.g. codegen-only
+    /// bundles). A missing directory passed via `Some` is an error.
+    pub scripts_dir: Option<&'a Path>,
     /// Extra files (typically from `OUT_DIR`) to inject. Order is
     /// preserved after walked files.
     pub extra_files: &'a [ExtraFile<'a>],
@@ -49,10 +52,12 @@ pub struct PackInput<'a> {
 pub fn pack(input: &PackInput, output_ypk: &Path) -> anyhow::Result<()> {
     let entries = collect_entries(input)?;
 
-    println!("cargo:rerun-if-changed={}", input.scripts_dir.display());
-    for entry in &entries {
-        if entry.source_path.starts_with(input.scripts_dir) {
-            println!("cargo:rerun-if-changed={}", entry.source_path.display());
+    if let Some(scripts_dir) = input.scripts_dir {
+        println!("cargo:rerun-if-changed={}", scripts_dir.display());
+        for entry in &entries {
+            if entry.source_path.starts_with(scripts_dir) {
+                println!("cargo:rerun-if-changed={}", entry.source_path.display());
+            }
         }
     }
 
@@ -82,34 +87,38 @@ struct CollectedEntry {
 }
 
 fn collect_entries(input: &PackInput) -> anyhow::Result<Vec<CollectedEntry>> {
-    if !input.scripts_dir.is_dir() {
-        anyhow::bail!(
-            "PackInput::scripts_dir does not exist or is not a directory: {}",
-            input.scripts_dir.display()
-        );
-    }
+    let mut walked: Vec<(PathBuf, PathBuf)> = if let Some(scripts_dir) = input.scripts_dir {
+        if !scripts_dir.is_dir() {
+            anyhow::bail!(
+                "PackInput::scripts_dir does not exist or is not a directory: {}",
+                scripts_dir.display()
+            );
+        }
 
-    let mut walked: Vec<(PathBuf, PathBuf)> = walkdir::WalkDir::new(input.scripts_dir)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .and_then(|s| s.to_str())
-                .map(|s| s.eq_ignore_ascii_case("p7"))
-                .unwrap_or(false)
-        })
-        .map(|e| {
-            let abs = e.path().to_path_buf();
-            let rel = abs
-                .strip_prefix(input.scripts_dir)
-                .expect("walkdir paths are under scripts_dir")
-                .to_path_buf();
-            (abs, rel)
-        })
-        .collect();
+        walkdir::WalkDir::new(scripts_dir)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.eq_ignore_ascii_case("p7"))
+                    .unwrap_or(false)
+            })
+            .map(|e| {
+                let abs = e.path().to_path_buf();
+                let rel = abs
+                    .strip_prefix(scripts_dir)
+                    .expect("walkdir paths are under scripts_dir")
+                    .to_path_buf();
+                (abs, rel)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     // Deterministic order so the resulting ypk is byte-stable across
     // rebuilds and platforms.
@@ -181,7 +190,7 @@ mod tests {
 
         pack(
             &PackInput {
-                scripts_dir: &scripts,
+                scripts_dir: Some(&scripts),
                 extra_files: &[],
             },
             &out,
@@ -204,7 +213,7 @@ mod tests {
 
         let err = pack(
             &PackInput {
-                scripts_dir: &scripts,
+                scripts_dir: Some(&scripts),
                 extra_files: &[ExtraFile {
                     source_path: &extra,
                     virtual_entry: "foo.p7",
@@ -229,7 +238,7 @@ mod tests {
         let out2 = out_dir.join("two.ypk");
 
         let mk_input = || PackInput {
-            scripts_dir: &scripts,
+            scripts_dir: Some(&scripts),
             extra_files: &[],
         };
         pack(&mk_input(), &out1).unwrap();

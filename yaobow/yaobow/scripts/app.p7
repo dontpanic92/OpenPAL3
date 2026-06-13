@@ -23,7 +23,7 @@ import yaobow.openpal5.director;
 import yaobow.openpal4.start_menu;
 import scripting_services;
 import yaobow.yaobow_services;
-import shared.openpal4.actor_controller;
+import yaobow.openpal4.actor_controller;
 import yaobow.title.title;
 
 pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpal4.IPal4ScriptFactory] YaobowScriptApp(
