@@ -41,10 +41,17 @@ impl PkgArchive {
                 self.reader
                     .seek(std::io::SeekFrom::Start(entry.start_position as u64))?;
                 let mut data = self.reader.read_u8_vec(entry.size as usize)?;
-                if entry.size != entry.size2 {
+                if entry.decompressed_size != entry.size {
                     data = miniz_oxide::inflate::decompress_to_vec_zlib(&data).map_err(|_| {
                         PkgReadError::DecompressionError("Unable to decompress file".to_string())
                     })?;
+                }
+                // PAL5 stores its lua scripts as SDFA-wrapped, encrypted blobs.
+                // Decrypt transparently so every consumer (game runtime + the
+                // editor previewer) sees plaintext. Gated on the `SDFA` magic,
+                // so non-PAL5 pkg entries are untouched.
+                if fileformats::pal5::is_sdfa(&data) {
+                    data = fileformats::pal5::decrypt_sdfa_script(&data);
                 }
                 return Ok(MemoryFile::new(Cursor::new(data)));
             }
@@ -122,18 +129,18 @@ pub struct PkgFileEntry {
     pub fullpath: String,
     pub filename: String,
     pub start_position: u32,
+    pub decompressed_size: u32,
     pub size: u32,
-    pub size2: u32,
 }
 
 impl PkgFileEntry {
-    pub fn new(fullpath: String, start_position: u32, size: u32, size2: u32) -> Self {
+    pub fn new(fullpath: String, start_position: u32, decompressed_size: u32, size: u32) -> Self {
         Self {
             fullpath: fullpath.clone(),
             filename: fullpath.split("\\").last().unwrap_or("").to_string(),
             start_position,
+            decompressed_size,
             size,
-            size2,
         }
     }
 }

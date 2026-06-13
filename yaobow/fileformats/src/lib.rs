@@ -4,6 +4,7 @@ pub mod nif;
 pub mod nod;
 pub mod npc;
 pub mod pal4;
+pub mod pal5;
 pub mod pol;
 pub mod role_bin;
 pub mod rwbs;

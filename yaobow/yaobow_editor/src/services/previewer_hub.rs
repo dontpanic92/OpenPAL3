@@ -129,7 +129,7 @@ fn extension(path: &str) -> Option<String> {
 
 fn classify_path(path: &str) -> i32 {
     match extension(path).as_deref() {
-        Some("h" | "asm" | "ini" | "txt" | "conf" | "cfg" | "log") => KIND_TEXT,
+        Some("h" | "asm" | "ini" | "txt" | "conf" | "cfg" | "log" | "lua") => KIND_TEXT,
         Some("tga" | "png" | "dds") => KIND_IMAGE,
         Some("mp3" | "smp" | "wav" | "ogg") => KIND_AUDIO,
         Some("bik") => KIND_VIDEO,

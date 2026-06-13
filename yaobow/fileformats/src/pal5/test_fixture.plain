@@ -1,0 +1,6 @@
+--游戏启动时的预处理 
+function prelogue()
+--包含宏
+  global.Include(9601)
+  
+end
