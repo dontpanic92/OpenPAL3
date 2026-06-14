@@ -80,16 +80,19 @@ impl Default for MaterialParams {
     fn default() -> Self {
         Self {
             tint: [1.0, 1.0, 1.0, 1.0],
-            // Very low discard threshold (≈ 1/255): only fully-transparent
-            // texels are skipped; bilinear-filtered edge texels with any
-            // alpha at all survive and are alpha-blended on top of what's
-            // behind. The shaders in `simple_triangle.frag` /
-            // `lightmap_texture.frag` consume this value when `ALPHA_TEST`
-            // is set. The previous 0.4 cutoff caused a sharp visible
-            // boundary at filtered edge pixels (the source of the
-            // black-fringe regression on PAL4 cloth assets where there
-            // was no opaque geometry behind the cloth's fringe).
-            alpha_ref: 0.004,
+            // Alpha-test punch-through threshold (half coverage). Texels
+            // below 50% alpha are discarded; the rest are kept. This is how
+            // RenderWare 3.x / Gamebox rendered hair, fur, and foliage —
+            // crisp, solid edges that occlude what's behind them.
+            //
+            // A near-zero threshold (the previous 1/255) instead keeps every
+            // faint bilinear-filtered edge texel and alpha-blends it on top
+            // of whatever is behind, so soft edges become semi-transparent
+            // and the background shows *through* them — e.g. the skybox
+            // bleeding through tree-leaf edges, or a character's skin showing
+            // through their hair. 0.5 is the classic D3D/RW alpha-ref that
+            // avoids that see-through fringe.
+            alpha_ref: 0.5,
             intensity: 1.0,
             uv_scale: [1.0, 1.0],
             uv_offset: [0.0, 0.0],
@@ -197,16 +200,16 @@ impl MaterialDef {
     }
 
     /// Override the blend mode on an existing `MaterialDef`. Also resets
-    /// `params.alpha_ref` to the mode-appropriate default (0.004 for
-    /// `AlphaTest` — small enough to discard only fully-transparent
-    /// texels, leaving bilinear-filtered edge texels for the blender —
-    /// and 0 for every other mode) so existing call sites that
+    /// `params.alpha_ref` to the mode-appropriate default (0.5 for
+    /// `AlphaTest` — half-coverage punch-through so faint edge texels are
+    /// discarded rather than blended, giving crisp, solid hair/fur/foliage
+    /// edges — and 0 for every other mode) so existing call sites that
     /// reach into a `SimpleMaterialDef::create*` result can switch the mode
     /// without thinking about the cutoff.
     pub fn with_blend(mut self, blend: BlendMode) -> Self {
         self.blend = blend;
         self.params.alpha_ref = match blend {
-            BlendMode::AlphaTest => 0.004,
+            BlendMode::AlphaTest => 0.5,
             _ => 0.0,
         };
         // Translucent surfaces must test depth but not write it, so they
@@ -274,7 +277,7 @@ impl MaterialDef {
 
 /// Builder for [`MaterialDef`]. Defaults reproduce today's renderer
 /// behavior: `BlendMode::AlphaTest`, `DepthMode::TestWrite`,
-/// `CullMode::Back`, and default `MaterialParams` (`alpha_ref = 0.004`).
+/// `CullMode::Back`, and default `MaterialParams` (`alpha_ref = 0.5`).
 pub struct MaterialDefBuilder {
     debug_name: String,
     program: ShaderProgram,
@@ -341,13 +344,14 @@ impl MaterialDefBuilder {
 
     pub fn blend(mut self, blend: BlendMode) -> Self {
         // Reset `alpha_ref` to the mode-appropriate default. Cutout
-        // (`AlphaTest`) keeps a near-zero threshold so only fully
-        // transparent texels are discarded; every other mode sets it to
-        // 0 because the opaque shader variant ignores it. Call
+        // (`AlphaTest`) uses a half-coverage punch-through threshold so
+        // faint edge texels are discarded (crisp, solid edges) rather than
+        // alpha-blended into a see-through fringe; every other mode sets it
+        // to 0 because the opaque shader variant ignores it. Call
         // `.params(...)` after `.blend(...)` if a custom value is needed.
         self.blend = blend;
         self.params.alpha_ref = match blend {
-            BlendMode::AlphaTest => 0.004,
+            BlendMode::AlphaTest => 0.5,
             _ => 0.0,
         };
         // Translucent surfaces test depth but don't write it (see
