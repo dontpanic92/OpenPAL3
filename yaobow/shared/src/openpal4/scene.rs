@@ -847,10 +847,17 @@ impl Pal4SceneLoader {
                             })
                     };
 
-                    let initially_hidden =
-                        object_type == GobObjectType::MARKER || entry.is_initially_hidden();
+                    // Cutscene-only set-dressing (GENERIC type with the
+                    // "scripted" bit clear) must start hidden; the plot script
+                    // reveals it via `giSetObjectVisible` (-> `enable_object`,
+                    // which re-enables it). Disable it too so an invisible prop
+                    // doesn't leave behind collision / examine prompts.
+                    let hidden_cutscene_prop = entry.is_hidden_cutscene_prop(object_type);
+                    let initially_hidden = object_type == GobObjectType::MARKER
+                        || entry.is_initially_hidden()
+                        || hidden_cutscene_prop;
                     entity.set_visible(!initially_hidden);
-                    entity.set_enabled(true);
+                    entity.set_enabled(!hidden_cutscene_prop);
 
                     let scale = entry
                         .get_common_property(GobCommonProperties::Scale)

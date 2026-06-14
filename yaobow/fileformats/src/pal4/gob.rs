@@ -301,6 +301,21 @@ impl GobEntry {
             .unwrap_or(false)
     }
 
+    /// `true` for cutscene-only set-dressing that must start hidden: a
+    /// [`GENERIC`](GobObjectType::GENERIC) (type 0) object with the "scripted"
+    /// bit clear ([`is_scripted`](Self::is_scripted) == `false`). These passive
+    /// props are placed for cinematics and are revealed by the plot script via
+    /// `giSetObjectVisible`. Type-0 objects with the scripted bit set (walls,
+    /// ladders, covers) stay visible, as do all non-generic object types.
+    /// Static level geometry lives in the BSP, not in GOB, so hiding these can
+    /// never remove real scenery. See gob2.md §2.1.
+    ///
+    /// `object_type` is the per-entry value from
+    /// [`GobHeader::object_types`](GobHeader::object_types).
+    pub fn is_hidden_cutscene_prop(&self, object_type: u32) -> bool {
+        object_type == GobObjectType::GENERIC && !self.is_scripted()
+    }
+
     /// Iterate over the GOMTask arrays attached to this entry. Each
     /// item is a `(level, array)` pair, where `level` is the `N` in
     /// `PAL4-GOMTask-[ N ]` (`0` if it cannot be parsed).
@@ -654,6 +669,64 @@ mod tests {
         write_u32(buf, 1);
         // game_object section marker
         write_i32_prop(buf, "PAL4-GameObject", property_count);
+    }
+
+    /// Like [`write_entry_header`] but with caller-controlled `flags`.
+    fn write_entry_header_with_flags(
+        buf: &mut Vec<u8>,
+        name: &str,
+        file_name: &str,
+        flags: [u32; 3],
+        property_count: i32,
+    ) {
+        write_string(buf, name);
+        write_string(buf, "gamedata\\PALObject\\JQ02\\");
+        write_string(buf, file_name);
+        write_string(buf, file_name);
+        for _ in 0..6 {
+            write_f32(buf, 0.0); // position + rotation
+        }
+        write_string(buf, ""); // research_function
+        write_u32(buf, flags[0]);
+        write_u32(buf, flags[1]);
+        write_u32(buf, flags[2]);
+        write_f32(buf, 60.0); // trigger_distance
+        write_u32(buf, 1); // active
+        write_i32_prop(buf, "PAL4-GameObject", property_count);
+    }
+
+    /// `is_hidden_cutscene_prop` is true only for GENERIC (type 0) objects
+    /// whose "scripted" bit (`flags[0]`) is clear. This matches the verified
+    /// PAL4 `M01/1` split: `MO001/2/4/5/6` (`flags=[0,0,0]`) hide, while
+    /// `MO003` and the scripted props (walls/ladders, `flags[0]=1`) stay
+    /// visible.
+    #[test]
+    fn hidden_cutscene_prop_rule() {
+        fn single(ty: u32, name: &str, flags: [u32; 3]) -> GobFile {
+            let mut buf = Vec::<u8>::new();
+            write_u32(&mut buf, 1);
+            write_u32(&mut buf, ty);
+            write_entry_header_with_flags(&mut buf, name, "JQ02", flags, 1);
+            write_i32_prop(&mut buf, GobFixedProperty::HIDE, 0);
+            write_i32_prop(&mut buf, "PAL4-GameObject-Parameters", 0);
+            write_u32(&mut buf, 0);
+            GobFile::read(&mut Cursor::new(buf)).expect("parse")
+        }
+
+        // GENERIC + flags[0]==0 -> hidden cutscene prop.
+        let g = single(GobObjectType::GENERIC, "MO005", [0, 0, 0]);
+        assert!(g.entries[0].is_hidden_cutscene_prop(GobObjectType::GENERIC));
+
+        // GENERIC + flags[0]==1 (scripted, e.g. a wall/ladder) -> visible.
+        let g = single(GobObjectType::GENERIC, "MO003", [1, 0, 0]);
+        assert!(!g.entries[0].is_hidden_cutscene_prop(GobObjectType::GENERIC));
+
+        // Non-generic types are never hidden by this rule, even with
+        // flags[0]==0.
+        let g = single(GobObjectType::ACTION, "title01", [0, 0, 0]);
+        assert!(!g.entries[0].is_hidden_cutscene_prop(GobObjectType::ACTION));
+        let g = single(GobObjectType::GET_ITEM, "item001", [1, 1, 1]);
+        assert!(!g.entries[0].is_hidden_cutscene_prop(GobObjectType::GET_ITEM));
     }
 
     /// Single-entry effect file (tag 8), mirroring gob2.md §6.
