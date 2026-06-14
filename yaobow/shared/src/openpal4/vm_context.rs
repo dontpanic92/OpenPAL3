@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, Ref, RefCell, RefMut},
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     rc::Rc,
 };
 
@@ -62,7 +62,7 @@ use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimation, Pal4ActorAnimationConfig},
     asset_loader::AssetLoader,
     comdef::IPal4ScriptFactory,
-    scene::Pal4Scene,
+    scene::{Pal4Scene, SoundEmitterAction},
     session::Pal4Session,
     states::persistent_state::Pal4PersistentState,
 };
@@ -246,13 +246,27 @@ impl Pal4VmContext {
             .get_player(self.session.borrow().state().leader())
             .world_transform()
             .position();
+        let playing: HashSet<i32> = self
+            .sound_sources
+            .iter()
+            .filter(|(_, s)| s.state() != AudioSourceState::Stopped)
+            .map(|(id, _)| *id)
+            .collect();
         let to_play = self
             .scene
             .borrow_mut()
-            .tick_sound_emitters(leader_pos, delta_sec);
-        for name in to_play {
-            if let Err(e) = self.play_sound(&name) {
-                log::warn!("ambient sound emitter '{}' failed: {:#}", name, e);
+            .tick_sound_emitters(leader_pos, delta_sec, &playing);
+        for action in to_play {
+            match action {
+                SoundEmitterAction::Play {
+                    idx,
+                    name,
+                    looping,
+                } => match self.play_sound_ex(&name, looping) {
+                    Ok(id) => self.scene.borrow_mut().set_emitter_active_source(idx, id),
+                    Err(e) => log::warn!("ambient sound emitter '{}' failed: {:#}", name, e),
+                },
+                SoundEmitterAction::Stop { source_id } => self.stop_sound(source_id),
             }
         }
     }
@@ -898,14 +912,21 @@ impl Pal4VmContext {
     }
 
     pub fn play_sound(&mut self, name: &str) -> anyhow::Result<i32> {
+        self.play_sound_ex(name, false)
+    }
+
+    /// Play a WAV into `sound_sources`, optionally as a seamless native
+    /// loop (used by looping ambient SOUND emitters). Returns the slot id.
+    pub fn play_sound_ex(&mut self, name: &str, looping: bool) -> anyhow::Result<i32> {
         // Reclaim slots whose WAV has finished playing on its own so
         // ambient SOUND emitters that fire every few seconds don't
-        // grow `sound_sources` unboundedly.
+        // grow `sound_sources` unboundedly. (Looping sources never
+        // report `Stopped`, so they survive this prune.)
         self.sound_sources
             .retain(|_, s| s.state() != AudioSourceState::Stopped);
 
         let id = self.find_next_sound_id();
-        let source = self.play_sound_internal(name, radiance::audio::Codec::Wav)?;
+        let source = self.play_sound_internal(name, radiance::audio::Codec::Wav, looping)?;
         self.sound_sources.insert(id, source);
         Ok(id)
     }
@@ -925,7 +946,7 @@ impl Pal4VmContext {
     pub fn play_voice(&mut self, name: &str) -> anyhow::Result<()> {
         self.stop_voice();
 
-        let source = self.play_sound_internal(name, radiance::audio::Codec::Mp3)?;
+        let source = self.play_sound_internal(name, radiance::audio::Codec::Mp3, false)?;
         self.voice_source = Some(source);
         Ok(())
     }
@@ -1128,6 +1149,7 @@ impl Pal4VmContext {
         &mut self,
         name: &str,
         codec: radiance::audio::Codec,
+        looping: bool,
     ) -> anyhow::Result<Box<dyn AudioMemorySource>> {
         let ext = if codec == radiance::audio::Codec::Mp3 {
             "mp3"
@@ -1138,7 +1160,7 @@ impl Pal4VmContext {
         let data = self.loader.load_sound(name, ext)?;
         let mut source = self.audio_engine.create_source();
         source.set_data(data, codec);
-        source.play(false);
+        source.play(looping);
 
         Ok(source)
     }
