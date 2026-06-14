@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 
 use crosscom::ComRc;
-use fileformats::rwbs::uva::{UV_ANIM_VUB_MAGIC, UvAnim, UvAnimDict};
+use fileformats::rwbs::uva::{UvAnim, UvAnimDict};
 use radiance::comdef::{IComponent, IEntity, IUvAnimationComponent};
 use radiance::components::uv_anim::{MaterialUvAnim, UvAnimationComponent, UvKey};
 
@@ -62,7 +62,9 @@ pub fn attach_uv_anim(entity: &ComRc<IEntity>, dict: &UvAnimDict) {
 ///
 /// **Heuristic** (no authoritative spec exists for this PAL4 variant):
 ///
-/// * Find the first occurrence of the `"VU\x05B"` magic in the blob.
+/// * The keyframe block embeds the animation's `duration` a second time
+///   as a 4-byte float that sits *between* keyframe 0 and keyframe 1.
+///   Find the first occurrence of that duration value in the blob.
 /// * Treat the 28 bytes immediately *after* it as keyframe 1 (7 × f32).
 /// * Treat the 28 bytes immediately *before* it as keyframe 0 (7 × f32).
 /// * Within each 7-float record, interpret the layout as
@@ -71,17 +73,35 @@ pub fn attach_uv_anim(entity: &ComRc<IEntity>, dict: &UvAnimDict) {
 /// * Clamp degenerate scales (`|s| < 1e-6`, which catches encoded `-0`)
 ///   to `1.0` so the keyframe doesn't collapse the surface.
 ///
-/// Falls back to identity on parse failure so non-water materials and
-/// unexpected blobs stay benign.
+/// Earlier revisions searched for a fixed `"VU\x05B"` byte pattern
+/// (`0x42055556` ≈ 33.333 s) as if it were a magic separator. It is not
+/// magic — it is simply the duration the PAL4 water overlays happen to
+/// use. Other overlays — notably the ZJM start-menu cloud "trans" layer —
+/// use a different duration (100 s), so that fixed pattern was never
+/// found and those animations decoded to identity (i.e. stayed static).
+/// We now always search by the animation's own `duration`.
+///
+/// Falls back to identity when the duration can't be located (or is an
+/// unusable all-zero value) so non-water materials and unexpected blobs
+/// stay benign.
 fn decode_keyframes(anim: &UvAnim) -> [UvKey; 2] {
     let raw = &anim.raw_keyframes;
-    let target = UV_ANIM_VUB_MAGIC.to_le_bytes();
     let mut kf0 = UvKey::identity();
     let mut kf1 = UvKey::identity();
 
+    // The separator is the animation's own duration, re-encoded as a
+    // little-endian f32 between the two keyframes. Skip an all-zero
+    // duration, which would match the leading zero padding and
+    // mis-locate the split.
+    let duration_bits = anim.duration.to_bits();
+    if duration_bits == 0 {
+        return [kf0, kf1];
+    }
+    let target = duration_bits.to_le_bytes();
+
     let mut found_at: Option<usize> = None;
     for i in 0..raw.len().saturating_sub(4) {
-        if raw[i..i + 4] == target {
+        if raw[i..i + 4] == target[..] {
             found_at = Some(i);
             break;
         }
@@ -122,22 +142,31 @@ fn parse_uv_frame(b: &[u8]) -> UvKey {
 mod tests {
     use super::*;
 
+    // The PAL4 water overlays encode a 33.333 s duration; its little-
+    // endian f32 bytes happen to spell "VU\x05B". Earlier code mistook
+    // that for a magic separator — it is just the duration.
+    const WATER_DURATION_BITS: u32 = 0x4205_5556;
+
     fn synth_anim_from_raw(raw: Vec<u8>) -> UvAnim {
+        synth_anim_from_raw_with_duration(raw, f32::from_bits(WATER_DURATION_BITS))
+    }
+
+    fn synth_anim_from_raw_with_duration(raw: Vec<u8>, duration: f32) -> UvAnim {
         UvAnim {
             version: 0x100,
             type_id: 0x1C1,
             num_frames: 2,
             flags: 0,
-            duration: 0.0,
+            duration,
             name: "test".to_string(),
             raw_keyframes: raw,
         }
     }
 
     #[test]
-    fn decode_finds_keyframes_around_vub_magic() {
+    fn decode_finds_keyframes_around_duration_separator() {
         // Build a 96-byte raw blob with the BJ_water.uva shape:
-        // pad...frame0(7f + sentinel)...VUB-magic...frame1(7f + tail).
+        // pad...frame0(7f + sentinel)...duration...frame1(7f + tail).
         let mut raw = vec![0u8; 96];
         // frame 0 at rk[36..63]: 7 floats [_, 0, 1, _, 0, 0, _] plus
         // sentinel at [60..63].
@@ -145,8 +174,8 @@ mod tests {
         for (i, v) in kf0_floats.iter().enumerate() {
             raw[36 + i * 4..36 + i * 4 + 4].copy_from_slice(&v.to_le_bytes());
         }
-        // VUB magic at rk[64..67].
-        raw[64..68].copy_from_slice(&UV_ANIM_VUB_MAGIC.to_le_bytes());
+        // Duration separator at rk[64..67].
+        raw[64..68].copy_from_slice(&WATER_DURATION_BITS.to_le_bytes());
         // frame 1 at rk[68..95]: [_, 1, 1, _, -1, 1, _].
         let kf1_floats = [0.0f32, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0];
         for (i, v) in kf1_floats.iter().enumerate() {
@@ -163,11 +192,43 @@ mod tests {
     }
 
     #[test]
-    fn decode_returns_identity_when_no_magic() {
-        let keys = decode_keyframes(&synth_anim_from_raw(vec![0u8; 96]));
+    fn decode_returns_identity_when_no_duration() {
+        let keys =
+            decode_keyframes(&synth_anim_from_raw_with_duration(vec![0u8; 96], 0.0));
         assert_eq!(keys[0].scale, [1.0, 1.0]);
         assert_eq!(keys[1].scale, [1.0, 1.0]);
         assert_eq!(keys[0].offset, [0.0, 0.0]);
         assert_eq!(keys[1].offset, [0.0, 0.0]);
+    }
+
+    #[test]
+    fn decode_finds_keyframes_by_nonwater_duration() {
+        // ZJM_trans.uva shape: identical to the water layout but the
+        // keyframe separator is the animation's actual duration (100 s),
+        // not the 33.333 s the water overlays use. Regression test for
+        // the ZJM start-menu cloud overlay that previously stayed static
+        // because the old code only looked for the water duration bits.
+        let duration = 100.0f32;
+        let mut raw = vec![0u8; 96];
+        // frame 0 at rk[36..63]: [_, 1, 1, _, 0, 0, _].
+        let kf0_floats = [0.0f32, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+        for (i, v) in kf0_floats.iter().enumerate() {
+            raw[36 + i * 4..36 + i * 4 + 4].copy_from_slice(&v.to_le_bytes());
+        }
+        // Duration separator at rk[64..67].
+        raw[64..68].copy_from_slice(&duration.to_le_bytes());
+        // frame 1 at rk[68..95]: [_, 1, 1, _, -1, 0, _].
+        let kf1_floats = [0.0f32, 1.0, 1.0, 0.0, -1.0, 0.0, 0.0];
+        for (i, v) in kf1_floats.iter().enumerate() {
+            raw[68 + i * 4..68 + i * 4 + 4].copy_from_slice(&v.to_le_bytes());
+        }
+
+        let keys = decode_keyframes(&synth_anim_from_raw_with_duration(raw, duration));
+        assert_eq!(keys[0].scale, [1.0, 1.0]);
+        assert_eq!(keys[0].offset, [0.0, 0.0]);
+        assert_eq!(keys[1].scale, [1.0, 1.0]);
+        // The cloud layer scrolls the U offset from 0 → -1 across the
+        // period; this is what was missing while it rendered static.
+        assert_eq!(keys[1].offset, [-1.0, 0.0]);
     }
 }

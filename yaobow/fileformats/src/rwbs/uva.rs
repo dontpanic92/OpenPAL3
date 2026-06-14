@@ -32,17 +32,6 @@ use crate::rwbs::{ChunkHeader, ChunkType, check_ty};
 /// against every PAL4 `.uva` sample (`Q01`, `Q01Y`, `BJ`, `ZJM` waters).
 pub const UV_ANIM_NAME_LEN: usize = 32;
 
-/// Byte pattern that occupies the `f32 duration` slot of every observed
-/// PAL4 `.uva` sample (Q01, Q01Y, BJ, ZJM). Spelled `"VU\x05B"` in the
-/// on-disk layout (`0x42055556` little-endian); read as a float, this is
-/// `≈ 33.333…` (i.e. `100/3`) seconds — the animation's full duration.
-///
-/// Originally treated as an opaque magic by this parser, the value is
-/// retained as a soft sanity check on the duration slot. Parsing relaxes
-/// to a warning + best-effort extraction when the value diverges so
-/// future PAL4 assets with non-default durations don't trip the parse.
-pub const UV_ANIM_VUB_MAGIC: u32 = 0x4205_5556;
-
 #[derive(Debug, Serialize, Clone)]
 pub struct UvAnim {
     /// `RtAnimAnimation::version` — `0x100` in every observed sample.
@@ -54,9 +43,10 @@ pub struct UvAnim {
     pub num_frames: u32,
     pub flags: u32,
     /// Animation duration in seconds, read from the standard RW
-    /// `RtAnimAnimation::duration` slot. In every observed PAL4 sample
-    /// this value is `100/3 ≈ 33.333…` (the byte pattern that spells
-    /// `"VU\x05B"`); see [`UV_ANIM_VUB_MAGIC`] for the rationale.
+    /// `RtAnimAnimation::duration` slot. In the bundled PAL4 water
+    /// samples this is `100/3 ≈ 33.333…` (whose little-endian f32 bytes
+    /// happen to spell `"VU\x05B"`), but other overlays use different
+    /// values (e.g. the ZJM start-menu cloud uses `100.0`).
     pub duration: f32,
     /// Animation name. This is the lookup key that the consuming material
     /// stamps into its `PLUGIN_USERDATA name` entry inside the DFF.
@@ -73,20 +63,18 @@ pub struct UvAnim {
 impl UvAnim {
     fn read(cursor: &mut dyn Read, body_len: usize) -> anyhow::Result<Self> {
         // PAL4's `RpUVAnim` animation body layout (observed across every
-        // bundled `.uva` sample — Q01, Q01Y, BJ, ZJM water). This is the
-        // standard RW `RtAnimAnimation` header with one quirk: the
-        // `f32 duration` slot happens to spell `"VU\x05B"` as bytes
-        // (`0x42055556` ≈ 33.333…s) in every observed sample, which led
-        // earlier revisions to misread it as a magic separator. Modern
-        // parsing reads it as a float and exposes it via `duration`; we
-        // still log a warning if it diverges from the well-known value
-        // so future PAL4 assets get surfaced.
+        // bundled `.uva` sample — Q01, Q01Y, BJ, ZJM water/trans). This is
+        // the standard RW `RtAnimAnimation` header. The `f32 duration`
+        // slot of the water overlays happens to spell `"VU\x05B"` as bytes
+        // (`0x42055556` ≈ 33.333…s), which led earlier revisions to
+        // misread it as a magic separator — it is just the duration, and
+        // other overlays use different values (e.g. ZJM clouds = 100s).
         //
         //   u32 version          // = 0x100
         //   u32 type_id          // = 0x1C1
         //   u32 num_frames       // = 2
         //   u32 flags            // = 0
-        //   f32 duration         // = 33.333…  (bytes spell "VU\x05B")
+        //   f32 duration         // water = 33.333…, clouds = 100.0
         //   u32 reserved         // = 0
         //   char name[32]
         //   u8  raw_keyframes[remaining]
@@ -105,15 +93,6 @@ impl UvAnim {
 
         let duration_bits = cursor.read_u32_le()?;
         let duration = f32::from_bits(duration_bits);
-        if duration_bits != UV_ANIM_VUB_MAGIC {
-            log::debug!(
-                "UvAnim duration slot 0x{:08X} (={}s) differs from the observed PAL4 default 0x{:08X} (={}s); accepting as-is",
-                duration_bits,
-                duration,
-                UV_ANIM_VUB_MAGIC,
-                f32::from_bits(UV_ANIM_VUB_MAGIC),
-            );
-        }
         // Reserved u32 immediately after the duration. Always zero in
         // observed samples; we accept any value.
         let _reserved = cursor.read_u32_le()?;
@@ -191,6 +170,11 @@ impl UvAnimDict {
 mod tests {
     use super::*;
 
+    /// Duration bits of the BJ/ZJM water overlays (`100/3 ≈ 33.333…s`).
+    /// Its little-endian f32 bytes spell `"VU\x05B"`, which earlier code
+    /// mistook for a magic separator — it is just the duration.
+    const WATER_DURATION_BITS: u32 = 0x4205_5556;
+
     /// Real `BJ_water.uva` (192 bytes, 1 animation, name
     /// `"StdMat[ 1711 ]-[ 130 ]"`). Embedded as a hex string so the test
     /// stays hermetic — round-trips the smallest known PAL4 sample end to
@@ -217,8 +201,8 @@ mod tests {
         b.extend(&0x1C1u32.to_le_bytes());
         b.extend(&2u32.to_le_bytes());
         b.extend(&0u32.to_le_bytes());
-        // VUB magic + reserved.
-        b.extend(&UV_ANIM_VUB_MAGIC.to_le_bytes());
+        // duration + reserved.
+        b.extend(&WATER_DURATION_BITS.to_le_bytes());
         b.extend(&0u32.to_le_bytes());
         // 32-byte name, null-padded.
         let name = b"StdMat[ 1711 ]-[ 130 ]";
@@ -234,8 +218,8 @@ mod tests {
         b.extend(&0u32.to_le_bytes());
         b.extend(&0u32.to_le_bytes());
         b.extend(&0xFF90AE22u32.to_le_bytes());
-        // body 120..151 (32 bytes) — opens with VUB magic
-        b.extend(&UV_ANIM_VUB_MAGIC.to_le_bytes());
+        // body 120..151 (32 bytes) — opens with the duration separator
+        b.extend(&WATER_DURATION_BITS.to_le_bytes());
         b.extend(&(-0.0f32).to_le_bytes());
         b.extend(&1.0f32.to_le_bytes());
         b.extend(&1.0f32.to_le_bytes());
