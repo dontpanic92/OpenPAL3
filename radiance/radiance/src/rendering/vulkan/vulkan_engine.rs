@@ -128,10 +128,10 @@ impl RenderingEngine for VulkanRenderingEngine {
         // the empty 3D pass (just clears) and the imgui pass is independent.
         let (entities, camera) = match scene.as_ref() {
             Some(s) => {
-                let entities = crate::perf::time(
-                    "vulkan.render.collect_visible_entities_total_ns",
-                    || s.visible_entities(),
-                );
+                let entities =
+                    crate::perf::time("vulkan.render.collect_visible_entities_total_ns", || {
+                        s.visible_entities()
+                    });
                 (entities, Some(s.camera()))
             }
             None => (Vec::new(), None),
@@ -524,12 +524,12 @@ impl VulkanRenderingEngine {
         let adhoc_command_runner =
             Rc::new(AdhocCommandRunner::new(device.clone(), command_pool, queue));
         let logical_extent = match options.scene_scale_mode {
-            crate::rendering::SceneScaleMode::Logical => options.logical_extent.map(|(w, h)| {
-                vk::Extent2D {
+            crate::rendering::SceneScaleMode::Logical => {
+                options.logical_extent.map(|(w, h)| vk::Extent2D {
                     width: w.max(1),
                     height: h.max(1),
-                }
-            }),
+                })
+            }
             crate::rendering::SceneScaleMode::Native => None,
         };
         if matches!(

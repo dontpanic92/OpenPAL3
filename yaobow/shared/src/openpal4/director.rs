@@ -526,11 +526,9 @@ impl OpenPAL4Director {
         // leader/lock fan-out.
         drop(vm);
 
-        if let Err(err) = super::transition::swap_pal4_scene(
-            &self.vm,
-            &snapshot.scene_name,
-            &snapshot.block_name,
-        ) {
+        if let Err(err) =
+            super::transition::swap_pal4_scene(&self.vm, &snapshot.scene_name, &snapshot.block_name)
+        {
             log::error!(
                 "OpenPAL4Director::load_state: failed to load scene='{}' block='{}': {:?}; \
                  save-load partially restored (globals + leader applied, scene not changed)",
@@ -558,10 +556,7 @@ impl OpenPAL4Director {
     /// player-lock state. Caller is responsible for cancelling any
     /// in-flight script via `vm.abort_script()` (it requires a
     /// `&mut ScriptVm`).
-    pub(crate) fn apply_snapshot(
-        app: &mut Pal4VmContext,
-        snapshot: &RuntimeSnapshot,
-    ) {
+    pub(crate) fn apply_snapshot(app: &mut Pal4VmContext, snapshot: &RuntimeSnapshot) {
         app.set_leader(snapshot.leader as i32);
         if let Some(pos) = snapshot.position {
             app.set_player_pos(snapshot.leader as i32, &pos);
@@ -650,18 +645,9 @@ impl IDirectorImpl for OpenPAL4Director {
         // only for fresh new games.
         let mut vm = self.vm.borrow_mut();
         if vm.is_idle() {
-            let session_has_scene = !vm
-                .vm_context
-                .session()
-                .state()
-                .scene_name()
-                .is_empty();
+            let session_has_scene = !vm.vm_context.session().state().scene_name().is_empty();
             if !session_has_scene {
-                let module = vm
-                    .vm_context
-                    .loader
-                    .load_script_module("script")
-                    .unwrap();
+                let module = vm.vm_context.loader.load_script_module("script").unwrap();
                 vm.set_function(module, 0);
             }
         }
@@ -752,7 +738,13 @@ impl IDirectorImpl for OpenPAL4Director {
         // it returns us back here (same ComRc) on Done so the VM
         // continuations watching the load-generation bump observe
         // the result without losing state.
-        if self.vm.borrow().vm_context.session().has_pending_scene_load() {
+        if self
+            .vm
+            .borrow()
+            .vm_context
+            .session()
+            .has_pending_scene_load()
+        {
             return Some(super::transition::build_in_game_transition(self));
         }
 

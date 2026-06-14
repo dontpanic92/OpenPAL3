@@ -73,90 +73,90 @@ impl RenderingEngine for VitaGLRenderingEngine {
                 })
                 .collect();
 
-        let mut objects_by_material = vec![];
-        for obj in &r_objects {
-            objects_by_material.push((obj.material(), vec![obj.clone()]));
-        }
-        for (material, objects) in objects_by_material {
-            unsafe {
-                glUseProgram(material.shader().program());
-                glUniformMatrix4fv(
-                    material.shader().uniform_view_matrix(),
-                    1,
-                    GL_FALSE as u8,
-                    view.floats().as_ptr() as *const _,
-                );
-                glUniformMatrix4fv(
-                    material.shader().uniform_projection_matrix(),
-                    1,
-                    GL_FALSE as u8,
-                    proj.floats().as_ptr() as *const _,
-                );
-
-                let textures = material.textures();
-                if textures.len() > 0 {
-                    glActiveTexture(GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_2D, textures[0].texture_id());
-                }
-
-                if textures.len() > 1 {
-                    glActiveTexture(GL_TEXTURE1);
-                    glBindTexture(GL_TEXTURE_2D, textures[1].texture_id());
-                }
-
-                for obj in objects {
+            let mut objects_by_material = vec![];
+            for obj in &r_objects {
+                objects_by_material.push((obj.material(), vec![obj.clone()]));
+            }
+            for (material, objects) in objects_by_material {
+                unsafe {
+                    glUseProgram(material.shader().program());
                     glUniformMatrix4fv(
-                        material.shader().uniform_model_matrix(),
+                        material.shader().uniform_view_matrix(),
                         1,
                         GL_FALSE as u8,
-                        obj.model_matrix().floats().as_ptr() as *const _,
+                        view.floats().as_ptr() as *const _,
                     );
-
-                    glEnableVertexAttribArray(0);
-                    glBindBuffer(GL_ARRAY_BUFFER, obj.vertex_buffer());
-                    glVertexAttribPointer(
-                        0,
-                        3,
-                        GL_FLOAT,
-                        GL_FALSE as u8,
-                        obj.stride(),
-                        obj.vertex_offset() as *const _,
-                    );
-
-                    glEnableVertexAttribArray(1);
-                    glBindBuffer(GL_ARRAY_BUFFER, obj.vertex_buffer());
-                    glVertexAttribPointer(
+                    glUniformMatrix4fv(
+                        material.shader().uniform_projection_matrix(),
                         1,
-                        2,
-                        GL_FLOAT,
                         GL_FALSE as u8,
-                        obj.stride(),
-                        obj.tex_coord_offset() as *const _,
+                        proj.floats().as_ptr() as *const _,
                     );
+
+                    let textures = material.textures();
+                    if textures.len() > 0 {
+                        glActiveTexture(GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, textures[0].texture_id());
+                    }
 
                     if textures.len() > 1 {
-                        glEnableVertexAttribArray(2);
+                        glActiveTexture(GL_TEXTURE1);
+                        glBindTexture(GL_TEXTURE_2D, textures[1].texture_id());
+                    }
+
+                    for obj in objects {
+                        glUniformMatrix4fv(
+                            material.shader().uniform_model_matrix(),
+                            1,
+                            GL_FALSE as u8,
+                            obj.model_matrix().floats().as_ptr() as *const _,
+                        );
+
+                        glEnableVertexAttribArray(0);
                         glBindBuffer(GL_ARRAY_BUFFER, obj.vertex_buffer());
                         glVertexAttribPointer(
-                            2,
+                            0,
+                            3,
+                            GL_FLOAT,
+                            GL_FALSE as u8,
+                            obj.stride(),
+                            obj.vertex_offset() as *const _,
+                        );
+
+                        glEnableVertexAttribArray(1);
+                        glBindBuffer(GL_ARRAY_BUFFER, obj.vertex_buffer());
+                        glVertexAttribPointer(
+                            1,
                             2,
                             GL_FLOAT,
                             GL_FALSE as u8,
                             obj.stride(),
-                            obj.tex_coord2_offset() as *const _,
+                            obj.tex_coord_offset() as *const _,
+                        );
+
+                        if textures.len() > 1 {
+                            glEnableVertexAttribArray(2);
+                            glBindBuffer(GL_ARRAY_BUFFER, obj.vertex_buffer());
+                            glVertexAttribPointer(
+                                2,
+                                2,
+                                GL_FLOAT,
+                                GL_FALSE as u8,
+                                obj.stride(),
+                                obj.tex_coord2_offset() as *const _,
+                            );
+                        }
+
+                        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj.index_buffer());
+                        glDrawElements(
+                            GL_TRIANGLES,
+                            obj.index_count(),
+                            GL_UNSIGNED_INT,
+                            std::ptr::null(),
                         );
                     }
-
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj.index_buffer());
-                    glDrawElements(
-                        GL_TRIANGLES,
-                        obj.index_count(),
-                        GL_UNSIGNED_INT,
-                        std::ptr::null(),
-                    );
                 }
             }
-        }
         }
 
         unsafe {

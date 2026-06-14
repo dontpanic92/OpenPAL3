@@ -37,7 +37,7 @@ use fileformats::{
 use packfs::init_virtual_fs;
 use serde::Serialize;
 use shared::{
-    openpal4::{vm_context::Pal4VmContext, scripting::create_context},
+    openpal4::{scripting::create_context, vm_context::Pal4VmContext},
     scripting::angelscript::{
         AsInst, AsInstInstance, ScriptGlobalContext, ScriptGlobalFunction, ScriptModule, disasm,
     },

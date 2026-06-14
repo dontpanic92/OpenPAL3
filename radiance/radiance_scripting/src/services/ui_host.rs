@@ -503,7 +503,11 @@ impl IUiHostImpl for ImguiUiHost {
 
     fn set_next_item_width(&self, w: f32) {
         let _ = with_frame("set_next_item_width", |f| {
-            let scaled = if w >= 0.0 { f.scaled_size(w, 0.0)[0] } else { w };
+            let scaled = if w >= 0.0 {
+                f.scaled_size(w, 0.0)[0]
+            } else {
+                w
+            };
             f.ui.set_next_item_width(scaled);
         });
     }

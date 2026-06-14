@@ -190,7 +190,8 @@ impl Pal3Service {
         // Forward to any director already installed so a bridge
         // attached mid-session takes effect immediately.
         if let Some(adv) = self.active_adventure_director_owned() {
-            adv.inner::<AdventureDirector>().set_agent_bridge(bridge.clone());
+            adv.inner::<AdventureDirector>()
+                .set_agent_bridge(bridge.clone());
         }
         *self.agent_bridge.borrow_mut() = Some(bridge);
     }
@@ -232,9 +233,7 @@ impl Pal3Service {
             }
 
             let active = Self::active_adventure_director(&scene_manager);
-            let director_ref = active
-                .as_ref()
-                .map(|c| c.inner::<AdventureDirector>());
+            let director_ref = active.as_ref().map(|c| c.inner::<AdventureDirector>());
             let ctx = Pal3DispatchCtx {
                 bridge: &bridge,
                 director: director_ref.as_deref(),

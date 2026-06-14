@@ -11,7 +11,7 @@ use radiance::{
     comdef::{IEntity, IEntityExt, ISceneExt, ISceneManager},
     input::InputEngine,
     math::{Transform, Vec3},
-    radiance::{UiManager},
+    radiance::UiManager,
     rendering::{ComponentFactory, VideoPlayer},
     utils::{act_drop::ActDrop, interp_value::InterpValue},
 };
@@ -258,14 +258,12 @@ impl Pal4VmContext {
             .tick_sound_emitters(leader_pos, delta_sec, &playing);
         for action in to_play {
             match action {
-                SoundEmitterAction::Play {
-                    idx,
-                    name,
-                    looping,
-                } => match self.play_sound_ex(&name, looping) {
-                    Ok(id) => self.scene.borrow_mut().set_emitter_active_source(idx, id),
-                    Err(e) => log::warn!("ambient sound emitter '{}' failed: {:#}", name, e),
-                },
+                SoundEmitterAction::Play { idx, name, looping } => {
+                    match self.play_sound_ex(&name, looping) {
+                        Ok(id) => self.scene.borrow_mut().set_emitter_active_source(idx, id),
+                        Err(e) => log::warn!("ambient sound emitter '{}' failed: {:#}", name, e),
+                    }
+                }
                 SoundEmitterAction::Stop { source_id } => self.stop_sound(source_id),
             }
         }

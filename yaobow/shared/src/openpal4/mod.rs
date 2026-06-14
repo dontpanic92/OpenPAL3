@@ -1,5 +1,5 @@
-pub mod vm_context;
 pub mod asset_loader;
+pub mod vm_context;
 #[macro_use]
 pub mod comdef {
     include!(concat!(env!("OUT_DIR"), "/shared_openpal4_comdef.rs"));
@@ -26,5 +26,5 @@ pub mod scripting;
 pub mod service;
 pub mod session;
 pub mod states;
-pub mod uv_anim;
 pub mod transition;
+pub mod uv_anim;

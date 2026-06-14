@@ -301,9 +301,10 @@ fn load_clump(
             let mut frame_bones = vec![];
             for b in hanim_bones_list {
                 if let Some(frame_entity) = id_to_frame.get(&b.id) {
-                    let bone_component = ComRc::<IComponent>::from_object(
-                        HAnimBoneComponent::new(frame_entity.clone(), b.id),
-                    );
+                    let bone_component = ComRc::<IComponent>::from_object(HAnimBoneComponent::new(
+                        frame_entity.clone(),
+                        b.id,
+                    ));
                     frame_entity.add_component(IHAnimBoneComponent::uuid(), bone_component);
                     frame_bones.push(frame_entity.clone());
                 }

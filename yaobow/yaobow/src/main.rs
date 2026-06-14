@@ -21,13 +21,12 @@ pub fn main() {
     #[cfg(not(vita))]
     {
         let args = std::env::args().collect::<Vec<String>>();
-        let agent_opts: Option<Pal4AgentBootOptions> = if args.len() > 2
-            && (args[1] == "--pal3" || args[1] == "--pal4")
-        {
-            parse_agent_args(&args[2..])
-        } else {
-            None
-        };
+        let agent_opts: Option<Pal4AgentBootOptions> =
+            if args.len() > 2 && (args[1] == "--pal3" || args[1] == "--pal4") {
+                parse_agent_args(&args[2..])
+            } else {
+                None
+            };
 
         // Initialise the global logger *after* arg parsing so we can
         // tee into `AgentLogSink` when `--agent-port` is set. Doing it

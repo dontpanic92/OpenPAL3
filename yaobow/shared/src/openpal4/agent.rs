@@ -16,10 +16,10 @@
 use std::ops::Deref;
 use std::rc::Rc;
 
+use agent_server::AgentTraceSink;
 use agent_server::protocol::{
     TraceBranchKind, TraceEventKindPayload, TraceEventPayload, TraceGlobalScope,
 };
-use agent_server::AgentTraceSink;
 use radiance::input::SyntheticInputBridge;
 
 use crate::agent_common::bridge::AgentBridge;

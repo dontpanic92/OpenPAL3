@@ -195,7 +195,9 @@ fn strip_footer_and_padding(buf: Vec<u8>) -> Vec<u8> {
     let pad = *content.last().unwrap() as usize;
     if (1..=8).contains(&pad)
         && pad <= content.len()
-        && content[content.len() - pad..].iter().all(|&b| b as usize == pad)
+        && content[content.len() - pad..]
+            .iter()
+            .all(|&b| b as usize == pad)
     {
         return content[..content.len() - pad].to_vec();
     }
@@ -241,7 +243,9 @@ mod tests {
         let pad = *plain.last().unwrap() as usize;
         let is_pkcs7 = (1..=8).contains(&pad)
             && pad <= plain.len()
-            && plain[plain.len() - pad..].iter().all(|&b| b as usize == pad);
+            && plain[plain.len() - pad..]
+                .iter()
+                .all(|&b| b as usize == pad);
         assert!(!is_pkcs7, "padding should already be stripped");
     }
 

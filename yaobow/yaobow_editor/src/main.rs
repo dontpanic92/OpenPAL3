@@ -46,12 +46,8 @@ fn main() {
     let cfg = shared::config::YaobowConfig::load();
     let engine_options = radiance::rendering::RenderingEngineOptions {
         scene_scale_mode: match cfg.scene_scale_mode() {
-            shared::config::SceneScaleMode::Native => {
-                radiance::rendering::SceneScaleMode::Native
-            }
-            shared::config::SceneScaleMode::Logical => {
-                radiance::rendering::SceneScaleMode::Logical
-            }
+            shared::config::SceneScaleMode::Native => radiance::rendering::SceneScaleMode::Native,
+            shared::config::SceneScaleMode::Logical => radiance::rendering::SceneScaleMode::Logical,
         },
         logical_extent: None,
     };

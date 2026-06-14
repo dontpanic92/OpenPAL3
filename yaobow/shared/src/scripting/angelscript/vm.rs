@@ -113,8 +113,7 @@ impl<TAppContext: 'static> ScriptVm<TAppContext> {
         let mut vm = Self {
             vm_context,
             g,
-            context: entry
-                .map(|(module, index)| ScriptFunctionContext::new(module, index)),
+            context: entry.map(|(module, index)| ScriptFunctionContext::new(module, index)),
             call_stack: vec![],
             heap: vec![],
             r1: 0,

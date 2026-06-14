@@ -420,7 +420,10 @@ impl Pal4SceneLoader {
     pub fn step(&mut self) -> StageProgress {
         let stage = self.next_stage;
         if stage >= 7 {
-            return StageProgress { fraction: 1.0, done: None };
+            return StageProgress {
+                fraction: 1.0,
+                done: None,
+            };
         }
         let result: Option<anyhow::Result<()>> = match stage {
             0 => Some(self.stage_bsp()),
@@ -461,7 +464,10 @@ impl Pal4SceneLoader {
                 done: Some(Err(e)),
             };
         }
-        StageProgress { fraction, done: None }
+        StageProgress {
+            fraction,
+            done: None,
+        }
     }
 
     fn stage_bsp(&mut self) -> anyhow::Result<()> {
@@ -1778,11 +1784,9 @@ mod tests {
         actions
             .iter()
             .filter_map(|a| match a {
-                SoundEmitterAction::Play {
-                    idx,
-                    name,
-                    looping,
-                } => Some((*idx, name.clone(), *looping)),
+                SoundEmitterAction::Play { idx, name, looping } => {
+                    Some((*idx, name.clone(), *looping))
+                }
                 _ => None,
             })
             .collect()

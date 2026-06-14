@@ -159,10 +159,7 @@ impl Pal4ModeRegistry {
                                     overlay,
                                     vm,
                                     story_rc,
-                                    Pal4TransitionAction::EnterStoryFromSave {
-                                        snapshot,
-                                        slot,
-                                    },
+                                    Pal4TransitionAction::EnterStoryFromSave { snapshot, slot },
                                 );
                                 ComRc::<IDirector>::from_object(transition)
                             }

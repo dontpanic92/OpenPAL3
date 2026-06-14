@@ -78,8 +78,11 @@ impl ImguiTextureCache {
         for id in to_forget {
             self.cache.remove(&id);
         }
-        let to_update: Vec<(i64, TextureId)> =
-            self.pending_external_updates.borrow_mut().drain(..).collect();
+        let to_update: Vec<(i64, TextureId)> = self
+            .pending_external_updates
+            .borrow_mut()
+            .drain(..)
+            .collect();
         for (com_id, texture_id) in to_update {
             self.cache.insert(
                 com_id,

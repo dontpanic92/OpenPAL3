@@ -83,11 +83,17 @@ fn find_length_field() {
         mf.read_to_end(&mut plain).unwrap();
         let cl = clean_len(&plain);
         let hh: Vec<String> = blob[0..16].iter().map(|b| format!("{b:02x}")).collect();
-        println!("  body={} clean={} hdr={}  {}", blob.len() - 1024, cl, hh.join(" "), e.fullpath);
+        println!(
+            "  body={} clean={} hdr={}  {}",
+            blob.len() - 1024,
+            cl,
+            hh.join(" "),
+            e.fullpath
+        );
         // windowed: header u32 within [cl, cl+8]
         for off in 0..(1024 - 3) {
-            let v =
-                u32::from_le_bytes([blob[off], blob[off + 1], blob[off + 2], blob[off + 3]]) as usize;
+            let v = u32::from_le_bytes([blob[off], blob[off + 1], blob[off + 2], blob[off + 3]])
+                as usize;
             if v >= cl && v <= cl + 8 {
                 *hdr_hits.entry(off).or_default() += 1;
             }

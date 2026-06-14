@@ -110,27 +110,28 @@ impl Pal3StartMenuScene {
             // first; on miss, swap to `.dds`.
             let primary_path = format!("{}{}", UILIB_DIR, lib_name);
             let dds_path = dds_variant_path(&primary_path);
-            let (load_path, bytes) =
-                match common::store_ext::StoreExt2::read_to_end(vfs, &primary_path) {
-                    Ok(b) => (primary_path.clone(), b),
-                    Err(_) => match dds_path
-                        .as_ref()
-                        .and_then(|p| {
-                            common::store_ext::StoreExt2::read_to_end(vfs, p.as_str()).ok().map(|b| (p.clone(), b))
-                        }) {
-                        Some(found) => found,
-                        None => {
-                            log::warn!(
-                                "Pal3StartMenuScene: atlas {} unreadable (no .tga, no .dds); skipping",
-                                primary_path
-                            );
-                            continue;
-                        }
-                    },
-                };
-            let decoded = image::load_from_memory(&bytes).or_else(|_| {
-                image::load_from_memory_with_format(&bytes, image::ImageFormat::Tga)
-            });
+            let (load_path, bytes) = match common::store_ext::StoreExt2::read_to_end(
+                vfs,
+                &primary_path,
+            ) {
+                Ok(b) => (primary_path.clone(), b),
+                Err(_) => match dds_path.as_ref().and_then(|p| {
+                    common::store_ext::StoreExt2::read_to_end(vfs, p.as_str())
+                        .ok()
+                        .map(|b| (p.clone(), b))
+                }) {
+                    Some(found) => found,
+                    None => {
+                        log::warn!(
+                            "Pal3StartMenuScene: atlas {} unreadable (no .tga, no .dds); skipping",
+                            primary_path
+                        );
+                        continue;
+                    }
+                },
+            };
+            let decoded = image::load_from_memory(&bytes)
+                .or_else(|_| image::load_from_memory_with_format(&bytes, image::ImageFormat::Tga));
             let dyn_image = match decoded {
                 Ok(img) => img,
                 Err(e) => {
@@ -312,16 +313,10 @@ impl IPal3StartMenuSceneImpl for Pal3StartMenuScene {
     }
 
     fn sprite_w(&self, name: &str) -> i32 {
-        self.sprites
-            .get(&canonical(name))
-            .map(|s| s.w)
-            .unwrap_or(0)
+        self.sprites.get(&canonical(name)).map(|s| s.w).unwrap_or(0)
     }
     fn sprite_h(&self, name: &str) -> i32 {
-        self.sprites
-            .get(&canonical(name))
-            .map(|s| s.h)
-            .unwrap_or(0)
+        self.sprites.get(&canonical(name)).map(|s| s.h).unwrap_or(0)
     }
 
     fn native_width(&self) -> i32 {

@@ -82,7 +82,10 @@ pub enum Pal4TransitionAction {
     /// snapshot.block)` synchronously inside `Loading` and apply
     /// the post-load fan-out (leader / position / direction /
     /// camera / player-lock) on the same frame.
-    EnterStoryFromSave { snapshot: RuntimeSnapshot, slot: i32 },
+    EnterStoryFromSave {
+        snapshot: RuntimeSnapshot,
+        slot: i32,
+    },
 
     /// In-game scripted transition (`giArenaLoad` / world map). The
     /// `(scene, block)` is read from `session.peek_pending_scene_load`
@@ -284,10 +287,7 @@ impl Pal4SceneSwap {
             return (0.05, false);
         }
 
-        let loader = self
-            .loader
-            .as_mut()
-            .expect("loader populated above");
+        let loader = self.loader.as_mut().expect("loader populated above");
         let StageProgress { fraction, done } = loader.step();
 
         match done {
@@ -421,8 +421,7 @@ impl Pal4TransitionDirector {
                     .vm_context
                     .session()
                     .take_pending_scene_load();
-                *self.swap.borrow_mut() =
-                    Some(Pal4SceneSwap::new(self.vm.clone(), scene, block));
+                *self.swap.borrow_mut() = Some(Pal4SceneSwap::new(self.vm.clone(), scene, block));
                 *self.post_load.borrow_mut() = PostLoadFanout::BumpDeferredLoad;
             }
         }
@@ -447,10 +446,7 @@ impl Pal4TransitionDirector {
                 if !had_error {
                     let mut vm = self.vm.borrow_mut();
                     OpenPAL4Director::apply_snapshot(vm.vm_context_mut(), &snapshot);
-                    log::info!(
-                        "Game loaded from slot {} (via transition director)",
-                        slot
-                    );
+                    log::info!("Game loaded from slot {} (via transition director)", slot);
                 } else {
                     log::error!(
                         "Pal4TransitionDirector::EnterStoryFromSave: load_scene \
@@ -512,10 +508,7 @@ impl Pal4TransitionDirector {
                     Ok(()) => {
                         let mut vm = self.vm.borrow_mut();
                         OpenPAL4Director::apply_snapshot(vm.vm_context_mut(), &snapshot);
-                        log::info!(
-                            "Game loaded from slot {} (via transition director)",
-                            slot
-                        );
+                        log::info!("Game loaded from slot {} (via transition director)", slot);
                     }
                     Err(err) => {
                         log::error!(
@@ -629,13 +622,7 @@ pub(crate) fn swap_pal4_scene(
         }
     }
 
-    let scene = Pal4Scene::load(
-        &loader,
-        input,
-        scene_name,
-        block_name,
-        factory.as_ref(),
-    )?;
+    let scene = Pal4Scene::load(&loader, input, scene_name, block_name, factory.as_ref())?;
     let scene_root = scene.scene.clone();
     *scene_cell.borrow_mut() = scene;
     scene_manager.push_scene(scene_root);
@@ -666,10 +653,9 @@ impl IDirectorImpl for Pal4TransitionDirector {
         // same `(scene, block)` we will load. The destination is
         // best-effort: for `EnterStoryNew` we have none.
         let (scene, block) = match self.action.borrow().as_ref() {
-            Some(Pal4TransitionAction::EnterStoryFromSave { snapshot, .. }) => (
-                snapshot.scene_name.clone(),
-                snapshot.block_name.clone(),
-            ),
+            Some(Pal4TransitionAction::EnterStoryFromSave { snapshot, .. }) => {
+                (snapshot.scene_name.clone(), snapshot.block_name.clone())
+            }
             Some(Pal4TransitionAction::ChangeScene { scene, block }) => {
                 (scene.clone(), block.clone())
             }
@@ -711,10 +697,8 @@ impl IDirectorImpl for Pal4TransitionDirector {
 
         match self.phase.get() {
             TransitionPhase::Painting => {
-                self.paint_elapsed
-                    .set(self.paint_elapsed.get() + delta_sec);
-                if self.frames_painted.get() >= 1
-                    || self.paint_elapsed.get() >= PAINT_TIMEOUT_SECS
+                self.paint_elapsed.set(self.paint_elapsed.get() + delta_sec);
+                if self.frames_painted.get() >= 1 || self.paint_elapsed.get() >= PAINT_TIMEOUT_SECS
                 {
                     self.phase.set(TransitionPhase::Loading);
                 }

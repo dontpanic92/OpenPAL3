@@ -1145,7 +1145,9 @@ fn arena_load(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     // transition's Loading phase).
     let silent = show_loading == 0;
     let baseline = vm.vm_context.session().deferred_load_generation();
-    vm.vm_context.session().request_scene_load(&scn, &block, silent);
+    vm.vm_context
+        .session()
+        .request_scene_load(&scn, &block, silent);
     let scn_owned = scn.clone();
     let block_owned = block.clone();
     Pal4FunctionState::Yield(Box::new(move |vm, _delta_sec| {
@@ -1367,9 +1369,7 @@ fn del_property(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState 
 fn player_in_team(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, _is_in_team: i32);
     let slot = map_player_slot(vm, player_id);
-    vm.vm_context
-        .persistent_state_mut()
-        .set_in_team(slot, true);
+    vm.vm_context.persistent_state_mut().set_in_team(slot, true);
     vm.vm_context.enable_player(slot, true);
     Pal4FunctionState::Completed
 }
@@ -1626,10 +1626,7 @@ fn effect_play_with_player(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Fun
     Pal4FunctionState::Completed
 }
 
-fn effect_play_with_current_player(
-    _: &str,
-    vm: &mut ScriptVm<Pal4VmContext>,
-) -> Pal4FunctionState {
+fn effect_play_with_current_player(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm,_file_str:i32,_effect_id:i32);
     Pal4FunctionState::Completed
 }
@@ -1732,7 +1729,10 @@ fn get_visible_monster(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Functio
 
 fn check_pack_property(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, property_id: i32, property_value: i32);
-    let count = vm.vm_context.persistent_state().equipment_count(property_id);
+    let count = vm
+        .vm_context
+        .persistent_state()
+        .equipment_count(property_id);
     vm.set_ret_value(if count >= property_value { 1 } else { 0 });
     Pal4FunctionState::Completed
 }
@@ -1809,10 +1809,7 @@ fn gob_detach_from_player(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Func
     Pal4FunctionState::Completed
 }
 
-fn gob_detach_from_current_player(
-    _: &str,
-    _vm: &mut ScriptVm<Pal4VmContext>,
-) -> Pal4FunctionState {
+fn gob_detach_from_current_player(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     Pal4FunctionState::Completed
 }
 
@@ -1821,10 +1818,7 @@ fn effect_attach_to_player(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Fun
     Pal4FunctionState::Completed
 }
 
-fn effect_attach_to_current_player(
-    _: &str,
-    vm: &mut ScriptVm<Pal4VmContext>,
-) -> Pal4FunctionState {
+fn effect_attach_to_current_player(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm,_effect_file_str:i32,_attach_effect:i32);
     Pal4FunctionState::Completed
 }
@@ -1865,7 +1859,12 @@ fn gob_set_position(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionSt
     as_params!(vm, name_str: i32, x: f32, y: f32, z: f32);
 
     let name = get_str(vm, name_str as usize).unwrap_or_default();
-    if !vm.vm_context.scene.borrow_mut().set_object_position(&name, x, y, z) {
+    if !vm
+        .vm_context
+        .scene
+        .borrow_mut()
+        .set_object_position(&name, x, y, z)
+    {
         log::warn!("giGOBSetPosition: unknown object '{}'", name);
     }
     Pal4FunctionState::Completed
@@ -1877,17 +1876,13 @@ fn script_clear_ctx_but_current(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> P
 
 fn add_money(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, money_amount: i32, _add_money: i32);
-    vm.vm_context
-        .persistent_state_mut()
-        .add_money(money_amount);
+    vm.vm_context.persistent_state_mut().add_money(money_amount);
     Pal4FunctionState::Completed
 }
 
 fn pay_money(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, money_amount: i32, _pay_money: i32);
-    vm.vm_context
-        .persistent_state_mut()
-        .pay_money(money_amount);
+    vm.vm_context.persistent_state_mut().pay_money(money_amount);
     Pal4FunctionState::Completed
 }
 
@@ -1939,7 +1934,10 @@ fn npc_reset_emotion(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionS
 
 fn get_property_numb(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, property_id: i32);
-    let count = vm.vm_context.persistent_state().equipment_count(property_id);
+    let count = vm
+        .vm_context
+        .persistent_state()
+        .equipment_count(property_id);
     vm.set_ret_value(count);
     Pal4FunctionState::Completed
 }
@@ -1988,8 +1986,7 @@ fn is_night_time(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState
 
 fn player_set_pos_rot(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, x: f32, y: f32, z: f32, rot: f32);
-    vm.vm_context
-        .set_player_pos(player_id, &Vec3::new(x, y, z));
+    vm.vm_context.set_player_pos(player_id, &Vec3::new(x, y, z));
     vm.vm_context.set_player_ang(player_id, rot);
     Pal4FunctionState::Completed
 }
@@ -2339,8 +2336,7 @@ fn player_current_end_action(_: &str, _vm: &mut ScriptVm<Pal4VmContext>) -> Pal4
 
 fn player_set_pos(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, player_id: i32, x: f32, y: f32, z: f32);
-    vm.vm_context
-        .set_player_pos(player_id, &Vec3::new(x, y, z));
+    vm.vm_context.set_player_pos(player_id, &Vec3::new(x, y, z));
     Pal4FunctionState::Completed
 }
 
@@ -3019,7 +3015,8 @@ fn show_world_map(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionStat
         loop {
             match &phase {
                 WorldMapPhase::WaitChoice => {
-                    let Some((scene, block)) = vm.vm_context.session().take_world_map_choice() else {
+                    let Some((scene, block)) = vm.vm_context.session().take_world_map_choice()
+                    else {
                         return ContinuationState::Loop;
                     };
                     // Same error-handling story as `arena_load`:
@@ -3027,7 +3024,9 @@ fn show_world_map(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionStat
                     // (always a long-distance load) and on
                     // load-failure abort the surrounding script.
                     let baseline = vm.vm_context.session().deferred_load_generation();
-                    vm.vm_context.session().request_scene_load(&scene, &block, false);
+                    vm.vm_context
+                        .session()
+                        .request_scene_load(&scene, &block, false);
                     phase = WorldMapPhase::WaitLoad {
                         baseline,
                         scene,

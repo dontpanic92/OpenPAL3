@@ -319,7 +319,8 @@ mod tests {
         // rendering. serde would normally reject the unknown variant
         // and zero the whole render section back to its default,
         // which still yields `Native`. This pins that behavior.
-        let dir = std::env::temp_dir().join(format!("yaobow-cfg-test-ssbad-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("yaobow-cfg-test-ssbad-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("yaobow.toml");

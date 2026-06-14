@@ -197,7 +197,10 @@ impl Pal4Session {
     /// Append one item to the pending dialog-choice list. Called
     /// from the `giSelectDialogAddItem` sysfn handler.
     pub fn push_dialog_choice(&self, item: String) {
-        self.transient.pending_dialog_choices.borrow_mut().push(item);
+        self.transient
+            .pending_dialog_choices
+            .borrow_mut()
+            .push(item);
     }
 
     /// Buffer a choice for the next `*_get_last_select` call.
@@ -272,9 +275,7 @@ impl Pal4Session {
     /// resume once the generation has advanced past the value they
     /// captured when yielding.
     pub fn note_deferred_load_finished(&self, succeeded: bool) {
-        self.transient
-            .last_deferred_load_succeeded
-            .set(succeeded);
+        self.transient.last_deferred_load_succeeded.set(succeeded);
         let prev = self.transient.deferred_load_generation.get();
         self.transient
             .deferred_load_generation
@@ -493,7 +494,10 @@ mod tests {
         // Dialog choices.
         session.push_dialog_choice("yes".to_string());
         session.push_dialog_choice("no".to_string());
-        assert_eq!(session.dialog_choices(), vec!["yes".to_string(), "no".to_string()]);
+        assert_eq!(
+            session.dialog_choices(),
+            vec!["yes".to_string(), "no".to_string()]
+        );
         session.buffer_dialog_choice(7);
         assert_eq!(session.take_dialog_choice(), 7);
         // After take, choices are cleared and next call defaults to 1.

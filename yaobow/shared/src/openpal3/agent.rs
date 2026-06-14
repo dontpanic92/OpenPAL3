@@ -24,8 +24,8 @@ use std::rc::Rc;
 
 use agent_server::protocol::{
     AgentCommand, AgentError, AgentResponse, AxisInputParams, DialogSnapshot, KeyAction,
-    KeyInputParams, ScreenshotResponse, ScriptGlobalsParams, ScriptGlobalsResponse,
-    SlotParams, StateSnapshot, StepTimeParams, TeleportParams,
+    KeyInputParams, ScreenshotResponse, ScriptGlobalsParams, ScriptGlobalsResponse, SlotParams,
+    StateSnapshot, StepTimeParams, TeleportParams,
 };
 use crosscom::ComRc;
 use radiance::comdef::ISceneManager;
