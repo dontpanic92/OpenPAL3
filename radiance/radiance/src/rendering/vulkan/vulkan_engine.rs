@@ -212,8 +212,11 @@ impl RenderingEngine for VulkanRenderingEngine {
         let entities = scene.visible_entities();
 
         // Update the dynamic UBO with entity transforms — same bucket as
-        // the main pass uses. Safe to share because both pass record the
-        // same frame and the engine `wait_idle`s at end-of-frame.
+        // the main pass uses. Both passes read this within the same frame
+        // (content is written before either records). Cross-frame reuse of
+        // the offscreen command buffer / UBOs is guarded by the target's
+        // own in-flight fence (waited on below before re-recording), so the
+        // engine no longer needs an end-of-frame `wait_idle` to stay safe.
         let dub_manager = self.dub_manager.as_ref().unwrap().clone();
         dub_manager.update_do(|updater| {
             for entity in &entities {
@@ -255,6 +258,17 @@ impl RenderingEngine for VulkanRenderingEngine {
         let target_extent = target.vk_extent();
         let target_descriptor = target.per_frame_descriptor_set();
         let target_semaphore = target.vk_render_finished_semaphore();
+        let target_fence = target.vk_in_flight_fence();
+
+        // Block until the previous offscreen submit using this target's
+        // single command buffer has completed before resetting/re-recording
+        // it. Without this, a heavy scene (e.g. a large BSP) lets the GPU
+        // fall behind and the host overwrites an in-flight command buffer,
+        // which loses the device (ERROR_DEVICE_LOST).
+        if let Err(e) = self.device.wait_for_fences(&[target_fence], true, u64::MAX) {
+            log::warn!("offscreen fence wait failed: {:?}", e);
+            return;
+        }
 
         let swapchain = self.swapchain.as_mut().unwrap();
         if let Err(e) = swapchain.record_to_external_framebuffer(
@@ -268,6 +282,8 @@ impl RenderingEngine for VulkanRenderingEngine {
             &self.scratch_transparent_ordered,
             &dub_manager,
         ) {
+            // Fence is still signaled (we never reset it), so the next
+            // frame's `wait_for_fences` won't deadlock.
             log::warn!("offscreen record failed: {:?}", e);
             return;
         }
@@ -277,9 +293,15 @@ impl RenderingEngine for VulkanRenderingEngine {
         let submit = vk::SubmitInfo::default()
             .command_buffers(&commands)
             .signal_semaphores(&signal);
+        // Reset the fence only now that we're certain to submit, so every
+        // early-return path above leaves it signaled.
+        if let Err(e) = self.device.reset_fences(&[target_fence]) {
+            log::warn!("offscreen fence reset failed: {:?}", e);
+            return;
+        }
         if let Err(e) = self
             .device
-            .queue_submit(self.queue, &[submit], vk::Fence::default())
+            .queue_submit(self.queue, &[submit], target_fence)
         {
             log::warn!("offscreen submit failed: {:?}", e);
             return;

@@ -85,6 +85,15 @@ pub struct VulkanRenderTarget {
 
     command_buffer: vk::CommandBuffer,
     render_finished_semaphore: vk::Semaphore,
+
+    /// Completion fence for the offscreen submit that uses
+    /// `command_buffer`. Created signaled so the first frame's
+    /// `wait_for_fences` returns immediately. The engine waits on this
+    /// (and resets it) before re-recording/re-submitting the single
+    /// command buffer each frame, so an in-flight offscreen pass is
+    /// never overwritten — without this the command buffer is reused
+    /// while still executing, which loses the device under load.
+    in_flight_fence: vk::Fence,
 }
 
 impl VulkanRenderTarget {
@@ -123,6 +132,8 @@ impl VulkanRenderTarget {
         let render_finished_semaphore =
             device.create_semaphore(&vk::SemaphoreCreateInfo::default())?;
 
+        let in_flight_fence = device.create_fence(true)?;
+
         let w = width.max(1);
         let h = height.max(1);
         let (attachments, imgui_texture_id) = build_attachments(
@@ -157,6 +168,7 @@ impl VulkanRenderTarget {
             per_frame_descriptor_set,
             command_buffer,
             render_finished_semaphore,
+            in_flight_fence,
         })
     }
 
@@ -177,6 +189,10 @@ impl VulkanRenderTarget {
 
     pub fn vk_render_finished_semaphore(&self) -> vk::Semaphore {
         self.render_finished_semaphore
+    }
+
+    pub fn vk_in_flight_fence(&self) -> vk::Fence {
+        self.in_flight_fence
     }
 
     pub fn per_frame_descriptor_set(&self) -> vk::DescriptorSet {
@@ -257,6 +273,9 @@ impl Drop for VulkanRenderTarget {
         if self.render_finished_semaphore != vk::Semaphore::null() {
             self.device
                 .destroy_semaphore(self.render_finished_semaphore);
+        }
+        if self.in_flight_fence != vk::Fence::null() {
+            self.device.destroy_fence(self.in_flight_fence);
         }
         if self.command_buffer != vk::CommandBuffer::null() {
             self.device
