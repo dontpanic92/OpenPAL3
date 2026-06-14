@@ -316,6 +316,33 @@ impl AssetLoader {
         Ok(Animation { keyframes, events })
     }
 
+    /// Load a game-object animation (`<folder>/<act>.anm`).
+    ///
+    /// Unlike [`Self::load_animation`], which resolves against the
+    /// `PALActor` tree by actor name, game objects are addressed by the
+    /// raw `folder` recorded in the GOB entry (e.g.
+    /// `gamedata\PALObject\OM01\`, but also per-scene `PALWorld\...`
+    /// folders). The `.anm` sits next to the object's `.dff`, sharing
+    /// the `file_name` stem; `act_name` is normally that same stem
+    /// (auto-play) but may be a script-supplied action file for
+    /// `giObjectDoAction`. Objects ship no `.amf`, so events are empty.
+    pub fn load_object_animation(&self, folder: &str, act_name: &str) -> anyhow::Result<Animation> {
+        let keyframes = self.load_object_anm(folder, act_name)?;
+        Ok(Animation {
+            keyframes,
+            events: vec![],
+        })
+    }
+
+    pub fn load_object_anm(
+        &self,
+        folder: &str,
+        act_name: &str,
+    ) -> anyhow::Result<Vec<Vec<AnimKeyFrame>>> {
+        let path = format!("/{}{}.anm", folder, act_name).replace("\\", "/");
+        Ok(load_anm(&self.vfs, &path)?)
+    }
+
     pub fn load_anm(
         &self,
         actor_name: &str,

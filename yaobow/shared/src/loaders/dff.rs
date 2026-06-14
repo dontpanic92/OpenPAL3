@@ -257,19 +257,72 @@ fn load_clump(
         }
     }
 
-    let armature: Option<ComRc<IArmatureComponent>> = if let Some(hanim_bone) = &hanim_bone {
-        let armature = ComRc::<IArmatureComponent>::from_object(ArmatureComponent::new(
-            parent.clone(),
-            hanim_bone.bone_root.clone(),
-            hanim_bone.bones.clone(),
-        ));
-        parent.add_component(
-            IArmatureComponent::uuid(),
-            armature.clone().query_interface::<IComponent>().unwrap(),
-        );
-        Some(armature)
-    } else {
-        None
+    // A clump that carries an HAnim skeleton but *no* skinned geometry is
+    // a rigid, frame-hierarchy-animated prop (PAL4 doors, levers, tip
+    // markers, …). There is nothing to deform: the visible mesh hangs off
+    // a bone frame and the `.anm` drives that frame's local transform.
+    // We therefore animate the *frame* entities themselves — they carry
+    // the static mesh and live in the scene graph, so the engine ticks
+    // their `HAnimBoneComponent`s and propagates world placement — and
+    // install a `frame_driven` armature that only owns the shared
+    // timeline (loop reset / hold). Skinned actors keep the original
+    // detached-skeleton path.
+    let has_skinned_geometry = chunk.geometries.iter().any(|g| {
+        g.extensions
+            .iter()
+            .any(|e| matches!(e, fileformats::rwbs::extension::Extension::SkinPlugin(_)))
+    });
+
+    let armature: Option<ComRc<IArmatureComponent>> = match (&hanim_bone, has_skinned_geometry) {
+        (Some(hanim_bone), true) => {
+            let armature = ComRc::<IArmatureComponent>::from_object(ArmatureComponent::new(
+                parent.clone(),
+                hanim_bone.bone_root.clone(),
+                hanim_bone.bones.clone(),
+            ));
+            parent.add_component(
+                IArmatureComponent::uuid(),
+                armature.clone().query_interface::<IComponent>().unwrap(),
+            );
+            Some(armature)
+        }
+        (Some(_), false) => {
+            // Rigid prop: attach a bone component to each animated frame
+            // entity, in the same HAnim-hierarchy order the `.anm` tracks
+            // are stored in, then build a frame-driven armature over them.
+            let mut id_to_frame: HashMap<u32, ComRc<IEntity>> = HashMap::new();
+            for (i, f) in chunk.frames.iter().enumerate() {
+                if let Some(h) = f.hanim_plugin() {
+                    id_to_frame.insert(h.header.id, entities[i].0.clone());
+                }
+            }
+
+            let hanim_bones_list = &root_bone.as_ref().unwrap().1;
+            let mut frame_bones = vec![];
+            for b in hanim_bones_list {
+                if let Some(frame_entity) = id_to_frame.get(&b.id) {
+                    let bone_component = ComRc::<IComponent>::from_object(
+                        HAnimBoneComponent::new(frame_entity.clone(), b.id),
+                    );
+                    frame_entity.add_component(IHAnimBoneComponent::uuid(), bone_component);
+                    frame_bones.push(frame_entity.clone());
+                }
+            }
+
+            if frame_bones.is_empty() {
+                None
+            } else {
+                let armature = ComRc::<IArmatureComponent>::from_object(
+                    ArmatureComponent::new_frame_driven(parent.clone(), frame_bones),
+                );
+                parent.add_component(
+                    IArmatureComponent::uuid(),
+                    armature.clone().query_interface::<IComponent>().unwrap(),
+                );
+                Some(armature)
+            }
+        }
+        (None, _) => None,
     };
 
     for atomic in &chunk.atomics {

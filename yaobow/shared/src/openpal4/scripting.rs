@@ -2906,7 +2906,11 @@ fn play_movie(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
 }
 
 fn object_do_action(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_object_file_str:i32,_action_file_str:i32,_action_id:i32,_do_action :i32);
+    as_params!(vm, object_file_str: i32, action_file_str: i32, _action_id: i32, do_action: i32);
+    let object = get_str(vm, object_file_str as usize).unwrap_or_default();
+    let action = get_str(vm, action_file_str as usize).unwrap_or_default();
+    vm.vm_context
+        .object_do_action(&object, &action, do_action != 0);
     Pal4FunctionState::Completed
 }
 

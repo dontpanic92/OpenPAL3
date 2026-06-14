@@ -11,7 +11,10 @@ use fileformats::pal4::{
     gob::{GobCommonProperties, GobFile, GobObjectType},
 };
 use radiance::{
-    comdef::{IEntity, IEntityExt, IScene, ISceneExt, IStaticMeshComponent},
+    comdef::{
+        IArmatureComponent, IArmatureComponentExt, IEntity, IEntityExt, IScene, ISceneExt,
+        IStaticMeshComponent,
+    },
     input::InputEngine,
     math::{Mat44, Transform, Vec3},
     rendering::GradientYMaterialDef,
@@ -875,6 +878,32 @@ impl Pal4SceneLoader {
 
                     let initial_matrix = *entity.transform().borrow().matrix();
 
+                    // ACTION props (tag 6) auto-play their own animation
+                    // (`<folder>/<file_name>.anm`) when the block loads:
+                    // doors swing open, banners wave, flowers sway. The
+                    // object DFF already built a self-ticking armature via
+                    // the shared HAnim path, so we just install + start
+                    // the clip here.
+                    //
+                    // Looping is governed by `play-times`: a negative
+                    // count (the shipped corpus is almost all `-1`) means
+                    // "repeat indefinitely". `holding-end` only matters
+                    // for a *finite* count — freeze on the final keyframe
+                    // after the last repeat instead of snapping back.
+                    if object_type == GobObjectType::ACTION && entry.action_default_play() {
+                        let play_times = entry.action_play_times().unwrap_or(-1);
+                        let looping = play_times < 0;
+                        let hold_end = !looping && entry.action_holding_end();
+                        play_object_default_animation(
+                            &entity,
+                            &self.asset_loader,
+                            &folder,
+                            &file_name,
+                            looping,
+                            hold_end,
+                        );
+                    }
+
                     objects.push(entity.clone());
                     objects_gob_indices.push(i);
                     objects_initial_transforms.push(initial_matrix);
@@ -1173,6 +1202,17 @@ impl Pal4Scene {
         self.objects.iter().position(|o| o.name() == name)
     }
 
+    /// Resolve the raw GOB `folder` (e.g. `gamedata\PALObject\OM01\`)
+    /// that authored the loaded object `name`, so callers can locate
+    /// its sibling `.anm`/`.dff`. Returns `None` for unknown objects or
+    /// when the GOB corpus wasn't retained.
+    pub fn get_object_folder(&self, name: &str) -> Option<String> {
+        let idx = self.object_index_by_name(name)?;
+        let gob = self.objects_gob.as_ref()?;
+        let gob_idx = *self.objects_gob_indices.get(idx)?;
+        gob.entries.get(gob_idx)?.folder.to_string().ok()
+    }
+
     /// Set an object's local position to `(x, y, z)` and invalidate
     /// its cached `objects_xz_aabbs` slot so the interaction probe
     /// falls back to anchor-distance for this entry from now on.
@@ -1383,6 +1423,77 @@ impl Pal4Scene {
             .filter(|e| e.looping)
             .filter_map(|e| e.active_source_id)
             .collect()
+    }
+}
+
+/// Look up an object entity's `IArmatureComponent`, if it has one.
+/// Game-object DFFs only carry an armature when they ship an HAnim
+/// skeleton (i.e. an animated prop); static props return `None`.
+pub(crate) fn object_armature(entity: &ComRc<IEntity>) -> Option<ComRc<IArmatureComponent>> {
+    entity
+        .get_component(IArmatureComponent::uuid())
+        .and_then(|c| c.query_interface::<IArmatureComponent>())
+}
+
+/// Start an animation clip on a game object's armature.
+///
+/// `looping` continuously restarts the clip; otherwise `hold_end`
+/// decides whether the prop freezes on its final keyframe (doors that
+/// stay open) or stops and resets to the start. No-op (with a warning)
+/// when the entity has no armature.
+pub(crate) fn play_object_animation(
+    entity: &ComRc<IEntity>,
+    keyframes: Vec<Vec<radiance::components::mesh::skinned_mesh::AnimKeyFrame>>,
+    events: Vec<radiance::components::mesh::event::AnimationEvent>,
+    looping: bool,
+    hold_end: bool,
+) -> bool {
+    let Some(armature) = object_armature(entity) else {
+        log::warn!(
+            "play_object_animation: object '{}' has no armature; cannot animate",
+            entity.name()
+        );
+        return false;
+    };
+
+    armature.set_animation(keyframes, events);
+    armature.set_looping(looping);
+    armature.set_hold_end(hold_end);
+    armature.play();
+    true
+}
+
+/// Load and start an ACTION prop's default animation
+/// (`<folder>/<file_name>.anm`). `looping` repeats the clip
+/// indefinitely (the `play-times < 0` case); when not looping,
+/// `hold_end` freezes on the final keyframe instead of resetting.
+fn play_object_default_animation(
+    entity: &ComRc<IEntity>,
+    asset_loader: &Rc<AssetLoader>,
+    folder: &str,
+    file_name: &str,
+    looping: bool,
+    hold_end: bool,
+) {
+    if object_armature(entity).is_none() {
+        // Some ACTION entries (e.g. DHA) carry the action params but
+        // ship no skeleton / `.anm`; nothing to animate.
+        return;
+    }
+
+    match asset_loader.load_object_animation(folder, file_name) {
+        Ok(anim) => {
+            play_object_animation(entity, anim.keyframes, anim.events, looping, hold_end);
+        }
+        Err(e) => {
+            log::warn!(
+                "play_object_default_animation: no animation for object '{}' ({}{}.anm): {:#}",
+                entity.name(),
+                folder,
+                file_name,
+                e
+            );
+        }
     }
 }
 

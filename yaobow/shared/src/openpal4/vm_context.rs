@@ -62,7 +62,7 @@ use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimation, Pal4ActorAnimationConfig},
     asset_loader::AssetLoader,
     comdef::IPal4ScriptFactory,
-    scene::{Pal4Scene, SoundEmitterAction},
+    scene::{Pal4Scene, SoundEmitterAction, object_armature, play_object_animation},
     session::Pal4Session,
     states::persistent_state::Pal4PersistentState,
 };
@@ -649,6 +649,53 @@ impl Pal4VmContext {
         };
         if let Some(controller) = self.scene.borrow().get_npc_controller(name) {
             controller.play_action(action, config);
+        }
+    }
+
+    /// Script-driven game-object animation (`giObjectDoAction`).
+    ///
+    /// `do_action != 0` loads `<object-folder>/<action_file>.anm` and
+    /// plays it once on the object's armature, freezing on the final
+    /// keyframe (the dominant cutscene pattern — a lever/door driven
+    /// open and left there). `do_action == 0` stops any animation in
+    /// progress. No-op (with a warning) for unknown objects or objects
+    /// without a skeleton.
+    pub fn object_do_action(&mut self, object: &str, action_file: &str, do_action: bool) {
+        let entity = self.scene.borrow().get_object(object);
+        let Some(entity) = entity else {
+            log::warn!("giObjectDoAction: unknown object '{}'", object);
+            return;
+        };
+
+        if !do_action {
+            if let Some(armature) = object_armature(&entity) {
+                // Clear the keyframes rather than `stop()`: a frame-driven
+                // prop's bones self-tick via the engine, so `stop()` (which
+                // resets timestamps to 0) would let them replay. Clearing
+                // makes each frame hold its current pose.
+                armature.clear_animation();
+            }
+            return;
+        }
+
+        let Some(folder) = self.scene.borrow().get_object_folder(object) else {
+            log::warn!("giObjectDoAction: no GOB folder for object '{}'", object);
+            return;
+        };
+
+        match self.loader.load_object_animation(&folder, action_file) {
+            Ok(anim) => {
+                play_object_animation(&entity, anim.keyframes, anim.events, false, true);
+            }
+            Err(e) => {
+                log::warn!(
+                    "giObjectDoAction: failed to load '{}{}.anm' for object '{}': {:#}",
+                    folder,
+                    action_file,
+                    object,
+                    e
+                );
+            }
         }
     }
 

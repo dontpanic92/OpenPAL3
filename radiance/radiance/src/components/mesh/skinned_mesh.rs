@@ -208,6 +208,24 @@ pub struct ArmatureComponent {
     animation_state: RefCell<AnimationState>,
     animation_length: RefCell<f32>,
     animation_looping: RefCell<bool>,
+    /// When set (and not looping), the clip plays once and then *holds*
+    /// on its final keyframe instead of stopping and snapping back to
+    /// the start. Used by PAL4 ACTION props with a finite `play-times`
+    /// and `holding-end == 1`. Default `false` preserves the actor
+    /// one-shot behaviour (stop + reset).
+    animation_hold_end: RefCell<bool>,
+    /// When set, the armature's `bones` are ordinary scene-graph *frame*
+    /// entities (each carrying an [`HAnimBoneComponent`]) rather than a
+    /// detached skinning skeleton. The engine already ticks those
+    /// components and propagates their world transforms, so `on_updating`
+    /// must NOT call `root_bone.update` / `update_world_transform`
+    /// (that would double-advance the clock and clobber placement with
+    /// an identity parent). The armature then only owns the shared
+    /// timeline: loop-resetting every bone in phase, or holding on the
+    /// final keyframe. Used by rigid, frame-hierarchy-animated PAL4
+    /// props (doors, levers, tip markers). Default `false` is the
+    /// skinned-actor path.
+    frame_driven: bool,
     animation_tick: RefCell<f32>,
     event_manager: RefCell<AnimationEventManager>,
 }
@@ -227,6 +245,29 @@ impl ArmatureComponent {
             animation_state: RefCell::new(AnimationState::NoAnimation),
             animation_length: RefCell::new(0.),
             animation_looping: RefCell::new(false),
+            animation_hold_end: RefCell::new(false),
+            frame_driven: false,
+            animation_tick: RefCell::new(0.),
+            event_manager: RefCell::new(AnimationEventManager::new()),
+        }
+    }
+
+    /// Construct a *frame-driven* armature: `bones` are scene-graph frame
+    /// entities (each with an [`HAnimBoneComponent`]) animated in place by
+    /// the engine. The armature only coordinates the shared timeline
+    /// (loop reset / hold). `root_bone` is unused in this mode; the
+    /// owning entity is passed for it purely to satisfy the field.
+    /// See [`ArmatureComponent::frame_driven`].
+    pub fn new_frame_driven(entity: ComRc<IEntity>, bones: Vec<ComRc<IEntity>>) -> Self {
+        Self {
+            entity: entity.clone(),
+            root_bone: entity,
+            bones,
+            animation_state: RefCell::new(AnimationState::NoAnimation),
+            animation_length: RefCell::new(0.),
+            animation_looping: RefCell::new(false),
+            animation_hold_end: RefCell::new(false),
+            frame_driven: true,
             animation_tick: RefCell::new(0.),
             event_manager: RefCell::new(AnimationEventManager::new()),
         }
@@ -317,6 +358,14 @@ impl ArmatureComponent {
         self.event_manager.borrow_mut().set_events(events);
     }
 
+    /// Inherent setter for the hold-on-final-keyframe flag. See
+    /// [`ArmatureComponent::animation_hold_end`]. Kept inherent (not on
+    /// the COM interface) so it doesn't force an IDL regen; PAL4 object
+    /// staging reaches it through [`IArmatureComponentExt`].
+    pub fn set_hold_end(&self, hold_end: bool) {
+        self.animation_hold_end.replace(hold_end);
+    }
+
     /// Inherent counterpart to the formerly-IDL `animation_state`.
     pub fn animation_state(&self) -> AnimationState {
         *self.animation_state.borrow()
@@ -352,6 +401,7 @@ impl ArmatureComponent {
 /// accessors on a `ComRc<IArmatureComponent>` handle.
 pub trait IArmatureComponentExt {
     fn set_animation(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>);
+    fn set_hold_end(&self, hold_end: bool);
     fn animation_state(&self) -> AnimationState;
     fn bones(&self) -> Vec<ComRc<IEntity>>;
 }
@@ -360,6 +410,9 @@ impl IArmatureComponentExt for ComRc<crate::comdef::IArmatureComponent> {
     fn set_animation(&self, keyframes: Vec<Vec<AnimKeyFrame>>, events: Vec<AnimationEvent>) {
         self.inner::<ArmatureComponent>()
             .set_animation(keyframes, events)
+    }
+    fn set_hold_end(&self, hold_end: bool) {
+        self.inner::<ArmatureComponent>().set_hold_end(hold_end)
     }
     fn animation_state(&self) -> AnimationState {
         self.inner::<ArmatureComponent>().animation_state()
@@ -382,6 +435,20 @@ impl IComponentImpl for ArmatureComponent {
             if new_tick > *self.animation_length.borrow() {
                 if *self.animation_looping.borrow() {
                     self.reset_animation_state();
+                } else if *self.animation_hold_end.borrow() || self.frame_driven {
+                    // Freeze on the final keyframe: clamp the clock and
+                    // pause. For the skinned path the trailing
+                    // `root_bone.update` below still runs this frame
+                    // (each bone clamps its own `last_time` to its final
+                    // key), so the held pose is the end of the clip;
+                    // `Paused` then keeps it there without resetting the
+                    // timestamps to 0. For the frame-driven path the
+                    // engine-ticked frame bones likewise clamp at their
+                    // final key, so a non-looping clip naturally holds —
+                    // we must never `stop()` (which resets to frame 0 and
+                    // would let the self-ticking frame bones replay).
+                    self.animation_tick.replace(*self.animation_length.borrow());
+                    self.animation_state.replace(AnimationState::Paused);
                 } else {
                     self.stop();
                 }
@@ -389,9 +456,17 @@ impl IComponentImpl for ArmatureComponent {
                 self.animation_tick.replace(new_tick);
             }
 
-            self.root_bone.update(delta_sec);
-            self.root_bone.update_world_transform(&Transform::new());
-            self.event_manager.borrow_mut().tick(delta_sec);
+            // Skinned skeletons live outside the scene graph, so the
+            // armature must advance + world-recompute them itself. Frame
+            // -driven props are ordinary scene-graph entities the engine
+            // already ticks and propagates, so doing it here would
+            // double-advance the clock and reset world placement to the
+            // origin.
+            if !self.frame_driven {
+                self.root_bone.update(delta_sec);
+                self.root_bone.update_world_transform(&Transform::new());
+                self.event_manager.borrow_mut().tick(delta_sec);
+            }
         }
     }
 }

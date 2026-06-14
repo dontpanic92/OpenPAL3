@@ -340,6 +340,40 @@ impl GobEntry {
         })
     }
 
+    /// ACTION props (tag 6): whether the object should auto-play its
+    /// own animation (`<folder>/<file_name>.anm`) when the block loads.
+    /// Observed as i32 `1` for every ACTION entry in the shipped corpus;
+    /// `0` / absent means "do not auto-play".
+    pub fn action_default_play(&self) -> bool {
+        self.get_parameter(GobActionProperty::DEFAULT_PLAY)
+            .and_then(|p| p.value_i32())
+            .map(|v| v != 0)
+            .unwrap_or(false)
+    }
+
+    /// ACTION props (tag 6): the `holding-end` flag. It only takes
+    /// effect when the animation runs a *finite* number of times (see
+    /// [`Self::action_play_times`]) — when `true` the prop freezes on
+    /// its final keyframe after the last repeat instead of snapping
+    /// back; when `false` it resets. It does NOT by itself stop a clip
+    /// from looping. Stored as i32 `0` / `1`.
+    pub fn action_holding_end(&self) -> bool {
+        self.get_parameter(GobActionProperty::HOLDING_END)
+            .and_then(|p| p.value_i32())
+            .map(|v| v != 0)
+            .unwrap_or(false)
+    }
+
+    /// ACTION props (tag 6): play-count. A negative value (the shipped
+    /// corpus is almost entirely `-1`) means "repeat indefinitely";
+    /// a non-negative value would play that many times. This — not
+    /// [`Self::action_holding_end`] — is what governs whether the prop
+    /// loops. Returns `None` when the parameter is absent / non-i32.
+    pub fn action_play_times(&self) -> Option<i32> {
+        self.get_parameter(GobActionProperty::PLAY_TIMES)
+            .and_then(|p| p.value_i32())
+    }
+
     /// Convenience accessor for `PAL4-GameObject-sound-name` (SOUND tag,
     /// see [`GobSoundProperty::NAME`]). Returns the raw `.wav` stem
     /// (without extension), or `None` if absent / non-string / empty.
