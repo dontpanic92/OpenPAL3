@@ -7,3 +7,6 @@
 [submodule "yaobow/yaobow-assets"]
 	path = yaobow/yaobow-assets
 	url = https://github.com/dontpanic92/yaobow-assets
+[submodule "radiance/3rdparty/mini-fs"]
+	path = radiance/3rdparty/mini-fs
+	url = https://github.com/dontpanic92/mini-fs

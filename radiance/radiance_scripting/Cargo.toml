@@ -14,7 +14,7 @@ crosscom-protosept = { path = "../../crosscom/runtime/protosept" }
 radiance = { path = "../radiance" }
 radiance_editor = { path = "../radiance_editor" }
 p7 = { path = "../protosept/p7" }
-mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+mini-fs = { workspace = true }
 image = "0.23.0"
 imgui = { workspace = true }
 log = "0.4"

@@ -28,7 +28,7 @@ imgui = { workspace = true }
 shared = { path = "../shared" }
 fileformats = { path = "../fileformats" }
 image = "0.23.0"
-mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+mini-fs = { workspace = true }
 packfs = { path = "../packfs" }
 p7 = { path = "../../radiance/protosept/p7" }
 radiance = { path = "../../radiance/radiance" }

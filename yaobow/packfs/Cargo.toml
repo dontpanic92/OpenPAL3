@@ -26,7 +26,7 @@ lazy_static = "1.2.0"
 log = { version = "0.4.13" }
 lzma-rust2 = "0.15"
 md5 = "0.7"
-mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+mini-fs = { workspace = true }
 minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
 miniz_oxide = "0.7"
 radiance = { path = "../../radiance/radiance" }

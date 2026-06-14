@@ -2305,7 +2305,6 @@ dependencies = [
 [[package]]
 name = "mini-fs"
 version = "0.2.2"
-source = "git+https://github.com/dontpanic92/mini-fs/#f6546cbbb991604b05f480467b57f601fcc2a229"
 dependencies = [
  "flate2",
  "tar",

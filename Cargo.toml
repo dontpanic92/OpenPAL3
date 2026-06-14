@@ -7,6 +7,7 @@ members = [
     "radiance/radiance_editor",
     "radiance/radiance_scripting",
     "radiance/script-package",
+    "radiance/3rdparty/mini-fs",
     "yaobow/agent_server",
     "yaobow/common",
     "yaobow/fileformats",
@@ -27,6 +28,7 @@ resolver = "3"
 
 [workspace.dependencies]
 imgui = { version = "0.12", features = ["docking", "tables-api"] }
+mini-fs = { path = "radiance/3rdparty/mini-fs" }
 
 [patch.crates-io]
 filetime = { git = "https://github.com/dontpanic92/filetime", branch = "yaobow" }
@@ -34,9 +36,6 @@ chlorine = { git = "https://github.com/dontpanic92/chlorine", branch = "yaobow" 
 vcpkg = { git = "https://github.com/dontpanic92/vcpkg-rs", branch = "yaobow" }
 xxhash-rust = { git = "https://github.com/dontpanic92/xxhash-rust", branch = "yaobow" }
 cty = { git = "https://github.com/amazingfate/cty", branch = "loongarch" }
-
-#[patch."https://github.com/dontpanic92/mini-fs"]
-#mini-fs = { path = "../mini-fs" }
 
 [profile.release-with-symbol]
 inherits = "release"

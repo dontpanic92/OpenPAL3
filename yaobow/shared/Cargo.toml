@@ -32,7 +32,7 @@ lazy_static = "1.2.0"
 lua50-32-sys = { git = "https://github.com/dontpanic92/lua50-32-sys" }
 log = { version = "0.4.13" }
 md5 = "0.7"
-mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+mini-fs = { workspace = true }
 minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
 packfs = { path = "../packfs" }
 paste = "1.0"

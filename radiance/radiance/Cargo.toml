@@ -24,7 +24,7 @@ lewton = "0.10.1"
 log = "0.4.13"
 lru = { version = "0.12.5" }
 memoffset = "0.9.0"
-mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+mini-fs = { workspace = true }
 radiance-assets = { path = "../radiance-assets" }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.7"

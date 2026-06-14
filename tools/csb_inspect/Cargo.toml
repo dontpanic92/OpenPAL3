@@ -7,6 +7,6 @@ edition = "2024"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 common = { path = "../../yaobow/common" }
-mini-fs = { git = "https://github.com/dontpanic92/mini-fs/" }
+mini-fs = { workspace = true }
 packfs = { path = "../../yaobow/packfs" }
 shared = { path = "../../yaobow/shared" }
