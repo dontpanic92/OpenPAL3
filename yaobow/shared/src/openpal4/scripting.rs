@@ -2631,13 +2631,53 @@ fn npc_face_to_player(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4Function
 }
 
 fn npc_blend_out(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm, _npc_file_str: i32, _blend_out_time: f32, _blend_out: i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, npc_file_str: i32, blend_out_time: f32, sync: i32);
+    let name = get_str(vm, npc_file_str as usize).unwrap_or_default();
+
+    // The engine has no per-entity alpha, so a true visual fade isn't
+    // possible. Approximate the blend by keeping the NPC visible for the
+    // requested duration and then hiding it — the end-state (hidden)
+    // matches the original behaviour, which is what scripts rely on.
+    // `sync == 1` blocks the script until the blend finishes (mirrors the
+    // `flash_*` sync flag); otherwise hide immediately and continue.
+    if sync == 1 {
+        let mut time = blend_out_time;
+        Pal4FunctionState::Yield(Box::new(move |vm, delta_sec| {
+            if time <= 0.0 || vm.vm_context().fast_forward() {
+                vm.vm_context.enable_npc(&name, false);
+                ContinuationState::Completed
+            } else {
+                time -= delta_sec;
+                ContinuationState::Loop
+            }
+        }))
+    } else {
+        vm.vm_context.enable_npc(&name, false);
+        Pal4FunctionState::Completed
+    }
 }
 
 fn npc_blend_in(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_npc_file_str:i32,_blend_in_time:f32,_blend_in :i32);
-    Pal4FunctionState::Completed
+    as_params!(vm, npc_file_str: i32, blend_in_time: f32, sync: i32);
+    let name = get_str(vm, npc_file_str as usize).unwrap_or_default();
+
+    // No per-entity alpha: show the NPC up front so it's present for the
+    // whole "fade in", then optionally hold the script for the duration.
+    vm.vm_context.enable_npc(&name, true);
+
+    if sync == 1 {
+        let mut time = blend_in_time;
+        Pal4FunctionState::Yield(Box::new(move |vm, delta_sec| {
+            if time <= 0.0 || vm.vm_context().fast_forward() {
+                ContinuationState::Completed
+            } else {
+                time -= delta_sec;
+                ContinuationState::Loop
+            }
+        }))
+    } else {
+        Pal4FunctionState::Completed
+    }
 }
 
 fn npc_face_to_current_player(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
