@@ -225,6 +225,17 @@ impl AssetLoader {
         )))
     }
 
+    /// Load the global music-config module (`gamedata/script/Music.csb`).
+    ///
+    /// Unlike the per-scene modules, this one is shared by every scene:
+    /// it holds one `<SCENE>_MUSIC` function per scene that selects the
+    /// block's default background track via `giBGMConfigIsInArea` /
+    /// `giBGMConfigSetMusic`. Callers cache the parsed module (it is
+    /// global, not per-scene).
+    pub fn load_music_module(&self) -> anyhow::Result<Rc<RefCell<ScriptModule>>> {
+        self.load_script_module("Music")
+    }
+
     pub fn load_object(
         &self,
         object_name: &str,

@@ -718,25 +718,41 @@ impl IDirectorImpl for OpenPAL4Director {
         self.poll_save_load_hotkeys();
 
         if self.vm.borrow().context.is_none() {
-            let function = radiance::perf::time("pal4.director.event_triggered_total_ns", || {
-                self.vm
-                    .borrow_mut()
-                    .vm_context_mut()
-                    .event_triggered(effective_dt)
-            });
-            if let Some(function) = function {
-                let module = self
-                    .vm
-                    .borrow()
-                    .vm_context
-                    .scene
-                    .borrow()
-                    .module
-                    .clone()
-                    .unwrap();
-                self.vm
-                    .borrow_mut()
-                    .set_function_by_name2(module, &function);
+            // Establish the scene's default ("baseline") BGM before any
+            // event/trigger script runs this block, so a cutscene's
+            // `giScriptMusicPlay` still overrides it. One-shot per block
+            // load; the `<SCENE>_MUSIC` config function is a pure
+            // selector (no yields) and runs to completion within this
+            // tick, returning the VM to idle.
+            let pending_music = self
+                .vm
+                .borrow_mut()
+                .vm_context_mut()
+                .take_pending_music_eval();
+            if let Some((module, fn_name)) = pending_music {
+                self.vm.borrow_mut().set_function_by_name2(module, &fn_name);
+            } else {
+                let function =
+                    radiance::perf::time("pal4.director.event_triggered_total_ns", || {
+                        self.vm
+                            .borrow_mut()
+                            .vm_context_mut()
+                            .event_triggered(effective_dt)
+                    });
+                if let Some(function) = function {
+                    let module = self
+                        .vm
+                        .borrow()
+                        .vm_context
+                        .scene
+                        .borrow()
+                        .module
+                        .clone()
+                        .unwrap();
+                    self.vm
+                        .borrow_mut()
+                        .set_function_by_name2(module, &function);
+                }
             }
         }
 

@@ -1527,13 +1527,19 @@ fn set_portrait(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState 
 }
 
 fn bgm_config_set_music(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_file_str:i32);
+    as_params!(vm, file_str: i32);
+    if let Some(name) = get_str(vm, file_str as usize) {
+        vm.vm_context.set_default_bgm(&name);
+    }
     Pal4FunctionState::Completed
 }
 
 fn bgm_config_is_in_area(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
-    as_params!(vm,_file_str:i32);
-    vm.set_ret_value(1);
+    as_params!(vm, area_str: i32);
+    let in_area = get_str(vm, area_str as usize)
+        .map(|area| vm.vm_context.bgm_is_in_area(&area))
+        .unwrap_or(false);
+    vm.set_ret_value(in_area as i32);
     Pal4FunctionState::Completed
 }
 
@@ -1546,7 +1552,7 @@ fn script_music_play(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionS
     as_params!(vm, str: i32, _mode: i32, _fade_in: f32, _fade_out: f32);
 
     let name = get_str(vm, str as usize).unwrap();
-    if let Err(e) = vm.vm_context.play_bgm(&name) {
+    if let Err(e) = vm.vm_context.play_script_bgm(&name) {
         log::error!("Failed to play bgm: {}", e);
     }
 
@@ -1555,7 +1561,7 @@ fn script_music_play(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionS
 
 fn script_music_stop(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionState {
     as_params!(vm, _flag: i32, _fade_in: f32);
-    vm.vm_context.stop_bgm();
+    vm.vm_context.stop_script_bgm();
     Pal4FunctionState::Completed
 }
 
@@ -1564,7 +1570,7 @@ fn arena_music_stop(_: &str, vm: &mut ScriptVm<Pal4VmContext>) -> Pal4FunctionSt
     // BGM source, so stopping the BGM gives the correct audible result.
     // _fade_out ignored (audio backend lacks per-source fade).
     as_params!(vm, _fade_out: f32);
-    vm.vm_context.stop_bgm();
+    vm.vm_context.stop_script_bgm();
     Pal4FunctionState::Completed
 }
 

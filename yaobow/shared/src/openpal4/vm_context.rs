@@ -16,6 +16,7 @@ use radiance::{
     utils::{act_drop::ActDrop, interp_value::InterpValue},
 };
 
+use crate::scripting::angelscript::ScriptModule;
 use crate::ui::dialog_box::{AvatarPosition, DialogBox};
 
 /// Dependency-free dialog snapshot used by external observers
@@ -38,6 +39,21 @@ pub struct DialogStateSnapshot {
 /// (`npc_end_move`, `player_end_move`, `player_set_dir { sync = 1 }`,
 /// …) effectively zero-cost under fast-forward.
 pub(crate) const MOTION_FAST_FORWARD_SCALE: f32 = 1_000.0;
+
+/// Normalize a BGM track name into the bare stem expected by
+/// [`AssetLoader::load_music`] (which appends `.smp`).
+///
+/// PAL4's `Music.csb` passes names like `P10.mp3` to
+/// `giBGMConfigSetMusic`, while the on-disk tracks are lowercase
+/// `gamedata/Music/p10.smp`. Strip any extension and lowercase; names
+/// that are already bare (`p10`, `p01-1`) pass through unchanged.
+pub(crate) fn normalize_track_name(name: &str) -> String {
+    let stem = match name.rfind('.') {
+        Some(dot) => &name[..dot],
+        None => name,
+    };
+    stem.to_ascii_lowercase()
+}
 
 /// Which side the dialog avatar portrait is currently anchored to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,6 +109,34 @@ pub struct Pal4VmContext {
     /// `play_bgm` re-issue) immediately tears down the OpenAL source —
     /// this is what guarantees we can't stack overlapping BGMs.
     bgm_source: Option<Box<dyn AudioMemorySource>>,
+    /// Normalized name (see [`normalize_track_name`]) of the track the
+    /// `bgm_source` is currently playing, or `None` when silent. Used to
+    /// keep BGM seamless across block loads: if the scene's default
+    /// track resolves to the same name that is already playing, the
+    /// source is left untouched instead of being torn down and
+    /// restarted.
+    bgm_current: Option<String>,
+    /// True while an explicit script-driven track (`giScriptMusicPlay`)
+    /// owns the BGM channel. The scene's default ("baseline") BGM —
+    /// chosen by the `<SCENE>_MUSIC` config function via
+    /// `giBGMConfigSetMusic` — never interrupts an active script track;
+    /// it only takes over on the next block load (which resets this
+    /// flag) or once the script track stops. This realises the
+    /// "default BGM is a baseline; script music overrides it until the
+    /// next block re-eval" precedence.
+    script_music_active: bool,
+    /// Most recent baseline track chosen by `giBGMConfigSetMusic` for
+    /// the current block (normalized). Recorded even when a script
+    /// track is overriding it, so it is available for reference.
+    bgm_baseline_track: Option<String>,
+    /// Scene whose `<SCENE>_MUSIC` config function still needs to run.
+    /// Set on every block load (see [`note_block_loaded`]) and drained
+    /// once by the director at the next idle VM frame
+    /// ([`take_pending_music_eval`]).
+    pending_music_scene: Option<String>,
+    /// Cached, lazily-loaded `gamedata/script/Music.csb` module (global,
+    /// shared by every scene).
+    music_module: Option<Rc<RefCell<ScriptModule>>>,
     /// Live one-shot sound effects (`gi2DSoundPlay`). Each slot owns
     /// its own source; the slot is reclaimed when the source reports
     /// `Stopped` (auto-prune at the start of `play_sound`) or when the
@@ -168,6 +212,11 @@ impl Pal4VmContext {
             audio_engine,
             video_player: component_factory.create_video_player(),
             bgm_source: None,
+            bgm_current: None,
+            script_music_active: false,
+            bgm_baseline_track: None,
+            pending_music_scene: None,
+            music_module: None,
             sound_sources: HashMap::new(),
             sound_id: 0,
             actdrop: ActDrop::new(),
@@ -868,14 +917,16 @@ impl Pal4VmContext {
         // Drop the previous source before allocating the new one, so
         // even if the load below fails we still have stopped the old
         // track and we never hold two BGM sources simultaneously.
+        let normalized = normalize_track_name(name);
         self.stop_bgm();
 
-        let data = self.loader.load_music(name)?;
+        let data = self.loader.load_music(&normalized)?;
         let mut source = self.audio_engine.create_source();
         source.set_data(data, radiance::audio::Codec::Mp3);
         source.play(true);
 
         self.bgm_source = Some(source);
+        self.bgm_current = Some(normalized);
 
         Ok(())
     }
@@ -884,6 +935,105 @@ impl Pal4VmContext {
         if let Some(mut source) = self.bgm_source.take() {
             source.stop();
         }
+        self.bgm_current = None;
+    }
+
+    /// Play an explicit, script-driven background track
+    /// (`giScriptMusicPlay`). Marks the BGM channel as script-owned so
+    /// the scene's baseline default BGM won't interrupt it until the
+    /// next block load.
+    pub fn play_script_bgm(&mut self, name: &str) -> anyhow::Result<()> {
+        self.play_bgm(name)?;
+        self.script_music_active = true;
+        Ok(())
+    }
+
+    /// Stop the BGM on behalf of a script (`giScriptMusicStop` /
+    /// `giArenaMusicStop`) and release the script-owned channel. The
+    /// baseline default BGM does not auto-resume; it re-establishes on
+    /// the next block load / `<SCENE>_MUSIC` re-evaluation.
+    pub fn stop_script_bgm(&mut self) {
+        self.stop_bgm();
+        self.script_music_active = false;
+    }
+
+    /// Apply the scene's default ("baseline") background track, as
+    /// chosen by a `<SCENE>_MUSIC` config function through
+    /// `giBGMConfigSetMusic`. Honors the baseline-vs-override
+    /// precedence: while a script track is active it only records the
+    /// baseline without interrupting; otherwise it starts the baseline,
+    /// keeping playback seamless if the same track is already playing.
+    pub fn set_default_bgm(&mut self, name: &str) {
+        let normalized = normalize_track_name(name);
+        self.bgm_baseline_track = Some(normalized.clone());
+
+        if self.script_music_active {
+            // An explicit script track owns the channel; don't disturb it.
+            return;
+        }
+
+        if self.bgm_current.as_deref() == Some(normalized.as_str()) {
+            // Same track already playing — keep it seamless.
+            return;
+        }
+
+        log::debug!("[bgm] starting default track '{}'", normalized);
+        if let Err(e) = self.play_bgm(&normalized) {
+            log::error!("Failed to play default bgm '{}': {:#}", normalized, e);
+        }
+    }
+
+    /// Answer `giBGMConfigIsInArea`: is the named area the currently
+    /// loaded block? PAL4's `<SCENE>_MUSIC` functions key their
+    /// track selection off the block (folder) name, compared
+    /// case-insensitively.
+    pub fn bgm_is_in_area(&self, area: &str) -> bool {
+        area.eq_ignore_ascii_case(&self.block_name())
+    }
+
+    /// Record that a new block has just loaded: reset the script-music
+    /// ownership (a fresh block re-establishes the baseline) and arm the
+    /// scene's `<SCENE>_MUSIC` config function to run at the next idle
+    /// VM frame. The currently-playing track is intentionally left
+    /// alone so the upcoming re-evaluation can keep it seamless when it
+    /// resolves to the same track.
+    pub fn note_block_loaded(&mut self, scene_name: &str) {
+        self.script_music_active = false;
+        self.bgm_baseline_track = None;
+        self.pending_music_scene = Some(scene_name.to_string());
+    }
+
+    /// Drain the pending `<SCENE>_MUSIC` evaluation, if any, returning
+    /// the Music.csb module and the function name to run. Returns `None`
+    /// when nothing is pending, the module can't be loaded, or the scene
+    /// has no music config function. The module is parsed once and
+    /// cached.
+    pub fn take_pending_music_eval(&mut self) -> Option<(Rc<RefCell<ScriptModule>>, String)> {
+        let scene = self.pending_music_scene.take()?;
+
+        if self.music_module.is_none() {
+            match self.loader.load_music_module() {
+                Ok(module) => self.music_module = Some(module),
+                Err(e) => {
+                    log::warn!("take_pending_music_eval: failed to load Music.csb: {:#}", e);
+                    return None;
+                }
+            }
+        }
+        let module = self.music_module.clone()?;
+
+        let fn_name = format!("{}_MUSIC", scene.to_uppercase());
+        let exists = module
+            .borrow()
+            .functions
+            .iter()
+            .any(|f| f.name.as_str() == fn_name);
+        if !exists {
+            log::debug!("no '{}' in Music.csb; leaving BGM untouched", fn_name);
+            return None;
+        }
+
+        Some((module, fn_name))
     }
 
     pub fn pause_bgm(&mut self) {
@@ -1212,4 +1362,24 @@ fn yaw_from_transform(entity: &ComRc<IEntity>) -> f32 {
     let fx = mat[0][2];
     let fz = mat[2][2];
     fx.atan2(fz).to_degrees()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_track_name;
+
+    #[test]
+    fn normalize_track_name_strips_extension_and_lowercases() {
+        // Music.csb passes mp3 names; on disk tracks are lowercase .smp.
+        assert_eq!(normalize_track_name("P10.mp3"), "p10");
+        assert_eq!(normalize_track_name("P02.MP3"), "p02");
+    }
+
+    #[test]
+    fn normalize_track_name_passes_through_bare_names() {
+        assert_eq!(normalize_track_name("p10"), "p10");
+        // Dashes are not extension separators.
+        assert_eq!(normalize_track_name("p01-1"), "p01-1");
+        assert_eq!(normalize_track_name("WA15"), "wa15");
+    }
 }

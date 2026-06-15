@@ -339,6 +339,12 @@ impl Pal4SceneSwap {
                 let app = vm.vm_context_mut();
                 app.set_leader(leader as i32);
                 app.lock_player(player_locked);
+                // Arm the scene's default-BGM (`<SCENE>_MUSIC`)
+                // re-evaluation and reset script-music ownership for the
+                // freshly loaded block. Mirrors the synchronous
+                // `swap_pal4_scene`; this async staged swap is the path
+                // taken by menu-driven loads and in-game scene changes.
+                app.note_block_loaded(&self.scene_name);
 
                 self.finished = true;
                 (1.0, true)
@@ -657,6 +663,10 @@ pub(crate) fn swap_pal4_scene(
     let app = vm.vm_context_mut();
     app.set_leader(leader as i32);
     app.lock_player(player_locked);
+    // Arm the scene's default-BGM (`<SCENE>_MUSIC`) re-evaluation and
+    // reset script-music ownership for the freshly loaded block. The
+    // director runs the config function at the next idle VM frame.
+    app.note_block_loaded(scene_name);
     Ok(())
 }
 
