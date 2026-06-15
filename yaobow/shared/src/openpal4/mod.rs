@@ -19,6 +19,7 @@ pub mod director;
 pub mod game_context;
 pub mod launch;
 pub mod modes;
+pub mod object_component;
 pub mod pal4_debug;
 pub mod scene;
 pub mod scene_editor_access;

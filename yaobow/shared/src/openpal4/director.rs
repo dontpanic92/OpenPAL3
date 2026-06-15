@@ -1101,7 +1101,7 @@ impl OpenPAL4Director {
         let scene = app.scene.borrow();
 
         let npcs = scene
-            .npcs
+            .npcs()
             .iter()
             .map(|entity| {
                 let pos = entity.world_transform().position();

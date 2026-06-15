@@ -207,6 +207,23 @@ impl CoreScene {
         entities
     }
 
+    pub fn find_entities_by_tag(&self, tag: &str) -> Vec<ComRc<IEntity>> {
+        self.entities()
+            .into_iter()
+            .filter(|e| e.has_tag(tag))
+            .collect()
+    }
+
+    pub fn find_entity_by_tag(&self, tag: &str) -> Option<ComRc<IEntity>> {
+        self.entities().into_iter().find(|e| e.has_tag(tag))
+    }
+
+    pub fn find_entity_by_tag_and_name(&self, tag: &str, name: &str) -> Option<ComRc<IEntity>> {
+        self.entities()
+            .into_iter()
+            .find(|e| e.has_tag(tag) && e.name() == name)
+    }
+
     pub fn camera(&self) -> Ref<'_, Camera> {
         self.camera.borrow()
     }
@@ -231,6 +248,24 @@ pub trait ISceneExt {
     fn root_entities(&self) -> Vec<ComRc<IEntity>>;
     fn entities(&self) -> Vec<ComRc<IEntity>>;
     fn visible_entities(&self) -> Vec<ComRc<IEntity>>;
+
+    /// Find all entities carrying `tag`, anywhere in the scene tree.
+    ///
+    /// This is a lazy O(n) walk over the recursively-flattened entity
+    /// list (no maintained index), which is fine for the modestly-sized
+    /// scenes this engine hosts. Perf-critical callers that query the
+    /// same role every frame should cache the returned `ComRc<IEntity>`
+    /// (e.g. on a component) rather than re-querying.
+    fn find_entities_by_tag(&self, tag: &str) -> Vec<ComRc<IEntity>>;
+
+    /// First entity carrying `tag`, or `None`. Same lazy-walk caveats
+    /// as [`find_entities_by_tag`](Self::find_entities_by_tag).
+    fn find_entity_by_tag(&self, tag: &str) -> Option<ComRc<IEntity>>;
+
+    /// First entity carrying `tag` whose name equals `name`, or `None`.
+    /// Mirrors the by-name lookups games used to do over a parallel
+    /// per-role `Vec`.
+    fn find_entity_by_tag_and_name(&self, tag: &str, name: &str) -> Option<ComRc<IEntity>>;
 
     /// Borrow the scene's `Camera`. The returned `Ref` lifetime is
     /// tied to `&self`, so the camera handle cannot outlive the
@@ -267,6 +302,16 @@ impl ISceneExt for ComRc<IScene> {
     }
     fn visible_entities(&self) -> Vec<ComRc<IEntity>> {
         self.inner::<CoreScene>().visible_entities()
+    }
+    fn find_entities_by_tag(&self, tag: &str) -> Vec<ComRc<IEntity>> {
+        self.inner::<CoreScene>().find_entities_by_tag(tag)
+    }
+    fn find_entity_by_tag(&self, tag: &str) -> Option<ComRc<IEntity>> {
+        self.inner::<CoreScene>().find_entity_by_tag(tag)
+    }
+    fn find_entity_by_tag_and_name(&self, tag: &str, name: &str) -> Option<ComRc<IEntity>> {
+        self.inner::<CoreScene>()
+            .find_entity_by_tag_and_name(tag, name)
     }
     fn camera(&self) -> Ref<'_, Camera> {
         self.inner::<CoreScene>().camera()
@@ -370,5 +415,49 @@ impl IComponentContainerImpl for CoreScene {
 
     fn remove_component(&self, uuid: uuid::Uuid) -> Option<ComRc<IComponent>> {
         self.apply_or_queue_remove_component(uuid)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::comdef::IEntityImpl;
+    use crate::scene::entity::CoreEntity;
+
+    #[test]
+    fn tag_queries_walk_nested_entities() {
+        let scene = CoreScene::create();
+
+        let parent = CoreEntity::create("parent".to_string(), true);
+        parent.add_tag("role_a");
+
+        // A nested child carrying a different tag must still be found by
+        // the recursive tag walk.
+        let child = CoreEntity::create("child".to_string(), true);
+        child.add_tag("role_b");
+        child.add_tag("shared");
+        parent.attach(child);
+
+        let sibling = CoreEntity::create("sibling".to_string(), true);
+        sibling.add_tag("shared");
+
+        scene.add_entity(parent);
+        scene.add_entity(sibling);
+
+        assert_eq!(scene.find_entities_by_tag("role_a").len(), 1);
+        assert_eq!(scene.find_entities_by_tag("shared").len(), 2);
+        assert!(scene.find_entity_by_tag("role_b").is_some());
+        assert!(scene.find_entity_by_tag("missing").is_none());
+
+        let by_name = scene
+            .find_entity_by_tag_and_name("shared", "child")
+            .expect("nested tagged entity should be found by tag + name");
+        assert_eq!(by_name.name(), "child");
+        assert!(
+            scene
+                .find_entity_by_tag_and_name("role_a", "child")
+                .is_none(),
+            "tag must also match, not just name"
+        );
     }
 }

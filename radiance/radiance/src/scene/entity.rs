@@ -5,6 +5,7 @@ use crate::comdef::{IComponent, IComponentContainerImpl, IEntity, IEntityImpl};
 use crate::math::{Mat44, Transform, Vec3};
 use crate::rendering::RenderingComponent;
 use std::cell::{Cell, Ref, RefCell, RefMut};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use super::mutation::{ComponentBag, MutationQueue};
@@ -26,6 +27,7 @@ pub struct CoreEntity {
 
 pub struct CoreEntityProps {
     name: String,
+    tags: HashSet<String>,
     world_transform: Transform,
     children: Vec<ComRc<IEntity>>,
     visible: bool,
@@ -53,6 +55,7 @@ impl CoreEntity {
             mutations: MutationQueue::new(),
             props: RefCell::new(CoreEntityProps {
                 name,
+                tags: HashSet::new(),
                 world_transform: Transform::new(),
                 children: vec![],
                 visible,
@@ -170,6 +173,27 @@ impl CoreEntity {
         self.props_mut().name = name.to_owned();
     }
 
+    /// Add a role tag to this entity. Tags are an unordered set of
+    /// free-form labels used by [`ISceneExt`](super::scene::ISceneExt)
+    /// tag queries to find entities by role (e.g. `"npc"`, `"floor"`)
+    /// without the game keeping a parallel handle cache. Adding a tag
+    /// that is already present is a no-op.
+    pub fn add_tag(&self, tag: &str) {
+        self.props_mut().tags.insert(tag.to_owned());
+    }
+
+    pub fn remove_tag(&self, tag: &str) {
+        self.props_mut().tags.remove(tag);
+    }
+
+    pub fn has_tag(&self, tag: &str) -> bool {
+        self.props().tags.contains(tag)
+    }
+
+    pub fn tags(&self) -> Vec<String> {
+        self.props().tags.iter().cloned().collect()
+    }
+
     pub fn transform(&self) -> Rc<RefCell<Transform>> {
         self.transform.clone()
     }
@@ -211,6 +235,10 @@ impl CoreEntity {
 pub trait IEntityExt {
     fn name(&self) -> String;
     fn set_name(&self, name: &str);
+    fn add_tag(&self, tag: &str);
+    fn remove_tag(&self, tag: &str);
+    fn has_tag(&self, tag: &str) -> bool;
+    fn tags(&self) -> Vec<String>;
     fn transform(&self) -> Rc<RefCell<Transform>>;
     fn world_transform(&self) -> Transform;
     fn update_world_transform(&self, parent_transform: &Transform);
@@ -225,6 +253,18 @@ impl IEntityExt for ComRc<IEntity> {
     }
     fn set_name(&self, name: &str) {
         self.inner::<CoreEntity>().set_name(name)
+    }
+    fn add_tag(&self, tag: &str) {
+        self.inner::<CoreEntity>().add_tag(tag)
+    }
+    fn remove_tag(&self, tag: &str) {
+        self.inner::<CoreEntity>().remove_tag(tag)
+    }
+    fn has_tag(&self, tag: &str) -> bool {
+        self.inner::<CoreEntity>().has_tag(tag)
+    }
+    fn tags(&self) -> Vec<String> {
+        self.inner::<CoreEntity>().tags()
     }
     fn transform(&self) -> Rc<RefCell<Transform>> {
         self.inner::<CoreEntity>().transform()

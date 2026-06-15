@@ -26,11 +26,22 @@ use crate::scripting::angelscript::ScriptModule;
 use super::{
     asset_loader::{self, AssetLoader},
     comdef::{
-        IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext, IPal4ScriptFactory,
+        IPal4ActorAnimationController, IPal4ActorController, IPal4GameContext,
+        IPal4ObjectComponent, IPal4ScriptFactory,
     },
     game_context::Pal4GameContext,
+    object_component::Pal4ObjectComponent,
     uv_anim::attach_uv_anim,
 };
+
+/// Engine entity tags for PAL4 scene roles. Entities are tagged at
+/// load time so `Pal4Scene` can rediscover them through the generic
+/// `ISceneExt` tag queries instead of keeping a parallel handle `Vec`.
+pub(crate) const TAG_NPC: &str = "pal4_npc";
+pub(crate) const TAG_OBJECT: &str = "pal4_object";
+pub(crate) const TAG_FLOOR: &str = "pal4_floor";
+pub(crate) const TAG_WALL: &str = "pal4_wall";
+pub(crate) const TAG_BSP: &str = "pal4_bsp";
 
 /// Factory abstraction supplied by the runtime (yaobow) at PAL4 boot:
 /// the script app's `IPal4ScriptFactory` COM interface (the
@@ -72,44 +83,16 @@ impl Player {
 pub struct Pal4Scene {
     pub(crate) scene: ComRc<IScene>,
     pub(crate) players: [ComRc<IEntity>; 4],
-    pub(crate) npcs: Vec<ComRc<IEntity>>,
-    pub(crate) objects: Vec<ComRc<IEntity>>,
-    /// Lockstep mapping `objects[i] -> GobFile::entries[index]`.
-    /// `objects` only contains *visible* and *marker* entries, while
-    /// `objects_gob` retains the full corpus; this Vec lets code
-    /// (e.g. `test_interaction`, `gob_movement_metadata`) recover
-    /// the GOB entry that authored a loaded entity. Pre-lockstep
-    /// indexing — `entries[i]` keyed on the `objects` loop index —
-    /// silently consulted the wrong GOB whenever any SOUND / EFFECT
-    /// was skipped before a GENERIC interactable in the same block.
-    pub(crate) objects_gob_indices: Vec<usize>,
-    /// Per-object original `Transform` matrix captured at scene
-    /// load, in lockstep with `objects`. Used by `giGOBReset` to
-    /// restore the entity to its authored placement after any
-    /// number of `giGOBSetPosition` / `giGOBMovment` / `giGOBScale`
-    /// calls.
-    ///
-    /// We snapshot the full `Mat44` (rather than decomposed
-    /// `(pos, rot, scale)`) to sidestep two traps: (a) the
-    /// load-time transform chain uses `scale_local` and
-    /// `rotate_axis_angle_local` which are multiplicative on top of
-    /// whatever state the matrix is in, so decomposing and
-    /// reapplying them re-orders ops with no guaranteed round-trip;
-    /// (b) `Transform::euler` is singular at gimbal lock and can't
-    /// round-trip all rotations cleanly.
-    pub(crate) objects_initial_transforms: Vec<Mat44>,
+    /// Full GOB corpus for the loaded block. Object *entities* are
+    /// found via the engine `TAG_OBJECT` tag query (no parallel handle
+    /// `Vec`), and each carries a [`Pal4ObjectComponent`] holding its
+    /// index into `entries` plus its load-time transform. This field is
+    /// retained because the agent server enumerates *all* entries
+    /// (including non-loaded ones), and `get_object_folder` resolves an
+    /// entity's authoring `folder` through its component's GOB index.
     pub(crate) objects_gob: Option<GobFile>,
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
-    // Handles captured at load time so the PAL4 debug overlay can flip
-    // their visibility at runtime. `bsp_entity` is the BSP "world" root
-    // returned by `AssetLoader::load_scene`. `floor_entity` /
-    // `wall_entity` are the per-block collision meshes that used to be
-    // gated by compile-time `SHOW_FLOOR` / `SHOW_WALL` constants — they
-    // are now always added to the scene but start hidden.
-    pub(crate) bsp_entity: Option<ComRc<IEntity>>,
-    pub(crate) floor_entity: Option<ComRc<IEntity>>,
-    pub(crate) wall_entity: Option<ComRc<IEntity>>,
     /// Engine-owned `Pal4GameContext` CCW shared with the four
     /// scripted `Pal4ActorController` wrappers. `set_active_leader`
     /// writes through this so the actor controllers observe the new
@@ -146,16 +129,9 @@ impl Pal4Scene {
                 CoreEntity::create("".to_string(), false),
                 CoreEntity::create("".to_string(), false),
             ],
-            npcs: vec![],
-            objects: vec![],
-            objects_gob_indices: vec![],
-            objects_initial_transforms: vec![],
             objects_gob: None,
             events: vec![],
             module: None,
-            bsp_entity: None,
-            floor_entity: None,
-            wall_entity: None,
             game_context: None,
             actor_controller: None,
         }
@@ -224,17 +200,10 @@ pub struct Pal4SceneLoader {
     // Accumulated state. `Option<T>` slots are populated by the
     // stage that produces them and consumed by the finaliser.
     scene: Option<ComRc<IScene>>,
-    bsp_entity: Option<ComRc<IEntity>>,
-    floor: Option<ComRc<IEntity>>,
-    wall: Option<ComRc<IEntity>>,
     players: Option<[ComRc<IEntity>; 4]>,
     events: Vec<EvfEvent>,
     game_context: Option<ComRc<IPal4GameContext>>,
     actor_controller: Option<ComRc<IPal4ActorController>>,
-    npcs: Vec<ComRc<IEntity>>,
-    objects: Vec<ComRc<IEntity>>,
-    objects_gob_indices: Vec<usize>,
-    objects_initial_transforms: Vec<Mat44>,
     objects_gob: Option<GobFile>,
     module: Option<Rc<RefCell<ScriptModule>>>,
 }
@@ -265,17 +234,10 @@ impl Pal4SceneLoader {
             actor_controller_factory,
             next_stage: 0,
             scene: None,
-            bsp_entity: None,
-            floor: None,
-            wall: None,
             players: None,
             events: Vec::new(),
             game_context: None,
             actor_controller: None,
-            npcs: Vec::new(),
-            objects: Vec::new(),
-            objects_gob_indices: Vec::new(),
-            objects_initial_transforms: Vec::new(),
             objects_gob: None,
             module: None,
         }
@@ -343,8 +305,8 @@ impl Pal4SceneLoader {
         let (scene, bsp_entity) = self
             .asset_loader
             .load_scene(&self.scene_name, &self.block_name)?;
+        bsp_entity.add_tag(TAG_BSP);
         self.scene = Some(scene);
-        self.bsp_entity = Some(bsp_entity);
         Ok(())
     }
 
@@ -467,20 +429,22 @@ impl Pal4SceneLoader {
 
         // Always add floor + wall so the PAL4 debug overlay can toggle
         // them on at runtime. They default to hidden — matches the old
-        // SHOW_FLOOR / SHOW_WALL = false behaviour.
+        // SHOW_FLOOR / SHOW_WALL = false behaviour. They are tagged so
+        // `set_nav_mesh_visible` can rediscover them via the scene tag
+        // query rather than a stored handle.
         if let Some(f) = floor.as_ref() {
             f.set_visible(false);
             f.set_enabled(false);
+            f.add_tag(TAG_FLOOR);
             scene.add_entity(f.clone());
         }
         if let Some(w) = wall.as_ref() {
             w.set_visible(false);
             w.set_enabled(false);
+            w.add_tag(TAG_WALL);
             scene.add_entity(w.clone());
         }
 
-        self.floor = floor;
-        self.wall = wall;
         Ok(())
     }
 
@@ -615,7 +579,6 @@ impl Pal4SceneLoader {
                 NpcInfoFile::default()
             }
         };
-        let mut npcs = vec![];
         for npc in &npc_info.data {
             let actor_name = npc.model_name.to_string();
             match actor_name {
@@ -629,6 +592,7 @@ impl Pal4SceneLoader {
                     if let Ok(entity) = entity {
                         entity.set_visible(npc.default_visible == 1);
                         entity.set_enabled(npc.default_visible == 1);
+                        entity.add_tag(TAG_NPC);
                         entity
                             .transform()
                             .borrow_mut()
@@ -638,8 +602,6 @@ impl Pal4SceneLoader {
                             .rotate_axis_angle_local(&Vec3::EAST, npc.rotation[0].to_radians())
                             .set_position(&Vec3::from(npc.position));
 
-                        npcs.push(entity.clone());
-
                         scene.add_entity(entity);
                     }
                 }
@@ -648,7 +610,6 @@ impl Pal4SceneLoader {
                 }
             }
         }
-        self.npcs = npcs;
         Ok(())
     }
 
@@ -656,8 +617,6 @@ impl Pal4SceneLoader {
         let scene = self.scene.as_ref().expect("stage_bsp must run first");
 
         let mut objects = vec![];
-        let mut objects_gob_indices: Vec<usize> = vec![];
-        let mut objects_initial_transforms: Vec<Mat44> = vec![];
         let gob = self
             .asset_loader
             .load_gob(&self.scene_name, &self.block_name)?;
@@ -814,8 +773,19 @@ impl Pal4SceneLoader {
                     }
 
                     objects.push(entity.clone());
-                    objects_gob_indices.push(i);
-                    objects_initial_transforms.push(initial_matrix);
+
+                    // Tag the object for engine-side discovery and ride
+                    // its GOB index + load-time transform on the entity
+                    // via `Pal4ObjectComponent` (replacing the old
+                    // index-parallel `objects_gob_indices` /
+                    // `objects_initial_transforms` Vecs).
+                    entity.add_tag(TAG_OBJECT);
+                    entity.add_component(
+                        IPal4ObjectComponent::uuid(),
+                        Pal4ObjectComponent::create(i, initial_matrix)
+                            .query_interface::<IComponent>()
+                            .unwrap(),
+                    );
 
                     scene.add_entity(entity);
                 }
@@ -850,9 +820,6 @@ impl Pal4SceneLoader {
             }
         }
 
-        self.objects = objects;
-        self.objects_gob_indices = objects_gob_indices;
-        self.objects_initial_transforms = objects_initial_transforms;
         self.objects_gob = Some(gob);
         Ok(())
     }
@@ -862,7 +829,6 @@ impl Pal4SceneLoader {
         self.module = Some(module);
 
         let scene = self.scene.take().expect("stage_bsp must run first");
-        let bsp_entity = self.bsp_entity.take();
         let players = self
             .players
             .take()
@@ -872,8 +838,6 @@ impl Pal4SceneLoader {
             .take()
             .expect("stage_players_events_controller must run first");
         let module = self.module.take().expect("just populated above");
-        let objects = std::mem::take(&mut self.objects);
-        let objects_gob_indices = std::mem::take(&mut self.objects_gob_indices);
         let objects_gob = self.objects_gob.take();
 
         // Register a proximity interaction trigger with the scene
@@ -883,14 +847,19 @@ impl Pal4SceneLoader {
         // component to the entity, and owns the registry — the game
         // keeps no parallel Vec. Payload: `id` = GOB index,
         // `tag` = research-function, `radius` = `trigger_distance`.
+        // Object entities are found via the `TAG_OBJECT` tag query and
+        // their GOB index is read back from each `Pal4ObjectComponent`.
         {
             let world_com = scene.collision_world();
             let world = world_com.inner::<CollisionWorldComponent>();
-            for (i, e) in objects.iter().enumerate() {
-                let Some(&gob_index) = objects_gob_indices.get(i) else {
+            for e in scene.find_entities_by_tag(TAG_OBJECT) {
+                let Some(gob_index) =
+                    object_component(&e).map(|c| c.inner::<Pal4ObjectComponent>().gob_index())
+                else {
                     continue;
                 };
-                let Some(entry) = objects_gob.as_ref().and_then(|g| g.entries.get(gob_index)) else {
+                let Some(entry) = objects_gob.as_ref().and_then(|g| g.entries.get(gob_index))
+                else {
                     continue;
                 };
                 let research = entry.research_function.to_string().unwrap_or_default();
@@ -902,23 +871,16 @@ impl Pal4SceneLoader {
                 } else {
                     50.0
                 };
-                world.attach_proximity_trigger(e, gob_index as i64, research, radius);
+                world.attach_proximity_trigger(&e, gob_index as i64, research, radius);
             }
         }
 
         Ok(Pal4Scene {
             scene,
             players,
-            npcs: std::mem::take(&mut self.npcs),
-            objects,
-            objects_gob_indices,
-            objects_initial_transforms: std::mem::take(&mut self.objects_initial_transforms),
             objects_gob,
             events: std::mem::take(&mut self.events),
             module: Some(module),
-            bsp_entity,
-            floor_entity: self.floor.take(),
-            wall_entity: self.wall.take(),
             game_context: Some(game_context),
             actor_controller: self.actor_controller.take(),
         })
@@ -948,23 +910,27 @@ impl Pal4Scene {
 
     /// Consume the wrapper and return only its inner `ComRc<IScene>`.
     /// Used by the editor's read-only scene preview, which needs the
-    /// loaded scene but none of the gameplay-side fields. The dropped
-    /// fields (NPCs, GOB objects, events, …) hold entities that the
-    /// scene itself already retains via `add_entity`, so they stay
-    /// alive for the lifetime of the returned `IScene`.
+    /// loaded scene but none of the gameplay-side fields. All loaded
+    /// entities (NPCs, GOB objects, floor/wall/BSP, …) are retained by
+    /// the scene itself via `add_entity` — and are discoverable through
+    /// their role tags — so they stay alive for the lifetime of the
+    /// returned `IScene`.
     pub fn into_inner_scene(self) -> ComRc<IScene> {
         self.scene
     }
 
     pub fn get_npc(&self, name: &str) -> Option<ComRc<IEntity>> {
-        self.npcs.iter().find(|npc| name == npc.name()).cloned()
+        self.scene.find_entity_by_tag_and_name(TAG_NPC, name)
+    }
+
+    /// All NPC entities in the scene (tagged `TAG_NPC`). Used by the
+    /// agent server to snapshot NPCs with their live positions.
+    pub fn npcs(&self) -> Vec<ComRc<IEntity>> {
+        self.scene.find_entities_by_tag(TAG_NPC)
     }
 
     pub fn get_object(&self, name: &str) -> Option<ComRc<IEntity>> {
-        self.objects
-            .iter()
-            .find(|object| name == object.name())
-            .cloned()
+        self.scene.find_entity_by_tag_and_name(TAG_OBJECT, name)
     }
 
     pub fn get_player_controller(&self, player_id: usize) -> ComRc<IPal4ActorAnimationController> {
@@ -1032,9 +998,9 @@ impl Pal4Scene {
     }
 
     /// Toggle the BSP "world" geometry. No-op on the empty scene
-    /// (`Pal4Scene::new_empty`) since `bsp_entity` is `None` there.
+    /// (`Pal4Scene::new_empty`) which has no `TAG_BSP` entity.
     pub fn set_bsp_visible(&self, visible: bool) {
-        if let Some(e) = self.bsp_entity.as_ref() {
+        if let Some(e) = self.scene.find_entity_by_tag(TAG_BSP) {
             e.set_visible(visible);
             e.set_enabled(visible);
         }
@@ -1045,22 +1011,15 @@ impl Pal4Scene {
     /// hidden — flipping them on is a developer aid for inspecting
     /// the walkable surfaces the actor controller raycasts against.
     pub fn set_nav_mesh_visible(&self, visible: bool) {
-        if let Some(e) = self.floor_entity.as_ref() {
+        for e in self
+            .scene
+            .find_entities_by_tag(TAG_FLOOR)
+            .into_iter()
+            .chain(self.scene.find_entities_by_tag(TAG_WALL))
+        {
             e.set_visible(visible);
             e.set_enabled(visible);
         }
-        if let Some(e) = self.wall_entity.as_ref() {
-            e.set_visible(visible);
-            e.set_enabled(visible);
-        }
-    }
-
-    /// Index lookup for `objects` by logical name. Returns the
-    /// position of the first match (mirrors `get_object`'s
-    /// first-match-wins semantics) so callers can index into the
-    /// parallel `object_triggers` / `objects_initial_transforms` Vecs.
-    fn object_index_by_name(&self, name: &str) -> Option<usize> {
-        self.objects.iter().position(|o| o.name() == name)
     }
 
     /// Resolve the raw GOB `folder` (e.g. `gamedata\PALObject\OM01\`)
@@ -1068,10 +1027,12 @@ impl Pal4Scene {
     /// its sibling `.anm`/`.dff`. Returns `None` for unknown objects or
     /// when the GOB corpus wasn't retained.
     pub fn get_object_folder(&self, name: &str) -> Option<String> {
-        let idx = self.object_index_by_name(name)?;
+        let entity = self.get_object(name)?;
+        let gob_index = object_component(&entity)?
+            .inner::<Pal4ObjectComponent>()
+            .gob_index();
         let gob = self.objects_gob.as_ref()?;
-        let gob_idx = *self.objects_gob_indices.get(idx)?;
-        gob.entries.get(gob_idx)?.folder.to_string().ok()
+        gob.entries.get(gob_index)?.folder.to_string().ok()
     }
 
     /// Set an object's local position to `(x, y, z)`. The interactable
@@ -1081,10 +1042,10 @@ impl Pal4Scene {
     /// caller's responsibility (so the script-side stub can attach
     /// the function name).
     pub fn set_object_position(&mut self, name: &str, x: f32, y: f32, z: f32) -> bool {
-        let Some(idx) = self.object_index_by_name(name) else {
+        let Some(entity) = self.get_object(name) else {
             return false;
         };
-        self.objects[idx]
+        entity
             .transform()
             .borrow_mut()
             .set_position(&Vec3::new(x, y, z));
@@ -1108,10 +1069,10 @@ impl Pal4Scene {
         z: f32,
         rot_deg: f32,
     ) -> bool {
-        let Some(idx) = self.object_index_by_name(name) else {
+        let Some(entity) = self.get_object(name) else {
             return false;
         };
-        let xform = self.objects[idx].transform();
+        let xform = entity.transform();
         let mut t = xform.borrow_mut();
         t.clear_rotation();
         t.rotate_axis_angle_local(&Vec3::UP, rot_deg.to_radians());
@@ -1128,10 +1089,10 @@ impl Pal4Scene {
     /// scale rather than multiplying onto an already-scaled state.
     /// Position is preserved.
     pub fn set_object_scale_xy(&mut self, name: &str, x_scale: f32, y_scale: f32) -> bool {
-        let Some(idx) = self.object_index_by_name(name) else {
+        let Some(entity) = self.get_object(name) else {
             return false;
         };
-        let xform = self.objects[idx].transform();
+        let xform = entity.transform();
         let mut t = xform.borrow_mut();
         let pos = t.position();
         t.set_matrix(Mat44::new_identity());
@@ -1141,18 +1102,31 @@ impl Pal4Scene {
         true
     }
 
-    /// Restore an object's transform to its load-time snapshot in
-    /// `objects_initial_transforms`. The interactable's proximity
+    /// Restore an object's transform to its load-time snapshot held on
+    /// its [`Pal4ObjectComponent`]. The interactable's proximity
     /// trigger volume tracks the entity translation automatically, so
     /// no cache invalidation is needed.
     pub fn reset_object(&mut self, name: &str) -> bool {
-        let Some(idx) = self.object_index_by_name(name) else {
+        let Some(entity) = self.get_object(name) else {
             return false;
         };
-        let saved = self.objects_initial_transforms[idx];
-        self.objects[idx].transform().borrow_mut().set_matrix(saved);
+        let Some(saved) =
+            object_component(&entity).map(|c| c.inner::<Pal4ObjectComponent>().initial_transform())
+        else {
+            return false;
+        };
+        entity.transform().borrow_mut().set_matrix(saved);
         true
     }
+}
+
+/// Look up an object entity's [`Pal4ObjectComponent`] (its GOB index +
+/// load-time transform), if present. Object entities carry one; markers
+/// and other entities do not.
+pub(crate) fn object_component(entity: &ComRc<IEntity>) -> Option<ComRc<IPal4ObjectComponent>> {
+    entity
+        .get_component(IPal4ObjectComponent::uuid())
+        .and_then(|c| c.query_interface::<IPal4ObjectComponent>())
 }
 
 /// Look up an object entity's `IArmatureComponent`, if it has one.
@@ -1304,6 +1278,21 @@ mod tests {
     use radiance::components::collision::TriggerShape;
     use radiance::math::Transform;
 
+    /// Tag `entity` as a GOB object, give it a `Pal4ObjectComponent`
+    /// carrying its snapshot transform, and add it to the scene so the
+    /// `TAG_OBJECT` tag query can find it — the test-side equivalent of
+    /// what `stage_gob_objects` does at load.
+    fn add_test_object(s: &Pal4Scene, entity: ComRc<IEntity>, gob_index: usize, snap: Mat44) {
+        entity.add_tag(TAG_OBJECT);
+        entity.add_component(
+            IPal4ObjectComponent::uuid(),
+            Pal4ObjectComponent::create(gob_index, snap)
+                .query_interface::<IComponent>()
+                .unwrap(),
+        );
+        s.scene.add_entity(entity);
+    }
+
     /// Reset after a set-position call must restore the snapshot
     /// matrix exactly. Locks the `Mat44` round-trip used by
     /// `giGOBReset` so a future change to scale/clear_rotation
@@ -1317,16 +1306,24 @@ mod tests {
             .borrow_mut()
             .set_position(&Vec3::new(10.0, 20.0, 30.0));
         let snap = *entity.transform().borrow().matrix();
-        s.objects.push(entity);
-        s.objects_gob_indices.push(0);
-        s.objects_initial_transforms.push(snap);
+        add_test_object(&s, entity, 0, snap);
 
         // Mutate then reset.
         assert!(s.set_object_position("marker001", 1.0, 2.0, 3.0));
-        let p = s.objects[0].transform().borrow().position();
+        let p = s
+            .get_object("marker001")
+            .unwrap()
+            .transform()
+            .borrow()
+            .position();
         assert!((p.x - 1.0).abs() < 1e-4 && (p.y - 2.0).abs() < 1e-4 && (p.z - 3.0).abs() < 1e-4);
         assert!(s.reset_object("marker001"));
-        let p = s.objects[0].transform().borrow().position();
+        let p = s
+            .get_object("marker001")
+            .unwrap()
+            .transform()
+            .borrow()
+            .position();
         assert!(
             (p.x - 10.0).abs() < 1e-4 && (p.y - 20.0).abs() < 1e-4 && (p.z - 30.0).abs() < 1e-4,
             "reset must restore position, got {:?}",
@@ -1345,21 +1342,29 @@ mod tests {
         let mut s = Pal4Scene::new_empty();
         let entity = CoreEntity::create("door001".to_string(), true);
         let snap = *entity.transform().borrow().matrix();
-        s.objects.push(entity);
-        s.objects_gob_indices.push(0);
-        s.objects_initial_transforms.push(snap);
+        add_test_object(&s, entity, 0, snap);
 
         // Call three times with the same yaw; the resulting
         // rotation matrix must equal a single yaw=90 application.
         for _ in 0..3 {
             assert!(s.set_object_position_and_yaw("door001", 0.0, 0.0, 0.0, 90.0));
         }
-        let m_repeat = *s.objects[0].transform().borrow().matrix();
+        let m_repeat = *s
+            .get_object("door001")
+            .unwrap()
+            .transform()
+            .borrow()
+            .matrix();
 
         // Reset and apply once.
         s.reset_object("door001");
         assert!(s.set_object_position_and_yaw("door001", 0.0, 0.0, 0.0, 90.0));
-        let m_once = *s.objects[0].transform().borrow().matrix();
+        let m_once = *s
+            .get_object("door001")
+            .unwrap()
+            .transform()
+            .borrow()
+            .matrix();
 
         // Rotational submatrices must match.
         for r in 0..3 {
