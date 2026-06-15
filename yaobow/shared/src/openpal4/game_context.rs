@@ -8,26 +8,30 @@
 //! protos at controller-construction time, not through this object.
 
 use std::cell::Cell;
-use std::rc::Rc;
 
 use crosscom::ComRc;
+use radiance::comdef::IScene;
+use radiance::components::collision::CollisionWorldComponent;
 use radiance::math::Vec3;
+use radiance::scene::ISceneExt;
 
 use super::comdef::{IPal4GameContext, IPal4GameContextImpl};
-use super::scene::SceneEventTrigger;
 
 pub struct Pal4GameContext {
     current_leader: Cell<usize>,
-    event_triggers: Vec<Rc<SceneEventTrigger>>,
+    /// The scene whose collision world owns the EVF segment triggers.
+    /// `check_event_triggers` drives the world's evaluation; the result
+    /// is read back via `Pal4Scene::test_event_triggers`.
+    scene: ComRc<IScene>,
 }
 
 ComObject_Pal4GameContext!(super::Pal4GameContext);
 
 impl Pal4GameContext {
-    pub fn create(event_triggers: Vec<Rc<SceneEventTrigger>>) -> ComRc<IPal4GameContext> {
+    pub fn create(scene: ComRc<IScene>) -> ComRc<IPal4GameContext> {
         ComRc::from_object(Self {
             current_leader: Cell::new(0),
-            event_triggers,
+            scene,
         })
     }
 
@@ -46,9 +50,10 @@ impl IPal4GameContextImpl for Pal4GameContext {
 
     fn check_event_triggers(&self, ox: f32, oy: f32, oz: f32, mx: f32, my: f32, mz: f32) {
         let origin = Vec3::new(ox, oy, oz);
-        let movement = Vec3::new(mx, my, mz);
-        for trigger in self.event_triggers.iter() {
-            trigger.check(&origin, &movement);
-        }
+        let end = Vec3::new(ox + mx, oy + my, oz + mz);
+        self.scene
+            .collision_world()
+            .inner::<CollisionWorldComponent>()
+            .evaluate_segment_triggers(&origin, &end);
     }
 }

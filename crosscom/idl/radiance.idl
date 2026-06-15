@@ -196,6 +196,66 @@ interface IAnimatedMeshComponent: IComponent {
 [uuid(c1502819-57d7-45d2-a160-13d803e4fc48)]
 class AnimatedMeshComponent: IAnimatedMeshComponent {}
 
+// `ICollisionMeshComponent` is a generic engine-backed collider. On
+// load it bakes every `IStaticMeshComponent` triangle found under its
+// owning entity's subtree into a world-space `RayCaster`, so any
+// entity carrying static geometry (PAL4's per-block floor / wall
+// nav-meshes, PAL3 scenery, ...) becomes ray-castable without the game
+// re-implementing the mesh walk. It exposes both a generic ray cast
+// and the downward (`-Y`) floor cast the actor controllers rely on.
+// The richer Rust API (inner `Rc<RayCaster>` for script wrapping) lives
+// on the inherent impl.
+[uuid(2422a84b-0f94-43b6-836b-ab6ab85b0414)]
+interface ICollisionMeshComponent: IComponent {
+    float? cast_ray(float ox, float oy, float oz, float dx, float dy, float dz);
+    float? cast_aa_ny(float ox, float oy, float oz);
+}
+
+[uuid(14146915-7b33-4ba3-a41a-911980f48e7a)]
+class CollisionMeshComponent: ICollisionMeshComponent {}
+
+// `ITriggerVolumeComponent` is a generic engine-backed trigger volume
+// attached to an entity. It models the shapes the games need (an
+// explicit world-space convex mesh for segment-crossing event regions,
+// and an entity-local AABB / sphere for proximity interaction probes)
+// and carries an opaque, game-assigned payload (`id` + `tag`) the
+// engine never interprets — PAL4 stores the EVF event index / GOB
+// research-function key; PAL3 can later store its `sce_proc_id`. The
+// geometry follows the owning entity's world transform, so proximity
+// probes stay correct after the entity is moved without any external
+// cache invalidation. The query primitives (segment intersection,
+// horizontal distance) live on the inherent Rust impl; this interface
+// exposes only the per-frame fired flag.
+[uuid(4b1383a7-6c0f-4f51-b4f8-84641c35aaf0)]
+interface ITriggerVolumeComponent: IComponent {
+    bool triggered();
+}
+
+[uuid(d35087f4-a778-4cb0-9728-d19b1dbff893)]
+class TriggerVolumeComponent: ITriggerVolumeComponent {}
+
+// `ICollisionWorldComponent` is the scene-level aggregator for
+// colliders and trigger volumes. It is hosted on the scene itself
+// (`IScene` is an `IComponentContainer`) and owns the bookkeeping the
+// game used to do by hand: it bakes attached colliders into one
+// world-space caster, registers segment / proximity trigger volumes,
+// and answers spatial queries (floor cast, segment-crossing event
+// triggers, nearest proximity interactable). The declare/query API
+// lives on the inherent Rust impl; obtain the world via
+// `ISceneExt::collision_world`.
+[uuid(f8614555-9670-4996-86e2-a4a3e1eafe13)]
+interface ICollisionWorldComponent: IComponent {}
+
+[uuid(7f54d81f-44ee-4393-b627-d7652f42e3d4)]
+class CollisionWorldComponent: ICollisionWorldComponent {}
+
+// `WorldRayCaster` adapts a `CollisionWorldComponent`'s aggregated
+// collider set into a scriptable `IRayCaster`, read live so colliders
+// attached after the caster is handed out are still visible. Used for
+// PAL4's actor-controller floor cast.
+[uuid(32145f89-037d-4101-857c-1d9a22db0552)]
+class WorldRayCaster: IRayCaster {}
+
 [uuid(6dedae32-8339-482e-9f66-c30d557cacb4), protosept(scriptable)]
 interface IDirector: IUnknown {
     // Called by `ISceneManager` exactly once, immediately after the

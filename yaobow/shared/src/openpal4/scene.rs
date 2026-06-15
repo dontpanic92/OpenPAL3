@@ -1,7 +1,4 @@
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
 use crosscom::ComRc;
 use fileformats::npc::NpcInfoFile;
@@ -16,11 +13,11 @@ use radiance::{
         IEntityExt, IScene, ISceneExt, IStaticMeshComponent,
     },
     components::audio::{AudioNodeConfig, AudioSourceComponent, PlaybackMode, sanitise_interval},
+    components::collision::{CollisionWorldComponent, TriggerVolumeComponent},
     input::InputEngine,
-    math::{Mat44, Transform, Vec3},
+    math::{Mat44, Vec3},
     rendering::GradientYMaterialDef,
     scene::{CoreEntity, CoreScene, wrap_scene_camera},
-    utils::ray_casting::{RayCaster, wrap_ray_caster},
 };
 use radiance_scripting::services::InputService;
 
@@ -77,29 +74,6 @@ pub struct Pal4Scene {
     pub(crate) players: [ComRc<IEntity>; 4],
     pub(crate) npcs: Vec<ComRc<IEntity>>,
     pub(crate) objects: Vec<ComRc<IEntity>>,
-    /// World-space XZ axis-aligned bounding boxes for each entry in
-    /// `objects`, computed once at scene load. `(min_x, max_x, min_z,
-    /// max_z)`; `None` when the object's entity tree contains no
-    /// static mesh (e.g. invisible spawn markers).
-    ///
-    /// Used by [`Pal4Scene::test_interaction`] to decide whether the
-    /// player is "near" an interactable GOB. The naive point-distance
-    /// check against `entry.position` is wrong for any GOB whose
-    /// authored anchor is offset from the visible mesh — most
-    /// notably the ladders in Q01/Q01, where the anchor sits in the
-    /// middle of the slope but the mesh extends ~150 units in Y and
-    /// ~250 units in XZ. After the climb-down handler teleports the
-    /// player to the bottom of the slope, they end up 264 XZ units
-    /// from the anchor — well beyond the 60-unit `trigger_distance`
-    /// — even though they're physically right next to the visible
-    /// ladder, so the F-key climb-up interaction would never fire.
-    ///
-    /// Slots are set back to `None` whenever a `giGOB*` script
-    /// function mutates the corresponding object's transform —
-    /// `test_interaction` then falls back to anchor-based distance
-    /// for that entry, which is correct (if slightly less precise)
-    /// after the move.
-    pub(crate) objects_xz_aabbs: Vec<Option<(f32, f32, f32, f32)>>,
     /// Lockstep mapping `objects[i] -> GobFile::entries[index]`.
     /// `objects` only contains *visible* and *marker* entries, while
     /// `objects_gob` retains the full corpus; this Vec lets code
@@ -127,7 +101,6 @@ pub struct Pal4Scene {
     pub(crate) objects_gob: Option<GobFile>,
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
-    pub(crate) triggers: Vec<Rc<SceneEventTrigger>>,
     // Handles captured at load time so the PAL4 debug overlay can flip
     // their visibility at runtime. `bsp_entity` is the BSP "world" root
     // returned by `AssetLoader::load_scene`. `floor_entity` /
@@ -175,13 +148,11 @@ impl Pal4Scene {
             ],
             npcs: vec![],
             objects: vec![],
-            objects_xz_aabbs: vec![],
             objects_gob_indices: vec![],
             objects_initial_transforms: vec![],
             objects_gob: None,
             events: vec![],
             module: None,
-            triggers: vec![],
             bsp_entity: None,
             floor_entity: None,
             wall_entity: None,
@@ -256,10 +227,8 @@ pub struct Pal4SceneLoader {
     bsp_entity: Option<ComRc<IEntity>>,
     floor: Option<ComRc<IEntity>>,
     wall: Option<ComRc<IEntity>>,
-    ray_caster_rc: Option<Rc<RayCaster>>,
     players: Option<[ComRc<IEntity>; 4]>,
     events: Vec<EvfEvent>,
-    triggers: Vec<Rc<SceneEventTrigger>>,
     game_context: Option<ComRc<IPal4GameContext>>,
     actor_controller: Option<ComRc<IPal4ActorController>>,
     npcs: Vec<ComRc<IEntity>>,
@@ -299,10 +268,8 @@ impl Pal4SceneLoader {
             bsp_entity: None,
             floor: None,
             wall: None,
-            ray_caster_rc: None,
             players: None,
             events: Vec::new(),
-            triggers: Vec::new(),
             game_context: None,
             actor_controller: None,
             npcs: Vec::new(),
@@ -461,8 +428,6 @@ impl Pal4SceneLoader {
                 self.block_name
             );
         }
-        let ray_caster = create_floor_wall_ray_caster(floor.clone(), wall.clone());
-
         // Compute the union world-Y range across floor + wall geometry,
         // then replace each `Geometry.material` with a
         // `GradientYMaterialDef` so when the PAL4 debug overlay reveals
@@ -488,6 +453,18 @@ impl Pal4SceneLoader {
             }
         }
 
+        // Bake floor + wall into the scene's collision world. The world
+        // owns the aggregated caster; the actor controller later pulls
+        // a live `IRayCaster` from it via `floor_ray_caster()`.
+        let world_com = scene.collision_world();
+        let world = world_com.inner::<CollisionWorldComponent>();
+        if let Some(f) = floor.as_ref() {
+            world.attach_collider(f);
+        }
+        if let Some(w) = wall.as_ref() {
+            world.attach_collider(w);
+        }
+
         // Always add floor + wall so the PAL4 debug overlay can toggle
         // them on at runtime. They default to hidden — matches the old
         // SHOW_FLOOR / SHOW_WALL = false behaviour.
@@ -504,17 +481,11 @@ impl Pal4SceneLoader {
 
         self.floor = floor;
         self.wall = wall;
-        self.ray_caster_rc = Some(Rc::new(ray_caster));
         Ok(())
     }
 
     fn stage_players_events_controller(&mut self) -> anyhow::Result<()> {
         let scene = self.scene.as_ref().expect("stage_bsp must run first");
-        let ray_caster_rc = self
-            .ray_caster_rc
-            .as_ref()
-            .expect("stage_floor_wall must run first")
-            .clone();
 
         let players = [
             load_player(&self.asset_loader, Player::YunTianhe),
@@ -527,7 +498,12 @@ impl Pal4SceneLoader {
             .asset_loader
             .load_evf(&self.scene_name, &self.block_name)?;
 
-        let mut triggers = vec![];
+        // Register each EVF event region with the scene collision world
+        // as a segment-crossing trigger carrying the event index as its
+        // opaque `id` payload. The world owns the holder entity and the
+        // registry — the game keeps no parallel Vec.
+        let world_com = scene.collision_world();
+        let world = world_com.inner::<CollisionWorldComponent>();
         for (i, event) in events.events.iter().enumerate() {
             let trigger = event
                 .vertices
@@ -554,20 +530,18 @@ impl Pal4SceneLoader {
                 continue;
             }
 
-            let ray_caster = create_trigger_ray_caster(trigger);
-            triggers.push(Rc::new(SceneEventTrigger {
-                ray_caster,
-                event_index: i,
-                triggered: Cell::new(false),
-            }));
+            world.attach_segment_trigger(trigger, i as i64, String::new());
         }
 
-        let game_context = Pal4GameContext::create(triggers.clone());
+        let game_context = Pal4GameContext::create(scene.clone());
 
         let actor_controller = if let Some(factory) = self.actor_controller_factory.as_ref() {
             let input_service = InputService::create(self.input.clone());
             let camera_ctrl = wrap_scene_camera(scene.clone());
-            let ray_caster_wrapped = wrap_ray_caster(ray_caster_rc.clone());
+            let ray_caster_wrapped = scene
+                .collision_world()
+                .inner::<CollisionWorldComponent>()
+                .floor_ray_caster();
             let anims: [ComRc<IPal4ActorAnimationController>; 4] = std::array::from_fn(|i| {
                 players[i]
                     .get_component(IPal4ActorAnimationController::uuid())
@@ -612,7 +586,6 @@ impl Pal4SceneLoader {
 
         self.players = Some(players);
         self.events = events.events;
-        self.triggers = triggers;
         self.game_context = Some(game_context);
         self.actor_controller = actor_controller;
         Ok(())
@@ -900,25 +873,49 @@ impl Pal4SceneLoader {
             .expect("stage_players_events_controller must run first");
         let module = self.module.take().expect("just populated above");
         let objects = std::mem::take(&mut self.objects);
+        let objects_gob_indices = std::mem::take(&mut self.objects_gob_indices);
+        let objects_gob = self.objects_gob.take();
+
+        // Register a proximity interaction trigger with the scene
+        // collision world for each interactable GOB (non-empty
+        // `research_function`). The world derives the volume's XZ
+        // rectangle from the object's mesh extent, attaches the
+        // component to the entity, and owns the registry — the game
+        // keeps no parallel Vec. Payload: `id` = GOB index,
+        // `tag` = research-function, `radius` = `trigger_distance`.
+        {
+            let world_com = scene.collision_world();
+            let world = world_com.inner::<CollisionWorldComponent>();
+            for (i, e) in objects.iter().enumerate() {
+                let Some(&gob_index) = objects_gob_indices.get(i) else {
+                    continue;
+                };
+                let Some(entry) = objects_gob.as_ref().and_then(|g| g.entries.get(gob_index)) else {
+                    continue;
+                };
+                let research = entry.research_function.to_string().unwrap_or_default();
+                if research.is_empty() {
+                    continue;
+                }
+                let radius = if entry.trigger_distance > 0.0 {
+                    entry.trigger_distance
+                } else {
+                    50.0
+                };
+                world.attach_proximity_trigger(e, gob_index as i64, research, radius);
+            }
+        }
 
         Ok(Pal4Scene {
             scene,
             players,
             npcs: std::mem::take(&mut self.npcs),
-            objects: objects.clone(),
-            objects_xz_aabbs: objects
-                .iter()
-                .map(|e| {
-                    e.update_world_transform(&Transform::new());
-                    entity_world_xz_aabb(e)
-                })
-                .collect(),
-            objects_gob_indices: std::mem::take(&mut self.objects_gob_indices),
+            objects,
+            objects_gob_indices,
             objects_initial_transforms: std::mem::take(&mut self.objects_initial_transforms),
-            objects_gob: self.objects_gob.take(),
+            objects_gob,
             events: std::mem::take(&mut self.events),
             module: Some(module),
-            triggers: std::mem::take(&mut self.triggers),
             bsp_entity,
             floor_entity: self.floor.take(),
             wall_entity: self.wall.take(),
@@ -985,13 +982,12 @@ impl Pal4Scene {
     }
 
     pub fn test_event_triggers(&self) -> Option<&EvfEvent> {
-        for trigger in &self.triggers {
-            if trigger.triggered.get() {
-                return self.events.get(trigger.event_index);
-            }
-        }
-
-        None
+        let event_index = self
+            .scene
+            .collision_world()
+            .inner::<CollisionWorldComponent>()
+            .fired_segment_trigger()? as usize;
+        self.events.get(event_index)
     }
 
     pub fn test_interaction(
@@ -1009,88 +1005,20 @@ impl Pal4Scene {
             return None;
         }
 
+        // The scene collision world holds a proximity trigger per
+        // interactable GOB (payload `tag` = research-function,
+        // `radius` = `trigger_distance`); it measures horizontal (XZ)
+        // distance, ignoring Y on purpose — tall props like the Q01/Q01
+        // ladders anchor at one end of the climb path while the player
+        // stands at the other; the research handler re-snaps the player
+        // onto the destination once invoked. Ask for the nearest volume
+        // within its own radius and read back its research-function tag.
         let position = self.players[leader].world_transform().position();
-        let mut min_distance = f32::INFINITY;
-        let mut min_function = None;
-
-        for (i, object) in self.objects.iter().enumerate() {
-            // Pre-lockstep this used `entries[i]`, but `objects`
-            // skips SOUND / EFFECT (and historically MARKER) so the
-            // index could land on the wrong GOB any time a sound /
-            // effect appeared before a GENERIC interactable. The
-            // lockstep `objects_gob_indices[i]` recovers the
-            // authored entry.
-            let gob_index = self.objects_gob_indices[i];
-            let entry = &self.objects_gob.as_ref().unwrap().entries[gob_index];
-            if entry.research_function == "" {
-                continue;
-            }
-
-            // Horizontal (XZ) distance from the player to the
-            // closest point on the object's bounding rect — or to
-            // the entry's anchor when no mesh AABB is available
-            // (invisible markers). The Y axis is ignored on
-            // purpose: tall objects like ladders/staircases anchor
-            // their GOB origin at one end of the climb path while
-            // the player stands at the other end. The original
-            // engine scopes the interaction prompt by horizontal
-            // proximity for exactly this reason; vertical
-            // separation is handled by the research handler
-            // itself (`func1012`/`func1013` re-snap the player
-            // onto the destination point once invoked).
-            //
-            // Using the *mesh* AABB rather than the anchor matters
-            // for the Q01/Q01 ladder #2: its anchor is in the
-            // middle of the slope, but the bottom climb-down
-            // teleport target ends up ~264 XZ units from the
-            // anchor — well outside the entry's 60-unit
-            // `trigger_distance` — even though the player is
-            // physically next to the visible ladder.
-            let xz_dist = match self.objects_xz_aabbs.get(i).and_then(|a| a.as_ref()) {
-                Some(&(min_x, max_x, min_z, max_z)) => {
-                    let dx = if position.x < min_x {
-                        min_x - position.x
-                    } else if position.x > max_x {
-                        position.x - max_x
-                    } else {
-                        0.0
-                    };
-                    let dz = if position.z < min_z {
-                        min_z - position.z
-                    } else if position.z > max_z {
-                        position.z - max_z
-                    } else {
-                        0.0
-                    };
-                    (dx * dx + dz * dz).sqrt()
-                }
-                None => {
-                    let opos = object.world_transform().position();
-                    let dx = opos.x - position.x;
-                    let dz = opos.z - position.z;
-                    (dx * dx + dz * dz).sqrt()
-                }
-            };
-
-            // Use the GOB entry's `trigger_distance` as a slack
-            // padding on top of the AABB (defaults to ~60.0 in the
-            // shipped data; sound emitters use ~600.0 but they
-            // don't have a `research_function` so they're filtered
-            // above). Fall back to 50.0 if zero so pathological
-            // data doesn't make every object interactive at
-            // infinity.
-            let radius = if entry.trigger_distance > 0.0 {
-                entry.trigger_distance
-            } else {
-                50.0
-            };
-            if xz_dist < radius && xz_dist < min_distance {
-                min_distance = xz_dist;
-                min_function = Some(entry.research_function.to_string().unwrap());
-            }
-        }
-
-        min_function
+        self.scene
+            .collision_world()
+            .inner::<CollisionWorldComponent>()
+            .nearest_proximity_trigger(&position)
+            .map(|volume| volume.inner::<TriggerVolumeComponent>().tag())
     }
 
     pub fn get_player_metadata(&self, player_id: usize) -> Player {
@@ -1130,8 +1058,7 @@ impl Pal4Scene {
     /// Index lookup for `objects` by logical name. Returns the
     /// position of the first match (mirrors `get_object`'s
     /// first-match-wins semantics) so callers can index into the
-    /// parallel `objects_xz_aabbs` /
-    /// `objects_initial_transforms` Vecs.
+    /// parallel `object_triggers` / `objects_initial_transforms` Vecs.
     fn object_index_by_name(&self, name: &str) -> Option<usize> {
         self.objects.iter().position(|o| o.name() == name)
     }
@@ -1147,10 +1074,10 @@ impl Pal4Scene {
         gob.entries.get(gob_idx)?.folder.to_string().ok()
     }
 
-    /// Set an object's local position to `(x, y, z)` and invalidate
-    /// its cached `objects_xz_aabbs` slot so the interaction probe
-    /// falls back to anchor-distance for this entry from now on.
-    /// Returns `true` on hit, `false` on miss; warns are the
+    /// Set an object's local position to `(x, y, z)`. The interactable
+    /// object's proximity trigger volume tracks the entity translation
+    /// automatically, so no cache invalidation is needed here. Returns
+    /// `true` on hit, `false` on miss; warns are the
     /// caller's responsibility (so the script-side stub can attach
     /// the function name).
     pub fn set_object_position(&mut self, name: &str, x: f32, y: f32, z: f32) -> bool {
@@ -1161,9 +1088,6 @@ impl Pal4Scene {
             .transform()
             .borrow_mut()
             .set_position(&Vec3::new(x, y, z));
-        if let Some(slot) = self.objects_xz_aabbs.get_mut(idx) {
-            *slot = None;
-        }
         true
     }
 
@@ -1193,9 +1117,6 @@ impl Pal4Scene {
         t.rotate_axis_angle_local(&Vec3::UP, rot_deg.to_radians());
         t.set_position(&Vec3::new(x, y, z));
         drop(t);
-        if let Some(slot) = self.objects_xz_aabbs.get_mut(idx) {
-            *slot = None;
-        }
         true
     }
 
@@ -1217,27 +1138,19 @@ impl Pal4Scene {
         t.scale_local(&Vec3::new(x_scale, y_scale, x_scale));
         t.set_position(&pos);
         drop(t);
-        if let Some(slot) = self.objects_xz_aabbs.get_mut(idx) {
-            *slot = None;
-        }
         true
     }
 
     /// Restore an object's transform to its load-time snapshot in
-    /// `objects_initial_transforms`. Invalidates the cached AABB
-    /// too — the load-time AABB was sampled against the same
-    /// matrix, but recomputing it from the snapshot is more work
-    /// than just letting the interaction probe fall back to the
-    /// anchor.
+    /// `objects_initial_transforms`. The interactable's proximity
+    /// trigger volume tracks the entity translation automatically, so
+    /// no cache invalidation is needed.
     pub fn reset_object(&mut self, name: &str) -> bool {
         let Some(idx) = self.object_index_by_name(name) else {
             return false;
         };
         let saved = self.objects_initial_transforms[idx];
         self.objects[idx].transform().borrow_mut().set_matrix(saved);
-        if let Some(slot) = self.objects_xz_aabbs.get_mut(idx) {
-            *slot = None;
-        }
         true
     }
 }
@@ -1324,69 +1237,6 @@ fn load_player(asset_loader: &Rc<AssetLoader>, player: Player) -> ComRc<IEntity>
     entity
 }
 
-fn create_floor_wall_ray_caster(
-    floor: Option<ComRc<IEntity>>,
-    wall: Option<ComRc<IEntity>>,
-) -> RayCaster {
-    let mut ray_caster = RayCaster::new();
-    if let Some(floor) = floor {
-        floor.update_world_transform(&Transform::new());
-        add_mesh(&mut ray_caster, floor);
-    }
-
-    if let Some(wall) = wall {
-        wall.update_world_transform(&Transform::new());
-        add_mesh(&mut ray_caster, wall);
-    }
-
-    ray_caster
-}
-
-fn add_mesh(ray_caster: &mut RayCaster, entity: ComRc<IEntity>) {
-    for child in entity.children() {
-        add_mesh(ray_caster, child);
-    }
-
-    let mesh = entity.get_component(IStaticMeshComponent::uuid());
-    if let Some(mesh) = mesh {
-        let mesh = mesh.query_interface::<IStaticMeshComponent>().unwrap();
-        // Bake the entity's *full* world transform (translation +
-        // rotation + scale) into every vertex. The previous version
-        // only added `entity.world_transform().position()`, which
-        // silently dropped any rotation/scale on nested floor/wall
-        // sub-entities and produced mis-placed collision triangles
-        // (= invisible walls / fall-throughs on affected blocks).
-        let world_transform = entity.world_transform();
-        let world_matrix = *world_transform.matrix();
-        let mesh_inner =
-            mesh.inner::<radiance::components::mesh::static_mesh::StaticMeshComponent>();
-        let geometries = mesh_inner.get_geometries();
-        for geometry in geometries.iter() {
-            let v = geometry
-                .vertices
-                .to_position_vec()
-                .into_iter()
-                .map(|v| transform_point(&world_matrix, &v))
-                .collect();
-
-            let i = geometry.indices.clone();
-            ray_caster.add_mesh(v, i);
-        }
-    }
-}
-
-/// Multiply a row-major 4x4 affine matrix by a point `(x, y, z, 1)`
-/// and return the resulting 3D point. Used by [`add_mesh`] so the
-/// `RayCaster` sees triangles in world space, regardless of which
-/// child entity in the floor/wall tree they originated from.
-fn transform_point(m: &Mat44, p: &Vec3) -> Vec3 {
-    Vec3::new(
-        m[0][0] * p.x + m[0][1] * p.y + m[0][2] * p.z + m[0][3],
-        m[1][0] * p.x + m[1][1] * p.y + m[1][2] * p.z + m[1][3],
-        m[2][0] * p.x + m[2][1] * p.y + m[2][2] * p.z + m[2][3],
-    )
-}
-
 /// Walk an entity and its children, returning the `(min, max)` world-Y
 /// across every vertex of every `IStaticMeshComponent` found, or
 /// `None` if the entity tree contains no static meshes. Mirrors the
@@ -1428,69 +1278,6 @@ fn accumulate_y_range(entity: &ComRc<IEntity>, lo: &mut f32, hi: &mut f32) {
     }
 }
 
-/// Walk an entity tree and return the world-space XZ axis-aligned
-/// bounding box `(min_x, max_x, min_z, max_z)` across every vertex of
-/// every `IStaticMeshComponent` found, or `None` when the tree has no
-/// static mesh. Used by [`Pal4Scene::test_interaction`] so the F-key
-/// interaction prompt fires when the player is next to the visible
-/// mesh, regardless of where the GOB entry's anchor point sits
-/// relative to it (PAL4 ladders anchor in the middle of the slope but
-/// the climb handler teleports the player to one of the end points,
-/// far from the anchor).
-fn entity_world_xz_aabb(entity: &ComRc<IEntity>) -> Option<(f32, f32, f32, f32)> {
-    let mut min_x = f32::INFINITY;
-    let mut max_x = f32::NEG_INFINITY;
-    let mut min_z = f32::INFINITY;
-    let mut max_z = f32::NEG_INFINITY;
-    accumulate_xz_aabb(entity, &mut min_x, &mut max_x, &mut min_z, &mut max_z);
-    if min_x.is_finite() && max_x.is_finite() && max_x >= min_x && max_z >= min_z {
-        Some((min_x, max_x, min_z, max_z))
-    } else {
-        None
-    }
-}
-
-fn accumulate_xz_aabb(
-    entity: &ComRc<IEntity>,
-    min_x: &mut f32,
-    max_x: &mut f32,
-    min_z: &mut f32,
-    max_z: &mut f32,
-) {
-    for child in entity.children() {
-        accumulate_xz_aabb(&child, min_x, max_x, min_z, max_z);
-    }
-
-    if let Some(mesh) = entity.get_component(IStaticMeshComponent::uuid()) {
-        let mesh = mesh.query_interface::<IStaticMeshComponent>().unwrap();
-        // Bake the full world transform (translation + rotation +
-        // scale) into each vertex, mirroring `add_mesh` — the
-        // entity's `set_position` carries translation but rotation
-        // / scale on child sub-frames is otherwise dropped.
-        let world_matrix = *entity.world_transform().matrix();
-        let mesh_inner =
-            mesh.inner::<radiance::components::mesh::static_mesh::StaticMeshComponent>();
-        let geometries = mesh_inner.get_geometries();
-        for geometry in geometries.iter() {
-            for v in geometry.vertices.to_position_vec() {
-                let w = transform_point(&world_matrix, &v);
-                if w.x < *min_x {
-                    *min_x = w.x;
-                }
-                if w.x > *max_x {
-                    *max_x = w.x;
-                }
-                if w.z < *min_z {
-                    *min_z = w.z;
-                }
-                if w.z > *max_z {
-                    *max_z = w.z;
-                }
-            }
-        }
-    }
-}
-
 /// Walk an entity tree and replace every `Geometry.material` on every
 /// `IStaticMeshComponent` with a `GradientYMaterialDef` keyed on
 /// `[y_min, y_max]`. Must be called before the owning entity is added
@@ -1511,57 +1298,11 @@ fn apply_gradient_material(entity: &ComRc<IEntity>, y_min: f32, y_max: f32) {
     }
 }
 
-pub struct SceneEventTrigger {
-    ray_caster: RayCaster,
-    event_index: usize,
-    triggered: Cell<bool>,
-}
-
-impl SceneEventTrigger {
-    pub fn check(&self, origin: &Vec3, direction: &Vec3) {
-        // `cast_ray` returns the parametric distance `t` along `direction`
-        // (hit point = origin + t * direction). The movement crosses the
-        // trigger this frame iff the hit lies within the segment, i.e.
-        // `t <= 1.0`. The lower bound (`t > EPSILON`) is enforced by
-        // `cast_ray` itself.
-        let hit = self.ray_caster.cast_ray(origin, direction);
-
-        self.triggered.set(false);
-        if let Some(t) = hit {
-            if t <= 1.0 {
-                self.triggered.set(true);
-            }
-        }
-    }
-}
-
-lazy_static::lazy_static! {
-    pub static ref BOX_TRIGGER_INDICES: Vec<u32> = vec![
-        0, 2, 1, 0, 3, 2, 0, 4, 7, 0, 7, 3, 0, 5, 4, 0, 1, 5, 6, 1, 2, 6, 5, 1, 6, 2, 3, 6, 3,
-        7, 6, 7, 4, 6, 4, 5,
-    ];
-
-    pub static ref PLANE_TRIGGER_INDICES: Vec<u32> = vec![0, 1, 2, 2, 1, 3];
-}
-
-fn create_trigger_ray_caster(trigger: Vec<Vec3>) -> RayCaster {
-    let mut ray_caster = RayCaster::new();
-    match trigger.len() {
-        4 => {
-            ray_caster.add_mesh(trigger, PLANE_TRIGGER_INDICES.clone());
-        }
-        8 => {
-            ray_caster.add_mesh(trigger, BOX_TRIGGER_INDICES.clone());
-        }
-        _ => panic!("Invalid trigger point count"),
-    }
-
-    ray_caster
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use radiance::components::collision::TriggerShape;
+    use radiance::math::Transform;
 
     /// Reset after a set-position call must restore the snapshot
     /// matrix exactly. Locks the `Mat44` round-trip used by
@@ -1579,7 +1320,6 @@ mod tests {
         s.objects.push(entity);
         s.objects_gob_indices.push(0);
         s.objects_initial_transforms.push(snap);
-        s.objects_xz_aabbs.push(None);
 
         // Mutate then reset.
         assert!(s.set_object_position("marker001", 1.0, 2.0, 3.0));
@@ -1608,7 +1348,6 @@ mod tests {
         s.objects.push(entity);
         s.objects_gob_indices.push(0);
         s.objects_initial_transforms.push(snap);
-        s.objects_xz_aabbs.push(None);
 
         // Call three times with the same yaw; the resulting
         // rotation matrix must equal a single yaw=90 application.
@@ -1635,45 +1374,44 @@ mod tests {
         }
     }
 
-    /// AABB cache must be invalidated after any transform mutation
-    /// so `test_interaction` does not consult a stale rectangle for
-    /// a moved interactable.
+    /// A proximity `TriggerVolumeComponent` seeded from an object's
+    /// load-time anchor must track the entity's translation, so the
+    /// interaction probe stays correct after a `giGOB*` move without
+    /// any manual cache invalidation. This is the behaviour that
+    /// replaced the old `objects_xz_aabbs` cache + invalidation hooks.
     #[test]
-    fn aabb_is_invalidated_after_transform_mutators() {
-        let mut s = Pal4Scene::new_empty();
+    fn proximity_volume_tracks_entity_translation() {
         let entity = CoreEntity::create("crate001".to_string(), true);
-        let snap = *entity.transform().borrow().matrix();
-        s.objects.push(entity);
-        s.objects_gob_indices.push(0);
-        s.objects_initial_transforms.push(snap);
-        s.objects_xz_aabbs.push(Some((0.0, 1.0, 0.0, 1.0)));
+        entity
+            .transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(0.0, 0.0, 0.0));
+        entity.update_world_transform(&Transform::new());
 
-        assert!(s.set_object_position("crate001", 5.0, 0.0, 5.0));
-        assert!(
-            s.objects_xz_aabbs[0].is_none(),
-            "AABB must be cleared on set_position"
-        );
+        let volume = TriggerVolumeComponent::create(
+            entity.clone(),
+            TriggerShape::ProximityPoint {
+                point: Vec3::new(0.0, 0.0, 0.0),
+                radius: 10.0,
+            },
+            0,
+            "func1012".to_string(),
+        )
+        .unwrap();
+        let inner = volume.inner::<TriggerVolumeComponent>();
 
-        s.objects_xz_aabbs[0] = Some((0.0, 1.0, 0.0, 1.0));
-        assert!(s.set_object_position_and_yaw("crate001", 0.0, 0.0, 0.0, 30.0));
-        assert!(
-            s.objects_xz_aabbs[0].is_none(),
-            "AABB must be cleared on movement"
-        );
+        // Player at the origin is on top of the anchor.
+        assert!(inner.distance_xz(&Vec3::new(0.0, 0.0, 0.0)) < 1e-4);
 
-        s.objects_xz_aabbs[0] = Some((0.0, 1.0, 0.0, 1.0));
-        assert!(s.set_object_scale_xy("crate001", 2.0, 2.0));
-        assert!(
-            s.objects_xz_aabbs[0].is_none(),
-            "AABB must be cleared on scale"
-        );
-
-        s.objects_xz_aabbs[0] = Some((0.0, 1.0, 0.0, 1.0));
-        assert!(s.reset_object("crate001"));
-        assert!(
-            s.objects_xz_aabbs[0].is_none(),
-            "AABB must be cleared on reset"
-        );
+        // Move the object +100 in X; the volume must follow, so a probe
+        // at x=100 is again at distance ~0 and one at x=0 is ~100 away.
+        entity
+            .transform()
+            .borrow_mut()
+            .set_position(&Vec3::new(100.0, 0.0, 0.0));
+        entity.update_world_transform(&Transform::new());
+        assert!(inner.distance_xz(&Vec3::new(100.0, 0.0, 0.0)) < 1e-4);
+        assert!((inner.distance_xz(&Vec3::new(0.0, 0.0, 0.0)) - 100.0).abs() < 1e-3);
     }
 
     /// Mutators must return `false` (and log) for unknown names

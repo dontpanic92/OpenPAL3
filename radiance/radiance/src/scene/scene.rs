@@ -230,6 +230,12 @@ pub trait ISceneExt {
 
     /// Mutable counterpart to [`camera`].
     fn camera_mut(&self) -> RefMut<'_, Camera>;
+
+    /// Get-or-create the scene's [`CollisionWorldComponent`] — the
+    /// scene-level aggregator for colliders and trigger volumes. The
+    /// component is hosted on the scene itself; the first call attaches
+    /// it. Returns the same instance on subsequent calls.
+    fn collision_world(&self) -> ComRc<crate::comdef::ICollisionWorldComponent>;
 }
 
 impl ISceneExt for ComRc<IScene> {
@@ -250,6 +256,20 @@ impl ISceneExt for ComRc<IScene> {
     }
     fn camera_mut(&self) -> RefMut<'_, Camera> {
         self.inner::<CoreScene>().camera_mut()
+    }
+    fn collision_world(&self) -> ComRc<crate::comdef::ICollisionWorldComponent> {
+        use crate::comdef::ICollisionWorldComponent;
+        if let Some(existing) = self.get_component(ICollisionWorldComponent::uuid()) {
+            return existing
+                .query_interface::<ICollisionWorldComponent>()
+                .unwrap();
+        }
+        let world = crate::components::collision::CollisionWorldComponent::create();
+        self.add_component(
+            ICollisionWorldComponent::uuid(),
+            world.query_interface::<IComponent>().unwrap(),
+        );
+        world
     }
 }
 
