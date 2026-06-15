@@ -10,6 +10,7 @@ use agent_server::protocol::{
     TriggerEntry,
 };
 use crosscom::ComRc;
+use fileformats::pal4::gob::GobObjectType;
 use radiance::comdef::{IEntityExt, IImmediateDirectorImpl, IUiHost};
 use radiance::math::Vec3;
 use radiance::{
@@ -29,8 +30,10 @@ use super::{
     asset_loader::AssetLoader,
     comdef::IPal4LoadingOverlay,
     comdef::pal4_debug::{IPal4DebugContext, IPal4DebugOverlay},
+    object_component::Pal4ObjectComponent,
     pal4_debug::Pal4DebugState,
     scene::Pal4Scene,
+    scene::object_component,
     scripting::create_script_vm,
     session::{Pal4Session, RuntimeSnapshot},
     vm_context::{
@@ -1113,43 +1116,33 @@ impl OpenPAL4Director {
             })
             .collect::<Vec<_>>();
 
-        let objects = match scene.objects_gob.as_ref() {
-            Some(gob) => gob
-                .entries
-                .iter()
-                .enumerate()
-                .map(|(i, entry)| {
-                    let name = entry.name.to_string().unwrap_or_default();
-                    let kind = gob
-                        .header
-                        .object_types
-                        .get(i)
-                        .and_then(|t| fileformats::pal4::gob::GobObjectType::name(*t))
-                        .unwrap_or("unknown")
-                        .to_string();
-                    let research_function = entry.research_function.to_string().unwrap_or_default();
-                    // Prefer the live entity position (scripts may have
-                    // moved or hidden the object), fall back to the
-                    // GOB load-time position for entries we never
-                    // instantiated (EFFECT entries, failed loads).
-                    let (position, visible) = match scene.get_object(&name) {
-                        Some(entity) => {
-                            let p = entity.world_transform().position();
-                            ([p.x, p.y, p.z], entity.visible())
-                        }
-                        None => (entry.position, false),
-                    };
-                    ObjectEntry {
-                        name,
-                        kind,
-                        position,
-                        visible,
-                        research_function,
-                    }
+        // Walk the loaded object *entities* (tagged `TAG_OBJECT`) and
+        // read each one's authoring `GobEntry` back off its
+        // `Pal4ObjectComponent`. Entity-less GOB entries (EFFECT
+        // placeholders, SOUND emitters) are not listed — the parsed
+        // `GobFile` is no longer retained after load.
+        let objects = scene
+            .object_entities()
+            .into_iter()
+            .filter_map(|entity| {
+                let component = object_component(&entity)?;
+                let component = component.inner::<Pal4ObjectComponent>();
+                let entry = component.entry();
+                let name = entry.name.to_string().unwrap_or_default();
+                let kind = GobObjectType::name(component.object_type())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let research_function = component.research_function();
+                let p = entity.world_transform().position();
+                Some(ObjectEntry {
+                    name,
+                    kind,
+                    position: [p.x, p.y, p.z],
+                    visible: entity.visible(),
+                    research_function,
                 })
-                .collect(),
-            None => Vec::new(),
-        };
+            })
+            .collect();
         drop(scene);
 
         AgentResponse::SceneObjects(SceneObjectsResponse {
@@ -1238,22 +1231,15 @@ impl OpenPAL4Director {
                     "no scene is loaded; load a block before interacting with objects",
                 ));
             };
-            let Some(gob) = scene.objects_gob.as_ref() else {
-                return AgentResponse::err(AgentError::conflict(
-                    "no GOB loaded for the current block",
-                ));
-            };
-            let Some(entry) = gob
-                .entries
-                .iter()
-                .find(|e| e.name.to_string().ok().as_deref() == Some(params.name.as_str()))
-            else {
+            let Some(entity) = scene.get_object(&params.name) else {
                 return AgentResponse::err(AgentError::bad_request(format!(
                     "unknown object name: {}",
                     params.name
                 )));
             };
-            let fn_name = entry.research_function.to_string().unwrap_or_default();
+            let fn_name = object_component(&entity)
+                .map(|c| c.inner::<Pal4ObjectComponent>().research_function())
+                .unwrap_or_default();
             if fn_name.is_empty() {
                 return AgentResponse::err(AgentError::bad_request(format!(
                     "object {} has no examine handler (research_function is empty)",

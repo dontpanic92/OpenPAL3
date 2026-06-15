@@ -70,7 +70,7 @@ pub struct GobHeader {
     pub object_types: Vec<u32>,
 }
 
-#[derive(Debug, BinRead, Serialize)]
+#[derive(Debug, Clone, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobEntry {
     pub name: SizedString,
@@ -427,7 +427,7 @@ fn parse_properties() -> BinResult<Vec<GobProperty>> {
     Ok(properties)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub enum GobProperty {
     GobPropertyI32(GobPropertyI32),
     GobPropertyF32(GobPropertyF32),
@@ -520,7 +520,7 @@ impl GobProperty {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct GobPropertyObjectArray(pub Vec<GobObject>);
 
 impl BinRead for GobPropertyObjectArray {
@@ -550,7 +550,7 @@ impl BinRead for GobPropertyObjectArray {
     }
 }
 
-#[derive(Debug, BinRead, Serialize)]
+#[derive(Debug, Clone, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobPropertyI32 {
     pub ty: u32,
@@ -560,7 +560,7 @@ pub struct GobPropertyI32 {
     pub value: i32,
 }
 
-#[derive(Debug, BinRead, Serialize)]
+#[derive(Debug, Clone, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobPropertyF32 {
     pub ty: u32,
@@ -570,7 +570,7 @@ pub struct GobPropertyF32 {
     pub value: f32,
 }
 
-#[derive(Debug, BinRead, Serialize)]
+#[derive(Debug, Clone, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobPropertyString {
     pub ty: u32,
@@ -582,7 +582,7 @@ pub struct GobPropertyString {
     pub value: String,
 }
 
-#[derive(Debug, BinRead, Serialize)]
+#[derive(Debug, Clone, BinRead, Serialize)]
 #[brw(little)]
 pub struct GobObject {
     #[br(parse_with = parse_sized_string)]

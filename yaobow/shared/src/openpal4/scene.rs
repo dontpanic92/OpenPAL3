@@ -4,7 +4,7 @@ use crosscom::ComRc;
 use fileformats::npc::NpcInfoFile;
 use fileformats::pal4::{
     evf::EvfEvent,
-    gob::{GobCommonProperties, GobFile, GobObjectType},
+    gob::{GobCommonProperties, GobObjectType},
 };
 use radiance::{
     audio::Codec,
@@ -83,14 +83,6 @@ impl Player {
 pub struct Pal4Scene {
     pub(crate) scene: ComRc<IScene>,
     pub(crate) players: [ComRc<IEntity>; 4],
-    /// Full GOB corpus for the loaded block. Object *entities* are
-    /// found via the engine `TAG_OBJECT` tag query (no parallel handle
-    /// `Vec`), and each carries a [`Pal4ObjectComponent`] holding its
-    /// index into `entries` plus its load-time transform. This field is
-    /// retained because the agent server enumerates *all* entries
-    /// (including non-loaded ones), and `get_object_folder` resolves an
-    /// entity's authoring `folder` through its component's GOB index.
-    pub(crate) objects_gob: Option<GobFile>,
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
     /// Engine-owned `Pal4GameContext` CCW shared with the four
@@ -129,7 +121,6 @@ impl Pal4Scene {
                 CoreEntity::create("".to_string(), false),
                 CoreEntity::create("".to_string(), false),
             ],
-            objects_gob: None,
             events: vec![],
             module: None,
             game_context: None,
@@ -204,7 +195,6 @@ pub struct Pal4SceneLoader {
     events: Vec<EvfEvent>,
     game_context: Option<ComRc<IPal4GameContext>>,
     actor_controller: Option<ComRc<IPal4ActorController>>,
-    objects_gob: Option<GobFile>,
     module: Option<Rc<RefCell<ScriptModule>>>,
 }
 
@@ -238,7 +228,6 @@ impl Pal4SceneLoader {
             events: Vec::new(),
             game_context: None,
             actor_controller: None,
-            objects_gob: None,
             module: None,
         }
     }
@@ -775,14 +764,15 @@ impl Pal4SceneLoader {
                     objects.push(entity.clone());
 
                     // Tag the object for engine-side discovery and ride
-                    // its GOB index + load-time transform on the entity
-                    // via `Pal4ObjectComponent` (replacing the old
-                    // index-parallel `objects_gob_indices` /
-                    // `objects_initial_transforms` Vecs).
+                    // its authoring `GobEntry` + object-type + load-time
+                    // transform on the entity via `Pal4ObjectComponent`
+                    // (replacing the old index-parallel
+                    // `objects_gob_indices` / `objects_initial_transforms`
+                    // Vecs and the `objects_gob` lookup table).
                     entity.add_tag(TAG_OBJECT);
                     entity.add_component(
                         IPal4ObjectComponent::uuid(),
-                        Pal4ObjectComponent::create(i, initial_matrix)
+                        Pal4ObjectComponent::create(entry.clone(), object_type, initial_matrix)
                             .query_interface::<IComponent>()
                             .unwrap(),
                     );
@@ -820,7 +810,6 @@ impl Pal4SceneLoader {
             }
         }
 
-        self.objects_gob = Some(gob);
         Ok(())
     }
 
@@ -838,47 +827,47 @@ impl Pal4SceneLoader {
             .take()
             .expect("stage_players_events_controller must run first");
         let module = self.module.take().expect("just populated above");
-        let objects_gob = self.objects_gob.take();
 
         // Register a proximity interaction trigger with the scene
         // collision world for each interactable GOB (non-empty
         // `research_function`). The world derives the volume's XZ
         // rectangle from the object's mesh extent, attaches the
         // component to the entity, and owns the registry — the game
-        // keeps no parallel Vec. Payload: `id` = GOB index,
-        // `tag` = research-function, `radius` = `trigger_distance`.
-        // Object entities are found via the `TAG_OBJECT` tag query and
-        // their GOB index is read back from each `Pal4ObjectComponent`.
+        // keeps no parallel Vec. Payload: `tag` = research-function,
+        // `radius` = `trigger_distance`. Object entities are found via
+        // the `TAG_OBJECT` tag query and their authoring `GobEntry` is
+        // read back from each `Pal4ObjectComponent`.
         {
             let world_com = scene.collision_world();
             let world = world_com.inner::<CollisionWorldComponent>();
-            for e in scene.find_entities_by_tag(TAG_OBJECT) {
-                let Some(gob_index) =
-                    object_component(&e).map(|c| c.inner::<Pal4ObjectComponent>().gob_index())
-                else {
+            for (i, e) in scene
+                .find_entities_by_tag(TAG_OBJECT)
+                .into_iter()
+                .enumerate()
+            {
+                let Some(component) = object_component(&e) else {
                     continue;
                 };
-                let Some(entry) = objects_gob.as_ref().and_then(|g| g.entries.get(gob_index))
-                else {
-                    continue;
-                };
-                let research = entry.research_function.to_string().unwrap_or_default();
+                let component = component.inner::<Pal4ObjectComponent>();
+                let research = component.research_function();
                 if research.is_empty() {
                     continue;
                 }
-                let radius = if entry.trigger_distance > 0.0 {
-                    entry.trigger_distance
+                let trigger_distance = component.trigger_distance();
+                let radius = if trigger_distance > 0.0 {
+                    trigger_distance
                 } else {
                     50.0
                 };
-                world.attach_proximity_trigger(&e, gob_index as i64, research, radius);
+                // The trigger `id` payload is never read back (callers
+                // consume only the `tag`), so a per-loop counter suffices.
+                world.attach_proximity_trigger(&e, i as i64, research, radius);
             }
         }
 
         Ok(Pal4Scene {
             scene,
             players,
-            objects_gob,
             events: std::mem::take(&mut self.events),
             module: Some(module),
             game_context: Some(game_context),
@@ -1024,15 +1013,22 @@ impl Pal4Scene {
 
     /// Resolve the raw GOB `folder` (e.g. `gamedata\PALObject\OM01\`)
     /// that authored the loaded object `name`, so callers can locate
-    /// its sibling `.anm`/`.dff`. Returns `None` for unknown objects or
-    /// when the GOB corpus wasn't retained.
+    /// its sibling `.anm`/`.dff`. Returns `None` for unknown objects.
     pub fn get_object_folder(&self, name: &str) -> Option<String> {
         let entity = self.get_object(name)?;
-        let gob_index = object_component(&entity)?
-            .inner::<Pal4ObjectComponent>()
-            .gob_index();
-        let gob = self.objects_gob.as_ref()?;
-        gob.entries.get(gob_index)?.folder.to_string().ok()
+        Some(
+            object_component(&entity)?
+                .inner::<Pal4ObjectComponent>()
+                .folder(),
+        )
+    }
+
+    /// All loaded GOB object entities (those tagged `TAG_OBJECT`, each
+    /// carrying a [`Pal4ObjectComponent`]). Entity-less GOB entries
+    /// (EFFECT placeholders, SOUND emitters) are *not* represented —
+    /// the parsed `GobFile` is no longer retained after load.
+    pub fn object_entities(&self) -> Vec<ComRc<IEntity>> {
+        self.scene.find_entities_by_tag(TAG_OBJECT)
     }
 
     /// Set an object's local position to `(x, y, z)`. The interactable
@@ -1278,15 +1274,42 @@ mod tests {
     use radiance::components::collision::TriggerShape;
     use radiance::math::Transform;
 
+    /// A minimal placeholder `GobEntry` for tests that only exercise
+    /// the component's transform plumbing (not its GOB metadata).
+    fn test_gob_entry() -> fileformats::pal4::gob::GobEntry {
+        use fileformats::pal4::gob::{GobEntry, GobPropertyI32};
+        let i32_prop = || GobPropertyI32 {
+            ty: 1,
+            name: String::new(),
+            value: 0,
+        };
+        GobEntry {
+            name: "".into(),
+            folder: "".into(),
+            file_name: "".into(),
+            file_name2: "".into(),
+            position: [0.0; 3],
+            rotation: [0.0; 3],
+            research_function: "".into(),
+            flags: [0; 3],
+            trigger_distance: 0.0,
+            active: 1,
+            game_object: i32_prop(),
+            properties: vec![],
+            parameters_begin: i32_prop(),
+            parameters: vec![],
+        }
+    }
+
     /// Tag `entity` as a GOB object, give it a `Pal4ObjectComponent`
     /// carrying its snapshot transform, and add it to the scene so the
     /// `TAG_OBJECT` tag query can find it — the test-side equivalent of
     /// what `stage_gob_objects` does at load.
-    fn add_test_object(s: &Pal4Scene, entity: ComRc<IEntity>, gob_index: usize, snap: Mat44) {
+    fn add_test_object(s: &Pal4Scene, entity: ComRc<IEntity>, snap: Mat44) {
         entity.add_tag(TAG_OBJECT);
         entity.add_component(
             IPal4ObjectComponent::uuid(),
-            Pal4ObjectComponent::create(gob_index, snap)
+            Pal4ObjectComponent::create(test_gob_entry(), GobObjectType::MARKER, snap)
                 .query_interface::<IComponent>()
                 .unwrap(),
         );
@@ -1306,7 +1329,7 @@ mod tests {
             .borrow_mut()
             .set_position(&Vec3::new(10.0, 20.0, 30.0));
         let snap = *entity.transform().borrow().matrix();
-        add_test_object(&s, entity, 0, snap);
+        add_test_object(&s, entity, snap);
 
         // Mutate then reset.
         assert!(s.set_object_position("marker001", 1.0, 2.0, 3.0));
@@ -1342,7 +1365,7 @@ mod tests {
         let mut s = Pal4Scene::new_empty();
         let entity = CoreEntity::create("door001".to_string(), true);
         let snap = *entity.transform().borrow().matrix();
-        add_test_object(&s, entity, 0, snap);
+        add_test_object(&s, entity, snap);
 
         // Call three times with the same yaw; the resulting
         // rotation matrix must equal a single yaw=90 application.

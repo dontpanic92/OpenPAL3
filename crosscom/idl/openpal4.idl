@@ -58,14 +58,14 @@ class Pal4ActorController: IPal4ActorController {}
 
 // Per-object metadata component attached to each loaded GOB object
 // entity. Replaces the old index-parallel `objects_gob_indices` /
-// `objects_initial_transforms` Vecs on `Pal4Scene`: now that object
-// entities are found by the engine tag query (`"pal4_object"`) rather
-// than a hand-kept handle Vec, the metadata that isn't recoverable
-// from the entity alone — its index into the block `GobFile` and its
-// authored load-time `Transform` — rides on the entity itself. The
-// data is read back through the inherent Rust impl
-// (`inner::<Pal4ObjectComponent>()`); this interface carries no
-// methods, it only makes the component query-interface-able.
+// `objects_initial_transforms` Vecs on `Pal4Scene` *and* the
+// `objects_gob` lookup table: now that object entities are found by the
+// engine tag query (`"pal4_object"`) rather than a hand-kept handle Vec,
+// each entity carries its full authoring `GobEntry`, its GOB object-type
+// tag, and its load-time `Transform` directly — nothing external indexes
+// back into the parsed `GobFile`. The data is read back through the
+// inherent Rust impl (`inner::<Pal4ObjectComponent>()`); this interface
+// carries no methods, it only makes the component query-interface-able.
 [uuid(a0e66ea8-cdaa-4342-b1c8-babec958cae0)]
 interface IPal4ObjectComponent: IComponent {
 }
