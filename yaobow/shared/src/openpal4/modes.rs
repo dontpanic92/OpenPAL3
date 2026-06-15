@@ -105,6 +105,7 @@ impl Pal4ModeRegistry {
                         let story = service.build_story_director(&asset_path);
                         let vm = story.vm_handle();
                         let overlay = story.loading_overlay_template();
+                        let factory = story.actor_controller_factory_template();
                         let story_rc = ComRc::<IDirector>::from_object(story);
                         match overlay {
                             Some(overlay) => {
@@ -113,6 +114,7 @@ impl Pal4ModeRegistry {
                                     vm,
                                     story_rc,
                                     Pal4TransitionAction::EnterStoryNew,
+                                    factory,
                                 );
                                 ComRc::<IDirector>::from_object(transition)
                             }
@@ -126,6 +128,7 @@ impl Pal4ModeRegistry {
                         let story = service.build_story_director(&asset_path);
                         let vm = story.vm_handle();
                         let overlay = story.loading_overlay_template();
+                        let factory = story.actor_controller_factory_template();
 
                         // Drain the snapshot up-front so the transition
                         // director can apply it synchronously on its
@@ -160,6 +163,7 @@ impl Pal4ModeRegistry {
                                     vm,
                                     story_rc,
                                     Pal4TransitionAction::EnterStoryFromSave { snapshot, slot },
+                                    factory,
                                 );
                                 ComRc::<IDirector>::from_object(transition)
                             }

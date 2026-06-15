@@ -39,7 +39,7 @@ use radiance::comdef::{IDirector, IDirectorImpl, IImmediateDirectorImpl, IUiHost
 use crate::scripting::angelscript::ScriptVm;
 
 use super::{
-    comdef::IPal4LoadingOverlay,
+    comdef::{IPal4LoadingOverlay, IPal4ScriptFactory},
     director::OpenPAL4Director,
     scene::{Pal4Scene, Pal4SceneLoader, StageProgress},
     session::RuntimeSnapshot,
@@ -163,6 +163,12 @@ pub struct Pal4TransitionDirector {
     /// Post-load fan-out queued at action drain time so it can fire
     /// after the (multi-tick) swap completes. Outlives `action`.
     post_load: RefCell<PostLoadFanout>,
+
+    /// Scripted actor-controller factory threaded into each
+    /// `Pal4SceneSwap` this transition builds so the freshly loaded
+    /// scene attaches the same scripted controller. `None` for
+    /// editor/headless builds.
+    factory: Option<ComRc<IPal4ScriptFactory>>,
 }
 
 ComObject_Pal4TransitionDirector!(super::Pal4TransitionDirector);
@@ -218,6 +224,10 @@ pub(crate) struct Pal4SceneSwap {
     // True after the final install + session fan-out has run. The
     // transition reads this to fire its post-load action.
     finished: bool,
+    // Scripted actor-controller factory threaded into the
+    // `Pal4SceneLoader` so the new scene's player entities attach the
+    // same scripted controller. `None` for editor/headless builds.
+    factory: Option<ComRc<IPal4ScriptFactory>>,
 }
 
 impl Pal4SceneSwap {
@@ -225,6 +235,7 @@ impl Pal4SceneSwap {
         vm: Rc<RefCell<ScriptVm<Pal4VmContext>>>,
         scene_name: String,
         block_name: String,
+        factory: Option<ComRc<IPal4ScriptFactory>>,
     ) -> Self {
         Self {
             vm,
@@ -234,6 +245,7 @@ impl Pal4SceneSwap {
             error: None,
             had_error: false,
             finished: false,
+            factory,
         }
     }
 
@@ -265,14 +277,13 @@ impl Pal4SceneSwap {
         // scene, build the loader. Counted as a stage so the bar
         // advances visibly off zero.
         if self.loader.is_none() {
-            let (asset_loader, input, scene_manager, factory) = {
+            let (asset_loader, input, scene_manager) = {
                 let vm = self.vm.borrow();
                 let app = vm.vm_context();
                 (
                     app.loader.clone(),
                     app.input.clone(),
                     app.scene_manager.clone(),
-                    app.actor_controller_factory().cloned(),
                 )
             };
             let _ = scene_manager.pop_scene();
@@ -281,7 +292,7 @@ impl Pal4SceneSwap {
                 input,
                 self.scene_name.clone(),
                 self.block_name.clone(),
-                factory,
+                self.factory.clone(),
             ));
             // Report a small fraction so the bar moves immediately.
             return (0.05, false);
@@ -348,6 +359,7 @@ impl Pal4TransitionDirector {
         vm: Rc<RefCell<ScriptVm<Pal4VmContext>>>,
         next: ComRc<IDirector>,
         action: Pal4TransitionAction,
+        factory: Option<ComRc<IPal4ScriptFactory>>,
     ) -> Self {
         Self {
             overlay,
@@ -361,6 +373,7 @@ impl Pal4TransitionDirector {
             silent: Cell::new(false),
             swap: RefCell::new(None),
             post_load: RefCell::new(PostLoadFanout::None),
+            factory,
         }
     }
 
@@ -407,8 +420,12 @@ impl Pal4TransitionDirector {
 
                 let scene_name = snapshot.scene_name.clone();
                 let block_name = snapshot.block_name.clone();
-                *self.swap.borrow_mut() =
-                    Some(Pal4SceneSwap::new(self.vm.clone(), scene_name, block_name));
+                *self.swap.borrow_mut() = Some(Pal4SceneSwap::new(
+                    self.vm.clone(),
+                    scene_name,
+                    block_name,
+                    self.factory.clone(),
+                ));
                 *self.post_load.borrow_mut() = PostLoadFanout::ApplySnapshot {
                     snapshot: Box::new(snapshot),
                     slot,
@@ -421,7 +438,12 @@ impl Pal4TransitionDirector {
                     .vm_context
                     .session()
                     .take_pending_scene_load();
-                *self.swap.borrow_mut() = Some(Pal4SceneSwap::new(self.vm.clone(), scene, block));
+                *self.swap.borrow_mut() = Some(Pal4SceneSwap::new(
+                    self.vm.clone(),
+                    scene,
+                    block,
+                    self.factory.clone(),
+                ));
                 *self.post_load.borrow_mut() = PostLoadFanout::BumpDeferredLoad;
             }
         }
@@ -567,7 +589,7 @@ impl Pal4TransitionDirector {
     /// scene. Replaces what was once `Pal4VmContext::load_scene` —
     /// the responsibility now lives at this director.
     fn swap_scene(&self, scene_name: &str, block_name: &str) -> anyhow::Result<()> {
-        swap_pal4_scene(&self.vm, scene_name, block_name)
+        swap_pal4_scene(&self.vm, scene_name, block_name, self.factory.clone())
     }
 }
 
@@ -588,11 +610,12 @@ pub(crate) fn swap_pal4_scene(
     vm: &Rc<RefCell<ScriptVm<Pal4VmContext>>>,
     scene_name: &str,
     block_name: &str,
+    factory: Option<ComRc<IPal4ScriptFactory>>,
 ) -> anyhow::Result<()> {
     // Collect the handles we need from the VM context. Each is
     // cheap to clone (Rc / ComRc / Rc<dyn>), so we don't hold a
     // borrow on `vm` across the synchronous load.
-    let (loader, input, scene_manager, scene_cell, session, factory) = {
+    let (loader, input, scene_manager, scene_cell, session) = {
         let vm = vm.borrow();
         let app = vm.vm_context();
         (
@@ -601,7 +624,6 @@ pub(crate) fn swap_pal4_scene(
             app.scene_manager.clone(),
             app.scene.clone(),
             app.session_handle(),
-            app.actor_controller_factory().cloned(),
         )
     };
 
@@ -811,7 +833,9 @@ pub fn build_in_game_transition(story: &OpenPAL4Director) -> ComRc<IDirector> {
             let vm = story.vm_handle();
             let pending = vm.borrow().vm_context.session().take_pending_scene_load();
             if let Some((scene, block)) = pending {
-                let succeeded = swap_pal4_scene(&vm, &scene, &block).is_ok();
+                let succeeded =
+                    swap_pal4_scene(&vm, &scene, &block, story.actor_controller_factory_template())
+                        .is_ok();
                 vm.borrow()
                     .vm_context
                     .session()
@@ -837,6 +861,7 @@ pub fn build_in_game_transition(story: &OpenPAL4Director) -> ComRc<IDirector> {
         story.vm_handle(),
         self_rc,
         Pal4TransitionAction::ChangeScene { scene, block },
+        story.actor_controller_factory_template(),
     );
     transition.set_silent(silent);
     ComRc::<IDirector>::from_object(transition)

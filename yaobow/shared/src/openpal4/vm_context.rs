@@ -61,7 +61,6 @@ pub struct PartySnapshot {
 use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimation, Pal4ActorAnimationConfig},
     asset_loader::AssetLoader,
-    comdef::IPal4ScriptFactory,
     scene::{Pal4Scene, object_armature, play_object_animation},
     session::Pal4Session,
     states::persistent_state::Pal4PersistentState,
@@ -140,13 +139,6 @@ pub struct Pal4VmContext {
     /// dispatcher). Accessors below hand out `Ref`/`RefMut` guards
     /// over it.
     session: Rc<RefCell<Pal4Session>>,
-
-    /// Factory for the scripted `IPal4ActorController` component. `None`
-    /// until the application bootstrap calls
-    /// [`set_actor_controller_factory`]; when `None`, `load_scene`
-    /// loads scenes without per-player controllers (e.g. before the
-    /// script project is installed).
-    actor_controller_factory: Option<ComRc<IPal4ScriptFactory>>,
 }
 
 impl Pal4VmContext {
@@ -187,25 +179,8 @@ impl Pal4VmContext {
             fast_forward: Cell::new(false),
             moving_entities,
             rotating_entities,
-            actor_controller_factory: None,
             session,
         }
-    }
-
-    /// Install the scripted `IPal4ActorController` factory. Subsequent
-    /// `load_scene` calls hand the factory to `Pal4Scene::load`, which
-    /// attaches a freshly minted controller component to each player
-    /// entity. Idempotent; replaces any previous factory.
-    pub fn set_actor_controller_factory(&mut self, factory: ComRc<IPal4ScriptFactory>) {
-        self.actor_controller_factory = Some(factory);
-    }
-
-    /// Read-only access to the installed actor-controller factory.
-    /// Used by [`Pal4TransitionDirector`] when loading a fresh
-    /// `Pal4Scene` so the new player entities get the same scripted
-    /// controller the previous scene used.
-    pub fn actor_controller_factory(&self) -> Option<&ComRc<IPal4ScriptFactory>> {
-        self.actor_controller_factory.as_ref()
     }
 
     pub fn update(&mut self, delta_sec: f32) {

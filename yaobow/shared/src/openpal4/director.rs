@@ -99,6 +99,16 @@ pub struct OpenPAL4Director {
     /// `load_scene` (and the player sees the legacy freeze-frame).
     loading_overlay: RefCell<Option<ComRc<IPal4LoadingOverlay>>>,
 
+    /// Scripted `IPal4ActorController` factory template, threaded into
+    /// each scene swap (the F-key `load_state` reload, the in-game
+    /// `Pal4TransitionDirector`, and `build_in_game_transition`'s
+    /// synchronous fallback) so freshly loaded scenes attach the same
+    /// scripted controller. `None` until `set_actor_controller_factory`
+    /// is called (e.g. before the script project is installed / headless
+    /// test harness); in that case scenes load without per-player
+    /// controllers.
+    actor_controller_factory: RefCell<Option<ComRc<super::comdef::IPal4ScriptFactory>>>,
+
     /// Authoritative owner of the live `Pal4Scene`. Cloned handles
     /// are shared with `Pal4VmContext` (for script syscalls) and
     /// with each emitted `Pal4TransitionDirector` (for scene swaps).
@@ -197,6 +207,7 @@ impl OpenPAL4Director {
             agent: RefCell::new(None),
             pending_fires: RefCell::new(Vec::new()),
             loading_overlay: RefCell::new(None),
+            actor_controller_factory: RefCell::new(None),
             scene,
             moving_entities,
             rotating_entities,
@@ -236,6 +247,17 @@ impl OpenPAL4Director {
     /// holds its own `ComRc` to the same overlay object.
     pub fn loading_overlay_template(&self) -> Option<ComRc<IPal4LoadingOverlay>> {
         self.loading_overlay.borrow().clone()
+    }
+
+    /// Clone of the installed actor-controller factory template, if
+    /// any. Consumed by the scene-swap entry points
+    /// (`Pal4TransitionDirector`, `build_in_game_transition`, and the
+    /// F-key `load_state` reload) so each freshly loaded `Pal4Scene`
+    /// attaches the same scripted controller.
+    pub fn actor_controller_factory_template(
+        &self,
+    ) -> Option<ComRc<super::comdef::IPal4ScriptFactory>> {
+        self.actor_controller_factory.borrow().clone()
     }
 
     /// Borrow the installed agent bridge for read-only inspection.
@@ -389,14 +411,12 @@ impl OpenPAL4Director {
         *self.debug.borrow_mut() = Some(bundle);
     }
 
-    /// Install the scripted `IPal4ActorController` factory on the
-    /// underlying `Pal4VmContext`. Must be called before the first
-    /// `load_scene` for the controllers to attach.
+    /// Install the scripted `IPal4ActorController` factory template.
+    /// Threaded into each subsequent scene swap so freshly loaded
+    /// scenes attach the same scripted controller. Idempotent; the
+    /// last call wins.
     pub fn set_actor_controller_factory(&self, factory: ComRc<super::comdef::IPal4ScriptFactory>) {
-        self.vm
-            .borrow_mut()
-            .vm_context_mut()
-            .set_actor_controller_factory(factory);
+        *self.actor_controller_factory.borrow_mut() = Some(factory);
     }
 
     fn refresh_debug_snapshot(&self, delta_sec: f32) {
@@ -529,9 +549,12 @@ impl OpenPAL4Director {
         // leader/lock fan-out.
         drop(vm);
 
-        if let Err(err) =
-            super::transition::swap_pal4_scene(&self.vm, &snapshot.scene_name, &snapshot.block_name)
-        {
+        if let Err(err) = super::transition::swap_pal4_scene(
+            &self.vm,
+            &snapshot.scene_name,
+            &snapshot.block_name,
+            self.actor_controller_factory_template(),
+        ) {
             log::error!(
                 "OpenPAL4Director::load_state: failed to load scene='{}' block='{}': {:?}; \
                  save-load partially restored (globals + leader applied, scene not changed)",
