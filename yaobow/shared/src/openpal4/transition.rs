@@ -607,20 +607,12 @@ pub(crate) fn swap_pal4_scene(
 
     let _ = scene_manager.pop_scene();
 
-    // Tear down the outgoing scene's looping ambient beds (river /
-    // waterfall). They were started with native OpenAL looping and
-    // never stop on their own; once the scene is replaced their
-    // emitters are dropped, so nothing would ever emit a Stop for
-    // them and they'd leak into the next scene. One-shot SFX are left
-    // alone (they finish naturally, matching the music/voice carry-over).
-    let stale_loop_ids = scene_cell.borrow().active_loop_source_ids();
-    if !stale_loop_ids.is_empty() {
-        let mut vm = vm.borrow_mut();
-        let app = vm.vm_context_mut();
-        for id in stale_loop_ids {
-            app.stop_sound(id);
-        }
-    }
+    // The outgoing scene's ambient audio nodes (river / waterfall loops
+    // and intermittent emitters) are `AudioSourceComponent`s attached to
+    // the scene's emitter entities. Dropping the old `Pal4Scene` below
+    // drops those entities, whose components stop their OpenAL sources on
+    // `on_unloading` — so looping beds tear down automatically with the
+    // scene, no manual stop pass required.
 
     let scene = Pal4Scene::load(&loader, input, scene_name, block_name, factory.as_ref())?;
     let scene_root = scene.scene.clone();

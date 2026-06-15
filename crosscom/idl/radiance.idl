@@ -168,6 +168,26 @@ interface IUvAnimationComponent: IComponent {
 [uuid(008ae95a-9b01-43d3-98fb-63d5b23be6b5)]
 class UvAnimationComponent: IUvAnimationComponent {}
 
+// `IAudioSourceComponent` is a generic engine-backed audio node. It
+// owns an `AudioMemorySource` minted from the engine and plays it
+// positioned at its owning entity's world transform. When `spatial`
+// is enabled it drives OpenAL 3D attenuation/panning relative to the
+// listener (the active scene camera, fed once per frame by
+// `CoreRadianceEngine::update`); when disabled it plays head-locked
+// (e.g. BGM / UI). It also models looping / one-shot / random-replay
+// playback, self-ticking via `IComponent::on_updating`, so callers
+// only attach it once. The rich construction-time configuration lives
+// on the inherent Rust API; this interface exposes runtime controls.
+[uuid(327a838b-b67e-4cf2-8c7b-45daa11964a4)]
+interface IAudioSourceComponent: IComponent {
+    void play();
+    void stop();
+    void set_gain(float gain);
+}
+
+[uuid(ac55c32a-7cf0-44ca-8ce6-7b40911f3199)]
+class AudioSourceComponent: IAudioSourceComponent {}
+
 [uuid(5c56adbc-bc22-4275-b99a-09973a3ffff0)]
 interface IAnimatedMeshComponent: IComponent {
     void play(bool replay);

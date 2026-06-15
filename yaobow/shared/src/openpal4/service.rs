@@ -280,6 +280,7 @@ impl Pal4Service {
         let engine_rc = self.app.engine();
         let engine = engine_rc.borrow();
         let component_factory = engine.rendering_component_factory();
+        let audio_engine = engine.audio_engine();
         let real_input = engine.input_engine();
         drop(engine);
 
@@ -289,7 +290,7 @@ impl Pal4Service {
         };
 
         let vfs = init_virtual_fs(asset_path, None);
-        let loader = AssetLoader::new(component_factory, input_engine, vfs);
+        let loader = AssetLoader::new(component_factory, audio_engine, input_engine, vfs);
         *self.launch_loader.borrow_mut() = Some(loader.clone());
         // Remember the launch asset path so app-lifetime mode-control
         // commands (`/v1/menu/new_game` etc.) can rebuild the story

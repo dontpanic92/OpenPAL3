@@ -200,6 +200,22 @@ impl CoreRadianceEngine {
             // queues fed without per-caller bookkeeping.
             audio_engine.update(delta_sec);
 
+            // Push the listener pose from the active scene's camera so
+            // 3D-spatialized audio sources pan/attenuate relative to the
+            // viewpoint. The camera looks down its local -Z (OpenGL
+            // convention; see `Transform::look_at`), so the listener
+            // "at" vector is the negated third basis column and "up" is
+            // the second column. Position is the translation column.
+            if let Some(s) = scene_manager.scene() {
+                let camera = s.camera();
+                let m = *camera.transform().matrix().floats();
+                let position = [m[0][3], m[1][3], m[2][3]];
+                let forward = [-m[0][2], -m[1][2], -m[2][2]];
+                let up = [m[0][1], m[1][1], m[2][1]];
+                drop(camera);
+                audio_engine.set_listener(position, forward, up);
+            }
+
             if let Some(dl) = debug_layer {
                 dl.update(delta_sec);
             }

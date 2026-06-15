@@ -15,6 +15,7 @@ use fileformats::{
 };
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
+    audio::AudioEngine,
     comdef::{IArmatureComponent, IComponent, IEntity, IScene},
     components::mesh::{event::AnimationEvent, skinned_mesh::AnimKeyFrame},
     input::InputEngine,
@@ -51,6 +52,9 @@ const ZJM_TRANS_UVA: &str = "/gamedata/ui/uiWorld/zjm/ZJM_trans.uva";
 pub struct AssetLoader {
     vfs: Rc<MiniFs>,
     component_factory: Rc<dyn ComponentFactory>,
+    /// Engine audio backend, used to mint sources for entity-attached
+    /// audio nodes (e.g. GOB SOUND emitters).
+    audio_engine: Rc<dyn AudioEngine>,
     // Reserved for asset-side input wiring (e.g., portrait-driven inputs);
     // currently held to keep the lifetime symmetric with other PAL4 loaders.
     #[allow(dead_code)]
@@ -62,6 +66,7 @@ pub struct AssetLoader {
 impl AssetLoader {
     pub fn new(
         component_factory: Rc<dyn ComponentFactory>,
+        audio_engine: Rc<dyn AudioEngine>,
         input: Rc<RefCell<dyn InputEngine>>,
         vfs: MiniFs,
     ) -> Rc<Self> {
@@ -69,6 +74,7 @@ impl AssetLoader {
         let vfs = Rc::new(vfs);
         Rc::new(Self {
             component_factory,
+            audio_engine,
             input,
             vfs,
             texture_resolver: Pal4TextureResolver {},
@@ -78,6 +84,10 @@ impl AssetLoader {
 
     pub fn component_factory(&self) -> Rc<dyn ComponentFactory> {
         self.component_factory.clone()
+    }
+
+    pub fn audio_engine(&self) -> Rc<dyn AudioEngine> {
+        self.audio_engine.clone()
     }
 
     pub fn vfs(&self) -> &MiniFs {

@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, Ref, RefCell, RefMut},
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     rc::Rc,
 };
 
@@ -62,7 +62,7 @@ use super::{
     actor::{IPal4ActorAnimationControllerExt, Pal4ActorAnimation, Pal4ActorAnimationConfig},
     asset_loader::AssetLoader,
     comdef::IPal4ScriptFactory,
-    scene::{Pal4Scene, SoundEmitterAction, object_armature, play_object_animation},
+    scene::{Pal4Scene, object_armature, play_object_animation},
     session::Pal4Session,
     states::persistent_state::Pal4PersistentState,
 };
@@ -228,45 +228,12 @@ impl Pal4VmContext {
         // state in `/v1/screenshot`).
         self.tick_camera_run(delta_sec);
 
-        // Tick ambient SOUND emitters (GOB tag 3). We use real
-        // `delta_sec` rather than the fast-forward-scaled motion dt
-        // deliberately: fast-forward is a debug / planner convenience
-        // that compresses wait loops, but if we scaled audio retrigger
-        // intervals by the same factor every ambient emitter in the
-        // scene would burst-fire on each fast-forwarded frame.
-        // Fire-and-forget plays land in `sound_sources` so
-        // `gi2DSoundStop` (→ `stop_all_sounds`) still tears them down
-        // for scripted SFX cleanup. A WAV that started just before a
-        // scene swap continues to play on its OpenAL source until it
-        // finishes — same carry-over behaviour as the existing music /
-        // voice paths.
-        let leader_pos = self
-            .scene
-            .borrow()
-            .get_player(self.session.borrow().state().leader())
-            .world_transform()
-            .position();
-        let playing: HashSet<i32> = self
-            .sound_sources
-            .iter()
-            .filter(|(_, s)| s.state() != AudioSourceState::Stopped)
-            .map(|(id, _)| *id)
-            .collect();
-        let to_play = self
-            .scene
-            .borrow_mut()
-            .tick_sound_emitters(leader_pos, delta_sec, &playing);
-        for action in to_play {
-            match action {
-                SoundEmitterAction::Play { idx, name, looping } => {
-                    match self.play_sound_ex(&name, looping) {
-                        Ok(id) => self.scene.borrow_mut().set_emitter_active_source(idx, id),
-                        Err(e) => log::warn!("ambient sound emitter '{}' failed: {:#}", name, e),
-                    }
-                }
-                SoundEmitterAction::Stop { source_id } => self.stop_sound(source_id),
-            }
-        }
+        // Ambient SOUND emitters (GOB tag 3) are now self-driving
+        // `AudioSourceComponent`s attached to per-emitter entities in
+        // the scene graph: the engine ticks them via
+        // `IComponent::on_updating`, positions them in 3D for OpenAL
+        // attenuation/panning, and tears them down with their entity on
+        // scene swap. Nothing to drive here.
     }
 
     pub fn player_rotate_to(&mut self, player: i32, target_deg: f32) {

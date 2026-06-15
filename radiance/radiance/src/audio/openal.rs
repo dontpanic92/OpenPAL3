@@ -56,6 +56,11 @@ impl AudioEngine for OpenAlAudioEngine {
             }
         });
     }
+
+    fn set_listener(&self, position: [f32; 3], forward: [f32; 3], up: [f32; 3]) {
+        let _ = self.context.set_position(position);
+        let _ = self.context.set_orientation((forward, up));
+    }
 }
 
 impl OpenAlAudioEngine {
@@ -63,6 +68,13 @@ impl OpenAlAudioEngine {
         let alto = Alto::load_default().unwrap();
         let device = alto.open(None).unwrap();
         let context = Arc::new(device.new_context(None).unwrap());
+
+        // Use the clamped linear distance model so a source's
+        // `max_distance` is an audible cutoff: gain falls linearly from
+        // full at `reference_distance` to silence at `max_distance`.
+        // Non-spatial (head-locked, relative) sources sit at the
+        // reference distance and so keep full gain — the BGM/UI case.
+        context.set_distance_model(alto::DistanceModel::LinearClamped);
 
         Self {
             context,
@@ -201,6 +213,30 @@ impl<T: Send + Sync> AudioSource for OpenAlAudioSource<T> {
             self.streaming_source.play();
         }
     }
+
+    fn set_position(&mut self, position: [f32; 3]) {
+        let _ = self.streaming_source.set_position(position);
+    }
+
+    fn set_gain(&mut self, gain: f32) {
+        let _ = self.streaming_source.set_gain(gain);
+    }
+
+    fn set_relative(&mut self, relative: bool) {
+        self.streaming_source.set_relative(relative);
+    }
+
+    fn set_reference_distance(&mut self, distance: f32) {
+        let _ = self.streaming_source.set_reference_distance(distance);
+    }
+
+    fn set_rolloff_factor(&mut self, factor: f32) {
+        let _ = self.streaming_source.set_rolloff_factor(factor);
+    }
+
+    fn set_max_distance(&mut self, distance: f32) {
+        let _ = self.streaming_source.set_max_distance(distance);
+    }
 }
 
 impl<T: Send + Sync> OpenAlAudioSource<T> {
@@ -293,6 +329,24 @@ impl AudioSource for EngineOwnedMemorySource {
     fn state(&self) -> AudioSourceState {
         self.inner.lock().unwrap().state()
     }
+    fn set_position(&mut self, position: [f32; 3]) {
+        self.inner.lock().unwrap().set_position(position);
+    }
+    fn set_gain(&mut self, gain: f32) {
+        self.inner.lock().unwrap().set_gain(gain);
+    }
+    fn set_relative(&mut self, relative: bool) {
+        self.inner.lock().unwrap().set_relative(relative);
+    }
+    fn set_reference_distance(&mut self, distance: f32) {
+        self.inner.lock().unwrap().set_reference_distance(distance);
+    }
+    fn set_rolloff_factor(&mut self, factor: f32) {
+        self.inner.lock().unwrap().set_rolloff_factor(factor);
+    }
+    fn set_max_distance(&mut self, distance: f32) {
+        self.inner.lock().unwrap().set_max_distance(distance);
+    }
 }
 
 impl AudioMemorySource for EngineOwnedMemorySource {
@@ -327,6 +381,24 @@ impl AudioSource for EngineOwnedCustomDecoderSource {
     }
     fn state(&self) -> AudioSourceState {
         self.inner.lock().unwrap().state()
+    }
+    fn set_position(&mut self, position: [f32; 3]) {
+        self.inner.lock().unwrap().set_position(position);
+    }
+    fn set_gain(&mut self, gain: f32) {
+        self.inner.lock().unwrap().set_gain(gain);
+    }
+    fn set_relative(&mut self, relative: bool) {
+        self.inner.lock().unwrap().set_relative(relative);
+    }
+    fn set_reference_distance(&mut self, distance: f32) {
+        self.inner.lock().unwrap().set_reference_distance(distance);
+    }
+    fn set_rolloff_factor(&mut self, factor: f32) {
+        self.inner.lock().unwrap().set_rolloff_factor(factor);
+    }
+    fn set_max_distance(&mut self, distance: f32) {
+        self.inner.lock().unwrap().set_max_distance(distance);
     }
 }
 

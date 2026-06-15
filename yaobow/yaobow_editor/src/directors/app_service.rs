@@ -76,6 +76,7 @@ impl IAppServiceImpl for AppService {
             GameType::PAL4 => {
                 DevToolsAssetLoader::Pal4(shared::openpal4::asset_loader::AssetLoader::new(
                     factory.clone(),
+                    self.app.engine().borrow().audio_engine(),
                     self.app.engine().borrow().input_engine(),
                     raw_vfs,
                 ))

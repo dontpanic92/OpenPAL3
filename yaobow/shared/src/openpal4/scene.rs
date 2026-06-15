@@ -1,6 +1,5 @@
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
     rc::Rc,
 };
 
@@ -11,10 +10,12 @@ use fileformats::pal4::{
     gob::{GobCommonProperties, GobFile, GobObjectType},
 };
 use radiance::{
+    audio::Codec,
     comdef::{
-        IArmatureComponent, IArmatureComponentExt, IEntity, IEntityExt, IScene, ISceneExt,
-        IStaticMeshComponent,
+        IArmatureComponent, IArmatureComponentExt, IAudioSourceComponent, IComponent, IEntity,
+        IEntityExt, IScene, ISceneExt, IStaticMeshComponent,
     },
+    components::audio::{AudioNodeConfig, AudioSourceComponent, PlaybackMode, sanitise_interval},
     input::InputEngine,
     math::{Mat44, Transform, Vec3},
     rendering::GradientYMaterialDef,
@@ -123,14 +124,6 @@ pub struct Pal4Scene {
     /// (b) `Transform::euler` is singular at gimbal lock and can't
     /// round-trip all rotations cleanly.
     pub(crate) objects_initial_transforms: Vec<Mat44>,
-    /// Per-scene ambient sound emitters (GOB tag 3). Driven each
-    /// frame by [`Pal4Scene::tick_sound_emitters`] which schedules
-    /// random replays in `[min_time, max_time]` while the active
-    /// leader is within `trigger_distance` XZ of the emitter's
-    /// position. The audio engine is mono with no positional API,
-    /// so distance gating is binary: in-range → fire, out-of-range
-    /// → don't fire (already-playing instances continue).
-    pub(crate) sound_emitters: Vec<SceneSoundEmitter>,
     pub(crate) objects_gob: Option<GobFile>,
     pub(crate) events: Vec<EvfEvent>,
     pub(crate) module: Option<Rc<RefCell<ScriptModule>>>,
@@ -157,99 +150,11 @@ pub struct Pal4Scene {
     pub(crate) actor_controller: Option<ComRc<IPal4ActorController>>,
 }
 
-/// Per-frame state for one GOB-authored ambient sound emitter (tag 3).
-///
-/// `trigger_distance_sq` is pre-squared so the per-frame distance
-/// gate compares with `Vec3::xz_dist_sq(...)` — no `sqrt` in the
-/// per-emitter inner loop.
-///
-/// Emitters come in two flavours, distinguished by the GOB
-/// `mintime`/`maxtime` pair (verified against the shipped corpus:
-/// 131 emitters use `0/0`, 172 use positive intervals):
-/// * **Looping** (`mintime == 0 && maxtime == 0`): seamless ambient
-///   beds like rivers / waterfalls. Played once with native OpenAL
-///   looping (`play(true)`) when the leader enters range and stopped
-///   when the leader leaves — no countdown, no re-trigger, no gap.
-/// * **Intermittent** (positive interval): occasional one-shots like
-///   birds. Re-triggered on a random `[min_time, max_time]` countdown,
-///   frozen while the emitter's own previous instance is still audible.
-pub(crate) struct SceneSoundEmitter {
-    pub(crate) name: String,
-    pub(crate) position: Vec3,
-    pub(crate) min_time: f32,
-    pub(crate) max_time: f32,
-    pub(crate) trigger_distance_sq: f32,
-    pub(crate) next_play_in_sec: f32,
-    /// `true` for seamless looping ambience (river/waterfall), `false`
-    /// for intermittent random one-shots. See [`SceneSoundEmitter`].
-    pub(crate) looping: bool,
-    /// Sound-source id of this emitter's currently-playing WAV instance,
-    /// or `None` when idle. For intermittent emitters the countdown is
-    /// frozen while this id is still in the caller's "playing" set, so a
-    /// single emitter never stacks overlapping copies of its own sound;
-    /// for looping emitters it tracks the live loop so it can be stopped
-    /// when the leader leaves range (or restarted if it ever drops).
-    pub(crate) active_source_id: Option<i32>,
-}
-
-/// An action [`Pal4Scene::tick_sound_emitters`] asks the caller to
-/// perform this frame. The caller plays / stops the OpenAL source and,
-/// for `Play`, writes the resulting id back via
-/// [`Pal4Scene::set_emitter_active_source`].
-pub enum SoundEmitterAction {
-    /// Start `name` for the emitter at `idx`. `looping` selects native
-    /// gapless looping (continuous ambience) vs. a one-shot play.
-    Play {
-        idx: usize,
-        name: String,
-        looping: bool,
-    },
-    /// Stop the sound source `source_id` (a looping emitter whose
-    /// leader just left trigger range).
-    Stop { source_id: i32 },
-}
-
-/// Floor for SOUND mintime/maxtime values. Source data ships with
-/// values in the 5–30 s range; this guard exists only to defend
-/// against malformed or zero/NaN/negative entries that would
-/// otherwise burst-fire `play_sound` every frame.
-const MIN_SOUND_INTERVAL_SEC: f32 = 0.1;
-
 /// Fallback `trigger_distance` for SOUND emitters whose entry has
 /// an explicit zero (rare in the corpus, but defending against it
-/// at load time avoids a per-frame near-zero comparison that would
-/// silently disable the emitter).
+/// at load time avoids a degenerate zero-distance attenuation that
+/// would silence the emitter).
 const DEFAULT_SOUND_TRIGGER_DISTANCE: f32 = 600.0;
-
-/// Sanitise a SOUND emitter's `min_time` / `max_time` parameters to
-/// a sane real-time interval. Returns `(min, max)` with both values
-/// finite, non-negative, ≥ `MIN_SOUND_INTERVAL_SEC`, and
-/// `max >= min`. Exposed at module level so it can be unit-tested
-/// independently of any scene load.
-pub(crate) fn sanitise_sound_interval(min_time: f32, max_time: f32) -> (f32, f32) {
-    fn clean(v: f32) -> f32 {
-        if v.is_nan() || v < MIN_SOUND_INTERVAL_SEC {
-            MIN_SOUND_INTERVAL_SEC
-        } else {
-            v
-        }
-    }
-    let min = clean(min_time);
-    let max = clean(max_time).max(min);
-    (min, max)
-}
-
-/// Draw a uniform sample in `[lo, hi]`. Returns `lo` when `hi == lo`
-/// (avoids `rand`'s panic on empty ranges) and clamps any inverted
-/// inputs.
-fn uniform(lo: f32, hi: f32) -> f32 {
-    use rand::Rng;
-    if hi <= lo {
-        lo
-    } else {
-        rand::thread_rng().gen_range(lo..=hi)
-    }
-}
 
 const SHOW_TRIGGER_POINT: bool = false;
 
@@ -273,7 +178,6 @@ impl Pal4Scene {
             objects_xz_aabbs: vec![],
             objects_gob_indices: vec![],
             objects_initial_transforms: vec![],
-            sound_emitters: vec![],
             objects_gob: None,
             events: vec![],
             module: None,
@@ -362,7 +266,6 @@ pub struct Pal4SceneLoader {
     objects: Vec<ComRc<IEntity>>,
     objects_gob_indices: Vec<usize>,
     objects_initial_transforms: Vec<Mat44>,
-    sound_emitters: Vec<SceneSoundEmitter>,
     objects_gob: Option<GobFile>,
     module: Option<Rc<RefCell<ScriptModule>>>,
 }
@@ -406,7 +309,6 @@ impl Pal4SceneLoader {
             objects: Vec::new(),
             objects_gob_indices: Vec::new(),
             objects_initial_transforms: Vec::new(),
-            sound_emitters: Vec::new(),
             objects_gob: None,
             module: None,
         }
@@ -783,7 +685,6 @@ impl Pal4SceneLoader {
         let mut objects = vec![];
         let mut objects_gob_indices: Vec<usize> = vec![];
         let mut objects_initial_transforms: Vec<Mat44> = vec![];
-        let mut sound_emitters: Vec<SceneSoundEmitter> = vec![];
         let gob = self
             .asset_loader
             .load_gob(&self.scene_name, &self.block_name)?;
@@ -795,9 +696,12 @@ impl Pal4SceneLoader {
             let file_name = entry.file_name.to_string();
             let logical_name = entry.name.to_string().ok();
 
-            // SOUND emitters: built independently of the visible-entity
-            // skip so emitter bookkeeping survives the rendering-path
-            // skip below.
+            // SOUND emitters (GOB tag 3): each becomes a dedicated
+            // entity carrying an engine-backed `AudioSourceComponent`
+            // positioned at the emitter, so OpenAL applies 3D
+            // attenuation/panning relative to the camera listener.
+            // Built independently of the visible-entity skip below so
+            // the node survives the rendering-path `continue`.
             if object_type == GobObjectType::SOUND {
                 if let (Some(name), Some(min_t), Some(max_t)) = (
                     entry.sound_name(),
@@ -806,29 +710,55 @@ impl Pal4SceneLoader {
                 ) {
                     // A `0/0` interval marks a seamless looping ambient
                     // bed (river/waterfall); positive intervals are
-                    // intermittent random one-shots. Detect on the raw
-                    // values, before the interval is sanitised away from 0.
-                    let looping = min_t == 0.0 && max_t == 0.0;
-                    let (min_time, max_time) = sanitise_sound_interval(min_t, max_t);
+                    // intermittent random one-shots.
+                    let mode = if min_t == 0.0 && max_t == 0.0 {
+                        PlaybackMode::Loop
+                    } else {
+                        let (min, max) = sanitise_interval(min_t, max_t);
+                        PlaybackMode::RandomInterval { min, max }
+                    };
                     let trigger_distance = if entry.trigger_distance > 0.0 {
                         entry.trigger_distance
                     } else {
                         DEFAULT_SOUND_TRIGGER_DISTANCE
                     };
-                    // Looping emitters ignore the countdown (they start
-                    // the moment the leader is in range); intermittent
-                    // ones get a `[0, max]` phase to stagger dense scenes.
-                    let next_play_in_sec = if looping { 0.0 } else { uniform(0.0, max_time) };
-                    sound_emitters.push(SceneSoundEmitter {
-                        name,
-                        position: Vec3::from(entry.position),
-                        min_time,
-                        max_time,
-                        trigger_distance_sq: trigger_distance * trigger_distance,
-                        next_play_in_sec,
-                        looping,
-                        active_source_id: None,
-                    });
+                    // Map the GOB trigger distance onto the engine's
+                    // clamped-linear attenuation: full volume within a
+                    // quarter of it, fading to silence at the trigger
+                    // distance (replacing the old binary in/out gate).
+                    let config = AudioNodeConfig {
+                        spatial: true,
+                        mode,
+                        gain: 1.0,
+                        reference_distance: trigger_distance * 0.25,
+                        rolloff_factor: 1.0,
+                        max_distance: trigger_distance,
+                    };
+
+                    match self.asset_loader.load_sound(&name, "wav") {
+                        Ok(data) => {
+                            let entity = CoreEntity::create(format!("sound:{}", name), false);
+                            entity
+                                .transform()
+                                .borrow_mut()
+                                .set_position(&Vec3::from(entry.position));
+                            let component = AudioSourceComponent::create(
+                                entity.clone(),
+                                self.asset_loader.audio_engine(),
+                                data,
+                                Codec::Wav,
+                                config,
+                            );
+                            entity.add_component(
+                                IAudioSourceComponent::uuid(),
+                                component.query_interface::<IComponent>().unwrap(),
+                            );
+                            scene.add_entity(entity);
+                        }
+                        Err(e) => {
+                            log::warn!("Cannot load ambient sound '{}': {:#}", name, e)
+                        }
+                    }
                 }
             }
 
@@ -950,7 +880,6 @@ impl Pal4SceneLoader {
         self.objects = objects;
         self.objects_gob_indices = objects_gob_indices;
         self.objects_initial_transforms = objects_initial_transforms;
-        self.sound_emitters = sound_emitters;
         self.objects_gob = Some(gob);
         Ok(())
     }
@@ -986,7 +915,6 @@ impl Pal4SceneLoader {
                 .collect(),
             objects_gob_indices: std::mem::take(&mut self.objects_gob_indices),
             objects_initial_transforms: std::mem::take(&mut self.objects_initial_transforms),
-            sound_emitters: std::mem::take(&mut self.sound_emitters),
             objects_gob: self.objects_gob.take(),
             events: std::mem::take(&mut self.events),
             module: Some(module),
@@ -1312,124 +1240,6 @@ impl Pal4Scene {
         }
         true
     }
-
-    /// Per-frame ambient-sound emitter tick, returning the play/stop
-    /// actions the caller (`Pal4VmContext`) should perform this frame.
-    /// `playing` is the set of sound-source ids still audible this frame.
-    ///
-    /// **Looping emitters** (river/waterfall, `mintime==maxtime==0`) are
-    /// driven purely by range: when the leader is in range and no live
-    /// source is tracked, emit a looping [`SoundEmitterAction::Play`];
-    /// when the leader leaves range, emit a [`SoundEmitterAction::Stop`].
-    /// Native OpenAL looping keeps the bed seamless, so there is no
-    /// countdown and no re-trigger gap. If a tracked loop ever drops out
-    /// of `playing` while still in range it is restarted.
-    ///
-    /// **Intermittent emitters** (positive interval) re-trigger on a
-    /// random `[min_time, max_time]` countdown. An emitter holding an
-    /// `active_source_id` still in `playing` is *frozen*: its countdown
-    /// does not advance and it cannot fire, so a single emitter never
-    /// stacks overlapping copies of its own sound. Once that source
-    /// stops, the handle clears and the (already rolled) countdown
-    /// resumes — i.e. the silent gap is measured from the moment the
-    /// previous instance finished.
-    ///
-    /// Timing decisions (see plan.md "Rubber-duck adjustments"):
-    /// (1) intermittent timers re-roll regardless of distance — freezing
-    /// would let a long out-of-range stay queue up dozens of expired
-    /// timers that all fire on re-entry; (2) the first fire uses a
-    /// `[0, max_time]` phase to stagger dense scenes that share a period;
-    /// (3) gating is binary because the audio engine is mono.
-    pub fn tick_sound_emitters(
-        &mut self,
-        leader_pos: Vec3,
-        delta_sec: f32,
-        playing: &HashSet<i32>,
-    ) -> Vec<SoundEmitterAction> {
-        let mut actions = Vec::new();
-        for (idx, emitter) in self.sound_emitters.iter_mut().enumerate() {
-            let dx = leader_pos.x - emitter.position.x;
-            let dz = leader_pos.z - emitter.position.z;
-            let in_range = dx * dx + dz * dz <= emitter.trigger_distance_sq;
-
-            if emitter.looping {
-                match emitter.active_source_id {
-                    Some(id) => {
-                        if !in_range {
-                            // Left the area: stop the loop.
-                            actions.push(SoundEmitterAction::Stop { source_id: id });
-                            emitter.active_source_id = None;
-                        } else if !playing.contains(&id) {
-                            // Loop dropped (stopped/pruned) but still in
-                            // range: restart it.
-                            emitter.active_source_id = None;
-                            actions.push(SoundEmitterAction::Play {
-                                idx,
-                                name: emitter.name.clone(),
-                                looping: true,
-                            });
-                        }
-                        // else: in range and still looping — nothing to do.
-                    }
-                    None => {
-                        if in_range {
-                            actions.push(SoundEmitterAction::Play {
-                                idx,
-                                name: emitter.name.clone(),
-                                looping: true,
-                            });
-                        }
-                    }
-                }
-                continue;
-            }
-
-            // Intermittent emitter.
-            if let Some(id) = emitter.active_source_id {
-                if playing.contains(&id) {
-                    // Previous instance still audible: freeze the emitter.
-                    continue;
-                }
-                // Previous instance finished; resume the countdown.
-                emitter.active_source_id = None;
-            }
-
-            emitter.next_play_in_sec -= delta_sec;
-            if emitter.next_play_in_sec > 0.0 {
-                continue;
-            }
-            emitter.next_play_in_sec = uniform(emitter.min_time, emitter.max_time);
-
-            if in_range {
-                actions.push(SoundEmitterAction::Play {
-                    idx,
-                    name: emitter.name.clone(),
-                    looping: false,
-                });
-            }
-        }
-        actions
-    }
-
-    /// Record the sound-source id returned by `play_sound` for the
-    /// emitter at `idx`, so [`Pal4Scene::tick_sound_emitters`] can freeze
-    /// (intermittent) or track (looping) that instance.
-    pub fn set_emitter_active_source(&mut self, idx: usize, source_id: i32) {
-        if let Some(emitter) = self.sound_emitters.get_mut(idx) {
-            emitter.active_source_id = Some(source_id);
-        }
-    }
-
-    /// Source ids of every currently-live looping emitter. Used on scene
-    /// swap to tear down seamless ambient beds (which never stop on their
-    /// own) before the emitters are dropped with the outgoing scene.
-    pub fn active_loop_source_ids(&self) -> Vec<i32> {
-        self.sound_emitters
-            .iter()
-            .filter(|e| e.looping)
-            .filter_map(|e| e.active_source_id)
-            .collect()
-    }
 }
 
 /// Look up an object entity's `IArmatureComponent`, if it has one.
@@ -1752,241 +1562,6 @@ fn create_trigger_ray_caster(trigger: Vec<Vec3>) -> RayCaster {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_emitter(min: f32, max: f32, trigger_dist: f32, next_play: f32) -> SceneSoundEmitter {
-        SceneSoundEmitter {
-            name: "WA01".to_string(),
-            position: Vec3::new(0.0, 0.0, 0.0),
-            min_time: min,
-            max_time: max,
-            trigger_distance_sq: trigger_dist * trigger_dist,
-            next_play_in_sec: next_play,
-            looping: false,
-            active_source_id: None,
-        }
-    }
-
-    fn make_loop_emitter(trigger_dist: f32) -> SceneSoundEmitter {
-        SceneSoundEmitter {
-            name: "WB003".to_string(),
-            position: Vec3::new(0.0, 0.0, 0.0),
-            min_time: MIN_SOUND_INTERVAL_SEC,
-            max_time: MIN_SOUND_INTERVAL_SEC,
-            trigger_distance_sq: trigger_dist * trigger_dist,
-            next_play_in_sec: 0.0,
-            looping: true,
-            active_source_id: None,
-        }
-    }
-
-    /// Collect `(idx, name, looping)` from the emitted `Play` actions.
-    fn plays(actions: &[SoundEmitterAction]) -> Vec<(usize, String, bool)> {
-        actions
-            .iter()
-            .filter_map(|a| match a {
-                SoundEmitterAction::Play { idx, name, looping } => {
-                    Some((*idx, name.clone(), *looping))
-                }
-                _ => None,
-            })
-            .collect()
-    }
-
-    /// Collect the source ids from the emitted `Stop` actions.
-    fn stops(actions: &[SoundEmitterAction]) -> Vec<i32> {
-        actions
-            .iter()
-            .filter_map(|a| match a {
-                SoundEmitterAction::Stop { source_id } => Some(*source_id),
-                _ => None,
-            })
-            .collect()
-    }
-
-    fn make_scene_with_emitters(emitters: Vec<SceneSoundEmitter>) -> Pal4Scene {
-        let mut s = Pal4Scene::new_empty();
-        s.sound_emitters = emitters;
-        s
-    }
-
-    /// Pin clamping behaviour at the SOUND-emitter boundary: any of
-    /// NaN, negative, zero, or near-zero must round-trip to at least
-    /// MIN_SOUND_INTERVAL_SEC, and max must never fall below min.
-    /// Without this floor a single corrupt entry would burst-fire
-    /// `play_sound` every frame.
-    #[test]
-    fn sanitise_sound_interval_clamps_bad_inputs() {
-        assert_eq!(sanitise_sound_interval(5.0, 10.0), (5.0, 10.0));
-        // max < min → clamp max up to min
-        assert_eq!(sanitise_sound_interval(10.0, 3.0), (10.0, 10.0));
-        // zero / negative → floored
-        let (lo, hi) = sanitise_sound_interval(0.0, 0.0);
-        assert!(lo >= MIN_SOUND_INTERVAL_SEC && hi >= MIN_SOUND_INTERVAL_SEC && hi >= lo);
-        let (lo, hi) = sanitise_sound_interval(-5.0, -1.0);
-        assert!(lo >= MIN_SOUND_INTERVAL_SEC && hi >= MIN_SOUND_INTERVAL_SEC && hi >= lo);
-        // NaN
-        let (lo, hi) = sanitise_sound_interval(f32::NAN, f32::NAN);
-        assert!(lo >= MIN_SOUND_INTERVAL_SEC && hi >= MIN_SOUND_INTERVAL_SEC && hi >= lo);
-    }
-
-    /// In-range emitter whose timer expires this tick must surface
-    /// in the returned actions exactly once as a one-shot play.
-    #[test]
-    fn sound_emitter_fires_when_leader_in_range() {
-        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 600.0, 0.05)]);
-        let actions = s.tick_sound_emitters(Vec3::new(10.0, 0.0, 10.0), 0.1, &HashSet::new());
-        assert_eq!(plays(&actions), vec![(0usize, "WA01".to_string(), false)]);
-        // Timer was re-rolled (min==max=5s, so exactly 5s).
-        assert!((s.sound_emitters[0].next_play_in_sec - 5.0).abs() < 1e-4);
-    }
-
-    /// Out-of-range emitter still re-rolls its timer on expiry — if
-    /// we froze the timer instead, all expired emitters would burst-
-    /// fire the moment the leader re-entered the area.
-    #[test]
-    fn sound_emitter_silent_when_leader_out_of_range_but_timer_resets() {
-        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 600.0, 0.05)]);
-        // 1000 XZ units away with trigger_distance = 600.
-        let actions = s.tick_sound_emitters(Vec3::new(1000.0, 0.0, 0.0), 0.1, &HashSet::new());
-        assert!(plays(&actions).is_empty(), "out of range, must not fire");
-        assert!(
-            (s.sound_emitters[0].next_play_in_sec - 5.0).abs() < 1e-4,
-            "timer must reset"
-        );
-    }
-
-    /// Emitter whose timer is still in flight must not fire — the
-    /// per-frame countdown is the only source of new plays.
-    #[test]
-    fn sound_emitter_does_not_fire_before_expiry() {
-        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 600.0, 1.0)]);
-        let actions = s.tick_sound_emitters(Vec3::new(0.0, 0.0, 0.0), 0.1, &HashSet::new());
-        assert!(plays(&actions).is_empty());
-        // Timer ticked down but did not reset.
-        assert!((s.sound_emitters[0].next_play_in_sec - 0.9).abs() < 1e-4);
-    }
-
-    /// Vec3-distance-squared comparison correctness: a leader sitting
-    /// exactly on the trigger boundary should be considered in range
-    /// (≤, not <), and a hair beyond should not.
-    #[test]
-    fn sound_emitter_distance_boundary_is_inclusive() {
-        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 100.0, 0.0)]);
-        // Exactly on the boundary
-        let actions = s.tick_sound_emitters(Vec3::new(100.0, 0.0, 0.0), 0.0, &HashSet::new());
-        assert_eq!(plays(&actions).len(), 1, "boundary must be inclusive");
-
-        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 100.0, 0.0)]);
-        // Just beyond
-        let actions = s.tick_sound_emitters(Vec3::new(100.1, 0.0, 0.0), 0.0, &HashSet::new());
-        assert!(plays(&actions).is_empty(), "just beyond must not fire");
-    }
-
-    /// An emitter whose previous instance is still playing must be
-    /// frozen: it neither fires again nor advances its countdown,
-    /// preventing the same effect from stacking overlapping copies.
-    #[test]
-    fn sound_emitter_frozen_while_previous_instance_playing() {
-        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 600.0, 0.05)]);
-        s.set_emitter_active_source(0, 42);
-        let before = s.sound_emitters[0].next_play_in_sec;
-
-        let playing: HashSet<i32> = [42].into_iter().collect();
-        let actions = s.tick_sound_emitters(Vec3::new(0.0, 0.0, 0.0), 0.1, &playing);
-
-        assert!(actions.is_empty(), "must not fire while its source plays");
-        assert_eq!(
-            s.sound_emitters[0].next_play_in_sec, before,
-            "countdown must be frozen, not advanced"
-        );
-        assert_eq!(
-            s.sound_emitters[0].active_source_id,
-            Some(42),
-            "handle retained while still playing"
-        );
-    }
-
-    /// Once the previous instance has stopped, the handle clears and
-    /// the (already-rolled) countdown resumes — so the emitter can
-    /// fire again after its silent gap, measured from the end.
-    #[test]
-    fn sound_emitter_resumes_after_previous_instance_stops() {
-        let mut s = make_scene_with_emitters(vec![make_emitter(5.0, 5.0, 600.0, 0.05)]);
-        s.set_emitter_active_source(0, 42);
-
-        // 42 is no longer playing this frame.
-        let actions = s.tick_sound_emitters(Vec3::new(0.0, 0.0, 0.0), 0.1, &HashSet::new());
-
-        assert_eq!(
-            plays(&actions),
-            vec![(0usize, "WA01".to_string(), false)],
-            "fires once previous instance stops and countdown expires"
-        );
-        assert_eq!(
-            s.sound_emitters[0].active_source_id, None,
-            "stale handle cleared once its source stopped"
-        );
-        assert!((s.sound_emitters[0].next_play_in_sec - 5.0).abs() < 1e-4);
-    }
-
-    /// A looping emitter (river/waterfall) emits exactly one *looping*
-    /// play when the leader enters range and nothing is tracked yet.
-    #[test]
-    fn loop_emitter_starts_looping_play_when_in_range() {
-        let mut s = make_scene_with_emitters(vec![make_loop_emitter(600.0)]);
-        let actions = s.tick_sound_emitters(Vec3::new(10.0, 0.0, 10.0), 0.1, &HashSet::new());
-        assert_eq!(plays(&actions), vec![(0usize, "WB003".to_string(), true)]);
-    }
-
-    /// While its loop is still playing and the leader stays in range,
-    /// a looping emitter must NOT re-trigger — that is what makes the
-    /// ambience seamless (no restart gap, no overlap).
-    #[test]
-    fn loop_emitter_does_not_retrigger_while_playing() {
-        let mut s = make_scene_with_emitters(vec![make_loop_emitter(600.0)]);
-        s.set_emitter_active_source(0, 7);
-        let playing: HashSet<i32> = [7].into_iter().collect();
-        let actions = s.tick_sound_emitters(Vec3::new(10.0, 0.0, 10.0), 1.0, &playing);
-        assert!(actions.is_empty(), "seamless loop must not restart");
-        assert_eq!(s.sound_emitters[0].active_source_id, Some(7));
-    }
-
-    /// Leaving range must stop the loop and clear the handle.
-    #[test]
-    fn loop_emitter_stops_when_leader_leaves_range() {
-        let mut s = make_scene_with_emitters(vec![make_loop_emitter(100.0)]);
-        s.set_emitter_active_source(0, 7);
-        let playing: HashSet<i32> = [7].into_iter().collect();
-        let actions = s.tick_sound_emitters(Vec3::new(1000.0, 0.0, 0.0), 0.1, &playing);
-        assert_eq!(stops(&actions), vec![7]);
-        assert_eq!(s.sound_emitters[0].active_source_id, None);
-    }
-
-    /// If a tracked loop drops out of the playing set while still in
-    /// range (e.g. stopped by a scripted `gi2DSoundStop`), it restarts.
-    #[test]
-    fn loop_emitter_restarts_if_source_drops_while_in_range() {
-        let mut s = make_scene_with_emitters(vec![make_loop_emitter(600.0)]);
-        s.set_emitter_active_source(0, 7);
-        // 7 no longer playing, leader still in range.
-        let actions = s.tick_sound_emitters(Vec3::new(0.0, 0.0, 0.0), 0.1, &HashSet::new());
-        assert_eq!(plays(&actions), vec![(0usize, "WB003".to_string(), true)]);
-    }
-
-    /// `active_loop_source_ids` reports live loops (for scene-swap
-    /// teardown) but never intermittent sources.
-    #[test]
-    fn active_loop_source_ids_reports_only_live_loops() {
-        let mut s = make_scene_with_emitters(vec![
-            make_loop_emitter(600.0),
-            make_emitter(5.0, 5.0, 600.0, 1.0),
-            make_loop_emitter(600.0),
-        ]);
-        s.set_emitter_active_source(0, 11);
-        s.set_emitter_active_source(1, 22); // intermittent — must be ignored
-        // emitter 2 has no active source yet
-        assert_eq!(s.active_loop_source_ids(), vec![11]);
-    }
 
     /// Reset after a set-position call must restore the snapshot
     /// matrix exactly. Locks the `Mat44` round-trip used by
