@@ -49,6 +49,7 @@ impl SceVm {
         let state = SceState::new(
             input_engine.clone(),
             audio_engine.clone(),
+            ui.clone(),
             asset_mgr.clone(),
             Rc::new(sce),
             sce_name,

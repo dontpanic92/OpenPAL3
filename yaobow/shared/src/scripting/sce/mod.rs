@@ -7,7 +7,9 @@ use std::{
 
 use crosscom::ComRc;
 use imgui::Ui;
-use radiance::{audio::AudioEngine, comdef::ISceneManager, input::InputEngine};
+use radiance::{
+    audio::AudioEngine, comdef::ISceneManager, input::InputEngine, radiance::UiManager,
+};
 
 use crate::openpal3::{
     asset_manager::AssetManager, loaders::sce_loader::SceFile, states::global_state::GlobalState,
@@ -61,6 +63,7 @@ impl SceState {
     pub fn new(
         input_engine: Rc<RefCell<dyn InputEngine>>,
         audio_engine: Rc<dyn AudioEngine>,
+        ui: Rc<UiManager>,
         asset_mgr: Rc<AssetManager>,
         sce: Rc<SceFile>,
         sce_name: String,
@@ -78,7 +81,7 @@ impl SceState {
             ext,
             input_engine,
             audio_engine,
-            dlg_box: DialogBox::new(asset_mgr),
+            dlg_box: DialogBox::new(ui, asset_mgr),
         }
     }
 

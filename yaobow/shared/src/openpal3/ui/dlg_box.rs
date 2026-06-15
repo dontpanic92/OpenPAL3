@@ -2,11 +2,13 @@ use std::rc::Rc;
 
 use common::store_ext::StoreExt2;
 use imgui::{Condition, Ui};
+use radiance::radiance::UiManager;
 use radiance::rendering::Sprite;
 
 use crate::openpal3::asset_manager::AssetManager;
 
 pub struct DialogBox {
+    ui: Rc<UiManager>,
     dialog_pic: Vec<Sprite>,
     click_indicator_pic: Vec<Sprite>,
     click_indicator_interval: f32,
@@ -26,7 +28,7 @@ impl DialogBox {
     const DLG_DECORATION_HEIGHT_TRIM: f32 = 32.;
     const DLG_DECORATION_BOTTOM_OVER_DIALOG: f32 = 6.;
 
-    pub fn new(asset_mgr: Rc<AssetManager>) -> Self {
+    pub fn new(ui: Rc<UiManager>, asset_mgr: Rc<AssetManager>) -> Self {
         // dialog box resources
         let mut dialog_pic = Vec::new();
         for i in 0..9 {
@@ -51,6 +53,7 @@ impl DialogBox {
         }
 
         Self {
+            ui,
             dialog_pic,
             click_indicator_pic,
             click_indicator_interval: 0.0,
@@ -97,6 +100,13 @@ impl DialogBox {
 
     pub fn draw(&mut self, text: &str, ui: &Ui, delta_sec: f32) {
         let [window_width, window_height] = ui.io().display_size;
+        // The dialog's outer geometry is computed from `display_size`, which is
+        // in physical pixels (winit `HiDpiMode::Locked(1.0)`), so it already
+        // scales with the high-DPI window. The chrome sprites and the
+        // hard-coded pixel constants below are in native texture pixels, so we
+        // scale them by the engine DPI factor to keep their on-screen thickness
+        // consistent (otherwise borders look too thin on retina displays).
+        let scale = self.ui.dpi_scale();
         let (dialog_x, dialog_width) = {
             if window_width / window_height > 4. / 3. {
                 let dialog_width = window_height / 3. * 4.;
@@ -108,8 +118,8 @@ impl DialogBox {
         };
 
         let dialog_height = window_height * Self::DLG_HEIGHT_FACTOR;
-        let dialog_y =
-            window_height * Self::DLG_Y_POSITION_FACTOR - Self::DLG_DECORATION_BOTTOM_OVER_DIALOG;
+        let dialog_y = window_height * Self::DLG_Y_POSITION_FACTOR
+            - Self::DLG_DECORATION_BOTTOM_OVER_DIALOG * scale;
         let avator_width = window_height * Self::DLG_AVATOR_WIDTH_FACTOR;
         let click_indicator_right_offset = if self.avator_at_right && self.avator.is_some() {
             // avator has set and avator is at right side
@@ -132,37 +142,39 @@ impl DialogBox {
             .position([dialog_x, dialog_y], Condition::Appearing)
             .build(|| {
                 let top_left_inner = (
-                    dialog_x + self.dialog_pic[0].width() as f32,
-                    dialog_y + self.dialog_pic[0].height() as f32,
+                    dialog_x + self.dialog_pic[0].width() as f32 * scale,
+                    dialog_y + self.dialog_pic[0].height() as f32 * scale,
                 );
 
                 let bottom_left_inner = (
-                    dialog_x + self.dialog_pic[1].width() as f32,
-                    dialog_y + dialog_height - self.dialog_pic[1].height() as f32,
+                    dialog_x + self.dialog_pic[1].width() as f32 * scale,
+                    dialog_y + dialog_height - self.dialog_pic[1].height() as f32 * scale,
                 );
 
                 let bottom_right_inner = (
-                    dialog_x + dialog_width - self.dialog_pic[2].width() as f32,
-                    dialog_y + dialog_height - self.dialog_pic[2].height() as f32,
+                    dialog_x + dialog_width - self.dialog_pic[2].width() as f32 * scale,
+                    dialog_y + dialog_height - self.dialog_pic[2].height() as f32 * scale,
                 );
 
                 let top_right_inner = (
-                    dialog_x + dialog_width - self.dialog_pic[3].width() as f32,
-                    dialog_y + self.dialog_pic[3].height() as f32,
+                    dialog_x + dialog_width - self.dialog_pic[3].width() as f32 * scale,
+                    dialog_y + self.dialog_pic[3].height() as f32 * scale,
                 );
 
                 let decoration_min = (
-                    dialog_x + dialog_width / 2.0 - Self::DLG_DECORATION_WIDTH_TRIM,
-                    window_height - Self::DLG_DECORATION_HEIGHT_TRIM,
+                    dialog_x + dialog_width / 2.0 - Self::DLG_DECORATION_WIDTH_TRIM * scale,
+                    window_height - Self::DLG_DECORATION_HEIGHT_TRIM * scale,
                 );
 
                 let click_indicator_min = [
                     dialog_x + dialog_width
                         - self.click_indicator_pic[0].width() as f32
+                            * scale
                             * Self::DLG_CLICK_INDICATOR_PADDING_FACTOR
                         - click_indicator_right_offset,
                     dialog_y + dialog_height
                         - self.click_indicator_pic[0].height() as f32
+                            * scale
                             * Self::DLG_CLICK_INDICATOR_PADDING_FACTOR,
                 ];
 
@@ -205,7 +217,7 @@ impl DialogBox {
                     self.dialog_pic[4].imgui_texture_id(),
                     [dialog_x, top_left_inner.1],
                     [
-                        dialog_x + self.dialog_pic[4].width() as f32,
+                        dialog_x + self.dialog_pic[4].width() as f32 * scale,
                         bottom_left_inner.1,
                     ],
                 )
@@ -216,7 +228,7 @@ impl DialogBox {
                     self.dialog_pic[5].imgui_texture_id(),
                     [
                         bottom_left_inner.0,
-                        dialog_y + dialog_height - self.dialog_pic[5].height() as f32,
+                        dialog_y + dialog_height - self.dialog_pic[5].height() as f32 * scale,
                     ],
                     [bottom_right_inner.0, dialog_y + dialog_height],
                 )
@@ -226,7 +238,7 @@ impl DialogBox {
                 list.add_image(
                     self.dialog_pic[6].imgui_texture_id(),
                     [
-                        dialog_x + dialog_width - self.dialog_pic[6].width() as f32,
+                        dialog_x + dialog_width - self.dialog_pic[6].width() as f32 * scale,
                         top_right_inner.1,
                     ],
                     [dialog_x + dialog_width, bottom_right_inner.1],
@@ -239,7 +251,7 @@ impl DialogBox {
                     [top_left_inner.0, dialog_y],
                     [
                         top_right_inner.0,
-                        dialog_y + self.dialog_pic[7].height() as f32,
+                        dialog_y + self.dialog_pic[7].height() as f32 * scale,
                     ],
                 )
                 .build();
@@ -257,8 +269,8 @@ impl DialogBox {
                     self.dialog_pic[9].imgui_texture_id(),
                     [decoration_min.0, decoration_min.1],
                     [
-                        decoration_min.0 + self.dialog_pic[9].width() as f32,
-                        decoration_min.1 + self.dialog_pic[9].height() as f32,
+                        decoration_min.0 + self.dialog_pic[9].width() as f32 * scale,
+                        decoration_min.1 + self.dialog_pic[9].height() as f32 * scale,
                     ],
                 )
                 .build();
@@ -297,8 +309,8 @@ impl DialogBox {
                     },
                     [click_indicator_min[0], click_indicator_min[1]],
                     [
-                        click_indicator_min[0] + self.click_indicator_pic[0].width() as f32,
-                        click_indicator_min[1] + self.click_indicator_pic[0].width() as f32,
+                        click_indicator_min[0] + self.click_indicator_pic[0].width() as f32 * scale,
+                        click_indicator_min[1] + self.click_indicator_pic[0].width() as f32 * scale,
                     ],
                 )
                 .build();
@@ -335,7 +347,10 @@ impl DialogBox {
                         }
                         _ => {
                             list.add_text(
-                                [dialog_x + avator_width + text_x, dialog_y + 18. + text_y],
+                                [
+                                    dialog_x + avator_width + text_x,
+                                    dialog_y + 18. * scale + text_y,
+                                ],
                                 text_color,
                                 &c.to_string(),
                             );
