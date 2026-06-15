@@ -15,6 +15,7 @@ layout(set = 3, binding = 0) uniform MaterialParams {
     vec4 tint;
     vec4 misc;       // x = alpha_ref (only consulted when ALPHA_TEST is true)
                      // y = lightmap intensity (`_ltMap.cfg`)
+                     // z = ambient floor (additive term; 0.3 default, 0 for PAL3)
     vec4 uv_xform;   // primary-UV xform (applied in vert)
 } mat;
 
@@ -70,7 +71,14 @@ void main() {
     // `intensity = 1.0` (set in `radiance/.../material.rs`), so this
     // shader degenerates to `lightMap * 1.5 + 0.3` as before for any
     // path that doesn't stamp a per-scene `_ltMap.cfg` intensity.
-    vec3 lm = lightMap.rgb * 1.5 * mat.misc.y + 0.3;
+    // Baked-lightmap modulation: `lightMap * 1.5 * intensity + ambient_floor`.
+    // The gain (`1.5`) and the per-scene `intensity` (`misc.y`) scale the baked
+    // contribution; the additive ambient floor is now `misc.z` (previously a
+    // hard-coded `0.3`). PAL4 keeps the `0.3` floor via the `MaterialParams`
+    // default, which is what its dark caves were tuned against. PAL3 sets the
+    // floor to `0.0` so its baked lightmaps keep their dark, high-contrast
+    // shadows instead of being lifted and desaturated toward grey.
+    vec3 lm = lightMap.rgb * 1.5 * mat.misc.y + mat.misc.z;
     vec3 rgb = lm * color.rgb * mat.tint.rgb * mat.tint.a;
     outColor = vec4(rgb, color.a * mat.tint.a);
 }

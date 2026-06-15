@@ -6,7 +6,8 @@ use mini_fs::MiniFs;
 use mini_fs::prelude::*;
 use radiance::comdef::{IAnimatedMeshComponent, IEntity, IScene};
 use radiance::rendering::ComponentFactory;
-use radiance::scene::CoreScene;
+use radiance::scene::{CoreScene, ISceneExt, SceneLight, SceneLighting};
+use radiance::math::Vec3;
 use radiance::utils::SeekRead;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -71,11 +72,77 @@ impl AssetManager {
         let nav_file = self.load_nav(&scn_file.cpk_name, &scn_file.scn_base_name);
 
         let scene = CoreScene::create();
+        scene.set_lighting(self.load_lgt(cpk_name, &scn_file.scn_base_name, scn_file.is_night));
         let component = ScnScene::new(scene.clone(), &self, cpk_name, scn_name, scn_file, nav_file);
         scene.add_component(IScnSceneComponent::uuid(), ComRc::from_object(component));
         scene
     }
 
+    /// Load the scene's dynamic light table into a [`SceneLighting`] consumed
+    /// by the dynamically-lit actor shader. Night scenes ship a separate, warmer
+    /// (candlelit) light set under the `1/` subfolder — the same day/night split
+    /// the `.pol`/`.cvd` loaders use — so for night scenes that variant is
+    /// preferred, falling back to the base `.lgt`. Missing or unreadable files
+    /// fall back to an ambient-only environment so actors stay visible.
+    fn load_lgt(&self, cpk_name: &str, scn_base_name: &str, is_night: bool) -> SceneLighting {
+        // A modest ambient floor so surfaces facing away from every light are
+        // not pure black; dimmer at night. Kept neutral (not blue-tinted) so
+        // actors aren't pushed cool against warm interiors.
+        let ambient = if is_night {
+            [0.10, 0.10, 0.10]
+        } else {
+            [0.18, 0.18, 0.18]
+        };
+
+        let base_folder = self.scene_path.join(cpk_name).join(scn_base_name);
+        let mut candidate_paths = vec![];
+        if is_night {
+            // Night variant lives alongside the night `.pol`/`.cvd` in `1/`.
+            candidate_paths.push(
+                base_folder
+                    .join("1")
+                    .join(scn_base_name)
+                    .with_extension("lgt"),
+            );
+        }
+        candidate_paths.push(base_folder.join(scn_base_name).with_extension("lgt"));
+
+        let (path, lights) = candidate_paths
+            .iter()
+            .find_map(|path| {
+                let mut reader = self.vfs.open(path).ok()?;
+                let mut buf = Vec::new();
+                if io::Read::read_to_end(&mut reader, &mut buf).is_err() {
+                    return None;
+                }
+                match fileformats::pal3::lgt::read_lgt(&mut io::Cursor::new(buf)) {
+                    Ok(lgt) => Some((
+                        path.clone(),
+                        lgt.lights
+                            .iter()
+                            .map(|l| {
+                                let p = l.position();
+                                SceneLight::new(Vec3::new(p[0], p[1], p[2]), l.color)
+                            })
+                            .collect::<Vec<_>>(),
+                    )),
+                    Err(e) => {
+                        log::warn!("Failed to parse {}: {}", path.display(), e);
+                        None
+                    }
+                }
+            })
+            .unwrap_or_else(|| (base_folder.clone(), vec![]));
+
+        let lighting = SceneLighting::new(ambient, lights);
+        log::info!(
+            "PAL3 .lgt loaded from {}: {} lights, ambient {:?}",
+            path.display(),
+            lighting.lights.len(),
+            lighting.ambient
+        );
+        lighting
+    }
     pub fn load_sce(&self, cpk_name: &str) -> SceFile {
         let scene_base = self.scene_path.join(cpk_name).join(cpk_name);
         let sce_path = scene_base.with_extension("sce");

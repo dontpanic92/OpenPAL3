@@ -16,6 +16,13 @@ pub enum ShaderProgram {
     /// white dummy so the existing per-material descriptor-set plumbing
     /// (which expects ≥ 1 texture) keeps working unchanged.
     GradientY,
+
+    /// Dynamically-lit textured shader: per-pixel Lambert diffuse summed
+    /// over the scene's omni point lights plus a flat ambient term. Used
+    /// by PAL3 actors (MV3 meshes carry per-frame vertex normals). Reads
+    /// the lighting environment from the per-frame UBO (set 0); requires
+    /// the `NORMAL` vertex component.
+    TexturedDynamicLit,
 }
 
 pub(crate) struct ShaderProgramData {

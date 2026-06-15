@@ -21,8 +21,8 @@ mod vitagl;
 pub use engine::{CapturedFrame, RenderingEngine};
 pub use factory::ComponentFactory;
 pub use material::{
-    BlendMode, CullMode, DepthMode, GradientYMaterialDef, LightMapMaterialDef, MaterialDef,
-    MaterialDefBuilder, MaterialKey, MaterialParams, SimpleMaterialDef,
+    BlendMode, CullMode, DepthMode, GradientYMaterialDef, LightMapMaterialDef, LitMaterialDef,
+    MaterialDef, MaterialDefBuilder, MaterialKey, MaterialParams, SimpleMaterialDef,
 };
 pub use platform::Window;
 pub use render_object::{RenderObject, RenderObjectHandle};

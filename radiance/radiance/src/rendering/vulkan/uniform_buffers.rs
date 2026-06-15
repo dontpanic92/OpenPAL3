@@ -134,13 +134,39 @@ impl DynamicUniformBufferManager {
 pub struct PerFrameUniformBuffer {
     view: Mat44,
     projection: Mat44,
+    /// `xyz` = ambient color, `w` = active light count (as f32).
+    ambient: [f32; 4],
+    /// World-space light positions (`xyz`; `w` unused). Only the first
+    /// `ambient.w` entries are meaningful.
+    light_pos: [[f32; 4]; MAX_SCENE_LIGHTS],
+    /// Light colors (`rgb`; `w` unused), paired with `light_pos`.
+    light_color: [[f32; 4]; MAX_SCENE_LIGHTS],
 }
+
+/// Maximum number of scene point lights uploaded per frame. PAL3 scenes ship
+/// at most 16 lights; the dynamically-lit shader loops over `ambient.w` of
+/// these.
+pub const MAX_SCENE_LIGHTS: usize = 16;
 
 impl PerFrameUniformBuffer {
     pub fn new(view: &Mat44, projection: &Mat44) -> Self {
         Self {
             view: *view,
             projection: *projection,
+            ambient: [0.0; 4],
+            light_pos: [[0.0; 4]; MAX_SCENE_LIGHTS],
+            light_color: [[0.0; 4]; MAX_SCENE_LIGHTS],
+        }
+    }
+
+    /// Stamp the ambient term and up to [`MAX_SCENE_LIGHTS`] point lights
+    /// (position + color pairs) into the per-frame UBO.
+    pub fn set_lighting(&mut self, ambient: [f32; 3], lights: &[([f32; 3], [f32; 3])]) {
+        let count = lights.len().min(MAX_SCENE_LIGHTS);
+        self.ambient = [ambient[0], ambient[1], ambient[2], count as f32];
+        for (i, (pos, color)) in lights.iter().take(count).enumerate() {
+            self.light_pos[i] = [pos[0], pos[1], pos[2], 0.0];
+            self.light_color[i] = [color[0], color[1], color[2], 0.0];
         }
     }
 }
@@ -167,7 +193,7 @@ impl MaterialParamsGpu {
     pub fn from_params(p: &crate::rendering::MaterialParams) -> Self {
         Self {
             tint: p.tint,
-            misc: [p.alpha_ref, p.intensity, 0.0, 0.0],
+            misc: [p.alpha_ref, p.intensity, p.ambient_floor, 0.0],
             uv_xform: [p.uv_scale[0], p.uv_scale[1], p.uv_offset[0], p.uv_offset[1]],
         }
     }

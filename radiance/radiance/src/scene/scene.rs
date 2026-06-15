@@ -24,6 +24,7 @@ pub struct CoreScene {
     visible: bool,
     entities: RefCell<Vec<ComRc<IEntity>>>,
     camera: RefCell<Camera>,
+    lighting: RefCell<crate::scene::SceneLighting>,
     components: ComponentBag,
     loaded: Cell<bool>,
     mutations: MutationQueue<ScenePendingChange>,
@@ -38,6 +39,7 @@ impl CoreScene {
             visible: true,
             entities: RefCell::new(vec![]),
             camera: RefCell::new(Camera::new()),
+            lighting: RefCell::new(crate::scene::SceneLighting::default()),
             components: ComponentBag::new(),
             loaded: Cell::new(false),
             mutations: MutationQueue::new(),
@@ -212,6 +214,14 @@ impl CoreScene {
     pub fn camera_mut(&self) -> RefMut<'_, Camera> {
         self.camera.borrow_mut()
     }
+
+    pub fn lighting(&self) -> Ref<'_, crate::scene::SceneLighting> {
+        self.lighting.borrow()
+    }
+
+    pub fn set_lighting(&self, lighting: crate::scene::SceneLighting) {
+        *self.lighting.borrow_mut() = lighting;
+    }
 }
 
 /// Extension trait exposing `CoreScene`'s formerly-IDL accessors on a
@@ -236,6 +246,13 @@ pub trait ISceneExt {
     /// component is hosted on the scene itself; the first call attaches
     /// it. Returns the same instance on subsequent calls.
     fn collision_world(&self) -> ComRc<crate::comdef::ICollisionWorldComponent>;
+
+    /// Borrow the scene's lighting environment (ambient + point lights)
+    /// consumed by dynamically-lit objects.
+    fn lighting(&self) -> Ref<'_, crate::scene::SceneLighting>;
+
+    /// Replace the scene's lighting environment.
+    fn set_lighting(&self, lighting: crate::scene::SceneLighting);
 }
 
 impl ISceneExt for ComRc<IScene> {
@@ -270,6 +287,12 @@ impl ISceneExt for ComRc<IScene> {
             world.query_interface::<IComponent>().unwrap(),
         );
         world
+    }
+    fn lighting(&self) -> Ref<'_, crate::scene::SceneLighting> {
+        self.inner::<CoreScene>().lighting()
+    }
+    fn set_lighting(&self, lighting: crate::scene::SceneLighting) {
+        self.inner::<CoreScene>().set_lighting(lighting)
     }
 }
 

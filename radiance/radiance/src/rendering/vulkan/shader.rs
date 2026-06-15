@@ -160,6 +160,10 @@ static GRADIENT_Y_VERT: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/gradient_y.vert.spv"));
 static GRADIENT_Y_FRAG: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/gradient_y.frag.spv"));
+static ACTOR_LIT_VERT: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/actor_lit.vert.spv"));
+static ACTOR_LIT_FRAG: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/actor_lit.frag.spv"));
 
 fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
     match shader {
@@ -183,6 +187,12 @@ fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
             // the floor/wall DFFs (which always ship UV0). The shader
             // itself ignores `inTexCoord`.
             VertexComponents::POSITION | VertexComponents::TEXCOORD,
+        ),
+        ShaderProgram::TexturedDynamicLit => ShaderProgramData::new(
+            "actor_lit",
+            ACTOR_LIT_VERT,
+            ACTOR_LIT_FRAG,
+            VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
         ),
     }
 }

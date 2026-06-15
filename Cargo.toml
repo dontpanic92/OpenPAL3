@@ -23,6 +23,7 @@ members = [
 #   "tools/asdebug",
 #   "tools/dbexp",
     "tools/repacker",
+    "tools/scn_inspect",
 ]
 resolver = "3"
 

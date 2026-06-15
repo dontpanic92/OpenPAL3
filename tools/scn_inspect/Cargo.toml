@@ -1,0 +1,14 @@
+[package]
+name = "scn_inspect"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+byteorder = "1"
+encoding = "0.2"
+mini-fs = { workspace = true }
+packfs = { path = "../../yaobow/packfs" }
+common = { path = "../../yaobow/common" }
+fileformats = { path = "../../yaobow/fileformats" }
+image = "0.25"

@@ -98,6 +98,12 @@ fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path:
                 .and_then(|_| vfs.open(name).ok())
         })
         .with_blend(blend)
+        // PAL3's baked lightmaps are the primary scene lighting. Apply them
+        // faithfully: gain ≈ 2.0 (intensity 1.333 × the shader's 1.5) with no
+        // ambient floor, so shadowed areas stay dark and the warm baked tone
+        // isn't washed toward grey. (The shared shader's 0.3 floor was tuned
+        // for PAL4's dark caves; PAL3 opts out via ambient_floor = 0.0.)
+        .with_lightmap_params(1.333, 0.0)
     }
 }
 

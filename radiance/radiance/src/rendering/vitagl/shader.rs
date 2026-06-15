@@ -131,6 +131,16 @@ fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
             include_bytes!("shaders/gradient_y.frag"),
             VertexComponents::POSITION | VertexComponents::TEXCOORD,
         ),
+        // The Vita backend has no per-pixel lit shader yet; fall back to the
+        // unlit textured program. The vertex layout still declares NORMAL so
+        // the buffer stride matches what the actor loader produces (the
+        // fallback shader simply ignores the normal attribute).
+        ShaderProgram::TexturedDynamicLit => ShaderProgramData::new(
+            "TexturedDynamicLit",
+            include_bytes!("shaders/simple_triangle.vert"),
+            include_bytes!("shaders/simple_triangle.frag"),
+            VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
+        ),
     }
 }
 

@@ -146,12 +146,27 @@ impl AnimatedMeshComponent {
             let position = t.vertices.position(i).unwrap();
             let next_position = nt.vertices.position(i).unwrap();
             let tex_coord = t.vertices.tex_coord(i);
+            let normal = t.vertices.normal(i).cloned();
+            let next_normal = nt.vertices.normal(i).cloned();
 
             vertex_buffer.set_component(i, VertexComponents::POSITION, |p: &mut Vec3| {
                 p.x = position.x * (1. - percentile) + next_position.x * percentile;
                 p.y = position.y * (1. - percentile) + next_position.y * percentile;
                 p.z = position.z * (1. - percentile) + next_position.z * percentile;
             });
+
+            // Morph the per-vertex normal alongside the position so dynamically
+            // lit actors (`actor_lit`) re-shade as the mesh deforms. Without
+            // this the normals stay frozen at the loaded pose and the lit side
+            // of the actor never follows the animation. The interpolated normal
+            // need not be unit-length here — `actor_lit.vert` normalizes it.
+            if let (Some(n), Some(nn)) = (normal, next_normal) {
+                vertex_buffer.set_component(i, VertexComponents::NORMAL, |out: &mut Vec3| {
+                    out.x = n.x * (1. - percentile) + nn.x * percentile;
+                    out.y = n.y * (1. - percentile) + nn.y * percentile;
+                    out.z = n.z * (1. - percentile) + nn.z * percentile;
+                });
+            }
 
             if let Some(tex_coord) = tex_coord {
                 vertex_buffer.set_component(i, VertexComponents::TEXCOORD, |t: &mut Vec2| {

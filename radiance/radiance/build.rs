@@ -16,6 +16,8 @@ fn main() {
             build_vulkan_shader("lightmap_texture.frag");
             build_vulkan_shader("gradient_y.vert");
             build_vulkan_shader("gradient_y.frag");
+            build_vulkan_shader("actor_lit.vert");
+            build_vulkan_shader("actor_lit.frag");
         }
         _ => {}
     }

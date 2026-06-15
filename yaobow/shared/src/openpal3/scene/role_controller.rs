@@ -14,7 +14,7 @@ use radiance::components::mesh::{
     AnimatedMeshComponent, Geometry, MorphAnimationState, MorphTarget, TexCoord,
 };
 use radiance::math::Vec3;
-use radiance::rendering::{ComponentFactory, MaterialDef, SimpleMaterialDef};
+use radiance::rendering::{ComponentFactory, LitMaterialDef, MaterialDef};
 use radiance::scene::CoreEntity;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -374,8 +374,10 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
 
         // MV3 actor textures (PAL3 roles) typically rely on alpha cutout
         // for hair / eye fringes. Keep the default `BlendMode::AlphaTest`.
+        // Use the dynamically-lit material so scene lights (`.lgt`) shade the
+        // actor per-pixel; the geometry builder supplies per-frame normals.
         let material =
-            SimpleMaterialDef::create(texture_path.to_str().unwrap(), |name| vfs.open(name).ok());
+            LitMaterialDef::create(texture_path.to_str().unwrap(), |name| vfs.open(name).ok());
         for mesh_index in 0..model.mesh_count as usize {
             frames.push(create_geometry_frames(model, mesh_index, &material))
         }
@@ -422,8 +424,21 @@ fn create_geometry_frames(
     let mesh = &model.meshes[mesh_index];
     let hash = |index, texcoord_index| index as u32 * model.texcoord_count + texcoord_index as u32;
 
+    // Smooth normals are computed per frame over the ORIGINAL (un-split) MV3
+    // vertices using the original triangle connectivity, then shared across the
+    // texcoord-split copies below. Computing them after the split would give
+    // each UV-seam copy only its own chart's faces, producing faceted, frame-
+    // varying seam normals that make the actor's lighting shimmer/"swim" during
+    // animation. MV3 winding is consistent (verified), so geometric smooth
+    // normals are reliable. (The MV3's own packed `normal_phi`/`normal_theta`
+    // are an alternative, but recomputing avoids that encoding entirely.)
+    let frame_normals: Vec<Vec<Vec3>> = (0..model.frame_count as usize)
+        .map(|k| compute_mv3_frame_normals(&model.frames[k].vertices, mesh))
+        .collect();
+
     let mut indices: Vec<u32> = Vec::<u32>::with_capacity(model.vertex_per_frame as usize);
     let mut vertices = vec![vec![]; model.frame_count as usize];
+    let mut normals = vec![vec![]; model.frame_count as usize];
     let mut texcoord = vec![vec![]; model.frame_count as usize];
     let mut index_map = HashMap::new();
 
@@ -440,6 +455,10 @@ fn create_geometry_frames(
                             frame.vertices[i as usize].y as f32 * 0.01562,
                             frame.vertices[i as usize].z as f32 * 0.01562,
                         ));
+
+                        // Share the original vertex's smooth normal across every
+                        // texcoord-split copy so UV seams stay seamless.
+                        normals[k].push(frame_normals[k][i as usize]);
 
                         if (j as u32) < model.texcoord_count {
                             texcoord[k].push(TexCoord::new(
@@ -464,7 +483,7 @@ fn create_geometry_frames(
     for i in 0..model.frame_count as usize {
         geometries.push(Geometry::new(
             &vertices[i],
-            None,
+            Some(&normals[i]),
             &vec![texcoord[i].clone()],
             indices.clone(),
             material.clone(),
@@ -472,4 +491,46 @@ fn create_geometry_frames(
     }
 
     geometries
+}
+
+/// Compute per-vertex smooth normals for one MV3 mesh of a single frame, indexed
+/// by the **original** MV3 vertex index (the entry for vertex `i` corresponds to
+/// `frame_vertices[i]`). Positions use the loader's stored convention (the parser
+/// already negates x/z), so the resulting normals live in the same space as the
+/// geometry the shader transforms. Area-weighted (un-normalized cross product)
+/// accumulation, then normalized; degenerate vertices fall back to +Y.
+fn compute_mv3_frame_normals(
+    frame_vertices: &[fileformats::mv3::Mv3Vertex],
+    mesh: &fileformats::mv3::Mv3Mesh,
+) -> Vec<Vec3> {
+    let pos = |idx: usize| {
+        Vec3::new(
+            frame_vertices[idx].x as f32,
+            frame_vertices[idx].y as f32,
+            frame_vertices[idx].z as f32,
+        )
+    };
+
+    let mut normals = vec![Vec3::new(0.0, 0.0, 0.0); frame_vertices.len()];
+    for t in &mesh.triangles {
+        let (a, b, c) = (
+            t.indices[0] as usize,
+            t.indices[1] as usize,
+            t.indices[2] as usize,
+        );
+        let e1 = Vec3::sub(&pos(b), &pos(a));
+        let e2 = Vec3::sub(&pos(c), &pos(a));
+        let fnormal = Vec3::cross(&e1, &e2);
+        for &idx in &[a, b, c] {
+            normals[idx] = Vec3::add(&normals[idx], &fnormal);
+        }
+    }
+    for n in &mut normals {
+        if Vec3::dot(n, n) > 1e-12 {
+            *n = Vec3::normalized(n);
+        } else {
+            *n = Vec3::new(0.0, 1.0, 0.0);
+        }
+    }
+    normals
 }

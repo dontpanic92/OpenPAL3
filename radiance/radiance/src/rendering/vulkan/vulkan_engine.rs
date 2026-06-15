@@ -136,6 +136,10 @@ impl RenderingEngine for VulkanRenderingEngine {
             }
             None => (Vec::new(), None),
         };
+        let lighting = match scene.as_ref() {
+            Some(s) => Self::collect_scene_lights(s),
+            None => ([0.0; 3], Vec::new()),
+        };
         crate::perf::gauge("vulkan.render.visible_entities", entities.len() as u64);
 
         // Update the dynamic UBO with each visible render object's world
@@ -161,7 +165,7 @@ impl RenderingEngine for VulkanRenderingEngine {
         );
 
         let result = crate::perf::time("vulkan.render.objects_total_ns", || {
-            self.render_objects(camera.as_ref().map(|c| &**c), entities, viewport, ui_frame)
+            self.render_objects(camera.as_ref().map(|c| &**c), entities, lighting, viewport, ui_frame)
         });
         if let Err(err) = result {
             println!("{}", err);
@@ -247,8 +251,10 @@ impl RenderingEngine for VulkanRenderingEngine {
             &mut self.scratch_transparent_ordered,
         );
 
-        // Update target's per-frame UBO with the scene's camera.
-        let ubo = PerFrameUniformBuffer::new(&camera_view, &camera_proj);
+        // Update target's per-frame UBO with the scene's camera + lights.
+        let mut ubo = PerFrameUniformBuffer::new(&camera_view, &camera_proj);
+        let (ambient, gpu_lights) = Self::collect_scene_lights(&scene);
+        ubo.set_lighting(ambient, &gpu_lights);
         target.uniform_buffer_mut().copy_memory_from(&[ubo]);
 
         // Record + submit the offscreen pass.
@@ -786,10 +792,26 @@ impl VulkanRenderingEngine {
         Ok(())
     }
 
+    /// Snapshot the scene's lighting environment into the per-frame UBO's
+    /// expected shape: a flat ambient color and a list of `(position, color)`
+    /// point lights.
+    fn collect_scene_lights(
+        scene: &ComRc<IScene>,
+    ) -> ([f32; 3], Vec<([f32; 3], [f32; 3])>) {
+        let lighting = scene.lighting();
+        let lights = lighting
+            .lights
+            .iter()
+            .map(|l| ([l.position.x, l.position.y, l.position.z], l.color))
+            .collect();
+        (lighting.ambient, lights)
+    }
+
     fn render_objects(
         &mut self,
         camera: Option<&Camera>,
         entities: Vec<ComRc<IEntity>>,
+        lighting: ([f32; 3], Vec<([f32; 3], [f32; 3])>),
         viewport: Viewport,
         ui_frame: ImguiFrame,
     ) -> Result<(), Box<dyn Error>> {
@@ -881,7 +903,9 @@ impl VulkanRenderingEngine {
                 Some(cam) => {
                     let view = Mat44::inversed(cam.transform().matrix());
                     let proj = cam.projection_matrix();
-                    PerFrameUniformBuffer::new(&view, proj)
+                    let mut ubo = PerFrameUniformBuffer::new(&view, proj);
+                    ubo.set_lighting(lighting.0, &lighting.1);
+                    ubo
                 }
                 None => {
                     let identity = Mat44::new_identity();

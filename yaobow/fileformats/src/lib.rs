@@ -3,6 +3,7 @@ pub mod mv3;
 pub mod nif;
 pub mod nod;
 pub mod npc;
+pub mod pal3;
 pub mod pal4;
 pub mod pal5;
 pub mod pol;

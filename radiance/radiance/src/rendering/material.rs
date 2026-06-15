@@ -72,6 +72,16 @@ pub struct MaterialParams {
     /// pass-through value; defaults to `1.0` for all materials so
     /// non-lightmap shaders are unaffected.
     pub intensity: f32,
+    /// Baked-lightmap ambient floor, uploaded to the fragment shader as
+    /// `MaterialParamsGpu.misc.z` and consumed only by
+    /// `lightmap_texture.frag` as the additive term in
+    /// `lightMap * 1.5 * intensity + ambient_floor`. Defaults to `0.3`,
+    /// which reproduces the previous hard-coded floor (tuned for PAL4's
+    /// dark caves) for every existing caller. PAL3, whose baked lightmaps
+    /// are the primary lighting and must keep their dark, high-contrast
+    /// shadows, sets this to `0.0` so the floor no longer lifts/desaturates
+    /// the baked tone. Non-lightmap shaders ignore `misc.z`.
+    pub ambient_floor: f32,
     pub uv_scale: [f32; 2],
     pub uv_offset: [f32; 2],
 }
@@ -94,6 +104,7 @@ impl Default for MaterialParams {
             // avoids that see-through fringe.
             alpha_ref: 0.5,
             intensity: 1.0,
+            ambient_floor: 0.3,
             uv_scale: [1.0, 1.0],
             uv_offset: [0.0, 0.0],
         }
@@ -251,6 +262,18 @@ impl MaterialDef {
     /// automatically — no need to also call `make_unique`.
     pub fn with_params(mut self, params: MaterialParams) -> Self {
         self.params = params;
+        self
+    }
+
+    /// Override the baked-lightmap modulation parameters on an existing
+    /// `MaterialDef` (consumed by `lightmap_texture.frag`): `intensity`
+    /// scales the baked contribution (`misc.y`) and `ambient_floor` is the
+    /// additive term (`misc.z`). PAL3 uses this to set `ambient_floor = 0.0`
+    /// so its baked lightmaps keep dark, high-contrast shadows instead of the
+    /// PAL4-tuned `0.3` floor that lifts and desaturates them.
+    pub fn with_lightmap_params(mut self, intensity: f32, ambient_floor: f32) -> Self {
+        self.params.intensity = intensity;
+        self.params.ambient_floor = ambient_floor;
         self
     }
 
@@ -486,6 +509,44 @@ impl SimpleMaterialDef {
     }
 }
 
+/// Builds a dynamically-lit textured material ([`ShaderProgram::TexturedDynamicLit`]).
+/// Same single-texture setup as [`SimpleMaterialDef`], but the fragment shader
+/// applies per-pixel Lambert lighting from the scene's lights. Intended for
+/// actors whose meshes provide vertex normals.
+pub struct LitMaterialDef;
+impl LitMaterialDef {
+    pub fn create<R: Read>(
+        texture_name: &str,
+        get_reader: impl FnOnce(&str) -> Option<R>,
+    ) -> MaterialDef {
+        Self::create_with_sampler(texture_name, get_reader, SamplerDef::default())
+    }
+
+    pub fn create_with_sampler<R: Read>(
+        texture_name: &str,
+        get_reader: impl FnOnce(&str) -> Option<R>,
+        sampler: SamplerDef,
+    ) -> MaterialDef {
+        let texture =
+            TextureStore::get_or_update(texture_name, || match get_reader(texture_name) {
+                Some(mut r) => {
+                    let mut buf = Vec::new();
+                    r.read_to_end(&mut buf).unwrap();
+                    image::load_from_memory(&buf)
+                        .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
+                        .and_then(|img| Ok(img.to_rgba8()))
+                        .ok()
+                }
+                _ => None,
+            });
+
+        MaterialDef::builder(ShaderProgram::TexturedDynamicLit)
+            .debug_name("lit_material")
+            .textures_with_samplers(vec![texture], vec![sampler])
+            .build()
+    }
+}
+
 pub struct LightMapMaterialDef;
 impl LightMapMaterialDef {
     pub fn create<R: Read>(
@@ -590,6 +651,7 @@ impl GradientYMaterialDef {
             tint: [high[0], high[1], high[2], y_max],
             alpha_ref: 0.0,
             intensity: y_min,
+            ambient_floor: 0.3,
             uv_scale: [low[0], low[1]],
             uv_offset: [low[2], 0.0],
         };
