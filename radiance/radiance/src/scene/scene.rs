@@ -421,7 +421,6 @@ impl IComponentContainerImpl for CoreScene {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::comdef::IEntityImpl;
     use crate::scene::entity::CoreEntity;
 
     #[test]

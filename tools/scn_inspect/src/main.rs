@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use mini_fs::{MiniFs, StoreExt};
@@ -326,6 +326,7 @@ fn main() -> anyhow::Result<()> {
                     let d=cr.0*fc.0+cr.1*fc.1+cr.2*fc.2;
                     if d>=0.0 {out+=1;} else {inw+=1;}
                 }
+                println!("  face winding: outward={out} inward={inw}");
                 // Manifold winding test: each interior edge should be traversed in
                 // OPPOSITE directions by its two triangles (consistent winding).
                 use std::collections::HashMap as HM2;

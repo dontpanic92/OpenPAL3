@@ -164,23 +164,6 @@ pub fn get_present_mode(
         .unwrap_or(vk::PresentModeKHR::FIFO))
 }
 
-pub fn create_swapchain(
-    swapchain_device: &Swapchain,
-    surface: SurfaceKHR,
-    capabilities: SurfaceCapabilitiesKHR,
-    format: SurfaceFormatKHR,
-    present_mode: PresentModeKHR,
-) -> VkResult<SwapchainKHR> {
-    create_swapchain_with_usage(
-        swapchain_device,
-        surface,
-        capabilities,
-        format,
-        present_mode,
-        vk::ImageUsageFlags::empty(),
-    )
-}
-
 pub fn create_image_views(
     device: &Rc<super::device::Device>,
     images: &Vec<vk::Image>,
@@ -249,8 +232,7 @@ pub fn create_color_only_framebuffers(
         .collect()
 }
 
-/// Variant of [`create_swapchain`] that lets the caller add extra
-/// usage flags beyond `COLOR_ATTACHMENT`. Used by the Logical-extent
+/// Creates a swapchain, letting the caller add extra usage flags beyond `COLOR_ATTACHMENT`. Used by the Logical-extent
 /// scene path, which needs `TRANSFER_DST` on swapchain images so the
 /// offscreen color result can be `vkCmdBlitImage`'d into them. Caller
 /// is responsible for verifying the flags against

@@ -390,14 +390,10 @@ impl SwapChain {
         })
     }
 
-    pub fn render_pass(&self) -> vk::RenderPass {
-        self.render_pass
-    }
-
     /// Render pass the imgui renderer should be configured against. In
-    /// Native mode this matches `render_pass()` (the combined scene+ui
-    /// pass). In Logical mode this is the dedicated imgui-only render
-    /// pass that draws on top of the blitted scene.
+    /// Native mode this matches the combined scene+ui pass. In Logical
+    /// mode this is the dedicated imgui-only render pass that draws on
+    /// top of the blitted scene.
     pub fn imgui_render_pass(&self) -> vk::RenderPass {
         match &self.logical {
             Some(l) => l.imgui_render_pass.vk_render_pass(),
