@@ -46,10 +46,18 @@ impl DescriptorManager {
             vk::ShaderStageFlags::FRAGMENT,
             1,
         )?;
+        // The per-frame UBO (set 0: view/proj + scene lighting) is read by
+        // both stages: vertex shaders consume `view`/`proj`, and the
+        // dynamically-lit actor fragment shader (`actor_lit.frag`) reads the
+        // `ambient`/`lightPos`/`lightColor` lighting environment. The binding
+        // must therefore be visible to FRAGMENT as well as VERTEX — otherwise a
+        // fragment-stage read of a vertex-only binding is undefined: lenient
+        // drivers (MoltenVK) return the real data, but strict Windows drivers
+        // return zero, which made lit PAL3 actors render solid black.
         let per_frame_layout = Self::create_descriptor_set_layout(
             &device,
             vk::DescriptorType::UNIFORM_BUFFER,
-            vk::ShaderStageFlags::VERTEX,
+            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
             1,
         )?;
         let per_material_params_layout = Self::create_descriptor_set_layout(
