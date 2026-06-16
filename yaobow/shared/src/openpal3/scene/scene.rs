@@ -424,8 +424,7 @@ impl ScnScene {
                             .unwrap(),
                     );
                 } else if obj.name.as_bytes()[0] as char == '+' {
-                    // Unknown
-                    continue;
+                    entity = self.build_scene_effect(obj);
                 } else {
                     entity = Some(
                         self.asset_mgr
@@ -475,6 +474,24 @@ impl ScnScene {
         for entity in entities {
             self.scene.add_entity(entity);
         }
+    }
+
+    /// Build a PAL3 scene "effect" entity for a `+`-prefixed node.
+    ///
+    /// These nodes mark `EffectScn` effects (candles, oil lamps, torches,
+    /// fires). The visual-effect class is node_type 17 ("+3"); the effect
+    /// variant is selected by `dw184[3]` (record offset 0x190). We build
+    /// the static holder mesh (where the effect has one) plus an animated
+    /// additive flame billboard.
+    fn build_scene_effect(
+        &self,
+        obj: &crate::openpal3::loaders::scn_loader::ScnNode,
+    ) -> Option<ComRc<IEntity>> {
+        if obj.node_type != 17 {
+            return None;
+        }
+        let effect_id = obj.dw184.get(3).copied().unwrap_or(0);
+        self.asset_mgr.load_scene_effect(effect_id, obj.index)
     }
 
     fn apply_position_rotation(entity: ComRc<IEntity>, position: &Vec3, rotation: f32) {

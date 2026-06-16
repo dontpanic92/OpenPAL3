@@ -5,9 +5,9 @@ use ini::Ini;
 use mini_fs::MiniFs;
 use mini_fs::prelude::*;
 use radiance::comdef::{IAnimatedMeshComponent, IEntity, IScene};
+use radiance::math::Vec3;
 use radiance::rendering::ComponentFactory;
 use radiance::scene::{CoreScene, ISceneExt, SceneLight, SceneLighting};
-use radiance::math::Vec3;
 use radiance::utils::SeekRead;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -328,6 +328,24 @@ impl AssetManager {
         } else {
             None
         }
+    }
+
+    /// Path to the PAL3 scene-effect (`EffectScn`) asset root.
+    fn effect_scn_root(&self) -> PathBuf {
+        self.basedata_path.join("EffectScn")
+    }
+
+    /// Build a PAL3 scene effect (candle / lamp / torch / fire) for the
+    /// given effect id (`ScnNode::dw184[3]`). Returns the holder entity
+    /// (flame attached) or the bare flame, or `None` for unknown ids.
+    pub fn load_scene_effect(&self, effect_id: u32, index: u16) -> Option<ComRc<IEntity>> {
+        crate::openpal3::scene::build_effect(
+            &self.factory,
+            &self.vfs,
+            &self.effect_scn_root(),
+            effect_id,
+            index,
+        )
     }
 
     pub fn load_music_data(&self, music_name: &str) -> Vec<u8> {

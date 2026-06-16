@@ -168,6 +168,18 @@ interface IUvAnimationComponent: IComponent {
 [uuid(008ae95a-9b01-43d3-98fb-63d5b23be6b5)]
 class UvAnimationComponent: IUvAnimationComponent {}
 
+// `IFrameAnimationComponent` plays a grid-atlas sprite animation by
+// rewriting its owning entity's render-object texture coordinates each
+// frame to point at the current atlas cell. Self-ticks via
+// `IComponent::on_updating`. Used by PAL3 scene effects (candle/torch
+// flames) to animate an additive billboard through its frame sequence.
+[uuid(7b3e2c10-9d44-4a1e-bf21-1c2d3e4f5a60)]
+interface IFrameAnimationComponent: IComponent {
+}
+
+[uuid(7b3e2c11-9d44-4a1e-bf21-1c2d3e4f5a61)]
+class FrameAnimationComponent: IFrameAnimationComponent {}
+
 // `IAudioSourceComponent` is a generic engine-backed audio node. It
 // owns an `AudioMemorySource` minted from the engine and plays it
 // positioned at its owning entity's world transform. When `spatial`
