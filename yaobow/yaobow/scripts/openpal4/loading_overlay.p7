@@ -324,11 +324,36 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
 
         let progress: float = self.eased_progress;
 
+        let n = h.draw_count();
+
+        // Pre-pass: the layout (`loading.xml`) is authored at 800x600
+        // (4:3). Letterbox-fitting the whole thing leaves the `ditu`
+        // (`heitiao`) black background covering only the central 4:3
+        // column, so on a widescreen the live scene's unload/reload
+        // shows through the left/right bands. Stretch the background
+        // texture across the FULL available area first (it's a flat
+        // black image, so stretching is distortion-free) so nothing
+        // leaks through; the bar/fairy below stay letterboxed.
+        for i in Range(0, n) {
+            let win_id = h.draw_window_id(i);
+            if h.window_name(win_id) == "ditu" {
+                let tex = h.draw_texture_com_id(i);
+                if tex != 0 {
+                    ui.set_cursor_pos(0.0, 0.0);
+                    ui.image_uv(
+                        tex, avail_w, avail_h,
+                        h.draw_u0(i), h.draw_v0(i),
+                        h.draw_u1(i), h.draw_v1(i),
+                    );
+                }
+                break;
+            }
+        }
+
         // Pre-pass: locate the lit progress bar (`blanklightfull`) so
         // the fairy's horizontal slide can track progress along the
         // bar's actual screen-space extent (anything else is
         // brittle if the layout coordinates change).
-        let n = h.draw_count();
         let mut bar_left: float = -1.0;
         let mut bar_width: float = 0.0;
         for i in Range(0, n) {
@@ -354,6 +379,13 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
             // of layout coordinates.
             let win_id = h.draw_window_id(i);
             let win_name = h.window_name(win_id);
+
+            // Background already drawn full-screen by the pre-pass
+            // above; skip it here so it isn't re-blitted inside the
+            // 4:3 letterbox region.
+            if win_name == "ditu" {
+                continue;
+            }
 
             // Progress bar: `ImgMask` hides the un-lit portion of
             // `blanklightfull`. Shrink its width from the right by
