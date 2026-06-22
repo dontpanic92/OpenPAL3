@@ -18,3 +18,15 @@ class OpenSwd5ApplicationLoaderComponent: IApplicationLoaderComponent {}
 
 [uuid(9492ea12-f90d-4909-9dbb-7d16a0df716d)]
 class YaobowApplicationLoader: IApplicationLoaderComponent {}
+
+// PAL5 story-runtime director (Rust). Drives the PAL5 Lua VM that runs
+// the game scripts (`NewGame` -> `CallScript`/`Include` dispatch ->
+// `mainline/*`). Hosted in `yaobow_lib` because the PAL5 story command
+// handlers + the Lua bridge are game-specific Rust living in the yaobow
+// crate (the low-level asset/scene loaders stay in `shared`). Same
+// rationale as `Pal3Service` being declared in `yaobow_services.idl`.
+[uuid(2b9f7d1a-4c6e-4a2b-9f3d-7e1c0a5b8d42)]
+interface IPal5StoryDirector: IDirector {}
+
+[uuid(7c4e9a05-3b1d-4f8a-8c2e-6d9b0f1a2e34)]
+class Pal5StoryDirector: IPal5StoryDirector {}

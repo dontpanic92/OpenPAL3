@@ -193,6 +193,7 @@ pub mod script_source {
 
 pub mod application;
 pub mod openpal3;
+pub mod openpal5;
 
 pub use application::{
     BootOptions, Pal4AgentBootOptions, boot_for, create_application, resolve_asset_path, run_app,

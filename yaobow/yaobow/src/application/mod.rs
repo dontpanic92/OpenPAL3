@@ -278,12 +278,11 @@ impl YaobowApplicationLoader {
                 host_ctx.pal4().create_director(&asset_path)
             }
             GameType::PAL5 | GameType::PAL5Q => {
-                let game_ordinal = ordinal_for_game(game);
-                factory
-                    .make_pal5_director(&asset_path, game_ordinal)
+                let _ = factory; // PAL5 director is Rust-built (yaobow crate).
+                crate::openpal5::create_story_director(self.app.clone(), &asset_path, game)
                     .ok_or_else(|| {
                         format!(
-                            "make_pal5_director returned null (likely missing PAL5 assets at {asset_path})"
+                            "PAL5 story director build failed (likely missing PAL5 assets at {asset_path})"
                         )
                     })?
             }
