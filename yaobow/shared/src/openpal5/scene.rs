@@ -21,31 +21,77 @@ impl Pal5Scene {
 
         let nod = asset_loader.load_map_nod(scene_name)?;
 
-        for node in &nod.nodes {
-            println!("Node: {:?}", node);
-            let asset = asset_loader.index.get(&node.asset_id);
-            if let Some(asset) = asset {
-                let file_path = asset.file_path.to_string();
+        let mut loaded = 0usize;
+        let mut skipped = 0usize;
+        let mut failed = 0usize;
 
-                // Asset Type?
-                if file_path.ends_with(".dff") {
-                    let model = asset_loader.load_model(&file_path)?;
-                    model
-                        .transform()
-                        .borrow_mut()
-                        .scale_local(&Vec3::new(node.scale[0], node.scale[1], node.scale[2]))
-                        .rotate_axis_angle_local(&Vec3::BACK, -node.rotation[0].to_radians())
-                        .rotate_axis_angle_local(&Vec3::UP, node.rotation[1].to_radians())
-                        .rotate_axis_angle_local(&Vec3::EAST, -node.rotation[2].to_radians())
-                        .set_position(&Vec3::new(
-                            node.position[0],
-                            node.position[1],
-                            node.position[2],
-                        ));
-                    scene.add_entity(model);
-                }
+        for node in &nod.nodes {
+            // Resolve the node's asset entry from the role index. Many
+            // `.nod` nodes reference ids that are absent from the
+            // `role_*.bin` index (gameplay markers, server-only props);
+            // those are skipped, not fatal.
+            let Some(asset) = asset_loader.index.get(&node.asset_id) else {
+                log::debug!(
+                    "Pal5Scene: node '{:?}' asset_id {} not in role index; skipping",
+                    node.name,
+                    node.asset_id,
+                );
+                continue;
+            };
+
+            let file_path = asset.file_path.to_string();
+
+            // Only `.dff` clumps are renderable scene objects. PAL5 also
+            // stores degenerate `file_path` values (e.g. `"1"`) for
+            // non-model assets — guard against those so a stray entry
+            // never reaches the loader.
+            if !file_path.to_ascii_lowercase().ends_with(".dff") {
+                skipped += 1;
+                continue;
             }
+
+            // Isolate per-node failures: a single unreadable/corrupt
+            // model must not abort the whole scene (foliage is
+            // interleaved with buildings, so an early `?` would hide
+            // everything after the first bad node).
+            let model = match asset_loader.load_model(&file_path) {
+                Ok(model) => model,
+                Err(err) => {
+                    failed += 1;
+                    log::warn!(
+                        "Pal5Scene: failed to load model '{}' (asset_id {}): {}",
+                        file_path,
+                        node.asset_id,
+                        err,
+                    );
+                    continue;
+                }
+            };
+
+            model
+                .transform()
+                .borrow_mut()
+                .scale_local(&Vec3::new(node.scale[0], node.scale[1], node.scale[2]))
+                .rotate_axis_angle_local(&Vec3::BACK, -node.rotation[0].to_radians())
+                .rotate_axis_angle_local(&Vec3::UP, node.rotation[1].to_radians())
+                .rotate_axis_angle_local(&Vec3::EAST, -node.rotation[2].to_radians())
+                .set_position(&Vec3::new(
+                    node.position[0],
+                    node.position[1],
+                    node.position[2],
+                ));
+            scene.add_entity(model);
+            loaded += 1;
         }
+
+        log::info!(
+            "Pal5Scene '{}': {} models loaded, {} skipped (non-model/unindexed), {} failed of {} nodes",
+            scene_name,
+            loaded,
+            skipped,
+            failed,
+            nod.nodes.len(),
+        );
 
         Ok(Self { scene })
     }

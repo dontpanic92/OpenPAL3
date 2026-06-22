@@ -9,16 +9,18 @@ use fileformats::rwbs::{
 use mini_fs::{MiniFs, StoreExt};
 use radiance::{
     comdef::{
-        IArmatureComponent, IComponent, IEntity, IHAnimBoneComponent, ISkinnedMeshComponent,
-        IStaticMeshComponent,
+        IArmatureComponent, IBillboardComponent, IComponent, IEntity, IHAnimBoneComponent,
+        ISkinnedMeshComponent, IStaticMeshComponent,
     },
     components::mesh::{
         StaticMeshComponent,
         skinned_mesh::{ArmatureComponent, HAnimBoneComponent, SkinnedMeshComponent},
     },
+    components::billboard::BillboardComponent,
     math::{Mat44, Vec3},
     rendering::{
-        AddressMode, AlphaKind, BlendMode, ComponentFactory, FilterMode, MaterialDef, SamplerDef,
+        AddressMode, AlphaKind, BlendMode, ComponentFactory, CullMode, FilterMode, MaterialDef,
+        SamplerDef,
     },
     scene::CoreEntity,
 };
@@ -350,9 +352,17 @@ fn load_clump(
 
         let entity = entities[atomic.frame as usize].0.clone();
 
+        // PAL5 foliage cards are single quads (render two-sided) and
+        // wind-leaf clusters are flat footprint quads that must face the
+        // camera each frame (billboard). Both are detected purely from
+        // the frame's `prt` tag, which only PAL5 ships — so non-PAL5
+        // DFFs are unaffected.
+        let two_sided = is_foliage_frame(frame);
+        let billboard = is_billboard_frame(frame);
+
         let geometry = &chunk.geometries[atomic.geometry as usize];
         create_geometry(
-            entity,
+            entity.clone(),
             component_factory,
             geometry,
             hanim_bone.as_ref(),
@@ -362,26 +372,108 @@ fn load_clump(
             config.texture_resolver,
             config.force_unique_materials,
             config.bsp_lightmap_tint,
+            two_sided,
         );
+
+        if billboard {
+            let component = BillboardComponent::create(entity.clone(), billboard_scale_pct(frame));
+            entity.add_component(
+                IBillboardComponent::uuid(),
+                component.query_interface::<IComponent>().unwrap(),
+            );
+        }
     }
 }
 
-fn check_frame_name(frame: &Frame) -> bool {
+/// Decide whether an atomic's frame is a **non-renderable helper** that
+/// must be skipped at load time.
+///
+/// PAL5 stamps a `prt` UserData string on most frames. A leading
+/// bracket token classifies the frame; the meanings observed across
+/// PAL5 assets are:
+///
+/// | tag(s)                         | meaning                | render? |
+/// |--------------------------------|------------------------|---------|
+/// | `[W]` / `[w]`                  | wind-animated foliage  | **yes** |
+/// | `[(]` / `[$(]` / `[($]`        | billboard plant / bush | **yes** |
+/// | `[^]` / `[^~]`                 | collision / clip helper| no      |
+/// | `[S]` / `[ST]`                 | shadow helper          | no      |
+///
+/// The original loader skipped *every* bracketed `prt` frame, which
+/// silently dropped all wind foliage and bushes (e.g. `zw_gushu.dff`
+/// rendered 1 of its 124 atomics — the bare trunk — because the 123
+/// leaf clusters are tagged `[W]{t..}{s..}gushuye..`). We now skip only
+/// the helper categories (`^`, `~`, `S`) and render everything else.
+///
+/// Non-PAL5 DFFs (PAL3/PAL4/SWD) carry no `prt` UserData, so this is a
+/// no-op for them.
+/// Read a frame's `prt` UserData string (PAL5 stamps these; other games
+/// don't carry the plugin).
+fn frame_prt(frame: &Frame) -> Option<String> {
     for e in frame.extensions() {
         if let Extension::UserDataPlugin(plugin) = e {
             if let Some(prt) = plugin.data().get("prt") {
-                if prt.len() > 0 {
-                    if let Some(prt) = prt[0].get_string() {
-                        if prt.starts_with('[') {
-                            return true;
-                        }
+                if let Some(s) = prt.get(0).and_then(|x| x.get_string()) {
+                    if !s.is_empty() {
+                        return Some(s);
                     }
                 }
             }
         }
     }
+    None
+}
+
+fn check_frame_name(frame: &Frame) -> bool {
+    if let Some(prt) = frame_prt(frame) {
+        if let Some(rest) = prt.strip_prefix('[') {
+            // First character inside the bracket selects the frame
+            // category. Helper geometry (collision `^`, clip `~`, shadow
+            // `S`) is skipped; foliage / billboard tags render.
+            return matches!(rest.chars().next(), Some('^') | Some('~') | Some('S'));
+        }
+    }
 
     false
+}
+
+/// Whether a frame is renderable PAL5 foliage: a bracketed `prt` tag
+/// that survived [`check_frame_name`] (wind foliage `[W]`/`[w]`,
+/// billboard plants `[(]`/`[$(]`/`[($]`, …). These are single-quad
+/// cards that must render two-sided so the back-facing half is not
+/// culled. Non-PAL5 DFFs have no `prt`, so this is always `false`.
+fn is_foliage_frame(frame: &Frame) -> bool {
+    frame_prt(frame)
+        .map(|p| p.starts_with('[') && !check_frame_name(frame))
+        .unwrap_or(false)
+}
+
+/// Whether a frame is a PAL5 wind-billboard leaf cluster (`[W]`/`[w]`):
+/// a flat footprint quad that must be oriented toward the camera each
+/// frame by a [`BillboardComponent`].
+fn is_billboard_frame(frame: &Frame) -> bool {
+    frame_prt(frame)
+        .map(|p| p.starts_with("[W]") || p.starts_with("[w]"))
+        .unwrap_or(false)
+}
+
+/// Parse the per-leaf scale percentage from a PAL5 wind `prt` tag of the
+/// form `[W]{t<id>}{s<pct>}<name>` (e.g. `[W]{t6091}{s90}gushuye03` →
+/// `90`). Returns `100` (no scaling) when the `{s..}` token is absent.
+fn billboard_scale_pct(frame: &Frame) -> f32 {
+    let Some(prt) = frame_prt(frame) else {
+        return 100.0;
+    };
+    if let Some(rest) = prt.split("{s").nth(1) {
+        if let Some(num) = rest.split('}').next() {
+            if let Ok(v) = num.trim().parse::<f32>() {
+                if v > 0.0 {
+                    return v;
+                }
+            }
+        }
+    }
+    100.0
 }
 
 fn create_geometry(
@@ -395,6 +487,7 @@ fn create_geometry(
     texture_resolver: &dyn TextureResolver,
     force_unique_materials: bool,
     bsp_lightmap_tint: Option<[f32; 4]>,
+    two_sided: bool,
 ) {
     if geometry.morph_targets.len() == 0 {
         return;
@@ -544,6 +637,7 @@ fn create_geometry(
         texture_resolver,
         force_unique_materials,
         bsp_lightmap_tint,
+        two_sided,
     );
 }
 
@@ -561,6 +655,7 @@ pub(crate) fn create_geometry_internal(
     texture_resolver: &dyn TextureResolver,
     force_unique_materials: bool,
     bsp_lightmap_tint: Option<[f32; 4]>,
+    two_sided: bool,
 ) {
     let mut r_vertices = vec![];
     // let mut r_normals = vec![];
@@ -661,6 +756,11 @@ pub(crate) fn create_geometry_internal(
 
                 let blend = detect_blend(material, &md);
                 let mut md = md.with_blend(blend);
+                // PAL5 foliage cards are single quads; render them
+                // two-sided so the back-facing half is not culled.
+                if two_sided && matches!(blend, BlendMode::AlphaTest | BlendMode::AlphaBlend) {
+                    md = md.with_cull(CullMode::None);
+                }
                 if let Some(name) = material.userdata_name.as_deref() {
                     md = md.with_debug_name(name);
                 }

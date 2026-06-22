@@ -227,6 +227,14 @@ impl CoreRadianceEngine {
                 let up = [m[0][1], m[1][1], m[2][1]];
                 drop(camera);
                 audio_engine.set_listener(position, forward, up);
+
+                // Publish the camera position for billboard components
+                // (PAL5 wind foliage) to orient toward this frame.
+                crate::components::billboard::set_camera_position(crate::math::Vec3::new(
+                    position[0],
+                    position[1],
+                    position[2],
+                ));
             }
 
             if let Some(dl) = debug_layer {

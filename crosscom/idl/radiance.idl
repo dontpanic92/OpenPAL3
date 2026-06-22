@@ -190,6 +190,20 @@ class FrameAnimationComponent: IFrameAnimationComponent {}
 // playback, self-ticking via `IComponent::on_updating`, so callers
 // only attach it once. The rich construction-time configuration lives
 // on the inherent Rust API; this interface exposes runtime controls.
+// `IBillboardComponent` rotates its owning entity every frame so a
+// flat "footprint" quad faces the active scene camera. PAL5 wind
+// foliage (`prt` tags `[W]`/`[w]`) ships each leaf cluster as a single
+// horizontal quad (local XZ plane, normal +Y) positioned at a canopy
+// point; the original engine erects it into a camera-facing card at
+// render time. Self-ticks via `IComponent::on_updating`, reading the
+// camera position fed once per frame by `CoreRadianceEngine::update`.
+[uuid(9daba808-6c33-4c93-b16a-c801b6fac55a)]
+interface IBillboardComponent: IComponent {
+}
+
+[uuid(e718a5e7-5d56-48af-9860-90db57dfe64c)]
+class BillboardComponent: IBillboardComponent {}
+
 [uuid(327a838b-b67e-4cf2-8c7b-45daa11964a4)]
 interface IAudioSourceComponent: IComponent {
     void play();

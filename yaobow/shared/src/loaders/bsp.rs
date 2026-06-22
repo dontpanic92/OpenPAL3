@@ -137,5 +137,6 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
         config.texture_resolver,
         config.force_unique_materials,
         config.bsp_lightmap_tint,
+        false,
     );
 }

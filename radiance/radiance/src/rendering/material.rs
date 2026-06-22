@@ -241,6 +241,19 @@ impl MaterialDef {
         self
     }
 
+    /// Override the cull mode on an existing `MaterialDef`. Used by
+    /// loaders that decide two-sidedness after the underlying
+    /// `MaterialDef` is built (e.g. RenderWare foliage: leaf/grass
+    /// cards are single quads that must render two-sided, otherwise the
+    /// back-facing half is culled and the foliage looks sparse or
+    /// vanishes entirely). `cull` *is* part of `MaterialIdentity`, so
+    /// two materials that differ only in cull mode are cached as
+    /// separate backend pipelines automatically.
+    pub fn with_cull(mut self, cull: CullMode) -> Self {
+        self.cull = cull;
+        self
+    }
+
     /// Override the debug name (post-build) — useful when the loader
     /// only learns the source identifier (e.g. an RW material's
     /// `PLUGIN_USERDATA name`) after the underlying `MaterialDef` is
