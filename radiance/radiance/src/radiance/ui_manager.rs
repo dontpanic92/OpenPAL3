@@ -27,6 +27,20 @@ impl UiManager {
         self.imgui_context.clone()
     }
 
+    /// Register a game-shipped font (raw TTF/TTC bytes) for in-game text.
+    /// Appended as an extra atlas slot; the bundled editor/title font is
+    /// left in place. `extra_scale` is a per-game size multiplier applied on
+    /// top of the per-face normalization. See [`ImguiContext::add_game_font`].
+    pub fn add_game_font(&self, data: &[u8], extra_scale: f32) {
+        self.imgui_context.add_game_font(data, extra_scale);
+    }
+
+    /// `FontId` of the registered game font for the given
+    /// [`crate::imgui::GameFontSize`] slot, or `None` if none registered.
+    pub fn game_font(&self, size: usize) -> Option<imgui::FontId> {
+        self.imgui_context.game_font(size)
+    }
+
     pub fn update(&self, delta_sec: f32, draw_func: impl Fn(&Ui)) -> ImguiFrame {
         let context = self.imgui_context.clone();
         let frame = context.draw_ui(delta_sec, |ui| {

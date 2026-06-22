@@ -41,6 +41,8 @@ impl SceCommand for SceCommandDlgSel {
             .position_pivot([0.5, 0.5])
             .position([window_width / 2., window_height / 2.], Condition::Always)
             .build(|| {
+                let _font_token = radiance::imgui::game_font(radiance::imgui::GameFontSize::LARGE)
+                    .map(|f| ui.push_font(f));
                 self.list
                     .iter()
                     .for_each(|text| ui.text(&format!("{}", text)));

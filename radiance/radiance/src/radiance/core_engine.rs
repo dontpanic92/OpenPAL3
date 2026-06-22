@@ -166,6 +166,19 @@ impl CoreRadianceEngine {
             phase_start.elapsed().as_nanos() as u64,
         );
 
+        // If a game-shipped font was appended to the imgui atlas since the
+        // last frame, rebuild the GPU atlas texture now — before
+        // `ui_manager.update` starts a new imgui frame (which asserts the
+        // atlas is built).
+        {
+            let imgui_context = self.ui_manager.imgui_context();
+            if imgui_context.take_atlas_dirty() {
+                self.rendering_engine
+                    .borrow_mut()
+                    .update_imgui_font_atlas(&imgui_context);
+            }
+        }
+
         let scene_manager = self.scene_manager.clone();
         let task_manager = self.task_manager.clone();
         let audio_engine = self.audio_engine.clone();

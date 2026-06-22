@@ -349,6 +349,18 @@ impl IPal3ServiceImpl for Pal3Service {
     fn create_director(&self, asset_path: &str) -> ComRc<IDirector> {
         *self.last_asset_path.borrow_mut() = Some(asset_path.to_string());
 
+        // Switch in-game text to the game-shipped font (simsun). No-op if
+        // the file is missing; the editor/title selector keep the bundled
+        // font. Registered once here; the engine rebuilds the atlas next
+        // frame.
+        if let Some(bytes) = shared::load_game_font(shared::GameType::PAL3, asset_path) {
+            self.app
+                .engine()
+                .borrow()
+                .ui_manager()
+                .add_game_font(&bytes, shared::GameType::PAL3.ui_font_scale());
+        }
+
         // Warm the AssetManager up front so the menu + adventure
         // director see a consistent VFS. The debug layer install needs
         // an exclusive engine borrow, which is not safe to take from

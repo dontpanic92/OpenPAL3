@@ -346,6 +346,14 @@ impl RenderingEngine for VulkanRenderingEngine {
         self.pending_offscreen_waits.push(target_semaphore);
     }
 
+    fn update_imgui_font_atlas(&mut self, context: &crate::imgui::ImguiContext) {
+        let queue = self.queue;
+        let command_pool = self.command_pool;
+        self.imgui
+            .borrow_mut()
+            .rebuild_font_atlas(queue, command_pool, context);
+    }
+
     fn capture_last_frame(&mut self) -> Option<crate::rendering::CapturedFrame> {
         // Pre-flight: bail without device wait when there's nothing to
         // read back. Headless boots and post-`drop_swapchain` states

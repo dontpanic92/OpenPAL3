@@ -22,6 +22,14 @@ impl DialogBox {
     const DLG_Y_POSITION_FACTOR: f32 = 1. - Self::DLG_HEIGHT_FACTOR;
     const DLG_AVATOR_WIDTH_FACTOR: f32 = 1. / 3.;
     const DLG_CLICK_INDICATOR_PADDING_FACTOR: f32 = 1.4;
+    // The original game lays out CJK dialog text on a tight grid. The horizontal
+    // character advance is ~1.1x the glyph ink height (tighter than simsun's
+    // natural em advance, which carries extra side bearing), and the vertical
+    // line pitch is marginally looser than the advance. These factors are tuned
+    // against the original so text packs as densely as the original instead of
+    // looking sparse.
+    const DLG_CHAR_ADVANCE_FACTOR: f32 = 0.93;
+    const DLG_LINE_HEIGHT_FACTOR: f32 = 1.0;
 
     // hard code for decoration at bottom-center
     const DLG_DECORATION_WIDTH_TRIM: f32 = 66.;
@@ -128,8 +136,13 @@ impl DialogBox {
             0.
         };
 
-        // FIXME: seem not a good method to get font size
-        let font = ui.fonts().fonts()[0];
+        // Prefer the game-shipped font for in-game dialog text; fall back
+        // to the bundled font (atlas slot 0) when no game font was
+        // registered (e.g. assets missing).
+        let font = self
+            .ui
+            .game_font(radiance::imgui::GameFontSize::LARGE)
+            .unwrap_or_else(|| ui.fonts().fonts()[0]);
         let font_size = ui.fonts().get_font(font).unwrap().font_size;
 
         ui.window("dlg_box")
@@ -316,12 +329,13 @@ impl DialogBox {
                 .build();
 
                 // draw text
+                let _font_token = ui.push_font(font);
                 let mut text_x = 0.;
                 let mut text_y = 0.;
                 let mut text_color = imgui::ImColor32::WHITE;
                 for c in text.chars() {
                     if dialog_width - avator_width * 2. - text_x < 0. {
-                        text_y += font_size * 1.5;
+                        text_y += font_size * Self::DLG_LINE_HEIGHT_FACTOR;
                         text_x = 0.;
                     }
                     match c {
@@ -330,7 +344,7 @@ impl DialogBox {
                                 // already at the beginning, don't change to a new line
                                 continue;
                             }
-                            text_y += font_size * 1.5;
+                            text_y += font_size * Self::DLG_LINE_HEIGHT_FACTOR;
                             text_x = 0.;
                             continue;
                         }
@@ -354,7 +368,7 @@ impl DialogBox {
                                 text_color,
                                 &c.to_string(),
                             );
-                            text_x += font_size * 1.1;
+                            text_x += font_size * Self::DLG_CHAR_ADVANCE_FACTOR;
                         }
                     }
                 }

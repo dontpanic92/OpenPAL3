@@ -107,6 +107,40 @@ impl GameType {
         }
     }
 
+    /// Asset-relative paths of the fonts shipped with the game, in
+    /// priority order. The first one that exists is used for in-game text;
+    /// an empty list (or none found) falls back to the bundled font.
+    ///
+    /// PAL3 text is decoded as GBK (simplified), so `simsun.ttc` is the
+    /// right face; the traditional `mingliu.ttc` is intentionally omitted.
+    /// PAL4 prefers the kai face the original uses, falling back to simsun.
+    /// PAL5 ships no font (uses the OS system font), so it falls back to
+    /// the bundled font here.
+    pub fn ui_font_candidates(&self) -> &'static [&'static str] {
+        match self {
+            GameType::PAL3 => &["simsun.ttc"],
+            GameType::PAL3A => &["simsun.ttc"],
+            GameType::PAL4 => &["gamedata/ui/fonts/kai.TTF", "gamedata/ui/fonts/simsun.ttc"],
+            _ => &[],
+        }
+    }
+
+    /// Extra size multiplier applied to the game-shipped UI font, on top of
+    /// the per-face ideograph normalization done in `ImguiContext`. It
+    /// expresses how large the *original* game renders its dialog text
+    /// relative to the bundled-font baseline. Measured from in-game vs.
+    /// original comparison screenshots, both PAL3 and PAL4 render ~1.5x
+    /// larger than the bundled baseline. Games without a shipped font return
+    /// `1.0` (no effect).
+    pub fn ui_font_scale(&self) -> f32 {
+        match self {
+            GameType::PAL3 => 1.51,
+            GameType::PAL3A => 1.51,
+            GameType::PAL4 => 1.49,
+            _ => 1.0,
+        }
+    }
+
     pub fn dff_loader_config(&self) -> Option<&DffLoaderConfig<'_>> {
         match self {
             GameType::PAL3 => None,
@@ -180,6 +214,30 @@ impl GameType {
             GameType::Gujian2,
         ]
     }
+}
+
+/// Read the first existing game-shipped UI font for `game` from
+/// `asset_path` (see [`GameType::ui_font_candidates`]). Returns the raw
+/// TTF/TTC bytes, or `None` when the game ships no font (PAL5) or none of
+/// the candidate files are present — callers then keep the bundled font.
+///
+/// Fonts live as plain files alongside the game install (PAL3 root,
+/// PAL4 `gamedata/ui/fonts/`), so they're read straight from disk rather
+/// than the asset VFS.
+pub fn load_game_font(game: GameType, asset_path: &str) -> Option<Vec<u8>> {
+    for rel in game.ui_font_candidates() {
+        let path = std::path::Path::new(asset_path).join(rel);
+        match std::fs::read(&path) {
+            Ok(bytes) => {
+                log::info!("Using game-shipped font {}", path.display());
+                return Some(bytes);
+            }
+            Err(err) => {
+                log::debug!("game font candidate {} unavailable: {err}", path.display());
+            }
+        }
+    }
+    None
 }
 
 lazy_static::lazy_static! {

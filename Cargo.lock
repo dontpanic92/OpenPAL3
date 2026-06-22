@@ -3750,6 +3750,7 @@ dependencies = [
  "serde",
  "symphonia",
  "toml 0.7.8",
+ "ttf-parser",
  "uuid 0.8.2",
  "vitagl-sys",
  "vitasdk-sys",

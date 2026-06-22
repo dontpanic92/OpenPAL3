@@ -229,6 +229,10 @@ impl DialogBoxPresenter {
 ///   dialog: every CJK glyph is a valid break point, and ASCII runs
 ///   still wrap (without word boundaries — acceptable here).
 fn render_segments(ui: &Ui, segments: &[Segment], margin_x: f32, wrap_width: f32) {
+    // Use the game-shipped font for in-game dialog text when registered,
+    // so measurement (line height / glyph width) and drawing agree.
+    let _font_token =
+        radiance::imgui::game_font(radiance::imgui::GameFontSize::LARGE).map(|f| ui.push_font(f));
     let line_height = ui.text_line_height();
     let mut line_x = 0.0_f32;
     let mut line_y = 0.0_f32;

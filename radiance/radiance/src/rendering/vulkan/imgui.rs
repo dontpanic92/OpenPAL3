@@ -118,6 +118,25 @@ impl ImguiRenderer {
         self.renderer.set_render_pass(render_pass)
     }
 
+    /// Rebuild the GPU font-atlas texture from the (possibly mutated)
+    /// imgui font atlas. Called when a game font has been appended after
+    /// initial atlas upload (see `ImguiContext::add_game_font`). Must run
+    /// before the next `igNewFrame`, which asserts the atlas is built.
+    pub fn rebuild_font_atlas(
+        &mut self,
+        queue: vk::Queue,
+        command_pool: vk::CommandPool,
+        context: &ImguiContext,
+    ) {
+        if let Err(err) = self.renderer.update_fonts_texture(
+            queue,
+            command_pool,
+            &mut context.context_mut(),
+        ) {
+            log::error!("Failed to rebuild imgui font atlas: {err}");
+        }
+    }
+
     pub fn record_command_buffer(&mut self, frame: ImguiFrame, command_buffer: vk::CommandBuffer) {
         if !frame.frame_begun {
             return;

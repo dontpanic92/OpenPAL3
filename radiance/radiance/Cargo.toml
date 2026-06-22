@@ -28,6 +28,7 @@ mini-fs = { workspace = true }
 radiance-assets = { path = "../radiance-assets" }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.7"
+ttf-parser = "0.25"
 uuid = "0.8"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 zstd = "0.13"

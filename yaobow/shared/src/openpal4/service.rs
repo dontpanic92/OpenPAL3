@@ -689,6 +689,18 @@ impl Pal4Service {
 
 impl IPal4ServiceImpl for Pal4Service {
     fn create_director(&self, asset_path: &str) -> ComRc<IDirector> {
+        // Switch in-game text to the game-shipped font (kai, fallback
+        // simsun). No-op if the files are missing; the editor/title
+        // selector keep the bundled font. Registered once here; the engine
+        // rebuilds the atlas next frame.
+        if let Some(bytes) = crate::load_game_font(crate::GameType::PAL4, asset_path) {
+            self.app
+                .engine()
+                .borrow()
+                .ui_manager()
+                .add_game_font(&bytes, crate::GameType::PAL4.ui_font_scale());
+        }
+
         modes::route(
             self,
             Pal4ModeIntent::StartMenu {

@@ -1,7 +1,7 @@
 use crosscom::ComRc;
 
 use super::{ComponentFactory, RenderTarget};
-use crate::{comdef::IScene, imgui::ImguiFrame, scene::Viewport};
+use crate::{comdef::IScene, imgui::ImguiContext, imgui::ImguiFrame, scene::Viewport};
 use std::rc::Rc;
 
 /// Raw CPU-side copy of the most recently presented framebuffer.
@@ -65,4 +65,11 @@ pub trait RenderingEngine {
     fn capture_last_frame(&mut self) -> Option<CapturedFrame> {
         None
     }
+
+    /// Rebuild the GPU imgui font-atlas texture after the atlas was
+    /// mutated post-initialization (e.g. a game-shipped font was appended
+    /// via [`ImguiContext::add_game_font`]). Must be invoked before the
+    /// next imgui frame begins. Default no-op for backends without a
+    /// rebuildable atlas.
+    fn update_imgui_font_atlas(&mut self, _context: &ImguiContext) {}
 }
