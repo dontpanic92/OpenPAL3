@@ -429,7 +429,11 @@ fn parse_post_command(url: &str, req: &mut Request) -> Result<AgentCommand, Agen
             AgentCommand::ChooseWorldMap(parse::<crate::protocol::WorldMapChooseParams>(&body)?)
         }
         "/v1/menu/new_game" => AgentCommand::EnterNewGame,
-        "/v1/menu/load" => AgentCommand::EnterLoadGame(parse::<SlotParams>(&body)?),
+        // NOTE: there is intentionally no `/v1/menu/load` route. `/v1/load`
+        // (`LoadSlot`) is the single load endpoint and auto-routes: it
+        // restores in-place when a playthrough is active, or boots a fresh
+        // director from the slot when at the menu. `EnterLoadGame` survives
+        // only as the internal "fresh-boot from slot" intent.
         "/v1/menu/exit" => AgentCommand::ExitGame,
         _ => {
             return Err(AgentError::bad_request(format!(

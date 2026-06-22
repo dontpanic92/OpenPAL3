@@ -22,7 +22,7 @@ impl SceCommand for SceCommandFadeInWhite {
         state.set_curtain(-opacity);
         self.spent += delta_sec;
 
-        if self.spent >= SCE_COMMAND_FADE_IN_TIMEOUT {
+        if state.fast_forward() || self.spent >= SCE_COMMAND_FADE_IN_TIMEOUT {
             state.set_curtain(0.);
             true
         } else {

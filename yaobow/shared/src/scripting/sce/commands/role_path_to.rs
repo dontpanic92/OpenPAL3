@@ -64,7 +64,7 @@ impl SceCommand for SceCommandRolePathTo {
         }
         let step = speed * delta_sec;
         let remain = Vec3::sub(&to, &position);
-        let completed = remain.norm() < step;
+        let completed = state.fast_forward() || remain.norm() < step;
         let new_position = if completed {
             to
         } else {

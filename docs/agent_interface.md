@@ -1,6 +1,7 @@
-# PAL4 Agent Interface
+# PAL3 / PAL4 Agent Interface
 
-OpenPAL3's PAL4 binary can run with an **embedded HTTP+JSON server** that
+OpenPAL3's PAL4 and PAL3 binaries can run with an **embedded HTTP+JSON
+server** that
 exposes observability and control endpoints for an external automation
 agent (an AI test driver, a Python script, a shell loop, your future MCP
 adapter, etc.). The server is opt-in via the `--agent-port` flag and
@@ -88,7 +89,19 @@ time, so issue `fast_forward` if you want a hard skip.
 | Method | Path                                | Body                          |
 | ------ | ----------------------------------- | ----------------------------- |
 | `POST` | `/v1/save`                          | `{"slot":1}` — slot file under `<save_dir>/OpenPAL4/Save/<slot>.json` |
-| `POST` | `/v1/load`                          | `{"slot":1}` — restore the named slot                                  |
+| `POST` | `/v1/load`                          | `{"slot":1}` — **single** load endpoint; auto-routes by mode |
+
+`/v1/load` is mode-aware: when a playthrough is active it restores the
+slot **in-place**; when issued at the start menu it **boots a fresh
+director** from the slot. There is intentionally no separate
+`/v1/menu/load` route (see [Changes](#changes)).
+
+### Lifecycle
+
+| Method | Path                                | Body                          |
+| ------ | ----------------------------------- | ----------------------------- |
+| `POST` | `/v1/menu/new_game`                 | _(empty body)_ — start a fresh playthrough (works at the menu or as a restart from story) |
+| `POST` | `/v1/menu/exit`                     | _(empty body)_ — quit the application |
 
 ### Trace
 
@@ -122,6 +135,15 @@ Notable variants for plot-progression analysis:
 | ------ | ----------------------------------- | ----------------------------------------------------- |
 | `POST` | `/v1/script/eval`                   | **501 — intentional.** Plot advancement is trigger-driven; see [`docs/pal4_plot_catalog.md`](pal4_plot_catalog.md#plot-advancement-not-set-the-flag). The stub stays for future read-only inspector use cases. |
 
+## Changes
+
+* **`/v1/menu/load` removed (breaking).** Loading is now a single,
+  mode-aware `POST /v1/load`: it restores **in-place** when a playthrough
+  is active and **boots a fresh director from the slot** at the start
+  menu. Callers that previously posted `/v1/menu/load {slot}` should post
+  `/v1/load {slot}` instead. `/v1/menu/new_game` and `/v1/menu/exit` are
+  unchanged.
+
 ## Examples
 
 ### `curl`
@@ -142,12 +164,14 @@ $ curl -s http://127.0.0.1:8765/v1/state | jq
     ],
     "money": 0,
     "quest_percentage": 0,
-    "dialog": { "open": false, "text": "", "avatar": "left" },
+    "dialog": { "open": false, "text": "", "avatar": "left", "choices": [] },
+    "inventory": [],
     "fast_forward": false,
     "paused": false,
     "current_script_fn": "q01_01_main",
     "script_running": true,
     "movie_playing": false,
+    "world_map_open": false,
     "fps": 59.7,
     "dt": 0.01672
   }
@@ -369,21 +393,21 @@ Differences from PAL4:
 | `GET  /v1/screenshot`                 | **Supported**      | Reads back the last presented swapchain frame |
 | `POST /v1/input/key`, `/v1/input/axis` | **Supported**     | Routed through the synthetic-input bridge |
 | `POST /v1/time/pause` / `resume` / `step` | **Supported** | `AdventureDirector::update` honors `bridge.effective_dt` |
-| `POST /v1/time/fast_forward`          | **Partial**        | Flag is set on the bridge; SceVm doesn't yet read it (scripted `giWait`-equivalent waits still consume their own simulated time) |
+| `POST /v1/time/fast_forward`          | **Supported**      | `SceVm` reads the flag: dialog/movie waits are skipped and timed SCE tweens (camera/role/fade/quake) collapse to their final state in one frame |
 | `POST /v1/player/teleport`            | **Supported**      | Teleports `GlobalState::role_controlled` and mirrors to `PersistentState` |
 | `POST /v1/dialog/advance`             | **Supported**      | Synthesises a `Space` tap |
-| `POST /v1/dialog/choose`              | **not_implemented**| Deferred; needs an injection point in the SCE dialog system |
-| `POST /v1/save/slot`                  | **Supported**      | `PersistentState::save` |
-| `POST /v1/load/slot`                  | **Supported**      | Rebuilds the `AdventureDirector` from the slot (identical to `enter_load_game`) |
+| `POST /v1/dialog/choose`              | **not_implemented**| Deferred; needs an injection point in the SCE dialog system. (Under fast-forward, PAL3 auto-picks the first option so runs don't stall.) |
+| `POST /v1/save`                       | **Supported**      | `PersistentState::save` |
+| `POST /v1/load`                       | **Supported**      | Rebuilds the `AdventureDirector` from the slot (PAL3 has no in-place restore, so the menu/in-game auto-route resolves to the same fresh boot) |
 | `GET  /v1/script/globals`             | **Supported**      | Dense window over `PersistentState::get_global(i16)` |
-| `POST /v1/enter_new_game` / `/enter_load_game` / `/exit_game` | **Supported** | Routed through `Pal3Service`; `--pal3 --agent-port` must have been the launch flag so the asset path is known |
+| `POST /v1/menu/new_game` / `/v1/menu/exit` | **Supported** | Routed through `Pal3Service`; `--pal3 --agent-port` must have been the launch flag so the asset path is known |
 | `POST /v1/script/eval`                | **not_implemented**| PAL3 has no AngelScript VM |
 | `POST /v1/script/trace/*`             | **not_implemented**| No `SceVm` trace adapter yet |
 | `GET  /v1/scene/triggers` / `objects` | **not_implemented**| Deferred — PAL3 enumerates triggers as SCE proc entries, not EVF |
 | `POST /v1/scene/fire_trigger`         | **not_implemented**| Deferred — will route to `SceVm::call_proc_by_name` |
 | `POST /v1/object/interact`            | **not_implemented**| PAL3 has no GOB `research_function` analog |
 | `POST /v1/world_map/choose`           | **not_implemented**| PAL3 has no world-map prompt |
-| `GET  /v1/perf/metrics`               | **Supported**      | Shared with PAL4 (`radiance::perf` snapshot) |
+| `GET  /v1/perf`                       | **Supported**      | Shared with PAL4 (`radiance::perf` snapshot) |
 
 ### Differences from PAL4 you should know about
 

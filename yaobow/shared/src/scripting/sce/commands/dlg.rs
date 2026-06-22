@@ -34,7 +34,13 @@ impl SceCommand for SceCommandDlg {
 
         // delay set_adv_input to the next frame so that the last kay pressed
         // won't trigger the sce proc again.
-        self.dlg_end = state.input().get_key_state(Key::Space).pressed()
+        //
+        // Under agent fast-forward we don't wait for the player to advance
+        // the box — end it immediately so automated runs don't stall on
+        // dialog. (Still resolves on the next frame, mirroring the keypress
+        // path, so adv-input re-enable stays correctly deferred.)
+        self.dlg_end = state.fast_forward()
+            || state.input().get_key_state(Key::Space).pressed()
             || state.input().get_key_state(Key::GamePadEast).pressed()
             || state.input().get_key_state(Key::GamePadSouth).pressed()
             || ui.is_mouse_released(MouseButton::Left);

@@ -45,6 +45,12 @@ pub enum AgentCommand {
     /// Save the current game state to the given slot.
     SaveSlot(SlotParams),
     /// Load a previously saved game state from the given slot.
+    ///
+    /// This is the single public load command (`POST /v1/load`). It
+    /// auto-routes per the active mode: when a playthrough is live the
+    /// game restores it **in-place**; when at the start menu the
+    /// dispatcher boots a **fresh** director from the slot (equivalent to
+    /// the internal [`Self::EnterLoadGame`] intent).
     LoadSlot(SlotParams),
     /// Read a slice of the ring-buffered log.
     LogTail(LogTailParams),
@@ -122,8 +128,13 @@ pub enum AgentCommand {
     /// menu or as a restart from story.
     EnterNewGame,
 
-    /// Load a saved playthrough into the story director (Load Game).
-    /// Like [`Self::EnterNewGame`] but boots directly into save `slot`.
+    /// Internal "fresh-boot from save slot" intent. Like
+    /// [`Self::EnterNewGame`] but boots directly into save `slot`.
+    ///
+    /// No longer has a dedicated HTTP route: `POST /v1/load`
+    /// ([`Self::LoadSlot`]) maps onto this intent automatically when it
+    /// is issued at the start menu. Retained as a variant so the
+    /// per-game dispatchers can express the fresh-boot path internally.
     EnterLoadGame(SlotParams),
 
     /// Quit the application.

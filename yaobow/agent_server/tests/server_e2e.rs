@@ -213,6 +213,29 @@ fn log_tail_is_served_without_worker() {
 }
 
 #[test]
+fn load_route_is_the_single_load_endpoint() {
+    // `/v1/load` is the single, mode-aware load endpoint; `/v1/menu/load`
+    // was removed. Assert the former routes to a command (200 Ok via the
+    // null session) and the latter is now an unknown route (400).
+    let (queue, consumer) = AgentCommandQueue::new();
+    let server = AgentServer::start(AgentServerConfig::loopback(0), &queue, None)
+        .expect("start agent server");
+    let addr = server.local_addr();
+    let _worker = spawn_worker(consumer);
+    wait_for_server(&addr);
+
+    let (status, body) = http_request(&addr, "POST", "/v1/load", r#"{"slot":2}"#);
+    assert_eq!(status, 200, "/v1/load should route; body={body}");
+    let resp: AgentResponse = serde_json::from_str(&body).expect(&format!("parse: {body}"));
+    assert!(matches!(resp, AgentResponse::Ok), "got {resp:?}");
+
+    let (status, body) = http_request(&addr, "POST", "/v1/menu/load", r#"{"slot":2}"#);
+    assert_eq!(status, 400, "/v1/menu/load should be removed; body={body}");
+    let resp: AgentResponse = serde_json::from_str(&body).expect(&format!("parse: {body}"));
+    assert!(matches!(resp, AgentResponse::Error(_)), "got {resp:?}");
+}
+
+#[test]
 fn unknown_route_returns_error() {
     let (queue, _consumer) = AgentCommandQueue::new();
     let server = AgentServer::start(AgentServerConfig::loopback(0), &queue, None)

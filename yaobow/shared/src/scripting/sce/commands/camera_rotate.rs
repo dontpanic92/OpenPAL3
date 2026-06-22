@@ -25,6 +25,18 @@ impl SceCommand for SceCommandCameraRotate {
         let scene = scene_manager.scene().unwrap();
         let cam_rot = scene.camera().transform().euler();
 
+        // Agent fast-forward: snap straight to the target orientation and
+        // finish this frame instead of easing over `duration`.
+        if _state.fast_forward() {
+            let x_rot = (self.to_rot_x - cam_rot.x).to_radians();
+            let y_rot = (self.to_rot_y - cam_rot.y).to_radians();
+            let mut c = scene.camera_mut();
+            c.transform_mut()
+                .rotate_axis_angle(&Vec3::UP, -x_rot)
+                .rotate_axis_angle(&Vec3::EAST, -y_rot);
+            return true;
+        }
+
         let left = (self.duration - self.spent).abs();
         let (x_rot, y_rot) = if left > Transform::EPS {
             let (mut x, mut y) = (

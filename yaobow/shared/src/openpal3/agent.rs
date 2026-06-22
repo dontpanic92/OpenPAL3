@@ -101,18 +101,16 @@ pub fn dispatch_pal3_command(ctx: &Pal3DispatchCtx, command: AgentCommand) -> Ag
             AgentResponse::Ok
         }
         C::SaveSlot(p) => handle_save_slot(ctx, p),
-        C::LoadSlot(_) => AgentResponse::err(AgentError::not_implemented(
-            "PAL3 /v1/load/slot requires installing a fresh AdventureDirector via mode-control; \
-             dispatcher will route this through Pal3Service::enter_load_game once the IDL exposes \
-             the entry point",
-        )),
         C::GetScriptGlobals(p) => handle_get_globals(ctx, p),
 
         // --- mode control: routed through the dispatcher in service.rs ----
-        C::EnterNewGame | C::EnterLoadGame(_) | C::ExitGame => {
-            // Should be handled before reaching here. Defensive
-            // fallback so a future refactor doesn't silently swallow
-            // these into the not_implemented bucket.
+        // `LoadSlot` (`/v1/load`) is unified with `EnterLoadGame`: PAL3 has
+        // no in-place restore, so `Pal3Service::dispatch_mode_control`
+        // rebuilds a fresh `AdventureDirector` from the slot for both. All
+        // four are intercepted by `is_mode_control_command` before reaching
+        // this per-command dispatcher; this arm is a defensive fallback so a
+        // future refactor doesn't silently swallow them.
+        C::EnterNewGame | C::EnterLoadGame(_) | C::LoadSlot(_) | C::ExitGame => {
             AgentResponse::err(AgentError::internal(
                 "mode-control command leaked into the PAL3 per-command dispatcher",
             ))

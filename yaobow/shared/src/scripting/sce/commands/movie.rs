@@ -29,6 +29,14 @@ impl SceCommand for SceCommandMovie {
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {
+        // Under agent fast-forward, skip movie playback entirely: stop any
+        // in-flight stream and finish the command this frame so automated
+        // runs don't sit through the clip.
+        if state.fast_forward() {
+            state.global_state_mut().video_player().stop();
+            return true;
+        }
+
         let source_size = if let Some(size) = self.source_size {
             size
         } else {

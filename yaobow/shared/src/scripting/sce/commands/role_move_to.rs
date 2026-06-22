@@ -54,7 +54,7 @@ impl SceCommand for SceCommandRoleMoveTo {
         let position = role.transform().borrow().position();
         let step = SPEED * delta_sec;
         let remain = Vec3::sub(&to, &position);
-        let completed = remain.norm() < step;
+        let completed = state.fast_forward() || remain.norm() < step;
         let new_position = if completed {
             to
         } else {

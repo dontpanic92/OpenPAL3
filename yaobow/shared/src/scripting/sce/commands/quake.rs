@@ -27,6 +27,17 @@ impl SceCommand for SceCommandQuake {
         _delta_sec: f32,
     ) -> bool {
         let scene = scene_manager.scene().unwrap();
+
+        // Agent fast-forward: stop shaking, restore the camera, and finish
+        // this frame instead of jittering for `duration`.
+        if _state.fast_forward() {
+            scene
+                .camera_mut()
+                .transform_mut()
+                .set_position(&self.original_position);
+            return true;
+        }
+
         let mut cam_pos = self.original_position;
         cam_pos.y += self.amplitude * (1. - 2. * rand::random::<f32>());
 

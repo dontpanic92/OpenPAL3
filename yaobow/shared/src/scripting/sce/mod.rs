@@ -51,6 +51,13 @@ pub struct SceState {
     context: SceExecutionContext,
     run_mode: i32,
     curtain: f32,
+    /// Agent-server fast-forward flag, refreshed once per frame from
+    /// [`AgentBridge::fast_forward`](crate::agent_common::AgentBridge)
+    /// by `AdventureDirector` before each `SceVm::update`. SCE commands
+    /// read it via [`SceState::fast_forward`] to skip input-blocked
+    /// waits (dialog / movie) and collapse timed tweens to their final
+    /// state in a single frame. Defaults to `false` (real-time).
+    fast_forward: bool,
     ext: HashMap<String, Box<dyn Any>>,
     input_engine: Rc<RefCell<dyn InputEngine>>,
     audio_engine: Rc<dyn AudioEngine>,
@@ -78,6 +85,7 @@ impl SceState {
             context: SceExecutionContext::new(sce, sce_name, options),
             run_mode: 1,
             curtain: 1.,
+            fast_forward: false,
             ext,
             input_engine,
             audio_engine,
@@ -115,6 +123,18 @@ impl SceState {
 
     pub fn set_run_mode(&mut self, run_mode: i32) {
         self.run_mode = run_mode;
+    }
+
+    /// Whether the agent-server fast-forward mode is active this frame.
+    /// SCE commands consult this to skip input-blocked waits (dialog /
+    /// movie) and to collapse timed tweens to their final state.
+    pub fn fast_forward(&self) -> bool {
+        self.fast_forward
+    }
+
+    /// Set by `AdventureDirector` once per frame from the agent bridge.
+    pub fn set_fast_forward(&mut self, fast_forward: bool) {
+        self.fast_forward = fast_forward;
     }
 
     pub fn curtain(&self) -> f32 {

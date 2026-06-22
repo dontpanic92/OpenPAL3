@@ -34,7 +34,7 @@ use std::rc::Rc;
 
 use agent_server::protocol::{
     AgentCommand, AgentError, AgentResponse, AxisInputParams, KeyAction, KeyInputParams,
-    PerfMetric, PerfMetricsResponse, ScreenshotResponse, StateSnapshot, StepTimeParams,
+    PerfMetric, PerfMetricsResponse, ScreenshotResponse, SlotParams, StateSnapshot, StepTimeParams,
 };
 use crosscom::ComRc;
 use packfs::init_virtual_fs;
@@ -357,6 +357,24 @@ impl Pal4Service {
                 // the first dialog reply while the start-menu is up).
                 let response = self.dispatch_session_command(env.command.clone());
                 env.reply(response);
+            } else if Self::is_menu_load_command(&env.command, &scene_manager) {
+                // `/v1/load` (LoadSlot) issued at the start menu — i.e.
+                // with no active story director. There is nothing to
+                // restore in-place, so auto-route to the fresh-boot path:
+                // translate to the internal EnterLoadGame intent and let
+                // the mode-control dispatcher install a fresh director
+                // booted from the slot. When a playthrough *is* active
+                // this branch is skipped and LoadSlot falls through to the
+                // story director below for an in-place restore.
+                let slot = match &env.command {
+                    AgentCommand::LoadSlot(p) => p.slot,
+                    _ => unreachable!("is_menu_load_command guards LoadSlot"),
+                };
+                let response = self.dispatch_mode_control(
+                    &scene_manager,
+                    AgentCommand::EnterLoadGame(SlotParams { slot }),
+                );
+                env.reply(response);
             } else if Self::is_mode_control_command(&env.command) {
                 // Mode-control commands (new_game / load / exit) install
                 // the next director via the `SceneManager`. Handled here
@@ -403,6 +421,19 @@ impl Pal4Service {
         scene_manager
             .director()
             .and_then(|d| d.query_interface::<IOpenPAL4Director>())
+    }
+
+    /// Whether `command` is a `/v1/load` (`LoadSlot`) issued with **no**
+    /// active story director — i.e. at the start menu. In that case
+    /// `pump_agent` auto-routes it to the fresh-boot mode-control path
+    /// (translating to `EnterLoadGame`) instead of trying an in-place
+    /// restore on a director that doesn't exist.
+    fn is_menu_load_command(
+        command: &AgentCommand,
+        scene_manager: &ComRc<radiance::comdef::ISceneManager>,
+    ) -> bool {
+        matches!(command, AgentCommand::LoadSlot(_))
+            && Self::active_story_director(scene_manager).is_none()
     }
 
     /// Whether `command` drives a mode transition (handled by the

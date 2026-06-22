@@ -225,14 +225,20 @@ impl IDirectorImpl for AdventureDirector {
         // skip the entire SCE tick so movement, animations, and the
         // VM all freeze in lockstep. Stepped frames use the
         // bridge-provided fixed `dt`.
-        let effective_dt = match self.props.borrow().agent_bridge.as_ref() {
+        //
+        // The same borrow also reads `/v1/time/fast_forward`, which we
+        // push onto the SCE state so commands can skip input-blocked
+        // waits (dialog / movie) and collapse timed tweens this frame.
+        let (effective_dt, fast_forward) = match self.props.borrow().agent_bridge.as_ref() {
             Some(bridge) => match bridge.effective_dt(delta_sec) {
-                (true, dt) => dt,
+                (true, dt) => (dt, bridge.fast_forward.get()),
                 (false, _) => return None,
             },
-            None => delta_sec,
+            None => (delta_sec, false),
         };
-        self.props_mut().do_update(effective_dt)
+        let mut props = self.props_mut();
+        props.sce_vm.state_mut().set_fast_forward(fast_forward);
+        props.do_update(effective_dt)
     }
 
     fn deactivate(&self) {}
