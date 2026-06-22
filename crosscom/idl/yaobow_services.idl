@@ -52,6 +52,14 @@ class YaobowHostContext: IYaobowHostContext {}
 [uuid(8e9d29c2-e60b-4a03-b816-27f1f6a02d63)]
 class Pal3Service: IPal3Service {}
 
+// Conforming class for `IPal5Service` (interface lives in
+// `openpal5.idl`). Declared here so the `ComObject_Pal5Service!` macro
+// generates in `yaobow_lib`, where the PAL5 story runtime
+// (`Pal5StoryDirector`, `Pal5ScriptContext`, agent dispatch) lives.
+// Mirrors `Pal3Service`.
+[uuid(23cec375-5ad3-42e9-8f0e-7147c5329804)]
+class Pal5Service: IPal5Service {}
+
 // App-lifetime script factory. The Yaobow protosept project's `app.p7`
 // conforms a single struct to this proto; Rust reverse-wraps the rooted
 // instance into a `ComRc<IYaobowScriptApp>` (via `wrap_yaobow_script_app`)
@@ -60,29 +68,14 @@ class Pal3Service: IPal3Service {}
 //
 // This interface contains only **factories** for genuinely
 // script-implemented objects. Per-game launch happens directly via
-// `host.palX().create_director()` (Rust services) or via this
-// `make_pal5_director` factory (because PAL5's director stays
-// script-built). No more `launch_*` side-effect methods.
+// `host.palX().create_director()` (Rust services). No more `launch_*`
+// side-effect methods.
 //
 // Marked `scriptable` (not a special app-root): it is reverse-wrapped
 // and dispatched exactly like any other scriptable interface.
 [uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a04), protosept(scriptable)]
 interface IYaobowScriptApp: IUnknown {
     IImmediateDirector make_title_director();
-
-    // PAL5 launch factory. Used both from `title.p7` (script-side
-    // dispatch on click) and from Rust direct boot (`run_openpal5`).
-    // Internally delegates to the `openpal5_director` module so the
-    // factory body has one source of truth. `game_ordinal`
-    // discriminates PAL5 vs PAL5Q (pkg key). Returns `null` when
-    // the scene fails to load (e.g. missing asset path).
-    //
-    // The PAL4 factories (`make_pal4_start_menu`,
-    // `make_pal4_debug_overlay`, `make_actor_controller`) live on
-    // `openpal4.IPal4ScriptFactory` instead — they are PAL4 domain
-    // surfaces consumed by `shared::openpal4::Pal4Service`, which can
-    // only reference a `shared`-owned interface.
-    IDirector? make_pal5_director(&str asset_path, int game_ordinal);
 }
 [uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a05)]
 class YaobowScriptApp: IYaobowScriptApp {}

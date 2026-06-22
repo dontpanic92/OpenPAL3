@@ -118,8 +118,8 @@ impl BootOptions {
 pub struct YaobowApplicationLoader {
     app: ComRc<IApplication>,
     config: Rc<RefCell<YaobowConfig>>,
-    /// The reverse-wrapped script app factory (`make_title_director`,
-    /// `make_pal5_director`). Held for the loader lifetime so the script
+    /// The reverse-wrapped script app factory (`make_title_director`).
+    /// Held for the loader lifetime so the script
     /// box stays rooted. Set in `on_loading`.
     factory: RefCell<Option<ComRc<IYaobowScriptApp>>>,
     /// The canonical host context, used to reach the per-game services.
@@ -220,6 +220,14 @@ impl IComponentImpl for YaobowApplicationLoader {
                 .pal4()
                 .inner::<shared::openpal4::service::Pal4Service>()
                 .pump_agent(delta_sec);
+            host_context
+                .swd5()
+                .inner::<shared::openswd5::service::Swd5Service>()
+                .pump_agent(delta_sec);
+            host_context
+                .pal5()
+                .inner::<crate::openpal5::Pal5Service>()
+                .pump_agent(delta_sec);
         }
     }
 }
@@ -279,7 +287,11 @@ impl YaobowApplicationLoader {
             }
             GameType::PAL5 | GameType::PAL5Q => {
                 let _ = factory; // PAL5 director is Rust-built (yaobow crate).
-                crate::openpal5::create_story_director(self.app.clone(), &asset_path, game)
+                self.boot_pal5_agent_if_requested(host_ctx)?;
+                let game_ordinal = ordinal_for_game(game);
+                host_ctx
+                    .pal5()
+                    .create_director(&asset_path, game_ordinal)
                     .ok_or_else(|| {
                         format!(
                             "PAL5 story director build failed (likely missing PAL5 assets at {asset_path})"
@@ -287,6 +299,7 @@ impl YaobowApplicationLoader {
                     })?
             }
             GameType::SWD5 | GameType::SWDHC | GameType::SWDCF => {
+                self.boot_swd5_agent_if_requested(host_ctx)?;
                 let game_ordinal = ordinal_for_game(game);
                 host_ctx.swd5().create_director(&asset_path, game_ordinal)
             }
@@ -322,6 +335,60 @@ impl YaobowApplicationLoader {
         host_ctx
             .pal3()
             .inner::<crate::openpal3::Pal3Service>()
+            .set_agent_bridge(bridge);
+        Ok(())
+    }
+
+    /// Boot the agent server for SWD5 (mirrors
+    /// [`Self::boot_pal3_agent_if_requested`]). Installs the bridge on
+    /// `Swd5Service` so the next `create_director` plumbs synthetic
+    /// input + pause gating.
+    fn boot_swd5_agent_if_requested(
+        &self,
+        host_ctx: &ComRc<IYaobowHostContext>,
+    ) -> Result<(), String> {
+        let opts = match self.initial_agent_opts.borrow_mut().take() {
+            Some(opts) => opts,
+            None => return Ok(()),
+        };
+
+        let bridge = Self::build_agent_bridge_and_start(
+            &self.app,
+            &opts,
+            self.agent_server.borrow_mut(),
+            "SWD5",
+        )?;
+
+        host_ctx
+            .swd5()
+            .inner::<shared::openswd5::service::Swd5Service>()
+            .set_agent_bridge(bridge);
+        Ok(())
+    }
+
+    /// Boot the agent server for PAL5 (mirrors
+    /// [`Self::boot_pal3_agent_if_requested`]). Installs the bridge on
+    /// the yaobow-crate `Pal5Service` so the next `create_director`
+    /// plumbs synthetic input + pause gating into the story director.
+    fn boot_pal5_agent_if_requested(
+        &self,
+        host_ctx: &ComRc<IYaobowHostContext>,
+    ) -> Result<(), String> {
+        let opts = match self.initial_agent_opts.borrow_mut().take() {
+            Some(opts) => opts,
+            None => return Ok(()),
+        };
+
+        let bridge = Self::build_agent_bridge_and_start(
+            &self.app,
+            &opts,
+            self.agent_server.borrow_mut(),
+            "PAL5",
+        )?;
+
+        host_ctx
+            .pal5()
+            .inner::<crate::openpal5::Pal5Service>()
             .set_agent_bridge(bridge);
         Ok(())
     }
@@ -517,11 +584,19 @@ pub fn run_title_selection() {
 }
 
 pub fn run_openpal5() {
-    run_app(boot_for(GameType::PAL5));
+    run_openpal5_with_agent(None);
+}
+
+pub fn run_openpal5_with_agent(agent: Option<AgentBootOptions>) {
+    run_app(boot_for(GameType::PAL5).with_agent_opts_opt(agent));
 }
 
 pub fn run_openpal5q() {
-    run_app(boot_for(GameType::PAL5Q));
+    run_openpal5q_with_agent(None);
+}
+
+pub fn run_openpal5q_with_agent(agent: Option<AgentBootOptions>) {
+    run_app(boot_for(GameType::PAL5Q).with_agent_opts_opt(agent));
 }
 
 pub fn run_openpal4() {
@@ -533,7 +608,11 @@ pub fn run_openpal4_with_agent(agent: Option<AgentBootOptions>) {
 }
 
 pub fn run_openswd5() {
-    run_app(boot_for(GameType::SWDHC));
+    run_openswd5_with_agent(None);
+}
+
+pub fn run_openswd5_with_agent(agent: Option<AgentBootOptions>) {
+    run_app(boot_for(GameType::SWDHC).with_agent_opts_opt(agent));
 }
 
 pub fn run_opengujian() {

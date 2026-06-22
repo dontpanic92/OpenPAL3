@@ -155,6 +155,33 @@ impl Pal5ScriptContext {
             .unwrap_or(0.0)
     }
 
+    /// Current scene name for the agent snapshot — empty until the
+    /// bootstrap scene has been loaded.
+    pub fn current_scene_name(&self) -> String {
+        if self.scene_loaded {
+            BOOTSTRAP_SCENE.to_string()
+        } else {
+            String::new()
+        }
+    }
+
+    /// Leader (player 1) world position for the agent snapshot, if the
+    /// player entity has been created.
+    pub fn leader_position(&self) -> Option<[f32; 3]> {
+        let entity = self.players.get(&1)?;
+        let pos = entity.transform().borrow().position();
+        Some([pos.x, pos.y, pos.z])
+    }
+
+    /// Agent fast-forward tick: collapse any pending `Wait` sleep and
+    /// dismiss the current dialog so the Lua VM resumes immediately
+    /// this frame. Mirrors PAL3's SCE fast-forward, which skips
+    /// `giWait` / dialog waits.
+    pub fn fast_forward_skip(&mut self) {
+        self.sleep_sec = 0.0;
+        self.dialog = None;
+    }
+
     /// Per-frame update (runs every frame, even while sleeping).
     pub fn update(&mut self, delta_sec: f32) {
         if self.is_sleeping() {

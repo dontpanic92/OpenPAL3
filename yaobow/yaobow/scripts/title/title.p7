@@ -22,7 +22,6 @@ import shared.openpal5;
 import shared.openpal3;
 import shared.openpal4;
 import shared.openswd5;
-import yaobow.openpal5.director;
 import yaobow.title.title_consts;
 
 let PROMPT_FIRST_TIME: int = 0;
@@ -459,7 +458,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
                 return self.host.pal4().create_director(path);
             }
             if arg == title_consts.GAME_PAL5 {
-                return director.make_pal5_director(self.host, self.host.pal5(), path, arg);
+                return self.host.pal5().create_director(path, arg);
             }
             if arg == title_consts.GAME_SWDHC {
                 return self.host.swd5().create_director(path, arg);

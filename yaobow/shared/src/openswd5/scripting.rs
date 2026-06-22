@@ -27,6 +27,9 @@ pub struct SWD5Context {
     scene_manager: ComRc<ISceneManager>,
     scene: Option<Swd5Scene>,
     sleep_sec: f32,
+    /// Current map id (set by `chang_map`). Surfaced to the agent
+    /// snapshot as the `scene` field. `0` before the first map load.
+    current_map_id: i32,
 
     bgm_source: Box<dyn AudioMemorySource>,
     sound_sources: HashMap<i32, RefCell<Box<dyn AudioMemorySource>>>,
@@ -60,6 +63,7 @@ impl SWD5Context {
             scene_manager,
             scene: None,
             sleep_sec: 0.,
+            current_map_id: 0,
             bgm_source,
             sound_sources: HashMap::new(),
             story_msg: None,
@@ -78,6 +82,28 @@ impl SWD5Context {
 
     pub fn is_sleeping(&self) -> bool {
         self.sleep_sec > 0.
+    }
+
+    /// Current map id, exposed to the agent-server state snapshot.
+    pub fn current_map_id(&self) -> i32 {
+        self.current_map_id
+    }
+
+    /// Whether a bik movie is currently playing — surfaced to the
+    /// agent snapshot's `movie_playing` flag.
+    pub fn is_movie_playing(&self) -> bool {
+        self.video_player.get_state() == radiance::video::VideoStreamState::Playing
+    }
+
+    /// Agent fast-forward tick: collapse any pending `sleep` and
+    /// dismiss the current story / talk message so the Lua VM resumes
+    /// immediately this frame instead of waiting on a scripted pause
+    /// or a player keypress. Mirrors PAL3's SCE fast-forward, which
+    /// skips `giWait` / dialog waits.
+    pub fn fast_forward_skip(&mut self) {
+        self.sleep_sec = 0.;
+        self.story_msg = None;
+        self.talk_msg = None;
     }
 
     pub fn update(&mut self, delta_sec: f32) {
@@ -251,6 +277,7 @@ impl SWD5Context {
                 self.scene_manager.push_scene(scene.scene.clone());
 
                 self.scene = Some(scene);
+                self.current_map_id = map_id;
             }
             Err(e) => log::error!("chang_map {}: {:?}", map_id, e),
         }

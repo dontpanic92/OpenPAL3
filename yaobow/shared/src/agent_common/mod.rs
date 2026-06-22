@@ -7,6 +7,7 @@
 //! crate has no compile-time dependency on any particular VM.
 
 pub mod bridge;
+pub mod handlers;
 pub mod launch;
 
 pub use bridge::{AgentBridge, DEFAULT_STEP_DT};

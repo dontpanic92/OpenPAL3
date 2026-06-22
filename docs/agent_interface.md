@@ -1,7 +1,7 @@
-# PAL3 / PAL4 Agent Interface
+# PAL3 / PAL4 / PAL5 / SWD5 Agent Interface
 
-OpenPAL3's PAL4 and PAL3 binaries can run with an **embedded HTTP+JSON
-server** that
+OpenPAL3's PAL4, PAL3, PAL5 and SWD5 binaries can run with an **embedded
+HTTP+JSON server** that
 exposes observability and control endpoints for an external automation
 agent (an AI test driver, a Python script, a shell loop, your future MCP
 adapter, etc.). The server is opt-in via the `--agent-port` flag and
@@ -9,10 +9,12 @@ loopback-bound by default — turn it off and the game runs exactly as
 before.
 
 The same flag is also supported on the PAL3 binary (`yaobow --pal3
---agent-port 8765`). The wire protocol and transport are shared; the
-[PAL3 support matrix](#pal3-support) below lists which endpoints are
-fully implemented, partially supported, or `not_implemented` against the
-PAL3 binary.
+--agent-port 8765`) and on the PAL5 / SWD5 binaries (`yaobow --pal5`,
+`yaobow --pal5q`, `yaobow --swd5`). The wire protocol and transport are
+shared; the [PAL3 support matrix](#pal3-support) and
+[PAL5 / SWD5 support matrix](#pal5--swd5-support) below list which
+endpoints are fully implemented, partially supported, or
+`not_implemented` against each binary.
 
 ## Boot
 
@@ -20,13 +22,16 @@ PAL3 binary.
 # Default: bind 127.0.0.1:8765 with no token.
 yaobow --pal4 --agent-port 8765
 yaobow --pal3 --agent-port 8765   # PAL3 — same flag set, same protocol.
+yaobow --pal5 --agent-port 8765   # PAL5 (and --pal5q for PAL5Q).
+yaobow --swd5 --agent-port 8765   # SWD5 family (SWDHC).
 
 # Explicit bind + bearer token (required for any non-loopback bind).
 yaobow --pal4 --agent-port 8765 --agent-bind 127.0.0.1 --agent-token hunter2
 ```
 
 The listener logs `agent_server: listening on http://127.0.0.1:8765 (PAL4)`
-(or `(PAL3)`) once it's ready to accept requests.
+(or `(PAL3)` / `(PAL5)` / `(SWD5)`) once it's ready to accept requests.
+
 
 ## Endpoints
 
@@ -340,8 +345,10 @@ yaobow/yaobow/src/main.rs     # CLI parsing of --agent-port / --bind / --token
 ```
 
 The `agent_server` crate has no dependency on radiance or the game
-crates — it's reusable for PAL3 / PAL5 by writing additional
-per-game bridges that drain the same queue.
+crates — it's reusable across games. PAL3, PAL4, PAL5 and SWD5 each
+provide a small per-game adapter that drains the same queue; the
+game-agnostic bridge, boot helpers and generic command handlers live in
+`shared::agent_common` (`bridge.rs`, `launch.rs`, `handlers.rs`).
 
 ## Roadmap
 
@@ -424,3 +431,59 @@ Differences from PAL4:
   inverse of `adv_input_enabled`, so dialogues and movies (which
   disable adv input) read as `script_running = true` even when the
   underlying VM is in a `Yield` waiting for input.
+
+## PAL5 / SWD5 support
+
+The PAL5 (`yaobow --pal5` / `--pal5q`) and SWD5 (`yaobow --swd5`)
+binaries speak the same wire protocol, but both are early **single-script
+bootstrap** runtimes (one Lua VM, one hardcoded intro scene, no start
+menu / save-load / battle). They therefore implement only the
+**game-agnostic observability + control subset** and return HTTP 501
+`{"error":{"kind":"not_implemented", …}}` for the per-game gameplay
+endpoints, so external drivers can probe and fall back.
+
+Both adapters reuse the shared `agent_common::AgentBridge` and the
+generic command handlers in `agent_common::handlers`; the per-game
+adapters (`shared::openswd5::agent`, `yaobow_lib::openpal5::agent`) only
+add snapshot construction and the `not_implemented` routing.
+
+### Supported endpoints (PAL5 and SWD5)
+
+| Endpoint                              | Status        | Notes |
+| ------------------------------------- | ------------- | ----- |
+| `GET  /v1/state`                      | **Supported** | Frame/fps/dt/paused/fast_forward + `scene`, `script_running` (and `leader_pos` on PAL5 once the player entity exists) |
+| `POST /v1/input/key` / `axis`         | **Supported** | Injected through the synthetic-input overlay the Lua context polls |
+| `POST /v1/time/pause` / `resume` / `step` | **Supported** | Freezes / single-steps the script clock (the Lua VM `Wait`/`sleep` tick) |
+| `POST /v1/time/fast_forward`          | **Supported** | Collapses pending `Wait`/`sleep` and dismisses the current dialog so scripted waits skip |
+| `POST /v1/dialog/advance`             | **Supported** | Synthesises the Space tap the player presses to dismiss a story/talk box |
+| `GET  /v1/screenshot`                 | **Supported** | Last-frame readback via the shared bridge |
+| `GET  /v1/log/tail`                   | **Supported** | Served by the transport (shared `AgentLogSink`) |
+| `GET  /v1/perf`                       | **Supported** | `radiance::perf` snapshot |
+| save/load, `/v1/menu/*`, `/v1/load`   | **not_implemented** | Single bootstrap script — no persistence or mode graph yet |
+| `/v1/player/teleport`                 | **not_implemented** | No controlled-role teleport surface yet |
+| `/v1/dialog/choose`, `/v1/world_map/choose` | **not_implemented** | No structured choice / world-map prompt |
+| `/v1/scene/triggers` / `objects` / `fire_trigger`, `/v1/object/interact` | **not_implemented** | Scene enumeration deferred |
+| `/v1/script/globals` / `eval` / `trace/*` | **not_implemented** | Lua flag table not exposed; no eval / trace adapter |
+
+### Snapshot field mapping
+
+| Field            | PAL5 value                                   | SWD5 value                                  |
+| ---------------- | -------------------------------------------- | ------------------------------------------- |
+| `scene`          | Bootstrap scene name once loaded (`kuangfengzhai`) | Current map id (`chang_map`), as a string |
+| `block`          | Always empty                                 | Always empty                                |
+| `leader_pos`     | Player-1 entity world position when created  | Always `[0,0,0]` (no tracked leader)        |
+| `script_running` | `true` while the Lua VM isn't parked in `Wait` | `true` while not parked in `sleep`        |
+| `movie_playing`  | Always `false`                               | `true` while a bik movie is playing         |
+| `dialog`         | Always default — free-form text, not structured | Always default                           |
+| `frame` / `fps` / `dt` / `paused` / `fast_forward` | Driven by the shared bridge | Driven by the shared bridge |
+
+> **Single-director invariant.** PAL5/SWD5 only ever install their one
+> Lua story director (no menu/title mode), so the per-frame drainer
+> resolves the active director straight off the `SceneManager`. Both
+> host their drainer on a per-game COM service exposed through the host
+> context: `Swd5Service::pump_agent` (`host.swd5()`) and
+> `Pal5Service::pump_agent` (`host.pal5()`). The same
+> `host.<game>().create_director(...)` entry is used by both the
+> title-selector launch and the CLI direct-boot, so the agent bridge is
+> installed on the service before either builds a director.
+

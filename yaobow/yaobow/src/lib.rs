@@ -112,7 +112,7 @@ pub mod script_source {
     /// Bootstrap the yaobow script root and return the two app-lifetime
     /// COM handles the loader holds for the whole process:
     ///   * `ComRc<IYaobowScriptApp>` — the reverse-wrapped app factory
-    ///     (`make_title_director`, `make_pal5_director`). Holding it
+    ///     (`make_title_director`). Holding it
     ///     keeps the script box rooted.
     ///   * `ComRc<IYaobowHostContext>` — the canonical host context,
     ///     handed to the script's `init` and used by the loader to reach
@@ -135,10 +135,7 @@ pub mod script_source {
         // Build the per-game services + the host context handed to `init`.
         let pal3 = Pal3Service::create(app.clone());
         let pal4 = shared::openpal4::service::Pal4Service::create(app.clone());
-        let pal5 = shared::openpal5::service::Pal5Service::create(
-            app.clone(),
-            engine.rendering_component_factory(),
-        );
+        let pal5 = crate::openpal5::Pal5Service::create(app.clone());
         let swd5 = shared::openswd5::service::Swd5Service::create(app.clone());
         let host_context =
             YaobowHostContext::create(app.clone(), config, pal3.clone(), pal4.clone(), pal5, swd5);
@@ -197,8 +194,9 @@ pub mod openpal5;
 
 pub use application::{
     BootOptions, Pal4AgentBootOptions, boot_for, create_application, resolve_asset_path, run_app,
-    run_opengujian, run_openpal4, run_openpal4_with_agent, run_openpal5, run_openpal5q,
-    run_openswd5, run_title_selection,
+    run_opengujian, run_openpal4, run_openpal4_with_agent, run_openpal5, run_openpal5_with_agent,
+    run_openpal5q, run_openpal5q_with_agent, run_openswd5, run_openswd5_with_agent,
+    run_title_selection,
 };
 pub use openpal3::{run_openpal3, run_openpal3_with_agent};
 

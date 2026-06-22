@@ -4,26 +4,26 @@ module(protosept) shared.openpal5;
 import crosscom.idl;
 import radiance.idl;
 
-// PAL5 launch service. PAL5's director stays script-implemented
-// (the small `OpenPal5Director` in `openpal5_director.p7` is just a
-// thin freeview camera driver — too small to bother Rust-ifying).
-// So `IPal5Service` exposes data + setup helpers the script needs:
+// PAL5 launch service. Mirrors IPal3Service / ISwd5Service: a host-side
+// COM object that builds the PAL5 story director (the Rust Lua-VM
+// `Pal5StoryDirector` in `yaobow_lib::openpal5`). The director returned
+// via `IDirector` is opaque to the script — the script (title dispatch)
+// and Rust direct-boot both just install it on the scene manager.
 //
-//   * `load_default_scene` returns the scene the script will push.
-//   * `position_camera_default` sets the camera to the entry pose
-//     (replaces the INITIAL_POS / INITIAL_LOOK constants previously
-//     hard-coded in the script).
+// Not marked `[protosept(scriptable)]` — the script only calls into it.
 //
-// The script-side `openpal5_director.make_pal5_director(host, path, ord)`
-// helper calls these + boxes the script director + returns it.
+// The conforming `class Pal5Service` lives in `yaobow_services.idl`
+// (and is implemented in `yaobow_lib`), not here, because the PAL5 story
+// runtime (`Pal5StoryDirector`, `Pal5ScriptContext`, agent dispatch)
+// lives in `yaobow_lib::openpal5` and pulling it into `shared` would
+// invert the crate dependency. The interface itself lives here so
+// `IPal5Service` can be referenced symmetrically from
+// `IYaobowHostContext.pal5()`.
 //
-// `game_ordinal` is needed because PAL5 and PAL5Q ship different `.pkg`
-// decryption keys (see `GameType::pkg_key`).
+// `game_ordinal` discriminates PAL5 vs PAL5Q because they ship different
+// `.pkg` decryption keys (see `GameType::pkg_key`). Returns `null` when
+// the director fails to build (e.g. missing assets at `asset_path`).
 [uuid(57fa39fc-df8d-469e-9704-60848580343c)]
 interface IPal5Service: IUnknown {
-    IScene? load_default_scene(&str asset_path, int game_ordinal);
-    void position_camera_default();
+    IDirector? create_director(&str asset_path, int game_ordinal);
 }
-
-[uuid(23cec375-5ad3-42e9-8f0e-7147c5329804)]
-class Pal5Service: IPal5Service {}

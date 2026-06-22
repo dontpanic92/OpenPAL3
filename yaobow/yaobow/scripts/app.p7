@@ -6,7 +6,7 @@
 //
 // Phase 2: the app root has been trimmed to pure factories
 // (`make_title_director`, `make_pal4_debug_overlay`,
-// `make_actor_controller`, `make_pal5_director`). Per-game launches
+// `make_actor_controller`). Per-game launches
 // happen via per-game services (`host.pal4()`, `host.swd5()`, …)
 // directly from title.p7; the script root is no longer involved in
 // the launch dispatch path.
@@ -17,9 +17,7 @@ import yaobow.openpal4.debug_overlay;
 import yaobow.openpal4.loading_overlay;
 import shared.openpal3;
 import shared.openpal4;
-import shared.openpal5;
 import yaobow.openpal3.start_menu as pal3_start_menu;
-import yaobow.openpal5.director;
 import yaobow.openpal4.start_menu;
 import scripting_services;
 import yaobow.yaobow_services;
@@ -66,22 +64,6 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
             entity_0, entity_1, entity_2, entity_3,
             anim_0, anim_1, anim_2, anim_3,
             camera, ray_caster,
-        );
-    }
-
-    // PAL4 launch factory. Used by Rust direct-boot (`run_openpal5`)
-    // — title-page selection calls `director.make_pal5_director`
-    // directly, but this entry exists so Rust can mint the script-side
-    // director without needing a script-level reference to the
-    // `director` module. The body delegates to the same
-    // module function so behaviour is identical to yaobow.title dispatch.
-    pub fn make_pal5_director(
-        self: ref<Self>,
-        asset_path: string,
-        game_ordinal: int,
-    ) -> ?box<radiance.IDirector> {
-        return director.make_pal5_director(
-            self.ctx, self.ctx.pal5(), asset_path, game_ordinal,
         );
     }
 

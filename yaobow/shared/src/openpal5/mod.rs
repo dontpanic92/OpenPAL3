@@ -5,5 +5,4 @@ pub mod comdef {
 }
 pub mod scene;
 pub mod script;
-pub mod service;
 pub mod terrain;
