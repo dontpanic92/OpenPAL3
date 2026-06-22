@@ -45,13 +45,9 @@ pub fn build_terrain_entity(
     let factory = asset_loader.component_factory();
     let entity = CoreEntity::create(format!("{}_terrain", map_name), true);
 
-    let geometries: Vec<Geometry> = mp
-        .patches
-        .iter()
-        .map(|patch| build_patch_geometry(asset_loader, patch))
-        .collect();
+    let geometry = build_terrain_geometry(asset_loader, mp);
 
-    let mesh = StaticMeshComponent::new(entity.clone(), geometries, factory);
+    let mesh = StaticMeshComponent::new(entity.clone(), vec![geometry], factory);
     entity.add_component(
         radiance::comdef::IStaticMeshComponent::uuid(),
         ComRc::from_object(mesh),
@@ -60,48 +56,83 @@ pub fn build_terrain_entity(
     Some(entity)
 }
 
-fn build_patch_geometry(
-    asset_loader: &AssetLoader,
-    patch: &fileformats::pal5::mp::MpPatch,
-) -> Geometry {
-    let mut vertices = Vec::with_capacity(PATCH_EDGE * PATCH_EDGE);
-    let mut texcoords = Vec::with_capacity(PATCH_EDGE * PATCH_EDGE);
+/// Assemble all decoded patches into a single seamless heightfield mesh.
+///
+/// The `.mp` only stores *untextured* patches faithfully; textured patches
+/// use an undecoded variable-length layout and are absent from `mp.patches`,
+/// which would otherwise leave holes in the terrain. To render a continuous
+/// surface we resample every patch onto one shared vertex grid keyed by
+/// world position (patches share edge vertices, so this is exact for the
+/// decoded cells), then **dilate-fill** the gaps left by the missing
+/// textured patches from their known neighbours. The result is a single
+/// hole-free mesh; decoded cells keep their exact geometry and missing cells
+/// are smoothly interpolated.
+fn build_terrain_geometry(asset_loader: &AssetLoader, mp: &MpFile) -> Geometry {
+    // Patch origins fall on a 320-unit grid; vertices on a
+    // `CELL_WORLD_SIZE` (20-unit) grid. Build the height field in the
+    // file's natural axes first (`col` -> fileX from `min_x`, `row` ->
+    // fileZ from `min_z`), then map file -> world at emit time.
+    let max_min_x = mp.patches.iter().map(|p| p.min_x).fold(0.0f32, f32::max);
+    let max_min_z = mp.patches.iter().map(|p| p.min_z).fold(0.0f32, f32::max);
 
-    for row in 0..PATCH_EDGE {
-        for col in 0..PATCH_EDGE {
-            let idx = row * PATCH_EDGE + col;
-            // The `.mp` patch's `min_x` field indexes the world **Z**
-            // axis and `min_z` indexes world **X** (verified by aligning
-            // decoded heights against `.nod` object positions: this
-            // mapping places 219/415 objects within the terrain vs 76
-            // for the naive mapping). Row walks +X, column walks +Z.
-            let x = patch.min_z + row as f32 * CELL_WORLD_SIZE;
-            let z = patch.min_x + col as f32 * CELL_WORLD_SIZE;
-            let y = patch.heights[idx];
-            vertices.push(Vec3::new(x, y, z));
-            texcoords.push(TexCoord::new(x / TEX_TILE_WORLD, z / TEX_TILE_WORLD));
+    let fnx = ((max_min_x + PATCH_WORLD_SIZE) / CELL_WORLD_SIZE).round() as usize + 1;
+    let fnz = ((max_min_z + PATCH_WORLD_SIZE) / CELL_WORLD_SIZE).round() as usize + 1;
+
+    let mut height = vec![0.0f32; fnx * fnz];
+    let mut known = vec![false; fnx * fnz];
+
+    for patch in &mp.patches {
+        for row in 0..PATCH_EDGE {
+            for col in 0..PATCH_EDGE {
+                let fx = ((patch.min_x + col as f32 * CELL_WORLD_SIZE) / CELL_WORLD_SIZE).round()
+                    as usize;
+                let fz = ((patch.min_z + row as f32 * CELL_WORLD_SIZE) / CELL_WORLD_SIZE).round()
+                    as usize;
+                if fx < fnx && fz < fnz {
+                    let i = fx * fnz + fz;
+                    height[i] = patch.heights[row * PATCH_EDGE + col];
+                    known[i] = true;
+                }
+            }
         }
     }
 
-    // Two triangles per cell, winding chosen so the +Y faces are
-    // front-facing under the engine's CCW front-face convention.
-    let mut indices = Vec::with_capacity((PATCH_EDGE - 1) * (PATCH_EDGE - 1) * 6);
-    for row in 0..PATCH_EDGE - 1 {
-        for col in 0..PATCH_EDGE - 1 {
-            let tl = (row * PATCH_EDGE + col) as u32;
+    fill_unknown_heights(&mut height, &mut known, fnx, fnz);
+
+    // File -> world orientation. The decoded file axes are rotated 270°
+    // relative to the world/object axes used by the `.nod` placement. Of
+    // the eight dihedral orientations, `rot270` is the one that aligns the
+    // terrain with object positions: it both yields the best object-height
+    // match (median |ΔY| ≈ 57, vs ≥200 for every non-`transpose` option)
+    // and, being a true rotation, renders un-mirrored (the `transpose`
+    // option matches heights too but is a reflection — it looks mirrored).
+    // Inverse map: world (X, Z) = ((fnz-1 - fz) * CELL, fx * CELL).
+    let mz = fnz - 1;
+    let tile = TEX_TILE_WORLD;
+    let mut vertices = Vec::with_capacity(fnx * fnz);
+    let mut texcoords = Vec::with_capacity(fnx * fnz);
+    for fx in 0..fnx {
+        for fz in 0..fnz {
+            let wx = (mz - fz) as f32 * CELL_WORLD_SIZE;
+            let wz = fx as f32 * CELL_WORLD_SIZE;
+            vertices.push(Vec3::new(wx, height[fx * fnz + fz], wz));
+            texcoords.push(TexCoord::new(wx / tile, wz / tile));
+        }
+    }
+
+    let (nx, nz) = (fnx, fnz);
+    let mut indices = Vec::with_capacity((nx - 1) * (nz - 1) * 6);
+    for gx in 0..nx - 1 {
+        for gz in 0..nz - 1 {
+            let tl = (gx * nz + gz) as u32;
             let tr = tl + 1;
-            let bl = ((row + 1) * PATCH_EDGE + col) as u32;
+            let bl = ((gx + 1) * nz + gz) as u32;
             let br = bl + 1;
             indices.extend_from_slice(&[tl, bl, tr, tr, bl, br]);
         }
     }
 
-    // Note: `SimpleMaterialDef` uses the `TexturedNoLight` shader, whose
-    // vertex layout is POSITION + TEXCOORD only. We deliberately omit
-    // normals here — including a NORMAL component would change the
-    // vertex stride and desync the attributes (garbage positions). The
-    // decoded per-vertex normals are kept on `MpPatch` for a future lit
-    // terrain shader.
+    // See note below on omitting normals for the `TexturedNoLight` shader.
     Geometry::new(
         &vertices,
         None,
@@ -109,6 +140,58 @@ fn build_patch_geometry(
         indices,
         terrain_material(asset_loader),
     )
+}
+
+/// Fill grid cells with no decoded height by repeatedly averaging their
+/// known 4-neighbours (morphological dilation). Converges because the
+/// decoded patches form a connected region surrounding every gap.
+fn fill_unknown_heights(height: &mut [f32], known: &mut [bool], nx: usize, nz: usize) {
+    let at = |gx: usize, gz: usize| gx * nz + gz;
+    loop {
+        let mut changed = false;
+        let mut any_unknown = false;
+        // Snapshot of the known mask so a single pass only reads
+        // previously-known cells (stable dilation front).
+        let prev_known = known.to_vec();
+        for gx in 0..nx {
+            for gz in 0..nz {
+                let i = at(gx, gz);
+                if prev_known[i] {
+                    continue;
+                }
+                any_unknown = true;
+                let mut sum = 0.0f32;
+                let mut count = 0u32;
+                let mut neighbour = |ngx: usize, ngz: usize| {
+                    let ni = at(ngx, ngz);
+                    if prev_known[ni] {
+                        sum += height[ni];
+                        count += 1;
+                    }
+                };
+                if gx > 0 {
+                    neighbour(gx - 1, gz);
+                }
+                if gx + 1 < nx {
+                    neighbour(gx + 1, gz);
+                }
+                if gz > 0 {
+                    neighbour(gx, gz - 1);
+                }
+                if gz + 1 < nz {
+                    neighbour(gx, gz + 1);
+                }
+                if count > 0 {
+                    height[i] = sum / count as f32;
+                    known[i] = true;
+                    changed = true;
+                }
+            }
+        }
+        if !any_unknown || !changed {
+            break;
+        }
+    }
 }
 
 fn terrain_material(asset_loader: &AssetLoader) -> MaterialDef {

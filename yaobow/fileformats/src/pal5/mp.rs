@@ -122,13 +122,21 @@ fn parse_patches(body: &[u8]) -> Vec<MpPatch> {
     };
 
     let mut patches = Vec::new();
-    // Find the first record start, then walk forward.
-    let mut o = match (0..nf.saturating_sub(NORMAL_OFF)).find(|&i| is_record_start(&f, i, nf)) {
-        Some(start) => start,
-        None => return patches,
-    };
-
-    while o + NORMAL_OFF <= nf && is_record_start(&f, o, nf) {
+    // Scan the whole body for untextured record-start signatures. Walking
+    // record-to-record is not robust here: textured patches do **not**
+    // share the untextured head layout (their leading field holds packed
+    // blend data, not a clean `-1`/index layer field) and carry a
+    // variable-length tail, so a sequential walk de-syncs at the first
+    // textured cell. A full scan keyed on the (strict) untextured-head
+    // signature recovers every untextured patch independently of the
+    // textured cells interleaved between them. Textured patches are not
+    // yet decoded and render as gaps — see the module docs.
+    let mut o = 0usize;
+    while o + NORMAL_OFF <= nf {
+        if !is_record_start(&f, o, nf) {
+            o += 1;
+            continue;
+        }
         let min_x = f(o + META_OFF + 8);
         let min_z = f(o + META_OFF + 10);
 
@@ -152,41 +160,33 @@ fn parse_patches(body: &[u8]) -> Vec<MpPatch> {
             normals,
         });
 
-        // Advance past this record's fixed head, then scan for the next
-        // record start (skips the textured-patch variable tail).
-        let mut next = o + REC_HEAD_FLOATS;
-        while next + NORMAL_OFF <= nf && !is_record_start(&f, next, nf) {
-            next += 1;
-        }
-        if next + NORMAL_OFF > nf {
-            break;
-        }
-        o = next;
+        // Record heads are at least one fixed-head stride apart, so skip
+        // ahead to avoid rescanning this record's interior.
+        o += REC_HEAD_FLOATS;
     }
 
-    // Drop any duplicate-origin patches. The variable-tail scan can
-    // occasionally re-lock onto a false-positive signature inside a
-    // textured patch's tail, yielding a second record for an
-    // already-seen cell with garbage geometry (it renders as stray
-    // floating fragments). Keep the first occurrence of each cell.
+    // Keep the first occurrence of each cell (guards against any residual
+    // false-positive signature landing on an already-seen origin).
     let mut seen = std::collections::HashSet::new();
     patches.retain(|p| seen.insert((p.min_x.to_bits(), p.min_z.to_bits())));
 
     patches
 }
 
-/// Whether offset `o` (in floats) begins a patch record: a valid
-/// per-vertex layer field, a 320-aligned 320×320 bbox, and plausible
-/// heights. This composite signature is specific enough to reject false
-/// positives inside the variable textured-patch tail.
+/// Whether offset `o` (in floats) begins an **untextured** patch record: a
+/// layer field that is entirely `-1.0`, a 320-aligned 320×320 bbox, and
+/// plausible heights. Requiring the *whole* layer field to be unset (rather
+/// than merely "valid indices") is deliberate: it both scopes decoding to
+/// the untextured patches we can faithfully reconstruct and rejects the
+/// off-by-a-few-floats phantom matches that occur where a preceding record's
+/// normal tail (small `0.0`/`1.0` values) abuts the next record's `-1` run.
 fn is_record_start(f: &impl Fn(usize) -> f32, o: usize, nf: usize) -> bool {
     if o + NORMAL_OFF > nf {
         return false;
     }
-    // Layer field: every entry is -1.0 or a small non-negative integer.
+    // Layer field: every entry must be -1.0 (fully untextured patch).
     for v in 0..PATCH_VERTS {
-        let x = f(o + v);
-        if !(x == -1.0 || (x >= 0.0 && x <= 63.0 && x.fract() == 0.0)) {
+        if f(o + v) != -1.0 {
             return false;
         }
     }
