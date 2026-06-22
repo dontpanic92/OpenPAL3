@@ -29,6 +29,18 @@ pub trait RenderingEngine {
     fn view_extent(&self) -> (u32, u32);
     fn component_factory(&self) -> Rc<dyn ComponentFactory>;
 
+    /// Notify the backend that the host window's drawable surface changed
+    /// size (or DPI), passing the window's new *logical* (DPI-independent)
+    /// inner extent in pixels.
+    ///
+    /// Backends that render the scene at a logical resolution and upscale
+    /// to the swapchain (see `SceneScaleMode::Logical`) must re-track that
+    /// offscreen resolution to the new window extent here; otherwise the
+    /// fixed boot-time offscreen is stretched to the resized window,
+    /// distorting the aspect ratio. Backends with no resizable offscreen
+    /// can ignore the argument (default no-op).
+    fn notify_resized(&mut self, _logical_size: (u32, u32)) {}
+
     /// Render `scene` into `target`'s offscreen color image. Distinct from
     /// `render`: no swapchain present, no imgui pass, viewport defaults to
     /// the target's full extent. The result is left in a layout the imgui

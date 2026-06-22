@@ -73,6 +73,31 @@ pub fn create_radiance_engine(
             }
         }));
     }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        use crate::rendering::RenderingEngine;
+        use winit::event::WindowEvent;
+        let rendering_engine_clone = rendering_engine.clone();
+        let window_cb = window.clone();
+        platform.add_window_event_callback(Box::new(move |_window_id, event| {
+            // On resize / DPI change, re-track the scene's logical render
+            // extent to the window's new logical (DPI-independent) size and
+            // rebuild the swapchain. Without this, Logical mode keeps
+            // upscaling the fixed boot-time offscreen and stretches the
+            // scene when the window's aspect ratio changes.
+            match event {
+                WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                    let physical = window_cb.inner_size();
+                    let scale = (window_cb.scale_factor() as f64).max(0.0001);
+                    let lw = (((physical.width as f64) / scale).round() as u32).max(1);
+                    let lh = (((physical.height as f64) / scale).round() as u32).max(1);
+                    rendering_engine_clone.borrow_mut().notify_resized((lw, lh));
+                }
+                _ => {}
+            }
+        }));
+    }
+
     let audio_engine = Rc::new(OpenAlAudioEngine::new());
     let input_engine = crate::input::CoreInputEngine::new(platform);
     let scene_manager = ComRc::from_object(DefaultSceneManager::new());

@@ -188,6 +188,36 @@ impl RenderingEngine for VulkanRenderingEngine {
         self.component_factory.as_component_factory()
     }
 
+    fn notify_resized(&mut self, logical_size: (u32, u32)) {
+        // Nothing to rebuild without a surface, and ignore zero-size
+        // (minimized) windows — the next non-zero resize will retrigger
+        // us, and recreating a zero-extent target would just fail.
+        if self.surface.is_none() || logical_size.0 == 0 || logical_size.1 == 0 {
+            return;
+        }
+
+        // In Logical mode the scene is rendered to a fixed offscreen image
+        // and upscaled to the swapchain. That offscreen must follow the
+        // window's *logical* extent so the upscale stays a pure
+        // (aspect-preserving) DPI scale; leaving it at the boot-time size
+        // stretches the scene when the window's aspect ratio changes.
+        // Native mode keeps `logical_extent == None` and renders directly
+        // at the swapchain extent, so there is nothing to re-track.
+        if self.logical_extent.is_some() {
+            self.logical_extent = Some(vk::Extent2D {
+                width: logical_size.0,
+                height: logical_size.1,
+            });
+        }
+
+        // Drop the swapchain so the next `render` rebuilds it (and, in
+        // Logical mode, the offscreen targets) at the new extent. Doing it
+        // here applies the updated `logical_extent` deterministically
+        // rather than waiting for the present path to report a suboptimal
+        // swapchain.
+        self.drop_swapchain();
+    }
+
     fn begin_frame(&mut self) {}
 
     fn end_frame(&mut self) {}
