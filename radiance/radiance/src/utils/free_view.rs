@@ -87,25 +87,29 @@ impl FreeViewController {
                 pitch -= ROTATE_SPEED * delta_sec;
             }
 
-            if yaw < 0. {
-                yaw += std::f32::consts::PI * 2.;
-            }
+            // Clamp pitch so the camera cannot flip over at the poles. The
+            // current look-pitch is derived from the camera's forward axis
+            // (its world-space y component) so it stays correct even if the
+            // camera was reoriented externally between updates. A positive
+            // local-EAST rotation drives forward_y negative, so negate to make
+            // `current_pitch` increase together with a positive pitch delta.
+            const MAX_PITCH: f32 = std::f32::consts::FRAC_PI_2 - 0.01745; // ~89 deg
+            let forward_y = transform.matrix()[1][2];
+            let current_pitch = -forward_y.clamp(-1., 1.).asin();
+            pitch = (current_pitch + pitch).clamp(-MAX_PITCH, MAX_PITCH) - current_pitch;
 
-            if yaw > std::f32::consts::PI * 2. {
-                yaw -= std::f32::consts::PI * 2.;
-            }
-
-            if pitch < 0. {
-                pitch += std::f32::consts::PI * 2.;
-            }
-
-            if pitch > std::f32::consts::PI * 2. {
-                pitch -= std::f32::consts::PI * 2.;
-            }
-
+            // Yaw around the WORLD up axis and pitch around the camera's LOCAL
+            // right axis. `rotate_axis_angle` (world space) also rotates the
+            // translation column, which would orbit the camera around the world
+            // origin. Capture the position first and restore it afterwards so
+            // the yaw axis effectively passes through the camera's own position
+            // (rotate in place). Pitch is a local rotation and leaves the
+            // position untouched.
+            let position = transform.position();
             transform
-                .rotate_axis_angle_local(&Vec3::UP, yaw)
+                .rotate_axis_angle(&Vec3::UP, yaw)
                 .rotate_axis_angle_local(&Vec3::EAST, pitch);
+            transform.set_position(&position);
         };
     }
 }

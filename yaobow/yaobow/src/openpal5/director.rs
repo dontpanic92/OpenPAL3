@@ -3,11 +3,14 @@
 //! resume per frame), but the command handlers + Lua bridge are PAL5's
 //! own (in [`super::context`] / [`super::commands`]).
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crosscom::ComRc;
-use radiance::comdef::{IDirector, IDirectorImpl};
+use radiance::comdef::{IDirector, IDirectorImpl, ISceneManager};
+use radiance::input::{InputEngine, Key};
+use radiance::radiance::UiManager;
+use radiance::utils::free_view::FreeViewController;
 
 use shared::agent_common::AgentBridge;
 use shared::scripting::lua50_32::Lua5032Vm;
@@ -25,18 +28,39 @@ pub struct Pal5StoryDirector {
     /// `Some(_)` when `--pal5 --agent-port` was passed, in which case
     /// `update` honours pause / fixed-step and fast-forward.
     agent_bridge: Option<Rc<AgentBridge>>,
+
+    /// Free-fly debug camera, toggled with the `` ` ``/tilde key. While
+    /// active the director freezes the plot (the Lua VM and scripted
+    /// visuals stop advancing) and drives the scene camera with the
+    /// shared [`FreeViewController`], so the scene can be inspected
+    /// without progressing the story. This is a director concern, not a
+    /// script concern, so it lives here rather than in
+    /// [`Pal5ScriptContext`].
+    debug_cam: Cell<bool>,
+    free_view: FreeViewController,
+    input: Rc<RefCell<dyn InputEngine>>,
+    scene_manager: ComRc<ISceneManager>,
+    ui: Rc<UiManager>,
 }
 
 ComObject_Pal5StoryDirector!(super::Pal5StoryDirector);
 
 impl Pal5StoryDirector {
-    pub fn new(context: Pal5ScriptContext) -> anyhow::Result<Self> {
-        Self::with_agent_bridge(context, None)
+    pub fn new(
+        context: Pal5ScriptContext,
+        input: Rc<RefCell<dyn InputEngine>>,
+        scene_manager: ComRc<ISceneManager>,
+        ui: Rc<UiManager>,
+    ) -> anyhow::Result<Self> {
+        Self::with_agent_bridge(context, None, input, scene_manager, ui)
     }
 
     pub fn with_agent_bridge(
         context: Pal5ScriptContext,
         agent_bridge: Option<Rc<AgentBridge>>,
+        input: Rc<RefCell<dyn InputEngine>>,
+        scene_manager: ComRc<ISceneManager>,
+        ui: Rc<UiManager>,
     ) -> anyhow::Result<Self> {
         let context = Rc::new(RefCell::new(context));
         let vm = create_lua_vm(context.clone())?;
@@ -52,10 +76,17 @@ impl Pal5StoryDirector {
         vm.load_chunk(&source, "NewGame")?;
         vm.set_entry("__pal5_main")?;
 
+        let free_view = FreeViewController::new(input.clone());
+
         Ok(Self {
             vm,
             context,
             agent_bridge,
+            debug_cam: Cell::new(false),
+            free_view,
+            input,
+            scene_manager,
+            ui,
         })
     }
 
@@ -64,12 +95,59 @@ impl Pal5StoryDirector {
     pub fn context(&self) -> Rc<RefCell<Pal5ScriptContext>> {
         self.context.clone()
     }
+
+    /// Toggle the free-fly debug camera when the `` ` ``/tilde key is
+    /// pressed. The shared [`FreeViewController`] drives the existing
+    /// scene camera transform in place, so toggling on continues from
+    /// wherever the scripted camera last was — no view jump.
+    fn handle_debug_cam_toggle(&self) {
+        if !self.input.borrow().get_key_state(Key::Tilde).pressed() {
+            return;
+        }
+        let active = !self.debug_cam.get();
+        self.debug_cam.set(active);
+        if active {
+            log::info!("PAL5 debug camera ON — WASD move, Q/E up/down, arrows look, ` to exit");
+        } else {
+            log::info!("PAL5 debug camera OFF — plot resumes");
+        }
+    }
+
+    /// On-screen hint while the debug camera is active.
+    fn draw_debug_cam_overlay(&self) {
+        let ui = self.ui.ui();
+        ui.window("pal5_debug_cam")
+            .position([12.0, 12.0], imgui::Condition::Always)
+            .always_auto_resize(true)
+            .movable(false)
+            .resizable(false)
+            .collapsible(false)
+            .title_bar(false)
+            .bg_alpha(0.6)
+            .build(|| {
+                ui.text_colored([0.4, 1.0, 0.4, 1.0], "DEBUG CAMERA (plot frozen)");
+                ui.text("WASD move  Q/E up/down  arrows look  ` exit");
+            });
+    }
 }
 
 impl IDirectorImpl for Pal5StoryDirector {
     fn activate(&self) {}
 
     fn update(&self, delta_sec: f32) -> Option<ComRc<IDirector>> {
+        // Free-fly debug camera (toggled with `~`): when active, freeze
+        // the plot entirely — skip the script context update and the VM
+        // so neither the story nor the scripted camera advance — and
+        // drive the scene camera manually instead.
+        self.handle_debug_cam_toggle();
+        if self.debug_cam.get() {
+            if let Some(scene) = self.scene_manager.scene() {
+                self.free_view.update(scene, delta_sec);
+            }
+            self.draw_debug_cam_overlay();
+            return None;
+        }
+
         // Pause / fixed-step gating: when an agent bridge is present
         // and paused, `advance` is false and `effective_dt` is 0, so
         // the script clock freezes until a `/v1/time/step` is queued.

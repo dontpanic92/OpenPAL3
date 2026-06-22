@@ -86,14 +86,20 @@ pub fn create_story_director(
     let context = Pal5ScriptContext::new(
         asset_loader,
         script_index,
-        scene_manager,
+        scene_manager.clone(),
         component_factory,
         audio_engine,
-        input_engine,
-        ui,
+        input_engine.clone(),
+        ui.clone(),
     );
 
-    match Pal5StoryDirector::with_agent_bridge(context, agent_bridge) {
+    match Pal5StoryDirector::with_agent_bridge(
+        context,
+        agent_bridge,
+        input_engine,
+        scene_manager,
+        ui,
+    ) {
         Ok(director) => Some(ComRc::<IDirector>::from_object(director)),
         Err(e) => {
             log::error!("PAL5: failed to build story director: {}", e);

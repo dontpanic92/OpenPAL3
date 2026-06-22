@@ -8,7 +8,7 @@
 //! neighbours.
 //!
 //! ## Record layout (floats, little-endian)
-//! The fixed head of every record is 1458 floats:
+//! The fixed head of every record — **textured or not** — is 1458 floats:
 //!
 //! | offset | count | field |
 //! |--------|-------|-------|
@@ -17,14 +17,22 @@
 //! | 302    | 289   | per-vertex height (Y) |
 //! | 591    | 867   | per-vertex normal, interleaved `(nx,ny,nz)` ×289 |
 //!
-//! Textured patches append a variable-length tail after the fixed head
-//! (per-layer blend data) whose exact size is engine-internal. Rather
-//! than decode that tail, the parser **scans for the next record-start
-//! signature** — a 320-aligned bbox preceded by a valid layer field and
-//! followed by plausible heights — which is robust against the variable
-//! tail. See `generated/pal5_tree_texture.md`'s sibling RE notes and the
-//! session `mp_re_findings.md` for the derivation (validated by
-//! inter-patch edge-height continuity).
+//! Textured patches append a small **variable-length tail** after this
+//! fixed head (per-layer blend data, ~3..230 floats) whose exact size is
+//! engine-internal. The geometry we need (heights at +302, normals at
+//! +591) lives at the same fixed offsets in *every* record, so we decode
+//! all of them and only the tail is skipped.
+//!
+//! Because the tail makes the per-record stride variable, the parser
+//! **scans for each record-start signature** — a 320-aligned 320×320
+//! bbox at `+289` followed by plausible heights — which is robust against
+//! the variable tail. Earlier revisions additionally required the layer
+//! field to be entirely `-1.0`, which silently dropped every textured
+//! patch (≈23% of a map like `kuangfengzhai`) and left holes that had to
+//! be interpolated; the bbox signature alone recovers them. Validated by
+//! inter-patch edge-height continuity (shared-edge heights of textured
+//! patches match their neighbours to <0.5u). See
+//! `generated/pal5_tree_texture.md` and the session `mp_re_findings.md`.
 
 use serde::Serialize;
 
@@ -122,15 +130,14 @@ fn parse_patches(body: &[u8]) -> Vec<MpPatch> {
     };
 
     let mut patches = Vec::new();
-    // Scan the whole body for untextured record-start signatures. Walking
-    // record-to-record is not robust here: textured patches do **not**
-    // share the untextured head layout (their leading field holds packed
-    // blend data, not a clean `-1`/index layer field) and carry a
-    // variable-length tail, so a sequential walk de-syncs at the first
-    // textured cell. A full scan keyed on the (strict) untextured-head
-    // signature recovers every untextured patch independently of the
-    // textured cells interleaved between them. Textured patches are not
-    // yet decoded and render as gaps — see the module docs.
+    // Scan the whole body for record-start signatures. A sequential
+    // record-to-record walk is not possible because textured patches carry
+    // a variable-length tail after the fixed 1458-float head, so the stride
+    // is not constant. Keying on the record-start signature (a 320-aligned
+    // 320×320 bbox at `+289` with plausible heights) recovers every patch —
+    // textured and untextured alike — independently of the tail. The
+    // geometry (heights at `+302`, normals at `+591`) shares the same fixed
+    // layout in every record, so both kinds decode identically.
     let mut o = 0usize;
     while o + NORMAL_OFF <= nf {
         if !is_record_start(&f, o, nf) {
@@ -160,8 +167,11 @@ fn parse_patches(body: &[u8]) -> Vec<MpPatch> {
             normals,
         });
 
-        // Record heads are at least one fixed-head stride apart, so skip
-        // ahead to avoid rescanning this record's interior.
+        // Every record is at least one fixed head (`REC_HEAD_FLOATS`) long,
+        // so advancing by that amount never overshoots the next record start
+        // (textured records only add a tail on top) while skipping this
+        // record's interior to avoid re-matching the bbox inside the height
+        // field.
         o += REC_HEAD_FLOATS;
     }
 
@@ -173,22 +183,16 @@ fn parse_patches(body: &[u8]) -> Vec<MpPatch> {
     patches
 }
 
-/// Whether offset `o` (in floats) begins an **untextured** patch record: a
-/// layer field that is entirely `-1.0`, a 320-aligned 320×320 bbox, and
-/// plausible heights. Requiring the *whole* layer field to be unset (rather
-/// than merely "valid indices") is deliberate: it both scopes decoding to
-/// the untextured patches we can faithfully reconstruct and rejects the
-/// off-by-a-few-floats phantom matches that occur where a preceding record's
-/// normal tail (small `0.0`/`1.0` values) abuts the next record's `-1` run.
+/// Whether offset `o` (in floats) begins a patch record (textured or not):
+/// a 320-aligned 320×320 bbox in the metadata block at `+289` and plausible
+/// heights at `+302`. The bbox — two coordinates exactly 320 apart on a
+/// 320-unit grid — is a strong, specific signature that the height/normal
+/// payload effectively never reproduces by chance, so (unlike the earlier
+/// "layer field is entirely -1.0" gate) it admits the textured patches too
+/// without introducing phantom matches.
 fn is_record_start(f: &impl Fn(usize) -> f32, o: usize, nf: usize) -> bool {
     if o + NORMAL_OFF > nf {
         return false;
-    }
-    // Layer field: every entry must be -1.0 (fully untextured patch).
-    for v in 0..PATCH_VERTS {
-        if f(o + v) != -1.0 {
-            return false;
-        }
     }
     // Bounding box: 320×320, axis-origin a multiple of 320, in range.
     let min_x = f(o + META_OFF + 8);

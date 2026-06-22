@@ -58,15 +58,13 @@ pub fn build_terrain_entity(
 
 /// Assemble all decoded patches into a single seamless heightfield mesh.
 ///
-/// The `.mp` only stores *untextured* patches faithfully; textured patches
-/// use an undecoded variable-length layout and are absent from `mp.patches`,
-/// which would otherwise leave holes in the terrain. To render a continuous
-/// surface we resample every patch onto one shared vertex grid keyed by
-/// world position (patches share edge vertices, so this is exact for the
-/// decoded cells), then **dilate-fill** the gaps left by the missing
-/// textured patches from their known neighbours. The result is a single
-/// hole-free mesh; decoded cells keep their exact geometry and missing cells
-/// are smoothly interpolated.
+/// The `.mp` decoder now recovers every patch — textured and untextured —
+/// so the grid is essentially complete (typically all but a single corner
+/// patch). We still resample every patch onto one shared vertex grid keyed
+/// by world position (patches share edge vertices, so this is exact for the
+/// decoded cells), then **dilate-fill** any residual gaps from their known
+/// neighbours so the result is always a single hole-free mesh. Decoded cells
+/// keep their exact geometry; the rare missing cell is smoothly interpolated.
 fn build_terrain_geometry(asset_loader: &AssetLoader, mp: &MpFile) -> Geometry {
     // Patch origins fall on a 320-unit grid; vertices on a
     // `CELL_WORLD_SIZE` (20-unit) grid. Build the height field in the
@@ -99,22 +97,24 @@ fn build_terrain_geometry(asset_loader: &AssetLoader, mp: &MpFile) -> Geometry {
 
     fill_unknown_heights(&mut height, &mut known, fnx, fnz);
 
-    // File -> world orientation. The decoded file axes are rotated 270°
-    // relative to the world/object axes used by the `.nod` placement. Of
-    // the eight dihedral orientations, `rot270` is the one that aligns the
-    // terrain with object positions: it both yields the best object-height
-    // match (median |ΔY| ≈ 57, vs ≥200 for every non-`transpose` option)
-    // and, being a true rotation, renders un-mirrored (the `transpose`
-    // option matches heights too but is a reflection — it looks mirrored).
-    // Inverse map: world (X, Z) = ((fnz-1 - fz) * CELL, fx * CELL).
-    let mz = fnz - 1;
+    // File -> world orientation. Empirically derived (clean-room) by
+    // sampling decoded terrain height under each of the 8 dihedral
+    // orientations at every `.nod` object's (X,Z) and comparing to the
+    // object's world Y across all 139 PAL5 maps: the **identity** mapping
+    // wins decisively (3025 height matches within 20u, median |ΔY| ≈ 32,
+    // vs ≤2173 / median ≥130 for every other orientation including the old
+    // `rot270`). It is also a true rotation, so it renders un-mirrored.
+    // The patches already carry their absolute world origin in
+    // `min_x`/`min_z`, so the grid axes map straight through:
+    //   world (X, Z) = (fx * CELL, fz * CELL)   (fx from min_x, fz from min_z)
+    // with height = heights[row*17 + col] (row along +Z, col along +X).
     let tile = TEX_TILE_WORLD;
     let mut vertices = Vec::with_capacity(fnx * fnz);
     let mut texcoords = Vec::with_capacity(fnx * fnz);
     for fx in 0..fnx {
         for fz in 0..fnz {
-            let wx = (mz - fz) as f32 * CELL_WORLD_SIZE;
-            let wz = fx as f32 * CELL_WORLD_SIZE;
+            let wx = fx as f32 * CELL_WORLD_SIZE;
+            let wz = fz as f32 * CELL_WORLD_SIZE;
             vertices.push(Vec3::new(wx, height[fx * fnz + fz], wz));
             texcoords.push(TexCoord::new(wx / tile, wz / tile));
         }
