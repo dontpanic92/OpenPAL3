@@ -19,6 +19,32 @@ impl Pal5Scene {
         let scene = CoreScene::create();
         scene.camera_mut().set_fov43(45_f32.to_radians());
 
+        // Terrain heightfield (`<map>_0_0.mp`). Added before objects so
+        // they visually rest on top of it. A decode/build failure is
+        // non-fatal — the scene's objects still load.
+        match asset_loader.load_map_terrain(scene_name) {
+            Ok(mp) => {
+                let patch_count = mp.patches.len();
+                if let Some(terrain) =
+                    super::terrain::build_terrain_entity(asset_loader, scene_name, &mp)
+                {
+                    scene.add_entity(terrain);
+                    log::info!(
+                        "Pal5Scene '{}': terrain loaded ({} patches)",
+                        scene_name,
+                        patch_count,
+                    );
+                }
+            }
+            Err(err) => {
+                log::warn!(
+                    "Pal5Scene '{}': failed to load terrain: {}",
+                    scene_name,
+                    err,
+                );
+            }
+        }
+
         let nod = asset_loader.load_map_nod(scene_name)?;
 
         let mut loaded = 0usize;

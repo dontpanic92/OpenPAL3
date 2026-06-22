@@ -1559,6 +1559,7 @@ dependencies = [
  "lazy_static",
  "log",
  "md5",
+ "miniz_oxide 0.7.4",
  "num-derive 0.3.3",
  "num-traits",
  "serde",

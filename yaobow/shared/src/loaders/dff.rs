@@ -361,6 +361,19 @@ fn load_clump(
         let billboard = is_billboard_frame(frame);
 
         let geometry = &chunk.geometries[atomic.geometry as usize];
+
+        // Skip texture-less PAL5 wind-billboard leaves. Some trees (e.g.
+        // `zw_shulin`, `zw_dongzhu`) ship `[w]/[W]` leaf quads whose
+        // material carries no texture (RW `textured=0`) and no UV set —
+        // PAL5's engine supplies the leaf texture+UVs at runtime from its
+        // vegetation subsystem (not from the model; see
+        // `generated/pal5_tree_texture.md`). yaobow can't reproduce that
+        // yet, so rather than render the magenta "missing" placeholder we
+        // drop these specific atomics. Textured leaves are unaffected.
+        if billboard && !geometry_has_texture(geometry) {
+            continue;
+        }
+
         create_geometry(
             entity.clone(),
             component_factory,
@@ -383,6 +396,16 @@ fn load_clump(
             );
         }
     }
+}
+
+/// Whether any of a geometry's materials reference a (named) texture.
+/// Used to drop texture-less PAL5 billboard leaves that would otherwise
+/// render as the magenta "missing" placeholder.
+fn geometry_has_texture(geometry: &fileformats::rwbs::geometry::Geometry) -> bool {
+    geometry
+        .materials
+        .iter()
+        .any(|m| m.texture.as_ref().map(|t| !t.name.is_empty()).unwrap_or(false))
 }
 
 /// Decide whether an atomic's frame is a **non-renderable helper** that

@@ -52,6 +52,21 @@ impl AssetLoader {
         ))?)
     }
 
+    /// Decode the per-map terrain heightfield (`<map>_0_0.mp`).
+    pub fn load_map_terrain(
+        &self,
+        map_name: &str,
+    ) -> anyhow::Result<fileformats::pal5::mp::MpFile> {
+        let path = format!("/Map/{}/{}_0_0.mp", map_name, map_name);
+        let raw = self.vfs.read_to_end(&path)?;
+        Ok(fileformats::pal5::mp::MpFile::read(&raw)?)
+    }
+
+    /// Read a raw asset file (e.g. a terrain `.dds`) from the vfs.
+    pub fn read_file(&self, path: &str) -> anyhow::Result<Vec<u8>> {
+        Ok(self.vfs.read_to_end(path)?)
+    }
+
     pub fn load_model(&self, model_path: &str) -> anyhow::Result<ComRc<IEntity>> {
         // PAL5's `role_*.bin` stores Windows backslash separators in
         // `file_path`; normalise to forward slashes so downstream log
