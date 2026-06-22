@@ -91,7 +91,7 @@ impl AssetManager {
         let ambient = if is_night {
             [0.10, 0.10, 0.10]
         } else {
-            [0.18, 0.18, 0.18]
+            [0.10, 0.10, 0.10]
         };
 
         let base_folder = self.scene_path.join(cpk_name).join(scn_base_name);
@@ -122,7 +122,11 @@ impl AssetManager {
                             .iter()
                             .map(|l| {
                                 let p = l.position();
-                                SceneLight::new(Vec3::new(p[0], p[1], p[2]), l.color)
+                                SceneLight::with_range(
+                                    Vec3::new(p[0], p[1], p[2]),
+                                    l.color,
+                                    l.range,
+                                )
                             })
                             .collect::<Vec<_>>(),
                     )),

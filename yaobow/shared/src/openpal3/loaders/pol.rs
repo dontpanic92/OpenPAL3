@@ -5,7 +5,7 @@ use radiance::comdef::{IEntity, IStaticMeshComponent};
 use radiance::components::mesh::{Geometry, StaticMeshComponent, TexCoord};
 use radiance::math::Vec3;
 use radiance::rendering::{
-    BlendMode, ComponentFactory, LightMapMaterialDef, MaterialDef, SimpleMaterialDef,
+    BlendMode, ComponentFactory, LightMapMaterialDef, LitMaterialDef, MaterialDef,
 };
 use radiance::scene::CoreEntity;
 use std::io::BufReader;
@@ -38,10 +38,18 @@ fn load_pol_model<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> Vec<Geometry> {
     let mut geometries = vec![];
     for mesh in &pol.meshes {
         for material in &mesh.material_info {
+            // Single-texture POL surfaces carry no baked lightmap, so — like
+            // the original engine — they are shaded by the scene's dynamic
+            // `.lgt` lights (see `load_material`). Those need per-vertex
+            // normals; multi-texture (lightmapped) surfaces keep the baked
+            // path and omit normals so the lightmap pipeline's vertex layout
+            // is unchanged.
+            let lit = material.texture_count == 1;
             let geometry = create_geometry(
                 &mesh.vertices,
                 &material.triangles,
                 load_material(&material, vfs, path.as_ref()),
+                lit,
             );
 
             geometries.push(geometry);
@@ -86,10 +94,11 @@ fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path:
     };
 
     if texture_paths.len() == 1 {
-        SimpleMaterialDef::create(texture_paths[0].to_str().unwrap(), |name| {
-            vfs.open(name).ok()
-        })
-        .with_blend(blend)
+        // No baked lightmap: shade dynamically from the scene `.lgt` lights
+        // (matches the original engine, which lit these placed props/surfaces
+        // with the D3D scene lights). `create_geometry` supplies normals.
+        LitMaterialDef::create(texture_paths[0].to_str().unwrap(), |name| vfs.open(name).ok())
+            .with_blend(blend)
     } else {
         let textures: Vec<_> = texture_paths.iter().map(|p| p.to_str().unwrap()).collect();
         LightMapMaterialDef::create(textures, |name| {
@@ -111,6 +120,7 @@ fn create_geometry(
     all_vertices: &Vec<PolVertex>,
     triangles: &[PolTriangle],
     material: MaterialDef,
+    lit: bool,
 ) -> Geometry {
     let mut index_map = std::collections::HashMap::new();
     let mut reversed_index = vec![];
@@ -166,5 +176,90 @@ fn create_geometry(
         vec![texcoord2, texcoord1]
     };
 
-    Geometry::new(&vertices, None, &texcoords, indices, material)
+    // Dynamically-lit surfaces need per-vertex normals. Prefer the `.pol`'s
+    // stored normals; fall back to smooth geometric normals when the mesh
+    // omits them. Lightmapped surfaces stay normal-less (baked lighting).
+    let normals = if lit {
+        Some(build_normals(all_vertices, &reversed_index, &vertices, &indices))
+    } else {
+        None
+    };
+
+    Geometry::new(
+        &vertices,
+        normals.as_deref(),
+        &texcoords,
+        indices,
+        material,
+    )
+}
+
+/// Build per-vertex normals (in the deduplicated `vertices` order) for a lit
+/// POL surface. Uses the `.pol`'s stored vertex normals when present; otherwise
+/// accumulates smooth geometric normals from the face winding.
+fn build_normals(
+    all_vertices: &[PolVertex],
+    reversed_index: &[usize],
+    vertices: &[Vec3],
+    indices: &[u32],
+) -> Vec<Vec3> {
+    let has_stored = all_vertices
+        .get(reversed_index.first().copied().unwrap_or(0))
+        .map_or(false, |v| v.normal.is_some());
+
+    if has_stored {
+        return reversed_index
+            .iter()
+            .map(|&src| {
+                all_vertices[src]
+                    .normal
+                    .as_ref()
+                    .map(|n| normalize(Vec3::new(n.x, n.y, n.z)))
+                    .unwrap_or_else(|| Vec3::new(0.0, 1.0, 0.0))
+            })
+            .collect();
+    }
+
+    let mut normals = vec![Vec3::new(0.0, 0.0, 0.0); vertices.len()];
+    for tri in indices.chunks_exact(3) {
+        let (a, b, c) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+        let e1 = sub(vertices[b], vertices[a]);
+        let e2 = sub(vertices[c], vertices[a]);
+        let fn_ = cross(e1, e2);
+        for &idx in &[a, b, c] {
+            normals[idx] = add(normals[idx], fn_);
+        }
+    }
+    for n in normals.iter_mut() {
+        *n = normalize(*n);
+        if n.x == 0.0 && n.y == 0.0 && n.z == 0.0 {
+            *n = Vec3::new(0.0, 1.0, 0.0);
+        }
+    }
+    normals
+}
+
+fn sub(a: Vec3, b: Vec3) -> Vec3 {
+    Vec3::new(a.x - b.x, a.y - b.y, a.z - b.z)
+}
+
+fn add(a: Vec3, b: Vec3) -> Vec3 {
+    Vec3::new(a.x + b.x, a.y + b.y, a.z + b.z)
+}
+
+fn cross(a: Vec3, b: Vec3) -> Vec3 {
+    Vec3::new(
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x,
+    )
+}
+
+fn normalize(v: Vec3) -> Vec3 {
+    let len = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
+    if len > 1e-6 {
+        Vec3::new(v.x / len, v.y / len, v.z / len)
+    } else {
+        Vec3::new(0.0, 0.0, 0.0)
+    }
 }

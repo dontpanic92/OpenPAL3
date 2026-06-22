@@ -136,10 +136,11 @@ pub struct PerFrameUniformBuffer {
     projection: Mat44,
     /// `xyz` = ambient color, `w` = active light count (as f32).
     ambient: [f32; 4],
-    /// World-space light positions (`xyz`; `w` unused). Only the first
-    /// `ambient.w` entries are meaningful.
+    /// World-space light positions (`xyz`; `w` = outer attenuation radius).
+    /// Only the first `ambient.w` entries are meaningful.
     light_pos: [[f32; 4]; MAX_SCENE_LIGHTS],
-    /// Light colors (`rgb`; `w` unused), paired with `light_pos`.
+    /// Light colors (`rgb`; `w` = inner attenuation radius), paired with
+    /// `light_pos`.
     light_color: [[f32; 4]; MAX_SCENE_LIGHTS],
 }
 
@@ -160,13 +161,17 @@ impl PerFrameUniformBuffer {
     }
 
     /// Stamp the ambient term and up to [`MAX_SCENE_LIGHTS`] point lights
-    /// (position + color pairs) into the per-frame UBO.
-    pub fn set_lighting(&mut self, ambient: [f32; 3], lights: &[([f32; 3], [f32; 3])]) {
+    /// (position + color + `[inner, outer]` attenuation range) into the
+    /// per-frame UBO. The range is packed into the otherwise-unused `w` lanes:
+    /// outer radius in `light_pos.w`, inner radius in `light_color.w`.
+    pub fn set_lighting(&mut self, ambient: [f32; 3], lights: &[([f32; 3], [f32; 3], [f32; 2])]) {
         let count = lights.len().min(MAX_SCENE_LIGHTS);
         self.ambient = [ambient[0], ambient[1], ambient[2], count as f32];
-        for (i, (pos, color)) in lights.iter().take(count).enumerate() {
-            self.light_pos[i] = [pos[0], pos[1], pos[2], 0.0];
-            self.light_color[i] = [color[0], color[1], color[2], 0.0];
+        for (i, (pos, color, range)) in lights.iter().take(count).enumerate() {
+            let inner = range[0];
+            let outer = range[1];
+            self.light_pos[i] = [pos[0], pos[1], pos[2], outer];
+            self.light_color[i] = [color[0], color[1], color[2], inner];
         }
     }
 }

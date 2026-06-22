@@ -8,7 +8,7 @@ use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::{IComponentImpl, IEntity, IEntityExt};
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{
-    ComponentFactory, MaterialDef, SimpleMaterialDef, VertexBuffer, VertexComponents,
+    ComponentFactory, LitMaterialDef, MaterialDef, VertexBuffer, VertexComponents,
 };
 use radiance::scene::CoreEntity;
 use std::{path::Path, rc::Rc};
@@ -128,10 +128,11 @@ fn load_texture<P: AsRef<Path>>(
         texture_path.push(&material.texture_name);
     }
 
-    // CVD props don't carry an explicit alpha flag; keep the default
-    // `BlendMode::AlphaTest` as a conservative fallback (matches the
-    // legacy renderer's "always cutout" behavior).
-    SimpleMaterialDef::create(texture_path.to_str().unwrap(), |name| vfs.open(name).ok())
+    // CVD props carry no baked lightmap; like the original engine, shade them
+    // with the scene's dynamic `.lgt` lights via the lit material (CVD vertices
+    // ship normals). Keep the default `BlendMode::AlphaTest` cutout fallback,
+    // matching the legacy renderer's "always cutout" behavior.
+    LitMaterialDef::create(texture_path.to_str().unwrap(), |name| vfs.open(name).ok())
 }
 
 pub struct CvdModelComponent {
@@ -239,7 +240,7 @@ impl CvdMesh {
         material: MaterialDef,
     ) -> Self {
         let components =
-            VertexComponents::POSITION /*| VertexComponents::NORMAL*/ | VertexComponents::TEXCOORD;
+            VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD;
 
         let mut index_map = std::collections::HashMap::new();
         let mut reversed_index = vec![];
@@ -271,7 +272,7 @@ impl CvdMesh {
                     vert.position.y,
                     vert.position.z,
                 )),
-                None,
+                Some(&Vec3::new(vert.normal.x, vert.normal.y, vert.normal.z)),
                 Some(&Vec2::new(vert.tex_coord.x, vert.tex_coord.y)),
                 None,
             );

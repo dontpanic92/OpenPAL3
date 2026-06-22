@@ -43,8 +43,30 @@ void main() {
         vec3 d = perFrameUbo.lightPos[i].xyz - fragWorldPos;
         float dist = length(d);
         vec3 L = dist > 0.0 ? d / dist : vec3(0.0, 1.0, 0.0);
-        float ndl = max(dot(N, L), 0.0);
-        lit += perFrameUbo.lightColor[i].rgb * ndl;
+        float ndl = max(dot(N, L), 0.2);
+
+        // Distance attenuation. The `w` lanes carry the light's [inner, outer]
+        // radii (outer in lightPos.w, inner in lightColor.w). PAL3 omni lights
+        // ship FLT_MAX radii (≈3.4e38) meaning "no attenuation"; treat any very
+        // large outer radius as infinite.
+        //
+        // PAL3's interior key lights (e.g. the YN09 candle, range 30→200)
+        // behave like Direct3D point lights: roughly *constant* within their
+        // range with a cutoff at the far edge — NOT a gradual dimming across
+        // the whole radius. So the light stays at full strength out to
+        // `inner` (and most of the way to `outer`), then falls off only over
+        // the outer shell. A whole-range ramp here left actors that sit well
+        // inside the candle's reach far too dark vs. the original.
+        float outer = perFrameUbo.lightPos[i].w;
+        float inner = perFrameUbo.lightColor[i].w;
+        float atten = 1.0;
+        if (outer < 1.0e18) {
+            // Fully lit until `edge0`, smooth cutoff from there to `outer`.
+            float edge0 = max(inner, outer * 0.85);
+            atten = 1.0 - smoothstep(edge0, outer, dist);
+        }
+
+        lit += perFrameUbo.lightColor[i].rgb * ndl * atten;
     }
 
     // Premultiplied-alpha invariant matches `simple_triangle.frag`: scale RGB

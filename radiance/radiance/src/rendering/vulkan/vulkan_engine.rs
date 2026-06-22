@@ -831,16 +831,17 @@ impl VulkanRenderingEngine {
     }
 
     /// Snapshot the scene's lighting environment into the per-frame UBO's
-    /// expected shape: a flat ambient color and a list of `(position, color)`
-    /// point lights.
+    /// expected shape: a flat ambient color and a list of
+    /// `(position, color, range)` point lights (`range` = `[inner, outer]`
+    /// attenuation radii).
     fn collect_scene_lights(
         scene: &ComRc<IScene>,
-    ) -> ([f32; 3], Vec<([f32; 3], [f32; 3])>) {
+    ) -> ([f32; 3], Vec<([f32; 3], [f32; 3], [f32; 2])>) {
         let lighting = scene.lighting();
         let lights = lighting
             .lights
             .iter()
-            .map(|l| ([l.position.x, l.position.y, l.position.z], l.color))
+            .map(|l| ([l.position.x, l.position.y, l.position.z], l.color, l.range))
             .collect();
         (lighting.ambient, lights)
     }
@@ -849,7 +850,7 @@ impl VulkanRenderingEngine {
         &mut self,
         camera: Option<&Camera>,
         entities: Vec<ComRc<IEntity>>,
-        lighting: ([f32; 3], Vec<([f32; 3], [f32; 3])>),
+        lighting: ([f32; 3], Vec<([f32; 3], [f32; 3], [f32; 2])>),
         viewport: Viewport,
         ui_frame: ImguiFrame,
     ) -> Result<(), Box<dyn Error>> {
