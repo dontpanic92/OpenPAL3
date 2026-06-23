@@ -26,9 +26,10 @@ pub struct ImguiTextureCache {
     /// cache was already borrowed elsewhere (e.g.
     /// `ScriptedRenderTarget::Drop` firing from GC inside an
     /// `ImguiFrameState`-parked render pass — see plan.md follow-up
-    /// #5). Drained at the start of every `&mut self` method, so by
-    /// the time any consumer observes the cache state, queued forgets
-    /// have been applied.
+    /// #5). These are NOT evicted immediately: they are moved into the
+    /// frame-gated `deletion_queue` on the next `&mut self` access, so a
+    /// texture dropped mid-frame is not freed while the GPU may still be
+    /// sampling it this frame.
     pending_forgets: Rc<RefCell<Vec<i64>>>,
     /// External texture-id updates queued by handles that produce a
     /// fresh `imgui::TextureId` every frame (e.g. `VideoHandle`) and
@@ -42,7 +43,28 @@ pub struct ImguiTextureCache {
     /// `image*` widgets call `resolve` through the same exclusive
     /// borrow held by the pump.
     pending_external_updates: Rc<RefCell<Vec<(i64, TextureId)>>>,
+    /// Monotonic presented-frame counter, advanced once per frame by
+    /// [`advance_frame`](Self::advance_frame). Drives the frame-gated
+    /// deletion queue.
+    frame_counter: u64,
+    /// Frame-gated GPU deletion queue: `(com_id, release_frame)`. A
+    /// forgotten texture's cache entry (and its owned GPU resource) is
+    /// evicted only once `frame_counter >= release_frame`, i.e. after
+    /// [`DELETION_GRACE_FRAMES`] presented frames, mirroring an engine's
+    /// fence-gated deferred-deletion queue. Com-ids are never reused
+    /// (`next_handle_com_id` hands out monotonically-decreasing
+    /// negatives), so an id sitting here can never collide with a fresh
+    /// upload.
+    deletion_queue: Vec<(i64, u64)>,
 }
+
+/// Number of presented frames a forgotten texture lingers before its GPU
+/// resource is actually freed. Must be `>= MAX_FRAMES_IN_FLIGHT` so no
+/// in-flight frame still references the texture when it is dropped; we
+/// use `MAX_FRAMES_IN_FLIGHT + 1` (= 3, with `MAX_FRAMES_IN_FLIGHT = 2`
+/// in the vulkan backend) for a one-frame safety margin and to stay
+/// correct on backends that don't expose that constant.
+const DELETION_GRACE_FRAMES: u64 = 3;
 
 impl ImguiTextureCache {
     pub fn new(factory: Rc<dyn ComponentFactory>) -> Self {
@@ -51,6 +73,8 @@ impl ImguiTextureCache {
             cache: HashMap::new(),
             pending_forgets: Rc::new(RefCell::new(Vec::new())),
             pending_external_updates: Rc::new(RefCell::new(Vec::new())),
+            frame_counter: 0,
+            deletion_queue: Vec::new(),
         }
     }
 
@@ -71,13 +95,31 @@ impl ImguiTextureCache {
     }
 
     fn drain_pending(&mut self) {
-        // Take ownership of the queued ids before iterating so handlers
-        // that drop other handles re-entrantly can append to the queue
-        // without aliasing the iterator.
-        let to_forget: Vec<i64> = self.pending_forgets.borrow_mut().drain(..).collect();
-        for id in to_forget {
-            self.cache.remove(&id);
+        // Move newly-queued forgets (pushed by Drop handlers) into the
+        // frame-stamped deletion queue rather than evicting them now.
+        // Stamping with `frame_counter + GRACE` defers the actual GPU
+        // free until enough presented frames have elapsed that no
+        // in-flight frame still references the texture.
+        let release_frame = self.frame_counter + DELETION_GRACE_FRAMES;
+        let to_defer: Vec<i64> = self.pending_forgets.borrow_mut().drain(..).collect();
+        for id in to_defer {
+            self.deletion_queue.push((id, release_frame));
         }
+
+        // Evict entries whose grace period has elapsed. swap_remove is
+        // O(1); deletion order doesn't matter. Removing the cache entry
+        // drops its owned GPU texture (`CachedTexture::_texture`).
+        let current = self.frame_counter;
+        let mut i = 0;
+        while i < self.deletion_queue.len() {
+            if self.deletion_queue[i].1 <= current {
+                let (com_id, _) = self.deletion_queue.swap_remove(i);
+                self.cache.remove(&com_id);
+            } else {
+                i += 1;
+            }
+        }
+
         let to_update: Vec<(i64, TextureId)> = self
             .pending_external_updates
             .borrow_mut()
@@ -95,6 +137,19 @@ impl ImguiTextureCache {
     }
 
     fn drain_pending_forgets(&mut self) {
+        self.drain_pending();
+    }
+
+    /// Advance the presented-frame counter by one and process the
+    /// frame-gated deletion queue. MUST be called exactly once per
+    /// presented frame, from a director-agnostic hook (the PAL3
+    /// adventure director is not an `IImmediateDirector`, so the imgui
+    /// pump alone does not tick every frame). Idempotent w.r.t. cache
+    /// state otherwise — it is safe for `drain_pending` to also run on
+    /// every `&mut self` access between ticks, since only `advance_frame`
+    /// moves `frame_counter`.
+    pub fn advance_frame(&mut self) {
+        self.frame_counter = self.frame_counter.wrapping_add(1);
         self.drain_pending();
     }
 

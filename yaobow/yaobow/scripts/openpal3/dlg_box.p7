@@ -1,0 +1,308 @@
+// PAL3 in-game dialog-box renderer (north-star, self-contained).
+//
+// Unlike the first migration (which queried a host-side
+// `Pal3DialogBoxScene` every frame), this renderer owns ALL of its
+// state in p7. It is built with a generic, game-vfs-bound
+// `ISpriteService` and `load_sprite`s its 9-slice chrome, bottom
+// decoration and click-indicator frames once at construction, holding
+// each `ISprite` handle for its lifetime (so the backing textures stay
+// uploaded). The avatar portrait is loaded on demand from
+// `set_avatar`; the curtain level and avatar side are plain fields.
+//
+// The Rust SCE command loop forwards events (`set_avatar` /
+// `clear_avatar` / `set_curtain`) and the per-frame `render_dialog` /
+// `render_curtain` draw calls — the exact points the legacy Rust
+// `DialogBox::draw` / `fade_window` ran. All layout is composed onto the
+// imgui background draw list via the `IUiHost` primitives
+// (`image_rect`, `text_at`, `fill_rect`, `game_font_size`), matching the
+// original `pal3.dll` geometry.
+
+import radiance;
+import scripting_services;
+import shared.openpal3;
+
+// Outer panel geometry (fractions of the framebuffer).
+let DLG_HEIGHT_FACTOR: float              = 0.25;
+let DLG_Y_POSITION_FACTOR: float          = 0.75;
+let DLG_AVATAR_WIDTH_FACTOR: float        = 0.333333;
+let DLG_CLICK_INDICATOR_PADDING_FACTOR: float = 1.4;
+
+// Text grid tuning (tighter-than-em advance so CJK text packs densely).
+let DLG_CHAR_ADVANCE_FACTOR: float        = 0.93;
+let DLG_LINE_HEIGHT_FACTOR: float         = 1.0;
+
+// Hard-coded trims for the bottom-center decoration.
+let DLG_DECORATION_WIDTH_TRIM: float      = 66.0;
+let DLG_DECORATION_HEIGHT_TRIM: float     = 32.0;
+let DLG_DECORATION_BOTTOM_OVER_DIALOG: float = 6.0;
+
+// Vertical inset of the first text row below the dialog's top edge.
+let DLG_TEXT_TOP_PAD: float               = 18.0;
+
+pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
+    pub sprites: box<scripting_services.ISpriteService>,
+    // 9-slice chrome, by role (held for lifetime). null when missing.
+    pub tl: ?box<scripting_services.ISprite>,
+    pub bl: ?box<scripting_services.ISprite>,
+    pub br: ?box<scripting_services.ISprite>,
+    pub tr: ?box<scripting_services.ISprite>,
+    pub left: ?box<scripting_services.ISprite>,
+    pub bottom: ?box<scripting_services.ISprite>,
+    pub right: ?box<scripting_services.ISprite>,
+    pub top: ?box<scripting_services.ISprite>,
+    pub center: ?box<scripting_services.ISprite>,
+    pub deco: ?box<scripting_services.ISprite>,
+    // Blinking page-advance indicator frames.
+    pub page0: ?box<scripting_services.ISprite>,
+    pub page1: ?box<scripting_services.ISprite>,
+    // Avatar portrait (loaded on `set_avatar`) + side (0=left, 1=right).
+    pub avatar: ?box<scripting_services.ISprite>,
+    pub avatar_side: int,
+    // Curtain/fade level in [-1, 1] and the indicator blink accumulator.
+    pub curtain: float,
+    pub indicator_t: float,
+) {
+    pub fn set_avatar(self: ref<Self>, role: string, face: string, side: int) -> int {
+        let path = "/basedata/basedata/ROLE/" + role + "/" + face + ".tga";
+        self.avatar = self.sprites.load_sprite(path);
+        self.avatar_side = side;
+        0
+    }
+
+    pub fn clear_avatar(self: ref<Self>) -> int {
+        self.avatar = null;
+        0
+    }
+
+    pub fn set_curtain(self: ref<Self>, value: float) -> int {
+        self.curtain = value;
+        0
+    }
+
+    pub fn render_dialog(
+        self: ref<Self>,
+        ui: box<radiance.IUiHost>,
+        text: string,
+        dt: float,
+    ) -> int {
+        let lw = ui.display_size_x() as float;
+        let lh = ui.display_size_y() as float;
+        if lw <= 0.0 || lh <= 0.0 { return 0; }
+
+        // Letterbox into a 4:3 region when wider than 4:3.
+        let mut dialog_x = 0.0;
+        let mut dialog_width = lw;
+        if lw / lh > 4.0 / 3.0 {
+            dialog_width = lh / 3.0 * 4.0;
+            dialog_x = (lw - dialog_width) / 2.0;
+        }
+
+        let dialog_height = lh * DLG_HEIGHT_FACTOR;
+        let dialog_y = lh * DLG_Y_POSITION_FACTOR - DLG_DECORATION_BOTTOM_OVER_DIALOG;
+        let avatar_width = lh * DLG_AVATAR_WIDTH_FACTOR;
+
+        let has_avatar = self.avatar != null;
+        let avatar_at_right = self.avatar_side == 1;
+        let click_indicator_right_offset =
+            if avatar_at_right && has_avatar { avatar_width } else { 0.0 };
+
+        let dialog_bottom = dialog_y + dialog_height;
+        let dialog_right = dialog_x + dialog_width;
+
+        // Inner corners of the 9-slice (from each corner sprite's size).
+        let tl_ix = dialog_x + sprite_w(self.tl);
+        let tl_iy = dialog_y + sprite_h(self.tl);
+        let bl_ix = dialog_x + sprite_w(self.bl);
+        let bl_iy = dialog_bottom - sprite_h(self.bl);
+        let br_ix = dialog_right - sprite_w(self.br);
+        let br_iy = dialog_bottom - sprite_h(self.br);
+        let tr_ix = dialog_right - sprite_w(self.tr);
+        let tr_iy = dialog_y + sprite_h(self.tr);
+
+        // 9-slice chrome.
+        draw_sprite(ui, self.tl, dialog_x, dialog_y, tl_ix, tl_iy);
+        draw_sprite(ui, self.bl, dialog_x, bl_iy, bl_ix, dialog_bottom);
+        draw_sprite(ui, self.br, br_ix, br_iy, dialog_right, dialog_bottom);
+        draw_sprite(ui, self.tr, tr_ix, dialog_y, dialog_right, tr_iy);
+        draw_sprite(ui, self.left, dialog_x, tl_iy, dialog_x + sprite_w(self.left), bl_iy);
+        draw_sprite(ui, self.bottom, bl_ix, dialog_bottom - sprite_h(self.bottom), br_ix, dialog_bottom);
+        draw_sprite(ui, self.right, dialog_right - sprite_w(self.right), tr_iy, dialog_right, br_iy);
+        draw_sprite(ui, self.top, tl_ix, dialog_y, tr_ix, dialog_y + sprite_h(self.top));
+        draw_sprite(ui, self.center, tl_ix, tl_iy, br_ix, br_iy);
+
+        // Bottom-center decoration.
+        let deco_w = sprite_w(self.deco);
+        let deco_h = sprite_h(self.deco);
+        let deco_x = dialog_x + dialog_width / 2.0 - DLG_DECORATION_WIDTH_TRIM;
+        let deco_y = lh - DLG_DECORATION_HEIGHT_TRIM;
+        draw_sprite(ui, self.deco, deco_x, deco_y, deco_x + deco_w, deco_y + deco_h);
+
+        // Avatar portrait. On the left it is mirrored horizontally
+        // (p_min.x > p_max.x) so the face looks inward.
+        if has_avatar {
+            let av = self.avatar!;
+            let av_w = av.width() as float;
+            let av_h = av.height() as float;
+            if av_w > 0.0 && av_h > 0.0 {
+                let avatar_height = avatar_width / av_w * av_h;
+                if !avatar_at_right {
+                    ui.image_rect(av.com_id(),
+                                  dialog_x + avatar_width, lh - avatar_height,
+                                  dialog_x, lh,
+                                  av.u0(), av.v0(), av.u1(), av.v1());
+                } else {
+                    ui.image_rect(av.com_id(),
+                                  dialog_right - avatar_width, lh - avatar_height,
+                                  dialog_right, lh,
+                                  av.u0(), av.v0(), av.u1(), av.v1());
+                }
+            }
+        }
+
+        // Blinking click indicator (quad sized width x width, per original).
+        self.indicator_t = self.indicator_t + dt;
+        if self.indicator_t > 1.0 {
+            self.indicator_t = 0.0;
+        }
+        let ind = if self.indicator_t > 0.5 { self.page0 } else { self.page1 };
+        let ind_w = sprite_w(self.page0);
+        let ci_x = dialog_right
+            - ind_w * DLG_CLICK_INDICATOR_PADDING_FACTOR
+            - click_indicator_right_offset;
+        let ci_y = dialog_bottom - ind_w * DLG_CLICK_INDICATOR_PADDING_FACTOR;
+        draw_sprite(ui, ind, ci_x, ci_y, ci_x + ind_w, ci_y + ind_w);
+
+        // Text grid.
+        self.render_text(ui, text, dialog_x, dialog_y, dialog_width, avatar_width);
+        0
+    }
+
+    pub fn render_text(
+        self: ref<Self>,
+        ui: box<radiance.IUiHost>,
+        text: string,
+        dialog_x: float,
+        dialog_y: float,
+        dialog_width: float,
+        avatar_width: float,
+    ) -> int {
+        let font_size = ui.game_font_size();
+        if font_size <= 0.0 { return 0; }
+
+        let line_pitch = font_size * DLG_LINE_HEIGHT_FACTOR;
+        let char_advance = font_size * DLG_CHAR_ADVANCE_FACTOR;
+        let wrap_limit = dialog_width - avatar_width * 2.0;
+        let origin_x = dialog_x + avatar_width;
+        let top_y = dialog_y + DLG_TEXT_TOP_PAD;
+
+        let mut text_x = 0.0;
+        let mut text_y = 0.0;
+        // Current text colour, default white. `\i` -> yellow, `\r` -> white.
+        let mut cr = 1.0;
+        let mut cg = 1.0;
+        let mut cb = 1.0;
+
+        let n = text.len_chars();
+        let mut i = 0;
+        while i < n {
+            let oc = text.char_at(i);
+            i = i + 1;
+            if oc == null { continue; }
+            let c = oc!;
+
+            if wrap_limit - text_x < 0.0 {
+                text_y = text_y + line_pitch;
+                text_x = 0.0;
+            }
+
+            if c == "\n" {
+                if text_x == 0.0 { continue; }
+                text_y = text_y + line_pitch;
+                text_x = 0.0;
+                continue;
+            }
+            if c == "\\" {
+                continue;
+            }
+            if c == "i" {
+                cr = 1.0; cg = 1.0; cb = 0.0;
+                continue;
+            }
+            if c == "r" {
+                cr = 1.0; cg = 1.0; cb = 1.0;
+                continue;
+            }
+
+            ui.text_at(origin_x + text_x, top_y + text_y, cr, cg, cb, 1.0, c);
+            text_x = text_x + char_advance;
+        }
+        0
+    }
+
+    pub fn render_curtain(self: ref<Self>, ui: box<radiance.IUiHost>) -> int {
+        let c = self.curtain;
+        if c == 0.0 { return 0; }
+
+        let lw = ui.display_size_x() as float;
+        let lh = ui.display_size_y() as float;
+        if lw <= 0.0 || lh <= 0.0 { return 0; }
+
+        // Magnitude is the fade opacity; sign selects the colour
+        // (>= 0 fades to black, < 0 to white).
+        let opacity = if c < 0.0 { 0.0 - c } else { c };
+        let shade = if c < 0.0 { 1.0 } else { 0.0 };
+        ui.fill_rect(0.0, 0.0, lw, lh, shade, shade, shade, opacity);
+        0
+    }
+}
+
+// Draw a held sprite into the absolute rect `[x0,y0]`..`[x1,y1]`, using
+// the sprite's own UV (full [0,1] for whole images). Skips null (a
+// sprite that failed to load) so a partial asset set degrades cleanly.
+fn draw_sprite(
+    ui: box<radiance.IUiHost>,
+    s: ?box<scripting_services.ISprite>,
+    x0: float, y0: float, x1: float, y1: float,
+) -> int {
+    if s == null { return 0; }
+    let sp = s!;
+    ui.image_rect(sp.com_id(), x0, y0, x1, y1, sp.u0(), sp.v0(), sp.u1(), sp.v1());
+    0
+}
+
+// Native pixel width / height of a (possibly null) sprite, as a float.
+fn sprite_w(s: ?box<scripting_services.ISprite>) -> float {
+    if s == null { return 0.0; }
+    return s!.width() as float;
+}
+fn sprite_h(s: ?box<scripting_services.ISprite>) -> float {
+    if s == null { return 0.0; }
+    return s!.height() as float;
+}
+
+pub fn make_pal3_dialog_renderer(
+    sprites: box<scripting_services.ISpriteService>,
+) -> box<openpal3.IPal3DialogRenderer> {
+    // Load the fixed chrome / indicator sprites once; each handle is
+    // held by the renderer so its texture stays uploaded.
+    let tl = sprites.load_sprite("/basedata/basedata/ui/flex/dlg0.tga");
+    let bl = sprites.load_sprite("/basedata/basedata/ui/flex/dlg1.tga");
+    let br = sprites.load_sprite("/basedata/basedata/ui/flex/dlg2.tga");
+    let tr = sprites.load_sprite("/basedata/basedata/ui/flex/dlg3.tga");
+    let left = sprites.load_sprite("/basedata/basedata/ui/flex/dlg4.tga");
+    let bottom = sprites.load_sprite("/basedata/basedata/ui/flex/dlg5.tga");
+    let right = sprites.load_sprite("/basedata/basedata/ui/flex/dlg6.tga");
+    let top = sprites.load_sprite("/basedata/basedata/ui/flex/dlg7.tga");
+    let center = sprites.load_sprite("/basedata/basedata/ui/flex/dlg8.tga");
+    let deco = sprites.load_sprite("/basedata/basedata/ui/scene/timeclose.tga");
+    let page0 = sprites.load_sprite("/basedata/basedata/ui/scene/page0.tga");
+    let page1 = sprites.load_sprite("/basedata/basedata/ui/scene/page1.tga");
+
+    return box(Pal3DialogRendererImpl(
+        sprites,
+        tl, bl, br, tr, left, bottom, right, top, center, deco,
+        page0, page1,
+        null, 0,
+        0.0, 0.0,
+    ));
+}

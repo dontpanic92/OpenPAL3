@@ -77,14 +77,13 @@ interface IPal3Service: IUnknown {
     // 4 to mirror the original PAL3 quick-save layout.
     int save_slot_count();
 
-    // Build the PAL3 start-menu sprite scene: parses
-    // `ui\\UILib\\UI_opt.tli`, decodes every referenced atlas page,
-    // uploads them to the script texture cache, and pre-loads the menu
-    // BGM (`PI01`). The returned scriptable handle exposes per-sprite
-    // queries (com_id + UV sub-rect + native size) the p7 director
-    // uses to compose the menu. Returns null when the asset path's
-    // vfs cannot be mounted or the manifest is missing.
-    IPal3StartMenuScene? create_start_menu(&str asset_path);
+    // Load the PAL3 start-menu BGM (`PI01`) from this asset path's game
+    // vfs and return it as a generic `IAudioSource` the p7 menu holds
+    // and drives (play/update/stop). Null when the texture/audio engine
+    // isn't available or the track is missing. (Replaces the old
+    // `create_start_menu`: sprites now come from `create_ui_atlas` +
+    // the generic `ISprite` layer; only the BGM stays host-side.)
+    IAudioSource? load_menu_bgm(&str asset_path);
 
     // Forwarded to `IApplication::request_exit()` so the start menu's
     // "离开游戏" handler can quit without holding an `IApplication`
@@ -99,56 +98,91 @@ interface IPal3Service: IUnknown {
     // the intro. The p7 menu director renders the resulting handle
     // full-canvas until `state() == Stopped` or Esc is pressed.
     IVideoHandle? play_intro_movie(&str asset_path);
+
+    // Build a generic, game-vfs-bound sprite loader (`ISpriteService`)
+    // over this asset path's PAL3 vfs + the shared texture cache. The
+    // returned handle is the north-star replacement for the bespoke
+    // per-screen sprite accessors: callers `load_sprite` / build a
+    // `IPal3UiAtlas` from it and compose UIs from generic `ISprite`
+    // handles. Null when the texture cache isn't installed or the vfs
+    // can't mount.
+    ISpriteService? create_sprite_service(&str asset_path);
+
+    // Build a PAL3 UI-atlas adapter over `ui\\UILib\\UI_opt.tli`: a
+    // reusable format adapter (not a per-screen object) that resolves a
+    // sprite *name* to a generic `ISprite` carved from the atlas page
+    // that backs it, loading + caching each page once on demand. The p7
+    // start menu composes itself by name through this. Null when the
+    // manifest is missing or the texture cache isn't installed.
+    IPal3UiAtlas? create_ui_atlas(&str asset_path);
 }
 
-// Sprite-atlas scene backing the PAL3 start menu. The p7 director
-// renders by querying this object per sprite and feeding the result
-// into `IUiHost.image_uv`.
+// PAL3 UI-atlas adapter — bridges the PAL3-specific `UI_opt.tli` atlas
+// manifest to the generic `ISprite` layer. Sprite names are the logical
+// paths from the manifest, looked up case-insensitively with either
+// `\\` or `/` separators (so both `ui\\Menu\\beijing.tga` and
+// `ui/menu/beijing.tga` resolve to the same record). `has_sprite`
+// reports presence so callers degrade gracefully.
 //
-// Sprite names are the logical paths from `ui\\UILib\\UI_opt.tli`,
-// looked up case-insensitively with either `\\` or `/` separators
-// (e.g. both `ui\\Menu\\beijing.tga` and `ui/menu/beijing.tga`
-// resolve to the same record). `has_sprite` reports whether a name
-// is present so the director can degrade gracefully when an atlas
-// entry is missing.
+// `native_width`/`native_height` describe the 800×600 canvas the
+// original cover art was authored against; the p7 director letterboxes
+// it into the framebuffer.
 //
-// `native_width`/`native_height` describe the canvas the original
-// PAL3 cover was authored in (800×600). The p7 director letterboxes
-// this canvas into the framebuffer; button positions are authored in
-// canvas pixels.
-//
-// `play_bgm` / `stop_bgm` drive the `PI01` MP3 source the scene owns;
-// `update_bgm` must be called every frame from `render_im` to keep
-// the streamer fed.
-[uuid(3e24de96-3575-44b1-9cdb-5f2efb9d76fe), protosept(scriptable)]
-interface IPal3StartMenuScene: IUnknown {
+// This is a *format adapter*, reusable by any PAL3 screen that uses
+// `UI_opt.tli` — distinct from the retired per-screen scene objects.
+[uuid(c3aea9e0-db66-47b9-96a6-38bfb741dd23)]
+interface IPal3UiAtlas: IUnknown {
     bool has_sprite(&str name);
-
-    // imgui texture cache com_id for the atlas page containing
-    // `name`, or 0 when the sprite is unknown / its atlas failed to
-    // upload.
-    int sprite_com_id(&str name);
-
-    float sprite_u0(&str name);
-    float sprite_v0(&str name);
-    float sprite_u1(&str name);
-    float sprite_v1(&str name);
-
-    // Native sub-rect size (atlas pixels). The p7 director multiplies
-    // by the canvas scale to get the on-screen size.
-    int sprite_w(&str name);
-    int sprite_h(&str name);
-
+    // Resolve `name` to a freshly-minted `ISprite` over the backing
+    // atlas page (loaded + cached on first use). Callers cache the
+    // result; null when the name is unknown or its page failed to load.
+    ISprite? sprite(&str name);
     int native_width();
     int native_height();
-
-    void play_bgm();
-    void stop_bgm();
-    void update_bgm();
 }
 
-[uuid(2005bb3c-19c0-43c8-8a15-39b8dd940e00)]
-class Pal3StartMenuScene: IPal3StartMenuScene {}
+[uuid(6ff64959-fd49-4db3-b1e4-2505bbc88114)]
+class Pal3UiAtlas: IPal3UiAtlas {}
+
+// Scripted, self-contained PAL3 in-game dialog-box renderer. A
+// `[protosept(scriptable)]` interface implemented by a p7 struct,
+// invoked from Rust at the exact points the legacy Rust `DialogBox`
+// was driven inside the SCE command loop.
+//
+// Unlike the retired host-side `Pal3DialogBoxScene`, the renderer owns
+// ALL of its state in p7: it is built with a generic `ISpriteService`
+// (from which it `load_sprite`s its 9-slice chrome + decoration +
+// click-indicator once and caches the com_id/size of each), loads the
+// avatar portrait on demand, and holds the avatar side + curtain value
+// as plain script fields. The host only forwards SCE events
+// (`set_avatar` / `clear_avatar` / `set_curtain`) and the per-frame
+// `render_dialog` / `render_curtain` draw calls.
+//
+// `set_avatar` resolves the portrait path as `ROLE/<role>/<face>.tga`;
+// `side`: 0 = left (mirrored), 1 = right. `curtain` in [-1, 1]:
+// magnitude is the fade opacity, sign selects the colour (>= 0 fades to
+// black, < 0 to white); 0 = no fade.
+[uuid(43092151-4d36-4f85-8268-51aaa24386fc), protosept(scriptable)]
+interface IPal3DialogRenderer: IUnknown {
+    // Compose the dialog panel (chrome + avatar + click indicator +
+    // text) for the current frame. `text` is the markup-bearing dialog
+    // string (`\i`/`\r` colour runs, `\n` line breaks); `dt` advances
+    // the indicator blink.
+    void render_dialog(IUiHost ui, &str text, float dt);
+
+    // Paint the scene-transition curtain/fade for the current frame.
+    void render_curtain(IUiHost ui);
+
+    // SCE `dlgface`: set the portrait (loaded via the sprite service).
+    void set_avatar(&str role, &str face, int side);
+    // End of a `dlg` beat: drop the current portrait.
+    void clear_avatar();
+    // Set the curtain/fade level (see interface doc).
+    void set_curtain(float value);
+}
+
+[uuid(c0373bc2-0823-4093-8f48-d42a076e8a4a)]
+class Pal3DialogRenderer: IPal3DialogRenderer {}
 
 // Script-implemented factory for the PAL3 launch surface. The yaobow
 // `app.p7` `YaobowScriptApp` conforms to this in addition to
@@ -161,6 +195,13 @@ interface IPal3ScriptFactory: IUnknown {
     // (the menu struct conforms to both `IImmediateDirector` and
     // `IDirector`); `Pal3Service::create_director` QIs to `IDirector`.
     IImmediateDirector make_pal3_start_menu(&str asset_path);
+
+    // Scripted PAL3 in-game dialog-box renderer, built with a generic
+    // `ISpriteService` (game-vfs-bound) it loads its chrome/indicator
+    // sprites through. `Pal3Service` builds one per adventure director
+    // and threads it into the SCE command loop, which forwards
+    // `set_avatar`/`set_curtain` events and the per-frame draw calls.
+    IPal3DialogRenderer make_pal3_dialog_renderer(ISpriteService sprites);
 }
 
 [uuid(4b76fb5a-25c0-4c83-9ed3-ffd5bf342856)]

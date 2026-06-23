@@ -41,15 +41,25 @@ impl VideoPlayer {
     }
 
     pub fn pause(&mut self) {
-        self.stream.as_mut().unwrap().pause()
+        if let Some(stream) = self.stream.as_mut() {
+            stream.pause()
+        }
     }
 
     pub fn resume(&mut self) {
-        self.stream.as_mut().unwrap().resume()
+        if let Some(stream) = self.stream.as_mut() {
+            stream.resume()
+        }
     }
 
     pub fn stop(&mut self) {
-        self.stream.as_mut().unwrap().stop()
+        // Defensive: stopping a player that has no active stream (e.g.
+        // a movie that was never started — the SCE `movie` command calls
+        // `stop()` unconditionally under agent fast-forward) is a no-op,
+        // not a panic.
+        if let Some(stream) = self.stream.as_mut() {
+            stream.stop()
+        }
     }
 
     pub fn get_source_size(&self) -> Option<(u32, u32)> {

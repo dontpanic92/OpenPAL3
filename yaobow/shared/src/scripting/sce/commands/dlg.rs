@@ -25,12 +25,12 @@ impl SceCommand for SceCommandDlg {
     ) -> bool {
         if self.dlg_end {
             // state.global_state_mut().set_adv_input_enabled(self.adv_input_enabled);
-            state.dialog_box().clear_avator();
+            state.clear_dialog_avatar();
 
             return true;
         }
 
-        state.dialog_box().draw(self.text.as_ref(), ui, delta_sec);
+        state.render_dialog(self.text.as_ref(), delta_sec);
 
         // delay set_adv_input to the next frame so that the last kay pressed
         // won't trigger the sce proc again.

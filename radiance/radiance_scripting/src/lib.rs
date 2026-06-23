@@ -26,6 +26,9 @@ pub mod script_vfs;
 pub mod services;
 
 pub use proxies::{ImguiImmediateDirectorPump, install_imgui_pump, install_imgui_pump_with_cache};
+pub use services::texture_cache::ImguiTextureCache;
+pub use services::texture_resolver::TextureResolver;
+pub use services::ui_host::{ImguiUiHost, with_ui_host};
 // Auto-generated bridges re-exported under the historical names so
 // callers don't need to know where the codegen lives.
 pub use runtime::{RuntimeServices, ScriptDirectorHandle, ScriptHost};

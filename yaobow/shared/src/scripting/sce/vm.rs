@@ -45,6 +45,7 @@ impl SceVm {
         asset_mgr: Rc<AssetManager>,
         global_state: GlobalState,
         options: Option<SceExecutionOptions>,
+        dialog_deps: crate::scripting::sce::Pal3DialogDeps,
     ) -> Self {
         let state = SceState::new(
             input_engine.clone(),
@@ -55,6 +56,7 @@ impl SceVm {
             sce_name,
             global_state,
             options,
+            dialog_deps,
         );
 
         Self {
@@ -104,16 +106,11 @@ impl SceVm {
 
     fn draw_curtain(&mut self) {
         let curtain = self.state().curtain();
-        let fade_to_white = if curtain == 0. {
+        if curtain == 0. {
             return;
-        } else {
-            curtain < 0.
-        };
+        }
 
-        let ui = self.ui.ui();
-        self.state_mut()
-            .dialog_box()
-            .fade_window(ui, fade_to_white, curtain.abs());
+        self.state_mut().render_curtain();
     }
 
     pub fn render_debug(&mut self, _scene_manager: ComRc<ISceneManager>, ui: &Ui) {

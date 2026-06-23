@@ -739,6 +739,45 @@ interface IUiHost: IUnknown {
     // float鈫抜nt cast.
     int content_region_avail_x();
     int content_region_avail_y();
+
+    // --- Background draw-list primitives ------------------------------
+    // Direct background-draw-list drawing for screens (e.g. the PAL3
+    // in-game dialog box) that compose their own pixel-exact layout
+    // outside imgui's auto-flow and outside any window. All coordinates
+    // are in logical/script pixels (the host multiplies by `dpi_scale`);
+    // colours are float r,g,b,a components in the 0..1 range. These draw
+    // to `get_background_draw_list()`, so they render beneath imgui
+    // windows and ignore the current cursor — pair them with absolute
+    // geometry computed from `display_size_x/y`.
+
+    // Filled rectangle spanning `[x0,y0]`..`[x1,y1]`. Used for the
+    // scene-transition curtain / fade overlay.
+    void fill_rect(float x0, float y0, float x1, float y1,
+                   float r, float g, float b, float a);
+
+    // Blit a (possibly stretched) sub-region of a texture atlas into the
+    // absolute rect `[x0,y0]`..`[x1,y1]`. `u0,v0`/`u1,v1` are normalised
+    // [0,1] atlas coordinates. Unlike `image_uv` (which draws at the
+    // imgui cursor and takes a size), this places the image at an
+    // absolute position on the background draw list — the dialog box's
+    // 9-slice chrome, decoration and avatar are each one such blit.
+    void image_rect(int texture_com_id,
+                    float x0, float y0, float x1, float y1,
+                    float u0, float v0, float u1, float v1);
+
+    // Draw `s` at absolute position `[x,y]` (top-left) in colour
+    // `r,g,b,a`, using the registered LARGE game font (the PAL3 in-game
+    // dialog font) when available, falling back to the default font.
+    // Drawn on the background draw list so it composes with `image_rect`
+    // chrome behind imgui windows.
+    void text_at(float x, float y, float r, float g, float b, float a, &str s);
+
+    // Pixel size of the LARGE game font in logical/script pixels
+    // (`font_size / dpi_scale`), or 0 when no game font is registered.
+    // Scripts use this to compute per-character advance and line pitch
+    // for the dialog text grid. Returns logical units so it composes
+    // with the logical coordinates passed to `text_at`.
+    float game_font_size();
 }
 
 // Engine-visible immediate-mode director. `render_im` is pumped by the

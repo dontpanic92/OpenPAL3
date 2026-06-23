@@ -159,6 +159,35 @@ pub fn with_imgui_frame<'a, R>(frame: &mut ImguiFrameState<'a>, body: impl FnOnc
     body()
 }
 
+/// Drive a `ComRc<IUiHost>` body outside the engine's immediate-director
+/// pump — used by render sites that compose imgui mid-frame from their
+/// own update loop (e.g. the PAL3 SCE command loop driving the scripted
+/// dialog box) rather than from an installed `IImmediateDirector`.
+///
+/// Sets up an [`ImguiFrameState`] from the live `UiManager` (its current
+/// imgui `Ui`, font table and dpi) plus the caller-supplied
+/// `TextureResolver`, parks it via [`with_imgui_frame`], and invokes
+/// `body` with a fresh stateless [`ImguiUiHost`]. The `IUiHost` calls
+/// the body issues (including the new background-draw-list primitives)
+/// therefore land on the same imgui frame the engine is about to
+/// present.
+///
+/// Must be called on the game thread while the engine's imgui frame is
+/// open (i.e. from within a director `update`), and not nested inside
+/// the pump's own `with_imgui_frame` scope (the inner frame would shadow
+/// the outer one for the duration of `body`).
+pub fn with_ui_host<R>(
+    ui_manager: &radiance::radiance::UiManager,
+    textures: &mut dyn TextureResolver,
+    body: impl FnOnce(&ComRc<IUiHost>) -> R,
+) -> R {
+    let ui = ui_manager.ui();
+    let fonts: Vec<imgui::FontId> = ui.fonts().fonts().to_vec();
+    let mut frame = ImguiFrameState::new(ui, textures, &fonts, ui_manager.dpi_scale());
+    let ui_host = ImguiUiHost::create();
+    with_imgui_frame(&mut frame, || body(&ui_host))
+}
+
 fn with_frame<R>(label: &str, body: impl FnOnce(&ImguiFrameState<'_>) -> R) -> Option<R> {
     let raw = FRAME.with(|cell| cell.get());
     if raw.is_null() {
@@ -802,6 +831,87 @@ impl IUiHostImpl for ImguiUiHost {
             logical.max(0.0) as i32
         })
         .unwrap_or(0)
+    }
+
+    fn fill_rect(&self, x0: f32, y0: f32, x1: f32, y1: f32, r: f32, g: f32, b: f32, a: f32) {
+        let _ = with_frame("fill_rect", |f| {
+            let s = if f.dpi_scale > 0.0 { f.dpi_scale } else { 1.0 };
+            let color = imgui::ImColor32::from_rgba_f32s(r, g, b, a);
+            f.ui.get_background_draw_list()
+                .add_rect([x0 * s, y0 * s], [x1 * s, y1 * s], color)
+                .filled(true)
+                .build();
+        });
+    }
+
+    fn image_rect(
+        &self,
+        texture_com_id: i32,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+    ) {
+        let _ = with_frame("image_rect", |f| {
+            let texture_id = f
+                .textures
+                .borrow_mut()
+                .resolve(texture_com_id as i64)
+                .or_else(|| {
+                    (texture_com_id >= 0).then(|| imgui::TextureId::new(texture_com_id as usize))
+                });
+            let Some(texture_id) = texture_id else {
+                return;
+            };
+            let s = if f.dpi_scale > 0.0 { f.dpi_scale } else { 1.0 };
+            f.ui.get_background_draw_list()
+                .add_image(texture_id, [x0 * s, y0 * s], [x1 * s, y1 * s])
+                .uv_min([u0, v0])
+                .uv_max([u1, v1])
+                .build();
+        });
+    }
+
+    fn text_at(&self, x: f32, y: f32, r: f32, g: f32, b: f32, a: f32, s: &str) {
+        let _ = with_frame("text_at", |f| {
+            // Prefer the registered LARGE game font (the PAL3 in-game
+            // dialog font); fall back to the default atlas font when no
+            // game font was registered. The pushed font is read by the
+            // draw list's `add_text` at submission time.
+            let font = radiance::imgui::game_font(radiance::imgui::GameFontSize::LARGE)
+                .unwrap_or_else(|| f.ui.fonts().fonts()[0]);
+            let token = f.ui.push_font(font);
+            let scale = if f.dpi_scale > 0.0 { f.dpi_scale } else { 1.0 };
+            let color = imgui::ImColor32::from_rgba_f32s(r, g, b, a);
+            f.ui
+                .get_background_draw_list()
+                .add_text([x * scale, y * scale], color, s);
+            token.pop();
+        });
+    }
+
+    fn game_font_size(&self) -> f32 {
+        with_frame("game_font_size", |f| {
+            let Some(font) = radiance::imgui::game_font(radiance::imgui::GameFontSize::LARGE) else {
+                return 0.0;
+            };
+            let size = f
+                .ui
+                .fonts()
+                .get_font(font)
+                .map(|fnt| fnt.font_size)
+                .unwrap_or(0.0);
+            if f.dpi_scale > 0.0 {
+                size / f.dpi_scale
+            } else {
+                size
+            }
+        })
+        .unwrap_or(0.0)
     }
 
     fn style_color(&self, slot: i32, r: f32, g: f32, b: f32, a: f32, body: ComRc<IAction>) {

@@ -10,16 +10,31 @@ use imgui::Ui;
 use radiance::{
     audio::AudioEngine, comdef::ISceneManager, input::InputEngine, radiance::UiManager,
 };
+use radiance_scripting::{ImguiTextureCache, with_ui_host};
 
 use crate::openpal3::{
-    asset_manager::AssetManager, loaders::sce_loader::SceFile, states::global_state::GlobalState,
-    ui::dlg_box::DialogBox,
+    asset_manager::AssetManager,
+    comdef::IPal3DialogRenderer,
+    loaders::sce_loader::SceFile,
+    states::global_state::GlobalState,
 };
 
 use self::vm::{SceExecutionContext, SceExecutionOptions};
 
 pub mod commands;
 pub mod vm;
+
+/// The scripted PAL3 dialog-box renderer plus the shared texture cache
+/// it resolves sprites through, threaded from `Pal3Service` into the SCE
+/// command loop. The renderer is self-contained (it owns its sprites,
+/// avatar and curtain state in p7); the host only forwards SCE events
+/// and the per-frame draw calls. `texture_cache` is what `with_ui_host`
+/// needs to enter a mid-update imgui frame.
+#[derive(Clone)]
+pub struct Pal3DialogDeps {
+    pub renderer: ComRc<IPal3DialogRenderer>,
+    pub texture_cache: Rc<RefCell<ImguiTextureCache>>,
+}
 
 pub trait SceCommandDebug {
     fn debug(&self) -> String;
@@ -62,8 +77,13 @@ pub struct SceState {
     input_engine: Rc<RefCell<dyn InputEngine>>,
     audio_engine: Rc<dyn AudioEngine>,
 
-    // Temporarily put it here but we need a dedicated place for the UI stuff.
-    dlg_box: DialogBox,
+    // Scripted PAL3 dialog box: the SCE command loop forwards events to
+    // the self-contained p7 `dialog_renderer` and drives its per-frame
+    // draw calls via `with_ui_host`. `ui` + `texture_cache` are what that
+    // helper needs to enter an imgui frame mid-update.
+    ui: Rc<UiManager>,
+    dialog_renderer: ComRc<IPal3DialogRenderer>,
+    texture_cache: Rc<RefCell<ImguiTextureCache>>,
 }
 
 impl SceState {
@@ -76,6 +96,7 @@ impl SceState {
         sce_name: String,
         global_state: GlobalState,
         options: Option<SceExecutionOptions>,
+        dialog_deps: Pal3DialogDeps,
     ) -> Self {
         let ext = HashMap::<String, Box<dyn Any>>::new();
 
@@ -89,7 +110,9 @@ impl SceState {
             ext,
             input_engine,
             audio_engine,
-            dlg_box: DialogBox::new(ui, asset_mgr),
+            ui,
+            dialog_renderer: dialog_deps.renderer,
+            texture_cache: dialog_deps.texture_cache,
         }
     }
 
@@ -173,7 +196,41 @@ impl SceState {
             .try_call_proc_by_name(proc_name, &mut self.global_state);
     }
 
-    pub fn dialog_box(&mut self) -> &mut DialogBox {
-        &mut self.dlg_box
+    /// Compose the scripted dialog panel for this frame: drive the p7
+    /// `render_dialog` with the markup-bearing `text` inside a mid-frame
+    /// imgui scope. Mirrors the legacy `DialogBox::draw`.
+    pub fn render_dialog(&mut self, text: &str, delta_sec: f32) {
+        let renderer = self.dialog_renderer.clone();
+        let cache = self.texture_cache.clone();
+        let mut cache_ref = cache.borrow_mut();
+        with_ui_host(&self.ui, &mut *cache_ref, |ui_host| {
+            renderer.render_dialog(ui_host.clone(), text, delta_sec);
+        });
+    }
+
+    /// Paint the scene-transition curtain/fade for this frame from the
+    /// current `curtain` value. Mirrors the legacy
+    /// `DialogBox::fade_window` driven by `SceVm::draw_curtain`.
+    pub fn render_curtain(&mut self) {
+        let curtain = self.curtain;
+        self.dialog_renderer.set_curtain(curtain);
+        let renderer = self.dialog_renderer.clone();
+        let cache = self.texture_cache.clone();
+        let mut cache_ref = cache.borrow_mut();
+        with_ui_host(&self.ui, &mut *cache_ref, |ui_host| {
+            renderer.render_curtain(ui_host.clone());
+        });
+    }
+
+    /// Set the dialog avatar/portrait (PAL3 `dlgface`). The p7 renderer
+    /// loads the portrait sprite; called outside any `with_ui_host`
+    /// scope so the texture-cache upload doesn't re-enter a held borrow.
+    pub fn set_dialog_avatar(&self, role: &str, face: &str, side: i32) {
+        self.dialog_renderer.set_avatar(role, face, side);
+    }
+
+    /// Clear the dialog avatar/portrait (end of a `dlg` beat).
+    pub fn clear_dialog_avatar(&self) {
+        self.dialog_renderer.clear_avatar();
     }
 }

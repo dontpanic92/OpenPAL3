@@ -38,9 +38,7 @@ impl SceCommand for SceCommandDlgFace {
             .inner::<RoleController>()
             .model_name()
             .to_owned();
-        state
-            .dialog_box()
-            .set_avator(&role_name, &self.face_name, self.left_or_right);
+        state.set_dialog_avatar(&role_name, &self.face_name, self.left_or_right);
 
         true
     }

@@ -38,4 +38,17 @@ pub trait ImmediateDirectorPump {
     /// A transition produced by the script's `update` therefore
     /// appears for the first time on the *next* frame's `render_im`.
     fn pump(&self, director: ComRc<IDirector>, dt: f32);
+
+    /// Director-agnostic once-per-presented-frame tick, called by
+    /// `CoreRadianceEngine::update` on *every* frame regardless of
+    /// whether an immediate-mode director is active (unlike
+    /// [`pump`](Self::pump), which only fires when a director is
+    /// installed). The imgui pump forwards this to its
+    /// `ImguiTextureCache::advance_frame`, advancing the frame-gated
+    /// texture-deletion queue. This is essential for games like PAL3
+    /// whose adventure director is *not* immediate-mode and therefore
+    /// never triggers `pump` — without this tick their dropped UI
+    /// textures would never be released. Default is a no-op so existing
+    /// pumps that don't manage a deletion queue need not implement it.
+    fn advance_frame(&self) {}
 }

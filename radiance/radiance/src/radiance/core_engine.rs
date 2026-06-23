@@ -197,6 +197,12 @@ impl CoreRadianceEngine {
             // `scene_manager.update`'s `director.update` call will
             // first appear on the next frame's `render_im`.
             if let Some(pump) = pump.as_ref() {
+                // Director-agnostic per-frame tick (advances the
+                // frame-gated texture-deletion queue) — must run every
+                // frame, including when the active director is not
+                // immediate-mode (e.g. PAL3's AdventureDirector), so it
+                // is separate from the director-gated `pump` below.
+                pump.advance_frame();
                 if let Some(director) = scene_manager.director() {
                     pump.pump(director, delta_sec);
                 }

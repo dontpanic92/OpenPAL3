@@ -1,8 +1,9 @@
-// PAL3 start-menu director. Reads sprite metadata from the host
-// `IPal3StartMenuScene` (parsed from `ui\\UILib\\UI_opt.tli` and
-// indexed against atlas pages `1..11.tga|.dds`) and composes the
-// cover-art screen directly with `IUiHost.image_uv` — PAL3 ships no
-// CEGUI layouts, so screen positions are authored here in p7.
+// PAL3 start-menu director. Resolves sprites by name through the
+// generic `IPal3UiAtlas` (a `UI_opt.tli` format adapter over the
+// engine-level `ISprite` layer) and composes the cover-art screen
+// directly with `IUiHost.image_uv` — PAL3 ships no CEGUI layouts, so
+// screen positions are authored here in p7. The menu BGM is a generic
+// `IAudioSource` (`host.pal3().load_menu_bgm`).
 //
 // Buttons functional in v1:
 //   * 前尘一梦 (`btn_qianchenyimeng`) — New Game
@@ -122,9 +123,9 @@ let KEY_ESCAPE: int = 38;
 // `radiance::video::VideoStreamState`. 0=Stopped, 1=Playing, 2=Paused.
 let VIDEO_STATE_STOPPED: int = 0;
 
-// Sprite paths. Forward slashes + lowercase to match the scene's
-// canonical key form; `IPal3StartMenuScene` resolves either separator
-// style but lowercase is the on-disk casing.
+// Sprite paths. Forward slashes + lowercase to match the atlas's
+// canonical key form; `IPal3UiAtlas` resolves either separator style
+// but lowercase is the on-disk casing.
 let SPR_BG: string              = "ui/menu/beijing.tga";
 let SPR_TAIJI_A: string         = "ui/menu/taijia.tga";
 let SPR_TAIJI_B: string         = "ui/menu/taijib.tga";
@@ -175,10 +176,11 @@ let WID_LOAD_BACK: int      = 100;
 pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirector(
     pub host: box<yaobow_services.IYaobowHostContext>,
     pub asset_path: string,
-    // Sprite catalogue + BGM. Null when the per-launch vfs cannot
-    // mount UI_opt.tli; the menu then degrades to a "missing assets"
-    // text screen but keeps Exit functional.
-    pub scene: ?box<openpal3.IPal3StartMenuScene>,
+    // Generic UI atlas (name -> ISprite) + menu BGM. Null when the
+    // per-launch vfs cannot mount UI_opt.tli; the menu then degrades to
+    // a "missing assets" text screen but keeps Exit functional.
+    pub atlas: ?box<openpal3.IPal3UiAtlas>,
+    pub bgm: ?box<scripting_services.IAudioSource>,
     // Cover-button press latch; -1 == no widget held.
     pub pressed_wid: int,
     pub intent: int,
@@ -222,8 +224,8 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
         // logo's audio track. The render_im branch that drops `intro`
         // takes care of `play_bgm` + `taiji_t = 0` at that point.
         if self.intro == null {
-            if self.scene != null {
-                self.scene!.play_bgm();
+            if self.bgm != null {
+                self.bgm!.play(true);
             }
             self.taiji_t = 0.0;
         } else {
@@ -238,8 +240,8 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
     }
 
     pub fn deactivate(self: ref<Self>) -> int {
-        if self.scene != null {
-            self.scene!.stop_bgm();
+        if self.bgm != null {
+            self.bgm!.stop();
         }
         self.activated = false;
         0
@@ -280,19 +282,19 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
                 }
             }
         }
-        if self.scene != null {
-            self.scene!.update_bgm();
+        if self.bgm != null {
+            self.bgm!.update();
         }
 
         // Advance each yun cloud and wrap modulo
         // `(canvas_w + sprite_w)`. Each cloud's x decreases by
         // `dt * speed` so it drifts right→left; on wrap (x < -sprite_w)
         // it re-enters from the right.
-        if self.scene != null {
-            let s = self.scene!;
-            let nat_w = s.native_width() as float;
+        if self.atlas != null {
+            let nat_w = self.atlas!.native_width() as float;
             for i in Range(0, YUN_COUNT) {
-                let sprite_w = s.sprite_w(self.cloud_names[i]) as float;
+                let osp = self.sprite_named(self.cloud_names[i]);
+                let sprite_w = if osp == null { 0.0 } else { osp!.width() as float };
                 self.cloud_x[i] = advance_cloud(
                     self.cloud_x[i], self.cloud_speed[i], anim_dt, nat_w, sprite_w,
                 );
@@ -310,8 +312,8 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
             if stopped || esc {
                 v.stop();
                 self.intro = null;
-                if self.scene != null {
-                    self.scene!.play_bgm();
+                if self.bgm != null {
+                    self.bgm!.play(true);
                 }
                 self.taiji_t = 0.0;
             }
@@ -336,7 +338,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
                     ui.set_cursor_pos((avail_w - dw) * 0.5, (avail_h - dh) * 0.5);
                     ui.image_uv(v.texture_com_id(), dw, dh, 0.0, 0.0, 1.0, 1.0);
                 }
-            } else if self.scene == null {
+            } else if self.atlas == null {
                 self.render_missing(ui);
             } else {
                 if self.mode == MODE_LOAD {
@@ -360,9 +362,9 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
     }
 
     pub fn render_main(self: ref<Self>, ui: box<radiance.IUiHost>) {
-        let s = self.scene!;
-        let nat_w = s.native_width() as float;
-        let nat_h = s.native_height() as float;
+        let atlas = self.atlas!;
+        let nat_w = atlas.native_width() as float;
+        let nat_h = atlas.native_height() as float;
         let avail_w = ui.display_size_x() as float;
         let avail_h = ui.display_size_y() as float;
         if nat_w <= 0.0 || nat_h <= 0.0 || avail_w <= 0.0 || avail_h <= 0.0 {
@@ -377,8 +379,8 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
         self.draw_sprite(ui, SPR_BG, BEIJING_X, BEIJING_Y,
                          origin_x, origin_y, scale);
 
-        let nat_w = s.native_width() as float;
-        let nat_h = s.native_height() as float;
+        let nat_w = atlas.native_width() as float;
+        let nat_h = atlas.native_height() as float;
 
         // Sliding taiji discs. Eased lerp from START → END based on
         // taiji_t. Drawn BEFORE ditu so once they fully slide outward
@@ -452,8 +454,19 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
         }
     }
 
+    // Resolve a sprite by its canonical name through the generic UI
+    // atlas, or null when there's no atlas / the name is unknown / its
+    // page failed to load.
+    pub fn sprite_named(
+        self: ref<Self>,
+        name: string,
+    ) -> ?box<scripting_services.ISprite> {
+        if self.atlas == null { return null; }
+        return self.atlas!.sprite(name);
+    }
+
     // Draw a single sprite by its canonical name. No-op when the
-    // scene doesn't know about it (e.g. the atlas failed to upload).
+    // atlas doesn't know about it (e.g. the page failed to upload).
     pub fn draw_sprite(
         self: ref<Self>,
         ui: box<radiance.IUiHost>,
@@ -461,17 +474,15 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
         x: float, y: float,
         origin_x: float, origin_y: float, scale: float,
     ) {
-        let s = self.scene!;
-        if !s.has_sprite(name) { return; }
-        let com_id = s.sprite_com_id(name);
-        if com_id == 0 { return; }
-        let w = s.sprite_w(name) as float;
-        let h = s.sprite_h(name) as float;
+        let osp = self.sprite_named(name);
+        if osp == null { return; }
+        let sp = osp!;
+        let w = sp.width() as float;
+        let h = sp.height() as float;
         if w <= 0.0 || h <= 0.0 { return; }
         ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
-        ui.image_uv(com_id, w * scale, h * scale,
-                    s.sprite_u0(name), s.sprite_v0(name),
-                    s.sprite_u1(name), s.sprite_v1(name));
+        ui.image_uv(sp.com_id(), w * scale, h * scale,
+                    sp.u0(), sp.v0(), sp.u1(), sp.v1());
     }
 
     // Draw `name` at native (x, y), clipped to the canvas rect
@@ -492,12 +503,11 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
         origin_x: float, origin_y: float, scale: float,
         clip_w: float, clip_h: float,
     ) {
-        let s = self.scene!;
-        if !s.has_sprite(name) { return; }
-        let com_id = s.sprite_com_id(name);
-        if com_id == 0 { return; }
-        let w = s.sprite_w(name) as float;
-        let h = s.sprite_h(name) as float;
+        let osp = self.sprite_named(name);
+        if osp == null { return; }
+        let sp = osp!;
+        let w = sp.width() as float;
+        let h = sp.height() as float;
         if w <= 0.0 || h <= 0.0 { return; }
 
         // Per-edge trim in native pixels. clamp_min0 keeps each trim
@@ -513,10 +523,10 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
         if drawn_w <= 0.0 || drawn_h <= 0.0 { return; }
 
         // UV proportions of each trim into the source rect.
-        let u0 = s.sprite_u0(name);
-        let v0 = s.sprite_v0(name);
-        let u1 = s.sprite_u1(name);
-        let v1 = s.sprite_v1(name);
+        let u0 = sp.u0();
+        let v0 = sp.v0();
+        let u1 = sp.u1();
+        let v1 = sp.v1();
         let u_range = u1 - u0;
         let v_range = v1 - v0;
         let u0p = u0 + (left_trim / w) * u_range;
@@ -528,7 +538,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
             origin_x + (x + left_trim) * scale,
             origin_y + (y + top_trim) * scale,
         );
-        ui.image_uv(com_id, drawn_w * scale, drawn_h * scale, u0p, v0p, u1p, v1p);
+        ui.image_uv(sp.com_id(), drawn_w * scale, drawn_h * scale, u0p, v0p, u1p, v1p);
     }
 
     // Render a 3-state button. `base` is the sprite path without the
@@ -545,38 +555,42 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
         origin_x: float, origin_y: float, scale: float,
         mouse_held: bool, was_pressed: int, released: int,
     ) -> int {
-        let s = self.scene!;
-        let normal = base + "0.tga";
-        if !s.has_sprite(normal) { return released; }
-        let w = s.sprite_w(normal) as float;
-        let h = s.sprite_h(normal) as float;
+        let onorm = self.sprite_named(base + "0.tga");
+        if onorm == null { return released; }
+        let norm = onorm!;
+        let w = norm.width() as float;
+        let h = norm.height() as float;
         if w <= 0.0 || h <= 0.0 { return released; }
 
         ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
-        ui.image_uv(s.sprite_com_id(normal), w * scale, h * scale,
-                    s.sprite_u0(normal), s.sprite_v0(normal),
-                    s.sprite_u1(normal), s.sprite_v1(normal));
+        ui.image_uv(norm.com_id(), w * scale, h * scale,
+                    norm.u0(), norm.v0(), norm.u1(), norm.v1());
 
         let hovered = ui.is_item_hovered();
         let pressed_now = hovered && mouse_held;
 
         // Press takes priority over hover. Fall back to hover sprite,
-        // then to base if no alt state is shipped.
+        // then to base if no alt state is shipped. Press/hover reuse the
+        // normal state's on-screen size.
         let press_name = base + "2.tga";
         let hover_name = base + "1.tga";
         if pressed_now || (was_pressed == wid && mouse_held && hovered) {
-            if s.has_sprite(press_name) {
+            let op = self.sprite_named(press_name);
+            if op != null {
+                let p = op!;
                 ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
-                ui.image_uv(s.sprite_com_id(press_name), w * scale, h * scale,
-                            s.sprite_u0(press_name), s.sprite_v0(press_name),
-                            s.sprite_u1(press_name), s.sprite_v1(press_name));
+                ui.image_uv(p.com_id(), w * scale, h * scale,
+                            p.u0(), p.v0(), p.u1(), p.v1());
             }
         } else {
-            if hovered && s.has_sprite(hover_name) {
-                ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
-                ui.image_uv(s.sprite_com_id(hover_name), w * scale, h * scale,
-                            s.sprite_u0(hover_name), s.sprite_v0(hover_name),
-                            s.sprite_u1(hover_name), s.sprite_v1(hover_name));
+            if hovered {
+                let oh = self.sprite_named(hover_name);
+                if oh != null {
+                    let hv = oh!;
+                    ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
+                    ui.image_uv(hv.com_id(), w * scale, h * scale,
+                                hv.u0(), hv.v0(), hv.u1(), hv.v1());
+                }
             }
         }
 
@@ -593,9 +607,9 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal3StartMenuDirecto
     // Load-mode overlay: dim the cover, list each save slot as a
     // clickable text row, and offer a Back affordance.
     pub fn render_load_overlay(self: ref<Self>, ui: box<radiance.IUiHost>) {
-        let s = self.scene!;
-        let nat_w = s.native_width() as float;
-        let nat_h = s.native_height() as float;
+        let atlas = self.atlas!;
+        let nat_w = atlas.native_width() as float;
+        let nat_h = atlas.native_height() as float;
         let avail_w = ui.display_size_x() as float;
         let avail_h = ui.display_size_y() as float;
         let sx = avail_w / nat_w;
@@ -784,10 +798,13 @@ pub fn make_pal3_start_menu(
     host: box<yaobow_services.IYaobowHostContext>,
     asset_path: string,
 ) -> box<radiance.IImmediateDirector> {
-    // `create_start_menu` returns null when the texture cache isn't
+    // `create_ui_atlas` returns null when the texture cache isn't
     // wired yet or `UI_opt.tli` is missing — the director then renders
     // a "missing assets" fallback so the user can still Exit.
-    let scene = host.pal3().create_start_menu(asset_path);
+    // `load_menu_bgm` returns the PI01 menu BGM as a generic audio
+    // source the menu drives (play/update/stop); null when missing.
+    let atlas = host.pal3().create_ui_atlas(asset_path);
+    let bgm = host.pal3().load_menu_bgm(asset_path);
 
     // Per-cloud config: parallel arrays of length YUN_COUNT. Authoring
     // here keeps the (initial_x, y, speed, sprite name) layout in a
@@ -821,7 +838,7 @@ pub fn make_pal3_start_menu(
     }
 
     return box(Pal3StartMenuDirector(
-        host, asset_path, scene,
+        host, asset_path, atlas, bgm,
         NO_PRESS, INTENT_NONE, MODE_MAIN, NO_SLOT, NO_SLOT,
         0.0,
         // taiji_t (animation progress); also reset on every activate.

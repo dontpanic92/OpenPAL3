@@ -65,6 +65,16 @@ impl ImguiImmediateDirectorPump {
 }
 
 impl ImmediateDirectorPump for ImguiImmediateDirectorPump {
+    fn advance_frame(&self) {
+        // Once-per-presented-frame tick of the frame-gated texture
+        // deletion queue. Runs every frame regardless of director type,
+        // so PAL3's non-immediate AdventureDirector still releases
+        // dropped UI textures. Borrow is short-lived and never overlaps
+        // the `pump` frame-state borrow (that one is taken inside
+        // `pump`).
+        self.textures.borrow_mut().advance_frame();
+    }
+
     fn pump(&self, director: ComRc<IDirector>, dt: f32) {
         let pump_start = std::time::Instant::now();
         let Some(im) = director.query_interface::<IImmediateDirector>() else {

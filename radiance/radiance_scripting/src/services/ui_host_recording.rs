@@ -155,6 +155,36 @@ pub enum UiCall {
         label: String,
         selected: bool,
     },
+    FillRect {
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    },
+    ImageRect {
+        texture_com_id: i32,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+    },
+    TextAt {
+        x: f32,
+        y: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+        s: String,
+    },
     BodyEnter(&'static str),
     BodyExit(&'static str),
 }
@@ -470,6 +500,56 @@ impl IUiHostImpl for HostFacade {
     }
     fn content_region_avail_y(&self) -> i32 {
         0
+    }
+    fn fill_rect(&self, x0: f32, y0: f32, x1: f32, y1: f32, r: f32, g: f32, b: f32, a: f32) {
+        self.inner.record(UiCall::FillRect {
+            x0,
+            y0,
+            x1,
+            y1,
+            r,
+            g,
+            b,
+            a,
+        });
+    }
+    fn image_rect(
+        &self,
+        texture_com_id: i32,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+    ) {
+        self.inner.record(UiCall::ImageRect {
+            texture_com_id,
+            x0,
+            y0,
+            x1,
+            y1,
+            u0,
+            v0,
+            u1,
+            v1,
+        });
+    }
+    fn text_at(&self, x: f32, y: f32, r: f32, g: f32, b: f32, a: f32, s: &str) {
+        self.inner.record(UiCall::TextAt {
+            x,
+            y,
+            r,
+            g,
+            b,
+            a,
+            s: s.into(),
+        });
+    }
+    fn game_font_size(&self) -> f32 {
+        0.0
     }
     fn style_color(&self, _slot: i32, _r: f32, _g: f32, _b: f32, _a: f32, body: ComRc<IAction>) {
         invoke_body("style_color", &self.inner, body);

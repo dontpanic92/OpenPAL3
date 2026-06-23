@@ -104,6 +104,82 @@ interface ITextureService: IUnknown {
 [uuid(7807f40d-87f5-46f9-a479-32449fb4bb74)]
 class TextureService: ITextureService {}
 
+// =====================================================================
+// Generic UI sprite layer (engine-level, game-agnostic).
+//
+// The north-star replacement for per-screen Rust "scene" objects
+// (PAL3's retired `Pal3StartMenuScene` / `Pal3DialogBoxScene`): one
+// reusable, opaque sprite handle plus a vfs-bound loader, mirroring how
+// Unity/UE/Godot expose a generic `Sprite`/`Texture2D`/`RID` that every
+// feature references instead of subclassing.
+//
+// Usage contract (the "cache-once, pass-id-per-frame" pattern):
+//   1. A script loads its sprites ONCE (`load_sprite` / `load_atlas_page`
+//      + `sprite`), stores each `ISprite`'s `com_id` + size + UV as plain
+//      script values, and keeps the `box<ISprite>` alive for the
+//      surface's lifetime.
+//   2. Per frame it issues only `IUiHost.image_rect(com_id, ...)` /
+//      `image_uv(...)` with the cached primitives — no per-frame getter
+//      round-trips across the boundary.
+//
+// Lifetime: each handle is refcounted (ComRc / p7 box). The backing GPU
+// texture is released through the `ImguiTextureCache`'s frame-gated
+// deletion queue (after MAX_FRAMES_IN_FLIGHT (+1) presented frames), so
+// dropping a handle mid-frame can never free a texture the GPU is still
+// sampling.
+// =====================================================================
+
+// Opaque UI sprite: a (possibly sub-rect) view onto an uploaded atlas
+// page. `com_id` is the `ImguiTextureCache` key to feed to
+// `IUiHost.image_rect`/`image_uv`; `width`/`height` are the sub-rect's
+// native pixel size; `u0..v1` are its normalised atlas coordinates
+// (full `[0,1]` for a whole-image sprite). A sprite holds a strong
+// reference to its page, so the page stays uploaded until the last
+// sprite (and the page handle) drop.
+[uuid(48874160-ffd0-443c-855a-f689eb2ddc60)]
+interface ISprite: IUnknown {
+    int com_id();
+    int width();
+    int height();
+    float u0();
+    float v0();
+    float u1();
+    float v1();
+}
+[uuid(24e14d91-6ad5-4a86-a7d8-ac47ddc9c5cc)]
+class Sprite: ISprite {}
+
+// An uploaded texture page. `sprite(x,y,w,h)` carves an `ISprite` over a
+// pixel sub-rect (UVs computed with the half-texel inset to avoid atlas
+// bleeding); `whole()` returns a sprite covering the entire page. The
+// page's com_id is released (frame-gated) once the page handle and every
+// sprite it minted have dropped.
+[uuid(396e0261-1097-4750-9be8-d29a3029a88e)]
+interface IAtlasPage: IUnknown {
+    int width();
+    int height();
+    ISprite sprite(int x, int y, int w, int h);
+    ISprite whole();
+}
+[uuid(8b8f8b3d-fcfe-4b84-a064-7e6f8462735b)]
+class AtlasPage: IAtlasPage {}
+
+// Generic sprite loader bound to a single vfs (e.g. a game's mounted
+// `.cpk`). Decodes images (`image::load_from_memory` with a headerless-
+// TGA fallback and the D3D9 bottom-up `.dds` vertical flip) and uploads
+// them to the shared `ImguiTextureCache`. Returns `null` on missing /
+// undecodable / upload-failed assets so callers degrade gracefully.
+[uuid(d3c7d03e-9099-4ea6-8f1f-c091e615c855)]
+interface ISpriteService: IUnknown {
+    // Load a single full image as a one-sprite page (UV `[0,1]`).
+    ISprite? load_sprite(&str vfs_path);
+    // Load an atlas page to carve sub-rect sprites from.
+    IAtlasPage? load_atlas_page(&str vfs_path);
+}
+[uuid(cb25a82b-1848-4708-b6ae-a6161dcb57f1)]
+class SpriteService: ISpriteService {}
+
+
 [uuid(fa71af91-765f-4fc4-a36d-63fcbe27c4f5)]
 interface IVfsService: IUnknown {
     bool exists(&str vfs_path);

@@ -24,20 +24,27 @@ use std::rc::Rc;
 use agent_server::{AgentCommand, AgentError, AgentResponse};
 use crosscom::ComRc;
 use packfs::init_virtual_fs;
+use radiance::audio::Codec as AudioCodec;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector, ISceneManager};
 use radiance::input::{InputEngine, SyntheticInputBridge};
 use radiance::video::Codec as VideoCodec;
+use radiance_scripting::comdef::services::IAudioSource;
 use radiance_scripting::comdef::services::IVideoHandle;
+use radiance_scripting::comdef::services::ISpriteService;
+use radiance_scripting::services::AudioSource;
 use radiance_scripting::services::ImguiTextureCache;
+use radiance_scripting::services::SpriteService;
 use shared::agent_common::AgentBridge;
 use shared::loaders::video_handle::VideoHandle;
 use shared::openpal3::agent::{Pal3DispatchCtx, dispatch_pal3_command};
 use shared::openpal3::asset_manager::AssetManager;
 use shared::openpal3::comdef::{
-    IAdventureDirector, IPal3ScriptFactory, IPal3Service, IPal3ServiceImpl, IPal3StartMenuScene,
+    IAdventureDirector, IPal3DialogRenderer, IPal3ScriptFactory, IPal3Service, IPal3ServiceImpl,
+    IPal3UiAtlas,
 };
 use shared::openpal3::directors::AdventureDirector;
-use shared::openpal3::start_menu_scene::Pal3StartMenuScene;
+use shared::openpal3::ui_atlas::Pal3UiAtlas;
+use shared::scripting::sce::Pal3DialogDeps;
 use shared::openpal3::states::persistent_state::PAL3_APP_NAME;
 use shared::scripting::sce::vm::SceExecutionOptions;
 use shared::ydirs;
@@ -57,10 +64,11 @@ pub struct Pal3Service {
     /// instance so a `New Game` after browsing the menu doesn't
     /// re-mount the vfs or re-decode assets.
     asset_managers: RefCell<HashMap<String, Rc<AssetManager>>>,
-    /// Imgui texture cache used by `create_start_menu` to upload the
-    /// atlas pages. Installed once at boot by
-    /// `YaobowApplicationLoader::on_loading`. `create_start_menu`
-    /// returns `None` when this slot is empty.
+    /// Imgui texture cache shared by the generic sprite/atlas loaders
+    /// (`create_sprite_service` / `create_ui_atlas`) and the dialog
+    /// renderer to upload + frame-gate UI textures. Installed once at
+    /// boot by `YaobowApplicationLoader::on_loading`; the loaders return
+    /// `None` when this slot is empty.
     texture_cache: RefCell<Option<Rc<RefCell<ImguiTextureCache>>>>,
     /// Script-side factory (`IPal3ScriptFactory`) QI'd from the
     /// reverse-wrapped app root. Used by `create_director` to mint
@@ -107,8 +115,8 @@ impl Pal3Service {
         })
     }
 
-    /// Install the imgui texture cache so `create_start_menu` can
-    /// upload the menu atlases. Called once at boot.
+    /// Install the imgui texture cache so the sprite/atlas loaders and
+    /// dialog renderer can upload UI textures. Called once at boot.
     pub fn set_texture_cache(&self, cache: Rc<RefCell<ImguiTextureCache>>) {
         *self.texture_cache.borrow_mut() = Some(cache);
     }
@@ -122,6 +130,34 @@ impl Pal3Service {
     /// service ↔ host-context ↔ script-CCW reference cycle at teardown.
     pub fn clear_script_factory(&self) {
         *self.script_factory.borrow_mut() = None;
+    }
+
+    /// Build the scripted-dialog-box dependencies threaded into a fresh
+    /// adventure director: a generic, game-vfs-bound `ISpriteService`
+    /// (over this asset path's PAL3 vfs + the shared texture cache) and
+    /// the self-contained p7 `IPal3DialogRenderer` minted by the script
+    /// factory from it. The renderer owns its sprites/avatar/curtain
+    /// state in p7; the host only forwards SCE events + draw calls. Both
+    /// the texture cache and the script factory must already be
+    /// installed (they are, by the time the player leaves the start menu).
+    fn build_dialog_deps(&self, asset_mgr: Rc<AssetManager>) -> Pal3DialogDeps {
+        let texture_cache = self.texture_cache.borrow().clone().expect(
+            "Pal3Service::build_dialog_deps called before the texture cache was installed. \
+             YaobowApplicationLoader must call Pal3Service::set_texture_cache at boot.",
+        );
+        let factory = self.script_factory.borrow().clone().expect(
+            "Pal3Service::build_dialog_deps called before the script factory was installed \
+             (or after it was cleared). YaobowApplicationLoader must call \
+             Pal3Service::set_script_factory after installing the script root.",
+        );
+
+        let sprites = SpriteService::create(asset_mgr.vfs_rc(), texture_cache.clone());
+        let renderer: ComRc<IPal3DialogRenderer> = factory.make_pal3_dialog_renderer(sprites);
+
+        Pal3DialogDeps {
+            renderer,
+            texture_cache,
+        }
     }
 
     /// Returns the cached `AssetManager` for `asset_path`, mounting
@@ -391,6 +427,7 @@ impl IPal3ServiceImpl for Pal3Service {
 
     fn create_adventure_director(&self, asset_path: &str) -> ComRc<IDirector> {
         let asset_mgr = self.asset_manager_for(asset_path);
+        let dialog_deps = self.build_dialog_deps(asset_mgr.clone());
         let engine_rc = self.app.engine();
         let engine = engine_rc.borrow();
         let audio_engine = engine.audio_engine();
@@ -407,6 +444,7 @@ impl IPal3ServiceImpl for Pal3Service {
             ui,
             scene_manager,
             Some(Self::sce_options()),
+            dialog_deps,
         );
         if let Some(bridge) = self.agent_bridge.borrow().as_ref() {
             adv.set_agent_bridge(bridge.clone());
@@ -416,6 +454,7 @@ impl IPal3ServiceImpl for Pal3Service {
 
     fn load_adventure_director(&self, asset_path: &str, slot: i32) -> Option<ComRc<IDirector>> {
         let asset_mgr = self.asset_manager_for(asset_path);
+        let dialog_deps = self.build_dialog_deps(asset_mgr.clone());
         let engine_rc = self.app.engine();
         let engine = engine_rc.borrow();
         let audio_engine = engine.audio_engine();
@@ -433,6 +472,7 @@ impl IPal3ServiceImpl for Pal3Service {
             scene_manager,
             Some(Self::sce_options()),
             slot,
+            dialog_deps,
         )?;
         if let Some(bridge) = self.agent_bridge.borrow().as_ref() {
             adv.set_agent_bridge(bridge.clone());
@@ -455,13 +495,37 @@ impl IPal3ServiceImpl for Pal3Service {
         SAVE_SLOT_COUNT
     }
 
-    fn create_start_menu(&self, asset_path: &str) -> Option<ComRc<IPal3StartMenuScene>> {
-        let cache = self.texture_cache.borrow().clone()?;
+    fn load_menu_bgm(&self, asset_path: &str) -> Option<ComRc<IAudioSource>> {
         let asset_mgr = self.asset_manager_for(asset_path);
         let engine_rc = self.app.engine();
         let audio_engine = engine_rc.borrow().audio_engine();
         drop(engine_rc);
-        Pal3StartMenuScene::create(asset_mgr, audio_engine, cache)
+        // `load_music_data` panics on a missing track; isolate it so a
+        // partial asset set still yields a (silent) menu.
+        let data = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            asset_mgr.load_music_data("PI01")
+        }))
+        .ok()?;
+        let mut source = audio_engine.create_source();
+        source.set_data(data, AudioCodec::Mp3);
+        Some(AudioSource::create(source))
+    }
+
+    fn create_sprite_service(&self, asset_path: &str) -> Option<ComRc<ISpriteService>> {
+        let cache = self.texture_cache.borrow().clone()?;
+        let asset_mgr = self.asset_manager_for(asset_path);
+        Some(SpriteService::create(asset_mgr.vfs_rc(), cache))
+    }
+
+    fn create_ui_atlas(&self, asset_path: &str) -> Option<ComRc<IPal3UiAtlas>> {
+        let sprites = self.create_sprite_service(asset_path)?;
+        let asset_mgr = self.asset_manager_for(asset_path);
+        let manifest = common::store_ext::StoreExt2::read_to_end(
+            asset_mgr.vfs(),
+            Pal3UiAtlas::manifest_path(),
+        )
+        .ok()?;
+        Some(Pal3UiAtlas::create(sprites, &manifest))
     }
 
     fn exit_app(&self) {

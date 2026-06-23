@@ -18,6 +18,7 @@ import yaobow.openpal4.loading_overlay;
 import shared.openpal3;
 import shared.openpal4;
 import yaobow.openpal3.start_menu as pal3_start_menu;
+import yaobow.openpal3.dlg_box as pal3_dlg_box;
 import yaobow.openpal4.start_menu;
 import scripting_services;
 import yaobow.yaobow_services;
@@ -90,6 +91,17 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
         asset_path: string,
     ) -> box<radiance.IImmediateDirector> {
         return pal3_start_menu.make_pal3_start_menu(self.ctx, asset_path);
+    }
+
+    // PAL3 in-game dialog-box renderer factory. `Pal3Service` builds one
+    // per adventure director (with a game-vfs `ISpriteService` it loads
+    // its sprites through) and threads it into the SCE command loop,
+    // which forwards events + per-frame draw calls.
+    pub fn make_pal3_dialog_renderer(
+        self: ref<Self>,
+        sprites: box<scripting_services.ISpriteService>,
+    ) -> box<openpal3.IPal3DialogRenderer> {
+        return pal3_dlg_box.make_pal3_dialog_renderer(sprites);
     }
 }
 
