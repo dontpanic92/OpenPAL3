@@ -39,13 +39,21 @@ impl Pal5Scene {
                     env.sun_color,
                 );
                 scene.set_lighting(radiance::scene::SceneLighting::new(env.ambient, vec![sun]));
+                // Fog color/params are decoded and carried on `env` but not
+                // yet pushed to the renderer (radiance has no fog path); log
+                // them so per-map atmosphere is observable in traces.
                 log::info!(
-                    "Pal5Scene '{}': atmosphere ambient {:?} sun {:?} az={} el={}",
+                    "Pal5Scene '{}': atmosphere ambient {:?} sun {:?} az={} el={} dir {:?} | fog {:?} a={} b={} tag={}",
                     scene_name,
                     env.ambient,
                     env.sun_color,
                     env.sun_azimuth_deg,
                     env.sun_elevation_deg,
+                    dir,
+                    env.fog_color,
+                    env.fog_param_a,
+                    env.fog_param_b,
+                    env.build_tag,
                 );
             }
             None => {
