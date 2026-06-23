@@ -39,6 +39,13 @@ impl SceCommand for SceCommandRoleShowAction {
         state: &mut SceState,
         _delta_sec: f32,
     ) -> bool {
+        // A looping action (`-1`) never ends — it wraps continuously instead of
+        // signalling `AnimationFinished` each cycle — so the script must not
+        // block on it. Treat it as fire-and-forget and advance immediately.
+        if self.repeat_mode == -1 {
+            return true;
+        }
+
         scene_manager
             .resolve_role_do(state, self.role_id, |_, r| {
                 let s = r.state();

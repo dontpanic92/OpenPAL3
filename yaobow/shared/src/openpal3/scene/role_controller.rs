@@ -223,6 +223,20 @@ impl RoleController {
         *self.anim_repeat_mode.borrow_mut() = repeat_mode;
         *self.state.borrow_mut() = RoleState::PlayingAnimation;
 
+        // The MV3 "hold" marker is an SCE-driven pause point used only by the
+        // `RoleShowAction` hold mode (`-2`), which freezes the actor mid-action
+        // until `RoleEndAction` resumes it. Looping/repeating actions (idle,
+        // walk, run) must ignore the marker, otherwise they stutter at it on
+        // every cycle and never reach their final frames cleanly.
+        anim.set_hold_enabled(matches!(repeat_mode, RoleAnimationRepeatMode::Hold));
+
+        // Looping clips (idle/walk/run) wrap rather than end: their final
+        // keyframe is a loop-seam frame (often a distinct pose from frame 0 in
+        // run cycles), so it must not be presented as a resting frame or the
+        // actor flashes a wrong pose each cycle. Only one-shot/hold playback
+        // settles on the true final frame.
+        anim.set_loop_playback(matches!(repeat_mode, RoleAnimationRepeatMode::Loop));
+
         self.entity.add_component(
             IAnimatedMeshComponent::uuid(),
             anim.query_interface::<IComponent>().unwrap(),
