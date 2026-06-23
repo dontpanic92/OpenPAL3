@@ -244,7 +244,7 @@ fn welcome_script_init_loads_with_imported_bindings() {
 }
 
 #[test]
-fn welcome_script_render_im_emits_window_centered_with_game_table() {
+fn welcome_script_render_emits_window_centered_with_game_table() {
     let env = init_runtime().expect("editor script init should load");
     let director = env
         .runtime
@@ -258,8 +258,8 @@ fn welcome_script_render_im_emits_window_centered_with_game_table() {
         .expect("ui_host foreign box");
 
     env.runtime
-        .call_method_void(director, "render_im", vec![ui_box, Data::Float(0.0)])
-        .expect("welcome.p7 render_im should run");
+        .call_method_void(director, "render", vec![ui_box, Data::Float(0.0)])
+        .expect("welcome.p7 render should run");
 
     let calls = recorder.calls.borrow().clone();
     // The render now starts with a `main_menu_bar` (theme picker); the
@@ -268,7 +268,7 @@ fn welcome_script_render_im_emits_window_centered_with_game_table() {
     let centered = calls
         .iter()
         .find(|c| matches!(c, UiCall::WindowCentered { .. }))
-        .expect("welcome render_im should emit a WindowCentered");
+        .expect("welcome render should emit a WindowCentered");
     assert!(
         matches!(
             centered,
@@ -281,7 +281,7 @@ fn welcome_script_render_im_emits_window_centered_with_game_table() {
     let table = calls
         .iter()
         .find(|c| matches!(c, UiCall::Table { id, .. } if id == "welcome.games"))
-        .expect("welcome render_im should emit a Table");
+        .expect("welcome render should emit a Table");
     if let UiCall::Table { cols, .. } = table {
         assert_eq!(*cols, 3, "welcome game table should be 3 columns wide");
     }
@@ -331,10 +331,10 @@ fn welcome_script_settings_button_routes_to_settings_director() {
     env.runtime
         .call_method_void(
             director.clone(),
-            "render_im",
+            "render",
             vec![ui_box, Data::Float(0.0)],
         )
-        .expect("render_im should run with the simulated click");
+        .expect("render should run with the simulated click");
 
     let next = env
         .runtime
@@ -364,10 +364,10 @@ fn welcome_script_no_click_yields_no_transition() {
     env.runtime
         .call_method_void(
             director.clone(),
-            "render_im",
+            "render",
             vec![ui_box, Data::Float(0.0)],
         )
-        .expect("render_im should run");
+        .expect("render should run");
     let result = env
         .runtime
         .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
@@ -399,10 +399,10 @@ fn welcome_script_game_button_with_configured_path_calls_open_game() {
     env.runtime
         .call_method_void(
             director.clone(),
-            "render_im",
+            "render",
             vec![ui_box, Data::Float(0.0)],
         )
-        .expect("render_im should run with the simulated click");
+        .expect("render should run with the simulated click");
 
     let next = env
         .runtime
@@ -417,7 +417,7 @@ fn welcome_script_game_button_with_configured_path_calls_open_game() {
 }
 
 #[test]
-fn welcome_script_render_im_update_survives_repeated_frames() {
+fn welcome_script_render_update_survives_repeated_frames() {
     let env = init_runtime().expect("welcome.p7 init should load");
     let (_recorder, ui_com) = RecordingUiHost::create();
     let ui_com_id = env.runtime.intern(ui_com);
@@ -433,10 +433,10 @@ fn welcome_script_render_im_update_survives_repeated_frames() {
         env.runtime
             .call_method_void(
                 director.clone(),
-                "render_im",
+                "render",
                 vec![ui_box, Data::Float(0.0)],
             )
-            .expect("welcome.p7 render_im should run");
+            .expect("welcome.p7 render should run");
         let result = env
             .runtime
             .call_method_returning_data(director, "update", vec![Data::Float(0.0)])
@@ -450,7 +450,7 @@ fn welcome_script_game_button_with_configured_path_returns_open_game_director() 
     // Phase 6: welcome.update on a game-pick with a configured path
     // returns the `ComRc<IDirector>` that `open_game` produced. The
     // engine then makes that the active director and the pump fires
-    // its `render_im` via QI (when it conforms to IImmediateDirector).
+    // its `render` via QI (when it conforms to IUiLayer).
     // Here open_game's stub returns a plain `StubDirector`, so we
     // just verify the transition value is the foreign box itself.
     let env = init_runtime().expect("welcome.p7 init should load");
@@ -474,10 +474,10 @@ fn welcome_script_game_button_with_configured_path_returns_open_game_director() 
     env.runtime
         .call_method_void(
             director.clone(),
-            "render_im",
+            "render",
             vec![ui_box, Data::Float(0.0)],
         )
-        .expect("render_im should run with the simulated click");
+        .expect("render should run with the simulated click");
     let result = env
         .runtime
         .call_method_returning_data(director, "update", vec![Data::Float(0.0)])

@@ -1,7 +1,6 @@
-//! Shared texture-resolver trait. Used by `services::texture_cache` to
-//! implement com-id → `imgui::TextureId` lookup and by `services::ui_host`
-//! to access that lookup through a per-frame trait object.
+//! The imgui texture-resolver trait moved into `radiance` (so the engine
+//! can own a shared resolver on `UiManager`); re-exported here under the
+//! historical path for back-compat. New code should prefer
+//! `radiance::imgui::TextureResolver`.
 
-pub trait TextureResolver {
-    fn resolve(&mut self, com_id: i64) -> Option<imgui::TextureId>;
-}
+pub use radiance::imgui::TextureResolver;

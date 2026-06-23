@@ -191,10 +191,10 @@ class Pal3DialogRenderer: IPal3DialogRenderer {}
 // COM vtable.
 [uuid(210ea28f-d971-414b-9fba-d3e942cc0516), protosept(scriptable)]
 interface IPal3ScriptFactory: IUnknown {
-    // Scripted PAL3 start-menu director. Returns `IImmediateDirector`
-    // (the menu struct conforms to both `IImmediateDirector` and
-    // `IDirector`); `Pal3Service::create_director` QIs to `IDirector`.
-    IImmediateDirector make_pal3_start_menu(&str asset_path);
+    // Scripted PAL3 start-menu director. Returns `IDirector` (the menu
+    // struct conforms to both `IUiLayer` and `IDirector`); the engine
+    // auto-bridges the active director to a UI layer by QI'ing `IUiLayer`.
+    IDirector make_pal3_start_menu(&str asset_path);
 
     // Scripted PAL3 in-game dialog-box renderer, built with a generic
     // `ISpriteService` (game-vfs-bound) it loads its chrome/indicator

@@ -2,7 +2,7 @@
 //!
 //! The ComObject itself is stateless: every method routes through a
 //! thread-local `ImguiFrameState` pointer that the host (typically
-//! `ImguiImmediateDirectorPump::pump`) sets up at the start of each frame and
+//! `ImguiUiFrameRenderer::render_frame`) sets up at the start of each frame and
 //! tears down at the end via [`with_imgui_frame`]. This mirrors
 //! `crosscom_protosept::scope_context` and keeps the `ComRc<IUiHost>`
 //! itself a 'static value the script can intern once and re-use
@@ -159,23 +159,31 @@ pub fn with_imgui_frame<'a, R>(frame: &mut ImguiFrameState<'a>, body: impl FnOnc
     body()
 }
 
-/// Drive a `ComRc<IUiHost>` body outside the engine's immediate-director
-/// pump — used by render sites that compose imgui mid-frame from their
-/// own update loop (e.g. the PAL3 SCE command loop driving the scripted
-/// dialog box) rather than from an installed `IImmediateDirector`.
+/// Immediate-mode UI composition: drive a `ComRc<IUiHost>` body that
+/// draws directly onto the engine's current imgui frame from within an
+/// update tick. This is the **peer** of the retained
+/// [`UiLayerStack`](radiance::radiance::UiLayerStack): both compose onto
+/// the same open imgui frame through one shared [`ImguiFrameState`], and
+/// in fact the production [`UiFrameRenderer`](radiance::radiance::UiFrameRenderer)
+/// is built on the same `with_imgui_frame` machinery this uses. The
+/// retained stack is for persistent surfaces drawn once per frame before
+/// scene update; this immediate primitive is for UI that a command must
+/// read input for and draw in the *same* update tick (e.g. the PAL3 SCE
+/// `dlg` command driving the scripted dialog box). Neither path is
+/// coupled to a director.
 ///
 /// Sets up an [`ImguiFrameState`] from the live `UiManager` (its current
 /// imgui `Ui`, font table and dpi) plus the caller-supplied
 /// `TextureResolver`, parks it via [`with_imgui_frame`], and invokes
 /// `body` with a fresh stateless [`ImguiUiHost`]. The `IUiHost` calls
-/// the body issues (including the new background-draw-list primitives)
+/// the body issues (including the background-draw-list primitives)
 /// therefore land on the same imgui frame the engine is about to
 /// present.
 ///
 /// Must be called on the game thread while the engine's imgui frame is
 /// open (i.e. from within a director `update`), and not nested inside
-/// the pump's own `with_imgui_frame` scope (the inner frame would shadow
-/// the outer one for the duration of `body`).
+/// the renderer's own `with_imgui_frame` scope (the inner frame would
+/// shadow the outer one for the duration of `body`).
 pub fn with_ui_host<R>(
     ui_manager: &radiance::radiance::UiManager,
     textures: &mut dyn TextureResolver,
@@ -186,6 +194,44 @@ pub fn with_ui_host<R>(
     let mut frame = ImguiFrameState::new(ui, textures, &fonts, ui_manager.dpi_scale());
     let ui_host = ImguiUiHost::create();
     with_imgui_frame(&mut frame, || body(&ui_host))
+}
+
+/// Ergonomic immediate-mode UI composition on the engine-owned texture
+/// cache. Brings the [`with_ui_host`](UiManagerImmediateExt::with_ui_host)
+/// method into scope so render sites can compose imgui mid-update without
+/// threading their own [`TextureResolver`]:
+///
+/// ```ignore
+/// use radiance_scripting::UiManagerImmediateExt;
+/// ui_manager.with_ui_host(|ui_host| {
+///     ui_host.text("hello");
+/// });
+/// ```
+///
+/// Resolves textures through the engine-owned cache installed by
+/// [`install_imgui_ui_renderer`](crate::install_imgui_ui_renderer) — the
+/// same cache the retained layer renderer uses — so callers no longer own
+/// a per-instance `ImguiTextureCache`.
+pub trait UiManagerImmediateExt {
+    /// Compose imgui onto the engine's current frame via a stateless
+    /// [`ImguiUiHost`], resolving textures through the engine-owned
+    /// cache. Returns `None` (dropping `body`) if no UI frame renderer
+    /// has been installed yet (no texture cache to resolve through); see
+    /// the lower-level [`with_ui_host`] free function for explicit-cache
+    /// callers.
+    ///
+    /// Same constraints as [`with_ui_host`]: call on the game thread
+    /// while the engine's imgui frame is open (from within a director
+    /// `update`), not nested inside the renderer's own frame scope.
+    fn with_ui_host<R>(&self, body: impl FnOnce(&ComRc<IUiHost>) -> R) -> Option<R>;
+}
+
+impl UiManagerImmediateExt for radiance::radiance::UiManager {
+    fn with_ui_host<R>(&self, body: impl FnOnce(&ComRc<IUiHost>) -> R) -> Option<R> {
+        let resolver = self.texture_resolver()?;
+        let mut guard = resolver.borrow_mut();
+        Some(with_ui_host(self, &mut *guard, body))
+    }
 }
 
 fn with_frame<R>(label: &str, body: impl FnOnce(&ImguiFrameState<'_>) -> R) -> Option<R> {

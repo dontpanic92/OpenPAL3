@@ -91,7 +91,7 @@ pub struct Pal4Service {
 
     /// Imgui texture cache used by `open_layout` to upload imageset
     /// atlases. Set once at boot by `YaobowApplicationLoader` after
-    /// `install_imgui_pump` returns the cache. `open_layout` returns
+    /// `install_imgui_ui_renderer` returns the cache. `open_layout` returns
     /// `None` when this slot is empty (e.g. on a build target with
     /// no imgui pump).
     texture_cache: RefCell<Option<Rc<RefCell<ImguiTextureCache>>>>,
@@ -174,7 +174,7 @@ impl Pal4Service {
     /// Install the imgui texture cache so `open_layout` can upload
     /// imageset atlases. Called once at boot by
     /// `YaobowApplicationLoader::on_loading` with the cache returned
-    /// by `install_imgui_pump`. Idempotent — replaces a previous
+    /// by `install_imgui_ui_renderer`. Idempotent — replaces a previous
     /// cache (in tests / hot-reload scenarios).
     pub fn set_texture_cache(&self, cache: Rc<RefCell<ImguiTextureCache>>) {
         *self.texture_cache.borrow_mut() = Some(cache);
@@ -855,10 +855,11 @@ impl Pal4Service {
         // before the loading layout finally appears.
         let _ = self.prepare_loading_overlay();
 
-        // The menu struct conforms to both `IImmediateDirector` and
-        // `IDirector`; QI the immediate variant to the director the
-        // scene manager expects. On a null/failed menu the fat CCW
-        // still QIs, but we fall back to a story director defensively.
+        // The menu struct conforms to both `IUiLayer` and `IDirector`;
+        // the factory hands back the `IDirector` the scene manager
+        // expects (the engine auto-bridges its `IUiLayer` slot each
+        // frame). The CCW always backs `IDirector`, so QI is a
+        // formality kept for a defensive story-director fallback.
         let menu = factory.make_pal4_start_menu(asset_path);
         match menu.query_interface::<IDirector>() {
             Some(director) => director,

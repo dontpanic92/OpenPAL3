@@ -1,7 +1,7 @@
 //! Host-side ComObject backing `IPal4DebugContext`.
 //!
 //! The owning [`OpenPAL4Director`](crate::openpal4::director::OpenPAL4Director)
-//! refreshes the snapshot once per `render_im` before invoking the
+//! refreshes the snapshot once per `render` before invoking the
 //! script overlay. The `Pal4DebugContext` ComObject delegates every IDL
 //! getter to the shared [`Pal4DebugState`], so the host keeps a typed
 //! Rust handle for snapshot writes while the script sees a plain
@@ -29,7 +29,7 @@ pub struct Pal4DebugSnapshot {
 }
 
 /// PAL4-debug-session state shared between the typed Rust handle
-/// (used by the director's `render_im` to push per-frame data) and
+/// (used by the director's `render` to push per-frame data) and
 /// the COM wrapper that the script sees as a
 /// `box<IPal4DebugContext>`.
 pub struct Pal4DebugState {

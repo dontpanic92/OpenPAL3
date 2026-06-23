@@ -16,7 +16,7 @@ use radiance::{
     },
     input::SyntheticInputBridge,
 };
-use radiance_scripting::install_imgui_pump;
+use radiance_scripting::install_imgui_ui_renderer;
 use shared::agent_common::{
     AgentBootOptions, AgentBridge, install_global_log_sink, start_agent_server,
 };
@@ -102,8 +102,9 @@ impl BootOptions {
 ///     script app, and installs the PAL4 `IPal4ScriptFactory` on
 ///     `Pal4Service`); the loader holds the returned factory +
 ///     host-context handles.
-///  2. Install the imgui pump (so script-side directors' `render_im`
-///     fires inside the imgui frame scope).
+///  2. Install the imgui UI renderer (so script-side directors that
+///     also implement `IUiLayer` get their `render` driven inside the
+///     imgui frame scope).
 ///  3. Configure `Pal4Service` with the agent bridge (if
 ///     `--pal4 --agent-port` was passed) and the scripted actor
 ///     controller factory.
@@ -149,7 +150,7 @@ impl IComponentImpl for YaobowApplicationLoader {
         // Hook the imgui texture cache into Pal3Service + Pal4Service.
         let pal3 = host_context.pal3();
         let pal4 = host_context.pal4();
-        let texture_cache = install_imgui_pump(&self.app);
+        let texture_cache = install_imgui_ui_renderer(&self.app);
         pal3.inner::<crate::openpal3::Pal3Service>()
             .set_texture_cache(texture_cache.clone());
         pal4.inner::<shared::openpal4::service::Pal4Service>()

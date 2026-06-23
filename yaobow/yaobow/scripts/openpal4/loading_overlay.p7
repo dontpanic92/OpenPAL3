@@ -73,7 +73,7 @@ let PROGRESS_CREEP_CEIL: float = 0.15;
 // continuously.
 let FAIRY_FPS: float = 8.0;
 
-// Fallback PAINTING timeout: if `render_im` never fires (headless
+// Fallback PAINTING timeout: if `render` never fires (headless
 // pump, an agent `/v1/time/step` burst that runs many `update`s
 // per real frame, ...) we still want the deferred load to land.
 // After this many seconds of accumulated tick-dt without a paint
@@ -170,7 +170,7 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         if self.phase == LOAD_PAINTING {
             // Need at least one rendered frame before we let the
             // director kick the synchronous load. `render` increments
-            // `frames_drawn`; if `render_im` never fires (no imgui
+            // `frames_drawn`; if `render` never fires (no imgui
             // pump, headless, agent `/v1/time/step` burst), bypass
             // after `PAINT_TIMEOUT_SECS` of accumulated tick-dt so
             // the load isn't wedged forever.

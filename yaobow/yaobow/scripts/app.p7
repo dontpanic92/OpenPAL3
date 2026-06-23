@@ -28,7 +28,7 @@ import yaobow.title.title;
 pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpal4.IPal4ScriptFactory] YaobowScriptApp(
     pub ctx: box<yaobow_services.IYaobowHostContext>,
 ) {
-    pub fn make_title_director(self: ref<Self>) -> box<radiance.IImmediateDirector> {
+    pub fn make_title_director(self: ref<Self>) -> box<radiance.IDirector> {
         return title.make_title_director(self.ctx);
     }
 
@@ -77,7 +77,7 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
     pub fn make_pal4_start_menu(
         self: ref<Self>,
         asset_path: string,
-    ) -> box<radiance.IImmediateDirector> {
+    ) -> box<radiance.IDirector> {
         return start_menu.make_pal4_start_menu(self.ctx, asset_path);
     }
 
@@ -89,7 +89,7 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
     pub fn make_pal3_start_menu(
         self: ref<Self>,
         asset_path: string,
-    ) -> box<radiance.IImmediateDirector> {
+    ) -> box<radiance.IDirector> {
         return pal3_start_menu.make_pal3_start_menu(self.ctx, asset_path);
     }
 

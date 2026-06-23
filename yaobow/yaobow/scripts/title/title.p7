@@ -42,11 +42,11 @@ let PAL3_COUNT: int = 7;
 let PAL4_COUNT: int = 4;
 
 // Per-frame mutable state. With the readonly axis removed from p7, `ref self`
-// methods (such as those bridged via the `IImmediateDirector` proto) may now
+// methods (such as those bridged via the `IUiLayer` proto) may now
 // mutate fields directly, so the previous `state: box<TitleState>` workaround
 // is no longer required. The per-frame scratch lives as plain fields on
 // `TitleDirector`.
-pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
+pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     pub host: box<yaobow_services.IYaobowHostContext>,
     pub bgm: ?box<scripting_services.IAudioSource>,
     pub logo: ?box<scripting_services.ITexture>,
@@ -82,7 +82,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
         0
     }
 
-    pub fn render_im(
+    pub fn render(
         self: ref<Self>,
         ui: box<radiance.IUiHost>,
         dt: float,
@@ -476,7 +476,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleDirector(
 
 pub fn make_title_director(
     host: box<yaobow_services.IYaobowHostContext>,
-) -> box<radiance.IImmediateDirector> {
+) -> box<radiance.IDirector> {
     let bgm = host.audio().load("/music/Grace.ogg", 1);
     let logo = host.textures().load_png("/images/yaobow.png");
     let mut logo_w: int = 0;
@@ -503,7 +503,7 @@ pub fn make_title_director(
         title_consts.INTENT_NONE,                       // intent
         0,                                              // intent_arg
         null,                                           // current_pic
-    )) as box<radiance.IImmediateDirector>;
+    )) as box<radiance.IDirector>;
 }
 
 // ---------------------------------------------------------------------------
@@ -512,7 +512,7 @@ pub fn make_title_director(
 // Mirrors the editor's `SettingsDirector` but limited to the two games
 // the yaobow.title page currently surfaces.
 
-pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirector(
+pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     pub host: box<yaobow_services.IYaobowHostContext>,
     pub intent: int,
     pub intent_arg: int,
@@ -524,7 +524,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] TitleSettingsDirecto
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
-    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.style_color(
             title_consts.SC_WINDOW_BG,
             title_consts.BG_R, title_consts.BG_G, title_consts.BG_B, title_consts.BG_A,
@@ -643,8 +643,8 @@ fn make_settings_director(
 }
 
 // Re-entry to the yaobow.title page after saving/cancelling settings. The
-// returned director satisfies `radiance.IDirector`; the engine's imgui
-// pump will QI to `IImmediateDirector` and call `render_im`.
+// returned director satisfies `radiance.IDirector`; the engine's UI
+// renderer will QI to `IUiLayer` and call `render`.
 fn make_title_director_as_director(
     host: box<yaobow_services.IYaobowHostContext>,
 ) -> ?box<radiance.IDirector> {

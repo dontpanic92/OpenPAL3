@@ -87,7 +87,7 @@ fn is_back_name(name: string) -> bool {
         || name.contains("Exit");
 }
 
-pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirector(
+pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     pub host: box<yaobow_services.IYaobowHostContext>,
     pub asset_path: string,
     pub layout: ?box<scripting_services.IUiLayoutHandle>,
@@ -146,7 +146,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
         0
     }
 
-    pub fn render_im(
+    pub fn render(
         self: ref<Self>,
         ui: box<radiance.IUiHost>,
         dt: float,
@@ -449,7 +449,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] Pal4StartMenuDirecto
 pub fn make_pal4_start_menu(
     host: box<yaobow_services.IYaobowHostContext>,
     asset_path: string,
-) -> box<radiance.IImmediateDirector> {
+) -> box<radiance.IDirector> {
     // `open_layout` may return null when PAL4 assets aren't installed
     // at this path. We still construct the menu director — it renders
     // a fallback "layout not found" message and keeps Exit/back-to-
@@ -462,5 +462,5 @@ pub fn make_pal4_start_menu(
     return box(Pal4StartMenuDirector(
         host, asset_path, layout, load_layout, bgm,
         NO_PRESS, INTENT_NONE, false, MODE_MAIN, NO_SLOT, NO_SLOT,
-    )) as box<radiance.IImmediateDirector>;
+    )) as box<radiance.IDirector>;
 }

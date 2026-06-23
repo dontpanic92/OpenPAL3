@@ -251,8 +251,9 @@ fn requested_uuid_not_in_conformance_still_satisfied_via_additional_query() {
             args: vec![],
             ret: RetKind::Int,
         }],
-        // Child advertises Parent via QI — exactly the
-        // IImmediateDirector → IDirector relationship.
+        // Child advertises Parent via QI — exactly the kind of
+        // sibling/parent conformance a script director uses to expose
+        // both IDirector and IUiLayer.
         additional_query_uuids: vec![IINH_PARENT_UUID],
     });
 

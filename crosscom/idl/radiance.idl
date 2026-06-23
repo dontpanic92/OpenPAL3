@@ -448,11 +448,11 @@ class SceneCameraControl: ICameraControl {}
 // Scripts pass callbacks as ordinary p7 closures, elaborated into anon
 // structs implementing IAction via SAM coercion.
 //
-// IImmediateDirector: engine-visible immediate-mode director. Inherits
-// from IDirector and adds a render_im step the engine pumps inside its
-// imgui frame scope. Scripts implement this directly via
-// struct[radiance.IImmediateDirector]; the resulting box is wrapped to
-// ComRc<IDirector> via the auto-generated wrap_immediate_director.
+// IUiLayer: engine-visible immediate-mode UI layer. Decoupled from
+// IDirector. Scripts implement it directly via struct[radiance.IUiLayer];
+// the resulting box is wrapped to ComRc<IUiLayer> via the auto-generated
+// wrap_ui_layer. The engine drives every registered layer's `render`
+// inside its imgui frame scope.
 // =====================================================================
 
 [uuid(7d3c8a44-58f1-4d12-9c4b-1a2f9c0e0d01)]
@@ -780,11 +780,18 @@ interface IUiHost: IUnknown {
     float game_font_size();
 }
 
-// Engine-visible immediate-mode director. `render_im` is pumped by the
-// engine inside its imgui frame scope (Phase D of director.md); the
-// inherited `IDirector::activate` / `IDirector::update` remain the
-// activation/transition contract.
+// Engine-owned immediate-mode UI layer. Decoupled from `IDirector`:
+// anything (a director that also draws a screen, a debug overlay, a
+// dialog box) can be a UI layer. The engine drives every registered
+// layer's `render` once per frame inside its single imgui frame scope,
+// in z-order band order (see `UiLayerBand`).
+//
+// A director that wants to draw a screen simply *also* implements
+// `IUiLayer`; the engine auto-bridges the active director into the
+// `Scene` band when it conforms (so screen scripts need no explicit
+// registration). Standalone surfaces register via the Rust
+// `UiManager::register_ui_layer` API and hold the returned RAII handle.
 [uuid(3cc6ab2c-0d00-499f-b59f-7e9d63abb136), protosept(scriptable)]
-interface IImmediateDirector: IDirector {
-    void render_im(IUiHost ui, float dt);
+interface IUiLayer: IUnknown {
+    void render(IUiHost ui, float dt);
 }

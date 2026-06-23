@@ -1,16 +1,14 @@
 //! Smoke tests for the runtime-typed CCW factory's fat-CCW behaviour
-//! for IDirector + IImmediateDirector aggregation, and the
-//! `ImguiImmediateDirectorPump::dispatch_render_im` helper.
+//! for IDirector + IUiLayer aggregation, and the
+//! `ImguiUiFrameRenderer::dispatch_render` helper.
 //!
-//! Drives a script-side
-//! `struct[radiance.IImmediateDirector, IDirectorLifecycle] StubIm`
-//! through:
+//! Drives a script-side `struct[radiance.IUiLayer, radiance.IDirector]
+//! StubLayer` through:
 //!  - `wrap_director(handle, data) -> ComRc<IDirector>`,
-//!  - QI to `ComRc<IImmediateDirector>` (validates the fat-CCW slot
-//!    for the derived interface),
-//!  - `dispatch_render_im(&director, &recording_ui_host, dt)`
-//!    invoking the script's `render_im` which forwards to the
-//!    `RecordingUiHost`.
+//!  - QI to `ComRc<IUiLayer>` (validates the fat-CCW slot for the
+//!    sibling interface),
+//!  - `dispatch_render(&layer, &recording_ui_host, dt)` invoking the
+//!    script's `render` which forwards to the `RecordingUiHost`.
 
 use std::sync::Mutex;
 
@@ -18,11 +16,9 @@ use crosscom::ComRc;
 use p7::errors::RuntimeError;
 use p7::interpreter::context::{Context, Data};
 use radiance::comdef::IDirector;
-use radiance::comdef::IImmediateDirector;
+use radiance::comdef::IUiLayer;
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
-use radiance_scripting::{
-    ImguiImmediateDirectorPump, ScriptHost, register_immediate_director_proto, wrap_director,
-};
+use radiance_scripting::{ImguiUiFrameRenderer, ScriptHost, register_ui_layer_proto, wrap_director};
 
 const SCRIPT: &str = r#"
 import radiance;
@@ -31,7 +27,7 @@ import radiance;
 @intrinsic(name="imp_test.record_event")
 fn record_event(seed: int, event: int);
 
-struct[radiance.IImmediateDirector] StubIm(
+struct[radiance.IUiLayer, radiance.IDirector] StubLayer(
     seed: int,
 ) {
     pub fn activate(self: ref<Self>) -> int {
@@ -42,7 +38,7 @@ struct[radiance.IImmediateDirector] StubIm(
         record_event(self.seed, 2);
         return null;
     }
-    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         // Forward a single recognisable call to the UI host so the
         // RecordingUiHost picks it up. `text` is the simplest leaf
         // method we can verify.
@@ -56,9 +52,9 @@ struct[radiance.IImmediateDirector] StubIm(
     }
 }
 
-pub fn make_im(seed: int) -> box<radiance.IImmediateDirector> {
-    let d = box(StubIm(seed));
-    d as box<radiance.IImmediateDirector>
+pub fn make_layer(seed: int) -> box<radiance.IDirector> {
+    let d = box(StubLayer(seed));
+    d as box<radiance.IDirector>
 }
 "#;
 
@@ -89,10 +85,10 @@ fn host_runtime_handle(host: &std::rc::Rc<ScriptHost>) -> crosscom_protosept::Ru
 }
 
 #[test]
-fn wrap_director_round_trips_qi_to_immediate_director() {
+fn wrap_director_round_trips_qi_to_ui_layer() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     EVENTS.lock().unwrap().clear();
-    register_immediate_director_proto();
+    register_ui_layer_proto();
 
     let host = ScriptHost::new();
     host.with_ctx_mut(|ctx| {
@@ -101,13 +97,13 @@ fn wrap_director_round_trips_qi_to_immediate_director() {
     host.load_source(SCRIPT).expect("load_source");
 
     let data = host
-        .call_returning_data("make_im", vec![Data::Int(11)])
-        .expect("make_im");
+        .call_returning_data("make_layer", vec![Data::Int(11)])
+        .expect("make_layer");
     let handle = host_runtime_handle(&host);
     let as_director: ComRc<IDirector> = wrap_director(&handle, data).expect("wrap_director");
-    let im: ComRc<IImmediateDirector> = as_director
-        .query_interface::<IImmediateDirector>()
-        .expect("QI IDirector -> IImmediateDirector via fat CCW");
+    let layer: ComRc<IUiLayer> = as_director
+        .query_interface::<IUiLayer>()
+        .expect("QI IDirector -> IUiLayer via fat CCW");
 
     // Drive activate + update via the QI'd IDirector ComRc.
     as_director.activate(); // (11, 1)
@@ -120,7 +116,7 @@ fn wrap_director_round_trips_qi_to_immediate_director() {
     // release hook fires (lifecycle is now driven explicitly by
     // `ISceneManager::deactivate()`).
     drop(as_director);
-    drop(im);
+    drop(layer);
     assert_eq!(
         *EVENTS.lock().unwrap(),
         vec![(11, 1), (11, 2)],
@@ -129,10 +125,10 @@ fn wrap_director_round_trips_qi_to_immediate_director() {
 }
 
 #[test]
-fn dispatch_render_im_forwards_to_script_and_recording_ui_host() {
+fn dispatch_render_forwards_to_script_and_recording_ui_host() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     EVENTS.lock().unwrap().clear();
-    register_immediate_director_proto();
+    register_ui_layer_proto();
 
     let host = ScriptHost::new();
     host.with_ctx_mut(|ctx| {
@@ -141,42 +137,39 @@ fn dispatch_render_im_forwards_to_script_and_recording_ui_host() {
     host.load_source(SCRIPT).expect("load_source");
 
     let data = host
-        .call_returning_data("make_im", vec![Data::Int(7)])
-        .expect("make_im");
+        .call_returning_data("make_layer", vec![Data::Int(7)])
+        .expect("make_layer");
     let handle = host_runtime_handle(&host);
     let as_director: ComRc<IDirector> = wrap_director(&handle, data).expect("wrap_director");
-    let im: ComRc<IImmediateDirector> = as_director
-        .query_interface::<IImmediateDirector>()
-        .expect("QI IDirector -> IImmediateDirector via fat CCW");
+    let layer: ComRc<IUiLayer> = as_director
+        .query_interface::<IUiLayer>()
+        .expect("QI IDirector -> IUiLayer via fat CCW");
 
-    // Build a RecordingUiHost and drive the script's render_im
-    // through the pump's headless dispatch helper. The script's
-    // render_im body issues `ui.text("im")`, which RecordingUiHost
-    // captures, and emits a `(seed, 4)` event so we can confirm
-    // dispatch landed.
+    // Build a RecordingUiHost and drive the script's render through the
+    // renderer's headless dispatch helper. The script's render body
+    // issues `ui.text("im")`, which RecordingUiHost captures, and emits
+    // a `(seed, 4)` event so we can confirm dispatch landed.
     let (recorder, ui_host) = RecordingUiHost::create();
-    let fired = ImguiImmediateDirectorPump::dispatch_render_im(&as_director, &ui_host, 0.016);
-    assert!(fired, "QI to IImmediateDirector should succeed");
+    ImguiUiFrameRenderer::dispatch_render(&layer, &ui_host, 0.016);
 
     assert_eq!(*EVENTS.lock().unwrap(), vec![(7, 4)]);
     let calls: Vec<UiCall> = recorder.calls.borrow().clone();
     assert!(
         matches!(calls.first(), Some(UiCall::Text(s)) if s == "im"),
-        "RecordingUiHost should record the text('im') call from script render_im; got {:?}",
+        "RecordingUiHost should record the text('im') call from script render; got {:?}",
         calls
     );
 
-    drop(im);
+    drop(layer);
     drop(as_director);
 }
 
 #[test]
-fn dispatch_render_im_returns_false_for_non_immediate_director() {
+fn plain_director_does_not_qi_to_ui_layer() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
-    // Build a plain `wrap_director` ComRc<IDirector> (NOT an
-    // IImmediateDirector). dispatch_render_im should QI-miss and
-    // return false without invoking any script method.
+    // Build a plain `wrap_director` ComRc<IDirector> (NOT an IUiLayer).
+    // QI to IUiLayer must miss, so the engine never tries to render it.
     let host = ScriptHost::new();
     host.with_ctx_mut(|ctx| {
         ctx.register_host_function("imp_test.record_event".to_string(), record_event_host_fn);
@@ -209,25 +202,23 @@ pub fn make_plain(seed: int) -> box<radiance.IDirector> {
     let director: ComRc<IDirector> =
         radiance_scripting::wrap_director(&handle, data).expect("wrap_director");
 
-    let (_recorder, ui_host) = RecordingUiHost::create();
-    let fired = ImguiImmediateDirectorPump::dispatch_render_im(&director, &ui_host, 0.016);
     assert!(
-        !fired,
-        "QI to IImmediateDirector must fail for a plain IDirector"
+        director.query_interface::<IUiLayer>().is_none(),
+        "QI to IUiLayer must fail for a plain IDirector"
     );
 }
 
-/// Regression: when a script-side struct conforms to both
-/// `IImmediateDirector` and `IDirector` but the dispatcher marshals
-/// it through an `IDirector?`-typed return (the upstream IDL shape of
-/// `IDirector::update`), the resulting CCW must still QI to
-/// `IImmediateDirector`. Otherwise the engine's immediate-mode pump
-/// QI-misses on the transition and the screen goes black.
+/// Regression: when a script-side struct conforms to both `IUiLayer`
+/// and `IDirector` but the dispatcher marshals it through an
+/// `IDirector?`-typed return (the upstream IDL shape of
+/// `IDirector::update`), the resulting CCW must still QI to `IUiLayer`.
+/// Otherwise the engine's UI renderer QI-misses on the transition and
+/// the screen goes black.
 #[test]
-fn idirector_update_returning_im_director_qis_to_immediate() {
+fn idirector_update_returning_ui_layer_qis_to_ui_layer() {
     let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     EVENTS.lock().unwrap().clear();
-    register_immediate_director_proto();
+    register_ui_layer_proto();
 
     let host = ScriptHost::new();
     host.with_ctx_mut(|ctx| {
@@ -241,10 +232,10 @@ import radiance;
 @intrinsic(name="imp_test.record_event")
 fn record_event(seed: int, event: int);
 
-struct[radiance.IImmediateDirector, radiance.IDirector] NextIm(seed: int) {
+struct[radiance.IUiLayer, radiance.IDirector] NextLayer(seed: int) {
     pub fn activate(self: ref<Self>) -> int { record_event(self.seed, 1); 0 }
     pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> { return null; }
-    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.text("next");
         record_event(self.seed, 4);
         0
@@ -255,7 +246,7 @@ struct[radiance.IImmediateDirector, radiance.IDirector] NextIm(seed: int) {
 struct[radiance.IDirector] WelcomeLike(next_seed: int) {
     pub fn activate(self: ref<Self>) -> int { 0 }
     pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
-        let n = box(NextIm(self.next_seed));
+        let n = box(NextLayer(self.next_seed));
         return n as box<radiance.IDirector>;
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
@@ -276,17 +267,16 @@ pub fn make_welcome(seed: int) -> box<radiance.IDirector> {
     let welcome: ComRc<IDirector> =
         radiance_scripting::wrap_director(&handle, data).expect("wrap_director");
 
-    // Drive update; the script returns a NextIm wrapped as
+    // Drive update; the script returns a NextLayer wrapped as
     // box<radiance.IDirector>. Without the most-derived-uuid upgrade,
-    // QI to IImmediateDirector here returns None and the pump silently
-    // bails (black screen). With the fix, the upgrade picks
-    // IImmediateDirector because NextIm conforms to it.
+    // QI to IUiLayer here returns None and the engine silently skips it
+    // (black screen). With the fix, the upgrade picks IUiLayer because
+    // NextLayer conforms to it.
     let next = welcome.update(0.016).expect("transition expected");
+    let layer: ComRc<IUiLayer> = next
+        .query_interface::<IUiLayer>()
+        .expect("transitioned director must QI to IUiLayer for the renderer to draw");
     let (_recorder, ui_host) = RecordingUiHost::create();
-    let fired = ImguiImmediateDirectorPump::dispatch_render_im(&next, &ui_host, 0.016);
-    assert!(
-        fired,
-        "transitioned director must QI to IImmediateDirector for the pump to render"
-    );
+    ImguiUiFrameRenderer::dispatch_render(&layer, &ui_host, 0.016);
     assert_eq!(*EVENTS.lock().unwrap(), vec![(42, 4)]);
 }

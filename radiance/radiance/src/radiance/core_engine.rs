@@ -1,10 +1,10 @@
 use crosscom::ComRc;
 
-use super::immediate_pump::ImmediateDirectorPump;
+use super::ui_frame::UiFrameRenderer;
 use super::ui_manager::UiManager;
-use super::{DebugLayer, TaskManager};
+use super::TaskManager;
 use crate::asset::AssetManager;
-use crate::comdef::{ISceneExt, ISceneManager};
+use crate::comdef::{ISceneExt, ISceneManager, IUiLayer};
 use crate::rendering::{self, RenderingEngine};
 use crate::{
     audio::AudioEngine,
@@ -32,11 +32,9 @@ pub struct CoreRadianceEngine {
     assets: Rc<AssetManager>,
     task_manager: Rc<TaskManager>,
     services: RefCell<HashMap<TypeId, Rc<dyn Any>>>,
-    debug_layer: Option<Box<dyn DebugLayer>>,
-    /// Per-frame pump invoked inside the imgui scope when the
-    /// active director needs immediate-mode rendering. See
-    /// [`ImmediateDirectorPump`].
-    immediate_pump: RefCell<Option<Rc<dyn ImmediateDirectorPump>>>,
+    /// Per-frame UI renderer that drives the registered UI layers inside
+    /// the imgui frame scope. See [`UiFrameRenderer`].
+    ui_renderer: RefCell<Option<Rc<dyn UiFrameRenderer>>>,
 }
 
 impl CoreRadianceEngine {
@@ -56,8 +54,7 @@ impl CoreRadianceEngine {
             assets: AssetManager::new(),
             task_manager: Rc::new(TaskManager::new()),
             services: RefCell::new(HashMap::new()),
-            debug_layer: None,
-            immediate_pump: RefCell::new(None),
+            ui_renderer: RefCell::new(None),
         }
     }
 
@@ -95,10 +92,6 @@ impl CoreRadianceEngine {
         self.assets = assets;
     }
 
-    pub fn set_debug_layer(&mut self, debug_layer: Box<dyn DebugLayer>) {
-        self.debug_layer = Some(debug_layer);
-    }
-
     pub fn scene_manager(&self) -> ComRc<ISceneManager> {
         self.scene_manager.clone()
     }
@@ -111,18 +104,16 @@ impl CoreRadianceEngine {
         self.task_manager.clone()
     }
 
-    /// Install a per-frame immediate-mode director pump (see
-    /// [`ImmediateDirectorPump`]). Replaces any previously-installed
-    /// pump. The pump is invoked inside the imgui frame scope on
-    /// each [`CoreRadianceEngine::update`] when both the pump slot
-    /// and the scene manager's director are set.
-    pub fn set_immediate_director_pump(&self, pump: Rc<dyn ImmediateDirectorPump>) {
-        *self.immediate_pump.borrow_mut() = Some(pump);
+    /// Install the per-frame UI renderer that drives the registered UI
+    /// layers inside the imgui frame scope (see [`UiFrameRenderer`]).
+    /// Replaces any previously-installed renderer.
+    pub fn set_ui_frame_renderer(&self, renderer: Rc<dyn UiFrameRenderer>) {
+        *self.ui_renderer.borrow_mut() = Some(renderer);
     }
 
-    /// Clear the previously-installed immediate-mode director pump.
-    pub fn clear_immediate_director_pump(&self) {
-        *self.immediate_pump.borrow_mut() = None;
+    /// Clear the previously-installed UI renderer.
+    pub fn clear_ui_frame_renderer(&self) {
+        *self.ui_renderer.borrow_mut() = None;
     }
 
     pub fn set_service<T: Any>(&self, service: Rc<T>) -> Option<Rc<T>> {
@@ -182,30 +173,34 @@ impl CoreRadianceEngine {
         let scene_manager = self.scene_manager.clone();
         let task_manager = self.task_manager.clone();
         let audio_engine = self.audio_engine.clone();
-        let debug_layer = self.debug_layer.as_ref();
-        // Snapshot the pump out of the RefCell *before* entering
-        // the ui_manager closure so a pump impl that re-enters
-        // engine methods doesn't double-borrow `immediate_pump`.
-        let pump = self.immediate_pump.borrow().clone();
+        let ui_manager = self.ui_manager.clone();
+        // Snapshot the renderer out of the RefCell *before* entering
+        // the ui_manager closure so a renderer impl that re-enters
+        // engine methods doesn't double-borrow `ui_renderer`.
+        let ui_renderer = self.ui_renderer.borrow().clone();
         let phase_start = std::time::Instant::now();
         let ui_frame = self.ui_manager.update(delta_sec, |ui| {
-            // Fire the immediate-mode director pump *before*
-            // scene_manager.update so the active director's
-            // `render_im` runs in render-then-update order
-            // (matching the legacy `ScriptedImmediateDirector`
-            // semantics). A transition produced by
-            // `scene_manager.update`'s `director.update` call will
-            // first appear on the next frame's `render_im`.
-            if let Some(pump) = pump.as_ref() {
-                // Director-agnostic per-frame tick (advances the
-                // frame-gated texture-deletion queue) — must run every
-                // frame, including when the active director is not
-                // immediate-mode (e.g. PAL3's AdventureDirector), so it
-                // is separate from the director-gated `pump` below.
-                pump.advance_frame();
+            // Drive the registered UI layers *before*
+            // scene_manager.update so their `render` runs in
+            // render-then-update order. A transition produced by
+            // `scene_manager.update`'s `director.update` call first
+            // appears on the next frame's render. The renderer is
+            // invoked unconditionally (even with no layers) so per-frame
+            // UI lifecycle (the texture deletion queue) advances every
+            // frame regardless of which director is active.
+            if let Some(renderer) = ui_renderer.as_ref() {
+                let mut layers = ui_manager.ui_layers();
+                // Auto-bridge the active director into the Scene band
+                // when it also implements `IUiLayer`, so screen
+                // directors (title, editor, PAL4) draw without explicit
+                // registration. Inserted first so it sits underneath any
+                // separately-registered layers.
                 if let Some(director) = scene_manager.director() {
-                    pump.pump(director, delta_sec);
+                    if let Some(layer) = director.query_interface::<IUiLayer>() {
+                        layers.insert(0, layer);
+                    }
                 }
+                renderer.render_frame(layers, delta_sec);
             }
             let scene_update_start = std::time::Instant::now();
             scene_manager.update(delta_sec);
@@ -243,9 +238,6 @@ impl CoreRadianceEngine {
                 ));
             }
 
-            if let Some(dl) = debug_layer {
-                dl.update(delta_sec);
-            }
             let _ = ui;
         });
         crate::perf::count(

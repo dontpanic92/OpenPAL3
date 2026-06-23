@@ -1,6 +1,6 @@
 // Shared editor constants and the `HostDirectorIm` adapter that
 // surfaces a Rust-implemented `radiance.IDirector` as a script-side
-// `radiance.IImmediateDirector`. Exposed so every sibling module
+// `radiance.IUiLayer`. Exposed so every sibling module
 // (and the user-main `main.p7`) can refer to a single source of
 // truth.
 
@@ -86,20 +86,20 @@ pub let AUDIO_TOGGLE_CMD_BASE: int = 400000;
 pub let VIDEO_TOGGLE_CMD_BASE: int = 500000;
 
 // Bridges a Rust-side `box<radiance.IDirector>` (which renders via its
-// own `update`) into the `radiance.IImmediateDirector` proto so the
+// own `update`) into the `radiance.IUiLayer` proto so the
 // immediate-mode yaobow_editor.welcome page can transition into a Rust-driven
-// director without the engine seeing the proto seam. `render_im` is a
+// director without the engine seeing the proto seam. `render` is a
 // no-op: the wrapped inner Rust director draws its own window from
 // its `update`; returning a real widget here would emit an orphan
 // imgui call before that runs and trip dear-imgui's implicit
 // "Debug" fallback window.
-pub struct[radiance.IImmediateDirector, radiance.IDirector] HostDirectorIm(pub inner: box<radiance.IDirector>) {
+pub struct[radiance.IUiLayer, radiance.IDirector] HostDirectorIm(pub inner: box<radiance.IDirector>) {
     pub fn activate(self: ref<Self>) -> int {
         self.inner.activate();
         0
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
-    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
+    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
     pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
         let next = self.inner.update(dt);
         if next != null {

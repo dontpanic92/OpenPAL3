@@ -11,24 +11,31 @@ director swap is a return value from `update`.
    and lives until the process exits. There is no second host, no swap, no per-screen runtime.
 2. **Each user package loads exactly one script source** via `host.load_source(SRC)`.
    The package's main module must define a `pub fn init(host: box<IHostContext>) -> box<radiance.IDirector>`
-   that returns the root director box. The box's underlying struct must conform
-   to `radiance.IImmediateDirector` (which inherits from `radiance.IDirector`).
-3. **The root director is reverse-wrapped via `wrap_im_director`** into a
-   `ComRc<IImmediateDirector>`. The runtime-typed CCW factory in
+   that returns the root director box. A screen director's underlying struct
+   typically also conforms to `radiance.IUiLayer` (a sibling of
+   `radiance.IDirector`, not a base) so the engine can draw it.
+3. **The root director is reverse-wrapped via `wrap_director`** into a
+   `ComRc<IDirector>`. The runtime-typed CCW factory in
    `crosscom-protosept` (see `proto_ccw.rs`) hands out a vtable backed by
    libffi closures that re-enter the interpreter on each method call.
-   QI'ing back to `ComRc<IDirector>` returns the same CCW (its
-   `additional_query_uuids` list includes `IDirector::INTERFACE_ID`).
+   QI'ing to `ComRc<IUiLayer>` returns the same CCW (its
+   `additional_query_uuids` list includes `IUiLayer::INTERFACE_ID` when the
+   struct conforms to it).
 4. **Transitions are return values.** Every
    `update(dt) -> ?box<radiance.IDirector>` returns either `null` (stay)
    or a bare box for the next director. The CCW's libffi thunk recursively
    `wrap_proto_unknown`s the returned box, so the engine receives a fresh
    `ComRc<IDirector>` for the next director.
-5. **The engine pumps `render_im` separately** via
-   [`ImmediateDirectorPump`](../radiance/src/radiance/immediate_pump.rs).
-   `radiance_scripting::ImguiImmediateDirectorPump` is the production
-   implementation: it parks `ImguiFrameState` around each per-frame
-   `render_im(ui, dt)` call inside the engine's imgui scope.
+5. **UI rendering is decoupled from directors.** The engine owns a UI-layer
+   stack ([`UiLayerStack`](../radiance/src/radiance/ui_layer.rs)) and drives
+   every registered `radiance.IUiLayer`'s `render(ui, dt)` once per frame in
+   z-order band order, via the installed
+   [`UiFrameRenderer`](../radiance/src/radiance/ui_frame.rs).
+   `radiance_scripting::ImguiUiFrameRenderer` is the production implementation:
+   it parks one `ImguiFrameState` around the whole layer pass inside the
+   engine's imgui scope. The active director is auto-bridged into the `Scene`
+   band when it also conforms to `IUiLayer`; standalone surfaces register via
+   `UiManager::register_ui_layer` and hold the returned RAII handle.
 6. **`deactivate` fires as a first-class `IDirector` method** declared in
    `radiance.idl`, invoked exactly once by `ISceneManager` before the old
    director is replaced. Dropping the final `ComRc<IDirector>` is pure
@@ -48,8 +55,8 @@ the next director by:
 3. Returning it from a host-service method (e.g. `IAppService::open_game`).
 
 The receiving script wraps it in a local `HostDirectorIm`-style adapter
-that implements `radiance.IImmediateDirector` and forwards `activate` /
-`update` to the wrapped Rust `IDirector`, with `render_im` a no-op.
+that implements `radiance.IUiLayer` and `radiance.IDirector` and forwards
+`activate` / `update` to the wrapped Rust `IDirector`, with `render` a no-op.
 The canonical adapter shape lives in `yaobow_editor/scripts/editor_consts.p7`.
 
 ## File Map
@@ -57,14 +64,14 @@ The canonical adapter shape lives in `yaobow_editor/scripts/editor_consts.p7`.
 | Path | Role |
 | --- | --- |
 | `src/runtime.rs` | `ScriptHost`, `ScriptDirectorHandle`, `RuntimeServices` |
-| `src/proxies/imgui_pump.rs` | `ImguiImmediateDirectorPump` (production pump) |
-| `src/script_bridges/` (auto-generated) | `wrap_director` / `wrap_immediate_director` / `register_*_proto` from `[protosept(scriptable)]` IDLs |
-| `src/services/` | `HostContext`, `GameRegistry`, `InputService`, `AudioService`, `TextureService`, `VfsService`, `ImguiUiHost`, `RecordingUiHost`, `TextureResolver` |
+| `src/proxies/ui_frame_renderer.rs` | `ImguiUiFrameRenderer` (production UI renderer) |
+| `src/script_bridges/` (auto-generated) | `wrap_director` / `wrap_ui_layer` / `register_*_proto` from `[protosept(scriptable)]` IDLs |
+| `src/services/` | `HostContext`, `GameRegistry`, `InputService`, `AudioService`, `TextureService`, `VfsService`, `ImguiUiHost`, `RecordingUiHost`, `with_ui_host` + `UiManagerImmediateExt` (immediate-mode UI on the engine-owned texture cache) |
 | `tests/runtime_smoke.rs` | `ScriptHost` lifecycle round-trips |
 | `tests/services_smoke.rs` | Typed host-service contracts |
 | `tests/ui_host_smoke.rs` | `IUiHost` recording + dispatcher plumbing |
 | `tests/wrap_director_smoke.rs` | `wrap_director` activate/update/deactivate |
-| `tests/imgui_pump_smoke_v2.rs` | `wrap_im_director` + pump dispatch |
+| `tests/ui_frame_renderer_smoke.rs` | `wrap_director` + `IUiLayer` QI + render dispatch |
 | `tests/proto_ccw_director.rs` | runtime-typed CCW for `radiance.IDirector` |
 | `tests/script_handle_lifetime.rs` | Captured `ComRc<IAction>` across script calls |
 
@@ -78,10 +85,10 @@ The canonical adapter shape lives in `yaobow_editor/scripts/editor_consts.p7`.
   state is append-only; if you need to discard rooted handles, drop the
   director ComObjects that own them (their `Drop` unroots).
 - **No top-level free-function lifecycle.** Every screen is a struct
-  implementing `radiance.IImmediateDirector` (and, for transition return
-  shapes, also `radiance.IDirector`). Free functions are only entry
-  points (`init`) and helpers.
+  implementing `radiance.IDirector` (and, when it draws, also
+  `radiance.IUiLayer`). Free functions are only entry points (`init`)
+  and helpers.
 - **No retained `UiNode` tree.** UI is immediate-mode: scripts call
-  `IUiHost` methods directly from `render_im`. SAM coercion turns p7
-  closures into `IAction` callbacks for pairing widgets (windows, tables,
-  tab bars).
+  `IUiHost` methods directly from `IUiLayer::render`. SAM coercion turns
+  p7 closures into `IAction` callbacks for pairing widgets (windows,
+  tables, tab bars).

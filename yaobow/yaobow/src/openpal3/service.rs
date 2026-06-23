@@ -25,8 +25,9 @@ use agent_server::{AgentCommand, AgentError, AgentResponse};
 use crosscom::ComRc;
 use packfs::init_virtual_fs;
 use radiance::audio::Codec as AudioCodec;
-use radiance::comdef::{IApplication, IApplicationExt, IDirector, ISceneManager};
+use radiance::comdef::{IApplication, IApplicationExt, IDirector, ISceneManager, IUiLayer};
 use radiance::input::{InputEngine, SyntheticInputBridge};
+use radiance::radiance::{UiLayerBand, UiLayerHandle};
 use radiance::video::Codec as VideoCodec;
 use radiance_scripting::comdef::services::IAudioSource;
 use radiance_scripting::comdef::services::IVideoHandle;
@@ -44,7 +45,6 @@ use shared::openpal3::comdef::{
 };
 use shared::openpal3::directors::AdventureDirector;
 use shared::openpal3::ui_atlas::Pal3UiAtlas;
-use shared::scripting::sce::Pal3DialogDeps;
 use shared::openpal3::states::persistent_state::PAL3_APP_NAME;
 use shared::scripting::sce::vm::SceExecutionOptions;
 use shared::ydirs;
@@ -82,10 +82,14 @@ pub struct Pal3Service {
     /// True when `create_director` has been called at least once and
     /// the debug layer install is pending. Drained by `pump_pre_update`
     /// before the next engine tick (i.e. outside any `engine.borrow()`
-    /// scope) so we can call `engine().borrow_mut().set_debug_layer`
-    /// without aliasing the title director's update path.
+    /// scope) so we can register the debug-overlay UI layer on the
+    /// `UiManager` without aliasing the title director's update path.
     pending_debug_install: Cell<bool>,
     debug_layer_installed: Cell<bool>,
+    /// RAII handle for the registered PAL3 debug overlay UI layer. Held
+    /// for the service lifetime so the layer stays registered; dropping
+    /// it unregisters the overlay.
+    debug_layer_handle: RefCell<Option<UiLayerHandle>>,
     /// Once-per-process latch for the LOGO.bik intro. Set to true on
     /// the first successful `play_intro_movie` call; subsequent calls
     /// return `None` so re-entry into the start menu (e.g. exit-to-menu
@@ -110,6 +114,7 @@ impl Pal3Service {
             last_asset_path: RefCell::new(None),
             pending_debug_install: Cell::new(false),
             debug_layer_installed: Cell::new(false),
+            debug_layer_handle: RefCell::new(None),
             intro_played: Cell::new(false),
             agent_bridge: RefCell::new(None),
         })
@@ -140,24 +145,24 @@ impl Pal3Service {
     /// state in p7; the host only forwards SCE events + draw calls. Both
     /// the texture cache and the script factory must already be
     /// installed (they are, by the time the player leaves the start menu).
-    fn build_dialog_deps(&self, asset_mgr: Rc<AssetManager>) -> Pal3DialogDeps {
+    fn build_dialog_renderer(&self, asset_mgr: Rc<AssetManager>) -> ComRc<IPal3DialogRenderer> {
         let texture_cache = self.texture_cache.borrow().clone().expect(
-            "Pal3Service::build_dialog_deps called before the texture cache was installed. \
+            "Pal3Service::build_dialog_renderer called before the texture cache was installed. \
              YaobowApplicationLoader must call Pal3Service::set_texture_cache at boot.",
         );
         let factory = self.script_factory.borrow().clone().expect(
-            "Pal3Service::build_dialog_deps called before the script factory was installed \
+            "Pal3Service::build_dialog_renderer called before the script factory was installed \
              (or after it was cleared). YaobowApplicationLoader must call \
              Pal3Service::set_script_factory after installing the script root.",
         );
 
-        let sprites = SpriteService::create(asset_mgr.vfs_rc(), texture_cache.clone());
-        let renderer: ComRc<IPal3DialogRenderer> = factory.make_pal3_dialog_renderer(sprites);
-
-        Pal3DialogDeps {
-            renderer,
-            texture_cache,
-        }
+        // The dialog renderer's sprites still upload through the engine
+        // texture cache (consumed above); the per-frame dialog draws now
+        // resolve through the same cache via the engine-owned resolver on
+        // `UiManager` (see `SceState::render_dialog`), so the renderer is
+        // threaded straight through to the SCE VM (no wrapper struct).
+        let sprites = SpriteService::create(asset_mgr.vfs_rc(), texture_cache);
+        factory.make_pal3_dialog_renderer(sprites)
     }
 
     /// Returns the cached `AssetManager` for `asset_path`, mounting
@@ -196,12 +201,14 @@ impl Pal3Service {
         let input_engine = engine.input_engine();
         let scene_manager = engine.scene_manager().clone();
         let ui = engine.ui_manager();
+        let layer: ComRc<IUiLayer> =
+            ComRc::from_object(OpenPal3DebugLayer::new(input_engine, scene_manager, ui.clone()));
+        // Register in the DebugOverlay band so the overlay draws on top
+        // of game UI. Keep the handle alive for the service lifetime;
+        // dropping it would unregister the layer.
+        let handle = ui.register_ui_layer(UiLayerBand::DebugOverlay, layer);
+        *self.debug_layer_handle.borrow_mut() = Some(handle);
         drop(engine);
-        let debug_layer = OpenPal3DebugLayer::new(input_engine, scene_manager, ui);
-        self.app
-            .engine()
-            .borrow_mut()
-            .set_debug_layer(Box::new(debug_layer));
         self.debug_layer_installed.set(true);
     }
 
@@ -427,7 +434,7 @@ impl IPal3ServiceImpl for Pal3Service {
 
     fn create_adventure_director(&self, asset_path: &str) -> ComRc<IDirector> {
         let asset_mgr = self.asset_manager_for(asset_path);
-        let dialog_deps = self.build_dialog_deps(asset_mgr.clone());
+        let dialog_renderer = self.build_dialog_renderer(asset_mgr.clone());
         let engine_rc = self.app.engine();
         let engine = engine_rc.borrow();
         let audio_engine = engine.audio_engine();
@@ -444,7 +451,7 @@ impl IPal3ServiceImpl for Pal3Service {
             ui,
             scene_manager,
             Some(Self::sce_options()),
-            dialog_deps,
+            dialog_renderer,
         );
         if let Some(bridge) = self.agent_bridge.borrow().as_ref() {
             adv.set_agent_bridge(bridge.clone());
@@ -454,7 +461,7 @@ impl IPal3ServiceImpl for Pal3Service {
 
     fn load_adventure_director(&self, asset_path: &str, slot: i32) -> Option<ComRc<IDirector>> {
         let asset_mgr = self.asset_manager_for(asset_path);
-        let dialog_deps = self.build_dialog_deps(asset_mgr.clone());
+        let dialog_renderer = self.build_dialog_renderer(asset_mgr.clone());
         let engine_rc = self.app.engine();
         let engine = engine_rc.borrow();
         let audio_engine = engine.audio_engine();
@@ -472,7 +479,7 @@ impl IPal3ServiceImpl for Pal3Service {
             scene_manager,
             Some(Self::sce_options()),
             slot,
-            dialog_deps,
+            dialog_renderer,
         )?;
         if let Some(bridge) = self.agent_bridge.borrow().as_ref() {
             adv.set_agent_bridge(bridge.clone());

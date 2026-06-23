@@ -30,3 +30,9 @@ interface IPal5StoryDirector: IDirector {}
 
 [uuid(7c4e9a05-3b1d-4f8a-8c2e-6d9b0f1a2e34)]
 class Pal5StoryDirector: IPal5StoryDirector {}
+
+// PAL3 in-game debug overlay (Rust). A `DebugOverlay`-band UI layer
+// registered on the engine's `UiManager` by `Pal3Service`. Toggled with
+// the tilde key; draws scene/nav/sce diagnostics via raw imgui.
+[uuid(4b39dcfa-842e-44f4-8e1a-294ab230cede)]
+class OpenPal3DebugLayer: IUiLayer {}

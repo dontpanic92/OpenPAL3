@@ -177,11 +177,11 @@ impl ScriptHost {
     /// helpers are only triggered lazily by their `wrap_*` siblings —
     /// which works as long as every caller wraps via the most-derived
     /// helper. With the fat-CCW factory, callers may wrap as
-    /// `wrap_director` and still want QI to a derived interface
-    /// (`IImmediateDirector`) backed by the script struct's
-    /// conformance list. Eager registration ensures the registry
-    /// already knows about the derived interface at wrap time so the
-    /// fat CCW gets a real slot for it.
+    /// `wrap_director` and still want QI to a sibling interface
+    /// (`IUiLayer`) backed by the script struct's conformance list.
+    /// Eager registration ensures the registry already knows about the
+    /// sibling interface at wrap time so the fat CCW gets a real slot
+    /// for it.
     ///
     /// The set is listed explicitly (rather than via a generated
     /// `register_all_protos` aggregator) so the script-bridge codegen
@@ -192,7 +192,7 @@ impl ScriptHost {
         crate::script_bridges::crosscom::register_action_proto();
         crate::script_bridges::radiance::register_component_proto();
         crate::script_bridges::radiance::register_director_proto();
-        crate::script_bridges::radiance::register_immediate_director_proto();
+        crate::script_bridges::radiance::register_ui_layer_proto();
         // scripting_services.idl declares no [protosept(scriptable)]
         // interfaces, so it has nothing to eagerly register.
     }
@@ -330,7 +330,7 @@ impl ScriptHost {
             // own intern handle would be consumed by the first
             // collected box, invalidating any sibling box that shares
             // the same id (e.g. a singleton `IUiHost` materialised
-            // anew each frame by `ImguiImmediateDirectorPump`).
+            // anew each frame by `ImguiUiFrameRenderer`).
             if !inner.host.services.com_table_mut().add_ref(handle) {
                 return Err(HostError::message(format!(
                     "foreign_box: invalid COM object handle {}",

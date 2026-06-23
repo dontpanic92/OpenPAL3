@@ -5,10 +5,10 @@
 //
 // The returned `box<radiance.IDirector>` is consumed by Rust's
 // `wrap_im_director`, which reverse-wraps it as
-// `ComRc<IImmediateDirector>`. The runtime-typed CCW factory
-// dispatches `activate`/`update`/`render_im` via the script struct's
+// `ComRc<IUiLayer>`. The runtime-typed CCW factory
+// dispatches `activate`/`update`/`render` via the script struct's
 // `conforming_to` set, so the box's static type at the p7 level
-// doesn't need to be `box<radiance.IImmediateDirector>`
+// doesn't need to be `box<radiance.IDirector>`
 // — the underlying struct conforming to that proto is what counts.
 
 import radiance;

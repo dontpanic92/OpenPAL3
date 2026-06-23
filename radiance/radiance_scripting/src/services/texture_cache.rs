@@ -143,7 +143,7 @@ impl ImguiTextureCache {
     /// Advance the presented-frame counter by one and process the
     /// frame-gated deletion queue. MUST be called exactly once per
     /// presented frame, from a director-agnostic hook (the PAL3
-    /// adventure director is not an `IImmediateDirector`, so the imgui
+    /// adventure director is not an `IUiLayer`, so the imgui
     /// pump alone does not tick every frame). Idempotent w.r.t. cache
     /// state otherwise — it is safe for `drain_pending` to also run on
     /// every `&mut self` access between ticks, since only `advance_frame`

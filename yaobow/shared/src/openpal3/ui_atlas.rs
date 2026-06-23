@@ -41,7 +41,7 @@ impl Pal3UiAtlas {
     /// reachable through `sprites`, **eagerly loading every distinct
     /// atlas page up front**. Eager loading is essential: the page
     /// upload borrows the shared `ImguiTextureCache`, which the imgui
-    /// pump holds borrowed for the whole frame during `render_im` — so a
+    /// pump holds borrowed for the whole frame during `render` — so a
     /// lazy load triggered by a per-frame `sprite(name)` call would
     /// panic with "RefCell already borrowed". `create` runs outside any
     /// frame (during director construction), so the uploads are safe

@@ -1,5 +1,5 @@
-pub mod imgui_pump;
 pub mod install;
+pub mod ui_frame_renderer;
 
-pub use imgui_pump::ImguiImmediateDirectorPump;
-pub use install::{install_imgui_pump, install_imgui_pump_with_cache};
+pub use install::{install_imgui_ui_renderer, install_imgui_ui_renderer_with_cache};
+pub use ui_frame_renderer::ImguiUiFrameRenderer;

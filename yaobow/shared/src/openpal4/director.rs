@@ -11,7 +11,7 @@ use agent_server::protocol::{
 };
 use crosscom::ComRc;
 use fileformats::pal4::gob::GobObjectType;
-use radiance::comdef::{IEntityExt, IImmediateDirectorImpl, IUiHost};
+use radiance::comdef::{IEntityExt, IUiHost, IUiLayerImpl};
 use radiance::math::Vec3;
 use radiance::{
     audio::AudioEngine,
@@ -47,7 +47,7 @@ use std::collections::HashMap;
 /// Bundle of script-side handles the director uses to drive the
 /// protosept debug overlay each frame. Set by the application loader
 /// after PAL4 debug session creation + the bootstrap script have
-/// run; the director only reads from this bundle inside `render_im`.
+/// run; the director only reads from this bundle inside `render`.
 pub struct Pal4DebugBundle {
     pub overlay: ComRc<IPal4DebugOverlay>,
     pub overlay_ctx: ComRc<IPal4DebugContext>,
@@ -61,7 +61,7 @@ pub struct OpenPAL4Director {
 
     // Debug overlay state. `debug` is `None` when the protosept runtime
     // failed to bootstrap (e.g. on a build target where ScriptHost is
-    // unavailable) — `render_im` no-ops cleanly in that case.
+    // unavailable) — `render` no-ops cleanly in that case.
     debug: RefCell<Option<Pal4DebugBundle>>,
     debug_visible: Cell<bool>,
     debug_prev_tilde: Cell<bool>,
@@ -226,7 +226,7 @@ impl OpenPAL4Director {
     /// [`Pal4TransitionDirector`] so the transition can call
     /// `vm_context_mut().load_scene(...)` while the story director
     /// is suspended (not installed). The story director only borrows
-    /// `vm` during its own `update` / `render_im`, so while the
+    /// `vm` during its own `update` / `render`, so while the
     /// transition is the active director there are no concurrent
     /// borrows.
     pub fn vm_handle(&self) -> Rc<RefCell<ScriptVm<Pal4VmContext>>> {
@@ -406,7 +406,7 @@ impl OpenPAL4Director {
     /// Install the protosept-authored debug overlay. Idempotent —
     /// passing a new bundle replaces the previous one. Safe to call
     /// after construction but before the engine starts pumping
-    /// `render_im`.
+    /// `render`.
     pub fn set_debug_bundle(&self, bundle: Pal4DebugBundle) {
         *self.debug.borrow_mut() = Some(bundle);
     }
@@ -819,8 +819,8 @@ impl IDirectorImpl for OpenPAL4Director {
     }
 }
 
-impl IImmediateDirectorImpl for OpenPAL4Director {
-    fn render_im(&self, ui: ComRc<IUiHost>, dt: f32) {
+impl IUiLayerImpl for OpenPAL4Director {
+    fn render(&self, ui: ComRc<IUiHost>, dt: f32) {
         // Tilde edge-detect → toggle visibility. Done in Rust (rather
         // than in script) so the script overlay stays oblivious to the
         // input engine: it only needs to know "render me when called".

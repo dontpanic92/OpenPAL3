@@ -1,11 +1,11 @@
 // Welcome and Settings screens, immediate-mode.
-// Both directors implement `radiance.IImmediateDirector` and call
+// Both directors implement `radiance.IUiLayer` and call
 // `radiance.IUiHost` methods directly. Button presses
 // surface as boolean returns from `ui.button(...)`; the legacy
 // `command_id` / `dispatch(cmd)` round-trip is gone.
 //
 // Cross-page transitions live in a `box<array<int>>` "intent" slot
-// that `render_im` writes and `update` reads — keeping the script
+// that `render` writes and `update` reads — keeping the script
 // side single-threaded and re-entrancy-safe.
 
 import radiance;
@@ -14,7 +14,7 @@ import yaobow_editor.yaobow_editor_services;
 import yaobow_editor.editor_consts;
 import yaobow_editor.theme_menu;
 
-// Intent codes written by render_im, consumed by update. Modelled as
+// Intent codes written by render, consumed by update. Modelled as
 // an enum so the dispatchers in `update` get compile-time exhaustiveness
 // (spec §9.6.4) — adding a new intent now forces every consumer to
 // handle it.
@@ -28,7 +28,7 @@ pub enum Intent(
     ClearPath,
 );
 
-pub struct[radiance.IImmediateDirector, radiance.IDirector] WelcomeDirector(
+pub struct[radiance.IUiLayer, radiance.IDirector] WelcomeDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
@@ -42,7 +42,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] WelcomeDirector(
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
-    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.main_menu_bar(() => {
             theme_menu.render_theme_menu(ui, self.host.config());
         });
@@ -123,8 +123,8 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] WelcomeDirector(
                     // by `wrap_im_director` (the QI'd view of the
                     // script-side MainEditorDirector). Hand it back to
                     // the engine directly; the pump's QI to
-                    // IImmediateDirector will succeed and drive
-                    // MainEditorDirector.render_im inside the imgui
+                    // IUiLayer will succeed and drive
+                    // MainEditorDirector.render inside the imgui
                     // frame scope.
                     return next!;
                 }
@@ -139,7 +139,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] WelcomeDirector(
     }
 }
 
-pub struct[radiance.IImmediateDirector, radiance.IDirector] SettingsDirector(
+pub struct[radiance.IUiLayer, radiance.IDirector] SettingsDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     pub games: box<array<int>>,
     pub names: box<array<string>>,
@@ -153,7 +153,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] SettingsDirector(
     }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
-    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.window_centered("游戏路径设置", 820.0, 560.0, () => {
             ui.text_with_font(0, "游戏资源路径设置");
             ui.dummy(0.0, 12.0);

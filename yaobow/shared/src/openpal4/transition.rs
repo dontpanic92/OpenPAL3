@@ -34,7 +34,7 @@ use std::{
 };
 
 use crosscom::ComRc;
-use radiance::comdef::{IDirector, IDirectorImpl, IImmediateDirectorImpl, IUiHost};
+use radiance::comdef::{IDirector, IDirectorImpl, IUiHost, IUiLayerImpl};
 
 use crate::scripting::angelscript::ScriptVm;
 
@@ -139,7 +139,7 @@ pub struct Pal4TransitionDirector {
     action: RefCell<Option<Pal4TransitionAction>>,
 
     phase: Cell<TransitionPhase>,
-    /// Counted by `render_im` so `update` knows when at least one
+    /// Counted by `render` so `update` knows when at least one
     /// paint frame has gone out.
     frames_painted: Cell<u32>,
     /// Accumulated `dt` since `Painting` began; backs the
@@ -801,8 +801,8 @@ impl IDirectorImpl for Pal4TransitionDirector {
     }
 }
 
-impl IImmediateDirectorImpl for Pal4TransitionDirector {
-    fn render_im(&self, ui: ComRc<IUiHost>, dt: f32) {
+impl IUiLayerImpl for Pal4TransitionDirector {
+    fn render(&self, ui: ComRc<IUiHost>, dt: f32) {
         if self.phase.get() == TransitionPhase::Done {
             return;
         }

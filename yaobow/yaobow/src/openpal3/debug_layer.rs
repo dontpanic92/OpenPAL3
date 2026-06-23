@@ -4,10 +4,10 @@ use crosscom::ComRc;
 use imgui::{InputTextMultiline, TabBar, TabItem, Ui};
 use radiance::{
     application::utils::FpsCounter,
-    comdef::{IEntityExt, ISceneManager},
+    comdef::{IEntityExt, ISceneManager, IUiHost, IUiLayerImpl},
     input::{InputEngine, Key},
     math::Vec3,
-    radiance::{DebugLayer, UiManager},
+    radiance::UiManager,
 };
 use shared::openpal3::{
     comdef::IAdventureDirector, directors::SceneManagerExtensions, scene::RoleController,
@@ -21,6 +21,8 @@ pub struct OpenPal3DebugLayer {
     visible: RefCell<bool>,
     fps_counter: RefCell<FpsCounter>,
 }
+
+ComObject_OpenPal3DebugLayer!(super::OpenPal3DebugLayer);
 
 impl OpenPal3DebugLayer {
     pub fn new(
@@ -37,7 +39,7 @@ impl OpenPal3DebugLayer {
         }
     }
 
-    fn render(&self, delta_sec: f32) {
+    fn render_window(&self, delta_sec: f32) {
         let ui = self.ui.ui();
         ui.window("Debug").build(|| {
             let fps = self.fps_counter.borrow_mut().update_fps(delta_sec);
@@ -183,8 +185,12 @@ impl OpenPal3DebugLayer {
     }
 }
 
-impl DebugLayer for OpenPal3DebugLayer {
-    fn update(&self, delta_sec: f32) {
+impl IUiLayerImpl for OpenPal3DebugLayer {
+    // The engine calls this inside its imgui frame scope, so the live
+    // `imgui::Ui` is reachable via `UiManager::ui()`. This overlay
+    // predates the `IUiHost` script surface and draws with raw imgui
+    // directly, so the `ui_host` argument is unused.
+    fn render(&self, _ui_host: ComRc<IUiHost>, delta_sec: f32) {
         let ui = self.ui.ui();
         let fonts = ui.fonts().fonts();
         let font = if fonts.len() > 1 {
@@ -208,7 +214,7 @@ impl DebugLayer for OpenPal3DebugLayer {
                 return;
             }
 
-            self.render(delta_sec);
+            self.render_window(delta_sec);
         })();
 
         if let Some(font) = font {

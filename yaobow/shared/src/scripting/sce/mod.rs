@@ -10,7 +10,7 @@ use imgui::Ui;
 use radiance::{
     audio::AudioEngine, comdef::ISceneManager, input::InputEngine, radiance::UiManager,
 };
-use radiance_scripting::{ImguiTextureCache, with_ui_host};
+use radiance_scripting::UiManagerImmediateExt;
 
 use crate::openpal3::{
     asset_manager::AssetManager,
@@ -24,17 +24,12 @@ use self::vm::{SceExecutionContext, SceExecutionOptions};
 pub mod commands;
 pub mod vm;
 
-/// The scripted PAL3 dialog-box renderer plus the shared texture cache
-/// it resolves sprites through, threaded from `Pal3Service` into the SCE
-/// command loop. The renderer is self-contained (it owns its sprites,
-/// avatar and curtain state in p7); the host only forwards SCE events
-/// and the per-frame draw calls. `texture_cache` is what `with_ui_host`
-/// needs to enter a mid-update imgui frame.
-#[derive(Clone)]
-pub struct Pal3DialogDeps {
-    pub renderer: ComRc<IPal3DialogRenderer>,
-    pub texture_cache: Rc<RefCell<ImguiTextureCache>>,
-}
+/// The scripted PAL3 dialog-box renderer, threaded from `Pal3Service`
+/// into the SCE command loop. The renderer is self-contained (it owns its
+/// sprites, avatar and curtain state in p7); the host only forwards SCE
+/// events and the per-frame draw calls. The imgui texture cache the draws
+/// resolve through is engine-owned (reached via `UiManager::with_ui_host`),
+/// so the renderer is passed straight through (no wrapper struct).
 
 pub trait SceCommandDebug {
     fn debug(&self) -> String;
@@ -78,12 +73,17 @@ pub struct SceState {
     audio_engine: Rc<dyn AudioEngine>,
 
     // Scripted PAL3 dialog box: the SCE command loop forwards events to
-    // the self-contained p7 `dialog_renderer` and drives its per-frame
-    // draw calls via `with_ui_host`. `ui` + `texture_cache` are what that
-    // helper needs to enter an imgui frame mid-update.
+    // the self-contained p7 `dialog_renderer` and drives its draw calls
+    // via `UiManager::with_ui_host` — radiance's immediate-mode UI
+    // composition primitive (the peer of the retained `UiLayerStack`;
+    // both compose onto the same engine imgui frame through one shared
+    // engine-owned texture cache). The dialog uses the immediate path
+    // rather than a registered `IUiLayer` because the `dlg` SCE command
+    // reads input and emits its draw in the *same* update tick (see
+    // `commands/dlg.rs`), which a pre-update retained layer can't express
+    // without a separate visibility state machine.
     ui: Rc<UiManager>,
     dialog_renderer: ComRc<IPal3DialogRenderer>,
-    texture_cache: Rc<RefCell<ImguiTextureCache>>,
 }
 
 impl SceState {
@@ -96,7 +96,7 @@ impl SceState {
         sce_name: String,
         global_state: GlobalState,
         options: Option<SceExecutionOptions>,
-        dialog_deps: Pal3DialogDeps,
+        dialog_renderer: ComRc<IPal3DialogRenderer>,
     ) -> Self {
         let ext = HashMap::<String, Box<dyn Any>>::new();
 
@@ -111,8 +111,7 @@ impl SceState {
             input_engine,
             audio_engine,
             ui,
-            dialog_renderer: dialog_deps.renderer,
-            texture_cache: dialog_deps.texture_cache,
+            dialog_renderer,
         }
     }
 
@@ -201,9 +200,7 @@ impl SceState {
     /// imgui scope. Mirrors the legacy `DialogBox::draw`.
     pub fn render_dialog(&mut self, text: &str, delta_sec: f32) {
         let renderer = self.dialog_renderer.clone();
-        let cache = self.texture_cache.clone();
-        let mut cache_ref = cache.borrow_mut();
-        with_ui_host(&self.ui, &mut *cache_ref, |ui_host| {
+        self.ui.with_ui_host(|ui_host| {
             renderer.render_dialog(ui_host.clone(), text, delta_sec);
         });
     }
@@ -215,9 +212,7 @@ impl SceState {
         let curtain = self.curtain;
         self.dialog_renderer.set_curtain(curtain);
         let renderer = self.dialog_renderer.clone();
-        let cache = self.texture_cache.clone();
-        let mut cache_ref = cache.borrow_mut();
-        with_ui_host(&self.ui, &mut *cache_ref, |ui_host| {
+        self.ui.with_ui_host(|ui_host| {
             renderer.render_curtain(ui_host.clone());
         });
     }

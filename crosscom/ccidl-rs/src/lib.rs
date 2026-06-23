@@ -2076,7 +2076,7 @@ mod tests {
         let expected = [
             ("crosscom.idl", "IAction"),
             ("radiance.idl", "IDirector"),
-            ("radiance.idl", "IImmediateDirector"),
+            ("radiance.idl", "IUiLayer"),
             ("pal4_debug.idl", "IPal4DebugOverlay"),
         ];
         for (file, iface) in expected {

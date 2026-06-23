@@ -16,8 +16,8 @@
 //!
 //! The function names follow `<verb>_<pascal_to_snake(name without
 //! leading I)>` (e.g. `IDirector` → `register_director_proto`,
-//! `wrap_director`; `IImmediateDirector` → `register_immediate_director_proto`,
-//! `wrap_immediate_director`).
+//! `wrap_director`; `IUiLayer` → `register_ui_layer_proto`,
+//! `wrap_ui_layer`).
 //!
 //! Type mapping (must stay in lock-step with `protosept.rs` and
 //! `crosscom_protosept::proto_ccw`):
@@ -451,7 +451,7 @@ impl<'a> ScriptBridgeGen<'a> {
             }
         }
 
-        // Non-optional foreign interface return (e.g. `IImmediateDirector`).
+        // Non-optional foreign interface return (e.g. `IUiLayer`).
         // Maps to `RetKind::Foreign`: the script's returned box is recursively
         // reverse-wrapped and a `null`/absent return is a hard error. Arrays
         // (`IFoo[]`) remain unsupported.
@@ -512,10 +512,7 @@ mod tests {
     fn snake_case_conversion_matches_expected() {
         assert_eq!(pascal_to_snake_drop_leading_i("IAction"), "action");
         assert_eq!(pascal_to_snake_drop_leading_i("IDirector"), "director");
-        assert_eq!(
-            pascal_to_snake_drop_leading_i("IImmediateDirector"),
-            "immediate_director"
-        );
+        assert_eq!(pascal_to_snake_drop_leading_i("IUiLayer"), "ui_layer");
         assert_eq!(
             pascal_to_snake_drop_leading_i("IPal4DebugOverlay"),
             "pal4_debug_overlay"

@@ -3,10 +3,10 @@
 //! Loads the composed editor script, wires the `EditorHostContext`,
 //! calls `init(host)`, and reverse-wraps the returned director box
 //! via [`wrap_director`] into a `ComRc<IDirector>`. The fat CCW
-//! backs both `IDirector` and `IImmediateDirector` from a single
-//! wrap call, so the engine's [`ImguiImmediateDirectorPump`] (set up
-//! via [`install_imgui_pump_with_cache`]) can QI the same director
-//! to drive its `render_im` step inside the imgui frame scope.
+//! backs both `IDirector` and `IUiLayer` from a single wrap call, so
+//! the engine's [`ImguiUiFrameRenderer`] (set up via
+//! [`install_imgui_ui_renderer_with_cache`]) can QI the same director
+//! to drive its `render` step inside the imgui frame scope.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -16,7 +16,8 @@ use radiance::asset::AssetManager;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::{
-    ScriptHost, bootstrap_script_root_from_path, install_imgui_pump_with_cache, wrap_director,
+    ScriptHost, bootstrap_script_root_from_path, install_imgui_ui_renderer_with_cache,
+    wrap_director,
 };
 use shared::config::YaobowConfig;
 
@@ -85,10 +86,10 @@ impl ScriptedWelcomePage {
         )
         .expect("welcome script init must succeed");
 
-        // Reverse-wrap the script-side `box<radiance.IImmediateDirector>`
+        // Reverse-wrap the script-side `box<radiance.IDirector>`
         // through the runtime-typed CCW factory. The fat CCW gives us
         // both `IDirector` (for `SceneManager::set_director`) and
-        // `IImmediateDirector` (for the imgui pump) from a single
+        // `IUiLayer` (for the engine UI renderer) from a single
         // `wrap_director` call, because the script struct's
         // `conforming_to` list backs every advertised interface with
         // its own slot.
@@ -96,12 +97,13 @@ impl ScriptedWelcomePage {
         let director: ComRc<IDirector> =
             wrap_director(&runtime_handle, director_data).expect("wrap_director must succeed");
 
-        // Install the engine-side pump so `CoreRadianceEngine::update`
-        // invokes `render_im` inside the imgui frame scope each tick.
-        // Sharing the same `textures` cache with subsequent director
-        // swaps (`AppService::open_game`) keeps previewer com_ids
-        // resolvable across pages.
-        install_imgui_pump_with_cache(&app, textures);
+        // Install the engine-side UI renderer so `CoreRadianceEngine::update`
+        // drives the active director's `render` (via its `IUiLayer` slot)
+        // inside the imgui frame scope each tick. Sharing the same
+        // `textures` cache with subsequent director swaps
+        // (`AppService::open_game`) keeps previewer com_ids resolvable
+        // across pages.
+        install_imgui_ui_renderer_with_cache(&app, textures);
 
         director
     }

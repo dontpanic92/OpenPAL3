@@ -5,7 +5,7 @@ use crosscom::ComRc;
 use radiance::comdef::{IApplication, IApplicationExt, IDirector};
 use radiance_scripting::comdef::services::{IAppService, IAppServiceImpl};
 use radiance_scripting::services::ImguiTextureCache;
-use radiance_scripting::{ScriptHost, install_imgui_pump_with_cache, wrap_director};
+use radiance_scripting::{ScriptHost, install_imgui_ui_renderer_with_cache, wrap_director};
 use shared::config::YaobowConfig;
 
 use crate::GameType;
@@ -148,13 +148,13 @@ impl IAppServiceImpl for AppService {
 
         // Reverse-wrap via the runtime-typed CCW factory. The fat
         // CCW gives both `IDirector` (for `SceneManager`) and
-        // `IImmediateDirector` (for the imgui pump) from a single
+        // `IUiLayer` (for the engine UI renderer) from a single
         // wrap, so we don't need a follow-up QI.
         let runtime_handle = self.script_host.runtime_handle();
         let director: ComRc<IDirector> = wrap_director(&runtime_handle, director_data).ok()?;
 
         drop(engine);
-        install_imgui_pump_with_cache(&self.app, self.textures.clone());
+        install_imgui_ui_renderer_with_cache(&self.app, self.textures.clone());
 
         Some(director)
     }

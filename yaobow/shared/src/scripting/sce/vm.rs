@@ -45,7 +45,7 @@ impl SceVm {
         asset_mgr: Rc<AssetManager>,
         global_state: GlobalState,
         options: Option<SceExecutionOptions>,
-        dialog_deps: crate::scripting::sce::Pal3DialogDeps,
+        dialog_renderer: ComRc<crate::openpal3::comdef::IPal3DialogRenderer>,
     ) -> Self {
         let state = SceState::new(
             input_engine.clone(),
@@ -56,7 +56,7 @@ impl SceVm {
             sce_name,
             global_state,
             options,
-            dialog_deps,
+            dialog_renderer,
         );
 
         Self {

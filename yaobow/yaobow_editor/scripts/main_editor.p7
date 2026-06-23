@@ -27,7 +27,7 @@ pub struct EditorUiState(
     pub next_cmd: int,
 );
 
-pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
+pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     // Single shared preview pane: holds 0 or 1 ContentTab.
     pub preview: box<array<content_tabs.ContentTab>>,
@@ -42,7 +42,7 @@ pub struct[radiance.IImmediateDirector, radiance.IDirector] MainEditorDirector(
     pub fn activate(self: ref<Self>) -> int { 0 }
     pub fn deactivate(self: ref<Self>) -> int { 0 }
 
-    pub fn render_im(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.main_menu_bar(() => {
             theme_menu.render_theme_menu(ui, self.host.config());
             render_layout_tabs(ui, self);

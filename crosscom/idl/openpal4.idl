@@ -11,7 +11,7 @@ interface IOpenPAL4Director: IDirector {
 }
 
 [uuid(981884a7-63e8-4ee1-96f1-6efd259ebe3b)]
-class OpenPAL4Director: IOpenPAL4Director, IImmediateDirector {}
+class OpenPAL4Director: IOpenPAL4Director, IUiLayer {}
 
 // Loading / mode-transition orchestrator. Single owner of every PAL4
 // scene transition (menu -> story, story -> in-game scene swap via
@@ -27,7 +27,7 @@ interface IPal4TransitionDirector: IDirector {
 }
 
 [uuid(2b5c0e10-3d4f-4a72-9c81-8f2a6b4d7e91)]
-class Pal4TransitionDirector: IPal4TransitionDirector, IImmediateDirector {}
+class Pal4TransitionDirector: IPal4TransitionDirector, IUiLayer {}
 
 [uuid(f6d70031-86e7-4efa-b1c5-5196063441ea)]
 interface IPal4ActorAnimationController: IComponent {
@@ -96,10 +96,10 @@ interface IPal4ScriptFactory: IUnknown {
         ICameraControl camera,
         IRayCaster ray_caster);
 
-    // Scripted PAL4 start-menu director. Returns `IImmediateDirector`
-    // (the menu struct conforms to both `IImmediateDirector` and
-    // `IDirector`); `Pal4Service::build_start_menu` QIs to `IDirector`.
-    IImmediateDirector make_pal4_start_menu(&str asset_path);
+    // Scripted PAL4 start-menu director. Returns `IDirector` (the menu
+    // struct conforms to both `IUiLayer` and `IDirector`); the engine
+    // auto-bridges the active director to a UI layer by QI'ing `IUiLayer`.
+    IDirector make_pal4_start_menu(&str asset_path);
 
     // Scripted PAL4 debug overlay built against a host-supplied
     // `IPal4DebugContext`. `Pal4Service` assembles the surrounding
@@ -110,7 +110,7 @@ interface IPal4ScriptFactory: IUnknown {
     // `/gamedata/ui/layouts/loading.xml` while a scene transition is
     // pending so the synchronous `Pal4Scene::load` is hidden behind a
     // fullscreen layout. `OpenPAL4Director` owns the resulting box
-    // and drives it from `update` / `render_im`.
+    // and drives it from `update` / `render`.
     IPal4LoadingOverlay make_pal4_loading_overlay();
 }
 
@@ -128,7 +128,7 @@ class Pal4ScriptFactory: IPal4ScriptFactory {}
 //      phase (LOAD_READY → call host.pal4().request_scene_load
 //      having already happened in step 1; the director performs the
 //      actual `app.load_scene` synchronously this frame),
-//   3. each `render_im` calls `render(ui, dt)` while `is_active()`
+//   3. each `render` calls `render(ui, dt)` while `is_active()`
 //      reports true so the loading layout paints over the frozen
 //      scene.
 //

@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crosscom::{ComRc, IObjectArray};
-use radiance::comdef::IImmediateDirector;
+use radiance::comdef::IUiLayer;
 use radiance::comdef::{IDirector, ISceneManager};
 use radiance_scripting::comdef::services::{
     IAppService, IAppServiceImpl, IAudioService, IAudioServiceImpl, IConfigService, IGameRegistry,
@@ -18,7 +18,7 @@ use radiance_scripting::comdef::services::{
 };
 use radiance_scripting::services::{GameRegistry, RandomService};
 use radiance_scripting::{
-    RuntimeAccess, RuntimeHandle, ScriptHost, register_immediate_director_proto, with_services,
+    RuntimeAccess, RuntimeHandle, ScriptHost, register_ui_layer_proto, with_services,
 };
 use yaobow_lib::comdef::yaobow_services::IYaobowScriptApp;
 use yaobow_lib::script_bridges::yaobow_services::wrap_yaobow_script_app;
@@ -153,7 +153,7 @@ fn title_script_compiles() {
 
 #[test]
 fn title_script_init_loads_with_imported_bindings() {
-    register_immediate_director_proto();
+    register_ui_layer_proto();
     let open_calls = Rc::new(RefCell::new(Vec::new()));
     let app = ComRc::<IAppService>::from_object(RecordingAppService {
         open_calls: open_calls.clone(),
@@ -180,14 +180,16 @@ fn title_script_init_loads_with_imported_bindings() {
     let handle = host_runtime_handle(&runtime);
     let factory: ComRc<IYaobowScriptApp> =
         wrap_yaobow_script_app(&handle, app_data).expect("wrap_yaobow_script_app should succeed");
-    let im: ComRc<IImmediateDirector> = factory.make_title_director();
-    let director: ComRc<IDirector> = im
-        .query_interface::<IDirector>()
-        .expect("title director should expose IDirector via fat CCW");
+    let director: ComRc<IDirector> = factory.make_title_director();
+    // The title struct conforms to both `IDirector` and `IUiLayer`; the
+    // engine auto-bridges the active director's `IUiLayer` slot.
+    assert!(
+        director.query_interface::<IUiLayer>().is_some(),
+        "title director should expose IUiLayer via fat CCW"
+    );
     director.activate();
     assert!(director.update(0.016).is_none());
     drop(director);
-    drop(im);
     drop(factory);
 }
 
@@ -225,7 +227,7 @@ fn app_script_creates_title_then_pal4_debug_in_one_runtime() {
     let factory: ComRc<IYaobowScriptApp> =
         wrap_yaobow_script_app(&handle, app_data).expect("wrap_yaobow_script_app should succeed");
 
-    let title_director: ComRc<IImmediateDirector> = factory.make_title_director();
+    let title_director: ComRc<IDirector> = factory.make_title_director();
     drop(title_director);
 
     let pal4_factory = factory

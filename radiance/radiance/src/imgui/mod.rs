@@ -2,8 +2,10 @@
 mod clipboard;
 
 mod platform;
+mod texture_resolver;
 mod theme;
 
+pub use self::texture_resolver::TextureResolver;
 pub use self::theme::{DEFAULT_THEME, available_themes, menu_item_padding};
 
 use self::theme::{apply_theme as apply_named_theme, resolve_theme_name, scale_menu_item_padding};

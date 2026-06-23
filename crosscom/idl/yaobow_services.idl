@@ -75,7 +75,10 @@ class Pal5Service: IPal5Service {}
 // and dispatched exactly like any other scriptable interface.
 [uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a04), protosept(scriptable)]
 interface IYaobowScriptApp: IUnknown {
-    IImmediateDirector make_title_director();
+    // Title selector. Returns `IDirector` (the title struct conforms to
+    // both `IUiLayer` and `IDirector`); the engine auto-bridges the
+    // active director to a UI layer by QI'ing `IUiLayer`.
+    IDirector make_title_director();
 }
 [uuid(31f1b8d2-9b50-4c0e-9bd3-1c3d2e3f4a05)]
 class YaobowScriptApp: IYaobowScriptApp {}

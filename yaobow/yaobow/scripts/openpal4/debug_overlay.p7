@@ -1,6 +1,6 @@
 // Protosept implementation of `pal4_debug.IPal4DebugOverlay`. The
 // struct conforms to the IDL proto directly — no Rust wrapper.
-// `render` is invoked by `OpenPAL4Director::render_im` (Rust) only
+// `render` is invoked by `OpenPAL4Director::render` (Rust) only
 // while the overlay is toggled on, so we don't gate visibility here.
 
 import shared.pal4_debug;

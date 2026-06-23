@@ -45,7 +45,7 @@ pub let GAME_PAL4: int = 2;
 pub let GAME_PAL5: int = 3;
 pub let GAME_SWDHC: int = 6;
 
-// Intent codes written by render_im, consumed by update.
+// Intent codes written by render, consumed by update.
 pub let INTENT_NONE: int = 0;
 pub let INTENT_OPEN_GAME: int = 1;
 pub let INTENT_OPEN_SETTINGS: int = 2;

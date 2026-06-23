@@ -66,11 +66,12 @@ pub struct ProtoSpec {
     pub methods: Vec<MethodSpec>,
     /// Additional interface UUIDs that the CCW's `query_interface`
     /// thunk should accept in addition to IUnknown and the primary
-    /// `uuid`. Used to honour interface inheritance — e.g. for
-    /// `IImmediateDirector` registrations, this contains
-    /// `IDirector::INTERFACE_ID` so a `ComRc<IImmediateDirector>`
-    /// can be QI'd back to `ComRc<IDirector>` and round-trip through
-    /// engine APIs like `SceneManager::set_director(ComRc<IDirector>)`.
+    /// `uuid`. Used to honour interface inheritance *and* sibling
+    /// conformance — e.g. a script director struct that conforms to both
+    /// `IDirector` and `IUiLayer` carries each other's `INTERFACE_ID`
+    /// here, so a `ComRc<IDirector>` can be QI'd to `ComRc<IUiLayer>`
+    /// (for the engine UI renderer) and round-trip through engine APIs
+    /// like `SceneManager::set_director(ComRc<IDirector>)`.
     pub additional_query_uuids: Vec<[u8; 16]>,
 }
 
@@ -139,7 +140,7 @@ pub enum RetKind {
 /// **Idempotent** — re-registering an already-known UUID is a silent
 /// no-op (the first registration wins). This lets convenience
 /// wrappers (such as the auto-generated `wrap_director` /
-/// `wrap_immediate_director` in `radiance_scripting::script_bridges`)
+/// `wrap_ui_layer` in `radiance_scripting::script_bridges`)
 /// lazily register their target interface without conflicting with
 /// callers that registered it explicitly at startup.
 pub fn register_proto_ccw(spec: ProtoSpec) -> Result<(), HostError> {
@@ -232,9 +233,9 @@ struct RegisteredProto {
     blueprint: VtableBlueprint,
     /// `'static` slice (via `Box::leak`) of additional QI UUIDs the
     /// CCW slot should accept in addition to its primary `uuid`. Used
-    /// for IDL inheritance (e.g. IImmediateDirector → IDirector) where
-    /// the parent interface's vtable is a structural prefix of the
-    /// child's.
+    /// for IDL inheritance and sibling conformance (e.g. a struct
+    /// conforming to both IDirector and IUiLayer) where each interface's
+    /// vtable backs an independent QI slot.
     additional_query_uuids: &'static [[u8; 16]],
     /// Lazily-minted per-slot-index vtables. Each entry is a leaked
     /// `[isize, *const c_void, ...]` allocation whose stored pointer
