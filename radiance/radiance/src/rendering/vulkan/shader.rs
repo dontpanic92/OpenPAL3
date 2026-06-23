@@ -164,6 +164,10 @@ static ACTOR_LIT_VERT: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/actor_lit.vert.spv"));
 static ACTOR_LIT_FRAG: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/actor_lit.frag.spv"));
+static TERRAIN_SPLAT_VERT: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/terrain_splat.vert.spv"));
+static TERRAIN_SPLAT_FRAG: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/terrain_splat.frag.spv"));
 
 fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
     match shader {
@@ -192,6 +196,12 @@ fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
             "actor_lit",
             ACTOR_LIT_VERT,
             ACTOR_LIT_FRAG,
+            VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
+        ),
+        ShaderProgram::TerrainSplat => ShaderProgramData::new(
+            "terrain_splat",
+            TERRAIN_SPLAT_VERT,
+            TERRAIN_SPLAT_FRAG,
             VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
         ),
     }

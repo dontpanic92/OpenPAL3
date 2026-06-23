@@ -23,6 +23,15 @@ pub enum ShaderProgram {
     /// the lighting environment from the per-frame UBO (set 0); requires
     /// the `NORMAL` vertex component.
     TexturedDynamicLit,
+
+    /// PAL5 terrain multi-layer splat shader. Blends up to four terrain
+    /// textures (`texSampler[0..4]`) per-texel by a weight atlas
+    /// (`texSampler[4]`, RGBA = the four layers' weights), then applies the
+    /// same dynamic Lambert lighting as `TexturedDynamicLit`. Requires
+    /// `POSITION | NORMAL | TEXCOORD` (the texcoord carries the per-block
+    /// weight-atlas UV; terrain-texture tiling UV is derived from world
+    /// position). `MaterialParams.misc.x` carries the active layer count.
+    TerrainSplat,
 }
 
 pub(crate) struct ShaderProgramData {

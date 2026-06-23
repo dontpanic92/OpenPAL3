@@ -21,6 +21,7 @@ half = "2.2"
 lazy_static = "1.4"
 log = { version = "0.4.13" }
 md5 = "0.7"
+minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
 miniz_oxide = "0.7"
 num-traits = "0.2"
 num-derive = "0.3"

@@ -1,188 +1,360 @@
-//! PAL5 terrain rendering — builds a renderable heightfield entity from
-//! a decoded `.mp` ([`fileformats::pal5::mp::MpFile`]).
+//! PAL5 terrain rendering — builds a renderable, multi-layer splatted
+//! heightfield from decoded map blocks ([`super::asset_loader::MapBlock`]).
 //!
-//! Phase 2 (this module): geometry + a single tiled base grass texture
-//! with per-vertex normals for lighting. Each `.mp` patch (17×17 vertex
-//! grid, 320×320 world units) becomes one [`Geometry`]; all patches are
-//! gathered into a single terrain entity. Multi-layer alphamap splatting
-//! is a later phase.
+//! Each map block (`<map>_<r>_<c>.mp` + `alphamap_<r>_<c>.alp`) becomes one
+//! [`Geometry`]: a 16×16-patch heightfield (257×257 vertices, 20 world
+//! units/cell) textured with a [`TerrainSplatMaterialDef`] that blends the
+//! block's up-to-four terrain textures per-texel by a weight atlas.
+//!
+//! ## Data flow
+//! * Heights + per-vertex normals come from the `.mp` patches (absolute
+//!   world origins, so blocks tile seamlessly).
+//! * The four layer texture ids come from the `.mp` block footer
+//!   ([`fileformats::pal5::mp::MpFile::texture_ids`]); `-1` = unused.
+//! * Per-texel layer weights come from the `.alp` patches
+//!   ([`fileformats::pal5::alp`]): slot `s`'s 64×64 raster, in slot order.
+//!   They are packed into one `1024×1024` RGBA weight atlas per block (one
+//!   `64×64` tile per patch; R/G/B/A = slots 0/1/2/3).
+//!
+//! Weight that lands on an **unused** slot (texture id `-1`, observed up to
+//! ~12% on some blocks) is folded into the base layer so the shader never
+//! samples an undefined texture — the dominant layer is always a valid
+//! slot, so this only collapses minor overlay detail into the base.
+//!
+//! The terrain textures are loaded **opaque** (their `.dds` alpha is
+//! non-coverage detail data; left as coverage it premultiplies the RGB
+//! toward black). The weight atlas is loaded **raw** so its four channels
+//! survive intact.
 
 use crosscom::ComRc;
+use fileformats::pal5::alp::{WEIGHT_EDGE, terrain_texture_name};
 use fileformats::pal5::mp::{CELL_WORLD_SIZE, MpFile, PATCH_WORLD_SIZE};
+use image::{Rgba, RgbaImage};
 use radiance::comdef::IEntity;
 use radiance::components::mesh::{Geometry, StaticMeshComponent, TexCoord};
 use radiance::math::Vec3;
-use radiance::rendering::{BlendMode, CullMode, MaterialDef, SimpleMaterialDef};
+use radiance::rendering::{MaterialDef, TerrainLayer, TerrainSplatMaterialDef};
 use radiance::scene::CoreEntity;
 
-use super::asset_loader::AssetLoader;
+use super::asset_loader::{AssetLoader, MapBlock};
 
 const PATCH_EDGE: usize = 17; // vertices per patch edge
+const PATCHES_PER_BLOCK: usize = 16; // patches per block edge
+const CELLS_PER_BLOCK: usize = PATCHES_PER_BLOCK * 16; // 256 cells per block edge
+const VERTS_PER_BLOCK: usize = CELLS_PER_BLOCK + 1; // 257 vertices per block edge
+/// World size of one terrain block edge (`16 patches × 320`).
+const BLOCK_WORLD_SIZE: f32 = PATCH_WORLD_SIZE * PATCHES_PER_BLOCK as f32;
+/// Weight-atlas edge in texels (`16 patches × 64`).
+const ATLAS_EDGE: usize = PATCHES_PER_BLOCK * WEIGHT_EDGE; // 1024
 
-/// Base terrain texture used to tile the whole heightfield in the
-/// Phase-2 single-texture pass. `dibiao*` (地表, "ground surface") are
-/// the opaque base layers; `cao`/`luoye` are transparent grass/leaf
-/// overlays (handled by the later splatting phase). The texture is
-/// rendered fully opaque (its DXT5 alpha channel is overlay data, not
-/// coverage), so we ignore it here.
-const BASE_TERRAIN_TEXTURE: &str = "/Texture/TerrainTexture/dibiao424.dds";
+/// Fallback base texture when a block has no valid footer texture id.
+const FALLBACK_TEXTURE: &str = "dibiao424.dds";
 
-/// World units one full tiling of the base texture spans. ~2 patches so
-/// the grass repeats at a sensible scale over the landform.
-const TEX_TILE_WORLD: f32 = PATCH_WORLD_SIZE * 2.0;
+/// World units per full repeat of each ground texture. PAL5 ground textures
+/// tile across the terrain; one repeat per 320-unit patch matches the
+/// original (each 512² texture then resolves to ~0.6 units/texel).
+const TEX_TILE_WORLD: f32 = PATCH_WORLD_SIZE;
 
-/// Build the terrain entity for `mp`. Returns `None` if the heightfield
-/// is empty.
+/// Build the terrain entity for `map_name` from its decoded blocks. Returns
+/// `None` if no block produced geometry.
 pub fn build_terrain_entity(
     asset_loader: &AssetLoader,
     map_name: &str,
-    mp: &MpFile,
+    blocks: &[MapBlock],
 ) -> Option<ComRc<IEntity>> {
-    if mp.patches.is_empty() {
-        return None;
-    }
-
     let factory = asset_loader.component_factory();
     let entity = CoreEntity::create(format!("{}_terrain", map_name), true);
 
-    let geometry = build_terrain_geometry(asset_loader, mp);
+    let geometries: Vec<Geometry> = blocks
+        .iter()
+        .filter_map(|block| build_block_geometry(asset_loader, map_name, block))
+        .collect();
+    if geometries.is_empty() {
+        return None;
+    }
 
-    let mesh = StaticMeshComponent::new(entity.clone(), vec![geometry], factory);
+    let mesh = StaticMeshComponent::new(entity.clone(), geometries, factory);
     entity.add_component(
         radiance::comdef::IStaticMeshComponent::uuid(),
         ComRc::from_object(mesh),
     );
-
     Some(entity)
 }
 
-/// Assemble all decoded patches into a single seamless heightfield mesh.
-///
-/// The `.mp` decoder now recovers every patch — textured and untextured —
-/// so the grid is essentially complete (typically all but a single corner
-/// patch). We still resample every patch onto one shared vertex grid keyed
-/// by world position (patches share edge vertices, so this is exact for the
-/// decoded cells), then **dilate-fill** any residual gaps from their known
-/// neighbours so the result is always a single hole-free mesh. Decoded cells
-/// keep their exact geometry; the rare missing cell is smoothly interpolated.
-fn build_terrain_geometry(asset_loader: &AssetLoader, mp: &MpFile) -> Geometry {
-    // Patch origins fall on a 320-unit grid; vertices on a
-    // `CELL_WORLD_SIZE` (20-unit) grid. Build the height field in the
-    // file's natural axes first (`col` -> fileX from `min_x`, `row` ->
-    // fileZ from `min_z`), then map file -> world at emit time.
-    let max_min_x = mp.patches.iter().map(|p| p.min_x).fold(0.0f32, f32::max);
-    let max_min_z = mp.patches.iter().map(|p| p.min_z).fold(0.0f32, f32::max);
+/// Build one block's splat geometry, or `None` if the block is empty.
+fn build_block_geometry(
+    asset_loader: &AssetLoader,
+    map_name: &str,
+    block: &MapBlock,
+) -> Option<Geometry> {
+    let mp = &block.mp;
+    if mp.patches.is_empty() {
+        return None;
+    }
 
-    let fnx = ((max_min_x + PATCH_WORLD_SIZE) / CELL_WORLD_SIZE).round() as usize + 1;
-    let fnz = ((max_min_z + PATCH_WORLD_SIZE) / CELL_WORLD_SIZE).round() as usize + 1;
+    // Block origin in world space: snap the minimum patch origin down to the
+    // block grid (patch origins are absolute; a block spans 5120 units).
+    let block_min_x = mp
+        .patches
+        .iter()
+        .map(|p| p.min_x)
+        .fold(f32::MAX, f32::min)
+        .min(block.row as f32 * BLOCK_WORLD_SIZE);
+    let block_min_z = mp
+        .patches
+        .iter()
+        .map(|p| p.min_z)
+        .fold(f32::MAX, f32::min)
+        .min(block.col as f32 * BLOCK_WORLD_SIZE);
+    let block_min_x = (block_min_x / BLOCK_WORLD_SIZE).floor() * BLOCK_WORLD_SIZE;
+    let block_min_z = (block_min_z / BLOCK_WORLD_SIZE).floor() * BLOCK_WORLD_SIZE;
 
-    let mut height = vec![0.0f32; fnx * fnz];
-    let mut known = vec![false; fnx * fnz];
+    let (height, normal, _known) = build_block_height_field(mp, block_min_x, block_min_z);
+    let atlas = build_weight_atlas(block, mp.texture_ids, block_min_x, block_min_z);
+    let material = block_material(asset_loader, map_name, block, atlas);
 
-    for patch in &mp.patches {
-        for row in 0..PATCH_EDGE {
-            for col in 0..PATCH_EDGE {
-                let fx = ((patch.min_x + col as f32 * CELL_WORLD_SIZE) / CELL_WORLD_SIZE).round()
-                    as usize;
-                let fz = ((patch.min_z + row as f32 * CELL_WORLD_SIZE) / CELL_WORLD_SIZE).round()
-                    as usize;
-                if fx < fnx && fz < fnz {
-                    let i = fx * fnz + fz;
-                    height[i] = patch.heights[row * PATCH_EDGE + col];
-                    known[i] = true;
-                }
-            }
+    // Emit the 257×257 vertex grid. `known` cells with no decoded height are
+    // dilate-filled (notably the block's omitted (0,0) patch).
+    let n = VERTS_PER_BLOCK;
+    let mut vertices = Vec::with_capacity(n * n);
+    let mut normals = Vec::with_capacity(n * n);
+    let mut texcoords = Vec::with_capacity(n * n);
+    for gx in 0..n {
+        for gz in 0..n {
+            let wx = block_min_x + gx as f32 * CELL_WORLD_SIZE;
+            let wz = block_min_z + gz as f32 * CELL_WORLD_SIZE;
+            let i = gx * n + gz;
+            vertices.push(Vec3::new(wx, height[i], wz));
+            normals.push(normal[i]);
+            // Weight-atlas UV: block-local position normalized to [0,1].
+            texcoords.push(TexCoord::new(
+                gx as f32 / CELLS_PER_BLOCK as f32,
+                gz as f32 / CELLS_PER_BLOCK as f32,
+            ));
         }
     }
 
-    fill_unknown_heights(&mut height, &mut known, fnx, fnz);
-
-    // File -> world orientation. Empirically derived (clean-room) by
-    // sampling decoded terrain height under each of the 8 dihedral
-    // orientations at every `.nod` object's (X,Z) and comparing to the
-    // object's world Y across all 139 PAL5 maps: the **identity** mapping
-    // wins decisively (3025 height matches within 20u, median |ΔY| ≈ 32,
-    // vs ≤2173 / median ≥130 for every other orientation including the old
-    // `rot270`). It is also a true rotation, so it renders un-mirrored.
-    // The patches already carry their absolute world origin in
-    // `min_x`/`min_z`, so the grid axes map straight through:
-    //   world (X, Z) = (fx * CELL, fz * CELL)   (fx from min_x, fz from min_z)
-    // with height = heights[row*17 + col] (row along +Z, col along +X).
-    let tile = TEX_TILE_WORLD;
-    let mut vertices = Vec::with_capacity(fnx * fnz);
-    let mut texcoords = Vec::with_capacity(fnx * fnz);
-    for fx in 0..fnx {
-        for fz in 0..fnz {
-            let wx = fx as f32 * CELL_WORLD_SIZE;
-            let wz = fz as f32 * CELL_WORLD_SIZE;
-            vertices.push(Vec3::new(wx, height[fx * fnz + fz], wz));
-            texcoords.push(TexCoord::new(wx / tile, wz / tile));
-        }
-    }
-
-    let (nx, nz) = (fnx, fnz);
-    let mut indices = Vec::with_capacity((nx - 1) * (nz - 1) * 6);
-    for gx in 0..nx - 1 {
-        for gz in 0..nz - 1 {
-            let tl = (gx * nz + gz) as u32;
+    let mut indices = Vec::with_capacity((n - 1) * (n - 1) * 6);
+    for gx in 0..n - 1 {
+        for gz in 0..n - 1 {
+            let tl = (gx * n + gz) as u32;
             let tr = tl + 1;
-            let bl = ((gx + 1) * nz + gz) as u32;
+            let bl = ((gx + 1) * n + gz) as u32;
             let br = bl + 1;
             indices.extend_from_slice(&[tl, bl, tr, tr, bl, br]);
         }
     }
 
-    // See note below on omitting normals for the `TexturedNoLight` shader.
-    Geometry::new(
+    Some(Geometry::new(
         &vertices,
-        None,
+        Some(&normals),
         &[texcoords],
         indices,
-        terrain_material(asset_loader),
+        material,
+    ))
+}
+
+/// Rasterize a block's `.mp` patches into a 257×257 height + normal grid,
+/// dilate-filling any cell no patch covered.
+fn build_block_height_field(
+    mp: &MpFile,
+    block_min_x: f32,
+    block_min_z: f32,
+) -> (Vec<f32>, Vec<Vec3>, Vec<bool>) {
+    let n = VERTS_PER_BLOCK;
+    let mut height = vec![0.0f32; n * n];
+    let mut normal = vec![Vec3::new(0.0, 1.0, 0.0); n * n];
+    let mut known = vec![false; n * n];
+
+    for patch in &mp.patches {
+        for row in 0..PATCH_EDGE {
+            for col in 0..PATCH_EDGE {
+                let gx = ((patch.min_x - block_min_x + col as f32 * CELL_WORLD_SIZE)
+                    / CELL_WORLD_SIZE)
+                    .round() as i64;
+                let gz = ((patch.min_z - block_min_z + row as f32 * CELL_WORLD_SIZE)
+                    / CELL_WORLD_SIZE)
+                    .round() as i64;
+                if gx < 0 || gz < 0 || gx as usize >= n || gz as usize >= n {
+                    continue;
+                }
+                let i = gx as usize * n + gz as usize;
+                let v = row * PATCH_EDGE + col;
+                height[i] = patch.heights[v];
+                let nm = &patch.normals[v];
+                normal[i] = Vec3::new(nm.x, nm.y, nm.z);
+                known[i] = true;
+            }
+        }
+    }
+
+    fill_unknown_heights(&mut height, &mut normal, &mut known, n);
+    (height, normal, known)
+}
+
+/// Build the block's `1024×1024` RGBA weight atlas (one `64×64` tile per
+/// patch; R/G/B/A = slot 0/1/2/3 weights). Weight on slots whose texture id
+/// is `-1` is folded into the base layer. Cells with no decoded patch get a
+/// full-base weight (`R = 255`).
+fn build_weight_atlas(
+    block: &MapBlock,
+    texture_ids: [i32; 4],
+    block_min_x: f32,
+    block_min_z: f32,
+) -> RgbaImage {
+    let mut atlas =
+        RgbaImage::from_pixel(ATLAS_EDGE as u32, ATLAS_EDGE as u32, Rgba([255, 0, 0, 0]));
+    let Some(alp) = block.alp.as_ref() else {
+        return atlas; // base-only block
+    };
+
+    for patch in &block.mp.patches {
+        let lx = ((patch.min_x - block_min_x) / PATCH_WORLD_SIZE).round() as i64;
+        let lz = ((patch.min_z - block_min_z) / PATCH_WORLD_SIZE).round() as i64;
+        if lx < 0 || lz < 0 || lx as usize >= PATCHES_PER_BLOCK || lz as usize >= PATCHES_PER_BLOCK
+        {
+            continue;
+        }
+        let Some(ap) = alp.patch(lx as usize, lz as usize) else {
+            continue;
+        };
+        write_patch_weights(&mut atlas, ap, texture_ids, lx as usize, lz as usize);
+    }
+    atlas
+}
+
+/// Write one patch's `64×64` weights into its atlas tile, folding unused-slot
+/// weight into the base layer.
+fn write_patch_weights(
+    atlas: &mut RgbaImage,
+    ap: &fileformats::pal5::alp::AlpPatch,
+    texture_ids: [i32; 4],
+    lx: usize,
+    lz: usize,
+) {
+    let base_x = lx * WEIGHT_EDGE;
+    let base_z = lz * WEIGHT_EDGE;
+    for row in 0..WEIGHT_EDGE {
+        for col in 0..WEIGHT_EDGE {
+            let t = row * WEIGHT_EDGE + col;
+            let mut w = [0u32; 4];
+            for slot in 0..ap.layer_count as usize {
+                w[slot] = ap.planes[slot][t] as u32;
+            }
+            // Fold weight on unused slots (id < 0) into the base layer so the
+            // shader never samples an undefined texture.
+            for slot in 1..4 {
+                if texture_ids[slot] < 0 {
+                    w[0] += w[slot];
+                    w[slot] = 0;
+                }
+            }
+            atlas.put_pixel(
+                (base_x + col) as u32,
+                (base_z + row) as u32,
+                Rgba([
+                    w[0].min(255) as u8,
+                    w[1].min(255) as u8,
+                    w[2].min(255) as u8,
+                    w[3].min(255) as u8,
+                ]),
+            );
+        }
+    }
+}
+
+/// Build the splat material for a block from its footer texture ids + atlas.
+fn block_material(
+    asset_loader: &AssetLoader,
+    map_name: &str,
+    block: &MapBlock,
+    atlas: RgbaImage,
+) -> MaterialDef {
+    let ids = block.mp.texture_ids;
+    // Base texture id: first valid slot, else the fallback.
+    let base_name = ids
+        .iter()
+        .find(|&&id| id >= 0)
+        .and_then(|&id| terrain_texture_name(id as u8))
+        .unwrap_or(FALLBACK_TEXTURE);
+
+    let load_layer = |id: i32| -> TerrainLayer {
+        let name = if id >= 0 {
+            terrain_texture_name(id as u8).unwrap_or(base_name)
+        } else {
+            // Unused slot: bind the base texture (its atlas weight is 0).
+            base_name
+        };
+        let path = format!("/Texture/TerrainTexture/{}", name);
+        TerrainLayer {
+            name: path.clone(),
+            data: asset_loader.read_file(&path).ok(),
+        }
+    };
+
+    let layers = [
+        load_layer(ids[0]),
+        load_layer(ids[1]),
+        load_layer(ids[2]),
+        load_layer(ids[3]),
+    ];
+
+    let atlas_name = format!(
+        "pal5_terrain_weights/{}_{}_{}",
+        map_name, block.row, block.col
+    );
+
+    TerrainSplatMaterialDef::create(
+        &format!("{}_terrain_{}_{}", map_name, block.row, block.col),
+        layers,
+        &atlas_name,
+        atlas,
+        4,
+        TEX_TILE_WORLD,
     )
 }
 
-/// Fill grid cells with no decoded height by repeatedly averaging their
-/// known 4-neighbours (morphological dilation). Converges because the
-/// decoded patches form a connected region surrounding every gap.
-fn fill_unknown_heights(height: &mut [f32], known: &mut [bool], nx: usize, nz: usize) {
-    let at = |gx: usize, gz: usize| gx * nz + gz;
+/// Fill grid cells with no decoded height/normal by repeatedly averaging
+/// their known 4-neighbours (morphological dilation).
+fn fill_unknown_heights(height: &mut [f32], normal: &mut [Vec3], known: &mut [bool], n: usize) {
+    let at = |gx: usize, gz: usize| gx * n + gz;
     loop {
         let mut changed = false;
         let mut any_unknown = false;
-        // Snapshot of the known mask so a single pass only reads
-        // previously-known cells (stable dilation front).
         let prev_known = known.to_vec();
-        for gx in 0..nx {
-            for gz in 0..nz {
+        for gx in 0..n {
+            for gz in 0..n {
                 let i = at(gx, gz);
                 if prev_known[i] {
                     continue;
                 }
                 any_unknown = true;
-                let mut sum = 0.0f32;
+                let mut hsum = 0.0f32;
+                let mut nsum = Vec3::new(0.0, 0.0, 0.0);
                 let mut count = 0u32;
                 let mut neighbour = |ngx: usize, ngz: usize| {
                     let ni = at(ngx, ngz);
                     if prev_known[ni] {
-                        sum += height[ni];
+                        hsum += height[ni];
+                        nsum = Vec3::add(&nsum, &normal[ni]);
                         count += 1;
                     }
                 };
                 if gx > 0 {
                     neighbour(gx - 1, gz);
                 }
-                if gx + 1 < nx {
+                if gx + 1 < n {
                     neighbour(gx + 1, gz);
                 }
                 if gz > 0 {
                     neighbour(gx, gz - 1);
                 }
-                if gz + 1 < nz {
+                if gz + 1 < n {
                     neighbour(gx, gz + 1);
                 }
                 if count > 0 {
-                    height[i] = sum / count as f32;
+                    height[i] = hsum / count as f32;
+                    normal[i] = Vec3::normalized(&nsum);
                     known[i] = true;
                     changed = true;
                 }
@@ -192,16 +364,4 @@ fn fill_unknown_heights(height: &mut [f32], known: &mut [bool], nx: usize, nz: u
             break;
         }
     }
-}
-
-fn terrain_material(asset_loader: &AssetLoader) -> MaterialDef {
-    let data = asset_loader.read_file(BASE_TERRAIN_TEXTURE).ok();
-    // Force Opaque: the base ground texture's alpha channel carries
-    // overlay/detail data, not coverage, so terrain must render fully
-    // opaque rather than alpha-test/blend it into floating fragments.
-    // Render two-sided so the heightfield stays visible regardless of
-    // per-patch triangle winding.
-    SimpleMaterialDef::create2(BASE_TERRAIN_TEXTURE, data)
-        .with_blend(BlendMode::Opaque)
-        .with_cull(CullMode::None)
 }

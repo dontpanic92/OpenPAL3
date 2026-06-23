@@ -15,6 +15,15 @@ use crate::loaders::{
     dff::{DffLoaderConfig, create_entity_from_dff_model},
 };
 
+/// One decoded terrain block: its grid coordinate, heightfield + footer
+/// texture ids (`mp`), and optional per-texel splat weights (`alp`).
+pub struct MapBlock {
+    pub row: u32,
+    pub col: u32,
+    pub mp: fileformats::pal5::mp::MpFile,
+    pub alp: Option<fileformats::pal5::alp::AlpFile>,
+}
+
 pub struct AssetLoader {
     vfs: Rc<MiniFs>,
     component_factory: Rc<dyn ComponentFactory>,
@@ -46,25 +55,168 @@ impl AssetLoader {
     }
 
     pub fn load_map_nod(&self, map_name: &str) -> anyhow::Result<NodFile> {
-        let path = format!("/Map/{}/{}_0_0.nod", map_name, map_name);
-        Ok(NodFile::read(&mut Cursor::new(
-            self.vfs.read_to_end(&path)?,
-        ))?)
+        // Maps ship objects as a grid of blocks (`<map>_<r>_<c>.nod`).
+        // Block patch/object coordinates are absolute world space (verified
+        // clean-room: block `_r_c` terrain origins are `r*5120`,`c*5120`),
+        // so the per-block node lists concatenate directly.
+        let blocks = self.map_blocks(map_name, "nod");
+        let mut merged: Option<NodFile> = None;
+        for (r, c) in &blocks {
+            let path = format!("/Map/{}/{}_{}_{}.nod", map_name, map_name, r, c);
+            let nod = match self.vfs.read_to_end(&path) {
+                Ok(bytes) => NodFile::read(&mut Cursor::new(bytes))?,
+                Err(err) => {
+                    log::warn!("Pal5 nod block {} unreadable: {}", path, err);
+                    continue;
+                }
+            };
+            match &mut merged {
+                Some(acc) => acc.nodes.extend(nod.nodes),
+                None => merged = Some(nod),
+            }
+        }
+        merged.ok_or_else(|| anyhow::anyhow!("no .nod blocks found for map '{}'", map_name))
     }
 
-    /// Decode the per-map terrain heightfield (`<map>_0_0.mp`).
+    /// Enumerate the `(row, col)` block coordinates present for `map_name`
+    /// with the given extension (e.g. `"mp"`, `"nod"`). Blocks form a
+    /// contiguous grid from the origin, so we stop probing a row at its
+    /// first gap and stop probing rows once a row's first column is absent.
+    /// Single-block maps return just `(0, 0)`.
+    fn map_blocks(&self, map_name: &str, ext: &str) -> Vec<(u32, u32)> {
+        const MAX_BLOCK: u32 = 16;
+        let exists = |r: u32, c: u32| {
+            let path = format!("/Map/{}/{}_{}_{}.{}", map_name, map_name, r, c, ext);
+            self.vfs.exists(&path)
+        };
+        let mut blocks = Vec::new();
+        for r in 0..MAX_BLOCK {
+            if !exists(r, 0) {
+                break;
+            }
+            blocks.push((r, 0));
+            for c in 1..MAX_BLOCK {
+                if !exists(r, c) {
+                    break;
+                }
+                blocks.push((r, c));
+            }
+        }
+        if blocks.is_empty() {
+            // Fall back to the canonical first block so callers can still
+            // surface a precise read error for it.
+            blocks.push((0, 0));
+        }
+        blocks
+    }
+
+    /// Decode and merge the per-map terrain heightfield across all blocks
+    /// (`<map>_<r>_<c>.mp`). Block patch origins are absolute world
+    /// coordinates, so the decoded patches concatenate into one seamless
+    /// heightfield.
     pub fn load_map_terrain(
         &self,
         map_name: &str,
     ) -> anyhow::Result<fileformats::pal5::mp::MpFile> {
-        let path = format!("/Map/{}/{}_0_0.mp", map_name, map_name);
-        let raw = self.vfs.read_to_end(&path)?;
-        Ok(fileformats::pal5::mp::MpFile::read(&raw)?)
+        use fileformats::pal5::mp::MpFile;
+
+        let blocks = self.map_blocks(map_name, "mp");
+        let mut merged: Option<MpFile> = None;
+        let mut last_err: Option<anyhow::Error> = None;
+        for (r, c) in &blocks {
+            let path = format!("/Map/{}/{}_{}_{}.mp", map_name, map_name, r, c);
+            let raw = match self.vfs.read_to_end(&path) {
+                Ok(raw) => raw,
+                Err(err) => {
+                    last_err = Some(err.into());
+                    continue;
+                }
+            };
+            match MpFile::read(&raw) {
+                Ok(mp) => match &mut merged {
+                    Some(acc) => acc.patches.extend(mp.patches),
+                    None => merged = Some(mp),
+                },
+                Err(err) => {
+                    log::warn!("Pal5 terrain block {} decode failed: {}", path, err);
+                    last_err = Some(err.into());
+                }
+            }
+        }
+        merged.ok_or_else(|| {
+            last_err.unwrap_or_else(|| anyhow::anyhow!("no .mp blocks for map '{}'", map_name))
+        })
+    }
+
+    /// Load every map block paired with its alphamap, keeping per-block
+    /// boundaries (each block carries its own footer texture ids + weight
+    /// rasters). Blocks with an unreadable/undecodable `.mp` are skipped;
+    /// a missing `.alp` yields `alp = None` (that block renders base-only).
+    pub fn load_map_blocks(&self, map_name: &str) -> Vec<MapBlock> {
+        use fileformats::pal5::alp::AlpFile;
+        use fileformats::pal5::mp::MpFile;
+
+        let mut out = Vec::new();
+        for (r, c) in self.map_blocks(map_name, "mp") {
+            let mp_path = format!("/Map/{}/{}_{}_{}.mp", map_name, map_name, r, c);
+            let mp = match self
+                .vfs
+                .read_to_end(&mp_path)
+                .map_err(anyhow::Error::from)
+                .and_then(|raw| MpFile::read(&raw).map_err(anyhow::Error::from))
+            {
+                Ok(mp) => mp,
+                Err(err) => {
+                    log::warn!("Pal5 terrain block {} failed: {}", mp_path, err);
+                    continue;
+                }
+            };
+            let alp_path = format!("/Map/{}/alphamap_{}_{}.alp", map_name, r, c);
+            let alp = match self
+                .vfs
+                .read_to_end(&alp_path)
+                .map_err(anyhow::Error::from)
+                .and_then(|raw| AlpFile::read(&raw).map_err(anyhow::Error::from))
+            {
+                Ok(alp) => Some(alp),
+                Err(err) => {
+                    log::warn!("Pal5 alphamap {} failed: {}", alp_path, err);
+                    None
+                }
+            };
+            out.push(MapBlock {
+                row: r,
+                col: c,
+                mp,
+                alp,
+            });
+        }
+        out
     }
 
     /// Read a raw asset file (e.g. a terrain `.dds`) from the vfs.
     pub fn read_file(&self, path: &str) -> anyhow::Result<Vec<u8>> {
         Ok(self.vfs.read_to_end(path)?)
+    }
+
+    /// Decode the map's per-map atmosphere (`Map/<map>/envinfo.env`):
+    /// ambient + sun light color and direction. Returns `None` if the file
+    /// is absent or undecodable (the caller falls back to flat lighting).
+    pub fn load_map_env(&self, map_name: &str) -> Option<fileformats::pal5::env::EnvFile> {
+        use fileformats::pal5::env::EnvFile;
+        let path = format!("/Map/{}/envinfo.env", map_name);
+        match self
+            .vfs
+            .read_to_end(&path)
+            .map_err(anyhow::Error::from)
+            .and_then(|raw| EnvFile::read(&raw))
+        {
+            Ok(env) => Some(env),
+            Err(err) => {
+                log::warn!("Pal5 envinfo {} failed: {}", path, err);
+                None
+            }
+        }
     }
 
     pub fn load_model(&self, model_path: &str) -> anyhow::Result<ComRc<IEntity>> {

@@ -19,30 +19,59 @@ impl Pal5Scene {
         let scene = CoreScene::create();
         scene.camera_mut().set_fov43(45_f32.to_radians());
 
-        // Terrain heightfield (`<map>_0_0.mp`). Added before objects so
-        // they visually rest on top of it. A decode/build failure is
-        // non-fatal — the scene's objects still load.
-        match asset_loader.load_map_terrain(scene_name) {
-            Ok(mp) => {
-                let patch_count = mp.patches.len();
-                if let Some(terrain) =
-                    super::terrain::build_terrain_entity(asset_loader, scene_name, &mp)
-                {
-                    scene.add_entity(terrain);
-                    log::info!(
-                        "Pal5Scene '{}': terrain loaded ({} patches)",
-                        scene_name,
-                        patch_count,
-                    );
-                }
-            }
-            Err(err) => {
-                log::warn!(
-                    "Pal5Scene '{}': failed to load terrain: {}",
+        // Per-map atmosphere (`envinfo.env`): a dim ambient fill plus a
+        // directional sun. PAL5 ships no per-scene `.lgt`; its terrain is
+        // dynamically lit (the splat shader applies Lambert + ambient), so
+        // without this the lighting term would collapse to a flat, dead
+        // ambient. We model the sun as a far point light (no attenuation)
+        // in the parsed azimuth/elevation direction. If the `.env` is
+        // missing, fall back to full ambient so terrain never renders black.
+        match asset_loader.load_map_env(scene_name) {
+            Some(env) => {
+                let dir = env.sun_direction();
+                const SUN_DISTANCE: f32 = 1.0e7;
+                let sun = radiance::scene::SceneLight::new(
+                    Vec3::new(
+                        dir[0] * SUN_DISTANCE,
+                        dir[1] * SUN_DISTANCE,
+                        dir[2] * SUN_DISTANCE,
+                    ),
+                    env.sun_color,
+                );
+                scene.set_lighting(radiance::scene::SceneLighting::new(env.ambient, vec![sun]));
+                log::info!(
+                    "Pal5Scene '{}': atmosphere ambient {:?} sun {:?} az={} el={}",
                     scene_name,
-                    err,
+                    env.ambient,
+                    env.sun_color,
+                    env.sun_azimuth_deg,
+                    env.sun_elevation_deg,
                 );
             }
+            None => {
+                scene.set_lighting(radiance::scene::SceneLighting::new([1.0, 1.0, 1.0], vec![]));
+            }
+        }
+
+        // Terrain heightfield + splat textures, loaded per block. A
+        // decode/build failure is non-fatal — the scene's objects still
+        // load.
+        let blocks = asset_loader.load_map_blocks(scene_name);
+        let patch_count: usize = blocks.iter().map(|b| b.mp.patches.len()).sum();
+        if !blocks.is_empty() {
+            if let Some(terrain) =
+                super::terrain::build_terrain_entity(asset_loader, scene_name, &blocks)
+            {
+                scene.add_entity(terrain);
+                log::info!(
+                    "Pal5Scene '{}': terrain loaded ({} blocks, {} patches)",
+                    scene_name,
+                    blocks.len(),
+                    patch_count,
+                );
+            }
+        } else {
+            log::warn!("Pal5Scene '{}': no terrain blocks found", scene_name);
         }
 
         let nod = asset_loader.load_map_nod(scene_name)?;

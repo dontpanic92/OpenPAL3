@@ -20,6 +20,19 @@ pub enum AlphaKind {
     Blend,
 }
 
+/// How [`TextureStore::get_or_update_inner`] treats a texture's alpha.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum AlphaHandling {
+    /// Detect transparency and premultiply RGB when present (default).
+    Classify,
+    /// Force alpha to 255 (opaque); never premultiply. For textures whose
+    /// alpha is non-coverage detail data.
+    ForceOpaque,
+    /// Keep all channels verbatim; classify Opaque (never premultiply). For
+    /// textures whose channels are arbitrary data (e.g. weight atlases).
+    Raw,
+}
+
 /// Minimum fraction of mid-range-alpha (`32..=223`) pixels for a texture
 /// to *qualify* as truly translucent (`Blend`). A genuinely see-through
 /// surface — water, fog, glass, ghosts — carries graded alpha across a
@@ -175,18 +188,75 @@ impl TextureStore {
         name: &str,
         update: impl FnOnce() -> Option<RgbaImage>,
     ) -> Arc<TextureDef> {
+        Self::get_or_update_inner(name, update, AlphaHandling::Classify)
+    }
+
+    /// Like [`TextureStore::get_or_update`], but treats the texture as
+    /// fully opaque regardless of its alpha channel: every texel's alpha
+    /// is forced to 255 before classification, so the texture is always
+    /// `AlphaKind::Opaque` and its RGB is **never** premultiplied.
+    ///
+    /// Used for textures whose alpha channel is *not* coverage but carries
+    /// unrelated data — e.g. PAL5 terrain `.dds`, whose DXT5 alpha holds
+    /// detail/overlay information. Without this, `classify_alpha` would
+    /// tag them `Blend`/`Cutout` and `premultiply_alpha` would darken
+    /// their RGB (often to near-black), even though the material renders
+    /// opaque.
+    pub fn get_or_update_opaque(
+        name: &str,
+        update: impl FnOnce() -> Option<RgbaImage>,
+    ) -> Arc<TextureDef> {
+        Self::get_or_update_inner(name, update, AlphaHandling::ForceOpaque)
+    }
+
+    /// Like [`TextureStore::get_or_update`], but keeps the RGBA bytes
+    /// **verbatim**: the texture is classified `AlphaKind::Opaque`, its
+    /// alpha is left unchanged, and its RGB is never premultiplied.
+    ///
+    /// Used for textures whose channels are arbitrary *data* rather than a
+    /// color + coverage — e.g. a PAL5 terrain splat **weight atlas** where
+    /// R/G/B/A each hold a layer's blend weight. Both `get_or_update`
+    /// (premultiply) and `get_or_update_opaque` (force alpha = 255) would
+    /// corrupt such data; this path preserves every channel.
+    pub fn get_or_update_raw(
+        name: &str,
+        update: impl FnOnce() -> Option<RgbaImage>,
+    ) -> Arc<TextureDef> {
+        Self::get_or_update_inner(name, update, AlphaHandling::Raw)
+    }
+
+    fn get_or_update_inner(
+        name: &str,
+        update: impl FnOnce() -> Option<RgbaImage>,
+        alpha: AlphaHandling,
+    ) -> Arc<TextureDef> {
         let mut store = TEXTURE_STORE.write().unwrap();
 
         if let Some(t) = store.get(name) {
             t.clone()
         } else {
             let mut image = update();
-            let alpha_kind = classify_alpha(image.as_ref());
-            if alpha_kind != AlphaKind::Opaque {
-                if let Some(img) = image.as_mut() {
-                    premultiply_alpha(img);
+            let alpha_kind = match alpha {
+                // Keep channels verbatim, classify Opaque (no premultiply).
+                AlphaHandling::Raw => AlphaKind::Opaque,
+                AlphaHandling::ForceOpaque => {
+                    if let Some(img) = image.as_mut() {
+                        for px in img.pixels_mut() {
+                            px.0[3] = 255;
+                        }
+                    }
+                    AlphaKind::Opaque
                 }
-            }
+                AlphaHandling::Classify => {
+                    let kind = classify_alpha(image.as_ref());
+                    if kind != AlphaKind::Opaque {
+                        if let Some(img) = image.as_mut() {
+                            premultiply_alpha(img);
+                        }
+                    }
+                    kind
+                }
+            };
             let t = Arc::new(TextureDef {
                 name: name.to_string(),
                 image: Mutex::new(image),
@@ -256,5 +326,27 @@ mod tests {
         // graded fraction. Must stay Blend (depth-write off).
         let img = image_with_alpha(0.0, 0.045);
         assert_eq!(classify_alpha(Some(&img)), AlphaKind::Blend);
+    }
+
+    #[test]
+    fn force_opaque_keeps_rgb_and_classifies_opaque() {
+        // A texture that would normally be Blend (graded alpha) and have
+        // its RGB premultiplied (darkened). The opaque path must force
+        // alpha to 255, classify it Opaque, and leave RGB untouched.
+        // Mirrors PAL5 terrain `.dds` (non-coverage alpha).
+        let name = "test::force_opaque_terrain";
+        let def = TextureStore::get_or_update_opaque(name, || {
+            let mut img = RgbaImage::new(64, 64);
+            for px in img.pixels_mut() {
+                *px = Rgba([200, 180, 120, 42]); // dark-if-premultiplied
+            }
+            Some(img)
+        });
+        assert_eq!(def.alpha_kind(), AlphaKind::Opaque);
+        let img = def.image.lock().unwrap();
+        let img = img.as_ref().expect("image present");
+        let px = img.get_pixel(0, 0);
+        // RGB preserved (not premultiplied down toward black), alpha forced.
+        assert_eq!(px.0, [200, 180, 120, 255]);
     }
 }

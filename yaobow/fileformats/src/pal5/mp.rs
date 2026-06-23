@@ -74,6 +74,12 @@ pub struct MpPatch {
 #[derive(Debug, Clone, Serialize)]
 pub struct MpFile {
     pub patches: Vec<MpPatch>,
+    /// The block's four terrain-texture slots (footer of the decompressed
+    /// stream): `texture_ids[slot]` is the `TerrainTexture` package-order
+    /// index for layer `slot`, or `-1` if the slot is unused. Pairs with
+    /// the per-slot weight rasters in the matching `alphamap_<r>_<c>.alp`
+    /// (see [`crate::pal5::alp`]). `[-1; 4]` if no footer was found.
+    pub texture_ids: [i32; 4],
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -116,8 +122,46 @@ impl MpFile {
 
         Ok(MpFile {
             patches: parse_patches(&body),
+            texture_ids: parse_block_texture_ids(&body),
         })
     }
+}
+
+/// Extract the block's four terrain-texture slot ids from the footer of the
+/// decompressed `.mp` stream. The footer shape (PAL5 v20) is:
+/// ```text
+/// i32 texture_id[4];   // -1 = unused, else TerrainTexture package index
+/// i32 aux_count;
+/// (i32 a, i32 b) × aux_count;  i32 trailing;   // present iff aux_count != 0
+/// ```
+/// We scan from the end for the largest `aux_count` whose count field is
+/// self-consistent and whose four ids are all in `-1..=224`. Returns
+/// `[-1; 4]` if no plausible footer is found. Derived clean-room from the
+/// shipped loader (`Pal5.exe` `0x0077bfb5`..`0x0077c123`).
+fn parse_block_texture_ids(body: &[u8]) -> [i32; 4] {
+    let words = body.len() / 4;
+    let i32_at = |w: usize| -> i32 {
+        let o = w * 4;
+        i32::from_le_bytes([body[o], body[o + 1], body[o + 2], body[o + 3]])
+    };
+    for aux_count in (0..=512usize).rev() {
+        let extra = 5 + aux_count * 2 + usize::from(aux_count != 0);
+        if extra > words {
+            continue;
+        }
+        let pos = words - extra;
+        let ids = [
+            i32_at(pos),
+            i32_at(pos + 1),
+            i32_at(pos + 2),
+            i32_at(pos + 3),
+        ];
+        let count = i32_at(pos + 4);
+        if count == aux_count as i32 && ids.iter().all(|&id| (-1..=224).contains(&id)) {
+            return ids;
+        }
+    }
+    [-1; 4]
 }
 
 /// Reinterpret the inflated body as `f32`s and walk the variable-length

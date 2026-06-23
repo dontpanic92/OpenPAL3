@@ -474,22 +474,23 @@ impl SimpleMaterialDef {
         Self::create2_with_sampler(texture_name, data, SamplerDef::default())
     }
 
+    /// Like [`SimpleMaterialDef::create2`], but loads the texture through
+    /// [`TextureStore::get_or_update_opaque`] so its alpha channel is
+    /// ignored (forced opaque) and its RGB is never premultiplied. Use for
+    /// textures whose alpha is not coverage data — e.g. PAL5 terrain
+    /// `.dds`, which would otherwise render dark.
+    pub fn create2_opaque(texture_name: &str, data: Option<Vec<u8>>) -> MaterialDef {
+        let texture =
+            TextureStore::get_or_update_opaque(texture_name, || decode_texture_data(data));
+        Self::create_internal(texture, SamplerDef::default())
+    }
+
     pub fn create2_with_sampler(
         texture_name: &str,
         data: Option<Vec<u8>>,
         sampler: SamplerDef,
     ) -> MaterialDef {
-        let texture = TextureStore::get_or_update(texture_name, || {
-            if let Some(data) = data {
-                let image = {
-                    image::load_from_memory(&data)
-                        .or_else(|_| image::load_from_memory_with_format(&data, ImageFormat::Tga))
-                };
-                image.and_then(|img| Ok(img.to_rgba8())).ok()
-            } else {
-                None
-            }
-        });
+        let texture = TextureStore::get_or_update(texture_name, || decode_texture_data(data));
 
         Self::create_internal(texture, sampler)
     }
@@ -518,6 +519,87 @@ impl SimpleMaterialDef {
         MaterialDef::builder(ShaderProgram::TexturedNoLight)
             .debug_name("simple_material")
             .textures_with_samplers(vec![texture_def], vec![sampler])
+            .build()
+    }
+}
+
+/// Decode raw texture bytes (DDS / TGA / PNG / …) into an `RgbaImage`,
+/// trying the auto-detected format first and falling back to TGA. Shared
+/// by [`SimpleMaterialDef::create2`] and
+/// [`SimpleMaterialDef::create2_opaque`].
+fn decode_texture_data(data: Option<Vec<u8>>) -> Option<image::RgbaImage> {
+    let data = data?;
+    image::load_from_memory(&data)
+        .or_else(|_| image::load_from_memory_with_format(&data, ImageFormat::Tga))
+        .map(|img| img.to_rgba8())
+        .ok()
+}
+
+/// One terrain-texture layer for [`TerrainSplatMaterialDef`]: a cache
+/// `name` plus its raw `.dds`/`.tga` bytes (decoded opaque — terrain
+/// texture alpha is non-coverage detail data).
+pub struct TerrainLayer {
+    pub name: String,
+    pub data: Option<Vec<u8>>,
+}
+
+/// Builds a PAL5 terrain multi-layer splat material
+/// ([`ShaderProgram::TerrainSplat`]). Blends up to four ground textures
+/// per-texel by a weight atlas, with dynamic Lambert lighting.
+pub struct TerrainSplatMaterialDef;
+impl TerrainSplatMaterialDef {
+    /// * `debug_name` — material/cache disambiguator (e.g. the block name).
+    /// * `layers` — the 4 terrain-texture slots, slot 0 first. Unused slots
+    ///   should be padded by the caller (e.g. repeat slot 0) so exactly 4
+    ///   are bound.
+    /// * `weight_atlas_name` / `weight_atlas` — the per-block weight atlas
+    ///   (RGBA = slots 0..3 weights), loaded **raw** so its channels are
+    ///   preserved verbatim.
+    /// * `active_layers` — number of layers that actually contribute (1..4).
+    /// * `tile_world` — world units per full repeat of each ground texture.
+    pub fn create(
+        debug_name: &str,
+        layers: [TerrainLayer; 4],
+        weight_atlas_name: &str,
+        weight_atlas: image::RgbaImage,
+        active_layers: u8,
+        tile_world: f32,
+    ) -> MaterialDef {
+        let mut textures: Vec<Arc<TextureDef>> = layers
+            .into_iter()
+            .map(|layer| {
+                // Terrain ground textures: opaque load (ignore their
+                // non-coverage alpha; never premultiply -> no darkening).
+                TextureStore::get_or_update_opaque(&layer.name, || decode_texture_data(layer.data))
+            })
+            .collect();
+        // Weight atlas: raw load so R/G/B/A weights survive intact.
+        textures.push(TextureStore::get_or_update_raw(weight_atlas_name, || {
+            Some(weight_atlas)
+        }));
+
+        let samplers = vec![SamplerDef::default(); textures.len()];
+
+        let mut params = MaterialParams::default();
+        params.alpha_ref = active_layers as f32; // -> misc.x (layer count)
+        let inv_tile = if tile_world != 0.0 {
+            1.0 / tile_world
+        } else {
+            0.0
+        };
+        params.uv_scale = [inv_tile, inv_tile]; // -> uv_xform.xy (world->tile)
+
+        MaterialDef::builder(ShaderProgram::TerrainSplat)
+            .debug_name(debug_name)
+            .textures_with_samplers(textures, samplers)
+            // `blend()` resets `alpha_ref` (= our `misc.x` layer count) to the
+            // mode default, so it MUST come before `params()` or the shader
+            // sees a layer count of 0 and never blends the overlay layers
+            // (rendering `base * base_weight`, which darkens every
+            // overlay-weighted texel toward black).
+            .blend(BlendMode::Opaque)
+            .cull(CullMode::None)
+            .params(params)
             .build()
     }
 }

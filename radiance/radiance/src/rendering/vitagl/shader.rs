@@ -141,6 +141,16 @@ fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
             include_bytes!("shaders/simple_triangle.frag"),
             VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
         ),
+        // The Vita backend has no terrain-splat shader; fall back to the
+        // unlit textured program (samples only the first bound texture). The
+        // vertex layout keeps NORMAL | TEXCOORD so the buffer stride matches
+        // what the terrain builder produces.
+        ShaderProgram::TerrainSplat => ShaderProgramData::new(
+            "TerrainSplat",
+            include_bytes!("shaders/simple_triangle.vert"),
+            include_bytes!("shaders/simple_triangle.frag"),
+            VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
+        ),
     }
 }
 
