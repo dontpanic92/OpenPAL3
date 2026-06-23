@@ -189,14 +189,17 @@ pub fn _create_shader_module(
 pub fn create_framebuffers(
     device: &super::device::Device,
     image_views: &Vec<ImageView>,
-    depth_image_view: &ImageView,
+    depth_image_views: &[ImageView],
     extent: &Extent2D,
     render_pass: vk::RenderPass,
 ) -> VkResult<Vec<vk::Framebuffer>> {
+    // Each swapchain color image gets its own depth image so two
+    // in-flight frames never share (and race on) a single depth buffer.
     image_views
         .iter()
-        .map(|view| {
-            let attachments = [view.vk_image_view(), depth_image_view.vk_image_view()];
+        .zip(depth_image_views.iter())
+        .map(|(view, depth_view)| {
+            let attachments = [view.vk_image_view(), depth_view.vk_image_view()];
             let create_info = vk::FramebufferCreateInfo::default()
                 .render_pass(render_pass)
                 .attachments(&attachments)

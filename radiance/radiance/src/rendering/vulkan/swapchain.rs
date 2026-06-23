@@ -198,8 +198,8 @@ pub struct SwapChain {
     handle: vk::SwapchainKHR,
     images: Vec<vk::Image>,
     _image_views: Vec<ImageView>,
-    _depth_image: Image,
-    _depth_image_view: ImageView,
+    _depth_images: Vec<Image>,
+    _depth_image_views: Vec<ImageView>,
     uniform_buffers: Vec<Buffer>,
     per_frame_descriptor_sets: Vec<vk::DescriptorSet>,
     framebuffers: Vec<vk::Framebuffer>,
@@ -287,24 +287,40 @@ impl SwapChain {
             })
             .collect();
 
-        let mut depth_image = Image::new_depth_image(
-            &instance.vk_instance(),
-            physical_device,
-            &allocator,
-            capabilities.current_extent.width,
-            capabilities.current_extent.height,
-        )?;
+        // One depth image per swapchain image. The Native render path
+        // runs `MAX_FRAMES_IN_FLIGHT` frames concurrently, each targeting
+        // a different swapchain color image; sharing a single depth buffer
+        // across them races the depth attachment (no cross-frame sync),
+        // which shows up as flashing / disappearing geometry on drivers
+        // that don't serialize overlapping frames (e.g. AMD). Giving each
+        // swapchain image its own depth buffer removes the hazard — the
+        // Logical path already does this via `LogicalRenderPath`.
+        let mut depth_images = Vec::with_capacity(images.len());
+        let mut depth_image_views = Vec::with_capacity(images.len());
+        for _ in 0..images.len() {
+            let mut depth_image = Image::new_depth_image(
+                &instance.vk_instance(),
+                physical_device,
+                &allocator,
+                capabilities.current_extent.width,
+                capabilities.current_extent.height,
+            )?;
 
-        depth_image.transit_layout(
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            command_runner,
-        )?;
-        let depth_image_view = ImageView::new_depth_image_view(
-            device.clone(),
-            depth_image.vk_image(),
-            depth_image.vk_format(),
-        )?;
+            depth_image.transit_layout(
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                command_runner,
+            )?;
+            let depth_image_view = ImageView::new_depth_image_view(
+                device.clone(),
+                depth_image.vk_image(),
+                depth_image.vk_format(),
+            )?;
+
+            depth_images.push(depth_image);
+            depth_image_views.push(depth_image_view);
+        }
+        let depth_format = depth_images[0].vk_format();
 
         // NOTE: we deliberately do NOT call
         // `descriptor_manager.reset_per_frame_descriptor_pool()` here. The
@@ -317,7 +333,7 @@ impl SwapChain {
             device.clone(),
             &descriptor_manager,
             format.format,
-            depth_image.vk_format(),
+            depth_format,
             capabilities.current_extent,
         );
         let render_pass = pipeline_manager.render_pass().vk_render_pass();
@@ -328,7 +344,7 @@ impl SwapChain {
         let framebuffers = creation_helpers::create_framebuffers(
             &device,
             &image_views,
-            &depth_image_view,
+            &depth_image_views,
             &capabilities.current_extent,
             render_pass,
         )?;
@@ -374,8 +390,8 @@ impl SwapChain {
             handle,
             images,
             _image_views: image_views,
-            _depth_image: depth_image,
-            _depth_image_view: depth_image_view,
+            _depth_images: depth_images,
+            _depth_image_views: depth_image_views,
             uniform_buffers,
             per_frame_descriptor_sets,
             framebuffers,
