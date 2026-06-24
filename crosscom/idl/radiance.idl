@@ -204,6 +204,21 @@ interface IBillboardComponent: IComponent {
 [uuid(e718a5e7-5d56-48af-9860-90db57dfe64c)]
 class BillboardComponent: IBillboardComponent {}
 
+// `ISkyboxComponent` re-centers its owning entity on the active scene
+// camera every frame so a skybox model (a large dome/box authored around
+// the origin) always surrounds the viewer regardless of how far the
+// camera has travelled across the map. PAL5 selects the skybox `.dff`
+// per scene via `envinfo.env` (`SkyBoxID`); the model is placed once and
+// this component keeps it locked to the camera. Self-ticks via
+// `IComponent::on_updating`, reading the camera position fed once per
+// frame by `CoreRadianceEngine::update`.
+[uuid(2455b52c-ca9f-438f-b105-8539ba7d604f)]
+interface ISkyboxComponent: IComponent {
+}
+
+[uuid(74981b78-3bf1-421e-a7af-edf2785640c0)]
+class SkyboxComponent: ISkyboxComponent {}
+
 [uuid(327a838b-b67e-4cf2-8c7b-45daa11964a4)]
 interface IAudioSourceComponent: IComponent {
     void play();

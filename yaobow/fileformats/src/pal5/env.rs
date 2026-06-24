@@ -22,7 +22,7 @@
 //! | 0x34   | u32       | `0xcccccccc` padding (MSVC uninit-memory fill) |
 //! | 0x38   | f32       | fog parameter A (0..1; density?) |
 //! | 0x3c   | f32       | fog parameter B (0..1; far/end ratio?) |
-//! | 0x40   | u32       | build tag (a year, 2003..2026, on most maps) |
+//! | 0x40   | u32       | skybox id (role-index asset id, `0xffffffff` = none) |
 //! | 0x44…  | variable  | per-map light/material records (undecoded) |
 //!
 //! These offsets are verified clean-room across all 139 shipped
@@ -47,6 +47,21 @@
 //! stride/count was not pinned down confidently and it is left undecoded.
 //! The base atmosphere consumed by the renderer (ambient + directional
 //! sun + fog color/params) lives entirely in the fixed header.
+//!
+//! ## Skybox id (body `0x40`)
+//!
+//! Body `0x40` is the scene's **skybox id**: a `u32` equal to the
+//! `role_*.bin` asset id of a `\BuildingP5\yingdi\_skybox*.dff` model
+//! (the shipped range is `2001..=2026`); `0xffffffff` means "no skybox".
+//! This was verified clean-room against the unpacked `Pal5.exe` (its XML
+//! env loader parses an `{Range, SkyBoxID, FogStart, FogEnd, FogColor_*,
+//! AmbientColor_*}` record into the same serialized struct) and validated
+//! across all 139 shipped files: 130 resolve to a skybox-named asset and
+//! every named map matches its skybox exactly (`kuangfengzhai` → 2003
+//! `_skybox_B`, `dianchi` → 2020 `_skybox_dianchi`, `shushan` → 2014
+//! `_skybox_shushan`, `mojiedidong` → 2009 `_skybox_mojie`, …). The values
+//! `2001..=2026` merely *look* like calendar years, which is why an
+//! earlier "build year" reading of this field appeared plausible.
 
 use serde::Serialize;
 
@@ -55,10 +70,16 @@ const GAMEBOX_MAGIC: u32 = 0x0001_e240;
 /// Size of the GameBox container header preceding the body.
 const GAMEBOX_HEADER: usize = 12;
 /// Smallest body that still contains the full fixed header (through the
-/// build tag at body `0x40`). The smallest shipped file is 123 bytes
+/// skybox id at body `0x40`). The smallest shipped file is 123 bytes
 /// (body 111), so every real file clears this; the guard only protects
 /// against truncated/garbage input.
 const FIXED_HEADER_LEN: usize = 0x44;
+
+/// Sentinel skybox id meaning "this map has no skybox".
+const SKYBOX_ID_NONE: u32 = 0xffff_ffff;
+/// Inclusive range of valid skybox asset ids shipped in `role_*.bin`
+/// (`\BuildingP5\yingdi\_skybox*.dff`).
+const SKYBOX_ID_RANGE: std::ops::RangeInclusive<u32> = 2001..=2026;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct EnvFile {
@@ -78,10 +99,10 @@ pub struct EnvFile {
     pub fog_param_a: f32,
     /// Fog parameter B (0..1). Likely a far/end ratio; stored but unused.
     pub fog_param_b: f32,
-    /// Build tag stored at body `0x40`. On most maps this is a plausible
-    /// year (2003..2026); kept raw because a handful of maps store some
-    /// other value here.
-    pub build_tag: u32,
+    /// Raw skybox id stored at body `0x40`: the `role_*.bin` asset id of
+    /// the scene's `_skybox*.dff` model, or `0xffffffff` for no skybox.
+    /// Use [`EnvFile::skybox_asset_id`] to get a validated `Option`.
+    pub skybox_id: u32,
 }
 
 impl EnvFile {
@@ -119,7 +140,7 @@ impl EnvFile {
             fog_color,
             fog_param_a: f(0x38),
             fog_param_b: f(0x3c),
-            build_tag: u(0x40),
+            skybox_id: u(0x40),
         })
     }
 
@@ -131,6 +152,17 @@ impl EnvFile {
         let el = self.sun_elevation_deg.to_radians();
         let cos_el = el.cos();
         [cos_el * az.cos(), el.sin(), cos_el * az.sin()]
+    }
+
+    /// The scene's skybox asset id (a `role_*.bin` id for a
+    /// `_skybox*.dff` model), or `None` when the map ships no skybox
+    /// (`0xffffffff`) or stores a value outside the known skybox id range.
+    pub fn skybox_asset_id(&self) -> Option<u32> {
+        if self.skybox_id == SKYBOX_ID_NONE || !SKYBOX_ID_RANGE.contains(&self.skybox_id) {
+            None
+        } else {
+            Some(self.skybox_id)
+        }
     }
 }
 
@@ -147,7 +179,7 @@ mod tests {
         fog_rgba: [u8; 4],
         fog_a: f32,
         fog_b: f32,
-        tag: u32,
+        skybox_id: u32,
     ) -> Vec<u8> {
         let mut v = Vec::new();
         v.extend_from_slice(&GAMEBOX_MAGIC.to_le_bytes()); // magic
@@ -164,7 +196,7 @@ mod tests {
         v.extend_from_slice(&0xccccccccu32.to_le_bytes()); // 0x34 sentinel
         v.extend_from_slice(&fog_a.to_le_bytes()); // 0x38
         v.extend_from_slice(&fog_b.to_le_bytes()); // 0x3c
-        v.extend_from_slice(&tag.to_le_bytes()); // 0x40
+        v.extend_from_slice(&skybox_id.to_le_bytes()); // 0x40
         v
     }
 
@@ -189,7 +221,25 @@ mod tests {
         assert!((env.fog_color[3] - 1.0).abs() < 1e-6, "alpha 0xff -> 1.0");
         assert!((env.fog_param_a - 0.01).abs() < 1e-6);
         assert!((env.fog_param_b - 0.45).abs() < 1e-6);
-        assert_eq!(env.build_tag, 2020);
+        assert_eq!(env.skybox_id, 2020);
+        assert_eq!(env.skybox_asset_id(), Some(2020));
+    }
+
+    #[test]
+    fn skybox_asset_id_validates_range_and_sentinel() {
+        // In-range id is returned as-is.
+        let raw = make_env([0.5; 3], [1.0; 3], 0.0, 45.0, [0, 0, 0, 0xff], 0.0, 0.0, 2003);
+        assert_eq!(EnvFile::read(&raw).unwrap().skybox_asset_id(), Some(2003));
+
+        // Sentinel 0xffffffff -> no skybox.
+        let raw = make_env(
+            [0.5; 3], [1.0; 3], 0.0, 45.0, [0, 0, 0, 0xff], 0.0, 0.0, 0xffff_ffff,
+        );
+        assert_eq!(EnvFile::read(&raw).unwrap().skybox_asset_id(), None);
+
+        // Out-of-range value (e.g. a stray non-skybox asset id) -> None.
+        let raw = make_env([0.5; 3], [1.0; 3], 0.0, 45.0, [0, 0, 0, 0xff], 0.0, 0.0, 503);
+        assert_eq!(EnvFile::read(&raw).unwrap().skybox_asset_id(), None);
     }
 
     #[test]

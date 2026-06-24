@@ -3,4 +3,5 @@ pub mod billboard;
 pub mod collision;
 pub mod frame_anim;
 pub mod mesh;
+pub mod skybox;
 pub mod uv_anim;

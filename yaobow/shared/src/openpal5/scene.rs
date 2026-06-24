@@ -43,7 +43,7 @@ impl Pal5Scene {
                 // yet pushed to the renderer (radiance has no fog path); log
                 // them so per-map atmosphere is observable in traces.
                 log::info!(
-                    "Pal5Scene '{}': atmosphere ambient {:?} sun {:?} az={} el={} dir {:?} | fog {:?} a={} b={} tag={}",
+                    "Pal5Scene '{}': atmosphere ambient {:?} sun {:?} az={} el={} dir {:?} | fog {:?} a={} b={} skybox={:?}",
                     scene_name,
                     env.ambient,
                     env.sun_color,
@@ -53,8 +53,19 @@ impl Pal5Scene {
                     env.fog_color,
                     env.fog_param_a,
                     env.fog_param_b,
-                    env.build_tag,
+                    env.skybox_asset_id(),
                 );
+
+                // Skybox: the scene's `SkyBoxID` (carried in `envinfo.env`)
+                // selects a `\BuildingP5\yingdi\_skybox*.dff` model. It is
+                // re-centred on the camera every frame by the attached
+                // `SkyboxComponent`, so a scene with no skybox id simply
+                // renders without one.
+                if let Some(skybox_id) = env.skybox_asset_id() {
+                    if let Some(skybox) = asset_loader.load_skybox(skybox_id) {
+                        scene.add_entity(skybox);
+                    }
+                }
             }
             None => {
                 scene.set_lighting(radiance::scene::SceneLighting::new([1.0, 1.0, 1.0], vec![]));

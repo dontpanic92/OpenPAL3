@@ -8,7 +8,11 @@ use fileformats::{
     role_bin::{AssetItem, RoleBinFile},
 };
 use mini_fs::MiniFs;
-use radiance::{comdef::IEntity, rendering::ComponentFactory};
+use radiance::{
+    comdef::{IComponent, IEntity, ISkyboxComponent},
+    components::skybox::SkyboxComponent,
+    rendering::ComponentFactory,
+};
 
 use crate::loaders::{
     Pal5TextureResolver,
@@ -242,6 +246,47 @@ impl AssetLoader {
                 bsp_lightmap_tint: None,
             },
         )
+    }
+
+    /// Load the scene's skybox model by its `role_*.bin` asset id (the
+    /// `SkyBoxID` carried in `envinfo.env`) and tag it with a
+    /// [`SkyboxComponent`] so it stays centred on the camera every frame.
+    ///
+    /// Returns `None` when the id is absent from the role index, points at
+    /// a non-`.dff` asset, or the model fails to load — all non-fatal: a
+    /// scene without a skybox still renders its terrain and objects.
+    pub fn load_skybox(&self, asset_id: u32) -> Option<ComRc<IEntity>> {
+        let asset = self.index.get(&asset_id)?;
+        let file_path = asset.file_path.to_string();
+        if !file_path.to_ascii_lowercase().ends_with(".dff") {
+            log::warn!(
+                "Pal5 skybox asset {} has non-model path '{}'; skipping",
+                asset_id,
+                file_path,
+            );
+            return None;
+        }
+
+        let entity = match self.load_model(&file_path) {
+            Ok(entity) => entity,
+            Err(err) => {
+                log::warn!(
+                    "Pal5 skybox model '{}' (asset {}) failed to load: {}",
+                    file_path,
+                    asset_id,
+                    err,
+                );
+                return None;
+            }
+        };
+
+        let component = SkyboxComponent::create(entity.clone());
+        entity.add_component(
+            ISkyboxComponent::uuid(),
+            component.query_interface::<IComponent>().unwrap(),
+        );
+        log::info!("Pal5 skybox loaded: asset {} -> '{}'", asset_id, file_path);
+        Some(entity)
     }
 }
 
