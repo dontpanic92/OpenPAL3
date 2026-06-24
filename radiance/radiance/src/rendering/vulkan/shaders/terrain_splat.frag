@@ -24,8 +24,11 @@ layout(set = 0, binding = 0) uniform PerFrameUbo {
     vec4 lightColor[16];     // rgb = color, w = inner radius
     vec4 sunDir;             // xyz = dir toward sun, w = enabled (1/0)
     vec4 sunColor;           // rgb = sun color
+    mat4 lightViewProj;      // world -> shadow clip space (clip remap folded in)
+    vec4 shadowParams;       // x = enabled, y = bias, z = 1/size, w = pcf radius
 } perFrameUbo;
 
+layout(set = 0, binding = 1) uniform sampler2D shadowMap;
 layout(set = 2, binding = 0) uniform sampler2D texSampler[5];
 layout(set = 3, binding = 0) uniform MaterialParams {
     vec4 tint;
@@ -38,6 +41,34 @@ layout(location = 1) in vec3 fragWorldPos;
 layout(location = 2) in vec3 fragNormal;
 
 layout(location = 0) out vec4 outColor;
+
+// Directional-shadow visibility for a world-space point (mirrors
+// actor_lit.frag): `1.0` = lit, `0.0` = shadowed; 3×3 PCF with a small bias;
+// off-map / disabled lookups read as lit.
+float sunVisibility(vec3 worldPos) {
+    if (perFrameUbo.shadowParams.x < 0.5) {
+        return 1.0;
+    }
+    vec4 lp = vec4(worldPos, 1.0) * perFrameUbo.lightViewProj;
+    vec3 proj = lp.xyz / lp.w;
+    vec2 uv = proj.xy * 0.5 + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || proj.z > 1.0) {
+        return 1.0;
+    }
+    float currentDepth = proj.z - perFrameUbo.shadowParams.y;
+    float texel = perFrameUbo.shadowParams.z;
+    int r = int(perFrameUbo.shadowParams.w + 0.5);
+    float visible = 0.0;
+    float count = 0.0;
+    for (int x = -r; x <= r; x++) {
+        for (int y = -r; y <= r; y++) {
+            float closest = texture(shadowMap, uv + vec2(x, y) * texel).r;
+            visible += currentDepth <= closest ? 1.0 : 0.0;
+            count += 1.0;
+        }
+    }
+    return visible / count;
+}
 
 void main() {
     // World-tiled UV for the ground textures (one repeat per `uv_xform.xy`
@@ -85,7 +116,7 @@ void main() {
     if (perFrameUbo.sunDir.w > 0.5) {
         vec3 Ls = normalize(perFrameUbo.sunDir.xyz);
         float ndlS = max(dot(N, Ls), 0.2);
-        lit += perFrameUbo.sunColor.rgb * ndlS;
+        lit += perFrameUbo.sunColor.rgb * ndlS * sunVisibility(fragWorldPos);
     }
 
     outColor = vec4(col * lit * mat.tint.rgb, 1.0);

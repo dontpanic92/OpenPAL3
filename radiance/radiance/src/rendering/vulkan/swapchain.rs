@@ -5,6 +5,7 @@ use super::image_view::ImageView;
 use super::pipeline_manager::PipelineManager;
 use super::render_object::VulkanRenderObject;
 use super::render_pass::RenderPass;
+use super::shadow_map::ShadowMap;
 use super::uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer};
 use super::{adhoc_command_runner::AdhocCommandRunner, device::Device};
 use super::{
@@ -212,6 +213,12 @@ pub struct SwapChain {
     render_pass: vk::RenderPass,
     imgui: Option<Rc<RefCell<ImguiRenderer>>>,
 
+    /// Engine-owned directional shadow map (depth target + depth pipelines +
+    /// sampler), shared so it survives swapchain recreation. The depth pass is
+    /// recorded at the start of each frame's command buffer (before the main
+    /// scene pass) whenever the scene carries a sun.
+    shadow_map: Rc<ShadowMap>,
+
     /// `Some` when `SceneScaleMode::Logical` is active. Holds the
     /// offscreen scene target + dedicated imgui render pass + auxiliary
     /// framebuffers used by `record_command_buffers`'s logical path.
@@ -237,6 +244,7 @@ impl SwapChain {
         descriptor_manager: &Rc<DescriptorManager>,
         command_runner: &Rc<AdhocCommandRunner>,
         logical_extent: Option<vk::Extent2D>,
+        shadow_map: Rc<ShadowMap>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Make it at least 1x1 pixel for images
         capabilities.current_extent.width = capabilities.current_extent.width.max(1);
@@ -340,6 +348,13 @@ impl SwapChain {
 
         let per_frame_descriptor_sets =
             descriptor_manager.allocate_per_frame_descriptor_sets(uniform_buffers.as_slice())?;
+        // Point per-frame binding 1 at the real shadow map (allocate_* wrote
+        // the dummy by default).
+        descriptor_manager.write_shadow_map_binding(
+            &per_frame_descriptor_sets,
+            shadow_map.image_view(),
+            shadow_map.sampler(),
+        );
 
         let framebuffers = creation_helpers::create_framebuffers(
             &device,
@@ -401,6 +416,7 @@ impl SwapChain {
             pipeline_manager,
             render_pass,
             imgui: None,
+            shadow_map,
             logical,
             device_fn,
         })
@@ -503,6 +519,7 @@ impl SwapChain {
         dub_manager: &DynamicUniformBufferManager,
         viewport: Viewport,
         ui_frame: ImguiFrame,
+        shadows_enabled: bool,
     ) -> Result<vk::CommandBuffer, vk::Result> {
         let command_buffer = self.command_buffers[image_index];
         let per_frame_descriptor_set = self.per_frame_descriptor_sets[image_index];
@@ -529,6 +546,19 @@ impl SwapChain {
                 },
             },
         ];
+
+        // Directional shadow depth pass — recorded before the main scene pass
+        // (and before the offscreen pass in Logical mode) so the depth map is
+        // available for sampling. Only runs when the scene has a sun.
+        if shadows_enabled {
+            self.record_shadow_pass(
+                command_buffer,
+                per_frame_descriptor_set,
+                opaque_objects,
+                cutout_objects,
+                dub_manager,
+            );
+        }
 
         if self.logical.is_some() {
             self.record_logical_path(
@@ -881,6 +911,117 @@ impl SwapChain {
         self.device.end_command_buffer(command_buffer)?;
 
         Ok(())
+    }
+
+    /// Record the directional shadow depth pass: render the opaque + cutout
+    /// casters from the sun's point of view into the shadow map's depth
+    /// attachment. Set 0 (per-frame UBO, carrying `lightViewProj`) is bound
+    /// once; set 1 (per-instance model matrix) is bound per draw with its
+    /// dynamic offset. Casters are grouped by `ShaderProgram` so each distinct
+    /// vertex stride gets its matching depth pipeline. No imgui / color work.
+    fn record_shadow_pass(
+        &mut self,
+        command_buffer: vk::CommandBuffer,
+        per_frame_descriptor_set: vk::DescriptorSet,
+        opaque: &[Rc<VulkanRenderObject>],
+        cutout: &[Rc<VulkanRenderObject>],
+        dub_manager: &DynamicUniformBufferManager,
+    ) {
+        // Clone the shared handles so the immutable borrows don't collide with
+        // `&mut self` device calls below.
+        let shadow = self.shadow_map.clone();
+        let descriptor_manager = self.descriptor_manager.clone();
+
+        let clear_values = [vk::ClearValue {
+            depth_stencil: vk::ClearDepthStencilValue {
+                depth: 1.0,
+                stencil: 0,
+            },
+        }];
+        let begin_info = vk::RenderPassBeginInfo::default()
+            .render_pass(shadow.render_pass())
+            .framebuffer(shadow.framebuffer())
+            .render_area(
+                vk::Rect2D::default()
+                    .offset(vk::Offset2D::default().x(0).y(0))
+                    .extent(shadow.extent()),
+            )
+            .clear_values(&clear_values);
+        self.device.cmd_begin_render_pass(
+            command_buffer,
+            &begin_info,
+            vk::SubpassContents::INLINE,
+        );
+
+        // Viewport/scissor are static in the shadow pipeline, so we don't call
+        // `cmd_set_viewport` here.
+        let mut set0_bound = false;
+        let mut last_program: Option<crate::rendering::ShaderProgram> = None;
+        let mut last_layout = vk::PipelineLayout::null();
+        let mut last_vertex_buffer = vk::Buffer::null();
+        let mut last_index_buffer = vk::Buffer::null();
+
+        for object in opaque.iter().chain(cutout.iter()) {
+            let program = object.material().key().program;
+            if last_program != Some(program) {
+                let pipeline = shadow.pipeline_for(program, &descriptor_manager);
+                self.device.cmd_bind_pipeline(
+                    command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    pipeline.vk_pipeline(),
+                );
+                last_layout = pipeline.vk_layout();
+                last_program = Some(program);
+
+                // Set 0 has identical layout across every shadow pipeline, so a
+                // single bind (under the first pipeline's layout) stays valid.
+                if !set0_bound {
+                    self.device.cmd_bind_descriptor_sets(
+                        command_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        last_layout,
+                        0,
+                        &[per_frame_descriptor_set],
+                        &[],
+                    );
+                    set0_bound = true;
+                }
+            }
+
+            let vertex_buffer = object.vertex_buffer();
+            let index_buffer = object.index_buffer();
+            let vb = vertex_buffer.vk_buffer();
+            let ib = index_buffer.vk_buffer();
+            if vb != last_vertex_buffer {
+                self.device
+                    .cmd_bind_vertex_buffers(command_buffer, 0, &[vb], &[0]);
+                last_vertex_buffer = vb;
+            }
+            if ib != last_index_buffer {
+                self.device
+                    .cmd_bind_index_buffer(command_buffer, ib, 0, vk::IndexType::UINT32);
+                last_index_buffer = ib;
+            }
+
+            self.device.cmd_bind_descriptor_sets(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                last_layout,
+                1,
+                &[dub_manager.descriptor_set()],
+                &[dub_manager.get_offset(object.dub_index()) as u32],
+            );
+            self.device.cmd_draw_indexed(
+                command_buffer,
+                index_buffer.element_count(),
+                1,
+                0,
+                0,
+                0,
+            );
+        }
+
+        self.device.cmd_end_render_pass(command_buffer);
     }
 
     /// Bind the per-frame descriptor set (set = 0) exactly once for the

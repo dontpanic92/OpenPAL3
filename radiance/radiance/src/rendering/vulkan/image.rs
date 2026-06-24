@@ -109,6 +109,43 @@ impl Image {
         )
     }
 
+    /// Depth image usable as **both** a depth-stencil attachment and a sampled
+    /// texture. Used by the directional shadow map (rendered into during the
+    /// depth pass, then sampled by the lit fragment shaders in the main pass).
+    ///
+    /// A plain `D32_SFLOAT` is preferred (no stencil aspect to disambiguate
+    /// when sampling); the format must advertise both `DEPTH_STENCIL_ATTACHMENT`
+    /// and `SAMPLED_IMAGE` optimal-tiling features.
+    pub fn new_depth_sampled_image(
+        instance: &Instance,
+        physical_device: vk::PhysicalDevice,
+        allocator: &Rc<vk_mem::Allocator>,
+        tex_width: u32,
+        tex_height: u32,
+    ) -> Result<Self, Box<dyn Error>> {
+        let format = Image::find_supported_format(
+            instance,
+            physical_device,
+            &vec![
+                vk::Format::D32_SFLOAT,
+                vk::Format::D24_UNORM_S8_UINT,
+                vk::Format::D32_SFLOAT_S8_UINT,
+            ],
+            vk::ImageTiling::OPTIMAL,
+            vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT
+                | vk::FormatFeatureFlags::SAMPLED_IMAGE,
+        )?;
+
+        Self::new(
+            allocator,
+            tex_width,
+            tex_height,
+            format,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+            1,
+        )
+    }
+
     pub fn width(&self) -> u32 {
         self.width
     }
@@ -181,7 +218,8 @@ impl Image {
     ) {
         let aspect_mask = {
             match new_layout {
-                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL => {
+                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                | vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL => {
                     let mut aspect_mask = vk::ImageAspectFlags::DEPTH;
                     if self.format == vk::Format::D32_SFLOAT_S8_UINT
                         || self.format == vk::Format::D24_UNORM_S8_UINT
@@ -231,6 +269,10 @@ impl Image {
                     vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
                         | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
                     vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+                ),
+                vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL => (
+                    vk::AccessFlags::SHADER_READ,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
                 ),
                 _ => panic!("unsupported transfer source layout: {:?}", new_layout),
             }

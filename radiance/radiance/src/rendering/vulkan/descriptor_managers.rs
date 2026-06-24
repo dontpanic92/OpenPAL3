@@ -1,7 +1,8 @@
 use super::{
-    buffer::Buffer, descriptor_pool::DescriptorPool, descriptor_pool::DescriptorPoolCreateInfo,
-    descriptor_set_layout::DescriptorSetLayout, device::Device, sampler::VulkanSamplerCache,
-    texture::VulkanTexture,
+    adhoc_command_runner::AdhocCommandRunner, buffer::Buffer, descriptor_pool::DescriptorPool,
+    descriptor_pool::DescriptorPoolCreateInfo, descriptor_set_layout::DescriptorSetLayout,
+    device::Device, image::Image, image_view::ImageView, instance::Instance,
+    sampler::VulkanSamplerCache, texture::VulkanTexture,
 };
 use crate::rendering::ShaderProgram;
 use crate::rendering::vulkan::material::VulkanMaterial;
@@ -15,7 +16,6 @@ use std::sync::Mutex;
 
 const MAX_DESCRIPTOR_SET_COUNT: u32 = 40960;
 const MAX_DESCRIPTOR_COUNT: u32 = 40960;
-const MAX_SWAPCHAIN_IMAGE_COUNT: u32 = 4;
 
 type PerMaterialLayoutKey = (ShaderProgram, u32);
 
@@ -31,10 +31,26 @@ pub struct DescriptorManager {
     per_material_layouts: Arc<Mutex<HashMap<PerMaterialLayoutKey, vk::DescriptorSetLayout>>>,
     dub_descriptor_manager: DynamicUniformBufferDescriptorManager,
     sampler_cache: VulkanSamplerCache,
+
+    /// Placeholder 1×1 depth image written into per-frame **binding 1**
+    /// (the shadow map sampler) for every set by default. The swapchain
+    /// overwrites that binding with the real shadow map; render targets and
+    /// any other per-frame set that never runs a shadow pass keep this dummy
+    /// so the descriptor is always valid (shadows are disabled there via
+    /// `shadow_params.x = 0`, so it is never actually sampled).
+    _dummy_shadow_image: Image,
+    _dummy_shadow_view: ImageView,
+    dummy_shadow_sampler: vk::Sampler,
 }
 
 impl DescriptorManager {
-    pub fn new(device: Rc<Device>) -> VkResult<Self> {
+    pub fn new(
+        device: Rc<Device>,
+        instance: &Instance,
+        physical_device: vk::PhysicalDevice,
+        allocator: &Rc<vk_mem::Allocator>,
+        command_runner: &AdhocCommandRunner,
+    ) -> VkResult<Self> {
         let texture_pool = Self::create_texture_descriptor_pool(&device).unwrap();
         let per_frame_pool = Self::create_per_frame_descriptor_pool(&device).unwrap();
         let per_object_pool = Self::create_per_object_descriptor_pool(&device).unwrap();
@@ -46,20 +62,13 @@ impl DescriptorManager {
             vk::ShaderStageFlags::FRAGMENT,
             1,
         )?;
-        // The per-frame UBO (set 0: view/proj + scene lighting) is read by
-        // both stages: vertex shaders consume `view`/`proj`, and the
-        // dynamically-lit actor fragment shader (`actor_lit.frag`) reads the
-        // `ambient`/`lightPos`/`lightColor` lighting environment. The binding
-        // must therefore be visible to FRAGMENT as well as VERTEX — otherwise a
-        // fragment-stage read of a vertex-only binding is undefined: lenient
-        // drivers (MoltenVK) return the real data, but strict Windows drivers
-        // return zero, which made lit PAL3 actors render solid black.
-        let per_frame_layout = Self::create_descriptor_set_layout(
-            &device,
-            vk::DescriptorType::UNIFORM_BUFFER,
-            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-            1,
-        )?;
+        // Per-frame set 0:
+        //   binding 0 — per-frame UBO (view/proj + scene lighting + shadow
+        //     matrix). Read by VERTEX (view/proj/lightViewProj) and FRAGMENT
+        //     (lighting + shadow sampling), so visible to both stages.
+        //   binding 1 — directional shadow map (COMBINED_IMAGE_SAMPLER),
+        //     sampled only by the lit FRAGMENT shaders.
+        let per_frame_layout = Self::create_per_frame_descriptor_set_layout(&device)?;
         let per_material_params_layout = Self::create_descriptor_set_layout(
             &device,
             vk::DescriptorType::UNIFORM_BUFFER,
@@ -68,6 +77,27 @@ impl DescriptorManager {
         )?;
         let dub_descriptor_manager = DynamicUniformBufferDescriptorManager::new(device.clone());
         let sampler_cache = VulkanSamplerCache::new(device.clone());
+
+        // Dummy shadow map: a 1×1 depth image transitioned to a sampleable
+        // read-only layout, plus a clamp-to-white-border sampler. Off-map /
+        // unsampled lookups read `1.0` ("lit").
+        let mut dummy_shadow_image =
+            Image::new_depth_sampled_image(&instance.vk_instance(), physical_device, allocator, 1, 1)
+                .expect("failed to allocate dummy shadow image");
+        dummy_shadow_image
+            .transit_layout(
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                command_runner,
+            )
+            .expect("failed to transition dummy shadow image");
+        let dummy_shadow_view = ImageView::new_depth_image_view(
+            device.clone(),
+            dummy_shadow_image.vk_image(),
+            dummy_shadow_image.vk_format(),
+        )
+        .expect("failed to create dummy shadow image view");
+        let dummy_shadow_sampler = create_shadow_sampler(&device)?;
 
         Ok(Self {
             device,
@@ -81,7 +111,25 @@ impl DescriptorManager {
             per_material_layouts: Arc::new(Mutex::new(HashMap::new())),
             dub_descriptor_manager,
             sampler_cache,
+            _dummy_shadow_image: dummy_shadow_image,
+            _dummy_shadow_view: dummy_shadow_view,
+            dummy_shadow_sampler,
         })
+    }
+
+    /// Layout of the per-frame descriptor set (set 0). Exposed so the
+    /// directional shadow depth pipeline can be built against the same set-0
+    /// layout the scene pipelines use (Vulkan pipeline-layout compatibility
+    /// for set 0).
+    pub fn per_frame_layout(&self) -> vk::DescriptorSetLayout {
+        self.per_frame_layout
+    }
+
+    /// Layout of the per-instance dynamic UBO (set 1: the model matrix).
+    /// Needed alongside [`Self::per_frame_layout`] to assemble the shadow
+    /// depth pipeline layout.
+    pub fn dub_layout(&self) -> vk::DescriptorSetLayout {
+        self.dub_descriptor_manager.layout().vk_layout()
     }
 
     pub fn dub_descriptor_manager(&self) -> &DynamicUniformBufferDescriptorManager {
@@ -209,18 +257,58 @@ impl DescriptorManager {
                 .range(std::mem::size_of::<PerFrameUniformBuffer>() as u64);
 
             let buffer_info_array = [uniform_buffer_info];
-            let write_descriptor_set = vk::WriteDescriptorSet::default()
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .dst_set(descriptor_sets[i])
-                .dst_binding(0)
-                .dst_array_element(0)
-                .buffer_info(&buffer_info_array);
-            let write_descriptor_sets = [write_descriptor_set];
+            // binding 1 (shadow map) defaults to the dummy view+sampler so the
+            // set is fully valid even when no shadow pass writes it. Callers
+            // that run a shadow pass (the swapchain) overwrite binding 1 via
+            // `write_shadow_map_binding`.
+            let shadow_image_info = [vk::DescriptorImageInfo::default()
+                .sampler(self.dummy_shadow_sampler)
+                .image_view(self._dummy_shadow_view.vk_image_view())
+                .image_layout(vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL)];
+            let write_descriptor_sets = [
+                vk::WriteDescriptorSet::default()
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .dst_set(descriptor_sets[i])
+                    .dst_binding(0)
+                    .dst_array_element(0)
+                    .buffer_info(&buffer_info_array),
+                vk::WriteDescriptorSet::default()
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .dst_set(descriptor_sets[i])
+                    .dst_binding(1)
+                    .dst_array_element(0)
+                    .image_info(&shadow_image_info),
+            ];
             self.device
                 .update_descriptor_sets(&write_descriptor_sets, &[])
         }
 
         Ok(descriptor_sets)
+    }
+
+    /// Overwrite **binding 1** (the shadow map sampler) of the supplied
+    /// per-frame sets with the real directional shadow map (`image_view` in
+    /// `DEPTH_STENCIL_READ_ONLY_OPTIMAL`, `sampler` clamp-to-white-border).
+    /// Called by the swapchain after allocating its per-frame sets.
+    pub fn write_shadow_map_binding(
+        &self,
+        descriptor_sets: &[vk::DescriptorSet],
+        image_view: vk::ImageView,
+        sampler: vk::Sampler,
+    ) {
+        for set in descriptor_sets {
+            let image_info = [vk::DescriptorImageInfo::default()
+                .sampler(sampler)
+                .image_view(image_view)
+                .image_layout(vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL)];
+            let writes = [vk::WriteDescriptorSet::default()
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .dst_set(*set)
+                .dst_binding(1)
+                .dst_array_element(0)
+                .image_info(&image_info)];
+            self.device.update_descriptor_sets(&writes, &[]);
+        }
     }
 
     pub fn free_per_frame_descriptor_sets(&self, descriptor_sets: &[vk::DescriptorSet]) {
@@ -294,11 +382,17 @@ impl DescriptorManager {
     }
 
     fn create_per_frame_descriptor_pool(device: &Device) -> VkResult<vk::DescriptorPool> {
+        // Each per-frame set holds one UBO (binding 0) + one combined image
+        // sampler (binding 1, the shadow map). Size both descriptor classes
+        // generously — render targets also draw from this pool.
         let uniform_pool_size = vk::DescriptorPoolSize::default()
-            .descriptor_count(MAX_SWAPCHAIN_IMAGE_COUNT)
+            .descriptor_count(MAX_DESCRIPTOR_COUNT)
             .ty(vk::DescriptorType::UNIFORM_BUFFER);
+        let sampler_pool_size = vk::DescriptorPoolSize::default()
+            .descriptor_count(MAX_DESCRIPTOR_COUNT)
+            .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER);
 
-        let pool_sizes = [uniform_pool_size];
+        let pool_sizes = [uniform_pool_size, sampler_pool_size];
         let create_info = vk::DescriptorPoolCreateInfo::default()
             .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
             .pool_sizes(&pool_sizes)
@@ -353,6 +447,29 @@ impl DescriptorManager {
         device.create_descriptor_set_layout(&create_info)
     }
 
+    /// Two-binding set-0 layout: the per-frame UBO (binding 0, VERTEX +
+    /// FRAGMENT) and the directional shadow map sampler (binding 1, FRAGMENT).
+    /// Binding 0 must reach FRAGMENT so the lit shaders can read the lighting
+    /// + shadow matrix; binding 1 is sampled only by FRAGMENT.
+    fn create_per_frame_descriptor_set_layout(
+        device: &Device,
+    ) -> VkResult<vk::DescriptorSetLayout> {
+        let bindings = [
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(0)
+                .descriptor_count(1)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT),
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(1)
+                .descriptor_count(1)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+        ];
+        let create_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
+        device.create_descriptor_set_layout(&create_info)
+    }
+
     fn get_per_material_descriptor_layout(
         &self,
         material: &VulkanMaterial,
@@ -376,6 +493,7 @@ impl DescriptorManager {
 
 impl Drop for DescriptorManager {
     fn drop(&mut self) {
+        self.device.destroy_sampler(self.dummy_shadow_sampler);
         self.device
             .destroy_descriptor_set_layout(self.texture_layout);
         self.device
@@ -393,6 +511,30 @@ impl Drop for DescriptorManager {
         self.device
             .destroy_descriptor_pool(self.per_material_params_pool);
     }
+}
+
+/// Build the sampler used for the directional shadow map: linear filtering,
+/// `CLAMP_TO_BORDER` with an opaque-**white** border so off-map projected
+/// lookups read depth `1.0` ("fully lit"). PCF is done manually in-shader, so
+/// depth comparison is left disabled.
+pub(super) fn create_shadow_sampler(device: &Rc<Device>) -> VkResult<vk::Sampler> {
+    let info = vk::SamplerCreateInfo::default()
+        .mag_filter(vk::Filter::LINEAR)
+        .min_filter(vk::Filter::LINEAR)
+        .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_BORDER)
+        .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_BORDER)
+        .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_BORDER)
+        .border_color(vk::BorderColor::FLOAT_OPAQUE_WHITE)
+        .anisotropy_enable(false)
+        .max_anisotropy(1.0)
+        .unnormalized_coordinates(false)
+        .compare_enable(false)
+        .compare_op(vk::CompareOp::ALWAYS)
+        .mipmap_mode(vk::SamplerMipmapMode::NEAREST)
+        .mip_lod_bias(0.0)
+        .min_lod(0.0)
+        .max_lod(0.0);
+    device.create_sampler(&info)
 }
 
 pub struct DynamicUniformBufferDescriptorManager {

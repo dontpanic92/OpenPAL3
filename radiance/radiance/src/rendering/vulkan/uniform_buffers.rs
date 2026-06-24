@@ -147,6 +147,14 @@ pub struct PerFrameUniformBuffer {
     sun_dir: [f32; 4],
     /// Directional sun color (`rgb`; `w` reserved).
     sun_color: [f32; 4],
+    /// Sun's light-space view-projection (world → shadow-map clip space),
+    /// with the Vulkan clip (Y-flip + `[0,1]` depth) remap already folded in.
+    /// Meaningful only when `shadow_params.x >= 0.5`.
+    light_view_proj: Mat44,
+    /// Shadow sampling parameters: `x` = enabled flag (`1.0`/`0.0`),
+    /// `y` = depth-compare bias, `z` = shadow-map texel size (`1 / size`),
+    /// `w` = PCF kernel radius (in texels).
+    shadow_params: [f32; 4],
 }
 
 /// Maximum number of scene point lights uploaded per frame. PAL3 scenes ship
@@ -164,6 +172,8 @@ impl PerFrameUniformBuffer {
             light_color: [[0.0; 4]; MAX_SCENE_LIGHTS],
             sun_dir: [0.0; 4],
             sun_color: [0.0; 4],
+            light_view_proj: Mat44::new_identity(),
+            shadow_params: [0.0; 4],
         }
     }
 
@@ -195,6 +205,25 @@ impl PerFrameUniformBuffer {
             None => {
                 self.sun_dir = [0.0; 4];
                 self.sun_color = [0.0; 4];
+            }
+        }
+    }
+
+    /// Stamp the directional shadow map's light-space matrix + sampling
+    /// parameters into the per-frame UBO. `Some((light_view_proj, params))`
+    /// enables shadow sampling in the lit fragment shaders; `None` disables it
+    /// (`shadow_params.x = 0`), leaving the matrix at identity. `params` lanes:
+    /// `[enabled, bias, 1/size, pcf_radius]` (the `enabled` lane the caller
+    /// supplies is overwritten with `1.0` here for clarity).
+    pub fn set_shadow(&mut self, shadow: Option<(Mat44, [f32; 4])>) {
+        match shadow {
+            Some((light_view_proj, params)) => {
+                self.light_view_proj = light_view_proj;
+                self.shadow_params = [1.0, params[1], params[2], params[3]];
+            }
+            None => {
+                self.light_view_proj = Mat44::new_identity();
+                self.shadow_params = [0.0; 4];
             }
         }
     }

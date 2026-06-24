@@ -16,8 +16,11 @@ layout(set = 0, binding = 0) uniform PerFrameUbo {
     vec4 lightColor[16];     // rgb = color
     vec4 sunDir;             // xyz = dir toward sun, w = enabled (1/0)
     vec4 sunColor;           // rgb = sun color
+    mat4 lightViewProj;      // world -> shadow clip space (clip remap folded in)
+    vec4 shadowParams;       // x = enabled, y = bias, z = 1/size, w = pcf radius
 } perFrameUbo;
 
+layout(set = 0, binding = 1) uniform sampler2D shadowMap;
 layout(set = 2, binding = 0) uniform sampler2D texSampler;
 layout(set = 3, binding = 0) uniform MaterialParams {
     vec4 tint;
@@ -30,6 +33,35 @@ layout(location = 1) in vec3 fragWorldPos;
 layout(location = 2) in vec3 fragNormal;
 
 layout(location = 0) out vec4 outColor;
+
+// Directional-shadow visibility for a world-space point: `1.0` = fully lit,
+// `0.0` = fully shadowed. Projects into the sun's light space, does a 3×3 PCF
+// depth compare with a small bias, and treats off-map / behind-far lookups as
+// lit. Disabled (returns `1.0`) when `shadowParams.x < 0.5`.
+float sunVisibility(vec3 worldPos) {
+    if (perFrameUbo.shadowParams.x < 0.5) {
+        return 1.0;
+    }
+    vec4 lp = vec4(worldPos, 1.0) * perFrameUbo.lightViewProj;
+    vec3 proj = lp.xyz / lp.w;
+    vec2 uv = proj.xy * 0.5 + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || proj.z > 1.0) {
+        return 1.0;
+    }
+    float currentDepth = proj.z - perFrameUbo.shadowParams.y;
+    float texel = perFrameUbo.shadowParams.z;
+    int r = int(perFrameUbo.shadowParams.w + 0.5);
+    float visible = 0.0;
+    float count = 0.0;
+    for (int x = -r; x <= r; x++) {
+        for (int y = -r; y <= r; y++) {
+            float closest = texture(shadowMap, uv + vec2(x, y) * texel).r;
+            visible += currentDepth <= closest ? 1.0 : 0.0;
+            count += 1.0;
+        }
+    }
+    return visible / count;
+}
 
 void main() {
     vec4 sampled = texture(texSampler, fragTexCoord);
@@ -78,7 +110,7 @@ void main() {
     if (perFrameUbo.sunDir.w > 0.5) {
         vec3 Ls = normalize(perFrameUbo.sunDir.xyz);
         float ndlS = max(dot(N, Ls), 0.2);
-        lit += perFrameUbo.sunColor.rgb * ndlS;
+        lit += perFrameUbo.sunColor.rgb * ndlS * sunVisibility(fragWorldPos);
     }
 
     // Premultiplied-alpha invariant matches `simple_triangle.frag`: scale RGB

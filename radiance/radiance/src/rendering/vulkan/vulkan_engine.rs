@@ -2,6 +2,7 @@ use super::descriptor_managers::DescriptorManager;
 use super::helpers;
 use super::imgui::ImguiRenderer;
 use super::render_object::VulkanRenderObject;
+use super::shadow_map::ShadowMap;
 use super::swapchain::SwapChain;
 use super::{adhoc_command_runner::AdhocCommandRunner, device::Device};
 use super::{creation_helpers, instance::Instance};
@@ -10,7 +11,7 @@ use super::{
     uniform_buffers::{DynamicUniformBufferManager, PerFrameUniformBuffer},
 };
 use crate::comdef::{IEntity, IEntityExt, IScene, ISceneExt};
-use crate::math::Mat44;
+use crate::math::{Mat44, Vec3};
 use crate::rendering::{BlendMode, RenderObject, RenderingComponent};
 use crate::scene::{Camera, Viewport};
 use crate::{
@@ -63,6 +64,10 @@ pub struct VulkanRenderingEngine {
     descriptor_manager: Option<Rc<DescriptorManager>>,
     dub_manager: Option<Arc<DynamicUniformBufferManager>>,
     adhoc_command_runner: Rc<AdhocCommandRunner>,
+
+    /// Directional shadow map, allocated once and shared with the swapchain.
+    /// Resolution-independent, so it survives swapchain recreation.
+    shadow_map: Rc<ShadowMap>,
 
     surface_entry: ash::khr::surface::Instance,
     debug_entry: ash::ext::debug_utils::Instance,
@@ -281,6 +286,9 @@ impl RenderingEngine for VulkanRenderingEngine {
             )
         };
 
+        // Editor render-target preview doesn't run a shadow pass; the focus is
+        // discarded.
+        let mut _shadow_focus: Option<([f32; 3], f32)> = None;
         Self::bucketize_visible(
             &entities,
             &scene.camera(),
@@ -289,6 +297,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             &mut self.scratch_cutout,
             &mut self.scratch_transparent,
             &mut self.scratch_transparent_ordered,
+            &mut _shadow_focus,
         );
 
         // Update target's per-frame UBO with the scene's camera + lights.
@@ -587,7 +596,18 @@ impl VulkanRenderingEngine {
             device.create_command_pool(&create_info)?
         };
 
-        let descriptor_manager = Rc::new(DescriptorManager::new(device.clone()).unwrap());
+        let adhoc_command_runner =
+            Rc::new(AdhocCommandRunner::new(device.clone(), command_pool, queue));
+        let descriptor_manager = Rc::new(
+            DescriptorManager::new(
+                device.clone(),
+                &instance,
+                physical_device,
+                &allocator,
+                &adhoc_command_runner,
+            )
+            .unwrap(),
+        );
         let min_uniform_buffer_alignment = instance
             .get_physical_device_properties(physical_device)
             .limits
@@ -598,8 +618,10 @@ impl VulkanRenderingEngine {
             min_uniform_buffer_alignment,
         ));
 
-        let adhoc_command_runner =
-            Rc::new(AdhocCommandRunner::new(device.clone(), command_pool, queue));
+        let shadow_map = Rc::new(
+            ShadowMap::new(device.clone(), &instance, physical_device, &allocator).unwrap(),
+        );
+
         let logical_extent = match options.scene_scale_mode {
             crate::rendering::SceneScaleMode::Logical => {
                 options.logical_extent.map(|(w, h)| vk::Extent2D {
@@ -633,6 +655,7 @@ impl VulkanRenderingEngine {
             &descriptor_manager,
             &adhoc_command_runner,
             logical_extent,
+            shadow_map.clone(),
         )
         .unwrap();
 
@@ -725,6 +748,7 @@ impl VulkanRenderingEngine {
             descriptor_manager: Some(descriptor_manager),
             dub_manager: Some(dub_manager),
             adhoc_command_runner,
+            shadow_map,
             component_factory,
             surface_entry,
             debug_entry,
@@ -819,6 +843,7 @@ impl VulkanRenderingEngine {
             self.descriptor_manager(),
             &self.adhoc_command_runner,
             self.logical_extent,
+            self.shadow_map.clone(),
         )?;
         self.imgui
             .as_ref()
@@ -915,6 +940,7 @@ impl VulkanRenderingEngine {
         // When there's no scene (camera is None) entities is empty, so
         // skip bucketization entirely and clear the scratch buckets so
         // the empty 3D pass just clears the framebuffer.
+        let mut shadow_focus: Option<([f32; 3], f32)> = None;
         if let Some(cam) = camera {
             Self::bucketize_visible(
                 &entities,
@@ -924,6 +950,7 @@ impl VulkanRenderingEngine {
                 &mut self.scratch_cutout,
                 &mut self.scratch_transparent,
                 &mut self.scratch_transparent_ordered,
+                &mut shadow_focus,
             );
         } else {
             self.scratch_components.clear();
@@ -932,6 +959,10 @@ impl VulkanRenderingEngine {
             self.scratch_transparent.clear();
             self.scratch_transparent_ordered.clear();
         }
+
+        // Shadows run only when the scene has a directional sun (and a camera
+        // to derive the light frustum focus from).
+        let shadows_enabled = camera.is_some() && lighting.2.is_some();
 
         let command_buffer = swapchain!()
             .record_command_buffers(
@@ -942,6 +973,7 @@ impl VulkanRenderingEngine {
                 &dub_manager,
                 viewport,
                 ui_frame,
+                shadows_enabled,
             )
             .unwrap();
 
@@ -958,6 +990,29 @@ impl VulkanRenderingEngine {
                     let mut ubo = PerFrameUniformBuffer::new(&view, proj);
                     ubo.set_lighting(lighting.0, &lighting.1);
                     ubo.set_sun(lighting.2);
+
+                    // Directional shadow map: fit the light frustum to the
+                    // visible casters (center + half-extent), then project
+                    // casters from the sun.
+                    if let Some((sun_dir, _)) = lighting.2 {
+                        if let Some((f, half)) = shadow_focus {
+                            let focus = Vec3::new(f[0], f[1], f[2]);
+                            let lvp = super::shadow_map::light_view_proj(
+                                focus,
+                                Vec3::new(sun_dir[0], sun_dir[1], sun_dir[2]),
+                                half,
+                            );
+                            ubo.set_shadow(Some((
+                                lvp,
+                                [
+                                    1.0,
+                                    super::shadow_map::SHADOW_BIAS,
+                                    1.0 / super::shadow_map::SHADOW_MAP_SIZE as f32,
+                                    super::shadow_map::SHADOW_PCF_RADIUS,
+                                ],
+                            )));
+                        }
+                    }
                     ubo
                 }
                 None => {
@@ -1072,6 +1127,17 @@ impl VulkanRenderingEngine {
     /// Every output Vec is `clear()`ed (capacity retained) before
     /// population, so callers should pass the engine's persistent
     /// scratch fields to avoid per-frame allocations.
+    /// If a visible caster is a plausible *scene* object (not a skybox-scale
+    /// mesh), returns `true` so its world AABB can be folded into the shadow
+    /// frustum fit. Skybox / world-shell meshes have an enormous extent and
+    /// would blow up the fit, so they're rejected.
+    fn is_shadow_caster_aabb(wmin: [f32; 3], wmax: [f32; 3]) -> bool {
+        const MAX_EXTENT: f32 = 2000.0;
+        (wmax[0] - wmin[0]) < MAX_EXTENT
+            && (wmax[1] - wmin[1]) < MAX_EXTENT
+            && (wmax[2] - wmin[2]) < MAX_EXTENT
+    }
+
     fn bucketize_visible(
         entities: &[ComRc<IEntity>],
         camera: &Camera,
@@ -1080,12 +1146,21 @@ impl VulkanRenderingEngine {
         cutout_out: &mut Vec<Rc<VulkanRenderObject>>,
         transparent_out: &mut Vec<(f32, usize, usize, Rc<VulkanRenderObject>)>,
         transparent_ordered_out: &mut Vec<Rc<VulkanRenderObject>>,
+        shadow_focus_out: &mut Option<([f32; 3], f32)>,
     ) {
         components_out.clear();
         opaque_out.clear();
         cutout_out.clear();
         transparent_out.clear();
         transparent_ordered_out.clear();
+        // World-space AABB of all visible (frustum-passing) non-skybox casters.
+        // Its center + horizontal half-extent define the shadow frustum fit, so
+        // shadows always cover what the camera currently sees. `None` means
+        // "nothing castable visible".
+        *shadow_focus_out = None;
+        let mut caster_min = [f32::INFINITY; 3];
+        let mut caster_max = [f32::NEG_INFINITY; 3];
+        let mut any_caster = false;
 
         for entity in entities {
             if let Some(rc) = entity.get_rendering_component() {
@@ -1108,16 +1183,36 @@ impl VulkanRenderingEngine {
                 // Frustum reject. Render objects without a known
                 // local AABB (e.g. backends or callers that don't
                 // track bounds) fall through to "always visible".
-                if let Some((lmin, lmax)) = vro.local_aabb() {
-                    let (wmin, wmax) = crate::math::transform_aabb(lmin, lmax, world);
+                let world_aabb = vro
+                    .local_aabb()
+                    .map(|(lmin, lmax)| crate::math::transform_aabb(lmin, lmax, world));
+                if let Some((wmin, wmax)) = world_aabb {
                     if !crate::math::aabb_visible(wmin, wmax, &frustum) {
                         culled_count += 1;
                         continue;
                     }
                 }
+                // Fold solid (opaque + cutout) casters into the shadow-fit AABB.
+                let fold_caster = |min: &mut [f32; 3], max: &mut [f32; 3], any: &mut bool| {
+                    if let Some((wmin, wmax)) = world_aabb {
+                        if Self::is_shadow_caster_aabb(wmin, wmax) {
+                            for i in 0..3 {
+                                min[i] = min[i].min(wmin[i]);
+                                max[i] = max[i].max(wmax[i]);
+                            }
+                            *any = true;
+                        }
+                    }
+                };
                 match vro.material().key().blend {
-                    BlendMode::Opaque => opaque_out.push(vro.clone()),
-                    BlendMode::AlphaTest => cutout_out.push(vro.clone()),
+                    BlendMode::Opaque => {
+                        fold_caster(&mut caster_min, &mut caster_max, &mut any_caster);
+                        opaque_out.push(vro.clone())
+                    }
+                    BlendMode::AlphaTest => {
+                        fold_caster(&mut caster_min, &mut caster_max, &mut any_caster);
+                        cutout_out.push(vro.clone())
+                    }
                     BlendMode::AlphaBlend | BlendMode::Additive | BlendMode::Multiply => {
                         let c = vro.local_centroid();
                         // Affine transform: world_pos = M * [c, 1].
@@ -1136,6 +1231,20 @@ impl VulkanRenderingEngine {
                     }
                 }
             }
+        }
+        // Build the shadow frustum fit from the visible casters' AABB: focus =
+        // center, half-extent = half the larger horizontal span (clamped so the
+        // depth map keeps usable resolution and degenerate fits stay sane).
+        if any_caster {
+            let center = [
+                0.5 * (caster_min[0] + caster_max[0]),
+                0.5 * (caster_min[1] + caster_max[1]),
+                0.5 * (caster_min[2] + caster_max[2]),
+            ];
+            let half = 0.5
+                * (caster_max[0] - caster_min[0]).max(caster_max[2] - caster_min[2]);
+            let half = half.clamp(40.0, 1500.0);
+            *shadow_focus_out = Some((center, half));
         }
         crate::perf::gauge("vulkan.render.total_vros", total_count);
         crate::perf::gauge("vulkan.render.culled_vros", culled_count);

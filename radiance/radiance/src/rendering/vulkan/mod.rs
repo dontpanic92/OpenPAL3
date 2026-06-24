@@ -22,6 +22,7 @@ mod render_target;
 mod sampler;
 mod shader;
 mod shader_cache;
+mod shadow_map;
 mod swapchain;
 mod texture;
 mod uniform_buffers;
