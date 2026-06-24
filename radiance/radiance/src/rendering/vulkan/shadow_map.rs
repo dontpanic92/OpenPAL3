@@ -438,7 +438,68 @@ fn create_shader_module(
 /// side is pushed back by `CASCADE_CASTER_MARGIN` so casters standing above the
 /// slice still write depth. `sun_dir` is the unit direction from a surface
 /// **toward** the sun.
-pub fn cascade_view_proj(corners: &[Vec3; 8], sun_dir: Vec3) -> Mat44 {
+/// Light-space culling volume for one cascade. `view` maps world → light view
+/// space (light eye at origin looking down its `-Z`); the cascade's depth pass
+/// covers the ortho box `[-radius, radius]²` in XY and `[near, far]` along `-Z`.
+/// Kept alongside [`cascade_view_proj`] so the CPU caster cull and the GPU
+/// projection are derived from the exact same fit.
+#[derive(Clone, Copy)]
+pub struct CascadeVolume {
+    pub view: Mat44,
+    pub radius: f32,
+    pub near: f32,
+    pub far: f32,
+}
+
+impl CascadeVolume {
+    /// Conservatively test whether a world-space AABB can cast into this
+    /// cascade. The AABB is transformed into light view space and tested
+    /// against the ortho box footprint (XY) and the far plane. The
+    /// sun-facing (near) side is left open so casters standing between the
+    /// light and the slice — taller geometry, or objects just outside the
+    /// camera frustum — are still drawn into the depth map.
+    pub fn intersects_world_aabb(&self, wmin: [f32; 3], wmax: [f32; 3]) -> bool {
+        let v = self.view.floats();
+        let mut ls_min = [f32::MAX; 3];
+        let mut ls_max = [f32::MIN; 3];
+        for &cx in &[wmin[0], wmax[0]] {
+            for &cy in &[wmin[1], wmax[1]] {
+                for &cz in &[wmin[2], wmax[2]] {
+                    for axis in 0..3 {
+                        let p = v[axis][0] * cx
+                            + v[axis][1] * cy
+                            + v[axis][2] * cz
+                            + v[axis][3];
+                        if p < ls_min[axis] {
+                            ls_min[axis] = p;
+                        }
+                        if p > ls_max[axis] {
+                            ls_max[axis] = p;
+                        }
+                    }
+                }
+            }
+        }
+        // XY footprint overlap with the ortho box.
+        if ls_max[0] < -self.radius || ls_min[0] > self.radius {
+            return false;
+        }
+        if ls_max[1] < -self.radius || ls_min[1] > self.radius {
+            return false;
+        }
+        // Light looks down -Z, so the visible depth slab is z ∈ [-far, -near].
+        // Reject only when the AABB lies entirely beyond the far plane; the
+        // near side stays open toward the light.
+        if ls_max[2] < -self.far {
+            return false;
+        }
+        true
+    }
+}
+
+/// Fit the light-space culling volume for one camera sub-frustum slice. Shared
+/// derivation behind both [`cascade_view_proj`] and the CPU caster cull.
+pub fn cascade_volume(corners: &[Vec3; 8], sun_dir: Vec3) -> CascadeVolume {
     let sun = Vec3::normalized(&sun_dir);
 
     // Bounding sphere of the slice corners.
@@ -464,7 +525,18 @@ pub fn cascade_view_proj(corners: &[Vec3; 8], sun_dir: Vec3) -> Mat44 {
 
     let near = 1.0;
     let far = back + radius + CASCADE_CASTER_MARGIN;
-    let proj = ortho(radius, near, far);
+
+    CascadeVolume {
+        view,
+        radius,
+        near,
+        far,
+    }
+}
+
+pub fn cascade_view_proj(corners: &[Vec3; 8], sun_dir: Vec3) -> Mat44 {
+    let volume = cascade_volume(corners, sun_dir);
+    let proj = ortho(volume.radius, volume.near, volume.far);
 
     // Vulkan clip remap (GL `[-1,1]` z → `[0,1]`, flip Y), applied as `C * v`.
     let mut clip = Mat44::new_identity();
@@ -474,7 +546,7 @@ pub fn cascade_view_proj(corners: &[Vec3; 8], sun_dir: Vec3) -> Mat44 {
 
     // GLSL `world * M` evaluates as `M_rust * world`, so the composed matrix is
     // `clip * proj * view` (applies view first).
-    Mat44::multiplied(&clip, &Mat44::multiplied(&proj, &view))
+    Mat44::multiplied(&clip, &Mat44::multiplied(&proj, &volume.view))
 }
 
 /// Standard OpenGL symmetric orthographic projection (column-vector / `M * v`

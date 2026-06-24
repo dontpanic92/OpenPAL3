@@ -516,6 +516,7 @@ impl SwapChain {
         opaque_objects: &[Rc<VulkanRenderObject>],
         cutout_objects: &[Rc<VulkanRenderObject>],
         transparent_objects: &[Rc<VulkanRenderObject>],
+        shadow_casters: &[Vec<Rc<VulkanRenderObject>>],
         dub_manager: &DynamicUniformBufferManager,
         viewport: Viewport,
         ui_frame: ImguiFrame,
@@ -554,8 +555,7 @@ impl SwapChain {
             self.record_shadow_pass(
                 command_buffer,
                 per_frame_descriptor_set,
-                opaque_objects,
-                cutout_objects,
+                shadow_casters,
                 dub_manager,
             );
         }
@@ -913,18 +913,19 @@ impl SwapChain {
         Ok(())
     }
 
-    /// Record the directional shadow depth pass: render the opaque + cutout
-    /// casters from the sun's point of view into the shadow map's depth
-    /// attachment. Set 0 (per-frame UBO, carrying `lightViewProj`) is bound
-    /// once; set 1 (per-instance model matrix) is bound per draw with its
-    /// dynamic offset. Casters are grouped by `ShaderProgram` so each distinct
-    /// vertex stride gets its matching depth pipeline. No imgui / color work.
+    /// Record the directional shadow depth pass: render each cascade's
+    /// light-frustum-culled casters from the sun's point of view into the
+    /// shadow map's depth attachment. `shadow_casters[cascade]` is the
+    /// per-cascade caster draw list (already opaque-then-cutout ordered). Set 0
+    /// (per-frame UBO, carrying `lightViewProj`) is bound once; set 1
+    /// (per-instance model matrix) is bound per draw with its dynamic offset.
+    /// Casters are grouped by `ShaderProgram` so each distinct vertex stride
+    /// gets its matching depth pipeline. No imgui / color work.
     fn record_shadow_pass(
         &mut self,
         command_buffer: vk::CommandBuffer,
         per_frame_descriptor_set: vk::DescriptorSet,
-        opaque: &[Rc<VulkanRenderObject>],
-        cutout: &[Rc<VulkanRenderObject>],
+        shadow_casters: &[Vec<Rc<VulkanRenderObject>>],
         dub_manager: &DynamicUniformBufferManager,
     ) {
         // Clone the shared handles so the immutable borrows don't collide with
@@ -966,7 +967,7 @@ impl SwapChain {
             let mut last_index_buffer = vk::Buffer::null();
             let cascade_bytes = (cascade as u32).to_ne_bytes();
 
-            for object in opaque.iter().chain(cutout.iter()) {
+            for object in shadow_casters[cascade].iter() {
                 let program = object.material().key().program;
                 if last_program != Some(program) {
                     let pipeline = shadow.pipeline_for(program, &descriptor_manager);

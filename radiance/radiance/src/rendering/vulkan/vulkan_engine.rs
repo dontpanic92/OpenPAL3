@@ -123,6 +123,17 @@ pub struct VulkanRenderingEngine {
     scratch_cutout: Vec<Rc<VulkanRenderObject>>,
     scratch_transparent: Vec<(f32, usize, usize, Rc<VulkanRenderObject>)>,
     scratch_transparent_ordered: Vec<Rc<VulkanRenderObject>>,
+    // Shadow-caster candidates from the last `bucketize_visible`: every opaque
+    // / cutout render object paired with its world AABB, collected WITHOUT
+    // camera-frustum culling (so casters outside the camera view still feed the
+    // shadow map). Kept in two lists to preserve opaque-then-cutout shadow-pass
+    // batching. Per-cascade subsets are derived into `scratch_shadow_casters`.
+    scratch_caster_candidates_opaque: Vec<(Rc<VulkanRenderObject>, Option<([f32; 3], [f32; 3])>)>,
+    scratch_caster_candidates_cutout: Vec<(Rc<VulkanRenderObject>, Option<([f32; 3], [f32; 3])>)>,
+    // Per-cascade shadow-caster draw lists (length `CASCADE_COUNT`), each
+    // light-frustum-culled from the candidate lists. Persistent so the
+    // per-frame cull avoids reallocating.
+    scratch_shadow_casters: Vec<Vec<Rc<VulkanRenderObject>>>,
     // View-space depth band [near, far] of the visible shadow casters from the
     // last `bucketize_visible`, used to fit the CSM cascade splits to actual
     // scene geometry. `None` when nothing is visible.
@@ -292,6 +303,8 @@ impl RenderingEngine for VulkanRenderingEngine {
 
         // Editor render-target preview doesn't run a shadow pass.
         let mut caster_band = None;
+        let mut caster_candidates_opaque = Vec::new();
+        let mut caster_candidates_cutout = Vec::new();
         Self::bucketize_visible(
             &entities,
             &scene.camera(),
@@ -300,6 +313,8 @@ impl RenderingEngine for VulkanRenderingEngine {
             &mut self.scratch_cutout,
             &mut self.scratch_transparent,
             &mut self.scratch_transparent_ordered,
+            &mut caster_candidates_opaque,
+            &mut caster_candidates_cutout,
             &mut caster_band,
         );
 
@@ -768,6 +783,11 @@ impl VulkanRenderingEngine {
             scratch_cutout: Vec::new(),
             scratch_transparent: Vec::new(),
             scratch_transparent_ordered: Vec::new(),
+            scratch_caster_candidates_opaque: Vec::new(),
+            scratch_caster_candidates_cutout: Vec::new(),
+            scratch_shadow_casters: (0..super::shadow_map::CASCADE_COUNT)
+                .map(|_| Vec::new())
+                .collect(),
             scratch_caster_band: None,
             logical_extent,
         };
@@ -953,6 +973,8 @@ impl VulkanRenderingEngine {
                 &mut self.scratch_cutout,
                 &mut self.scratch_transparent,
                 &mut self.scratch_transparent_ordered,
+                &mut self.scratch_caster_candidates_opaque,
+                &mut self.scratch_caster_candidates_cutout,
                 &mut self.scratch_caster_band,
             );
         } else {
@@ -961,6 +983,8 @@ impl VulkanRenderingEngine {
             self.scratch_cutout.clear();
             self.scratch_transparent.clear();
             self.scratch_transparent_ordered.clear();
+            self.scratch_caster_candidates_opaque.clear();
+            self.scratch_caster_candidates_cutout.clear();
             self.scratch_caster_band = None;
         }
 
@@ -968,12 +992,39 @@ impl VulkanRenderingEngine {
         // to derive the light frustum focus from).
         let shadows_enabled = camera.is_some() && lighting.2.is_some();
 
+        // Directional CSM: fit one light frustum per camera-view cascade and
+        // cull the shadow casters against each cascade's light-space volume
+        // BEFORE recording the depth pass. Caster culling is done against the
+        // light frustum (not the camera frustum) so casters whose shadow falls
+        // into view but whose body is off-screen still write depth. Reused
+        // below for the per-frame UBO upload.
+        let cascade_data = if let (Some(cam), Some((sun_dir, _))) = (camera, lighting.2) {
+            let (matrices, splits, volumes) = Self::compute_cascades(
+                cam,
+                Vec3::new(sun_dir[0], sun_dir[1], sun_dir[2]),
+                self.scratch_caster_band,
+            );
+            Self::cull_shadow_casters(
+                &self.scratch_caster_candidates_opaque,
+                &self.scratch_caster_candidates_cutout,
+                &volumes,
+                &mut self.scratch_shadow_casters,
+            );
+            Some((matrices, splits))
+        } else {
+            for list in self.scratch_shadow_casters.iter_mut() {
+                list.clear();
+            }
+            None
+        };
+
         let command_buffer = swapchain!()
             .record_command_buffers(
                 image_index as usize,
                 &self.scratch_opaque,
                 &self.scratch_cutout,
                 &self.scratch_transparent_ordered,
+                &self.scratch_shadow_casters,
                 &dub_manager,
                 viewport,
                 ui_frame,
@@ -995,15 +1046,9 @@ impl VulkanRenderingEngine {
                     ubo.set_lighting(lighting.0, &lighting.1);
                     ubo.set_sun(lighting.2);
 
-                    // Directional CSM: fit one light frustum per camera-view
-                    // cascade and upload the per-cascade matrices + split
-                    // depths.
-                    if let Some((sun_dir, _)) = lighting.2 {
-                        let (matrices, splits) = Self::compute_cascades(
-                            cam,
-                            Vec3::new(sun_dir[0], sun_dir[1], sun_dir[2]),
-                            self.scratch_caster_band,
-                        );
+                    // Directional CSM: upload the per-cascade matrices + split
+                    // depths computed (and used to cull casters) above.
+                    if let Some((matrices, splits)) = cascade_data {
                         ubo.set_shadow(Some((
                             matrices,
                             splits,
@@ -1137,6 +1182,7 @@ impl VulkanRenderingEngine {
     ) -> (
         [Mat44; super::shadow_map::CASCADE_COUNT],
         [f32; super::shadow_map::CASCADE_COUNT],
+        [super::shadow_map::CascadeVolume; super::shadow_map::CASCADE_COUNT],
     ) {
         use super::shadow_map::{CASCADE_COUNT, CASCADE_SPLIT_LAMBDA, SHADOW_FAR_CAP};
 
@@ -1204,14 +1250,22 @@ impl VulkanRenderingEngine {
         };
 
         let mut matrices = [Mat44::new_identity(); CASCADE_COUNT];
+        let mut volumes =
+            [super::shadow_map::CascadeVolume {
+                view: Mat44::new_identity(),
+                radius: 1.0,
+                near: 1.0,
+                far: 1.0,
+            }; CASCADE_COUNT];
         let mut last = near;
         for i in 0..CASCADE_COUNT {
             let corners = slice_corners(last, splits[i]);
+            volumes[i] = super::shadow_map::cascade_volume(&corners, sun_dir);
             matrices[i] = super::shadow_map::cascade_view_proj(&corners, sun_dir);
             last = splits[i];
         }
 
-        (matrices, splits)
+        (matrices, splits, volumes)
     }
 
     /// Every output Vec is `clear()`ed (capacity retained) before
@@ -1225,6 +1279,8 @@ impl VulkanRenderingEngine {
         cutout_out: &mut Vec<Rc<VulkanRenderObject>>,
         transparent_out: &mut Vec<(f32, usize, usize, Rc<VulkanRenderObject>)>,
         transparent_ordered_out: &mut Vec<Rc<VulkanRenderObject>>,
+        caster_candidates_opaque_out: &mut Vec<(Rc<VulkanRenderObject>, Option<([f32; 3], [f32; 3])>)>,
+        caster_candidates_cutout_out: &mut Vec<(Rc<VulkanRenderObject>, Option<([f32; 3], [f32; 3])>)>,
         caster_band_out: &mut Option<(f32, f32)>,
     ) {
         components_out.clear();
@@ -1232,6 +1288,8 @@ impl VulkanRenderingEngine {
         cutout_out.clear();
         transparent_out.clear();
         transparent_ordered_out.clear();
+        caster_candidates_opaque_out.clear();
+        caster_candidates_cutout_out.clear();
         *caster_band_out = None;
 
         for entity in entities {
@@ -1263,42 +1321,56 @@ impl VulkanRenderingEngine {
             let m = world.floats();
             for (ro_idx, vro) in rendering.vulkan_render_objects().iter().enumerate() {
                 total_count += 1;
-                // Frustum reject. Render objects without a known
-                // local AABB (e.g. backends or callers that don't
-                // track bounds) fall through to "always visible".
                 let world_aabb = vro
                     .local_aabb()
                     .map(|(lmin, lmax)| crate::math::transform_aabb(lmin, lmax, world));
-                if let Some((wmin, wmax)) = world_aabb {
-                    if !crate::math::aabb_visible(wmin, wmax, &frustum) {
-                        culled_count += 1;
-                        continue;
-                    }
+                let visible = match world_aabb {
+                    Some((wmin, wmax)) => crate::math::aabb_visible(wmin, wmax, &frustum),
+                    // Render objects without a known local AABB (backends or
+                    // callers that don't track bounds) are "always visible".
+                    None => true,
+                };
+                if !visible {
+                    culled_count += 1;
                 }
                 match vro.material().key().blend {
                     BlendMode::Opaque => {
-                        Self::accumulate_caster_band(
-                            world_aabb,
-                            &camera_world,
-                            &cam_fwd,
-                            band_min_depth,
-                            &mut band_near,
-                            &mut band_far,
-                        );
-                        opaque_out.push(vro.clone());
+                        // Every opaque caster feeds the shadow map regardless of
+                        // camera visibility; the main color pass only draws the
+                        // camera-visible ones.
+                        caster_candidates_opaque_out.push((vro.clone(), world_aabb));
+                        if visible {
+                            Self::accumulate_caster_band(
+                                world_aabb,
+                                &camera_world,
+                                &cam_fwd,
+                                band_min_depth,
+                                &mut band_near,
+                                &mut band_far,
+                            );
+                            opaque_out.push(vro.clone());
+                        }
                     }
                     BlendMode::AlphaTest => {
-                        Self::accumulate_caster_band(
-                            world_aabb,
-                            &camera_world,
-                            &cam_fwd,
-                            band_min_depth,
-                            &mut band_near,
-                            &mut band_far,
-                        );
-                        cutout_out.push(vro.clone());
+                        caster_candidates_cutout_out.push((vro.clone(), world_aabb));
+                        if visible {
+                            Self::accumulate_caster_band(
+                                world_aabb,
+                                &camera_world,
+                                &cam_fwd,
+                                band_min_depth,
+                                &mut band_near,
+                                &mut band_far,
+                            );
+                            cutout_out.push(vro.clone());
+                        }
                     }
                     BlendMode::AlphaBlend | BlendMode::Additive | BlendMode::Multiply => {
+                        // Blended geometry doesn't cast shadows; drop when the
+                        // camera can't see it.
+                        if !visible {
+                            continue;
+                        }
                         let c = vro.local_centroid();
                         // Affine transform: world_pos = M * [c, 1].
                         let wx = m[0][0] * c[0] + m[0][1] * c[1] + m[0][2] * c[2] + m[0][3];
@@ -1347,6 +1419,32 @@ impl VulkanRenderingEngine {
 
         if band_far > band_near {
             *caster_band_out = Some((band_near.max(0.0), band_far));
+        }
+    }
+
+    /// Build the per-cascade shadow-caster draw lists by culling the candidate
+    /// casters (collected without camera-frustum rejection) against each
+    /// cascade's light-space volume. Opaque candidates precede cutout ones so
+    /// the depth pass keeps its program batching. Candidates without a known
+    /// world AABB are conservatively drawn into every cascade.
+    fn cull_shadow_casters(
+        opaque: &[(Rc<VulkanRenderObject>, Option<([f32; 3], [f32; 3])>)],
+        cutout: &[(Rc<VulkanRenderObject>, Option<([f32; 3], [f32; 3])>)],
+        volumes: &[super::shadow_map::CascadeVolume],
+        out: &mut [Vec<Rc<VulkanRenderObject>>],
+    ) {
+        for (cascade, list) in out.iter_mut().enumerate() {
+            list.clear();
+            let volume = &volumes[cascade];
+            for (vro, world_aabb) in opaque.iter().chain(cutout.iter()) {
+                let include = match world_aabb {
+                    Some((wmin, wmax)) => volume.intersects_world_aabb(*wmin, *wmax),
+                    None => true,
+                };
+                if include {
+                    list.push(vro.clone());
+                }
+            }
         }
     }
 
