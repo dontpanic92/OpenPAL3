@@ -640,6 +640,23 @@ impl LitMaterialDef {
             .textures_with_samplers(vec![texture], vec![sampler])
             .build()
     }
+
+    /// Build a dynamically-lit material directly from an already-decoded
+    /// `RgbaImage`. Mirrors [`SimpleMaterialDef::create_with_image_and_sampler`]
+    /// but uses [`ShaderProgram::TexturedDynamicLit`]; used by the DFF loader's
+    /// dynamic-lighting path for materials that synthesize a composite texture
+    /// (RGB + separate alpha mask).
+    pub fn create_with_image_and_sampler(
+        texture_name: &str,
+        image: Option<image::RgbaImage>,
+        sampler: SamplerDef,
+    ) -> MaterialDef {
+        let texture = TextureStore::get_or_update(texture_name, || image);
+        MaterialDef::builder(ShaderProgram::TexturedDynamicLit)
+            .debug_name("lit_material")
+            .textures_with_samplers(vec![texture], vec![sampler])
+            .build()
+    }
 }
 
 pub struct LightMapMaterialDef;

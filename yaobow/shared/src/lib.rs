@@ -248,6 +248,7 @@ lazy_static::lazy_static! {
         ignore_root_frame_translation: false,
 
         bsp_lightmap_tint: None,
+        dynamic_lighting: false,
     };
 
     static ref PAL5_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
@@ -257,6 +258,7 @@ lazy_static::lazy_static! {
         ignore_root_frame_translation: false,
 
         bsp_lightmap_tint: None,
+        dynamic_lighting: true,
     };
 
     static ref SWD5_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
@@ -266,5 +268,6 @@ lazy_static::lazy_static! {
         ignore_root_frame_translation: false,
 
         bsp_lightmap_tint: None,
+        dynamic_lighting: false,
     };
 }

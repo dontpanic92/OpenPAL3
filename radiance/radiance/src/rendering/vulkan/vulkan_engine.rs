@@ -34,6 +34,16 @@ use std::{cell::RefCell, error::Error};
 /// in-flight CPU frames write to the same image's command buffer.
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
+/// Snapshot of a scene's lighting environment in the shape the per-frame UBO
+/// consumes: flat ambient color, point lights as
+/// `(position, color, [inner, outer])`, and an optional directional sun as
+/// `(direction-toward-sun, color)`.
+type SceneLightsSnapshot = (
+    [f32; 3],
+    Vec<([f32; 3], [f32; 3], [f32; 2])>,
+    Option<([f32; 3], [f32; 3])>,
+);
+
 pub struct VulkanRenderingEngine {
     entry: Rc<Entry>,
     instance: Rc<Instance>,
@@ -138,7 +148,7 @@ impl RenderingEngine for VulkanRenderingEngine {
         };
         let lighting = match scene.as_ref() {
             Some(s) => Self::collect_scene_lights(s),
-            None => ([0.0; 3], Vec::new()),
+            None => ([0.0; 3], Vec::new(), None),
         };
         crate::perf::gauge("vulkan.render.visible_entities", entities.len() as u64);
 
@@ -283,8 +293,9 @@ impl RenderingEngine for VulkanRenderingEngine {
 
         // Update target's per-frame UBO with the scene's camera + lights.
         let mut ubo = PerFrameUniformBuffer::new(&camera_view, &camera_proj);
-        let (ambient, gpu_lights) = Self::collect_scene_lights(&scene);
+        let (ambient, gpu_lights, sun) = Self::collect_scene_lights(&scene);
         ubo.set_lighting(ambient, &gpu_lights);
+        ubo.set_sun(sun);
         target.uniform_buffer_mut().copy_memory_from(&[ubo]);
 
         // Record + submit the offscreen pass.
@@ -831,26 +842,28 @@ impl VulkanRenderingEngine {
     }
 
     /// Snapshot the scene's lighting environment into the per-frame UBO's
-    /// expected shape: a flat ambient color and a list of
+    /// expected shape: a flat ambient color, a list of
     /// `(position, color, range)` point lights (`range` = `[inner, outer]`
-    /// attenuation radii).
-    fn collect_scene_lights(
-        scene: &ComRc<IScene>,
-    ) -> ([f32; 3], Vec<([f32; 3], [f32; 3], [f32; 2])>) {
+    /// attenuation radii), and an optional `(direction, color)` directional
+    /// sun (`direction` = unit vector from the surface toward the sun).
+    fn collect_scene_lights(scene: &ComRc<IScene>) -> SceneLightsSnapshot {
         let lighting = scene.lighting();
         let lights = lighting
             .lights
             .iter()
             .map(|l| ([l.position.x, l.position.y, l.position.z], l.color, l.range))
             .collect();
-        (lighting.ambient, lights)
+        let sun = lighting
+            .sun
+            .map(|s| ([s.direction.x, s.direction.y, s.direction.z], s.color));
+        (lighting.ambient, lights, sun)
     }
 
     fn render_objects(
         &mut self,
         camera: Option<&Camera>,
         entities: Vec<ComRc<IEntity>>,
-        lighting: ([f32; 3], Vec<([f32; 3], [f32; 3], [f32; 2])>),
+        lighting: SceneLightsSnapshot,
         viewport: Viewport,
         ui_frame: ImguiFrame,
     ) -> Result<(), Box<dyn Error>> {
@@ -944,6 +957,7 @@ impl VulkanRenderingEngine {
                     let proj = cam.projection_matrix();
                     let mut ubo = PerFrameUniformBuffer::new(&view, proj);
                     ubo.set_lighting(lighting.0, &lighting.1);
+                    ubo.set_sun(lighting.2);
                     ubo
                 }
                 None => {

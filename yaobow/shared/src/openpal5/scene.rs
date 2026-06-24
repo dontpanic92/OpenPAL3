@@ -20,25 +20,25 @@ impl Pal5Scene {
         scene.camera_mut().set_fov43(45_f32.to_radians());
 
         // Per-map atmosphere (`envinfo.env`): a dim ambient fill plus a
-        // directional sun. PAL5 ships no per-scene `.lgt`; its terrain is
-        // dynamically lit (the splat shader applies Lambert + ambient), so
-        // without this the lighting term would collapse to a flat, dead
-        // ambient. We model the sun as a far point light (no attenuation)
-        // in the parsed azimuth/elevation direction. If the `.env` is
-        // missing, fall back to full ambient so terrain never renders black.
+        // directional sun. PAL5 ships no per-scene `.lgt`; its terrain and
+        // (when dynamic lighting is enabled) its buildings are dynamically lit
+        // (Lambert + ambient), so without this the lighting term would
+        // collapse to a flat, dead ambient. The sun is a first-class
+        // directional light in the parsed azimuth/elevation direction. If the
+        // `.env` is missing, fall back to full ambient so geometry never
+        // renders black.
         match asset_loader.load_map_env(scene_name) {
             Some(env) => {
                 let dir = env.sun_direction();
-                const SUN_DISTANCE: f32 = 1.0e7;
-                let sun = radiance::scene::SceneLight::new(
-                    Vec3::new(
-                        dir[0] * SUN_DISTANCE,
-                        dir[1] * SUN_DISTANCE,
-                        dir[2] * SUN_DISTANCE,
-                    ),
+                let sun = radiance::scene::DirectionalLight::new(
+                    Vec3::new(dir[0], dir[1], dir[2]),
                     env.sun_color,
                 );
-                scene.set_lighting(radiance::scene::SceneLighting::new(env.ambient, vec![sun]));
+                scene.set_lighting(radiance::scene::SceneLighting::with_sun(
+                    env.ambient,
+                    vec![],
+                    sun,
+                ));
                 // Fog color/params are decoded and carried on `env` but not
                 // yet pushed to the renderer (radiance has no fog path); log
                 // them so per-map atmosphere is observable in traces.

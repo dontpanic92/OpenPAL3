@@ -115,6 +115,7 @@ impl AssetLoader {
                 ignore_root_frame_translation: false,
 
                 bsp_lightmap_tint: None,
+                dynamic_lighting: false,
             },
         )?;
 

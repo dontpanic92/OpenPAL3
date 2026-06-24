@@ -22,6 +22,8 @@ layout(set = 0, binding = 0) uniform PerFrameUbo {
     vec4 ambient;            // rgb = ambient color, w = light count
     vec4 lightPos[16];       // xyz = world position, w = outer radius
     vec4 lightColor[16];     // rgb = color, w = inner radius
+    vec4 sunDir;             // xyz = dir toward sun, w = enabled (1/0)
+    vec4 sunColor;           // rgb = sun color
 } perFrameUbo;
 
 layout(set = 2, binding = 0) uniform sampler2D texSampler[5];
@@ -77,6 +79,13 @@ void main() {
             atten = 1.0 - smoothstep(edge0, outer, dist);
         }
         lit += perFrameUbo.lightColor[i].rgb * ndl * atten;
+    }
+
+    // Directional sun (parallel, no attenuation); mirrors actor_lit.frag.
+    if (perFrameUbo.sunDir.w > 0.5) {
+        vec3 Ls = normalize(perFrameUbo.sunDir.xyz);
+        float ndlS = max(dot(N, Ls), 0.2);
+        lit += perFrameUbo.sunColor.rgb * ndlS;
     }
 
     outColor = vec4(col * lit * mat.tint.rgb, 1.0);

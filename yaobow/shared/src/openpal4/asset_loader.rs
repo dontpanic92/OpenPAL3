@@ -130,6 +130,7 @@ impl AssetLoader {
             force_unique_materials: false,
             ignore_root_frame_translation: false,
             bsp_lightmap_tint: None,
+            dynamic_lighting: false,
         };
         let bsp = create_entity_from_bsp_model(
             &self.component_factory,
@@ -151,6 +152,7 @@ impl AssetLoader {
             force_unique_materials: true,
             ignore_root_frame_translation: false,
             bsp_lightmap_tint: None,
+            dynamic_lighting: false,
         };
         self.attach_uv_overlay(
             &scene,
@@ -254,6 +256,7 @@ impl AssetLoader {
             force_unique_materials: false,
             ignore_root_frame_translation: true,
             bsp_lightmap_tint: None,
+            dynamic_lighting: false,
         };
         if self.vfs.exists(&path) {
             create_entity_from_dff_model(
@@ -290,6 +293,7 @@ impl AssetLoader {
                 force_unique_materials: false,
                 ignore_root_frame_translation: false,
                 bsp_lightmap_tint: None,
+                dynamic_lighting: false,
             },
         )?;
 
@@ -459,6 +463,7 @@ impl AssetLoader {
                 force_unique_materials: false,
                 ignore_root_frame_translation: false,
                 bsp_lightmap_tint,
+                dynamic_lighting: false,
             },
         )?;
 
@@ -570,6 +575,7 @@ impl AssetLoader {
                 force_unique_materials: true,
                 ignore_root_frame_translation: false,
                 bsp_lightmap_tint: None,
+                dynamic_lighting: false,
             },
         )
         .map_err(|e| log::warn!("try_load_scene_water: failed to load {}: {:#}", path, e))
@@ -678,6 +684,7 @@ impl AssetLoader {
                     force_unique_materials: false,
                     ignore_root_frame_translation: false,
                     bsp_lightmap_tint: None,
+                    dynamic_lighting: false,
                 },
             )
             .map_err(|e| log::warn!("try_load_dff: failed to load {}: {:#}", path, e))

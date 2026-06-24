@@ -14,6 +14,8 @@ layout(set = 0, binding = 0) uniform PerFrameUbo {
     vec4 ambient;            // rgb = ambient color, w = light count
     vec4 lightPos[16];       // xyz = world position
     vec4 lightColor[16];     // rgb = color
+    vec4 sunDir;             // xyz = dir toward sun, w = enabled (1/0)
+    vec4 sunColor;           // rgb = sun color
 } perFrameUbo;
 
 layout(set = 2, binding = 0) uniform sampler2D texSampler;
@@ -67,6 +69,16 @@ void main() {
         }
 
         lit += perFrameUbo.lightColor[i].rgb * ndl * atten;
+    }
+
+    // Directional sun: parallel light, no attenuation. `sunDir.w` is the
+    // enabled flag. Uses the same 0.2 wrap floor as the point lights so
+    // back-facing surfaces still pick up a little fill rather than going
+    // fully black.
+    if (perFrameUbo.sunDir.w > 0.5) {
+        vec3 Ls = normalize(perFrameUbo.sunDir.xyz);
+        float ndlS = max(dot(N, Ls), 0.2);
+        lit += perFrameUbo.sunColor.rgb * ndlS;
     }
 
     // Premultiplied-alpha invariant matches `simple_triangle.frag`: scale RGB

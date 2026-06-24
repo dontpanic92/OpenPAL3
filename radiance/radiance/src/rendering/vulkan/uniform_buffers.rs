@@ -142,6 +142,11 @@ pub struct PerFrameUniformBuffer {
     /// Light colors (`rgb`; `w` = inner attenuation radius), paired with
     /// `light_pos`.
     light_color: [[f32; 4]; MAX_SCENE_LIGHTS],
+    /// Directional sun light. `xyz` = unit direction from surface toward the
+    /// sun; `w` = enabled flag (`1.0` when a sun is present, else `0.0`).
+    sun_dir: [f32; 4],
+    /// Directional sun color (`rgb`; `w` reserved).
+    sun_color: [f32; 4],
 }
 
 /// Maximum number of scene point lights uploaded per frame. PAL3 scenes ship
@@ -157,6 +162,8 @@ impl PerFrameUniformBuffer {
             ambient: [0.0; 4],
             light_pos: [[0.0; 4]; MAX_SCENE_LIGHTS],
             light_color: [[0.0; 4]; MAX_SCENE_LIGHTS],
+            sun_dir: [0.0; 4],
+            sun_color: [0.0; 4],
         }
     }
 
@@ -172,6 +179,23 @@ impl PerFrameUniformBuffer {
             let outer = range[1];
             self.light_pos[i] = [pos[0], pos[1], pos[2], outer];
             self.light_color[i] = [color[0], color[1], color[2], inner];
+        }
+    }
+
+    /// Stamp the directional sun light into the per-frame UBO. `direction` is
+    /// the unit vector from a surface toward the sun; `color` is its linear
+    /// RGB intensity. Passing `None` disables the directional term
+    /// (`sun_dir.w = 0`).
+    pub fn set_sun(&mut self, sun: Option<([f32; 3], [f32; 3])>) {
+        match sun {
+            Some((dir, color)) => {
+                self.sun_dir = [dir[0], dir[1], dir[2], 1.0];
+                self.sun_color = [color[0], color[1], color[2], 0.0];
+            }
+            None => {
+                self.sun_dir = [0.0; 4];
+                self.sun_color = [0.0; 4];
+            }
         }
     }
 }

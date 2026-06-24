@@ -65,6 +65,16 @@ pub struct DffLoaderConfig<'a> {
     /// `"DiffuseMap"`, matching the on-disk pairing convention. Default
     /// `None` so DFF callers and non-PAL4 BSPs are unaffected.
     pub bsp_lightmap_tint: Option<[f32; 4]>,
+
+    /// When `true`, plain (non-lightmap) textured DFF materials are built
+    /// with the dynamically-lit shader ([`ShaderProgram::TexturedDynamicLit`])
+    /// instead of the unlit one, and the mesh's vertex normals are forwarded
+    /// to the GPU. This makes scene objects (buildings, props) respond to the
+    /// scene's directional sun + ambient (`SceneLighting`) the same way PAL3
+    /// actors and PAL5 terrain do. Requires the DFF geometry to carry
+    /// normals; materials without normals fall back to the unlit shader.
+    /// Default `false` so PAL3/PAL4/SWD keep their existing unlit/baked look.
+    pub dynamic_lighting: bool,
 }
 
 impl<'a> DffLoaderConfig<'a> {
@@ -76,6 +86,7 @@ impl<'a> DffLoaderConfig<'a> {
             force_unique_materials: false,
             ignore_root_frame_translation: false,
             bsp_lightmap_tint: None,
+            dynamic_lighting: false,
         }
     }
 }
@@ -386,6 +397,7 @@ fn load_clump(
             config.force_unique_materials,
             config.bsp_lightmap_tint,
             two_sided,
+            config.dynamic_lighting,
         );
 
         if billboard {
@@ -511,6 +523,7 @@ fn create_geometry(
     force_unique_materials: bool,
     bsp_lightmap_tint: Option<[f32; 4]>,
     two_sided: bool,
+    dynamic_lighting: bool,
 ) {
     if geometry.morph_targets.len() == 0 {
         return;
@@ -661,6 +674,7 @@ fn create_geometry(
         force_unique_materials,
         bsp_lightmap_tint,
         two_sided,
+        dynamic_lighting,
     );
 }
 
@@ -668,7 +682,7 @@ pub(crate) fn create_geometry_internal(
     entity: ComRc<IEntity>,
     component_factory: &Rc<dyn ComponentFactory>,
     vertices: &[Vec3f],
-    _normals: Option<&Vec<Vec3f>>,
+    normals: Option<&Vec<Vec3f>>,
     triangles: &[Triangle],
     texcoord_sets: &[Vec<TexCoord>],
     materials: &[Material],
@@ -679,13 +693,22 @@ pub(crate) fn create_geometry_internal(
     force_unique_materials: bool,
     bsp_lightmap_tint: Option<[f32; 4]>,
     two_sided: bool,
+    dynamic_lighting: bool,
 ) {
     let mut r_vertices = vec![];
-    // let mut r_normals = vec![];
+    // Forward per-vertex normals only when the geometry actually ships them
+    // *and* the caller opts into dynamic lighting; otherwise the mesh stays
+    // on the unlit/baked path and the normal attribute is omitted.
+    let has_normals = dynamic_lighting && normals.map_or(false, |n| n.len() == vertices.len());
+    let mut r_normals: Vec<Vec3> = vec![];
     for i in 0..vertices.len() {
         r_vertices.push(Vec3::new(vertices[i].x, vertices[i].y, vertices[i].z));
-        // r_normals.push(Vec3::new(normals[i].x, normals[i].y, normals[i].z));
+        if has_normals {
+            let n = &normals.unwrap()[i];
+            r_normals.push(Vec3::new(n.x, n.y, n.z));
+        }
     }
+    let r_normals: Option<&[Vec3]> = if has_normals { Some(&r_normals) } else { None };
 
     let r_texcoords: Vec<Vec<radiance::components::mesh::TexCoord>> = texcoord_sets
         .iter()
@@ -747,7 +770,13 @@ pub(crate) fn create_geometry_internal(
                             }
                         }
                     } else {
-                        load_material_texture(texture, vfs, path.as_ref(), texture_resolver)
+                        load_material_texture(
+                            texture,
+                            vfs,
+                            path.as_ref(),
+                            texture_resolver,
+                            has_normals,
+                        )
                     }
                 } else if let (Some(tint), Some(_)) =
                     (bsp_lightmap_tint, material.lightmap.as_ref())
@@ -849,7 +878,7 @@ pub(crate) fn create_geometry_internal(
             };
             radiance::components::mesh::Geometry::new(
                 &r_vertices,
-                None,
+                r_normals,
                 geom_texcoords,
                 v.indices,
                 v.material,
@@ -1018,60 +1047,72 @@ fn load_material_texture(
     vfs: &MiniFs,
     model_path: &Path,
     texture_resolver: &dyn TextureResolver,
+    dynamic_lighting: bool,
 ) -> MaterialDef {
     let sampler = rw_sampler_def(texture);
     if texture.mask_name.is_empty() {
-        return radiance::rendering::SimpleMaterialDef::create_with_sampler(
-            &texture.name,
-            |_name| {
-                let data = texture_resolver.resolve_texture(vfs, model_path, &texture.name);
-                if data.is_none() {
-                    log::warn!(
-                        "Failed to resolve texture {} for {:?}",
-                        texture.name,
-                        model_path
-                    );
-                }
-                data.and_then(|data| Some(std::io::Cursor::new(data)))
-            },
-            sampler,
-        );
+        let name = texture.name.clone();
+        let get_reader = |_name: &str| {
+            let data = texture_resolver.resolve_texture(vfs, model_path, &texture.name);
+            if data.is_none() {
+                log::warn!(
+                    "Failed to resolve texture {} for {:?}",
+                    texture.name,
+                    model_path
+                );
+            }
+            data.and_then(|data| Some(std::io::Cursor::new(data)))
+        };
+        return if dynamic_lighting {
+            radiance::rendering::LitMaterialDef::create_with_sampler(&name, get_reader, sampler)
+        } else {
+            radiance::rendering::SimpleMaterialDef::create_with_sampler(&name, get_reader, sampler)
+        };
     }
 
     let composite_name = format!("{}|{}", texture.name, texture.mask_name);
     let main_name = texture.name.clone();
     let mask_name = texture.mask_name.clone();
     let model_path_buf = model_path.to_path_buf();
-    radiance::rendering::SimpleMaterialDef::create_with_image_and_sampler(
-        &composite_name,
-        {
-            let main = decode_texture(vfs, &model_path_buf, &main_name, texture_resolver);
-            let mask = decode_texture(vfs, &model_path_buf, &mask_name, texture_resolver);
-            match (main, mask) {
-                (Some(mut main), Some(mask)) => {
-                    apply_mask_alpha(&mut main, &mask);
-                    Some(main)
-                }
-                (Some(main), None) => {
-                    log::warn!(
-                        "Failed to resolve mask {} for {:?}; using diffuse alpha as-is",
-                        mask_name,
-                        model_path_buf
-                    );
-                    Some(main)
-                }
-                (None, _) => {
-                    log::warn!(
-                        "Failed to resolve texture {} for {:?}",
-                        main_name,
-                        model_path_buf
-                    );
-                    None
-                }
+    let composite = {
+        let main = decode_texture(vfs, &model_path_buf, &main_name, texture_resolver);
+        let mask = decode_texture(vfs, &model_path_buf, &mask_name, texture_resolver);
+        match (main, mask) {
+            (Some(mut main), Some(mask)) => {
+                apply_mask_alpha(&mut main, &mask);
+                Some(main)
             }
-        },
-        sampler,
-    )
+            (Some(main), None) => {
+                log::warn!(
+                    "Failed to resolve mask {} for {:?}; using diffuse alpha as-is",
+                    mask_name,
+                    model_path_buf
+                );
+                Some(main)
+            }
+            (None, _) => {
+                log::warn!(
+                    "Failed to resolve texture {} for {:?}",
+                    main_name,
+                    model_path_buf
+                );
+                None
+            }
+        }
+    };
+    if dynamic_lighting {
+        radiance::rendering::LitMaterialDef::create_with_image_and_sampler(
+            &composite_name,
+            composite,
+            sampler,
+        )
+    } else {
+        radiance::rendering::SimpleMaterialDef::create_with_image_and_sampler(
+            &composite_name,
+            composite,
+            sampler,
+        )
+    }
 }
 
 /// Build a `TextureStore` cache key that is unique per BSP scene/block

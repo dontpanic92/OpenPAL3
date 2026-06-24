@@ -35,6 +35,26 @@ impl SceneLight {
     }
 }
 
+/// A single directional ("sun") light. Unlike [`SceneLight`], a directional
+/// light has no position and no attenuation: every lit fragment receives the
+/// same parallel light from `direction`. PAL5 maps ship exactly one such sun
+/// per scene (`envinfo.env`), modeled here as a first-class light type rather
+/// than a far-away point light.
+#[derive(Debug, Clone, Copy)]
+pub struct DirectionalLight {
+    /// Unit direction **from the surface toward the light** (i.e. the
+    /// direction the sun's rays come *from*), in world space.
+    pub direction: Vec3,
+    /// Linear RGB color / intensity of the sun.
+    pub color: [f32; 3],
+}
+
+impl DirectionalLight {
+    pub fn new(direction: Vec3, color: [f32; 3]) -> Self {
+        Self { direction, color }
+    }
+}
+
 /// Per-scene lighting environment consumed by the renderer when shading
 /// dynamically-lit objects (e.g. PAL3 actors). Static/baked geometry ignores
 /// this and keeps its own (lightmap / vertex-color) path.
@@ -44,10 +64,28 @@ pub struct SceneLighting {
     pub ambient: [f32; 3],
     /// Active point lights.
     pub lights: Vec<SceneLight>,
+    /// Optional directional sun light. When present, lit shaders add a
+    /// Lambert term for it with no attenuation, on top of ambient and the
+    /// point lights.
+    pub sun: Option<DirectionalLight>,
 }
 
 impl SceneLighting {
     pub fn new(ambient: [f32; 3], lights: Vec<SceneLight>) -> Self {
-        Self { ambient, lights }
+        Self {
+            ambient,
+            lights,
+            sun: None,
+        }
+    }
+
+    /// Build a lighting environment with a directional sun in addition to the
+    /// ambient term and any point lights.
+    pub fn with_sun(ambient: [f32; 3], lights: Vec<SceneLight>, sun: DirectionalLight) -> Self {
+        Self {
+            ambient,
+            lights,
+            sun: Some(sun),
+        }
     }
 }
