@@ -197,6 +197,14 @@ pub struct RecordingUiHost {
     pub tree_leaf_results: RefCell<std::collections::HashMap<String, bool>>,
     pub tree_node_open_results: RefCell<std::collections::HashMap<String, bool>>,
     pub menu_item_results: RefCell<std::collections::HashMap<String, bool>>,
+    /// Logical viewport size reported by `display_size_x/y`. Defaults to
+    /// `(0, 0)`; set via [`RecordingUiHost::set_display_size`] to exercise
+    /// layout code that fits content into the viewport.
+    pub display_size: RefCell<(i32, i32)>,
+    /// Per-character advance (w) and line height (h) returned by
+    /// `calc_text_size_x/y` as `chars * w` / `h`. Defaults to `(0.0, 0.0)`
+    /// so existing tests see the historic zero measurement.
+    pub char_size: RefCell<(f32, f32)>,
 }
 
 impl RecordingUiHost {
@@ -210,6 +218,17 @@ impl RecordingUiHost {
         };
         let com = ComRc::<IUiHost>::from_object(facade);
         (host, com)
+    }
+
+    /// Seed the logical viewport size reported to scripts.
+    pub fn set_display_size(&self, w: i32, h: i32) {
+        *self.display_size.borrow_mut() = (w, h);
+    }
+
+    /// Seed the per-character advance / line height used to synthesize
+    /// `calc_text_size_x/y` results (`chars * w`, `h`).
+    pub fn set_char_size(&self, w: f32, h: f32) {
+        *self.char_size.borrow_mut() = (w, h);
     }
 
     fn record(&self, call: UiCall) {
@@ -562,16 +581,16 @@ impl IUiHostImpl for HostFacade {
         0.0
     }
     fn display_size_x(&self) -> i32 {
-        0
+        self.inner.display_size.borrow().0
     }
     fn display_size_y(&self) -> i32 {
-        0
+        self.inner.display_size.borrow().1
     }
-    fn calc_text_size_x(&self, _s: &str) -> f32 {
-        0.0
+    fn calc_text_size_x(&self, s: &str) -> f32 {
+        s.chars().count() as f32 * self.inner.char_size.borrow().0
     }
     fn calc_text_size_y(&self, _s: &str) -> f32 {
-        0.0
+        self.inner.char_size.borrow().1
     }
     fn any_key_or_mouse_down(&self) -> bool {
         false

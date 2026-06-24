@@ -10,7 +10,7 @@ pub struct[pal4_debug.IPal4DebugOverlay] Pal4DebugOverlay(
     pub ctx_ref: box<pal4_debug.IPal4DebugContext>,
 ) {
     pub fn render(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         dt: float,
         ctx: box<pal4_debug.IPal4DebugContext>,

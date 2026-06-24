@@ -17,7 +17,7 @@
 //
 // Mutable scene-wide state (`locked`, `camera_rotation`, `camera_height`,
 // `camera_distance`) is stored as flat fields on `Pal4PartyController`.
-// `ref<Self>` receivers mutate them directly.
+// `refmut self` receivers mutate them directly.
 
 import shared.openpal4;
 import radiance;
@@ -107,20 +107,20 @@ pub struct[openpal4.IPal4ActorController] Pal4PartyController(
     pub facing_seeded: bool,
     pub speed: float,
 ) {
-    pub fn on_loading(self: ref<Self>) -> int {
+    pub fn on_loading(self: refmut<Self>) -> int {
         0
     }
 
-    pub fn on_unloading(self: ref<Self>) -> int {
+    pub fn on_unloading(self: refmut<Self>) -> int {
         0
     }
 
-    pub fn lock_control(self: ref<Self>, lock: bool) -> int {
+    pub fn lock_control(self: refmut<Self>, lock: bool) -> int {
         self.locked = lock;
         0
     }
 
-    pub fn on_updating(self: ref<Self>, delta_sec: float) -> int {
+    pub fn on_updating(self: refmut<Self>, delta_sec: float) -> int {
         if self.locked {
             return 0;
         }

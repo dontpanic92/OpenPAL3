@@ -1723,12 +1723,12 @@ mod tests {
             "{out}"
         );
         assert!(
-            out.contains("fn activate(self: ref<IDirector>) -> int"),
+            out.contains("fn activate(self: refmut<IDirector>) -> int"),
             "{out}"
         );
         // Foreign-aware return type now uses ?box<IDirector>, not ?int.
         assert!(
-            out.contains("fn update(self: ref<IDirector>, delta_sec: float) -> ?box<IDirector>"),
+            out.contains("fn update(self: refmut<IDirector>, delta_sec: float) -> ?box<IDirector>"),
             "{out}"
         );
 

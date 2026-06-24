@@ -258,14 +258,14 @@ impl ProtoseptGen {
         Ok(methods)
     }
 
-    /// Build the `fn name(self: ref<I>, ...) -> T` signature for a proto
+    /// Build the `fn name(self: refmut<I>, ...) -> T` signature for a proto
     /// method. Returns `Ok(None)` if any type cannot be mapped to protosept.
     fn proto_method_signature(
         &self,
         iface: &str,
         method: &Method,
     ) -> Result<Option<String>, Error> {
-        let mut params = format!("self: ref<{iface}>");
+        let mut params = format!("self: refmut<{iface}>");
         for p in &method.params {
             let Some(ty) = self.protosept_type(&p.ty)? else {
                 return Ok(None);

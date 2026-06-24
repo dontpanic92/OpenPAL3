@@ -94,13 +94,13 @@ pub let VIDEO_TOGGLE_CMD_BASE: int = 500000;
 // imgui call before that runs and trip dear-imgui's implicit
 // "Debug" fallback window.
 pub struct[radiance.IUiLayer, radiance.IDirector] HostDirectorIm(pub inner: box<radiance.IDirector>) {
-    pub fn activate(self: ref<Self>) -> int {
+    pub fn activate(self: refmut<Self>) -> int {
         self.inner.activate();
         0
     }
-    pub fn deactivate(self: ref<Self>) -> int { 0 }
-    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
-    pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
+    pub fn deactivate(self: refmut<Self>) -> int { 0 }
+    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
+    pub fn update(self: refmut<Self>, dt: float) -> ?box<radiance.IDirector> {
         let next = self.inner.update(dt);
         if next != null {
             return box(HostDirectorIm(next!)) as box<radiance.IDirector>;

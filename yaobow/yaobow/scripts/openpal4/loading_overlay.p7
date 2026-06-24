@@ -97,7 +97,7 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
     pub fairy_index: int,
     pub fairy_dir: int,
 ) {
-    pub fn request(self: ref<Self>, scene_name: string, block_name: string) -> int {
+    pub fn request(self: refmut<Self>, scene_name: string, block_name: string) -> int {
         if self.layout == null {
             // Lazy-open: deferred until first `request` so a launch
             // with broken/missing PAL4 assets can still construct the
@@ -119,7 +119,7 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         0
     }
 
-    pub fn set_progress(self: ref<Self>, target: float) -> int {
+    pub fn set_progress(self: refmut<Self>, target: float) -> int {
         let t: float = if target < 0.0 { 0.0 } else if target > 1.0 { 1.0 } else { target };
         if t > self.target_progress {
             self.target_progress = t;
@@ -127,7 +127,7 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         0
     }
 
-    pub fn tick(self: ref<Self>, dt: float) -> int {
+    pub fn tick(self: refmut<Self>, dt: float) -> int {
         if self.phase == LOAD_IDLE {
             return LOAD_IDLE;
         }
@@ -210,7 +210,7 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         LOAD_IDLE
     }
 
-    pub fn notify_load_complete(self: ref<Self>) -> int {
+    pub fn notify_load_complete(self: refmut<Self>) -> int {
         // Director has finished the synchronous `app.load_scene`.
         // Move into the hold phase so the overlay stays up for at
         // least `MIN_HOLD_SECS` before dismissing.
@@ -222,11 +222,11 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         0
     }
 
-    pub fn is_active(self: ref<Self>) -> bool {
+    pub fn is_active(self: refmut<Self>) -> bool {
         return self.phase != LOAD_IDLE;
     }
 
-    pub fn cancel(self: ref<Self>) -> int {
+    pub fn cancel(self: refmut<Self>) -> int {
         self.phase = LOAD_IDLE;
         self.pending_scene = "";
         self.pending_block = "";
@@ -241,7 +241,7 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
     }
 
     pub fn render(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         dt: float,
     ) -> int {
@@ -299,7 +299,7 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
     }
 
     pub fn render_layout(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         h: box<scripting_services.IUiLayoutHandle>,
     ) {

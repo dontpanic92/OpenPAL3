@@ -20,13 +20,6 @@ import yaobow_editor.inspector;
 import yaobow_editor.editor_consts;
 import yaobow_editor.theme_menu;
 
-// Mutable UI state held behind a `box<>` so `ref<Self>` methods (and the
-// closures/helpers they spawn) can mutate it directly.
-pub struct EditorUiState(
-    pub layout: editor_consts.EditorLayout,
-    pub next_cmd: int,
-);
-
 pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
     // Single shared preview pane: holds 0 or 1 ContentTab.
@@ -37,18 +30,21 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
     pub preview_intents: box<array<int>>,
     pub scene_open_intents: box<array<int>>,
     pub resources_state: box<resources_panel.ResourcesPanelState>,
-    pub state: box<EditorUiState>,
+    // Mutable UI state. `refmut self` interface methods (and free helpers taking
+    // `refmut<MainEditorDirector>`) mutate these flat fields directly.
+    pub layout: editor_consts.EditorLayout,
+    pub next_cmd: int,
 ) {
-    pub fn activate(self: ref<Self>) -> int { 0 }
-    pub fn deactivate(self: ref<Self>) -> int { 0 }
+    pub fn activate(self: refmut<Self>) -> int { 0 }
+    pub fn deactivate(self: refmut<Self>) -> int { 0 }
 
-    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.main_menu_bar(() => {
             theme_menu.render_theme_menu(ui, self.host.config());
             render_layout_tabs(ui, self);
         });
 
-        match self.state.layout {
+        match self.layout {
             editor_consts.EditorLayout.Assets => {
                 render_assets_layout(ui, self);
             },
@@ -60,7 +56,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
     }
 
     pub fn update(
-        self: ref<Self>,
+        self: refmut<Self>,
         dt: float,
     ) -> ?box<radiance.IDirector> {
         // Drive offscreen preview passes for any active sessions BEFORE
@@ -73,11 +69,11 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
             if vfs.is_dir(path) {
                 vfs.toggle_expanded(path);
             } else {
-                self.state.next_cmd = self.state.next_cmd + 1;
+                self.next_cmd = self.next_cmd + 1;
                 let tab = content_tabs.open_content_tab(
                     self.host.previewers(),
                     path,
-                    editor_consts.CLOSE_CMD_BASE + self.state.next_cmd,
+                    editor_consts.CLOSE_CMD_BASE + self.next_cmd,
                 );
                 if tab != null {
                     set_preview(self.preview, tab!);
@@ -95,7 +91,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
         // Route scene assets into the main scene view and switch layout.
         for c in self.scene_open_intents {
             open_scene_in_view(self.preview, self.scene_tab, c);
-            self.state.layout = editor_consts.EditorLayout.Scene;
+            self.layout = editor_consts.EditorLayout.Scene;
         }
         self.scene_open_intents.clear();
 
@@ -116,7 +112,7 @@ fn empty_transitions() -> ?box<radiance.IDirector> {
 }
 
 // Right-aligned layout selector rendered inside `main_menu_bar`.
-fn render_layout_tabs(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) {
+fn render_layout_tabs(ui: box<radiance.IUiHost>, dir: refmut<MainEditorDirector>) {
     let assets_label = "资源浏览";
     let scene_label = "场景编辑";
     let pad = 28.0;
@@ -129,13 +125,13 @@ fn render_layout_tabs(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) {
         ui.set_cursor_pos(start_x, ui.cursor_pos_y());
     }
 
-    let is_assets = dir.state.layout == editor_consts.EditorLayout.Assets;
+    let is_assets = dir.layout == editor_consts.EditorLayout.Assets;
     if ui.menu_item(assets_label, is_assets) {
-        dir.state.layout = editor_consts.EditorLayout.Assets;
+        dir.layout = editor_consts.EditorLayout.Assets;
     }
-    let is_scene = dir.state.layout == editor_consts.EditorLayout.Scene;
+    let is_scene = dir.layout == editor_consts.EditorLayout.Scene;
     if ui.menu_item(scene_label, is_scene) {
-        dir.state.layout = editor_consts.EditorLayout.Scene;
+        dir.layout = editor_consts.EditorLayout.Scene;
     }
 }
 
@@ -279,7 +275,8 @@ pub fn make_main_editor_director(
         box(preview_intents),
         box(scene_open_intents),
         box(resources_panel.make_resources_state()),
-        box(EditorUiState(editor_consts.EditorLayout.Assets, 0)),
+        editor_consts.EditorLayout.Assets,
+        0,
     )) as box<radiance.IDirector>;
 }
 

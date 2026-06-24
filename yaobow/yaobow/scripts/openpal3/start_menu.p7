@@ -218,7 +218,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     pub intro: ?box<scripting_services.IVideoHandle>,
     pub activated: bool,
 ) {
-    pub fn activate(self: ref<Self>) -> int {
+    pub fn activate(self: refmut<Self>) -> int {
         // When an intro movie is queued we postpone BGM start until
         // the movie ends — otherwise the menu BGM overlaps with the
         // logo's audio track. The render branch that drops `intro`
@@ -239,7 +239,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         0
     }
 
-    pub fn deactivate(self: ref<Self>) -> int {
+    pub fn deactivate(self: refmut<Self>) -> int {
         if self.bgm != null {
             self.bgm!.stop();
         }
@@ -248,7 +248,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     }
 
     pub fn render(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         dt: float,
     ) -> int {
@@ -352,7 +352,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         0
     }
 
-    pub fn render_missing(self: ref<Self>, ui: box<radiance.IUiHost>) {
+    pub fn render_missing(self: refmut<Self>, ui: box<radiance.IUiHost>) {
         ui.style_color(0, 1.0, 1.0, 1.0, 1.0, () => {
             ui.set_cursor_pos(20.0, 20.0);
             ui.text("PAL3 start menu: UI_opt.tli not found in basedata.cpk.");
@@ -361,7 +361,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         });
     }
 
-    pub fn render_main(self: ref<Self>, ui: box<radiance.IUiHost>) {
+    pub fn render_main(self: refmut<Self>, ui: box<radiance.IUiHost>) {
         let atlas = self.atlas!;
         let nat_w = atlas.native_width() as float;
         let nat_h = atlas.native_height() as float;
@@ -458,7 +458,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // atlas, or null when there's no atlas / the name is unknown / its
     // page failed to load.
     pub fn sprite_named(
-        self: ref<Self>,
+        self: refmut<Self>,
         name: string,
     ) -> ?box<scripting_services.ISprite> {
         if self.atlas == null { return null; }
@@ -468,7 +468,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // Draw a single sprite by its canonical name. No-op when the
     // atlas doesn't know about it (e.g. the page failed to upload).
     pub fn draw_sprite(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         name: string,
         x: float, y: float,
@@ -496,7 +496,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // No-op when the sprite is unknown, the atlas failed to upload,
     // or the clipped rect is empty (fully off-canvas).
     pub fn draw_sprite_clipped(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         name: string,
         x: float, y: float,
@@ -547,7 +547,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // `released` value, possibly overwritten with this widget's id
     // when the click latch fires on mouse release inside the rect.
     pub fn button(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         wid: int,
         base: string,
@@ -606,7 +606,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
 
     // Load-mode overlay: dim the cover, list each save slot as a
     // clickable text row, and offer a Back affordance.
-    pub fn render_load_overlay(self: ref<Self>, ui: box<radiance.IUiHost>) {
+    pub fn render_load_overlay(self: refmut<Self>, ui: box<radiance.IUiHost>) {
         let atlas = self.atlas!;
         let nat_w = atlas.native_width() as float;
         let nat_h = atlas.native_height() as float;
@@ -687,7 +687,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         }
     }
 
-    pub fn dispatch_click(self: ref<Self>, wid: int) {
+    pub fn dispatch_click(self: refmut<Self>, wid: int) {
         // Sprite → role mapping. xindegushi (新的故事) is the New Game
         // trigger; jiudehuiyi (旧的回忆) opens the load list;
         // likaiyouxi (离开游戏) exits. The other three sprites
@@ -699,7 +699,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     }
 
     pub fn update(
-        self: ref<Self>,
+        self: refmut<Self>,
         dt: float,
     ) -> ?box<radiance.IDirector> {
         // Already closing: do not honour new intents; just fire

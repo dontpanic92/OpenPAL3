@@ -41,11 +41,9 @@ let NO_HOVER: int = -1;
 let PAL3_COUNT: int = 7;
 let PAL4_COUNT: int = 4;
 
-// Per-frame mutable state. With the readonly axis removed from p7, `ref self`
-// methods (such as those bridged via the `IUiLayer` proto) may now
-// mutate fields directly, so the previous `state: box<TitleState>` workaround
-// is no longer required. The per-frame scratch lives as plain fields on
-// `TitleDirector`.
+// Per-frame mutable state. The generated `IUiLayer`/`IDirector` protos now use
+// `refmut self` receivers, so the interface methods may mutate fields directly;
+// the per-frame scratch lives as plain fields on `TitleDirector`.
 pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     pub host: box<yaobow_services.IYaobowHostContext>,
     pub bgm: ?box<scripting_services.IAudioSource>,
@@ -68,14 +66,14 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     pub intent_arg: int,
     pub current_pic: ?box<scripting_services.ITexture>,
 ) {
-    pub fn activate(self: ref<Self>) -> int {
+    pub fn activate(self: refmut<Self>) -> int {
         if self.bgm != null {
             self.bgm!.play(true);
         }
         0
     }
 
-    pub fn deactivate(self: ref<Self>) -> int {
+    pub fn deactivate(self: refmut<Self>) -> int {
         if self.bgm != null {
             self.bgm!.stop();
         }
@@ -83,7 +81,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn render(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         dt: float,
     ) -> int {
@@ -100,7 +98,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn render_inner(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         dt: float,
     ) {
@@ -144,7 +142,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn draw_logo(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         cx: float, cy: float, w: float, h: float,
     ) {
@@ -159,7 +157,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn render_prompt(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         dt: float,
         cx: float, cy: float, w: float, h: float,
@@ -187,7 +185,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn draw_prompt_text(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         dt: float,
         cx: float, cy: float, text_w: float, text_h: float,
@@ -227,7 +225,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn draw_game_list(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         cx: float, cy: float, w: float, h: float,
     ) {
@@ -262,7 +260,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
         }
 
     pub fn draw_game_button(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         ordinal: int, x: float, y: float, w: float, h: float,
     ) {
@@ -284,7 +282,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn submit_game_button(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         label: string, w: float, h: float, ordinal: int,
     ) {
@@ -306,7 +304,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn render_right_pane(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         dt: float,
         cx: float, cy: float, w: float, h: float,
@@ -322,7 +320,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn render_outline(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         dt: float,
         cx: float, cy: float, w: float, h: float,
@@ -394,7 +392,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn render_hovered_pic(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         cx: float, cy: float, w: float, h: float,
     ) {
@@ -422,7 +420,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
         );
     }
 
-    pub fn draw_version(self: ref<Self>, ui: box<radiance.IUiHost>) {
+    pub fn draw_version(self: refmut<Self>, ui: box<radiance.IUiHost>) {
         ui.style_color(
             title_consts.SC_TEXT, 0.5, 0.5, 0.5, 1.0, () => {
                 let h = ui.display_size_y() as float;
@@ -433,7 +431,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     }
 
     pub fn update(
-        self: ref<Self>,
+        self: refmut<Self>,
         dt: float,
     ) -> ?box<radiance.IDirector> {
         let code = self.intent;
@@ -517,14 +515,14 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     pub intent: int,
     pub intent_arg: int,
 ) {
-    pub fn activate(self: ref<Self>) -> int {
+    pub fn activate(self: refmut<Self>) -> int {
         self.intent = title_consts.INTENT_NONE;
         self.intent_arg = 0;
         0
     }
-    pub fn deactivate(self: ref<Self>) -> int { 0 }
+    pub fn deactivate(self: refmut<Self>) -> int { 0 }
 
-    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.style_color(
             title_consts.SC_WINDOW_BG,
             title_consts.BG_R, title_consts.BG_G, title_consts.BG_B, title_consts.BG_A,
@@ -561,7 +559,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
         0
     }
 
-    pub fn render_row(self: ref<Self>, ui: box<radiance.IUiHost>, ordinal: int) {
+    pub fn render_row(self: refmut<Self>, ui: box<radiance.IUiHost>, ordinal: int) {
         ui.table_next_column();
         ui.text(settings_game_name(ordinal));
         ui.table_next_column();
@@ -584,7 +582,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     // `SceneScaleMode` once at startup and builds its swapchain
     // accordingly; live-swapping render passes mid-frame is out of
     // scope for v1.
-    pub fn render_render_settings(self: ref<Self>, ui: box<radiance.IUiHost>) {
+    pub fn render_render_settings(self: refmut<Self>, ui: box<radiance.IUiHost>) {
         let cfg = self.host.config();
         let current = cfg.get_scene_scale_mode();
         let is_logical = current == "logical";
@@ -604,7 +602,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     }
 
     pub fn update(
-        self: ref<Self>,
+        self: refmut<Self>,
         dt: float,
     ) -> ?box<radiance.IDirector> {
         let code = self.intent;

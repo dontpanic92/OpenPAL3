@@ -62,25 +62,25 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
     pub curtain: float,
     pub indicator_t: float,
 ) {
-    pub fn set_avatar(self: ref<Self>, role: string, face: string, side: int) -> int {
+    pub fn set_avatar(self: refmut<Self>, role: string, face: string, side: int) -> int {
         let path = "/basedata/basedata/ROLE/" + role + "/" + face + ".tga";
         self.avatar = self.sprites.load_sprite(path);
         self.avatar_side = side;
         0
     }
 
-    pub fn clear_avatar(self: ref<Self>) -> int {
+    pub fn clear_avatar(self: refmut<Self>) -> int {
         self.avatar = null;
         0
     }
 
-    pub fn set_curtain(self: ref<Self>, value: float) -> int {
+    pub fn set_curtain(self: refmut<Self>, value: float) -> int {
         self.curtain = value;
         0
     }
 
     pub fn render_dialog(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         text: string,
         dt: float,
@@ -178,7 +178,7 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
     }
 
     pub fn render_text(
-        self: ref<Self>,
+        self: refmut<Self>,
         ui: box<radiance.IUiHost>,
         text: string,
         dialog_x: float,
@@ -239,7 +239,7 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
         0
     }
 
-    pub fn render_curtain(self: ref<Self>, ui: box<radiance.IUiHost>) -> int {
+    pub fn render_curtain(self: refmut<Self>, ui: box<radiance.IUiHost>) -> int {
         let c = self.curtain;
         if c == 0.0 { return 0; }
 
