@@ -435,6 +435,12 @@ fn parse_post_command(url: &str, req: &mut Request) -> Result<AgentCommand, Agen
         // director from the slot when at the menu. `EnterLoadGame` survives
         // only as the internal "fresh-boot from slot" intent.
         "/v1/menu/exit" => AgentCommand::ExitGame,
+        "/v1/camera/debug" => {
+            AgentCommand::SetDebugCamera(parse::<crate::protocol::DebugCameraParams>(&body)?)
+        }
+        "/v1/camera/pose" => {
+            AgentCommand::SetCamera(parse::<crate::protocol::CameraPoseParams>(&body)?)
+        }
         _ => {
             return Err(AgentError::bad_request(format!(
                 "unknown POST route: {url}"

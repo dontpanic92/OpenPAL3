@@ -115,6 +115,9 @@ impl AgentSession for NullAgentSession {
             dt: 0.0,
             inventory: Vec::new(),
             world_map_open: false,
+            debug_camera: false,
+            camera_eye: [0.0; 3],
+            camera_target: [0.0; 3],
         }
     }
 }

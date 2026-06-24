@@ -129,6 +129,16 @@ impl Pal5StoryDirector {
                 ui.text("WASD move  Q/E up/down  arrows look  ` exit");
             });
     }
+    /// Whether the free-fly debug camera is currently active. Enabled by
+    /// either the keyboard toggle (`` ` ``) or the agent server
+    /// (`/v1/camera/debug` → `AgentBridge::debug_cam`).
+    fn debug_cam_active(&self) -> bool {
+        self.debug_cam.get()
+            || self
+                .agent_bridge
+                .as_ref()
+                .map_or(false, |b| b.debug_cam.get())
+    }
 }
 
 impl IDirectorImpl for Pal5StoryDirector {
@@ -140,7 +150,7 @@ impl IDirectorImpl for Pal5StoryDirector {
         // so neither the story nor the scripted camera advance — and
         // drive the scene camera manually instead.
         self.handle_debug_cam_toggle();
-        if self.debug_cam.get() {
+        if self.debug_cam_active() {
             if let Some(scene) = self.scene_manager.scene() {
                 self.free_view.update(scene, delta_sec);
             }

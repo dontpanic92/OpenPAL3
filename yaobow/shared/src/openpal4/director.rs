@@ -1412,6 +1412,7 @@ impl OpenPAL4Director {
             dt,
             inventory,
             world_map_open: app.session().world_map_open(),
+            ..Default::default()
         }
     }
 }

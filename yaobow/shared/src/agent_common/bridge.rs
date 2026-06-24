@@ -89,6 +89,12 @@ pub struct AgentBridge {
     /// to skip scripted waits, dialog waits, movie playback, etc.
     pub fast_forward: Cell<bool>,
 
+    /// Whether the free-fly debug camera is enabled. Set by the agent
+    /// surface (`/v1/camera/debug`); read by the per-game director,
+    /// which freezes the plot and drives the scene camera manually
+    /// while it is `true`. Generic so any game can honor it.
+    pub debug_cam: Cell<bool>,
+
     /// Latest published FPS / per-frame `dt`. Mirrors the values the
     /// debug overlay already maintains; lets the agent snapshot
     /// expose them without re-doing the smoothing math.
@@ -115,6 +121,7 @@ impl AgentBridge {
             requested_steps: Cell::new(0),
             requested_dt: Cell::new(0.0),
             fast_forward: Cell::new(false),
+            debug_cam: Cell::new(false),
             fps_display: Cell::new(0.0),
             dt_display: Cell::new(0.0),
         }

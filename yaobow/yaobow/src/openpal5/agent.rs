@@ -63,6 +63,22 @@ pub fn dispatch_pal5_command(ctx: &Pal5DispatchCtx, command: AgentCommand) -> Ag
             AgentResponse::Ok
         }
         C::Screenshot => handlers::handle_screenshot(ctx.bridge),
+        C::SetDebugCamera(p) => {
+            ctx.bridge.debug_cam.set(p.enabled);
+            AgentResponse::Ok
+        }
+        C::SetCamera(p) => match ctx.context.as_ref() {
+            Some(context) => {
+                use radiance::math::Vec3;
+                let eye = Vec3::new(p.eye[0], p.eye[1], p.eye[2]);
+                let target = Vec3::new(p.target[0], p.target[1], p.target[2]);
+                context.borrow_mut().set_camera_pose(eye, target);
+                AgentResponse::Ok
+            }
+            None => AgentResponse::err(AgentError::bad_request(
+                "PAL5 scene not ready: no camera to pose yet",
+            )),
+        },
         C::LogTail(_) => AgentResponse::err(AgentError::internal(
             "log_tail must not be queued; served by transport",
         )),
@@ -125,6 +141,7 @@ pub fn build_snapshot(ctx: &Pal5DispatchCtx) -> StateSnapshot {
         fast_forward: ctx.bridge.fast_forward.get(),
         fps: ctx.bridge.fps_display.get(),
         dt: ctx.bridge.dt_display.get(),
+        debug_camera: ctx.bridge.debug_cam.get(),
         ..Default::default()
     };
 
@@ -136,6 +153,9 @@ pub fn build_snapshot(ctx: &Pal5DispatchCtx) -> StateSnapshot {
         }
         // The VM is "running" whenever it isn't parked in a `Wait`.
         snap.script_running = !context.is_sleeping();
+        let (eye, look) = context.camera_pose();
+        snap.camera_eye = [eye.x, eye.y, eye.z];
+        snap.camera_target = [look.x, look.y, look.z];
     }
 
     // PAL5 dialog text isn't structured for the agent yet; leave the

@@ -51,7 +51,7 @@ appropriate HTTP status:
 
 | Method | Path                                | Description |
 | ------ | ----------------------------------- | ----------- |
-| `GET`  | `/v1/state`                         | Full snapshot: scene/block, leader pos, party HP/MP, money, dialog (text + open + avatar + `choices[]`), `inventory[]`, fps, pause flag, `script_running`, `movie_playing`, current script function. |
+| `GET`  | `/v1/state`                         | Full snapshot: scene/block, leader pos, party HP/MP, money, dialog (text + open + avatar + `choices[]`), `inventory[]`, fps, pause flag, `script_running`, `movie_playing`, current script function, `debug_camera` flag, and `camera_eye` / `camera_target` (world-space camera pose). |
 | `GET`  | `/v1/log/tail?after_seq=N&n=M`      | Ring-buffered log records since `after_seq`. The `dropped` flag warns when records were evicted before the caller polled. |
 | `GET`  | `/v1/screenshot`                    | **Binary `image/png`** of the most recently presented swapchain frame (includes UI). Response carries `X-Screenshot-Width` / `X-Screenshot-Height` headers. Returns **501** when no frame has been presented yet, when the swapchain format is unsupported, or in headless builds without a presentable surface. |
 | `GET`  | `/v1/scene/triggers`                | EVF event triggers for the currently loaded block: `{name, function, center, half_size, shape}`. `shape` is `"box"` (8 vertices), `"plane"` (4 vertices), or `"other"` — `"other"` triggers are skipped by the live engine but still surfaced here for inspection. |
@@ -74,6 +74,19 @@ appropriate HTTP status:
 
 `action: "tap"` emits one frame of `pressed + released + is_down` and
 naturally goes back to `up` next frame. `down` / `up` are sticky.
+
+### Camera
+
+Generic camera / debug-inspection control. Currently dispatched by
+**PAL5 only** (other games return **501** `not_implemented`).
+
+| Method | Path                                | Body                                                  |
+| ------ | ----------------------------------- | ----------------------------------------------------- |
+| `POST` | `/v1/camera/debug`                  | `{"enabled":true}` — enable/disable the free-fly debug camera. While enabled the plot is **frozen** (the script VM and scripted camera stop advancing) so the scene can be inspected and the camera posed without the story overwriting it. Equivalent to the in-game `` ` ``/tilde toggle. |
+| `POST` | `/v1/camera/pose`                   | `{"eye":[x,y,z],"target":[x,y,z]}` — place the camera at an absolute world-space eye position looking at an absolute target point. **Stable only while `/v1/camera/debug` is enabled** (plot frozen); otherwise the next scripted camera command overwrites it on the following frame. Returns **400** when no scene/camera exists yet. |
+
+The resulting pose is reflected in `/v1/state.camera_eye` /
+`camera_target`, and `/v1/screenshot` captures the new viewpoint.
 
 ### Time
 
@@ -457,6 +470,7 @@ add snapshot construction and the `not_implemented` routing.
 | `POST /v1/time/fast_forward`          | **Supported** | Collapses pending `Wait`/`sleep` and dismisses the current dialog so scripted waits skip |
 | `POST /v1/dialog/advance`             | **Supported** | Synthesises the Space tap the player presses to dismiss a story/talk box |
 | `GET  /v1/screenshot`                 | **Supported** | Last-frame readback via the shared bridge |
+| `POST /v1/camera/debug` / `pose`      | **PAL5 only** | Enable the free-fly debug camera (freezes the plot) and place the camera at an absolute eye + look-at target. SWD5 returns **not_implemented**. |
 | `GET  /v1/log/tail`                   | **Supported** | Served by the transport (shared `AgentLogSink`) |
 | `GET  /v1/perf`                       | **Supported** | `radiance::perf` snapshot |
 | save/load, `/v1/menu/*`, `/v1/load`   | **not_implemented** | Single bootstrap script — no persistence or mode graph yet |
@@ -476,6 +490,7 @@ add snapshot construction and the `not_implemented` routing.
 | `movie_playing`  | Always `false`                               | `true` while a bik movie is playing         |
 | `dialog`         | Always default — free-form text, not structured | Always default                           |
 | `frame` / `fps` / `dt` / `paused` / `fast_forward` | Driven by the shared bridge | Driven by the shared bridge |
+| `debug_camera` / `camera_eye` / `camera_target` | Set via `/v1/camera/*`; pose reflects the live scene camera | `debug_camera` always `false`, camera fields `[0,0,0]` (no camera control) |
 
 > **Single-director invariant.** PAL5/SWD5 only ever install their one
 > Lua story director (no menu/title mode), so the per-frame drainer

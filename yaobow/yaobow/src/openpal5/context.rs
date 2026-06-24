@@ -484,6 +484,22 @@ impl Pal5ScriptContext {
         self.pending_lerp_ms = ms as f32;
     }
 
+    /// Place the camera at an absolute pose (used by the agent server's
+    /// `/v1/camera/pose`). Cancels any in-flight lerp and pending-lerp
+    /// request so the pose is not immediately animated away. Stable only
+    /// while the debug camera is enabled (plot frozen); otherwise the
+    /// next scripted camera command will overwrite it.
+    pub fn set_camera_pose(&mut self, eye: Vec3, look: Vec3) {
+        self.lerp = None;
+        self.pending_lerp_ms = 0.0;
+        self.apply_camera(eye, look);
+    }
+
+    /// Current camera pose `(eye, look)` for the agent state snapshot.
+    pub fn camera_pose(&self) -> (Vec3, Vec3) {
+        (self.cam_eye, self.cam_look)
+    }
+
     // ---- command handlers: effect --------------------------------
 
     pub fn effect_fade_in(&mut self, _arg: f64, speed: f64) {

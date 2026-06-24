@@ -139,6 +139,20 @@ pub enum AgentCommand {
 
     /// Quit the application.
     ExitGame,
+
+    /// Enable / disable the free-fly debug camera. While enabled the
+    /// plot is frozen (the script VM and scripted camera stop
+    /// advancing) so the scene can be inspected and the camera posed
+    /// arbitrarily. Generic across games; currently dispatched only by
+    /// PAL5.
+    SetDebugCamera(DebugCameraParams),
+
+    /// Place the scene camera at an absolute eye position looking at an
+    /// absolute target point. Stable only while the debug camera is
+    /// enabled (plot frozen); otherwise scripted camera commands may
+    /// overwrite the pose on the next frame. Generic across games;
+    /// currently dispatched only by PAL5.
+    SetCamera(CameraPoseParams),
 }
 
 /// Top-level agent response. Mirrors [`AgentCommand`] roughly but with
@@ -212,6 +226,22 @@ pub struct AxisInputParams {
 pub struct TeleportParams {
     pub player: i32,
     pub pos: [f32; 3],
+}
+
+/// Toggle for the free-fly debug camera (plot freeze).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct DebugCameraParams {
+    pub enabled: bool,
+}
+
+/// Absolute camera pose: eye position + look-at target point, both in
+/// world space.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct CameraPoseParams {
+    /// Camera eye position `[x, y, z]`.
+    pub eye: [f32; 3],
+    /// World-space point the camera looks at `[x, y, z]`.
+    pub target: [f32; 3],
 }
 
 /// Fixed-step tick request.
@@ -368,6 +398,15 @@ pub struct StateSnapshot {
     /// continuation completes.
     #[serde(default)]
     pub world_map_open: bool,
+    /// `true` while the free-fly debug camera is enabled (plot frozen).
+    #[serde(default)]
+    pub debug_camera: bool,
+    /// Current camera eye position `[x, y, z]` in world space.
+    #[serde(default)]
+    pub camera_eye: [f32; 3],
+    /// Current camera look-at target `[x, y, z]` in world space.
+    #[serde(default)]
+    pub camera_target: [f32; 3],
 }
 
 /// One inventory line item in [`StateSnapshot::inventory`].
