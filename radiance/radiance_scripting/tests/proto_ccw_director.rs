@@ -34,11 +34,11 @@ struct[radiance.IDirector] StubDir(
     seed: int,
     return_self: int,
 ) {
-    pub fn activate(self: ref<Self>) -> int {
+    pub fn activate(self: refmut<Self>) -> int {
         record_event(self.seed, 1);
         0
     }
-    pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
+    pub fn update(self: refmut<Self>, dt: float) -> ?box<radiance.IDirector> {
         record_event(self.seed, 2);
         if self.return_self != 0 {
             let next = box(StubDir(self.seed + 100, 0));
@@ -46,7 +46,7 @@ struct[radiance.IDirector] StubDir(
         }
         return null;
     }
-    pub fn deactivate(self: ref<Self>) -> int {
+    pub fn deactivate(self: refmut<Self>) -> int {
         // Phase 4 release hook fires this on final ComRc drop.
         record_event(self.seed, 3);
         0

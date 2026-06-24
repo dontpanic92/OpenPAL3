@@ -34,15 +34,15 @@ fn record_event(seed: int, event: int);
 struct[radiance.IComponent] StubComp(
     seed: int,
 ) {
-    pub fn on_loading(self: ref<Self>) -> int {
+    pub fn on_loading(self: refmut<Self>) -> int {
         record_event(self.seed, 1);
         0
     }
-    pub fn on_updating(self: ref<Self>, dt: float) -> int {
+    pub fn on_updating(self: refmut<Self>, dt: float) -> int {
         record_event(self.seed, 2);
         0
     }
-    pub fn on_unloading(self: ref<Self>) -> int {
+    pub fn on_unloading(self: refmut<Self>) -> int {
         record_event(self.seed, 3);
         0
     }

@@ -26,15 +26,15 @@ fn record_event(seed: int, event: int);
 struct[radiance.IDirector] StubDir(
     seed: int,
 ) {
-    pub fn activate(self: ref<Self>) -> int {
+    pub fn activate(self: refmut<Self>) -> int {
         record_event(self.seed, 1);
         0
     }
-    pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
+    pub fn update(self: refmut<Self>, dt: float) -> ?box<radiance.IDirector> {
         record_event(self.seed, 2);
         return null;
     }
-    pub fn deactivate(self: ref<Self>) -> int {
+    pub fn deactivate(self: refmut<Self>) -> int {
         record_event(self.seed, 3);
         0
     }

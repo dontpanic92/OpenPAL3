@@ -519,6 +519,7 @@ fn load_dff(
                 ignore_root_frame_translation: false,
 
                 bsp_lightmap_tint: None,
+                dynamic_lighting: false,
             },
         )
         .map_err(|e| {
@@ -546,6 +547,7 @@ fn load_dff(
                 ignore_root_frame_translation: false,
 
                 bsp_lightmap_tint: None,
+                dynamic_lighting: false,
             },
         )
         .map_err(|e| {

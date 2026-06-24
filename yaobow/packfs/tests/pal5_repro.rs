@@ -23,6 +23,7 @@ fn clean_len(buf: &[u8]) -> usize {
 }
 
 #[test]
+#[ignore = "reverse-engineering probe; requires a local F:/PAL5/script.pkg disc dump"]
 fn find_length_field() {
     let mut ar = PkgArchive::load(reader(), "Y%H^uz6i").unwrap();
     let entries: Vec<_> = ar

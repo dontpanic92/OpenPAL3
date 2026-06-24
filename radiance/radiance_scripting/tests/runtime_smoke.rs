@@ -80,10 +80,10 @@ import radiance;
 import radiance;
 
 pub struct[radiance.IUiLayer, radiance.IDirector] First(pub trigger: box<array<int>>) {
-    pub fn activate(self: ref<Self>) -> int { 0 }
-    pub fn deactivate(self: ref<Self>) -> int { 0 }
-    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
-    pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
+    pub fn activate(self: refmut<Self>) -> int { 0 }
+    pub fn deactivate(self: refmut<Self>) -> int { 0 }
+    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
+    pub fn update(self: refmut<Self>, dt: float) -> ?box<radiance.IDirector> {
         if self.trigger[0] != 0 {
             self.trigger[0] = 0;
             return make_second();
@@ -93,10 +93,10 @@ pub struct[radiance.IUiLayer, radiance.IDirector] First(pub trigger: box<array<i
 }
 
 pub struct[radiance.IUiLayer, radiance.IDirector] Second() {
-    pub fn activate(self: ref<Self>) -> int { 0 }
-    pub fn deactivate(self: ref<Self>) -> int { 0 }
-    pub fn render(self: ref<Self>, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
-    pub fn update(self: ref<Self>, dt: float) -> ?box<radiance.IDirector> {
+    pub fn activate(self: refmut<Self>) -> int { 0 }
+    pub fn deactivate(self: refmut<Self>) -> int { 0 }
+    pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int { 0 }
+    pub fn update(self: refmut<Self>, dt: float) -> ?box<radiance.IDirector> {
         return null;
     }
 }

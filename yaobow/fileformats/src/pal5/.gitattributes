@@ -1,0 +1,4 @@
+# Decryptor test fixtures are exact binary blobs; never normalize line endings.
+test_fixture.sdfa -text
+test_fixture.plain -text
+blowfish_key.bin -text

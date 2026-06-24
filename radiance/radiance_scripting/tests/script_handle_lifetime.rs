@@ -25,7 +25,7 @@ fn capture_action(body: box<crosscom.IAction>);
 fn record_invocation();
 
 struct[crosscom.IAction] Callback() {
-    pub fn invoke(self: ref<Self>) -> int {
+    pub fn invoke(self: refmut<Self>) -> int {
         record_invocation();
         0
     }
