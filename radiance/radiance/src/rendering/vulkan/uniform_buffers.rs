@@ -1,4 +1,5 @@
 use super::buffer::{Buffer, BufferType};
+use super::shadow_map::CASCADE_COUNT;
 use crate::math::Mat44;
 use crate::rendering::vulkan::descriptor_managers::DynamicUniformBufferDescriptorManager;
 use ash::vk;
@@ -147,10 +148,15 @@ pub struct PerFrameUniformBuffer {
     sun_dir: [f32; 4],
     /// Directional sun color (`rgb`; `w` reserved).
     sun_color: [f32; 4],
-    /// Sun's light-space view-projection (world → shadow-map clip space),
-    /// with the Vulkan clip (Y-flip + `[0,1]` depth) remap already folded in.
-    /// Meaningful only when `shadow_params.x >= 0.5`.
-    light_view_proj: Mat44,
+    /// Per-cascade sun light-space view-projections (world → shadow-map clip
+    /// space), Vulkan clip remap folded in. Meaningful only when
+    /// `shadow_params.x >= 0.5`. Index with the cascade selected by view-space
+    /// depth.
+    light_view_proj: [Mat44; CASCADE_COUNT],
+    /// View-space far-edge depth of each cascade (positive, increasing). The
+    /// lit shaders pick the first cascade whose split `>=` the fragment's
+    /// view-space depth. Lane `w` is spare.
+    cascade_splits: [f32; 4],
     /// Shadow sampling parameters: `x` = enabled flag (`1.0`/`0.0`),
     /// `y` = depth-compare bias, `z` = shadow-map texel size (`1 / size`),
     /// `w` = PCF kernel radius (in texels).
@@ -172,7 +178,8 @@ impl PerFrameUniformBuffer {
             light_color: [[0.0; 4]; MAX_SCENE_LIGHTS],
             sun_dir: [0.0; 4],
             sun_color: [0.0; 4],
-            light_view_proj: Mat44::new_identity(),
+            light_view_proj: [Mat44::new_identity(); CASCADE_COUNT],
+            cascade_splits: [0.0; 4],
             shadow_params: [0.0; 4],
         }
     }
@@ -209,20 +216,28 @@ impl PerFrameUniformBuffer {
         }
     }
 
-    /// Stamp the directional shadow map's light-space matrix + sampling
-    /// parameters into the per-frame UBO. `Some((light_view_proj, params))`
-    /// enables shadow sampling in the lit fragment shaders; `None` disables it
-    /// (`shadow_params.x = 0`), leaving the matrix at identity. `params` lanes:
-    /// `[enabled, bias, 1/size, pcf_radius]` (the `enabled` lane the caller
-    /// supplies is overwritten with `1.0` here for clarity).
-    pub fn set_shadow(&mut self, shadow: Option<(Mat44, [f32; 4])>) {
+    /// Stamp the directional CSM's per-cascade light-space matrices, cascade
+    /// split depths, and sampling parameters into the per-frame UBO.
+    /// `Some((matrices, splits, params))` enables shadow sampling; `None`
+    /// disables it (`shadow_params.x = 0`), leaving the matrices at identity.
+    /// `params` lanes: `[enabled, bias, 1/size, pcf_radius]` (the supplied
+    /// `enabled` lane is overwritten with `1.0` here).
+    pub fn set_shadow(
+        &mut self,
+        shadow: Option<([Mat44; CASCADE_COUNT], [f32; CASCADE_COUNT], [f32; 4])>,
+    ) {
         match shadow {
-            Some((light_view_proj, params)) => {
-                self.light_view_proj = light_view_proj;
+            Some((matrices, splits, params)) => {
+                self.light_view_proj = matrices;
+                self.cascade_splits = [0.0; 4];
+                for (i, s) in splits.iter().enumerate() {
+                    self.cascade_splits[i] = *s;
+                }
                 self.shadow_params = [1.0, params[1], params[2], params[3]];
             }
             None => {
-                self.light_view_proj = Mat44::new_identity();
+                self.light_view_proj = [Mat44::new_identity(); CASCADE_COUNT];
+                self.cascade_splits = [0.0; 4];
                 self.shadow_params = [0.0; 4];
             }
         }

@@ -15,6 +15,7 @@ pub struct Image {
     width: u32,
     height: u32,
     mip_levels: u32,
+    array_layers: u32,
 }
 
 impl Image {
@@ -144,6 +145,46 @@ impl Image {
             vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
             1,
         )
+    }
+
+    /// Array variant of [`new_depth_sampled_image`]: a depth image with
+    /// `array_layers` layers, each usable as a depth-stencil attachment (one
+    /// framebuffer per layer) and the whole image sampled as a `2DArray`. Used
+    /// by the cascaded directional shadow map (one layer per cascade).
+    pub fn new_depth_array_sampled_image(
+        instance: &Instance,
+        physical_device: vk::PhysicalDevice,
+        allocator: &Rc<vk_mem::Allocator>,
+        tex_width: u32,
+        tex_height: u32,
+        array_layers: u32,
+    ) -> Result<Self, Box<dyn Error>> {
+        let format = Image::find_supported_format(
+            instance,
+            physical_device,
+            &vec![
+                vk::Format::D32_SFLOAT,
+                vk::Format::D24_UNORM_S8_UINT,
+                vk::Format::D32_SFLOAT_S8_UINT,
+            ],
+            vk::ImageTiling::OPTIMAL,
+            vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT
+                | vk::FormatFeatureFlags::SAMPLED_IMAGE,
+        )?;
+
+        Self::new_layered(
+            allocator,
+            tex_width,
+            tex_height,
+            format,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+            1,
+            array_layers,
+        )
+    }
+
+    pub fn array_layers(&self) -> u32 {
+        self.array_layers
     }
 
     pub fn width(&self) -> u32 {
@@ -290,7 +331,7 @@ impl Image {
                     .level_count(level_count)
                     .base_mip_level(base_mip)
                     .base_array_layer(0)
-                    .layer_count(1),
+                    .layer_count(self.array_layers),
             )
             .src_access_mask(src_access_mask)
             .dst_access_mask(dst_access_mask);
@@ -418,7 +459,20 @@ impl Image {
         usage: vk::ImageUsageFlags,
         mip_levels: u32,
     ) -> Result<Self, Box<dyn Error>> {
+        Self::new_layered(allocator, tex_width, tex_height, format, usage, mip_levels, 1)
+    }
+
+    fn new_layered(
+        allocator: &Rc<vk_mem::Allocator>,
+        tex_width: u32,
+        tex_height: u32,
+        format: vk::Format,
+        usage: vk::ImageUsageFlags,
+        mip_levels: u32,
+        array_layers: u32,
+    ) -> Result<Self, Box<dyn Error>> {
         let mip_levels = mip_levels.max(1);
+        let array_layers = array_layers.max(1);
         let create_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(
@@ -428,7 +482,7 @@ impl Image {
                     .depth(1),
             )
             .mip_levels(mip_levels)
-            .array_layers(1)
+            .array_layers(array_layers)
             .format(format)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
@@ -451,6 +505,7 @@ impl Image {
             width: tex_width,
             height: tex_height,
             mip_levels,
+            array_layers,
         })
     }
 

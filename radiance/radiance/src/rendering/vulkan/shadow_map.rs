@@ -27,9 +27,13 @@ use super::image::Image;
 use super::image_view::ImageView;
 use super::instance::Instance;
 
-/// Square shadow-map resolution. 2048² balances coverage vs. memory for the
-/// single-map scope.
+/// Square shadow-map resolution. 2048² per cascade balances coverage vs.
+/// memory for the cascaded scope.
 pub const SHADOW_MAP_SIZE: u32 = 2048;
+
+/// Number of cascades in the directional CSM. Each is a depth-array layer with
+/// its own light frustum fit to a slice of the camera view frustum.
+pub const CASCADE_COUNT: usize = 3;
 
 /// Depth-compare bias (in light-space `[0,1]` depth units) used by the lit
 /// shaders to fight shadow acne. Paired with the pipeline's slope-scaled depth
@@ -38,6 +42,23 @@ pub const SHADOW_BIAS: f32 = 0.0015;
 
 /// PCF kernel radius in texels (3×3 → radius 1).
 pub const SHADOW_PCF_RADIUS: f32 = 1.0;
+
+/// World-space margin added to each cascade's near/far span so casters standing
+/// above the slice (taller than the frustum slice) still write depth.
+pub const CASCADE_CASTER_MARGIN: f32 = 200.0;
+
+/// Practical-split blend between logarithmic (1.0) and uniform (0.0) cascade
+/// distribution. 0.5 favours near-camera resolution without starving the far
+/// cascade.
+pub const CASCADE_SPLIT_LAMBDA: f32 = 0.5;
+
+/// Upper bound (world units) on the shadow distance. The camera far plane is
+/// huge (whole map visible), so this caps the cascaded range as a safety net
+/// when no caster band is available. When the visible-caster depth band is
+/// known (the common case), the cascades are fitted to that band instead, so
+/// this only matters as an absolute clamp — keep it generous enough not to
+/// clip a normal scene's far geometry.
+pub const SHADOW_FAR_CAP: f32 = 4000.0;
 
 static SHADOW_DEPTH_VERT: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/shadow_depth.vert.spv"));
@@ -60,9 +81,13 @@ pub struct ShadowMap {
     device: Rc<Device>,
 
     _depth_image: Image,
-    depth_view: ImageView,
+    /// One single-layer depth view per cascade (framebuffer attachments).
+    _layer_views: Vec<ImageView>,
+    /// `2DArray` view spanning all cascades (sampled by the lit shaders).
+    array_view: ImageView,
     render_pass: vk::RenderPass,
-    framebuffer: vk::Framebuffer,
+    /// One framebuffer per cascade layer.
+    framebuffers: Vec<vk::Framebuffer>,
     sampler: vk::Sampler,
 
     vert_module: vk::ShaderModule,
@@ -78,30 +103,46 @@ impl ShadowMap {
         physical_device: vk::PhysicalDevice,
         allocator: &Rc<vk_mem::Allocator>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let depth_image = Image::new_depth_sampled_image(
+        let depth_image = Image::new_depth_array_sampled_image(
             &instance.vk_instance(),
             physical_device,
             allocator,
             SHADOW_MAP_SIZE,
             SHADOW_MAP_SIZE,
+            CASCADE_COUNT as u32,
         )?;
         let depth_format = depth_image.vk_format();
-        let depth_view = ImageView::new_depth_image_view(
-            device.clone(),
-            depth_image.vk_image(),
-            depth_format,
-        )?;
 
         let render_pass = create_shadow_render_pass(&device, depth_format)?;
 
-        let attachments = [depth_view.vk_image_view()];
-        let fb_info = vk::FramebufferCreateInfo::default()
-            .render_pass(render_pass)
-            .attachments(&attachments)
-            .layers(1)
-            .width(SHADOW_MAP_SIZE)
-            .height(SHADOW_MAP_SIZE);
-        let framebuffer = device.create_framebuffer(&fb_info)?;
+        // Per-cascade single-layer views + framebuffers, plus one array view for
+        // sampling.
+        let mut layer_views = Vec::with_capacity(CASCADE_COUNT);
+        let mut framebuffers = Vec::with_capacity(CASCADE_COUNT);
+        for layer in 0..CASCADE_COUNT as u32 {
+            let view = ImageView::new_depth_layer_view(
+                device.clone(),
+                depth_image.vk_image(),
+                depth_format,
+                layer,
+            )?;
+            let attachments = [view.vk_image_view()];
+            let fb_info = vk::FramebufferCreateInfo::default()
+                .render_pass(render_pass)
+                .attachments(&attachments)
+                .layers(1)
+                .width(SHADOW_MAP_SIZE)
+                .height(SHADOW_MAP_SIZE);
+            framebuffers.push(device.create_framebuffer(&fb_info)?);
+            layer_views.push(view);
+        }
+
+        let array_view = ImageView::new_depth_array_view(
+            device.clone(),
+            depth_image.vk_image(),
+            depth_format,
+            CASCADE_COUNT as u32,
+        )?;
 
         let sampler = super::descriptor_managers::create_shadow_sampler(&device)?;
 
@@ -110,17 +151,19 @@ impl ShadowMap {
         Ok(Self {
             device,
             _depth_image: depth_image,
-            depth_view,
+            _layer_views: layer_views,
+            array_view,
             render_pass,
-            framebuffer,
+            framebuffers,
             sampler,
             vert_module,
             pipelines: RefCell::new(HashMap::new()),
         })
     }
 
+    /// `2DArray` view sampled by the lit fragment shaders (binding 1, set 0).
     pub fn image_view(&self) -> vk::ImageView {
-        self.depth_view.vk_image_view()
+        self.array_view.vk_image_view()
     }
 
     pub fn sampler(&self) -> vk::Sampler {
@@ -131,8 +174,9 @@ impl ShadowMap {
         self.render_pass
     }
 
-    pub fn framebuffer(&self) -> vk::Framebuffer {
-        self.framebuffer
+    /// Framebuffer for one cascade layer (depth pass target).
+    pub fn framebuffer(&self, cascade: usize) -> vk::Framebuffer {
+        self.framebuffers[cascade]
     }
 
     pub fn extent(&self) -> vk::Extent2D {
@@ -170,7 +214,15 @@ impl ShadowMap {
             descriptor_manager.per_frame_layout(),
             descriptor_manager.dub_layout(),
         ];
-        let layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(&set_layouts);
+        // 4-byte vertex push constant: the cascade index, used to pick
+        // `lightViewProj[cascade]` in the depth vertex shader.
+        let push_constant_ranges = [vk::PushConstantRange::default()
+            .stage_flags(vk::ShaderStageFlags::VERTEX)
+            .offset(0)
+            .size(std::mem::size_of::<u32>() as u32)];
+        let layout_info = vk::PipelineLayoutCreateInfo::default()
+            .set_layouts(&set_layouts)
+            .push_constant_ranges(&push_constant_ranges);
         let layout = self.device.create_pipeline_layout(&layout_info).unwrap();
 
         let entry = std::ffi::CString::new("main").unwrap();
@@ -285,7 +337,9 @@ impl Drop for ShadowMap {
     fn drop(&mut self) {
         self.pipelines.borrow_mut().clear();
         self.device.destroy_shader_module(self.vert_module);
-        self.device.destroy_framebuffer(self.framebuffer);
+        for fb in self.framebuffers.drain(..) {
+            self.device.destroy_framebuffer(fb);
+        }
         self.device.destroy_render_pass(self.render_pass);
         self.device.destroy_sampler(self.sampler);
     }
@@ -373,32 +427,44 @@ fn create_shader_module(
     device.create_shader_module(&create_info)
 }
 
-/// Compute the sun's light-space view-projection (world → shadow clip space)
+/// Build one cascade's light-space view-projection (world → shadow clip space)
 /// with the Vulkan clip (Y-flip + `[0,1]` depth) remap folded in, matching the
 /// scene shaders' row-vector (`v * M`) convention.
 ///
-/// The orthographic frustum is centered on `focus` (the visible casters' AABB
-/// center) with the given `half_extent` (half the visible casters' horizontal
-/// span), and looks from `focus + sun_dir * light_distance` back toward
-/// `focus`. The light distance and far plane scale with `half_extent` so the
-/// frustum always contains casters above/below the focus along the (often
-/// near-horizontal) sun direction. `sun_dir` is the unit direction from a
-/// surface **toward** the sun.
-pub fn light_view_proj(focus: Vec3, sun_dir: Vec3, half_extent: f32) -> Mat44 {
+/// `corners` are the 8 world-space corners of this cascade's slice of the
+/// camera view frustum. The light frustum is fit to the slice's **bounding
+/// sphere** (rotation-invariant, so the cascade size doesn't pulse as the
+/// camera turns), centered on the sphere, looking down `-sun_dir`. The near
+/// side is pushed back by `CASCADE_CASTER_MARGIN` so casters standing above the
+/// slice still write depth. `sun_dir` is the unit direction from a surface
+/// **toward** the sun.
+pub fn cascade_view_proj(corners: &[Vec3; 8], sun_dir: Vec3) -> Mat44 {
     let sun = Vec3::normalized(&sun_dir);
-    // Push the eye back far enough (relative to coverage) that the whole fit
-    // box stays in front of the near plane even for a grazing sun.
-    let light_distance = half_extent * 4.0;
-    let near = 1.0;
-    let far = half_extent * 8.0;
-    let eye = Vec3::add(&focus, &Vec3::scalar_mul(light_distance, &sun));
 
+    // Bounding sphere of the slice corners.
+    let mut center = Vec3::new_zeros();
+    for c in corners {
+        center = Vec3::add(&center, c);
+    }
+    center = Vec3::scalar_mul(1.0 / 8.0, &center);
+    let mut radius = 0.0f32;
+    for c in corners {
+        radius = radius.max(Vec3::sub(c, &center).norm());
+    }
+    radius = radius.max(1.0);
+
+    // Light "eye" pushed back along the sun direction; near/far span the sphere
+    // plus a margin for casters above the slice.
+    let back = radius + CASCADE_CASTER_MARGIN;
+    let eye = Vec3::add(&center, &Vec3::scalar_mul(back, &sun));
     let mut light = Transform::new();
     light.set_position(&eye);
-    light.look_at(&focus);
+    light.look_at(&center);
     let view = Mat44::inversed(light.matrix());
 
-    let proj = ortho(half_extent, near, far);
+    let near = 1.0;
+    let far = back + radius + CASCADE_CASTER_MARGIN;
+    let proj = ortho(radius, near, far);
 
     // Vulkan clip remap (GL `[-1,1]` z → `[0,1]`, flip Y), applied as `C * v`.
     let mut clip = Mat44::new_identity();

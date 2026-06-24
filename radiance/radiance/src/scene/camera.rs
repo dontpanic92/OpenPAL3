@@ -81,6 +81,25 @@ impl Camera {
         &self.projection
     }
 
+    /// Vertical-reference field of view (4:3 basis) in radians, as supplied to
+    /// the projection. Used by the shadow system to reconstruct the view
+    /// frustum's split corners.
+    pub fn fov43(&self) -> f32 {
+        self.fov43
+    }
+
+    pub fn aspect(&self) -> f32 {
+        self.aspect
+    }
+
+    pub fn near_clip(&self) -> f32 {
+        self.near_clip
+    }
+
+    pub fn far_clip(&self) -> f32 {
+        self.far_clip
+    }
+
     /// Build a six-plane view frustum in world space from the camera's
     /// current view + projection. Each plane is stored as
     /// `[nx, ny, nz, d]` with the inside-positive convention

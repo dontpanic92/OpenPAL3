@@ -123,6 +123,10 @@ pub struct VulkanRenderingEngine {
     scratch_cutout: Vec<Rc<VulkanRenderObject>>,
     scratch_transparent: Vec<(f32, usize, usize, Rc<VulkanRenderObject>)>,
     scratch_transparent_ordered: Vec<Rc<VulkanRenderObject>>,
+    // View-space depth band [near, far] of the visible shadow casters from the
+    // last `bucketize_visible`, used to fit the CSM cascade splits to actual
+    // scene geometry. `None` when nothing is visible.
+    scratch_caster_band: Option<(f32, f32)>,
 }
 
 impl RenderingEngine for VulkanRenderingEngine {
@@ -286,9 +290,8 @@ impl RenderingEngine for VulkanRenderingEngine {
             )
         };
 
-        // Editor render-target preview doesn't run a shadow pass; the focus is
-        // discarded.
-        let mut _shadow_focus: Option<([f32; 3], f32)> = None;
+        // Editor render-target preview doesn't run a shadow pass.
+        let mut caster_band = None;
         Self::bucketize_visible(
             &entities,
             &scene.camera(),
@@ -297,7 +300,7 @@ impl RenderingEngine for VulkanRenderingEngine {
             &mut self.scratch_cutout,
             &mut self.scratch_transparent,
             &mut self.scratch_transparent_ordered,
-            &mut _shadow_focus,
+            &mut caster_band,
         );
 
         // Update target's per-frame UBO with the scene's camera + lights.
@@ -765,6 +768,7 @@ impl VulkanRenderingEngine {
             scratch_cutout: Vec::new(),
             scratch_transparent: Vec::new(),
             scratch_transparent_ordered: Vec::new(),
+            scratch_caster_band: None,
             logical_extent,
         };
 
@@ -940,7 +944,6 @@ impl VulkanRenderingEngine {
         // When there's no scene (camera is None) entities is empty, so
         // skip bucketization entirely and clear the scratch buckets so
         // the empty 3D pass just clears the framebuffer.
-        let mut shadow_focus: Option<([f32; 3], f32)> = None;
         if let Some(cam) = camera {
             Self::bucketize_visible(
                 &entities,
@@ -950,7 +953,7 @@ impl VulkanRenderingEngine {
                 &mut self.scratch_cutout,
                 &mut self.scratch_transparent,
                 &mut self.scratch_transparent_ordered,
-                &mut shadow_focus,
+                &mut self.scratch_caster_band,
             );
         } else {
             self.scratch_components.clear();
@@ -958,6 +961,7 @@ impl VulkanRenderingEngine {
             self.scratch_cutout.clear();
             self.scratch_transparent.clear();
             self.scratch_transparent_ordered.clear();
+            self.scratch_caster_band = None;
         }
 
         // Shadows run only when the scene has a directional sun (and a camera
@@ -991,27 +995,25 @@ impl VulkanRenderingEngine {
                     ubo.set_lighting(lighting.0, &lighting.1);
                     ubo.set_sun(lighting.2);
 
-                    // Directional shadow map: fit the light frustum to the
-                    // visible casters (center + half-extent), then project
-                    // casters from the sun.
+                    // Directional CSM: fit one light frustum per camera-view
+                    // cascade and upload the per-cascade matrices + split
+                    // depths.
                     if let Some((sun_dir, _)) = lighting.2 {
-                        if let Some((f, half)) = shadow_focus {
-                            let focus = Vec3::new(f[0], f[1], f[2]);
-                            let lvp = super::shadow_map::light_view_proj(
-                                focus,
-                                Vec3::new(sun_dir[0], sun_dir[1], sun_dir[2]),
-                                half,
-                            );
-                            ubo.set_shadow(Some((
-                                lvp,
-                                [
-                                    1.0,
-                                    super::shadow_map::SHADOW_BIAS,
-                                    1.0 / super::shadow_map::SHADOW_MAP_SIZE as f32,
-                                    super::shadow_map::SHADOW_PCF_RADIUS,
-                                ],
-                            )));
-                        }
+                        let (matrices, splits) = Self::compute_cascades(
+                            cam,
+                            Vec3::new(sun_dir[0], sun_dir[1], sun_dir[2]),
+                            self.scratch_caster_band,
+                        );
+                        ubo.set_shadow(Some((
+                            matrices,
+                            splits,
+                            [
+                                1.0,
+                                super::shadow_map::SHADOW_BIAS,
+                                1.0 / super::shadow_map::SHADOW_MAP_SIZE as f32,
+                                super::shadow_map::SHADOW_PCF_RADIUS,
+                            ],
+                        )));
                     }
                     ubo
                 }
@@ -1124,20 +1126,97 @@ impl VulkanRenderingEngine {
     /// using camera distance + a stable tie-break, then projected into
     /// `transparent_ordered_out` for the renderer.
     ///
+    /// Compute the per-cascade light-space matrices and view-space split depths
+    /// for the directional CSM. Splits the camera view frustum along depth
+    /// (practical split, blending log + uniform) over `[near, min(far, cap)]`,
+    /// then fits a light frustum to each slice's world corners.
+    fn compute_cascades(
+        camera: &Camera,
+        sun_dir: Vec3,
+        caster_band: Option<(f32, f32)>,
+    ) -> (
+        [Mat44; super::shadow_map::CASCADE_COUNT],
+        [f32; super::shadow_map::CASCADE_COUNT],
+    ) {
+        use super::shadow_map::{CASCADE_COUNT, CASCADE_SPLIT_LAMBDA, SHADOW_FAR_CAP};
+
+        // Camera world basis (right = col0, up = col1, forward = -col2).
+        let cm = camera.transform().matrix();
+        let cm = cm.floats();
+        let cam_pos = Vec3::new(cm[0][3], cm[1][3], cm[2][3]);
+        let right = Vec3::normalized(&Vec3::new(cm[0][0], cm[1][0], cm[2][0]));
+        let up = Vec3::normalized(&Vec3::new(cm[0][1], cm[1][1], cm[2][1]));
+        let fwd = Vec3::normalized(&Vec3::new(-cm[0][2], -cm[1][2], -cm[2][2]));
+
+        // Half-extent of the view frustum per unit forward depth (from the
+        // projection diagonal): tan_h = 1 / proj[0][0], tan_v = 1 / proj[1][1].
+        let pm = camera.projection_matrix().floats();
+        let tan_h = 1.0 / pm[0][0];
+        let tan_v = 1.0 / pm[1][1];
+
+        // Distribute the cascades over the depth band the visible casters
+        // actually occupy, not the full camera near..far range. For the
+        // fixed 3/4 overhead RPG cameras, all geometry sits in a narrow band
+        // far from the camera; splitting the whole near..far_cap range would
+        // waste the near cascade on empty space and leave one huge low-res
+        // far cascade covering everything. Clamp the band into the camera's
+        // valid depth range and add a small margin so edge geometry isn't
+        // clipped by cascade selection.
+        let cam_near = camera.near_clip().max(1.0);
+        let cam_far = camera.far_clip().min(SHADOW_FAR_CAP).max(cam_near + 1.0);
+        let (near, far) = match caster_band {
+            Some((band_near, band_far)) if band_far > band_near => {
+                let margin = (band_far - band_near) * 0.05;
+                let n = (band_near - margin).max(cam_near);
+                let f = (band_far + margin).min(cam_far).max(n + 1.0);
+                (n, f)
+            }
+            _ => (cam_near, cam_far),
+        };
+
+
+        // Practical cascade split distances (view-space, increasing).
+        let mut splits = [0.0f32; CASCADE_COUNT];
+        for i in 0..CASCADE_COUNT {
+            let p = (i + 1) as f32 / CASCADE_COUNT as f32;
+            let log = near * (far / near).powf(p);
+            let uniform = near + (far - near) * p;
+            splits[i] = CASCADE_SPLIT_LAMBDA * log + (1.0 - CASCADE_SPLIT_LAMBDA) * uniform;
+        }
+
+        // Corners of the camera sub-frustum slice between forward depths `n`
+        // and `f`.
+        let slice_corners = |n: f32, f: f32| -> [Vec3; 8] {
+            let mut corners = [Vec3::new_zeros(); 8];
+            for (k, &d) in [n, f].iter().enumerate() {
+                let center = Vec3::add(&cam_pos, &Vec3::scalar_mul(d, &fwd));
+                let hw = d * tan_h;
+                let hv = d * tan_v;
+                let rx = Vec3::scalar_mul(hw, &right);
+                let uy = Vec3::scalar_mul(hv, &up);
+                let base = k * 4;
+                corners[base] = Vec3::add(&Vec3::add(&center, &rx), &uy);
+                corners[base + 1] = Vec3::add(&Vec3::sub(&center, &rx), &uy);
+                corners[base + 2] = Vec3::add(&Vec3::add(&center, &rx), &Vec3::scalar_mul(-1.0, &uy));
+                corners[base + 3] = Vec3::add(&Vec3::sub(&center, &rx), &Vec3::scalar_mul(-1.0, &uy));
+            }
+            corners
+        };
+
+        let mut matrices = [Mat44::new_identity(); CASCADE_COUNT];
+        let mut last = near;
+        for i in 0..CASCADE_COUNT {
+            let corners = slice_corners(last, splits[i]);
+            matrices[i] = super::shadow_map::cascade_view_proj(&corners, sun_dir);
+            last = splits[i];
+        }
+
+        (matrices, splits)
+    }
+
     /// Every output Vec is `clear()`ed (capacity retained) before
     /// population, so callers should pass the engine's persistent
     /// scratch fields to avoid per-frame allocations.
-    /// If a visible caster is a plausible *scene* object (not a skybox-scale
-    /// mesh), returns `true` so its world AABB can be folded into the shadow
-    /// frustum fit. Skybox / world-shell meshes have an enormous extent and
-    /// would blow up the fit, so they're rejected.
-    fn is_shadow_caster_aabb(wmin: [f32; 3], wmax: [f32; 3]) -> bool {
-        const MAX_EXTENT: f32 = 2000.0;
-        (wmax[0] - wmin[0]) < MAX_EXTENT
-            && (wmax[1] - wmin[1]) < MAX_EXTENT
-            && (wmax[2] - wmin[2]) < MAX_EXTENT
-    }
-
     fn bucketize_visible(
         entities: &[ComRc<IEntity>],
         camera: &Camera,
@@ -1146,21 +1225,14 @@ impl VulkanRenderingEngine {
         cutout_out: &mut Vec<Rc<VulkanRenderObject>>,
         transparent_out: &mut Vec<(f32, usize, usize, Rc<VulkanRenderObject>)>,
         transparent_ordered_out: &mut Vec<Rc<VulkanRenderObject>>,
-        shadow_focus_out: &mut Option<([f32; 3], f32)>,
+        caster_band_out: &mut Option<(f32, f32)>,
     ) {
         components_out.clear();
         opaque_out.clear();
         cutout_out.clear();
         transparent_out.clear();
         transparent_ordered_out.clear();
-        // World-space AABB of all visible (frustum-passing) non-skybox casters.
-        // Its center + horizontal half-extent define the shadow frustum fit, so
-        // shadows always cover what the camera currently sees. `None` means
-        // "nothing castable visible".
-        *shadow_focus_out = None;
-        let mut caster_min = [f32::INFINITY; 3];
-        let mut caster_max = [f32::NEG_INFINITY; 3];
-        let mut any_caster = false;
+        *caster_band_out = None;
 
         for entity in entities {
             if let Some(rc) = entity.get_rendering_component() {
@@ -1172,6 +1244,17 @@ impl VulkanRenderingEngine {
             let m = camera.transform().matrix();
             [m[0][3], m[1][3], m[2][3]]
         };
+        // Camera forward (= -col2 of the world transform), used to accumulate
+        // the view-space depth band the visible shadow casters occupy so the
+        // CSM split range can be fitted to actual geometry.
+        let cam_fwd = {
+            let m = camera.transform().matrix().floats();
+            let f = Vec3::new(-m[0][2], -m[1][2], -m[2][2]);
+            Vec3::normalized(&f)
+        };
+        let mut band_near = f32::MAX;
+        let mut band_far = f32::MIN;
+        let band_min_depth = camera.near_clip().max(1.0);
         let frustum = camera.frustum();
 
         let mut culled_count: u64 = 0;
@@ -1192,26 +1275,28 @@ impl VulkanRenderingEngine {
                         continue;
                     }
                 }
-                // Fold solid (opaque + cutout) casters into the shadow-fit AABB.
-                let fold_caster = |min: &mut [f32; 3], max: &mut [f32; 3], any: &mut bool| {
-                    if let Some((wmin, wmax)) = world_aabb {
-                        if Self::is_shadow_caster_aabb(wmin, wmax) {
-                            for i in 0..3 {
-                                min[i] = min[i].min(wmin[i]);
-                                max[i] = max[i].max(wmax[i]);
-                            }
-                            *any = true;
-                        }
-                    }
-                };
                 match vro.material().key().blend {
                     BlendMode::Opaque => {
-                        fold_caster(&mut caster_min, &mut caster_max, &mut any_caster);
-                        opaque_out.push(vro.clone())
+                        Self::accumulate_caster_band(
+                            world_aabb,
+                            &camera_world,
+                            &cam_fwd,
+                            band_min_depth,
+                            &mut band_near,
+                            &mut band_far,
+                        );
+                        opaque_out.push(vro.clone());
                     }
                     BlendMode::AlphaTest => {
-                        fold_caster(&mut caster_min, &mut caster_max, &mut any_caster);
-                        cutout_out.push(vro.clone())
+                        Self::accumulate_caster_band(
+                            world_aabb,
+                            &camera_world,
+                            &cam_fwd,
+                            band_min_depth,
+                            &mut band_near,
+                            &mut band_far,
+                        );
+                        cutout_out.push(vro.clone());
                     }
                     BlendMode::AlphaBlend | BlendMode::Additive | BlendMode::Multiply => {
                         let c = vro.local_centroid();
@@ -1231,20 +1316,6 @@ impl VulkanRenderingEngine {
                     }
                 }
             }
-        }
-        // Build the shadow frustum fit from the visible casters' AABB: focus =
-        // center, half-extent = half the larger horizontal span (clamped so the
-        // depth map keeps usable resolution and degenerate fits stay sane).
-        if any_caster {
-            let center = [
-                0.5 * (caster_min[0] + caster_max[0]),
-                0.5 * (caster_min[1] + caster_max[1]),
-                0.5 * (caster_min[2] + caster_max[2]),
-            ];
-            let half = 0.5
-                * (caster_max[0] - caster_min[0]).max(caster_max[2] - caster_min[2]);
-            let half = half.clamp(40.0, 1500.0);
-            *shadow_focus_out = Some((center, half));
         }
         crate::perf::gauge("vulkan.render.total_vros", total_count);
         crate::perf::gauge("vulkan.render.culled_vros", culled_count);
@@ -1273,6 +1344,58 @@ impl VulkanRenderingEngine {
                 .then(a.2.cmp(&b.2))
         });
         transparent_ordered_out.extend(transparent_out.iter().map(|(_, _, _, ro)| ro.clone()));
+
+        if band_far > band_near {
+            *caster_band_out = Some((band_near.max(0.0), band_far));
+        }
+    }
+
+    /// Expand the running view-space depth band `[band_near, band_far]` to
+    /// include a visible caster's world AABB. Camera-centered skybox-scale
+    /// meshes (AABB larger than `SKYBOX_EXTENT`) are skipped so the band
+    /// reflects the real scene geometry, not the sky dome. AABB corners at or
+    /// behind the camera near plane (`depth < min_depth`) are ignored too —
+    /// otherwise a mesh that envelops the camera (e.g. an overhead tree
+    /// canopy) would collapse `band_near` to ~0 and defeat the band fit.
+    fn accumulate_caster_band(
+        world_aabb: Option<([f32; 3], [f32; 3])>,
+        camera_world: &[f32; 3],
+        cam_fwd: &Vec3,
+        min_depth: f32,
+        band_near: &mut f32,
+        band_far: &mut f32,
+    ) {
+        const SKYBOX_EXTENT: f32 = 3000.0;
+        let Some((wmin, wmax)) = world_aabb else {
+            return;
+        };
+        let ex = wmax[0] - wmin[0];
+        let ey = wmax[1] - wmin[1];
+        let ez = wmax[2] - wmin[2];
+        if ex.max(ey).max(ez) > SKYBOX_EXTENT {
+            return;
+        }
+        for &cx in &[wmin[0], wmax[0]] {
+            for &cy in &[wmin[1], wmax[1]] {
+                for &cz in &[wmin[2], wmax[2]] {
+                    let d = Vec3::new(
+                        cx - camera_world[0],
+                        cy - camera_world[1],
+                        cz - camera_world[2],
+                    );
+                    let depth = Vec3::dot(&d, cam_fwd);
+                    if depth < min_depth {
+                        continue;
+                    }
+                    if depth < *band_near {
+                        *band_near = depth;
+                    }
+                    if depth > *band_far {
+                        *band_far = depth;
+                    }
+                }
+            }
+        }
     }
 }
 

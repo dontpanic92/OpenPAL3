@@ -78,12 +78,20 @@ impl DescriptorManager {
         let dub_descriptor_manager = DynamicUniformBufferDescriptorManager::new(device.clone());
         let sampler_cache = VulkanSamplerCache::new(device.clone());
 
-        // Dummy shadow map: a 1×1 depth image transitioned to a sampleable
-        // read-only layout, plus a clamp-to-white-border sampler. Off-map /
-        // unsampled lookups read `1.0` ("lit").
-        let mut dummy_shadow_image =
-            Image::new_depth_sampled_image(&instance.vk_instance(), physical_device, allocator, 1, 1)
-                .expect("failed to allocate dummy shadow image");
+        // Dummy shadow map: a 1×1 depth **array** (matching the lit shaders'
+        // `sampler2DArray`) transitioned to a sampleable read-only layout, plus
+        // a clamp-to-white-border sampler. Off-map / unsampled lookups read
+        // `1.0` ("lit"). The real per-cascade array overwrites binding 1 in the
+        // swapchain path.
+        let mut dummy_shadow_image = Image::new_depth_array_sampled_image(
+            &instance.vk_instance(),
+            physical_device,
+            allocator,
+            1,
+            1,
+            super::shadow_map::CASCADE_COUNT as u32,
+        )
+        .expect("failed to allocate dummy shadow image");
         dummy_shadow_image
             .transit_layout(
                 vk::ImageLayout::UNDEFINED,
@@ -91,10 +99,11 @@ impl DescriptorManager {
                 command_runner,
             )
             .expect("failed to transition dummy shadow image");
-        let dummy_shadow_view = ImageView::new_depth_image_view(
+        let dummy_shadow_view = ImageView::new_depth_array_view(
             device.clone(),
             dummy_shadow_image.vk_image(),
             dummy_shadow_image.vk_format(),
+            super::shadow_map::CASCADE_COUNT as u32,
         )
         .expect("failed to create dummy shadow image view");
         let dummy_shadow_sampler = create_shadow_sampler(&device)?;

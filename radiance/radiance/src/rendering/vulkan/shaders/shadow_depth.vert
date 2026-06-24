@@ -23,7 +23,8 @@ layout(set = 0, binding = 0) uniform PerFrameUbo {
     vec4 lightColor[16];
     vec4 sunDir;
     vec4 sunColor;
-    mat4 lightViewProj;
+    mat4 lightViewProj[3];
+    vec4 cascadeSplits;
     vec4 shadowParams;
 } perFrameUbo;
 
@@ -31,10 +32,14 @@ layout(set = 1, binding = 0) uniform PerInstanceUbo {
     mat4 model;
 } perInstanceUbo;
 
+layout(push_constant) uniform PushConsts {
+    uint cascade;
+} pc;
+
 layout(location = 0) in vec3 position;
 
 void main() {
     // Row-vector convention (`v * M`), matching the scene vertex shaders.
     vec4 world = vec4(position, 1.0) * perInstanceUbo.model;
-    gl_Position = world * perFrameUbo.lightViewProj;
+    gl_Position = world * perFrameUbo.lightViewProj[pc.cascade];
 }
