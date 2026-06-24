@@ -205,6 +205,18 @@ pub struct RecordingUiHost {
     /// `calc_text_size_x/y` as `chars * w` / `h`. Defaults to `(0.0, 0.0)`
     /// so existing tests see the historic zero measurement.
     pub char_size: RefCell<(f32, f32)>,
+    /// Seeded result of `is_item_hovered()` (defaults to `false`). Lets
+    /// tests drive the press-latch path of `ImageButton` / `LayoutImage`
+    /// / `TextButton`, which gate hover/click on this flag.
+    pub item_hovered: RefCell<bool>,
+    /// Seeded result of `mouse_down(_)` (defaults to `false`). Toggle
+    /// across paint passes to simulate a press (down) then release (up).
+    pub mouse_is_down: RefCell<bool>,
+    /// Optional scripted `mouse_down(_)` results, consumed front-to-back
+    /// (one per call). When non-empty it takes precedence over
+    /// `mouse_is_down`; when exhausted it falls back to `mouse_is_down`.
+    /// Lets a single test drive a multi-frame press→release latch.
+    pub mouse_down_script: RefCell<std::collections::VecDeque<bool>>,
 }
 
 impl RecordingUiHost {
@@ -229,6 +241,22 @@ impl RecordingUiHost {
     /// `calc_text_size_x/y` results (`chars * w`, `h`).
     pub fn set_char_size(&self, w: f32, h: f32) {
         *self.char_size.borrow_mut() = (w, h);
+    }
+
+    /// Seed the `is_item_hovered()` result reported to scripts.
+    pub fn set_item_hovered(&self, hovered: bool) {
+        *self.item_hovered.borrow_mut() = hovered;
+    }
+
+    /// Seed the `mouse_down(_)` result reported to scripts.
+    pub fn set_mouse_down(&self, down: bool) {
+        *self.mouse_is_down.borrow_mut() = down;
+    }
+
+    /// Seed a scripted sequence of `mouse_down(_)` results, consumed one
+    /// per call (front-to-back), then falling back to `mouse_is_down`.
+    pub fn set_mouse_down_script(&self, seq: impl IntoIterator<Item = bool>) {
+        *self.mouse_down_script.borrow_mut() = seq.into_iter().collect();
     }
 
     fn record(&self, call: UiCall) {
@@ -499,10 +527,13 @@ impl IUiHostImpl for HostFacade {
     // input, and returning fixed defaults keeps script-side branches
     // predictable.
     fn is_item_hovered(&self) -> bool {
-        false
+        *self.inner.item_hovered.borrow()
     }
     fn mouse_down(&self, _button: i32) -> bool {
-        false
+        if let Some(v) = self.inner.mouse_down_script.borrow_mut().pop_front() {
+            return v;
+        }
+        *self.inner.mouse_is_down.borrow()
     }
     fn mouse_drag_delta_x(&self, _button: i32) -> f32 {
         0.0

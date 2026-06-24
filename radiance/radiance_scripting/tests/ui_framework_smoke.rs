@@ -24,10 +24,11 @@ import radiance_scripting.ui;
 
 pub fn entry(host: box<radiance.IUiHost>) -> int {
     let ctx = ui.make_ctx();
-    let root = ui.column(box([
-        ui.text("a"),
-        ui.button("go", 100.0, 20.0, () => { host.text("clicked"); }),
-    ]), 0.0);
+    let items: array<box<ui.Element>> = [
+        ui.Text("a"),
+        ui.Button("go", 100.0, 20.0, () => { host.text("clicked"); }),
+    ];
+    let root: box<ui.Element> = ui.Column(items, 0.0);
     ui.paint_root(root, host, ctx)
 }
 "#;

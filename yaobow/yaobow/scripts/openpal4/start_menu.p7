@@ -15,6 +15,11 @@ import radiance;
 import scripting_services;
 import yaobow.yaobow_services;
 import radiance_scripting.freeview;
+// Declarative ("Flutter-like") widget lib. Aliased to `gui` so it doesn't
+// collide with the `ui: IUiHost` render parameter. The menu is described
+// as a `gui.Stack` of positioned `gui.LayoutImage`s that wrap the
+// original layout's atlas images, plus `gui.TextButton` save rows.
+import radiance_scripting.ui as gui;
 
 // Layout-relative button names (exact `Name=...` attributes from
 // `MainWindow.xml`'s `<Window Type="OiramLook/Button" ...>` nodes).
@@ -32,8 +37,11 @@ let INTENT_LOAD: int      = 3;
 let MODE_MAIN: int        = 0;
 let MODE_LOAD: int        = 1;
 
-let NO_PRESS: int         = -1;
 let NO_SLOT: int          = -1;
+
+// Press-latch key namespace for synthetic save-slot rows, kept disjoint
+// from layout `window_id`s (which share the single `UiCtx` latch).
+let SLOT_KEY_BASE: int     = 1000000;
 
 // PAL4 start-menu camera pose. Hardcoded — the original game's
 // AngelScript boot positions the camera once before the menu fades
@@ -79,7 +87,7 @@ let LOAD_LIST_INSET: float = 24.0;
 // dynamic `List` (MultiColumnList) widget our flat image renderer
 // can't populate. So on the load screen we treat every layout button
 // except the back control as inert and present our own clickable slot
-// list overlaid on the central save panel (see `render_slot_list`).
+// list overlaid on the central save panel (see `append_slot_rows`).
 fn is_back_name(name: string) -> bool {
     return name.contains("Back") || name.contains("back")
         || name.contains("Return") || name.contains("Cancel")
@@ -95,10 +103,6 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     // the asset is missing — "Load Game" then stays inert.
     pub load_layout: ?box<scripting_services.IUiLayoutHandle>,
     pub bgm: ?box<scripting_services.IAudioSource>,
-    // window_id (matches `IUiLayoutHandle.draw_window_id(i)`) currently
-    // being pressed by the user, or `NO_PRESS` if the mouse button is
-    // not held down on any interactive widget. Reset on release.
-    pub pressed_window_id: int,
     pub intent: int,
     // True once `activate()` has successfully pushed the ZJM
     // backdrop scene; `deactivate()` pops + unloads only when set
@@ -109,10 +113,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
     pub mode: int,
     // Save slot carried by a pending INTENT_LOAD, or NO_SLOT.
     pub load_slot: int,
-    // Slot row currently held down in the load-screen overlay, or
-    // NO_SLOT. Mirrors `pressed_window_id` but for our synthetic
-    // (non-layout) slot list. Reset on mouse release.
-    pub pressed_slot: int,
+    // Cross-frame press latch for the declarative widget tree (the
+    // pressed widget's key, or NO_PRESS). Replaces the old
+    // `pressed_window_id` / `pressed_slot` int fields — the latch now
+    // lives in the ui lib's `UiCtx`, keyed by layout `window_id` for
+    // images and `SLOT_KEY_BASE + slot` for save rows.
+    pub ctx: box<gui.UiCtx>,
 ) {
     pub fn activate(self: refmut<Self>) -> int {
         if self.bgm != null {
@@ -163,243 +169,73 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
             freeview.update(cam!, self.host.input(), dt);
         }
 
-        // Fullscreen imgui window with no background so the ZJM
-        // scene rendered below it shows through.
+        // Fullscreen imgui window with no background so the ZJM scene
+        // rendered below it shows through. The menu is DECLARED by
+        // `build()` (a `Stack` of host-layout + list widgets) and painted
+        // via `gui.paint_root`, which advances the shared press latch in
+        // `self.ctx`. No layout math or loops live here.
         ui.window_fullscreen("##pal4_start_menu", IMGUI_NO_BACKGROUND, () => {
-            if self.mode == MODE_LOAD {
-                if self.load_layout != null {
-                    self.render_inner(ui, self.load_layout!);
-                    self.render_slot_list(ui, self.load_layout!);
-                } else {
-                    self.render_missing(ui, "PAL4 load menu: layout loadWindow.xml not found.");
-                }
-            } else {
-                if self.layout != null {
-                    self.render_inner(ui, self.layout!);
-                } else {
-                    self.render_missing(ui, "PAL4 start menu: layout MainWindow.xml not found.");
-                }
-            }
+            let root = self.build();
+            gui.paint_root(root, ui, self.ctx);
         });
         0
     }
 
-    pub fn render_missing(self: refmut<Self>, ui: box<radiance.IUiHost>, msg: string) {
-        ui.style_color(0, 1.0, 1.0, 1.0, 1.0, () => {
-            ui.set_cursor_pos(20.0, 20.0);
-            ui.text(msg);
-        });
-    }
-
-    pub fn render_inner(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        h: box<scripting_services.IUiLayoutHandle>,
-    ) {
-        let native_w = h.native_width() as float;
-        let native_h = h.native_height() as float;
-        let avail_w = ui.display_size_x() as float;
-        let avail_h = ui.display_size_y() as float;
-        if native_w <= 0.0 || native_h <= 0.0 || avail_w <= 0.0 || avail_h <= 0.0 {
-            return;
-        }
-
-        // Fit the layout's native canvas into the available area
-        // preserving aspect ratio (letterbox).
-        let sx = avail_w / native_w;
-        let sy = avail_h / native_h;
-        let scale = if sx < sy { sx } else { sy };
-        let drawn_w = native_w * scale;
-        let drawn_h = native_h * scale;
-        let origin_x = (avail_w - drawn_w) * 0.5;
-        let origin_y = (avail_h - drawn_h) * 0.5;
-
-        let n = h.draw_count();
-        let mut released_window_id: int = NO_PRESS;
-        let was_pressed = self.pressed_window_id;
-        let mouse_held = ui.mouse_down(0);
-
-        for i in Range(0, n) {
-            let cx = origin_x + h.draw_x(i) * scale;
-            let cy = origin_y + h.draw_y(i) * scale;
-            let cw = h.draw_w(i) * scale;
-            let ch = h.draw_h(i) * scale;
-            if cw <= 0.0 || ch <= 0.0 {
-                continue;
-            }
-            let tex = h.draw_texture_com_id(i);
-            let mut hovered = false;
-            let mut pressed_now = false;
-            if tex != 0 {
-                ui.set_cursor_pos(cx, cy);
-                ui.image_uv(
-                    tex, cw, ch,
-                    h.draw_u0(i), h.draw_v0(i),
-                    h.draw_u1(i), h.draw_v1(i),
-                );
-                if h.draw_is_interactive(i) {
-                    hovered = ui.is_item_hovered();
-                    pressed_now = hovered && mouse_held;
-                }
-                // Overlay alternate-state imagery on top. Press takes
-                // priority over hover; if neither alt image is
-                // configured, the base stays.
-                let wid = h.draw_window_id(i);
-                if pressed_now || (was_pressed == wid && mouse_held && hovered) {
-                    let pt = h.draw_pressed_texture_com_id(i);
-                    if pt != 0 {
-                        ui.set_cursor_pos(cx, cy);
-                        ui.image_uv(
-                            pt, cw, ch,
-                            h.draw_pressed_u0(i), h.draw_pressed_v0(i),
-                            h.draw_pressed_u1(i), h.draw_pressed_v1(i),
-                        );
-                    }
-                } else {
-                    if hovered {
-                        let ht = h.draw_hover_texture_com_id(i);
-                        if ht != 0 {
-                            ui.set_cursor_pos(cx, cy);
-                            ui.image_uv(
-                                ht, cw, ch,
-                                h.draw_hover_u0(i), h.draw_hover_v0(i),
-                                h.draw_hover_u1(i), h.draw_hover_v1(i),
-                            );
-                        }
-                    }
-                }
-
-                // Click latch: remember the first interactive widget
-                // pressed this frame; fire on release if the cursor
-                // is still hovering it.
-                if pressed_now && was_pressed == NO_PRESS {
-                    self.pressed_window_id = wid;
-                }
-                if was_pressed == wid && !mouse_held && hovered {
-                    released_window_id = wid;
-                }
-            }
-        }
-
-        // Drain mouse-up: clear the press latch and dispatch the
-        // matching widget's intent.
-        if !mouse_held {
-            self.pressed_window_id = NO_PRESS;
-        }
-        if released_window_id != NO_PRESS {
-            self.dispatch_click(h, released_window_id);
-        }
-    }
-
-    // Overlay our JSON save slots (1..save_slot_count) as a clickable
-    // text list on top of the load layout. The original `loadWindow`
-    // shows saves in a dynamic MultiColumnList our flat image renderer
-    // can't populate, so we anchor a simple row list inside the
-    // central save panel (`LOAD_PANEL_WINDOW`) and drive the load from
-    // there. Populated rows are clickable; empty rows render greyed.
-    pub fn render_slot_list(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        h: box<scripting_services.IUiLayoutHandle>,
-    ) {
-        let native_w = h.native_width() as float;
-        let native_h = h.native_height() as float;
-        let avail_w = ui.display_size_x() as float;
-        let avail_h = ui.display_size_y() as float;
-        if native_w <= 0.0 || native_h <= 0.0 || avail_w <= 0.0 || avail_h <= 0.0 {
-            return;
-        }
-        let sx = avail_w / native_w;
-        let sy = avail_h / native_h;
-        let scale = if sx < sy { sx } else { sy };
-        let origin_x = (avail_w - native_w * scale) * 0.5;
-        let origin_y = (avail_h - native_h * scale) * 0.5;
-
-        // Locate the central save-panel rect (native px) to anchor the
-        // row list; fall back to a centred region if it's absent.
-        let mut ax = native_w * 0.25;
-        let mut ay = native_h * 0.30;
-        let mut aw = native_w * 0.50;
-        let mut ah = native_h * 0.40;
-        let n = h.draw_count();
-        for i in Range(0, n) {
-            let wid = h.draw_window_id(i);
-            if h.window_name(wid) == LOAD_PANEL_WINDOW {
-                ax = h.draw_x(i);
-                ay = h.draw_y(i);
-                aw = h.draw_w(i);
-                ah = h.draw_h(i);
-            }
-        }
-
-        let slot_count = self.host.pal4().save_slot_count();
-        if slot_count <= 0 {
-            return;
-        }
-        let inner_h = ah - LOAD_LIST_INSET * 2.0;
-        let row_h = inner_h / (slot_count as float);
-        let row_x = origin_x + (ax + LOAD_LIST_INSET) * scale;
-
-        let mouse_held = ui.mouse_down(0);
-        let was_pressed = self.pressed_slot;
-        let mut released_slot: int = NO_SLOT;
-
-        for idx in Range(0, slot_count) {
-            let slot = idx + 1;
-            let exists = self.host.pal4().save_slot_exists(slot);
-            let label = self.host.pal4().save_slot_summary(slot);
-            let row_native_y = ay + LOAD_LIST_INSET + (idx as float) * row_h;
-            let row_y = origin_y + row_native_y * scale;
-            ui.set_cursor_pos(row_x, row_y);
-            // Populated rows render white, empty rows greyed out.
-            if exists {
-                ui.style_color(0, 1.0, 1.0, 1.0, 1.0, () => {
-                    ui.text(label);
-                });
-                let hovered = ui.is_item_hovered();
-                if hovered && mouse_held && was_pressed == NO_SLOT {
-                    self.pressed_slot = slot;
-                }
-                if was_pressed == slot && !mouse_held && hovered {
-                    released_slot = slot;
-                }
-            } else {
-                ui.style_color(0, 0.5, 0.5, 0.5, 1.0, () => {
-                    ui.text(label);
-                });
-            }
-        }
-
-        if !mouse_held {
-            self.pressed_slot = NO_SLOT;
-        }
-        if released_slot != NO_SLOT {
-            self.load_slot = released_slot;
-            self.intent = INTENT_LOAD;
-        }
-    }
-
-    pub fn dispatch_click(
-        self: refmut<Self>,
-        h: box<scripting_services.IUiLayoutHandle>,
-        window_id: int,
-    ) {
-        // window_id is the global pre-order index into the layout
-        // tree; reuse `window_name(i)` to recognise the button.
-        let name = h.window_name(window_id);
-
+    // Declare the menu UI as a widget tree. `UiLayout` hosts the original
+    // CEGUI layout (atlas images + name-based click dispatch) and owns the
+    // letterbox fit; on the load screen a `ListView` of save rows is
+    // anchored over the central panel via `LayoutAnchor`. No `for`/`push`
+    // or scaling arithmetic — the whole screen is a single expression.
+    pub fn build(self: refmut<Self>) -> box<gui.Element> {
         if self.mode == MODE_LOAD {
-            if is_back_name(name) {
-                self.mode = MODE_MAIN;
-                self.pressed_window_id = NO_PRESS;
-                return;
+            if self.load_layout != null {
+                let items: array<box<gui.Element>> = [
+                    gui.UiLayout(self.load_layout!, (name: string) => { self.on_load_click(name); }),
+                    gui.LayoutAnchor(self.load_layout!, LOAD_PANEL_WINDOW,
+                        gui.Padding(
+                            gui.ListView(self.slot_count(), (i: int) => self.slot_row(i), 0.0),
+                            LOAD_LIST_INSET, LOAD_LIST_INSET, LOAD_LIST_INSET, LOAD_LIST_INSET)),
+                ];
+                return gui.Stack(items);
             }
-            // BtnLoad0..9 are page selectors for the original 100-slot
-            // list; we don't paginate (only 4 JSON slots), so they're
-            // inert. Save selection is handled by `render_slot_list`.
-            return;
+            return self.missing_widget("PAL4 load menu: layout loadWindow.xml not found.");
         }
+        if self.layout != null {
+            let items: array<box<gui.Element>> = [
+                gui.UiLayout(self.layout!, (name: string) => { self.on_main_click(name); }),
+            ];
+            return gui.Stack(items);
+        }
+        return self.missing_widget("PAL4 start menu: layout MainWindow.xml not found.");
+    }
 
+    pub fn missing_widget(self: refmut<Self>, msg: string) -> box<gui.Element> {
+        return gui.Positioned(20.0, 20.0, 800.0, 40.0, gui.Text(msg));
+    }
+
+    pub fn slot_count(self: refmut<Self>) -> int {
+        return self.host.pal4().save_slot_count();
+    }
+
+    // Build one save-slot row widget (declarative `ListView` item builder).
+    // Populated rows render white + clickable (loads on release); empty
+    // rows render greyed + inert. The press latch key is namespaced by
+    // `SLOT_KEY_BASE` so it never collides with a layout `window_id`.
+    pub fn slot_row(self: refmut<Self>, idx: int) -> box<gui.Element> {
+        let slot = idx + 1;
+        let exists = self.host.pal4().save_slot_exists(slot);
+        let label = self.host.pal4().save_slot_summary(slot);
+        let key = SLOT_KEY_BASE + slot;
+        if exists {
+            return gui.TextButton(key, label, true, () => { self.fire_load_slot(slot); },
+                1.0, 1.0, 1.0, 1.0);
+        }
+        return gui.TextButton(key, label, false, () => {}, 0.5, 0.5, 0.5, 1.0);
+    }
+
+    // --- Click handlers (mutate intent/mode; drained in `update`) -------
+
+    pub fn on_main_click(self: refmut<Self>, name: string) {
         if name == BTN_NEW_GAME {
             self.intent = INTENT_NEW_GAME;
             return;
@@ -418,6 +254,20 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal4StartMenuDirector(
         }
         // BtnMovie / BtnInfomation / BtnAboutPal / BtnQuest /
         // BtnPicture are intentionally inert.
+    }
+
+    pub fn on_load_click(self: refmut<Self>, name: string) {
+        if is_back_name(name) {
+            self.mode = MODE_MAIN;
+        }
+        // BtnLoad0..9 are page selectors for the original 100-slot list;
+        // we don't paginate (only the JSON slots), so they're inert. Save
+        // selection is handled by the slot rows.
+    }
+
+    pub fn fire_load_slot(self: refmut<Self>, slot: int) {
+        self.load_slot = slot;
+        self.intent = INTENT_LOAD;
     }
 
     pub fn update(
@@ -461,6 +311,6 @@ pub fn make_pal4_start_menu(
     let bgm = host.pal4().load_music(MENU_BGM_NAME);
     return box(Pal4StartMenuDirector(
         host, asset_path, layout, load_layout, bgm,
-        NO_PRESS, INTENT_NONE, false, MODE_MAIN, NO_SLOT, NO_SLOT,
+        INTENT_NONE, false, MODE_MAIN, NO_SLOT, gui.make_ctx(),
     )) as box<radiance.IDirector>;
 }
