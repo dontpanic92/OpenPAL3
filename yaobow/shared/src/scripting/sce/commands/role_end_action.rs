@@ -1,5 +1,8 @@
 use crate::{
-    openpal3::{directors::SceneManagerExtensions, scene::RoleState},
+    openpal3::{
+        directors::SceneManagerExtensions,
+        scene::{RoleAnimationRepeatMode, RoleState},
+    },
     scripting::sce::{SceCommand, SceState},
 };
 
@@ -22,6 +25,15 @@ impl SceCommand for SceCommandRoleEndAction {
     ) -> bool {
         scene_manager
             .resolve_role_mut_do(state, self.role_id, |_, rc| {
+                // A looping action (`RoleShowAction` mode `-1`) wraps forever and
+                // never reaches `Idle`/`AnimationFinished`, so blocking on it here
+                // would stall the script permanently. Mirror `RoleShowAction`'s
+                // loop short-circuit: unblock immediately and leave the loop
+                // playing (keeps the actor's current pose).
+                if rc.repeat_mode() == RoleAnimationRepeatMode::Loop {
+                    return true;
+                }
+
                 if rc.state() == RoleState::AnimationHolding {
                     rc.continue_anim();
                 }

@@ -285,6 +285,10 @@ impl RoleController {
         *self.state.borrow()
     }
 
+    pub fn repeat_mode(&self) -> RoleAnimationRepeatMode {
+        *self.anim_repeat_mode.borrow()
+    }
+
     pub fn nav_layer(&self) -> usize {
         *self.nav_layer.borrow()
     }
