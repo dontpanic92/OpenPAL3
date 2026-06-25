@@ -132,6 +132,7 @@ impl AssetLoader {
             bsp_lightmap_tint: None,
             dynamic_lighting: false,
             fog_exempt: false,
+            foliage_resolver: None,
         };
         let bsp = create_entity_from_bsp_model(
             &self.component_factory,
@@ -155,6 +156,7 @@ impl AssetLoader {
             bsp_lightmap_tint: None,
             dynamic_lighting: false,
             fog_exempt: false,
+            foliage_resolver: None,
         };
         self.attach_uv_overlay(
             &scene,
@@ -260,6 +262,7 @@ impl AssetLoader {
             bsp_lightmap_tint: None,
             dynamic_lighting: false,
             fog_exempt: false,
+            foliage_resolver: None,
         };
         if self.vfs.exists(&path) {
             create_entity_from_dff_model(
@@ -298,6 +301,7 @@ impl AssetLoader {
                 bsp_lightmap_tint: None,
                 dynamic_lighting: false,
                 fog_exempt: false,
+                foliage_resolver: None,
             },
         )?;
 
@@ -469,6 +473,7 @@ impl AssetLoader {
                 bsp_lightmap_tint,
                 dynamic_lighting: false,
                 fog_exempt: false,
+                foliage_resolver: None,
             },
         )?;
 
@@ -582,6 +587,7 @@ impl AssetLoader {
                 bsp_lightmap_tint: None,
                 dynamic_lighting: false,
                 fog_exempt: false,
+                foliage_resolver: None,
             },
         )
         .map_err(|e| log::warn!("try_load_scene_water: failed to load {}: {:#}", path, e))
@@ -692,6 +698,7 @@ impl AssetLoader {
                     bsp_lightmap_tint: None,
                     dynamic_lighting: false,
                     fog_exempt: false,
+                    foliage_resolver: None,
                 },
             )
             .map_err(|e| log::warn!("try_load_dff: failed to load {}: {:#}", path, e))

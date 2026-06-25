@@ -117,6 +117,7 @@ impl AssetLoader {
                 bsp_lightmap_tint: None,
                 dynamic_lighting: false,
                 fog_exempt: false,
+                foliage_resolver: None,
             },
         )?;
 

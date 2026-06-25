@@ -35,10 +35,24 @@ use crate::math::{Mat44, Vec3};
 ComObject_BillboardComponent!(super::BillboardComponent);
 
 /// Multiplier converting the `{s<pct>}` percentage into an in-plane card
-/// scale. PAL5 footprint quads are small relative to the canopy they
-/// represent; this gain enlarges them so foliage fills the tree as in
-/// the original. Tuned visually.
-const BILLBOARD_SIZE_GAIN: f32 = 4.0;
+/// scale. PAL5's leaf cards are authored as small "footprint" quads (their
+/// per-tree size lives in the DFF geometry — e.g. `zw_gushu` ≈ 34×34,
+/// `zw_shulin_07` ≈ 10.6×21.2 — and the per-leaf `{s<pct>}` tag scales it);
+/// the original engine enlarges those footprints by a global factor so the
+/// canopy fills out. That factor is **not** stored per-asset, so it is a
+/// single global constant here, overridable at runtime via the
+/// `PAL5_LEAF_SIZE_GAIN` env var for calibration against the original game.
+fn billboard_size_gain() -> f32 {
+    use std::sync::OnceLock;
+    static GAIN: OnceLock<f32> = OnceLock::new();
+    *GAIN.get_or_init(|| {
+        std::env::var("PAL5_LEAF_SIZE_GAIN")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .filter(|v: &f32| *v > 0.0)
+            .unwrap_or(4.0)
+    })
+}
 
 // Process-global "current camera position", written once per frame by
 // `CoreRadianceEngine::update` and read by every billboard's
@@ -79,7 +93,7 @@ impl BillboardComponent {
     ) -> ComRc<crate::comdef::IBillboardComponent> {
         ComRc::from_object(Self {
             entity,
-            scale: scale_pct / 100.0 * BILLBOARD_SIZE_GAIN,
+            scale: scale_pct / 100.0 * billboard_size_gain(),
         })
     }
 
@@ -138,18 +152,6 @@ fn billboard_local_matrix(world: &Mat44, local: &Mat44, cam: Vec3, scale: f32) -
     let up = Vec3::UP; // local +Z -> world up
     let right = Vec3::normalized(&Vec3::cross(&up, &d)); // local +X
 
-    // Desired *world* transform: basis columns are the images of the
-    // local axes (e_x -> right*scale, e_y -> d, e_z -> up*scale) and the
-    // translation keeps the leaf at its current world position `P`.
-    let mut desired_world = Mat44::new_identity();
-    {
-        let o = desired_world.floats_mut();
-        o[0] = [right.x * scale, d.x, up.x * scale, p.x];
-        o[1] = [right.y * scale, d.y, up.y * scale, p.y];
-        o[2] = [right.z * scale, d.z, up.z * scale, p.z];
-        o[3] = [0.0, 0.0, 0.0, 1.0];
-    }
-
     // parentWorld = world * inverse(local). Both the parent (tree node
     // scale) and `local` (which, after the first billboard frame,
     // carries this card's in-plane scale) have non-rotation linear
@@ -159,6 +161,35 @@ fn billboard_local_matrix(world: &Mat44, local: &Mat44, cam: Vec3, scale: f32) -
     let local_inv = affine_inverse(local)?;
     let parent_world = Mat44::multiplied(world, &local_inv);
     let parent_inv = affine_inverse(&parent_world)?;
+
+    // Preserve the tree's placement scale. The parent transform carries the
+    // `.nod` node scale (and any DFF frame scale above the leaf); cancelling
+    // it via `parent_inv` keeps the card facing the camera, but it would also
+    // strip the tree's scale from the card size — a tree placed at 0.5x/2x in
+    // the `.nod` would keep full-size leaves. Re-introduce the parent's
+    // *uniform* (geometric-mean) scale into the card so leaf size tracks the
+    // tree, while the non-uniform part stays cancelled (it would shear the
+    // card's normal off the camera direction). This makes the rendered size
+    // fully asset-driven: leaf-quad geometry × `{s<pct>}` × node scale.
+    let pf = parent_world.floats();
+    let col_norm = |c: usize| {
+        (pf[0][c] * pf[0][c] + pf[1][c] * pf[1][c] + pf[2][c] * pf[2][c]).sqrt()
+    };
+    let parent_scale = (col_norm(0) * col_norm(1) * col_norm(2)).cbrt().max(1e-4);
+    let s = scale * parent_scale;
+
+    // Desired *world* transform: basis columns are the images of the
+    // local axes (e_x -> right*s, e_y -> d, e_z -> up*s) and the
+    // translation keeps the leaf at its current world position `P`.
+    let mut desired_world = Mat44::new_identity();
+    {
+        let o = desired_world.floats_mut();
+        o[0] = [right.x * s, d.x, up.x * s, p.x];
+        o[1] = [right.y * s, d.y, up.y * s, p.y];
+        o[2] = [right.z * s, d.z, up.z * s, p.z];
+        o[3] = [0.0, 0.0, 0.0, 1.0];
+    }
+
     let out = Mat44::multiplied(&parent_inv, &desired_world);
     Some(out)
 }
@@ -261,6 +292,43 @@ mod tests {
         assert!((p.x - wf[0][3]).abs() < 1e-3);
         assert!((p.y - wf[1][3]).abs() < 1e-3);
         assert!((p.z - wf[2][3]).abs() < 1e-3);
+    }
+
+    // The tree's placement (uniform) scale must propagate into the card
+    // size, so foliage tracks a scaled-up/-down `.nod` tree placement.
+    #[test]
+    fn card_size_tracks_uniform_parent_scale() {
+        let scale = 1.5_f32;
+        let cam = Vec3::new(400.0, 50.0, 250.0);
+
+        // In-plane basis magnitude of the final world card for a given
+        // uniform parent scale `k`.
+        let card_basis_norm = |k: f32| -> f32 {
+            let parent = mat([
+                [k, 0.0, 0.0, 10.0],
+                [0.0, k, 0.0, 5.0],
+                [0.0, 0.0, k, -3.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ]);
+            let local = mat([
+                [1.0, 0.0, 0.0, 4.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 6.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ]);
+            let world = Mat44::multiplied(&parent, &local);
+            let out = billboard_local_matrix(&world, &local, cam, scale).unwrap();
+            let fw = Mat44::multiplied(&parent, &out);
+            let f = fw.floats();
+            // Column 0 is the in-plane "right" axis carrying the card scale.
+            Vec3::new(f[0][0], f[1][0], f[2][0]).norm()
+        };
+
+        let n1 = card_basis_norm(1.0);
+        let n2 = card_basis_norm(2.0);
+        // Doubling the tree's placement scale doubles the card size.
+        assert!((n1 - scale).abs() < 1e-3, "k=1 → card scale {n1}");
+        assert!((n2 - 2.0 * n1).abs() < 1e-2, "k=2 should double card size: {n2} vs {n1}");
     }
 
     #[test]

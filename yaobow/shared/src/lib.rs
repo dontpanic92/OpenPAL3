@@ -250,6 +250,7 @@ lazy_static::lazy_static! {
         bsp_lightmap_tint: None,
         dynamic_lighting: false,
         fog_exempt: false,
+        foliage_resolver: None,
     };
 
     static ref PAL5_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
@@ -261,6 +262,7 @@ lazy_static::lazy_static! {
         bsp_lightmap_tint: None,
         dynamic_lighting: true,
         fog_exempt: false,
+        foliage_resolver: None,
     };
 
     static ref SWD5_DFF_LOADER_CONFIG: DffLoaderConfig::<'static> = DffLoaderConfig {
@@ -272,5 +274,6 @@ lazy_static::lazy_static! {
         bsp_lightmap_tint: None,
         dynamic_lighting: false,
         fog_exempt: false,
+        foliage_resolver: None,
     };
 }

@@ -23,6 +23,24 @@ pub trait TextureResolver: Send + Sync {
     ) -> Option<Vec<u8>>;
 }
 
+/// A leaf / sprite card resolved from PAL5's `Config/uvlist.tb` for a model's
+/// `[W]/[w]{t<id>}` foliage quad: the atlas texture (relative to the `Texture`
+/// root, backslash-separated as shipped — e.g. `BuildingP5\zhiwu\tree_yinxingqiu`)
+/// and the atlas-space UV rectangle `(u0, u1, v0, v1)` to map onto the quad.
+#[derive(Debug, Clone)]
+pub struct FoliageCard {
+    pub atlas: String,
+    pub uv: [f32; 4],
+}
+
+/// Resolves a PAL5 `{t<id>}` foliage-card id to its [`FoliageCard`]. PAL5 ships
+/// many tree-leaf quads with no texture and no UVs in the model; the engine
+/// supplies both at load time from `uvlist.tb`, keyed by the `{t<id>}` tag. See
+/// `generated/pal5_leaf_re.md`.
+pub trait FoliageResolver: Send + Sync {
+    fn resolve_card(&self, id: u32) -> Option<FoliageCard>;
+}
+
 pub struct Pal4TextureResolver;
 impl TextureResolver for Pal4TextureResolver {
     fn resolve_texture(
@@ -97,6 +115,16 @@ impl TextureResolver for Pal5TextureResolver {
 /// `/` → `\`), so the returned forward-slash paths work uniformly
 /// against both `LocalFs` and `PkgFs` mounts.
 fn pal5_texture_candidates(model_path: &Path, texture_name: &str) -> Vec<PathBuf> {
+    // Foliage cards (`uvlist.tb`) reference their atlas by a full
+    // `Texture`-root-relative path (e.g. `BuildingP5\zhiwu\tree_yinxingqiu`)
+    // rather than a bare RW texture name. Detect that by the presence of a
+    // path separator and resolve straight under `/Texture`. Ordinary RW
+    // material textures are bare identifiers, so this never affects them.
+    if texture_name.contains('\\') || texture_name.contains('/') {
+        let norm = texture_name.replace('\\', "/");
+        return vec![PathBuf::from(format!("/Texture/{}.dds", norm))];
+    }
+
     let normalised = PathBuf::from(model_path.to_string_lossy().replace('\\', "/"));
 
     if normalised.file_name() == Some(OsStr::new("jiemian.dff")) {
@@ -227,5 +255,20 @@ mod pal5_texture_tests {
         let expected = vec![p("/Texture/load/xianjianwu/title_logo.dds")];
         assert_eq!(backslash, expected);
         assert_eq!(forward, expected);
+    }
+
+    #[test]
+    fn foliage_atlas_path_resolves_under_texture_root() {
+        // A `uvlist.tb` leaf-card atlas is a full Texture-root-relative path
+        // (contains separators), so it resolves directly under `/Texture`,
+        // independent of the model's directory.
+        let got = pal5_texture_candidates(
+            Path::new("/Model/BuildingP5\\zhiwu\\zw_shulin_07.dff"),
+            "BuildingP5\\zhiwu\\tree_yinxingqiu",
+        );
+        assert_eq!(
+            got,
+            vec![p("/Texture/BuildingP5/zhiwu/tree_yinxingqiu.dds")]
+        );
     }
 }

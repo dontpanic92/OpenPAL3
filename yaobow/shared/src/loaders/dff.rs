@@ -26,6 +26,7 @@ use radiance::{
 };
 
 use super::TextureResolver;
+use super::FoliageResolver;
 use radiance::comdef::{IEntityExt, IHAnimBoneComponentExt};
 
 pub struct DffLoaderConfig<'a> {
@@ -82,6 +83,15 @@ pub struct DffLoaderConfig<'a> {
     /// whose camera-locked dome encloses the whole scene and would otherwise
     /// read as a constant far-distance fog wash. Default `false`.
     pub fog_exempt: bool,
+
+    /// PAL5 leaf/sprite-card resolver. Many PAL5 tree-leaf quads are tagged
+    /// `[W]/[w]{t<id>}` and ship with **no texture and no UV set** — the engine
+    /// supplies both at load time from `Config/uvlist.tb`, keyed by `{t<id>}`.
+    /// When set, such quads are textured + UV-mapped from the resolved
+    /// [`FoliageCard`] instead of being dropped. Only PAL5 wires this; other
+    /// games leave it `None` (their DFFs carry no `prt` tag, so the path is a
+    /// no-op for them anyway). See `generated/pal5_leaf_re.md`.
+    pub foliage_resolver: Option<&'a dyn FoliageResolver>,
 }
 
 impl<'a> DffLoaderConfig<'a> {
@@ -95,6 +105,7 @@ impl<'a> DffLoaderConfig<'a> {
             bsp_lightmap_tint: None,
             dynamic_lighting: false,
             fog_exempt: false,
+            foliage_resolver: None,
         }
     }
 }
@@ -381,15 +392,44 @@ fn load_clump(
 
         let geometry = &chunk.geometries[atomic.geometry as usize];
 
-        // Skip texture-less PAL5 wind-billboard leaves. Some trees (e.g.
+        // Texture-less PAL5 wind-billboard leaves. Some trees (e.g.
         // `zw_shulin`, `zw_dongzhu`) ship `[w]/[W]` leaf quads whose
         // material carries no texture (RW `textured=0`) and no UV set —
-        // PAL5's engine supplies the leaf texture+UVs at runtime from its
-        // vegetation subsystem (not from the model; see
-        // `generated/pal5_tree_texture.md`). yaobow can't reproduce that
-        // yet, so rather than render the magenta "missing" placeholder we
-        // drop these specific atomics. Textured leaves are unaffected.
+        // PAL5's engine supplies the leaf texture+UVs at load time from the
+        // sprite/foliage subsystem, keyed by the frame's `{t<id>}` tag into
+        // `Config/uvlist.tb` (see `generated/pal5_leaf_re.md`). When a
+        // `foliage_resolver` is wired (PAL5), resolve the card and render it
+        // with a synthesized texture + UVs; otherwise drop the quad rather
+        // than render the magenta "missing" placeholder. Textured leaves are
+        // unaffected.
         if billboard && !geometry_has_texture(geometry) {
+            match config
+                .foliage_resolver
+                .zip(prt_texture_id(frame))
+                .and_then(|(r, id)| r.resolve_card(id))
+            {
+                Some(card) => {
+                    create_foliage_geometry(
+                        entity.clone(),
+                        component_factory,
+                        geometry,
+                        &card,
+                        vfs,
+                        &path,
+                        config.texture_resolver,
+                        config.force_unique_materials,
+                        config.dynamic_lighting,
+                        config.fog_exempt,
+                    );
+                    let component =
+                        BillboardComponent::create(entity.clone(), billboard_scale_pct(frame));
+                    entity.add_component(
+                        IBillboardComponent::uuid(),
+                        component.query_interface::<IComponent>().unwrap(),
+                    );
+                }
+                None => {}
+            }
             continue;
         }
 
@@ -518,6 +558,169 @@ fn billboard_scale_pct(frame: &Frame) -> f32 {
         }
     }
     100.0
+}
+
+/// Parse the leaf-card texture id from a PAL5 wind `prt` tag of the form
+/// `[W]{t<id>}{s<pct>}<name>` (e.g. `[w]{t6140}{s60}leaf02` → `6140`). This is
+/// the `Config/uvlist.tb` key (see [`FoliageResolver`]). Returns `None` when
+/// the `{t..}` token is absent or unparseable.
+fn prt_texture_id(frame: &Frame) -> Option<u32> {
+    parse_prt_texture_id(&frame_prt(frame)?)
+}
+
+fn parse_prt_texture_id(prt: &str) -> Option<u32> {
+    let rest = prt.split("{t").nth(1)?;
+    let num = rest.split('}').next()?;
+    num.trim().parse::<u32>().ok()
+}
+
+/// Footprint-to-card enlargement for untextured PAL5 leaf sprites, overridable
+/// via the `PAL5_LEAF_FOOTPRINT_GAIN` env var.
+///
+/// PAL5's untextured leaf quads are a **uniform 10.6×21.2 "footprint" marker**
+/// (identical across `zw_shulin_07/002A/008A/…`), not the real leaf size — the
+/// engine draws the uvlist sprite larger than the marker. Trees whose leaf
+/// cards carry an embedded full-size texture instead author them at canopy
+/// scale (`zw_gushu` ≈ 34, `zw_rongshu` ≈ 20–41). The default `4.0` lifts the
+/// 10.6 marker into that textured-card range so footprint trees fill out to
+/// match; validated visually on `--pal5 kuangfengzhai` (the ginkgo/`yinxingqiu`
+/// forest trees render as full canopies rather than sparse poles).
+fn foliage_footprint_gain() -> f32 {
+    use std::sync::OnceLock;
+    static GAIN: OnceLock<f32> = OnceLock::new();
+    *GAIN.get_or_init(|| {
+        std::env::var("PAL5_LEAF_FOOTPRINT_GAIN")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .filter(|v: &f32| *v > 0.0)
+            .unwrap_or(4.0)
+    })
+}
+
+/// Render a texture-less PAL5 leaf quad using a resolved [`FoliageCard`]: stamp
+/// the card's atlas texture onto the quad's material(s) and synthesize
+/// per-vertex UVs from the card's UV rectangle, then build the mesh.
+///
+/// The leaf quad lies flat in its frame's local XZ plane (the engine erects it
+/// toward the camera via [`BillboardComponent`]). We map `x → u` and `z → v`
+/// across the quad's bounding box, with `+z` at the top of the atlas, so the
+/// whole `(u0,u1,v0,v1)` sub-rect covers the card. Leaf cards always render
+/// two-sided so the back-facing half is not culled.
+fn create_foliage_geometry(
+    entity: ComRc<IEntity>,
+    component_factory: &Rc<dyn ComponentFactory>,
+    geometry: &fileformats::rwbs::geometry::Geometry,
+    card: &super::FoliageCard,
+    vfs: &MiniFs,
+    path: &Path,
+    texture_resolver: &dyn TextureResolver,
+    force_unique_materials: bool,
+    dynamic_lighting: bool,
+    fog_exempt: bool,
+) {
+    let Some(vertices) = geometry.morph_targets.get(0).and_then(|m| m.vertices.as_ref()) else {
+        return;
+    };
+    let normals = geometry.morph_targets[0].normals.as_ref();
+
+    let atlas_texture = fileformats::rwbs::material::Texture {
+        // Wrap addressing + linear filtering for the atlas sample.
+        filter_mode: 2,
+        address_mode_u: 1,
+        address_mode_v: 1,
+        name: card.atlas.clone(),
+        mask_name: String::new(),
+    };
+    // Keep each original material's color (per-leaf tint) but point it at the
+    // resolved leaf atlas. The quad ships at least one material; guard the
+    // empty case so an odd export still renders.
+    let mut materials: Vec<Material> = geometry
+        .materials
+        .iter()
+        .map(|m| {
+            let mut m = m.clone();
+            m.texture = Some(atlas_texture.clone());
+            m
+        })
+        .collect();
+    if materials.is_empty() {
+        materials.push(Material {
+            color: 0xffff_ffff,
+            texture: Some(atlas_texture),
+            ..Default::default()
+        });
+    }
+
+    let [u0, u1, v0, v1] = card.uv;
+    let (mut min_x, mut max_x) = (f32::INFINITY, f32::NEG_INFINITY);
+    let (mut min_z, mut max_z) = (f32::INFINITY, f32::NEG_INFINITY);
+    for v in vertices {
+        min_x = min_x.min(v.x);
+        max_x = max_x.max(v.x);
+        min_z = min_z.min(v.z);
+        max_z = max_z.max(v.z);
+    }
+    let span_x = (max_x - min_x).max(1e-6);
+    let span_z = (max_z - min_z).max(1e-6);
+    let texcoords: Vec<Vec<TexCoord>> = vec![
+        vertices
+            .iter()
+            .map(|v| {
+                let fx = (v.x - min_x) / span_x;
+                let fz = (max_z - v.z) / span_z; // +z → top of atlas
+                TexCoord {
+                    u: u0 + fx * (u1 - u0),
+                    v: v0 + fz * (v1 - v0),
+                }
+            })
+            .collect(),
+    ];
+
+    // PAL5's untextured leaf quads are small "footprint" markers (a uniform
+    // 10.6×21.2 across `zw_shulin_*`) — much smaller than trees whose leaf
+    // cards carry an embedded full-size texture (`zw_gushu` ≈ 34×34). Rendered
+    // at their footprint size they look sparse, so the original engine draws
+    // the uvlist sprite larger than the marker quad. Scale the footprint about
+    // its own centroid by `foliage_footprint_gain()` (see there for the value).
+    let footprint_gain = foliage_footprint_gain();
+    let scaled;
+    let vertices: &[Vec3f] = if (footprint_gain - 1.0).abs() < 1e-3 {
+        vertices
+    } else {
+        let cx = 0.5 * (min_x + max_x);
+        let cz = 0.5 * (min_z + max_z);
+        let cy = 0.5
+            * (vertices.iter().map(|v| v.y).fold(f32::INFINITY, f32::min)
+                + vertices.iter().map(|v| v.y).fold(f32::NEG_INFINITY, f32::max));
+        scaled = vertices
+            .iter()
+            .map(|v| Vec3f {
+                x: cx + (v.x - cx) * footprint_gain,
+                y: cy + (v.y - cy) * footprint_gain,
+                z: cz + (v.z - cz) * footprint_gain,
+            })
+            .collect::<Vec<_>>();
+        &scaled
+    };
+
+    create_geometry_internal(
+        entity,
+        component_factory,
+        vertices,
+        normals,
+        &geometry.triangles,
+        &texcoords,
+        &materials,
+        None,
+        vfs,
+        path,
+        texture_resolver,
+        force_unique_materials,
+        None,
+        true, // two_sided
+        dynamic_lighting,
+        fog_exempt,
+    );
 }
 
 fn create_geometry(
@@ -1698,5 +1901,26 @@ mod hierarchy_tests {
         let plain_frame = make_test_frame(0, 0);
         assert!(bone_frame.is_hanim_bone());
         assert!(!plain_frame.is_hanim_bone());
+    }
+}
+
+#[cfg(test)]
+mod foliage_tag_tests {
+    use super::parse_prt_texture_id;
+
+    #[test]
+    fn parses_wind_leaf_texture_id() {
+        assert_eq!(parse_prt_texture_id("[w]{t6140}{s60}leaf02"), Some(6140));
+        assert_eq!(parse_prt_texture_id("[W]{t6091}{s90}gushuye03"), Some(6091));
+        // `{t..}` without a following `{s..}` still parses.
+        assert_eq!(parse_prt_texture_id("[w]{t42}leaf"), Some(42));
+    }
+
+    #[test]
+    fn rejects_non_texture_tags() {
+        assert_eq!(parse_prt_texture_id("[($]Plane12"), None);
+        assert_eq!(parse_prt_texture_id("objdefault"), None);
+        assert_eq!(parse_prt_texture_id("[w]{snan}"), None);
+        assert_eq!(parse_prt_texture_id("[w]{t}"), None);
     }
 }

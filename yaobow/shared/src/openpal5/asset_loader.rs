@@ -15,9 +15,29 @@ use radiance::{
 };
 
 use crate::loaders::{
-    Pal5TextureResolver,
+    FoliageCard, FoliageResolver, Pal5TextureResolver,
     dff::{DffLoaderConfig, create_entity_from_dff_model},
 };
+
+/// PAL5 leaf/sprite-card resolver backed by `Config/uvlist.tb`. Maps a model's
+/// `[W]/[w]{t<id>}` foliage-quad tag to its atlas texture + UV rect so the DFF
+/// loader can render the otherwise texture-less leaf cards. See
+/// `fileformats::pal5::uvlist` and `generated/pal5_leaf_re.md`.
+struct Pal5FoliageResolver {
+    uvlist: fileformats::pal5::uvlist::UvListFile,
+}
+
+impl FoliageResolver for Pal5FoliageResolver {
+    fn resolve_card(&self, id: u32) -> Option<FoliageCard> {
+        // Use the first frame; multi-frame entries are UV/texture animations
+        // (a refinement) — the first frame is the representative still.
+        let frame = self.uvlist.entries.get(&id)?.frames.first()?;
+        Some(FoliageCard {
+            atlas: frame.atlas.clone(),
+            uv: [frame.u0, frame.u1, frame.v0, frame.v1],
+        })
+    }
+}
 
 /// One decoded terrain block: its grid coordinate, heightfield + footer
 /// texture ids (`mp`), and optional per-texel splat weights (`alp`).
@@ -33,16 +53,19 @@ pub struct AssetLoader {
     component_factory: Rc<dyn ComponentFactory>,
     pub index: HashMap<u32, AssetItem>,
     texture_resolver: Pal5TextureResolver,
+    foliage_resolver: Option<Pal5FoliageResolver>,
 }
 
 impl AssetLoader {
     pub fn new(component_factory: Rc<dyn ComponentFactory>, vfs: Rc<MiniFs>) -> Rc<Self> {
         let index = load_index(&vfs);
+        let foliage_resolver = load_foliage_resolver(&vfs);
         Rc::new(Self {
             component_factory,
             vfs,
             index,
             texture_resolver: Pal5TextureResolver {},
+            foliage_resolver,
         })
     }
 
@@ -254,6 +277,10 @@ impl AssetLoader {
                 bsp_lightmap_tint: None,
                 dynamic_lighting: true,
                 fog_exempt,
+                foliage_resolver: self
+                    .foliage_resolver
+                    .as_ref()
+                    .map(|r| r as &dyn FoliageResolver),
             },
         )
     }
@@ -297,6 +324,28 @@ impl AssetLoader {
         );
         log::info!("Pal5 skybox loaded: asset {} -> '{}'", asset_id, file_path);
         Some(entity)
+    }
+}
+
+fn load_foliage_resolver(vfs: &MiniFs) -> Option<Pal5FoliageResolver> {
+    use fileformats::pal5::uvlist::UvListFile;
+    let path = "/Config/uvlist.tb";
+    let raw = match vfs.read_to_end(path) {
+        Ok(raw) => raw,
+        Err(err) => {
+            log::warn!("Pal5: {} unreadable ({}); leaf cards disabled", path, err);
+            return None;
+        }
+    };
+    match UvListFile::read(&raw) {
+        Ok(uvlist) => {
+            log::info!("Pal5: loaded uvlist.tb ({} sprite/leaf entries)", uvlist.entries.len());
+            Some(Pal5FoliageResolver { uvlist })
+        }
+        Err(err) => {
+            log::warn!("Pal5: uvlist.tb decode failed ({}); leaf cards disabled", err);
+            None
+        }
     }
 }
 
