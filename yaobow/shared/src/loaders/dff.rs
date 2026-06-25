@@ -75,6 +75,13 @@ pub struct DffLoaderConfig<'a> {
     /// normals; materials without normals fall back to the unlit shader.
     /// Default `false` so PAL3/PAL4/SWD keep their existing unlit/baked look.
     pub dynamic_lighting: bool,
+
+    /// When `true`, every `MaterialDef` built from this DFF is stamped with
+    /// [`MaterialParams::fog_exempt`], so the world-geometry shaders skip the
+    /// scene's linear distance fog for this model. Used for the PAL5 skybox,
+    /// whose camera-locked dome encloses the whole scene and would otherwise
+    /// read as a constant far-distance fog wash. Default `false`.
+    pub fog_exempt: bool,
 }
 
 impl<'a> DffLoaderConfig<'a> {
@@ -87,6 +94,7 @@ impl<'a> DffLoaderConfig<'a> {
             ignore_root_frame_translation: false,
             bsp_lightmap_tint: None,
             dynamic_lighting: false,
+            fog_exempt: false,
         }
     }
 }
@@ -398,6 +406,7 @@ fn load_clump(
             config.bsp_lightmap_tint,
             two_sided,
             config.dynamic_lighting,
+            config.fog_exempt,
         );
 
         if billboard {
@@ -524,6 +533,7 @@ fn create_geometry(
     bsp_lightmap_tint: Option<[f32; 4]>,
     two_sided: bool,
     dynamic_lighting: bool,
+    fog_exempt: bool,
 ) {
     if geometry.morph_targets.len() == 0 {
         return;
@@ -675,6 +685,7 @@ fn create_geometry(
         bsp_lightmap_tint,
         two_sided,
         dynamic_lighting,
+        fog_exempt,
     );
 }
 
@@ -694,6 +705,7 @@ pub(crate) fn create_geometry_internal(
     bsp_lightmap_tint: Option<[f32; 4]>,
     two_sided: bool,
     dynamic_lighting: bool,
+    fog_exempt: bool,
 ) {
     let mut r_vertices = vec![];
     // Forward per-vertex normals only when the geometry actually ships them
@@ -818,6 +830,15 @@ pub(crate) fn create_geometry_internal(
                 }
                 if force_unique_materials {
                     md = md.make_unique();
+                }
+
+                // Stamp per-material fog exemption (skybox etc.). Preserves
+                // every other param already set on the MaterialDef (lightmap
+                // tint/intensity, blend-derived alpha_ref, …).
+                if fog_exempt {
+                    let mut p = *md.params();
+                    p.fog_exempt = true;
+                    md = md.with_params(p);
                 }
 
                 material_to_indices.push((

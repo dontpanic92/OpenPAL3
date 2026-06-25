@@ -84,6 +84,14 @@ pub struct MaterialParams {
     pub ambient_floor: f32,
     pub uv_scale: [f32; 2],
     pub uv_offset: [f32; 2],
+    /// When `true`, the world-geometry fragment shaders skip the scene's
+    /// linear distance fog for this material (uploaded as
+    /// `MaterialParamsGpu.misc.w`). Used for camera-locked geometry that must
+    /// never fade to fog color — notably the PAL5 skybox, whose dome is
+    /// authored to enclose the whole scene and would otherwise read as a
+    /// constant, far-distance fog wash. Defaults to `false`; when the scene
+    /// has no fog the flag is inert.
+    pub fog_exempt: bool,
 }
 
 impl Default for MaterialParams {
@@ -107,6 +115,7 @@ impl Default for MaterialParams {
             ambient_floor: 0.3,
             uv_scale: [1.0, 1.0],
             uv_offset: [0.0, 0.0],
+            fog_exempt: false,
         }
     }
 }
@@ -766,6 +775,7 @@ impl GradientYMaterialDef {
             ambient_floor: 0.3,
             uv_scale: [low[0], low[1]],
             uv_offset: [low[2], 0.0],
+            fog_exempt: false,
         };
 
         MaterialDef::builder(ShaderProgram::GradientY)

@@ -161,6 +161,13 @@ pub struct PerFrameUniformBuffer {
     /// `y` = depth-compare bias, `z` = shadow-map texel size (`1 / size`),
     /// `w` = PCF kernel radius (in texels).
     shadow_params: [f32; 4],
+    /// Linear distance fog color (`rgb`; `w` reserved). Meaningful only when
+    /// `fog_params.x >= 0.5`.
+    fog_color: [f32; 4],
+    /// Linear distance fog parameters: `x` = enabled flag (`1.0`/`0.0`),
+    /// `y` = fog start (view-space depth), `z` = fog end (view-space depth),
+    /// `w` reserved.
+    fog_params: [f32; 4],
 }
 
 /// Maximum number of scene point lights uploaded per frame. PAL3 scenes ship
@@ -181,6 +188,8 @@ impl PerFrameUniformBuffer {
             light_view_proj: [Mat44::new_identity(); CASCADE_COUNT],
             cascade_splits: [0.0; 4],
             shadow_params: [0.0; 4],
+            fog_color: [0.0; 4],
+            fog_params: [0.0; 4],
         }
     }
 
@@ -242,6 +251,23 @@ impl PerFrameUniformBuffer {
             }
         }
     }
+
+    /// Stamp linear distance fog into the per-frame UBO. `Some((color, start,
+    /// end))` enables fog sampling in the world-geometry shaders (`fog_params.x
+    /// = 1`); `None` disables it (`fog_params.x = 0`). `start`/`end` are
+    /// view-space depths (positive, forward).
+    pub fn set_fog(&mut self, fog: Option<([f32; 3], f32, f32)>) {
+        match fog {
+            Some((color, start, end)) => {
+                self.fog_color = [color[0], color[1], color[2], 0.0];
+                self.fog_params = [1.0, start, end, 0.0];
+            }
+            None => {
+                self.fog_color = [0.0; 4];
+                self.fog_params = [0.0; 4];
+            }
+        }
+    }
 }
 
 /// GPU-side layout of [`crate::rendering::MaterialParams`] used by the
@@ -252,7 +278,8 @@ impl PerFrameUniformBuffer {
 /// - `misc.x`   — `alpha_ref` (consulted only when `ALPHA_TEST` is set)
 /// - `misc.y`   — `intensity` (lightmap scalar; pass-through for non-
 ///                lightmap shaders that simply ignore it)
-/// - `misc.zw`  — reserved
+/// - `misc.z`   — `ambient_floor` (lightmap additive term)
+/// - `misc.w`   — `fog_exempt` flag (`1.0` = skip scene fog for this material)
 /// - `uv_xform` — primary-UV affine: xy = scale, zw = offset
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -266,7 +293,12 @@ impl MaterialParamsGpu {
     pub fn from_params(p: &crate::rendering::MaterialParams) -> Self {
         Self {
             tint: p.tint,
-            misc: [p.alpha_ref, p.intensity, p.ambient_floor, 0.0],
+            misc: [
+                p.alpha_ref,
+                p.intensity,
+                p.ambient_floor,
+                if p.fog_exempt { 1.0 } else { 0.0 },
+            ],
             uv_xform: [p.uv_scale[0], p.uv_scale[1], p.uv_offset[0], p.uv_offset[1]],
         }
     }

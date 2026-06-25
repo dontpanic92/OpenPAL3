@@ -10,12 +10,31 @@
 // `simple_triangle.frag` for details on the specialization constant.
 layout(constant_id = 0) const bool ALPHA_TEST = true;
 
+// Per-frame UBO prefix (shared backing buffer with the lit shaders); declared
+// through `fogParams` so the trailing fog fields land at the std140 offset
+// matching `PerFrameUniformBuffer`.
+layout(set = 0, binding = 0) uniform PerFrameUbo {
+    mat4 view;
+    mat4 proj;
+    vec4 ambient;
+    vec4 lightPos[16];
+    vec4 lightColor[16];
+    vec4 sunDir;
+    vec4 sunColor;
+    mat4 lightViewProj[3];
+    vec4 cascadeSplits;
+    vec4 shadowParams;
+    vec4 fogColor;           // rgb = linear fog color
+    vec4 fogParams;          // x = enabled, y = start depth, z = end depth
+} perFrameUbo;
+
 layout(set = 2, binding = 0) uniform sampler2D texSampler[2];
 layout(set = 3, binding = 0) uniform MaterialParams {
     vec4 tint;
     vec4 misc;       // x = alpha_ref (only consulted when ALPHA_TEST is true)
                      // y = lightmap intensity (`_ltMap.cfg`)
                      // z = ambient floor (additive term; 0.3 default, 0 for PAL3)
+                     // w = fog_exempt
     vec4 uv_xform;   // primary-UV xform (applied in vert)
 } mat;
 
@@ -36,6 +55,7 @@ layout(set = 3, binding = 0) uniform MaterialParams {
 // charted regions.
 layout(location = 0) in vec2 fragTexCoord;
 layout(location = 1) in vec2 fragTexCoord2;
+layout(location = 2) in vec3 fragWorldPos;
 
 layout(location = 0) out vec4 outColor;
 
@@ -81,4 +101,14 @@ void main() {
     vec3 lm = lightMap.rgb * 1.5 * mat.misc.y + mat.misc.z;
     vec3 rgb = lm * color.rgb * mat.tint.rgb * mat.tint.a;
     outColor = vec4(rgb, color.a * mat.tint.a);
+
+    // Linear distance fog (gated). Inert for PAL3/PAL4 (no scene fog); present
+    // so any future fogged lightmap scene fades correctly. Premultiplied blend.
+    if (perFrameUbo.fogParams.x > 0.5 && mat.misc.w < 0.5) {
+        float d = -(vec4(fragWorldPos, 1.0) * perFrameUbo.view).z;
+        float fStart = perFrameUbo.fogParams.y;
+        float fEnd = perFrameUbo.fogParams.z;
+        float vis = clamp((fEnd - d) / max(fEnd - fStart, 1e-4), 0.0, 1.0);
+        outColor.rgb = mix(perFrameUbo.fogColor.rgb * outColor.a, outColor.rgb, vis);
+    }
 }

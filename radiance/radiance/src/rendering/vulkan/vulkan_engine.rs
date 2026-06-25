@@ -37,12 +37,14 @@ pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 /// Snapshot of a scene's lighting environment in the shape the per-frame UBO
 /// consumes: flat ambient color, point lights as
-/// `(position, color, [inner, outer])`, and an optional directional sun as
-/// `(direction-toward-sun, color)`.
+/// `(position, color, [inner, outer])`, an optional directional sun as
+/// `(direction-toward-sun, color)`, and optional linear fog as
+/// `(color, start, end)` (view-space depths).
 type SceneLightsSnapshot = (
     [f32; 3],
     Vec<([f32; 3], [f32; 3], [f32; 2])>,
     Option<([f32; 3], [f32; 3])>,
+    Option<([f32; 3], f32, f32)>,
 );
 
 pub struct VulkanRenderingEngine {
@@ -168,7 +170,7 @@ impl RenderingEngine for VulkanRenderingEngine {
         };
         let lighting = match scene.as_ref() {
             Some(s) => Self::collect_scene_lights(s),
-            None => ([0.0; 3], Vec::new(), None),
+            None => ([0.0; 3], Vec::new(), None, None),
         };
         crate::perf::gauge("vulkan.render.visible_entities", entities.len() as u64);
 
@@ -320,9 +322,10 @@ impl RenderingEngine for VulkanRenderingEngine {
 
         // Update target's per-frame UBO with the scene's camera + lights.
         let mut ubo = PerFrameUniformBuffer::new(&camera_view, &camera_proj);
-        let (ambient, gpu_lights, sun) = Self::collect_scene_lights(&scene);
+        let (ambient, gpu_lights, sun, fog) = Self::collect_scene_lights(&scene);
         ubo.set_lighting(ambient, &gpu_lights);
         ubo.set_sun(sun);
+        ubo.set_fog(fog);
         target.uniform_buffer_mut().copy_memory_from(&[ubo]);
 
         // Record + submit the offscreen pass.
@@ -905,7 +908,8 @@ impl VulkanRenderingEngine {
         let sun = lighting
             .sun
             .map(|s| ([s.direction.x, s.direction.y, s.direction.z], s.color));
-        (lighting.ambient, lights, sun)
+        let fog = lighting.fog.map(|f| (f.color, f.start, f.end));
+        (lighting.ambient, lights, sun, fog)
     }
 
     fn render_objects(
@@ -1045,6 +1049,7 @@ impl VulkanRenderingEngine {
                     let mut ubo = PerFrameUniformBuffer::new(&view, proj);
                     ubo.set_lighting(lighting.0, &lighting.1);
                     ubo.set_sun(lighting.2);
+                    ubo.set_fog(lighting.3);
 
                     // Directional CSM: upload the per-cascade matrices + split
                     // depths computed (and used to cull casters) above.

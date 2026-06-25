@@ -34,16 +34,51 @@ impl Pal5Scene {
                     Vec3::new(dir[0], dir[1], dir[2]),
                     env.sun_color,
                 );
-                scene.set_lighting(radiance::scene::SceneLighting::with_sun(
+
+                // Per-map linear distance fog. PAL5's original engine uses
+                // fixed-function linear eye-space fog: each vertex shader emits
+                // `oFog = clip-w` (eye depth) and the device blends toward the
+                // fog color between `FOGSTART` and `FOGEND`. We reproduce that
+                // as a first-class radiance `Fog` (linear eye-space). Only
+                // enable it when the range is well-formed (`end > start`); a few
+                // demon-realm battlemaps ship inverted/degenerate values (e.g.
+                // start=1.0,end=0.0) which we treat as "no fog" rather than
+                // washing the whole scene to the fog color.
+                //
+                // The `[0,1]` `envinfo.env` fractions (`fog_param_a/b`) scale by
+                // the main scene camera's far distance to give the eye-space
+                // FOGSTART/FOGEND. PAL5 renders its world at true scale (terrain
+                // blocks span 5120 units; the `far = 1000` projection in
+                // `Pal5.exe` is an aspect=1.0 sub-camera, NOT the world view).
+                // `6000` was calibrated against the original game's density
+                // (kuangfengzhai: gentle haze on the far cliffs, crisp village);
+                // tunable via the `PAL5_FOG_FAR` env var.
+                let fog_far: f32 = std::env::var("PAL5_FOG_FAR")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(6000.0);
+                let fog_start = env.fog_param_a * fog_far;
+                let fog_end = env.fog_param_b * fog_far;
+                let fog = if fog_end > fog_start + 1.0 {
+                    Some(radiance::scene::Fog::new(
+                        [env.fog_color[0], env.fog_color[1], env.fog_color[2]],
+                        fog_start,
+                        fog_end,
+                    ))
+                } else {
+                    None
+                };
+
+                let mut lighting = radiance::scene::SceneLighting::with_sun(
                     env.ambient,
                     vec![],
                     sun,
-                ));
-                // Fog color/params are decoded and carried on `env` but not
-                // yet pushed to the renderer (radiance has no fog path); log
-                // them so per-map atmosphere is observable in traces.
+                );
+                lighting.fog = fog;
+                scene.set_lighting(lighting);
+
                 log::info!(
-                    "Pal5Scene '{}': atmosphere ambient {:?} sun {:?} az={} el={} dir {:?} | fog {:?} a={} b={} skybox={:?}",
+                    "Pal5Scene '{}': atmosphere ambient {:?} sun {:?} az={} el={} dir {:?} | fog {:?} a={} b={} -> eye[{:.0}..{:.0}] enabled={} skybox={:?}",
                     scene_name,
                     env.ambient,
                     env.sun_color,
@@ -53,6 +88,9 @@ impl Pal5Scene {
                     env.fog_color,
                     env.fog_param_a,
                     env.fog_param_b,
+                    fog_start,
+                    fog_end,
+                    fog.is_some(),
                     env.skybox_asset_id(),
                 );
 

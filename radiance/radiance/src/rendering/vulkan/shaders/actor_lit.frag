@@ -19,13 +19,15 @@ layout(set = 0, binding = 0) uniform PerFrameUbo {
     mat4 lightViewProj[3];   // per-cascade world -> shadow clip space
     vec4 cascadeSplits;      // xyz = view-space far depth of cascades 0..2
     vec4 shadowParams;       // x = enabled, y = bias, z = 1/size, w = pcf radius
+    vec4 fogColor;           // rgb = linear fog color
+    vec4 fogParams;          // x = enabled, y = start depth, z = end depth
 } perFrameUbo;
 
 layout(set = 0, binding = 1) uniform sampler2DArray shadowMap;
 layout(set = 2, binding = 0) uniform sampler2D texSampler;
 layout(set = 3, binding = 0) uniform MaterialParams {
     vec4 tint;
-    vec4 misc;               // x = alpha_ref (only when ALPHA_TEST)
+    vec4 misc;               // x = alpha_ref (only when ALPHA_TEST), w = fog_exempt
     vec4 uv_xform;
 } mat;
 
@@ -130,4 +132,16 @@ void main() {
     // shader would otherwise use.
     vec3 rgb = sampled.rgb * lit * mat.tint.rgb * mat.tint.a;
     outColor = vec4(rgb, sampled.a * mat.tint.a);
+
+    // Linear distance fog (gated on scene fog + per-material exemption). Blend
+    // the (premultiplied) output toward the fog color by view-space depth so
+    // distant geometry fades out; `fogColor * outColor.a` keeps the result
+    // premultiplied. Matches PAL5's D3D9 linear eye-space fog.
+    if (perFrameUbo.fogParams.x > 0.5 && mat.misc.w < 0.5) {
+        float d = -(vec4(fragWorldPos, 1.0) * perFrameUbo.view).z;
+        float fStart = perFrameUbo.fogParams.y;
+        float fEnd = perFrameUbo.fogParams.z;
+        float vis = clamp((fEnd - d) / max(fEnd - fStart, 1e-4), 0.0, 1.0);
+        outColor.rgb = mix(perFrameUbo.fogColor.rgb * outColor.a, outColor.rgb, vis);
+    }
 }

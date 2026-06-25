@@ -139,5 +139,6 @@ fn create_geometry_from_atomic_sector<P: AsRef<Path>>(
         config.bsp_lightmap_tint,
         false,
         false,
+        config.fog_exempt,
     );
 }

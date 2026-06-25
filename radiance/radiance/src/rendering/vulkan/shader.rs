@@ -206,3 +206,5 @@ fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
         ),
     }
 }
+
+// fog: world-geometry shaders now read PerFrameUbo fog fields; bump to force SPIR-V relink.

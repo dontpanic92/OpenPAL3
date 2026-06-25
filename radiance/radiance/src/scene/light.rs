@@ -55,6 +55,34 @@ impl DirectionalLight {
     }
 }
 
+/// Linear distance fog applied to opaque/cutout world geometry. Modeled on
+/// classic D3D9 linear eye-space fog: a fragment at view-space depth `d`
+/// (positive, forward) is blended toward [`Fog::color`] by
+/// `1 - saturate((end - d) / (end - start))`, so geometry at or beyond `end`
+/// is fully fogged and geometry at or before `start` is unfogged.
+///
+/// PAL5 ships exactly this per map in `envinfo.env` (its original engine sets
+/// `D3DRS_FOGSTART`/`FOGEND` from `[0,1]` fractions of its `far = 1000`
+/// projection). `start`/`end` here are **absolute view-space distances** in
+/// world units — callers do the fraction → distance scaling.
+#[derive(Debug, Clone, Copy)]
+pub struct Fog {
+    /// Linear RGB fog color, blended in with distance.
+    pub color: [f32; 3],
+    /// View-space depth at which fog begins (fragments nearer than this are
+    /// unfogged).
+    pub start: f32,
+    /// View-space depth at which fog is fully saturated (fragments at or
+    /// beyond this are pure fog color).
+    pub end: f32,
+}
+
+impl Fog {
+    pub fn new(color: [f32; 3], start: f32, end: f32) -> Self {
+        Self { color, start, end }
+    }
+}
+
 /// Per-scene lighting environment consumed by the renderer when shading
 /// dynamically-lit objects (e.g. PAL3 actors). Static/baked geometry ignores
 /// this and keeps its own (lightmap / vertex-color) path.
@@ -68,6 +96,10 @@ pub struct SceneLighting {
     /// Lambert term for it with no attenuation, on top of ambient and the
     /// point lights.
     pub sun: Option<DirectionalLight>,
+    /// Optional linear distance fog. When present, world geometry shaders
+    /// blend their result toward [`Fog::color`] with view-space depth. `None`
+    /// (the default) disables fog entirely, leaving PAL3/PAL4 unchanged.
+    pub fog: Option<Fog>,
 }
 
 impl SceneLighting {
@@ -76,6 +108,7 @@ impl SceneLighting {
             ambient,
             lights,
             sun: None,
+            fog: None,
         }
     }
 
@@ -86,6 +119,13 @@ impl SceneLighting {
             ambient,
             lights,
             sun: Some(sun),
+            fog: None,
         }
+    }
+
+    /// Attach linear distance fog to this lighting environment (builder-style).
+    pub fn with_fog(mut self, fog: Fog) -> Self {
+        self.fog = Some(fog);
+        self
     }
 }

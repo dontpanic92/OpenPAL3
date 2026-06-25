@@ -224,6 +224,14 @@ impl AssetLoader {
     }
 
     pub fn load_model(&self, model_path: &str) -> anyhow::Result<ComRc<IEntity>> {
+        self.load_model_ex(model_path, false)
+    }
+
+    /// Like [`load_model`](Self::load_model) but lets the caller opt the
+    /// model's materials out of scene fog (`fog_exempt`). Used by
+    /// [`load_skybox`](Self::load_skybox): the camera-locked sky dome must
+    /// never fade to the fog color.
+    fn load_model_ex(&self, model_path: &str, fog_exempt: bool) -> anyhow::Result<ComRc<IEntity>> {
         // PAL5's `role_*.bin` stores Windows backslash separators in
         // `file_path`; normalise to forward slashes so downstream log
         // lines (and `Pal5TextureResolver`'s path math) see a uniform
@@ -245,6 +253,7 @@ impl AssetLoader {
 
                 bsp_lightmap_tint: None,
                 dynamic_lighting: true,
+                fog_exempt,
             },
         )
     }
@@ -268,7 +277,7 @@ impl AssetLoader {
             return None;
         }
 
-        let entity = match self.load_model(&file_path) {
+        let entity = match self.load_model_ex(&file_path, true) {
             Ok(entity) => entity,
             Err(err) => {
                 log::warn!(
