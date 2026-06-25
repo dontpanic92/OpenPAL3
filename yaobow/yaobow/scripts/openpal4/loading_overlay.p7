@@ -21,11 +21,21 @@
 // Reported visually as `heitiao` (fullscreen black background) +
 // `blanklightfull`/`ImgMask` (progress bar) + `juaner` (scroll
 // graphic) — pure image blits, no interactivity.
+//
+// Migration: `render` declares the overlay as a single screen-local
+// `Pal4LoadingLayout` `gui.Element` (which owns the bespoke per-draw
+// compositing — full-bleed background, progress mask, fairy carriage —
+// that the generic `gui.UiLayout` widget can't express) and paints it via
+// `gui.paint_root`. The `IPal4LoadingOverlay` interface methods and the
+// progress/fairy state machine are unchanged.
 
 import radiance;
 import scripting_services;
 import yaobow.yaobow_services;
 import shared.openpal4;
+// Declarative widget lib. Aliased to `gui` so it doesn't collide with
+// the `ui: IUiHost` render parameter.
+import radiance_scripting.ui as gui;
 
 // Layout path on the per-launch PAL4 vfs.
 let LOADING_LAYOUT_PATH: string = "/gamedata/ui/layouts/loading.xml";
@@ -283,10 +293,16 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         }
 
         // Fullscreen window with no imgui background — `heitiao` in
-        // the layout owns the entire canvas.
+        // the layout owns the entire canvas. The whole overlay is
+        // DECLARED as a single `Pal4LoadingLayout` element and painted
+        // via `gui.paint_root`.
         ui.window_fullscreen("##pal4_loading", IMGUI_NO_BACKGROUND, () => {
             if self.layout != null {
-                self.render_layout(ui, self.layout!);
+                let root = box(Pal4LoadingLayout(
+                    self.layout!, self.eased_progress, self.fairy_index,
+                )) as box<gui.Element>;
+                let ctx = gui.make_ctx();
+                gui.paint_root(root, ui, ctx);
             }
         });
 
@@ -297,34 +313,54 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         }
         0
     }
+}
 
-    pub fn render_layout(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        h: box<scripting_services.IUiLayoutHandle>,
-    ) {
-        let native_w = h.native_width() as float;
-        let native_h = h.native_height() as float;
-        let avail_w = ui.display_size_x() as float;
-        let avail_h = ui.display_size_y() as float;
+// Screen-local hosting element for the loading layout. Unlike the generic
+// `gui.UiLayout` (which blits every draw command verbatim), this element
+// performs the bespoke per-draw compositing the loading screen needs:
+//   * the `ditu`/`heitiao` background is stretched to the FULL viewport
+//     (so the live scene's unload/reload doesn't leak through the
+//     letterbox bands on a widescreen);
+//   * the `ImgMask` progress overlay is shrunk from the right by
+//     `progress` so the lit bar grows left-to-right;
+//   * the animated `juaner` fairy is slid horizontally so its centre
+//     tracks the leading edge of the lit bar.
+// Lifted verbatim from the legacy `render_layout`, with `progress` and
+// `fairy_index` passed in instead of read from `self`.
+pub struct[gui.Element] Pal4LoadingLayout(
+    handle: box<scripting_services.IUiLayoutHandle>,
+    progress: float,
+    fairy_index: int,
+) {
+    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
+               ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size(avail_w, avail_h);
+    }
+    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+        let h_ = self.handle;
+        let native_w = h_.native_width() as float;
+        let native_h = h_.native_height() as float;
+        let avail_w = w;
+        let avail_h = h;
         if native_w <= 0.0 || native_h <= 0.0 || avail_w <= 0.0 || avail_h <= 0.0 {
             return;
         }
 
         // Letterbox-fit: preserve aspect ratio, centre on the
-        // available area. Same maths as `start_menu.p7::render_inner`
+        // available area. Same maths as `start_menu`'s cover fit
         // (minus the interactive branches — loading is pure imagery).
         let sx = avail_w / native_w;
         let sy = avail_h / native_h;
         let scale = if sx < sy { sx } else { sy };
         let drawn_w = native_w * scale;
         let drawn_h = native_h * scale;
-        let origin_x = (avail_w - drawn_w) * 0.5;
-        let origin_y = (avail_h - drawn_h) * 0.5;
+        let origin_x = x + (avail_w - drawn_w) * 0.5;
+        let origin_y = y + (avail_h - drawn_h) * 0.5;
 
-        let progress: float = self.eased_progress;
+        let progress: float = self.progress;
 
-        let n = h.draw_count();
+        let n = h_.draw_count();
 
         // Pre-pass: the layout (`loading.xml`) is authored at 800x600
         // (4:3). Letterbox-fitting the whole thing leaves the `ditu`
@@ -335,15 +371,15 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         // black image, so stretching is distortion-free) so nothing
         // leaks through; the bar/fairy below stay letterboxed.
         for i in Range(0, n) {
-            let win_id = h.draw_window_id(i);
-            if h.window_name(win_id) == "ditu" {
-                let tex = h.draw_texture_com_id(i);
+            let win_id = h_.draw_window_id(i);
+            if h_.window_name(win_id) == "ditu" {
+                let tex = h_.draw_texture_com_id(i);
                 if tex != 0 {
-                    ui.set_cursor_pos(0.0, 0.0);
+                    ui.set_cursor_pos(x, y);
                     ui.image_uv(
                         tex, avail_w, avail_h,
-                        h.draw_u0(i), h.draw_v0(i),
-                        h.draw_u1(i), h.draw_v1(i),
+                        h_.draw_u0(i), h_.draw_v0(i),
+                        h_.draw_u1(i), h_.draw_v1(i),
                     );
                 }
                 break;
@@ -357,19 +393,19 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
         let mut bar_left: float = -1.0;
         let mut bar_width: float = 0.0;
         for i in Range(0, n) {
-            let win_id = h.draw_window_id(i);
-            if h.window_name(win_id) == "blanklightfull" {
-                bar_left = origin_x + h.draw_x(i) * scale;
-                bar_width = h.draw_w(i) * scale;
+            let win_id = h_.draw_window_id(i);
+            if h_.window_name(win_id) == "blanklightfull" {
+                bar_left = origin_x + h_.draw_x(i) * scale;
+                bar_width = h_.draw_w(i) * scale;
                 break;
             }
         }
 
         for i in Range(0, n) {
-            let cx = origin_x + h.draw_x(i) * scale;
-            let cy = origin_y + h.draw_y(i) * scale;
-            let cw = h.draw_w(i) * scale;
-            let ch = h.draw_h(i) * scale;
+            let cx = origin_x + h_.draw_x(i) * scale;
+            let cy = origin_y + h_.draw_y(i) * scale;
+            let cw = h_.draw_w(i) * scale;
+            let ch = h_.draw_h(i) * scale;
             if cw <= 0.0 || ch <= 0.0 {
                 continue;
             }
@@ -377,8 +413,8 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
             // Identify the draw by its source window name so we can
             // animate the progress mask and the fairy independently
             // of layout coordinates.
-            let win_id = h.draw_window_id(i);
-            let win_name = h.window_name(win_id);
+            let win_id = h_.draw_window_id(i);
+            let win_name = h_.window_name(win_id);
 
             // Background already drawn full-screen by the pre-pass
             // above; skip it here so it isn't re-blitted inside the
@@ -398,13 +434,13 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
                 let remaining: float = 1.0 - progress;
                 let new_cw: float = cw * remaining;
                 let new_cx: float = cx + (cw - new_cw);
-                let tex = h.draw_texture_com_id(i);
+                let tex = h_.draw_texture_com_id(i);
                 if tex != 0 && new_cw > 0.0 {
                     ui.set_cursor_pos(new_cx, cy);
                     ui.image_uv(
                         tex, new_cw, ch,
-                        h.draw_u0(i), h.draw_v0(i),
-                        h.draw_u1(i), h.draw_v1(i),
+                        h_.draw_u0(i), h_.draw_v0(i),
+                        h_.draw_u1(i), h_.draw_v1(i),
                     );
                 }
                 continue;
@@ -414,13 +450,13 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
             // from the per-draw frame list when present. The fairy
             // is the progress carriage — translate it horizontally
             // so its centre tracks the leading edge of the lit bar.
-            let frame_count = h.draw_frame_count(i);
+            let frame_count = h_.draw_frame_count(i);
             if frame_count > 0 {
                 let frame_idx: int =
                     if self.fairy_index >= frame_count { frame_count - 1 }
                     else if self.fairy_index < 0 { 0 }
                     else { self.fairy_index };
-                let tex = h.draw_frame_texture_com_id(i, frame_idx);
+                let tex = h_.draw_frame_texture_com_id(i, frame_idx);
                 if tex != 0 {
                     let mut draw_x: float = cx;
                     if bar_left >= 0.0 && bar_width > 0.0 {
@@ -430,22 +466,22 @@ pub struct[openpal4.IPal4LoadingOverlay] Pal4LoadingOverlayImpl(
                     ui.set_cursor_pos(draw_x, cy);
                     ui.image_uv(
                         tex, cw, ch,
-                        h.draw_frame_u0(i, frame_idx),
-                        h.draw_frame_v0(i, frame_idx),
-                        h.draw_frame_u1(i, frame_idx),
-                        h.draw_frame_v1(i, frame_idx),
+                        h_.draw_frame_u0(i, frame_idx),
+                        h_.draw_frame_v0(i, frame_idx),
+                        h_.draw_frame_u1(i, frame_idx),
+                        h_.draw_frame_v1(i, frame_idx),
                     );
                 }
                 continue;
             }
 
-            let tex = h.draw_texture_com_id(i);
+            let tex = h_.draw_texture_com_id(i);
             if tex != 0 {
                 ui.set_cursor_pos(cx, cy);
                 ui.image_uv(
                     tex, cw, ch,
-                    h.draw_u0(i), h.draw_v0(i),
-                    h.draw_u1(i), h.draw_v1(i),
+                    h_.draw_u0(i), h_.draw_v0(i),
+                    h_.draw_u1(i), h_.draw_v1(i),
                 );
             }
         }

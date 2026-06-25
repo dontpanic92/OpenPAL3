@@ -1,9 +1,20 @@
 // PAL3 start-menu director. Resolves sprites by name through the
 // generic `IPal3UiAtlas` (a `UI_opt.tli` format adapter over the
-// engine-level `ISprite` layer) and composes the cover-art screen
-// directly with `IUiHost.image_uv` — PAL3 ships no CEGUI layouts, so
-// screen positions are authored here in p7. The menu BGM is a generic
-// `IAudioSource` (`host.pal3().load_menu_bgm`).
+// engine-level `ISprite` layer) and composes the cover-art screen with
+// the declarative `radiance_scripting.ui` widget lib (`gui`) — PAL3
+// ships no CEGUI layouts, so screen positions are authored here in p7.
+// The menu BGM is a generic `IAudioSource` (`host.pal3().load_menu_bgm`).
+//
+// Migration shape (mirrors PAL4's `start_menu.p7`): `render` opens a
+// fullscreen imgui window and paints a `gui.Element` tree via
+// `gui.paint_root`. The tree is a `gui.Stack` of a screen-local
+// `Pal3Cover` hosting element (the cover art + 3-state buttons + drifting
+// clouds + sliding taiji discs, letterbox-fit into the viewport — the
+// PAL3 analog of the lib's `UiLayout`) and, in load mode, a declarative
+// `gui.ListView` of `gui.TextButton` save rows. The cross-frame press
+// latch lives in `self.ctx: gui.UiCtx` (keyed by cover `WID_*` for
+// buttons and `SLOT_KEY_BASE + slot` for save rows), replacing the old
+// hand-rolled `pressed_wid` / `pressed_slot` int fields.
 //
 // Buttons functional in v1:
 //   * 前尘一梦 (`btn_qianchenyimeng`) — New Game
@@ -20,6 +31,9 @@ import radiance;
 import scripting_services;
 import yaobow.yaobow_services;
 import shared.openpal3;
+// Declarative widget lib. Aliased to `gui` so it doesn't collide with
+// the `ui: IUiHost` render parameter.
+import radiance_scripting.ui as gui;
 
 // Intent codes drained once per `update`.
 let INTENT_NONE: int      = 0;
@@ -173,6 +187,10 @@ let WID_ZHIZUOQUN: int      = 5;
 let WID_LIKAIYOUXI: int     = 6;
 let WID_LOAD_BACK: int      = 100;
 
+// Press-latch key namespace for synthetic save-slot rows, kept disjoint
+// from the cover `WID_*` ids (which share the single `gui.UiCtx` latch).
+let SLOT_KEY_BASE: int      = 1000000;
+
 pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     pub host: box<yaobow_services.IYaobowHostContext>,
     pub asset_path: string,
@@ -181,12 +199,9 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // a "missing assets" text screen but keeps Exit functional.
     pub atlas: ?box<openpal3.IPal3UiAtlas>,
     pub bgm: ?box<scripting_services.IAudioSource>,
-    // Cover-button press latch; -1 == no widget held.
-    pub pressed_wid: int,
     pub intent: int,
     pub mode: int,
     pub load_slot: int,
-    pub pressed_slot: int,
     // Seconds since `activate()`; drives mountain parallax phase.
     pub time_sec: float,
     // Taiji "open" animation progress in seconds (0..TAIJI_ANIM_DURATION).
@@ -217,6 +232,11 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     // sets this to null and starts BGM + resets taiji_t.
     pub intro: ?box<scripting_services.IVideoHandle>,
     pub activated: bool,
+    // Cross-frame press latch for the declarative widget tree (the
+    // pressed widget's key, or NO_PRESS). Replaces the old
+    // `pressed_wid` / `pressed_slot` int fields — keyed by cover
+    // `WID_*` for buttons and `SLOT_KEY_BASE + slot` for save rows.
+    pub ctx: box<gui.UiCtx>,
 ) {
     pub fn activate(self: refmut<Self>) -> int {
         // When an intro movie is queued we postpone BGM start until
@@ -293,7 +313,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         if self.atlas != null {
             let nat_w = self.atlas!.native_width() as float;
             for i in Range(0, YUN_COUNT) {
-                let osp = self.sprite_named(self.cloud_names[i]);
+                let osp = self.atlas!.sprite(self.cloud_names[i]);
                 let sprite_w = if osp == null { 0.0 } else { osp!.width() as float };
                 self.cloud_x[i] = advance_cloud(
                     self.cloud_x[i], self.cloud_speed[i], anim_dt, nat_w, sprite_w,
@@ -319,74 +339,30 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
             }
         }
 
+        // Fullscreen imgui window with no background so any 3D scene
+        // below shows through. The whole screen is DECLARED by `build()`
+        // (a `Stack` of the `Pal3Cover` hosting element + the load
+        // overlay) and painted via `gui.paint_root`, which advances the
+        // shared press latch in `self.ctx`.
         ui.window_fullscreen("##pal3_start_menu", IMGUI_NO_BACKGROUND, () => {
-            if self.intro != null {
-                // Full-canvas video render — letterbox via image_fit
-                // so the source aspect is preserved against the imgui
-                // window's pixel extent.
-                let v = self.intro!;
-                let avail_w = ui.display_size_x() as float;
-                let avail_h = ui.display_size_y() as float;
-                let w = v.width() as float;
-                let h = v.height() as float;
-                if w > 0.0 && h > 0.0 {
-                    let sx = avail_w / w;
-                    let sy = avail_h / h;
-                    let scale = if sx < sy { sx } else { sy };
-                    let dw = w * scale;
-                    let dh = h * scale;
-                    ui.set_cursor_pos((avail_w - dw) * 0.5, (avail_h - dh) * 0.5);
-                    ui.image_uv(v.texture_com_id(), dw, dh, 0.0, 0.0, 1.0, 1.0);
-                }
-            } else if self.atlas == null {
-                self.render_missing(ui);
-            } else {
-                if self.mode == MODE_LOAD {
-                    self.render_main(ui);
-                    self.render_load_overlay(ui);
-                } else {
-                    self.render_main(ui);
-                }
-            }
+            let root = self.build(ui);
+            gui.paint_root(root, ui, self.ctx);
         });
         0
     }
 
-    pub fn render_missing(self: refmut<Self>, ui: box<radiance.IUiHost>) {
-        ui.style_color(0, 1.0, 1.0, 1.0, 1.0, () => {
-            ui.set_cursor_pos(20.0, 20.0);
-            ui.text("PAL3 start menu: UI_opt.tli not found in basedata.cpk.");
-            ui.set_cursor_pos(20.0, 50.0);
-            ui.text("Press the Exit hotkey (Esc / Alt+F4) to quit.");
-        });
-    }
-
-    pub fn render_main(self: refmut<Self>, ui: box<radiance.IUiHost>) {
-        let atlas = self.atlas!;
-        let nat_w = atlas.native_width() as float;
-        let nat_h = atlas.native_height() as float;
-        let avail_w = ui.display_size_x() as float;
-        let avail_h = ui.display_size_y() as float;
-        if nat_w <= 0.0 || nat_h <= 0.0 || avail_w <= 0.0 || avail_h <= 0.0 {
-            return;
+    // Declare the whole screen as a widget tree. Dispatches on the
+    // current state: intro video, missing-assets fallback, or the cover
+    // (optionally with the load overlay stacked on top).
+    pub fn build(self: refmut<Self>, ui: box<radiance.IUiHost>) -> box<gui.Element> {
+        if self.intro != null {
+            return self.build_intro(ui);
         }
-        let sx = avail_w / nat_w;
-        let sy = avail_h / nat_h;
-        let scale = if sx < sy { sx } else { sy };
-        let origin_x = (avail_w - nat_w * scale) * 0.5;
-        let origin_y = (avail_h - nat_h * scale) * 0.5;
-
-        self.draw_sprite(ui, SPR_BG, BEIJING_X, BEIJING_Y,
-                         origin_x, origin_y, scale);
-
-        let nat_w = atlas.native_width() as float;
-        let nat_h = atlas.native_height() as float;
-
-        // Sliding taiji discs. Eased lerp from START → END based on
-        // taiji_t. Drawn BEFORE ditu so once they fully slide outward
-        // they tuck behind the ornate frame and disappear cleanly.
-        // Clipped to canvas so the off-canvas tail does not bleed
-        // into the letterbox bars.
+        if self.atlas == null {
+            return self.build_missing();
+        }
+        // Compute the eased taiji disc positions from `taiji_t` (read
+        // only here; `render` advances the timer).
         let mut tnorm = (self.taiji_t - TAIJI_WAIT_DURATION) / (TAIJI_ANIM_DURATION - TAIJI_WAIT_DURATION);
         if tnorm > 1.0 { tnorm = 1.0; }
         if tnorm < 0.0 { tnorm = 0.0; }
@@ -394,219 +370,57 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         let eased = 1.0 - inv * inv;
         let ax = TAIJI_A_START_X + (TAIJI_A_END_X - TAIJI_A_START_X) * eased;
         let bx = TAIJI_B_START_X + (TAIJI_B_END_X - TAIJI_B_START_X) * eased;
-        self.draw_sprite_clipped(
-            ui, SPR_TAIJI_A, ax, TAIJI_A_Y,
-            origin_x, origin_y, scale, nat_w, nat_h,
+
+        let cover = box(Pal3Cover(
+            self.atlas!, self.cloud_x, self.cloud_y, self.cloud_names,
+            ax, bx, (wid: int) => { self.dispatch_click(wid); },
+        )) as box<gui.Element>;
+
+        if self.mode == MODE_LOAD {
+            let items: array<box<gui.Element>> = [cover, self.build_load_overlay(ui)];
+            return gui.Stack(items);
+        }
+        let items: array<box<gui.Element>> = [cover];
+        return gui.Stack(items);
+    }
+
+    // Intro `LOGO.bik` frame, letterboxed full-canvas. The source aspect
+    // is preserved against the imgui window's pixel extent.
+    pub fn build_intro(self: refmut<Self>, ui: box<radiance.IUiHost>) -> box<gui.Element> {
+        let v = self.intro!;
+        let avail_w = ui.display_size_x() as float;
+        let avail_h = ui.display_size_y() as float;
+        let w = v.width() as float;
+        let h = v.height() as float;
+        if w <= 0.0 || h <= 0.0 {
+            let items: array<box<gui.Element>> = [];
+            return gui.Stack(items);
+        }
+        let sx = avail_w / w;
+        let sy = avail_h / h;
+        let scale = if sx < sy { sx } else { sy };
+        let dw = w * scale;
+        let dh = h * scale;
+        return gui.Positioned(
+            (avail_w - dw) * 0.5, (avail_h - dh) * 0.5, dw, dh,
+            gui.Image(v.texture_com_id(), dw, dh, 0.0, 0.0, 1.0, 1.0),
         );
-        self.draw_sprite_clipped(
-            ui, SPR_TAIJI_B, bx, TAIJI_B_Y,
-            origin_x, origin_y, scale, nat_w, nat_h,
-        );
-
-        for i in Range(0, YUN_COUNT) {
-            self.draw_sprite_clipped(
-                ui, self.cloud_names[i],
-                self.cloud_x[i], self.cloud_y[i],
-                origin_x, origin_y, scale,
-                nat_w, nat_h,
-            );
-        }
-
-        self.draw_sprite(ui, SPR_DITU, DITU_X, DITU_Y, origin_x, origin_y, scale);
-
-        self.draw_sprite(ui, SPR_LOG0, LOG0_X, LOG0_Y,
-                         origin_x, origin_y, scale);
-
-        let mouse_held = ui.mouse_down(0);
-        let was_pressed = self.pressed_wid;
-        let mut released: int = NO_PRESS;
-
-        released = self.button(ui, WID_QIANCHENYIMENG, BTN_QIANCHENYIMENG_BASE,
-                               BTN_QIANCHENYIMENG_X, BTN_QIANCHENYIMENG_Y,
-                               origin_x, origin_y, scale,
-                               mouse_held, was_pressed, released);
-        released = self.button(ui, WID_BABITONGYOU, BTN_BABITONGYOU_BASE,
-                               BTN_BABITONGYOU_X, BTN_BABITONGYOU_Y,
-                               origin_x, origin_y, scale,
-                               mouse_held, was_pressed, released);
-        released = self.button(ui, WID_XINDEGUSHI, BTN_XINDEGUSHI_BASE,
-                               BTN_XINDEGUSHI_X, BTN_XINDEGUSHI_Y,
-                               origin_x, origin_y, scale,
-                               mouse_held, was_pressed, released);
-        released = self.button(ui, WID_JIUDEHUIYI, BTN_JIUDEHUIYI_BASE,
-                               BTN_JIUDEHUIYI_X, BTN_JIUDEHUIYI_Y,
-                               origin_x, origin_y, scale,
-                               mouse_held, was_pressed, released);
-        released = self.button(ui, WID_ZHIZUOQUN, BTN_ZHIZUOQUN_BASE,
-                               BTN_ZHIZUOQUN_X, BTN_ZHIZUOQUN_Y,
-                               origin_x, origin_y, scale,
-                               mouse_held, was_pressed, released);
-        released = self.button(ui, WID_LIKAIYOUXI, BTN_LIKAIYOUXI_BASE,
-                               BTN_LIKAIYOUXI_X, BTN_LIKAIYOUXI_Y,
-                               origin_x, origin_y, scale,
-                               mouse_held, was_pressed, released);
-
-        if !mouse_held {
-            self.pressed_wid = NO_PRESS;
-        }
-        if released != NO_PRESS {
-            self.dispatch_click(released);
-        }
     }
 
-    // Resolve a sprite by its canonical name through the generic UI
-    // atlas, or null when there's no atlas / the name is unknown / its
-    // page failed to load.
-    pub fn sprite_named(
-        self: refmut<Self>,
-        name: string,
-    ) -> ?box<scripting_services.ISprite> {
-        if self.atlas == null { return null; }
-        return self.atlas!.sprite(name);
+    pub fn build_missing(self: refmut<Self>) -> box<gui.Element> {
+        let lines: array<box<gui.Element>> = [
+            gui.Positioned(20.0, 20.0, 760.0, 24.0,
+                gui.Text("PAL3 start menu: UI_opt.tli not found in basedata.cpk.")),
+            gui.Positioned(20.0, 50.0, 760.0, 24.0,
+                gui.Text("Press the Exit hotkey (Esc / Alt+F4) to quit.")),
+        ];
+        return gui.Stack(lines);
     }
 
-    // Draw a single sprite by its canonical name. No-op when the
-    // atlas doesn't know about it (e.g. the page failed to upload).
-    pub fn draw_sprite(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        name: string,
-        x: float, y: float,
-        origin_x: float, origin_y: float, scale: float,
-    ) {
-        let osp = self.sprite_named(name);
-        if osp == null { return; }
-        let sp = osp!;
-        let w = sp.width() as float;
-        let h = sp.height() as float;
-        if w <= 0.0 || h <= 0.0 { return; }
-        ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
-        ui.image_uv(sp.com_id(), w * scale, h * scale,
-                    sp.u0(), sp.v0(), sp.u1(), sp.v1());
-    }
-
-    // Draw `name` at native (x, y), clipped to the canvas rect
-    // `[0, clip_w] × [0, clip_h]`. Used for sprites (e.g. the
-    // drifting yun clouds) that legitimately overhang the canvas
-    // edges while sliding in or out: we trim the draw rect and shift
-    // the UVs proportionally so `ui.image_uv` only paints inside the
-    // central canvas — keeping the letterbox bars clean — yet the
-    // sprite still appears to slide smoothly past the edge.
-    //
-    // No-op when the sprite is unknown, the atlas failed to upload,
-    // or the clipped rect is empty (fully off-canvas).
-    pub fn draw_sprite_clipped(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        name: string,
-        x: float, y: float,
-        origin_x: float, origin_y: float, scale: float,
-        clip_w: float, clip_h: float,
-    ) {
-        let osp = self.sprite_named(name);
-        if osp == null { return; }
-        let sp = osp!;
-        let w = sp.width() as float;
-        let h = sp.height() as float;
-        if w <= 0.0 || h <= 0.0 { return; }
-
-        // Per-edge trim in native pixels. clamp_min0 keeps each trim
-        // non-negative (no need to clip when the sprite is fully
-        // inside the canvas on that edge).
-        let left_trim = clamp_min0(0.0 - x);
-        let right_trim = clamp_min0(x + w - clip_w);
-        let top_trim = clamp_min0(0.0 - y);
-        let bot_trim = clamp_min0(y + h - clip_h);
-
-        let drawn_w = w - left_trim - right_trim;
-        let drawn_h = h - top_trim - bot_trim;
-        if drawn_w <= 0.0 || drawn_h <= 0.0 { return; }
-
-        // UV proportions of each trim into the source rect.
-        let u0 = sp.u0();
-        let v0 = sp.v0();
-        let u1 = sp.u1();
-        let v1 = sp.v1();
-        let u_range = u1 - u0;
-        let v_range = v1 - v0;
-        let u0p = u0 + (left_trim / w) * u_range;
-        let u1p = u1 - (right_trim / w) * u_range;
-        let v0p = v0 + (top_trim / h) * v_range;
-        let v1p = v1 - (bot_trim / h) * v_range;
-
-        ui.set_cursor_pos(
-            origin_x + (x + left_trim) * scale,
-            origin_y + (y + top_trim) * scale,
-        );
-        ui.image_uv(sp.com_id(), drawn_w * scale, drawn_h * scale, u0p, v0p, u1p, v1p);
-    }
-
-    // Render a 3-state button. `base` is the sprite path without the
-    // trailing state digit (e.g. "ui/menu/btn_qianchenyimeng"); we
-    // append `0`/`1`/`2` for normal/hover/press. Returns the input
-    // `released` value, possibly overwritten with this widget's id
-    // when the click latch fires on mouse release inside the rect.
-    pub fn button(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        wid: int,
-        base: string,
-        x: float, y: float,
-        origin_x: float, origin_y: float, scale: float,
-        mouse_held: bool, was_pressed: int, released: int,
-    ) -> int {
-        let onorm = self.sprite_named(base + "0.tga");
-        if onorm == null { return released; }
-        let norm = onorm!;
-        let w = norm.width() as float;
-        let h = norm.height() as float;
-        if w <= 0.0 || h <= 0.0 { return released; }
-
-        ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
-        ui.image_uv(norm.com_id(), w * scale, h * scale,
-                    norm.u0(), norm.v0(), norm.u1(), norm.v1());
-
-        let hovered = ui.is_item_hovered();
-        let pressed_now = hovered && mouse_held;
-
-        // Press takes priority over hover. Fall back to hover sprite,
-        // then to base if no alt state is shipped. Press/hover reuse the
-        // normal state's on-screen size.
-        let press_name = base + "2.tga";
-        let hover_name = base + "1.tga";
-        if pressed_now || (was_pressed == wid && mouse_held && hovered) {
-            let op = self.sprite_named(press_name);
-            if op != null {
-                let p = op!;
-                ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
-                ui.image_uv(p.com_id(), w * scale, h * scale,
-                            p.u0(), p.v0(), p.u1(), p.v1());
-            }
-        } else {
-            if hovered {
-                let oh = self.sprite_named(hover_name);
-                if oh != null {
-                    let hv = oh!;
-                    ui.set_cursor_pos(origin_x + x * scale, origin_y + y * scale);
-                    ui.image_uv(hv.com_id(), w * scale, h * scale,
-                                hv.u0(), hv.v0(), hv.u1(), hv.v1());
-                }
-            }
-        }
-
-        let mut out = released;
-        if pressed_now && was_pressed == NO_PRESS {
-            self.pressed_wid = wid;
-        }
-        if was_pressed == wid && !mouse_held && hovered {
-            out = wid;
-        }
-        return out;
-    }
-
-    // Load-mode overlay: dim the cover, list each save slot as a
-    // clickable text row, and offer a Back affordance.
-    pub fn render_load_overlay(self: refmut<Self>, ui: box<radiance.IUiHost>) {
+    // Load-mode overlay: a title, a `ListView` of clickable save rows,
+    // and a Back affordance — all anchored at the cover's letterbox-fit
+    // panel rect. Mirrors PAL4's synthetic save-slot list.
+    pub fn build_load_overlay(self: refmut<Self>, ui: box<radiance.IUiHost>) -> box<gui.Element> {
         let atlas = self.atlas!;
         let nat_w = atlas.native_width() as float;
         let nat_h = atlas.native_height() as float;
@@ -618,74 +432,49 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         let origin_x = (avail_w - nat_w * scale) * 0.5;
         let origin_y = (avail_h - nat_h * scale) * 0.5;
 
-        // Panel title.
-        ui.style_color(0, 1.0, 0.95, 0.7, 1.0, () => {
-            ui.set_cursor_pos(
-                origin_x + (LOAD_PANEL_X + 20.0) * scale,
-                origin_y + (LOAD_PANEL_Y + 8.0) * scale,
-            );
-            ui.text("== Load Game ==");
-        });
+        let title_x = origin_x + (LOAD_PANEL_X + 20.0) * scale;
+        let title_y = origin_y + (LOAD_PANEL_Y + 8.0) * scale;
 
         let slot_count = self.host.pal3().save_slot_count();
-        let mouse_held = ui.mouse_down(0);
-        let was_pressed_slot = self.pressed_slot;
-        let mut released_slot: int = NO_SLOT;
+        let list_x = origin_x + (LOAD_PANEL_X + 30.0) * scale;
+        let list_y = origin_y + (LOAD_PANEL_Y + LOAD_ROW_INSET_Y) * scale;
+        let list_w = (LOAD_PANEL_W - 60.0) * scale;
+        let list_h = (slot_count as float) * LOAD_ROW_HEIGHT * scale;
 
-        let mut idx: int = 0;
-        while idx < slot_count {
-            let slot = idx + 1;
-            let row_y = origin_y + (LOAD_PANEL_Y + LOAD_ROW_INSET_Y
-                                    + (idx as float) * LOAD_ROW_HEIGHT) * scale;
-            let row_x = origin_x + (LOAD_PANEL_X + 30.0) * scale;
-            ui.set_cursor_pos(row_x, row_y);
-            let exists = self.host.pal3().save_slot_exists(slot);
-            if exists {
-                ui.style_color(0, 1.0, 1.0, 1.0, 1.0, () => {
-                    ui.text("Slot " + int_to_str(slot));
-                });
-                let hovered = ui.is_item_hovered();
-                if hovered && mouse_held && was_pressed_slot == NO_SLOT {
-                    self.pressed_slot = slot;
-                }
-                if was_pressed_slot == slot && !mouse_held && hovered {
-                    released_slot = slot;
-                }
-            } else {
-                ui.style_color(0, 0.45, 0.45, 0.45, 1.0, () => {
-                    ui.text("Slot " + int_to_str(slot) + " - (empty)");
-                });
-            }
-            idx = idx + 1;
-        }
+        let back_x = origin_x + LOAD_BACK_X * scale;
+        let back_y = origin_y + LOAD_BACK_Y * scale;
 
-        // Back affordance.
-        ui.set_cursor_pos(
-            origin_x + LOAD_BACK_X * scale,
-            origin_y + LOAD_BACK_Y * scale,
-        );
-        ui.style_color(0, 0.85, 0.85, 0.85, 1.0, () => {
-            ui.text("[ Back ]");
-        });
-        let back_hovered = ui.is_item_hovered();
-        let was_back = self.pressed_wid == WID_LOAD_BACK;
-        if back_hovered && mouse_held && self.pressed_wid == NO_PRESS {
-            self.pressed_wid = WID_LOAD_BACK;
-        }
-        if was_back && !mouse_held && back_hovered {
-            self.mode = MODE_MAIN;
-            self.pressed_wid = NO_PRESS;
-        }
-
-        if !mouse_held {
-            self.pressed_slot = NO_SLOT;
-        }
-        if released_slot != NO_SLOT {
-            self.load_slot = released_slot;
-            self.intent = INTENT_LOAD;
-            self.mode = MODE_MAIN;
-        }
+        let items: array<box<gui.Element>> = [
+            gui.Positioned(title_x, title_y, 360.0, 24.0,
+                gui.Text("== Load Game ==", 1.0, 0.95, 0.7, 1.0)),
+            gui.Positioned(list_x, list_y, list_w, list_h,
+                gui.ListView(slot_count, (i: int) => self.slot_row(i), 0.0)),
+            gui.Positioned(back_x, back_y, 120.0, 24.0,
+                gui.TextButton(WID_LOAD_BACK, "[ Back ]", true,
+                    () => { self.go_main(); }, 0.85, 0.85, 0.85, 1.0)),
+        ];
+        return gui.Stack(items);
     }
+
+    // Build one save-slot row widget (declarative `ListView` item
+    // builder). Populated rows render white + clickable (loads on
+    // release); empty rows render greyed + inert. The press-latch key is
+    // namespaced by `SLOT_KEY_BASE` so it never collides with a cover
+    // `WID_*`.
+    pub fn slot_row(self: refmut<Self>, idx: int) -> box<gui.Element> {
+        let slot = idx + 1;
+        let exists = self.host.pal3().save_slot_exists(slot);
+        let key = SLOT_KEY_BASE + slot;
+        if exists {
+            let label = "Slot " + int_to_str(slot);
+            return gui.TextButton(key, label, true,
+                () => { self.fire_load_slot(slot); }, 1.0, 1.0, 1.0, 1.0);
+        }
+        let label = "Slot " + int_to_str(slot) + " - (empty)";
+        return gui.TextButton(key, label, false, () => {}, 0.45, 0.45, 0.45, 1.0);
+    }
+
+    // --- Click handlers (mutate intent/mode; drained in `update`) -------
 
     pub fn dispatch_click(self: refmut<Self>, wid: int) {
         // Sprite → role mapping. xindegushi (新的故事) is the New Game
@@ -696,6 +485,16 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
         if wid == WID_XINDEGUSHI { self.intent = INTENT_NEW_GAME; return; }
         if wid == WID_LIKAIYOUXI { self.intent = INTENT_EXIT;     return; }
         if wid == WID_JIUDEHUIYI { self.mode = MODE_LOAD;         return; }
+    }
+
+    pub fn fire_load_slot(self: refmut<Self>, slot: int) {
+        self.load_slot = slot;
+        self.intent = INTENT_LOAD;
+        self.mode = MODE_MAIN;
+    }
+
+    pub fn go_main(self: refmut<Self>) {
+        self.mode = MODE_MAIN;
     }
 
     pub fn update(
@@ -732,13 +531,213 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Pal3StartMenuDirector(
     }
 }
 
-// Cheap stdlib-less integer-to-string for the load overlay slot
-// labels. p7's built-in `display.int` is available via `display.int(n)`
-// but is namespaced; this little helper keeps the call sites tidy.
+// Screen-local hosting element: the PAL3 cover composition. Analogous to
+// the lib's `UiLayout` (which hosts a CEGUI `IUiLayoutHandle`), but
+// sourced from PAL3's name-keyed `IPal3UiAtlas` instead. It self-fits the
+// 800×600 native canvas into the assigned rect (letterbox), then paints
+// the background dial, the sliding taiji discs (clipped to canvas), the
+// drifting clouds (clipped), the logo, and the six 3-state buttons —
+// dispatching button clicks by `WID_*` through `on_click` and driving the
+// hover/press art off the shared `ctx` press latch.
+pub struct[gui.Element] Pal3Cover(
+    atlas: box<openpal3.IPal3UiAtlas>,
+    cloud_x: box<array<float>>,
+    cloud_y: box<array<float>>,
+    cloud_names: box<array<string>>,
+    // Eased taiji disc x positions (native pixels), computed per-frame
+    // by the director from `taiji_t`.
+    taiji_ax: float,
+    taiji_bx: float,
+    on_click: fn(int),
+) {
+    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
+               ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size(avail_w, avail_h);
+    }
+    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+        let atlas = self.atlas;
+        let nat_w = atlas.native_width() as float;
+        let nat_h = atlas.native_height() as float;
+        if nat_w <= 0.0 || nat_h <= 0.0 || w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        let sx = w / nat_w;
+        let sy = h / nat_h;
+        let scale = if sx < sy { sx } else { sy };
+        let origin_x = x + (w - nat_w * scale) * 0.5;
+        let origin_y = y + (h - nat_h * scale) * 0.5;
+
+        // Dial frame.
+        paint_sprite(ui, atlas, SPR_BG, BEIJING_X, BEIJING_Y, origin_x, origin_y, scale);
+
+        // Sliding taiji discs, drawn BEFORE ditu so once they fully
+        // slide outward they tuck behind the ornate frame. Clipped to
+        // canvas so the off-canvas tail doesn't bleed into the bars.
+        paint_sprite_clipped(ui, atlas, SPR_TAIJI_A, self.taiji_ax, TAIJI_A_Y,
+                             origin_x, origin_y, scale, nat_w, nat_h);
+        paint_sprite_clipped(ui, atlas, SPR_TAIJI_B, self.taiji_bx, TAIJI_B_Y,
+                             origin_x, origin_y, scale, nat_w, nat_h);
+
+        // Drifting clouds (positions advanced by the director each frame).
+        for i in Range(0, YUN_COUNT) {
+            paint_sprite_clipped(ui, atlas, self.cloud_names[i],
+                                 self.cloud_x[i], self.cloud_y[i],
+                                 origin_x, origin_y, scale, nat_w, nat_h);
+        }
+
+        // Background plate + logo over the discs.
+        paint_sprite(ui, atlas, SPR_DITU, DITU_X, DITU_Y, origin_x, origin_y, scale);
+        paint_sprite(ui, atlas, SPR_LOG0, LOG0_X, LOG0_Y, origin_x, origin_y, scale);
+
+        // Six 3-state cover buttons.
+        let cb = self.on_click;
+        paint_button(ui, atlas, ctx, WID_QIANCHENYIMENG, BTN_QIANCHENYIMENG_BASE,
+                     BTN_QIANCHENYIMENG_X, BTN_QIANCHENYIMENG_Y, origin_x, origin_y, scale, cb);
+        paint_button(ui, atlas, ctx, WID_BABITONGYOU, BTN_BABITONGYOU_BASE,
+                     BTN_BABITONGYOU_X, BTN_BABITONGYOU_Y, origin_x, origin_y, scale, cb);
+        paint_button(ui, atlas, ctx, WID_XINDEGUSHI, BTN_XINDEGUSHI_BASE,
+                     BTN_XINDEGUSHI_X, BTN_XINDEGUSHI_Y, origin_x, origin_y, scale, cb);
+        paint_button(ui, atlas, ctx, WID_JIUDEHUIYI, BTN_JIUDEHUIYI_BASE,
+                     BTN_JIUDEHUIYI_X, BTN_JIUDEHUIYI_Y, origin_x, origin_y, scale, cb);
+        paint_button(ui, atlas, ctx, WID_ZHIZUOQUN, BTN_ZHIZUOQUN_BASE,
+                     BTN_ZHIZUOQUN_X, BTN_ZHIZUOQUN_Y, origin_x, origin_y, scale, cb);
+        paint_button(ui, atlas, ctx, WID_LIKAIYOUXI, BTN_LIKAIYOUXI_BASE,
+                     BTN_LIKAIYOUXI_X, BTN_LIKAIYOUXI_Y, origin_x, origin_y, scale, cb);
+    }
+}
+
+// Draw a single sprite by canonical name at native (x, y) scaled into the
+// fitted canvas. No-op when the atlas doesn't know about it.
+fn paint_sprite(
+    ui: box<radiance.IUiHost>,
+    atlas: box<openpal3.IPal3UiAtlas>,
+    name: string,
+    nx: float, ny: float,
+    origin_x: float, origin_y: float, scale: float,
+) {
+    let osp = atlas.sprite(name);
+    if osp == null { return; }
+    let sp = osp!;
+    let w = sp.width() as float;
+    let h = sp.height() as float;
+    if w <= 0.0 || h <= 0.0 { return; }
+    ui.set_cursor_pos(origin_x + nx * scale, origin_y + ny * scale);
+    ui.image_uv(sp.com_id(), w * scale, h * scale, sp.u0(), sp.v0(), sp.u1(), sp.v1());
+}
+
+// Draw `name` at native (x, y), clipped to the canvas rect
+// `[0, clip_w] × [0, clip_h]`. Used for sprites (e.g. the drifting
+// clouds and the sliding taiji discs) that legitimately overhang the
+// canvas edges while sliding in or out: we trim the draw rect and shift
+// the UVs proportionally so `ui.image_uv` only paints inside the central
+// canvas — keeping the letterbox bars clean — yet the sprite still
+// appears to slide smoothly past the edge. No-op when the sprite is
+// unknown or the clipped rect is empty.
+fn paint_sprite_clipped(
+    ui: box<radiance.IUiHost>,
+    atlas: box<openpal3.IPal3UiAtlas>,
+    name: string,
+    nx: float, ny: float,
+    origin_x: float, origin_y: float, scale: float,
+    clip_w: float, clip_h: float,
+) {
+    let osp = atlas.sprite(name);
+    if osp == null { return; }
+    let sp = osp!;
+    let w = sp.width() as float;
+    let h = sp.height() as float;
+    if w <= 0.0 || h <= 0.0 { return; }
+
+    // Per-edge trim in native pixels. clamp_min0 keeps each trim
+    // non-negative (no need to clip when the sprite is fully inside the
+    // canvas on that edge).
+    let left_trim = clamp_min0(0.0 - nx);
+    let right_trim = clamp_min0(nx + w - clip_w);
+    let top_trim = clamp_min0(0.0 - ny);
+    let bot_trim = clamp_min0(ny + h - clip_h);
+
+    let drawn_w = w - left_trim - right_trim;
+    let drawn_h = h - top_trim - bot_trim;
+    if drawn_w <= 0.0 || drawn_h <= 0.0 { return; }
+
+    // UV proportions of each trim into the source rect.
+    let u0 = sp.u0();
+    let v0 = sp.v0();
+    let u1 = sp.u1();
+    let v1 = sp.v1();
+    let u_range = u1 - u0;
+    let v_range = v1 - v0;
+    let u0p = u0 + (left_trim / w) * u_range;
+    let u1p = u1 - (right_trim / w) * u_range;
+    let v0p = v0 + (top_trim / h) * v_range;
+    let v1p = v1 - (bot_trim / h) * v_range;
+
+    ui.set_cursor_pos(origin_x + (nx + left_trim) * scale, origin_y + (ny + top_trim) * scale);
+    ui.image_uv(sp.com_id(), drawn_w * scale, drawn_h * scale, u0p, v0p, u1p, v1p);
+}
+
+// Render a 3-state button. `base` is the sprite path without the
+// trailing state digit (e.g. "ui/menu/btn_qianchenyimeng"); we append
+// `0`/`1`/`2` for normal/hover/press. Drives hover/press art off the
+// shared `ctx` press latch and fires `on_click(wid)` on mouse release
+// inside the rect.
+fn paint_button(
+    ui: box<radiance.IUiHost>,
+    atlas: box<openpal3.IPal3UiAtlas>,
+    ctx: box<gui.UiCtx>,
+    wid: int,
+    base: string,
+    nx: float, ny: float,
+    origin_x: float, origin_y: float, scale: float,
+    on_click: fn(int),
+) {
+    let onorm = atlas.sprite(base + "0.tga");
+    if onorm == null { return; }
+    let norm = onorm!;
+    let w = norm.width() as float;
+    let h = norm.height() as float;
+    if w <= 0.0 || h <= 0.0 { return; }
+
+    ui.set_cursor_pos(origin_x + nx * scale, origin_y + ny * scale);
+    ui.image_uv(norm.com_id(), w * scale, h * scale, norm.u0(), norm.v0(), norm.u1(), norm.v1());
+
+    let hovered = ui.is_item_hovered();
+    let held = ui.mouse_down(0);
+    let was = ctx.pressed;
+
+    // Press takes priority over hover. Fall back to hover sprite, then to
+    // base if no alt state is shipped. Press/hover reuse the normal
+    // state's on-screen size.
+    if (was == wid && held && hovered) || (hovered && held && was == NO_PRESS) {
+        let op = atlas.sprite(base + "2.tga");
+        if op != null {
+            let p = op!;
+            ui.set_cursor_pos(origin_x + nx * scale, origin_y + ny * scale);
+            ui.image_uv(p.com_id(), w * scale, h * scale, p.u0(), p.v0(), p.u1(), p.v1());
+        }
+    } else {
+        if hovered {
+            let oh = atlas.sprite(base + "1.tga");
+            if oh != null {
+                let hv = oh!;
+                ui.set_cursor_pos(origin_x + nx * scale, origin_y + ny * scale);
+                ui.image_uv(hv.com_id(), w * scale, h * scale, hv.u0(), hv.v0(), hv.u1(), hv.v1());
+            }
+        }
+    }
+
+    if hovered && held && was == NO_PRESS {
+        ctx.pressed = wid;
+    }
+    if was == wid && !held && hovered {
+        ctx.pressed = NO_PRESS;
+        on_click(wid);
+    }
+}
+
+// Cheap stdlib-less integer-to-string for the load overlay slot labels.
 fn int_to_str(n: int) -> string {
-    // p7 supports `int.to_string()`-style intrinsics in newer builds;
-    // fall back to a tiny manual conversion that handles 0..9999 since
-    // we only ever format a single-digit slot number here.
     if n == 0 { return "0"; }
     let mut v = n;
     let mut neg = false;
@@ -771,9 +770,9 @@ fn digit(d: int) -> string {
 // wrapping the cloud's position through the full off-screen range
 // `[-sprite_w, nat_w]` so it can smoothly slide in/out across both
 // canvas edges. Painting inside the central canvas is enforced
-// separately by `draw_sprite_clipped` (UV-clipped to `[0, nat_w] ×
-// [0, nat_h]`), which is why the wrap range itself extends beyond
-// the canvas.
+// separately by `paint_sprite_clipped` (UV-clipped to `[0, nat_w] ×
+// [0, nat_h]`), which is why the wrap range itself extends beyond the
+// canvas.
 fn advance_cloud(x: float, speed: float, dt: float, nat_w: float, sprite_w: float) -> float {
     let span = nat_w + sprite_w;
     if span <= 0.0 { return x; }
@@ -788,7 +787,7 @@ fn advance_cloud(x: float, speed: float, dt: float, nat_w: float, sprite_w: floa
 }
 
 // max(t, 0.0). Avoids the boilerplate of a 3-line if/else at every
-// clip-trim call site in `draw_sprite_clipped`.
+// clip-trim call site in `paint_sprite_clipped`.
 fn clamp_min0(t: float) -> float {
     if t > 0.0 { return t; }
     return 0.0;
@@ -839,7 +838,7 @@ pub fn make_pal3_start_menu(
 
     return box(Pal3StartMenuDirector(
         host, asset_path, atlas, bgm,
-        NO_PRESS, INTENT_NONE, MODE_MAIN, NO_SLOT, NO_SLOT,
+        INTENT_NONE, MODE_MAIN, NO_SLOT,
         0.0,
         // taiji_t (animation progress); also reset on every activate.
         0.0,
@@ -852,5 +851,7 @@ pub fn make_pal3_start_menu(
         // until Esc or end-of-stream.
         host.pal3().play_intro_movie(asset_path),
         false,
+        // Press latch for the declarative widget tree.
+        gui.make_ctx(),
     )) as box<radiance.IDirector>;
 }

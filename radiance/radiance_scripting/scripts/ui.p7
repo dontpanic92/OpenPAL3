@@ -57,8 +57,13 @@ pub let ALIGN_END: int = 2;
 // sprite-button press latch (`pressed` = the key of the held ImageButton,
 // or `NO_PRESS`). Build one per screen via `make_ctx` and reuse it every
 // frame.
+// `pressed` is public so screen-local `struct[Element]` widgets (game
+// screens that host their own atlas/sprite chrome rather than a CEGUI
+// `IUiLayoutHandle`, e.g. PAL3's cover menu) can participate in the same
+// cross-frame press latch as the built-in `LayoutImage` / `TextButton` /
+// `UiLayout` widgets.
 pub struct UiCtx(
-    pressed: int = NO_PRESS,
+    pub pressed: int = NO_PRESS,
 ) {
     // Call once at the END of each frame (after the tree is painted).
     // When the mouse button is up, clear the latch so the next frame

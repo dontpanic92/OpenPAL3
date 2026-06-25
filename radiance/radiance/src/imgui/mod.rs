@@ -49,6 +49,13 @@ pub struct ImguiContext {
     /// it (e.g. a game font was appended) and the GPU atlas texture needs
     /// to be rebuilt. Drained by the renderer via [`take_atlas_dirty`].
     atlas_dirty: Cell<bool>,
+    /// Game font registration deferred to the top of the next
+    /// [`draw_ui`] (raw TTF/TTC bytes + extra scale). `create_director`
+    /// registers the game font from inside `director.update`, which the
+    /// engine runs while `draw_ui` already holds the `Context` borrow;
+    /// applying it immediately would re-enter that borrow and panic
+    /// ("RefCell already borrowed"). Mirrors `pending_theme`.
+    pending_game_font: RefCell<Option<(Vec<u8>, f32)>>,
 }
 
 thread_local! {
@@ -114,6 +121,7 @@ impl ImguiContext {
             current_theme: RefCell::new(applied.to_string()),
             pending_theme: RefCell::new(None),
             atlas_dirty: Cell::new(false),
+            pending_game_font: RefCell::new(None),
         }
     }
 
@@ -135,17 +143,44 @@ impl ImguiContext {
     /// the atlas. No-op on the Vita build, which uses a fixed bitmap font.
     #[cfg(not(vita))]
     pub fn add_game_font(&self, data: &[u8], extra_scale: f32) {
-        let dpi = self.dpi_scale;
-        let scale = game_font_size_scale(data) * extra_scale;
-        log::info!(
-            "Registering game font (size normalization scale {scale:.3}, extra {extra_scale:.3})"
-        );
-        let mut context = self.context.borrow_mut();
-        let large = add_game_font_face(&mut context, data, 28. * dpi * scale);
-        let small = add_game_font_face(&mut context, data, 18. * dpi * scale);
-        GAME_FONTS.with(|f| *f.borrow_mut() = vec![large, small]);
-        self.atlas_dirty.set(true);
+        // Defer the actual atlas mutation out of the imgui frame
+        // (mirrors `apply_theme`). The sole caller is each game's
+        // `create_director`, which the engine reaches from
+        // `director.update` *inside* the `draw_ui` closure while it holds
+        // the `Context` borrow — applying the font here would double the
+        // borrow and panic ("RefCell already borrowed"). The request is
+        // applied by `apply_pending_game_font`, called from
+        // `CoreRadianceEngine::update` between frames (before the atlas
+        // rebuild + the next `NewFrame`).
+        *self.pending_game_font.borrow_mut() = Some((data.to_vec(), extra_scale));
     }
+
+    /// Apply a deferred [`add_game_font`] request, if any, into the
+    /// imgui `Context`. MUST be called between frames — specifically
+    /// before the engine's atlas-rebuild check and the next `NewFrame`
+    /// — so the appended font faces get a fresh atlas texture before
+    /// `NewFrame` asserts the atlas is built. Marks the atlas dirty so
+    /// the renderer rebuilds the GPU texture. No-op when nothing is
+    /// pending.
+    #[cfg(not(vita))]
+    pub fn apply_pending_game_font(&self) {
+        let pending = self.pending_game_font.borrow_mut().take();
+        if let Some((data, extra_scale)) = pending {
+            let dpi = self.dpi_scale;
+            let scale = game_font_size_scale(&data) * extra_scale;
+            log::info!(
+                "Registering game font (size normalization scale {scale:.3}, extra {extra_scale:.3})"
+            );
+            let mut context = self.context.borrow_mut();
+            let large = add_game_font_face(&mut context, &data, 28. * dpi * scale);
+            let small = add_game_font_face(&mut context, &data, 18. * dpi * scale);
+            GAME_FONTS.with(|f| *f.borrow_mut() = vec![large, small]);
+            self.atlas_dirty.set(true);
+        }
+    }
+
+    #[cfg(vita)]
+    pub fn apply_pending_game_font(&self) {}
 
     #[cfg(vita)]
     pub fn add_game_font(&self, _data: &[u8], _extra_scale: f32) {}

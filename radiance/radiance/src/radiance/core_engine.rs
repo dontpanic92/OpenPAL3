@@ -163,6 +163,12 @@ impl CoreRadianceEngine {
         // atlas is built).
         {
             let imgui_context = self.ui_manager.imgui_context();
+            // Apply any font registration deferred from the previous
+            // frame's `director.update` (queued there to avoid a
+            // `Context` double-borrow while `draw_ui` is mid-frame). This
+            // mutates the atlas and sets the dirty flag, so it must run
+            // before the rebuild check + the next `NewFrame`.
+            imgui_context.apply_pending_game_font();
             if imgui_context.take_atlas_dirty() {
                 self.rendering_engine
                     .borrow_mut()

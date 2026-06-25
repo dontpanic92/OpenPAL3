@@ -1,4 +1,4 @@
-// Yaobow title-selection page (immediate-mode protosept port).
+// Yaobow title-selection page (declarative-UI protosept port).
 // Visual parity port of the legacy `yaobow/src/application/director.rs`:
 //
 //   * fullscreen window with a 0..2s..5s alpha ramp;
@@ -14,6 +14,16 @@
 // `host.app().open_game(ordinal)` — the matching `YaobowAppService`
 // records the choice into the existing `Rc<RefCell<Option<GameType>>>`
 // that `YaobowApplicationLoader::on_updating` polls on the next tick.
+//
+// Migration shape (mirrors PAL3/PAL4 `start_menu.p7`): the screen is
+// DECLARED as a `gui.Element` tree and painted via `gui.paint_root`.
+// `render` advances the pure timing/input state machines in `tick_*`
+// helpers (kept separate from layout: they only read `dt` + input +
+// text metrics) and otherwise just composes `gui.Stack` / `gui.Positioned`
+// / `gui.Column` of screen-local leaf elements (`FittedImg`, `FadeWrap`,
+// `PromptLabel`, `VersionLabel`, `TitleGameButton`). The state-machine
+// ticks run AFTER `paint_root` so the original "draw the current frame,
+// then advance" ordering is preserved exactly.
 
 import radiance;
 import scripting_services;
@@ -23,6 +33,9 @@ import shared.openpal3;
 import shared.openpal4;
 import shared.openswd5;
 import yaobow.title.title_consts;
+// Declarative widget lib. Aliased to `gui` so it doesn't collide with
+// the `ui: IUiHost` render parameter.
+import radiance_scripting.ui as gui;
 
 let PROMPT_FIRST_TIME: int = 0;
 let PROMPT_BLINKING: int = 1;
@@ -40,6 +53,15 @@ let NO_HOVER: int = -1;
 
 let PAL3_COUNT: int = 7;
 let PAL4_COUNT: int = 4;
+
+// Game-list row height (native pixels), matched against the legacy
+// `draw_game_list` (item_h = 60).
+let LIST_ROW_HEIGHT: float = 60.0;
+
+// "Press any key to continue" prompt strings (with/without the blinking
+// trailing underline).
+let PROMPT_TEXT_A: string = "按下任意键继续";
+let PROMPT_TEXT_B: string = "按下任意键继续_";
 
 // Per-frame mutable state. The generated `IUiLayer`/`IDirector` protos now use
 // `refmut self` receivers, so the interface methods may mutate fields directly;
@@ -90,18 +112,31 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
             title_consts.BG_R, title_consts.BG_G, title_consts.BG_B, title_consts.BG_A,
             () => {
                 ui.window_fullscreen("##yaobow_title", 0, () => {
-                    self.render_inner(ui, dt);
+                    // Pre-draw side effects (latch the preview pane on
+                    // first hover + lazy-load the chosen preview), so the
+                    // tree built below paints the freshly-loaded art this
+                    // same frame — matching the legacy `render_right_pane`
+                    // / `render_hovered_pic` ordering.
+                    self.tick_pre(ui);
+
+                    let root = self.build(ui);
+                    let ctx = gui.make_ctx();
+                    gui.paint_root(root, ui, ctx);
+
+                    // Advance the timing/input state machines AFTER the
+                    // draw so the original "draw current frame, then
+                    // advance" ordering is preserved exactly.
+                    self.tick_post(ui, dt);
                 });
             },
         );
         0
     }
 
-    pub fn render_inner(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        dt: float,
-    ) {
+    // Declare the whole title screen as a widget tree. The fade-in alpha
+    // (computed from `self.time`) wraps the logo / prompt / preview group
+    // via `FadeWrap`; the version label sits outside it at full opacity.
+    pub fn build(self: refmut<Self>, ui: box<radiance.IUiHost>) -> box<gui.Element> {
         let display_w = ui.display_size_x() as float;
         let display_h = ui.display_size_y() as float;
         let unit_w = display_w / 16.0;
@@ -114,87 +149,211 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
         let central_y = (display_h - central_h) * 0.5;
         let left_ratio = 0.4;
 
-        let t = self.time;
-        let alpha = compute_fade_alpha(t);
-        self.time = t + dt;
+        // Logo (top of the left pane).
+        let logo_cx = central_w * left_ratio * 0.5 + central_x;
+        let logo_cy = central_h * 0.2 + central_y;
+        let logo_bw = central_w * 0.4;
+        let logo_bh = central_h * 0.3;
 
-        ui.style_alpha(alpha, () => {
-            let logo_cx = central_w * left_ratio * 0.5 + central_x;
-            let logo_cy = central_h * 0.2 + central_y;
-            let logo_w = central_w * 0.4;
-            let logo_h = central_h * 0.3;
-            self.draw_logo(ui, logo_cx, logo_cy, logo_w, logo_h);
+        // Prompt / game-list (bottom of the left pane).
+        let list_cx = logo_cx;
+        let list_cy = central_h * 0.65 + central_y;
+        let list_w = logo_bw;
+        let list_h = central_h * 0.7;
 
-            let list_cx = logo_cx;
-            let list_cy = central_h * 0.65 + central_y;
-            let list_w = logo_w;
-            let list_h = central_h * 0.7;
-            self.render_prompt(ui, dt, list_cx, list_cy, list_w, list_h);
+        // Right pane (outline animation / preview pic).
+        let pic_cx = central_w * (left_ratio + (1.0 - left_ratio) * 0.5) + central_x;
+        let pic_cy = central_h * 0.5 + central_y;
+        let pic_w = central_w * (1.0 - left_ratio);
+        let pic_h = central_h;
 
-            let pic_cx = central_w * (left_ratio + (1.0 - left_ratio) * 0.5) + central_x;
-            let pic_cy = central_h * 0.5 + central_y;
-            let pic_w = central_w * (1.0 - left_ratio);
-            let pic_h = central_h;
-            self.render_right_pane(ui, dt, pic_cx, pic_cy, pic_w, pic_h);
-        });
+        let alpha = compute_fade_alpha(self.time);
 
-        self.draw_version(ui);
+        let faded_items: array<box<gui.Element>> = [
+            self.build_logo(logo_cx, logo_cy, logo_bw, logo_bh),
+            gui.Positioned(list_cx - list_w * 0.5, list_cy - list_h * 0.5, list_w, list_h,
+                self.build_left_pane(list_w)),
+            self.build_right_pane(pic_cx, pic_cy, pic_w, pic_h),
+        ];
+        let faded = box(FadeWrap(box(gui.Stack(faded_items)) as box<gui.Element>, alpha))
+            as box<gui.Element>;
+
+        let root_items: array<box<gui.Element>> = [
+            faded,
+            gui.Positioned(5.0, display_h - 24.0, 320.0, 24.0,
+                box(VersionLabel("妖弓主程序 build-dev")) as box<gui.Element>),
+        ];
+        return gui.Stack(root_items);
     }
 
-    pub fn draw_logo(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        cx: float, cy: float, w: float, h: float,
-    ) {
-        if self.logo == null { return; }
-        draw_fitted_image(
-            ui,
-            self.logo!.imgui_id(),
-            self.logo_w as float,
-            self.logo_h as float,
-            cx, cy, w, h,
-        );
+    pub fn build_logo(self: refmut<Self>, cx: float, cy: float, bw: float, bh: float) -> box<gui.Element> {
+        if self.logo == null {
+            let empty: array<box<gui.Element>> = [];
+            return gui.Stack(empty);
+        }
+        return gui.Positioned(cx - bw * 0.5, cy - bh * 0.5, bw, bh,
+            box(FittedImg(self.logo!.imgui_id(), self.logo_w as float, self.logo_h as float))
+                as box<gui.Element>);
     }
 
-    pub fn render_prompt(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        dt: float,
-        cx: float, cy: float, w: float, h: float,
-    ) {
+    // Left pane content: either the blinking "press any key" prompt or
+    // (once the user has pressed + released) the game-selection list.
+    pub fn build_left_pane(self: refmut<Self>, list_w: float) -> box<gui.Element> {
+        if self.prompt_phase == PROMPT_SHOWING_LIST {
+            return self.build_game_list(list_w);
+        }
+        return box(PromptLabel(self.prompt_label())) as box<gui.Element>;
+    }
+
+    pub fn build_game_list(self: refmut<Self>, list_w: float) -> box<gui.Element> {
+        let items: array<box<gui.Element>> = [
+            self.game_btn(title_consts.GAME_PAL3, list_w),
+            self.game_btn(title_consts.GAME_PAL4, list_w),
+            self.game_btn(title_consts.GAME_PAL5, list_w),
+            self.game_btn(title_consts.GAME_SWDHC, list_w),
+            self.game_btn(title_consts.MENU_SETTINGS, list_w),
+            self.game_btn(title_consts.MENU_EXIT, list_w),
+        ];
+        return gui.Column(items, 0.0, gui.ALIGN_CENTER, gui.ALIGN_CENTER);
+    }
+
+    pub fn game_btn(self: refmut<Self>, ordinal: int, w: float) -> box<gui.Element> {
+        let label = game_full_name(ordinal);
+        let hovered = self.hovered_game == ordinal;
+        return box(TitleGameButton(
+            label, w, LIST_ROW_HEIGHT, ordinal, hovered,
+            (o: int) => { self.set_hovered(o); },
+            (o: int) => { self.submit_game(o); },
+        )) as box<gui.Element>;
+    }
+
+    // The prompt string to display this frame (the blink phase decides
+    // whether the trailing underline shows). Pure read of current state;
+    // the timing advance lives in `tick_prompt`.
+    pub fn prompt_label(self: refmut<Self>) -> string {
         let phase = self.prompt_phase;
-        if phase == PROMPT_SHOWING_LIST {
-            self.draw_game_list(ui, cx, cy, w, h);
-            return;
-        }
-        let text_a = "按下任意键继续";
-        let text_b = "按下任意键继续_";
-        let text_w = ui.calc_text_size_x(text_b);
-        let text_h = ui.calc_text_size_y(text_b);
-        ui.style_color(
-            title_consts.SC_TEXT, 0.0, 0.0, 0.0, 1.0, () => {
-                self.draw_prompt_text(ui, dt, cx, cy, text_w, text_h, text_a, text_b);
-            },
-        );
-        if self.prompt_phase == PROMPT_AWAITING_RELEASE {
-            if !ui.any_key_or_mouse_down() {
-                self.hovered_game = title_consts.GAME_PAL3;
-                self.prompt_phase = PROMPT_SHOWING_LIST;
+        if phase == PROMPT_BLINKING {
+            let cycle = title_consts.UNDERLINE_MARGIN_TIME + title_consts.UNDERLINE_SHOW_TIME;
+            let mut t = self.prompt_time;
+            while t > cycle {
+                t = t - cycle;
             }
+            if t > title_consts.UNDERLINE_MARGIN_TIME {
+                return PROMPT_TEXT_B;
+            }
+            return PROMPT_TEXT_A;
+        }
+        return PROMPT_TEXT_A;
+    }
+
+    pub fn build_right_pane(
+        self: refmut<Self>,
+        cx: float, cy: float, w: float, h: float,
+    ) -> box<gui.Element> {
+        if self.pic_state == PIC_OUTLINE {
+            return self.build_outline(cx, cy, w, h);
+        }
+        return self.build_hovered_pic(cx, cy, w, h);
+    }
+
+    pub fn build_outline(
+        self: refmut<Self>,
+        cx: float, cy: float, w: float, h: float,
+    ) -> box<gui.Element> {
+        if self.outline_phase == OUTLINE_PLAYING && self.outlines != null {
+            let anim = self.outlines!;
+            let frame = anim.frame_at(self.outline_frame);
+            let fw = frame.width() as float;
+            let fh = frame.height() as float;
+            let remaining = self.outline_remaining;
+            let mut a = 1.0;
+            if remaining < title_consts.OUTLINE_FADE_TIME {
+                a = remaining / title_consts.OUTLINE_FADE_TIME;
+            } else if remaining > title_consts.OUTLINE_SHOW_TIME - title_consts.OUTLINE_FADE_TIME {
+                a = (title_consts.OUTLINE_SHOW_TIME - remaining) / title_consts.OUTLINE_FADE_TIME;
+            }
+            // The outline fits into 70% of the pane height (centred on
+            // the pane centre), matching the legacy `render_outline`.
+            let h70 = h * 0.7;
+            let img = box(FittedImg(frame.imgui_id(), fw, fh)) as box<gui.Element>;
+            return gui.Positioned(cx - w * 0.5, cy - h70 * 0.5, w, h70,
+                box(FadeWrap(img, a)) as box<gui.Element>);
+        }
+        let empty: array<box<gui.Element>> = [];
+        return gui.Stack(empty);
+    }
+
+    pub fn build_hovered_pic(
+        self: refmut<Self>,
+        cx: float, cy: float, w: float, h: float,
+    ) -> box<gui.Element> {
+        if self.current_pic == null {
+            let empty: array<box<gui.Element>> = [];
+            return gui.Stack(empty);
+        }
+        let tex = self.current_pic!;
+        return gui.Positioned(cx - w * 0.5, cy - h * 0.5, w, h,
+            box(FittedImg(tex.imgui_id(), tex.width() as float, tex.height() as float))
+                as box<gui.Element>);
+    }
+
+    // --- State mutators invoked from widget callbacks -------------------
+
+    pub fn set_hovered(self: refmut<Self>, ordinal: int) {
+        self.hovered_game = ordinal;
+    }
+
+    pub fn submit_game(self: refmut<Self>, ordinal: int) {
+        if ordinal == title_consts.MENU_SETTINGS {
+            self.intent = title_consts.INTENT_OPEN_SETTINGS;
+            self.intent_arg = 0;
+        } else if ordinal == title_consts.MENU_EXIT {
+            self.intent = title_consts.INTENT_EXIT;
+            self.intent_arg = 0;
+        } else {
+            self.intent = title_consts.INTENT_OPEN_GAME;
+            self.intent_arg = ordinal;
         }
     }
 
-    pub fn draw_prompt_text(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        dt: float,
-        cx: float, cy: float, text_w: float, text_h: float,
-        text_a: string, text_b: string,
-    ) {
+    // --- Per-frame state machines (pure timing/input; no layout) --------
+
+    // Runs BEFORE the tree is built: latch the preview pane on first
+    // hover and lazy-load the chosen preview so it can paint this frame.
+    pub fn tick_pre(self: refmut<Self>, ui: box<radiance.IUiHost>) {
+        if self.hovered_game != NO_HOVER {
+            self.pic_state = PIC_SHOWING;
+        }
+        if self.pic_state == PIC_SHOWING {
+            self.load_hovered_pic();
+        }
+    }
+
+    pub fn load_hovered_pic(self: refmut<Self>) {
+        let hovered = self.hovered_game;
+        if hovered == NO_HOVER { return; }
+        if hovered != title_consts.GAME_PAL3 && hovered != title_consts.GAME_PAL4 { return; }
+        if self.current_pic_game != hovered {
+            let count = pic_count(hovered);
+            let r = self.host.random().next_int(count);
+            self.current_pic_game = hovered;
+            self.current_pic_index = r;
+            let path = pic_path(hovered, r);
+            self.current_pic = self.host.textures().load_png(path);
+        }
+    }
+
+    // Runs AFTER the tree is painted: advance the prompt blink, the
+    // outline GIF, and the master fade timer.
+    pub fn tick_post(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) {
+        self.tick_prompt(ui, dt);
+        self.tick_outline(dt);
+        self.time = self.time + dt;
+    }
+
+    pub fn tick_prompt(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) {
         let phase = self.prompt_phase;
         if phase == PROMPT_FIRST_TIME {
-            ui.set_cursor_pos(cx - text_w * 0.5, cy - text_h * 0.5);
-            ui.text(text_a);
             let t = self.prompt_time - dt;
             if t < 0.0 {
                 self.prompt_phase = PROMPT_BLINKING;
@@ -211,142 +370,20 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
             while t > cycle {
                 t = t - cycle;
             }
-            ui.set_cursor_pos(cx - text_w * 0.5, cy - text_h * 0.5);
-            if t > title_consts.UNDERLINE_MARGIN_TIME {
-                ui.text(text_b);
-            } else {
-                ui.text(text_a);
-            }
             self.prompt_time = t + dt;
             if ui.any_key_or_mouse_down() {
                 self.prompt_phase = PROMPT_AWAITING_RELEASE;
             }
-        }
-    }
-
-    pub fn draw_game_list(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        cx: float, cy: float, w: float, h: float,
-    ) {
-        let item_w = w;
-        let item_x = cx - item_w * 0.5;
-        let item_h = 60.0;
-            let all_h = item_h * 6.0;
-        let y = cy - all_h * 0.5;
-        ui.style_color(
-            title_consts.SC_BUTTON, 0.0, 0.0, 0.0, 0.0, () => {
-                ui.style_color(
-                    title_consts.SC_BUTTON_HOVERED, 0.0, 0.0, 0.0, 0.0, () => {
-                        ui.style_color(
-                            title_consts.SC_BUTTON_ACTIVE, 0.0, 0.0, 0.0, 0.0, () => {
-                                self.draw_game_button(ui, title_consts.GAME_PAL3, item_x, y, item_w, item_h);
-                                let y2 = y + item_h;
-                                self.draw_game_button(ui, title_consts.GAME_PAL4, item_x, y2, item_w, item_h);
-                                    let y3 = y2 + item_h;
-                                    self.draw_game_button(ui, title_consts.GAME_PAL5, item_x, y3, item_w, item_h);
-                                    let y4 = y3 + item_h;
-                                    self.draw_game_button(ui, title_consts.GAME_SWDHC, item_x, y4, item_w, item_h);
-                                    let y5 = y4 + item_h;
-                                    self.draw_game_button(ui, title_consts.MENU_SETTINGS, item_x, y5, item_w, item_h);
-                                    let y6 = y5 + item_h;
-                                    self.draw_game_button(ui, title_consts.MENU_EXIT, item_x, y6, item_w, item_h);
-                                },
-                            );
-                        },
-                    );
-                },
-            );
-        }
-
-    pub fn draw_game_button(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        ordinal: int, x: float, y: float, w: float, h: float,
-    ) {
-        let label = game_full_name(ordinal);
-        ui.set_cursor_pos(x, y);
-        if self.hovered_game != ordinal {
-            ui.style_color(
-                title_consts.SC_TEXT, 0.3, 0.3, 0.3, 1.0, () => {
-                    self.submit_game_button(ui, label, w, h, ordinal);
-                },
-            );
-        } else {
-            ui.style_color(
-                title_consts.SC_TEXT, 0.75, 0.75, 0.75, 1.0, () => {
-                    self.submit_game_button(ui, label, w, h, ordinal);
-                },
-            );
-        }
-    }
-
-    pub fn submit_game_button(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        label: string, w: float, h: float, ordinal: int,
-    ) {
-        if ui.button(label, w, h) {
-            if ordinal == title_consts.MENU_SETTINGS {
-                self.intent = title_consts.INTENT_OPEN_SETTINGS;
-                self.intent_arg = 0;
-            } else if ordinal == title_consts.MENU_EXIT {
-                self.intent = title_consts.INTENT_EXIT;
-                self.intent_arg = 0;
-            } else {
-                self.intent = title_consts.INTENT_OPEN_GAME;
-                self.intent_arg = ordinal;
+        } else if phase == PROMPT_AWAITING_RELEASE {
+            if !ui.any_key_or_mouse_down() {
+                self.hovered_game = title_consts.GAME_PAL3;
+                self.prompt_phase = PROMPT_SHOWING_LIST;
             }
         }
-        if ui.is_item_hovered() {
-            self.hovered_game = ordinal;
-        }
     }
 
-    pub fn render_right_pane(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        dt: float,
-        cx: float, cy: float, w: float, h: float,
-    ) {
-        if self.hovered_game != NO_HOVER {
-            self.pic_state = PIC_SHOWING;
-        }
-        if self.pic_state == PIC_OUTLINE {
-            self.render_outline(ui, dt, cx, cy, w, h);
-        } else {
-            self.render_hovered_pic(ui, cx, cy, w, h);
-        }
-    }
-
-    pub fn render_outline(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        dt: float,
-        cx: float, cy: float, w: float, h: float,
-    ) {
-        let h70 = h * 0.7;
+    pub fn tick_outline(self: refmut<Self>, dt: float) {
         let phase = self.outline_phase;
-        if phase == OUTLINE_PLAYING {
-            if self.outlines != null {
-                let anim = self.outlines!;
-                let frame_id = self.outline_frame;
-                let frame = anim.frame_at(frame_id);
-                let fw = frame.width() as float;
-                let fh = frame.height() as float;
-                let remaining = self.outline_remaining;
-                let mut a = 1.0;
-                if remaining < title_consts.OUTLINE_FADE_TIME {
-                    a = remaining / title_consts.OUTLINE_FADE_TIME;
-                } else if remaining > title_consts.OUTLINE_SHOW_TIME - title_consts.OUTLINE_FADE_TIME {
-                    a = (title_consts.OUTLINE_SHOW_TIME - remaining) / title_consts.OUTLINE_FADE_TIME;
-                }
-                ui.style_alpha(a, () => {
-                    draw_fitted_image(ui, frame.imgui_id(), fw, fh, cx, cy, w, h70);
-                });
-            }
-        }
-
         if phase == OUTLINE_FIRST_TIME {
             let t = self.outline_remaining - dt;
             if t < 0.0 {
@@ -389,45 +426,6 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
                 self.outline_remaining = t;
             }
         }
-    }
-
-    pub fn render_hovered_pic(
-        self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        cx: float, cy: float, w: float, h: float,
-    ) {
-        let hovered = self.hovered_game;
-        if hovered == NO_HOVER { return; }
-        if hovered != title_consts.GAME_PAL3 && hovered != title_consts.GAME_PAL4 { return; }
-        if self.current_pic_game != hovered {
-            let count = pic_count(hovered);
-            let r = self.host.random().next_int(count);
-            self.current_pic_game = hovered;
-            self.current_pic_index = r;
-            // Lazy-load the chosen preview into the state slot.
-            let path = pic_path(hovered, r);
-            self.current_pic = self.host.textures().load_png(path);
-        }
-        let slot = self.current_pic;
-        if slot == null { return; }
-        let tex = slot!;
-        draw_fitted_image(
-            ui,
-            tex.imgui_id(),
-            tex.width() as float,
-            tex.height() as float,
-            cx, cy, w, h,
-        );
-    }
-
-    pub fn draw_version(self: refmut<Self>, ui: box<radiance.IUiHost>) {
-        ui.style_color(
-            title_consts.SC_TEXT, 0.5, 0.5, 0.5, 1.0, () => {
-                let h = ui.display_size_y() as float;
-                ui.set_cursor_pos(5.0, h - 24.0);
-                ui.text_with_font(title_consts.FONT_SMALL, "妖弓主程序 build-dev");
-            },
-        );
     }
 
     pub fn update(
@@ -509,6 +507,7 @@ pub fn make_title_director(
 // triggered when the user picks a game with no configured asset path).
 // Mirrors the editor's `SettingsDirector` but limited to the two games
 // the yaobow.title page currently surfaces.
+// ---------------------------------------------------------------------------
 
 pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
     pub host: box<yaobow_services.IYaobowHostContext>,
@@ -703,26 +702,6 @@ fn compute_fade_alpha(t: float) -> float {
     return 1.0;
 }
 
-fn draw_fitted_image(
-    ui: box<radiance.IUiHost>,
-    texture_id: int,
-    src_w: float,
-    src_h: float,
-    cx: float,
-    cy: float,
-    max_w: float,
-    max_h: float,
-) {
-    if src_w <= 0.0 || src_h <= 0.0 { return; }
-    let mut scale = max_w / src_w;
-    let h_scale = max_h / src_h;
-    if h_scale < scale { scale = h_scale; }
-    let target_w = src_w * scale;
-    let target_h = src_h * scale;
-    ui.set_cursor_pos(cx - target_w * 0.5, cy - target_h * 0.5);
-    ui.image(texture_id, target_w, target_h);
-}
-
 fn game_full_name(ordinal: int) -> string {
     if ordinal == title_consts.GAME_PAL3 { return "仙剑奇侠传三"; }
     if ordinal == title_consts.GAME_PAL4 { return "仙剑奇侠传四"; }
@@ -749,4 +728,125 @@ fn pic_folder(ordinal: int) -> string {
     if ordinal == title_consts.GAME_PAL3 { return "pal3"; }
     if ordinal == title_consts.GAME_PAL4 { return "pal4"; }
     return "pal3";
+}
+
+// ---------------------------------------------------------------------------
+// Screen-local widget leaves (declarative `gui.Element` impls).
+// ---------------------------------------------------------------------------
+
+// A texture fitted (aspect-preserving) and centred within the assigned
+// rect. Always wrapped in a `gui.Positioned`. Mirrors the legacy
+// `draw_fitted_image` helper.
+pub struct[gui.Element] FittedImg(tex: int, src_w: float, src_h: float) {
+    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
+               ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size(0.0, 0.0);
+    }
+    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+        if self.src_w <= 0.0 || self.src_h <= 0.0 { return; }
+        let mut scale = w / self.src_w;
+        let h_scale = h / self.src_h;
+        if h_scale < scale { scale = h_scale; }
+        let tw = self.src_w * scale;
+        let th = self.src_h * scale;
+        ui.set_cursor_pos(x + (w - tw) * 0.5, y + (h - th) * 0.5);
+        ui.image(self.tex, tw, th);
+    }
+}
+
+// Applies an imgui global-alpha multiplier around `child` (used for the
+// master title fade-in and the outline GIF cross-fade).
+pub struct[gui.Element] FadeWrap(child: box<gui.Element>, alpha: float) {
+    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
+               ui: box<radiance.IUiHost>) -> gui.Size {
+        return self.child.measure(avail_w, avail_h, ui);
+    }
+    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+        let child = self.child;
+        ui.style_alpha(self.alpha, () => {
+            child.paint(x, y, w, h, ui, ctx);
+        });
+    }
+}
+
+// Centred black "press any key" prompt label. Uses `ui.text` (not the
+// lib's background-draw-list `Text`) so it inherits the enclosing
+// `FadeWrap` alpha, exactly like the legacy `draw_prompt_text`.
+pub struct[gui.Element] PromptLabel(text: string) {
+    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
+               ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size(ui.calc_text_size_x(self.text), ui.calc_text_size_y(self.text));
+    }
+    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+        let tw = ui.calc_text_size_x(self.text);
+        let th = ui.calc_text_size_y(self.text);
+        let label = self.text;
+        ui.style_color(title_consts.SC_TEXT, 0.0, 0.0, 0.0, 1.0, () => {
+            ui.set_cursor_pos(x + (w - tw) * 0.5, y + (h - th) * 0.5);
+            ui.text(label);
+        });
+    }
+}
+
+// Bottom-left version string (small grey font, full opacity).
+pub struct[gui.Element] VersionLabel(label: string) {
+    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
+               ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size(0.0, 0.0);
+    }
+    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+        let label = self.label;
+        ui.style_color(title_consts.SC_TEXT, 0.5, 0.5, 0.5, 1.0, () => {
+            ui.set_cursor_pos(x, y);
+            ui.text_with_font(title_consts.FONT_SMALL, label);
+        });
+    }
+}
+
+// A game-list row: a transparent-chrome imgui button with greyed/lit text
+// depending on hover. Reports hover via `on_hover` (so the right pane can
+// preview that game) and selection via `on_click`. Mirrors the legacy
+// `draw_game_button` + `submit_game_button`.
+pub struct[gui.Element] TitleGameButton(
+    label: string,
+    bw: float,
+    bh: float,
+    ordinal: int,
+    hovered: bool,
+    on_hover: fn(int),
+    on_click: fn(int),
+) {
+    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
+               ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size(self.bw, self.bh);
+    }
+    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+        let tr = if self.hovered { 0.75 } else { 0.3 };
+        let ord = self.ordinal;
+        let lbl = self.label;
+        let hb = self.on_hover;
+        let cb = self.on_click;
+        // Transparent button chrome in all three states + colored text,
+        // matching the legacy nested `style_color` block.
+        ui.style_color(title_consts.SC_BUTTON, 0.0, 0.0, 0.0, 0.0, () => {
+            ui.style_color(title_consts.SC_BUTTON_HOVERED, 0.0, 0.0, 0.0, 0.0, () => {
+                ui.style_color(title_consts.SC_BUTTON_ACTIVE, 0.0, 0.0, 0.0, 0.0, () => {
+                    ui.style_color(title_consts.SC_TEXT, tr, tr, tr, 1.0, () => {
+                        ui.set_cursor_pos(x, y);
+                        if ui.button(lbl, w, h) {
+                            cb(ord);
+                        }
+                        if ui.is_item_hovered() {
+                            hb(ord);
+                        }
+                    });
+                });
+            });
+        });
+    }
 }

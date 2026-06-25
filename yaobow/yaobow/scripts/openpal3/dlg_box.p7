@@ -1,25 +1,32 @@
-// PAL3 in-game dialog-box renderer (north-star, self-contained).
+// PAL3 in-game dialog-box renderer (declarative-UI port).
 //
-// Unlike the first migration (which queried a host-side
-// `Pal3DialogBoxScene` every frame), this renderer owns ALL of its
-// state in p7. It is built with a generic, game-vfs-bound
-// `ISpriteService` and `load_sprite`s its 9-slice chrome, bottom
-// decoration and click-indicator frames once at construction, holding
-// each `ISprite` handle for its lifetime (so the backing textures stay
-// uploaded). The avatar portrait is loaded on demand from
+// This renderer owns ALL of its state in p7. It is built with a generic,
+// game-vfs-bound `ISpriteService` and `load_sprite`s its 9-slice chrome,
+// bottom decoration and click-indicator frames once at construction,
+// holding each `ISprite` handle for its lifetime (so the backing textures
+// stay uploaded). The avatar portrait is loaded on demand from
 // `set_avatar`; the curtain level and avatar side are plain fields.
 //
 // The Rust SCE command loop forwards events (`set_avatar` /
 // `clear_avatar` / `set_curtain`) and the per-frame `render_dialog` /
 // `render_curtain` draw calls — the exact points the legacy Rust
-// `DialogBox::draw` / `fade_window` ran. All layout is composed onto the
-// imgui background draw list via the `IUiHost` primitives
-// (`image_rect`, `text_at`, `fill_rect`, `game_font_size`), matching the
-// original `pal3.dll` geometry.
+// `DialogBox::draw` / `fade_window` ran.
+//
+// Migration: `render_dialog` / `render_curtain` no longer issue `IUiHost`
+// primitives directly; instead each DECLARES its composition as a
+// `gui.Element` tree (a `gui.Stack` of `gui.Positioned` sprite rects + a
+// text grid, or a single `Curtain` fill) and paints it via
+// `gui.paint_root`. The chrome geometry still matches the original
+// `pal3.dll` layout exactly. Bespoke leaf widgets (`SpriteRect`,
+// `DialogText`, `Curtain`) are screen-local. A negative-width
+// `gui.Positioned` reproduces the original left-avatar horizontal mirror.
 
 import radiance;
 import scripting_services;
 import shared.openpal3;
+// Declarative widget lib. Aliased to `gui` so it doesn't collide with
+// the `ui: IUiHost` render parameter.
+import radiance_scripting.ui as gui;
 
 // Outer panel geometry (fractions of the framebuffer).
 let DLG_HEIGHT_FACTOR: float              = 0.25;
@@ -119,47 +126,8 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
         let tr_ix = dialog_right - sprite_w(self.tr);
         let tr_iy = dialog_y + sprite_h(self.tr);
 
-        // 9-slice chrome.
-        draw_sprite(ui, self.tl, dialog_x, dialog_y, tl_ix, tl_iy);
-        draw_sprite(ui, self.bl, dialog_x, bl_iy, bl_ix, dialog_bottom);
-        draw_sprite(ui, self.br, br_ix, br_iy, dialog_right, dialog_bottom);
-        draw_sprite(ui, self.tr, tr_ix, dialog_y, dialog_right, tr_iy);
-        draw_sprite(ui, self.left, dialog_x, tl_iy, dialog_x + sprite_w(self.left), bl_iy);
-        draw_sprite(ui, self.bottom, bl_ix, dialog_bottom - sprite_h(self.bottom), br_ix, dialog_bottom);
-        draw_sprite(ui, self.right, dialog_right - sprite_w(self.right), tr_iy, dialog_right, br_iy);
-        draw_sprite(ui, self.top, tl_ix, dialog_y, tr_ix, dialog_y + sprite_h(self.top));
-        draw_sprite(ui, self.center, tl_ix, tl_iy, br_ix, br_iy);
-
-        // Bottom-center decoration.
-        let deco_w = sprite_w(self.deco);
-        let deco_h = sprite_h(self.deco);
-        let deco_x = dialog_x + dialog_width / 2.0 - DLG_DECORATION_WIDTH_TRIM;
-        let deco_y = lh - DLG_DECORATION_HEIGHT_TRIM;
-        draw_sprite(ui, self.deco, deco_x, deco_y, deco_x + deco_w, deco_y + deco_h);
-
-        // Avatar portrait. On the left it is mirrored horizontally
-        // (p_min.x > p_max.x) so the face looks inward.
-        if has_avatar {
-            let av = self.avatar!;
-            let av_w = av.width() as float;
-            let av_h = av.height() as float;
-            if av_w > 0.0 && av_h > 0.0 {
-                let avatar_height = avatar_width / av_w * av_h;
-                if !avatar_at_right {
-                    ui.image_rect(av.com_id(),
-                                  dialog_x + avatar_width, lh - avatar_height,
-                                  dialog_x, lh,
-                                  av.u0(), av.v0(), av.u1(), av.v1());
-                } else {
-                    ui.image_rect(av.com_id(),
-                                  dialog_right - avatar_width, lh - avatar_height,
-                                  dialog_right, lh,
-                                  av.u0(), av.v0(), av.u1(), av.v1());
-                }
-            }
-        }
-
-        // Blinking click indicator (quad sized width x width, per original).
+        // Advance the blinking click indicator (quad sized width x width,
+        // per original) and pick this frame's frame sprite.
         self.indicator_t = self.indicator_t + dt;
         if self.indicator_t > 1.0 {
             self.indicator_t = 0.0;
@@ -170,31 +138,152 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
             - ind_w * DLG_CLICK_INDICATOR_PADDING_FACTOR
             - click_indicator_right_offset;
         let ci_y = dialog_bottom - ind_w * DLG_CLICK_INDICATOR_PADDING_FACTOR;
-        draw_sprite(ui, ind, ci_x, ci_y, ci_x + ind_w, ci_y + ind_w);
 
-        // Text grid.
-        self.render_text(ui, text, dialog_x, dialog_y, dialog_width, avatar_width);
+        // Bottom-center decoration.
+        let deco_w = sprite_w(self.deco);
+        let deco_h = sprite_h(self.deco);
+        let deco_x = dialog_x + dialog_width / 2.0 - DLG_DECORATION_WIDTH_TRIM;
+        let deco_y = lh - DLG_DECORATION_HEIGHT_TRIM;
+
+        // Declare the whole dialog box as a widget tree: the 9-slice
+        // chrome, the bottom decoration, the optional avatar, the blink
+        // indicator, then the wrapped text grid.
+        let items: array<box<gui.Element>> = [
+            sprite_rect(self.tl, dialog_x, dialog_y, tl_ix, tl_iy),
+            sprite_rect(self.bl, dialog_x, bl_iy, bl_ix, dialog_bottom),
+            sprite_rect(self.br, br_ix, br_iy, dialog_right, dialog_bottom),
+            sprite_rect(self.tr, tr_ix, dialog_y, dialog_right, tr_iy),
+            sprite_rect(self.left, dialog_x, tl_iy, dialog_x + sprite_w(self.left), bl_iy),
+            sprite_rect(self.bottom, bl_ix, dialog_bottom - sprite_h(self.bottom), br_ix, dialog_bottom),
+            sprite_rect(self.right, dialog_right - sprite_w(self.right), tr_iy, dialog_right, br_iy),
+            sprite_rect(self.top, tl_ix, dialog_y, tr_ix, dialog_y + sprite_h(self.top)),
+            sprite_rect(self.center, tl_ix, tl_iy, br_ix, br_iy),
+            sprite_rect(self.deco, deco_x, deco_y, deco_x + deco_w, deco_y + deco_h),
+            self.avatar_widget(dialog_x, dialog_right, lh, avatar_width, has_avatar, avatar_at_right),
+            sprite_rect(ind, ci_x, ci_y, ci_x + ind_w, ci_y + ind_w),
+            gui.Positioned(
+                dialog_x + avatar_width, dialog_y + DLG_TEXT_TOP_PAD,
+                dialog_width - avatar_width * 2.0, dialog_height,
+                box(DialogText(text)) as box<gui.Element>),
+        ];
+        let root = gui.Stack(items);
+        gui.paint_root(root, ui, gui.make_ctx());
         0
     }
 
-    pub fn render_text(
+    // Avatar portrait widget. On the left it is mirrored horizontally
+    // (a negative-width `Positioned`, so `image_rect` receives
+    // `x_min > x_max`) so the face looks inward. Returns an empty group
+    // when there's no avatar or its texture isn't ready.
+    pub fn avatar_widget(
         self: refmut<Self>,
-        ui: box<radiance.IUiHost>,
-        text: string,
-        dialog_x: float,
-        dialog_y: float,
-        dialog_width: float,
-        avatar_width: float,
-    ) -> int {
+        dialog_x: float, dialog_right: float, lh: float,
+        avatar_width: float, has_avatar: bool, avatar_at_right: bool,
+    ) -> box<gui.Element> {
+        if !has_avatar {
+            let empty: array<box<gui.Element>> = [];
+            return gui.Stack(empty);
+        }
+        let av = self.avatar!;
+        let av_w = av.width() as float;
+        let av_h = av.height() as float;
+        if av_w <= 0.0 || av_h <= 0.0 {
+            let empty: array<box<gui.Element>> = [];
+            return gui.Stack(empty);
+        }
+        let avatar_height = avatar_width / av_w * av_h;
+        if !avatar_at_right {
+            // Mirrored: x runs from (dialog_x + avatar_width) back to
+            // dialog_x (negative width).
+            return sprite_rect(self.avatar,
+                dialog_x + avatar_width, lh - avatar_height, dialog_x, lh);
+        }
+        return sprite_rect(self.avatar,
+            dialog_right - avatar_width, lh - avatar_height, dialog_right, lh);
+    }
+
+    pub fn render_curtain(self: refmut<Self>, ui: box<radiance.IUiHost>) -> int {
+        let c = self.curtain;
+        if c == 0.0 { return 0; }
+
+        let lw = ui.display_size_x() as float;
+        let lh = ui.display_size_y() as float;
+        if lw <= 0.0 || lh <= 0.0 { return 0; }
+
+        // Magnitude is the fade opacity; sign selects the colour
+        // (>= 0 fades to black, < 0 to white).
+        let opacity = if c < 0.0 { 0.0 - c } else { c };
+        let shade = if c < 0.0 { 1.0 } else { 0.0 };
+        let root = box(Curtain(shade, opacity)) as box<gui.Element>;
+        gui.paint_root(root, ui, gui.make_ctx());
+        0
+    }
+}
+
+// Build a `gui.Positioned` + `SpriteRect` for the absolute rect
+// `[x0,y0]`..`[x1,y1]`. A negative width/height (x1 < x0) flips the blit,
+// reproducing the original mirrored-avatar draw. The sprite may be null
+// (a piece that failed to load) — `SpriteRect` then paints nothing, so a
+// partial asset set degrades cleanly.
+fn sprite_rect(
+    s: ?box<scripting_services.ISprite>,
+    x0: float, y0: float, x1: float, y1: float,
+) -> box<gui.Element> {
+    return gui.Positioned(x0, y0, x1 - x0, y1 - y0,
+        box(SpriteRect(s)) as box<gui.Element>);
+}
+
+// Native pixel width / height of a (possibly null) sprite, as a float.
+fn sprite_w(s: ?box<scripting_services.ISprite>) -> float {
+    if s == null { return 0.0; }
+    return s!.width() as float;
+}
+fn sprite_h(s: ?box<scripting_services.ISprite>) -> float {
+    if s == null { return 0.0; }
+    return s!.height() as float;
+}
+
+// ---------------------------------------------------------------------------
+// Screen-local widget leaves (declarative `gui.Element` impls).
+// ---------------------------------------------------------------------------
+
+// Blit a held sprite (using its own UV) into the assigned rect. No-op on
+// a null sprite. Replaces the legacy `draw_sprite` helper.
+pub struct[gui.Element] SpriteRect(s: ?box<scripting_services.ISprite>) {
+    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
+               ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size(0.0, 0.0);
+    }
+    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+        if self.s == null { return; }
+        let sp = self.s!;
+        ui.image_rect(sp.com_id(), x, y, x + w, y + h, sp.u0(), sp.v0(), sp.u1(), sp.v1());
+    }
+}
+
+// The wrapped dialog text grid. Draws `content` character-by-character at
+// a tight CJK advance, wrapping at the assigned rect width, honouring the
+// `\i` (yellow) / `\r` (white) inline colour codes. Origin + wrap-limit
+// come from the enclosing `gui.Positioned`. Lifted from the legacy
+// `render_text`.
+pub struct[gui.Element] DialogText(content: string) {
+    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
+               ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size(avail_w, avail_h);
+    }
+    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
         let font_size = ui.game_font_size();
-        if font_size <= 0.0 { return 0; }
+        if font_size <= 0.0 { return; }
 
         let line_pitch = font_size * DLG_LINE_HEIGHT_FACTOR;
         let char_advance = font_size * DLG_CHAR_ADVANCE_FACTOR;
-        let wrap_limit = dialog_width - avatar_width * 2.0;
-        let origin_x = dialog_x + avatar_width;
-        let top_y = dialog_y + DLG_TEXT_TOP_PAD;
+        let wrap_limit = w;
+        let origin_x = x;
+        let top_y = y;
 
+        let text = self.content;
         let mut text_x = 0.0;
         let mut text_y = 0.0;
         // Current text colour, default white. `\i` -> yellow, `\r` -> white.
@@ -236,48 +325,20 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
             ui.text_at(origin_x + text_x, top_y + text_y, cr, cg, cb, 1.0, c);
             text_x = text_x + char_advance;
         }
-        0
-    }
-
-    pub fn render_curtain(self: refmut<Self>, ui: box<radiance.IUiHost>) -> int {
-        let c = self.curtain;
-        if c == 0.0 { return 0; }
-
-        let lw = ui.display_size_x() as float;
-        let lh = ui.display_size_y() as float;
-        if lw <= 0.0 || lh <= 0.0 { return 0; }
-
-        // Magnitude is the fade opacity; sign selects the colour
-        // (>= 0 fades to black, < 0 to white).
-        let opacity = if c < 0.0 { 0.0 - c } else { c };
-        let shade = if c < 0.0 { 1.0 } else { 0.0 };
-        ui.fill_rect(0.0, 0.0, lw, lh, shade, shade, shade, opacity);
-        0
     }
 }
 
-// Draw a held sprite into the absolute rect `[x0,y0]`..`[x1,y1]`, using
-// the sprite's own UV (full [0,1] for whole images). Skips null (a
-// sprite that failed to load) so a partial asset set degrades cleanly.
-fn draw_sprite(
-    ui: box<radiance.IUiHost>,
-    s: ?box<scripting_services.ISprite>,
-    x0: float, y0: float, x1: float, y1: float,
-) -> int {
-    if s == null { return 0; }
-    let sp = s!;
-    ui.image_rect(sp.com_id(), x0, y0, x1, y1, sp.u0(), sp.v0(), sp.u1(), sp.v1());
-    0
-}
-
-// Native pixel width / height of a (possibly null) sprite, as a float.
-fn sprite_w(s: ?box<scripting_services.ISprite>) -> float {
-    if s == null { return 0.0; }
-    return s!.width() as float;
-}
-fn sprite_h(s: ?box<scripting_services.ISprite>) -> float {
-    if s == null { return 0.0; }
-    return s!.height() as float;
+// Fullscreen fade curtain: a flat `(shade,shade,shade,opacity)` rect over
+// the whole viewport. Replaces the legacy `render_curtain` `fill_rect`.
+pub struct[gui.Element] Curtain(shade: float, opacity: float) {
+    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
+               ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size(avail_w, avail_h);
+    }
+    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+        ui.fill_rect(x, y, x + w, y + h, self.shade, self.shade, self.shade, self.opacity);
+    }
 }
 
 pub fn make_pal3_dialog_renderer(
