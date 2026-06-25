@@ -364,6 +364,15 @@ impl AdventureDirectorProps {
         );
         self.move_role(self.scene_manager.clone(), delta_sec, &moving_direction);
 
+        // Advance ambient NPC patrols (non-scripted townsfolk walking their
+        // authored loop). Scripted roles are untouched.
+        {
+            let scene_rc = self.scene_manager.scn_scene().unwrap();
+            scene_rc
+                .inner::<crate::openpal3::scene::ScnScene>()
+                .step_patrols(delta_sec);
+        }
+
         self.camera_rotation =
             get_camera_rotation(self.input_engine.clone(), self.camera_rotation, delta_sec);
 

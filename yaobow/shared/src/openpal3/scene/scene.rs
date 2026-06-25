@@ -325,6 +325,66 @@ impl ScnScene {
         }
     }
 
+    /// All role entities currently in the scene (named `ROLE_<n>`).
+    pub fn role_entities(&self) -> Vec<ComRc<IEntity>> {
+        self.scene
+            .entities()
+            .iter()
+            .filter(|e| e.name().starts_with("ROLE_"))
+            .cloned()
+            .collect()
+    }
+
+    /// Advance ambient NPC patrols by `delta_sec`. Only roles that were given a
+    /// patrol path at load time (non-scripted townsfolk) move; scripted roles
+    /// are untouched. Movement is ground-snapped via the role's nav layer.
+    pub fn step_patrols(&self, delta_sec: f32) {
+        // Default walk speed when the role record carries no per-role speed
+        // (0x150 is zero for most patrol roles).
+        const DEFAULT_PATROL_SPEED: f32 = 60.;
+        for entity in self.role_entities() {
+            let rc = match RoleController::get_role_controller(entity.clone()) {
+                Some(rc) => rc,
+                None => continue,
+            };
+            let controller = rc.inner::<RoleController>();
+            if !controller.has_patrol() {
+                continue;
+            }
+            let target = match controller.patrol_target() {
+                Some(t) => t,
+                None => continue,
+            };
+            let layer = controller.nav_layer();
+            let position = entity.transform().borrow().position();
+            let to = Vec3::new(target.x - position.x, 0., target.z - position.z);
+            let dist = (to.x * to.x + to.z * to.z).sqrt();
+            let speed = {
+                let s = controller.patrol_speed();
+                if s > f32::EPSILON { s } else { DEFAULT_PATROL_SPEED }
+            };
+            let step = speed * delta_sec;
+
+            if dist <= step.max(1.0) {
+                controller.advance_patrol();
+                continue;
+            }
+
+            let dir = Vec3::new(to.x / dist, 0., to.z / dist);
+            let mut new_position = Vec3::add(&position, &Vec3::scalar_mul(step, &dir));
+            let nav_coord = self.scene_coord_to_nav_coord(layer, &new_position);
+            new_position.y = self.get_height(layer, nav_coord);
+
+            let look_at = Vec3::new(target.x, new_position.y, target.z);
+            entity
+                .transform()
+                .borrow_mut()
+                .look_at(&look_at)
+                .set_position(&new_position);
+            controller.walk();
+        }
+    }
+
     fn test_sphere_aabb(s: &Vec3, r: f32, aabb1: &Vec3, aabb2: &Vec3) -> bool {
         macro_rules! dist_sqr {
             ($s: expr_2021, $min: expr_2021, $max: expr_2021) => {
@@ -541,12 +601,17 @@ impl ScnScene {
                     &Vec3::new(role.position_x, 0., role.position_z),
                 );
                 let height = self.get_height(layer, nav_coord);
+                // Role model's authored forward is +Z (SOUTH); apply the role's
+                // facing (degrees, 0x44) on top of that base. Sign mirrors
+                // SceCommandRoleTurnFace (`-degree.to_radians()`). The base is a
+                // single tunable constant for visual calibration.
+                const ROLE_FACING_BASE: f32 = std::f32::consts::PI;
+                let facing = ROLE_FACING_BASE - role.facing.to_radians();
                 entity
                     .transform()
                     .borrow_mut()
                     .set_position(&Vec3::new(role.position_x, height, role.position_z))
-                    // HACK
-                    .rotate_axis_angle_local(&Vec3::UP, std::f32::consts::PI);
+                    .rotate_axis_angle_local(&Vec3::UP, facing);
 
                 let role_controller = entity.get_component(IRoleController::uuid()).unwrap();
                 let role_controller = role_controller
@@ -555,6 +620,17 @@ impl ScnScene {
                 {
                     let rc = role_controller.inner::<RoleController>();
                     rc.set_nav_layer(layer);
+                    // Only non-scripted ambient NPCs auto-patrol, so they don't
+                    // fight SCE RoleMoveTo/RolePathTo. Mark them active so their
+                    // walk animation loops (driven by RoleController::on_updating).
+                    if role.sce_proc_id == 0 && role.patrol_path.len() >= 2 {
+                        rc.set_patrol(
+                            role.patrol_path.clone(),
+                            role.path_mode,
+                            role.move_speed as f32,
+                        );
+                        rc.set_active(true);
+                    }
                 }
                 if role.sce_proc_id != 0 {
                     {

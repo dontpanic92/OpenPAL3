@@ -78,6 +78,14 @@ pub struct RoleController {
     auto_play_idle: RefCell<bool>,
     nav_layer: RefCell<usize>,
     proc_id: RefCell<i32>,
+    // Patrol path loaded from the .scn role record (0x84/0x88 path, 0x80 mode,
+    // 0x150 speed). Empty when the role has no path. Driven by the ADV director,
+    // which has scene/nav access for ground-snapping.
+    patrol_path: RefCell<Vec<Vec3>>,
+    patrol_index: RefCell<usize>,
+    patrol_forward: RefCell<bool>,
+    patrol_mode: RefCell<u32>,
+    patrol_speed: RefCell<f32>,
 }
 
 ComObject_RoleController!(super::RoleController);
@@ -141,6 +149,11 @@ impl RoleController {
             auto_play_idle: RefCell::new(true),
             nav_layer: RefCell::new(0),
             proc_id: RefCell::new(0),
+            patrol_path: RefCell::new(vec![]),
+            patrol_index: RefCell::new(0),
+            patrol_forward: RefCell::new(true),
+            patrol_mode: RefCell::new(0),
+            patrol_speed: RefCell::new(0.),
         }
     }
 
@@ -304,6 +317,67 @@ impl RoleController {
 
     pub fn set_nav_layer(&self, layer: usize) {
         *self.nav_layer.borrow_mut() = layer;
+    }
+
+    /// Install a patrol path (scene `.scn` role fields). `mode` is the raw 0x80
+    /// path-mode value; its low byte selects loop (0) vs ping-pong (non-zero).
+    /// A path with fewer than two waypoints is ignored.
+    pub fn set_patrol(&self, path: Vec<Vec3>, mode: u32, speed: f32) {
+        if path.len() < 2 {
+            return;
+        }
+        *self.patrol_path.borrow_mut() = path;
+        *self.patrol_index.borrow_mut() = 0;
+        *self.patrol_forward.borrow_mut() = true;
+        *self.patrol_mode.borrow_mut() = mode;
+        *self.patrol_speed.borrow_mut() = speed;
+    }
+
+    pub fn has_patrol(&self) -> bool {
+        self.patrol_path.borrow().len() >= 2
+    }
+
+    pub fn patrol_speed(&self) -> f32 {
+        *self.patrol_speed.borrow()
+    }
+
+    /// Current patrol target waypoint, if any.
+    pub fn patrol_target(&self) -> Option<Vec3> {
+        let path = self.patrol_path.borrow();
+        path.get(*self.patrol_index.borrow()).copied()
+    }
+
+    /// Whether the patrol loops (`true`) or ping-pongs (`false`). Loop when the
+    /// path-mode low byte is zero.
+    fn patrol_loops(&self) -> bool {
+        (*self.patrol_mode.borrow() & 0xff) == 0
+    }
+
+    /// Advance to the next patrol waypoint, honoring loop vs ping-pong.
+    pub fn advance_patrol(&self) {
+        let len = self.patrol_path.borrow().len();
+        if len < 2 {
+            return;
+        }
+        let mut index = self.patrol_index.borrow_mut();
+        if self.patrol_loops() {
+            *index = (*index + 1) % len;
+        } else {
+            let mut forward = self.patrol_forward.borrow_mut();
+            if *forward {
+                if *index + 1 >= len - 1 {
+                    *index = len - 1;
+                    *forward = false;
+                } else {
+                    *index += 1;
+                }
+            } else if *index <= 1 {
+                *index = 0;
+                *forward = true;
+            } else {
+                *index -= 1;
+            }
+        }
     }
 
     fn active_anim(&self) -> Ref<'_, String, ComRc<IAnimatedMeshComponent>> {

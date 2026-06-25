@@ -44,7 +44,9 @@ pub struct ScnRole {
     pub b1: u8,
     pub name: String,
     pub w42: u16,
-    pub dw44: f32,
+    // Offset 0x44: facing angle in degrees (same convention as node rotation
+    // 0x34). Range ±[0..556]; the engine wraps via sin/cos.
+    pub facing: f32,
     // Offset 0x48: nav layer index ({0, 1}). Verified empirically over all 533
     // scenes / 2068 roles: this is the only {0,1} field that never exceeds the
     // scene's actual nav-layer count. (The RE note in generated/pal3_scn.md
@@ -62,11 +64,19 @@ pub struct ScnRole {
     pub dw74: u32,
     pub dw78: u32,
     pub dw7c: u32,
-    pub b80: Vec<u8>,
-    pub dw84: Vec<u32>,
+    // Offset 0x80: patrol path mode / flags (e.g. loop vs ping-pong in the high
+    // byte). Observed values {0..6, 0x101, 0x102, 0x103}.
+    pub path_mode: u32,
+    // Offset 0x84: patrol waypoint count (0..14).
+    pub waypoint_count: u32,
+    // Offset 0x88..0x148: patrol path waypoints, stored as natural f32 (x, y, z)
+    // triplets (waypoint 0 equals the role's start position). Only the first
+    // `waypoint_count` entries are valid.
+    pub patrol_path: Vec<Vec3>,
     pub dw148: u32,
     pub dw14c: u32,
-    pub dw150: u32,
+    // Offset 0x150: patrol move speed / rate ({0,20,22,25,30,40,50,55,60,65}).
+    pub move_speed: u32,
     pub dw154: Vec<u32>,
 }
 
@@ -141,7 +151,7 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
     let b1 = reader.read_u8().unwrap();
     let name = reader.read_gbk_string(64).unwrap();
     let w42 = reader.read_u16::<LittleEndian>().unwrap();
-    let dw44 = reader.read_f32::<LittleEndian>().unwrap();
+    let facing = reader.read_f32::<LittleEndian>().unwrap();
     let nav_layer = reader.read_u32::<LittleEndian>().unwrap();
     let position_x = reader.read_f32::<LittleEndian>().unwrap();
     let position_z = reader.read_f32::<LittleEndian>().unwrap();
@@ -153,11 +163,24 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
     let dw74 = reader.read_u32::<LittleEndian>().unwrap();
     let dw78 = reader.read_u32::<LittleEndian>().unwrap();
     let dw7c = reader.read_u32::<LittleEndian>().unwrap();
-    let b80 = reader.read_u8_vec(4).unwrap();
-    let dw84 = reader.read_dw_vec(49).unwrap();
+    let path_mode = reader.read_u32::<LittleEndian>().unwrap();
+    // 0x84: count followed by 48 dwords (16 waypoints * 3 floats) of path data.
+    let path_block = reader.read_dw_vec(49).unwrap();
+    let waypoint_count = path_block[0];
+    let mut patrol_path = vec![];
+    for i in 0..(waypoint_count as usize).min(16) {
+        let base = 1 + i * 3;
+        if base + 2 < path_block.len() {
+            // stored as natural (x, y, z); wp0 equals the role's start position.
+            let x = f32::from_bits(path_block[base]);
+            let y = f32::from_bits(path_block[base + 1]);
+            let z = f32::from_bits(path_block[base + 2]);
+            patrol_path.push(Vec3::new(x, y, z));
+        }
+    }
     let dw148 = reader.read_u32::<LittleEndian>().unwrap();
     let dw14c = reader.read_u32::<LittleEndian>().unwrap();
-    let dw150 = reader.read_u32::<LittleEndian>().unwrap();
+    let move_speed = reader.read_u32::<LittleEndian>().unwrap();
     let dw154 = reader.read_dw_vec(29).unwrap();
 
     ScnRole {
@@ -165,7 +188,7 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
         b1,
         name,
         w42,
-        dw44,
+        facing,
         nav_layer,
         position_x,
         position_z,
@@ -177,11 +200,12 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
         dw74,
         dw78,
         dw7c,
-        b80,
-        dw84,
+        path_mode,
+        waypoint_count,
+        patrol_path,
         dw148,
         dw14c,
-        dw150,
+        move_speed,
         dw154,
     }
 }
