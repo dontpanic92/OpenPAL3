@@ -393,6 +393,14 @@ fn read_rotation_keyframes(reader: &mut dyn Read) -> Option<CvdRotationKeyFrames
 
         std::mem::swap(&mut quaternion.y, &mut quaternion.z);
         quaternion.z = -quaternion.z;
+        // CVD stores node rotations in the opposite handedness from radiance's
+        // quaternion convention, so the basis-changed quaternion must be
+        // inverted to rotate meshes the correct way. Without this, any node
+        // whose rotation is not a 180° turn (which is inversion-invariant) is
+        // mis-oriented — e.g. the Q01/Y back-door leaves end up rotated so
+        // their bottom edge floats ~30 units above the threshold instead of
+        // resting on it.
+        quaternion.inverse();
 
         frames.push(CvdRotationKeyFrame {
             timestamp,
