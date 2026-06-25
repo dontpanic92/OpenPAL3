@@ -45,10 +45,16 @@ pub struct ScnRole {
     pub name: String,
     pub w42: u16,
     pub dw44: f32,
-    pub dw48: u32,
+    // Offset 0x48: nav layer index ({0, 1}). Verified empirically over all 533
+    // scenes / 2068 roles: this is the only {0,1} field that never exceeds the
+    // scene's actual nav-layer count. (The RE note in generated/pal3_scn.md
+    // that calls 0x54 the layer is incorrect.)
+    pub nav_layer: u32,
     pub position_x: f32,
     pub position_z: f32,
-    pub position_y: f32,
+    // Offset 0x54: a {0, 1} flag, NOT a world-Y coordinate. Roles carry no
+    // stored Y; their height is derived from the nav map of their layer.
+    pub flag_0x54: u32,
     pub dw58: u32,
     pub sce_proc_id: u32,
     pub dw60: u32,
@@ -136,10 +142,10 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
     let name = reader.read_gbk_string(64).unwrap();
     let w42 = reader.read_u16::<LittleEndian>().unwrap();
     let dw44 = reader.read_f32::<LittleEndian>().unwrap();
-    let dw48 = reader.read_u32::<LittleEndian>().unwrap();
+    let nav_layer = reader.read_u32::<LittleEndian>().unwrap();
     let position_x = reader.read_f32::<LittleEndian>().unwrap();
     let position_z = reader.read_f32::<LittleEndian>().unwrap();
-    let position_y = reader.read_f32::<LittleEndian>().unwrap();
+    let flag_0x54 = reader.read_u32::<LittleEndian>().unwrap();
     let dw58 = reader.read_u32::<LittleEndian>().unwrap();
     let sce_proc_id = reader.read_u32::<LittleEndian>().unwrap();
     let dw60 = reader.read_u32::<LittleEndian>().unwrap();
@@ -160,10 +166,10 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
         name,
         w42,
         dw44,
-        dw48,
+        nav_layer,
         position_x,
         position_z,
-        position_y,
+        flag_0x54,
         dw58,
         sce_proc_id,
         dw60,

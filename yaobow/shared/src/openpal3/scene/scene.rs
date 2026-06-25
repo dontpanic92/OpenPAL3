@@ -535,11 +535,12 @@ impl ScnScene {
                 false,
             ) {
                 let entity = entity;
+                let layer = (role.nav_layer as usize).min(self.nav.layer_count().saturating_sub(1));
                 let nav_coord = self.scene_coord_to_nav_coord(
-                    0,
-                    &Vec3::new(role.position_x, role.position_y, role.position_z),
+                    layer,
+                    &Vec3::new(role.position_x, 0., role.position_z),
                 );
-                let height = self.get_height(0, nav_coord);
+                let height = self.get_height(layer, nav_coord);
                 entity
                     .transform()
                     .borrow_mut()
@@ -551,6 +552,10 @@ impl ScnScene {
                 let role_controller = role_controller
                     .query_interface::<IRoleController>()
                     .unwrap();
+                {
+                    let rc = role_controller.inner::<RoleController>();
+                    rc.set_nav_layer(layer);
+                }
                 if role.sce_proc_id != 0 {
                     {
                         let rc = role_controller.inner::<RoleController>();
