@@ -69,11 +69,8 @@ impl Pal5Scene {
                     None
                 };
 
-                let mut lighting = radiance::scene::SceneLighting::with_sun(
-                    env.ambient,
-                    vec![],
-                    sun,
-                );
+                let mut lighting =
+                    radiance::scene::SceneLighting::with_sun(env.ambient, vec![], sun);
                 lighting.fog = fog;
                 scene.set_lighting(lighting);
 
@@ -204,6 +201,26 @@ impl Pal5Scene {
             failed,
             nod.nodes.len(),
         );
+
+        // Grass (`<map>_<r>_<c>.ctr`): a per-block quadtree of grass-surface
+        // patches in absolute world coordinates. Each quadtree leaf becomes a
+        // distance-culled chunk entity (see `grass`), so only grass near the
+        // camera is drawn. Non-fatal — a map with no grass (or an undecodable
+        // block) still renders terrain + objects.
+        let grass_leaves = asset_loader.load_map_ctr(scene_name);
+        if !grass_leaves.is_empty() {
+            let chunks =
+                super::grass::build_grass_entities(asset_loader, scene_name, &grass_leaves);
+            if chunks.is_empty() {
+                log::warn!(
+                    "Pal5Scene '{}': grass leaves produced no geometry",
+                    scene_name
+                );
+            }
+            for chunk in chunks {
+                scene.add_entity(chunk);
+            }
+        }
 
         Ok(Self { scene })
     }

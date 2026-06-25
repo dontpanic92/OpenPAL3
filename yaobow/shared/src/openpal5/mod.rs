@@ -3,6 +3,7 @@ pub mod asset_loader;
 pub mod comdef {
     include!(concat!(env!("OUT_DIR"), "/shared_openpal5_comdef.rs"));
 }
+pub mod grass;
 pub mod scene;
 pub mod script;
 pub mod terrain;

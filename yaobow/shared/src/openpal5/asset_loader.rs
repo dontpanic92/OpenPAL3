@@ -105,6 +105,40 @@ impl AssetLoader {
         merged.ok_or_else(|| anyhow::anyhow!("no .nod blocks found for map '{}'", map_name))
     }
 
+    /// Decode and merge the map's grass (`<map>_<r>_<c>.ctr`) across all
+    /// blocks. Grass vertices are absolute world coordinates (same convention
+    /// as `.nod`/`.mp`), so per-block leaves concatenate into one list.
+    /// Returns an empty `Vec` (not an error) when a map ships no grass — many
+    /// interiors/battlemaps have none.
+    pub fn load_map_ctr(&self, map_name: &str) -> Vec<fileformats::pal5::ctr::GrassLeaf> {
+        use fileformats::pal5::ctr::CtrFile;
+
+        let mut leaves = Vec::new();
+        for (r, c) in self.map_blocks(map_name, "ctr") {
+            let path = format!("/Map/{}/{}_{}_{}.ctr", map_name, map_name, r, c);
+            let raw = match self.vfs.read_to_end(&path) {
+                Ok(raw) => raw,
+                Err(_) => continue, // block simply has no grass file
+            };
+            match CtrFile::read(&raw) {
+                Ok(ctr) => {
+                    log::info!(
+                        "Pal5 grass block {} ({},{}): depth {}, {} leaves, {} vertices",
+                        map_name,
+                        r,
+                        c,
+                        ctr.depth,
+                        ctr.leaves.len(),
+                        ctr.vertex_count(),
+                    );
+                    leaves.extend(ctr.leaves);
+                }
+                Err(err) => log::warn!("Pal5 grass block {} decode failed: {}", path, err),
+            }
+        }
+        leaves
+    }
+
     /// Enumerate the `(row, col)` block coordinates present for `map_name`
     /// with the given extension (e.g. `"mp"`, `"nod"`). Blocks form a
     /// contiguous grid from the origin, so we stop probing a row at its
@@ -339,11 +373,17 @@ fn load_foliage_resolver(vfs: &MiniFs) -> Option<Pal5FoliageResolver> {
     };
     match UvListFile::read(&raw) {
         Ok(uvlist) => {
-            log::info!("Pal5: loaded uvlist.tb ({} sprite/leaf entries)", uvlist.entries.len());
+            log::info!(
+                "Pal5: loaded uvlist.tb ({} sprite/leaf entries)",
+                uvlist.entries.len()
+            );
             Some(Pal5FoliageResolver { uvlist })
         }
         Err(err) => {
-            log::warn!("Pal5: uvlist.tb decode failed ({}); leaf cards disabled", err);
+            log::warn!(
+                "Pal5: uvlist.tb decode failed ({}); leaf cards disabled",
+                err
+            );
             None
         }
     }
