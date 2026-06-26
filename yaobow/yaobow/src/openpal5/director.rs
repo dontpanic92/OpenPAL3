@@ -7,8 +7,9 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crosscom::ComRc;
-use radiance::comdef::{IDirector, IDirectorImpl, ISceneManager};
+use radiance::comdef::{IDirector, IDirectorImpl, ISceneExt, ISceneManager};
 use radiance::input::{InputEngine, Key};
+use radiance::math::Vec3;
 use radiance::radiance::UiManager;
 use radiance::utils::free_view::FreeViewController;
 
@@ -113,8 +114,26 @@ impl Pal5StoryDirector {
         }
     }
 
-    /// On-screen hint while the debug camera is active.
+    /// On-screen hint while the debug camera is active, plus the live camera
+    /// eye position and look-at target so a bad-render viewpoint can be recorded
+    /// and reproduced exactly.
     fn draw_debug_cam_overlay(&self) {
+        // Read the live scene-camera transform: eye = position, look-at = eye +
+        // forward (the camera's local -Z axis, matrix column 2 negated).
+        let (eye, look) = self
+            .scene_manager
+            .scene()
+            .map(|scene| {
+                let camera = scene.camera();
+                let t = camera.transform();
+                let m = t.matrix();
+                let p = t.position();
+                let fwd = Vec3::new(-m[0][2], -m[1][2], -m[2][2]);
+                let look = Vec3::add(&p, &Vec3::scalar_mul(100.0, &fwd));
+                (p, look)
+            })
+            .unwrap_or((Vec3::new_zeros(), Vec3::new_zeros()));
+
         let ui = self.ui.ui();
         ui.window("pal5_debug_cam")
             .position([12.0, 12.0], imgui::Condition::Always)
@@ -127,6 +146,15 @@ impl Pal5StoryDirector {
             .build(|| {
                 ui.text_colored([0.4, 1.0, 0.4, 1.0], "DEBUG CAMERA (plot frozen)");
                 ui.text("WASD move  Q/E up/down  arrows look  ` exit");
+                ui.separator();
+                ui.text(format!(
+                    "eye    [{:.1}, {:.1}, {:.1}]",
+                    eye.x, eye.y, eye.z
+                ));
+                ui.text(format!(
+                    "target [{:.1}, {:.1}, {:.1}]",
+                    look.x, look.y, look.z
+                ));
             });
     }
     /// Whether the free-fly debug camera is currently active. Enabled by

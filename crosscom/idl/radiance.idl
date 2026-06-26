@@ -219,6 +219,21 @@ interface ISkyboxComponent: IComponent {
 [uuid(74981b78-3bf1-421e-a7af-edf2785640c0)]
 class SkyboxComponent: ISkyboxComponent {}
 
+// `IDistanceCullComponent` hides its owning entity whenever the active
+// scene camera is farther than a configured radius from a fixed world-space
+// point. This reproduces the original engines' draw-distance culling (e.g.
+// PAL5's `GrassDist`): dense, view-stacking detail such as grass is split
+// into spatial chunks, each carrying this component so only the chunks near
+// the viewer are drawn — without it the chunks stack into an opaque wall to
+// the horizon. Self-ticks via `IComponent::on_updating`, reading the camera
+// position published once per frame by `CoreRadianceEngine::update`.
+[uuid(0f9a2d41-6c2e-4f1b-9c3a-2d7b8e4a1f60)]
+interface IDistanceCullComponent: IComponent {
+}
+
+[uuid(2b5e7c90-3a8d-41e6-bf52-7c1d9e0a4b38)]
+class DistanceCullComponent: IDistanceCullComponent {}
+
 [uuid(327a838b-b67e-4cf2-8c7b-45daa11964a4)]
 interface IAudioSourceComponent: IComponent {
     void play();

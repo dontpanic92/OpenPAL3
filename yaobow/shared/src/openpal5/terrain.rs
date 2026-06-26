@@ -94,20 +94,7 @@ fn build_block_geometry(
 
     // Block origin in world space: snap the minimum patch origin down to the
     // block grid (patch origins are absolute; a block spans 5120 units).
-    let block_min_x = mp
-        .patches
-        .iter()
-        .map(|p| p.min_x)
-        .fold(f32::MAX, f32::min)
-        .min(block.row as f32 * BLOCK_WORLD_SIZE);
-    let block_min_z = mp
-        .patches
-        .iter()
-        .map(|p| p.min_z)
-        .fold(f32::MAX, f32::min)
-        .min(block.col as f32 * BLOCK_WORLD_SIZE);
-    let block_min_x = (block_min_x / BLOCK_WORLD_SIZE).floor() * BLOCK_WORLD_SIZE;
-    let block_min_z = (block_min_z / BLOCK_WORLD_SIZE).floor() * BLOCK_WORLD_SIZE;
+    let (block_min_x, block_min_z) = block_origin(block);
 
     let (height, normal, _known) = build_block_height_field(mp, block_min_x, block_min_z);
     let atlas = build_weight_atlas(block, mp.texture_ids, block_min_x, block_min_z);
@@ -154,6 +141,83 @@ fn build_block_geometry(
     ))
 }
 
+/// Block grass-grid heights: the terrain surface sampled at the `.ctr` grass
+/// grid resolution (a `17×17` lattice of `320`-unit patch corners) plus the
+/// block's world origin. Consumed by [`super::grass`] to drape the grass
+/// overlay on the terrain. Indexed `corners[row][col]` where `row` steps
+/// world **X** and `col` steps world **Z** (matching the `.ctr` grid index
+/// `(S+1)*row + col`).
+pub struct BlockGrassHeights {
+    pub min_x: f32,
+    pub min_z: f32,
+    /// Edge length of one grass cell in world units (`320`).
+    pub cell_world: f32,
+    /// `17×17` patch-corner heights, `corners[row][col]`.
+    pub corners: Vec<[f32; GRASS_VERTS_PER_BLOCK]>,
+    /// `17×17` "is this corner backed by a real decoded terrain patch?" flag,
+    /// `known[row][col]`. Grass is only emitted where the terrain is real;
+    /// dilate-filled void corners (e.g. a block's omitted region) carry
+    /// extrapolated garbage heights and must not host grass.
+    pub known: Vec<[bool; GRASS_VERTS_PER_BLOCK]>,
+}
+
+/// Grass grid cells per block edge (one per terrain patch).
+const GRASS_CELLS_PER_BLOCK: usize = PATCHES_PER_BLOCK; // 16
+/// Grass grid vertices per block edge.
+const GRASS_VERTS_PER_BLOCK: usize = GRASS_CELLS_PER_BLOCK + 1; // 17
+
+/// Compute a block's world origin (minimum patch origin snapped to the block
+/// grid). Shared by the terrain and grass builders so they align exactly.
+fn block_origin(block: &MapBlock) -> (f32, f32) {
+    let mp = &block.mp;
+    let min_x = mp
+        .patches
+        .iter()
+        .map(|p| p.min_x)
+        .fold(f32::MAX, f32::min)
+        .min(block.row as f32 * BLOCK_WORLD_SIZE);
+    let min_z = mp
+        .patches
+        .iter()
+        .map(|p| p.min_z)
+        .fold(f32::MAX, f32::min)
+        .min(block.col as f32 * BLOCK_WORLD_SIZE);
+    (
+        (min_x / BLOCK_WORLD_SIZE).floor() * BLOCK_WORLD_SIZE,
+        (min_z / BLOCK_WORLD_SIZE).floor() * BLOCK_WORLD_SIZE,
+    )
+}
+
+/// Sample the block's terrain heightfield at the grass grid corners so the
+/// grass overlay sits exactly on the ground. Returns `None` for empty blocks.
+pub fn build_block_grass_heights(block: &MapBlock) -> Option<BlockGrassHeights> {
+    if block.mp.patches.is_empty() {
+        return None;
+    }
+    let (min_x, min_z) = block_origin(block);
+    let (height, _normal, known_grid) = build_block_height_field(&block.mp, min_x, min_z);
+    let n = VERTS_PER_BLOCK; // 257
+    let step = CELLS_PER_BLOCK / GRASS_CELLS_PER_BLOCK; // 256/16 = 16 terrain cells
+
+    let mut corners = vec![[0.0f32; GRASS_VERTS_PER_BLOCK]; GRASS_VERTS_PER_BLOCK];
+    let mut known = vec![[false; GRASS_VERTS_PER_BLOCK]; GRASS_VERTS_PER_BLOCK];
+    for row in 0..GRASS_VERTS_PER_BLOCK {
+        for col in 0..GRASS_VERTS_PER_BLOCK {
+            let gx = (row * step).min(n - 1);
+            let gz = (col * step).min(n - 1);
+            corners[row][col] = height[gx * n + gz];
+            known[row][col] = known_grid[gx * n + gz];
+        }
+    }
+    Some(BlockGrassHeights {
+        min_x,
+        min_z,
+        cell_world: BLOCK_WORLD_SIZE / GRASS_CELLS_PER_BLOCK as f32, // 320
+        corners,
+        known,
+    })
+}
+
 /// Rasterize a block's `.mp` patches into a 257×257 height + normal grid,
 /// dilate-filling any cell no patch covered.
 fn build_block_height_field(
@@ -188,8 +252,13 @@ fn build_block_height_field(
         }
     }
 
+    // Capture the real-patch mask BEFORE dilation: `fill_unknown_heights`
+    // marks every extrapolated void cell `known = true`, so the post-fill mask
+    // is useless for telling real ground from filled void. Grass placement
+    // needs the real mask to avoid floating tufts over the omitted region.
+    let real = known.clone();
     fill_unknown_heights(&mut height, &mut normal, &mut known, n);
-    (height, normal, known)
+    (height, normal, real)
 }
 
 /// Build the block's `1024×1024` RGBA weight atlas (one `64×64` tile per
