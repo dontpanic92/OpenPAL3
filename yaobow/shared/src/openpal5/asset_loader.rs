@@ -105,38 +105,43 @@ impl AssetLoader {
         merged.ok_or_else(|| anyhow::anyhow!("no .nod blocks found for map '{}'", map_name))
     }
 
-    /// Decode and merge the map's grass (`<map>_<r>_<c>.ctr`) across all
-    /// blocks. Grass vertices are absolute world coordinates (same convention
-    /// as `.nod`/`.mp`), so per-block leaves concatenate into one list.
-    /// Returns an empty `Vec` (not an error) when a map ships no grass — many
-    /// interiors/battlemaps have none.
-    pub fn load_map_ctr(&self, map_name: &str) -> Vec<fileformats::pal5::ctr::GrassLeaf> {
+    /// Decode the grass (`<map>_<r>_<c>.ctr`) for one terrain block. Each
+    /// `.ctr` describes that block's grass as texture layers over the block's
+    /// `16×16` grass grid (see [`fileformats::pal5::ctr`]); the renderer drapes
+    /// it on the block's terrain heightfield. Returns an empty `Vec` when the
+    /// block ships no grass.
+    pub fn load_block_ctr(
+        &self,
+        map_name: &str,
+        r: u32,
+        c: u32,
+    ) -> Vec<fileformats::pal5::ctr::GrassLeaf> {
         use fileformats::pal5::ctr::CtrFile;
 
-        let mut leaves = Vec::new();
-        for (r, c) in self.map_blocks(map_name, "ctr") {
-            let path = format!("/Map/{}/{}_{}_{}.ctr", map_name, map_name, r, c);
-            let raw = match self.vfs.read_to_end(&path) {
-                Ok(raw) => raw,
-                Err(_) => continue, // block simply has no grass file
-            };
-            match CtrFile::read(&raw) {
-                Ok(ctr) => {
-                    log::info!(
-                        "Pal5 grass block {} ({},{}): depth {}, {} leaves, {} vertices",
-                        map_name,
-                        r,
-                        c,
-                        ctr.depth,
-                        ctr.leaves.len(),
-                        ctr.vertex_count(),
-                    );
-                    leaves.extend(ctr.leaves);
-                }
-                Err(err) => log::warn!("Pal5 grass block {} decode failed: {}", path, err),
+        let path = format!("/Map/{}/{}_{}_{}.ctr", map_name, map_name, r, c);
+        let raw = match self.vfs.read_to_end(&path) {
+            Ok(raw) => raw,
+            Err(_) => return Vec::new(), // block simply has no grass file
+        };
+        match CtrFile::read(&raw) {
+            Ok(ctr) => {
+                let layers = ctr.leaves.iter().filter(|l| !l.density.is_empty()).count();
+                log::info!(
+                    "Pal5 grass block {} ({},{}): depth {}, {} leaves ({} grid layers)",
+                    map_name,
+                    r,
+                    c,
+                    ctr.depth,
+                    ctr.leaves.len(),
+                    layers,
+                );
+                ctr.leaves
+            }
+            Err(err) => {
+                log::warn!("Pal5 grass block {} decode failed: {}", path, err);
+                Vec::new()
             }
         }
-        leaves
     }
 
     /// Enumerate the `(row, col)` block coordinates present for `map_name`

@@ -202,24 +202,34 @@ impl Pal5Scene {
             nod.nodes.len(),
         );
 
-        // Grass (`<map>_<r>_<c>.ctr`): a per-block quadtree of grass-surface
-        // patches in absolute world coordinates. Each quadtree leaf becomes a
-        // distance-culled chunk entity (see `grass`), so only grass near the
-        // camera is drawn. Non-fatal — a map with no grass (or an undecodable
-        // block) still renders terrain + objects.
-        let grass_leaves = asset_loader.load_map_ctr(scene_name);
-        if !grass_leaves.is_empty() {
-            let chunks =
-                super::grass::build_grass_entities(asset_loader, scene_name, &grass_leaves);
-            if chunks.is_empty() {
-                log::warn!(
-                    "Pal5Scene '{}': grass leaves produced no geometry",
-                    scene_name
-                );
+        // Grass (`<map>_<r>_<c>.ctr`): a flat grass-textured overlay on the
+        // terrain heightfield. Each block's `.ctr` carries grass texture layers
+        // over the block's 16×16 grass grid; we drape each layer on the block's
+        // terrain heights (see `grass` / `terrain::build_block_grass_heights`).
+        // Non-fatal — a map with no grass still renders terrain + objects.
+        let mut grass_layers = 0usize;
+        for block in &blocks {
+            let leaves = asset_loader.load_block_ctr(scene_name, block.row, block.col);
+            if leaves.is_empty() {
+                continue;
             }
+            let Some(heights) = super::terrain::build_block_grass_heights(block) else {
+                continue;
+            };
+            let tag = format!("{}_{}", block.row, block.col);
+            let chunks =
+                super::grass::build_block_grass(asset_loader, scene_name, &tag, &heights, &leaves);
+            grass_layers += chunks.len();
             for chunk in chunks {
                 scene.add_entity(chunk);
             }
+        }
+        if grass_layers > 0 {
+            log::info!(
+                "Pal5Scene '{}': grass overlay built ({} layer chunks)",
+                scene_name,
+                grass_layers,
+            );
         }
 
         Ok(Self { scene })

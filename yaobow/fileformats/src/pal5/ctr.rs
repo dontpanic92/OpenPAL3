@@ -1,10 +1,22 @@
 //! PAL5 `.ctr` grass decoder.
 //!
 //! Each map block ships `Map/<map>/<map>_<r>_<c>.ctr` alongside its terrain
-//! (`.mp`) and objects (`.nod`). The `.ctr` holds the block's **grass** as a
-//! pre-built quadtree of small grass meshes.
+//! (`.mp`) and objects (`.nod`). The `.ctr` describes the block's **grass** as
+//! a quadtree of grass **texture layers** over the block's coarse grass grid.
 //!
-//! ## Container (clean-room RE of `Pal5.exe`)
+//! ## What the grass actually is (clean-room RE of `Pal5.exe`)
+//! Grass is a **flat, grass-textured overlay on the terrain heightfield** — not
+//! billboards and not a separate 3D mesh. The block carries a coarse grass grid
+//! of `16×16` cells (one cell per `320`-unit terrain patch). Each quadtree leaf
+//! is one **layer**: a grass texture pair (`tex0`/`tex1`, indices into the
+//! `cao###` terrain-grass texture table) covering a rectangular cell range
+//! `[g0,g1,g2,g3]`, with a **per-cell density** byte. The engine emits two
+//! triangles per cell (over a shared `17×17` grid of grass vertices sampled
+//! from the terrain) coloured by the density; multiple layers stack over the
+//! same cells. Only the minority of leaves with non-grid slope detail store
+//! their own vertices/triangles in-file.
+//!
+//! ## Container
 //! ```text
 //! 0x00  u32  magic  "ctr\0"  (0x00727463 LE)
 //! 0x04  u32  version          = 8   (loader requires >= 7)
@@ -12,37 +24,35 @@
 //! 0x0c  u32  uncompressed_size
 //! 0x10  ..   zlib stream  (78 9c ...)  -> inflate to `uncompressed_size`
 //! ```
-//! Mirrors the `.mp` decoder: locate the `78 9c` zlib signature and inflate
-//! with `miniz_oxide`. The `version > 7` loader path (`Pal5.exe 0x6fbe30`)
-//! plain-zlib-inflates the body (the codec at `0x4b8180` is zlib itself —
-//! its embedded version string is `"1.2.3"`).
+//! The `version > 7` loader path (`Pal5.exe 0x6fbe30`) plain-zlib-inflates the
+//! body (the codec at `0x4b8180` is zlib; embedded version string `"1.2.3"`).
 //!
 //! ## Inflated payload = a complete quadtree (`Pal5.exe 0x6fbfc0`)
-//! The body is a **complete quadtree of fixed depth** (depth 5 → 1024 leaves,
-//! a 32×32 leaf grid for the standard 5120-unit block). The topology is
-//! *not* encoded inline — every internal node has exactly four children down
-//! to the fixed depth — so the reader recurses structurally. Nodes are read
-//! sequentially via a single cursor:
+//! A **complete quadtree of fixed depth** (depth 5 on the standard block). The
+//! topology is *not* encoded inline; the reader recurses structurally.
 //!
-//! * Every node (internal or leaf) first consumes an **8-byte header**
-//!   (two floats; a node-bounds hint the geometry doesn't need).
-//! * **Internal** node (`depth < max_depth`): recurse into 4 children.
-//! * **Leaf** node (`depth == max_depth`): then reads nine `i32`/`f32`
-//!   fields — `[tex0, tex1, color_len, g0, g1, g2, g3, vertex_count,
-//!   index_count]` — followed by three variable sections:
-//!   1. `color_len / 2` bytes of packed per-cell color source (skipped);
-//!   2. `vertex_count` × 12-byte `(x, y, z)` **world-space grass vertices**;
-//!   3. `(index_count - color_len)` × 12-byte **triangle** records
+//! * Every node first consumes an **8-byte header** (two bounds floats).
+//! * **Internal** node: recurse into 4 children.
+//! * **Leaf** node: nine `i32` fields
+//!   `[tex0, tex1, color_len, g0, g1, g2, g3, vertex_count, index_count]`,
+//!   then three variable sections in order:
+//!   1. `color_len / 2` bytes — the **per-cell density grid**, one byte per
+//!      cell, row-major (`row = g1..=g3` outer, `col = g0..=g2` inner). The
+//!      engine generates `color_len` grid triangles (2 per cell), so
+//!      `color_len == 2 * cols * rows`.
+//!   2. `vertex_count` × 12-byte `(x, y, z)` custom vertices (slope detail);
+//!      usually `0`.
+//!   3. `(index_count - color_len)` × 12-byte extra triangle records
 //!      `(u16 i0, u16 i1, u16 i2, u32 color)` indexing those vertices.
 //!
-//! The remainder of the inflated buffer is MSVC `0xcd` uninitialized-memory
-//! fill (the file is a raw memory dump; ~84% padding, which zlib collapses).
-//! The depth is auto-detected by the unique value that consumes all non-pad
-//! bytes — verified on `kuangfengzhai_0_0.ctr`: depth 5, 1024 leaves,
-//! 8833 grass vertices, parse ends exactly at the `0xcd` boundary.
+//! Grid triangle vertex indices are `(S+1)*row + col` (`S = 16`), referencing
+//! the shared grass-vertex grid — i.e. the terrain surface at grass-grid
+//! resolution; the renderer reconstructs them from the terrain heightfield.
 //!
-//! `tex0`/`tex1` are indices into the map's grass texture set
-//! (`Texture\grass\…`); texture/UV resolution is a renderer concern.
+//! The remainder of the inflated buffer is MSVC `0xcd` fill (a raw memory
+//! dump). The depth is auto-detected as the value whose structural parse
+//! consumes every non-pad byte — verified on `kuangfengzhai_0_0.ctr`: depth 5,
+//! 437 non-empty leaves, parse ends exactly at the `0xcd` boundary.
 
 use serde::Serialize;
 
@@ -73,23 +83,61 @@ pub enum CtrError {
 }
 
 /// One grass triangle: three indices into the owning leaf's `vertices`, plus
-/// a packed RGBA-ish color/flag word as authored.
+/// a packed color/flag word as authored. Only present on the minority of
+/// leaves that carry custom (non-grid) slope geometry in-file.
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct GrassTri {
     pub indices: [u16; 3],
     pub color: u32,
 }
 
-/// One leaf of the grass quadtree: a small indexed mesh of grass blades.
+/// One leaf of the grass quadtree: a grass **texture layer** over a
+/// rectangular range of the block's coarse grass grid (16×16 cells, one cell
+/// per 320-unit terrain patch). See module docs.
 #[derive(Debug, Clone, Serialize)]
 pub struct GrassLeaf {
-    /// Grass texture-set indices (`Texture\grass\…`); `-1` when unused.
+    /// Grass texture-set indices into the terrain texture table
+    /// ([`fileformats::pal5::alp::terrain_texture_name`], the `cao###`
+    /// ground-grass textures); `-1` when unused.
     pub tex0: i32,
     pub tex1: i32,
-    /// World-space grass vertices `[x, y, z]`.
+    /// Inclusive cell sub-range `[col_min, row_min, col_max, row_max]`
+    /// (`g0,g1,g2,g3`) in the block's grass grid.
+    pub g: [i32; 4],
+    /// Per-cell density, row-major: outer `row = g1..=g3`, inner
+    /// `col = g0..=g2`. `len == cols*rows == color_len/2`. Values are small
+    /// coverage levels (observed 1/2/5/7, never 0). An empty vec means the
+    /// leaf carries no grid layer.
+    pub density: Vec<u8>,
+    /// Custom in-file vertices (world-space `[x,y,z]`), present only on the
+    /// minority of leaves with bespoke slope/transition geometry.
     pub vertices: Vec<[f32; 3]>,
-    /// Triangles indexing [`GrassLeaf::vertices`].
+    /// Extra in-file triangles indexing [`GrassLeaf::vertices`].
     pub triangles: Vec<GrassTri>,
+}
+
+impl GrassLeaf {
+    /// Grass grid columns covered (`g2 - g0 + 1`).
+    pub fn cols(&self) -> i32 {
+        self.g[2] - self.g[0] + 1
+    }
+    /// Grass grid rows covered (`g3 - g1 + 1`).
+    pub fn rows(&self) -> i32 {
+        self.g[3] - self.g[1] + 1
+    }
+    /// Density of cell `(col, row)` in absolute grid coords, if in range.
+    pub fn density_at(&self, col: i32, row: i32) -> Option<u8> {
+        if self.density.is_empty()
+            || col < self.g[0]
+            || col > self.g[2]
+            || row < self.g[1]
+            || row > self.g[3]
+        {
+            return None;
+        }
+        let idx = (row - self.g[1]) * self.cols() + (col - self.g[0]);
+        self.density.get(idx as usize).copied()
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -211,12 +259,21 @@ impl<'a> TreeParser<'a> {
         let tex0 = read_i32(self.body, o);
         let tex1 = read_i32(self.body, o + 4);
         let color_len = read_i32(self.body, o + 8);
-        // o+12..o+28: four grid-bound ints (cell sub-range; unused here).
+        // o+12..o+28: the cell sub-range [g0, g1, g2, g3] (col_min, row_min,
+        // col_max, row_max) in the block's grass grid.
+        let g = [
+            read_i32(self.body, o + 12),
+            read_i32(self.body, o + 16),
+            read_i32(self.body, o + 20),
+            read_i32(self.body, o + 24),
+        ];
         let vertex_count = read_i32(self.body, o + 28);
         let index_count = read_i32(self.body, o + 32);
 
         // Sanity-gate the counts so a wrong depth fails fast rather than
-        // mallocing absurd vectors from misaligned bytes.
+        // mallocing absurd vectors from misaligned bytes. (Only the counts
+        // affect byte consumption / depth detection; `g` is captured as-is,
+        // since empty/edge leaves may carry uninitialized grid bounds.)
         if !(0..=1 << 16).contains(&color_len)
             || !(0..=1 << 20).contains(&vertex_count)
             || !(0..=1 << 20).contains(&index_count)
@@ -230,12 +287,19 @@ impl<'a> TreeParser<'a> {
             index_count as usize,
         );
 
-        // 1) Packed per-cell color source: `color_len / 2` bytes, skipped.
-        if color_len > 0 && self.need(color_len / 2).is_none() {
-            return;
+        // 1) Per-cell density grid: `color_len / 2` bytes, one per cell
+        //    (the engine generates 2 grid triangles per cell, so
+        //    `color_len == 2 * cols * rows`).
+        let mut density = Vec::new();
+        if color_len > 0 {
+            let Some(co) = self.need(color_len / 2) else {
+                return;
+            };
+            density.extend_from_slice(&self.body[co..co + color_len / 2]);
         }
 
-        // 2) World-space grass vertices.
+        // 2) Custom in-file vertices (world-space), present only on leaves
+        //    with bespoke slope/transition geometry.
         let mut vertices = Vec::with_capacity(vertex_count);
         if vertex_count > 0 {
             let Some(vo) = self.need(vertex_count * 12) else {
@@ -251,7 +315,8 @@ impl<'a> TreeParser<'a> {
             }
         }
 
-        // 3) Triangle records (only the tail beyond `color_len` is streamed).
+        // 3) Extra (non-grid) triangle records: `index_count - color_len`
+        //    of them, indexing the custom vertices above.
         let mut triangles = Vec::new();
         if index_count > color_len {
             let tri_count = index_count - color_len;
@@ -271,11 +336,15 @@ impl<'a> TreeParser<'a> {
             }
         }
 
-        // Keep only leaves that actually carry grass.
-        if !vertices.is_empty() {
+        // Keep every leaf that carries a grass layer (a density grid) or
+        // custom geometry. Pure-grid leaves (the majority) have a density
+        // grid but no in-file vertices.
+        if !density.is_empty() || !vertices.is_empty() {
             self.leaves.push(GrassLeaf {
                 tex0,
                 tex1,
+                g,
+                density,
                 vertices,
                 triangles,
             });
@@ -306,23 +375,36 @@ mod tests {
         body.extend_from_slice(&0.0f32.to_le_bytes());
     }
 
-    /// Append a leaf: nine i32/f32 fields + optional vertices + triangles.
-    /// `color_len` is set to 0 so every streamed index record is a triangle.
-    fn push_leaf(body: &mut Vec<u8>, tex0: i32, tex1: i32, verts: &[[f32; 3]], tris: &[[u16; 3]]) {
+    /// Append a leaf with a grid layer (`g` range + per-cell density) and
+    /// optional custom vertices/extra-triangles.
+    fn push_leaf(
+        body: &mut Vec<u8>,
+        tex0: i32,
+        tex1: i32,
+        g: [i32; 4],
+        density: &[u8],
+        verts: &[[f32; 3]],
+        tris: &[[u16; 3]],
+    ) {
         push_header(body);
+        // color_len = 2 * cell count; index_count = color_len + extra tris.
+        let color_len = (density.len() * 2) as i32;
+        let index_count = color_len + tris.len() as i32;
         for v in [
             tex0,
             tex1,
-            0, // color_len
-            0, // grid g0..g3
-            0,
-            0,
-            0,
-            verts.len() as i32, // vertex_count
-            tris.len() as i32,  // index_count (== triangle count, color_len = 0)
+            color_len,
+            g[0],
+            g[1],
+            g[2],
+            g[3],
+            verts.len() as i32,
+            index_count,
         ] {
             body.extend_from_slice(&v.to_le_bytes());
         }
+        // density grid: color_len/2 bytes.
+        body.extend_from_slice(density);
         for v in verts {
             for c in v {
                 body.extend_from_slice(&c.to_le_bytes());
@@ -351,20 +433,25 @@ mod tests {
 
     #[test]
     fn decodes_depth1_quadtree() {
-        // Complete depth-1 quadtree: root internal + four leaves; one leaf
-        // carries a single grass triangle.
+        // Complete depth-1 quadtree: root internal + four leaves. One leaf is
+        // a pure 2×1-cell grass-grid layer; one carries custom geometry.
         let mut body = Vec::new();
         push_header(&mut body); // root (internal)
+        // Leaf 0: grid layer, cols g0..g2 = 0..1 (2 cols), rows g1..g3 = 0..0
+        // (1 row) → 2 cells, density [3, 5].
+        push_leaf(&mut body, 10, 7, [0, 0, 1, 0], &[3, 5], &[], &[]);
+        // Leaf 1: custom slope geometry (no grid), one triangle.
         push_leaf(
             &mut body,
-            10,
-            7,
+            2,
+            4,
+            [0, 0, 0, 0],
+            &[],
             &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
             &[[0, 1, 2]],
         );
-        push_leaf(&mut body, -1, -1, &[], &[]);
-        push_leaf(&mut body, -1, -1, &[], &[]);
-        push_leaf(&mut body, -1, -1, &[], &[]);
+        push_leaf(&mut body, -1, -1, [0, 0, 0, 0], &[], &[], &[]);
+        push_leaf(&mut body, -1, -1, [0, 0, 0, 0], &[], &[], &[]);
         // Trailing memory-fill padding (as the real dumps carry).
         body.extend(std::iter::repeat(PAD).take(64));
 
@@ -372,15 +459,24 @@ mod tests {
         let ctr = CtrFile::read(&file).expect("decode");
         assert_eq!(ctr.version, 8);
         assert_eq!(ctr.depth, 1);
-        // Only the non-empty leaf is kept.
-        assert_eq!(ctr.leaves.len(), 1);
-        let leaf = &ctr.leaves[0];
-        assert_eq!((leaf.tex0, leaf.tex1), (10, 7));
-        assert_eq!(leaf.vertices.len(), 3);
-        assert_eq!(leaf.vertices[1], [4.0, 5.0, 6.0]);
-        assert_eq!(leaf.triangles.len(), 1);
-        assert_eq!(leaf.triangles[0].indices, [0, 1, 2]);
-        assert_eq!(ctr.vertex_count(), 3);
+        // The two non-empty leaves are kept (the two empty ones dropped).
+        assert_eq!(ctr.leaves.len(), 2);
+
+        let grid = &ctr.leaves[0];
+        assert_eq!((grid.tex0, grid.tex1), (10, 7));
+        assert_eq!(grid.g, [0, 0, 1, 0]);
+        assert_eq!(grid.density, vec![3, 5]);
+        assert_eq!((grid.cols(), grid.rows()), (2, 1));
+        assert_eq!(grid.density_at(0, 0), Some(3));
+        assert_eq!(grid.density_at(1, 0), Some(5));
+        assert_eq!(grid.density_at(2, 0), None);
+        assert!(grid.vertices.is_empty());
+
+        let custom = &ctr.leaves[1];
+        assert_eq!(custom.vertices.len(), 3);
+        assert_eq!(custom.vertices[1], [4.0, 5.0, 6.0]);
+        assert_eq!(custom.triangles.len(), 1);
+        assert_eq!(custom.triangles[0].indices, [0, 1, 2]);
     }
 
     #[test]
@@ -403,16 +499,25 @@ mod tests {
         };
         let ctr = CtrFile::read(&raw).expect("decode real block");
         assert_eq!(ctr.depth, 5, "standard PAL5 block is a depth-5 quadtree");
-        assert!(ctr.vertex_count() > 0, "block should carry grass");
-        // Every vertex must lie within a sane world band for block (0,0).
+        assert!(!ctr.leaves.is_empty(), "block should carry grass layers");
+        // Most leaves are pure grid layers (density, no in-file vertices).
+        assert!(ctr.leaves.iter().any(|l| !l.density.is_empty()));
         for leaf in &ctr.leaves {
+            // Grid cell range is sane (block grass grid is 16×16).
+            for &v in &leaf.g {
+                assert!((0..=64).contains(&v));
+            }
+            // density length matches the cell count.
+            if !leaf.density.is_empty() {
+                assert_eq!(leaf.density.len() as i32, leaf.cols() * leaf.rows());
+            }
+            // Custom vertices, when present, lie within a sane world band.
             for v in &leaf.vertices {
                 assert!(v[0].is_finite() && v[1].is_finite() && v[2].is_finite());
                 assert!((-2000.0..=8000.0).contains(&v[0]));
                 assert!((-3000.0..=6000.0).contains(&v[1]));
                 assert!((-2000.0..=8000.0).contains(&v[2]));
             }
-            // Triangle indices must reference existing vertices.
             for t in &leaf.triangles {
                 for &i in &t.indices {
                     assert!((i as usize) < leaf.vertices.len());
