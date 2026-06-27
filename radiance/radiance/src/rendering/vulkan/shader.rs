@@ -168,6 +168,8 @@ static TERRAIN_SPLAT_VERT: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/terrain_splat.vert.spv"));
 static TERRAIN_SPLAT_FRAG: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/terrain_splat.frag.spv"));
+static GRASS_VERT: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), "/grass.vert.spv"));
+static GRASS_FRAG: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), "/grass.frag.spv"));
 
 fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
     match shader {
@@ -203,6 +205,12 @@ fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
             TERRAIN_SPLAT_VERT,
             TERRAIN_SPLAT_FRAG,
             VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
+        ),
+        ShaderProgram::GrassWind => ShaderProgramData::new(
+            "grass",
+            GRASS_VERT,
+            GRASS_FRAG,
+            VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2,
         ),
     }
 }

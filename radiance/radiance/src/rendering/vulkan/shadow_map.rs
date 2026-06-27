@@ -358,6 +358,9 @@ fn program_components(program: ShaderProgram) -> VertexComponents {
         ShaderProgram::TerrainSplat => {
             VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD
         }
+        ShaderProgram::GrassWind => {
+            VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2
+        }
     }
 }
 

@@ -151,6 +151,13 @@ fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
             include_bytes!("shaders/simple_triangle.frag"),
             VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
         ),
+        // PSVita has no wind animation; fall back to the plain textured shader.
+        ShaderProgram::GrassWind => ShaderProgramData::new(
+            "GrassWind",
+            include_bytes!("shaders/simple_triangle.vert"),
+            include_bytes!("shaders/simple_triangle.frag"),
+            VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2,
+        ),
     }
 }
 

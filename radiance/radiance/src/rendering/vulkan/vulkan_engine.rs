@@ -35,6 +35,21 @@ use std::{cell::RefCell, error::Error};
 /// in-flight CPU frames write to the same image's command buffer.
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
+/// Elapsed seconds since the first call (engine start), used to phase
+/// time-driven vertex shaders (e.g. the PAL5 grass-wind shader). Wrapped to a
+/// large period so the `f32` keeps sub-millisecond precision over a long
+/// session. Uses a process-wide monotonic clock initialized on first use,
+/// avoiding threading a frame clock through the whole render path.
+fn engine_time_seconds() -> f32 {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static START: OnceLock<Instant> = OnceLock::new();
+    let start = START.get_or_init(Instant::now);
+    // Wrap at 3600s: well within f32 precision and a multiple of common wind
+    // periods, so the looping animation has no visible discontinuity.
+    (start.elapsed().as_secs_f64() % 3600.0) as f32
+}
+
 /// Snapshot of a scene's lighting environment in the shape the per-frame UBO
 /// consumes: flat ambient color, point lights as
 /// `(position, color, [inner, outer])`, an optional directional sun as
@@ -326,6 +341,7 @@ impl RenderingEngine for VulkanRenderingEngine {
         ubo.set_lighting(ambient, &gpu_lights);
         ubo.set_sun(sun);
         ubo.set_fog(fog);
+        ubo.set_time(engine_time_seconds());
         target.uniform_buffer_mut().copy_memory_from(&[ubo]);
 
         // Record + submit the offscreen pass.
@@ -1050,6 +1066,7 @@ impl VulkanRenderingEngine {
                     ubo.set_lighting(lighting.0, &lighting.1);
                     ubo.set_sun(lighting.2);
                     ubo.set_fog(lighting.3);
+                    ubo.set_time(engine_time_seconds());
 
                     // Directional CSM: upload the per-cascade matrices + split
                     // depths computed (and used to cull casters) above.

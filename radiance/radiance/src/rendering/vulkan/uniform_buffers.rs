@@ -168,6 +168,13 @@ pub struct PerFrameUniformBuffer {
     /// `y` = fog start (view-space depth), `z` = fog end (view-space depth),
     /// `w` reserved.
     fog_params: [f32; 4],
+    /// Animation clock: `x` = elapsed time in seconds since engine start
+    /// (monotonic, wrapped to a large period to keep precision), `yzw`
+    /// reserved. Consumed by time-driven vertex shaders (e.g. the PAL5
+    /// grass-wind shader). Appended last so the std140 offsets of every
+    /// pre-existing field — which the lit/terrain/simple shaders declare up
+    /// to `fogParams` — are unchanged.
+    time_params: [f32; 4],
 }
 
 /// Maximum number of scene point lights uploaded per frame. PAL3 scenes ship
@@ -190,6 +197,7 @@ impl PerFrameUniformBuffer {
             shadow_params: [0.0; 4],
             fog_color: [0.0; 4],
             fog_params: [0.0; 4],
+            time_params: [0.0; 4],
         }
     }
 
@@ -267,6 +275,13 @@ impl PerFrameUniformBuffer {
                 self.fog_params = [0.0; 4];
             }
         }
+    }
+
+    /// Stamp the animation clock (elapsed seconds since engine start) into the
+    /// per-frame UBO `time_params.x`. Time-driven vertex shaders (e.g. the
+    /// PAL5 grass-wind shader) read this to phase their animation.
+    pub fn set_time(&mut self, seconds: f32) {
+        self.time_params = [seconds, 0.0, 0.0, 0.0];
     }
 }
 

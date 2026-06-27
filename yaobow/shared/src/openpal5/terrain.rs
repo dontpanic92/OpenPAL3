@@ -43,7 +43,7 @@ const PATCHES_PER_BLOCK: usize = 16; // patches per block edge
 const CELLS_PER_BLOCK: usize = PATCHES_PER_BLOCK * 16; // 256 cells per block edge
 const VERTS_PER_BLOCK: usize = CELLS_PER_BLOCK + 1; // 257 vertices per block edge
 /// World size of one terrain block edge (`16 patches × 320`).
-const BLOCK_WORLD_SIZE: f32 = PATCH_WORLD_SIZE * PATCHES_PER_BLOCK as f32;
+pub(crate) const BLOCK_WORLD_SIZE: f32 = PATCH_WORLD_SIZE * PATCHES_PER_BLOCK as f32;
 /// Weight-atlas edge in texels (`16 patches × 64`).
 const ATLAS_EDGE: usize = PATCHES_PER_BLOCK * WEIGHT_EDGE; // 1024
 
@@ -141,34 +141,9 @@ fn build_block_geometry(
     ))
 }
 
-/// Block grass-grid heights: the terrain surface sampled at the `.ctr` grass
-/// grid resolution (a `17×17` lattice of `320`-unit patch corners) plus the
-/// block's world origin. Consumed by [`super::grass`] to drape the grass
-/// overlay on the terrain. Indexed `corners[row][col]` where `row` steps
-/// world **X** and `col` steps world **Z** (matching the `.ctr` grid index
-/// `(S+1)*row + col`).
-pub struct BlockGrassHeights {
-    pub min_x: f32,
-    pub min_z: f32,
-    /// Edge length of one grass cell in world units (`320`).
-    pub cell_world: f32,
-    /// `17×17` patch-corner heights, `corners[row][col]`.
-    pub corners: Vec<[f32; GRASS_VERTS_PER_BLOCK]>,
-    /// `17×17` "is this corner backed by a real decoded terrain patch?" flag,
-    /// `known[row][col]`. Grass is only emitted where the terrain is real;
-    /// dilate-filled void corners (e.g. a block's omitted region) carry
-    /// extrapolated garbage heights and must not host grass.
-    pub known: Vec<[bool; GRASS_VERTS_PER_BLOCK]>,
-}
-
-/// Grass grid cells per block edge (one per terrain patch).
-const GRASS_CELLS_PER_BLOCK: usize = PATCHES_PER_BLOCK; // 16
-/// Grass grid vertices per block edge.
-const GRASS_VERTS_PER_BLOCK: usize = GRASS_CELLS_PER_BLOCK + 1; // 17
-
 /// Compute a block's world origin (minimum patch origin snapped to the block
 /// grid). Shared by the terrain and grass builders so they align exactly.
-fn block_origin(block: &MapBlock) -> (f32, f32) {
+pub(crate) fn block_origin(block: &MapBlock) -> (f32, f32) {
     let mp = &block.mp;
     let min_x = mp
         .patches
@@ -188,36 +163,68 @@ fn block_origin(block: &MapBlock) -> (f32, f32) {
     )
 }
 
-/// Sample the block's terrain heightfield at the grass grid corners so the
-/// grass overlay sits exactly on the ground. Returns `None` for empty blocks.
-pub fn build_block_grass_heights(block: &MapBlock) -> Option<BlockGrassHeights> {
-    if block.mp.patches.is_empty() {
-        return None;
-    }
-    let (min_x, min_z) = block_origin(block);
-    let (height, _normal, known_grid) = build_block_height_field(&block.mp, min_x, min_z);
-    let n = VERTS_PER_BLOCK; // 257
-    let step = CELLS_PER_BLOCK / GRASS_CELLS_PER_BLOCK; // 256/16 = 16 terrain cells
-
-    let mut corners = vec![[0.0f32; GRASS_VERTS_PER_BLOCK]; GRASS_VERTS_PER_BLOCK];
-    let mut known = vec![[false; GRASS_VERTS_PER_BLOCK]; GRASS_VERTS_PER_BLOCK];
-    for row in 0..GRASS_VERTS_PER_BLOCK {
-        for col in 0..GRASS_VERTS_PER_BLOCK {
-            let gx = (row * step).min(n - 1);
-            let gz = (col * step).min(n - 1);
-            corners[row][col] = height[gx * n + gz];
-            known[row][col] = known_grid[gx * n + gz];
-        }
-    }
-    Some(BlockGrassHeights {
-        min_x,
-        min_z,
-        cell_world: BLOCK_WORLD_SIZE / GRASS_CELLS_PER_BLOCK as f32, // 320
-        corners,
-        known,
-    })
+/// A block's 257×257 terrain height grid plus its world origin, used to drape
+/// the `.ctr` grass overlay onto the ground.
+pub(crate) struct BlockHeightField {
+    origin_x: f32,
+    origin_z: f32,
+    height: Vec<f32>,
+    n: usize,
 }
 
+impl BlockHeightField {
+    /// The block's `(origin_x, origin_z)` world corner.
+    pub(crate) fn origin(&self) -> (f32, f32) {
+        (self.origin_x, self.origin_z)
+    }
+
+    /// Bilinearly sample the ground height at world `(wx, wz)`, clamped to the
+    /// block's extent.
+    pub(crate) fn sample(&self, wx: f32, wz: f32) -> f32 {
+        let max = (self.n - 1) as f32;
+        let fx = ((wx - self.origin_x) / CELL_WORLD_SIZE).clamp(0.0, max);
+        let fz = ((wz - self.origin_z) / CELL_WORLD_SIZE).clamp(0.0, max);
+        let x0 = fx.floor() as usize;
+        let z0 = fz.floor() as usize;
+        let x1 = (x0 + 1).min(self.n - 1);
+        let z1 = (z0 + 1).min(self.n - 1);
+        let tx = fx - x0 as f32;
+        let tz = fz - z0 as f32;
+        let h = |gx: usize, gz: usize| self.height[gx * self.n + gz];
+        let a = h(x0, z0) + (h(x1, z0) - h(x0, z0)) * tx;
+        let b = h(x0, z1) + (h(x1, z1) - h(x0, z1)) * tx;
+        a + (b - a) * tz
+    }
+}
+
+/// Build a block's terrain height field (origin + dilate-filled 257×257 grid)
+/// for grass draping.
+pub(crate) fn block_height_field(block: &MapBlock) -> BlockHeightField {
+    let (origin_x, origin_z) = block_origin(block);
+    let (height, _normal, _real) = build_block_height_field(&block.mp, origin_x, origin_z);
+    BlockHeightField {
+        origin_x,
+        origin_z,
+        height,
+        n: VERTS_PER_BLOCK,
+    }
+}
+
+#[cfg(test)]
+impl BlockHeightField {
+    /// A constant-height field for tests (grass overlay unit tests).
+    pub(crate) fn flat_for_test(origin_x: f32, origin_z: f32, height: f32) -> BlockHeightField {
+        BlockHeightField {
+            origin_x,
+            origin_z,
+            height: vec![height; VERTS_PER_BLOCK * VERTS_PER_BLOCK],
+            n: VERTS_PER_BLOCK,
+        }
+    }
+}
+
+/// Sample the block's terrain heightfield at the grass grid corners so the
+/// grass overlay sits exactly on the ground. Returns `None` for empty blocks.
 /// Rasterize a block's `.mp` patches into a 257×257 height + normal grid,
 /// dilate-filling any cell no patch covered.
 fn build_block_height_field(

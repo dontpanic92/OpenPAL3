@@ -202,23 +202,17 @@ impl Pal5Scene {
             nod.nodes.len(),
         );
 
-        // Grass (`<map>_<r>_<c>.ctr`): a flat grass-textured overlay on the
-        // terrain heightfield. Each block's `.ctr` carries grass texture layers
-        // over the block's 16×16 grass grid; we drape each layer on the block's
-        // terrain heights (see `grass` / `terrain::build_block_grass_heights`).
-        // Non-fatal — a map with no grass still renders terrain + objects.
+        // Grass (`<map>_<r>_<c>.ctr`): a terrain-conformal grass overlay built
+        // from each block's `.ctr` density grid (`cao###`-textured, density-
+        // driven coverage). See `grass::build_block_grass`. Non-fatal — a map
+        // with no grass still renders terrain + objects.
         let mut grass_layers = 0usize;
         for block in &blocks {
             let leaves = asset_loader.load_block_ctr(scene_name, block.row, block.col);
             if leaves.is_empty() {
                 continue;
             }
-            let Some(heights) = super::terrain::build_block_grass_heights(block) else {
-                continue;
-            };
-            let tag = format!("{}_{}", block.row, block.col);
-            let chunks =
-                super::grass::build_block_grass(asset_loader, scene_name, &tag, &heights, &leaves);
+            let chunks = super::grass::build_block_grass(asset_loader, scene_name, block, &leaves);
             grass_layers += chunks.len();
             for chunk in chunks {
                 scene.add_entity(chunk);

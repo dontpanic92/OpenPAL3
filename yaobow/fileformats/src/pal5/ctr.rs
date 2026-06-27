@@ -29,19 +29,23 @@
 //!
 //! ## Inflated payload = a complete quadtree (`Pal5.exe 0x6fbfc0`)
 //! A **complete quadtree of fixed depth** (depth 5 on the standard block). The
-//! topology is *not* encoded inline; the reader recurses structurally.
+//! topology is *not* encoded inline; the reader recurses structurally. The
+//! quadtree's recursion **path** is the leaf's spatial XZ placement: at each
+//! level child `c` splits the square as `x_bit = c & 1`, `z_bit = (c >> 1) & 1`
+//! (validated against the in-file collision vertices to <64u of the tile
+//! centre). A depth-5 tree therefore tiles the block into `32×32` tiles of
+//! `160` units, and each leaf's `8×8` density grid resolves to a `256×256`
+//! grass-density map at the `20`-unit terrain-cell resolution.
 //!
-//! * Every node first consumes an **8-byte header** (two bounds floats).
+//! * Every node first consumes an **8-byte header** (two height-bound floats).
 //! * **Internal** node: recurse into 4 children.
 //! * **Leaf** node: nine `i32` fields
 //!   `[tex0, tex1, color_len, g0, g1, g2, g3, vertex_count, index_count]`,
 //!   then three variable sections in order:
 //!   1. `color_len / 2` bytes — the **per-cell density grid**, one byte per
-//!      cell, row-major (`row = g1..=g3` outer, `col = g0..=g2` inner). The
-//!      engine generates `color_len` grid triangles (2 per cell), so
-//!      `color_len == 2 * cols * rows`.
-//!   2. `vertex_count` × 12-byte `(x, y, z)` custom vertices (slope detail);
-//!      usually `0`.
+//!      cell, row-major (`row` outer, `col` inner). `color_len == 2*cols*rows`.
+//!   2. `vertex_count` × 12-byte `(x, y, z)` custom vertices (collision
+//!      "curtains"); usually `0`.
 //!   3. `(index_count - color_len)` × 12-byte extra triangle records
 //!      `(u16 i0, u16 i1, u16 i2, u32 color)` indexing those vertices.
 //!
@@ -102,15 +106,26 @@ pub struct GrassLeaf {
     pub tex0: i32,
     pub tex1: i32,
     /// Inclusive cell sub-range `[col_min, row_min, col_max, row_max]`
-    /// (`g0,g1,g2,g3`) in the block's grass grid.
+    /// (`g0,g1,g2,g3`) in the block's grass grid. Its extent gives the leaf's
+    /// density-grid dimensions (`cols`×`rows`); the **placement** comes from the
+    /// quadtree tile ([`GrassLeaf::tile_x`]/`tile_z`), not these offsets.
     pub g: [i32; 4],
-    /// Per-cell density, row-major: outer `row = g1..=g3`, inner
-    /// `col = g0..=g2`. `len == cols*rows == color_len/2`. Values are small
-    /// coverage levels (observed 1/2/5/7, never 0). An empty vec means the
-    /// leaf carries no grid layer.
+    /// Per-cell density, row-major: outer `row`, inner `col`, of size
+    /// `cols*rows`. Values are small coverage levels (observed 1/2/5/7, never
+    /// 0). An empty vec means the leaf carries no grid layer.
     pub density: Vec<u8>,
+    /// This leaf's tile position in the block's complete quadtree, recovered
+    /// from the recursion path: `tile_x`/`tile_z` in `0..tiles_per_edge`, where
+    /// `tiles_per_edge == 2^depth`. The leaf's density grid maps onto the world
+    /// square `[tile_x, tile_x+1) × [tile_z, tile_z+1)` of `tiles_per_edge`,
+    /// i.e. `block_origin + tile * (block_size / tiles_per_edge)`. Child index
+    /// `c` splits as `x_bit = c & 1`, `z_bit = (c >> 1) & 1`.
+    pub tile_x: u32,
+    pub tile_z: u32,
+    pub tiles_per_edge: u32,
     /// Custom in-file vertices (world-space `[x,y,z]`), present only on the
-    /// minority of leaves with bespoke slope/transition geometry.
+    /// minority of leaves with bespoke slope/transition geometry. These are
+    /// the engine's collision / pick "curtains" — **not** rendered as grass.
     pub vertices: Vec<[f32; 3]>,
     /// Extra in-file triangles indexing [`GrassLeaf::vertices`].
     pub triangles: Vec<GrassTri>,
@@ -205,7 +220,7 @@ fn parse_tree(body: &[u8]) -> Option<(usize, Vec<GrassLeaf>)> {
             leaves: Vec::new(),
             ok: true,
         };
-        p.node(0, depth);
+        p.node(0, depth, 0, 0);
         if p.ok && align4(p.cur) >= data_end && p.cur <= body.len() {
             return Some((depth, p.leaves));
         }
@@ -237,24 +252,27 @@ impl<'a> TreeParser<'a> {
         Some(o)
     }
 
-    fn node(&mut self, depth: usize, max_depth: usize) {
+    fn node(&mut self, depth: usize, max_depth: usize, tx: u32, tz: u32) {
         // Every node carries an 8-byte header (two bounds floats) first.
         if self.need(8).is_none() {
             return;
         }
         if depth < max_depth {
-            for _ in 0..4 {
-                self.node(depth + 1, max_depth);
+            for c in 0..4u32 {
+                // Child `c` splits the square: x_bit = c & 1, z_bit = (c>>1)&1.
+                let cx = tx * 2 + (c & 1);
+                let cz = tz * 2 + ((c >> 1) & 1);
+                self.node(depth + 1, max_depth, cx, cz);
                 if !self.ok {
                     return;
                 }
             }
             return;
         }
-        self.leaf();
+        self.leaf(tx, tz, 1u32 << max_depth);
     }
 
-    fn leaf(&mut self) {
+    fn leaf(&mut self, tile_x: u32, tile_z: u32, tiles_per_edge: u32) {
         let Some(o) = self.need(36) else { return };
         let tex0 = read_i32(self.body, o);
         let tex1 = read_i32(self.body, o + 4);
@@ -345,6 +363,9 @@ impl<'a> TreeParser<'a> {
                 tex1,
                 g,
                 density,
+                tile_x,
+                tile_z,
+                tiles_per_edge,
                 vertices,
                 triangles,
             });
@@ -471,12 +492,16 @@ mod tests {
         assert_eq!(grid.density_at(1, 0), Some(5));
         assert_eq!(grid.density_at(2, 0), None);
         assert!(grid.vertices.is_empty());
+        // Quadtree placement: child 0 -> tile (0,0); tiles_per_edge = 2^1.
+        assert_eq!((grid.tile_x, grid.tile_z, grid.tiles_per_edge), (0, 0, 2));
 
         let custom = &ctr.leaves[1];
         assert_eq!(custom.vertices.len(), 3);
         assert_eq!(custom.vertices[1], [4.0, 5.0, 6.0]);
         assert_eq!(custom.triangles.len(), 1);
         assert_eq!(custom.triangles[0].indices, [0, 1, 2]);
+        // Child 1 -> x_bit=1, z_bit=0 -> tile (1,0).
+        assert_eq!((custom.tile_x, custom.tile_z), (1, 0));
     }
 
     #[test]

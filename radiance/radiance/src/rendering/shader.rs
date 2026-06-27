@@ -32,6 +32,14 @@ pub enum ShaderProgram {
     /// weight-atlas UV; terrain-texture tiling UV is derived from world
     /// position). `MaterialParams.misc.x` carries the active layer count.
     TerrainSplat,
+
+    /// PAL5 grass-wind shader. A single alpha-test textured billboard (like
+    /// [`ShaderProgram::TexturedNoLight`]) whose vertex stage sways blade tips
+    /// over time for a wind effect. Requires `POSITION | TEXCOORD`; reads the
+    /// per-frame `time` uniform and carries wind strength/speed in
+    /// `MaterialParams.uv_xform.xy`. The grass billboard texture (real
+    /// `cao###` color masked by a blade alpha) is baked CPU-side.
+    GrassWind,
 }
 
 pub(crate) struct ShaderProgramData {

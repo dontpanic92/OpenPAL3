@@ -21,9 +21,9 @@ mod vitagl;
 pub use engine::{CapturedFrame, RenderingEngine};
 pub use factory::ComponentFactory;
 pub use material::{
-    BlendMode, CullMode, DepthMode, GradientYMaterialDef, LightMapMaterialDef, LitMaterialDef,
-    MaterialDef, MaterialDefBuilder, MaterialKey, MaterialParams, SimpleMaterialDef, TerrainLayer,
-    TerrainSplatMaterialDef,
+    BlendMode, CullMode, DepthMode, GradientYMaterialDef, GrassMaterialDef, LightMapMaterialDef,
+    LitMaterialDef, MaterialDef, MaterialDefBuilder, MaterialKey, MaterialParams, SimpleMaterialDef,
+    TerrainLayer, TerrainSplatMaterialDef,
 };
 pub use platform::Window;
 pub use render_object::{RenderObject, RenderObjectHandle};

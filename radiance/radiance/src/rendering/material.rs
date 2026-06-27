@@ -544,7 +544,78 @@ fn decode_texture_data(data: Option<Vec<u8>>) -> Option<image::RgbaImage> {
         .ok()
 }
 
-/// One terrain-texture layer for [`TerrainSplatMaterialDef`]: a cache
+/// Builds a PAL5 grass-wind material ([`ShaderProgram::GrassWind`]). The vertex
+/// stage sways geometry by the second texcoord set (`inTexCoord2.x`: 0 root
+/// pinned, 1 tip moves) over the per-frame `time` uniform. `wind_strength` is
+/// the max tip displacement in world units and `wind_speed` the oscillation
+/// rate (radians/sec); both reach the vertex shader via
+/// `MaterialParams.uv_xform.xy`. The fragment stage computes
+/// `rgb = sampled.rgb * tint.rgb * tint.a`, `a = sampled.a * tint.a`, so
+/// `tint.rgb` is a colour multiplier and `tint.a` an overall coverage gain.
+pub struct GrassMaterialDef;
+impl GrassMaterialDef {
+    /// Flat ground-grass patch material from raw `cao###` `.dds` bytes (radiance
+    /// decodes the DXT5; `image` 0.23 in `shared` cannot decode DDS, so the
+    /// bytes must be decoded here). Loaded **opaque** (`get_or_update_opaque`):
+    /// the `cao` alpha is non-coverage detail data, so coverage is driven
+    /// uniformly by `tint.a` (AlphaBlend) with the RGB providing tiling detail.
+    /// * `tint` — `[r, g, b, alpha_gain]`: grass colour + overall coverage gain.
+    pub fn create_with_data(
+        texture_name: &str,
+        data: Option<Vec<u8>>,
+        tint: [f32; 4],
+        wind_strength: f32,
+        wind_speed: f32,
+    ) -> MaterialDef {
+        let texture =
+            TextureStore::get_or_update_opaque(texture_name, || decode_texture_data(data));
+
+        let mut params = MaterialParams::default();
+        params.tint = tint;
+        params.uv_scale = [wind_strength, wind_speed];
+
+        MaterialDef::builder(ShaderProgram::GrassWind)
+            .debug_name(texture_name)
+            .textures_with_samplers(vec![texture], vec![SamplerDef::default()])
+            // `blend()` resets alpha_ref/depth to the mode default, so it MUST
+            // precede `params()` (which restores our tint + wind tunables).
+            .blend(BlendMode::AlphaBlend)
+            .cull(CullMode::None)
+            .params(params)
+            .build()
+    }
+
+    /// Upright grass-blade billboard material from an already-decoded
+    /// `RgbaImage` (e.g. the procedural grass-tuft texture: green blades on a
+    /// transparent background). `blend` selects the cutout (`AlphaTest`) vs
+    /// translucent (`AlphaBlend`) variant; billboards use `AlphaTest` so blade
+    /// edges stay crisp and write depth. `tint` modulates colour/coverage.
+    pub fn create_with_image(
+        texture_name: &str,
+        image: Option<image::RgbaImage>,
+        blend: BlendMode,
+        tint: [f32; 4],
+        wind_strength: f32,
+        wind_speed: f32,
+    ) -> MaterialDef {
+        let texture = TextureStore::get_or_update(texture_name, || image);
+
+        let mut params = MaterialParams::default();
+        params.tint = tint;
+        params.uv_scale = [wind_strength, wind_speed];
+
+        MaterialDef::builder(ShaderProgram::GrassWind)
+            .debug_name(texture_name)
+            .textures_with_samplers(vec![texture], vec![SamplerDef::default()])
+            // `blend()` resets alpha_ref/depth to the mode default, so it MUST
+            // precede `params()` (which restores our tint + wind tunables).
+            .blend(blend)
+            .cull(CullMode::None)
+            .params(params)
+            .build()
+    }
+}
+
 /// `name` plus its raw `.dds`/`.tga` bytes (decoded opaque — terrain
 /// texture alpha is non-coverage detail data).
 pub struct TerrainLayer {
