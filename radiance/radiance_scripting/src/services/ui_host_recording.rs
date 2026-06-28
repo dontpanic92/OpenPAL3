@@ -601,6 +601,20 @@ impl IUiHostImpl for HostFacade {
     fn game_font_size(&self) -> f32 {
         0.0
     }
+    fn text_at_small(&self, x: f32, y: f32, r: f32, g: f32, b: f32, a: f32, s: &str) {
+        self.inner.record(UiCall::TextAt {
+            x,
+            y,
+            r,
+            g,
+            b,
+            a,
+            s: s.into(),
+        });
+    }
+    fn game_font_size_small(&self) -> f32 {
+        0.0
+    }
     fn style_color(&self, _slot: i32, _r: f32, _g: f32, _b: f32, _a: f32, body: ComRc<IAction>) {
         invoke_body("style_color", &self.inner, body);
     }

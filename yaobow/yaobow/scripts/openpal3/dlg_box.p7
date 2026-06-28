@@ -28,23 +28,33 @@ import shared.openpal3;
 // the `ui: IUiHost` render parameter.
 import radiance_scripting.ui as gui;
 
-// Outer panel geometry (fractions of the framebuffer).
-let DLG_HEIGHT_FACTOR: float              = 0.25;
-let DLG_Y_POSITION_FACTOR: float          = 0.75;
-let DLG_AVATAR_WIDTH_FACTOR: float        = 0.333333;
+// Avatar quad width as a fraction of the (letterboxed) dialog width. In the
+// reference 4:3 case dialog_width = 4/3 * H, so this 0.30 reproduces the
+// original 0.40*H avatar; but tying it to dialog_width (not raw framebuffer
+// height) keeps the avatar correctly proportioned to the box in narrow /
+// portrait windows, where a height-relative avatar would overflow the box.
+// Text starts immediately right of the avatar (text_x = dialog_x + avatar_width),
+// so this also lands the text left-edge at the original's ~0.40H from the box edge.
+let DLG_HEIGHT_FACTOR: float              = 0.185;
+let DLG_Y_POSITION_FACTOR: float          = 0.806;
+let DLG_AVATAR_WIDTH_OF_DIALOG: float     = 0.30;
 let DLG_CLICK_INDICATOR_PADDING_FACTOR: float = 1.4;
 
 // Text grid tuning (tighter-than-em advance so CJK text packs densely).
 let DLG_CHAR_ADVANCE_FACTOR: float        = 0.93;
 let DLG_LINE_HEIGHT_FACTOR: float         = 1.0;
 
-// Hard-coded trims for the bottom-center decoration.
+// Horizontal trim to centre the bottom-center decoration (≈ half its width).
 let DLG_DECORATION_WIDTH_TRIM: float      = 66.0;
-let DLG_DECORATION_HEIGHT_TRIM: float     = 32.0;
+// Upward lift (native px) of the decoration centre from the box's geometric
+// bottom onto the visible cyan frame line, which the border sprite art insets
+// a few px inside the box edge.
+let DLG_DECORATION_LINE_LIFT: float       = 10.0;
 let DLG_DECORATION_BOTTOM_OVER_DIALOG: float = 6.0;
 
-// Vertical inset of the first text row below the dialog's top edge.
-let DLG_TEXT_TOP_PAD: float               = 18.0;
+// Vertical inset of the first text row below the dialog's top edge, as a
+// fraction of framebuffer height (original ~0.026H, ~25px at H=960).
+let DLG_TEXT_TOP_PAD_FACTOR: float        = 0.026;
 
 pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
     pub sprites: box<scripting_services.ISpriteService>,
@@ -106,7 +116,7 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
 
         let dialog_height = lh * DLG_HEIGHT_FACTOR;
         let dialog_y = lh * DLG_Y_POSITION_FACTOR - DLG_DECORATION_BOTTOM_OVER_DIALOG;
-        let avatar_width = lh * DLG_AVATAR_WIDTH_FACTOR;
+        let avatar_width = dialog_width * DLG_AVATAR_WIDTH_OF_DIALOG;
 
         let has_avatar = self.avatar != null;
         let avatar_at_right = self.avatar_side == 1;
@@ -139,11 +149,29 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
             - click_indicator_right_offset;
         let ci_y = dialog_bottom - ind_w * DLG_CLICK_INDICATOR_PADDING_FACTOR;
 
-        // Bottom-center decoration.
+        // Bottom-center decoration, centred on the bottom border line. The
+        // visible cyan frame line sits a small fixed inset above the box's
+        // geometric bottom (baked into the 64px-tall border sprite art);
+        // DLG_DECORATION_LINE_LIFT raises the ornament's centre onto it. All
+        // terms are native sprite pixels, so this tracks the line at any
+        // resolution and any box geometry.
         let deco_w = sprite_w(self.deco);
         let deco_h = sprite_h(self.deco);
         let deco_x = dialog_x + dialog_width / 2.0 - DLG_DECORATION_WIDTH_TRIM;
-        let deco_y = lh - DLG_DECORATION_HEIGHT_TRIM;
+        let deco_y = dialog_bottom - deco_h / 2.0 - DLG_DECORATION_LINE_LIFT;
+
+        // Reserve avatar space only on the avatar's own side; narration
+        // (no avatar) spans the full dialog width. Left avatar -> text
+        // shifts right and runs to the right edge; right avatar -> text
+        // starts at the left edge and stops before the portrait.
+        let mut text_x = dialog_x;
+        let mut text_width = dialog_width;
+        if has_avatar {
+            text_width = dialog_width - avatar_width;
+            if !avatar_at_right {
+                text_x = dialog_x + avatar_width;
+            }
+        }
 
         // Declare the whole dialog box as a widget tree: the 9-slice
         // chrome, the bottom decoration, the optional avatar, the blink
@@ -162,8 +190,8 @@ pub struct[openpal3.IPal3DialogRenderer] Pal3DialogRendererImpl(
             self.avatar_widget(dialog_x, dialog_right, lh, avatar_width, has_avatar, avatar_at_right),
             sprite_rect(ind, ci_x, ci_y, ci_x + ind_w, ci_y + ind_w),
             gui.Positioned(
-                dialog_x + avatar_width, dialog_y + DLG_TEXT_TOP_PAD,
-                dialog_width - avatar_width * 2.0, dialog_height,
+                text_x, dialog_y + lh * DLG_TEXT_TOP_PAD_FACTOR,
+                text_width, dialog_height,
                 box(DialogText(text)) as box<gui.Element>),
         ];
         let root = gui.Stack(items);
@@ -274,7 +302,7 @@ pub struct[gui.Element] DialogText(content: string) {
     }
     fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
              ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
-        let font_size = ui.game_font_size();
+        let font_size = ui.game_font_size_small();
         if font_size <= 0.0 { return; }
 
         let line_pitch = font_size * DLG_LINE_HEIGHT_FACTOR;
@@ -322,7 +350,7 @@ pub struct[gui.Element] DialogText(content: string) {
                 continue;
             }
 
-            ui.text_at(origin_x + text_x, top_y + text_y, cr, cg, cb, 1.0, c);
+            ui.text_at_small(origin_x + text_x, top_y + text_y, cr, cg, cb, 1.0, c);
             text_x = text_x + char_advance;
         }
     }

@@ -62,6 +62,15 @@ impl SamplerDef {
         address_w: AddressMode::Repeat,
     };
 
+    /// Sampler for UI / imgui textures (sprites, 9-slice chrome, video,
+    /// render-target previews): LINEAR filtering with CLAMP_TO_EDGE on
+    /// every axis. UI sprites are drawn edge-to-edge with `[0,1]` UVs, so
+    /// REPEAT addressing makes the bilinear sampler wrap at the `u=0/1` /
+    /// `v=0/1` border and bleed the opposite-edge texel — appearing as
+    /// thin bright lines at 9-slice seams. CLAMP_TO_EDGE pins the edge
+    /// texel and removes that bleed.
+    pub const UI: SamplerDef = SamplerDef::new(FilterMode::Linear, AddressMode::Clamp);
+
     pub const fn new(filter: FilterMode, address: AddressMode) -> Self {
         Self {
             mag_filter: filter,

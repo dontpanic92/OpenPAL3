@@ -808,6 +808,18 @@ interface IUiHost: IUnknown {
     // for the dialog text grid. Returns logical units so it composes
     // with the logical coordinates passed to `text_at`.
     float game_font_size();
+
+    // As `text_at`, but drawn with the registered SMALL game-font face
+    // instead of LARGE. The PAL3 in-game dialog uses this so its text
+    // matches the original's smaller proportional size (~0.026x the
+    // framebuffer height) without changing the global game-font scale
+    // shared by menus and selection lists.
+    void text_at_small(float x, float y, float r, float g, float b, float a, &str s);
+
+    // Pixel size of the SMALL game font in logical/script pixels, the
+    // companion to `game_font_size()` for callers rendering with
+    // `text_at_small` (e.g. the PAL3 dialog text grid).
+    float game_font_size_small();
 }
 
 // Engine-owned immediate-mode UI layer. Decoupled from `IDirector`:

@@ -132,4 +132,11 @@ impl VulkanSamplerCache {
     pub fn default_sampler(&self) -> Rc<Sampler> {
         self.get_or_create_for(&SamplerDef::DEFAULT, 1)
     }
+
+    /// Sampler for UI / imgui textures (LINEAR + CLAMP_TO_EDGE). See
+    /// [`SamplerDef::UI`]: CLAMP avoids the REPEAT edge-bleed that shows
+    /// up as thin bright lines at sprite / 9-slice seams.
+    pub fn ui_sampler(&self) -> Rc<Sampler> {
+        self.get_or_create_for(&SamplerDef::UI, 1)
+    }
 }

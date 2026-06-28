@@ -960,6 +960,43 @@ impl IUiHostImpl for ImguiUiHost {
         .unwrap_or(0.0)
     }
 
+    fn text_at_small(&self, x: f32, y: f32, r: f32, g: f32, b: f32, a: f32, s: &str) {
+        let _ = with_frame("text_at_small", |f| {
+            // Same as `text_at` but with the SMALL game-font face (the
+            // PAL3 in-game dialog size). Falls back to the default atlas
+            // font when no game font was registered.
+            let font = radiance::imgui::game_font(radiance::imgui::GameFontSize::SMALL)
+                .unwrap_or_else(|| f.ui.fonts().fonts()[0]);
+            let token = f.ui.push_font(font);
+            let scale = if f.dpi_scale > 0.0 { f.dpi_scale } else { 1.0 };
+            let color = imgui::ImColor32::from_rgba_f32s(r, g, b, a);
+            f.ui
+                .get_background_draw_list()
+                .add_text([x * scale, y * scale], color, s);
+            token.pop();
+        });
+    }
+
+    fn game_font_size_small(&self) -> f32 {
+        with_frame("game_font_size_small", |f| {
+            let Some(font) = radiance::imgui::game_font(radiance::imgui::GameFontSize::SMALL) else {
+                return 0.0;
+            };
+            let size = f
+                .ui
+                .fonts()
+                .get_font(font)
+                .map(|fnt| fnt.font_size)
+                .unwrap_or(0.0);
+            if f.dpi_scale > 0.0 {
+                size / f.dpi_scale
+            } else {
+                size
+            }
+        })
+        .unwrap_or(0.0)
+    }
+
     fn style_color(&self, slot: i32, r: f32, g: f32, b: f32, a: f32, body: ComRc<IAction>) {
         with_frame("style_color", |f| {
             let token = f.ui.push_style_color(map_style_color(slot), [r, g, b, a]);
