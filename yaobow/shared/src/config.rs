@@ -75,6 +75,33 @@ pub struct RenderConfig {
     pub scene_scale_mode: SceneScaleMode,
 }
 
+/// Default master volume (linear gain). `0.7` (~-3 dB) gives audible
+/// headroom so the game isn't louder than other apps at the same OS
+/// volume. A free fn is required because serde's numeric default is
+/// `0.0`.
+fn default_master_volume() -> f32 {
+    0.7
+}
+
+/// Audio preferences shared by the game runtime and editor. Stored
+/// under `[audio]` in `yaobow.toml`.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AudioConfig {
+    /// Linear master volume in `[0.0, 1.0]` applied as the OpenAL
+    /// listener gain. Scales BGM, SFX, voice, and video audio
+    /// uniformly. Defaults to [`default_master_volume`].
+    #[serde(default = "default_master_volume")]
+    pub master_volume: f32,
+}
+
+impl Default for AudioConfig {
+    fn default() -> Self {
+        Self {
+            master_volume: default_master_volume(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct YaobowConfig {
     #[serde(default)]
@@ -92,6 +119,11 @@ pub struct YaobowConfig {
     /// editor previewer.
     #[serde(default)]
     pub render: RenderConfig,
+
+    /// Audio preferences (master volume) shared by both the game
+    /// runtime and the editor.
+    #[serde(default)]
+    pub audio: AudioConfig,
 }
 
 impl YaobowConfig {
@@ -194,6 +226,19 @@ impl YaobowConfig {
     /// Current scene-render scale mode. See [`SceneScaleMode`].
     pub fn scene_scale_mode(&self) -> SceneScaleMode {
         self.render.scene_scale_mode
+    }
+
+    /// Master audio volume as a linear gain, clamped to `[0.0, 1.0]`.
+    /// Applied as the OpenAL listener gain at startup. A non-finite or
+    /// out-of-range persisted value is sanitised here so the engine
+    /// never receives an undefined gain.
+    pub fn master_volume(&self) -> f32 {
+        let v = self.audio.master_volume;
+        if v.is_finite() {
+            v.clamp(0.0, 1.0)
+        } else {
+            default_master_volume()
+        }
     }
 
     /// Persist a new scene-render scale mode. Callers are responsible
@@ -334,5 +379,55 @@ mod tests {
             assert_eq!(loaded.scene_scale_mode(), SceneScaleMode::Native);
         });
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn master_volume_default_is_headroom() {
+        let cfg = YaobowConfig::default();
+        assert_eq!(cfg.master_volume(), 0.7);
+        assert_eq!(AudioConfig::default().master_volume, 0.7);
+    }
+
+    #[test]
+    fn master_volume_serde_default_when_audio_absent() {
+        // A config with no [audio] table must deserialize to the
+        // default headroom volume, not serde's numeric `0.0`.
+        let dir =
+            std::env::temp_dir().join(format!("yaobow-cfg-test-volabs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("yaobow.toml");
+        std::fs::write(&path, "[render]\nscene_scale_mode = \"native\"\n").unwrap();
+        with_env_override(&path, || {
+            let loaded = YaobowConfig::load();
+            assert_eq!(loaded.master_volume(), 0.7);
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn master_volume_explicit_roundtrips() {
+        let dir =
+            std::env::temp_dir().join(format!("yaobow-cfg-test-volrt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("yaobow.toml");
+        std::fs::write(&path, "[audio]\nmaster_volume = 0.4\n").unwrap();
+        with_env_override(&path, || {
+            let loaded = YaobowConfig::load();
+            assert_eq!(loaded.master_volume(), 0.4);
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn master_volume_clamps_out_of_range() {
+        let mut cfg = YaobowConfig::default();
+        cfg.audio.master_volume = 2.0;
+        assert_eq!(cfg.master_volume(), 1.0);
+        cfg.audio.master_volume = -1.0;
+        assert_eq!(cfg.master_volume(), 0.0);
+        cfg.audio.master_volume = f32::NAN;
+        assert_eq!(cfg.master_volume(), 0.7);
     }
 }

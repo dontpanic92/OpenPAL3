@@ -61,6 +61,17 @@ impl AudioEngine for OpenAlAudioEngine {
         let _ = self.context.set_position(position);
         let _ = self.context.set_orientation((forward, up));
     }
+
+    fn set_master_volume(&self, volume: f32) {
+        // Clamp defensively: a malformed config (NaN / negative / >1)
+        // must never push the listener gain into an undefined range.
+        let gain = if volume.is_finite() {
+            volume.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        let _ = self.context.set_gain(gain);
+    }
 }
 
 impl OpenAlAudioEngine {

@@ -513,6 +513,15 @@ pub fn run_app(opts: BootOptions) {
     {
         let app2 = app.clone();
         app.add_engine_ready_callback(Box::new(move || {
+            // Apply the persisted master volume to the now-bootstrapped
+            // audio engine (OpenAL listener gain). Loaded fresh here so
+            // it reflects any edits since process start.
+            let volume = YaobowConfig::load().master_volume();
+            app2.engine()
+                .borrow()
+                .audio_engine()
+                .set_master_volume(volume);
+
             shared::theme_runtime::apply_runtime_theme(&app2);
         }));
     }

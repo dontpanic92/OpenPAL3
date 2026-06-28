@@ -15,6 +15,14 @@ pub trait AudioEngine {
     fn create_source(&self) -> Box<dyn AudioMemorySource>;
     fn create_custom_decoder_source(&self) -> Box<dyn AudioCustomDecoderSource>;
 
+    /// Set the global master volume applied to all audio output, as a
+    /// linear gain in `[0.0, 1.0]` (`1.0` = unattenuated full scale).
+    /// The production OpenAL backend forwards this to the AL listener
+    /// gain so it scales BGM, SFX, voice, and video audio uniformly;
+    /// stub / test backends leave it as a no-op. Typically called once
+    /// at startup from the persisted user config.
+    fn set_master_volume(&self, _volume: f32) {}
+
     /// Per-frame tick. The engine implementation walks every live
     /// source it has minted and forwards the tick (e.g. unqueues
     /// drained OpenAL streaming buffers, feeds fresh decoded samples,

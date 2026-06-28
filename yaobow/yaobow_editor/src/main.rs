@@ -60,7 +60,12 @@ fn main() {
     // bootstrap, ahead of any component on_loading.
     {
         let app2 = app.clone();
+        let master_volume = cfg.master_volume();
         app.add_engine_ready_callback(Box::new(move || {
+            app2.engine()
+                .borrow()
+                .audio_engine()
+                .set_master_volume(master_volume);
             config::init_imgui_ini(&app2);
             config::init_theme(&app2);
         }));
