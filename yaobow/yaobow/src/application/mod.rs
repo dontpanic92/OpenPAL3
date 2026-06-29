@@ -278,9 +278,10 @@ impl YaobowApplicationLoader {
         scene_manager: &ComRc<ISceneManager>,
     ) -> Result<(), String> {
         let director = match game {
-            GameType::PAL3 => {
+            GameType::PAL3 | GameType::PAL3A => {
                 self.boot_pal3_agent_if_requested(host_ctx)?;
-                host_ctx.pal3().create_director(&asset_path)
+                let game_ordinal = ordinal_for_game(game);
+                host_ctx.pal3().create_director(&asset_path, game_ordinal)
             }
             GameType::PAL4 => {
                 self.boot_pal4_agent_if_requested(host_ctx)?;

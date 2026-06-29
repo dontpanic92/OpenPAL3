@@ -124,6 +124,14 @@ impl TliDict {
         self.entries.get(&canonical_key(name))
     }
 
+    /// Insert an entry under its canonical key. Used by alternate
+    /// manifest parsers (e.g. PAL3A `UIArtist.plug`) that build the same
+    /// dict from a different on-disk layout.
+    pub fn insert(&mut self, entry: TliEntry) {
+        let key = canonical_key(&entry.name);
+        self.entries.insert(key, entry);
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&String, &TliEntry)> {
         self.entries.iter()
     }

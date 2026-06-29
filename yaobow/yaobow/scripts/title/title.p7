@@ -56,7 +56,7 @@ let PAL4_COUNT: int = 4;
 
 // Game-list row height (native pixels), matched against the legacy
 // `draw_game_list` (item_h = 60).
-let LIST_ROW_HEIGHT: float = 60.0;
+let LIST_ROW_HEIGHT: float = 50.0;
 
 // "Press any key to continue" prompt strings (with/without the blinking
 // trailing underline).
@@ -208,6 +208,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
     pub fn build_game_list(self: refmut<Self>, list_w: float) -> box<gui.Element> {
         let items: array<box<gui.Element>> = [
             self.game_btn(title_consts.GAME_PAL3, list_w),
+            self.game_btn(title_consts.GAME_PAL3A, list_w),
             self.game_btn(title_consts.GAME_PAL4, list_w),
             self.game_btn(title_consts.GAME_PAL5, list_w),
             self.game_btn(title_consts.GAME_SWDHC, list_w),
@@ -448,7 +449,10 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleDirector(
             // the ordinal during the swap (engine just gets the
             // returned director and installs it once).
             if arg == title_consts.GAME_PAL3 {
-                return self.host.pal3().create_director(path);
+                return self.host.pal3().create_director(path, arg);
+            }
+            if arg == title_consts.GAME_PAL3A {
+                return self.host.pal3().create_director(path, arg);
             }
             if arg == title_consts.GAME_PAL4 {
                 return self.host.pal4().create_director(path);
@@ -533,6 +537,7 @@ pub struct[radiance.IUiLayer, radiance.IDirector] TitleSettingsDirector(
                         ui.with_font(title_consts.FONT_SMALL, () => {
                             ui.table("title.settings.rows", 4, () => {
                                 self.render_row(ui, title_consts.GAME_PAL3);
+                                self.render_row(ui, title_consts.GAME_PAL3A);
                                 self.render_row(ui, title_consts.GAME_PAL4);
                                 self.render_row(ui, title_consts.GAME_PAL5);
                                 self.render_row(ui, title_consts.GAME_SWDHC);
@@ -680,6 +685,7 @@ fn make_title_director_as_director(
 
 fn settings_game_name(ordinal: int) -> string {
     if ordinal == title_consts.GAME_PAL3 { return "仙剑奇侠传三"; }
+    if ordinal == title_consts.GAME_PAL3A { return "仙剑奇侠传三外传 问情篇"; }
     if ordinal == title_consts.GAME_PAL4 { return "仙剑奇侠传四"; }
     if ordinal == title_consts.GAME_PAL5 { return "仙剑奇侠传五"; }
     if ordinal == title_consts.GAME_SWDHC { return "轩辕剑外传 汉之云"; }
@@ -704,6 +710,7 @@ fn compute_fade_alpha(t: float) -> float {
 
 fn game_full_name(ordinal: int) -> string {
     if ordinal == title_consts.GAME_PAL3 { return "仙剑奇侠传三"; }
+    if ordinal == title_consts.GAME_PAL3A { return "仙剑奇侠传三外传 问情篇"; }
     if ordinal == title_consts.GAME_PAL4 { return "仙剑奇侠传四"; }
     if ordinal == title_consts.GAME_PAL5 { return "仙剑奇侠传五"; }
     if ordinal == title_consts.GAME_SWDHC { return "轩辕剑外传 汉之云"; }

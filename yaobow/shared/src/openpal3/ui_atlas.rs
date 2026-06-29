@@ -16,6 +16,7 @@ use radiance_scripting::comdef::services::{IAtlasPage, ISprite, ISpriteService};
 
 use super::comdef::{IPal3UiAtlas, IPal3UiAtlasImpl};
 use super::loaders::tli::TliDict;
+use super::loaders::pos;
 
 /// Native canvas the original PAL3 cover art was authored against.
 const NATIVE_WIDTH: i32 = 800;
@@ -23,8 +24,18 @@ const NATIVE_HEIGHT: i32 = 600;
 
 /// Path inside the PAL3 vfs to the atlas-index manifest.
 const TLI_PATH: &str = "/basedata/basedata/ui/UILib/UI_opt.tli";
+/// PAL3A's atlas-index manifest (`UIArtist.plug`), replacing UI_opt.tli.
+const PLUG_PATH: &str = "/basedata/basedata/ui/UIArtist.plug";
 /// Directory the manifest's atlas-page references resolve against.
 const UILIB_DIR: &str = "/basedata/basedata/ui/UILib/";
+
+/// Which on-disk manifest format backs the atlas. PAL3 ships the text
+/// `UI_opt.tli`; PAL3A ships the `UIArtist.plug` variant instead.
+#[derive(Copy, Clone, PartialEq)]
+pub enum AtlasManifest {
+    Tli,
+    Plug,
+}
 
 pub struct Pal3UiAtlas {
     sprites: ComRc<ISpriteService>,
@@ -49,8 +60,12 @@ impl Pal3UiAtlas {
     pub fn create(
         sprites: ComRc<ISpriteService>,
         manifest_bytes: &[u8],
+        kind: AtlasManifest,
     ) -> ComRc<IPal3UiAtlas> {
-        let tli = TliDict::parse(manifest_bytes);
+        let tli = match kind {
+            AtlasManifest::Tli => TliDict::parse(manifest_bytes),
+            AtlasManifest::Plug => pos::parse(manifest_bytes),
+        };
         let mut pages: HashMap<String, Option<ComRc<IAtlasPage>>> = HashMap::new();
         for (lib, _lw, _lh) in tli.distinct_libs() {
             let key = lib.to_lowercase();
@@ -60,7 +75,7 @@ impl Pal3UiAtlas {
             pages.insert(key, load_page(&sprites, &lib));
         }
         log::info!(
-            "Pal3UiAtlas: loaded UI_opt.tli ({} entries, {} atlases)",
+            "Pal3UiAtlas: loaded atlas manifest ({} entries, {} atlases)",
             tli.len(),
             pages.len()
         );
@@ -71,9 +86,12 @@ impl Pal3UiAtlas {
         })
     }
 
-    /// The vfs path of the atlas-index manifest.
-    pub fn manifest_path() -> &'static str {
-        TLI_PATH
+    /// The vfs path of the atlas-index manifest for the given format.
+    pub fn manifest_path(kind: AtlasManifest) -> &'static str {
+        match kind {
+            AtlasManifest::Tli => TLI_PATH,
+            AtlasManifest::Plug => PLUG_PATH,
+        }
     }
 
     /// Look up an already-loaded atlas page by `lib` name (populated

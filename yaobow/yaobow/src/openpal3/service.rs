@@ -45,10 +45,11 @@ use shared::openpal3::comdef::{
     IPal3UiAtlas,
 };
 use shared::openpal3::directors::AdventureDirector;
-use shared::openpal3::ui_atlas::Pal3UiAtlas;
+use shared::openpal3::ui_atlas::{AtlasManifest, Pal3UiAtlas};
 use shared::openpal3::states::persistent_state::PAL3_APP_NAME;
 use shared::scripting::sce::vm::SceExecutionOptions;
 use shared::ydirs;
+use shared::GameType;
 
 use crate::openpal3::debug_layer::OpenPal3DebugLayer;
 use crate::openpal3::sce_proc_hooks::SceRestHooks;
@@ -57,6 +58,15 @@ use crate::openpal3::sce_proc_hooks::SceRestHooks;
 /// the rows accepted by `AdventureDirector::load` (`PersistentState`
 /// slot files `1.json`..`4.json`).
 const SAVE_SLOT_COUNT: i32 = 4;
+
+/// Map a script/registry game ordinal to the PAL3-family `GameType`.
+/// PAL3 and PAL3A share `Pal3Service`; anything else defaults to PAL3.
+fn game_from_ordinal(ordinal: i32) -> GameType {
+    match radiance_scripting::services::game_registry::ordinal_to_config_key(ordinal) {
+        Some("pal3a") => GameType::PAL3A,
+        _ => GameType::PAL3,
+    }
+}
 
 pub struct Pal3Service {
     app: ComRc<IApplication>,
@@ -80,6 +90,10 @@ pub struct Pal3Service {
     /// to re-look-up the install path. Not strictly required; useful
     /// for diagnostics.
     last_asset_path: RefCell<Option<String>>,
+    /// Game variant for the active launch, set on `create_director`.
+    /// PAL3 and PAL3A share this service; this selects per-game assets
+    /// such as the start-menu BGM track. Defaults to PAL3.
+    last_game: Cell<GameType>,
     /// True when `create_director` has been called at least once and
     /// the debug layer install is pending. Drained by `pump_pre_update`
     /// before the next engine tick (i.e. outside any `engine.borrow()`
@@ -113,6 +127,7 @@ impl Pal3Service {
             texture_cache: RefCell::new(None),
             script_factory: RefCell::new(None),
             last_asset_path: RefCell::new(None),
+            last_game: Cell::new(GameType::PAL3),
             pending_debug_install: Cell::new(false),
             debug_layer_installed: Cell::new(false),
             debug_layer_handle: RefCell::new(None),
@@ -404,8 +419,10 @@ impl Pal3Service {
 }
 
 impl IPal3ServiceImpl for Pal3Service {
-    fn create_director(&self, asset_path: &str) -> ComRc<IDirector> {
+    fn create_director(&self, asset_path: &str, game_ordinal: i32) -> ComRc<IDirector> {
         *self.last_asset_path.borrow_mut() = Some(asset_path.to_string());
+        let game = game_from_ordinal(game_ordinal);
+        self.last_game.set(game);
 
         // Switch in-game text to the game-shipped font (simsun). No-op if
         // the file is missing; the editor/title selector keep the bundled
@@ -526,10 +543,16 @@ impl IPal3ServiceImpl for Pal3Service {
         let engine_rc = self.app.engine();
         let audio_engine = engine_rc.borrow().audio_engine();
         drop(engine_rc);
+        // PAL3A's menu BGM track differs from PAL3's. Both share this
+        // service; pick by the game variant captured in create_director.
+        let track = match self.last_game.get() {
+            GameType::PAL3A => "P01",
+            _ => "PI01",
+        };
         // `load_music_data` panics on a missing track; isolate it so a
         // partial asset set still yields a (silent) menu.
         let data = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            asset_mgr.load_music_data("PI01")
+            asset_mgr.load_music_data(track)
         }))
         .ok()?;
         let mut source = audio_engine.create_source();
@@ -546,12 +569,18 @@ impl IPal3ServiceImpl for Pal3Service {
     fn create_ui_atlas(&self, asset_path: &str) -> Option<ComRc<IPal3UiAtlas>> {
         let sprites = self.create_sprite_service(asset_path)?;
         let asset_mgr = self.asset_manager_for(asset_path);
+        // PAL3A replaces PAL3's text UI_opt.tli with the UIArtist.plug
+        // manifest. Pick the format by the active game variant.
+        let kind = match self.last_game.get() {
+            GameType::PAL3A => AtlasManifest::Plug,
+            _ => AtlasManifest::Tli,
+        };
         let manifest = common::store_ext::StoreExt2::read_to_end(
             asset_mgr.vfs(),
-            Pal3UiAtlas::manifest_path(),
+            Pal3UiAtlas::manifest_path(kind),
         )
         .ok()?;
-        Some(Pal3UiAtlas::create(sprites, &manifest))
+        Some(Pal3UiAtlas::create(sprites, &manifest, kind))
     }
 
     fn exit_app(&self) {
@@ -559,6 +588,10 @@ impl IPal3ServiceImpl for Pal3Service {
     }
 
     fn play_intro_movie(&self, asset_path: &str) -> Option<ComRc<IVideoHandle>> {
+        // PAL3A ships no intro movie; skip straight to the menu.
+        if self.last_game.get() == GameType::PAL3A {
+            return None;
+        }
         // Once-per-process: re-entry into the menu must skip the intro.
         if self.intro_played.get() {
             return None;

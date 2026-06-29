@@ -55,7 +55,7 @@ class AdventureDirector: IAdventureDirector {}
 // or to exit the app (`exit_app`).
 [uuid(0c3ea732-4091-46a2-8ef1-79be6acaec77)]
 interface IPal3Service: IUnknown {
-    IDirector create_director(&str asset_path);
+    IDirector create_director(&str asset_path, int game_ordinal);
 
     // Construct the PAL3 main story (`AdventureDirector`) at a fresh
     // game state. The current scene is replaced and the OpenPAL3 init
@@ -77,12 +77,11 @@ interface IPal3Service: IUnknown {
     // 4 to mirror the original PAL3 quick-save layout.
     int save_slot_count();
 
-    // Load the PAL3 start-menu BGM (`PI01`) from this asset path's game
-    // vfs and return it as a generic `IAudioSource` the p7 menu holds
-    // and drives (play/update/stop). Null when the texture/audio engine
-    // isn't available or the track is missing. (Replaces the old
-    // `create_start_menu`: sprites now come from `create_ui_atlas` +
-    // the generic `ISprite` layer; only the BGM stays host-side.)
+    // Load the start-menu BGM from this asset path's game vfs and return
+    // it as a generic `IAudioSource` the p7 menu holds and drives
+    // (play/update/stop). PAL3 uses `PI01`, PAL3A uses `P01` (selected by
+    // the game ordinal passed to `create_director`). Null when the
+    // texture/audio engine isn't available or the track is missing.
     IAudioSource? load_menu_bgm(&str asset_path);
 
     // Forwarded to `IApplication::request_exit()` so the start menu's

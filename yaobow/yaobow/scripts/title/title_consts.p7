@@ -41,6 +41,7 @@ pub let FONT_SMALL: int = 1;
 // Game ordinals exposed to `IAppService.open_game`. Canonical
 // `IGameRegistry` ordinals — PAL3=0, PAL4=2, PAL5=3, SWDHC=6.
 pub let GAME_PAL3: int = 0;
+pub let GAME_PAL3A: int = 1;
 pub let GAME_PAL4: int = 2;
 pub let GAME_PAL5: int = 3;
 pub let GAME_SWDHC: int = 6;

@@ -162,6 +162,16 @@ let BTN_BABITONGYOU_BASE: string    = "ui/menu/btn_babitongyou";
 let BTN_ZHIZUOQUN_BASE: string      = "ui/menu/btn_zhizuoqun";
 let BTN_LIKAIYOUXI_BASE: string     = "ui/menu/btn_likaiyouxi";
 
+// PAL3A (问情篇) ships abbreviated cover-button names in UIArtist.plug;
+// same six slots, all three states present. Selected at render time when
+// the PAL3A atlas is detected (PAL3's full-name buttons are absent).
+let BTN_A_QIANCHENYIMENG_BASE: string = "ui/menu/btn_qctm";
+let BTN_A_JIUDEHUIYI_BASE: string     = "ui/menu/btn_jdhy";
+let BTN_A_XINDEGUSHI_BASE: string     = "ui/menu/btn_xdgs";
+let BTN_A_BABITONGYOU_BASE: string    = "ui/menu/btn_yxxx";
+let BTN_A_ZHIZUOQUN_BASE: string      = "ui/menu/btn_xjtm";
+let BTN_A_LIKAIYOUXI_BASE: string     = "ui/menu/btn_lkyx";
+
 // Load-mode overlay. PAL3's original load UI lives outside the cover
 // atlases — we paint a translucent panel over the cover and list the
 // available JSON save slots. Click a populated row to boot the
@@ -590,19 +600,27 @@ pub struct[gui.Element] Pal3Cover(
         paint_sprite(ui, atlas, SPR_DITU, DITU_X, DITU_Y, origin_x, origin_y, scale);
         paint_sprite(ui, atlas, SPR_LOG0, LOG0_X, LOG0_Y, origin_x, origin_y, scale);
 
-        // Six 3-state cover buttons.
+        // Six 3-state cover buttons. PAL3A uses abbreviated atlas names;
+        // detect via the full PAL3 name's absence and swap the base set.
         let cb = self.on_click;
-        paint_button(ui, atlas, ctx, WID_QIANCHENYIMENG, BTN_QIANCHENYIMENG_BASE,
+        let a = !atlas.has_sprite(BTN_QIANCHENYIMENG_BASE + "0.tga");
+        let qcym = if a { BTN_A_QIANCHENYIMENG_BASE } else { BTN_QIANCHENYIMENG_BASE };
+        let bbty = if a { BTN_A_BABITONGYOU_BASE }    else { BTN_BABITONGYOU_BASE };
+        let xdgs = if a { BTN_A_XINDEGUSHI_BASE }      else { BTN_XINDEGUSHI_BASE };
+        let jdhy = if a { BTN_A_JIUDEHUIYI_BASE }      else { BTN_JIUDEHUIYI_BASE };
+        let zzq  = if a { BTN_A_ZHIZUOQUN_BASE }       else { BTN_ZHIZUOQUN_BASE };
+        let lkyx = if a { BTN_A_LIKAIYOUXI_BASE }      else { BTN_LIKAIYOUXI_BASE };
+        paint_button(ui, atlas, ctx, WID_QIANCHENYIMENG, qcym,
                      BTN_QIANCHENYIMENG_X, BTN_QIANCHENYIMENG_Y, origin_x, origin_y, scale, cb);
-        paint_button(ui, atlas, ctx, WID_BABITONGYOU, BTN_BABITONGYOU_BASE,
+        paint_button(ui, atlas, ctx, WID_BABITONGYOU, bbty,
                      BTN_BABITONGYOU_X, BTN_BABITONGYOU_Y, origin_x, origin_y, scale, cb);
-        paint_button(ui, atlas, ctx, WID_XINDEGUSHI, BTN_XINDEGUSHI_BASE,
+        paint_button(ui, atlas, ctx, WID_XINDEGUSHI, xdgs,
                      BTN_XINDEGUSHI_X, BTN_XINDEGUSHI_Y, origin_x, origin_y, scale, cb);
-        paint_button(ui, atlas, ctx, WID_JIUDEHUIYI, BTN_JIUDEHUIYI_BASE,
+        paint_button(ui, atlas, ctx, WID_JIUDEHUIYI, jdhy,
                      BTN_JIUDEHUIYI_X, BTN_JIUDEHUIYI_Y, origin_x, origin_y, scale, cb);
-        paint_button(ui, atlas, ctx, WID_ZHIZUOQUN, BTN_ZHIZUOQUN_BASE,
+        paint_button(ui, atlas, ctx, WID_ZHIZUOQUN, zzq,
                      BTN_ZHIZUOQUN_X, BTN_ZHIZUOQUN_Y, origin_x, origin_y, scale, cb);
-        paint_button(ui, atlas, ctx, WID_LIKAIYOUXI, BTN_LIKAIYOUXI_BASE,
+        paint_button(ui, atlas, ctx, WID_LIKAIYOUXI, lkyx,
                      BTN_LIKAIYOUXI_X, BTN_LIKAIYOUXI_Y, origin_x, origin_y, scale, cb);
     }
 }
