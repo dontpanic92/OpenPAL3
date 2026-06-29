@@ -739,6 +739,103 @@ impl LitMaterialDef {
     }
 }
 
+/// Builds a PAL3 actor material ([`ShaderProgram::Pal3Actor`]). Same
+/// single-texture setup as [`LitMaterialDef`], but bound to the PAL3-specific
+/// skin shader (≤2 nearest lights, hard N·L clamp, flat ambient) that mirrors
+/// the original `gfxscript/skin_lit*.cg`. Used by PAL3 roles/scenery.
+pub struct Pal3ActorMaterialDef;
+impl Pal3ActorMaterialDef {
+    pub fn create<R: Read>(
+        texture_name: &str,
+        get_reader: impl FnOnce(&str) -> Option<R>,
+    ) -> MaterialDef {
+        Self::create_with_sampler(texture_name, get_reader, SamplerDef::default())
+    }
+
+    pub fn create_with_sampler<R: Read>(
+        texture_name: &str,
+        get_reader: impl FnOnce(&str) -> Option<R>,
+        sampler: SamplerDef,
+    ) -> MaterialDef {
+        let texture =
+            TextureStore::get_or_update(texture_name, || match get_reader(texture_name) {
+                Some(mut r) => {
+                    let mut buf = Vec::new();
+                    r.read_to_end(&mut buf).unwrap();
+                    image::load_from_memory(&buf)
+                        .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
+                        .and_then(|img| Ok(img.to_rgba8()))
+                        .ok()
+                }
+                _ => None,
+            });
+
+        MaterialDef::builder(ShaderProgram::Pal3Actor)
+            .debug_name("pal3_actor_material")
+            .textures_with_samplers(vec![texture], vec![sampler])
+            .build()
+    }
+}
+
+/// Builds a PAL3 static-geometry material ([`ShaderProgram::Pal3Geom`]) for
+/// non-skinned POL/CVD scenery. Same single-texture Lambert model as
+/// [`Pal3ActorMaterialDef`] (`gfxscript/geom_1L/2L`); lightmapped POL surfaces
+/// use [`LightMapMaterialDef`] instead.
+pub struct Pal3GeomMaterialDef;
+impl Pal3GeomMaterialDef {
+    pub fn create<R: Read>(
+        texture_name: &str,
+        get_reader: impl FnOnce(&str) -> Option<R>,
+    ) -> MaterialDef {
+        let texture =
+            TextureStore::get_or_update(texture_name, || match get_reader(texture_name) {
+                Some(mut r) => {
+                    let mut buf = Vec::new();
+                    r.read_to_end(&mut buf).unwrap();
+                    image::load_from_memory(&buf)
+                        .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
+                        .and_then(|img| Ok(img.to_rgba8()))
+                        .ok()
+                }
+                _ => None,
+            });
+
+        MaterialDef::builder(ShaderProgram::Pal3Geom)
+            .debug_name("pal3_geom_material")
+            .textures_with_samplers(vec![texture], vec![SamplerDef::default()])
+            .build()
+    }
+}
+
+/// Builds a PAL3 static prop material ([`ShaderProgram::Pal3Prop`]) for CVD
+/// items: ambient-only (texture × scene ambient), no per-vertex directional
+/// term, matching the original `gfxscript/geom.gbf` no-light pass.
+pub struct Pal3PropMaterialDef;
+impl Pal3PropMaterialDef {
+    pub fn create<R: Read>(
+        texture_name: &str,
+        get_reader: impl FnOnce(&str) -> Option<R>,
+    ) -> MaterialDef {
+        let texture =
+            TextureStore::get_or_update(texture_name, || match get_reader(texture_name) {
+                Some(mut r) => {
+                    let mut buf = Vec::new();
+                    r.read_to_end(&mut buf).unwrap();
+                    image::load_from_memory(&buf)
+                        .or_else(|_| image::load_from_memory_with_format(&buf, ImageFormat::Tga))
+                        .and_then(|img| Ok(img.to_rgba8()))
+                        .ok()
+                }
+                _ => None,
+            });
+
+        MaterialDef::builder(ShaderProgram::Pal3Prop)
+            .debug_name("pal3_prop_material")
+            .textures_with_samplers(vec![texture], vec![SamplerDef::default()])
+            .build()
+    }
+}
+
 pub struct LightMapMaterialDef;
 impl LightMapMaterialDef {
     pub fn create<R: Read>(

@@ -5,7 +5,7 @@ use radiance::comdef::{IEntity, IStaticMeshComponent};
 use radiance::components::mesh::{Geometry, StaticMeshComponent, TexCoord};
 use radiance::math::Vec3;
 use radiance::rendering::{
-    BlendMode, ComponentFactory, LightMapMaterialDef, LitMaterialDef, MaterialDef,
+    BlendMode, ComponentFactory, LightMapMaterialDef, Pal3GeomMaterialDef, MaterialDef,
 };
 use radiance::scene::CoreEntity;
 use std::io::BufReader;
@@ -97,7 +97,7 @@ fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path:
         // No baked lightmap: shade dynamically from the scene `.lgt` lights
         // (matches the original engine, which lit these placed props/surfaces
         // with the D3D scene lights). `create_geometry` supplies normals.
-        LitMaterialDef::create(texture_paths[0].to_str().unwrap(), |name| vfs.open(name).ok())
+        Pal3GeomMaterialDef::create(texture_paths[0].to_str().unwrap(), |name| vfs.open(name).ok())
             .with_blend(blend)
     } else {
         let textures: Vec<_> = texture_paths.iter().map(|p| p.to_str().unwrap()).collect();

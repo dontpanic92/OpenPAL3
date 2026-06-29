@@ -24,6 +24,26 @@ pub enum ShaderProgram {
     /// the `NORMAL` vertex component.
     TexturedDynamicLit,
 
+    /// PAL3 actor (skin) shader. Faithful reproduction of the original PAL3
+    /// `gfxscript/skin_lit*.cg` model: at most the two nearest omni point
+    /// lights, a hard N·L clamp at 0, ambient added flat, texture-modulated.
+    /// Requires `POSITION | NORMAL | TEXCOORD`. Distinct from
+    /// `TexturedDynamicLit` (which sums all lights with a wrap floor; used by
+    /// PAL5). Lives under `shaders/openpal3/`.
+    Pal3Actor,
+
+    /// PAL3 static geometry shader (POL/CVD). Same single-texture Lambert
+    /// model as `Pal3Actor` (`gfxscript/geom_1L/2L`) but for non-skinned
+    /// scenery; lightmapped POL surfaces use `TexturedLightmap` instead.
+    /// Requires `POSITION | NORMAL | TEXCOORD`. Lives under `shaders/openpal3/`.
+    Pal3Geom,
+
+    /// PAL3 static prop shader (CVD items) — ambient-only (`gfxscript/geom.gbf`
+    /// no-light pass): texture × scene ambient, no per-vertex directional term.
+    /// Keeps CVD props evenly dim instead of split bright/dark. Requires
+    /// `POSITION | NORMAL | TEXCOORD`. Lives under `shaders/openpal3/`.
+    Pal3Prop,
+
     /// PAL5 terrain multi-layer splat shader. Blends up to four terrain
     /// textures (`texSampler[0..4]`) per-texel by a weight atlas
     /// (`texSampler[4]`, RGBA = the four layers' weights), then applies the

@@ -170,6 +170,18 @@ static TERRAIN_SPLAT_FRAG: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/terrain_splat.frag.spv"));
 static GRASS_VERT: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), "/grass.vert.spv"));
 static GRASS_FRAG: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), "/grass.frag.spv"));
+static PAL3_ACTOR_VERT: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/pal3_actor.vert.spv"));
+static PAL3_ACTOR_FRAG: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/pal3_actor.frag.spv"));
+static PAL3_GEOM_VERT: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/pal3_geom.vert.spv"));
+static PAL3_GEOM_FRAG: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/pal3_geom.frag.spv"));
+static PAL3_PROP_VERT: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/pal3_prop.vert.spv"));
+static PAL3_PROP_FRAG: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/pal3_prop.frag.spv"));
 
 fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
     match shader {
@@ -211,6 +223,24 @@ fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
             GRASS_VERT,
             GRASS_FRAG,
             VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2,
+        ),
+        ShaderProgram::Pal3Actor => ShaderProgramData::new(
+            "pal3_actor",
+            PAL3_ACTOR_VERT,
+            PAL3_ACTOR_FRAG,
+            VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
+        ),
+        ShaderProgram::Pal3Geom => ShaderProgramData::new(
+            "pal3_geom",
+            PAL3_GEOM_VERT,
+            PAL3_GEOM_FRAG,
+            VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
+        ),
+        ShaderProgram::Pal3Prop => ShaderProgramData::new(
+            "pal3_prop",
+            PAL3_PROP_VERT,
+            PAL3_PROP_FRAG,
+            VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
         ),
     }
 }

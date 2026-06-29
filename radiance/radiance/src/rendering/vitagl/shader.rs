@@ -158,6 +158,26 @@ fn get_shader_proram_data(shader: ShaderProgram) -> ShaderProgramData {
             include_bytes!("shaders/simple_triangle.frag"),
             VertexComponents::POSITION | VertexComponents::TEXCOORD | VertexComponents::TEXCOORD2,
         ),
+        // PSVita has no per-pixel lit PAL3 actor shader; fall back to plain
+        // textured (declares NORMAL so the actor buffer stride matches).
+        ShaderProgram::Pal3Actor => ShaderProgramData::new(
+            "Pal3Actor",
+            include_bytes!("shaders/simple_triangle.vert"),
+            include_bytes!("shaders/simple_triangle.frag"),
+            VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
+        ),
+        ShaderProgram::Pal3Geom => ShaderProgramData::new(
+            "Pal3Geom",
+            include_bytes!("shaders/simple_triangle.vert"),
+            include_bytes!("shaders/simple_triangle.frag"),
+            VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
+        ),
+        ShaderProgram::Pal3Prop => ShaderProgramData::new(
+            "Pal3Prop",
+            include_bytes!("shaders/simple_triangle.vert"),
+            include_bytes!("shaders/simple_triangle.frag"),
+            VertexComponents::POSITION | VertexComponents::NORMAL | VertexComponents::TEXCOORD,
+        ),
     }
 }
 

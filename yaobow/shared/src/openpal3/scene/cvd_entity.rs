@@ -8,7 +8,7 @@ use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::{IComponentImpl, IEntity, IEntityExt};
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{
-    ComponentFactory, LitMaterialDef, MaterialDef, VertexBuffer, VertexComponents,
+    ComponentFactory, Pal3PropMaterialDef, MaterialDef, VertexBuffer, VertexComponents,
 };
 use radiance::scene::CoreEntity;
 use std::{path::Path, rc::Rc};
@@ -132,7 +132,7 @@ fn load_texture<P: AsRef<Path>>(
     // with the scene's dynamic `.lgt` lights via the lit material (CVD vertices
     // ship normals). Keep the default `BlendMode::AlphaTest` cutout fallback,
     // matching the legacy renderer's "always cutout" behavior.
-    LitMaterialDef::create(texture_path.to_str().unwrap(), |name| vfs.open(name).ok())
+    Pal3PropMaterialDef::create(texture_path.to_str().unwrap(), |name| vfs.open(name).ok())
 }
 
 pub struct CvdModelComponent {
