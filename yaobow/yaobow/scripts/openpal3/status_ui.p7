@@ -8,7 +8,10 @@
 // control (no SCE running).
 //
 // HP/MP render full (no HP/MP state exists yet). The avatar swaps variant
-// on mouse-over (hover) / mouse-down (click) — decorative only.
+// on mouse-over (hover) / mouse-down (click). Clicking the avatar opens
+// the full-screen character-status (state) menu — visual placeholders for
+// now (4 portraits, level/exp, HP/MP bars, money/time, toolbar); closes on
+// the exit button or a click outside the menu canvas.
 
 import radiance;
 import scripting_services;
@@ -44,6 +47,8 @@ let ST_MP_H: float       = 64.0;
 
 pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
     pub sprites: box<scripting_services.ISpriteService>,
+    // In-game menu (state) atlas: resolves `ui/gamemainui/*` sprites.
+    pub atlas: box<openpal3.IPal3UiAtlas>,
     pub bk: ?box<scripting_services.ISprite>,
     pub hp: ?box<scripting_services.ISprite>,
     pub mp: ?box<scripting_services.ISprite>,
@@ -51,6 +56,12 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
     pub face_n: ?box<scripting_services.ISprite>,
     pub face_h: ?box<scripting_services.ISprite>,
     pub face_c: ?box<scripting_services.ISprite>,
+    // Whether the full-screen character-status menu is open.
+    pub menu_open: bool = false,
+    // Previous-frame left-button state, for click rising-edge detection.
+    pub prev_down: bool = false,
+    // Menu close-button press latch.
+    pub ctx: box<gui.UiCtx>,
 ) {
     pub fn render_status(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         let lw = ui.display_size_x() as float;
@@ -81,13 +92,28 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
         let mx1 = mx0 + ST_MP_W * s;
         let my1 = my0 + ST_MP_H * s;
 
-        // Decorative variant: click (mouse down over panel) > hover > normal.
         let pmx = ui.mouse_pos_x();
         let pmy = ui.mouse_pos_y();
+        let down = ui.mouse_down(0);
+        // Rising edge: pressed this frame but not last.
+        let click = down && !self.prev_down;
         let over = pmx >= x0 && pmx <= x1 && pmy >= y0 && pmy <= y1;
+
+        // Avatar click opens the full character-status menu; while open
+        // the menu owns the screen and its own close logic dismisses it.
+        if self.menu_open {
+            let stay = paint_menu(ui, self.atlas, self.ctx, pmx, pmy, down, click);
+            self.menu_open = stay;
+            self.prev_down = down;
+            return 0;
+        }
+        if over && click { self.menu_open = true; self.prev_down = down; return 0; }
+        self.prev_down = down;
+
+        // Decorative variant: click (mouse down over panel) > hover > normal.
         let mut face = self.face_n;
         if over {
-            if ui.mouse_down(0) { face = self.face_c; } else { face = self.face_h; }
+            if down { face = self.face_c; } else { face = self.face_h; }
         }
 
         let items: array<box<gui.Element>> = [
@@ -100,6 +126,133 @@ pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
         gui.paint_root(root, ui, gui.make_ctx());
         0
     }
+}
+
+// --- Full-screen character-status (state) menu ---------------------------
+// Composed from the in-game `ui/gamemainui/*` atlas. v1 is visual-only:
+// 4 portraits, per-character HP/MP bars + level/exp text, money + game
+// time, and the bottom toolbar. Stats are placeholders (no party model
+// yet). Returns whether the menu should stay open; clicking the close
+// button (or anywhere outside the menu canvas) dismisses it.
+fn paint_menu(
+    ui: box<radiance.IUiHost>, atlas: box<openpal3.IPal3UiAtlas>,
+    ctx: box<gui.UiCtx>, mx: float, my: float, down: bool, click: bool,
+) -> bool {
+    let lw = ui.display_size_x() as float;
+    let lh = ui.display_size_y() as float;
+    let nat_w = 800.0;
+    let nat_h = 600.0;
+    let sx = lw / nat_w;
+    let sy = lh / nat_h;
+    let scale = if sx < sy { sx } else { sy };
+    let ox = (lw - nat_w * scale) * 0.5;
+    let oy = (lh - nat_h * scale) * 0.5;
+
+    // Backdrop: stretch one panel art across the canvas so the live scene
+    // is dimmed behind the menu (no fill primitive in IUiHost).
+    spr_stretch(ui, atlas, MENU_SHADE, ox, oy, nat_w, nat_h, scale);
+
+    let names: array<string> = ["景天", "雪见", "龙葵", "紫萱"];
+    let lvls: array<int>      = [49, 50, 49, 50];
+    let cur_exp: array<int>   = [383695, 367186, 367447, 322377];
+    for i in Range(0, 4) {
+        let px = 22.0 + (i as float) * 150.0;
+        spr(ui, atlas, MENU_PORTRAIT + int_str(i) + ".tga", px, 70.0, ox, oy, scale);
+        ui.text_at(ox + (px + 96.0) * scale, oy + 40.0 * scale, 0.85, 0.95, 0.85, 1.0, "49级");
+        bar(ui, atlas, px, 380.0, ox, oy, scale, 1.0);
+        bar(ui, atlas, px, 396.0, ox, oy, scale, 1.0);
+        ui.text_at(ox + px * scale, oy + 470.0 * scale, 0.8, 1.0, 0.8, 1.0,
+            "经验值:" + int_str(cur_exp[i]));
+        ui.text_at(ox + px * scale, oy + 490.0 * scale, 0.7, 0.9, 0.7, 1.0, "升级需经验:1500");
+    }
+
+    // Top-right: money + game time.
+    ui.text_at(ox + 632.0 * scale, oy + 4.0 * scale, 1.0, 0.95, 0.4, 1.0, "246882");
+    ui.text_at(ox + 660.0 * scale, oy + 24.0 * scale, 0.8, 1.0, 0.9, 1.0, "68:24:10");
+
+    // Right column: four lead heads + full HP/MP bars.
+    for i in Range(0, 4) {
+        let hy = 56.0 + (i as float) * 78.0;
+        spr(ui, atlas, MENU_ROLEHEAD + int_str(i) + "0.tga", 720.0, hy, ox, oy, scale);
+        bar(ui, atlas, 632.0, hy + 14.0, ox, oy, scale, 1.0);
+        bar(ui, atlas, 632.0, hy + 30.0, ox, oy, scale, 1.0);
+    }
+
+    // Bottom toolbar.
+    spr_stretch(ui, atlas, MENU_BARL, ox, oy + 552.0 * scale, 800.0, 48.0, scale);
+
+    // Close on outside click; otherwise an exit affordance bottom-right.
+    let cx = 740.0; let cy = 540.0;
+    spr(ui, atlas, MENU_EXIT + "0.tga", cx, cy, ox, oy, scale);
+    let ex0 = ox + cx * scale; let ey0 = oy + cy * scale;
+    let ex1 = ex0 + 37.0 * scale; let ey1 = ey0 + 48.0 * scale;
+    let on_exit = mx >= ex0 && mx <= ex1 && my >= ey0 && my <= ey1;
+    if click {
+        if on_exit { return false; }
+        let inx = mx >= ox && mx <= ox + nat_w * scale;
+        let iny = my >= oy && my <= oy + nat_h * scale;
+        if !(inx && iny) { return false; }
+    }
+    return true;
+}
+
+// Paint atlas sprite `name` at native (nx,ny) into the fitted canvas.
+// Uses image_rect (background draw list) so it composes without an imgui
+// window — paint_menu draws directly, not via gui.paint_root.
+fn spr(ui: box<radiance.IUiHost>, atlas: box<openpal3.IPal3UiAtlas>, name: string,
+       nx: float, ny: float, ox: float, oy: float, scale: float) {
+    let osp = atlas.sprite(name);
+    if osp == null { return; }
+    let sp = osp!;
+    let w = sp.width() as float; let h = sp.height() as float;
+    if w <= 0.0 || h <= 0.0 { return; }
+    let x0 = ox + nx * scale; let y0 = oy + ny * scale;
+    ui.image_rect(sp.com_id(), x0, y0, x0 + w * scale, y0 + h * scale,
+        sp.u0(), sp.v0(), sp.u1(), sp.v1());
+}
+
+// Stretch sprite `name` to a native w×h box (for backdrop/toolbar).
+fn spr_stretch(ui: box<radiance.IUiHost>, atlas: box<openpal3.IPal3UiAtlas>, name: string,
+               x: float, y: float, w: float, h: float, scale: float) {
+    let osp = atlas.sprite(name);
+    if osp == null { return; }
+    let sp = osp!;
+    ui.image_rect(sp.com_id(), x, y, x + w * scale, y + h * scale,
+        sp.u0(), sp.v0(), sp.u1(), sp.v1());
+}
+
+// HP/MP gauge bar at `frac` fill, drawn full for the placeholder.
+fn bar(ui: box<radiance.IUiHost>, atlas: box<openpal3.IPal3UiAtlas>,
+       nx: float, ny: float, ox: float, oy: float, scale: float, frac: float) {
+    spr(ui, atlas, MENU_BAR, nx, ny, ox, oy, scale);
+}
+
+let MENU_SHADE: string    = "ui/gamemainui/state/frame.tga";
+let MENU_PORTRAIT: string = "ui/gamemainui/state/portrait";
+let MENU_ROLEHEAD: string = "ui/gamemainui/communal/rolehead";
+let MENU_BAR: string      = "ui/gamemainui/communal/bar.tga";
+let MENU_BARL: string     = "ui/gamemainui/communal/stpctl/stpbarm.tga";
+let MENU_EXIT: string     = "ui/gamemainui/communal/stpctl/exit";
+
+fn int_str(n: int) -> string {
+    if n == 0 { return "0"; }
+    let mut v = n; let mut neg = false;
+    if v < 0 { neg = true; v = -v; }
+    let mut out: string = "";
+    while v > 0 {
+        let d = v - (v / 10) * 10;
+        out = digit(d) + out; v = v / 10;
+    }
+    if neg { out = "-" + out; }
+    return out;
+}
+
+fn digit(d: int) -> string {
+    if d == 0 { return "0"; } if d == 1 { return "1"; }
+    if d == 2 { return "2"; } if d == 3 { return "3"; }
+    if d == 4 { return "4"; } if d == 5 { return "5"; }
+    if d == 6 { return "6"; } if d == 7 { return "7"; }
+    if d == 8 { return "8"; } return "9";
 }
 
 fn sprite_rect(
@@ -125,6 +278,7 @@ pub struct[gui.Element] SpriteRect(s: ?box<scripting_services.ISprite>) {
 
 pub fn make_pal3_status_renderer(
     sprites: box<scripting_services.ISpriteService>,
+    atlas: box<openpal3.IPal3UiAtlas>,
 ) -> box<openpal3.IPal3StatusRenderer> {
     let face = "/basedata/basedata/ui/scene/face/";
     let bk = sprites.load_sprite(face + "bk.tga");
@@ -133,5 +287,6 @@ pub fn make_pal3_status_renderer(
     let face_n = sprites.load_sprite(face + "face0/face00.tga");
     let face_h = sprites.load_sprite(face + "face0/face01.tga");
     let face_c = sprites.load_sprite(face + "face0/face02.tga");
-    return box(Pal3StatusRendererImpl(sprites, bk, hp, mp, face_n, face_h, face_c));
+    return box(Pal3StatusRendererImpl(sprites, atlas, bk, hp, mp, face_n, face_h, face_c,
+        false, false, gui.make_ctx()));
 }

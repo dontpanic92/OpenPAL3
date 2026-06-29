@@ -223,8 +223,9 @@ interface IPal3ScriptFactory: IUnknown {
     // Scripted PAL3 in-game status indicator, built with a generic
     // `ISpriteService` it loads its panel art through. Threaded into the
     // SCE command loop alongside the dialog renderer; drawn each frame
-    // the player has control.
-    IPal3StatusRenderer make_pal3_status_renderer(ISpriteService sprites);
+    // the player has control. The `IPal3UiAtlas` provides the in-game
+    // menu (state) screen sprites the avatar click pops open.
+    IPal3StatusRenderer make_pal3_status_renderer(ISpriteService sprites, IPal3UiAtlas atlas);
 }
 
 [uuid(4b76fb5a-25c0-4c83-9ed3-ffd5bf342856)]

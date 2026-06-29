@@ -108,8 +108,9 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
     pub fn make_pal3_status_renderer(
         self: refmut<Self>,
         sprites: box<scripting_services.ISpriteService>,
+        atlas: box<openpal3.IPal3UiAtlas>,
     ) -> box<openpal3.IPal3StatusRenderer> {
-        return pal3_status_ui.make_pal3_status_renderer(sprites);
+        return pal3_status_ui.make_pal3_status_renderer(sprites, atlas);
     }
 }
 

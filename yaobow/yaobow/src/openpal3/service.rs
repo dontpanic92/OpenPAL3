@@ -192,7 +192,29 @@ impl Pal3Service {
              Pal3Service::set_script_factory after installing the script root.",
         );
         let sprites = SpriteService::create(asset_mgr.vfs_rc(), texture_cache);
-        factory.make_pal3_status_renderer(sprites)
+        let atlas = self
+            .build_ui_atlas(asset_mgr)
+            .expect("Pal3Service::build_status_renderer: failed to build UI atlas");
+        factory.make_pal3_status_renderer(sprites, atlas)
+    }
+
+    /// Build the PAL3 `UI_opt.tli` atlas adapter for a given adventure
+    /// asset_mgr (shared with `create_ui_atlas`, but threaded directly
+    /// into the status renderer so the in-game menu screen can resolve
+    /// `ui/gamemainui/*` sprites). Requires the texture cache.
+    fn build_ui_atlas(&self, asset_mgr: Rc<AssetManager>) -> Option<ComRc<IPal3UiAtlas>> {
+        let cache = self.texture_cache.borrow().clone()?;
+        let sprites = SpriteService::create(asset_mgr.vfs_rc(), cache);
+        let kind = match self.last_game.get() {
+            GameType::PAL3A => AtlasManifest::Plug,
+            _ => AtlasManifest::Tli,
+        };
+        let manifest = common::store_ext::StoreExt2::read_to_end(
+            asset_mgr.vfs(),
+            Pal3UiAtlas::manifest_path(kind),
+        )
+        .ok()?;
+        Some(Pal3UiAtlas::create(sprites, &manifest, kind))
     }
 
     /// Returns the cached `AssetManager` for `asset_path`, mounting
