@@ -849,6 +849,22 @@ impl IUiHostImpl for ImguiUiHost {
         with_frame("mouse_wheel", |f| f.ui.io().mouse_wheel).unwrap_or(0.0)
     }
 
+    fn mouse_pos_x(&self) -> f32 {
+        with_frame("mouse_pos_x", |f| {
+            let x = f.ui.io().mouse_pos[0];
+            if f.dpi_scale > 0.0 { x / f.dpi_scale } else { x }
+        })
+        .unwrap_or(0.0)
+    }
+
+    fn mouse_pos_y(&self) -> f32 {
+        with_frame("mouse_pos_y", |f| {
+            let y = f.ui.io().mouse_pos[1];
+            if f.dpi_scale > 0.0 { y / f.dpi_scale } else { y }
+        })
+        .unwrap_or(0.0)
+    }
+
     fn content_region_avail_x(&self) -> i32 {
         with_frame("content_region_avail_x", |f| {
             let [w, _] = f.ui.content_region_avail();

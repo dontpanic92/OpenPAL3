@@ -733,6 +733,12 @@ interface IUiHost: IUnknown {
     void reset_mouse_drag_delta(int button);
     float mouse_wheel();
 
+    // Absolute cursor position in logical (unscaled) viewport pixels,
+    // matching `display_size_x/y`. Use for hit-testing against rects
+    // computed from the display size (e.g. hover/click on a sprite).
+    float mouse_pos_x();
+    float mouse_pos_y();
+
     // Aggregate "is any keyboard key OR mouse button currently held
     // down this frame" 鈥?the imgui-io equivalent of
     // `keys_down.iter().any(|&k| k) || mouse_down.iter().any(|&k| k)`.

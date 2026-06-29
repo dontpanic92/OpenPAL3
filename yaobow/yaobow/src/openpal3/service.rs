@@ -41,6 +41,7 @@ use shared::openpal3::agent::{Pal3DispatchCtx, dispatch_pal3_command};
 use shared::openpal3::asset_manager::AssetManager;
 use shared::openpal3::comdef::{
     IAdventureDirector, IPal3DialogRenderer, IPal3ScriptFactory, IPal3Service, IPal3ServiceImpl,
+    IPal3StatusRenderer,
     IPal3UiAtlas,
 };
 use shared::openpal3::directors::AdventureDirector;
@@ -163,6 +164,20 @@ impl Pal3Service {
         // threaded straight through to the SCE VM (no wrapper struct).
         let sprites = SpriteService::create(asset_mgr.vfs_rc(), texture_cache);
         factory.make_pal3_dialog_renderer(sprites)
+    }
+
+    fn build_status_renderer(&self, asset_mgr: Rc<AssetManager>) -> ComRc<IPal3StatusRenderer> {
+        let texture_cache = self.texture_cache.borrow().clone().expect(
+            "Pal3Service::build_status_renderer called before the texture cache was installed. \
+             YaobowApplicationLoader must call Pal3Service::set_texture_cache at boot.",
+        );
+        let factory = self.script_factory.borrow().clone().expect(
+            "Pal3Service::build_status_renderer called before the script factory was installed \
+             (or after it was cleared). YaobowApplicationLoader must call \
+             Pal3Service::set_script_factory after installing the script root.",
+        );
+        let sprites = SpriteService::create(asset_mgr.vfs_rc(), texture_cache);
+        factory.make_pal3_status_renderer(sprites)
     }
 
     /// Returns the cached `AssetManager` for `asset_path`, mounting
@@ -435,6 +450,7 @@ impl IPal3ServiceImpl for Pal3Service {
     fn create_adventure_director(&self, asset_path: &str) -> ComRc<IDirector> {
         let asset_mgr = self.asset_manager_for(asset_path);
         let dialog_renderer = self.build_dialog_renderer(asset_mgr.clone());
+        let status_renderer = self.build_status_renderer(asset_mgr.clone());
         let engine_rc = self.app.engine();
         let engine = engine_rc.borrow();
         let audio_engine = engine.audio_engine();
@@ -452,6 +468,7 @@ impl IPal3ServiceImpl for Pal3Service {
             scene_manager,
             Some(Self::sce_options()),
             dialog_renderer,
+            status_renderer,
         );
         if let Some(bridge) = self.agent_bridge.borrow().as_ref() {
             adv.set_agent_bridge(bridge.clone());
@@ -462,6 +479,7 @@ impl IPal3ServiceImpl for Pal3Service {
     fn load_adventure_director(&self, asset_path: &str, slot: i32) -> Option<ComRc<IDirector>> {
         let asset_mgr = self.asset_manager_for(asset_path);
         let dialog_renderer = self.build_dialog_renderer(asset_mgr.clone());
+        let status_renderer = self.build_status_renderer(asset_mgr.clone());
         let engine_rc = self.app.engine();
         let engine = engine_rc.borrow();
         let audio_engine = engine.audio_engine();
@@ -480,6 +498,7 @@ impl IPal3ServiceImpl for Pal3Service {
             Some(Self::sce_options()),
             slot,
             dialog_renderer,
+            status_renderer,
         )?;
         if let Some(bridge) = self.agent_bridge.borrow().as_ref() {
             adv.set_agent_bridge(bridge.clone());

@@ -42,6 +42,7 @@ impl AdventureDirector {
         scene_manager: ComRc<ISceneManager>,
         sce_vm_options: Option<SceExecutionOptions>,
         dialog_renderer: ComRc<crate::openpal3::comdef::IPal3DialogRenderer>,
+        status_renderer: ComRc<crate::openpal3::comdef::IPal3StatusRenderer>,
     ) -> Self {
         let p_state = Rc::new(RefCell::new(PersistentState::new(app_name.to_string())));
         let global_state = GlobalState::new(asset_mgr.clone(), audio_engine.clone(), p_state);
@@ -56,6 +57,7 @@ impl AdventureDirector {
             global_state,
             sce_vm_options,
             dialog_renderer,
+            status_renderer,
         );
         sce_vm.call_proc(51);
 
@@ -85,6 +87,7 @@ impl AdventureDirector {
         sce_vm_options: Option<SceExecutionOptions>,
         slot: i32,
         dialog_renderer: ComRc<crate::openpal3::comdef::IPal3DialogRenderer>,
+        status_renderer: ComRc<crate::openpal3::comdef::IPal3StatusRenderer>,
     ) -> Option<Self> {
         let p_state = PersistentState::load(app_name, slot);
         let scene_name = p_state.scene_name();
@@ -135,6 +138,7 @@ impl AdventureDirector {
             global_state,
             sce_vm_options,
             dialog_renderer,
+            status_renderer,
         );
 
         // don't draw curtain when loading a save

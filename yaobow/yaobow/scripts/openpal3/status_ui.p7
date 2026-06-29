@@ -1,0 +1,137 @@
+// PAL3 in-game status indicator (top-right HUD), declarative-UI port.
+//
+// Owns all of its state in p7: it `load_sprite`s the `ui/scene/face`
+// panel art once (`bk.tga` background ring, `hp.tga`/`mp.tga` gauges, and
+// the team-lead avatar `face0` normal/hover/click variants) and holds the
+// handles for its lifetime so the textures stay uploaded. The SCE command
+// loop forwards a per-frame `render_status` call only while the player has
+// control (no SCE running).
+//
+// HP/MP render full (no HP/MP state exists yet). The avatar swaps variant
+// on mouse-over (hover) / mouse-down (click) — decorative only.
+
+import radiance;
+import scripting_services;
+import shared.openpal3;
+import radiance_scripting.ui as gui;
+
+// Panel size as a fraction of framebuffer height. bk.tga is 128x128; the
+// whole HUD is scaled uniformly so its on-screen height = lh * this.
+let ST_PANEL_HEIGHT_FACTOR: float = 0.22;
+// bk.tga has fully-transparent padding (57px right, 38px top). To snap the
+// visible dial flush to the screen's right edge we shift right by that pad;
+// to control the top gap we cancel the top pad and add a small native gap.
+let ST_BK_RIGHT_PAD: float = 57.0;
+let ST_BK_TOP_PAD: float   = 38.0;
+let ST_TOP_GAP_PX: float   = 6.0;
+
+// --- Native-pixel layout (relative to bk's top-left corner, 128px canvas) ---
+// Each element is positioned + sized in bk's native pixels; the whole panel
+// is scaled by (panel / BK_SIZE) to actual screen pixels. Tune these freely.
+let ST_BK_SIZE: float    = 128.0;
+let ST_AVATAR_X: float   = 16.0;
+let ST_AVATAR_Y: float   = 42.0;
+let ST_AVATAR_W: float   = 64.0;
+let ST_AVATAR_H: float   = 64.0;
+let ST_HP_X: float       = 5.0;
+let ST_HP_Y: float       = 17.0;
+let ST_HP_W: float       = 64.0;
+let ST_HP_H: float       = 64.0;
+let ST_MP_X: float       = 6.0;
+let ST_MP_Y: float       = 54.0;
+let ST_MP_W: float       = 64.0;
+let ST_MP_H: float       = 64.0;
+
+pub struct[openpal3.IPal3StatusRenderer] Pal3StatusRendererImpl(
+    pub sprites: box<scripting_services.ISpriteService>,
+    pub bk: ?box<scripting_services.ISprite>,
+    pub hp: ?box<scripting_services.ISprite>,
+    pub mp: ?box<scripting_services.ISprite>,
+    // Team-lead avatar variants: 0 normal, 1 hover, 2 click.
+    pub face_n: ?box<scripting_services.ISprite>,
+    pub face_h: ?box<scripting_services.ISprite>,
+    pub face_c: ?box<scripting_services.ISprite>,
+) {
+    pub fn render_status(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
+        let lw = ui.display_size_x() as float;
+        let lh = ui.display_size_y() as float;
+        if lw <= 0.0 || lh <= 0.0 { return 0; }
+
+        let panel = lh * ST_PANEL_HEIGHT_FACTOR;
+        let s = panel / ST_BK_SIZE;
+        // Hang bk's transparent right pad off-screen so the dial is flush
+        // right; cancel its top pad and leave a small native top gap.
+        let x1 = lw + ST_BK_RIGHT_PAD * s;
+        let x0 = x1 - panel;
+        let y0 = (ST_TOP_GAP_PX - ST_BK_TOP_PAD) * s;
+        let y1 = y0 + panel;
+
+        // Each element is laid out in native px relative to bk's top-left
+        // corner (x0, y0), then scaled by `s`.
+        let ax0 = x0 + ST_AVATAR_X * s;
+        let ay0 = y0 + ST_AVATAR_Y * s;
+        let ax1 = ax0 + ST_AVATAR_W * s;
+        let ay1 = ay0 + ST_AVATAR_H * s;
+        let hx0 = x0 + ST_HP_X * s;
+        let hy0 = y0 + ST_HP_Y * s;
+        let hx1 = hx0 + ST_HP_W * s;
+        let hy1 = hy0 + ST_HP_H * s;
+        let mx0 = x0 + ST_MP_X * s;
+        let my0 = y0 + ST_MP_Y * s;
+        let mx1 = mx0 + ST_MP_W * s;
+        let my1 = my0 + ST_MP_H * s;
+
+        // Decorative variant: click (mouse down over panel) > hover > normal.
+        let pmx = ui.mouse_pos_x();
+        let pmy = ui.mouse_pos_y();
+        let over = pmx >= x0 && pmx <= x1 && pmy >= y0 && pmy <= y1;
+        let mut face = self.face_n;
+        if over {
+            if ui.mouse_down(0) { face = self.face_c; } else { face = self.face_h; }
+        }
+
+        let items: array<box<gui.Element>> = [
+            sprite_rect(self.bk, x0, y0, x1, y1),
+            sprite_rect(face, ax0, ay0, ax1, ay1),
+            sprite_rect(self.hp, hx0, hy0, hx1, hy1),
+            sprite_rect(self.mp, mx0, my0, mx1, my1),
+        ];
+        let root = gui.Stack(items);
+        gui.paint_root(root, ui, gui.make_ctx());
+        0
+    }
+}
+
+fn sprite_rect(
+    s: ?box<scripting_services.ISprite>,
+    x0: float, y0: float, x1: float, y1: float,
+) -> box<gui.Element> {
+    return gui.Positioned(x0, y0, x1 - x0, y1 - y0,
+        box(SpriteRect(s)) as box<gui.Element>);
+}
+
+pub struct[gui.Element] SpriteRect(s: ?box<scripting_services.ISprite>) {
+    fn measure(self: ref<Self>, avail_w: float, avail_h: float,
+               ui: box<radiance.IUiHost>) -> gui.Size {
+        return gui.Size(0.0, 0.0);
+    }
+    fn paint(self: ref<Self>, x: float, y: float, w: float, h: float,
+             ui: box<radiance.IUiHost>, ctx: box<gui.UiCtx>) {
+        if self.s == null { return; }
+        let sp = self.s!;
+        ui.image_rect(sp.com_id(), x, y, x + w, y + h, sp.u0(), sp.v0(), sp.u1(), sp.v1());
+    }
+}
+
+pub fn make_pal3_status_renderer(
+    sprites: box<scripting_services.ISpriteService>,
+) -> box<openpal3.IPal3StatusRenderer> {
+    let face = "/basedata/basedata/ui/scene/face/";
+    let bk = sprites.load_sprite(face + "bk.tga");
+    let hp = sprites.load_sprite(face + "mp.tga");
+    let mp = sprites.load_sprite(face + "hp.tga");
+    let face_n = sprites.load_sprite(face + "face0/face00.tga");
+    let face_h = sprites.load_sprite(face + "face0/face01.tga");
+    let face_c = sprites.load_sprite(face + "face0/face02.tga");
+    return box(Pal3StatusRendererImpl(sprites, bk, hp, mp, face_n, face_h, face_c));
+}

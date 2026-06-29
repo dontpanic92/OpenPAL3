@@ -46,6 +46,7 @@ impl SceVm {
         global_state: GlobalState,
         options: Option<SceExecutionOptions>,
         dialog_renderer: ComRc<crate::openpal3::comdef::IPal3DialogRenderer>,
+        status_renderer: ComRc<crate::openpal3::comdef::IPal3StatusRenderer>,
     ) -> Self {
         let state = SceState::new(
             input_engine.clone(),
@@ -57,6 +58,7 @@ impl SceVm {
             global_state,
             options,
             dialog_renderer,
+            status_renderer,
         );
 
         Self {
@@ -87,6 +89,7 @@ impl SceVm {
                     }
                     None => {
                         self.state.global_state_mut().set_adv_input_enabled(true);
+                        self.state.render_status(delta_sec);
                         return None;
                     }
                 };

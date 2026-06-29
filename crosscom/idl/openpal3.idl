@@ -184,6 +184,24 @@ interface IPal3DialogRenderer: IUnknown {
 [uuid(c0373bc2-0823-4093-8f48-d42a076e8a4a)]
 class Pal3DialogRenderer: IPal3DialogRenderer {}
 
+// Scripted PAL3 in-game status indicator (top-right HUD). A
+// `[protosept(scriptable)]` interface implemented by a p7 struct, drawn
+// every frame the player has control (no SCE running). Owns all its
+// state in p7: it `load_sprite`s the `ui/scene/face` panel art once
+// (background `bk.tga`, the `hp.tga`/`mp.tga` gauges, and the team-lead
+// avatar `face0` normal/hover/click variants) and holds the handles for
+// its lifetime. HP/MP render full; the avatar swaps variant on
+// mouse-over / mouse-down (decorative).
+[uuid(7d4f0c2e-3b1a-4f5e-9c6d-2a8b1e74f9a0), protosept(scriptable)]
+interface IPal3StatusRenderer: IUnknown {
+    // Compose the top-right status panel (bk + hp/mp gauges + team-lead
+    // avatar) for the current frame. `dt` advances any blink/timers.
+    void render_status(IUiHost ui, float dt);
+}
+
+[uuid(8e5a1d3f-4c2b-4061-ad7e-3b9c2f85fab1)]
+class Pal3StatusRenderer: IPal3StatusRenderer {}
+
 // Script-implemented factory for the PAL3 launch surface. The yaobow
 // `app.p7` `YaobowScriptApp` conforms to this in addition to
 // `IPal4ScriptFactory`; `Pal3Service::create_director` QI's the host
@@ -202,6 +220,12 @@ interface IPal3ScriptFactory: IUnknown {
     // and threads it into the SCE command loop, which forwards
     // `set_avatar`/`set_curtain` events and the per-frame draw calls.
     IPal3DialogRenderer make_pal3_dialog_renderer(ISpriteService sprites);
+
+    // Scripted PAL3 in-game status indicator, built with a generic
+    // `ISpriteService` it loads its panel art through. Threaded into the
+    // SCE command loop alongside the dialog renderer; drawn each frame
+    // the player has control.
+    IPal3StatusRenderer make_pal3_status_renderer(ISpriteService sprites);
 }
 
 [uuid(4b76fb5a-25c0-4c83-9ed3-ffd5bf342856)]

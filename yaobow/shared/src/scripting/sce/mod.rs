@@ -14,7 +14,7 @@ use radiance_scripting::UiManagerImmediateExt;
 
 use crate::openpal3::{
     asset_manager::AssetManager,
-    comdef::IPal3DialogRenderer,
+    comdef::{IPal3DialogRenderer, IPal3StatusRenderer},
     loaders::sce_loader::SceFile,
     states::global_state::GlobalState,
 };
@@ -84,6 +84,10 @@ pub struct SceState {
     // without a separate visibility state machine.
     ui: Rc<UiManager>,
     dialog_renderer: ComRc<IPal3DialogRenderer>,
+    // Scripted top-right status indicator; drawn each frame the player
+    // has control (no SCE running). Same immediate-mode draw path as the
+    // dialog renderer.
+    status_renderer: ComRc<crate::openpal3::comdef::IPal3StatusRenderer>,
 }
 
 impl SceState {
@@ -97,6 +101,7 @@ impl SceState {
         global_state: GlobalState,
         options: Option<SceExecutionOptions>,
         dialog_renderer: ComRc<IPal3DialogRenderer>,
+        status_renderer: ComRc<IPal3StatusRenderer>,
     ) -> Self {
         let ext = HashMap::<String, Box<dyn Any>>::new();
 
@@ -112,6 +117,7 @@ impl SceState {
             audio_engine,
             ui,
             dialog_renderer,
+            status_renderer,
         }
     }
 
@@ -227,5 +233,14 @@ impl SceState {
     /// Clear the dialog avatar/portrait (end of a `dlg` beat).
     pub fn clear_dialog_avatar(&self) {
         self.dialog_renderer.clear_avatar();
+    }
+
+    /// Compose the top-right status indicator for this frame. Called only
+    /// when the player has control (no SCE proc running).
+    pub fn render_status(&mut self, delta_sec: f32) {
+        let renderer = self.status_renderer.clone();
+        self.ui.with_ui_host(|ui_host| {
+            renderer.render_status(ui_host.clone(), delta_sec);
+        });
     }
 }

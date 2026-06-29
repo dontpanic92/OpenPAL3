@@ -19,6 +19,7 @@ import shared.openpal3;
 import shared.openpal4;
 import yaobow.openpal3.start_menu as pal3_start_menu;
 import yaobow.openpal3.dlg_box as pal3_dlg_box;
+import yaobow.openpal3.status_ui as pal3_status_ui;
 import yaobow.openpal4.start_menu;
 import scripting_services;
 import yaobow.yaobow_services;
@@ -102,6 +103,13 @@ pub struct[yaobow_services.IYaobowScriptApp, openpal3.IPal3ScriptFactory, openpa
         sprites: box<scripting_services.ISpriteService>,
     ) -> box<openpal3.IPal3DialogRenderer> {
         return pal3_dlg_box.make_pal3_dialog_renderer(sprites);
+    }
+
+    pub fn make_pal3_status_renderer(
+        self: refmut<Self>,
+        sprites: box<scripting_services.ISpriteService>,
+    ) -> box<openpal3.IPal3StatusRenderer> {
+        return pal3_status_ui.make_pal3_status_renderer(sprites);
     }
 }
 

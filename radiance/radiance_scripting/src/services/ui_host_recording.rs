@@ -545,6 +545,12 @@ impl IUiHostImpl for HostFacade {
     fn mouse_wheel(&self) -> f32 {
         0.0
     }
+    fn mouse_pos_x(&self) -> f32 {
+        0.0
+    }
+    fn mouse_pos_y(&self) -> f32 {
+        0.0
+    }
     fn content_region_avail_x(&self) -> i32 {
         0
     }
