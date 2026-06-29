@@ -441,6 +441,9 @@ fn parse_post_command(url: &str, req: &mut Request) -> Result<AgentCommand, Agen
         "/v1/camera/pose" => {
             AgentCommand::SetCamera(parse::<crate::protocol::CameraPoseParams>(&body)?)
         }
+        "/v1/menu/status" => {
+            AgentCommand::SetStatusMenu(parse::<crate::protocol::StatusMenuParams>(&body)?)
+        }
         _ => {
             return Err(AgentError::bad_request(format!(
                 "unknown POST route: {url}"

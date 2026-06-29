@@ -128,11 +128,10 @@ impl ImguiRenderer {
         command_pool: vk::CommandPool,
         context: &ImguiContext,
     ) {
-        if let Err(err) = self.renderer.update_fonts_texture(
-            queue,
-            command_pool,
-            &mut context.context_mut(),
-        ) {
+        if let Err(err) =
+            self.renderer
+                .update_fonts_texture(queue, command_pool, &mut context.context_mut())
+        {
             log::error!("Failed to rebuild imgui font atlas: {err}");
         }
     }

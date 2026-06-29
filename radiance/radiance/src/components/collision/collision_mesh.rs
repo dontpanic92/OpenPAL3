@@ -85,15 +85,7 @@ impl CollisionMeshComponent {
 }
 
 impl ICollisionMeshComponentImpl for CollisionMeshComponent {
-    fn cast_ray(
-        &self,
-        ox: f32,
-        oy: f32,
-        oz: f32,
-        dx: f32,
-        dy: f32,
-        dz: f32,
-    ) -> Option<f32> {
+    fn cast_ray(&self, ox: f32, oy: f32, oz: f32, dx: f32, dy: f32, dz: f32) -> Option<f32> {
         self.ray_caster
             .cast_ray(&Vec3::new(ox, oy, oz), &Vec3::new(dx, dy, dz))
     }

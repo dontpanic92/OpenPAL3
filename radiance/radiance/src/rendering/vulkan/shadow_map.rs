@@ -211,8 +211,8 @@ impl ShadowMap {
         cutout: bool,
         descriptor_manager: &DescriptorManager,
     ) -> Rc<ShadowPipeline> {
-        let stride = VertexComponentsLayout::from_components(program_components(program)).size()
-            as u32;
+        let stride =
+            VertexComponentsLayout::from_components(program_components(program)).size() as u32;
         if cutout {
             if let Some(p) = self.cutout_pipelines.borrow().get(&stride) {
                 return p.clone();
@@ -277,10 +277,12 @@ impl ShadowMap {
                     .module(self.cutout_frag_module),
             ]
         } else {
-            vec![vk::PipelineShaderStageCreateInfo::default()
-                .name(&entry)
-                .stage(vk::ShaderStageFlags::VERTEX)
-                .module(self.vert_module)]
+            vec![
+                vk::PipelineShaderStageCreateInfo::default()
+                    .name(&entry)
+                    .stage(vk::ShaderStageFlags::VERTEX)
+                    .module(self.vert_module),
+            ]
         };
 
         let binding_descriptions = [vk::VertexInputBindingDescription::default()
@@ -289,16 +291,16 @@ impl ShadowMap {
             .input_rate(vk::VertexInputRate::VERTEX)];
         // POSITION (location 0) is always at offset 0; cutout pipelines also
         // read TEXCOORD (location 1) at the program's per-layout byte offset.
-        let mut attribute_descriptions = vec![vk::VertexInputAttributeDescription::default()
-            .binding(0)
-            .location(0)
-            .offset(0)
-            .format(vk::Format::R32G32B32_SFLOAT)];
+        let mut attribute_descriptions = vec![
+            vk::VertexInputAttributeDescription::default()
+                .binding(0)
+                .location(0)
+                .offset(0)
+                .format(vk::Format::R32G32B32_SFLOAT),
+        ];
         if cutout {
             let layout = VertexComponentsLayout::from_components(program_components(program));
-            let tc_offset = layout
-                .get_offset(VertexComponents::TEXCOORD)
-                .unwrap_or(12) as u32;
+            let tc_offset = layout.get_offset(VertexComponents::TEXCOORD).unwrap_or(12) as u32;
             attribute_descriptions.push(
                 vk::VertexInputAttributeDescription::default()
                     .binding(0)
@@ -556,10 +558,7 @@ impl CascadeVolume {
             for &cy in &[wmin[1], wmax[1]] {
                 for &cz in &[wmin[2], wmax[2]] {
                     for axis in 0..3 {
-                        let p = v[axis][0] * cx
-                            + v[axis][1] * cy
-                            + v[axis][2] * cz
-                            + v[axis][3];
+                        let p = v[axis][0] * cx + v[axis][1] * cy + v[axis][2] * cz + v[axis][3];
                         if p < ls_min[axis] {
                             ls_min[axis] = p;
                         }

@@ -2,7 +2,9 @@ use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use ash::vk::{CommandBuffer, CommandBufferAllocateInfo, DescriptorPoolResetFlags, ShaderStageFlags};
+use ash::vk::{
+    CommandBuffer, CommandBufferAllocateInfo, DescriptorPoolResetFlags, ShaderStageFlags,
+};
 use ash::{
     prelude::VkResult,
     vk::{
@@ -364,13 +366,8 @@ impl Device {
         constants: &[u8],
     ) {
         unsafe {
-            self.device.cmd_push_constants(
-                command_buffer,
-                layout,
-                stage_flags,
-                offset,
-                constants,
-            );
+            self.device
+                .cmd_push_constants(command_buffer, layout, stage_flags, offset, constants);
         }
     }
 

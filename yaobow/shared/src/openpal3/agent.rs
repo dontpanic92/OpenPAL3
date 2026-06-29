@@ -25,7 +25,7 @@ use std::rc::Rc;
 use agent_server::protocol::{
     AgentCommand, AgentError, AgentResponse, AxisInputParams, DialogSnapshot, KeyAction,
     KeyInputParams, ScreenshotResponse, ScriptGlobalsParams, ScriptGlobalsResponse, SlotParams,
-    StateSnapshot, StepTimeParams, TeleportParams,
+    StateSnapshot, StatusMenuParams, StepTimeParams, TeleportParams,
 };
 use crosscom::ComRc;
 use radiance::comdef::ISceneManager;
@@ -102,6 +102,7 @@ pub fn dispatch_pal3_command(ctx: &Pal3DispatchCtx, command: AgentCommand) -> Ag
         }
         C::SaveSlot(p) => handle_save_slot(ctx, p),
         C::GetScriptGlobals(p) => handle_get_globals(ctx, p),
+        C::SetStatusMenu(p) => handle_set_status_menu(ctx, p),
 
         // --- mode control: routed through the dispatcher in service.rs ----
         // `LoadSlot` (`/v1/load`) is unified with `EnterLoadGame`: PAL3 has
@@ -316,6 +317,25 @@ fn handle_teleport(ctx: &Pal3DispatchCtx, params: TeleportParams) -> AgentRespon
             "no scene loaded or controlled role cannot be resolved",
         ))
     }
+}
+
+fn handle_set_status_menu(ctx: &Pal3DispatchCtx, params: StatusMenuParams) -> AgentResponse {
+    let Some(director) = ctx.director else {
+        return AgentResponse::err(AgentError::conflict(
+            "no active adventure director — start a New Game or load a slot before opening the \
+             status menu",
+        ));
+    };
+    // The renderer only paints (and so honors menu state) while the
+    // player has control — i.e. no SCE proc is running. Toggling the
+    // flag is always safe; it takes visible effect on the next idle
+    // frame.
+    director
+        .sce_vm()
+        .state()
+        .status_renderer()
+        .set_menu_open(params.open);
+    AgentResponse::Ok
 }
 
 fn handle_save_slot(ctx: &Pal3DispatchCtx, params: SlotParams) -> AgentResponse {

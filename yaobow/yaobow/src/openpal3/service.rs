@@ -201,7 +201,7 @@ impl Pal3Service {
     /// Build the PAL3 `UI_opt.tli` atlas adapter for a given adventure
     /// asset_mgr (shared with `create_ui_atlas`, but threaded directly
     /// into the status renderer so the in-game menu screen can resolve
-    /// `ui/gamemainui/*` sprites). Requires the texture cache.
+    /// `ui/GameMainUI/*` sprites). Requires the texture cache.
     fn build_ui_atlas(&self, asset_mgr: Rc<AssetManager>) -> Option<ComRc<IPal3UiAtlas>> {
         let cache = self.texture_cache.borrow().clone()?;
         let sprites = SpriteService::create(asset_mgr.vfs_rc(), cache);

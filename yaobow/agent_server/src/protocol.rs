@@ -153,6 +153,12 @@ pub enum AgentCommand {
     /// overwrite the pose on the next frame. Generic across games;
     /// currently dispatched only by PAL5.
     SetCamera(CameraPoseParams),
+
+    /// PAL3: open or close the in-game character-status (状态) menu
+    /// overlay. Lets an automation driver pop the menu (for screenshots
+    /// / assertions) without forging a synthetic avatar click. Requires
+    /// an active adventure director with the player in control.
+    SetStatusMenu(StatusMenuParams),
 }
 
 /// Top-level agent response. Mirrors [`AgentCommand`] roughly but with
@@ -258,6 +264,13 @@ pub struct StepTimeParams {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct FastForwardParams {
     pub on: bool,
+}
+
+/// `set_status_menu` toggle. PAL3-specific: open/close the in-game
+/// character-status (状态) menu overlay.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct StatusMenuParams {
+    pub open: bool,
 }
 
 /// Slot index. Matches the existing `Pal4PersistentState::save` shape.

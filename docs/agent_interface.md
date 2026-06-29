@@ -421,6 +421,7 @@ Differences from PAL4:
 | `POST /v1/load`                       | **Supported**      | Rebuilds the `AdventureDirector` from the slot (PAL3 has no in-place restore, so the menu/in-game auto-route resolves to the same fresh boot) |
 | `GET  /v1/script/globals`             | **Supported**      | Dense window over `PersistentState::get_global(i16)` |
 | `POST /v1/menu/new_game` / `/v1/menu/exit` | **Supported** | Routed through `Pal3Service`; `--pal3 --agent-port` must have been the launch flag so the asset path is known |
+| `POST /v1/menu/status`                | **Supported**      | Body `{ "open": bool }`. Opens/closes the in-game character-status (状态) menu overlay (the avatar-click screen) without forging a click. Requires an active director; takes visible effect on the next idle (player-control) frame |
 | `POST /v1/script/eval`                | **not_implemented**| PAL3 has no AngelScript VM |
 | `POST /v1/script/trace/*`             | **not_implemented**| No `SceVm` trace adapter yet |
 | `GET  /v1/scene/triggers` / `objects` | **not_implemented**| Deferred — PAL3 enumerates triggers as SCE proc entries, not EVF |

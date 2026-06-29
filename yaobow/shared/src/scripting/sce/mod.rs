@@ -243,4 +243,11 @@ impl SceState {
             renderer.render_status(ui_host.clone(), delta_sec);
         });
     }
+
+    /// The scripted status indicator/menu renderer. Exposed so the agent
+    /// server can open/close the in-game character-status (状态) menu
+    /// without forging a synthetic avatar click.
+    pub fn status_renderer(&self) -> ComRc<crate::openpal3::comdef::IPal3StatusRenderer> {
+        self.status_renderer.clone()
+    }
 }

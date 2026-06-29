@@ -210,9 +210,8 @@ fn billboard_local_matrix(world: &Mat44, local: &Mat44, cam: Vec3, scale: f32) -
     // card's normal off the camera direction). This makes the rendered size
     // fully asset-driven: leaf-quad geometry × `{s<pct>}` × node scale.
     let pf = parent_world.floats();
-    let col_norm = |c: usize| {
-        (pf[0][c] * pf[0][c] + pf[1][c] * pf[1][c] + pf[2][c] * pf[2][c]).sqrt()
-    };
+    let col_norm =
+        |c: usize| (pf[0][c] * pf[0][c] + pf[1][c] * pf[1][c] + pf[2][c] * pf[2][c]).sqrt();
     let parent_scale = (col_norm(0) * col_norm(1) * col_norm(2)).cbrt().max(1e-4);
     let s = scale * parent_scale;
 
@@ -323,7 +322,10 @@ mod tests {
         let want = Vec3::normalized(&Vec3::new(cam.x - p.x, 0.0, cam.z - p.z));
 
         let dot = Vec3::dot(&normal, &want);
-        assert!(dot > 0.999, "normal should face camera horizontally, dot = {dot}");
+        assert!(
+            dot > 0.999,
+            "normal should face camera horizontally, dot = {dot}"
+        );
 
         // Position must be preserved (leaf stays where it was).
         let wf = world.floats();
@@ -366,7 +368,10 @@ mod tests {
         let n2 = card_basis_norm(2.0);
         // Doubling the tree's placement scale doubles the card size.
         assert!((n1 - scale).abs() < 1e-3, "k=1 → card scale {n1}");
-        assert!((n2 - 2.0 * n1).abs() < 1e-2, "k=2 should double card size: {n2} vs {n1}");
+        assert!(
+            (n2 - 2.0 * n1).abs() < 1e-2,
+            "k=2 should double card size: {n2} vs {n1}"
+        );
     }
 
     // The shadow caster matrix keeps the leaf at its world position but flat

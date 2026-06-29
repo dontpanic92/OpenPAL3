@@ -105,7 +105,9 @@ impl CollisionWorldComponent {
         if let Some(volume) = TriggerVolumeComponent::create(entity.clone(), shape, id, tag) {
             entity.add_component(
                 crate::comdef::ITriggerVolumeComponent::uuid(),
-                volume.query_interface::<crate::comdef::IComponent>().unwrap(),
+                volume
+                    .query_interface::<crate::comdef::IComponent>()
+                    .unwrap(),
             );
             self.proximity_triggers.borrow_mut().push(volume);
         }

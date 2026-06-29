@@ -459,7 +459,9 @@ impl Image {
         usage: vk::ImageUsageFlags,
         mip_levels: u32,
     ) -> Result<Self, Box<dyn Error>> {
-        Self::new_layered(allocator, tex_width, tex_height, format, usage, mip_levels, 1)
+        Self::new_layered(
+            allocator, tex_width, tex_height, format, usage, mip_levels, 1,
+        )
     }
 
     fn new_layered(

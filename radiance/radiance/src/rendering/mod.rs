@@ -23,8 +23,8 @@ pub use factory::ComponentFactory;
 pub use material::{
     BlendMode, CullMode, DepthMode, GradientYMaterialDef, GrassMaterialDef, LightMapMaterialDef,
     LitMaterialDef, MaterialDef, MaterialDefBuilder, MaterialKey, MaterialParams,
-    Pal3ActorMaterialDef, SimpleMaterialDef, TerrainLayer, TerrainSplatMaterialDef,
-    Pal3GeomMaterialDef, Pal3PropMaterialDef,
+    Pal3ActorMaterialDef, Pal3GeomMaterialDef, Pal3PropMaterialDef, SimpleMaterialDef,
+    TerrainLayer, TerrainSplatMaterialDef,
 };
 pub use platform::Window;
 pub use render_object::{RenderObject, RenderObjectHandle};

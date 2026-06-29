@@ -20,7 +20,7 @@ enum ScenePendingChange {
 }
 
 pub struct CoreScene {
-    active: bool,
+    active: Cell<bool>,
     visible: bool,
     entities: RefCell<Vec<ComRc<IEntity>>>,
     camera: RefCell<Camera>,
@@ -35,7 +35,7 @@ ComObject_Scene!(super::CoreScene);
 impl CoreScene {
     pub fn new() -> Self {
         Self {
-            active: true,
+            active: Cell::new(true),
             visible: true,
             entities: RefCell::new(vec![]),
             camera: RefCell::new(Camera::new()),
@@ -50,8 +50,19 @@ impl CoreScene {
         ComRc::from_object(Self::new())
     }
 
-    pub fn set_active(&mut self, active: bool) {
-        self.active = active;
+    /// Pause/resume per-frame entity updates for this scene. While
+    /// inactive, `update` is a no-op so entity animations, world
+    /// transforms and component updates all freeze in place (the scene
+    /// still renders in its current pose). Settable through `&self` so it
+    /// can be toggled via a shared `inner::<CoreScene>()` handle.
+    pub fn set_active(&self, active: bool) {
+        self.active.set(active);
+    }
+
+    /// Whether per-frame updates are currently running (see
+    /// [`set_active`](Self::set_active)).
+    pub fn is_active(&self) -> bool {
+        self.active.get()
     }
 
     pub fn set_visible(&mut self, visible: bool) {
@@ -288,6 +299,15 @@ pub trait ISceneExt {
 
     /// Replace the scene's lighting environment.
     fn set_lighting(&self, lighting: crate::scene::SceneLighting);
+
+    /// Pause/resume per-frame entity updates for this scene (freezes
+    /// animations, world transforms and component updates while the
+    /// scene keeps rendering in place). Used e.g. to halt the game world
+    /// while a full-screen menu is open.
+    fn set_active(&self, active: bool);
+
+    /// Whether per-frame entity updates are currently running.
+    fn is_active(&self) -> bool;
 }
 
 impl ISceneExt for ComRc<IScene> {
@@ -339,6 +359,12 @@ impl ISceneExt for ComRc<IScene> {
     fn set_lighting(&self, lighting: crate::scene::SceneLighting) {
         self.inner::<CoreScene>().set_lighting(lighting)
     }
+    fn set_active(&self, active: bool) {
+        self.inner::<CoreScene>().set_active(active)
+    }
+    fn is_active(&self) -> bool {
+        self.inner::<CoreScene>().is_active()
+    }
 }
 
 impl ISceneImpl for CoreScene {
@@ -354,7 +380,7 @@ impl ISceneImpl for CoreScene {
     }
 
     fn update(&self, delta_sec: f32) {
-        if !self.active {
+        if !self.active.get() {
             return;
         }
         let guard = self.mutations.iter_guard();

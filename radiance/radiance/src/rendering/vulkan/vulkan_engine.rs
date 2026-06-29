@@ -225,7 +225,13 @@ impl RenderingEngine for VulkanRenderingEngine {
         );
 
         let result = crate::perf::time("vulkan.render.objects_total_ns", || {
-            self.render_objects(camera.as_ref().map(|c| &**c), entities, lighting, viewport, ui_frame)
+            self.render_objects(
+                camera.as_ref().map(|c| &**c),
+                entities,
+                lighting,
+                viewport,
+                ui_frame,
+            )
         });
         if let Err(err) = result {
             println!("{}", err);
@@ -1268,7 +1274,6 @@ impl VulkanRenderingEngine {
             _ => (cam_near, cam_far),
         };
 
-
         // Practical cascade split distances (view-space, increasing).
         let mut splits = [0.0f32; CASCADE_COUNT];
         for i in 0..CASCADE_COUNT {
@@ -1291,20 +1296,21 @@ impl VulkanRenderingEngine {
                 let base = k * 4;
                 corners[base] = Vec3::add(&Vec3::add(&center, &rx), &uy);
                 corners[base + 1] = Vec3::add(&Vec3::sub(&center, &rx), &uy);
-                corners[base + 2] = Vec3::add(&Vec3::add(&center, &rx), &Vec3::scalar_mul(-1.0, &uy));
-                corners[base + 3] = Vec3::add(&Vec3::sub(&center, &rx), &Vec3::scalar_mul(-1.0, &uy));
+                corners[base + 2] =
+                    Vec3::add(&Vec3::add(&center, &rx), &Vec3::scalar_mul(-1.0, &uy));
+                corners[base + 3] =
+                    Vec3::add(&Vec3::sub(&center, &rx), &Vec3::scalar_mul(-1.0, &uy));
             }
             corners
         };
 
         let mut matrices = [Mat44::new_identity(); CASCADE_COUNT];
-        let mut volumes =
-            [super::shadow_map::CascadeVolume {
-                view: Mat44::new_identity(),
-                radius: 1.0,
-                near: 1.0,
-                far: 1.0,
-            }; CASCADE_COUNT];
+        let mut volumes = [super::shadow_map::CascadeVolume {
+            view: Mat44::new_identity(),
+            radius: 1.0,
+            near: 1.0,
+            far: 1.0,
+        }; CASCADE_COUNT];
         let mut last = near;
         for i in 0..CASCADE_COUNT {
             let corners = slice_corners(last, splits[i]);
@@ -1327,8 +1333,14 @@ impl VulkanRenderingEngine {
         cutout_out: &mut Vec<Rc<VulkanRenderObject>>,
         transparent_out: &mut Vec<(f32, usize, usize, Rc<VulkanRenderObject>)>,
         transparent_ordered_out: &mut Vec<Rc<VulkanRenderObject>>,
-        caster_candidates_opaque_out: &mut Vec<(Rc<VulkanRenderObject>, Option<([f32; 3], [f32; 3])>)>,
-        caster_candidates_cutout_out: &mut Vec<(Rc<VulkanRenderObject>, Option<([f32; 3], [f32; 3])>)>,
+        caster_candidates_opaque_out: &mut Vec<(
+            Rc<VulkanRenderObject>,
+            Option<([f32; 3], [f32; 3])>,
+        )>,
+        caster_candidates_cutout_out: &mut Vec<(
+            Rc<VulkanRenderObject>,
+            Option<([f32; 3], [f32; 3])>,
+        )>,
         caster_band_out: &mut Option<(f32, f32)>,
     ) {
         components_out.clear();

@@ -352,7 +352,25 @@ impl AdventureDirectorProps {
 
     fn do_update(&mut self, delta_sec: f32) -> Option<ComRc<IDirector>> {
         self.sce_vm.update(delta_sec);
-        if !self.sce_vm.global_state().adv_input_enabled() {
+
+        // Freeze the whole game world while the full-screen status (状态)
+        // menu is open, but only when the player actually has control —
+        // never mid-cutscene, where the SCE VM is driving animations.
+        // `IScene::set_active(false)` makes the scene's per-frame entity
+        // update a no-op, so NPC patrols, role animations and world
+        // transforms all hold their pose; we also skip the world sim
+        // below so movement/triggers stop too.
+        let adv_enabled = self.sce_vm.global_state().adv_input_enabled();
+        let menu_open = self.sce_vm.state().status_renderer().is_menu_open();
+        let freeze = adv_enabled && menu_open;
+        if let Some(scene) = self.scene_manager.scene() {
+            scene.set_active(!freeze);
+        }
+
+        if !adv_enabled {
+            return None;
+        }
+        if freeze {
             return None;
         }
 
