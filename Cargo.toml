@@ -40,6 +40,22 @@ xxhash-rust = { git = "https://github.com/dontpanic92/xxhash-rust", branch = "ya
 # harmless "patch was not used" warning on other hosts. Keep it for LoongArch.
 cty = { git = "https://github.com/amazingfate/cty", branch = "loongarch" }
 
+# Workaround: build the `lua50-32-sys` C library (Lua 5.0.3) unoptimized.
+#
+# Root cause: MSVC toolset 14.51.36231 (VS 18 / 2026) has a code-generation
+# bug that miscompiles Lua 5.0.3 at `/O2` on x86_64 — it corrupts a `Table`'s
+# `array`/`sizearray` pair, so the very first `luaopen_base` faults with an
+# access violation (hit when constructing a Lua VM, e.g. PAL5/SWD5 story
+# directors, in a *release* build). Verified A/B: lua built with toolset 14.44
+# at `/O2` runs fine; only 14.51 crashes. Debug (`-O0`) is unaffected.
+#
+# Disabling optimization for just this (tiny, perf-irrelevant) crate sidesteps
+# the bug independently of which MSVC toolset compiles it, keeping release
+# builds working on CI and any machine. The override is global because Cargo
+# profile overrides cannot be gated by target.
+[profile.release.package.lua50-32-sys]
+opt-level = 0
+
 [profile.release-with-symbol]
 inherits = "release"
 debug = true
