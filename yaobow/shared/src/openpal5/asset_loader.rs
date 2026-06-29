@@ -311,6 +311,17 @@ impl AssetLoader {
         }
     }
 
+    /// The directional sun for a map, sourced from `Config/Data.pkg`'s
+    /// `MapInfo.ini`. PAL5 stores the sun direction here (`sunX/sunY/sunZ`),
+    /// **not** in `envinfo.env`. Most maps ship no sun and use the near-
+    /// overhead engine default; `None` means "use the overhead default".
+    pub fn load_map_sun(&self, map_name: &str) -> Option<[f32; 3]> {
+        use fileformats::pal5::mapinfo::MapInfoFile;
+        let raw = self.vfs.read_to_end("/Config/Data/MapInfo.ini").ok()?;
+        let text = String::from_utf8_lossy(&raw);
+        MapInfoFile::parse(&text).sun(map_name)?.direction
+    }
+
     pub fn load_model(&self, model_path: &str) -> anyhow::Result<ComRc<IEntity>> {
         self.load_model_ex(model_path, false)
     }

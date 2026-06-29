@@ -87,9 +87,13 @@ pub struct EnvFile {
     pub ambient: [f32; 3],
     /// Sun/diffuse light color (RGB, linear 0..1).
     pub sun_color: [f32; 3],
-    /// Sun azimuth in degrees (compass angle around the +Y up axis).
+    /// Body `0x18` — a per-map degree value. NOTE: this is **not** the sun's
+    /// azimuth used for lighting. PAL5 takes the directional sun's direction
+    /// from `MapInfo.ini` (`sunX/sunY/sunZ`), not from `envinfo.env`; see
+    /// `fileformats::pal5::mapinfo`. Retained only for diagnostics.
     pub sun_azimuth_deg: f32,
-    /// Sun elevation in degrees above the horizon.
+    /// Body `0x1c` — a per-map degree value; like `sun_azimuth_deg`, not the
+    /// sun direction used for lighting. Retained for diagnostics.
     pub sun_elevation_deg: f32,
     /// Fog color (RGBA, 0..1). The shipped alpha byte is always `0xff`,
     /// so `fog_color[3]` is `1.0` on every map.
@@ -142,16 +146,6 @@ impl EnvFile {
             fog_param_b: f(0x3c),
             skybox_id: u(0x40),
         })
-    }
-
-    /// Unit direction **from the ground toward the sun**, in the engine's
-    /// left-handed Y-up world space. Elevation lifts the vector off the
-    /// XZ plane; azimuth rotates it around +Y.
-    pub fn sun_direction(&self) -> [f32; 3] {
-        let az = self.sun_azimuth_deg.to_radians();
-        let el = self.sun_elevation_deg.to_radians();
-        let cos_el = el.cos();
-        [cos_el * az.cos(), el.sin(), cos_el * az.sin()]
     }
 
     /// The scene's skybox asset id (a `role_*.bin` id for a
@@ -260,22 +254,6 @@ mod tests {
         assert!((env.sun_elevation_deg - 76.0).abs() < 1e-6);
     }
 
-    #[test]
-    fn sun_direction_points_up_for_overhead() {
-        let raw = make_env(
-            [0.5; 3],
-            [1.0; 3],
-            0.0,
-            90.0,
-            [0, 0, 0, 0xff],
-            0.0,
-            0.0,
-            0,
-        );
-        let env = EnvFile::read(&raw).unwrap();
-        let d = env.sun_direction();
-        assert!(d[1] > 0.999, "overhead sun should point +Y, got {d:?}");
-    }
 
     #[test]
     fn rejects_bad_magic() {

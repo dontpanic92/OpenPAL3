@@ -3,6 +3,7 @@
 pub mod alp;
 pub mod ctr;
 pub mod env;
+pub mod mapinfo;
 pub mod mp;
 pub mod script;
 pub mod uvlist;

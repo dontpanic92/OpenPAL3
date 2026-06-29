@@ -29,7 +29,17 @@ impl Pal5Scene {
         // renders black.
         match asset_loader.load_map_env(scene_name) {
             Some(env) => {
-                let dir = env.sun_direction();
+                // PAL5's sun *direction* lives in `Config/Data.pkg::MapInfo.ini`
+                // (`sunX/sunY/sunZ`), not in `envinfo.env`. The two degree
+                // fields at env body 0x18/0x1c are NOT the sun azimuth/elevation
+                // and must not drive lighting (they read low, making maps like
+                // kuangfengzhai look morning/evening). Most maps ship no sun
+                // and use the engine's near-overhead default; `(0.3, 1, 0.3)`
+                // reproduces that high "noon" key. The bright sun *color* still
+                // comes from `envinfo.env`.
+                let dir = asset_loader
+                    .load_map_sun(scene_name)
+                    .unwrap_or([0.3, 1.0, 0.3]);
                 let sun = radiance::scene::DirectionalLight::new(
                     Vec3::new(dir[0], dir[1], dir[2]),
                     env.sun_color,
@@ -75,12 +85,10 @@ impl Pal5Scene {
                 scene.set_lighting(lighting);
 
                 log::info!(
-                    "Pal5Scene '{}': atmosphere ambient {:?} sun {:?} az={} el={} dir {:?} | fog {:?} a={} b={} -> eye[{:.0}..{:.0}] enabled={} skybox={:?}",
+                    "Pal5Scene '{}': atmosphere ambient {:?} sun {:?} dir {:?} | fog {:?} a={} b={} -> eye[{:.0}..{:.0}] enabled={} skybox={:?}",
                     scene_name,
                     env.ambient,
                     env.sun_color,
-                    env.sun_azimuth_deg,
-                    env.sun_elevation_deg,
                     dir,
                     env.fog_color,
                     env.fog_param_a,
