@@ -21,17 +21,43 @@ use crate::loaders::{
 
 /// PAL5 leaf/sprite-card resolver backed by `Config/uvlist.tb`. Maps a model's
 /// `[W]/[w]{t<id>}` foliage-quad tag to its atlas texture + UV rect so the DFF
-/// loader can render the otherwise texture-less leaf cards. See
-/// `fileformats::pal5::uvlist` and `generated/pal5_leaf_re.md`.
+/// loader can render the otherwise texture-less leaf cards. The `{t<id>}` tag
+/// indexes the table with a **-1 offset** (`entries[id - 1]`); see
+/// [`Pal5FoliageResolver::resolve_card`] for the reverse-engineering evidence.
+/// See `fileformats::pal5::uvlist` and `generated/pal5_leaf_re.md`.
 struct Pal5FoliageResolver {
     uvlist: fileformats::pal5::uvlist::UvListFile,
 }
 
 impl FoliageResolver for Pal5FoliageResolver {
     fn resolve_card(&self, id: u32) -> Option<FoliageCard> {
+        // The model's `[w]{t<id>}` tag indexes `uvlist.tb` with a **-1
+        // offset**: the engine binds `uvlist.entries[id - 1]`, not
+        // `entries[id]`. Reverse-engineered clean-room by capturing the
+        // original `Pal5.exe` D3D9 stream (DXVK→apitrace→d3dretrace) in
+        // kuangfengzhai and reading the bound leaf textures back per draw:
+        //
+        // | model              | tag     | original binds          | uvlist[id]      | uvlist[id-1]    |
+        // | zw_shulin_07/008A  | {t6140} | tree_shulin003 (green)  | tree_yinxingqiu | tree_shulin003  |
+        // | zw_gushu/zw_rongshu| {t6089/90/91} | zw_gushu_A (all)  | 6091=zw_tree_rs04| all=zw_gushu_A  |
+        //
+        // The gushu case rules out offset 0 (no `zw_tree_rs04` is ever bound
+        // even though a quad tags `{t6091}`); the shulin case pins the offset
+        // to exactly -1 (`tree_shulin003` is `uvlist[6139]`, not `[6140]`).
+        // Without this, `{t6140}` resolved to the autumn-yellow
+        // `tree_yinxingqiu` ginkgo atlas and the kuangfengzhai gate trees —
+        // which are green in the original — rendered bright yellow.
+        //
+        // Fall back to the natural `id` when `id - 1` is absent so a malformed
+        // or out-of-range tag still resolves to *something* rather than
+        // dropping the quad.
+        let entry = id
+            .checked_sub(1)
+            .and_then(|k| self.uvlist.entries.get(&k))
+            .or_else(|| self.uvlist.entries.get(&id))?;
         // Use the first frame; multi-frame entries are UV/texture animations
         // (a refinement) — the first frame is the representative still.
-        let frame = self.uvlist.entries.get(&id)?.frames.first()?;
+        let frame = entry.frames.first()?;
         Some(FoliageCard {
             atlas: frame.atlas.clone(),
             uv: [frame.u0, frame.u1, frame.v0, frame.v1],
