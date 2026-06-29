@@ -8,7 +8,7 @@ use mini_fs::{MiniFs, StoreExt};
 use radiance::comdef::{IComponentImpl, IEntity, IEntityExt};
 use radiance::math::{Vec2, Vec3};
 use radiance::rendering::{
-    ComponentFactory, Pal3PropMaterialDef, MaterialDef, VertexBuffer, VertexComponents,
+    ComponentFactory, MaterialDef, Pal3PropMaterialDef, VertexBuffer, VertexComponents,
 };
 use radiance::scene::CoreEntity;
 use std::{path::Path, rc::Rc};

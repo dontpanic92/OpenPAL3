@@ -91,9 +91,9 @@ pub fn dispatch_swd5_command(ctx: &Swd5DispatchCtx, command: AgentCommand) -> Ag
         C::ChooseDialog(_) => AgentResponse::err(AgentError::not_implemented(
             "SWD5 dialog choice buffering not yet implemented",
         )),
-        C::ChooseWorldMap(_) => AgentResponse::err(AgentError::not_implemented(
-            "SWD5 has no world-map prompt",
-        )),
+        C::ChooseWorldMap(_) => {
+            AgentResponse::err(AgentError::not_implemented("SWD5 has no world-map prompt"))
+        }
         C::GetSceneTriggers | C::FireSceneTrigger(_) => AgentResponse::err(
             AgentError::not_implemented("SWD5 scene-trigger enumeration deferred"),
         ),

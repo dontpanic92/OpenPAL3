@@ -361,7 +361,11 @@ impl ScnScene {
             let dist = (to.x * to.x + to.z * to.z).sqrt();
             let speed = {
                 let s = controller.patrol_speed();
-                if s > f32::EPSILON { s } else { DEFAULT_PATROL_SPEED }
+                if s > f32::EPSILON {
+                    s
+                } else {
+                    DEFAULT_PATROL_SPEED
+                }
             };
             let step = speed * delta_sec;
 

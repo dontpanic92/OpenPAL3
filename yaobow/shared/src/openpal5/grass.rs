@@ -56,7 +56,7 @@ use radiance::rendering::{BlendMode, GrassMaterialDef};
 use radiance::scene::CoreEntity;
 
 use super::asset_loader::{AssetLoader, MapBlock};
-use super::terrain::{block_height_field, BlockHeightField, BLOCK_WORLD_SIZE};
+use super::terrain::{BLOCK_WORLD_SIZE, BlockHeightField, block_height_field};
 
 /// Draw-distance for a grass chunk, in world units (tunable via
 /// `PAL5_GRASS_DIST`).
@@ -693,8 +693,7 @@ mod tests {
                 color: 0x00ff_0002,
             }],
         };
-        let groups =
-            build_overlay_meshes(&[collision], &flat_heights(), 160.0, 5.0, 1, 1.0);
+        let groups = build_overlay_meshes(&[collision], &flat_heights(), 160.0, 5.0, 1, 1.0);
         assert!(groups.is_empty(), "collision-only leaf produces no grass");
     }
 
@@ -776,6 +775,9 @@ mod tests {
     fn no_blades_when_all_cells_are_high_density_path() {
         let leaf = density_leaf(11, 0, 0, vec![7u8; 64]);
         let mesh = scatter_blades(&[leaf], &flat_heights(), 2, 2.0, 1.0, 26.0, 11.0, 0.0);
-        assert!(mesh.is_none(), "all cells are path (density 7 > blade_max=2)");
+        assert!(
+            mesh.is_none(),
+            "all cells are path (density 7 > blade_max=2)"
+        );
     }
 }

@@ -48,7 +48,11 @@ impl AssetManager {
     /// PAL3 and PAL3A share this loader; the variant selects per-game
     /// scene layout (PAL3A keeps every `.scn`/`.nav` in `scn.cpk` under
     /// `/scene/scn/Scn/<cpk>/`, PAL3 next to each scene cpk).
-    pub fn new_for_game(factory: Rc<dyn ComponentFactory>, vfs: Rc<MiniFs>, game: GameType) -> Self {
+    pub fn new_for_game(
+        factory: Rc<dyn ComponentFactory>,
+        vfs: Rc<MiniFs>,
+        game: GameType,
+    ) -> Self {
         Self {
             factory,
             game,
@@ -168,7 +172,11 @@ impl AssetManager {
                 .join("Sce")
                 .join(cpk_name)
                 .with_extension("sce"),
-            _ => self.scene_path.join(cpk_name).join(cpk_name).with_extension("sce"),
+            _ => self
+                .scene_path
+                .join(cpk_name)
+                .join(cpk_name)
+                .with_extension("sce"),
         };
         sce_load_from_file(&self.vfs, sce_path)
     }
@@ -226,6 +234,12 @@ impl AssetManager {
         visible: bool,
     ) -> Option<ComRc<IEntity>> {
         create_mv3_entity(self.clone(), role_name, default_action, name, visible).ok()
+    }
+
+    /// Build the fixed circle blob shadow child entity (`shadow.tga`) attached
+    /// under each role. Returns `None` if the texture is unavailable.
+    pub fn build_role_shadow(&self) -> Option<ComRc<IEntity>> {
+        super::scene::build_role_shadow(&self.factory, &self.vfs, &self.basedata_path)
     }
 
     pub fn load_role_anim_config(&self, role_name: &str) -> Ini {

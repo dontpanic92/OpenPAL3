@@ -12,11 +12,11 @@ use radiance::{
         IArmatureComponent, IBillboardComponent, IComponent, IEntity, IHAnimBoneComponent,
         ISkinnedMeshComponent, IStaticMeshComponent,
     },
+    components::billboard::BillboardComponent,
     components::mesh::{
         StaticMeshComponent,
         skinned_mesh::{ArmatureComponent, HAnimBoneComponent, SkinnedMeshComponent},
     },
-    components::billboard::BillboardComponent,
     math::{Mat44, Vec3},
     rendering::{
         AddressMode, AlphaKind, BlendMode, ComponentFactory, CullMode, FilterMode, MaterialDef,
@@ -25,8 +25,8 @@ use radiance::{
     scene::CoreEntity,
 };
 
-use super::TextureResolver;
 use super::FoliageResolver;
+use super::TextureResolver;
 use radiance::comdef::{IEntityExt, IHAnimBoneComponentExt};
 
 pub struct DffLoaderConfig<'a> {
@@ -463,10 +463,12 @@ fn load_clump(
 /// Used to drop texture-less PAL5 billboard leaves that would otherwise
 /// render as the magenta "missing" placeholder.
 fn geometry_has_texture(geometry: &fileformats::rwbs::geometry::Geometry) -> bool {
-    geometry
-        .materials
-        .iter()
-        .any(|m| m.texture.as_ref().map(|t| !t.name.is_empty()).unwrap_or(false))
+    geometry.materials.iter().any(|m| {
+        m.texture
+            .as_ref()
+            .map(|t| !t.name.is_empty())
+            .unwrap_or(false)
+    })
 }
 
 /// Decide whether an atomic's frame is a **non-renderable helper** that
@@ -618,7 +620,11 @@ fn create_foliage_geometry(
     dynamic_lighting: bool,
     fog_exempt: bool,
 ) {
-    let Some(vertices) = geometry.morph_targets.get(0).and_then(|m| m.vertices.as_ref()) else {
+    let Some(vertices) = geometry
+        .morph_targets
+        .get(0)
+        .and_then(|m| m.vertices.as_ref())
+    else {
         return;
     };
     let normals = geometry.morph_targets[0].normals.as_ref();
@@ -691,7 +697,10 @@ fn create_foliage_geometry(
         let cz = 0.5 * (min_z + max_z);
         let cy = 0.5
             * (vertices.iter().map(|v| v.y).fold(f32::INFINITY, f32::min)
-                + vertices.iter().map(|v| v.y).fold(f32::NEG_INFINITY, f32::max));
+                + vertices
+                    .iter()
+                    .map(|v| v.y)
+                    .fold(f32::NEG_INFINITY, f32::max));
         scaled = vertices
             .iter()
             .map(|v| Vec3f {

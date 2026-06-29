@@ -193,8 +193,7 @@ mod tests {
 
     #[test]
     fn decode_returns_identity_when_no_duration() {
-        let keys =
-            decode_keyframes(&synth_anim_from_raw_with_duration(vec![0u8; 96], 0.0));
+        let keys = decode_keyframes(&synth_anim_from_raw_with_duration(vec![0u8; 96], 0.0));
         assert_eq!(keys[0].scale, [1.0, 1.0]);
         assert_eq!(keys[1].scale, [1.0, 1.0]);
         assert_eq!(keys[0].offset, [0.0, 0.0]);

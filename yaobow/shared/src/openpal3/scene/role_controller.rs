@@ -14,7 +14,7 @@ use radiance::components::mesh::{
     AnimatedMeshComponent, Geometry, MorphAnimationState, MorphTarget, TexCoord,
 };
 use radiance::math::Vec3;
-use radiance::rendering::{ComponentFactory, Pal3ActorMaterialDef, MaterialDef};
+use radiance::rendering::{ComponentFactory, MaterialDef, Pal3ActorMaterialDef};
 use radiance::scene::CoreEntity;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -54,11 +54,15 @@ pub fn create_mv3_entity(
         IRoleController::uuid(),
         crosscom::ComRc::from_object(RoleController::new(
             entity.clone(),
-            asset_mgr,
+            asset_mgr.clone(),
             role_name,
             idle_anim,
         )?),
     );
+
+    if let Some(shadow) = asset_mgr.build_role_shadow() {
+        entity.attach(shadow);
+    }
 
     Ok(entity)
 }
@@ -468,8 +472,9 @@ pub fn create_animated_mesh_from_mv3<P: AsRef<Path>>(
         // for hair / eye fringes. Keep the default `BlendMode::AlphaTest`.
         // Use the dynamically-lit material so scene lights (`.lgt`) shade the
         // actor per-pixel; the geometry builder supplies per-frame normals.
-        let material =
-            Pal3ActorMaterialDef::create(texture_path.to_str().unwrap(), |name| vfs.open(name).ok());
+        let material = Pal3ActorMaterialDef::create(texture_path.to_str().unwrap(), |name| {
+            vfs.open(name).ok()
+        });
         for mesh_index in 0..model.mesh_count as usize {
             frames.push(create_geometry_frames(model, mesh_index, &material))
         }

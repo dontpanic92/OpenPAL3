@@ -5,7 +5,7 @@ use radiance::comdef::{IEntity, IStaticMeshComponent};
 use radiance::components::mesh::{Geometry, StaticMeshComponent, TexCoord};
 use radiance::math::Vec3;
 use radiance::rendering::{
-    BlendMode, ComponentFactory, LightMapMaterialDef, Pal3GeomMaterialDef, MaterialDef,
+    BlendMode, ComponentFactory, LightMapMaterialDef, MaterialDef, Pal3GeomMaterialDef,
 };
 use radiance::scene::CoreEntity;
 use std::io::BufReader;
@@ -97,8 +97,10 @@ fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path:
         // No baked lightmap: shade dynamically from the scene `.lgt` lights
         // (matches the original engine, which lit these placed props/surfaces
         // with the D3D scene lights). `create_geometry` supplies normals.
-        Pal3GeomMaterialDef::create(texture_paths[0].to_str().unwrap(), |name| vfs.open(name).ok())
-            .with_blend(blend)
+        Pal3GeomMaterialDef::create(texture_paths[0].to_str().unwrap(), |name| {
+            vfs.open(name).ok()
+        })
+        .with_blend(blend)
     } else {
         let textures: Vec<_> = texture_paths.iter().map(|p| p.to_str().unwrap()).collect();
         LightMapMaterialDef::create(textures, |name| {
@@ -180,18 +182,17 @@ fn create_geometry(
     // stored normals; fall back to smooth geometric normals when the mesh
     // omits them. Lightmapped surfaces stay normal-less (baked lighting).
     let normals = if lit {
-        Some(build_normals(all_vertices, &reversed_index, &vertices, &indices))
+        Some(build_normals(
+            all_vertices,
+            &reversed_index,
+            &vertices,
+            &indices,
+        ))
     } else {
         None
     };
 
-    Geometry::new(
-        &vertices,
-        normals.as_deref(),
-        &texcoords,
-        indices,
-        material,
-    )
+    Geometry::new(&vertices, normals.as_deref(), &texcoords, indices, material)
 }
 
 /// Build per-vertex normals (in the deduplicated `vertices` order) for a lit

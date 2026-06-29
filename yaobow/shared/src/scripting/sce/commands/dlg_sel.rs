@@ -73,10 +73,7 @@ impl SceCommand for SceCommandDlgSel {
             // PAL3 has no dialog-choice buffering yet (`/v1/dialog/choose`
             // is not_implemented). Under agent fast-forward, pick the first
             // option so automated runs don't stall waiting on a number key.
-            state
-                .context_mut()
-                .current_proc_context_mut()
-                .set_dlgsel(0);
+            state.context_mut().current_proc_context_mut().set_dlgsel(0);
             return true;
         }
 

@@ -15,8 +15,8 @@ use crosscom::ComRc;
 use radiance_scripting::comdef::services::{IAtlasPage, ISprite, ISpriteService};
 
 use super::comdef::{IPal3UiAtlas, IPal3UiAtlasImpl};
-use super::loaders::tli::TliDict;
 use super::loaders::pos;
+use super::loaders::tli::TliDict;
 
 /// Native canvas the original PAL3 cover art was authored against.
 const NATIVE_WIDTH: i32 = 800;
@@ -98,7 +98,11 @@ impl Pal3UiAtlas {
     /// eagerly in `create`). Returns `None` for an unknown/failed page —
     /// never loads here, so it is safe to call mid-frame.
     fn page_for(&self, lib: &str) -> Option<ComRc<IAtlasPage>> {
-        self.pages.borrow().get(&lib.to_lowercase()).cloned().flatten()
+        self.pages
+            .borrow()
+            .get(&lib.to_lowercase())
+            .cloned()
+            .flatten()
     }
 }
 

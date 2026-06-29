@@ -843,9 +843,13 @@ pub fn build_in_game_transition(story: &OpenPAL4Director) -> ComRc<IDirector> {
             let vm = story.vm_handle();
             let pending = vm.borrow().vm_context.session().take_pending_scene_load();
             if let Some((scene, block)) = pending {
-                let succeeded =
-                    swap_pal4_scene(&vm, &scene, &block, story.actor_controller_factory_template())
-                        .is_ok();
+                let succeeded = swap_pal4_scene(
+                    &vm,
+                    &scene,
+                    &block,
+                    story.actor_controller_factory_template(),
+                )
+                .is_ok();
                 vm.borrow()
                     .vm_context
                     .session()
