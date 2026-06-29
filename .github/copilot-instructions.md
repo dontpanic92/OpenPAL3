@@ -19,7 +19,7 @@ glue.
 | `radiance/radiance_editor`       | Editor-facing host UI (imgui-based). |
 | `radiance/radiance_scripting`    | `ScriptHost`, runtime services, p7 ↔ engine bridge proxies. |
 | `radiance/protosept` (submodule) | The `p7` language: lexer, parser, semantic, bytecode interpreter, builtins. Language specs live in `radiance/protosept/specs/`. |
-| `yaobow/agent_server`            | Optional HTTP+JSON automation server (PAL4 only). Transport-agnostic; no engine deps. |
+| `yaobow/agent_server`            | Optional HTTP+JSON automation server (PAL4, PAL3, PAL3A, PAL5). Transport-agnostic; no engine deps. |
 | `yaobow/shared`                  | All per-game logic (`openpal3`, `openpal4`, …), loaders, scripting glue, UI widgets. |
 | `yaobow/fileformats`             | Pure-Rust decoders for game asset formats (cpk, sce, dff, gob, …). |
 | `yaobow/yaobow`                  | The `yaobow` binary (title selector + per-game entry points). |
@@ -103,15 +103,18 @@ The `yaobow` binary picks a game via CLI flag (`--pal3`, `--pal4`, …); with no
 * `import <module>;` resolves against a dedicated script `AssetManager` carried by `ScriptHost`. Each crate's `<crate>.ypk` is mounted at `/<crate>/` (engine bindings live at `/`); the VFS-backed `ScriptVfsProvider` translates `a.b.c` to `/a/b/c.p7`. Build with `script_package::pack` and mount via `<crate>::mount_scripts(&AssetManager)` at boot. The top-level composer is `yaobow_lib::script_source::install_script_assets`.
 * Language reference: `radiance/protosept/specs/protosept-language.md`.
 
-## PAL4 agent server (test/automation surface)
+## Agent server (test/automation surface)
 
-PAL4 can boot with an embedded HTTP+JSON server for headless automation:
+PAL4, PAL3, PAL3A and PAL5 can boot with an embedded HTTP+JSON server for headless automation:
 
 ```bash
 yaobow --pal4 --agent-port 8765 [--agent-bind 127.0.0.1] [--agent-token <secret>]
+yaobow --pal3 --agent-port 8765    # also: --pal3a, --pal5
 ```
 
-Full endpoint reference and Python/curl examples in `docs/agent_interface.md`. Key signals: `/v1/state` exposes `script_running` and `movie_playing` (use these, not `current_script_fn`, as the authoritative "engine busy" flag); `/v1/screenshot` returns a binary PNG of the last presented frame; `/v1/time/fast_forward` skips `giWait`, dialog waits, and movie playback. Commands are drained on the game thread; the transport stays single-threaded.
+Full PAL4 endpoint reference and Python/curl examples in `docs/agent_interface.md`. Key signals: `/v1/state` exposes `script_running` and `movie_playing` (use these, not `current_script_fn`, as the authoritative "engine busy" flag); `/v1/screenshot` returns a binary PNG of the last presented frame; `/v1/time/fast_forward` skips `giWait`, dialog waits, and movie playback. Commands are drained on the game thread; the transport stays single-threaded.
+
+PAL3 dispatch (`yaobow/shared/src/openpal3/agent.rs::dispatch_pal3_command`) adds gameplay routes: `GET /v1/state`, `GET /v1/screenshot`, `POST /v1/menu/new_game`, `/v1/dialog/advance` (taps Space), teleport, save/load slots, and script globals. PAL3 has no in-place restore, so load is rebuilt from a slot via a fresh `AdventureDirector`.
 
 When the agent server is enabled, `main.rs` swaps the global logger for a `TeeLogger` that fans every record into both `AgentLogSink` (drained by `/v1/log/tail`) and `SimpleLogger` (stdout). Anything that re-registers the logger after boot will break `/v1/log/tail`.
 
@@ -121,7 +124,14 @@ When the agent server is enabled, `main.rs` swaps the global logger for a `TeeLo
 * **Imgui themes are deferred.** `ImguiContext::apply_theme(name)` stashes the request; the style mutation runs at the top of the next `draw_ui`. This makes it safe to call from inside a frame (e.g. a menu callback) without triggering a `RefCell already borrowed` panic. Theme TOML files: `radiance/radiance/src/imgui/themes/*.toml`.
 * **`SyntheticInputBridge`** (in `radiance/radiance/src/input/synthetic.rs`) OR-merges synthetic key/axis state with the real engine. Call `.end_frame()` each tick to clear pressed/released edges.
 * **Frame readback:** `RenderingEngine::capture_last_frame()` returns `Option<CapturedFrame>` (Vulkan impl does BGRA→RGBA swap); returns `None` in headless or when no frame has been presented.
-* **Contributor eligibility (from `CONTRIBUTING.md`):** anyone submitting code must affirm they have *not* worked at Softstar/Daewoo on PAL3 and have *not* seen internal materials (source, unreleased docs). Code is GPL-3.0.
+* **Contributor eligibility (from `CONTRIBUTING.md`):** anyone submitting code must affirm they have *not* worked at Softstar on PAL3 and have *not* seen internal materials (source, unreleased docs). Code is GPL-3.0. **Reverse-engineer formats clean-room from binary data only — do not reference external PAL3 reimplementations.**
+
+## Reverse-engineering notes (verified)
+
+* **PAL3 actor lighting:** characters use a high material ambient (~0.55), separate from the dim ~0.10 scene ambient (scenery only); shaders must lift ambient or roles render too dark. Original is per-vertex Lambert from 1–2 nearest point lights × MtlDiffuse + MtlAmbient (no N·L floor). `radiance/.../shaders/openpal3/pal3_actor.frag`.
+* **PAL3 character shadow:** blob is basedata.cpk `/basedata/basedata/shadow.tga` (64×64 grayscale soft disc), rendered as a flat ground quad with `BlendMode::Multiply` (not AlphaBlend). `yaobow/shared/src/openpal3/scene/shadow.rs`.
+* **PAL3A scn:** node records are 604 bytes (PAL3 = 620; tail 192 vs 208); roles 456 in both — `scn_loader.rs` branches on `GameType`. Scene assets live in shared `scn.cpk`/`sce.cpk` packs, not next to each scene cpk. UI atlas is `ui/UIArtist.plug` (not PAL3's `UI_opt.tli`).
+* **PAL5 sun:** per-map sunX/Y/Z from `MapInfo.ini` (not envinfo.env). Scene objects dynamically lit via `SceneLighting.sun` → `set_sun`; buildings opt in via `DffLoaderConfig.dynamic_lighting`. Leaves (graded-alpha) cast shadows only with `MaterialParams.casts_shadow=true`.
 
 ## When in doubt
 
