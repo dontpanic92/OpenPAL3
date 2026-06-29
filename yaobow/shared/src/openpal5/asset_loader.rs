@@ -455,3 +455,55 @@ fn load_index_single(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fileformats::pal5::uvlist::{UvFrame, UvListEntry, UvListFile};
+
+    fn card(atlas: &str) -> UvListEntry {
+        UvListEntry {
+            frames: vec![UvFrame {
+                u0: 0.0,
+                u1: 1.0,
+                v0: 0.0,
+                v1: 1.0,
+                atlas: atlas.to_string(),
+            }],
+        }
+    }
+
+    fn resolver(entries: &[(u32, &str)]) -> Pal5FoliageResolver {
+        let mut uvlist = UvListFile::default();
+        for (id, atlas) in entries {
+            uvlist.entries.insert(*id, card(atlas));
+        }
+        Pal5FoliageResolver { uvlist }
+    }
+
+    #[test]
+    fn resolves_with_minus_one_offset() {
+        // Model tag `{t6140}` must bind uvlist[6139] (green tree_shulin003),
+        // not uvlist[6140] (autumn-yellow tree_yinxingqiu).
+        let r = resolver(&[(6139, "tree_shulin003"), (6140, "tree_yinxingqiu")]);
+        assert_eq!(r.resolve_card(6140).unwrap().atlas, "tree_shulin003");
+    }
+
+    #[test]
+    fn falls_back_to_natural_id_when_offset_missing() {
+        let r = resolver(&[(6140, "tree_yinxingqiu")]);
+        assert_eq!(r.resolve_card(6140).unwrap().atlas, "tree_yinxingqiu");
+    }
+
+    #[test]
+    fn zero_id_uses_fallback_without_underflow() {
+        let r = resolver(&[(0, "leaf0")]);
+        assert_eq!(r.resolve_card(0).unwrap().atlas, "leaf0");
+    }
+
+    #[test]
+    fn missing_entry_returns_none() {
+        let r = resolver(&[]);
+        assert!(r.resolve_card(6140).is_none());
+    }
+}
