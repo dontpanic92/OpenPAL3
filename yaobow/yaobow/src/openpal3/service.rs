@@ -208,7 +208,11 @@ impl Pal3Service {
         drop(engine);
 
         let vfs = init_virtual_fs(&PathBuf::from(asset_path), None);
-        let am = Rc::new(AssetManager::new(component_factory, Rc::new(vfs)));
+        let am = Rc::new(AssetManager::new_for_game(
+            component_factory,
+            Rc::new(vfs),
+            self.last_game.get(),
+        ));
         self.asset_managers
             .borrow_mut()
             .insert(asset_path.to_string(), am.clone());

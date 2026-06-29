@@ -214,7 +214,7 @@ impl IPreviewerHubImpl for PreviewerHub {
     fn dump_structured(&self, vfs_path: &str) -> &str {
         let path = PathBuf::from(vfs_path);
         let text = match extension(vfs_path).as_deref() {
-            Some("scn") => jsonify(&scn_load_from_file(&self.vfs, &path)),
+            Some("scn") => jsonify(&scn_load_from_file(&self.vfs, &path, shared::GameType::PAL3)),
             Some("nav") => jsonify(&nav_load_from_file(&self.vfs, &path)),
             Some("sce") => jsonify(&sce_load_from_file(&self.vfs, &path)),
             Some("anm") => match load_anm(&self.vfs, &path) {

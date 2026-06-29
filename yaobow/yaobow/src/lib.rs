@@ -198,7 +198,9 @@ pub use application::{
     run_openpal5q, run_openpal5q_with_agent, run_openswd5, run_openswd5_with_agent,
     run_title_selection,
 };
-pub use openpal3::{run_openpal3, run_openpal3_with_agent};
+pub use openpal3::{
+    run_openpal3, run_openpal3_with_agent, run_openpal3a, run_openpal3a_with_agent,
+};
 
 #[cfg_attr(target_os = "android", ndk_glue::main(backtrace = "on"))]
 pub fn android_entry() {

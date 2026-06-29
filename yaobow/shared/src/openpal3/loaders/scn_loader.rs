@@ -8,6 +8,8 @@ use std::{
     path::Path,
 };
 
+use crate::GameType;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ScnNode {
     pub index: u16,
@@ -92,7 +94,7 @@ pub struct ScnFile {
     pub nodes: Vec<ScnNode>,
 }
 
-pub fn scn_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> ScnFile {
+pub fn scn_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P, game: GameType) -> ScnFile {
     let mut reader = BufReader::new(vfs.open(path).unwrap());
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic).unwrap();
@@ -130,7 +132,7 @@ pub fn scn_load_from_file<P: AsRef<Path>>(vfs: &MiniFs, path: P) -> ScnFile {
     let mut nodes = vec![];
     reader.seek(SeekFrom::Start(node_offset as u64)).unwrap();
     for _i in 0..node_num {
-        let node = read_scn_node(&mut reader);
+        let node = read_scn_node(&mut reader, game);
         nodes.push(node);
     }
 
@@ -210,7 +212,7 @@ fn read_scn_role(reader: &mut dyn Read) -> ScnRole {
     }
 }
 
-fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
+fn read_scn_node(reader: &mut dyn Read, game: GameType) -> ScnNode {
     let index = reader.read_u16::<LittleEndian>().unwrap();
     let w2 = reader.read_u16::<LittleEndian>().unwrap();
     let name = reader.read_gbk_string(32).unwrap();
@@ -246,7 +248,13 @@ fn read_scn_node(reader: &mut dyn Read) -> ScnNode {
     let vec2_y = reader.read_f32::<LittleEndian>().unwrap();
     let vec2_z = reader.read_f32::<LittleEndian>().unwrap();
     let dw184 = reader.read_dw_vec(6).unwrap();
-    let b = reader.read_u8_vec(208).unwrap();
+    // PAL3 node records are 620 bytes; PAL3A trims the trailing tail by
+    // 16 bytes (604-byte records), so read 192 bytes there instead of 208.
+    let tail_len = match game {
+        GameType::PAL3A => 192,
+        _ => 208,
+    };
+    let b = reader.read_u8_vec(tail_len).unwrap();
 
     ScnNode {
         index,

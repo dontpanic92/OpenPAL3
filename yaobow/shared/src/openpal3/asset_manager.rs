@@ -13,6 +13,8 @@ use std::io::BufReader;
 use std::path::PathBuf;
 use std::{io, rc::Rc};
 
+use crate::GameType;
+
 use super::comdef::IScnSceneComponent;
 use super::loaders::nav_loader::NavFile;
 use super::loaders::nav_loader::nav_load_from_file;
@@ -27,6 +29,7 @@ use super::scene::create_mv3_entity;
 
 pub struct AssetManager {
     factory: Rc<dyn ComponentFactory>,
+    game: GameType,
     scene_path: PathBuf,
     music_path: PathBuf,
     movie_path: PathBuf,
@@ -39,8 +42,16 @@ pub struct AssetManager {
 
 impl AssetManager {
     pub fn new(factory: Rc<dyn ComponentFactory>, vfs: Rc<MiniFs>) -> Self {
+        Self::new_for_game(factory, vfs, GameType::PAL3)
+    }
+
+    /// PAL3 and PAL3A share this loader; the variant selects per-game
+    /// scene layout (PAL3A keeps every `.scn`/`.nav` in `scn.cpk` under
+    /// `/scene/scn/Scn/<cpk>/`, PAL3 next to each scene cpk).
+    pub fn new_for_game(factory: Rc<dyn ComponentFactory>, vfs: Rc<MiniFs>, game: GameType) -> Self {
         Self {
             factory,
+            game,
             basedata_path: PathBuf::from("/basedata/basedata"),
             scene_path: PathBuf::from("/scene"),
             music_path: PathBuf::from("/music/music/music"),
@@ -65,10 +76,9 @@ impl AssetManager {
     }
 
     pub fn load_scn(self: &Rc<Self>, cpk_name: &str, scn_name: &str) -> ComRc<IScene> {
-        let scene_base = self.scene_path.join(cpk_name).join(scn_name);
-        let scene_path = scene_base.with_extension("scn");
+        let scene_path = self.scn_path(cpk_name, scn_name);
 
-        let scn_file = scn_load_from_file(&self.vfs, scene_path);
+        let scn_file = scn_load_from_file(&self.vfs, scene_path, self.game);
         let nav_file = self.load_nav(&scn_file.cpk_name, &scn_file.scn_base_name);
 
         let scene = CoreScene::create();
@@ -148,8 +158,18 @@ impl AssetManager {
         lighting
     }
     pub fn load_sce(&self, cpk_name: &str) -> SceFile {
-        let scene_base = self.scene_path.join(cpk_name).join(cpk_name);
-        let sce_path = scene_base.with_extension("sce");
+        // PAL3 keeps each scene's `.sce` in its scene cpk
+        // (`/scene/<cpk>/<cpk>.sce`); PAL3A collects them in `sce.cpk`
+        // as `/scene/sce/Sce/<cpk>.sce`.
+        let sce_path = match self.game {
+            GameType::PAL3A => self
+                .scene_path
+                .join("sce")
+                .join("Sce")
+                .join(cpk_name)
+                .with_extension("sce"),
+            _ => self.scene_path.join(cpk_name).join(cpk_name).with_extension("sce"),
+        };
         sce_load_from_file(&self.vfs, sce_path)
     }
 
@@ -158,13 +178,43 @@ impl AssetManager {
         sce_load_from_file(&self.vfs, init_sce)
     }
 
+    /// PAL3 stores each scene's `.scn` next to its cpk
+    /// (`/scene/<cpk>/<scn>.scn`); PAL3A collects every `.scn` in
+    /// `scn.cpk` as `/scene/scn/Scn/<cpk>/<cpk>_<scn>.scn`.
+    fn scn_path(&self, cpk_name: &str, scn_name: &str) -> PathBuf {
+        match self.game {
+            GameType::PAL3A => self
+                .scene_path
+                .join("scn")
+                .join("Scn")
+                .join(cpk_name)
+                .join(format!("{}_{}", cpk_name, scn_name))
+                .with_extension("scn"),
+            _ => self
+                .scene_path
+                .join(cpk_name)
+                .join(scn_name)
+                .with_extension("scn"),
+        }
+    }
+
     pub fn load_nav(&self, cpk_name: &str, scn_name: &str) -> NavFile {
-        let nav_path = self
-            .scene_path
-            .join(cpk_name)
-            .join(scn_name)
-            .join(scn_name)
-            .with_extension("nav");
+        let nav_path = match self.game {
+            GameType::PAL3A => self
+                .scene_path
+                .join("scn")
+                .join("Scn")
+                .join(cpk_name)
+                .join(scn_name)
+                .join(scn_name)
+                .with_extension("nav"),
+            _ => self
+                .scene_path
+                .join(cpk_name)
+                .join(scn_name)
+                .join(scn_name)
+                .with_extension("nav"),
+        };
         nav_load_from_file(&self.vfs, nav_path)
     }
 

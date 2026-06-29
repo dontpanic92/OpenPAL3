@@ -24,3 +24,18 @@ pub fn run_openpal3_with_agent(agent: Option<Pal4AgentBootOptions>) {
     );
     run_app(opts);
 }
+
+pub fn run_openpal3a() {
+    run_openpal3a_with_agent(None);
+}
+
+/// Boot PAL3A (shares `Pal3Service` with PAL3). Activated by
+/// `yaobow --pal3a [--agent-port N]`.
+pub fn run_openpal3a_with_agent(agent: Option<Pal4AgentBootOptions>) {
+    let opts = boot_for(GameType::PAL3A).with_agent_opts_opt(agent);
+    log::info!(
+        "initializing OpenPAL3A with asset_path={}",
+        opts.asset_path.as_deref().unwrap_or("(empty)")
+    );
+    run_app(opts);
+}
