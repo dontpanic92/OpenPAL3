@@ -92,6 +92,12 @@ pub struct MaterialParams {
     /// constant, far-distance fog wash. Defaults to `false`; when the scene
     /// has no fog the flag is inert.
     pub fog_exempt: bool,
+    /// When `true`, this material casts a shadow even when its `BlendMode`
+    /// is `AlphaBlend` — routed through the alpha-clip cutout depth pass so
+    /// graded-alpha foliage (PAL5 tree leaves, leaf billboards) projects a
+    /// leaf-shaped shadow instead of being silently dropped. Defaults to
+    /// `false`; opaque/alpha-test casters are unaffected (they always cast).
+    pub casts_shadow: bool,
 }
 
 impl Default for MaterialParams {
@@ -116,6 +122,7 @@ impl Default for MaterialParams {
             uv_scale: [1.0, 1.0],
             uv_offset: [0.0, 0.0],
             fog_exempt: false,
+            casts_shadow: false,
         }
     }
 }
@@ -944,6 +951,7 @@ impl GradientYMaterialDef {
             uv_scale: [low[0], low[1]],
             uv_offset: [low[2], 0.0],
             fog_exempt: false,
+            casts_shadow: false,
         };
 
         MaterialDef::builder(ShaderProgram::GradientY)

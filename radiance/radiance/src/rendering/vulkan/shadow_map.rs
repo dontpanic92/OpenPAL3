@@ -62,6 +62,10 @@ pub const SHADOW_FAR_CAP: f32 = 4000.0;
 
 static SHADOW_DEPTH_VERT: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/shadow_depth.vert.spv"));
+static SHADOW_DEPTH_CUTOUT_VERT: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/shadow_depth_cutout.vert.spv"));
+static SHADOW_DEPTH_CUTOUT_FRAG: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/shadow_depth_cutout.frag.spv"));
 
 /// One depth-only pipeline, specialized to a caster vertex stride.
 pub struct ShadowPipeline {
@@ -91,9 +95,15 @@ pub struct ShadowMap {
     sampler: vk::Sampler,
 
     vert_module: vk::ShaderModule,
+    cutout_vert_module: vk::ShaderModule,
+    cutout_frag_module: vk::ShaderModule,
     /// Depth pipelines keyed by caster vertex stride (one per distinct
     /// `ShaderProgram` vertex layout; POSITION is always at offset 0).
     pipelines: RefCell<HashMap<u32, Rc<ShadowPipeline>>>,
+    /// Cutout (alpha-tested) depth pipelines, keyed by vertex stride. These
+    /// also sample the caster's albedo and `discard` cutout texels so leaf /
+    /// grass cards cast a textured silhouette instead of a solid rectangle.
+    cutout_pipelines: RefCell<HashMap<u32, Rc<ShadowPipeline>>>,
 }
 
 impl ShadowMap {
@@ -147,6 +157,8 @@ impl ShadowMap {
         let sampler = super::descriptor_managers::create_shadow_sampler(&device)?;
 
         let vert_module = create_shader_module(&device, SHADOW_DEPTH_VERT)?;
+        let cutout_vert_module = create_shader_module(&device, SHADOW_DEPTH_CUTOUT_VERT)?;
+        let cutout_frag_module = create_shader_module(&device, SHADOW_DEPTH_CUTOUT_FRAG)?;
 
         Ok(Self {
             device,
@@ -157,7 +169,10 @@ impl ShadowMap {
             framebuffers,
             sampler,
             vert_module,
+            cutout_vert_module,
+            cutout_frag_module,
             pipelines: RefCell::new(HashMap::new()),
+            cutout_pipelines: RefCell::new(HashMap::new()),
         })
     }
 
@@ -193,27 +208,51 @@ impl ShadowMap {
     pub fn pipeline_for(
         &self,
         program: ShaderProgram,
+        cutout: bool,
         descriptor_manager: &DescriptorManager,
     ) -> Rc<ShadowPipeline> {
         let stride = VertexComponentsLayout::from_components(program_components(program)).size()
             as u32;
+        if cutout {
+            if let Some(p) = self.cutout_pipelines.borrow().get(&stride) {
+                return p.clone();
+            }
+            let pipeline = Rc::new(self.create_pipeline(program, stride, true, descriptor_manager));
+            self.cutout_pipelines
+                .borrow_mut()
+                .insert(stride, pipeline.clone());
+            return pipeline;
+        }
         if let Some(p) = self.pipelines.borrow().get(&stride) {
             return p.clone();
         }
-        let pipeline = Rc::new(self.create_pipeline(stride, descriptor_manager));
+        let pipeline = Rc::new(self.create_pipeline(program, stride, false, descriptor_manager));
         self.pipelines.borrow_mut().insert(stride, pipeline.clone());
         pipeline
     }
 
     fn create_pipeline(
         &self,
+        program: ShaderProgram,
         stride: u32,
+        cutout: bool,
         descriptor_manager: &DescriptorManager,
     ) -> ShadowPipeline {
-        let set_layouts = [
-            descriptor_manager.per_frame_layout(),
-            descriptor_manager.dub_layout(),
-        ];
+        // Cutout casters also bind the per-material texture (set 2) and params
+        // (set 3) so the fragment stage can sample alpha and read `alpha_ref`.
+        let set_layouts = if cutout {
+            vec![
+                descriptor_manager.per_frame_layout(),
+                descriptor_manager.dub_layout(),
+                descriptor_manager.single_texture_layout(),
+                descriptor_manager.material_params_layout(),
+            ]
+        } else {
+            vec![
+                descriptor_manager.per_frame_layout(),
+                descriptor_manager.dub_layout(),
+            ]
+        };
         // 4-byte vertex push constant: the cascade index, used to pick
         // `lightViewProj[cascade]` in the depth vertex shader.
         let push_constant_ranges = [vk::PushConstantRange::default()
@@ -226,20 +265,48 @@ impl ShadowMap {
         let layout = self.device.create_pipeline_layout(&layout_info).unwrap();
 
         let entry = std::ffi::CString::new("main").unwrap();
-        let stages = [vk::PipelineShaderStageCreateInfo::default()
-            .name(&entry)
-            .stage(vk::ShaderStageFlags::VERTEX)
-            .module(self.vert_module)];
+        let stages = if cutout {
+            vec![
+                vk::PipelineShaderStageCreateInfo::default()
+                    .name(&entry)
+                    .stage(vk::ShaderStageFlags::VERTEX)
+                    .module(self.cutout_vert_module),
+                vk::PipelineShaderStageCreateInfo::default()
+                    .name(&entry)
+                    .stage(vk::ShaderStageFlags::FRAGMENT)
+                    .module(self.cutout_frag_module),
+            ]
+        } else {
+            vec![vk::PipelineShaderStageCreateInfo::default()
+                .name(&entry)
+                .stage(vk::ShaderStageFlags::VERTEX)
+                .module(self.vert_module)]
+        };
 
         let binding_descriptions = [vk::VertexInputBindingDescription::default()
             .binding(0)
             .stride(stride)
             .input_rate(vk::VertexInputRate::VERTEX)];
-        let attribute_descriptions = [vk::VertexInputAttributeDescription::default()
+        // POSITION (location 0) is always at offset 0; cutout pipelines also
+        // read TEXCOORD (location 1) at the program's per-layout byte offset.
+        let mut attribute_descriptions = vec![vk::VertexInputAttributeDescription::default()
             .binding(0)
             .location(0)
             .offset(0)
             .format(vk::Format::R32G32B32_SFLOAT)];
+        if cutout {
+            let layout = VertexComponentsLayout::from_components(program_components(program));
+            let tc_offset = layout
+                .get_offset(VertexComponents::TEXCOORD)
+                .unwrap_or(12) as u32;
+            attribute_descriptions.push(
+                vk::VertexInputAttributeDescription::default()
+                    .binding(0)
+                    .location(1)
+                    .offset(tc_offset)
+                    .format(vk::Format::R32G32_SFLOAT),
+            );
+        }
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_binding_descriptions(&binding_descriptions)
             .vertex_attribute_descriptions(&attribute_descriptions);
@@ -267,13 +334,21 @@ impl ShadowMap {
             .scissors(&scissors);
 
         // Front-face culling + slope-scaled depth bias to reduce acne /
-        // peter-panning. `front_face` matches the scene pipelines.
+        // peter-panning. `front_face` matches the scene pipelines. Cutout
+        // casters (leaf/grass cards) are authored two-sided, so disable culling
+        // for them — front-face culling would drop whichever side faces the sun
+        // and leave them shadowless.
+        let cull_mode = if cutout {
+            vk::CullModeFlags::NONE
+        } else {
+            vk::CullModeFlags::FRONT
+        };
         let rasterization = vk::PipelineRasterizationStateCreateInfo::default()
             .depth_clamp_enable(false)
             .rasterizer_discard_enable(false)
             .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1.0)
-            .cull_mode(vk::CullModeFlags::FRONT)
+            .cull_mode(cull_mode)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(true)
             .depth_bias_constant_factor(2.0)
@@ -336,7 +411,10 @@ impl ShadowPipeline {
 impl Drop for ShadowMap {
     fn drop(&mut self) {
         self.pipelines.borrow_mut().clear();
+        self.cutout_pipelines.borrow_mut().clear();
         self.device.destroy_shader_module(self.vert_module);
+        self.device.destroy_shader_module(self.cutout_vert_module);
+        self.device.destroy_shader_module(self.cutout_frag_module);
         for fb in self.framebuffers.drain(..) {
             self.device.destroy_framebuffer(fb);
         }

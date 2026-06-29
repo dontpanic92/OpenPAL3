@@ -962,6 +962,7 @@ impl SwapChain {
             // Viewport/scissor are static in the shadow pipeline, so we don't
             // call `cmd_set_viewport` here.
             let mut last_program: Option<crate::rendering::ShaderProgram> = None;
+            let mut last_cutout: Option<bool> = None;
             let mut last_layout = vk::PipelineLayout::null();
             let mut last_vertex_buffer = vk::Buffer::null();
             let mut last_index_buffer = vk::Buffer::null();
@@ -969,8 +970,11 @@ impl SwapChain {
 
             for object in shadow_casters[cascade].iter() {
                 let program = object.material().key().program;
-                if last_program != Some(program) {
-                    let pipeline = shadow.pipeline_for(program, &descriptor_manager);
+                let cutout = object.material().key().blend
+                    == crate::rendering::material::BlendMode::AlphaTest
+                    || object.material().params().casts_shadow;
+                if last_program != Some(program) || last_cutout != Some(cutout) {
+                    let pipeline = shadow.pipeline_for(program, cutout, &descriptor_manager);
                     self.device.cmd_bind_pipeline(
                         command_buffer,
                         vk::PipelineBindPoint::GRAPHICS,
@@ -978,6 +982,7 @@ impl SwapChain {
                     );
                     last_layout = pipeline.vk_layout();
                     last_program = Some(program);
+                    last_cutout = Some(cutout);
 
                     // Set 0 + cascade push constant. Every shadow pipeline
                     // shares the same set-0 + push-constant layout, so binding
@@ -1020,8 +1025,23 @@ impl SwapChain {
                     last_layout,
                     1,
                     &[dub_manager.descriptor_set()],
-                    &[dub_manager.get_offset(object.dub_index()) as u32],
+                    &[dub_manager.get_offset(object.shadow_dub_index()) as u32],
                 );
+                // Cutout casters sample alpha: bind texture (set 2) + material
+                // params (set 3) so the depth frag can discard cutout texels.
+                if cutout {
+                    self.device.cmd_bind_descriptor_sets(
+                        command_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        last_layout,
+                        2,
+                        &[
+                            object.vk_descriptor_set(),
+                            object.material().material_params_descriptor_set(),
+                        ],
+                        &[],
+                    );
+                }
                 self.device.cmd_draw_indexed(
                     command_buffer,
                     index_buffer.element_count(),

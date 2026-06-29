@@ -79,6 +79,44 @@ pub fn camera_position() -> Vec3 {
     )
 }
 
+/// Camera-independent shadow caster orientation for a billboard leaf. The
+/// visible card faces the camera (so its shadow rectangle would yaw as the
+/// camera moves); for shadows we instead keep the card flat in the parent's
+/// frame at the leaf's world position, so the sun casts a stable, textured
+/// footprint that doesn't track the camera. `world`/`local` are the leaf's
+/// current matrices; returns the matrix the shadow pass should use.
+pub fn billboard_shadow_matrix(world: &Mat44, local: &Mat44) -> Mat44 {
+    let Some(local_inv) = affine_inverse(local) else {
+        return world.clone();
+    };
+    // parentWorld = world * inverse(local) — the un-billboarded frame.
+    let mut shadow = Mat44::multiplied(world, &local_inv);
+    let wf = world.floats();
+    // The visible card carries its in-plane size in the world matrix's basis
+    // columns (e_x -> right*s, e_z -> up*s, see `billboard_local_matrix`), so
+    // s = |col0|. The parent frame only carries the tree's node scale, which is
+    // far smaller than the leaf card, so the shadow would be tiny. Re-scale the
+    // flat caster's linear part to that same `s` so the footprint matches the
+    // rendered leaf.
+    let s = (wf[0][0] * wf[0][0] + wf[1][0] * wf[1][0] + wf[2][0] * wf[2][0]).sqrt();
+    let sf = shadow.floats_mut();
+    let cur = (sf[0][0] * sf[0][0] + sf[1][0] * sf[1][0] + sf[2][0] * sf[2][0]).sqrt();
+    if cur > 1e-6 && s > 1e-6 {
+        let k = s / cur;
+        for r in 0..3 {
+            for c in 0..3 {
+                sf[r][c] *= k;
+            }
+        }
+    }
+    // Re-anchor at the leaf's world position so the flat card stays put.
+    let s = shadow.floats_mut();
+    s[0][3] = wf[0][3];
+    s[1][3] = wf[1][3];
+    s[2][3] = wf[2][3];
+    shadow
+}
+
 pub struct BillboardComponent {
     entity: ComRc<IEntity>,
     /// In-plane card scale = `scale_pct / 100 * BILLBOARD_SIZE_GAIN`.
@@ -329,6 +367,35 @@ mod tests {
         // Doubling the tree's placement scale doubles the card size.
         assert!((n1 - scale).abs() < 1e-3, "k=1 → card scale {n1}");
         assert!((n2 - 2.0 * n1).abs() < 1e-2, "k=2 should double card size: {n2} vs {n1}");
+    }
+
+    // The shadow caster matrix keeps the leaf at its world position but flat
+    // in the parent's frame, so it is independent of camera position.
+    #[test]
+    fn shadow_matrix_is_camera_independent_and_anchored() {
+        let parent = mat([
+            [1.0, 0.0, 0.0, 100.0],
+            [0.0, 1.0, 0.0, 10.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]);
+        let local = mat([
+            [1.0, 0.0, 0.0, 5.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 7.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]);
+        let world = Mat44::multiplied(&parent, &local);
+        // Two different camera-facing leaf locals must yield the same anchor.
+        let s = billboard_shadow_matrix(&world, &local);
+        let f = s.floats();
+        let wf = world.floats();
+        assert!((f[0][3] - wf[0][3]).abs() < 1e-3);
+        assert!((f[1][3] - wf[1][3]).abs() < 1e-3);
+        assert!((f[2][3] - wf[2][3]).abs() < 1e-3);
+        // Flat in parent frame: identity rotation preserves the authored
+        // local +Y quad normal, so the card lies flat.
+        assert!(f[1][1].abs() > 0.99);
     }
 
     #[test]

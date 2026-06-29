@@ -23,6 +23,11 @@ pub struct VulkanRenderObject {
     material: Rc<VulkanMaterial>,
     per_object_descriptor_set: vk::DescriptorSet,
     dub_index: usize,
+    /// Second dynamic-UBO slot holding this object's *shadow* model matrix.
+    /// Identical to `dub_index`'s model for ordinary objects, but billboards
+    /// write a camera-independent (flat) matrix here so cast shadows don't
+    /// yaw with the camera. The shadow depth pass binds this slot.
+    shadow_dub_index: usize,
     local_centroid: [f32; 3],
     local_aabb: Option<([f32; 3], [f32; 3])>,
 }
@@ -89,6 +94,7 @@ impl VulkanRenderObject {
         let per_object_descriptor_set =
             descriptor_manager.allocate_per_object_descriptor_set(&material)?;
         let dub_index = dub_manager.allocate_buffer();
+        let shadow_dub_index = dub_manager.allocate_buffer();
 
         let local_aabb = vertices.aabb_min_max();
         let local_centroid = local_aabb
@@ -112,6 +118,7 @@ impl VulkanRenderObject {
             index_buffer,
             per_object_descriptor_set,
             dub_index,
+            shadow_dub_index,
             descriptor_manager: descriptor_manager.clone(),
             local_centroid,
             local_aabb,
@@ -130,6 +137,10 @@ impl VulkanRenderObject {
         self.dub_index
     }
 
+    pub fn shadow_dub_index(&self) -> usize {
+        self.shadow_dub_index
+    }
+
     pub fn material(&self) -> &VulkanMaterial {
         &self.material
     }
@@ -144,5 +155,6 @@ impl Drop for VulkanRenderObject {
         self.descriptor_manager
             .free_per_object_descriptor_set(self.per_object_descriptor_set);
         self.dub_manager.deallocate_buffer(self.dub_index);
+        self.dub_manager.deallocate_buffer(self.shadow_dub_index);
     }
 }

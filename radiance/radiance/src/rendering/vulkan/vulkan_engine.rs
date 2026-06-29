@@ -197,8 +197,21 @@ impl RenderingEngine for VulkanRenderingEngine {
             self.dub_manager().update_do(|updater| {
                 for entity in &entities {
                     if let Some(rc) = entity.get_rendering_component() {
+                        let is_billboard = entity
+                            .get_component(crate::comdef::IBillboardComponent::uuid())
+                            .is_some();
+                        let world = entity.world_transform();
+                        let shadow_model = if is_billboard {
+                            crate::components::billboard::billboard_shadow_matrix(
+                                world.matrix(),
+                                &entity.transform().borrow().matrix(),
+                            )
+                        } else {
+                            world.matrix().clone()
+                        };
                         for vro in rc.vulkan_render_objects() {
-                            updater(vro.dub_index(), entity.world_transform().matrix());
+                            updater(vro.dub_index(), world.matrix());
+                            updater(vro.shadow_dub_index(), &shadow_model);
                             updated_vros.set(updated_vros.get() + 1);
                         }
                     }
@@ -302,8 +315,21 @@ impl RenderingEngine for VulkanRenderingEngine {
         dub_manager.update_do(|updater| {
             for entity in &entities {
                 if let Some(rc) = entity.get_rendering_component() {
+                    let is_billboard = entity
+                        .get_component(crate::comdef::IBillboardComponent::uuid())
+                        .is_some();
+                    let world = entity.world_transform();
+                    let shadow_model = if is_billboard {
+                        crate::components::billboard::billboard_shadow_matrix(
+                            world.matrix(),
+                            &entity.transform().borrow().matrix(),
+                        )
+                    } else {
+                        world.matrix().clone()
+                    };
                     for vro in rc.vulkan_render_objects() {
-                        updater(vro.dub_index(), entity.world_transform().matrix());
+                        updater(vro.dub_index(), world.matrix());
+                        updater(vro.shadow_dub_index(), &shadow_model);
                     }
                 }
             }
@@ -1389,9 +1415,24 @@ impl VulkanRenderingEngine {
                     }
                     BlendMode::AlphaBlend | BlendMode::Additive | BlendMode::Multiply => {
                         // Blended geometry doesn't cast shadows; drop when the
-                        // camera can't see it.
+                        // camera can't see it. PAL5 tree canopies/leaf cards are
+                        // graded-alpha (→ AlphaBlend) but must cast leaf-shaped
+                        // shadows: route visible alpha-blended casters into the
+                        // cutout caster bucket so the alpha-clip depth pass draws
+                        // their silhouette.
                         if !visible {
                             continue;
+                        }
+                        if vro.material().params().casts_shadow {
+                            caster_candidates_cutout_out.push((vro.clone(), world_aabb));
+                            Self::accumulate_caster_band(
+                                world_aabb,
+                                &camera_world,
+                                &cam_fwd,
+                                band_min_depth,
+                                &mut band_near,
+                                &mut band_far,
+                            );
                         }
                         let c = vro.local_centroid();
                         // Affine transform: world_pos = M * [c, 1].

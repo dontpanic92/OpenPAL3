@@ -720,6 +720,7 @@ fn create_foliage_geometry(
         true, // two_sided
         dynamic_lighting,
         fog_exempt,
+        true, // force_alpha_test: leaf cards cast cutout shadows
     );
 }
 
@@ -889,6 +890,7 @@ fn create_geometry(
         two_sided,
         dynamic_lighting,
         fog_exempt,
+        false,
     );
 }
 
@@ -909,6 +911,7 @@ pub(crate) fn create_geometry_internal(
     two_sided: bool,
     dynamic_lighting: bool,
     fog_exempt: bool,
+    force_alpha_test: bool,
 ) {
     let mut r_vertices = vec![];
     // Forward per-vertex normals only when the geometry actually ships them
@@ -1023,6 +1026,16 @@ pub(crate) fn create_geometry_internal(
 
                 let blend = detect_blend(material, &md);
                 let mut md = md.with_blend(blend);
+                // PAL5 tree leaves/leaf billboards are graded-alpha (→ AlphaBlend)
+                // but must cast leaf-shaped shadows; flag them so the engine routes
+                // them through the alpha-clip cutout depth pass. Foliage cards
+                // (force_alpha_test) and dynamically-lit blended meshes (PAL5 trees)
+                // opt in; opaque/cutout already cast unconditionally.
+                if (force_alpha_test || dynamic_lighting) && blend == BlendMode::AlphaBlend {
+                    let mut p = *md.params();
+                    p.casts_shadow = true;
+                    md = md.with_params(p);
+                }
                 // PAL5 foliage cards are single quads; render them
                 // two-sided so the back-facing half is not culled.
                 if two_sided && matches!(blend, BlendMode::AlphaTest | BlendMode::AlphaBlend) {

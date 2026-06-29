@@ -141,6 +141,17 @@ impl DescriptorManager {
         self.dub_descriptor_manager.layout().vk_layout()
     }
 
+    /// Single-texture per-material layout (set 2) and material-params layout
+    /// (set 3). Exposed so the cutout shadow depth pipeline can sample the
+    /// caster's alpha and read its `alpha_ref`, mirroring the scene pipelines.
+    pub fn single_texture_layout(&self) -> vk::DescriptorSetLayout {
+        self.texture_layout
+    }
+
+    pub fn material_params_layout(&self) -> vk::DescriptorSetLayout {
+        self.per_material_params_layout
+    }
+
     pub fn dub_descriptor_manager(&self) -> &DynamicUniformBufferDescriptorManager {
         &self.dub_descriptor_manager
     }

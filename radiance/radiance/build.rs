@@ -23,6 +23,8 @@ fn main() {
             build_vulkan_shader("grass.vert");
             build_vulkan_shader("grass.frag");
             build_vulkan_shader("shadow_depth.vert");
+            build_vulkan_shader("shadow_depth_cutout.vert");
+            build_vulkan_shader("shadow_depth_cutout.frag");
             build_vulkan_shader("openpal3/pal3_actor.vert");
             build_vulkan_shader("openpal3/pal3_actor.frag");
             build_vulkan_shader("openpal3/pal3_geom.vert");
