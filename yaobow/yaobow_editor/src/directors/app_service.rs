@@ -71,7 +71,19 @@ impl IAppServiceImpl for AppService {
         // Build a per-game vfs and asset loader.
         let pkg_key = game.pkg_key();
         let factory = self.app.engine().borrow().rendering_component_factory();
-        let raw_vfs = packfs::init_virtual_fs(&asset_path, pkg_key);
+        let (raw_vfs, catalog) = packfs::init_virtual_fs_with_catalog(&asset_path, pkg_key);
+        let overlay = crate::services::project_overlay::new_shared_overlay_index();
+        // Mount the project preview overlay now, while the VFS is still
+        // owned (pre-`Rc`), at the highest priority so a later-opened
+        // project's staged changes are served ahead of the base
+        // packages just mounted above. See `services::project_overlay`
+        // for why this sidesteps `MiniFs::mount`'s by-value signature
+        // once the VFS is shared behind an `Rc` (as it is immediately
+        // below and in every asset loader variant).
+        let raw_vfs = raw_vfs.mount(
+            "/",
+            crate::services::project_overlay::ProjectOverlayStore::new(overlay.clone()),
+        );
         let asset_loader = match game {
             GameType::PAL4 => {
                 DevToolsAssetLoader::Pal4(shared::openpal4::asset_loader::AssetLoader::new(
@@ -131,6 +143,9 @@ impl IAppServiceImpl for AppService {
             asset_loader,
             game,
             engine.rendering_engine(),
+            Rc::new(catalog),
+            overlay,
+            std::path::PathBuf::from(&asset_path),
         );
 
         let host_id = self.script_host.intern(host_ctx);

@@ -1,0 +1,384 @@
+// Unified glTF (`.glb`/`.gltf`) import wizard, backed by the host-side
+// `IImportService` (`yaobow_editor::services::import_service::ImportService`).
+//
+// Like `project_panel.p7`, there is no free-text or modal/popup widget
+// in `IUiHost`, so:
+//   - the source file is chosen via `IConfigService.pick_open_file`
+//     (one button per extension, since `pick_open_file` takes a single
+//     extension filter);
+//   - target format / mode / add-target-package selection use
+//     `tree_leaf` rows (single-select lists) instead of a combo box;
+//   - the Add-mode internal path is *derived* (see `IImportService`'s
+//     IDL docs) rather than typed.
+//
+// `IImportService`'s per-format option setters (`set_mv3_vertex_scale`,
+// `set_mv3_ticks_per_second`, `set_pol_force_use_alpha`,
+// `set_cvd_legacy_magic`) are set-only — there are no matching getters
+// on the IDL surface, since the service only needs to remember them
+// long enough to feed the next `convert()`. The wizard therefore keeps
+// its own small `ImportWizardState` mirror to display/edit them and
+// pushes every change straight through to the service.
+
+import radiance;
+import yaobow_editor.yaobow_editor_services;
+
+pub struct ImportWizardState(
+    pub show: bool,
+    // Mirrors of the per-format option setters below (see module docs
+    // for why: `IImportService` doesn't expose getters for these).
+    pub mv3_scale_pct: int,  // percentage of the PAL3 default 0.01562
+    pub mv3_ticks: int,      // ticks per second
+    pub pol_alpha_mode: int, // -1 auto, 0 force off, 1 force on
+    pub cvd_legacy: bool,
+);
+
+pub fn make_import_wizard_state() -> ImportWizardState {
+    return ImportWizardState(false, 100, 4580, -1, true);
+}
+
+fn reset_option_mirror(state: box<ImportWizardState>) {
+    state.mv3_scale_pct = 100;
+    state.mv3_ticks = 4580;
+    state.pol_alpha_mode = -1;
+    state.cvd_legacy = true;
+}
+
+// Generic entry point (main "Project" menu). When `context_vfs_path`
+// is non-empty (e.g. the currently previewed resource) and resolves
+// through the catalog, pre-seeds Replace mode against it; otherwise
+// (including when it fails to resolve) opens in Add mode with
+// everything blank, since a Replace mode with no resolvable target
+// isn't actionable.
+pub fn open_wizard(
+    state: box<ImportWizardState>,
+    imports: box<yaobow_editor_services.IImportService>,
+    context_vfs_path: string,
+) {
+    imports.reset();
+    reset_option_mirror(state);
+    state.show = true;
+    imports.set_mode(1);
+    if context_vfs_path != "" {
+        // Also seed Add mode from the selected asset's package/directory,
+        // so switching from Replace to Add keeps a useful destination.
+        imports.set_add_target_directory_from_sibling(context_vfs_path);
+        if imports.set_replace_target(context_vfs_path) {
+            imports.set_mode(0);
+        }
+    }
+}
+
+// Model/resource-context entry point (e.g. a model tab's "Import glTF
+// (Replace)..." button): opens already pinned to Replace mode against
+// `vfs_path`. The wizard still opens if `vfs_path` fails to resolve —
+// `render_replace_section` surfaces that via `last_error`/an empty
+// target so the user can see why and pick a different target.
+pub fn open_wizard_for_replace(
+    state: box<ImportWizardState>,
+    imports: box<yaobow_editor_services.IImportService>,
+    vfs_path: string,
+) {
+    imports.reset();
+    reset_option_mirror(state);
+    state.show = true;
+    imports.set_mode(0);
+    imports.set_replace_target(vfs_path);
+}
+
+fn format_ext(fmt: int) -> string {
+    if fmt == 0 {
+        return "mv3";
+    }
+    if fmt == 1 {
+        return "pol";
+    }
+    return "cvd";
+}
+
+fn status_label(status: int) -> string {
+    if status == 0 {
+        return "Not run";
+    }
+    if status == 1 {
+        return "Success";
+    }
+    if status == 2 {
+        return "Partial success (see diagnostics/error below)";
+    }
+    return "Failed";
+}
+
+pub fn render_import_wizard(
+    ui: box<radiance.IUiHost>,
+    host: box<yaobow_editor_services.IEditorHostContext>,
+    state: box<ImportWizardState>,
+    picks: box<array<string>>,
+) {
+    if !state.show {
+        return;
+    }
+
+    let imports = host.imports();
+    let cfg = host.config();
+
+    ui.window_centered("Import glTF###import_wizard", 620.0, 640.0, () => {
+        ui.text("1. Source file (.glb / .gltf)");
+        if ui.button("Choose .glb file...", 170.0, 24.0) {
+            let path = cfg.pick_open_file("", "glb");
+            if path != "" {
+                imports.set_source_path(path);
+            }
+        }
+        ui.same_line();
+        if ui.button("Choose .gltf file...", 170.0, 24.0) {
+            let path = cfg.pick_open_file("", "gltf");
+            if path != "" {
+                imports.set_source_path(path);
+            }
+        }
+        let src = imports.source_path();
+        if src != "" {
+            ui.text(f"Selected: {src}");
+        } else {
+            ui.text("No source file selected.");
+        }
+
+        ui.text("2. Target format");
+        render_format_choice(ui, imports, 0, "MV3 (skeletal / character model)");
+        render_format_choice(ui, imports, 1, "POL (static model)");
+        render_format_choice(ui, imports, 2, "CVD (prop model)");
+
+        ui.text("3. Mode");
+        render_mode_choice(ui, imports, 0, "Replace an existing asset");
+        render_mode_choice(ui, imports, 1, "Add a new asset");
+
+        if imports.mode() == 0 {
+            render_replace_section(ui, imports);
+        } else {
+            render_add_section(ui, imports);
+        }
+
+        ui.text("4. Format options");
+        render_format_options(ui, imports, state);
+
+        ui.text("5. Diagnostics / summary");
+        if ui.button("Convert (preview)", 170.0, 24.0) {
+            imports.convert();
+        }
+        if imports.has_converted() {
+            let size = imports.converted_size();
+            ui.text(f"Converted size: {size} bytes");
+        }
+        let dcount = imports.diagnostic_count();
+        ui.text(f"Diagnostics: {dcount}");
+        ui.child_window("##import_diagnostics", 0.0, 100.0, () => {
+            ui.list_clipped(dcount, () => {
+                let row = ui.list_clipped_index();
+                ui.text(imports.diagnostic(row));
+            });
+        });
+
+        ui.text("6. Outputs (at least one required)");
+        render_outputs_section(ui, host, imports);
+
+        if ui.button("Run", 100.0, 28.0) {
+            imports.run();
+        }
+        ui.same_line();
+        if ui.button("Cancel", 100.0, 28.0) {
+            imports.reset();
+            reset_option_mirror(state);
+            state.show = false;
+        }
+
+        let status = imports.status();
+        if status != 0 {
+            let label = status_label(status);
+            ui.text(f"Status: {label}");
+        }
+        let err = imports.last_error();
+        if err != "" {
+            ui.text(f"Error: {err}");
+        }
+
+        let staged = imports.staged_preview_vfs_path();
+        if staged != "" {
+            if ui.button("Preview staged asset", 170.0, 24.0) {
+                picks.push(staged);
+                state.show = false;
+            }
+        }
+
+        ui.same_line();
+        if ui.button("Close", 100.0, 24.0) {
+            state.show = false;
+        }
+    });
+}
+
+fn render_format_choice(
+    ui: box<radiance.IUiHost>,
+    imports: box<yaobow_editor_services.IImportService>,
+    fmt: int,
+    label: string,
+) {
+    let selected = imports.target_format() == fmt;
+    if ui.tree_leaf(label, selected) {
+        imports.set_target_format(fmt);
+    }
+}
+
+fn render_mode_choice(
+    ui: box<radiance.IUiHost>,
+    imports: box<yaobow_editor_services.IImportService>,
+    mode: int,
+    label: string,
+) {
+    let selected = imports.mode() == mode;
+    if ui.tree_leaf(label, selected) {
+        imports.set_mode(mode);
+    }
+}
+
+fn render_replace_section(
+    ui: box<radiance.IUiHost>,
+    imports: box<yaobow_editor_services.IImportService>,
+) {
+    let pkg = imports.replace_target_package();
+    if pkg == "" {
+        ui.text("No replace target set. Open a model from the resource browser first, or use its \"Import glTF (Replace)...\" button.");
+        return;
+    }
+    let internal = imports.replace_target_internal_path();
+    ui.text(f"Target: {pkg} :: {internal}");
+}
+
+fn render_add_section(
+    ui: box<radiance.IUiHost>,
+    imports: box<yaobow_editor_services.IImportService>,
+) {
+    let n = imports.add_target_candidate_count();
+    ui.text(f"Target package ({n} candidates):");
+    ui.child_window("##import_add_candidates", 0.0, 100.0, () => {
+        ui.list_clipped(n, () => {
+            let row = ui.list_clipped_index();
+            let name = imports.add_target_candidate_name(row);
+            let selected = imports.add_target_package() == name;
+            if ui.tree_leaf(name, selected) {
+                imports.set_add_target_package(name);
+            }
+        });
+    });
+    let internal = imports.add_target_internal_path();
+    if internal != "" {
+        ui.text(f"Internal path: {internal}");
+    }
+    if imports.add_target_valid() {
+        ui.text("Target looks valid.");
+    }
+}
+
+fn render_format_options(
+    ui: box<radiance.IUiHost>,
+    imports: box<yaobow_editor_services.IImportService>,
+    state: box<ImportWizardState>,
+) {
+    let fmt = imports.target_format();
+    if fmt == 0 {
+        render_mv3_options(ui, imports, state);
+        return;
+    }
+    if fmt == 1 {
+        render_pol_options(ui, imports, state);
+        return;
+    }
+    render_cvd_options(ui, imports, state);
+}
+
+fn render_mv3_options(
+    ui: box<radiance.IUiHost>,
+    imports: box<yaobow_editor_services.IImportService>,
+    state: box<ImportWizardState>,
+) {
+    let scale_pct = state.mv3_scale_pct;
+    let new_scale_pct = ui.slider_int("Vertex scale (% of PAL3 default)", scale_pct, 1, 1000);
+    if new_scale_pct != scale_pct {
+        state.mv3_scale_pct = new_scale_pct;
+        imports.set_mv3_vertex_scale(0.01562 * (new_scale_pct as float) / 100.0);
+    }
+    let ticks = state.mv3_ticks;
+    let new_ticks = ui.slider_int("Ticks per second", ticks, 1, 20000);
+    if new_ticks != ticks {
+        state.mv3_ticks = new_ticks;
+        imports.set_mv3_ticks_per_second(new_ticks as float);
+    }
+}
+
+fn render_pol_options(
+    ui: box<radiance.IUiHost>,
+    imports: box<yaobow_editor_services.IImportService>,
+    state: box<ImportWizardState>,
+) {
+    render_pol_alpha_choice(ui, imports, state, -1, "Auto (use source material)");
+    render_pol_alpha_choice(ui, imports, state, 0, "Force alpha off");
+    render_pol_alpha_choice(ui, imports, state, 1, "Force alpha on");
+}
+
+fn render_pol_alpha_choice(
+    ui: box<radiance.IUiHost>,
+    imports: box<yaobow_editor_services.IImportService>,
+    state: box<ImportWizardState>,
+    mode: int,
+    label: string,
+) {
+    let selected = state.pol_alpha_mode == mode;
+    if ui.tree_leaf(label, selected) {
+        state.pol_alpha_mode = mode;
+        imports.set_pol_force_use_alpha(mode);
+    }
+}
+
+fn render_cvd_options(
+    ui: box<radiance.IUiHost>,
+    imports: box<yaobow_editor_services.IImportService>,
+    state: box<ImportWizardState>,
+) {
+    let legacy = state.cvd_legacy;
+    let new_legacy = ui.checkbox("Use legacy CVD magic", legacy);
+    if new_legacy != legacy {
+        state.cvd_legacy = new_legacy;
+        imports.set_cvd_legacy_magic(new_legacy);
+    }
+}
+
+fn render_outputs_section(
+    ui: box<radiance.IUiHost>,
+    host: box<yaobow_editor_services.IEditorHostContext>,
+    imports: box<yaobow_editor_services.IImportService>,
+) {
+    let cfg = host.config();
+    let save_on = imports.save_to_file_enabled();
+    let new_save_on = ui.checkbox("Save converted file to disk", save_on);
+    if new_save_on != save_on {
+        imports.set_save_to_file(new_save_on);
+    }
+    if imports.save_to_file_enabled() {
+        if ui.button("Choose output file...", 170.0, 24.0) {
+            let ext = format_ext(imports.target_format());
+            let path = cfg.pick_save_file("", "", ext);
+            if path != "" {
+                imports.set_save_output_path(path);
+            }
+        }
+        let out = imports.save_output_path();
+        if out != "" {
+            ui.text(f"Output: {out}");
+        }
+    }
+
+    let proj_on = imports.add_to_project_enabled();
+    let new_proj_on = ui.checkbox("Add to active project", proj_on);
+    if new_proj_on != proj_on {
+        imports.set_add_to_project(new_proj_on);
+    }
+}

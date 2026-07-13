@@ -27,6 +27,7 @@ use gltf_json::mesh::{Primitive, Semantic};
 use gltf_json::validation::Checked;
 use gltf_json::{Mesh, Node, Scene};
 use mini_fs::MiniFs;
+use serde_json::json;
 
 use super::glb::GlbBuilder;
 use super::mv3::{build_material, flatten_vec2, flatten_vec3};
@@ -37,6 +38,37 @@ pub fn export_pol_to_glb(
     model_path: &Path,
 ) -> anyhow::Result<Vec<u8>> {
     let mut b = GlbBuilder::new();
+    b.set_yaobow_extras(json!({
+        "target_format": "pol",
+        "source_path": model_path.to_string_lossy(),
+        "some_flag": pol.some_flag,
+        // `importers::pol::PolExtras::geom_node_descs` expects a raw
+        // `Vec<Vec<u16>>` (matching its `PolExtras::from_file` template
+        // fallback, which maps `d.unknown.clone()`), not the wrapping
+        // `GeomNodeDesc` struct — emitting the struct itself would
+        // serialize as `{"unknown": [...]}` and fail the whole
+        // `asset.extras.yaobow.payload` deserialization.
+        "geom_node_descs": pol.geom_node_descs.iter().map(|d| &d.unknown).collect::<Vec<_>>(),
+        "unknown_data": pol.unknown_data,
+        // Filtered the same way primitives are below (materials with no
+        // triangles are skipped and never become a `Primitive`): keeping
+        // this metadata list unfiltered would desync it from
+        // `importers::pol`'s by-primitive-index lookup as soon as an
+        // empty-triangle material precedes a non-empty one.
+        "material_metadata": pol.meshes.iter().map(|mesh| {
+            mesh.material_info.iter()
+                .filter(|material| !material.triangles.is_empty())
+                .map(|material| json!({
+                    "use_alpha": material.use_alpha,
+                    "unknown_68": material.unknown_68,
+                    "unknown_float": material.unknown_float,
+                    "texture_names": material.texture_names,
+                    "unknown2": material.unknown2,
+                    "unknown3": material.unknown3,
+                    "unknown4": material.unknown4,
+                })).collect::<Vec<_>>()
+        }).collect::<Vec<_>>(),
+    }))?;
     let model_dir = model_path.parent().unwrap_or_else(|| Path::new(""));
 
     let mut root_children = Vec::new();

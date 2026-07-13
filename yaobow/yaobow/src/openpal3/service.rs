@@ -30,26 +30,25 @@ use radiance::input::{InputEngine, SyntheticInputBridge};
 use radiance::radiance::{UiLayerBand, UiLayerHandle};
 use radiance::video::Codec as VideoCodec;
 use radiance_scripting::comdef::services::IAudioSource;
-use radiance_scripting::comdef::services::IVideoHandle;
 use radiance_scripting::comdef::services::ISpriteService;
+use radiance_scripting::comdef::services::IVideoHandle;
 use radiance_scripting::services::AudioSource;
 use radiance_scripting::services::ImguiTextureCache;
 use radiance_scripting::services::SpriteService;
+use shared::GameType;
 use shared::agent_common::AgentBridge;
 use shared::loaders::video_handle::VideoHandle;
 use shared::openpal3::agent::{Pal3DispatchCtx, dispatch_pal3_command};
 use shared::openpal3::asset_manager::AssetManager;
 use shared::openpal3::comdef::{
     IAdventureDirector, IPal3DialogRenderer, IPal3ScriptFactory, IPal3Service, IPal3ServiceImpl,
-    IPal3StatusRenderer,
-    IPal3UiAtlas,
+    IPal3StatusRenderer, IPal3UiAtlas,
 };
 use shared::openpal3::directors::AdventureDirector;
-use shared::openpal3::ui_atlas::{AtlasManifest, Pal3UiAtlas};
 use shared::openpal3::states::persistent_state::PAL3_APP_NAME;
+use shared::openpal3::ui_atlas::{AtlasManifest, Pal3UiAtlas};
 use shared::scripting::sce::vm::SceExecutionOptions;
 use shared::ydirs;
-use shared::GameType;
 
 use crate::openpal3::debug_layer::OpenPal3DebugLayer;
 use crate::openpal3::sce_proc_hooks::SceRestHooks;
@@ -257,8 +256,11 @@ impl Pal3Service {
         let input_engine = engine.input_engine();
         let scene_manager = engine.scene_manager().clone();
         let ui = engine.ui_manager();
-        let layer: ComRc<IUiLayer> =
-            ComRc::from_object(OpenPal3DebugLayer::new(input_engine, scene_manager, ui.clone()));
+        let layer: ComRc<IUiLayer> = ComRc::from_object(OpenPal3DebugLayer::new(
+            input_engine,
+            scene_manager,
+            ui.clone(),
+        ));
         // Register in the DebugOverlay band so the overlay draws on top
         // of game UI. Keep the handle alive for the service lifetime;
         // dropping it would unregister the layer.

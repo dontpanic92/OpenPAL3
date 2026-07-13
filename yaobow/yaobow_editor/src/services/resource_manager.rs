@@ -142,7 +142,20 @@ fn display_name(raw: &OsStr) -> String {
         .unwrap_or_else(|| raw.to_string_lossy().to_string())
 }
 
+impl ResourceManager {
+    /// Drops the cached category index. The next `category_*` call
+    /// rescans the VFS, picking up any paths a project overlay just
+    /// added/changed (see `services::project_overlay`).
+    pub fn invalidate(&self) {
+        *self.buckets.borrow_mut() = None;
+    }
+}
+
 impl IResourceManagerImpl for ResourceManager {
+    fn invalidate(&self) {
+        ResourceManager::invalidate(self);
+    }
+
     fn category_count(&self) -> i32 {
         CATEGORIES.len() as i32
     }

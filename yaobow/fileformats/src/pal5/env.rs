@@ -222,17 +222,42 @@ mod tests {
     #[test]
     fn skybox_asset_id_validates_range_and_sentinel() {
         // In-range id is returned as-is.
-        let raw = make_env([0.5; 3], [1.0; 3], 0.0, 45.0, [0, 0, 0, 0xff], 0.0, 0.0, 2003);
+        let raw = make_env(
+            [0.5; 3],
+            [1.0; 3],
+            0.0,
+            45.0,
+            [0, 0, 0, 0xff],
+            0.0,
+            0.0,
+            2003,
+        );
         assert_eq!(EnvFile::read(&raw).unwrap().skybox_asset_id(), Some(2003));
 
         // Sentinel 0xffffffff -> no skybox.
         let raw = make_env(
-            [0.5; 3], [1.0; 3], 0.0, 45.0, [0, 0, 0, 0xff], 0.0, 0.0, 0xffff_ffff,
+            [0.5; 3],
+            [1.0; 3],
+            0.0,
+            45.0,
+            [0, 0, 0, 0xff],
+            0.0,
+            0.0,
+            0xffff_ffff,
         );
         assert_eq!(EnvFile::read(&raw).unwrap().skybox_asset_id(), None);
 
         // Out-of-range value (e.g. a stray non-skybox asset id) -> None.
-        let raw = make_env([0.5; 3], [1.0; 3], 0.0, 45.0, [0, 0, 0, 0xff], 0.0, 0.0, 503);
+        let raw = make_env(
+            [0.5; 3],
+            [1.0; 3],
+            0.0,
+            45.0,
+            [0, 0, 0, 0xff],
+            0.0,
+            0.0,
+            503,
+        );
         assert_eq!(EnvFile::read(&raw).unwrap().skybox_asset_id(), None);
     }
 
@@ -253,7 +278,6 @@ mod tests {
         assert!((env.sun_azimuth_deg - 266.0).abs() < 1e-6);
         assert!((env.sun_elevation_deg - 76.0).abs() < 1e-6);
     }
-
 
     #[test]
     fn rejects_bad_magic() {

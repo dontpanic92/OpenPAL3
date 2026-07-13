@@ -264,6 +264,10 @@ interface IConfigService: IUnknown {
     // extension (e.g. "glb") used to build the dialog's type filter.
     &str pick_save_file(&str initial, &str default_name, &str ext_filter);
 
+    // Show an "open file" dialog and return the chosen absolute path
+    // (empty string if cancelled). `ext_filter` accepts one extension.
+    &str pick_open_file(&str initial, &str ext_filter);
+
     // Theme name persisted under `config_key` (recognised keys are
     // "yaobow" and "editor"). Empty string means "use the built-in
     // default". Pair with `apply_theme` to also push it to the live UI.

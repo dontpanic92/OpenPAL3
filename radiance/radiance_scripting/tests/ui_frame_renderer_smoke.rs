@@ -18,7 +18,9 @@ use p7::interpreter::context::{Context, Data};
 use radiance::comdef::IDirector;
 use radiance::comdef::IUiLayer;
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
-use radiance_scripting::{ImguiUiFrameRenderer, ScriptHost, register_ui_layer_proto, wrap_director};
+use radiance_scripting::{
+    ImguiUiFrameRenderer, ScriptHost, register_ui_layer_proto, wrap_director,
+};
 
 const SCRIPT: &str = r#"
 import radiance;

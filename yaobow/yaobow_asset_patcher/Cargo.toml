@@ -1,0 +1,68 @@
+[package]
+name = "yaobow_asset_patcher"
+version = "0.1.0"
+edition = "2024"
+authors = ["OpenPAL3/yaobow contributors"]
+description = "Standalone Yaobow Asset Patcher: transactional .yapatch installer library + small imgui GUI."
+build = "build.rs"
+
+[lib]
+name = "yaobow_asset_patcher"
+path = "src/lib.rs"
+
+[[bin]]
+name = "yaobow_asset_patcher"
+path = "src/bin/yaobow_asset_patcher.rs"
+
+[features]
+# Exposes `test_support`, the synthetic-CPK / .yapatch fixture builders
+# used by this crate's own integration tests. Kept behind a feature
+# (rather than always public) so production consumers of the library
+# don't get test-only helpers in their public API, while integration
+# tests (which compile this crate as an external dependency) can still
+# reach them.
+test-support = []
+
+[dependencies]
+anyhow = "1.0"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.5"
+log = "0.4"
+uuid = { version = "0.8", features = ["v4", "serde"] }
+
+asset_project = { path = "../asset_project" }
+packfs = { path = "../packfs" }
+radiance = { path = "../../radiance/radiance" }
+radiance_scripting = { path = "../../radiance/radiance_scripting" }
+crosscom = { path = "../../crosscom/runtime/rust" }
+imgui = { workspace = true }
+
+# Native "Open" file/folder dialogs for the GUI binary — same crate and
+# version `yaobow/shared/src/config_service.rs` already uses for its
+# folder/file pickers.
+native-dialog = "0.9"
+
+simple_logger = "4"
+
+# Fixture helpers under `test-support` need the same encoding used by
+# the packfs CPK format (GBK path/name encoding) to hand-build
+# synthetic `.cpk` byte streams.
+byteorder = "1.3.4"
+encoding = "0.2.33"
+
+[build-dependencies]
+cfg_aliases = "0.2"
+crosscom-ccidl = { path = "../../crosscom/ccidl-rs" }
+
+[dev-dependencies]
+yaobow_asset_patcher = { path = ".", features = ["test-support"] }
+
+# `ReplaceFileW`/`GetLastError` bindings used by `src/replace.rs`'s
+# Windows-specific fast path for safely replacing an existing (and
+# possibly transiently locked) package file — same crate/convention
+# `radiance/radiance/Cargo.toml` already uses for its own Windows API
+# needs.
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.8", features = ["errhandlingapi", "winbase", "winerror"] }

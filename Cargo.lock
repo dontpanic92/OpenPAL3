@@ -323,6 +323,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "asset_project"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "radiance",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+ "uuid 0.8.2",
+]
+
+[[package]]
 name = "async-channel"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1774,6 +1787,18 @@ name = "glob"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
+
+[[package]]
+name = "gltf"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3ce1918195723ce6ac74e80542c5a96a40c2b26162c1957a5cd70799b8cacf7"
+dependencies = [
+ "byteorder",
+ "gltf-json",
+ "lazy_static",
+ "serde_json",
+]
 
 [[package]]
 name = "gltf-derive"
@@ -4313,6 +4338,7 @@ version = "0.1.0"
 dependencies = [
  "agent_server",
  "anyhow",
+ "binrw 0.11.3",
  "byteorder",
  "cfg_aliases",
  "cipher",
@@ -4327,6 +4353,7 @@ dependencies = [
  "encoding",
  "ffmpeg",
  "fileformats",
+ "gltf",
  "gltf-json",
  "image 0.23.14",
  "imgui",
@@ -5083,6 +5110,10 @@ name = "uuid"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
+dependencies = [
+ "getrandom 0.2.17",
+ "serde",
+]
 
 [[package]]
 name = "uuid"
@@ -6009,10 +6040,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "yaobow_asset_patcher"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "asset_project",
+ "byteorder",
+ "cfg_aliases",
+ "crosscom",
+ "crosscom-ccidl",
+ "encoding",
+ "imgui",
+ "log",
+ "native-dialog",
+ "packfs",
+ "radiance",
+ "radiance_scripting",
+ "serde",
+ "serde_json",
+ "simple_logger",
+ "thiserror 1.0.69",
+ "toml 0.5.11",
+ "uuid 0.8.2",
+ "winapi",
+ "yaobow_asset_patcher",
+]
+
+[[package]]
 name = "yaobow_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "asset_project",
  "byteorder",
  "chardet",
  "common",
@@ -6022,6 +6081,7 @@ dependencies = [
  "encoding",
  "env_logger",
  "fileformats",
+ "gltf",
  "image 0.23.14",
  "imgui",
  "lazy_static",
@@ -6041,6 +6101,7 @@ dependencies = [
  "uuid 0.8.2",
  "wavefront_obj",
  "xxtea",
+ "zip",
 ]
 
 [[package]]

@@ -10,14 +10,16 @@ fn main() {
     println!("depth={} leaves={}", ctr.depth, ctr.leaves.len());
 
     let with_verts = ctr.leaves.iter().filter(|l| !l.vertices.is_empty()).count();
-    let with_tris = ctr.leaves.iter().filter(|l| !l.triangles.is_empty()).count();
+    let with_tris = ctr
+        .leaves
+        .iter()
+        .filter(|l| !l.triangles.is_empty())
+        .count();
     let with_density = ctr.leaves.iter().filter(|l| !l.density.is_empty()).count();
     let total_verts: usize = ctr.leaves.iter().map(|l| l.vertices.len()).sum();
     let total_tris: usize = ctr.leaves.iter().map(|l| l.triangles.len()).sum();
     let total_cells: usize = ctr.leaves.iter().map(|l| l.density.len()).sum();
-    println!(
-        "with_verts={with_verts} with_tris={with_tris} with_density={with_density}",
-    );
+    println!("with_verts={with_verts} with_tris={with_tris} with_density={with_density}",);
     println!("total_verts={total_verts} total_tris={total_tris} total_density_cells={total_cells}");
 
     // Global vertex bbox (custom geometry only).

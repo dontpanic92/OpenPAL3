@@ -1,0 +1,20 @@
+[package]
+name = "asset_project"
+version = "0.1.0"
+edition = "2024"
+authors = ["OpenPAL3/yaobow contributors"]
+description = "Reusable asset project manifest + delta-pack (.yapatch) foundation shared by the editor and the patcher."
+
+[dependencies]
+anyhow = "1.0"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "0.8", features = ["v4", "serde"] }
+# Cryptographic hash used for all content/manifest integrity checks
+# (payload store keys, .yapatch manifest hash, package fingerprints,
+# base_entry_hash). Chosen over the engine's xxh3 (used elsewhere for
+# fast, non-cryptographic path-hash lookups) because patches move
+# across machines/trust boundaries, where collision resistance matters.
+sha2 = "0.10"
+radiance = { path = "../../radiance/radiance" }

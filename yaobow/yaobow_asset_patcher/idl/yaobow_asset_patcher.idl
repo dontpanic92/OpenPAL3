@@ -1,0 +1,16 @@
+// yaobow_asset_patcher's own COM surface: a single immediate-mode UI
+// layer registered directly with the engine's `UiManager`
+// (`register_ui_layer`), independent of any director/scene. This file
+// lives inside this crate's own directory (not `crosscom/idl/`) so the
+// patcher crate can be owned/generated entirely on its own, without
+// touching any shared IDL. The relative `import` below reaches the
+// existing `crosscom/idl/radiance.idl` purely to resolve `IUiLayer` —
+// it does not modify that file.
+module(rust) yaobow_asset_patcher::comdef;
+
+import ../../../crosscom/idl/radiance.idl;
+
+// A stable, random UUID minted for this crate; not shared with any
+// other class in the workspace.
+[uuid(3f6a1b2c-8d4e-4a5f-9c6d-1e2f3a4b5c6d)]
+class AssetPatcherUiLayer: IUiLayer {}

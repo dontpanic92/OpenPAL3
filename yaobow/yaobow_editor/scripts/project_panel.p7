@@ -1,0 +1,149 @@
+// "Project" main-menu entry + a simple (non-docked) "Project Changes"
+// panel, backed by the host-side `IProjectService`
+// (`yaobow_editor::services::project_service::ProjectService`).
+//
+// There is no text-input or modal/popup widget in `IUiHost` today, so
+// New/Open/Publish all go through native file/folder pickers
+// (`IConfigService.pick_folder` / `pick_open_file` / `pick_save_file`)
+// rather than a free-text project-name field. Save/Close need no
+// dialog at all.
+//
+// The changes panel is intentionally a plain toggled `window_centered`
+// (not docked): it's meant to be opened on demand while authoring
+// changes, not to live permanently in the main editor layout.
+
+import radiance;
+import yaobow_editor.yaobow_editor_services;
+
+pub struct ProjectPanelState(
+    pub show_changes_panel: bool,
+);
+
+pub fn make_project_panel_state() -> ProjectPanelState {
+    return ProjectPanelState(false);
+}
+
+// Rendered from inside `ui.main_menu_bar(...)` in `main_editor.p7`,
+// alongside the existing View/Theme menu.
+pub fn render_project_menu(
+    ui: box<radiance.IUiHost>,
+    host: box<yaobow_editor_services.IEditorHostContext>,
+    state: box<ProjectPanelState>,
+) {
+    ui.menu("Project", () => {
+        let proj = host.project();
+        let cfg = host.config();
+
+        if ui.menu_item("New Project...", false) {
+            let dir = cfg.pick_folder("");
+            if dir != "" {
+                if !proj.create_project(dir) {
+                    state.show_changes_panel = true;
+                }
+            }
+        }
+        if ui.menu_item("Open Project...", false) {
+            let initial = proj.active_project_dir();
+            let path = cfg.pick_open_file(initial, "json");
+            if path != "" {
+                if !proj.open_project(path) {
+                    state.show_changes_panel = true;
+                }
+            }
+        }
+        if ui.menu_item("Save Project", false) {
+            proj.save_project();
+        }
+        if ui.menu_item("Close Project", false) {
+            if !proj.close_project() {
+                state.show_changes_panel = true;
+            }
+        }
+        if proj.is_dirty() {
+            if ui.menu_item("Discard Changes and Close", false) {
+                proj.discard_and_close_project();
+            }
+        }
+        if ui.menu_item("Publish .yapatch...", false) {
+            let default_name = proj.active_project_name();
+            let path = cfg.pick_save_file("", default_name, "yapatch");
+            if path != "" {
+                proj.publish_patch(path);
+            }
+        }
+
+        let shown = state.show_changes_panel;
+        if ui.menu_item("Project Changes", shown) {
+            state.show_changes_panel = !shown;
+        }
+    });
+}
+
+// Toggled via the "Project Changes" menu item above. Lists every
+// tracked change in the active project with per-row Remove/Revert
+// actions, and surfaces `IProjectService.last_error()` so a failed
+// action (e.g. staging a file with no active project) is visible
+// without needing a separate status bar.
+pub fn render_project_changes_panel(
+    ui: box<radiance.IUiHost>,
+    host: box<yaobow_editor_services.IEditorHostContext>,
+    state: box<ProjectPanelState>,
+) {
+    if !state.show_changes_panel {
+        return;
+    }
+
+    let proj = host.project();
+    ui.window_centered("Project Changes###project_changes", 640.0, 420.0, () => {
+        if proj.has_active_project() {
+            let name = proj.active_project_name();
+            let dir = proj.active_project_dir();
+            let dirty = if proj.is_dirty() { " *unsaved*" } else { "" };
+            ui.text(f"Project: {name}{dirty}");
+            ui.text(f"Directory: {dir}");
+        } else {
+            ui.text("No active project — use Project > New/Open to start one.");
+        }
+
+        let err = proj.last_error();
+        if err != "" {
+            ui.text(f"Error: {err}");
+        }
+
+        let n = proj.change_count();
+        ui.text(f"Tracked changes: {n}");
+        ui.child_window("##project_changes_list", 0.0, 0.0, () => {
+            ui.list_clipped(n, () => {
+                let row = ui.list_clipped_index();
+                render_change_row(ui, proj, row);
+            });
+        });
+    });
+}
+
+fn kind_label(kind: int) -> string {
+    if kind == 0 {
+        return "Add";
+    }
+    return "Replace";
+}
+
+fn render_change_row(
+    ui: box<radiance.IUiHost>,
+    proj: box<yaobow_editor_services.IProjectService>,
+    row: int,
+) {
+    let kind = kind_label(proj.change_kind(row));
+    let target = proj.change_target_package(row);
+    let internal = proj.change_internal_path(row);
+    let size = proj.change_payload_size(row);
+    ui.text(f"[{kind}] {target} :: {internal} ({size}B)");
+    ui.same_line();
+    if ui.button(f"移除##remove_{row}", 80.0, 20.0) {
+        proj.remove_change(row);
+    }
+    ui.same_line();
+    if ui.button(f"还原##revert_{row}", 80.0, 20.0) {
+        proj.revert_change(row);
+    }
+}

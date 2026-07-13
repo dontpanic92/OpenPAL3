@@ -50,7 +50,10 @@ fn column_lays_out_children_and_button_callback_fires() {
     let (recorder, ui_com) = RecordingUiHost::create();
     recorder.set_display_size(200, 100);
     recorder.set_char_size(10.0, 16.0);
-    recorder.button_results.borrow_mut().insert("go".into(), true);
+    recorder
+        .button_results
+        .borrow_mut()
+        .insert("go".into(), true);
 
     run(ui_com);
 

@@ -147,10 +147,7 @@ impl Pal5StoryDirector {
                 ui.text_colored([0.4, 1.0, 0.4, 1.0], "DEBUG CAMERA (plot frozen)");
                 ui.text("WASD move  Q/E up/down  arrows look  ` exit");
                 ui.separator();
-                ui.text(format!(
-                    "eye    [{:.1}, {:.1}, {:.1}]",
-                    eye.x, eye.y, eye.z
-                ));
+                ui.text(format!("eye    [{:.1}, {:.1}, {:.1}]", eye.x, eye.y, eye.z));
                 ui.text(format!(
                     "target [{:.1}, {:.1}, {:.1}]",
                     look.x, look.y, look.z

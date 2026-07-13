@@ -20,6 +20,7 @@ use gltf_json::mesh::{MorphTarget, Primitive, Semantic};
 use gltf_json::validation::Checked;
 use gltf_json::{Mesh, Node, Scene};
 use mini_fs::MiniFs;
+use serde_json::json;
 
 use crate::openpal3::loaders::cvd_loader::{
     CvdFile, CvdMesh, CvdModelNode, CvdPositionKeyFrames, CvdRotationKeyFrames, CvdScaleKeyFrames,
@@ -34,6 +35,13 @@ pub fn export_cvd_to_glb(
     model_path: &Path,
 ) -> anyhow::Result<Vec<u8>> {
     let mut b = GlbBuilder::new();
+    b.set_yaobow_extras(json!({
+        "target_format": "cvd",
+        "source_path": model_path.to_string_lossy(),
+        "magic": cvd.magic,
+        "model_count": cvd.model_count,
+        "models": cvd.models,
+    }))?;
     let model_dir = model_path.parent().unwrap_or_else(|| Path::new(""));
 
     let mut animation_channels: Vec<Channel> = Vec::new();

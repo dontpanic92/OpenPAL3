@@ -114,6 +114,13 @@ interface IResourceManager: IUnknown {
     &str category_name(int idx);
     int category_entry_count(int idx, &str filter);
     &str category_entry_path(int idx, &str filter, int row);
+
+    // Drops the cached category index so the next `category_*` call
+    // rescans the VFS. Called by `IProjectService` whenever an active
+    // project's tracked changes are staged/removed/reverted, since
+    // those mutate the project overlay mounted into the VFS (new
+    // `Add` paths in particular would otherwise never appear).
+    void invalidate();
 }
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c11)]
 class ResourceManager: IResourceManager {}
@@ -164,6 +171,276 @@ interface IInspectorView: IUnknown {
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c17)]
 class InspectorView: IInspectorView {}
 
+// Authoring-side asset project lifecycle: create/open/save/close a
+// project layered on top of the currently opened game's base asset
+// tree, enumerate/stage/remove tracked changes, and publish a
+// `.yapatch`. Backed by `asset_project::{ProjectManifest, PayloadStore,
+// patch}`. All methods that mutate project state also refresh the
+// project overlay mounted into the editor's VFS (see
+// `services::project_overlay`) and invalidate `IResourceManager`'s
+// cached category index, so previews/browsing reflect the change
+// immediately.
+//
+// The p7-facing surface below intentionally sticks to `&str`/`int`/
+// `bool` parameters (no byte buffers cross the IDL boundary — `p7` has
+// no byte-array type). `stage_payload_file` reads the source bytes
+// from disk on the Rust side; a future glTF conversion wizard that
+// already holds converted bytes in memory should call the richer
+// `Rust`-only API on `services::project_service::ProjectService`
+// directly (see doc comments there) rather than round-tripping
+// through a temp file.
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c19)]
+interface IProjectService: IUnknown {
+    // Creates a brand-new project rooted at `project_dir` (created if
+    // missing) targeting the currently opened game and its currently
+    // configured base asset path, then makes it the active project.
+    // The project name is derived from `project_dir`'s last path
+    // component. Fails (returns false, see `last_error`) if
+    // `project_dir` is empty or a project already exists there.
+    bool create_project(&str project_dir);
+
+    // Opens a previously created project from either its directory or
+    // its `project.json` manifest file directly, and makes it the
+    // active project. Validates that the manifest's `target_game`
+    // matches the currently opened game and that its
+    // `base_asset_root` matches the currently configured asset path
+    // before activating — on mismatch this fails (returns false) and
+    // leaves any previously active project untouched.
+    bool open_project(&str project_path);
+
+    // Persists the active project's manifest to disk. False (see
+    // `last_error`) if there is no active project or the write fails.
+    bool save_project();
+
+    // Deactivates the current project (clearing the preview overlay)
+    // without deleting anything on disk. Refuses to discard unsaved
+    // changes; call save_project or discard_and_close_project first.
+    bool close_project();
+    bool discard_and_close_project();
+
+    bool has_active_project();
+    bool is_dirty();
+    &str active_project_name();
+    &str active_project_dir();
+    &str active_project_target_game();
+    &str active_project_base_asset_root();
+
+    // Number of tracked `Add`/`Replace` changes in the active project
+    // (0 if no project is active).
+    int change_count();
+
+    // Per-change accessors, indexed `[0, change_count())` in stable
+    // (target_package, package_internal_path) order. Out-of-range
+    // indices return an empty/zero value.
+    int change_kind(int index); // 0 = Add, 1 = Replace
+    &str change_target_package(int index);
+    &str change_internal_path(int index);
+    // Hex `ContentHash` of the payload bytes for this change.
+    &str change_content_hash(int index);
+    int change_payload_size(int index);
+    // Hex `ContentHash` of the base package entry this change
+    // replaces, captured the first time the change was staged. Empty
+    // for `Add` changes or when unavailable.
+    &str change_base_hash(int index);
+    // "" if the change carries no recorded source path.
+    &str change_source_path(int index);
+    // "" if the change carries no recorded conversion tool metadata.
+    &str change_conversion_tool(int index);
+    &str change_conversion_tool_version(int index);
+
+    // Removes the tracked change at `index` from the project manifest
+    // (the underlying base package is untouched either way — this
+    // only forgets the authored replacement/addition).
+    bool remove_change(int index);
+
+    // Reverts the tracked change at `index`: identical effect to
+    // `remove_change`, named separately so the "Project Changes" panel
+    // can offer a "revert to base" action distinct from "remove from
+    // list" even though today both discard the same manifest entry.
+    bool revert_change(int index);
+
+    // Reads `source_file_path` from disk and stages it as the payload
+    // for `(target_package, internal_path)`, tagged with
+    // `tool`/`tool_version` conversion metadata. Automatically
+    // classifies the change as `Add` or `Replace` (based on whether
+    // the path already exists in the base asset tree) and — for a
+    // *new* tracked entry only — captures `base_entry_hash` from the
+    // current base content for optimistic-concurrency checks at
+    // publish/install time. Re-staging an already-tracked change
+    // preserves its originally captured `base_entry_hash`.
+    bool stage_payload_file(
+        &str target_package,
+        &str internal_path,
+        &str source_file_path,
+        &str tool,
+        &str tool_version
+    );
+
+    // Rebuilds the project overlay's vfs-path index and invalidates
+    // `IResourceManager`'s cached category index. Called automatically
+    // by every mutating method above; exposed so script UI can force a
+    // rebuild (e.g. after an external, non-`IProjectService` change to
+    // the base asset tree).
+    void rebuild_overlay_index();
+
+    // Packs every tracked change into a `.yapatch` at `output_path`.
+    // False (see `last_error`) if there is no active project, it has
+    // no changes, or publishing fails.
+    bool publish_patch(&str output_path);
+
+    // Human-readable detail for the most recent failed call on this
+    // interface. Empty string if the most recent call succeeded.
+    &str last_error();
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c1a)]
+class ProjectService: IProjectService {}
+
+// Unified glTF (`.glb`/`.gltf`) import wizard: converts an authored
+// scene into an existing PAL3 target format (`.mv3`/`.pol`/`.cvd`) via
+// `shared::importers::convert_gltf_to_bytes`, and routes the resulting
+// bytes to a "save converted file to disk" output, an "add to the
+// active `IProjectService` project" output (as a tracked `Add`/
+// `Replace` change), or both. See
+// `services::import_service::ImportService`'s module docs for the
+// full step-by-step contract (this IDL surface sticks to
+// `&str`/`int`/`bool`/`float`, matching `IProjectService`'s p7-facing
+// convention — no byte buffers cross the IDL boundary).
+//
+// Typical script-side flow:
+//   1. `reset()` (wizard opened) — optionally
+//      `set_replace_target(ctx_vfs_path)` /
+//      `set_add_target_directory_from_sibling(ctx_vfs_path)` when
+//      opened from a model/resource context.
+//   2. `set_source_path(...)` (from `IConfigService.pick_open_file`),
+//      `set_target_format(...)`, `set_mode(...)`, plus either
+//      `set_replace_target(...)` or
+//      `set_add_target_package(...)`/`set_add_target_directory(...)`.
+//   3. Optionally tweak the per-format option setters.
+//   4. `convert()` to preview `diagnostic_count()`/`diagnostic(i)`.
+//   5. Toggle `set_save_to_file(...)` /`set_add_to_project(...)`
+//      (at least one required) and call `run()`; inspect `status()`/
+//      `last_error()`/`staged_preview_vfs_path()` afterwards.
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c1b)]
+interface IImportService: IUnknown {
+    // Clears every field below back to its default/unselected state.
+    // Call when the wizard is opened or cancelled.
+    void reset();
+
+    // Absolute path to the source `.glb`/`.gltf` file, chosen via
+    // `IConfigService.pick_open_file`.
+    void set_source_path(&str path);
+    &str source_path();
+
+    // Target format: 0 = Mv3, 1 = Pol, 2 = Cvd. Invalid values are
+    // ignored (the previous value is kept).
+    void set_target_format(int format);
+    int target_format();
+
+    // Wizard mode: 0 = Replace an existing asset, 1 = Add a new one.
+    // Invalid values are ignored.
+    void set_mode(int mode);
+    int mode();
+
+    // Replace mode: resolves `vfs_path` through the packfs catalog to
+    // its owning package + internal path, and reads its current bytes
+    // (the live VFS content — base package, or an already-staged
+    // replacement — see `IProjectService`'s overlay docs) as the
+    // conversion template. Returns true if `vfs_path` resolved to a
+    // mounted package (false, see `last_error`, otherwise — Replace
+    // mode cannot proceed until a valid target is set).
+    bool set_replace_target(&str vfs_path);
+    &str replace_target_package();
+    &str replace_target_internal_path();
+
+    // Add mode: candidate target packages, restricted to mounted
+    // `.cpk` packages (every PAL3/3A/4/5 model/scene package uses
+    // this format). `idx` is `[0, add_target_candidate_count())`.
+    int add_target_candidate_count();
+    &str add_target_candidate_name(int idx);
+    void set_add_target_package(&str target_package);
+    &str add_target_package();
+    // Directory (internal-path prefix; "" = package root) the new
+    // file is placed under; combined with the source file's basename
+    // (re-extensioned to the target format) to form the final
+    // internal path.
+    void set_add_target_directory(&str directory);
+    &str add_target_directory();
+    // Convenience for the "model/resource context" entry point: sets
+    // both the target package and directory from an existing vfs
+    // path's catalog resolution (its package, and its internal path
+    // minus the file name). Returns true if `vfs_path` resolved.
+    bool set_add_target_directory_from_sibling(&str vfs_path);
+    // Final computed internal path (directory + source basename +
+    // target extension), or "" if the source path/target package
+    // aren't set yet.
+    &str add_target_internal_path();
+    // True if `add_target_package()`/`add_target_internal_path()` are
+    // both non-empty and the internal path does not already exist in
+    // the base asset tree (an existing path should use Replace
+    // instead — `convert`/`run` fail with an explanatory
+    // `last_error` otherwise).
+    bool add_target_valid();
+
+    // --- per-format conversion options, see `shared::importers::target` ---
+    void set_mv3_vertex_scale(float scale);
+    void set_mv3_ticks_per_second(float ticks);
+    // -1 = unset (let the source glTF material decide), 0 = force
+    // off, 1 = force on.
+    void set_pol_force_use_alpha(int mode);
+    void set_cvd_legacy_magic(bool legacy);
+
+    // --- outputs: independent checkboxes, at least one required ---
+    void set_save_to_file(bool enabled);
+    bool save_to_file_enabled();
+    // Destination for the "save converted file" output, chosen via
+    // `IConfigService.pick_save_file`.
+    void set_save_output_path(&str path);
+    &str save_output_path();
+    void set_add_to_project(bool enabled);
+    bool add_to_project_enabled();
+
+    // Runs the glTF -> target-format conversion exactly once and
+    // caches the result (bytes + diagnostics); repeated calls with
+    // unchanged inputs are cheap no-ops, while changing any setter
+    // above invalidates the cache so the next `convert()`/`run()`
+    // reconverts. Returns true if conversion succeeded. Use this to
+    // show a diagnostics/summary preview before committing to an
+    // output.
+    bool convert();
+    bool has_converted();
+    int diagnostic_count();
+    &str diagnostic(int index);
+    int converted_size();
+
+    // Executes every enabled output (converting first if not already
+    // converted), routing the SAME converted bytes to both when both
+    // are enabled. Fails outright (returns false, see `last_error`)
+    // if neither output is enabled, or conversion itself fails.
+    // Returns true only when every enabled output fully succeeds;
+    // see `status()` for the partial-success case.
+    bool run();
+
+    // 0 = not run yet, 1 = success (every enabled output succeeded),
+    // 2 = partial (conversion succeeded and at least one enabled
+    // output succeeded, but at least one other enabled output
+    // failed), 3 = failed (conversion failed, or every enabled
+    // output failed).
+    int status();
+
+    // vfs path of the change staged into the active project by the
+    // most recent successful `run()`, if it resolves through the
+    // catalog to a live-previewable location (see `IProjectService`'s
+    // overlay docs — e.g. `IPreviewerHub.open_model(...)` /
+    // `open_preview()`). "" otherwise.
+    &str staged_preview_vfs_path();
+
+    // Human-readable detail for the most recent failed call on this
+    // interface. Empty string if the most recent call succeeded.
+    &str last_error();
+}
+[uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c1c)]
+class ImportService: IImportService {}
+
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0d)]
 interface IEditorHostContext: IHostContext {
     IPreviewerHub previewers();
@@ -176,6 +453,14 @@ interface IEditorHostContext: IHostContext {
     // current imgui frame is built. Called from the editor director's
     // `update`; idempotent if no sessions are active.
     void render_pending_previews();
+
+    // Authoring-side asset project lifecycle for the currently opened
+    // game. See `IProjectService`.
+    IProjectService project();
+
+    // Unified glTF import wizard for the currently opened game. See
+    // `IImportService`.
+    IImportService imports();
 }
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c0e)]
 class EditorHostContext: IEditorHostContext {}

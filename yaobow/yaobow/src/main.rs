@@ -4,9 +4,9 @@ use agent_server::AgentLogSink;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use shared::video::register_opengb_video_decoders;
 use yaobow_lib::{
-    Pal4AgentBootOptions, run_opengujian, run_openpal3, run_openpal3_with_agent, run_openpal4,
-    run_openpal4_with_agent, run_openpal5, run_openpal5_with_agent, run_openpal5q,
-    run_openpal3a, run_openpal3a_with_agent, run_openpal5q_with_agent, run_openswd5,
+    Pal4AgentBootOptions, run_opengujian, run_openpal3, run_openpal3_with_agent, run_openpal3a,
+    run_openpal3a_with_agent, run_openpal4, run_openpal4_with_agent, run_openpal5,
+    run_openpal5_with_agent, run_openpal5q, run_openpal5q_with_agent, run_openswd5,
     run_openswd5_with_agent, run_title_selection,
 };
 

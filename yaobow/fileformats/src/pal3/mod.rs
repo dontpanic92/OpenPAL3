@@ -9,6 +9,7 @@
 //!
 //! See `generated/pal3_scn.md` for the reverse-engineering write-up.
 
+pub mod cvd;
 pub mod lgt;
 // pub mod dkl;  // added in the static-scenery baked-lighting phase
 // pub mod dkm;  // added in the static-scenery baked-lighting phase

@@ -97,6 +97,13 @@ impl IConfigServiceImpl for ConfigService {
         unsafe { (*self.last_string.as_ptr()).as_str() }
     }
 
+    fn pick_open_file(&self, initial: &str, ext_filter: &str) -> &str {
+        let picked = pick_open_file_native(initial, ext_filter);
+        *self.last_string.borrow_mut() = picked;
+        // SAFETY: see ConfigService::get_asset_path.
+        unsafe { (*self.last_string.as_ptr()).as_str() }
+    }
+
     fn get_theme(&self, config_key: &str) -> &str {
         let value = self.config.borrow().theme_for(config_key).to_string();
         *self.last_string.borrow_mut() = value;
@@ -217,5 +224,30 @@ fn pick_save_file_native(initial: &str, default_name: &str, ext_filter: &str) ->
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 fn pick_save_file_native(_initial: &str, _default_name: &str, _ext_filter: &str) -> String {
+    String::new()
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn pick_open_file_native(initial: &str, ext_filter: &str) -> String {
+    use native_dialog::FileDialogBuilder;
+    let mut dialog = FileDialogBuilder::default();
+    if !initial.is_empty() {
+        dialog = dialog.set_location(initial);
+    }
+    if !ext_filter.is_empty() {
+        dialog = dialog.add_filter(ext_filter, &[ext_filter]);
+    }
+    match dialog.open_single_file().show() {
+        Ok(Some(path)) => path.to_string_lossy().to_string(),
+        Ok(None) => String::new(),
+        Err(e) => {
+            log::warn!("open-file picker failed: {}", e);
+            String::new()
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+fn pick_open_file_native(_initial: &str, _ext_filter: &str) -> String {
     String::new()
 }

@@ -46,24 +46,25 @@ impl MapInfoFile {
         let mut sun = [None, None, None];
         let mut center = (2560.0f32, 2560.0f32);
 
-        let mut flush = |name: &mut Option<String>, sun: &mut [Option<f32>; 3], center: (f32, f32)| {
-            if let Some(n) = name.take() {
-                let direction = match (sun[0], sun[1], sun[2]) {
-                    (Some(x), Some(y), Some(z)) => {
-                        let v = [x - center.0, y, z - center.1];
-                        let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-                        if len > 1e-3 {
-                            Some([v[0] / len, v[1] / len, v[2] / len])
-                        } else {
-                            None
+        let mut flush =
+            |name: &mut Option<String>, sun: &mut [Option<f32>; 3], center: (f32, f32)| {
+                if let Some(n) = name.take() {
+                    let direction = match (sun[0], sun[1], sun[2]) {
+                        (Some(x), Some(y), Some(z)) => {
+                            let v = [x - center.0, y, z - center.1];
+                            let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+                            if len > 1e-3 {
+                                Some([v[0] / len, v[1] / len, v[2] / len])
+                            } else {
+                                None
+                            }
                         }
-                    }
-                    _ => None,
-                };
-                maps.insert(n, MapSun { direction });
-            }
-            *sun = [None, None, None];
-        };
+                        _ => None,
+                    };
+                    maps.insert(n, MapSun { direction });
+                }
+                *sun = [None, None, None];
+            };
 
         for line in text.lines() {
             let line = line.trim();
@@ -72,7 +73,9 @@ impl MapInfoFile {
                 center = (2560.0, 2560.0);
                 continue;
             }
-            let Some((k, v)) = line.split_once('=') else { continue };
+            let Some((k, v)) = line.split_once('=') else {
+                continue;
+            };
             let (k, v) = (k.trim(), v.trim());
             match k {
                 "Name" => name = Some(v.to_string()),

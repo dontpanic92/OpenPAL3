@@ -160,10 +160,7 @@ pub struct SpriteService {
 ComObject_SpriteService!(super::SpriteService);
 
 impl SpriteService {
-    pub fn create(
-        vfs: Rc<MiniFs>,
-        cache: Rc<RefCell<ImguiTextureCache>>,
-    ) -> ComRc<ISpriteService> {
+    pub fn create(vfs: Rc<MiniFs>, cache: Rc<RefCell<ImguiTextureCache>>) -> ComRc<ISpriteService> {
         ComRc::from_object(Self { vfs, cache })
     }
 
@@ -205,7 +202,10 @@ impl SpriteService {
         let com_id = next_handle_com_id();
         let pending_forgets = {
             let mut cache = self.cache.borrow_mut();
-            if cache.upload_pixels(com_id, &rgba.into_raw(), w, h).is_none() {
+            if cache
+                .upload_pixels(com_id, &rgba.into_raw(), w, h)
+                .is_none()
+            {
                 log::warn!("SpriteService: {} upload failed (com_id={})", path, com_id);
                 return None;
             }
@@ -289,4 +289,3 @@ mod tests {
         }
     }
 }
-

@@ -14,7 +14,8 @@ use radiance_scripting::comdef::services::{
 use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
 use radiance_scripting::services::{GameRegistry, RandomService};
 use yaobow_editor::comdef::editor_services::{
-    IEditorHostContext, IEditorHostContextImpl, IPreviewerHub, IPreviewerHubImpl,
+    IEditorHostContext, IEditorHostContextImpl, IImportService, IPreviewerHub, IPreviewerHubImpl,
+    IProjectService,
 };
 use yaobow_editor::script_source::mount_scripts as mount_editor_scripts;
 
@@ -70,6 +71,8 @@ struct TestHostContext {
     app: ComRc<IAppService>,
     config: ComRc<IConfigService>,
     previewers: ComRc<IPreviewerHub>,
+    project: ComRc<IProjectService>,
+    imports: ComRc<IImportService>,
 }
 
 yaobow_editor::ComObject_EditorHostContext!(crate::TestHostContext);
@@ -107,6 +110,12 @@ impl IHostContextImpl for TestHostContext {
 impl IEditorHostContextImpl for TestHostContext {
     fn previewers(&self) -> ComRc<IPreviewerHub> {
         self.previewers.clone()
+    }
+    fn project(&self) -> ComRc<IProjectService> {
+        self.project.clone()
+    }
+    fn imports(&self) -> ComRc<IImportService> {
+        self.imports.clone()
     }
     fn new_render_target(
         &self,
@@ -180,6 +189,31 @@ impl IPreviewerHubImpl for StubPreviewerHub {
     }
 }
 
+/// Dummy `IProjectService` for tests that don't exercise the "Project"
+/// menu/panel (welcome.p7 has none — it's only wired into
+/// main_editor.p7). Built via the production constructor over an empty
+/// VFS/catalog/overlay, mirroring `StubPreviewerHub::resources` above.
+fn stub_project_service() -> (ComRc<IProjectService>, ComRc<IImportService>) {
+    let vfs = Rc::new(mini_fs::MiniFs::new(false));
+    let previewers = ComRc::<IPreviewerHub>::from_object(StubPreviewerHub {
+        last: std::cell::RefCell::new(String::new()),
+    });
+    let (handle, project) = yaobow_editor::services::ProjectService::create(
+        shared::GameType::PAL3,
+        std::path::PathBuf::new(),
+        vfs.clone(),
+        Rc::new(packfs::AssetCatalog::new(std::path::PathBuf::new())),
+        yaobow_editor::services::project_overlay::new_shared_overlay_index(),
+        previewers,
+    );
+    let imports = yaobow_editor::services::ImportService::create(
+        vfs,
+        Rc::new(packfs::AssetCatalog::new(std::path::PathBuf::new())),
+        handle,
+    );
+    (project, imports)
+}
+
 struct TestEnv {
     runtime: Rc<radiance_scripting::ScriptHost>,
     handle: radiance_scripting::ScriptDirectorHandle,
@@ -201,10 +235,13 @@ fn init_runtime_from_path(root_path: &str) -> Result<TestEnv, crosscom_protosept
     let runtime = radiance_scripting::ScriptHost::new();
     runtime.set_script_assets(build_test_assets());
     runtime.load_source_from_path(root_path)?;
+    let (project, imports) = stub_project_service();
     let host_ctx = ComRc::<IEditorHostContext>::from_object(TestHostContext {
         app,
         config,
         previewers,
+        project,
+        imports,
     });
     let host_id = runtime.intern(host_ctx);
     let host = runtime.foreign_box(
@@ -329,11 +366,7 @@ fn welcome_script_settings_button_routes_to_settings_director() {
         .expect("ui_host foreign box");
 
     env.runtime
-        .call_method_void(
-            director.clone(),
-            "render",
-            vec![ui_box, Data::Float(0.0)],
-        )
+        .call_method_void(director.clone(), "render", vec![ui_box, Data::Float(0.0)])
         .expect("render should run with the simulated click");
 
     let next = env
@@ -362,11 +395,7 @@ fn welcome_script_no_click_yields_no_transition() {
         .expect("ui_host foreign box");
 
     env.runtime
-        .call_method_void(
-            director.clone(),
-            "render",
-            vec![ui_box, Data::Float(0.0)],
-        )
+        .call_method_void(director.clone(), "render", vec![ui_box, Data::Float(0.0)])
         .expect("render should run");
     let result = env
         .runtime
@@ -397,11 +426,7 @@ fn welcome_script_game_button_with_configured_path_calls_open_game() {
         .expect("ui_host foreign box");
 
     env.runtime
-        .call_method_void(
-            director.clone(),
-            "render",
-            vec![ui_box, Data::Float(0.0)],
-        )
+        .call_method_void(director.clone(), "render", vec![ui_box, Data::Float(0.0)])
         .expect("render should run with the simulated click");
 
     let next = env
@@ -431,11 +456,7 @@ fn welcome_script_render_update_survives_repeated_frames() {
             .foreign_box("radiance.comdef.IUiHost", ui_com_id)
             .expect("ui_host foreign box");
         env.runtime
-            .call_method_void(
-                director.clone(),
-                "render",
-                vec![ui_box, Data::Float(0.0)],
-            )
+            .call_method_void(director.clone(), "render", vec![ui_box, Data::Float(0.0)])
             .expect("welcome.p7 render should run");
         let result = env
             .runtime
@@ -472,11 +493,7 @@ fn welcome_script_game_button_with_configured_path_returns_open_game_director() 
         .foreign_box("radiance.comdef.IUiHost", ui_com_id)
         .expect("ui_host foreign box");
     env.runtime
-        .call_method_void(
-            director.clone(),
-            "render",
-            vec![ui_box, Data::Float(0.0)],
-        )
+        .call_method_void(director.clone(), "render", vec![ui_box, Data::Float(0.0)])
         .expect("render should run with the simulated click");
     let result = env
         .runtime

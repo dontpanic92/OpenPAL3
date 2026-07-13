@@ -38,6 +38,16 @@ impl SizedString {
         &self.string
     }
 
+    /// Builds a `SizedString` directly from already-encoded bytes (e.g.
+    /// GBK-encoded text), bypassing the `From<T: AsRef<str>>` impl's
+    /// UTF-8 assumption. [`Self::to_string`] always GBK-decodes, so a
+    /// caller writing non-ASCII text (Chinese texture/action names, in
+    /// practice) must GBK-encode it first and pass the resulting bytes
+    /// here for a correct round trip.
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        Self { string: bytes }
+    }
+
     pub fn to_string(&self) -> Result<String, FileReadError> {
         let slice = if self.string.last() == Some(&0) {
             &self.string[..self.string.len() - 1]
@@ -106,12 +116,46 @@ pub fn parse_sized_string() -> BinResult<String> {
 #[brw(import(capacity: u32))]
 pub struct StringWithCapacity {
     #[br(count = capacity)]
+    #[bw(write_with = write_padded_string)]
+    #[bw(args(capacity))]
     string: Vec<u8>,
+}
+
+/// Writes `value` padded with trailing zero bytes up to `capacity`, matching
+/// how the reader interprets a `StringWithCapacity` (a fixed-size field
+/// whose logical string ends at the first `0` byte). Returns an error
+/// instead of silently truncating if `value` doesn't fit.
+#[binrw::writer(writer)]
+fn write_padded_string(value: &Vec<u8>, capacity: u32) -> BinResult<()> {
+    let capacity = capacity as usize;
+    if value.len() > capacity {
+        return Err(binrw::Error::AssertFail {
+            pos: writer.stream_position().unwrap_or(0),
+            message: format!(
+                "StringWithCapacity data is {} bytes, which exceeds its capacity of {} bytes",
+                value.len(),
+                capacity
+            ),
+        });
+    }
+
+    writer.write_all(value)?;
+    writer.write_all(&vec![0u8; capacity - value.len()])?;
+    Ok(())
 }
 
 impl StringWithCapacity {
     pub fn data(&self) -> &[u8] {
         &self.string
+    }
+
+    /// Builds a `StringWithCapacity` directly from already-encoded bytes
+    /// (e.g. GBK-encoded text, zero-padded to the field's capacity),
+    /// bypassing the `From<T: AsRef<str>>` impl's UTF-8 assumption. See
+    /// [`SizedString::from_bytes`] for why this is needed for a correct
+    /// GBK round trip.
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        Self { string: bytes }
     }
 
     pub fn as_str(&self) -> Result<String, FileReadError> {

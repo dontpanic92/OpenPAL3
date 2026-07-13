@@ -852,7 +852,11 @@ impl IUiHostImpl for ImguiUiHost {
     fn mouse_pos_x(&self) -> f32 {
         with_frame("mouse_pos_x", |f| {
             let x = f.ui.io().mouse_pos[0];
-            if f.dpi_scale > 0.0 { x / f.dpi_scale } else { x }
+            if f.dpi_scale > 0.0 {
+                x / f.dpi_scale
+            } else {
+                x
+            }
         })
         .unwrap_or(0.0)
     }
@@ -860,7 +864,11 @@ impl IUiHostImpl for ImguiUiHost {
     fn mouse_pos_y(&self) -> f32 {
         with_frame("mouse_pos_y", |f| {
             let y = f.ui.io().mouse_pos[1];
-            if f.dpi_scale > 0.0 { y / f.dpi_scale } else { y }
+            if f.dpi_scale > 0.0 {
+                y / f.dpi_scale
+            } else {
+                y
+            }
         })
         .unwrap_or(0.0)
     }
@@ -949,8 +957,7 @@ impl IUiHostImpl for ImguiUiHost {
             let token = f.ui.push_font(font);
             let scale = if f.dpi_scale > 0.0 { f.dpi_scale } else { 1.0 };
             let color = imgui::ImColor32::from_rgba_f32s(r, g, b, a);
-            f.ui
-                .get_background_draw_list()
+            f.ui.get_background_draw_list()
                 .add_text([x * scale, y * scale], color, s);
             token.pop();
         });
@@ -958,15 +965,15 @@ impl IUiHostImpl for ImguiUiHost {
 
     fn game_font_size(&self) -> f32 {
         with_frame("game_font_size", |f| {
-            let Some(font) = radiance::imgui::game_font(radiance::imgui::GameFontSize::LARGE) else {
+            let Some(font) = radiance::imgui::game_font(radiance::imgui::GameFontSize::LARGE)
+            else {
                 return 0.0;
             };
-            let size = f
-                .ui
-                .fonts()
-                .get_font(font)
-                .map(|fnt| fnt.font_size)
-                .unwrap_or(0.0);
+            let size =
+                f.ui.fonts()
+                    .get_font(font)
+                    .map(|fnt| fnt.font_size)
+                    .unwrap_or(0.0);
             if f.dpi_scale > 0.0 {
                 size / f.dpi_scale
             } else {
@@ -986,8 +993,7 @@ impl IUiHostImpl for ImguiUiHost {
             let token = f.ui.push_font(font);
             let scale = if f.dpi_scale > 0.0 { f.dpi_scale } else { 1.0 };
             let color = imgui::ImColor32::from_rgba_f32s(r, g, b, a);
-            f.ui
-                .get_background_draw_list()
+            f.ui.get_background_draw_list()
                 .add_text([x * scale, y * scale], color, s);
             token.pop();
         });
@@ -995,15 +1001,15 @@ impl IUiHostImpl for ImguiUiHost {
 
     fn game_font_size_small(&self) -> f32 {
         with_frame("game_font_size_small", |f| {
-            let Some(font) = radiance::imgui::game_font(radiance::imgui::GameFontSize::SMALL) else {
+            let Some(font) = radiance::imgui::game_font(radiance::imgui::GameFontSize::SMALL)
+            else {
                 return 0.0;
             };
-            let size = f
-                .ui
-                .fonts()
-                .get_font(font)
-                .map(|fnt| fnt.font_size)
-                .unwrap_or(0.0);
+            let size =
+                f.ui.fonts()
+                    .get_font(font)
+                    .map(|fnt| fnt.font_size)
+                    .unwrap_or(0.0);
             if f.dpi_scale > 0.0 {
                 size / f.dpi_scale
             } else {

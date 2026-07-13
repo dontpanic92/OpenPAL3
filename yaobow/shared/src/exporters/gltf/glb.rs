@@ -11,7 +11,7 @@ use gltf_json::accessor::{ComponentType, GenericComponentType, Type as AccType};
 use gltf_json::buffer;
 use gltf_json::validation::{Checked, USize64};
 use gltf_json::{Accessor, Index, Root};
-use serde_json::json;
+use serde_json::{Value, json};
 
 /// Single-buffer accumulator used while building one `.glb`. After all
 /// data is appended, [`Self::pack`] serializes the JSON, finalizes the
@@ -40,6 +40,22 @@ impl GlbBuilder {
             bin: Vec::new(),
             buffer,
         }
+    }
+
+    /// Attach versioned Yaobow round-trip metadata to the glTF asset.
+    ///
+    /// The payload deliberately lives under a single `yaobow` key so DCC
+    /// tools can preserve it without needing to understand PAL formats.
+    pub fn set_yaobow_extras(&mut self, payload: Value) -> anyhow::Result<()> {
+        let value = json!({
+            "yaobow": {
+                "schema": 1,
+                "payload": payload,
+            }
+        });
+        self.root.asset.extras =
+            Some(serde_json::value::to_raw_value(&value).map_err(anyhow::Error::from)?);
+        Ok(())
     }
 
     /// Append raw bytes to the BIN blob, pad to 4 bytes, and return a

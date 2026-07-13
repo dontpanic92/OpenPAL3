@@ -264,16 +264,27 @@ mod tests {
 
     #[test]
     fn decodes_single_frame_leaf() {
-        let file = build(6140, &[(0.0, 1.0, 0.0, 1.0, "BuildingP5\\zhiwu\\tree_yinxingqiu")]);
+        let file = build(
+            6140,
+            &[(0.0, 1.0, 0.0, 1.0, "BuildingP5\\zhiwu\\tree_yinxingqiu")],
+        );
         let uv = UvListFile::read(&file).expect("decode");
         let e = uv.entries.get(&6140).expect("entry");
         assert_eq!(e.frames.len(), 1);
         assert_eq!(e.frames[0].atlas, "BuildingP5\\zhiwu\\tree_yinxingqiu");
         assert_eq!(
-            (e.frames[0].u0, e.frames[0].u1, e.frames[0].v0, e.frames[0].v1),
+            (
+                e.frames[0].u0,
+                e.frames[0].u1,
+                e.frames[0].v0,
+                e.frames[0].v1
+            ),
             (0.0, 1.0, 0.0, 1.0)
         );
-        assert_eq!(uv.atlas_for(6140), Some("BuildingP5\\zhiwu\\tree_yinxingqiu"));
+        assert_eq!(
+            uv.atlas_for(6140),
+            Some("BuildingP5\\zhiwu\\tree_yinxingqiu")
+        );
     }
 
     #[test]
@@ -296,6 +307,9 @@ mod tests {
     fn rejects_bad_magic() {
         let mut file = vec![0u8; 64];
         file[0..4].copy_from_slice(b"XXXX");
-        assert!(matches!(UvListFile::read(&file), Err(UvListError::BadMagic)));
+        assert!(matches!(
+            UvListFile::read(&file),
+            Err(UvListError::BadMagic)
+        ));
     }
 }

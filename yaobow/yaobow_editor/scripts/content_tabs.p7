@@ -200,6 +200,7 @@ pub fn render_tab_body_im(
     tab: ref<ContentTab>,
     preview_intents: box<array<int>>,
     scene_open_intents: box<array<int>>,
+    import_replace_intents: box<array<string>>,
     host: box<yaobow_editor_services.IEditorHostContext>,
 ) {
     match tab.kind {
@@ -343,6 +344,10 @@ pub fn render_tab_body_im(
                             tab.model_handle!.export_glb(path);
                         }
                     }
+                }
+                ui.same_line();
+                if ui.button("Import glTF (Replace)...", 180.0, 24.0) {
+                    import_replace_intents.push(tab.label);
                 }
                 ui.same_line();
                 if ui.button("Copy", 80.0, 24.0) {

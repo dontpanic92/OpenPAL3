@@ -3,7 +3,14 @@
 //! A PAL3 mv3 file can carry **multiple models** (e.g. body + head),
 //! each with its own texture and its own set of meshes. The exporter
 //! emits one glTF `Mesh` (= one scene node) per `(model, mesh)` pair
-//! so head textures don't end up painted on the body.
+//! so head textures don't end up painted on the body. Since this
+//! collapses each model's meshes onto **separate sibling nodes**
+//! instead of separate primitives of one node, every emitted node
+//! carries a `node.extras.yaobow` tag (schema 1) recording its
+//! original `model_index`/`mesh_index`, so
+//! [`crate::importers::mv3`] can regroup sibling nodes back into a
+//! single [`Mv3Model`] instead of misreading each node as its own
+//! model — see that module's `group_mv3_nodes` doc comment.
 //!
 //! Each remaining frame of a model becomes a **morph target** carrying
 //! `POSITION` deltas relative to frame 0. A single STEP-interpolated
@@ -32,6 +39,7 @@ use gltf_json::mesh::{MorphTarget, Primitive, Semantic};
 use gltf_json::validation::Checked;
 use gltf_json::{Material, Mesh, Node, Scene, Texture};
 use mini_fs::MiniFs;
+use serde_json::json;
 
 use super::glb::GlbBuilder;
 use super::textures::embed_texture;
@@ -52,6 +60,22 @@ pub fn export_mv3_to_glb(
         anyhow::bail!("mv3 has no models");
     }
     let mut b = GlbBuilder::new();
+    b.set_yaobow_extras(json!({
+        "target_format": "mv3",
+        "source_path": model_path.to_string_lossy(),
+        "version": mv3.version,
+        "duration": mv3.duration,
+        "action_desc": mv3.action_desc,
+        "textures": mv3.textures,
+        "file_unknown_data": mv3.unknown_data,
+        "model_metadata": mv3.models.iter().map(|model| json!({
+            "unknown": model.unknown,
+            "mesh_metadata": model.meshes.iter().map(|mesh| json!({
+                "unknown": mesh.unknown,
+                "unknown_data": mesh.unknown_data,
+            })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+    }))?;
 
     let model_dir = model_path.parent().unwrap_or_else(|| Path::new(""));
 
@@ -152,6 +176,7 @@ pub fn export_mv3_to_glb(
             });
             let node_idx = b.root.push(Node {
                 mesh: Some(mesh_idx),
+                extras: mv3_node_extras(model_index, mesh_index),
                 ..Node::default()
             });
             root_children.push(node_idx);
@@ -222,6 +247,25 @@ pub fn export_mv3_to_glb(
     }
 
     b.pack()
+}
+
+/// Builds the per-node `extras.yaobow` tag recording a node's original
+/// `(model_index, mesh_index)`, so [`crate::importers::mv3`] can regroup
+/// the separate sibling nodes this exporter emits for one mv3 model back
+/// into a single [`Mv3Model`]. Uses the same `{"yaobow": {"schema":
+/// 1, "payload": {...}}}` envelope as [`GlbBuilder::set_yaobow_extras`],
+/// just attached to a node instead of the asset.
+fn mv3_node_extras(model_index: usize, mesh_index: usize) -> gltf_json::extras::Extras {
+    let value = json!({
+        "yaobow": {
+            "schema": 1,
+            "payload": {
+                "model_index": model_index,
+                "mesh_index": mesh_index,
+            }
+        }
+    });
+    serde_json::value::to_raw_value(&value).ok()
 }
 
 fn expand_mv3_mesh(

@@ -15,11 +15,11 @@ fn main() {
 
     let mut total = 0;
     let mut flag_ok = 0; // body+0x44 == 1u32
-    let mut cc1_ok = 0;  // body+0x54 == 0xcc (delim after color1)
-    let mut cc2_ok = 0;  // body+0x58 == 0xcc (delim after color2)
+    let mut cc1_ok = 0; // body+0x54 == 0xcc (delim after color1)
+    let mut cc2_ok = 0; // body+0x58 == 0xcc (delim after color2)
     let mut fog_alpha_ok = 0; // body+0x33 == 0xff
     let mut year_ok = 0; // body+0x40 in 2000..2030
-    let mut amb_ok = 0;  // ambient in 0..1.2
+    let mut amb_ok = 0; // ambient in 0..1.2
     let mut min_len = usize::MAX;
     let mut count_hist: std::collections::BTreeMap<u8, usize> = Default::default();
 

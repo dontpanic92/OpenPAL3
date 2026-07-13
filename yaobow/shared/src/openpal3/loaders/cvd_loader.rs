@@ -1,13 +1,19 @@
-use super::calc_vertex_size;
 use byteorder::{LittleEndian, ReadBytesExt};
-use common::read_ext::ReadExt;
-use encoding::{DecoderTrap, Encoding};
+use fileformats::pal3::cvd as raw;
 use mini_fs::{MiniFs, StoreExt};
-use radiance::math::{Mat44, Quaternion, Vec2, Vec3};
+use radiance::math::{Quaternion, Vec2, Vec3};
 use serde::Serialize;
 use std::error::Error;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
+
+// Byte-level parsing (counts, endianness, string decoding, ...) lives in
+// `fileformats::pal3::cvd`, which stores fields exactly as encoded on disk.
+// This module owns *only* the engine-facing interpretation of that raw
+// data: coordinate axis swaps, quaternion handedness fixes, and which of
+// the many ambiguous per-keyframe floats represent which quantity for a
+// given keyframe "version". All of that interpretation logic below is
+// unchanged from the pre-refactor implementation.
 
 #[derive(Debug, Serialize)]
 pub struct CvdVertex {
@@ -132,10 +138,11 @@ pub fn cvd_load_from_file<P: AsRef<Path>>(
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic).unwrap();
 
-    let unknown_float = match magic {
-        [0x63, 0x76, 0x64, 0x73] => 0.5, // "cvds"
-        [0x63, 0x76, 0x64, 0x66] => 0.4, // "cvdf"
-        _ => panic!("Not a valid cvd file"),
+    let version = raw::CvdVersion::from_magic(magic).expect("Not a valid cvd file");
+    let unknown_float = if version.has_material_extra() {
+        0.5
+    } else {
+        0.4
     };
 
     let mut ani_path: PathBuf = path.as_ref().to_path_buf();
@@ -149,8 +156,8 @@ pub fn cvd_load_from_file<P: AsRef<Path>>(
     let mut models = vec![];
     for _i in 0..model_count {
         let model = cvd_load_model(&mut reader, unknown_float).unwrap();
-        if model.is_some() {
-            models.push(model.unwrap());
+        if let Some(model) = model {
+            models.push(model);
         }
     }
 
@@ -165,305 +172,212 @@ pub fn cvd_load_model(
     reader: &mut dyn Read,
     unknown_float: f32,
 ) -> Result<Option<CvdModelNode>, Box<dyn Error>> {
-    let unknown_byte = reader.read_u8().unwrap();
-
-    let mut model = None;
-    if unknown_byte > 0 {
-        let position_keyframes = read_position_keyframes(reader);
-        let rotation_keyframes = read_rotation_keyframes(reader);
-        let scale_keyframes = read_scale_keyframes(reader);
-
-        let scale_factor = reader.read_f32::<LittleEndian>().unwrap();
-        let mesh = cvd_load_mesh(reader, unknown_float).unwrap();
-
-        let mut mat = Mat44::new_zero();
-        reader
-            .read_f32_into::<LittleEndian>(unsafe {
-                std::mem::transmute::<&mut [[f32; 4]; 4], &mut [f32; 16]>(mat.floats_mut())
-            })
-            .unwrap();
-
-        model = Some(CvdModel {
-            unknown_byte,
-            scale_factor,
-            position_keyframes,
-            rotation_keyframes,
-            scale_keyframes,
-            mesh,
-        });
-    }
-
-    let children_count = reader.read_u32::<LittleEndian>().unwrap();
-    let mut models = None;
-    if children_count > 0 {
-        models = Some(vec![]);
-        for _i in 0..children_count {
-            let model = cvd_load_model(reader, unknown_float).unwrap().unwrap();
-            models.as_mut().unwrap().push(model);
-        }
-    }
-
-    Ok(Some(CvdModelNode {
-        model,
-        children: models,
-    }))
+    let version = raw::CvdVersion::from_legacy_float(unknown_float);
+    let node = raw::read_model_node(reader, version)?;
+    Ok(Some(convert_model_node(node)))
 }
 
 pub fn cvd_load_mesh(reader: &mut dyn Read, unknown_float: f32) -> Result<CvdMesh, Box<dyn Error>> {
-    let frame_count = reader.read_u32::<LittleEndian>().unwrap();
-    let vertex_count = reader.read_u32::<LittleEndian>().unwrap();
-    let _vertex_size = calc_vertex_size(19);
-    let mut frames = vec![];
-    for _i in 0..frame_count {
-        let mut vertices = vec![];
-        for _j in 0..vertex_count {
-            let tx = reader.read_f32::<LittleEndian>().unwrap();
-            let ty = reader.read_f32::<LittleEndian>().unwrap();
-            let nx = reader.read_f32::<LittleEndian>().unwrap();
-            let ny = reader.read_f32::<LittleEndian>().unwrap();
-            let nz = reader.read_f32::<LittleEndian>().unwrap();
-            let px = reader.read_f32::<LittleEndian>().unwrap();
-            let py = reader.read_f32::<LittleEndian>().unwrap();
-            let pz = reader.read_f32::<LittleEndian>().unwrap();
-            vertices.push(CvdVertex {
-                position: Vec3::new(px, pz, -py),
-                normal: Vec3::new(nx, ny, nz),
-                tex_coord: Vec2::new(tx, ty),
-            })
-        }
+    let version = raw::CvdVersion::from_legacy_float(unknown_float);
+    let mesh = raw::read_mesh(reader, version)?;
+    Ok(convert_mesh(mesh))
+}
 
-        frames.push(vertices);
+fn convert_model_node(node: raw::CvdModelNode) -> CvdModelNode {
+    let model = node.model.map(convert_model);
+    let children = if node.children.is_empty() {
+        None
+    } else {
+        Some(node.children.into_iter().map(convert_model_node).collect())
+    };
+
+    CvdModelNode { model, children }
+}
+
+fn convert_model(model: raw::CvdModel) -> CvdModel {
+    CvdModel {
+        // The neutral parser only distinguishes "model present"/"absent" on
+        // disk (any non-zero byte means "present"); `1` matches what every
+        // observed file uses.
+        unknown_byte: 1,
+        scale_factor: model.scale_factor,
+        position_keyframes: model.position_keyframes.map(convert_position_keyframes),
+        rotation_keyframes: model.rotation_keyframes.map(convert_rotation_keyframes),
+        scale_keyframes: model.scale_keyframes.map(convert_scale_keyframes),
+        mesh: convert_mesh(model.mesh),
     }
+}
 
-    let mut unknown_data = vec![0f32; frame_count as usize];
-    reader
-        .read_f32_into::<LittleEndian>(unknown_data.as_mut_slice())
-        .unwrap();
+fn convert_mesh(mesh: raw::CvdMesh) -> CvdMesh {
+    let frames = mesh
+        .frames
+        .into_iter()
+        .map(|frame| frame.into_iter().map(convert_vertex).collect())
+        .collect();
 
-    let material_count = reader.read_u32::<LittleEndian>().unwrap();
-    let mut materials = vec![];
-    for _i in 0..material_count {
-        let unknown_byte = reader.read_u8().unwrap();
-        let color1 = reader.read_u32::<LittleEndian>().unwrap();
-        let color2 = reader.read_u32::<LittleEndian>().unwrap();
-        let color3 = reader.read_u32::<LittleEndian>().unwrap();
-        let color4 = reader.read_u32::<LittleEndian>().unwrap();
-        let _unknown_float2 = reader.read_f32::<LittleEndian>().unwrap();
-        let name = reader.read_u8_vec(64).unwrap();
-        let texture_name = encoding::all::GBK
-            .decode(
-                &name
-                    .into_iter()
-                    .take_while(|&c| c != 0)
-                    .collect::<Vec<u8>>(),
-                DecoderTrap::Ignore,
-            )
-            .unwrap();
+    let materials = mesh.materials.into_iter().map(convert_material).collect();
 
-        let triangle_count = reader.read_u32::<LittleEndian>().unwrap();
-        let mut triangles = None;
-        if triangle_count > 0 {
-            triangles = Some(vec![]);
-            for _j in 0..triangle_count {
-                let index1 = reader.read_u16::<LittleEndian>().unwrap();
-                let index2 = reader.read_u16::<LittleEndian>().unwrap();
-                let index3 = reader.read_u16::<LittleEndian>().unwrap();
-                triangles.as_mut().unwrap().push(CvdTriangle {
-                    indices: [index1, index2, index3],
-                })
-            }
-        }
-
-        if unknown_float >= 0.5 {
-            let unknown_data2_count = reader.read_u32::<LittleEndian>().unwrap();
-            if unknown_data2_count > 0 {
-                for _k in 0..unknown_data2_count {
-                    let _ = reader.read_u32::<LittleEndian>().unwrap();
-                }
-
-                for _k in 0..unknown_data2_count {
-                    let _ = reader.read_u8_vec(20);
-                }
-            }
-        }
-
-        materials.push(CvdMaterial {
-            unknown_byte,
-            color1,
-            color2,
-            color3,
-            color4,
-            texture_name,
-            triangle_count,
-            triangles,
-        });
-    }
-
-    Ok(CvdMesh {
-        frame_count,
-        vertex_count,
+    CvdMesh {
+        frame_count: mesh.frame_count,
+        vertex_count: mesh.vertex_count,
         frames,
-        unknown_data,
-        material_count,
+        unknown_data: mesh.frame_extra,
+        material_count: mesh.material_count,
         materials,
-    })
+    }
 }
 
-fn read_position_keyframes(reader: &mut dyn Read) -> Option<CvdPositionKeyFrames> {
-    let count = reader.read_i32::<LittleEndian>().unwrap();
-    if count <= 0 {
-        return None;
+fn convert_vertex(v: raw::CvdVertex) -> CvdVertex {
+    let [px, py, pz] = v.position;
+    let [nx, ny, nz] = v.normal;
+    CvdVertex {
+        position: Vec3::new(px, pz, -py),
+        normal: Vec3::new(nx, ny, nz),
+        tex_coord: Vec2::new(v.tex_coord.u, v.tex_coord.v),
     }
-
-    let version = reader.read_u8().unwrap();
-    let mut frames = vec![];
-    for _i in 0..count {
-        let timestamp = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown1 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown2 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown3 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown4 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown5 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown6 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown7 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown8 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown9 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown10 = reader.read_f32::<LittleEndian>().unwrap();
-
-        let mut position;
-        match version {
-            1 => position = Vec3::new(unknown7, unknown8, unknown9),
-            2 => position = Vec3::new(unknown8, unknown9, unknown10),
-            3 => position = Vec3::new(unknown2, unknown3, unknown4),
-            _ => panic!("Unsupported position key frames version: {}", version),
-        }
-
-        std::mem::swap(&mut position.y, &mut position.z);
-        position.z = -position.z;
-
-        frames.push(CvdPositionKeyFrame {
-            timestamp,
-            position,
-            unknown1,
-            unknown2,
-            unknown3,
-            unknown4,
-            unknown5,
-            unknown6,
-            unknown7,
-            unknown8,
-            unknown9,
-            unknown10,
-        })
-    }
-
-    Some(CvdPositionKeyFrames { version, frames })
 }
 
-fn read_rotation_keyframes(reader: &mut dyn Read) -> Option<CvdRotationKeyFrames> {
-    let count = reader.read_i32::<LittleEndian>().unwrap();
-    if count <= 0 {
-        return None;
+fn convert_material(m: raw::CvdMaterial) -> CvdMaterial {
+    let triangles = if m.triangle_count > 0 {
+        Some(
+            m.triangles
+                .into_iter()
+                .map(|t| CvdTriangle { indices: t.indices })
+                .collect(),
+        )
+    } else {
+        None
+    };
+
+    CvdMaterial {
+        unknown_byte: m.unknown_byte,
+        color1: m.color1,
+        color2: m.color2,
+        color3: m.color3,
+        color4: m.color4,
+        texture_name: m.texture_name,
+        triangle_count: m.triangle_count,
+        triangles,
     }
-
-    let version = reader.read_u8().unwrap();
-    let mut frames = vec![];
-    for _i in 0..count {
-        let timestamp = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown1 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown2 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown3 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown4 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown5 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown6 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown7 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown8 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown9 = reader.read_f32::<LittleEndian>().unwrap();
-        let unknown10 = reader.read_f32::<LittleEndian>().unwrap();
-
-        let mut quaternion;
-        match version {
-            1 => {
-                quaternion =
-                    Quaternion::from_axis_angle(&Vec3::new(unknown7, unknown8, unknown9), unknown10)
-            }
-            2 | 3 => quaternion = Quaternion::new(unknown2, unknown3, unknown4, unknown5),
-            _ => panic!("Unsupported position key frames version: {}", version),
-        }
-
-        std::mem::swap(&mut quaternion.y, &mut quaternion.z);
-        quaternion.z = -quaternion.z;
-        // CVD stores node rotations in the opposite handedness from radiance's
-        // quaternion convention, so the basis-changed quaternion must be
-        // inverted to rotate meshes the correct way. Without this, any node
-        // whose rotation is not a 180° turn (which is inversion-invariant) is
-        // mis-oriented — e.g. the Q01/Y back-door leaves end up rotated so
-        // their bottom edge floats ~30 units above the threshold instead of
-        // resting on it.
-        quaternion.inverse();
-
-        frames.push(CvdRotationKeyFrame {
-            timestamp,
-            quaternion,
-            unknown1,
-            unknown2,
-            unknown3,
-            unknown4,
-            unknown5,
-            unknown6,
-            unknown7,
-            unknown8,
-            unknown9,
-            unknown10,
-        })
-    }
-
-    Some(CvdRotationKeyFrames { version, frames })
 }
 
-fn read_scale_keyframes(reader: &mut dyn Read) -> Option<CvdScaleKeyFrames> {
-    let count = reader.read_i32::<LittleEndian>().unwrap();
-    if count <= 0 {
-        return None;
-    }
+fn convert_position_keyframes(kf: raw::CvdPositionKeyFrames) -> CvdPositionKeyFrames {
+    let version = kf.version;
+    let frames = kf
+        .frames
+        .into_iter()
+        .map(|f| {
+            let u = f.unknown;
+            let mut position = match version {
+                1 => Vec3::new(u[6], u[7], u[8]),
+                2 => Vec3::new(u[7], u[8], u[9]),
+                3 => Vec3::new(u[1], u[2], u[3]),
+                _ => panic!("Unsupported position key frames version: {}", version),
+            };
 
-    let version = reader.read_u8().unwrap();
-    let mut frames = vec![];
-    for _i in 0..count {
-        let timestamp = reader.read_f32::<LittleEndian>().unwrap();
-        let mut unknown = [0f32; 14];
-        reader.read_f32_into::<LittleEndian>(&mut unknown).unwrap();
+            std::mem::swap(&mut position.y, &mut position.z);
+            position.z = -position.z;
 
-        let mut quaternion;
-        let mut scale;
-        match version {
-            1 => {
-                quaternion = Quaternion::new(unknown[9], unknown[10], unknown[11], unknown[12]);
-                scale = Vec3::new(unknown[6], unknown[7], unknown[8]);
+            CvdPositionKeyFrame {
+                timestamp: f.timestamp,
+                position,
+                unknown1: u[0],
+                unknown2: u[1],
+                unknown3: u[2],
+                unknown4: u[3],
+                unknown5: u[4],
+                unknown6: u[5],
+                unknown7: u[6],
+                unknown8: u[7],
+                unknown9: u[8],
+                unknown10: u[9],
             }
-            2 => {
-                quaternion = Quaternion::new(unknown[10], unknown[11], unknown[12], unknown[13]);
-                scale = Vec3::new(unknown[7], unknown[8], unknown[9]);
-            }
-            3 => {
-                quaternion = Quaternion::new(unknown[4], unknown[5], unknown[6], unknown[7]);
-                scale = Vec3::new(unknown[1], unknown[2], unknown[3]);
-            }
-            _ => panic!("Unsupported position key frames version: {}", version),
-        }
-
-        std::mem::swap(&mut quaternion.y, &mut quaternion.z);
-        quaternion.z = -quaternion.z;
-        std::mem::swap(&mut scale.y, &mut scale.z);
-        // scale.z = -scale.z;
-
-        frames.push(CvdScaleKeyFrame {
-            timestamp,
-            quaternion,
-            scale,
-            unknown,
         })
-    }
+        .collect();
 
-    Some(CvdScaleKeyFrames { version, frames })
+    CvdPositionKeyFrames { version, frames }
+}
+
+fn convert_rotation_keyframes(kf: raw::CvdRotationKeyFrames) -> CvdRotationKeyFrames {
+    let version = kf.version;
+    let frames = kf
+        .frames
+        .into_iter()
+        .map(|f| {
+            let u = f.unknown;
+            let mut quaternion = match version {
+                1 => Quaternion::from_axis_angle(&Vec3::new(u[6], u[7], u[8]), u[9]),
+                2 | 3 => Quaternion::new(u[1], u[2], u[3], u[4]),
+                _ => panic!("Unsupported position key frames version: {}", version),
+            };
+
+            std::mem::swap(&mut quaternion.y, &mut quaternion.z);
+            quaternion.z = -quaternion.z;
+            // CVD stores node rotations in the opposite handedness from radiance's
+            // quaternion convention, so the basis-changed quaternion must be
+            // inverted to rotate meshes the correct way. Without this, any node
+            // whose rotation is not a 180° turn (which is inversion-invariant) is
+            // mis-oriented — e.g. the Q01/Y back-door leaves end up rotated so
+            // their bottom edge floats ~30 units above the threshold instead of
+            // resting on it.
+            quaternion.inverse();
+
+            CvdRotationKeyFrame {
+                timestamp: f.timestamp,
+                quaternion,
+                unknown1: u[0],
+                unknown2: u[1],
+                unknown3: u[2],
+                unknown4: u[3],
+                unknown5: u[4],
+                unknown6: u[5],
+                unknown7: u[6],
+                unknown8: u[7],
+                unknown9: u[8],
+                unknown10: u[9],
+            }
+        })
+        .collect();
+
+    CvdRotationKeyFrames { version, frames }
+}
+
+fn convert_scale_keyframes(kf: raw::CvdScaleKeyFrames) -> CvdScaleKeyFrames {
+    let version = kf.version;
+    let frames = kf
+        .frames
+        .into_iter()
+        .map(|f| {
+            let unknown = f.unknown;
+            let (mut quaternion, mut scale) = match version {
+                1 => (
+                    Quaternion::new(unknown[9], unknown[10], unknown[11], unknown[12]),
+                    Vec3::new(unknown[6], unknown[7], unknown[8]),
+                ),
+                2 => (
+                    Quaternion::new(unknown[10], unknown[11], unknown[12], unknown[13]),
+                    Vec3::new(unknown[7], unknown[8], unknown[9]),
+                ),
+                3 => (
+                    Quaternion::new(unknown[4], unknown[5], unknown[6], unknown[7]),
+                    Vec3::new(unknown[1], unknown[2], unknown[3]),
+                ),
+                _ => panic!("Unsupported position key frames version: {}", version),
+            };
+
+            std::mem::swap(&mut quaternion.y, &mut quaternion.z);
+            quaternion.z = -quaternion.z;
+            std::mem::swap(&mut scale.y, &mut scale.z);
+            // scale.z = -scale.z;
+
+            CvdScaleKeyFrame {
+                timestamp: f.timestamp,
+                quaternion,
+                scale,
+                unknown,
+            }
+        })
+        .collect();
+
+    CvdScaleKeyFrames { version, frames }
 }

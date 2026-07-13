@@ -18,7 +18,8 @@ fn run(src: &str, recorder: &RecordingUiHost, ui_com: crosscom::ComRc<radiance::
     let ui_box = host
         .foreign_box("radiance.comdef.IUiHost", com_id)
         .expect("ui foreign box");
-    host.call_returning_data("entry", vec![ui_box]).expect("entry runs");
+    host.call_returning_data("entry", vec![ui_box])
+        .expect("entry runs");
 }
 
 // `ListView(3, builder)` over a 300px-tall viewport => 3 rows of 100px each

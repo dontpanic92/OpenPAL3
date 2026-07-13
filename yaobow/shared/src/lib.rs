@@ -10,6 +10,7 @@ pub mod comdef {
 }
 pub mod config_service;
 pub mod exporters;
+pub mod importers;
 pub mod loaders;
 pub mod openpal3;
 pub mod openpal4;

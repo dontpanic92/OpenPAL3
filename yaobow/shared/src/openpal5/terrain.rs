@@ -186,8 +186,7 @@ fn build_group_geometry(
     let mut normals = Vec::new();
     let mut texcoords = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
-    let mut atlas =
-        RgbaImage::from_pixel(ATLAS_EDGE as u32, ATLAS_EDGE as u32, Rgba([0, 0, 0, 0]));
+    let mut atlas = RgbaImage::from_pixel(ATLAS_EDGE as u32, ATLAS_EDGE as u32, Rgba([0, 0, 0, 0]));
 
     for &pi in patch_idxs {
         let patch = &mp.patches[pi];

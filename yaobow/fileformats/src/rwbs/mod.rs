@@ -13,7 +13,7 @@ pub mod world;
 use std::io::{Cursor, Read};
 
 use binrw::{BinRead, BinResult, binrw};
-use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
+use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use clump::Clump;
 use common::read_ext::ReadExt;
 use serde::Serialize;
@@ -121,6 +121,28 @@ fn float_parser(half_float: bool) -> BinResult<f32> {
     }
 }
 
+/// Mirrors [`float_parser`] for writing: encodes as a half-float (`f16`) or
+/// a regular `f32` depending on `half_float`, matching the on-disk layout
+/// produced by the reader exactly.
+#[binrw::writer(writer, endian)]
+fn float_writer(value: &f32, half_float: bool) -> BinResult<()> {
+    if half_float {
+        let bits = half::f16::from_f32(*value).to_bits();
+        if endian == binrw::Endian::Little {
+            writer.write_u16::<LittleEndian>(bits)?;
+        } else {
+            writer.write_u16::<BigEndian>(bits)?;
+        }
+    } else {
+        if endian == binrw::Endian::Little {
+            writer.write_f32::<LittleEndian>(*value)?;
+        } else {
+            writer.write_f32::<BigEndian>(*value)?;
+        }
+    }
+    Ok(())
+}
+
 #[binrw]
 #[brw(little)]
 #[brw(import{half_float: bool = false})]
@@ -150,14 +172,20 @@ pub struct Vec4f {
 pub struct Vec3f {
     #[br(parse_with = float_parser)]
     #[br(args(half_float))]
+    #[bw(write_with = float_writer)]
+    #[bw(args(half_float))]
     pub x: f32,
 
     #[br(parse_with = float_parser)]
     #[br(args(half_float))]
+    #[bw(write_with = float_writer)]
+    #[bw(args(half_float))]
     pub y: f32,
 
     #[br(parse_with = float_parser)]
     #[br(args(half_float))]
+    #[bw(write_with = float_writer)]
+    #[bw(args(half_float))]
     pub z: f32,
 }
 

@@ -19,6 +19,8 @@ import yaobow_editor.scene_outline;
 import yaobow_editor.inspector;
 import yaobow_editor.editor_consts;
 import yaobow_editor.theme_menu;
+import yaobow_editor.project_panel;
+import yaobow_editor.import_wizard;
 
 pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
@@ -30,6 +32,11 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
     pub preview_intents: box<array<int>>,
     pub scene_open_intents: box<array<int>>,
     pub resources_state: box<resources_panel.ResourcesPanelState>,
+    pub project_panel: box<project_panel.ProjectPanelState>,
+    pub import_wizard: box<import_wizard.ImportWizardState>,
+    // Model-tab "Import glTF (Replace)..." intents: vfs paths to open
+    // the wizard against, drained (one per frame, last wins) by `update`.
+    pub import_replace_intents: box<array<string>>,
     // Mutable UI state. `refmut self` interface methods (and free helpers taking
     // `refmut<MainEditorDirector>`) mutate these flat fields directly.
     pub layout: editor_consts.EditorLayout,
@@ -41,6 +48,8 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
     pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.main_menu_bar(() => {
             theme_menu.render_theme_menu(ui, self.host.config());
+            project_panel.render_project_menu(ui, self.host, self.project_panel);
+            render_import_menu(ui, self);
             render_layout_tabs(ui, self);
         });
 
@@ -52,6 +61,8 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
                 render_scene_layout(ui, self);
             },
         }
+        project_panel.render_project_changes_panel(ui, self.host, self.project_panel);
+        import_wizard.render_import_wizard(ui, self.host, self.import_wizard, self.picks);
         0
     }
 
@@ -95,6 +106,15 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
         }
         self.scene_open_intents.clear();
 
+        // "Import glTF (Replace)..." clicked from a model tab: open the
+        // wizard pinned to that tab's vfs path. Only the most recent
+        // intent this frame wins (opening the wizard twice in one frame
+        // isn't meaningful).
+        for path in self.import_replace_intents {
+            import_wizard.open_wizard_for_replace(self.import_wizard, self.host.imports(), path);
+        }
+        self.import_replace_intents.clear();
+
         // Per-frame audio handle pump for the active preview.
         for t in self.preview {
             if t.kind == editor_consts.ContentKind.Audio && t.audio_handle != null {
@@ -109,6 +129,19 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
 
 fn empty_transitions() -> ?box<radiance.IDirector> {
     return null;
+}
+
+// "Import" menu entry, added to the main menu bar alongside "Project".
+// Seeds Replace mode from whatever's currently in the single preview
+// pane (if anything) so the generic entry point still gets a useful
+// starting point; falls back to Add mode when nothing is open.
+fn render_import_menu(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) {
+    ui.menu("Import", () => {
+        if ui.menu_item("Import glTF...", false) {
+            let context_path = preview_selected_path(dir.preview);
+            import_wizard.open_wizard(dir.import_wizard, dir.host.imports(), context_path);
+        }
+    });
 }
 
 // Right-aligned layout selector rendered inside `main_menu_bar`.
@@ -234,7 +267,7 @@ fn render_preview_pane(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) 
     for t in dir.preview {
         any = true;
         content_tabs.render_tab_body_im(
-            ui, t, dir.preview_intents, dir.scene_open_intents, dir.host);
+            ui, t, dir.preview_intents, dir.scene_open_intents, dir.import_replace_intents, dir.host);
     }
     if !any {
         ui.text("选择左侧的资源以预览。");
@@ -267,6 +300,7 @@ pub fn make_main_editor_director(
     let picks: array<string> = [];
     let preview_intents: array<int> = [];
     let scene_open_intents: array<int> = [];
+    let import_replace_intents: array<string> = [];
     return box(MainEditorDirector(
         host,
         box(preview),
@@ -275,6 +309,9 @@ pub fn make_main_editor_director(
         box(preview_intents),
         box(scene_open_intents),
         box(resources_panel.make_resources_state()),
+        box(project_panel.make_project_panel_state()),
+        box(import_wizard.make_import_wizard_state()),
+        box(import_replace_intents),
         editor_consts.EditorLayout.Assets,
         0,
     )) as box<radiance.IDirector>;

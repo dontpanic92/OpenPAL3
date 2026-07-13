@@ -1,11 +1,11 @@
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use common::SeekRead;
 use common::read_ext::ReadExt;
 use encoding::Encoding;
 use std::{
     cell::RefCell,
-    collections::HashMap,
-    io::{Cursor, Read},
+    collections::{HashMap, HashSet},
+    io::{Cursor, Read, Write},
     rc::Rc,
 };
 use std::{clone::Clone, path::Path};
@@ -85,7 +85,12 @@ impl CpkArchive {
     pub fn open_str(&mut self, file_name: &str) -> IoResult<MemoryFile> {
         let file_name = encoding::all::GBK
             .encode(&file_name.to_lowercase(), encoding::EncoderTrap::Strict)
-            .unwrap();
+            .map_err(|_| {
+                IoError::new(
+                    IoErrorKind::InvalidInput,
+                    "CPK path cannot be encoded as GBK",
+                )
+            })?;
         self.open(&file_name)
     }
 
@@ -121,6 +126,70 @@ impl CpkArchive {
 
     pub fn is_pal4(&self) -> bool {
         self.header.data_start == 0x00100080
+    }
+
+    /// Leaf (non-hierarchical) name of every entry, in the same order as
+    /// `self.entries`. This is a thin public wrapper around the private
+    /// name-table reader so tools like [`crate::cpk::CpkRebuilder`] (and
+    /// external patchers built on top of it) don't need to re-implement
+    /// the on-disk name lookup.
+    pub fn file_names(&mut self) -> IoResult<Vec<String>> {
+        Self::read_file_names(&mut self.reader, &self.entries)
+    }
+
+    /// Full, backslash-separated relative path of every entry (in the
+    /// same order as `self.entries`), reconstructed by walking the
+    /// `father_crc` chain up to a root entry. The returned strings use
+    /// the original (non-lowercased) casing of each path component, so
+    /// they are suitable both for display and for feeding back into
+    /// [`Self::open_str`] / CRC computation (after lower-casing).
+    ///
+    /// Orphaned entries (whose `father_crc` doesn't resolve to a known
+    /// entry) are best-effort: the walk simply stops early, matching the
+    /// permissive behavior of [`Self::build_directory`].
+    pub fn full_paths(&mut self) -> IoResult<Vec<String>> {
+        let names = self.file_names()?;
+        let mut paths = Vec::with_capacity(self.entries.len());
+
+        for start in 0..self.entries.len() {
+            let mut components = vec![];
+            let mut visited = HashSet::new();
+            let mut current = start;
+
+            loop {
+                if !visited.insert(current) || current >= names.len() {
+                    break;
+                }
+
+                components.push(names[current].clone());
+                let father_crc = self.entries[current].father_crc;
+                if father_crc == 0 {
+                    break;
+                }
+
+                match self.crc_to_index.get(&father_crc) {
+                    Some(&parent_index) => current = parent_index,
+                    None => break,
+                }
+            }
+
+            components.reverse();
+            paths.push(components.join("\\"));
+        }
+
+        Ok(paths)
+    }
+
+    /// Reads the raw (still possibly LZO-compressed) bytes of an entry,
+    /// without decompressing. Used by [`crate::cpk::CpkRebuilder`] to copy
+    /// unchanged entries verbatim into a rebuilt package.
+    pub fn read_packed(&mut self, index: usize) -> IoResult<Vec<u8>> {
+        let entry = &self.entries[index];
+        self.reader
+            .seek(std::io::SeekFrom::Start(entry.start_pos as u64))?;
+        let mut content = vec![0; entry.packed_size as usize];
+        self.reader.read_exact(&mut content)?;
+        Ok(content)
     }
 
     fn build_directory_internal(entries: &[CpkTable], file_names: &[String]) -> CpkEntry {
@@ -180,24 +249,15 @@ impl CpkArchive {
     }
 
     fn read_file_names(cursor: &mut dyn SeekRead, entries: &[CpkTable]) -> IoResult<Vec<String>> {
-        let mut names = vec![];
+        let mut names = Vec::with_capacity(entries.len());
         for entry in entries {
             let offset = entry.start_pos + entry.packed_size;
             let length = entry.extra_info_size;
             cursor.seek(std::io::SeekFrom::Start(offset as u64))?;
             let name = cursor
                 .read_gbk_string(length as usize)
-                .or(Err(IoError::from(IoErrorKind::InvalidData)));
-
-            if let Ok(n) = name {
-                names.push(n);
-            } else {
-                log::error!(
-                    "Unable to read file name at offset {} length {}",
-                    offset,
-                    length
-                );
-            }
+                .map_err(|_| IoError::from(IoErrorKind::InvalidData))?;
+            names.push(name);
         }
 
         Ok(names)
@@ -267,18 +327,18 @@ impl CpkHeader {
 
 #[derive(Debug, Clone, Copy)]
 pub struct CpkTable {
-    crc: u32,
-    flag: u32,
-    father_crc: u32,
-    start_pos: u32,
-    packed_size: u32,
-    origin_size: u32,
-    extra_info_size: u32,
+    pub(crate) crc: u32,
+    pub(crate) flag: u32,
+    pub(crate) father_crc: u32,
+    pub(crate) start_pos: u32,
+    pub(crate) packed_size: u32,
+    pub(crate) origin_size: u32,
+    pub(crate) extra_info_size: u32,
 }
 
 #[allow(dead_code)]
 #[derive(Debug)]
-enum CpkTableFlag {
+pub(crate) enum CpkTableFlag {
     None = 0x0,
     IsFile = 0x1,
     IsDir = 0x2,
@@ -322,6 +382,62 @@ impl CpkTable {
 
     pub fn is_dir(&self) -> bool {
         (self.flag & CpkTableFlag::IsDir as u32) != 0
+    }
+
+    /// Builds a table entry for a directory. Used by
+    /// [`crate::cpk::CpkRebuilder`] when synthesizing missing parent
+    /// directories for newly added files.
+    pub(crate) fn new_dir(crc: u32, father_crc: u32, start_pos: u32, extra_info_size: u32) -> Self {
+        CpkTable {
+            crc,
+            flag: CpkTableFlag::IsDir as u32,
+            father_crc,
+            start_pos,
+            packed_size: 0,
+            origin_size: 0,
+            extra_info_size,
+        }
+    }
+
+    /// Builds a table entry for a (possibly compressed) file. Used by
+    /// [`crate::cpk::CpkRebuilder`].
+    pub(crate) fn new_file(
+        crc: u32,
+        father_crc: u32,
+        start_pos: u32,
+        packed_size: u32,
+        origin_size: u32,
+        extra_info_size: u32,
+        compressed: bool,
+    ) -> Self {
+        let mut flag = CpkTableFlag::IsFile as u32;
+        if !compressed {
+            flag |= CpkTableFlag::IsNotCompressed as u32;
+        }
+
+        CpkTable {
+            crc,
+            flag,
+            father_crc,
+            start_pos,
+            packed_size,
+            origin_size,
+            extra_info_size,
+        }
+    }
+
+    /// Serializes this entry using the non-PAL4 (28-byte) table layout.
+    /// PAL4 packages use an extra trailing `u32` and encrypted table, which
+    /// [`crate::cpk::CpkRebuilder`] explicitly refuses to write.
+    pub(crate) fn write(&self, writer: &mut dyn Write) -> IoResult<()> {
+        writer.write_u32::<LittleEndian>(self.crc)?;
+        writer.write_u32::<LittleEndian>(self.flag)?;
+        writer.write_u32::<LittleEndian>(self.father_crc)?;
+        writer.write_u32::<LittleEndian>(self.start_pos)?;
+        writer.write_u32::<LittleEndian>(self.packed_size)?;
+        writer.write_u32::<LittleEndian>(self.origin_size)?;
+        writer.write_u32::<LittleEndian>(self.extra_info_size)?;
+        Ok(())
     }
 }
 
@@ -374,5 +490,66 @@ impl CpkEntry {
             }
             None => Ok(self.children.clone()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn unreadable_file_name_fails_without_shifting_entry_alignment() {
+        let mut cursor = Cursor::new(b"second\0".to_vec());
+        let entries = [
+            CpkTable {
+                crc: 0,
+                flag: CpkTableFlag::IsFile as u32,
+                father_crc: 0,
+                start_pos: 1024,
+                packed_size: 0,
+                origin_size: 0,
+                extra_info_size: 8,
+            },
+            CpkTable {
+                crc: 0,
+                flag: CpkTableFlag::IsFile as u32,
+                father_crc: 0,
+                start_pos: 0,
+                packed_size: 0,
+                origin_size: 0,
+                extra_info_size: 7,
+            },
+        ];
+
+        assert!(CpkArchive::read_file_names(&mut cursor, &entries).is_err());
+    }
+
+    #[test]
+    fn non_gbk_path_returns_error_instead_of_panicking() {
+        let mut archive = CpkArchive {
+            reader: Box::new(Cursor::new(Vec::new())),
+            header: CpkHeader {
+                label: 0,
+                version: 0,
+                table_start: 0,
+                data_start: 0,
+                max_file_num: 0,
+                file_num: 0,
+                is_formatted: 0,
+                size_of_header: 0,
+                valid_table_num: 0,
+                max_table_num: 0,
+                fragment_num: 0,
+                package_size: 0,
+                reserved: [0; 20],
+            },
+            entries: Vec::new(),
+            crc_to_index: HashMap::new(),
+            lzo: minilzo_rs::LZO::init().unwrap(),
+        };
+
+        let error = archive.open_str("emoji-\u{1f600}.mv3").err().unwrap();
+        assert_eq!(error.kind(), IoErrorKind::InvalidInput);
     }
 }

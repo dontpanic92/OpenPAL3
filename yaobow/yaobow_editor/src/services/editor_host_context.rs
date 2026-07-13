@@ -4,10 +4,12 @@
 //! frame.
 
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use crosscom::ComRc;
 use mini_fs::MiniFs;
+use packfs::AssetCatalog;
 use radiance::audio::AudioEngine;
 use radiance::comdef::ISceneManager;
 use radiance::input::InputEngine;
@@ -21,11 +23,16 @@ use radiance_scripting::services::{
     ScriptedRenderTarget, TextureService, VfsService,
 };
 
-use crate::comdef::editor_services::{IEditorHostContext, IEditorHostContextImpl, IPreviewerHub};
+use crate::comdef::editor_services::{
+    IEditorHostContext, IEditorHostContextImpl, IImportService, IPreviewerHub, IProjectService,
+};
 use crate::comdef::services::IHostContextImpl;
 use crate::directors::DevToolsAssetLoader;
+use crate::services::import_service::ImportService;
 use crate::services::preview_registry::PreviewRegistry;
 use crate::services::previewer_hub::PreviewerHub;
+use crate::services::project_overlay::{self, SharedOverlayIndex};
+use crate::services::project_service::ProjectService;
 use shared::GameType;
 
 pub struct EditorHostContext {
@@ -39,6 +46,8 @@ pub struct EditorHostContext {
     random: ComRc<IRandomService>,
     config: ComRc<IConfigService>,
     previewers: ComRc<IPreviewerHub>,
+    project: ComRc<IProjectService>,
+    imports: ComRc<IImportService>,
 
     factory: Rc<dyn ComponentFactory>,
     texture_cache: Rc<RefCell<ImguiTextureCache>>,
@@ -51,6 +60,12 @@ ComObject_EditorHostContext!(super::EditorHostContext);
 impl EditorHostContext {
     /// Builds an editor host context for the welcome page (no game open
     /// yet — `previewers` is wired against an empty VFS and is a no-op).
+    /// `project` is likewise bound to an empty VFS/catalog: it will
+    /// reject `create_project`/`open_project` calls (via
+    /// `open_project`'s game/base-path validation) until a real game is
+    /// opened and a fresh `IEditorHostContext` replaces this one — see
+    /// `AppService::open_game`, which is the only place the "Project"
+    /// menu is wired up (welcome page has no such menu).
     pub fn create_welcome(
         scene_manager: ComRc<ISceneManager>,
         audio_engine: Rc<dyn AudioEngine>,
@@ -77,6 +92,19 @@ impl EditorHostContext {
             cache.clone(),
             preview_registry.clone(),
         );
+        let project = ProjectService::create(
+            GameType::PAL3,
+            PathBuf::new(),
+            vfs.clone(),
+            Rc::new(AssetCatalog::new(PathBuf::new())),
+            project_overlay::new_shared_overlay_index(),
+            previewers.clone(),
+        );
+        let imports = ImportService::create(
+            vfs.clone(),
+            Rc::new(AssetCatalog::new(PathBuf::new())),
+            project.0.clone(),
+        );
 
         Self::create(
             scene_manager,
@@ -87,6 +115,8 @@ impl EditorHostContext {
             app,
             config,
             previewers,
+            project.1,
+            imports,
             cache,
             rendering_engine,
             preview_registry,
@@ -94,6 +124,7 @@ impl EditorHostContext {
     }
 
     /// Builds an editor host context for a specific opened game.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_for_game(
         scene_manager: ComRc<ISceneManager>,
         audio_engine: Rc<dyn AudioEngine>,
@@ -106,6 +137,9 @@ impl EditorHostContext {
         asset_loader: DevToolsAssetLoader,
         game_type: GameType,
         rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
+        catalog: Rc<AssetCatalog>,
+        overlay: SharedOverlayIndex,
+        base_asset_root: PathBuf,
     ) -> ComRc<IEditorHostContext> {
         let preview_registry = Rc::new(PreviewRegistry::new());
         let previewers = PreviewerHub::create(
@@ -119,6 +153,15 @@ impl EditorHostContext {
             cache.clone(),
             preview_registry.clone(),
         );
+        let project = ProjectService::create(
+            game_type,
+            base_asset_root,
+            vfs.clone(),
+            catalog.clone(),
+            overlay,
+            previewers.clone(),
+        );
+        let imports = ImportService::create(vfs.clone(), catalog, project.0.clone());
         Self::create(
             scene_manager,
             audio_engine,
@@ -128,6 +171,8 @@ impl EditorHostContext {
             app,
             config,
             previewers,
+            project.1,
+            imports,
             cache,
             rendering_engine,
             preview_registry,
@@ -144,6 +189,8 @@ impl EditorHostContext {
         app: ComRc<IAppService>,
         config: ComRc<IConfigService>,
         previewers: ComRc<IPreviewerHub>,
+        project: ComRc<IProjectService>,
+        imports: ComRc<IImportService>,
         cache: Rc<RefCell<ImguiTextureCache>>,
         rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
         preview_registry: Rc<PreviewRegistry>,
@@ -159,6 +206,8 @@ impl EditorHostContext {
             random: RandomService::create(),
             config,
             previewers,
+            project,
+            imports,
             factory,
             texture_cache: cache,
             rendering_engine,
@@ -200,6 +249,14 @@ impl IHostContextImpl for EditorHostContext {
 impl IEditorHostContextImpl for EditorHostContext {
     fn previewers(&self) -> ComRc<IPreviewerHub> {
         self.previewers.clone()
+    }
+
+    fn project(&self) -> ComRc<IProjectService> {
+        self.project.clone()
+    }
+
+    fn imports(&self) -> ComRc<IImportService> {
+        self.imports.clone()
     }
 
     fn new_render_target(&self, w: i32, h: i32) -> ComRc<IRenderTarget> {
