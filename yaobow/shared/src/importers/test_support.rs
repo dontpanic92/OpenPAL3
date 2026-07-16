@@ -33,6 +33,7 @@ pub struct SceneBuilder {
     images: Vec<Value>,
     textures: Vec<Value>,
     animations: Vec<Value>,
+    skins: Vec<Value>,
     asset_extras: Option<Value>,
 }
 
@@ -133,6 +134,58 @@ impl SceneBuilder {
             "componentType": COMPONENT_FLOAT,
             "count": data.len(),
             "type": "VEC4",
+        }));
+        index
+    }
+
+    pub fn add_vec4_f32_attribute(&mut self, data: &[[f32; 4]]) -> usize {
+        let bytes: Vec<u8> = data
+            .iter()
+            .flatten()
+            .flat_map(|f| f.to_le_bytes())
+            .collect();
+        let bv = self.push_buffer_view(&bytes, Some(ARRAY_BUFFER));
+        let index = self.accessors.len();
+        self.accessors.push(json!({
+            "bufferView": bv,
+            "componentType": COMPONENT_FLOAT,
+            "count": data.len(),
+            "type": "VEC4",
+        }));
+        index
+    }
+
+    pub fn add_vec4_u16_attribute(&mut self, data: &[[u16; 4]]) -> usize {
+        let bytes: Vec<u8> = data
+            .iter()
+            .flatten()
+            .flat_map(|value| value.to_le_bytes())
+            .collect();
+        let bv = self.push_buffer_view(&bytes, Some(ARRAY_BUFFER));
+        let index = self.accessors.len();
+        self.accessors.push(json!({
+            "bufferView": bv,
+            "componentType": COMPONENT_U16,
+            "count": data.len(),
+            "type": "VEC4",
+        }));
+        index
+    }
+
+    pub fn add_mat4(&mut self, data: &[[[f32; 4]; 4]]) -> usize {
+        let bytes: Vec<u8> = data
+            .iter()
+            .flatten()
+            .flatten()
+            .flat_map(|value| value.to_le_bytes())
+            .collect();
+        let bv = self.push_buffer_view(&bytes, None);
+        let index = self.accessors.len();
+        self.accessors.push(json!({
+            "bufferView": bv,
+            "componentType": COMPONENT_FLOAT,
+            "count": data.len(),
+            "type": "MAT4",
         }));
         index
     }
@@ -268,17 +321,48 @@ impl SceneBuilder {
         index
     }
 
-    /// Adds an image sourced from a relative file `uri` (no actual file
-    /// needs to exist on disk for [`load_gltf_scene_from`], since only
-    /// the *name* is read, never decoded pixels).
+    pub fn set_node_skin(&mut self, node: usize, skin: usize) {
+        self.nodes[node]["skin"] = json!(skin);
+    }
+
+    pub fn set_mesh_skin_attributes(
+        &mut self,
+        mesh: usize,
+        joints: &[[u16; 4]],
+        weights: &[[f32; 4]],
+    ) {
+        let joints_accessor = self.add_vec4_u16_attribute(joints);
+        let weights_accessor = self.add_vec4_f32_attribute(weights);
+        self.meshes[mesh]["primitives"][0]["attributes"]["JOINTS_0"] = json!(joints_accessor);
+        self.meshes[mesh]["primitives"][0]["attributes"]["WEIGHTS_0"] = json!(weights_accessor);
+    }
+
+    pub fn add_skin(
+        &mut self,
+        joints: &[usize],
+        inverse_bind_matrices: Option<&[[[f32; 4]; 4]]>,
+        skeleton: Option<usize>,
+    ) -> usize {
+        let mut skin = json!({ "joints": joints });
+        if let Some(matrices) = inverse_bind_matrices {
+            skin["inverseBindMatrices"] = json!(self.add_mat4(matrices));
+        }
+        if let Some(skeleton) = skeleton {
+            skin["skeleton"] = json!(skeleton);
+        }
+        let index = self.skins.len();
+        self.skins.push(skin);
+        index
+    }
+
+    /// Adds an image sourced from a relative file `uri`.
     pub fn add_image_uri(&mut self, uri: &str) -> usize {
         let index = self.images.len();
         self.images.push(json!({ "uri": uri }));
         index
     }
 
-    /// Adds a `bufferView`-embedded image (no on-disk name at all) —
-    /// exercises [`super::loader`]'s placeholder-name/diagnostic path.
+    /// Adds a `bufferView`-embedded image (no on-disk name at all).
     pub fn add_image_embedded(&mut self, bytes: &[u8], mime_type: &str) -> usize {
         let bv = self.push_buffer_view(bytes, None);
         let index = self.images.len();
@@ -325,7 +409,8 @@ impl SceneBuilder {
     /// Adds a TRS animation channel/sampler targeting `node`.
     /// `path` is `"translation"`/`"rotation"`/`"scale"`; `values` holds
     /// one `[f32; N]` array (flattened) per keyframe (3 components for
-    /// translation/scale, 4 for rotation) matching `times.len()`.
+    /// translation/scale, 4 for rotation). CUBICSPLINE supplies three arrays
+    /// per keyframe: in tangent, value, out tangent.
     pub fn add_trs_animation(
         &mut self,
         node: usize,
@@ -337,13 +422,18 @@ impl SceneBuilder {
         let input = self.add_scalar_f32(times);
         let bytes: Vec<u8> = values_flat.iter().flat_map(|f| f.to_le_bytes()).collect();
         let bv = self.push_buffer_view(&bytes, None);
-        let component_count = values_flat.len() / times.len();
+        let output_count = if interpolation == "CUBICSPLINE" {
+            times.len() * 3
+        } else {
+            times.len()
+        };
+        let component_count = values_flat.len() / output_count;
         let ty = if component_count == 4 { "VEC4" } else { "VEC3" };
         let output_index = self.accessors.len();
         self.accessors.push(json!({
             "bufferView": bv,
             "componentType": COMPONENT_FLOAT,
-            "count": times.len(),
+            "count": output_count,
             "type": ty,
         }));
         let sampler =
@@ -382,6 +472,7 @@ impl SceneBuilder {
             "images": self.images,
             "textures": self.textures,
             "animations": self.animations,
+            "skins": self.skins,
             "scenes": [{ "nodes": scene_roots }],
             "scene": 0,
         });

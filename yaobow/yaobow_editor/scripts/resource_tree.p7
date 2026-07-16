@@ -22,6 +22,39 @@
 import scripting_services;
 import radiance;
 import yaobow_editor.icons;
+import yaobow_editor.yaobow_editor_services;
+
+pub let CHANGE_ADD: int = 0;
+pub let CHANGE_REPLACE: int = 1;
+
+pub fn tree_leaf_for_change(
+    ui: box<radiance.IUiHost>,
+    label: string,
+    selected: bool,
+    change_kind: int,
+) -> bool {
+    if change_kind == CHANGE_ADD {
+        return ui.tree_leaf_colored(label, selected, 0.35, 0.85, 0.45, 1.0);
+    }
+    if change_kind == CHANGE_REPLACE {
+        return ui.tree_leaf_colored(label, selected, 1.0, 0.62, 0.20, 1.0);
+    }
+    return ui.tree_leaf(label, selected);
+}
+
+pub fn tree_node_open_for_change(
+    ui: box<radiance.IUiHost>,
+    label: string,
+    change_kind: int,
+) -> bool {
+    if change_kind == CHANGE_ADD {
+        return ui.tree_node_open_colored(label, 0.35, 0.85, 0.45, 1.0);
+    }
+    if change_kind == CHANGE_REPLACE {
+        return ui.tree_node_open_colored(label, 1.0, 0.62, 0.20, 1.0);
+    }
+    return ui.tree_node_open(label);
+}
 
 fn join_tree_path(parent: string, name: string) -> string {
     if parent == "/" {
@@ -33,6 +66,7 @@ fn join_tree_path(parent: string, name: string) -> string {
 fn render_tree_dir(
     ui: box<radiance.IUiHost>,
     vfs: box<scripting_services.IVfsService>,
+    project: box<yaobow_editor_services.IProjectService>,
     path: string,
     picks: box<array<string>>,
     selected_path: string,
@@ -52,10 +86,11 @@ fn render_tree_dir(
     // subdir pays the recursion cost.
     for i in Range(0, dirs) {
         let name = vfs.entry_name(path, i);
+        let expanded_path = join_tree_path(path, name);
         let label = f"{icons.ICON_FOLDER}  {name}";
-        if ui.tree_node_open(label) {
-            let expanded_path = join_tree_path(path, name);
-            render_tree_dir(ui, vfs, expanded_path, picks, selected_path);
+        let change_kind = project.descendant_change_kind(expanded_path);
+        if tree_node_open_for_change(ui, label, change_kind) {
+            render_tree_dir(ui, vfs, project, expanded_path, picks, selected_path);
             ui.tree_pop();
         }
     }
@@ -73,7 +108,8 @@ fn render_tree_dir(
         let name = vfs.entry_name(leaf_path, leaf_base + k);
         let child_path = join_tree_path(leaf_path, name);
         let label = f"{icons.ICON_FILE}  {name}";
-        if ui.tree_leaf(label, child_path == selected_path) {
+        let change_kind = project.asset_change_kind(child_path);
+        if tree_leaf_for_change(ui, label, child_path == selected_path, change_kind) {
             picks.push(child_path);
         }
     });
@@ -82,8 +118,9 @@ fn render_tree_dir(
 pub fn render_resource_tree_im(
     ui: box<radiance.IUiHost>,
     vfs: box<scripting_services.IVfsService>,
+    project: box<yaobow_editor_services.IProjectService>,
     picks: box<array<string>>,
     selected_path: string,
 ) {
-    render_tree_dir(ui, vfs, "/", picks, selected_path);
+    render_tree_dir(ui, vfs, project, "/", picks, selected_path);
 }

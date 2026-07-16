@@ -47,7 +47,7 @@ env_logger = "0.10"
 # `services::import_service`'s tests (mirroring
 # `shared::importers::test_support`, which is private to `shared` and
 # not reusable here); not a runtime dependency of the editor itself.
-gltf = { version = "1.4", default-features = false, features = ["utils", "extras"] }
+gltf = { version = "1.4", default-features = false, features = ["utils", "extras", "KHR_materials_pbrSpecularGlossiness"] }
 # Only used by `services::import_service`'s "template replacement"
 # test to build a minimal on-disk `.zip` package that
 # `packfs::init_virtual_fs_with_catalog` can mount (giving the test a

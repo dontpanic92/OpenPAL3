@@ -35,7 +35,7 @@ mod comdef {
 
 /// Minimal probe script exercising `import_wizard.p7` without pulling
 /// in the rest of `main_editor.p7`. Exposes the wizard's entry points
-/// as top-level `init_generic`/`init_replace` constructors (rather
+/// as top-level `init_add`/`init_replace` constructors (rather
 /// than instance methods — see `Harness.render`'s doc comment) so the
 /// Rust test harness can drive them the same way `main_editor.p7`
 /// does, and repurposes `render`'s `int` return to report the current
@@ -45,6 +45,8 @@ const PROBE_SRC: &str = r#"
 import radiance;
 import yaobow_editor.yaobow_editor_services;
 import yaobow_editor.import_wizard;
+import yaobow_editor.main_editor;
+import yaobow_editor.content_tabs;
 
 pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
@@ -75,8 +77,8 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
 // closed by default, "already open" against whatever the service's
 // current state already is (for tests that pre-configure the service
 // directly, mirroring mid-flow usage rather than a fresh open), the
-// generic "Project > Import glTF..." entry (optionally seeded from a
-// current-preview context path), and the model/resource-context
+// fixed Add entry seeded from a current-preview context path, and the
+// model/resource-context
 // "Import glTF (Replace)..." entry.
 pub fn init(host: box<yaobow_editor_services.IEditorHostContext>) -> box<radiance.IDirector> {
     let picks: array<string> = [];
@@ -90,13 +92,13 @@ pub fn init_shown(host: box<yaobow_editor_services.IEditorHostContext>) -> box<r
     return box(Harness(host, state, box(picks)));
 }
 
-pub fn init_generic(
+pub fn init_add(
     host: box<yaobow_editor_services.IEditorHostContext>,
     context_vfs_path: string,
 ) -> box<radiance.IDirector> {
     let picks: array<string> = [];
     let state = box(import_wizard.make_import_wizard_state());
-    import_wizard.open_wizard(state, host.imports(), context_vfs_path);
+    import_wizard.open_wizard_for_add(state, host.imports(), context_vfs_path);
     return box(Harness(host, state, box(picks)));
 }
 
@@ -108,6 +110,36 @@ pub fn init_replace(
     let state = box(import_wizard.make_import_wizard_state());
     import_wizard.open_wizard_for_replace(state, host.imports(), vfs_path);
     return box(Harness(host, state, box(picks)));
+}
+
+pub fn render_menu_import_entry(
+    ui: box<radiance.IUiHost>,
+    host: box<yaobow_editor_services.IEditorHostContext>,
+    context_vfs_path: string,
+) -> int {
+    let state = box(import_wizard.make_import_wizard_state());
+    main_editor.render_import_menu_item(
+        ui,
+        host.project(),
+        host.imports(),
+        state,
+        context_vfs_path,
+    );
+    if state.show {
+        return 1;
+    }
+    return 0;
+}
+
+pub fn render_preview_import_entry(
+    ui: box<radiance.IUiHost>,
+    host: box<yaobow_editor_services.IEditorHostContext>,
+    vfs_path: string,
+) -> int {
+    let intents: array<string> = [];
+    let boxed_intents = box(intents);
+    content_tabs.render_import_replace_button(ui, host.project(), vfs_path, boxed_intents);
+    return boxed_intents.len();
 }
 "#;
 
@@ -351,7 +383,12 @@ fn write_glb_fixture(dir: &Path, name: &str) -> PathBuf {
     path
 }
 
-fn make_project_service(base_asset_root: PathBuf) -> yaobow_editor::services::ProjectService {
+fn make_project_pair(
+    base_asset_root: PathBuf,
+) -> (
+    yaobow_editor::services::ProjectService,
+    ComRc<IProjectService>,
+) {
     let previewers = ComRc::<IPreviewerHub>::from_object(StubPreviewerHub);
     yaobow_editor::services::ProjectService::create(
         shared::GameType::PAL3,
@@ -361,7 +398,10 @@ fn make_project_service(base_asset_root: PathBuf) -> yaobow_editor::services::Pr
         yaobow_editor::services::project_overlay::new_shared_overlay_index(),
         previewers,
     )
-    .0
+}
+
+fn make_project_service(base_asset_root: PathBuf) -> yaobow_editor::services::ProjectService {
+    make_project_pair(base_asset_root).0
 }
 
 fn make_import_service(project: yaobow_editor::services::ProjectService) -> ComRc<IImportService> {
@@ -395,9 +435,17 @@ fn host_foreign_box(
         yaobow_editor::services::project_overlay::new_shared_overlay_index(),
         ComRc::<IPreviewerHub>::from_object(StubPreviewerHub),
     );
+    host_foreign_box_with_project(runtime, project_com, imports)
+}
+
+fn host_foreign_box_with_project(
+    runtime: &radiance_scripting::ScriptHost,
+    project: ComRc<IProjectService>,
+    imports: ComRc<IImportService>,
+) -> Data {
     let host_ctx = ComRc::<IEditorHostContext>::from_object(TestHostContext {
         config: make_config_service(),
-        project: project_com,
+        project,
         imports,
     });
     let host_id = runtime.intern(host_ctx);
@@ -407,6 +455,26 @@ fn host_foreign_box(
             host_id,
         )
         .expect("host foreign box")
+}
+
+fn call_entry(
+    runtime: &radiance_scripting::ScriptHost,
+    name: &str,
+    ui: ComRc<IUiHost>,
+    host: Data,
+    path: &str,
+) -> i64 {
+    let ui_id = runtime.intern(ui);
+    let ui = runtime
+        .foreign_box("radiance.comdef.IUiHost", ui_id)
+        .expect("ui foreign box");
+    match runtime
+        .call_returning_data(name, vec![ui, host, Data::String(Rc::from(path))])
+        .expect("entry runs")
+    {
+        Data::Int(value) => value,
+        other => panic!("expected int result, got {other:?}"),
+    }
 }
 
 /// Wizard closed by default (no context, no entry point taken).
@@ -445,9 +513,8 @@ fn init_env_shown(imports: ComRc<IImportService>) -> Env {
     Env { runtime, handle }
 }
 
-/// Generic "Project > Import glTF..." entry point, optionally seeded
-/// from a current-preview context path (`""` when nothing's open).
-fn init_env_generic(imports: ComRc<IImportService>, context_vfs_path: &str) -> Env {
+/// Fixed Add entry point seeded from the current preview path.
+fn init_env_add(imports: ComRc<IImportService>, context_vfs_path: &str) -> Env {
     let runtime = radiance_scripting::ScriptHost::new();
     runtime.set_script_assets(build_test_assets());
     runtime
@@ -457,10 +524,10 @@ fn init_env_generic(imports: ComRc<IImportService>, context_vfs_path: &str) -> E
     let host = host_foreign_box(&runtime, imports);
     let state = runtime
         .call_returning_data(
-            "init_generic",
+            "init_add",
             vec![host, Data::String(Rc::from(context_vfs_path))],
         )
-        .expect("probe init_generic should run");
+        .expect("probe init_add should run");
     let handle = runtime.root(state);
     Env { runtime, handle }
 }
@@ -525,12 +592,32 @@ fn import_wizard_hidden_by_default_renders_nothing() {
 }
 
 #[test]
-fn import_wizard_shows_mode_and_format_controls_when_opened_generic() {
-    let project = make_project_service(PathBuf::from("/base"));
-    let imports = make_import_service(project);
-    // No current preview context ("") -> opens in Add mode with a
-    // blank target, matching `render_import_menu`'s fallback.
-    let env = init_env_generic(imports, "");
+fn import_wizard_add_entry_uses_preview_parent_and_hides_mode_and_outputs() {
+    let root = scratch_dir("add-entry");
+    let pkg_dir = root.join("pkg");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+    {
+        use std::io::Write;
+        let file = std::fs::File::create(pkg_dir.join("data.zip")).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        zip.start_file("models/current.pol", options).unwrap();
+        zip.write_all(b"current model").unwrap();
+        zip.finish().unwrap();
+    }
+
+    let (vfs, catalog) = packfs::init_virtual_fs_with_catalog(&pkg_dir, None);
+    let project = make_project_service(root.join("base"));
+    let imports =
+        yaobow_editor::services::ImportService::create(Rc::new(vfs), Rc::new(catalog), project);
+    let env = init_env_add(imports.clone(), "/data/models/current.pol");
+
+    assert_eq!(imports.mode(), 1);
+    assert_eq!(imports.add_target_package(), "data.zip");
+    assert_eq!(imports.add_target_directory(), "models");
+    assert!(imports.add_to_project_enabled());
+    assert!(!imports.save_to_file_enabled());
 
     let (recorder, ui_com) = RecordingUiHost::create();
     render(&env, ui_com);
@@ -544,8 +631,6 @@ fn import_wizard_shows_mode_and_format_controls_when_opened_generic() {
     );
 
     let expected_tree_leaves = [
-        "Replace an existing asset",
-        "Add a new asset",
         "MV3 (skeletal / character model)",
         "POL (static model)",
         "CVD (prop model)",
@@ -575,14 +660,170 @@ fn import_wizard_shows_mode_and_format_controls_when_opened_generic() {
             "expected a \"{label}\" Button call, got {calls:?}"
         );
     }
-
-    // Add mode is the default fallback with no context path.
+    for label in ["Run", "Cancel", "Close"] {
+        assert!(
+            calls.iter().any(
+                |c| matches!(c, UiCall::Button { label: l, w, h } if l == label && *w == 100.0 && *h == 28.0)
+            ),
+            "expected a consistently sized \"{label}\" button, got {calls:?}"
+        );
+    }
     assert!(
         calls
             .iter()
-            .any(|c| matches!(c, UiCall::Text(s) if s.contains("Target package"))),
-        "expected the Add-mode target-package section, got {calls:?}"
+            .any(|c| matches!(c, UiCall::Text(s) if s == "Target package: data.zip")),
+        "expected the derived package, got {calls:?}"
     );
+    assert!(
+        calls
+            .iter()
+            .any(|c| matches!(c, UiCall::Text(s) if s == "Target directory: models")),
+        "expected the derived directory, got {calls:?}"
+    );
+    assert!(
+        !calls.iter().any(
+            |c| matches!(c, UiCall::TreeLeaf { label, .. } if label == "Replace an existing asset" || label == "Add a new asset")
+        ),
+        "fixed Add entry must omit mode choices, got {calls:?}"
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|c| matches!(c, UiCall::Checkbox { label, .. }
+            if label.contains("active project") || label.contains("disk"))),
+        "editor import must omit output choices, got {calls:?}"
+    );
+}
+
+#[test]
+fn import_entry_points_are_disabled_without_an_active_project_or_preview() {
+    let runtime = radiance_scripting::ScriptHost::new();
+    runtime.set_script_assets(build_test_assets());
+    runtime.load_source(PROBE_SRC).expect("probe compiles");
+
+    let (project, project_com) = make_project_pair(PathBuf::from("/base"));
+    let imports = make_import_service(project);
+    let host = host_foreign_box_with_project(&runtime, project_com, imports);
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder
+        .menu_item_results
+        .borrow_mut()
+        .insert("Import glTF to current folder".to_string(), true);
+    assert_eq!(
+        call_entry(
+            &runtime,
+            "render_menu_import_entry",
+            ui,
+            host,
+            "/data/model.pol",
+        ),
+        0
+    );
+    assert!(recorder.calls.borrow().iter().any(|call| matches!(
+        call,
+        UiCall::MenuItemEnabled { label, enabled: false, .. }
+            if label == "Import glTF to current folder"
+    )));
+
+    let root = scratch_dir("no-preview-entry");
+    let (project, project_com) = make_project_pair(root.join("base"));
+    assert!(project.create_project(root.join("proj").to_str().unwrap()));
+    let imports = make_import_service(project);
+    let host = host_foreign_box_with_project(&runtime, project_com, imports);
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder
+        .menu_item_results
+        .borrow_mut()
+        .insert("Import glTF to current folder".to_string(), true);
+    assert_eq!(
+        call_entry(&runtime, "render_menu_import_entry", ui, host, ""),
+        0
+    );
+    assert!(recorder.calls.borrow().iter().any(|call| matches!(
+        call,
+        UiCall::MenuItemEnabled { label, enabled: false, .. }
+            if label == "Import glTF to current folder"
+    )));
+
+    let (project, project_com) = make_project_pair(PathBuf::from("/base"));
+    let imports = make_import_service(project);
+    let host = host_foreign_box_with_project(&runtime, project_com, imports);
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder
+        .button_results
+        .borrow_mut()
+        .insert("Import glTF (Replace)...".to_string(), true);
+    assert_eq!(
+        call_entry(
+            &runtime,
+            "render_preview_import_entry",
+            ui,
+            host,
+            "/data/model.pol",
+        ),
+        0
+    );
+    assert!(recorder.calls.borrow().iter().any(|call| matches!(
+        call,
+        UiCall::ButtonEnabled { label, enabled: false, .. }
+            if label == "Import glTF (Replace)..."
+    )));
+}
+
+#[test]
+fn import_entry_points_enable_with_an_active_project_and_preview() {
+    let runtime = radiance_scripting::ScriptHost::new();
+    runtime.set_script_assets(build_test_assets());
+    runtime.load_source(PROBE_SRC).expect("probe compiles");
+
+    let root = scratch_dir("enabled-entries");
+    let (project, project_com) = make_project_pair(root.join("base"));
+    assert!(project.create_project(root.join("proj").to_str().unwrap()));
+    let imports = make_import_service(project.clone());
+    let host = host_foreign_box_with_project(&runtime, project_com.clone(), imports);
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder
+        .menu_item_results
+        .borrow_mut()
+        .insert("Import glTF to current folder".to_string(), true);
+    assert_eq!(
+        call_entry(
+            &runtime,
+            "render_menu_import_entry",
+            ui,
+            host,
+            "/data/model.pol",
+        ),
+        1
+    );
+    assert!(recorder.calls.borrow().iter().any(|call| matches!(
+        call,
+        UiCall::MenuItemEnabled { label, enabled: true, .. }
+            if label == "Import glTF to current folder"
+    )));
+
+    let imports = make_import_service(project.clone());
+    let host = host_foreign_box_with_project(&runtime, project_com, imports);
+    let (recorder, ui) = RecordingUiHost::create();
+    recorder
+        .button_results
+        .borrow_mut()
+        .insert("Import glTF (Replace)...".to_string(), true);
+    assert_eq!(
+        call_entry(
+            &runtime,
+            "render_preview_import_entry",
+            ui,
+            host,
+            "/data/model.pol",
+        ),
+        1
+    );
+    assert!(recorder.calls.borrow().iter().any(|call| matches!(
+        call,
+        UiCall::ButtonEnabled { label, enabled: true, .. }
+            if label == "Import glTF (Replace)..."
+    )));
 }
 
 #[test]
@@ -610,7 +851,12 @@ fn import_wizard_replace_entry_point_shows_resolved_target() {
     let project = make_project_service(root.join("base"));
     let imports =
         yaobow_editor::services::ImportService::create(Rc::new(vfs), Rc::new(catalog), project);
-    let env = init_env_replace(imports, "/data/model.pol");
+    let env = init_env_replace(imports.clone(), "/data/model.pol");
+
+    assert_eq!(imports.mode(), 0);
+    assert_eq!(imports.target_format(), 1);
+    assert!(imports.add_to_project_enabled());
+    assert!(!imports.save_to_file_enabled());
 
     let (recorder, ui_com) = RecordingUiHost::create();
     render(&env, ui_com);
@@ -621,6 +867,25 @@ fn import_wizard_replace_entry_point_shows_resolved_target() {
             |c| matches!(c, UiCall::Text(s) if s.contains("Target:") && s.contains("model.pol"))
         ),
         "expected the resolved replace target to be shown, got {calls:?}"
+    );
+    assert!(
+        calls
+            .iter()
+            .any(|c| matches!(c, UiCall::Text(s) if s == "Fixed by replace target: POL")),
+        "expected Replace format to be derived and locked, got {calls:?}"
+    );
+    assert!(
+        !calls.iter().any(
+            |c| matches!(c, UiCall::TreeLeaf { label, .. } if label == "Replace an existing asset" || label == "Add a new asset")
+        ),
+        "fixed Replace entry must omit mode choices, got {calls:?}"
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|c| matches!(c, UiCall::Checkbox { label, .. }
+            if label.contains("active project") || label.contains("disk"))),
+        "fixed Replace entry must omit output choices, got {calls:?}"
     );
 }
 
@@ -669,6 +934,18 @@ fn import_wizard_shows_diagnostics_and_success_status_after_run() {
             .iter()
             .any(|c| matches!(c, UiCall::Text(s) if s.starts_with("Diagnostics:"))),
         "expected the diagnostics-count line, got {calls:?}"
+    );
+    assert!(
+        calls
+            .iter()
+            .any(|c| matches!(c, UiCall::Text(s) if s == "Files to import: 1")),
+        "expected the planned-file summary, got {calls:?}"
+    );
+    assert!(
+        calls
+            .iter()
+            .any(|c| matches!(c, UiCall::ChildWindow { id, .. } if id == "##import_planned_files")),
+        "expected the planned-file list, got {calls:?}"
     );
     assert!(
         out_path.exists(),

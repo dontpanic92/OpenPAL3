@@ -31,13 +31,17 @@ pub mod cvd;
 pub mod mv3;
 pub mod pol;
 
-pub use api::convert_gltf_to_bytes;
+pub use api::{
+    ConvertedTexture, GltfImportBundle, convert_gltf_to_bundle,
+    convert_gltf_to_bundle_in_directory, convert_gltf_to_bytes,
+};
 pub use error::{Diagnostic, Diagnostics, ImportError};
 pub use extras::YaobowExtras;
 pub use loader::{load_gltf_scene, load_gltf_scene_from};
 pub use scene::{
-    ImportedAnimation, ImportedMesh, ImportedMorphTarget, ImportedNode, ImportedPrimitive,
-    ImportedScene, ImportedTrsChannel, ImportedWeightsChannel, Interpolation, TrsProperty,
+    ImportedAnimation, ImportedJointInfluence, ImportedMesh, ImportedMorphTarget, ImportedNode,
+    ImportedPrimitive, ImportedScene, ImportedSkin, ImportedTexture, ImportedTrsChannel,
+    ImportedWeightsChannel, Interpolation, TrsProperty,
 };
 pub use target::{CvdOptions, ImportOptions, Mv3Options, PolOptions, TargetFormat};
 

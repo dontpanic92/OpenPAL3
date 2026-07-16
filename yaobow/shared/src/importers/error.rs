@@ -23,6 +23,16 @@ pub enum ImportError {
     #[error("failed to parse glTF document: {0}")]
     Gltf(#[from] gltf::Error),
 
+    #[error("failed to decode glTF image #{index}: {message}")]
+    ImageDecode { index: usize, message: String },
+
+    #[error("failed to encode glTF image #{index} as TGA: {source}")]
+    ImageEncode {
+        index: usize,
+        #[source]
+        source: image::ImageError,
+    },
+
     #[error(
         "unsupported buffer/image source `{0}`: only relative file paths (and the embedded GLB BIN chunk) are supported"
     )]
@@ -75,6 +85,72 @@ pub enum ImportError {
         primitive: usize,
         index: u32,
         vertex_count: usize,
+    },
+
+    #[error(
+        "primitive #{primitive} of mesh `{mesh}` has incomplete skin attributes: JOINTS_{set} and WEIGHTS_{set} must both be present"
+    )]
+    IncompleteSkinAttributes {
+        mesh: String,
+        primitive: usize,
+        set: u32,
+    },
+
+    #[error(
+        "primitive #{primitive} of mesh `{mesh}` has {joints} JOINTS entries, {weights} WEIGHTS entries, and {positions} positions"
+    )]
+    SkinAttributeCountMismatch {
+        mesh: String,
+        primitive: usize,
+        joints: usize,
+        weights: usize,
+        positions: usize,
+    },
+
+    #[error(
+        "mesh node `{node}` primitive #{primitive} references a skin but has no JOINTS_0/WEIGHTS_0 attributes"
+    )]
+    MissingSkinAttributes { node: String, primitive: usize },
+
+    #[error("glTF skin #{skin} has {matrices} inverse-bind matrices for {joints} joints")]
+    InverseBindMatrixCountMismatch {
+        skin: usize,
+        matrices: usize,
+        joints: usize,
+    },
+
+    #[error(
+        "mesh node `{node}` vertex references skin-local joint {joint}, but skin #{skin} has only {joint_count} joints"
+    )]
+    SkinJointOutOfRange {
+        node: String,
+        skin: usize,
+        joint: u16,
+        joint_count: usize,
+    },
+
+    #[error(
+        "node `{node}` has multiple parents (`{first_parent}` and `{second_parent}`), which is invalid in glTF"
+    )]
+    MultipleNodeParents {
+        node: String,
+        first_parent: String,
+        second_parent: String,
+    },
+
+    #[error("node hierarchy contains a cycle involving `{node}`")]
+    NodeHierarchyCycle { node: String },
+
+    #[error(
+        "primitive #{primitive} of mesh `{mesh}` morph target #{target} {attribute} has {actual} values for {expected} vertices"
+    )]
+    MorphTargetAttributeCountMismatch {
+        mesh: String,
+        primitive: usize,
+        target: usize,
+        attribute: &'static str,
+        expected: usize,
+        actual: usize,
     },
 
     #[error(
@@ -135,6 +211,17 @@ pub enum ImportError {
         node: String,
         property: gltf::animation::Property,
         target: &'static str,
+    },
+
+    #[error(
+        "animation `{animation}` channel targeting node `{node}` property {property} has {inputs} input times but {outputs} output values"
+    )]
+    AnimationSamplerCountMismatch {
+        animation: String,
+        node: String,
+        property: &'static str,
+        inputs: usize,
+        outputs: usize,
     },
 
     #[error(

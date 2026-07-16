@@ -9,18 +9,25 @@ import scripting_services;
 
 pub fn render_theme_menu(ui: box<radiance.IUiHost>, config: box<scripting_services.IConfigService>) {
     ui.menu("View", () => {
-        ui.menu("Theme", () => {
-            let current = config.get_theme("editor");
-            let count = config.available_theme_count();
-            for i in Range(0, count) {
-                let name = config.available_theme_at(i);
-                let selected = name == current;
-                if ui.menu_item(name, selected) {
-                    config.set_theme("editor", name);
-                    config.apply_theme(name);
-                    config.save();
-                }
+        render_theme_submenu(ui, config);
+    });
+}
+
+pub fn render_theme_submenu(
+    ui: box<radiance.IUiHost>,
+    config: box<scripting_services.IConfigService>,
+) {
+    ui.menu("Theme", () => {
+        let current = config.get_theme("editor");
+        let count = config.available_theme_count();
+        for i in Range(0, count) {
+            let name = config.available_theme_at(i);
+            let selected = name == current;
+            if ui.menu_item(name, selected) {
+                config.set_theme("editor", name);
+                config.apply_theme(name);
+                config.save();
             }
-        });
+        }
     });
 }

@@ -11,7 +11,10 @@ use radiance::rendering::{
     ComponentFactory, MaterialDef, Pal3PropMaterialDef, VertexBuffer, VertexComponents,
 };
 use radiance::scene::CoreEntity;
-use std::{path::Path, rc::Rc};
+use std::{
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 pub fn create_entity_from_cvd_model<P: AsRef<Path>>(
     component_factory: Rc<dyn ComponentFactory>,
@@ -113,20 +116,14 @@ fn load_texture<P: AsRef<Path>>(
     vfs: &MiniFs,
     model_path: P,
 ) -> MaterialDef {
-    let dds_name = material
-        .texture_name
-        .split_terminator('.')
-        .next()
-        .unwrap()
-        .to_owned()
-        + ".dds";
-    let mut texture_path = model_path.as_ref().to_owned();
-    texture_path.pop();
-    texture_path.push(&dds_name);
-    if !vfs.open(&texture_path).is_ok() {
-        texture_path.pop();
-        texture_path.push(&material.texture_name);
-    }
+    let mut model_dir = model_path.as_ref().to_owned();
+    model_dir.pop();
+    let dds_path = model_dir.join(PathBuf::from(&material.texture_name).with_extension("dds"));
+    let texture_path = if vfs.open(&dds_path).is_ok() {
+        dds_path
+    } else {
+        model_dir.join(&material.texture_name)
+    };
 
     // CVD props carry no baked lightmap; like the original engine, shade them
     // with the scene's dynamic `.lgt` lights via the lit material (CVD vertices

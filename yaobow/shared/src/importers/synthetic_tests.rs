@@ -7,8 +7,9 @@
 //! `write_*` functions the CLI-level [`super::convert_gltf_to_bytes`] uses.
 
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use base64::Engine as _;
 use fileformats::mv3::{
     Mv3ActionDesc, Mv3File, Mv3Frame, Mv3Mesh, Mv3Model, Mv3Texture, Mv3Triangle, Mv3Vertex,
 };
@@ -38,11 +39,38 @@ fn quad() -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<[f32; 2]>, Vec<u16>) {
     (positions, normals, uv0, indices)
 }
 
+fn one_pixel_png() -> Vec<u8> {
+    let mut out = Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+        1,
+        1,
+        image::Rgba([10, 20, 30, 128]),
+    ))
+    .write_to(&mut out, image::ImageOutputFormat::Png)
+    .unwrap();
+    out.into_inner()
+}
+
+fn scratch_named_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "openpal3-importers-{name}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
 /// Generic (no `asset.extras.yaobow`) static glTF -> POL: parse, convert,
 /// write, then read the result back with `fileformats::pol::read_pol`
 /// and confirm geometry/material data round-tripped.
 #[test]
 fn generic_gltf_to_pol_parse_write_read() {
+    let dir = scratch_named_dir("generic-pol");
+    std::fs::write(dir.join("diffuse.png"), one_pixel_png()).unwrap();
     let (positions, normals, uv0, indices) = quad();
     let mut builder = SceneBuilder::new();
     let image = builder.add_image_uri("diffuse.png");
@@ -59,10 +87,10 @@ fn generic_gltf_to_pol_parse_write_read() {
     let node = builder.add_node(Some(mesh), &[], None, None, None);
     let gltf = builder.parse(&[node]);
 
-    let (scene, diagnostics) = load_gltf_scene_from(&gltf, Path::new(".")).expect("load");
+    let (scene, diagnostics) = load_gltf_scene_from(&gltf, &dir).expect("load");
     assert!(
-        diagnostics.is_empty(),
-        "unexpected diagnostics: {:?}",
+        diagnostics.messages().any(|m| m.contains("diffuse.tga")),
+        "expected texture conversion diagnostic: {:?}",
         diagnostics
     );
     assert!(scene.extras.is_none());
@@ -74,7 +102,7 @@ fn generic_gltf_to_pol_parse_write_read() {
     assert_eq!(mesh0.material_info.len(), 1);
     assert_eq!(
         mesh0.material_info[0].texture_names[0].as_str().unwrap(),
-        "diffuse.png"
+        "_yaobow_import/diffuse.tga"
     );
 
     let mut bytes = Vec::new();
@@ -93,23 +121,111 @@ fn generic_gltf_to_pol_parse_write_read() {
         read_back.meshes[0].material_info[0].texture_names[0]
             .as_str()
             .unwrap(),
-        "diffuse.png"
+        "_yaobow_import/diffuse.tga"
+    );
+}
+
+#[test]
+fn image_data_uri_is_converted_to_tga_with_alpha() {
+    let (positions, normals, uv0, indices) = quad();
+    let uri = format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(one_pixel_png())
+    );
+    let mut builder = SceneBuilder::new();
+    let image = builder.add_image_uri(&uri);
+    let texture = builder.add_texture(image);
+    let material = builder.add_material(Some(texture), true);
+    let mesh = builder.add_triangle_mesh(
+        &positions,
+        Some(&normals),
+        &uv0,
+        &indices,
+        Some(material),
+        &[],
+    );
+    let node = builder.add_node(Some(mesh), &[], None, None, None);
+    let gltf = builder.parse(&[node]);
+
+    let (scene, _) = load_gltf_scene_from(&gltf, Path::new(".")).expect("load data URI");
+    assert_eq!(scene.textures.len(), 1);
+    assert_eq!(
+        scene.textures[0].relative_path,
+        "_yaobow_import/embedded_image_0.tga"
+    );
+    let decoded =
+        image::load_from_memory_with_format(&scene.textures[0].bytes, image::ImageFormat::Tga)
+            .unwrap()
+            .to_rgba8();
+    assert_eq!(decoded.get_pixel(0, 0).0[3], 128);
+}
+
+#[test]
+fn repeated_images_deduplicate_and_colliding_basenames_are_suffixed() {
+    let dir = scratch_named_dir("texture-names");
+    std::fs::create_dir_all(dir.join("a")).unwrap();
+    std::fs::create_dir_all(dir.join("b")).unwrap();
+    std::fs::write(dir.join("a/shared.png"), one_pixel_png()).unwrap();
+    std::fs::write(dir.join("b/shared.png"), one_pixel_png()).unwrap();
+
+    let (positions, normals, uv0, indices) = quad();
+    let mut builder = SceneBuilder::new();
+    let image_a = builder.add_image_uri("a/shared.png");
+    let image_b = builder.add_image_uri("b/shared.png");
+    let texture_a = builder.add_texture(image_a);
+    let texture_b = builder.add_texture(image_b);
+    let material_a = builder.add_material(Some(texture_a), false);
+    let material_b = builder.add_material(Some(texture_b), false);
+    let mesh_a = builder.add_triangle_mesh(
+        &positions,
+        Some(&normals),
+        &uv0,
+        &indices,
+        Some(material_a),
+        &[],
+    );
+    let mesh_a_again = builder.add_triangle_mesh(
+        &positions,
+        Some(&normals),
+        &uv0,
+        &indices,
+        Some(material_a),
+        &[],
+    );
+    let mesh_b = builder.add_triangle_mesh(
+        &positions,
+        Some(&normals),
+        &uv0,
+        &indices,
+        Some(material_b),
+        &[],
+    );
+    let nodes = [
+        builder.add_node(Some(mesh_a), &[], None, None, None),
+        builder.add_node(Some(mesh_a_again), &[], None, None, None),
+        builder.add_node(Some(mesh_b), &[], None, None, None),
+    ];
+    let gltf = builder.parse(&nodes);
+
+    let (scene, _) = load_gltf_scene_from(&gltf, &dir).expect("load textures");
+    assert_eq!(scene.textures.len(), 2);
+    assert_eq!(scene.textures[0].relative_path, "_yaobow_import/shared.tga");
+    assert_eq!(
+        scene.textures[1].relative_path,
+        "_yaobow_import/shared_2.tga"
     );
 }
 
 /// Yaobow-exported MV3 GLB -> import round trip, including a
-/// bufferView-embedded ("no on-disk name") texture: the loader must not
-/// fail the import, must record a diagnostic about the placeholder name,
-/// and the `asset.extras.yaobow` texture name must still win over that
-/// placeholder in the final `.mv3`. Also exercises morph targets + a
-/// `weights` animation channel.
+/// bufferView-embedded texture: the loader extracts it as TGA and that real
+/// imported artifact takes precedence over the round-trip texture name.
 #[test]
 fn mv3_embedded_image_yaobow_extras_round_trip() {
     let (positions, normals, uv0, indices) = quad();
     let morph_deltas = vec![[0.0, 0.5, 0.0]; 4]; // one morph target: lift all verts by 0.5 on Y
 
     let mut builder = SceneBuilder::new();
-    let embedded_bytes = [0x89u8, 0x50, 0x4e, 0x47, 0, 0, 0, 0];
+    let embedded_bytes = one_pixel_png();
     let image = builder.add_image_embedded(&embedded_bytes, "image/png");
     let texture = builder.add_texture(image);
     let material = builder.add_material(Some(texture), false);
@@ -145,8 +261,8 @@ fn mv3_embedded_image_yaobow_extras_round_trip() {
     assert!(
         diagnostics
             .messages()
-            .any(|m| m.contains("bufferView-embedded")),
-        "expected an embedded-image diagnostic, got: {:?}",
+            .any(|m| m.contains("embedded_image_0.tga")),
+        "expected an embedded-image conversion diagnostic, got: {:?}",
         diagnostics
     );
     assert!(scene.extras.is_some());
@@ -157,10 +273,9 @@ fn mv3_embedded_image_yaobow_extras_round_trip() {
     assert_eq!(mv3_file.models[0].frame_count, 2);
     assert_eq!(mv3_file.action_desc.len(), 1);
     assert_eq!(mv3_file.action_desc[0].name.as_str().unwrap(), "walk");
-    // The yaobow extras texture name wins over the embedded-image placeholder.
     assert_eq!(
         mv3_file.textures[0].names[0].to_string().unwrap(),
-        "real_diffuse.png"
+        "_yaobow_import/embedded_image_0.tga"
     );
 
     let mut bytes = Vec::new();
@@ -169,7 +284,7 @@ fn mv3_embedded_image_yaobow_extras_round_trip() {
     assert_eq!(read_back.models[0].frame_count, 2);
     assert_eq!(
         read_back.textures[0].names[0].to_string().unwrap(),
-        "real_diffuse.png"
+        "_yaobow_import/embedded_image_0.tga"
     );
 }
 
@@ -373,36 +488,48 @@ fn unsupported_topology_is_rejected_at_load() {
     );
 }
 
-/// `CUBICSPLINE` interpolation has no representation in this importer's
-/// IR (no in/out tangents are modeled) and must be rejected at load time.
+/// `CUBICSPLINE` tangents have no representation in the normalized IR, but the
+/// key values can still be imported lossily as LINEAR animation.
 #[test]
-fn unsupported_interpolation_is_rejected_at_load() {
+fn cubic_spline_animation_is_imported_lossily() {
     let (positions, _normals, uv0, indices) = quad();
     let mut builder = SceneBuilder::new();
     let mesh = builder.add_triangle_mesh(&positions, None, &uv0, &indices, None, &[]);
     let node = builder.add_node(Some(mesh), &[], None, None, None);
-    // 3 keyframes * 3 tangent-vertex-tangent triples = 9 values for CUBICSPLINE.
     builder.add_trs_animation(
         node,
         "rotation",
         &[0.0, 1.0],
-        &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        &[
+            0.0, 0.0, 0.0, 0.0, // key 0 in tangent
+            0.0, 0.0, 0.0, 1.0, // key 0 value
+            0.0, 0.0, 0.0, 0.0, // key 0 out tangent
+            0.0, 0.0, 0.0, 0.0, // key 1 in tangent
+            0.0, 0.0, 1.0, 0.0, // key 1 value
+            0.0, 0.0, 0.0, 0.0, // key 1 out tangent
+        ],
         "CUBICSPLINE",
     );
     let gltf = builder.parse(&[node]);
 
-    let err = load_gltf_scene_from(&gltf, Path::new(".")).unwrap_err();
+    let (scene, diagnostics) = load_gltf_scene_from(&gltf, Path::new(".")).expect("lossy load");
     assert!(
-        matches!(err, ImportError::UnsupportedInterpolation { .. }),
-        "expected UnsupportedInterpolation, got {err:?}"
+        diagnostics
+            .messages()
+            .any(|message| message.contains("dropped tangents")),
+        "expected cubic-spline diagnostic: {diagnostics:?}"
     );
+    let channel = &scene.animations[0].trs_channels[0];
+    assert_eq!(channel.interpolation, super::Interpolation::Linear);
+    assert_eq!(channel.values.len(), 2);
+    assert_eq!(channel.values[0], [0.0, 0.0, 0.0, 1.0]);
+    assert_eq!(channel.values[1], [0.0, 0.0, 1.0, 0.0]);
 }
 
-/// MV3/POL have no representation for an animated node transform (only
-/// per-vertex morph targets); a TRS animation channel targeting a
-/// mesh-bearing root node must be a hard conversion error.
+/// POL cannot represent animated node transforms, while MV3 can bake them into
+/// its per-vertex frame snapshots.
 #[test]
-fn unsupported_animation_target_is_rejected_by_pol_and_mv3() {
+fn mv3_bakes_animated_mesh_node_transform_while_pol_rejects() {
     let (positions, normals, uv0, indices) = quad();
     let mut builder = SceneBuilder::new();
     let mesh = builder.add_triangle_mesh(&positions, Some(&normals), &uv0, &indices, None, &[]);
@@ -424,11 +551,143 @@ fn unsupported_animation_target_is_rejected_by_pol_and_mv3() {
         ImportError::UnsupportedAnimationTarget { .. }
     ));
 
-    let mv3_err = mv3::convert(&scene, &ImportOptions::default()).unwrap_err();
-    assert!(matches!(
-        mv3_err,
-        ImportError::UnsupportedAnimationTarget { .. }
-    ));
+    let mut options = ImportOptions::default();
+    options.mv3.vertex_scale = 1.0;
+    options.mv3.ticks_per_second = 100.0;
+    let (mv3_file, _) = mv3::convert(&scene, &options).expect("mv3 bake");
+    let model = &mv3_file.models[0];
+    assert_eq!(model.frame_count, 2);
+    assert_eq!(model.frames[0].timestamp, 0);
+    assert_eq!(model.frames[1].timestamp, 100);
+    assert_eq!(model.frames[0].vertices[0].x, 0);
+    assert_eq!(model.frames[1].vertices[0].x, 1);
+}
+
+#[test]
+fn mv3_flattens_nested_static_node_hierarchy() {
+    let (positions, normals, uv0, indices) = quad();
+    let mut builder = SceneBuilder::new();
+    let mesh = builder.add_triangle_mesh(&positions, Some(&normals), &uv0, &indices, None, &[]);
+    let child = builder.add_node(Some(mesh), &[], Some([1.0, 0.0, 0.0]), None, None);
+    let half = std::f32::consts::FRAC_PI_4;
+    let parent = builder.add_node(
+        None,
+        &[child],
+        Some([2.0, 0.0, 0.0]),
+        Some([0.0, 0.0, half.sin(), half.cos()]),
+        None,
+    );
+    let gltf = builder.parse(&[parent]);
+    let (scene, _) = load_gltf_scene_from(&gltf, Path::new(".")).expect("load");
+
+    let mut options = ImportOptions::default();
+    options.mv3.vertex_scale = 1.0;
+    let (mv3_file, _) = mv3::convert(&scene, &options).expect("flatten hierarchy");
+    assert_eq!(mv3_file.models[0].frame_count, 1);
+    assert_eq!(mv3_file.models[0].frames[0].vertices[0].x, 2);
+    assert_eq!(mv3_file.models[0].frames[0].vertices[0].y, 1);
+}
+
+#[test]
+fn mv3_bakes_skeletal_animation_to_vertex_frames() {
+    let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+    let normals = [[0.0, 0.0, 1.0]; 3];
+    let uv0 = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+    let mut builder = SceneBuilder::new();
+    let mesh = builder.add_triangle_mesh(&positions, Some(&normals), &uv0, &[0, 1, 2], None, &[]);
+    builder.set_mesh_skin_attributes(mesh, &[[0, 0, 0, 0]; 3], &[[1.0, 0.0, 0.0, 0.0]; 3]);
+    let joint = builder.add_node(None, &[], None, None, None);
+    let mesh_node = builder.add_node(Some(mesh), &[], None, None, None);
+    let parent = builder.add_node(
+        None,
+        &[joint, mesh_node],
+        Some([10.0, 0.0, 0.0]),
+        None,
+        None,
+    );
+    let inverse_bind = [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [-10.0, 0.0, 0.0, 1.0],
+    ];
+    let skin = builder.add_skin(&[joint], Some(&[inverse_bind]), Some(joint));
+    builder.set_node_skin(mesh_node, skin);
+    builder.add_trs_animation(
+        joint,
+        "translation",
+        &[0.0, 1.0],
+        &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        "LINEAR",
+    );
+    let gltf = builder.parse(&[parent]);
+    let (scene, _) = load_gltf_scene_from(&gltf, Path::new(".")).expect("load");
+    assert_eq!(scene.skins.len(), 1);
+    assert_eq!(scene.nodes[mesh_node].skin, Some(0));
+
+    let mut options = ImportOptions::default();
+    options.mv3.vertex_scale = 1.0;
+    options.mv3.ticks_per_second = 100.0;
+    let (mv3_file, _) = mv3::convert(&scene, &options).expect("bake skin");
+    let model = &mv3_file.models[0];
+    assert_eq!(model.frame_count, 2);
+    assert_eq!(model.frames[0].timestamp, 0);
+    assert_eq!(model.frames[1].timestamp, 100);
+    assert_eq!(model.frames[0].vertices[0].x, 0);
+    assert_eq!(model.frames[1].vertices[0].x, 1);
+}
+
+#[test]
+fn mv3_resamples_skeletal_rotation_before_baking() {
+    let positions = [[1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [1.0, 1.0, 0.0]];
+    let uv0 = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+    let mut builder = SceneBuilder::new();
+    let mesh = builder.add_triangle_mesh(&positions, None, &uv0, &[0, 1, 2], None, &[]);
+    builder.set_mesh_skin_attributes(mesh, &[[0, 0, 0, 0]; 3], &[[1.0, 0.0, 0.0, 0.0]; 3]);
+    let joint = builder.add_node(None, &[], None, None, None);
+    let mesh_node = builder.add_node(Some(mesh), &[], None, None, None);
+    let identity = [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ];
+    let skin = builder.add_skin(&[joint], Some(&[identity]), Some(joint));
+    builder.set_node_skin(mesh_node, skin);
+    builder.add_trs_animation(
+        joint,
+        "rotation",
+        &[0.0, 1.0],
+        &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0],
+        "LINEAR",
+    );
+    let gltf = builder.parse(&[joint, mesh_node]);
+    let (scene, _) = load_gltf_scene_from(&gltf, Path::new(".")).expect("load");
+
+    let mut options = ImportOptions::default();
+    options.mv3.vertex_scale = 0.01;
+    options.mv3.ticks_per_second = 100.0;
+    let (mv3_file, _) = mv3::convert(&scene, &options).expect("bake rotation");
+    let model = &mv3_file.models[0];
+    let midpoint = model
+        .frames
+        .iter()
+        .find(|frame| frame.timestamp == 50)
+        .expect("30 fps resampling includes t=0.5");
+    assert!(midpoint.vertices[0].x.abs() <= 1);
+    assert!((midpoint.vertices[0].y - 100).abs() <= 1);
+}
+
+#[test]
+fn mv3_rejects_cyclic_node_hierarchy_without_recursing() {
+    let mut scene = overflow_prone_scene();
+    scene.nodes[0].children = vec![1];
+    let mut parent = super::ImportedNode::identity("node1");
+    parent.children = vec![0];
+    scene.nodes.push(parent);
+
+    let error = mv3::convert(&scene, &ImportOptions::default()).unwrap_err();
+    assert!(matches!(error, ImportError::NodeHierarchyCycle { .. }));
 }
 
 /// A parent "join" node (no mesh, identity transform) with a mesh-bearing
@@ -1295,6 +1554,8 @@ fn mv3_action_name_exactly_fills_gbk_capacity() {
 /// `pol::convert` + on-disk-format write/read round trip unchanged.
 #[test]
 fn pol_chinese_texture_name_round_trips_via_gbk() {
+    let dir = scratch_named_dir("pol-chinese-texture");
+    std::fs::write(dir.join("纹理.bmp"), one_pixel_png()).unwrap();
     let (positions, normals, uv0, indices) = quad();
     let mut builder = SceneBuilder::new();
     let image = builder.add_image_uri("纹理.bmp");
@@ -1311,10 +1572,10 @@ fn pol_chinese_texture_name_round_trips_via_gbk() {
     let node = builder.add_node(Some(mesh), &[], None, None, None);
     let gltf = builder.parse(&[node]);
 
-    let (scene, diagnostics) = load_gltf_scene_from(&gltf, Path::new(".")).expect("load");
+    let (scene, diagnostics) = load_gltf_scene_from(&gltf, &dir).expect("load");
     assert!(
-        diagnostics.is_empty(),
-        "unexpected diagnostics: {:?}",
+        diagnostics.messages().any(|m| m.contains("纹理.tga")),
+        "expected texture conversion diagnostic: {:?}",
         diagnostics
     );
 
@@ -1329,7 +1590,7 @@ fn pol_chinese_texture_name_round_trips_via_gbk() {
         pol_file.meshes[0].material_info[0].texture_names[0]
             .as_str()
             .unwrap(),
-        "纹理.bmp"
+        "_yaobow_import/纹理.tga"
     );
 
     let mut bytes = Vec::new();
@@ -1344,7 +1605,7 @@ fn pol_chinese_texture_name_round_trips_via_gbk() {
         read_back.meshes[0].material_info[0].texture_names[0]
             .as_str()
             .unwrap(),
-        "纹理.bmp"
+        "_yaobow_import/纹理.tga"
     );
 }
 
@@ -1439,6 +1700,7 @@ fn overflow_prone_scene() -> super::ImportedScene {
         material_texture: None,
         material_alpha_blend: false,
         morph_targets: vec![],
+        skin_influences: None,
     };
     let prim_b = super::ImportedPrimitive {
         // Deliberately distinct vertex data from `prim_a` so pol/cvd's
@@ -1451,6 +1713,7 @@ fn overflow_prone_scene() -> super::ImportedScene {
         material_texture: None,
         material_alpha_blend: false,
         morph_targets: vec![],
+        skin_influences: None,
     };
     let mesh = super::ImportedMesh {
         name: "mesh0".to_string(),
@@ -1462,7 +1725,9 @@ fn overflow_prone_scene() -> super::ImportedScene {
         nodes: vec![node],
         roots: vec![0],
         animations: vec![],
+        skins: vec![],
         extras: None,
+        textures: vec![],
     }
 }
 

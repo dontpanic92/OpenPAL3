@@ -64,8 +64,8 @@ impl EditorHostContext {
     /// reject `create_project`/`open_project` calls (via
     /// `open_project`'s game/base-path validation) until a real game is
     /// opened and a fresh `IEditorHostContext` replaces this one — see
-    /// `AppService::open_game`, which is the only place the "Project"
-    /// menu is wired up (welcome page has no such menu).
+    /// `AppService::open_game`, which is the only place the project-aware
+    /// File menu is wired up (welcome page has no such menu).
     pub fn create_welcome(
         scene_manager: ComRc<ISceneManager>,
         audio_engine: Rc<dyn AudioEngine>,
@@ -92,13 +92,15 @@ impl EditorHostContext {
             cache.clone(),
             preview_registry.clone(),
         );
-        let project = ProjectService::create(
+        let tree_vfs = VfsService::create(vfs.clone());
+        let project = ProjectService::create_with_vfs(
             GameType::PAL3,
             PathBuf::new(),
             vfs.clone(),
             Rc::new(AssetCatalog::new(PathBuf::new())),
             project_overlay::new_shared_overlay_index(),
             previewers.clone(),
+            tree_vfs.clone(),
         );
         let imports = ImportService::create(
             vfs.clone(),
@@ -120,6 +122,7 @@ impl EditorHostContext {
             cache,
             rendering_engine,
             preview_registry,
+            tree_vfs,
         )
     }
 
@@ -153,13 +156,15 @@ impl EditorHostContext {
             cache.clone(),
             preview_registry.clone(),
         );
-        let project = ProjectService::create(
+        let tree_vfs = VfsService::create(vfs.clone());
+        let project = ProjectService::create_with_vfs(
             game_type,
             base_asset_root,
             vfs.clone(),
             catalog.clone(),
             overlay,
             previewers.clone(),
+            tree_vfs.clone(),
         );
         let imports = ImportService::create(vfs.clone(), catalog, project.0.clone());
         Self::create(
@@ -176,6 +181,7 @@ impl EditorHostContext {
             cache,
             rendering_engine,
             preview_registry,
+            tree_vfs,
         )
     }
 
@@ -194,12 +200,13 @@ impl EditorHostContext {
         cache: Rc<RefCell<ImguiTextureCache>>,
         rendering_engine: Rc<RefCell<dyn RenderingEngine>>,
         preview_registry: Rc<PreviewRegistry>,
+        tree_vfs: ComRc<IVfsService>,
     ) -> ComRc<IEditorHostContext> {
         ComRc::from_object(Self {
             scene_manager,
             audio: AudioService::create(audio_engine, vfs.clone()),
             textures: TextureService::create(factory.clone(), vfs.clone()),
-            vfs: VfsService::create(vfs),
+            vfs: tree_vfs,
             input: InputService::create(input),
             games: GameRegistry::create(),
             app,

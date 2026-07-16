@@ -198,6 +198,9 @@ interface IVfsService: IUnknown {
     void toggle_expanded(&str vfs_path);
     int command_id(&str vfs_path);
     &str command_path(int command_id);
+    // Drops cached directory listings and derived file/dir classification.
+    // Expansion and stable command-id state are preserved.
+    void invalidate_entries();
 }
 [uuid(f19e19aa-9568-4021-ae47-7658426780f2)]
 class VfsService: IVfsService {}

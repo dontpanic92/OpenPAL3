@@ -195,6 +195,18 @@ pub fn render_scene_offscreen_im(
     }
 }
 
+pub fn render_import_replace_button(
+    ui: box<radiance.IUiHost>,
+    project: box<yaobow_editor_services.IProjectService>,
+    path: string,
+    import_replace_intents: box<array<string>>,
+) {
+    let can_import = project.has_active_project();
+    if ui.button_enabled("Import glTF (Replace)...", 180.0, 24.0, can_import) {
+        import_replace_intents.push(path);
+    }
+}
+
 pub fn render_tab_body_im(
     ui: box<radiance.IUiHost>,
     tab: ref<ContentTab>,
@@ -346,13 +358,17 @@ pub fn render_tab_body_im(
                     }
                 }
                 ui.same_line();
-                if ui.button("Import glTF (Replace)...", 180.0, 24.0) {
-                    import_replace_intents.push(tab.label);
-                }
+                render_import_replace_button(
+                    ui,
+                    host.project(),
+                    tab.label,
+                    import_replace_intents,
+                );
                 ui.same_line();
                 if ui.button("Copy", 80.0, 24.0) {
                     ui.copy_text_buffer(tab.close_cmd);
                 }
+
                 if !ui.show_text_buffer(tab.close_cmd, -1.0, -1.0) {
                     ui.set_text_buffer(tab.close_cmd, tab.text_content);
                     ui.show_text_buffer(tab.close_cmd, -1.0, -1.0);

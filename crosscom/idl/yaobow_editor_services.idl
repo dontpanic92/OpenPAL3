@@ -233,6 +233,12 @@ interface IProjectService: IUnknown {
     // (target_package, package_internal_path) order. Out-of-range
     // indices return an empty/zero value.
     int change_kind(int index); // 0 = Add, 1 = Replace
+    // Project change kind for an absolute VFS file path:
+    // -1 = unchanged/unresolvable, 0 = Add, 1 = Replace.
+    int asset_change_kind(&str vfs_path);
+    // Aggregate kind for changed descendants of an absolute VFS directory.
+    // Replace wins over Add for mixed subtrees.
+    int descendant_change_kind(&str vfs_directory);
     &str change_target_package(int index);
     &str change_internal_path(int index);
     // Hex `ContentHash` of the payload bytes for this change.
@@ -296,9 +302,10 @@ interface IProjectService: IUnknown {
 class ProjectService: IProjectService {}
 
 // Unified glTF (`.glb`/`.gltf`) import wizard: converts an authored
-// scene into an existing PAL3 target format (`.mv3`/`.pol`/`.cvd`) via
-// `shared::importers::convert_gltf_to_bytes`, and routes the resulting
-// bytes to a "save converted file to disk" output, an "add to the
+// scene into an existing PAL3 target format (`.mv3`/`.pol`/`.cvd`) plus
+// referenced TGA textures via `shared::importers::convert_gltf_to_bundle`,
+// and can route the resulting artifact bundle to a "save converted files to
+// disk" output, an "add to the
 // active `IProjectService` project" output (as a tracked `Add`/
 // `Replace` change), or both. See
 // `services::import_service::ImportService`'s module docs for the
@@ -306,18 +313,19 @@ class ProjectService: IProjectService {}
 // `&str`/`int`/`bool`/`float`, matching `IProjectService`'s p7-facing
 // convention — no byte buffers cross the IDL boundary).
 //
+// The editor UI always stages into the active project and selects mode/location
+// from its entry point; the local-disk output remains available to tests/tools.
 // Typical script-side flow:
-//   1. `reset()` (wizard opened) — optionally
-//      `set_replace_target(ctx_vfs_path)` /
-//      `set_add_target_directory_from_sibling(ctx_vfs_path)` when
-//      opened from a model/resource context.
+//   1. `reset()` (wizard opened), then either
+//      `set_replace_target(ctx_vfs_path)` or
+//      `set_add_target_directory_from_sibling(ctx_vfs_path)`.
 //   2. `set_source_path(...)` (from `IConfigService.pick_open_file`),
 //      `set_target_format(...)`, `set_mode(...)`, plus either
 //      `set_replace_target(...)` or
 //      `set_add_target_package(...)`/`set_add_target_directory(...)`.
 //   3. Optionally tweak the per-format option setters.
 //   4. `convert()` to preview `diagnostic_count()`/`diagnostic(i)`.
-//   5. Toggle `set_save_to_file(...)` /`set_add_to_project(...)`
+//   5. Configure `set_save_to_file(...)` /`set_add_to_project(...)`
 //      (at least one required) and call `run()`; inspect `status()`/
 //      `last_error()`/`staged_preview_vfs_path()` afterwards.
 [uuid(da12dcb1-4f74-4f51-9bff-1d5d3d3e1c1b)]
@@ -345,9 +353,10 @@ interface IImportService: IUnknown {
     // its owning package + internal path, and reads its current bytes
     // (the live VFS content — base package, or an already-staged
     // replacement — see `IProjectService`'s overlay docs) as the
-    // conversion template. Returns true if `vfs_path` resolved to a
-    // mounted package (false, see `last_error`, otherwise — Replace
-    // mode cannot proceed until a valid target is set).
+    // conversion template. The target format is derived from the
+    // `.mv3`/`.pol`/`.cvd` extension. Returns true if `vfs_path`
+    // resolved to a supported asset in a mounted package (false, see
+    // `last_error`, otherwise).
     bool set_replace_target(&str vfs_path);
     &str replace_target_package();
     &str replace_target_internal_path();
@@ -412,9 +421,20 @@ interface IImportService: IUnknown {
     &str diagnostic(int index);
     int converted_size();
 
+    // Converted artifact bundle, indexed `[0, planned_file_count())`.
+    // Kind: 0 = target model, 1 = generated TGA texture.
+    // `planned_file_path` is the package-internal path derived from the
+    // current Replace/Add target. Project action: 0 = Add, 1 = Replace,
+    // -1 when the target is incomplete/invalid.
+    int planned_file_count();
+    int planned_file_kind(int index);
+    &str planned_file_path(int index);
+    int planned_file_size(int index);
+    int planned_file_project_action(int index);
+
     // Executes every enabled output (converting first if not already
-    // converted), routing the SAME converted bytes to both when both
-    // are enabled. Fails outright (returns false, see `last_error`)
+    // converted), routing the SAME artifact bundle to both when both are
+    // enabled. Fails outright (returns false, see `last_error`)
     // if neither output is enabled, or conversion itself fails.
     // Returns true only when every enabled output fully succeeds;
     // see `status()` for the partial-success case.

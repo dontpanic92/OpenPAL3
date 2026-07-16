@@ -1,4 +1,4 @@
-//! Compile + smoke tests for `scripts/project_panel.p7` (the "Project"
+//! Compile + smoke tests for `scripts/project_panel.p7` (the "File"
 //! main-menu entry and the "Project Changes" panel).
 //!
 //! `project_panel.p7` is already exercised indirectly by
@@ -9,7 +9,7 @@
 //!   - a minimal probe script that imports `project_panel` in
 //!     isolation, to pin down compile failures to this module
 //!     specifically rather than the whole editor bundle;
-//!   - a functional smoke test that actually renders the "Project"
+//!   - a functional smoke test that actually renders the "File"
 //!     menu and the "Project Changes" panel against a real
 //!     `ProjectService` and a `RecordingUiHost`, driving a real
 //!     create -> stage change through the p7-level entry points (not
@@ -56,12 +56,13 @@ mod comdef {
 /// Minimal probe script exercising `project_panel.p7` without pulling
 /// in the rest of `main_editor.p7` (which additionally needs a fully
 /// wired `vfs()`/`previewers()` host to render its asset tree). Only
-/// `host.config()` and `host.project()` are touched by the "Project"
+/// `host.config()` and `host.project()` are touched by the "File"
 /// menu/panel, so a much smaller host stub suffices here.
 const PROBE_SRC: &str = r#"
 import radiance;
 import yaobow_editor.yaobow_editor_services;
 import yaobow_editor.project_panel;
+import yaobow_editor.main_editor;
 
 pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
     pub host: box<yaobow_editor_services.IEditorHostContext>,
@@ -71,8 +72,12 @@ pub struct[radiance.IUiLayer, radiance.IDirector] Harness(
     pub fn deactivate(self: refmut<Self>) -> int { 0 }
 
     pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
-        project_panel.render_project_menu(ui, self.host, self.state);
+        project_panel.render_file_menu(ui, self.host, self.state);
+        ui.menu("View", () => {
+            project_panel.render_view_menu_item(ui, self.state);
+        });
         project_panel.render_project_changes_panel(ui, self.host, self.state);
+        ui.text(main_editor.project_status_label(self.host.project()));
         0
     }
 
@@ -320,20 +325,20 @@ fn render(env: &Env, ui_com: ComRc<IUiHost>) {
 }
 
 #[test]
-fn project_menu_renders_with_no_active_project() {
+fn file_and_view_menus_render_with_no_active_project() {
     let project = make_project_service(std::path::PathBuf::from("/base"));
     let env = init_env(project);
     let (recorder, ui_com) = RecordingUiHost::create();
-    // Simulate clicking "Project Changes" so the summary panel (and its
+    // Simulate clicking "Show Project Changes" so the summary panel (and its
     // "No active project" message) actually renders this frame.
     recorder
         .menu_item_results
         .borrow_mut()
-        .insert("Project Changes".to_string(), true);
+        .insert("Show Project Changes".to_string(), true);
 
     render(&env, ui_com);
 
-    // The harness calls `render_project_menu` directly (production
+    // The harness calls `render_file_menu` directly (production
     // wraps it in `ui.main_menu_bar(...)` from `main_editor.p7`), so
     // there's no `MainMenuBar` call to expect here — only the `Menu`
     // itself and its items.
@@ -341,8 +346,8 @@ fn project_menu_renders_with_no_active_project() {
     assert!(
         calls
             .iter()
-            .any(|c| matches!(c, UiCall::Menu { label } if label == "Project")),
-        "expected a \"Project\" Menu call, got {calls:?}"
+            .any(|c| matches!(c, UiCall::Menu { label } if label == "File")),
+        "expected a \"File\" Menu call, got {calls:?}"
     );
     let expected_items = [
         "New Project...",
@@ -350,7 +355,6 @@ fn project_menu_renders_with_no_active_project() {
         "Save Project",
         "Close Project",
         "Publish .yapatch...",
-        "Project Changes",
     ];
     for item in expected_items {
         assert!(
@@ -360,12 +364,30 @@ fn project_menu_renders_with_no_active_project() {
             "expected a \"{item}\" MenuItem call, got {calls:?}"
         );
     }
+    assert!(
+        calls
+            .iter()
+            .any(|c| matches!(c, UiCall::Menu { label } if label == "View")),
+        "expected a \"View\" Menu call, got {calls:?}"
+    );
+    assert!(
+        calls.iter().any(
+            |c| matches!(c, UiCall::MenuItem { label, .. } if label == "Show Project Changes")
+        ),
+        "expected the View toggle, got {calls:?}"
+    );
     let has_no_project_text = calls
         .iter()
         .any(|c| matches!(c, UiCall::Text(s) if s.contains("No active project")));
     assert!(
         has_no_project_text,
         "expected the changes panel to report no active project when toggled, got {calls:?}"
+    );
+    assert!(
+        calls
+            .iter()
+            .any(|c| matches!(c, UiCall::Text(s) if s == "项目: 未打开")),
+        "expected the menu-bar no-project status label, got {calls:?}"
     );
 }
 
@@ -388,20 +410,20 @@ fn project_changes_panel_shows_active_project_summary_and_tracked_change_count()
 
     let env = init_env(project.clone());
     let (recorder, ui_com) = RecordingUiHost::create();
-    // Panel visibility is toggled by clicking the "Project Changes"
+    // Panel visibility is toggled by clicking "Show Project Changes"
     // menu item; simulate that click so `render_project_changes_panel`
     // actually opens the window this frame.
     recorder
         .menu_item_results
         .borrow_mut()
-        .insert("Project Changes".to_string(), true);
+        .insert("Show Project Changes".to_string(), true);
 
     render(&env, ui_com);
 
     let calls = recorder.calls.borrow().clone();
     assert!(
         calls.iter().any(
-            |c| matches!(c, UiCall::WindowCentered { title, .. } if title.starts_with("Project Changes"))
+            |c| matches!(c, UiCall::WindowCenteredClosable { title, .. } if title.starts_with("Project Changes"))
         ),
         "expected the changes panel window once toggled on, got {calls:?}"
     );
@@ -416,6 +438,12 @@ fn project_changes_panel_shows_active_project_summary_and_tracked_change_count()
             .iter()
             .any(|c| matches!(c, UiCall::Text(s) if s.contains("Tracked changes: 1"))),
         "expected the tracked-change count to be shown, got {calls:?}"
+    );
+    assert!(
+        calls
+            .iter()
+            .any(|c| matches!(c, UiCall::Text(s) if s == "项目: proj *")),
+        "expected the dirty active-project status label, got {calls:?}"
     );
     assert!(
         calls
@@ -439,5 +467,42 @@ fn project_changes_panel_shows_active_project_summary_and_tracked_change_count()
             .iter()
             .any(|c| matches!(c, UiCall::Text(s) if s.contains("Tracked changes: 0"))),
         "expected the tracked-change count to drop to 0 after removal, got {calls2:?}"
+    );
+}
+
+#[test]
+fn project_changes_title_bar_close_hides_the_panel() {
+    let project = make_project_service(std::path::PathBuf::from("/base"));
+    let env = init_env(project);
+
+    let (open_recorder, open_ui) = RecordingUiHost::create();
+    open_recorder
+        .menu_item_results
+        .borrow_mut()
+        .insert("Show Project Changes".to_string(), true);
+    render(&env, open_ui);
+
+    let (close_recorder, close_ui) = RecordingUiHost::create();
+    close_recorder
+        .window_close_results
+        .borrow_mut()
+        .insert("Project Changes###project_changes".to_string(), true);
+    render(&env, close_ui);
+    assert!(
+        close_recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|c| matches!(c, UiCall::WindowCenteredClosable { .. }))
+    );
+
+    let (after_recorder, after_ui) = RecordingUiHost::create();
+    render(&env, after_ui);
+    assert!(
+        !after_recorder
+            .calls
+            .borrow()
+            .iter()
+            .any(|c| matches!(c, UiCall::WindowCenteredClosable { .. }))
     );
 }

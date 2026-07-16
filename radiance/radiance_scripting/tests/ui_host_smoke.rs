@@ -57,6 +57,34 @@ pub fn entry(ui: box<radiance.IUiHost>) -> bool {
 }
 "#;
 
+const COLORED_TREE_SOURCE: &str = r#"
+import radiance;
+
+pub fn entry(ui: box<radiance.IUiHost>) -> bool {
+    let clicked = ui.tree_leaf_colored("changed.pol", true, 0.35, 0.85, 0.45, 1.0);
+    if ui.tree_node_open_colored("changed", 1.0, 0.62, 0.20, 1.0) {
+        ui.tree_pop();
+    }
+    clicked
+}
+"#;
+
+const ENABLED_AND_CLOSABLE_SOURCE: &str = r#"
+import radiance;
+
+pub fn entry(ui: box<radiance.IUiHost>) -> int {
+    ui.menu_item_enabled("disabled menu", false, false);
+    ui.button_enabled("disabled button", 90.0, 24.0, false);
+    let closed = ui.window_centered_closable("Closable", 320.0, 200.0, () => {
+        ui.text("inside closable");
+    });
+    if closed {
+        return 1;
+    }
+    return 0;
+}
+"#;
+
 #[test]
 fn script_calls_ui_host_methods_and_invokes_closure_body() {
     let host = ScriptHost::new();
@@ -165,6 +193,100 @@ fn unclicked_button_returns_zero() {
         .call_returning_data("entry", vec![ui_box])
         .expect("entry runs");
     assert_eq!(format!("{:?}", result), "Int(0)");
+}
+
+#[test]
+fn colored_tree_widgets_preserve_selection_and_color_arguments() {
+    let host = ScriptHost::new();
+    host.load_source(COLORED_TREE_SOURCE).expect("compile");
+
+    let (recorder, ui_com) = RecordingUiHost::create();
+    recorder
+        .tree_leaf_results
+        .borrow_mut()
+        .insert("changed.pol".to_string(), true);
+    recorder
+        .tree_node_open_results
+        .borrow_mut()
+        .insert("changed".to_string(), true);
+    let com_id = host.intern(ui_com);
+    let ui_box = host
+        .foreign_box("radiance.comdef.IUiHost", com_id)
+        .expect("ui foreign box");
+
+    let result = host
+        .call_returning_data("entry", vec![ui_box])
+        .expect("entry runs");
+    assert_eq!(format!("{:?}", result), "Int(1)");
+    assert_eq!(
+        recorder.calls.borrow().clone(),
+        vec![
+            UiCall::TreeLeafColored {
+                label: "changed.pol".to_string(),
+                selected: true,
+                color: [0.35, 0.85, 0.45, 1.0],
+            },
+            UiCall::TreeNodeOpenColored {
+                label: "changed".to_string(),
+                color: [1.0, 0.62, 0.20, 1.0],
+            },
+            UiCall::TreePop,
+        ]
+    );
+}
+
+#[test]
+fn enabled_widgets_and_closable_window_propagate_state() {
+    let host = ScriptHost::new();
+    host.load_source(ENABLED_AND_CLOSABLE_SOURCE)
+        .expect("compile");
+
+    let (recorder, ui_com) = RecordingUiHost::create();
+    recorder
+        .menu_item_results
+        .borrow_mut()
+        .insert("disabled menu".to_string(), true);
+    recorder
+        .button_results
+        .borrow_mut()
+        .insert("disabled button".to_string(), true);
+    recorder
+        .window_close_results
+        .borrow_mut()
+        .insert("Closable".to_string(), true);
+    let com_id = host.intern(ui_com);
+    let ui_box = host
+        .foreign_box("radiance.comdef.IUiHost", com_id)
+        .expect("ui foreign box");
+
+    let result = host
+        .call_returning_data("entry", vec![ui_box])
+        .expect("entry runs");
+    assert_eq!(format!("{:?}", result), "Int(1)");
+    assert_eq!(
+        recorder.calls.borrow().clone(),
+        vec![
+            UiCall::MenuItemEnabled {
+                label: "disabled menu".to_string(),
+                selected: false,
+                enabled: false,
+            },
+            UiCall::ButtonEnabled {
+                label: "disabled button".to_string(),
+                w: 90.0,
+                h: 24.0,
+                enabled: false,
+            },
+            UiCall::WindowCenteredClosable {
+                title: "Closable".to_string(),
+                w: 320.0,
+                h: 200.0,
+            },
+            UiCall::BodyEnter("window_centered_closable"),
+            UiCall::Text("inside closable".to_string()),
+            UiCall::BodyExit("window_centered_closable"),
+        ]
+    );
 }
 
 /// Annotating a `bool`-returning IDL method's result as `int` must fail to

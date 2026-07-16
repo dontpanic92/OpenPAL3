@@ -6,10 +6,8 @@
 //   - the source file is chosen via `IConfigService.pick_open_file`
 //     (one button per extension, since `pick_open_file` takes a single
 //     extension filter);
-//   - target format / mode / add-target-package selection use
-//     `tree_leaf` rows (single-select lists) instead of a combo box;
-//   - the Add-mode internal path is *derived* (see `IImportService`'s
-//     IDL docs) rather than typed.
+//   - target format uses `tree_leaf` rows instead of a combo box;
+//   - target mode and location are fixed by the entry point.
 //
 // `IImportService`'s per-format option setters (`set_mv3_vertex_scale`,
 // `set_mv3_ticks_per_second`, `set_pol_force_use_alpha`,
@@ -24,6 +22,7 @@ import yaobow_editor.yaobow_editor_services;
 
 pub struct ImportWizardState(
     pub show: bool,
+    pub fixed_replace: bool,
     // Mirrors of the per-format option setters below (see module docs
     // for why: `IImportService` doesn't expose getters for these).
     pub mv3_scale_pct: int,  // percentage of the PAL3 default 0.01562
@@ -33,7 +32,7 @@ pub struct ImportWizardState(
 );
 
 pub fn make_import_wizard_state() -> ImportWizardState {
-    return ImportWizardState(false, 100, 4580, -1, true);
+    return ImportWizardState(false, false, 100, 4580, -1, true);
 }
 
 fn reset_option_mirror(state: box<ImportWizardState>) {
@@ -43,13 +42,15 @@ fn reset_option_mirror(state: box<ImportWizardState>) {
     state.cvd_legacy = true;
 }
 
-// Generic entry point (main "Project" menu). When `context_vfs_path`
-// is non-empty (e.g. the currently previewed resource) and resolves
-// through the catalog, pre-seeds Replace mode against it; otherwise
-// (including when it fails to resolve) opens in Add mode with
-// everything blank, since a Replace mode with no resolvable target
-// isn't actionable.
-pub fn open_wizard(
+fn configure_project_output(
+    imports: box<yaobow_editor_services.IImportService>,
+) {
+    imports.set_save_to_file(false);
+    imports.set_add_to_project(true);
+}
+
+// Main-menu entry: always Add beside the currently previewed resource.
+pub fn open_wizard_for_add(
     state: box<ImportWizardState>,
     imports: box<yaobow_editor_services.IImportService>,
     context_vfs_path: string,
@@ -57,15 +58,10 @@ pub fn open_wizard(
     imports.reset();
     reset_option_mirror(state);
     state.show = true;
+    state.fixed_replace = false;
     imports.set_mode(1);
-    if context_vfs_path != "" {
-        // Also seed Add mode from the selected asset's package/directory,
-        // so switching from Replace to Add keeps a useful destination.
-        imports.set_add_target_directory_from_sibling(context_vfs_path);
-        if imports.set_replace_target(context_vfs_path) {
-            imports.set_mode(0);
-        }
-    }
+    imports.set_add_target_directory_from_sibling(context_vfs_path);
+    configure_project_output(imports);
 }
 
 // Model/resource-context entry point (e.g. a model tab's "Import glTF
@@ -81,18 +77,10 @@ pub fn open_wizard_for_replace(
     imports.reset();
     reset_option_mirror(state);
     state.show = true;
+    state.fixed_replace = true;
     imports.set_mode(0);
     imports.set_replace_target(vfs_path);
-}
-
-fn format_ext(fmt: int) -> string {
-    if fmt == 0 {
-        return "mv3";
-    }
-    if fmt == 1 {
-        return "pol";
-    }
-    return "cvd";
+    configure_project_output(imports);
 }
 
 fn status_label(status: int) -> string {
@@ -121,7 +109,7 @@ pub fn render_import_wizard(
     let imports = host.imports();
     let cfg = host.config();
 
-    ui.window_centered("Import glTF###import_wizard", 620.0, 640.0, () => {
+    ui.window_centered("Import glTF###import_wizard", 620.0, 560.0, () => {
         ui.text("1. Source file (.glb / .gltf)");
         if ui.button("Choose .glb file...", 170.0, 24.0) {
             let path = cfg.pick_open_file("", "glb");
@@ -144,14 +132,15 @@ pub fn render_import_wizard(
         }
 
         ui.text("2. Target format");
-        render_format_choice(ui, imports, 0, "MV3 (skeletal / character model)");
-        render_format_choice(ui, imports, 1, "POL (static model)");
-        render_format_choice(ui, imports, 2, "CVD (prop model)");
+        if state.fixed_replace {
+            ui.text(f"Fixed by replace target: {format_name(imports.target_format())}");
+        } else {
+            render_format_choice(ui, imports, 0, "MV3 (skeletal / character model)");
+            render_format_choice(ui, imports, 1, "POL (static model)");
+            render_format_choice(ui, imports, 2, "CVD (prop model)");
+        }
 
-        ui.text("3. Mode");
-        render_mode_choice(ui, imports, 0, "Replace an existing asset");
-        render_mode_choice(ui, imports, 1, "Add a new asset");
-
+        ui.text("3. Target");
         if imports.mode() == 0 {
             render_replace_section(ui, imports);
         } else {
@@ -168,6 +157,7 @@ pub fn render_import_wizard(
         if imports.has_converted() {
             let size = imports.converted_size();
             ui.text(f"Converted size: {size} bytes");
+            render_planned_files(ui, imports);
         }
         let dcount = imports.diagnostic_count();
         ui.text(f"Diagnostics: {dcount}");
@@ -178,9 +168,6 @@ pub fn render_import_wizard(
             });
         });
 
-        ui.text("6. Outputs (at least one required)");
-        render_outputs_section(ui, host, imports);
-
         if ui.button("Run", 100.0, 28.0) {
             imports.run();
         }
@@ -188,6 +175,10 @@ pub fn render_import_wizard(
         if ui.button("Cancel", 100.0, 28.0) {
             imports.reset();
             reset_option_mirror(state);
+            state.show = false;
+        }
+        ui.same_line();
+        if ui.button("Close", 100.0, 28.0) {
             state.show = false;
         }
 
@@ -209,10 +200,44 @@ pub fn render_import_wizard(
             }
         }
 
-        ui.same_line();
-        if ui.button("Close", 100.0, 24.0) {
-            state.show = false;
-        }
+    });
+}
+
+fn format_name(format: int) -> string {
+    if format == 0 {
+        return "MV3";
+    }
+    if format == 1 {
+        return "POL";
+    }
+    return "CVD";
+}
+
+fn planned_action_label(action: int) -> string {
+    if action == 0 {
+        return "Add";
+    }
+    if action == 1 {
+        return "Replace";
+    }
+    return "Pending";
+}
+
+fn render_planned_files(
+    ui: box<radiance.IUiHost>,
+    imports: box<yaobow_editor_services.IImportService>,
+) {
+    let n = imports.planned_file_count();
+    ui.text(f"Files to import: {n}");
+    ui.child_window("##import_planned_files", 0.0, 100.0, () => {
+        ui.list_clipped(n, () => {
+            let row = ui.list_clipped_index();
+            let kind = if imports.planned_file_kind(row) == 0 { "Model" } else { "Texture" };
+            let action = planned_action_label(imports.planned_file_project_action(row));
+            let path = imports.planned_file_path(row);
+            let size = imports.planned_file_size(row);
+            ui.text(f"[{action}] {kind}: {path} ({size} bytes)");
+        });
     });
 }
 
@@ -225,18 +250,6 @@ fn render_format_choice(
     let selected = imports.target_format() == fmt;
     if ui.tree_leaf(label, selected) {
         imports.set_target_format(fmt);
-    }
-}
-
-fn render_mode_choice(
-    ui: box<radiance.IUiHost>,
-    imports: box<yaobow_editor_services.IImportService>,
-    mode: int,
-    label: string,
-) {
-    let selected = imports.mode() == mode;
-    if ui.tree_leaf(label, selected) {
-        imports.set_mode(mode);
     }
 }
 
@@ -257,18 +270,10 @@ fn render_add_section(
     ui: box<radiance.IUiHost>,
     imports: box<yaobow_editor_services.IImportService>,
 ) {
-    let n = imports.add_target_candidate_count();
-    ui.text(f"Target package ({n} candidates):");
-    ui.child_window("##import_add_candidates", 0.0, 100.0, () => {
-        ui.list_clipped(n, () => {
-            let row = ui.list_clipped_index();
-            let name = imports.add_target_candidate_name(row);
-            let selected = imports.add_target_package() == name;
-            if ui.tree_leaf(name, selected) {
-                imports.set_add_target_package(name);
-            }
-        });
-    });
+    let pkg = imports.add_target_package();
+    let dir = imports.add_target_directory();
+    ui.text(f"Target package: {pkg}");
+    ui.text(f"Target directory: {dir}");
     let internal = imports.add_target_internal_path();
     if internal != "" {
         ui.text(f"Internal path: {internal}");
@@ -348,37 +353,5 @@ fn render_cvd_options(
     if new_legacy != legacy {
         state.cvd_legacy = new_legacy;
         imports.set_cvd_legacy_magic(new_legacy);
-    }
-}
-
-fn render_outputs_section(
-    ui: box<radiance.IUiHost>,
-    host: box<yaobow_editor_services.IEditorHostContext>,
-    imports: box<yaobow_editor_services.IImportService>,
-) {
-    let cfg = host.config();
-    let save_on = imports.save_to_file_enabled();
-    let new_save_on = ui.checkbox("Save converted file to disk", save_on);
-    if new_save_on != save_on {
-        imports.set_save_to_file(new_save_on);
-    }
-    if imports.save_to_file_enabled() {
-        if ui.button("Choose output file...", 170.0, 24.0) {
-            let ext = format_ext(imports.target_format());
-            let path = cfg.pick_save_file("", "", ext);
-            if path != "" {
-                imports.set_save_output_path(path);
-            }
-        }
-        let out = imports.save_output_path();
-        if out != "" {
-            ui.text(f"Output: {out}");
-        }
-    }
-
-    let proj_on = imports.add_to_project_enabled();
-    let new_proj_on = ui.checkbox("Add to active project", proj_on);
-    if new_proj_on != proj_on {
-        imports.set_add_to_project(new_proj_on);
     }
 }

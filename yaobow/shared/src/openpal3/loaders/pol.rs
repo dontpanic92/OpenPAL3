@@ -65,22 +65,15 @@ fn load_material<P: AsRef<Path>>(material: &PolMaterialInfo, vfs: &MiniFs, path:
         .iter()
         .map(|name| {
             let name = &name.as_str().unwrap();
-            name.split_terminator('.')
-                .next()
-                .and_then(|n| Some(n.to_owned() + ".dds"))
-                .and_then(|dds_name| {
-                    let mut texture_path = path.as_ref().to_owned();
-                    texture_path.pop();
-                    texture_path.push(dds_name);
-                    if !vfs.open(&texture_path).is_ok() {
-                        texture_path.pop();
-                        texture_path.push(name);
-                    }
-
-                    Some(texture_path)
-                })
-                .or(Some(PathBuf::from(name)))
-                .unwrap()
+            let mut model_dir = path.as_ref().to_owned();
+            model_dir.pop();
+            let dds_name = PathBuf::from(name).with_extension("dds");
+            let dds_path = model_dir.join(dds_name);
+            if vfs.open(&dds_path).is_ok() {
+                dds_path
+            } else {
+                model_dir.join(name)
+            }
         })
         .collect();
 

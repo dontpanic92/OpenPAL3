@@ -77,6 +77,7 @@ impl IVfsServiceImpl for StubVfs {
     fn command_path(&self, _command_id: i32) -> &str {
         ""
     }
+    fn invalidate_entries(&self) {}
 }
 
 /// Helper: build the dedicated script `AssetManager` used by these
@@ -132,4 +133,70 @@ fn welcome_runtime_can_create_resource_tree_root() {
     // round-trip works.
     let _ = vfs;
     drop(runtime);
+}
+
+#[test]
+fn resource_tree_change_helpers_choose_green_orange_and_plain_widgets() {
+    use radiance_scripting::services::ui_host_recording::{RecordingUiHost, UiCall};
+
+    let runtime = radiance_scripting::ScriptHost::new();
+    runtime.set_script_assets(build_test_assets());
+    runtime
+        .load_source(
+            r#"
+import radiance;
+import yaobow_editor.resource_tree;
+
+pub fn entry(ui: box<radiance.IUiHost>) -> int {
+    resource_tree.tree_leaf_for_change(ui, "add", true, 0);
+    resource_tree.tree_leaf_for_change(ui, "replace", false, 1);
+    resource_tree.tree_leaf_for_change(ui, "plain", false, -1);
+    if resource_tree.tree_node_open_for_change(ui, "add-dir", 0) {
+        ui.tree_pop();
+    }
+    if resource_tree.tree_node_open_for_change(ui, "replace-dir", 1) {
+        ui.tree_pop();
+    }
+    0
+}
+"#,
+        )
+        .expect("resource tree helper probe compiles");
+
+    let (recorder, ui_com) = RecordingUiHost::create();
+    let ui_id = runtime.intern(ui_com);
+    let ui = runtime
+        .foreign_box("radiance.comdef.IUiHost", ui_id)
+        .expect("ui foreign box");
+    runtime
+        .call_returning_data("entry", vec![ui])
+        .expect("resource tree helper probe runs");
+
+    assert_eq!(
+        recorder.calls.borrow().clone(),
+        vec![
+            UiCall::TreeLeafColored {
+                label: "add".to_string(),
+                selected: true,
+                color: [0.35, 0.85, 0.45, 1.0],
+            },
+            UiCall::TreeLeafColored {
+                label: "replace".to_string(),
+                selected: false,
+                color: [1.0, 0.62, 0.20, 1.0],
+            },
+            UiCall::TreeLeaf {
+                label: "plain".to_string(),
+                selected: false,
+            },
+            UiCall::TreeNodeOpenColored {
+                label: "add-dir".to_string(),
+                color: [0.35, 0.85, 0.45, 1.0],
+            },
+            UiCall::TreeNodeOpenColored {
+                label: "replace-dir".to_string(),
+                color: [1.0, 0.62, 0.20, 1.0],
+            },
+        ]
+    );
 }

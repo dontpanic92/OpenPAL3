@@ -494,6 +494,9 @@ interface IUiHost: IUnknown {
 
     void window(&str title, float w, float h, int flags, IAction body);
     void window_centered(&str title, float w, float h, IAction body);
+    // Centered window with a native title-bar close control. Returns
+    // true on the frame the user requests close.
+    bool window_centered_closable(&str title, float w, float h, IAction body);
     void window_fullscreen(&str title, int flags, IAction body);
     void child_window(&str id, float w, float h, IAction body);
     void table(&str id, int cols, IAction body);
@@ -567,6 +570,7 @@ interface IUiHost: IUnknown {
     void text(&str s);
     void text_with_font(int font_idx, &str s);
     bool button(&str label, float w, float h);
+    bool button_enabled(&str label, float w, float h, bool enabled);
 
     // Checkbox widget. Returns the (possibly modified) bool value for
     // this frame. Stateless from the host's perspective — the script
@@ -624,6 +628,16 @@ interface IUiHost: IUnknown {
     // the active/opened item like a normal file list (distinct from the
     // transient hover highlight). Returns true on the frame it's clicked.
     bool tree_leaf(&str label, bool selected);
+    // `tree_leaf` with an explicit text/icon color. The selected-row
+    // highlight is unchanged and the supplied text color remains visible.
+    bool tree_leaf_colored(
+        &str label,
+        bool selected,
+        float r,
+        float g,
+        float b,
+        float a
+    );
 
     // Render only the rows of a large flat list that are actually
     // visible in the current scroll region, using `ImGuiListClipper`.
@@ -655,6 +669,14 @@ interface IUiHost: IUnknown {
     // mirrors imgui's native `TreeNode` / `TreePop` pairing and
     // bypasses crosscom's IAction CCW machinery.
     bool tree_node_open(&str label);
+    // Two-phase tree node with an explicit text/icon color.
+    bool tree_node_open_colored(
+        &str label,
+        float r,
+        float g,
+        float b,
+        float a
+    );
     void tree_pop();
 
     // --- Docking ------------------------------------------------------
@@ -765,6 +787,7 @@ interface IUiHost: IUnknown {
     // radio-style menus such as `View > Theme`). Returns true on the
     // frame the item is clicked.
     bool menu_item(&str label, bool selected);
+    bool menu_item_enabled(&str label, bool selected, bool enabled);
 
     // --- Content region ----------------------------------------------
     // Available content region of the current container, in scaled

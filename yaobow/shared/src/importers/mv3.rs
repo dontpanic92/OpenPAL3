@@ -4,45 +4,27 @@
 //! emits one glTF node per `(model, mesh)` pair (so each part can carry
 //! its own texture), tagging every such node with a
 //! `node.extras.yaobow` `{model_index, mesh_index}` payload. This
-//! converter regroups sibling scene-root nodes that share the same
+//! converter regroups nodes that share the same
 //! `model_index` back into a single [`Mv3Model`] (see
 //! [`group_mv3_nodes`]); every glTF `Primitive` across a group's nodes
 //! becomes one [`Mv3Mesh`], with positions/UVs pooled 1:1 per glTF
 //! vertex across the whole group (no cross-primitive dedup — simpler
 //! and always correct, if a little larger than a hand-optimized
 //! packer). Morph targets become additional per-vertex frame
-//! snapshots; a `weights` animation channel on any node in the group
-//! supplies the per-frame tick timestamps (every node in one model
-//! shares the same timeline, matching the exporter's single shared time
-//! accessor).
+//! snapshots. Generic glTF node hierarchies, mesh-node transforms, morph
+//! weights, and skeletal animation are sampled at their source key times and
+//! baked into those same full-vertex snapshots.
 //!
 //! When a scene's mesh-bearing root nodes don't *all* carry the
 //! `model_index`/`mesh_index` tag (a plain, hand-authored glTF, or one
 //! authored by an older exporter version), this converter falls back to
-//! the original convention instead: one root mesh node = one model,
+//! the original convention instead: one mesh-bearing node = one model,
 //! with each of that node's `Primitive`s becoming one [`Mv3Mesh`].
 //!
-//! # Supported scene shape (explicit constraints)
-//!
-//! MV3 has **no node hierarchy or node-level transform** — a model is
-//! just a bag of meshes sharing one vertex-frame pool. This converter
-//! therefore requires:
-//! * every mesh-bearing node designated as a model must be a **scene
-//!   root** ([`ImportError::NestedMeshNode`]) — nesting a mesh under a
-//!   transform node has no MV3 representation;
-//! * that node's static scale must be **uniform**
-//!   ([`ImportError::NonUniformScale`]) — its static translation/
-//!   rotation/scale is baked directly into the vertex/normal data;
-//! * the node must **not** be targeted by a TRS animation channel
-//!   ([`ImportError::UnsupportedAnimationTarget`]) — MV3 can only animate
-//!   vertex positions (morph targets), never a node transform;
-//! * every primitive of one node's mesh must agree on morph target count
-//!   ([`ImportError::MorphTargetCountMismatch`]), and if there are any
-//!   morph targets, a `weights` animation channel on that node must
-//!   supply exactly `target_count + 1` keyframe times
-//!   ([`ImportError::MissingWeightsAnimation`],
-//!   [`ImportError::MorphTargetTimingMismatch`]);
-//! * every primitive's vertex count must fit in a `u16` index
+//! MV3 itself has no hierarchy or skeleton: a model is a bag of meshes sharing
+//! one vertex-frame pool. The converter flattens the glTF hierarchy into world
+//! space and CPU-skins each sampled pose before quantization. Every primitive's
+//! vertex count must still fit in a `u16` index
 //!   ([`ImportError::TooManyVertices`]), and quantized positions must fit
 //!   in `i16` after [`Mv3Options::vertex_scale`]
 //!   ([`ImportError::QuantizationOverflow`]).
@@ -52,7 +34,6 @@
 //! `asset.extras.yaobow` (see [`crate::importers::extras`]); plain,
 //! hand-authored glTF gets sensible zeroed defaults instead.
 
-use std::collections::HashSet;
 use std::io::{Seek, Write};
 
 use fileformats::mv3::{
@@ -63,9 +44,38 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::error::{Diagnostics, ImportError};
-use super::scene::ImportedScene;
+use super::scene::{
+    ImportedJointInfluence, ImportedScene, ImportedTrsChannel, Interpolation, TrsProperty,
+};
 use super::target::{ImportOptions, Mv3Options};
-use super::{assert_no_trs_animation, quantize_world, rotate_normal, uniform_scale};
+
+type Mat4 = [[f32; 4]; 4];
+const ROTATION_BAKE_FPS: f32 = 30.0;
+const MAX_ROTATION_BAKE_FRAMES: usize = 10_000;
+
+#[derive(Debug, Clone, Copy)]
+struct FrameSample {
+    animation: Option<usize>,
+    time: f32,
+    timestamp: u32,
+}
+
+#[derive(Debug, Clone)]
+struct EvaluatedFrame {
+    sample: FrameSample,
+    world_matrices: Vec<Mat4>,
+    skin_matrices: Vec<Option<Vec<Mat4>>>,
+}
+
+#[derive(Debug, Clone)]
+struct PooledVertex {
+    node: usize,
+    position: [f32; 3],
+    normal: Option<[f32; 3]>,
+    morph_position_deltas: Vec<[f32; 3]>,
+    morph_normal_deltas: Vec<Option<[f32; 3]>>,
+    skin_influences: Option<Vec<ImportedJointInfluence>>,
+}
 
 /// Converts `scene` into an in-memory [`Mv3File`], applying `options.mv3`.
 pub fn convert(
@@ -99,8 +109,6 @@ pub fn convert_with_template(
         }
     }
 
-    let roots: HashSet<usize> = super::effective_roots(scene).into_iter().collect();
-
     let mesh_node_indices: Vec<usize> = scene
         .nodes
         .iter()
@@ -108,17 +116,21 @@ pub fn convert_with_template(
         .filter(|(_, node)| node.mesh.is_some())
         .map(|(index, _)| index)
         .collect();
-    for &index in &mesh_node_indices {
-        if !roots.contains(&index) {
-            return Err(ImportError::NestedMeshNode {
-                node: scene.nodes[index].name.clone(),
-                target: "mv3",
-            });
-        }
-        assert_no_trs_animation(scene, index, "mv3")?;
-    }
-
     let groups = group_mv3_nodes(scene, &mesh_node_indices);
+    let frame_samples = build_frame_samples(scene, opts, &mut diagnostics);
+    let parent_indices = build_parent_indices(scene)?;
+    let evaluated_frames = frame_samples
+        .iter()
+        .map(|sample| {
+            let world_matrices = evaluate_world_matrices(scene, &parent_indices, *sample)?;
+            let skin_matrices = build_skin_matrices(scene, &world_matrices)?;
+            Ok(EvaluatedFrame {
+                sample: *sample,
+                world_matrices,
+                skin_matrices,
+            })
+        })
+        .collect::<Result<Vec<_>, ImportError>>()?;
 
     let mut textures = Vec::new();
     let mut models = Vec::new();
@@ -126,8 +138,17 @@ pub fn convert_with_template(
         let model_metadata = extras
             .as_ref()
             .and_then(|e| e.model_metadata.get(models.len()));
-        let (model, texture_name) =
-            build_model(scene, node_indices, opts, &mut diagnostics, model_metadata)?;
+        let (model, texture_name) = build_model(
+            scene,
+            node_indices,
+            opts,
+            &evaluated_frames,
+            &mut diagnostics,
+            model_metadata,
+        )?;
+        let imported_texture = texture_name
+            .as_deref()
+            .is_some_and(|name| name.starts_with("_yaobow_import/"));
 
         let mut texture = Mv3Texture {
             unknown: vec![0.0; 17],
@@ -150,11 +171,10 @@ pub fn convert_with_template(
                     texture.unknown = t.unknown.clone();
                 }
                 if t.names.len() == 4 {
-                    texture.names = t
-                        .names
-                        .iter()
-                        .map(|n| super::gbk_sized_string(n))
-                        .collect::<Result<Vec<_>, _>>()?;
+                    let start = usize::from(imported_texture);
+                    for (index, name) in t.names.iter().enumerate().skip(start) {
+                        texture.names[index] = super::gbk_sized_string(name)?;
+                    }
                 }
             }
         }
@@ -237,7 +257,7 @@ fn mv3_node_tag(extras: Option<&Value>) -> Option<Mv3NodeTag> {
     })
 }
 
-/// Groups `mesh_node_indices` (every mesh-bearing scene-root node) into
+/// Groups `mesh_node_indices` (every mesh-bearing node) into
 /// per-[`Mv3Model`] node-index lists, one inner `Vec` per reconstructed
 /// model, ordered by `model_index` (or by first appearance, in the
 /// fallback case below); each inner `Vec` is ordered by `mesh_index`.
@@ -254,7 +274,7 @@ fn mv3_node_tag(extras: Option<&Value>) -> Option<Mv3NodeTag> {
 ///
 /// If any node is missing the tag (a plain, hand-authored glTF, or one
 /// produced by a different tool), grouping falls back to the original,
-/// simpler convention: one root mesh node = one model, with that node's
+/// simpler convention: one mesh-bearing node = one model, with that node's
 /// own `Primitive`s each becoming one [`Mv3Mesh`] (handled by
 /// [`build_model`] iterating every node's primitives either way).
 fn group_mv3_nodes(scene: &ImportedScene, mesh_node_indices: &[usize]) -> Vec<Vec<usize>> {
@@ -288,7 +308,7 @@ fn group_mv3_nodes(scene: &ImportedScene, mesh_node_indices: &[usize]) -> Vec<Ve
     }
 }
 
-/// Builds one [`Mv3Model`] from `node_indices` (one or more scene-root
+/// Builds one [`Mv3Model`] from `node_indices` (one or more
 /// nodes belonging to the same original model — see [`group_mv3_nodes`]).
 /// Every primitive of every node in the group becomes one [`Mv3Mesh`];
 /// positions/UVs/morph deltas are pooled into one shared per-model
@@ -298,73 +318,19 @@ fn build_model(
     scene: &ImportedScene,
     node_indices: &[usize],
     opts: &Mv3Options,
+    evaluated_frames: &[EvaluatedFrame],
     diagnostics: &mut Diagnostics,
     model_metadata: Option<&Mv3ExtrasModel>,
 ) -> Result<(Mv3Model, Option<String>), ImportError> {
     let model_name = scene.nodes[node_indices[0]].name.clone();
-
-    let mut target_count: Option<usize> = None;
-    for &node_index in node_indices {
-        let node = &scene.nodes[node_index];
-        let mesh = node.mesh.as_ref().expect("caller checked mesh.is_some()");
-        for p in &mesh.primitives {
-            let n = p.morph_targets.len();
-            match target_count {
-                None => target_count = Some(n),
-                Some(tc) if tc != n => {
-                    return Err(ImportError::MorphTargetCountMismatch {
-                        node: node.name.clone(),
-                        a: tc,
-                        b: n,
-                    });
-                }
-                _ => {}
-            }
-        }
-    }
-    let target_count = target_count.unwrap_or(0);
-    let frame_count = target_count + 1;
-
-    let frame_times: Vec<f32> = if target_count > 0 {
-        let channel = scene
-            .animations
-            .iter()
-            .flat_map(|a| a.weight_channels.iter())
-            .find(|c| node_indices.contains(&c.node))
-            .ok_or_else(|| ImportError::MissingWeightsAnimation {
-                node: model_name.clone(),
-                frames: frame_count,
-            })?;
-        if channel.times.len() != frame_count {
-            return Err(ImportError::MorphTargetTimingMismatch {
-                node: model_name.clone(),
-                targets: target_count,
-                expected: channel.times.len(),
-                targets_plus_one: frame_count,
-            });
-        }
-        channel.times.clone()
-    } else {
-        vec![0.0]
-    };
-
-    let mut pooled_positions: Vec<[f32; 3]> = Vec::new();
-    let mut pooled_normals: Vec<Option<[f32; 3]>> = Vec::new();
+    let mut pooled_vertices: Vec<PooledVertex> = Vec::new();
     let mut pooled_uvs: Vec<[f32; 2]> = Vec::new();
-    // `pooled_deltas[k]` holds the per-vertex position delta for morph
-    // target `k` (frame `k + 1`).
-    let mut pooled_deltas: Vec<Vec<[f32; 3]>> = vec![Vec::new(); target_count];
-    // Parallel to `pooled_positions`: the (node index, uniform scale) a
-    // pooled vertex's static transform should be baked from — each node
-    // in the group may carry its own (typically identity) transform.
-    let mut pooled_transform: Vec<(usize, f32)> = Vec::new();
 
     let mut meshes = Vec::new();
     let mut texture_name = None;
     for &node_index in node_indices {
         let node = &scene.nodes[node_index];
         let mesh = node.mesh.as_ref().expect("caller checked mesh.is_some()");
-        let scale = uniform_scale(node, "mv3")?;
 
         for (prim_index, primitive) in mesh.primitives.iter().enumerate() {
             if primitive.material_texture.is_some() && texture_name.is_none() {
@@ -379,21 +345,40 @@ fn build_model(
                     count: vertex_count,
                 });
             }
+            if node.skin.is_some() && primitive.skin_influences.is_none() {
+                return Err(ImportError::MissingSkinAttributes {
+                    node: node.name.clone(),
+                    primitive: prim_index,
+                });
+            }
 
-            let base_index = pooled_positions.len() as u32;
+            let base_index = pooled_vertices.len() as u32;
             for i in 0..vertex_count {
-                pooled_positions.push(primitive.positions[i]);
-                pooled_normals.push(primitive.normals.get(i).copied());
+                pooled_vertices.push(PooledVertex {
+                    node: node_index,
+                    position: primitive.positions[i],
+                    normal: primitive.normals.get(i).copied(),
+                    morph_position_deltas: primitive
+                        .morph_targets
+                        .iter()
+                        .map(|target| target.position_deltas.get(i).copied().unwrap_or([0.0; 3]))
+                        .collect(),
+                    morph_normal_deltas: primitive
+                        .morph_targets
+                        .iter()
+                        .map(|target| {
+                            target
+                                .normal_deltas
+                                .as_ref()
+                                .and_then(|deltas| deltas.get(i).copied())
+                        })
+                        .collect(),
+                    skin_influences: primitive
+                        .skin_influences
+                        .as_ref()
+                        .and_then(|vertices| vertices.get(i).cloned()),
+                });
                 pooled_uvs.push(primitive.uv0.get(i).copied().unwrap_or([0.0, 0.0]));
-                pooled_transform.push((node_index, scale));
-                for k in 0..target_count {
-                    let delta = primitive.morph_targets[k]
-                        .position_deltas
-                        .get(i)
-                        .copied()
-                        .unwrap_or([0.0, 0.0, 0.0]);
-                    pooled_deltas[k].push(delta);
-                }
             }
 
             if primitive.indices.len() % 3 != 0 {
@@ -420,7 +405,7 @@ fn build_model(
                             mesh: node.name.clone(),
                             primitive: prim_index,
                             index: local,
-                            vertex_count: pooled_positions.len(),
+                            vertex_count: pooled_vertices.len(),
                         });
                     }
                     *slot = local as u16;
@@ -447,45 +432,35 @@ fn build_model(
         }
     }
 
-    let vertex_per_frame = pooled_positions.len() as u32;
-    if pooled_positions.is_empty() {
+    let vertex_per_frame = pooled_vertices.len() as u32;
+    if pooled_vertices.is_empty() {
         diagnostics.push(format!(
             "model `{}` produced no vertices; emitting an empty model",
             model_name
         ));
     }
 
-    let mut aabb_min = if pooled_positions.is_empty() {
+    let mut aabb_min = if pooled_vertices.is_empty() {
         [0.0; 3]
     } else {
         [f32::INFINITY; 3]
     };
-    let mut aabb_max = if pooled_positions.is_empty() {
+    let mut aabb_max = if pooled_vertices.is_empty() {
         [0.0; 3]
     } else {
         [f32::NEG_INFINITY; 3]
     };
-    let mut frames = Vec::with_capacity(frame_count);
-    for k in 0..frame_count {
-        let timestamp = (frame_times[k] * opts.ticks_per_second).round() as u32;
-        let mut vertices = Vec::with_capacity(pooled_positions.len());
-        for i in 0..pooled_positions.len() {
-            let (node_index, scale) = pooled_transform[i];
-            let node = &scene.nodes[node_index];
-            let mut p = pooled_positions[i];
-            if k > 0 {
-                let d = pooled_deltas[k - 1][i];
-                p = [p[0] + d[0], p[1] + d[1], p[2] + d[2]];
-            }
-            p = quantize_world(p, node, scale);
+    let mut frames = Vec::with_capacity(evaluated_frames.len());
+    for frame in evaluated_frames {
+        let mut vertices = Vec::with_capacity(pooled_vertices.len());
+        for pooled in &pooled_vertices {
+            let node = &scene.nodes[pooled.node];
+            let (p, normal) = bake_vertex(scene, pooled, frame)?;
             for axis in 0..3 {
                 aabb_min[axis] = aabb_min[axis].min(p[axis]);
                 aabb_max[axis] = aabb_max[axis].max(p[axis]);
             }
             let (x, y, z) = quantize_i16(p, opts.vertex_scale, &node.name)?;
-            let normal = pooled_normals[i]
-                .map(|n| rotate_normal(n, node.rotation))
-                .unwrap_or([0.0, 1.0, 0.0]);
             let (normal_phi, normal_theta) = encode_normal(normal);
             vertices.push(fileformats::mv3::Mv3Vertex {
                 x,
@@ -496,7 +471,7 @@ fn build_model(
             });
         }
         frames.push(Mv3Frame {
-            timestamp,
+            timestamp: frame.sample.timestamp,
             vertices,
         });
     }
@@ -511,7 +486,7 @@ fn build_model(
         vertex_per_frame,
         aabb_min,
         aabb_max,
-        frame_count: frame_count as u32,
+        frame_count: evaluated_frames.len() as u32,
         frames,
         texcoord_count: pooled_uvs.len() as u32,
         // MV3 stores UVs authored with an OpenGL-style bottom-left origin
@@ -529,6 +504,493 @@ fn build_model(
     };
 
     Ok((model, texture_name))
+}
+
+fn build_frame_samples(
+    scene: &ImportedScene,
+    opts: &Mv3Options,
+    diagnostics: &mut Diagnostics,
+) -> Vec<FrameSample> {
+    if scene.animations.is_empty() {
+        return vec![FrameSample {
+            animation: None,
+            time: 0.0,
+            timestamp: 0,
+        }];
+    }
+
+    if scene.animations.len() > 1 {
+        diagnostics.push(format!(
+            "source glTF has {} animations; concatenated them into one mv3 vertex-frame timeline",
+            scene.animations.len()
+        ));
+    }
+
+    let mut samples = Vec::new();
+    let mut next_clip_tick = 0u32;
+    for (animation_index, animation) in scene.animations.iter().enumerate() {
+        let mut times = vec![0.0f32];
+        times.extend(
+            animation
+                .trs_channels
+                .iter()
+                .flat_map(|channel| channel.times.iter().copied()),
+        );
+        times.extend(
+            animation
+                .weight_channels
+                .iter()
+                .flat_map(|channel| channel.times.iter().copied()),
+        );
+        times.retain(|time| time.is_finite() && *time >= 0.0);
+        if animation
+            .trs_channels
+            .iter()
+            .any(|channel| channel.property == TrsProperty::Rotation)
+        {
+            let duration = times.iter().copied().fold(0.0f32, f32::max);
+            let sample_count = (duration * ROTATION_BAKE_FPS).ceil() as usize;
+            if sample_count <= MAX_ROTATION_BAKE_FRAMES {
+                times.extend(
+                    (0..=sample_count)
+                        .map(|sample| (sample as f32 / ROTATION_BAKE_FPS).min(duration)),
+                );
+            } else {
+                diagnostics.push(format!(
+                    "animation `{}` is too long to resample rotations at {} fps; using source key times only",
+                    animation.name, ROTATION_BAKE_FPS
+                ));
+            }
+        }
+        times.sort_by(f32::total_cmp);
+        times.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+
+        let mut last_tick = samples.last().map(|sample: &FrameSample| sample.timestamp);
+        for time in times {
+            let relative_tick = (time * opts.ticks_per_second)
+                .round()
+                .clamp(0.0, u32::MAX as f32) as u32;
+            let mut timestamp = next_clip_tick.saturating_add(relative_tick);
+            if let Some(previous) = last_tick {
+                if timestamp <= previous {
+                    timestamp = previous.saturating_add(1);
+                }
+            }
+            samples.push(FrameSample {
+                animation: Some(animation_index),
+                time,
+                timestamp,
+            });
+            last_tick = Some(timestamp);
+        }
+        next_clip_tick = last_tick.unwrap_or(next_clip_tick).saturating_add(1);
+    }
+    samples
+}
+
+fn build_parent_indices(scene: &ImportedScene) -> Result<Vec<Option<usize>>, ImportError> {
+    let mut parents: Vec<Option<usize>> = vec![None; scene.nodes.len()];
+    for (parent, node) in scene.nodes.iter().enumerate() {
+        for &child in &node.children {
+            let Some(slot) = parents.get_mut(child) else {
+                return Err(ImportError::Other(format!(
+                    "node `{}` references missing child node #{}",
+                    node.name, child
+                )));
+            };
+            if let Some(first_parent) = *slot {
+                return Err(ImportError::MultipleNodeParents {
+                    node: scene.nodes[child].name.clone(),
+                    first_parent: scene.nodes[first_parent].name.clone(),
+                    second_parent: scene.nodes[parent].name.clone(),
+                });
+            }
+            *slot = Some(parent);
+        }
+    }
+    Ok(parents)
+}
+
+fn evaluate_world_matrices(
+    scene: &ImportedScene,
+    parents: &[Option<usize>],
+    sample: FrameSample,
+) -> Result<Vec<Mat4>, ImportError> {
+    let mut matrices = vec![None; scene.nodes.len()];
+    let mut state = vec![0u8; scene.nodes.len()];
+    for start in 0..scene.nodes.len() {
+        if matrices[start].is_some() {
+            continue;
+        }
+        let mut chain = Vec::new();
+        let mut current = Some(start);
+        while let Some(node_index) = current {
+            if matrices[node_index].is_some() {
+                break;
+            }
+            if state[node_index] == 1 {
+                return Err(ImportError::NodeHierarchyCycle {
+                    node: scene.nodes[node_index].name.clone(),
+                });
+            }
+            state[node_index] = 1;
+            chain.push(node_index);
+            current = parents[node_index];
+        }
+        for &node_index in chain.iter().rev() {
+            let local = local_matrix(scene, node_index, sample);
+            let world = match parents[node_index] {
+                Some(parent) => matrix_mul(
+                    matrices[parent].expect("parent evaluated before child"),
+                    local,
+                ),
+                None => local,
+            };
+            matrices[node_index] = Some(world);
+            state[node_index] = 2;
+        }
+    }
+    Ok(matrices
+        .into_iter()
+        .map(|matrix| matrix.expect("all nodes evaluated"))
+        .collect())
+}
+
+fn local_matrix(scene: &ImportedScene, node_index: usize, sample: FrameSample) -> Mat4 {
+    let node = &scene.nodes[node_index];
+    let mut translation = node.translation;
+    let mut rotation = node.rotation;
+    let mut scale = node.scale;
+
+    if let Some(animation_index) = sample.animation {
+        let animation = &scene.animations[animation_index];
+        for channel in animation
+            .trs_channels
+            .iter()
+            .filter(|channel| channel.node == node_index)
+        {
+            let value = sample_trs_channel(channel, sample.time);
+            match channel.property {
+                TrsProperty::Translation => translation = [value[0], value[1], value[2]],
+                TrsProperty::Rotation => rotation = value,
+                TrsProperty::Scale => scale = [value[0], value[1], value[2]],
+            }
+        }
+    }
+
+    trs_matrix(translation, rotation, scale)
+}
+
+fn build_skin_matrices(
+    scene: &ImportedScene,
+    world_matrices: &[Mat4],
+) -> Result<Vec<Option<Vec<Mat4>>>, ImportError> {
+    let mut result = vec![None; scene.nodes.len()];
+    for (node_index, node) in scene.nodes.iter().enumerate() {
+        let Some(skin_index) = node.skin else {
+            continue;
+        };
+        let skin = scene.skins.get(skin_index).ok_or_else(|| {
+            ImportError::Other(format!(
+                "mesh node `{}` references missing glTF skin #{}",
+                node.name, skin_index
+            ))
+        })?;
+        let mut matrices = Vec::with_capacity(skin.joints.len());
+        for (&joint_node, inverse_bind) in skin.joints.iter().zip(&skin.inverse_bind_matrices) {
+            let joint_world = world_matrices.get(joint_node).ok_or_else(|| {
+                ImportError::Other(format!(
+                    "glTF skin #{skin_index} references missing joint node #{joint_node}"
+                ))
+            })?;
+            matrices.push(matrix_mul(*joint_world, *inverse_bind));
+        }
+        result[node_index] = Some(matrices);
+    }
+    Ok(result)
+}
+
+fn bake_vertex(
+    scene: &ImportedScene,
+    vertex: &PooledVertex,
+    frame: &EvaluatedFrame,
+) -> Result<([f32; 3], [f32; 3]), ImportError> {
+    let morph_weights = sample_morph_weights(
+        scene,
+        vertex.node,
+        vertex.morph_position_deltas.len(),
+        frame.sample,
+    );
+    let mut position = vertex.position;
+    let mut normal = vertex.normal.unwrap_or([0.0, 1.0, 0.0]);
+    for (target, weight) in vertex
+        .morph_position_deltas
+        .iter()
+        .zip(morph_weights.iter().copied())
+    {
+        position[0] += target[0] * weight;
+        position[1] += target[1] * weight;
+        position[2] += target[2] * weight;
+    }
+    for (target, weight) in vertex
+        .morph_normal_deltas
+        .iter()
+        .zip(morph_weights.iter().copied())
+    {
+        if let Some(target) = target {
+            normal[0] += target[0] * weight;
+            normal[1] += target[1] * weight;
+            normal[2] += target[2] * weight;
+        }
+    }
+
+    let node = &scene.nodes[vertex.node];
+    let (world_position, world_normal) = match node.skin {
+        Some(skin_index) => {
+            let skin = &scene.skins[skin_index];
+            let skin_matrices = frame.skin_matrices[vertex.node]
+                .as_ref()
+                .expect("skin matrices built for skinned node");
+            let influences = vertex
+                .skin_influences
+                .as_deref()
+                .expect("skinned primitive checked while pooling");
+            let total_weight: f32 = influences.iter().map(|influence| influence.weight).sum();
+            if influences.is_empty() || total_weight <= 1e-8 {
+                (position, normal)
+            } else {
+                let mut skinned_position = [0.0; 3];
+                let mut skinned_normal = [0.0; 3];
+                for influence in influences {
+                    let matrix = skin_matrices.get(influence.joint as usize).ok_or_else(|| {
+                        ImportError::SkinJointOutOfRange {
+                            node: node.name.clone(),
+                            skin: skin_index,
+                            joint: influence.joint,
+                            joint_count: skin.joints.len(),
+                        }
+                    })?;
+                    let weight = influence.weight / total_weight;
+                    let p = transform_point(*matrix, position);
+                    let n = transform_vector(*matrix, normal);
+                    for axis in 0..3 {
+                        skinned_position[axis] += p[axis] * weight;
+                        skinned_normal[axis] += n[axis] * weight;
+                    }
+                }
+                (skinned_position, skinned_normal)
+            }
+        }
+        None => (
+            transform_point(frame.world_matrices[vertex.node], position),
+            transform_vector(frame.world_matrices[vertex.node], normal),
+        ),
+    };
+    Ok((world_position, normalize3(world_normal)))
+}
+
+fn sample_morph_weights(
+    scene: &ImportedScene,
+    node_index: usize,
+    target_count: usize,
+    sample: FrameSample,
+) -> Vec<f32> {
+    let mut weights = vec![0.0; target_count];
+    for (target, &weight) in weights
+        .iter_mut()
+        .zip(scene.nodes[node_index].morph_weights.iter())
+    {
+        *target = weight;
+    }
+    let Some(animation_index) = sample.animation else {
+        return weights;
+    };
+    let Some(channel) = scene.animations[animation_index]
+        .weight_channels
+        .iter()
+        .find(|channel| channel.node == node_index)
+    else {
+        return weights;
+    };
+    let sampled = sample_weight_channel(channel, sample.time);
+    for (target, weight) in weights.iter_mut().zip(sampled) {
+        *target = weight;
+    }
+    weights
+}
+
+fn sample_weight_channel(channel: &super::scene::ImportedWeightsChannel, time: f32) -> Vec<f32> {
+    let frame_count = channel.times.len();
+    if frame_count == 0 || channel.target_count == 0 {
+        return Vec::new();
+    }
+    let (from, to, factor) = sample_segment(&channel.times, channel.interpolation, time);
+    (0..channel.target_count)
+        .map(|target| {
+            let a = channel.weights[from * channel.target_count + target];
+            let b = channel.weights[to * channel.target_count + target];
+            a + (b - a) * factor
+        })
+        .collect()
+}
+
+fn sample_trs_channel(channel: &ImportedTrsChannel, time: f32) -> [f32; 4] {
+    if channel.times.is_empty() {
+        return [0.0; 4];
+    }
+    let (from, to, factor) = sample_segment(&channel.times, channel.interpolation, time);
+    let a = channel.values[from];
+    let b = channel.values[to];
+    if channel.property == TrsProperty::Rotation {
+        quaternion_slerp(a, b, factor)
+    } else {
+        [
+            a[0] + (b[0] - a[0]) * factor,
+            a[1] + (b[1] - a[1]) * factor,
+            a[2] + (b[2] - a[2]) * factor,
+            a[3] + (b[3] - a[3]) * factor,
+        ]
+    }
+}
+
+fn sample_segment(times: &[f32], interpolation: Interpolation, time: f32) -> (usize, usize, f32) {
+    if times.len() <= 1 || time <= times[0] {
+        return (0, 0, 0.0);
+    }
+    let last = times.len() - 1;
+    if time >= times[last] {
+        return (last, last, 0.0);
+    }
+    let to = times
+        .iter()
+        .position(|sample_time| *sample_time > time)
+        .unwrap_or(last);
+    let from = to - 1;
+    if interpolation == Interpolation::Step {
+        return (from, from, 0.0);
+    }
+    let span = times[to] - times[from];
+    let factor = if span > 1e-8 {
+        (time - times[from]) / span
+    } else {
+        0.0
+    };
+    (from, to, factor)
+}
+
+fn trs_matrix(translation: [f32; 3], rotation: [f32; 4], scale: [f32; 3]) -> Mat4 {
+    let [x, y, z, w] = normalize4(rotation);
+    let xx = x * x;
+    let yy = y * y;
+    let zz = z * z;
+    let xy = x * y;
+    let xz = x * z;
+    let yz = y * z;
+    let xw = x * w;
+    let yw = y * w;
+    let zw = z * w;
+    [
+        [
+            (1.0 - 2.0 * (yy + zz)) * scale[0],
+            (2.0 * (xy + zw)) * scale[0],
+            (2.0 * (xz - yw)) * scale[0],
+            0.0,
+        ],
+        [
+            (2.0 * (xy - zw)) * scale[1],
+            (1.0 - 2.0 * (xx + zz)) * scale[1],
+            (2.0 * (yz + xw)) * scale[1],
+            0.0,
+        ],
+        [
+            (2.0 * (xz + yw)) * scale[2],
+            (2.0 * (yz - xw)) * scale[2],
+            (1.0 - 2.0 * (xx + yy)) * scale[2],
+            0.0,
+        ],
+        [translation[0], translation[1], translation[2], 1.0],
+    ]
+}
+
+fn matrix_mul(a: Mat4, b: Mat4) -> Mat4 {
+    let mut out = [[0.0; 4]; 4];
+    for column in 0..4 {
+        for row in 0..4 {
+            out[column][row] = (0..4).map(|k| a[k][row] * b[column][k]).sum();
+        }
+    }
+    out
+}
+
+fn transform_point(matrix: Mat4, point: [f32; 3]) -> [f32; 3] {
+    [
+        matrix[0][0] * point[0] + matrix[1][0] * point[1] + matrix[2][0] * point[2] + matrix[3][0],
+        matrix[0][1] * point[0] + matrix[1][1] * point[1] + matrix[2][1] * point[2] + matrix[3][1],
+        matrix[0][2] * point[0] + matrix[1][2] * point[1] + matrix[2][2] * point[2] + matrix[3][2],
+    ]
+}
+
+fn transform_vector(matrix: Mat4, vector: [f32; 3]) -> [f32; 3] {
+    [
+        matrix[0][0] * vector[0] + matrix[1][0] * vector[1] + matrix[2][0] * vector[2],
+        matrix[0][1] * vector[0] + matrix[1][1] * vector[1] + matrix[2][1] * vector[2],
+        matrix[0][2] * vector[0] + matrix[1][2] * vector[1] + matrix[2][2] * vector[2],
+    ]
+}
+
+fn normalize3(value: [f32; 3]) -> [f32; 3] {
+    let length = (value[0] * value[0] + value[1] * value[1] + value[2] * value[2]).sqrt();
+    if length > 1e-8 {
+        [value[0] / length, value[1] / length, value[2] / length]
+    } else {
+        [0.0, 1.0, 0.0]
+    }
+}
+
+fn normalize4(value: [f32; 4]) -> [f32; 4] {
+    let length = value
+        .iter()
+        .map(|component| component * component)
+        .sum::<f32>()
+        .sqrt();
+    if length > 1e-8 {
+        [
+            value[0] / length,
+            value[1] / length,
+            value[2] / length,
+            value[3] / length,
+        ]
+    } else {
+        [0.0, 0.0, 0.0, 1.0]
+    }
+}
+
+fn quaternion_slerp(a: [f32; 4], mut b: [f32; 4], factor: f32) -> [f32; 4] {
+    let a = normalize4(a);
+    b = normalize4(b);
+    let mut dot = a.iter().zip(b).map(|(a, b)| a * b).sum::<f32>();
+    if dot < 0.0 {
+        b = [-b[0], -b[1], -b[2], -b[3]];
+        dot = -dot;
+    }
+    if dot > 0.9995 {
+        return normalize4([
+            a[0] + (b[0] - a[0]) * factor,
+            a[1] + (b[1] - a[1]) * factor,
+            a[2] + (b[2] - a[2]) * factor,
+            a[3] + (b[3] - a[3]) * factor,
+        ]);
+    }
+    let angle = dot.clamp(-1.0, 1.0).acos();
+    let sin_angle = angle.sin();
+    let from_weight = ((1.0 - factor) * angle).sin() / sin_angle;
+    let to_weight = (factor * angle).sin() / sin_angle;
+    normalize4([
+        a[0] * from_weight + b[0] * to_weight,
+        a[1] * from_weight + b[1] * to_weight,
+        a[2] * from_weight + b[2] * to_weight,
+        a[3] * from_weight + b[3] * to_weight,
+    ])
 }
 
 fn quantize_i16(

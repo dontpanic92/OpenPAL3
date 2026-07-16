@@ -4,9 +4,9 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TargetFormat {
     /// Animated role/prop model (`.mv3`): one model per mesh-bearing node,
-    /// one `Mv3Mesh` per primitive, one vertex-frame snapshot per morph
-    /// target (see [`crate::exporters::gltf::mv3`] for the inverse
-    /// direction).
+    /// one `Mv3Mesh` per primitive, with node/morph/skeletal animation baked
+    /// into full vertex-frame snapshots (see [`crate::exporters::gltf::mv3`]
+    /// for the inverse direction).
     Mv3,
     /// Static, possibly multi-material mesh (`.pol`).
     Pol,

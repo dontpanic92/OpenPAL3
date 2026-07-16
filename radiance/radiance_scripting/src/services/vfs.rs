@@ -238,6 +238,11 @@ impl IVfsServiceImpl for VfsService {
             .unwrap_or_default();
         self.set_last_string(value)
     }
+
+    fn invalidate_entries(&self) {
+        self.entries_cache.borrow_mut().clear();
+        self.path_is_dir.borrow_mut().clear();
+    }
 }
 
 #[cfg(test)]
@@ -272,6 +277,38 @@ mod tests {
         // Subsequent calls still return the same answers via cache.
         assert_eq!(service.is_dir("/scene/Q01/Q01.bsp"), false);
         assert_eq!(service.is_dir("/scene/Q01"), true);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn invalidation_refreshes_entries_without_resetting_ui_state() {
+        let root = std::env::temp_dir().join(format!(
+            "yaobow_vfs_invalidation_test_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("scene")).unwrap();
+        fs::write(root.join("scene/existing.scn"), b"").unwrap();
+
+        let mini = mini_fs::MiniFs::new(false).mount("/", mini_fs::LocalFs::new(&root));
+        let service = VfsService::create(Rc::new(mini));
+
+        assert_eq!(service.entry_count("/scene"), 1);
+        assert_eq!(service.entry_name("/scene", 0), "existing.scn");
+        service.toggle_expanded("/scene");
+        let command_id = service.command_id("/scene/existing.scn");
+
+        fs::write(root.join("scene/added.scn"), b"").unwrap();
+        assert_eq!(service.entry_count("/scene"), 1);
+
+        service.invalidate_entries();
+
+        assert_eq!(service.entry_count("/scene"), 2);
+        assert_eq!(service.entry_name("/scene", 0), "added.scn");
+        assert!(service.is_expanded("/scene"));
+        assert_eq!(service.command_id("/scene/existing.scn"), command_id);
+        assert_eq!(service.command_path(command_id), "/scene/existing.scn");
 
         let _ = fs::remove_dir_all(&root);
     }

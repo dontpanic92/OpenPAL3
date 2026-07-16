@@ -189,7 +189,7 @@ impl IPreviewerHubImpl for StubPreviewerHub {
     }
 }
 
-/// Dummy `IProjectService` for tests that don't exercise the "Project"
+/// Dummy `IProjectService` for tests that don't exercise the "File"
 /// menu/panel (welcome.p7 has none — it's only wired into
 /// main_editor.p7). Built via the production constructor over an empty
 /// VFS/catalog/overlay, mirroring `StubPreviewerHub::resources` above.

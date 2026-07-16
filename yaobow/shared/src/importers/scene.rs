@@ -21,8 +21,20 @@ pub struct ImportedScene {
     /// of every scene, if the document doesn't set a default one).
     pub roots: Vec<usize>,
     pub animations: Vec<ImportedAnimation>,
+    /// Skins referenced by [`ImportedNode::skin`], in glTF skin-index order.
+    pub skins: Vec<ImportedSkin>,
     /// Parsed `asset.extras.yaobow` payload, if present.
     pub extras: Option<super::extras::YaobowExtras>,
+    /// Referenced glTF images, converted to TGA and assigned deterministic
+    /// model-relative paths under `_yaobow_import/`.
+    pub textures: Vec<ImportedTexture>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ImportedTexture {
+    pub image_index: usize,
+    pub relative_path: String,
+    pub bytes: Vec<u8>,
 }
 
 /// One glTF node: a local TRS transform, optional mesh, and children.
@@ -36,6 +48,12 @@ pub struct ImportedNode {
     pub rotation: [f32; 4],
     pub scale: [f32; 3],
     pub mesh: Option<ImportedMesh>,
+    /// Index into [`ImportedScene::skins`], when this node instantiates a
+    /// skinned mesh.
+    pub skin: Option<usize>,
+    /// Initial morph-target weights from the node, falling back to the mesh's
+    /// default weights.
+    pub morph_weights: Vec<f32>,
     /// Raw `node.extras.yaobow` payload, if present.
     pub extras: Option<Value>,
 }
@@ -49,6 +67,8 @@ impl ImportedNode {
             rotation: [0.0, 0.0, 0.0, 1.0],
             scale: [1.0; 3],
             mesh: None,
+            skin: None,
+            morph_weights: Vec::new(),
             extras: None,
         }
     }
@@ -85,6 +105,9 @@ pub struct ImportedPrimitive {
     /// (`material.alphaMode == "BLEND"`).
     pub material_alpha_blend: bool,
     pub morph_targets: Vec<ImportedMorphTarget>,
+    /// Per-vertex joint influences. Joint indices address the enclosing
+    /// node's [`ImportedSkin::joints`] array.
+    pub skin_influences: Option<Vec<Vec<ImportedJointInfluence>>>,
 }
 
 impl ImportedPrimitive {
@@ -116,6 +139,20 @@ pub struct ImportedMorphTarget {
     /// Per-vertex position displacement relative to the base primitive.
     pub position_deltas: Vec<[f32; 3]>,
     pub normal_deltas: Option<Vec<[f32; 3]>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ImportedJointInfluence {
+    pub joint: u16,
+    pub weight: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ImportedSkin {
+    /// glTF node indices for each skin-local joint index.
+    pub joints: Vec<usize>,
+    /// Column-major inverse-bind matrices, one per joint.
+    pub inverse_bind_matrices: Vec<[[f32; 4]; 4]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-// "Project" main-menu entry + a simple (non-docked) "Project Changes"
+// "File" main-menu entry + a simple (non-docked) "Project Changes"
 // panel, backed by the host-side `IProjectService`
 // (`yaobow_editor::services::project_service::ProjectService`).
 //
@@ -23,14 +23,12 @@ pub fn make_project_panel_state() -> ProjectPanelState {
     return ProjectPanelState(false);
 }
 
-// Rendered from inside `ui.main_menu_bar(...)` in `main_editor.p7`,
-// alongside the existing View/Theme menu.
-pub fn render_project_menu(
+pub fn render_file_menu(
     ui: box<radiance.IUiHost>,
     host: box<yaobow_editor_services.IEditorHostContext>,
     state: box<ProjectPanelState>,
 ) {
-    ui.menu("Project", () => {
+    ui.menu("File", () => {
         let proj = host.project();
         let cfg = host.config();
 
@@ -71,15 +69,20 @@ pub fn render_project_menu(
                 proj.publish_patch(path);
             }
         }
-
-        let shown = state.show_changes_panel;
-        if ui.menu_item("Project Changes", shown) {
-            state.show_changes_panel = !shown;
-        }
     });
 }
 
-// Toggled via the "Project Changes" menu item above. Lists every
+pub fn render_view_menu_item(
+    ui: box<radiance.IUiHost>,
+    state: box<ProjectPanelState>,
+) {
+    let shown = state.show_changes_panel;
+    if ui.menu_item("Show Project Changes", shown) {
+        state.show_changes_panel = !shown;
+    }
+}
+
+// Toggled via View > Show Project Changes. Lists every
 // tracked change in the active project with per-row Remove/Revert
 // actions, and surfaces `IProjectService.last_error()` so a failed
 // action (e.g. staging a file with no active project) is visible
@@ -94,7 +97,11 @@ pub fn render_project_changes_panel(
     }
 
     let proj = host.project();
-    ui.window_centered("Project Changes###project_changes", 640.0, 420.0, () => {
+    let close_requested = ui.window_centered_closable(
+        "Project Changes###project_changes",
+        640.0,
+        420.0,
+        () => {
         if proj.has_active_project() {
             let name = proj.active_project_name();
             let dir = proj.active_project_dir();
@@ -102,7 +109,7 @@ pub fn render_project_changes_panel(
             ui.text(f"Project: {name}{dirty}");
             ui.text(f"Directory: {dir}");
         } else {
-            ui.text("No active project — use Project > New/Open to start one.");
+            ui.text("No active project — use File > New/Open to start one.");
         }
 
         let err = proj.last_error();
@@ -119,6 +126,9 @@ pub fn render_project_changes_panel(
             });
         });
     });
+    if close_requested {
+        state.show_changes_panel = false;
+    }
 }
 
 fn kind_label(kind: int) -> string {

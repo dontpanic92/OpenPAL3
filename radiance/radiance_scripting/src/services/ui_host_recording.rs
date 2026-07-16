@@ -39,6 +39,11 @@ pub enum UiCall {
         w: f32,
         h: f32,
     },
+    WindowCenteredClosable {
+        title: String,
+        w: f32,
+        h: f32,
+    },
     WindowFullscreen {
         title: String,
         flags: i32,
@@ -88,6 +93,12 @@ pub enum UiCall {
         label: String,
         w: f32,
         h: f32,
+    },
+    ButtonEnabled {
+        label: String,
+        w: f32,
+        h: f32,
+        enabled: bool,
     },
     Checkbox {
         label: String,
@@ -140,11 +151,20 @@ pub enum UiCall {
         label: String,
         selected: bool,
     },
+    TreeLeafColored {
+        label: String,
+        selected: bool,
+        color: [f32; 4],
+    },
     ListClipped {
         count: i32,
     },
     TreeNodeOpen {
         label: String,
+    },
+    TreeNodeOpenColored {
+        label: String,
+        color: [f32; 4],
     },
     TreePop,
     MainMenuBar,
@@ -154,6 +174,11 @@ pub enum UiCall {
     MenuItem {
         label: String,
         selected: bool,
+    },
+    MenuItemEnabled {
+        label: String,
+        selected: bool,
+        enabled: bool,
     },
     FillRect {
         x0: f32,
@@ -193,6 +218,7 @@ pub enum UiCall {
 pub struct RecordingUiHost {
     pub calls: RefCell<Vec<UiCall>>,
     pub button_results: RefCell<std::collections::HashMap<String, bool>>,
+    pub window_close_results: RefCell<std::collections::HashMap<String, bool>>,
     pub tab_item_results: RefCell<std::collections::HashMap<String, bool>>,
     pub tree_leaf_results: RefCell<std::collections::HashMap<String, bool>>,
     pub tree_node_open_results: RefCell<std::collections::HashMap<String, bool>>,
@@ -294,6 +320,21 @@ impl IUiHostImpl for HostFacade {
             h,
         });
         invoke_body("window_centered", &self.inner, body);
+    }
+
+    fn window_centered_closable(&self, title: &str, w: f32, h: f32, body: ComRc<IAction>) -> bool {
+        self.inner.record(UiCall::WindowCenteredClosable {
+            title: title.into(),
+            w,
+            h,
+        });
+        invoke_body("window_centered_closable", &self.inner, body);
+        self.inner
+            .window_close_results
+            .borrow()
+            .get(title)
+            .copied()
+            .unwrap_or(false)
     }
 
     fn window_fullscreen(&self, title: &str, flags: i32, body: ComRc<IAction>) {
@@ -403,6 +444,24 @@ impl IUiHostImpl for HostFacade {
             .unwrap_or(false)
     }
 
+    fn button_enabled(&self, label: &str, w: f32, h: f32, enabled: bool) -> bool {
+        self.inner.record(UiCall::ButtonEnabled {
+            label: label.into(),
+            w,
+            h,
+            enabled,
+        });
+        if !enabled {
+            return false;
+        }
+        self.inner
+            .button_results
+            .borrow()
+            .get(label)
+            .copied()
+            .unwrap_or(false)
+    }
+
     fn checkbox(&self, label: &str, value: bool) -> bool {
         self.inner.record(UiCall::Checkbox {
             label: label.into(),
@@ -493,6 +552,28 @@ impl IUiHostImpl for HostFacade {
             .unwrap_or(false)
     }
 
+    fn tree_leaf_colored(
+        &self,
+        label: &str,
+        selected: bool,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    ) -> bool {
+        self.inner.record(UiCall::TreeLeafColored {
+            label: label.into(),
+            selected,
+            color: [r, g, b, a],
+        });
+        self.inner
+            .tree_leaf_results
+            .borrow()
+            .get(label)
+            .copied()
+            .unwrap_or(false)
+    }
+
     // The recording host invokes the body once per row to mirror the
     // imgui clipper's per-visible-row callback shape, but without an
     // actual imgui viewport every row is "visible". Tests that need
@@ -509,6 +590,19 @@ impl IUiHostImpl for HostFacade {
     fn tree_node_open(&self, label: &str) -> bool {
         self.inner.record(UiCall::TreeNodeOpen {
             label: label.into(),
+        });
+        self.inner
+            .tree_node_open_results
+            .borrow()
+            .get(label)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn tree_node_open_colored(&self, label: &str, r: f32, g: f32, b: f32, a: f32) -> bool {
+        self.inner.record(UiCall::TreeNodeOpenColored {
+            label: label.into(),
+            color: [r, g, b, a],
         });
         self.inner
             .tree_node_open_results
@@ -701,6 +795,23 @@ impl IUiHostImpl for HostFacade {
             label: label.into(),
             selected,
         });
+        self.inner
+            .menu_item_results
+            .borrow()
+            .get(label)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn menu_item_enabled(&self, label: &str, selected: bool, enabled: bool) -> bool {
+        self.inner.record(UiCall::MenuItemEnabled {
+            label: label.into(),
+            selected,
+            enabled,
+        });
+        if !enabled {
+            return false;
+        }
         self.inner
             .menu_item_results
             .borrow()

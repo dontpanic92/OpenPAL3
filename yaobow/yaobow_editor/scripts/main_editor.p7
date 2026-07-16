@@ -47,8 +47,11 @@ pub struct[radiance.IUiLayer, radiance.IDirector] MainEditorDirector(
 
     pub fn render(self: refmut<Self>, ui: box<radiance.IUiHost>, dt: float) -> int {
         ui.main_menu_bar(() => {
-            theme_menu.render_theme_menu(ui, self.host.config());
-            project_panel.render_project_menu(ui, self.host, self.project_panel);
+            project_panel.render_file_menu(ui, self.host, self.project_panel);
+            ui.menu("View", () => {
+                theme_menu.render_theme_submenu(ui, self.host.config());
+                project_panel.render_view_menu_item(ui, self.project_panel);
+            });
             render_import_menu(ui, self);
             render_layout_tabs(ui, self);
         });
@@ -131,33 +134,52 @@ fn empty_transitions() -> ?box<radiance.IDirector> {
     return null;
 }
 
-// "Import" menu entry, added to the main menu bar alongside "Project".
-// Seeds Replace mode from whatever's currently in the single preview
-// pane (if anything) so the generic entry point still gets a useful
-// starting point; falls back to Add mode when nothing is open.
+// Menu import always adds beside the currently previewed asset.
 fn render_import_menu(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) {
     ui.menu("Import", () => {
-        if ui.menu_item("Import glTF...", false) {
-            let context_path = preview_selected_path(dir.preview);
-            import_wizard.open_wizard(dir.import_wizard, dir.host.imports(), context_path);
-        }
+        let context_path = preview_selected_path(dir.preview);
+        render_import_menu_item(
+            ui,
+            dir.host.project(),
+            dir.host.imports(),
+            dir.import_wizard,
+            context_path,
+        );
     });
+}
+
+pub fn render_import_menu_item(
+    ui: box<radiance.IUiHost>,
+    project: box<yaobow_editor_services.IProjectService>,
+    imports: box<yaobow_editor_services.IImportService>,
+    state: box<import_wizard.ImportWizardState>,
+    context_path: string,
+) {
+    let enabled = context_path != "" && project.has_active_project();
+    if ui.menu_item_enabled("Import glTF to current folder", false, enabled) {
+        import_wizard.open_wizard_for_add(state, imports, context_path);
+    }
 }
 
 // Right-aligned layout selector rendered inside `main_menu_bar`.
 fn render_layout_tabs(ui: box<radiance.IUiHost>, dir: refmut<MainEditorDirector>) {
     let assets_label = "资源浏览";
     let scene_label = "场景编辑";
+    let project_label = project_status_label(dir.host.project());
     let pad = 28.0;
+    let status_gap = 18.0;
     let w_assets = ui.calc_text_size_x(assets_label) + pad;
     let w_scene = ui.calc_text_size_x(scene_label) + pad;
+    let w_project = ui.calc_text_size_x(project_label);
     let avail = ui.content_region_avail_x() as float;
     let here = ui.cursor_pos_x();
-    let start_x = here + avail - (w_assets + w_scene);
+    let start_x = here + avail - (w_project + status_gap + w_assets + w_scene);
     if start_x > here {
         ui.set_cursor_pos(start_x, ui.cursor_pos_y());
     }
 
+    ui.text(project_label);
+    ui.same_line();
     let is_assets = dir.layout == editor_consts.EditorLayout.Assets;
     if ui.menu_item(assets_label, is_assets) {
         dir.layout = editor_consts.EditorLayout.Assets;
@@ -166,6 +188,17 @@ fn render_layout_tabs(ui: box<radiance.IUiHost>, dir: refmut<MainEditorDirector>
     if ui.menu_item(scene_label, is_scene) {
         dir.layout = editor_consts.EditorLayout.Scene;
     }
+}
+
+pub fn project_status_label(proj: box<yaobow_editor_services.IProjectService>) -> string {
+    if !proj.has_active_project() {
+        return "项目: 未打开";
+    }
+    let name = proj.active_project_name();
+    if proj.is_dirty() {
+        return f"项目: {name} *";
+    }
+    return f"项目: {name}";
 }
 
 fn render_assets_layout(ui: box<radiance.IUiHost>, dir: ref<MainEditorDirector>) {

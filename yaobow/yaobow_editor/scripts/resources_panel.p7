@@ -31,12 +31,25 @@ pub fn render_resources_panel_im(
         ui.tab_item("文件树", false, () => {
             state.view_mode = 0;
             ui.child_window("##resources_tree_child", 0.0, 0.0, () => {
-                resource_tree.render_resource_tree_im(ui, host.vfs(), picks, selected_path);
+                resource_tree.render_resource_tree_im(
+                    ui,
+                    host.vfs(),
+                    host.project(),
+                    picks,
+                    selected_path,
+                );
             });
         });
         ui.tab_item("分类", false, () => {
             state.view_mode = 1;
-            render_category_view(ui, host.previewers().resources(), state, picks, selected_path);
+            render_category_view(
+                ui,
+                host.previewers().resources(),
+                host.project(),
+                state,
+                picks,
+                selected_path,
+            );
         });
     });
 }
@@ -44,6 +57,7 @@ pub fn render_resources_panel_im(
 fn render_category_view(
     ui: box<radiance.IUiHost>,
     rm: box<yaobow_editor_services.IResourceManager>,
+    project: box<yaobow_editor_services.IProjectService>,
     state: box<ResourcesPanelState>,
     picks: box<array<string>>,
     selected_path: string,
@@ -73,7 +87,13 @@ fn render_category_view(
                 ui.list_clipped(count, () => {
                     let row = ui.list_clipped_index();
                     let path = rm.category_entry_path(cat_idx, cat_filter, row);
-                    if ui.tree_leaf(path, path == selected_path) {
+                    let change_kind = project.asset_change_kind(path);
+                    if resource_tree.tree_leaf_for_change(
+                        ui,
+                        path,
+                        path == selected_path,
+                        change_kind,
+                    ) {
                         picks.push(path);
                     }
                 });

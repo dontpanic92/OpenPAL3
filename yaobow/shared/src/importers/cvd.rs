@@ -436,15 +436,18 @@ fn build_mesh(
         }
 
         let mat_extra = filtered_materials.get(prim_index).copied();
-        // A replacement template's texture name (when present) takes
-        // precedence over the glTF material's texture, mirroring
-        // `importers::pol`'s extras-texture-name precedence — see
-        // `CvdExtrasMaterial::texture_name`'s doc comment for why this
-        // only ever comes from a template, never real extras JSON.
-        let texture_name = mat_extra
-            .and_then(|m| m.texture_name.clone())
-            .or_else(|| primitive.material_texture.clone())
-            .unwrap_or_default();
+        let imported_texture = primitive
+            .material_texture
+            .as_deref()
+            .is_some_and(|name| name.starts_with("_yaobow_import/"));
+        let texture_name = if imported_texture {
+            primitive.material_texture.clone()
+        } else {
+            mat_extra
+                .and_then(|m| m.texture_name.clone())
+                .or_else(|| primitive.material_texture.clone())
+        }
+        .unwrap_or_default();
         materials.push(CvdMaterial {
             unknown_byte: mat_extra.map(|m| m.unknown_byte).unwrap_or(0),
             color1: mat_extra.map(|m| m.color1).unwrap_or(0xFFFFFFFF),

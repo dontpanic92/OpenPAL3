@@ -384,6 +384,27 @@ impl IUiHostImpl for ImguiUiHost {
         });
     }
 
+    fn window_centered_closable(&self, title: &str, w: f32, h: f32, body: ComRc<IAction>) -> bool {
+        with_frame("window_centered_closable", |f| {
+            let [w, h] = f.scaled_size(w, h);
+            let [display_w, display_h] = f.ui.io().display_size;
+            let cx = (display_w - w) / 2.0;
+            let cy = (display_h - h) / 2.0;
+            let mut open = true;
+            f.ui.window(title)
+                .size([w, h], imgui::Condition::Always)
+                .position([cx, cy], imgui::Condition::Always)
+                .movable(false)
+                .collapsible(false)
+                .opened(&mut open)
+                .build(|| {
+                    body.invoke();
+                });
+            !open
+        })
+        .unwrap_or(false)
+    }
+
     fn window_fullscreen(&self, title: &str, flags: i32, body: ComRc<IAction>) {
         with_frame("window_fullscreen", |f| {
             let display = f.ui.io().display_size;
@@ -552,6 +573,15 @@ impl IUiHostImpl for ImguiUiHost {
     fn button(&self, label: &str, w: f32, h: f32) -> bool {
         with_frame("button", |f| {
             let [w, h] = f.scaled_size(w, h);
+            f.ui.button_with_size(label, [w, h])
+        })
+        .unwrap_or(false)
+    }
+
+    fn button_enabled(&self, label: &str, w: f32, h: f32, enabled: bool) -> bool {
+        with_frame("button_enabled", |f| {
+            let [w, h] = f.scaled_size(w, h);
+            let _disabled = f.ui.begin_disabled(!enabled);
             f.ui.button_with_size(label, [w, h])
         })
         .unwrap_or(false)
@@ -759,6 +789,28 @@ impl IUiHostImpl for ImguiUiHost {
         .unwrap_or(false)
     }
 
+    fn tree_leaf_colored(
+        &self,
+        label: &str,
+        selected: bool,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    ) -> bool {
+        with_frame("tree_leaf_colored", |f| {
+            let _color = f.ui.push_style_color(imgui::StyleColor::Text, [r, g, b, a]);
+            let _node =
+                f.ui.tree_node_config(label)
+                    .flags(imgui::TreeNodeFlags::SPAN_FULL_WIDTH)
+                    .leaf(true)
+                    .selected(selected)
+                    .push();
+            f.ui.is_item_clicked()
+        })
+        .unwrap_or(false)
+    }
+
     fn list_clipped(&self, count: i32, body: ComRc<IAction>) {
         with_frame("list_clipped", |f| {
             if count <= 0 {
@@ -799,6 +851,21 @@ impl IUiHostImpl for ImguiUiHost {
             // the real `igTreePop`. Dropping the token here would
             // pop the imgui scope before the body widgets are
             // submitted, which is exactly what we don't want.
+            std::mem::forget(token);
+            is_open
+        })
+        .unwrap_or(false)
+    }
+
+    fn tree_node_open_colored(&self, label: &str, r: f32, g: f32, b: f32, a: f32) -> bool {
+        with_frame("tree_node_open_colored", |f| {
+            let color = f.ui.push_style_color(imgui::StyleColor::Text, [r, g, b, a]);
+            let token =
+                f.ui.tree_node_config(label)
+                    .flags(imgui::TreeNodeFlags::SPAN_FULL_WIDTH)
+                    .push();
+            drop(color);
+            let is_open = token.is_some();
             std::mem::forget(token);
             is_open
         })
@@ -1504,69 +1571,71 @@ impl IUiHostImpl for ImguiUiHost {
     }
 
     fn menu_item(&self, label: &str, selected: bool) -> bool {
-        with_frame("menu_item", |f| {
-            // imgui's Selectable (used by MenuItem) hardcodes rounding=0
-            // in its RenderFrame call, so the standard `HeaderHovered`
-            // highlight is always a flat rectangle. To get a rounded
-            // pill we suppress the built-in fill (push header colors to
-            // fully transparent) and paint our own rounded rect into a
-            // background draw-list channel before the text+checkmark go
-            // into the foreground channel.
-            let (hovered_col, active_col, sel_col, rounding) = unsafe {
-                let style = f.ui.style();
-                (
-                    style.colors[imgui::StyleColor::HeaderHovered as usize],
-                    style.colors[imgui::StyleColor::HeaderActive as usize],
-                    style.colors[imgui::StyleColor::Header as usize],
-                    style.frame_rounding,
-                )
-            };
+        with_frame("menu_item", |f| render_menu_item(f, label, selected, true)).unwrap_or(false)
+    }
 
-            let transparent = [0.0_f32, 0.0, 0.0, 0.0];
-            let h_tok =
-                f.ui.push_style_color(imgui::StyleColor::HeaderHovered, transparent);
-            let ha_tok =
-                f.ui.push_style_color(imgui::StyleColor::HeaderActive, transparent);
-            let hd_tok =
-                f.ui.push_style_color(imgui::StyleColor::Header, transparent);
-
-            let mut activated = false;
-            let dl = f.ui.get_window_draw_list();
-            dl.channels_split(2, |splitter| {
-                splitter.set_current(1); // foreground: text + checkmark
-                activated = f.ui.menu_item_config(label).selected(selected).build();
-
-                let hovered = f.ui.is_item_hovered();
-                let held = f.ui.is_item_active();
-                if hovered || selected {
-                    let col = if held && hovered {
-                        active_col
-                    } else if hovered {
-                        hovered_col
-                    } else {
-                        sel_col
-                    };
-                    // The selectable uses `SpanAvailWidth`, so its rect
-                    // already fills the (theme-widened) popup; the pill
-                    // follows it automatically.
-                    let min = f.ui.item_rect_min();
-                    let max = f.ui.item_rect_max();
-                    splitter.set_current(0); // background
-                    dl.add_rect(min, max, col)
-                        .rounding(rounding)
-                        .filled(true)
-                        .build();
-                }
-            });
-
-            hd_tok.pop();
-            ha_tok.pop();
-            h_tok.pop();
-
-            activated
+    fn menu_item_enabled(&self, label: &str, selected: bool, enabled: bool) -> bool {
+        with_frame("menu_item_enabled", |f| {
+            render_menu_item(f, label, selected, enabled)
         })
         .unwrap_or(false)
     }
+}
+
+fn render_menu_item(f: &ImguiFrameState<'_>, label: &str, selected: bool, enabled: bool) -> bool {
+    // imgui's Selectable (used by MenuItem) hardcodes rounding=0 in its
+    // RenderFrame call. Suppress that fill and paint a rounded background.
+    let (hovered_col, active_col, sel_col, rounding) = unsafe {
+        let style = f.ui.style();
+        (
+            style.colors[imgui::StyleColor::HeaderHovered as usize],
+            style.colors[imgui::StyleColor::HeaderActive as usize],
+            style.colors[imgui::StyleColor::Header as usize],
+            style.frame_rounding,
+        )
+    };
+    let transparent = [0.0_f32, 0.0, 0.0, 0.0];
+    let h_tok =
+        f.ui.push_style_color(imgui::StyleColor::HeaderHovered, transparent);
+    let ha_tok =
+        f.ui.push_style_color(imgui::StyleColor::HeaderActive, transparent);
+    let hd_tok =
+        f.ui.push_style_color(imgui::StyleColor::Header, transparent);
+
+    let mut activated = false;
+    let dl = f.ui.get_window_draw_list();
+    dl.channels_split(2, |splitter| {
+        splitter.set_current(1);
+        activated =
+            f.ui.menu_item_config(label)
+                .selected(selected)
+                .enabled(enabled)
+                .build();
+
+        let hovered = f.ui.is_item_hovered();
+        let held = f.ui.is_item_active();
+        if enabled && (hovered || selected) {
+            let col = if held && hovered {
+                active_col
+            } else if hovered {
+                hovered_col
+            } else {
+                sel_col
+            };
+            let min = f.ui.item_rect_min();
+            let max = f.ui.item_rect_max();
+            splitter.set_current(0);
+            dl.add_rect(min, max, col)
+                .rounding(rounding)
+                .filled(true)
+                .build();
+        }
+    });
+
+    hd_tok.pop();
+    ha_tok.pop();
+    h_tok.pop();
+    activated
 }
 
 fn dock_string_id(s: &str) -> imgui::sys::ImGuiID {

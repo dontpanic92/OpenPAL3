@@ -269,16 +269,18 @@ fn build_mesh(
         }
 
         let extra = material_metadata.and_then(|m| m.get(prim_index));
-        // A Yaobow-extras texture name (when present) takes precedence
-        // over the glTF material's texture, since it's the only way to
-        // recover the real name for a bufferView-embedded image (see
-        // `importers::loader::image_texture_name`'s placeholder). Mirrors
-        // the exporter's convention that the *last* `texture_names` entry
-        // is the diffuse/base-color slot.
-        let texture_name = extra
-            .and_then(|e| e.texture_names.last().cloned())
-            .or_else(|| primitive.material_texture.clone())
-            .unwrap_or_default();
+        let imported_texture = primitive
+            .material_texture
+            .as_deref()
+            .is_some_and(|name| name.starts_with("_yaobow_import/"));
+        let texture_name = if imported_texture {
+            primitive.material_texture.clone()
+        } else {
+            extra
+                .and_then(|e| e.texture_names.last().cloned())
+                .or_else(|| primitive.material_texture.clone())
+        }
+        .unwrap_or_default();
         // GBK-encode (not UTF-8) before the capacity check/construction:
         // `PolMaterialInfo::texture_names` is read back with
         // `StringWithCapacity::as_str` (GBK), so a raw-UTF-8-encoded

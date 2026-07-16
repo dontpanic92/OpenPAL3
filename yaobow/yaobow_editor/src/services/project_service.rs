@@ -22,6 +22,7 @@ use asset_project::{
 use crosscom::ComRc;
 use mini_fs::{MiniFs, StoreExt};
 use packfs::AssetCatalog;
+use radiance_scripting::comdef::services::IVfsService;
 
 use crate::comdef::editor_services::{IPreviewerHub, IProjectService, IProjectServiceImpl};
 use shared::GameType;
@@ -44,8 +45,11 @@ pub struct ProjectServiceInner {
     catalog: Rc<AssetCatalog>,
     overlay: SharedOverlayIndex,
     previewers: ComRc<IPreviewerHub>,
+    tree_vfs: ComRc<IVfsService>,
 
     state: RefCell<Option<ActiveProject>>,
+    change_kinds_by_path: RefCell<HashMap<PathBuf, AssetChangeKind>>,
+    change_kinds_by_directory: RefCell<HashMap<PathBuf, AssetChangeKind>>,
     dirty: Cell<bool>,
     last_error: RefCell<String>,
     last_string: RefCell<String>,
@@ -71,6 +75,15 @@ pub struct ProjectServiceInner {
 #[derive(Clone)]
 pub struct ProjectService(Rc<ProjectServiceInner>);
 
+pub(crate) struct PayloadToStage<'a> {
+    pub target_package: &'a str,
+    pub internal_path: &'a str,
+    pub bytes: &'a [u8],
+    pub source_path: &'a str,
+    pub tool: &'a str,
+    pub tool_version: &'a str,
+}
+
 impl std::ops::Deref for ProjectService {
     type Target = ProjectServiceInner;
 
@@ -95,6 +108,27 @@ impl ProjectService {
         overlay: SharedOverlayIndex,
         previewers: ComRc<IPreviewerHub>,
     ) -> (ProjectService, ComRc<IProjectService>) {
+        let tree_vfs = radiance_scripting::services::VfsService::create(vfs.clone());
+        Self::create_with_vfs(
+            game_type,
+            base_asset_root,
+            vfs,
+            catalog,
+            overlay,
+            previewers,
+            tree_vfs,
+        )
+    }
+
+    pub fn create_with_vfs(
+        game_type: GameType,
+        base_asset_root: PathBuf,
+        vfs: Rc<MiniFs>,
+        catalog: Rc<AssetCatalog>,
+        overlay: SharedOverlayIndex,
+        previewers: ComRc<IPreviewerHub>,
+        tree_vfs: ComRc<IVfsService>,
+    ) -> (ProjectService, ComRc<IProjectService>) {
         let handle = ProjectService(Rc::new(ProjectServiceInner {
             game_type,
             base_asset_root,
@@ -102,7 +136,10 @@ impl ProjectService {
             catalog,
             overlay,
             previewers,
+            tree_vfs,
             state: RefCell::new(None),
+            change_kinds_by_path: RefCell::new(HashMap::new()),
+            change_kinds_by_directory: RefCell::new(HashMap::new()),
             dirty: Cell::new(false),
             last_error: RefCell::new(String::new()),
             last_string: RefCell::new(String::new()),
@@ -178,12 +215,28 @@ impl ProjectServiceInner {
     /// automatically by every mutating method; also exposed to script.
     fn rebuild_overlay_index_impl(&self) {
         let state = self.state.borrow();
+        let mut file_kinds = HashMap::new();
+        let mut directory_kinds = HashMap::new();
         match state.as_ref() {
             Some(active) => {
                 let mut entries: HashMap<PathBuf, ContentHash> = HashMap::new();
                 for change in active.manifest.changes() {
                     if let Some(path) = self.vfs_path_for(change) {
-                        entries.insert(path, change.payload.content_hash);
+                        let path = absolute_vfs_path(&path);
+                        entries.insert(path.clone(), change.payload.content_hash);
+                        file_kinds.insert(path.clone(), change.kind);
+                        let mut directory = path.parent().map(absolute_vfs_path);
+                        while let Some(current) = directory {
+                            directory = current.parent().map(absolute_vfs_path);
+                            directory_kinds
+                                .entry(current)
+                                .and_modify(|kind| {
+                                    if change.kind == AssetChangeKind::Replace {
+                                        *kind = AssetChangeKind::Replace;
+                                    }
+                                })
+                                .or_insert(change.kind);
+                        }
                     }
                 }
                 self.overlay
@@ -195,7 +248,10 @@ impl ProjectServiceInner {
             }
         }
         drop(state);
+        *self.change_kinds_by_path.borrow_mut() = file_kinds;
+        *self.change_kinds_by_directory.borrow_mut() = directory_kinds;
         self.previewers.resources().invalidate();
+        self.tree_vfs.invalidate_entries();
     }
 
     fn change_at(&self, index: i32) -> Option<AssetChange> {
@@ -240,68 +296,122 @@ impl ProjectServiceInner {
         tool: &str,
         tool_version: &str,
     ) -> Result<(), String> {
-        if self.state.borrow().is_none() {
-            return Err("no active project".to_string());
-        }
+        self.stage_payload_batch(&[PayloadToStage {
+            target_package,
+            internal_path,
+            bytes,
+            source_path,
+            tool,
+            tool_version,
+        }])
+    }
 
+    pub(crate) fn classify_target_kind(
+        &self,
+        target_package: &str,
+        internal_path: &str,
+    ) -> Result<AssetChangeKind, String> {
         let target_package = TargetPackage::new(target_package)
             .map_err(|e| format!("invalid target_package: {e}"))?;
         let internal_path =
             PackagePath::new(internal_path).map_err(|e| format!("invalid internal_path: {e}"))?;
-
         let key = AssetChangeKey::new(target_package.clone(), internal_path.clone());
-        let existing = self
+        if let Some(kind) = self
             .state
             .borrow()
             .as_ref()
-            .and_then(|a| a.manifest.get_change(&key).cloned());
+            .and_then(|active| active.manifest.get_change(&key))
+            .map(|change| change.kind)
+        {
+            return Ok(kind);
+        }
+        Ok(
+            match self.vfs_path_for_parts(&target_package, &internal_path) {
+                Some(vfs_path) if self.base_vfs_hash(&vfs_path).is_some() => {
+                    AssetChangeKind::Replace
+                }
+                _ => AssetChangeKind::Add,
+            },
+        )
+    }
 
-        let (kind, base_entry_hash) = match &existing {
-            Some(prev) => (prev.kind, prev.base_entry_hash),
-            None => match self.vfs_path_for_parts(&target_package, &internal_path) {
-                Some(vfs_path) => match self.base_vfs_hash(&vfs_path) {
-                    Some(hash) => (AssetChangeKind::Replace, Some(hash)),
+    pub(crate) fn stage_payload_batch(
+        &self,
+        payloads: &[PayloadToStage<'_>],
+    ) -> Result<(), String> {
+        if self.state.borrow().is_none() {
+            return Err("no active project".to_string());
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        let mut changes = Vec::with_capacity(payloads.len());
+        for payload in payloads {
+            let target_package = TargetPackage::new(payload.target_package)
+                .map_err(|e| format!("invalid target_package: {e}"))?;
+            let internal_path = PackagePath::new(payload.internal_path)
+                .map_err(|e| format!("invalid internal_path: {e}"))?;
+            let key = AssetChangeKey::new(target_package.clone(), internal_path.clone());
+            if !seen.insert(key.clone()) {
+                return Err(format!(
+                    "duplicate staged target: {} :: {}",
+                    target_package.as_str(),
+                    internal_path.as_str()
+                ));
+            }
+            let existing = self
+                .state
+                .borrow()
+                .as_ref()
+                .and_then(|a| a.manifest.get_change(&key).cloned());
+            let (kind, base_entry_hash) = match &existing {
+                Some(prev) => (prev.kind, prev.base_entry_hash),
+                None => match self.vfs_path_for_parts(&target_package, &internal_path) {
+                    Some(vfs_path) => match self.base_vfs_hash(&vfs_path) {
+                        Some(hash) => (AssetChangeKind::Replace, Some(hash)),
+                        None => (AssetChangeKind::Add, None),
+                    },
                     None => (AssetChangeKind::Add, None),
                 },
-                None => (AssetChangeKind::Add, None),
-            },
-        };
-
-        let conversion = if tool.is_empty() && tool_version.is_empty() {
-            None
-        } else {
-            Some(ConversionMetadata {
-                tool: tool.to_string(),
-                tool_version: tool_version.to_string(),
-                params: BTreeMap::new(),
-                converted_at: asset_project::atomic::unix_now(),
-            })
-        };
-        let source = Some(AssetSource {
-            original_path: PathBuf::from(source_path),
-            source_hash: Some(ContentHash::of(bytes)),
-        });
-
-        let change = AssetChange::from_payload(
-            kind,
-            target_package,
-            internal_path,
-            bytes,
-            base_entry_hash,
-            source,
-            conversion,
-        );
+            };
+            let conversion = if payload.tool.is_empty() && payload.tool_version.is_empty() {
+                None
+            } else {
+                Some(ConversionMetadata {
+                    tool: payload.tool.to_string(),
+                    tool_version: payload.tool_version.to_string(),
+                    params: BTreeMap::new(),
+                    converted_at: asset_project::atomic::unix_now(),
+                })
+            };
+            let source = Some(AssetSource {
+                original_path: PathBuf::from(payload.source_path),
+                source_hash: Some(ContentHash::of(payload.bytes)),
+            });
+            changes.push(AssetChange::from_payload(
+                kind,
+                target_package,
+                internal_path,
+                payload.bytes,
+                base_entry_hash,
+                source,
+                conversion,
+            ));
+        }
 
         {
             let mut state = self.state.borrow_mut();
             let Some(active) = state.as_mut() else {
                 return Err("no active project".to_string());
             };
-            active
-                .payload_store
-                .put(bytes)
-                .map_err(|e| format!("failed to store payload: {e}"))?;
-            active.manifest.upsert_change(change);
+            for payload in payloads {
+                active
+                    .payload_store
+                    .put(payload.bytes)
+                    .map_err(|e| format!("failed to store payload: {e}"))?;
+            }
+            for change in changes {
+                active.manifest.upsert_change(change);
+            }
         }
         self.dirty.set(true);
         self.rebuild_overlay_index_impl();
@@ -323,6 +433,29 @@ fn normalize_path_str(p: &Path) -> String {
         .replace('\\', "/")
         .trim_end_matches('/')
         .to_lowercase()
+}
+
+fn absolute_vfs_path(path: &Path) -> PathBuf {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    let mut absolute = PathBuf::from("/");
+    for component in Path::new(&normalized).components() {
+        match component {
+            std::path::Component::RootDir | std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                absolute.pop();
+            }
+            std::path::Component::Normal(part) => absolute.push(part),
+            std::path::Component::Prefix(_) => {}
+        }
+    }
+    absolute
+}
+
+fn change_kind_code(kind: AssetChangeKind) -> i32 {
+    match kind {
+        AssetChangeKind::Add => 0,
+        AssetChangeKind::Replace => 1,
+    }
 }
 
 fn paths_match(a: &Path, b: &Path) -> bool {
@@ -542,6 +675,22 @@ impl IProjectServiceImpl for ProjectService {
             Some(AssetChangeKind::Replace) => 1,
             None => -1,
         }
+    }
+
+    fn asset_change_kind(&self, vfs_path: &str) -> i32 {
+        self.change_kinds_by_path
+            .borrow()
+            .get(&absolute_vfs_path(Path::new(vfs_path)))
+            .map(|kind| change_kind_code(*kind))
+            .unwrap_or(-1)
+    }
+
+    fn descendant_change_kind(&self, vfs_directory: &str) -> i32 {
+        self.change_kinds_by_directory
+            .borrow()
+            .get(&absolute_vfs_path(Path::new(vfs_directory)))
+            .map(|kind| change_kind_code(*kind))
+            .unwrap_or(-1)
     }
 
     fn change_target_package(&self, index: i32) -> &str {
@@ -828,6 +977,39 @@ mod tests {
         )
     }
 
+    fn write_ypk_package(dir: &Path, entry_name: &str, data: &[u8]) {
+        let file = std::fs::File::create(dir.join("data.ypk")).unwrap();
+        let mut writer = packfs::ypk::YpkWriter::new(Box::new(file)).unwrap();
+        writer.write_file(entry_name, data).unwrap();
+        writer.finish().unwrap();
+    }
+
+    fn make_resolvable_service(
+        root: &Path,
+    ) -> (ProjectService, ComRc<IProjectService>, ComRc<IVfsService>) {
+        let packages = root.join("packages");
+        std::fs::create_dir_all(&packages).unwrap();
+        write_ypk_package(&packages, "models/existing.pol", b"base model");
+        let (vfs, catalog) = packfs::init_virtual_fs_with_catalog(&packages, None);
+        let overlay = super::super::project_overlay::new_shared_overlay_index();
+        let vfs = Rc::new(vfs.mount(
+            "/",
+            super::super::project_overlay::ProjectOverlayStore::new(overlay.clone()),
+        ));
+        let tree_vfs = radiance_scripting::services::VfsService::create(vfs.clone());
+        let previewers = ComRc::<IPreviewerHub>::from_object(StubPreviewerHub);
+        let (handle, service) = ProjectService::create_with_vfs(
+            GameType::PAL3,
+            root.join("base"),
+            vfs,
+            Rc::new(catalog),
+            overlay,
+            previewers,
+            tree_vfs.clone(),
+        );
+        (handle, service, tree_vfs)
+    }
+
     #[test]
     fn create_project_creates_manifest_and_activates() {
         let root = scratch_dir("create-basic");
@@ -933,6 +1115,77 @@ mod tests {
     }
 
     #[test]
+    fn path_status_and_vfs_entries_follow_resolvable_project_changes() {
+        let root = scratch_dir("path-status");
+        let (handle, service, tree_vfs) = make_resolvable_service(&root);
+        assert!(service.create_project(root.join("proj").to_str().unwrap()));
+
+        assert_eq!(tree_vfs.entry_count("/data/models"), 1);
+        handle
+            .stage_payload_batch(&[
+                PayloadToStage {
+                    target_package: "data.ypk",
+                    internal_path: "models/existing.pol",
+                    bytes: b"replacement",
+                    source_path: "replacement.glb",
+                    tool: "test",
+                    tool_version: "1",
+                },
+                PayloadToStage {
+                    target_package: "data.ypk",
+                    internal_path: "models/added.pol",
+                    bytes: b"added model",
+                    source_path: "added.glb",
+                    tool: "test",
+                    tool_version: "1",
+                },
+                PayloadToStage {
+                    target_package: "data.ypk",
+                    internal_path: "textures/added.tga",
+                    bytes: b"added texture",
+                    source_path: "added.glb",
+                    tool: "test",
+                    tool_version: "1",
+                },
+            ])
+            .unwrap();
+
+        assert_eq!(service.asset_change_kind("/data/models/existing.pol"), 1);
+        assert_eq!(service.asset_change_kind("/data/models/added.pol"), 0);
+        assert_eq!(service.asset_change_kind("data/models/./added.pol"), 0);
+        assert_eq!(service.descendant_change_kind("/data/models"), 1);
+        assert_eq!(service.descendant_change_kind("/data/textures"), 0);
+        assert_eq!(service.descendant_change_kind(r"data\textures"), 0);
+        assert_eq!(service.descendant_change_kind("/data"), 1);
+        assert_eq!(service.descendant_change_kind("/"), 1);
+        assert_eq!(service.asset_change_kind("/data/models/missing.pol"), -1);
+        assert_eq!(tree_vfs.entry_count("/data/models"), 2);
+
+        let unresolvable = root.join("unresolvable.bin");
+        std::fs::write(&unresolvable, b"unresolvable").unwrap();
+        assert!(service.stage_payload_file(
+            "missing.cpk",
+            "models/hidden.pol",
+            unresolvable.to_str().unwrap(),
+            "",
+            "",
+        ));
+        assert_eq!(service.asset_change_kind("/missing/models/hidden.pol"), -1);
+
+        let existing_index = (0..service.change_count())
+            .find(|index| service.change_internal_path(*index) == "models/existing.pol")
+            .unwrap();
+        assert!(service.remove_change(existing_index));
+        assert_eq!(service.asset_change_kind("/data/models/existing.pol"), -1);
+        assert_eq!(service.descendant_change_kind("/data/models"), 0);
+
+        assert!(service.discard_and_close_project());
+        assert_eq!(service.asset_change_kind("/data/models/added.pol"), -1);
+        assert_eq!(service.descendant_change_kind("/data"), -1);
+        assert_eq!(tree_vfs.entry_count("/data/models"), 1);
+    }
+
+    #[test]
     fn dirty_project_cannot_be_silently_replaced_or_closed() {
         let root = scratch_dir("dirty-lifecycle");
         let project_dir = root.join("proj");
@@ -970,6 +1223,35 @@ mod tests {
         let svc = make_service(PathBuf::from("/base"));
         assert!(!svc.stage_payload_file("scene/q01.cpk", "q01/q01.scn", "/no/such/file", "", ""));
         assert!(!svc.last_error().is_empty());
+    }
+
+    #[test]
+    fn batch_validation_failure_does_not_mutate_manifest() {
+        let root = scratch_dir("batch-validation");
+        let (handle, service) = make_service_with_handle(root.join("base"));
+        assert!(service.create_project(root.join("proj").to_str().unwrap()));
+        let payloads = [
+            PayloadToStage {
+                target_package: "scene/q01.cpk",
+                internal_path: "models/model.pol",
+                bytes: b"model",
+                source_path: "model.glb",
+                tool: "test",
+                tool_version: "1",
+            },
+            PayloadToStage {
+                target_package: "scene/q01.cpk",
+                internal_path: "../invalid.tga",
+                bytes: b"texture",
+                source_path: "model.glb",
+                tool: "test",
+                tool_version: "1",
+            },
+        ];
+
+        assert!(handle.stage_payload_batch(&payloads).is_err());
+        assert_eq!(service.change_count(), 0);
+        assert!(!service.is_dirty());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! `IImportService` Rust implementation: the unified glTF (`.glb`/
 //! `.gltf`) import wizard. Wraps
-//! `shared::importers::convert_gltf_to_bytes` with the bookkeeping a
+//! `shared::importers::convert_gltf_to_bundle` with the bookkeeping a
 //! script-driven wizard needs on top of it:
 //!
 //!   - Replace-mode target resolution through the `packfs` catalog
@@ -11,11 +11,11 @@
 //!     free-typed — the p7 UI has no text-input widget) internal path
 //!     and collision check.
 //!   - A conversion cache so `convert()`/`run()` only ever call
-//!     `convert_gltf_to_bytes` once per distinct set of inputs; any
+//!     `convert_gltf_to_bundle` once per distinct set of inputs; any
 //!     setter invalidates it.
-//!   - Independent "save converted bytes to a file" /"stage into the
-//!     active project" outputs, routing the exact same converted bytes
-//!     to both when both are enabled, with an explicit
+//!   - Independent save-to-disk / stage-into-project outputs, routing the
+//!     exact same model-plus-textures artifact bundle to both when both
+//!     are enabled, with an explicit
 //!     not-run/success/partial/failed `status()` (not just a single
 //!     success boolean).
 //!   - Staging goes through `ProjectServiceInner::stage_payload_bytes`
@@ -32,12 +32,13 @@ use mini_fs::{MiniFs, StoreExt};
 use packfs::{AssetCatalog, PackageType};
 
 use shared::importers::{
-    CvdOptions, ImportOptions, Mv3Options, PolOptions, TargetFormat, convert_gltf_to_bytes,
+    CvdOptions, ImportOptions, Mv3Options, PolOptions, TargetFormat,
+    convert_gltf_to_bundle_in_directory,
 };
 
 use crate::comdef::editor_services::{IImportService, IImportServiceImpl};
 
-use super::project_service::ProjectService;
+use super::project_service::{PayloadToStage, ProjectService};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
@@ -53,8 +54,15 @@ enum Status {
     Failed = 3,
 }
 
-struct Converted {
+#[derive(Clone)]
+struct ConvertedArtifact {
+    kind: i32,
+    relative_path: String,
     bytes: Vec<u8>,
+}
+
+struct Converted {
+    artifacts: Vec<ConvertedArtifact>,
     diagnostics: Vec<String>,
 }
 
@@ -230,12 +238,95 @@ impl ImportService {
             Mode::Add => None,
         };
 
-        convert_gltf_to_bytes(&source_path, target, &options, template.as_deref())
-            .map(|(bytes, diagnostics)| Converted {
-                bytes,
+        let model_path = self
+            .target_parts(false)
+            .ok()
+            .map(|(_, path)| path)
+            .or_else(|| self.derived_filename())
+            .unwrap_or_else(|| "model".to_string());
+        let model_stem = Path::new(&model_path)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().to_string())
+            .filter(|stem| !stem.is_empty())
+            .unwrap_or_else(|| "model".to_string());
+        let texture_directory = format!("_yaobow_import/{model_stem}");
+
+        convert_gltf_to_bundle_in_directory(
+            &source_path,
+            target,
+            &options,
+            template.as_deref(),
+            &texture_directory,
+        )
+        .map(|(bundle, diagnostics)| {
+            let mut artifacts = Vec::with_capacity(1 + bundle.textures.len());
+            artifacts.push(ConvertedArtifact {
+                kind: 0,
+                relative_path: self.derived_filename().unwrap_or_default(),
+                bytes: bundle.model_bytes,
+            });
+            artifacts.extend(
+                bundle
+                    .textures
+                    .into_iter()
+                    .map(|texture| ConvertedArtifact {
+                        kind: 1,
+                        relative_path: texture.relative_path,
+                        bytes: texture.bytes,
+                    }),
+            );
+            Converted {
+                artifacts,
                 diagnostics: diagnostics.messages().map(|m| m.to_string()).collect(),
-            })
-            .map_err(|e| e.to_string())
+            }
+        })
+        .map_err(|e| e.to_string())
+    }
+
+    fn target_parts(&self, validate_add: bool) -> Result<(String, String), String> {
+        match *self.mode.borrow() {
+            Mode::Replace => {
+                let package = self.replace_target_package.borrow().clone();
+                let internal = self.replace_target_internal_path.borrow().clone();
+                if package.is_empty() || internal.is_empty() {
+                    Err("no replace target set".to_string())
+                } else {
+                    Ok((package, internal))
+                }
+            }
+            Mode::Add => {
+                if validate_add && !self.add_target_valid() {
+                    return Err(
+                        "add target is invalid: choose a target package/directory that doesn't \
+                         already exist (or use Replace mode)"
+                            .to_string(),
+                    );
+                }
+                let package = self.add_target_package.borrow().clone();
+                let internal = self
+                    .add_internal_path()
+                    .ok_or_else(|| "add target internal path could not be derived".to_string())?;
+                if package.is_empty() {
+                    Err("add target package is not set".to_string())
+                } else {
+                    Ok((package, internal))
+                }
+            }
+        }
+    }
+
+    fn artifact_internal_path(model_path: &str, artifact: &ConvertedArtifact) -> String {
+        if artifact.kind == 0 {
+            return model_path.to_string();
+        }
+        let parent = Path::new(model_path)
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty());
+        parent
+            .map(|path| path.join(&artifact.relative_path))
+            .unwrap_or_else(|| PathBuf::from(&artifact.relative_path))
+            .to_string_lossy()
+            .replace('\\', "/")
     }
 }
 
@@ -310,6 +401,20 @@ impl IImportServiceImpl for ImportService {
             self.invalidate_conversion();
             return self.fail(format!("{vfs_path} does not resolve to a mounted package"));
         };
+        let format = match internal
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("mv3") => TargetFormat::Mv3,
+            Some("pol") => TargetFormat::Pol,
+            Some("cvd") => TargetFormat::Cvd,
+            _ => {
+                self.invalidate_conversion();
+                return self.fail(format!("{vfs_path} is not a replaceable MV3/POL/CVD asset"));
+            }
+        };
         let template = {
             use std::io::Read;
             let mut file = match self.vfs.open(vfs_path) {
@@ -334,6 +439,7 @@ impl IImportServiceImpl for ImportService {
         *self.replace_target_internal_path.borrow_mut() =
             internal.to_string_lossy().replace('\\', "/");
         *self.replace_template.borrow_mut() = Some(template);
+        *self.target_format.borrow_mut() = format;
         self.invalidate_conversion();
         self.ok()
     }
@@ -527,8 +633,80 @@ impl IImportServiceImpl for ImportService {
         self.converted
             .borrow()
             .as_ref()
-            .map(|c| c.bytes.len().min(i32::MAX as usize) as i32)
+            .and_then(|c| c.artifacts.first())
+            .map(|artifact| artifact.bytes.len().min(i32::MAX as usize) as i32)
             .unwrap_or(0)
+    }
+
+    fn planned_file_count(&self) -> i32 {
+        self.converted
+            .borrow()
+            .as_ref()
+            .map(|converted| converted.artifacts.len() as i32)
+            .unwrap_or(0)
+    }
+
+    fn planned_file_kind(&self, index: i32) -> i32 {
+        if index < 0 {
+            return -1;
+        }
+        self.converted
+            .borrow()
+            .as_ref()
+            .and_then(|converted| converted.artifacts.get(index as usize))
+            .map(|artifact| artifact.kind)
+            .unwrap_or(-1)
+    }
+
+    fn planned_file_path(&self, index: i32) -> &str {
+        let path = if index < 0 {
+            String::new()
+        } else {
+            let model_path = self.target_parts(false).ok().map(|(_, path)| path);
+            match (model_path, self.converted.borrow().as_ref()) {
+                (Some(model_path), Some(converted)) => converted
+                    .artifacts
+                    .get(index as usize)
+                    .map(|artifact| Self::artifact_internal_path(&model_path, artifact))
+                    .unwrap_or_default(),
+                _ => String::new(),
+            }
+        };
+        self.set_last(path)
+    }
+
+    fn planned_file_size(&self, index: i32) -> i32 {
+        if index < 0 {
+            return 0;
+        }
+        self.converted
+            .borrow()
+            .as_ref()
+            .and_then(|converted| converted.artifacts.get(index as usize))
+            .map(|artifact| artifact.bytes.len().min(i32::MAX as usize) as i32)
+            .unwrap_or(0)
+    }
+
+    fn planned_file_project_action(&self, index: i32) -> i32 {
+        if index < 0 {
+            return -1;
+        }
+        let Ok((package, model_path)) = self.target_parts(true) else {
+            return -1;
+        };
+        let converted = self.converted.borrow();
+        let Some(artifact) = converted
+            .as_ref()
+            .and_then(|converted| converted.artifacts.get(index as usize))
+        else {
+            return -1;
+        };
+        let internal_path = Self::artifact_internal_path(&model_path, artifact);
+        match self.project.classify_target_kind(&package, &internal_path) {
+            Ok(asset_project::AssetChangeKind::Add) => 0,
+            Ok(asset_project::AssetChangeKind::Replace) => 1,
+            Err(_) => -1,
+        }
     }
 
     fn run(&self) -> bool {
@@ -549,12 +727,12 @@ impl IImportServiceImpl for ImportService {
             }
         }
 
-        let bytes = self
+        let artifacts = self
             .converted
             .borrow()
             .as_ref()
-            .map(|c| c.bytes.clone())
-            .expect("converted bytes populated above");
+            .map(|c| c.artifacts.clone())
+            .expect("converted artifacts populated above");
 
         let mut errors: Vec<String> = Vec::new();
         let mut successes = 0usize;
@@ -566,16 +744,16 @@ impl IImportServiceImpl for ImportService {
             if out_path.is_empty() {
                 errors.push("save_output_path is not set".to_string());
             } else {
-                match std::fs::write(&out_path, &bytes) {
+                match write_bundle_to_disk(Path::new(&out_path), &artifacts) {
                     Ok(()) => successes += 1,
-                    Err(e) => errors.push(format!("failed to write {out_path}: {e}")),
+                    Err(e) => errors.push(e),
                 }
             }
         }
 
         if stage {
             enabled += 1;
-            match self.stage_to_project(&bytes) {
+            match self.stage_to_project(&artifacts) {
                 Ok(preview_path) => {
                     successes += 1;
                     *self.staged_preview_vfs_path.borrow_mut() = preview_path.unwrap_or_default();
@@ -621,51 +799,141 @@ impl ImportService {
     /// open (`Some`) if the target package is a live catalog mount, or
     /// `Ok(None)` if it isn't (the change is still staged/publishable —
     /// see `ProjectServiceInner::resolve_vfs_path`'s doc comment).
-    fn stage_to_project(&self, bytes: &[u8]) -> Result<Option<String>, String> {
-        let (target_package, internal_path) = match *self.mode.borrow() {
-            Mode::Replace => {
-                let package = self.replace_target_package.borrow().clone();
-                let internal = self.replace_target_internal_path.borrow().clone();
-                if package.is_empty() || internal.is_empty() {
-                    return Err("no replace target set".to_string());
-                }
-                (package, internal)
-            }
-            Mode::Add => {
-                if !self.add_target_valid() {
-                    return Err(
-                        "add target is invalid: choose a target package/directory that doesn't \
-                         already exist (or use Replace mode)"
-                            .to_string(),
-                    );
-                }
-                let package = self.add_target_package.borrow().clone();
-                let internal = self
-                    .add_internal_path()
-                    .ok_or_else(|| "add target internal path could not be derived".to_string())?;
-                (package, internal)
-            }
-        };
-
+    fn stage_to_project(&self, artifacts: &[ConvertedArtifact]) -> Result<Option<String>, String> {
+        let (target_package, model_internal_path) = self.target_parts(true)?;
         let source_path = self.source_path.borrow().clone();
-        self.project.stage_payload_bytes(
-            &target_package,
-            &internal_path,
-            bytes,
-            &source_path,
-            "yaobow_editor.import_wizard",
-            env!("CARGO_PKG_VERSION"),
-        )?;
+        let internal_paths: Vec<String> = artifacts
+            .iter()
+            .map(|artifact| Self::artifact_internal_path(&model_internal_path, artifact))
+            .collect();
+        let payloads: Vec<PayloadToStage<'_>> = artifacts
+            .iter()
+            .zip(&internal_paths)
+            .map(|(artifact, internal_path)| PayloadToStage {
+                target_package: &target_package,
+                internal_path,
+                bytes: &artifact.bytes,
+                source_path: &source_path,
+                tool: "yaobow_editor.import_wizard",
+                tool_version: env!("CARGO_PKG_VERSION"),
+            })
+            .collect();
+        self.project.stage_payload_batch(&payloads)?;
 
         Ok(self
             .project
             .vfs_path_for_parts(
                 &asset_project::TargetPackage::new(&target_package)
                     .map_err(|e| format!("invalid target_package: {e}"))?,
-                &asset_project::PackagePath::new(&internal_path)
+                &asset_project::PackagePath::new(&model_internal_path)
                     .map_err(|e| format!("invalid internal_path: {e}"))?,
             )
             .map(|p| p.to_string_lossy().replace('\\', "/")))
+    }
+}
+
+fn write_bundle_to_disk(
+    model_output_path: &Path,
+    artifacts: &[ConvertedArtifact],
+) -> Result<(), String> {
+    if artifacts.is_empty() {
+        return Err("converted artifact bundle is empty".to_string());
+    }
+    let parent = model_output_path.parent().unwrap_or_else(|| Path::new("."));
+    let mut outputs = Vec::with_capacity(artifacts.len());
+    let mut seen = std::collections::HashSet::new();
+    for artifact in artifacts {
+        let path = if artifact.kind == 0 {
+            model_output_path.to_path_buf()
+        } else {
+            parent.join(&artifact.relative_path)
+        };
+        if path.is_dir() {
+            return Err(format!("output path is a directory: {}", path.display()));
+        }
+        let key = path.to_string_lossy().to_lowercase();
+        if !seen.insert(key) {
+            return Err(format!("duplicate disk output path: {}", path.display()));
+        }
+        outputs.push((path, &artifact.bytes));
+    }
+
+    let nonce = format!(
+        "{}.{}",
+        std::process::id(),
+        asset_project::atomic::unix_now()
+    );
+    let mut prepared = Vec::with_capacity(outputs.len());
+    for (index, (path, bytes)) in outputs.iter().enumerate() {
+        let dir = path.parent().unwrap_or_else(|| Path::new("."));
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            for (_, temp, _) in &prepared {
+                let _ = std::fs::remove_file(temp);
+            }
+            return Err(format!("failed to create {}: {e}", dir.display()));
+        }
+        let file_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy())
+            .unwrap_or_default();
+        let temp = dir.join(format!(".{file_name}.yaobow-import-{nonce}-{index}.tmp"));
+        let backup = dir.join(format!(".{file_name}.yaobow-import-{nonce}-{index}.bak"));
+        if let Err(e) = std::fs::write(&temp, bytes) {
+            for (_, temp, _) in &prepared {
+                let _ = std::fs::remove_file(temp);
+            }
+            return Err(format!("failed to write {}: {e}", temp.display()));
+        }
+        prepared.push((path.clone(), temp, backup));
+    }
+
+    let mut backed_up = Vec::new();
+    for (path, _, backup) in &prepared {
+        if path.exists() {
+            if let Err(e) = std::fs::rename(path, backup) {
+                cleanup_disk_transaction(&prepared, &backed_up, &[]);
+                return Err(format!(
+                    "failed to prepare existing output {}: {e}",
+                    path.display()
+                ));
+            }
+            backed_up.push((path.clone(), backup.clone()));
+        }
+    }
+
+    let mut committed = Vec::new();
+    for (path, temp, _) in &prepared {
+        if let Err(e) = std::fs::rename(temp, path) {
+            cleanup_disk_transaction(&prepared, &backed_up, &committed);
+            return Err(format!("failed to commit output {}: {e}", path.display()));
+        }
+        committed.push(path.clone());
+    }
+
+    for (_, backup) in backed_up {
+        if let Err(e) = std::fs::remove_file(&backup) {
+            log::warn!(
+                "glTF import committed outputs but could not remove backup {}: {e}",
+                backup.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn cleanup_disk_transaction(
+    prepared: &[(PathBuf, PathBuf, PathBuf)],
+    backed_up: &[(PathBuf, PathBuf)],
+    committed: &[PathBuf],
+) {
+    for path in committed {
+        let _ = std::fs::remove_file(path);
+    }
+    for (path, backup) in backed_up.iter().rev() {
+        let _ = std::fs::rename(backup, path);
+    }
+    for (_, temp, _) in prepared {
+        let _ = std::fs::remove_file(temp);
     }
 }
 
@@ -748,6 +1016,22 @@ mod tests {
     /// private to `shared` and not reusable from here) but hand-rolled
     /// locally so this test module has no dependency on it.
     fn triangle_glb_bytes() -> Vec<u8> {
+        triangle_glb_bytes_with_texture(None)
+    }
+
+    fn textured_triangle_glb_bytes() -> Vec<u8> {
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            1,
+            1,
+            image::Rgba([20, 40, 60, 128]),
+        ))
+        .write_to(&mut png, image::ImageOutputFormat::Png)
+        .unwrap();
+        triangle_glb_bytes_with_texture(Some(&png.into_inner()))
+    }
+
+    fn triangle_glb_bytes_with_texture(texture_bytes: Option<&[u8]>) -> Vec<u8> {
         use gltf::binary::{Glb, Header};
         use serde_json::json;
         use std::borrow::Cow;
@@ -786,14 +1070,44 @@ mod tests {
             bin.push(0);
         }
 
+        let mut buffer_views = vec![
+            json!({ "buffer": 0, "byteOffset": pos_offset, "byteLength": pos_len, "target": 34962 }),
+            json!({ "buffer": 0, "byteOffset": uv_offset, "byteLength": uv_len, "target": 34962 }),
+            json!({ "buffer": 0, "byteOffset": idx_offset, "byteLength": idx_len, "target": 34963 }),
+        ];
+        let mut primitive = json!({
+            "attributes": { "POSITION": 0, "TEXCOORD_0": 1 },
+            "indices": 2,
+            "mode": 4,
+        });
+        let mut images = Vec::new();
+        let mut textures = Vec::new();
+        let mut materials = Vec::new();
+        if let Some(texture_bytes) = texture_bytes {
+            let image_offset = bin.len();
+            bin.extend_from_slice(texture_bytes);
+            let image_len = texture_bytes.len();
+            while bin.len() % 4 != 0 {
+                bin.push(0);
+            }
+            let image_view = buffer_views.len();
+            buffer_views.push(json!({
+                "buffer": 0,
+                "byteOffset": image_offset,
+                "byteLength": image_len,
+            }));
+            images.push(json!({ "bufferView": image_view, "mimeType": "image/png" }));
+            textures.push(json!({ "source": 0 }));
+            materials.push(json!({
+                "pbrMetallicRoughness": { "baseColorTexture": { "index": 0 } }
+            }));
+            primitive["material"] = json!(0);
+        }
+
         let root = json!({
             "asset": { "version": "2.0" },
             "buffers": [{ "byteLength": bin.len() }],
-            "bufferViews": [
-                { "buffer": 0, "byteOffset": pos_offset, "byteLength": pos_len, "target": 34962 },
-                { "buffer": 0, "byteOffset": uv_offset, "byteLength": uv_len, "target": 34962 },
-                { "buffer": 0, "byteOffset": idx_offset, "byteLength": idx_len, "target": 34963 },
-            ],
+            "bufferViews": buffer_views,
             "accessors": [
                 { "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
                   "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0] },
@@ -801,12 +1115,11 @@ mod tests {
                 { "bufferView": 2, "componentType": 5123, "count": 3, "type": "SCALAR" },
             ],
             "meshes": [{
-                "primitives": [{
-                    "attributes": { "POSITION": 0, "TEXCOORD_0": 1 },
-                    "indices": 2,
-                    "mode": 4,
-                }]
+                "primitives": [primitive]
             }],
+            "images": images,
+            "textures": textures,
+            "materials": materials,
             "nodes": [{ "mesh": 0 }],
             "scenes": [{ "nodes": [0] }],
             "scene": 0,
@@ -828,6 +1141,12 @@ mod tests {
     fn write_glb_fixture(dir: &Path, name: &str) -> PathBuf {
         let path = dir.join(name);
         std::fs::write(&path, triangle_glb_bytes()).unwrap();
+        path
+    }
+
+    fn write_textured_glb_fixture(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, textured_triangle_glb_bytes()).unwrap();
         path
     }
 
@@ -1014,6 +1333,91 @@ mod tests {
     }
 
     #[test]
+    fn textured_import_stages_and_saves_model_plus_tga() {
+        let root = scratch_dir("textured-bundle");
+        let glb = write_textured_glb_fixture(&root, "model.glb");
+        let (project_handle, project) = make_project(root.join("base"));
+        assert!(project.create_project(root.join("proj").to_str().unwrap()));
+        let imports = make_import_service_with_project(
+            Rc::new(MiniFs::new(false)),
+            Rc::new(AssetCatalog::new(PathBuf::new())),
+            project_handle,
+        );
+
+        imports.set_source_path(glb.to_str().unwrap());
+        imports.set_target_format(1);
+        imports.set_mode(1);
+        imports.set_add_target_package("scene/q01.cpk");
+        imports.set_add_target_directory("models");
+        imports.set_add_to_project(true);
+        let output = root.join("out/model.pol");
+        imports.set_save_to_file(true);
+        imports.set_save_output_path(output.to_str().unwrap());
+
+        assert!(imports.convert(), "{}", imports.last_error());
+        assert_eq!(imports.planned_file_count(), 2);
+        assert_eq!(imports.planned_file_kind(0), 0);
+        assert_eq!(imports.planned_file_kind(1), 1);
+        assert_eq!(imports.planned_file_path(0), "models/model.pol");
+        assert_eq!(
+            imports.planned_file_path(1),
+            "models/_yaobow_import/model/embedded_image_0.tga"
+        );
+        assert_eq!(imports.planned_file_project_action(0), 0);
+        assert_eq!(imports.planned_file_project_action(1), 0);
+
+        assert!(imports.run(), "{}", imports.last_error());
+        assert_eq!(project.change_count(), 2);
+        assert!(output.exists());
+        let texture_output = root
+            .join("out")
+            .join("_yaobow_import")
+            .join("model")
+            .join("embedded_image_0.tga");
+        let texture = image::open(&texture_output).expect("generated TGA");
+        assert_eq!(texture.to_rgba8().get_pixel(0, 0).0[3], 128);
+
+        let pol =
+            fileformats::pol::read_pol(&mut std::io::Cursor::new(std::fs::read(&output).unwrap()))
+                .unwrap();
+        assert_eq!(
+            pol.meshes[0].material_info[0].texture_names[0]
+                .as_str()
+                .unwrap(),
+            "_yaobow_import/model/embedded_image_0.tga"
+        );
+    }
+
+    #[test]
+    fn disk_bundle_failure_does_not_commit_model() {
+        let root = scratch_dir("disk-rollback");
+        let model_path = root.join("model.pol");
+        let blocked = root.join("_yaobow_import");
+        std::fs::write(&blocked, b"not a directory").unwrap();
+        let artifacts = vec![
+            ConvertedArtifact {
+                kind: 0,
+                relative_path: "model.pol".to_string(),
+                bytes: b"model".to_vec(),
+            },
+            ConvertedArtifact {
+                kind: 1,
+                relative_path: "_yaobow_import/texture.tga".to_string(),
+                bytes: b"texture".to_vec(),
+            },
+        ];
+
+        assert!(write_bundle_to_disk(&model_path, &artifacts).is_err());
+        assert!(!model_path.exists());
+        let temp_count = std::fs::read_dir(&root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().contains(".tmp"))
+            .count();
+        assert_eq!(temp_count, 0);
+    }
+
+    #[test]
     fn run_fails_gracefully_when_staging_without_active_project() {
         let root = scratch_dir("staging-failure");
         let glb = write_glb_fixture(&root, "model.glb");
@@ -1110,10 +1514,11 @@ mod tests {
         let svc = make_import_service_with_project(vfs, catalog, project_handle);
 
         svc.set_source_path(glb.to_str().unwrap());
-        svc.set_target_format(1);
+        svc.set_target_format(0);
         svc.set_mode(0);
 
         assert!(svc.set_replace_target("/data/model.pol"));
+        assert_eq!(svc.target_format(), 1);
         assert_eq!(svc.replace_target_package(), "data.zip");
         assert_eq!(svc.replace_target_internal_path(), "model.pol");
 
@@ -1133,5 +1538,50 @@ mod tests {
             found_template_diagnostic,
             "expected a template-fallback diagnostic"
         );
+    }
+
+    #[test]
+    fn textured_replace_plans_model_replace_and_texture_add() {
+        let root = scratch_dir("textured-replace-actions");
+        let plain = write_glb_fixture(&root, "plain.glb");
+        let textured = write_textured_glb_fixture(&root, "textured.glb");
+        let base_bytes = shared::importers::convert_gltf_to_bytes(
+            &plain,
+            TargetFormat::Pol,
+            &ImportOptions::default(),
+            None,
+        )
+        .unwrap()
+        .0;
+        let pkg_dir = root.join("pkg");
+        std::fs::create_dir_all(&pkg_dir).unwrap();
+        write_zip_package(&pkg_dir, "data", "models/model.pol", &base_bytes);
+        let (vfs, catalog) = packfs::init_virtual_fs_with_catalog(&pkg_dir, None);
+        let vfs = Rc::new(vfs);
+        let catalog = Rc::new(catalog);
+        let previewers = ComRc::<IPreviewerHub>::from_object(StubPreviewerHub);
+        let (project_handle, _) = ProjectService::create(
+            GameType::PAL3,
+            root.join("base"),
+            vfs.clone(),
+            catalog.clone(),
+            project_overlay::new_shared_overlay_index(),
+            previewers,
+        );
+        let svc = make_import_service_with_project(vfs, catalog, project_handle);
+
+        svc.set_source_path(textured.to_str().unwrap());
+        svc.set_target_format(1);
+        svc.set_mode(0);
+        assert!(svc.set_replace_target("/data/models/model.pol"));
+        assert!(svc.convert(), "{}", svc.last_error());
+
+        assert_eq!(svc.planned_file_path(0), "models/model.pol");
+        assert_eq!(
+            svc.planned_file_path(1),
+            "models/_yaobow_import/model/embedded_image_0.tga"
+        );
+        assert_eq!(svc.planned_file_project_action(0), 1);
+        assert_eq!(svc.planned_file_project_action(1), 0);
     }
 }
