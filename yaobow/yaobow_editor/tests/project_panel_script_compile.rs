@@ -354,7 +354,7 @@ fn file_and_view_menus_render_with_no_active_project() {
         "Open Project...",
         "Save Project",
         "Close Project",
-        "Publish .yapatch...",
+        "Publish .ybpatch...",
     ];
     for item in expected_items {
         assert!(

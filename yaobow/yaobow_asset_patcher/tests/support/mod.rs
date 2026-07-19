@@ -49,7 +49,7 @@ impl TestEnv {
     /// `files` (backslash-separated internal paths -> content). Returns
     /// its physical path and whole-file [`ContentHash`] (the same
     /// fingerprinting convention `crate::fingerprint` uses), so callers
-    /// can build a matching `PackageFingerprint` for a `.yapatch`.
+    /// can build a matching `PackageFingerprint` for a `.ybpatch`.
     pub fn write_package(
         &self,
         target_package: &str,
@@ -84,7 +84,7 @@ pub fn whole_file_hash(path: &Path) -> ContentHash {
     ContentHash::of(&std::fs::read(path).unwrap())
 }
 
-/// Builds a `.yapatch` at `env.root.join("update.yapatch")` covering
+/// Builds a `.ybpatch` at `env.root.join("update.ybpatch")` covering
 /// `fingerprints` (target_package -> expected pre-patch whole-file
 /// hash) and `changes`, and returns its path.
 pub fn build_patch(
@@ -92,8 +92,8 @@ pub fn build_patch(
     fingerprints: &[(&str, ContentHash)],
     changes: Vec<FixtureChange>,
 ) -> PathBuf {
-    let path = env.root.join("update.yapatch");
-    fixtures::build_fixture_yapatch(&path, "pal3", 1, fingerprints, &changes);
+    let path = env.root.join("update.ybpatch");
+    fixtures::build_fixture_ybpatch(&path, "pal3", 1, fingerprints, &changes);
     path
 }
 
@@ -103,12 +103,23 @@ pub fn build_patch(
 /// convention `fixtures::build_fixture_cpk` and `AssetChange` both
 /// use internally.
 pub fn read_cpk_entry(path: &Path, internal_path: &str) -> Vec<u8> {
+    try_read_cpk_entry(path, internal_path).unwrap()
+}
+
+pub fn try_read_cpk_entry(path: &Path, internal_path: &str) -> Option<Vec<u8>> {
     use std::io::Read;
     let file = std::fs::File::open(path).unwrap();
     let mut archive =
         packfs::cpk::CpkArchive::load(Box::new(std::io::BufReader::new(file))).unwrap();
-    let mut entry = archive.open_str(internal_path).unwrap();
+    let mut entry = archive.open_str(internal_path).ok()?;
     let mut buf = Vec::new();
     entry.read_to_end(&mut buf).unwrap();
-    buf
+    Some(buf)
+}
+
+pub fn cpk_paths(path: &Path) -> Vec<String> {
+    let file = std::fs::File::open(path).unwrap();
+    let mut archive =
+        packfs::cpk::CpkArchive::load(Box::new(std::io::BufReader::new(file))).unwrap();
+    archive.full_paths().unwrap()
 }

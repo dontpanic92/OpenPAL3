@@ -101,6 +101,7 @@ fn after_backup_failure_leaves_everything_untouched() {
 
     let options = ApplyOptions {
         fault_injector: Some(Box::new(FailAt(FailurePoint::AfterBackup(target)))),
+        ..ApplyOptions::default()
     };
     let err = transaction::apply(&fixture.patch_path, &fixture.env.game_root, "pal3", options)
         .expect_err("injected fault must fail the apply");
@@ -121,6 +122,7 @@ fn after_temp_build_failure_never_swaps_anything() {
 
     let options = ApplyOptions {
         fault_injector: Some(Box::new(FailAt(FailurePoint::AfterTempBuild(target)))),
+        ..ApplyOptions::default()
     };
     let err = transaction::apply(&fixture.patch_path, &fixture.env.game_root, "pal3", options)
         .expect_err("injected fault must fail the apply");
@@ -145,6 +147,7 @@ fn before_swap_failure_on_first_package_leaves_everything_untouched() {
 
     let options = ApplyOptions {
         fault_injector: Some(Box::new(FailAt(FailurePoint::BeforeSwap(target)))),
+        ..ApplyOptions::default()
     };
     let err = transaction::apply(&fixture.patch_path, &fixture.env.game_root, "pal3", options)
         .expect_err("injected fault must fail the apply");
@@ -165,6 +168,7 @@ fn after_swap_failure_on_middle_package_restores_already_swapped_and_leaves_rest
 
     let options = ApplyOptions {
         fault_injector: Some(Box::new(FailAt(FailurePoint::AfterSwap(target)))),
+        ..ApplyOptions::default()
     };
     let err = transaction::apply(&fixture.patch_path, &fixture.env.game_root, "pal3", options)
         .expect_err("injected fault must fail the apply");
@@ -191,6 +195,7 @@ fn before_swap_failure_on_last_package_restores_the_earlier_swapped_ones() {
 
     let options = ApplyOptions {
         fault_injector: Some(Box::new(FailAt(FailurePoint::BeforeSwap(target)))),
+        ..ApplyOptions::default()
     };
     let err = transaction::apply(&fixture.patch_path, &fixture.env.game_root, "pal3", options)
         .expect_err("injected fault must fail the apply");
@@ -204,4 +209,39 @@ fn before_swap_failure_on_last_package_restores_the_earlier_swapped_ones() {
     assert_untouched(&fixture);
     assert_no_leftover_temp_files(&fixture.env);
     assert_journal_failed(&fixture.env);
+}
+
+#[test]
+fn uninstall_swap_failure_restores_the_still_applied_mod() {
+    let env = support::TestEnv::new("fault-uninstall-after-swap");
+    let (package_path, package_hash) =
+        env.write_package("scene.cpk", &[("base.dat", b"base" as &[u8])]);
+    let patch_path = support::build_patch(
+        &env,
+        &[("scene.cpk", package_hash)],
+        vec![FixtureChange::add("scene.cpk", "mod.dat", b"mod")],
+    );
+    let report =
+        transaction::apply(&patch_path, &env.game_root, "pal3", ApplyOptions::default()).unwrap();
+
+    let target = TargetPackage::new("scene.cpk").unwrap();
+    let error = transaction::uninstall(
+        &env.game_root,
+        report.patch_id,
+        ApplyOptions {
+            fault_injector: Some(Box::new(FailAt(FailurePoint::AfterSwap(target)))),
+            ..ApplyOptions::default()
+        },
+    )
+    .expect_err("the injected uninstall fault must be reported");
+    assert!(matches!(
+        error,
+        yaobow_asset_patcher::PatcherError::InjectedFault(_)
+    ));
+    assert_eq!(support::read_cpk_entry(&package_path, "mod.dat"), b"mod");
+    assert!(
+        yaobow_asset_patcher::manager::ManagerState::load_or_default(&env.game_root)
+            .unwrap()
+            .is_applied(report.patch_id)
+    );
 }

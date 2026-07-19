@@ -1,4 +1,4 @@
-//! Regression for the `packfs::ypk` -> `radiance::asset::ypk` move.
+//! Regression for the `packfs::ypk` compatibility re-export.
 //!
 //! `packfs/src/ypk/mod.rs` is now a one-line re-export shim. This
 //! test exercises the full read/write API through `packfs::ypk::*`

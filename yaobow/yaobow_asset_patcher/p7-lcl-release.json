@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "package": {
+    "name": "p7-lcl",
+    "version": "0.1.0",
+    "release_index_url": "https://github.com/dontpanic92/p7-lcl/releases/download/v0.1.0/p7-lcl-0.1.0.index.toml",
+    "release_index_sha256": "cbb12cad147454ab6c18cbe7c5d90f4c74346e2511a1e0456dee5f3655bf5e18",
+    "license": "MIT",
+    "license_file": "LICENSE",
+    "notices_file": "THIRD_PARTY_NOTICES.md"
+  },
+  "targets": {
+    "aarch64-apple-darwin": {
+      "url": "https://github.com/dontpanic92/p7-lcl/releases/download/v0.1.0/p7-lcl-0.1.0-aarch64-apple-darwin.tar.gz",
+      "sha256": "eef53c0791ccce92607d2c8d998350e88ff0e7cc2da4896058cc9589fccd184f",
+      "native_library": "libp7lcl.dylib"
+    },
+    "x86_64-apple-darwin": {
+      "url": "https://github.com/dontpanic92/p7-lcl/releases/download/v0.1.0/p7-lcl-0.1.0-x86_64-apple-darwin.tar.gz",
+      "sha256": "e81559da8109628683803c02ec80f4f96aeb4d79b39433b2352c08a4f8812067",
+      "native_library": "libp7lcl.dylib"
+    },
+    "x86_64-pc-windows-msvc": {
+      "url": "https://github.com/dontpanic92/p7-lcl/releases/download/v0.1.0/p7-lcl-0.1.0-x86_64-pc-windows-msvc.tar.gz",
+      "sha256": "0f65912470447fe6109fa8b384bbfd270b11fe142cb9e2a71fcd47bc0e74fa55",
+      "native_library": "p7lcl.dll"
+    },
+    "x86_64-unknown-linux-gnu": {
+      "url": "https://github.com/dontpanic92/p7-lcl/releases/download/v0.1.0/p7-lcl-0.1.0-x86_64-unknown-linux-gnu.tar.gz",
+      "sha256": "0be418c9a75d81d5a2b868fc4ca7e5c87bc944f855b6b12ce6493e89855158a1",
+      "native_library": "libp7lcl.so"
+    }
+  }
+}

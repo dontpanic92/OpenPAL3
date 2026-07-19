@@ -55,7 +55,7 @@ impl GameRoot {
     }
 
     /// Full physical path a `target_package` (as recorded in a
-    /// `.yapatch`'s `AssetChange::target_package`, e.g. `"scene.cpk"`
+    /// `.ybpatch`'s `AssetChange::target_package`, e.g. `"scene.cpk"`
     /// or `"basedata/basedata.cpk"`, always forward-slash separated)
     /// resolves to under this root, if it's actually mounted.
     pub fn resolve_package_path(&self, target_package: &str) -> Option<PathBuf> {

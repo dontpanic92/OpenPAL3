@@ -77,6 +77,49 @@ fn apply_refuses_on_fingerprint_mismatch() {
 }
 
 #[test]
+fn apply_refuses_add_that_would_replace_an_existing_entry() {
+    let env = support::TestEnv::new("validate-add-existing");
+    let (_path, hash) = env.write_package("scene.cpk", &[("existing.dat", b"v1" as &[u8])]);
+    let patch_path = support::build_patch(
+        &env,
+        &[("scene.cpk", hash)],
+        vec![FixtureChange::add(
+            "scene.cpk",
+            "existing.dat",
+            b"replacement",
+        )],
+    );
+
+    let err = transaction::apply(&patch_path, &env.game_root, "pal3", ApplyOptions::default())
+        .expect_err("an Add change must not overwrite an existing entry");
+    assert!(matches!(
+        err,
+        yaobow_asset_patcher::PatcherError::ValidationFailed(_)
+    ));
+}
+
+#[test]
+fn apply_refuses_case_aliased_paths_within_one_patch() {
+    let env = support::TestEnv::new("validate-intra-patch-alias");
+    let (_, hash) = env.write_package("scene.cpk", &[("base.dat", b"base" as &[u8])]);
+    let patch_path = support::build_patch(
+        &env,
+        &[("scene.cpk", hash)],
+        vec![
+            FixtureChange::add("scene.cpk", "mods/item.dat", b"first"),
+            FixtureChange::add("SCENE.CPK", "MODS\\ITEM.DAT", b"first"),
+        ],
+    );
+
+    let error = transaction::apply(&patch_path, &env.game_root, "pal3", ApplyOptions::default())
+        .expect_err("case aliases in one patch must be rejected");
+    assert!(
+        matches!(error, yaobow_asset_patcher::PatcherError::ValidationFailed(message)
+            if message.contains("duplicate case-insensitive file paths"))
+    );
+}
+
+#[test]
 fn apply_refuses_case_aliases_for_the_same_physical_package() {
     let env = support::TestEnv::new("validate-package-case-alias");
     let (_path, hash) = env.write_package("scene.cpk", &[("a.dat", b"v1" as &[u8])]);

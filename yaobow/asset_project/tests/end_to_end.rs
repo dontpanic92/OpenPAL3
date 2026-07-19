@@ -1,6 +1,6 @@
 //! End-to-end test exercising the full asset-project workflow: record
 //! changes in a `ProjectManifest`, store their payloads in a
-//! `PayloadStore`, publish a `.yapatch` (atomically), read it back
+//! `PayloadStore`, publish a `.ybpatch` (atomically), read it back
 //! (verifying hashes along the way), and record the install in a
 //! journal.
 
@@ -10,7 +10,7 @@ use asset_project::manifest::{AssetChangeKey, PackagePath, TargetPackage};
 use asset_project::patch::PackageFingerprint;
 use asset_project::{
     AssetChange, AssetChangeKind, AssetProjectError, ContentHash, InstallationJournal,
-    PayloadStore, ProjectManifest, YapatchReader, YapatchWriter, publish,
+    PayloadStore, ProjectManifest, YbpatchReader, YbpatchWriter, publish,
 };
 
 fn scratch_dir(name: &str) -> PathBuf {
@@ -67,15 +67,15 @@ fn full_project_to_patch_to_install_workflow() {
     let manifest_path = dir.join("project.json");
     manifest.save(&manifest_path).unwrap();
 
-    // --- Pack a .yapatch from the (re-loaded, to prove persistence
+    // --- Pack a .ybpatch from the (re-loaded, to prove persistence
     // round-trips) project manifest. ---
     let reloaded = ProjectManifest::load(&manifest_path).unwrap();
     assert_eq!(reloaded.target_game, "pal3");
     assert_eq!(reloaded.base_asset_root, dir.join("base-assets"));
 
-    let patch_path = dir.join("update.yapatch");
+    let patch_path = dir.join("update.ybpatch");
     let mut writer =
-        YapatchWriter::create(&patch_path, reloaded.target_game.clone(), reloaded.version).unwrap();
+        YbpatchWriter::create(&patch_path, reloaded.target_game.clone(), reloaded.version).unwrap();
     writer.add_package_fingerprint(PackageFingerprint {
         target_package: scene_cpk.clone(),
         base_hash: ContentHash::of(b"scene.cpk base state fingerprint"),
@@ -101,7 +101,7 @@ fn full_project_to_patch_to_install_workflow() {
     assert!(patch_path.exists());
 
     // --- Patcher side: open + verify the patch. ---
-    let mut reader = YapatchReader::open(&patch_path).unwrap();
+    let mut reader = YbpatchReader::open(&patch_path).unwrap();
     assert_eq!(reader.manifest().changes.len(), 2);
     reader.verify_all().unwrap();
 
@@ -120,7 +120,7 @@ fn full_project_to_patch_to_install_workflow() {
     let journal_path = dir.join("journal.json");
     let mut journal = InstallationJournal::load_or_default(&journal_path).unwrap();
 
-    let manifest_hash_for_journal = ContentHash::of(b"opaque .yapatch manifest bytes marker");
+    let manifest_hash_for_journal = ContentHash::of(b"opaque .ybpatch manifest bytes marker");
     journal
         .begin(
             patch_manifest.patch_id,
@@ -150,7 +150,7 @@ fn full_project_to_patch_to_install_workflow() {
 }
 
 #[test]
-fn yapatch_rejects_a_tampered_payload() {
+fn ybpatch_rejects_a_tampered_payload() {
     let dir = scratch_dir("e2e-tamper");
     let payload_store = PayloadStore::new(dir.join("objects"));
 
@@ -167,8 +167,8 @@ fn yapatch_rejects_a_tampered_payload() {
         None,
     );
 
-    let patch_path = dir.join("tampered.yapatch");
-    let mut writer = YapatchWriter::create(&patch_path, "pal3", 1).unwrap();
+    let patch_path = dir.join("tampered.ybpatch");
+    let mut writer = YbpatchWriter::create(&patch_path, "pal3", 1).unwrap();
     writer.add_change(change.clone(), &payload).unwrap();
     writer.finish().unwrap();
 
@@ -178,7 +178,7 @@ fn yapatch_rejects_a_tampered_payload() {
     let mut tampered_change = change;
     tampered_change.payload.content_hash = ContentHash::of(b"not the real payload");
 
-    let mut reader = YapatchReader::open(&patch_path).unwrap();
+    let mut reader = YbpatchReader::open(&patch_path).unwrap();
     let err = reader.read_payload(&tampered_change).unwrap_err();
     assert!(matches!(err, AssetProjectError::HashMismatch { .. }));
 
@@ -186,10 +186,10 @@ fn yapatch_rejects_a_tampered_payload() {
 }
 
 #[test]
-fn yapatch_writer_rejects_change_with_wrong_declared_hash() {
+fn ybpatch_writer_rejects_change_with_wrong_declared_hash() {
     let dir = scratch_dir("e2e-writer-mismatch");
-    let patch_path = dir.join("bad.yapatch");
-    let mut writer = YapatchWriter::create(&patch_path, "pal3", 1).unwrap();
+    let patch_path = dir.join("bad.ybpatch");
+    let mut writer = YbpatchWriter::create(&patch_path, "pal3", 1).unwrap();
 
     let mut change = AssetChange::from_payload(
         AssetChangeKind::Add,
@@ -215,7 +215,7 @@ fn yapatch_writer_rejects_change_with_wrong_declared_hash() {
 }
 
 #[test]
-fn yapatch_publish_leaves_destination_untouched_on_verification_failure() {
+fn ybpatch_publish_leaves_destination_untouched_on_verification_failure() {
     // There's no direct way to make `finish()`'s re-verification fail
     // without corrupting the temp file mid-flight (which races the
     // writer itself), so instead this exercises the documented
@@ -223,10 +223,10 @@ fn yapatch_publish_leaves_destination_untouched_on_verification_failure() {
     // pre-existing destination file is left completely alone until a
     // `finish()` call actually succeeds.
     let dir = scratch_dir("e2e-publish-untouched");
-    let patch_path = dir.join("existing.yapatch");
+    let patch_path = dir.join("existing.ybpatch");
     std::fs::write(&patch_path, b"pre-existing, unrelated content").unwrap();
 
-    let writer = YapatchWriter::create(&patch_path, "pal3", 1).unwrap();
+    let writer = YbpatchWriter::create(&patch_path, "pal3", 1).unwrap();
     // Dropping the writer without calling `finish()` must never touch
     // `patch_path` -- only a successful `finish()` may rename over it.
     drop(writer);
@@ -254,7 +254,7 @@ fn publish_convenience_api_matches_incremental_writer() {
         None,
     );
 
-    let patch_path = dir.join("convenience.yapatch");
+    let patch_path = dir.join("convenience.ybpatch");
     let manifest = publish(
         &patch_path,
         "pal3",
@@ -265,7 +265,7 @@ fn publish_convenience_api_matches_incremental_writer() {
     .unwrap();
     assert_eq!(manifest.changes.len(), 1);
 
-    let mut reader = YapatchReader::open(&patch_path).unwrap();
+    let mut reader = YbpatchReader::open(&patch_path).unwrap();
     reader.verify_all().unwrap();
     assert_eq!(reader.read_payload(&change).unwrap(), payload);
 

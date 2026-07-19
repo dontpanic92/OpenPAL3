@@ -62,9 +62,9 @@ pub fn render_file_menu(
                 proj.discard_and_close_project();
             }
         }
-        if ui.menu_item("Publish .yapatch...", false) {
+        if ui.menu_item("Publish .ybpatch...", false) {
             let default_name = proj.active_project_name();
-            let path = cfg.pick_save_file("", default_name, "yapatch");
+            let path = cfg.pick_save_file("", default_name, "ybpatch");
             if path != "" {
                 proj.publish_patch(path);
             }

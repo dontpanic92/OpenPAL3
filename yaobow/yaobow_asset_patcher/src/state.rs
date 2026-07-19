@@ -70,6 +70,8 @@ pub struct PackageState {
     pub backup_path: PathBuf,
     pub backup_hash: Option<ContentHash>,
     pub temp_path: Option<PathBuf>,
+    #[serde(default)]
+    pub installed_hash: Option<ContentHash>,
     pub stage: PackageStage,
 }
 
@@ -82,8 +84,18 @@ pub enum TransactionOutcome {
     RolledBack,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TransactionKind {
+    #[default]
+    Install,
+    Uninstall,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionState {
+    #[serde(default)]
+    pub kind: TransactionKind,
     pub patch_id: Uuid,
     pub patch_path: PathBuf,
     pub game_root: PathBuf,
@@ -110,11 +122,13 @@ impl TransactionState {
                 backup_path: backup_path_for(&backup_dir, target_package),
                 backup_hash: None,
                 temp_path: None,
+                installed_hash: None,
                 stage: PackageStage::Planned,
             })
             .collect();
 
         Self {
+            kind: TransactionKind::Install,
             patch_id,
             patch_path: patch_path.into(),
             game_root: game_root.into(),
@@ -123,6 +137,18 @@ impl TransactionState {
             outcome: TransactionOutcome::InProgress,
             error: None,
         }
+    }
+
+    pub fn new_uninstall(
+        patch_id: Uuid,
+        patch_path: impl Into<PathBuf>,
+        game_root: impl Into<PathBuf>,
+        backup_dir: impl Into<PathBuf>,
+        target_packages: &[(String, PathBuf)],
+    ) -> Self {
+        let mut state = Self::new(patch_id, patch_path, game_root, backup_dir, target_packages);
+        state.kind = TransactionKind::Uninstall;
+        state
     }
 
     pub fn state_path(&self) -> PathBuf {
@@ -220,7 +246,7 @@ mod tests {
 
         let mut state = TransactionState::new(
             Uuid::new_v4(),
-            dir.join("update.yapatch"),
+            dir.join("update.ybpatch"),
             &dir,
             &backup_dir,
             &[("scene.cpk".to_string(), dir.join("scene.cpk"))],
@@ -242,7 +268,7 @@ mod tests {
         let dir = crate::test_scratch::dir("transaction-state-all-reached");
         let mut state = TransactionState::new(
             Uuid::new_v4(),
-            dir.join("update.yapatch"),
+            dir.join("update.ybpatch"),
             &dir,
             &dir,
             &[
@@ -292,7 +318,7 @@ mod tests {
         let dir = crate::test_scratch::dir("transaction-state-backup-collision");
         let state = TransactionState::new(
             Uuid::new_v4(),
-            dir.join("update.yapatch"),
+            dir.join("update.ybpatch"),
             &dir,
             &dir,
             &[

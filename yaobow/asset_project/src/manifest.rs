@@ -300,7 +300,7 @@ pub struct ProjectManifest {
     pub name: String,
     /// Which game/config key this project targets, matching
     /// `yaobow::shared::GameType::config_key` (e.g. `"pal3"`,
-    /// `"pal4"`), so a `.yapatch` built from this project can be
+    /// `"pal4"`), so a `.ybpatch` built from this project can be
     /// checked against the right game before installing.
     pub target_game: String,
     /// Root of the base asset tree (the unpacked/mounted `.cpk` set)

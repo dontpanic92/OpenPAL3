@@ -60,6 +60,10 @@ pub enum CpkEdit {
     /// automatically. This is a no-op if the directory is already
     /// present in the source package.
     Directory { path: String },
+    /// Remove an existing file at `path`.
+    RemoveFile { path: String },
+    /// Remove an existing empty directory at `path`.
+    RemoveDirectory { path: String },
 }
 
 impl CpkEdit {
@@ -74,10 +78,20 @@ impl CpkEdit {
         CpkEdit::Directory { path: path.into() }
     }
 
+    pub fn remove_file(path: impl Into<String>) -> Self {
+        CpkEdit::RemoveFile { path: path.into() }
+    }
+
+    pub fn remove_directory(path: impl Into<String>) -> Self {
+        CpkEdit::RemoveDirectory { path: path.into() }
+    }
+
     fn path(&self) -> &str {
         match self {
             CpkEdit::File { path, .. } => path,
             CpkEdit::Directory { path } => path,
+            CpkEdit::RemoveFile { path } => path,
+            CpkEdit::RemoveDirectory { path } => path,
         }
     }
 }
@@ -92,6 +106,10 @@ pub enum CpkRebuildError {
     InvalidPath(String),
     #[error("path {0:?} already exists as a {1} in the source package")]
     KindConflict(String, &'static str),
+    #[error("path {0:?} does not exist in the source package")]
+    MissingPath(String),
+    #[error("directory {0:?} is not empty")]
+    DirectoryNotEmpty(String),
     #[error(
         "crc32 collision: {0:?} and {1:?} hash to the same crc (0x{2:08x}); \
          cannot add both to the same package"
@@ -123,6 +141,7 @@ struct PlannedEntry {
     /// Backslash-joined, original-case full path. Kept for error
     /// messages / conflict detection only.
     full_path: String,
+    removed: bool,
 }
 
 /// Rebuilds PAL3 `.cpk` archives.
@@ -212,6 +231,7 @@ impl CpkRebuilder {
                 origin_size,
                 compressed,
                 full_path,
+                removed: false,
             });
         }
 
@@ -227,7 +247,7 @@ impl CpkRebuilder {
             )?;
         }
 
-        Ok(planned)
+        Ok(planned.into_iter().filter(|entry| !entry.removed).collect())
     }
 
     /// Pushes a brand-new (not-a-replace) entry, guarding against a crc32
@@ -272,8 +292,13 @@ impl CpkRebuilder {
             return Err(CpkRebuildError::EmptyPath(raw_path.to_string()));
         }
 
-        // Ensure every ancestor directory exists, tracking the crc of the
-        // immediate parent as we descend.
+        let removes_entry = matches!(
+            edit,
+            CpkEdit::RemoveFile { .. } | CpkEdit::RemoveDirectory { .. }
+        );
+
+        // Ensure every ancestor directory exists for additive edits,
+        // tracking the crc of the immediate parent as we descend.
         let mut parent_crc = 0u32;
         for depth in 0..components.len() - 1 {
             let acc_path = components[..=depth].join("\\");
@@ -281,11 +306,15 @@ impl CpkRebuilder {
 
             parent_crc = match index_of_lower_path.get(&lower) {
                 Some(&idx) => {
+                    if planned[idx].removed {
+                        return Err(CpkRebuildError::MissingPath(acc_path));
+                    }
                     if !planned[idx].is_dir {
                         return Err(CpkRebuildError::KindConflict(acc_path, "file"));
                     }
                     planned[idx].crc
                 }
+                None if removes_entry => return Err(CpkRebuildError::MissingPath(acc_path)),
                 None => {
                     let crc = crc_for_path(&acc_path)?;
                     let name_bytes = encode_gbk(components[depth])?;
@@ -302,6 +331,7 @@ impl CpkRebuilder {
                             origin_size: 0,
                             compressed: false,
                             full_path: acc_path,
+                            removed: false,
                         },
                     )?;
                     crc
@@ -317,6 +347,9 @@ impl CpkRebuilder {
             CpkEdit::Directory { .. } => {
                 match index_of_lower_path.get(&leaf_lower) {
                     Some(&idx) => {
+                        if planned[idx].removed {
+                            return Err(CpkRebuildError::MissingPath(leaf_full_path));
+                        }
                         if !planned[idx].is_dir {
                             return Err(CpkRebuildError::KindConflict(leaf_full_path, "file"));
                         }
@@ -338,6 +371,7 @@ impl CpkRebuilder {
                                 origin_size: 0,
                                 compressed: false,
                                 full_path: leaf_full_path,
+                                removed: false,
                             },
                         )?;
                     }
@@ -348,6 +382,9 @@ impl CpkRebuilder {
 
                 match index_of_lower_path.get(&leaf_lower) {
                     Some(&idx) => {
+                        if planned[idx].removed {
+                            return Err(CpkRebuildError::MissingPath(leaf_full_path));
+                        }
                         if planned[idx].is_dir {
                             return Err(CpkRebuildError::KindConflict(leaf_full_path, "directory"));
                         }
@@ -372,10 +409,45 @@ impl CpkRebuilder {
                                 origin_size: data.len() as u32,
                                 compressed,
                                 full_path: leaf_full_path,
+                                removed: false,
                             },
                         )?;
                     }
                 }
+            }
+            CpkEdit::RemoveFile { .. } => {
+                let Some(idx) = index_of_lower_path.remove(&leaf_lower) else {
+                    return Err(CpkRebuildError::MissingPath(leaf_full_path));
+                };
+                if planned[idx].removed {
+                    return Err(CpkRebuildError::MissingPath(leaf_full_path));
+                }
+                if planned[idx].is_dir {
+                    return Err(CpkRebuildError::KindConflict(leaf_full_path, "directory"));
+                }
+                index_of_crc.remove(&planned[idx].crc);
+                planned[idx].removed = true;
+            }
+            CpkEdit::RemoveDirectory { .. } => {
+                let Some(idx) = index_of_lower_path.get(&leaf_lower).copied() else {
+                    return Err(CpkRebuildError::MissingPath(leaf_full_path));
+                };
+                if planned[idx].removed {
+                    return Err(CpkRebuildError::MissingPath(leaf_full_path));
+                }
+                if !planned[idx].is_dir {
+                    return Err(CpkRebuildError::KindConflict(leaf_full_path, "file"));
+                }
+                let crc = planned[idx].crc;
+                if planned
+                    .iter()
+                    .any(|entry| !entry.removed && entry.father_crc == crc)
+                {
+                    return Err(CpkRebuildError::DirectoryNotEmpty(leaf_full_path));
+                }
+                index_of_lower_path.remove(&leaf_lower);
+                index_of_crc.remove(&crc);
+                planned[idx].removed = true;
             }
         }
 
@@ -442,18 +514,36 @@ impl CpkRebuilder {
         let mut archive = CpkArchive::load(reader)?;
 
         for edit in edits {
-            if let CpkEdit::File { data, .. } = edit {
-                let normalized = edit.path().replace('/', "\\");
-                let mut file = archive
-                    .open_str(&normalized)
-                    .map_err(|_| CpkRebuildError::VerificationFailed(normalized.clone()))?;
+            let normalized = edit.path().replace('/', "\\");
+            match edit {
+                CpkEdit::File { data, .. } => {
+                    let mut file = archive
+                        .open_str(&normalized)
+                        .map_err(|_| CpkRebuildError::VerificationFailed(normalized.clone()))?;
 
-                let mut buf = Vec::with_capacity(data.len());
-                file.read_to_end(&mut buf)?;
+                    let mut buf = Vec::with_capacity(data.len());
+                    file.read_to_end(&mut buf)?;
 
-                if &buf != data {
-                    return Err(CpkRebuildError::VerificationFailed(normalized));
+                    if &buf != data {
+                        return Err(CpkRebuildError::VerificationFailed(normalized));
+                    }
                 }
+                CpkEdit::RemoveFile { .. } => {
+                    if archive.open_str(&normalized).is_ok() {
+                        return Err(CpkRebuildError::VerificationFailed(normalized));
+                    }
+                }
+                CpkEdit::RemoveDirectory { .. } => {
+                    let lower = normalized.to_lowercase();
+                    if archive
+                        .full_paths()?
+                        .iter()
+                        .any(|path| path.to_lowercase() == lower)
+                    {
+                        return Err(CpkRebuildError::VerificationFailed(normalized));
+                    }
+                }
+                CpkEdit::Directory { .. } => {}
             }
         }
 

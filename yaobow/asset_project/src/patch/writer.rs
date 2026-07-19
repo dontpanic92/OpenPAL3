@@ -1,19 +1,19 @@
-//! `.yapatch` writer, built on top of `radiance::asset::ypk::YpkWriter`.
+//! `.ybpatch` writer, built on top of `ypk::YpkWriter`.
 //!
-//! Publishing is atomic: [`YapatchWriter::finish`] writes the archive
+//! Publishing is atomic: [`YbpatchWriter::finish`] writes the archive
 //! at a sibling temp path, closes it, re-opens it through
-//! [`super::YapatchReader`] to verify the manifest hash and every
+//! [`super::YbpatchReader`] to verify the manifest hash and every
 //! payload hash it just wrote, and only then renames the verified temp
 //! file onto the destination `path` passed to
-//! [`YapatchWriter::create`]. If verification (or any earlier step)
+//! [`YbpatchWriter::create`]. If verification (or any earlier step)
 //! fails, the temp file is removed and the destination path is left
 //! completely untouched.
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-use radiance::asset::ypk::YpkWriter;
 use uuid::Uuid;
+use ypk::YpkWriter;
 
 use crate::atomic::{temp_sibling_path, unix_now};
 use crate::error::{AssetProjectError, Result};
@@ -21,19 +21,19 @@ use crate::hash::ContentHash;
 use crate::manifest::AssetChange;
 
 use super::{
-    PackageFingerprint, PatchManifest, YAPATCH_FORMAT_VERSION, YAPATCH_MANIFEST_ENTRY,
-    YAPATCH_MANIFEST_HASH_ENTRY, YapatchReader, payload_entry_name,
+    PackageFingerprint, PatchManifest, YBPATCH_FORMAT_VERSION, YBPATCH_MANIFEST_ENTRY,
+    YBPATCH_MANIFEST_HASH_ENTRY, YbpatchReader, payload_entry_name,
 };
 
-/// Incrementally packs asset changes into a `.yapatch` file.
+/// Incrementally packs asset changes into a `.ybpatch` file.
 ///
 /// ```ignore
-/// let mut writer = YapatchWriter::create("update.yapatch", "pal3", base_project_version)?;
+/// let mut writer = YbpatchWriter::create("update.ybpatch", "pal3", base_project_version)?;
 /// writer.add_package_fingerprint(fingerprint);
 /// writer.add_change(change, &payload_bytes)?;
 /// let manifest = writer.finish()?; // atomic publish: verified, then renamed into place
 /// ```
-pub struct YapatchWriter {
+pub struct YbpatchWriter {
     ypk: YpkWriter,
     final_path: PathBuf,
     temp_path: PathBuf,
@@ -43,8 +43,8 @@ pub struct YapatchWriter {
     changes: Vec<AssetChange>,
 }
 
-impl YapatchWriter {
-    /// Starts building a `.yapatch` that will be published to `path`
+impl YbpatchWriter {
+    /// Starts building a `.ybpatch` that will be published to `path`
     /// once [`finish`](Self::finish) succeeds. Nothing is written to
     /// `path` itself until then — all writes go to a sibling temp file.
     pub fn create(
@@ -118,7 +118,7 @@ impl YapatchWriter {
     /// destination path given to [`create`](Self::create).
     ///
     /// Sequence: write the manifest entries into the temp `.ypk`,
-    /// close it, re-open it through [`YapatchReader`] to verify the
+    /// close it, re-open it through [`YbpatchReader`] to verify the
     /// manifest hash and every payload hash it just wrote, then rename
     /// the verified temp file onto the destination. On any failure the
     /// temp file is removed and the destination is left untouched.
@@ -142,7 +142,7 @@ impl YapatchWriter {
     /// above is the only caller and handles temp-file cleanup on error.
     fn finish_and_verify(mut self) -> Result<PatchManifest> {
         let manifest = PatchManifest {
-            format_version: YAPATCH_FORMAT_VERSION,
+            format_version: YBPATCH_FORMAT_VERSION,
             patch_id: Uuid::new_v4(),
             created_at: unix_now(),
             target_game: self.target_game,
@@ -152,18 +152,18 @@ impl YapatchWriter {
         };
 
         let manifest_bytes = serde_json::to_vec_pretty(&manifest)
-            .map_err(|e| AssetProjectError::json(PathBuf::from(YAPATCH_MANIFEST_ENTRY), e))?;
+            .map_err(|e| AssetProjectError::json(PathBuf::from(YBPATCH_MANIFEST_ENTRY), e))?;
         let manifest_hash = ContentHash::of(&manifest_bytes);
 
         self.ypk
-            .write_file(YAPATCH_MANIFEST_ENTRY, &manifest_bytes)
-            .map_err(|e| AssetProjectError::io(Path::new(YAPATCH_MANIFEST_ENTRY), e))?;
+            .write_file(YBPATCH_MANIFEST_ENTRY, &manifest_bytes)
+            .map_err(|e| AssetProjectError::io(Path::new(YBPATCH_MANIFEST_ENTRY), e))?;
         self.ypk
             .write_file(
-                YAPATCH_MANIFEST_HASH_ENTRY,
+                YBPATCH_MANIFEST_HASH_ENTRY,
                 manifest_hash.to_hex().as_bytes(),
             )
-            .map_err(|e| AssetProjectError::io(Path::new(YAPATCH_MANIFEST_HASH_ENTRY), e))?;
+            .map_err(|e| AssetProjectError::io(Path::new(YBPATCH_MANIFEST_HASH_ENTRY), e))?;
         self.ypk
             .finish()
             .map_err(|e| AssetProjectError::Ypk(e.to_string()))?;
@@ -172,7 +172,7 @@ impl YapatchWriter {
         // visible at `final_path`: a bug in the writer or an
         // interrupted flush should never result in an unverified (or
         // partially written) file landing at the destination.
-        let mut reader = YapatchReader::open(&self.temp_path)?;
+        let mut reader = YbpatchReader::open(&self.temp_path)?;
         reader.verify_all()?;
         drop(reader);
 
@@ -183,11 +183,11 @@ impl YapatchWriter {
     }
 }
 
-/// One-shot convenience wrapper around [`YapatchWriter`] for callers
+/// One-shot convenience wrapper around [`YbpatchWriter`] for callers
 /// that already have every fingerprint/change/payload in hand and
 /// don't need incremental control. Goes through the exact same
 /// write-temp/verify/rename publish sequence as
-/// [`YapatchWriter::finish`].
+/// [`YbpatchWriter::finish`].
 pub fn publish(
     path: impl AsRef<Path>,
     target_game: impl Into<String>,
@@ -195,7 +195,7 @@ pub fn publish(
     package_fingerprints: impl IntoIterator<Item = PackageFingerprint>,
     entries: impl IntoIterator<Item = (AssetChange, Vec<u8>)>,
 ) -> Result<PatchManifest> {
-    let mut writer = YapatchWriter::create(path, target_game, base_project_version)?;
+    let mut writer = YbpatchWriter::create(path, target_game, base_project_version)?;
     for fingerprint in package_fingerprints {
         writer.add_package_fingerprint(fingerprint);
     }

@@ -13,6 +13,7 @@ use asset_project::patch::PatchManifest;
 
 use crate::environment::GameRoot;
 use crate::fingerprint;
+use crate::manager::{ManagerState, normalize_internal_path, normalize_package_name};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Severity {
@@ -64,7 +65,7 @@ impl PackageValidation {
     }
 }
 
-/// Full validation summary for one `.yapatch` against one [`GameRoot`].
+/// Full validation summary for one `.ybpatch` against one [`GameRoot`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ValidationSummary {
     pub schema_ok: bool,
@@ -96,18 +97,18 @@ impl ValidationSummary {
     }
 }
 
-/// Highest `.yapatch` schema version this installer understands.
-/// Mirrors `asset_project::patch::YAPATCH_FORMAT_VERSION`, duplicated
+/// Highest `.ybpatch` schema version this installer understands.
+/// Mirrors `asset_project::patch::YBPATCH_FORMAT_VERSION`, duplicated
 /// here as a local constant so a schema-version issue surfaces as a
-/// [`ValidationIssue`] rather than a hard error from `YapatchReader`
+/// [`ValidationIssue`] rather than a hard error from `YbpatchReader`
 /// (which already refuses to open a too-new patch outright, but
 /// `validate()` is also called on a manifest object a caller may
 /// have obtained some other way, e.g. re-validation after an
 /// already-open reader).
-const KNOWN_YAPATCH_FORMAT_VERSION: u32 = 1;
+const KNOWN_YBPATCH_FORMAT_VERSION: u32 = 1;
 
 /// Validates `manifest` (from an already-opened, hash-verified
-/// `.yapatch`) against `root`. Never touches disk beyond `fs::read`
+/// `.ybpatch`) against `root`. Never touches disk beyond `fs::read`
 /// (for fingerprints) / `fs::metadata`+a real permission probe (see
 /// [`check_writable`]) — no package is modified.
 pub fn validate(
@@ -115,13 +116,39 @@ pub fn validate(
     root: &GameRoot,
     expected_game: &str,
 ) -> ValidationSummary {
+    validate_internal(manifest, root, expected_game, None, &[])
+}
+
+pub fn validate_managed(
+    manifest: &PatchManifest,
+    root: &GameRoot,
+    expected_game: &str,
+    manager_state: &ManagerState,
+    applied_manifests: &[PatchManifest],
+) -> ValidationSummary {
+    validate_internal(
+        manifest,
+        root,
+        expected_game,
+        Some(manager_state),
+        applied_manifests,
+    )
+}
+
+fn validate_internal(
+    manifest: &PatchManifest,
+    root: &GameRoot,
+    expected_game: &str,
+    manager_state: Option<&ManagerState>,
+    applied_manifests: &[PatchManifest],
+) -> ValidationSummary {
     let mut summary = ValidationSummary::default();
 
-    summary.schema_ok = manifest.format_version <= KNOWN_YAPATCH_FORMAT_VERSION;
+    summary.schema_ok = manifest.format_version <= KNOWN_YBPATCH_FORMAT_VERSION;
     if !summary.schema_ok {
         summary.global_issues.push(ValidationIssue::error(format!(
             "patch schema version {} is newer than the highest version this installer supports ({})",
-            manifest.format_version, KNOWN_YAPATCH_FORMAT_VERSION
+            manifest.format_version, KNOWN_YBPATCH_FORMAT_VERSION
         )));
     }
 
@@ -140,6 +167,54 @@ pub fn validate(
         ));
     }
 
+    if applied_manifests
+        .iter()
+        .any(|applied| applied.patch_id == manifest.patch_id)
+    {
+        summary.global_issues.push(ValidationIssue::error(format!(
+            "patch {} is already installed",
+            manifest.patch_id
+        )));
+    }
+
+    let mut applied_change_owners = HashMap::<(String, String), uuid::Uuid>::new();
+    for applied in applied_manifests {
+        for change in &applied.changes {
+            applied_change_owners.insert(
+                (
+                    normalize_package_name(change.target_package.as_str()),
+                    normalize_internal_path(change.package_internal_path.as_str()),
+                ),
+                applied.patch_id,
+            );
+        }
+    }
+    let mut candidate_change_paths = HashMap::<(String, String), String>::new();
+    for change in &manifest.changes {
+        let key = (
+            normalize_package_name(change.target_package.as_str()),
+            normalize_internal_path(change.package_internal_path.as_str()),
+        );
+        let display_path = format!(
+            "{}/{}",
+            change.target_package.as_str(),
+            change.package_internal_path.as_str()
+        );
+        if let Some(previous) = candidate_change_paths.insert(key.clone(), display_path.clone()) {
+            summary.global_issues.push(ValidationIssue::error(format!(
+                "patch contains duplicate case-insensitive file paths: {previous} and {display_path}"
+            )));
+        }
+        if let Some(owner) = applied_change_owners.get(&key) {
+            summary.global_issues.push(ValidationIssue::error(format!(
+                "file conflict: patch {} already changes {}/{}",
+                owner,
+                change.target_package.as_str(),
+                change.package_internal_path.as_str()
+            )));
+        }
+    }
+
     let plan = crate::plan::PatchPlan::from_manifest(manifest);
     let mut resolved_packages = HashMap::<PathBuf, String>::new();
     for package_plan in &plan.packages {
@@ -151,9 +226,12 @@ pub fn validate(
                 )));
             }
         }
-        summary
-            .packages
-            .push(validate_package(manifest, root, package_plan));
+        summary.packages.push(validate_package(
+            manifest,
+            root,
+            package_plan,
+            manager_state,
+        ));
     }
 
     summary
@@ -163,6 +241,7 @@ fn validate_package(
     manifest: &PatchManifest,
     root: &GameRoot,
     package_plan: &crate::plan::PackagePlan,
+    manager_state: Option<&ManagerState>,
 ) -> PackageValidation {
     let target_package = package_plan.target_package.as_str().to_string();
     let physical_path = root.resolve_package_path(&target_package);
@@ -197,8 +276,26 @@ fn validate_package(
         None
     };
 
-    let fingerprint_matches = match (fingerprint_expected, fingerprint_actual) {
-        (Some(expected), Some(actual)) => {
+    let managed_head = manager_state.and_then(|state| state.package_head(&target_package));
+    let fingerprint_matches = match (managed_head, fingerprint_expected, fingerprint_actual) {
+        (Some(expected), _, Some(actual)) => {
+            let matches = expected == actual;
+            if !matches {
+                issues.push(ValidationIssue::error(format!(
+                    "managed package state mismatch for {target_package:?}: expected {}, found {}",
+                    expected.to_hex(),
+                    actual.to_hex()
+                )));
+            }
+            Some(matches)
+        }
+        (Some(_), _, None) => {
+            issues.push(ValidationIssue::warning(format!(
+                "no fingerprint could be computed for tracked package {target_package:?}"
+            )));
+            None
+        }
+        (None, Some(expected), Some(actual)) => {
             let matches = expected == actual;
             if !matches {
                 issues.push(ValidationIssue::error(format!(
@@ -209,13 +306,13 @@ fn validate_package(
             }
             Some(matches)
         }
-        (Some(_), None) => {
+        (None, Some(_), None) => {
             issues.push(ValidationIssue::warning(format!(
                 "no fingerprint could be computed for {target_package:?} (package unreadable)"
             )));
             None
         }
-        (None, _) => {
+        (None, None, _) => {
             issues.push(ValidationIssue::warning(format!(
                 "patch carries no package fingerprint for {target_package:?}; \
                  the pre-patch state of this package cannot be verified"
@@ -257,6 +354,21 @@ fn validate_package(
                      the pre-patch entry content cannot be verified",
                     change.package_internal_path.as_str()
                 )));
+            } else if change.is_add() {
+                match fingerprint::entry_exists(
+                    physical_path.as_ref().expect("exists checked above"),
+                    change.package_internal_path.as_str(),
+                ) {
+                    Ok(true) => issues.push(ValidationIssue::error(format!(
+                        "add change for {target_package:?}/{:?} conflicts with an existing entry",
+                        change.package_internal_path.as_str()
+                    ))),
+                    Ok(false) => {}
+                    Err(error) => issues.push(ValidationIssue::error(format!(
+                        "could not inspect add target {target_package:?}/{:?}: {error}",
+                        change.package_internal_path.as_str()
+                    ))),
+                }
             }
         }
     }
@@ -328,7 +440,7 @@ mod tests {
         let dir = crate::test_scratch::dir("validate-schema");
         let root = GameRoot::open(&dir);
         let mut manifest = base_manifest();
-        manifest.format_version = KNOWN_YAPATCH_FORMAT_VERSION + 1;
+        manifest.format_version = KNOWN_YBPATCH_FORMAT_VERSION + 1;
 
         let summary = validate(&manifest, &root, "pal3");
         assert!(!summary.schema_ok);

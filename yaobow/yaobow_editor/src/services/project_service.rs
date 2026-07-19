@@ -1,6 +1,6 @@
 //! `IProjectService` Rust implementation: authoring-side asset project
 //! lifecycle (create/open/save/close), tracked-change enumeration and
-//! mutation, `.yapatch` publishing, and — via
+//! mutation, `.ybpatch` publishing, and — via
 //! `services::project_overlay` — keeping the editor's preview overlay
 //! and `IResourceManager` category index in sync with the active
 //! project.
@@ -1255,7 +1255,7 @@ mod tests {
     }
 
     #[test]
-    fn publish_patch_round_trips_through_yapatch_reader() {
+    fn publish_patch_round_trips_through_ybpatch_reader() {
         let root = scratch_dir("publish-roundtrip");
         let project_dir = root.join("proj");
         let svc = make_service(root.join("base"));
@@ -1271,11 +1271,11 @@ mod tests {
             "0.1",
         ));
 
-        let patch_path = root.join("out.yapatch");
+        let patch_path = root.join("out.ybpatch");
         assert!(svc.publish_patch(patch_path.to_str().unwrap()));
         assert!(patch_path.exists());
 
-        let mut reader = asset_project::YapatchReader::open(&patch_path).unwrap();
+        let mut reader = asset_project::YbpatchReader::open(&patch_path).unwrap();
         assert_eq!(reader.manifest().target_game, "pal3");
         assert_eq!(reader.manifest().changes.len(), 1);
         let change = reader.manifest().changes[0].clone();
@@ -1289,10 +1289,10 @@ mod tests {
     fn publish_patch_fails_with_no_active_project_or_no_changes() {
         let root = scratch_dir("publish-empty");
         let svc = make_service(root.join("base"));
-        assert!(!svc.publish_patch(root.join("out.yapatch").to_str().unwrap()));
+        assert!(!svc.publish_patch(root.join("out.ybpatch").to_str().unwrap()));
 
         let project_dir = root.join("proj");
         assert!(svc.create_project(project_dir.to_str().unwrap()));
-        assert!(!svc.publish_patch(root.join("out2.yapatch").to_str().unwrap()));
+        assert!(!svc.publish_patch(root.join("out2.ybpatch").to_str().unwrap()));
     }
 }

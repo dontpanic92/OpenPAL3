@@ -1,0 +1,12 @@
+[package]
+name = "ypk"
+version = "0.1.0"
+edition = "2024"
+description = "Lightweight reader, writer, and mini-fs store for Yaobow YPK archives."
+
+[dependencies]
+anyhow = "1"
+binrw = "0.11"
+mini-fs = { workspace = true }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+zstd = "0.13"

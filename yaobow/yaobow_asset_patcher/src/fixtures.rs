@@ -1,5 +1,5 @@
 //! Test-only fixture builders: synthetic (non-PAL4) `.cpk` packages and
-//! matching `.yapatch` files, so `tests/` can exercise the full
+//! matching `.ybpatch` files, so `tests/` can exercise the full
 //! transaction engine without any real game assets.
 //!
 //! The `.cpk` builder is independent of `packfs::cpk`'s own writer
@@ -164,7 +164,7 @@ pub fn write_fixture_cpk(dir: &Path, name: &str, files: &[(&str, &[u8])]) -> Pat
 }
 
 /// One planned `Add`/`Replace` change plus its payload bytes, for
-/// [`build_fixture_yapatch`].
+/// [`build_fixture_ybpatch`].
 pub struct FixtureChange {
     pub kind: AssetChangeKind,
     pub target_package: &'static str,
@@ -204,14 +204,14 @@ impl FixtureChange {
     }
 }
 
-/// Builds a real, fully-verified `.yapatch` at `path` (via
+/// Builds a real, fully-verified `.ybpatch` at `path` (via
 /// `asset_project::patch::publish`, the same atomic write-verify-rename
 /// path production authoring tools would use) with one
 /// `PackageFingerprint` per distinct `target_package` referenced by
 /// `changes` (whole-file hash of `package_bytes_for_fingerprint`, the
 /// same convention `crate::fingerprint::package_fingerprint` uses),
 /// plus every change in `changes`.
-pub fn build_fixture_yapatch(
+pub fn build_fixture_ybpatch(
     path: &Path,
     target_game: &str,
     base_project_version: u32,

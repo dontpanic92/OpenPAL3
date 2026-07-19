@@ -13,14 +13,14 @@
 //! - [`payload_store`] — content-addressed on-disk storage for
 //!   converted asset payload bytes, keyed by [`hash::ContentHash`]
 //!   (SHA-256).
-//! - [`patch`] — `.yapatch`, a `.ypk`-based delta-pack format
-//!   ([`patch::YapatchWriter`] / [`patch::YapatchReader`] /
+//! - [`patch`] — `.ybpatch`, a `.ypk`-based delta-pack format
+//!   ([`patch::YbpatchWriter`] / [`patch::YbpatchReader`] /
 //!   [`patch::publish`]) that embeds a [`patch::PatchManifest`]
 //!   (target game + per-package [`patch::PackageFingerprint`]s) plus
 //!   verified payload entries. Publishing is atomic: built at a
 //!   sibling temp path, verified, then renamed into place.
 //! - [`journal`] — [`journal::InstallationJournal`], an atomically
-//!   persisted, ordered record of which `.yapatch` files have been
+//!   persisted, ordered record of which `.ybpatch` files have been
 //!   applied to a target install, so an interrupted install can be
 //!   detected and safely retried.
 //!
@@ -46,5 +46,5 @@ pub use manifest::{
     AssetChange, AssetChangeKey, AssetChangeKind, AssetSource, ConversionMetadata, PackagePath,
     PayloadRef, ProjectManifest, TargetPackage,
 };
-pub use patch::{PackageFingerprint, PatchManifest, YapatchReader, YapatchWriter, publish};
+pub use patch::{PackageFingerprint, PatchManifest, YbpatchReader, YbpatchWriter, publish};
 pub use payload_store::PayloadStore;

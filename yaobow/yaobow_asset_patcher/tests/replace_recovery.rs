@@ -29,7 +29,7 @@ use yaobow_asset_patcher::startup;
 use yaobow_asset_patcher::state::{PackageStage, TransactionOutcome, TransactionState};
 use yaobow_asset_patcher::transaction::PatchPaths;
 
-/// Shared setup: a one-package `.yapatch`, a `Pending` journal entry,
+/// Shared setup: a one-package `.ybpatch`, a `Pending` journal entry,
 /// and a `TransactionState` (with the package's backup already
 /// written) ready for a test to push into whatever mid-replace state
 /// it wants to exercise.
@@ -53,7 +53,7 @@ fn build_fixture(name: &str) -> Fixture {
             "p1.cpk", "new.dat", b"p1 new",
         )],
     );
-    let manifest = asset_project::patch::YapatchReader::open(&patch_path)
+    let manifest = asset_project::patch::YbpatchReader::open(&patch_path)
         .unwrap()
         .manifest()
         .clone();

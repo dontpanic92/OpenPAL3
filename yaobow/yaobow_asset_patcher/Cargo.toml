@@ -3,8 +3,7 @@ name = "yaobow_asset_patcher"
 version = "0.1.0"
 edition = "2024"
 authors = ["OpenPAL3/yaobow contributors"]
-description = "Standalone Yaobow Asset Patcher: transactional .yapatch installer library + small imgui GUI."
-build = "build.rs"
+description = "Standalone Yaobow PAL3 mod manager with transactional .ybpatch installation."
 
 [lib]
 name = "yaobow_asset_patcher"
@@ -15,7 +14,7 @@ name = "yaobow_asset_patcher"
 path = "src/bin/yaobow_asset_patcher.rs"
 
 [features]
-# Exposes `test_support`, the synthetic-CPK / .yapatch fixture builders
+# Exposes `test_support`, the synthetic-CPK / .ybpatch fixture builders
 # used by this crate's own integration tests. Kept behind a feature
 # (rather than always public) so production consumers of the library
 # don't get test-only helpers in their public API, while integration
@@ -24,7 +23,6 @@ path = "src/bin/yaobow_asset_patcher.rs"
 test-support = []
 
 [dependencies]
-anyhow = "1.0"
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -34,14 +32,9 @@ uuid = { version = "0.8", features = ["v4", "serde"] }
 
 asset_project = { path = "../asset_project" }
 packfs = { path = "../packfs" }
-radiance = { path = "../../radiance/radiance" }
-radiance_scripting = { path = "../../radiance/radiance_scripting" }
-crosscom = { path = "../../crosscom/runtime/rust" }
-imgui = { workspace = true }
+p7 = { path = "../../radiance/protosept/p7" }
 
-# Native "Open" file/folder dialogs for the GUI binary — same crate and
-# version `yaobow/shared/src/config_service.rs` already uses for its
-# folder/file pickers.
+# p7-lcl v0.1.0 has an open-file dialog but no directory chooser.
 native-dialog = "0.9"
 
 simple_logger = "4"
@@ -51,10 +44,7 @@ simple_logger = "4"
 # synthetic `.cpk` byte streams.
 byteorder = "1.3.4"
 encoding = "0.2.33"
-
-[build-dependencies]
-cfg_aliases = "0.2"
-crosscom-ccidl = { path = "../../crosscom/ccidl-rs" }
+fs2 = "0.4"
 
 [dev-dependencies]
 yaobow_asset_patcher = { path = ".", features = ["test-support"] }

@@ -1,5 +1,5 @@
 //! Patch installation journal: an ordered, durable record of which
-//! `.yapatch` files have been (or are being) applied to a target
+//! `.ybpatch` files have been (or are being) applied to a target
 //! install.
 //!
 //! The journal exists so an interrupted install (crash, power loss)
@@ -37,11 +37,11 @@ pub enum InstallStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JournalEntry {
     pub patch_id: Uuid,
-    /// Path to the `.yapatch` file that was (or is being) installed,
+    /// Path to the `.ybpatch` file that was (or is being) installed,
     /// as given to [`InstallationJournal::begin`] — the journal does
     /// not resolve or canonicalize this.
     pub patch_path: std::path::PathBuf,
-    /// Hash of the `.yapatch` file's manifest bytes, so a later audit
+    /// Hash of the `.ybpatch` file's manifest bytes, so a later audit
     /// can confirm the exact patch content that was applied.
     pub manifest_hash: ContentHash,
     pub base_project_version: u32,
@@ -229,7 +229,7 @@ mod tests {
         let patch_id = Uuid::new_v4();
         let hash = ContentHash::of(b"manifest bytes");
 
-        journal.begin(patch_id, "patch.yapatch", hash, 1).unwrap();
+        journal.begin(patch_id, "patch.ybpatch", hash, 1).unwrap();
         assert!(!journal.is_applied(patch_id));
         assert_eq!(journal.pending_entries().count(), 1);
 
@@ -247,11 +247,11 @@ mod tests {
         let patch_id = Uuid::new_v4();
         let hash = ContentHash::of(b"manifest bytes");
 
-        journal.begin(patch_id, "patch.yapatch", hash, 1).unwrap();
+        journal.begin(patch_id, "patch.ybpatch", hash, 1).unwrap();
         journal.complete(patch_id, vec![]).unwrap();
 
         let err = journal
-            .begin(patch_id, "patch.yapatch", hash, 1)
+            .begin(patch_id, "patch.ybpatch", hash, 1)
             .unwrap_err();
         assert!(matches!(err, AssetProjectError::DuplicateJournalEntry(_)));
     }
@@ -262,7 +262,7 @@ mod tests {
         let patch_id = Uuid::new_v4();
         let hash = ContentHash::of(b"manifest bytes");
 
-        journal.begin(patch_id, "patch.yapatch", hash, 1).unwrap();
+        journal.begin(patch_id, "patch.ybpatch", hash, 1).unwrap();
         journal.fail(patch_id, "disk full").unwrap();
         assert_eq!(journal.entries()[0].status, InstallStatus::Failed);
         assert_eq!(journal.entries()[0].error.as_deref(), Some("disk full"));
@@ -282,7 +282,7 @@ mod tests {
         let mut journal = InstallationJournal::new();
         let patch_id = Uuid::new_v4();
         journal
-            .begin(patch_id, "patch.yapatch", ContentHash::of(b"x"), 1)
+            .begin(patch_id, "patch.ybpatch", ContentHash::of(b"x"), 1)
             .unwrap();
         journal.complete(patch_id, vec!["a.txt".into()]).unwrap();
         journal.save(&path).unwrap();
@@ -307,9 +307,9 @@ mod tests {
         let patch_id = Uuid::new_v4();
         let hash = ContentHash::of(b"manifest bytes");
 
-        journal.begin(patch_id, "patch.yapatch", hash, 1).unwrap();
+        journal.begin(patch_id, "patch.ybpatch", hash, 1).unwrap();
         journal.fail(patch_id, "first attempt failed").unwrap();
-        journal.begin(patch_id, "patch.yapatch", hash, 1).unwrap();
+        journal.begin(patch_id, "patch.ybpatch", hash, 1).unwrap();
         journal.complete(patch_id, vec!["a.txt".into()]).unwrap();
 
         assert_eq!(journal.entries()[0].status, InstallStatus::Failed);

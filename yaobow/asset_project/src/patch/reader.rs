@@ -1,40 +1,49 @@
-//! `.yapatch` reader, built on top of `radiance::asset::ypk::YpkArchive`.
+//! `.ybpatch` reader, built on top of `ypk::YpkArchive`.
 
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use radiance::asset::seek_traits::SeekRead;
-use radiance::asset::ypk::YpkArchive;
+use ypk::{SeekRead, YpkArchive};
 
 use crate::error::{AssetProjectError, Result};
 use crate::hash::ContentHash;
 use crate::manifest::AssetChange;
 
 use super::{
-    PatchManifest, YAPATCH_FORMAT_VERSION, YAPATCH_MANIFEST_ENTRY, YAPATCH_MANIFEST_HASH_ENTRY,
+    PatchManifest, YBPATCH_FORMAT_VERSION, YBPATCH_MANIFEST_ENTRY, YBPATCH_MANIFEST_HASH_ENTRY,
     payload_entry_name,
 };
 
-/// Opens a `.yapatch` file, verifying `manifest.json` against its
+/// Opens a `.ybpatch` file, verifying `manifest.json` against its
 /// declared hash (`manifest.hash`) up front so a corrupted or
 /// truncated patch fails fast with a clear error.
-pub struct YapatchReader {
+pub struct YbpatchReader {
     archive: YpkArchive,
     manifest: PatchManifest,
 }
 
-impl YapatchReader {
+impl YbpatchReader {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         let file = File::open(path).map_err(|e| AssetProjectError::io(path, e))?;
         let reader: Arc<Mutex<dyn SeekRead + Send + Sync>> = Arc::new(Mutex::new(file));
+        Self::from_reader(reader)
+    }
+
+    pub fn from_bytes(bytes: Arc<[u8]>) -> Result<Self> {
+        let reader: Arc<Mutex<dyn SeekRead + Send + Sync>> =
+            Arc::new(Mutex::new(std::io::Cursor::new(bytes)));
+        Self::from_reader(reader)
+    }
+
+    fn from_reader(reader: Arc<Mutex<dyn SeekRead + Send + Sync>>) -> Result<Self> {
         let mut archive =
             YpkArchive::load(reader).map_err(|e| AssetProjectError::Ypk(e.to_string()))?;
 
-        let manifest_bytes = read_entry(&mut archive, YAPATCH_MANIFEST_ENTRY)?;
-        let manifest_hash_bytes = read_entry(&mut archive, YAPATCH_MANIFEST_HASH_ENTRY)?;
+        let manifest_bytes = read_entry(&mut archive, YBPATCH_MANIFEST_ENTRY)?;
+        let manifest_hash_bytes = read_entry(&mut archive, YBPATCH_MANIFEST_HASH_ENTRY)?;
         let manifest_hash_str = String::from_utf8_lossy(&manifest_hash_bytes)
             .trim()
             .to_string();
@@ -44,19 +53,19 @@ impl YapatchReader {
         let actual_hash = ContentHash::of(&manifest_bytes);
         if actual_hash != expected_hash {
             return Err(AssetProjectError::HashMismatch {
-                path: YAPATCH_MANIFEST_ENTRY.to_string(),
+                path: YBPATCH_MANIFEST_ENTRY.to_string(),
                 expected: expected_hash.to_hex(),
                 actual: actual_hash.to_hex(),
             });
         }
 
         let manifest: PatchManifest = serde_json::from_slice(&manifest_bytes)
-            .map_err(|e| AssetProjectError::json(YAPATCH_MANIFEST_ENTRY, e))?;
+            .map_err(|e| AssetProjectError::json(YBPATCH_MANIFEST_ENTRY, e))?;
 
-        if manifest.format_version > YAPATCH_FORMAT_VERSION {
+        if manifest.format_version > YBPATCH_FORMAT_VERSION {
             return Err(AssetProjectError::UnsupportedManifestVersion {
                 found: manifest.format_version,
-                supported: YAPATCH_FORMAT_VERSION,
+                supported: YBPATCH_FORMAT_VERSION,
             });
         }
 
@@ -87,7 +96,7 @@ impl YapatchReader {
 
     /// Reads and verifies every payload declared in the manifest.
     /// Useful as a standalone integrity check before installing a
-    /// patch (or before publishing one — see [`super::YapatchWriter::finish`]).
+    /// patch (or before publishing one — see [`super::YbpatchWriter::finish`]).
     pub fn verify_all(&mut self) -> Result<()> {
         let changes = self.manifest.changes.clone();
         for change in &changes {
@@ -115,7 +124,7 @@ fn read_entry(archive: &mut YpkArchive, name: &str) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use radiance::asset::ypk::YpkWriter;
+    use ypk::YpkWriter;
 
     #[test]
     fn rejects_manifest_with_unsafe_paths() {
@@ -138,7 +147,7 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            let path = root.join(format!("{index}.yapatch"));
+            let path = root.join(format!("{index}.ybpatch"));
             let manifest = serde_json::json!({
                 "format_version": 1,
                 "patch_id": "00000000-0000-0000-0000-000000000000",
@@ -156,17 +165,17 @@ mod tests {
             let file = File::create(&path).unwrap();
             let mut writer = YpkWriter::new(Box::new(file)).unwrap();
             writer
-                .write_file(YAPATCH_MANIFEST_ENTRY, &manifest_bytes)
+                .write_file(YBPATCH_MANIFEST_ENTRY, &manifest_bytes)
                 .unwrap();
             writer
                 .write_file(
-                    YAPATCH_MANIFEST_HASH_ENTRY,
+                    YBPATCH_MANIFEST_HASH_ENTRY,
                     manifest_hash.to_hex().as_bytes(),
                 )
                 .unwrap();
             writer.finish().unwrap();
 
-            assert!(YapatchReader::open(&path).is_err(), "{unsafe_path}");
+            assert!(YbpatchReader::open(&path).is_err(), "{unsafe_path}");
         }
     }
 }

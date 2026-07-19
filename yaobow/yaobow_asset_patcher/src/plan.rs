@@ -1,4 +1,4 @@
-//! Dry-run installation plan: what a `.yapatch` would do, grouped by
+//! Dry-run installation plan: what a `.ybpatch` would do, grouped by
 //! target package (`.cpk`), without touching disk.
 
 use asset_project::manifest::{AssetChangeKind, PackagePath, TargetPackage};
@@ -40,7 +40,7 @@ impl PackagePlan {
     }
 }
 
-/// The full dry-run plan for a `.yapatch`: every touched package, in
+/// The full dry-run plan for a `.ybpatch`: every touched package, in
 /// manifest order, each with its own changes in manifest order.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PatchPlan {

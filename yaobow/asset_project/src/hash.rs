@@ -1,9 +1,9 @@
 //! Content hashing used for payload/manifest/patch integrity checks.
 //!
 //! SHA-256 is used (rather than the engine's xxh3, which
-//! `radiance::asset::ypk` uses purely for fast path-hash lookups)
+//! `ypk` uses purely for fast path-hash lookups)
 //! because `ContentHash` here backs security-relevant integrity
-//! checks: payload-store keys, the `.yapatch` manifest hash, package
+//! checks: payload-store keys, the `.ybpatch` manifest hash, package
 //! fingerprints, and `base_entry_hash` conflict detection. Patches are
 //! expected to move across machines and trust boundaries (e.g.
 //! downloaded from a distribution server), so collision resistance

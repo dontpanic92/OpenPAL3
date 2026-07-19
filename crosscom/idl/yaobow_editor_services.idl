@@ -174,7 +174,7 @@ class InspectorView: IInspectorView {}
 // Authoring-side asset project lifecycle: create/open/save/close a
 // project layered on top of the currently opened game's base asset
 // tree, enumerate/stage/remove tracked changes, and publish a
-// `.yapatch`. Backed by `asset_project::{ProjectManifest, PayloadStore,
+// `.ybpatch`. Backed by `asset_project::{ProjectManifest, PayloadStore,
 // patch}`. All methods that mutate project state also refresh the
 // project overlay mounted into the editor's VFS (see
 // `services::project_overlay`) and invalidate `IResourceManager`'s
@@ -289,7 +289,7 @@ interface IProjectService: IUnknown {
     // the base asset tree).
     void rebuild_overlay_index();
 
-    // Packs every tracked change into a `.yapatch` at `output_path`.
+    // Packs every tracked change into a `.ybpatch` at `output_path`.
     // False (see `last_error`) if there is no active project, it has
     // no changes, or publishing fails.
     bool publish_patch(&str output_path);

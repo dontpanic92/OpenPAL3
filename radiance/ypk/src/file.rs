@@ -1,15 +1,3 @@
-//! `mini_fs::UserFile` implementations used by [`crate::asset`] stores.
-//!
-//! - [`MemoryFile`] wraps a `Cursor<Vec<u8>>` so a fully-decompressed
-//!   entry can be returned from an archive store.
-//! - [`StreamingFile`] adapts a shared, seekable backing reader into a
-//!   bounded `Read+Seek` view, so an archive can hand out independent
-//!   file handles that share one underlying file descriptor.
-//!
-//! These are retained as public engine-side helpers for stores that
-//! need bounded readers without depending on the game-specific
-//! `packfs` crate.
-
 use std::{
     io::{Cursor, Read, Seek},
     sync::{Arc, Mutex},
@@ -17,19 +5,15 @@ use std::{
 
 use mini_fs::UserFile;
 
-use super::seek_traits::SeekRead;
+use crate::SeekRead;
 
-pub struct MemoryFile {
+pub(crate) struct MemoryFile {
     cursor: Cursor<Vec<u8>>,
 }
 
 impl MemoryFile {
-    pub fn new(cursor: Cursor<Vec<u8>>) -> MemoryFile {
-        MemoryFile { cursor }
-    }
-
-    pub fn content(&self) -> Vec<u8> {
-        self.cursor.clone().into_inner()
+    pub(crate) fn new(cursor: Cursor<Vec<u8>>) -> Self {
+        Self { cursor }
     }
 }
 
@@ -47,7 +31,7 @@ impl Seek for MemoryFile {
     }
 }
 
-pub struct StreamingFile {
+pub(crate) struct StreamingFile {
     reader: Arc<Mutex<dyn SeekRead + Send + Sync>>,
     position: u64,
     start_position: u64,
@@ -55,11 +39,11 @@ pub struct StreamingFile {
 }
 
 impl StreamingFile {
-    pub fn new(
+    pub(crate) fn new(
         reader: Arc<Mutex<dyn SeekRead + Send + Sync>>,
         start_position: u64,
         end_position: u64,
-    ) -> StreamingFile {
+    ) -> Self {
         Self {
             reader,
             position: start_position,
@@ -97,14 +81,13 @@ impl Seek for StreamingFile {
         if new_position < self.start_position {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "Seek before start",
+                "seek before start",
             ));
         }
-
         if new_position > self.end_position {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "Seek after end",
+                "seek after end",
             ));
         }
 

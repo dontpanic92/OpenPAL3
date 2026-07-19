@@ -87,6 +87,11 @@ fn apply_installs_multiple_packages_and_rollback_restores_them() {
         entries[0].status,
         asset_project::journal::InstallStatus::RolledBack
     );
+    let operations = yaobow_asset_patcher::manager::operations_dir(&env.game_root);
+    assert!(
+        !operations.exists() || std::fs::read_dir(operations).unwrap().next().is_none(),
+        "successful uninstall must not retain recovery backups"
+    );
 }
 
 #[test]
@@ -173,8 +178,34 @@ fn rollback_is_idempotent_when_called_twice() {
 }
 
 #[test]
-fn rollback_of_an_older_patch_overlapping_a_newer_applied_patch_is_rejected() {
-    let env = support::TestEnv::new("apply-rollback-overlap-rejected");
+fn uninstall_prunes_parent_directories_created_by_added_files() {
+    let env = support::TestEnv::new("uninstall-prunes-added-directories");
+    let (scene_path, scene_hash) =
+        env.write_package("scene.cpk", &[("base.dat", b"base" as &[u8])]);
+    let patch = support::build_patch(
+        &env,
+        &[("scene.cpk", scene_hash)],
+        vec![FixtureChange::add(
+            "scene.cpk",
+            r"mods\nested\added.dat",
+            b"added",
+        )],
+    );
+    let report =
+        transaction::apply(&patch, &env.game_root, "pal3", ApplyOptions::default()).unwrap();
+    transaction::rollback(&env.game_root, report.patch_id).unwrap();
+
+    let paths = support::cpk_paths(&scene_path);
+    assert!(
+        paths
+            .iter()
+            .all(|path| !path.to_lowercase().starts_with("mods"))
+    );
+}
+
+#[test]
+fn uninstall_of_an_older_disjoint_patch_preserves_a_newer_patch_in_the_same_package() {
+    let env = support::TestEnv::new("apply-uninstall-disjoint-same-package");
     let (scene_path, scene_hash) =
         env.write_package("scene.cpk", &[("a.dff", b"scene v1" as &[u8])]);
 
@@ -195,12 +226,13 @@ fn rollback_of_an_older_patch_overlapping_a_newer_applied_patch_is_rejected() {
     )
     .expect("patch A should apply cleanly");
 
-    // Patch B's fingerprint must match `scene.cpk` as it looks *after*
-    // patch A, since B is applied on top of it.
-    let scene_hash_after_a = support::whole_file_hash(&scene_path);
+    // Both patches were authored against the same pristine package.
+    // Manager-owned drift is accepted because the current package
+    // matches the recorded head and the two internal file paths are
+    // disjoint.
     let patch_b_path = support::build_patch(
         &env,
-        &[("scene.cpk", scene_hash_after_a)],
+        &[("scene.cpk", scene_hash)],
         vec![FixtureChange::add(
             "scene.cpk",
             "b_new.dff",
@@ -215,53 +247,148 @@ fn rollback_of_an_older_patch_overlapping_a_newer_applied_patch_is_rejected() {
     )
     .expect("patch B should apply cleanly on top of patch A");
 
-    // Both patches touch `scene.cpk`, and B was recorded strictly
-    // after A in the journal and is still `Applied` -- rolling A back
-    // now would silently discard B's own change to `scene.cpk` while
-    // B's journal entry still claims `Applied`.
-    let err = transaction::rollback(&env.game_root, report_a.patch_id)
-        .expect_err("rolling back an older patch overlapped by a newer applied one must fail");
-    match err {
-        yaobow_asset_patcher::PatcherError::RollbackBlockedByNewerPatch {
-            patch_id,
-            blocking_patch_ids,
-            overlapping_packages,
-        } => {
-            assert_eq!(patch_id, report_a.patch_id);
-            assert_eq!(blocking_patch_ids, vec![report_b.patch_id]);
-            assert_eq!(overlapping_packages, vec!["scene.cpk".to_string()]);
-        }
-        other => panic!("expected RollbackBlockedByNewerPatch, got {other:?}"),
-    }
-
-    // Nothing must have been touched by the rejected rollback attempt.
-    assert_eq!(
-        support::read_cpk_entry(&scene_path, "a_new.dff"),
-        b"patch a payload"
-    );
+    transaction::rollback(&env.game_root, report_a.patch_id)
+        .expect("file-level uninstall must preserve disjoint newer files");
+    assert!(support::try_read_cpk_entry(&scene_path, "a_new.dff").is_none());
     assert_eq!(
         support::read_cpk_entry(&scene_path, "b_new.dff"),
         b"patch b payload"
     );
-    let entries = transaction::list_journal_entries(&env.game_root).unwrap();
-    assert!(
-        entries
-            .iter()
-            .all(|e| e.status == asset_project::journal::InstallStatus::Applied)
-    );
-
-    // Rolling back the newer, overlapping patch B on its own is always
-    // safe...
     transaction::rollback(&env.game_root, report_b.patch_id)
-        .expect("rolling back the newer, overlapping patch on its own must succeed");
-
-    // ...and now rolling back A (no longer overlapped by any
-    // still-`Applied` newer patch) must succeed too: overlapping
-    // rollbacks chain safely newest-first.
-    transaction::rollback(&env.game_root, report_a.patch_id)
-        .expect("rolling back A must now succeed since B has already been rolled back");
-
+        .expect("the newer patch must remain independently uninstallable");
     assert_eq!(support::read_cpk_entry(&scene_path, "a.dff"), b"scene v1");
+}
+
+#[test]
+fn uninstalling_stacked_adds_prunes_a_directory_created_by_an_older_mod() {
+    let env = support::TestEnv::new("apply-rollback-stacked-directory-prune");
+    let (scene_path, scene_hash) =
+        env.write_package("scene.cpk", &[("base.dat", b"base" as &[u8])]);
+    let patch_a = support::build_patch(
+        &env,
+        &[("scene.cpk", scene_hash)],
+        vec![FixtureChange::add("scene.cpk", "mods/a.dat", b"a")],
+    );
+    let report_a =
+        transaction::apply(&patch_a, &env.game_root, "pal3", ApplyOptions::default()).unwrap();
+    let patch_b = support::build_patch(
+        &env,
+        &[("scene.cpk", scene_hash)],
+        vec![FixtureChange::add("scene.cpk", "mods/b.dat", b"b")],
+    );
+    let report_b =
+        transaction::apply(&patch_b, &env.game_root, "pal3", ApplyOptions::default()).unwrap();
+
+    transaction::rollback(&env.game_root, report_a.patch_id).unwrap();
+    transaction::rollback(&env.game_root, report_b.patch_id).unwrap();
+
+    assert!(
+        !support::cpk_paths(&scene_path)
+            .iter()
+            .any(|path| path.eq_ignore_ascii_case("mods")),
+        "the last uninstall should prune the now-empty mod-created directory"
+    );
+}
+
+#[test]
+fn reinstall_preserves_stacked_directory_creation_provenance() {
+    let env = support::TestEnv::new("apply-reinstall-directory-provenance");
+    let (scene_path, scene_hash) =
+        env.write_package("scene.cpk", &[("base.dat", b"base" as &[u8])]);
+    let patch_a = support::build_patch(
+        &env,
+        &[("scene.cpk", scene_hash)],
+        vec![FixtureChange::add("scene.cpk", "mods/a.dat", b"a")],
+    );
+    let report_a =
+        transaction::apply(&patch_a, &env.game_root, "pal3", ApplyOptions::default()).unwrap();
+    let patch_a = env.root.join("patch-a.ybpatch");
+    std::fs::rename(env.root.join("update.ybpatch"), &patch_a).unwrap();
+    let patch_b = support::build_patch(
+        &env,
+        &[("scene.cpk", scene_hash)],
+        vec![FixtureChange::add("scene.cpk", "mods/b.dat", b"b")],
+    );
+    let report_b =
+        transaction::apply(&patch_b, &env.game_root, "pal3", ApplyOptions::default()).unwrap();
+
+    transaction::rollback(&env.game_root, report_a.patch_id).unwrap();
+    transaction::apply(&patch_a, &env.game_root, "pal3", ApplyOptions::default()).unwrap();
+    transaction::rollback(&env.game_root, report_a.patch_id).unwrap();
+    transaction::rollback(&env.game_root, report_b.patch_id).unwrap();
+
+    assert!(
+        !support::cpk_paths(&scene_path)
+            .iter()
+            .any(|path| path.eq_ignore_ascii_case("mods")),
+        "reinstalling the directory-creating mod must not lose its original provenance"
+    );
+}
+
+#[test]
+fn install_rejects_an_exact_file_conflict() {
+    let env = support::TestEnv::new("apply-file-conflict-rejected");
+    let (scene_path, scene_hash) =
+        env.write_package("scene.cpk", &[("a.dff", b"scene v1" as &[u8])]);
+    let patch_a = support::build_patch(
+        &env,
+        &[("scene.cpk", scene_hash)],
+        vec![FixtureChange::add("scene.cpk", "shared.dff", b"patch a")],
+    );
+    transaction::apply(&patch_a, &env.game_root, "pal3", ApplyOptions::default()).unwrap();
+
+    let patch_b = support::build_patch(
+        &env,
+        &[("scene.cpk", scene_hash)],
+        vec![FixtureChange::add("scene.cpk", "SHARED.DFF", b"patch b")],
+    );
+    let error = transaction::apply(&patch_b, &env.game_root, "pal3", ApplyOptions::default())
+        .expect_err("case-insensitive exact file conflicts must be rejected");
+    assert!(matches!(
+        error,
+        yaobow_asset_patcher::PatcherError::ValidationFailed(_)
+    ));
+    assert_eq!(
+        support::read_cpk_entry(&scene_path, "shared.dff"),
+        b"patch a"
+    );
+}
+
+#[test]
+fn install_rejects_unmanaged_package_drift() {
+    let env = support::TestEnv::new("apply-unmanaged-drift-rejected");
+    let (scene_path, scene_hash) =
+        env.write_package("scene.cpk", &[("base.dat", b"base" as &[u8])]);
+    let patch_a = support::build_patch(
+        &env,
+        &[("scene.cpk", scene_hash)],
+        vec![FixtureChange::add("scene.cpk", "managed.dat", b"managed")],
+    );
+    transaction::apply(&patch_a, &env.game_root, "pal3", ApplyOptions::default()).unwrap();
+
+    let externally_modified = env.root.join("externally-modified.cpk");
+    packfs::cpk::CpkRebuilder::rebuild(
+        &scene_path,
+        &externally_modified,
+        &[packfs::cpk::CpkEdit::file(
+            "external.dat",
+            b"external".to_vec(),
+        )],
+    )
+    .unwrap();
+    std::fs::copy(&externally_modified, &scene_path).unwrap();
+
+    let patch_b = support::build_patch(
+        &env,
+        &[("scene.cpk", scene_hash)],
+        vec![FixtureChange::add("scene.cpk", "second.dat", b"second")],
+    );
+    let error = transaction::apply(&patch_b, &env.game_root, "pal3", ApplyOptions::default())
+        .expect_err("unmanaged changes must invalidate the recorded package head");
+    assert!(matches!(
+        error,
+        yaobow_asset_patcher::PatcherError::ValidationFailed(_)
+    ));
 }
 
 #[test]
@@ -320,7 +447,7 @@ fn rollback_of_non_overlapping_patches_is_never_blocked() {
 }
 
 #[test]
-fn rollback_fails_closed_when_newer_patch_state_is_missing() {
+fn uninstall_does_not_need_an_unrelated_newer_patch_install_state() {
     let env = support::TestEnv::new("apply-rollback-missing-newer-state");
     let (scene_path, scene_hash) =
         env.write_package("scene.cpk", &[("a.dff", b"scene v1" as &[u8])]);
@@ -332,10 +459,9 @@ fn rollback_fails_closed_when_newer_patch_state_is_missing() {
     let report_a =
         transaction::apply(&patch_a, &env.game_root, "pal3", ApplyOptions::default()).unwrap();
 
-    let hash_after_a = support::whole_file_hash(&scene_path);
     let patch_b = support::build_patch(
         &env,
-        &[("scene.cpk", hash_after_a)],
+        &[("scene.cpk", scene_hash)],
         vec![FixtureChange::add("scene.cpk", "b_new.dff", b"patch b")],
     );
     let report_b =
@@ -347,7 +473,7 @@ fn rollback_fails_closed_when_newer_patch_state_is_missing() {
     std::fs::remove_file(newer_state).unwrap();
 
     transaction::rollback(&env.game_root, report_a.patch_id)
-        .expect_err("rollback must fail closed when a newer applied patch state is unavailable");
+        .expect("file-level uninstall only needs the selected patch's original backup");
     assert_eq!(
         support::read_cpk_entry(&scene_path, "b_new.dff"),
         b"patch b"

@@ -151,9 +151,65 @@ jobs:
           path: target/yaobow-${{ github.ref_name }}-macos-arm64.zip
           if-no-files-found: error
 
+  build-asset-patcher:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            executable: yaobow_asset_patcher
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            executable: yaobow_asset_patcher.exe
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            executable: yaobow_asset_patcher
+          - os: macos-14-arm64
+            target: aarch64-apple-darwin
+            executable: yaobow_asset_patcher
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ''
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Linux runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0 libharfbuzz-gobject0
+      - name: Build asset patcher
+        run: cargo build -p yaobow_asset_patcher --release --verbose
+      - name: Stage package
+        shell: bash
+        run: |
+          package="target/yaobow-asset-patcher-${{ matrix.target }}"
+          mkdir -p "$package"
+          python yaobow/yaobow_asset_patcher/scripts/stage-p7-lcl.py \
+            --target "${{ matrix.target }}" \
+            --output "$package"
+          cp "target/release/${{ matrix.executable }}" "$package/"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            codesign --force --sign - "$package/p7-lcl/native/lib/libp7lcl.dylib"
+            codesign --force --sign - "$package/${{ matrix.executable }}"
+          fi
+          tar -czf "${package}.tar.gz" -C "$package" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yaobow-asset-patcher-${{ matrix.target }}
+          path: target/yaobow-asset-patcher-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
   release:
     runs-on: ubuntu-latest
-    needs: [build-windows, build-linux, build-macos]
+    needs: [build-windows, build-linux, build-macos, build-asset-patcher]
     permissions:
       contents: write
     steps:

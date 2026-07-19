@@ -91,6 +91,17 @@ pub enum PatcherError {
     #[error("backup for package {0:?} is corrupt (hash mismatch); refusing to roll back")]
     CorruptBackup(String),
 
+    #[error("managed patch {patch_id} already exists with different content")]
+    ManagedPatchIdCollision { patch_id: Uuid },
+
+    #[error("managed patch {0} was not found in the selected game root")]
+    ManagedPatchNotFound(Uuid),
+
+    #[error(
+        "unsupported mod-manager state version {found}; highest supported version is {supported}"
+    )]
+    UnsupportedManagerStateVersion { found: u32, supported: u32 },
+
     #[error("transaction aborted by injected fault at {0}")]
     InjectedFault(String),
 

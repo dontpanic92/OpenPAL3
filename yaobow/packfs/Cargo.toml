@@ -29,7 +29,6 @@ md5 = "0.7"
 mini-fs = { workspace = true }
 minilzo-rs = { git = "https://github.com/dontpanic92/minilzo-rs/" }
 miniz_oxide = "0.7"
-radiance = { path = "../../radiance/radiance" }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 thiserror = "1.0"
@@ -37,6 +36,7 @@ tomcrypt-sys = "0.1"
 uuid = "0.8"
 xtea = { git = "https://github.com/Brekcel/xtea" }
 xxtea = "0.2.0"
+ypk = { path = "../../radiance/ypk" }
 
 [target.'cfg(not(target_os = "vita"))'.dependencies]
 memmap = "0.7.0"

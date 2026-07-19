@@ -5,7 +5,7 @@
 //! This installer always uses a whole-file content hash of the
 //! physical package (`.cpk`) — simple, deterministic, and doesn't
 //! require understanding the package's internal layout to compute.
-//! `.yapatch` authors targeting this installer must use the same
+//! `.ybpatch` authors targeting this installer must use the same
 //! convention when building [`asset_project::patch::PackageFingerprint`]s.
 
 use std::fs;
@@ -17,7 +17,7 @@ use packfs::cpk::CpkArchive;
 use crate::error::{PatcherError, Result};
 
 /// Whole-file content hash of the package at `path`. This is the
-/// fingerprint scheme this installer expects `.yapatch` authors to use
+/// fingerprint scheme this installer expects `.ybpatch` authors to use
 /// for `PackageFingerprint::base_hash`.
 pub fn package_fingerprint(path: impl AsRef<Path>) -> Result<ContentHash> {
     let path = path.as_ref();

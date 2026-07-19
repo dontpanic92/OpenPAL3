@@ -277,6 +277,76 @@ fn rebuild_adds_new_file_and_directory_with_implied_parents() {
 }
 
 #[test]
+fn rebuild_removes_file_and_explicit_empty_parents() {
+    let source = write_fixture(
+        "remove_source.cpk",
+        &build_fixture_cpk(&[
+            (r"newdir\sub\remove.txt", b"remove me"),
+            (r"newdir\keep.txt", b"keep me"),
+            (r"other.txt", b"also keep me"),
+        ]),
+    );
+    let dest = artifact_dir().join("remove_dest.cpk");
+
+    CpkRebuilder::rebuild(
+        &source,
+        &dest,
+        &[
+            CpkEdit::remove_file(r"NEWDIR/SUB/REMOVE.TXT"),
+            CpkEdit::remove_directory(r"newdir\sub"),
+        ],
+    )
+    .expect("rebuild should remove the file and empty parent");
+
+    let reader = std::fs::File::open(&dest).unwrap();
+    let mut archive = CpkArchive::load(Box::new(std::io::BufReader::new(reader))).unwrap();
+    assert!(archive.open_str(r"newdir\sub\remove.txt").is_err());
+    assert_eq!(read_all(&mut archive, r"newdir\keep.txt"), b"keep me");
+    assert_eq!(read_all(&mut archive, r"other.txt"), b"also keep me");
+    assert!(
+        archive
+            .full_paths()
+            .unwrap()
+            .iter()
+            .all(|path| !path.eq_ignore_ascii_case(r"newdir\sub"))
+    );
+
+    let _ = fs::remove_file(&source);
+    let _ = fs::remove_file(&dest);
+}
+
+#[test]
+fn rebuild_rejects_missing_and_non_empty_removals() {
+    let source = write_fixture(
+        "remove_errors_source.cpk",
+        &build_fixture_cpk(&[(r"dir\file.txt", b"content")]),
+    );
+    let missing_dest = artifact_dir().join("remove_missing_dest.cpk");
+    let non_empty_dest = artifact_dir().join("remove_non_empty_dest.cpk");
+
+    let missing = CpkRebuilder::rebuild(
+        &source,
+        &missing_dest,
+        &[CpkEdit::remove_file(r"dir\missing.txt")],
+    );
+    assert!(matches!(missing, Err(CpkRebuildError::MissingPath(_))));
+
+    let non_empty = CpkRebuilder::rebuild(
+        &source,
+        &non_empty_dest,
+        &[CpkEdit::remove_directory("dir")],
+    );
+    assert!(matches!(
+        non_empty,
+        Err(CpkRebuildError::DirectoryNotEmpty(_))
+    ));
+
+    let _ = fs::remove_file(&source);
+    let _ = fs::remove_file(&missing_dest);
+    let _ = fs::remove_file(&non_empty_dest);
+}
+
+#[test]
 fn rebuild_rejects_pal4_packages() {
     let source = write_fixture("pal4_source.cpk", &build_fixture_pal4_cpk());
     let dest = artifact_dir().join("pal4_dest.cpk");

@@ -1,0 +1,280 @@
+import lcl;
+
+@intrinsic(name="patcher.root_path")
+fn game_root_path() -> string;
+@intrinsic(name="patcher.choose_root")
+fn choose_root() -> string;
+@intrinsic(name="patcher.start_refresh")
+fn start_refresh() -> string;
+@intrinsic(name="patcher.start_import")
+fn start_import(path: string) -> string;
+@intrinsic(name="patcher.start_install")
+fn start_install(index: int) -> string;
+@intrinsic(name="patcher.start_uninstall")
+fn start_uninstall(index: int) -> string;
+@intrinsic(name="patcher.mod_count")
+fn mod_count() -> int;
+@intrinsic(name="patcher.mod_label")
+fn mod_label(index: int) -> string;
+@intrinsic(name="patcher.mod_details")
+fn mod_details(index: int) -> string;
+@intrinsic(name="patcher.mod_validation")
+fn mod_validation(index: int) -> string;
+@intrinsic(name="patcher.mod_can_install")
+fn mod_can_install(index: int) -> bool;
+@intrinsic(name="patcher.mod_can_uninstall")
+fn mod_can_uninstall(index: int) -> bool;
+@intrinsic(name="patcher.job_state")
+fn job_state() -> int;
+@intrinsic(name="patcher.job_message")
+fn job_message() -> string;
+@intrinsic(name="patcher.job_completed")
+fn job_completed() -> int;
+@intrinsic(name="patcher.job_total")
+fn job_total() -> int;
+@intrinsic(name="patcher.acknowledge_job")
+fn acknowledge_job();
+
+struct Ui(
+    root_path: handle<lcl.Edit>,
+    root_button: handle<lcl.Button>,
+    list: handle<lcl.ListBox>,
+    details: handle<lcl.Memo>,
+    import_button: handle<lcl.Button>,
+    install: handle<lcl.Button>,
+    uninstall: handle<lcl.Button>,
+    status: handle<lcl.StatusBar>,
+    open_dialog: handle<lcl.OpenDialog>
+);
+
+struct UiState(pub last_job_state: int);
+
+fn update_selection(ui: box<Ui>, running: bool) {
+    let index = lcl.list_box_item_index(ui.list);
+    if index < 0 {
+        lcl.set_memo_text(ui.details, "Import a .ybpatch file to begin.");
+        lcl.set_control_enabled(ui.install, false);
+        lcl.set_control_enabled(ui.uninstall, false);
+    } else {
+        let validation = mod_validation(index);
+        let validation_text = if validation == "" {
+            "Validation: ready"
+        } else {
+            "Validation:\n" + validation
+        };
+        lcl.set_memo_text(
+            ui.details,
+            mod_details(index) + "\n\n" + validation_text
+        );
+        lcl.set_control_enabled(
+            ui.install,
+            !running && mod_can_install(index)
+        );
+        lcl.set_control_enabled(
+            ui.uninstall,
+            !running && mod_can_uninstall(index)
+        );
+    }
+}
+
+fn refresh_catalog(ui: box<Ui>) {
+    let previous = lcl.list_box_item_index(ui.list);
+    lcl.list_box_clear_items(ui.list);
+    let count = mod_count();
+    let mut index = 0;
+    while index < count {
+        lcl.list_box_add_item(ui.list, mod_label(index));
+        index = index + 1;
+    }
+    if count > 0 {
+        let selected = if previous >= 0 && previous < count {
+            previous
+        } else {
+            0
+        };
+        lcl.list_box_select_index(ui.list, selected);
+    }
+    update_selection(ui, false);
+}
+
+fn set_running(ui: box<Ui>, running: bool) {
+    lcl.set_control_enabled(ui.root_button, !running);
+    lcl.set_control_enabled(ui.import_button, !running);
+    lcl.set_control_enabled(ui.list, !running);
+    update_selection(ui, running);
+}
+
+fn show_action_result(ui: box<Ui>, result: string) {
+    if result == "" {
+        if job_state() == 1 {
+            set_running(ui, true);
+            lcl.set_status_bar_simple_text(ui.status, job_message());
+        }
+    } else {
+        lcl.set_status_bar_simple_text(ui.status, result);
+    }
+}
+
+fn choose_patch(ui: box<Ui>) {
+    if lcl.open_dialog_execute(ui.open_dialog) {
+        show_action_result(
+            ui,
+            start_import(lcl.open_dialog_file_name(ui.open_dialog))
+        );
+    }
+}
+
+fn main() -> int {
+    lcl.initialize();
+    let form = lcl.new_form();
+    lcl.register_main_form(form);
+    lcl.set_form_caption(form, "Yaobow PAL3 Mod Manager");
+    lcl.set_form_bounds(form, 120, 80, 900, 620);
+
+    let root_label = lcl.new_label(form);
+    lcl.set_label_caption(root_label, "PAL3 root:");
+    lcl.set_control_bounds(root_label, 16, 18, 80, 24);
+
+    let root_path = lcl.new_edit(form);
+    lcl.set_edit_text(root_path, game_root_path());
+    lcl.set_control_enabled(root_path, false);
+    lcl.set_control_bounds(root_path, 96, 14, 650, 30);
+
+    let root_button = lcl.new_button(form);
+    lcl.set_button_caption(root_button, "Choose...");
+    lcl.set_control_bounds(root_button, 758, 12, 120, 34);
+
+    let list = lcl.new_list_box(form);
+    lcl.set_control_bounds(list, 16, 62, 330, 450);
+
+    let details = lcl.new_memo(form);
+    lcl.set_memo_text(details, "Loading managed patches...");
+    lcl.set_control_enabled(details, false);
+    lcl.set_control_bounds(details, 362, 62, 516, 390);
+
+    let import_button = lcl.new_button(form);
+    lcl.set_button_caption(import_button, "Import Patch...");
+    lcl.set_control_bounds(import_button, 362, 468, 150, 36);
+
+    let install = lcl.new_button(form);
+    lcl.set_button_caption(install, "Install");
+    lcl.set_control_enabled(install, false);
+    lcl.set_control_bounds(install, 602, 468, 130, 36);
+
+    let uninstall = lcl.new_button(form);
+    lcl.set_button_caption(uninstall, "Uninstall");
+    lcl.set_control_enabled(uninstall, false);
+    lcl.set_control_bounds(uninstall, 748, 468, 130, 36);
+
+    let status = lcl.new_status_bar(form);
+    lcl.set_control_align(status, lcl.Align.Bottom);
+    lcl.set_status_bar_simple_panel(status, true);
+    lcl.set_status_bar_simple_text(status, "Starting...");
+
+    let open_dialog = lcl.new_open_dialog(form);
+    lcl.set_open_dialog_filter(
+        open_dialog,
+        "Ybpatch files|*.ybpatch|All files|*.*"
+    );
+
+    let ui = box(Ui(
+        root_path,
+        root_button,
+        list,
+        details,
+        import_button,
+        install,
+        uninstall,
+        status,
+        open_dialog
+    ));
+    let ui_state = box(UiState(-1));
+
+    lcl.application_on_exception((class_name: string, message: string) => {
+        lcl.set_status_bar_simple_text(ui.status, class_name + ": " + message);
+    });
+    lcl.form_on_close_query(form, () => {
+        job_state() != 1
+    });
+    lcl.list_box_on_selection_change(ui.list, (
+        sender: handle<lcl.Control>
+    ) => {
+        let actual = sender as handle<lcl.ListBox>;
+        lcl.set_component_name(actual, "ModList");
+        update_selection(ui, false);
+    });
+    lcl.button_on_click(ui.root_button, () => {
+        let result = choose_root();
+        lcl.set_edit_text(ui.root_path, game_root_path());
+        show_action_result(ui, result);
+    });
+    lcl.button_on_click(ui.import_button, () => {
+        choose_patch(ui);
+    });
+    lcl.button_on_click(ui.install, () => {
+        let index = lcl.list_box_item_index(ui.list);
+        if index >= 0 {
+            show_action_result(ui, start_install(index));
+        }
+    });
+    lcl.button_on_click(ui.uninstall, () => {
+        let index = lcl.list_box_item_index(ui.list);
+        if index >= 0 {
+            show_action_result(ui, start_uninstall(index));
+        }
+    });
+
+    let timer = lcl.new_timer(form);
+    lcl.set_timer_interval(timer, 150);
+    lcl.set_timer_enabled(timer, true);
+    lcl.timer_on_timer(timer, (sender: handle<lcl.Component>) => {
+        let actual = sender as handle<lcl.Timer>;
+        let current_state = job_state();
+        if current_state == 1 {
+            let completed = job_completed();
+            let total = job_total();
+            let progress = if total > 0 {
+                f"{job_message()} ({completed}/{total})"
+            } else {
+                job_message()
+            };
+            lcl.set_status_bar_simple_text(ui.status, progress);
+        } else if current_state != ui_state.last_job_state &&
+            (current_state == 2 || current_state == 3) {
+            refresh_catalog(ui);
+            set_running(ui, false);
+            lcl.set_status_bar_simple_text(ui.status, job_message());
+            acknowledge_job();
+            ui_state.last_job_state = 0;
+        }
+        ui_state.last_job_state = current_state;
+        lcl.set_component_name(actual, "JobPollTimer");
+    });
+
+    ui_state.last_job_state = job_state();
+    show_action_result(ui, start_refresh());
+    lcl.show_form(form);
+    lcl.run();
+
+    lcl.timer_clear_on_timer(timer);
+    lcl.button_clear_on_click(ui.uninstall);
+    lcl.button_clear_on_click(ui.install);
+    lcl.button_clear_on_click(ui.import_button);
+    lcl.button_clear_on_click(ui.root_button);
+    lcl.list_box_clear_on_selection_change(ui.list);
+    lcl.form_clear_on_close_query(form);
+    lcl.application_clear_on_exception();
+    lcl.free_timer(timer);
+    lcl.free_open_dialog(ui.open_dialog);
+    lcl.free_status_bar(ui.status);
+    lcl.free_button(ui.uninstall);
+    lcl.free_button(ui.install);
+    lcl.free_button(ui.import_button);
+    lcl.free_memo(ui.details);
+    lcl.free_list_box(ui.list);
+    lcl.free_button(ui.root_button);
+    lcl.free_edit(ui.root_path);
+    lcl.free_label(root_label);
+    lcl.free_form(form);
+    0
+}

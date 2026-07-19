@@ -1,0 +1,70 @@
+name: Asset Patcher CI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/ci-asset-patcher.yml'
+      - 'radiance/protosept/**'
+      - 'radiance/ypk/**'
+      - 'yaobow/asset_project/**'
+      - 'yaobow/packfs/**'
+      - 'yaobow/yaobow_asset_patcher/**'
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/ci-asset-patcher.yml'
+      - 'radiance/protosept/**'
+      - 'radiance/ypk/**'
+      - 'yaobow/asset_project/**'
+      - 'yaobow/packfs/**'
+      - 'yaobow/yaobow_asset_patcher/**'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-14-arm64
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ''
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Linux runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0 libharfbuzz-gobject0
+      - name: Stage p7-lcl
+        run: >-
+          python yaobow/yaobow_asset_patcher/scripts/stage-p7-lcl.py
+          --target ${{ matrix.target }}
+          --output target/asset-patcher-ci
+      - name: Test
+        shell: bash
+        env:
+          YAOBOW_P7_LCL_DIR: ${{ github.workspace }}/target/asset-patcher-ci/p7-lcl
+        run: |
+          cargo test -p ypk
+          cargo test -p packfs --test cpk_rebuild
+          cargo test -p yaobow_asset_patcher
+          cargo check -p yaobow_asset_patcher --all-targets

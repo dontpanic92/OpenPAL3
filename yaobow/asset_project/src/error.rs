@@ -49,7 +49,7 @@ pub enum AssetProjectError {
     #[error("invalid path {path:?}: {reason}")]
     InvalidPath { path: String, reason: String },
 
-    #[error("entry {0:?} not found in .yapatch archive")]
+    #[error("entry {0:?} not found in .ybpatch archive")]
     MissingPatchEntry(String),
 
     #[error("asset change {0:?} not found in project manifest")]
@@ -58,7 +58,7 @@ pub enum AssetProjectError {
     #[error("duplicate package path {0:?} in project manifest")]
     DuplicatePackagePath(String),
 
-    /// Wraps failures from the underlying `radiance::asset::ypk`
+    /// Wraps failures from the underlying `ypk`
     /// reader/writer, which report errors as `anyhow::Error`. The
     /// message is captured as a `String` rather than keeping the
     /// `anyhow::Error` itself, since `anyhow::Error` does not implement

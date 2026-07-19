@@ -327,12 +327,12 @@ name = "asset_project"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "radiance",
  "serde",
  "serde_json",
  "sha2",
  "thiserror 1.0.69",
  "uuid 0.8.2",
+ "ypk",
 ]
 
 [[package]]
@@ -1642,6 +1642,16 @@ name = "formatx"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8866fac38f53fc87fa3ae1b09ddd723e0482f8fa74323518b4c59df2c55a00a"
+
+[[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
 
 [[package]]
 name = "futures-core"
@@ -3316,6 +3326,7 @@ dependencies = [
  "binrw 0.15.1",
  "criterion",
  "indexmap",
+ "libloading 0.8.9",
  "num-derive 0.4.2",
  "num-traits",
  "serde",
@@ -3340,7 +3351,6 @@ dependencies = [
  "mini-fs",
  "minilzo-rs",
  "miniz_oxide 0.7.4",
- "radiance",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -3348,6 +3358,7 @@ dependencies = [
  "uuid 0.8.2",
  "xtea",
  "xxtea",
+ "ypk",
 ]
 
 [[package]]
@@ -3743,7 +3754,6 @@ dependencies = [
  "ash",
  "ash-window",
  "backtrace",
- "binrw 0.11.3",
  "bitflags 1.3.2",
  "cc",
  "cfg-if 1.0.4",
@@ -3778,8 +3788,7 @@ dependencies = [
  "vk-mem",
  "winapi",
  "winit",
- "xxhash-rust",
- "zstd",
+ "ypk",
 ]
 
 [[package]]
@@ -6050,19 +6059,14 @@ dependencies = [
 name = "yaobow_asset_patcher"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "asset_project",
  "byteorder",
- "cfg_aliases",
- "crosscom",
- "crosscom-ccidl",
  "encoding",
- "imgui",
+ "fs2",
  "log",
  "native-dialog",
+ "p7",
  "packfs",
- "radiance",
- "radiance_scripting",
  "serde",
  "serde_json",
  "simple_logger",
@@ -6109,6 +6113,17 @@ dependencies = [
  "wavefront_obj",
  "xxtea",
  "zip",
+]
+
+[[package]]
+name = "ypk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "binrw 0.11.3",
+ "mini-fs",
+ "xxhash-rust",
+ "zstd",
 ]
 
 [[package]]

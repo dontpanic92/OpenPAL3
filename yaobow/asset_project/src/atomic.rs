@@ -61,8 +61,8 @@ fn write_temp(tmp_path: &Path, data: &[u8]) -> Result<()> {
 /// Builds a sibling temp-file path next to `path` with a unique name
 /// (pid + nanosecond timestamp), so concurrent writers targeting the
 /// same destination never collide on their own temp files. Exposed as
-/// `pub(crate)` so `patch::writer::YapatchWriter` can use the same
-/// write-temp/verify/rename sequence for publishing `.yapatch` files.
+/// `pub(crate)` so `patch::writer::YbpatchWriter` can use the same
+/// write-temp/verify/rename sequence for publishing `.ybpatch` files.
 pub(crate) fn temp_sibling_path(path: &Path) -> PathBuf {
     let file_name = path
         .file_name()

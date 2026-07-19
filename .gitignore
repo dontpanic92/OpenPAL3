@@ -45,6 +45,8 @@ x86/
 [Aa][Rr][Mm]64/
 bld/
 [Bb]in/
+!yaobow/yaobow_asset_patcher/src/bin/
+!yaobow/yaobow_asset_patcher/src/bin/yaobow_asset_patcher.rs
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/

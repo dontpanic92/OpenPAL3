@@ -29,7 +29,7 @@ fn recovers_a_simulated_crash_mid_swap_phase() {
             yaobow_asset_patcher::fixtures::FixtureChange::add("p2.cpk", "new.dat", b"p2 new"),
         ],
     );
-    let manifest = asset_project::patch::YapatchReader::open(&patch_path)
+    let manifest = asset_project::patch::YbpatchReader::open(&patch_path)
         .unwrap()
         .manifest()
         .clone();
@@ -68,6 +68,9 @@ fn recovers_a_simulated_crash_mid_swap_phase() {
         std::fs::create_dir_all(pkg.backup_path.parent().unwrap()).unwrap();
         std::fs::write(&pkg.backup_path, &p2_original).unwrap();
         pkg.backup_hash = Some(support::whole_file_hash(&pkg.backup_path));
+        let temp_path = p2_path.with_extension("cpk.yaobowpatch.tmp");
+        std::fs::write(&temp_path, b"orphaned rebuilt package").unwrap();
+        pkg.temp_path = Some(temp_path);
         pkg.stage = PackageStage::TempBuilt;
     }
     state.save().unwrap();
@@ -122,6 +125,15 @@ fn recovers_a_simulated_crash_mid_swap_phase() {
     // leaves its stage alone (still `TempBuilt`) -- there was nothing
     // to roll back.
     assert_eq!(stage_of("p2.cpk"), Some(PackageStage::TempBuilt));
+    let p2_state = recovered_state
+        .packages
+        .iter()
+        .find(|package| package.target_package == "p2.cpk")
+        .unwrap();
+    assert!(
+        !p2_state.temp_path.as_ref().unwrap().exists(),
+        "startup recovery must remove unswapped rebuilt packages"
+    );
 
     let journal_after = InstallationJournal::load_or_default(&paths.journal_path).unwrap();
     assert_eq!(journal_after.entries()[0].status, InstallStatus::Failed);
@@ -145,7 +157,7 @@ fn recover_interrupted_is_idempotent() {
             "p1.cpk", "new.dat", b"p1 new",
         )],
     );
-    let manifest = asset_project::patch::YapatchReader::open(&patch_path)
+    let manifest = asset_project::patch::YbpatchReader::open(&patch_path)
         .unwrap()
         .manifest()
         .clone();
@@ -236,7 +248,7 @@ fn finalizes_committed_state_without_reverting_packages() {
             "p1.cpk", "new.dat", b"new",
         )],
     );
-    let manifest = asset_project::patch::YapatchReader::open(&patch_path)
+    let manifest = asset_project::patch::YbpatchReader::open(&patch_path)
         .unwrap()
         .manifest()
         .clone();
@@ -280,4 +292,132 @@ fn finalizes_committed_state_without_reverting_packages() {
     assert_eq!(std::fs::read(&p1_path).unwrap(), patched);
     let journal = InstallationJournal::load(&paths.journal_path).unwrap();
     assert_eq!(journal.entries()[0].status, InstallStatus::Applied);
+}
+
+#[test]
+fn retries_a_failed_partial_uninstall_back_to_applied() {
+    let env = support::TestEnv::new("startup-recover-uninstall");
+    let (package_path, package_hash) =
+        env.write_package("scene.cpk", &[("base.dat", b"base" as &[u8])]);
+    let patch_path = support::build_patch(
+        &env,
+        &[("scene.cpk", package_hash)],
+        vec![yaobow_asset_patcher::fixtures::FixtureChange::add(
+            "scene.cpk",
+            "mod.dat",
+            b"mod",
+        )],
+    );
+    let report = yaobow_asset_patcher::transaction::apply(
+        &patch_path,
+        &env.game_root,
+        "pal3",
+        yaobow_asset_patcher::transaction::ApplyOptions::default(),
+    )
+    .unwrap();
+    let applied_bytes = std::fs::read(&package_path).unwrap();
+    let install_state = TransactionState::load(
+        PatchPaths::for_root(&env.game_root).backup_dir_for(report.patch_id),
+    )
+    .unwrap();
+    let original_bytes = std::fs::read(&install_state.packages[0].backup_path).unwrap();
+
+    let operation_id = uuid::Uuid::new_v4();
+    let operation_dir = yaobow_asset_patcher::manager::operation_dir(&env.game_root, operation_id);
+    std::fs::create_dir_all(&operation_dir).unwrap();
+    let mut state = TransactionState::new_uninstall(
+        report.patch_id,
+        yaobow_asset_patcher::manager::managed_patch_path(&env.game_root, report.patch_id),
+        &env.game_root,
+        &operation_dir,
+        &[("scene.cpk".to_string(), package_path.clone())],
+    );
+    {
+        let package = state.package_mut("scene.cpk").unwrap();
+        std::fs::create_dir_all(package.backup_path.parent().unwrap()).unwrap();
+        std::fs::write(&package.backup_path, &applied_bytes).unwrap();
+        package.backup_hash = Some(support::whole_file_hash(&package.backup_path));
+        package.stage = PackageStage::Swapped;
+    }
+    state.outcome = TransactionOutcome::Failed;
+    state.error = Some("simulated failed restore".to_string());
+    state.save().unwrap();
+    std::fs::write(&package_path, original_bytes).unwrap();
+
+    assert_eq!(
+        startup::detect_pending_uninstalls(&env.game_root)
+            .unwrap()
+            .len(),
+        1
+    );
+    startup::recover_interrupted_uninstall(&env.game_root, operation_id).unwrap();
+
+    assert_eq!(std::fs::read(&package_path).unwrap(), applied_bytes);
+    assert_eq!(
+        TransactionState::load(&operation_dir).unwrap().outcome,
+        TransactionOutcome::Failed
+    );
+    assert!(
+        yaobow_asset_patcher::manager::ManagerState::load_or_default(&env.game_root)
+            .unwrap()
+            .is_applied(report.patch_id)
+    );
+}
+
+#[test]
+fn finalizes_a_committed_uninstall_after_a_crash() {
+    let env = support::TestEnv::new("startup-finalize-uninstall");
+    let (package_path, package_hash) =
+        env.write_package("scene.cpk", &[("base.dat", b"base" as &[u8])]);
+    let patch_path = support::build_patch(
+        &env,
+        &[("scene.cpk", package_hash)],
+        vec![yaobow_asset_patcher::fixtures::FixtureChange::add(
+            "scene.cpk",
+            "mod.dat",
+            b"mod",
+        )],
+    );
+    let report = yaobow_asset_patcher::transaction::apply(
+        &patch_path,
+        &env.game_root,
+        "pal3",
+        yaobow_asset_patcher::transaction::ApplyOptions::default(),
+    )
+    .unwrap();
+    let install_state = TransactionState::load(
+        PatchPaths::for_root(&env.game_root).backup_dir_for(report.patch_id),
+    )
+    .unwrap();
+    let original_bytes = std::fs::read(&install_state.packages[0].backup_path).unwrap();
+    std::fs::write(&package_path, original_bytes).unwrap();
+
+    let operation_id = uuid::Uuid::new_v4();
+    let operation_dir = yaobow_asset_patcher::manager::operation_dir(&env.game_root, operation_id);
+    std::fs::create_dir_all(&operation_dir).unwrap();
+    let mut state = TransactionState::new_uninstall(
+        report.patch_id,
+        yaobow_asset_patcher::manager::managed_patch_path(&env.game_root, report.patch_id),
+        &env.game_root,
+        &operation_dir,
+        &[("scene.cpk".to_string(), package_path.clone())],
+    );
+    {
+        let package = state.package_mut("scene.cpk").unwrap();
+        package.stage = PackageStage::Swapped;
+        package.installed_hash = Some(support::whole_file_hash(&package_path));
+    }
+    state.outcome = TransactionOutcome::RolledBack;
+    state.save().unwrap();
+
+    startup::recover_interrupted_uninstall(&env.game_root, operation_id).unwrap();
+
+    assert!(
+        !yaobow_asset_patcher::manager::ManagerState::load_or_default(&env.game_root)
+            .unwrap()
+            .is_applied(report.patch_id)
+    );
+    let journal =
+        InstallationJournal::load(PatchPaths::for_root(&env.game_root).journal_path).unwrap();
+    assert_eq!(journal.entries()[0].status, InstallStatus::RolledBack);
 }
