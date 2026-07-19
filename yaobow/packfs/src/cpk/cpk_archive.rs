@@ -54,11 +54,9 @@ impl CpkArchive {
         };
 
         let mut entry_cursor = Cursor::new(&buffer);
-        let mut entries = vec![];
+        let mut entries = Vec::with_capacity(header.file_num as usize);
         for _ in 0..header.file_num {
-            if let Ok(t) = CpkTable::read(&mut entry_cursor, header.is_pal4()) {
-                entries.push(t)
-            }
+            entries.push(CpkTable::read(&mut entry_cursor, header.is_pal4())?);
         }
 
         let crc_to_index = Self::build_index_map(&entries);
@@ -119,9 +117,9 @@ impl CpkArchive {
         }
     }
 
-    pub fn build_directory(&mut self) -> CpkEntry {
-        let file_names = Self::read_file_names(&mut self.reader, &self.entries).unwrap();
-        Self::build_directory_internal(&self.entries, &file_names)
+    pub fn build_directory(&mut self) -> IoResult<CpkEntry> {
+        let file_names = Self::read_file_names(&mut self.reader, &self.entries)?;
+        Ok(Self::build_directory_internal(&self.entries, &file_names))
     }
 
     pub fn is_pal4(&self) -> bool {
@@ -284,20 +282,20 @@ struct CpkHeader {
 
 impl CpkHeader {
     pub fn read(cursor: &mut dyn SeekRead) -> IoResult<CpkHeader> {
-        let label = cursor.read_u32::<LittleEndian>().unwrap();
-        let version = cursor.read_u32::<LittleEndian>().unwrap();
-        let table_start = cursor.read_u32::<LittleEndian>().unwrap();
-        let data_start = cursor.read_u32::<LittleEndian>().unwrap();
-        let max_file_num = cursor.read_u32::<LittleEndian>().unwrap();
-        let file_num = cursor.read_u32::<LittleEndian>().unwrap();
-        let is_formatted = cursor.read_u32::<LittleEndian>().unwrap();
-        let size_of_header = cursor.read_u32::<LittleEndian>().unwrap();
-        let valid_table_num = cursor.read_u32::<LittleEndian>().unwrap();
-        let max_table_num = cursor.read_u32::<LittleEndian>().unwrap();
-        let fragment_num = cursor.read_u32::<LittleEndian>().unwrap();
-        let package_size = cursor.read_u32::<LittleEndian>().unwrap();
+        let label = cursor.read_u32::<LittleEndian>()?;
+        let version = cursor.read_u32::<LittleEndian>()?;
+        let table_start = cursor.read_u32::<LittleEndian>()?;
+        let data_start = cursor.read_u32::<LittleEndian>()?;
+        let max_file_num = cursor.read_u32::<LittleEndian>()?;
+        let file_num = cursor.read_u32::<LittleEndian>()?;
+        let is_formatted = cursor.read_u32::<LittleEndian>()?;
+        let size_of_header = cursor.read_u32::<LittleEndian>()?;
+        let valid_table_num = cursor.read_u32::<LittleEndian>()?;
+        let max_table_num = cursor.read_u32::<LittleEndian>()?;
+        let fragment_num = cursor.read_u32::<LittleEndian>()?;
+        let package_size = cursor.read_u32::<LittleEndian>()?;
         let mut reserved: [u32; 20] = Default::default();
-        reserved.copy_from_slice(&cursor.read_dw_vec(20).unwrap());
+        reserved.copy_from_slice(&cursor.read_dw_vec(20)?);
 
         if label != 0x1A545352 {
             return Err(IoError::from(IoErrorKind::InvalidData));
@@ -350,15 +348,15 @@ pub(crate) enum CpkTableFlag {
 
 impl CpkTable {
     pub fn read(cursor: &mut dyn SeekRead, extra_ending: bool) -> IoResult<CpkTable> {
-        let crc = cursor.read_u32::<LittleEndian>().unwrap();
-        let flag = cursor.read_u32::<LittleEndian>().unwrap();
-        let father_crc = cursor.read_u32::<LittleEndian>().unwrap();
-        let start_pos = cursor.read_u32::<LittleEndian>().unwrap();
-        let packed_size = cursor.read_u32::<LittleEndian>().unwrap();
-        let origin_size = cursor.read_u32::<LittleEndian>().unwrap();
-        let extra_info_size = cursor.read_u32::<LittleEndian>().unwrap();
+        let crc = cursor.read_u32::<LittleEndian>()?;
+        let flag = cursor.read_u32::<LittleEndian>()?;
+        let father_crc = cursor.read_u32::<LittleEndian>()?;
+        let start_pos = cursor.read_u32::<LittleEndian>()?;
+        let packed_size = cursor.read_u32::<LittleEndian>()?;
+        let origin_size = cursor.read_u32::<LittleEndian>()?;
+        let extra_info_size = cursor.read_u32::<LittleEndian>()?;
         if extra_ending {
-            let _ = cursor.read_u32::<LittleEndian>();
+            cursor.read_u32::<LittleEndian>()?;
         }
 
         Ok(CpkTable {
@@ -551,5 +549,13 @@ mod tests {
 
         let error = archive.open_str("emoji-\u{1f600}.mv3").err().unwrap();
         assert_eq!(error.kind(), IoErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn truncated_header_returns_error_instead_of_panicking() {
+        let error = CpkArchive::load(Box::new(Cursor::new(vec![0; 16])))
+            .err()
+            .expect("truncated CPK must fail");
+        assert_eq!(error.kind(), IoErrorKind::UnexpectedEof);
     }
 }

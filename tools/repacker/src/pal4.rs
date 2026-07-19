@@ -92,7 +92,7 @@ fn repack_cpk(
     let reader = Box::new(std::fs::File::open(file_path).unwrap());
     let mut archive = CpkArchive::load(reader).unwrap();
 
-    let root = archive.build_directory();
+    let root = archive.build_directory().unwrap();
     let entry_path = PathBuf::from("");
     let dest_path = dest_path.join(file_path.file_stem().unwrap().to_ascii_lowercase());
     repack_cpk_recursive(

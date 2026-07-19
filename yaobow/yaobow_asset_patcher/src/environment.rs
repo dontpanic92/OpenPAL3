@@ -124,4 +124,24 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn malformed_unrelated_cpk_does_not_hide_valid_pal3_root() {
+        let dir = crate::test_scratch::dir("environment-malformed-unrelated-cpk");
+        crate::fixtures::write_fixture_cpk(
+            &dir.join("basedata"),
+            "basedata.cpk",
+            &[("marker.txt", b"basedata marker")],
+        );
+        std::fs::write(dir.join("truncated.cpk"), [0_u8; 16]).unwrap();
+
+        let root = GameRoot::open(&dir);
+        assert!(root.looks_like_pal3());
+        assert!(
+            root.resolve_package_path("truncated.cpk").is_none(),
+            "unreadable packages must not be recorded as mounted"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

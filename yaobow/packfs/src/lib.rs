@@ -91,8 +91,15 @@ fn mount_packages_recursive(
         match path.extension().and_then(|ext| ext.to_str()) {
             Some("cpk") => {
                 log::debug!("Mounting {:?} <- {:?}", &vfs_path, &path);
-                vfs = vfs.mount(vfs_path.clone(), CpkFs::new(path).unwrap());
-                catalog.record(physical_relative_path, vfs_path, PackageType::Cpk);
+                match CpkFs::new(&path) {
+                    Ok(cpk) => {
+                        vfs = vfs.mount(vfs_path.clone(), cpk);
+                        catalog.record(physical_relative_path, vfs_path, PackageType::Cpk);
+                    }
+                    Err(error) => {
+                        log::error!("Skipping unreadable CPK package {:?}: {error:#}", &path);
+                    }
+                }
             }
             Some("fmb") => {
                 let vfs_path = vfs_path.parent().unwrap().join("Model");

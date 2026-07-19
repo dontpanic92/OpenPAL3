@@ -16,7 +16,7 @@ impl CpkFs {
         let cpk_archive = RefCell::new(CpkArchive::load(reader)?);
 
         #[cfg(any(windows, linux, macos))]
-        let entry = Some(cpk_archive.borrow_mut().build_directory());
+        let entry = Some(cpk_archive.borrow_mut().build_directory()?);
 
         #[cfg(any(android, vita))]
         let entry = None;

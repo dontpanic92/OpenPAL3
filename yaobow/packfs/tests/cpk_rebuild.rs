@@ -258,7 +258,7 @@ fn rebuild_adds_new_file_and_directory_with_implied_parents() {
     // Pre-existing file must still be there.
     assert_eq!(read_all(&mut archive, r"readme.txt"), b"hello");
 
-    let root = archive.build_directory();
+    let root = archive.build_directory().unwrap();
     let newdir_children = root.ls("newdir").unwrap();
     assert!(newdir_children.iter().any(|c| c.borrow().name() == "sub"));
 

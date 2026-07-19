@@ -365,12 +365,6 @@ mod tests {
     #[test]
     fn fingerprint_mismatch_is_flagged() {
         let dir = crate::test_scratch::dir("validate-fingerprint-mismatch");
-        // `GameRoot::open` eagerly opens every `.cpk` under the root
-        // while building its catalog (`packfs::CpkFs::new(path).unwrap()`
-        // during the directory walk) — even packages unrelated to the
-        // PAL3 marker — so any `.cpk` present here must be a
-        // syntactically valid (if arbitrary-content) package, not raw
-        // garbage bytes, or `GameRoot::open` itself panics.
         crate::fixtures::write_fixture_cpk(
             &dir.join("basedata"),
             "basedata.cpk",
